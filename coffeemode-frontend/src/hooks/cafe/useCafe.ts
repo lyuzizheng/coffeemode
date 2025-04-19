@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useConfig } from "../../providers/ConfigProvider";
-import { ApiResponse, createApiClient } from "../../services/api";
+import { ApiResponse, getApiClient } from "../../services/api";
 import { Cafe, CafeDetailsParams, CafeSearchParams } from "../../types/cafe";
 
 // Query keys for caching
@@ -18,7 +18,7 @@ export const cafeKeys = {
  */
 export const useNearbyLocations = (params: CafeSearchParams) => {
   const config = useConfig();
-  const apiClient = createApiClient(config.apiUrl);
+  const apiClient = getApiClient(config.apiUrl);
 
   return useQuery<ApiResponse<Cafe[]>>({
     queryKey: cafeKeys.list({
@@ -50,7 +50,7 @@ export const useNearbyLocations = (params: CafeSearchParams) => {
  */
 export const useCafeById = (params: CafeDetailsParams) => {
   const config = useConfig();
-  const apiClient = createApiClient(config.apiUrl);
+  const apiClient = getApiClient(config.apiUrl);
 
   return useQuery<ApiResponse<Cafe>>({
     queryKey: cafeKeys.detail(params.id),
@@ -94,7 +94,7 @@ export const useCurrentLocation = () => {
 export const useNearbyLocationsFromCurrentPosition = (radius?: number) => {
   const { requestLocation } = useCurrentLocation();
   const config = useConfig();
-  const apiClient = createApiClient(config.apiUrl);
+  const apiClient = getApiClient(config.apiUrl);
 
   return useQuery<ApiResponse<Cafe[]>>({
     queryKey: cafeKeys.list({ currentLocation: true, radius }),

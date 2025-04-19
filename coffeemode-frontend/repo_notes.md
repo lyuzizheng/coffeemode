@@ -45,7 +45,7 @@
   * Tanstack Query (React Query) for server state management (fetching, caching, mutations).
   * Component-local state (useState, useReducer) for UI state.
 * **Routing:** (Assumed: React Router or similar, managed within `App.tsx`)
-* **Map Library:** (TBD - e.g., Mapbox GL JS, Leaflet, Google Maps Platform SDK)
+* **Map Library:** Google Maps Platform SDK (implemented with a keyless solution stored locally)
 * **Linting/Formatting:** ESLint, Prettier
 
 ## 4. Project Structure
@@ -53,6 +53,8 @@
 ```
 coffeemode-frontend/
 ├── public/                  # Public static files (e.g., favicons)
+│   └── js/                  # JavaScript assets served directly
+│       └── mapsJavaScriptAPI.js  # Embedded Google Maps API script (keyless)
 ├── src/                      # Source code directory
 │   ├── assets/              # Static assets (images, fonts, etc.)
 │   ├── components/          # Reusable UI components (built with Shadcn UI / custom)

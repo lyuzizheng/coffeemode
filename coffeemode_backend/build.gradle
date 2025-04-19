@@ -45,6 +45,9 @@ dependencies {
 
     // Add Jackson protobuf support for better API integration
     implementation 'com.hubspot.jackson:jackson-datatype-protobuf:0.9.13'
+
+    // Firebase Admin SDK
+    implementation 'com.google.firebase:firebase-admin:9.3.0'
 }
 
 // Configure protobuf compilation

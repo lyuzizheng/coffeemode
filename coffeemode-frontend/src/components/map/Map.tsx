@@ -72,8 +72,7 @@ const Map = ({
     // Load Google Maps API if it hasn't been loaded yet
     if (!window.google) {
       const script = document.createElement("script");
-      script.src =
-        "https://cdn.jsdelivr.net/gh/somanchiu/Keyless-Google-Maps-API@v6.8/mapsJavaScriptAPI.js";
+      script.src = "/js/mapsJavaScriptAPI.js";
       script.async = true;
       script.defer = true;
       document.head.appendChild(script);

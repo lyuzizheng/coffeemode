@@ -1,0 +1,88 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.4.4'
+    id 'io.spring.dependency-management' version '1.1.7'
+    //id 'com.google.protobuf' version '0.9.4'
+}
+
+group = 'com.work'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-data-mongodb'
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-web'  // Added web dependency
+    compileOnly 'org.projectlombok:lombok'
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+    annotationProcessor 'org.projectlombok:lombok'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // Protocol Buffers dependencies
+    implementation 'com.google.protobuf:protobuf-java:3.25.5'
+    implementation 'com.google.protobuf:protobuf-java-util:3.25.5'
+
+    // For protobuf HTTP message conversion
+    implementation 'com.googlecode.protobuf-java-format:protobuf-java-format:1.4'
+
+    // Add Jackson protobuf support for better API integration
+    implementation 'com.hubspot.jackson:jackson-datatype-protobuf:0.9.13'
+}
+
+// Configure protobuf compilation
+//protobuf {
+//    protoc {
+//        artifact = 'com.google.protobuf:protoc:3.25.5'
+//    }
+//
+//    // Clear existing problem by cleaning the generated directory
+//    clean {
+//        delete "build/generated/source/proto"
+//    }
+//
+//    // Generate Java classes for .proto files
+//    generateProtoTasks {
+//        all().configureEach { task ->
+//            task.builtins {
+//                java {
+//                    option 'lite'  // Use lite runtime for better performance
+//                }
+//            }
+//        }
+//    }
+//}
+
+// Add generated sources to source sets
+sourceSets {
+    main {
+        java {
+            srcDirs 'src/main/java', 'build/generated/source/proto/main/java'
+        }
+//        proto {
+//            // Only include this directory
+//            srcDir 'src/main/proto'
+//        }
+    }
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

@@ -1,0 +1,21 @@
+spring:
+  application:
+    name: coffeemode
+
+  # MongoDB Settings
+  data:
+    mongodb:
+      database: ${MONGO_DB}
+      uri: ${MONGO_URI}
+
+    # Redis
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+
+  # Security
+  security:
+    user:
+      name: ${ADMIN_USERNAME:admin}
+      password: ${ADMIN_PASSWORD:admin}

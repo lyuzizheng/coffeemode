@@ -1,0 +1,47 @@
+/**
+ * For more details on how to configure Wrangler, refer to:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "coffeemode-image",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-04-04",
+	"observability": {
+		"enabled": true
+	},
+	// Add Environment Variables and Bindings here
+	"vars": {
+		// Removed: "JWT_SECRET": "your-secret-here"
+    // Secrets should be managed via `wrangler secret put JWT_SECRET`
+	},
+	"r2_buckets": [
+		{
+			"binding": "MY_BUCKET",
+			"bucket_name": "cafemode" // Replace with your actual R2 bucket name
+		}
+	],
+	"unsafe": {
+		"bindings": [
+			{
+				"name": "UPLOAD_RATE_LIMITER",
+				"type": "ratelimit",
+				"namespace_id": "1001", // Unique ID for upload limiter
+				"simple": {
+					"limit": 100, // 100 requests
+					"period": 60  // per 60 seconds (1 minute)
+				}
+			},
+			{
+				"name": "READ_RATE_LIMITER",
+				"type": "ratelimit",
+				"namespace_id": "1002", // Unique ID for read limiter
+				"simple": {
+					"limit": 100, // 100 requests
+					"period": 60  // per 60 seconds (1 minute)
+				}
+			}
+		]
+	}
+}
+

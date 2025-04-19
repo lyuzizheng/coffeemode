@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface CafeRepository extends MongoRepository<Cafe, String> {
+public interface CafeRepository extends MongoRepository<Cafe, ObjectId> {
 
     Optional<Cafe> findById(ObjectId id);
 

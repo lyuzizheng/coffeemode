@@ -1,4 +1,4 @@
-import { cn } from "@/utils/utils";
+import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import Map from "./Map";
 

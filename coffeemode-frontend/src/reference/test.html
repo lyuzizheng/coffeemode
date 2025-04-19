@@ -45,57 +45,9 @@
     }
   </style>
 </head>
-<body class="bg-coffee-50 h-screen flex flex-col">
-  <!-- Navigation Bar -->
-  <nav class="bg-white bg-opacity-95 shadow-sm sticky top-0 z-50">
-    <div class="container mx-auto px-4 py-3 flex justify-between items-center">
-      <!-- Logo and Brand -->
-      <div class="flex items-center space-x-2">
-        <svg viewBox="0 0 24 24" class="w-8 h-8 text-coffee-600" stroke="currentColor" stroke-width="2" fill="none">
-          <path d="M18 8h1a4 4 0 0 1 0 8h-1"></path>
-          <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"></path>
-          <line x1="6" y1="1" x2="6" y2="4"></line>
-          <line x1="10" y1="1" x2="10" y2="4"></line>
-          <line x1="14" y1="1" x2="14" y2="4"></line>
-        </svg>
-        <h1 class="text-xl font-bold text-coffee-800">Coffee Mode</h1>
-      </div>
-      
-      <!-- Search Bar -->
-      <div class="hidden md:flex flex-1 max-w-md mx-4">
-        <div class="relative w-full">
-          <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-            <svg class="w-4 h-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-          </div>
-          <input type="text" class="bg-gray-100 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-coffee-500 focus:border-coffee-500 block w-full pl-10 p-2.5" placeholder="Find a place to work...">
-        </div>
-      </div>
-      
-      <!-- User Menu -->
-      <div class="flex items-center space-x-4">
-        <button class="text-coffee-600 hover:text-coffee-800">
-          <svg viewBox="0 0 24 24" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
-          </svg>
-        </button>
-        <button class="bg-coffee-600 hover:bg-coffee-700 text-white py-2 px-4 rounded-md text-sm font-medium">
-          Login
-        </button>
-        <!-- Avatar (Hidden until logged in) -->
-        <div class="hidden">
-          <div class="w-9 h-9 rounded-full bg-coffee-300 flex items-center justify-center text-coffee-800 font-medium cursor-pointer">
-            JS
-          </div>
-        </div>
-      </div>
-    </div>
-  </nav>
-
+<body class="bg-coffee-50 h-screen">
   <!-- Main Content with Map Background -->
-  <div class="flex-1 relative overflow-hidden">
+  <div class="h-full relative overflow-hidden">
     <!-- Map Background (Placeholder - Would be Google Maps in real implementation) -->
     <div class="map-background absolute inset-0 w-full h-full opacity-90">
       <!-- Dummy map markers -->
@@ -125,14 +77,68 @@
       </div>
     </div>
 
-    <!-- Map Controls -->
-    <div class="absolute top-4 right-4 flex flex-col space-y-2">
-      <button class="bg-white p-2 rounded-full shadow-md hover:bg-gray-100">
-        <svg viewBox="0 0 24 24" class="w-5 h-5 text-coffee-800" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"></circle>
-          <polygon points="10 8 16 12 10 16 10 8"></polygon>
+    <!-- Floating Header with Logo, Search and Controls -->
+    <div class="absolute top-4 left-4 right-4 flex items-center justify-between z-50">
+      <!-- Logo and Brand -->
+      <div class="flex items-center space-x-2 bg-white bg-opacity-95 py-2 px-3 rounded-lg shadow-md">
+        <svg viewBox="0 0 24 24" class="w-8 h-8 text-coffee-600" stroke="currentColor" stroke-width="2" fill="none">
+          <path d="M18 8h1a4 4 0 0 1 0 8h-1"></path>
+          <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"></path>
+          <line x1="6" y1="1" x2="6" y2="4"></line>
+          <line x1="10" y1="1" x2="10" y2="4"></line>
+          <line x1="14" y1="1" x2="14" y2="4"></line>
         </svg>
-      </button>
+        <h1 class="text-xl font-bold text-coffee-800">Coffee Mode</h1>
+      </div>
+      
+      <!-- Search Bar -->
+      <div class="flex-1 max-w-md mx-4">
+        <div class="relative w-full">
+          <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+            <svg class="w-4 h-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </div>
+          <input type="text" class="bg-white bg-opacity-95 border border-gray-200 text-gray-900 text-sm rounded-lg shadow-md focus:ring-coffee-500 focus:border-coffee-500 block w-full pl-10 p-2.5" placeholder="Find a place to work...">
+        </div>
+      </div>
+      
+      <!-- User Controls -->
+      <div class="flex items-center space-x-3">
+        <!-- Filter Button -->
+        <button class="bg-white bg-opacity-95 p-2.5 rounded-full shadow-md hover:bg-gray-100 flex items-center justify-center">
+          <svg viewBox="0 0 24 24" class="w-5 h-5 text-coffee-800" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+          </svg>
+        </button>
+        
+        <!-- Favorites Button -->
+        <button class="bg-white bg-opacity-95 p-2.5 rounded-full shadow-md hover:bg-gray-100">
+          <svg viewBox="0 0 24 24" class="w-5 h-5 text-coffee-600" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+          </svg>
+        </button>
+        
+        <!-- Login/Avatar Button -->
+        <button class="bg-coffee-600 hover:bg-coffee-700 text-white p-2.5 rounded-full shadow-md flex items-center justify-center">
+          <svg viewBox="0 0 24 24" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+        </button>
+        
+        <!-- Avatar (Hidden until logged in) -->
+        <div class="hidden">
+          <div class="w-10 h-10 rounded-full bg-coffee-300 flex items-center justify-center text-coffee-800 font-medium cursor-pointer shadow-md">
+            JS
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Map Controls -->
+    <div class="absolute top-20 right-4 flex flex-col space-y-2">
       <button class="bg-white p-2 rounded-full shadow-md hover:bg-gray-100">
         <svg viewBox="0 0 24 24" class="w-5 h-5 text-coffee-800" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="10"></circle>
@@ -148,15 +154,11 @@
           <line x1="12" y1="16" x2="12" y2="16"></line>
         </svg>
       </button>
-    </div>
-
-    <!-- Filter Button -->
-    <div class="absolute top-4 left-4 md:left-auto md:right-16">
-      <button class="bg-white py-2 px-4 rounded-lg shadow-md hover:bg-gray-100 flex items-center space-x-2">
+      <button class="bg-white p-2 rounded-full shadow-md hover:bg-gray-100">
         <svg viewBox="0 0 24 24" class="w-5 h-5 text-coffee-800" fill="none" stroke="currentColor" stroke-width="2">
-          <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
         </svg>
-        <span class="text-coffee-800 font-medium text-sm">Filters</span>
       </button>
     </div>
 

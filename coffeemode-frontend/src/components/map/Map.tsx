@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/utils";
 import { useEffect, useRef, useState } from "react";
 // Import the map style
 import mapStyle from "./style.json";

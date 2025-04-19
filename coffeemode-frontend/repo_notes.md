@@ -59,25 +59,27 @@ coffeemode-frontend/
 │   ├── assets/              # Static assets (images, fonts, etc.)
 │   ├── components/          # Reusable UI components (built with Shadcn UI / custom)
 │   │   ├── ui/              # Shadcn UI generated components (Button, Card, etc.)
-│   │   ├── map/             # Map-related components for displaying and interacting with Google Maps
-│   │   └── core/            # Custom application-specific components (e.g., MapView, LocationCard)
-│   ├── constants/           # Application constants (e.g., routes, config keys)
-│   ├── hooks/               # Custom React hooks (e.g., useUser, useConfig)
-│   ├── lib/                 # Reusable utility functions (shadcn convention, similar to utils)
-│   │   └── utils.ts         # General utilities, including cn() for Tailwind class merging
-│   ├── providers/           # React context providers (Providers, UserProvider, ConfigProvider)
-│   ├── services/            # API integration logic (e.g., api.ts, specific service files)
-│   ├── features/            # Feature-based modules (e.g., map, location, auth) - *Consider adding this layer for larger features*
-│   ├── types/               # TypeScript type definitions (global or shared types)
-│   │   └── google-maps.d.ts # TypeScript declaration file for Google Maps API
-│   ├── App.tsx              # Main application component (layout, routing)
-│   ├── main.tsx             # Application entry point
-│   └── index.css            # Global styles, Tailwind directives, theme variables
-├── package.json             # Project dependencies and scripts
-├── tsconfig.json           # TypeScript configuration
-├── vite.config.ts          # Vite build configuration
-├── tailwind.config.js      # TailwindCSS configuration
-└── postcss.config.js       # PostCSS configuration (needed for Tailwind)
+│   │   │   ├── map/             # Map-related components for displaying and interacting with Google Maps
+│   │   │   └── core/            # Custom application-specific components (e.g., MapView, LocationCard)
+│   │   │   ├── layout/          # Layout components (e.g., Header, Footer)
+│   │   │   └── cafe/            # Cafe-related components (e.g., CafeCard, CafeCarousel)
+│   │   ├── constants/           # Application constants (e.g., routes, config keys)
+│   │   ├── hooks/               # Custom React hooks (e.g., useUser, useConfig)
+│   │   ├── lib/                 # Reusable utility functions (shadcn convention, similar to utils)
+│   │   │   └── utils.ts         # General utilities, including cn() for Tailwind class merging
+│   │   ├── providers/           # React context providers (Providers, UserProvider, ConfigProvider)
+│   │   ├── services/            # API integration logic (e.g., api.ts, specific service files)
+│   │   ├── features/            # Feature-based modules (e.g., map, location, auth) - *Consider adding this layer for larger features*
+│   │   ├── types/               # TypeScript type definitions (global or shared types)
+│   │   │   └── google-maps.d.ts # TypeScript declaration file for Google Maps API
+│   │   ├── App.tsx              # Main application component (layout, routing)
+│   │   ├── main.tsx             # Application entry point
+│   │   └── index.css            # Global styles, Tailwind directives, theme variables
+│   ├── package.json             # Project dependencies and scripts
+│   ├── tsconfig.json           # TypeScript configuration
+│   ├── vite.config.ts          # Vite build configuration
+│   ├── tailwind.config.js      # TailwindCSS configuration
+│   └── postcss.config.js       # PostCSS configuration (needed for Tailwind)
 ```
 
 *(Note: Added `lib/utils.ts` typical for Shadcn, `services` as a potential alternative/complement to `utils/api.ts`, and suggested `features` directory for modularity)*

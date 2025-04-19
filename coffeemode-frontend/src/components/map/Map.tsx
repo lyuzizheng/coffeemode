@@ -1,4 +1,4 @@
-import { cn } from "@/utils/utils";
+import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 // Import the map style
 import mapStyle from "./style.json";
@@ -58,6 +58,7 @@ const Map = ({
           window.google?.maps?.ControlPosition
         ) {
           map.setOptions({
+            myLocationControl: true,
             myLocationControlOptions: {
               position: window.google.maps.ControlPosition.RIGHT_BOTTOM,
             },

@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="300" height="300">
+  <!-- Drop shadow filter -->
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Marker Body Group -->
+  <g filter="url(#shadow)">
+    <!-- Outer White Circle (the base) -->
+    <circle cx="50" cy="50" r="30" fill="white" />
+
+    <!-- Inner Brown Circle -->
+    <circle cx="50" cy="50" r="25" fill="#A0522D" />
+
+    <!-- Coffee Cup - Centered and scaled -->
+    <!-- Added stroke, stroke-width, fill attributes to make the icon white -->
+    <g transform="translate(34, 34) scale(1.4)"
+       fill="none"
+       stroke="white"
+       stroke-width="2.5"
+       stroke-linecap="round"
+       stroke-linejoin="round">
+
+        <!-- Handle - Only stroke needed -->
+        <path d="M18 8h1a4 4 0 010 8h-1" fill="none"/>
+        <!-- Cup Body - Fill and stroke -->
+        <path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z" />
+        <!-- Steam Lines - Only stroke needed -->
+        <line x1="6" y1="1" x2="6" y2="4" fill="none"/>
+        <line x1="10" y1="1" x2="10" y2="4" fill="none"/>
+        <line x1="14" y1="1" x2="14" y2="4" fill="none"/>
+    </g>
+  </g>
+</svg>

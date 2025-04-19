@@ -1,0 +1,23 @@
+{
+  "_id": 12345,
+  "name": "Cafe Name",
+  "location": {
+    "address": "123 Street, Singapore",
+    "lat": 1.3521,
+    "lng": 103.8198
+  },
+  "features": {
+    "wifi_speed_mbps": 100,
+    "outlets_available": true,
+    "quietness_level": "moderate",
+    "seating_capacity": 50
+  },
+  "average_rating": 4.5,
+  "total_reviews": 15,
+  "images": ["image1.jpg", "image2.jpg"],
+  "website": "https://cafewebsite.com",
+  "opening_hours": {
+    "monday": "08:00-20:00",
+    "tuesday": "08:00-20:00"
+  }
+}

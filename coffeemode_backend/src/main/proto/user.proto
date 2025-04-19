@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package com.work.coffeemode.proto;
+
+option java_package = "com.work.coffeemode.proto";
+option java_multiple_files = false;
+option java_outer_classname = "UserProtos";
+
+// User message definition
+message User {
+  int32 id = 1;
+  string name = 2;
+  string email = 3;
+  string created_at = 4;
+  string updated_at = 5;
+
+  enum Role {
+    USER = 0;
+    ADMIN = 1;
+  }
+
+  Role role = 6;
+}
+
+// Request message for creating a user
+message CreateUserRequest {
+  string name = 1;
+  string email = 2;
+  User.Role role = 3;
+}
+
+// Response message after creating a user
+message CreateUserResponse {
+  User user = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+// Request message for getting a user
+message GetUserRequest {
+  int32 id = 1;
+}
+
+// Response message for getting a user
+message GetUserResponse {
+  User user = 1;
+  bool found = 2;
+}
+
+// Request message for listing users
+message ListUsersRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+// Response for listing users
+message UserListResponse {
+  repeated User users = 1;
+  int32 total_count = 2;
+  int32 page = 3;
+  int32 total_pages = 4;
+}

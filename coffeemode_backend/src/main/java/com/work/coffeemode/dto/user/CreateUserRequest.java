@@ -1,4 +1,4 @@
-package com.work.coffeemode.dto;
+package com.work.coffeemode.dto.user;
 
 import com.work.coffeemode.model.User;
 import lombok.AllArgsConstructor;
@@ -10,8 +10,8 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class CreateUserResponse {
-    private User user;
-    private boolean success;
-    private String message;
+public class CreateUserRequest {
+    private String name;
+    private String email;
+    private User.Role role;
 }

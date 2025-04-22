@@ -1,7 +1,7 @@
 package com.work.coffeemode.controller;
 
 
-import com.work.coffeemode.dto.*;
+import com.work.coffeemode.dto.user.*;
 import com.work.coffeemode.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;

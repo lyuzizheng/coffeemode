@@ -1,7 +1,7 @@
 package com.work.coffeemode.service;
 
 
-import com.work.coffeemode.dto.*;
+import com.work.coffeemode.dto.user.*;
 
 public interface UserService {
     /**

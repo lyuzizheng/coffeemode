@@ -7,6 +7,9 @@ import lombok.NoArgsConstructor;
 import org.bson.types.ObjectId;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.core.index.GeoSpatialIndexed;
+import org.springframework.data.mongodb.core.index.GeoSpatialIndexType;
+import org.springframework.data.mongodb.core.geo.GeoJsonPoint;
 
 import java.util.List;
 import java.util.Map;
@@ -21,7 +24,9 @@ public class Cafe {
     @Id
     private ObjectId id;
     private String name;
-    private Location location;
+    // GeoJsonPoint stores location as [longitude, latitude] - MongoDB's preferred format
+    @GeoSpatialIndexed(type = GeoSpatialIndexType.GEO_2DSPHERE)
+    private GeoJsonPoint location;
     private Features features;
     private double averageRating;
     private int totalReviews;
@@ -37,6 +42,10 @@ public class Cafe {
         private String address;
         private double lat;
         private double lng;
+    }
+
+    public void setLocationFromCoordinates(double lat, double lng) {
+        this.location = new GeoJsonPoint(lng, lat);  // Note: GeoJsonPoint constructor is (longitude, latitude)
     }
 
     @Data

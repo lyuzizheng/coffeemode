@@ -1,6 +1,6 @@
 package com.work.coffeemode.service.impl;
 
-import com.work.coffeemode.dto.*;
+import com.work.coffeemode.dto.user.*;
 import com.work.coffeemode.model.User;
 import com.work.coffeemode.service.UserService;
 import org.springframework.stereotype.Service;

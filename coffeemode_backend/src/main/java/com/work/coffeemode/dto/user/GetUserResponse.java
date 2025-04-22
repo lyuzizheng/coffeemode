@@ -1,5 +1,6 @@
-package com.work.coffeemode.dto;
+package com.work.coffeemode.dto.user;
 
+import com.work.coffeemode.model.User;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -9,7 +10,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class GetUserRequest {
-    @Builder.Default
-    private Integer id = null;
+public class GetUserResponse {
+    private User user;
+    private boolean found;
 }

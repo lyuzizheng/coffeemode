@@ -1,53 +1,79 @@
 package com.work.coffeemode.service.impl;
 
-    import com.work.coffeemode.model.Cafe;
-    import com.work.coffeemode.repository.CafeRepository;
-    import com.work.coffeemode.service.CafeService;
-    import org.springframework.beans.factory.annotation.Autowired;
-    import org.springframework.stereotype.Service;
-    import java.util.List;
-    import java.util.Optional;
+import com.work.coffeemode.model.Cafe;
+import com.work.coffeemode.repository.CafeRepository;
+import com.work.coffeemode.service.CafeService;
+import org.bson.types.ObjectId;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import java.util.List;
+import java.util.Optional;
+import java.util.HashMap;
+import java.util.Map;
 
-    @Service
-    public class CafeServiceImpl implements CafeService {
+@Service
+public class CafeServiceImpl implements CafeService {
 
-        @Autowired
-        private CafeRepository cafeRepository;
+    @Autowired
+    private CafeRepository cafeRepository;
 
-        @Override
-        public Cafe createCafe(Cafe cafe) {
-            return cafeRepository.save(cafe);
-        }
+    @Override
+    public Cafe createCafe(Cafe cafe) {
+        return cafeRepository.save(cafe);
+    }
 
-        @Override
-        public List<Cafe> getAllCafes() {
-            return cafeRepository.findAll();
-        }
+    @Override
+    public List<Cafe> getAllCafes() {
+        return cafeRepository.findAll();
+    }
 
-        @Override
-        public Optional<Cafe> getCafeById(String id) {
-            return cafeRepository.findById(id);
-        }
+    @Override
+    public Map<String, Object> getCafeById(String id) {
+        Map<String, Object> response = new HashMap<>();
 
-        @Override
-        public Cafe updateCafe(String id, Cafe cafeDetails) throws Exception {
-            Cafe cafe = cafeRepository.findById(id)
-                .orElseThrow(() -> new Exception("Cafe not found"));
+        try {
+            ObjectId objectId = new ObjectId(id);
+            var cafe = cafeRepository.findById(objectId);
 
-            cafe.setName(cafeDetails.getName());
-            cafe.setLocation(cafeDetails.getLocation());
-            cafe.setFeatures(cafeDetails.getFeatures());
-            cafe.setAverageRating(cafeDetails.getAverageRating());
-            cafe.setTotalReviews(cafeDetails.getTotalReviews());
-            cafe.setImages(cafeDetails.getImages());
-            cafe.setWebsite(cafeDetails.getWebsite());
-            cafe.setOpeningHours(cafeDetails.getOpeningHours());
+            if (cafe.isEmpty()) {
+                response.put("code", 404);
+                response.put("message", "Cafe not found");
+                response.put("data", null);
+                return response;
+            }
 
-            return cafeRepository.save(cafe);
-        }
-
-        @Override
-        public void deleteCafe(String id) {
-            cafeRepository.deleteById(id);
+            response.put("code", 200);
+            response.put("message", "Success");
+            response.put("data", cafe.get());
+            return response;
+        } catch (IllegalArgumentException e) {
+            response.put("code", 400);
+            response.put("message", "Invalid ID format");
+            response.put("data", null);
+            return response;
         }
     }
+
+    @Override
+    public Cafe updateCafe(String id, Cafe cafeDetails) throws Exception {
+        ObjectId objectId = new ObjectId(id);
+        Cafe cafe = cafeRepository.findById(objectId)
+            .orElseThrow(() -> new Exception("Cafe not found"));
+
+        cafe.setName(cafeDetails.getName());
+        cafe.setLocation(cafeDetails.getLocation());
+        cafe.setAddress(cafeDetails.getAddress());
+        cafe.setFeatures(cafeDetails.getFeatures());
+        cafe.setImages(cafeDetails.getImages());
+        cafe.setWebsite(cafeDetails.getWebsite());
+        cafe.setOpeningHours(cafeDetails.getOpeningHours());
+
+        return cafeRepository.save(cafe);
+    }
+
+    @Override
+    public void deleteCafe(String id) {
+        ObjectId objectId = new ObjectId(id);
+        cafeRepository.deleteById(objectId);
+    }
+}

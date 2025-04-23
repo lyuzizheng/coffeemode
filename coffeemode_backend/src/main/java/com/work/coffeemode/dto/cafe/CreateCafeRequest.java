@@ -1,57 +1,52 @@
 package com.work.coffeemode.dto.cafe;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.List;
+import java.util.Map;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class CreateCafeRequest {
+    @NotBlank(message = "Name is required")
     private String name;
+
+    @NotNull(message = "Location is required")
+    private Location location;
+
+    @NotBlank(message = "Address is required")
     private String address;
-    private String phoneNumber;
+    private Features features;
+    private List<String> images;
     private String website;
-    private String description;
+    private Map<String, String> openingHours;
 
-    public CreateCafeRequest(String name, String address, String phoneNumber, String website, String description) {
-        this.name = name;
-        this.address = address;
-        this.phoneNumber = phoneNumber;
-        this.website = website;
-        this.description = description;
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class Location {
+        private final String type = "Point";
+
+        @NotNull(message = "Coordinates are required")
+        private double[] coordinates;  // [longitude, latitude]
     }
 
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getAddress() {
-        return address;
-    }
-
-    public void setAddress(String address) {
-        this.address = address;
-    }
-
-    public String getPhoneNumber() {
-        return phoneNumber;
-    }
-
-    public void setPhoneNumber(String phoneNumber) {
-        this.phoneNumber = phoneNumber;
-    }
-
-    public String getWebsite() {
-        return website;
-    }
-
-    public void setWebsite(String website) {
-        this.website = website;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class Features {
+        private Boolean wifiAvailable;
+        private Boolean outletsAvailable;
+        private String quietnessLevel;  // "quiet", "moderate", "noisy"
+        private String temperature;     // "cold", "just right", "warm"
     }
 }

@@ -184,32 +184,32 @@ Adds a new cafe to the database.
 
 **Request Body:**
 
+Required fields are marked with `*`
+
 ```json
 {
-  "name": "New Cafe",
-  "location": {
-    "address": "789 Bugis Street, Singapore",
-    "lat": 1.3000,
-    "lng": 103.8500
+  "name": "New Cafe",                   // * Required: Cafe name
+  "location": {                         // * Required: Location object
+    "type": "Point",                   // * Required: Must be "Point" for GeoJSON
+    "coordinates": [103.8500, 1.3000] // * Required: [longitude, latitude]
   },
-  "features": {
-    "wifiSpeedMbps": 120,
-    "outletsAvailable": true,
-    "quietnessLevel": "moderate",
-    "seatingCapacity": 40
+  "address": "789 Bugis Street",      // * Required: Physical address
+  "features": {                         // Optional: Features object
+    "wifi_available": true,
+    "outlets_available": true,
+    "quietness_level": "moderate",     // "quiet"|"moderate"|"noisy"
+    "temperature": "cold"              // "cold"|"just right"|"warm"
   },
-  "averageRating": 0,
-  "totalReviews": 0,
-  "thumbnails": [],
-  "images": [],
-  "website": "https://newcafe.com",
-  "openingHours": {
+  "images": [                          // Optional: Array of image URLs
+    "https://example.com/image1.jpg"
+  ],
+  "website": "https://newcafe.com",    // Optional: Website URL
+  "openingHours": {                    // Optional: Operating hours
     "monday": "08:00-20:00",
     "tuesday": "08:00-20:00"
   }
 }
 ```
-
 **Response:**
 
 ```json
@@ -217,23 +217,24 @@ Adds a new cafe to the database.
   "code": 201,
   "message": "Cafe created successfully",
   "data": {
-    "id": "abcde",
+    "_id": {
+      "$oid": "67fb702eeae5530b90fb819e"
+    },
     "name": "New Cafe",
     "location": {
-      "address": "789 Bugis Street, Singapore",
-      "lat": 1.3000,
-      "lng": 103.8500
+      "type": "Point",
+      "coordinates": [103.8500, 1.3000]
     },
+    "address": "789 Bugis Street",
     "features": {
-      "wifiSpeedMbps": 120,
-      "outletsAvailable": true,
-      "quietnessLevel": "moderate",
-      "seatingCapacity": 40
+      "wifi_available": true,
+      "outlets_available": true,
+      "quietness_level": "moderate",
+      "temperature": "cold"
     },
     "averageRating": 0,
     "totalReviews": 0,
-    "thumbnails": [],
-    "images": [],
+    "images": ["https://example.com/image1.jpg"],
     "website": "https://newcafe.com",
     "openingHours": {
       "monday": "08:00-20:00",
@@ -241,8 +242,8 @@ Adds a new cafe to the database.
     }
   }
 }
+}
 ```
-
 ### Update a Cafe
 
 Updates an existing cafe.

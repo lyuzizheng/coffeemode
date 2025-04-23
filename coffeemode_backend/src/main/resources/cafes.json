@@ -1,16 +1,18 @@
 {
-  "_id": 12345,
-  "name": "Cafe Name",
-  "location": {
-    "address": "123 Street, Singapore",
-    "lat": 1.3521,
-    "lng": 103.8198
+  "_id": {
+    "$oid": "67fb702eeae5530b90fb819e"
   },
+  "name": "Caracara",
+  "location": {
+    "type": "Point",
+    "coordinates": [1.27922, 103.8395781]
+  },
+  "address": "77 Neil Rd, Level 1, Singapore 088903",
   "features": {
-    "wifi_speed_mbps": 100,
+    "wifi_available": true,
     "outlets_available": true,
     "quietness_level": "moderate",
-    "seating_capacity": 50
+    "temperature": "cold" //🥶 Cold 😊 Just Right 🥵 Warm
   },
   "average_rating": 4.5,
   "total_reviews": 15,
@@ -18,6 +20,8 @@
   "website": "https://cafewebsite.com",
   "opening_hours": {
     "monday": "08:00-20:00",
-    "tuesday": "08:00-20:00"
+    "tuesday": "08:00-20:00",
+    "wednesday": "08:00-20:00",
+    "thursday": "08:00-20:00"
   }
 }

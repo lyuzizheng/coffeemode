@@ -25,8 +25,9 @@ public class Cafe {
     private ObjectId id;
     private String name;
     // GeoJsonPoint stores location as [longitude, latitude] - MongoDB's preferred format
-    @GeoSpatialIndexed(type = GeoSpatialIndexType.GEO_2DSPHERE)
+//    @GeoSpatialIndexed(type = GeoSpatialIndexType.GEO_2DSPHERE)
     private GeoJsonPoint location;
+    private String address;
     private Features features;
     private double averageRating;
     private int totalReviews;
@@ -34,28 +35,15 @@ public class Cafe {
     private String website;
     private Map<String, String> openingHours;
 
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class Location {
-        private String address;
-        private double lat;
-        private double lng;
-    }
-
-    public void setLocationFromCoordinates(double lat, double lng) {
-        this.location = new GeoJsonPoint(lng, lat);  // Note: GeoJsonPoint constructor is (longitude, latitude)
-    }
 
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
     public static class Features {
-        private int wifiSpeedMbps;
-        private boolean outletsAvailable;
-        private String quietnessLevel;
-        private int seatingCapacity;
+        private Boolean wifiAvailable;
+        private Boolean outletsAvailable;
+        private String quietnessLevel;  // "quiet", "moderate", "noisy"
+        private String temperature;      // "cold", "just right", "warm"
     }
 }

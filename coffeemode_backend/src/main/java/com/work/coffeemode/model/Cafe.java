@@ -1,5 +1,6 @@
 package com.work.coffeemode.model;
 
+import com.work.coffeemode.dto.cafe.ImageDTO;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -31,7 +32,7 @@ public class Cafe {
     private Features features;
     private double averageRating;
     private int totalReviews;
-    private List<String> images;
+    private List<ImageDTO> images;
     private String website;
     private Map<String, String> openingHours;
 

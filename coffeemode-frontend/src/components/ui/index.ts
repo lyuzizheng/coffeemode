@@ -10,4 +10,4 @@ export * from "./scroll-area";
 export * from "./tooltip";
 
 // Export custom UI components
-export { default as AddPlaceButton } from "./AddPlaceButton";
+export { default as AddPlaceButton } from "../layout/AddPlaceButton";

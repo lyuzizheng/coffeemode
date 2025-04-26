@@ -90,77 +90,6 @@ Retrieves detailed information about a specific cafe.
 }
 ```
 
-### Get Nearby Cafes
-
-Retrieves cafes near a specified geographical location.
-
-**Endpoint:** `GET /api/cafes/nearby`
-
-**Query Parameters:**
-
-- `lat` (number, required): Latitude coordinate
-- `lng` (number, required): Longitude coordinate
-- `radius` (number, optional): Search radius in kilometers (default: 5)
-
-**Response:**
-
-```json
-{
-  "code": 200,
-  "message": "Success",
-  "data": [
-    {
-      "id": "12345",
-      "name": "Coffee Haven",
-      "location": {
-        "address": "123 Orchard Road, Singapore",
-        "lat": 1.3521,
-        "lng": 103.8198
-      },
-      "features": {
-        "wifiSpeedMbps": 100,
-        "outletsAvailable": true,
-        "quietnessLevel": "moderate",
-        "seatingCapacity": 50
-      },
-      "averageRating": 4.5,
-      "totalReviews": 15,
-      "thumbnails": ["https://example.com/cafe/thumb1.jpg"],
-      "images": ["https://example.com/cafe/img1.jpg"],
-      "website": "https://coffeehaven.com",
-      "openingHours": {
-        "monday": "08:00-20:00",
-        "tuesday": "08:00-20:00"
-      }
-    },
-    {
-      "id": "67890",
-      "name": "Study Brew",
-      "location": {
-        "address": "456 Somerset Road, Singapore",
-        "lat": 1.3423,
-        "lng": 103.8353
-      },
-      "features": {
-        "wifiSpeedMbps": 75,
-        "outletsAvailable": true,
-        "quietnessLevel": "very quiet",
-        "seatingCapacity": 30
-      },
-      "averageRating": 4.2,
-      "totalReviews": 8,
-      "thumbnails": ["https://example.com/cafe/thumb3.jpg"],
-      "images": ["https://example.com/cafe/img3.jpg"],
-      "website": "https://studybrew.com",
-      "openingHours": {
-        "monday": "07:00-22:00",
-        "tuesday": "07:00-22:00"
-      }
-    }
-  ]
-}
-```
-
 ### List All Cafes
 
 Retrieves a list of all cafes.
@@ -201,7 +130,10 @@ Required fields are marked with `*`
     "temperature": "cold"              // "cold"|"just right"|"warm"
   },
   "images": [                          // Optional: Array of image URLs
-    "https://example.com/image1.jpg"
+    {
+      "url": "image1.jpg",
+      "caption": "Main view"
+    }
   ],
   "website": "https://newcafe.com",    // Optional: Website URL
   "openingHours": {                    // Optional: Operating hours
@@ -210,38 +142,58 @@ Required fields are marked with `*`
   }
 }
 ```
+
+
+### Get Nearby Cafes
+
+Retrieves cafes near a specified geographical location.
+
+**Endpoint:** `GET /api/cafes/nearby`
+
+**Request Body:**
+
+```json
+{
+    "longitude": 103.8500,    // Required: Longitude coordinate
+    "latitude": 1.3000,       // Required: Latitude coordinate
+    "radiusInKm": 1.0        // Optional: Search radius in kilometers (default: 1.0)
+}
+```
+
 **Response:**
 
 ```json
 {
-  "code": 201,
-  "message": "Cafe created successfully",
-  "data": {
-    "_id": {
-      "$oid": "67fb702eeae5530b90fb819e"
-    },
-    "name": "New Cafe",
-    "location": {
-      "type": "Point",
-      "coordinates": [103.8500, 1.3000]
-    },
-    "address": "789 Bugis Street",
-    "features": {
-      "wifi_available": true,
-      "outlets_available": true,
-      "quietness_level": "moderate",
-      "temperature": "cold"
-    },
-    "averageRating": 0,
-    "totalReviews": 0,
-    "images": ["https://example.com/image1.jpg"],
-    "website": "https://newcafe.com",
-    "openingHours": {
-      "monday": "08:00-20:00",
-      "tuesday": "08:00-20:00"
+  "code": 200,
+  "message": "Success",
+  "data": [
+    {
+      "id": "12345",
+      "name": "Coffee Haven",
+      "location": {
+        "type": "Point",
+        "coordinates": [103.8500, 1.3000]
+      },
+      "address": "123 Orchard Road, Singapore",
+      "features": {
+        "wifiAvailable": true,
+        "outletsAvailable": true,
+        "quietnessLevel": "moderate",
+        "temperature": "just right"
+      },
+      "images": [
+        {
+          "url": "image1.jpg",
+          "caption": "Main view"
+        }
+      ],
+      "website": "https://coffeehaven.com",
+      "openingHours": {
+        "monday": "08:00-20:00",
+        "tuesday": "08:00-20:00"
+      }
     }
-  }
-}
+  ]
 }
 ```
 ### Update a Cafe

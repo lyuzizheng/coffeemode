@@ -26,7 +26,7 @@ public class Cafe {
     private ObjectId id;
     private String name;
     // GeoJsonPoint stores location as [longitude, latitude] - MongoDB's preferred format
-//    @GeoSpatialIndexed(type = GeoSpatialIndexType.GEO_2DSPHERE)
+    @GeoSpatialIndexed(type = GeoSpatialIndexType.GEO_2DSPHERE)
     private GeoJsonPoint location;
     private String address;
     private Features features;

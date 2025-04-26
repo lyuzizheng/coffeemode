@@ -1,5 +1,6 @@
 package com.work.coffeemode.controller;
 
+import com.work.coffeemode.dto.cafe.SearchNearbyRequest;
 import com.work.coffeemode.dto.cafe.CreateCafeRequest;
 import com.work.coffeemode.model.Cafe;
 import com.work.coffeemode.service.CafeService;
@@ -57,6 +58,23 @@ public class CafeController {
         response.put("data", savedCafe);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @GetMapping("/nearby")
+    public ResponseEntity<Map<String, Object>> findNearbyCafes(
+            @Valid @RequestBody SearchNearbyRequest request) {
+        List<Cafe> nearbyCafes = cafeService.findNearbyCafes(
+                request.getLongitude(),
+                request.getLatitude(),
+                request.getRadiusInKm()
+        );
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("code", 200);
+        response.put("message", "Success");
+        response.put("data", nearbyCafes);
+
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping

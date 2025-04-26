@@ -7,6 +7,8 @@ import java.util.Optional;
 
 public interface CafeService {
     Cafe createCafe(Cafe cafe);
+    List<Cafe> findNearbyCafes(double longitude, double latitude, double radiusInKm);
+
     List<Cafe> getAllCafes();
     Map<String, Object> getCafeById(String id);
     Cafe updateCafe(String id, Cafe cafe) throws Exception;

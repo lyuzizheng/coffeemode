@@ -61,12 +61,11 @@ const Header = ({ className }: HeaderProps) => {
 
       {/* User Controls - Using Shadcn Button & Avatar */}
       <div className="flex items-center space-x-2 flex-shrink-0">
-        <Button>Hi</Button>
         {/* Filter Button */}
         <Button
-          variant="destructive"
+          variant="secondary"
           size="icon"
-          className=""
+          className="rounded-full hover:bg-accent h-10 w-10"
           onClick={handleFilterClick}
           aria-label="Open filters"
         >
@@ -75,9 +74,9 @@ const Header = ({ className }: HeaderProps) => {
 
         {/* Favorites Button */}
         <Button
-          variant="default"
+          variant="secondary"
           size="icon"
-          className=""
+          className="rounded-full hover:bg-primary/90 h-10 w-10"
           onClick={handleFavoritesClick}
           aria-label="View favorites"
         >
@@ -88,7 +87,7 @@ const Header = ({ className }: HeaderProps) => {
         <Button
           variant="default"
           size="icon"
-          className=""
+          className="rounded-full hover: h-10 w-10"
           onClick={handleLoginClick}
           aria-label={isLoggedIn ? "View profile" : "Login or Sign up"}
         >

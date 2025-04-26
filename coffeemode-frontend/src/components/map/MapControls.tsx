@@ -16,21 +16,15 @@ const MapControls = ({
   onLocateUser,
 }: MapControlsProps) => {
   const handleZoomIn = () => {
-    // TODO: Implement map zoom in logic
     onZoomIn?.();
-    console.log("Zoom In clicked");
   };
 
   const handleZoomOut = () => {
-    // TODO: Implement map zoom out logic
     onZoomOut?.();
-    console.log("Zoom Out clicked");
   };
 
   const handleLocate = () => {
-    // TODO: Implement map locate user logic
     onLocateUser?.();
-    console.log("Locate User clicked");
   };
 
   return (
@@ -38,7 +32,7 @@ const MapControls = ({
       <Button
         variant="outline"
         size="icon"
-        className="bg-card p-2 rounded-full shadow-md hover:bg-accent h-10 w-10"
+        className="p-2 rounded-full shadow-md hover:bg-accent h-10 w-10"
         onClick={handleZoomIn}
         aria-label="Zoom in"
       >
@@ -47,7 +41,7 @@ const MapControls = ({
       <Button
         variant="outline"
         size="icon"
-        className="bg-card p-2 rounded-full shadow-md hover:bg-accent h-10 w-10"
+        className="p-2 rounded-full shadow-md hover:bg-accent h-10 w-10"
         onClick={handleZoomOut}
         aria-label="Zoom out"
       >
@@ -56,7 +50,7 @@ const MapControls = ({
       <Button
         variant="outline"
         size="icon"
-        className="bg-card p-2 rounded-full shadow-md hover:bg-accent h-10 w-10"
+        className="p-2 rounded-full shadow-md hover:bg-accent h-10 w-10"
         onClick={handleLocate}
         aria-label="Locate me"
       >

@@ -82,12 +82,11 @@ public class CafeController {
         return ResponseEntity.ok(cafeService.getAllCafes());
     }
 
-//     @GetMapping("/{id}")
-//     public ResponseEntity<String> getCafeById(@PathVariable String id) {
-//         return cafeService.getCafeById(id)
-//             .map(cafe -> ResponseEntity.ok("Found cafe: " + cafe.toString()))
-//             .orElse(ResponseEntity.notFound().build());
-//     }
+    @GetMapping("/{id}")
+    public ResponseEntity<Map<String, Object>> getCafeById(@PathVariable String id) {
+        Map<String, Object> response = cafeService.getCafeById(id);
+        return ResponseEntity.status((Integer) response.get("code")).body(response);
+    }
 
     @PutMapping("/{id}")
     public ResponseEntity<Cafe> updateCafe(@PathVariable String id, @RequestBody Cafe cafe) throws Exception {

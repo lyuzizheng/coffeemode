@@ -123,6 +123,7 @@ coffeemode-frontend/
 * **Component-Based:** Build the UI using reusable functional components. Leverage Shadcn UI components for foundational elements and create custom components for specific application needs.
 * **Context for Global State:** Use `UserProvider` and `ConfigProvider` for managing authentication state and application-wide configuration. Avoid overusing context for server state.
 * **Server State Management:** Utilize Tanstack Query for fetching, caching, synchronizing, and updating server state. This handles loading states, error states, and background updates effectively.
+* **Map Abstraction (New):** The map functionality (`src/components/map/`) is designed with an abstraction layer (`IMapProvider` interface in `src/components/map/types/types.ts`). The `UnifiedMapContainer` interacts with different map implementations (currently Google Maps and OpenFreeMap) through this common interface, allowing for easier maintenance and potential future additions of other map providers.
 
 ## 8. Detailed Design & UI/UX Notes
 
@@ -265,6 +266,19 @@ The application uses Google Maps JavaScript API for displaying and interacting w
 * **API Key Implementation:** For production use and access to more Google Maps Platform features, transition from the keyless implementation to a proper API key setup, managed securely.
 * **Place Details Integration:** Fetch and display detailed place information from a backend API onto the map/location details view.
 * **Advanced Map Features:** Consider implementing clustering for markers, drawing tools for selecting areas, or integration with Directions service.
+
+### `src/components/map/` Directory Structure
+
+```
+map/
+├── types/
+│   └── types.ts         # Defines LatLngLiteral, IMapProvider, BaseMapProviderProps
+├── Map.tsx              # Google Maps provider component (implements IMapProvider via adapter)
+├── OpenFreeMap.tsx      # OpenFreeMap (MapLibre) provider component (implements IMapProvider via adapter)
+├── MapContainer.tsx     # Unified container managing map state, controls, and provider switching
+├── MapControls.tsx      # UI Buttons for map interaction (Zoom, Locate)
+└── style.json           # JSON style definition for Google Maps
+```
 
 ---
 

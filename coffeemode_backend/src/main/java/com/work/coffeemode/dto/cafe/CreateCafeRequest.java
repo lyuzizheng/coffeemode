@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Data
 @Builder
@@ -24,7 +25,7 @@ public class CreateCafeRequest {
     @NotBlank(message = "Address is required")
     private String address;
     private Features features;
-    private List<String> images;
+    private List<ImageDTO> images;
     private String website;
     private Map<String, String> openingHours;
 

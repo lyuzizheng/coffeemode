@@ -53,7 +53,7 @@ const Header = ({ className }: HeaderProps) => {
           <Input
             type="text"
             placeholder="Find a place to work..."
-            className="bg-card bg-opacity-95 shadow-md pl-10 p-2.5 h-11 rounded-lg border-border focus:ring-primary focus:border-primary"
+            className="pl-10"
             aria-label="Search for places"
           />
         </div>
@@ -61,49 +61,43 @@ const Header = ({ className }: HeaderProps) => {
 
       {/* User Controls - Using Shadcn Button & Avatar */}
       <div className="flex items-center space-x-2 flex-shrink-0">
+        <Button>Hi</Button>
         {/* Filter Button */}
         <Button
-          variant="outline"
+          variant="destructive"
           size="icon"
-          className="bg-card bg-opacity-95 shadow-md rounded-full h-10 w-10 hover:bg-accent"
+          className=""
           onClick={handleFilterClick}
           aria-label="Open filters"
         >
-          <Filter className="w-5 h-5 text-coffee-800" />
+          <Filter className="w-5 h-5" />
         </Button>
 
         {/* Favorites Button */}
         <Button
-          variant="outline"
+          variant="default"
           size="icon"
-          className="bg-card bg-opacity-95 shadow-md rounded-full h-10 w-10 hover:bg-accent"
+          className=""
           onClick={handleFavoritesClick}
           aria-label="View favorites"
         >
-          <Heart className="w-5 h-5 text-coffee-600" />
+          <Heart className="w-5 h-5" />
         </Button>
 
         {/* Login/Avatar Button */}
         <Button
-          variant="outline"
+          variant="default"
           size="icon"
-          className={cn(
-            "shadow-md rounded-full h-10 w-10 hover:bg-accent p-0 overflow-hidden",
-            isLoggedIn
-              ? "bg-card bg-opacity-95"
-              : "bg-coffee-600 hover:bg-coffee-700 text-white"
-          )}
+          className=""
           onClick={handleLoginClick}
           aria-label={isLoggedIn ? "View profile" : "Login or Sign up"}
         >
           {isLoggedIn ? (
-            <Avatar className="h-10 w-10">
+            <Avatar>
               {userImageUrl && (
                 <AvatarImage src={userImageUrl} alt="User avatar" />
               )}
-              <AvatarFallback className="bg-coffee-300 text-coffee-800 font-medium">
-                {userInitials}
-              </AvatarFallback>
+              <AvatarFallback>{userInitials}</AvatarFallback>
             </Avatar>
           ) : (
             <UserCircle className="w-5 h-5" />

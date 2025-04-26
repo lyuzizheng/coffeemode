@@ -1,5 +1,7 @@
 package com.work.coffeemode.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.work.coffeemode.dto.cafe.ImageDTO;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -36,7 +38,17 @@ public class Cafe {
     private String website;
     private Map<String, String> openingHours;
 
+    // Custom getter for JSON serialization
+    @JsonProperty("id")
+    public String getStringId() {
+        return id != null ? id.toString() : null;
+    }
 
+    // Ignore the ObjectId when serializing to JSON
+    @JsonIgnore
+    public ObjectId getId() {
+        return id;
+    }
     @Data
     @Builder
     @NoArgsConstructor

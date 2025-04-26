@@ -11,6 +11,8 @@ import java.util.List;
 import java.util.Optional;
 
 public interface CafeRepository extends MongoRepository<Cafe, ObjectId> {
+    @Query("{'location': {$near: {$geometry: {type: 'Point', coordinates: [?0, ?1]}, $maxDistance: ?2}}}")
+    List<Cafe> findNearbyCafes(double longitude, double latitude, double maxDistanceInMeters);
 
 //    Optional<Cafe> findById(ObjectId id);
 //

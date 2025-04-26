@@ -23,6 +23,12 @@ public class CafeServiceImpl implements CafeService {
     }
 
     @Override
+    public List<Cafe> findNearbyCafes(double longitude, double latitude, double radiusInKm) {
+        // Convert kilometers to meters for MongoDB
+        double radiusInMeters = radiusInKm * 1000;
+        return cafeRepository.findNearbyCafes(longitude, latitude, radiusInMeters);
+    }
+    @Override
     public List<Cafe> getAllCafes() {
         return cafeRepository.findAll();
     }

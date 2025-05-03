@@ -1,3 +1,10 @@
+./.idea
+./.vscode
+./.env
+./.env.local
+./.env.development
+./.env.production
+
 ./coffeemode_backend/.idea
 ./coffeemode_backend/.vscode
 ./coffeemode_backend/.env

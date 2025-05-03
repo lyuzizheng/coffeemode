@@ -25,8 +25,8 @@ const LOCATE_USER_ZOOM_LEVEL = 16;
 const UnifiedMapContainer = ({
   // Remove ref parameter
   className,
-  initialCenter = { lat: 1.3521, lng: 103.8198 }, // Default center Singapore
-  initialZoom = 14,
+  initialCenter = { lat: 1.321226, lng: 103.819146 }, // New default center
+  initialZoom = 10.76, // New default zoom
   defaultProvider = "openfreemap",
 }: UnifiedMapContainerProps) => {
   const [currentProviderKey, setCurrentProviderKey] =
@@ -81,7 +81,7 @@ const UnifiedMapContainer = ({
     [currentProviderKey]
   );
 
-  // 3. Handle map view changes (Existing code - no changes)
+  // 3. Map View Change Handler - Add logging
   const handleViewChange = useCallback(
     (newCenter: LatLngLiteral, newZoom: number) => {
       const centerChanged =
@@ -89,16 +89,19 @@ const UnifiedMapContainer = ({
         newCenter.lng !== currentCenter.lng;
       const zoomChanged = newZoom !== currentZoom;
 
+      // Log the updated view information regardless of significant change for debugging
+      console.log(
+        `Map View Changed - Center: { lat: ${newCenter.lat.toFixed(
+          6
+        )}, lng: ${newCenter.lng.toFixed(6)} }, Zoom: ${newZoom.toFixed(2)}`
+      );
+
       if (centerChanged) {
         setCurrentCenter(newCenter);
       }
       if (zoomChanged) {
         setCurrentZoom(newZoom);
       }
-      // Optional: Log view changes if needed for debugging
-      // if (centerChanged || zoomChanged) {
-      //   console.log("Map view changed:", newCenter, newZoom);
-      // }
     },
     [currentCenter, currentZoom]
   );

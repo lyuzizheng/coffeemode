@@ -10,7 +10,7 @@ public interface CafeService {
     List<Cafe> findNearbyCafes(double longitude, double latitude, double radiusInKm);
 
     List<Cafe> getAllCafes();
-    Map<String, Object> getCafeById(String id);
-    Cafe updateCafe(String id, Cafe cafe) throws Exception;
+    Cafe getCafeById(String id);
+    Cafe updateCafe(String id, Cafe cafe);
     void deleteCafe(String id);
 }

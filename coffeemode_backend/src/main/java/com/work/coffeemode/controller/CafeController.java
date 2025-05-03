@@ -2,6 +2,7 @@ package com.work.coffeemode.controller;
 
 import com.work.coffeemode.dto.cafe.SearchNearbyRequest;
 import com.work.coffeemode.dto.cafe.CreateCafeRequest;
+import com.work.coffeemode.exception.CafeNotFoundException;
 import com.work.coffeemode.model.Cafe;
 import com.work.coffeemode.service.CafeService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,8 +25,8 @@ public class CafeController {
     @PostMapping
     public ResponseEntity<Map<String, Object>> createCafe(@Valid @RequestBody CreateCafeRequest request) {
         GeoJsonPoint geoJsonPoint = new GeoJsonPoint(
-                request.getLocation().getCoordinates()[0],  // longitude
-                request.getLocation().getCoordinates()[1]   // latitude
+                request.getLocation().getCoordinates()[0], // longitude
+                request.getLocation().getCoordinates()[1] // latitude
         );
 
         Cafe.Features features = null;
@@ -61,40 +62,31 @@ public class CafeController {
     }
 
     @GetMapping("/nearby")
-    public ResponseEntity<Map<String, Object>> findNearbyCafes(
+    public List<Cafe> findNearbyCafes(
             @Valid @RequestBody SearchNearbyRequest request) {
-        List<Cafe> nearbyCafes = cafeService.findNearbyCafes(
+        return cafeService.findNearbyCafes(
                 request.getLongitude(),
                 request.getLatitude(),
-                request.getRadiusInKm()
-        );
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("code", 200);
-        response.put("message", "Success");
-        response.put("data", nearbyCafes);
-
-        return ResponseEntity.ok(response);
+                request.getRadiusInKm());
     }
 
     @GetMapping
-    public ResponseEntity<List<Cafe>> getAllCafes() {
-        return ResponseEntity.ok(cafeService.getAllCafes());
+    public List<Cafe> getAllCafes() {
+        return cafeService.getAllCafes();
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Map<String, Object>> getCafeById(@PathVariable String id) {
-        Map<String, Object> response = cafeService.getCafeById(id);
-        return ResponseEntity.status((Integer) response.get("code")).body(response);
+    public Cafe getCafeById(@PathVariable String id){
+        return cafeService.getCafeById(id);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Cafe> updateCafe(@PathVariable String id, @RequestBody Cafe cafe) throws Exception {
-        return ResponseEntity.ok(cafeService.updateCafe(id, cafe));
+    public Cafe updateCafe(@PathVariable String id, @RequestBody Cafe cafe) {
+        return cafeService.updateCafe(id, cafe);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteCafe(@PathVariable String id) {
+    public ResponseEntity<Void> deleteCafe(@PathVariable String id){
         cafeService.deleteCafe(id);
         return ResponseEntity.ok().build();
     }

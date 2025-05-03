@@ -1,16 +1,23 @@
+// import { useRef } from "react";
 import { CafeCarousel } from "./components/cafe";
 import { Header } from "./components/layout";
-import { MapContainer } from "./components/map";
+import MapContainer /*, { MapContainerRef } */ from "./components/map/MapContainer";
 import { AddPlaceButton } from "./components/ui";
 
 function App() {
+
   return (
     <div className="relative h-screen overflow-hidden bg-background">
-      {/* Map Background - Takes full space */}
-      <MapContainer className="absolute inset-0 w-full h-full z-0" />
+      {/* Map Background - Remove ref */}
+      <MapContainer
+        // ref={mapContainerRef}
+        className="absolute inset-0 w-full h-full z-0"
+      />
 
-      {/* Floating Header - Stays at the top */}
-      <Header className="absolute top-4 left-4 right-4 z-20" />
+      {/* Floating Header - Remove handler prop */}
+      <Header
+        className="absolute top-4 left-4 right-4 z-20"
+      />
 
       {/* Cafe Carousel - Positioned at the bottom */}
       <div className="absolute bottom-4 left-0 right-0 px-4 z-10">

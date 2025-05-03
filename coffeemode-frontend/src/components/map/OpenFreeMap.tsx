@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import maplibregl, {
+  GeolocateControl,
   Map as MapLibreMap,
   StyleSpecification,
 } from "maplibre-gl";
@@ -28,6 +29,7 @@ const OpenFreeMap = ({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<MapLibreMap | null>(null);
   const providerRef = useRef<IMapProvider | null>(null);
+  const geolocateControlRef = useRef<GeolocateControl | null>(null);
 
   useEffect(() => {
     if (mapInstanceRef.current || !mapContainerRef.current) return;
@@ -42,26 +44,20 @@ const OpenFreeMap = ({
 
     mapInstanceRef.current = map;
 
-    // Add default controls (optional, could be configured via props)
-    //map.addControl(new maplibregl.NavigationControl(), "top-right");
-    //map.addControl(new maplibregl.FullscreenControl());
+    // Create and store the GeolocateControl instance
     const geolocateControl = new maplibregl.GeolocateControl({
-      positionOptions: {
-        enableHighAccuracy: true, // Options passed to navigator.geolocation.watchPosition
-      },
-      trackUserLocation: true, // If true, the map continuously updates the user's location
-      showUserLocation: true, // If true, shows the direction the device is pointing
-      showAccuracyCircle: true, // If true, shows the accuracy circle
+      positionOptions: { enableHighAccuracy: true },
+      showUserLocation: true,
+      showAccuracyCircle: true,
     });
+    geolocateControlRef.current = geolocateControl;
+    map.addControl(geolocateControl, "top-right");
 
-    map.addControl(geolocateControl, "top-right"); // Add the control to the map
-
-    // You can also listen to events from the control
     geolocateControl.on("geolocate", (e) => {
-      console.log("User located:", e.coords);
+      console.log("User located via GeolocateControl:", e.coords);
     });
     geolocateControl.on("error", (e) => {
-      console.error("Geolocation error:", e.message);
+      console.error("GeolocateControl error:", e.message);
     });
 
     // --- Event Listeners for View Changes ---
@@ -103,11 +99,26 @@ const OpenFreeMap = ({
           return map.getZoom();
         },
         flyTo: (newCenter: LatLngLiteral, newZoom?: number) => {
+          console.log(
+            "[OpenFreeMap adapter] flyTo called:",
+            newCenter,
+            newZoom
+          );
           map.flyTo({
             center: [newCenter.lng, newCenter.lat],
             zoom: newZoom ?? map.getZoom(), // Use current zoom if newZoom not provided
-            essential: true,
+            essential: true, // Animation is essential
           });
+        },
+        triggerUserLocation: () => {
+          if (geolocateControlRef.current) {
+            console.log("[OpenFreeMap adapter] Triggering GeolocateControl");
+            geolocateControlRef.current.trigger();
+          } else {
+            console.warn(
+              "[OpenFreeMap adapter] GeolocateControl ref not available to trigger."
+            );
+          }
         },
         destroy: () => {
           if (mapInstanceRef.current) {
@@ -117,6 +128,7 @@ const OpenFreeMap = ({
             mapInstanceRef.current.remove(); // MapLibre has a remove method
             mapInstanceRef.current = null;
             providerRef.current = null;
+            geolocateControlRef.current = null;
             console.log("OpenFreeMap provider instance destroyed.");
           }
         },
@@ -141,7 +153,7 @@ const OpenFreeMap = ({
       // This ensures the adapter's destroy logic is executed.
       // providerRef.current?.destroy(); // Let parent handle this
     };
-  }, [onLoad, onViewChange]); // Add onViewChange to dependencies
+  }, [onLoad, onViewChange, center.lat, center.lng, zoom]); // Include center/zoom in deps for re-init if needed
 
   return (
     <div

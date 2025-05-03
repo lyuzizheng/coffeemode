@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 // Import the new types
 import type {
   BaseMapProviderProps,
@@ -15,6 +15,9 @@ declare global {
     initMap: () => void;
   }
 }
+
+// Define zoom level (could also be passed from MapContainer if needed)
+const LOCATE_USER_ZOOM_LEVEL = 16;
 
 // Combine specific Google props with base provider props
 export interface GoogleMapProps extends BaseMapProviderProps {
@@ -39,22 +42,131 @@ const Map = ({
   const providerRef = useRef<IMapProvider | null>(null);
   // Ref to store the event listener to easily remove it
   const idleListenerRef = useRef<google.maps.MapsEventListener | null>(null);
+  // Ref to store the manually created user location marker
+  const userLocationMarkerRef = useRef<google.maps.Marker | null>(null);
+
+  // --- Create or Update User Location Marker ---
+  const createOrUpdateUserMarker = useCallback((location: LatLngLiteral) => {
+    if (!googleMapInstanceRef.current) return; // Need map instance
+
+
+    if (userLocationMarkerRef.current) {
+      // Marker exists, update position
+      userLocationMarkerRef.current.setPosition(location);
+    } else {
+      // Marker doesn't exist, create it
+      const marker = new google.maps.Marker({
+        position: location,
+        map: googleMapInstanceRef.current,
+        title: "Your Location",
+        clickable: false, // Usually not clickable
+      });
+      userLocationMarkerRef.current = marker; // Store it
+    }
+  }, []); // No dependencies needed, uses refs
+
+  // --- IMapProvider Adapter Creation (within useEffect/initMap) ---
+  const createProviderAdapter = useCallback(
+    (map: google.maps.Map): IMapProvider => {
+      return {
+        setCenter: (newCenter: LatLngLiteral) => {
+          map.setCenter(newCenter);
+        },
+        setZoom: (newZoom: number) => {
+          map.setZoom(newZoom);
+        },
+        getCenter: (): LatLngLiteral => {
+          const currentCenter = map.getCenter();
+          return {
+            lat: currentCenter?.lat() ?? center.lat,
+            lng: currentCenter?.lng() ?? center.lng,
+          };
+        },
+        getZoom: (): number => {
+          return map.getZoom() ?? zoom;
+        },
+        flyTo: (newCenter: LatLngLiteral, newZoom?: number) => {
+          console.log(
+            "[GoogleMap adapter] flyTo called (using setCenter/setZoom):",
+            newCenter,
+            newZoom
+          );
+          map.setCenter(newCenter);
+          if (newZoom !== undefined) {
+            map.setZoom(newZoom);
+          }
+          // For potential future animation:
+          // const cameraOptions: google.maps.CameraOptions = { center: newCenter, zoom: newZoom };
+          // map.moveCamera(cameraOptions);
+        },
+        // Implement triggerUserLocation for Google Maps
+        triggerUserLocation: () => {
+          if (!navigator.geolocation) {
+            console.error("[GoogleMap adapter] Geolocation not supported.");
+            // TODO: User feedback
+            return;
+          }
+          if (!googleMapInstanceRef.current) {
+            console.warn(
+              "[GoogleMap adapter] Map instance not ready for triggerUserLocation."
+            );
+            return;
+          }
+
+          console.log("[GoogleMap adapter] Attempting geolocation...");
+
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              const currentLocation = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude,
+              };
+              console.log(
+                "[GoogleMap adapter] Geolocation success:",
+                currentLocation
+              );
+
+              createOrUpdateUserMarker(currentLocation); // Show/update blue dot
+
+              // Center and zoom the map
+              map.setCenter(currentLocation);
+              map.setZoom(LOCATE_USER_ZOOM_LEVEL);
+            },
+            (error) => {
+              console.error("[GoogleMap adapter] Geolocation error:", error);
+              // TODO: User feedback
+            },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+          );
+        },
+        destroy: () => {
+          // Remove the manual marker if it exists
+          if (userLocationMarkerRef.current) {
+            userLocationMarkerRef.current.setMap(null);
+            userLocationMarkerRef.current = null;
+          }
+          googleMapInstanceRef.current = null;
+          providerRef.current = null;
+          console.log("Google Map provider instance conceptually destroyed.");
+        },
+      };
+    },
+    [center.lat, center.lng, zoom, createOrUpdateUserMarker]
+  ); // Add dependencies
 
   useEffect(() => {
     // Define the callback function that the Google Maps script will call
     window.initMap = () => {
       if (mapRef.current && !googleMapInstanceRef.current) {
         const defaultMapOptions: google.maps.MapOptions = {
-          center, // Use prop directly
-          zoom, // Use prop directly
-          disableDefaultUI: true, // Keep custom UI focus
+          center,
+          zoom,
+          disableDefaultUI: true,
           zoomControl: false,
           mapTypeControl: false,
           streetViewControl: false,
           fullscreenControl: false,
           styles: mapStyle as google.maps.MapTypeStyle[],
-          // Let MapContainer handle location button via MapControls
-          // myLocationControl: false,
         };
 
         // Merge default options with passed mapOptions
@@ -63,44 +175,11 @@ const Map = ({
         const map = new window.google.maps.Map(mapRef.current, finalMapOptions);
         googleMapInstanceRef.current = map;
 
-        // --- Create the IMapProvider Adapter ---
-        const providerAdapter: IMapProvider = {
-          setCenter: (newCenter: LatLngLiteral) => {
-            map.setCenter(newCenter);
-          },
-          setZoom: (newZoom: number) => {
-            map.setZoom(newZoom);
-          },
-          getCenter: (): LatLngLiteral => {
-            const currentCenter = map.getCenter();
-            return {
-              lat: currentCenter?.lat() ?? center.lat, // Fallback to prop
-              lng: currentCenter?.lng() ?? center.lng, // Fallback to prop
-            };
-          },
-          getZoom: (): number => {
-            return map.getZoom() ?? zoom; // Fallback to prop
-          },
-          flyTo: (newCenter: LatLngLiteral, newZoom?: number) => {
-            map.setCenter(newCenter);
-            if (newZoom !== undefined) {
-              map.setZoom(newZoom);
-            }
-          },
-          destroy: () => {
-            // Google Maps doesn't have a direct destroy method for the map instance itself.
-            // Cleanup involves removing listeners and potentially the container,
-            // which React handles on unmount. We'll clear our refs.
-            googleMapInstanceRef.current = null;
-            providerRef.current = null;
-            console.log("Google Map provider instance conceptually destroyed.");
-          },
-        };
-        // -----------------------------------------
-
-        providerRef.current = providerAdapter; // Store the adapter
+        // Create and store adapter
+        const providerAdapter = createProviderAdapter(map); // Use callback
+        providerRef.current = providerAdapter;
         if (onLoad) {
-          onLoad(providerAdapter); // Pass the adapter instance up
+          onLoad(providerAdapter);
         }
 
         // --- Add event listener for view changes ---
@@ -156,7 +235,7 @@ const Map = ({
       // which should be called by the parent component (UnifiedMapContainer) before unmounting the provider.
     };
     // Depend on onLoad, mapOptions and onViewChange for setup.
-  }, [onLoad, mapOptions, onViewChange]); // Add onViewChange dependency
+  }, [onLoad, mapOptions, onViewChange, center, zoom, createProviderAdapter]); // Add createProviderAdapter, center, zoom
 
   return (
     <div

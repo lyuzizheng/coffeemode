@@ -252,7 +252,8 @@ The application utilizes a map abstraction layer to display and interact with ma
 * **`src/components/map/UnifiedMapContainer.tsx`**: The main container that manages the active map provider, handles user geolocation, state synchronization (center/zoom), and provider switching.
 * **`src/components/map/GoogleMap.tsx`**: The implementation using the Google Maps JavaScript API (via a local, keyless proxy script).
 * **`src/components/map/OpenFreeMap.tsx`**: The implementation using MapLibre GL JS with OpenMapTiles vector tiles.
-* **~~`src/components/map/MapControls.tsx`~~**: Removed. This component previously provided UI buttons for zoom and user location, but map interactions are now handled directly by the map providers or programmatically.
+* **`src/components/map/LocateMeButton.tsx`**: A reusable button component specifically for the "Center on my location" action.
+* **`src/components/map/MapControls.tsx`**: Removed. This component previously provided UI buttons for zoom and user location, but map interactions are now handled directly by the map providers or programmatically.
 
 ## 17. Future Considerations / To-Do
 
@@ -266,12 +267,42 @@ The application utilizes a map abstraction layer to display and interact with ma
 map/
 ├── types/
 │   └── types.ts         # Defines LatLngLiteral, IMapProvider, BaseMapProviderProps
-├── Map.tsx              # Google Maps provider component (implements IMapProvider via adapter)
+├── GoogleMap.tsx        # Google Maps provider component (implements IMapProvider via adapter)
 ├── OpenFreeMap.tsx      # OpenFreeMap (MapLibre) provider component (implements IMapProvider via adapter)
-├── MapContainer.tsx     # Unified container managing map state, controls, and provider switching
-├── MapControls.tsx      # UI Buttons for map interaction (Zoom, Locate)
-└── style.json           # JSON style definition for Google Maps
+├── MapContainer.tsx     # Unified container managing map state, geolocation, controls, and provider switching
+├── LocateMeButton.tsx   # UI Button for centering map on user location
+└── openmapstyle_light.json # Custom MapLibre style definition for the light theme
 ```
+
+### Map Component (`src/components/map`)
+
+* **`MapContainer.tsx`**: Wrapper component that manages map state (center, zoom, user location), switches between map providers, handles geolocation fetching, and renders map-specific controls like `LocateMeButton`.
+* **`OpenFreeMap.tsx`**: Implementation using MapLibre GL JS and a custom OpenMapTiles-based style.
+* **`GoogleMap.tsx`**: Implementation using `@vis.gl/react-google-maps`.
+* **`LocateMeButton.tsx`**: A reusable button component specifically for the "Center on my location" action.
+* **`types/types.tsx`**: Shared TypeScript interfaces (`IMapProvider`, `LatLngLiteral`, `BaseMapProviderProps`).
+* **`openmapstyle_light.json`**: Custom MapLibre style definition for the light theme.
+
+### UI Components (`src/components/ui`)
+
+* **`AddPlaceButton.tsx`**: Floating Action Button (FAB) for adding new places (currently placeholder).
+* Other components are likely Shadcn UI primitives (e.g., Button, Input, Avatar) used within layout/feature components.
+
+### Layout Components (`src/components/layout`)
+
+* **`Header.tsx`**: Application header containing logo, search bar, and user controls (Filter, Favorites, Login/Avatar). Does *not* contain map-specific controls.
+
+### Feature Components (`src/components/cafe`)
+
+* **`CafeCard.tsx`**: Displays information about a single cafe.
+* **`CafeCarousel.tsx`**: Horizontal carousel displaying multiple `CafeCard` components, likely positioned above the map controls.
+
+## State Management
+
+* Primarily uses React's built-in state (`useState`, `useRef`, `useEffect`) for component-level state.
+* Map state (center, zoom) is managed within `MapContainer.tsx` and passed down to the active map provider.
+* `App.tsx` acts as the main orchestrator, managing refs and passing handlers between `MapContainer` and `Header`.
+* No global state management library (like Redux or Zustand) seems to be in use yet.
 
 ---
 

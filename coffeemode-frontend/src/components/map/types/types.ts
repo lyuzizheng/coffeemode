@@ -27,6 +27,9 @@ export interface IMapProvider {
 
   /** Cleans up map resources. */
   destroy(): void;
+
+  /** Optional method to trigger user location. */
+  triggerUserLocation?: () => void;
 }
 
 /**

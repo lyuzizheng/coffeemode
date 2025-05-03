@@ -1,6 +1,6 @@
 import { CafeCarousel } from "./components/cafe";
 import { Header } from "./components/layout";
-import { MapContainer, MapControls } from "./components/map";
+import { MapContainer } from "./components/map";
 import { AddPlaceButton } from "./components/ui";
 
 function App() {
@@ -11,9 +11,6 @@ function App() {
 
       {/* Floating Header - Stays at the top */}
       <Header className="absolute top-4 left-4 right-4 z-20" />
-
-      {/* Map Controls - Positioned on the right */}
-      <MapControls className="absolute top-20 right-4 z-10" />
 
       {/* Cafe Carousel - Positioned at the bottom */}
       <div className="absolute bottom-4 left-0 right-0 px-4 z-10">

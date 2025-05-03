@@ -31,7 +31,7 @@ const OpenFreeMap = ({
 
   useEffect(() => {
     if (mapInstanceRef.current || !mapContainerRef.current) return;
-    
+
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: customMapStyleLight as StyleSpecification,
@@ -45,14 +45,24 @@ const OpenFreeMap = ({
     // Add default controls (optional, could be configured via props)
     //map.addControl(new maplibregl.NavigationControl(), "top-right");
     //map.addControl(new maplibregl.FullscreenControl());
-    // map.addControl(new maplibregl.GeolocateControl({...}), "top-right"); // Keep controls minimal
-    // map.addControl(
-    //   new maplibregl.AttributionControl({
-    //     customAttribution:
-    //       '© <a href="https://openmaptiles.org/">OpenMapTiles</a> © <a href="http://openstreetmap.org">OpenStreetMap</a> contributors',
-    //     compact: true,
-    //   })
-    // );
+    const geolocateControl = new maplibregl.GeolocateControl({
+      positionOptions: {
+        enableHighAccuracy: true, // Options passed to navigator.geolocation.watchPosition
+      },
+      trackUserLocation: true, // If true, the map continuously updates the user's location
+      showUserLocation: true, // If true, shows the direction the device is pointing
+      showAccuracyCircle: true, // If true, shows the accuracy circle
+    });
+
+    map.addControl(geolocateControl, "top-right"); // Add the control to the map
+
+    // You can also listen to events from the control
+    geolocateControl.on("geolocate", (e) => {
+      console.log("User located:", e.coords);
+    });
+    geolocateControl.on("error", (e) => {
+      console.error("Geolocation error:", e.message);
+    });
 
     // --- Event Listeners for View Changes ---
     const handleMoveEnd = () => {

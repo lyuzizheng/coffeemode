@@ -2,7 +2,6 @@ import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
 // Import the specific map components
 import GoogleMap from "./GoogleMap";
-import MapControls from "./MapControls";
 import OpenFreeMap from "./OpenFreeMap";
 // Import the unified types
 import type { IMapProvider, LatLngLiteral } from "./types/types";
@@ -128,39 +127,7 @@ const UnifiedMapContainer = ({
   );
 
   // 4. Map Control Handlers (using the IMapProvider interface)
-  const handleZoomIn = useCallback(() => {
-    const provider = mapProviderRef.current;
-    if (!provider) return;
-    const currentMapZoom = provider.getZoom();
-    const newZoom = currentMapZoom + 1;
-    provider.setZoom(newZoom);
-    setCurrentZoom(newZoom); // Keep state in sync
-    console.log("Zoom In via provider");
-  }, []); // No dependencies needed as it reads from ref
-
-  const handleZoomOut = useCallback(() => {
-    const provider = mapProviderRef.current;
-    if (!provider) return;
-    const currentMapZoom = provider.getZoom();
-    const newZoom = currentMapZoom - 1;
-    provider.setZoom(newZoom);
-    setCurrentZoom(newZoom); // Keep state in sync
-    console.log("Zoom Out via provider");
-  }, []); // No dependencies needed
-
-  const handleLocateUser = useCallback(() => {
-    const provider = mapProviderRef.current;
-    if (!provider || !userLocation) {
-      console.log(
-        "Cannot locate user: Map provider not loaded or location unknown."
-      );
-      // TODO: Optionally trigger geolocation request again if userLocation is null
-      return;
-    }
-    provider.flyTo(userLocation); // Use flyTo for smooth transition
-    setCurrentCenter(userLocation); // Keep state in sync
-    console.log("Locate User via provider");
-  }, [userLocation]);
+  // These were removed along with the MapControls component.
 
   // 5. Provider Switching Logic
   const toggleProvider = useCallback(() => {
@@ -209,13 +176,7 @@ const UnifiedMapContainer = ({
         />
       )}
 
-      {/* Map Controls - Pass handlers that use the mapProviderRef */}
-      <MapControls
-        onZoomIn={handleZoomIn}
-        onZoomOut={handleZoomOut}
-        onLocateUser={handleLocateUser}
-        className="absolute bottom-4 right-4 z-10"
-      />
+      {/* Map Controls - Removed */}
 
       {/* Temporary button to switch providers */}
       <button

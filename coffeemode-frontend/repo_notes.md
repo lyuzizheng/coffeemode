@@ -244,22 +244,15 @@ When assisting with development on this codebase:
 
 ## 16. Map Implementation
 
-The application uses Google Maps JavaScript API for displaying and interacting with maps. We're using a keyless implementation based on the [Keyless-Google-Maps-API](https://github.com/somanchiu/Keyless-Google-Maps-API) library, which allows us to use Google Maps without requiring an API key. We have also installed `@types/google.maps` for TypeScript support.
+The application utilizes a map abstraction layer to display and interact with maps. It currently supports Google Maps and OpenFreeMap providers, managed through the `UnifiedMapContainer`.
 
 **Key Components:**
 
-1. **Map Component** (`src/components/map/Map.tsx`):
-   * Core map component that loads the Google Maps API and renders the map.
-   * Accepts `mapOptions` prop to allow customization of Google Maps settings (e.g., controls, styles).
-   * Handles map initialization and updates.
-   * Sets the position for the `myLocationControl` if it is enabled via `mapOptions`.
-   * Responsive to prop changes (center, zoom).
-
-2. **Map Container** (`src/components/map/MapContainer.tsx`):
-   * Wrapper component that handles map-related state and logic, such as user geolocation.
-   * Fetches the user's current location and centers the map initially if available.
-   * Passes necessary options (`myLocationControl: true`) to the `Map` component to enable the default Google Maps "My Location" button.
-   * Previously had a custom "Find Me" button, which has been removed in favour of the default Google Maps control.
+* **`src/components/map/types/types.ts`**: Defines the core `IMapProvider` interface and shared map types like `LatLngLiteral`.
+* **`src/components/map/UnifiedMapContainer.tsx`**: The main container that manages the active map provider, handles user geolocation, state synchronization (center/zoom), and provider switching.
+* **`src/components/map/GoogleMap.tsx`**: The implementation using the Google Maps JavaScript API (via a local, keyless proxy script).
+* **`src/components/map/OpenFreeMap.tsx`**: The implementation using MapLibre GL JS with OpenMapTiles vector tiles.
+* **~~`src/components/map/MapControls.tsx`~~**: Removed. This component previously provided UI buttons for zoom and user location, but map interactions are now handled directly by the map providers or programmatically.
 
 ## 17. Future Considerations / To-Do
 

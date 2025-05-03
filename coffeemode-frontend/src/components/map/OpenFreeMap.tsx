@@ -6,7 +6,8 @@ import maplibregl, {
 import "maplibre-gl/dist/maplibre-gl.css"; // Import MapLibre GL CSS
 import { useEffect, useRef } from "react";
 // Import the custom style JSON
-import customMapStyle from "./openmapstyle.json";
+//import customMapStyle from "./openmapstyle.json";
+import customMapStyleLight from "./openmapstyle_light.json";
 // Import the new types
 import type {
   BaseMapProviderProps,
@@ -33,7 +34,7 @@ const OpenFreeMap = ({
     
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style: customMapStyle as StyleSpecification,
+      style: customMapStyleLight as StyleSpecification,
       center: [center.lng, center.lat], // MapLibre uses [lng, lat]
       zoom: zoom,
       attributionControl: false,
@@ -45,13 +46,13 @@ const OpenFreeMap = ({
     //map.addControl(new maplibregl.NavigationControl(), "top-right");
     //map.addControl(new maplibregl.FullscreenControl());
     // map.addControl(new maplibregl.GeolocateControl({...}), "top-right"); // Keep controls minimal
-    map.addControl(
-      new maplibregl.AttributionControl({
-        customAttribution:
-          '© <a href="https://openmaptiles.org/">OpenMapTiles</a> © <a href="http://openstreetmap.org">OpenStreetMap</a> contributors',
-        compact: true,
-      })
-    );
+    // map.addControl(
+    //   new maplibregl.AttributionControl({
+    //     customAttribution:
+    //       '© <a href="https://openmaptiles.org/">OpenMapTiles</a> © <a href="http://openstreetmap.org">OpenStreetMap</a> contributors',
+    //     compact: true,
+    //   })
+    // );
 
     // --- Event Listeners for View Changes ---
     const handleMoveEnd = () => {

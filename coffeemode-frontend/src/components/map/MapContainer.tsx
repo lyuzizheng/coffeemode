@@ -15,7 +15,7 @@ export interface UnifiedMapContainerProps {
   className?: string;
   initialCenter?: LatLngLiteral;
   initialZoom?: number;
-  defaultProvider?: MapProviderKey;
+  currentProviderKey?: MapProviderKey;
 }
 
 // Define the zoom level to use when locating the user
@@ -27,10 +27,10 @@ const UnifiedMapContainer = ({
   className,
   initialCenter = { lat: 1.321226, lng: 103.819146 }, // New default center
   initialZoom = 10.76, // New default zoom
-  defaultProvider = "openfreemap",
+  currentProviderKey = "openfreemap",
 }: UnifiedMapContainerProps) => {
-  const [currentProviderKey, setCurrentProviderKey] =
-    useState<MapProviderKey>(defaultProvider);
+  // const [currentProviderKey, setCurrentProviderKey] =
+  //   useState<MapProviderKey>(defaultProvider);
   const [currentCenter, setCurrentCenter] =
     useState<LatLngLiteral>(initialCenter);
   const [currentZoom, setCurrentZoom] = useState<number>(initialZoom);
@@ -107,18 +107,18 @@ const UnifiedMapContainer = ({
   );
 
   // 4. Provider Switching Logic (Existing code - no changes)
-  const toggleProvider = useCallback(() => {
-    if (mapProviderRef.current) {
-      mapProviderRef.current.destroy();
-      mapProviderRef.current = null;
-    }
+  // const toggleProvider = useCallback(() => {
+  //   if (mapProviderRef.current) {
+  //     mapProviderRef.current.destroy();
+  //     mapProviderRef.current = null;
+  //   }
 
-    setCurrentProviderKey((prev) => {
-      const nextProvider = prev === "openfreemap" ? "google" : "openfreemap";
-      console.log(`Switching provider to: ${nextProvider}`);
-      return nextProvider;
-    });
-  }, []);
+  //   setCurrentProviderKey((prev) => {
+  //     const nextProvider = prev === "openfreemap" ? "google" : "openfreemap";
+  //     console.log(`Switching provider to: ${nextProvider}`);
+  //     return nextProvider;
+  //   });
+  // }, []);
 
   // 5. Update handleLocateMe to call provider method
   const handleLocateMe = useCallback(() => {
@@ -178,23 +178,6 @@ const UnifiedMapContainer = ({
         {/* Top Controls Area (can add more controls here later) */}
         <div className="flex justify-end pointer-events-auto">
           <LocateMeButton onClick={handleLocateMe} className="mt-16 mr-0" />
-        </div>
-
-        {/* Bottom Controls Area */}
-        <div className="flex justify-start pointer-events-auto">
-          {/* Temporary button to switch providers */}
-          <button
-            onClick={toggleProvider}
-            className="bg-white p-2 rounded shadow-md text-xs border border-gray-300 hover:bg-gray-100 transition-colors"
-            aria-label={`Switch to ${
-              currentProviderKey === "openfreemap"
-                ? "Google Maps"
-                : "OpenFreeMap"
-            }`}
-          >
-            Switch to{" "}
-            {currentProviderKey === "openfreemap" ? "Google" : "OpenFreeMap"}
-          </button>
         </div>
       </div>
     </div>

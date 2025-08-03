@@ -39,6 +39,13 @@ public class CafeController {
                     .build();
         }
 
+        Cafe.ExternalReferences externalReferences = null;
+        if (request.getExternalReferences() != null) {
+            externalReferences = Cafe.ExternalReferences.builder()
+                    .googlePlace(request.getExternalReferences().getGooglePlace())
+                    .build();
+        }
+
         Cafe cafe = Cafe.builder()
                 .name(request.getName())
                 .location(geoJsonPoint)
@@ -47,6 +54,7 @@ public class CafeController {
                 .images(request.getImages())
                 .website(request.getWebsite())
                 .openingHours(request.getOpeningHours())
+                .externalReferences(externalReferences)
                 .averageRating(0.0)
                 .totalReviews(0)
                 .build();

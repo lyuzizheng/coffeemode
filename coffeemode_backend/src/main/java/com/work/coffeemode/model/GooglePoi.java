@@ -2,7 +2,6 @@ package com.work.coffeemode.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.work.coffeemode.dto.cafe.ImageDTO;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -12,33 +11,42 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.index.GeoSpatialIndexed;
 import org.springframework.data.mongodb.core.index.GeoSpatialIndexType;
-import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.geo.GeoJsonPoint;
 
-import java.util.List;
-import java.util.Map;
+import java.time.LocalDateTime;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Document(collection = "cafes")
-public class Cafe {
+@Document(collection = "google_poi")
+public class GooglePoi {
 
     @Id
     private ObjectId id;
+    
     private String name;
+    private String placeId;
+    private String address;
+    
     // GeoJsonPoint stores location as [longitude, latitude] - MongoDB's preferred format
     @GeoSpatialIndexed(type = GeoSpatialIndexType.GEO_2DSPHERE)
     private GeoJsonPoint location;
-    private String address;
-    private Features features;
-    private double averageRating;
-    private int totalReviews;
-    private List<ImageDTO> images;
+    
+    private String originalSharingUrl;
+    private String resolvedFullUrl;
+    private String googleMapsUrl;
+    
+    // Additional place information
+    private String phoneNumber;
     private String website;
-    private Map<String, String> openingHours;
-    private ExternalReferences externalReferences;
+    private String category;
+    private Double rating;
+    private Integer reviewCount;
+    
+    // Metadata
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 
     // Custom getter for JSON serialization
     @JsonProperty("id")
@@ -50,24 +58,5 @@ public class Cafe {
     @JsonIgnore
     public ObjectId getId() {
         return id;
-    }
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class Features {
-        private Boolean wifiAvailable;
-        private Boolean outletsAvailable;
-        private String quietnessLevel;  // "quiet", "moderate", "noisy"
-        private String temperature;      // "cold", "just right", "warm"
-    }
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class ExternalReferences {
-        @Indexed
-        private String googlePlace;   // Google Place ID
     }
 }

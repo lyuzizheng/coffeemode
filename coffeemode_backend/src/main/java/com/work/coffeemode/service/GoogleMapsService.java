@@ -1,7 +1,11 @@
 package com.work.coffeemode.service;
 
 import com.work.coffeemode.dto.googlemaps.ResolveGoogleMapsResponse;
+import com.work.coffeemode.exception.FeatureIdExtractionException;
+import com.work.coffeemode.exception.GoogleMapsUrlResolutionException;
+import com.work.coffeemode.model.Cafe;
 import com.work.coffeemode.model.GooglePoi;
+import com.work.coffeemode.repository.CafeRepository;
 import com.work.coffeemode.repository.GooglePoiRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,28 +29,40 @@ import java.util.regex.Pattern;
 public class GoogleMapsService {
 
     private final GooglePoiRepository googlePoiRepository;
+    private final CafeRepository cafeRepository;
     private final RestTemplate restTemplate;
 
     public ResolveGoogleMapsResponse resolveGoogleMapsLink(String sharingUrl) {
         log.info("Resolving Google Maps sharing URL: {}", sharingUrl);
 
-        // Check if we already have this URL in our database
-        Optional<GooglePoi> existingPoi = googlePoiRepository.findByOriginalSharingUrl(sharingUrl);
-        if (existingPoi.isPresent()) {
-            log.info("Found existing POI for URL: {}", sharingUrl);
-            return convertToResponse(existingPoi.get());
-        }
-
         try {
-            // Follow redirects to get the full Google Maps URL
+            // Always resolve the full URL first
             String resolvedUrl = followRedirects(sharingUrl);
             log.info("Resolved URL: {}", resolvedUrl);
 
-            // Check if we already have this resolved URL
-            Optional<GooglePoi> existingResolvedPoi = googlePoiRepository.findByResolvedFullUrl(resolvedUrl);
-            if (existingResolvedPoi.isPresent()) {
-                log.info("Found existing POI for resolved URL: {}", resolvedUrl);
-                return convertToResponse(existingResolvedPoi.get());
+            // Extract feature ID from the resolved URL
+            String featureId = extractFeatureId(resolvedUrl);
+            if (featureId == null) {
+                log.warn("Could not extract feature ID from resolved URL: {}", resolvedUrl);
+                throw new FeatureIdExtractionException(
+                    "Could not extract feature ID from Google Maps URL: " + resolvedUrl);
+            }
+            log.info("Extracted feature ID: {}", featureId);
+
+            // First, check if a cafe already exists with this feature ID
+            Optional<Cafe> existingCafe = cafeRepository.findByExternalReferencesGooglePlace(featureId);
+            if (existingCafe.isPresent()) {
+                log.info("Found existing cafe for feature ID: {}", featureId);
+                // Create a minimal GooglePoi for response structure
+                GooglePoi tempPoi = createTempPoiFromUrl(resolvedUrl, sharingUrl, featureId);
+                return convertToResponseWithExistingCafe(existingCafe.get(), tempPoi);
+            }
+
+            // If no cafe found, check if we already have this POI by feature ID
+            Optional<GooglePoi> existingPoi = googlePoiRepository.findByFeatureId(featureId);
+            if (existingPoi.isPresent()) {
+                log.info("Found existing POI for feature ID: {}", featureId);
+                return convertToResponse(existingPoi.get());
             }
 
             // Parse the resolved URL to extract place information
@@ -54,13 +70,17 @@ public class GoogleMapsService {
             
             // Save to database
             GooglePoi savedPoi = googlePoiRepository.save(googlePoi);
-            log.info("Saved new POI with ID: {}", savedPoi.getStringId());
+            log.info("Saved new POI with ID: {} and feature ID: {}", savedPoi.getStringId(), featureId);
 
             return convertToResponse(savedPoi);
 
+        } catch (FeatureIdExtractionException e) {
+            // Re-throw feature ID extraction exceptions as-is
+            throw e;
         } catch (Exception e) {
             log.error("Error resolving Google Maps URL: {}", sharingUrl, e);
-            throw new RuntimeException("Failed to resolve Google Maps URL: " + e.getMessage(), e);
+            throw new GoogleMapsUrlResolutionException(
+                "Failed to resolve Google Maps URL: " + e.getMessage(), e);
         }
     }
 
@@ -118,10 +138,10 @@ public class GoogleMapsService {
                 builder.location(new GeoJsonPoint(coordinates[1], coordinates[0]));
             }
 
-            // Extract place ID if available
-            String placeId = extractPlaceId(decodedUrl);
-            if (placeId != null) {
-                builder.placeId(placeId);
+            // Extract feature ID if available
+            String featureId = extractFeatureId(decodedUrl);
+            if (featureId != null) {
+                builder.featureId(featureId);
             }
 
             // Extract additional parameters
@@ -166,10 +186,10 @@ public class GoogleMapsService {
         return null;
     }
 
-    private String extractPlaceId(String url) {
-        // Pattern to extract place ID like !1s0x31da196ef0f8f641:0x1dd15592bb6ae1ae
-        Pattern placeIdPattern = Pattern.compile("!1s([^!]+)");
-        Matcher matcher = placeIdPattern.matcher(url);
+    private String extractFeatureId(String url) {
+        // Pattern to extract feature ID like !1s0x31da196ef0f8f641:0x1dd15592bb6ae1ae
+        Pattern featureIdPattern = Pattern.compile("!1s([^!]+)");
+        Matcher matcher = featureIdPattern.matcher(url);
         
         if (matcher.find()) {
             return matcher.group(1);
@@ -195,6 +215,14 @@ public class GoogleMapsService {
     }
 
     private ResolveGoogleMapsResponse convertToResponse(GooglePoi googlePoi) {
+        // Check if a cafe already exists with this feature ID
+        Cafe existingCafe = null;
+        if (googlePoi.getFeatureId() != null) {
+            existingCafe = cafeRepository.findByExternalReferencesGooglePlace(googlePoi.getFeatureId())
+                    .orElse(null);
+        }
+        
+        // Create Google Maps data sub-object
         Double latitude = null;
         Double longitude = null;
         
@@ -203,10 +231,10 @@ public class GoogleMapsService {
             longitude = googlePoi.getLocation().getX(); // longitude
         }
 
-        return ResolveGoogleMapsResponse.builder()
+        ResolveGoogleMapsResponse.GoogleMapsData googleMapsData = ResolveGoogleMapsResponse.GoogleMapsData.builder()
                 .id(googlePoi.getStringId())
                 .name(googlePoi.getName())
-                .placeId(googlePoi.getPlaceId())
+                .featureId(googlePoi.getFeatureId())
                 .address(googlePoi.getAddress())
                 .latitude(latitude)
                 .longitude(longitude)
@@ -220,6 +248,44 @@ public class GoogleMapsService {
                 .reviewCount(googlePoi.getReviewCount())
                 .createdAt(googlePoi.getCreatedAt() != null ? googlePoi.getCreatedAt().toString() : null)
                 .updatedAt(googlePoi.getUpdatedAt() != null ? googlePoi.getUpdatedAt().toString() : null)
+                .build();
+
+        // Build the response with both optional fields
+        return ResolveGoogleMapsResponse.builder()
+                .cafe(existingCafe)  // Will be null if no cafe exists
+                .googleMapsData(googleMapsData)
+                .build();
+    }
+
+    private GooglePoi createTempPoiFromUrl(String resolvedUrl, String sharingUrl, String featureId) {
+        // Create a temporary GooglePoi with basic information for response structure
+        // This is used when we find an existing cafe but need GoogleMapsData for the response
+        return GooglePoi.builder()
+                .featureId(featureId)
+                .originalSharingUrl(sharingUrl)
+                .resolvedFullUrl(resolvedUrl)
+                .googleMapsUrl(resolvedUrl)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+    }
+
+    private ResolveGoogleMapsResponse convertToResponseWithExistingCafe(Cafe existingCafe, GooglePoi tempPoi) {
+        // When we have an existing cafe, we still want to provide the Google Maps data
+        // but we don't need to parse the full URL since we already have the cafe
+        
+        ResolveGoogleMapsResponse.GoogleMapsData googleMapsData = ResolveGoogleMapsResponse.GoogleMapsData.builder()
+                .featureId(tempPoi.getFeatureId())
+                .originalSharingUrl(tempPoi.getOriginalSharingUrl())
+                .resolvedFullUrl(tempPoi.getResolvedFullUrl())
+                .googleMapsUrl(tempPoi.getGoogleMapsUrl())
+                .createdAt(tempPoi.getCreatedAt() != null ? tempPoi.getCreatedAt().toString() : null)
+                .updatedAt(tempPoi.getUpdatedAt() != null ? tempPoi.getUpdatedAt().toString() : null)
+                .build();
+
+        return ResolveGoogleMapsResponse.builder()
+                .cafe(existingCafe)
+                .googleMapsData(googleMapsData)
                 .build();
     }
 }

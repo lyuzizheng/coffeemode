@@ -26,7 +26,7 @@ public class GooglePoi {
     private ObjectId id;
     
     private String name;
-    private String placeId;
+    private String featureId;  // Google feature ID (not searchable but uniquely identifies the place)
     private String address;
     
     // GeoJsonPoint stores location as [longitude, latitude] - MongoDB's preferred format

@@ -1,0 +1,10 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# Your rule content
+
+- The front end project content notes is inside [repo_notes.md](mdc:coffeemode-frontend/repo_notes.md)
+- The back end project is a spring project that you should interact with me

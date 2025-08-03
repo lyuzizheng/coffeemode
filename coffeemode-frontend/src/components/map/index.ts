@@ -1,4 +1,3 @@
-export { default as Map } from "./Map";
-export type { MapProps } from "./Map";
+export { default as Map } from "./GoogleMap";
 export { default as MapContainer } from "./MapContainer";
-export type { MapContainerProps } from "./MapContainer";
+// Export other map-related components here if needed

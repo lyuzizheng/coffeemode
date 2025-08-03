@@ -29,6 +29,8 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-web'  // Added web dependency
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-aop' // Added for Aspect Oriented Programming
     compileOnly 'org.projectlombok:lombok'
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
     annotationProcessor 'org.projectlombok:lombok'
@@ -45,6 +47,9 @@ dependencies {
 
     // Add Jackson protobuf support for better API integration
     implementation 'com.hubspot.jackson:jackson-datatype-protobuf:0.9.13'
+
+    // Firebase Admin SDK
+    implementation 'com.google.firebase:firebase-admin:9.3.0'
 }
 
 // Configure protobuf compilation

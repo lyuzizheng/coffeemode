@@ -45,7 +45,7 @@
   * Tanstack Query (React Query) for server state management (fetching, caching, mutations).
   * Component-local state (useState, useReducer) for UI state.
 * **Routing:** (Assumed: React Router or similar, managed within `App.tsx`)
-* **Map Library:** (TBD - e.g., Mapbox GL JS, Leaflet, Google Maps Platform SDK)
+* **Map Library:** Google Maps Platform SDK (implemented with a keyless solution stored locally)
 * **Linting/Formatting:** ESLint, Prettier
 
 ## 4. Project Structure
@@ -53,29 +53,33 @@
 ```
 coffeemode-frontend/
 ├── public/                  # Public static files (e.g., favicons)
+│   └── js/                  # JavaScript assets served directly
+│       └── mapsJavaScriptAPI.js  # Embedded Google Maps API script (keyless)
 ├── src/                      # Source code directory
 │   ├── assets/              # Static assets (images, fonts, etc.)
 │   ├── components/          # Reusable UI components (built with Shadcn UI / custom)
 │   │   ├── ui/              # Shadcn UI generated components (Button, Card, etc.)
-│   │   ├── map/             # Map-related components for displaying and interacting with Google Maps
-│   │   └── core/            # Custom application-specific components (e.g., MapView, LocationCard)
-│   ├── constants/           # Application constants (e.g., routes, config keys)
-│   ├── hooks/               # Custom React hooks (e.g., useUser, useConfig)
-│   ├── lib/                 # Reusable utility functions (shadcn convention, similar to utils)
-│   │   └── utils.ts         # General utilities, including cn() for Tailwind class merging
-│   ├── providers/           # React context providers (Providers, UserProvider, ConfigProvider)
-│   ├── services/            # API integration logic (e.g., api.ts, specific service files)
-│   ├── features/            # Feature-based modules (e.g., map, location, auth) - *Consider adding this layer for larger features*
-│   ├── types/               # TypeScript type definitions (global or shared types)
-│   │   └── google-maps.d.ts # TypeScript declaration file for Google Maps API
-│   ├── App.tsx              # Main application component (layout, routing)
-│   ├── main.tsx             # Application entry point
-│   └── index.css            # Global styles, Tailwind directives, theme variables
-├── package.json             # Project dependencies and scripts
-├── tsconfig.json           # TypeScript configuration
-├── vite.config.ts          # Vite build configuration
-├── tailwind.config.js      # TailwindCSS configuration
-└── postcss.config.js       # PostCSS configuration (needed for Tailwind)
+│   │   │   ├── map/             # Map-related components for displaying and interacting with Google Maps
+│   │   │   └── core/            # Custom application-specific components (e.g., MapView, LocationCard)
+│   │   │   ├── layout/          # Layout components (e.g., Header, Footer)
+│   │   │   └── cafe/            # Cafe-related components (e.g., CafeCard, CafeCarousel)
+│   │   ├── constants/           # Application constants (e.g., routes, config keys)
+│   │   ├── hooks/               # Custom React hooks (e.g., useUser, useConfig)
+│   │   ├── lib/                 # Reusable utility functions (shadcn convention, similar to utils)
+│   │   │   └── utils.ts         # General utilities, including cn() for Tailwind class merging
+│   │   ├── providers/           # React context providers (Providers, UserProvider, ConfigProvider)
+│   │   ├── services/            # API integration logic (e.g., api.ts, specific service files)
+│   │   ├── features/            # Feature-based modules (e.g., map, location, auth) - *Consider adding this layer for larger features*
+│   │   ├── types/               # TypeScript type definitions (global or shared types)
+│   │   │   └── google-maps.d.ts # TypeScript declaration file for Google Maps API
+│   │   ├── App.tsx              # Main application component (layout, routing)
+│   │   ├── main.tsx             # Application entry point
+│   │   └── index.css            # Global styles, Tailwind directives, theme variables
+│   ├── package.json             # Project dependencies and scripts
+│   ├── tsconfig.json           # TypeScript configuration
+│   ├── vite.config.ts          # Vite build configuration
+│   ├── tailwind.config.js      # TailwindCSS configuration
+│   └── postcss.config.js       # PostCSS configuration (needed for Tailwind)
 ```
 
 *(Note: Added `lib/utils.ts` typical for Shadcn, `services` as a potential alternative/complement to `utils/api.ts`, and suggested `features` directory for modularity)*
@@ -119,6 +123,7 @@ coffeemode-frontend/
 * **Component-Based:** Build the UI using reusable functional components. Leverage Shadcn UI components for foundational elements and create custom components for specific application needs.
 * **Context for Global State:** Use `UserProvider` and `ConfigProvider` for managing authentication state and application-wide configuration. Avoid overusing context for server state.
 * **Server State Management:** Utilize Tanstack Query for fetching, caching, synchronizing, and updating server state. This handles loading states, error states, and background updates effectively.
+* **Map Abstraction (New):** The map functionality (`src/components/map/`) is designed with an abstraction layer (`IMapProvider` interface in `src/components/map/types/types.ts`). The `UnifiedMapContainer` interacts with different map implementations (currently Google Maps and OpenFreeMap) through this common interface, allowing for easier maintenance and potential future additions of other map providers.
 
 ## 8. Detailed Design & UI/UX Notes
 
@@ -239,28 +244,65 @@ When assisting with development on this codebase:
 
 ## 16. Map Implementation
 
-The application uses Google Maps JavaScript API for displaying and interacting with maps. We're using a keyless implementation based on the [Keyless-Google-Maps-API](https://github.com/somanchiu/Keyless-Google-Maps-API) library, which allows us to use Google Maps without requiring an API key. We have also installed `@types/google.maps` for TypeScript support.
+The application utilizes a map abstraction layer to display and interact with maps. It currently supports Google Maps and OpenFreeMap providers, managed through the `UnifiedMapContainer`.
 
 **Key Components:**
 
-1. **Map Component** (`src/components/map/Map.tsx`):
-   * Core map component that loads the Google Maps API and renders the map.
-   * Accepts `mapOptions` prop to allow customization of Google Maps settings (e.g., controls, styles).
-   * Handles map initialization and updates.
-   * Sets the position for the `myLocationControl` if it is enabled via `mapOptions`.
-   * Responsive to prop changes (center, zoom).
-
-2. **Map Container** (`src/components/map/MapContainer.tsx`):
-   * Wrapper component that handles map-related state and logic, such as user geolocation.
-   * Fetches the user's current location and centers the map initially if available.
-   * Passes necessary options (`myLocationControl: true`) to the `Map` component to enable the default Google Maps "My Location" button.
-   * Previously had a custom "Find Me" button, which has been removed in favour of the default Google Maps control.
+* **`src/components/map/types/types.ts`**: Defines the core `IMapProvider` interface and shared map types like `LatLngLiteral`.
+* **`src/components/map/UnifiedMapContainer.tsx`**: The main container that manages the active map provider, handles user geolocation, state synchronization (center/zoom), and provider switching.
+* **`src/components/map/GoogleMap.tsx`**: The implementation using the Google Maps JavaScript API (via a local, keyless proxy script).
+* **`src/components/map/OpenFreeMap.tsx`**: The implementation using MapLibre GL JS with OpenMapTiles vector tiles.
+* **`src/components/map/LocateMeButton.tsx`**: A reusable button component specifically for the "Center on my location" action.
+* **`src/components/map/MapControls.tsx`**: Removed. This component previously provided UI buttons for zoom and user location, but map interactions are now handled directly by the map providers or programmatically.
 
 ## 17. Future Considerations / To-Do
 
 * **API Key Implementation:** For production use and access to more Google Maps Platform features, transition from the keyless implementation to a proper API key setup, managed securely.
 * **Place Details Integration:** Fetch and display detailed place information from a backend API onto the map/location details view.
 * **Advanced Map Features:** Consider implementing clustering for markers, drawing tools for selecting areas, or integration with Directions service.
+
+### `src/components/map/` Directory Structure
+
+```
+map/
+├── types/
+│   └── types.ts         # Defines LatLngLiteral, IMapProvider, BaseMapProviderProps
+├── GoogleMap.tsx        # Google Maps provider component (implements IMapProvider via adapter)
+├── OpenFreeMap.tsx      # OpenFreeMap (MapLibre) provider component (implements IMapProvider via adapter)
+├── MapContainer.tsx     # Unified container managing map state, geolocation, controls, and provider switching
+├── LocateMeButton.tsx   # UI Button for centering map on user location
+└── openmapstyle_light.json # Custom MapLibre style definition for the light theme
+```
+
+### Map Component (`src/components/map`)
+
+* **`MapContainer.tsx`**: Wrapper component that manages map state (center, zoom, user location), switches between map providers, handles geolocation fetching, and renders map-specific controls like `LocateMeButton`.
+* **`OpenFreeMap.tsx`**: Implementation using MapLibre GL JS and a custom OpenMapTiles-based style.
+* **`GoogleMap.tsx`**: Implementation using `@vis.gl/react-google-maps`.
+* **`LocateMeButton.tsx`**: A reusable button component specifically for the "Center on my location" action.
+* **`types/types.tsx`**: Shared TypeScript interfaces (`IMapProvider`, `LatLngLiteral`, `BaseMapProviderProps`).
+* **`openmapstyle_light.json`**: Custom MapLibre style definition for the light theme.
+
+### UI Components (`src/components/ui`)
+
+* **`AddPlaceButton.tsx`**: Floating Action Button (FAB) for adding new places (currently placeholder).
+* Other components are likely Shadcn UI primitives (e.g., Button, Input, Avatar) used within layout/feature components.
+
+### Layout Components (`src/components/layout`)
+
+* **`Header.tsx`**: Application header containing logo, search bar, and user controls (Filter, Favorites, Login/Avatar). Does *not* contain map-specific controls.
+
+### Feature Components (`src/components/cafe`)
+
+* **`CafeCard.tsx`**: Displays information about a single cafe.
+* **`CafeCarousel.tsx`**: Horizontal carousel displaying multiple `CafeCard` components, likely positioned above the map controls.
+
+## State Management
+
+* Primarily uses React's built-in state (`useState`, `useRef`, `useEffect`) for component-level state.
+* Map state (center, zoom) is managed within `MapContainer.tsx` and passed down to the active map provider.
+* `App.tsx` acts as the main orchestrator, managing refs and passing handlers between `MapContainer` and `Header`.
+* No global state management library (like Redux or Zustand) seems to be in use yet.
 
 ---
 

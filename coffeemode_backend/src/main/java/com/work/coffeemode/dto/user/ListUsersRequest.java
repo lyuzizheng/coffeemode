@@ -1,4 +1,4 @@
-package com.work.coffeemode.dto;
+package com.work.coffeemode.dto.user;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

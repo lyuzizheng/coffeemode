@@ -50,6 +50,18 @@ export default {
   				DEFAULT: 'hsl(var(--card))',
   				foreground: 'hsl(var(--card-foreground))'
   			},
+  			coffee: {
+  				50: '#FDF8F3',
+  				100: '#F5E8D3',
+  				200: '#E6D0AD',
+  				300: '#D2B68F',
+  				400: '#C09A6B',
+  				500: '#A67C4E',
+  				600: '#8A663D',
+  				700: '#6E502F',
+  				800: '#523A22',
+  				900: '#362515',
+  			},
   			chart: {
   				'1': 'hsl(var(--chart-1))',
   				'2': 'hsl(var(--chart-2))',

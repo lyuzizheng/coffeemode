@@ -14,6 +14,9 @@ public interface CafeRepository extends MongoRepository<Cafe, ObjectId> {
     @Query("{'location': {$near: {$geometry: {type: 'Point', coordinates: [?0, ?1]}, $maxDistance: ?2}}}")
     List<Cafe> findNearbyCafes(double longitude, double latitude, double maxDistanceInMeters);
 
+    // Find cafe by Google Place ID - leverages the index on externalReferences.googlePlace
+    Optional<Cafe> findByExternalReferencesGooglePlace(String googlePlaceId);
+
 //    Optional<Cafe> findById(ObjectId id);
 //
 //    List<Cafe> findByName(String name);

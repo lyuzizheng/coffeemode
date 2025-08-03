@@ -15,7 +15,7 @@ public interface CafeRepository extends MongoRepository<Cafe, ObjectId> {
     List<Cafe> findNearbyCafes(double longitude, double latitude, double maxDistanceInMeters);
 
     // Find cafe by Google Place ID - leverages the index on externalReferences.googlePlace
-    Optional<Cafe> findByExternalReferencesGooglePlace(String googlePlaceId);
+    Optional<Cafe> findByExternalReferencesGooglePlace(String googlePlaceId, List<String> redbookLinks);
 
 //    Optional<Cafe> findById(ObjectId id);
 //

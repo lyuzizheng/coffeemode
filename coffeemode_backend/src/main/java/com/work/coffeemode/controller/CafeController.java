@@ -43,6 +43,7 @@ public class CafeController {
         if (request.getExternalReferences() != null) {
             externalReferences = Cafe.ExternalReferences.builder()
                     .googlePlace(request.getExternalReferences().getGooglePlace())
+                    .redbookLinks(request.getExternalReferences().getRedbookLinks())
                     .build();
         }
 

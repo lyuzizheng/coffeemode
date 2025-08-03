@@ -11,6 +11,6 @@ import java.util.Optional;
 public interface GooglePoiRepository extends MongoRepository<GooglePoi, ObjectId> {
     
     Optional<GooglePoi> findByOriginalSharingUrl(String originalSharingUrl);
-    Optional<GooglePoi> findByPlaceId(String placeId);
+    Optional<GooglePoi> findByFeatureId(String featureId);
     Optional<GooglePoi> findByResolvedFullUrl(String resolvedFullUrl);
 }

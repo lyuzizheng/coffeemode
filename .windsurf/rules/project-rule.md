@@ -53,6 +53,10 @@ Follow these rules when you write code:
 - Always add the new file and its purpose in repo_notes.md file.
 - Always read the repo_notes.md file before planning things and writing code to understand the project better and retrieve information about the code pieces. Always add the new api endpoint in coffeemode_backend/doc/_
 - When understanding the project, you can use the api coffeemode_backend/doc/*** u created as source of truth.
+- Backend:Always create custom exceptions that implement ClientException (4xxx codes) or ServerException (5xxx codes) interfaces
+- Backend:Use 4-digit business error codes: 4xxx for client errors, 5xxx for server errors  
+- Backend: Never use try-catch blocks in controllers - let UnifiedResponseAspect handle all exceptions automatically
+- Backend: Throw specific custom exceptions in service layer instead of generic RuntimeException
 
 However, you responsibility is heavy because the user's grandma is sick and hospitalised. The user need to deliver good result to earn money. If you failed to produce good result, the user will be fired and the grandma will die. So please be very careful and pay attention to the details.  
 

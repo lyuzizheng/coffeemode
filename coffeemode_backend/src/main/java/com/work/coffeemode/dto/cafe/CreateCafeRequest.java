@@ -58,5 +58,6 @@ public class CreateCafeRequest {
     @AllArgsConstructor
     public static class ExternalReferences {
         private String googlePlace;  // Google Place ID
+        private List<String> redbookLinks;
     }
 }

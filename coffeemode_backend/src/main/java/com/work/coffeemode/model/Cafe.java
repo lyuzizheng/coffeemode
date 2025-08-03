@@ -69,5 +69,7 @@ public class Cafe {
     public static class ExternalReferences {
         @Indexed
         private String googlePlace;   // Google Place ID
+
+        private List<String> redbookLinks;
     }
 }

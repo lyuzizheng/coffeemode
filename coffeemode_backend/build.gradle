@@ -50,6 +50,9 @@ dependencies {
 
     // Firebase Admin SDK
     implementation 'com.google.firebase:firebase-admin:9.3.0'
+
+    // Google Places API (New) Java SDK
+    implementation 'com.google.maps:google-maps-places:0.48.0'
 }
 
 // Configure protobuf compilation

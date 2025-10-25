@@ -8,53 +8,50 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.bson.types.ObjectId;
 import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.index.GeoSpatialIndexed;
 import org.springframework.data.mongodb.core.index.GeoSpatialIndexType;
 import org.springframework.data.mongodb.core.geo.GeoJsonPoint;
+import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Document(collection = "google_poi")
-public class GooglePoi {
+@Document(collection = "google_place_poi")
+public class GooglePlacePOI {
 
     @Id
     private ObjectId id;
-    
+
+    private String placeId;
     private String name;
-    private String featureId;  // Google feature ID (not searchable but uniquely identifies the place)
-    private String address;
-    
-    // GeoJsonPoint stores location as [longitude, latitude] - MongoDB's preferred format
+    private String formattedAddress;
+
     @GeoSpatialIndexed(type = GeoSpatialIndexType.GEO_2DSPHERE)
-    private GeoJsonPoint location;
-    
-    private String originalSharingUrl;
-    private String resolvedFullUrl;
-    private String googleMapsUrl;
-    
-    // Additional place information
-    private String phoneNumber;
+    private GeoJsonPoint location; // [lng, lat]
+
     private String website;
-    private String category;
+    private String formattedPhoneNumber;
+
+    private Map<String, String> openingHours; // weekday_text -> map
+
     private Double rating;
-    private Integer reviewCount;
-    
-    // Metadata
+    private Integer userRatingsTotal;
+
+    // 原始详情字段全量缓存
+    private Map<String, Object> rawDetails;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
-    // Custom getter for JSON serialization
     @JsonProperty("id")
     public String getStringId() {
         return id != null ? id.toString() : null;
     }
 
-    // Ignore the ObjectId when serializing to JSON
     @JsonIgnore
     public ObjectId getId() {
         return id;

@@ -1,4 +1,7 @@
 ---
+mode: agent
+---
+---
 trigger: always_on
 ---
 
@@ -10,7 +13,7 @@ You are a Senior Full Stack Developer and an Expert in ReactJS, JavaScript, Type
 - For bac
 - Always use TailwindCSS V4 + Shadcn for styling HTML elements. Install the necessary shadcn components if necessary, check before installing as some components are already installed.
 - Use default shadcn components as much as possible and follow the existing components styles. The colors are already set in the index.css file.
-- Confirm with the user, then write code!
+- Confirm, then write code!
 - Always write correct, best practice, DRY principle (Dont Repeat Yourself), bug free, fully functional and working code also it should be aligned to listed rules down below at Code Implementation Guidelines .
 - Focus on easy and readability code, over being performant.
 - Fully implement all requested functionality.

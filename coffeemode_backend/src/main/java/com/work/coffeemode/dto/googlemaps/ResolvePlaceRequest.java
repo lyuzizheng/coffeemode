@@ -9,7 +9,8 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ResolveGoogleMapsRequest {
-    
-    private String sharingUrl;
+public class ResolvePlaceRequest {
+    private String title;
+    private String description;
+    private String url; // 可选：前端传入的原始链接，用于记录
 }

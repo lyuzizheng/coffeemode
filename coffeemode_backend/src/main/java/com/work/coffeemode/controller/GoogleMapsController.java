@@ -1,9 +1,9 @@
 package com.work.coffeemode.controller;
 
-import com.work.coffeemode.dto.googlemaps.ResolveGoogleMapsRequest;
-import com.work.coffeemode.dto.googlemaps.ResolveGoogleMapsResponse;
+import com.work.coffeemode.dto.googlemaps.ResolvePlaceRequest;
+import com.work.coffeemode.dto.googlemaps.ResolvePlaceResponse;
 import com.work.coffeemode.model.UnifiedResponse;
-import com.work.coffeemode.service.GoogleMapsService;
+import com.work.coffeemode.service.GooglePlacesService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -15,23 +15,25 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class GoogleMapsController {
 
-    private final GoogleMapsService googleMapsService;
+    private final GooglePlacesService googlePlacesService;
 
     @PostMapping("/resolve")
-    public ResponseEntity<UnifiedResponse<ResolveGoogleMapsResponse>> resolveGoogleMapsLink(
-            @RequestBody ResolveGoogleMapsRequest request) {
-        
-        log.info("Received request to resolve Google Maps URL: {}", request.getSharingUrl());
-        
-        // Let the global exception handler handle any exceptions
-        ResolveGoogleMapsResponse response = googleMapsService.resolveGoogleMapsLink(request.getSharingUrl());
-        
-        UnifiedResponse<ResolveGoogleMapsResponse> unifiedResponse = UnifiedResponse.<ResolveGoogleMapsResponse>builder()
+    public ResponseEntity<UnifiedResponse<ResolvePlaceResponse>> resolveGoogleMapsLink(
+            @RequestBody ResolvePlaceRequest request) {
+
+        log.info("Received request to resolve place by metadata: title='{}' description='{}'", request.getTitle(),
+                request.getDescription());
+
+        ResolvePlaceResponse response = googlePlacesService.resolvePlaceFromMetadata(request.getTitle(),
+                request.getDescription(), request.getUrl());
+
+        UnifiedResponse<ResolvePlaceResponse> unifiedResponse = UnifiedResponse.<ResolvePlaceResponse>builder()
                 .code(200)
-                .message("Google Maps link resolved successfully")
+                .message(response.isSkippedDetails() ? "Place exists; skipped details fetch"
+                        : "Place resolved and details stored")
                 .data(response)
                 .build();
-        
+
         return ResponseEntity.ok(unifiedResponse);
     }
 }

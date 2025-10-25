@@ -11,35 +11,39 @@ import java.util.List;
 import java.util.Optional;
 
 public interface CafeRepository extends MongoRepository<Cafe, ObjectId> {
-    
+
     @Query("{'location': {$near: {$geometry: {type: 'Point', coordinates: [?0, ?1]}, $maxDistance: ?2}}}")
     List<Cafe> findNearbyCafes(double longitude, double latitude, double maxDistanceInMeters);
 
-    // Find cafe by Google Place ID - leverages the index on externalReferences.googlePlace
+    // Find cafe by Google Place ID - leverages the index on
+    // externalReferences.googlePlace
     Optional<Cafe> findByExternalReferencesGooglePlace(String googlePlaceId);
 
-//    Optional<Cafe> findById(ObjectId id);
-//
-//    List<Cafe> findByName(String name);
-//
-//    @Query("{'location.address': {$regex: ?0, $options: 'i'}}")
-//    List<Cafe> findByLocationAddress(String address);
-//
-//    // Find Cafes near a given point within a certain distance
-//    List<Cafe> findByLocationNear(Point point, Distance distance);
-//
-//    // Find Cafes within a given distance in kilometers
-//    @Query("{'location': {$nearSphere: {$geometry: {type: 'Point', coordinates: [?0, ?1]}, $maxDistance: ?2}}}")
-//    List<Cafe> findByLocationNearSphere(double longitude, double latitude, double maxDistanceInMeters);
-//
-//    // Find Cafes by category near a point
-//    List<Cafe> findByCategoryAndLocationNear(String category, Point point, Distance distance);
-//
-//
-//    List<Cafe> findByAverageRatingGreaterThanEqual(double rating);
-//
-//    List<Cafe> findByFeaturesWifiSpeedMbpsGreaterThan(int speed);
-//
-//    @Query("{'features.quietnessLevel': ?0}")
-//    List<Cafe> findByQuietnessLevel(String level);
+    // Optional<Cafe> findById(ObjectId id);
+    //
+    // List<Cafe> findByName(String name);
+    //
+    // @Query("{'location.address': {$regex: ?0, $options: 'i'}}")
+    // List<Cafe> findByLocationAddress(String address);
+    //
+    // // Find Cafes near a given point within a certain distance
+    // List<Cafe> findByLocationNear(Point point, Distance distance);
+    //
+    // // Find Cafes within a given distance in kilometers
+    // @Query("{'location': {$nearSphere: {$geometry: {type: 'Point', coordinates:
+    // [?0, ?1]}, $maxDistance: ?2}}}")
+    // List<Cafe> findByLocationNearSphere(double longitude, double latitude, double
+    // maxDistanceInMeters);
+    //
+    // // Find Cafes by category near a point
+    // List<Cafe> findByCategoryAndLocationNear(String category, Point point,
+    // Distance distance);
+    //
+    //
+    // List<Cafe> findByAverageRatingGreaterThanEqual(double rating);
+    //
+    // List<Cafe> findByFeaturesWifiSpeedMbpsGreaterThan(int speed);
+    //
+    // @Query("{'features.quietnessLevel': ?0}")
+    // List<Cafe> findByQuietnessLevel(String level);
 }

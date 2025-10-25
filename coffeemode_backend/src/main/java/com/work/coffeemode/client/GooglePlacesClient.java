@@ -8,8 +8,9 @@ import com.google.maps.places.v1.PlaceName;
 import com.google.maps.places.v1.PlacesClient;
 import com.google.maps.places.v1.SearchTextRequest;
 import com.google.maps.places.v1.SearchTextResponse;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -17,18 +18,27 @@ import java.util.Map;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class GooglePlacesClient {
 
-    private final PlacesClient placesClient;
+    private final PlacesClient placesTextClient;
+    private final PlacesClient placesDetailsClient;
+
+    @Autowired
+    public GooglePlacesClient(
+            @Qualifier("placesTextClient") PlacesClient placesTextClient,
+            @Qualifier("placesDetailsClient") PlacesClient placesDetailsClient) {
+        this.placesTextClient = placesTextClient;
+        this.placesDetailsClient = placesDetailsClient;
+    }
 
     public String findPlaceIdFromText(String query) {
-        // Build Text Search (New) request using SDK
+        // Build Text Search (New) request using SDK; FieldMask=places.id configured on
+        // client
         SearchTextRequest request = SearchTextRequest.newBuilder()
                 .setTextQuery(query)
                 .build();
 
-        SearchTextResponse response = placesClient.searchText(request);
+        SearchTextResponse response = placesTextClient.searchText(request);
         if (response.getPlacesCount() == 0) {
             log.warn("Text search returned no places for query: {}", query);
             return null;
@@ -40,12 +50,12 @@ public class GooglePlacesClient {
     }
 
     public Map<String, Object> getPlaceDetails(String placeId) {
-        // Build GetPlace request using SDK
+        // Build GetPlace request using SDK; FieldMask=* configured on client
         GetPlaceRequest request = GetPlaceRequest.newBuilder()
                 .setName(PlaceName.of(placeId).toString())
                 .build();
 
-        Place place = placesClient.getPlace(request);
+        Place place = placesDetailsClient.getPlace(request);
 
         // Convert typed Place protobuf message to a JSON-backed Map and wrap under
         // 'result'

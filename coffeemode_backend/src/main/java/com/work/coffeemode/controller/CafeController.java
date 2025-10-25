@@ -85,7 +85,7 @@ public class CafeController {
     }
 
     @GetMapping("/{id}")
-    public Cafe getCafeById(@PathVariable String id){
+    public Cafe getCafeById(@PathVariable String id) {
         return cafeService.getCafeById(id);
     }
 
@@ -95,7 +95,7 @@ public class CafeController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteCafe(@PathVariable String id){
+    public ResponseEntity<Void> deleteCafe(@PathVariable String id) {
         cafeService.deleteCafe(id);
         return ResponseEntity.ok().build();
     }

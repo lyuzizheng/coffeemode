@@ -1,4 +1,4 @@
-export type LinkType = 'google_maps' | 'xiaohongshu' | 'generic';
+export type LinkType = "google_maps" | "xiaohongshu" | "generic";
 
 export interface LinkMetadata {
   title?: string;

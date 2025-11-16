@@ -1,31 +1,31 @@
-import { LinkPreviewResult, LinkType } from '../types/linkPreview';
-import { getApiClient } from './api';
-import { ApiResponse } from '@/types/api';
+import { ApiResponse } from "@/types/api";
+import { LinkPreviewResult, LinkType } from "../types/linkPreview";
+import { getApiClient } from "./api";
 
 function detectLinkType(url: string): LinkType {
   const { hostname } = new URL(url);
   const host = hostname.toLowerCase();
   if (
-    host.includes('google.com') ||
-    host.includes('maps.google.com') ||
-    host.includes('maps.app.goo.gl')
+    host.includes("google.com") ||
+    host.includes("maps.google.com") ||
+    host.includes("maps.app.goo.gl")
   ) {
-    return 'google_maps';
+    return "google_maps";
   }
   if (
-    host.includes('xiaohongshu.com') ||
-    host.includes('xhslink.com') ||
-    host.includes('xhs')
+    host.includes("xiaohongshu.com") ||
+    host.includes("xhslink.com") ||
+    host.includes("xhs")
   ) {
-    return 'xiaohongshu';
+    return "xiaohongshu";
   }
-  return 'generic';
+  return "generic";
 }
 
 function extractFtid(url: string): string | null {
   try {
     const u = new URL(url);
-    const ftid = u.searchParams.get('ftid');
+    const ftid = u.searchParams.get("ftid");
     if (ftid) return ftid;
     const path = u.pathname;
     const match = path.match(/ftid=([^&]+)/);
@@ -43,11 +43,11 @@ function faviconForUrl(url: string, size: number = 128): string {
 export async function unfurlLink(url: string): Promise<LinkPreviewResult> {
   const type = detectLinkType(url);
 
-  const client = getApiClient('https://api.microlink.io');
+  const client = getApiClient("https://api.microlink.io");
 
   let dRoot: any = null;
   try {
-    const res = await client.get('/', {
+    const res = await client.get("/", {
       params: {
         url,
         audio: false,
@@ -63,7 +63,7 @@ export async function unfurlLink(url: string): Promise<LinkPreviewResult> {
       type,
       metadata: {
         url,
-        title: type === 'google_maps' ? 'Google Maps' : undefined,
+        title: type === "google_maps" ? "Google Maps" : undefined,
         description: undefined,
         imageUrl: undefined,
         logoUrl: faviconForUrl(url),
@@ -72,7 +72,7 @@ export async function unfurlLink(url: string): Promise<LinkPreviewResult> {
         author: null,
         publisher: null,
         date: null,
-        ftid: type === 'google_maps' ? extractFtid(url) : null,
+        ftid: type === "google_maps" ? extractFtid(url) : null,
       },
     };
   }
@@ -87,7 +87,7 @@ export async function unfurlLink(url: string): Promise<LinkPreviewResult> {
     type,
     metadata: {
       url: d?.url || url,
-      title: d?.title || (type === 'google_maps' ? 'Google Maps' : undefined),
+      title: d?.title || (type === "google_maps" ? "Google Maps" : undefined),
       description: d?.description || undefined,
       imageUrl,
       logoUrl,
@@ -96,7 +96,7 @@ export async function unfurlLink(url: string): Promise<LinkPreviewResult> {
       author: d?.author ?? null,
       publisher: d?.publisher ?? null,
       date: d?.date ?? null,
-      ftid: type === 'google_maps' ? extractFtid(d?.url || url) : null,
+      ftid: type === "google_maps" ? extractFtid(d?.url || url) : null,
     },
   };
 }

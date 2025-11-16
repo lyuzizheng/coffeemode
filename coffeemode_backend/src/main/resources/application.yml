@@ -7,6 +7,7 @@ spring:
     mongodb:
       database: ${MONGO_DB}
       uri: ${MONGO_URI}
+      # uri: "mongodb://cafe_mode:CafeMode%40Work@101.100.172.187:26017/coffeemode?authSource=admin&authMechanism=SCRAM-SHA-256"
 #      uri: ${SPRING_DATA_MONGODB_URI:mongodb://localhost:27017/coffeemode}
 
     # Redis
@@ -20,3 +21,9 @@ spring:
     user:
       name: ${ADMIN_USERNAME:admin}
       password: ${ADMIN_PASSWORD:admin}
+
+google:
+  maps:
+    api:
+      key: ${GOOGLE_MAPS_API_KEY}
+      # key: "AIzaSyCZskHO1ed9sIY70t9guVOMzmhRTYvPJPI"

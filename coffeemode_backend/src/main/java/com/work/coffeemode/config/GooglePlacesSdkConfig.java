@@ -17,7 +17,7 @@ import java.util.Map;
 @Configuration
 public class GooglePlacesSdkConfig {
 
-    @Value("${GOOGLE_MAPS_API_KEY:${google.maps.api.key:}}")
+    @Value("${google.maps.api.key}")
     private String googleApiKey;
 
     private PlacesSettings buildSettingsWithHeaders(Map<String, String> headers) throws IOException {

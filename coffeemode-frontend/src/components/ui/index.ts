@@ -8,6 +8,7 @@ export * from "./card";
 export * from "./input";
 export * from "./scroll-area";
 export * from "./tooltip";
+export * from "./dialog";
 
 // Export custom UI components
 export { default as AddPlaceButton } from "../layout/AddPlaceButton";

@@ -1,5 +1,6 @@
 import { LinkPreviewResult, LinkType } from '../types/linkPreview';
-import { getApiClient, ApiResponse } from './api';
+import { getApiClient } from './api';
+import { ApiResponse } from '@/types/api';
 
 function detectLinkType(url: string): LinkType {
   const { hostname } = new URL(url);

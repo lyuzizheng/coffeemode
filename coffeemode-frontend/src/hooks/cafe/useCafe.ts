@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useConfig } from "../../providers/ConfigProvider";
-import { ApiResponse, getApiClient } from "../../services/api";
+import { getApiClient } from "../../services/api";
+import { ApiResponse } from "@/types/api";
 import { Cafe, CafeDetailsParams, CafeSearchParams } from "../../types/cafe";
 
 // Query keys for caching

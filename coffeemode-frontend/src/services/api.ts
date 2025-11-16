@@ -1,11 +1,5 @@
 import axios, { AxiosError, AxiosInstance, AxiosResponse } from "axios";
-
-// General API response structure
-export interface ApiResponse<T> {
-  code: number;
-  message: string;
-  data: T | null;
-}
+import { ApiResponse } from "@/types/api";
 
 // Singleton instance
 let apiClientInstance: AxiosInstance | null = null;

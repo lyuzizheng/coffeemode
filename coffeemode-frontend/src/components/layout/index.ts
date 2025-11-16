@@ -1,2 +1,3 @@
 export { default as Header } from "./Header";
-// Export other layout components here (e.g., Footer, Sidebar) if needed
+export { default as AddPlaceButton } from "./AddPlaceButton";
+export { default as CreateCafeModal } from "./CreateCafeModal";

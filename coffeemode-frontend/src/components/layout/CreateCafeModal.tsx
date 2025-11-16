@@ -280,6 +280,14 @@ const CreateCafeModal = ({ open, onOpenChange }: CreateCafeModalProps) => {
                               className="w-full rounded-md"
                             />
                           )}
+                          {!previewData.metadata.imageUrl &&
+                            previewData.metadata.logoUrl && (
+                              <img
+                                src={previewData.metadata.logoUrl}
+                                alt="Logo"
+                                className="w-12 h-12 rounded-md"
+                              />
+                            )}
                         </div>
                       </div>
                     )}

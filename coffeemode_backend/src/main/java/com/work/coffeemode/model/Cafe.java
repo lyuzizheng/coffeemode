@@ -15,6 +15,7 @@ import org.springframework.data.mongodb.core.index.GeoSpatialIndexType;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.geo.GeoJsonPoint;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -60,6 +61,10 @@ public class Cafe {
         private Boolean outletsAvailable;
         private String quietnessLevel;  // "quiet", "moderate", "noisy"
         private String temperature;      // "cold", "just right", "warm"
+        private Boolean unlimitedDuration;
+        private Duration limitDuration;
+        private Double googleRating;
+
     }
 
     @Data

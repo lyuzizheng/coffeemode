@@ -22,8 +22,9 @@ export function useLinkPreview(url: string | null) {
       try {
         const res = await unfurlLink(url);
         if (!cancelled) setData(res);
-      } catch (e: any) {
-        if (!cancelled) setError(e);
+      } catch (e) {
+        const err = e instanceof Error ? e : new Error("Failed to unfurl link");
+        if (!cancelled) setError(err);
       } finally {
         if (!cancelled) setLoading(false);
       }

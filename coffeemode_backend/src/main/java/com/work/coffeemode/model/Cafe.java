@@ -12,6 +12,7 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.index.GeoSpatialIndexed;
 import org.springframework.data.mongodb.core.index.GeoSpatialIndexType;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.geo.GeoJsonPoint;
 
 import java.util.List;
@@ -37,6 +38,7 @@ public class Cafe {
     private List<ImageDTO> images;
     private String website;
     private Map<String, String> openingHours;
+    private ExternalReferences externalReferences;
 
     // Custom getter for JSON serialization
     @JsonProperty("id")
@@ -58,5 +60,16 @@ public class Cafe {
         private Boolean outletsAvailable;
         private String quietnessLevel;  // "quiet", "moderate", "noisy"
         private String temperature;      // "cold", "just right", "warm"
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ExternalReferences {
+        @Indexed
+        private String googlePlace;   // Google Place ID
+
+        private List<String> redbookLinks;
     }
 }

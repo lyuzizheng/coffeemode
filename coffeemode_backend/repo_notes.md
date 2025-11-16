@@ -23,10 +23,12 @@
   * Spring Data MongoDB (for MongoDB interaction)
   * Spring Data Redis (for Redis interaction - caching, etc.)
   * Spring Security (for authentication and authorization)
+  * Spring Boot Validation (for request validation)
 * **Authentication:** Firebase Admin SDK (for verifying Firebase ID Tokens)
 * **Database:** MongoDB
 * **Caching:** Redis (Optional, dependency included)
 * **Build Tool:** Gradle
+* **HTTP Client:** RestTemplate (for external API calls)
 * **Utilities:**
   * Lombok (for reducing boilerplate code)
   * Jackson Datatype Protobuf (if Protobuf is used for DTOs)

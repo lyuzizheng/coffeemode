@@ -1,4 +1,4 @@
-./.idea
+.idea
 ./.vscode
 ./.env
 ./.env.local
@@ -11,6 +11,9 @@
 ./coffeemode_backend/.env.local
 ./coffeemode_backend/.env.development
 ./coffeemode_backend/.env.production
+./coffeemode_backend/bin
+./coffeemode_backend/.gradle
+./coffeemode_backend/build
 
 
 ./coffeemode-frontend/.idea

@@ -28,6 +28,7 @@ public class CreateCafeRequest {
     private List<ImageDTO> images;
     private String website;
     private Map<String, String> openingHours;
+    private ExternalReferences externalReferences;
 
     @Data
     @Builder
@@ -49,5 +50,14 @@ public class CreateCafeRequest {
         private Boolean outletsAvailable;
         private String quietnessLevel;  // "quiet", "moderate", "noisy"
         private String temperature;     // "cold", "just right", "warm"
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ExternalReferences {
+        private String googlePlace;  // Google Place ID
+        private List<String> redbookLinks;
     }
 }

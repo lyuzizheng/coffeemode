@@ -39,6 +39,14 @@ public class CafeController {
                     .build();
         }
 
+        Cafe.ExternalReferences externalReferences = null;
+        if (request.getExternalReferences() != null) {
+            externalReferences = Cafe.ExternalReferences.builder()
+                    .googlePlace(request.getExternalReferences().getGooglePlace())
+                    .redbookLinks(request.getExternalReferences().getRedbookLinks())
+                    .build();
+        }
+
         Cafe cafe = Cafe.builder()
                 .name(request.getName())
                 .location(geoJsonPoint)
@@ -47,6 +55,7 @@ public class CafeController {
                 .images(request.getImages())
                 .website(request.getWebsite())
                 .openingHours(request.getOpeningHours())
+                .externalReferences(externalReferences)
                 .averageRating(0.0)
                 .totalReviews(0)
                 .build();
@@ -76,7 +85,7 @@ public class CafeController {
     }
 
     @GetMapping("/{id}")
-    public Cafe getCafeById(@PathVariable String id){
+    public Cafe getCafeById(@PathVariable String id) {
         return cafeService.getCafeById(id);
     }
 
@@ -86,7 +95,7 @@ public class CafeController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteCafe(@PathVariable String id){
+    public ResponseEntity<Void> deleteCafe(@PathVariable String id) {
         cafeService.deleteCafe(id);
         return ResponseEntity.ok().build();
     }

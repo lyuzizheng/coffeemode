@@ -75,6 +75,7 @@ public class Cafe {
         @Indexed
         private String googlePlace;   // Google Place ID
 
-        private List<String> redbookLinks;
+        @Indexed
+        private String redbookId;     // RedNote POI ID
     }
 }

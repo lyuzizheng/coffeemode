@@ -1,0 +1,730 @@
+[
+        {
+            "_id": {
+                "$oid": "680c93b4db3dea0985cd9046"
+            },
+            "name": "Caracara",
+            "location": {
+                "type": "Point",
+                "coordinates": [
+                    103.8425,
+                    1.2789
+                ]
+            },
+            "address": "77 Neil Road, Level 1, Singapore 088903",
+            "features": {
+                "wifiAvailable": true,
+                "outletsAvailable": true,
+                "quietnessLevel": "high",
+                "temperature": "just right"
+            },
+            "averageRating": 4.5,
+            "totalReviews": 127,
+            "images": [],
+            "website": "https://caracara.co",
+            "openingHours": {
+                "monday": "11:00-22:30",
+                "tuesday": "closed",
+                "wednesday": "11:00-22:30",
+                "thursday": "11:00-22:30",
+                "friday": "11:00-22:30",
+                "saturday": "11:00-22:30",
+                "sunday": "11:00-22:30"
+            },
+            "_class": "com.work.coffeemode.model.Cafe",
+            "contact": {
+                "phone": "8852 7166",
+                "email": "hello@caracara.co"
+            },
+            "description": "A stylish aesthetic café with Japanese-inspired food, featuring unique wooden furniture and sophisticated interior design. Known for their signature Aurora beans coffee with grape and rum notes, and specialty dishes like Wagyu Sukiyaki Don and Pork Sando.",
+            "menu_highlights": [
+                {
+                    "name": "Aurora Latte",
+                    "price": 7.00,
+                    "category": "Beverages"
+                },
+                {
+                    "name": "Wagyu Sukiyaki Don",
+                    "price": 32.00,
+                    "category": "Mains"
+                },
+                {
+                    "name": "Pork Sando with Fries",
+                    "price": 26.00,
+                    "category": "Mains"
+                },
+                {
+                    "name": "Caraage",
+                    "price": 18.00,
+                    "category": "Starters"
+                }
+            ],
+            "redpost_links": [
+                "https://www.xiaohongshu.com/explore/123456",
+                "https://www.xiaohongshu.com/explore/789012"
+            ],
+            "rednote_id": "123456"
+        },
+        {
+            "_id": {
+                "$oid": "680c93b4db3dea0985cd9047"
+            },
+            "name": "The Book Cafe",
+            "location": {
+                "type": "Point",
+                "coordinates": [
+                    103.8387,
+                    1.2906
+                ]
+            },
+            "address": "20 Martin Rd, #01-02 Seng Kee Building, Singapore 239070",
+            "features": {
+                "wifiAvailable": true,
+                "outletsAvailable": true,
+                "quietnessLevel": "high",
+                "temperature": "comfortable"
+            },
+            "averageRating": 4.6,
+            "totalReviews": 455,
+            "images": [],
+            "openingHours": {
+                "monday": "08:30-22:30",
+                "tuesday": "08:30-22:30",
+                "wednesday": "08:30-22:30",
+                "thursday": "08:30-22:30",
+                "friday": "08:30-22:30",
+                "saturday": "08:30-22:30",
+                "sunday": "08:30-22:30"
+            },
+            "_class": "com.work.coffeemode.model.Cafe",
+            "description": "A spacious cafe with indoor and outdoor seating, featuring bookshelves and comfortable sofa areas. Perfect for studying, working, or relaxing.",
+            "menu_highlights": [
+                {
+                    "name": "Flat White",
+                    "price": 7.50,
+                    "category": "Beverages"
+                },
+                {
+                    "name": "Korean Beef Burger",
+                    "price": 18.00,
+                    "category": "Mains"
+                },
+                {
+                    "name": "Breakfast Set",
+                    "price": 15.00,
+                    "category": "Breakfast"
+                },
+                {
+                    "name": "Oatmeal Cookies",
+                    "price": 4.50,
+                    "category": "Desserts"
+                }
+            ],
+            "redpost_links": [
+                "https://www.xiaohongshu.com/explore/345678"
+            ],
+            "rednote_id": "345678"
+        },
+        {
+            "_id": {
+                "$oid": "680c93b4db3dea0985cd9048"
+            },
+            "name": "The Ritual",
+            "location": {
+                "type": "Point",
+                "coordinates": [
+                    103.8269,
+                    1.3197
+                ]
+            },
+            "address": "383 Bukit Timah Rd, #01-09B, Singapore 259727",
+            "features": {
+                "wifiAvailable": true,
+                "outletsAvailable": true,
+                "quietnessLevel": "high",
+                "temperature": "comfortable"
+            },
+            "averageRating": 4.5,
+            "totalReviews": 843,
+            "images": [],
+            "openingHours": {
+                "monday": "08:00-18:30",
+                "tuesday": "08:00-18:30",
+                "wednesday": "08:00-18:30",
+                "thursday": "08:00-18:30",
+                "friday": "08:00-18:30",
+                "saturday": "08:00-18:30",
+                "sunday": "08:00-18:30"
+            },
+            "_class": "com.work.coffeemode.model.Cafe",
+            "description": "Located near Stevens MRT, this cafe offers excellent Thai-inspired food and beverages. Known for their Thai fried chicken and rose milk tea.",
+            "menu_highlights": [
+                {
+                    "name": "Thai Fried Chicken",
+                    "price": 15.00,
+                    "category": "Mains"
+                },
+                {
+                    "name": "Rose Milk Tea",
+                    "price": 7.00,
+                    "category": "Beverages"
+                }
+            ],
+            "redpost_links": [
+                "https://www.xiaohongshu.com/explore/901234",
+                "https://www.xiaohongshu.com/explore/567890"
+            ],
+            "rednote_id": "901234"
+        },
+        {
+            "_id": {
+                "$oid": "680c93b4db3dea0985cd9049"
+            },
+            "name": "Clap Cafe",
+            "location": {
+                "type": "Point",
+                "coordinates": [
+                    103.8523,
+                    1.3007
+                ]
+            },
+            "address": "261 Waterloo St, #01-28, Singapore",
+            "features": {
+                "wifiAvailable": true,
+                "outletsAvailable": true,
+                "quietnessLevel": "very high",
+                "temperature": "very comfortable"
+            },
+            "averageRating": 4.7,
+            "totalReviews": 395,
+            "images": [],
+            "openingHours": {
+                "monday": "09:00-18:00",
+                "tuesday": "09:00-18:00",
+                "wednesday": "09:00-18:00",
+                "thursday": "09:00-18:00",
+                "friday": "09:00-18:00",
+                "saturday": "09:00-18:00",
+                "sunday": "09:00-18:00"
+            },
+            "_class": "com.work.coffeemode.model.Cafe",
+            "description": "A minimalist industrial-style cafe in Bugis area, known for its quiet study environment and excellent coffee. Perfect for studying and working.",
+            "menu_highlights": [
+                {
+                    "name": "Osmanthus Latte",
+                    "price": 7.50,
+                    "category": "Beverages"
+                },
+                {
+                    "name": "Iced Latte",
+                    "price": 7.00,
+                    "category": "Beverages"
+                }
+            ],
+            "redpost_links": [
+                "https://www.xiaohongshu.com/explore/123789"
+            ],
+            "rednote_id": "123789"
+        },
+        {
+            "_id": {
+                "$oid": "680c93b4db3dea0985cd9050"
+            },
+            "name": "Zall Bookstore",
+            "location": {
+                "type": "Point",
+                "coordinates": [
+                    103.8494,
+                    1.3043
+                ]
+            },
+            "address": "501 Orchard Road, Wheelock Place, Singapore",
+            "features": {
+                "wifiAvailable": true,
+                "outletsAvailable": true,
+                "quietnessLevel": "very high",
+                "temperature": "comfortable"
+            },
+            "averageRating": 4.4,
+            "totalReviews": 245,
+            "images": [],
+            "openingHours": {
+                "monday": "10:00-21:00",
+                "tuesday": "10:00-21:00",
+                "wednesday": "10:00-21:00",
+                "thursday": "10:00-21:00",
+                "friday": "10:00-21:00",
+                "saturday": "10:00-21:00",
+                "sunday": "10:00-21:00"
+            },
+            "_class": "com.work.coffeemode.model.Cafe",
+            "description": "A cultural cafe on Orchard Road with wall-to-wall books creating a natural sound barrier. Perfect for quiet study sessions with window seats overlooking the bustling street.",
+            "menu_highlights": [
+                {
+                    "name": "House Coffee",
+                    "price": 6.00,
+                    "category": "Beverages"
+                },
+                {
+                    "name": "Chinese Tea",
+                    "price": 5.00,
+                    "category": "Beverages"
+                }
+            ],
+            "redpost_links": [
+                "https://www.xiaohongshu.com/explore/456123"
+            ],
+            "rednote_id": "456123"
+        },
+        {
+            "_id": {
+                "$oid": "680c93b4db3dea0985cd9051"
+            },
+            "name": "Twenty Eight Cafe",
+            "location": {
+                "type": "Point",
+                "coordinates": [
+                    103.8494,
+                    1.3007
+                ]
+            },
+            "address": "28 Wilkie Rd, #01-06, Singapore",
+            "features": {
+                "wifiAvailable": true,
+                "outletsAvailable": true,
+                "quietnessLevel": "moderate",
+                "temperature": "comfortable"
+            },
+            "averageRating": 4.5,
+            "totalReviews": 312,
+            "images": [],
+            "openingHours": {
+                "monday": "07:30-17:00",
+                "tuesday": "07:30-17:00",
+                "wednesday": "07:30-17:00",
+                "thursday": "07:30-17:00",
+                "friday": "07:30-17:00",
+                "saturday": "07:30-17:00",
+                "sunday": "07:30-17:00"
+            },
+            "_class": "com.work.coffeemode.model.Cafe",
+            "description": "A vibrant cafe with a productive atmosphere, perfect for group discussions and work sessions. Known for their brunch menu and energetic environment.",
+            "menu_highlights": [
+                {
+                    "name": "Brunch Set",
+                    "price": 20.00,
+                    "category": "Mains"
+                },
+                {
+                    "name": "House Coffee",
+                    "price": 6.50,
+                    "category": "Beverages"
+                }
+            ],
+            "redpost_links": [
+                "https://www.xiaohongshu.com/explore/789456"
+            ],
+            "rednote_id": "789456"
+        },
+        {
+            "_id": {
+                "$oid": "680c93b4db3dea0985cd9052"
+            },
+            "name": "174BINGO",
+            "location": {
+                "type": "Point",
+                "coordinates": [
+                    103.9023,
+                    1.3156
+                ]
+            },
+            "address": "Joo Chiat Area, Singapore",
+            "features": {
+                "wifiAvailable": true,
+                "outletsAvailable": true,
+                "quietnessLevel": "moderate",
+                "temperature": "comfortable"
+            },
+            "averageRating": 4.6,
+            "totalReviews": 317,
+            "images": [],
+            "openingHours": {
+                "monday": "09:00-18:00",
+                "tuesday": "09:00-18:00",
+                "wednesday": "09:00-18:00",
+                "thursday": "09:00-18:00",
+                "friday": "09:00-18:00",
+                "saturday": "09:00-18:00",
+                "sunday": "09:00-18:00"
+            },
+            "_class": "com.work.coffeemode.model.Cafe",
+            "description": "A pet-friendly community cafe known for excellent bakery items and smooth Ice White coffee. Features a unique Bingo Card program for regular customers.",
+            "menu_highlights": [
+                {
+                    "name": "Ice White Coffee",
+                    "price": 7.00,
+                    "category": "Beverages"
+                },
+                {
+                    "name": "House-made Pastries",
+                    "price": 6.00,
+                    "category": "Bakery"
+                }
+            ],
+            "redpost_links": [
+                "https://www.xiaohongshu.com/explore/234567"
+            ],
+            "rednote_id": "234567"
+        },
+        {
+            "_id": {
+                "$oid": "680c93b4db3dea0985cd9053"
+            },
+            "name": "20grams",
+            "location": {
+                "type": "Point",
+                "coordinates": [
+                    103.8828,
+                    1.3276
+                ]
+            },
+            "address": "Macpherson Industrial Estate, Singapore",
+            "features": {
+                "wifiAvailable": true,
+                "outletsAvailable": true,
+                "quietnessLevel": "high",
+                "temperature": "comfortable"
+            },
+            "averageRating": 4.7,
+            "totalReviews": 285,
+            "images": [],
+            "openingHours": {
+                "monday": "09:00-18:00",
+                "tuesday": "09:00-18:00",
+                "wednesday": "09:00-18:00",
+                "thursday": "09:00-18:00",
+                "friday": "09:00-18:00",
+                "saturday": "09:00-18:00",
+                "sunday": "09:00-18:00"
+            },
+            "_class": "com.work.coffeemode.model.Cafe",
+            "description": "A serious coffee-focused cafe in Macpherson industrial area. Features Nordic light roast coffee and in-house roasting. Known for their excellent cinnamon rolls.",
+            "menu_highlights": [
+                {
+                    "name": "Nordic Light Roast Coffee",
+                    "price": 7.00,
+                    "category": "Beverages"
+                },
+                {
+                    "name": "Cinnamon Roll",
+                    "price": 4.50,
+                    "category": "Bakery"
+                }
+            ],
+            "redpost_links": [
+                "https://www.xiaohongshu.com/explore/890123"
+            ],
+            "rednote_id": "890123"
+        },
+        {
+            "_id": {
+                "$oid": "680c93b4db3dea0985cd9054"
+            },
+            "name": "Abseil",
+            "location": {
+                "type": "Point",
+                "coordinates": [
+                    103.8489,
+                    1.2789
+                ]
+            },
+            "address": "70 Shenton Way, #01-14 Eon Shenton, Singapore 079118",
+            "features": {
+                "wifiAvailable": true,
+                "outletsAvailable": true,
+                "quietnessLevel": "high",
+                "temperature": "comfortable"
+            },
+            "averageRating": 4.5,
+            "totalReviews": 562,
+            "images": [],
+            "openingHours": {
+                "monday": "08:00-17:00",
+                "tuesday": "08:00-17:00",
+                "wednesday": "08:00-17:00",
+                "thursday": "08:00-17:00",
+                "friday": "08:00-17:00",
+                "saturday": "closed",
+                "sunday": "closed"
+            },
+            "_class": "com.work.coffeemode.model.Cafe",
+            "description": "A minimalist black and white themed cafe run by sisters. Known for their unique milk cap coffees and sparkling coffee options.",
+            "menu_highlights": [
+                {
+                    "name": "Signature Milk Cap Coffee",
+                    "price": 7.50,
+                    "category": "Beverages"
+                },
+                {
+                    "name": "Sparkling Coffee",
+                    "price": 8.00,
+                    "category": "Beverages"
+                }
+            ],
+            "redpost_links": [
+                "https://www.xiaohongshu.com/explore/567123"
+            ],
+            "rednote_id": "567123"
+        },
+        {
+            "_id": {
+                "$oid": "680c93b4db3dea0985cd9055"
+            },
+            "name": "Paaru",
+            "location": {
+                "type": "Point",
+                "coordinates": [
+                    103.8387,
+                    1.2789
+                ]
+            },
+            "address": "195 Pearl's Hill Terrace, #01-61, Singapore 168976",
+            "features": {
+                "wifiAvailable": true,
+                "outletsAvailable": true,
+                "quietnessLevel": "very high",
+                "temperature": "comfortable"
+            },
+            "averageRating": 4.6,
+            "totalReviews": 562,
+            "images": [],
+            "openingHours": {
+                "monday": "09:00-18:00",
+                "tuesday": "09:00-18:00",
+                "wednesday": "09:00-18:00",
+                "thursday": "09:00-18:00",
+                "friday": "09:00-18:00",
+                "saturday": "09:00-18:00",
+                "sunday": "09:00-18:00"
+            },
+            "_class": "com.work.coffeemode.model.Cafe",
+            "description": "A Japanese-style cafe in a former police station turned arts complex. Surrounded by ceramic studios and music schools, creating a peaceful artistic atmosphere.",
+            "menu_highlights": [
+                {
+                    "name": "Japanese Style Coffee",
+                    "price": 7.00,
+                    "category": "Beverages"
+                },
+                {
+                    "name": "House Pastries",
+                    "price": 5.00,
+                    "category": "Bakery"
+                }
+            ],
+            "redpost_links": [
+                "https://www.xiaohongshu.com/explore/234891"
+            ],
+            "rednote_id": "234891"
+        },
+        {
+            "_id": {
+                "$oid": "680c93b4db3dea0985cd9056"
+            },
+            "name": "The Coffee Roaster",
+            "location": {
+                "type": "Point",
+                "coordinates": [
+                    103.7731,
+                    1.2953
+                ]
+            },
+            "address": "AS8, National University of Singapore",
+            "features": {
+                "wifiAvailable": true,
+                "outletsAvailable": true,
+                "quietnessLevel": "high",
+                "temperature": "comfortable"
+            },
+            "averageRating": 4.4,
+            "totalReviews": 350,
+            "images": [],
+            "openingHours": {
+                "monday": "08:00-18:00",
+                "tuesday": "08:00-18:00",
+                "wednesday": "08:00-18:00",
+                "thursday": "08:00-18:00",
+                "friday": "08:00-18:00",
+                "saturday": "closed",
+                "sunday": "closed"
+            },
+            "_class": "com.work.coffeemode.model.Cafe",
+            "description": "A campus favorite known for their special lavender latte and study-friendly environment.",
+            "menu_highlights": [
+                {
+                    "name": "Lavender Latte",
+                    "price": 7.00,
+                    "category": "Beverages"
+                },
+                {
+                    "name": "House Coffee",
+                    "price": 5.00,
+                    "category": "Beverages"
+                }
+            ],
+            "redpost_links": [
+                "https://www.xiaohongshu.com/explore/456789"
+            ],
+            "rednote_id": "456789"
+        },
+        {
+            "_id": {
+                "$oid": "680c93b4db3dea0985cd9057"
+            },
+            "name": "Acoustics",
+            "location": {
+                "type": "Point",
+                "coordinates": [
+                    103.85,
+                    1.3
+                ]
+            },
+            "address": "Singapore",
+            "features": {
+                "wifiAvailable": true,
+                "outletsAvailable": true,
+                "quietnessLevel": "high",
+                "temperature": "comfortable"
+            },
+            "averageRating": 4.5,
+            "totalReviews": 350,
+            "images": [],
+            "openingHours": {
+                "monday": "09:00-18:00",
+                "tuesday": "09:00-18:00",
+                "wednesday": "09:00-18:00",
+                "thursday": "09:00-18:00",
+                "friday": "09:00-18:00",
+                "saturday": "09:00-18:00",
+                "sunday": "09:00-18:00"
+            },
+            "_class": "com.work.coffeemode.model.Cafe",
+            "description": "A cafe known for excellent coffee and high-quality sound system. Perfect for music lovers and those who appreciate good acoustics while working.",
+            "menu_highlights": [
+                {
+                    "name": "House Coffee",
+                    "price": 6.00,
+                    "category": "Beverages"
+                },
+                {
+                    "name": "Specialty Coffee",
+                    "price": 8.00,
+                    "category": "Beverages"
+                }
+            ],
+            "redpost_links": [
+                "https://www.xiaohongshu.com/explore/789012"
+            ],
+            "rednote_id": "789012"
+        },
+        {
+            "_id": {
+                "$oid": "680c93b4db3dea0985cd9058"
+            },
+            "name": "Homeground Coffee",
+            "location": {
+                "type": "Point",
+                "coordinates": [
+                    103.8425,
+                    1.2789
+                ]
+            },
+            "address": "15 Teo Hong Rd, Singapore 088328",
+            "features": {
+                "wifiAvailable": true,
+                "outletsAvailable": true,
+                "quietnessLevel": "high",
+                "temperature": "comfortable"
+            },
+            "averageRating": 4.6,
+            "totalReviews": 562,
+            "images": [],
+            "openingHours": {
+                "monday": "09:00-18:00",
+                "tuesday": "09:00-18:00",
+                "wednesday": "09:00-18:00",
+                "thursday": "09:00-18:00",
+                "friday": "09:00-18:00",
+                "saturday": "09:00-18:00",
+                "sunday": "09:00-18:00"
+            },
+            "_class": "com.work.coffeemode.model.Cafe",
+            "description": "A serious coffee roaster known for their quality beans and drip coffee. Also offers coffee beans and pour-over packets for home brewing.",
+            "menu_highlights": [
+                {
+                    "name": "Pour-over Coffee",
+                    "price": 7.00,
+                    "category": "Beverages"
+                },
+                {
+                    "name": "House Blend",
+                    "price": 6.00,
+                    "category": "Beverages"
+                }
+            ],
+            "redpost_links": [
+                "https://www.xiaohongshu.com/explore/901234"
+            ],
+            "rednote_id": "901234"
+        },
+        {
+            "_id": {
+                "$oid": "680c93b4db3dea0985cd9059"
+            },
+            "name": "Dawn",
+            "location": {
+                "type": "Point",
+                "coordinates": [
+                    103.8489,
+                    1.2849
+                ]
+            },
+            "address": "78 South Bridge Rd, Singapore 058708",
+            "features": {
+                "wifiAvailable": true,
+                "outletsAvailable": true,
+                "quietnessLevel": "high",
+                "temperature": "comfortable"
+            },
+            "averageRating": 4.5,
+            "totalReviews": 562,
+            "images": [],
+            "openingHours": {
+                "monday": "08:00-18:00",
+                "tuesday": "08:00-18:00",
+                "wednesday": "08:00-18:00",
+                "thursday": "08:00-18:00",
+                "friday": "08:00-18:00",
+                "saturday": "09:00-18:00",
+                "sunday": "09:00-18:00"
+            },
+            "_class": "com.work.coffeemode.model.Cafe",
+            "description": "A charming cafe known for their pastries and cozy atmosphere. Perfect for morning coffee and light bites.",
+            "menu_highlights": [
+                {
+                    "name": "House Coffee",
+                    "price": 6.00,
+                    "category": "Beverages"
+                },
+                {
+                    "name": "Artisanal Pastries",
+                    "price": 5.00,
+                    "category": "Bakery"
+                }
+            ],
+            "redpost_links": [
+                "https://www.xiaohongshu.com/explore/567890"
+            ],
+            "rednote_id": "567890"
+        }
+    ]
+

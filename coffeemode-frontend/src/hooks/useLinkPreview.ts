@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { LinkPreviewResult } from '../types/linkPreview';
-import { unfurlLink } from '../services/linkPreview';
+import { useEffect, useState } from "react";
+import { unfurlLink } from "../services/linkPreview";
+import { LinkPreviewResult } from "../types/linkPreview";
 
 export function useLinkPreview(url: string | null) {
   const [data, setData] = useState<LinkPreviewResult | null>(null);

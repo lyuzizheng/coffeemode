@@ -72,9 +72,10 @@ public class Cafe {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ExternalReferences {
-        @Indexed
+        @Indexed(sparse = true)
         private String googlePlace;   // Google Place ID
 
-        private List<String> redbookLinks;
+        @Indexed(sparse = true)
+        private String redbookId;     // RedNote POI ID
     }
 }

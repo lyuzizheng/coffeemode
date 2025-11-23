@@ -139,7 +139,7 @@ public class GooglePlacesService {
     private Cafe mapPoiToCafe(GooglePlacePOI poi) {
         Cafe.ExternalReferences refs = Cafe.ExternalReferences.builder()
                 .googlePlace(poi.getPlaceId())
-                .redbookLinks(null)
+                .redbookId(null)
                 .build();
 
         return Cafe.builder()

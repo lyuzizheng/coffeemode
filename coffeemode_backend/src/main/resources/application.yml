@@ -7,8 +7,7 @@ spring:
     mongodb:
       database: ${MONGO_DB}
       uri: ${MONGO_URI}
-#      uri: ${SPRING_DATA_MONGODB_URI:mongodb://localhost:27017/coffeemode}
-
+     
     # Redis
     redis:
       host: ${REDIS_HOST:localhost}
@@ -20,3 +19,8 @@ spring:
     user:
       name: ${ADMIN_USERNAME:admin}
       password: ${ADMIN_PASSWORD:admin}
+
+google:
+  maps:
+    api:
+      key: ${GOOGLE_MAPS_API_KEY}

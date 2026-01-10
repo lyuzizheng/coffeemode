@@ -1,8 +1,8 @@
+import { CreateCafeModal } from "@/components/cafe";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Plus } from "lucide-react";
 import { useState } from "react";
-import CreateCafeModal from "./CreateCafeModal";
 
 interface AddPlaceButtonProps {
   className?: string;

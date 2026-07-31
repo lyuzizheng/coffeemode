@@ -78,6 +78,28 @@ while IFS= read -r line; do
   fi
 done <<< "$ROWS"
 
+echo "Checking READY slices have all dependencies COMPLETE..."
+while IFS= read -r line; do
+  [ -z "$line" ] && continue
+  status=$(echo "$line" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $4); print $4}')
+  if [ "$status" = "READY" ] || [ "$status" = "IN-PROGRESS" ]; then
+    deps=$(echo "$line" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $6); print $6}')
+    [ -z "$deps" ] && continue
+    echo "$deps" | grep -qE '^(—|-|none)$' && continue
+    for dep in $(echo "$deps" | tr ',' ' '); do
+      dep=$(echo "$dep" | xargs | tr -d '`')
+      [ -z "$dep" ] && continue
+      [ "$dep" = "—" ] && continue
+      dep_status=$(echo "$ROWS" | grep "$dep" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $4); print $4}' | head -1)
+      if [ "$dep_status" != "COMPLETE" ] && [ "$dep_status" != "COMPLETED" ]; then
+        slice_id=$(echo "$line" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $2); gsub(/`/, "", $2); print $2}')
+        echo "  Slice '$slice_id' is $status but dependency '$dep' is '$dep_status' (must be COMPLETE)"
+        fail=1
+      fi
+    done
+  fi
+done <<< "$ROWS"
+
 echo "Checking COMPLETE slices have no active blockers..."
 while IFS= read -r line; do
   [ -z "$line" ] && continue

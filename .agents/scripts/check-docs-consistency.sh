@@ -62,12 +62,18 @@ echo "Checking spec files have canonical headings..."
 for spec in docs/specs/[0-9]*.md; do
   [ -f "$spec" ] || continue
   NAME=$(basename "$spec")
-  for heading in "## Goal" "## Stable decisions" "## Acceptance criteria"; do
-    if ! grep -q "$heading" "$spec" && ! grep -q "## Tests / acceptance criteria" "$spec"; then
+  # Goal and Stable decisions are always required independently
+  for heading in "## Goal" "## Stable decisions"; do
+    if ! grep -q "$heading" "$spec"; then
       echo "$NAME missing heading: $heading"
       fail=1
     fi
   done
+  # Acceptance criteria: either spelling is acceptable
+  if ! grep -q "## Acceptance criteria" "$spec" && ! grep -q "## Tests / acceptance criteria" "$spec"; then
+    echo "$NAME missing heading: ## Acceptance criteria (or ## Tests / acceptance criteria)"
+    fail=1
+  fi
 done
 
 echo "Checking every spec is indexed in README..."

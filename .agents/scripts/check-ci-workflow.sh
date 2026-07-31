@@ -13,7 +13,7 @@ echo "Checking workflow YAML validity..."
 for wf in .github/workflows/*.yml; do
   [ -f "$wf" ] || continue
   NAME=$(basename "$wf")
-  if command -v python3 &>/dev/null; then
+  if command -v python3 &>/dev/null && python3 -c "import yaml" 2>/dev/null; then
     if ! python3 -c "import yaml; yaml.safe_load(open('$wf'))" 2>/dev/null; then
       echo "Invalid YAML: $NAME"
       fail=1

@@ -7,12 +7,12 @@ Machine-checked implementation plan. Each slice maps to required specs, dependen
 | ID | Title | Status | Specs | Dependencies | Test gates | Outcome |
 | --- | --- | --- | --- | --- | --- | --- |
 | `scaffold-nextjs` | Initialize Next.js workspace | READY | 0001 | — | typecheck, build | Next.js dev server runs |
-| `design-tokens` | Migrate design system tokens | READY | 0002 | scaffold-nextjs | typecheck, build, visual | New palette in globals.css |
-| `home-page` | Map + header + carousel | READY | 0001, 0002 | scaffold-nextjs, design-tokens | typecheck, build, e2e | Home page renders map |
-| `api-routes` | BFF proxy routes | READY | 0001 | scaffold-nextjs | typecheck, unit, build | API routes proxy to backend |
+| `design-tokens` | Migrate design system tokens | BLOCKED | 0002 | scaffold-nextjs | typecheck, build, visual | New palette in globals.css |
+| `home-page` | Map + header + carousel | BLOCKED | 0001, 0002 | scaffold-nextjs, design-tokens | typecheck, build, e2e | Home page renders map |
+| `api-routes` | BFF proxy routes | BLOCKED | 0001 | scaffold-nextjs | typecheck, unit, build | API routes proxy to backend |
 | `cafe-detail` | Cafe detail page (SSR) | BLOCKED | 0001, 0002 | home-page, api-routes | typecheck, build, e2e | SSR detail page works |
 | `explore-page` | Search and filter | BLOCKED | 0001, 0002 | home-page, api-routes | typecheck, build, e2e | Search returns results |
-| `ci-setup` | CI workflows + preflight | READY | 0003 | scaffold-nextjs | preflight | CI gates pass on PR |
+| `ci-setup` | CI workflows + preflight | BLOCKED | 0003 | scaffold-nextjs | preflight | CI gates pass on PR |
 | `cleanup` | Remove old frontend | BLOCKED | 0001 | cafe-detail, explore-page, ci-setup | build, e2e | Old code removed |
 
 ## Status vocabulary

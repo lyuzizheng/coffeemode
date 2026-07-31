@@ -1,0 +1,32 @@
+name: Docs harness
+
+on:
+  pull_request:
+    paths:
+      - AGENTS.md
+      - .agents/**
+      - docs/**
+      - .github/workflows/docs-harness.yml
+  push:
+    branches:
+      - main
+    paths:
+      - AGENTS.md
+      - .agents/**
+      - docs/**
+      - .github/workflows/docs-harness.yml
+
+permissions:
+  contents: read
+
+jobs:
+  docs-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preflight (all deterministic gates)
+        run: .agents/scripts/preflight.sh
+
+      - name: Harness self-test (fault injection)
+        run: .agents/scripts/harness-self-test.sh

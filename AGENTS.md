@@ -1,0 +1,28 @@
+# CoffeeMode Agent Entry Point
+
+This file is the tool-neutral entry point for coding agents working in this repository.
+
+1. Run `.agents/scripts/preflight.sh` — the master deterministic gate.
+2. Follow `docs/agent/reading-order.md` for canonical reading order.
+3. Route by intent via `.agents/ROUTER.md`.
+4. After any docs/harness change, run the full gate again.
+5. For docs changes, generate a review packet: `.agents/scripts/docs-review-packet.sh <base>`.
+6. An independent reviewer applies `.agents/docs-semantic-review.md` to the packet.
+
+## Harness scripts
+
+| Script | Purpose |
+| --- | --- |
+| `.agents/scripts/preflight.sh` | Master gate: structural + all sub-checks |
+| `.agents/scripts/check-docs-consistency.sh` | Doc alignment, whitespace, ADR status, authority separation |
+| `.agents/scripts/check-ci-workflow.sh` | CI YAML validity, required gates, action versions |
+| `.agents/scripts/check-implementation-slices.sh` | Slice manifest: specs exist, statuses valid, deps resolve |
+| `.agents/scripts/docs-review-packet.sh` | Generate self-contained packet for semantic review |
+| `.agents/scripts/harness-self-test.sh` | Fault-injection self-test of all gates |
+
+## Rules
+
+- Never bypass a failing gate. Fix the root cause.
+- Specs are the source of truth for product decisions.
+- `docs/agent/current-state.md` is the single source for phase/priority.
+- The harness must not own product priorities or decisions.

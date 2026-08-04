@@ -242,6 +242,24 @@ When assisting with development on this codebase:
 7. **Utilities:** Utilize existing helper functions in `src/lib/utils.ts` or other utility modules where appropriate (e.g., `cn` for class names).
 8. **Shadcn UI:** Prefer using or customizing Shadcn UI components over building primitive elements from scratch unless there's a specific need.
 
+## 17. New Components & Services (Create Cafe Flow)
+
+Files added to support the new create cafe modal using the backend `POST /api/google-maps/resolve` API:
+
+- `src/components/layout/CreateCafeModal.tsx`: Dialog focused solely on pasting a Google Maps link to resolve and auto-create. Manual creation UI and logic have been removed. Uses Shadcn Dialog primitives for accessibility and consistency, and integrates `useLinkPreview` for metadata preview.
+- `src/components/ui/dialog.tsx`: Shadcn Dialog primitives (`Dialog`, `DialogContent`, `DialogHeader`, `DialogTitle`, `DialogDescription`, etc.). Replaces the previous custom modal implementation.
+ - `src/hooks/googleMaps/useGoogleMapsApi.ts`: Provides `resolvePlace` and `useResolvePlaceQuery` using Tanstack Query for resolving Google Maps links. Aligns `ResolvePlaceResponseDto.cafe` to the richer `Cafe` type (`src/types/cafe.ts`) consistent with backend `ResolvePlaceResponse`.
+ - Removed `src/types/cafeApi.ts` as redundant; direct-create flow via cafes API has been eliminated.
+- `src/components/layout/AddPlaceButton.tsx`: Updated to open `CreateCafeModal` on click.
+- `src/services/googleMaps.ts`: Client hook and types for calling `/api/google-maps/resolve` with heuristics to extract title from a pasted Google Maps URL.
+- `src/services/cafes.ts`: Client hook for `POST /api/cafes` (manual creation previously used) — currently not used by the modal after manual flow removal.
+
+Notes:
+- Uses `@tanstack/react-query` mutations for API calls with success/error messaging.
+- Leverages existing `ConfigProvider` for `apiUrl` and the shared Axios instance in `src/services/api.ts`.
+- The modal uses `useLinkPreview` (Microlink) to derive `title/description` and falls back to a regex extractor from URL; then calls `/api/google-maps/resolve`.
+
+
 ## 16. Map Implementation
 
 The application utilizes a map abstraction layer to display and interact with maps. It currently supports Google Maps and OpenFreeMap providers, managed through the `UnifiedMapContainer`.

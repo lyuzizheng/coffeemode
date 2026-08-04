@@ -26,7 +26,7 @@ public class MongoConfig {
 
             // cafes: unique index on externalReferences.googlePlace (one cafe per placeId)
             mongoTemplate.indexOps("cafes")
-                    .ensureIndex(new Index().on("externalReferences.googlePlace", Sort.Direction.ASC).unique());
+            .ensureIndex(new Index().on("externalReferences.googlePlace", Sort.Direction.ASC).unique().sparse());
 
             // google_place_poi: unique index on placeId for cache lookup
             mongoTemplate.indexOps("google_place_poi")

@@ -23,7 +23,6 @@ public class GooglePlacesClient {
     private final PlacesClient placesTextClient;
     private final PlacesClient placesDetailsClient;
 
-    @Autowired
     public GooglePlacesClient(
             @Qualifier("placesTextClient") PlacesClient placesTextClient,
             @Qualifier("placesDetailsClient") PlacesClient placesDetailsClient) {

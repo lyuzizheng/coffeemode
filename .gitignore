@@ -14,6 +14,7 @@
 ./coffeemode_backend/bin
 ./coffeemode_backend/.gradle
 ./coffeemode_backend/build
+./coffeemode_backend/src/main/resources/serviceAccountKey.json
 
 
 ./coffeemode-frontend/.idea

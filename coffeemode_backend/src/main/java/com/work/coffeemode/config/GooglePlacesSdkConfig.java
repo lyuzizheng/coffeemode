@@ -17,7 +17,7 @@ import java.util.Map;
 @Configuration
 public class GooglePlacesSdkConfig {
 
-    @Value("${GOOGLE_MAPS_API_KEY:${google.maps.api.key:}}")
+    @Value("${google.maps.api.key}")
     private String googleApiKey;
 
     private PlacesSettings buildSettingsWithHeaders(Map<String, String> headers) throws IOException {
@@ -30,7 +30,7 @@ public class GooglePlacesSdkConfig {
 
     @Bean
     @Qualifier("placesTextClient")
-    public PlacesClient placesTextClient() throws IOException {
+    PlacesClient placesTextClient() throws IOException {
         if (googleApiKey == null || googleApiKey.isBlank()) {
             throw new RuntimeException(
                     "Google Maps API key is not configured (env GOOGLE_MAPS_API_KEY or property google.maps.api.key)");
@@ -44,7 +44,7 @@ public class GooglePlacesSdkConfig {
 
     @Bean
     @Qualifier("placesDetailsClient")
-    public PlacesClient placesDetailsClient() throws IOException {
+    PlacesClient placesDetailsClient() throws IOException {
         if (googleApiKey == null || googleApiKey.isBlank()) {
             throw new RuntimeException(
                     "Google Maps API key is not configured (env GOOGLE_MAPS_API_KEY or property google.maps.api.key)");

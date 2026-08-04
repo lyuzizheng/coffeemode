@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { LinkPreviewResult } from '../types/linkPreview';
-import { unfurlLink } from '../services/linkPreview';
+import { useEffect, useState } from "react";
+import { unfurlLink } from "../services/linkPreview";
+import { LinkPreviewResult } from "../types/linkPreview";
 
 export function useLinkPreview(url: string | null) {
   const [data, setData] = useState<LinkPreviewResult | null>(null);
@@ -22,8 +22,9 @@ export function useLinkPreview(url: string | null) {
       try {
         const res = await unfurlLink(url);
         if (!cancelled) setData(res);
-      } catch (e: any) {
-        if (!cancelled) setError(e);
+      } catch (e) {
+        const err = e instanceof Error ? e : new Error("Failed to unfurl link");
+        if (!cancelled) setError(err);
       } finally {
         if (!cancelled) setLoading(false);
       }

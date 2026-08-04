@@ -1,0 +1,27 @@
+/* CoffeeMode global styles — scaffold stage.
+ * Tailwind v4 + HeroUI v3 styles. Full CoffeeMode token override lives in
+ * the design-tokens slice (docs/agent/implementation-slices.md).
+ */
+@import "tailwindcss";
+@import "@heroui/styles";
+
+:root {
+  --cm-background: oklch(98% 0.003 85);
+  --cm-foreground: oklch(20% 0.02 55);
+}
+
+.dark {
+  --cm-background: oklch(15% 0.012 55);
+  --cm-foreground: oklch(93% 0.008 75);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--cm-background);
+  color: var(--cm-foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}

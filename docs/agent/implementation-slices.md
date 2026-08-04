@@ -6,9 +6,9 @@ Machine-checked implementation plan derived from `docs/specs/0001-nextjs-migrati
 
 | ID | Title | Status | Specs | Dependencies | Active blockers | Test gates | Outcome |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| scaffold-nextjs | Initialize Next.js workspace in web/ | READY | 0001, 0002 | none | none | typecheck, build | Next.js dev server and production build run in web/ |
-| design-tokens | Design tokens, theme, dark mode | BLOCKED | 0002 | scaffold-nextjs | none | typecheck, build, visual | 2026 token set in globals.css, dark mode works |
-| auth-foundation | Supabase OAuth + profiles + Neon helpers | BLOCKED | 0001 | scaffold-nextjs | none | typecheck, unit, build | Apple/Google OAuth round-trip, profiles upsert, Neon pool |
+| scaffold-nextjs | Initialize Next.js workspace in web/ | COMPLETE | 0001, 0002 | none | none | typecheck, build | Next.js dev server and production build run in web/ |
+| design-tokens | Design tokens, theme, dark mode | READY | 0002 | scaffold-nextjs | none | typecheck, build, visual | 2026 token set in globals.css, dark mode works |
+| auth-foundation | Supabase OAuth + profiles + Neon helpers | READY | 0001 | scaffold-nextjs | none | typecheck, unit, build | Apple/Google OAuth round-trip, profiles upsert, Neon pool |
 | map-home | Apple MapKit home map | BLOCKED | 0001, 0002 | scaffold-nextjs, design-tokens | Apple Developer Program account (MapKit JS token) | typecheck, build, e2e | Full-screen map, custom markers, clustering, dark scheme, geolocation |
 | poi-cache-service | POI cache service (Workers + D1 + KV) | READY | 0001 | none | none | unit, deploy | Google/Apple POI resolve, cache, and distance search; Google Places key lives only in this service |
 | discovery-sheet | Bottom sheet + swipe cards + URL sync | BLOCKED | 0001, 0002 | map-home | none | typecheck, build, e2e | PEEK/HALF/FULL sheet with horizontal cards, back-button-safe URL sync |

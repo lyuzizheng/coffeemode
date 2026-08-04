@@ -13,8 +13,14 @@ export default async function HomePage() {
   let user = null;
   if (isAuthConfigured()) {
     const supabase = await createSupabaseServerClient();
-    const { data } = await supabase.auth.getUser();
-    user = data.user;
+    try {
+      const { data } = await supabase.auth.getUser();
+      user = data.user;
+    } catch {
+      // Supabase unreachable: degrade to the signed-out view instead of
+      // turning the whole page into a 500 (availability > session display).
+      user = null;
+    }
   }
 
   return (

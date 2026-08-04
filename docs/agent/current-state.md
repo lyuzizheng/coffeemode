@@ -40,5 +40,6 @@ coffeemode_backend/      old Java app — being dropped
 - NEXT_PUBLIC_SUPABASE_ANON_KEY not set (only URL + service-role present locally)
 - DATABASE_URL (Neon) not configured anywhere
 - Supabase dashboard still needs Apple/Google OAuth provider config
+- Session-refresh middleware needed when first protected route lands (auth slice review F5)
 - Apple Developer Program purchase pending (needed for MapKit JS)
 ```

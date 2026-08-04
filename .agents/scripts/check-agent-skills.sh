@@ -44,7 +44,7 @@ for skill in .agents/skills/*/SKILL.md; do
     fail=1
   fi
 
-  if ! rg -q '^# ' "$skill"; then
+  if ! grep -q '^# ' "$skill"; then
     echo "Skill body must contain a title: $skill"
     fail=1
   fi

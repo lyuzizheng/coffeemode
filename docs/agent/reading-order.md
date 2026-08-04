@@ -20,10 +20,12 @@ Do not read all specs for one coding task.
 
 ```text
 1. Select a slice from docs/agent/implementation-slices.md
-2. Read only the specs listed for that slice
-3. Obey the slice status: BLOCKED, READY, or COMPLETE
+2. Generate .agents/scripts/context-for-slice.sh <slice-id>
+3. Obey the readiness gate: STOP blocks coding, READY permits it
 4. Give implementation, testing, and review the same slice ID
 ```
+
+Every session also follows `docs/agent/iteration-protocol.md`.
 
 ## Completion gate
 

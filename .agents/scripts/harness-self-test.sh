@@ -2,7 +2,7 @@
 # Harness self-test: copies the harness into a temp dir, injects faults,
 # and verifies each check script detects them.
 # Adapted from CanCan's harness-self-test.sh — same philosophy, fewer
-# fault cases (coffeemode has no .codex agents, no fixtures-private).
+# fault cases (coffeemode has no fixtures-private).
 set -euo pipefail
 
 ROOT="${COFFEEMODE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
@@ -12,7 +12,7 @@ TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/coffeemode-harness.XXXXXX")"
 trap 'rm -rf "$TEST_ROOT"' EXIT
 
 # Copy harness-relevant files
-cp -R docs .agents .github AGENTS.md "$TEST_ROOT/" 2>/dev/null || true
+cp -R docs .agents .github .codex AGENTS.md "$TEST_ROOT/" 2>/dev/null || true
 # Ensure git context for diff-based checks
 (
   cd "$TEST_ROOT"
@@ -55,6 +55,9 @@ expect_pass "preflight" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scr
 expect_pass "check-docs-consistency" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-docs-consistency.sh"
 expect_pass "check-ci-workflow" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-workflow.sh"
 expect_pass "check-implementation-slices" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-implementation-slices.sh"
+expect_pass "check-links" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-links.sh"
+expect_pass "check-agent-skills" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-agent-skills.sh"
+expect_pass "check-codex-agents" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-codex-agents.sh"
 
 echo ""
 echo "=== Fault injection: preflight ==="
@@ -117,6 +120,67 @@ cp "$MANIFEST" "$MANIFEST.bak"
 sed 's/| READY |/| UNKNOWN |/' "$MANIFEST.bak" > "$MANIFEST"
 expect_failure "invalid slice status" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-implementation-slices.sh"
 mv "$MANIFEST.bak" "$MANIFEST"
+
+# READY slice with an active blocker
+cp "$MANIFEST" "$MANIFEST.bak"
+awk '/^\| scaffold-nextjs / { print "| scaffold-nextjs | Initialize Next.js workspace in web/ | READY | 0001, 0002 | none | missing MapKit key | typecheck, build | Next.js dev server and production build run in web/ |"; next } { print }' "$MANIFEST.bak" > "$MANIFEST"
+if diff -q "$MANIFEST.bak" "$MANIFEST" >/dev/null 2>&1; then
+  # sed anchor missed; fail loudly rather than test nothing
+  echo "  UNEXPECTED PASS: READY-with-blocker fault did not modify manifest"
+  FAIL=$((FAIL + 1))
+else
+  expect_failure "READY slice with active blocker" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-implementation-slices.sh"
+fi
+mv "$MANIFEST.bak" "$MANIFEST"
+
+echo ""
+echo "=== Fault injection: check-links ==="
+
+# Inject a dangling local markdown link
+PROBE_DOC="$TEST_ROOT/docs/adr/0001-nextjs-fullstack-rewrite.md"
+cp "$PROBE_DOC" "$PROBE_DOC.bak"
+printf '\nSee [missing doc](../agent/does-not-exist.md).\n' >> "$PROBE_DOC"
+expect_failure "dangling markdown link" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-links.sh"
+mv "$PROBE_DOC.bak" "$PROBE_DOC"
+
+echo ""
+echo "=== Fault injection: check-agent-skills ==="
+
+# Skill with missing frontmatter
+PROBE_SKILL="$TEST_ROOT/.agents/skills/broken-skill/SKILL.md"
+mkdir -p "$(dirname "$PROBE_SKILL")"
+printf '# No frontmatter here\n' > "$PROBE_SKILL"
+expect_failure "skill missing frontmatter" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-agent-skills.sh"
+rm -rf "$TEST_ROOT/.agents/skills/broken-skill"
+
+# Skill name not matching directory
+PROBE_SKILL2_DIR="$TEST_ROOT/.agents/skills/wrong-name-dir"
+mkdir -p "$PROBE_SKILL2_DIR"
+cat > "$PROBE_SKILL2_DIR/SKILL.md" <<'EOF'
+---
+name: different-name
+description: Trigger probe for harness self-test. Use when testing.
+---
+
+# Probe
+EOF
+expect_failure "skill name/directory mismatch" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-agent-skills.sh"
+rm -rf "$PROBE_SKILL2_DIR"
+
+echo ""
+echo "=== Fault injection: check-codex-agents ==="
+
+# Break a codex agent TOML (invalid sandbox mode; implementer has no sandbox key by design)
+TOML="$TEST_ROOT/.codex/agents/tester.toml"
+cp "$TOML" "$TOML.bak"
+sed 's/^sandbox_mode = .*/sandbox_mode = "everything"/' "$TOML.bak" > "$TOML"
+expect_failure "invalid sandbox mode" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-codex-agents.sh"
+mv "$TOML.bak" "$TOML"
+
+# Missing required agent file
+mv "$TEST_ROOT/.codex/agents/reviewer.toml" "$TEST_ROOT/.codex/agents/reviewer.toml.bak"
+expect_failure "missing reviewer.toml" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-codex-agents.sh"
+mv "$TEST_ROOT/.codex/agents/reviewer.toml.bak" "$TEST_ROOT/.codex/agents/reviewer.toml"
 
 echo ""
 echo "=== Fault injection: shell syntax ==="

@@ -16,8 +16,13 @@ This file is the tool-neutral entry point for coding agents working in this repo
 | `.agents/scripts/preflight.sh` | Master gate: structural + all sub-checks |
 | `.agents/scripts/check-docs-consistency.sh` | Doc alignment, whitespace, ADR status, authority separation |
 | `.agents/scripts/check-ci-workflow.sh` | CI YAML validity, required gates, action versions |
-| `.agents/scripts/check-implementation-slices.sh` | Slice manifest: specs exist, statuses valid, deps resolve |
+| `.agents/scripts/check-implementation-slices.sh` | Slice manifest via the ruby validator |
+| `.agents/scripts/check-links.sh` | Local markdown links resolve |
+| `.agents/scripts/check-agent-skills.sh` | Skill frontmatter, naming, trigger phrase |
+| `.agents/scripts/check-codex-agents.sh` | `.codex/` TOML shape and required values |
+| `.agents/scripts/context-for-slice.sh` | Minimal canonical source index + readiness gate for one slice |
 | `.agents/scripts/docs-review-packet.sh` | Generate self-contained packet for semantic review |
+| `.agents/scripts/implementation-review-packet.sh` | Pinned base/head/fingerprint packet for code review |
 | `.agents/scripts/harness-self-test.sh` | Fault-injection self-test of all gates |
 
 ## Rules

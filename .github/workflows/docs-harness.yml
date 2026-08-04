@@ -5,6 +5,7 @@ on:
     paths:
       - AGENTS.md
       - .agents/**
+      - .codex/**
       - docs/**
       - .github/workflows/docs-harness.yml
   push:
@@ -13,6 +14,7 @@ on:
     paths:
       - AGENTS.md
       - .agents/**
+      - .codex/**
       - docs/**
       - .github/workflows/docs-harness.yml
 

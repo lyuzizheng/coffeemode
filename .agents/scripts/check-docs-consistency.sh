@@ -39,6 +39,7 @@ done < <(grep -rn -oE '`(docs|[.]agents)/[^`]+\.(md|sh)`' AGENTS.md docs .agents
 echo "Checking ADR statuses..."
 if ls docs/adr/*.md &>/dev/null; then
   for adr in docs/adr/*.md; do
+    [ "$(basename "$adr")" = "README.md" ] && continue
     status="$(awk '/^## Status$/{getline; while ($0 == "") getline; print; exit}' "$adr")"
     case "$status" in
       Proposed|Accepted|Superseded|Deprecated|Rejected) ;;

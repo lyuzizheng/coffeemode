@@ -1,0 +1,16 @@
+{
+  "app": {
+    "name": "CoffeeMode",
+    "tagline": "找到最适合办公的咖啡店",
+    "scores": {
+      "experience": "体验感",
+      "composite": "办公指数"
+    }
+  },
+  "home": {
+    "hero_title": "在好咖啡店里办公",
+    "hero_subtitle": "来自数字游民的真实 wifi、插座、座位情报——不靠感觉。",
+    "cta_search": "搜索咖啡店",
+    "search_placeholder": "搜索附近的咖啡店"
+  }
+}

@@ -3,13 +3,13 @@ name: Application
 on:
   pull_request:
     paths:
-      - coffeemode-frontend/**
+      - web/**
       - .github/workflows/application.yml
   push:
     branches:
       - main
     paths:
-      - coffeemode-frontend/**
+      - web/**
       - .github/workflows/application.yml
 
 concurrency:
@@ -21,7 +21,7 @@ permissions:
 
 defaults:
   run:
-    working-directory: coffeemode-frontend
+    working-directory: web
 
 jobs:
   application-gate:
@@ -29,24 +29,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: coffeemode-frontend/pnpm-lock.yaml
+          cache: npm
+          cache-dependency-path: web/package-lock.json
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Typecheck
-        run: pnpm run typecheck || npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Lint
-        run: pnpm run lint || true
+        run: npm run lint
 
       - name: Build
-        run: pnpm run build
+        run: npm run build

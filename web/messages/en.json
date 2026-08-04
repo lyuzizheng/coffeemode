@@ -1,0 +1,16 @@
+{
+  "app": {
+    "name": "CoffeeMode",
+    "tagline": "Find the perfect cafe to work from",
+    "scores": {
+      "experience": "Experience",
+      "composite": "Work score"
+    }
+  },
+  "home": {
+    "hero_title": "Work from great cafes",
+    "hero_subtitle": "Real wifi, outlet, and seat intel from nomads — not vibes.",
+    "cta_search": "Search cafes",
+    "search_placeholder": "Search cafes near you"
+  }
+}

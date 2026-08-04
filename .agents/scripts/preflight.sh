@@ -25,9 +25,31 @@ echo "CoffeeMode preflight"
 echo "===================="
 echo ""
 
-# 1. Structural checks (files exist, specs indexed, links resolve)
+# 1. Structural checks (required harness/docs files exist)
 echo "--- structural ---"
-for f in AGENTS.md docs/STRUCTURE.md docs/specs/README.md docs/agent/current-state.md docs/agent/implementation-slices.md .agents/ROUTER.md; do
+REQUIRED=(
+  "AGENTS.md"
+  "docs/README.md"
+  "docs/STRUCTURE.md"
+  "docs/specs/README.md"
+  "docs/adr/README.md"
+  "docs/agent/current-state.md"
+  "docs/agent/reading-order.md"
+  "docs/agent/iteration-protocol.md"
+  "docs/agent/implementation-slices.md"
+  "docs/alignment-temp/alignment-progress.md"
+  ".agents/README.md"
+  ".agents/ROUTER.md"
+  ".agents/docs-semantic-review.md"
+  ".codex/config.toml"
+  ".codex/agents/explorer.toml"
+  ".codex/agents/implementer.toml"
+  ".codex/agents/reviewer.toml"
+  ".codex/agents/tester.toml"
+  ".github/workflows/docs-harness.yml"
+  ".github/workflows/application.yml"
+)
+for f in "${REQUIRED[@]}"; do
   if [[ -f "$ROOT/$f" ]]; then
     echo "  ok: $f"
   else
@@ -47,6 +69,17 @@ for script in "$SCRIPTS_DIR"/*.sh; do
   fi
 done
 
+# Ruby scripts parse
+for script in "$SCRIPTS_DIR"/*.rb; do
+  [[ -f "$script" ]] || continue
+  if ruby -c "$script" >/dev/null 2>&1; then
+    echo "  ok: $(basename "$script") parses"
+  else
+    echo "  FAIL: $(basename "$script") syntax error"
+    ERRORS=$((ERRORS + 1))
+  fi
+done
+
 # Spec numbers unique
 SPEC_NUMS=$(grep -ohE '^# [0-9]{4}\.' docs/specs/[0-9]*.md 2>/dev/null | grep -oE '[0-9]{4}' | sort || true)
 DUPES=$(echo "$SPEC_NUMS" | uniq -d)
@@ -56,28 +89,6 @@ else
   echo "  FAIL: duplicate spec numbers: $DUPES"
   ERRORS=$((ERRORS + 1))
 fi
-
-# Local markdown links resolve
-BROKEN=0
-while IFS= read -r line; do
-  FILE=$(echo "$line" | cut -d: -f1)
-  LINK=$(echo "$line" | grep -oE '\]\([^)]+\)' | head -1 | sed 's/\](\(.*\))/\1/')
-  [[ "$LINK" == http* ]] && continue
-  [[ "$LINK" == \#* ]] && continue
-  DIR=$(dirname "$FILE")
-  TARGET="$DIR/$LINK"
-  TARGET="${TARGET%%#*}"
-  [[ -z "$TARGET" ]] && continue
-  if [[ ! -e "$TARGET" ]]; then
-    echo "  FAIL: broken link in $(basename "$FILE"): $LINK"
-    BROKEN=$((BROKEN + 1))
-  fi
-done < <(grep -rn '](\.\/' docs/ AGENTS.md .agents/ 2>/dev/null || true)
-if [[ $BROKEN -eq 0 ]]; then
-  echo "  ok: local links resolve"
-else
-  ERRORS=$((ERRORS + BROKEN))
-fi
 echo ""
 
 # 2. Doc consistency
@@ -86,8 +97,17 @@ run_gate "doc-consistency" "$SCRIPTS_DIR/check-docs-consistency.sh"
 # 3. CI workflow structure
 run_gate "ci-workflow" "$SCRIPTS_DIR/check-ci-workflow.sh"
 
-# 4. Implementation slices
+# 4. Implementation slices (ruby validator)
 run_gate "implementation-slices" "$SCRIPTS_DIR/check-implementation-slices.sh"
+
+# 5. Markdown local links
+run_gate "markdown-links" "$SCRIPTS_DIR/check-links.sh"
+
+# 6. Repo-local agent skills
+run_gate "agent-skills" "$SCRIPTS_DIR/check-agent-skills.sh"
+
+# 7. Codex agent configuration
+run_gate "codex-agents" "$SCRIPTS_DIR/check-codex-agents.sh"
 
 # Summary
 echo "===================="

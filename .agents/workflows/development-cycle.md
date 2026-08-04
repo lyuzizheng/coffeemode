@@ -6,9 +6,9 @@ Use this workflow for any non-trivial coding or documentation task.
 
 1. Run `.agents/scripts/preflight.sh` — must pass before starting.
 2. Route the prompt with `.agents/ROUTER.md`.
-3. For app work, read the relevant spec from `docs/specs/`.
-4. Read `docs/agent/current-state.md` and `docs/agent/implementation-slices.md`.
-5. Implement the change.
+3. For app work, select a slice from `docs/agent/implementation-slices.md` and generate `.agents/scripts/context-for-slice.sh <slice-id>`. Obey the readiness gate: `STOP` blocks coding; `READY` permits implementation; `COMPLETE` means verify, not re-implement.
+4. Read `docs/agent/current-state.md` and the specs listed in the slice context.
+5. Implement the change (one production-code writer per slice).
 6. Run `.agents/scripts/preflight.sh` again — must pass after changes.
 7. If docs/harness files changed:
    a. Generate packet: `.agents/scripts/docs-review-packet.sh <base>`

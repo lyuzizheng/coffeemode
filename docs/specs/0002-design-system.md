@@ -2,202 +2,228 @@
 
 ## Goal
 
-Define CoffeeMode's visual design direction for 2026: a modern, warm-yet-precise cafe discovery experience that feels crafted, not template-generated. Replace the current generic Shadcn defaults with a distinctive identity.
+Define CoffeeMode's visual identity for 2026: modern, restrained, elegant. The coworking review platform for digital nomads — it must feel designed by someone with taste, not a template, not retro, not generic, and absolutely not vibe-coded. Built on HeroUI v3 + Tailwind v4 + Framer Motion. All copy internationalized (next-intl, en + zh) from day one.
 
 ## Status
 
-Accepted
+Accepted (revised 2026-08-02 — supersedes retro/vintage direction; aligned with bottom-sheet SPA, swipe cards, slider check-in)
 
 ## Stable decisions
 
-### Design personality
-
-Keywords:
-
 ```text
-warm but not nostalgic
-modern but not trend-led
-spatial and map-native
-inviting and sensory
-precise but not corporate
-community-driven
-coffee-culture aware
+- HeroUI v3 + Tailwind v4 + Framer Motion
+- next-intl from day one (en primary, zh secondary)
+- Map-native SPA: bottom sheet (peek/half/full) + horizontal swipe cards
+- All scoring = subjective 0-100 sliders; Work Profile bars are the visual hero
+- Anti-vibe-coding: no confetti, no purple gradients, no glass-panel AI-slop
 ```
 
-CoffeeMode should feel like a beautifully curated city guide written by someone who actually works from cafes — not a generic maps app, not a Yelp clone, not a Material Design template, not a vibe-coded AI product.
-
-## Anti-template guardrails
-
-CoffeeMode must explicitly avoid:
+## Design personality
 
 ```text
+modern, not retro
+restrained, not flashy
+elegant animation, not bouncy
+color-confident, not muted
+2026 designer sensibility
+map-native, spatial thinking
+coffee-aware without being kitsch
+```
+
+CoffeeMode should feel like a beautifully designed city guide by a studio that also does brand identity — precise typography, confident color, purposeful motion. Not a "coffee theme" with bean icons and kraft paper textures.
+
+## Anti-patterns (explicitly avoid)
+
+```text
+Retro/vintage coffee:
+  kraft paper textures, bean icons, chalkboard fonts,
+  sepia tones, "artisanal" hand-drawn elements,
+  warm-beige-everything, nostalgic serif overload
+
 Material Design defaults:
-  generic elevation, ripples, floating action buttons without context,
-  standard card grids, default Roboto typography
+  generic elevation, ripples, standard card grids,
+  default Roboto, floating action buttons without context
 
 2024-2026 vibe-coded AI UI:
   purple-blue gradients, glass panels, glowing orbs,
-  sparkle decoration, ubiquitous pills, repeated uppercase eyebrows,
-  oversized rounded cards, generic card grids
+  sparkle decoration, ubiquitous pills, uppercase eyebrows,
+  oversized rounded cards
 
-Generic SaaS dashboard:
-  sidebar + table layout, admin-console feel,
+Generic SaaS:
+  sidebar + table, admin-console feel,
   cold blue-gray palettes, corporate stock imagery
 ```
 
-## Theme direction
-
-CoffeeMode uses a warm-neutral base with coffee-inspired accents and strong spatial/map awareness.
-
-Physical scene:
+## Component library — HeroUI v3
 
 ```text
-A person opens CoffeeMode on their phone or laptop in a cafe,
-looking for their next work spot. The interface feels like
-a well-designed field guide — warm, tactile, informative,
-with map-native spatial thinking built into every surface.
+Library: @heroui/react 3.2+ (formerly NextUI)
+Styling: Tailwind CSS v4 (@plugin integration)
+Animation: Framer Motion (built-in, tuned springs)
+Dark mode: semantic tokens + next-themes (class strategy)
+A11y: React Aria under the hood
 ```
 
-Structure:
+### Why HeroUI over Shadcn
 
 ```text
-Warm paper/cream base for content surfaces (not the AI-default beige)
-Deep espresso for text and navigation chrome
-Caramel/amber for primary actions and highlights
-Sage green for positive states (open, available, good wifi)
-Terracotta for warnings and attention
-Map-native: the map IS the interface, not a background
+- Built-in Framer Motion animation (tuned, restrained springs)
+- Drawer component = slide-over panels (native, no DIY)
+- Autocomplete with virtualizer (cafe search)
+- Cohesive design language out of the box
+- 11 brand themes prove customizability (Netflix, Spotify, Airbnb...)
+- Faster time-to-beautiful for a small team
 ```
 
-## Version-1 palette
+### Custom components (bespoke, on top of HeroUI)
 
 ```text
-color.base.paper        oklch(97.0% 0.008 85.0)   #F7F4EF  warm paper white
-color.base.surface      oklch(99.0% 0.004 85.0)   #FCFBF9  elevated surface
-color.base.warm         oklch(93.5% 0.015 75.0)   #EDE6DA  warm muted bg
-
-color.ink.espresso      oklch(22.0% 0.020 55.0)   #2C2118  primary text
-color.ink.mocha         oklch(42.0% 0.025 55.0)   #5C4A3A  secondary text
-color.ink.latte         oklch(62.0% 0.020 60.0)   #9A8672  muted text
-
-color.accent.caramel    oklch(58.0% 0.120 65.0)   #B87A3D  primary action
-color.accent.caramelDk  oklch(48.0% 0.110 60.0)   #8F5E2C  hover/active
-
-color.signal.sage       oklch(55.0% 0.080 155.0)  #4A8B62  positive/open
-color.signal.terracotta oklch(55.0% 0.120 40.0)   #B85A3A  warning/attention
-color.signal.clay       oklch(45.0% 0.100 25.0)   #8B3A2A  error/destructive
-
-color.map.water         oklch(88.0% 0.030 230.0)  #C8D8E4  map water
-color.map.park          oklch(88.0% 0.040 145.0)  #C4DEC8  map green space
-color.map.road          oklch(94.0% 0.005 85.0)   #F0EDE8  map roads
+MapCanvas:        MapKit JS full-screen map (client component)
+CafeMarker:       Coffee-cup marker (existing design) + open/closed status dot
+CafeCard:         Horizontal swipe card (~85% width, snap carousel)
+BottomSheet:      Google-Maps-style sheet, snap states peek / half / full
+WorkProfile:      Dimension bars (wifi/outlets/seats/temp/coffee) + policy consensus
+ScoreSlider:      0-100 subjective slider with live value (check-in + creation)
+PolicyChips:      min-spend / max-stay chip groups
+NavPrompt:        ClassPass-style "Did you visit?" slide-up card
+DeepLinkBanner:   Lightweight bottom banner for deep-link first visits
 ```
 
-Dark mode inverts to espresso-base with warm-light text:
+## Theme tokens
+
+### Color system
+
+HeroUI semantic tokens overridden with CoffeeMode palette. The palette is warm-neutral but confident — not muted, not beige.
 
 ```text
-color.base.paper    -> oklch(18.0% 0.015 55.0)   #241C14
-color.base.surface  -> oklch(22.0% 0.015 55.0)   #2E2419
-color.ink.espresso  -> oklch(92.0% 0.010 75.0)   #E8E0D4
-color.accent.caramel-> oklch(65.0% 0.110 65.0)   #C89050
+Light mode:
+  background:     oklch(98.0% 0.003 85)    near-white warm
+  foreground:     oklch(20.0% 0.020 55)    deep espresso ink
+  content1:       oklch(99.5% 0.002 85)    elevated surface
+  content2:       oklch(96.0% 0.008 80)    secondary surface
+  content3:       oklch(93.0% 0.012 75)    tertiary / hover
+  content4:       oklch(88.0% 0.015 70)    borders, dividers
+
+  primary:        oklch(55.0% 0.140 45)    burnt sienna / terracotta
+  primary-fg:     oklch(98.0% 0.005 85)    white on primary
+  secondary:      oklch(45.0% 0.080 155)   deep sage green
+  secondary-fg:   oklch(97.0% 0.005 155)   white on secondary
+
+  success:        oklch(55.0% 0.100 155)   sage green
+  warning:        oklch(65.0% 0.130 75)    amber
+  danger:         oklch(50.0% 0.150 25)    clay red
+
+Dark mode:
+  background:     oklch(15.0% 0.012 55)    deep espresso
+  foreground:     oklch(93.0% 0.008 75)    warm light
+  content1:       oklch(19.0% 0.012 55)    elevated
+  content2:       oklch(23.0% 0.012 55)    secondary
+  content3:       oklch(28.0% 0.012 55)    tertiary
+  content4:       oklch(35.0% 0.010 55)    borders
+
+  primary:        oklch(62.0% 0.130 50)    lighter terracotta
+  secondary:      oklch(55.0% 0.080 155)   lighter sage
 ```
 
-## Typography
+### Typography
 
 ```text
-UI hierarchy/body: "Instrument Sans" or "Inter" variable sans
-Display/headings:  "Fraunces" (optical sizing, warm serif character)
-Machine metadata:  "JetBrains Mono" or system mono for coordinates, hours
-Numbers:           tabular numerals for ratings, distances, counts
+UI/body:     "Inter" variable (or system-ui fallback)
+Display:     "Satoshi" or "Cabinet Grotesk" (geometric, modern)
+Mono:        "JetBrains Mono" (coordinates, hours, metadata)
 ```
 
 Rules:
 
 ```text
-- self-host font files; no runtime Google Fonts dependency
-- Fraunces for page titles and cafe names only — not body text
-- keep UI labels and body in the sans family
-- use tabular numerals for ratings, distances, review counts
-- fixed type scale, no giant marketing typography in-app
+- Self-host all fonts (no runtime Google Fonts)
+- Display font for page titles and cafe names only
+- Body and UI labels in Inter/system sans
+- Tabular numerals for ratings, distances, counts
+- Fixed type scale, no oversized marketing type in-app
 ```
 
 Type scale:
 
 ```text
-text.xs    0.72rem  metadata, coordinates, timestamps
-text.sm    0.80rem  secondary labels, tags
-text.base  0.88rem  default body and navigation
-text.md    1.00rem  card titles, list headings
-text.lg    1.20rem  section headings
-text.xl    1.50rem  page titles
-text.2xl   2.00rem  hero/display (landing only, not in-app)
+text-xs    0.75rem   metadata, coordinates, timestamps
+text-sm    0.8125rem secondary labels, tags
+text-base  0.875rem  default body, navigation
+text-md    1.0rem    card titles, list headings
+text-lg    1.25rem   section headings
+text-xl    1.5rem    page titles
+text-2xl   2.0rem    hero/display (landing only)
 ```
 
-## Spacing and radius
+### Spacing and radius
 
 ```text
-spacing.unit   4px base grid
-radius.sm      6px   tags, small buttons
-radius.md      10px  cards, inputs
-radius.lg      14px  modals, sheets
-radius.xl      20px  hero cards, map overlays
-radius.pill    only for true pill/tag controls
+spacing unit:  4px base grid
+radius-sm:     8px    tags, small buttons, chips
+radius-md:     12px   cards, inputs
+radius-lg:     16px   modals, drawers, sheets
+radius-xl:     24px   hero cards, map overlays (sparingly)
+radius-full:   only for true pill/avatar controls
 ```
 
-Prefer generous whitespace. Cafe cards should breathe. Map overlays should feel like they float above the map with purpose, not generic drop shadows.
+Generous whitespace. Cards breathe. Map overlays float with purpose.
 
-## Elevation and material
+### Elevation
 
 ```text
-Use borders and tonal separation before shadows.
-Map overlays: subtle backdrop-blur + warm shadow (not gray)
-Cards: 1px warm border + minimal shadow
-Sheets/modals: warm shadow-lg, no cold gray
+Prefer borders + tonal separation over shadows.
+Map overlays: backdrop-blur(12px) + subtle warm shadow
+Cards: 1px border (content4) + shadow-sm on hover
+Drawers/modals: shadow-lg, warm-tinted
 Avoid: broad decorative shadows, Material elevation stacks
 ```
 
 Shadow tokens:
 
 ```text
-shadow.sm   0 1px 3px oklch(22% 0.02 55 / 0.06)
-shadow.md   0 4px 12px oklch(22% 0.02 55 / 0.08)
-shadow.lg   0 8px 24px oklch(22% 0.02 55 / 0.12)
-shadow.map  0 4px 20px oklch(22% 0.02 55 / 0.15)  for map overlays
+shadow-sm   0 1px 3px oklch(15% 0.01 55 / 0.05)
+shadow-md   0 4px 12px oklch(15% 0.01 55 / 0.08)
+shadow-lg   0 8px 24px oklch(15% 0.01 55 / 0.12)
+shadow-map  0 4px 20px oklch(15% 0.01 55 / 0.15)
 ```
 
 ## Motion
 
+Framer Motion powers all animation (via HeroUI built-in + direct usage).
+
 ```text
-motion.feedback    120ms  button press, toggle
-motion.state       200ms  card expand, sheet slide
-motion.transition  300ms  page transition, map overlay enter
-motion.slow        400ms  onboarding, first-load reveal
-ease.default       cubic-bezier(0.22, 1, 0.36, 1)  ease-out-quint
-ease.spring        cubic-bezier(0.34, 1.56, 0.64, 1)  playful bounce (sparingly)
+motion.feedback    120ms   button press, toggle, chip select
+motion.state       200ms   card expand, drawer slide
+motion.transition  300ms   page transition, map overlay enter
+motion.slow        450ms   onboarding, first-load reveal
+
+ease.default       [0.22, 1, 0.36, 1]     ease-out-quint
+ease.spring        HeroUI scaleSpring      restrained bounce (sparingly)
+ease.smooth        [0.4, 0, 0.2, 1]       standard material-like
 ```
 
-Signature moments:
+### Signature moments
 
 ```text
-- Cafe card carousel: smooth spring scroll snap
-- Map marker -> detail: shared element transition (View Transitions API)
-- Bottom sheet: drag with velocity-aware snap points
-- Filter apply: results reflow with FLIP animation
-- Check-in: satisfying micro-animation (coffee cup fill?)
+- Map marker tap → sheet rises peek → half (velocity-aware, HeroUI Drawer)
+- Swipe cards: smooth scroll snap + subtle parallax on cover image;
+  active card scales ~1.02, neighbors dim slightly — eye-catching but restrained
+- Check-in confirm: button morphs to ✓ + micro coffee-steam animation + toast
+  (detailed visual design handed to Kimi; must avoid confetti/AI-slop feel)
+- Slider drag: live value + haptic-style scale on thumb; dimension bars animate on load
+- Filter apply: results reflow with layout animation (Framer layoutId)
+- Navigation prompt: slide-up card, auto-collapse to pill after 8s
+- Deep-link banner: gentle rise, never blocks content
 ```
 
-Every motion needs a `prefers-reduced-motion` fallback.
-
-## Component strategy
+### Rules
 
 ```text
-Shadcn UI as primitive foundation (already in use)
-Override ALL default Shadcn tokens with CoffeeMode palette
-Custom components for map-native patterns:
-  - MapOverlay (floating panel above map)
-  - CafeMarker (custom map pin with amenity icons)
-  - BottomSheet (draggable, snap points)
-  - AmenityBadge (icon + label pill)
-  - RatingDots (coffee-bean rating display, not generic stars)
+- Every animation has prefers-reduced-motion fallback
+- Enter: 200-300ms spring. Exit: 100-150ms (faster out than in)
+- No animation longer than 450ms in normal flow
+- Map interactions: immediate (no artificial delay)
+- Loading: skeleton shimmer (HeroUI Skeleton), not spinners
 ```
 
 ## Layout
@@ -206,39 +232,69 @@ Mobile-first, map-native:
 
 ```text
 Mobile:
-  Full-screen map
-  Floating search bar (top)
-  Draggable bottom sheet (cafe list)
-  FAB for add place (bottom-right)
+  Full-screen Apple Map (dark mode follows theme)
+  Floating search bar (top, backdrop-blur)
+  Bottom sheet — Google Maps style, one sheet three states:
+    PEEK  horizontal swipe cards (cafes in viewport, synced with map)
+    HALF  selected cafe: cover carousel + name + actions + top work facts
+    FULL  complete detail; map stays visible ~15% at top
+  URL sync: HALF/FULL → /cafes/[id] via replaceState; back collapses
+  FAB bottom-right (add cafe, login-gated)
+  Check-in: drawer above the sheet
 
 Desktop:
-  Left: sidebar with search, filters, cafe list (380px)
-  Right: full map
-  Cafe detail: slide-over panel or dedicated page
+  Left sidebar 380px: search + filters + cafe list (scroll)
+  Right: full-screen map
+  Cafe detail: slide-over from right (Drawer placement="right")
+  Or: dedicated page /cafes/[id] (SSR, shareable)
+
+Breakpoints:
+  sm: 640px   (large phone landscape)
+  md: 768px   (tablet — switch to sidebar layout)
+  lg: 1024px  (desktop)
+  xl: 1280px  (wide desktop)
+```
+
+## Dark mode
+
+```text
+Strategy: next-themes, class="dark" on <html>
+Default: follow system preference (prefers-color-scheme)
+Toggle: available in header (sun/moon icon)
+Map: MapKit JS colorScheme toggles in sync with theme
+Images: no dimming (photos should look true)
+Transition: 200ms color transition on theme switch
 ```
 
 ## Accessibility
 
 ```text
-- Body text contrast >= 4.5:1
+- Body text contrast >= 4.5:1 (both themes)
 - Large text contrast >= 3:1
-- Map markers have text alternatives
-- Bottom sheet is keyboard-navigable
-- Filter controls have visible focus states
-- Empty/loading/error states are designed, not raw text
-- Color is never the only signal (icons + text accompany status)
+- Map markers: text alternatives via aria-label
+- Bottom sheet / Drawer: keyboard navigable, focus trapped
+- Fact chips: toggle button semantics (aria-pressed)
+- Filter controls: visible focus states
+- Empty/loading/error states: designed, not raw text
+- Color never the only signal (icon + text accompany status)
+- Rating: not just dots — include numeric value (aria-label)
 ```
 
 ## Acceptance criteria
 
 ```text
-- UI looks like a curated cafe guide, not a Shadcn demo or maps template
-- Warm palette is consistent across all surfaces
-- Fraunces display font gives distinctive character to headings
-- Map feels like the primary interface, not a background widget
-- Dark mode is a true espresso theme, not inverted defaults
-- Motion follows the accepted rhythm with reduced-motion fallbacks
-- All Shadcn components are re-themed, none show default blue/gray
-- Mobile layout is map-native with bottom sheet pattern
-- No Material Design, generic SaaS, or vibe-coded AI visual language
+- Swipe cards and bottom sheet feel premium and eye-catching without vibe-coding tells
+- Work profile bars + score sliders are the visual hero of the cafe detail
+- UI feels like a 2026 design studio portfolio piece
+- No retro/vintage coffee aesthetic anywhere
+- HeroUI components are themed with CoffeeMode tokens (no default blue)
+- Animation is restrained and elegant — springs, not bounces
+- Dark mode is a true espresso theme with warm undertones
+- Map (Apple Maps dark) feels integrated, not embedded
+- Mobile layout is map-native with bottom sheet
+- Desktop layout has proper sidebar + map split
+- Framer Motion layout animations on list reflow
+- All interactive elements have hover/focus/active states
+- prefers-reduced-motion disables all non-essential animation
+- No Material Design, generic SaaS, or AI-slop visual language
 ```

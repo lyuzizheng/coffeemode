@@ -1,18 +1,217 @@
-/* CoffeeMode global styles — scaffold stage.
- * Tailwind v4 + HeroUI v3 styles. Full CoffeeMode token override lives in
- * the design-tokens slice (docs/agent/implementation-slices.md).
- */
+/* ============================================================================
+   CoffeeMode design system — design-tokens slice
+   ----------------------------------------------------------------------------
+   Overrides HeroUI v3's default theme variables (see
+   node_modules/@heroui/styles/dist/themes/default/variables.css for the full
+   token list). v3 token names: --accent is the brand color (v2 called it
+   --primary), --surface* are content layers, --default is the neutral control
+   color. These blocks come after the HeroUI import and are unlayered, so they
+   win the cascade.
+   ========================================================================== */
 @import "tailwindcss";
 @import "@heroui/styles";
 
-:root {
-  --cm-background: oklch(98% 0.003 85);
-  --cm-foreground: oklch(20% 0.02 55);
+/* next-themes uses the `.dark` class strategy — make Tailwind's dark: variant
+   follow the class instead of prefers-color-scheme. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ----------------------------------------------------------------------------
+   Theme-level tokens (Tailwind v4 @theme): typography, shadow, ease additions.
+   ------------------------------------------------------------------------- */
+@theme {
+  /* Font families — wired to next/font/local variables in app/layout.tsx.
+     CJK system fallbacks keep zh copy on-platform (PingFang/YaHei). */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-display: var(--font-cabinet), var(--font-inter), ui-sans-serif,
+    system-ui, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+
+  /* Fixed type scale — app scale, no marketing sizes. Spec 0002. */
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.375rem;
+  --text-md: 1rem;
+  --text-md--line-height: 1.5rem;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.5rem;
+  --text-xl--line-height: 2rem;
+  --text-2xl: 2rem;
+  --text-2xl--line-height: 2.5rem;
+
+  /* Warm-tinted shadows — elevation is tonal + borders first, shadows are a
+     whisper. Tinted with espresso ink (oklch 25% 0.03 50), never pure black. */
+  --shadow-sm: 0 1px 2px 0 oklch(25% 0.03 50 / 0.05);
+  --shadow-md:
+    0 1px 2px 0 oklch(25% 0.03 50 / 0.04),
+    0 4px 12px -2px oklch(25% 0.03 50 / 0.07);
+  --shadow-lg:
+    0 2px 4px 0 oklch(25% 0.03 50 / 0.04),
+    0 12px 28px -6px oklch(25% 0.03 50 / 0.12);
+  --shadow-map:
+    0 1px 3px 0 oklch(25% 0.03 50 / 0.06),
+    0 6px 24px -4px oklch(25% 0.03 50 / 0.14);
+
+  /* Signature ease — ease-out-quint, fast attack long settle. Overrides
+     HeroUI's --ease-out-quint (0.23,1,0.32,1) with the spec curve. */
+  --ease-default: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.dark {
-  --cm-background: oklch(15% 0.012 55);
-  --cm-foreground: oklch(93% 0.008 75);
+/* ----------------------------------------------------------------------------
+   Light theme — warm paper, espresso ink, terracotta accent.
+   ------------------------------------------------------------------------- */
+:root,
+.light,
+[data-theme="light"] {
+  /* Radius base unit: 8px → sm 4 / md 6 / lg 8 / xl 12 / 2xl 16 / 3xl 24.
+     Buttons land on 8, fields on 12, cards are pinned to 12 below. */
+  --radius: 0.5rem;
+  --field-radius: 0.75rem;
+  --field-border-width: 1px;
+
+  /* Base */
+  --background: oklch(98.1% 0.004 82);
+  --foreground: oklch(23% 0.022 48);
+
+  /* Surfaces (cards, accordions) */
+  --surface: oklch(99.4% 0.002 82);
+  --surface-foreground: var(--foreground);
+  --surface-secondary: oklch(96.4% 0.006 76);
+  --surface-tertiary: oklch(93.2% 0.009 72);
+
+  /* Overlays (popovers, modals, sheets) */
+  --overlay: oklch(99.6% 0.002 82);
+  --overlay-foreground: var(--foreground);
+
+  --muted: oklch(44% 0.02 55);
+
+  /* Neutral controls */
+  --default: oklch(94% 0.007 72);
+  --default-foreground: var(--foreground);
+
+  /* Brand — burnt sienna terracotta */
+  --accent: oklch(54% 0.15 42);
+  --accent-foreground: oklch(98.5% 0.004 80);
+
+  /* Status */
+  --success: oklch(52% 0.11 152);
+  --success-foreground: oklch(98% 0.01 140);
+  --warning: oklch(66% 0.14 68);
+  --warning-foreground: oklch(26% 0.03 55);
+  --danger: oklch(50% 0.17 26);
+  --danger-foreground: oklch(98.5% 0.004 60);
+
+  /* Component colors */
+  --segment: oklch(99.4% 0.002 82);
+  --segment-foreground: var(--foreground);
+
+  /* Lines */
+  --border: oklch(89.5% 0.008 70);
+  --separator: oklch(92.5% 0.006 74);
+  --focus: var(--accent);
+  --link: var(--accent);
+
+  /* Fields — bordered, precise, city-guide feel */
+  --field-background: var(--surface);
+  --field-foreground: var(--foreground);
+  --field-placeholder: var(--muted);
+  --field-border: var(--border);
+
+  /* Shadows — warm espresso tint */
+  --surface-shadow:
+    0 1px 2px 0 oklch(25% 0.03 50 / 0.05),
+    0 0 1px 0 oklch(25% 0.03 50 / 0.04);
+  --overlay-shadow:
+    0 2px 6px 0 oklch(25% 0.03 50 / 0.05),
+    0 12px 32px -8px oklch(25% 0.03 50 / 0.14);
+  --field-shadow: 0 0 0 0 transparent;
+
+  /* Skeleton shimmer reads as light passing over paper */
+  --skeleton-animation: shimmer;
+
+  /* Warm scrollbar */
+  --scrollbar-thumb: color-mix(in oklch, var(--foreground) 18%, transparent);
+}
+
+/* ----------------------------------------------------------------------------
+   Dark theme — true espresso: warm near-black, glowing terracotta.
+   Not an inversion: the accent gets lighter and warmer, surfaces step up in
+   warm increments, borders do the separation work shadows did in light.
+   ------------------------------------------------------------------------- */
+.dark,
+[data-theme="dark"] {
+  /* Base */
+  --background: oklch(15.5% 0.012 50);
+  --foreground: oklch(92.5% 0.009 72);
+
+  /* Surfaces — warm steps upward */
+  --surface: oklch(19.5% 0.013 52);
+  --surface-foreground: var(--foreground);
+  --surface-secondary: oklch(23% 0.013 52);
+  --surface-tertiary: oklch(27.5% 0.013 52);
+
+  /* Overlays float one step above surfaces */
+  --overlay: oklch(22% 0.014 52);
+  --overlay-foreground: var(--foreground);
+
+  --muted: oklch(72% 0.015 60);
+
+  /* Neutral controls */
+  --default: oklch(26.5% 0.013 52);
+  --default-foreground: var(--foreground);
+
+  /* Brand — terracotta lifted for dark, reads like lamplight */
+  --accent: oklch(68% 0.16 46);
+  --accent-foreground: oklch(17% 0.015 48);
+
+  /* Status — lighter values carry dark text, warm-light on espresso */
+  --success: oklch(70% 0.13 150);
+  --success-foreground: oklch(16% 0.03 150);
+  --warning: oklch(76% 0.14 75);
+  --warning-foreground: oklch(24% 0.04 60);
+  --danger: oklch(64% 0.19 27);
+  --danger-foreground: oklch(97% 0.01 60);
+
+  /* Component colors */
+  --segment: oklch(30% 0.012 52);
+  --segment-foreground: var(--foreground);
+
+  /* Lines — a warm hairline, never cold gray */
+  --border: oklch(29.5% 0.012 52);
+  --separator: oklch(25% 0.012 52);
+  --focus: var(--accent);
+  --link: var(--accent);
+
+  /* Fields — tonal, border still visible */
+  --field-background: var(--surface);
+  --field-foreground: var(--foreground);
+  --field-placeholder: var(--muted);
+  --field-border: var(--border);
+
+  /* Dark mode: borders separate, shadows only deepen overlays */
+  --surface-shadow: 0 0 0 0 transparent;
+  --overlay-shadow:
+    0 0 1px 0 oklch(60% 0.02 55 / 0.25) inset,
+    0 12px 32px -8px oklch(8% 0.01 50 / 0.5);
+  --field-shadow: 0 0 0 0 transparent;
+
+  --scrollbar-thumb: color-mix(in oklch, var(--foreground) 22%, transparent);
+}
+
+/* ----------------------------------------------------------------------------
+   Component-level pinning
+   ------------------------------------------------------------------------- */
+
+/* HeroUI v3 cards default to min(32px, --radius-3xl) — too round for this
+   system. Cards breathe through padding, not radius: pin to 12px. */
+.card {
+  border-radius: var(--radius-xl);
 }
 
 html,
@@ -21,7 +220,36 @@ body {
 }
 
 body {
-  background: var(--cm-background);
-  color: var(--cm-foreground);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* 200ms theme cross-fade on the base canvas. Component-level color
+   transitions come from HeroUI; this covers body + custom surfaces.
+   Honors prefers-reduced-motion. */
+@media (prefers-reduced-motion: no-preference) {
+  body {
+    transition:
+      background-color 200ms var(--ease-default),
+      color 200ms var(--ease-default);
+  }
+}
+
+/* Reduced motion: kill non-essential animation globally. HeroUI's skeleton
+   shimmer and caret blink are CSS keyframes — neutralize them here. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Scores, distances, counts — always tabular. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }

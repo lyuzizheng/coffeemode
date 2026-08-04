@@ -11,7 +11,14 @@
     "hero_title": "Work from great cafes",
     "hero_subtitle": "Real wifi, outlet, and seat intel from nomads — not vibes.",
     "cta_search": "Search cafes",
-    "search_placeholder": "Search cafes near you"
+    "search_placeholder": "Search cafes near you",
+    "signin_title": "Sign in",
+    "signin_subtitle": "Check in, score the wifi, build your work profile.",
+    "continue_apple": "Continue with Apple",
+    "continue_google": "Continue with Google",
+    "auth_not_configured": "Sign-in is not configured yet — set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+    "signed_in_as": "Signed in as",
+    "session_ready": "Your session is active."
   },
   "themePreview": {
     "meta_title": "Design System",

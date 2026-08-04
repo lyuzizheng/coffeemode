@@ -2,39 +2,44 @@
 
 ## Phase
 
-Pre-rewrite. Design grill complete (Rounds 1–6, all decisions confirmed in `docs/alignment-temp/alignment-progress.md`). Specs 0001/0002 rewritten and accepted. Next.js scaffold pending baseline merge.
+Rewrite in progress. Harness + docs merged to `main` (PR #7). `web/` Next.js 16 workspace scaffolded (PR #8) and the design-token/theme layer landed (PR #9, Kimi-delegated, independently verified). Auth foundation slice in progress.
 
 ## Active focus
 
-Slice 1: merge harness/docs branch to `main`, then scaffold `web/` (Next.js 15 + HeroUI v3 + Tailwind v4) per spec 0001 Phase 1.
+Slice `auth-foundation`: Supabase OAuth (Apple/Google) + profiles upsert + Neon pool. Code complete pending credentials for live round-trip verification.
 
 ## What exists
 
 ```text
-coffeemode-frontend/     Vite + React 19 + Tailwind v4 + Shadcn UI (old, reference only)
-coffeemode_backend/      Java 21 + Spring Boot + Gradle (old, being dropped)
-coffeemode-script/       Cloudflare Worker for image upload (being retired → Next.js + R2)
+web/                     Next.js 16 + HeroUI v3 + Tailwind v4 + next-intl (the app)
+web/db/migrations/       0001_init.sql — 4-table schema (spec 0001)
+web/lib/auth/            Supabase server client (PKCE), profile upsert logic
+web/lib/db/              Neon pool (server-side only)
+web/app/auth/            signIn/signOut server actions + OAuth callback route
 docs/specs/              0001 Next.js rewrite, 0002 design system, 0003 testing/CI
-docs/alignment-temp/     Grill decisions log (Rounds 1–6, complete)
-.agents/                 Agent workflows and scripts
+docs/agent/              slices manifest (machine-checked), this file, protocols
+.agents/                 Agent workflows, scripts, delegated design prompts
+coffeemode-frontend/     old Vite app — reference only, superseded
+coffeemode_backend/      old Java app — being dropped
 ```
 
 ## What's next
 
 ```text
-1. Merge feat/agent-harness-and-docs-system → main (baseline fix)
-2. Scaffold Next.js in web/ + auth (Supabase) + db (Neon)  [spec 0001 Phase 1]
-3. Map + bottom sheet + swipe cards                          [Phase 2]
-4. POI cache service (Workers + D1 + KV) + creation flow     [Phase 3]
-5. Check-in system + work profile + aggregation              [Phase 4]
-6. Polish + VPS deploy                                       [Phase 5]
+1. auth-foundation round-trip once credentials land (anon key, Neon URL,
+   Apple/Google provider config in Supabase dashboard)
+2. map-home — Apple MapKit full-screen map + custom markers  [BLOCKED on Apple Developer Program]
+3. poi-cache-service — Workers + D1 + KV                      [READY]
+4. discovery-sheet, image-pipeline, cafe-creation, checkin-system
+5. work-profile aggregation, search, navigation prompt
 ```
 
 ## Known issues
 
 ```text
-- main branch lacks docs/harness (only on feat/agent-harness-and-docs-system)
-- No tests exist in the old frontend
-- Old UI uses generic Shadcn defaults, retro theme — both superseded by spec 0002
+- NEXT_PUBLIC_SUPABASE_ANON_KEY not set (only URL + service-role present locally)
+- DATABASE_URL (Neon) not configured anywhere
+- Supabase dashboard still needs Apple/Google OAuth provider config
+- Session-refresh middleware needed when first protected route lands (auth slice review F5)
 - Apple Developer Program purchase pending (needed for MapKit JS)
 ```

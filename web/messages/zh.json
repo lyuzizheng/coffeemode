@@ -11,7 +11,14 @@
     "hero_title": "在好咖啡店里办公",
     "hero_subtitle": "来自数字游民的真实 wifi、插座、座位情报——不靠感觉。",
     "cta_search": "搜索咖啡店",
-    "search_placeholder": "搜索附近的咖啡店"
+    "search_placeholder": "搜索附近的咖啡店",
+    "signin_title": "登录",
+    "signin_subtitle": "打卡、给 wifi 打分，积累你的办公档案。",
+    "continue_apple": "使用 Apple 继续",
+    "continue_google": "使用 Google 继续",
+    "auth_not_configured": "登录尚未配置——请设置 NEXT_PUBLIC_SUPABASE_URL 和 NEXT_PUBLIC_SUPABASE_ANON_KEY。",
+    "signed_in_as": "已登录",
+    "session_ready": "你的会话已生效。"
   },
   "themePreview": {
     "meta_title": "设计系统",

@@ -12,5 +12,120 @@
     "hero_subtitle": "来自数字游民的真实 wifi、插座、座位情报——不靠感觉。",
     "cta_search": "搜索咖啡店",
     "search_placeholder": "搜索附近的咖啡店"
+  },
+  "themePreview": {
+    "meta_title": "设计系统",
+    "header": {
+      "kicker": "基础语言 · 色彩 / 字体 / 动效",
+      "intro": "一套系统：暖中性色表面、赤陶主色、精确排版、克制的动效。下面的一切都是活的——切换主题、拖动滑杆、按下按钮。",
+      "poster_caption": "一眼看尽整套系统:品牌色、展示字体、实时评分。"
+    },
+    "theme": {
+      "light": "浅色",
+      "dark": "深色",
+      "system": "跟随系统",
+      "label": "主题"
+    },
+    "color": {
+      "title": "色彩",
+      "desc": "浅色是暖纸与浓缩咖啡墨色；深色是真正的浓缩主题——不是简单反色。赤陶是唯一的品牌声音;鼠尾草绿、琥珀、陶土红只表示状态。",
+      "group_base": "基础与表面",
+      "group_brand": "品牌色",
+      "group_status": "状态色",
+      "on_accent": "主色之上",
+      "copied": "已复制"
+    },
+    "type": {
+      "title": "字体排版",
+      "desc": "Cabinet Grotesk 承载店名与标题,Inter 承担日常工作,JetBrains Mono 负责元数据——坐标、时间、计数。全部自托管。",
+      "display_label": "展示字体 — Cabinet Grotesk",
+      "sans_label": "界面与正文 — Inter",
+      "mono_label": "元数据 — JetBrains Mono",
+      "display_sample": "Kiosk Roastery",
+      "display_line": "只用于店名与页面标题——绝不用于正文。",
+      "sans_sample": "安静的房间、快速的 wifi、靠窗的座位一直开到晚上九点以后。澳白好喝得有点过分。",
+      "mono_sample": "35.6595° N, 139.7005° E · 08:00–22:00 · 128 次打卡",
+      "scale_label": "字级梯度",
+      "tnum_label": "等宽数字——评分绝不抖动",
+      "tnum_hint": "所有评分、距离与计数都使用等宽数字。"
+    },
+    "buttons": {
+      "title": "按钮",
+      "desc": "每个视图只有一个主按钮。按压反馈靠手感而非视觉——120ms,1.5% 的让步。",
+      "check_in": "打卡",
+      "add_cafe": "添加咖啡店",
+      "save": "保存草稿",
+      "cancel": "取消",
+      "delete": "移除",
+      "unavailable": "暂不可用",
+      "variant_primary": "主要",
+      "variant_secondary": "次要",
+      "variant_tertiary": "三级",
+      "variant_ghost": "幽灵",
+      "variant_outline": "描边",
+      "variant_danger": "危险",
+      "sizes": "尺寸",
+      "states": "状态"
+    },
+    "cards": {
+      "title": "卡片",
+      "desc": "用描边与色阶分层,而不是堆阴影。悬停上浮两像素;办公指数条是主角——五条 bar,入场时弹簧加载。",
+      "cafe_name": "Kiosk Roastery",
+      "cafe_area": "东京 · 涩谷",
+      "open_now": "营业中",
+      "closes_at": "22:00 打烊",
+      "work_score": "办公指数",
+      "check_ins": "128 次打卡",
+      "distance": "450 米",
+      "dims": {
+        "wifi": "Wifi",
+        "outlets": "插座",
+        "seats": "座位",
+        "temperature": "温度",
+        "coffee": "咖啡"
+      },
+      "hover_hint": "悬停并按压卡片——120ms 反馈,没有弹跳。"
+    },
+    "forms": {
+      "title": "表单与滑杆",
+      "desc": "输入框描边而安静。滑杆是打卡的核心:0–100,实时数值,等宽数字,拖动时滑块微微放大。",
+      "search_placeholder": "搜索咖啡店、街区",
+      "name_label": "咖啡店名称",
+      "name_placeholder": "例如 Kiosk Roastery",
+      "wifi_label": "Wifi 质量",
+      "coffee_label": "咖啡质量",
+      "slider_hint": "主观评分,0–100。你说了算。",
+      "open_only": "只看营业中",
+      "open_only_hint": "把地图过滤为此时营业的咖啡店",
+      "policy_label": "店规",
+      "chip_minspend": "最低消费 ¥600",
+      "chip_maxstay": "最长停留 2 小时",
+      "chip_laptops": "欢迎用电脑"
+    },
+    "skeleton": {
+      "title": "加载",
+      "desc": "骨架屏微光,绝不用转圈。一道光掠过即将到来的内容形状。",
+      "show_loading": "查看加载态",
+      "show_loaded": "查看加载完成",
+      "loading_aria": "正在加载咖啡店详情"
+    },
+    "motion": {
+      "title": "动效",
+      "desc": "四档时长,一条签名曲线,永不弹跳的弹簧。出场快于入场,绝不超过 450ms,一切服从 prefers-reduced-motion。",
+      "feedback": "反馈",
+      "feedback_desc": "按压、开关、筛选",
+      "state": "状态",
+      "state_desc": "卡片展开、抽屉",
+      "transition": "过渡",
+      "transition_desc": "浮层、页面",
+      "slow": "慢速",
+      "slow_desc": "仅首次加载",
+      "ease_label": "ease-default — ease-out-quint",
+      "demo_hover": "悬停上浮",
+      "demo_press": "按压让步",
+      "demo_reflow": "点击胶囊——列表以布局动画重排",
+      "demo_bars": "办公指数条入场时弹簧加载"
+    },
+    "footer": "CoffeeMode design-tokens 切片 · next-intl 中英双语 · HeroUI v3 token 已覆盖"
   }
 }

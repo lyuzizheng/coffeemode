@@ -12,5 +12,120 @@
     "hero_subtitle": "Real wifi, outlet, and seat intel from nomads — not vibes.",
     "cta_search": "Search cafes",
     "search_placeholder": "Search cafes near you"
+  },
+  "themePreview": {
+    "meta_title": "Design System",
+    "header": {
+      "kicker": "Foundation — color · type · motion",
+      "intro": "One system: warm-neutral surfaces, terracotta accent, precise type, restrained motion. Everything below is live — switch themes, drag the sliders, press the buttons.",
+      "poster_caption": "The system in one glance: brand color, display type, live score."
+    },
+    "theme": {
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System",
+      "label": "Theme"
+    },
+    "color": {
+      "title": "Color",
+      "desc": "Warm paper and espresso ink in light; a true espresso theme — not an inversion — in dark. Terracotta is the single brand voice; sage, amber, and clay only ever mean status.",
+      "group_base": "Base & surfaces",
+      "group_brand": "Brand",
+      "group_status": "Status",
+      "on_accent": "on accent",
+      "copied": "Copied"
+    },
+    "type": {
+      "title": "Typography",
+      "desc": "Cabinet Grotesk carries names and titles. Inter does the work. JetBrains Mono speaks metadata — coordinates, hours, counts. All self-hosted, all variable where it matters.",
+      "display_label": "Display — Cabinet Grotesk",
+      "sans_label": "UI & body — Inter",
+      "mono_label": "Metadata — JetBrains Mono",
+      "display_sample": "Kiosk Roastery",
+      "display_line": "Cafe names and page titles only — never body copy.",
+      "sans_sample": "Quiet room, fast wifi, and a window seat that stays open past nine. The flat white is better than it needs to be.",
+      "mono_sample": "35.6595° N, 139.7005° E · 08:00–22:00 · 128 check-ins",
+      "scale_label": "Type scale",
+      "tnum_label": "Tabular numerals — scores never jiggle",
+      "tnum_hint": "Every score, distance, and count sets with tabular figures."
+    },
+    "buttons": {
+      "title": "Buttons",
+      "desc": "One primary voice per view. Press states are felt, not seen — 120ms, a 1.5% give.",
+      "check_in": "Check in",
+      "add_cafe": "Add a cafe",
+      "save": "Save draft",
+      "cancel": "Cancel",
+      "delete": "Remove",
+      "unavailable": "Unavailable",
+      "variant_primary": "Primary",
+      "variant_secondary": "Secondary",
+      "variant_tertiary": "Tertiary",
+      "variant_ghost": "Ghost",
+      "variant_outline": "Outline",
+      "variant_danger": "Danger",
+      "sizes": "Sizes",
+      "states": "States"
+    },
+    "cards": {
+      "title": "Cards",
+      "desc": "Borders and tonal steps, not shadow soup. Hover lifts two pixels; the work profile is the hero — five bars, spring-loaded on entry.",
+      "cafe_name": "Kiosk Roastery",
+      "cafe_area": "Shibuya · Tokyo",
+      "open_now": "Open now",
+      "closes_at": "Closes 22:00",
+      "work_score": "Work score",
+      "check_ins": "128 check-ins",
+      "distance": "450 m",
+      "dims": {
+        "wifi": "Wifi",
+        "outlets": "Outlets",
+        "seats": "Seats",
+        "temperature": "Temperature",
+        "coffee": "Coffee"
+      },
+      "hover_hint": "Hover and press the card — 120ms feedback, no bounce."
+    },
+    "forms": {
+      "title": "Forms & sliders",
+      "desc": "Fields are bordered and quiet. Sliders are the heart of check-in: 0–100, live value, tabular figures, thumb swells while you drag.",
+      "search_placeholder": "Search cafes, neighborhoods",
+      "name_label": "Cafe name",
+      "name_placeholder": "e.g. Kiosk Roastery",
+      "wifi_label": "Wifi quality",
+      "coffee_label": "Coffee quality",
+      "slider_hint": "Subjective, 0–100. Your call.",
+      "open_only": "Open now only",
+      "open_only_hint": "Filters the map to cafes open at this hour",
+      "policy_label": "Policies",
+      "chip_minspend": "Min spend ¥600",
+      "chip_maxstay": "2h max stay",
+      "chip_laptops": "Laptops welcome"
+    },
+    "skeleton": {
+      "title": "Loading",
+      "desc": "Skeleton shimmer, never spinners. One light pass over the shape of what's coming.",
+      "show_loading": "Show loading",
+      "show_loaded": "Show loaded",
+      "loading_aria": "Loading cafe details"
+    },
+    "motion": {
+      "title": "Motion",
+      "desc": "Four durations, one signature curve, springs that never bounce. Faster out than in. Nothing past 450ms. Everything yields to prefers-reduced-motion.",
+      "feedback": "Feedback",
+      "feedback_desc": "press, toggle, chip",
+      "state": "State",
+      "state_desc": "card expand, drawer",
+      "transition": "Transition",
+      "transition_desc": "overlays, page",
+      "slow": "Slow",
+      "slow_desc": "first-load only",
+      "ease_label": "ease-default — ease-out-quint",
+      "demo_hover": "Hover lifts",
+      "demo_press": "Press gives",
+      "demo_reflow": "Tap a pill — the list reflows with a layout animation",
+      "demo_bars": "Work-profile bars spring in on entry"
+    },
+    "footer": "CoffeeMode design-tokens slice · en/zh via next-intl · HeroUI v3 tokens, overridden"
   }
 }

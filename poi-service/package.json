@@ -1,0 +1,20 @@
+{
+  "name": "poi-service",
+  "version": "1.0.0",
+  "description": "CoffeeMode POI cache microservice — Cloudflare Workers + D1 + KV. Google Places (New) upstream, cached once for the whole app.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260804.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.119.0"
+  }
+}

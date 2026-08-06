@@ -1,0 +1,29 @@
+# CoffeeMode POI cache service — Cloudflare Worker
+# Docs: docs/specs/0001-nextjs-migration.md § "POI cache service"
+
+name = "poi-service"
+main = "src/index.ts"
+compatibility_date = "2026-08-06"
+
+# --- Secrets (never committed) ---
+#   POI_SERVICE_TOKEN       shared secret for service-to-service auth
+#   GOOGLE_PLACES_API_KEY   Google Places API (New) key
+# Set them with:  wrangler secret put <NAME>
+# Local dev: put them in .dev.vars (gitignored)
+
+# --- Bindings ---
+# TODO(owner): run `wrangler d1 create poi-store` and `wrangler kv namespace create poi-cache`
+# then replace the placeholder ids below.
+
+[[kv_namespaces]]
+binding = "POI_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+[[d1_databases]]
+binding = "POI_DB"
+database_name = "poi-store"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+# --- Routing ---
+[observability]
+enabled = true

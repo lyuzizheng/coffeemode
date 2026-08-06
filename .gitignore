@@ -28,6 +28,10 @@
 ./coffeemode-frontend/node_modules
 ./coffeemode-frontend/dist
 ./coffeemode-frontend/build
+
+poi-service/node_modules/
+poi-service/.dev.vars
+poi-service/.wrangler/
 ./coffeemode-frontend/public/js/mapsJavaScriptAPI.js
 ./coffeemode-frontend/public/js/mapsJavaScriptAPI.js.map
 ./coffeemode-frontend/public/js/mapsJavaScriptAPI.js.map.gz

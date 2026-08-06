@@ -7,8 +7,8 @@ import type { Env, POI } from "./types";
 
 export const GOOGLE_API_BASE = "https://places.googleapis.com";
 
-/** Field mask for details + search results. Photos are billed as embedded
- *  content, so we only keep the photo reference (name) and fetch lazily. */
+/** Field mask for Place Details (New). Photos are billed as embedded content,
+ *  so we only keep the photo reference (name) and fetch lazily. */
 export const DETAIL_FIELDS = [
   "id",
   "displayName",
@@ -20,6 +20,10 @@ export const DETAIL_FIELDS = [
   "photos",
   "googleMapsUri",
 ].join(",");
+
+/** Field mask for Text Search (New). The response is an array under the
+ *  top-level `places` field, so every selected field must be prefixed. */
+export const SEARCH_FIELDS = DETAIL_FIELDS.split(",").map((f) => `places.${f}`).join(",");
 
 export interface GooglePlace {
   id: string;
@@ -47,10 +51,10 @@ function baseUrl(env: Env): string {
   return env.GOOGLE_PLACES_BASE_URL ?? GOOGLE_API_BASE;
 }
 
-function headers(env: Env): HeadersInit {
+function headers(env: Env, fieldMask = DETAIL_FIELDS): HeadersInit {
   return {
     "X-Goog-Api-Key": env.GOOGLE_PLACES_API_KEY,
-    "X-Goog-FieldMask": DETAIL_FIELDS,
+    "X-Goog-FieldMask": fieldMask,
     "Content-Type": "application/json",
   };
 }
@@ -61,8 +65,8 @@ export async function fetchPlaceDetails(
   env: Env,
   fetchImpl: typeof fetch = fetch,
 ): Promise<GooglePlace> {
-  const url = `${baseUrl(env)}/v1/places/${encodeURIComponent(placeId)}?fields=${DETAIL_FIELDS}`;
-  const res = await fetchImpl(url, { headers: headers(env) });
+  const url = `${baseUrl(env)}/v1/places/${encodeURIComponent(placeId)}`;
+  const res = await fetchImpl(url, { headers: headers(env, DETAIL_FIELDS) });
   if (!res.ok) {
     throw new GoogleApiError(`Places details ${res.status}: ${await res.text().catch(() => "")}`, res.status);
   }
@@ -85,7 +89,7 @@ export async function textSearch(
   }
   const res = await fetchImpl(`${baseUrl(env)}/v1/places:searchText`, {
     method: "POST",
-    headers: headers(env),
+    headers: headers(env, SEARCH_FIELDS),
     body: JSON.stringify(body),
   });
   if (!res.ok) {

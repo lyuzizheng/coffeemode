@@ -115,7 +115,8 @@ describe("GET /poi/:place_id", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const url = fetchImpl.mock.calls[0][0] as string;
     expect(url).toContain("places.test/v1/places/ChIJTEST123");
-    expect(url).toContain("fields=");
+    const init = fetchImpl.mock.calls[0][1] as { headers?: Record<string, string> };
+    expect(init?.headers?.["X-Goog-FieldMask"]).toMatch(/^id,/);
     expect((env.POI_KV as FakeKV).has("raw:google:ChIJTEST123")).toBe(true);
     expect((env.POI_DB as FakeD1).rows).toHaveLength(1);
   });
@@ -257,6 +258,8 @@ describe("POST /poi/resolve", () => {
     const fetchImpl = vi.fn(
       mockFetch((url, init) => {
         if (String(url).includes("searchText")) {
+          const reqHeaders = init?.headers as Record<string, string> | undefined;
+          expect(reqHeaders?.["X-Goog-FieldMask"]).toMatch(/^places\./);
           expect(JSON.parse(String(init?.body))).toMatchObject({ textQuery: "blue bottle" });
           return new Response(JSON.stringify({ places: [googleDetailResponse()] }), { status: 200 });
         }

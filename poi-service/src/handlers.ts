@@ -10,7 +10,7 @@
  */
 
 import type { Deps, Env, POI, POISearchHit } from "./types";
-import { fetchPlaceDetails, textSearch, toPOI, GoogleApiError } from "./google";
+import { fetchPlaceDetails, textSearch, toPOI, GoogleApiError, type GooglePlace } from "./google";
 import {
   d1GetPOI,
   d1SearchPOIs,
@@ -30,14 +30,31 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-/** Constant-time-ish token compare (XOR fold). */
+/** Constant-time token compare. Uses Cloudflare Workers' crypto.subtle.timingSafeEqual
+ *  extension when available, otherwise a pure-JS fallback for Node/vitest. */
 function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
   const A = new TextEncoder().encode(a);
   const B = new TextEncoder().encode(b);
+  const sameLength = A.byteLength === B.byteLength;
+
+  // Cloudflare Workers exposes SubtleCrypto.timingSafeEqual as a non-standard extension.
+  const subtle = crypto.subtle as SubtleCrypto & {
+    timingSafeEqual?: (a: ArrayBufferView, b: ArrayBufferView) => boolean;
+  };
+  if (typeof subtle.timingSafeEqual === "function") {
+    const aBuf = A;
+    const bBuf = sameLength ? B : A; // compare against self when lengths differ (always true, then negate)
+    const equal = subtle.timingSafeEqual(aBuf, bBuf);
+    return sameLength ? equal : !equal;
+  }
+
+  // Pure-JS fallback for test environments without timingSafeEqual.
+  const aBuf = A;
+  const bBuf = sameLength ? B : A;
   let diff = 0;
-  for (let i = 0; i < A.length; i++) diff |= A[i] ^ B[i];
-  return diff === 0;
+  for (let i = 0; i < aBuf.length; i++) diff |= aBuf[i] ^ bBuf[i];
+  const equalContent = diff === 0;
+  return sameLength ? equalContent : !equalContent;
 }
 
 function bearer(request: Request): string | null {
@@ -92,16 +109,21 @@ async function getPOI(placeId: string, env: Env, deps: Deps): Promise<Response> 
 
   // 3. Google API → backfill both
   if (googleId) {
+    let gp: GooglePlace;
     try {
-      const gp = await fetchPlaceDetails(placeId, env, deps.fetchImpl);
-      const poi = toPOI(gp);
-      await Promise.all([kvPutRaw(env.POI_KV, placeId, gp), d1UpsertPOI(env.POI_DB, poi)]);
-      return json(poi);
+      gp = await fetchPlaceDetails(placeId, env, deps.fetchImpl);
     } catch (e) {
       // Graceful degradation: serve stale D1 row if we have one.
       if (stored) return json(stored);
       return upstreamError(e);
     }
+    const poi = toPOI(gp);
+    try {
+      await Promise.all([kvPutRaw(env.POI_KV, placeId, gp), d1UpsertPOI(env.POI_DB, poi)]);
+    } catch (e) {
+      console.error("cache write failed", e);
+    }
+    return json(poi);
   }
 
   return json({ error: "not_found" }, 404);
@@ -126,21 +148,26 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
   if (target.placeId) return getPOI(target.placeId, env, deps);
 
   if (target.query) {
+    let results: GooglePlace[];
     try {
-      const results = await textSearch(
+      results = await textSearch(
         target.query,
         { lat: target.coords?.lat, lng: target.coords?.lng },
         env,
         deps.fetchImpl,
       );
-      const first = results[0];
-      if (!first) return json({ error: "not_found", message: "no place matched" }, 404);
-      const poi = toPOI(first);
-      await Promise.all([kvPutRaw(env.POI_KV, first.id, first), d1UpsertPOI(env.POI_DB, poi)]);
-      return json(poi);
     } catch (e) {
       return upstreamError(e);
     }
+    const first = results[0];
+    if (!first) return json({ error: "not_found", message: "no place matched" }, 404);
+    const poi = toPOI(first);
+    try {
+      await Promise.all([kvPutRaw(env.POI_KV, first.id, first), d1UpsertPOI(env.POI_DB, poi)]);
+    } catch (e) {
+      console.error("cache write failed", e);
+    }
+    return json(poi);
   }
 
   return json(

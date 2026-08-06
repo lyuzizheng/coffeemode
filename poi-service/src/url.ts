@@ -24,7 +24,7 @@ const Q_PARAM_RE = /[?&]q=([^&]+)/;
 const SEARCH_PATH_RE = /\/maps\/search\/([^/@?]+)/;
 const PLACE_SLUG_RE = /\/maps\/place\/([^/@?]+)/;
 
-const SHORT_HOSTS = new Set(["goo.gl", "maps.app.goo.gl", "maps.google.com"]);
+const SHORT_HOSTS = new Set(["goo.gl", "maps.app.goo.gl"]);
 
 export function isShortLink(urlStr: string): boolean {
   try {

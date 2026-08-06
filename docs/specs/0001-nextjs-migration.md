@@ -80,6 +80,7 @@ coffeemode/
     tsconfig.json
     package.json
   docs/                     # Documentation system
+  poi-service/              # POI cache microservice (Workers + D1 + KV)
   .agents/                  # Agent workflows
 ```
 

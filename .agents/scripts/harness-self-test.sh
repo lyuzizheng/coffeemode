@@ -115,9 +115,10 @@ sed 's/| 0001 |/| 9999 |/' "$MANIFEST.bak" > "$MANIFEST"
 expect_failure "slice references missing spec" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-implementation-slices.sh"
 mv "$MANIFEST.bak" "$MANIFEST"
 
-# Invalid status (manifest uses uppercase READY)
+# Invalid status — match ANY status cell (the manifest may legitimately have
+# zero READY slices, e.g. when the last READY slice moves to IN-PROGRESS)
 cp "$MANIFEST" "$MANIFEST.bak"
-sed 's/| READY |/| UNKNOWN |/' "$MANIFEST.bak" > "$MANIFEST"
+sed 's/| READY |/| UNKNOWN |/; s/| IN-PROGRESS |/| UNKNOWN |/; s/| BLOCKED |/| UNKNOWN |/; s/| COMPLETE |/| UNKNOWN |/' "$MANIFEST.bak" > "$MANIFEST"
 expect_failure "invalid slice status" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-implementation-slices.sh"
 mv "$MANIFEST.bak" "$MANIFEST"
 

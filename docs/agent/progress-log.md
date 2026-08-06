@@ -29,3 +29,7 @@
 - Started `places-proxy` slice (PR #12): `web/lib/places/poi-client.ts` (server-only
   client, token header, no-store, 503 when unconfigured), `web/app/api/places/search`
   + `resolve` route handlers, `web/types/places.ts`, 15 new tests (mocked worker).
+- PR #12 merged; Devin review fix verified (path encoding for `0x…:0x…` ids,
+  Headers-instance merge, safe error messages, 5s AbortSignal timeout).
+  `places-proxy` → COMPLETE. All code side through the POI stack is done;
+  remaining work is owner credential/account actions (pending-user-actions.md).

@@ -6,7 +6,7 @@ Rewrite in progress. Harness + docs merged to `main` (PR #7). `web/` Next.js 16 
 
 ## Active focus
 
-Slice `places-proxy` (IN-PROGRESS): server-side POI client + `/api/places/search` + `/api/places/resolve` route handlers proxying the POI cache service (merged as PR #11, slice now COMPLETE). Upstream worker not deployed yet — tests mock it; live calls return 503 until `POI_SERVICE_URL`/`POI_SERVICE_TOKEN` are set (pending-user-actions §6).
+All code-side infrastructure through the POI stack is merged and COMPLETE: `poi-cache-service` (PR #11) and `places-proxy` (PR #12). Remaining slices are blocked on owner credential/account actions (see `docs/agent/pending-user-actions.md`): `auth-foundation` round-trip needs Supabase anon key + Neon URL + provider config; `map-home` needs the Apple Developer Program purchase.
 
 ## What exists
 
@@ -31,12 +31,11 @@ coffeemode_backend/      old Java app — being dropped
 ## What's next
 
 ```text
-1. auth-foundation round-trip once credentials land (anon key, Neon URL,
-   Apple/Google provider config in Supabase dashboard)
-2. places-proxy: review + merge PR #12; worker deploy unblocks live POI calls
-3. map-home — Apple MapKit full-screen map + custom markers  [BLOCKED on Apple Developer Program]
-4. discovery-sheet, image-pipeline, cafe-creation, checkin-system
-5. work-profile aggregation, search, navigation prompt
+1. Owner actions (docs/agent/pending-user-actions.md §1–4): Supabase anon key +
+   provider config, Neon project + schema, Google OAuth, Apple Developer Program
+2. poi-cache-service deploy (§5–6): Google Places key, Cloudflare D1/KV + secrets
+3. Unblocks then: auth-foundation round-trip → cafe-creation / checkin-system /
+   discovery-sheet (map-home after Apple) → work-profile, search, navigation
 ```
 
 ## Known issues

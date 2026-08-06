@@ -6,7 +6,7 @@ Rewrite in progress. Harness + docs merged to `main` (PR #7). `web/` Next.js 16 
 
 ## Active focus
 
-Slice `poi-cache-service`: implemented and unit-tested (44 tests, mocked Google/D1/KV) on branch `feat/poi-cache-service`; awaiting review + merge, then deploy (blocked on Cloudflare account — pending-user-actions §6).
+Slice `places-proxy` (IN-PROGRESS): server-side POI client + `/api/places/search` + `/api/places/resolve` route handlers proxying the POI cache service (merged as PR #11, slice now COMPLETE). Upstream worker not deployed yet — tests mock it; live calls return 503 until `POI_SERVICE_URL`/`POI_SERVICE_TOKEN` are set (pending-user-actions §6).
 
 ## What exists
 
@@ -18,6 +18,9 @@ web/lib/db/              Neon pool (server-side only)
 web/app/auth/            signIn/signOut server actions + OAuth callback route
 poi-service/             POI cache microservice (Workers + D1 + KV) — 4 endpoints,
                          Google field masks, KV hot cache, D1 store, haversine search
+web/lib/places/          Server-only POI service client (search/resolve/get)
+web/app/api/places/      search + resolve route handlers proxying the POI service
+web/types/places.ts      POI types shared with the worker
 docs/specs/              0001 Next.js rewrite, 0002 design system, 0003 testing/CI
 docs/agent/              slices manifest (machine-checked), this file, protocols
 .agents/                 Agent workflows, scripts, delegated design prompts
@@ -30,8 +33,7 @@ coffeemode_backend/      old Java app — being dropped
 ```text
 1. auth-foundation round-trip once credentials land (anon key, Neon URL,
    Apple/Google provider config in Supabase dashboard)
-2. poi-cache-service: review + merge PR, then deploy once the owner creates
-   the Cloudflare account, D1 + KV namespaces, and secrets (§6 pending actions)
+2. places-proxy: review + merge PR #12; worker deploy unblocks live POI calls
 3. map-home — Apple MapKit full-screen map + custom markers  [BLOCKED on Apple Developer Program]
 4. discovery-sheet, image-pipeline, cafe-creation, checkin-system
 5. work-profile aggregation, search, navigation prompt

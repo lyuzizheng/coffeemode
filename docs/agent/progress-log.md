@@ -20,3 +20,12 @@
   - CI workflow `poi-service.yml` (typecheck + unit)
   - Slice status READY → IN-PROGRESS; docs/specs/0001 structure updated
 - Wrote `docs/agent/pending-user-actions.md` (owner-only setup checklist)
+
+## 2026-08-06 (afternoon)
+
+- PR #11 merged (poi-cache-service → COMPLETE). Devin review fixes verified:
+  text-search field mask (`places.*` prefix), cache-write resilience, duplicate
+  fields param, short-link host list — all correct; self-test harness fix included.
+- Started `places-proxy` slice (PR #12): `web/lib/places/poi-client.ts` (server-only
+  client, token header, no-store, 503 when unconfigured), `web/app/api/places/search`
+  + `resolve` route handlers, `web/types/places.ts`, 15 new tests (mocked worker).

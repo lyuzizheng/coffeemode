@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getPOIConfig, resolveMapsUrl, searchPOIs } from "@/lib/places/poi-client";
+import { getPOI, getPOIConfig, resolveMapsUrl, searchPOIs } from "@/lib/places/poi-client";
 import { GET as searchGET } from "@/app/api/places/search/route";
 import { POST as resolvePOST } from "@/app/api/places/resolve/route";
 
@@ -64,6 +64,7 @@ describe("poi-client", () => {
     expect(url).toBe(`${WORKER_URL}/poi/search?q=blue&lat=37.7&lng=-122.4&r=10`);
     expect(init.headers).toMatchObject({ "x-poi-service-token": TOKEN });
     expect(init.cache).toBe("no-store");
+    expect(init.signal).toBeInstanceOf(AbortSignal);
     expect(data.results[0].place_id).toBe("ChIJTEST123");
   });
 
@@ -85,6 +86,19 @@ describe("poi-client", () => {
       maps_share_url: "https://maps.app.goo.gl/abc",
     });
     expect(init.headers).toMatchObject({ "x-poi-service-token": TOKEN });
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(poi.name).toBe("Blue Bottle Coffee");
+  });
+
+  it("getPOI fetches /poi/:place_id and preserves colons", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(SAMPLE_POI));
+    const poi = await getPOI("0x8085abc:0x1234def");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${WORKER_URL}/poi/0x8085abc:0x1234def`);
+    expect(init.headers).toMatchObject({ "x-poi-service-token": TOKEN });
+    expect(init.signal).toBeInstanceOf(AbortSignal);
     expect(poi.name).toBe("Blue Bottle Coffee");
   });
 
@@ -145,7 +159,7 @@ describe("GET /api/places/search", () => {
     fetchMock.mockResolvedValue(jsonResponse({ error: "boom" }, 502));
     const res = await searchGET(new Request(`${WORKER_URL}/api/places/search?q=x`));
     expect(res.status).toBe(502);
-    expect((await res.json()) as { error: string }).toEqual({ error: "poi_service", message: expect.stringContaining("502") });
+    expect((await res.json()) as { error: string }).toEqual({ error: "poi_service", message: expect.stringContaining("unavailable") });
   });
 
   it("503s when the worker env is missing", async () => {

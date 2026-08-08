@@ -66,3 +66,7 @@ _archive-coffeemode-backend/   old Java app — being dropped
   Cloudflare account + secrets (pending-user-actions §7)
 - image-service/wrangler.toml needs R2 bucket name and R2_ACCOUNT_ID in [vars]; IMAGE_SERVICE_TOKEN, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY must be set via wrangler secret put
 ```
+
+## Latest review
+
+A batched subagent review (frontend/UX, check-in/social, cafe creation/discovery, auth/cache/perf/DB/deploy) produced `docs/specs/0004-product-decisions-and-backlog.md`. It contains proposed product decisions, an implementation backlog split into four phases, and open questions that need owner confirmation before they become canonical.

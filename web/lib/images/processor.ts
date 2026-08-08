@@ -18,6 +18,16 @@ export interface ProcessedImage {
 const R2_DOWNLOAD_TIMEOUT_MS = 30000;
 const R2_UPLOAD_TIMEOUT_MS = 30000;
 
+/** Sharp's `limitInputPixels` guard — (2^14 - 1)^2, just under 16K x 16K. */
+const MAX_INPUT_PIXELS = 268_402_689;
+
+const WEBP_QUALITY = 80;
+
+const ORIGINAL_MAX_DIMENSION = 4096;
+
+const CARD_SIZE = { width: 400, height: 300 };
+const THUMBNAIL_SIZE = { width: 200, height: 200 };
+
 async function fetchOriginal(original: ProcessUrls["original"]): Promise<Buffer> {
   const response = await fetch(original.url, {
     headers: original.headers,
@@ -57,13 +67,13 @@ async function resizeToBuffer(
     withoutEnlargement?: boolean;
   },
 ): Promise<{ buffer: Buffer; info: OutputInfo }> {
-  const { data, info } = await sharp(input, { limitInputPixels: 268_402_689 })
+  const { data, info } = await sharp(input, { limitInputPixels: MAX_INPUT_PIXELS })
     .rotate()
     .resize(options.width, options.height, {
       fit: options.fit ?? "cover",
       withoutEnlargement: options.withoutEnlargement ?? false,
     })
-    .webp({ quality: 80 })
+    .webp({ quality: WEBP_QUALITY })
     .toBuffer({ resolveWithObject: true });
   return { buffer: data, info };
 }
@@ -75,9 +85,14 @@ export async function processImage(
   const originalBuffer = await fetchOriginal(processUrls.original);
 
   const [cappedOriginal, card, thumbnail] = await Promise.all([
-    resizeToBuffer(originalBuffer, { width: 4096, height: 4096, fit: "inside", withoutEnlargement: true }),
-    resizeToBuffer(originalBuffer, { width: 400, height: 300, fit: "cover" }),
-    resizeToBuffer(originalBuffer, { width: 200, height: 200, fit: "cover" }),
+    resizeToBuffer(originalBuffer, {
+      width: ORIGINAL_MAX_DIMENSION,
+      height: ORIGINAL_MAX_DIMENSION,
+      fit: "inside",
+      withoutEnlargement: true,
+    }),
+    resizeToBuffer(originalBuffer, { width: CARD_SIZE.width, height: CARD_SIZE.height, fit: "cover" }),
+    resizeToBuffer(originalBuffer, { width: THUMBNAIL_SIZE.width, height: THUMBNAIL_SIZE.height, fit: "cover" }),
   ]);
 
   await Promise.all([

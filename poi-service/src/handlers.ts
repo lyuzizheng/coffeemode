@@ -9,6 +9,7 @@
  *   POST /poi/external     store externally-searched POIs (Google live / Apple refs)
  */
 
+import { DEFAULT_SEARCH_RADIUS_KM } from "./constants";
 import type { Deps, Env, POI, POISearchHit } from "./types";
 import { fetchPlaceDetails, textSearch, toPOI, GoogleApiError, type GooglePlace } from "./google";
 import {
@@ -183,7 +184,7 @@ async function searchPOIs(request: Request, env: Env, _deps: Deps): Promise<Resp
   const q = url.searchParams.get("q")?.trim() ?? "";
   const lat = Number.parseFloat(url.searchParams.get("lat") ?? "");
   const lng = Number.parseFloat(url.searchParams.get("lng") ?? "");
-  const r = url.searchParams.get("r") ? Number.parseFloat(url.searchParams.get("r")!) : 50;
+  const r = url.searchParams.get("r") ? Number.parseFloat(url.searchParams.get("r")!) : DEFAULT_SEARCH_RADIUS_KM;
 
   const hasCoords = !Number.isNaN(lat) && !Number.isNaN(lng);
   if (q === "" && !hasCoords) {

@@ -1,6 +1,7 @@
 import { Button, Card } from "@heroui/react";
 import { getTranslations } from "next-intl/server";
 import { signIn } from "@/app/auth/actions";
+import { profileFromUser } from "@/lib/auth/profiles";
 import { createSupabaseServerClient, isAuthConfigured } from "@/lib/auth/supabase-server";
 
 // Scaffold-stage home page. The real surface is a full-screen Apple Map with
@@ -36,9 +37,7 @@ export default async function HomePage() {
         {user ? (
           <div className="flex flex-col gap-1">
             <Card.Title>
-              {t("signed_in_as")}{" "}
-              {(user.user_metadata?.full_name as string) ??
-                (user.email ?? "")}
+              {t("signed_in_as")} {profileFromUser(user).displayName}
             </Card.Title>
             <Card.Description>{t("session_ready")}</Card.Description>
           </div>

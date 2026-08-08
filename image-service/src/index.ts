@@ -3,6 +3,9 @@ import { authorized } from "./auth";
 import { isValidUUID, sanitizeMetadata } from "./validate";
 import { presignedGetUrl, presignedPutUrl, publicUrl, ttlSeconds } from "./r2";
 
+/** Cache-Control for immutable WebP variants served through Cloudflare. */
+const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -89,15 +92,15 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
     presignedGetUrl(env, keys.original),
     presignedPutUrl(env, keys.original, "image/webp", {
       customMetadata: metadata,
-      cacheControl: "public, max-age=31536000, immutable",
+      cacheControl: IMMUTABLE_CACHE_CONTROL,
     }),
     presignedPutUrl(env, keys.card, "image/webp", {
       customMetadata: metadata,
-      cacheControl: "public, max-age=31536000, immutable",
+      cacheControl: IMMUTABLE_CACHE_CONTROL,
     }),
     presignedPutUrl(env, keys.thumbnail, "image/webp", {
       customMetadata: metadata,
-      cacheControl: "public, max-age=31536000, immutable",
+      cacheControl: IMMUTABLE_CACHE_CONTROL,
     }),
   ]);
 

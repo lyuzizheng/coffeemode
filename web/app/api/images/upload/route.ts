@@ -1,14 +1,6 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient, isAuthConfigured } from "@/lib/auth/supabase-server";
+import { getCurrentUser } from "@/lib/auth/get-user";
 import { requestUploadUrl } from "@/lib/images/image-service-client";
-
-async function getUser(): Promise<{ id: string } | null> {
-  if (!isAuthConfigured()) return null;
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) return null;
-  return { id: data.user.id };
-}
 
 /**
  * POST /api/images/upload
@@ -17,7 +9,7 @@ async function getUser(): Promise<{ id: string } | null> {
  * The session is verified here; the image-service Worker only sees a service token.
  */
 export async function POST() {
-  const user = await getUser();
+  const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

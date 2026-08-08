@@ -4,10 +4,7 @@ import { getLocale, getMessages } from "next-intl/server";
 import { Providers } from "./providers";
 import { OfflineBanner } from "@/components/offline-banner";
 import "./globals.css";
-
-const APP_NAME = "CoffeeMode";
-const APP_DESCRIPTION =
-  "Real wifi, outlet, and seat intel for digital nomads — find the perfect cafe to work from.";
+import { APP_DESCRIPTION, APP_NAME, THEME_COLOR } from "@/lib/site";
 
 // Self-hosted fonts (OFL). No runtime Google Fonts — files live in app/fonts
 // and are served by Next.js with zero layout shift (size-adjust fallbacks).
@@ -61,8 +58,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#b55a38" },
-    { media: "(prefers-color-scheme: dark)", color: "#b55a38" },
+    { media: "(prefers-color-scheme: light)", color: THEME_COLOR },
+    { media: "(prefers-color-scheme: dark)", color: THEME_COLOR },
   ],
 };
 

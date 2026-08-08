@@ -3,6 +3,7 @@
  * The API key lives ONLY in this worker (env), never in Next.js.
  */
 
+import { DEFAULT_SEARCH_RADIUS_KM } from "./constants";
 import type { Env, POI } from "./types";
 
 export const GOOGLE_API_BASE = "https://places.googleapis.com";
@@ -82,7 +83,7 @@ export async function textSearch(
 ): Promise<GooglePlace[]> {
   const body: Record<string, unknown> = { textQuery: query };
   if (opts.lat !== undefined && opts.lng !== undefined) {
-    const radiusMeters = (opts.radiusKm ?? 50) * 1000;
+    const radiusMeters = (opts.radiusKm ?? DEFAULT_SEARCH_RADIUS_KM) * 1000;
     body.locationBias = {
       circle: { center: { latitude: opts.lat, longitude: opts.lng }, radius: radiusMeters },
     };

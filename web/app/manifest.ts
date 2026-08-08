@@ -1,18 +1,18 @@
 import type { MetadataRoute } from "next";
+import { APP_DESCRIPTION, APP_NAME, BACKGROUND_COLOR, THEME_COLOR } from "@/lib/site";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "CoffeeMode",
-    short_name: "CoffeeMode",
-    description:
-      "Real wifi, outlet, and seat intel for digital nomads — find the perfect cafe to work from.",
+    name: APP_NAME,
+    short_name: APP_NAME,
+    description: APP_DESCRIPTION,
     start_url: "/?source=pwa",
     display: "standalone",
     display_override: ["standalone", "browser"],
     orientation: "portrait",
     scope: "/",
-    background_color: "#faf8f5",
-    theme_color: "#b55a38",
+    background_color: BACKGROUND_COLOR,
+    theme_color: THEME_COLOR,
     icons: [
       {
         src: "/icons/icon-192x192.png",

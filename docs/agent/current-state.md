@@ -2,17 +2,17 @@
 
 ## Phase
 
-Rewrite in progress. Harness + docs merged to `main` (PR #7). `web/` Next.js 16 workspace scaffolded (PR #8) and the design-token/theme layer landed (PR #9, Kimi-delegated, independently verified). All code-side infrastructure through the POI stack is merged and COMPLETE (`poi-cache-service` PR #11, `places-proxy` PR #12). `auth-foundation` code is COMPLETE including the Postgres migration (ADR-0002); live OAuth round-trip is pending dashboard configuration. `image-pipeline` is COMPLETE (code complete, deploy pending).
+Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisions-and-backlog.md` is in progress. Part A (design tokens, i18n, theme-preview prototypes) is on PR #19. Part B (auth middleware, schema migration, types, stats aggregate) is the next active implementation batch. Infrastructure slices (`image-pipeline`, `poi-cache-service`, `places-proxy`, `auth-foundation`) are code-complete but still pending owner credential/account actions.
 
 ## Active focus
 
-Code-complete slices awaiting owner credential/account actions:
-
-- `image-pipeline` (COMPLETE — deploy pending): `image-service` Cloudflare Worker for presigned R2 upload URLs, Next.js `/api/images/upload` and `/api/images/complete` route handlers, and `sharp`-based resize to `original` (capped at 4096px) / `card` / `thumbnail` on the VPS.
-- `places-proxy` routes are COMPLETE; the upstream `poi-cache-service` Worker deploy (D1/KV/secrets + `POI_SERVICE_URL`/`POI_SERVICE_TOKEN`) is still pending (`docs/agent/pending-user-actions.md` §7).
-- `auth-foundation` round-trip is pending Supabase anon key, `DATABASE_URL`, and Apple/Google provider config (`docs/agent/pending-user-actions.md` §1–3).
-
-Next unblocked slice after owner actions is `map-home`, which is blocked on the Apple Developer Program purchase (`docs/agent/pending-user-actions.md` §4).
+- Part A review/merge: `feat/impl-design-tokens` (PR #19) — design tokens, `<Toast.Provider>`, en/zh namespaces, and new `theme-preview` prototypes.
+- Part B implementation (no Apple Developer / map dependency):
+  - `web/middleware.ts` session refresh (A1).
+  - Schema migration for `checkins.updated_at`, `checkins.deleted_at`, `checkin_likes`, image `source`, and missing indexes (S1).
+  - `web/types/checkins.ts` and `web/types/profile.ts` (S2).
+  - `web/lib/stats/aggregate.ts` incremental `work_stats` algorithm with the social-weight hook (S3 / D2).
+- Owner credential/account actions remain outstanding and are tracked in `docs/agent/pending-user-actions.md`.
 
 ## What exists
 

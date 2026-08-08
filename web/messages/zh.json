@@ -133,6 +133,103 @@
       "demo_reflow": "点击胶囊——列表以布局动画重排",
       "demo_bars": "办公指数条入场时弹簧加载"
     },
+    "scoreSlider": {
+      "title": "评分滑杆",
+      "desc": "wifi、插座、座位、温度、咖啡以及综合办公指数的主观 0–100 滑杆。"
+    },
+    "policyChips": {
+      "title": "店规胶囊",
+      "desc": "最低消费与最长停留政策,以小胶囊形式单选。"
+    },
+    "checkInSuccess": {
+      "title": "打卡成功",
+      "desc": "克制的底部确认卡片:新办公指数、操作按钮与一缕蒸汽暗示。"
+    },
+    "profilePreview": {
+      "title": "个人主页",
+      "desc": "头像、统计与「我的咖啡店」/「我的打卡」标签列表。"
+    },
+    "searchFilter": {
+      "title": "搜索筛选",
+      "desc": "适合拇指操作的筛选面:城市、维度最低分、店规与营业中开关。"
+    },
     "footer": "CoffeeMode design-tokens 切片 · next-intl 中英双语 · HeroUI v3 token 已覆盖"
+  },
+  "profile": {
+    "title": "个人主页",
+    "myCafes": "我的咖啡店",
+    "myCheckins": "我的打卡",
+    "emptyCafes": "还没有咖啡店。打卡后你访问过的店会出现在这里。",
+    "emptyCheckins": "还没有打卡。你的第一次到访只差一步。",
+    "city": "城市",
+    "statsCafes": "家咖啡店",
+    "statsCheckins": "次打卡",
+    "statsCities": "座城市",
+    "mockName": "Jordan Lee",
+    "mockInitials": "JL",
+    "mockCity": "东京"
+  },
+  "create": {
+    "title": "添加咖啡店",
+    "importLink": "从地图链接导入",
+    "importHint": "粘贴 Google 或 Apple Maps 分享链接。",
+    "manual": "手动输入",
+    "name": "店名",
+    "city": "城市",
+    "submit": "创建咖啡店"
+  },
+  "checkIn": {
+    "title": "打卡",
+    "overall": "综合办公评分",
+    "note": "备注",
+    "notePlaceholder": "wifi、座位、氛围如何？",
+    "wifi": "Wifi",
+    "outlets": "插座",
+    "seats": "座位",
+    "temp": "温度",
+    "coffee": "咖啡",
+    "submit": "提交打卡"
+  },
+  "success": {
+    "title": "打卡已保存",
+    "viewCafe": "查看咖啡店",
+    "share": "分享",
+    "newWorkScore": "新办公指数"
+  },
+  "search": {
+    "title": "搜索",
+    "filters": "筛选",
+    "nearby": "附近",
+    "city": "城市",
+    "minSpend": "最低消费",
+    "maxStay": "最长停留",
+    "openNow": "正在营业",
+    "workScore": "办公指数",
+    "dimensionMinima": "维度最低分",
+    "apply": "应用",
+    "reset": "重置",
+    "minSpendOptions": {
+      "none": "无",
+      "drink": "一杯饮品",
+      "s5": "$5",
+      "s10": "$10",
+      "s10plus": "$10+",
+      "unknown": "未知"
+    },
+    "maxStayOptions": {
+      "unlimited": "不限",
+      "3h": "3小时",
+      "2h": "2小时",
+      "1h": "1小时",
+      "peak": "高峰期限",
+      "unknown": "未知"
+    },
+    "cities": {
+      "tokyo": "东京",
+      "shanghai": "上海",
+      "taipei": "台北",
+      "seoul": "首尔",
+      "berlin": "柏林"
+    }
   }
 }

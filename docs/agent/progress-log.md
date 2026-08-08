@@ -57,6 +57,18 @@
   - All gates green: `preflight.sh`, `npm run verify` in `web/`, and
     `npm run typecheck` + `npm test` in `image-service/`
 
+## 2026-08-09
+
+- Implemented Part A of the 0004 Phase 1 backlog on `feat/impl-design-tokens`:
+  - Reconciled design tokens (`--secondary` sage, small radius scale, warm shadows) in `web/app/globals.css`.
+  - Mounted `<Toast.Provider>` in `web/app/providers.tsx`.
+  - Added `profile`, `create`, `checkIn`, `success`, and `search` i18n namespaces in `web/messages/en.json` and `web/messages/zh.json`.
+  - Added `ScoreSlider`, `PolicyChips`, `CheckInSuccessCard`, `ProfileSection`, and `SearchFilter` prototypes in `web/app/theme-preview/sections/*`.
+  - Wired new sections into `/theme-preview` and updated `preview-sections.tsx` barrel exports.
+  - Synced `docs/specs/0002-design-system.md` with the actual `globals.css` token set.
+- Ran an independent implementation review, fixed the reported nits, and opened PR #19.
+- All gates green: `preflight.sh` and `cd web && npm run verify`.
+
 ## 2026-08-08
 
 - Merged `feat/code-quality-cleanup` (PR #16): centralized constants, shared helpers, and split `theme-preview/preview-sections.tsx`.

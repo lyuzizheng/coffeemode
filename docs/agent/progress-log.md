@@ -56,3 +56,9 @@
     data-layer references in `.agents/skills/*`
   - All gates green: `preflight.sh`, `npm run verify` in `web/`, and
     `npm run typecheck` + `npm test` in `image-service/`
+
+## 2026-08-08
+
+- Merged `feat/code-quality-cleanup` (PR #16): centralized constants, shared helpers, and split `theme-preview/preview-sections.tsx`.
+- Ran a four-way subagent review covering frontend/UX design, check-in & social semantics, cafe creation & discovery scenarios, and auth/cache/performance/database/deploy.
+- Drafted `docs/specs/0004-product-decisions-and-backlog.md` with proposed decisions, a phased implementation backlog, and open questions for owner confirmation.

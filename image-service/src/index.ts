@@ -88,8 +88,14 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
   const [originalGet, originalPut, cardPut, thumbnailPut] = await Promise.all([
     presignedGetUrl(env, keys.original),
     presignedPutUrl(env, keys.original, "image/webp", { customMetadata: metadata }),
-    presignedPutUrl(env, keys.card, "image/webp", { customMetadata: metadata }),
-    presignedPutUrl(env, keys.thumbnail, "image/webp", { customMetadata: metadata }),
+    presignedPutUrl(env, keys.card, "image/webp", {
+      customMetadata: metadata,
+      cacheControl: "public, max-age=31536000, immutable",
+    }),
+    presignedPutUrl(env, keys.thumbnail, "image/webp", {
+      customMetadata: metadata,
+      cacheControl: "public, max-age=31536000, immutable",
+    }),
   ]);
 
   const response: CompleteResponse = {

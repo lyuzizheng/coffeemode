@@ -33,8 +33,8 @@ web/types/places.ts      POI types shared with the worker
 docs/specs/              0001 Next.js rewrite, 0002 design system, 0003 testing/CI
 docs/agent/              slices manifest (machine-checked), this file, protocols
 .agents/                 Agent workflows, scripts, delegated design prompts
-coffeemode-frontend/     old Vite app — reference only, superseded
-coffeemode_backend/      old Java app — being dropped
+_archive-coffeemode-frontend/  old Vite app — reference only, superseded
+_archive-coffeemode-backend/   old Java app — being dropped
 ```
 
 ## What's next

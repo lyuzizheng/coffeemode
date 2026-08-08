@@ -6,5 +6,5 @@ alwaysApply: true
 
 # Your rule content
 
-- The front end project content notes is inside [repo_notes.md](mdc:coffeemode-frontend/repo_notes.md)
-- The back end project is a spring project that you should interact with me
+- The active project is a Next.js 16 full-stack app in `web/` (Postgres + Supabase auth + Cloudflare Workers).
+- Legacy Vite frontend and Java backend are archived under `_archive-coffeemode-frontend/` and `_archive-coffeemode-backend/`.

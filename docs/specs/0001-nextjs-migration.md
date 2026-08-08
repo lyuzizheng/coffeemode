@@ -6,7 +6,7 @@ Rewrite CoffeeMode as a full-stack Next.js application — **the coworking revie
 
 Drop the Java Spring Boot backend entirely. CoffeeMode owns its POI database; Google Places and Apple Maps are external references and import sources, never authoritative.
 
-This is a rewrite, not a migration. The old Vite SPA (`coffeemode-frontend/`) and Java backend are reference material only.
+This is a rewrite, not a migration. The old Vite SPA (`_archive-coffeemode-frontend/`) and Java backend (`_archive-coffeemode-backend/`) are archived reference material only.
 
 ## Status
 
@@ -620,7 +620,9 @@ Storage:
 ### PWA & sharing
 
 ```text
-PWA (MVP): manifest + standalone display mode + icons. No service worker.
+PWA: manifest + standalone display mode + icons + one unified service worker.
+      See ADR-0003 for the minimal, performance-first service-worker design.
+      Offline mutation queue is intentionally out of MVP (use banner instead).
 Share: Web Share API primary, copy-link fallback.
 OG meta: cafe cover as og:image on /cafes/[id].
 ```

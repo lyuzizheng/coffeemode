@@ -5,29 +5,29 @@
 ./.env.development
 ./.env.production
 
-./coffeemode_backend/.idea
-./coffeemode_backend/.vscode
-./coffeemode_backend/.env
-./coffeemode_backend/.env.local
-./coffeemode_backend/.env.development
-./coffeemode_backend/.env.production
-./coffeemode_backend/bin
-./coffeemode_backend/.gradle
-./coffeemode_backend/build
-./coffeemode_backend/src/main/resources/serviceAccountKey.json
+# Archived legacy projects — keep source/docs, ignore generated/sensitive artifacts
+_archive-coffeemode-backend/.idea
+_archive-coffeemode-backend/.vscode
+_archive-coffeemode-backend/.env
+_archive-coffeemode-backend/.env.local
+_archive-coffeemode-backend/.env.development
+_archive-coffeemode-backend/.env.production
+_archive-coffeemode-backend/bin
+_archive-coffeemode-backend/.gradle
+_archive-coffeemode-backend/build
+_archive-coffeemode-backend/src/main/resources/serviceAccountKey.json
+_archive-coffeemode-backend/.DS_Store
 
-
-./coffeemode-frontend/.idea
-./coffeemode-frontend/.vscode
-./coffeemode-frontend/.env
-./coffeemode-frontend/.env.local
-./coffeemode-frontend/.env.development
-./coffeemode-frontend/.env.production
-
-
-./coffeemode-frontend/node_modules
-./coffeemode-frontend/dist
-./coffeemode-frontend/build
+_archive-coffeemode-frontend/.idea
+_archive-coffeemode-frontend/.vscode
+_archive-coffeemode-frontend/.env
+_archive-coffeemode-frontend/.env.local
+_archive-coffeemode-frontend/.env.development
+_archive-coffeemode-frontend/.env.production
+_archive-coffeemode-frontend/node_modules
+_archive-coffeemode-frontend/dist
+_archive-coffeemode-frontend/build
+_archive-coffeemode-frontend/.DS_Store
 
 poi-service/node_modules/
 poi-service/.dev.vars
@@ -36,10 +36,12 @@ image-service/node_modules/
 image-service/.dev.vars
 image-service/.wrangler/
 node_modules/
-./coffeemode-frontend/public/js/mapsJavaScriptAPI.js
-./coffeemode-frontend/public/js/mapsJavaScriptAPI.js.map
-./coffeemode-frontend/public/js/mapsJavaScriptAPI.js.map.gz
-./coffeemode-frontend/public/js/mapsJavaScriptAPI.js.map.gz.map
+_archive-coffeemode-frontend/public/js/mapsJavaScriptAPI.js
+_archive-coffeemode-frontend/public/js/mapsJavaScriptAPI.js.map
+_archive-coffeemode-frontend/public/js/mapsJavaScriptAPI.js.map.gz
+_archive-coffeemode-frontend/public/js/mapsJavaScriptAPI.js.map.gz.map
+.DS_Store
+**/.DS_Store
 
 
 

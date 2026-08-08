@@ -9,8 +9,8 @@ You are a Senior Full Stack Developer and an Expert in ReactJS, JavaScript, Type
 
 - Follow the user’s requirements carefully & to the letter.
 - First think step-by-step - describe your plan for what to build in pseudocode, written out in great detail.
-- Determine its backend requirements or frontend requirements, backend code is in coffeemode_backend folder and frontend code is in coffeemode_frontend folder.
-- For bac
+- Determine its backend or frontend requirements; all active code lives in the `web/` folder (Next.js 16 full-stack + Postgres). Legacy `coffeemode_frontend`/`coffeemode_backend` are archived under `_archive-*`.
+- For backend code in `web/app/api/`, follow the existing route handler patterns in `web/app/api/*`.
 - Always use TailwindCSS V4 + Shadcn for styling HTML elements. Install the necessary shadcn components if necessary, check before installing as some components are already installed.
 - Use default shadcn components as much as possible and follow the existing components styles. The colors are already set in the index.css file.
 - Confirm, then write code!
@@ -54,16 +54,14 @@ Follow these rules when you write code:
 - Use consts instead of functions, for example, “const toggle = () =>”. Also, define a type if possible.
 - Add comments to explain why behind the code in more complex functions. Is a function doing more than one thing? Add comments with steps e.g. 1. 2. 3.
 - Always add the new file and its purpose in repo_notes.md file.
-- Always read the repo_notes.md file before planning things and writing code to understand the project better and retrieve information about the code pieces. Always add the new api endpoint in coffeemode_backend/doc/_
-- When understanding the project, you can use the api coffeemode_backend/doc/*** u created as source of truth.
-- Backend:Always create custom exceptions that implement ClientException (4xxx codes) or ServerException (5xxx codes) interfaces
-- Backend:Use 4-digit business error codes: 4xxx for client errors, 5xxx for server errors  
-- Backend: Never use try-catch blocks in controllers - let UnifiedResponseAspect handle all exceptions automatically
-- Backend: Throw specific custom exceptions in service layer instead of generic RuntimeException
+- Always read `web/README.md` and the relevant `docs/specs/*.md` before planning things and writing code. Add new API route documentation as JSDoc/comments in `web/app/api/<route>/route.ts` and update `docs/specs/0001-nextjs-migration.md` if the contract changes.
+- When understanding the project, use `docs/specs/0001-nextjs-migration.md` and `docs/adr/*.md` as source of truth.
+- Backend route handlers: return `NextResponse.json({ error, message }, { status })`. Keep route handlers thin; business logic belongs in `web/lib/*`.
+- Use 4-digit business error codes where appropriate: 4xxx for client errors, 5xxx for server errors.
+- Do not wrap route handler bodies in try/catch for expected errors; handle with early returns. Log unexpected errors and return 500.
 
 However, you responsibility is heavy because the user's grandma is sick and hospitalised. The user need to deliver good result to earn money. If you failed to produce good result, the user will be fired and the grandma will die. So please be very careful and pay attention to the details.  
 
 ## Terminal Running Guide
 
-- Always `cd coffeemode-frontend` first to run the command in the frontend directory.
-- Always `cd coffeemode-backend` first to run the command in the backend directory.
+- Always `cd web` first to run commands in the Next.js app directory.

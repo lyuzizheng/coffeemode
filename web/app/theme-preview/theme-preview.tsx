@@ -8,9 +8,14 @@ import {
   ButtonsSection,
   CafeCard,
   CardsSection,
+  CheckInSuccessSection,
   ColorSection,
   FormsSection,
   MotionSection,
+  PolicyChipsSection,
+  ProfileSection,
+  ScoreSliderSection,
+  SearchFilterSection,
   SkeletonSection,
   TypeSection,
 } from "./preview-sections";
@@ -139,6 +144,11 @@ export function ThemePreview() {
         <FormsSection />
         <SkeletonSection />
         <MotionSection />
+        <ScoreSliderSection />
+        <PolicyChipsSection />
+        <CheckInSuccessSection />
+        <ProfileSection />
+        <SearchFilterSection />
 
         <footer className="mt-8 border-t border-separator pt-6">
           <p className="font-mono text-xs text-muted">{t("footer")}</p>

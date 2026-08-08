@@ -22,6 +22,8 @@ const BRAND_TOKENS = [
   "accent-hover",
   "accent-soft",
   "accent-soft-foreground",
+  "secondary",
+  "secondary-foreground",
 ];
 const STATUS_TOKENS = [
   "success",

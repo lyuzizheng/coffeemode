@@ -100,38 +100,55 @@ HeroUI v3 semantic tokens overridden with the CoffeeMode palette. In HeroUI v3 t
 
 ```text
 Light mode:
-  background:       oklch(98.0% 0.003 85)    near-white warm
-  foreground:       oklch(20.0% 0.020 55)    deep espresso ink
-  content1:         oklch(99.5% 0.002 85)    elevated surface
-  content2:         oklch(96.0% 0.008 80)    secondary surface
-  content3:         oklch(93.0% 0.012 75)    tertiary / hover
-  content4:         oklch(88.0% 0.015 70)    borders, dividers
+  background:       oklch(98.1% 0.004 82)    warm paper
+  foreground:       oklch(23% 0.022 48)      deep espresso ink
+  surface:          oklch(99.4% 0.002 82)    elevated surface (cards)
+  surface-secondary: oklch(96.4% 0.006 76)   secondary surface
+  surface-tertiary: oklch(93.2% 0.009 72)    tertiary / hover
+  overlay:          oklch(99.6% 0.002 82)    popovers, modals, sheets
+  border:           oklch(89.5% 0.008 70)    component borders
+  separator:        oklch(92.5% 0.006 74)    dividers
+  muted:            oklch(44% 0.02 55)       secondary text
+  default:          oklch(94% 0.007 72)      neutral controls
 
   accent:           oklch(54% 0.15 42)       burnt sienna / terracotta
   accent-foreground: oklch(98.5% 0.004 80)   white on accent
-  secondary:        oklch(45.0% 0.080 155)   deep sage green
+  secondary:        oklch(45.0% 0.080 155)   deep sage green (brand)
   secondary-foreground: oklch(97.0% 0.005 155) white on secondary
 
   success:          oklch(52% 0.11 152)      sage green status
   success-foreground: oklch(98% 0.01 140)
   warning:          oklch(66% 0.14 68)       amber
-  danger:           oklch(50.0% 0.150 25)    clay red
+  warning-foreground: oklch(26% 0.03 55)
+  danger:           oklch(50% 0.17 26)       clay red
+  danger-foreground: oklch(98.5% 0.004 60)
 
 Dark mode:
-  background:       oklch(15.0% 0.012 55)    deep espresso
-  foreground:       oklch(93.0% 0.008 75)    warm light
-  content1:         oklch(19.0% 0.012 55)    elevated
-  content2:         oklch(23.0% 0.012 55)    secondary
-  content3:         oklch(28.0% 0.012 55)    tertiary
-  content4:         oklch(35.0% 0.010 55)    borders
+  background:       oklch(15.5% 0.012 50)    deep espresso
+  foreground:       oklch(92.5% 0.009 72)    warm light
+  surface:          oklch(19.5% 0.013 52)    elevated surface
+  surface-secondary: oklch(23% 0.013 52)     secondary surface
+  surface-tertiary: oklch(27.5% 0.013 52)    tertiary / hover
+  overlay:          oklch(22% 0.014 52)      popovers, modals, sheets
+  border:           oklch(29.5% 0.012 52)    warm hairline borders
+  separator:        oklch(25% 0.012 52)      dividers
+  muted:            oklch(72% 0.015 60)      secondary text
+  default:          oklch(26.5% 0.013 52)    neutral controls
 
   accent:           oklch(68% 0.16 46)       lighter terracotta
   accent-foreground: oklch(17% 0.015 48)
-  secondary:        oklch(55.0% 0.080 155)   lighter sage
+  secondary:        oklch(55.0% 0.080 155)   lighter sage (brand)
   secondary-foreground: oklch(16% 0.03 150)
+
+  success:          oklch(70% 0.13 150)
+  success-foreground: oklch(16% 0.03 150)
+  warning:          oklch(76% 0.14 75)
+  warning-foreground: oklch(24% 0.04 60)
+  danger:           oklch(64% 0.19 27)
+  danger-foreground: oklch(97% 0.01 60)
 ```
 
-`web/app/globals.css` must define `--accent`, `--accent-foreground`, `--secondary`, and `--secondary-foreground` in both `@theme` blocks so the brand palette is available through HeroUI semantic tokens.
+`web/app/globals.css` maps `--color-secondary` / `--color-secondary-foreground` in `@theme` and overrides `--accent`, `--accent-foreground`, `--secondary`, `--secondary-foreground`, plus `surface`, `border`, `separator`, `muted`, and `default` in both `:root` (light) and `.dark` so the brand palette is available through HeroUI semantic tokens.
 
 ### Typography
 
@@ -181,7 +198,7 @@ Dense, mobile-first radius. Cards breathe through padding, not roundness. `web/a
 ```text
 Prefer borders + tonal separation over shadows.
 Map overlays: backdrop-blur(12px) + subtle warm shadow
-Cards: 1px border (content4) + shadow-sm on hover
+Cards: 1px border (--border) + shadow-surface on default, shadow-md on hover
 Drawers/modals: shadow-lg, warm-tinted
 Avoid: broad decorative shadows, Material elevation stacks
 ```

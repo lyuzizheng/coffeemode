@@ -35,36 +35,25 @@ export function Section({
   );
 }
 
-/** Resolves a token to a short display hex (#rrggbb), live per theme. */
-export function useResolvedColor(token: string): string {
-  const { resolvedTheme } = useTheme();
-  const mounted = useMounted();
-  return useMemo(() => {
-    if (!mounted) return "";
-    // Re-read the token when next-themes flips the .dark class.
-    void resolvedTheme;
-    const el = document.createElement("div");
-    el.style.color = `var(--${token})`;
-    el.style.display = "none";
-    document.body.appendChild(el);
-    const computed = getComputedStyle(el).color;
-    el.remove();
-    return toDisplayHex(computed);
-  }, [mounted, token, resolvedTheme]);
+let displayCtx: CanvasRenderingContext2D | null | undefined;
+
+function getDisplayCtx(): CanvasRenderingContext2D | null {
+  if (displayCtx === undefined) {
+    const canvas = typeof document === "undefined" ? null : document.createElement("canvas");
+    displayCtx = canvas ? canvas.getContext("2d", { willReadFrequently: true }) : null;
+  }
+  return displayCtx;
 }
 
 /**
- * Normalizes any computed color to a caption: `#rrggbb`, or `#rrggbb · N%`
- * when the token is translucent (soft colors are color-mix with transparent).
- * String parsing can't keep up with CSS Color 4 (lab/oklch/color-mix survive
- * getComputedStyle intact), so the ground truth is a 1px canvas: Chrome
- * rasterizes the color into sRGB bytes, and getImageData's unpremultiplied
- * channels return the true fill color and alpha.
+ * Normalizes any CSS color string to a caption: `#rrggbb`, or `#rrggbb · N%`
+ * when the token is translucent. String parsing can't keep up with CSS Color 4
+ * (lab/oklch/color-mix survive getComputedStyle intact), so the ground truth
+ * is a 1px canvas: Chrome rasterizes the color into sRGB bytes, and
+ * getImageData's unpremultiplied channels return the true fill color and alpha.
  */
 export function toDisplayHex(color: string): string {
-  const ctx = document.createElement("canvas").getContext("2d", {
-    willReadFrequently: true,
-  });
+  const ctx = getDisplayCtx();
   if (!ctx) return color;
   // Guard against invalid input: a failed fillStyle assignment is ignored.
   const probe = "#010203";
@@ -76,6 +65,39 @@ export function toDisplayHex(color: string): string {
   const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
   const hex = `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
   return a < 255 ? `${hex} · ${Math.round((a / 255) * 100)}%` : hex;
+}
+
+/** Hidden, singleton element used to resolve CSS variables that contain color-mix/var(). */
+let colorProbe: HTMLDivElement | null = null;
+
+function getColorProbe(): HTMLDivElement | null {
+  if (typeof document === "undefined") return null;
+  if (!colorProbe) {
+    colorProbe = document.createElement("div");
+    colorProbe.style.cssText =
+      "position:absolute;visibility:hidden;width:0;height:0;overflow:hidden;";
+    document.body.appendChild(colorProbe);
+  }
+  return colorProbe;
+}
+
+/** Resolves a token to a short display hex (#rrggbb), live per theme.
+ *  A hidden probe element is used because canvas cannot parse color-mix()
+ *  expressions that reference CSS variables; getComputedStyle resolves the
+ *  full chain for us.
+ */
+export function useResolvedColor(token: string): string {
+  const { resolvedTheme } = useTheme();
+  const mounted = useMounted();
+  return useMemo(() => {
+    if (!mounted) return "";
+    // Re-read when next-themes flips the .dark class.
+    void resolvedTheme;
+    const probe = getColorProbe();
+    if (!probe) return "";
+    probe.style.color = `var(--${token})`;
+    return toDisplayHex(getComputedStyle(probe).color);
+  }, [mounted, token, resolvedTheme]);
 }
 
 export function Swatch({ token }: { token: string }) {

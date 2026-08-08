@@ -133,6 +133,103 @@
       "demo_reflow": "Tap a pill — the list reflows with a layout animation",
       "demo_bars": "Work-profile bars spring in on entry"
     },
+    "scoreSlider": {
+      "title": "Score sliders",
+      "desc": "Subjective 0–100 dimensions for wifi, outlets, seats, temperature, coffee, and an overall work score."
+    },
+    "policyChips": {
+      "title": "Policy chips",
+      "desc": "Minimum spend and maximum stay policies, selectable as compact chips."
+    },
+    "checkInSuccess": {
+      "title": "Check-in success",
+      "desc": "A restrained bottom-card confirmation: new work score, actions, and a whisper of steam."
+    },
+    "profilePreview": {
+      "title": "Profile",
+      "desc": "Header, stats, and tabbed lists for My Cafes and My Check-ins."
+    },
+    "searchFilter": {
+      "title": "Search filters",
+      "desc": "Thumb-friendly filter surface: city, dimension minima, policies, and open-now."
+    },
     "footer": "CoffeeMode design-tokens slice · en/zh via next-intl · HeroUI v3 tokens, overridden"
+  },
+  "profile": {
+    "title": "Profile",
+    "myCafes": "My Cafes",
+    "myCheckins": "My Check-ins",
+    "emptyCafes": "No cafes yet. Check in and your spots will appear here.",
+    "emptyCheckins": "No check-ins yet. Your first visit is one tap away.",
+    "city": "City",
+    "statsCafes": "cafes",
+    "statsCheckins": "check-ins",
+    "statsCities": "cities",
+    "mockName": "Jordan Lee",
+    "mockInitials": "JL",
+    "mockCity": "Tokyo"
+  },
+  "create": {
+    "title": "Add a cafe",
+    "importLink": "Import from a maps link",
+    "importHint": "Paste a Google or Apple Maps share URL.",
+    "manual": "Enter manually",
+    "name": "Cafe name",
+    "city": "City",
+    "submit": "Create cafe"
+  },
+  "checkIn": {
+    "title": "Check in",
+    "overall": "Overall work score",
+    "note": "Note",
+    "notePlaceholder": "How was the wifi, seats, vibe?",
+    "wifi": "Wifi",
+    "outlets": "Outlets",
+    "seats": "Seats",
+    "temp": "Temperature",
+    "coffee": "Coffee",
+    "submit": "Submit check-in"
+  },
+  "success": {
+    "title": "Check-in saved",
+    "viewCafe": "View cafe",
+    "share": "Share",
+    "newWorkScore": "New work score"
+  },
+  "search": {
+    "title": "Search",
+    "filters": "Filters",
+    "nearby": "Nearby",
+    "city": "City",
+    "minSpend": "Min spend",
+    "maxStay": "Max stay",
+    "openNow": "Open now",
+    "workScore": "Work score",
+    "dimensionMinima": "Dimension minima",
+    "apply": "Apply",
+    "reset": "Reset",
+    "minSpendOptions": {
+      "none": "None",
+      "drink": "A drink",
+      "s5": "$5",
+      "s10": "$10",
+      "s10plus": "$10+",
+      "unknown": "Unknown"
+    },
+    "maxStayOptions": {
+      "unlimited": "No limit",
+      "3h": "3h",
+      "2h": "2h",
+      "1h": "1h",
+      "peak": "Peak only",
+      "unknown": "Unknown"
+    },
+    "cities": {
+      "tokyo": "Tokyo",
+      "shanghai": "Shanghai",
+      "taipei": "Taipei",
+      "seoul": "Seoul",
+      "berlin": "Berlin"
+    }
   }
 }

@@ -16,7 +16,8 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* ----------------------------------------------------------------------------
-   Theme-level tokens (Tailwind v4 @theme): typography, shadow, ease additions.
+   Theme-level tokens (Tailwind v4 @theme): typography, radius, shadow, color,
+   and ease additions.
    ------------------------------------------------------------------------- */
 @theme {
   /* Font families — wired to next/font/local variables in app/layout.tsx.
@@ -53,9 +54,18 @@
   --shadow-lg:
     0 2px 4px 0 oklch(25% 0.03 50 / 0.04),
     0 12px 28px -6px oklch(25% 0.03 50 / 0.12);
-  --shadow-map:
-    0 1px 3px 0 oklch(25% 0.03 50 / 0.06),
-    0 6px 24px -4px oklch(25% 0.03 50 / 0.14);
+  --shadow-map: 0 1px 3px 0 oklch(25% 0.03 50 / 0.06);
+
+  /* Small radius scale — dense, mobile-first. Spec 0002. */
+  --radius-sm: 0.125rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.375rem;
+  --radius-xl: 0.5rem;
+  --radius: var(--radius-md);
+
+  /* Brand secondary — real sage. */
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
 
   /* Signature ease — ease-out-quint, fast attack long settle. Overrides
      HeroUI's --ease-out-quint (0.23,1,0.32,1) with the spec curve. */
@@ -69,10 +79,13 @@
 :root,
 .light,
 [data-theme="light"] {
-  /* Radius base unit: 8px → sm 4 / md 6 / lg 8 / xl 12 / 2xl 16 / 3xl 24.
-     Buttons land on 8, fields on 12, cards are pinned to 12 below. */
-  --radius: 0.5rem;
-  --field-radius: 0.75rem;
+  /* Small radius scale — dense, mobile-first. Spec 0002. */
+  --radius-sm: 0.125rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.375rem;
+  --radius-xl: 0.5rem;
+  --radius: var(--radius-md);
+  --field-radius: var(--radius-md);
   --field-border-width: 1px;
 
   /* Base */
@@ -95,9 +108,11 @@
   --default: oklch(94% 0.007 72);
   --default-foreground: var(--foreground);
 
-  /* Brand — burnt sienna terracotta */
+  /* Brand — burnt sienna terracotta + real sage secondary */
   --accent: oklch(54% 0.15 42);
   --accent-foreground: oklch(98.5% 0.004 80);
+  --secondary: oklch(45.0% 0.080 155);
+  --secondary-foreground: oklch(97.0% 0.005 155);
 
   /* Status */
   --success: oklch(52% 0.11 152);
@@ -150,6 +165,14 @@
   --background: oklch(15.5% 0.012 50);
   --foreground: oklch(92.5% 0.009 72);
 
+  /* Small radius scale — dense, mobile-first. Spec 0002. */
+  --radius-sm: 0.125rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.375rem;
+  --radius-xl: 0.5rem;
+  --radius: var(--radius-md);
+  --field-radius: var(--radius-md);
+
   /* Surfaces — warm steps upward */
   --surface: oklch(19.5% 0.013 52);
   --surface-foreground: var(--foreground);
@@ -166,9 +189,11 @@
   --default: oklch(26.5% 0.013 52);
   --default-foreground: var(--foreground);
 
-  /* Brand — terracotta lifted for dark, reads like lamplight */
+  /* Brand — terracotta lifted for dark, reads like lamplight + lighter sage */
   --accent: oklch(68% 0.16 46);
   --accent-foreground: oklch(17% 0.015 48);
+  --secondary: oklch(55.0% 0.080 155);
+  --secondary-foreground: oklch(16% 0.03 150);
 
   /* Status — lighter values carry dark text, warm-light on espresso */
   --success: oklch(70% 0.13 150);
@@ -209,9 +234,9 @@
    ------------------------------------------------------------------------- */
 
 /* HeroUI v3 cards default to min(32px, --radius-3xl) — too round for this
-   system. Cards breathe through padding, not radius: pin to 12px. */
+   system. Cards breathe through padding, not radius: pin to md (4px). */
 .card {
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-md);
 }
 
 html,

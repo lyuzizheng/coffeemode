@@ -96,6 +96,16 @@
 - Independent review fixes: isolated test `fetch` stubs, reset `rateLimiter` before every test, and propagated `ImageServiceError` status through `/api/images/complete`.
 - All gates green: `preflight.sh`, `cd web && npm run verify` (73 tests), and `cd image-service && npm run typecheck && npm test` (14 tests).
 
+## 2026-08-10
+
+- Reviewed the codebase after merging Part C and identified the remaining Phase 1 backlog items that are not blocked by owner credentials or the Apple Developer Program:
+  - D1: Tune Postgres pool config and error handling (`web/lib/db/postgres.ts`).
+  - D4: Fix Worker wrangler placeholders and add deploy docs (`image-service/wrangler.toml`, `poi-service/wrangler.toml`, `docs/agent/pending-user-actions.md`).
+  - D7: Add `checkin_likes` atomic toggle helper and `likes_count` sync (`web/lib/db/checkins.ts`).
+  - A2: Harden sign-in/sign-out UX with loading/error states (`web/app/page.tsx`).
+- Recommended next focus: D1 (Postgres pool tuning) — foundational for stability, no external credentials required, and a prerequisite for safer database usage when building cafe/check-in APIs.
+- Updated `docs/agent/current-state.md` and `docs/agent/progress-log.md` to reflect Part C merged and D1 as the active focus.
+
 ## 2026-08-08
 
 - Merged `feat/code-quality-cleanup` (PR #16): centralized constants, shared helpers, and split `theme-preview/preview-sections.tsx`.

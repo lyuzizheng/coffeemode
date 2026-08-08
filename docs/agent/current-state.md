@@ -2,11 +2,15 @@
 
 ## Phase
 
-Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisions-and-backlog.md` is in progress. Part A (design tokens, i18n, theme-preview prototypes) has merged to `main` (PR #19). Part B (auth proxy, schema migration, check-in/profile types, `work_stats` aggregation) has merged to `main` (PR #20). Part C (caching, perf, image/POI security) is implemented on `feat/impl-caching-perf-security` and pending review/PR. Infrastructure slices (`image-pipeline`, `poi-cache-service`, `places-proxy`, `auth-foundation`) are code-complete but still pending owner credential/account actions.
+Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisions-and-backlog.md` is in progress. Part A (design tokens, i18n, theme-preview prototypes), Part B (auth proxy, schema migration, check-in/profile types, `work_stats` aggregation), and Part C (caching, perf, image/POI security) have merged to `main` (PRs #19, #20, #21). The remaining Phase 1 backlog does not require Apple Developer / live credentials. Infrastructure slices (`image-pipeline`, `poi-cache-service`, `places-proxy`, `auth-foundation`) are code-complete but still pending owner credential/account actions.
 
 ## Active focus
 
-- Part C review/merge: `feat/impl-caching-perf-security` (PR #21) — long-cache headers in `web/next.config.ts`, Serwist runtime cache tuning in `web/app/sw.ts`, query-persistence buster and restore-error handler, 10 MB image upload cap with R2 lifecycle guidance, `maps_share_url` domain validation in `/api/places/resolve`, nearby search 10 km cap, and per-user rate limiting for image/POI routes.
+- D1 Postgres pool tuning: set `max`, idle/connection timeouts, `on('error')`, and a graceful shutdown hook in `web/lib/db/postgres.ts`.
+- Remaining Phase 1 backlog that can proceed without owner credentials:
+  - D4: Fix Worker wrangler placeholders and add deploy docs.
+  - D7: Add `checkin_likes` atomic toggle helper and `likes_count` sync (`web/lib/db/checkins.ts`).
+  - A2: Harden sign-in/sign-out UX with loading/error states (`web/app/page.tsx`).
 - Owner credential/account actions remain outstanding and are tracked in `docs/agent/pending-user-actions.md`.
 
 ## What exists
@@ -41,18 +45,22 @@ _archive-coffeemode-backend/   old Java app — being dropped
 ## What's next
 
 ```text
-1. Owner actions (docs/agent/pending-user-actions.md §1–4): Supabase anon key +
+1. D1 — Tune Postgres pool config and error handling (`web/lib/db/postgres.ts`).
+2. D4 — Fix Worker wrangler placeholders and add deploy docs.
+3. D7 — Add `checkin_likes` table helper and atomic `likes_count` sync.
+4. A2 — Harden sign-in/sign-out UX with loading/error states.
+5. Owner actions (docs/agent/pending-user-actions.md §1–4): Supabase anon key +
    redirect URLs, Apple/Google provider config, self-hosted Postgres provision +
    schema (DATABASE_URL), Google OAuth, Apple Developer Program.
-2. image-service deploy (§6): create R2 bucket + S3 API token, set R2_ACCOUNT_ID
+6. image-service deploy (§6): create R2 bucket + S3 API token, set R2_ACCOUNT_ID
    in wrangler.toml, set Worker secrets, deploy, wire IMAGE_SERVICE_URL/TOKEN.
-3. poi-cache-service deploy (§7): Cloudflare D1/KV + secrets, apply D1 schema,
+7. poi-cache-service deploy (§7): Cloudflare D1/KV + secrets, apply D1 schema,
    deploy, wire POI_SERVICE_URL/TOKEN.
-4. map-home — Apple MapKit full-screen map + custom markers  [BLOCKED on Apple Developer Program]
-5. discovery-sheet — bottom sheet + swipe cards  [BLOCKED on map-home]
-6. cafe-creation — first check-in flow  [BLOCKED on discovery-sheet; also needs auth-foundation round-trip + image-service deploy per pending-user-actions.md]
-7. checkin-system — 0-100 sliders + policy chips  [BLOCKED on cafe-creation]
-8. work-profile aggregation, search, navigation prompt  [BLOCKED on checkin-system]
+8. map-home — Apple MapKit full-screen map + custom markers  [BLOCKED on Apple Developer Program]
+9. discovery-sheet — bottom sheet + swipe cards  [BLOCKED on map-home]
+10. cafe-creation — first check-in flow  [BLOCKED on discovery-sheet; also needs auth-foundation round-trip + image-service deploy per pending-user-actions.md]
+11. checkin-system — 0-100 sliders + policy chips  [BLOCKED on cafe-creation]
+12. work-profile aggregation, search, navigation prompt  [BLOCKED on checkin-system]
 ```
 
 ## Known issues
@@ -60,6 +68,7 @@ _archive-coffeemode-backend/   old Java app — being dropped
 ```text
 - NEXT_PUBLIC_SUPABASE_ANON_KEY not set (only URL + service-role present locally)
 - DATABASE_URL (self-hosted Postgres) not configured anywhere
+- Postgres pool config not tuned (`max`, idle/connection timeouts, error handling, graceful shutdown)
 - Supabase dashboard still needs Apple/Google OAuth provider config
 - Session-refresh proxy implemented (`web/proxy.ts`); first protected route can now rely on it
 - Rate limiter is in-memory / per-process; replace with a Redis/KV-backed limiter before horizontal scaling
@@ -74,4 +83,4 @@ _archive-coffeemode-backend/   old Java app — being dropped
 
 ## Latest review
 
-A batched subagent review (frontend/UX, check-in/social, cafe creation/discovery, auth/cache/perf/DB/deploy) produced `docs/specs/0004-product-decisions-and-backlog.md`. It contains proposed product decisions, an implementation backlog split into four phases, and open questions that need owner confirmation before they become canonical.
+A codebase review after merging Part C identified the remaining Phase 1 backlog items that are not blocked by owner credentials or Apple Developer: D1 (Postgres pool tuning), D4 (Worker wrangler placeholders/deploy docs), D7 (`checkin_likes` atomic toggle), and A2 (sign-in/sign-out UX hardening). D1 is the recommended next focus because it is foundational for database stability and does not require external accounts.

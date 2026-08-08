@@ -11,11 +11,12 @@ Accepted (revised 2026-08-02 — supersedes retro/vintage direction; aligned wit
 ## Stable decisions
 
 ```text
-- HeroUI v3 + Tailwind v4 + Framer Motion
+- HeroUI v3 + Tailwind v4 + Framer Motion (no Shadcn; HeroUI is the sole component library)
 - next-intl from day one (en primary, zh secondary)
 - Map-native SPA: bottom sheet (peek/half/full) + horizontal swipe cards
 - All scoring = subjective 0-100 sliders; Work Profile bars are the visual hero
 - Anti-vibe-coding: no confetti, no purple gradients, no glass-panel AI-slop
+- Global toast surface: HeroUI <Toast.Provider> mounted in root providers
 ```
 
 ## Design personality
@@ -57,12 +58,14 @@ Generic SaaS:
 ## Component library — HeroUI v3
 
 ```text
-Library: @heroui/react 3.2+ (formerly NextUI)
+Library: @heroui/react 3.2+ (formerly NextUI) — the only component library in use
 Styling: Tailwind CSS v4 (@plugin integration)
 Animation: Framer Motion (built-in, tuned springs)
 Dark mode: semantic tokens + next-themes (class strategy)
 A11y: React Aria under the hood
 ```
+
+Do not add Shadcn, Radix primitives, or a `components/ui` directory. Bespoke components are built on top of HeroUI.
 
 ### Why HeroUI over Shadcn
 
@@ -93,37 +96,42 @@ DeepLinkBanner:   Lightweight bottom banner for deep-link first visits
 
 ### Color system
 
-HeroUI semantic tokens overridden with CoffeeMode palette. The palette is warm-neutral but confident — not muted, not beige.
+HeroUI v3 semantic tokens overridden with the CoffeeMode palette. In HeroUI v3 the brand color is `--accent` (v2 called it `--primary`). The palette is warm-neutral but confident — not muted, not beige. `secondary` is a real brand sage, not a status color.
 
 ```text
 Light mode:
-  background:     oklch(98.0% 0.003 85)    near-white warm
-  foreground:     oklch(20.0% 0.020 55)    deep espresso ink
-  content1:       oklch(99.5% 0.002 85)    elevated surface
-  content2:       oklch(96.0% 0.008 80)    secondary surface
-  content3:       oklch(93.0% 0.012 75)    tertiary / hover
-  content4:       oklch(88.0% 0.015 70)    borders, dividers
+  background:       oklch(98.0% 0.003 85)    near-white warm
+  foreground:       oklch(20.0% 0.020 55)    deep espresso ink
+  content1:         oklch(99.5% 0.002 85)    elevated surface
+  content2:         oklch(96.0% 0.008 80)    secondary surface
+  content3:         oklch(93.0% 0.012 75)    tertiary / hover
+  content4:         oklch(88.0% 0.015 70)    borders, dividers
 
-  primary:        oklch(55.0% 0.140 45)    burnt sienna / terracotta
-  primary-fg:     oklch(98.0% 0.005 85)    white on primary
-  secondary:      oklch(45.0% 0.080 155)   deep sage green
-  secondary-fg:   oklch(97.0% 0.005 155)   white on secondary
+  accent:           oklch(54% 0.15 42)       burnt sienna / terracotta
+  accent-foreground: oklch(98.5% 0.004 80)   white on accent
+  secondary:        oklch(45.0% 0.080 155)   deep sage green
+  secondary-foreground: oklch(97.0% 0.005 155) white on secondary
 
-  success:        oklch(55.0% 0.100 155)   sage green
-  warning:        oklch(65.0% 0.130 75)    amber
-  danger:         oklch(50.0% 0.150 25)    clay red
+  success:          oklch(52% 0.11 152)      sage green status
+  success-foreground: oklch(98% 0.01 140)
+  warning:          oklch(66% 0.14 68)       amber
+  danger:           oklch(50.0% 0.150 25)    clay red
 
 Dark mode:
-  background:     oklch(15.0% 0.012 55)    deep espresso
-  foreground:     oklch(93.0% 0.008 75)    warm light
-  content1:       oklch(19.0% 0.012 55)    elevated
-  content2:       oklch(23.0% 0.012 55)    secondary
-  content3:       oklch(28.0% 0.012 55)    tertiary
-  content4:       oklch(35.0% 0.010 55)    borders
+  background:       oklch(15.0% 0.012 55)    deep espresso
+  foreground:       oklch(93.0% 0.008 75)    warm light
+  content1:         oklch(19.0% 0.012 55)    elevated
+  content2:         oklch(23.0% 0.012 55)    secondary
+  content3:         oklch(28.0% 0.012 55)    tertiary
+  content4:         oklch(35.0% 0.010 55)    borders
 
-  primary:        oklch(62.0% 0.130 50)    lighter terracotta
-  secondary:      oklch(55.0% 0.080 155)   lighter sage
+  accent:           oklch(68% 0.16 46)       lighter terracotta
+  accent-foreground: oklch(17% 0.015 48)
+  secondary:        oklch(55.0% 0.080 155)   lighter sage
+  secondary-foreground: oklch(16% 0.03 150)
 ```
+
+`web/app/globals.css` must define `--accent`, `--accent-foreground`, `--secondary`, and `--secondary-foreground` in both `@theme` blocks so the brand palette is available through HeroUI semantic tokens.
 
 ### Typography
 
@@ -159,14 +167,14 @@ text-2xl   2.0rem    hero/display (landing only)
 
 ```text
 spacing unit:  4px base grid
-radius-sm:     8px    tags, small buttons, chips
-radius-md:     12px   cards, inputs
-radius-lg:     16px   modals, drawers, sheets
-radius-xl:     24px   hero cards, map overlays (sparingly)
+radius-sm:     2px    tags, small buttons, chips
+radius-md:     4px    cards, inputs
+radius-lg:     6px    modals, drawers, sheets
+radius-xl:     8px    hero cards, map overlays (sparingly)
 radius-full:   only for true pill/avatar controls
 ```
 
-Generous whitespace. Cards breathe. Map overlays float with purpose.
+Dense, mobile-first radius. Cards breathe through padding, not roundness. `web/app/globals.css` must codify `--radius-sm/md/lg/xl` and pin `.card` to `--radius-md`.
 
 ### Elevation
 
@@ -178,13 +186,15 @@ Drawers/modals: shadow-lg, warm-tinted
 Avoid: broad decorative shadows, Material elevation stacks
 ```
 
-Shadow tokens:
+Shadow tokens (warm espresso ink, never pure black):
 
 ```text
-shadow-sm   0 1px 3px oklch(15% 0.01 55 / 0.05)
-shadow-md   0 4px 12px oklch(15% 0.01 55 / 0.08)
-shadow-lg   0 8px 24px oklch(15% 0.01 55 / 0.12)
-shadow-map  0 4px 20px oklch(15% 0.01 55 / 0.15)
+shadow-sm:   0 1px 2px 0 oklch(25% 0.03 50 / 0.05)
+shadow-md:   0 1px 2px 0 oklch(25% 0.03 50 / 0.04),
+             0 4px 12px -2px oklch(25% 0.03 50 / 0.07)
+shadow-lg:   0 2px 4px 0 oklch(25% 0.03 50 / 0.04),
+             0 12px 28px -6px oklch(25% 0.03 50 / 0.12)
+shadow-map:  0 1px 3px 0 oklch(25% 0.03 50 / 0.06)
 ```
 
 ## Motion
@@ -297,4 +307,7 @@ Transition: 200ms color transition on theme switch
 - All interactive elements have hover/focus/active states
 - prefers-reduced-motion disables all non-essential animation
 - No Material Design, generic SaaS, or AI-slop visual language
+- No Shadcn components; HeroUI v3 is the sole library
+- `web/app/globals.css` implements accent, secondary, radius, and shadow tokens exactly
+- HeroUI `<Toast.Provider>` is mounted in root providers
 ```

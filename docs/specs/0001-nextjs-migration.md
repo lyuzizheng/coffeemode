@@ -38,6 +38,7 @@ coffeemode/
       cafes/
         [id]/
           page.tsx          # Cafe detail (SSR deep link only: share/SEO)
+      middleware.ts       # Supabase session refresh
       auth/
         actions.ts          # OAuth sign-in / sign-out server actions
         callback/
@@ -123,7 +124,7 @@ create table cafes (
   city            text default 'singapore',
   description     text,
   cover           text,                   -- R2 key
-  gallery         jsonb default '[]',     -- [{id, original, card, thumbnail, w, h, by, at}]
+  gallery         jsonb default '[]',     -- [{id, original, card, thumbnail, w, h, by, at, source}]
   opening_hours   jsonb,                  -- {mon:{open,close},...} + hours_source
   price_range     smallint,               -- 1-4
   google_place_id text,
@@ -137,7 +138,11 @@ create table cafes (
 create index idx_cafes_location on cafes using gist (location);
 create index idx_cafes_name_fts on cafes using gin (to_tsvector('simple', name));
 create unique index idx_cafes_gplace on cafes (google_place_id) where google_place_id is not null;  -- dedupe
+create unique index idx_cafes_apple on cafes (apple_poi_id) where apple_poi_id is not null;
 create index idx_cafes_city on cafes (city);
+create index idx_cafes_created_by on cafes (created_by);
+create index idx_cafes_gallery on cafes using gin (gallery jsonb_path_ops);
+create index idx_profiles_current_city on profiles (current_city);
 
 -- 3. checkins: 打卡 — every review is a check-in (creation is the first one)
 create table checkins (
@@ -152,12 +157,27 @@ create table checkins (
   min_spend   text,                       -- none | drink | s5 | s10 | s10plus
   max_stay    text,                       -- unlimited | 3h | 2h | 1h | peak
   note        text,
-  photos      jsonb default '[]',         -- [{id, original, card, thumbnail, w, h, by, at}]
+  photos      jsonb default '[]',         -- [{id, original, card, thumbnail, w, h, by, at, source}]
+  likes_count int default 0,              -- denormalized; source of truth is checkin_likes
   visited_at  timestamptz default now(),
-  created_at  timestamptz default now()
+  created_at  timestamptz default now(),
+  updated_at  timestamptz default now(),
+  deleted_at  timestamptz                 -- soft delete; null = active
 );
-create index idx_checkins_cafe on checkins (cafe_id, created_at desc);
-create index idx_checkins_user_cafe on checkins (user_id, cafe_id, created_at desc);
+create index idx_checkins_cafe on checkins (cafe_id, visited_at desc) where deleted_at is null;
+create index idx_checkins_user on checkins (user_id, visited_at desc) where deleted_at is null;
+create index idx_checkins_user_cafe on checkins (user_id, cafe_id, visited_at desc) where deleted_at is null;
+create index idx_checkins_likes on checkins (cafe_id, likes_count desc, visited_at desc) where deleted_at is null;
+create index idx_checkins_photos on checkins using gin (photos jsonb_path_ops);
+
+-- 4a. checkin_likes: social signal for comment ranking and future scoring weight
+create table checkin_likes (
+  id          uuid primary key default gen_random_uuid(),
+  checkin_id  uuid references checkins(id) on delete cascade,
+  user_id     uuid references profiles(id) on delete cascade,
+  created_at  timestamptz default now(),
+  unique (checkin_id, user_id)
+);
 
 -- 4. navigations: drives the ClassPass-style "did you visit?" prompt
 create table navigations (
@@ -174,9 +194,11 @@ Notes:
 
 ```text
 - No cafe_images table: image metadata lives in cafes.gallery / checkins.photos JSONB
-- No cafe_likes table: favorites are post-MVP
+- checkin_likes table exists in MVP to power comment ranking and预留 a social-weight hook
+- No cafe_likes / favorites table: favorites/collections are post-MVP
 - No votes/policies tables: everything folds into the check-in row
 - Favorites/collections, follows, owner claims: post-MVP (owner_id column reserved)
+- Soft delete: checkins.deleted_at; photos from a deleted check-in are hidden from cafes.gallery via source
 ```
 
 #### Scoring model — sliders, not votes
@@ -198,7 +220,7 @@ No defaults, no 50-anchor: an unmoved slider is simply not recorded.
 
 #### Aggregation — incremental, app-side
 
-`cafes.work_stats` is an aggregation cache updated incrementally on each write (no heavy SQL rollups, no materialized views). Local VPS CPU/RAM/disk are free to use.
+`cafes.work_stats` is an aggregation cache updated incrementally on each write (no heavy SQL rollups, no materialized views). Local VPS CPU/RAM/disk are free to use. Aggregations ignore soft-deleted check-ins (`deleted_at is null`).
 
 ```json
 {
@@ -233,27 +255,42 @@ Fixed global weights (Q61): wifi 30% · outlets 20% · seats 20% · temp 15% · 
 User-customizable weights: post-MVP.
 ```
 
+Social signal hook:
+
+```text
+- checkin_likes (user_id + checkin_id) powers the note list sort order.
+- A tunable social_weight parameter (default 0 at launch) can fold likes into the
+  per-checkin contribution before it reaches work_stats. This leaves design space
+  for "liked check-ins carry more weight" without a future schema change.
+- Likes never affect the cafe score while social_weight = 0; turning it up is an
+  explicit product decision, not the default.
+```
+
 #### Repeat check-in weighting (same user, same cafe)
 
 A user checking in 20 times must not outweigh 20 different users. Design:
 
 ```text
-1. Per-user contribution = weighted average of THEIR OWN check-ins at that cafe.
+1. Per-user contribution = weighted average of THEIR OWN non-deleted check-ins at that cafe.
    Weight by recency rank: w_i = 0.6^(rank_from_newest)
      newest = 1.0, previous = 0.6, before that = 0.36 ...
    → latest visit dominates (state changes), history smooths, spam caps out.
+   Optional: multiply each check-in by (1 + social_weight * normalized_likes)
+   when social_weight > 0. Default is 0, so likes do not affect the score at launch.
 2. Cafe-level value = UNWEIGHTED mean of per-user contributions.
    → 1 user = 1 vote, regardless of check-in count.
 3. Incremental write path (on each check-in):
-   a. Load user's prior check-ins at this cafe (index hit, few rows)
+   a. Load user's prior non-deleted check-ins at this cafe (index hit, few rows)
    b. Compute old_contribution and new_contribution in app code
    c. Existing user at cafe: dims.sum += (new - old), n unchanged
       New user at cafe:      dims.sum += new,        n += 1
-   d. Policies: user's LATEST check-in is their authoritative answer;
+   d. Policies: user's LATEST non-deleted check-in is their authoritative answer;
       adjust policy counts by (new answer - old answer)
    e. Single UPDATE cafes SET work_stats = ... WHERE id = ...
-4. Delete/edit a check-in → recompute that user's contribution from remaining rows.
-5. Nightly cron on VPS: full recompute of all work_stats from scratch
+4. Edit a check-in → recompute that user's contribution from remaining rows.
+5. Soft-delete a check-in (set deleted_at) → recompute from remaining rows and hide
+   its photos from cafes.gallery via the source field.
+6. Nightly cron on VPS: full recompute of all work_stats from scratch
    (drift correction; cheap at MVP scale, local resources free).
 ```
 
@@ -262,6 +299,8 @@ A user checking in 20 times must not outweigh 20 different users. Design:
 ```text
 Providers: Apple OAuth + Google OAuth (no email/password — no email infra)
 Sessions: Supabase SSR cookies (@supabase/ssr)
+Middleware: web/middleware.ts refreshes the session on each request and forwards
+  refreshed cookies; prevents expired access tokens from failing protected routes.
 Route handlers: verify session via supabase.auth.getUser() before any Postgres write
 Profiles row: upserted in Postgres on first login (auth callback)
 No email infra, no magic links.
@@ -483,8 +522,8 @@ Tier 1 (MVP core):
   B. Creation — add cafe = first check-in (Google import + manual + MapKit search)
 
 Tier 2 (MVP, requires login):
-  C. Check-in (打卡) — sliders + policies + note + photos
-  D. Search & filter — text search, dimension filters (wifi fast, no min spend, ...)
+  C. Check-in (打卡) — sliders + policies + note + photos, like toggle, soft delete
+  D. Search & filter — city search + nomad filters (wifi/outlets/seats/temp/coffee/overall/min_spend/max_stay/open_now)
 
 Tier 3 (Post-MVP):
   - Xiaohongshu link import (best-effort, semi-automatic)
@@ -512,7 +551,11 @@ Rules:
   - Feedback: button morphs to ✓ + micro coffee-steam animation + toast.
     Restrained, memorable, no confetti. (Detailed visual design → Kimi)
   - Check-in photos go to checkins.photos AND auto-merge into cafes.gallery
-    (attributed with by/at). No curator approval at MVP.
+    (attributed with by/at and source={type:"checkin",id}). No curator approval at MVP.
+  - Soft delete: set checkins.deleted_at. Deleted check-in photos are hidden from
+    cafes.gallery but remain in checkins.photos for audit/recompute.
+  - Like toggle on a check-in: update checkin_likes and denormalized checkins.likes_count.
+    Note list is sorted by a hot-rank combining likes and recency.
 
 Navigation → check-in prompt (ClassPass-style):
   1. User taps "导航" → navigations row + Google/Apple Maps deep link
@@ -543,17 +586,20 @@ Creator display: cafe shows "added by {creator}" — ANONYMOUS by default
 ("A nomad"); creator can opt in to display later.
 
 Paths:
-  1. Google Maps import (one-tap, no form feel):
-     a. Paste link OR pick from Places autocomplete
+  1. Google Maps link import (one-tap, no form feel):
+     a. Paste share link or pick from Places autocomplete
      b. Server resolves → Place Details
      c. Show HALF-sheet preview pre-filled (name, address, location, photos, hours)
      d. User adds their review + sliders → [添加到 CoffeeMode ✓]
      e. Dedupe: google_place_id exists → "已存在" + prompt to check in instead
-  2. Apple Maps / MapKit search: same pre-fill + confirm pattern
-  3. Manual: tap map → reverse geocode fills address → same confirm pattern
+  2. Apple Maps link import: same paste-link → resolve → preview → save pattern
+     (poi-service URL parser handles maps.apple.com share links)
+  3. MapKit search / map-tap (after map-home): same pre-fill + confirm pattern
+  4. Manual fallback: user types name/address or drops a pin → reverse geocode
 
 No per-field confirmation forms. Pre-fill → adjust if needed → save.
 Hours from Google: auto-fill, hours_source='google'; user edit → 'manual' (never overwritten).
+Offline: creation is disabled; show OfflineBanner and no mutation queue.
 ```
 
 ### External POI references
@@ -574,12 +620,23 @@ Navigation deep links:
 ### Search
 
 ```text
-Default search (e.g. "coffee") = own cafes + saved POIs, merged by distance:
-  1. Own cafes — self-hosted Postgres, name FTS + PostGIS distance sort
-  2. Saved POIs — POI service GET /poi/search (D1 + Worker haversine)
-     Includes POIs never created as cafes → each is a creation candidate
-  Merge rule: dedupe by place_id; a created cafe always wins over its raw POI.
-  Empty/weak local results → prompt "Search Google / Apple Maps"
+Two search modes:
+
+1. Nearby (map / current viewport)
+   - Radius: 10 km max, centered on user location or map center.
+   - Source: own cafes from Postgres (PostGIS distance sort) + saved POIs from
+     POI service. Dedupe by place_id; a created cafe always wins over its raw POI.
+
+2. City search + nomad filters (not geo-radius search)
+   - Scope: current city (or city picked by user).
+   - Text query: name FTS on own cafes and saved POIs.
+   - Filters:
+     - dimension minima: wifi, outlets, seats, temp, coffee, overall (0-100 thresholds)
+     - min_spend: none | drink | s5 | s10 | s10plus
+     - max_stay: unlimited | 3h | 2h | 1h | peak
+     - open_now: boolean
+     - future: price_range, policy consensus, work_score threshold
+   - Empty/weak local results → prompt "Search Google / Apple Maps"
 
 External search (on demand):
   Google: POI service live Places search → results shown AND stored in D1
@@ -591,8 +648,8 @@ Distance search on D1: SQLite has no spatial index, but Worker-side haversine
   saved POIs exceed ~50K, mirror hot POIs into Postgres PostGIS.
 
 Search is a growth flywheel: every miss becomes a potential new cafe.
-Deep-linkable: /search?q=... (SSR for shareability)
-Nomad filters: [📶 wifi fast] [💰 no min spend] [⏱ unlimited stay] [🔌 outlets]
+Deep-linkable: /search?q=...&city=...&filter_wifi=... (SSR for shareability)
+Filter UX: thumb-friendly surface, designed in theme-preview before implementation.
 ```
 
 ### Onboarding & city model
@@ -635,9 +692,10 @@ OG meta: cafe cover as og:image on /cafes/[id].
 1. Initialize Next.js app in web/
 2. Tailwind v4 + HeroUI v3 + theme tokens + next-intl (en/zh)
 3. Supabase auth clients + Postgres db helpers
-4. Apple + Google OAuth login flow, profiles upsert
-5. Root layout, theme provider (next-themes)
-6. Verify: dev server, build, auth round-trip
+4. web/middleware.ts for session refresh
+5. Apple + Google OAuth login flow, profiles upsert
+6. Root layout, theme provider (next-themes), HeroUI <Toast.Provider>
+7. Verify: dev server, build, auth round-trip
 ```
 
 ### Phase 2: Map + Discovery
@@ -658,9 +716,10 @@ OG meta: cafe cover as og:image on /cafes/[id].
 1. FAB + creation flow (login gate)
 2. POI cache service (Worker + D1 + KV) deployed first — creation depends on it
 3. Google Maps link import (resolve via POI service → HALF-sheet preview → one-tap add)
-4. MapKit search import + manual (map tap → reverse geocode)
+4. Apple Maps link import + MapKit search import + manual (map tap → reverse geocode)
 5. Image upload pipeline (image-service Worker presigned URLs + sharp on VPS → R2 → gallery JSONB)
 6. Dedupe handling (existing place → show + check-in prompt)
+7. 10 MB upload cap + R2 lifecycle for orphan objects
 ```
 
 ### Phase 4: Check-in + Work Profile
@@ -668,11 +727,13 @@ OG meta: cafe cover as og:image on /cafes/[id].
 ```text
 1. Check-in drawer (sliders + policy chips + note + photos)
 2. Repeat check-in flow ("same as last time?")
-3. Incremental work_stats aggregation + nightly recompute cron
+3. Incremental work_stats aggregation + nightly recompute cron (includes social-weight hook)
 4. Work profile display (dimension bars + policy consensus)
 5. Navigation tracking + ClassPass-style return prompt
-6. Search + nomad filters
-7. /profile page
+6. City search + nomad filters
+7. Check-in like toggle + hot-rank note list
+8. Soft delete with gallery photo hiding
+9. /profile page (My Cafes + My Check-ins)
 ```
 
 ### Phase 5: Polish + Deploy
@@ -682,8 +743,9 @@ OG meta: cafe cover as og:image on /cafes/[id].
 2. Responsive polish (mobile/desktop)
 3. Lighthouse optimization
 4. Docker + deploy to VPS
-5. Cloudflare CDN setup
-6. CI/CD pipeline
+5. Worker deploy workflows + wrangler placeholders fixed
+6. Cloudflare CDN setup
+7. CI/CD pipeline with DB migration runner
 ```
 
 ### Phase 6: Post-MVP
@@ -714,6 +776,12 @@ OG meta: cafe cover as og:image on /cafes/[id].
 - work_stats concurrent writes: single-row UPDATE acceptable at MVP scale;
   nightly recompute corrects any drift
 - Deep link first visit: banner onboarding, never full-screen modal
+- Check-in soft delete: set deleted_at; recompute work_stats; hide photos from gallery
+- Like toggle: idempotent upsert on checkin_likes; keep checkins.likes_count in sync
+- Image upload cap: 10 MB max in presigned PUT; R2 lifecycle cleans orphan original/ objects
+- maps_share_url validation: only known Google/Apple Maps hosts before proxying
+- Search radius cap: nearby is 10 km; city search has no geo radius
+- Rate limiting: per-user caps on image upload/complete and POI resolve/search
 ```
 
 ## Tests / acceptance criteria
@@ -727,14 +795,19 @@ OG meta: cafe cover as og:image on /cafes/[id].
 - Bottom sheet: peek → half → full with URL sync and back-button collapse
 - /cafes/[id] is server-rendered (view-source shows content)
 - Image upload produces 3 sizes in R2 with correct metadata
-- Google Maps link import → HALF-sheet preview → one-tap create (cafes + checkins rows)
-- Duplicate google_place_id → "exists" flow, no second cafe
-- Check-in stores slider scores 0-100 + policies; work_stats updates incrementally
+- Google Maps + Apple Maps link import → HALF-sheet preview → one-tap create (cafes + checkins rows)
+- Duplicate google_place_id / apple_poi_id → "exists" flow, no second cafe
+- Check-in stores slider scores 0-100 + policies; work_stats updates incrementally and excludes soft-deleted rows
 - Repeat check-in pre-fills via "same as last time?" flow
+- Check-in like toggle updates likes_count and note sort order
+- Soft-deleted check-in hides its photos from cafes.gallery
 - Navigation → ClassPass-style prompt on next visit
+- Session-refresh middleware refreshes Supabase tokens on each request
+- Nearby search capped at 10 km; city search supports nomad filters (wifi/outlets/seats/temp/coffee/overall/min_spend/max_stay/open_now)
+- Image upload enforces 10 MB cap
 - All UI copy goes through next-intl (en + zh)
 - Lighthouse performance >= 80 on cafe detail page
 - `npm run lint` passes with zero errors
-- Vitest unit tests pass (stats aggregation math, utils, API routes)
+- Vitest unit tests pass (stats aggregation math with social-weight hook, utils, API routes)
 - Playwright e2e (post-MVP): login → browse → create → check-in flow
 ```

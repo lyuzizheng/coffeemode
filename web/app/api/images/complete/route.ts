@@ -59,11 +59,15 @@ async function attachToCafe(
   const coverKey = isCover ? image.card : null;
   const result = await query<{ id: string }>(
     `update cafes
-     set gallery = coalesce(gallery, '[]'::jsonb) || $1::jsonb,
-         cover = coalesce($2, cover)
+     set gallery = case
+         when not (coalesce(gallery, '[]'::jsonb) @> $5::jsonb)
+         then coalesce(gallery, '[]'::jsonb) || $1::jsonb
+         else gallery
+       end,
+       cover = case when $6::boolean then $2 else cover end
      where id = $3 and created_by = $4
      returning id`,
-    [JSON.stringify([image]), coverKey, cafeId, userId],
+    [JSON.stringify([image]), coverKey, cafeId, userId, JSON.stringify([{ id: image.id }]), isCover],
   );
   return result.rows.length > 0;
 }
@@ -75,10 +79,14 @@ async function attachToCheckin(
 ): Promise<{ ok: boolean; cafeId: string | null }> {
   const result = await query<{ id: string; cafe_id: string | null }>(
     `update checkins
-     set photos = coalesce(photos, '[]'::jsonb) || $1::jsonb
+     set photos = case
+         when not (coalesce(photos, '[]'::jsonb) @> $4::jsonb)
+         then coalesce(photos, '[]'::jsonb) || $1::jsonb
+         else photos
+       end
      where id = $2 and user_id = $3
      returning id, cafe_id`,
-    [JSON.stringify([image]), checkinId, userId],
+    [JSON.stringify([image]), checkinId, userId, JSON.stringify([{ id: image.id }])],
   );
   if (result.rows.length === 0) return { ok: false, cafeId: null };
   return { ok: true, cafeId: result.rows[0].cafe_id };
@@ -87,9 +95,13 @@ async function attachToCheckin(
 async function mergeIntoCafeGallery(image: StoredImage, cafeId: string): Promise<void> {
   await query(
     `update cafes
-     set gallery = coalesce(gallery, '[]'::jsonb) || $1::jsonb
+     set gallery = case
+         when not (coalesce(gallery, '[]'::jsonb) @> $3::jsonb)
+         then coalesce(gallery, '[]'::jsonb) || $1::jsonb
+         else gallery
+       end
      where id = $2`,
-    [JSON.stringify([image]), cafeId],
+    [JSON.stringify([image]), cafeId, JSON.stringify([{ id: image.id }])],
   );
 }
 
@@ -177,7 +189,6 @@ export async function POST(request: Request) {
     return NextResponse.json(response);
   } catch (err) {
     console.error("/api/images/complete failed", err);
-    const message = err instanceof Error ? err.message : "image_processing_error";
-    return NextResponse.json({ error: "image_processing_error", message }, { status: 502 });
+    return NextResponse.json({ error: "image_processing_error" }, { status: 502 });
   }
 }

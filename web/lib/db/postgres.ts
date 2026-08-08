@@ -9,7 +9,7 @@ import { Pool, type PoolConfig } from "pg";
 
 let pool: Pool | null = null;
 
-function getPoolConfig(): PoolConfig {
+export function getPoolConfig(): PoolConfig {
   const urlString = process.env.DATABASE_URL;
   if (!urlString) {
     throw new Error(
@@ -32,6 +32,10 @@ function getPoolConfig(): PoolConfig {
       config.ssl = false;
     } else if (sslmode === "verify-ca" || sslmode === "verify-full") {
       config.ssl = true;
+    } else {
+      console.warn(
+        `Unrecognized sslmode "${sslmode}" in DATABASE_URL; connection will not use SSL. Use require, prefer, disable, verify-ca, or verify-full.`,
+      );
     }
   }
 

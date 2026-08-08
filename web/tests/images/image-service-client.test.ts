@@ -38,6 +38,7 @@ describe("image-service-client", () => {
     expect(url).toBe("https://image-service.example.com/v1/images/upload");
     expect(init?.method).toBe("POST");
     expect((init?.headers as Record<string, string>)?.["x-image-service-token"]).toBe("test-token");
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("getProcessUrls posts the completion request", async () => {
@@ -71,6 +72,7 @@ describe("image-service-client", () => {
     expect(body.targetType).toBe("cafe");
     expect(body.targetId).toBe("cafe-id");
     expect(body.userId).toBe("user-id");
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("throws a descriptive error on non-2xx responses", async () => {

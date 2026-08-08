@@ -21,7 +21,7 @@ function r2Client(env: Env): AwsClient {
   });
 }
 
-function ttlSeconds(env: Env): number {
+export function ttlSeconds(env: Env): number {
   const parsed = Number.parseInt(env.UPLOAD_URL_TTL_SECONDS ?? "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TTL_SECONDS;
 }

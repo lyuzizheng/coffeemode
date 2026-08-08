@@ -43,11 +43,14 @@ function headers(token: string): Record<string, string> {
   };
 }
 
+const WORKER_TIMEOUT_MS = 5000;
+
 export async function requestUploadUrl(): Promise<UploadUrlResponse> {
   const { url, token } = getEnv();
   const response = await fetch(`${url}/v1/images/upload`, {
     method: "POST",
     headers: headers(token),
+    signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -71,6 +74,7 @@ export async function getProcessUrls(
       targetType: request.targetType,
       targetId: request.targetId,
     }),
+    signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
   });
 
   if (!response.ok) {

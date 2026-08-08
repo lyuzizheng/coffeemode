@@ -27,7 +27,6 @@ export async function POST() {
     return NextResponse.json(data);
   } catch (err) {
     console.error("/api/images/upload failed", err);
-    const message = err instanceof Error ? err.message : "image_service_error";
-    return NextResponse.json({ error: "image_service_error", message }, { status: 502 });
+    return NextResponse.json({ error: "image_service_error" }, { status: 502 });
   }
 }

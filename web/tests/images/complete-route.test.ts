@@ -136,4 +136,36 @@ describe("POST /api/images/complete", () => {
     const [, checkinParams] = queryMock.mock.calls[1];
     expect(checkinParams[2]).toBe("user-1"); // user_id guard
   });
+
+  it("does not leak raw upstream error bodies", async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] });
+    getProcessUrlsMock.mockRejectedValueOnce(new Error("upstream leaked body {secret}"));
+
+    const response = await POST(makeRequest({
+      imageUuid: IMAGE_UUID,
+      targetType: "cafe",
+      targetId: CAFE_ID,
+    }));
+
+    expect(response.status).toBe(502);
+    const data = await response.json();
+    expect(data.error).toBe("image_processing_error");
+    expect(data.message).toBeUndefined();
+  });
+
+  it("guards against duplicate gallery entries", async () => {
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // update
+
+    const response = await POST(makeRequest({
+      imageUuid: IMAGE_UUID,
+      targetType: "cafe",
+      targetId: CAFE_ID,
+    }));
+
+    expect(response.status).toBe(200);
+    const [sql] = queryMock.mock.calls[1];
+    expect(sql).toContain("@>");
+  });
 });

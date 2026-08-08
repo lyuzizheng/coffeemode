@@ -79,6 +79,10 @@ describe("processImage", () => {
     expect(putCalls[0][0].toString()).toContain("original");
     expect(putCalls[1][0].toString()).toContain("card");
     expect(putCalls[2][0].toString()).toContain("thumbnail");
+
+    for (const [, init] of fetchSpy.mock.calls) {
+      expect((init as RequestInit | undefined)?.signal).toBeInstanceOf(AbortSignal);
+    }
   });
 
   it("throws when the original download fails", async () => {

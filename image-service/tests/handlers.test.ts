@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { handleComplete, handleUpload } from "../src/index";
+import handler, { handleComplete, handleUpload } from "../src/index";
 import { baseEnv } from "./helpers";
 
 function makeRequest(
@@ -42,6 +42,19 @@ describe("handleUpload", () => {
     expect(data.publicUrl).toBe(`https://images.coffeemode.app/original/${data.imageUuid}.webp`);
     expect(data.uploadHeaders["Content-Type"]).toBe("image/webp");
     expect(new Date(data.expiresAt).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it("uses UPLOAD_URL_TTL_SECONDS for expiresAt and the presigned URL", async () => {
+    const env = { ...baseEnv(), UPLOAD_URL_TTL_SECONDS: "120" };
+    const request = makeRequest("POST", "/v1/images/upload");
+    const response = await handleUpload(request, env);
+    const data = (await response.json()) as Record<string, any>;
+
+    expect(response.status).toBe(200);
+    expect(data.uploadUrl).toContain("X-Amz-Expires=120");
+    const ttlMs = new Date(data.expiresAt).getTime() - Date.now();
+    expect(ttlMs).toBeGreaterThan(110_000);
+    expect(ttlMs).toBeLessThanOrEqual(120_000);
   });
 
   it("rejects requests without a token", async () => {
@@ -101,6 +114,67 @@ describe("handleComplete", () => {
     const request = makeRequest("POST", "/v1/images/complete", { imageUuid: "not-a-uuid" });
     const response = await handleComplete(request, env);
     expect(response.status).toBe(400);
+  });
+});
+
+describe("router", () => {
+  it("GET / returns ok", async () => {
+    const env = baseEnv();
+    const request = makeRequest("GET", "/");
+    const response = await handler.fetch(request, env, {} as ExecutionContext);
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as Record<string, unknown>;
+    expect(data.ok).toBe(true);
+  });
+
+  it("returns 404 for unknown routes", async () => {
+    const env = baseEnv();
+    const request = makeRequest("POST", "/v1/images/unknown");
+    const response = await handler.fetch(request, env, {} as ExecutionContext);
+    expect(response.status).toBe(404);
+  });
+});
+
+describe("handleComplete auth", () => {
+  it("rejects requests with a missing token", async () => {
+    const env = baseEnv();
+    const imageUuid = validUuid();
+    await env.R2_BUCKET.put(`original/${imageUuid}.webp`, new Uint8Array([0xde, 0xad, 0xbe, 0xef]), {
+      httpMetadata: { contentType: "image/webp" },
+    });
+
+    const request = new Request("https://image-service.example.com/v1/images/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imageUuid }),
+    });
+    const response = await handleComplete(request, env);
+    expect(response.status).toBe(401);
+  });
+});
+
+describe("metadata sanitization", () => {
+  it("strips control and non-ASCII characters from metadata values", async () => {
+    const env = baseEnv();
+    const imageUuid = validUuid();
+    await env.R2_BUCKET.put(`original/${imageUuid}.webp`, new Uint8Array([0xde, 0xad, 0xbe, 0xef]), {
+      httpMetadata: { contentType: "image/webp" },
+    });
+
+    const request = makeRequest("POST", "/v1/images/complete", {
+      imageUuid,
+      userId: "  user-id\n🙂  ",
+      targetType: "cafe",
+      targetId: "c1",
+    });
+
+    const response = await handleComplete(request, env);
+    const data = (await response.json()) as Record<string, any>;
+
+    expect(response.status).toBe(200);
+    expect(data.originalPut.headers["x-amz-meta-userid"]).toBe("user-id");
+    expect(data.originalPut.headers["x-amz-meta-targettype"]).toBe("cafe");
+    expect(data.originalPut.headers["x-amz-meta-targetid"]).toBe("c1");
   });
 });
 

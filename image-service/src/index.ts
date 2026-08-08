@@ -1,7 +1,7 @@
 import type { CompleteRequest, CompleteResponse, Env, UploadResponse } from "./types";
 import { authorized } from "./auth";
 import { isValidUUID, sanitizeMetadata } from "./validate";
-import { presignedGetUrl, presignedPutUrl, publicUrl } from "./r2";
+import { presignedGetUrl, presignedPutUrl, publicUrl, ttlSeconds } from "./r2";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -40,7 +40,7 @@ export async function handleUpload(request: Request, env: Env): Promise<Response
     uploadUrl: url,
     uploadHeaders: headers,
     publicUrl: publicUrl(env, key),
-    expiresAt: expirationDate(600),
+    expiresAt: expirationDate(ttlSeconds(env)),
   };
 
   return json(response);

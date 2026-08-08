@@ -45,6 +45,9 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
   - `npm install`
   - Set secrets (values never go in chat/docs): `wrangler secret put IMAGE_SERVICE_TOKEN`, `wrangler secret put R2_ACCESS_KEY_ID`, `wrangler secret put R2_SECRET_ACCESS_KEY`
   - `npm run deploy` → workers.dev URL; wire `IMAGE_SERVICE_URL` + `IMAGE_SERVICE_TOKEN` into `web/.env.local`
+- [ ] Configure bucket defenses:
+  - Set a maximum upload size (Cloudflare WAF / R2 bucket limits or a `Content-Length`-enforced presigned URL) to mitigate abuse.
+  - Add an R2 lifecycle rule to clean up abandoned `original/` objects. If completed originals share the same prefix, separate pending uploads to a `pending/` prefix first and expire it after 24 h, or expire `original/` only after a safe age that won’t delete live images.
 
 ## 7. Domain + deploy (later phase)
 

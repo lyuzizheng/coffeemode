@@ -15,8 +15,14 @@ export interface ProcessedImage {
   height: number;
 }
 
+const R2_DOWNLOAD_TIMEOUT_MS = 30000;
+const R2_UPLOAD_TIMEOUT_MS = 30000;
+
 async function fetchOriginal(original: ProcessUrls["original"]): Promise<Buffer> {
-  const response = await fetch(original.url, { headers: original.headers });
+  const response = await fetch(original.url, {
+    headers: original.headers,
+    signal: AbortSignal.timeout(R2_DOWNLOAD_TIMEOUT_MS),
+  });
   if (!response.ok) {
     const body = await response.text().catch(() => "unknown error");
     throw new Error(`failed to download original image: ${response.status} ${body}`);
@@ -34,6 +40,7 @@ async function uploadVariant(
     method: "PUT",
     headers: variant.headers,
     body: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer,
+    signal: AbortSignal.timeout(R2_UPLOAD_TIMEOUT_MS),
   });
   if (!response.ok) {
     const body = await response.text().catch(() => "unknown error");
@@ -50,7 +57,7 @@ async function resizeToBuffer(
     withoutEnlargement?: boolean;
   },
 ): Promise<{ buffer: Buffer; info: OutputInfo }> {
-  const { data, info } = await sharp(input)
+  const { data, info } = await sharp(input, { limitInputPixels: 268_402_689 })
     .rotate()
     .resize(options.width, options.height, {
       fit: options.fit ?? "cover",

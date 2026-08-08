@@ -149,3 +149,73 @@
 - `web/tests/images/image-service-client.test.ts` — optional size forwarding test.
 - `image-service/tests/handlers.test.ts` — upload size cap and Content-Length tests.
 - `web/tests/setup.ts` — resets the rate limiter between test files.
+
+## 2026-08-11 Phase 1 remainder (feat/impl-phase1-remainder)
+
+- `web/lib/db/postgres.ts`
+  - Marked `server-only`; added configurable pool `max`, `idleTimeoutMillis`, `connectionTimeoutMillis`, and `allowExitOnIdle` from environment variables.
+  - Attached `on("error")` handler to log pool errors.
+  - Added `closePool()` (idempotent), `withTransaction()` helper, and `registerPoolShutdownHandlers()` for SIGTERM/SIGINT graceful shutdown.
+
+- `web/lib/db/checkins.ts`
+  - New atomic `toggleCheckInLike(userId, checkinId)` server-only helper.
+  - Uses a single CTE transaction to delete or insert a `checkin_likes` row and recompute `checkins.likes_count`, guarding against soft-deleted check-ins.
+
+- `web/lib/validation.ts`
+  - New shared `isValidUUID` helper; replaced the local duplicate in `web/app/api/images/complete/route.ts`.
+
+- `web/app/auth/actions.ts`
+  - `signIn` and `signOut` now accept `useActionState` payloads, return `AuthActionState` errors, and call `redirect()` on success.
+
+- `web/app/auth/sign-in-button.tsx` / `web/app/auth/sign-out-button.tsx`
+  - New client buttons using `useActionState` with `isPending` and inline error display.
+
+- `web/app/page.tsx`
+  - Wired `SignInButton` (Apple + Google) and `SignOutButton`; shows signed-in display name and session text.
+
+- `image-service/wrangler.toml`
+  - Replaced placeholder values with `YOUR_*` placeholders and added explicit replacement comments for `R2_ACCOUNT_ID`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL`, and the R2 bucket binding.
+
+- `poi-service/wrangler.toml`
+  - Replaced `REPLACE_WITH_*` placeholders with `YOUR_*` and documented `wrangler d1 create`, `wrangler kv namespace create`, `wrangler d1 migrations apply`, and secret commands.
+
+- `docs/agent/pending-user-actions.md`
+  - Updated §6 (image-service deploy) and §7 (POI service deploy) with placeholder field names and exact commands.
+
+- Tests
+  - `web/tests/postgres.test.ts` — pool config, lifecycle, transaction commit/rollback, and shutdown handler tests.
+  - `web/tests/checkins.test.ts` — like toggle insert/remove/deleted/invalid cases.
+  - `web/tests/auth/actions.test.ts` — sign-in provider validation, OAuth redirect, and sign-out error handling.
+  - `web/tests/auth/sign-in-button.test.tsx` — render tests for Apple/Google buttons.
+
+## 2026-08-11 Phase 1 remainder review fixes
+
+- `web/lib/db/checkins.ts`
+  - Hardened the atomic like CTE with a `checkin` CTE that locks the active check-in (`deleted_at IS NULL FOR UPDATE`) and guards the insert so it cannot create orphaned rows for soft-deleted check-ins.
+
+- `web/lib/db/postgres.ts`
+  - Removed auto-registration of SIGTERM/SIGINT handlers at import time; handlers are now only registered from `web/instrumentation.ts`.
+  - Replaced `process.exit(0)` with `process.exitCode` assignment so the process can drain in-flight work; error path schedules a hard exit only if the pool fails to close.
+  - Hardened `getBoolEnv` to warn on unrecognized non-empty values and treat empty strings as the fallback.
+
+- `web/instrumentation.ts`
+  - New Next.js 16 instrumentation hook that calls `registerPoolShutdownHandlers()` at server start.
+
+- `image-service/wrangler.toml` / `poi-service/wrangler.toml`
+  - Set `compatibility_date` to a date in the past (`2024-01-01`) with a comment to update intentionally.
+
+- `web/app/api/images/complete/route.ts`
+  - Added `source: { type, id }` to `StoredImage` records on completion.
+  - Guarded check-in ownership and attachment queries with `deleted_at is null`.
+
+- `web/app/auth/actions.ts`
+  - `getOriginHeader` now falls back to `x-forwarded-proto` + `host` when the `Origin` header is absent.
+
+- `web/app/auth/auth-error-message.tsx`
+  - New shared client component for auth action errors, reused by `sign-in-button.tsx` and `sign-out-button.tsx`.
+
+- Tests
+  - `web/tests/postgres.test.ts` — added environment cleanup in `afterEach` to prevent `DATABASE_URL` leaks between tests.
+  - `web/tests/checkins.test.ts` — tightened `withTransaction` mock typing with `PoolClient` and asserted the CTE guards soft-deleted check-ins.
+  - `web/tests/auth/sign-in-button.test.tsx` — added pending-state and error-message tests.
+  - `web/tests/auth/sign-out-button.test.tsx` — new coverage for render, pending state, and error display.

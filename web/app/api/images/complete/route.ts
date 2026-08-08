@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
+import { isValidUUID } from "@/lib/validation";
 import { getProcessUrls } from "@/lib/images/image-service-client";
 import { processImage } from "@/lib/images/processor";
 import { query } from "@/lib/db/postgres";
@@ -11,9 +12,7 @@ import {
 } from "@/lib/rate-limit";
 import type { CompleteImageRequest, CompleteImageResponse, ImageTargetType, StoredImage } from "@/types/images";
 
-function isValidUUID(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
+export const runtime = "nodejs";
 
 function validateBody(body: unknown): CompleteImageRequest | null {
   if (!body || typeof body !== "object") return null;
@@ -52,7 +51,7 @@ async function ownsCafe(cafeId: string, userId: string): Promise<boolean> {
 
 async function ownsCheckin(checkinId: string, userId: string): Promise<{ cafeId: string | null } | null> {
   const result = await query<{ cafe_id: string | null }>(
-    `select cafe_id from checkins where id = $1 and user_id = $2`,
+    `select cafe_id from checkins where id = $1 and user_id = $2 and deleted_at is null`,
     [checkinId, userId],
   );
   if (result.rows.length === 0) return null;
@@ -93,7 +92,7 @@ async function attachToCheckin(
          then coalesce(photos, '[]'::jsonb) || $1::jsonb
          else photos
        end
-     where id = $2 and user_id = $3
+     where id = $2 and user_id = $3 and deleted_at is null
      returning id, cafe_id`,
     [JSON.stringify([image]), checkinId, userId, JSON.stringify([{ id: image.id }])],
   );
@@ -181,6 +180,7 @@ export async function POST(request: Request) {
       h: processed.height,
       by: user.id,
       at: new Date().toISOString(),
+      source: { type: req.targetType, id: req.targetId },
     };
 
     let attached: boolean;

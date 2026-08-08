@@ -3,6 +3,8 @@ import { createSupabaseServerClient } from "@/lib/auth/supabase-server";
 import { query } from "@/lib/db/postgres";
 import { upsertProfile } from "@/lib/auth/profiles";
 
+export const runtime = "nodejs";
+
 /**
  * OAuth redirect target. Exchanges the authorization code for a session
  * (PKCE verifier comes from the cookie set by signIn), then upserts the

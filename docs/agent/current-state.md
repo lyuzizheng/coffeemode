@@ -2,16 +2,18 @@
 
 ## Phase
 
-Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisions-and-backlog.md` is in progress. Part A (design tokens, i18n, theme-preview prototypes) is on PR #19. Part B (auth middleware, schema migration, types, stats aggregate) is the next active implementation batch. Infrastructure slices (`image-pipeline`, `poi-cache-service`, `places-proxy`, `auth-foundation`) are code-complete but still pending owner credential/account actions.
+Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisions-and-backlog.md` is in progress. Part A (design tokens, i18n, theme-preview prototypes) has merged to `main` (PR #19). Part B (auth proxy, schema migration, check-in/profile types, `work_stats` aggregation) is on PR #20. Part C (caching, perf, image/POI security) is the next batch. Infrastructure slices (`image-pipeline`, `poi-cache-service`, `places-proxy`, `auth-foundation`) are code-complete but still pending owner credential/account actions.
 
 ## Active focus
 
-- Part A review/merge: `feat/impl-design-tokens` (PR #19) — design tokens, `<Toast.Provider>`, en/zh namespaces, and new `theme-preview` prototypes.
-- Part B implementation (no Apple Developer / map dependency):
-  - `web/middleware.ts` session refresh (A1).
-  - Schema migration for `checkins.updated_at`, `checkins.deleted_at`, `checkin_likes`, image `source`, and missing indexes (S1).
-  - `web/types/checkins.ts` and `web/types/profile.ts` (S2).
-  - `web/lib/stats/aggregate.ts` incremental `work_stats` algorithm with the social-weight hook (S3 / D2).
+- Part B review/merge: `feat/impl-auth-middleware` (PR #20) — `web/proxy.ts` session refresh, `web/db/migrations/0002_checkins_and_indexes.sql`, `web/types/checkins.ts` / `profile.ts`, and `web/lib/stats/aggregate.ts`.
+- Part C implementation (no Apple Developer / map dependency):
+  - Long cache headers for static/PWA assets in `web/next.config.ts` (C1).
+  - Serwist runtime cache tuning in `web/app/sw.ts` (C2).
+  - Query-persistence buster and restore-error handler (C3).
+  - Image upload size cap and R2 lifecycle guidance (D3).
+  - `maps_share_url` domain validation in `/api/places/resolve` (D5).
+  - Nearby search 10 km cap and rate-limit placeholders for image/POI routes (D6).
 - Owner credential/account actions remain outstanding and are tracked in `docs/agent/pending-user-actions.md`.
 
 ## What exists
@@ -60,7 +62,7 @@ _archive-coffeemode-backend/   old Java app — being dropped
 - NEXT_PUBLIC_SUPABASE_ANON_KEY not set (only URL + service-role present locally)
 - DATABASE_URL (self-hosted Postgres) not configured anywhere
 - Supabase dashboard still needs Apple/Google OAuth provider config
-- Session-refresh middleware needed when first protected route lands (auth slice review F5)
+- Session-refresh proxy implemented (`web/proxy.ts`); first protected route can now rely on it
 - Apple Developer Program purchase pending (needed for MapKit JS)
 - poi-service/wrangler.toml has placeholder KV/D1 ids; deploy blocked on
   Cloudflare account + secrets (pending-user-actions §7)

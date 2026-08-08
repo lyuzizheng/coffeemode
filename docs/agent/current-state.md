@@ -2,12 +2,17 @@
 
 ## Phase
 
-Rewrite in progress. Harness + docs merged to `main` (PR #7). `web/` Next.js 16 workspace scaffolded (PR #8) and the design-token/theme layer landed (PR #9, Kimi-delegated, independently verified). Auth foundation code is complete; live OAuth round-trip is pending dashboard configuration. Image-pipeline slice is COMPLETE following ADR-0002.
+Rewrite in progress. Harness + docs merged to `main` (PR #7). `web/` Next.js 16 workspace scaffolded (PR #8) and the design-token/theme layer landed (PR #9, Kimi-delegated, independently verified). All code-side infrastructure through the POI stack is merged and COMPLETE (`poi-cache-service` PR #11, `places-proxy` PR #12). `auth-foundation` code is COMPLETE including the Postgres migration (ADR-0002); live OAuth round-trip is pending dashboard configuration. `image-pipeline` is COMPLETE (code complete, deploy pending).
 
 ## Active focus
 
-Slice `image-pipeline` (COMPLETE — code complete, deploy pending): `image-service` Cloudflare Worker for presigned R2 upload URLs, Next.js `/api/images/upload` and `/api/images/complete` route handlers, and `sharp`-based resize to `original` (capped at 4096px) / `card` / `thumbnail` on the VPS.
-`places-proxy` routes are COMPLETE; the upstream `poi-cache-service` Worker deploy (D1/KV/secrets + `POI_SERVICE_URL`/`POI_SERVICE_TOKEN`) is still pending (pending-user-actions.md §7).
+Code-complete slices awaiting owner credential/account actions:
+
+- `image-pipeline` (COMPLETE — deploy pending): `image-service` Cloudflare Worker for presigned R2 upload URLs, Next.js `/api/images/upload` and `/api/images/complete` route handlers, and `sharp`-based resize to `original` (capped at 4096px) / `card` / `thumbnail` on the VPS.
+- `places-proxy` routes are COMPLETE; the upstream `poi-cache-service` Worker deploy (D1/KV/secrets + `POI_SERVICE_URL`/`POI_SERVICE_TOKEN`) is still pending (`docs/agent/pending-user-actions.md` §7).
+- `auth-foundation` round-trip is pending Supabase anon key, `DATABASE_URL`, and Apple/Google provider config (`docs/agent/pending-user-actions.md` §1–3).
+
+Next unblocked slice after owner actions is `map-home`, which is blocked on the Apple Developer Program purchase (`docs/agent/pending-user-actions.md` §4).
 
 ## What exists
 
@@ -35,14 +40,18 @@ coffeemode_backend/      old Java app — being dropped
 ## What's next
 
 ```text
-1. auth-foundation round-trip once credentials land (anon key, Postgres URL,
-   Apple/Google provider config in Supabase dashboard) — code already merged
-2. poi-cache-service worker deploy (Cloudflare account + D1/KV + secrets; pending-user-actions.md §7)
-3. map-home — Apple MapKit full-screen map + custom markers  [BLOCKED on Apple Developer Program]
-4. discovery-sheet — bottom sheet + swipe cards  [BLOCKED on map-home]
-5. cafe-creation — first check-in flow  [BLOCKED on discovery-sheet; also needs auth-foundation round-trip + image-service deploy per pending-user-actions.md]
-6. checkin-system — 0-100 sliders + policy chips  [BLOCKED on cafe-creation]
-7. work-profile aggregation, search, navigation prompt  [BLOCKED on checkin-system]
+1. Owner actions (docs/agent/pending-user-actions.md §1–4): Supabase anon key +
+   redirect URLs, Apple/Google provider config, self-hosted Postgres provision +
+   schema (DATABASE_URL), Google OAuth, Apple Developer Program.
+2. image-service deploy (§6): create R2 bucket + S3 API token, set R2_ACCOUNT_ID
+   in wrangler.toml, set Worker secrets, deploy, wire IMAGE_SERVICE_URL/TOKEN.
+3. poi-cache-service deploy (§7): Cloudflare D1/KV + secrets, apply D1 schema,
+   deploy, wire POI_SERVICE_URL/TOKEN.
+4. map-home — Apple MapKit full-screen map + custom markers  [BLOCKED on Apple Developer Program]
+5. discovery-sheet — bottom sheet + swipe cards  [BLOCKED on map-home]
+6. cafe-creation — first check-in flow  [BLOCKED on discovery-sheet; also needs auth-foundation round-trip + image-service deploy per pending-user-actions.md]
+7. checkin-system — 0-100 sliders + policy chips  [BLOCKED on cafe-creation]
+8. work-profile aggregation, search, navigation prompt  [BLOCKED on checkin-system]
 ```
 
 ## Known issues

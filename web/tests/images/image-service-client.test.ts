@@ -6,7 +6,7 @@ describe("image-service-client", () => {
 
   beforeEach(() => {
     fetchSpy = vi.fn();
-    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    vi.stubGlobal("fetch", fetchSpy);
     vi.stubEnv("IMAGE_SERVICE_URL", "https://image-service.example.com");
     vi.stubEnv("IMAGE_SERVICE_TOKEN", "test-token");
   });
@@ -14,6 +14,7 @@ describe("image-service-client", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   it("requestUploadUrl returns the worker response", async () => {
@@ -23,6 +24,7 @@ describe("image-service-client", () => {
       uploadHeaders: { "Content-Type": "image/webp" },
       publicUrl: "https://images.example.com/original/uuid.webp",
       expiresAt: new Date().toISOString(),
+      maxUploadBytes: 10 * 1024 * 1024,
     };
     fetchSpy.mockResolvedValue(
       new Response(JSON.stringify(response), {
@@ -39,6 +41,29 @@ describe("image-service-client", () => {
     expect(init?.method).toBe("POST");
     expect((init?.headers as Record<string, string>)?.["x-image-service-token"]).toBe("test-token");
     expect(init?.signal).toBeInstanceOf(AbortSignal);
+    expect(init?.body).toBeUndefined();
+  });
+
+  it("requestUploadUrl forwards the file size when provided", async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          imageUuid: "uuid",
+          uploadUrl: "https://r2.example.com/upload",
+          uploadHeaders: { "Content-Type": "image/webp" },
+          publicUrl: "https://images.example.com/original/uuid.webp",
+          expiresAt: new Date().toISOString(),
+          maxUploadBytes: 10 * 1024 * 1024,
+          size: 1024,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await requestUploadUrl(1024);
+    const [, init] = fetchSpy.mock.calls[0];
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.size).toBe(1024);
   });
 
   it("getProcessUrls posts the completion request", async () => {

@@ -137,11 +137,18 @@ describe("GET /api/places/search", () => {
     expect(init.headers).toMatchObject({ "x-poi-service-token": TOKEN });
   });
 
-  it("defaults radius to 50 and passes coords-only queries", async () => {
+  it("defaults radius to 10 and passes coords-only queries", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ results: [] }));
     await searchGET(new Request(`${WORKER_URL}/api/places/search?lat=1.3&lng=103.8`));
     const [url] = fetchMock.mock.calls[0] as [string];
-    expect(url).toBe(`${WORKER_URL}/poi/search?lat=1.3&lng=103.8&r=50`);
+    expect(url).toBe(`${WORKER_URL}/poi/search?lat=1.3&lng=103.8&r=10`);
+  });
+
+  it("clamps radius to 10 km", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ results: [] }));
+    await searchGET(new Request(`${WORKER_URL}/api/places/search?lat=1.3&lng=103.8&r=20`));
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe(`${WORKER_URL}/poi/search?lat=1.3&lng=103.8&r=10`);
   });
 
   it("400s without q or coordinates", async () => {
@@ -202,8 +209,19 @@ describe("POST /api/places/resolve", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("maps worker 422 (unresolvable) through", async () => {
+  it("maps worker 422 (unresolvable) through for allowed hosts", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ error: "unresolvable" }, 422));
+    const res = await resolvePOST(
+      new Request(`${WORKER_URL}/api/places/resolve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ maps_share_url: "https://maps.app.goo.gl/nope" }),
+      }),
+    );
+    expect(res.status).toBe(422);
+  });
+
+  it("400s for disallowed maps_share_url domains", async () => {
     const res = await resolvePOST(
       new Request(`${WORKER_URL}/api/places/resolve`, {
         method: "POST",
@@ -211,6 +229,39 @@ describe("POST /api/places/resolve", () => {
         body: JSON.stringify({ maps_share_url: "https://example.com/nope" }),
       }),
     );
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
+    expect((await res.json()) as { error: string }).toEqual({
+      error: "invalid_maps_url",
+      message: expect.stringContaining("Google Maps and Apple Maps"),
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("400s for malformed maps_share_url", async () => {
+    const res = await resolvePOST(
+      new Request(`${WORKER_URL}/api/places/resolve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ maps_share_url: "not-a-url" }),
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()) as { error: string }).toEqual({
+      error: "invalid_maps_url",
+      message: expect.stringContaining("Google Maps and Apple Maps"),
+    });
+  });
+
+  it("allows Google Maps subdomains", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(SAMPLE_POI));
+    const res = await resolvePOST(
+      new Request(`${WORKER_URL}/api/places/resolve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ maps_share_url: "https://www.google.com/maps/place/foo" }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalled();
   });
 });

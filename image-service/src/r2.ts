@@ -55,6 +55,7 @@ export async function presignedPutUrl(
     expiresSeconds?: number;
     customMetadata?: Record<string, string>;
     cacheControl?: string;
+    contentLength?: number;
   },
 ): Promise<PresignedUrl> {
   const ttl = options?.expiresSeconds ?? ttlSeconds(env);
@@ -63,12 +64,17 @@ export async function presignedPutUrl(
     method: "PUT",
     headers: {
       "Content-Type": contentType,
+      ...(options?.contentLength !== undefined
+        ? { "Content-Length": String(options.contentLength) }
+        : {}),
       ...(options?.cacheControl ? { "Cache-Control": options.cacheControl } : {}),
       ...metadataHeaders(options?.customMetadata),
     },
   });
   // allHeaders signs Content-Type and the x-amz-meta-* headers, so the uploader
   // cannot swap the MIME type or metadata without breaking the signature.
+  // When contentLength is provided, Content-Length is also signed so R2 can
+  // reject uploads that do not match the declared size.
   const signed = await r2Client(env).sign(request, {
     aws: { signQuery: true, allHeaders: true },
   });
@@ -76,6 +82,10 @@ export async function presignedPutUrl(
   // Fetch is case-insensitive, but most callers expect the canonical capitalisation.
   delete headers["content-type"];
   headers["Content-Type"] = contentType;
+  if (options?.contentLength !== undefined) {
+    delete headers["content-length"];
+    headers["Content-Length"] = String(options.contentLength);
+  }
   if (options?.cacheControl) {
     delete headers["cache-control"];
     headers["Cache-Control"] = options.cacheControl;

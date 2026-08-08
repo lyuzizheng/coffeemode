@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import handler, { handleComplete, handleUpload } from "../src/index";
+import { MAX_UPLOAD_BYTES } from "../src/constants";
 import { baseEnv } from "./helpers";
 
 function makeRequest(
@@ -55,6 +56,47 @@ describe("handleUpload", () => {
     const ttlMs = new Date(data.expiresAt).getTime() - Date.now();
     expect(ttlMs).toBeGreaterThan(110_000);
     expect(ttlMs).toBeLessThanOrEqual(120_000);
+  });
+
+  it("includes the max upload size in the response", async () => {
+    const env = baseEnv();
+    const request = makeRequest("POST", "/v1/images/upload");
+    const response = await handleUpload(request, env);
+    const data = (await response.json()) as Record<string, any>;
+
+    expect(response.status).toBe(200);
+    expect(data.maxUploadBytes).toBe(MAX_UPLOAD_BYTES);
+  });
+
+  it("rejects uploads larger than the 10 MB cap", async () => {
+    const env = baseEnv();
+    const request = makeRequest("POST", "/v1/images/upload", {
+      size: MAX_UPLOAD_BYTES + 1,
+    });
+    const response = await handleUpload(request, env);
+
+    expect(response.status).toBe(413);
+    const data = (await response.json()) as { error: string };
+    expect(data.error).toContain("exceeds maximum");
+  });
+
+  it("signs Content-Length when size is provided", async () => {
+    const env = baseEnv();
+    const request = makeRequest("POST", "/v1/images/upload", { size: 1024 });
+    const response = await handleUpload(request, env);
+    const data = (await response.json()) as Record<string, any>;
+
+    expect(response.status).toBe(200);
+    expect(data.size).toBe(1024);
+    expect(data.uploadHeaders["Content-Length"]).toBe("1024");
+  });
+
+  it("rejects an invalid size type", async () => {
+    const env = baseEnv();
+    const request = makeRequest("POST", "/v1/images/upload", { size: "big" });
+    const response = await handleUpload(request, env);
+
+    expect(response.status).toBe(400);
   });
 
   it("rejects requests without a token", async () => {

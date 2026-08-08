@@ -3,7 +3,7 @@
 
 import { defaultCache } from "@serwist/turbopack/worker";
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
-import { ExpirationPlugin, NetworkFirst, NetworkOnly, Serwist } from "serwist";
+import { CacheFirst, ExpirationPlugin, NetworkFirst, NetworkOnly, Serwist } from "serwist";
 import { R2_PUBLIC_HOST } from "@/lib/images/constants";
 
 declare global {
@@ -70,6 +70,33 @@ const serwist = new Serwist({
       handler: new NetworkFirst({
         cacheName: "r2-images",
         plugins: [new ExpirationPlugin({ maxEntries: 200, maxAgeSeconds: 30 * 24 * 60 * 60 })],
+      }),
+    },
+    // Dynamic routes that render user-specific data must always be fresh.
+    {
+      matcher: ({ url: { pathname }, request }) =>
+        (pathname.startsWith("/cafes/") || pathname === "/profile") &&
+        (request.mode === "navigate" || request.destination === "document"),
+      method: "GET",
+      handler: new NetworkOnly(),
+    },
+    // Immutable build assets.
+    {
+      matcher: ({ url: { pathname } }) => pathname.startsWith("/_next/static/"),
+      method: "GET",
+      handler: new CacheFirst({
+        cacheName: "next-static-assets",
+        plugins: [new ExpirationPlugin({ maxEntries: 200, maxAgeSeconds: 365 * 24 * 60 * 60 })],
+      }),
+    },
+    // Immutable app icons and fonts.
+    {
+      matcher: ({ url: { pathname } }) =>
+        pathname.startsWith("/icons/") || pathname.startsWith("/fonts/"),
+      method: "GET",
+      handler: new CacheFirst({
+        cacheName: "static-assets",
+        plugins: [new ExpirationPlugin({ maxEntries: 100, maxAgeSeconds: 365 * 24 * 60 * 60 })],
       }),
     },
     ...defaultCache,

@@ -10,6 +10,7 @@ import { PERSISTED_QUERY_KEYS } from "./keys";
  */
 export const persistOptions: Omit<PersistQueryClientOptions, "queryClient"> = {
   persister: idbPersister,
+  buster: "v1",
   maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
   dehydrateOptions: {
     shouldDehydrateQuery: (query) => {

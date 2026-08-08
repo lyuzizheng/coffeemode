@@ -3,6 +3,12 @@ import { getCurrentUser } from "@/lib/auth/get-user";
 import { getProcessUrls } from "@/lib/images/image-service-client";
 import { processImage } from "@/lib/images/processor";
 import { query } from "@/lib/db/postgres";
+import {
+  IMAGE_RATE_LIMIT,
+  getClientIdentifier,
+  rateLimitResponse,
+  rateLimiter,
+} from "@/lib/rate-limit";
 import type { CompleteImageRequest, CompleteImageResponse, ImageTargetType, StoredImage } from "@/types/images";
 
 function isValidUUID(value: string): boolean {
@@ -23,6 +29,17 @@ function validateBody(body: unknown): CompleteImageRequest | null {
     targetId,
     isCover: b.isCover === true,
   };
+}
+
+function isImageServiceError(err: unknown): err is { status: number; message: string } {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "status" in err &&
+    typeof (err as { status: unknown }).status === "number" &&
+    "message" in err &&
+    typeof (err as { message: unknown }).message === "string"
+  );
 }
 
 async function ownsCafe(cafeId: string, userId: string): Promise<boolean> {
@@ -126,6 +143,16 @@ export async function POST(request: Request) {
     );
   }
 
+  const clientId = getClientIdentifier(request, user);
+  const limit = rateLimiter.check(
+    `images:${clientId}`,
+    IMAGE_RATE_LIMIT.windowMs,
+    IMAGE_RATE_LIMIT.maxRequests,
+  );
+  if (!limit.allowed) {
+    return rateLimitResponse(limit);
+  }
+
   const owned =
     req.targetType === "cafe"
       ? await ownsCafe(req.targetId, user.id)
@@ -181,6 +208,12 @@ export async function POST(request: Request) {
     return NextResponse.json(response);
   } catch (err) {
     console.error("/api/images/complete failed", err);
+    if (isImageServiceError(err)) {
+      return NextResponse.json(
+        { error: "image_service_error", message: err.message },
+        { status: err.status },
+      );
+    }
     return NextResponse.json({ error: "image_processing_error" }, { status: 502 });
   }
 }

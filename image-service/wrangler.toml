@@ -13,6 +13,17 @@ UPLOAD_URL_TTL_SECONDS = "600"
 binding = "R2_BUCKET"
 bucket_name = "cafemode"
 
+# Lifecycle: configure an R2 lifecycle rule (Cloudflare dashboard or S3 API)
+# to delete abandoned `original/` objects. Because R2 lifecycle rules cannot
+# inspect custom metadata, the recommended flow is:
+#   1. A scheduled cleanup Worker/script lists `original/` objects.
+#   2. Objects whose `x-amz-meta-targettype` metadata is missing and that are
+#      older than 7 days are deleted.
+#   3. Processed `card/` and `thumbnail/` objects are tied to DB records and
+#      should be deleted by the application when the parent cafe/checkin is
+#      removed.
+# See image-service/src/constants.ts for the 10 MB upload cap.
+
 # Secrets (set via `wrangler secret put` for prod, or `image-service/.dev.vars` for local dev — never commit):
 #   IMAGE_SERVICE_TOKEN
 #   R2_ACCESS_KEY_ID

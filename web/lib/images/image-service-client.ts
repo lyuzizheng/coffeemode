@@ -3,6 +3,16 @@ import "server-only";
 import { WORKER_TIMEOUT_MS } from "@/lib/http";
 import type { CompleteImageRequest, UploadUrlResponse } from "@/types/images";
 
+export class ImageServiceError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "ImageServiceError";
+  }
+}
+
 interface PresignedUrl {
   url: string;
   headers: Record<string, string>;
@@ -44,17 +54,18 @@ function headers(token: string): Record<string, string> {
   };
 }
 
-export async function requestUploadUrl(): Promise<UploadUrlResponse> {
+export async function requestUploadUrl(size?: number): Promise<UploadUrlResponse> {
   const { url, token } = getEnv();
   const response = await fetch(`${url}/v1/images/upload`, {
     method: "POST",
     headers: headers(token),
+    body: size !== undefined ? JSON.stringify({ size }) : undefined,
     signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
   });
 
   if (!response.ok) {
     const body = await response.text().catch(() => "unknown error");
-    throw new Error(`image-service upload request failed: ${response.status} ${body}`);
+    throw new ImageServiceError(`image-service upload request failed: ${response.status} ${body}`, response.status);
   }
 
   return response.json();
@@ -78,7 +89,7 @@ export async function getProcessUrls(
 
   if (!response.ok) {
     const body = await response.text().catch(() => "unknown error");
-    throw new Error(`image-service complete request failed: ${response.status} ${body}`);
+    throw new ImageServiceError(`image-service complete request failed: ${response.status} ${body}`, response.status);
   }
 
   return response.json();

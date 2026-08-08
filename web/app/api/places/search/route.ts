@@ -1,11 +1,20 @@
 import { NextResponse } from "next/server";
-import { DEFAULT_SEARCH_RADIUS_KM } from "@/lib/places/constants";
+import { getCurrentUser } from "@/lib/auth/get-user";
+import { DEFAULT_SEARCH_RADIUS_KM, MAX_SEARCH_RADIUS_KM } from "@/lib/places/constants";
 import { POIServiceError, searchPOIs } from "@/lib/places/poi-client";
+import {
+  PLACES_RATE_LIMIT,
+  getClientIdentifier,
+  rateLimitResponse,
+  rateLimiter,
+} from "@/lib/rate-limit";
 
 /**
  * GET /api/places/search?q&lat&lng&r
  * Proxy to the POI cache service search (stored POIs, haversine distance sort).
  * This is what the discovery sheet's external/reset search will call.
+ *
+ * The radius parameter is clamped to MAX_SEARCH_RADIUS_KM to prevent abuse.
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -29,12 +38,25 @@ export async function GET(request: Request) {
     );
   }
 
+  const clampedR = Math.min(r, MAX_SEARCH_RADIUS_KM);
+
+  const user = await getCurrentUser();
+  const clientId = getClientIdentifier(request, user);
+  const limit = rateLimiter.check(
+    `places:${clientId}`,
+    PLACES_RATE_LIMIT.windowMs,
+    PLACES_RATE_LIMIT.maxRequests,
+  );
+  if (!limit.allowed) {
+    return rateLimitResponse(limit);
+  }
+
   try {
     const data = await searchPOIs({
       q: q || undefined,
       lat: hasCoords ? lat : undefined,
       lng: hasCoords ? lng : undefined,
-      r,
+      r: clampedR,
     });
     return NextResponse.json(data);
   } catch (err) {

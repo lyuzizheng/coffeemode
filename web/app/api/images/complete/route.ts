@@ -3,6 +3,12 @@ import { getCurrentUser } from "@/lib/auth/get-user";
 import { getProcessUrls } from "@/lib/images/image-service-client";
 import { processImage } from "@/lib/images/processor";
 import { query } from "@/lib/db/postgres";
+import {
+  IMAGE_RATE_LIMIT,
+  getClientIdentifier,
+  rateLimitResponse,
+  rateLimiter,
+} from "@/lib/rate-limit";
 import type { CompleteImageRequest, CompleteImageResponse, ImageTargetType, StoredImage } from "@/types/images";
 
 function isValidUUID(value: string): boolean {
@@ -124,6 +130,16 @@ export async function POST(request: Request) {
       { error: "invalid_request", message: "valid imageUuid, targetType (cafe|checkin), and targetId required" },
       { status: 400 },
     );
+  }
+
+  const clientId = getClientIdentifier(request, user);
+  const limit = rateLimiter.check(
+    `images:${clientId}`,
+    IMAGE_RATE_LIMIT.windowMs,
+    IMAGE_RATE_LIMIT.maxRequests,
+  );
+  if (!limit.allowed) {
+    return rateLimitResponse(limit);
   }
 
   const owned =

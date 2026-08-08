@@ -20,6 +20,8 @@ export interface UploadResponse {
   uploadHeaders: Record<string, string>;
   publicUrl: string;
   expiresAt: string;
+  maxUploadBytes: number;
+  size?: number;
 }
 
 export interface CompleteRequest {

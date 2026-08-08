@@ -25,6 +25,26 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // Next.js build chunks are hashed and immutable.
+        source: "/_next/static/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+        ],
+      },
+      {
+        // PWA icons and fonts are versioned by filename and safe to cache forever.
+        source: "/icons/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+        ],
+      },
+      {
+        source: "/fonts/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
+        ],
+      },
+      {
         // Service worker and manifest must never be cached by the browser/edge.
         source: "/serwist/sw.js",
         headers: [

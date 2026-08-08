@@ -28,6 +28,8 @@ export interface UploadUrlResponse {
   uploadHeaders: Record<string, string>;
   publicUrl: string;
   expiresAt: string;
+  maxUploadBytes: number;
+  size?: number;
 }
 
 export interface CompleteImageRequest {

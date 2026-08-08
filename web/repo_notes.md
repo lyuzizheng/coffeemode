@@ -76,3 +76,76 @@
 
 - `web/tests/proxy.test.ts`
   - Unit tests for session cookie forwarding, missing-env fallthrough, and matcher exclusions.
+
+## 2026-08-09 Part C (feat/impl-caching-perf-security)
+
+### Caching / PWA / Query persistence
+
+- `web/next.config.ts`
+  - Added `Cache-Control: public, max-age=31536000, immutable` for `/_next/static/:path*`, `/icons/:path*`, and `/fonts/:path*`.
+  - Kept no-cache headers for `/serwist/sw.js`, `/manifest.webmanifest`, and `/api/:path*`.
+
+- `web/app/sw.ts`
+  - Added `CacheFirst` runtime cache entries for `/_next/static/:path*` (cache `next-static-assets`, 1 year, max 200 entries) and `/icons/:path*` + `/fonts/:path*` (cache `static-assets`, 1 year, max 100 entries).
+  - Added `NetworkOnly` entries for document navigations to `/cafes/:path*` and `/profile`.
+  - New static entries are placed before `...defaultCache` so they take precedence.
+
+- `web/lib/query/persist-options.ts`
+  - Added `buster: "v1"` so persisted cache is invalidated on schema/key changes.
+
+- `web/app/providers.tsx`
+  - Added an `onError` callback to `PersistQueryClientProvider` that logs the restore error, removes the persisted client, and clears the query client.
+
+### Images
+
+- `image-service/src/constants.ts`
+  - Added `MAX_UPLOAD_BYTES = 10 * 1024 * 1024` (10 MB) and `IMMUTABLE_CACHE_CONTROL`.
+  - Documented R2 lifecycle/cleanup recommendation for abandoned `original/` objects.
+
+- `image-service/src/index.ts`
+  - `handleUpload` now accepts an optional `size` in the request body.
+  - Returns `413` when `size` exceeds the cap and signs the presigned PUT URL with `Content-Length` when `size` is valid.
+  - Response includes `maxUploadBytes` and `size`.
+
+- `image-service/src/r2.ts`
+  - `presignedPutUrl` accepts a `contentLength` option and includes `Content-Length` in the signed headers.
+
+- `image-service/wrangler.toml`
+  - Added lifecycle guidance comments for cleaning up abandoned `original/` objects.
+
+- `web/lib/images/image-service-client.ts`
+  - `requestUploadUrl` accepts an optional `size` and forwards it to image-service.
+
+- `web/types/images.ts`
+  - Updated `UploadUrlResponse` with `maxUploadBytes` and optional `size`.
+
+### Places
+
+- `web/lib/places/validate-maps-url.ts`
+  - New helper that validates `maps_share_url` host against allowed Google/Apple Maps domains and subdomains.
+
+- `web/app/api/places/resolve/route.ts`
+  - Validates the maps URL host before proxying and returns `400` with `error: "invalid_maps_url"` for disallowed domains.
+
+- `web/lib/places/constants.ts`
+  - Changed `DEFAULT_SEARCH_RADIUS_KM` to `10` and added `MAX_SEARCH_RADIUS_KM = 10`.
+
+- `web/app/api/places/search/route.ts`
+  - Clamps the `r` parameter to `MAX_SEARCH_RADIUS_KM` before calling `searchPOIs`.
+
+### Rate limiting
+
+- `web/lib/rate-limit.ts`
+  - New in-memory token-bucket `RateLimiter` with TTL/cleanup, `getClientIdentifier`, and `rateLimitResponse`.
+  - Per-user id when signed in; anonymous fallback hashes `User-Agent` + IP headers (or `anon:local-dev` for local dev).
+  - Applied to `POST /api/images/upload`, `POST /api/images/complete`, `GET /api/places/search`, and `POST /api/places/resolve`.
+  - Returns `429 Too Many Requests` with `error: "rate_limited"` and a `Retry-After` header.
+
+### Tests
+
+- `web/tests/rate-limit.test.ts` — unit tests for the limiter, client identifier, and route-level 429 behavior.
+- `web/tests/places.test.ts` — updated for radius cap and maps URL domain validation.
+- `web/tests/query/persist-options.test.ts` — query persistence buster and allow-list tests.
+- `web/tests/images/image-service-client.test.ts` — optional size forwarding test.
+- `image-service/tests/handlers.test.ts` — upload size cap and Content-Length tests.
+- `web/tests/setup.ts` — resets the rate limiter between test files.

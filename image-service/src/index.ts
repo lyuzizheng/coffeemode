@@ -2,9 +2,7 @@ import type { CompleteRequest, CompleteResponse, Env, UploadResponse } from "./t
 import { authorized } from "./auth";
 import { isValidUUID, sanitizeMetadata } from "./validate";
 import { presignedGetUrl, presignedPutUrl, publicUrl, ttlSeconds } from "./r2";
-
-/** Cache-Control for immutable WebP variants served through Cloudflare. */
-const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+import { IMMUTABLE_CACHE_CONTROL, MAX_UPLOAD_BYTES } from "./constants";
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -34,9 +32,36 @@ export async function handleUpload(request: Request, env: Env): Promise<Response
     return error("unauthorized", 401);
   }
 
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    body = undefined;
+  }
+
+  let size: number | undefined;
+  if (body && typeof body === "object") {
+    const maybeSize = (body as Record<string, unknown>).size;
+    if (maybeSize !== undefined) {
+      if (typeof maybeSize !== "number" || !Number.isFinite(maybeSize) || maybeSize <= 0) {
+        return error("size must be a positive number (bytes)", 400);
+      }
+      size = maybeSize;
+    }
+  }
+
+  if (size !== undefined && size > MAX_UPLOAD_BYTES) {
+    return error(
+      `upload size ${size} exceeds maximum allowed ${MAX_UPLOAD_BYTES} bytes`,
+      413,
+    );
+  }
+
   const imageUuid = crypto.randomUUID().toLowerCase();
   const key = makeKeys(imageUuid).original;
-  const { url, headers } = await presignedPutUrl(env, key, "image/webp");
+  const { url, headers } = await presignedPutUrl(env, key, "image/webp", {
+    ...(size !== undefined ? { contentLength: size } : {}),
+  });
 
   const response: UploadResponse = {
     imageUuid,
@@ -44,6 +69,8 @@ export async function handleUpload(request: Request, env: Env): Promise<Response
     uploadHeaders: headers,
     publicUrl: publicUrl(env, key),
     expiresAt: expirationDate(ttlSeconds(env)),
+    maxUploadBytes: MAX_UPLOAD_BYTES,
+    ...(size !== undefined ? { size } : {}),
   };
 
   return json(response);

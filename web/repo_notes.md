@@ -39,3 +39,40 @@
 
 - `app/theme-preview/sections/color-section.tsx`
   - Added `secondary` and `secondary-foreground` swatches to the brand token group.
+
+## 2026-08-09 Part B (feat/impl-auth-middleware)
+
+- `web/proxy.ts`
+  - Supabase SSR session-refresh proxy that runs on every non-asset request.
+  - Next.js 16 renamed the `middleware` file convention to `proxy`; this file
+    exports `proxy` and `config.matcher`.
+  - Refreshes tokens and forwards refreshed cookies without blocking public routes.
+
+- `web/db/migrations/0002_checkins_and_indexes.sql`
+  - Adds `updated_at`, `deleted_at`, `likes_count` to `checkins`.
+  - Creates the `checkin_likes` table.
+  - Documents the `source` field on `StoredImage` records in `cafes.gallery` / `checkins.photos`.
+  - Adds Phase 1 indexes: `idx_cafes_created_by`, `idx_cafes_apple_poi_id`,
+    `idx_profiles_current_city`, `idx_checkins_user_visited`, `idx_checkins_deleted_at`,
+    GIN on `cafes.gallery` and `checkins.photos`, plus the existing full-text / location indexes.
+
+- `web/types/images.ts`
+  - Added `StoredImageSource` (`{ type, id }`) and an optional `source` field on `StoredImage`.
+
+- `web/types/checkins.ts`
+  - Added `CheckInScores`, `CheckInPolicy` values, `CheckIn`, `CheckInInput`, and `CheckInLike` types.
+
+- `web/types/profile.ts`
+  - Added `Profile`, `ProfileStats`, and `ProfileWithStats` types aligned with the `profiles` table.
+
+- `web/lib/stats/aggregate.ts`
+  - Implements the recency-weighted `work_stats` aggregation algorithm from spec 0001.
+  - Supports per-user `0.6^rank` weighting, optional `social_weight`, policy counting,
+    `incrementalUpdateWorkStats`, `recomputeWorkStats`, and `recomputeAllWorkStats`.
+
+- `web/tests/stats/aggregate.test.ts`
+  - Unit tests for first check-in, repeat recency weighting, edit recompute,
+    soft-delete exclusion, social-weight hook, and composite normalization.
+
+- `web/tests/proxy.test.ts`
+  - Unit tests for session cookie forwarding, missing-env fallthrough, and matcher exclusions.

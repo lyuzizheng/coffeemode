@@ -31,3 +31,7 @@ This file is the tool-neutral entry point for coding agents working in this repo
 - Specs are the source of truth for product decisions.
 - `docs/agent/current-state.md` is the single source for phase/priority.
 - The harness must not own product priorities or decisions.
+- After a feature is implemented and tests pass, decide smartly whether to open a PR directly or pause for review:
+  - If the user explicitly asked for a PR, or the change is a low-risk/docs-only fix with green gates, open the PR.
+  - If the change is architectural, security-sensitive, changes public APIs, or is large, run an implementation review (subagent or packet) first and surface the findings to the user before opening the PR.
+  - Before pushing a branch to create a PR, get explicit user approval unless the user already requested the PR.

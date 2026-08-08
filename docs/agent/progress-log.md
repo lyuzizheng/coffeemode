@@ -106,6 +106,59 @@
 - Recommended next focus: D1 (Postgres pool tuning) — foundational for stability, no external credentials required, and a prerequisite for safer database usage when building cafe/check-in APIs.
 - Updated `docs/agent/current-state.md` and `docs/agent/progress-log.md` to reflect Part C merged and D1 as the active focus.
 
+## 2026-08-11
+
+- Implemented the remaining Phase 1 backlog on `feat/impl-phase1-remainder`:
+  - **D1 — Postgres pool tuning** (`web/lib/db/postgres.ts`):
+    - Added configurable `max`, `idleTimeoutMillis`, `connectionTimeoutMillis`, and `allowExitOnIdle` from environment variables.
+    - Attached `on('error')` handler to the shared pool.
+    - Added `closePool()`, `withTransaction()`, and `registerPoolShutdownHandlers()` for graceful shutdown.
+    - Marked the module `server-only`.
+    - Updated `web/tests/postgres.test.ts` with config, lifecycle, transaction, and shutdown tests.
+  - **D4 — Worker deploy docs and placeholders**:
+    - Added `R2_ACCOUNT_ID`, `R2_BUCKET_NAME`, and `R2_PUBLIC_URL` placeholders with clear replacement comments in `image-service/wrangler.toml`.
+    - Replaced `REPLACE_WITH_*` placeholders with `YOUR_*` placeholders and documented the exact `wrangler d1`, `wrangler kv`, `wrangler secret`, and `wrangler d1 migrations apply` commands in `poi-service/wrangler.toml`.
+    - Updated `docs/agent/pending-user-actions.md` §6–7 with the placeholder names and deployment steps.
+  - **D7 — Atomic `checkin_likes` toggle** (`web/lib/db/checkins.ts`):
+    - Added `toggleCheckInLike(userId, checkinId)` using a single CTE transaction that deletes an existing like or inserts a new one, then recomputes `checkins.likes_count` from the `checkin_likes` table.
+    - Extracted `isValidUUID` into `web/lib/validation.ts` and reused it in `web/app/api/images/complete/route.ts`.
+    - Added `web/tests/checkins.test.ts` covering invalid IDs, insert, remove, and soft-deleted check-in cases.
+  - **A2 — Sign-in/sign-out UX hardening**:
+    - Rewrote `web/app/auth/actions.ts` `signIn`/`signOut` to return `AuthActionState` errors and redirect on success.
+    - Added client `SignInButton` and `SignOutButton` components using `useActionState` for pending/error states.
+    - Updated `web/app/page.tsx` to use the new buttons and show the signed-in user's display name with a sign-out CTA.
+    - Added `signing_in`, `sign_out`, and `signing_out` i18n keys to `web/messages/en.json` and `web/messages/zh.json`.
+    - Added `web/tests/auth/actions.test.ts` and `web/tests/auth/sign-in-button.test.tsx`.
+- All gates green:
+  - `preflight.sh`
+  - `cd web && npm run verify` (93 tests, typecheck, lint, build)
+  - `cd image-service && npm run typecheck && npm test` (14 tests)
+- Updated `docs/agent/current-state.md`, `docs/agent/implementation-slices.md`, and `web/repo_notes.md`.
+
+## 2026-08-11 (review fixes)
+
+- Ran an independent implementation review on `feat/impl-phase1-remainder` and fixed all blocking findings:
+  - **Like toggle CTE** (`web/lib/db/checkins.ts`): added a `checkin` CTE that locks the active row and prevents inserting orphaned `checkin_likes` rows for soft-deleted check-ins.
+  - **Pool shutdown** (`web/lib/db/postgres.ts` + `web/instrumentation.ts`):
+    - Removed auto-registration of signal handlers at import time.
+    - Created `web/instrumentation.ts` to register the shutdown hook explicitly at Next.js server start.
+    - Replaced immediate `process.exit(0)` with `process.exitCode` assignment, scheduling a hard exit only if the pool fails to close.
+  - **Worker compatibility dates** (`image-service/wrangler.toml`, `poi-service/wrangler.toml`): changed `compatibility_date` to `2024-01-01` with a comment to update intentionally for newer runtime behaviour.
+  - **Image completion source** (`web/app/api/images/complete/route.ts`): added `source: { type, id }` to every `StoredImage` and guarded check-in ownership/attachment with `deleted_at is null`.
+- Fixed related nits:
+  - `web/app/auth/actions.ts` now derives `redirectTo` from `x-forwarded-proto` + `host` when `Origin` is absent.
+  - `getBoolEnv` warns on unrecognized values.
+  - Extracted `web/app/auth/auth-error-message.tsx` to remove duplicated error markup.
+  - `web/tests/postgres.test.ts` cleans up environment variables between tests.
+  - `web/tests/checkins.test.ts` uses stricter `PoolClient` typing.
+  - Added pending-state and error-display tests for `SignInButton` and `SignOutButton` (`web/tests/auth/sign-in-button.test.tsx`, `web/tests/auth/sign-out-button.test.tsx`).
+- All gates green:
+  - `preflight.sh`
+  - `cd web && npm run verify` (98 tests, typecheck, lint, build)
+  - `cd image-service && npm run typecheck && npm test` (14 tests)
+  - `cd poi-service && npm run typecheck && npm test` (44 tests)
+- Branch `feat/impl-phase1-remainder` is ready for PR / merge.
+
 ## 2026-08-08
 
 - Merged `feat/code-quality-cleanup` (PR #16): centralized constants, shared helpers, and split `theme-preview/preview-sections.tsx`.

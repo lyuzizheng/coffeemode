@@ -3,7 +3,7 @@
 
 name = "poi-service"
 main = "src/index.ts"
-compatibility_date = "2026-08-06"
+compatibility_date = "2024-01-01" # Use a date in the past; update when intentionally adopting newer runtime behaviour.
 
 # --- Secrets (never committed) ---
 #   POI_SERVICE_TOKEN       shared secret for service-to-service auth
@@ -12,17 +12,24 @@ compatibility_date = "2026-08-06"
 # Local dev: put them in .dev.vars (gitignored)
 
 # --- Bindings ---
-# TODO(owner): run `wrangler d1 create poi-store` and `wrangler kv namespace create poi-cache`
-# then replace the placeholder ids below.
+# 1. Create the resources:
+#      wrangler d1 create poi-store
+#      wrangler kv namespace create poi-cache
+# 2. Copy the returned ids into the placeholders below.
+# 3. Apply the D1 schema:
+#      wrangler d1 migrations apply poi-store --remote
+# 4. Set secrets (never commit these):
+#      wrangler secret put POI_SERVICE_TOKEN
+#      wrangler secret put GOOGLE_PLACES_API_KEY
 
 [[kv_namespaces]]
 binding = "POI_KV"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "YOUR_KV_NAMESPACE_ID"
 
 [[d1_databases]]
 binding = "POI_DB"
 database_name = "poi-store"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "YOUR_D1_DATABASE_ID"
 
 # --- Routing ---
 [observability]

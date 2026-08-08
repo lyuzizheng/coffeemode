@@ -1,17 +1,21 @@
 name = "image-service"
 main = "src/index.ts"
-compatibility_date = "2026-08-07"
+compatibility_date = "2024-01-01" # Use a date in the past; update when intentionally adopting newer runtime behaviour.
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-# R2_ACCOUNT_ID is public; add your Cloudflare account ID here before deploying.
-R2_BUCKET_NAME = "cafemode"
-R2_PUBLIC_URL = "https://images.coffeemode.app"
+# Replace with your Cloudflare account ID (public) before deploying.
+R2_ACCOUNT_ID = "YOUR_R2_ACCOUNT_ID"
+# Replace with your R2 bucket name.
+R2_BUCKET_NAME = "YOUR_R2_BUCKET_NAME"
+# Replace with your public R2 / CDN base URL (no trailing slash).
+R2_PUBLIC_URL = "https://YOUR_R2_PUBLIC_URL"
 UPLOAD_URL_TTL_SECONDS = "600"
 
 [[r2_buckets]]
 binding = "R2_BUCKET"
-bucket_name = "cafemode"
+# Must match R2_BUCKET_NAME above.
+bucket_name = "YOUR_R2_BUCKET_NAME"
 
 # Lifecycle: configure an R2 lifecycle rule (Cloudflare dashboard or S3 API)
 # to delete abandoned `original/` objects. Because R2 lifecycle rules cannot

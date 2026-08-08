@@ -18,7 +18,10 @@
     "continue_google": "Continue with Google",
     "auth_not_configured": "Sign-in is not configured yet — set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
     "signed_in_as": "Signed in as",
-    "session_ready": "Your session is active."
+    "session_ready": "Your session is active.",
+    "signing_in": "Signing in...",
+    "sign_out": "Sign out",
+    "signing_out": "Signing out..."
   },
   "themePreview": {
     "meta_title": "Design System",

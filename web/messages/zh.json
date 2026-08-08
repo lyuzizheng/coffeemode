@@ -18,7 +18,10 @@
     "continue_google": "使用 Google 继续",
     "auth_not_configured": "登录尚未配置——请设置 NEXT_PUBLIC_SUPABASE_URL 和 NEXT_PUBLIC_SUPABASE_ANON_KEY。",
     "signed_in_as": "已登录",
-    "session_ready": "你的会话已生效。"
+    "session_ready": "你的会话已生效。",
+    "signing_in": "登录中...",
+    "sign_out": "退出登录",
+    "signing_out": "退出中..."
   },
   "themePreview": {
     "meta_title": "设计系统",

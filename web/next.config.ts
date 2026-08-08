@@ -12,7 +12,10 @@ const nextConfig: NextConfig = {
     // R2 images are served through the Cloudflare CDN domain once the
     // image-pipeline slice lands; allow the pattern now so it is not a
     // later config surprise.
-    remotePatterns: [{ protocol: "https", hostname: "**.r2.cloudflarestorage.com" }],
+    remotePatterns: [
+      { protocol: "https", hostname: "**.r2.cloudflarestorage.com" },
+      { protocol: "https", hostname: "images.coffeemode.app" },
+    ],
   },
 };
 

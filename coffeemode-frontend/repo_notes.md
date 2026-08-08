@@ -1,5 +1,9 @@
 # Coffee Mode Frontend - Project Notes
 
+> **SUPERSEDED** — this document describes the legacy Vite frontend. The current
+> CoffeeMode app is being built in `web/` (Next.js 16 + Supabase Auth + Apple MapKit).
+> See `docs/` for canonical architecture and `web/README.md` for the active stack.
+
 ## 1. Project Overview
 
 **Coffee Mode** is a modern web application designed to help users find suitable locations (cafes, libraries, public spaces) for working or studying remotely. Built with React, TypeScript, Vite, and styled with TailwindCSS & Shadcn UI, the project emphasizes a clean user interface, detailed location information, and community contributions.
@@ -323,5 +327,12 @@ map/
 * No global state management library (like Redux or Zustand) seems to be in use yet.
 
 ---
+
+## image-pipeline additions (ADR-0002)
+
+> The canonical image-pipeline documentation now lives in `docs/agent/current-state.md`,
+> `docs/adr/0002-postgres-image-service.md`, and `docs/specs/0001-nextjs-migration.md`.
+> This section is kept for legacy Vite-frontend context only; see those files for current
+> `image-service/`, `web/lib/images/`, and `web/app/api/images/*` details.
 
 This expanded document provides a comprehensive overview for developers joining the project, combining the technical foundation with the product vision and design details.

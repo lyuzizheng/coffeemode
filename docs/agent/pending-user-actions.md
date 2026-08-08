@@ -14,12 +14,12 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 - [ ] Enable **Google** provider: Dashboard → Authentication → Providers → Google → paste Google OAuth client id/secret (from item 3 below)
 - [ ] Enable **Apple** provider later (needs item 4)
 
-## 2. Neon (primary database) — unlocks profiles + all data slices
+## 2. Postgres (primary database, self-hosted on VPS)
 
-- [ ] Create a project at neon.tech, region **ap-southeast-1** (Singapore)
-- [ ] Enable PostGIS: SQL editor → `CREATE EXTENSION postgis;`
+- [ ] Provision Postgres on the VPS (or use managed instance) and enable network access from the Next.js host
+- [ ] Enable PostGIS: `CREATE EXTENSION postgis;`
 - [ ] Apply the schema: `psql "<connection-string>" -f web/db/migrations/0001_init.sql`
-- [ ] Put the **pooled** connection string into `web/.env.local` as `DATABASE_URL` (shape in `web/.env.example`)
+- [ ] Put the connection string into `web/.env.local` as `DATABASE_URL` (shape in `web/.env.example`); add `?sslmode=require` if SSL is required
 
 ## 3. Google OAuth (Sign in with Google) — unlocks real login
 
@@ -37,10 +37,21 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 - [ ] console.cloud.google.com → enable **Places API (New)** → create API key → restrict to that API + (later) IP/HTTP referrers
 - [ ] The key goes ONLY into the POI Worker (`poi-service/.dev.vars`, never committed). Next.js never sees it.
 
-## 6. Domain + deploy (later phase)
+## 6. image-service deploy
+
+- [ ] Create R2 bucket and S3 API token for image uploads
+- [ ] Set `R2_ACCOUNT_ID` in `image-service/wrangler.toml` `[vars]` (public account id; not secret)
+- [ ] In a terminal (from `image-service/`):
+  - `npm install`
+  - Set secrets (values never go in chat/docs): `wrangler secret put IMAGE_SERVICE_TOKEN`, `wrangler secret put R2_ACCESS_KEY_ID`, `wrangler secret put R2_SECRET_ACCESS_KEY`
+  - `npm run deploy` → workers.dev URL; wire `IMAGE_SERVICE_URL` + `IMAGE_SERVICE_TOKEN` into `web/.env.local`
+- [ ] Configure bucket defenses:
+  - Set a maximum upload size (Cloudflare WAF / R2 bucket limits or a `Content-Length`-enforced presigned URL) to mitigate abuse.
+  - Add an R2 lifecycle rule to clean up abandoned `original/` objects. If completed originals share the same prefix, separate pending uploads to a `pending/` prefix first and expire it after 24 h, or expire `original/` only after a safe age that won’t delete live images.
+
+## 7. Domain + deploy (later phase)
 
 - [ ] Point domain at the VPS; Cloudflare proxy/CDN in front
-- [ ] R2 bucket + API token for the image pipeline
 - [ ] Cloudflare account for the POI worker (`poi.coffeemode.app` once the domain lands)
 - [ ] In a terminal (from `poi-service/`), create the resources and copy the returned ids into `wrangler.toml`:
   - `wrangler d1 create poi-store`
@@ -51,4 +62,4 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
 ## What the agent continues meanwhile
 
-Everything not blocked by the above proceeds with mocks: `poi-cache-service` is implemented and unit-tested (Google side mocked) — awaiting your review of the PR, then deploy per item 6. `map-home`/`discovery-sheet` stay blocked on item 4's Apple Developer purchase.
+Everything not blocked by the above proceeds with mocks: `places-proxy` (PR #12) is implemented and unit-tested (POI Worker mocked) — awaiting your review, then deploy per item 7. `map-home`/`discovery-sheet` stay blocked on item 4's Apple Developer purchase.

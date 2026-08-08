@@ -10,7 +10,7 @@ This is a rewrite, not a migration. The old Vite SPA (`coffeemode-frontend/`) an
 
 ## Status
 
-Accepted (revised 2026-08-02 — Supabase auth-only split, Neon data layer, slider scoring, creation-as-first-checkin)
+Accepted (revised 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
 
 ## Stable decisions
 
@@ -39,6 +39,7 @@ coffeemode/
         [id]/
           page.tsx          # Cafe detail (SSR deep link only: share/SEO)
       auth/
+        actions.ts          # OAuth sign-in / sign-out server actions
         callback/
           route.ts          # OAuth callback handler
       api/
@@ -46,13 +47,16 @@ coffeemode/
           route.ts          # Create cafe (= first check-in), list
           [id]/
             route.ts        # Single cafe read/update
-        upload/
-          route.ts          # Image upload (sharp → R2)
+        images/
+          upload/
+            route.ts        # Request presigned R2 URL from image-service
+          complete/
+            route.ts        # Process uploaded original into capped original/card/thumbnail + update DB
         places/
           search/
-            route.ts        # Google Places search proxy
+            route.ts        # POI cache service search proxy
           resolve/
-            route.ts        # Google Maps link → coordinates
+            route.ts        # POI cache service resolve proxy (Google Maps link → POI)
         checkins/
           route.ts          # Check-in (打卡) CRUD
         navigations/
@@ -66,34 +70,34 @@ coffeemode/
       layout/               # Header, FAB, onboarding
       ui/                   # HeroUI overrides / custom primitives
     lib/
-      supabase/             # Auth-only Supabase clients (server + browser)
-      db/                   # Neon query helpers (server-side only)
-      r2/                   # R2 S3 client, upload pipeline
-      places/               # Google Places API helpers
+      auth/                 # Supabase SSR client + OAuth server actions (server + browser clients as added)
+      db/                   # Postgres query helpers (server-side only)
+      images/               # Image-service client + sharp processor
+      places/               # Server-only POI cache service client (proxies POI Worker; never calls Google directly)
       mapkit/               # MapKit JS token, init helpers
       stats/                # Incremental work_stats aggregation
     hooks/                  # TanStack Query hooks, geolocation
     types/                  # Shared TypeScript types
-    styles/
-      globals.css           # Tailwind v4 + HeroUI plugin + tokens
+    app/globals.css         # Tailwind v4 + HeroUI plugin + tokens
     next.config.ts
     tsconfig.json
     package.json
   docs/                     # Documentation system
   poi-service/              # POI cache microservice (Workers + D1 + KV)
+  image-service/            # Image upload microservice (Workers + R2 presigned URLs)
   .agents/                  # Agent workflows
 ```
 
 ### Data layer — split responsibilities
 
 ```text
-Supabase  → AUTH ONLY (Apple + Google OAuth, sessions)
-Neon      → ALL DATA (Postgres + PostGIS)
+Supabase         → AUTH ONLY (Apple + Google OAuth, sessions)
+Self-hosted VPS  → ALL DATA (Postgres + PostGIS)
 ```
 
-- The client never talks to Neon. All data access goes through Next.js route handlers (server-side), which verify the Supabase session first.
+- The client never talks to Postgres. All data access goes through Next.js route handlers (server-side), which verify the Supabase session first.
 - No Supabase RLS needed for data (data never leaves the server). Supabase anon key is used only for auth flows.
-- Neon connection: `@neondatabase/serverless` (pooled connection string). PostGIS enabled via `create extension postgis`.
+- Postgres connection: standard `pg` Pool (server-side only). PostGIS enabled via `create extension postgis`.
 
 #### Tables (4 total — deliberately minimal)
 
@@ -119,7 +123,7 @@ create table cafes (
   city            text default 'singapore',
   description     text,
   cover           text,                   -- R2 key
-  gallery         jsonb default '[]',     -- [{key, w, h, by, at}]
+  gallery         jsonb default '[]',     -- [{id, original, card, thumbnail, w, h, by, at}]
   opening_hours   jsonb,                  -- {mon:{open,close},...} + hours_source
   price_range     smallint,               -- 1-4
   google_place_id text,
@@ -148,7 +152,7 @@ create table checkins (
   min_spend   text,                       -- none | drink | s5 | s10 | s10plus
   max_stay    text,                       -- unlimited | 3h | 2h | 1h | peak
   note        text,
-  photos      jsonb default '[]',         -- [{key, w, h}]
+  photos      jsonb default '[]',         -- [{id, original, card, thumbnail, w, h, by, at}]
   visited_at  timestamptz default now(),
   created_at  timestamptz default now()
 );
@@ -258,8 +262,8 @@ A user checking in 20 times must not outweigh 20 different users. Design:
 ```text
 Providers: Apple OAuth + Google OAuth (no email/password — no email infra)
 Sessions: Supabase SSR cookies (@supabase/ssr)
-Route handlers: verify session via supabase.auth.getUser() before any Neon write
-Profiles row: upserted in Neon on first login (auth callback)
+Route handlers: verify session via supabase.auth.getUser() before any Postgres write
+Profiles row: upserted in Postgres on first login (auth callback)
 No email infra, no magic links.
 ```
 
@@ -335,21 +339,52 @@ Next.js integration: /api/places/* route handlers call the POI service
       instead of Google directly. Google Maps link import → POST /poi/resolve.
 ```
 
-### Image pipeline — R2 + sharp
+### Image pipeline — image-service Worker + sharp
 
 ```text
-Upload: Client → Next.js API route (/api/upload)
-Auth: Supabase session
-Processing (sharp on VPS):
-  - original: resize max 4096px → JPEG q85
-  - medium: 1500w fit_width → WebP q80
-  - small: 400x300 cover → WebP q80
-Storage: Cloudflare R2 via S3 API (@aws-sdk/client-s3)
+Upload flow:
+  1. Client → Next.js /api/images/upload (Supabase session)
+  2. Next.js → image-service Worker /v1/images/upload (service token)
+  3. Worker returns presigned R2 PUT URL for original/{uuid}.webp
+  4. Client PUTs the WebP original directly to R2
+
+Processing:
+  1. Client → Next.js /api/images/complete (Supabase session + target id + optional `isCover` flag)
+  2. Next.js → image-service Worker /v1/images/complete (service token)
+  3. Worker verifies original exists and returns:
+       - presigned GET URL for original/{uuid}.webp
+       - presigned PUT URL for original/{uuid}.webp (to overwrite with capped version)
+       - presigned PUT URLs for card/{uuid}.webp and thumbnail/{uuid}.webp
+  4. Next.js (sharp on VPS) downloads original, generates:
+       - original: downsize if >4096px on longest side, re-encode WebP q80
+       - card:     400x300 cover, WebP q80
+       - thumbnail: 200x200 cover, WebP q80
+  5. Next.js PUTs original (capped), card, and thumbnail back to R2 and updates:
+       cafes.gallery / checkins.photos JSONB
+  6. If `isCover` is true on a `cafe` target, `cafes.cover` is set to the `card` key
+     (client opt-in at creation or cover edit; otherwise the field is left unchanged)
+
+Authorization for /api/images/complete:
+  - `cafe` target: allowed only when the user is the cafe's `created_by`.
+  - `checkin` target: allowed only when the user owns the checkin (`checkins.user_id`).
+    The photo is stored in `checkins.photos` and auto-merged into the parent cafe's
+    `gallery` (attributed via `by`/`at`) without requiring cafe ownership.
+
+Auth:
+  - Browser: Supabase session cookie
+  - Next.js ↔ image-service: shared IMAGE_SERVICE_TOKEN (server-side only)
+  - image-service ↔ R2: R2 S3 API credentials (Worker secret)
+
+Storage: Cloudflare R2 public bucket + CDN custom domain
+  Keys: original/{uuid}.webp, card/{uuid}.webp, thumbnail/{uuid}.webp
+
 R2 metadata (coffeemode pattern):
-  httpMetadata:  { contentType }
-  customMetadata: { userId, uploadDate, imageType, cafeId, width, height }
-Serving: R2 public bucket + Cloudflare CDN custom domain
+  httpMetadata:  { contentType: image/webp }
+  customMetadata: { userId, uploadDate, targetType, targetId }
+
 DB record: JSONB entries in cafes.gallery / checkins.photos (no separate table)
+  { id, original, card, thumbnail, w, h, by, at }
+
 Reference pipelines: our_village (multi-size, temp→final, URLSet),
   coffeemode-image worker (metadata shape)
 ```
@@ -387,9 +422,9 @@ SPA-feel single page. The map page IS the app; no tab bar, no navigation.
 ### Data fetching
 
 ```text
-Server Components: Neon query helpers (direct, server-side)
+Server Components: Postgres query helpers (direct, server-side)
 Client Components: TanStack Query v5 → /api/* route handlers
-Mutations: useMutation → route handler → Neon (+ incremental work_stats update)
+Mutations: useMutation → route handler → Postgres (+ incremental work_stats update)
 Cache: Next.js fetch cache (server), TanStack Query cache (client)
 Revalidation: on-demand after mutations
 ```
@@ -410,17 +445,19 @@ Domain: coffeemode.app (or TBD)
 ### Environment config
 
 ```text
-NEXT_PUBLIC_SUPABASE_URL        -> Supabase project URL (auth)
-NEXT_PUBLIC_SUPABASE_ANON_KEY   -> client-side anon key (auth only)
-DATABASE_URL                    -> Neon pooled connection string (server-only)
+NEXT_PUBLIC_SUPABASE_URL        -> Supabase project URL (auth, Next.js + browser)
+NEXT_PUBLIC_SUPABASE_ANON_KEY   -> client-side anon key (auth only, Next.js + browser)
+DATABASE_URL                    -> Self-hosted Postgres connection string (Next.js server-only)
 GOOGLE_PLACES_API_KEY           -> POI Worker only (never in Next.js)
 POI_SERVICE_URL                 -> POI Worker URL (workers.dev now, custom domain later)
 POI_SERVICE_TOKEN               -> shared secret, Next.js → POI Worker
-R2_ACCOUNT_ID                   -> Cloudflare account
-R2_ACCESS_KEY_ID                -> S3 API key
-R2_SECRET_ACCESS_KEY            -> S3 API secret
-R2_BUCKET_NAME                  -> "cafemode" (existing)
-R2_PUBLIC_URL                   -> https://images.coffeemode.app
+IMAGE_SERVICE_URL               -> image-service Worker URL
+IMAGE_SERVICE_TOKEN             -> shared secret, Next.js → image-service Worker
+R2_ACCOUNT_ID                   -> image-service Worker (R2 S3 signing)
+R2_ACCESS_KEY_ID                -> image-service Worker (R2 S3 token secret)
+R2_SECRET_ACCESS_KEY            -> image-service Worker (R2 S3 token secret)
+R2_BUCKET_NAME                  -> image-service Worker ("cafemode")
+R2_PUBLIC_URL                   -> image-service Worker + Next.js (CDN base, no trailing slash)
 APPLE_MAPKIT_TEAM_ID            -> Apple Developer team
 APPLE_MAPKIT_KEY_ID             -> MapKit JS key
 APPLE_MAPKIT_PRIVATE_KEY        -> .p8 private key (server-side)
@@ -538,7 +575,7 @@ Navigation deep links:
 
 ```text
 Default search (e.g. "coffee") = own cafes + saved POIs, merged by distance:
-  1. Own cafes — Neon, name FTS + PostGIS distance sort
+  1. Own cafes — self-hosted Postgres, name FTS + PostGIS distance sort
   2. Saved POIs — POI service GET /poi/search (D1 + Worker haversine)
      Includes POIs never created as cafes → each is a creation candidate
   Merge rule: dedupe by place_id; a created cafe always wins over its raw POI.
@@ -551,7 +588,7 @@ External search (on demand):
 
 Distance search on D1: SQLite has no spatial index, but Worker-side haversine
   scan is fine at city scale (thousands of POIs). Escape hatch: if a region's
-  saved POIs exceed ~50K, mirror hot POIs into Neon PostGIS.
+  saved POIs exceed ~50K, mirror hot POIs into Postgres PostGIS.
 
 Search is a growth flywheel: every miss becomes a potential new cafe.
 Deep-linkable: /search?q=... (SSR for shareability)
@@ -595,7 +632,7 @@ OG meta: cafe cover as og:image on /cafes/[id].
 ```text
 1. Initialize Next.js app in web/
 2. Tailwind v4 + HeroUI v3 + theme tokens + next-intl (en/zh)
-3. Supabase auth clients + Neon db helpers
+3. Supabase auth clients + Postgres db helpers
 4. Apple + Google OAuth login flow, profiles upsert
 5. Root layout, theme provider (next-themes)
 6. Verify: dev server, build, auth round-trip
@@ -620,7 +657,7 @@ OG meta: cafe cover as og:image on /cafes/[id].
 2. POI cache service (Worker + D1 + KV) deployed first — creation depends on it
 3. Google Maps link import (resolve via POI service → HALF-sheet preview → one-tap add)
 4. MapKit search import + manual (map tap → reverse geocode)
-5. Image upload pipeline (sharp → R2 → gallery JSONB)
+5. Image upload pipeline (image-service Worker presigned URLs + sharp on VPS → R2 → gallery JSONB)
 6. Dedupe handling (existing place → show + check-in prompt)
 ```
 
@@ -664,12 +701,13 @@ OG meta: cafe cover as og:image on /cafes/[id].
 - MapKit JS requires window — client component + next/script CDN load
 - MapKit token JWT must be server-generated (private key never exposed)
 - Supabase SSR cookies: middleware refreshes session on each request
-- Neon credentials server-side only; client NEVER queries Neon directly
-- Every /api write verifies Supabase session before touching Neon
-- R2 S3 client: server-side only (credentials never exposed)
+- Postgres credentials server-side only; client NEVER queries Postgres directly
+- Every /api write verifies Supabase session before touching Postgres
+- R2 S3 credentials live only in the image-service Worker; Next.js uses presigned URLs; credentials never reach the browser
+- image-service token: server-side only; never exposed to browser
 - sharp is a native addon — must be in Docker image (node:slim + libvips)
 - Google Places session tokens: single-use, 3-minute window
-- PostGIS: create extension postgis on Neon (one-time)
+- PostGIS: create extension postgis on self-hosted Postgres (one-time)
 - Apple OAuth: requires services ID + return URL config; redirect flow on mobile
 - work_stats concurrent writes: single-row UPDATE acceptable at MVP scale;
   nightly recompute corrects any drift
@@ -682,7 +720,7 @@ OG meta: cafe cover as og:image on /cafes/[id].
 - next dev starts without errors
 - next build completes with zero TypeScript errors
 - Apple + Google OAuth login works end-to-end
-- Map renders with cafe markers from Neon
+- Map renders with cafe markers from Postgres
 - Dark mode toggles map + UI simultaneously
 - Bottom sheet: peek → half → full with URL sync and back-button collapse
 - /cafes/[id] is server-rendered (view-source shows content)
@@ -694,7 +732,7 @@ OG meta: cafe cover as og:image on /cafes/[id].
 - Navigation → ClassPass-style prompt on next visit
 - All UI copy goes through next-intl (en + zh)
 - Lighthouse performance >= 80 on cafe detail page
-- pnpm lint passes with zero errors
+- `npm run lint` passes with zero errors
 - Vitest unit tests pass (stats aggregation math, utils, API routes)
-- Playwright e2e: login → browse → create → check-in flow
+- Playwright e2e (post-MVP): login → browse → create → check-in flow
 ```

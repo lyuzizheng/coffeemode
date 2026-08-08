@@ -12,13 +12,13 @@ Key constraints:
 
 - The Java backend added deployment and hiring friction with no capability the new design needs.
 - The frontend must be rewritten anyway (new design system, bottom-sheet SPA, Apple Maps).
-- Auth is Apple/Google OAuth only (Supabase Auth), and the primary data store is Neon Postgres.
+- Auth is Apple/Google OAuth only (Supabase Auth). The primary data store was originally Neon Postgres; this was later revised by ADR-0002 to self-hosted Postgres on the VPS.
 - Images go to Cloudflare R2; the map is Apple MapKit JS; external POI search stays on Google Places.
 - The owner runs a VPS with a public IP and wants Cloudflare as the CDN/auxiliary layer.
 
 ## Decision
 
-Rewrite the product as a single Next.js 15 full-stack application in `web/`:
+Rewrite the product as a single Next.js 15+ (currently 16.x) full-stack application in `web/`:
 
 - Deploy the app to the VPS with Docker and Next.js `output: 'standalone'`, fronted by Cloudflare CDN/proxy. `@opennextjs/cloudflare` remains a documented future option, not the MVP target.
 - Remove the Java backend entirely; no data migration from MongoDB is planned for MVP.

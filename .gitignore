@@ -19,7 +19,7 @@
 
 ./coffeemode-frontend/.idea
 ./coffeemode-frontend/.vscode
-./coffeemode-fronte nd/.env
+./coffeemode-frontend/.env
 ./coffeemode-frontend/.env.local
 ./coffeemode-frontend/.env.development
 ./coffeemode-frontend/.env.production
@@ -32,6 +32,9 @@
 poi-service/node_modules/
 poi-service/.dev.vars
 poi-service/.wrangler/
+image-service/node_modules/
+image-service/.dev.vars
+image-service/.wrangler/
 node_modules/
 ./coffeemode-frontend/public/js/mapsJavaScriptAPI.js
 ./coffeemode-frontend/public/js/mapsJavaScriptAPI.js.map

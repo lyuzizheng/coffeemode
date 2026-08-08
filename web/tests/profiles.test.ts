@@ -25,7 +25,7 @@ describe("profileFromUser", () => {
     expect(profileFromUser({ id: "u1", email: "kim@cafe.sg" }).displayName).toBe(
       "kim",
     );
-    expect(profileFromUser({ id: "u1" }).displayName).toBe("Nomad");
+    expect(profileFromUser({ id: "u1" }).displayName).toBe("A nomad");
   });
 
   it("picks avatar_url over picture", () => {

@@ -38,7 +38,7 @@ GOOGLE_PLACES_API_KEY=...
 - **D1** — durable normalized POI store (`pois` table). Schema in `migrations/0001_init.sql`.
 
 ```bash
-# one-time, after the namespaces exist (owner actions — pending-user-actions.md §6)
+# one-time, after the namespaces exist (owner actions — docs/agent/pending-user-actions.md §7)
 wrangler d1 migrations apply poi-store --local
 wrangler d1 migrations apply poi-store --remote
 ```

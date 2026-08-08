@@ -4,6 +4,7 @@
 import { defaultCache } from "@serwist/turbopack/worker";
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
 import { ExpirationPlugin, NetworkFirst, NetworkOnly, Serwist } from "serwist";
+import { R2_PUBLIC_HOST } from "@/lib/images/constants";
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -13,7 +14,6 @@ declare global {
 
 declare const self: ServiceWorkerGlobalScope;
 
-const IMAGE_HOST = "images.coffeemode.app";
 
 const serwist = new Serwist({
   precacheEntries: self.__SW_MANIFEST,
@@ -65,7 +65,7 @@ const serwist = new Serwist({
     },
     // R2 image variants are immutable once processed.
     {
-      matcher: ({ url }) => url.hostname === IMAGE_HOST,
+      matcher: ({ url }) => url.hostname === R2_PUBLIC_HOST,
       method: "GET",
       handler: new NetworkFirst({
         cacheName: "r2-images",

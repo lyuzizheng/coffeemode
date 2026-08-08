@@ -1,3 +1,5 @@
+import { WORKER_TIMEOUT_MS } from "@/lib/http";
+
 /**
  * Server-only client for the POI cache service (Cloudflare Worker).
  *
@@ -68,7 +70,7 @@ async function poiFetch(
     ...init,
     // Never let Next.js cache proxy responses — the worker owns caching.
     cache: "no-store",
-    signal: init.signal ?? AbortSignal.timeout(5000),
+    signal: init.signal ?? AbortSignal.timeout(WORKER_TIMEOUT_MS),
     headers,
   });
   if (!res.ok) {

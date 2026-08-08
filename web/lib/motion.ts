@@ -65,15 +65,3 @@ export const staggerContainer: Variants = {
   hidden: {},
   visible: { transition: { staggerChildren: 0.04, delayChildren: 0.05 } },
 };
-
-/**
- * Reduced-motion helper: returns props that skip animation entirely when the
- * user prefers reduced motion. Spread onto motion components:
- *   <motion.div {...respectMotion(reduced, { initial: "hidden", animate: "visible" })} />
- */
-export function respectMotion<T extends Record<string, unknown>>(
-  reduced: boolean | null,
-  props: T,
-): T | Record<string, never> {
-  return reduced ? {} : props;
-}

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { DEFAULT_SEARCH_RADIUS_KM } from "@/lib/places/constants";
 import { POIServiceError, searchPOIs } from "@/lib/places/poi-client";
 
 /**
@@ -12,7 +13,7 @@ export async function GET(request: Request) {
   const lat = Number.parseFloat(searchParams.get("lat") ?? "");
   const lng = Number.parseFloat(searchParams.get("lng") ?? "");
   const rRaw = searchParams.get("r");
-  const r = rRaw ? Number.parseFloat(rRaw) : 50;
+  const r = rRaw ? Number.parseFloat(rRaw) : DEFAULT_SEARCH_RADIUS_KM;
 
   const hasCoords = !Number.isNaN(lat) && !Number.isNaN(lng);
   if (q === "" && !hasCoords) {

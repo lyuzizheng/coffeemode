@@ -3,6 +3,7 @@
  * All D1 rows round-trip through normalize() so handlers see POI objects.
  */
 
+import { DEFAULT_SEARCH_RADIUS_KM } from "./constants";
 import type { D1Like, KVLike, POI, POISearchHit } from "./types";
 import { haversineKm, kmPerDegLat, kmPerDegLng } from "./geo";
 
@@ -118,7 +119,7 @@ export async function d1SearchPOIs(
   opts: { q?: string; lat?: number; lng?: number; radiusKm?: number },
 ): Promise<POISearchHit[]> {
   const { q, lat, lng } = opts;
-  const radiusKm = opts.radiusKm ?? 50;
+  const radiusKm = opts.radiusKm ?? DEFAULT_SEARCH_RADIUS_KM;
 
   const where: string[] = [];
   const binds: unknown[] = [];

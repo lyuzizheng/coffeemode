@@ -1,5 +1,6 @@
 import "server-only";
 
+import { WORKER_TIMEOUT_MS } from "@/lib/http";
 import type { CompleteImageRequest, UploadUrlResponse } from "@/types/images";
 
 interface PresignedUrl {
@@ -42,8 +43,6 @@ function headers(token: string): Record<string, string> {
     "x-image-service-token": token,
   };
 }
-
-const WORKER_TIMEOUT_MS = 5000;
 
 export async function requestUploadUrl(): Promise<UploadUrlResponse> {
   const { url, token } = getEnv();

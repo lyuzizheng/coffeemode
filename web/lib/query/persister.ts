@@ -24,10 +24,3 @@ export const idbPersister: Persister = {
     await del(PERSISTER_KEY, queryStore);
   },
 };
-
-/**
- * Clear the entire IndexedDB query cache. Call on sign-out.
- */
-export async function clearQueryCache(): Promise<void> {
-  await del(PERSISTER_KEY, queryStore);
-}

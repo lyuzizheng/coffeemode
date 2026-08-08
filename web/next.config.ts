@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 import { withSerwist } from "@serwist/turbopack";
+import { R2_PUBLIC_HOST } from "./lib/images/constants";
 
 const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
 
@@ -17,7 +18,7 @@ const nextConfig: NextConfig = {
     loaderFile: "./lib/images/loader.ts",
     remotePatterns: [
       { protocol: "https", hostname: "**.r2.cloudflarestorage.com" },
-      { protocol: "https", hostname: "images.coffeemode.app" },
+      { protocol: "https", hostname: R2_PUBLIC_HOST },
     ],
   },
 

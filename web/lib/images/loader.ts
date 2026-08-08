@@ -1,6 +1,5 @@
 import type { ImageLoader } from "next/image";
-
-const R2_PUBLIC_HOST = "images.coffeemode.app";
+import { R2_PUBLIC_HOST } from "./constants";
 
 /**
  * Custom Next.js image loader for R2 images.

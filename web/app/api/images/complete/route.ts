@@ -1,17 +1,9 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient, isAuthConfigured } from "@/lib/auth/supabase-server";
+import { getCurrentUser } from "@/lib/auth/get-user";
 import { getProcessUrls } from "@/lib/images/image-service-client";
 import { processImage } from "@/lib/images/processor";
 import { query } from "@/lib/db/postgres";
 import type { CompleteImageRequest, CompleteImageResponse, ImageTargetType, StoredImage } from "@/types/images";
-
-async function getUser(): Promise<{ id: string } | null> {
-  if (!isAuthConfigured()) return null;
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) return null;
-  return { id: data.user.id };
-}
 
 function isValidUUID(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -114,7 +106,7 @@ async function mergeIntoCafeGallery(image: StoredImage, cafeId: string): Promise
  * target cafe or checkin.
  */
 export async function POST(request: Request) {
-  const user = await getUser();
+  const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

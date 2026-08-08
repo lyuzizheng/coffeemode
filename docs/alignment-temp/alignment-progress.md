@@ -16,7 +16,7 @@
 
 | # | Decision | Answer |
 |---|----------|--------|
-| Q8 | Data layer | All Supabase (Postgres + Auth + Storage). Cloudflare free products as auxiliary |
+| Q8 | Data layer | ~~All Supabase (Postgres + Auth + Storage)~~ — superseded by Round 5: self-hosted Postgres for app data, Supabase Auth only |
 | Q9 | Deployment target | VPS (Docker + next standalone) + Cloudflare CDN proxy. Fallback: @opennextjs/cloudflare Workers |
 | Q10 | Rewrite scope | ALL features rewritten. Product capabilities defined in later grill rounds |
 | Q11 | Google Maps/Places | Keep all capabilities. Google Places API via Next.js route handlers |
@@ -30,8 +30,8 @@
 |---|----------|--------|
 | Q15 | Image storage | Cloudflare R2 (not Supabase Storage) |
 | Q16 | Image processing | Server-side sharp on VPS (not Workers — CPU limits too tight) |
-| Q17 | Image pipeline | our_village pattern: one upload → multiple sizes (original JPEG + medium/small WebP) |
-| Q18 | R2 metadata | Keep coffeemode pattern: customMetadata { userId, uploadDate, imageType } + extend with cafeId, dimensions |
+| Q17 | Image pipeline | our_village pattern: one upload → multiple sizes (original/capped, card, thumbnail; all WebP) — superseded by final spec |
+| Q18 | R2 metadata | Keep coffeemode pattern: customMetadata { userId, uploadDate, targetType, targetId }; imageType dropped as redundant |
 | Q19 | Image serving | R2 public bucket + Cloudflare CDN custom domain. No Worker proxy needed for reads |
 | Q20 | Upload auth | Supabase Auth (replaces JWT). Rate limiting via Next.js middleware or Cloudflare WAF |
 
@@ -93,7 +93,7 @@
 |---|----------|--------|
 | Q49b | Dimensions | 5 sliders: wifi, outlets, seats/tables, temperature, coffee quality. DROPPED: laptop-friendly (too abstract), noise |
 | Q52b | Scoring | All scores = personal subjective slider, stored 0-100 decimal. No 3-state voting |
-| — | DB split | Supabase = AUTH ONLY. Data → Neon Postgres. Minimize table count |
+| — | DB split | Supabase = AUTH ONLY. Data → self-hosted Postgres. Minimize table count |
 | — | Policy vs checkin votes | Over-engineered — killed. min_spend/max_stay fold into the checkin itself |
 | Q53b | Creation | Creation = first check-in: name/location/photos + review + sliders REQUIRED. No official/creator distinction; owner column later |
 | Q55b | Repeat check-in | "Same as last time?" [same / changed→expand]. Repeats replace, don't stack |
@@ -105,12 +105,12 @@
 |---|----------|--------|
 | Q51b | Google POI storage | Independent POI cache service: Cloudflare Worker + D1 + KV. Stores all searched Google POIs, reusable by other services. Apple POI refs too (POSTed from MapKit client) |
 | Q53c | Creator display | "added by {creator}", anonymous by default ("A nomad"), opt-in display later. Required fields pre-filled from Google share link (existing Vite flow: paste→preview→resolve→create) |
-| Q56 | Neon account | User has one ✓ |
+| Q56 | Postgres database | User will self-host on VPS |
 | Q57 | Check-in minimum | ≥1 slider required (overall or any dimension). min_spend/max_stay get "unknown" option — honest data over forced guesses |
 | Q58 | Composite score | TWO scores: ✨ experience_score (mean of overall) + 📊 composite_score (weighted dimensions) |
 | Q59 | Slider default | No default — unmoved slider not recorded (option A) |
-| Q60 | Check-in photos | Yes — into checkins.photos AND auto-merge cafes.gallery (attributed). Existing image Worker retired → Next.js + R2 |
-| Q51c | Default search flow | Search bar default = own cafes (Neon PostGIS) + saved POIs (D1 via POI service), merged by distance. D1 distance = Worker haversine (fine at city scale; Neon PostGIS mirror as documented escape hatch). Miss → "Search Google/Apple" → live results shown AND stored. Every searched POI reusable + creation candidate |
+| Q60 | Check-in photos | Yes — into checkins.photos AND auto-merge cafes.gallery (attributed). Upload pipeline: image-service Cloudflare Worker (presigned R2 URLs) + Next.js /api/images handlers + sharp on VPS → R2 |
+| Q51c | Default search flow | Search bar default = own cafes (self-hosted Postgres PostGIS) + saved POIs (D1 via POI service), merged by distance. D1 distance = Worker haversine (fine at city scale; Postgres PostGIS mirror as documented escape hatch). Miss → "Search Google/Apple" → live results shown AND stored. Every searched POI reusable + creation candidate |
 | Q61 | Composite weights | A — fixed global: wifi 30% · outlets 20% · seats 20% · temp 15% · coffee 15% |
 | Q62 | POI service hosting | CF account OK for D1/KV (free plan); workers.dev first, custom domain later |
 | Q63 | Baseline merge | Approved — merge feat/agent-harness-and-docs-system → main |
@@ -122,9 +122,9 @@
 - 2026-07-31: Cloudflare ecosystem for deployment/auxiliary services
 - 2026-07-31: VPS + Cloudflare CDN as primary deployment (not Cloudflare-native serverless)
 - 2026-07-31: R2 for image storage, sharp on VPS for processing, our_village pipeline pattern
-- 2026-07-31: coffeemode-image Worker to be retired (replaced by Next.js API route + R2 public CDN)
+- 2026-07-31: legacy `coffeemode-image` Worker retired; image pipeline becomes presigned R2 URLs via a Cloudflare Worker + Next.js `/api/images/complete` for sharp processing
 
-- 2026-08-03: Data layer split — Supabase AUTH only; Neon Postgres for all data (4 tables)
+- 2026-08-03: Data layer split — Supabase AUTH only; self-hosted Postgres for all data (4 tables)
 - 2026-08-03: POI cache service (Workers + D1 + KV) as independent reusable microservice
 - 2026-08-03: Dual scores (✨ experience + 📊 composite), slider-only scoring, "unknown" policy option
 - 2026-08-03: Hermes config — reasoning_effort=max, openrouter provider removed (qwen-coding-plan only)
@@ -137,10 +137,11 @@ Styling:             Tailwind CSS v4 + HeroUI v3 (custom CoffeeMode theme)
 Animation:           Framer Motion (restrained, 2026-elegant)
 Map:                 Apple MapKit JS 5.7+ (mapkit-react), dark mode, clustering
 Data fetching:       TanStack Query v5 (client), server fetch (SSR)
-Database:            Neon Postgres + PostGIS (4 tables: profiles/cafes/checkins/navigations)
+Database:            Self-hosted Postgres + PostGIS (4 tables: profiles/cafes/checkins/navigations)
 Auth:                Supabase Auth only (Apple + Google OAuth, no email)
 Image storage:       Cloudflare R2 (S3 API, public bucket + CDN)
-Image processing:    sharp on VPS (original JPEG + medium/small WebP)
+Image processing:    sharp on VPS (original + card + thumbnail WebP)
+Image upload:        image-service Cloudflare Worker (presigned R2 URLs)
 POI cache:           Cloudflare Worker + D1 + KV (poi.coffeemode.app), Google key lives here
 Google Places:       via POI service only (never direct from Next.js)
 Deployment:          VPS Docker (next standalone) + Cloudflare CDN/proxy

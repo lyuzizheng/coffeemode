@@ -34,7 +34,7 @@ export function profileFromUser(user: SupabaseUserLike): ProfileInput {
     meta.user_name ??
     meta.preferred_username ??
     user.email?.split("@")[0] ??
-    "Nomad";
+    "A nomad";
 
   return {
     id: user.id,

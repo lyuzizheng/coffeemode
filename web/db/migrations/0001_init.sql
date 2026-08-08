@@ -1,6 +1,6 @@
 -- CoffeeMode schema v1 (spec 0001 — 4 tables, deliberately minimal).
 -- Apply with: psql "$DATABASE_URL" -f 0001_init.sql
--- PostGIS required (Neon supports it; enable before running).
+-- PostGIS required; enable before running.
 
 create extension if not exists postgis;
 
@@ -25,7 +25,7 @@ create table if not exists cafes (
   city            text default 'singapore',
   description     text,
   cover           text,                   -- R2 key
-  gallery         jsonb default '[]',     -- [{key, w, h, by, at}]
+  gallery         jsonb default '[]',     -- [{id, original, card, thumbnail, w, h, by, at}]
   opening_hours   jsonb,                  -- {mon:{open,close},...} + hours_source
   price_range     smallint,               -- 1-4
   google_place_id text,
@@ -54,7 +54,7 @@ create table if not exists checkins (
   min_spend   text,                       -- none | drink | s5 | s10 | s10plus
   max_stay    text,                       -- unlimited | 3h | 2h | 1h | peak
   note        text,
-  photos      jsonb default '[]',         -- [{key, w, h}]
+  photos      jsonb default '[]',         -- [{id, original, card, thumbnail, w, h, by, at}]
   visited_at  timestamptz default now(),
   created_at  timestamptz default now()
 );

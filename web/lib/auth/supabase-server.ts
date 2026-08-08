@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
  * Server-side Supabase client for route handlers and Server Components.
  *
  * Supabase is AUTH ONLY (spec 0001): sessions and OAuth, nothing else.
- * All data access goes through Neon via route handlers that verify the
+ * All data access goes through Postgres via route handlers that verify the
  * Supabase session first.
  *
  * Throws at request time (not import time) when env is missing, so builds

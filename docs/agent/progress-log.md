@@ -29,3 +29,26 @@
 - Started `places-proxy` slice (PR #12): `web/lib/places/poi-client.ts` (server-only
   client, token header, no-store, 503 when unconfigured), `web/app/api/places/search`
   + `resolve` route handlers, `web/types/places.ts`, 15 new tests (mocked worker).
+
+## 2026-08-07
+
+- Updated `auth-foundation` to own the Postgres driver:
+  - Migrated `web/lib/db` from `@neondatabase/serverless` to the standard `pg` Pool
+    (`web/lib/db/postgres.ts`, `web/tests/postgres.test.ts`)
+- Implemented `image-pipeline` slice (completes ADR-0002):
+  - Relies on `auth-foundation` Postgres helpers (`web/lib/db/postgres.ts`)
+  - Created `image-service/` Cloudflare Worker (`wrangler.toml`, `tsconfig`, vitest)
+    with `POST /v1/images/upload` and `POST /v1/images/complete` endpoints that
+    sign presigned R2 PUT/GET URLs using `aws4fetch` and verify `IMAGE_SERVICE_TOKEN`
+  - Implemented `web/lib/images/image-service-client.ts` and `processor.ts` (`sharp`)
+    to cap original at 4096px, generate card (400x300) and thumbnail (200x200),
+    then PUT all three variants to R2
+  - Added Next.js route handlers `web/app/api/images/upload/route.ts` and
+    `web/app/api/images/complete/route.ts` that verify Supabase sessions and update
+    `cafes.gallery` / `checkins.photos` JSONB
+  - Updated `docs/adr/0002-postgres-image-service.md`, `docs/specs/0001-nextjs-migration.md`,
+    `docs/agent/current-state.md`, `docs/agent/implementation-slices.md`,
+    `docs/agent/progress-log.md`, `web/.env.example`, `web/README.md`, and the
+    data-layer references in `.agents/skills/*`
+  - All gates green: `preflight.sh`, `npm run verify` in `web/`, and
+    `npm run typecheck` + `npm test` in `image-service/`

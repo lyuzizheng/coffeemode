@@ -35,7 +35,7 @@ files/packages touched
 schema/migration impact
 API/service impact (Next.js route handlers, POI service)
 UI impact
-test strategy (Vitest + RTL + Playwright + tsc --noEmit)
+test strategy (Vitest + RTL + tsc --noEmit; Playwright E2E post-MVP)
 required doc updates
 ```
 
@@ -66,7 +66,7 @@ Each slice should have a clear validation artifact:
 ```text
 typecheck (tsc --noEmit)
 Vitest unit/component tests
-Playwright e2e flow
+Playwright e2e flow (post-MVP)
 production build (next build)
 wrangler dev smoke for the POI service
 UI screenshot/browser check for visible changes

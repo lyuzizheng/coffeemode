@@ -1,0 +1,19 @@
+name = "image-service"
+main = "src/index.ts"
+compatibility_date = "2026-08-07"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# R2_ACCOUNT_ID is public; add your Cloudflare account ID here before deploying.
+R2_BUCKET_NAME = "cafemode"
+R2_PUBLIC_URL = "https://images.coffeemode.app"
+UPLOAD_URL_TTL_SECONDS = "600"
+
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "cafemode"
+
+# Secrets (set via `wrangler secret put` for prod, or `image-service/.dev.vars` for local dev — never commit):
+#   IMAGE_SERVICE_TOKEN
+#   R2_ACCESS_KEY_ID
+#   R2_SECRET_ACCESS_KEY

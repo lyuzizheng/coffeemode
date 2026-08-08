@@ -15,7 +15,7 @@ Accepted
 ```text
 Unit:        Vitest + React Testing Library for components, hooks, utils
 Integration: Vitest for API routes with mocked backend
-E2E:         Playwright for critical user flows (map, search, cafe detail)
+E2E:         Playwright for critical user flows (map, search, cafe detail) — post-MVP
 Visual:      Playwright screenshots for key surfaces (optional, not blocking)
 ```
 
@@ -32,12 +32,11 @@ Visual:      Playwright screenshots for key surfaces (optional, not blocking)
 ### Fixture layers
 
 ```text
-fixtures/
-  synthetic/       generated safe samples, preferred for CI
-  snapshots/       Playwright visual snapshots (committed after review)
+web/fixtures/        test fixtures and synthetic data (reserved for future use)
 ```
 
 No private fixtures needed (no financial data). Synthetic fixtures model real cafe data shapes.
+The image-pipeline tests generate small synthetic WebP images on the fly, so no committed fixtures are needed yet.
 
 ### CI gates
 
@@ -45,10 +44,10 @@ Every PR and push to main runs the strongest relevant subset:
 
 ```text
 typecheck        tsc --noEmit
-lint             eslint + prettier check
+lint             eslint
 unit             vitest run
 build            next build
-e2e              playwright test (critical paths only)
+e2e              playwright test (critical paths only) — post-MVP
 ```
 
 ### Consequence-based execution
@@ -84,30 +83,33 @@ A feature is not done until:
 ### Automation scripts
 
 ```text
-pnpm typecheck          TypeScript check
-pnpm lint               ESLint + Prettier
-pnpm test               Vitest unit tests
-pnpm test:e2e           Playwright E2E
-pnpm build              Next.js production build
-pnpm verify             typecheck + lint + test + build (the full gate)
+npm run typecheck       TypeScript check
+npm run lint            ESLint
+npm run test            Vitest unit tests
+npm run build           Next.js production build
+npm run verify          typecheck + lint + test + build (the full gate)
 ```
 
 ### CI workflow design
 
 ```text
 .github/workflows/application.yml:
-  triggers: PR + push to main (apps/**, packages/**, root configs)
-  runs: pnpm verify
+  triggers: PR + push to main (web/**, .github/workflows/application.yml)
+  steps: npm ci, npm run typecheck, npm run lint, npm run test, npm run build
   concurrency: cancel superseded runs
 
+.github/workflows/poi-service.yml:
+  triggers: PR + push to main (poi-service/**, .github/workflows/poi-service.yml)
+  runs: npm ci && npm run typecheck && npm test
+
+.github/workflows/image-service.yml:
+  triggers: PR + push to main (image-service/**, .github/workflows/image-service.yml)
+  runs: npm ci && npm run typecheck && npm test
+
 .github/workflows/docs-harness.yml:
-  triggers: PR + push to main (docs/**, .agents/**, AGENTS.md)
+  triggers: PR + push to main (AGENTS.md, .agents/**, .codex/**, docs/**, .github/workflows/docs-harness.yml)
   runs: .agents/scripts/preflight.sh
   permissions: contents: read
-
-.github/workflows/backend-ci.yml:
-  triggers: PR + push to main (coffeemode_backend/**)
-  runs: gradle build (existing, keep)
 ```
 
 ### Agent harness
@@ -126,7 +128,7 @@ pnpm verify             typecheck + lint + test + build (the full gate)
 ## Acceptance criteria
 
 ```text
-- pnpm verify runs typecheck + lint + test + build in one command
+- npm run verify runs typecheck + lint + test + build in one command
 - CI runs on every PR and blocks merge on failure
 - No live backend or API key dependency in CI
 - Docs changes trigger the docs harness gate

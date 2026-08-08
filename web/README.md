@@ -9,7 +9,7 @@ Design system: `../docs/specs/0002-design-system.md`.
 - React 19
 - Tailwind CSS v4 + HeroUI v3 (no Provider needed; `@import "@heroui/styles"`)
 - next-intl (en primary, zh secondary), next-themes (class strategy)
-- Supabase auth only (Apple + Google OAuth) · Neon Postgres for all data
+- Supabase auth only (Apple + Google OAuth) · self-hosted Postgres for app data
 
 ## Commands
 
@@ -17,7 +17,7 @@ Design system: `../docs/specs/0002-design-system.md`.
 npm run dev        # next dev (Turbopack)
 npm run build      # production build
 npm run lint       # eslint
-npx tsc --noEmit   # typecheck
+npm run typecheck  # tsc --noEmit
 ```
 
 ## Next.js 16 notes (read before editing)
@@ -27,7 +27,6 @@ for this Next.js version. Breaking changes that matter here:
 
 - Turbopack is default for dev and build; no custom webpack config.
 - `params`/`searchParams`/`cookies`/`headers` are async — always `await`.
-- `middleware.ts` is deprecated in favor of `proxy.ts` (nodejs runtime).
 - `revalidateTag(tag)` now requires a cacheLife profile as second argument.
 
 ## MapKit JS

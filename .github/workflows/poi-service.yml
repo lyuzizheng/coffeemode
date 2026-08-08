@@ -45,4 +45,4 @@ jobs:
         run: npm test
 
   # Deploy (wrangler deploy) runs manually until the Cloudflare account,
-  # D1 + KV namespaces, and secrets exist — see docs/agent/pending-user-actions.md §6.
+  # D1 + KV namespaces, and secrets exist — see docs/agent/pending-user-actions.md §7.

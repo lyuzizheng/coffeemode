@@ -6,7 +6,7 @@ Capture the output of the batched subagent review covering frontend/UX design, c
 
 ## Status
 
-Confirmed — owner replied to the open questions on 2026-08-08. Unanswered items defaulted to the original recommendation. The decisions here should still be merged into canonical specs `0001` and `0002` (and the implementation-slices manifest) as implementation begins.
+Confirmed — owner replied to the open questions on 2026-08-08. Unanswered items defaulted to the original recommendation. Decisions have been merged into canonical specs `0001` and `0002`; the `.windsurf/rules/project-rule.md` stale Shadcn directive has also been updated.
 
 ## Review scope
 

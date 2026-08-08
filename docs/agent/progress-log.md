@@ -68,6 +68,19 @@
   - Synced `docs/specs/0002-design-system.md` with the actual `globals.css` token set.
 - Ran an independent implementation review, fixed the reported nits, and opened PR #19.
 - All gates green: `preflight.sh` and `cd web && npm run verify`.
+- PR #19 merged to `main`.
+
+## 2026-08-09 (continued)
+
+- Implemented Part B of the 0004 Phase 1 backlog on `feat/impl-auth-middleware`:
+  - Added `web/proxy.ts` (Next.js 16's renamed middleware convention) for Supabase SSR session refresh.
+  - Added `web/db/migrations/0002_checkins_and_indexes.sql` with soft-delete columns, `checkin_likes` table, `likes_count`, image `source` field comments, and missing indexes.
+  - Added `web/types/checkins.ts` (`CheckInScores`, `CheckInPolicy`, `CheckIn`, `CheckInInput`, `CheckInLike`) and `web/types/profile.ts` (`Profile`, `ProfileStats`, `ProfileWithStats`).
+  - Extended `web/types/images.ts` with `StoredImageSource` on `StoredImage`.
+  - Implemented `web/lib/stats/aggregate.ts` with recency-weighted per-user contributions, `experience_score`, `composite_score`, policy counts, social-weight hook, and incremental/full-recompute paths.
+  - Added unit tests in `web/tests/stats/aggregate.test.ts` and `web/tests/proxy.test.ts`.
+- Rebased onto `main` after Part A merged; resolved `web/repo_notes.md` by keeping both Part A and Part B notes.
+- All gates green: `preflight.sh` and `cd web && npm run verify` (54 tests passed).
 
 ## 2026-08-08
 

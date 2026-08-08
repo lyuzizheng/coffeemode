@@ -24,7 +24,7 @@ Machine-checked implementation plan derived from `docs/specs/0001-nextjs-migrati
 | deploy-vps | Docker + VPS + CDN + CI/CD | BLOCKED | 0001, 0003 | work-profile, search-filters, navigation-prompt, seo-sharing | none | build, deploy | Production on VPS behind Cloudflare CDN with green pipeline |
 | cleanup-legacy | Remove old Vite frontend + Java backend | BLOCKED | 0001 | deploy-vps | none | build, e2e | Legacy code removed after feature parity is verified |
 | theme-preview-prototypes | Theme-preview prototypes and i18n expansion | COMPLETE | 0002, 0004 | design-tokens | none | typecheck, build, visual | ScoreSlider, PolicyChips, CheckInSuccessCard, ProfileSection, SearchFilter wired into /theme-preview with en/zh copy |
-| auth-migration-stats | Auth middleware, schema migration, check-in types, work_stats aggregation | IN-PROGRESS | 0001, 0004 | auth-foundation | none | typecheck, unit, build | middleware.ts refreshes sessions; migration adds soft-delete, likes, indexes; aggregate.ts computes work_stats incrementally |
+| auth-migration-stats | Auth middleware, schema migration, check-in types, work_stats aggregation | COMPLETE | 0001, 0004 | auth-foundation | none | typecheck, unit, build | `web/proxy.ts` refreshes sessions; `0002_checkins_and_indexes.sql` adds soft-delete, likes, indexes; `aggregate.ts` computes work_stats incrementally |
 
 ## Status vocabulary
 

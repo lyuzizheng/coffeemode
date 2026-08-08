@@ -31,6 +31,17 @@ function validateBody(body: unknown): CompleteImageRequest | null {
   };
 }
 
+function isImageServiceError(err: unknown): err is { status: number; message: string } {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "status" in err &&
+    typeof (err as { status: unknown }).status === "number" &&
+    "message" in err &&
+    typeof (err as { message: unknown }).message === "string"
+  );
+}
+
 async function ownsCafe(cafeId: string, userId: string): Promise<boolean> {
   const result = await query<{ id: string }>(
     `select id from cafes where id = $1 and created_by = $2`,
@@ -197,6 +208,12 @@ export async function POST(request: Request) {
     return NextResponse.json(response);
   } catch (err) {
     console.error("/api/images/complete failed", err);
+    if (isImageServiceError(err)) {
+      return NextResponse.json(
+        { error: "image_service_error", message: err.message },
+        { status: err.status },
+      );
+    }
     return NextResponse.json({ error: "image_processing_error" }, { status: 502 });
   }
 }

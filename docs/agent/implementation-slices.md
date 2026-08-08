@@ -25,6 +25,7 @@ Machine-checked implementation plan derived from `docs/specs/0001-nextjs-migrati
 | cleanup-legacy | Remove old Vite frontend + Java backend | BLOCKED | 0001 | deploy-vps | none | build, e2e | Legacy code removed after feature parity is verified |
 | theme-preview-prototypes | Theme-preview prototypes and i18n expansion | COMPLETE | 0002, 0004 | design-tokens | none | typecheck, build, visual | ScoreSlider, PolicyChips, CheckInSuccessCard, ProfileSection, SearchFilter wired into /theme-preview with en/zh copy |
 | auth-migration-stats | Auth middleware, schema migration, check-in types, work_stats aggregation | COMPLETE | 0001, 0004 | auth-foundation | none | typecheck, unit, build | `web/proxy.ts` refreshes sessions; `0002_checkins_and_indexes.sql` adds soft-delete, likes, indexes; `aggregate.ts` computes work_stats incrementally |
+| cache-perf-security | Caching, performance, and image/POI security | COMPLETE | 0001, 0004 | auth-migration-stats, image-pipeline, places-proxy, design-tokens | none | typecheck, unit, build | Long-cache headers, tuned Serwist runtime cache, query persistence buster, 10 MB upload cap, maps URL validation, 10 km search cap, per-user rate limiting |
 
 ## Status vocabulary
 

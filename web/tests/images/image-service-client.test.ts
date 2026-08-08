@@ -6,7 +6,7 @@ describe("image-service-client", () => {
 
   beforeEach(() => {
     fetchSpy = vi.fn();
-    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    vi.stubGlobal("fetch", fetchSpy);
     vi.stubEnv("IMAGE_SERVICE_URL", "https://image-service.example.com");
     vi.stubEnv("IMAGE_SERVICE_TOKEN", "test-token");
   });
@@ -14,6 +14,7 @@ describe("image-service-client", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
   });
 
   it("requestUploadUrl returns the worker response", async () => {

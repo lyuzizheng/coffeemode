@@ -82,6 +82,20 @@
 - Rebased onto `main` after Part A merged; resolved `web/repo_notes.md` by keeping both Part A and Part B notes.
 - All gates green: `preflight.sh` and `cd web && npm run verify` (54 tests passed).
 
+## 2026-08-09 (Part C)
+
+- Implemented Part C of the 0004 Phase 1 backlog on `feat/impl-caching-perf-security`:
+  - Added long immutable `Cache-Control` headers for `/_next/static/*`, `/icons/*`, and `/fonts/*` in `web/next.config.ts`.
+  - Tuned Serwist runtime cache in `web/app/sw.ts`: `CacheFirst` 1-year for immutable build assets and icons/fonts, `NetworkOnly` for `/cafes/*`, `/profile`, `/api/*`, `/auth/*`, and the home page.
+  - Added `buster: "v1"` to `web/lib/query/persist-options.ts` and a restore-error handler in `web/app/providers.tsx` that clears persisted state on cache corruption.
+  - Added `MAX_UPLOAD_BYTES` (10 MB) to `image-service`, signed `Content-Length` when the client provides a size, and documented R2 lifecycle cleanup for abandoned `original/` objects.
+  - Added `web/lib/places/validate-maps-url.ts` and applied host validation in `web/app/api/places/resolve/route.ts` before proxying.
+  - Capped nearby search radius at 10 km in `web/lib/places/constants.ts` and `web/app/api/places/search/route.ts`.
+  - Implemented an in-memory token-bucket `RateLimiter` in `web/lib/rate-limit.ts` and applied per-user/per-IP caps to `POST /api/images/upload`, `POST /api/images/complete`, `GET /api/places/search`, and `POST /api/places/resolve`.
+  - Added/updated tests in `web/tests/rate-limit.test.ts`, `web/tests/places.test.ts`, `web/tests/query/persist-options.test.ts`, `web/tests/images/image-service-client.test.ts`, and `image-service/tests/handlers.test.ts`.
+- Independent review fixes: isolated test `fetch` stubs, reset `rateLimiter` before every test, and propagated `ImageServiceError` status through `/api/images/complete`.
+- All gates green: `preflight.sh`, `cd web && npm run verify` (73 tests), and `cd image-service && npm run typecheck && npm test` (14 tests).
+
 ## 2026-08-08
 
 - Merged `feat/code-quality-cleanup` (PR #16): centralized constants, shared helpers, and split `theme-preview/preview-sections.tsx`.

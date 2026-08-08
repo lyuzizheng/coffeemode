@@ -4,10 +4,11 @@ CoffeeMode MonoRepo
 
 ## Components
 
-- /coffeemode_backend  
-run Dockerfile
-- docker build -t coffeemode-backend .
-- /coffeemode_frontend
+- /web                    Next.js 16 full-stack app (active)
+- /poi-service            Cloudflare Worker POI cache service
+- /image-service          Cloudflare Worker image upload service
+- /_archive-coffeemode-frontend  legacy Vite app (archived)
+- /_archive-coffeemode-backend   legacy Java backend (archived)
 - /coffeemode_script
 
 ## Tech Stack

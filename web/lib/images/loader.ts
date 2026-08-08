@@ -13,15 +13,18 @@ const R2_PUBLIC_HOST = "images.coffeemode.app";
  */
 export const r2ImageLoader: ImageLoader = ({ src }) => {
   // If the URL is already an absolute R2 URL, pass it through unchanged.
-  if (src.startsWith(`https://${R2_PUBLIC_HOST}`) || src.startsWith("https://") && new URL(src).hostname === R2_PUBLIC_HOST) {
-    return src;
-  }
+  if (isR2Image(src)) return src;
+
+  // Non-R2 absolute URLs are passed through so external images are not
+  // accidentally rewritten onto the R2 CDN.
+  if (src.startsWith("http://") || src.startsWith("https://")) return src;
 
   // Relative paths are treated as direct R2 keys under the public CDN.
-  const base = `https://${R2_PUBLIC_HOST}`;
   const clean = src.startsWith("/") ? src.slice(1) : src;
-  return `${base}/${clean}`;
+  return `https://${R2_PUBLIC_HOST}/${clean}`;
 };
+
+export default r2ImageLoader;
 
 /**
  * Returns true if an image source should use the R2 loader.

@@ -18,26 +18,26 @@ Use `@serwist/turbopack` to generate the service worker. It supports Next.js 16'
 
 ### 2. Precache scope: app shell
 
-In addition to the build assets that Serwist precaches automatically (`/_next/static/*`), explicitly precache `/` (start_url) and `/~offline`. Icons and fonts are immutable and cached at first runtime access; precaching them is unnecessary install bloat.
+In addition to the build assets that Serwist precaches automatically (`/_next/static/*`), explicitly precache `/~offline`. The home page (`/`) is dynamic because it reads the Supabase session from cookies, so precaching it would cache user-specific HTML. Icons and fonts are immutable and cached at first runtime access; precaching them is unnecessary install bloat.
 
 ### 3. Runtime caches
 
 | Route pattern | Strategy | TTL / limit | Rationale |
 | --- | --- | --- | --- |
-| `/` and `/cafes/*` (document navigation) | `NetworkFirst` | 1 h | Fresh content when online; cached shell when offline or slow |
+| `/` (document navigation) | `NetworkOnly` | — | Dynamic page that reads the Supabase session from cookies; offline fallback handles failed navigation |
 | `/_next/static/*` | `CacheFirst` | 1 year (immutable hashes) | Build assets never change without a new hash |
 | `/icons/*`, `/fonts/*` | `CacheFirst` | 1 year | Static assets |
-| `images.coffeemode.app/**/*.webp` | `CacheFirst` | 200 entries, 30 days LRU | Card/thumbnail images are immutable after processing |
+| `images.coffeemode.app/**/*.webp` | `NetworkFirst` | 200 entries, 30 days LRU | Card/thumbnail images are immutable after processing; `NetworkFirst` avoids opaque-response issues during revalidation |
 | `/api/cafes/*`, `/api/checkins/*` | `NetworkFirst` | 5 min | CoffeeMode app data; stale-while-revalidate acceptable |
-| `/api/places/*` | `NetworkOnly` | — | POI service owns its own cache; do not double-cache |
+| `/api/places/*`, `/api/health` | `NetworkOnly` | — | POI service and health ping should not be double-cached |
 | `/api/images/*`, `/auth/*` | `NetworkOnly` | — | Uploads and auth must not be cached |
-| `/sw.js`, `/manifest.webmanifest` | `NetworkOnly` | — | Always fetch fresh worker/manifest |
+| `/serwist/sw.js`, `/manifest.webmanifest` | `NetworkOnly` | — | Always fetch fresh worker/manifest |
 
 ### 4. Images: keep `next/image`, custom loader for R2
 
 Next.js `<Image>` stays enabled for future non-R2 images. For the immutable R2 WebP variants (`original`, `card`, `thumbnail`), use a custom loader that returns the direct R2 URL. This avoids `Accept`-header cache-key complexity at the CDN and lets Cloudflare cache the direct R2 URLs long-term.
 
-R2 PUTs include `Cache-Control: public, max-age=31536000, immutable` so the CDN and browser treat variants as immutable.
+R2 PUTs for `original`, `card`, and `thumbnail` variants include `Cache-Control: public, max-age=31536000, immutable` so the CDN and browser treat them as immutable.
 
 ### 5. TanStack Query persistence: essentials only
 
@@ -55,9 +55,9 @@ The app listens to `window` online/offline events and performs a lightweight per
 
 ### 8. Build and CI: build + Dockerfile + artifact check
 
-- `next build` emits the SW and manifest via `@serwist/turbopack`.
+- `next build` emits the SW at `.next/server/app/serwist/sw.js.body` and the manifest at `.next/server/app/manifest.webmanifest.body` via `@serwist/turbopack`.
 - `web/Dockerfile` builds standalone and copies `public/` + `.next/static/` into `.next/standalone/`.
-- `.github/workflows/application.yml` verifies `public/sw.js` and `public/manifest.webmanifest` exist after build.
+- `.github/workflows/application.yml` verifies the Serwist SW and manifest route outputs exist after build.
 
 ### What the service worker does NOT do
 
@@ -71,8 +71,8 @@ The app listens to `window` online/offline events and performs a lightweight per
 - First repeat launch is fast because the app shell and static assets are local.
 - Cached cafe data/images load instantly; fresh data loads in the background.
 - `@serwist/turbopack` adds a small dependency but removes the need for a custom precache manifest script.
-- `next.config.ts` must add `headers()` for `/sw.js` (`no-cache`) and `Service-Worker-Allowed: /` if the SW path is not at root.
-- Cloudflare Cache Rules must long-cache `/_next/static/*`, direct R2 image URLs, and icons/fonts; bypass `/sw.js`, `/manifest.webmanifest`, and `/api/*`.
+- `next.config.ts` must add `headers()` for `/serwist/sw.js` (`no-cache`) and `Service-Worker-Allowed: /` because the SW is served from `/serwist/sw.js`.
+- Cloudflare Cache Rules must long-cache `/_next/static/*`, direct R2 image URLs, and icons/fonts; bypass `/serwist/sw.js`, `/manifest.webmanifest`, and `/api/*`.
 - `next/image` with a custom R2 loader keeps optimization available while avoiding double-optimization of already-resized WebP variants.
 
 ## Related

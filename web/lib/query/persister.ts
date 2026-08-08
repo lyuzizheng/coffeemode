@@ -13,12 +13,12 @@ const PERSISTER_KEY = "coffeemode-persisted-client";
  */
 export const idbPersister: Persister = {
   persistClient: async (persistedClient: PersistedClient) => {
-    await set(PERSISTER_KEY, JSON.stringify(persistedClient), queryStore);
+    // IndexedDB uses the structured clone algorithm, which preserves Date,
+    // undefined, Maps, etc. better than JSON.stringify/parse.
+    await set(PERSISTER_KEY, persistedClient, queryStore);
   },
   restoreClient: async () => {
-    const value = await get<string>(PERSISTER_KEY, queryStore);
-    if (!value) return undefined;
-    return JSON.parse(value) as PersistedClient;
+    return get<PersistedClient>(PERSISTER_KEY, queryStore);
   },
   removeClient: async () => {
     await del(PERSISTER_KEY, queryStore);

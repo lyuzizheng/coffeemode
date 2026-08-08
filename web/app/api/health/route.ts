@@ -9,3 +9,12 @@ import { NextResponse } from "next/server";
 export function GET() {
   return NextResponse.json({ ok: true }, { status: 200 });
 }
+
+/**
+ * HEAD /api/health
+ *
+ * Cheap connectivity ping without response body.
+ */
+export function HEAD() {
+  return new Response(null, { status: 200 });
+}

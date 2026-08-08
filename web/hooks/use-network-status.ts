@@ -14,12 +14,25 @@ interface NetworkStatusSnapshot {
   lastOnline: Date | null;
 }
 
+const SERVER_SNAPSHOT: NetworkStatusSnapshot = { state: "online", lastOnline: null };
+
 class NetworkStatusStore {
-  private state: NetworkState = typeof navigator !== "undefined" && navigator.onLine ? "online" : "offline";
-  private lastOnline: Date | null = null;
+  private snapshot: NetworkStatusSnapshot;
   private listeners = new Set<Listener>();
   private interval: ReturnType<typeof setInterval> | null = null;
+  private deferredPing: ReturnType<typeof setTimeout> | null = null;
+  private pendingControllers = new Set<AbortController>();
   private mounted = false;
+  private readonly handleOnline = () => this.setState("online");
+  private readonly handleOffline = () => this.setState("offline");
+
+  constructor() {
+    const online = typeof navigator !== "undefined" && navigator.onLine;
+    this.snapshot = {
+      state: online ? "online" : "offline",
+      lastOnline: online ? new Date() : null,
+    };
+  }
 
   private emit() {
     for (const listener of this.listeners) {
@@ -28,11 +41,11 @@ class NetworkStatusStore {
   }
 
   private setState(next: NetworkState) {
-    if (this.state === next) return;
-    this.state = next;
-    if (next === "online") {
-      this.lastOnline = new Date();
-    }
+    if (this.snapshot.state === next) return;
+    this.snapshot = {
+      state: next,
+      lastOnline: next === "online" ? new Date() : this.snapshot.lastOnline,
+    };
     this.emit();
   }
 
@@ -44,9 +57,11 @@ class NetworkStatusStore {
       return;
     }
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    this.pendingControllers.add(controller);
+
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3000);
       const response = await fetch(PING_URL, {
         method: "HEAD",
         cache: "no-store",
@@ -55,7 +70,10 @@ class NetworkStatusStore {
       clearTimeout(timeout);
       this.setState(response.ok ? "online" : "offline");
     } catch {
+      clearTimeout(timeout);
       this.setState("offline");
+    } finally {
+      this.pendingControllers.delete(controller);
     }
   }
 
@@ -63,35 +81,42 @@ class NetworkStatusStore {
     this.listeners.add(listener);
     if (!this.mounted) {
       this.mounted = true;
-      const handleOnline = () => {
-        this.setState("online");
-      };
-      const handleOffline = () => {
-        this.setState("offline");
-      };
-      window.addEventListener("online", handleOnline);
-      window.addEventListener("offline", handleOffline);
+      window.addEventListener("online", this.handleOnline);
+      window.addEventListener("offline", this.handleOffline);
       // Defer the first ping so it does not run during render.
-      setTimeout(() => void this.ping(), 0);
+      this.deferredPing = setTimeout(() => void this.ping(), 0);
       this.interval = setInterval(() => void this.ping(), PING_INTERVAL_MS);
-      return () => {
-        window.removeEventListener("online", handleOnline);
-        window.removeEventListener("offline", handleOffline);
-        if (this.interval) clearInterval(this.interval);
-        this.mounted = false;
-      };
     }
     return () => {
       this.listeners.delete(listener);
+      if (this.listeners.size === 0 && this.mounted) {
+        window.removeEventListener("online", this.handleOnline);
+        window.removeEventListener("offline", this.handleOffline);
+        if (this.interval) clearInterval(this.interval);
+        if (this.deferredPing) clearTimeout(this.deferredPing);
+        for (const c of this.pendingControllers) {
+          c.abort();
+        }
+        this.pendingControllers.clear();
+        this.mounted = false;
+      }
     };
   }
 
   getSnapshot(): NetworkStatusSnapshot {
-    return { state: this.state, lastOnline: this.lastOnline };
+    return this.snapshot;
+  }
+
+  getServerSnapshot(): NetworkStatusSnapshot {
+    return SERVER_SNAPSHOT;
   }
 }
 
 const globalNetworkStore = new NetworkStatusStore();
+
+const subscribe = (listener: Listener) => globalNetworkStore.subscribe(listener);
+const getSnapshot = () => globalNetworkStore.getSnapshot();
+const getServerSnapshot = () => globalNetworkStore.getServerSnapshot();
 
 /**
  * Tracks real network connectivity, not just `navigator.onLine`.
@@ -101,11 +126,7 @@ const globalNetworkStore = new NetworkStatusStore();
  * to browser online/offline events.
  */
 export function useNetworkStatus() {
-  const { state, lastOnline } = useSyncExternalStore(
-    (listener) => globalNetworkStore.subscribe(listener),
-    () => globalNetworkStore.getSnapshot(),
-    () => ({ state: "online" as NetworkState, lastOnline: null }),
-  );
+  const { state, lastOnline } = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   return {
     state,

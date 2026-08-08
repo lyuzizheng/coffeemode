@@ -54,6 +54,7 @@ export async function presignedPutUrl(
   options?: {
     expiresSeconds?: number;
     customMetadata?: Record<string, string>;
+    cacheControl?: string;
   },
 ): Promise<PresignedUrl> {
   const ttl = options?.expiresSeconds ?? ttlSeconds(env);
@@ -62,6 +63,7 @@ export async function presignedPutUrl(
     method: "PUT",
     headers: {
       "Content-Type": contentType,
+      ...(options?.cacheControl ? { "Cache-Control": options.cacheControl } : {}),
       ...metadataHeaders(options?.customMetadata),
     },
   });
@@ -74,6 +76,10 @@ export async function presignedPutUrl(
   // Fetch is case-insensitive, but most callers expect the canonical capitalisation.
   delete headers["content-type"];
   headers["Content-Type"] = contentType;
+  if (options?.cacheControl) {
+    delete headers["cache-control"];
+    headers["Cache-Control"] = options.cacheControl;
+  }
   return { url: signed.url.toString(), headers };
 }
 

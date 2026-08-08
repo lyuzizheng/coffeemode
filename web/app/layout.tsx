@@ -1,8 +1,13 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { getLocale, getMessages } from "next-intl/server";
 import { Providers } from "./providers";
+import { OfflineBanner } from "@/components/offline-banner";
 import "./globals.css";
+
+const APP_NAME = "CoffeeMode";
+const APP_DESCRIPTION =
+  "Real wifi, outlet, and seat intel for digital nomads — find the perfect cafe to work from.";
 
 // Self-hosted fonts (OFL). No runtime Google Fonts — files live in app/fonts
 // and are served by Next.js with zero layout shift (size-adjust fallbacks).
@@ -33,11 +38,32 @@ const jetbrains = localFont({
 
 export const metadata: Metadata = {
   title: {
-    default: "CoffeeMode",
+    default: APP_NAME,
     template: "%s · CoffeeMode",
   },
-  description:
-    "Real wifi, outlet, and seat intel for digital nomads — find the perfect cafe to work from.",
+  description: APP_DESCRIPTION,
+  applicationName: APP_NAME,
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: APP_NAME,
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  icons: {
+    apple: "/icons/apple-touch-icon-180x180.png",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#b55a38" },
+    { media: "(prefers-color-scheme: dark)", color: "#b55a38" },
+  ],
 };
 
 export default async function RootLayout({
@@ -54,6 +80,7 @@ export default async function RootLayout({
     >
       <body className="min-h-full font-sans">
         <Providers locale={locale} messages={messages}>
+          <OfflineBanner />
           {children}
         </Providers>
       </body>

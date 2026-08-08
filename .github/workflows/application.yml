@@ -49,3 +49,8 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Verify PWA artifacts
+        run: |
+          test -f .next/server/app/serwist/sw.js.body
+          test -f .next/server/app/manifest.webmanifest.body

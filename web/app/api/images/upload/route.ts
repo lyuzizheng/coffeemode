@@ -19,8 +19,8 @@ function parseSize(body: unknown): { size: number } | { error: string } {
     // presigned PUT (Content-Length is only signed when a size is given).
     return { error: "size (number, bytes) is required" };
   }
-  if (typeof maybeSize !== "number" || !Number.isFinite(maybeSize) || maybeSize <= 0) {
-    return { error: "size must be a positive number (bytes)" };
+  if (typeof maybeSize !== "number" || !Number.isFinite(maybeSize) || maybeSize <= 0 || !Number.isInteger(maybeSize)) {
+    return { error: "size must be a positive integer (bytes)" };
   }
   if (maybeSize > MAX_UPLOAD_BYTES) {
     return { error: `size must be at most ${MAX_UPLOAD_BYTES} bytes` };
@@ -34,9 +34,9 @@ function parseSize(body: unknown): { size: number } | { error: string } {
  * Returns a presigned R2 PUT URL for the browser to upload the original WebP image.
  * The session is verified here; the image-service Worker only sees a service token.
  *
- * Body: { size: number } — the file size in bytes. REQUIRED. The presigned URL
- * is signed with a matching Content-Length header so R2 itself rejects bodies
- * over `size`; `size` over MAX_UPLOAD_BYTES is rejected here.
+ * Body: { size: number } — the file size in bytes. REQUIRED. Must be a positive
+ * integer. The presigned URL is signed with a matching Content-Length header so
+ * R2 itself rejects bodies over `size`; `size` over MAX_UPLOAD_BYTES is rejected here.
  */
 export async function POST(request: Request) {
   const user = await getCurrentUser();

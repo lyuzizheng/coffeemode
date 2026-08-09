@@ -91,12 +91,12 @@ function upstreamError(endpoint: "upload" | "complete", response: Response): Ima
   return new ImageServiceError(message, status, upstreamStatus);
 }
 
-export async function requestUploadUrl(size?: number): Promise<UploadUrlResponse> {
+export async function requestUploadUrl(size: number): Promise<UploadUrlResponse> {
   const { url, token } = getEnv();
   const response = await fetch(`${url}/v1/images/upload`, {
     method: "POST",
     headers: headers(token),
-    body: size !== undefined ? JSON.stringify({ size }) : undefined,
+    body: JSON.stringify({ size }),
     signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
   });
 

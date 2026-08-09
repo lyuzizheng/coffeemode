@@ -33,7 +33,7 @@ describe("image-service-client", () => {
       }),
     );
 
-    const result = await requestUploadUrl();
+    const result = await requestUploadUrl(2048);
     expect(result).toEqual(response);
 
     const [url, init] = fetchSpy.mock.calls[0];
@@ -41,7 +41,7 @@ describe("image-service-client", () => {
     expect(init?.method).toBe("POST");
     expect((init?.headers as Record<string, string>)?.["x-image-service-token"]).toBe("test-token");
     expect(init?.signal).toBeInstanceOf(AbortSignal);
-    expect(init?.body).toBeUndefined();
+    expect(JSON.parse((init?.body as string) ?? "{}")).toEqual({ size: 2048 });
   });
 
   it("requestUploadUrl forwards the file size when provided", async () => {
@@ -102,7 +102,7 @@ describe("image-service-client", () => {
 
   it("throws a sanitized error on non-2xx responses (no upstream body leak)", async () => {
     fetchSpy.mockResolvedValue(new Response("boom", { status: 502 }));
-    await expect(requestUploadUrl()).rejects.toMatchObject({
+    await expect(requestUploadUrl(1024)).rejects.toMatchObject({
       name: "ImageServiceError",
       message: "Image service unavailable",
       status: 502,

@@ -19,8 +19,12 @@ export interface ProcessedImage {
 const R2_DOWNLOAD_TIMEOUT_MS = 30000;
 const R2_UPLOAD_TIMEOUT_MS = 30000;
 
-/** Sharp's `limitInputPixels` guard — (2^14 - 1)^2, just under 16K x 16K. */
-const MAX_INPUT_PIXELS = 268_402_689;
+/** Sharp's `limitInputPixels` guard — (2^13)^2 = 8192 x 8192.
+ *  A 10 MB compressed image can still declare 16K x 16K, which would exhaust
+ *  memory at decode time. The output variants are capped at 4096px, so
+ *  8192px gives headroom for legitimate high-res uploads while bounding the
+ *  decompression surface to ~67 MP. */
+const MAX_INPUT_PIXELS = 67_108_864;
 
 const WEBP_QUALITY = 80;
 

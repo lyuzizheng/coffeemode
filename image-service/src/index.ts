@@ -40,12 +40,13 @@ export async function handleUpload(request: Request, env: Env): Promise<Response
   // `size` is REQUIRED (review 2026-08-09): an omitted size produced an
   // uncapped presigned PUT, because Content-Length is only signed when a
   // size is declared. The cap must hold server-side, not by caller honesty.
+  // Size must be a positive integer (bytes).
   const maybeSize = (body as Record<string, unknown>).size;
   if (maybeSize === undefined) {
     return error("invalid_request", "size (number, bytes) is required");
   }
-  if (typeof maybeSize !== "number" || !Number.isFinite(maybeSize) || maybeSize <= 0) {
-    return error("invalid_request", "size must be a positive number (bytes)");
+  if (typeof maybeSize !== "number" || !Number.isFinite(maybeSize) || maybeSize <= 0 || !Number.isInteger(maybeSize)) {
+    return error("invalid_request", "size must be a positive integer (bytes)");
   }
   if (maybeSize > MAX_UPLOAD_BYTES) {
     return error(

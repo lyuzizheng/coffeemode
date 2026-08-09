@@ -97,15 +97,23 @@ export async function incrementalUpdateWorkStats(
   const changedId = changedCheckIn?.id;
   const changedInDb = changedId ? userRows.some((r) => r.id === changedId) : false;
 
-  // Rows before this write: exclude the changed row if it is already persisted.
-  const priorRows = changedInDb ? userRows.filter((r) => r.id !== changedId) : userRows;
-
-  // Rows after this write: include the changed row with its new values.
-  const newRows = changedCheckIn
-    ? changedInDb
-      ? userRows
-      : [changedCheckIn, ...userRows]
-    : userRows;
+  // Determine the "before" and "after" row sets for this user.
+  // - If changedCheckIn is omitted, the most recent non-deleted check-in is
+  //   treated as the one that changed (it is already in userRows).
+  // - If changedCheckIn is provided, userRows is assumed to be the old DB
+  //   snapshot for this user; the supplied row replaces the old one.
+  // - For edits/soft-deletes where the old snapshot is not available, use
+  //   `recomputeWorkStats` instead.
+  let priorRows: CheckIn[];
+  let newRows: CheckIn[];
+  if (!changedCheckIn) {
+    priorRows = userRows.length > 0 ? userRows.slice(1) : userRows;
+    newRows = userRows;
+  } else {
+    const otherRows = userRows.filter((r) => r.id !== changedId);
+    priorRows = userRows;
+    newRows = [changedCheckIn, ...otherRows];
+  }
 
   const oldContribution = computeUserContribution(priorRows, socialWeight);
   const newContribution = computeUserContribution(newRows, socialWeight);

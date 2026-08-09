@@ -294,6 +294,95 @@ describe("incrementalUpdateWorkStats", () => {
     expect(written.n_users).toBe(1);
     expect(written.dims.overall.n).toBe(1);
   });
+
+  it("treats the most recent check-in as changed when changedCheckIn is omitted", async () => {
+    const latest = makeCheckIn({
+      id: "chk-1",
+      scores: fullScores,
+      visited_at: "2026-08-02T10:00:00Z",
+    });
+
+    const calls: { sql: string; params: unknown[] }[] = [];
+    const query = vi.fn(async (sql: string, params?: unknown[]) => {
+      calls.push({ sql, params: params ?? [] });
+      if (sql.includes("count(*)")) {
+        return { rows: [{ n: 1 }], rowCount: 1 } as unknown as QueryResult<{ n: number }>;
+      }
+      if (sql.includes("from checkins")) {
+        return { rows: [latest], rowCount: 1 } as unknown as QueryResult<CheckIn>;
+      }
+      if (sql.includes("select work_stats")) {
+        return { rows: [{ work_stats: emptyWorkStats() }], rowCount: 1 } as unknown as QueryResult<{
+          work_stats: unknown;
+        }>;
+      }
+      return { rows: [], rowCount: 0 } as unknown as QueryResult<Record<string, unknown>>;
+    }) as unknown as <T extends Record<string, unknown>>(
+      text: string,
+      params?: unknown[],
+    ) => Promise<QueryResult<T>>;
+
+    await incrementalUpdateWorkStats("cafe-1", "user-1", query);
+
+    const updateCall = calls.find((c) => c.sql.includes("update cafes"));
+    expect(updateCall).toBeDefined();
+    const written = JSON.parse(updateCall!.params[0] as string) as ReturnType<
+      typeof computeCafeStats
+    >;
+    expect(written.n_checkins).toBe(1);
+    expect(written.n_users).toBe(1);
+    expect(written.dims.overall.n).toBe(1);
+    expect(written.dims.overall.sum).toBe(fullScores.overall);
+  });
+
+  it("uses the supplied changedCheckIn values when editing an existing persisted row", async () => {
+    const oldRow = makeCheckIn({
+      id: "chk-1",
+      scores: fullScores,
+      min_spend: "none",
+      max_stay: "3h",
+      visited_at: "2026-08-01T10:00:00Z",
+    });
+    const editedRow = makeCheckIn({
+      id: "chk-1",
+      scores: repeatScores,
+      min_spend: "drink",
+      max_stay: "unlimited",
+      visited_at: "2026-08-01T10:00:00Z",
+    });
+
+    const calls: { sql: string; params: unknown[] }[] = [];
+    const query = vi.fn(async (sql: string, params?: unknown[]) => {
+      calls.push({ sql, params: params ?? [] });
+      if (sql.includes("count(*)")) {
+        return { rows: [{ n: 1 }], rowCount: 1 } as unknown as QueryResult<{ n: number }>;
+      }
+      if (sql.includes("from checkins")) {
+        return { rows: [oldRow], rowCount: 1 } as unknown as QueryResult<CheckIn>;
+      }
+      if (sql.includes("select work_stats")) {
+        return { rows: [{ work_stats: computeCafeStats([oldRow]) }], rowCount: 1 } as unknown as QueryResult<{
+          work_stats: unknown;
+        }>;
+      }
+      return { rows: [], rowCount: 0 } as unknown as QueryResult<Record<string, unknown>>;
+    }) as unknown as <T extends Record<string, unknown>>(
+      text: string,
+      params?: unknown[],
+    ) => Promise<QueryResult<T>>;
+
+    await incrementalUpdateWorkStats("cafe-1", "user-1", query, editedRow);
+
+    const updateCall = calls.find((c) => c.sql.includes("update cafes"));
+    expect(updateCall).toBeDefined();
+    const written = JSON.parse(updateCall!.params[0] as string) as ReturnType<
+      typeof computeCafeStats
+    >;
+    expect(written.n_checkins).toBe(1);
+    expect(written.n_users).toBe(1);
+    expect(written.dims.overall.n).toBe(1);
+    expect(written.dims.overall.sum).toBe(repeatScores.overall);
+  });
 });
 
 describe("recomputeWorkStats", () => {

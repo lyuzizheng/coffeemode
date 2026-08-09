@@ -47,3 +47,8 @@ COMPLETE    Implemented and verified against the test gates
 - Implementation, testing, and review of one change share the same slice ID.
 - Update this file when a slice status or blocker changes.
 ```
+| issue-26-shared-common | Shared packages/common: types, UUID, auth, constants single-source | IN-PROGRESS | 0001, 0003 | poi-cache-service, image-pipeline, places-proxy | none | typecheck, unit | Duplicated POI types / UUID validators / bearer auth / radius constants removed; web and both workers import one source |
+| issue-23-rate-limit-backend | Postgres-backed distributed rate limiter | IN-PROGRESS | 0001, 0003 | cache-perf-security, phase1-remainder | none | typecheck, unit, build | Rate buckets live in Postgres with atomic check + cleanup; RATE_LIMIT_BACKEND selects backend; CF-IP trust model documented |
+| issue-27-stats-locking | work_stats read-modify-write under row lock | IN-PROGRESS | 0001, 0003 | auth-migration-stats | none | typecheck, unit | incrementalUpdateWorkStats / recomputeWorkStats run inside withTransaction with SELECT ... FOR UPDATE |
+| issue-24-likes-trigger | likes_count sync trigger + backfill migration | IN-PROGRESS | 0001, 0003 | auth-migration-stats | none | typecheck, unit, build | Migration 0003 adds checkin_likes INSERT/DELETE triggers + backfill; counter cannot drift on cascade deletes |
+| issue-25-complete-service | /api/images/complete split into lib service + atomic transaction | IN-PROGRESS | 0001, 0003 | image-pipeline, phase1-remainder | none | typecheck, unit, build | Thin route controller; web/lib/images/complete.ts service; checkin + gallery writes in one transaction |

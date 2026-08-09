@@ -164,3 +164,21 @@
 - Merged `feat/code-quality-cleanup` (PR #16): centralized constants, shared helpers, and split `theme-preview/preview-sections.tsx`.
 - Ran a four-way subagent review covering frontend/UX design, check-in & social semantics, cafe creation & discovery scenarios, and auth/cache/performance/database/deploy.
 - Drafted `docs/specs/0004-product-decisions-and-backlog.md` with proposed decisions, a phased implementation backlog, and open questions for owner confirmation.
+
+## 2026-08-09 (evening)
+
+- Pushed `fix/review-fixes-2026-08-09` (PR #51): consolidated review fixes —
+  security (bounded R2 download, required upload size, CF-IP trust model,
+  sanitized upstream errors), SSR blank-render fix, standalone Dockerfile,
+  design/i18n polish, worker auth parity. Regression fixes: un-awaited
+  handler returns inside router try/catch (error-isolation envelope now
+  holds), restored `encodePathSegment` in `poi-client.ts`.
+- Established the issue-management system (GitHub issues are the intake for
+  fixes):
+  - `docs/agent/issue-guidelines.md` — categories, priorities, template,
+    deferral policy, PR conventions
+  - Repo skills `coffeemode-issue-submission` and `coffeemode-issue-review-fix`
+  - `AGENTS.md` "Issue workflow" section + `ROUTER.md` intent rows
+  - Slices registered for issues #23–#27 (`issue-23-rate-limit-backend`,
+    `issue-24-likes-trigger`, `issue-25-complete-service`,
+    `issue-26-shared-common`, `issue-27-stats-locking`)

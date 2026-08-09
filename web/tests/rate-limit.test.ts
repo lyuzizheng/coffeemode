@@ -34,59 +34,59 @@ describe("RateLimiter", () => {
     nowSpy.mockRestore();
   });
 
-  it("allows requests up to the limit", () => {
+  it("allows requests up to the limit", async () => {
     for (let i = 0; i < 5; i++) {
-      const result = limiter.check("key", 60_000, 5);
+      const result = await limiter.check("key", 60_000, 5);
       expect(result.allowed).toBe(true);
       expect(result.remaining).toBe(4 - i);
     }
   });
 
-  it("blocks requests after the limit is exhausted", () => {
+  it("blocks requests after the limit is exhausted", async () => {
     for (let i = 0; i < 5; i++) {
-      limiter.check("key", 60_000, 5);
+      await limiter.check("key", 60_000, 5);
     }
-    const result = limiter.check("key", 60_000, 5);
+    const result = await limiter.check("key", 60_000, 5);
     expect(result.allowed).toBe(false);
     expect(result.remaining).toBe(0);
     expect(result.retryAfter).toBe(60);
   });
 
-  it("refills the bucket after the window passes", () => {
-    limiter.check("key", 60_000, 1);
-    expect(limiter.check("key", 60_000, 1).allowed).toBe(false);
+  it("refills the bucket after the window passes", async () => {
+    await limiter.check("key", 60_000, 1);
+    expect((await limiter.check("key", 60_000, 1)).allowed).toBe(false);
 
     now = 60_001;
-    const result = limiter.check("key", 60_000, 1);
+    const result = await limiter.check("key", 60_000, 1);
     expect(result.allowed).toBe(true);
     expect(result.remaining).toBe(0);
   });
 
-  it("resets the bucket when the maxRequests or window changes", () => {
-    limiter.check("key", 60_000, 2);
-    limiter.check("key", 60_000, 2);
-    expect(limiter.check("key", 60_000, 2).allowed).toBe(false);
+  it("resets the bucket when the maxRequests or window changes", async () => {
+    await limiter.check("key", 60_000, 2);
+    await limiter.check("key", 60_000, 2);
+    expect((await limiter.check("key", 60_000, 2)).allowed).toBe(false);
 
     // Different window should create a new bucket.
-    const result = limiter.check("key", 30_000, 2);
+    const result = await limiter.check("key", 30_000, 2);
     expect(result.allowed).toBe(true);
     expect(result.remaining).toBe(1);
   });
 
-  it("cleans up stale buckets", () => {
-    limiter.check("a", 60_000, 1);
+  it("cleans up stale buckets", async () => {
+    await limiter.check("a", 60_000, 1);
     now = 120_001;
-    limiter.check("b", 60_000, 1);
+    await limiter.check("b", 60_000, 1);
 
     // Bucket 'a' should be pruned; a new check creates a fresh one.
-    const result = limiter.check("a", 60_000, 1);
+    const result = await limiter.check("a", 60_000, 1);
     expect(result.allowed).toBe(true);
   });
 
-  it("produces a 429 response with Retry-After", () => {
-    limiter.check("key", 60_000, 1);
-    limiter.check("key", 60_000, 1); // exhaust
-    const blocked = limiter.check("key", 60_000, 1);
+  it("produces a 429 response with Retry-After", async () => {
+    await limiter.check("key", 60_000, 1);
+    await limiter.check("key", 60_000, 1); // exhaust
+    const blocked = await limiter.check("key", 60_000, 1);
 
     const response = rateLimitResponse(blocked);
     expect(response.status).toBe(429);
@@ -161,19 +161,19 @@ describe("getClientIdentifier", () => {
 describe("Route rate limiting", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     process.env.POI_SERVICE_URL = WORKER_URL;
     process.env.POI_SERVICE_TOKEN = TOKEN;
     fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    rateLimiter.reset();
+    await rateLimiter.reset();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     delete process.env.POI_SERVICE_URL;
     delete process.env.POI_SERVICE_TOKEN;
     vi.unstubAllGlobals();
-    rateLimiter.reset();
+    await rateLimiter.reset();
   });
 
   it("returns 429 when the places rate limit is exhausted", async () => {
@@ -181,7 +181,7 @@ describe("Route rate limiting", () => {
 
     // Exhaust the anonymous places bucket.
     for (let i = 0; i < PLACES_RATE_LIMIT.maxRequests; i++) {
-      rateLimiter.check(
+      await rateLimiter.check(
         `places:${getClientIdentifier(new Request("https://localhost/api/places/search?q=x"), null)}`,
         PLACES_RATE_LIMIT.windowMs,
         PLACES_RATE_LIMIT.maxRequests,

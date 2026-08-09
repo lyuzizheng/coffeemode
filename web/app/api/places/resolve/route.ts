@@ -30,7 +30,7 @@ export async function POST(request: Request) {
 
   const user = await getCurrentUser();
   const clientId = getClientIdentifier(request, user);
-  const limit = rateLimiter.check(
+  const limit = await rateLimiter.check(
     `places:${clientId}`,
     PLACES_RATE_LIMIT.windowMs,
     PLACES_RATE_LIMIT.maxRequests,

@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
+import type { RateLimitResult, RateLimiterLike } from "@/lib/rate-limit/types";
 
 interface TokenBucket {
   tokens: number;
@@ -9,14 +10,6 @@ interface TokenBucket {
   windowMs: number;
   maxRequests: number;
   lastAccess: number;
-}
-
-export interface RateLimitResult {
-  allowed: boolean;
-  remaining: number;
-  resetAt: number;
-  /** Seconds the client should wait before retrying. */
-  retryAfter: number;
 }
 
 export const IMAGE_RATE_LIMIT = {
@@ -36,7 +29,16 @@ export const PLACES_RATE_LIMIT = {
  * arbitrary string (e.g. `images:user:${id}`). A cleanup pass runs every
  * `cleanupEvery` checks to prune stale buckets and prevent unbounded growth.
  */
-export class RateLimiter {
+/**
+ * In-memory token-bucket rate limiter.
+ *
+ * Intended for per-user/per-IP caps on API routes in single-process or
+ * dev setups. For horizontal scale use the Postgres backend — see
+ * `createRateLimiter()` and `web/lib/rate-limit/postgres.ts` (issue #23).
+ * Buckets are keyed by an arbitrary string (e.g. `images:user:${id}`). A
+ * cleanup pass runs every `cleanupEvery` checks to prune stale buckets.
+ */
+export class RateLimiter implements RateLimiterLike {
   private buckets = new Map<string, TokenBucket>();
   private checksSinceCleanup = 0;
 
@@ -46,7 +48,7 @@ export class RateLimiter {
    * Consume one token for `key` under the given window and cap.
    * Returns the result, including seconds until the next refill.
    */
-  check(key: string, windowMs: number, maxRequests: number): RateLimitResult {
+  async check(key: string, windowMs: number, maxRequests: number): Promise<RateLimitResult> {
     const now = Date.now();
     this.maybeCleanup(now);
 
@@ -100,15 +102,57 @@ export class RateLimiter {
     this.checksSinceCleanup = 0;
 
     for (const [key, bucket] of this.buckets) {
-      if (now > bucket.resetAt + bucket.windowMs) {
+      // Prune once the window has passed; an expired bucket is equivalent
+      // to a fresh one, so keeping it past reset_at only wastes memory.
+      if (now > bucket.resetAt) {
         this.buckets.delete(key);
       }
     }
   }
 }
 
-/** Shared singleton used by route handlers. */
-export const rateLimiter = new RateLimiter();
+/**
+ * Select the rate-limiter backend for this process.
+ *
+ * `RATE_LIMIT_BACKEND=postgres|memory` forces a backend; unset, it uses
+ * Postgres when `DATABASE_URL` is configured and memory otherwise (dev,
+ * tests, CI). Postgres buckets are shared across instances so limits hold
+ * under horizontal scale (issue #23).
+ *
+ * The Postgres backend is loaded lazily via dynamic import: it pulls in the
+ * `pg` driver and the DB pool module, which must not be touched by tests or
+ * dev processes that never use it (and which would defeat `vi.mock("pg")`).
+ */
+export async function createRateLimiter(): Promise<RateLimiterLike> {
+  const backend =
+    process.env.RATE_LIMIT_BACKEND ??
+    (process.env.DATABASE_URL ? "postgres" : "memory");
+  if (backend !== "postgres") return new RateLimiter();
+  const { PostgresRateLimiter } = await import("@/lib/rate-limit/postgres");
+  return new PostgresRateLimiter();
+}
+
+/**
+ * Shared singleton used by route handlers.
+ *
+ * A lazy proxy: the backend is created on first use and memoized, so the
+ * memory-only path never loads the pg module graph (see createRateLimiter).
+ */
+export const rateLimiter: RateLimiterLike = {
+  async check(key, windowMs, maxRequests) {
+    return (await getRateLimiter()).check(key, windowMs, maxRequests);
+  },
+  async reset() {
+    return (await getRateLimiter()).reset();
+  },
+};
+
+let backendPromise: Promise<RateLimiterLike> | null = null;
+
+function getRateLimiter(): Promise<RateLimiterLike> {
+  backendPromise ??= createRateLimiter();
+  return backendPromise;
+}
 
 /**
  * Build a stable identifier for a request.

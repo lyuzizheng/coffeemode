@@ -143,7 +143,7 @@ export async function POST(request: Request) {
   }
 
   const clientId = getClientIdentifier(request, user);
-  const limit = rateLimiter.check(
+  const limit = await rateLimiter.check(
     `images:${clientId}`,
     IMAGE_RATE_LIMIT.windowMs,
     IMAGE_RATE_LIMIT.maxRequests,

@@ -4,6 +4,7 @@ import type { CheckIn } from "@/types/checkins";
 import {
   COMPOSITE_DIMS,
   DIM_WEIGHTS,
+  RunInTransaction,
   applyUserContributionDiff,
   computeCafeStats,
   computeUserContribution,
@@ -283,7 +284,81 @@ describe("incrementalUpdateWorkStats", () => {
       params?: unknown[],
     ) => Promise<QueryResult<T>>;
 
-    await incrementalUpdateWorkStats("cafe-1", "user-1", query, changed);
+    const runInTransaction: RunInTransaction = async (fn) => fn(query);
+
+    await incrementalUpdateWorkStats("cafe-1", "user-1", changed, 0, runInTransaction);
+
+    // The transaction must lock the cafe row before any read-modify-write.
+    expect(calls[0].sql).toMatch(/select work_stats from cafes where id = \$1 for update/);
+
+    const updateCall = calls.find((c) => c.sql.includes("update cafes"));
+    expect(updateCall).toBeDefined();
+    const written = JSON.parse(updateCall!.params[0] as string) as ReturnType<
+      typeof computeCafeStats
+    >;
+    expect(written.n_checkins).toBe(2);
+    expect(written.n_users).toBe(1);
+    expect(written.dims.overall.n).toBe(1);
+  });
+
+  it("locks the cafe row with FOR UPDATE as the first statement", async () => {
+    const calls: string[] = [];
+    const query = vi.fn(async (sql: string) => {
+      calls.push(sql);
+      return { rows: [], rowCount: 0 };
+    }) as unknown as <T extends Record<string, unknown>>(
+      text: string,
+      params?: unknown[],
+    ) => Promise<QueryResult<T>>;
+
+    const runInTransaction: RunInTransaction = async (fn) => fn(query);
+
+    await incrementalUpdateWorkStats("cafe-1", "user-1", undefined, 0, runInTransaction);
+
+    expect(calls[0]).toMatch(/select work_stats from cafes where id = \$1 for update/);
+    expect(calls[0]).not.toMatch(/count\(\*\)/);
+  });
+});
+
+describe("recomputeWorkStats", () => {
+  it("runs inside the transaction with a FOR UPDATE lock and overwrites stats", async () => {
+    const prior = makeCheckIn({
+      id: "chk-1",
+      scores: fullScores,
+      min_spend: "none",
+      max_stay: "3h",
+      visited_at: "2026-08-01T10:00:00Z",
+    });
+    const changed = makeCheckIn({
+      id: "chk-2",
+      scores: repeatScores,
+      min_spend: "drink",
+      max_stay: "unlimited",
+      visited_at: "2026-08-02T10:00:00Z",
+    });
+
+    const calls: { sql: string; params: unknown[] }[] = [];
+    const query = vi.fn(async (sql: string, params?: unknown[]) => {
+      calls.push({ sql, params: params ?? [] });
+      if (sql.includes("for update")) {
+        return { rows: [{ id: "cafe-1" }], rowCount: 1 } as unknown as QueryResult<{
+          id: string;
+        }>;
+      }
+      if (sql.includes("from checkins")) {
+        return { rows: [prior, changed], rowCount: 2 } as unknown as QueryResult<CheckIn>;
+      }
+      return { rows: [], rowCount: 0 } as unknown as QueryResult<Record<string, unknown>>;
+    }) as unknown as <T extends Record<string, unknown>>(
+      text: string,
+      params?: unknown[],
+    ) => Promise<QueryResult<T>>;
+
+    const runInTransaction: RunInTransaction = async (fn) => fn(query);
+
+    await recomputeWorkStats("cafe-1", 0, runInTransaction);
+
+    expect(calls[0].sql).toMatch(/select 1 from cafes where id = \$1 for update/);
 
     const updateCall = calls.find((c) => c.sql.includes("update cafes"));
     expect(updateCall).toBeDefined();

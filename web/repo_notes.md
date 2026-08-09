@@ -233,3 +233,22 @@
   - `web/tests/checkins.test.ts` — tightened `withTransaction` mock typing with `PoolClient` and asserted the CTE guards soft-deleted check-ins.
   - `web/tests/auth/sign-in-button.test.tsx` — added pending-state and error-message tests.
   - `web/tests/auth/sign-out-button.test.tsx` — new coverage for render, pending state, and error display.
+
+## 2026-08-12 (issue #25 — image completion service)
+
+- `web/lib/images/complete.ts`
+  - New service for `POST /api/images/complete`.
+  - Fail-fast ownership check before any remote work.
+  - Remote processing (image-service presign + sharp resize + R2 writes) stays
+    outside the DB transaction so slow I/O does not hold a connection.
+  - Check-in photo append and cafe-gallery merge are executed inside ONE
+    `withTransaction` so the two writes commit or roll back together.
+  - Deps are injectable; default deps lazily import `pg` and `sharp`.
+
+- `web/app/api/images/complete/route.ts`
+  - Reduced to a thin controller: auth, body validation, rate limiting, error
+    mapping. Calls `completeImageUpload` with `defaultCompleteUploadDeps()`.
+
+- `web/tests/images/complete-service.test.ts`
+  - Service tests for fail-fast, cafe attach, atomicity, no-cafe path, and
+    lazy default deps.

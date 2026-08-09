@@ -21,7 +21,10 @@ description: Pick up, triage, scope, and fix CoffeeMode GitHub issues as PRs. Us
    implementing (the user may want a different scope or order).
 5. Implement via `.agents/workflows/development-cycle.md`:
    - Register the fix as a slice in `docs/agent/implementation-slices.md`
-     and load its context (`.agents/scripts/context-for-slice.sh <id>`).
+     (insert a new row inside the `## Slice manifest` table, before the
+     `## Status vocabulary` section and the `Rules` block).
+   - Load its context with `.agents/scripts/context-for-slice.sh <id>` and
+     verify the readiness gate before writing code.
    - One issue → one branch → one PR; branch `fix/issue-<n>-<slug>`.
    - PR body starts with `Fixes #N`; if stacked on an unmerged branch,
      state the merge order.

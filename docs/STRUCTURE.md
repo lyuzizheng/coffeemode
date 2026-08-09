@@ -52,6 +52,7 @@ Use it for:
 ```text
 current state
 reading order
+issue-guidelines
 implementation slices
 progress log
 ```

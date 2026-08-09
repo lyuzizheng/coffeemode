@@ -23,8 +23,10 @@ description: File CoffeeMode GitHub issues with categories, priorities, and evid
 ## Submission checklist
 
 - [ ] Issue is not a duplicate
-- [ ] One category label chosen, priority stated in the title prefix (`[BUG]`,
-      `[SECURITY]`, `[DATA-INTEGRITY]`, `[PERF]`, `[ARCH]`, `[DOCS]`)
+- [ ] One category label chosen from `docs/agent/issue-guidelines.md`
+- [ ] Issue title uses a category prefix (`[BUG]`, `[SECURITY]`,
+      `[DATA-INTEGRITY]`, `[PERF]`, `[ARCH]`, `[DOCS]`, `[BLOCKED-OWNER]`)
+- [ ] Priority (P0–P3) is stated in the issue body
 - [ ] Evidence cites file:line on the branch the reporter reviewed
 - [ ] Impact names who/what breaks
 - [ ] Suggested fix direction includes trade-offs

@@ -16,15 +16,15 @@ Canonical rules for filing, triaging, and fixing GitHub issues in
 
 ## Categories (GitHub labels)
 
-| Label | Meaning | Typical evidence |
-| --- | --- | --- |
-| `bug` | Behavior contradicts spec or intent | file:line, repro |
-| `security` | Auth, secrets, injection, abuse, spoofing | trust-model gap, missing cap |
-| `data-integrity` | Races, drift, lost updates, orphaned rows, non-atomic writes | concurrent write path, cascade gap |
-| `performance` | Unbounded work, N+1, CPU/bandwidth on the host | unbounded loop, per-request cost |
-| `architecture` | Module boundaries, duplication, fat controllers | same concept reimplemented |
-| `docs` | Spec/doc drift, wrong guidance | doc vs code mismatch |
-| `blocked-owner` | Requires owner credentials/account action | deploy, provider config, secret |
+| Category / title prefix | GitHub label | Meaning | Typical evidence |
+| --- | --- | --- | --- |
+| `[BUG]` | `bug` | Behavior contradicts spec or intent | file:line, repro |
+| `[SECURITY]` | `security` | Auth, secrets, injection, abuse, spoofing | trust-model gap, missing cap |
+| `[DATA-INTEGRITY]` | `data-integrity` | Races, drift, lost updates, orphaned rows, non-atomic writes | concurrent write path, cascade gap |
+| `[PERF]` | `performance` | Unbounded work, N+1, CPU/bandwidth on the host | unbounded loop, per-request cost |
+| `[ARCH]` | `architecture` | Module boundaries, duplication, fat controllers | same concept reimplemented |
+| `[DOCS]` | `documentation` | Spec/doc drift, wrong guidance | doc vs code mismatch |
+| `[BLOCKED-OWNER]` | `blocked-owner` | Requires owner credentials/account action | deploy, provider config, secret |
 
 ## Priorities
 
@@ -37,12 +37,14 @@ Canonical rules for filing, triaging, and fixing GitHub issues in
 
 ## Issue template
 
-Every issue carries these five sections (review-generated issues already do):
+Every issue carries these sections (review-generated issues already do):
 
 ```text
 ## Summary
-## Evidence      — concrete file:line references, not vibes
-## Impact        — what breaks or drifts, and for whom
+## Category   — the GitHub label (one of bug/security/data-integrity/performance/architecture/documentation/blocked-owner)
+## Priority   — P0/P1/P2/P3 from the table above
+## Evidence   — concrete file:line references, not vibes
+## Impact     — what breaks or drifts, and for whom
 ## Suggested fix direction   — options, with trade-offs
 ## Acceptance criteria      — how the fix will be verified
 ```

@@ -6,7 +6,7 @@ Choose the workflow by intent, not by keyword matching.
 | --- | --- |
 | Implement, build, fix, 实现, 修复 | [development-cycle](./workflows/development-cycle.md) |
 | File an issue, report a bug, 提交 issue, 报告 bug | [issue-submission](./skills/coffeemode-issue-submission/SKILL.md) |
-| Fix issues from GitHub, review open issues, 修复 issue, 处理 issue | [issue-review-fix](./skills/coffeemode-issue-review-fix/SKILL.md) |
+| Pick up / triage / fix open GitHub issues, 处理 issue | [issue-review-fix](./skills/coffeemode-issue-review-fix/SKILL.md) |
 | Review, audit, 审查, 评估 | [review-code](./workflows/review-code.md) |
 | Design, UI, visual, 设计, 界面 | [refine-ui](./workflows/refine-ui.md) |
 | Test, QA, 测试 | [testing](./workflows/testing.md) |

@@ -1,7 +1,6 @@
 import { AwsClient } from "aws4fetch";
 import type { Env, PresignedUrl } from "./types";
-
-const DEFAULT_TTL_SECONDS = 600;
+import { DEFAULT_UPLOAD_URL_TTL_SECONDS } from "./constants";
 
 export function r2Endpoint(env: Env, key: string): string {
   return `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${env.R2_BUCKET_NAME}/${key}`;
@@ -23,7 +22,7 @@ function r2Client(env: Env): AwsClient {
 
 export function ttlSeconds(env: Env): number {
   const parsed = Number.parseInt(env.UPLOAD_URL_TTL_SECONDS ?? "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TTL_SECONDS;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_UPLOAD_URL_TTL_SECONDS;
 }
 
 function signedHeadersToRecord(headers: Headers): Record<string, string> {

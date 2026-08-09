@@ -16,12 +16,18 @@
     "signin_subtitle": "Check in, score the wifi, build your work profile.",
     "continue_apple": "Continue with Apple",
     "continue_google": "Continue with Google",
-    "auth_not_configured": "Sign-in is not configured yet — set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+    "auth_not_configured": "Sign-in isn't set up yet. Check back soon, or try again later.",
     "signed_in_as": "Signed in as",
     "session_ready": "Your session is active.",
     "signing_in": "Signing in...",
     "sign_out": "Sign out",
     "signing_out": "Signing out..."
+  },
+  "offline": {
+    "banner": "Connection is unstable — some info may be outdated.",
+    "title": "You're offline",
+    "body": "CoffeeMode needs a connection to load fresh cafe data. Pages you've already visited may still work.",
+    "retry": "Try again"
   },
   "themePreview": {
     "meta_title": "Design System",
@@ -43,7 +49,8 @@
       "group_brand": "Brand",
       "group_status": "Status",
       "on_accent": "on accent",
-      "copied": "Copied"
+      "copied": "Copied",
+      "copy_title": "Copy {hex}"
     },
     "type": {
       "title": "Typography",
@@ -91,7 +98,7 @@
         "wifi": "Wifi",
         "outlets": "Outlets",
         "seats": "Seats",
-        "temperature": "Temperature",
+        "temp": "Temperature",
         "coffee": "Coffee"
       },
       "hover_hint": "Hover and press the card — 120ms feedback, no bounce."
@@ -156,7 +163,7 @@
       "title": "Search filters",
       "desc": "Thumb-friendly filter surface: city, dimension minima, policies, and open-now."
     },
-    "footer": "CoffeeMode design-tokens slice · en/zh via next-intl · HeroUI v3 tokens, overridden"
+    "footer": "CoffeeMode — warm paper, espresso ink, one terracotta voice · en/zh via next-intl"
   },
   "profile": {
     "title": "Profile",

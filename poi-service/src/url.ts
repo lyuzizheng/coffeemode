@@ -26,6 +26,9 @@ const PLACE_SLUG_RE = /\/maps\/place\/([^/@?]+)/;
 
 const SHORT_HOSTS = new Set(["goo.gl", "maps.app.goo.gl"]);
 
+/** Max redirect hops followed when resolving short links. */
+export const MAX_REDIRECT_HOPS = 5;
+
 export function isShortLink(urlStr: string): boolean {
   try {
     return SHORT_HOSTS.has(new URL(urlStr).hostname);
@@ -76,13 +79,13 @@ export function parseMapsUrl(urlStr: string): ResolvedTarget {
   return { coords: coords ?? undefined, query: query ?? undefined };
 }
 
-/** Resolve a share URL to a target, following short-link redirects (≤5 hops). */
+/** Resolve a share URL to a target, following short-link redirects (≤ MAX_REDIRECT_HOPS hops). */
 export async function resolveShareUrl(
   urlStr: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<ResolvedTarget> {
   let current = urlStr;
-  for (let hop = 0; hop < 5; hop++) {
+  for (let hop = 0; hop < MAX_REDIRECT_HOPS; hop++) {
     const parsed = parseMapsUrl(current);
     if (parsed.placeId) return parsed;
     if (!isShortLink(current)) return parsed;

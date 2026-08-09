@@ -1,11 +1,32 @@
 import type { Env } from "./types";
 
+// --- shared response helpers (same envelope as poi-service) ---
+
+export function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+  });
+}
+
+/** Standard auth-failure envelope, shared with poi-service. */
+export function unauthorized(): Response {
+  return json({ error: "unauthorized", message: "missing or invalid service token" }, 401);
+}
+
+/** Standard catch-all failure envelope, shared with poi-service. */
+export function internalError(): Response {
+  return json({ error: "internal_error", message: "internal server error" }, 500);
+}
+
+/** Extract the token from the service header or an Authorization: Bearer header.
+ *  The Bearer scheme is case-insensitive per RFC 6750 — aligned with poi-service. */
 function extractToken(request: Request): string | null {
   const header = request.headers.get("x-image-service-token");
   if (header) return header;
 
   const auth = request.headers.get("Authorization");
-  if (auth?.startsWith("Bearer ")) return auth.slice(7);
+  if (auth && /^Bearer\s+/i.test(auth)) return auth.replace(/^Bearer\s+/i, "");
   return null;
 }
 

@@ -1,5 +1,5 @@
 /**
- * HTTP handlers for the four POI endpoints + shared auth.
+ * HTTP handlers for the four POI endpoints.
  * Pure functions over injected Env/Deps — unit-testable without a Worker runtime.
  *
  * Endpoints (all require POI_SERVICE_TOKEN):
@@ -7,70 +7,35 @@
  *   POST /poi/resolve      {maps_share_url} → POI (creation import path)
  *   GET  /poi/search       ?q&lat&lng&r — stored POIs, name match + haversine sort
  *   POST /poi/external     store externally-searched POIs (Google live / Apple refs)
+ *
+ * Error isolation (W1): handleFetch wraps every handler in try/catch and maps
+ * uncaught D1/KV/Google failures to a JSON 500 envelope — workerd's opaque
+ * default error page never escapes to callers.
+ *
+ * Error envelope shape is shared with image-service: { error: code, message? }.
  */
 
-import { DEFAULT_SEARCH_RADIUS_KM } from "./constants";
+import { authorized, internalError, json } from "./auth";
+import {
+  DEFAULT_SEARCH_RADIUS_KM,
+  MAX_EXTERNAL_BATCH_SIZE,
+  MAX_SEARCH_RADIUS_KM,
+} from "./constants";
 import type { Deps, Env, POI, POISearchHit } from "./types";
 import { fetchPlaceDetails, textSearch, toPOI, GoogleApiError, type GooglePlace } from "./google";
 import {
   d1GetPOI,
   d1SearchPOIs,
   d1UpsertPOI,
+  d1UpsertPOIs,
   isFresh,
   kvGetRaw,
   kvPutRaw,
 } from "./store";
 import { resolveShareUrl } from "./url";
 
-// --- helpers ---
-
-function json(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json; charset=utf-8" },
-  });
-}
-
-/** Constant-time token compare. Uses Cloudflare Workers' crypto.subtle.timingSafeEqual
- *  extension when available, otherwise a pure-JS fallback for Node/vitest. */
-function safeEqual(a: string, b: string): boolean {
-  const A = new TextEncoder().encode(a);
-  const B = new TextEncoder().encode(b);
-  const sameLength = A.byteLength === B.byteLength;
-
-  // Cloudflare Workers exposes SubtleCrypto.timingSafeEqual as a non-standard extension.
-  const subtle = crypto.subtle as SubtleCrypto & {
-    timingSafeEqual?: (a: ArrayBufferView, b: ArrayBufferView) => boolean;
-  };
-  if (typeof subtle.timingSafeEqual === "function") {
-    const aBuf = A;
-    const bBuf = sameLength ? B : A; // compare against self when lengths differ (always true, then negate)
-    const equal = subtle.timingSafeEqual(aBuf, bBuf);
-    return sameLength ? equal : !equal;
-  }
-
-  // Pure-JS fallback for test environments without timingSafeEqual.
-  const aBuf = A;
-  const bBuf = sameLength ? B : A;
-  let diff = 0;
-  for (let i = 0; i < aBuf.length; i++) diff |= aBuf[i] ^ bBuf[i];
-  const equalContent = diff === 0;
-  return sameLength ? equalContent : !equalContent;
-}
-
-function bearer(request: Request): string | null {
-  return (
-    request.headers.get("x-poi-service-token") ??
-    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
-    null
-  );
-}
-
-export async function authorized(request: Request, env: Env): Promise<boolean> {
-  const token = bearer(request);
-  if (!token || !env.POI_SERVICE_TOKEN) return false;
-  return safeEqual(token, env.POI_SERVICE_TOKEN);
-}
+// Re-exported for consumers/tests that historically imported from handlers.
+export { authorized } from "./auth";
 
 /** Rough heuristic: Google place ids are ChIJ… or 0x…:0x…; Apple refs are arbitrary. */
 export function isGooglePlaceId(placeId: string): boolean {
@@ -79,21 +44,26 @@ export function isGooglePlaceId(placeId: string): boolean {
 
 function upstreamError(e: unknown): Response {
   if (e instanceof GoogleApiError) {
+    // Scrubbed: upstream response bodies are never relayed (status only).
     return json({ error: "upstream_error", status: e.status, message: e.message }, 502);
   }
-  return json({ error: "upstream_error", message: String(e) }, 502);
+  return json({ error: "upstream_error", message: "upstream request failed" }, 502);
 }
 
 // --- GET /poi/:place_id ---
 
 async function getPOI(placeId: string, env: Env, deps: Deps): Promise<Response> {
-  // 1. KV hot cache (raw Google response, ~7d TTL)
-  const raw = await kvGetRaw(env.POI_KV, placeId);
-  if (raw) {
-    try {
-      return json(toPOI(JSON.parse(raw)));
-    } catch {
-      // corrupt cache entry — fall through to D1/Google
+  const googleId = isGooglePlaceId(placeId);
+
+  // 1. KV hot cache (raw Google response, ~7d TTL). Apple refs are never KV-cached.
+  if (googleId) {
+    const raw = await kvGetRaw(env.POI_KV, placeId);
+    if (raw) {
+      try {
+        return json(toPOI(JSON.parse(raw)));
+      } catch {
+        // corrupt cache entry — fall through to D1/Google
+      }
     }
   }
 
@@ -101,33 +71,35 @@ async function getPOI(placeId: string, env: Env, deps: Deps): Promise<Response> 
   const stored = await d1GetPOI(env.POI_DB, placeId);
 
   // Apple POIs have no server-side upstream — serve what's stored, else 404.
-  const googleId = isGooglePlaceId(placeId);
-  if (stored && !googleId) {
+  if (!googleId) {
     return stored ? json(stored) : json({ error: "not_found" }, 404);
   }
 
   if (stored && isFresh(stored)) return json(stored);
 
   // 3. Google API → backfill both
-  if (googleId) {
-    let gp: GooglePlace;
-    try {
-      gp = await fetchPlaceDetails(placeId, env, deps.fetchImpl);
-    } catch (e) {
-      // Graceful degradation: serve stale D1 row if we have one.
-      if (stored) return json(stored);
-      return upstreamError(e);
-    }
-    const poi = toPOI(gp);
-    try {
-      await Promise.all([kvPutRaw(env.POI_KV, placeId, gp), d1UpsertPOI(env.POI_DB, poi)]);
-    } catch (e) {
-      console.error("cache write failed", e);
-    }
-    return json(poi);
+  let gp: GooglePlace;
+  try {
+    gp = await fetchPlaceDetails(placeId, env, deps.fetchImpl);
+  } catch (e) {
+    // Graceful degradation: serve stale D1 row if we have one.
+    if (stored) return json(stored);
+    return upstreamError(e);
   }
 
-  return json({ error: "not_found" }, 404);
+  let poi: POI;
+  try {
+    poi = toPOI(gp); // rejects places missing `location` instead of storing (0,0)
+  } catch (e) {
+    if (stored) return json(stored);
+    return json({ error: "invalid_upstream", message: String(e) }, 502);
+  }
+  try {
+    await Promise.all([kvPutRaw(env.POI_KV, placeId, gp), d1UpsertPOI(env.POI_DB, poi)]);
+  } catch (e) {
+    console.error("cache write failed", e);
+  }
+  return json(poi);
 }
 
 // --- POST /poi/resolve ---
@@ -146,7 +118,7 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
   }
 
   const target = await resolveShareUrl(mapsUrl.trim(), deps.fetchImpl);
-  if (target.placeId) return getPOI(target.placeId, env, deps);
+  if (target.placeId) return await getPOI(target.placeId, env, deps);
 
   if (target.query) {
     let results: GooglePlace[];
@@ -162,7 +134,12 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
     }
     const first = results[0];
     if (!first) return json({ error: "not_found", message: "no place matched" }, 404);
-    const poi = toPOI(first);
+    let poi: POI;
+    try {
+      poi = toPOI(first); // rejects places missing `location`
+    } catch (e) {
+      return json({ error: "invalid_upstream", message: String(e) }, 502);
+    }
     try {
       await Promise.all([kvPutRaw(env.POI_KV, first.id, first), d1UpsertPOI(env.POI_DB, poi)]);
     } catch (e) {
@@ -179,6 +156,14 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
 
 // --- GET /poi/search ---
 
+function inLatRange(lat: number): boolean {
+  return lat >= -90 && lat <= 90;
+}
+
+function inLngRange(lng: number): boolean {
+  return lng >= -180 && lng <= 180;
+}
+
 async function searchPOIs(request: Request, env: Env, _deps: Deps): Promise<Response> {
   const url = new URL(request.url);
   const q = url.searchParams.get("q")?.trim() ?? "";
@@ -186,12 +171,29 @@ async function searchPOIs(request: Request, env: Env, _deps: Deps): Promise<Resp
   const lng = Number.parseFloat(url.searchParams.get("lng") ?? "");
   const r = url.searchParams.get("r") ? Number.parseFloat(url.searchParams.get("r")!) : DEFAULT_SEARCH_RADIUS_KM;
 
-  const hasCoords = !Number.isNaN(lat) && !Number.isNaN(lng);
+  // Validate coordinates when provided: finite AND in range (rejects Infinity, 1e15).
+  const latProvided = url.searchParams.has("lat");
+  const lngProvided = url.searchParams.has("lng");
+  if (latProvided || lngProvided) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || !inLatRange(lat) || !inLngRange(lng)) {
+      return json(
+        { error: "invalid_request", message: "lat/lng must be finite numbers in [-90,90] / [-180,180]" },
+        400,
+      );
+    }
+  }
+  const hasCoords = latProvided && lngProvided;
   if (q === "" && !hasCoords) {
     return json({ error: "invalid_request", message: "q or lat+lng required" }, 400);
   }
-  if (Number.isNaN(r) || r <= 0) {
+  if (!Number.isFinite(r) || r <= 0) {
     return json({ error: "invalid_request", message: "r must be a positive number (km)" }, 400);
+  }
+  if (r > MAX_SEARCH_RADIUS_KM) {
+    return json(
+      { error: "invalid_request", message: `r must be ≤ ${MAX_SEARCH_RADIUS_KM} km` },
+      400,
+    );
   }
 
   const hits: POISearchHit[] = await d1SearchPOIs(env.POI_DB, {
@@ -210,15 +212,48 @@ interface InvalidEntry {
   reason: string;
 }
 
+const MAX_EXTERNAL_STRING_LENGTH = 1000;
+
+function stringArray(value: unknown): string[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return null;
+  return value.every((v) => typeof v === "string") ? (value as string[]) : null;
+}
+
 function validateExternalEntry(value: unknown, index: number): POI | InvalidEntry {
   const bad = (reason: string): InvalidEntry => ({ index, reason });
   if (!value || typeof value !== "object") return bad("entry is not an object");
   const v = value as Record<string, unknown>;
   if (typeof v.place_id !== "string" || v.place_id === "") return bad("place_id required");
+  if (v.place_id.length > 200) return bad("place_id too long (max 200)");
   if (v.source !== "google" && v.source !== "apple") return bad("source must be google|apple");
   if (typeof v.name !== "string" || v.name === "") return bad("name required");
-  if (typeof v.lat !== "number" || !Number.isFinite(v.lat)) return bad("lat required");
-  if (typeof v.lng !== "number" || !Number.isFinite(v.lng)) return bad("lng required");
+  if (v.name.length > 200) return bad("name too long (max 200)");
+  if (typeof v.lat !== "number" || !Number.isFinite(v.lat) || !inLatRange(v.lat)) {
+    return bad("lat must be a finite number in [-90, 90]");
+  }
+  if (typeof v.lng !== "number" || !Number.isFinite(v.lng) || !inLngRange(v.lng)) {
+    return bad("lng must be a finite number in [-180, 180]");
+  }
+  if (v.address !== undefined && v.address !== null && typeof v.address !== "string") {
+    return bad("address must be a string");
+  }
+  if (typeof v.address === "string" && v.address.length > MAX_EXTERNAL_STRING_LENGTH) {
+    return bad(`address too long (max ${MAX_EXTERNAL_STRING_LENGTH})`);
+  }
+  const types = stringArray(v.types);
+  if (types === null) return bad("types must be an array of strings");
+  if (v.business_status !== undefined && v.business_status !== null && typeof v.business_status !== "string") {
+    return bad("business_status must be a string");
+  }
+  if (v.hours_json !== undefined && v.hours_json !== null && typeof v.hours_json !== "string") {
+    return bad("hours_json must be a string");
+  }
+  if (typeof v.hours_json === "string" && v.hours_json.length > MAX_EXTERNAL_STRING_LENGTH) {
+    return bad(`hours_json too long (max ${MAX_EXTERNAL_STRING_LENGTH})`);
+  }
+  const photoRefs = stringArray(v.photo_refs);
+  if (photoRefs === null) return bad("photo_refs must be an array of strings");
   return {
     place_id: v.place_id,
     source: v.source,
@@ -226,10 +261,10 @@ function validateExternalEntry(value: unknown, index: number): POI | InvalidEntr
     lat: v.lat,
     lng: v.lng,
     address: typeof v.address === "string" ? v.address : null,
-    types: Array.isArray(v.types) ? (v.types as string[]) : [],
+    types,
     business_status: typeof v.business_status === "string" ? v.business_status : null,
     hours_json: typeof v.hours_json === "string" ? v.hours_json : null,
-    photo_refs: Array.isArray(v.photo_refs) ? (v.photo_refs as string[]) : [],
+    photo_refs: photoRefs,
     fetched_at: new Date().toISOString(),
   };
 }
@@ -244,6 +279,12 @@ async function storeExternal(request: Request, env: Env): Promise<Response> {
   if (!Array.isArray(entries) || entries.length === 0) {
     return json({ error: "invalid_request", message: "pois array required" }, 400);
   }
+  if (entries.length > MAX_EXTERNAL_BATCH_SIZE) {
+    return json(
+      { error: "invalid_request", message: `at most ${MAX_EXTERNAL_BATCH_SIZE} entries per request` },
+      400,
+    );
+  }
 
   const validated = entries.map(validateExternalEntry);
   const invalid = validated.filter((v): v is InvalidEntry => "reason" in v);
@@ -251,9 +292,8 @@ async function storeExternal(request: Request, env: Env): Promise<Response> {
     return json({ error: "invalid_request", message: "invalid entries", entries: invalid }, 400);
   }
 
-  for (const poi of validated as POI[]) {
-    await d1UpsertPOI(env.POI_DB, poi);
-  }
+  // Atomic batch: one round-trip, all-or-nothing (no partial writes on failure).
+  await d1UpsertPOIs(env.POI_DB, validated as POI[]);
   return json({ stored: validated.length });
 }
 
@@ -266,19 +306,35 @@ export async function handleFetch(
   env: Env,
   deps: Deps = { fetchImpl: fetch },
 ): Promise<Response> {
-  if (!(await authorized(request, env))) {
-    return json({ error: "unauthorized" }, 401);
+  try {
+    if (!(await authorized(request, env))) {
+      return json({ error: "unauthorized", message: "missing or invalid service token" }, 401);
+    }
+
+    const url = new URL(request.url);
+    const path = url.pathname;
+
+    if (request.method === "GET" && path === "/poi/search") return await searchPOIs(request, env, deps);
+    if (request.method === "POST" && path === "/poi/resolve") return await resolvePOI(request, env, deps);
+    if (request.method === "POST" && path === "/poi/external") return await storeExternal(request, env);
+
+    const m = path.match(ROUTE_RE);
+    if (request.method === "GET" && m) {
+      // Path segments arrive percent-encoded; decode before lookup. Google
+      // hex ids contain ':' which standard clients encode as %3A.
+      let placeId: string;
+      try {
+        placeId = decodeURIComponent(m[1]);
+      } catch {
+        return json({ error: "invalid_request", message: "malformed place_id encoding" }, 400);
+      }
+      if (placeId === "") return json({ error: "not_found" }, 404);
+      return await getPOI(placeId, env, deps);
+    }
+
+    return json({ error: "not_found" }, 404);
+  } catch (e) {
+    console.error("poi-service error:", e);
+    return internalError();
   }
-
-  const url = new URL(request.url);
-  const path = url.pathname;
-
-  if (request.method === "GET" && path === "/poi/search") return searchPOIs(request, env, deps);
-  if (request.method === "POST" && path === "/poi/resolve") return resolvePOI(request, env, deps);
-  if (request.method === "POST" && path === "/poi/external") return storeExternal(request, env);
-
-  const m = path.match(ROUTE_RE);
-  if (request.method === "GET" && m) return getPOI(m[1], env, deps);
-
-  return json({ error: "not_found" }, 404);
 }

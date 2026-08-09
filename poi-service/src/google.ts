@@ -69,7 +69,8 @@ export async function fetchPlaceDetails(
   const url = `${baseUrl(env)}/v1/places/${encodeURIComponent(placeId)}`;
   const res = await fetchImpl(url, { headers: headers(env, DETAIL_FIELDS) });
   if (!res.ok) {
-    throw new GoogleApiError(`Places details ${res.status}: ${await res.text().catch(() => "")}`, res.status);
+    await res.text().catch(() => undefined); // drain; upstream bodies are never relayed
+    throw new GoogleApiError(`Places details failed with upstream status ${res.status}`, res.status);
   }
   return (await res.json()) as GooglePlace;
 }
@@ -94,20 +95,26 @@ export async function textSearch(
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new GoogleApiError(`Places search ${res.status}: ${await res.text().catch(() => "")}`, res.status);
+    await res.text().catch(() => undefined); // drain; upstream bodies are never relayed
+    throw new GoogleApiError(`Places search failed with upstream status ${res.status}`, res.status);
   }
   const data = (await res.json()) as { places?: GooglePlace[] };
   return data.places ?? [];
 }
 
-/** Map a Google place to the normalized POI shape. */
+/** Map a Google place to the normalized POI shape.
+ *  Rejects places without a location — storing them at (0,0) would create
+ *  phantom POIs at null island. */
 export function toPOI(gp: GooglePlace, source: "google" | "apple" = "google"): POI {
+  if (!gp.location) {
+    throw new Error(`Google place ${gp.id} has no location; refusing to store at (0,0)`);
+  }
   return {
     place_id: gp.id,
     source,
     name: gp.displayName?.text ?? "Unknown",
-    lat: gp.location?.latitude ?? 0,
-    lng: gp.location?.longitude ?? 0,
+    lat: gp.location.latitude,
+    lng: gp.location.longitude,
     address: gp.formattedAddress ?? null,
     types: gp.types ?? [],
     business_status: gp.businessStatus ?? null,

@@ -21,7 +21,9 @@ export interface UploadResponse {
   publicUrl: string;
   expiresAt: string;
   maxUploadBytes: number;
-  size?: number;
+  /** Declared upload size (bytes). Required by /upload since 2026-08-09;
+   *  signed into the presigned PUT as Content-Length. */
+  size: number;
 }
 
 export interface CompleteRequest {

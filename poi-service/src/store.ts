@@ -3,12 +3,9 @@
  * All D1 rows round-trip through normalize() so handlers see POI objects.
  */
 
-import { DEFAULT_SEARCH_RADIUS_KM } from "./constants";
+import { CACHE_TTL_SECONDS, DEFAULT_SEARCH_RADIUS_KM, SEARCH_RESULT_LIMIT } from "./constants";
 import type { D1Like, KVLike, POI, POISearchHit } from "./types";
 import { haversineKm, kmPerDegLat, kmPerDegLng } from "./geo";
-
-export const KV_TTL_SECONDS = 7 * 24 * 3600; // ~7d hot cache
-export const D1_STALENESS_SECONDS = 7 * 24 * 3600; // D1 "fresh" window
 
 const RAW_PREFIX = "raw:google:";
 
@@ -20,7 +17,7 @@ export async function kvGetRaw(kv: KVLike, placeId: string): Promise<string | nu
 
 export function kvPutRaw(kv: KVLike, placeId: string, raw: unknown): Promise<void> {
   return kv.put(`${RAW_PREFIX}${placeId}`, JSON.stringify(raw), {
-    expirationTtl: KV_TTL_SECONDS,
+    expirationTtl: CACHE_TTL_SECONDS,
   });
 }
 
@@ -92,6 +89,12 @@ export async function d1UpsertPOI(db: D1Like, poi: POI): Promise<void> {
   await db.prepare(UPSERT_SQL).bind(...denormalize(poi)).run();
 }
 
+/** Atomic multi-row upsert in one round-trip via D1 batch(). */
+export async function d1UpsertPOIs(db: D1Like, pois: POI[]): Promise<void> {
+  if (pois.length === 0) return;
+  await db.batch(pois.map((poi) => db.prepare(UPSERT_SQL).bind(...denormalize(poi))));
+}
+
 export async function d1GetPOI(db: D1Like, placeId: string): Promise<POI | null> {
   const row = await db
     .prepare("SELECT * FROM pois WHERE place_id = ?")
@@ -103,7 +106,7 @@ export async function d1GetPOI(db: D1Like, placeId: string): Promise<POI | null>
 export function isFresh(poi: POI, now = Date.now()): boolean {
   const fetched = Date.parse(poi.fetched_at);
   if (Number.isNaN(fetched)) return false;
-  return now - fetched < D1_STALENESS_SECONDS * 1000;
+  return now - fetched < CACHE_TTL_SECONDS * 1000;
 }
 
 function escapeLike(s: string): string {
@@ -113,6 +116,7 @@ function escapeLike(s: string): string {
 /**
  * Search stored POIs: optional name LIKE match, optional bounding-box
  * prefilter around (lat,lng), then exact haversine distance filter/sort.
+ * Capped at SEARCH_RESULT_LIMIT rows.
  */
 export async function d1SearchPOIs(
   db: D1Like,
@@ -140,7 +144,7 @@ export async function d1SearchPOIs(
     return [];
   }
 
-  const sql = `SELECT * FROM pois WHERE ${where.join(" AND ")} ORDER BY name ASC`;
+  const sql = `SELECT * FROM pois WHERE ${where.join(" AND ")} ORDER BY name ASC LIMIT ${SEARCH_RESULT_LIMIT}`;
   const { results } = await db.prepare(sql).bind(...binds).all<POIRow>();
 
   let hits: POISearchHit[] = results.map((r) => normalizeRow(r));

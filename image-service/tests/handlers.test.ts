@@ -1,7 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import handler, { handleComplete, handleUpload } from "../src/index";
 import { MAX_UPLOAD_BYTES } from "../src/constants";
 import { baseEnv } from "./helpers";
+
+// Same value as tests/helpers.ts baseEnv() service token (derived so there
+// is exactly one literal).
+const { IMAGE_SERVICE_TOKEN: TOKEN } = baseEnv();
 
 function makeRequest(
   method: string,
@@ -13,7 +17,7 @@ function makeRequest(
   const init: RequestInit = {
     method,
     headers: {
-      "x-image-service-token": "test-token",
+      "x-image-service-token": TOKEN,
       ...headers,
     },
   };
@@ -32,7 +36,7 @@ function validUuid(): string {
 describe("handleUpload", () => {
   it("returns presigned PUT URL for the original key", async () => {
     const env = baseEnv();
-    const request = makeRequest("POST", "/v1/images/upload");
+    const request = makeRequest("POST", "/v1/images/upload", { size: 2048 });
     const response = await handleUpload(request, env);
     const data = (await response.json()) as Record<string, any>;
 
@@ -47,7 +51,7 @@ describe("handleUpload", () => {
 
   it("uses UPLOAD_URL_TTL_SECONDS for expiresAt and the presigned URL", async () => {
     const env = { ...baseEnv(), UPLOAD_URL_TTL_SECONDS: "120" };
-    const request = makeRequest("POST", "/v1/images/upload");
+    const request = makeRequest("POST", "/v1/images/upload", { size: 1 });
     const response = await handleUpload(request, env);
     const data = (await response.json()) as Record<string, any>;
 
@@ -58,9 +62,19 @@ describe("handleUpload", () => {
     expect(ttlMs).toBeLessThanOrEqual(120_000);
   });
 
+  it("falls back to the default 600s TTL on a garbage UPLOAD_URL_TTL_SECONDS", async () => {
+    const env = { ...baseEnv(), UPLOAD_URL_TTL_SECONDS: "not-a-number" };
+    const request = makeRequest("POST", "/v1/images/upload", { size: 1 });
+    const response = await handleUpload(request, env);
+    const data = (await response.json()) as Record<string, any>;
+
+    expect(response.status).toBe(200);
+    expect(data.uploadUrl).toContain("X-Amz-Expires=600");
+  });
+
   it("includes the max upload size in the response", async () => {
     const env = baseEnv();
-    const request = makeRequest("POST", "/v1/images/upload");
+    const request = makeRequest("POST", "/v1/images/upload", { size: 1 });
     const response = await handleUpload(request, env);
     const data = (await response.json()) as Record<string, any>;
 
@@ -68,16 +82,17 @@ describe("handleUpload", () => {
     expect(data.maxUploadBytes).toBe(MAX_UPLOAD_BYTES);
   });
 
-  it("rejects uploads larger than the 10 MB cap", async () => {
+  it("rejects uploads larger than the 10 MB cap with a 400 envelope", async () => {
     const env = baseEnv();
     const request = makeRequest("POST", "/v1/images/upload", {
       size: MAX_UPLOAD_BYTES + 1,
     });
     const response = await handleUpload(request, env);
 
-    expect(response.status).toBe(413);
-    const data = (await response.json()) as { error: string };
-    expect(data.error).toContain("exceeds maximum");
+    expect(response.status).toBe(400);
+    const data = (await response.json()) as { error: string; message: string };
+    expect(data.error).toBe("size_exceeded");
+    expect(data.message).toContain("exceeds maximum");
   });
 
   it("signs Content-Length when size is provided", async () => {
@@ -99,6 +114,35 @@ describe("handleUpload", () => {
     expect(response.status).toBe(400);
   });
 
+  it("rejects size 0", async () => {
+    const env = baseEnv();
+    const request = makeRequest("POST", "/v1/images/upload", { size: 0 });
+    const response = await handleUpload(request, env);
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects a missing size (required since 2026-08-09 — uncapped PUT otherwise)", async () => {
+    const env = baseEnv();
+    const request = makeRequest("POST", "/v1/images/upload", {});
+    const response = await handleUpload(request, env);
+    expect(response.status).toBe(400);
+    const data = (await response.json()) as { error: string; message: string };
+    expect(data.error).toBe("invalid_request");
+    expect(data.message).toContain("size");
+  });
+
+  it("rejects malformed JSON with a 400 envelope (same as /complete)", async () => {
+    const env = baseEnv();
+    const request = new Request("https://image-service.example.com/v1/images/upload", {
+      method: "POST",
+      headers: { "x-image-service-token": TOKEN, "Content-Type": "application/json" },
+      body: "{not json",
+    });
+    const response = await handleUpload(request, env);
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { error: string }).error).toBe("invalid_request");
+  });
+
   it("rejects requests without a token", async () => {
     const env = baseEnv();
     const request = new Request("https://image-service.example.com/v1/images/upload", {
@@ -106,6 +150,34 @@ describe("handleUpload", () => {
     });
     const response = await handleUpload(request, env);
     expect(response.status).toBe(401);
+  });
+
+  it("rejects a correct-length wrong-value token", async () => {
+    const env = baseEnv();
+    // Same length as the real token, wrong value — exercises the
+    // equal-length constant-time compare path.
+    const wrongValue = TOKEN.split("").reverse().join("");
+    const request = makeRequest("POST", "/v1/images/upload", { size: 1 }, {
+      "x-image-service-token": wrongValue,
+    });
+    const response = await handleUpload(request, env);
+    expect(response.status).toBe(401);
+  });
+
+  it("accepts Authorization bearer headers (case-insensitive scheme)", async () => {
+    const env = baseEnv();
+    for (const scheme of ["Bearer", "bearer"]) {
+      const request = new Request("https://image-service.example.com/v1/images/upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: [scheme, TOKEN].join(" "),
+        },
+        body: JSON.stringify({ size: 1 }),
+      });
+      const response = await handleUpload(request, env);
+      expect(response.status).toBe(200);
+    }
   });
 });
 
@@ -149,6 +221,7 @@ describe("handleComplete", () => {
     const request = makeRequest("POST", "/v1/images/complete", { imageUuid: validUuid() });
     const response = await handleComplete(request, env);
     expect(response.status).toBe(404);
+    expect(((await response.json()) as { error: string }).error).toBe("not_found");
   });
 
   it("rejects invalid UUIDs", async () => {
@@ -156,6 +229,30 @@ describe("handleComplete", () => {
     const request = makeRequest("POST", "/v1/images/complete", { imageUuid: "not-a-uuid" });
     const response = await handleComplete(request, env);
     expect(response.status).toBe(400);
+  });
+
+  it("422s when the actual R2 object exceeds the size cap", async () => {
+    const env = baseEnv();
+    const imageUuid = validUuid();
+    // FakeR2 records body length as the object size — simulate an oversized
+    // upload without allocating 10 MB by stubbing head() directly.
+    const realHead = env.R2_BUCKET.head.bind(env.R2_BUCKET);
+    vi.spyOn(env.R2_BUCKET, "head").mockImplementation(async (key: string) => {
+      const obj = await realHead(key);
+      return obj ? ({ ...obj, size: MAX_UPLOAD_BYTES + 1 } as R2Object) : obj;
+    });
+    await env.R2_BUCKET.put(`original/${imageUuid}.webp`, new Uint8Array([0xde]), {
+      httpMetadata: { contentType: "image/webp" },
+    });
+
+    const request = makeRequest("POST", "/v1/images/complete", { imageUuid });
+    const response = await handleComplete(request, env);
+
+    expect(response.status).toBe(422);
+    const data = (await response.json()) as { error: string; message: string };
+    expect(data.error).toBe("size_exceeded");
+    expect(data.message).toContain(String(MAX_UPLOAD_BYTES));
+    vi.restoreAllMocks();
   });
 });
 
@@ -175,6 +272,21 @@ describe("router", () => {
     const response = await handler.fetch(request, env, {} as ExecutionContext);
     expect(response.status).toBe(404);
   });
+
+  it("returns the JSON 500 envelope when R2 head() throws", async () => {
+    const env = baseEnv();
+    vi.spyOn(env.R2_BUCKET, "head").mockRejectedValue(new Error("R2 outage"));
+
+    const request = makeRequest("POST", "/v1/images/complete", { imageUuid: validUuid() });
+    const response = await handler.fetch(request, env, {} as ExecutionContext);
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: "internal_error",
+      message: "internal server error",
+    });
+    vi.restoreAllMocks();
+  });
 });
 
 describe("handleComplete auth", () => {
@@ -192,6 +304,10 @@ describe("handleComplete auth", () => {
     });
     const response = await handleComplete(request, env);
     expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({
+      error: "unauthorized",
+      message: "missing or invalid service token",
+    });
   });
 });
 
@@ -219,5 +335,3 @@ describe("metadata sanitization", () => {
     expect(data.originalPut.headers["x-amz-meta-targetid"]).toBe("c1");
   });
 });
-
-

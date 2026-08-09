@@ -28,10 +28,10 @@ export default async function HomePage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
       <div className="max-w-md text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">
+        <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
           {t("hero_title")}
         </h1>
-        <p className="mt-2 text-sm opacity-70">{t("hero_subtitle")}</p>
+        <p className="mt-2 text-sm text-muted">{t("hero_subtitle")}</p>
       </div>
 
       <Card className="w-full max-w-sm p-6">
@@ -62,7 +62,7 @@ export default async function HomePage() {
       </Card>
 
       {!isAuthConfigured() && (
-        <p className="max-w-sm text-center text-xs opacity-50">
+        <p className="max-w-sm text-center text-xs text-muted">
           {t("auth_not_configured")}
         </p>
       )}

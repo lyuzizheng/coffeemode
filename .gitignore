@@ -60,3 +60,10 @@ _archive-coffeemode-frontend/public/js/mapsJavaScriptAPI.js.map.gz.map
 ./coffeemode-script/coffeemode-image/public/js/mapsJavaScriptAPI.js.map
 ./coffeemode-script/coffeemode-image/public/js/mapsJavaScriptAPI.js.map.gz
 ./coffeemode-script/coffeemode-image/public/js/mapsJavaScriptAPI.js.map.gz.map
+
+# Generated review packets (not source)
+docs/reviews/
+
+# Stray legacy project copies — canonical homes are _archive-* and coffeemode-script/
+coffeemode-frontend/
+coffeemode_backend/

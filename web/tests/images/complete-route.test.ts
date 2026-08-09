@@ -6,7 +6,11 @@ const getUserMock = vi.fn();
 const getProcessUrlsMock = vi.fn();
 const processImageMock = vi.fn();
 
-vi.mock("@/lib/db/postgres", () => ({ query: (...args: unknown[]) => queryMock(...args) }));
+vi.mock("@/lib/db/postgres", () => ({
+  query: (...args: unknown[]) => queryMock(...args),
+  withTransaction: async (fn: (client: { query: typeof queryMock }) => unknown) =>
+    fn({ query: queryMock }),
+}));
 vi.mock("@/lib/auth/supabase-server", () => ({
   createSupabaseServerClient: () => ({ auth: { getUser: getUserMock } }),
   isAuthConfigured: () => true,

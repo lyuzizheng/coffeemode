@@ -10,8 +10,9 @@ Before implementation, read in this order:
 1. docs/README.md
 2. docs/STRUCTURE.md
 3. docs/agent/current-state.md
-4. docs/specs/* relevant to the task
-5. docs/adr/*.md relevant to the task
+4. docs/agent/issue-guidelines.md (when filing/triaging/fixing issues)
+5. docs/specs/* relevant to the task
+6. docs/adr/*.md relevant to the task
 ```
 
 ## App implementation context

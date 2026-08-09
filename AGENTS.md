@@ -25,6 +25,17 @@ This file is the tool-neutral entry point for coding agents working in this repo
 | `.agents/scripts/implementation-review-packet.sh` | Pinned base/head/fingerprint packet for code review |
 | `.agents/scripts/harness-self-test.sh` | Fault-injection self-test of all gates |
 
+## Issue workflow
+
+- GitHub issues are the intake for fixes. File and triage them per
+  `docs/agent/issue-guidelines.md` (categories, priorities, template).
+- Filing/reporting: load the `coffeemode-issue-submission` skill.
+- Reviewing/scoping/fixing issues: load the `coffeemode-issue-review-fix`
+  skill — one issue → one branch → one PR with `Fixes #N`.
+- When an issue's suggested direction is infeasible or lacks a product
+  driver, comment the deferral on the issue (see Deferral policy in the
+  guidelines); never half-implement.
+
 ## Rules
 
 - Never bypass a failing gate. Fix the root cause.

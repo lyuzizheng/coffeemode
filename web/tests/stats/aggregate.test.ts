@@ -397,7 +397,9 @@ describe("recomputeWorkStats", () => {
       params?: unknown[],
     ) => Promise<QueryResult<T>>;
 
-    await incrementalUpdateWorkStats("cafe-1", "user-1", query);
+    const runInTransaction: RunInTransaction = async (fn) => fn(query);
+
+    await incrementalUpdateWorkStats("cafe-1", "user-1", undefined, 0, runInTransaction);
 
     const updateCall = calls.find((c) => c.sql.includes("update cafes"));
     expect(updateCall).toBeDefined();
@@ -446,7 +448,9 @@ describe("recomputeWorkStats", () => {
       params?: unknown[],
     ) => Promise<QueryResult<T>>;
 
-    await incrementalUpdateWorkStats("cafe-1", "user-1", query, editedRow);
+    const runInTransaction: RunInTransaction = async (fn) => fn(query);
+
+    await incrementalUpdateWorkStats("cafe-1", "user-1", editedRow, 0, runInTransaction);
 
     const updateCall = calls.find((c) => c.sql.includes("update cafes"));
     expect(updateCall).toBeDefined();
@@ -490,7 +494,9 @@ describe("recomputeWorkStats", () => {
       params?: unknown[],
     ) => Promise<QueryResult<T>>;
 
-    await recomputeWorkStats("cafe-1", query);
+    const runInTransaction: RunInTransaction = async (fn) => fn(query);
+
+    await recomputeWorkStats("cafe-1", 0, runInTransaction);
 
     const updateCall = calls.find((c) => c.sql.includes("update cafes"));
     expect(updateCall).toBeDefined();
@@ -529,7 +535,9 @@ describe("recomputeWorkStats", () => {
       params?: unknown[],
     ) => Promise<QueryResult<T>>;
 
-    await recomputeWorkStats("cafe-1", query);
+    const runInTransaction: RunInTransaction = async (fn) => fn(query);
+
+    await recomputeWorkStats("cafe-1", 0, runInTransaction);
 
     const select = calls.find((c) => c.sql.includes("deleted_at is null"));
     expect(select).toBeDefined();

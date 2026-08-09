@@ -227,3 +227,13 @@
     fail-fast, single-transaction atomicity, and no-cafe path.
 - Rebased onto `main` (after PR #54) and resolved route import conflict.
 - All gates green: preflight, web typecheck/lint/150 tests/build.
+
+## 2026-08-13 (continued)
+
+- Pushed `fix/issue-24-checkin-likes-trigger` (PR #57): database trigger keeps
+  `checkins.likes_count` in sync with `checkin_likes` on insert/delete.
+  - `web/db/migrations/0004_checkin_likes_trigger.sql` with
+    `sync_checkin_likes_count()`, `trg_checkin_likes_sync`, supporting index,
+    and backfill.
+- Rebased onto `main` (after PR #58).
+- All gates green: preflight, web typecheck/lint/145 tests/build.

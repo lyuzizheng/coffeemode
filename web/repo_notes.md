@@ -252,3 +252,13 @@
 - `web/tests/images/complete-service.test.ts`
   - Service tests for fail-fast, cafe attach, atomicity, no-cafe path, and
     lazy default deps.
+
+## 2026-08-13 (issue #24 — likes_count trigger)
+
+- `web/db/migrations/0004_checkin_likes_trigger.sql`
+  - `sync_checkin_likes_count()` trigger on `checkin_likes` recomputes the
+    parent check-in's `likes_count` after every insert or delete.
+  - Covers the toggle CTE, cascade deletes, and future direct writes that
+    bypass the app helper.
+  - Adds `idx_checkin_likes_checkin_id` to support the count-by-checkin query.
+  - One-time backfill heals any pre-existing drift.

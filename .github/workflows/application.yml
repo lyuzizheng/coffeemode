@@ -2,9 +2,6 @@ name: Application
 
 on:
   pull_request:
-    paths:
-      - web/**
-      - .github/workflows/application.yml
   push:
     branches:
       - main

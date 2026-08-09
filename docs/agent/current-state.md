@@ -9,8 +9,8 @@ Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisi
 - Owner credential/account actions and worker deploys remain outstanding; see `docs/agent/pending-user-actions.md`.
 - Issue #23 (distributed Postgres token-bucket rate limiter) is merged.
 - Issue #25 (image completion service with atomic DB writes) is merged.
-- Issue #24 (checkin likes_count trigger) is implemented and pending review/merge.
-- Issue #27 (work_stats row locking) is pending review/merge.
+- Issue #24 (checkin likes_count trigger) is merged.
+- Issue #27 (work_stats row locking) is implemented and pending review/merge.
 - Next unblocked feature work is `map-home` (Apple MapKit full-screen map), which is blocked on the Apple Developer Program.
 
 ## What exists
@@ -22,6 +22,8 @@ web/db/migrations/       0001_init.sql — 4-table schema (spec 0001);
                          0004_checkin_likes_trigger.sql
 web/lib/auth/            Supabase server client (PKCE), profile upsert logic
 web/lib/db/              Postgres pool (server-side only), withTransaction, atomic like toggle
+web/lib/stats/           Recency-weighted `work_stats` aggregation with `incrementalUpdateWorkStats`
+                         and `recomputeWorkStats`; concurrent writes serialize via `FOR UPDATE`
 web/shared/              Shared primitives: UUID, auth helpers, places types/constants, image constants/validation
 web/app/auth/            signIn/signOut server actions, SignInButton/SignOutButton client components + OAuth callback route
 web/lib/images/          image-service client + sharp processor + 10 MB upload size propagation,

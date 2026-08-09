@@ -237,3 +237,18 @@
     and backfill.
 - Rebased onto `main` (after PR #58).
 - All gates green: preflight, web typecheck/lint/145 tests/build.
+
+## 2026-08-13 (continued again)
+
+- Pushed `fix/issue-27-work-stats-lock` (PR #56): serialize `work_stats`
+  read-modify-write with `SELECT ... FOR UPDATE`.
+  - `web/lib/stats/aggregate.ts` — `incrementalUpdateWorkStats` and
+    `recomputeWorkStats` run inside `withTransaction` and lock the cafe row
+    before any read or write.
+  - `RunInTransaction` is injectable for unit tests; pure helpers stay
+    unchanged.
+  - `web/tests/stats/aggregate.test.ts` updated to pass `runInTransaction` and
+    assert lock ordering.
+- Rebased onto `main` (after PR #57) and resolved the `incrementalUpdateWorkStats`
+  row-selection logic to keep the #51 fix (omitted/edited check-in handling).
+- All gates green: preflight, web typecheck/lint/147 tests/build.

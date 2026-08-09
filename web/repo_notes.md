@@ -262,3 +262,13 @@
     bypass the app helper.
   - Adds `idx_checkin_likes_checkin_id` to support the count-by-checkin query.
   - One-time backfill heals any pre-existing drift.
+
+## 2026-08-13 (issue #27 — work_stats row locking)
+
+- `web/lib/stats/aggregate.ts`
+  - `incrementalUpdateWorkStats` and `recomputeWorkStats` now run the full
+    read-compute-write inside `withTransaction` with `SELECT ... FOR UPDATE` on
+    the cafe row, held until COMMIT.
+  - `runInTransaction` is injectable (default lazily imports the shared pool),
+    keeping the pure math helpers unit-testable.
+  - `QueryFn` and `RunInTransaction` types exported for tests.

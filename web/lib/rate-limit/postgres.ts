@@ -38,9 +38,9 @@ WITH upsert AS (
   INSERT INTO rate_limits (key, tokens, window_ms, max_requests, reset_at, updated_at)
   VALUES (
     $1,
-    $4::int - 1,
+    $3::int - 1,
     $2::bigint,
-    $4::int,
+    $3::int,
     now() + make_interval(secs => $2::bigint / 1000.0),
     now()
   )
@@ -48,14 +48,14 @@ WITH upsert AS (
     tokens = CASE
       WHEN rate_limits.reset_at <= now()
         OR rate_limits.window_ms <> $2::bigint
-        OR rate_limits.max_requests <> $4::int
-      THEN $4::int - 1
+        OR rate_limits.max_requests <> $3::int
+      THEN $3::int - 1
       ELSE rate_limits.tokens - 1
     END,
     reset_at = CASE
       WHEN rate_limits.reset_at <= now()
         OR rate_limits.window_ms <> $2::bigint
-        OR rate_limits.max_requests <> $4::int
+        OR rate_limits.max_requests <> $3::int
       THEN now() + make_interval(secs => $2::bigint / 1000.0)
       ELSE rate_limits.reset_at
     END,

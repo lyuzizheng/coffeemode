@@ -136,14 +136,28 @@
 ### Rate limiting
 
 - `web/lib/rate-limit.ts`
-  - New in-memory token-bucket `RateLimiter` with TTL/cleanup, `getClientIdentifier`, and `rateLimitResponse`.
-  - Per-user id when signed in; anonymous fallback hashes `User-Agent` + IP headers (or `anon:local-dev` for local dev).
-  - Applied to `POST /api/images/upload`, `POST /api/images/complete`, `GET /api/places/search`, and `POST /api/places/resolve`.
-  - Returns `429 Too Many Requests` with `error: "rate_limited"` and a `Retry-After` header.
+  - Token-bucket `RateLimiter` (memory, dev/tests) plus `createRateLimiter()`
+    that selects a Postgres backend when `DATABASE_URL` is set (or
+    `RATE_LIMIT_BACKEND=postgres`).
+  - `getClientIdentifier` prefers `CF-Connecting-IP`, then `X-Real-IP`, then
+    rightmost `X-Forwarded-For`; hashes `User-Agent` + IP for anonymous clients
+    and falls back to `anon:local-dev` locally.
+  - `rateLimitResponse` returns `429 Too Many Requests` with `error:
+    "rate_limited"` and a `Retry-After` header.
+  - Applied to `POST /api/images/upload`, `POST /api/images/complete`,
+    `GET /api/places/search`, and `POST /api/places/resolve`.
+
+- `web/lib/rate-limit/postgres.ts`
+  - `PostgresRateLimiter`: one atomic UPSERT per `check()`, fail-open on DB
+    errors, opportunistic expired-row cleanup, and throttled error logging.
+
+- `web/db/migrations/0003_rate_limits.sql`
+  - `rate_limits` table for the distributed token-bucket backend.
 
 ### Tests
 
-- `web/tests/rate-limit.test.ts` — unit tests for the limiter, client identifier, and route-level 429 behavior.
+- `web/tests/rate-limit.test.ts` — unit tests for the in-memory limiter, client identifier, and route-level 429 behavior.
+- `web/tests/rate-limit-postgres.test.ts` — Postgres backend, backend selection, and fail-open behavior.
 - `web/tests/places.test.ts` — updated for radius cap and maps URL domain validation.
 - `web/tests/query/persist-options.test.ts` — query persistence buster and allow-list tests.
 - `web/tests/images/image-service-client.test.ts` — optional size forwarding test.

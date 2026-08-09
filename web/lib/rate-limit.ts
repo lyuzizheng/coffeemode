@@ -25,13 +25,6 @@ export const PLACES_RATE_LIMIT = {
 /**
  * In-memory token-bucket rate limiter.
  *
- * Intended for per-user/per-IP caps on API routes. Buckets are keyed by an
- * arbitrary string (e.g. `images:user:${id}`). A cleanup pass runs every
- * `cleanupEvery` checks to prune stale buckets and prevent unbounded growth.
- */
-/**
- * In-memory token-bucket rate limiter.
- *
  * Intended for per-user/per-IP caps on API routes in single-process or
  * dev setups. For horizontal scale use the Postgres backend — see
  * `createRateLimiter()` and `web/lib/rate-limit/postgres.ts` (issue #23).

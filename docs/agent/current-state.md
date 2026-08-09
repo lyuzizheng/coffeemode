@@ -7,6 +7,7 @@ Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisi
 ## Active focus
 
 - Owner credential/account actions and worker deploys remain outstanding; see `docs/agent/pending-user-actions.md`.
+- Issue #23 (distributed Postgres token-bucket rate limiter) is implemented and pending review/merge.
 - Next unblocked feature work is `map-home` (Apple MapKit full-screen map), which is blocked on the Apple Developer Program.
 
 ## What exists
@@ -27,7 +28,8 @@ image-service/           Image upload microservice (Cloudflare Worker + R2 presi
 web/lib/places/          Server-only POI service client (search/resolve/get) + maps URL validator
 web/app/api/places/      search + resolve route handlers with rate limiting, 10 km radius cap,
                          and maps URL domain validation
-web/lib/rate-limit.ts    In-memory token-bucket rate limiter + client identifier helper
+web/lib/rate-limit.ts    Token-bucket rate limiter: in-memory (dev/tests) or Postgres-backed
+                         (production/horizontal scale) with a shared client identifier helper
 web/next.config.ts       Long immutable Cache-Control headers for static/PWA assets
 web/app/sw.ts            Serwist runtime cache (CacheFirst for immutable assets, NetworkOnly for
                          dynamic pages and API routes)
@@ -65,7 +67,7 @@ _archive-coffeemode-backend/   old Java app — being dropped
 - Supabase dashboard still needs Apple/Google OAuth provider config
 - Session-refresh proxy implemented (`web/proxy.ts`); first protected route can now rely on it
 - Postgres pool tuned with configurable `max`, idle/connection timeouts, error handling, and a graceful shutdown hook registered via Next.js `instrumentation.ts`
-- Rate limiter is in-memory / per-process; replace with a Redis/KV-backed limiter before horizontal scaling
+- Postgres-backed rate limiter is ready for production; `RATE_LIMIT_BACKEND` environment variable selects backend
 - `next build` warns about custom Cache-Control for `/_next/static/:path*` — intentional for production hashed chunks
 - `maps_share_url` host validation, 10 km nearby-search cap, and 10 MB image-upload cap are active
 - R2 lifecycle cleanup for abandoned `original/` objects requires a scheduled Worker/script (metadata rules cannot filter)

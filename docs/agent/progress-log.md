@@ -190,3 +190,25 @@
   - `cd image-service && npm run typecheck && npm test` (14 tests)
   - `cd poi-service && npm run typecheck && npm test` (44 tests)
 - Merged to `main` as PR #22.
+
+## 2026-08-12
+
+- Pushed `fix/issue-23-rate-limit-backend` (PR #54): distributed Postgres
+  token-bucket rate limiter.
+  - `web/lib/rate-limit/postgres.ts` — atomic UPSERT, fail-open on DB errors,
+    opportunistic expired-row cleanup.
+  - `web/lib/rate-limit.ts` — `createRateLimiter()` picks Postgres when
+    `DATABASE_URL` is set, memory otherwise; lazy import keeps the `pg` graph
+    out of dev/test unless used.
+  - `getClientIdentifier()` prefers `CF-Connecting-IP`, falls back to
+    `X-Real-IP` / rightmost `X-Forwarded-For`, and hashes UA + IP for
+    anonymous clients.
+  - Updated `POST /api/images/upload`, `POST /api/images/complete`,
+    `GET /api/places/search`, and `POST /api/places/resolve` to `await`
+    `rateLimiter.check()`.
+  - Added `web/db/migrations/0003_rate_limits.sql`.
+  - Review fix: `CHECK_SQL` parameter placeholders corrected (`$3` for
+    `max_requests`).
+  - `web/tests/rate-limit-postgres.test.ts` + updated
+    `web/tests/rate-limit.test.ts`.
+- All gates green: preflight, web typecheck/lint/145 tests/build.

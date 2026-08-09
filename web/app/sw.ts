@@ -4,7 +4,7 @@
 import { defaultCache } from "@serwist/turbopack/worker";
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
 import { CacheFirst, ExpirationPlugin, NetworkFirst, NetworkOnly, Serwist } from "serwist";
-import { R2_PUBLIC_HOST } from "@/lib/images/constants";
+import { RUNTIME_RULES, type CacheStrategy, type SwRule } from "@/lib/sw-rules";
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -14,6 +14,31 @@ declare global {
 
 declare const self: ServiceWorkerGlobalScope;
 
+/** Map a plain rule descriptor to a serwist handler instance. */
+function toHandler(rule: SwRule): NetworkOnly | NetworkFirst | CacheFirst {
+  const cache = rule.cache;
+  const plugins =
+    cache && cache.maxEntries !== undefined
+      ? [
+          new ExpirationPlugin({
+            maxEntries: cache.maxEntries,
+            ...(cache.maxAgeSeconds !== undefined
+              ? { maxAgeSeconds: cache.maxAgeSeconds }
+              : {}),
+          }),
+        ]
+      : undefined;
+  const options = cache ? { cacheName: cache.cacheName, ...(plugins ? { plugins } : {}) } : undefined;
+
+  switch (rule.handler as CacheStrategy) {
+    case "network-only":
+      return new NetworkOnly();
+    case "network-first":
+      return new NetworkFirst(options);
+    case "cache-first":
+      return new CacheFirst(options);
+  }
+}
 
 const serwist = new Serwist({
   precacheEntries: self.__SW_MANIFEST,
@@ -21,84 +46,11 @@ const serwist = new Serwist({
   clientsClaim: true,
   navigationPreload: true,
   runtimeCaching: [
-    // The home page is dynamic (reads cookies); never cache it. The offline
-    // fallback page handles navigation when the network is unavailable.
-    {
-      matcher: ({ url: { pathname } }) => pathname === "/",
-      method: "GET",
-      handler: new NetworkOnly(),
-    },
-    // Service worker and manifest must always be fresh.
-    {
-      matcher: ({ url: { pathname } }) =>
-        pathname === "/serwist/sw.js" || pathname === "/manifest.webmanifest",
-      method: "GET",
-      handler: new NetworkOnly(),
-    },
-    // Auth and uploads must always be fresh.
-    {
-      matcher: ({ url: { pathname } }) => pathname.startsWith("/auth/"),
-      method: "GET",
-      handler: new NetworkOnly(),
-    },
-    {
-      matcher: ({ url: { pathname } }) => pathname.startsWith("/api/images/"),
-      method: "GET",
-      handler: new NetworkOnly(),
-    },
-    // The health ping and POI proxy should not be double-cached.
-    {
-      matcher: ({ url: { pathname } }) =>
-        pathname.startsWith("/api/health") || pathname.startsWith("/api/places/"),
-      method: "GET",
-      handler: new NetworkOnly(),
-    },
-    // Cafe/check-in data is allowed to be stale for a short time.
-    {
-      matcher: ({ url: { pathname } }) =>
-        pathname.startsWith("/api/cafes/") || pathname.startsWith("/api/checkins/"),
-      method: "GET",
-      handler: new NetworkFirst({
-        cacheName: "api-cafe-data",
-        plugins: [new ExpirationPlugin({ maxAgeSeconds: 5 * 60 })],
-      }),
-    },
-    // R2 image variants are immutable once processed.
-    {
-      matcher: ({ url }) => url.hostname === R2_PUBLIC_HOST,
-      method: "GET",
-      handler: new NetworkFirst({
-        cacheName: "r2-images",
-        plugins: [new ExpirationPlugin({ maxEntries: 200, maxAgeSeconds: 30 * 24 * 60 * 60 })],
-      }),
-    },
-    // Dynamic routes that render user-specific data must always be fresh.
-    {
-      matcher: ({ url: { pathname }, request }) =>
-        (pathname.startsWith("/cafes/") || pathname === "/profile") &&
-        (request.mode === "navigate" || request.destination === "document"),
-      method: "GET",
-      handler: new NetworkOnly(),
-    },
-    // Immutable build assets.
-    {
-      matcher: ({ url: { pathname } }) => pathname.startsWith("/_next/static/"),
-      method: "GET",
-      handler: new CacheFirst({
-        cacheName: "next-static-assets",
-        plugins: [new ExpirationPlugin({ maxEntries: 200, maxAgeSeconds: 365 * 24 * 60 * 60 })],
-      }),
-    },
-    // Immutable app icons and fonts.
-    {
-      matcher: ({ url: { pathname } }) =>
-        pathname.startsWith("/icons/") || pathname.startsWith("/fonts/"),
-      method: "GET",
-      handler: new CacheFirst({
-        cacheName: "static-assets",
-        plugins: [new ExpirationPlugin({ maxEntries: 100, maxAgeSeconds: 365 * 24 * 60 * 60 })],
-      }),
-    },
+    ...RUNTIME_RULES.map((rule) => ({
+      matcher: rule.matcher,
+      method: rule.method,
+      handler: toHandler(rule),
+    })),
     ...defaultCache,
   ],
   fallbacks: {

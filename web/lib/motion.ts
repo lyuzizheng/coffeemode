@@ -5,7 +5,7 @@
  * flow. Every consumer must respect prefers-reduced-motion — use the
  * `useReducedMotion` hook from framer-motion and the helpers below.
  */
-import type { Transition, Variants } from "framer-motion";
+import type { Transition } from "framer-motion";
 
 /** Durations in seconds — mirror of spec tokens (feedback/state/transition/slow). */
 export const duration = {
@@ -45,23 +45,4 @@ export const cardInteraction = {
   whileTap: { scale: 0.985, transition: { duration: duration.feedback, ease: ease.default } },
 } as const;
 
-/** Enter slower than exit — never the reverse. */
-export const fadeUp: Variants = {
-  hidden: { opacity: 0, y: 12 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: duration.transition, ease: ease.default },
-  },
-  exit: {
-    opacity: 0,
-    y: 8,
-    transition: { duration: duration.feedback, ease: ease.exit },
-  },
-};
-
 /** Staggered container for lists — 40ms between children, snappy reveal. */
-export const staggerContainer: Variants = {
-  hidden: {},
-  visible: { transition: { staggerChildren: 0.04, delayChildren: 0.05 } },
-};

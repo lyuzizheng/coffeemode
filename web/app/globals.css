@@ -44,6 +44,10 @@
   --text-xl--line-height: 2rem;
   --text-2xl: 2rem;
   --text-2xl--line-height: 2.5rem;
+  /* Display ceiling — the hero poster only. Nothing above this exists on
+     purpose: the app scale stops at marketing sizes (review 2026-08-09 D9). */
+  --text-3xl: 2.5rem;
+  --text-3xl--line-height: 3rem;
 
   /* Warm-tinted shadows — elevation is tonal + borders first, shadows are a
      whisper. Tinted with espresso ink (oklch 25% 0.03 50), never pure black. */
@@ -306,4 +310,12 @@ body {
 .tnum {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
+}
+
+/* Visible keyboard focus on bespoke controls (theme toggle, chips, swatches).
+   --focus mirrors the accent token in both themes; the offset keeps the ring
+   clear of rounded corners. (Review 2026-08-09 D2.) */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }

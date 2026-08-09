@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 import { getQueryClient } from "@/lib/query/client";
 import { persistOptions } from "@/lib/query/persist-options";
 import { idbPersister } from "@/lib/query/persister";
+import { SW_URL } from "@/lib/sw-rules";
 
 export function Providers({
   children,
@@ -42,7 +43,7 @@ export function Providers({
       >
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <SerwistProvider
-            swUrl="/serwist/sw.js"
+            swUrl={SW_URL}
             // Disable the service worker in development to avoid stale caches
             // while iterating on the UI. The route handler is still generated.
             disable={process.env.NODE_ENV === "development"}

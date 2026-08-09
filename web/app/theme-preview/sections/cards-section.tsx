@@ -2,7 +2,7 @@
 
 import { SearchField } from "@heroui/react";
 import { useTranslations } from "next-intl";
-import { CafeCard, Section } from "../shared";
+import { CafeCard, DEMO_SCORE, Section } from "../shared";
 
 export function CardsSection() {
   const t = useTranslations("themePreview.cards");
@@ -44,7 +44,7 @@ export function CardsSection() {
               </div>
             </div>
             <div className="tnum font-display text-lg font-extrabold text-accent">
-              87
+              {DEMO_SCORE}
             </div>
           </div>
         </div>

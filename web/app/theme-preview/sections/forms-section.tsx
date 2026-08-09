@@ -1,54 +1,15 @@
 "use client";
 
-import {
-  Chip,
-  Input,
-  Label,
-  SearchField,
-  Slider,
-  Switch,
-  TextField,
-} from "@heroui/react";
+import { Chip, Input, Label, SearchField, Switch, TextField } from "@heroui/react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
-import { Section } from "../shared";
-
-function ScoreSlider({
-  label,
-  hint,
-  defaultValue,
-}: {
-  label: string;
-  hint: string;
-  defaultValue: number;
-}) {
-  const [value, setValue] = useState(defaultValue);
-  return (
-    <div className="rounded-xl border border-border bg-surface p-5">
-      <Slider
-        value={value}
-        onChange={(v) => setValue(Array.isArray(v) ? v[0] : v)}
-        minValue={0}
-        maxValue={100}
-        aria-label={label}
-      >
-        <div className="flex items-baseline justify-between">
-          <Label>{label}</Label>
-          <Slider.Output className="tnum font-mono text-md font-medium text-accent-soft-foreground" />
-        </div>
-        <Slider.Track>
-          <Slider.Fill />
-          <Slider.Thumb />
-        </Slider.Track>
-      </Slider>
-      <p className="mt-2 text-xs text-muted">{hint}</p>
-    </div>
-  );
-}
+import { ScoreSlider, Section } from "../shared";
 
 export function FormsSection() {
   const t = useTranslations("themePreview.forms");
   const [openOnly, setOpenOnly] = useState(true);
+  const [wifiScore, setWifiScore] = useState(72);
+  const [coffeeScore, setCoffeeScore] = useState(91);
   return (
     <Section index="05" title={t("title")} desc={t("desc")}>
       <div className="grid gap-6 lg:grid-cols-2">
@@ -96,12 +57,14 @@ export function FormsSection() {
           <ScoreSlider
             label={t("wifi_label")}
             hint={t("slider_hint")}
-            defaultValue={72}
+            value={wifiScore}
+            onChange={setWifiScore}
           />
           <ScoreSlider
             label={t("coffee_label")}
             hint={t("slider_hint")}
-            defaultValue={91}
+            value={coffeeScore}
+            onChange={setCoffeeScore}
           />
         </div>
       </div>

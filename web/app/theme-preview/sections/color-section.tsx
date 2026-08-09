@@ -21,7 +21,6 @@ const BRAND_TOKENS = [
   "accent",
   "accent-hover",
   "accent-soft",
-  "accent-soft-foreground",
   "secondary",
   "secondary-foreground",
 ];

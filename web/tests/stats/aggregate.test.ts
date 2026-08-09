@@ -9,6 +9,7 @@ import {
   computeUserContribution,
   emptyWorkStats,
   incrementalUpdateWorkStats,
+  recomputeWorkStats,
 } from "@/lib/stats/aggregate";
 
 function makeCheckIn(overrides: Partial<CheckIn> & { visited_at: string }): CheckIn {
@@ -292,5 +293,86 @@ describe("incrementalUpdateWorkStats", () => {
     expect(written.n_checkins).toBe(2);
     expect(written.n_users).toBe(1);
     expect(written.dims.overall.n).toBe(1);
+  });
+});
+
+describe("recomputeWorkStats", () => {
+  it("recomputes from all non-deleted check-ins and writes the result", async () => {
+    const first = makeCheckIn({
+      id: "chk-1",
+      scores: fullScores,
+      visited_at: "2026-08-01T10:00:00Z",
+    });
+    const second = makeCheckIn({
+      id: "chk-2",
+      scores: repeatScores,
+      min_spend: "drink",
+      max_stay: "unlimited",
+      visited_at: "2026-08-02T10:00:00Z",
+    });
+
+    const calls: { sql: string; params: unknown[] }[] = [];
+    const query = vi.fn(async (sql: string, params?: unknown[]) => {
+      calls.push({ sql, params: params ?? [] });
+      if (sql.includes("from checkins")) {
+        return {
+          rows: [first, second],
+          rowCount: 2,
+        } as unknown as QueryResult<CheckIn>;
+      }
+      return { rows: [], rowCount: 0 } as unknown as QueryResult<Record<string, unknown>>;
+    }) as unknown as <T extends Record<string, unknown>>(
+      text: string,
+      params?: unknown[],
+    ) => Promise<QueryResult<T>>;
+
+    await recomputeWorkStats("cafe-1", query);
+
+    const updateCall = calls.find((c) => c.sql.includes("update cafes"));
+    expect(updateCall).toBeDefined();
+    expect(updateCall!.params[1]).toBe("cafe-1");
+    const written = JSON.parse(updateCall!.params[0] as string) as ReturnType<
+      typeof computeCafeStats
+    >;
+    expect(written.n_checkins).toBe(2);
+    expect(written.n_users).toBe(1);
+    // soft-deleted rows are excluded by the SQL, and the recompute path
+    // must not carry policy answers for rows it did not see.
+    expect(written.policies.min_spend.drink).toBe(1);
+    expect(written.policies.max_stay.unlimited).toBe(1);
+  });
+
+  it("recompute excludes soft-deleted rows via the query filter", async () => {
+    const kept = makeCheckIn({
+      id: "chk-1",
+      scores: fullScores,
+      visited_at: "2026-08-01T10:00:00Z",
+    });
+
+    const calls: { sql: string; params: unknown[] }[] = [];
+    const query = vi.fn(async (sql: string, params?: unknown[]) => {
+      calls.push({ sql, params: params ?? [] });
+      if (sql.includes("from checkins")) {
+        // The SQL filters deleted_at is null; the mock honors it.
+        return {
+          rows: params?.[0] === "cafe-1" ? [kept] : [],
+          rowCount: 1,
+        } as unknown as QueryResult<CheckIn>;
+      }
+      return { rows: [], rowCount: 0 } as unknown as QueryResult<Record<string, unknown>>;
+    }) as unknown as <T extends Record<string, unknown>>(
+      text: string,
+      params?: unknown[],
+    ) => Promise<QueryResult<T>>;
+
+    await recomputeWorkStats("cafe-1", query);
+
+    const select = calls.find((c) => c.sql.includes("deleted_at is null"));
+    expect(select).toBeDefined();
+    const updateCall = calls.find((c) => c.sql.includes("update cafes"));
+    const written = JSON.parse(updateCall!.params[0] as string) as ReturnType<
+      typeof computeCafeStats
+    >;
+    expect(written.n_checkins).toBe(1);
   });
 });

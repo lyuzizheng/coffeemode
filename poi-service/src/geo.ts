@@ -9,7 +9,7 @@ export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: numb
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(a));
+  return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(Math.min(1, a)));
 }
 
 /** Approx km per degree of latitude (constant enough for bounding boxes). */
@@ -18,5 +18,7 @@ export function kmPerDegLat(): number {
 }
 
 export function kmPerDegLng(lat: number): number {
-  return 111.32 * Math.cos((lat * Math.PI) / 180);
+  // Cap |lat| slightly below 90° to avoid cos → 0 and division by zero in callers.
+  const clamped = Math.max(-89.9999, Math.min(89.9999, lat));
+  return 111.32 * Math.cos((clamped * Math.PI) / 180);
 }

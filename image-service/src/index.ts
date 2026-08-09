@@ -1,6 +1,8 @@
 import type { CompleteRequest, CompleteResponse, Env, UploadResponse } from "./types";
 import { authorized, internalError, json, unauthorized } from "./auth";
-import { isValidUUID, sanitizeMetadata } from "./validate";
+import { isValidUUID } from "../../web/shared/uuid";
+import { validateUploadSize } from "../../web/shared/images/validation";
+import { sanitizeMetadata } from "./validate";
 import { presignedGetUrl, presignedPutUrl, publicUrl, ttlSeconds } from "./r2";
 import { IMMUTABLE_CACHE_CONTROL, MAX_UPLOAD_BYTES } from "./constants";
 
@@ -37,24 +39,16 @@ export async function handleUpload(request: Request, env: Env): Promise<Response
     return error("invalid_request", "invalid JSON body");
   }
 
-  // `size` is REQUIRED (review 2026-08-09): an omitted size produced an
-  // uncapped presigned PUT, because Content-Length is only signed when a
-  // size is declared. The cap must hold server-side, not by caller honesty.
-  // Size must be a positive integer (bytes).
-  const maybeSize = (body as Record<string, unknown>).size;
-  if (maybeSize === undefined) {
-    return error("invalid_request", "size (number, bytes) is required");
+  // `size` is REQUIRED: an omitted size produced an uncapped presigned PUT,
+  // because Content-Length is only signed when a size is declared. The cap
+  // must hold server-side, not by caller honesty. Rules shared with the web
+  // upload route via web/shared (issue #26).
+  const sizeCheck = validateUploadSize((body as Record<string, unknown>).size);
+  if (!sizeCheck.ok) {
+    const code = sizeCheck.code === "size_exceeded" ? "size_exceeded" : "invalid_request";
+    return error(code, sizeCheck.error);
   }
-  if (typeof maybeSize !== "number" || !Number.isFinite(maybeSize) || maybeSize <= 0 || !Number.isInteger(maybeSize)) {
-    return error("invalid_request", "size must be a positive integer (bytes)");
-  }
-  if (maybeSize > MAX_UPLOAD_BYTES) {
-    return error(
-      "size_exceeded",
-      `upload size ${maybeSize} exceeds maximum allowed ${MAX_UPLOAD_BYTES} bytes`,
-    );
-  }
-  const size = maybeSize;
+  const size = sizeCheck.size;
 
   const imageUuid = crypto.randomUUID().toLowerCase();
   const key = makeKeys(imageUuid).original;

@@ -1,10 +1,11 @@
 /** Shared limits and TTLs for the POI cache service (single source of truth). */
 
-/** Default search radius in kilometres for POI searches. */
-export const DEFAULT_SEARCH_RADIUS_KM = 50;
+import {
+  DEFAULT_SEARCH_RADIUS_KM,
+  MAX_SEARCH_RADIUS_KM,
+} from "../../web/shared/places/constants";
 
-/** Upper bound for the /poi/search radius (km) — keeps bounding boxes sane. */
-export const MAX_SEARCH_RADIUS_KM = 200;
+export { DEFAULT_SEARCH_RADIUS_KM, MAX_SEARCH_RADIUS_KM };
 
 /** Maximum number of rows /poi/search will ever return. */
 export const SEARCH_RESULT_LIMIT = 100;

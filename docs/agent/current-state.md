@@ -16,7 +16,7 @@ web/                     Next.js 16 + HeroUI v3 + Tailwind v4 + next-intl (the a
 web/db/migrations/       0001_init.sql — 4-table schema (spec 0001)
 web/lib/auth/            Supabase server client (PKCE), profile upsert logic
 web/lib/db/              Postgres pool (server-side only), withTransaction, atomic like toggle
-web/lib/validation.ts    Shared UUID validator
+web/shared/              Shared primitives: UUID, auth helpers, places types/constants, image constants/validation
 web/app/auth/            signIn/signOut server actions, SignInButton/SignOutButton client components + OAuth callback route
 web/lib/images/          image-service client + sharp processor + 10 MB upload size propagation
 web/app/api/images/      upload + complete route handlers with per-user rate limiting
@@ -31,7 +31,7 @@ web/lib/rate-limit.ts    In-memory token-bucket rate limiter + client identifier
 web/next.config.ts       Long immutable Cache-Control headers for static/PWA assets
 web/app/sw.ts            Serwist runtime cache (CacheFirst for immutable assets, NetworkOnly for
                          dynamic pages and API routes)
-web/types/places.ts      POI types shared with the worker
+web/shared/places/types.ts  POI types shared with the worker
 docs/specs/              0001 Next.js rewrite, 0002 design system, 0003 testing/CI
 docs/agent/              slices manifest (machine-checked), this file, protocols
 .agents/                 Agent workflows, scripts, delegated design prompts

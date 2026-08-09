@@ -17,7 +17,9 @@
  *      keeps objects whose `targetType` metadata is set, and deletes the rest
  *      after 7 days. The cleanup Worker should use the same R2 credentials.
  */
-export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10 MB
+import { MAX_UPLOAD_BYTES } from "../../web/shared/images/constants";
+
+export { MAX_UPLOAD_BYTES };
 
 /** Cache-Control for immutable WebP variants served through Cloudflare. */
 export const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";

@@ -144,7 +144,9 @@ export async function d1SearchPOIs(
     return [];
   }
 
-  const sql = `SELECT * FROM pois WHERE ${where.join(" AND ")} ORDER BY name ASC LIMIT ${SEARCH_RESULT_LIMIT}`;
+  // Pull more than the final cap because the bounding-box prefilter is loose;
+  // the exact haversine filter and sort happen in memory.
+  const sql = `SELECT * FROM pois WHERE ${where.join(" AND ")} ORDER BY name ASC LIMIT ${SEARCH_RESULT_LIMIT * 10}`;
   const { results } = await db.prepare(sql).bind(...binds).all<POIRow>();
 
   let hits: POISearchHit[] = results.map((r) => normalizeRow(r));
@@ -154,5 +156,5 @@ export async function d1SearchPOIs(
       .filter((h) => h.distance_km! <= radiusKm)
       .sort((a, b) => a.distance_km! - b.distance_km!);
   }
-  return hits;
+  return hits.slice(0, SEARCH_RESULT_LIMIT);
 }

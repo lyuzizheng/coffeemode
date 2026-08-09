@@ -125,6 +125,19 @@
 - Recommended next focus: D1 (Postgres pool tuning) — foundational for stability, no external credentials required, and a prerequisite for safer database usage when building cafe/check-in APIs.
 - Updated `docs/agent/current-state.md` and `docs/agent/progress-log.md` to reflect Part C merged and D1 as the active focus.
 
+## 2026-08-10 (shared package)
+
+- Pushed `fix/issue-26-shared-common` (PR #53): created `web/shared/` as the
+  single source for POI types, UUID validation, worker auth helpers
+  (`extractBearer`, `safeEqual`, `json`/`unauthorized`/`internalError`),
+  `MAX_UPLOAD_BYTES`, and `validateUploadSize`. Web imports via `@shared/*`;
+  workers import via relative paths.
+- Removed duplicated `web/lib/validation.ts`, `web/types/places.ts`, per-package
+  UUID regexes, per-package auth implementations, and inline size validation.
+- Aligned `DEFAULT_SEARCH_RADIUS_KM` to the product default of 10 km.
+- All gates green: `preflight.sh`, `web` typecheck/lint/tests/build,
+  `poi-service` typecheck/tests, `image-service` typecheck/tests.
+
 ## 2026-08-11
 
 - Implemented the remaining Phase 1 backlog on `feat/impl-phase1-remainder`:

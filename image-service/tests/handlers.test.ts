@@ -92,7 +92,8 @@ describe("handleUpload", () => {
     expect(response.status).toBe(400);
     const data = (await response.json()) as { error: string; message: string };
     expect(data.error).toBe("size_exceeded");
-    expect(data.message).toContain("exceeds maximum");
+    // Unified message shared with the web route via web/shared (issue #26).
+    expect(data.message).toContain(`at most ${MAX_UPLOAD_BYTES} bytes`);
   });
 
   it("signs Content-Length when size is provided", async () => {

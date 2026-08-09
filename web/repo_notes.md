@@ -161,7 +161,7 @@
   - New atomic `toggleCheckInLike(userId, checkinId)` server-only helper.
   - Uses a single CTE transaction to delete or insert a `checkin_likes` row and recompute `checkins.likes_count`, guarding against soft-deleted check-ins.
 
-- `web/lib/validation.ts`
+- `web/shared/uuid.ts`
   - New shared `isValidUUID` helper; replaced the local duplicate in `web/app/api/images/complete/route.ts`.
 
 - `web/app/auth/actions.ts`

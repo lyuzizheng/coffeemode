@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { POST } from "@/app/api/images/upload/route";
-import { MAX_UPLOAD_BYTES } from "@/lib/images/constants";
+import { MAX_UPLOAD_BYTES } from "@shared/images/constants";
 
 const getUserMock = vi.fn();
 const requestUploadUrlMock = vi.fn();
@@ -56,6 +56,7 @@ describe("POST /api/images/upload", () => {
   it("rejects size above MAX_UPLOAD_BYTES", async () => {
     const res = await POST(makeRequest({ size: MAX_UPLOAD_BYTES + 1 }));
     expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ error: "size_exceeded" });
     expect(requestUploadUrlMock).not.toHaveBeenCalled();
   });
 

@@ -2,9 +2,6 @@ name: POI Service
 
 on:
   pull_request:
-    paths:
-      - poi-service/**
-      - .github/workflows/poi-service.yml
   push:
     branches:
       - main

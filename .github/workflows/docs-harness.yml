@@ -2,12 +2,6 @@ name: Docs harness
 
 on:
   pull_request:
-    paths:
-      - AGENTS.md
-      - .agents/**
-      - .codex/**
-      - docs/**
-      - .github/workflows/docs-harness.yml
   push:
     branches:
       - main

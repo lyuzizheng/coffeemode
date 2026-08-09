@@ -2,9 +2,6 @@ name: Image Service
 
 on:
   pull_request:
-    paths:
-      - image-service/**
-      - .github/workflows/image-service.yml
   push:
     branches:
       - main

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { isValidUUID } from "@/lib/validation";
+import { isValidUUID } from "@shared/uuid";
 import { withTransaction } from "./postgres";
 import type { PoolClient } from "pg";
 

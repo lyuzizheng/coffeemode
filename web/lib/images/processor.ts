@@ -2,7 +2,17 @@ import "server-only";
 
 import sharp from "sharp";
 import type { OutputInfo } from "sharp";
-import { MAX_ORIGINAL_DOWNLOAD_BYTES } from "./constants";
+import { MAX_UPLOAD_BYTES } from "@shared/images/constants";
+
+/**
+ * Download guard for the image processor (bytes). Uploads are capped at
+ * `MAX_UPLOAD_BYTES` (web/shared), but the processor must not trust
+ * that alone: it streams the R2 original and aborts once this many bytes
+ * arrive. The small headroom over the upload cap keeps legitimate uploads
+ * from failing on rounding while still bounding memory to ~10 MB per
+ * request.
+ */
+const MAX_ORIGINAL_DOWNLOAD_BYTES = MAX_UPLOAD_BYTES + 512 * 1024;
 import type { ProcessUrls } from "./image-service-client";
 
 export interface ProcessedImage {

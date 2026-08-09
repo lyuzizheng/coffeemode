@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
-import { MAX_UPLOAD_BYTES } from "@/lib/images/constants";
 import { ImageServiceError, requestUploadUrl } from "@/lib/images/image-service-client";
+import { validateUploadSize } from "@shared/images/validation";
 import {
   IMAGE_RATE_LIMIT,
   getClientIdentifier,
@@ -9,23 +9,23 @@ import {
   rateLimiter,
 } from "@/lib/rate-limit";
 
-function parseSize(body: unknown): { size: number } | { error: string } {
+function parseSize(
+  body: unknown,
+): { size: number } | { error: string; code: string } {
   if (!body || typeof body !== "object") {
-    return { error: "size (number, bytes) is required" };
+    return { error: "size (number, bytes) is required", code: "invalid_request" };
   }
-  const maybeSize = (body as Record<string, unknown>).size;
-  if (maybeSize === undefined) {
-    // Required since review 2026-08-09: an omitted size produced an uncapped
-    // presigned PUT (Content-Length is only signed when a size is given).
-    return { error: "size (number, bytes) is required" };
+  // Rules shared with image-service via web/shared (issue #26):
+  // `size` is REQUIRED — an omitted size produced an uncapped presigned PUT
+  // (Content-Length is only signed when a size is given).
+  const check = validateUploadSize((body as Record<string, unknown>).size);
+  if (!check.ok) {
+    return {
+      error: check.error,
+      code: check.code === "size_exceeded" ? "size_exceeded" : "invalid_request",
+    };
   }
-  if (typeof maybeSize !== "number" || !Number.isFinite(maybeSize) || maybeSize <= 0 || !Number.isInteger(maybeSize)) {
-    return { error: "size must be a positive integer (bytes)" };
-  }
-  if (maybeSize > MAX_UPLOAD_BYTES) {
-    return { error: `size must be at most ${MAX_UPLOAD_BYTES} bytes` };
-  }
-  return { size: maybeSize };
+  return { size: check.size };
 }
 
 /**
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
 
   const parsed = parseSize(body);
   if ("error" in parsed) {
-    return NextResponse.json({ error: "invalid_request", message: parsed.error }, { status: 400 });
+    return NextResponse.json({ error: parsed.code, message: parsed.error }, { status: 400 });
   }
 
   const clientId = getClientIdentifier(request, user);

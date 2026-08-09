@@ -1,23 +1,14 @@
-/** Shared types for the POI cache service. */
+/**
+ * POI cache service types.
+ *
+ * POI / POISource / POISearchHit come from `web/shared/src/places/types.ts`
+ * — the single source of truth shared with the web app (issue #26).
+ * This file keeps only environment-specific structural interfaces.
+ */
 
-export type POISource = "google" | "apple";
+import type { POI, POISearchHit, POISource } from "../../web/shared/places/types";
 
-/** Normalized POI record — the D1 durable store shape. */
-export interface POI {
-  place_id: string;
-  source: POISource;
-  name: string;
-  lat: number;
-  lng: number;
-  address: string | null;
-  types: string[];
-  business_status: string | null;
-  /** Raw JSON of Google regularOpeningHours (or null). */
-  hours_json: string | null;
-  /** Photo references (Google photo.name values / Apple refs). */
-  photo_refs: string[];
-  fetched_at: string; // ISO 8601
-}
+export type { POI, POISearchHit, POISource };
 
 /** Minimal structural interfaces so tests can inject fakes
  *  while real Cloudflare bindings satisfy them at runtime. */
@@ -51,8 +42,4 @@ export interface Env {
 
 export interface Deps {
   fetchImpl: typeof fetch;
-}
-
-export interface POISearchHit extends POI {
-  distance_km?: number;
 }

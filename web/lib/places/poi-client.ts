@@ -13,7 +13,7 @@ import { WORKER_TIMEOUT_MS } from "@/lib/http";
  *   POI_SERVICE_TOKEN  shared secret the worker authenticates with
  */
 
-import type { POI, POISearchResponse } from "@/types/places";
+import type { POI, POISearchResponse } from "@shared/places/types";
 
 export class POIServiceError extends Error {
   constructor(

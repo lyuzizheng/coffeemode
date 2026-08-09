@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
-import { isValidUUID } from "@/lib/validation";
+import { isValidUUID } from "@shared/uuid";
 import { getProcessUrls } from "@/lib/images/image-service-client";
 import { processImage } from "@/lib/images/processor";
 import { query } from "@/lib/db/postgres";

@@ -157,7 +157,7 @@
   - `cd web && npm run verify` (98 tests, typecheck, lint, build)
   - `cd image-service && npm run typecheck && npm test` (14 tests)
   - `cd poi-service && npm run typecheck && npm test` (44 tests)
-- Branch `feat/impl-phase1-remainder` is ready for PR / merge.
+- Merged to `main` as PR #22.
 
 ## 2026-08-08
 

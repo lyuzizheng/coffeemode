@@ -2,12 +2,12 @@
 
 ## Phase
 
-Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisions-and-backlog.md` is in progress. Parts A–C and the remaining Phase 1 backlog (D1, D4, D7, A2) have been implemented on `feat/impl-phase1-remainder` and are awaiting independent review / PR. Part A (design tokens, i18n, theme-preview prototypes), Part B (auth proxy, schema migration, check-in/profile types, `work_stats` aggregation), and Part C (caching, perf, image/POI security) have merged to `main` (PRs #19, #20, #21). Infrastructure slices (`image-pipeline`, `poi-cache-service`, `places-proxy`, `auth-foundation`) are code-complete but still pending owner credential/account actions.
+Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisions-and-backlog.md` is in progress. Parts A–C and the remaining Phase 1 backlog (D1, D4, D7, A2) have merged to `main` (PRs #19, #20, #21, #22). Infrastructure slices (`image-pipeline`, `poi-cache-service`, `places-proxy`, `auth-foundation`) are code-complete but still pending owner credential/account actions.
 
 ## Active focus
 
-- Open PR and merge `feat/impl-phase1-remainder` (D1, D4, D7, A2).
-- Owner credential/account actions remain outstanding and are tracked in `docs/agent/pending-user-actions.md`.
+- Owner credential/account actions and worker deploys remain outstanding; see `docs/agent/pending-user-actions.md`.
+- Next unblocked feature work is `map-home` (Apple MapKit full-screen map), which is blocked on the Apple Developer Program.
 
 ## What exists
 
@@ -76,4 +76,4 @@ _archive-coffeemode-backend/   old Java app — being dropped
 
 ## Latest review
 
-D1, D4, D7, and A2 were implemented together on `feat/impl-phase1-remainder`. An independent review surfaced four blockers: the like CTE could insert orphaned rows for soft-deleted check-ins, the pool shutdown hook auto-registered at import and force-exited the process, Worker `compatibility_date` values were in the future, and the image completion route wrote `StoredImage` records without a `source` attribution. All four have been fixed, along with related test and shutdown-registration clean-up. The branch is now ready for PR.
+D1, D4, D7, and A2 were implemented together on `feat/impl-phase1-remainder`. An independent review surfaced four blockers: the like CTE could insert orphaned rows for soft-deleted check-ins, the pool shutdown hook auto-registered at import and force-exited the process, Worker `compatibility_date` values were in the future, and the image completion route wrote `StoredImage` records without a `source` attribution. All four were fixed and verified; the branch merged to `main` as PR #22.

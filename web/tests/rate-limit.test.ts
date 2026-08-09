@@ -114,6 +114,44 @@ describe("getClientIdentifier", () => {
     expect(id).not.toContain("1.2.3.4");
   });
 
+  it("prefers CF-Connecting-IP over a spoofable X-Forwarded-For (review 2026-08-09)", () => {
+    const withCf = new Request("https://example.com/api/test", {
+      headers: {
+        "user-agent": "Mozilla/5.0",
+        "cf-connecting-ip": "9.9.9.9",
+        "x-forwarded-for": "1.2.3.4",
+      },
+    });
+    const withoutCf = new Request("https://example.com/api/test", {
+      headers: {
+        "user-agent": "Mozilla/5.0",
+        "x-forwarded-for": "9.9.9.9",
+      },
+    });
+    // Same real IP must hash identically whether CF-IP or XFF carries it...
+    expect(getClientIdentifier(withCf, null)).toBe(getClientIdentifier(withoutCf, null));
+
+    // ...and a spoofed XFF cannot change the identifier when CF-IP is present.
+    const spoofed = new Request("https://example.com/api/test", {
+      headers: {
+        "user-agent": "Mozilla/5.0",
+        "cf-connecting-ip": "9.9.9.9",
+        "x-forwarded-for": "6.6.6.6",
+      },
+    });
+    expect(getClientIdentifier(spoofed, null)).toBe(getClientIdentifier(withCf, null));
+  });
+
+  it("uses the rightmost X-Forwarded-For entry (closest to the server) when no CF-IP", () => {
+    const left = new Request("https://example.com/api/test", {
+      headers: { "user-agent": "Mozilla/5.0", "x-forwarded-for": "1.1.1.1, 2.2.2.2" },
+    });
+    const spoofedLeft = new Request("https://example.com/api/test", {
+      headers: { "user-agent": "Mozilla/5.0", "x-forwarded-for": "9.9.9.9, 1.1.1.1, 2.2.2.2" },
+    });
+    expect(getClientIdentifier(left, null)).toBe(getClientIdentifier(spoofedLeft, null));
+  });
+
   it("falls back to a local-dev identifier when no headers are present", () => {
     const request = new Request("https://example.com/api/test");
     expect(getClientIdentifier(request, null)).toBe("anon:local-dev");

@@ -7,6 +7,8 @@ export class ImageServiceError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** Status the upstream worker returned (when it responded). */
+    readonly upstreamStatus?: number,
   ) {
     super(message);
     this.name = "ImageServiceError";
@@ -54,6 +56,41 @@ function headers(token: string): Record<string, string> {
   };
 }
 
+/**
+ * Sanitize an upstream worker failure into an ImageServiceError (review
+ * 2026-08-09). The raw upstream body is logged for operators but never
+ * echoed to the browser — it can contain worker internals, and a worker
+ * 401 (bad service token) must not surface as a user-facing 401. Mirrors
+ * the poi-client pattern.
+ */
+function upstreamError(endpoint: "upload" | "complete", response: Response): ImageServiceError {
+  const upstreamStatus = response.status;
+  // Best-effort body capture for the operator log; never thrown to callers.
+  void response
+    .text()
+    .then((body) =>
+      console.error("image-service error", { endpoint, status: upstreamStatus, body: body.slice(0, 1000) }),
+    )
+    .catch(() => console.error("image-service error", { endpoint, status: upstreamStatus }));
+
+  let message = "Image service returned an error";
+  let status = upstreamStatus;
+  if (upstreamStatus === 401) {
+    // Service-token mismatch: this is our misconfiguration, not the user's.
+    message = "Image service unavailable";
+    status = 502;
+  } else if (upstreamStatus === 404) {
+    message = "Image not found";
+  } else if (upstreamStatus === 413 || upstreamStatus === 422) {
+    message = "Image rejected by the image service";
+  } else if (upstreamStatus >= 500) {
+    message = "Image service unavailable";
+  } else if (upstreamStatus >= 400) {
+    message = "Invalid image request";
+  }
+  return new ImageServiceError(message, status, upstreamStatus);
+}
+
 export async function requestUploadUrl(size?: number): Promise<UploadUrlResponse> {
   const { url, token } = getEnv();
   const response = await fetch(`${url}/v1/images/upload`, {
@@ -64,8 +101,7 @@ export async function requestUploadUrl(size?: number): Promise<UploadUrlResponse
   });
 
   if (!response.ok) {
-    const body = await response.text().catch(() => "unknown error");
-    throw new ImageServiceError(`image-service upload request failed: ${response.status} ${body}`, response.status);
+    throw upstreamError("upload", response);
   }
 
   return response.json();
@@ -88,8 +124,7 @@ export async function getProcessUrls(
   });
 
   if (!response.ok) {
-    const body = await response.text().catch(() => "unknown error");
-    throw new ImageServiceError(`image-service complete request failed: ${response.status} ${body}`, response.status);
+    throw upstreamError("complete", response);
   }
 
   return response.json();

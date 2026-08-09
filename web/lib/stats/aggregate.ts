@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { QueryResult } from "pg";
 import type { CheckIn } from "@/types/checkins";
 

@@ -100,8 +100,30 @@ describe("image-service-client", () => {
     expect(init?.signal).toBeInstanceOf(AbortSignal);
   });
 
-  it("throws a descriptive error on non-2xx responses", async () => {
+  it("throws a sanitized error on non-2xx responses (no upstream body leak)", async () => {
     fetchSpy.mockResolvedValue(new Response("boom", { status: 502 }));
-    await expect(requestUploadUrl()).rejects.toThrow("image-service upload request failed: 502 boom");
+    await expect(requestUploadUrl()).rejects.toMatchObject({
+      name: "ImageServiceError",
+      message: "Image service unavailable",
+      status: 502,
+      upstreamStatus: 502,
+    });
+  });
+
+  it("maps an upstream 401 (bad service token) to 502, not a user-facing 401", async () => {
+    fetchSpy.mockResolvedValue(new Response('{"error":"unauthorized"}', { status: 401 }));
+    await expect(getProcessUrls({ imageUuid: "u", targetType: "cafe", targetId: "t" })).rejects.toMatchObject({
+      message: "Image service unavailable",
+      status: 502,
+      upstreamStatus: 401,
+    });
+  });
+
+  it("maps an upstream 404 to 'Image not found' with status 404", async () => {
+    fetchSpy.mockResolvedValue(new Response('{"error":"missing"}', { status: 404 }));
+    await expect(getProcessUrls({ imageUuid: "u", targetType: "cafe", targetId: "t" })).rejects.toMatchObject({
+      message: "Image not found",
+      status: 404,
+    });
   });
 });

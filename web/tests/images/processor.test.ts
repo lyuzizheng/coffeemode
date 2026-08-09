@@ -92,6 +92,41 @@ describe("processImage", () => {
     await expect(processImage(imageUuid, makeProcessUrls(imageUuid))).rejects.toThrow("failed to download original image");
   });
 
+  it("aborts when the original exceeds the download cap (review 2026-08-09: unbounded arrayBuffer OOM)", async () => {
+    const imageUuid = "12345678-1234-4123-9234-123456789abc";
+    const oversize = Buffer.alloc(11 * 1024 * 1024 + 1, 7);
+
+    fetchSpy.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url.includes("?sig=get")) {
+        return new Response(oversize, { status: 200, headers: { "Content-Type": "image/webp" } });
+      }
+      return new Response(null, { status: 200 });
+    });
+
+    await expect(processImage(imageUuid, makeProcessUrls(imageUuid))).rejects.toThrow(
+      /exceeds the .* byte download cap/,
+    );
+  });
+
+  it("rejects early when Content-Length declares an oversized original", async () => {
+    const imageUuid = "12345678-1234-4123-9234-123456789abc";
+    fetchSpy.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url.includes("?sig=get")) {
+        return new Response(new Uint8Array(0), {
+          status: 200,
+          headers: { "Content-Type": "image/webp", "Content-Length": String(99 * 1024 * 1024) },
+        });
+      }
+      return new Response(null, { status: 200 });
+    });
+
+    await expect(processImage(imageUuid, makeProcessUrls(imageUuid))).rejects.toThrow(
+      /exceeds the .* byte download cap/,
+    );
+  });
+
   it("throws when a PUT upload fails", async () => {
     const imageUuid = "12345678-1234-4123-9234-123456789abc";
     const originalBuffer = await sharp({

@@ -1,3 +1,5 @@
+import "server-only";
+
 import { WORKER_TIMEOUT_MS } from "@/lib/http";
 
 /**

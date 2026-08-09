@@ -3,7 +3,7 @@ name: Bug / Functional Issue
 about: Report a functional, architectural, or extensibility problem in CoffeeMode
 title: "[BUG] "
 labels: bug
-assignees: ''
+assignees: []
 ---
 
 ## Summary

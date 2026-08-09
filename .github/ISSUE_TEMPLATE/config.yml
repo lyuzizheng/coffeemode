@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: CoffeeMode docs
-    url: https://github.com/zizhenglyu/coffeemode/tree/main/docs
+    url: https://github.com/lyuzizheng/coffeemode/tree/main/docs
     about: See specs, ADRs, and agent reading order before opening an issue.

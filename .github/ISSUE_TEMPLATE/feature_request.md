@@ -3,7 +3,7 @@ name: Feature / Design Request
 about: Propose a new capability, design change, or improvement for CoffeeMode
 title: "[FEAT] "
 labels: enhancement
-assignees: ''
+assignees: []
 ---
 
 ## Summary

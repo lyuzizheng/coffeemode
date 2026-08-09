@@ -212,3 +212,18 @@
   - `web/tests/rate-limit-postgres.test.ts` + updated
     `web/tests/rate-limit.test.ts`.
 - All gates green: preflight, web typecheck/lint/145 tests/build.
+
+## 2026-08-13
+
+- Pushed `fix/issue-25-images-complete-service` (PR #58): extracted the image
+  completion service and made the checkin/gallery writes atomic.
+  - `web/lib/images/complete.ts` — `completeImageUpload` with fail-fast
+    ownership, remote processing outside the transaction, and both DB writes
+    inside one `withTransaction`.
+  - `web/app/api/images/complete/route.ts` — thin controller using
+    `defaultCompleteUploadDeps()` and mapping `isImageServiceError` to a
+    sanitized `image_service_error` response.
+  - `web/tests/images/complete-service.test.ts` — service-level tests for
+    fail-fast, single-transaction atomicity, and no-cafe path.
+- Rebased onto `main` (after PR #54) and resolved route import conflict.
+- All gates green: preflight, web typecheck/lint/150 tests/build.

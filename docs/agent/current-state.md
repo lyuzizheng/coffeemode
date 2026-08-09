@@ -7,7 +7,11 @@ Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisi
 ## Active focus
 
 - Owner credential/account actions and worker deploys remain outstanding; see `docs/agent/pending-user-actions.md`.
-- Issue #23 (distributed Postgres token-bucket rate limiter) is implemented and pending review/merge.
+- Issue #23 (distributed Postgres token-bucket rate limiter) is merged.
+- Issue #25 (image completion service with atomic DB writes) is implemented and
+  pending review/merge.
+- Issues #24 (checkin likes_count trigger) and #27 (work_stats row locking) are
+  pending review/merge.
 - Next unblocked feature work is `map-home` (Apple MapKit full-screen map), which is blocked on the Apple Developer Program.
 
 ## What exists
@@ -19,7 +23,8 @@ web/lib/auth/            Supabase server client (PKCE), profile upsert logic
 web/lib/db/              Postgres pool (server-side only), withTransaction, atomic like toggle
 web/shared/              Shared primitives: UUID, auth helpers, places types/constants, image constants/validation
 web/app/auth/            signIn/signOut server actions, SignInButton/SignOutButton client components + OAuth callback route
-web/lib/images/          image-service client + sharp processor + 10 MB upload size propagation
+web/lib/images/          image-service client + sharp processor + 10 MB upload size propagation,
+                         plus the `completeImageUpload` service with atomic DB writes
 web/app/api/images/      upload + complete route handlers with per-user rate limiting
 poi-service/             POI cache microservice (Workers + D1 + KV) — 4 endpoints,
                          Google field masks, KV hot cache, D1 store, haversine search

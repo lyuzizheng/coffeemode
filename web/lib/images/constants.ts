@@ -8,7 +8,7 @@
  * This module must stay free of imports (even relative ones): `next.config.ts`
  * imports it, and Next's config transpiler cannot resolve TypeScript modules
  * outside the file itself. The shared upload cap lives in
- * `web/shared/src/images/constants.ts`; `web/lib/images/processor.ts`
+ * `web/shared/images/constants.ts`; `web/lib/images/processor.ts`
  * imports it directly.
  */
 export const R2_PUBLIC_HOST = "images.coffeemode.app";

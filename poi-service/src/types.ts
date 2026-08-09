@@ -1,7 +1,7 @@
 /**
  * POI cache service types.
  *
- * POI / POISource / POISearchHit come from `web/shared/src/places/types.ts`
+ * POI / POISource / POISearchHit come from `web/shared/places/types.ts`
  * — the single source of truth shared with the web app (issue #26).
  * This file keeps only environment-specific structural interfaces.
  */

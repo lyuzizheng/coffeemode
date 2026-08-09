@@ -64,10 +64,11 @@ describe("shared upload size validation", () => {
     expect(validateUploadSize(undefined)).toMatchObject({ ok: false, code: "missing" });
   });
 
-  it("rejects non-finite or non-positive sizes", () => {
+  it("rejects non-finite, non-positive, and non-integer sizes", () => {
     expect(validateUploadSize("10")).toMatchObject({ ok: false, code: "invalid" });
     expect(validateUploadSize(0)).toMatchObject({ ok: false, code: "invalid" });
     expect(validateUploadSize(Number.NaN)).toMatchObject({ ok: false, code: "invalid" });
+    expect(validateUploadSize(10.5)).toMatchObject({ ok: false, code: "invalid" });
   });
 
   it("rejects sizes over the shared cap", () => {

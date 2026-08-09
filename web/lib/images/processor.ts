@@ -3,6 +3,7 @@ import "server-only";
 import sharp from "sharp";
 import type { OutputInfo } from "sharp";
 import { MAX_UPLOAD_BYTES } from "@shared/images/constants";
+import type { ProcessUrls } from "./image-service-client";
 
 /**
  * Download guard for the image processor (bytes). Uploads are capped at
@@ -13,7 +14,6 @@ import { MAX_UPLOAD_BYTES } from "@shared/images/constants";
  * request.
  */
 const MAX_ORIGINAL_DOWNLOAD_BYTES = MAX_UPLOAD_BYTES + 512 * 1024;
-import type { ProcessUrls } from "./image-service-client";
 
 export interface ProcessedImage {
   imageUuid: string;

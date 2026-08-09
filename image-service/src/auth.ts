@@ -17,7 +17,7 @@ import {
 
 export { internalError, json, unauthorized };
 
-export async function authorized(request: Request, env: Env): Promise<boolean> {
+export function authorized(request: Request, env: Env): boolean {
   const token = extractBearer(request, "x-image-service-token");
   if (!token || !env.IMAGE_SERVICE_TOKEN) return false;
   return safeEqual(token, env.IMAGE_SERVICE_TOKEN);

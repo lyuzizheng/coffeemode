@@ -15,7 +15,7 @@
  * Error envelope shape is shared with image-service: { error: code, message? }.
  */
 
-import { authorized, internalError, json } from "./auth";
+import { authorized, internalError, json, unauthorized } from "./auth";
 import {
   DEFAULT_SEARCH_RADIUS_KM,
   MAX_EXTERNAL_BATCH_SIZE,
@@ -308,7 +308,7 @@ export async function handleFetch(
 ): Promise<Response> {
   try {
     if (!(await authorized(request, env))) {
-      return json({ error: "unauthorized", message: "missing or invalid service token" }, 401);
+      return unauthorized();
     }
 
     const url = new URL(request.url);

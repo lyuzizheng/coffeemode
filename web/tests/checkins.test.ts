@@ -19,13 +19,13 @@ beforeEach(() => {
 
 describe("toggleCheckInLike", () => {
   it("throws for an invalid user id", async () => {
-    await expect(toggleCheckInLike("not-a-uuid", "123e4567-e89b-12d3-a456-426614174000")).rejects.toThrow(
+    await expect(toggleCheckInLike("not-a-uuid", "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12")).rejects.toThrow(
       /Invalid user or check-in ID/,
     );
   });
 
   it("throws for an invalid check-in id", async () => {
-    await expect(toggleCheckInLike("123e4567-e89b-12d3-a456-426614174000", "not-a-uuid")).rejects.toThrow(
+    await expect(toggleCheckInLike("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12", "not-a-uuid")).rejects.toThrow(
       /Invalid user or check-in ID/,
     );
   });
@@ -37,7 +37,7 @@ describe("toggleCheckInLike", () => {
 
     const result = await toggleCheckInLike(
       "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
-      "123e4567-e89b-12d3-a456-426614174000",
+      "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12",
     );
 
     expect(result).toEqual({ liked: true, likesCount: 7 });
@@ -48,7 +48,7 @@ describe("toggleCheckInLike", () => {
     expect(sql).toContain("FOR UPDATE");
     expect(params).toEqual([
       "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
-      "123e4567-e89b-12d3-a456-426614174000",
+      "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12",
     ]);
   });
 
@@ -59,7 +59,7 @@ describe("toggleCheckInLike", () => {
 
     const result = await toggleCheckInLike(
       "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
-      "123e4567-e89b-12d3-a456-426614174000",
+      "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12",
     );
 
     expect(result).toEqual({ liked: false, likesCount: 4 });
@@ -71,7 +71,7 @@ describe("toggleCheckInLike", () => {
     await expect(
       toggleCheckInLike(
         "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
-        "123e4567-e89b-12d3-a456-426614174000",
+        "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12",
       ),
     ).rejects.toThrow(/Check-in not found or deleted/);
   });

@@ -1,3 +1,5 @@
+import "server-only";
+
 import { createSupabaseServerClient, isAuthConfigured } from "./supabase-server";
 
 /**

@@ -1,10 +1,11 @@
 "use client";
 
-import { Button, Label, ListBox, Select, Slider, Switch } from "@heroui/react";
+import { Button, Label, ListBox, Select, Switch } from "@heroui/react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
-import { Section } from "../shared";
+import { ScoreSlider, Section } from "../shared";
 import { PolicyChips } from "./policy-chips-section";
+import { MAX_STAY_VALUES, MIN_SPEND_VALUES } from "@/types/checkins";
 
 const CITIES = [
   { key: "tokyo" },
@@ -24,37 +25,6 @@ const DIMENSIONS = [
 ] as const;
 
 type Thresholds = Record<(typeof DIMENSIONS)[number]["key"], number>;
-
-function ThresholdSlider({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <div className="rounded-md border border-border bg-surface p-4">
-      <Slider
-        value={value}
-        onChange={(v) => onChange(Array.isArray(v) ? v[0] : v)}
-        minValue={0}
-        maxValue={100}
-        aria-label={label}
-      >
-        <div className="flex items-baseline justify-between">
-          <Label>{label}</Label>
-          <Slider.Output className="tnum font-mono text-md font-medium text-accent" />
-        </div>
-        <Slider.Track>
-          <Slider.Fill />
-          <Slider.Thumb />
-        </Slider.Track>
-      </Slider>
-    </div>
-  );
-}
 
 export function SearchFilterSection() {
   const t = useTranslations("themePreview.searchFilter");
@@ -89,23 +59,15 @@ export function SearchFilterSection() {
     setThresholds(reset as Thresholds);
   };
 
-  const minSpendOptions = [
-    "none",
-    "drink",
-    "s5",
-    "s10",
-    "s10plus",
-    "unknown",
-  ].map((key) => ({ key, label: ts(`minSpendOptions.${key}`) }));
+  const minSpendOptions = MIN_SPEND_VALUES.map((key) => ({
+    key,
+    label: ts(`minSpendOptions.${key}`),
+  }));
 
-  const maxStayOptions = [
-    "unlimited",
-    "3h",
-    "2h",
-    "1h",
-    "peak",
-    "unknown",
-  ].map((key) => ({ key, label: ts(`maxStayOptions.${key}`) }));
+  const maxStayOptions = MAX_STAY_VALUES.map((key) => ({
+    key,
+    label: ts(`maxStayOptions.${key}`),
+  }));
 
   return (
     <Section index="12" title={t("title")} desc={t("desc")}>
@@ -159,7 +121,7 @@ export function SearchFilterSection() {
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
             {DIMENSIONS.map((d) => (
-              <ThresholdSlider
+              <ScoreSlider
                 key={d.key}
                 label={tc(d.labelKey)}
                 value={thresholds[d.key]}

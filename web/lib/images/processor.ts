@@ -2,6 +2,7 @@ import "server-only";
 
 import sharp from "sharp";
 import type { OutputInfo } from "sharp";
+import { MAX_ORIGINAL_DOWNLOAD_BYTES } from "./constants";
 import type { ProcessUrls } from "./image-service-client";
 
 export interface ProcessedImage {
@@ -18,8 +19,12 @@ export interface ProcessedImage {
 const R2_DOWNLOAD_TIMEOUT_MS = 30000;
 const R2_UPLOAD_TIMEOUT_MS = 30000;
 
-/** Sharp's `limitInputPixels` guard — (2^14 - 1)^2, just under 16K x 16K. */
-const MAX_INPUT_PIXELS = 268_402_689;
+/** Sharp's `limitInputPixels` guard — (2^13)^2 = 8192 x 8192.
+ *  A 10 MB compressed image can still declare 16K x 16K, which would exhaust
+ *  memory at decode time. The output variants are capped at 4096px, so
+ *  8192px gives headroom for legitimate high-res uploads while bounding the
+ *  decompression surface to ~67 MP. */
+const MAX_INPUT_PIXELS = 67_108_864;
 
 const WEBP_QUALITY = 80;
 
@@ -28,6 +33,15 @@ const ORIGINAL_MAX_DIMENSION = 4096;
 const CARD_SIZE = { width: 400, height: 300 };
 const THUMBNAIL_SIZE = { width: 200, height: 200 };
 
+/**
+ * Download the original image from R2 with a hard byte cap.
+ *
+ * The object was uploaded through a size-locked presigned PUT, but this
+ * function must not trust that alone: an attacker-sized object buffered via
+ * `arrayBuffer()` can exhaust memory on the server. We pre-check
+ * Content-Length and then count bytes while streaming, aborting the moment
+ * the cap is crossed.
+ */
 async function fetchOriginal(original: ProcessUrls["original"]): Promise<Buffer> {
   const response = await fetch(original.url, {
     headers: original.headers,
@@ -37,7 +51,39 @@ async function fetchOriginal(original: ProcessUrls["original"]): Promise<Buffer>
     const body = await response.text().catch(() => "unknown error");
     throw new Error(`failed to download original image: ${response.status} ${body}`);
   }
-  return Buffer.from(await response.arrayBuffer());
+
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_ORIGINAL_DOWNLOAD_BYTES) {
+    await response.body?.cancel().catch(() => {});
+    throw new Error(
+      `original image exceeds the ${MAX_ORIGINAL_DOWNLOAD_BYTES} byte download cap`,
+    );
+  }
+
+  if (!response.body) {
+    return Buffer.from(await response.arrayBuffer());
+  }
+
+  const chunks: Buffer[] = [];
+  let received = 0;
+  const reader = response.body.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > MAX_ORIGINAL_DOWNLOAD_BYTES) {
+        throw new Error(
+          `original image exceeds the ${MAX_ORIGINAL_DOWNLOAD_BYTES} byte download cap`,
+        );
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } catch (err) {
+    await response.body.cancel().catch(() => {});
+    throw err;
+  }
+  return Buffer.concat(chunks);
 }
 
 async function uploadVariant(

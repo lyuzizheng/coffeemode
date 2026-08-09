@@ -35,6 +35,9 @@ export interface D1PreparedLike {
 
 export interface D1Like {
   prepare(sql: string): D1PreparedLike;
+  /** Execute several prepared statements atomically in one round-trip.
+   *  Matches Cloudflare D1's batch() API. */
+  batch(statements: D1PreparedLike[]): Promise<Array<{ meta: { changes: number } }>>;
 }
 
 export interface Env {

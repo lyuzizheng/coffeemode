@@ -1,3 +1,5 @@
+import "server-only";
+
 /**
  * Profile upsert on OAuth sign-in (spec 0001, auth-foundation slice).
  *

@@ -3,25 +3,8 @@
 import { cn } from "@heroui/react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
+import { MAX_STAY_VALUES, MIN_SPEND_VALUES } from "@/types/checkins";
 import { Section } from "../shared";
-
-const MIN_SPEND_OPTIONS = [
-  "none",
-  "drink",
-  "s5",
-  "s10",
-  "s10plus",
-  "unknown",
-] as const;
-
-const MAX_STAY_OPTIONS = [
-  "unlimited",
-  "3h",
-  "2h",
-  "1h",
-  "peak",
-  "unknown",
-] as const;
 
 type PolicyOption = { key: string; label: string };
 
@@ -44,7 +27,7 @@ export function PolicyChips({ label, options, selected, onSelect }: PolicyChipsP
             aria-pressed={selected === key}
             onClick={() => onSelect(key)}
             className={cn(
-              "rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors duration-150",
+              "focus-ring h-9 rounded-sm border px-3 text-xs font-medium transition-colors duration-150",
               selected === key
                 ? "border-secondary bg-secondary text-secondary-foreground"
                 : "border-border bg-surface-secondary text-foreground hover:bg-surface-tertiary"
@@ -65,12 +48,12 @@ export function PolicyChipsSection() {
   const [minSpend, setMinSpend] = useState<string>("none");
   const [maxStay, setMaxStay] = useState<string>("unlimited");
 
-  const minSpendOptions: PolicyOption[] = MIN_SPEND_OPTIONS.map((key) => ({
+  const minSpendOptions: PolicyOption[] = MIN_SPEND_VALUES.map((key) => ({
     key,
     label: ts(`minSpendOptions.${key}`),
   }));
 
-  const maxStayOptions: PolicyOption[] = MAX_STAY_OPTIONS.map((key) => ({
+  const maxStayOptions: PolicyOption[] = MAX_STAY_VALUES.map((key) => ({
     key,
     label: ts(`maxStayOptions.${key}`),
   }));

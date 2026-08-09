@@ -1,18 +1,13 @@
 import type { CompleteRequest, CompleteResponse, Env, UploadResponse } from "./types";
-import { authorized } from "./auth";
+import { authorized, internalError, json, unauthorized } from "./auth";
 import { isValidUUID, sanitizeMetadata } from "./validate";
 import { presignedGetUrl, presignedPutUrl, publicUrl, ttlSeconds } from "./r2";
 import { IMMUTABLE_CACHE_CONTROL, MAX_UPLOAD_BYTES } from "./constants";
 
-function json(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json; charset=utf-8" },
-  });
-}
-
-function error(message: string, status = 400): Response {
-  return json({ error: message }, status);
+/** Validation failure envelope — same shape as poi-service
+ *  ({ error: code, message? }). */
+function error(code: string, message: string, status = 400): Response {
+  return json({ error: code, message }, status);
 }
 
 function expirationDate(ttlSeconds: number): string {
@@ -29,38 +24,43 @@ function makeKeys(imageUuid: string) {
 
 export async function handleUpload(request: Request, env: Env): Promise<Response> {
   if (!(await authorized(request, env))) {
-    return error("unauthorized", 401);
+    return unauthorized();
   }
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    body = undefined;
+    return error("invalid_request", "invalid JSON body");
+  }
+  if (!body || typeof body !== "object") {
+    return error("invalid_request", "invalid JSON body");
   }
 
-  let size: number | undefined;
-  if (body && typeof body === "object") {
-    const maybeSize = (body as Record<string, unknown>).size;
-    if (maybeSize !== undefined) {
-      if (typeof maybeSize !== "number" || !Number.isFinite(maybeSize) || maybeSize <= 0) {
-        return error("size must be a positive number (bytes)", 400);
-      }
-      size = maybeSize;
-    }
+  // `size` is REQUIRED (review 2026-08-09): an omitted size produced an
+  // uncapped presigned PUT, because Content-Length is only signed when a
+  // size is declared. The cap must hold server-side, not by caller honesty.
+  // Size must be a positive integer (bytes).
+  const maybeSize = (body as Record<string, unknown>).size;
+  if (maybeSize === undefined) {
+    return error("invalid_request", "size (number, bytes) is required");
   }
-
-  if (size !== undefined && size > MAX_UPLOAD_BYTES) {
+  if (typeof maybeSize !== "number" || !Number.isFinite(maybeSize) || maybeSize <= 0 || !Number.isInteger(maybeSize)) {
+    return error("invalid_request", "size must be a positive integer (bytes)");
+  }
+  if (maybeSize > MAX_UPLOAD_BYTES) {
     return error(
-      `upload size ${size} exceeds maximum allowed ${MAX_UPLOAD_BYTES} bytes`,
-      413,
+      "size_exceeded",
+      `upload size ${maybeSize} exceeds maximum allowed ${MAX_UPLOAD_BYTES} bytes`,
     );
   }
+  const size = maybeSize;
 
   const imageUuid = crypto.randomUUID().toLowerCase();
   const key = makeKeys(imageUuid).original;
+  // Content-Length is signed into the PUT so R2 rejects mismatched bodies.
   const { url, headers } = await presignedPutUrl(env, key, "image/webp", {
-    ...(size !== undefined ? { contentLength: size } : {}),
+    contentLength: size,
   });
 
   const response: UploadResponse = {
@@ -70,7 +70,7 @@ export async function handleUpload(request: Request, env: Env): Promise<Response
     publicUrl: publicUrl(env, key),
     expiresAt: expirationDate(ttlSeconds(env)),
     maxUploadBytes: MAX_UPLOAD_BYTES,
-    ...(size !== undefined ? { size } : {}),
+    size,
   };
 
   return json(response);
@@ -78,31 +78,41 @@ export async function handleUpload(request: Request, env: Env): Promise<Response
 
 export async function handleComplete(request: Request, env: Env): Promise<Response> {
   if (!(await authorized(request, env))) {
-    return error("unauthorized", 401);
+    return unauthorized();
   }
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return error("invalid JSON body");
+    return error("invalid_request", "invalid JSON body");
   }
 
   if (!body || typeof body !== "object") {
-    return error("invalid JSON body");
+    return error("invalid_request", "invalid JSON body");
   }
 
   const { imageUuid, userId, targetType, targetId } = body as CompleteRequest;
 
   if (!isValidUUID(imageUuid)) {
-    return error("imageUuid must be a valid UUID");
+    return error("invalid_request", "imageUuid must be a valid UUID");
   }
 
   const normalizedUuid = imageUuid.toLowerCase();
   const keys = makeKeys(normalizedUuid);
   const exists = await env.R2_BUCKET.head(keys.original);
   if (!exists) {
-    return error("original image not found", 404);
+    return error("not_found", "original image not found", 404);
+  }
+  // Enforce the cap on the ACTUAL uploaded bytes, not the caller's claim
+  // (review 2026-08-09): refuse to hand out process URLs for oversized
+  // objects.
+  if (exists.size > MAX_UPLOAD_BYTES) {
+    return error(
+      "size_exceeded",
+      `uploaded object is ${exists.size} bytes, exceeding the ${MAX_UPLOAD_BYTES} byte cap`,
+      422,
+    );
   }
 
   const metadata: Record<string, string> = {
@@ -160,17 +170,17 @@ export default {
       }
 
       if (method === "POST" && path === "/v1/images/upload") {
-        return handleUpload(request, env);
+        return await handleUpload(request, env);
       }
 
       if (method === "POST" && path === "/v1/images/complete") {
-        return handleComplete(request, env);
+        return await handleComplete(request, env);
       }
 
-      return error("not found", 404);
+      return error("not_found", "route not found", 404);
     } catch (e) {
       console.error("image-service error:", e);
-      return error("internal server error", 500);
+      return internalError();
     }
   },
 } satisfies ExportedHandler<Env>;

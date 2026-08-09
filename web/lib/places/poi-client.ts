@@ -1,3 +1,5 @@
+import "server-only";
+
 import { WORKER_TIMEOUT_MS } from "@/lib/http";
 
 /**
@@ -36,16 +38,6 @@ export function getPOIConfig(env: Record<string, string | undefined> = process.e
   const token = env.POI_SERVICE_TOKEN;
   if (!url || !token) return null;
   return { baseUrl: url.replace(/\/+$/, ""), token };
-}
-
-/** Encode a URI path segment while keeping the characters that are valid inside
- *  a segment (including `:` and `+`) unencoded. This prevents double-encoding
- *  Google `0x...:0x...` place IDs. */
-function encodePathSegment(segment: string): string {
-  return encodeURIComponent(segment).replace(
-    /%(?:3[Aa]|40|21|24|26|27|28|29|2[Aa]|2[Bb]|2[Cc]|3[Bb]|3[Dd])/g,
-    (match) => decodeURIComponent(match),
-  );
 }
 
 async function poiFetch(
@@ -124,7 +116,9 @@ export async function resolveMapsUrl(mapsShareUrl: string): Promise<POI> {
 
 /** GET /poi/:place_id — fetch/enrich one POI. */
 export async function getPOI(placeId: string): Promise<POI> {
-  const data = await poiFetch(`/poi/${encodePathSegment(placeId)}`, {
+  // Send the place id raw: Google `0x...:0x...` ids are valid path
+  // segments, and the worker decodes `:place_id` at the edge (W2).
+  const data = await poiFetch(`/poi/${placeId}`, {
     method: "GET",
   });
   return data as POI;

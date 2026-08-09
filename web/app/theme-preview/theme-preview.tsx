@@ -4,6 +4,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { duration, ease } from "@/lib/motion";
+import { DEMO_SCORE } from "./shared";
 import {
   ButtonsSection,
   CafeCard,
@@ -43,15 +44,15 @@ function HeroPoster() {
   return (
     <motion.div {...enter} className="relative">
       {/* Poster */}
-      <div className="rounded-2xl bg-accent p-7 text-accent-foreground sm:p-8">
+      <div className="rounded-xl bg-accent p-7 text-accent-foreground sm:p-8">
         <div className="flex items-start justify-between gap-4">
-          <div className="font-display text-2xl font-extrabold leading-none tracking-tight sm:text-[2.5rem]">
+          <div className="font-display text-2xl font-extrabold leading-none tracking-tight sm:text-3xl">
             Coffee
             <br />
             Mode
           </div>
           <div className="tnum font-display text-2xl font-extrabold leading-none opacity-90">
-            87
+            {DEMO_SCORE}
           </div>
         </div>
         <p className="mt-5 max-w-56 text-base leading-relaxed opacity-85">

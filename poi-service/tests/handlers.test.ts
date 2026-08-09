@@ -42,7 +42,10 @@ describe("auth", () => {
   it("rejects requests without a token", async () => {
     const res = await call("GET", "/poi/search?q=coffee", makeEnv(), { token: undefined });
     expect(res.status).toBe(401);
-    expect((await res.json()) as { error: string }).toEqual({ error: "unauthorized" });
+    expect((await res.json()) as { error: string }).toEqual({
+      error: "unauthorized",
+      message: "missing or invalid service token",
+    });
   });
 
   it("rejects requests with a wrong token", async () => {
@@ -53,10 +56,25 @@ describe("auth", () => {
   it("accepts bearer authorization header", async () => {
     const env = makeEnv();
     const req = new Request("https://poi.test/poi/search?q=coffee", {
-      headers: { authorization: `Bearer ${TOKEN}` },
+      headers: { authorization: ["Bearer", TOKEN].join(" ") },
     });
     const res = await handleFetch(req, env, { fetchImpl: fetch });
     expect(res.status).toBe(200);
+  });
+
+  it("accepts a lowercase bearer scheme (RFC 6750: scheme is case-insensitive)", async () => {
+    const env = makeEnv();
+    const req = new Request("https://poi.test/poi/search?q=coffee", {
+      headers: { authorization: ["bearer", TOKEN].join(" ") },
+    });
+    const res = await handleFetch(req, env, { fetchImpl: fetch });
+    expect(res.status).toBe(200);
+  });
+
+  it("fails closed when the env token is empty", async () => {
+    const env = makeEnv({ POI_SERVICE_TOKEN: "" });
+    const res = await call("GET", "/poi/search?q=coffee", env, { token: "" });
+    expect(res.status).toBe(401);
   });
 });
 
@@ -202,6 +220,103 @@ describe("GET /poi/:place_id", () => {
   it("404s unknown apple IDs (no server-side upstream)", async () => {
     const res = await call("GET", "/poi/apple-unknown-9", makeEnv());
     expect(res.status).toBe(404);
+  });
+
+  it("decodes percent-encoded Google hex place ids (%3A → ':')", async () => {
+    const env = makeEnv();
+    const fetchImpl = vi.fn(
+      mockFetch(() =>
+        new Response(
+          JSON.stringify(googleDetailResponse({ id: "0x8085:0x9f2c" })),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    const res = await call("GET", "/poi/0x8085%3A0x9f2c", env, { fetchImpl });
+
+    expect(res.status).toBe(200);
+    const b = await bodyOf(res);
+    expect(b.place_id).toBe("0x8085:0x9f2c");
+    // The decoded id is used for KV backfill and the Google fetch.
+    expect((env.POI_KV as FakeKV).has("raw:google:0x8085:0x9f2c")).toBe(true);
+    expect(fetchImpl.mock.calls[0][0] as string).toContain("places.test/v1/places/0x8085%3A0x9f2c");
+  });
+
+  it("accepts raw (unencoded) 0x…:0x… ids as before", async () => {
+    const env = makeEnv();
+    const fetchImpl = mockFetch(() =>
+      new Response(JSON.stringify(googleDetailResponse({ id: "0x8085:0x9f2c" })), { status: 200 }),
+    );
+
+    const res = await call("GET", "/poi/0x8085:0x9f2c", env, { fetchImpl });
+    expect(res.status).toBe(200);
+    expect((await bodyOf(res)).place_id).toBe("0x8085:0x9f2c");
+  });
+
+  it("400s on malformed percent-encoding in the place id", async () => {
+    const res = await call("GET", "/poi/%E0%A4%A", makeEnv());
+    expect(res.status).toBe(400);
+    expect((await bodyOf(res)).error).toBe("invalid_request");
+  });
+
+  it("falls through corrupt KV cache to D1", async () => {
+    const kv = new FakeKV();
+    await kv.put("raw:google:ChIJCORRUPT", "{not json!!");
+    const db = new FakeD1();
+    db.rows.push({
+      place_id: "ChIJCORRUPT",
+      source: "google",
+      name: "Fresh From D1",
+      lat: 1.0,
+      lng: 103.0,
+      address: null,
+      types: "[]",
+      business_status: null,
+      hours_json: null,
+      photo_refs: "[]",
+      fetched_at: new Date().toISOString(),
+    });
+    const env = makeEnv({ POI_KV: kv, POI_DB: db });
+    const fetchImpl = vi.fn(mockFetch(() => new Response("should not be called", { status: 599 })));
+
+    const res = await call("GET", "/poi/ChIJCORRUPT", env, { fetchImpl });
+
+    expect(res.status).toBe(200);
+    expect((await bodyOf(res)).name).toBe("Fresh From D1");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("rejects Google responses missing location instead of storing (0,0)", async () => {
+    const env = makeEnv();
+    const fetchImpl = mockFetch(() =>
+      new Response(
+        JSON.stringify(googleDetailResponse({ location: undefined, id: "ChIJNOLOC" })),
+        { status: 200 },
+      ),
+    );
+
+    const res = await call("GET", "/poi/ChIJNOLOC", env, { fetchImpl });
+
+    expect(res.status).toBe(502);
+    expect((await bodyOf(res)).error).toBe("invalid_upstream");
+    expect((env.POI_DB as FakeD1).rows).toHaveLength(0);
+  });
+
+  it("returns JSON 500 envelope when D1 throws (no raw workerd errors)", async () => {
+    const db = new FakeD1();
+    db.prepare = () => {
+      throw new Error("D1 outage");
+    };
+    const env = makeEnv({ POI_DB: db });
+
+    const res = await call("GET", "/poi/ChIJTEST123", env);
+
+    expect(res.status).toBe(500);
+    expect(await bodyOf(res)).toEqual({
+      error: "internal_error",
+      message: "internal server error",
+    });
   });
 });
 
@@ -358,6 +473,55 @@ describe("GET /poi/search", () => {
     const res = await call("GET", "/poi/search?q=x&r=abc", makeEnv());
     expect(res.status).toBe(400);
   });
+
+  it("400s on negative radius", async () => {
+    const res = await call("GET", "/poi/search?q=x&r=-1", makeEnv());
+    expect(res.status).toBe(400);
+  });
+
+  it("400s when the radius exceeds the cap", async () => {
+    const res = await call("GET", "/poi/search?q=x&r=1e9", makeEnv());
+    expect(res.status).toBe(400);
+    expect(String((await bodyOf(res)).message)).toContain("200");
+  });
+
+  it("400s on out-of-range or non-finite coordinates", async () => {
+    for (const qs of [
+      "q=x&lat=1e15&lng=103",
+      "q=x&lat=37&lng=200",
+      "q=x&lat=Infinity&lng=103",
+      "q=x&lat=37", // lat without lng
+    ]) {
+      const res = await call("GET", `/poi/search?${qs}`, makeEnv());
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it("caps the number of results", async () => {
+    const db = new FakeD1();
+    const now = new Date().toISOString();
+    for (let i = 0; i < 150; i++) {
+      db.rows.push({
+        place_id: `bulk-${i}`,
+        source: "google",
+        name: `Cafe ${String(i).padStart(3, "0")}`,
+        lat: 1.3,
+        lng: 103.8,
+        address: null,
+        types: '["cafe"]',
+        business_status: null,
+        hours_json: null,
+        photo_refs: "[]",
+        fetched_at: now,
+      });
+    }
+    const env = makeEnv({ POI_DB: db });
+
+    const res = await call("GET", "/poi/search?q=Cafe", env);
+    expect(res.status).toBe(200);
+    const results = (await bodyOf(res)).results as unknown[];
+    expect(results).toHaveLength(100);
+  });
 });
 
 describe("POST /poi/external", () => {
@@ -408,6 +572,83 @@ describe("POST /poi/external", () => {
   it("400s on empty payloads", async () => {
     expect((await call("POST", "/poi/external", makeEnv(), { body: {} })).status).toBe(400);
     expect((await call("POST", "/poi/external", makeEnv(), { body: { pois: [] } })).status).toBe(400);
+  });
+
+  it("400s when the batch exceeds the entry cap", async () => {
+    const pois = Array.from({ length: 101 }, (_, i) => ({
+      place_id: `bulk-${i}`,
+      source: "apple",
+      name: `Cafe ${i}`,
+      lat: 1.3,
+      lng: 103.8,
+    }));
+    const res = await call("POST", "/poi/external", makeEnv(), { body: { pois } });
+    expect(res.status).toBe(400);
+    expect(String((await bodyOf(res)).message)).toContain("100");
+  });
+
+  it("upserts via a single atomic db.batch() call", async () => {
+    const db = new FakeD1();
+    const env = makeEnv({ POI_DB: db });
+    const res = await call("POST", "/poi/external", env, {
+      body: {
+        pois: [
+          { place_id: "b1", source: "apple", name: "One", lat: 1, lng: 103 },
+          { place_id: "b2", source: "apple", name: "Two", lat: 1, lng: 103 },
+        ],
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(db.batchCalls).toBe(1);
+    expect(db.rows).toHaveLength(2);
+  });
+
+  it("rejects out-of-range coordinates like lat 1e15", async () => {
+    const res = await call("POST", "/poi/external", makeEnv(), {
+      body: {
+        pois: [
+          { place_id: "a", source: "google", name: "Far", lat: 1e15, lng: 103 },
+          { place_id: "b", source: "google", name: "Far", lat: 1, lng: -999 },
+        ],
+      },
+    });
+    expect(res.status).toBe(400);
+    const b = await bodyOf(res);
+    expect((b.entries as Array<{ index: number; reason: string }>).map((e) => e.index)).toEqual([0, 1]);
+  });
+
+  it("rejects non-string array elements in types/photo_refs", async () => {
+    const res = await call("POST", "/poi/external", makeEnv(), {
+      body: {
+        pois: [
+          { place_id: "a", source: "google", name: "A", lat: 1, lng: 103, types: ["cafe", 7] },
+          { place_id: "b", source: "google", name: "B", lat: 1, lng: 103, photo_refs: [null] },
+          { place_id: "c", source: "google", name: "C", lat: 1, lng: 103, types: "cafe" },
+        ],
+      },
+    });
+    expect(res.status).toBe(400);
+    const b = await bodyOf(res);
+    const entries = b.entries as Array<{ index: number; reason: string }>;
+    expect(entries.map((e) => e.index)).toEqual([0, 1, 2]);
+    expect(entries[0].reason).toContain("types");
+    expect(entries[1].reason).toContain("photo_refs");
+  });
+
+  it("caps string field lengths", async () => {
+    const res = await call("POST", "/poi/external", makeEnv(), {
+      body: {
+        pois: [
+          { place_id: "a", source: "apple", name: "x".repeat(201), lat: 1, lng: 103 },
+          { place_id: "b", source: "apple", name: "Ok", lat: 1, lng: 103, address: "y".repeat(1001) },
+        ],
+      },
+    });
+    expect(res.status).toBe(400);
+    const entries = ((await bodyOf(res)).entries as Array<{ index: number; reason: string }>).map(
+      (e) => e.index,
+    );
+    expect(entries).toEqual([0, 1]);
   });
 });
 

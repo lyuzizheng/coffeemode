@@ -4,7 +4,7 @@ import { Button } from "@heroui/react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { duration, ease } from "@/lib/motion";
-import { Section } from "../shared";
+import { DEMO_SCORE, Section } from "../shared";
 
 function CoffeeSteam() {
   const reduced = useReducedMotion() ?? false;
@@ -13,7 +13,7 @@ function CoffeeSteam() {
   return (
     <svg
       className="h-9 w-9 text-muted"
-      viewBox="0 0 24 24"
+      viewBox="0 -8 24 32"
       fill="none"
       stroke="currentColor"
       strokeWidth="1.5"
@@ -22,7 +22,7 @@ function CoffeeSteam() {
       aria-hidden="true"
     >
       <path
-        d="M7 19h10a2 2 0 0 0 2-2V9H5v8a2 2 0 0 0 2 2z"
+        d="M7 17v-6h10v6a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2z"
         opacity="0.2"
         fill="currentColor"
         stroke="none"
@@ -32,7 +32,7 @@ function CoffeeSteam() {
       {[0, 1, 2].map((i) => (
         <motion.path
           key={i}
-          d={`M${10 + i * 2} 5 C ${9 + i * 2} 3, ${11 + i * 2} 1, ${10 + i * 2} -1`}
+          d={`M${10 + i * 2} 5 C ${9 + i * 2} 3, ${11 + i * 2} 1, ${10 + i * 2} -2`}
           stroke="currentColor"
           strokeWidth="1"
           fill="none"
@@ -84,7 +84,7 @@ export function CheckInSuccessSection() {
         <div className="mt-5 flex items-center justify-between border-t border-separator pt-4">
           <span className="text-sm text-muted">{ts("newWorkScore")}</span>
           <span className="tnum font-display text-2xl font-extrabold text-accent">
-            87
+            {DEMO_SCORE}
           </span>
         </div>
 

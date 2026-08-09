@@ -61,7 +61,7 @@ export function ThemeToggle() {
             type="button"
             aria-pressed={selected}
             onClick={() => setTheme(opt.value)}
-            className={`relative flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors duration-150 ${
+            className={`focus-ring relative flex h-10 items-center gap-1.5 rounded-md px-3 text-xs transition-colors duration-150 ${
               selected ? "text-foreground" : "text-muted hover:text-foreground"
             }`}
           >

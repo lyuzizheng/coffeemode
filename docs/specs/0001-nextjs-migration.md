@@ -383,7 +383,9 @@ Next.js integration: /api/places/* route handlers call the POI service
 ```text
 Upload flow:
   1. Client → Next.js /api/images/upload (Supabase session)
+       Body: { size: number }  // REQUIRED, positive integer, <= MAX_UPLOAD_BYTES
   2. Next.js → image-service Worker /v1/images/upload (service token)
+       Body: { size: number }  // REQUIRED, positive integer, <= MAX_UPLOAD_BYTES
   3. Worker returns presigned R2 PUT URL for original/{uuid}.webp
   4. Client PUTs the WebP original directly to R2
 

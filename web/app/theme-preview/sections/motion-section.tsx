@@ -41,7 +41,7 @@ export function MotionSection() {
                   className="absolute top-0 left-0 h-full w-4 rounded-full bg-accent transition-[left] group-hover:left-[calc(100%-1rem)] motion-reduce:transition-none"
                   style={{
                     transitionDuration: `${token.ms}ms`,
-                    transitionTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
+                    transitionTimingFunction: ease.default.join(", "),
                   }}
                 />
               </div>
@@ -49,7 +49,7 @@ export function MotionSection() {
           ))}
         </div>
         <div className="tnum font-mono text-xs text-muted">
-          {t("ease_label")} · cubic-bezier(0.22, 1, 0.36, 1)
+          {t("ease_label")} · {ease.default.join(", ")}
         </div>
 
         {/* Layout reflow demo */}
@@ -105,7 +105,7 @@ export function MotionSection() {
               {t("demo_bars")}
             </div>
             <div className="mt-2 w-40">
-              <WorkBar label="wifi" value={88} reduced={reduced} />
+              <WorkBar label={td("wifi")} value={88} reduced={reduced} />
             </div>
           </div>
         </div>

@@ -9,7 +9,7 @@ export function AuthErrorMessage({ error }: AuthErrorMessageProps) {
 
   return (
     <p
-      className="mt-2 text-center text-xs text-[var(--danger)]"
+      className="mt-2 text-center text-xs text-danger"
       role="alert"
       aria-live="polite"
     >

@@ -54,7 +54,7 @@ Four read-only subagent reviews ran in parallel against the current `main` tree 
 
 ### Auth/cache/perf/DB/deploy
 
-22. **Session-refresh middleware is required.** Create `web/middleware.ts` using `@supabase/ssr` to refresh tokens on each request.
+22. **Session-refresh proxy is required.** Create `web/proxy.ts` using `@supabase/ssr` to refresh tokens on each request (Next.js 16 middleware convention).
 23. **Static and PWA assets get long immutable cache headers in `next.config.ts`.** Apply to `/_next/static/*`, `/icons/*`, `/fonts/*`.
 24. **Serwist runtime cache must be tuned.** `/_next/static/*` → `CacheFirst` 1-year; dynamic routes (`/cafes/*`, `/profile`) → `NetworkOnly`.
 25. **Postgres pool needs config and error handling.** Set `max`, idle/connection timeouts, `on('error')`, and a graceful shutdown hook.
@@ -84,7 +84,7 @@ These tasks can proceed while `map-home` is blocked and before live credentials 
 | S1 | Add `checkins.updated_at`, `checkins.deleted_at`, `checkin_likes` table, image `source` field, and missing indexes | schema | `web/db/migrations/0001_init.sql` or `0002_*` |
 | S2 | Define `web/types/checkins.ts` and `web/types/profile.ts` | types | `web/types/*` |
 | S3 | Design `web/lib/stats/aggregate.ts` algorithm (includes social-weight hook) | backend | `web/lib/stats/aggregate.ts` |
-| A1 | Add session-refresh `web/middleware.ts` | auth | `web/middleware.ts` |
+| A1 | Add session-refresh `web/proxy.ts` | auth | `web/proxy.ts` |
 | A2 | Harden sign-in/sign-out UX with loading/error states | frontend | `web/app/page.tsx` |
 | C1 | Add long-cache headers for static assets | perf | `web/next.config.ts` |
 | C2 | Tune Serwist runtime cache for build assets and dynamic pages | pwa | `web/app/sw.ts` |
@@ -164,7 +164,7 @@ These need Apple MapKit and the bottom sheet.
 | User checks in 20 times at the same cafe | Recency-weighted per-user contribution (`0.6^rank`) plus optional social-weight hook. |
 | User soft-deletes their latest check-in | Recompute that user's contribution from remaining non-deleted rows; images from the deleted check-in are hidden from `cafes.gallery`. |
 | Apple POI not in D1 | Client must `POST /poi/external` first; `GET /poi/:apple_id` returns 404 otherwise. |
-| Expired Supabase access token | `web/middleware.ts` refreshes session before route handlers call `getUser()`. |
+| Expired Supabase access token | `web/proxy.ts` refreshes session before route handlers call `getUser()`. |
 | Nearby search radius > 10 km | Cap at 10 km; for wider discovery use city search + filters. |
 | Image upload > 10 MB | Presigned PUT rejects; UI shows size error before upload. |
 | Duplicate `checkin_likes` row | Upsert/toggle: insert or delete; keep `likes_count` on `checkins` in sync via atomic update. |
@@ -177,7 +177,7 @@ These need Apple MapKit and the bottom sheet.
 
 - [ ] `preflight.sh` passes after any docs/spec changes.
 - [ ] Design-token reconciliation has a visual diff review (browser screenshot of `theme-preview`).
-- [ ] `web/middleware.ts` unit test: expired token refreshes before reaching a protected route.
+- [ ] `web/proxy.ts` unit test: expired token refreshes before reaching a protected route.
 - [ ] `work_stats` aggregation has unit tests for first check-in, repeat check-in edit, soft delete, and social-weight hook.
 - [ ] `/api/cafes` POST returns `409` for duplicate `google_place_id` and creates cafe + check-in for new POI.
 - [ ] `/api/checkins` POST handles repeat-visit recency weighting and `social_weight = 0` by default.

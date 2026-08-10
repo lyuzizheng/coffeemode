@@ -38,7 +38,7 @@ coffeemode/
       cafes/
         [id]/
           page.tsx          # Cafe detail (SSR deep link only: share/SEO)
-      middleware.ts       # Supabase session refresh
+      proxy.ts            # Supabase session refresh (Next.js 16 middleware convention)
       auth/
         actions.ts          # OAuth sign-in / sign-out server actions
         callback/
@@ -299,7 +299,7 @@ A user checking in 20 times must not outweigh 20 different users. Design:
 ```text
 Providers: Apple OAuth + Google OAuth (no email/password — no email infra)
 Sessions: Supabase SSR cookies (@supabase/ssr)
-Middleware: web/middleware.ts refreshes the session on each request and forwards
+Proxy: web/proxy.ts refreshes the session on each request and forwards
   refreshed cookies; prevents expired access tokens from failing protected routes.
 Route handlers: verify session via supabase.auth.getUser() before any Postgres write
 Profiles row: upserted in Postgres on first login (auth callback)
@@ -694,7 +694,7 @@ OG meta: cafe cover as og:image on /cafes/[id].
 1. Initialize Next.js app in web/
 2. Tailwind v4 + HeroUI v3 + theme tokens + next-intl (en/zh)
 3. Supabase auth clients + Postgres db helpers
-4. web/middleware.ts for session refresh
+4. web/proxy.ts for session refresh
 5. Apple + Google OAuth login flow, profiles upsert
 6. Root layout, theme provider (next-themes), HeroUI <Toast.Provider>
 7. Verify: dev server, build, auth round-trip

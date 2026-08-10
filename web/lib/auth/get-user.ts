@@ -11,8 +11,16 @@ import { createSupabaseServerClient, isAuthConfigured } from "./supabase-server"
  */
 export async function getCurrentUser(): Promise<{ id: string } | null> {
   if (!isAuthConfigured()) return null;
-  const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) return null;
-  return { id: data.user.id };
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase.auth.getUser();
+    if (error || !data.user) return null;
+    return { id: data.user.id };
+  } catch (e) {
+    // Network blips or Supabase outages should not crash public API routes.
+    // Route handlers treat a null user as an unauthenticated caller and
+    // continue with rate-limited anonymous behavior.
+    console.error("getCurrentUser failed:", e);
+    return null;
+  }
 }

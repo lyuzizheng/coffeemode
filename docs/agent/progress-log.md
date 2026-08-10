@@ -265,3 +265,4 @@
   - Committed `.github/ISSUE_TEMPLATE/fix_plan.md` as the canonical fix-plan
     comment template and aligned it with the new skill.
 - All gates green: `.agents/scripts/preflight.sh`.
+- Opened PR #63 to close issue #62.

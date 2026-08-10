@@ -252,3 +252,17 @@
 - Rebased onto `main` (after PR #57) and resolved the `incrementalUpdateWorkStats`
   row-selection logic to keep the #51 fix (omitted/edited check-in handling).
 - All gates green: preflight, web typecheck/lint/147 tests/build.
+
+## 2026-08-10
+
+- Closed the agent feature-dev loop (issue #62):
+  - Rewrote `.agents/skills/coffeemode-implementation-cycle/SKILL.md` to orchestrate
+    the full lifecycle: orient → issue intake/review → fix-plan comment →
+    implementation via `development-cycle.md` → verification/review → PR with
+    `Fixes #N` → close issue after merge.
+  - Committed `.github/pull_request_template.md` with issue link, fix-plan link,
+    type, affected slice, test plan, risk tier, verification evidence, and checklist.
+  - Committed `.github/ISSUE_TEMPLATE/fix_plan.md` as the canonical fix-plan
+    comment template and aligned it with the new skill.
+- All gates green: `.agents/scripts/preflight.sh`.
+- Opened PR #63 to close issue #62.

@@ -14,7 +14,7 @@ interface NetworkStatusSnapshot {
   lastOnline: Date | null;
 }
 
-const SERVER_SNAPSHOT: NetworkStatusSnapshot = { state: "online", lastOnline: null };
+const SERVER_SNAPSHOT: NetworkStatusSnapshot = { state: "unknown", lastOnline: null };
 
 class NetworkStatusStore {
   private snapshot: NetworkStatusSnapshot;

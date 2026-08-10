@@ -14,6 +14,35 @@ Canonical rules for filing, triaging, and fixing GitHub issues in
 5. Close    — after the PR merges, comment "Fixed in #N" and close.
 ```
 
+## Dedup gate
+
+**Every issue filing runs the dedup gate first. A near-duplicate means a
+comment on the original issue, never a new issue.**
+
+1. List all open issues: `gh issue list --repo lyuzizheng/coffeemode --state open --limit 100`.
+2. Search two vocabulary families against titles and bodies:
+   - **Component vocabulary** — the affected area and its synonyms: the
+     file/dir, feature, service (`web`, `poi-service`, `image-service`),
+     and user-facing surface (sign-in, check-in, upload, cache, map, …).
+   - **Defect-class vocabulary** — the symptom class: auth/security, data
+     integrity/race, cache invalidation, image pipeline, perf, docs drift,
+     dead code, API contract, … .
+3. Verdicts:
+   - **Same component + same defect class → duplicate.** Comment on the
+     original with the new evidence (file:line, extra call sites, repro);
+     never create a second issue.
+   - **Same defect class + shared root cause across components → one issue**
+     naming the root cause, listing every affected site. File the class,
+     not the instance.
+   - **Same component + different defect class, or independent root causes
+     → separate issue**, linked to the related one in both bodies.
+   - **Original is closed and the defect re-appears, or the finding is
+     materially different (different root cause, different fix surface)
+     → new issue**, referencing the closed one.
+4. Record the search in the issue body:
+   `**Dedup check**: searched open issues for <families>; verdict: <comment
+   on #N | new issue, linked to #N | no duplicate>.`
+
 ## Categories (GitHub labels)
 
 | Category / title prefix | GitHub label | Meaning | Typical evidence |
@@ -66,6 +95,26 @@ How to defer:
    issue, or an ADR entry).
 2. Keep the issue open so the decision stays visible.
 3. Do the parts that ARE solvable now and say so explicitly in the PR.
+
+## Critical fix
+
+Fixers treat the issue text as a hypothesis, not a contract:
+
+- **Verify before you trust.** Reproduce the defect against current code.
+  When the issue's claims are wrong (wrong file:line, misdescribed site,
+  already-compliant code), do not "fix" it blindly — correct the issue in
+  a comment and in the PR with the evidence. Evidence over authority.
+- **Root cause + sibling sweep (举一反三).** Fix the shared root cause, then
+  grep every consumer of the touched component/pattern and fix every call
+  site with the same defect in the same PR. The PR states the full site
+  list explicitly, including sites the issue never named.
+- **Push back with evidence.** If the issue's suggested direction is wrong
+  or infeasible, say so on the issue and implement the feasible part —
+  never silently implement an unreasonable plan.
+- **Escalate what you find.** A new, separable problem discovered during
+  the fix becomes a follow-up issue (through the Dedup gate) or a comment
+  on the current issue when it is the same defect class. Link both
+  directions (`Found while fixing #N` / `Follow-up: #M`).
 
 ## PR conventions
 

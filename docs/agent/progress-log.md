@@ -266,3 +266,11 @@
     comment template and aligned it with the new skill.
 - All gates green: `.agents/scripts/preflight.sh`.
 - Opened PR #63 to close issue #62.
+
+## 2026-08-10
+
+- Hardened the issue loop (issue #64) with a structured Dedup gate and a Critical fix doctrine:
+  - `docs/agent/issue-guidelines.md` gains the **Dedup gate** (component × defect-class vocabulary search, verdict table: same component + same defect → comment on the original; shared root cause → one root-cause issue listing all sites; different → new issue linked both ways; closed + re-appearing → new issue referencing the closed one; dedup verdict recorded in every issue body) and **Critical fix** rules (verify before you trust — correct the issue publicly when its claims are wrong; root cause + sibling sweep 举一反三 in one PR with the full site list stated; push back with evidence; escalate new separable findings as follow-up issues through the gate or comments on the current issue).
+  - `coffeemode-issue-submission` skill applies the gate with verdicts and records the dedup check in the body; `coffeemode-issue-review-fix` skill adds verify-before-trust, sibling sweep, duplicate-merge, and escalation steps; scope rules clarify that same-defect sibling fixes are part of the fix, not unrelated refactors.
+- All gates green: `.agents/scripts/preflight.sh`.
+- Opened PR #65 to close issue #64.

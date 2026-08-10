@@ -19,14 +19,18 @@ Use this workflow for any non-trivial coding or documentation task.
 
 ## Execution tiers
 
-| Tier | When | Gates |
-| --- | --- | --- |
-| Fast | Typo, formatting, comment-only | preflight |
-| Standard | Feature, bugfix, refactor | preflight + CI (typecheck, lint, test, build) |
-| High | Architecture, spec change, harness change | preflight + CI + semantic review |
+This table is the single canonical definition of the risk tiers. Every other
+document (iteration protocol, fix-plan and PR templates) refers to it rather
+than restating the criteria.
 
-## Consequence escalation
+| Tier | When | Gates | Approval |
+| --- | --- | --- | --- |
+| Fast | Typo, formatting, comment-only | preflight (agent self-verifies) | Agent |
+| Standard | Feature, bugfix, refactor | preflight + CI (typecheck, lint, test, build) green before merge | Agent, one independent role for material evidence |
+| High | Architecture, spec change, migration, auth/security/secrets, deployment, harness authority | preflight + CI + independent review on the final stable diff | Independent reviewer; agent cannot self-approve |
 
-- Tier 1 (Fast): agent self-verifies with preflight.
-- Tier 2 (Standard): CI must be green before merge.
-- Tier 3 (High): independent semantic review required; agent cannot self-approve.
+Risk follows consequences, not line count. Independent of tier, any change
+touching `docs/`, `.agents/`, root `AGENTS.md`, or the docs-harness CI workflow
+also triggers the semantic-review gate (see the "Bias to action" exception in
+`AGENTS.md`); tiers relax how much verification a change needs, never whether
+that gate applies.

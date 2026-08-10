@@ -50,6 +50,22 @@ expect_failure() {
   fi
 }
 
+# Assert an injected mutation actually changed the target file. A stale
+# match string (sed/grep/awk anchor drifted) would otherwise no-op, leaving
+# a valid file that the gate correctly passes — which then misreports as a
+# harness MISS. This makes the real cause ("fixture is stale") explicit.
+# Returns non-zero when the mutation did nothing so callers can skip the
+# now-meaningless expect_failure.
+assert_mutated() {
+  local label="$1" original="$2" mutated="$3"
+  if diff -q "$original" "$mutated" >/dev/null 2>&1; then
+    echo "  STALE FIXTURE: mutation did not change file: $label"
+    FAIL=$((FAIL + 1))
+    return 1
+  fi
+  return 0
+}
+
 echo "=== Baseline: all checks pass on clean copy ==="
 expect_pass "preflight" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/preflight.sh"
 expect_pass "check-docs-consistency" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-docs-consistency.sh"
@@ -85,7 +101,9 @@ expect_failure "trailing whitespace" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROO
 INDEX="$TEST_ROOT/docs/specs/README.md"
 cp "$INDEX" "$INDEX.bak"
 grep -v '0001-nextjs-migration.md' "$INDEX.bak" > "$INDEX"
-expect_failure "spec missing from index" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-docs-consistency.sh"
+if assert_mutated "spec missing from index" "$INDEX.bak" "$INDEX"; then
+  expect_failure "spec missing from index" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-docs-consistency.sh"
+fi
 mv "$INDEX.bak" "$INDEX"
 
 echo ""
@@ -112,24 +130,24 @@ cp "$MANIFEST" "$MANIFEST.bak"
 
 # Reference a missing spec (manifest uses bare numbers like "0001")
 sed 's/| 0001 |/| 9999 |/' "$MANIFEST.bak" > "$MANIFEST"
-expect_failure "slice references missing spec" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-implementation-slices.sh"
+if assert_mutated "slice references missing spec" "$MANIFEST.bak" "$MANIFEST"; then
+  expect_failure "slice references missing spec" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-implementation-slices.sh"
+fi
 mv "$MANIFEST.bak" "$MANIFEST"
 
 # Invalid status — match ANY status cell (the manifest may legitimately have
 # zero READY slices, e.g. when the last READY slice moves to IN-PROGRESS)
 cp "$MANIFEST" "$MANIFEST.bak"
 sed 's/| READY |/| UNKNOWN |/; s/| IN-PROGRESS |/| UNKNOWN |/; s/| BLOCKED |/| UNKNOWN |/; s/| COMPLETE |/| UNKNOWN |/' "$MANIFEST.bak" > "$MANIFEST"
-expect_failure "invalid slice status" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-implementation-slices.sh"
+if assert_mutated "invalid slice status" "$MANIFEST.bak" "$MANIFEST"; then
+  expect_failure "invalid slice status" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-implementation-slices.sh"
+fi
 mv "$MANIFEST.bak" "$MANIFEST"
 
 # READY slice with an active blocker
 cp "$MANIFEST" "$MANIFEST.bak"
 awk '/^\| scaffold-nextjs / { print "| scaffold-nextjs | Initialize Next.js workspace in web/ | READY | 0001, 0002 | none | missing MapKit key | typecheck, build | Next.js dev server and production build run in web/ |"; next } { print }' "$MANIFEST.bak" > "$MANIFEST"
-if diff -q "$MANIFEST.bak" "$MANIFEST" >/dev/null 2>&1; then
-  # sed anchor missed; fail loudly rather than test nothing
-  echo "  UNEXPECTED PASS: READY-with-blocker fault did not modify manifest"
-  FAIL=$((FAIL + 1))
-else
+if assert_mutated "READY slice with active blocker" "$MANIFEST.bak" "$MANIFEST"; then
   expect_failure "READY slice with active blocker" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-implementation-slices.sh"
 fi
 mv "$MANIFEST.bak" "$MANIFEST"

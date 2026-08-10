@@ -26,7 +26,7 @@ What was found during issue review. Include relevant code references (`file:line
 - **API/service/UI impact**:
 - **Test strategy**:
 - **Required doc/spec/ADR updates**:
-- **Risk tier**: Fast / Standard / High
+- **Risk tier**: Fast / Standard / High (criteria in `.agents/workflows/development-cycle.md`)
 
 ## Verification checklist
 

@@ -8,9 +8,20 @@ description: File CoffeeMode GitHub issues with categories, priorities, and evid
 ## Loop
 
 1. Read `docs/agent/issue-guidelines.md` — it is the single source for
-   categories, priorities, and the template.
-2. Check for duplicates first: `gh issue list --repo lyuzizheng/coffeemode
-   --state open`; extend an existing issue instead of filing a new one.
+   categories, priorities, the template, and the Dedup gate.
+2. **Run the Dedup gate** (guidelines §Dedup gate) before writing anything:
+   - List all open issues: `gh issue list --repo lyuzizheng/coffeemode
+     --state open --limit 100`.
+   - Search two vocabulary families — **component** (area/service/feature
+     and synonyms) × **defect class** (symptom class, e.g. auth, data
+     integrity, cache, perf, docs drift) — against titles and bodies.
+   - Verdicts: same component + same defect → **comment on the original**
+     with the new evidence, never a new issue. Same defect + shared root
+     cause across components → **one root-cause issue** listing every
+     affected site. Different defect or independent root cause → new
+     issue, linked to the related one. Closed + re-appearing or materially
+     different → new issue referencing the closed one.
+   - Record the verdict in the issue body: `**Dedup check**: …`.
 3. Classify before filing: one category label + one priority (P0–P3) from
    the guidelines table.
 4. File with the five-section template (`Summary`, `Evidence`, `Impact`,
@@ -22,7 +33,9 @@ description: File CoffeeMode GitHub issues with categories, priorities, and evid
 
 ## Submission checklist
 
-- [ ] Issue is not a duplicate
+- [ ] Dedup gate run (component × defect-class vocabularies) and verdict
+      recorded in the issue body
+- [ ] Near-duplicate → commented on the original instead of a new issue
 - [ ] One category label chosen from `docs/agent/issue-guidelines.md`
 - [ ] Issue title uses a category prefix (`[BUG]`, `[SECURITY]`,
       `[DATA-INTEGRITY]`, `[PERF]`, `[ARCH]`, `[DOCS]`, `[BLOCKED-OWNER]`)

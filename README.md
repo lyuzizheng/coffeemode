@@ -13,6 +13,10 @@ CoffeeMode MonoRepo
 
 ## Tech Stack
 
-- Spring Boot
-- React
-- Cloudflare Workers Wrangler
+- Next.js 16 (App Router) + React + TypeScript
+- TailwindCSS v4 + HeroUI v3
+- Self-hosted Postgres + Supabase Auth
+- Cloudflare Workers (Wrangler) for the POI cache and image services
+
+Coding conventions: `docs/agent/coding-conventions.md`. Spring Boot powered the
+now-archived Java backend under `_archive-coffeemode-backend/`.

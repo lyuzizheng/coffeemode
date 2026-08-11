@@ -1,5 +1,23 @@
 # Progress Log
 
+## Retention
+
+This log is append-only and bounded. Keep roughly the most recent two months of
+entries here; when it grows past that, move the oldest dated sections verbatim
+into `docs/agent/progress-log-archive.md` (newest-first) and leave this file with
+the recent tail. Archive history, never delete it.
+
+## 2026-08-10 (harness refinement)
+
+- Audited the agent harness (docs/CI/scripts/agent-config) and applied fixes on `chore/harness-refinement`:
+  - Consolidated five conflicting always-on rule files (`.cursorrules`, `.cursor/`, `.windsurf/`, `.trae/`, `.github/prompts/`) into one canonical `docs/agent/coding-conventions.md` (corrected to HeroUI v3 / Next.js 16; dropped stale Shadcn/Radix/Spring Boot/MongoDB); tool files are now pointers. Fixed the malformed double frontmatter in the prompt file and the stale `README.md` tech stack.
+  - Made the Execution tiers table in `.agents/workflows/development-cycle.md` the single canonical risk-tier definition; removed the duplicate "Consequence escalation" list and pointed `iteration-protocol.md`, the PR template, and the fix-plan template at it.
+  - Added an explicit "Bias to action" principle in `AGENTS.md` with a scoped ask-list in `iteration-protocol.md` §7 (accelerator to balance the brakes).
+  - Wired `.agents/ROUTER.md` to reference all skills and disambiguated `implementation-cycle` vs `issue-review-fix` triggers.
+  - Hardened `harness-self-test.sh` with a shared `assert_mutated` guard so a stale fixture anchor reports as a stale fixture (not a false harness MISS); guarded the undeclared `ruby` dependency in `check-implementation-slices.sh`.
+  - De-duplicated the harness script registry (canonical table now only in `.agents/README.md`); added a retention policy + `progress-log-archive.md` for the unbounded log.
+- Gates green: `.agents/scripts/preflight.sh` and `.agents/scripts/harness-self-test.sh` (22/22).
+
 ## 2026-07-31
 
 - Established documentation system: `docs/`, `docs/specs/`, `docs/adr/`, `docs/agent/`

@@ -47,9 +47,11 @@
 
 ## Risk tier
 
-- [ ] Fast (typo/format/comment-only)
-- [ ] Standard (localized behavior change)
-- [ ] High (data, auth/security, migrations, deployment, harness)
+Criteria defined in `.agents/workflows/development-cycle.md` (Execution tiers).
+
+- [ ] Fast
+- [ ] Standard
+- [ ] High
 
 ## Deployment / release notes
 

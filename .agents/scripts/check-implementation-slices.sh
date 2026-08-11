@@ -12,4 +12,9 @@ if [ ! -f docs/agent/implementation-slices.md ]; then
   exit 1
 fi
 
+if ! command -v ruby >/dev/null 2>&1; then
+  echo "FAIL: missing required dependency: ruby (slice validator)"
+  exit 1
+fi
+
 exec ruby "$ROOT/.agents/scripts/implementation-slices.rb" check

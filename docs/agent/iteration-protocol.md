@@ -41,13 +41,7 @@ required doc updates
 
 ## 4. Implement in small slices
 
-Size execution by consequence using `.agents/workflows/development-cycle.md`:
-
-- **Fast:** typo/formatting/comment-only — focused checks, then let PR CI cover the rest.
-- **Standard:** localized behavior change — one production-code writer, focused tests, at most one independent role that supplies material evidence.
-- **High risk:** data correctness, migrations, auth/security/secrets, deployment, or agent-harness authority — one production-code writer, applicable independent review, and one full relevant gate on the final stable diff.
-
-Risk follows consequences, not line count. Never run multiple source-writing agents concurrently.
+Size execution by consequence using the Execution tiers table in `.agents/workflows/development-cycle.md` (the single canonical definition of Fast / Standard / High). Never run multiple source-writing agents concurrently.
 
 Prefer slices that produce a verifiable result:
 
@@ -88,9 +82,22 @@ At the end of a meaningful change:
 - run `.agents/scripts/preflight.sh`;
 - run independent semantic review (`.agents/docs-semantic-review.md`) when docs, harness, or project agent configuration files changed.
 
-## 7. Ask when blocked
+## 7. Act by default; ask only on the scoped list
 
-If a decision affects product meaning, money/pricing display, security, auth, secrets, or irreversible data shape and the docs do not answer it, ask the user instead of guessing.
+Default to acting on clear, in-scope, authorized work and verifying with the tier's gates — see the "Bias to action" rule in `AGENTS.md`. Trivial, reversible, no-behavior changes are Fast tier and need no confirmation.
+
+Stop and ask the user (do not guess) only when a decision falls in one of these scoped areas and the specs do not answer it:
+
+```text
+- money / pricing display or data-correctness semantics
+- irreversible data shape or migrations
+- security, secrets, or abuse surface
+- auth / authority / trust model
+- user-visible identity or product meaning
+- external side effects (deploys, sending mail, third-party calls)
+```
+
+Everything outside this list on in-scope work: proceed, then let the tier's review gate catch it.
 
 ## 8. Keep main coherent
 

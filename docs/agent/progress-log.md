@@ -292,3 +292,8 @@ the recent tail. Archive history, never delete it.
   - `coffeemode-issue-submission` skill applies the gate with verdicts and records the dedup check in the body; `coffeemode-issue-review-fix` skill adds verify-before-trust, sibling sweep, duplicate-merge, and escalation steps; scope rules clarify that same-defect sibling fixes are part of the fix, not unrelated refactors.
 - All gates green: `.agents/scripts/preflight.sh`.
 - Opened PR #65 to close issue #64.
+- Fixed issue #34 (poi-service entry point awaits handler promise):
+  - `poi-service/src/index.ts` now `return await handleFetch(...)` inside an
+    outer `try/catch` so any rejection from the handler is visible to the
+    `fetch` promise and any synchronous throw is mapped to a JSON 500.
+- All gates green: `poi-service` typecheck/tests, `.agents/scripts/preflight.sh`.

@@ -4,10 +4,16 @@
  */
 
 import type { Env } from "./types";
+import { internalError } from "./auth";
 import { handleFetch } from "./handlers";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    return handleFetch(request, env);
+    try {
+      return await handleFetch(request, env);
+    } catch (e) {
+      console.error("poi-service fatal:", e);
+      return internalError();
+    }
   },
 };

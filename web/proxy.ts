@@ -4,10 +4,11 @@ import { type NextRequest, NextResponse } from "next/server";
 /**
  * Session-refresh proxy (spec 0001, 0004).
  *
- * Next.js 16 renamed the `middleware` file convention to `proxy`. Runs on every
- * non-asset request, refreshes Supabase SSR cookies, and forwards the refreshed
- * cookies to both the request and the response. It never blocks public routes;
- * route handlers call `getUser()` for their own auth decisions.
+ * Next.js 16 renamed the `middleware` file convention to `proxy`. Runs on
+ * matched non-asset requests, refreshes Supabase SSR cookies only when a
+ * session cookie is present, and forwards refreshed cookies to both the
+ * request and the response. It never blocks public routes; route handlers
+ * call `getUser()` for their own auth decisions.
  */
 export async function proxy(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -20,8 +21,9 @@ export async function proxy(request: NextRequest) {
 
   let response = NextResponse.next({ request });
 
-  // No cookies means no Supabase session to refresh; skip the network round-trip.
-  if (request.cookies.getAll().length === 0) {
+  // No Supabase session cookies means no refresh work; skip the network
+  // round-trip entirely. Analytics / consent / A/B cookies do not count.
+  if (!hasSupabaseSessionCookie(request)) {
     return response;
   }
 
@@ -46,16 +48,26 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  // Refreshing the session mutates the cookie bag via `setAll` above.
-  // If Supabase is unreachable, fall through with the original request so
-  // public routes and the offline page do not 500.
+  // `getSession()` refreshes only when the access token is expired, and does
+  // not force a network validation on every request like `getUser()` does.
+  // If Supabase is unreachable, fall through so public routes and the
+  // offline page do not 500.
   try {
-    await supabase.auth.getUser();
+    await supabase.auth.getSession();
   } catch (e) {
     console.error("proxy: session refresh failed", e);
   }
 
   return response;
+}
+
+function hasSupabaseSessionCookie(request: NextRequest): boolean {
+  return request.cookies.getAll().some(({ name }) =>
+    name === "sb-access-token" ||
+    name === "sb-refresh-token" ||
+    /^sb-.+-auth-token$/.test(name) ||
+    /^sb-.+-refresh-token$/.test(name)
+  );
 }
 
 export const config = {

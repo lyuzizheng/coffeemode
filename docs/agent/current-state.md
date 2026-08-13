@@ -10,7 +10,9 @@ Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisi
 - Issue #23 (distributed Postgres token-bucket rate limiter) is merged.
 - Issue #25 (image completion service with atomic DB writes) is merged.
 - Issue #24's likes_count trigger is merged (#57); #24 stays open for JSONB normalization.
+- Issue #26 (shared packages/common single-source) is merged.
 - Issue #27 (work_stats row locking) is merged (#56).
+- Issue #74 merges the post-review P1 fixes for PRs #66–#73 (OAuth redirect allowlist, proxy session refresh, profile upsert failure, sign-out cache clearing, and upstream POI/image error logging).
 - Issue #117 adds CI enforcement for the real-DB integration suite; the local suite is green.
 - Issue #118 hardens the real-DB suite against unsafe database targets and order-dependent coverage.
 - Next unblocked feature work is `map-home` (Apple MapKit full-screen map), which is blocked on the Apple Developer Program.
@@ -79,9 +81,10 @@ _archive-coffeemode-backend/   old Java app — being dropped
 
 ```text
 - NEXT_PUBLIC_SUPABASE_ANON_KEY not set (only URL + service-role present locally)
+- NEXT_PUBLIC_SITE_URL not set; NEXT_PUBLIC_ALLOWED_HOSTS not configured
 - DATABASE_URL (self-hosted Postgres) not configured for production anywhere (local dev uses `docker compose up -d --wait postgres` + `npm run db:migrate`, see `docs/agent/local-dev-stack.md`)
 - Supabase dashboard still needs Apple/Google OAuth provider config
-- Session-refresh proxy implemented (`web/proxy.ts`); first protected route can now rely on it
+- Session-refresh proxy (`web/proxy.ts`) refreshes only when a Supabase session cookie is present; route handlers verify the session via `getUser()` before any Postgres write
 - Postgres pool tuned with configurable `max`, idle/connection timeouts, error handling, and a graceful shutdown hook registered via Next.js `instrumentation.ts`
 - Postgres-backed rate limiter is ready for production; `RATE_LIMIT_BACKEND` environment variable selects backend
 - `next build` warns about custom Cache-Control for `/_next/static/:path*` — intentional for production hashed chunks
@@ -95,3 +98,5 @@ _archive-coffeemode-backend/   old Java app — being dropped
 ## Latest review
 
 D1, D4, D7, and A2 were implemented together on `feat/impl-phase1-remainder`. An independent review surfaced four blockers: the like CTE could insert orphaned rows for soft-deleted check-ins, the pool shutdown hook auto-registered at import and force-exited the process, Worker `compatibility_date` values were in the future, and the image completion route wrote `StoredImage` records without a `source` attribution. All four were fixed and verified; the branch merged to `main` as PR #22.
+
+An independent critical review of merged PRs #66–#73 surfaced P1 findings in OAuth `redirectTo` allowlist handling (#29), proxy session refresh (#30), OAuth callback profile upsert failure (#42), sign-out cache clearing (#47), and upstream POI/image error body logging (#50). The fixes were applied on `fix/post-review-p1-issues`, verified by `npm run verify` and `preflight`, and merged to `main` as PR #74.

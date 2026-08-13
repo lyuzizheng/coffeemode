@@ -146,6 +146,22 @@ describe("poi-client", () => {
     expect(logged).not.toHaveProperty("body");
     errorSpy.mockRestore();
   });
+
+  it("cancels the upstream response body instead of buffering it", async () => {
+    const cancelSpy = vi.fn().mockResolvedValue(undefined);
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 502,
+      body: { cancel: cancelSpy },
+    } as unknown as Response);
+
+    await expect(searchPOIs({ q: "x" })).rejects.toMatchObject({
+      name: "POIServiceError",
+      status: 502,
+    });
+
+    expect(cancelSpy).toHaveBeenCalledOnce();
+  });
 });
 
 describe("GET /api/places/search", () => {

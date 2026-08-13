@@ -58,8 +58,8 @@ async function fetchOriginal(original: ProcessUrls["original"]): Promise<Buffer>
     signal: AbortSignal.timeout(R2_DOWNLOAD_TIMEOUT_MS),
   });
   if (!response.ok) {
-    const body = await response.text().catch(() => "unknown error");
-    throw new Error(`failed to download original image: ${response.status} ${body}`);
+    await response.body?.cancel().catch(() => {});
+    throw new Error(`failed to download original image: ${response.status}`);
   }
 
   const declared = Number(response.headers.get("content-length"));
@@ -109,8 +109,8 @@ async function uploadVariant(
     signal: AbortSignal.timeout(R2_UPLOAD_TIMEOUT_MS),
   });
   if (!response.ok) {
-    const body = await response.text().catch(() => "unknown error");
-    throw new Error(`failed to upload image variant: ${response.status} ${body}`);
+    await response.body?.cancel().catch(() => {});
+    throw new Error(`failed to upload image variant: ${response.status}`);
   }
 }
 

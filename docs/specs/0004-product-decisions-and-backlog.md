@@ -54,7 +54,7 @@ Four read-only subagent reviews ran in parallel against the current `main` tree 
 
 ### Auth/cache/perf/DB/deploy
 
-22. **Session-refresh proxy is required.** Create `web/proxy.ts` using `@supabase/ssr` to refresh tokens on each request (Next.js 16 middleware convention).
+22. **Session-refresh proxy is required.** Details live in `docs/specs/0001-nextjs-migration.md` §Auth; route handlers call `getUser()` for their own auth decisions.
 23. **Static and PWA assets get long immutable cache headers in `next.config.ts`.** Apply to `/_next/static/*`, `/icons/*`, `/fonts/*`.
 24. **Serwist runtime cache must be tuned.** `/_next/static/*` → `CacheFirst` 1-year; dynamic routes (`/cafes/*`, `/profile`) → `NetworkOnly`.
 25. **Postgres pool needs config and error handling.** Set `max`, idle/connection timeouts, `on('error')`, and a graceful shutdown hook.
@@ -164,7 +164,7 @@ These need Apple MapKit and the bottom sheet.
 | User checks in 20 times at the same cafe | Recency-weighted per-user contribution (`0.6^rank`) plus optional social-weight hook. |
 | User soft-deletes their latest check-in | Recompute that user's contribution from remaining non-deleted rows; images from the deleted check-in are hidden from `cafes.gallery`. |
 | Apple POI not in D1 | Client must `POST /poi/external` first; `GET /poi/:apple_id` returns 404 otherwise. |
-| Expired Supabase access token | `web/proxy.ts` refreshes session before route handlers call `getUser()`. |
+| Expired Supabase access token | `web/proxy.ts` refreshes the session when a Supabase session cookie is present; see `0001` §Auth for details. Route handlers call `getUser()` for their own auth decisions. |
 | Nearby search radius > 10 km | Cap at 10 km; for wider discovery use city search + filters. |
 | Image upload > 10 MB | Presigned PUT rejects; UI shows size error before upload. |
 | Duplicate `checkin_likes` row | Upsert/toggle: insert or delete; keep `likes_count` on `checkins` in sync via atomic update. |

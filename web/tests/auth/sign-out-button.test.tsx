@@ -78,11 +78,30 @@ describe("SignOutButton", () => {
 
     render(<SignOutButton />, { wrapper: Wrapper });
 
-    expect(clearQueryClientMock).toHaveBeenCalledTimes(1);
-    expect(removeClientMock).toHaveBeenCalledTimes(1);
-
     await waitFor(() => {
+      expect(removeClientMock).toHaveBeenCalledTimes(1);
+      expect(clearQueryClientMock).toHaveBeenCalledTimes(1);
       expect(pushMock).toHaveBeenCalledWith("/");
     });
+  });
+
+  it("still redirects when idbPersister.removeClient() rejects", async () => {
+    removeClientMock.mockRejectedValueOnce(new Error("IndexedDB unavailable"));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    vi.mocked(useActionState).mockReturnValue([{ success: true }, mockFormAction, false]);
+
+    render(<SignOutButton />, { wrapper: Wrapper });
+
+    await waitFor(() => {
+      expect(errorSpy).toHaveBeenCalledWith(
+        "sign-out-button: failed to clear persisted cache",
+        expect.any(Error),
+      );
+      expect(clearQueryClientMock).toHaveBeenCalledTimes(1);
+      expect(pushMock).toHaveBeenCalledWith("/");
+    });
+
+    errorSpy.mockRestore();
   });
 });

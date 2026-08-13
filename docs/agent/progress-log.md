@@ -73,6 +73,30 @@ the recent tail. Archive history, never delete it.
   - `docs/specs/0004-product-decisions-and-backlog.md`: decision 8 records the rule; edge-case + acceptance rows updated.
   - Tests in `web/tests/checkins.test.ts` cover self-like rejection, legacy un-like, and the 403 route path.
 
+## 2026-08-13 (post-review P1 fixes)
+
+- Fixed P1 findings from the critical review (issues #29, #30, #42, #47, #50):
+  - `web/app/auth/actions.ts` now validates the request-derived OAuth `redirectTo`
+    origin against an allowlist that includes `NEXT_PUBLIC_SITE_URL` and any
+    properly parsed `NEXT_PUBLIC_ALLOWED_HOSTS` entries, falling back to the
+    configured site URL when the request origin is disallowed or missing.
+  - Fixed IPv6 localhost (`[::1]`) handling and `NEXT_PUBLIC_ALLOWED_HOSTS` parsing.
+  - `web/app/auth/callback/route.ts` signs the user out before redirecting on a
+    profile upsert failure; `web/app/page.tsx` displays a localized error banner
+    for `?auth=error&reason=profile_upsert`.
+  - `web/app/auth/sign-out-button.tsx` always redirects after sign-out, even if
+    `idbPersister.removeClient()` rejects.
+  - `web/proxy.ts` uses `getSession()` instead of `getUser()` and only runs when
+    a Supabase session cookie is present, skipping analytics/consent/A/B cookies.
+  - `web/lib/places/poi-client.ts`, `web/lib/images/image-service-client.ts`, and
+    `web/lib/images/processor.ts` now cancel upstream error response bodies
+    instead of buffering them; only a safe status summary (or sanitized message) is logged.
+  - `web/repo_notes.md` and `docs/specs/0001-nextjs-migration.md` updated to
+    remove stale entries and record the allowlist/fallback contract.
+- All gates green: `cd web && npm run verify` (185 tests, typecheck, lint, build),
+  `cd poi-service && npm run typecheck && npm test` (61 tests),
+  `.agents/scripts/preflight.sh`.
+
 ## 2026-08-10 (harness refinement)
 
 - Audited the agent harness (docs/CI/scripts/agent-config) and applied fixes on `chore/harness-refinement`:

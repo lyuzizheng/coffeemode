@@ -24,17 +24,40 @@ export type AuthActionState = {
 };
 
 const ALLOWED_SCHEMES = ["http:", "https:"];
-const LOCALHOST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+const LOCALHOST_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
 function validateProvider(value: FormDataEntryValue | null): value is OAuthProvider {
   return value === "apple" || value === "google";
 }
 
-function getConfiguredSiteHost(): string | null {
-  const url = process.env.NEXT_PUBLIC_SITE_URL;
-  if (!url) return null;
+function getConfiguredOrigin(): string | null {
+  const raw = process.env.NEXT_PUBLIC_SITE_URL;
+  if (!raw) return null;
   try {
-    return new URL(url).host;
+    const url = new URL(raw);
+    if (!ALLOWED_SCHEMES.includes(url.protocol)) return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+function parseAllowlistEntry(entry: string): { host: string; hostname: string } | null {
+  let hostPart = entry;
+
+  if (entry.includes("://") || entry.startsWith("//")) {
+    try {
+      hostPart = new URL(entry.startsWith("//") ? `http:${entry}` : entry).host;
+    } catch {
+      return null;
+    }
+  }
+
+  if (!hostPart || /[/?#]/.test(hostPart)) return null;
+
+  try {
+    const url = new URL(`http://${hostPart}`);
+    return { host: url.host, hostname: url.hostname };
   } catch {
     return null;
   }
@@ -42,22 +65,33 @@ function getConfiguredSiteHost(): string | null {
 
 function getAllowedHosts(): Set<string> {
   const allowed = new Set<string>();
-  const configuredHost = getConfiguredSiteHost();
-  if (configuredHost) allowed.add(configuredHost);
+
+  const configured = getConfiguredOrigin();
+  if (configured) {
+    try {
+      allowed.add(new URL(configured).host);
+    } catch {
+      // Malformed configured origin is ignored.
+    }
+  }
 
   const extra = process.env.NEXT_PUBLIC_ALLOWED_HOSTS;
   if (extra) {
-    for (const host of extra.split(",")) {
-      const trimmed = host.trim();
-      if (trimmed) allowed.add(trimmed);
+    for (const entry of extra.split(",")) {
+      const parsed = parseAllowlistEntry(entry.trim());
+      if (parsed) allowed.add(parsed.host);
     }
   }
+
   return allowed;
 }
 
-function isLocalhost(host: string): boolean {
-  const [name] = host.split(":");
-  return LOCALHOST_HOSTS.has(name);
+function isAllowedHost(host: string, hostname: string): boolean {
+  const allowed = getAllowedHosts();
+  if (allowed.size > 0) {
+    return allowed.has(host);
+  }
+  return LOCALHOST_HOSTNAMES.has(hostname);
 }
 
 function isAllowedOrigin(origin: string): boolean {
@@ -68,48 +102,42 @@ function isAllowedOrigin(origin: string): boolean {
     return false;
   }
   if (!ALLOWED_SCHEMES.includes(url.protocol)) return false;
-
-  const allowedHosts = getAllowedHosts();
-  if (allowedHosts.size > 0) {
-    return allowedHosts.has(url.host);
-  }
-
-  // When no allowlist is configured, localhost is the only safe default.
-  return isLocalhost(url.host);
-}
-
-async function getRedirectTo(): Promise<string | null> {
-  const configured = process.env.NEXT_PUBLIC_SITE_URL;
-  if (configured) {
-    try {
-      const url = new URL(configured);
-      if (ALLOWED_SCHEMES.includes(url.protocol)) {
-        return `${url.origin}/auth/callback`;
-      }
-    } catch {
-      // Fall through to request-header validation.
-    }
-  }
-
-  const requestHeaders = await headers();
-  const origin = requestHeaders.get("origin");
-  const fallback = origin ?? getProtoHost(requestHeaders);
-  if (fallback && isAllowedOrigin(fallback)) {
-    return `${fallback}/auth/callback`;
-  }
-
-  return null;
+  return isAllowedHost(url.host, url.hostname);
 }
 
 function getProtoHost(requestHeaders: Headers): string | null {
-  const proto = requestHeaders.get("x-forwarded-proto") ?? "https";
+  const rawProto = requestHeaders.get("x-forwarded-proto");
+  const proto = rawProto === "http" ? "http" : "https";
   const host = requestHeaders.get("host");
   if (!host) return null;
 
-  // Host is just the host (with optional port); x-forwarded-proto gives the scheme.
-  // Avoid double-including the scheme if a misconfigured proxy put one in host.
   const cleanHost = host.replace(/^https?:\/\//, "");
-  return `${proto}://${cleanHost}`;
+  if (!cleanHost) return null;
+
+  try {
+    const url = new URL(`${proto}://${cleanHost}`);
+    if (!ALLOWED_SCHEMES.includes(url.protocol)) return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+async function getRedirectTo(): Promise<string | null> {
+  const requestHeaders = await headers();
+  const originHeader = requestHeaders.get("origin");
+  const requestOrigin = originHeader ? (isAllowedOrigin(originHeader) ? originHeader : null) : getProtoHost(requestHeaders);
+
+  if (requestOrigin && isAllowedOrigin(requestOrigin)) {
+    return `${requestOrigin}/auth/callback`;
+  }
+
+  const configuredOrigin = getConfiguredOrigin();
+  if (configuredOrigin && isAllowedOrigin(configuredOrigin)) {
+    return `${configuredOrigin}/auth/callback`;
+  }
+
+  return null;
 }
 
 export async function signIn(

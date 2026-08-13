@@ -27,13 +27,16 @@ export async function GET(request: Request) {
 
   // First-touch profile row. The user id is Supabase's; Postgres never sees
   // credentials, only this row keyed by the auth id. A transient Postgres
-  // failure must not strand the user after a successful OAuth round-trip —
-  // the session cookie is already set, and the next callback retries the
-  // upsert. Downstream reads treat a missing profile as "create on demand".
+  // failure after a successful OAuth round-trip should surface as a clear
+  // error so the user can retry; the next sign-in will run this callback again
+  // with a fresh code and retry the upsert.
   try {
     await upsertProfile(data.user, query);
   } catch (err) {
     console.error("auth/callback: profile upsert failed", err);
+    return NextResponse.redirect(
+      new URL("/?auth=error&reason=profile_upsert", origin),
+    );
   }
 
   return NextResponse.redirect(new URL("/", origin));

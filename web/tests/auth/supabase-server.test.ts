@@ -16,7 +16,6 @@ vi.mock("next/headers", () => ({
 const setCookieMock = vi.fn();
 
 import { createSupabaseServerClient } from "@/lib/auth/supabase-server";
-import { cookies } from "next/headers";
 
 const ORIGINAL_ENV = process.env;
 

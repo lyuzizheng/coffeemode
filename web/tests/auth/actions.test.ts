@@ -170,11 +170,12 @@ describe("signIn", () => {
 });
 
 describe("signOut", () => {
-  it("redirects to / on success", async () => {
+  it("returns success on success", async () => {
     signOutMock.mockResolvedValueOnce({ error: null });
 
     const formData = new FormData();
-    await expect(signOut(undefined, formData)).rejects.toThrow("NEXT_REDIRECT:/");
+    const result = await signOut(undefined, formData);
+    expect(result).toEqual({ success: true });
     expect(signOutMock).toHaveBeenCalledOnce();
   });
 

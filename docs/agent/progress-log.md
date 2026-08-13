@@ -343,3 +343,15 @@ the recent tail. Archive history, never delete it.
     successful exchange, exchange failure, and upsert failure paths.
 - All gates green: `cd web && npm run verify` (174 tests, typecheck, lint,
   build), `.agents/scripts/preflight.sh`.
+- Fixed issue #47 (TanStack Query persisted cache not cleared on sign-out):
+  - `web/app/auth/sign-out-button.tsx` now clears the in-memory query cache
+    with `queryClient.clear()` and removes the IndexedDB persisted client
+    with `idbPersister.removeClient()` after the server action reports success,
+    then redirects to `/`.
+  - `web/app/auth/actions.ts` `signOut` returns `{ success: true }` instead
+    of `redirect("/")` so the client can perform the cache cleanup.
+  - Updated `web/tests/auth/actions.test.ts` and
+    `web/tests/auth/sign-out-button.test.tsx` for the success-state flow and
+    cache-clear behavior.
+- All gates green: `cd web && npm run verify` (175 tests, typecheck, lint,
+  build), `.agents/scripts/preflight.sh`.

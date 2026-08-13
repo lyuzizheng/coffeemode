@@ -1,9 +1,14 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { useActionState } from "react";
 import { SignOutButton } from "@/app/auth/sign-out-button";
 import messages from "../../messages/en.json";
+
+const clearQueryClientMock = vi.hoisted(() => vi.fn());
+const removeClientMock = vi.hoisted(() => vi.fn());
+const pushMock = vi.hoisted(() => vi.fn());
+const refreshMock = vi.hoisted(() => vi.fn());
 
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react")>();
@@ -13,6 +18,20 @@ vi.mock("react", async (importOriginal) => {
 vi.mock("@/app/auth/actions", () => ({
   signIn: vi.fn(),
   signOut: vi.fn(),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: pushMock, refresh: refreshMock }),
+}));
+
+vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({ clear: clearQueryClientMock }),
+}));
+
+vi.mock("@/lib/query/persister", () => ({
+  idbPersister: {
+    removeClient: removeClientMock,
+  },
 }));
 
 function Wrapper({ children }: { children: React.ReactNode }) {
@@ -28,6 +47,7 @@ describe("SignOutButton", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    removeClientMock.mockResolvedValue(undefined);
     vi.mocked(useActionState).mockReturnValue([undefined, mockFormAction, false]);
   });
 
@@ -51,5 +71,18 @@ describe("SignOutButton", () => {
     render(<SignOutButton />, { wrapper: Wrapper });
 
     expect(screen.getByRole("alert")).toHaveTextContent("Sign-out failed");
+  });
+
+  it("clears the query cache and persisted data, then redirects on success", async () => {
+    vi.mocked(useActionState).mockReturnValue([{ success: true }, mockFormAction, false]);
+
+    render(<SignOutButton />, { wrapper: Wrapper });
+
+    expect(clearQueryClientMock).toHaveBeenCalledTimes(1);
+    expect(removeClientMock).toHaveBeenCalledTimes(1);
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/");
+    });
   });
 });

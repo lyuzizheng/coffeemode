@@ -14,6 +14,7 @@ export type OAuthProvider = "apple" | "google";
 
 export type AuthActionState = {
   error?: string;
+  success?: boolean;
 };
 
 const ALLOWED_SCHEMES = ["http:", "https:"];
@@ -150,5 +151,7 @@ export async function signOut(
     return { error: error.message };
   }
 
-  redirect("/");
+  // The client clears the TanStack Query cache and IndexedDB persister after
+  // receiving this success state, then redirects home.
+  return { success: true };
 }

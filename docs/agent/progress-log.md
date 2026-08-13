@@ -324,3 +324,12 @@ the recent tail. Archive history, never delete it.
     forged-Origin, allowlist, localhost, and non-HTTP schemes.
 - All gates green: `cd web && npm run verify` (166 tests, typecheck, lint,
   build), `.agents/scripts/preflight.sh`.
+- Fixed issue #43 (createSupabaseServerClient cookie set errors):
+  - `web/lib/auth/supabase-server.ts` now distinguishes the expected
+    read-only-cookie error in Server Components from real cookie write errors.
+  - Read-only context is swallowed silently; other errors are logged with the
+    affected cookie names and rethrown.
+  - Added `web/tests/auth/supabase-server.test.ts` coverage for success,
+    read-only, and oversized/invalid error paths.
+- All gates green: `cd web && npm run verify` (170 tests, typecheck, lint,
+  build), `.agents/scripts/preflight.sh`.

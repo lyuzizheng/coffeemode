@@ -20,6 +20,11 @@ export async function proxy(request: NextRequest) {
 
   let response = NextResponse.next({ request });
 
+  // No cookies means no Supabase session to refresh; skip the network round-trip.
+  if (request.cookies.getAll().length === 0) {
+    return response;
+  }
+
   const supabase = createServerClient(url, anonKey, {
     cookies: {
       getAll() {
@@ -42,13 +47,19 @@ export async function proxy(request: NextRequest) {
   });
 
   // Refreshing the session mutates the cookie bag via `setAll` above.
-  await supabase.auth.getUser();
+  // If Supabase is unreachable, fall through with the original request so
+  // public routes and the offline page do not 500.
+  try {
+    await supabase.auth.getUser();
+  } catch (e) {
+    console.error("proxy: session refresh failed", e);
+  }
 
   return response;
 }
 
 export const config = {
   matcher: [
-    "/((?!_next/|serwist/|icons/|fonts/|manifest\\.webmanifest|favicon\\.ico).*)",
+    "/((?!_next/|serwist/|icons/|fonts/|manifest\\.webmanifest|favicon\\.ico|api/health(?:/.*)?|api/places(?:/.*)?).*)",
   ],
 };

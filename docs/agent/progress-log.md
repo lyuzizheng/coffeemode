@@ -287,6 +287,20 @@ the recent tail. Archive history, never delete it.
 
 ## 2026-08-10
 
+- Fixed issue #30 (proxy resilience and public-route bypass):
+  - Wrapped `supabase.auth.getUser()` in `web/proxy.ts` in try/catch; a
+    session-refresh failure now falls through instead of 500ing.
+  - Updated proxy matcher to skip public/no-auth API routes
+    (`/api/health`, `/api/places/*`) so the proxy does not block them.
+  - Added a cookie-presence guard so `getUser()` is skipped when the request
+    carries no cookies, removing the network round-trip for anonymous traffic.
+  - Added `web/tests/proxy.test.ts` coverage for the error path, matcher
+    exclusions, and the no-cookie skip.
+- All gates green: `cd web && npm run verify` (161 tests, typecheck, lint,
+  build), `.agents/scripts/preflight.sh`.
+
+## 2026-08-10
+
 - Hardened the issue loop (issue #64) with a structured Dedup gate and a Critical fix doctrine:
   - `docs/agent/issue-guidelines.md` gains the **Dedup gate** (component × defect-class vocabulary search, verdict table: same component + same defect → comment on the original; shared root cause → one root-cause issue listing all sites; different → new issue linked both ways; closed + re-appearing → new issue referencing the closed one; dedup verdict recorded in every issue body) and **Critical fix** rules (verify before you trust — correct the issue publicly when its claims are wrong; root cause + sibling sweep 举一反三 in one PR with the full site list stated; push back with evidence; escalate new separable findings as follow-up issues through the gate or comments on the current issue).
   - `coffeemode-issue-submission` skill applies the gate with verdicts and records the dedup check in the body; `coffeemode-issue-review-fix` skill adds verify-before-trust, sibling sweep, duplicate-merge, and escalation steps; scope rules clarify that same-defect sibling fixes are part of the fix, not unrelated refactors.

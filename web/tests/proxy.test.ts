@@ -60,6 +60,46 @@ describe("proxy", () => {
     expect(createServerClient).not.toHaveBeenCalled();
     expect(res.status).toBe(200);
   });
+
+  it("falls through when session refresh throws", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const getUser = vi.fn(async () => {
+      throw new Error("Supabase unreachable");
+    });
+
+    vi.mocked(createServerClient).mockImplementation(
+      () => ({ auth: { getUser } }) as unknown as ReturnType<typeof createServerClient>,
+    );
+
+    const req = new NextRequest(new URL("http://localhost/cafes/c1"), {
+      headers: new Headers(),
+    });
+    req.cookies.set("sb-access-token", "stale-token");
+
+    const res = await proxy(req);
+
+    expect(getUser).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(200);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    errorSpy.mockRestore();
+  });
+
+  it("skips getUser when there are no cookies", async () => {
+    const getUser = vi.fn(async () => ({ data: { user: null }, error: null }));
+
+    vi.mocked(createServerClient).mockImplementation(
+      () => ({ auth: { getUser } }) as unknown as ReturnType<typeof createServerClient>,
+    );
+
+    const req = new NextRequest(new URL("http://localhost/cafes/c1"), {
+      headers: new Headers(),
+    });
+
+    const res = await proxy(req);
+
+    expect(getUser).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+  });
 });
 
 describe("proxy matcher", () => {
@@ -79,5 +119,12 @@ describe("proxy matcher", () => {
     expect("/icons/icon-192.png").not.toMatch(pattern);
     expect("/fonts/inter-var.woff2").not.toMatch(pattern);
     expect("/manifest.webmanifest").not.toMatch(pattern);
+  });
+
+  it("excludes public/no-auth API routes", () => {
+    expect("/api/health").not.toMatch(pattern);
+    expect("/api/health/ready").not.toMatch(pattern);
+    expect("/api/places/search").not.toMatch(pattern);
+    expect("/api/places/resolve").not.toMatch(pattern);
   });
 });

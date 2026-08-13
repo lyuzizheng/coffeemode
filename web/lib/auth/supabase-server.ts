@@ -34,13 +34,30 @@ export async function createSupabaseServerClient() {
           cookiesToSet.forEach(({ name, value, options }) =>
             cookieStore.set(name, value, options),
           );
-        } catch {
-          // Called from a Server Component, where cookies are read-only.
-          // Safe to ignore: session refresh also happens in route handlers.
+        } catch (e) {
+          // Setting cookies is not allowed in Server Components (they are read-only
+          // there). That case is expected and safe to ignore; session refresh also
+          // runs in route handlers. Other errors (invalid name, oversized value,
+          // full cookie jar) are real problems and should surface.
+          if (isReadOnlyCookieError(e)) {
+            return;
+          }
+          console.error("supabase-server: failed to set cookies", {
+            names: cookiesToSet.map(({ name }) => name),
+            error: e instanceof Error ? e.message : String(e),
+          });
+          throw e;
         }
       },
     },
   });
+}
+
+function isReadOnlyCookieError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    /Cookies can only be modified|ReadonlyRequestCookies cannot be modified/i.test(error.message)
+  );
 }
 
 /** True when the public Supabase env is present enough to attempt auth. */

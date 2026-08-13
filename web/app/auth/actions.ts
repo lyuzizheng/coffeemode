@@ -16,20 +16,93 @@ export type AuthActionState = {
   error?: string;
 };
 
+const ALLOWED_SCHEMES = ["http:", "https:"];
+const LOCALHOST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
 function validateProvider(value: FormDataEntryValue | null): value is OAuthProvider {
   return value === "apple" || value === "google";
 }
 
-async function getOriginHeader(): Promise<string> {
+function getConfiguredSiteHost(): string | null {
+  const url = process.env.NEXT_PUBLIC_SITE_URL;
+  if (!url) return null;
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
+  }
+}
+
+function getAllowedHosts(): Set<string> {
+  const allowed = new Set<string>();
+  const configuredHost = getConfiguredSiteHost();
+  if (configuredHost) allowed.add(configuredHost);
+
+  const extra = process.env.NEXT_PUBLIC_ALLOWED_HOSTS;
+  if (extra) {
+    for (const host of extra.split(",")) {
+      const trimmed = host.trim();
+      if (trimmed) allowed.add(trimmed);
+    }
+  }
+  return allowed;
+}
+
+function isLocalhost(host: string): boolean {
+  const [name] = host.split(":");
+  return LOCALHOST_HOSTS.has(name);
+}
+
+function isAllowedOrigin(origin: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (!ALLOWED_SCHEMES.includes(url.protocol)) return false;
+
+  const allowedHosts = getAllowedHosts();
+  if (allowedHosts.size > 0) {
+    return allowedHosts.has(url.host);
+  }
+
+  // When no allowlist is configured, localhost is the only safe default.
+  return isLocalhost(url.host);
+}
+
+async function getRedirectTo(): Promise<string | null> {
+  const configured = process.env.NEXT_PUBLIC_SITE_URL;
+  if (configured) {
+    try {
+      const url = new URL(configured);
+      if (ALLOWED_SCHEMES.includes(url.protocol)) {
+        return `${url.origin}/auth/callback`;
+      }
+    } catch {
+      // Fall through to request-header validation.
+    }
+  }
+
   const requestHeaders = await headers();
   const origin = requestHeaders.get("origin");
-  if (origin) return origin;
+  const fallback = origin ?? getProtoHost(requestHeaders);
+  if (fallback && isAllowedOrigin(fallback)) {
+    return `${fallback}/auth/callback`;
+  }
 
+  return null;
+}
+
+function getProtoHost(requestHeaders: Headers): string | null {
   const proto = requestHeaders.get("x-forwarded-proto") ?? "https";
   const host = requestHeaders.get("host");
-  if (host) return `${proto}://${host}`;
+  if (!host) return null;
 
-  return "";
+  // Host is just the host (with optional port); x-forwarded-proto gives the scheme.
+  // Avoid double-including the scheme if a misconfigured proxy put one in host.
+  const cleanHost = host.replace(/^https?:\/\//, "");
+  return `${proto}://${cleanHost}`;
 }
 
 export async function signIn(
@@ -41,14 +114,16 @@ export async function signIn(
     return { error: "Invalid sign-in provider" };
   }
 
+  const redirectTo = await getRedirectTo();
+  if (!redirectTo) {
+    return { error: "Sign-in is not configured" };
+  }
+
   const supabase = await createSupabaseServerClient();
-  const origin = await getOriginHeader();
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
-    options: {
-      redirectTo: `${origin}/auth/callback`,
-    },
+    options: { redirectTo },
   });
 
   if (error || !data.url) {

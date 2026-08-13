@@ -67,14 +67,16 @@ async function poiFetch(
   });
   if (!res.ok) {
     const upstreamStatus = res.status;
-    const body = await res.text().catch(() => "");
-    console.error("POI service error", { status: upstreamStatus, body: body.slice(0, 1000) });
+    // Consume the body to avoid leaving the response stream hanging, but do
+    // not log it — upstream error bodies may contain internal worker details.
+    await res.text().catch(() => "");
     let message = "POI service returned an error";
     if (upstreamStatus === 401) message = "POI service unavailable";
     else if (upstreamStatus === 404) message = "POI not found";
     else if (upstreamStatus === 422) message = "POI could not be resolved";
     else if (upstreamStatus >= 500) message = "POI service unavailable";
     else if (upstreamStatus >= 400) message = "Invalid POI request";
+    console.error("POI service error", { status: upstreamStatus, message });
     throw new POIServiceError(
       message,
       upstreamStatus === 401 ? 502 : upstreamStatus,

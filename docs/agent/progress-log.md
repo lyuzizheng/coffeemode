@@ -333,3 +333,13 @@ the recent tail. Archive history, never delete it.
     read-only, and oversized/invalid error paths.
 - All gates green: `cd web && npm run verify` (170 tests, typecheck, lint,
   build), `.agents/scripts/preflight.sh`.
+- Fixed issue #42 (OAuth callback silently drops profile-upsert failures):
+  - `web/app/auth/callback/route.ts` now redirects to
+    `/?auth=error&reason=profile_upsert` when `upsertProfile` fails, instead
+    of silently sending the user home without a `profiles` row.
+  - Updated the inline comment to remove the inaccurate "create on demand"
+    claim; the retry path is the next OAuth callback with a fresh code.
+  - Added `web/tests/auth/callback.test.ts` coverage for missing code,
+    successful exchange, exchange failure, and upsert failure paths.
+- All gates green: `cd web && npm run verify` (174 tests, typecheck, lint,
+  build), `.agents/scripts/preflight.sh`.

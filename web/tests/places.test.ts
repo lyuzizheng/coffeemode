@@ -37,6 +37,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   delete process.env.POI_SERVICE_URL;
   delete process.env.POI_SERVICE_TOKEN;
   vi.unstubAllGlobals();
@@ -118,6 +119,32 @@ describe("poi-client", () => {
       status: 502,
       upstreamStatus: 401,
     });
+  });
+
+  it("does not log upstream error response bodies", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ internal: "stack trace" }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    await expect(searchPOIs({ q: "x" })).rejects.toMatchObject({
+      name: "POIServiceError",
+      status: 500,
+    });
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const [, logged] = errorSpy.mock.calls[0] as [string, Record<string, unknown>];
+    expect(logged).toEqual(
+      expect.objectContaining({
+        status: 500,
+        message: "POI service unavailable",
+      }),
+    );
+    expect(logged).not.toHaveProperty("body");
+    errorSpy.mockRestore();
   });
 });
 

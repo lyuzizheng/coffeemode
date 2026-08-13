@@ -311,3 +311,16 @@ the recent tail. Archive history, never delete it.
     outer `try/catch` so any rejection from the handler is visible to the
     `fetch` promise and any synchronous throw is mapped to a JSON 500.
 - All gates green: `poi-service` typecheck/tests, `.agents/scripts/preflight.sh`.
+- Fixed issue #29 (OAuth redirectTo validation):
+  - `web/app/auth/actions.ts` now derives `redirectTo` from `NEXT_PUBLIC_SITE_URL`
+    when configured, falling back to request headers only when the Origin or
+    `x-forwarded-proto`+`host` combination matches an allowlist.
+  - Allowlist sources: host from `NEXT_PUBLIC_SITE_URL`, plus optional
+    `NEXT_PUBLIC_ALLOWED_HOSTS`; with no configuration, only `localhost` /
+    `127.0.0.1` / `::1` are accepted.
+  - `web/.env.example` documents `NEXT_PUBLIC_SITE_URL` and
+    `NEXT_PUBLIC_ALLOWED_HOSTS`.
+  - Added `web/tests/auth/actions.test.ts` coverage for configured-site,
+    forged-Origin, allowlist, localhost, and non-HTTP schemes.
+- All gates green: `cd web && npm run verify` (166 tests, typecheck, lint,
+  build), `.agents/scripts/preflight.sh`.

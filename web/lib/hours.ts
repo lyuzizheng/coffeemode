@@ -39,6 +39,26 @@ function parseWallClock(value: string): number | null {
   return hours * 60 + minutes;
 }
 
+const DAY_KEY_SET: ReadonlySet<string> = new Set(DAY_KEYS);
+
+/** Structural validation for the cafes.opening_hours jsonb shape. */
+export function isValidWeeklyHours(value: unknown): value is WeeklyHours {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  for (const [key, entry] of Object.entries(value)) {
+    if (!DAY_KEY_SET.has(key)) return false;
+    if (entry === null) continue; // explicit closed day
+    if (typeof entry !== "object" || Array.isArray(entry)) return false;
+    const { open, close } = entry as Record<string, unknown>;
+    if (typeof open !== "string" || typeof close !== "string") return false;
+    if (parseWallClock(open) === null || parseWallClock(close) === null) {
+      return false;
+    }
+  }
+  return true;
+}
+
 interface CafeLocalTime {
   day: DayKey;
   /** Minutes since midnight, cafe-local. */

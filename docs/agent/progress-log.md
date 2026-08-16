@@ -559,3 +559,30 @@ the recent tail. Archive history, never delete it.
     extended for the gallery merge (8 statements).
 - All gates green: `cd web && npm run verify` (232 tests, typecheck, lint,
   build), `.agents/scripts/preflight.sh`.
+
+## 2026-08-17 (service worker API cache, #46)
+
+- Issue #46 on `fix/issue-46-sw-api-cache` (slice `issue-46-sw-api-cache`).
+  Verify-before-trust: the issue's quoted `sw.ts:57-65` NetworkFirst rule
+  no longer exists (rules moved to `web/lib/sw-rules.ts` in the 2026-08-09
+  F4 refactor, which deliberately omitted then-nonexistent routes). The
+  live hole: serwist `defaultCache` (spread after `RUNTIME_RULES`) has a
+  same-origin `/api/` catch-all — NetworkFirst, cacheName `apis`, 24h
+  maxAge, 10s network timeout. The #45 domain routes (`GET /api/cafes`,
+  `/api/cafes/[id]`) fell through into it; the Cache API ignores the
+  server's `Cache-Control: no-store`. Stale user-location-parametrized
+  responses for up to a day.
+- Fix: one catch-all `network-only` rule for `/api/` in `RUNTIME_RULES`
+  (after `auth`, before the asset rules — first-match-wins puts it ahead
+  of defaultCache), retiring the whole bug class for present and future
+  API routes. Redundant per-route rules (`images-api`,
+  `health-and-places`) removed — same strategy, earlier position.
+  ADR-0003 §3's `/api/cafes/*` NetworkFirst row amended to the catch-all
+  network-only (it predated the F4 refactor; this PR makes it wrong, not
+  just unimplemented).
+- Tests: `sw.test.ts` — 7 rules now; every live `/api/*` family (images,
+  health, places, cafes, cafes/[id], navigations) asserts `["api"]`;
+  the dead-path guard keeps `/cafes/` and `/profile` (the #45 routes were
+  promoted out of it).
+- All gates green: `cd web && npm run verify` (233 tests, typecheck, lint,
+  build), `.agents/scripts/preflight.sh`.

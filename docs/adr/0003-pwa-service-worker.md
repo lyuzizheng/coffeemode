@@ -28,9 +28,8 @@ In addition to the build assets that Serwist precaches automatically (`/_next/st
 | `/_next/static/*` | `CacheFirst` | 1 year (immutable hashes) | Build assets never change without a new hash |
 | `/icons/*`, `/fonts/*` | `CacheFirst` | 1 year | Static assets |
 | `images.coffeemode.app/**/*.webp` | `CacheFirst` | 200 entries, 30 days LRU | R2 image variants are immutable after processing; serve from cache first, no revalidation round-trip |
-| `/api/cafes/*`, `/api/checkins/*` | `NetworkFirst` | 5 min | CoffeeMode app data; stale-while-revalidate acceptable |
-| `/api/places/*`, `/api/health` | `NetworkOnly` | — | POI service and health ping should not be double-cached |
-| `/api/images/*`, `/auth/*` | `NetworkOnly` | — | Uploads and auth must not be cached |
+| `/api/*` (all API routes) | `NetworkOnly` | — | Supersedes the earlier per-route rows: API GETs are user-specific/volatile, and serwist's `defaultCache` has a 24h NetworkFirst `apis` catch-all that ignores `Cache-Control: no-store` — a catch-all network-only rule in `RUNTIME_RULES` must win first (issue #46) |
+| `/auth/*` | `NetworkOnly` | — | Auth must not be cached |
 | `/serwist/sw.js`, `/manifest.webmanifest` | `NetworkOnly` | — | Always fetch fresh worker/manifest |
 
 ### 4. Images: keep `next/image`, custom loader for R2

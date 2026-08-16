@@ -3,7 +3,7 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
-import { cardInteraction, duration, ease, spring } from "@/lib/motion";
+import { cardInteraction, duration, ease, spring, useEnterMotion } from "@/lib/motion";
 import { Section, WorkBar } from "../shared";
 
 const MOTION_TOKENS = [
@@ -17,6 +17,7 @@ export function MotionSection() {
   const t = useTranslations("themePreview.motion");
   const td = useTranslations("themePreview.cards.dims");
   const reduced = useReducedMotion() ?? false;
+  const enter = useEnterMotion();
   const [order, setOrder] = useState<string[]>(["wifi", "outlets", "seats", "coffee"]);
 
   return (
@@ -79,7 +80,7 @@ export function MotionSection() {
         {/* Hover / press demo */}
         <div className="flex flex-wrap gap-4">
           <motion.div
-            {...(reduced ? {} : cardInteraction)}
+            {...(enter ? cardInteraction : {})}
             className="cursor-default rounded-xl border border-border bg-surface px-5 py-4 shadow-surface"
           >
             <div className="text-sm font-medium text-foreground">
@@ -90,7 +91,7 @@ export function MotionSection() {
             </div>
           </motion.div>
           <motion.div
-            {...(reduced ? {} : cardInteraction)}
+            {...(enter ? cardInteraction : {})}
             className="cursor-default rounded-xl border border-border bg-surface px-5 py-4 shadow-surface"
           >
             <div className="text-sm font-medium text-foreground">
@@ -105,7 +106,7 @@ export function MotionSection() {
               {t("demo_bars")}
             </div>
             <div className="mt-2 w-40">
-              <WorkBar label={td("wifi")} value={88} reduced={reduced} />
+              <WorkBar label={td("wifi")} value={88} />
             </div>
           </div>
         </div>

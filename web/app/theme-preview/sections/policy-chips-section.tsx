@@ -27,7 +27,7 @@ export function PolicyChips({ label, options, selected, onSelect }: PolicyChipsP
             aria-pressed={selected === key}
             onClick={() => onSelect(key)}
             className={cn(
-              "focus-ring h-9 rounded-sm border px-3 text-xs font-medium transition-colors duration-150",
+              "cm-focus h-9 rounded-sm border px-3 text-xs font-medium transition-colors duration-150",
               selected === key
                 ? "border-secondary bg-secondary text-secondary-foreground"
                 : "border-border bg-surface-secondary text-foreground hover:bg-surface-tertiary"

@@ -14,7 +14,7 @@ export function FormsSection() {
     <Section index="05" title={t("title")} desc={t("desc")}>
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-4">
-          <SearchField className="w-full">
+          <SearchField className="w-full" aria-label={t("search_placeholder")}>
             <SearchField.Group>
               <SearchField.SearchIcon />
               <SearchField.Input placeholder={t("search_placeholder")} />
@@ -28,7 +28,7 @@ export function FormsSection() {
           </TextField>
 
           <div className="rounded-xl border border-border bg-surface p-5">
-            <Switch isSelected={openOnly} onChange={setOpenOnly}>
+            <Switch isSelected={openOnly} onChange={setOpenOnly} aria-label={t("open_only")}>
               <Switch.Control>
                 <Switch.Thumb />
               </Switch.Control>

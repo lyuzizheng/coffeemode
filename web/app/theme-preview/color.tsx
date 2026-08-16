@@ -96,7 +96,7 @@ export function Swatch({ token }: { token: string }) {
       type="button"
       onClick={copy}
       title={hex ? t("copy_title", { hex }) : undefined}
-      className="focus-ring group min-w-0 cursor-pointer text-left"
+      className="cm-focus group min-w-0 cursor-pointer text-left"
     >
       <div
         className="h-16 rounded-md border border-foreground/8 transition-transform duration-150 group-hover:-translate-y-0.5 group-active:translate-y-0"

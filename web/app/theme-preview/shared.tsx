@@ -1,10 +1,10 @@
 "use client";
 
 import { Chip, Label, Slider } from "@heroui/react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
-import { cardInteraction, spring } from "@/lib/motion";
+import { cardInteraction, spring, useEnterMotion } from "@/lib/motion";
 
 export { Swatch, useResolvedColor, toDisplayHex } from "./color";
 
@@ -80,29 +80,33 @@ export const DIMS = [
   { key: "wifi", value: 88 },
   { key: "outlets", value: 64 },
   { key: "seats", value: 72 },
-  { key: "temperature", value: 58 },
+  { key: "temp", value: 58 },
   { key: "coffee", value: 91 },
 ] as const;
 
 export function WorkBar({
   label,
   value,
-  reduced,
 }: {
   label: string;
   value: number;
-  reduced: boolean;
 }) {
+  const enter = useEnterMotion();
   return (
     <div className="flex items-center gap-3">
       <span className="w-20 shrink-0 truncate text-xs text-muted">{label}</span>
       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-tertiary">
         <motion.div
+          key={enter ? "m" : "s"}
           className="h-full rounded-full bg-accent"
-          initial={reduced ? false : { width: 0 }}
-          whileInView={{ width: `${value}%` }}
-          viewport={{ once: true, margin: "-40px" }}
-          transition={reduced ? { duration: 0 } : spring.soft}
+          {...(enter
+            ? {
+                initial: { width: 0 },
+                whileInView: { width: `${value}%` },
+                viewport: { once: true, margin: "-40px" },
+                transition: spring.soft,
+              }
+            : { initial: false, animate: { width: `${value}%` }, transition: { duration: 0 } })}
         />
       </div>
       <span className="tnum w-7 shrink-0 text-right text-xs text-foreground">
@@ -114,10 +118,12 @@ export function WorkBar({
 
 export function CafeCard({ interactive = true }: { interactive?: boolean }) {
   const t = useTranslations("themePreview.cards");
-  const reduced = useReducedMotion() ?? false;
+  // Gesture props (whileHover/whileTap) make framer-motion add tabIndex to
+  // SSR HTML; gate them on mount so server and first client render agree.
+  const enter = useEnterMotion();
   return (
     <motion.div
-      {...(interactive && !reduced ? cardInteraction : {})}
+      {...(interactive && enter ? cardInteraction : {})}
       className="w-full max-w-sm rounded-xl border border-border bg-surface p-5 shadow-surface transition-shadow duration-200 hover:shadow-md"
     >
       <div className="flex items-start justify-between gap-4">
@@ -149,7 +155,6 @@ export function CafeCard({ interactive = true }: { interactive?: boolean }) {
             key={d.key}
             label={t(`dims.${d.key}`)}
             value={d.value}
-            reduced={reduced}
           />
         ))}
       </div>

@@ -389,3 +389,21 @@ the recent tail. Archive history, never delete it.
   build), `.agents/scripts/preflight.sh`; Playwright screenshot sweep across
   routes × light/dark × mobile/desktop; independent implementation review
   verdict APPROVE (no P0/P1).
+
+## 2026-08-16 (i18n guard)
+
+- Fixed issue #75 on `fix/issue-75-i18n-guard` (slice `issue-75-i18n-guard`):
+  - `web/scripts/check-i18n.mjs` + `check:i18n` npm script: flattens both
+    message catalogs to dot-path key sets and exits 1 naming every asymmetric
+    key; wired into `npm run verify` and the `application.yml` CI gate.
+  - `web/global.d.ts`: next-intl v4 `AppConfig.Messages` augmentation keyed to
+    `messages/en.json` — `t()` / `useTranslations()` / `getTranslations()` with
+    a key absent from the en catalog now fails `tsc --noEmit`.
+  - Sibling sweep: arming typed keys surfaced one latent type-unsound call
+    (`td(key)` over a `string[]` in `theme-preview/sections/motion-section.tsx`);
+    tightened the `order` state to the `DimKey` union. No other bad keys
+    existed anywhere.
+  - Fault-injection verified both guards: a zh-only key fails `check:i18n`
+    and names the key; a bogus `t()` key fails typecheck. Both reverted.
+- All gates green: `cd web && npm run verify` (175 tests, typecheck, lint,
+  build), `.agents/scripts/preflight.sh`.

@@ -32,6 +32,7 @@ Machine-checked implementation plan derived from `docs/specs/0001-nextjs-migrati
 | issue-25-complete-service | /api/images/complete split into lib service + atomic transaction | IN-PROGRESS | 0001, 0003 | image-pipeline, phase1-remainder | none | typecheck, unit, build | Thin route controller; `web/lib/images/complete.ts` service; check-in + gallery writes in one transaction |
 | issue-26-shared-common | Shared packages/common: types, UUID, auth, constants single-source | IN-PROGRESS | 0001, 0003 | poi-cache-service, image-pipeline, places-proxy | none | typecheck, unit | Duplicated POI types / UUID validators / bearer auth / radius constants removed; web and both workers import one source |
 | issue-27-stats-locking | work_stats read-modify-write under row lock | IN-PROGRESS | 0001, 0003 | auth-migration-stats | none | typecheck, unit | `incrementalUpdateWorkStats` / `recomputeWorkStats` run inside `withTransaction` with `SELECT ... FOR UPDATE` |
+| issue-75-i18n-guard | en/zh key parity check + next-intl typed messages | COMPLETE | 0003 | none | none | typecheck, unit, build | `web/scripts/check-i18n.mjs` + `check:i18n` wired into verify and CI; `AppConfig.Messages` augmentation makes bad `t()` keys fail typecheck |
 
 ## Status vocabulary
 

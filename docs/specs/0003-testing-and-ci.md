@@ -86,8 +86,9 @@ A feature is not done until:
 npm run typecheck       TypeScript check
 npm run lint            ESLint
 npm run test            Vitest unit tests
+npm run check:i18n      en/zh message-catalog key parity (scripts/check-i18n.mjs)
 npm run build           Next.js production build
-npm run verify          typecheck + lint + test + build (the full gate)
+npm run verify          check:i18n + typecheck + lint + test + build (the full gate)
 ```
 
 ### CI workflow design
@@ -95,7 +96,7 @@ npm run verify          typecheck + lint + test + build (the full gate)
 ```text
 .github/workflows/application.yml:
   triggers: PR + push to main (web/**, .github/workflows/application.yml)
-  steps: npm ci, npm run typecheck, npm run lint, npm run test, npm run build
+  steps: npm ci, npm run typecheck, npm run lint, npm run check:i18n, npm run test, npm run build
   concurrency: cancel superseded runs
 
 .github/workflows/poi-service.yml:

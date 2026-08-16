@@ -83,12 +83,13 @@ function postRequest(body: unknown): Request {
   });
 }
 
-/** Mock the statements of the happy-path create transaction + stats (7 queries). */
+/** Mock the statements of the happy-path create transaction + stats (8 queries). */
 function mockCreateHappyPath(cafeId = "cafe-1", checkinId = "checkin-1") {
   clientQueryMock
     .mockResolvedValueOnce({ rows: [] }) // dedupe pre-check by external id
     .mockResolvedValueOnce({ rows: [{ id: cafeId }] }) // insert cafe
     .mockResolvedValueOnce({ rows: [{ id: checkinId }] }) // insert first check-in
+    .mockResolvedValueOnce({ rows: [] }) // gallery auto-merge (spec 0001)
     .mockResolvedValueOnce({ rows: [{ work_stats: {} }] }) // stats: lock + read cafe
     .mockResolvedValueOnce({ rows: [] }) // stats: user's check-ins (none in mock)
     .mockResolvedValueOnce({ rows: [{ n: 1 }] }) // stats: check-in count
@@ -194,8 +195,17 @@ describe("createCafeWithFirstCheckIn", () => {
     expect(checkinInsert[1][5]).toBe("quiet");
     expect(checkinInsert[1][6]).toBe(JSON.stringify([SAMPLE_IMG]));
 
+    // First check-in's photos auto-merge into cafes.gallery with provenance.
+    const galleryMerge = clientQueryMock.mock.calls[3];
+    expect(galleryMerge[0]).toContain("update cafes");
+    expect(galleryMerge[0]).toContain("gallery");
+    expect(galleryMerge[1][0]).toBe("cafe-1");
+    expect(JSON.parse(galleryMerge[1][1] as string)).toEqual([
+      { ...SAMPLE_IMG, source: { type: "checkin", id: "checkin-1" } },
+    ]);
+
     // Stats fold ran on the SAME connection (no second transaction).
-    const statsCall = clientQueryMock.mock.calls[3];
+    const statsCall = clientQueryMock.mock.calls[4];
     expect(statsCall[0]).toContain("for update");
     expect(statsCall[1]).toEqual(["cafe-1"]);
   });

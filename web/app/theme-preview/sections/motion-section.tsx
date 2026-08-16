@@ -13,12 +13,15 @@ const MOTION_TOKENS = [
   { key: "slow", ms: 450 },
 ] as const;
 
+const DIM_KEYS = ["wifi", "outlets", "seats", "coffee"] as const;
+type DimKey = (typeof DIM_KEYS)[number];
+
 export function MotionSection() {
   const t = useTranslations("themePreview.motion");
   const td = useTranslations("themePreview.cards.dims");
   const reduced = useReducedMotion() ?? false;
   const enter = useEnterMotion();
-  const [order, setOrder] = useState<string[]>(["wifi", "outlets", "seats", "coffee"]);
+  const [order, setOrder] = useState<DimKey[]>([...DIM_KEYS]);
 
   return (
     <Section index="07" title={t("title")} desc={t("desc")}>

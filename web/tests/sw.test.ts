@@ -13,24 +13,18 @@ function urlFor(pathname: string, host = "localhost"): URL {
 
 describe("sw runtime rules", () => {
   it("has exactly one rule per route family and all are GET", () => {
-    expect(RUNTIME_RULES.length).toBe(8);
+    expect(RUNTIME_RULES.length).toBe(7);
     for (const rule of RUNTIME_RULES) {
       expect(rule.method).toBe("GET");
       expect(rule.name).toBeTruthy();
     }
   });
 
-  it("never caches the home page, the worker, the manifest, or auth", () => {
+  it("never caches the home page, the worker, the manifest, auth, or any API route", () => {
     const networkOnly = RUNTIME_RULES.filter((r) => r.handler === "network-only").map(
       (r) => r.name,
     );
-    expect(networkOnly).toEqual([
-      "home",
-      "sw-manifest",
-      "auth",
-      "images-api",
-      "health-and-places",
-    ]);
+    expect(networkOnly).toEqual(["home", "sw-manifest", "auth", "api"]);
   });
 
   it("matches each route family to the intended handler", () => {
@@ -45,7 +39,7 @@ describe("sw runtime rules", () => {
         name: "home",
         pathname: "/",
         matches: ["home"],
-        notMatches: ["sw-manifest", "auth", "images-api", "health-and-places", "r2-images", "next-static", "static-assets"],
+        notMatches: ["sw-manifest", "auth", "api", "r2-images", "next-static", "static-assets"],
       },
       {
         name: "sw-manifest",
@@ -63,25 +57,43 @@ describe("sw runtime rules", () => {
         name: "auth",
         pathname: "/auth/callback",
         matches: ["auth"],
-        notMatches: ["sw-manifest", "images-api"],
+        notMatches: ["sw-manifest", "api"],
       },
       {
-        name: "images-api",
+        name: "images upload",
         pathname: "/api/images/upload",
-        matches: ["images-api"],
-        notMatches: ["auth", "health-and-places"],
+        matches: ["api"],
+        notMatches: ["auth"],
       },
       {
         name: "health",
         pathname: "/api/health",
-        matches: ["health-and-places"],
-        notMatches: ["images-api"],
+        matches: ["api"],
+        notMatches: ["auth"],
       },
       {
         name: "places proxy",
         pathname: "/api/places/0x123",
-        matches: ["health-and-places"],
-        notMatches: ["images-api", "auth"],
+        matches: ["api"],
+        notMatches: ["auth"],
+      },
+      {
+        name: "cafes nearby (issue #45 route)",
+        pathname: "/api/cafes",
+        matches: ["api"],
+        notMatches: ["auth"],
+      },
+      {
+        name: "cafe detail (issue #45 route)",
+        pathname: "/api/cafes/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+        matches: ["api"],
+        notMatches: ["auth"],
+      },
+      {
+        name: "navigations (issue #45 route)",
+        pathname: "/api/navigations",
+        matches: ["api"],
+        notMatches: ["auth"],
       },
       {
         name: "r2 images (by host)",
@@ -123,8 +135,22 @@ describe("sw runtime rules", () => {
     }
   });
 
+  it("guards every /api/* path with network-only (issue #46: defaultCache has a 24h NetworkFirst 'apis' catch-all)", () => {
+    const api = ["/api/cafes", "/api/cafes/", "/api/checkins/", "/api/navigations"];
+    const apiRule = RUNTIME_RULES.find((r) => r.name === "api");
+    expect(apiRule?.handler).toBe("network-only");
+    for (const path of api) {
+      const url = urlFor(path);
+      const request = new Request(url);
+      const matched = RUNTIME_RULES.filter((rule) => rule.matcher({ url, request })).map(
+        (rule) => rule.name,
+      );
+      expect(matched, `${path} must match only the api rule`).toEqual(["api"]);
+    }
+  });
+
   it("does not reference routes that do not exist yet", () => {
-    const dead = ["/api/cafes/", "/api/checkins/", "/cafes/", "/profile"];
+    const dead = ["/cafes/", "/profile"];
     for (const path of dead) {
       const url = urlFor(path);
       const request = new Request(url);

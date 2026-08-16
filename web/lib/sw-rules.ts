@@ -33,10 +33,13 @@ export interface SwRule {
 }
 
 /**
- * Routes that exist today (verified against `.next/types/routes.d.ts`):
- * `/`, `/theme-preview`, `/~offline`, and `/api/{health,images,places}`.
- * Rules for routes that do not exist yet are deliberately absent — dead
- * caching policy fails silently in production (review 2026-08-09 F4).
+ * Non-API routes without a rule fall through to serwist's defaultCache
+ * (asset-type matchers — fine). API routes must NEVER do that: defaultCache
+ * has a same-origin `/api/` catch-all cached NetworkFirst for 24h
+ * ("apis"), and the Cache API ignores the server's `Cache-Control:
+ * no-store` header — user-specific data would be served stale (issue #46).
+ * The catch-all `api` rule below guards every API route, present and
+ * future, so individual API rules are no longer enumerated here.
  */
 export const RUNTIME_RULES: SwRule[] = [
   // The home page is dynamic (reads cookies); never cache it. The offline
@@ -55,25 +58,19 @@ export const RUNTIME_RULES: SwRule[] = [
       url.pathname === SW_URL || url.pathname === "/manifest.webmanifest",
     handler: "network-only",
   },
-  // Auth and uploads must always be fresh.
+  // Auth must always be fresh.
   {
     name: "auth",
     method: "GET",
     matcher: ({ url }) => url.pathname.startsWith("/auth/"),
     handler: "network-only",
   },
+  // Every API route is user-specific or volatile. Without this, unmatched
+  // /api/* GETs fall into defaultCache's 24h NetworkFirst "apis" cache.
   {
-    name: "images-api",
+    name: "api",
     method: "GET",
-    matcher: ({ url }) => url.pathname.startsWith("/api/images/"),
-    handler: "network-only",
-  },
-  // The health ping and POI proxy should not be double-cached.
-  {
-    name: "health-and-places",
-    method: "GET",
-    matcher: ({ url }) =>
-      url.pathname.startsWith("/api/health") || url.pathname.startsWith("/api/places/"),
+    matcher: ({ url }) => url.pathname.startsWith("/api/"),
     handler: "network-only",
   },
   // R2 image variants are immutable once processed — cache first, no

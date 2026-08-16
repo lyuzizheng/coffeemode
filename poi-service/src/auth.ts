@@ -17,7 +17,7 @@ import {
 
 export { internalError, json, unauthorized };
 
-export function authorized(request: Request, env: Env): boolean {
+export async function authorized(request: Request, env: Env): Promise<boolean> {
   const token = extractBearer(request, "x-poi-service-token");
   if (!token || !env.POI_SERVICE_TOKEN) return false;
   return safeEqual(token, env.POI_SERVICE_TOKEN);

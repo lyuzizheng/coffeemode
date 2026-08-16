@@ -6,39 +6,37 @@
  */
 
 /**
- * Constant-time token compare. Uses Cloudflare Workers'
+ * Constant-time token compare. Both inputs are hashed with SHA-256 and the
+ * fixed-length digests are compared, so the work done never depends on the
+ * length (or content) of the attacker-provided token, and never reveals the
+ * length of the expected secret. Uses Cloudflare Workers'
  * `SubtleCrypto.timingSafeEqual` extension when available, otherwise a
  * pure-JS fallback (Node/vitest).
  *
  * The first argument is the attacker-provided token; the second is the
- * expected secret. On length mismatch we compare the expected secret with
- * itself so the comparison time depends on the secret length, not the
- * attacker input.
+ * expected secret.
  */
-export function safeEqual(provided: string, expected: string): boolean {
-  const P = new TextEncoder().encode(provided);
-  const E = new TextEncoder().encode(expected);
-  const sameLength = P.byteLength === E.byteLength;
+export async function safeEqual(provided: string, expected: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const [a, b] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(provided)),
+    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
+  ]);
+  const aBuf = new Uint8Array(a);
+  const bBuf = new Uint8Array(b);
 
   const subtle = crypto.subtle as SubtleCrypto & {
     timingSafeEqual?: (a: ArrayBufferView, b: ArrayBufferView) => boolean;
   };
   if (typeof subtle.timingSafeEqual === "function") {
-    // Compare expected with itself on length mismatch so the timing path does
-    // not depend on the attacker-provided length.
-    const aBuf = E;
-    const bBuf = sameLength ? P : E;
-    const equal = subtle.timingSafeEqual(aBuf, bBuf);
-    return sameLength ? equal : !equal;
+    return subtle.timingSafeEqual(aBuf, bBuf);
   }
 
   // Pure-JS fallback for test environments without timingSafeEqual.
-  const aBuf = E;
-  const bBuf = sameLength ? P : E;
+  // Digests are always 32 bytes, so the loop length is input-independent.
   let diff = 0;
   for (let i = 0; i < aBuf.length; i++) diff |= aBuf[i] ^ bBuf[i];
-  const equalContent = diff === 0;
-  return sameLength ? equalContent : !equalContent;
+  return diff === 0;
 }
 
 /**

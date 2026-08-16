@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { internalError, json, safeEqual, unauthorized, extractBearer } from "@shared/auth";
 import { isValidUUID } from "@shared/uuid";
 import { validateUploadSize } from "@shared/images/validation";
@@ -45,11 +45,34 @@ describe("shared auth", () => {
     expect(extractBearer(new Request("https://x.test/"), "x-image-service-token")).toBeNull();
   });
 
-  it("compares tokens in constant time (equal and unequal)", () => {
-    expect(safeEqual("secret-token", "secret-token")).toBe(true);
-    expect(safeEqual("secret-token", "wrong-token")).toBe(false);
-    expect(safeEqual("short", "a-much-longer-token")).toBe(false);
-    expect(safeEqual("", "")).toBe(true);
+  it("compares tokens in constant time (equal and unequal)", async () => {
+    await expect(safeEqual("secret-token", "secret-token")).resolves.toBe(true);
+    await expect(safeEqual("secret-token", "wrong-token")).resolves.toBe(false);
+    await expect(safeEqual("short", "a-much-longer-token")).resolves.toBe(false);
+    await expect(safeEqual("", "")).resolves.toBe(true);
+    await expect(safeEqual("", "secret-token")).resolves.toBe(false);
+    await expect(safeEqual("secret-token", "")).resolves.toBe(false);
+  });
+
+  it("dispatches to SubtleCrypto.timingSafeEqual when available (Workers)", async () => {
+    const realSubtle = crypto.subtle;
+    const seen: number[] = [];
+    vi.stubGlobal("crypto", {
+      subtle: {
+        digest: realSubtle.digest.bind(realSubtle),
+        timingSafeEqual: (a: ArrayBufferView, b: ArrayBufferView) => {
+          seen.push(a.byteLength, b.byteLength);
+          return true; // the digest-equality decision belongs to the platform
+        },
+      },
+    });
+    try {
+      await expect(safeEqual("provided", "expected")).resolves.toBe(true);
+      // Both digests are SHA-256 output — always 32 bytes, input-independent.
+      expect(seen).toEqual([32, 32]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("shares the JSON error envelope", () => {

@@ -55,11 +55,12 @@ describe("Postgres pool config", () => {
   });
 
   it.each([
-    ["require", { rejectUnauthorized: false }],
-    ["prefer", { rejectUnauthorized: false }],
+    ["require", { rejectUnauthorized: true }],
+    ["prefer", { rejectUnauthorized: true }],
+    ["verify-ca", { rejectUnauthorized: true }],
+    ["verify-full", { rejectUnauthorized: true }],
+    ["allow-self-signed", { rejectUnauthorized: false }],
     ["disable", false],
-    ["verify-ca", true],
-    ["verify-full", true],
   ] as const)("maps sslmode=%s to ssl=%o", (sslmode, expectedSsl) => {
     const prev = process.env.DATABASE_URL;
     process.env.DATABASE_URL = `postgres://u:p@localhost/db?sslmode=${sslmode}`;
@@ -73,21 +74,19 @@ describe("Postgres pool config", () => {
     }
   });
 
-  it("warns on unrecognized sslmode and leaves ssl unset", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const prev = process.env.DATABASE_URL;
-    process.env.DATABASE_URL = "postgres://u:p@localhost/db?sslmode=unknown";
-    try {
-      const config = getPoolConfig();
-      expect(config.connectionString).toBe("postgres://u:p@localhost/db");
-      expect(config).not.toHaveProperty("ssl");
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("unknown"));
-    } finally {
-      warnSpy.mockRestore();
-      if (prev === undefined) delete process.env.DATABASE_URL;
-      else process.env.DATABASE_URL = prev;
-    }
-  });
+  it.each(["unknown", "", "REQUIRE"])(
+    "fails closed on unrecognized sslmode (%s)",
+    (value) => {
+      const prev = process.env.DATABASE_URL;
+      process.env.DATABASE_URL = `postgres://u:p@localhost/db?sslmode=${value}`;
+      try {
+        expect(() => getPoolConfig()).toThrow(/Unrecognized sslmode/);
+      } finally {
+        if (prev === undefined) delete process.env.DATABASE_URL;
+        else process.env.DATABASE_URL = prev;
+      }
+    },
+  );
 
   it("applies pool sizing defaults and environment overrides", () => {
     const prevUrl = process.env.DATABASE_URL;

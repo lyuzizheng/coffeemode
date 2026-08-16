@@ -22,15 +22,22 @@ vi.mock("@/lib/images/processor", () => ({
   processImage: (...args: unknown[]) => processImageMock(...args),
 }));
 
+// Valid UUIDs everywhere: the intent binding (issue #33) validates them.
+const USER_ID = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
 const CAFE_ID = "11111111-1111-4111-9111-111111111111";
 const CHECKIN_ID = "22222222-2222-4222-a222-222222222222";
 const IMAGE_UUID = "12345678-1234-4123-9234-123456789abc";
+
+/** Queue the intent pre-check hit (issue #33) before ownership etc. */
+function queueIntentHit() {
+  return queryMock.mockResolvedValueOnce({ rows: [{ image_uuid: IMAGE_UUID }] });
+}
 
 describe("POST /api/images/complete", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     getUserMock.mockResolvedValue({
-      data: { user: { id: "user-1" } },
+      data: { user: { id: USER_ID } },
       error: null,
     });
     getProcessUrlsMock.mockResolvedValue({
@@ -75,8 +82,10 @@ describe("POST /api/images/complete", () => {
   }
 
   it("completes a cafe image upload and returns public URLs", async () => {
+    queueIntentHit();
     queryMock
       .mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ image_uuid: IMAGE_UUID }] }) // intent consume
       .mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // update
 
     const response = await POST(makeRequest({
@@ -89,9 +98,9 @@ describe("POST /api/images/complete", () => {
     const data = await response.json();
     expect(data.publicUrls.card).toBe("https://images.example.com/card/uuid.webp");
 
-    const [sql, params] = queryMock.mock.calls[1];
+    const [sql, params] = queryMock.mock.calls[3]; // [intent, ownership, consume, attach]
     expect(sql).toContain("created_by = $4");
-    expect(params[3]).toBe("user-1");
+    expect(params[3]).toBe(USER_ID);
   });
 
   it("rejects unauthenticated requests", async () => {
@@ -110,7 +119,19 @@ describe("POST /api/images/complete", () => {
     expect(response.status).toBe(400);
   });
 
+  it("404s when the upload was never issued to this user (#33), before any remote work", async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] }); // intent check finds nothing
+    const response = await POST(makeRequest({
+      imageUuid: IMAGE_UUID,
+      targetType: "cafe",
+      targetId: CAFE_ID,
+    }));
+    expect(response.status).toBe(404);
+    expect(getProcessUrlsMock).not.toHaveBeenCalled();
+  });
+
   it("returns 404 when the target cafe is not owned by the user", async () => {
+    queueIntentHit();
     queryMock.mockResolvedValueOnce({ rows: [] }); // ownership check fails
     const response = await POST(makeRequest({
       imageUuid: IMAGE_UUID,
@@ -121,9 +142,28 @@ describe("POST /api/images/complete", () => {
     expect(getProcessUrlsMock).not.toHaveBeenCalled();
   });
 
+  it("404s when the intent was already consumed or expired (replay)", async () => {
+    queueIntentHit();
+    queryMock
+      .mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [] }); // intent consume: 0 rows
+
+    const response = await POST(makeRequest({
+      imageUuid: IMAGE_UUID,
+      targetType: "cafe",
+      targetId: CAFE_ID,
+    }));
+    expect(response.status).toBe(404);
+    // The attach must NOT have run.
+    const allSql = queryMock.mock.calls.map((c: unknown[]) => String(c[0]));
+    expect(allSql.some((sql) => sql.includes("update cafes"))).toBe(false);
+  });
+
   it("completes a checkin image upload and auto-merges into the cafe gallery", async () => {
+    queueIntentHit();
     queryMock
       .mockResolvedValueOnce({ rows: [{ cafe_id: CAFE_ID }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ image_uuid: IMAGE_UUID }] }) // intent consume
       .mockResolvedValueOnce({ rows: [{ id: CHECKIN_ID, cafe_id: CAFE_ID }] }) // checkin update
       .mockResolvedValueOnce({ rows: [] }); // cafe gallery auto-merge
 
@@ -137,12 +177,13 @@ describe("POST /api/images/complete", () => {
     const data = await response.json();
     expect(data.width).toBe(100);
 
-    const [, checkinParams] = queryMock.mock.calls[1];
-    expect(checkinParams[2]).toBe("user-1"); // user_id guard
+    const [, checkinParams] = queryMock.mock.calls[3]; // [intent, ownership, consume, attach]
+    expect(checkinParams[2]).toBe(USER_ID); // user_id guard
   });
 
   it("does not leak raw upstream error bodies", async () => {
-    queryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] });
+    queueIntentHit();
+    queryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // ownership check
     getProcessUrlsMock.mockRejectedValueOnce(new Error("upstream leaked body {secret}"));
 
     const response = await POST(makeRequest({
@@ -158,8 +199,10 @@ describe("POST /api/images/complete", () => {
   });
 
   it("guards against duplicate gallery entries", async () => {
+    queueIntentHit();
     queryMock
       .mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }) // ownership check
+      .mockResolvedValueOnce({ rows: [{ image_uuid: IMAGE_UUID }] }) // intent consume
       .mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // update
 
     const response = await POST(makeRequest({
@@ -169,7 +212,7 @@ describe("POST /api/images/complete", () => {
     }));
 
     expect(response.status).toBe(200);
-    const [sql] = queryMock.mock.calls[1];
+    const [sql] = queryMock.mock.calls[3]; // [intent, ownership, consume, attach]
     expect(sql).toContain("@>");
   });
 });

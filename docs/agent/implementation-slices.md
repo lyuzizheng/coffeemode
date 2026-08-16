@@ -35,6 +35,7 @@ Machine-checked implementation plan derived from `docs/specs/0001-nextjs-migrati
 | issue-75-i18n-guard | en/zh key parity check + next-intl typed messages | COMPLETE | 0003 | none | none | typecheck, unit, build | `web/scripts/check-i18n.mjs` + `check:i18n` wired into verify and CI; `AppConfig.Messages` augmentation makes bad `t()` keys fail typecheck |
 | issue-76-visual-gate | Playwright rendered-page smoke gate in CI | COMPLETE | 0003 | none | none | typecheck, unit, build | `web/scripts/visual-smoke.mjs` + `check:visual` + `visual.yml`: 3 routes × light/dark × mobile/desktop, fails on console errors/non-2xx |
 | issue-77-cafe-timezone | cafes.tz column + tz-correct open-now evaluation | COMPLETE | 0001 | none | none | typecheck, unit, build | Migration 0005 adds `cafes.tz` (IANA); `web/lib/hours.ts` `isOpenAt` evaluates weekly hours in cafe-local time; population deferred to cafe-creation slice |
+| issue-45-domain-api-routes | Core domain API routes: cafes, check-ins, likes, navigations | IN-PROGRESS | 0001 | auth-foundation | none | typecheck, unit, build | Thin route handlers + missing domain libs (createCafe fusing first check-in + tz, listCafes, getCafe, createCheckIn, recordNavigation); mapkit-token deferred (Apple creds) |
 
 ## Status vocabulary
 

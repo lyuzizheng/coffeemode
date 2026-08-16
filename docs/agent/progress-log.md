@@ -465,3 +465,48 @@ the recent tail. Archive history, never delete it.
   - Spec 0001 cafes schema block synced with the `tz` column.
 - All gates green: `cd web && npm run verify` (183 tests, typecheck, lint,
   build), `.agents/scripts/preflight.sh`.
+
+## 2026-08-16 (domain API routes, PR A)
+
+- Issue #45 PR A on `fix/issue-45-domain-api-routes` (slice
+  `issue-45-domain-api-routes`): cafes domain lib + routes. Verify-before-trust
+  found the issue's premise half-wrong — `web/lib/db/cafes.ts` and
+  `createCafe` never existed, so this PR writes the libs too.
+  - `web/lib/db/cafes.ts` (new): `createCafeWithFirstCheckIn` — cafe +
+    creator's first check-in + work_stats fold in ONE transaction (stats
+    injected into the same connection via `RunInTransaction`; a second
+    transaction would self-deadlock on the new cafe row's lock). `tz` is
+    derived from coordinates at write time via `tz-lookup` — landing #77's
+    deferred population with the first real write path. Unique violation on
+    external POI ids maps to `CafeExistsError` carrying the existing id
+    (dedupe). Also `listCafesNearby` (ST_DWithin, meters ordering) and
+    `getCafe`.
+  - `parseCreateCafeBody` validates the fused payload: coordinates ranges,
+    `WORK_DIMS`-keyed 0–100 scores, policy enums (incl. explicit `unknown`),
+    `isValidWeeklyHours` opening hours, ISO `visited_at` (future rejected).
+    Independent review drove the spec-0001 required-on-creation enforcement:
+    `scores.overall`, `min_spend`, `max_stay`, non-empty `note`, and >=1
+    structural `StoredImage` photo are now hard requirements (the
+    differentiating data), not optional pass-throughs.
+  - Routes: `POST /api/cafes` (401 without session, 429 per-user write
+    budget, 201 fused result, 409 with existing cafe id), `GET /api/cafes`
+    (anonymous, lat/lng required — explicit presence check since
+    `Number(null) === 0`, range-checked so PostGIS never 500s, radius
+    clamps to the 10 km cap convention; fractional radii pass through via
+    a `$3::float8` cast — untyped node-pg params default to int4),
+    `GET /api/cafes/[id]` (400 non-UUID, 404 missing).
+  - `web/types/cafes.ts` (`CafeSummary`/`CafeDetail` — `created_by` NOT
+    exposed, creator stays anonymous per spec 0001),
+    `web/types/tz-lookup.d.ts` (the package ships no types), CAFES read/write
+    rate-limit presets (30/min read, 10/min write). Both read paths wrap
+    `work_stats` in `coerceWorkStats` — the DB default `'{}'` is not a
+    complete `WorkStats`.
+  - `web/tests/cafes.test.ts`: 23 tests — parser matrix incl. the
+    spec-required-fields negative set, transaction shape (insert order,
+    lng/lat SQL param order, tz param, photos param, stats on the same
+    connection), CafeExistsError mapping, 400/401/409/429 route paths,
+    radius clamping + fractional passthrough, 404 shape.
+  - Deferred on the issue (per policy): PR B (checkins/likes/navigations
+    routes) and `mapkit-token` (Apple Developer Program credentials).
+- All gates green: `cd web && npm run verify` (206 tests, typecheck, lint,
+  build), `.agents/scripts/preflight.sh`.

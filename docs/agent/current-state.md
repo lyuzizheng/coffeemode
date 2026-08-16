@@ -21,7 +21,9 @@ web/db/migrations/       0001_init.sql — 4-table schema (spec 0001);
                          0002_checkins_and_indexes.sql, 0003_rate_limits.sql,
                          0004_checkin_likes_trigger.sql, 0005_cafe_timezone.sql
 web/lib/auth/            Supabase server client (PKCE), profile upsert logic
-web/lib/db/              Postgres pool (server-side only), withTransaction, atomic like toggle
+web/lib/db/              Postgres pool (server-side only), withTransaction, atomic like toggle,
+                         cafes domain lib (fused create + first check-in + stats, nearby list, getCafe)
+web/lib/hours.ts         Open-now evaluation in the cafe's IANA timezone (isOpenAt)
 web/lib/stats/           Recency-weighted `work_stats` aggregation with `incrementalUpdateWorkStats`
                          and `recomputeWorkStats`; concurrent writes serialize via `FOR UPDATE`
 web/shared/              Shared primitives: UUID, auth helpers, places types/constants, image constants/validation
@@ -36,6 +38,8 @@ image-service/           Image upload microservice (Cloudflare Worker + R2 presi
 web/lib/places/          Server-only POI service client (search/resolve/get) + maps URL validator
 web/app/api/places/      search + resolve route handlers with rate limiting, 10 km radius cap,
                          and maps URL domain validation
+web/app/api/cafes/       POST (fused create + first check-in, 409 dedupe), GET nearby list
+                         (10 km cap), GET [id] detail
 web/lib/rate-limit.ts    Token-bucket rate limiter: in-memory (dev/tests) or Postgres-backed
                          (production/horizontal scale) with a shared client identifier helper
 web/next.config.ts       Long immutable Cache-Control headers for static/PWA assets

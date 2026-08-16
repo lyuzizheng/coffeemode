@@ -22,6 +22,17 @@ export const PLACES_RATE_LIMIT = {
   maxRequests: 30,
 } as const;
 
+/** Reads are cheap; writes fuse cafe + first check-in + stats in one tx. */
+export const CAFES_READ_RATE_LIMIT = {
+  windowMs: 60_000,
+  maxRequests: 30,
+} as const;
+
+export const CAFES_WRITE_RATE_LIMIT = {
+  windowMs: 60_000,
+  maxRequests: 10,
+} as const;
+
 /**
  * In-memory token-bucket rate limiter.
  *

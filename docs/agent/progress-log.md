@@ -407,3 +407,26 @@ the recent tail. Archive history, never delete it.
     and names the key; a bogus `t()` key fails typecheck. Both reverted.
 - All gates green: `cd web && npm run verify` (175 tests, typecheck, lint,
   build), `.agents/scripts/preflight.sh`.
+
+## 2026-08-16 (visual gate)
+
+- Fixed issue #76 on `fix/issue-76-visual-regression-gate` (slice
+  `issue-76-visual-gate`):
+  - `web/scripts/visual-smoke.mjs` + `check:visual`: boots the production
+    build on a dedicated port, drives Playwright chromium over the public
+    route matrix (`/`, `/theme-preview`, `/~offline` × light/dark ×
+    mobile/desktop = 12 renderings), and exits 1 on any non-2xx response,
+    `console.error`, or `pageerror`. Screenshots land in `web/.visual-smoke/`
+    (gitignored) and upload as a CI artifact on failure. No pixel baselines
+    yet — step one per the issue is "CI looks at the rendered app".
+  - `.github/workflows/visual.yml` — new `visual-gate` workflow (repo's
+    per-concern pattern): npm ci → build → `playwright install chromium` →
+    `check:visual`; no secrets required.
+  - `playwright` added as a web devDependency; `check:visual` deliberately
+    stays out of `verify` (browser install is a CI environment concern).
+  - Docs synced: spec 0003 automation-scripts + CI-design lists.
+- Verified locally for real: production build, 12/12 renderings clean (zero
+  console errors on all routes); fault injection (matrix pointed at a
+  non-existent route) exits 1 on HTTP 404.
+- All gates green: `cd web && npm run verify` (175 tests, typecheck, lint,
+  build), `.agents/scripts/preflight.sh`.

@@ -8,8 +8,24 @@
     }
   },
   "home": {
+    "kicker": "For people who work from cafes",
     "hero_title": "Work from great cafes",
     "hero_subtitle": "Real wifi, outlet, and seat intel from nomads — not vibes.",
+    "steps": {
+      "find": {
+        "title": "Find",
+        "body": "Cafes near you, scored 0–100 on wifi, outlets, seats, temperature, and coffee — by people who actually worked there."
+      },
+      "checkin": {
+        "title": "Check in",
+        "body": "Thirty seconds of sliders after a visit. That is the whole feedback loop."
+      },
+      "keep": {
+        "title": "Keep",
+        "body": "Your spots and scores stay saved — next city, next week, still yours."
+      }
+    },
+    "ethos": "A quiet tool. No feed, no ads, no noise.",
     "cta_search": "Search cafes",
     "search_placeholder": "Search cafes near you",
     "signin_title": "Sign in",

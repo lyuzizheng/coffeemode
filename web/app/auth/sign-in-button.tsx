@@ -9,9 +9,11 @@ import { AuthErrorMessage } from "./auth-error-message";
 interface SignInButtonProps {
   provider: OAuthProvider;
   variant: "primary" | "outline";
+  /** Disabled when auth cannot work (e.g. Supabase env not configured). */
+  disabled?: boolean;
 }
 
-export function SignInButton({ provider, variant }: SignInButtonProps) {
+export function SignInButton({ provider, variant, disabled }: SignInButtonProps) {
   const t = useTranslations("home");
   const [state, formAction, isPending] = useActionState<AuthActionState | undefined, FormData>(
     signIn,
@@ -26,7 +28,7 @@ export function SignInButton({ provider, variant }: SignInButtonProps) {
       <Button
         type="submit"
         variant={variant}
-        isDisabled={isPending}
+        isDisabled={isPending || disabled}
         className="w-full"
         aria-busy={isPending}
       >

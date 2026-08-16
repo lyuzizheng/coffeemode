@@ -44,7 +44,7 @@ export default function OfflinePage() {
       <button
         type="button"
         onClick={() => window.location.reload()}
-        className="focus-ring h-10 rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent-hover"
+        className="cm-focus h-10 rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent-hover"
       >
         {t("retry")}
       </button>

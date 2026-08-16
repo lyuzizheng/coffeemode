@@ -3,12 +3,16 @@
 import { Button } from "@heroui/react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
-import { duration, ease } from "@/lib/motion";
+import { duration, ease, useEnterMotion } from "@/lib/motion";
+import { useMounted } from "@/lib/use-mounted";
 import { DEMO_SCORE, Section } from "../shared";
 
 function CoffeeSteam() {
   const reduced = useReducedMotion() ?? false;
-  if (reduced) return null;
+  const mounted = useMounted();
+  // Server and first client render agree on `null` — the steam fades in only
+  // after mount, for motion-allowing users. Decorative; no layout cost.
+  if (!mounted || reduced) return null;
 
   return (
     <svg
@@ -55,20 +59,19 @@ export function CheckInSuccessSection() {
   const t = useTranslations("themePreview.checkInSuccess");
   const ts = useTranslations("success");
   const tc = useTranslations("themePreview.cards");
-  const reduced = useReducedMotion() ?? false;
-
-  const enter = reduced
-    ? {}
-    : {
-        initial: { opacity: 0, y: 16 },
-        animate: { opacity: 1, y: 0 },
-        transition: { duration: duration.transition, ease: ease.default },
-      };
+  const enter = useEnterMotion();
 
   return (
     <Section index="10" title={t("title")} desc={t("desc")}>
       <motion.div
-        {...enter}
+        key={enter ? "m" : "s"}
+        {...(enter
+          ? {
+              initial: { opacity: 0, y: 16 },
+              animate: { opacity: 1, y: 0 },
+              transition: { duration: duration.transition, ease: ease.default },
+            }
+          : { initial: false })}
         className="mx-auto w-full max-w-sm rounded-md border border-border bg-surface p-5 shadow-lg"
       >
         <div className="flex items-start justify-between gap-4">

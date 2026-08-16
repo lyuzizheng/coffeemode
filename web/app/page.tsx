@@ -2,18 +2,20 @@ import { Card } from "@heroui/react";
 import { getTranslations } from "next-intl/server";
 import { profileFromUser } from "@/lib/auth/profiles";
 import { createSupabaseServerClient, isAuthConfigured } from "@/lib/auth/supabase-server";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { SignInButton } from "@/app/auth/sign-in-button";
 import { SignOutButton } from "@/app/auth/sign-out-button";
 
 // Scaffold-stage home page. The real surface is a full-screen Apple Map with
-// a bottom sheet (slice: map-home). This page proves the stack is wired:
-// Next.js 16 + HeroUI v3 + Tailwind v4 + next-intl + next-themes — and now
-// Supabase OAuth (slice: auth-foundation).
+// a bottom sheet (slice: map-home). Until then this page is the honest first
+// impression: what the tool is, how it works, and sign-in only when it can
+// actually work — never a wall in front of value, never a dead button.
 export default async function HomePage() {
   const t = await getTranslations("home");
+  const configured = isAuthConfigured();
 
   let user = null;
-  if (isAuthConfigured()) {
+  if (configured) {
     const supabase = await createSupabaseServerClient();
     try {
       const { data } = await supabase.auth.getUser();
@@ -25,47 +27,79 @@ export default async function HomePage() {
     }
   }
 
+  const steps = ["find", "checkin", "keep"] as const;
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
-      <div className="max-w-md text-center">
-        <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
-          {t("hero_title")}
-        </h1>
-        <p className="mt-2 text-sm text-muted">{t("hero_subtitle")}</p>
-      </div>
+    <div className="flex min-h-dvh flex-col">
+      <header className="flex items-center justify-between px-5 py-4 sm:px-8">
+        <span className="font-display text-md font-extrabold tracking-tight text-foreground">
+          CoffeeMode
+        </span>
+        <ThemeToggle />
+      </header>
 
-      <Card className="w-full max-w-sm p-6">
-        {user ? (
-          <>
-            <div className="flex flex-col gap-1">
-              <Card.Title>
-                {t("signed_in_as")} {profileFromUser(user).displayName}
-              </Card.Title>
-              <Card.Description>{t("session_ready")}</Card.Description>
-            </div>
-            <Card.Footer className="pt-4">
-              <SignOutButton />
-            </Card.Footer>
-          </>
-        ) : (
-          <>
-            <Card.Header>
-              <Card.Title>{t("signin_title")}</Card.Title>
-              <Card.Description>{t("signin_subtitle")}</Card.Description>
-            </Card.Header>
-            <Card.Footer className="flex-col gap-2 pt-3">
-              <SignInButton provider="apple" variant="primary" />
-              <SignInButton provider="google" variant="outline" />
-            </Card.Footer>
-          </>
-        )}
-      </Card>
+      <main className="flex flex-1 flex-col items-center justify-center px-6 py-10">
+        <div className="w-full max-w-md">
+          <p className="font-mono text-xs text-muted">{t("kicker")}</p>
+          <h1 className="mt-3 font-display text-2xl font-bold tracking-tight text-foreground">
+            {t("hero_title")}
+          </h1>
+          <p className="mt-2 text-base leading-relaxed text-muted">
+            {t("hero_subtitle")}
+          </p>
 
-      {!isAuthConfigured() && (
-        <p className="max-w-sm text-center text-xs text-muted">
-          {t("auth_not_configured")}
-        </p>
-      )}
-    </main>
+          <ol className="mt-10 space-y-5 border-t border-separator pt-6">
+            {steps.map((key, i) => (
+              <li key={key} className="flex gap-4">
+                <span className="tnum mt-0.5 shrink-0 font-mono text-xs text-accent">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <div className="min-w-0">
+                  <h2 className="text-sm font-medium text-foreground">
+                    {t(`steps.${key}.title`)}
+                  </h2>
+                  <p className="mt-0.5 text-sm leading-relaxed text-muted">
+                    {t(`steps.${key}.body`)}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+
+          <Card className="mt-10 w-full p-6">
+            {user ? (
+              <>
+                <div className="flex flex-col gap-1">
+                  <Card.Title>
+                    {t("signed_in_as")} {profileFromUser(user).displayName}
+                  </Card.Title>
+                  <Card.Description>{t("session_ready")}</Card.Description>
+                </div>
+                <Card.Footer className="pt-4">
+                  <SignOutButton />
+                </Card.Footer>
+              </>
+            ) : (
+              <>
+                <Card.Header>
+                  <Card.Title>{t("signin_title")}</Card.Title>
+                  <Card.Description>
+                    {configured ? t("signin_subtitle") : t("auth_not_configured")}
+                  </Card.Description>
+                </Card.Header>
+                <Card.Footer className="flex-col gap-2 pt-3">
+                  <SignInButton provider="apple" variant="primary" disabled={!configured} />
+                  <SignInButton provider="google" variant="outline" disabled={!configured} />
+                </Card.Footer>
+              </>
+            )}
+          </Card>
+        </div>
+      </main>
+
+      <footer className="px-6 pb-6 text-center">
+        <p className="font-mono text-xs text-muted">{t("ethos")}</p>
+      </footer>
+    </div>
   );
 }

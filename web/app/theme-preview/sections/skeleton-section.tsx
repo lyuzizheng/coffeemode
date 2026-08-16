@@ -40,7 +40,7 @@ export function SkeletonSection() {
               <p className="text-sm text-muted">{tc("cafe_area")}</p>
               <div className="space-y-2.5 pt-3">
                 {DIMS.map((d) => (
-                  <WorkBar key={d.key} label={tc(`dims.${d.key}`)} value={d.value} reduced />
+                  <WorkBar key={d.key} label={tc(`dims.${d.key}`)} value={d.value} />
                 ))}
               </div>
               <p className="tnum font-mono text-xs text-muted">

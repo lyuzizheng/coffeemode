@@ -355,3 +355,37 @@ the recent tail. Archive history, never delete it.
     cache-clear behavior.
 - All gates green: `cd web && npm run verify` (175 tests, typecheck, lint,
   build), `.agents/scripts/preflight.sh`.
+
+## 2026-08-16
+
+- UI/UX review round (issue #78, branch `fix/issue-78-uiux-review-round`):
+  full design + frontend pass over every existing surface against the
+  pure-tool positioning (spec 0004).
+  - Focus-ring root cause: the custom `.focus-ring` class collided with
+    HeroUI v3's built-in same-named utility, which paints an unconditional
+    orange ring — theme toggle, policy chips, offline retry, and color
+    swatches all showed a persistent ring. Renamed to `.cm-focus`
+    (`web/app/globals.css` + 4 call sites).
+  - Homepage rewritten from a bare login wall into an honest first screen
+    (`web/app/page.tsx`): positioning line, 01/02/03 steps, and a sign-in
+    card that is honestly disabled when auth providers are unconfigured;
+    `SignInButton` gains a `disabled` prop.
+  - i18n: fixed the `DIMS` `temperature` → `temp` key leak in
+    `theme-preview/shared.tsx`; locale negotiation in `web/i18n/request.ts`
+    (cookie → Accept-Language → en default) makes the shipped zh catalog
+    reachable; new `home.*` keys keep en/zh parity.
+  - HeroUI v3 alignment: Select migrated off deprecated
+    `selectedKey`/`onSelectionChange` to `value`/`onChange` with
+    `<Select.Value />`; button/chip radii pinned to the spec-0002 scale via
+    unlayered pins (same mechanism as the existing `.card` pin).
+  - Motion: new `useEnterMotion()` hook in `web/lib/motion.ts`
+    (mounted && !reduced) fixes the framer-motion SSR hydration mismatch on
+    prefers-reduced-motion clients; applied at all 5 enter-animation sites.
+  - a11y/mobile: aria-labels on theme toggle, SearchField, Switch; icon-only
+    theme toggle on mobile to stop header overflow.
+- Filed follow-up issues from the review: #75 (i18n MISSING_MESSAGE CI
+  guard), #76 (visual regression gate), #77 (cafe timezone for open-now).
+- All gates green: `cd web && npm run verify` (175 tests, typecheck, lint,
+  build), `.agents/scripts/preflight.sh`; Playwright screenshot sweep across
+  routes × light/dark × mobile/desktop; independent implementation review
+  verdict APPROVE (no P0/P1).

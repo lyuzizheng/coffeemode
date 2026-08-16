@@ -73,18 +73,17 @@ export function SearchFilterSection() {
     <Section index="12" title={t("title")} desc={t("desc")}>
       <div className="mx-auto w-full max-w-2xl rounded-md border border-border bg-surface p-5">
         <div className="grid gap-6 lg:grid-cols-2">
-          {/* City */}
-          <div className="space-y-2">
-            <Label className="text-sm font-medium text-foreground">{ts("city")}</Label>
+          {/* City — Label lives inside Select.Root so it associates with the trigger */}
+          <div>
             <Select.Root
               fullWidth
-              selectedKey={city}
-              onSelectionChange={(key) => setCity(key === null ? "" : String(key))}
+              placeholder={ts("city")}
+              value={city}
+              onChange={(key) => setCity(key === null ? "" : String(key))}
             >
+              <Label>{ts("city")}</Label>
               <Select.Trigger>
-                <Select.Value>
-                  {({ selectedText }) => selectedText || ts("city")}
-                </Select.Value>
+                <Select.Value />
                 <Select.Indicator />
               </Select.Trigger>
               <Select.Popover>

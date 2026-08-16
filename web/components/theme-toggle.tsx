@@ -60,8 +60,9 @@ export function ThemeToggle() {
             key={opt.value}
             type="button"
             aria-pressed={selected}
+            aria-label={t(opt.value)}
             onClick={() => setTheme(opt.value)}
-            className={`focus-ring relative flex h-10 items-center gap-1.5 rounded-md px-3 text-xs transition-colors duration-150 ${
+            className={`cm-focus relative flex h-10 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors duration-150 sm:px-3 ${
               selected ? "text-foreground" : "text-muted hover:text-foreground"
             }`}
           >
@@ -78,7 +79,8 @@ export function ThemeToggle() {
             )}
             <span className="relative flex items-center gap-1.5">
               {opt.icon}
-              {t(opt.value)}
+              {/* Icon-only on narrow screens so the header keeps its balance. */}
+              <span className="hidden sm:inline">{t(opt.value)}</span>
             </span>
           </button>
         );

@@ -88,6 +88,16 @@ function makeDeps(overrides: Partial<CompleteUploadDeps> = {}): {
   const deps: CompleteUploadDeps = {
     query,
     runInTransaction,
+    // Issue #33 intent deps default to "issued to this user"; the consume
+    // stub routes a marker statement through the tx so statement-order
+    // assertions see it.
+    checkUploadIntent: vi.fn().mockResolvedValue(true),
+    consumeUploadIntent: vi.fn(
+      async (_userId: string, _imageUuid: string, q: CompleteQueryFn) => {
+        await q("delete from image_upload_intents where ... returning image_uuid", []);
+        return true;
+      },
+    ),
     getProcessUrls: vi.fn().mockResolvedValue(PROCESS_URLS),
     processImage: vi.fn().mockResolvedValue(PROCESSED),
     ...overrides,
@@ -124,15 +134,16 @@ describe("completeImageUpload", () => {
     expect(updates[0].sql).toContain("created_by = $4");
   });
 
-  it("runs checkin append and cafe-gallery merge in ONE transaction", async () => {
+  it("runs intent consume, checkin append and cafe-gallery merge in ONE transaction", async () => {
     const { deps, calls, txQueries } = makeDeps();
     const result = await completeImageUpload({ id: "user-1" }, REQ, deps);
 
     expect(result.attached).toBe(true);
     expect(result.storedImage?.source).toEqual({ type: "checkin", id: CHECKIN_ID });
-    // Both writes went through the SAME runInTransaction invocation.
+    // All writes went through the SAME runInTransaction invocation.
     expect(txQueries).toHaveLength(1);
     expect(txQueries[0]).toEqual([
+      expect.stringContaining("image_upload_intents"),
       expect.stringContaining("update checkins"),
       expect.stringContaining("update cafes"),
     ]);
@@ -140,11 +151,36 @@ describe("completeImageUpload", () => {
     expect(writes).toHaveLength(2);
   });
 
+  it("fails fast before ownership/remote work when the upload was not issued to this user (#33)", async () => {
+    const { deps, query } = makeDeps({ checkUploadIntent: vi.fn().mockResolvedValue(false) });
+
+    const result = await completeImageUpload({ id: "user-1" }, REQ, deps);
+
+    expect(result.attached).toBe(false);
+    expect(query).not.toHaveBeenCalled(); // no ownership check either
+    expect(deps.getProcessUrls).not.toHaveBeenCalled();
+    expect(deps.runInTransaction).not.toHaveBeenCalled();
+  });
+
+  it("rolls back the attach when the intent consume finds 0 rows (replay/expired/mismatch)", async () => {
+    const { deps, calls } = makeDeps({
+      consumeUploadIntent: vi.fn().mockResolvedValue(false),
+    });
+
+    const result = await completeImageUpload({ id: "user-1" }, REQ, deps);
+
+    expect(result.attached).toBe(false);
+    expect(calls.some((c) => c.sql.includes("update checkins"))).toBe(false);
+    expect(calls.some((c) => c.sql.includes("update cafes"))).toBe(false);
+  });
+
   it("skips the gallery merge when the checkin has no cafe", async () => {
     const { deps } = makeDeps();
     const query = deps.query as unknown as ReturnType<typeof vi.fn>;
     // Ownership pre-check: checkin exists but belongs to no cafe.
     query.mockResolvedValueOnce({ rows: [{ cafe_id: null }], rowCount: 1 });
+    // Intent consume marker (result ignored by the stub).
+    query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     // Attach update: returning cafe_id is null, so no gallery merge.
     query.mockResolvedValueOnce({ rows: [{ id: CHECKIN_ID, cafe_id: null }], rowCount: 1 });
 
@@ -162,5 +198,7 @@ describe("completeImageUpload", () => {
     const deps = defaultCompleteUploadDeps();
     expect(typeof deps.query).toBe("function");
     expect(typeof deps.runInTransaction).toBe("function");
+    expect(typeof deps.checkUploadIntent).toBe("function");
+    expect(typeof deps.consumeUploadIntent).toBe("function");
   });
 });

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
+import { recordUploadIntent } from "@/lib/db/image-uploads";
 import { ImageServiceError, requestUploadUrl } from "@/lib/images/image-service-client";
 import { validateUploadSize } from "@shared/images/validation";
 import {
@@ -68,6 +69,14 @@ export async function POST(request: Request) {
 
   try {
     const data = await requestUploadUrl(parsed.size);
+    try {
+      // Bind the issued imageUuid to this user (issue #33) — complete
+      // rejects UUIDs that were never issued to the caller.
+      await recordUploadIntent(user.id, data.imageUuid);
+    } catch (intentErr) {
+      console.error("/api/images/upload intent record failed", intentErr);
+      return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    }
     return NextResponse.json(data);
   } catch (err) {
     console.error("/api/images/upload failed", err);

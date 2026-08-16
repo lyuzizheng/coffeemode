@@ -12,6 +12,9 @@ R2_BUCKET_NAME = "YOUR_R2_BUCKET_NAME"
 R2_PUBLIC_URL = "https://YOUR_R2_PUBLIC_URL"
 # TTL (seconds) for presigned upload/download URLs. Optional: when unset or
 # invalid, src/constants.ts DEFAULT_UPLOAD_URL_TTL_SECONDS (600) applies.
+# WARNING: must stay well under the 1h upload-intent window
+# (web/lib/db/image-uploads.ts, issue #33) or completes of old uploads 404
+# despite a still-valid URL.
 UPLOAD_URL_TTL_SECONDS = "600"
 
 [[r2_buckets]]

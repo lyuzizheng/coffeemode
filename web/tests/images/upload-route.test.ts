@@ -4,10 +4,14 @@ import { MAX_UPLOAD_BYTES } from "@shared/images/constants";
 
 const getUserMock = vi.fn();
 const requestUploadUrlMock = vi.fn();
+const recordUploadIntentMock = vi.fn();
 
 vi.mock("@/lib/auth/supabase-server", () => ({
   createSupabaseServerClient: () => ({ auth: { getUser: getUserMock } }),
   isAuthConfigured: () => true,
+}));
+vi.mock("@/lib/db/image-uploads", () => ({
+  recordUploadIntent: (...args: unknown[]) => recordUploadIntentMock(...args),
 }));
 vi.mock("@/lib/images/image-service-client", () => ({
   ImageServiceError: class ImageServiceError extends Error {
@@ -34,6 +38,7 @@ describe("POST /api/images/upload", () => {
     vi.resetAllMocks();
     getUserMock.mockResolvedValue({ data: { user: { id: "user-1" } }, error: null });
     requestUploadUrlMock.mockResolvedValue({ imageUuid: "uuid", uploadUrl: "u" });
+    recordUploadIntentMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -64,5 +69,18 @@ describe("POST /api/images/upload", () => {
     const res = await POST(makeRequest({ size: 2048 }));
     expect(res.status).toBe(200);
     expect(requestUploadUrlMock).toHaveBeenCalledWith(2048);
+  });
+
+  it("binds the issued imageUuid to the session user (issue #33)", async () => {
+    const res = await POST(makeRequest({ size: 2048 }));
+    expect(res.status).toBe(200);
+    expect(recordUploadIntentMock).toHaveBeenCalledWith("user-1", "uuid");
+  });
+
+  it("500s when the intent record fails (an unrecorded UUID would 404 at complete)", async () => {
+    recordUploadIntentMock.mockRejectedValueOnce(new Error("db down"));
+    const res = await POST(makeRequest({ size: 2048 }));
+    expect(res.status).toBe(500);
+    await expect(res.json()).resolves.toMatchObject({ error: "internal_error" });
   });
 });

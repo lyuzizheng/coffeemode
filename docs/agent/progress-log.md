@@ -586,3 +586,33 @@ the recent tail. Archive history, never delete it.
   promoted out of it).
 - All gates green: `cd web && npm run verify` (233 tests, typecheck, lint,
   build), `.agents/scripts/preflight.sh`.
+
+## 2026-08-17 (image upload intents, #33)
+
+- Issue #33 on `fix/issue-33-upload-intents` (slice `issue-33-upload-intents`):
+  presigned uploads were not bound to the uploading user — a leaked upload
+  URL could be completed by anyone against a target THEY own.
+  - Migration `0006_image_upload_intents.sql`: `image_upload_intents
+    (image_uuid pk, user_id → profiles cascade, created_at)`. No cleanup
+    cron at MVP (orphan rows are tiny; follow-up for the nightly job).
+  - `web/lib/db/image-uploads.ts` (new): `recordUploadIntent` (on upload),
+    `checkUploadIntent` (fail-fast read-only pre-check),
+    `consumeUploadIntent` (single-use `DELETE ... RETURNING`, freshness
+    window 1h vs the 10min presigned TTL; takes an optional query fn so it
+    runs INSIDE complete's transaction — replay/mismatch rolls the attach
+    back, and a transient processing failure doesn't force a re-upload).
+  - `web/lib/images/complete.ts`: two new injected deps
+    (`checkUploadIntent` before ownership/remote work; `consumeUploadIntent`
+    first inside the atomic tx). Failure maps to the existing 404 — no
+    oracle on whether the UUID exists.
+  - `POST /api/images/upload` records the intent after the worker returns;
+    intent-record failure → 500 (an unrecorded UUID would 404 at complete).
+  - Binding enforced entirely in the Next.js app — the worker contract is
+    unchanged (it trusts the service token); no worker deploy, no new env.
+  - Tests: `tests/image-uploads.test.ts` (7 — param order, freshness
+    window, single-use, injected-tx path); `complete-service.test.ts` +
+    `complete-route.test.ts` rewired for the intent steps (route tests now
+    use a real-UUID user id) + new intent-failure paths (pre-check → no
+    remote work; consume-0-rows → attach rolled back; replay → 404).
+- All gates green: `cd web && npm run verify` (246 tests, typecheck, lint,
+  build), `.agents/scripts/preflight.sh`. Deployment: apply migration 0006.

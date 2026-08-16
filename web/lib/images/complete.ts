@@ -34,6 +34,21 @@ export interface CompleteUploadDeps {
   query: CompleteQueryFn;
   /** Transaction runner for the atomic DB writes. */
   runInTransaction: RunInTransaction;
+  /**
+   * Upload-intent binding (issue #33): was this imageUuid issued to this
+   * user? Checked BEFORE remote work so a caller with someone else's
+   * (leaked) upload cannot burn image-service presign/sharp resources.
+   */
+  checkUploadIntent: (userId: string, imageUuid: string) => Promise<boolean>;
+  /**
+   * Single-use consume of the intent INSIDE the atomic transaction, so a
+   * replay or a mismatched user rolls the attach back (issue #33).
+   */
+  consumeUploadIntent: (
+    userId: string,
+    imageUuid: string,
+    q: CompleteQueryFn,
+  ) => Promise<boolean>;
   getProcessUrls: (request: CompleteImageRequest & { userId?: string }) => Promise<ProcessUrls>;
   processImage: (imageUuid: string, processUrls: ProcessUrls) => Promise<ProcessedImage>;
 }
@@ -60,6 +75,14 @@ export function defaultCompleteUploadDeps(): CompleteUploadDeps {
       return withTransaction(async (client) =>
         fn(client.query.bind(client) as CompleteQueryFn),
       );
+    },
+    checkUploadIntent: async (userId, imageUuid) => {
+      const { checkUploadIntent } = await import("@/lib/db/image-uploads");
+      return checkUploadIntent(userId, imageUuid);
+    },
+    consumeUploadIntent: async (userId, imageUuid, q) => {
+      const { consumeUploadIntent } = await import("@/lib/db/image-uploads");
+      return consumeUploadIntent(userId, imageUuid, q);
     },
     getProcessUrls: async (request) => {
       const { getProcessUrls } = await import("@/lib/images/image-service-client");
@@ -174,6 +197,12 @@ export async function completeImageUpload(
   req: CompleteImageRequest,
   deps: CompleteUploadDeps,
 ): Promise<CompleteUploadResult> {
+  // 0. Upload-intent binding (issue #33): this imageUuid must have been
+  //    issued to THIS user at upload time, or a leaked URL would let
+  //    anyone claim the image. Fail fast before any remote work.
+  const intentOk = await deps.checkUploadIntent(user.id, req.imageUuid);
+  if (!intentOk) return { attached: false };
+
   // 1. Fail fast before any remote work: unauthorized callers must not
   //    burn image-service presign or sharp CPU.
   const owned =
@@ -199,9 +228,18 @@ export async function completeImageUpload(
     source: { type: req.targetType, id: req.targetId },
   };
 
-  // 3. Atomic DB writes: both statements share one transaction, so a
-  //    failure rolls back the checkin append AND the gallery merge.
+  // 3. Atomic DB writes: the single-use intent consume and the attach
+  //    share one transaction, so a replayed/mismatched intent rolls the
+  //    attach back, and a failure rolls back the checkin append AND the
+  //    gallery merge (issues #25, #33).
   return deps.runInTransaction(async (q) => {
+    const consumed = await deps.consumeUploadIntent(user.id, req.imageUuid, q);
+    if (!consumed) return { attached: false };
+
+    // NOTE: if the attach below matches 0 rows (the target was deleted or
+    // changed owner between the pre-check and this tx), the intent is
+    // already consumed — the complete 404s and the user must re-upload.
+    // Rare, fail-closed, accepted at MVP (review #33).
     if (req.targetType === "cafe") {
       const attached = await attachToCafe(q, storedImage, req.targetId, user.id, req.isCover ?? false);
       return { attached, storedImage, processed };

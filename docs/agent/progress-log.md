@@ -430,3 +430,38 @@ the recent tail. Archive history, never delete it.
   non-existent route) exits 1 on HTTP 404.
 - All gates green: `cd web && npm run verify` (175 tests, typecheck, lint,
   build), `.agents/scripts/preflight.sh`.
+
+## 2026-08-16 (cafe timezone)
+
+- Fixed issue #77 on `fix/issue-77-cafe-timezone` (slice
+  `issue-77-cafe-timezone`). Verify-before-trust corrected the issue's
+  assumptions: no open-now logic existed anywhere yet (only UI labels), and
+  no code writes `cafes` rows (cafe-creation slice blocked) — so the fix
+  lands the tz-correct foundation before any wrong logic can be written.
+  - `web/db/migrations/0005_cafe_timezone.sql`: `cafes.tz text` nullable,
+    IANA name, with the rationale comment; nullable on purpose — rows
+    without tz report open-now as unknown, never wrong.
+  - `web/lib/hours.ts` (new, pure, dependency-free): `isOpenAt(hours, tz,
+    instant)` evaluates the DB weekly-template shape in the cafe's local
+    time via `Intl.DateTimeFormat`; handles overnight windows
+    (close <= open spans midnight) and returns `null` for missing/invalid
+    tz or hours.
+  - `web/tests/hours.test.ts`: 8 tests — cross-timezone (Seoul cafe at UTC
+    instants where naive server-time interpretation is wrong), DST boundary
+    pair (America/New_York spring-forward: same wall clock, different UTC
+    instant — proves IANA, not fixed offset), overnight, boundary semantics,
+    null paths, closed-day-vs-unknown distinction, close === open as
+    around-the-clock, non-object jsonb payload.
+  - Independent-review hardening: `typeof hours` guard (malformed jsonb →
+    null) and the 24h/close===open semantics pinned by comment + tests;
+    `cafe-creation` slice outcome now carries "populate `cafes.tz` from
+    `location`"; `current-state.md` migrations inventory gains 0005.
+  - Places API fact-check: Places (New) only offers `utcOffsetMinutes`
+    (fixed, DST-unsafe); population will derive IANA tz from coordinates.
+    Deferred per the deferral policy (commented on #77): tz population at
+    cafe-creation (blocked slice — no write path exists; an uncalled lookup
+    helper would violate the cleanup gate), and backfill (no-op: no
+    production database exists yet).
+  - Spec 0001 cafes schema block synced with the `tz` column.
+- All gates green: `cd web && npm run verify` (183 tests, typecheck, lint,
+  build), `.agents/scripts/preflight.sh`.

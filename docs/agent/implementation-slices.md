@@ -14,7 +14,7 @@ Machine-checked implementation plan derived from `docs/specs/0001-nextjs-migrati
 | places-proxy | Next.js /api/places/* route handlers proxying the POI service | COMPLETE | 0001 | poi-cache-service | none | typecheck, unit, build | Server-side POI client + search/resolve routes; Google key never in web/ |
 | discovery-sheet | Bottom sheet + swipe cards + URL sync | BLOCKED | 0001, 0002 | map-home | none | typecheck, build, e2e | PEEK/HALF/FULL sheet with horizontal cards, back-button-safe URL sync |
 | image-pipeline | Image upload pipeline (image-service Worker + sharp on VPS) | COMPLETE | 0001 | auth-foundation, scaffold-nextjs | none | typecheck, unit, build | Multi-size WebP upload, presigned R2 URLs, gallery JSONB, R2 metadata (uses Postgres helpers from auth-foundation; see ADR-0002) |
-| cafe-creation | Creation flow = first check-in | BLOCKED | 0001, 0002 | auth-foundation, discovery-sheet, places-proxy, poi-cache-service, image-pipeline | none | typecheck, unit, build, e2e | Google Maps link import + map-tap creation, dedupe, creator check-in |
+| cafe-creation | Creation flow = first check-in | BLOCKED | 0001, 0002 | auth-foundation, discovery-sheet, places-proxy, poi-cache-service, image-pipeline | none | typecheck, unit, build, e2e | Google Maps link import + map-tap creation, dedupe, creator check-in; populate `cafes.tz` from `location` (IANA lookup) so open-now works (issue #77) |
 | checkin-system | Check-in drawer + sliders | BLOCKED | 0001, 0002 | cafe-creation | none | typecheck, unit, build, e2e | 0-100 sliders, policy chips with unknown, photos, repeat check-in flow |
 | work-profile | Aggregation + dual scores | BLOCKED | 0001 | checkin-system | none | typecheck, unit, build | Incremental work_stats, experience + weighted scores, nightly recompute |
 | search-filters | Hybrid search + nomad filters | BLOCKED | 0001, 0002 | discovery-sheet, poi-cache-service | none | typecheck, unit, build, e2e | Distance search over own cafes + saved POIs; external search persists POIs |
@@ -34,6 +34,7 @@ Machine-checked implementation plan derived from `docs/specs/0001-nextjs-migrati
 | issue-27-stats-locking | work_stats read-modify-write under row lock | IN-PROGRESS | 0001, 0003 | auth-migration-stats | none | typecheck, unit | `incrementalUpdateWorkStats` / `recomputeWorkStats` run inside `withTransaction` with `SELECT ... FOR UPDATE` |
 | issue-75-i18n-guard | en/zh key parity check + next-intl typed messages | COMPLETE | 0003 | none | none | typecheck, unit, build | `web/scripts/check-i18n.mjs` + `check:i18n` wired into verify and CI; `AppConfig.Messages` augmentation makes bad `t()` keys fail typecheck |
 | issue-76-visual-gate | Playwright rendered-page smoke gate in CI | COMPLETE | 0003 | none | none | typecheck, unit, build | `web/scripts/visual-smoke.mjs` + `check:visual` + `visual.yml`: 3 routes × light/dark × mobile/desktop, fails on console errors/non-2xx |
+| issue-77-cafe-timezone | cafes.tz column + tz-correct open-now evaluation | COMPLETE | 0001 | none | none | typecheck, unit, build | Migration 0005 adds `cafes.tz` (IANA); `web/lib/hours.ts` `isOpenAt` evaluates weekly hours in cafe-local time; population deferred to cafe-creation slice |
 
 ## Status vocabulary
 

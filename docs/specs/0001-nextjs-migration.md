@@ -126,6 +126,7 @@ create table cafes (
   cover           text,                   -- R2 key
   gallery         jsonb default '[]',     -- [{id, original, card, thumbnail, w, h, by, at, source}]
   opening_hours   jsonb,                  -- {mon:{open,close},...} + hours_source
+  tz              text,                   -- IANA timezone (e.g. 'Asia/Seoul'); open-now evaluates cafe-local (web/lib/hours.ts)
   price_range     smallint,               -- 1-4
   google_place_id text,
   apple_poi_id    text,

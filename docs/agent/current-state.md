@@ -19,7 +19,7 @@ Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisi
 web/                     Next.js 16 + HeroUI v3 + Tailwind v4 + next-intl (the app)
 web/db/migrations/       0001_init.sql — 4-table schema (spec 0001);
                          0002_checkins_and_indexes.sql, 0003_rate_limits.sql,
-                         0004_checkin_likes_trigger.sql
+                         0004_checkin_likes_trigger.sql, 0005_cafe_timezone.sql
 web/lib/auth/            Supabase server client (PKCE), profile upsert logic
 web/lib/db/              Postgres pool (server-side only), withTransaction, atomic like toggle
 web/lib/stats/           Recency-weighted `work_stats` aggregation with `incrementalUpdateWorkStats`

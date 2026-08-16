@@ -16,7 +16,8 @@ Accepted
 Unit:        Vitest + React Testing Library for components, hooks, utils
 Integration: Vitest for API routes with mocked backend
 E2E:         Playwright for critical user flows (map, search, cafe detail) — post-MVP
-Visual:      Playwright screenshots for key surfaces (optional, not blocking)
+Visual:      Playwright screenshots for key surfaces (optional, not blocking —
+             pixel baselines; distinct from the blocking rendered-page smoke gate below)
 ```
 
 ### Test policy
@@ -87,6 +88,9 @@ npm run typecheck       TypeScript check
 npm run lint            ESLint
 npm run test            Vitest unit tests
 npm run check:i18n      en/zh message-catalog key parity (scripts/check-i18n.mjs)
+npm run check:visual    rendered-page smoke: production build + Playwright chromium over
+                        the public route matrix (scripts/visual-smoke.mjs); not in verify —
+                        needs a browser install, so it runs as its own CI gate
 npm run build           Next.js production build
 npm run verify          check:i18n + typecheck + lint + test + build (the full gate)
 ```
@@ -98,6 +102,13 @@ npm run verify          check:i18n + typecheck + lint + test + build (the full g
   triggers: PR + push to main (web/**, .github/workflows/application.yml)
   steps: npm ci, npm run typecheck, npm run lint, npm run check:i18n, npm run test, npm run build
   concurrency: cancel superseded runs
+
+.github/workflows/visual.yml:
+  triggers: PR + push to main (web/**, .github/workflows/visual.yml)
+  steps: npm ci, npm run build, playwright install chromium, npm run check:visual,
+         upload screenshots artifact on failure
+  notes: rendered-page smoke — 3 public routes x light/dark x mobile/desktop,
+         fails on non-2xx, console errors, or page errors; no pixel baselines yet
 
 .github/workflows/poi-service.yml:
   triggers: PR + push to main (poi-service/**, .github/workflows/poi-service.yml)

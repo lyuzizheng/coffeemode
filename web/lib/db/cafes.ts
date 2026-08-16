@@ -7,7 +7,7 @@ import {
   incrementalUpdateWorkStats,
   type RunInTransaction,
 } from "@/lib/stats/aggregate";
-import { coerceWorkStats, WORK_DIMS } from "@/lib/stats/work-stats";
+import { coerceWorkStats } from "@/lib/stats/work-stats";
 import type { CafeDetail, CafeSummary } from "@/types/cafes";
 import type { StoredImage } from "@/types/images";
 import {
@@ -17,6 +17,15 @@ import {
   type MaxStay,
   type MinSpend,
 } from "@/types/checkins";
+import {
+  fail,
+  galleryPhotosWithSource,
+  MERGE_GALLERY_SQL,
+  parsePhotos,
+  parseScores,
+  parseVisitedAt,
+  type ParseResult,
+} from "./checkins";
 import { query, withTransaction } from "./postgres";
 
 /** Thrown when a cafe with the same external POI id already exists. */
@@ -55,14 +64,6 @@ export interface CreateCafeInput {
   checkin: CreateCafeCheckInInput;
 }
 
-export type ParseResult<T> =
-  | { ok: true; value: T }
-  | { ok: false; message: string };
-
-function fail<T>(message: string): ParseResult<T> {
-  return { ok: false, message };
-}
-
 function optString(
   value: unknown,
   field: string,
@@ -73,50 +74,6 @@ function optString(
   const trimmed = value.trim();
   if (trimmed.length > maxLength) return fail(`${field} is too long (max ${maxLength})`);
   return { ok: true, value: trimmed === "" ? undefined : trimmed };
-}
-
-function parseScores(value: unknown): ParseResult<CheckInScores> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return fail("checkin.scores must be an object");
-  }
-  const scores: CheckInScores = {};
-  for (const [key, score] of Object.entries(value)) {
-    if (!(WORK_DIMS as readonly string[]).includes(key)) {
-      return fail(`checkin.scores.${key} is not a known dimension`);
-    }
-    if (typeof score !== "number" || !Number.isFinite(score) || score < 0 || score > 100) {
-      return fail(`checkin.scores.${key} must be a number between 0 and 100`);
-    }
-    scores[key as keyof CheckInScores] = score;
-  }
-  return { ok: true, value: scores };
-}
-
-/** Structural check for StoredImage refs already processed by image-service. */
-function parsePhotos(value: unknown): ParseResult<StoredImage[]> {
-  if (!Array.isArray(value) || value.length === 0) {
-    return fail("checkin.photos must contain at least one image (spec 0001)");
-  }
-  for (const entry of value) {
-    if (typeof entry !== "object" || entry === null) {
-      return fail("checkin.photos entries must be objects");
-    }
-    const img = entry as Record<string, unknown>;
-    for (const key of ["id", "original", "card", "thumbnail", "by", "at"] as const) {
-      if (typeof img[key] !== "string" || (img[key] as string).trim() === "") {
-        return fail(`checkin.photos[].${key} must be a non-empty string`);
-      }
-    }
-    if (Number.isNaN(Date.parse(img.at as string))) {
-      return fail("checkin.photos[].at must be an ISO timestamp");
-    }
-    for (const key of ["w", "h"] as const) {
-      if (typeof img[key] !== "number" || !Number.isFinite(img[key]) || (img[key] as number) <= 0) {
-        return fail(`checkin.photos[].${key} must be a positive number`);
-      }
-    }
-  }
-  return { ok: true, value: value as StoredImage[] };
 }
 
 /** Validate the POST /api/cafes body into a typed create input. */
@@ -173,7 +130,7 @@ export function parseCreateCafeBody(body: unknown): ParseResult<CreateCafeInput>
   }
   const checkinBody = checkinRaw as Record<string, unknown>;
 
-  const scores = parseScores(checkinBody.scores);
+  const scores = parseScores(checkinBody.scores, "checkin.scores");
   if (!scores.ok) return fail(scores.message);
   if (typeof scores.value.overall !== "number") {
     return fail("checkin.scores.overall is required on creation (spec 0001)");
@@ -194,23 +151,15 @@ export function parseCreateCafeBody(body: unknown): ParseResult<CreateCafeInput>
   }
   if (note.trim().length > 1000) return fail("checkin.note is too long (max 1000)");
 
-  const photos = parsePhotos(checkinBody.photos);
+  if (!Array.isArray(checkinBody.photos) || checkinBody.photos.length === 0) {
+    return fail("checkin.photos must contain at least one image (spec 0001)");
+  }
+  const photos = parsePhotos(checkinBody.photos, "checkin.photos");
   if (!photos.ok) return fail(photos.message);
 
-  let visitedAt: Date | undefined;
-  if (checkinBody.visited_at !== undefined && checkinBody.visited_at !== null) {
-    if (typeof checkinBody.visited_at !== "string") {
-      return fail("checkin.visited_at must be an ISO timestamp string");
-    }
-    const parsed = new Date(checkinBody.visited_at);
-    if (Number.isNaN(parsed.getTime())) {
-      return fail("checkin.visited_at is not a parseable timestamp");
-    }
-    if (parsed.getTime() > Date.now()) {
-      return fail("checkin.visited_at cannot be in the future");
-    }
-    visitedAt = parsed;
-  }
+  const visited = parseVisitedAt(checkinBody.visited_at, "checkin.visited_at");
+  if (!visited.ok) return fail(visited.message);
+  const visitedAt = visited.value;
 
   return {
     ok: true,
@@ -324,6 +273,14 @@ export async function createCafeWithFirstCheckIn(
       ]);
       const checkinId = checkinRes.rows[0]?.id;
       if (!checkinId) throw new Error("check-in insert returned no id");
+
+      // The first check-in's photos auto-merge into the gallery too (spec 0001).
+      if (input.checkin.photos.length > 0) {
+        await client.query(MERGE_GALLERY_SQL, [
+          cafeId,
+          galleryPhotosWithSource(input.checkin.photos, checkinId),
+        ]);
+      }
 
       const inSameTx: RunInTransaction = (fn) =>
         fn(<T extends Record<string, unknown>>(text: string, params?: unknown[]) =>

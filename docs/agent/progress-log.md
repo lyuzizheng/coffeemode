@@ -510,3 +510,52 @@ the recent tail. Archive history, never delete it.
     routes) and `mapkit-token` (Apple Developer Program credentials).
 - All gates green: `cd web && npm run verify` (206 tests, typecheck, lint,
   build), `.agents/scripts/preflight.sh`.
+
+## 2026-08-17 (domain API routes, PR B)
+
+- Issue #45 PR B on `fix/issue-45-checkins-routes` (slice
+  `issue-45-domain-api-routes`): checkins / likes / navigations routes.
+  - Shared check-in parsers (`parseScores`/`parsePhotos`/`parseVisitedAt`
+    with field-prefix params, plus `ParseResult`/`fail`) moved from
+    `cafes.ts` into `checkins.ts` as exports; `cafes.ts` imports them
+    back. The extraction itself is behavior-preserving; `cafes.test.ts`
+    still changed in this commit — for the gallery-merge gap fix below.
+  - `web/lib/db/checkins.ts`: `createCheckIn` — cafe-exists check (404
+    semantics via `CafeNotFoundError`, not an FK 500) → insert
+    (`is_creation=false`) → photo auto-merge into `cafes.gallery` with
+    `source={type:"checkin",id}` (spec 0001:556) → work_stats refresh on
+    the same connection — one transaction. The refresh is a full
+    `recomputeWorkStats`, NOT the incremental fold: independent review
+    traced that `incrementalUpdateWorkStats` assumes the new check-in is
+    the user's latest, so a backdated `visited_at` would subtract the
+    wrong "before" contribution and corrupt stats (phantom negative
+    policy counts). Recompute is always correct and cheap at MVP scale.
+    `parseCheckInBody` requires `cafe_id` + >=1 slider (spec 0001:541);
+    policies/note/photos are optional extras. `toggleCheckInLike` now
+    throws a typed `CheckInNotFoundError` (same message, so existing
+    tests are unaffected).
+  - PR A gap fixed (found while planning PR B): the fused creation flow
+    never merged the first check-in's photos into `cafes.gallery`. The
+    same merge step (`MERGE_GALLERY_SQL` + `galleryPhotosWithSource`,
+    exported from checkins.ts) now runs in `createCafeWithFirstCheckIn`.
+  - `web/lib/db/navigations.ts` (new): `recordNavigation` — cafe-exists
+    check then insert, returns `{id, resolved, created_at}`. The
+    prompt-trigger logic (>30min, 1/session) stays client-side; the
+    pending-prompt read endpoint is API5 (spec 0004), out of this issue.
+    Known benign TOCTOU: the exists check + insert are two pool queries;
+    a cafe vanishing between them yields an FK 500, not 404 — no cafe
+    delete path exists at MVP.
+  - Routes: `POST /api/checkins` (400/401/404/429/201),
+    `POST /api/checkins/[id]/like` (400/401/404/429/200
+    `{liked, likesCount}`), `POST /api/navigations`
+    (400/401/404/429/201). All reuse the CAFES write budget preset
+    (10/min) with per-route keys. NOTE for the UI slice: likes are the
+    highest-frequency write — re-tune the like budget before the
+    note-list UI lands (review flag).
+  - Tests: `web/tests/checkins.test.ts` rewritten (23 tests — parser
+    matrix incl. >=1-slider enforcement, transaction shape,
+    gallery-merge skip without photos, typed errors, route paths, 429),
+    `web/tests/navigations.test.ts` (8 tests). cafes.test.ts happy path
+    extended for the gallery merge (8 statements).
+- All gates green: `cd web && npm run verify` (232 tests, typecheck, lint,
+  build), `.agents/scripts/preflight.sh`.

@@ -41,6 +41,9 @@ export function getPoolConfig(): PoolConfig {
   const url = new URL(urlString);
   const sslmode = url.searchParams.get("sslmode");
   url.searchParams.delete("sslmode");
+  // Note: sslrootcert/sslcert/sslkey left in the URL are parsed by pg into its
+  // own ssl options, which override config.ssl (pg's connectionString parse
+  // wins over top-level config keys).
 
   const config: PoolConfig = {
     connectionString: url.toString(),
@@ -50,18 +53,29 @@ export function getPoolConfig(): PoolConfig {
     allowExitOnIdle: getBoolEnv("DATABASE_POOL_ALLOW_EXIT_ON_IDLE", false),
   };
 
-  if (sslmode) {
-    if (sslmode === "require" || sslmode === "prefer") {
-      // Self-managed VPS certs are usually self-signed or Let's Encrypt.
-      // We still encrypt the channel without validating the CA chain.
-      config.ssl = { rejectUnauthorized: false };
-    } else if (sslmode === "disable") {
+  // `get` returns null when the param is absent but "" for `sslmode=` — an
+  // empty value must also fail closed, not silently mean plaintext.
+  if (sslmode !== null) {
+    if (sslmode === "disable") {
       config.ssl = false;
-    } else if (sslmode === "verify-ca" || sslmode === "verify-full") {
-      config.ssl = true;
+    } else if (sslmode === "allow-self-signed") {
+      // Explicit opt-in for self-managed VPS certs without a public CA chain.
+      // Encrypts the channel but accepts any certificate — vulnerable to MITM.
+      config.ssl = { rejectUnauthorized: false };
+    } else if (
+      sslmode === "require" ||
+      sslmode === "prefer" ||
+      sslmode === "verify-ca" ||
+      sslmode === "verify-full"
+    ) {
+      // Strict: validate the CA chain. Node's tls also verifies the hostname
+      // by default when a servername is present, so verify-ca and verify-full
+      // map to the same behavior here.
+      config.ssl = { rejectUnauthorized: true };
     } else {
-      console.warn(
-        `Unrecognized sslmode "${sslmode}" in DATABASE_URL; connection will not use SSL. Use require, prefer, disable, verify-ca, or verify-full.`,
+      // Fail closed: a typo must not silently downgrade to plaintext.
+      throw new Error(
+        `Unrecognized sslmode "${sslmode}" in DATABASE_URL. Use require, prefer, verify-ca, verify-full, allow-self-signed, or disable.`,
       );
     }
   }

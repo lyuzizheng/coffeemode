@@ -23,7 +23,7 @@ We also want Cloudflare to do the fixed, edge-suitable parts of the system (POI 
 ## Consequences
 
 - The VPS now runs Next.js + Postgres. Backups are the operator's responsibility.
-- `DATABASE_URL` supports `sslmode=require/prefer/verify-ca/verify-full/disable`. For `require`/`prefer` the default is `rejectUnauthorized: false` so self-signed or self-managed VPS certificates still encrypt the channel without requiring a public CA chain; operators using `verify-ca`/`verify-full` get strict validation.
+- `DATABASE_URL` supports `sslmode=require/prefer/verify-ca/verify-full/allow-self-signed/disable`. All modes except `allow-self-signed` and `disable` validate the CA chain (`rejectUnauthorized: true`); `allow-self-signed` is the explicit opt-in for self-managed VPS certs without a public CA chain, and unrecognized values fail closed (revised by issue #41 — `require`/`prefer` originally defaulted to `rejectUnauthorized: false`, which silently accepted any certificate).
 - `sharp` and `libvips` must be present in the Docker image.
 - Cloudflare usage stays within free-tier limits: Worker invocations are low (one per upload request, one per process request), R2 handles storage and egress, and no Cloudflare Images transforms are used.
 - R2 S3 credentials live only in the `image-service` Worker (for signing). Next.js receives presigned GET/PUT URLs from the Worker and never stores or exposes R2 credentials.

@@ -616,3 +616,31 @@ the recent tail. Archive history, never delete it.
     remote work; consume-0-rows → attach rolled back; replay → 404).
 - All gates green: `cd web && npm run verify` (246 tests, typecheck, lint,
   build), `.agents/scripts/preflight.sh`. Deployment: apply migration 0006.
+
+## 2026-08-17 (Postgres sslmode fail-closed, #41)
+
+- Issue #41 on `fix/issue-41-ssl-fail-closed` (slice `issue-41-postgres-ssl`):
+  `web/lib/db/postgres.ts` silently disabled CA validation for
+  `sslmode=require`/`prefer` and fell back to plaintext on unrecognized values.
+  - New mapping: `require`/`prefer`/`verify-ca`/`verify-full` →
+    `ssl: { rejectUnauthorized: true }` (strict CA validation; Node verifies
+    the hostname by default when a servername is present, so
+    verify-ca/verify-full are equivalent here).
+  - New explicit opt-in `sslmode=allow-self-signed` →
+    `{ rejectUnauthorized: false }` for self-managed VPS certs (MITM risk is
+    now a deliberate choice, not a silent default).
+  - Unrecognized `sslmode` now throws at pool-config time (fail closed)
+    instead of warning and downgrading to plaintext — including an empty
+    `sslmode=` and wrong case (`REQUIRE`); `disable` and no-sslmode
+    behavior unchanged.
+  - Docs: `web/.env.example` documents all supported values; ADR-0002
+    consequence bullet revised in place with an issue-#41 note; the
+    operator checklist in `pending-user-actions.md` points self-signed
+    deployments at `allow-self-signed`.
+  - Deployment note: existing deployments using `require`/`prefer` with a
+    self-signed cert must switch to `sslmode=allow-self-signed`.
+  - Tests: `tests/postgres.test.ts` — parameterized mapping updated (6 cases)
+    and the warn-and-downgrade case replaced by fail-closed throw assertions
+    (unknown / empty / wrong-case sslmode).
+- All gates green: `cd web && npm run verify` (249 tests, typecheck, lint,
+  build), `.agents/scripts/preflight.sh`.

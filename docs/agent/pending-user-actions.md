@@ -19,7 +19,7 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 - [ ] Provision Postgres on the VPS (or use managed instance) and enable network access from the Next.js host
 - [ ] Enable PostGIS: `CREATE EXTENSION postgis;`
 - [ ] Apply the schema: `psql "<connection-string>" -f web/db/migrations/0001_init.sql`
-- [ ] Put the connection string into `web/.env.local` as `DATABASE_URL` (shape in `web/.env.example`); add `?sslmode=require` if SSL is required
+- [ ] Put the connection string into `web/.env.local` as `DATABASE_URL` (shape in `web/.env.example`); add `?sslmode=require` if SSL is required (use `sslmode=allow-self-signed` for self-signed certs)
 
 ## 3. Google OAuth (Sign in with Google) — unlocks real login
 

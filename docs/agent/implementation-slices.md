@@ -37,7 +37,8 @@ Machine-checked implementation plan derived from `docs/specs/0001-nextjs-migrati
 | issue-77-cafe-timezone | cafes.tz column + tz-correct open-now evaluation | COMPLETE | 0001 | none | none | typecheck, unit, build | Migration 0005 adds `cafes.tz` (IANA); `web/lib/hours.ts` `isOpenAt` evaluates weekly hours in cafe-local time; population deferred to cafe-creation slice |
 | issue-45-domain-api-routes | Core domain API routes: cafes, check-ins, likes, navigations | COMPLETE | 0001 | auth-foundation | none | typecheck, unit, build | PR A (#83): cafes lib + routes (fused create + first check-in + tz, nearby list, detail). PR B (#84): checkins/likes/navigations routes + creation-flow gallery merge fix + recompute-not-fold stats (backdated visited_at). mapkit-token deferred (Apple creds) |
 | issue-46-sw-api-cache | Service worker must not cache user-specific API GETs | COMPLETE | 0001 | none | none | typecheck, unit, build | Catch-all network-only `/api/` rule ahead of serwist defaultCache's 24h `apis` NetworkFirst (#85); ADR-0003 §3 amended to match |
-| issue-33-upload-intents | Bind presigned image uploads to the issuing user | IN-PROGRESS | 0001 | none | none | typecheck, unit, build | Migration 0006 `image_upload_intents`: record on upload, fail-fast pre-check + single-use consume inside complete's atomic tx; worker contract unchanged |
+| issue-33-upload-intents | Bind presigned image uploads to the issuing user | COMPLETE | 0001 | none | none | typecheck, unit, build | Migration 0006 `image_upload_intents`: record on upload, fail-fast pre-check + single-use consume inside complete's atomic tx; worker contract unchanged (#87) |
+| issue-41-postgres-ssl | Postgres sslmode fail-closed + explicit allow-self-signed | IN-PROGRESS | 0001 | auth-foundation | none | typecheck, unit, build | require/prefer/verify-* validate the CA chain; allow-self-signed is the opt-in for self-signed certs; unknown sslmode throws |
 
 ## Status vocabulary
 

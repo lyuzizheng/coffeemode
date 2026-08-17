@@ -50,11 +50,11 @@ describe("SignInButton", () => {
     expect(button).toBeDisabled();
   });
 
-  it("displays the returned error message", () => {
-    vi.mocked(useActionState).mockReturnValue([{ error: "Provider error" }, mockFormAction, false]);
+  it("displays the localized message for the returned error code", () => {
+    vi.mocked(useActionState).mockReturnValue([{ error: "provider_start_failed" }, mockFormAction, false]);
 
     render(<SignInButton provider="apple" variant="primary" />, { wrapper: Wrapper });
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Provider error");
+    expect(screen.getByRole("alert")).toHaveTextContent("Sign-in couldn't start. Please try again.");
   });
 });

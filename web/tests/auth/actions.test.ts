@@ -47,7 +47,7 @@ describe("signIn", () => {
     formData.set("provider", "microsoft");
 
     const result = await signIn(undefined, formData);
-    expect(result).toEqual({ error: "Invalid sign-in provider" });
+    expect(result).toEqual({ error: "invalid_provider" });
   });
 
   it("redirects to the OAuth URL on success", async () => {
@@ -140,7 +140,7 @@ describe("signIn", () => {
     formData.set("provider", "apple");
 
     const result = await signIn(undefined, formData);
-    expect(result).toEqual({ error: "Sign-in is not configured" });
+    expect(result).toEqual({ error: "not_configured" });
     expect(signInWithOAuthMock).not.toHaveBeenCalled();
   });
 
@@ -151,7 +151,7 @@ describe("signIn", () => {
     formData.set("provider", "apple");
 
     const result = await signIn(undefined, formData);
-    expect(result).toEqual({ error: "Sign-in is not configured" });
+    expect(result).toEqual({ error: "not_configured" });
     expect(signInWithOAuthMock).not.toHaveBeenCalled();
   });
 
@@ -164,8 +164,12 @@ describe("signIn", () => {
     const formData = new FormData();
     formData.set("provider", "google");
 
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const result = await signIn(undefined, formData);
-    expect(result).toEqual({ error: "OAuth provider unavailable" });
+    expect(result).toEqual({ error: "provider_start_failed" });
+    // Raw provider detail stays in the server log, never reaches the client.
+    expect(spy).toHaveBeenCalledWith("signIn: OAuth start failed", "OAuth provider unavailable");
+    spy.mockRestore();
   });
 });
 
@@ -183,7 +187,10 @@ describe("signOut", () => {
     signOutMock.mockResolvedValueOnce({ error: { message: "Session not found" } });
 
     const formData = new FormData();
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const result = await signOut(undefined, formData);
-    expect(result).toEqual({ error: "Session not found" });
+    expect(result).toEqual({ error: "signout_failed" });
+    expect(spy).toHaveBeenCalledWith("signOut failed", "Session not found");
+    spy.mockRestore();
   });
 });

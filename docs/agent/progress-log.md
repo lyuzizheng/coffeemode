@@ -900,3 +900,22 @@ the recent tail. Archive history, never delete it.
   `check-ci-workflow.sh`). Verified: preflight green under
   `env LC_ALL=C LANG=` and unchanged under UTF-8 locales. Harness-only change;
   no product behavior touched.
+## 2026-08-17 (auth error codes, #103)
+
+- Issue #103 on `fix/issue-103-auth-error-codes` (slice
+  `issue-103-auth-error-codes`): auth server actions no longer return raw
+  Supabase error strings to the bilingual UI. `signIn`/`signOut` return
+  stable codes (`invalid_provider`, `not_configured`,
+  `provider_start_failed`, `signout_failed`) typed on `AuthActionState`;
+  raw provider detail goes to the server log (`console.error`).
+  `AuthErrorMessage` maps codes via an explicit table to new
+  `home.auth_err_*` copy; unknown/legacy values fall back to
+  `auth_err_generic` — raw text is never rendered.
+- i18n: 5 new `home.auth_err_*` keys in en + zh (211 keys each, parity
+  green).
+- Sibling sweep: `actions.test.ts` now asserts codes + server-log
+  passthrough; `sign-in-button`/`sign-out-button` tests assert localized
+  copy; new `auth-error-message.test.tsx` covers all four codes, the
+  unknown-value fallback (asserts the raw string is NOT shown), and the
+  no-error case. Web suite 289 → 292.
+- Gate: `npm run verify` (web) + `.agents/scripts/preflight.sh` green.

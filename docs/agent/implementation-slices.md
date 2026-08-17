@@ -48,6 +48,7 @@ Machine-checked implementation plan derived from `docs/specs/0001-nextjs-migrati
 | issue-36-checkins-indexes | Reconcile checkins indexes + checkin_likes constraint order with spec 0001 | COMPLETE | 0001 | auth-migration-stats | none | unit, build | Migration 0007: visited_at partial indexes (cafe/user/user_cafe) + idx_checkins_likes; unique (checkin_id, user_id) so the leading column serves count-by-checkin; query patterns verified against aggregate.ts. SQL-only change — no live Postgres available; validation rested on independent review + preflight, not the declared gates |
 | issue-98-auth-error-feedback | Surface OAuth callback failure (?auth=error) on the home page | COMPLETE | 0001, 0002 | auth-foundation | none | typecheck, unit, build, visual | Inline danger banner above the sign-in card, reason=profile_upsert variant, en/zh copy, role=alert |
 | issue-99-app-state-pages | Designed 404/error/loading states replace framework defaults | COMPLETE | 0002, 0003 | design-tokens | none | typecheck, unit, build, visual | not-found.tsx + error.tsx (client, Next 16 retry) + loading.tsx skeleton; /definitely-not-a-route back in the visual-smoke matrix with per-route expected status |
+| issue-103-auth-error-codes | Auth action errors return stable codes mapped to i18n copy | COMPLETE | 0001, 0002 | auth-foundation | none | typecheck, unit, build | signIn/signOut return invalid_provider/not_configured/provider_start_failed/signout_failed; AuthErrorMessage maps codes to en/zh, raw provider strings go to server logs only |
 
 ## Status vocabulary
 

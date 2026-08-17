@@ -12,8 +12,14 @@ import { createSupabaseServerClient } from "@/lib/auth/supabase-server";
 
 export type OAuthProvider = "apple" | "google";
 
+/**
+ * Error values are stable CODES, never provider strings — the UI maps them to
+ * localized copy (auth-error-message.tsx), so no raw English provider text
+ * reaches a bilingual surface (issue #103). The raw Supabase message goes to
+ * the server log instead.
+ */
 export type AuthActionState = {
-  error?: string;
+  error?: "invalid_provider" | "not_configured" | "provider_start_failed" | "signout_failed";
   success?: boolean;
 };
 
@@ -112,12 +118,12 @@ export async function signIn(
 ): Promise<AuthActionState> {
   const provider = formData.get("provider");
   if (!validateProvider(provider)) {
-    return { error: "Invalid sign-in provider" };
+    return { error: "invalid_provider" };
   }
 
   const redirectTo = await getRedirectTo();
   if (!redirectTo) {
-    return { error: "Sign-in is not configured" };
+    return { error: "not_configured" };
   }
 
   const supabase = await createSupabaseServerClient();
@@ -128,9 +134,11 @@ export async function signIn(
   });
 
   if (error || !data.url) {
-    // Surface as a returned error so the UI can show a toast; do not leak
-    // provider internals beyond the message Supabase already returns.
-    return { error: error?.message ?? "Sign-in could not start" };
+    // Keep the provider detail in the server log; the client gets a stable
+    // code mapped to localized copy — no raw English provider strings in the
+    // UI (issue #103).
+    console.error("signIn: OAuth start failed", error?.message ?? "no url");
+    return { error: "provider_start_failed" };
   }
 
   redirect(data.url);
@@ -148,7 +156,8 @@ export async function signOut(
   const { error } = await supabase.auth.signOut();
 
   if (error) {
-    return { error: error.message };
+    console.error("signOut failed", error.message);
+    return { error: "signout_failed" };
   }
 
   // The client clears the TanStack Query cache and IndexedDB persister after

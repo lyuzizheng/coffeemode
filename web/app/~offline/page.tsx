@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@heroui/react";
 import { useTranslations } from "next-intl";
 
 /** Wifi-off glyph — same stroke language as the app icon set. */
@@ -41,13 +42,9 @@ export default function OfflinePage() {
           {t("body")}
         </p>
       </div>
-      <button
-        type="button"
-        onClick={() => window.location.reload()}
-        className="cm-focus h-10 rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent-hover"
-      >
+      <Button variant="primary" onPress={() => window.location.reload()}>
         {t("retry")}
-      </button>
+      </Button>
     </main>
   );
 }

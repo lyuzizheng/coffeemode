@@ -859,3 +859,31 @@ the recent tail. Archive history, never delete it.
 - Visual probe: `/?auth=error&reason=profile_upsert` screenshotted in
   light + dark mobile — banner legible and on-token in both themes.
 - Gate: `npm run verify` (web) + `.agents/scripts/preflight.sh` green.
+
+## 2026-08-17 (app state pages, #99)
+
+- Issue #99 on `fix/issue-99-app-state-pages` (slice
+  `issue-99-app-state-pages`): app-level state pages replace framework
+  defaults (spec 0002: "Empty/loading/error states: designed, not raw
+  text").
+  - `web/app/not-found.tsx` — designed 404 (client component under the
+    root layout's intl provider): mono kicker, display title, body,
+    accent link home.
+  - `web/app/error.tsx` — route-segment error boundary with Next 16
+    `retry()` (re-fetch + re-render) + home link; the underlying error goes to the console, the UI
+    stays generic.
+  - `web/app/loading.tsx` — HeroUI Skeleton mirror of the home layout
+    (shimmer, never a spinner).
+  - `web/scripts/visual-smoke.mjs` — ROUTES gains per-route expected
+    status; `/definitely-not-a-route` (expect 404) rejoins the matrix
+    (16 renderings). Chromium's own document-404 console error is
+    filtered only when it matches the route's expected status.
+  - `~offline` retry swaps the bespoke button for HeroUI `Button
+    variant="primary"` — one less bespoke control.
+- i18n: new `notFound` and `error` namespaces in en + zh (206 keys each,
+  parity green).
+- Tests: `web/tests/components/state-pages.test.tsx` (4 cases: 404
+  render + home link; error render, retry() callback, console logging).
+  Web suite 285 → 289.
+- Gate: `npm run verify` (web) + visual-smoke 16 renderings clean +
+  `.agents/scripts/preflight.sh` green.

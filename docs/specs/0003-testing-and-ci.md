@@ -107,8 +107,9 @@ npm run verify          check:i18n + typecheck + lint + test + build (the full g
   triggers: PR + push to main (web/**, .github/workflows/visual.yml)
   steps: npm ci, npm run build, playwright install chromium, npm run check:visual,
          upload screenshots artifact on failure
-  notes: rendered-page smoke — 3 public routes x light/dark x mobile/desktop,
-         fails on non-2xx, console errors, or page errors; no pixel baselines yet
+  notes: rendered-page smoke — 4 public routes x light/dark x mobile/desktop,
+         fails on unexpected per-route HTTP status (the 404 fixture must
+         return 404), console errors, or page errors; no pixel baselines yet
 
 .github/workflows/poi-service.yml:
   triggers: PR + push to main (poi-service/**, .github/workflows/poi-service.yml)

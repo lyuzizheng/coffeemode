@@ -5,7 +5,7 @@
 
 import { CACHE_TTL_SECONDS, DEFAULT_SEARCH_RADIUS_KM, SEARCH_RESULT_LIMIT } from "./constants";
 import type { D1Like, KVLike, POI, POISearchHit } from "./types";
-import { haversineKm, kmPerDegLat, kmPerDegLng } from "./geo";
+import { haversineKm, kmPerDegLat, kmPerDegLng, wrapLng } from "./geo";
 
 const RAW_PREFIX = "raw:google:";
 
@@ -136,8 +136,21 @@ export async function d1SearchPOIs(
     const dLng = radiusKm / kmPerDegLng(lat);
     where.push("lat BETWEEN ? AND ?");
     binds.push(lat - dLat, lat + dLat);
-    where.push("lng BETWEEN ? AND ?");
-    binds.push(lng - dLng, lng + dLng);
+    // Antimeridian (issue #38): a plain [lo, hi] interval misses rows across
+    // ±180° — split into two OR-ed intervals with wrapped bounds. When the box
+    // spans every longitude (near-pole search, dLng ≥ 180) skip the prefilter
+    // entirely; the haversine post-filter stays authoritative either way.
+    const lo = lng - dLng;
+    const hi = lng + dLng;
+    if (dLng >= 180) {
+      // no lng prefilter
+    } else if (lo < -180 || hi > 180) {
+      where.push("(lng BETWEEN ? AND ? OR lng BETWEEN ? AND ?)");
+      binds.push(wrapLng(lo), 180, -180, wrapLng(hi));
+    } else {
+      where.push("lng BETWEEN ? AND ?");
+      binds.push(lo, hi);
+    }
   }
   if (where.length === 0) {
     // Full scan is only reachable with both q and radius unset — caller blocks this.

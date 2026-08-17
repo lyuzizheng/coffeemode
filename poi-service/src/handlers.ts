@@ -37,7 +37,11 @@ import { resolveShareUrl } from "./url";
 // Re-exported for consumers/tests that historically imported from handlers.
 export { authorized } from "./auth";
 
-/** Rough heuristic: Google place ids are ChIJ… or 0x…:0x…; Apple refs are arbitrary. */
+/**
+ * Last-resort heuristic for never-seen ids: Google place ids are ChIJ… or
+ * 0x…:0x…; Apple refs are arbitrary. Only used when neither KV nor D1 knows
+ * the id — stored rows' explicit `source` column is authoritative (issue #38).
+ */
 export function isGooglePlaceId(placeId: string): boolean {
   return /^(ChIJ|0x)/.test(placeId);
 }
@@ -53,31 +57,34 @@ function upstreamError(e: unknown): Response {
 // --- GET /poi/:place_id ---
 
 async function getPOI(placeId: string, env: Env, deps: Deps): Promise<Response> {
-  const googleId = isGooglePlaceId(placeId);
-
-  // 1. KV hot cache (raw Google response, ~7d TTL). Apple refs are never KV-cached.
-  if (googleId) {
-    const raw = await kvGetRaw(env.POI_KV, placeId);
-    if (raw) {
-      try {
-        return json(toPOI(JSON.parse(raw)));
-      } catch {
-        // corrupt cache entry — fall through to D1/Google
-      }
+  // 1. KV hot cache (raw Google response, ~7d TTL). KV only ever holds Google
+  // payloads, so a hit proves the id is Google's regardless of its shape;
+  // probing for Apple refs is safe — they are simply never cached there.
+  const raw = await kvGetRaw(env.POI_KV, placeId);
+  if (raw) {
+    try {
+      return json(toPOI(JSON.parse(raw)));
+    } catch {
+      // corrupt cache entry — fall through to D1/Google
     }
   }
 
-  // 2. D1 durable store
+  // 2. D1 durable store. The stored row's explicit `source` is authoritative
+  // (issue #38): an Apple ref that happens to start with ChIJ/0x must not be
+  // fanned out to Google, and a non-prefix Google id must still refresh.
   const stored = await d1GetPOI(env.POI_DB, placeId);
 
-  // Apple POIs have no server-side upstream — serve what's stored, else 404.
-  if (!googleId) {
-    return stored ? json(stored) : json({ error: "not_found" }, 404);
-  }
-
+  // Apple POIs have no server-side upstream — serve what's stored.
+  if (stored && stored.source === "apple") return json(stored);
   if (stored && isFresh(stored)) return json(stored);
 
-  // 3. Google API → backfill both
+  // 3. Never-seen id: only here fall back to the prefix heuristic
+  // (best-effort) to decide upstream fetch vs 404.
+  if (!stored && !isGooglePlaceId(placeId)) {
+    return json({ error: "not_found" }, 404);
+  }
+
+  // 4. Google API → backfill both
   let gp: GooglePlace;
   try {
     gp = await fetchPlaceDetails(placeId, env, deps.fetchImpl);

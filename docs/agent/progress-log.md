@@ -716,3 +716,18 @@ the recent tail. Archive history, never delete it.
     case-insensitive duplicate rejection).
 - All gates green: `cd web && npm run verify` (265 tests, typecheck, lint,
   build), `.agents/scripts/preflight.sh`.
+
+## 2026-08-17 (storeExternal hours_json validation, #39)
+
+- Issue #39 on `fix/issue-39-hours-json` (slice `issue-39-hours-json`):
+  mostly stale — the issue's evidence quoted pre-hardening code. Already on
+  main: lat/lng range checks, `source: google|apple`, element-type-checked
+  `types`/`photo_refs`, string-length caps, validate-all-before-write, and
+  atomic multi-row upsert via D1 `batch()` (`d1UpsertPOIs`).
+  - Remaining gap landed here: `hours_json` must be parseable JSON
+    (`JSON.parse` check in `validateExternalEntry`) — a malformed string
+    would have poisoned the stored row for downstream consumers.
+  - Test: unparseable `hours_json` → 400 with entry index/reason, valid
+    JSON string accepted, nothing written on failure.
+- All gates green: `cd poi-service && npm run typecheck && npm test`
+  (62 tests), `.agents/scripts/preflight.sh`.

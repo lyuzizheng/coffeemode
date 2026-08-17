@@ -33,6 +33,8 @@
     "continue_apple": "使用 Apple 继续",
     "continue_google": "使用 Google 继续",
     "auth_not_configured": "登录还没准备好——请稍后再来。",
+    "auth_error": "登录没有完成，请重试。",
+    "auth_error_profile": "你已登录，但个人资料设置没有完成。请重新登录以重试。",
     "signed_in_as": "已登录",
     "session_ready": "你的会话已生效。",
     "signing_in": "登录中...",

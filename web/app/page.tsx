@@ -5,14 +5,25 @@ import { createSupabaseServerClient, isAuthConfigured } from "@/lib/auth/supabas
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SignInButton } from "@/app/auth/sign-in-button";
 import { SignOutButton } from "@/app/auth/sign-out-button";
+import { AuthCallbackError } from "@/app/auth/auth-callback-error";
 
 // Scaffold-stage home page. The real surface is a full-screen Apple Map with
 // a bottom sheet (slice: map-home). Until then this page is the honest first
 // impression: what the tool is, how it works, and sign-in only when it can
 // actually work — never a wall in front of value, never a dead button.
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const t = await getTranslations("home");
   const configured = isAuthConfigured();
+  // The OAuth callback redirects here with ?auth=error on failure — surface
+  // it instead of dropping the user back on a silent page (issue #98).
+  const params = (await searchParams) ?? {};
+  const authError = params.auth === "error";
+  const authErrorReason =
+    typeof params.reason === "string" ? params.reason : undefined;
 
   let user = null;
   if (configured) {
@@ -65,6 +76,8 @@ export default async function HomePage() {
               </li>
             ))}
           </ol>
+
+          {authError && <AuthCallbackError reason={authErrorReason} />}
 
           <Card className="mt-10 w-full p-6">
             {user ? (

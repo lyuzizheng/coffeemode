@@ -33,6 +33,8 @@
     "continue_apple": "Continue with Apple",
     "continue_google": "Continue with Google",
     "auth_not_configured": "Sign-in isn't set up yet. Check back soon, or try again later.",
+    "auth_error": "Sign-in didn't go through. Please try again.",
+    "auth_error_profile": "You're signed in, but profile setup didn't finish. Sign in again to retry.",
     "signed_in_as": "Signed in as",
     "session_ready": "Your session is active.",
     "signing_in": "Signing in...",

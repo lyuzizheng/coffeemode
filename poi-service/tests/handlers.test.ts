@@ -635,6 +635,27 @@ describe("POST /poi/external", () => {
     expect(entries[1].reason).toContain("photo_refs");
   });
 
+  it("rejects unparseable hours_json, accepts valid JSON (issue #39)", async () => {
+    const db = new FakeD1();
+    const env = makeEnv({ POI_DB: db });
+    const res = await call("POST", "/poi/external", env, {
+      body: {
+        pois: [
+          { place_id: "a", source: "google", name: "A", lat: 1, lng: 103, hours_json: "{not json" },
+          { place_id: "b", source: "google", name: "B", lat: 1, lng: 103, hours_json: '{"mon":"09:00-18:00"}' },
+        ],
+      },
+    });
+    expect(res.status).toBe(400);
+    const b = await bodyOf(res);
+    const entries = b.entries as Array<{ index: number; reason: string }>;
+    expect(entries.map((e) => e.index)).toEqual([0]);
+    expect(entries[0].reason).toContain("hours_json");
+    // Validation happens before any batch call: nothing was written.
+    expect(db.batchCalls).toBe(0);
+    expect(db.rows).toHaveLength(0);
+  });
+
   it("caps string field lengths", async () => {
     const res = await call("POST", "/poi/external", makeEnv(), {
       body: {

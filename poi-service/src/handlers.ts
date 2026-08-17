@@ -252,6 +252,15 @@ function validateExternalEntry(value: unknown, index: number): POI | InvalidEntr
   if (typeof v.hours_json === "string" && v.hours_json.length > MAX_EXTERNAL_STRING_LENGTH) {
     return bad(`hours_json too long (max ${MAX_EXTERNAL_STRING_LENGTH})`);
   }
+  // Must be parseable JSON — a malformed string would poison the stored row
+  // and throw in downstream consumers (issue #39).
+  if (typeof v.hours_json === "string") {
+    try {
+      JSON.parse(v.hours_json);
+    } catch {
+      return bad("hours_json must be valid JSON");
+    }
+  }
   const photoRefs = stringArray(v.photo_refs);
   if (photoRefs === null) return bad("photo_refs must be an array of strings");
   return {

@@ -731,3 +731,26 @@ the recent tail. Archive history, never delete it.
     JSON string accepted, nothing written on failure.
 - All gates green: `cd poi-service && npm run typecheck && npm test`
   (62 tests), `.agents/scripts/preflight.sh`.
+
+## 2026-08-17 (POI source trust + antimeridian search, #38)
+
+- Issue #38 on `fix/issue-38-placeid-geo` (slice `issue-38-placeid-geo`).
+  The haversine NaN sub-item was already fixed on main (`Math.min(1, a)` in
+  `geo.ts`); two real gaps landed here:
+  - `getPOI` no longer classifies by id prefix up front. KV is probed for any
+    id (a hit proves Google — KV only stores raw Google payloads); a D1 row's
+    explicit `source` is authoritative: `apple` rows are served as stored
+    (even stale, even with a ChIJ-prefixed id), `google` rows pass the
+    freshness gate to upstream refresh. The `isGooglePlaceId` prefix
+    heuristic is now last-resort only, deciding upstream-vs-404 for
+    never-seen ids. No API contract change: no caller could supply `source`
+    today, and resolve-flow ids always match the heuristic anyway.
+  - `d1SearchPOIs` longitude bounding box wraps across the antimeridian:
+    `(lng BETWEEN ? AND ? OR lng BETWEEN ? AND ?)` with bounds normalized by
+    new `geo.wrapLng`; boxes spanning ≥360° of longitude (near-pole searches)
+    skip the lng prefilter entirely and rely on the haversine post-filter.
+  - Tests: wrapLng units; stale ChIJ-prefixed apple row served without
+    upstream; stale non-prefix google row refreshed; search across ±179.9°;
+    near-pole all-longitude search. `FakeD1` learned the OR-ed lng pair.
+- All gates green: `cd poi-service && npm run typecheck && npm test`
+  (69 tests), `.agents/scripts/preflight.sh`.

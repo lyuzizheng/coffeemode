@@ -217,6 +217,63 @@ describe("GET /poi/:place_id", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("trusts stored source over the prefix heuristic: stale ChIJ-prefixed apple row is served, not fanned out to Google (issue #38)", async () => {
+    const db = new FakeD1();
+    db.rows.push({
+      place_id: "ChIJAPPLE9",
+      source: "apple",
+      name: "Apple Ref Cafe",
+      lat: 1.285,
+      lng: 103.85,
+      address: null,
+      types: '["cafe"]',
+      business_status: null,
+      hours_json: null,
+      photo_refs: "[]",
+      fetched_at: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(), // 30d old
+    });
+    const env = makeEnv({ POI_DB: db });
+    const fetchImpl = vi.fn(mockFetch(() => new Response("no", { status: 599 })));
+
+    const res = await call("GET", "/poi/ChIJAPPLE9", env, { fetchImpl });
+
+    expect(res.status).toBe(200);
+    expect((await bodyOf(res))).toMatchObject({ source: "apple", name: "Apple Ref Cafe" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("refreshes a stale google row whose id lacks the ChIJ/0x prefix (issue #38)", async () => {
+    const db = new FakeD1();
+    db.rows.push({
+      place_id: "goog-new-format-1",
+      source: "google",
+      name: "Old Name",
+      lat: 0,
+      lng: 0,
+      address: null,
+      types: "[]",
+      business_status: null,
+      hours_json: null,
+      photo_refs: "[]",
+      fetched_at: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
+    });
+    const env = makeEnv({ POI_DB: db });
+    const fetchImpl = mockFetch(() =>
+      new Response(
+        JSON.stringify(
+          googleDetailResponse({ id: "goog-new-format-1", displayName: { text: "Fresh Name" } }),
+        ),
+        { status: 200 },
+      ),
+    );
+
+    const res = await call("GET", "/poi/goog-new-format-1", env, { fetchImpl });
+
+    expect(res.status).toBe(200);
+    expect((await bodyOf(res)).name).toBe("Fresh Name");
+    expect(db.rows[0].name).toBe("Fresh Name");
+  });
+
   it("404s unknown apple IDs (no server-side upstream)", async () => {
     const res = await call("GET", "/poi/apple-unknown-9", makeEnv());
     expect(res.status).toBe(404);
@@ -462,6 +519,52 @@ describe("GET /poi/search", () => {
     expect(res.status).toBe(200);
     const results = (await bodyOf(res)).results as unknown[];
     expect(results).toHaveLength(2); // g1 + a1 within 1km, g2 outside
+  });
+
+  it("wraps the longitude box across the antimeridian (issue #38)", async () => {
+    const db = new FakeD1();
+    const now = new Date().toISOString();
+    const rows = [
+      ["fj-e", "Fiji East", 1.3, 179.9],
+      ["fj-w", "Fiji West", 1.3, -179.9],
+      ["far", "Faraway", 1.3, 170.0],
+    ];
+    for (const [place_id, name, lat, lng] of rows) {
+      db.rows.push({
+        place_id, source: "google", name, lat, lng,
+        address: null, types: '["cafe"]', business_status: null,
+        hours_json: null, photo_refs: "[]", fetched_at: now,
+      });
+    }
+    const env = makeEnv({ POI_DB: db });
+
+    // Center 179.8°E: fj-w at -179.9° is ~33 km away across the antimeridian.
+    const res = await call("GET", "/poi/search?lat=1.3&lng=179.8&r=50", env);
+
+    expect(res.status).toBe(200);
+    const results = (await bodyOf(res)).results as Array<Record<string, unknown>>;
+    expect(results.map((r) => r.place_id)).toEqual(["fj-e", "fj-w"]);
+  });
+
+  it("spans all longitudes for near-pole searches (no lng prefilter)", async () => {
+    const db = new FakeD1();
+    const now = new Date().toISOString();
+    for (const [place_id, lng] of [["np-a", 170], ["np-b", -170], ["np-c", 10]]) {
+      db.rows.push({
+        place_id, source: "google", name: `Pole ${place_id}`, lat: 89.4, lng,
+        address: null, types: '["cafe"]', business_status: null,
+        hours_json: null, photo_refs: "[]", fetched_at: now,
+      });
+    }
+    const env = makeEnv({ POI_DB: db });
+
+    // At lat 89.5 the 200 km box covers ~206° of longitude — wider than any
+    // wrapped interval pair could express; every nearby row must match.
+    const res = await call("GET", "/poi/search?lat=89.5&lng=0&r=200", env);
+
+    expect(res.status).toBe(200);
+    const results = (await bodyOf(res)).results as Array<Record<string, unknown>>;
+    expect(results.map((r) => r.place_id).sort()).toEqual(["np-a", "np-b", "np-c"]);
   });
 
   it("400s without q or coords", async () => {

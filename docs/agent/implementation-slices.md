@@ -41,7 +41,8 @@ Machine-checked implementation plan derived from `docs/specs/0001-nextjs-migrati
 | issue-41-postgres-ssl | Postgres sslmode fail-closed + explicit allow-self-signed | COMPLETE | 0001 | auth-foundation | none | typecheck, unit, build | require/prefer/verify-* validate the CA chain; allow-self-signed opt-in; unknown/empty/wrong-case sslmode throws (#88) |
 | issue-35-timing-safe-token | Constant-time token compare without length branch | COMPLETE | 0001 | issue-26-shared-common | none | typecheck, unit | `safeEqual` hashes both tokens (SHA-256) and compares fixed-length digests; async end-to-end, callers already await (#90) |
 | issue-86-server-derived-photos | Server-derived StoredImage from photo_ids on create paths | COMPLETE | 0001 | issue-33-upload-intents | none | typecheck, unit, build | Clients send photo_ids; server checks intents, processes (sharp) outside tx, derives by/keys/w/h, consumes intents inside the creation tx (#91) |
-| issue-39-hours-json | storeExternal hours_json must be parseable JSON | IN-PROGRESS | 0001 | poi-cache-service | none | typecheck, unit | Only remaining gap from #39 — ranges/element checks, validate-all-before-write, and atomic D1 batch() already landed earlier |
+| issue-39-hours-json | storeExternal hours_json must be parseable JSON | COMPLETE | 0001 | poi-cache-service | none | typecheck, unit | JSON.parse validation before write + zero-batch-calls regression guard; other #39 gaps landed earlier (#92) |
+| issue-38-placeid-geo | Trust stored POI source over id-prefix heuristic; antimeridian-safe lng bbox | COMPLETE | 0001 | poi-cache-service | none | typecheck, unit | getPOI: KV probe any id, D1 row source authoritative, prefix heuristic last-resort only; d1SearchPOIs wraps lng interval across ±180° (haversine NaN clamp already on main) |
 
 ## Status vocabulary
 

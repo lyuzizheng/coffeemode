@@ -22,3 +22,8 @@ export function kmPerDegLng(lat: number): number {
   const clamped = Math.max(-89.9999, Math.min(89.9999, lat));
   return 111.32 * Math.cos((clamped * Math.PI) / 180);
 }
+
+/** Normalize a longitude into [-180, 180) for antimeridian-spanning intervals. */
+export function wrapLng(lng: number): number {
+  return ((((lng + 180) % 360) + 360) % 360) - 180;
+}

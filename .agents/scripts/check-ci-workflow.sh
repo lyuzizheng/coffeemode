@@ -19,7 +19,7 @@ for wf in .github/workflows/*.yml; do
       fail=1
     fi
   elif command -v ruby &>/dev/null; then
-    if ! ruby -ryaml -e "YAML.safe_load(File.read('$wf'))" 2>/dev/null; then
+    if ! ruby -ryaml -e "YAML.safe_load(File.read('$wf', encoding: 'UTF-8'))" 2>/dev/null; then
       echo "Invalid YAML: $NAME"
       fail=1
     fi

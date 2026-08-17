@@ -35,7 +35,7 @@ def spec_path(number)
 end
 
 def load_slices
-  lines = File.readlines(MANIFEST, chomp: true)
+  lines = File.readlines(MANIFEST, chomp: true, encoding: "UTF-8")
   header_index = lines.index { |line| cells(line) == HEADER }
   fail!("Implementation slice table header is missing or changed.") unless header_index
 
@@ -135,7 +135,7 @@ def print_source_index(path)
   full_path = File.join(ROOT, path)
   fail!("Canonical source missing: #{path}") unless File.file?(full_path)
 
-  lines = File.readlines(full_path, chomp: true)
+  lines = File.readlines(full_path, chomp: true, encoding: "UTF-8")
   puts
   puts "## Required source: #{path}"
   headings = lines.each_with_index.each_with_object([]) do |(line, index), result|

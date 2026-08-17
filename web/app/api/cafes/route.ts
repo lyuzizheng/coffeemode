@@ -6,6 +6,8 @@ import {
   listCafesNearby,
   parseCreateCafeBody,
 } from "@/lib/db/cafes";
+import { PhotoIntentError } from "@/lib/images/provision-photos";
+import { ImageServiceError } from "@/lib/images/image-service-client";
 import {
   DEFAULT_SEARCH_RADIUS_KM,
   MAX_SEARCH_RADIUS_KM,
@@ -87,10 +89,13 @@ export async function GET(request: Request) {
 }
 
 /**
- * POST /api/cafes  {name, lat, lng, ..., checkin: {scores, ...}}
+ * POST /api/cafes  {name, lat, lng, ..., checkin: {scores, photo_ids, ...}}
  * Create a cafe fused with the creator's first check-in (spec 0001) plus
  * the work_stats fold — one transaction. Requires auth. 409 when the
- * external POI id is already registered (dedupe).
+ * external POI id is already registered (dedupe). Photos are image UUIDs
+ * from /api/images/upload; the server provisions and derives them
+ * (issue #86) — 400 invalid_photos when an id was not issued to the
+ * caller or was already consumed.
  */
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
@@ -125,6 +130,17 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "cafe_exists", cafe_id: err.existingCafeId },
         { status: 409 },
+      );
+    }
+    if (
+      err instanceof PhotoIntentError ||
+      // The caller's own upload never landed in R2 (worker 404) — same
+      // user-facing class as a bad photo id, not a server fault.
+      (err instanceof ImageServiceError && err.status === 404)
+    ) {
+      return NextResponse.json(
+        { error: "invalid_photos", message: "one or more photos are invalid" },
+        { status: 400 },
       );
     }
     console.error("/api/cafes POST failed", err);

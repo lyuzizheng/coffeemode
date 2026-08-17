@@ -7,6 +7,8 @@ import {
   toggleCheckInLike,
   type CreateCheckInInput,
 } from "@/lib/db/checkins";
+import { PhotoIntentError } from "@/lib/images/provision-photos";
+import { ImageServiceError } from "@/lib/images/image-service-client";
 import { POST as checkinPOST } from "@/app/api/checkins/route";
 import { POST as likePOST } from "@/app/api/checkins/[id]/like/route";
 
@@ -25,20 +27,43 @@ vi.mock("@/lib/db/postgres", () => ({
   query: (...args: unknown[]) => poolQueryMock(...args),
 }));
 
+// Real provisionPhotos/consumeProvisionedIntents run against these fake deps;
+// only the default-deps factory is swapped (issue #86 seam).
+const provisionDeps = {
+  checkUploadIntent: vi.fn(),
+  consumeUploadIntent: vi.fn(),
+  getProcessUrls: vi.fn(),
+  processImage: vi.fn(),
+};
+
+vi.mock("@/lib/images/provision-photos", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/images/provision-photos")>()),
+  defaultProvisionPhotosDeps: () => provisionDeps,
+}));
+
 const USER = { id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" };
 const CAFE = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22";
 const CHECKIN = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33";
+const IMG = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44";
 
-const SAMPLE_IMG = {
-  id: "img1",
-  original: "o",
-  card: "c",
-  thumbnail: "t",
-  w: 800,
-  h: 600,
-  by: USER.id,
-  at: "2026-08-16T00:00:00.000Z",
+const FAKE_KEYS = {
+  original: `original/${IMG}.webp`,
+  card: `card/${IMG}.webp`,
+  thumbnail: `thumbnail/${IMG}.webp`,
 };
+
+/** What the server must derive for IMG from the fake processing deps. */
+function derivedPhoto(checkinId: string) {
+  return {
+    id: IMG,
+    ...FAKE_KEYS,
+    w: 800,
+    h: 600,
+    by: USER.id,
+    at: expect.any(String),
+    source: { type: "checkin", id: checkinId },
+  };
+}
 
 function validInput(overrides: Partial<CreateCheckInInput> = {}): CreateCheckInInput {
   return {
@@ -47,7 +72,7 @@ function validInput(overrides: Partial<CreateCheckInInput> = {}): CreateCheckInI
     min_spend: "drink",
     max_stay: "unlimited",
     note: "quiet",
-    photos: [SAMPLE_IMG],
+    photo_ids: [IMG],
     ...overrides,
   };
 }
@@ -69,11 +94,13 @@ function postRequest(url: string, body: unknown): Request {
   });
 }
 
-/** Mock the happy-path createCheckIn statements + stats recompute (6 queries, with photos). */
+/** Mock the happy-path createCheckIn statements + stats recompute (pool cafe check + 7 tx queries, with photos). */
 function mockCheckInHappyPath(checkinId = CHECKIN) {
+  poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
   clientQueryMock
-    .mockResolvedValueOnce({ rows: [{ id: CAFE }] }) // cafe exists
+    .mockResolvedValueOnce({ rows: [{ id: CAFE }] }) // cafe exists (authoritative, in tx)
     .mockResolvedValueOnce({ rows: [{ id: checkinId }] }) // insert check-in
+    .mockResolvedValueOnce({ rows: [] }) // set derived photos (source needs the id)
     .mockResolvedValueOnce({ rows: [] }) // gallery auto-merge (spec 0001)
     .mockResolvedValueOnce({ rows: [] }) // stats recompute: lock cafe row
     .mockResolvedValueOnce({ rows: [] }) // stats recompute: read all check-ins
@@ -83,6 +110,10 @@ function mockCheckInHappyPath(checkinId = CHECKIN) {
 beforeEach(() => {
   vi.resetAllMocks();
   signedIn();
+  provisionDeps.checkUploadIntent.mockResolvedValue(true);
+  provisionDeps.consumeUploadIntent.mockResolvedValue(true);
+  provisionDeps.getProcessUrls.mockResolvedValue({ keys: FAKE_KEYS });
+  provisionDeps.processImage.mockResolvedValue({ imageUuid: IMG, width: 800, height: 600 });
 });
 
 describe("parseCheckInBody", () => {
@@ -99,40 +130,57 @@ describe("parseCheckInBody", () => {
   it("requires at least one slider (spec 0001) — policies/note/photos alone do not count", () => {
     expect(parseCheckInBody({ cafe_id: CAFE }).ok).toBe(false);
     expect(parseCheckInBody({ cafe_id: CAFE, scores: {} }).ok).toBe(false);
-    expect(parseCheckInBody({ cafe_id: CAFE, note: "  ", photos: [] }).ok).toBe(false);
+    expect(parseCheckInBody({ cafe_id: CAFE, note: "  ", photo_ids: [] }).ok).toBe(false);
     expect(parseCheckInBody({ cafe_id: CAFE, min_spend: "none" }).ok).toBe(false);
-    expect(parseCheckInBody({ cafe_id: CAFE, note: "great", photos: [SAMPLE_IMG] }).ok).toBe(false);
+    expect(parseCheckInBody({ cafe_id: CAFE, note: "great", photo_ids: [IMG] }).ok).toBe(false);
     // ...but any single slider is enough, extras optional.
     expect(parseCheckInBody({ cafe_id: CAFE, scores: { overall: 70 } }).ok).toBe(true);
   });
 
-  it("rejects bad policy enums, scores, photos, and a future visited_at", () => {
+  it("rejects bad policy enums, scores, photo_ids, and a future visited_at", () => {
     expect(parseCheckInBody(validBody({ min_spend: "free" })).ok).toBe(false);
     expect(parseCheckInBody(validBody({ max_stay: "forever" })).ok).toBe(false);
     expect(parseCheckInBody(validBody({ scores: { wifi: 101 } })).ok).toBe(false);
     expect(parseCheckInBody(validBody({ scores: { vibe: 50 } })).ok).toBe(false);
-    expect(parseCheckInBody(validBody({ photos: [{}] })).ok).toBe(false);
+    expect(parseCheckInBody(validBody({ photo_ids: ["not-a-uuid"] })).ok).toBe(false);
+    expect(parseCheckInBody(validBody({ photo_ids: [{}] })).ok).toBe(false);
+    expect(parseCheckInBody(validBody({ photo_ids: [IMG, IMG] })).ok).toBe(false); // duplicates
+    expect(parseCheckInBody(validBody({ photo_ids: [IMG, IMG.toUpperCase()] })).ok).toBe(false); // case-insensitive dupes
+    expect(parseCheckInBody(validBody({ photo_ids: Array(11).fill(IMG) })).ok).toBe(false); // cap
     expect(parseCheckInBody(validBody({ note: "x".repeat(1001) })).ok).toBe(false);
     expect(
       parseCheckInBody(validBody({ visited_at: new Date(Date.now() + 60_000).toISOString() })).ok,
     ).toBe(false);
   });
 
-  it("treats an empty photos array and blank note as absent", () => {
-    const parsed = parseCheckInBody({ cafe_id: CAFE, scores: { wifi: 1 }, photos: [], note: "  " });
+  it("accepts exactly 10 distinct photo ids (cap boundary)", () => {
+    const ten = Array.from(
+      { length: 10 },
+      (_, i) => `a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a4${i.toString(16)}`,
+    );
+    expect(parseCheckInBody(validBody({ photo_ids: ten })).ok).toBe(true);
+  });
+
+  it("treats an empty photo_ids array and blank note as absent", () => {
+    const parsed = parseCheckInBody({ cafe_id: CAFE, scores: { wifi: 1 }, photo_ids: [], note: "  " });
     expect(parsed.ok).toBe(true);
     if (parsed.ok) {
-      expect(parsed.value.photos).toBeUndefined();
+      expect(parsed.value.photo_ids).toBeUndefined();
       expect(parsed.value.note).toBeUndefined();
     }
   });
 });
 
 describe("createCheckIn", () => {
-  it("inserts the check-in, merges photos into the gallery, and recomputes stats — one transaction", async () => {
+  it("provisions photos, inserts the check-in, derives StoredImage server-side, merges the gallery, and recomputes stats — one transaction", async () => {
     mockCheckInHappyPath();
     const result = await createCheckIn(USER.id, validInput());
     expect(result).toEqual({ checkinId: CHECKIN });
+
+    // Intent pre-check and sharp processing ran BEFORE the transaction (no
+    // DB connection held during remote work).
+    expect(provisionDeps.checkUploadIntent).toHaveBeenCalledWith(USER.id, IMG);
+    expect(provisionDeps.processImage).toHaveBeenCalledWith(IMG, { keys: FAKE_KEYS });
 
     const insert = clientQueryMock.mock.calls[1];
     expect(insert[0]).toContain("insert into checkins");
@@ -144,28 +192,40 @@ describe("createCheckIn", () => {
       "drink",
       "unlimited",
       "quiet",
-      JSON.stringify([SAMPLE_IMG]),
+      JSON.stringify([]), // photos land after insert — source needs the id
       null,
     ]);
 
+    // The single-use intent consume ran INSIDE the transaction.
+    expect(provisionDeps.consumeUploadIntent).toHaveBeenCalledWith(
+      USER.id,
+      IMG,
+      expect.any(Function),
+    );
+
+    // Server-derived StoredImage: keys/w/h/by are NOT client-controlled.
+    const setPhotos = clientQueryMock.mock.calls[2];
+    expect(setPhotos[0]).toContain("update checkins set photos");
+    expect(JSON.parse(setPhotos[1][0] as string)).toEqual([derivedPhoto(CHECKIN)]);
+    expect(setPhotos[1][1]).toBe(CHECKIN);
+
     // Photos auto-merge into cafes.gallery with check-in provenance (spec 0001).
-    const gallery = clientQueryMock.mock.calls[2];
+    const gallery = clientQueryMock.mock.calls[3];
     expect(gallery[0]).toContain("update cafes");
     expect(gallery[0]).toContain("gallery");
     expect(gallery[1][0]).toBe(CAFE);
-    expect(JSON.parse(gallery[1][1] as string)).toEqual([
-      { ...SAMPLE_IMG, source: { type: "checkin", id: CHECKIN } },
-    ]);
+    expect(JSON.parse(gallery[1][1] as string)).toEqual([derivedPhoto(CHECKIN)]);
 
     // Stats refresh is a full recompute on the SAME connection (backdated
     // visited_at would corrupt the incremental fold — see lib comment).
-    const statsLock = clientQueryMock.mock.calls[3];
+    const statsLock = clientQueryMock.mock.calls[4];
     expect(statsLock[0]).toContain("for update");
     expect(statsLock[1]).toEqual([CAFE]);
-    expect(clientQueryMock.mock.calls[4][0]).toContain("from checkins");
+    expect(clientQueryMock.mock.calls[5][0]).toContain("from checkins");
   });
 
-  it("skips the gallery merge when the check-in has no photos", async () => {
+  it("skips provisioning, photo writes, and the gallery merge when the check-in has no photos", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
     clientQueryMock
       .mockResolvedValueOnce({ rows: [{ id: CAFE }] })
       .mockResolvedValueOnce({ rows: [{ id: CHECKIN }] })
@@ -173,20 +233,47 @@ describe("createCheckIn", () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
-    await createCheckIn(USER.id, validInput({ photos: undefined }));
+    await createCheckIn(USER.id, validInput({ photo_ids: undefined }));
 
+    expect(provisionDeps.checkUploadIntent).not.toHaveBeenCalled();
+    expect(provisionDeps.consumeUploadIntent).not.toHaveBeenCalled();
     expect(clientQueryMock).toHaveBeenCalledTimes(5);
     for (const call of clientQueryMock.mock.calls) {
       expect(call[0]).not.toContain("gallery");
+      expect(call[0]).not.toContain("set photos");
     }
   });
 
-  it("throws CafeNotFoundError without inserting when the cafe is missing", async () => {
-    clientQueryMock.mockResolvedValueOnce({ rows: [] }); // cafe exists check
+  it("fails before the transaction when a photo id has no valid intent (foreign/replayed)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
+    provisionDeps.checkUploadIntent.mockResolvedValue(false);
+
+    const err = await createCheckIn(USER.id, validInput()).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PhotoIntentError);
+    expect(provisionDeps.getProcessUrls).not.toHaveBeenCalled(); // no remote work
+    expect(clientQueryMock).not.toHaveBeenCalled();
+  });
+
+  it("aborts the check-in when the intent consume loses a replay race inside the tx", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
+    provisionDeps.consumeUploadIntent.mockResolvedValue(false);
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ id: CAFE }] })
+      .mockResolvedValueOnce({ rows: [{ id: CHECKIN }] });
+
+    const err = await createCheckIn(USER.id, validInput()).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PhotoIntentError);
+    // Nothing past the insert: no photo write, no gallery merge, no stats.
+    expect(clientQueryMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("throws CafeNotFoundError without provisioning or inserting when the cafe is missing", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [] }); // pre-provision cafe check
 
     const err = await createCheckIn(USER.id, validInput()).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(CafeNotFoundError);
-    expect(clientQueryMock).toHaveBeenCalledTimes(1);
+    expect(provisionDeps.checkUploadIntent).not.toHaveBeenCalled(); // no wasted sharp work
+    expect(clientQueryMock).not.toHaveBeenCalled();
   });
 
   it("rejects invalid ids before touching the database", async () => {
@@ -194,7 +281,9 @@ describe("createCheckIn", () => {
     await expect(createCheckIn(USER.id, validInput({ cafe_id: "nope" }))).rejects.toThrow(
       "Invalid cafe ID",
     );
+    expect(poolQueryMock).not.toHaveBeenCalled();
     expect(clientQueryMock).not.toHaveBeenCalled();
+    expect(provisionDeps.checkUploadIntent).not.toHaveBeenCalled();
   });
 });
 
@@ -263,10 +352,30 @@ describe("POST /api/checkins", () => {
   });
 
   it("404s when the cafe does not exist", async () => {
-    clientQueryMock.mockResolvedValueOnce({ rows: [] }); // cafe exists check
+    poolQueryMock.mockResolvedValueOnce({ rows: [] }); // pre-provision cafe check
     const res = await checkinPOST(postRequest(url, validBody()));
     expect(res.status).toBe(404);
     await expect(res.json()).resolves.toMatchObject({ error: "not_found" });
+  });
+
+  it("400s invalid_photos when a photo id was not issued to the caller", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] });
+    provisionDeps.checkUploadIntent.mockResolvedValue(false);
+    const res = await checkinPOST(postRequest(url, validBody()));
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ error: "invalid_photos" });
+    expect(clientQueryMock).not.toHaveBeenCalled();
+  });
+
+  it("400s invalid_photos when the caller's upload never landed in R2 (worker 404)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] });
+    provisionDeps.getProcessUrls.mockRejectedValue(
+      new ImageServiceError("Image not found", 404, 404),
+    );
+    const res = await checkinPOST(postRequest(url, validBody()));
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ error: "invalid_photos" });
+    expect(clientQueryMock).not.toHaveBeenCalled();
   });
 
   it("201s with the new check-in id", async () => {

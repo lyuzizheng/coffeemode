@@ -671,3 +671,48 @@ the recent tail. Archive history, never delete it.
 - All gates green: `cd web && npm run verify` (250 tests, typecheck, lint,
   build); image-service typecheck + 22 tests; poi-service typecheck + 61
   tests; `.agents/scripts/preflight.sh`.
+
+## 2026-08-17 (server-derived photos on create paths, #86)
+
+- Issue #86 on `fix/issue-86-server-derived-photos` (slice
+  `issue-86-server-derived-photos`): `POST /api/cafes` and
+  `POST /api/checkins` trusted client-supplied `StoredImage[]` — `by`
+  attribution, R2 key paths, and dimensions were all client-asserted, so a
+  malicious client could attach refs it never uploaded and forge `by`.
+  - Contract change (pre-UI, no client to break): both routes now take
+    `photo_ids` (imageUuids from /api/images/upload); cafe creation keeps
+    spec 0001's >=1-photo rule. `parsePhotoIds`: UUID shape, no duplicates,
+    <=10 per request (processing is sharp/CPU work).
+  - `web/lib/images/provision-photos.ts` (new): per id — fail-fast intent
+    pre-check BEFORE remote work, then presign + sharp processing OUTSIDE
+    the write transaction, building StoredImage server-side (deterministic
+    keys, real w/h, `by` = caller, `at` = now; `source` added post-insert).
+  - `consumeProvisionedIntents` runs the single-use consume INSIDE the
+    creation transaction; a foreign/expired/replayed id throws
+    `PhotoIntentError` → full rollback (intent DELETEs roll back too, so a
+    transient failure doesn't burn the user's uploads). Routes map it to
+    400 `invalid_photos` — generic, no oracle on which id or why.
+  - `checkins.photos` entries now carry `source` on the create paths too
+    (previously only the gallery merge added it) — matches spec 0001's
+    documented record shape and the complete path.
+  - Worker contract untouched: `/v1/images/complete` already treats
+    targetType/targetId as optional sanitized metadata, so targetless
+    processing needs no worker deploy; web's `getProcessUrls` type widened.
+  - Deps injection on `createCheckIn`/`createCafeWithFirstCheckIn` follows
+    the #25/#33 lazy-default pattern; route tests mock only
+    `defaultProvisionPhotosDeps`, so the real provisioning logic runs.
+  - Spec 0001 image-pipeline section documents the `photo_ids` contract and
+    the `DB record` line now includes `source` (review: it was the lone stale
+    projection of the schema's documented shape).
+  - Review-driven hardening: pool-level dedupe/cafe-exists pre-checks run
+    BEFORE provisioning (a 409/404 no longer burns sharp work; the
+    in-transaction checks stay the authoritative gate); worker 404 (upload
+    never landed in R2) maps to 400 `invalid_photos` on both create routes
+    instead of a misleading 500.
+  - Tests: `tests/provision-photos.test.ts` (6 — fail-fast ordering,
+    server-derived fields, consume semantics); cafes/checkins lib+route
+    tests rewritten to photo_ids (server-derived assertions, intent-failure
+    400s, worker-404 400s, replay-race aborts, cap boundary at 10,
+    case-insensitive duplicate rejection).
+- All gates green: `cd web && npm run verify` (265 tests, typecheck, lint,
+  build), `.agents/scripts/preflight.sh`.

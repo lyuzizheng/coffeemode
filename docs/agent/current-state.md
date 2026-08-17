@@ -9,8 +9,8 @@ Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisi
 - Owner credential/account actions and worker deploys remain outstanding; see `docs/agent/pending-user-actions.md`.
 - Issue #23 (distributed Postgres token-bucket rate limiter) is merged.
 - Issue #25 (image completion service with atomic DB writes) is merged.
-- Issue #24 (checkin likes_count trigger) is merged.
-- Issue #27 (work_stats row locking) is implemented and pending review/merge.
+- Issue #24's likes_count trigger is merged (#57); #24 stays open for JSONB normalization.
+- Issue #27 (work_stats row locking) is merged (#56).
 - Next unblocked feature work is `map-home` (Apple MapKit full-screen map), which is blocked on the Apple Developer Program.
 
 ## What exists
@@ -58,19 +58,18 @@ _archive-coffeemode-backend/   old Java app — being dropped
 ## What's next
 
 ```text
-1. Independent review and merge of `feat/impl-phase1-remainder` (D1/D4/D7/A2).
-2. Owner actions (docs/agent/pending-user-actions.md §1–4): Supabase anon key +
+1. Owner actions (docs/agent/pending-user-actions.md §1–4): Supabase anon key +
    redirect URLs, Apple/Google provider config, self-hosted Postgres provision +
    schema (DATABASE_URL), Google OAuth, Apple Developer Program.
-3. image-service deploy (§6): create R2 bucket + S3 API token, set wrangler.toml
+2. image-service deploy (§6): create R2 bucket + S3 API token, set wrangler.toml
    placeholders, set Worker secrets, deploy, wire IMAGE_SERVICE_URL/TOKEN.
-4. poi-cache-service deploy (§7): Cloudflare D1/KV + secrets, apply D1 schema,
+3. poi-cache-service deploy (§7): Cloudflare D1/KV + secrets, apply D1 schema,
    deploy, wire POI_SERVICE_URL/TOKEN.
-5. map-home — Apple MapKit full-screen map + custom markers  [BLOCKED on Apple Developer Program]
-6. discovery-sheet — bottom sheet + swipe cards  [BLOCKED on map-home]
-7. cafe-creation — first check-in flow  [BLOCKED on discovery-sheet; also needs auth-foundation round-trip + image-service deploy per pending-user-actions.md]
-8. checkin-system — 0-100 sliders + policy chips  [BLOCKED on cafe-creation]
-9. work-profile aggregation, search, navigation prompt  [BLOCKED on checkin-system]
+4. map-home — Apple MapKit full-screen map + custom markers  [BLOCKED on Apple Developer Program]
+5. discovery-sheet — bottom sheet + swipe cards  [BLOCKED on map-home]
+6. cafe-creation — first check-in flow  [BLOCKED on discovery-sheet; also needs auth-foundation round-trip + image-service deploy per pending-user-actions.md]
+7. checkin-system — 0-100 sliders + policy chips  [BLOCKED on cafe-creation]
+8. work-profile aggregation, search, navigation prompt  [BLOCKED on checkin-system]
 ```
 
 ## Known issues

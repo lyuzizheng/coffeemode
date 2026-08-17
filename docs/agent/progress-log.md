@@ -822,3 +822,23 @@ the recent tail. Archive history, never delete it.
     contradicted the same file's Phase/Latest-review sections (merged as
     PR #22) — removed and renumbered.
 - Gate: `.agents/scripts/preflight.sh` green (no code changes).
+
+## 2026-08-17 (checkins index/constraint spec alignment, #36)
+
+- Issue #36 on `fix/issue-36-checkins-indexes` (slice `issue-36-checkins-indexes`):
+  new migration `0007_checkins_spec_alignment.sql` reconciles `checkins`
+  indexes and the `checkin_likes` unique constraint with spec 0001:168-181.
+  - `idx_checkins_cafe` / `idx_checkins_user_cafe`: were `(…, created_at desc)`
+    without predicate → now `(…, visited_at desc) where deleted_at is null`.
+  - `idx_checkins_user_visited` renamed to the spec name `idx_checkins_user`.
+  - `idx_checkins_likes (cafe_id, likes_count desc, visited_at desc)` created
+    (was missing); `idx_checkins_photos` already existed (issue evidence
+    stale there); additive `idx_checkins_deleted_at` kept.
+  - `checkin_likes` unique re-ordered to `(checkin_id, user_id)`: the hot
+    `count(*) where checkin_id = ?` (toggle CTE + 0004 trigger) gets the
+    leading column; the toggle's `user_id + checkin_id` equality works with
+    either order. Verified no app code references index names and that
+    aggregate.ts's two queries match the new index shapes.
+  - No code changes. No local Postgres available — the migration is
+    validated by independent review + preflight, not by live application.
+- Gate: `.agents/scripts/preflight.sh` green.

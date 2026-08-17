@@ -3,6 +3,7 @@ import {
   extractCoords,
   extractPlaceId,
   extractQuery,
+  isMapsHost,
   isShortLink,
   parseMapsUrl,
   resolveShareUrl,
@@ -75,6 +76,46 @@ describe("isShortLink", () => {
   });
 });
 
+describe("isMapsHost", () => {
+  it("accepts short-link, apple, and google.* hosts (www/maps prefixes, regional TLDs)", () => {
+    for (const h of [
+      "goo.gl",
+      "maps.app.goo.gl",
+      "maps.apple.com",
+      "google.com",
+      "www.google.com",
+      "maps.google.com",
+      "www.google.co.uk",
+      "maps.google.de",
+      "google.com.sg",
+      "WWW.GOOGLE.COM",
+    ]) {
+      expect(isMapsHost(h)).toBe(true);
+    }
+  });
+
+  it("rejects non-map subdomains and lookalikes (issue #37)", () => {
+    for (const h of [
+      "drive.google.com",
+      "mail.google.com",
+      "photos.google.com",
+      "foo.google.com",
+      "google.com.evil.com",
+      "maps.apple.com.evil.com",
+      "evilgoogle.com",
+      "apple.com",
+      "example.com",
+      // attacker-registrable TLD shapes
+      "google.evil.io",
+      "google.attacker.co",
+      "google.zip",
+      "google.mov",
+    ]) {
+      expect(isMapsHost(h)).toBe(false);
+    }
+  });
+});
+
 describe("parseMapsUrl", () => {
   it("prefers place id over coords/query", () => {
     const t = parseMapsUrl(CANONICAL);
@@ -114,5 +155,91 @@ describe("resolveShareUrl", () => {
     const fetchImpl = mockFetch(() => new Response(null, { status: 599 }));
     const target = await resolveShareUrl(CANONICAL, fetchImpl);
     expect(target.placeId).toBe("0x60188b9d2f2a2b79:0x9f2c0f1d2e3a4b5c");
+  });
+
+  it("rejects a non-maps initial URL even when it embeds a place-id pattern (issue #37)", async () => {
+    const fetchImpl = mockFetch(() => new Response("must not be fetched", { status: 500 }));
+    const target = await resolveShareUrl(
+      "https://evil.com/maps/place/x/data=!4m6!3m5!1s0x8085:0x9f2c",
+      fetchImpl,
+    );
+    expect(target).toEqual({});
+  });
+
+  it("rejects non-https initial URLs", async () => {
+    const target = await resolveShareUrl(
+      "http://www.google.com/maps/place/x/data=!4m6!3m5!1s0x8085:0x9f2c",
+      mockFetch(() => new Response(null, { status: 599 })),
+    );
+    expect(target).toEqual({});
+  });
+
+  it("stops when a short link redirects off the maps allowlist", async () => {
+    const fetchImpl = mockFetch((url) => {
+      if (url === "https://maps.app.goo.gl/xyz") {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "https://evil.com/maps/place/x/data=!4m6!3m5!1s0x8085:0x9f2c" },
+        });
+      }
+      return new Response("must not be fetched", { status: 500 });
+    });
+    const target = await resolveShareUrl("https://maps.app.goo.gl/xyz", fetchImpl);
+    expect(target.placeId).toBeUndefined();
+  });
+
+  it("refuses https → http downgrades in redirects", async () => {
+    const fetchImpl = mockFetch(() =>
+      new Response(null, {
+        status: 302,
+        headers: { location: "http://www.google.com/maps/place/x/data=!4m6!3m5!1s0x8085:0x9f2c" },
+      }),
+    );
+    const target = await resolveShareUrl("https://maps.app.goo.gl/xyz", fetchImpl);
+    expect(target.placeId).toBeUndefined();
+  });
+
+  it("stops gracefully on a malformed Location header instead of throwing", async () => {
+    const fetchImpl = mockFetch(() =>
+      new Response(null, { status: 302, headers: { location: "http://[::1" } }),
+    );
+    const target = await resolveShareUrl("https://maps.app.goo.gl/xyz", fetchImpl);
+    expect(target.placeId).toBeUndefined();
+  });
+
+  it("follows relative Location headers that stay on the short-link host", async () => {
+    const fetchImpl = mockFetch(() =>
+      new Response(null, {
+        status: 302,
+        headers: { location: "/p/data=!4m6!3m5!1s0x8085:0x9f2c" },
+      }),
+    );
+    const target = await resolveShareUrl("https://maps.app.goo.gl/xyz", fetchImpl);
+    expect(target.placeId).toBe("0x8085:0x9f2c");
+  });
+
+  it("follows short → short → canonical chains", async () => {
+    const fetchImpl = mockFetch((url) => {
+      if (url === "https://goo.gl/maps/a") {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "https://maps.app.goo.gl/b" },
+        });
+      }
+      if (url === "https://maps.app.goo.gl/b") {
+        return new Response(null, { status: 302, headers: { location: CANONICAL } });
+      }
+      return new Response("unexpected fetch", { status: 500 });
+    });
+    const target = await resolveShareUrl("https://goo.gl/maps/a", fetchImpl);
+    expect(target.placeId).toBe("0x60188b9d2f2a2b79:0x9f2c0f1d2e3a4b5c");
+  });
+
+  it("rejects userinfo URLs whose real host is off the allowlist", async () => {
+    const target = await resolveShareUrl(
+      "https://www.google.com@evil.com/maps/place/x/data=!4m6!3m5!1s0x8085:0x9f2c",
+      mockFetch(() => new Response("must not be fetched", { status: 500 })),
+    );
+    expect(target).toEqual({});
   });
 });

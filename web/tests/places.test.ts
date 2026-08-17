@@ -264,6 +264,26 @@ describe("POST /api/places/resolve", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("400s for http URLs, non-map google subdomains, and lookalikes (issue #37)", async () => {
+    for (const maps_share_url of [
+      "http://www.google.com/maps/place/foo",
+      "https://drive.google.com/file/d/x",
+      "https://m.google.com/maps",
+      "https://google.com.evil.com/maps",
+      "https://google.evil.io/maps/place/x/data=!4m6!3m5!1s0x8085:0x9f2c",
+    ]) {
+      const res = await resolvePOST(
+        new Request(`${WORKER_URL}/api/places/resolve`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ maps_share_url }),
+        }),
+      );
+      expect(res.status).toBe(400);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("400s for malformed maps_share_url", async () => {
     const res = await resolvePOST(
       new Request(`${WORKER_URL}/api/places/resolve`, {

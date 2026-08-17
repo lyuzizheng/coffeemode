@@ -644,3 +644,30 @@ the recent tail. Archive history, never delete it.
     (unknown / empty / wrong-case sslmode).
 - All gates green: `cd web && npm run verify` (249 tests, typecheck, lint,
   build), `.agents/scripts/preflight.sh`.
+
+## 2026-08-17 (timing-safe token compare, #35)
+
+- Issue #35 on `fix/issue-35-timing-safe-token` (slice
+  `issue-35-timing-safe-token`): the shared `safeEqual` branched on token
+  length — on mismatch it compared the expected secret with itself, so the
+  work done was O(len(secret)) and the early length check leaked length
+  information. (Issue evidence pointed at the pre-#26 copies; the code now
+  lives single-sourced in `web/shared/auth.ts`.)
+  - `web/shared/auth.ts`: `safeEqual` is now async and hashes both inputs
+    with SHA-256 (`crypto.subtle.digest`), then compares the two fixed-length
+    32-byte digests via `SubtleCrypto.timingSafeEqual` (pure-JS constant-time
+    fallback otherwise). No length branch remains.
+  - `poi-service/src/auth.ts` / `image-service/src/auth.ts`: `authorized`
+    is async (`Promise<boolean>`). Zero caller changes — all call sites in
+    `poi-service/src/handlers.ts` and `image-service/src/index.ts` already
+    awaited it.
+  - Tests: `web/tests/common.test.ts` awaits the `safeEqual` assertions,
+    adds asymmetric empty-string cases, and pins the Workers dispatch
+    (stubbed `timingSafeEqual` receives two 32-byte digests); both workers'
+    handler-level 401 tests pass unchanged through the awaited boundary.
+  - Bookkeeping: flipped `issue-26-shared-common` slice row to COMPLETE
+    (closed 2026-08-09, merged in #53) — the stale row tripped the preflight
+    dependency check for this slice. Remaining drift filed as issue #89.
+- All gates green: `cd web && npm run verify` (250 tests, typecheck, lint,
+  build); image-service typecheck + 22 tests; poi-service typecheck + 61
+  tests; `.agents/scripts/preflight.sh`.

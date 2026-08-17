@@ -842,3 +842,20 @@ the recent tail. Archive history, never delete it.
   - No code changes. No local Postgres available — the migration is
     validated by independent review + preflight, not by live application.
 - Gate: `.agents/scripts/preflight.sh` green.
+
+## 2026-08-17 (auth error feedback, #98)
+
+- Issue #98 on `fix/issue-98-auth-error-feedback` (slice
+  `issue-98-auth-error-feedback`): the OAuth callback's `?auth=error`
+  redirect target now renders visible feedback. New client component
+  `web/app/auth/auth-callback-error.tsx` (danger-tinted inline banner,
+  icon + text so color is never the only signal, `role="alert"`) renders
+  above the home sign-in card; `reason=profile_upsert` maps to a specific
+  variant, everything else falls back to the generic message.
+  `web/app/page.tsx` now awaits `searchParams` (Next 16 async form).
+- i18n: `home.auth_error` / `home.auth_error_profile` in en + zh.
+- Tests: `web/tests/auth/auth-callback-error.test.tsx` (3 cases: generic,
+  profile_upsert variant, unknown-reason fallback). Web suite 282 → 285.
+- Visual probe: `/?auth=error&reason=profile_upsert` screenshotted in
+  light + dark mobile — banner legible and on-token in both themes.
+- Gate: `npm run verify` (web) + `.agents/scripts/preflight.sh` green.

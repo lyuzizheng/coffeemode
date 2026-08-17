@@ -65,12 +65,12 @@ describe("SignOutButton", () => {
     expect(button).toBeDisabled();
   });
 
-  it("displays the returned error message", () => {
-    vi.mocked(useActionState).mockReturnValue([{ error: "Sign-out failed" }, mockFormAction, false]);
+  it("displays the localized message for the returned error code", () => {
+    vi.mocked(useActionState).mockReturnValue([{ error: "signout_failed" }, mockFormAction, false]);
 
     render(<SignOutButton />, { wrapper: Wrapper });
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Sign-out failed");
+    expect(screen.getByRole("alert")).toHaveTextContent("Sign-out didn't complete. Please try again.");
   });
 
   it("clears the query cache and persisted data, then redirects on success", async () => {

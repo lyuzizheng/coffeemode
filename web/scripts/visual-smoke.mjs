@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // Rendered-page smoke gate (issue #76): boots the production build and
-// screenshots the public route matrix, failing on non-2xx responses,
-// console errors, or page errors. Screenshots land in .visual-smoke/ and
-// are uploaded as a CI artifact on failure. No pixel baselines yet —
-// step one is "CI looks at the rendered app".
+// screenshots the public route matrix, failing on unexpected HTTP statuses
+// (per-route expectation — the 404 route must return 404), console errors,
+// or page errors. Screenshots land in .visual-smoke/ and are uploaded as a
+// CI artifact on failure. No pixel baselines yet — step one is "CI looks at
+// the rendered app".
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -15,7 +16,14 @@ const outDir = join(root, ".visual-smoke");
 const port = 3107;
 const base = `http://127.0.0.1:${port}`;
 
-const ROUTES = ["/", "/theme-preview", "/~offline"];
+// Each route declares its expected HTTP status; the 404 route keeps the
+// designed not-found page inside the rendered gate (issue #99).
+const ROUTES = [
+  { path: "/", status: 200 },
+  { path: "/theme-preview", status: 200 },
+  { path: "/~offline", status: 200 },
+  { path: "/definitely-not-a-route", status: 404 },
+];
 const COLOR_SCHEMES = ["light", "dark"];
 const VIEWPORTS = {
   mobile: { width: 390, height: 844, isMobile: true },
@@ -62,7 +70,7 @@ try {
     for (const route of ROUTES) {
       for (const scheme of COLOR_SCHEMES) {
         for (const [vpName, vp] of Object.entries(VIEWPORTS)) {
-          const label = `${route} ${scheme} ${vpName}`;
+          const label = `${route.path} ${scheme} ${vpName}`;
           const context = await browser.newContext({
             viewport: { width: vp.width, height: vp.height },
             colorScheme: scheme,
@@ -72,18 +80,33 @@ try {
           const page = await context.newPage();
           const errors = [];
           page.on("console", (msg) => {
-            if (msg.type() === "error") errors.push(`console.error: ${msg.text()}`);
+            if (msg.type() !== "error") return;
+            // Chromium logs the document's own non-2xx response as a console
+            // error; when that status is the route's expectation (the 404
+            // fixture), it is the contract, not a fault. Gated on the message
+            // source being the document itself so a subresource failure with
+            // the same status still fails the gate.
+            if (
+              route.status >= 400 &&
+              msg.location()?.url === base + route.path &&
+              msg.text().startsWith(
+                `Failed to load resource: the server responded with a status of ${route.status} `,
+              )
+            ) {
+              return;
+            }
+            errors.push(`console.error: ${msg.text()}`);
           });
           page.on("pageerror", (err) => errors.push(`pageerror: ${err.message}`));
 
-          const res = await page.goto(base + route, { waitUntil: "networkidle" });
+          const res = await page.goto(base + route.path, { waitUntil: "networkidle" });
           const status = res ? res.status() : 0;
-          if (status < 200 || status >= 300) {
-            errors.push(`HTTP ${status}`);
+          if (status !== route.status) {
+            errors.push(`HTTP ${status}, expected ${route.status}`);
           }
 
           await page.screenshot({
-            path: join(outDir, `${slug(route)}-${scheme}-${vpName}.png`),
+            path: join(outDir, `${slug(route.path)}-${scheme}-${vpName}.png`),
             fullPage: true,
           });
           await context.close();

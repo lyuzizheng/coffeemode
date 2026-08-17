@@ -83,7 +83,7 @@ def parse_toml(path, sectioned:)
   multiline_start = nil
   multiline_value = []
 
-  File.readlines(path, chomp: true).each_with_index do |line, index|
+  File.readlines(path, chomp: true, encoding: "UTF-8").each_with_index do |line, index|
     line_number = index + 1
 
     if multiline_key

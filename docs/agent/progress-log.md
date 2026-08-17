@@ -887,3 +887,16 @@ the recent tail. Archive history, never delete it.
   Web suite 285 → 289.
 - Gate: `npm run verify` (web) + visual-smoke 16 renderings clean +
   `.agents/scripts/preflight.sh` green.
+
+## 2026-08-17 (harness UTF-8 pinning, #104)
+
+- Issue #104 on `fix/issue-104-harness-utf8`: the Ruby harness checkers read
+  repo files without an explicit encoding. Under a non-UTF-8 locale
+  (`LANG=`/`LC_CTYPE=C`) Ruby's default external encoding becomes US-ASCII and
+  preflight crashes with `invalid byte sequence in US-ASCII` on canonical
+  UTF-8 content in `docs/agent/implementation-slices.md`. Pinned
+  `encoding: "UTF-8"` on all four harness read sites
+  (`implementation-slices.rb` x2, `check-codex-agents.sh`,
+  `check-ci-workflow.sh`). Verified: preflight green under
+  `env LC_ALL=C LANG=` and unchanged under UTF-8 locales. Harness-only change;
+  no product behavior touched.

@@ -44,6 +44,7 @@ Machine-checked implementation plan derived from `docs/specs/0001-nextjs-migrati
 | issue-39-hours-json | storeExternal hours_json must be parseable JSON | COMPLETE | 0001 | poi-cache-service | none | typecheck, unit | JSON.parse validation before write + zero-batch-calls regression guard; other #39 gaps landed earlier (#92) |
 | issue-38-placeid-geo | Trust stored POI source over id-prefix heuristic; antimeridian-safe lng bbox | COMPLETE | 0001 | poi-cache-service | none | typecheck, unit | getPOI: KV probe any id, D1 row source authoritative, prefix heuristic last-resort only; d1SearchPOIs wraps lng interval across ±180° (haversine NaN clamp already on main) |
 | issue-37-share-url-hosts | Maps share-URL host allowlist + redirect re-validation | COMPLETE | 0001 | poi-cache-service, places-proxy | none | typecheck, unit, build | Web validator: exact short/apple hosts + regional google.* pattern, https-only; worker resolveShareUrl: entry gate + per-hop https/host re-check, malformed Location no longer 500s |
+| issue-40-r2-public-host | Single-source public image host + loader/runtime hygiene | COMPLETE | 0001 | image-pipeline | none | typecheck, unit, build | R2_PUBLIC_HOST stays the static single source (SW bundle can't read env — sentinel-verified); next.config asserts NEXT_PUBLIC_R2_PUBLIC_URL matches; loader gets "use client" + isR2Image path boundary; wildcard r2.cloudflarestorage.com remotePattern dropped |
 
 ## Status vocabulary
 

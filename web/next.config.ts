@@ -1,9 +1,12 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 import { withSerwist } from "@serwist/turbopack";
-import { R2_PUBLIC_HOST } from "./lib/images/constants";
+import { R2_PUBLIC_HOST, assertR2PublicUrlMatches } from "./lib/images/constants";
 
 const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
+
+// Fail the build when the env drifted from the single-source constant (issue #40).
+assertR2PublicUrlMatches(process.env.NEXT_PUBLIC_R2_PUBLIC_URL);
 
 const nextConfig: NextConfig = {
   // VPS + Docker standalone deploy (ADR-0001). Cloudflare/OpenNext is a
@@ -11,15 +14,12 @@ const nextConfig: NextConfig = {
   output: "standalone",
 
   images: {
-    // R2 images are served through the Cloudflare CDN domain once the
-    // image-pipeline slice lands; allow the pattern now so it is not a
-    // later config surprise.
+    // R2 images are served through our Cloudflare CDN host only. The raw
+    // `r2.cloudflarestorage.com` endpoints are never rendered through
+    // <Image> (presigned URLs are upload-only), so no wildcard (issue #40).
     loader: "custom",
     loaderFile: "./lib/images/loader.ts",
-    remotePatterns: [
-      { protocol: "https", hostname: "**.r2.cloudflarestorage.com" },
-      { protocol: "https", hostname: R2_PUBLIC_HOST },
-    ],
+    remotePatterns: [{ protocol: "https", hostname: R2_PUBLIC_HOST }],
   },
 
   async headers() {

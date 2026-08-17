@@ -39,7 +39,8 @@ Machine-checked implementation plan derived from `docs/specs/0001-nextjs-migrati
 | issue-46-sw-api-cache | Service worker must not cache user-specific API GETs | COMPLETE | 0001 | none | none | typecheck, unit, build | Catch-all network-only `/api/` rule ahead of serwist defaultCache's 24h `apis` NetworkFirst (#85); ADR-0003 §3 amended to match |
 | issue-33-upload-intents | Bind presigned image uploads to the issuing user | COMPLETE | 0001 | none | none | typecheck, unit, build | Migration 0006 `image_upload_intents`: record on upload, fail-fast pre-check + single-use consume inside complete's atomic tx; worker contract unchanged (#87) |
 | issue-41-postgres-ssl | Postgres sslmode fail-closed + explicit allow-self-signed | COMPLETE | 0001 | auth-foundation | none | typecheck, unit, build | require/prefer/verify-* validate the CA chain; allow-self-signed opt-in; unknown/empty/wrong-case sslmode throws (#88) |
-| issue-35-timing-safe-token | Constant-time token compare without length branch | IN-PROGRESS | 0001 | issue-26-shared-common | none | typecheck, unit | `safeEqual` hashes both tokens (SHA-256) and compares fixed-length digests; async end-to-end, callers already await |
+| issue-35-timing-safe-token | Constant-time token compare without length branch | COMPLETE | 0001 | issue-26-shared-common | none | typecheck, unit | `safeEqual` hashes both tokens (SHA-256) and compares fixed-length digests; async end-to-end, callers already await (#90) |
+| issue-86-server-derived-photos | Server-derived StoredImage from photo_ids on create paths | IN-PROGRESS | 0001 | issue-33-upload-intents | none | typecheck, unit, build | Clients send photo_ids; server checks intents, processes (sharp) outside tx, derives by/keys/w/h, consumes intents inside the creation tx |
 
 ## Status vocabulary
 

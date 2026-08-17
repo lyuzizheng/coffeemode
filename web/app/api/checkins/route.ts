@@ -5,6 +5,8 @@ import {
   createCheckIn,
   parseCheckInBody,
 } from "@/lib/db/checkins";
+import { PhotoIntentError } from "@/lib/images/provision-photos";
+import { ImageServiceError } from "@/lib/images/image-service-client";
 import {
   CAFES_WRITE_RATE_LIMIT,
   getClientIdentifier,
@@ -13,10 +15,12 @@ import {
 } from "@/lib/rate-limit";
 
 /**
- * POST /api/checkins  {cafe_id, scores?, min_spend?, max_stay?, note?, photos?, visited_at?}
+ * POST /api/checkins  {cafe_id, scores?, min_spend?, max_stay?, note?, photo_ids?, visited_at?}
  * Regular (non-creation) check-in: insert + gallery merge + work_stats
  * fold in one transaction (spec 0001). Requires auth. 404 when the cafe
- * does not exist.
+ * does not exist. Photos are image UUIDs from /api/images/upload; the
+ * server provisions and derives them (issue #86) — 400 invalid_photos
+ * when an id was not issued to the caller or was already consumed.
  */
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
@@ -51,6 +55,17 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "not_found", message: "cafe not found" },
         { status: 404 },
+      );
+    }
+    if (
+      err instanceof PhotoIntentError ||
+      // The caller's own upload never landed in R2 (worker 404) — same
+      // user-facing class as a bad photo id, not a server fault.
+      (err instanceof ImageServiceError && err.status === 404)
+    ) {
+      return NextResponse.json(
+        { error: "invalid_photos", message: "one or more photos are invalid" },
+        { status: 400 },
       );
     }
     console.error("/api/checkins POST failed", err);

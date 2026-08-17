@@ -412,6 +412,19 @@ Authorization for /api/images/complete:
     The photo is stored in `checkins.photos` and auto-merged into the parent cafe's
     `gallery` (attributed via `by`/`at`) without requiring cafe ownership.
 
+Photos on the creation/check-in write paths (issue #86):
+  - `POST /api/cafes` and `POST /api/checkins` accept `photo_ids` (imageUuids
+    from /api/images/upload), never StoredImage payloads.
+  - The server pre-checks each id's upload intent (issue #33 binding),
+    processes the image (steps 3-4 and the R2 writes of step 5 above)
+    before opening the write transaction, and derives StoredImage itself:
+    R2 keys, dimensions from sharp, `by` = the caller, `at` = now,
+    `source` = the new check-in.
+  - Intents are single-use and consumed inside the creation transaction; a
+    foreign, expired, or replayed id aborts the whole write (400
+    invalid_photos, no oracle on which id or why).
+  - Cap: 10 photos per check-in.
+
 Auth:
   - Browser: Supabase session cookie
   - Next.js ↔ image-service: shared IMAGE_SERVICE_TOKEN (server-side only)
@@ -425,7 +438,7 @@ R2 metadata (coffeemode pattern):
   customMetadata: { userId, uploadDate, targetType, targetId }
 
 DB record: JSONB entries in cafes.gallery / checkins.photos (no separate table)
-  { id, original, card, thumbnail, w, h, by, at }
+  { id, original, card, thumbnail, w, h, by, at, source }
 
 Reference pipelines: our_village (multi-size, temp→final, URLSet),
   coffeemode-image worker (metadata shape)

@@ -107,8 +107,14 @@ export async function requestUploadUrl(size: number): Promise<UploadUrlResponse>
   return response.json();
 }
 
+/**
+ * Fetch presigned process URLs for an uploaded original. `targetType` /
+ * `targetId` are optional R2 custom-metadata hints for the worker — the
+ * creation flow (issue #86) processes images before its target exists.
+ */
 export async function getProcessUrls(
-  request: CompleteImageRequest & { userId?: string },
+  request: Omit<CompleteImageRequest, "targetType" | "targetId"> &
+    Partial<Pick<CompleteImageRequest, "targetType" | "targetId">> & { userId?: string },
 ): Promise<ProcessUrls> {
   const { url, token } = getEnv();
   const response = await fetch(`${url}/v1/images/complete`, {

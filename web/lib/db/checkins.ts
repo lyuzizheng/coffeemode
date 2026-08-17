@@ -2,6 +2,13 @@ import "server-only";
 
 import { isValidUUID } from "@shared/uuid";
 import {
+  consumeProvisionedIntents,
+  defaultProvisionPhotosDeps,
+  provisionPhotos,
+  type ProvisionPhotosDeps,
+  type ProvisionedPhoto,
+} from "@/lib/images/provision-photos";
+import {
   recomputeWorkStats,
   type RunInTransaction,
 } from "@/lib/stats/aggregate";
@@ -14,7 +21,7 @@ import {
   type MinSpend,
 } from "@/types/checkins";
 import type { StoredImage } from "@/types/images";
-import { withTransaction } from "./postgres";
+import { query, withTransaction } from "./postgres";
 import type { PoolClient } from "pg";
 
 /* ------------------------------------------------------------------ *
@@ -48,29 +55,26 @@ export function parseScores(value: unknown, field = "scores"): ParseResult<Check
   return { ok: true, value: scores };
 }
 
-/** Structural check for StoredImage refs already processed by image-service. */
-export function parsePhotos(value: unknown, field = "photos"): ParseResult<StoredImage[]> {
-  if (!Array.isArray(value)) return fail(`${field} must be an array`);
-  for (const entry of value) {
-    if (typeof entry !== "object" || entry === null) {
-      return fail(`${field} entries must be objects`);
-    }
-    const img = entry as Record<string, unknown>;
-    for (const key of ["id", "original", "card", "thumbnail", "by", "at"] as const) {
-      if (typeof img[key] !== "string" || (img[key] as string).trim() === "") {
-        return fail(`${field}[].${key} must be a non-empty string`);
-      }
-    }
-    if (Number.isNaN(Date.parse(img.at as string))) {
-      return fail(`${field}[].at must be an ISO timestamp`);
-    }
-    for (const key of ["w", "h"] as const) {
-      if (typeof img[key] !== "number" || !Number.isFinite(img[key]) || (img[key] as number) <= 0) {
-        return fail(`${field}[].${key} must be a positive number`);
-      }
-    }
+/** Structural check for client-supplied photo references (issue #86):
+ *  plain imageUuids from /api/images/upload — never StoredImage payloads.
+ *  The server derives keys/dimensions/attribution from upload intents. */
+export const MAX_PHOTOS_PER_CHECKIN = 10;
+
+export function parsePhotoIds(value: unknown, field = "photo_ids"): ParseResult<string[]> {
+  if (!Array.isArray(value)) return fail(`${field} must be an array of image UUIDs`);
+  if (value.length > MAX_PHOTOS_PER_CHECKIN) {
+    return fail(`${field} is limited to ${MAX_PHOTOS_PER_CHECKIN} photos`);
   }
-  return { ok: true, value: value as StoredImage[] };
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== "string" || !isValidUUID(entry)) {
+      return fail(`${field} entries must be image UUIDs from /api/images/upload`);
+    }
+    const id = entry.toLowerCase();
+    if (seen.has(id)) return fail(`${field} must not contain duplicates`);
+    seen.add(id);
+  }
+  return { ok: true, value: [...seen] };
 }
 
 /** Optional ISO timestamp; must not be in the future. */
@@ -98,7 +102,8 @@ export class CafeNotFoundError extends Error {
 /**
  * A regular (non-creation) check-in. Spec 0001:541 pins >=1 slider per
  * check-in (creation pins more); policies, note, and photos stay optional
- * extras here.
+ * extras here. Photos are plain image UUIDs (`photo_ids`) — the server
+ * provisions them via upload intents and derives StoredImage (issue #86).
  */
 export interface CreateCheckInInput {
   cafe_id: string;
@@ -106,7 +111,7 @@ export interface CreateCheckInInput {
   min_spend?: MinSpend;
   max_stay?: MaxStay;
   note?: string;
-  photos?: StoredImage[];
+  photo_ids?: string[];
   visited_at?: Date;
 }
 
@@ -156,11 +161,11 @@ export function parseCheckInBody(body: unknown): ParseResult<CreateCheckInInput>
     if (trimmed !== "") note = trimmed;
   }
 
-  let photos: StoredImage[] | undefined;
-  if (raw.photos !== undefined && raw.photos !== null) {
-    const parsed = parsePhotos(raw.photos);
+  let photoIds: string[] | undefined;
+  if (raw.photo_ids !== undefined && raw.photo_ids !== null) {
+    const parsed = parsePhotoIds(raw.photo_ids);
     if (!parsed.ok) return fail(parsed.message);
-    if (parsed.value.length > 0) photos = parsed.value;
+    if (parsed.value.length > 0) photoIds = parsed.value;
   }
 
   const visitedAt = parseVisitedAt(raw.visited_at);
@@ -174,7 +179,7 @@ export function parseCheckInBody(body: unknown): ParseResult<CreateCheckInInput>
       min_spend: minSpend,
       max_stay: maxStay,
       note,
-      photos,
+      photo_ids: photoIds,
       visited_at: visitedAt.value,
     },
   };
@@ -188,11 +193,14 @@ values ($1, $2, false, $3, $4, $5, $6, $7, coalesce($8, now()))
 returning id
 `;
 
+/** Photos are written after the insert: their `source` needs the check-in id. */
+const SET_CHECKIN_PHOTOS_SQL = `update checkins set photos = $2::jsonb where id = $1`;
+
 /**
  * Append check-in photos to cafes.gallery with provenance (spec 0001:
- * photos auto-merge, no curator approval at MVP; `source` lets gallery
- * queries hide photos from soft-deleted check-ins). Exported together with
- * `galleryPhotosWithSource` so the creation flow merges identically.
+ * photos auto-merge, no curator approval at MVP; the `source` field on
+ * server-derived photos lets gallery queries hide photos from soft-deleted
+ * check-ins).
  */
 export const MERGE_GALLERY_SQL = `
 update cafes
@@ -200,11 +208,9 @@ set gallery = coalesce(gallery, '[]'::jsonb) || $2::jsonb
 where id = $1
 `;
 
-/** Serialize photos with `source={type:"checkin",id}` for MERGE_GALLERY_SQL. */
-export function galleryPhotosWithSource(photos: StoredImage[], checkinId: string): string {
-  return JSON.stringify(
-    photos.map((p) => ({ ...p, source: { type: "checkin" as const, id: checkinId } })),
-  );
+/** Attach the check-in id as each photo's `source` (soft-delete hiding). */
+export function photosWithSource(photos: ProvisionedPhoto[], checkinId: string): StoredImage[] {
+  return photos.map((p) => ({ ...p, source: { type: "checkin" as const, id: checkinId } }));
 }
 
 /**
@@ -212,6 +218,11 @@ export function galleryPhotosWithSource(photos: StoredImage[], checkinId: string
  * ONE transaction (the stats update is injected into the same connection;
  * a second transaction would self-deadlock on the cafe row's lock).
  * Photos auto-merge into cafes.gallery in the same transaction (spec 0001).
+ *
+ * Photos arrive as `photo_ids` (issue #86): intents are pre-checked and the
+ * images processed (sharp) BEFORE the transaction (slow I/O must not hold a
+ * DB connection); the single-use intent consume runs INSIDE it, so a replay
+ * or foreign id rolls the whole check-in back.
  *
  * The stats refresh is a full `recomputeWorkStats`, not the incremental
  * fold: `incrementalUpdateWorkStats` assumes the just-written check-in is
@@ -223,11 +234,29 @@ export function galleryPhotosWithSource(photos: StoredImage[], checkinId: string
 export async function createCheckIn(
   userId: string,
   input: CreateCheckInInput,
+  deps: ProvisionPhotosDeps = defaultProvisionPhotosDeps(),
 ): Promise<{ checkinId: string }> {
   if (!isValidUUID(userId)) throw new Error("Invalid user ID");
   if (!isValidUUID(input.cafe_id)) throw new Error("Invalid cafe ID");
 
+  const photoIds = input.photo_ids ?? [];
+
+  // Fail fast on a missing cafe BEFORE provisioning — sharp processing is
+  // wasted work otherwise. The in-transaction check below stays the
+  // authoritative gate (the cafe could be deleted in between).
+  const cafeExists = await query<{ id: string } & Record<string, unknown>>(CAFE_EXISTS_SQL, [
+    input.cafe_id,
+  ]);
+  if (!cafeExists.rows[0]) throw new CafeNotFoundError(input.cafe_id);
+
+  const provisioned = await provisionPhotos(userId, photoIds, deps);
+
   return withTransaction(async (client) => {
+    const inSameTx: RunInTransaction = (fn) =>
+      fn(<T extends Record<string, unknown>>(text: string, params?: unknown[]) =>
+        client.query<T>(text, params),
+      );
+
     const cafe = await client.query<{ id: string }>(CAFE_EXISTS_SQL, [input.cafe_id]);
     if (!cafe.rows[0]) throw new CafeNotFoundError(input.cafe_id);
 
@@ -238,23 +267,22 @@ export async function createCheckIn(
       input.min_spend ?? null,
       input.max_stay ?? null,
       input.note ?? null,
-      JSON.stringify(input.photos ?? []),
+      JSON.stringify([]),
       input.visited_at ?? null,
     ]);
     const checkinId = res.rows[0]?.id;
     if (!checkinId) throw new Error("check-in insert returned no id");
 
-    if (input.photos && input.photos.length > 0) {
-      await client.query(MERGE_GALLERY_SQL, [
-        input.cafe_id,
-        galleryPhotosWithSource(input.photos, checkinId),
-      ]);
+    if (provisioned.length > 0) {
+      // Single-use consume inside the tx: a replay/foreign id aborts the
+      // whole check-in (issue #86).
+      const q = client.query.bind(client) as Parameters<typeof consumeProvisionedIntents>[2];
+      await consumeProvisionedIntents(userId, photoIds, q, deps);
+      const photos = photosWithSource(provisioned, checkinId);
+      await client.query(SET_CHECKIN_PHOTOS_SQL, [JSON.stringify(photos), checkinId]);
+      await client.query(MERGE_GALLERY_SQL, [input.cafe_id, JSON.stringify(photos)]);
     }
 
-    const inSameTx: RunInTransaction = (fn) =>
-      fn(<T extends Record<string, unknown>>(text: string, params?: unknown[]) =>
-        client.query<T>(text, params),
-      );
     await recomputeWorkStats(input.cafe_id, 0, inSameTx);
 
     return { checkinId };

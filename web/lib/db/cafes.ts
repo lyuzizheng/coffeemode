@@ -9,7 +9,6 @@ import {
 } from "@/lib/stats/aggregate";
 import { coerceWorkStats } from "@/lib/stats/work-stats";
 import type { CafeDetail, CafeSummary } from "@/types/cafes";
-import type { StoredImage } from "@/types/images";
 import {
   MAX_STAY_VALUES,
   MIN_SPEND_VALUES,
@@ -19,13 +18,19 @@ import {
 } from "@/types/checkins";
 import {
   fail,
-  galleryPhotosWithSource,
   MERGE_GALLERY_SQL,
-  parsePhotos,
+  parsePhotoIds,
   parseScores,
   parseVisitedAt,
+  photosWithSource,
   type ParseResult,
 } from "./checkins";
+import {
+  consumeProvisionedIntents,
+  defaultProvisionPhotosDeps,
+  provisionPhotos,
+  type ProvisionPhotosDeps,
+} from "@/lib/images/provision-photos";
 import { query, withTransaction } from "./postgres";
 
 /** Thrown when a cafe with the same external POI id already exists. */
@@ -40,13 +45,15 @@ export class CafeExistsError extends Error {
  * The creator's first check-in. Spec 0001 pins required-on-creation:
  * overall slider, min_spend, max_stay, review note, >=1 photo (the
  * differentiating data); dimension sliders and visited_at stay optional.
+ * Photos are plain image UUIDs (`photo_ids`) — the server provisions them
+ * via upload intents and derives StoredImage (issue #86).
  */
 export interface CreateCafeCheckInInput {
   scores: CheckInScores & { overall: number };
   min_spend: MinSpend;
   max_stay: MaxStay;
   note: string;
-  photos: StoredImage[];
+  photo_ids: string[];
   visited_at?: Date;
 }
 
@@ -151,11 +158,11 @@ export function parseCreateCafeBody(body: unknown): ParseResult<CreateCafeInput>
   }
   if (note.trim().length > 1000) return fail("checkin.note is too long (max 1000)");
 
-  if (!Array.isArray(checkinBody.photos) || checkinBody.photos.length === 0) {
-    return fail("checkin.photos must contain at least one image (spec 0001)");
+  if (!Array.isArray(checkinBody.photo_ids) || checkinBody.photo_ids.length === 0) {
+    return fail("checkin.photo_ids must contain at least one image UUID (spec 0001)");
   }
-  const photos = parsePhotos(checkinBody.photos, "checkin.photos");
-  if (!photos.ok) return fail(photos.message);
+  const photoIds = parsePhotoIds(checkinBody.photo_ids, "checkin.photo_ids");
+  if (!photoIds.ok) return fail(photoIds.message);
 
   const visited = parseVisitedAt(checkinBody.visited_at, "checkin.visited_at");
   if (!visited.ok) return fail(visited.message);
@@ -179,7 +186,7 @@ export function parseCreateCafeBody(body: unknown): ParseResult<CreateCafeInput>
         min_spend: minSpend as MinSpend,
         max_stay: maxStay as MaxStay,
         note: note.trim(),
-        photos: photos.value,
+        photo_ids: photoIds.value,
         visited_at: visitedAt,
       },
     },
@@ -198,6 +205,9 @@ insert into checkins (cafe_id, user_id, is_creation, scores, min_spend, max_stay
 values ($1, $2, true, $3, $4, $5, $6, $7, coalesce($8, now()))
 returning id
 `;
+
+/** Photos are written after the insert: their `source` needs the check-in id. */
+const SET_FIRST_CHECKIN_PHOTOS_SQL = `update checkins set photos = $2::jsonb where id = $1`;
 
 const FIND_BY_EXTERNAL_ID_SQL = `
 select id from cafes
@@ -220,6 +230,10 @@ function isUniqueViolation(err: unknown): boolean {
  * `tz` is derived from coordinates at write time (issue #77's deferred
  * population, landing with this first write path).
  *
+ * Photos arrive as `photo_ids` and are provisioned (intent pre-check +
+ * sharp processing) BEFORE the transaction, then consumed inside it
+ * (issue #86) — the client cannot set `by`, keys, or dimensions.
+ *
  * Dedupe: external POI ids are pre-checked inside the transaction (fast
  * path). A lost race still hits the unique index — but a Postgres error
  * aborts the whole transaction, so that lookup must run AFTER rollback on
@@ -228,11 +242,31 @@ function isUniqueViolation(err: unknown): boolean {
 export async function createCafeWithFirstCheckIn(
   userId: string,
   input: CreateCafeInput,
+  deps: ProvisionPhotosDeps = defaultProvisionPhotosDeps(),
 ): Promise<{ cafeId: string; checkinId: string; tz: string }> {
   if (!isValidUUID(userId)) throw new Error("Invalid user ID");
 
   const tz = tzLookup(input.lat, input.lng);
   const externalIds = [input.google_place_id ?? null, input.apple_poi_id ?? null];
+
+  // Fail fast on a duplicate external id BEFORE provisioning (sharp work
+  // would be wasted on a 409). The in-transaction pre-check + unique index
+  // stay the authoritative gate against races.
+  if (externalIds[0] !== null || externalIds[1] !== null) {
+    const existing = await query<{ id: string } & Record<string, unknown>>(
+      FIND_BY_EXTERNAL_ID_SQL,
+      externalIds,
+    );
+    const existingId = existing.rows[0]?.id;
+    if (existingId) throw new CafeExistsError(existingId);
+  }
+
+  // Pre-check intents + sharp processing BEFORE the transaction (issue #86):
+  // slow I/O must not hold a DB connection. If the dedupe below loses a
+  // race, the intents stay unconsumed and the user can retry against the
+  // existing cafe.
+  const photoIds = input.checkin.photo_ids;
+  const provisioned = await provisionPhotos(userId, photoIds, deps);
 
   try {
     return await withTransaction(async (client) => {
@@ -268,19 +302,21 @@ export async function createCafeWithFirstCheckIn(
         input.checkin.min_spend,
         input.checkin.max_stay,
         input.checkin.note,
-        JSON.stringify(input.checkin.photos),
+        JSON.stringify([]),
         input.checkin.visited_at ?? null,
       ]);
       const checkinId = checkinRes.rows[0]?.id;
       if (!checkinId) throw new Error("check-in insert returned no id");
 
+      // Single-use consume inside the tx: a replay/foreign id aborts the
+      // whole creation (issue #86).
+      const q = client.query.bind(client) as Parameters<typeof consumeProvisionedIntents>[2];
+      await consumeProvisionedIntents(userId, photoIds, q, deps);
+
       // The first check-in's photos auto-merge into the gallery too (spec 0001).
-      if (input.checkin.photos.length > 0) {
-        await client.query(MERGE_GALLERY_SQL, [
-          cafeId,
-          galleryPhotosWithSource(input.checkin.photos, checkinId),
-        ]);
-      }
+      const photos = photosWithSource(provisioned, checkinId);
+      await client.query(SET_FIRST_CHECKIN_PHOTOS_SQL, [JSON.stringify(photos), checkinId]);
+      await client.query(MERGE_GALLERY_SQL, [cafeId, JSON.stringify(photos)]);
 
       const inSameTx: RunInTransaction = (fn) =>
         fn(<T extends Record<string, unknown>>(text: string, params?: unknown[]) =>

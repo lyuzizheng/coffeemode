@@ -1,3 +1,5 @@
+"use client";
+
 import type { ImageLoader } from "next/image";
 import { R2_PUBLIC_HOST } from "./constants";
 
@@ -8,7 +10,8 @@ import { R2_PUBLIC_HOST } from "./constants";
  * `thumbnail`) and stores them at `images.coffeemode.app`. Re-optimizing
  * those through `/_next/image` adds VPS CPU and complicates CDN caching.
  * This loader returns the direct R2 URL, letting Cloudflare cache the
- * immutable asset forever.
+ * immutable asset forever. Used as `loaderFile` in `next.config.ts`, so it
+ * ships in the client bundle — hence the `"use client"` directive (issue #40).
  */
 export const r2ImageLoader: ImageLoader = ({ src }) => {
   // If the URL is already an absolute R2 URL, pass it through unchanged.
@@ -32,7 +35,8 @@ export default r2ImageLoader;
  * Next.js loader for non-R2 images.
  */
 export function isR2Image(src: string): boolean {
-  if (src.startsWith(`https://${R2_PUBLIC_HOST}`)) return true;
+  // Path boundary after the host: `images.coffeemode.app.evil.com` must not match.
+  if (src.startsWith(`https://${R2_PUBLIC_HOST}/`)) return true;
   if (src.startsWith("https://")) {
     try {
       return new URL(src).hostname === R2_PUBLIC_HOST;

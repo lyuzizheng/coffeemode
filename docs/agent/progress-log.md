@@ -781,3 +781,29 @@ the recent tail. Archive history, never delete it.
 - All gates green: `cd poi-service && npm run typecheck && npm test`
   (79 tests), `cd web && npm run verify` (274 tests, typecheck, lint,
   build), `.agents/scripts/preflight.sh`.
+
+## 2026-08-17 (R2 public host single-source + drift guard, #40)
+
+- Issue #40 on `fix/issue-40-r2-public-host` (slice `issue-40-r2-public-host`):
+  - `web/lib/images/constants.ts`: `R2_PUBLIC_HOST` stays a static constant —
+    env derivation at module scope is impossible because the serwist SW build
+    keeps `process.env.*` as a runtime reference (`process` is undefined in a
+    worker → SW install would break; verified empirically with a sentinel
+    build). New `assertR2PublicUrlMatches` is called from `next.config.ts`:
+    a drifted `NEXT_PUBLIC_R2_PUBLIC_URL` now fails the build loudly instead
+    of silently desyncing loader / SW cache matcher / remotePatterns.
+  - `web/lib/images/loader.ts`: added `"use client"` (loaderFile ships in the
+    client bundle); fixed `isR2Image` host-prefix check to require a path
+    boundary so `images.coffeemode.app.evil.com` no longer matches.
+  - `web/next.config.ts`: removed the `**.r2.cloudflarestorage.com` wildcard
+    remotePattern (any account/bucket was loadable); only the single-source
+    host remains. Raw R2 endpoints are upload-only, never rendered.
+  - `web/.env.example`: `R2_PUBLIC_URL` → `NEXT_PUBLIC_R2_PUBLIC_URL`,
+    documented as an optional drift guard.
+  - Tests: new `tests/images/constants.test.ts` (8 — constant value, drift
+    guard accept/reject/garbage, loader mapping + passthrough, isR2Image
+    boundary).
+- All gates green: `cd web && npm run verify` (282 tests, typecheck, lint,
+  build), sentinel-env build fails with the expected drift error, default
+  build's `serwist/sw.js` inlines the static host with zero `process.env`
+  references, `.agents/scripts/preflight.sh`.

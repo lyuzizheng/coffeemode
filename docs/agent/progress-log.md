@@ -807,3 +807,18 @@ the recent tail. Archive history, never delete it.
   build), sentinel-env build fails with the expected drift error, default
   build's `serwist/sw.js` inlines the static host with zero `process.env`
   references, `.agents/scripts/preflight.sh`.
+
+## 2026-08-17 (slice-table drift cleanup, #89)
+
+- Issue #89 on `docs/issue-89-slice-drift` (bookkeeping, no slice):
+  verified each IN-PROGRESS row against shipped code and flipped four to
+  COMPLETE with merge refs — `issue-23-rate-limit-backend` (#54),
+  `issue-24-likes-trigger` (#57; also corrected its Outcome: the trigger is
+  migration 0004, not 0003), `issue-25-complete-service` (#58),
+  `issue-27-stats-locking` (#56). Issue #24 itself stays OPEN for the JSONB
+  normalization remainder, tracked separately.
+  - `current-state.md` reconciled: #27 was "pending review/merge" (merged
+    via #56); "What's next" item 1 (merge `feat/impl-phase1-remainder`)
+    contradicted the same file's Phase/Latest-review sections (merged as
+    PR #22) — removed and renumbered.
+- Gate: `.agents/scripts/preflight.sh` green (no code changes).

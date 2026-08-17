@@ -43,6 +43,7 @@ Machine-checked implementation plan derived from `docs/specs/0001-nextjs-migrati
 | issue-86-server-derived-photos | Server-derived StoredImage from photo_ids on create paths | COMPLETE | 0001 | issue-33-upload-intents | none | typecheck, unit, build | Clients send photo_ids; server checks intents, processes (sharp) outside tx, derives by/keys/w/h, consumes intents inside the creation tx (#91) |
 | issue-39-hours-json | storeExternal hours_json must be parseable JSON | COMPLETE | 0001 | poi-cache-service | none | typecheck, unit | JSON.parse validation before write + zero-batch-calls regression guard; other #39 gaps landed earlier (#92) |
 | issue-38-placeid-geo | Trust stored POI source over id-prefix heuristic; antimeridian-safe lng bbox | COMPLETE | 0001 | poi-cache-service | none | typecheck, unit | getPOI: KV probe any id, D1 row source authoritative, prefix heuristic last-resort only; d1SearchPOIs wraps lng interval across ±180° (haversine NaN clamp already on main) |
+| issue-37-share-url-hosts | Maps share-URL host allowlist + redirect re-validation | COMPLETE | 0001 | poi-cache-service, places-proxy | none | typecheck, unit, build | Web validator: exact short/apple hosts + regional google.* pattern, https-only; worker resolveShareUrl: entry gate + per-hop https/host re-check, malformed Location no longer 500s |
 
 ## Status vocabulary
 

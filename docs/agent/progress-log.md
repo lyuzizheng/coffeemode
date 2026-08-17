@@ -754,3 +754,30 @@ the recent tail. Archive history, never delete it.
     near-pole all-longitude search. `FakeD1` learned the OR-ed lng pair.
 - All gates green: `cd poi-service && npm run typecheck && npm test`
   (69 tests), `.agents/scripts/preflight.sh`.
+
+## 2026-08-17 (Maps share-URL host allowlist + redirect re-validation, #37)
+
+- Issue #37 on `fix/issue-37-share-url-hosts` (slice `issue-37-share-url-hosts`):
+  - `web/lib/places/validate-maps-url.ts`: dropped the `endsWith(".google.com")`
+    suffix match (admitted `drive.`/`mail.` subdomains and bare `apple.com`,
+    rejected regional domains). Now: exact hosts (`goo.gl`, `maps.app.goo.gl`,
+    `maps.apple.com`) + regional Google pattern — `google.com`,
+    `google.<ccTLD>`, or `google.<co|com|org|net|ac|gov|edu>.<cc>` with
+    optional `www.`/`maps.` prefix — wide enough for `google.co.uk` /
+    `google.com.sg`, tight enough to exclude attacker-registrable TLD shapes
+    (`google.evil.io`, `google.zip`; caught in review). https required.
+  - `poi-service/src/url.ts`: new exported `isMapsHost` with the same
+    semantics (keep-in-sync comment on both sides — no shared package exists
+    between web/ and the worker). `resolveShareUrl` gates the initial URL
+    (https + maps host, else `{}` → 422) and re-validates every redirect
+    `Location` (https + maps host, else stop); malformed `Location` headers
+    no longer throw into the router's 500 catch-all. `parseMapsUrl` stays a
+    pure parser.
+  - Tests: worker +10 (isMapsHost accept/reject incl. attacker TLDs, crafted
+    evil URL with embedded place id, off-allowlist redirect, https→http
+    downgrade, malformed Location, relative redirect, short→short chain,
+    userinfo URL); web +9 (new `tests/validate-maps-url.test.ts`, route-level
+    http/subdomain/lookalike rejections).
+- All gates green: `cd poi-service && npm run typecheck && npm test`
+  (79 tests), `cd web && npm run verify` (274 tests, typecheck, lint,
+  build), `.agents/scripts/preflight.sh`.

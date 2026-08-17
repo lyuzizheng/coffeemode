@@ -26,6 +26,22 @@ const PLACE_SLUG_RE = /\/maps\/place\/([^/@?]+)/;
 
 const SHORT_HOSTS = new Set(["goo.gl", "maps.app.goo.gl"]);
 
+// Keep in sync with `isValidMapsUrl` in `web/lib/places/validate-maps-url.ts`
+// (issue #37) — the web route validates before proxying; the worker
+// re-validates the initial URL and every redirect target itself.
+const EXACT_MAPS_HOSTS = new Set(["goo.gl", "maps.app.goo.gl", "maps.apple.com"]);
+// google.com, google.<ccTLD>, or google.<known second-level>.<cc> — wide enough
+// for regional domains, tight enough to exclude attacker-registrable TLD
+// shapes like google.evil.io or google.zip.
+const GOOGLE_MAPS_HOST_RE =
+  /^(?:www\.|maps\.)?google\.(?:com|[a-z]{2}|(?:com|co|org|net|ac|gov|edu)\.[a-z]{2})$/;
+
+/** True for hosts we treat as Google/Apple Maps pages (regional google.* included). */
+export function isMapsHost(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  return EXACT_MAPS_HOSTS.has(h) || GOOGLE_MAPS_HOST_RE.test(h);
+}
+
 /** Max redirect hops followed when resolving short links. */
 export const MAX_REDIRECT_HOPS = 5;
 
@@ -79,12 +95,25 @@ export function parseMapsUrl(urlStr: string): ResolvedTarget {
   return { coords: coords ?? undefined, query: query ?? undefined };
 }
 
-/** Resolve a share URL to a target, following short-link redirects (≤ MAX_REDIRECT_HOPS hops). */
+/**
+ * Resolve a share URL to a target, following short-link redirects
+ * (≤ MAX_REDIRECT_HOPS hops). The initial URL and every redirect target must
+ * be https URLs on an allowed Maps host (issue #37) — anything else stops
+ * resolution and yields whatever was parsed so far, so a short link cannot
+ * bounce the worker to an arbitrary host embedding a fake place id.
+ */
 export async function resolveShareUrl(
   urlStr: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<ResolvedTarget> {
-  let current = urlStr;
+  let current: string;
+  try {
+    const initial = new URL(urlStr);
+    if (initial.protocol !== "https:" || !isMapsHost(initial.hostname)) return {};
+    current = initial.toString();
+  } catch {
+    return {};
+  }
   for (let hop = 0; hop < MAX_REDIRECT_HOPS; hop++) {
     const parsed = parseMapsUrl(current);
     if (parsed.placeId) return parsed;
@@ -95,7 +124,14 @@ export async function resolveShareUrl(
     );
     const location = res?.headers.get("location");
     if (!location) return parsed;
-    current = new URL(location, current).toString();
+    let next: URL;
+    try {
+      next = new URL(location, current);
+    } catch {
+      return parsed; // malformed Location header — stop, don't 500
+    }
+    if (next.protocol !== "https:" || !isMapsHost(next.hostname)) return parsed;
+    current = next.toString();
   }
   return parseMapsUrl(current);
 }

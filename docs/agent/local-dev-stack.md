@@ -17,7 +17,7 @@ integration suite in this doc exercises them against a real database.
 ## 1. Postgres + MinIO (one command)
 
 ```bash
-docker compose up -d          # postgres:5432, minio S3:9000 / console:9001
+docker compose up -d --wait   # wait for postgres health; minio S3:9000 / console:9001
 ```
 
 | Service | Image | Defaults |
@@ -34,13 +34,16 @@ npm run db:migrate            # applies web/db/migrations/*.sql 0001→0008 in o
 npm run test:integration      # = RUN_INTEGRATION=1 vitest run tests/integration
 ```
 
-- `test:integration` provisions a throwaway database (`coffeemode_test`),
-  applies every migration through the same runner, and verifies on real SQL:
+- `test:integration` requires a local Postgres host by default and provisions a
+  per-run throwaway database (`coffeemode_test_<pid>_<random>`), applies every
+  migration through the same runner, and verifies on real SQL:
   all 8 migrations + PostGIS + both `checkin_likes` triggers; the like toggle
   (like/unlike/self-like 403/legacy un-like); the 0008 no-self trigger on
-  direct inserts; the 0004 sync trigger on direct and cascade writes; the
-  fused cafe+first-check-in transaction with `work_stats`; `recordNavigation`.
-- The test DB is dropped afterwards (`coffeemode_test`).
+  direct inserts; the 0004 sync trigger on direct and profile-cascade writes; the
+  fused cafe+first-check-in transaction with `work_stats`, stored photo/gallery
+  state, and consumed upload intent; `recordNavigation` and stored navigation state.
+- The test DB is dropped afterwards; cleanup failures fail the run. Set
+  `ALLOW_REMOTE_INTEGRATION_DB=1` only for an explicitly disposable test server.
 - Plain `npm test` (unit suite) skips the integration file automatically —
   machines without Docker stay green.
 

@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "db:migrate": "node scripts/migrate.mjs",
+    "test:integration": "RUN_INTEGRATION=1 vitest run tests/integration/db.integration.test.ts --reporter=verbose",
     "typecheck": "tsc --noEmit",
     "check:i18n": "node scripts/check-i18n.mjs",
     "check:visual": "node scripts/visual-smoke.mjs",

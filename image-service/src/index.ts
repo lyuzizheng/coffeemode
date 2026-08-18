@@ -3,7 +3,7 @@ import { authorized, internalError, json, unauthorized } from "./auth";
 import { isValidUUID } from "../../web/shared/uuid";
 import { validateUploadSize } from "../../web/shared/images/validation";
 import { sanitizeMetadata } from "./validate";
-import { presignedGetUrl, presignedPutUrl, publicUrl, ttlSeconds } from "./r2";
+import { headObject, presignedGetUrl, presignedPutUrl, publicUrl, ttlSeconds } from "./r2";
 import { IMMUTABLE_CACHE_CONTROL, MAX_UPLOAD_BYTES } from "./constants";
 
 /** Validation failure envelope — same shape as poi-service
@@ -94,7 +94,7 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
 
   const normalizedUuid = imageUuid.toLowerCase();
   const keys = makeKeys(normalizedUuid);
-  const exists = await env.R2_BUCKET.head(keys.original);
+  const exists = await headObject(env, keys.original);
   if (!exists) {
     return error("not_found", "original image not found", 404);
   }

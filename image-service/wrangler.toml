@@ -10,6 +10,10 @@ R2_ACCOUNT_ID = "YOUR_R2_ACCOUNT_ID"
 R2_BUCKET_NAME = "YOUR_R2_BUCKET_NAME"
 # Replace with your public R2 / CDN base URL (no trailing slash).
 R2_PUBLIC_URL = "https://YOUR_R2_PUBLIC_URL"
+# Local dev only: point presign + HEAD at an S3-compatible store instead of
+# R2 (e.g. MinIO from docker-compose.yml: http://localhost:9000). See
+# docs/agent/local-dev-stack.md. Unset in production.
+# R2_ENDPOINT = "http://localhost:9000"
 # TTL (seconds) for presigned upload/download URLs. Optional: when unset or
 # invalid, src/constants.ts DEFAULT_UPLOAD_URL_TTL_SECONDS (600) applies.
 # WARNING: must stay well under the 1h upload-intent window

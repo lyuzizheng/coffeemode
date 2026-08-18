@@ -60,6 +60,21 @@ IN-PROGRESS One writer actively implementing; finish before starting another sli
 COMPLETE    Implemented and verified against the test gates
 ```
 
+## Test gate vocabulary
+
+```text
+typecheck     tsc --noEmit (web, poi-service, image-service)
+unit          Vitest unit/component tests (npm test)
+integration   REAL-Postgres suite (npm run test:integration, RUN_INTEGRATION=1)
+              — REQUIRED for slices touching web/db/migrations/*.sql, embedded
+              SQL, or DB-backed lib flows; reasoning-only SQL validation never
+              satisfies this gate
+e2e           Playwright user-flow specs (post-MVP)
+build         next build (production)
+visual        rendered-page smoke gate (npm run check:visual) / screenshot review
+deploy        wrangler deploy / VPS deploy steps verified
+```
+
 ## Rules
 
 ```text
@@ -69,4 +84,11 @@ COMPLETE    Implemented and verified against the test gates
 - One production-code writer per slice.
 - Implementation, testing, and review of one change share the same slice ID.
 - Update this file when a slice status or blocker changes.
+- New slices that touch the database (migrations, SQL, DB-backed flows) MUST
+  declare the `integration` gate; user-visible UI slices declare `e2e` once
+  Playwright is live.
+- Enforcement note: the manifest validator (`implementation-slices.rb`) only
+  checks that Test gates are non-empty — gate-vocabulary and
+  must-declare-`integration` rules are enforced by the review layers
+  (Layer-2 semantic review + code review), not by preflight.
 ```

@@ -1,11 +1,5 @@
 # Local Dev Stack — Real Postgres + Local Workers
 
-> Dependency note: this guide documents artifacts that land with companion
-> PRs — `docker-compose.yml`, the migration runner, and the integration suite
-> (`feat/local-integration-stack`), plus image-service `R2_ENDPOINT` support
-> (`feat/images-r2-endpoint`). Merge those first; the guide is only accurate
-> once they are on `main`.
-
 How to run CoffeeMode's full chain locally without any Cloudflare/R2/Supabase
 credentials: a real Postgres/PostGIS via Docker, MinIO as an R2 stand-in, and
 both Workers under `wrangler dev` (workerd).

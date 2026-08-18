@@ -29,6 +29,29 @@ the recent tail. Archive history, never delete it.
   - `docs/agent/local-dev-stack.md`: full local chain — compose, migrations,
     integration tests, `wrangler dev` for both workers, web env wiring.
 
+## 2026-08-18 (harness: integration/e2e gates institutionalized)
+
+- Made real-DB integration testing a first-class gate for future agents:
+  - `docs/specs/0003-testing-and-ci.md`: new "When real-DB integration is required"
+    section (migrations/SQL/DB-backed flows MUST run `npm run test:integration`),
+    `db:migrate` + `test:integration` scripts, acceptance criteria updated.
+  - `.agents/workflows/testing.md`: real-DB layer + integration-suite maintenance
+    duty (extend the suite in the same PR; red on bug, green on fix).
+  - `.agents/skills/coffeemode-testing-simulation/SKILL.md`: layers + duties updated.
+  - `.agents/workflows/development-cycle.md`: declared `integration` gates add
+    `npm run test:integration` green to the tier gates; e2e for user-visible flows.
+  - `docs/agent/iteration-protocol.md` + `docs/agent/coding-conventions.md`:
+    validation artifacts and testing conventions now require real-DB integration
+    for SQL-touching changes.
+  - `docs/agent/implementation-slices.md`: Test gate vocabulary (`integration`,
+    `e2e`, ...) + rule that DB-touching slices MUST declare `integration`.
+  - `.github/pull_request_template.md`: integration + e2e test-plan checkboxes.
+  - `.agents/README.md`: integration gate note under the two-layer table.
+- Motivation: the real-Postgres suite (see the local-dev-stack entry) immediately
+  caught two shipped bugs (stale likes_count CTE, reversed photos params) that
+  unit mocks had enshrined; this change prevents "SQL by reasoning" from
+  recurring.
+
 ## 2026-08-18 (issue #107 no-self-like)
 
 - Fixed `fix/issue-107-no-self-like`: authors can no longer like their own check-ins (owner decision, adopted #108's DB-invariant + legacy-cleanup details).

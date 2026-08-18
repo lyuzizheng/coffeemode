@@ -30,12 +30,14 @@
 ## Test plan
 
 - [ ] `cd web && npm run verify`
+- [ ] `cd web && npm run test:integration` — REQUIRED when the change touches `web/db/migrations/*.sql`, embedded SQL, or DB-backed flows (else skip)
 - [ ] `cd image-service && npm run typecheck && npm test`
 - [ ] `cd poi-service && npm run typecheck && npm test`
 - [ ] `.agents/scripts/preflight.sh`
 - [ ] Independent code review (`.agents/scripts/implementation-review-packet.sh`) — for Standard/High risk
 - [ ] Independent semantic review (`.agents/scripts/docs-review-packet.sh`) — if docs/harness changed
 - [ ] Manual / visual check — for UI or worker flows
+- [ ] E2E (Playwright) — for user-visible flows, post-MVP
 
 ## Verification evidence
 

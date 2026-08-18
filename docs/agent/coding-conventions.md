@@ -30,6 +30,20 @@ This file owns **coding style**. It does not own product or API contracts — th
 - Do not wrap handler bodies in try/catch for expected errors — handle with early returns. Log unexpected errors and return 500.
 - Document new API routes as JSDoc/comments in `web/app/api/<route>/route.ts`, and update `docs/specs/0001-nextjs-migration.md` if the contract changes.
 
+## Testing
+
+- Three layers, narrowest first: unit (Vitest/RTL), integration-mocked (API routes),
+  **integration-real-DB** (`npm run test:integration`), e2e (Playwright, post-MVP).
+- **Any change touching `web/db/migrations/*.sql`, embedded SQL in `web/lib/`, or
+  DB-backed flows MUST run `npm run test:integration` green** (or extend the suite
+  when the behavior is not covered yet) — never ship SQL validated by reasoning alone.
+- Integration tests live in `web/tests/integration/` behind `RUN_INTEGRATION=1`;
+  they must stay skipped (not failing) in plain `npm test`. Assert both the returned
+  value and the stored DB state. See `docs/agent/local-dev-stack.md` to run the stack.
+- Unit tests must encode the CONTRACT (correct parameter order, real return shapes),
+  not the current buggy behavior — mocks cannot validate SQL, so SQL semantics belong
+  to the integration suite.
+
 ## Terminal
 
 - Run frontend/backend commands from `web/` (`cd web` first).

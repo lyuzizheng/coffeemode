@@ -35,7 +35,8 @@ files/packages touched
 schema/migration impact
 API/service impact (Next.js route handlers, POI service)
 UI impact
-test strategy (Vitest + RTL + tsc --noEmit; Playwright E2E post-MVP)
+test strategy (Vitest + RTL + tsc --noEmit; REAL-DB integration via
+  npm run test:integration for SQL/migration/DB-backed flows; Playwright E2E post-MVP)
 required doc updates
 ```
 
@@ -46,8 +47,8 @@ Size execution by consequence using the Execution tiers table in `.agents/workfl
 Prefer slices that produce a verifiable result:
 
 ```text
-schema migration + unit test
-API route + unit test
+schema migration + real-DB integration test (npm run test:integration)
+API route + unit test (+ integration test when it touches SQL/DB flows)
 MapKit component + Playwright flow
 POI Worker + unit test against wrangler dev
 upload pipeline + fixture images
@@ -60,6 +61,8 @@ Each slice should have a clear validation artifact:
 ```text
 typecheck (tsc --noEmit)
 Vitest unit/component tests
+REAL-DB integration (npm run test:integration) — REQUIRED for changes touching
+  web/db/migrations/*.sql, embedded SQL, or DB-backed lib flows
 Playwright e2e flow (post-MVP)
 production build (next build)
 wrangler dev smoke for the POI service

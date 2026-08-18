@@ -42,6 +42,12 @@ Layer 1 (deterministic, CI-enforced):
 | `scripts/check-codex-agents.sh` | `.codex/` TOML shape and required values |
 | `scripts/harness-self-test.sh` | Fault-injection self-test of the gates |
 
+Slices declaring the `integration` test gate additionally require the package-level
+real-Postgres suite (`cd web && npm run test:integration`, RUN_INTEGRATION=1) green
+on the final diff — deterministic harness checks cannot validate SQL semantics, so
+migrations/triggers/DB flows must be proven on a real Postgres/PostGIS
+(`docker compose up -d`; see `docs/agent/local-dev-stack.md`).
+
 Layer 2 (semantic, human/independent-agent): `.agents/docs-semantic-review.md` applied to `.agents/scripts/docs-review-packet.sh <base>` whenever docs, harness, or agent configuration files change. Deterministic CI does not attest semantic review.
 
 Supporting tools:

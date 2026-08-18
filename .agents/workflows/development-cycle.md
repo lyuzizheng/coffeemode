@@ -29,6 +29,14 @@ than restating the criteria.
 | Standard | Feature, bugfix, refactor | preflight + CI (typecheck, lint, test, build) green before merge | Agent, one independent role for material evidence |
 | High | Architecture, spec change, migration, auth/security/secrets, deployment, harness authority | preflight + CI + independent review on the final stable diff | Independent reviewer; agent cannot self-approve |
 
+When the slice declares the `integration` gate — any change touching
+`web/db/migrations/`, embedded SQL, or DB-backed flows — the gates for its tier
+ALSO include `npm run test:integration` green on the final diff (real
+Postgres/PostGIS via `docker compose up -d`; see `docs/agent/local-dev-stack.md`).
+Reasoning-only SQL validation never satisfies a declared `integration` gate.
+User-visible flows additionally require e2e coverage once Playwright lands
+(post-MVP); until then the rendered-page smoke gate is the browser-level floor.
+
 Risk follows consequences, not line count. Independent of tier, any change
 touching `docs/`, `.agents/`, root `AGENTS.md`, or the docs-harness CI workflow
 also triggers the semantic-review gate (see the "Bias to action" exception in

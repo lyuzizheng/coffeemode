@@ -14,10 +14,33 @@ Accepted
 
 ```text
 Unit:        Vitest + React Testing Library for components, hooks, utils
-Integration: Vitest for API routes with mocked backend
+Integration: two kinds —
+             a) API routes with mocked backend (fast, default)
+             b) REAL-DB integration (Vitest against docker-compose Postgres/PostGIS):
+                migrations 0001→0008, triggers, SQL semantics, DB-backed lib flows.
+                Opt-in via RUN_INTEGRATION=1 (web/tests/integration); skipped in
+                plain `npm test`. Stack: docker-compose.yml + web/scripts/migrate.mjs —
+                see docs/agent/local-dev-stack.md.
 E2E:         Playwright for critical user flows (map, search, cafe detail) — post-MVP
 Visual:      Playwright screenshots for key surfaces (optional, not blocking —
              pixel baselines; distinct from the blocking rendered-page smoke gate below)
+```
+
+### When real-DB integration is required
+
+```text
+ANY change that touches:
+  - web/db/migrations/*.sql          (every migration must apply + its triggers work)
+  - SQL embedded in web/lib/**       (CTEs, triggers, transactions — unit mocks
+                                      cannot see snapshot/trigger semantics)
+  - DB-backed lib flows               (toggleCheckInLike, stats aggregation, fused
+                                      cafe+checkin tx, image-upload intents)
+MUST declare the `integration` test gate on its slice and run
+`npm run test:integration` green locally (or extend the suite when the behavior
+is not yet covered). Reasoning-only SQL validation is not acceptable.
+
+E2E (Playwright) is required for user-visible flows once the UI exists; until
+then the rendered-page smoke gate (check:visual) is the browser-level floor.
 ```
 
 ### Test policy
@@ -87,6 +110,11 @@ A feature is not done until:
 npm run typecheck       TypeScript check
 npm run lint            ESLint
 npm run test            Vitest unit tests
+npm run db:migrate      apply web/db/migrations/*.sql to the compose Postgres
+                        (scripts/migrate.mjs; tracked in schema_migrations)
+npm run test:integration  real-Postgres integration suite (RUN_INTEGRATION=1);
+                        provisions + drops a throwaway coffeemode_test DB;
+                        skipped in plain `npm test`
 npm run check:i18n      en/zh message-catalog key parity (scripts/check-i18n.mjs)
 npm run check:visual    rendered-page smoke: production build + Playwright chromium over
                         the public route matrix (scripts/visual-smoke.mjs); not in verify —
@@ -142,6 +170,9 @@ npm run verify          check:i18n + typecheck + lint + test + build (the full g
 
 ```text
 - npm run verify runs typecheck + lint + test + build in one command
+- npm run test:integration validates migrations + triggers + DB flows against a
+  real Postgres/PostGIS (docker-compose), opt-in so CI without Docker stays green
+- Every migration change ships with a green integration run (no reasoning-only SQL)
 - CI runs on every PR and blocks merge on failure
 - No live backend or API key dependency in CI
 - Docs changes trigger the docs harness gate

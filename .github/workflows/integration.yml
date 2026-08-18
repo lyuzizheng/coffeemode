@@ -1,12 +1,8 @@
 name: Integration
 
 on:
+  # This check is required on main, so it must emit a result for every PR.
   pull_request:
-    paths:
-      - "docker-compose.yml"
-      - "web/**"
-      - ".github/workflows/application.yml"
-      - ".github/workflows/integration.yml"
   push:
     branches:
       - main
@@ -28,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgis/postgis:16-3.4
+        image: postgis/postgis:16-3.4@sha256:44126d872ac91993766c341e369c539e8196614321765d36a6f1bab0419a5fa5
         env:
           POSTGRES_USER: coffeemode
           POSTGRES_PASSWORD: coffeemode

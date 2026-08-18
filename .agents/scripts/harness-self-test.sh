@@ -122,6 +122,23 @@ grep -v 'preflight\|harness-self-test\|check-docs' "$WF.bak" > "$WF"
 expect_failure "docs-harness missing preflight" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-workflow.sh"
 mv "$WF.bak" "$WF"
 
+# Remove the real-DB command from the required integration workflow.
+IWF="$TEST_ROOT/.github/workflows/integration.yml"
+cp "$IWF" "$IWF.bak"
+grep -v 'test:integration' "$IWF.bak" > "$IWF"
+if assert_mutated "integration command missing" "$IWF.bak" "$IWF"; then
+  expect_failure "integration workflow missing real-DB command" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-workflow.sh"
+fi
+mv "$IWF.bak" "$IWF"
+
+# Remove the all-PR trigger; a required check must not be path-filtered away.
+cp "$IWF" "$IWF.bak"
+grep -v '^  pull_request:$' "$IWF.bak" > "$IWF"
+if assert_mutated "integration pull_request trigger missing" "$IWF.bak" "$IWF"; then
+  expect_failure "integration workflow missing all-PR trigger" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-workflow.sh"
+fi
+mv "$IWF.bak" "$IWF"
+
 echo ""
 echo "=== Fault injection: check-implementation-slices ==="
 

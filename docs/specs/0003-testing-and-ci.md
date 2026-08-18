@@ -132,12 +132,14 @@ npm run verify          check:i18n + typecheck + lint + test + build (the full g
   concurrency: cancel superseded runs
 
 .github/workflows/integration.yml:
-  triggers: PR + push to main (web/**, docker-compose.yml, application/integration workflows)
-  steps: pinned PostGIS service, npm ci, npm run test:integration
+  triggers: every PR (required check) + push to main for web/**, docker-compose.yml,
+            application/integration workflow changes
+  steps: digest-pinned PostGIS service, npm ci, npm run test:integration
   notes: real-DB gate provisions a throwaway coffeemode_test database and does not
          require live backend credentials, Google APIs, or MinIO
-  harness check: check-ci-workflow.sh requires the PostGIS image, integration command,
-                 and superseded-run cancellation policy
+  harness check: check-ci-workflow.sh requires the digest-pinned PostGIS image,
+                 integration command, DB URL, health check, all-PR trigger, and
+                 superseded-run cancellation policy
 
 .github/workflows/visual.yml:
   triggers: PR + push to main (web/**, .github/workflows/visual.yml)

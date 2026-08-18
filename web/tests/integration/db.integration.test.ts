@@ -48,7 +48,7 @@ const describeDb = RUN_INTEGRATION ? describe : describe.skip;
 
 const DEFAULT_DB_URL = "postgres://coffeemode:coffeemode@localhost:5432/coffeemode";
 const TEST_DB = `coffeemode_test_${process.pid}_${randomUUID().replaceAll("-", "")}`;
-const LOCAL_DB_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+const LOCAL_DB_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 const WEB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 // Fixed UUIDs so tests are self-describing.

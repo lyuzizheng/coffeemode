@@ -7,6 +7,28 @@ entries here; when it grows past that, move the oldest dated sections verbatim
 into `docs/agent/progress-log-archive.md` (newest-first) and leave this file with
 the recent tail. Archive history, never delete it.
 
+## 2026-08-18 (local dev stack — real Postgres integration testing)
+
+- Closed the "SQL validated by reasoning only" gap with a real local test stack:
+  - `docker-compose.yml`: postgis/postgis:16-3.4 (Postgres on :5432) + MinIO
+    (R2 stand-in, S3 API :9000) + one-shot bucket init.
+  - `web/scripts/migrate.mjs`: migration runner — applies `web/db/migrations/*.sql`
+    0001→0008 in order inside transactions, tracked in `schema_migrations`;
+    `npm run db:migrate`.
+  - `web/tests/integration/db.integration.test.ts`: opt-in real-DB suite
+    (`npm run test:integration` = `RUN_INTEGRATION=1`); provisions and drops a
+    throwaway `coffeemode_test` DB, verifies all 8 migrations + PostGIS + both
+    checkin_likes triggers, like toggle (like/unlike/self-like/legacy un-like),
+    0008 trigger rejection on direct inserts, 0004 sync on direct/cascade
+    writes, fused cafe+checkin tx + work_stats, recordNavigation. Skipped
+    automatically in plain `npm test`.
+  - `image-service`: optional `R2_ENDPOINT` env overrides the hardcoded
+    *.r2.cloudflarestorage.com endpoint for presigned PUTs and the complete
+    flow's HEAD check, so MinIO works as a local R2; production behavior
+    unchanged when unset.
+  - `docs/agent/local-dev-stack.md`: full local chain — compose, migrations,
+    integration tests, `wrangler dev` for both workers, web env wiring.
+
 ## 2026-08-18 (issue #107 no-self-like)
 
 - Fixed `fix/issue-107-no-self-like`: authors can no longer like their own check-ins (owner decision, adopted #108's DB-invariant + legacy-cleanup details).

@@ -84,8 +84,13 @@ function integrationAdminUrl(): string {
   return url.toString();
 }
 
-async function provisionTestDatabase(): Promise<string> {
-  const adminUrl = integrationAdminUrl();
+function testDatabaseUrl(adminUrl: string): string {
+  const url = new URL(adminUrl);
+  url.pathname = `/${TEST_DB}`;
+  return url.toString();
+}
+
+async function provisionTestDatabase(adminUrl: string): Promise<void> {
   const admin = new pg.Client({ connectionString: adminUrl });
   await admin.connect();
   try {
@@ -94,9 +99,6 @@ async function provisionTestDatabase(): Promise<string> {
   } finally {
     await admin.end();
   }
-  const url = new URL(adminUrl);
-  url.pathname = `/${TEST_DB}`;
-  return url.toString();
 }
 
 /** Apply migrations using the same runner the CLI uses (dogfooding). */
@@ -180,9 +182,10 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
   beforeAll(async () => {
     // Capture the ADMIN (maintenance DB) URL BEFORE mutating DATABASE_URL —
     // afterAll must connect to the maintenance DB to drop the test DB, not to
-    // coffeemode_test itself ("cannot drop the currently open database").
+    // the test database itself ("cannot drop the currently open database").
     adminDbUrl = integrationAdminUrl();
-    testDbUrl = await provisionTestDatabase();
+    testDbUrl = testDatabaseUrl(adminDbUrl);
+    await provisionTestDatabase(adminDbUrl);
     runMigrations(testDbUrl);
     // Point the app's shared pool at the test DB before any lib call.
     process.env.DATABASE_URL = testDbUrl;
@@ -203,11 +206,14 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     process.env.DATABASE_URL =
       "postgres://coffeemode:coffeemode@localhost:5432/coffeemode?host=remote.example";
     delete process.env.ALLOW_REMOTE_INTEGRATION_DB;
-    expect(() => integrationAdminUrl()).toThrow(/overridden host/);
-    if (original === undefined) delete process.env.DATABASE_URL;
-    else process.env.DATABASE_URL = original;
-    if (originalOptIn === undefined) delete process.env.ALLOW_REMOTE_INTEGRATION_DB;
-    else process.env.ALLOW_REMOTE_INTEGRATION_DB = originalOptIn;
+    try {
+      expect(() => integrationAdminUrl()).toThrow(/overridden host/);
+    } finally {
+      if (original === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = original;
+      if (originalOptIn === undefined) delete process.env.ALLOW_REMOTE_INTEGRATION_DB;
+      else process.env.ALLOW_REMOTE_INTEGRATION_DB = originalOptIn;
+    }
   });
 
   afterAll(async () => {

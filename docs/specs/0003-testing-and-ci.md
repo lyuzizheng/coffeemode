@@ -131,6 +131,16 @@ npm run verify          check:i18n + typecheck + lint + test + build (the full g
   steps: npm ci, npm run typecheck, npm run lint, npm run check:i18n, npm run test, npm run build
   concurrency: cancel superseded runs
 
+.github/workflows/integration.yml:
+  triggers: every PR (required check) + push to main for web/**, docker-compose.yml,
+            application/integration workflow changes
+  steps: digest-pinned PostGIS service, npm ci, npm run test:integration
+  notes: real-DB gate provisions a throwaway coffeemode_test database and does not
+         require live backend credentials, Google APIs, or MinIO
+  harness check: check-ci-workflow.sh requires the digest-pinned PostGIS image,
+                 integration command, DB URL, health check, all-PR trigger, and
+                 superseded-run cancellation policy
+
 .github/workflows/visual.yml:
   triggers: PR + push to main (web/**, .github/workflows/visual.yml)
   steps: npm ci, npm run build, playwright install chromium, npm run check:visual,
@@ -173,7 +183,7 @@ npm run verify          check:i18n + typecheck + lint + test + build (the full g
 - npm run test:integration validates migrations + triggers + DB flows against a
   real Postgres/PostGIS (docker-compose), opt-in so CI without Docker stays green
 - Every migration change ships with a green integration run (no reasoning-only SQL)
-- CI runs on every PR and blocks merge on failure
+- CI runs the relevant application and integration gates on every PR and blocks merge on failure
 - No live backend or API key dependency in CI
 - Docs changes trigger the docs harness gate
 - Consequence-based execution prevents over-engineering small changes

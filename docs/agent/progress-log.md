@@ -29,6 +29,13 @@ the recent tail. Archive history, never delete it.
   - `docs/agent/local-dev-stack.md`: full local chain — compose, migrations,
     integration tests, `wrangler dev` for both workers, web env wiring.
 
+## 2026-08-18 (issue #117 integration CI gate)
+
+- Added `.github/workflows/integration.yml`: a pinned PostGIS service runs `web`'s real-DB integration suite on PRs and pushes to `main` for web/database/integration changes.
+- Extended `.agents/scripts/check-ci-workflow.sh` to fail if the integration workflow, digest-pinned PostGIS/test/DB URL/health/all-PR/cancellation contract is removed; `harness-self-test.sh` now fault-injects the integration workflow too.
+- Updated `docs/specs/0003-testing-and-ci.md` and `docs/agent/current-state.md` so the real-DB requirement is enforced by CI, not only documented or run locally.
+- Registered `issue-117-integration-ci-gate` in `docs/agent/implementation-slices.md` with the `integration` gate.
+
 ## 2026-08-18 (harness: integration/e2e gates institutionalized)
 
 - Made real-DB integration testing a first-class gate for future agents:

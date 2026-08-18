@@ -60,6 +60,33 @@ else
   fail=1
 fi
 
+echo "Checking integration.yml enforces the real-DB gate..."
+if [ -f .github/workflows/integration.yml ]; then
+  for requirement in "postgis/postgis:" "@sha256:" "test:integration" "cancel-in-progress: true" "DATABASE_URL:" "pg_isready"; do
+    if ! grep -q "$requirement" .github/workflows/integration.yml; then
+      echo "integration.yml missing requirement: $requirement"
+      fail=1
+    fi
+  done
+  if grep -q 'continue-on-error:[[:space:]]*true' .github/workflows/integration.yml; then
+    echo "integration.yml must not allow integration failures"
+    fail=1
+  fi
+  if ! grep -q '^  pull_request:$' .github/workflows/integration.yml; then
+    echo "integration.yml must emit a check for every pull request"
+    fail=1
+  else
+    pull_request_block="$(awk '/^  pull_request:/{inside=1; next} inside && /^  [A-Za-z0-9_-]+:/{exit} inside{print}' .github/workflows/integration.yml)"
+    if printf '%s\n' "$pull_request_block" | grep -q '^    paths:'; then
+      echo "integration.yml pull_request trigger must not be path-filtered when required"
+      fail=1
+    fi
+  fi
+else
+  echo "integration.yml missing"
+  fail=1
+fi
+
 echo "Checking action versions are not deprecated..."
 for wf in .github/workflows/*.yml; do
   [ -f "$wf" ] || continue

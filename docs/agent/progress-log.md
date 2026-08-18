@@ -36,6 +36,11 @@ the recent tail. Archive history, never delete it.
 - Updated `docs/specs/0003-testing-and-ci.md` and `docs/agent/current-state.md` so the real-DB requirement is enforced by CI, not only documented or run locally.
 - Registered `issue-117-integration-ci-gate` in `docs/agent/implementation-slices.md` with the `integration` gate.
 
+## 2026-08-18 (issue #118 integration suite safety)
+
+- Hardened `web/tests/integration/db.integration.test.ts`: per-run local test DB names, non-local host refusal unless explicitly opted in, fail-visible cleanup, hard per-test seed isolation, soft-delete coverage, profile-cascade likes_count coverage, stored navigation assertions, and non-empty photo/upload-intent persistence coverage.
+- Updated `docs/agent/local-dev-stack.md` to wait for healthy Postgres and document the unique test database and cleanup safety.
+
 ## 2026-08-18 (harness: integration/e2e gates institutionalized)
 
 - Made real-DB integration testing a first-class gate for future agents:

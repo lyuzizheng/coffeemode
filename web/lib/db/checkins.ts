@@ -322,6 +322,7 @@ WITH checkin AS (
 deleted AS (
   DELETE FROM checkin_likes
   WHERE user_id = $1 AND checkin_id = $2
+    AND checkin_id IN (SELECT id FROM checkin)
   RETURNING id
 ),
 inserted AS (
@@ -332,24 +333,11 @@ inserted AS (
     AND (SELECT user_id FROM checkin) <> $1
   RETURNING id
 )
-UPDATE checkins
-SET
-  -- NOT a table scan: a data-modifying CTE's writes are invisible to the
-  -- main query (one shared statement snapshot — Postgres WITH semantics),
-  -- so a count(*) from checkin_likes here would always read the PRE-toggle
-  -- value. Arithmetic on the CTE OUTPUTS (visible) + the row's own
-  -- pre-update likes_count (visible) is always correct. The 0004 sync
-  -- trigger computes the same value in its own sub-statement snapshot.
-  likes_count = likes_count
-    + (SELECT count(*)::int FROM inserted)
-    - (SELECT count(*)::int FROM deleted),
-  updated_at = now()
-WHERE id = (SELECT id FROM checkin)
-RETURNING
-  likes_count,
-  (SELECT count(*)::int FROM deleted) AS deleted_count,
+SELECT
+  (SELECT count(*)::int FROM checkin) AS checkin_count,
   (SELECT count(*)::int FROM inserted) AS inserted_count,
-  ((SELECT user_id FROM checkin) = $1) AS is_author
+  (SELECT count(*)::int FROM deleted) AS deleted_count,
+  (SELECT user_id FROM checkin) = $1 AS is_author
 `;
 
 function validateIds(userId: string, checkinId: string) {
@@ -381,14 +369,14 @@ export async function toggleCheckInLike(
 
   return withTransaction(async (client: PoolClient) => {
     const result = await client.query<{
-      likes_count: number;
-      deleted_count: number;
+      checkin_count: number;
       inserted_count: number;
-      is_author: boolean;
+      deleted_count: number;
+      is_author: boolean | null;
     }>(TOGGLE_LIKE_SQL, [userId, checkinId]);
 
     const row = result.rows[0];
-    if (!row) {
+    if (!row || row.checkin_count === 0) {
       throw new CheckInNotFoundError();
     }
 
@@ -396,9 +384,17 @@ export async function toggleCheckInLike(
       throw new SelfLikeError();
     }
 
+    // The 0004 AFTER trigger has already recomputed likes_count in its own
+    // sub-statement snapshot. Read the now-committed value in a separate
+    // statement so we never update the same checkins row twice in one query.
+    const { rows: countRows } = await client.query<{ likes_count: number }>(
+      "SELECT likes_count FROM checkins WHERE id = $1",
+      [checkinId],
+    );
+
     return {
       liked: row.inserted_count > 0,
-      likesCount: row.likes_count,
+      likesCount: countRows[0]?.likes_count ?? 0,
     };
   });
 }

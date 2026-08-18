@@ -12,6 +12,7 @@ Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisi
 - Issue #24's likes_count trigger is merged (#57); #24 stays open for JSONB normalization.
 - Issue #27 (work_stats row locking) is merged (#56).
 - Issue #117 adds CI enforcement for the real-DB integration suite; the local suite is green.
+- Issue #118 hardens the real-DB suite against unsafe database targets and order-dependent coverage.
 - Next unblocked feature work is `map-home` (Apple MapKit full-screen map), which is blocked on the Apple Developer Program.
 
 ## What exists
@@ -78,7 +79,7 @@ _archive-coffeemode-backend/   old Java app — being dropped
 
 ```text
 - NEXT_PUBLIC_SUPABASE_ANON_KEY not set (only URL + service-role present locally)
-- DATABASE_URL (self-hosted Postgres) not configured for production anywhere (local dev uses `docker compose up` + `npm run db:migrate`, see `docs/agent/local-dev-stack.md`)
+- DATABASE_URL (self-hosted Postgres) not configured for production anywhere (local dev uses `docker compose up -d --wait postgres` + `npm run db:migrate`, see `docs/agent/local-dev-stack.md`)
 - Supabase dashboard still needs Apple/Google OAuth provider config
 - Session-refresh proxy implemented (`web/proxy.ts`); first protected route can now rely on it
 - Postgres pool tuned with configurable `max`, idle/connection timeouts, error handling, and a graceful shutdown hook registered via Next.js `instrumentation.ts`

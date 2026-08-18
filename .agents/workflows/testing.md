@@ -11,7 +11,7 @@ Use this workflow for testing and QA tasks.
    - pure utility/hook logic → unit tests (Vitest)
    - API route behavior with mocked backend → integration tests (fast, default)
    - **SQL / migrations / triggers / DB-backed flows → REAL-DB integration tests**
-     (`docker compose up -d` + `npm run test:integration` in `web/`) — required,
+     (`docker compose up -d --wait postgres` + `npm run test:integration` in `web/`) — required,
      not optional; unit mocks cannot see Postgres snapshot/trigger semantics.
    - user-visible flow → E2E (Playwright, post-MVP)
    - visual quality → screenshot comparison (optional, not blocking)
@@ -25,9 +25,9 @@ Use this workflow for testing and QA tasks.
 ## Running the real-DB suite
 
 ```text
-docker compose up -d          # postgis/postgis + MinIO (repo root)
+docker compose up -d --wait postgres  # Postgres service (repo root)
 cd web && npm run db:migrate  # apply 0001→0008 (idempotent)
-npm run test:integration      # RUN_INTEGRATION=1; provisions + drops coffeemode_test
+npm run test:integration      # RUN_INTEGRATION=1; provisions + drops a per-run local DB
 ```
 
 Full local-stack guide: `docs/agent/local-dev-stack.md`.

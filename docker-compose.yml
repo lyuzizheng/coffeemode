@@ -6,7 +6,8 @@
 #   - sharp image processing:               plain Node (VPS-side code runs natively)
 #
 # Usage:
-#   docker compose up -d               # start postgres + minio (+ minio-init)
+#   docker compose up -d --wait postgres minio  # start and wait for long-lived services
+#   docker compose run --rm minio-init          # create the local bucket
 #   cd web && npm run db:migrate       # apply web/db/migrations/* against it
 #   cd web && npm run test:integration # real-DB integration suite (RUN_INTEGRATION=1)
 #
@@ -36,7 +37,7 @@ services:
   # (aws4fetch); with R2_ENDPOINT=http://localhost:9000 it targets MinIO,
   # which accepts the same signatures R2 does.
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: coffeemode
@@ -50,9 +51,10 @@ services:
   # One-shot: create the bucket and make reads anonymous (mirrors an R2
   # public bucket, so R2_PUBLIC_URL=http://localhost:9000/coffeemode works).
   minio-init:
-    image: minio/mc:latest
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
     depends_on:
       - minio
+    restart: on-failure:3
     entrypoint: |
       /bin/sh -c "
       for i in $(seq 1 30); do

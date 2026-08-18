@@ -113,8 +113,9 @@ npm run test            Vitest unit tests
 npm run db:migrate      apply web/db/migrations/*.sql to the compose Postgres
                         (scripts/migrate.mjs; tracked in schema_migrations)
 npm run test:integration  real-Postgres integration suite (RUN_INTEGRATION=1);
-                        provisions + drops a throwaway coffeemode_test DB;
-                        skipped in plain `npm test`
+                         provisions + drops a per-run local throwaway DB;
+                         refuses non-local/overridden hosts unless explicitly opted in;
+                         cleanup failures fail the run; skipped in plain `npm test`
 npm run check:i18n      en/zh message-catalog key parity (scripts/check-i18n.mjs)
 npm run check:visual    rendered-page smoke: production build + Playwright chromium over
                         the public route matrix (scripts/visual-smoke.mjs); not in verify —
@@ -135,8 +136,8 @@ npm run verify          check:i18n + typecheck + lint + test + build (the full g
   triggers: every PR (required check) + push to main for web/**, docker-compose.yml,
             application/integration workflow changes
   steps: digest-pinned PostGIS service, npm ci, npm run test:integration
-  notes: real-DB gate provisions a throwaway coffeemode_test database and does not
-         require live backend credentials, Google APIs, or MinIO
+  notes: real-DB gate provisions a per-run local database, fails visible on cleanup
+         errors, and does not require live backend credentials, Google APIs, or MinIO
   harness check: check-ci-workflow.sh requires the digest-pinned PostGIS image,
                  integration command, DB URL, health check, all-PR trigger, and
                  superseded-run cancellation policy

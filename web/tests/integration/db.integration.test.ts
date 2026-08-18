@@ -3,7 +3,7 @@
  *
  * Requires a running local Postgres (docker-compose.yml) and is opt-in:
  *
- *   docker compose up -d            # postgis/postgis on :5432
+ *   docker compose up -d --wait postgres # postgis/postgis on :5432
  *   npm run test:integration        # = RUN_INTEGRATION=1 vitest run ...
  *
  * What this verifies that unit tests cannot:
@@ -17,6 +17,7 @@
  * Without RUN_INTEGRATION=1 every spec here is skipped, so `npm test`
  * (plain unit suite) stays green on machines without Docker.
  */
+import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,13 +37,18 @@ import {
   listCafesNearby,
 } from "@/lib/db/cafes";
 import { recordNavigation } from "@/lib/db/navigations";
-import { closePool } from "@/lib/db/postgres";
+import { checkUploadIntent, consumeUploadIntent, recordUploadIntent } from "@/lib/db/image-uploads";
+import type { ProcessUrls } from "@/lib/images/image-service-client";
+import type { ProcessedImage } from "@/lib/images/processor";
+import type { ProvisionPhotosDeps } from "@/lib/images/provision-photos";
+import { closePool, getPoolConfig } from "@/lib/db/postgres";
 
 const RUN_INTEGRATION = process.env.RUN_INTEGRATION === "1";
 const describeDb = RUN_INTEGRATION ? describe : describe.skip;
 
 const DEFAULT_DB_URL = "postgres://coffeemode:coffeemode@localhost:5432/coffeemode";
-const TEST_DB = "coffeemode_test";
+const TEST_DB = `coffeemode_test_${process.pid}_${randomUUID().replaceAll("-", "")}`;
+const LOCAL_DB_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 const WEB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 // Fixed UUIDs so tests are self-describing.
@@ -53,21 +59,48 @@ const CHECKIN_A1 = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55";
 
 let testDbUrl = "";
 let adminDbUrl = "";
-let dbClient: pg.Client; // raw seeding connection (independent of the app pool)
+let dbClient!: pg.Client; // raw seeding connection (independent of the app pool)
+const previousDatabaseUrl = process.env.DATABASE_URL;
 
-async function provisionTestDatabase(): Promise<string> {
-  const adminUrl = process.env.DATABASE_URL ?? DEFAULT_DB_URL;
-  const admin = new pg.Client({ connectionString: adminUrl });
-  await admin.connect();
-  try {
-    await admin.query(`drop database if exists ${TEST_DB} with (force)`);
-    await admin.query(`create database ${TEST_DB}`);
-  } finally {
-    await admin.end();
+function quotedIdentifier(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+function integrationAdminUrl(): string {
+  const raw = process.env.DATABASE_URL ?? DEFAULT_DB_URL;
+  const url = new URL(raw);
+  const remoteOptIn = process.env.ALLOW_REMOTE_INTEGRATION_DB === "1";
+  const hasConnectionHostOverride = ["host", "hostaddr", "socketPath"].some((name) =>
+    url.searchParams.has(name),
+  );
+  const isLocalHost =
+    url.hostname === "" || LOCAL_DB_HOSTS.has(url.hostname);
+  if (
+    !remoteOptIn &&
+    (hasConnectionHostOverride || !isLocalHost)
+  ) {
+    throw new Error(
+      `Refusing real-DB integration against non-local or overridden host ${url.hostname || "(empty)"}; set ALLOW_REMOTE_INTEGRATION_DB=1 only for an explicitly disposable test server`,
+    );
   }
+  return url.toString();
+}
+
+function testDatabaseUrl(adminUrl: string): string {
   const url = new URL(adminUrl);
   url.pathname = `/${TEST_DB}`;
   return url.toString();
+}
+
+async function provisionTestDatabase(adminUrl: string): Promise<void> {
+  const admin = new pg.Client(getPoolConfig(adminUrl));
+  await admin.connect();
+  try {
+    await admin.query(`drop database if exists ${quotedIdentifier(TEST_DB)} with (force)`);
+    await admin.query(`create database ${quotedIdentifier(TEST_DB)}`);
+  } finally {
+    await admin.end();
+  }
 }
 
 /** Apply migrations using the same runner the CLI uses (dogfooding). */
@@ -97,6 +130,42 @@ async function seedBaseData(): Promise<void> {
   );
 }
 
+function fakeProcessUrls(imageUuid: string): ProcessUrls {
+  const keys = {
+    original: `original/${imageUuid}.webp`,
+    card: `card/${imageUuid}.webp`,
+    thumbnail: `thumbnail/${imageUuid}.webp`,
+  };
+  const signed = (key: string) => ({ url: `http://images.test/${key}`, headers: {} });
+  return {
+    imageUuid,
+    original: signed(keys.original),
+    originalPut: signed(keys.original),
+    card: signed(keys.card),
+    thumbnail: signed(keys.thumbnail),
+    publicUrls: {
+      original: `http://images.test/${keys.original}`,
+      card: `http://images.test/${keys.card}`,
+      thumbnail: `http://images.test/${keys.thumbnail}`,
+    },
+    keys,
+  };
+}
+
+function fakeProvisionPhotosDeps(): ProvisionPhotosDeps {
+  return {
+    checkUploadIntent,
+    consumeUploadIntent,
+    getProcessUrls: async ({ imageUuid }) => fakeProcessUrls(imageUuid),
+    processImage: async (imageUuid: string): Promise<ProcessedImage> => ({
+      imageUuid,
+      publicUrls: fakeProcessUrls(imageUuid).publicUrls,
+      width: 800,
+      height: 600,
+    }),
+  };
+}
+
 interface WorkStatsShape {
   n_users: number;
   n_checkins: number;
@@ -111,37 +180,83 @@ async function cafeWorkStats(cafeId: string): Promise<WorkStatsShape> {
   return rows[0].work_stats as WorkStatsShape;
 }
 
-describeDb("integration — real Postgres/PostGIS (docker compose up -d)", () => {
+describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait postgres)", () => {
   beforeAll(async () => {
     // Capture the ADMIN (maintenance DB) URL BEFORE mutating DATABASE_URL —
     // afterAll must connect to the maintenance DB to drop the test DB, not to
-    // coffeemode_test itself ("cannot drop the currently open database").
-    adminDbUrl = process.env.DATABASE_URL ?? DEFAULT_DB_URL;
-    testDbUrl = await provisionTestDatabase();
+    // the test database itself ("cannot drop the currently open database").
+    adminDbUrl = integrationAdminUrl();
+    testDbUrl = testDatabaseUrl(adminDbUrl);
+    await provisionTestDatabase(adminDbUrl);
     runMigrations(testDbUrl);
     // Point the app's shared pool at the test DB before any lib call.
     process.env.DATABASE_URL = testDbUrl;
-    dbClient = new pg.Client({ connectionString: testDbUrl });
+    dbClient = new pg.Client(getPoolConfig(testDbUrl));
     await dbClient.connect();
-    await seedBaseData();
   }, 120_000);
 
-  // Soft isolation: each test starts with no likes on CHECKIN_A1, so a
-  // regression in one toggle test cannot cascade into the next.
+  // Hard isolation: reset all rows that can be mutated by a test, then seed
+  // the same baseline. Tests do not depend on declaration order.
   beforeEach(async () => {
-    await dbClient?.query("delete from checkin_likes where checkin_id = $1", [CHECKIN_A1]);
+    // A legacy self-like test temporarily disables this trigger; re-enable it
+    // before truncation so the table state is deterministic.
+    await dbClient.query("alter table checkin_likes enable trigger all");
+    await dbClient.query(
+      "truncate table profiles, cafes, rate_limits, image_upload_intents, navigations restart identity cascade",
+    );
+    await seedBaseData();
+  });
+
+  it("rejects a local-looking URL with a remote effective host override", () => {
+    const original = process.env.DATABASE_URL;
+    const originalOptIn = process.env.ALLOW_REMOTE_INTEGRATION_DB;
+    process.env.DATABASE_URL =
+      "postgres://coffeemode:coffeemode@localhost:5432/coffeemode?host=remote.example";
+    delete process.env.ALLOW_REMOTE_INTEGRATION_DB;
+    try {
+      expect(() => integrationAdminUrl()).toThrow(/overridden host/);
+    } finally {
+      if (original === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = original;
+      if (originalOptIn === undefined) delete process.env.ALLOW_REMOTE_INTEGRATION_DB;
+      else process.env.ALLOW_REMOTE_INTEGRATION_DB = originalOptIn;
+    }
   });
 
   afterAll(async () => {
-    await closePool().catch(() => {});
-    await dbClient?.end().catch(() => {});
+    const errors: unknown[] = [];
+    try {
+      await closePool();
+    } catch (error) {
+      errors.push(error);
+    }
+    try {
+      await dbClient?.end();
+    } catch (error) {
+      errors.push(error);
+    }
     if (RUN_INTEGRATION && testDbUrl) {
-      const admin = new pg.Client({ connectionString: adminDbUrl });
-      await admin.connect().catch(() => null);
-      await admin
-        .query(`drop database if exists ${TEST_DB} with (force)`)
-        .catch(() => null);
-      await admin.end().catch(() => {});
+      const admin = new pg.Client(getPoolConfig(adminDbUrl));
+      try {
+        await admin.connect();
+        await admin.query(`drop database if exists ${quotedIdentifier(TEST_DB)} with (force)`);
+      } catch (error) {
+        errors.push(error);
+      } finally {
+        try {
+          await admin.end();
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+    }
+    if (previousDatabaseUrl === undefined) {
+      delete process.env.DATABASE_URL;
+    } else {
+      process.env.DATABASE_URL = previousDatabaseUrl;
+    }
+    if (errors.length > 0) {
+      throw new AggregateError(errors, "real-DB integration cleanup failed");
     }
   });
 
@@ -207,6 +322,9 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d)", () =>
       await expect(
         toggleCheckInLike(U2, "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a00"),
       ).rejects.toBeInstanceOf(CheckInNotFoundError);
+
+      await dbClient.query("update checkins set deleted_at = now() where id = $1", [CHECKIN_A1]);
+      await expect(toggleCheckInLike(U2, CHECKIN_A1)).rejects.toBeInstanceOf(CheckInNotFoundError);
     });
   });
 
@@ -223,11 +341,14 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d)", () =>
     it("legacy self-like rows (pre-0008) can still be un-liked via the toggle", async () => {
       // Simulate a row written before migration 0008 existed.
       await dbClient.query("alter table checkin_likes disable trigger trg_checkin_likes_no_self");
-      await dbClient.query(
-        "insert into checkin_likes (user_id, checkin_id) values ($1, $2)",
-        [U1, CHECKIN_A1],
-      );
-      await dbClient.query("alter table checkin_likes enable trigger trg_checkin_likes_no_self");
+      try {
+        await dbClient.query(
+          "insert into checkin_likes (user_id, checkin_id) values ($1, $2)",
+          [U1, CHECKIN_A1],
+        );
+      } finally {
+        await dbClient.query("alter table checkin_likes enable trigger trg_checkin_likes_no_self");
+      }
 
       const legacy = await toggleCheckInLike(U1, CHECKIN_A1);
       expect(legacy).toEqual({ liked: false, likesCount: 0 });
@@ -253,6 +374,8 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d)", () =>
     });
 
     it("createCafeWithFirstCheckIn fuses cafe + first check-in + stats and dedupes", async () => {
+      const photoId = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a66";
+      await recordUploadIntent(U1, photoId);
       const created = await createCafeWithFirstCheckIn(U1, {
         name: "New Cafe",
         lat: 1.35,
@@ -264,10 +387,51 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d)", () =>
           min_spend: "drink",
           max_stay: "unlimited",
           note: "nice",
-          photo_ids: [],
+          photo_ids: [photoId],
         },
-      });
+      }, fakeProvisionPhotosDeps());
       expect(created.tz).toBe("Asia/Singapore");
+
+      const storedCheckIn = await dbClient.query(
+        "select is_creation, photos from checkins where id = $1",
+        [created.checkinId],
+      );
+      expect(storedCheckIn.rows[0].is_creation).toBe(true);
+      expect(storedCheckIn.rows[0].photos).toEqual([
+        expect.objectContaining({
+          id: photoId,
+          original: expect.any(String),
+          card: expect.any(String),
+          thumbnail: expect.any(String),
+          w: 800,
+          h: 600,
+          by: U1,
+          at: expect.any(String),
+          source: { type: "checkin", id: created.checkinId },
+        }),
+      ]);
+
+      const storedGallery = await dbClient.query("select gallery from cafes where id = $1", [
+        created.cafeId,
+      ]);
+      expect(storedGallery.rows[0].gallery).toEqual([
+        expect.objectContaining({
+          id: photoId,
+          original: expect.any(String),
+          card: expect.any(String),
+          thumbnail: expect.any(String),
+          w: 800,
+          h: 600,
+          by: U1,
+          at: expect.any(String),
+          source: { type: "checkin", id: created.checkinId },
+        }),
+      ]);
+      const consumedIntent = await dbClient.query(
+        "select image_uuid from image_upload_intents where image_uuid = $1",
+        [photoId],
+      );
+      expect(consumedIntent.rows).toHaveLength(0);
 
       const stats = await cafeWorkStats(created.cafeId);
       expect(stats.n_users).toBe(1);
@@ -307,6 +471,17 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d)", () =>
       expect(nav.resolved).toBe(false);
       expect(nav.created_at).toBeTruthy();
 
+      const stored = await dbClient.query(
+        "select cafe_id, user_id, resolved, created_at from navigations where id = $1",
+        [nav.id],
+      );
+      expect(stored.rows[0]).toEqual({
+        cafe_id: CAFE_A,
+        user_id: U2,
+        resolved: false,
+        created_at: nav.created_at,
+      });
+
       await expect(
         recordNavigation(U2, "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a00"),
       ).rejects.toBeInstanceOf(CafeNotFoundError);
@@ -324,14 +499,19 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d)", () =>
       );
       expect(rows[0].likes_count).toBe(1);
 
-      // Deleting the check-in cascades the like row; the trigger re-syncs.
-      // DESTRUCTIVE: deletes the seeded check-in — must run after every test
-      // that reads CHECKIN_A1 (this describe is last).
-      await dbClient.query("delete from checkins where id = $1", [CHECKIN_A1]);
-      const after = await dbClient.query("select likes_count from checkins where id = $1", [
-        CHECKIN_A1,
-      ]);
-      expect(after.rows).toHaveLength(0); // check-in gone
+      // Deleting the liking profile cascades the like row while the check-in
+      // survives; the trigger must re-sync the counter to zero.
+      await dbClient.query("delete from profiles where id = $1", [U2]);
+      const after = await dbClient.query(
+        "select likes_count from checkins where id = $1",
+        [CHECKIN_A1],
+      );
+      expect(after.rows[0].likes_count).toBe(0);
+      const remainingLikes = await dbClient.query(
+        "select count(*)::int as n from checkin_likes where checkin_id = $1",
+        [CHECKIN_A1],
+      );
+      expect(remainingLikes.rows[0].n).toBe(0);
     });
   });
 });

@@ -60,6 +60,19 @@ else
   fail=1
 fi
 
+echo "Checking integration.yml enforces the real-DB gate..."
+if [ -f .github/workflows/integration.yml ]; then
+  for requirement in "postgis/postgis" "test:integration" "cancel-in-progress: true"; do
+    if ! grep -q "$requirement" .github/workflows/integration.yml; then
+      echo "integration.yml missing requirement: $requirement"
+      fail=1
+    fi
+  done
+else
+  echo "integration.yml missing"
+  fail=1
+fi
+
 echo "Checking action versions are not deprecated..."
 for wf in .github/workflows/*.yml; do
   [ -f "$wf" ] || continue

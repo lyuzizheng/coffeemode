@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { headObject } from "../src/r2";
 import handler, { handleComplete, handleUpload } from "../src/index";
 import { MAX_UPLOAD_BYTES } from "../src/constants";
 import { baseEnv } from "./helpers";
@@ -334,5 +335,30 @@ describe("metadata sanitization", () => {
     expect(data.originalPut.headers["x-amz-meta-userid"]).toBe("user-id");
     expect(data.originalPut.headers["x-amz-meta-targettype"]).toBe("cafe");
     expect(data.originalPut.headers["x-amz-meta-targetid"]).toBe("c1");
+  });
+});
+
+describe("headObject with R2_ENDPOINT (MinIO dev path)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("HEADs via the S3 client and returns { size } on 200", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 200, headers: { "content-length": "42" } })),
+    );
+    const env = { ...baseEnv(), R2_ENDPOINT: "http://localhost:9000/" };
+    const result = await headObject(env, "original/abc.webp");
+    expect(result).toEqual({ size: 42 });
+
+    const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    // trailing slash stripped; bucket + key appended
+    expect(url).toBe("http://localhost:9000/cafemode/original/abc.webp");
+    expect(init.method).toBe("HEAD");
+  });
+
+  it("returns null on a non-2xx (missing object / NoSuchBucket)", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("NoSuchBucket", { status: 404 })));
+    const env = { ...baseEnv(), R2_ENDPOINT: "http://localhost:9000" };
+    expect(await headObject(env, "original/abc.webp")).toBeNull();
   });
 });

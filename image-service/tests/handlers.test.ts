@@ -357,8 +357,13 @@ describe("headObject with R2_ENDPOINT (MinIO dev path)", () => {
   });
 
   it("returns null on a non-2xx (missing object / NoSuchBucket)", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("NoSuchBucket", { status: 404 })));
+    const fetchMock = vi.fn(async () => new Response("NoSuchBucket", { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
     const env = { ...baseEnv(), R2_ENDPOINT: "http://localhost:9000" };
     expect(await headObject(env, "original/abc.webp")).toBeNull();
+    // branch-discriminating: the S3 client path must have been taken
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [input] = fetchMock.mock.calls[0];
+    expect((input as Request).url).toBe("http://localhost:9000/cafemode/original/abc.webp");
   });
 });

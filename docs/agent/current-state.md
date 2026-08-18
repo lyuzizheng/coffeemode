@@ -15,6 +15,8 @@ Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisi
 - Issue #74 merges the post-review P1 fixes for PRs #66–#73 (OAuth redirect allowlist, proxy session refresh, profile upsert failure, sign-out cache clearing, and upstream POI/image error logging).
 - Issue #117 adds CI enforcement for the real-DB integration suite; the local suite is green.
 - Issue #118 hardens the real-DB suite against unsafe database targets and order-dependent coverage.
+- Issue #119 preserves image-service storage failures instead of mapping them to `not_found`.
+- Real MinIO/R2 upload -> HEAD -> complete coverage remains a separate follow-up; the current integration gate is Postgres-only.
 - Next unblocked feature work is `map-home` (Apple MapKit full-screen map), which is blocked on the Apple Developer Program.
 
 ## What exists

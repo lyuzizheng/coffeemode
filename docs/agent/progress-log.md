@@ -41,6 +41,12 @@ the recent tail. Archive history, never delete it.
 - Hardened `web/tests/integration/db.integration.test.ts`: per-run local test DB names, non-local host refusal unless explicitly opted in, fail-visible cleanup, hard per-test seed isolation, soft-delete coverage, profile-cascade likes_count coverage, stored navigation assertions, and non-empty photo/upload-intent persistence coverage.
 - Updated `docs/agent/local-dev-stack.md` to wait for healthy Postgres and document the unique test database and cleanup safety.
 
+## 2026-08-18 (issue #119 R2 HEAD error semantics)
+
+- `image-service/src/r2.ts`: `headObject` now returns `null` only for HTTP 404 and throws `R2HeadObjectError` for other non-2xx storage responses.
+- `image-service/tests/handlers.test.ts`: covers missing objects, storage status classes, and the route's sanitized 500 envelope.
+- Real MinIO/R2 upload -> HEAD -> complete remains explicitly outside this fix and the Postgres-only CI integration gate.
+
 ## 2026-08-18 (harness: integration/e2e gates institutionalized)
 
 - Made real-DB integration testing a first-class gate for future agents:

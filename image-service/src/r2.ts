@@ -23,6 +23,14 @@ function r2Client(env: Env): AwsClient {
   });
 }
 
+/** A storage response other than a missing object. */
+export class R2HeadObjectError extends Error {
+  constructor(readonly status: number, message?: string) {
+    super(message ?? `R2 HEAD failed with status ${status}`);
+    this.name = "R2HeadObjectError";
+  }
+}
+
 /**
  * HEAD an object and return its size, or null when missing.
  *
@@ -36,9 +44,20 @@ export async function headObject(
   key: string,
 ): Promise<{ size: number } | null> {
   if (env.R2_ENDPOINT) {
-    const res = await r2Client(env).fetch(r2Endpoint(env, key), { method: "HEAD" });
-    if (!res.ok) return null;
-    const size = Number(res.headers.get("content-length") ?? "0");
+    const res = await r2Client(env).fetch(r2Endpoint(env, key), {
+      method: "HEAD",
+      redirect: "manual",
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new R2HeadObjectError(res.status);
+    const contentLength = res.headers.get("content-length");
+    if (contentLength === null) {
+      throw new R2HeadObjectError(res.status, "R2 HEAD succeeded but omitted Content-Length");
+    }
+    const size = Number(contentLength);
+    if (Number.isNaN(size) || size < 0) {
+      throw new R2HeadObjectError(res.status, `R2 HEAD returned invalid Content-Length: ${contentLength}`);
+    }
     return { size };
   }
   const head = await env.R2_BUCKET.head(key);

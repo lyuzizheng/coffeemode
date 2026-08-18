@@ -6,7 +6,8 @@
 #   - sharp image processing:               plain Node (VPS-side code runs natively)
 #
 # Usage:
-#   docker compose up -d               # start postgres + minio (+ minio-init)
+#   docker compose up -d --wait postgres minio  # start and wait for long-lived services
+#   docker compose run --rm minio-init          # create the local bucket
 #   cd web && npm run db:migrate       # apply web/db/migrations/* against it
 #   cd web && npm run test:integration # real-DB integration suite (RUN_INTEGRATION=1)
 #

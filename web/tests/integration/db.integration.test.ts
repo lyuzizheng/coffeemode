@@ -3,7 +3,7 @@
  *
  * Requires a running local Postgres (docker-compose.yml) and is opt-in:
  *
- *   docker compose up -d            # postgis/postgis on :5432
+ *   docker compose up -d --wait postgres # postgis/postgis on :5432
  *   npm run test:integration        # = RUN_INTEGRATION=1 vitest run ...
  *
  * What this verifies that unit tests cannot:
@@ -69,9 +69,16 @@ function quotedIdentifier(value: string): string {
 function integrationAdminUrl(): string {
   const raw = process.env.DATABASE_URL ?? DEFAULT_DB_URL;
   const url = new URL(raw);
-  if (!LOCAL_DB_HOSTS.has(url.hostname) && process.env.ALLOW_REMOTE_INTEGRATION_DB !== "1") {
+  const remoteOptIn = process.env.ALLOW_REMOTE_INTEGRATION_DB === "1";
+  const hasConnectionHostOverride = ["host", "hostaddr", "socketPath"].some((name) =>
+    url.searchParams.has(name),
+  );
+  if (
+    !remoteOptIn &&
+    (hasConnectionHostOverride || !LOCAL_DB_HOSTS.has(url.hostname))
+  ) {
     throw new Error(
-      `Refusing real-DB integration against non-local host ${url.hostname}; set ALLOW_REMOTE_INTEGRATION_DB=1 only for an explicitly disposable test server`,
+      `Refusing real-DB integration against non-local or overridden host ${url.hostname}; set ALLOW_REMOTE_INTEGRATION_DB=1 only for an explicitly disposable test server`,
     );
   }
   return url.toString();
@@ -169,7 +176,7 @@ async function cafeWorkStats(cafeId: string): Promise<WorkStatsShape> {
   return rows[0].work_stats as WorkStatsShape;
 }
 
-describeDb("integration — real Postgres/PostGIS (docker compose up -d)", () => {
+describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait postgres)", () => {
   beforeAll(async () => {
     // Capture the ADMIN (maintenance DB) URL BEFORE mutating DATABASE_URL —
     // afterAll must connect to the maintenance DB to drop the test DB, not to
@@ -188,6 +195,19 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d)", () =>
   beforeEach(async () => {
     await dbClient.query("truncate table profiles, cafes restart identity cascade");
     await seedBaseData();
+  });
+
+  it("rejects a local-looking URL with a remote effective host override", () => {
+    const original = process.env.DATABASE_URL;
+    const originalOptIn = process.env.ALLOW_REMOTE_INTEGRATION_DB;
+    process.env.DATABASE_URL =
+      "postgres://coffeemode:coffeemode@localhost:5432/coffeemode?host=remote.example";
+    delete process.env.ALLOW_REMOTE_INTEGRATION_DB;
+    expect(() => integrationAdminUrl()).toThrow(/overridden host/);
+    if (original === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = original;
+    if (originalOptIn === undefined) delete process.env.ALLOW_REMOTE_INTEGRATION_DB;
+    else process.env.ALLOW_REMOTE_INTEGRATION_DB = originalOptIn;
   });
 
   afterAll(async () => {

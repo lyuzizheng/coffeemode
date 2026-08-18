@@ -17,7 +17,8 @@ integration suite in this doc exercises them against a real database.
 ## 1. Postgres + MinIO (one command)
 
 ```bash
-docker compose up -d --wait   # wait for postgres health; minio S3:9000 / console:9001
+docker compose up -d --wait postgres minio  # wait for Postgres + MinIO health
+docker compose run --rm minio-init          # create the local bucket after MinIO is ready
 ```
 
 | Service | Image | Defaults |

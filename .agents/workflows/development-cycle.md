@@ -32,7 +32,7 @@ than restating the criteria.
 When the slice declares the `integration` gate — any change touching
 `web/db/migrations/`, embedded SQL, or DB-backed flows — the gates for its tier
 ALSO include `npm run test:integration` green on the final diff (real
-Postgres/PostGIS via `docker compose up -d`; see `docs/agent/local-dev-stack.md`).
+Postgres/PostGIS via `docker compose up -d --wait postgres`; see `docs/agent/local-dev-stack.md`).
 Reasoning-only SQL validation never satisfies a declared `integration` gate.
 User-visible flows additionally require e2e coverage once Playwright lands
 (post-MVP); until then the rendered-page smoke gate is the browser-level floor.

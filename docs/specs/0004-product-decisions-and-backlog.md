@@ -31,7 +31,7 @@ Four read-only subagent reviews ran in parallel against the current `main` tree 
 ### Check-in & social semantics
 
 7. **"Every review is a check-in" stays literal.** No separate `reviews` table in MVP. A `checkins` row carries scores, policies, note, and photos.
-8. **Likes affect comment sorting and预留 scoring weight design space.** A `checkin_likes` table (unique `user_id` + `checkin_id`) is included in the MVP schema. The check-in note list is sorted by a hot-rank that mixes likes and recency. `work_stats` scoring keeps the slider-only signal by default (`social_weight = 0`) but exposes a tunable hook so likes can influence the composite weight later without a schema migration.
+8. **Likes affect comment sorting and预留 scoring weight design space.** A `checkin_likes` table (unique `user_id` + `checkin_id`) is included in the MVP schema. The check-in note list is sorted by a hot-rank that mixes likes and recency. `work_stats` scoring keeps the slider-only signal by default (`social_weight = 0`) but exposes a tunable hook so likes can influence the composite weight later without a schema migration. **Self-likes are not allowed** (owner, 2026-08-18): an author cannot like their own check-in, so `likes_count` and any future weighted signal stay social-only. Enforced in `toggleCheckInLike` (issue #107) and by a `checkin_likes` BEFORE INSERT trigger (migration 0008) for every write path.
 9. **Check-in `note` is a one-off review snippet.** Threaded replies are post-MVP.
 10. **`/profile` shows both "My Cafes" and "My Check-ins".** "My Cafes" = distinct cafes the user has checked into at least once (derived from `checkins`), ordered by latest visit. Because creation is the first check-in, every cafe created by the user appears here. A "created by me" badge is shown where `is_creation=true`. "My Check-ins" = all check-in rows for the user, newest `visited_at` first.
 11. **Browsing/view history is out of MVP scope.** If needed, use lightweight client-side recent views; server-side history is post-MVP.
@@ -168,6 +168,7 @@ These need Apple MapKit and the bottom sheet.
 | Nearby search radius > 10 km | Cap at 10 km; for wider discovery use city search + filters. |
 | Image upload > 10 MB | Presigned PUT rejects; UI shows size error before upload. |
 | Duplicate `checkin_likes` row | Upsert/toggle: insert or delete; keep `likes_count` on `checkins` in sync via atomic update. |
+| User likes their own check-in | Rejected: `POST /api/checkins/[id]/like` returns `403 self_like_forbidden`; a `checkin_likes` BEFORE INSERT trigger blocks self-likes for every writer, and un-liking a legacy self-like is still allowed. Migration 0008 retroactively deletes pre-existing self-likes (with `likes_count` kept in sync by the 0004 DELETE trigger). |
 
 ## Open questions requiring owner decision
 
@@ -182,6 +183,7 @@ These need Apple MapKit and the bottom sheet.
 - [ ] `/api/cafes` POST returns `409` for duplicate `google_place_id` and creates cafe + check-in for new POI.
 - [ ] `/api/checkins` POST handles repeat-visit recency weighting and `social_weight = 0` by default.
 - [ ] `/api/checkins/[id]/like` toggles like and updates `likes_count` without race conditions.
+- [ ] `/api/checkins/[id]/like` rejects self-likes with `403 self_like_forbidden` and still toggles other users' check-ins.
 - [ ] Soft-deleted check-in hides its photos from `/cafes/[id]` gallery.
 - [ ] `/api/search` city + filters returns results and respects filter thresholds.
 - [ ] Lighthouse performance score ≥ 80 on `/` and `/cafes/[id]` before public beta.

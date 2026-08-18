@@ -3,7 +3,10 @@ import type { Env, PresignedUrl } from "./types";
 import { DEFAULT_UPLOAD_URL_TTL_SECONDS } from "./constants";
 
 export function r2Endpoint(env: Env, key: string): string {
-  return `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${env.R2_BUCKET_NAME}/${key}`;
+  const base = env.R2_ENDPOINT
+    ? env.R2_ENDPOINT.replace(/\/+$/, "")
+    : `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
+  return `${base}/${env.R2_BUCKET_NAME}/${key}`;
 }
 
 export function publicUrl(env: Env, key: string): string {
@@ -18,6 +21,29 @@ function r2Client(env: Env): AwsClient {
     accessKeyId: env.R2_ACCESS_KEY_ID,
     secretAccessKey: env.R2_SECRET_ACCESS_KEY,
   });
+}
+
+/**
+ * HEAD an object and return its size, or null when missing.
+ *
+ * Local dev (R2_ENDPOINT set, e.g. MinIO) goes through the S3 client so the
+ * existence/size check sees the same store the presigned uploads hit;
+ * otherwise it uses the R2 binding (production, wrangler dev with local R2
+ * simulation).
+ */
+export async function headObject(
+  env: Env,
+  key: string,
+): Promise<{ size: number } | null> {
+  if (env.R2_ENDPOINT) {
+    const res = await r2Client(env).fetch(r2Endpoint(env, key), { method: "HEAD" });
+    if (!res.ok) return null;
+    const size = Number(res.headers.get("content-length") ?? "0");
+    return { size };
+  }
+  const head = await env.R2_BUCKET.head(key);
+  if (!head) return null;
+  return { size: head.size };
 }
 
 export function ttlSeconds(env: Env): number {

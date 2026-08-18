@@ -363,7 +363,7 @@ describe("headObject with R2_ENDPOINT (MinIO dev path)", () => {
     expect(await headObject(env, "original/abc.webp")).toBeNull();
     // branch-discriminating: the S3 client path must have been taken
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [input] = fetchMock.mock.calls[0];
+    const [input] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
     expect((input as Request).url).toBe("http://localhost:9000/cafemode/original/abc.webp");
   });
 });

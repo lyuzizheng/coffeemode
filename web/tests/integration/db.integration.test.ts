@@ -21,7 +21,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   CafeNotFoundError,
   CheckInNotFoundError,
@@ -52,6 +52,7 @@ const CAFE_A = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44";
 const CHECKIN_A1 = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55";
 
 let testDbUrl = "";
+let adminDbUrl = "";
 let dbClient: pg.Client; // raw seeding connection (independent of the app pool)
 
 async function provisionTestDatabase(): Promise<string> {
@@ -112,6 +113,10 @@ async function cafeWorkStats(cafeId: string): Promise<WorkStatsShape> {
 
 describeDb("integration — real Postgres/PostGIS (docker compose up -d)", () => {
   beforeAll(async () => {
+    // Capture the ADMIN (maintenance DB) URL BEFORE mutating DATABASE_URL —
+    // afterAll must connect to the maintenance DB to drop the test DB, not to
+    // coffeemode_test itself ("cannot drop the currently open database").
+    adminDbUrl = process.env.DATABASE_URL ?? DEFAULT_DB_URL;
     testDbUrl = await provisionTestDatabase();
     runMigrations(testDbUrl);
     // Point the app's shared pool at the test DB before any lib call.
@@ -121,13 +126,17 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d)", () =>
     await seedBaseData();
   }, 120_000);
 
+  // Soft isolation: each test starts with no likes on CHECKIN_A1, so a
+  // regression in one toggle test cannot cascade into the next.
+  beforeEach(async () => {
+    await dbClient?.query("delete from checkin_likes where checkin_id = $1", [CHECKIN_A1]);
+  });
+
   afterAll(async () => {
     await closePool().catch(() => {});
     await dbClient?.end().catch(() => {});
     if (RUN_INTEGRATION && testDbUrl) {
-      const admin = new pg.Client({
-        connectionString: process.env.DATABASE_URL ?? DEFAULT_DB_URL,
-      });
+      const admin = new pg.Client({ connectionString: adminDbUrl });
       await admin.connect().catch(() => null);
       await admin
         .query(`drop database if exists ${TEST_DB} with (force)`)

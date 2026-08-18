@@ -301,6 +301,14 @@ export class CheckInNotFoundError extends Error {
   }
 }
 
+/** Thrown when the caller tries to like their own check-in (issue #107). */
+export class SelfLikeError extends Error {
+  constructor() {
+    super("You cannot like your own check-in");
+    this.name = "SelfLikeError";
+  }
+}
+
 export interface ToggleLikeResult {
   liked: boolean;
   likesCount: number;
@@ -308,7 +316,7 @@ export interface ToggleLikeResult {
 
 const TOGGLE_LIKE_SQL = `
 WITH checkin AS (
-  SELECT id FROM checkins WHERE id = $2 AND deleted_at IS NULL FOR UPDATE
+  SELECT id, user_id FROM checkins WHERE id = $2 AND deleted_at IS NULL FOR UPDATE
 ),
 deleted AS (
   DELETE FROM checkin_likes
@@ -320,6 +328,7 @@ inserted AS (
   SELECT $1, $2
   WHERE NOT EXISTS (SELECT 1 FROM deleted)
     AND EXISTS (SELECT 1 FROM checkin)
+    AND (SELECT user_id FROM checkin) <> $1
   RETURNING id
 )
 UPDATE checkins
@@ -330,7 +339,8 @@ WHERE id = (SELECT id FROM checkin)
 RETURNING
   likes_count,
   (SELECT count(*)::int FROM deleted) AS deleted_count,
-  (SELECT count(*)::int FROM inserted) AS inserted_count
+  (SELECT count(*)::int FROM inserted) AS inserted_count,
+  ((SELECT user_id FROM checkin) = $1) AS is_author
 `;
 
 function validateIds(userId: string, checkinId: string) {
@@ -346,6 +356,13 @@ function validateIds(userId: string, checkinId: string) {
  * Returns `{ liked: true, likesCount }` when the like was added and
  * `{ liked: false, likesCount }` when it was removed. Throws
  * `CheckInNotFoundError` if the check-in does not exist or is soft-deleted.
+ *
+ * Self-likes are not allowed (issue #107): the insert is gated on
+ * `caller <> checkins.user_id`, so liking your own check-in throws
+ * `SelfLikeError`. Un-liking a legacy self-like row written before the rule
+ * still works — it is cleaned up and `liked` comes back `false`. Migration
+ * 0008's BEFORE INSERT trigger is the same rule at the DB level for any
+ * writer that bypasses this function.
  */
 export async function toggleCheckInLike(
   userId: string,
@@ -358,11 +375,16 @@ export async function toggleCheckInLike(
       likes_count: number;
       deleted_count: number;
       inserted_count: number;
+      is_author: boolean;
     }>(TOGGLE_LIKE_SQL, [userId, checkinId]);
 
     const row = result.rows[0];
     if (!row) {
       throw new CheckInNotFoundError();
+    }
+
+    if (row.is_author && row.deleted_count === 0) {
+      throw new SelfLikeError();
     }
 
     return {

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CafeNotFoundError,
   CheckInNotFoundError,
+  SelfLikeError,
   createCheckIn,
   parseCheckInBody,
   toggleCheckInLike,
@@ -302,7 +303,7 @@ describe("toggleCheckInLike", () => {
 
   it("returns liked=true with the updated count when a like is inserted", async () => {
     clientQueryMock.mockResolvedValueOnce({
-      rows: [{ likes_count: 7, deleted_count: 0, inserted_count: 1 }],
+      rows: [{ likes_count: 7, deleted_count: 0, inserted_count: 1, is_author: false }],
     });
 
     const result = await toggleCheckInLike(USER.id, CHECKIN);
@@ -313,17 +314,43 @@ describe("toggleCheckInLike", () => {
     expect(sql).toContain("DELETE FROM checkin_likes");
     expect(sql).toContain("deleted_at IS NULL");
     expect(sql).toContain("FOR UPDATE");
+    // issue #107: the inserted CTE gates on caller <> check-in author.
+    expect(sql).toContain("user_id FROM checkin");
+    expect(sql).toContain("<> $1");
     expect(params).toEqual([USER.id, CHECKIN]);
   });
 
   it("returns liked=false with the updated count when a like is removed", async () => {
     clientQueryMock.mockResolvedValueOnce({
-      rows: [{ likes_count: 4, deleted_count: 1, inserted_count: 0 }],
+      rows: [{ likes_count: 4, deleted_count: 1, inserted_count: 0, is_author: false }],
     });
 
     const result = await toggleCheckInLike(USER.id, CHECKIN);
 
     expect(result).toEqual({ liked: false, likesCount: 4 });
+  });
+
+  it("throws SelfLikeError when the caller likes their own check-in (issue #107)", async () => {
+    // A blocked like attempt: nothing deleted, nothing inserted, and the
+    // locked checkin CTE reports the caller as the author.
+    clientQueryMock.mockResolvedValueOnce({
+      rows: [{ likes_count: 3, deleted_count: 0, inserted_count: 0, is_author: true }],
+    });
+
+    const err = await toggleCheckInLike(USER.id, CHECKIN).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SelfLikeError);
+    expect((err as Error).message).toMatch(/cannot like your own check-in/);
+  });
+
+  it("allows un-liking a legacy self-like row written before the rule", async () => {
+    // Un-like of a pre-existing self-like: the row is deleted, no re-insert.
+    clientQueryMock.mockResolvedValueOnce({
+      rows: [{ likes_count: 2, deleted_count: 1, inserted_count: 0, is_author: true }],
+    });
+
+    const result = await toggleCheckInLike(USER.id, CHECKIN);
+
+    expect(result).toEqual({ liked: false, likesCount: 2 });
   });
 
   it("throws CheckInNotFoundError when the check-in does not exist or is soft-deleted", async () => {
@@ -424,10 +451,19 @@ describe("POST /api/checkins/[id]/like", () => {
 
   it("200s with the toggle result", async () => {
     clientQueryMock.mockResolvedValueOnce({
-      rows: [{ likes_count: 7, deleted_count: 0, inserted_count: 1 }],
+      rows: [{ likes_count: 7, deleted_count: 0, inserted_count: 1, is_author: false }],
     });
     const res = await likePOST(...likeRequest(CHECKIN));
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ liked: true, likesCount: 7 });
+  });
+
+  it("403s self_like_forbidden when the caller is the check-in author", async () => {
+    clientQueryMock.mockResolvedValueOnce({
+      rows: [{ likes_count: 3, deleted_count: 0, inserted_count: 0, is_author: true }],
+    });
+    const res = await likePOST(...likeRequest(CHECKIN));
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toMatchObject({ error: "self_like_forbidden" });
   });
 });

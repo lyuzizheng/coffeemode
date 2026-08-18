@@ -7,6 +7,15 @@ entries here; when it grows past that, move the oldest dated sections verbatim
 into `docs/agent/progress-log-archive.md` (newest-first) and leave this file with
 the recent tail. Archive history, never delete it.
 
+## 2026-08-18 (issue #107 no-self-like)
+
+- Fixed `fix/issue-107-no-self-like`: authors can no longer like their own check-ins (owner decision, adopted #108's DB-invariant + legacy-cleanup details).
+  - `web/lib/db/checkins.ts`: `TOGGLE_LIKE_SQL` selects `checkins.user_id` in the locked CTE, gates the insert on `caller <> author`, and returns `is_author`; `toggleCheckInLike` throws `SelfLikeError` on a self-like attempt while still allowing the un-like of a legacy self-like row.
+  - `web/app/api/checkins/[id]/like/route.ts`: maps `SelfLikeError` → `403 { error: "self_like_forbidden" }`.
+  - `web/db/migrations/0008_no_self_likes.sql`: deletes pre-existing self-likes and adds a `BEFORE INSERT` trigger (`trg_checkin_likes_no_self`) so the rule holds for every writer.
+  - `docs/specs/0004-product-decisions-and-backlog.md`: decision 8 records the rule; edge-case + acceptance rows updated.
+  - Tests in `web/tests/checkins.test.ts` cover self-like rejection, legacy un-like, and the 403 route path.
+
 ## 2026-08-10 (harness refinement)
 
 - Audited the agent harness (docs/CI/scripts/agent-config) and applied fixes on `chore/harness-refinement`:

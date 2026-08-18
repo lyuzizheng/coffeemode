@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
-import { CheckInNotFoundError, toggleCheckInLike } from "@/lib/db/checkins";
+import {
+  CheckInNotFoundError,
+  SelfLikeError,
+  toggleCheckInLike,
+} from "@/lib/db/checkins";
 import {
   CAFES_WRITE_RATE_LIMIT,
   getClientIdentifier,
@@ -13,7 +17,8 @@ import { isValidUUID } from "@shared/uuid";
  * POST /api/checkins/[id]/like
  * Toggle the current user's like on a check-in; the CTE keeps
  * checkins.likes_count in sync atomically. Returns {liked, likesCount}.
- * Requires auth; 404 when the check-in is missing or soft-deleted.
+ * Requires auth; 404 when the check-in is missing or soft-deleted;
+ * 403 self_like_forbidden when the caller tries to like their own check-in.
  */
 export async function POST(
   request: Request,
@@ -50,6 +55,12 @@ export async function POST(
       return NextResponse.json(
         { error: "not_found", message: "check-in not found" },
         { status: 404 },
+      );
+    }
+    if (err instanceof SelfLikeError) {
+      return NextResponse.json(
+        { error: "self_like_forbidden", message: "you cannot like your own check-in" },
+        { status: 403 },
       );
     }
     console.error("/api/checkins/[id]/like POST failed", err);

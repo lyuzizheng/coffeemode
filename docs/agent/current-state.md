@@ -20,7 +20,8 @@ web/                     Next.js 16 + HeroUI v3 + Tailwind v4 + next-intl (the a
 web/db/migrations/       0001_init.sql — 4-table schema (spec 0001);
                          0002_checkins_and_indexes.sql, 0003_rate_limits.sql,
                          0004_checkin_likes_trigger.sql, 0005_cafe_timezone.sql,
-                         0006_image_upload_intents.sql, 0007_checkins_spec_alignment.sql
+                         0006_image_upload_intents.sql, 0007_checkins_spec_alignment.sql,
+                         0008_no_self_likes.sql
 web/lib/auth/            Supabase server client (PKCE), profile upsert logic
 web/lib/db/              Postgres pool (server-side only), withTransaction, atomic like toggle,
                          cafes domain lib (fused create + first check-in + stats, nearby list, getCafe),

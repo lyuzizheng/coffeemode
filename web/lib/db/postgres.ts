@@ -30,8 +30,7 @@ function getBoolEnv(name: string, fallback: boolean): boolean {
   return fallback;
 }
 
-export function getPoolConfig(): PoolConfig {
-  const urlString = process.env.DATABASE_URL;
+export function getPoolConfig(urlString = process.env.DATABASE_URL): PoolConfig {
   if (!urlString) {
     throw new Error(
       "DATABASE_URL is not set. Point it at the self-hosted Postgres connection string (see web/.env.example).",

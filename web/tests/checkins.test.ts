@@ -303,28 +303,36 @@ describe("toggleCheckInLike", () => {
   });
 
   it("returns liked=true with the updated count when a like is inserted", async () => {
-    clientQueryMock.mockResolvedValueOnce({
-      rows: [{ likes_count: 7, deleted_count: 0, inserted_count: 1, is_author: false }],
-    });
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{ checkin_count: 1, inserted_count: 1, deleted_count: 0, is_author: false }],
+      })
+      .mockResolvedValueOnce({ rows: [{ likes_count: 7 }] });
 
     const result = await toggleCheckInLike(USER.id, CHECKIN);
 
     expect(result).toEqual({ liked: true, likesCount: 7 });
-    expect(clientQueryMock).toHaveBeenCalledOnce();
-    const [sql, params] = clientQueryMock.mock.calls[0];
-    expect(sql).toContain("DELETE FROM checkin_likes");
-    expect(sql).toContain("deleted_at IS NULL");
-    expect(sql).toContain("FOR UPDATE");
+    expect(clientQueryMock).toHaveBeenCalledTimes(2);
+    const [toggleSql, toggleParams] = clientQueryMock.mock.calls[0];
+    expect(toggleSql).toContain("DELETE FROM checkin_likes");
+    expect(toggleSql).toContain("deleted_at IS NULL");
+    expect(toggleSql).toContain("FOR UPDATE");
+    expect(toggleSql).toContain("checkin_id IN (SELECT id FROM checkin)");
     // issue #107: the inserted CTE gates on caller <> check-in author.
-    expect(sql).toContain("user_id FROM checkin");
-    expect(sql).toContain("<> $1");
-    expect(params).toEqual([USER.id, CHECKIN]);
+    expect(toggleSql).toContain("user_id FROM checkin");
+    expect(toggleSql).toContain("<> $1");
+    expect(toggleParams).toEqual([USER.id, CHECKIN]);
+    const [countSql, countParams] = clientQueryMock.mock.calls[1];
+    expect(countSql).toContain("SELECT likes_count");
+    expect(countParams).toEqual([CHECKIN]);
   });
 
   it("returns liked=false with the updated count when a like is removed", async () => {
-    clientQueryMock.mockResolvedValueOnce({
-      rows: [{ likes_count: 4, deleted_count: 1, inserted_count: 0, is_author: false }],
-    });
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{ checkin_count: 1, inserted_count: 0, deleted_count: 1, is_author: false }],
+      })
+      .mockResolvedValueOnce({ rows: [{ likes_count: 4 }] });
 
     const result = await toggleCheckInLike(USER.id, CHECKIN);
 
@@ -335,7 +343,7 @@ describe("toggleCheckInLike", () => {
     // A blocked like attempt: nothing deleted, nothing inserted, and the
     // locked checkin CTE reports the caller as the author.
     clientQueryMock.mockResolvedValueOnce({
-      rows: [{ likes_count: 3, deleted_count: 0, inserted_count: 0, is_author: true }],
+      rows: [{ checkin_count: 1, inserted_count: 0, deleted_count: 0, is_author: true }],
     });
 
     const err = await toggleCheckInLike(USER.id, CHECKIN).catch((e: unknown) => e);
@@ -345,9 +353,11 @@ describe("toggleCheckInLike", () => {
 
   it("allows un-liking a legacy self-like row written before the rule", async () => {
     // Un-like of a pre-existing self-like: the row is deleted, no re-insert.
-    clientQueryMock.mockResolvedValueOnce({
-      rows: [{ likes_count: 2, deleted_count: 1, inserted_count: 0, is_author: true }],
-    });
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{ checkin_count: 1, inserted_count: 0, deleted_count: 1, is_author: true }],
+      })
+      .mockResolvedValueOnce({ rows: [{ likes_count: 2 }] });
 
     const result = await toggleCheckInLike(USER.id, CHECKIN);
 
@@ -355,7 +365,9 @@ describe("toggleCheckInLike", () => {
   });
 
   it("throws CheckInNotFoundError when the check-in does not exist or is soft-deleted", async () => {
-    clientQueryMock.mockResolvedValueOnce({ rows: [] });
+    clientQueryMock.mockResolvedValueOnce({
+      rows: [{ checkin_count: 0, inserted_count: 0, deleted_count: 0, is_author: null }],
+    });
 
     const err = await toggleCheckInLike(USER.id, CHECKIN).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(CheckInNotFoundError);
@@ -444,16 +456,20 @@ describe("POST /api/checkins/[id]/like", () => {
   });
 
   it("404s when the check-in is missing or soft-deleted", async () => {
-    clientQueryMock.mockResolvedValueOnce({ rows: [] });
+    clientQueryMock.mockResolvedValueOnce({
+      rows: [{ checkin_count: 0, inserted_count: 0, deleted_count: 0, is_author: null }],
+    });
     const res = await likePOST(...likeRequest(CHECKIN));
     expect(res.status).toBe(404);
     await expect(res.json()).resolves.toMatchObject({ error: "not_found" });
   });
 
   it("200s with the toggle result", async () => {
-    clientQueryMock.mockResolvedValueOnce({
-      rows: [{ likes_count: 7, deleted_count: 0, inserted_count: 1, is_author: false }],
-    });
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{ checkin_count: 1, inserted_count: 1, deleted_count: 0, is_author: false }],
+      })
+      .mockResolvedValueOnce({ rows: [{ likes_count: 7 }] });
     const res = await likePOST(...likeRequest(CHECKIN));
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ liked: true, likesCount: 7 });
@@ -461,7 +477,7 @@ describe("POST /api/checkins/[id]/like", () => {
 
   it("403s self_like_forbidden when the caller is the check-in author", async () => {
     clientQueryMock.mockResolvedValueOnce({
-      rows: [{ likes_count: 3, deleted_count: 0, inserted_count: 0, is_author: true }],
+      rows: [{ checkin_count: 1, inserted_count: 0, deleted_count: 0, is_author: true }],
     });
     const res = await likePOST(...likeRequest(CHECKIN));
     expect(res.status).toBe(403);

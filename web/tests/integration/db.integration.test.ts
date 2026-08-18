@@ -41,7 +41,7 @@ import { checkUploadIntent, consumeUploadIntent, recordUploadIntent } from "@/li
 import type { ProcessUrls } from "@/lib/images/image-service-client";
 import type { ProcessedImage } from "@/lib/images/processor";
 import type { ProvisionPhotosDeps } from "@/lib/images/provision-photos";
-import { closePool } from "@/lib/db/postgres";
+import { closePool, getPoolConfig } from "@/lib/db/postgres";
 
 const RUN_INTEGRATION = process.env.RUN_INTEGRATION === "1";
 const describeDb = RUN_INTEGRATION ? describe : describe.skip;
@@ -73,12 +73,14 @@ function integrationAdminUrl(): string {
   const hasConnectionHostOverride = ["host", "hostaddr", "socketPath"].some((name) =>
     url.searchParams.has(name),
   );
+  const isLocalHost =
+    url.hostname === "" || LOCAL_DB_HOSTS.has(url.hostname);
   if (
     !remoteOptIn &&
-    (hasConnectionHostOverride || !LOCAL_DB_HOSTS.has(url.hostname))
+    (hasConnectionHostOverride || !isLocalHost)
   ) {
     throw new Error(
-      `Refusing real-DB integration against non-local or overridden host ${url.hostname}; set ALLOW_REMOTE_INTEGRATION_DB=1 only for an explicitly disposable test server`,
+      `Refusing real-DB integration against non-local or overridden host ${url.hostname || "(empty)"}; set ALLOW_REMOTE_INTEGRATION_DB=1 only for an explicitly disposable test server`,
     );
   }
   return url.toString();
@@ -91,7 +93,7 @@ function testDatabaseUrl(adminUrl: string): string {
 }
 
 async function provisionTestDatabase(adminUrl: string): Promise<void> {
-  const admin = new pg.Client({ connectionString: adminUrl });
+  const admin = new pg.Client(getPoolConfig(adminUrl));
   await admin.connect();
   try {
     await admin.query(`drop database if exists ${quotedIdentifier(TEST_DB)} with (force)`);
@@ -189,14 +191,19 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     runMigrations(testDbUrl);
     // Point the app's shared pool at the test DB before any lib call.
     process.env.DATABASE_URL = testDbUrl;
-    dbClient = new pg.Client({ connectionString: testDbUrl });
+    dbClient = new pg.Client(getPoolConfig(testDbUrl));
     await dbClient.connect();
   }, 120_000);
 
   // Hard isolation: reset all rows that can be mutated by a test, then seed
   // the same baseline. Tests do not depend on declaration order.
   beforeEach(async () => {
-    await dbClient.query("truncate table profiles, cafes restart identity cascade");
+    // A legacy self-like test temporarily disables this trigger; re-enable it
+    // before truncation so the table state is deterministic.
+    await dbClient.query("alter table checkin_likes enable trigger all");
+    await dbClient.query(
+      "truncate table profiles, cafes, rate_limits, image_upload_intents, navigations restart identity cascade",
+    );
     await seedBaseData();
   });
 
@@ -229,7 +236,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       errors.push(error);
     }
     if (RUN_INTEGRATION && testDbUrl) {
-      const admin = new pg.Client({ connectionString: adminDbUrl });
+      const admin = new pg.Client(getPoolConfig(adminDbUrl));
       try {
         await admin.connect();
         await admin.query(`drop database if exists ${quotedIdentifier(TEST_DB)} with (force)`);
@@ -334,11 +341,14 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     it("legacy self-like rows (pre-0008) can still be un-liked via the toggle", async () => {
       // Simulate a row written before migration 0008 existed.
       await dbClient.query("alter table checkin_likes disable trigger trg_checkin_likes_no_self");
-      await dbClient.query(
-        "insert into checkin_likes (user_id, checkin_id) values ($1, $2)",
-        [U1, CHECKIN_A1],
-      );
-      await dbClient.query("alter table checkin_likes enable trigger trg_checkin_likes_no_self");
+      try {
+        await dbClient.query(
+          "insert into checkin_likes (user_id, checkin_id) values ($1, $2)",
+          [U1, CHECKIN_A1],
+        );
+      } finally {
+        await dbClient.query("alter table checkin_likes enable trigger trg_checkin_likes_no_self");
+      }
 
       const legacy = await toggleCheckInLike(U1, CHECKIN_A1);
       expect(legacy).toEqual({ liked: false, likesCount: 0 });
@@ -390,9 +400,13 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(storedCheckIn.rows[0].photos).toEqual([
         expect.objectContaining({
           id: photoId,
-          by: U1,
+          original: expect.any(String),
+          card: expect.any(String),
+          thumbnail: expect.any(String),
           w: 800,
           h: 600,
+          by: U1,
+          at: expect.any(String),
           source: { type: "checkin", id: created.checkinId },
         }),
       ]);
@@ -401,7 +415,17 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         created.cafeId,
       ]);
       expect(storedGallery.rows[0].gallery).toEqual([
-        expect.objectContaining({ id: photoId, source: { type: "checkin", id: created.checkinId } }),
+        expect.objectContaining({
+          id: photoId,
+          original: expect.any(String),
+          card: expect.any(String),
+          thumbnail: expect.any(String),
+          w: 800,
+          h: 600,
+          by: U1,
+          at: expect.any(String),
+          source: { type: "checkin", id: created.checkinId },
+        }),
       ]);
       const consumedIntent = await dbClient.query(
         "select image_uuid from image_upload_intents where image_uuid = $1",
@@ -448,10 +472,15 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(nav.created_at).toBeTruthy();
 
       const stored = await dbClient.query(
-        "select cafe_id, user_id, resolved from navigations where id = $1",
+        "select cafe_id, user_id, resolved, created_at from navigations where id = $1",
         [nav.id],
       );
-      expect(stored.rows[0]).toEqual({ cafe_id: CAFE_A, user_id: U2, resolved: false });
+      expect(stored.rows[0]).toEqual({
+        cafe_id: CAFE_A,
+        user_id: U2,
+        resolved: false,
+        created_at: nav.created_at,
+      });
 
       await expect(
         recordNavigation(U2, "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a00"),

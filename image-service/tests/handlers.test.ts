@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { headObject } from "../src/r2";
 import handler, { handleComplete, handleUpload } from "../src/index";
 import { MAX_UPLOAD_BYTES } from "../src/constants";

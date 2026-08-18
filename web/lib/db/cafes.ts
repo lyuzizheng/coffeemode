@@ -315,7 +315,8 @@ export async function createCafeWithFirstCheckIn(
 
       // The first check-in's photos auto-merge into the gallery too (spec 0001).
       const photos = photosWithSource(provisioned, checkinId);
-      await client.query(SET_FIRST_CHECKIN_PHOTOS_SQL, [JSON.stringify(photos), checkinId]);
+      // $1 = checkin id, $2 = photos JSON (the SET clause's $2::jsonb).
+      await client.query(SET_FIRST_CHECKIN_PHOTOS_SQL, [checkinId, JSON.stringify(photos)]);
       await client.query(MERGE_GALLERY_SQL, [cafeId, JSON.stringify(photos)]);
 
       const inSameTx: RunInTransaction = (fn) =>

@@ -8,7 +8,7 @@ import { SignOutButton } from "@/app/auth/sign-out-button";
 import { AuthCallbackError } from "@/app/auth/auth-callback-error";
 
 // Scaffold-stage home page. The real surface is a full-screen Apple Map with
-// a bottom sheet (slice: map-home). Until then this page is the honest first
+// a map-bound discovery sheet (slices: map-home, map-discovery-integration). Until then this page is the honest first
 // impression: what the tool is, how it works, and sign-in only when it can
 // actually work — never a wall in front of value, never a dead button.
 export default async function HomePage({

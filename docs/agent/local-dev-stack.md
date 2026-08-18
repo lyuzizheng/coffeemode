@@ -1,0 +1,109 @@
+# Local Dev Stack — Real Postgres + Local Workers
+
+How to run CoffeeMode's full chain locally without any Cloudflare/R2/Supabase
+credentials: a real Postgres/PostGIS via Docker, MinIO as an R2 stand-in, and
+both Workers under `wrangler dev` (workerd).
+
+Why this exists: migrations 0001–0008 and the `checkin_likes` triggers were
+previously validated by reasoning only (no live Postgres anywhere). The
+integration suite in this doc exercises them against a real database.
+
+## Prerequisites
+
+- Docker (compose v2). macOS: OrbStack or Docker Desktop.
+- Node 22+ (`web/`, `poi-service/`, `image-service/` each have their own
+  `node_modules`).
+
+## 1. Postgres + MinIO (one command)
+
+```bash
+docker compose up -d          # postgres:5432, minio S3:9000 / console:9001
+```
+
+| Service | Image | Defaults |
+| --- | --- | --- |
+| postgres | `postgis/postgis:16-3.4` | `postgres://coffeemode:coffeemode@localhost:5432/coffeemode` (superuser) |
+| minio | `minio/minio` | access key `coffeemode` / secret `coffeemode123`, S3 API on `:9000`, console on `:9001` |
+| minio-init | `minio/mc` | creates bucket `coffeemode` + anonymous read (mirrors a public R2 bucket) |
+
+## 2. Migrations + integration tests
+
+```bash
+cd web
+npm run db:migrate            # applies web/db/migrations/*.sql 0001→0008 in order
+npm run test:integration      # = RUN_INTEGRATION=1 vitest run tests/integration
+```
+
+- `test:integration` provisions a throwaway database (`coffeemode_test`),
+  applies every migration through the same runner, and verifies on real SQL:
+  all 8 migrations + PostGIS + both `checkin_likes` triggers; the like toggle
+  (like/unlike/self-like 403/legacy un-like); the 0008 no-self trigger on
+  direct inserts; the 0004 sync trigger on direct and cascade writes; the
+  fused cafe+first-check-in transaction with `work_stats`; `recordNavigation`.
+- The test DB is dropped afterwards (`coffeemode_test`).
+- Plain `npm test` (unit suite) skips the integration file automatically —
+  machines without Docker stay green.
+
+## 3. Workers locally (`wrangler dev`)
+
+Both workers run on the host via workerd; no Cloudflare account needed.
+
+### poi-service (Google POI cache: KV + D1)
+
+```bash
+cd poi-service
+# Secrets — create image-service/.dev.vars (gitignored), dummy values fine:
+#   POI_SERVICE_TOKEN=local-dev-token
+#   GOOGLE_PLACES_API_KEY=dummy
+wrangler d1 migrations apply poi-store --local   # apply migrations/0001_init.sql to local D1
+wrangler dev --port 8787                         # http://localhost:8787
+```
+
+Stored-POI search (`/poi/search`) works fully offline against local D1/KV.
+`/poi/resolve` hits Google Places — stub it by pointing the Google fetch at a
+local server, or use the `mockFetch` pattern from `poi-service/tests/`.
+
+### image-service (presigned R2 URLs: MinIO + sharp on the host)
+
+```bash
+cd image-service
+# Create .dev.vars (gitignored):
+#   IMAGE_SERVICE_TOKEN=local-dev-token
+#   R2_ACCESS_KEY_ID=coffeemode
+#   R2_SECRET_ACCESS_KEY=coffeemode123
+# Set R2_ENDPOINT=http://localhost:9000 in .dev.vars too (overrides the
+# hardcoded *.r2.cloudflarestorage.com endpoint — see src/r2.ts).
+wrangler dev --port 8788                         # http://localhost:8788
+```
+
+With `R2_ENDPOINT` set, both presigned PUTs (`aws4fetch` SigV4) and the
+complete-flow `HEAD` check go to MinIO. `R2_PUBLIC_URL` for local dev:
+`http://localhost:9000/coffeemode` (bucket is anonymously readable).
+sharp processing runs as plain Node in `web/lib/images/processor.ts` — the
+"VPS" side is the host.
+
+## 4. Web app wiring
+
+```bash
+cd web
+cp .env.example .env.local
+# Point the DB at the compose Postgres; leave Supabase vars as-is if you only
+# exercise DB-backed flows (auth-less code paths return 401 by design).
+#   DATABASE_URL=postgres://coffeemode:coffeemode@localhost:5432/coffeemode
+#   POI_SERVICE_URL=http://localhost:8787
+#   POI_SERVICE_TOKEN=local-dev-token
+#   IMAGE_SERVICE_URL=http://localhost:8788
+#   IMAGE_SERVICE_TOKEN=local-dev-token
+#   RATE_LIMIT_BACKEND=postgres   # or memory for single-process dev
+npm run dev
+```
+
+Supabase OAuth is the one remote dependency that cannot be fully faked
+without Supabase CLI (`supabase start` local emulator); for DB-flow testing,
+lib functions accept `userId` directly and integration tests inject it.
+
+## 5. What still needs real Cloudflare/Supabase
+
+- Deploying either Worker (`wrangler deploy`) — local dev needs no account.
+- R2 lifecycle cleanup and any behavior specific to real R2 edge semantics.
+- Google Places live resolution and OAuth provider round-trips.

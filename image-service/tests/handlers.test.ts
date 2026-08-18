@@ -350,10 +350,10 @@ describe("headObject with R2_ENDPOINT (MinIO dev path)", () => {
     const result = await headObject(env, "original/abc.webp");
     expect(result).toEqual({ size: 42 });
 
-    const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
-    // trailing slash stripped; bucket + key appended
-    expect(url).toBe("http://localhost:9000/cafemode/original/abc.webp");
-    expect(init.method).toBe("HEAD");
+    const [input] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    // trailing slash stripped; bucket + key appended (aws4fetch passes a Request)
+    expect((input as Request).url).toBe("http://localhost:9000/cafemode/original/abc.webp");
+    expect((input as Request).method).toBe("HEAD");
   });
 
   it("returns null on a non-2xx (missing object / NoSuchBucket)", async () => {

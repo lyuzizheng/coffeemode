@@ -52,12 +52,19 @@ Both workers run on the host via workerd; no Cloudflare account needed.
 
 ```bash
 cd poi-service
-# Secrets — create image-service/.dev.vars (gitignored), dummy values fine:
+# Secrets — create poi-service/.dev.vars (gitignored), dummy values fine:
 #   POI_SERVICE_TOKEN=local-dev-token
 #   GOOGLE_PLACES_API_KEY=dummy
 wrangler d1 migrations apply poi-store --local   # apply migrations/0001_init.sql to local D1
 wrangler dev --port 8787                         # http://localhost:8787
 ```
+
+> Validation note: §3's worker commands follow the existing
+> `poi-service/README.md` local-dev pattern but were NOT executed on this
+> machine (local-mode tolerance of placeholder D1/KV ids in `wrangler.toml`
+> is wrangler-version-dependent). If `wrangler dev` rejects the placeholder
+> ids, run `wrangler d1 create poi-store` / `wrangler kv namespace create
+> poi-cache` and paste the returned ids.
 
 Stored-POI search (`/poi/search`) works fully offline against local D1/KV.
 `/poi/resolve` hits Google Places — stub it by pointing the Google fetch at a
@@ -71,8 +78,11 @@ cd image-service
 #   IMAGE_SERVICE_TOKEN=local-dev-token
 #   R2_ACCESS_KEY_ID=coffeemode
 #   R2_SECRET_ACCESS_KEY=coffeemode123
-# Set R2_ENDPOINT=http://localhost:9000 in .dev.vars too (overrides the
-# hardcoded *.r2.cloudflarestorage.com endpoint — see src/r2.ts).
+#   R2_BUCKET_NAME=coffeemode     # MUST match the compose bucket (minio-init)
+#   R2_ENDPOINT=http://localhost:9000
+# (R2_ENDPOINT overrides the hardcoded *.r2.cloudflarestorage.com endpoint —
+#  see src/r2.ts; without R2_BUCKET_NAME set here, presigns would target the
+#  wrangler.toml placeholder bucket and MinIO would answer NoSuchBucket.)
 wrangler dev --port 8788                         # http://localhost:8788
 ```
 
@@ -105,5 +115,10 @@ lib functions accept `userId` directly and integration tests inject it.
 ## 5. What still needs real Cloudflare/Supabase
 
 - Deploying either Worker (`wrangler deploy`) — local dev needs no account.
+- **Web-side image display**: `web/lib/images/loader.ts` and `next.config.ts`
+  hardcode the real CDN host and a build-time drift guard (`images.coffeemode.app`),
+  so a browser round-trip through the UI still resolves to production R2 —
+  only the API/DB/image-service worker flow is local. Relaxing the drift guard
+  for a local `R2_PUBLIC_URL` is a future, explicit opt-in.
 - R2 lifecycle cleanup and any behavior specific to real R2 edge semantics.
 - Google Places live resolution and OAuth provider round-trips.

@@ -77,7 +77,7 @@ _archive-coffeemode-backend/   old Java app — being dropped
 
 ```text
 - NEXT_PUBLIC_SUPABASE_ANON_KEY not set (only URL + service-role present locally)
-- DATABASE_URL (self-hosted Postgres) not configured anywhere
+- DATABASE_URL (self-hosted Postgres) not configured for production anywhere (local dev uses `docker compose up` + `npm run db:migrate`, see `docs/agent/local-dev-stack.md`)
 - Supabase dashboard still needs Apple/Google OAuth provider config
 - Session-refresh proxy implemented (`web/proxy.ts`); first protected route can now rely on it
 - Postgres pool tuned with configurable `max`, idle/connection timeouts, error handling, and a graceful shutdown hook registered via Next.js `instrumentation.ts`

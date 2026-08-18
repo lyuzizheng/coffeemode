@@ -207,8 +207,9 @@ describe("createCheckIn", () => {
     // Server-derived StoredImage: keys/w/h/by are NOT client-controlled.
     const setPhotos = clientQueryMock.mock.calls[2];
     expect(setPhotos[0]).toContain("update checkins set photos");
-    expect(JSON.parse(setPhotos[1][0] as string)).toEqual([derivedPhoto(CHECKIN)]);
-    expect(setPhotos[1][1]).toBe(CHECKIN);
+    // $1 = checkin id, $2 = photos JSON — matches `set photos = $2::jsonb where id = $1`.
+    expect(setPhotos[1][0]).toBe(CHECKIN);
+    expect(JSON.parse(setPhotos[1][1] as string)).toEqual([derivedPhoto(CHECKIN)]);
 
     // Photos auto-merge into cafes.gallery with check-in provenance (spec 0001).
     const gallery = clientQueryMock.mock.calls[3];

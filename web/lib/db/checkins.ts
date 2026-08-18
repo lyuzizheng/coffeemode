@@ -279,7 +279,8 @@ export async function createCheckIn(
       const q = client.query.bind(client) as Parameters<typeof consumeProvisionedIntents>[2];
       await consumeProvisionedIntents(userId, photoIds, q, deps);
       const photos = photosWithSource(provisioned, checkinId);
-      await client.query(SET_CHECKIN_PHOTOS_SQL, [JSON.stringify(photos), checkinId]);
+      // $1 = checkin id, $2 = photos JSON (the SET clause's $2::jsonb).
+      await client.query(SET_CHECKIN_PHOTOS_SQL, [checkinId, JSON.stringify(photos)]);
       await client.query(MERGE_GALLERY_SQL, [input.cafe_id, JSON.stringify(photos)]);
     }
 
@@ -333,7 +334,15 @@ inserted AS (
 )
 UPDATE checkins
 SET
-  likes_count = (SELECT count(*)::int FROM checkin_likes WHERE checkin_id = $2),
+  -- NOT a table scan: a data-modifying CTE's writes are invisible to the
+  -- main query (one shared statement snapshot — Postgres WITH semantics),
+  -- so a count(*) from checkin_likes here would always read the PRE-toggle
+  -- value. Arithmetic on the CTE OUTPUTS (visible) + the row's own
+  -- pre-update likes_count (visible) is always correct. The 0004 sync
+  -- trigger computes the same value in its own sub-statement snapshot.
+  likes_count = likes_count
+    + (SELECT count(*)::int FROM inserted)
+    - (SELECT count(*)::int FROM deleted),
   updated_at = now()
 WHERE id = (SELECT id FROM checkin)
 RETURNING

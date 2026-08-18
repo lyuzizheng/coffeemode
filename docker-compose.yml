@@ -1,0 +1,68 @@
+# CoffeeMode local dev stack — Postgres (PostGIS) + MinIO (R2 stand-in).
+#
+# This is the "real database / real object store" half of the local test
+# stack. The other half runs entirely on the host:
+#   - image-service / poi-service Workers:  wrangler dev (workerd)
+#   - sharp image processing:               plain Node (VPS-side code runs natively)
+#
+# Usage:
+#   docker compose up -d               # start postgres + minio (+ minio-init)
+#   cd web && npm run db:migrate       # apply web/db/migrations/* against it
+#   cd web && npm run test:integration # real-DB integration suite (RUN_INTEGRATION=1)
+#
+# Default connection strings (also the defaults baked into web/scripts/migrate.mjs):
+#   DATABASE_URL=postgres://coffeemode:coffeemode@localhost:5432/coffeemode
+#   MinIO S3 endpoint http://localhost:9000  (access key: coffeemode, secret: coffeemode123)
+#   MinIO console  http://localhost:9001
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: coffeemode
+      POSTGRES_PASSWORD: coffeemode
+      POSTGRES_DB: coffeemode
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coffeemode -d coffeemode"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # S3-compatible R2 stand-in. image-service signs AWS SigV4 presigned PUTs
+  # (aws4fetch); with R2_ENDPOINT=http://localhost:9000 it targets MinIO,
+  # which accepts the same signatures R2 does.
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: coffeemode
+      MINIO_ROOT_PASSWORD: coffeemode123
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - minio-data:/data
+
+  # One-shot: create the bucket and make reads anonymous (mirrors an R2
+  # public bucket, so R2_PUBLIC_URL=http://localhost:9000/coffeemode works).
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: |
+      /bin/sh -c "
+      for i in $(seq 1 30); do
+        mc alias set local http://minio:9000 coffeemode coffeemode123 && break
+        sleep 1
+      done
+      mc mb --ignore-existing local/coffeemode
+      mc anonymous set download local/coffeemode
+      "
+
+volumes:
+  postgres-data:
+  minio-data:

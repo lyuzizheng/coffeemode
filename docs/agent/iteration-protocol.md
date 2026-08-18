@@ -36,7 +36,8 @@ schema/migration impact
 API/service impact (Next.js route handlers, POI service)
 UI impact
 test strategy (Vitest + RTL + tsc --noEmit; REAL-DB integration via
-  npm run test:integration for SQL/migration/DB-backed flows; Playwright E2E post-MVP)
+  npm run test:integration for SQL/migration/DB-backed flows — policy:
+  docs/specs/0003-testing-and-ci.md; Playwright E2E post-MVP)
 required doc updates
 ```
 

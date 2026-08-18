@@ -32,6 +32,8 @@ This file owns **coding style**. It does not own product or API contracts — th
 
 ## Testing
 
+Canonical testing policy: `docs/specs/0003-testing-and-ci.md`.
+
 - Three layers, narrowest first: unit (Vitest/RTL), integration-mocked (API routes),
   **integration-real-DB** (`npm run test:integration`), e2e (Playwright, post-MVP).
 - **Any change touching `web/db/migrations/*.sql`, embedded SQL in `web/lib/`, or

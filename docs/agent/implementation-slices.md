@@ -87,4 +87,8 @@ deploy        wrangler deploy / VPS deploy steps verified
 - New slices that touch the database (migrations, SQL, DB-backed flows) MUST
   declare the `integration` gate; user-visible UI slices declare `e2e` once
   Playwright is live.
+- Enforcement note: the manifest validator (`implementation-slices.rb`) only
+  checks that Test gates are non-empty — gate-vocabulary and
+  must-declare-`integration` rules are enforced by the review layers
+  (Layer-2 semantic review + code review), not by preflight.
 ```

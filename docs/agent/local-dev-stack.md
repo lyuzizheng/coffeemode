@@ -14,7 +14,7 @@ integration suite in this doc exercises them against a real database.
 - Node 22+ (`web/`, `poi-service/`, `image-service/` each have their own
   `node_modules`).
 
-## 1. Postgres + MinIO (one command)
+## 1. Postgres + MinIO
 
 ```bash
 docker compose up -d --wait postgres minio  # wait for Postgres + MinIO health

@@ -86,6 +86,20 @@ async function poiFetch(
   return res.json();
 }
 
+function searchParams(params: {
+  q?: string;
+  lat?: number;
+  lng?: number;
+  r?: number;
+}): string {
+  const sp = new URLSearchParams();
+  if (params.q) sp.set("q", params.q);
+  if (params.lat !== undefined) sp.set("lat", String(params.lat));
+  if (params.lng !== undefined) sp.set("lng", String(params.lng));
+  if (params.r !== undefined) sp.set("r", String(params.r));
+  return sp.toString();
+}
+
 /** GET /poi/search — stored-POI name match + haversine distance sort. */
 export async function searchPOIs(params: {
   q?: string;
@@ -93,17 +107,34 @@ export async function searchPOIs(params: {
   lng?: number;
   r?: number;
 }): Promise<POISearchResponse> {
-  const sp = new URLSearchParams();
-  if (params.q) sp.set("q", params.q);
-  if (params.lat !== undefined) sp.set("lat", String(params.lat));
-  if (params.lng !== undefined) sp.set("lng", String(params.lng));
-  if (params.r !== undefined) sp.set("r", String(params.r));
-  const query = sp.toString();
+  const query = searchParams(params);
 
   const data = await poiFetch(`/poi/search${query ? `?${query}` : ""}`, {
     method: "GET",
   });
   return data as POISearchResponse;
+}
+
+/** GET /poi/search/external — live Google Places search, cached by the worker. */
+export async function searchExternalPOIs(params: {
+  q: string;
+  lat?: number;
+  lng?: number;
+  r?: number;
+}): Promise<POISearchResponse> {
+  const query = searchParams(params);
+  const data = await poiFetch(`/poi/search/external?${query}`, { method: "GET" });
+  return data as POISearchResponse;
+}
+
+/** POST /poi/external — persist a client-side Apple MapKit result. */
+export async function storeExternalPOIs(pois: POI[]): Promise<{ stored: number }> {
+  const data = await poiFetch("/poi/external", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ pois }),
+  });
+  return data as { stored: number };
 }
 
 /** POST /poi/resolve — Google Maps share URL → POI (cafe creation import). */

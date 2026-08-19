@@ -1,5 +1,5 @@
 /**
- * HTTP handlers for the four POI endpoints.
+ * HTTP handlers for the POI endpoints.
  * Pure functions over injected Env/Deps — unit-testable without a Worker runtime.
  *
  * Endpoints (all require POI_SERVICE_TOKEN):
@@ -20,6 +20,7 @@ import {
   DEFAULT_SEARCH_RADIUS_KM,
   MAX_EXTERNAL_BATCH_SIZE,
   MAX_SEARCH_RADIUS_KM,
+  SEARCH_RESULT_LIMIT,
 } from "./constants";
 import type { Deps, Env, POI, POISearchHit } from "./types";
 import { fetchPlaceDetails, textSearch, toPOI, GoogleApiError, type GooglePlace } from "./google";
@@ -52,6 +53,15 @@ function upstreamError(e: unknown): Response {
     return json({ error: "upstream_error", status: e.status, message: e.message }, 502);
   }
   return json({ error: "upstream_error", message: "upstream request failed" }, 502);
+}
+
+function stableApplePlaceId(value: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `apple:${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
 // --- GET /poi/:place_id ---
@@ -125,6 +135,39 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
   }
 
   const target = await resolveShareUrl(mapsUrl.trim(), deps.fetchImpl);
+  if (target.source === "apple") {
+    // Apple Maps has no server-side Places API. A share URL still gives us
+    // enough data to create a durable POI when it contains coordinates; an
+    // already stored Apple reference remains authoritative.
+    if (target.placeId) {
+      const stored = await d1GetPOI(env.POI_DB, target.placeId);
+      if (stored) return json(stored);
+    }
+    if (!target.coords) {
+      return json(
+        { error: "unresolvable", message: "Apple Maps URL needs a place id and coordinates" },
+        422,
+      );
+    }
+    const placeId =
+      target.placeId ??
+      stableApplePlaceId(`${target.coords.lat},${target.coords.lng}:${target.query ?? "place"}`);
+    const poi: POI = {
+      place_id: placeId,
+      source: "apple",
+      name: target.query ?? "Apple Maps place",
+      lat: target.coords.lat,
+      lng: target.coords.lng,
+      address: target.query ?? null,
+      types: [],
+      business_status: null,
+      hours_json: null,
+      photo_refs: [],
+      fetched_at: new Date().toISOString(),
+    };
+    await d1UpsertPOI(env.POI_DB, poi);
+    return json(poi);
+  }
   if (target.placeId) return await getPOI(target.placeId, env, deps);
 
   if (target.query) {
@@ -217,6 +260,67 @@ async function searchPOIs(request: Request, env: Env, _deps: Deps): Promise<Resp
   return json({ results: hits });
 }
 
+// --- GET /poi/search/external ---
+
+/** Live Google search for the creation/search entry point. Results are saved
+ * before returning so the next local search can reuse them. */
+async function searchExternalPOIs(request: Request, env: Env, deps: Deps): Promise<Response> {
+  const url = new URL(request.url);
+  const q = url.searchParams.get("q")?.trim() ?? "";
+  const lat = Number.parseFloat(url.searchParams.get("lat") ?? "");
+  const lng = Number.parseFloat(url.searchParams.get("lng") ?? "");
+  const r = url.searchParams.has("r")
+    ? Number.parseFloat(url.searchParams.get("r") ?? "")
+    : DEFAULT_SEARCH_RADIUS_KM;
+
+  const latProvided = url.searchParams.has("lat");
+  const lngProvided = url.searchParams.has("lng");
+  if (latProvided || lngProvided) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || !inLatRange(lat) || !inLngRange(lng)) {
+      return json(
+        { error: "invalid_request", message: "lat/lng must be finite numbers in [-90,90] / [-180,180]" },
+        400,
+      );
+    }
+  }
+  if (q === "") return json({ error: "invalid_request", message: "q is required" }, 400);
+  if (!Number.isFinite(r) || r <= 0 || r > MAX_SEARCH_RADIUS_KM) {
+    return json(
+      { error: "invalid_request", message: `r must be between 0 and ${MAX_SEARCH_RADIUS_KM} km` },
+      400,
+    );
+  }
+
+  let googlePlaces: GooglePlace[];
+  try {
+    googlePlaces = await textSearch(
+      q,
+      { lat: latProvided ? lat : undefined, lng: lngProvided ? lng : undefined, radiusKm: r },
+      env,
+      deps.fetchImpl,
+    );
+  } catch (e) {
+    return upstreamError(e);
+  }
+
+  const results: Array<{ poi: POI; raw: GooglePlace }> = [];
+  for (const place of googlePlaces.slice(0, SEARCH_RESULT_LIMIT)) {
+    try {
+      results.push({ poi: toPOI(place), raw: place });
+    } catch {
+      // A result without coordinates cannot be created as a cafe.
+    }
+  }
+
+  try {
+    await d1UpsertPOIs(env.POI_DB, results.map(({ poi }) => poi));
+    await Promise.all(results.map(({ poi, raw }) => kvPutRaw(env.POI_KV, poi.place_id, raw)));
+  } catch (e) {
+    console.error("external search cache write failed", e);
+  }
+  return json({ results: results.map(({ poi }) => poi) });
+}
+
 // --- POST /poi/external ---
 
 interface InvalidEntry {
@@ -237,7 +341,6 @@ function validateExternalEntry(value: unknown, index: number): POI | InvalidEntr
   if (!value || typeof value !== "object") return bad("entry is not an object");
   const v = value as Record<string, unknown>;
   if (typeof v.place_id !== "string" || v.place_id === "") return bad("place_id required");
-  if (v.place_id.length > 200) return bad("place_id too long (max 200)");
   if (v.source !== "google" && v.source !== "apple") return bad("source must be google|apple");
   if (typeof v.name !== "string" || v.name === "") return bad("name required");
   if (v.name.length > 200) return bad("name too long (max 200)");
@@ -335,6 +438,9 @@ export async function handleFetch(
     const url = new URL(request.url);
     const path = url.pathname;
 
+    if (request.method === "GET" && path === "/poi/search/external") {
+      return await searchExternalPOIs(request, env, deps);
+    }
     if (request.method === "GET" && path === "/poi/search") return await searchPOIs(request, env, deps);
     if (request.method === "POST" && path === "/poi/resolve") return await resolvePOI(request, env, deps);
     if (request.method === "POST" && path === "/poi/external") return await storeExternal(request, env);

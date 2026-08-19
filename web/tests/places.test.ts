@@ -1,12 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getPOI, getPOIConfig, resolveMapsUrl, searchPOIs } from "@/lib/places/poi-client";
+import {
+  getPOI,
+  getPOIConfig,
+  resolveMapsUrl,
+  searchExternalPOIs,
+  searchPOIs,
+  storeExternalPOIs,
+} from "@/lib/places/poi-client";
 import { GET as searchGET } from "@/app/api/places/search/route";
 import { POST as resolvePOST } from "@/app/api/places/resolve/route";
+import type { POI } from "@shared/places/types";
 
 const WORKER_URL = "https://poi-service.test.workers.dev";
 const TOKEN = "s3cret-token";
 
-const SAMPLE_POI = {
+const SAMPLE_POI: POI = {
   place_id: "ChIJTEST123",
   source: "google",
   name: "Blue Bottle Coffee",
@@ -74,6 +82,21 @@ describe("poi-client", () => {
     await searchPOIs({});
     const [url] = fetchMock.mock.calls[0] as [string];
     expect(url).toBe(`${WORKER_URL}/poi/search`);
+  });
+
+  it("searchExternalPOIs uses the live Google search endpoint", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ results: [SAMPLE_POI] }));
+    await searchExternalPOIs({ q: "blue bottle", r: 5 });
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe(`${WORKER_URL}/poi/search/external?q=blue+bottle&r=5`);
+  });
+
+  it("storeExternalPOIs posts browser-provider results", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ stored: 1 }));
+    await storeExternalPOIs([SAMPLE_POI]);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${WORKER_URL}/poi/external`);
+    expect(JSON.parse(String(init.body))).toEqual({ pois: [SAMPLE_POI] });
   });
 
   it("resolveMapsUrl POSTs the share URL to /poi/resolve", async () => {
@@ -185,6 +208,24 @@ describe("GET /api/places/search", () => {
     await searchGET(new Request(`${WORKER_URL}/api/places/search?lat=1.3&lng=103.8`));
     const [url] = fetchMock.mock.calls[0] as [string];
     expect(url).toBe(`${WORKER_URL}/poi/search?lat=1.3&lng=103.8&r=10`);
+  });
+
+  it("routes source=google to live external search", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ results: [] }));
+    const res = await searchGET(
+      new Request(`${WORKER_URL}/api/places/search?source=google&q=blue%20bottle`),
+    );
+    expect(res.status).toBe(200);
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe(`${WORKER_URL}/poi/search/external?q=blue+bottle&r=10`);
+  });
+
+  it("rejects unsupported provider sources", async () => {
+    const res = await searchGET(
+      new Request(`${WORKER_URL}/api/places/search?source=apple&q=coffee`),
+    );
+    expect(res.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("clamps radius to 10 km", async () => {

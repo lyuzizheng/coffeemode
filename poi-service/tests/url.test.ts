@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   extractCoords,
+  extractAppleCoords,
+  extractApplePlaceId,
+  extractAppleQuery,
   extractPlaceId,
   extractQuery,
   isMapsHost,
@@ -68,6 +71,32 @@ describe("extractQuery", () => {
   });
 });
 
+describe("Apple Maps share links", () => {
+  const APPLE = "https://maps.apple.com/?auid=123456789&ll=1.285,103.85&q=Arabica%20Singapore";
+
+  it("extracts the stable id, coordinates, and label", () => {
+    expect(extractApplePlaceId(APPLE)).toBe("123456789");
+    expect(extractAppleCoords(APPLE)).toEqual({ lat: 1.285, lng: 103.85 });
+    expect(extractAppleQuery(APPLE)).toBe("Arabica Singapore");
+  });
+
+  it("returns an Apple target without treating q as Google coordinates", () => {
+    expect(parseMapsUrl(APPLE)).toEqual({
+      source: "apple",
+      placeId: "123456789",
+      coords: { lat: 1.285, lng: 103.85 },
+      query: "Arabica Singapore",
+    });
+  });
+
+  it("accepts the unified Apple short-link host", () => {
+    expect(parseMapsUrl("https://maps.apple/place?place-id=I123")).toMatchObject({
+      source: "apple",
+      placeId: "I123",
+    });
+  });
+});
+
 describe("isShortLink", () => {
   it("detects goo.gl and maps.app.goo.gl", () => {
     expect(isShortLink("https://maps.app.goo.gl/abc123")).toBe(true);
@@ -81,6 +110,7 @@ describe("isMapsHost", () => {
     for (const h of [
       "goo.gl",
       "maps.app.goo.gl",
+      "maps.apple",
       "maps.apple.com",
       "google.com",
       "www.google.com",
@@ -155,6 +185,25 @@ describe("resolveShareUrl", () => {
     const fetchImpl = mockFetch(() => new Response(null, { status: 599 }));
     const target = await resolveShareUrl(CANONICAL, fetchImpl);
     expect(target.placeId).toBe("0x60188b9d2f2a2b79:0x9f2c0f1d2e3a4b5c");
+  });
+
+  it("enriches an Apple place-id-only link from public page metadata", async () => {
+    const fetchImpl = mockFetch((url, init) => {
+      expect(url).toBe("https://maps.apple.com/place?place-id=I123");
+      expect(init?.method).toBe("GET");
+      return new Response(
+        '<meta property="place:location:latitude" content="1.285"><meta property="place:location:longitude" content="103.85"><meta property="og:title" content="Arabica Singapore">',
+        { status: 200, headers: { "content-type": "text/html" } },
+      );
+    });
+    const target = await resolveShareUrl("https://maps.apple.com/place?place-id=I123", fetchImpl);
+
+    expect(target).toEqual({
+      source: "apple",
+      placeId: "I123",
+      coords: { lat: 1.285, lng: 103.85 },
+      query: "Arabica Singapore",
+    });
   });
 
   it("rejects a non-maps initial URL even when it embeds a place-id pattern (issue #37)", async () => {

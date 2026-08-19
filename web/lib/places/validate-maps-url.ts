@@ -4,7 +4,8 @@
  * Keep in sync with `isMapsHost` in `poi-service/src/url.ts` — the worker
  * re-validates with the same semantics after redirects.
  *
- * - Exact hosts: Google's two short-link domains and Apple Maps' web host.
+ * - Exact hosts: Google's two short-link domains and Apple Maps' web hosts
+ *   (including Apple's shortened `maps.apple` host).
  * - Regional Google domains: `google.com`, `google.<ccTLD>` (optionally
  *   `www.`/`maps.` prefixed), and two-label ccTLD forms with a known
  *   second-level (`google.co.uk`, `google.com.sg`). This admits
@@ -12,7 +13,7 @@
  *   (`drive.google.com`), suffix-lookalikes (`google.com.evil.com`), and
  *   attacker-registrable TLD shapes (`google.evil.io`, `google.zip`).
  */
-const EXACT_MAPS_HOSTS = new Set(["goo.gl", "maps.app.goo.gl", "maps.apple.com"]);
+const EXACT_MAPS_HOSTS = new Set(["goo.gl", "maps.app.goo.gl", "maps.apple", "maps.apple.com"]);
 const GOOGLE_MAPS_HOST_RE =
   /^(?:www\.|maps\.)?google\.(?:com|[a-z]{2}|(?:com|co|org|net|ac|gov|edu)\.[a-z]{2})$/;
 

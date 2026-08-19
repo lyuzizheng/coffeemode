@@ -32,4 +32,7 @@ for this Next.js version. Breaking changes that matter here:
 ## MapKit JS
 
 Apple MapKit JS loads from the Apple CDN via `<script>` — there is no npm
-package. All map components must be client components.
+package. All map components must be client components. The creation search tab
+uses `/api/mapkit-token`; configure `APPLE_MAPKIT_TEAM_ID`,
+`APPLE_MAPKIT_KEY_ID`, and `APPLE_MAPKIT_PRIVATE_KEY` before enabling Apple
+provider search in production. Map-pin creation remains deferred.

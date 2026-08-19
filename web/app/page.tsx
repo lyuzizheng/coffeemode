@@ -6,6 +6,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { SignInButton } from "@/app/auth/sign-in-button";
 import { SignOutButton } from "@/app/auth/sign-out-button";
 import { AuthCallbackError } from "@/app/auth/auth-callback-error";
+import { CafeCreationTrigger } from "@/components/cafe/cafe-creation-sheet";
 
 // Scaffold-stage home page. The real surface is a full-screen Apple Map with
 // a map-bound discovery sheet (slices: map-home, map-discovery-integration). Until then this page is the honest first
@@ -88,7 +89,8 @@ export default async function HomePage({
                   </Card.Title>
                   <Card.Description>{t("session_ready")}</Card.Description>
                 </div>
-                <Card.Footer className="pt-4">
+                <Card.Footer className="flex-col gap-2 pt-4">
+                  <CafeCreationTrigger isAuthenticated={Boolean(user)} />
                   <SignOutButton />
                 </Card.Footer>
               </>

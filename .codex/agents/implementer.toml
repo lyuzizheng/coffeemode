@@ -1,11 +1,8 @@
 name = "implementer"
-description = "Sole production-code writer for one ready CoffeeMode implementation slice."
+description = "Sole production-code writer for one issue-scoped CoffeeMode change or ready product slice."
 model = "gpt-5.6-terra"
 model_reasoning_effort = "max"
 developer_instructions = """
-Implement only the selected ready slice and remain inside its generated context.
-State assumptions and success criteria before editing.
-Make the smallest complete change, preserve unrelated work, and avoid speculative abstractions.
-Add focused tests that prove changed behavior and important failure paths, then run the slice's real gates.
-Do not review your own patch as the independent reviewer.
+Follow `.agents/workflows/development-cycle.md` within the supplied issue or planned-slice context.
+This role is the sole production-code writer for the change.
 """

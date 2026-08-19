@@ -1,0 +1,201 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: classify-changes
+    runs-on: ubuntu-latest
+    outputs:
+      application: ${{ steps.classify.outputs.application }}
+      integration: ${{ steps.classify.outputs.integration }}
+      image_service: ${{ steps.classify.outputs.image_service }}
+      poi_service: ${{ steps.classify.outputs.poi_service }}
+      docs: ${{ steps.classify.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed paths
+        id: classify
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
+            .agents/scripts/classify-ci-paths.sh --all >> "$GITHUB_OUTPUT"
+          else
+            git diff --name-only "$BASE_SHA" "$HEAD_SHA" |
+              .agents/scripts/classify-ci-paths.sh >> "$GITHUB_OUTPUT"
+          fi
+
+  docs-gate:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preflight
+        run: .agents/scripts/preflight.sh
+
+      - name: Harness self-test
+        run: .agents/scripts/harness-self-test.sh
+
+  application-gate:
+    needs: changes
+    if: needs.changes.outputs.application == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: i18n key parity
+        run: npm run check:i18n
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify PWA artifacts
+        run: |
+          test -f .next/server/app/serwist/sw.js.body
+          test -f .next/server/app/manifest.webmanifest.body
+
+  integration-gate:
+    needs: changes
+    if: needs.changes.outputs.integration == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4@sha256:44126d872ac91993766c341e369c539e8196614321765d36a6f1bab0419a5fa5
+        env:
+          POSTGRES_USER: coffeemode
+          POSTGRES_PASSWORD: coffeemode
+          POSTGRES_DB: coffeemode
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U coffeemode -d coffeemode"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Real Postgres integration tests
+        env:
+          DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode
+        run: npm run test:integration
+
+  image-service-gate:
+    needs: changes
+    if: needs.changes.outputs.image_service == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: image-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: image-service/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+  poi-service-gate:
+    needs: changes
+    if: needs.changes.outputs.poi_service == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: poi-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: poi-service/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+  ci-gate:
+    needs:
+      - changes
+      - docs-gate
+      - application-gate
+      - integration-gate
+      - image-service-gate
+      - poi-service-gate
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require selected jobs
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          case " $RESULTS " in
+            *" failure "*|*" cancelled "*) exit 1 ;;
+          esac

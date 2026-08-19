@@ -8,6 +8,7 @@ ROOT="${COFFEEMODE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 cd "$ROOT"
 
 BASE="${1:-HEAD~1}"
+SCOPE=(docs/ .agents/ .codex/ .github/ .windsurf/ AGENTS.md README.md web/AGENTS.md web/CLAUDE.md .cursor/ .cursorrules .vscode/ .trae/)
 
 echo "# CoffeeMode Docs Review Packet"
 echo ""
@@ -18,23 +19,32 @@ echo ""
 
 echo "# Changed files (docs/agents/harness)"
 echo ""
-git diff --name-only "$BASE" -- docs/ .agents/ AGENTS.md .github/workflows/ 2>/dev/null || echo "(git diff unavailable)"
+git diff --name-only "$BASE" -- "${SCOPE[@]}" 2>/dev/null || echo "(git diff unavailable)"
 echo ""
 
 echo "# Untracked docs/agents files"
 echo ""
-git ls-files --others --exclude-standard -- docs/ .agents/ AGENTS.md .github/workflows/ 2>/dev/null || echo "(git unavailable)"
+git ls-files --others --exclude-standard -- "${SCOPE[@]}" 2>/dev/null || echo "(git unavailable)"
 echo ""
 
 echo "# Diff stat"
 echo ""
-git diff --stat "$BASE" -- docs/ .agents/ AGENTS.md .github/workflows/ 2>/dev/null || echo "(unavailable)"
+git diff --stat "$BASE" -- "${SCOPE[@]}" 2>/dev/null || echo "(unavailable)"
 echo ""
 
 echo "# Full diff"
 echo ""
-git diff --no-ext-diff "$BASE" -- docs/ .agents/ AGENTS.md .github/workflows/ 2>/dev/null || echo "(unavailable)"
+git diff --no-ext-diff "$BASE" -- "${SCOPE[@]}" 2>/dev/null || echo "(unavailable)"
 echo ""
+
+echo "# Untracked file contents"
+echo ""
+while IFS= read -r path; do
+  [[ -n "$path" ]] || continue
+  echo "## $path"
+  sed 's/^/    /' "$path"
+  echo ""
+done < <(git ls-files --others --exclude-standard -- "${SCOPE[@]}" 2>/dev/null || true)
 
 echo "# Canonical context"
 echo ""

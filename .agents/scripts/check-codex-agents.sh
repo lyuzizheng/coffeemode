@@ -151,6 +151,12 @@ begin
     "tester" => ["gpt-5.6-luna", "max", "workspace-write"],
     "reviewer" => ["gpt-5.6-sol", "high", "read-only"],
   }
+  expected_workflows = {
+    "explorer" => ".agents/README.md",
+    "implementer" => ".agents/workflows/development-cycle.md",
+    "tester" => ".agents/workflows/testing.md",
+    "reviewer" => ".agents/workflows/review-code.md",
+  }
   agents_dir = ".codex/agents"
   expected_files = expected_agents.keys.map { |name| "#{name}.toml" }.sort
   actual_files = Dir.glob("#{agents_dir}/*.toml").map { |path| File.basename(path) }.sort
@@ -186,11 +192,14 @@ begin
       raise "#{path} requires non-empty #{key}" unless agent[key].is_a?(String) && !agent[key].strip.empty?
     end
 
-    if name == "reviewer" && !agent["developer_instructions"].include?(".agents/workflows/review-code.md")
-      raise "#{path} must delegate the detailed review loop to .agents/workflows/review-code.md"
+    expected_workflow = expected_workflows.fetch(name)
+    unless agent["developer_instructions"].include?(expected_workflow)
+      raise "#{path} must delegate to #{expected_workflow}"
     end
-    if name == "tester" && !agent["developer_instructions"].include?(".agents/workflows/development-cycle.md")
-      raise "#{path} must delegate the detailed testing loop to .agents/workflows/development-cycle.md"
+
+    instruction_lines = agent["developer_instructions"].lines.map(&:strip).reject(&:empty?)
+    if instruction_lines.length > 2
+      raise "#{path} must stay a thin binding: workflow pointer plus role boundary only"
     end
   end
 rescue StandardError => error

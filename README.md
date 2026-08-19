@@ -17,5 +17,5 @@ CoffeeMode MonoRepo
 - Self-hosted Postgres + Supabase Auth
 - Cloudflare Workers (Wrangler) for the POI cache and image services
 
-Coding conventions: `docs/agent/coding-conventions.md`. Spring Boot powered the
+Coding rules: `.agents/rules/coding.md`. Spring Boot powered the
 now-archived Java backend under `_archive-coffeemode-backend/`.

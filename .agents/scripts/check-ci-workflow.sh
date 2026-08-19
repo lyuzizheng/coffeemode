@@ -1,104 +1,102 @@
 #!/usr/bin/env bash
-# Validate CI workflow structure for CoffeeMode.
-# Adapted from CanCan's check-ci-workflow.sh — checks YAML validity,
-# required gates, branch coverage, and action versions.
+# Validate CoffeeMode's unified, changed-path-aware CI workflow.
 set -euo pipefail
 
 ROOT="${COFFEEMODE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 cd "$ROOT"
 
 fail=0
+workflow=".github/workflows/ci.yml"
 
 echo "Checking workflow YAML validity..."
-for wf in .github/workflows/*.yml; do
-  [ -f "$wf" ] || continue
-  NAME=$(basename "$wf")
-  if command -v python3 &>/dev/null && python3 -c "import yaml" 2>/dev/null; then
-    if ! python3 -c "import yaml; yaml.safe_load(open('$wf'))" 2>/dev/null; then
-      echo "Invalid YAML: $NAME"
+for candidate in .github/workflows/*.yml; do
+  [[ -f "$candidate" ]] || continue
+  if command -v python3 >/dev/null 2>&1 && python3 -c "import yaml" 2>/dev/null; then
+    python3 -c "import yaml; yaml.safe_load(open('$candidate', encoding='UTF-8'))" 2>/dev/null || {
+      echo "Invalid YAML: $candidate"
       fail=1
-    fi
-  elif command -v ruby &>/dev/null; then
-    if ! ruby -ryaml -e "YAML.safe_load(File.read('$wf', encoding: 'UTF-8'))" 2>/dev/null; then
-      echo "Invalid YAML: $NAME"
+    }
+  elif command -v ruby >/dev/null 2>&1; then
+    ruby -ryaml -e "YAML.safe_load(File.read('$candidate', encoding: 'UTF-8'))" 2>/dev/null || {
+      echo "Invalid YAML: $candidate"
       fail=1
-    fi
+    }
   else
-    echo "  SKIP $NAME (no YAML parser available)"
+    echo "No YAML parser available."
+    fail=1
   fi
 done
 
-echo "Checking docs-harness.yml runs preflight..."
-if [ -f .github/workflows/docs-harness.yml ]; then
-  if ! grep -q 'preflight\|check-docs-consistency\|harness-self-test' .github/workflows/docs-harness.yml; then
-    echo "docs-harness.yml does not invoke any harness script"
-    fail=1
-  fi
-  if ! grep -q 'main' .github/workflows/docs-harness.yml; then
-    echo "docs-harness.yml missing main branch trigger"
-    fail=1
-  fi
-else
-  echo "docs-harness.yml missing"
+echo "Checking unified CI structure..."
+if [[ ! -f "$workflow" ]]; then
+  echo "Missing $workflow"
   fail=1
-fi
-
-echo "Checking application.yml has required gates..."
-if [ -f .github/workflows/application.yml ]; then
-  for gate in "typecheck\|Typecheck" "lint\|Lint" "test\|Test" "build\|Build"; do
-    if ! grep -qi "$gate" .github/workflows/application.yml; then
-      echo "application.yml missing gate: $gate"
+else
+  for requirement in \
+    "pull_request:" \
+    "cancel-in-progress: true" \
+    "classify-ci-paths.sh" \
+    "preflight.sh" \
+    "harness-self-test.sh" \
+    "docs-gate:" \
+    "application-gate:" \
+    "integration-gate:" \
+    "image-service-gate:" \
+    "poi-service-gate:" \
+    "ci-gate:"; do
+    if ! grep -q "$requirement" "$workflow"; then
+      echo "ci.yml missing requirement: $requirement"
       fail=1
     fi
   done
-  if ! grep -q 'cancel-in-progress: true' .github/workflows/application.yml; then
-    echo "application.yml missing cancel-in-progress for superseded runs"
-    fail=1
-  fi
-else
-  echo "application.yml missing"
-  fail=1
-fi
 
-echo "Checking integration.yml enforces the real-DB gate..."
-if [ -f .github/workflows/integration.yml ]; then
-  for requirement in "postgis/postgis:" "@sha256:" "test:integration" "cancel-in-progress: true" "DATABASE_URL:" "pg_isready"; do
-    if ! grep -q "$requirement" .github/workflows/integration.yml; then
-      echo "integration.yml missing requirement: $requirement"
+  for output in docs application integration image_service poi_service; do
+    if ! grep -q "needs.changes.outputs.$output == 'true'" "$workflow"; then
+      echo "ci.yml does not condition a job on $output changes"
       fail=1
     fi
   done
-  if grep -q 'continue-on-error:[[:space:]]*true' .github/workflows/integration.yml; then
-    echo "integration.yml must not allow integration failures"
-    fail=1
-  fi
-  if ! grep -q '^  pull_request:$' .github/workflows/integration.yml; then
-    echo "integration.yml must emit a check for every pull request"
-    fail=1
-  else
-    pull_request_block="$(awk '/^  pull_request:/{inside=1; next} inside && /^  [A-Za-z0-9_-]+:/{exit} inside{print}' .github/workflows/integration.yml)"
-    if printf '%s\n' "$pull_request_block" | grep -q '^    paths:'; then
-      echo "integration.yml pull_request trigger must not be path-filtered when required"
+
+  for gate in "npm run typecheck" "npm run lint" "npm run check:i18n" "npm run test" "npm run build"; do
+    if ! grep -q "$gate" "$workflow"; then
+      echo "ci.yml missing application gate: $gate"
       fail=1
     fi
+  done
+
+  for requirement in "postgis/postgis:" "@sha256:" "npm run test:integration" "DATABASE_URL:" "pg_isready"; do
+    if ! grep -q "$requirement" "$workflow"; then
+      echo "ci.yml missing real-DB requirement: $requirement"
+      fail=1
+    fi
+  done
+
+  if grep -qE 'playwright install|check:visual|continue-on-error:[[:space:]]*true' "$workflow"; then
+    echo "ci.yml contains an unbounded browser install, visual gate, or allowed failure"
+    fail=1
   fi
-else
-  echo "integration.yml missing"
+fi
+
+echo "Checking removed split workflows stay removed..."
+for removed in application docs-harness image-service integration poi-service visual; do
+  if [[ -e ".github/workflows/$removed.yml" ]]; then
+    echo "Split workflow must stay removed: .github/workflows/$removed.yml"
+    fail=1
+  fi
+done
+
+if [[ ! -x .agents/scripts/classify-ci-paths.sh ]]; then
+  echo "CI classifier is missing or not executable"
   fail=1
 fi
 
 echo "Checking action versions are not deprecated..."
-for wf in .github/workflows/*.yml; do
-  [ -f "$wf" ] || continue
-  NAME=$(basename "$wf")
-  # Flag checkout@v1/v2/v3 as deprecated (v4+ is current)
-  if grep -qE 'actions/checkout@v[123]\b' "$wf"; then
-    echo "$NAME uses deprecated actions/checkout version"
-    fail=1
-  fi
-done
+if grep -rnE 'actions/checkout@v[123]\b' .github/workflows --include='*.yml'; then
+  echo "Deprecated checkout action found"
+  fail=1
+fi
 
-if [ "$fail" -ne 0 ]; then
+if [[ "$fail" -ne 0 ]]; then
   echo "CI workflow check FAILED."
   exit 1
 fi

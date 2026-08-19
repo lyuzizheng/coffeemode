@@ -1,8 +1,9 @@
-# 0003. Testing and CI Spec
+# 0003. Testing and CI
 
 ## Goal
 
-Define how CoffeeMode tests application behavior, gates changes through CI, and automates the development workflow — adapted from CanCan's proven harness model to CoffeeMode's web-app scale.
+Define the canonical test layers, gate selection, and CI behavior for CoffeeMode
+without making unrelated packages or external services part of every change.
 
 ## Status
 
@@ -12,181 +13,89 @@ Accepted
 
 ### Test layers
 
-```text
-Unit:        Vitest + React Testing Library for components, hooks, utils
-Integration: two kinds —
-             a) API routes with mocked backend (fast, default)
-             b) REAL-DB integration (Vitest against docker-compose Postgres/PostGIS):
-                migrations 0001→0008, triggers, SQL semantics, DB-backed lib flows.
-                Opt-in via RUN_INTEGRATION=1 (web/tests/integration); skipped in
-                plain `npm test`. Stack: docker-compose.yml + web/scripts/migrate.mjs —
-                see docs/agent/local-dev-stack.md.
-E2E:         Playwright for critical user flows (map, search, cafe detail) — post-MVP
-Visual:      Playwright screenshots for key surfaces (optional, not blocking —
-             pixel baselines; distinct from the blocking rendered-page smoke gate below)
-```
-
-### When real-DB integration is required
-
-```text
-ANY change that touches:
-  - web/db/migrations/*.sql          (every migration must apply + its triggers work)
-  - SQL embedded in web/lib/**       (CTEs, triggers, transactions — unit mocks
-                                      cannot see snapshot/trigger semantics)
-  - DB-backed lib flows               (toggleCheckInLike, stats aggregation, fused
-                                      cafe+checkin tx, image-upload intents)
-MUST declare the `integration` test gate on its slice and run
-`npm run test:integration` green locally (or extend the suite when the behavior
-is not yet covered). Reasoning-only SQL validation is not acceptable.
-
-E2E (Playwright) is required for user-visible flows once the UI exists; until
-then the rendered-page smoke gate (check:visual) is the browser-level floor.
-```
+| Layer | Tool | Proves |
+| --- | --- | --- |
+| Type | `tsc --noEmit` | Type contracts compile |
+| Unit/component | Vitest + React Testing Library | Pure logic and rendered component behavior |
+| Mocked integration | Vitest with mocked service boundaries | Route/service contracts without live dependencies |
+| Real DB | Vitest + local Postgres/PostGIS | Migrations, SQL, triggers, transactions, and stored state |
+| Browser/manual | Playwright or an inspected local build | User-visible route and interaction behavior |
+| Visual comparison | Playwright screenshots with reviewed baselines | Optional visual regression evidence; non-blocking until a baseline policy is accepted |
 
 ### Test policy
 
-```text
-- CI must not depend on the live Java backend
-- CI must not depend on Google Maps API keys
-- Map tests use a static/mock map provider
-- API route tests mock the backend fetch boundary
-- LLM-dependent features (future) use stored fixtures, never live calls
-```
+- CI never depends on live backend services, provider keys, private data, or live
+  LLM calls.
+- Map and external-service tests use static fixtures or mocked boundaries.
+- Tests encode intended contracts, not the current implementation.
+- A bug fix adds a regression test that fails on the reproduced defect when the
+  affected boundary is testable.
+- Unit mocks cannot prove SQL semantics. Changes to migrations, embedded SQL,
+  triggers, transactions, or DB-backed flows require `npm run test:integration`
+  against real Postgres/PostGIS and assertions on returned and stored state.
+- User-visible behavior requires browser/manual evidence. Automated pixel
+  comparison is optional and non-blocking until canonical baselines exist.
 
-### Fixture layers
+### Relevant local gates
 
-```text
-web/fixtures/        test fixtures and synthetic data (reserved for future use)
-```
+| Changed area | Required local gate |
+| --- | --- |
+| `web/` logic/UI | focused test, then `cd web && npm run verify` |
+| `web/db/`, `web/lib/`, DB-backed routes or integration suite | web gate plus `cd web && npm run test:integration` |
+| `poi-service/` | `npm run typecheck && npm test` in `poi-service/` |
+| `image-service/` | `npm run typecheck && npm test` in `image-service/` |
+| docs, `.agents/`, `.codex/`, CI authority | preflight + harness self-test + required independent semantic review |
 
-No private fixtures needed (no financial data). Synthetic fixtures model real cafe data shapes.
-The image-pipeline tests generate small synthetic WebP images on the fly, so no committed fixtures are needed yet.
+Risk and independent-review requirements are defined only in
+`.agents/workflows/development-cycle.md`.
 
-### CI gates
-
-Every PR and push to main runs the strongest relevant subset:
-
-```text
-typecheck        tsc --noEmit
-lint             eslint
-unit             vitest run
-build            next build
-e2e              playwright test (critical paths only) — post-MVP
-```
-
-### Consequence-based execution
-
-Adapted from CanCan's three-tier model:
+### Commands
 
 ```text
-Fast:     localized fix, no contract change
-          -> focused test + typecheck + lint, PR CI covers the rest
-
-Standard: behavior change with bounded consequences
-          -> one writer, focused tests, optional independent review
-
-High:     data model change, auth flow, API contract, deployment
-          -> one writer, required review, full CI gate
+web: npm run typecheck, lint, check:i18n, test, build, verify
+web real DB: npm run db:migrate, npm run test:integration
+web browser smoke: npm run check:visual (local/manual evidence; not a required PR job)
+services: npm run typecheck, npm test
+agent harness: .agents/scripts/preflight.sh, .agents/scripts/harness-self-test.sh
 ```
 
-Risk follows consequences, not line count.
+### CI design
 
-### Done criteria
+`.github/workflows/ci.yml` runs on every pull request and push to `main`.
+`.agents/scripts/classify-ci-paths.sh` classifies the base/head diff, then stable
+jobs run only when relevant:
 
-A feature is not done until:
+- `docs-gate`: agent, docs, templates, and harness changes;
+- `application-gate`: `web/` changes;
+- `integration-gate`: DB/SQL-capable web boundaries and shared-package changes;
+- `image-service-gate`: image-service and shared-package changes;
+- `poi-service-gate`: poi-service and shared-package changes;
+- `ci-gate`: always aggregates selected job results.
 
-```text
-- typecheck passes
-- relevant tests pass
-- build succeeds
-- UI was visually inspected if UI changed
-- docs/specs are updated if behavior changed
-- progress log is updated
-```
+The component job names remain stable so existing branch protection receives a
+reported success or skipped result on every PR. `ci-gate` is the preferred single
+required context after repository protection is migrated.
 
-### Automation scripts
-
-```text
-npm run typecheck       TypeScript check
-npm run lint            ESLint
-npm run test            Vitest unit tests
-npm run db:migrate      apply web/db/migrations/*.sql to the compose Postgres
-                        (scripts/migrate.mjs; tracked in schema_migrations)
-npm run test:integration  real-Postgres integration suite (RUN_INTEGRATION=1);
-                         provisions + drops a per-run local throwaway DB;
-                         refuses non-local/overridden hosts unless explicitly opted in;
-                         cleanup failures fail the run; skipped in plain `npm test`
-npm run check:i18n      en/zh message-catalog key parity (scripts/check-i18n.mjs)
-npm run check:visual    rendered-page smoke: production build + Playwright chromium over
-                        the public route matrix (scripts/visual-smoke.mjs); not in verify —
-                        needs a browser install, so it runs as its own CI gate
-npm run build           Next.js production build
-npm run verify          check:i18n + typecheck + lint + test + build (the full gate)
-```
-
-### CI workflow design
-
-```text
-.github/workflows/application.yml:
-  triggers: PR + push to main (web/**, .github/workflows/application.yml)
-  steps: npm ci, npm run typecheck, npm run lint, npm run check:i18n, npm run test, npm run build
-  concurrency: cancel superseded runs
-
-.github/workflows/integration.yml:
-  triggers: every PR (required check) + push to main for web/**, docker-compose.yml,
-            application/integration workflow changes
-  steps: digest-pinned PostGIS service, npm ci, npm run test:integration
-  notes: real-DB gate provisions a per-run local database, fails visible on cleanup
-         errors, and does not require live backend credentials, Google APIs, or MinIO
-  harness check: check-ci-workflow.sh requires the digest-pinned PostGIS image,
-                 integration command, DB URL, health check, all-PR trigger, and
-                 superseded-run cancellation policy
-
-.github/workflows/visual.yml:
-  triggers: PR + push to main (web/**, .github/workflows/visual.yml)
-  steps: npm ci, npm run build, playwright install chromium, npm run check:visual,
-         upload screenshots artifact on failure
-  notes: rendered-page smoke — 4 public routes x light/dark x mobile/desktop,
-         fails on unexpected per-route HTTP status (the 404 fixture must
-         return 404), console errors, or page errors; no pixel baselines yet
-
-.github/workflows/poi-service.yml:
-  triggers: PR + push to main (poi-service/**, .github/workflows/poi-service.yml)
-  runs: npm ci && npm run typecheck && npm test
-
-.github/workflows/image-service.yml:
-  triggers: PR + push to main (image-service/**, .github/workflows/image-service.yml)
-  runs: npm ci && npm run typecheck && npm test
-
-.github/workflows/docs-harness.yml:
-  triggers: PR + push to main (AGENTS.md, .agents/**, .codex/**, docs/**, .github/workflows/docs-harness.yml)
-  runs: .agents/scripts/preflight.sh
-  permissions: contents: read
-```
+The old separate workflows and the PR `visual-gate` are removed. The visual job
+had no pixel baseline, duplicated install/build work, and could block indefinitely
+while installing Chromium. Local browser evidence remains available through
+`npm run check:visual` for UI work.
 
 ### Agent harness
 
-```text
-.agents/scripts/preflight.sh verifies:
-  - required entry files exist (AGENTS.md, docs/STRUCTURE.md, docs/specs/README.md)
-  - shell scripts parse with bash -n
-  - spec numbers are unique
-  - every spec has required headings (Goal, Stable decisions, Acceptance criteria)
-  - every spec appears in docs/specs/README.md
-  - local markdown links resolve
-  - implementation slice IDs are valid
-```
+`.agents/scripts/preflight.sh` checks required sources, script syntax, spec shape,
+links, planned slices, skill frontmatter, Codex bindings, and CI structure.
+`.agents/scripts/harness-self-test.sh` fault-injects those checks and verifies CI
+path classification. Deterministic checks do not self-attest semantic correctness;
+agent/docs/CI authority changes require independent semantic review.
 
 ## Acceptance criteria
 
-```text
-- npm run verify runs typecheck + lint + test + build in one command
-- npm run test:integration validates migrations + triggers + DB flows against a
-  real Postgres/PostGIS (docker-compose), opt-in so CI without Docker stays green
-- Every migration change ships with a green integration run (no reasoning-only SQL)
-- CI runs the relevant application and integration gates on every PR and blocks merge on failure
-- No live backend or API key dependency in CI
-- Docs changes trigger the docs harness gate
-- Consequence-based execution prevents over-engineering small changes
-- Every spec is machine-checked for format compliance
-```
+- `npm run verify` remains the full web type/lint/i18n/unit/build gate.
+- Real Postgres remains required for DB/SQL behavior.
+- CI emits stable required component checks but executes only relevant jobs.
+- A docs-only change does not install application/service dependencies.
+- A UI-only web change does not start Postgres.
+- Browser/visual verification cannot hold a PR indefinitely.
+- Agent/docs/CI changes run preflight, harness self-test, and independent semantic
+  review.

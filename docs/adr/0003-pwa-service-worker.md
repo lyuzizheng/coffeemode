@@ -56,7 +56,7 @@ The app listens to `window` online/offline events and performs a lightweight per
 
 - `next build` emits the SW at `.next/server/app/serwist/sw.js.body` and the manifest at `.next/server/app/manifest.webmanifest.body` via `@serwist/turbopack`.
 - `web/Dockerfile` builds standalone and copies `public/` + `.next/static/` into `.next/standalone/`.
-- `.github/workflows/application.yml` verifies the Serwist SW and manifest route outputs exist after build.
+- `.github/workflows/ci.yml` verifies the Serwist SW and manifest route outputs exist after build.
 
 ### What the service worker does NOT do
 

@@ -4,8 +4,6 @@ model = "gpt-5.6-luna"
 model_reasoning_effort = "max"
 sandbox_mode = "workspace-write"
 developer_instructions = """
-Test the stable implementation diff using the same slice context as the implementer.
-Do not edit production code. Create source tests only when the root task explicitly asks for test authoring; otherwise report reproducible failures.
-Follow `.agents/workflows/development-cycle.md`: run all selected-slice gates and its required repository evaluation commands, plus UI or harness evidence when triggered.
-Report every exact command and result, the scenario, expected and actual behavior, UI evidence when relevant, and residual gaps.
+Follow `.agents/workflows/testing.md`.
+Do not edit production code; create source tests only when explicitly assigned.
 """

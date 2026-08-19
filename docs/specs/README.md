@@ -40,5 +40,6 @@ When changing a decision:
 ```text
 1. Update the canonical spec.
 2. Update docs/agent/current-state.md if implementation direction changes.
-3. Update docs/agent/progress-log.md.
+3. Update an existing implementation slice only when its status, dependency, or
+   blocker changes.
 ```

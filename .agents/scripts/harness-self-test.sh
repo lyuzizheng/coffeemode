@@ -18,7 +18,8 @@ cp -R docs .agents .github .codex AGENTS.md "$TEST_ROOT/" 2>/dev/null || true
   cd "$TEST_ROOT"
   git init -q
   git add .
-  git -c user.name='Harness Self-Test' -c user.email='harness@test.invalid' commit -qm baseline
+  git -c user.name='Harness Self-Test' -c user.email='harness@test.invalid' \
+    -c commit.gpgsign=false commit -qm baseline
 )
 
 PASS=0
@@ -47,6 +48,22 @@ expect_failure() {
   else
     echo "  ok: detected injected fault: $label"
     PASS=$((PASS + 1))
+  fi
+}
+
+expect_classifier() {
+  local label="$1" expected="$2"
+  shift 2
+  local actual
+  actual="$(printf '%s\n' "$@" | "$TEST_ROOT/.agents/scripts/classify-ci-paths.sh")"
+  if [[ "$actual" == "$expected" ]]; then
+    echo "  ok: $label"
+    PASS=$((PASS + 1))
+  else
+    echo "  UNEXPECTED CLASSIFICATION: $label"
+    echo "    expected: ${expected//$'\n'/, }"
+    echo "    actual:   ${actual//$'\n'/, }"
+    FAIL=$((FAIL + 1))
   fi
 }
 
@@ -110,34 +127,45 @@ echo ""
 echo "=== Fault injection: check-ci-workflow ==="
 
 # Break YAML
-WF="$TEST_ROOT/.github/workflows/docs-harness.yml"
+WF="$TEST_ROOT/.github/workflows/ci.yml"
 cp "$WF" "$WF.bak"
 printf '\ninvalid: [\n' >> "$WF"
 expect_failure "invalid workflow YAML" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-workflow.sh"
 mv "$WF.bak" "$WF"
 
-# Remove all harness script references from docs-harness
+# Remove all harness script references from the docs job
 cp "$WF" "$WF.bak"
 grep -v 'preflight\|harness-self-test\|check-docs' "$WF.bak" > "$WF"
-expect_failure "docs-harness missing preflight" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-workflow.sh"
+expect_failure "CI docs job missing preflight" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-workflow.sh"
 mv "$WF.bak" "$WF"
 
-# Remove the real-DB command from the required integration workflow.
-IWF="$TEST_ROOT/.github/workflows/integration.yml"
-cp "$IWF" "$IWF.bak"
-grep -v 'test:integration' "$IWF.bak" > "$IWF"
-if assert_mutated "integration command missing" "$IWF.bak" "$IWF"; then
+# Remove the real-DB command from unified CI.
+cp "$WF" "$WF.bak"
+grep -v 'test:integration' "$WF.bak" > "$WF"
+if assert_mutated "integration command missing" "$WF.bak" "$WF"; then
   expect_failure "integration workflow missing real-DB command" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-workflow.sh"
 fi
-mv "$IWF.bak" "$IWF"
+mv "$WF.bak" "$WF"
 
-# Remove the all-PR trigger; a required check must not be path-filtered away.
-cp "$IWF" "$IWF.bak"
-grep -v '^  pull_request:$' "$IWF.bak" > "$IWF"
-if assert_mutated "integration pull_request trigger missing" "$IWF.bak" "$IWF"; then
-  expect_failure "integration workflow missing all-PR trigger" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-workflow.sh"
+# Remove changed-path conditioning from one stable job.
+cp "$WF" "$WF.bak"
+grep -v "needs.changes.outputs.integration == 'true'" "$WF.bak" > "$WF"
+if assert_mutated "integration classifier condition missing" "$WF.bak" "$WF"; then
+  expect_failure "integration job missing changed-path condition" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-workflow.sh"
 fi
-mv "$IWF.bak" "$IWF"
+mv "$WF.bak" "$WF"
+
+echo ""
+echo "=== CI path classifier ==="
+
+FALSES=$'application=false\nintegration=false\nimage_service=false\npoi_service=false'
+expect_classifier "docs-only change" "$FALSES"$'\ndocs=true' "docs/STRUCTURE.md"
+expect_classifier "web UI change" $'application=true\nintegration=false\nimage_service=false\npoi_service=false\ndocs=false' "web/app/page.tsx"
+expect_classifier "web DB change" $'application=true\nintegration=true\nimage_service=false\npoi_service=false\ndocs=false' "web/lib/db/checkins.ts"
+expect_classifier "shared package change" $'application=true\nintegration=true\nimage_service=true\npoi_service=true\ndocs=false' "packages/common/src/auth.ts"
+expect_classifier "CI authority change" $'application=true\nintegration=true\nimage_service=true\npoi_service=true\ndocs=true' ".github/workflows/ci.yml"
+expect_classifier "future workflow authority change" $'application=true\nintegration=true\nimage_service=true\npoi_service=true\ndocs=true' ".github/workflows/security.yml"
+expect_classifier "generated agent adapter change" "$FALSES"$'\ndocs=true' "web/AGENTS.md"
 
 echo ""
 echo "=== Fault injection: check-implementation-slices ==="
@@ -211,6 +239,13 @@ TOML="$TEST_ROOT/.codex/agents/tester.toml"
 cp "$TOML" "$TOML.bak"
 sed 's/^sandbox_mode = .*/sandbox_mode = "everything"/' "$TOML.bak" > "$TOML"
 expect_failure "invalid sandbox mode" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-codex-agents.sh"
+mv "$TOML.bak" "$TOML"
+
+# Role bindings must stay thin instead of copying workflow procedure.
+TOML="$TEST_ROOT/.codex/agents/implementer.toml"
+cp "$TOML" "$TOML.bak"
+awk '/^Follow `/ { print; print "State assumptions and success criteria before editing."; next } { print }' "$TOML.bak" > "$TOML"
+expect_failure "duplicated Codex role procedure" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-codex-agents.sh"
 mv "$TOML.bak" "$TOML"
 
 # Missing required agent file

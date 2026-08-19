@@ -1,6 +1,6 @@
 ---
 name: Fix / Implementation Plan
-about: Implementation-ready fix plan drafted from a bug, feature request, or review finding. Intended to be posted as a comment on the parent issue; omit the YAML frontmatter when using it as a comment.
+about: Implementation-ready plan posted as a comment on the parent issue.
 title: "[PLAN] "
 labels: []
 assignees: []
@@ -8,32 +8,30 @@ assignees: []
 
 ## Parent issue / trigger
 
-- Triggered by: # (bug report, review finding, or user request)
+- Triggered by:
 
-## Problem summary
+## Verified diagnosis
 
-One or two sentences describing the problem or gap.
-
-## Root cause / diagnosis
-
-What was found during issue review. Include relevant code references (`file:line`) and spec/ADR links.
+State the reproduced problem, first root cause, affected sibling sites, and current
+`file:line` evidence. Correct stale issue claims here.
 
 ## Fix plan
 
-- **Slice ID** (from `docs/agent/implementation-slices.md`; register a new row if needed):
-- **Affected files/packages**:
-- **Schema/migration impact**:
-- **API/service/UI impact**:
+- **Affected area or planned slice** (routine fixes need no slice row):
+- **Files/packages**:
+- **Schema/API/UI impact**:
 - **Test strategy**:
-- **Required doc/spec/ADR updates**:
-- **Risk tier**: Fast / Standard / High (criteria in `.agents/workflows/development-cycle.md`)
+- **Required canonical doc updates**:
+- **Risk tier** (`.agents/workflows/development-cycle.md`):
 
-## Verification checklist
+## Acceptance and verification
 
-- [ ] Focused deterministic checks pass (typecheck, lint, tests, build, preflight)
-- [ ] Independent code review (for Standard/High risk)
-- [ ] Independent semantic review (if docs/harness changed)
+- [ ] Focused behavior is reproduced and covered.
+- [ ] Relevant package and special gates are identified.
+- [ ] Independent implementation/semantic review requirements are identified.
+- [ ] Deferred or separable work has a linked follow-up.
 
-## Residual questions
+## Residual decisions
 
-Anything that still needs user, product, or design decision before implementation starts.
+List only decisions that fall under `.agents/workflows/closed-loop.md`'s stop
+conditions. An empty section means implementation may proceed.

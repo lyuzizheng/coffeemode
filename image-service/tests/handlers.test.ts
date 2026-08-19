@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { headObject } from "../src/r2";
+import { AwsClient } from "aws4fetch";
+import { R2HeadObjectError, headObject } from "../src/r2";
 import handler, { handleComplete, handleUpload } from "../src/index";
 import { MAX_UPLOAD_BYTES } from "../src/constants";
 import { baseEnv } from "./helpers";
@@ -259,6 +260,8 @@ describe("handleComplete", () => {
 });
 
 describe("router", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   it("GET / returns ok", async () => {
     const env = baseEnv();
     const request = makeRequest("GET", "/");
@@ -288,6 +291,23 @@ describe("router", () => {
       message: "internal server error",
     });
     vi.restoreAllMocks();
+  });
+
+  it("returns 500 rather than 404 for an S3 endpoint failure", async () => {
+    const env = { ...baseEnv(), R2_ENDPOINT: "http://localhost:9000" };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("forbidden", { status: 403 })),
+    );
+
+    const request = makeRequest("POST", "/v1/images/complete", { imageUuid: validUuid() });
+    const response = await handler.fetch(request, env, {} as ExecutionContext);
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: "internal_error",
+      message: "internal server error",
+    });
   });
 });
 
@@ -354,16 +374,72 @@ describe("headObject with R2_ENDPOINT (MinIO dev path)", () => {
     // trailing slash stripped; bucket + key appended (aws4fetch passes a Request)
     expect((input as Request).url).toBe("http://localhost:9000/cafemode/original/abc.webp");
     expect((input as Request).method).toBe("HEAD");
+    expect((input as Request).redirect).toBe("manual");
   });
 
-  it("returns null on a non-2xx (missing object / NoSuchBucket)", async () => {
+  it("returns null on 404", async () => {
     const fetchMock = vi.fn(async () => new Response("NoSuchBucket", { status: 404 }));
     vi.stubGlobal("fetch", fetchMock);
     const env = { ...baseEnv(), R2_ENDPOINT: "http://localhost:9000" };
     expect(await headObject(env, "original/abc.webp")).toBeNull();
-    // branch-discriminating: the S3 client path must have been taken
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [input] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect((input as Request).url).toBe("http://localhost:9000/cafemode/original/abc.webp");
+  });
+
+  it.each([400, 403, 429, 500, 502])(
+    "throws R2HeadObjectError on storage status %s",
+    async (status) => {
+      const fetchSpy = vi
+        .spyOn(AwsClient.prototype, "fetch")
+        .mockResolvedValue(new Response("storage failure", { status }));
+      const env = { ...baseEnv(), R2_ENDPOINT: "http://localhost:9000" };
+
+      try {
+        await expect(headObject(env, "original/abc.webp")).rejects.toMatchObject({ status });
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    },
+  );
+
+  it("throws when Content-Length is missing", async () => {
+    const fetchSpy = vi
+      .spyOn(AwsClient.prototype, "fetch")
+      .mockResolvedValue(new Response(null, { status: 200 }));
+    const env = { ...baseEnv(), R2_ENDPOINT: "http://localhost:9000" };
+
+    try {
+      await expect(headObject(env, "original/abc.webp")).rejects.toBeInstanceOf(R2HeadObjectError);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("throws when Content-Length is not a number", async () => {
+    const fetchSpy = vi
+      .spyOn(AwsClient.prototype, "fetch")
+      .mockResolvedValue(new Response(null, { status: 200, headers: { "content-length": "nan" } }));
+    const env = { ...baseEnv(), R2_ENDPOINT: "http://localhost:9000" };
+
+    try {
+      await expect(headObject(env, "original/abc.webp")).rejects.toBeInstanceOf(R2HeadObjectError);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+});
+
+describe("headObject with R2_BUCKET", () => {
+  it("returns null for a missing object", async () => {
+    const env = baseEnv();
+    expect(await headObject(env, "original/missing.webp")).toBeNull();
+  });
+
+  it("returns { size } for an existing object", async () => {
+    const env = baseEnv();
+    const imageUuid = validUuid();
+    const key = `original/${imageUuid}.webp`;
+    await env.R2_BUCKET.put(key, new Uint8Array([0xde, 0xad, 0xbe, 0xef]), {
+      httpMetadata: { contentType: "image/webp" },
+    });
+    expect(await headObject(env, key)).toEqual({ size: 4 });
   });
 });

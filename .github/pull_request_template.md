@@ -1,72 +1,45 @@
 ## Issue
 
-- Fixes #<!-- issue number -->
-- Fix plan comment: <!-- link to the issue comment containing the fix plan -->
-- Related PR stack: <!-- if this branch is based on an unmerged branch, state the merge order -->
+- Link: <!-- Fixes #N only if this PR fully satisfies the issue; otherwise Refs #N -->
+- Fix plan: <!-- issue comment URL -->
+- Stack: <!-- base and merge order, or none -->
 
-## Summary
+## Context
 
-<!-- One-paragraph description of what changed and why. -->
-
-## Type of change
-
-- [ ] Bug fix
-- [ ] Feature
-- [ ] Refactor / code health
-- [ ] Docs / harness
-- [ ] Architecture / data model
-- [ ] Other: __________
-
-## Affected slice / area
-
-<!-- e.g., `issue-27-stats-locking`, `web/lib/images`, `poi-service` -->
+<!-- What problem is solved and why this is the smallest complete change. -->
 
 ## Changes
 
-- What changed and why.
-- Schema/API/UI impact, if any.
-- Files or packages touched.
+- Affected area or planned slice:
+- Behavior/API/schema/UI impact:
+- Root cause and sibling sites checked:
 
-## Test plan
+## Verification
 
-- [ ] `cd web && npm run verify`
-- [ ] `cd web && npm run test:integration` — REQUIRED when the change touches `web/db/migrations/*.sql`, embedded SQL, or DB-backed flows (else skip)
-- [ ] `cd image-service && npm run typecheck && npm test`
-- [ ] `cd poi-service && npm run typecheck && npm test`
-- [ ] `.agents/scripts/preflight.sh`
-- [ ] Independent code review (`.agents/scripts/implementation-review-packet.sh`) — for Standard/High risk
-- [ ] Independent semantic review (`.agents/scripts/docs-review-packet.sh`) — if docs/harness changed
-- [ ] Manual / visual check — for UI or worker flows
-- [ ] E2E (Playwright) — for user-visible flows, post-MVP
-
-## Verification evidence
-
-<!-- Paste the exact commands you ran and their results. -->
+<!-- Exact relevant commands and results. Mark non-applicable gates explicitly. -->
 
 ```text
 
 ```
 
-## Risk tier
+- [ ] Focused test proves the changed behavior.
+- [ ] Relevant package gate passes.
+- [ ] Real-Postgres gate passes if DB/SQL behavior changed.
+- [ ] Preflight passes.
+- [ ] Manual/browser evidence exists if user-visible behavior changed.
+- [ ] Independent implementation review completed when required by the tier.
+- [ ] Independent semantic review completed if docs/agent/CI authority changed.
 
-Criteria defined in `.agents/workflows/development-cycle.md` (Execution tiers).
+## Risk and release
 
-- [ ] Fast
-- [ ] Standard
-- [ ] High
-
-## Deployment / release notes
-
-<!-- Migrations, env variables, secrets, or owner actions required. -->
+- Tier: <!-- Fast / Standard / High; see .agents/workflows/development-cycle.md -->
+- Deployment, migration, environment, secret, or owner action:
+- Residual risk or linked follow-up:
 
 ## Checklist
 
-- [ ] Issue linked with `Fixes #N`.
-- [ ] Fix plan recorded in the linked issue before this PR was opened.
-- [ ] Slice status updated in `docs/agent/implementation-slices.md`.
-- [ ] `docs/agent/progress-log.md` updated.
-- [ ] `docs/agent/current-state.md` updated if phase/focus changed.
-- [ ] No separate temporary plan files; canonical docs updated if contracts changed.
+- [ ] The issue link uses `Fixes` only for complete acceptance criteria.
+- [ ] Canonical specs changed only if behavior/contracts changed.
+- [ ] Current state or an existing product slice changed only if phase/blockers/status changed.
 - [ ] CI is green.
-- [ ] Independent review completed for Standard/High risk.
-- [ ] Stacked PR merge order stated (if applicable).
+- [ ] Stack merge order is stated if applicable.

@@ -141,7 +141,7 @@ by the blocked `map-home` slice; this phase starts after that slice is available
 | --- | --- | --- | --- |
 | DEP1 | Create `web/Dockerfile` and `docker-compose.yml` | deploy | repo root / `web/` |
 | DEP2 | Add VPS and Worker deploy GitHub workflows | deploy | `.github/workflows/deploy-*.yml` |
-| DEP3 | Add DB migration runner to CI | deploy | `.github/workflows/application.yml` |
+| DEP3 | Add DB migration runner to CI | deploy | `.github/workflows/ci.yml` |
 | DEP4 | Add bundle analyzer and Lighthouse CI | perf | `web/package.json`, CI workflows |
 | DEP5 | Add e2e smoke tests for auth and image flows | tests | `web/e2e/*` |
 

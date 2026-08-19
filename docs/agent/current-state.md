@@ -57,8 +57,8 @@ web/app/sw.ts            Serwist runtime cache (CacheFirst for immutable assets,
                          dynamic pages and API routes)
 web/shared/places/types.ts  POI types shared with the worker
 docs/specs/              0001 Next.js rewrite, 0002 design system, 0003 testing/CI
-docs/agent/              slices manifest (machine-checked), this file, protocols
-.agents/                 Agent workflows, scripts, delegated design prompts
+docs/agent/              current state, planned-slice manifest, owner actions
+.agents/                 Agent rules, workflows, skills, scripts, and review gates
 _archive-coffeemode-frontend/  old Vite app — reference only, superseded
 _archive-coffeemode-backend/   old Java app — being dropped
 ```

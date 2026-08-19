@@ -1,60 +1,84 @@
-# CoffeeMode Agent Harness
+# CoffeeMode Agent System
 
-This folder contains procedure only. Intended product and implementation behavior belongs in `docs/specs/`; architecture decisions belong in status-bearing ADRs under `docs/adr/`.
+`.agents/` is the single procedural home for repository agents. It contains rules,
+workflows, trigger-oriented skills, and deterministic scripts. Product truth stays
+in `docs/specs/`; current project state stays in `docs/agent/`.
 
-## Start
+## Reading order
 
-1. Run `.agents/scripts/preflight.sh`.
-2. Follow `docs/agent/reading-order.md`.
-3. Select the task-relevant skill and workflow from `.agents/ROUTER.md`.
-4. For app work, select a slice from `docs/agent/implementation-slices.md`.
-5. Generate the shared minimal context with `.agents/scripts/context-for-slice.sh <slice-id>`.
-6. Obey the packet readiness: `STOP` blocks coding; `READY` permits implementation; `COMPLETE` means verify, do not re-implement.
+Read only what the task needs:
+
+1. `AGENTS.md`
+2. `docs/STRUCTURE.md`
+3. `docs/agent/current-state.md`
+4. `.agents/rules/coding.md` before editing code
+5. `.agents/rules/issues.md` for issue intake or issue-driven work
+6. task-relevant specs and accepted ADRs
+7. the workflow selected by `.agents/ROUTER.md`
+
+For planned product work, select a row from
+`docs/agent/implementation-slices.md` and run
+`.agents/scripts/context-for-slice.sh <slice-id>`. Routine bug fixes use the issue,
+fix plan, affected specs, and changed code as context; they do not need a synthetic
+slice row.
 
 ## Shape
 
 ```text
 .agents/
-  README.md
-  ROUTER.md
-  docs-semantic-review.md
-  workflows/   detailed task loops
-  skills/      trigger-oriented entry points
-  scripts/     deterministic gates, slice context, and review packets
+  README.md                 system entry and reading order
+  ROUTER.md                 intent -> skill/workflow
+  rules/                    canonical coding and issue rules
+  workflows/                detailed execution loops
+  skills/                   short trigger-oriented entry points
+  scripts/                  deterministic gates and review packets
 ```
 
-Narrative role files, repeated product rules, static priority lists, and generic templates are intentionally excluded. They create additional sources of truth without adding executable guarantees.
+Narrative role copies, product decisions, static priority lists, and routine task
+history do not belong here. GitHub issues, PRs, and Actions are the task ledger.
 
-Project-scoped executable agent bindings live separately in `.codex/agents/`. Those small TOML files pin role instructions, model, reasoning effort, and only intentional subagent permission defaults. Implementer has no repo-local sandbox default; explorer/reviewer default to read-only and tester defaults to workspace-write. Main-agent permissions stay user/session-owned rather than being copied into the repo.
+Project-scoped executable role bindings live in `.codex/agents/`. They pin the
+role, model, reasoning effort, and sandbox, then delegate to the matching
+`.agents/` workflow.
 
-## Two-layer gate
+`web/AGENTS.md` is a Next.js-generated framework notice and `web/CLAUDE.md` is
+its generated tool adapter. They are reviewed as agent configuration but are not
+additional CoffeeMode procedure owners.
 
-Layer 1 (deterministic, CI-enforced):
+## Closed loop
 
-| Script | Purpose |
-| --- | --- |
-| `scripts/preflight.sh` | Master gate: structural checks + all sub-checks |
-| `scripts/check-docs-consistency.sh` | Doc alignment, whitespace, ADR status, authority separation |
-| `scripts/check-ci-workflow.sh` | CI YAML validity, required gates, action versions |
-| `scripts/check-implementation-slices.sh` | Slice manifest via the ruby validator |
-| `scripts/check-links.sh` | Local markdown links resolve |
-| `scripts/check-agent-skills.sh` | Skill frontmatter, naming, trigger phrase |
-| `scripts/check-codex-agents.sh` | `.codex/` TOML shape and required values |
-| `scripts/harness-self-test.sh` | Fault-injection self-test of the gates |
+The canonical idea/issue-to-merge procedure is
+`.agents/workflows/closed-loop.md`. Risk tiers are defined once in
+`.agents/workflows/development-cycle.md`. Testing policy is defined once in
+`docs/specs/0003-testing-and-ci.md`.
 
-Slices declaring the `integration` test gate additionally require the package-level
-real-Postgres suite (`cd web && npm run test:integration`, RUN_INTEGRATION=1) green
-on the final diff — deterministic harness checks cannot validate SQL semantics, so
-migrations/triggers/DB flows must be proven on a real Postgres/PostGIS
-(`docker compose up -d --wait postgres`; see `docs/agent/local-dev-stack.md`).
+## Gates
 
-Layer 2 (semantic, human/independent-agent): `.agents/docs-semantic-review.md` applied to `.agents/scripts/docs-review-packet.sh <base>` whenever docs, harness, or agent configuration files change. Deterministic CI does not attest semantic review.
-
-Supporting tools:
+Layer 1 is deterministic and CI-enforced:
 
 | Script | Purpose |
 | --- | --- |
-| `scripts/context-for-slice.sh` | Minimal canonical source index + readiness gate for one slice |
-| `scripts/implementation-slices.rb` | Single slice parser: `check`, `list`, `context <id>` |
-| `scripts/docs-review-packet.sh` | Self-contained packet for semantic docs review |
-| `scripts/implementation-review-packet.sh` | Pinned base/head/fingerprint packet for code review |
+| `scripts/preflight.sh` | Master structural and consistency gate |
+| `scripts/check-docs-consistency.sh` | Authority, references, specs, ADRs, whitespace |
+| `scripts/check-ci-workflow.sh` | Unified CI structure and required test contracts |
+| `scripts/classify-ci-paths.sh` | Changed-path to relevant CI-job classification |
+| `scripts/check-implementation-slices.sh` | Planned product-slice manifest validation |
+| `scripts/check-links.sh` | Local Markdown links |
+| `scripts/check-agent-skills.sh` | Skill frontmatter and names |
+| `scripts/check-codex-agents.sh` | `.codex/` shape and workflow alignment |
+| `scripts/harness-self-test.sh` | Fault-injection tests for the gates |
+
+Layer 2 is semantic and independent:
+`.agents/docs-semantic-review.md` applied to the packet generated by
+`.agents/scripts/docs-review-packet.sh <base>` whenever documentation, agent
+procedure/configuration, or harness authority changes. A green deterministic gate
+does not attest its own semantic adequacy.
+
+Supporting scripts:
+
+| Script | Purpose |
+| --- | --- |
+| `scripts/context-for-slice.sh` | Minimal canonical context for one planned slice |
+| `scripts/implementation-slices.rb` | Slice parser and readiness evaluation |
+| `scripts/docs-review-packet.sh` | Stable docs/harness semantic-review packet |
+| `scripts/implementation-review-packet.sh` | Stable cumulative implementation-review packet |

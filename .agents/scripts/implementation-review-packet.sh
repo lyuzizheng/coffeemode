@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generate an implementation review handoff packet for one slice.
+# Generate an implementation review handoff packet for an issue or planned slice.
 # Pins base/head commits and a working-tree fingerprint so the reviewer
 # inspects the exact same cumulative diff.
 # Adapted from CanCan's implementation-review-packet.sh.
@@ -9,16 +9,23 @@ ROOT="${COFFEEMODE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 cd "$ROOT"
 
 if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
-  echo "Usage: .agents/scripts/implementation-review-packet.sh <slice-id> [base]"
+  echo "Usage: .agents/scripts/implementation-review-packet.sh <issue-N|slice-id> [base]"
   exit 1
 fi
 
-slice_id="$1"
+context_id="$1"
 base="${2:-HEAD}"
 base_sha="$(git rev-parse --verify "${base}^{commit}")"
 head_sha="$(git rev-parse --verify "HEAD^{commit}")"
 
-.agents/scripts/context-for-slice.sh "$slice_id" >/dev/null
+if .agents/scripts/context-for-slice.sh "$context_id" >/dev/null 2>&1; then
+  context_source="run .agents/scripts/context-for-slice.sh $context_id from this head"
+elif [[ "$context_id" =~ ^issue-[0-9]+$ ]]; then
+  context_source="read the linked GitHub issue, fix-plan comment, affected specs, and .agents/README.md"
+else
+  echo "Unknown context '$context_id': use an existing slice ID or issue-N"
+  exit 1
+fi
 
 worktree_fingerprint="$({
   git diff --binary "$head_sha" -- .
@@ -30,11 +37,11 @@ worktree_fingerprint="$({
 
 echo "# CoffeeMode Implementation Review Handoff"
 echo
-echo "- Slice ID: $slice_id"
+echo "- Context ID: $context_id"
 echo "- Base commit: $base_sha"
 echo "- Head commit: $head_sha"
 echo "- Working tree fingerprint: $worktree_fingerprint"
-echo "- Canonical source index: run .agents/scripts/context-for-slice.sh $slice_id from this head"
+echo "- Canonical context: $context_source"
 
 echo
 echo "# Required External Handoff"
@@ -73,7 +80,7 @@ echo
 echo "## Repository inspection"
 echo "Before inspection, verify this shared checkout still matches the packet; regenerate the packet if either value differs."
 echo "- HEAD check: test \"\$(git rev-parse --verify HEAD^{commit})\" = \"$head_sha\""
-echo "- Packet refresh: .agents/scripts/implementation-review-packet.sh $slice_id $base_sha"
+echo "- Packet refresh: .agents/scripts/implementation-review-packet.sh $context_id $base_sha"
 echo "- Require the refreshed Head commit and Working tree fingerprint to match this packet."
 echo "Inspect the complete cumulative diff directly from the verified shared working tree."
 echo "- Committed changes: git diff --no-ext-diff $base_sha $head_sha -- ."

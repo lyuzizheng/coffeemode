@@ -15,12 +15,20 @@ if grep -rn '^## Current Priorit' .agents --include='*.md' 2>/dev/null; then
   fail=1
 fi
 
-echo "Checking removed harness layers are not referenced..."
-removed_refs='\.agents/(roles|rules|plugins|templates)/|role-for-prompt\.sh'
-if grep -rnE "$removed_refs" AGENTS.md docs .agents --include='*.md' 2>/dev/null; then
-  echo "Removed harness layer is still referenced."
+echo "Checking legacy procedure locations are not referenced..."
+legacy_refs='docs/agent/(reading-order|iteration-protocol|coding-conventions|issue-guidelines|progress-log(-archive)?)\.md|[.]cursor/|[.]cursorrules|[.]vscode/|[.]trae/'
+if grep -rnE "$legacy_refs" AGENTS.md docs .agents .codex .github .windsurf web/AGENTS.md web/CLAUDE.md --include='*.md' --include='*.toml' 2>/dev/null; then
+  echo "Legacy agent procedure location is still referenced."
   fail=1
 fi
+
+echo "Checking removed editor-specific folders stay removed..."
+for removed in .cursor .cursorrules .vscode .trae; do
+  if [[ -e "$removed" ]]; then
+    echo "Removed editor-specific path exists: $removed"
+    fail=1
+  fi
+done
 
 echo "Checking backticked repo file references..."
 while IFS= read -r entry; do

@@ -184,9 +184,10 @@ when "context"
 
   global_sources = [
     "AGENTS.md",
+    ".agents/README.md",
+    ".agents/rules/coding.md",
     "docs/STRUCTURE.md",
-    "docs/agent/current-state.md",
-    "docs/agent/reading-order.md"
+    "docs/agent/current-state.md"
   ]
   spec_sources = list(slice.fetch("Specs")).map { |number| spec_path(number) }
 

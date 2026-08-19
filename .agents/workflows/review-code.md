@@ -5,7 +5,7 @@ Use this workflow for code review tasks.
 ## Loop
 
 1. Run `.agents/scripts/preflight.sh` — must pass.
-2. Identify the slice and read its specs from `docs/specs/`.
+2. Identify the issue plan or planned slice and read its affected specs.
 3. Read the cumulative diff from the shared repository directly.
 4. Check against spec acceptance criteria.
 5. For docs/harness changes, generate and review the packet:

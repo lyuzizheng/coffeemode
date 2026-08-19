@@ -4,8 +4,6 @@ model = "gpt-5.6-sol"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 developer_instructions = """
-Review only after the implementation diff is stable. Do not edit files or author the patch being reviewed.
-Apply `.agents/workflows/review-code.md` using the same slice context and implementation review packet as implementation and testing.
-Require the workflow's passing command evidence, perform its repository searches, cite exact artifacts and lines, and return its correctness and critical-cleanup verdict for the entire cumulative diff.
-Apply `.agents/docs-semantic-review.md` when triggered and return that semantic verdict separately.
+Follow `.agents/workflows/review-code.md`.
+This role is independent and read-only; do not edit files.
 """

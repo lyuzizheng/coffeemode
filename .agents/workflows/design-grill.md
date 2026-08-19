@@ -18,7 +18,7 @@ Use this to continue product/design alignment for CoffeeMode.
 6. Record accepted decisions in `alignment-progress.md`.
 7. Move stable implementation guidance into the canonical spec.
 8. Remove or rewrite stale temp notes.
-9. Update `docs/agent/progress-log.md`.
+9. Update current state only if phase, focus, or blockers changed.
 10. Run the deterministic gate: `.agents/scripts/preflight.sh`.
 
 ## Question Quality Bar

@@ -45,16 +45,14 @@ An ADR's `Status` controls its authority. `Proposed` is not the same as `Accepte
 
 ### `docs/agent/`
 
-AI coding agent memory and workflow.
+Current project state and implementation planning.
 
 Use it for:
 
 ```text
-current state
-reading order
-issue-guidelines
+current phase and blockers
 implementation slices
-progress log
+pending owner actions
 ```
 
 This folder points to specs. It should not become a second product spec layer.
@@ -67,11 +65,15 @@ Use it for:
 
 ```text
 intent routing
-workflow checklists
+coding and issue rules
+closed-loop workflows
+trigger-oriented skills
 deterministic helper scripts
 ```
 
-The `.agents/` folder describes how agents work. It must point back to `docs/specs/` for product truth and must not duplicate canonical implementation decisions.
+The `.agents/` folder is the single procedural home for how agents work. It must
+point back to `docs/specs/` for product truth and must not duplicate canonical
+implementation decisions.
 
 ## Source contract
 

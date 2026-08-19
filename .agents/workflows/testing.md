@@ -1,42 +1,22 @@
 # Testing
 
-Use this workflow for testing and QA tasks.
+Use this workflow for testing and QA tasks. `docs/specs/0003-testing-and-ci.md`
+owns the test layers and path-to-gate policy.
 
 ## Loop
 
-1. Run `.agents/scripts/preflight.sh`.
-2. Read `docs/specs/0003-testing-and-ci.md` for the testing policy.
-3. Identify the slice and its declared test gates.
-4. Use the narrowest test layer that proves the changed behavior:
-   - pure utility/hook logic → unit tests (Vitest)
-   - API route behavior with mocked backend → integration tests (fast, default)
-   - **SQL / migrations / triggers / DB-backed flows → REAL-DB integration tests**
-     (`docker compose up -d --wait postgres` + `npm run test:integration` in `web/`) — required,
-     not optional; unit mocks cannot see Postgres snapshot/trigger semantics.
-   - user-visible flow → E2E (Playwright, post-MVP)
-   - visual quality → screenshot comparison (optional, not blocking)
-5. **Maintain the integration suite**: when a change touches a DB behavior that
-   the suite does not cover yet, EXTEND `web/tests/integration/db.integration.test.ts`
-   in the same PR (one test per behavior, real assertions on returned + stored
-   values). The suite must be red on the bug and green on the fix.
-6. CI must not depend on live backend, API keys, or external services.
-7. Report reproducible failures. Do not patch production code as a tester.
+1. Run preflight and read the affected contract.
+2. Identify the changed boundary and select the narrowest proving test.
+3. For bugs, make the test fail on the reproduced defect before relying on it as a
+   regression test.
+4. Run the focused test and the relevant package gate.
+5. Use the real-Postgres suite for migrations, SQL, triggers, or DB-backed flows;
+   unit mocks do not satisfy that boundary.
+6. Use browser/manual evidence for user-visible behavior. Automated visual
+   comparison remains optional and non-blocking until a canonical baseline policy
+   is accepted.
+7. Report exact commands, expected/actual behavior, and residual gaps. A tester
+   does not patch production code unless the root task explicitly assigns test
+   authoring.
 
-## Running the real-DB suite
-
-```text
-docker compose up -d --wait postgres  # Postgres service (repo root)
-cd web && npm run db:migrate  # apply 0001→0008 (idempotent)
-npm run test:integration      # RUN_INTEGRATION=1; provisions + drops a per-run local DB
-```
-
-Full local-stack guide: `docs/agent/local-dev-stack.md`.
-
-## Test file conventions
-
-```text
-web/tests/           unit tests
-web/tests/integration/  real-Postgres integration suite (RUN_INTEGRATION=1 gate)
-web/e2e/             Playwright E2E specs (post-MVP)
-web/fixtures/        test fixtures and synthetic data
-```
+Local real-DB startup and commands live in `docs/agent/local-dev-stack.md`.

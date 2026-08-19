@@ -13,12 +13,16 @@ Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisi
 - Issue #26 (shared packages/common single-source) is merged.
 - Issue #27 (work_stats row locking) is merged (#56).
 - Issue #74 merges the post-review P1 fixes for PRs #66–#73 (OAuth redirect allowlist, proxy session refresh, profile upsert failure, sign-out cache clearing, and upstream POI/image error logging).
-- Issue #114 tracks the corrected parallel development plan: MapKit-specific work remains blocked on the Apple Developer Program, while map-independent feature slices can proceed with APIs or fixtures.
+- Issue #114 established that Apple credentials do not block map-independent
+  work. Backend/contracts can still proceed; each new UI slice now separately
+  waits for its Kimi K3 artifact.
 - Issue #117 adds CI enforcement for the real-DB integration suite; the local suite is green.
 - Issue #118 hardens the real-DB suite against unsafe database targets and order-dependent coverage.
 - Issue #119 preserves image-service storage failures instead of mapping them to `not_found`.
 - Real MinIO/R2 upload -> HEAD -> complete coverage remains a separate follow-up; the current integration gate is Postgres-only.
-- `map-home` is the next blocked MapKit feature; non-map feature tracks are unblocked and can proceed in parallel.
+- Issue #130 / PR #128 contains the runtime implementation for the current `cafe-creation` slice: Google/Apple Maps link import and Google/Apple provider search share one first-check-in flow. Runtime gates are green, but the slice is `BLOCKED` until Kimi K3 visual review before merge.
+- PR #138 is stacked on PR #128 so its current-runtime claims stay true; merge #128 first, then retarget/rebase #138 onto `main`.
+- Apple live search is configuration-gated and does not block link import or Google search. New user-visible UI implementation is separately design-gated on a slice-specific Kimi K3 artifact.
 
 ## What exists
 
@@ -41,13 +45,15 @@ web/app/auth/            signIn/signOut server actions, SignInButton/SignOutButt
 web/lib/images/          image-service client + sharp processor + 10 MB upload size propagation,
                          plus the `completeImageUpload` service with atomic DB writes
 web/app/api/images/      upload + complete route handlers with per-user rate limiting
-poi-service/             POI cache microservice (Workers + D1 + KV) — 4 endpoints,
+poi-service/             POI cache microservice (Workers + D1 + KV) — stored search,
+                         live Google search, resolve, and external-result persistence;
                          Google field masks, KV hot cache, D1 store, haversine search
 image-service/           Image upload microservice (Cloudflare Worker + R2 presigned URLs,
                          10 MB cap, lifecycle guidance)
-web/lib/places/          Server-only POI service client (search/resolve/get) + maps URL validator
-web/app/api/places/      search + resolve route handlers with rate limiting, 10 km radius cap,
-                         and maps URL domain validation
+web/lib/places/          Server-only POI service client (stored/live search, resolve,
+                         external persistence, get) + maps URL validator
+web/app/api/places/      search + resolve + external-result route handlers with rate limiting,
+                         10 km radius cap, and maps URL domain validation
 web/app/api/cafes/       POST (fused create + first check-in, 409 dedupe), GET nearby list
                          (10 km cap), GET [id] detail
 web/lib/rate-limit.ts    Token-bucket rate limiter: in-memory (dev/tests) or Postgres-backed
@@ -75,21 +81,19 @@ _archive-coffeemode-backend/   old Java app — being dropped
    placeholders, set Worker secrets, deploy, wire IMAGE_SERVICE_URL/TOKEN.
 3. poi-cache-service deploy (§7): Cloudflare D1/KV + secrets, apply D1 schema,
    deploy, wire POI_SERVICE_URL/TOKEN.
-4. discovery-sheet — bottom sheet + swipe cards
-5. cafe-creation — first check-in flow (manual name/address fallback; geocoding approach TBD, not MapKit-dependent)
-6. checkin-system — 0-100 sliders + policy chips
-7. work-profile aggregation, search, navigation prompt
-8. profile-page — user profile and saved cafes
-9. search-filters — hybrid search + nomad filters
-10. seo-sharing — SSR deep links + share flow
+4. cafe-creation — complete Kimi K3 visual review of PR #128, then merge (#130)
+5. work-profile aggregation — map-independent backend work
+6. Obtain Kimi K3 artifacts for discovery-sheet (#133), search-filters (#135),
+   check-in, navigation prompt, profile, and cafe-detail/share before UI coding
 ```
 
 ### Blocked context (do not start yet)
 
 ```text
-- map-home — Apple MapKit full-screen map + custom markers [BLOCKED on Apple Developer Program]
-- map-discovery-integration — map-tap bottom sheet [BLOCKED on map-home]
-- map-creation-entry — map-tap cafe creation [BLOCKED on map-home]
+- map-home — Apple MapKit full-screen map + custom markers [BLOCKED on Apple Developer Program; #131, #132]
+- map-discovery-integration — bind discovery/search to MapKit [BLOCKED on map-home; #134]
+- map-creation-entry — map-tap and map-surface creation entry [BLOCKED on map-home; #136]
+- discovery-sheet and every other new user-visible UI slice — [BLOCKED on its Kimi K3 design artifact]
 - deploy-vps — Docker + VPS + CDN + CI/CD [BLOCKED on domain + VPS + Cloudflare account]
 - cleanup-legacy — remove old Vite frontend + Java backend [BLOCKED on deploy-vps]
 ```
@@ -107,7 +111,7 @@ _archive-coffeemode-backend/   old Java app — being dropped
 - `next build` warns about custom Cache-Control for `/_next/static/:path*` — intentional for production hashed chunks
 - `maps_share_url` host validation, 10 km nearby-search cap, and 10 MB image-upload cap are active
 - R2 lifecycle cleanup for abandoned `original/` objects requires a scheduled Worker/script (metadata rules cannot filter)
-- Apple Developer Program purchase pending (needed for MapKit JS)
+- Apple Developer Program purchase pending (needed for MapKit JS and Apple live search only; #131)
 - poi-service/wrangler.toml and image-service/wrangler.toml placeholders are
   documented; deploy blocked on Cloudflare account + secrets (pending-user-actions §6–7)
 ```

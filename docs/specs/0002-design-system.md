@@ -6,17 +6,19 @@ Define CoffeeMode's visual identity for 2026: modern, restrained, elegant. The c
 
 ## Status
 
-Accepted (revised 2026-08-02 — supersedes retro/vintage direction; aligned with bottom-sheet SPA, swipe cards, slider check-in)
+Accepted (revised 2026-08-19 — Kimi K3 design authority and responsive discovery contract; earlier 2026-08-02 — supersedes retro/vintage direction, aligned with bottom-sheet SPA, swipe cards, slider check-in)
 
 ## Stable decisions
 
 ```text
 - HeroUI v3 + Tailwind v4 + Framer Motion (no Shadcn; HeroUI is the sole component library)
 - next-intl from day one (en primary, zh secondary)
-- Map-native SPA: bottom sheet (peek/half/full) + horizontal swipe cards
+- Responsive map-native discovery: mobile bottom sheet + swipe cards; desktop sidebar + detail drawer
 - All scoring = subjective 0-100 sliders; Work Profile bars are the visual hero
 - Anti-vibe-coding: no confetti, no purple gradients, no glass-panel AI-slop
 - Global toast surface: HeroUI <Toast.Provider> mounted in root providers
+- Every new user-visible UI slice requires a Kimi K3 design artifact before
+  implementation; agents implement the approved composition rather than inventing it
 ```
 
 ## Design personality
@@ -83,7 +85,9 @@ Do not add Shadcn, Radix primitives, or a `components/ui` directory. Bespoke com
 ```text
 MapCanvas:        MapKit JS full-screen map (client component)
 CafeMarker:       Coffee-cup marker (existing design) + open/closed status dot
-CafeCard:         Horizontal swipe card (~85% width, snap carousel)
+CafeCard:         Horizontal swipe card (~85% width, snap carousel); compact
+                  characteristic icons expose wifi, outlets, stay limit, and
+                  other available work facts without turning PEEK into detail
 BottomSheet:      Google-Maps-style sheet, snap states peek / half / full
 WorkProfile:      Dimension bars (wifi/outlets/seats/temp/coffee) + policy consensus
 ScoreSlider:      0-100 subjective slider with live value (check-in + creation)
@@ -262,10 +266,11 @@ Mobile:
   Full-screen Apple Map (dark mode follows theme)
   Floating search bar (top, backdrop-blur)
   Bottom sheet — Google Maps style, one sheet three states:
-    PEEK  horizontal swipe cards (cafes in viewport, synced with map)
-    HALF  selected cafe: cover carousel + name + actions + top work facts
-    FULL  complete detail; map stays visible ~15% at top
-  URL sync: HALF/FULL → /cafes/[id] via replaceState; back collapses
+    PEEK  no selection; horizontal swipe cards with compact work-characteristic icons
+    HALF  selected cafe: cover carousel + name + both scores + actions + top work facts
+    FULL  complete real-data detail; map stays visible ~15% at top
+  URL sync: first selection pushes /cafes/[id]; selection/height changes replace it;
+            Back collapses the whole selection session to /
   FAB bottom-right (add cafe, login-gated)
   Check-in: drawer above the sheet
 
@@ -273,7 +278,8 @@ Desktop:
   Left sidebar 380px: search + filters + cafe list (scroll)
   Right: full-screen map
   Cafe detail: slide-over from right (Drawer placement="right")
-  Or: dedicated page /cafes/[id] (SSR, shareable)
+  Uses the shared selection/URL state; never emulates mobile PEEK/HALF/FULL snaps
+Deep-link/share landing: dedicated SSR /cafes/[id] in the separate seo-sharing slice
 
 Breakpoints:
   sm: 640px   (large phone landscape)
@@ -325,6 +331,7 @@ Transition: 200ms color transition on theme switch
 - prefers-reduced-motion disables all non-essential animation
 - No Material Design, generic SaaS, or AI-slop visual language
 - No Shadcn components; HeroUI v3 is the sole library
+- Kimi K3 design artifact exists for the slice and the implementation matches it
 - `web/app/globals.css` implements accent, secondary, radius, and shadow tokens exactly
 - HeroUI `<Toast.Provider>` is mounted in root providers
 ```

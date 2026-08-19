@@ -10,7 +10,7 @@ This is a rewrite, not a migration. The old Vite SPA (`_archive-coffeemode-front
 
 ## Status
 
-Accepted (revised 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
+Accepted (revised 2026-08-19 — responsive discovery contract and Kimi K3 design gate; 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
 
 ## Stable decisions
 
@@ -56,7 +56,7 @@ coffeemode/
           search/
             route.ts        # POI cache service search proxy
           resolve/
-            route.ts        # POI cache service resolve proxy (Google Maps link → POI)
+            route.ts        # POI cache service resolve proxy (Google/Apple Maps link → POI)
         checkins/
           route.ts          # Check-in (打卡) CRUD
         navigations/
@@ -259,7 +259,8 @@ User-customizable weights: post-MVP.
 Social signal hook:
 
 ```text
-- checkin_likes (user_id + checkin_id) powers the note list sort order.
+- checkin_likes (user_id + checkin_id) preserves future note-list ranking options;
+  discovery FULL ordering is resolved before #133.
 - A tunable social_weight parameter (default 0 at launch) can fold likes into the
   per-checkin contribution before it reaches work_stats. This leaves design space
   for "liked check-ins carry more weight" without a future schema change.
@@ -338,8 +339,8 @@ MapKit JS capabilities used:
 - Custom annotations (coffee-cup marker, status dot)
 - Clustering (clusteringIdentifier)
 - User location tracking
-- Search autocomplete (mapkit.SearchAutocomplete) — creation + external search
-- Geocoding (mapkit.Geocoder) — reverse geocode for map-tap / drop-pin creation (map-creation-entry slice)
+- Text search (mapkit.Search) — current creation + external-search contract
+- Geocoding (mapkit.Geocoder) — reserved for the deferred map-tap/manual flow (map-creation-entry slice, #136)
 ```
 
 **CoffeeMode maintains its own POI database.** MapKit renders and assists search; it does not replace the cafes table. Custom marker: existing coffee-cup design (brown circle, white cup), status dot (open/closed); category variants post-MVP.
@@ -375,9 +376,8 @@ Endpoints (all require POI_SERVICE_TOKEN header):
   POST /poi/resolve              {maps_share_url} → POI (creation import path)
   GET  /poi/search?q&lat&lng&r   search STORED POIs: name match + Worker-side
                                  haversine distance sort (powers default search)
-  POST /poi/external             store externally-searched POIs (Google live
-                                 results, Apple MapKit refs) — everything
-                                 searched becomes reusable
+  GET  /poi/search/external?q... live Google text search; cache usable results
+  POST /poi/external             persist browser-selected Apple MapKit refs
 
 Hosting: Cloudflare workers.dev subdomain first; custom domain
       (poi.coffeemode.app) once domain setup lands. D1 + KV both on free plan.
@@ -385,12 +385,15 @@ Hosting: Cloudflare workers.dev subdomain first; custom domain
 Auth: shared secret header (POI_SERVICE_TOKEN). Service-to-service only;
       never called from the browser.
 
-Apple POI: MapKit has no server-side Places API. apple_poi_id references
-      from MapKit JS client searches are POSTed here for storage, so the
-      POI store covers both ecosystems and cafes can link to either.
+Apple POI: MapKit has no server-side Places API for this app. apple_poi_id
+      references from MapKit JS client searches are POSTed here for storage;
+      the Next.js browser boundary accepts Apple results only. Google live
+      search results are cached by GET /poi/search/external.
 
 Next.js integration: /api/places/* route handlers call the POI service
-      instead of Google directly. Google Maps link import → POST /poi/resolve.
+      instead of Google directly. Google/Apple Maps link import →
+      POST /poi/resolve; Google provider search → GET /poi/search/external;
+      Apple provider search → browser MapKit JS → POST /poi/external.
 ```
 
 ### Image pipeline — image-service Worker + sharp
@@ -467,16 +470,45 @@ SPA-feel single page. The map page IS the app; no tab bar, no navigation.
   Full-screen Apple Map
   + floating top bar (logo, search, avatar)
   + bottom sheet, 3 states (Google Maps style):
-      PEEK  — horizontal swipe cards of nearby cafes (~85% width, snap)
-      HALF  — selected cafe preview (cover carousel + name + actions + top facts)
-      FULL  — complete detail (work profile, hours, gallery, check-ins)
+      PEEK  — no cafe selected; horizontal swipe cards of nearby cafes
+              (~85% width, snap) with compact characteristic icons
+              (wifi, outlets, stay limit, and other available work facts)
+      HALF  — selected cafe preview (cover carousel + name + both scores,
+              Navigate / Check in / Share, and top facts)
+      FULL  — complete detail backed by real data (work profile, hours,
+              gallery, paginated non-deleted check-ins)
               map still visible ~15% at top
   + FAB (add cafe, login-gated)
-  + URL sync: sheet HALF/FULL → history.replaceState(/cafes/[id])
-              back button collapses sheet; deep links re-open the sheet
+  + URL sync: opening the first cafe from / pushes one /cafes/[id] entry;
+              changing cafe or HALF/FULL state replaces that entry;
+              Back collapses the selection session to / without history spam
   Search = overlay panel (own results + "search Google/Apple Maps" external list)
   Check-in = drawer over the sheet
   Onboarding = one-time overlay (first visit only)
+
+Desktop uses the same selected-cafe and URL state, but renders a 380px cafe-list
+sidebar plus a right-side detail drawer. PEEK/HALF/FULL snap states are mobile-only.
+
+The map-independent discovery controller accepts CafeSummary[] plus selected state.
+A thin home-page adapter loads the existing nearby-cafes API; MapKit bindings and
+unified search stay in their own slices. CafeSummary must expose a card cover.
+FULL requires a public, unauthenticated, paginated cafe check-in read contract rather than
+permanent fixtures. Its ordering/pagination and public cafe/check-in response and
+author-identity privacy contracts are resolved before #133 implementation. Public
+DTOs must not expose internal author identifiers (`CheckIn.user_id` or
+`StoredImage.by`) by default or be implemented first.
+
+Scores stay honest: PEEK prioritizes compact work characteristics, HALF introduces
+both composite Work and Experience scores, and FULL explains their dimensions.
+Every available value shows its respondent count; missing dimensions render as
+"Not enough check-ins" and are never coerced to zero.
+
+Kimi K3 owns the final visual and interaction composition for each new
+user-visible UI slice. Product behavior may be specified before that artifact,
+but UI implementation and visual acceptance cannot start without it. For the
+discovery surface Kimi decides exact iconography, score hierarchy, and the
+placement of Navigate / Check in / Share across HALF and FULL; PEEK stays
+scan-oriented.
 
 /cafes/[id] (SSR):
   Deep link / SEO / share landing only.
@@ -552,7 +584,7 @@ That data exists nowhere else. It is the product.
 ```text
 Tier 1 (MVP core):
   A. Discovery — map + swipe cards + bottom sheet detail
-  B. Creation — add cafe = first check-in (Google import + manual + MapKit search)
+  B. Creation — add cafe = first check-in (Google/Apple link import + provider search)
 
 Tier 2 (MVP, requires login):
   C. Check-in (打卡) — sliders + policies + note + photos, like toggle, soft delete
@@ -588,7 +620,8 @@ Rules:
   - Soft delete: set checkins.deleted_at. Deleted check-in photos are hidden from
     cafes.gallery but remain in checkins.photos for audit/recompute.
   - Like toggle on a check-in: update checkin_likes and denormalized checkins.likes_count.
-    Note list is sorted by a hot-rank combining likes and recency.
+    The earlier hot-rank proposal for the note list is reopened for the
+    discovery FULL feed; ordering and pagination are settled before #133 starts.
 
 Navigation → check-in prompt (ClassPass-style):
   1. User taps "导航" → navigations row + Google/Apple Maps deep link
@@ -610,28 +643,32 @@ Required on creation:
   min_spend, max_stay (2 taps — our differentiating data)
 Optional: dimension sliders, hours, price range, description
 
-Google import pre-fills most required fields: name, address, location,
-photos, hours come from the share link — user only adds review + sliders
-+ policies. (The existing Vite flow already does paste→preview→resolve→
-create; the rewrite upgrades it into a HALF-sheet preview + review step.)
+Maps-link import pre-fills the available provider fields: name, address,
+location, and provider reference. Google photos and hours remain in the POI
+cache for later enrichment; this creation slice does not copy them into the
+cafe record. The user adds the required photo, review + sliders + policies.
+(The existing Vite flow already does paste→preview→resolve→create; the
+rewrite upgrades it into a HALF-sheet preview + review step.)
 
 Creator display: cafe shows "added by {creator}" — ANONYMOUS by default
 ("A nomad"); creator can opt in to display later.
 
-Paths:
-  1. Google Maps link import (one-tap, no form feel):
-     a. Paste share link or pick from Places autocomplete
-     b. Server resolves → Place Details
-     c. Show HALF-sheet preview pre-filled (name, address, location, photos, hours)
+Entrances:
+  1. Maps link import (one-tap, no form feel):
+     a. Paste a Google or Apple Maps share link
+     b. Server resolves → normalized POI (Google Place Details, or Apple share-link data)
+     c. Show HALF-sheet preview pre-filled (name, address, location, provider reference)
      d. User adds their review + sliders → [添加到 CoffeeMode ✓]
-     e. Dedupe: google_place_id exists → "已存在" + prompt to check in instead
-  2. Apple Maps link import: same paste-link → resolve → preview → save pattern
-     (poi-service URL parser handles maps.apple.com share links)
-  3. MapKit search / map-tap (after map-home): same pre-fill + confirm pattern
-  4. Manual fallback: user types name/address; the drop-pin/reverse-geocode variant is map-bound
+     e. Dedupe: google_place_id / apple_poi_id exists → "已存在" + prompt to check in instead
+  2. Provider search:
+     a. Search Google Maps through the POI service, or Apple Maps through MapKit JS
+     b. Select a result → persist the external POI → use the same preview + first-check-in step
+  MapKit map-tap creation and a free-form manual form are deferred; they are not
+  creation entry points in the current MVP surface.
 
 No per-field confirmation forms. Pre-fill → adjust if needed → save.
-Hours from Google: auto-fill, hours_source='google'; user edit → 'manual' (never overwritten).
+Hours from Google stay in the POI cache for later enrichment; the current
+creation slice does not auto-fill cafe hours or provider photos.
 Offline: creation is disabled; show OfflineBanner and no mutation queue.
 ```
 
@@ -741,8 +778,10 @@ map-driven navigation.
 ```text
 1. MapKit JS integration (mapkit-react), token endpoint
 2. Full-screen map with cafe markers + clustering + dark mode
-3. Bind the discovery sheet (peek/half/full) + horizontal swipe cards to map selection
-4. Bind URL sync (replaceState ↔ sheet state, back button) to map-driven navigation
+3. Bind the mobile discovery sheet (peek/half/full), desktop sidebar/detail drawer,
+   and horizontal swipe cards to map selection
+4. Bind the one-push/then-replace URL state machine and Back-to-collapse behavior
+   to map-driven navigation
 5. Onboarding overlay (IP detect → location)
 6. User geolocation + locate button
 ```
@@ -753,16 +792,18 @@ MapKit-blocked.
 ### Phase 3: Creation + Images
 
 Implementation sequencing note: the MapKit track and the map-independent creation/check-in
-track may proceed in parallel. Only MapKit search, map-tap creation, and reverse geocoding
-require `map-home`; link import, manual creation, and check-in surfaces can be built and
-tested with mocked services before Apple Developer credentials are available.
+track may proceed in parallel. Map-bound MapKit search and reverse geocoding require
+`map-home`; Apple provider search in cafe creation only requires the token and stays
+configuration-gated. Google/Apple link import, Google provider search, and check-in surfaces
+can be built and tested before Apple Developer credentials are available, once their Kimi K3
+artifacts exist. Direct map-pin/manual creation is deferred to `map-creation-entry` (#136).
 
 ```text
-1. Core creation flow (login gate, link import, typed name/address manual fallback)
+1. Core creation flow (login gate, Google/Apple link import, provider search)
 2. POI cache service available (local `wrangler dev` or deployed) before link import is wired end-to-end
 3. Google Maps link import (resolve via POI service → HALF-sheet preview → one-tap add)
-4. Apple Maps link import (text link only; map-tap / reverse geocode is the separate `map-creation-entry` slice)
-5. MapKit search / map-tap creation entry after `map-home`
+4. Apple Maps link import (share-link resolve; map-tap / reverse geocode is the separate `map-creation-entry` slice)
+5. Map-bound MapKit search / map-tap creation entry after `map-home` and owner issue #131
 6. Image upload pipeline (image-service Worker presigned URLs + sharp on VPS → R2 → gallery JSONB)
 7. Dedupe handling (existing place → show + check-in prompt)
 8. 10 MB upload cap + R2 lifecycle for orphan objects
@@ -770,7 +811,9 @@ tested with mocked services before Apple Developer credentials are available.
 
 ### Phase 4: Check-in + Work Profile
 
-This is a map-independent feature track and may proceed in parallel with MapKit integration.
+This is a map-independent feature track. Backend and data-contract work may
+proceed in parallel with MapKit integration; each user-visible UI item waits for
+its Kimi K3 artifact.
 
 ```text
 1. Check-in drawer (sliders + policy chips + note + photos)
@@ -779,15 +822,16 @@ This is a map-independent feature track and may proceed in parallel with MapKit 
 4. Work profile display (dimension bars + policy consensus)
 5. Navigation tracking + ClassPass-style return prompt
 6. City search + nomad filters
-7. Check-in like toggle + hot-rank note list
+7. Check-in like toggle + check-in feed (ordering resolved before #133)
 8. Soft delete with gallery photo hiding
 9. /profile page (My Cafes + My Check-ins)
 ```
 
 ### Phase 5: Polish + Deploy
 
-SEO/share, responsive polish, and performance work can proceed independently of MapKit;
-deployment remains gated by the feature slices and owner infrastructure actions.
+SEO/share, responsive polish, and performance work are independent of MapKit;
+user-visible work still requires its Kimi K3 artifact, and deployment remains
+gated by the feature slices and owner infrastructure actions.
 
 ```text
 1. SEO metadata, Open Graph, share flow
@@ -843,7 +887,11 @@ deployment remains gated by the feature slices and owner infrastructure actions.
 - Apple + Google OAuth login works end-to-end
 - Map renders with cafe markers from Postgres
 - Dark mode toggles map + UI simultaneously
-- Bottom sheet: peek → half → full with URL sync and back-button collapse
+- Discovery: mobile peek → half → full and desktop sidebar/detail drawer share
+  selection state, one-push/then-replace URL sync, and Back-to-collapse behavior
+- PEEK shows compact work-characteristic icons; HALF shows both scores; FULL uses
+  real cafe detail and paginated non-deleted check-ins
+- Every new user-visible UI slice has an approved Kimi K3 design artifact before implementation
 - /cafes/[id] is server-rendered (view-source shows content)
 - Image upload produces 3 sizes in R2 with correct metadata
 - Google Maps + Apple Maps link import → HALF-sheet preview → one-tap create (cafes + checkins rows)

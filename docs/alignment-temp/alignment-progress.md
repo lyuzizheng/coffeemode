@@ -42,7 +42,7 @@
 | Q21 | Core journey priority | A (Discovery) first. B/C/D all require login |
 | Q22 | Data model | Structured columns + JSONB + arrays. PostGIS. Indexes for future |
 | Q23 | Map + Theme | Apple MapKit JS (全部迁移). HeroUI v3 modern theme. No retro |
-| Q24 | Creation flow | Google Maps import + MapKit search + manual. Login required |
+| Q24 | Creation flow | Google/Apple Maps link import + Google/Apple provider search. Map-pin/manual creation deferred. Login required |
 | Q25 | Review/Check-in | Fact-based 打卡 (wifi_ok, good_temp, long_stay...) + rating. Keep simple |
 | Q26 | Auth providers | Apple + Google OAuth only. No email (no email infra) |
 | Q27 | Dark mode | Yes! Apple Maps dark + HeroUI dark tokens. Follow system + toggle |
@@ -77,7 +77,7 @@
 | Q41 | Empty states | Approved direction. Avoid vibe-coding aesthetic. i18n from day one |
 | Q42 | PWA | Yes — manifest + standalone mode. No Service Worker for MVP |
 | Q43 | Share | Web Share API (mobile) + copy link fallback. OG meta with cafe cover as og:image |
-| Q38b | Cafe detail UX | Google Maps style: tap → bottom sheet expands (peek → half → full), NOT separate slide-over. /cafes/[id] SSR only for deep links |
+| Q38b | Cafe detail UX | Mobile: Google Maps style bottom sheet (peek → half → full); `/cafes/[id]` SSR only for deep links. Desktop was superseded by DG1's sidebar + right detail drawer. |
 | Q39b | City concept | No "home_city" — global product, only "current_city". profiles.current_city + last_location |
 | Q44 | i18n | English primary + Chinese. next-intl. All copy via t(), no hardcode |
 | Q45 | Navigation | No tab bar. Map-first + overlays. Top floating bar + FAB. /profile separate route |
@@ -115,6 +115,25 @@
 | Q62 | POI service hosting | CF account OK for D1/KV (free plan); workers.dev first, custom domain later |
 | Q63 | Baseline merge | Approved — merge feat/agent-harness-and-docs-system → main |
 
+## Round 7 — Discovery implementation contract — partial
+
+| # | Decision | Answer |
+|---|----------|--------|
+| DG1 | Responsive surface | Mobile uses PEEK/HALF/FULL; desktop uses a 380px list sidebar + right detail drawer over the same selection state |
+| DG2 | Browser history | First cafe selection pushes one `/cafes/[id]` entry; cafe/height changes replace it; Back collapses the selection session to `/` |
+| DG3 | Deep-link ownership | `discovery-sheet` owns client selection/popstate only; `seo-sharing` owns the SSR `/cafes/[id]` route |
+| DG4 | Initial state | PEEK starts with `selectedCafeId=null`; a user card tap selects the cafe and opens HALF |
+| DG5 | Data boundary | A provider-neutral controller accepts `CafeSummary[]`; a thin home adapter loads the existing cafes API; MapKit and unified search remain separate |
+| DG6 | PEEK characteristics | Compact icons expose wifi, outlets, stay limit, and other available place characteristics; Kimi K3 decides exact iconography and composition |
+| DG7 | Score hierarchy | Both Work/composite and Experience scores appear from HALF onward; Kimi K3 designs their hierarchy |
+| DG8 | Cafe actions | Keep Navigate, Check in, and Share; Kimi K3 decides their HALF/FULL placement; PEEK stays scan-oriented |
+| DG9 | FULL data | FULL uses a real public, unauthenticated, paginated feed of non-deleted check-ins, not permanent fixtures; ordering/pagination and public author identity remain unresolved |
+| DG10 | Sparse data | Show available values with respondent counts; zero-response dimensions say “Not enough check-ins”; never coerce missing data to zero |
+
+All new user-visible UI requires a slice-specific Kimi K3 design artifact before
+implementation. Until that artifact exists, exact layout/interaction composition
+is an explicit blocker rather than an agent-invented default.
+
 ## Decisions log
 
 - 2026-07-31: Architecture pivot from "migrate Vite SPA + keep Java backend" to "rewrite as full-stack Next.js, drop Java"
@@ -128,6 +147,7 @@
 - 2026-08-03: POI cache service (Workers + D1 + KV) as independent reusable microservice
 - 2026-08-03: Dual scores (✨ experience + 📊 composite), slider-only scoring, "unknown" policy option
 - 2026-08-03: Hermes config — reasoning_effort=max, openrouter provider removed (qwen-coding-plan only)
+- 2026-08-19: Discovery behavior DG1-DG10 agreed; exact visual composition delegated to Kimi K3 and required before UI implementation
 
 ## Final tech stack (locked)
 

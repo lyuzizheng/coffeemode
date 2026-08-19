@@ -1,6 +1,10 @@
 # Pending User Actions
 
-Things only the repo owner can do — account creation, credential provisioning, and dashboard toggles. The agent cannot (and must not) perform these. Credentials are never pasted into chat, docs, or the repo; put them in `~/.zshrc` or `web/.env.local` and say "配好了" — the agent reads them itself and never echoes them back.
+Things only the repo owner can provide or approve — account creation, credential
+provisioning, dashboard toggles, and required external design artifacts. The
+agent cannot perform these. Credentials are never pasted into chat, docs, or the
+repo; put them in `~/.zshrc` or `web/.env.local` and say "配好了" — the agent reads
+them itself and never echoes them back.
 
 Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
@@ -33,7 +37,7 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
 ## 4. Apple Sign-In — deferred until Apple Developer Program
 
-- [ ] Buy Apple Developer Program membership ($99/yr) — also needed for MapKit JS (blocks `map-home`)
+- [ ] Buy Apple Developer Program membership ($99/yr) — also needed for MapKit JS (blocks Apple-only slices, not cafe creation's link/Google paths; #131)
 - [ ] Configure Services ID + Sign in with Apple key, then enable Apple provider in Supabase (item 1)
 
 ## 5. Google Places API key — for poi-cache-service deploy
@@ -67,6 +71,15 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 - [ ] Set the two worker secrets (values never go in chat/docs): `wrangler secret put POI_SERVICE_TOKEN`, `wrangler secret put GOOGLE_PLACES_API_KEY`
 - [ ] Deploy: `npm run deploy` → workers.dev URL; wire `POI_SERVICE_URL` + `POI_SERVICE_TOKEN` into `web/.env.local`
 
+## 8. Kimi K3 UI design artifacts
+
+- [ ] Review PR #128's creation flow with Kimi K3 before merge.
+- [ ] Provide a Kimi K3 discovery artifact for issue #133 covering mobile
+  PEEK/HALF/FULL, desktop sidebar/detail drawer, compact place-characteristic
+  icons, both-score hierarchy, and Navigate / Check in / Share placement.
+- [ ] Provide a slice-specific Kimi K3 artifact before starting any other new
+  user-visible UI implementation.
+
 ## What the agent continues meanwhile
 
-All non-blocked Phase 1 backlog items have merged to `main` (PRs #19–#22), and the P1 post-review fixes from `fix/post-review-p1-issues` have merged as PR #74. MapKit-specific slices (`map-home`, `map-discovery-integration`, and `map-creation-entry`) remain blocked on item 4's Apple Developer purchase; discovery-sheet core, map-independent creation, check-in, work profile, profile, search, navigation, and detail/share work can proceed with APIs or fixtures. The POI and image services are ready to deploy once you complete items 5–7.
+All non-blocked Phase 1 backlog items have merged to `main` (PRs #19–#22), and the P1 post-review fixes from `fix/post-review-p1-issues` have merged as PR #74. MapKit-specific slices remain blocked on item 4. Cafe creation's Google/Apple link import and Google search work while Apple live search is configuration-gated, but PR #128 still needs item 8's Kimi review. Backend work such as work-profile aggregation may continue; new user-visible UI stays blocked on its item 8 artifact. The POI and image services are ready to deploy once you complete items 5–7.

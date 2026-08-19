@@ -9,7 +9,6 @@ CoffeeMode MonoRepo
 - /image-service          Cloudflare Worker image upload service
 - /_archive-coffeemode-frontend  legacy Vite app (archived)
 - /_archive-coffeemode-backend   legacy Java backend (archived)
-- /coffeemode_script
 
 ## Tech Stack
 

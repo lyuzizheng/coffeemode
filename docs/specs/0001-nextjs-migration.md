@@ -455,7 +455,7 @@ DB record: JSONB entries in cafes.gallery / checkins.photos (no separate table)
   { id, original, card, thumbnail, w, h, by, at, source }
 
 Reference pipelines: our_village (multi-size, temp→final, URLSet),
-  coffeemode-image worker (metadata shape)
+  image-service Worker (metadata shape)
 ```
 
 ### Rendering strategy

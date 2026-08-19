@@ -43,28 +43,11 @@ _archive-coffeemode-frontend/public/js/mapsJavaScriptAPI.js.map.gz.map
 .DS_Store
 **/.DS_Store
 
-
-
-./coffeemode-script/.idea
-./coffeemode-script/.vscode
-./coffeemode-script/.env
-./coffeemode-script/.env.local
-./coffeemode-script/.env.development
-./coffeemode-script/.env.production
-
-
-./coffeemode-script/coffeemode-image/node_modules
-./coffeemode-script/coffeemode-image/dist
-./coffeemode-script/coffeemode-image/build
-./coffeemode-script/coffeemode-image/public/js/mapsJavaScriptAPI.js
-./coffeemode-script/coffeemode-image/public/js/mapsJavaScriptAPI.js.map
-./coffeemode-script/coffeemode-image/public/js/mapsJavaScriptAPI.js.map.gz
-./coffeemode-script/coffeemode-image/public/js/mapsJavaScriptAPI.js.map.gz.map
-
 # Generated review packets (not source)
 docs/reviews/
 .review-tmp/
 
-# Stray legacy project copies — canonical homes are _archive-* and coffeemode-script/
+# Stray legacy project copies — canonical homes are _archive-*
 coffeemode-frontend/
 coffeemode_backend/
+coffeemode-script/

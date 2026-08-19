@@ -7,6 +7,12 @@ entries here; when it grows past that, move the oldest dated sections verbatim
 into `docs/agent/progress-log-archive.md` (newest-first) and leave this file with
 the recent tail. Archive history, never delete it.
 
+## 2026-08-19 (retire legacy image Worker)
+
+- Removed the unreferenced `coffeemode-script/coffeemode-image` Worker. The
+  active `image-service/` Worker is the only image-service implementation;
+  the Vite and Java projects remain archived until feature parity is verified.
+
 ## 2026-08-18 (issue #114 parallel development plan)
 
 - Reconciled the development dependency graph with the owner-confirmed specs. MapKit-specific work remains blocked on the Apple Developer Program, but non-map work can proceed with APIs or fixtures.

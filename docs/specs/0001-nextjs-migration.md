@@ -10,7 +10,7 @@ This is a rewrite, not a migration. The old Vite SPA (`_archive-coffeemode-front
 
 ## Status
 
-Accepted (revised 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
+Accepted (revised 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
 
 ## Stable decisions
 
@@ -339,7 +339,7 @@ MapKit JS capabilities used:
 - Clustering (clusteringIdentifier)
 - User location tracking
 - Search autocomplete (mapkit.SearchAutocomplete) — creation + external search
-- Geocoding (mapkit.Geocoder) — reverse geocode for manual creation
+- Geocoding (mapkit.Geocoder) — reverse geocode for map-tap / drop-pin creation (map-creation-entry slice)
 ```
 
 **CoffeeMode maintains its own POI database.** MapKit renders and assists search; it does not replace the cafes table. Custom marker: existing coffee-cup design (brown circle, white cup), status dot (open/closed); category variants post-MVP.
@@ -628,7 +628,7 @@ Paths:
   2. Apple Maps link import: same paste-link → resolve → preview → save pattern
      (poi-service URL parser handles maps.apple.com share links)
   3. MapKit search / map-tap (after map-home): same pre-fill + confirm pattern
-  4. Manual fallback: user types name/address or drops a pin → reverse geocode
+  4. Manual fallback: user types name/address; the drop-pin/reverse-geocode variant is map-bound
 
 No per-field confirmation forms. Pre-fill → adjust if needed → save.
 Hours from Google: auto-fill, hours_source='google'; user edit → 'manual' (never overwritten).
@@ -731,31 +731,46 @@ OG meta: cafe cover as og:image on /cafes/[id].
 7. Verify: dev server, build, auth round-trip
 ```
 
-### Phase 2: Map + Discovery
+### Phase 2: Map + Discovery integration
+
+The reusable discovery-sheet core (card list, PEEK/HALF/FULL states, and URL state
+machinery) is a parallel slice and may use fixtures or API data before MapKit is
+available. This phase covers binding that core to MapKit selection, markers, and
+map-driven navigation.
 
 ```text
 1. MapKit JS integration (mapkit-react), token endpoint
 2. Full-screen map with cafe markers + clustering + dark mode
-3. Bottom sheet (peek/half/full) + horizontal swipe cards
-4. URL sync (replaceState ↔ sheet state, back button)
+3. Bind the discovery sheet (peek/half/full) + horizontal swipe cards to map selection
+4. Bind URL sync (replaceState ↔ sheet state, back button) to map-driven navigation
 5. Onboarding overlay (IP detect → location)
-6. /cafes/[id] SSR deep link page
-7. User geolocation + locate button
+6. User geolocation + locate button
 ```
+
+The `/cafes/[id]` SSR deep-link page remains a parallel `seo-sharing` slice and is not
+MapKit-blocked.
 
 ### Phase 3: Creation + Images
 
+Implementation sequencing note: the MapKit track and the map-independent creation/check-in
+track may proceed in parallel. Only MapKit search, map-tap creation, and reverse geocoding
+require `map-home`; link import, manual creation, and check-in surfaces can be built and
+tested with mocked services before Apple Developer credentials are available.
+
 ```text
-1. FAB + creation flow (login gate)
-2. POI cache service (Worker + D1 + KV) deployed first — creation depends on it
+1. Core creation flow (login gate, link import, typed name/address manual fallback)
+2. POI cache service available (local `wrangler dev` or deployed) before link import is wired end-to-end
 3. Google Maps link import (resolve via POI service → HALF-sheet preview → one-tap add)
-4. Apple Maps link import + MapKit search import + manual (map tap → reverse geocode)
-5. Image upload pipeline (image-service Worker presigned URLs + sharp on VPS → R2 → gallery JSONB)
-6. Dedupe handling (existing place → show + check-in prompt)
-7. 10 MB upload cap + R2 lifecycle for orphan objects
+4. Apple Maps link import (text link only; map-tap / reverse geocode is the separate `map-creation-entry` slice)
+5. MapKit search / map-tap creation entry after `map-home`
+6. Image upload pipeline (image-service Worker presigned URLs + sharp on VPS → R2 → gallery JSONB)
+7. Dedupe handling (existing place → show + check-in prompt)
+8. 10 MB upload cap + R2 lifecycle for orphan objects
 ```
 
 ### Phase 4: Check-in + Work Profile
+
+This is a map-independent feature track and may proceed in parallel with MapKit integration.
 
 ```text
 1. Check-in drawer (sliders + policy chips + note + photos)
@@ -770,6 +785,9 @@ OG meta: cafe cover as og:image on /cafes/[id].
 ```
 
 ### Phase 5: Polish + Deploy
+
+SEO/share, responsive polish, and performance work can proceed independently of MapKit;
+deployment remains gated by the feature slices and owner infrastructure actions.
 
 ```text
 1. SEO metadata, Open Graph, share flow

@@ -7,6 +7,14 @@ entries here; when it grows past that, move the oldest dated sections verbatim
 into `docs/agent/progress-log-archive.md` (newest-first) and leave this file with
 the recent tail. Archive history, never delete it.
 
+## 2026-08-18 (issue #114 parallel development plan)
+
+- Reconciled the development dependency graph with the owner-confirmed specs. MapKit-specific work remains blocked on the Apple Developer Program, but non-map work can proceed with APIs or fixtures.
+  - `docs/agent/implementation-slices.md`: discovery-sheet core, link/manual cafe creation, check-in, work profile, list/search, navigation, profile, and SSR/share slices are no longer MapKit-blocked; added `map-discovery-integration` and `map-creation-entry` blocked slices for the actual MapKit seams.
+  - `docs/agent/current-state.md` and `docs/agent/pending-user-actions.md`: replaced the serial map-first chain with parallel non-map and MapKit tracks.
+  - `docs/specs/0001-nextjs-migration.md` and `docs/specs/0004-product-decisions-and-backlog.md`: clarified that link/manual creation and core sheet/check-in work can proceed before MapKit integration.
+- Created architecture issue #114 to track the dependency-graph correction and subsequent development plan.
+
 ## 2026-08-18 (local dev stack — real Postgres integration testing)
 
 - Closed the "SQL validated by reasoning only" gap with a real local test stack:

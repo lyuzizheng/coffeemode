@@ -69,4 +69,4 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
 ## What the agent continues meanwhile
 
-All non-blocked Phase 1 backlog items have merged to `main` (PRs #19–#22). A critical review of merged auth/proxy/poi PRs surfaced P1 findings, and the fixes are pending review/merge on `fix/post-review-p1-issues`. `map-home`/`discovery-sheet`/`cafe-creation` remain blocked on item 4's Apple Developer purchase; the POI and image services are ready to deploy once you complete items 5–7.
+All non-blocked Phase 1 backlog items have merged to `main` (PRs #19–#22), and the P1 post-review fixes from `fix/post-review-p1-issues` have merged as PR #74. MapKit-specific slices (`map-home`, `map-discovery-integration`, and `map-creation-entry`) remain blocked on item 4's Apple Developer purchase; discovery-sheet core, map-independent creation, check-in, work profile, profile, search, navigation, and detail/share work can proceed with APIs or fixtures. The POI and image services are ready to deploy once you complete items 5–7.

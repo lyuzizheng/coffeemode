@@ -97,9 +97,9 @@ These tasks can proceed while `map-home` is blocked and before live credentials 
 | D6 | Cap nearby search at 10 km; add rate-limit placeholders for image/POI routes | security | `web/app/api/places/search/route.ts`, image routes |
 | D7 | Add `checkin_likes` table and `likes_count` trigger or atomic increment helper | backend | `web/lib/db/checkins.ts` |
 
-### Phase 2 — after `cafe-creation` and `checkin-system` slices
+### Phase 2 — Map-independent feature track
 
-These depend on the cafe/check-in API surface existing.
+These slices do not require Apple Developer / MapKit. The cafe/check-in API surface already exists, so UI1–UI6 and STAT can proceed in parallel with fixtures or the existing backend.
 
 | ID | Task | Area | Key files |
 | --- | --- | --- | --- |
@@ -112,7 +112,7 @@ These depend on the cafe/check-in API surface existing.
 | API7 | Implement `/api/places/external` proxy and extend worker endpoints | backend | `web/app/api/places/external/route.ts`, `poi-service/src/handlers.ts` |
 | API8 | Extend `poi-service/src/url.ts` to parse Apple Maps share links | backend | `poi-service/src/url.ts` |
 | API9 | Implement `/api/search` (city + filters) merging own cafes, saved POIs, optional live results | backend | `web/app/api/search/route.ts` |
-| UI1 | Build `CreationSheet` (Google/Apple link import, manual fallback, dedupe prompt) | frontend | `web/components/cafe/*` |
+| UI1 | Build `CreationSheet` (Google link import + Apple text link import only; map-tap/reverse geocode belongs to `map-creation-entry`, typed name/address manual fallback, dedupe prompt) | frontend | `web/components/cafe/*` |
 | UI2 | Build `CheckInDrawer` with sliders, policy chips, note, photo grid | frontend | `web/components/checkin/*` |
 | UI3 | Implement `CheckInSuccessCard` and button-morph animation | frontend | `web/components/checkin/*` |
 | UI4 | Build `/profile` page (header, stats, My Cafes / My Check-ins tabs) | frontend | `web/app/profile/page.tsx` |
@@ -120,17 +120,20 @@ These depend on the cafe/check-in API surface existing.
 | UI6 | Design and build `SearchFilter` surface (city + nomad filters) | frontend | `web/components/search/*` |
 | STAT | Integrate `work_stats` update into check-in write/edit/soft-delete paths | backend | `web/lib/stats/aggregate.ts`, route handlers |
 
-### Phase 3 — after `map-home` and `discovery-sheet`
+### Phase 3 — MapKit integration after `map-home`
 
-These need Apple MapKit and the bottom sheet.
+These are map-bound integration tasks that need Apple MapKit. The discovery-sheet core,
+link/manual creation, and check-in work can proceed earlier with fixtures or API data;
+only their MapKit integration belongs in this phase. MAP2 consumes `discovery-sheet` core,
+and MAP4 consumes the base `search-filters` surface. The full-screen map itself is owned
+by the blocked `map-home` slice; this phase starts after that slice is available.
 
 | ID | Task | Area | Key files |
 | --- | --- | --- | --- |
-| MAP1 | Implement MapKit full-screen map, markers, clustering, dark mode | frontend | `web/components/map/*`, `web/app/api/mapkit-token/route.ts` |
-| MAP2 | Build discovery sheet (PEEK/HALF/FULL) with swipe cards and URL sync | frontend | `web/components/cafe/discovery-sheet.tsx` |
+| MAP2 | Bind the discovery sheet (PEEK/HALF/FULL) to MapKit selection and URL sync | frontend | `web/components/cafe/discovery-sheet.tsx` |
 | MAP3 | Add map-tap creation and reverse geocoding | frontend | `web/components/map/*` |
-| MAP4 | Build unified search overlay (own + saved + live external) | frontend | `web/components/search/*` |
-| MAP5 | Add FAB and auth-gated creation entry points | frontend | `web/components/layout/*` |
+| MAP4 | Bind the existing search/filter surface to MapKit and live external result overlays | frontend | `web/components/search/*` |
+| MAP5 | Bind existing cafe-creation entry points to the map FAB and auth gate | frontend | `web/components/layout/*` |
 
 ### Phase 4 — public beta readiness
 

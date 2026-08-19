@@ -58,20 +58,15 @@ function headers(token: string): Record<string, string> {
 
 /**
  * Sanitize an upstream worker failure into an ImageServiceError (review
- * 2026-08-09). The raw upstream body is logged for operators but never
- * echoed to the browser — it can contain worker internals, and a worker
+ * 2026-08-09). The upstream response body is canceled without reading it —
+ * it can contain worker internals and be unbounded in size — and a worker
  * 401 (bad service token) must not surface as a user-facing 401. Mirrors
  * the poi-client pattern.
  */
 function upstreamError(endpoint: "upload" | "complete", response: Response): ImageServiceError {
   const upstreamStatus = response.status;
-  // Best-effort body capture for the operator log; never thrown to callers.
-  void response
-    .text()
-    .then((body) =>
-      console.error("image-service error", { endpoint, status: upstreamStatus, body: body.slice(0, 1000) }),
-    )
-    .catch(() => console.error("image-service error", { endpoint, status: upstreamStatus }));
+  void response.body?.cancel().catch(() => {});
+  console.error("image-service error", { endpoint, status: upstreamStatus });
 
   let message = "Image service returned an error";
   let status = upstreamStatus;

@@ -67,9 +67,9 @@ async function poiFetch(
   });
   if (!res.ok) {
     const upstreamStatus = res.status;
-    // Consume the body to avoid leaving the response stream hanging, but do
-    // not log it — upstream error bodies may contain internal worker details.
-    await res.text().catch(() => "");
+    // Cancel the body stream without buffering it. Upstream error bodies may
+    // contain internal worker details or be unbounded in size.
+    await res.body?.cancel().catch(() => {});
     let message = "POI service returned an error";
     if (upstreamStatus === 401) message = "POI service unavailable";
     else if (upstreamStatus === 404) message = "POI not found";

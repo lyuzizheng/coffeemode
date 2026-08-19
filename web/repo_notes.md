@@ -43,10 +43,11 @@
 ## 2026-08-09 Part B (feat/impl-auth-middleware)
 
 - `web/proxy.ts`
-  - Supabase SSR session-refresh proxy that runs on every non-asset request.
-  - Next.js 16 renamed the `middleware` file convention to `proxy`; this file
-    exports `proxy` and `config.matcher`.
-  - Refreshes tokens and forwards refreshed cookies without blocking public routes.
+  - Supabase SSR session-refresh proxy using the Next.js 16 `proxy` convention.
+  - Exports `proxy` and `config.matcher` to skip static/public routes and
+    public/no-auth API routes.
+  - Refreshes tokens and forwards refreshed cookies only when a Supabase session
+    cookie is present. (Hardened further on 2026-08-13; see that entry.)
 
 - `web/db/migrations/0002_checkins_and_indexes.sql`
   - Adds `updated_at`, `deleted_at`, `likes_count` to `checkins`.
@@ -179,7 +180,9 @@
   - New shared `isValidUUID` helper; replaced the local duplicate in `web/app/api/images/complete/route.ts`.
 
 - `web/app/auth/actions.ts`
-  - `signIn` and `signOut` now accept `useActionState` payloads, return `AuthActionState` errors, and call `redirect()` on success.
+  - `signIn` and `signOut` now accept `useActionState` payloads and return `AuthActionState` errors.
+  - `signIn` calls `redirect()` on success.
+  - `signOut` returns `{ success: true }`; the `SignOutButton` client component clears caches and redirects.
 
 - `web/app/auth/sign-in-button.tsx` / `web/app/auth/sign-out-button.tsx`
   - New client buttons using `useActionState` with `isPending` and inline error display.
@@ -223,7 +226,9 @@
   - Guarded check-in ownership and attachment queries with `deleted_at is null`.
 
 - `web/app/auth/actions.ts`
-  - `getOriginHeader` now falls back to `x-forwarded-proto` + `host` when the `Origin` header is absent.
+  - `getRedirectTo` validates the request origin against an allowlist (configured site + `NEXT_PUBLIC_ALLOWED_HOSTS`).
+  - When the `Origin` header is absent, it falls back to `x-forwarded-proto` + `host`.
+  - When the request origin is disallowed, it falls back to `NEXT_PUBLIC_SITE_URL`.
 
 - `web/app/auth/auth-error-message.tsx`
   - New shared client component for auth action errors, reused by `sign-in-button.tsx` and `sign-out-button.tsx`.
@@ -272,3 +277,20 @@
   - `runInTransaction` is injectable (default lazily imports the shared pool),
     keeping the pure math helpers unit-testable.
   - `QueryFn` and `RunInTransaction` types exported for tests.
+
+## 2026-08-13 (post-review fixes for merged PRs #66–#73)
+
+_Applies the P1 findings from an independent critical review. Original issues: #29 (redirectTo allowlist), #30 (proxy session refresh), #42 (callback profile upsert), #47 (sign-out cache clear), and #50 (upstream error body logging)._
+
+- `web/app/auth/actions.ts`
+  - Hardened `getRedirectTo` allowlist parsing and matching; see `docs/specs/0001-nextjs-migration.md` §Auth for the full redirectTo contract.
+- `web/app/auth/callback/route.ts`
+  - On profile upsert failure, the user is now signed out and redirected to `/?auth=error&reason=profile_upsert`.
+- `web/app/page.tsx` / `messages/en.json` / `messages/zh.json`
+  - The home page reads `auth`/`reason` query params and displays localized error banners.
+- `web/app/auth/sign-out-button.tsx`
+  - `idbPersister.removeClient()` failures are caught and logged; the user is always redirected.
+- `web/proxy.ts`
+  - Replaced `getUser()` with `getSession()` and now skips refresh entirely when no Supabase session cookie is present.
+- `web/lib/places/poi-client.ts` / `web/lib/images/image-service-client.ts` / `web/lib/images/processor.ts`
+  - Upstream error response bodies are canceled instead of buffered or logged.

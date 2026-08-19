@@ -20,8 +20,12 @@ export function SignOutButton() {
 
   useEffect(() => {
     if (state?.success) {
-      queryClient.clear();
-      void Promise.resolve(idbPersister.removeClient()).then(() => router.push("/"));
+      Promise.resolve(idbPersister.removeClient())
+        .catch((e) => console.error("sign-out-button: failed to clear persisted cache", e))
+        .finally(() => {
+          queryClient.clear();
+          router.push("/");
+        });
     }
   }, [state, queryClient, router]);
 

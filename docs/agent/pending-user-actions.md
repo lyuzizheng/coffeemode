@@ -7,10 +7,14 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 ## 1. Supabase (auth provider) — unlocks auth round-trip
 
 - [~] Project exists; `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` are in `~/.zshrc`
+- [ ] Set public site / allowlist env vars from `web/.env.example`:
+  - `NEXT_PUBLIC_SITE_URL` (required, e.g. `http://localhost:3000`, no trailing slash)
+  - `NEXT_PUBLIC_ALLOWED_HOSTS` (optional, comma-separated, e.g. `localhost:3001`)
 - [ ] Copy the **anon public key**: Dashboard → Project Settings → API Keys → `anon public` → into `web/.env.local` as `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- [ ] Redirect URLs allowlist: Dashboard → Authentication → URL Configuration → Redirect URLs → add:
-  - `http://localhost:3000/auth/callback` (dev)
-  - `https://<production-domain>/auth/callback` (later, at deploy)
+- [ ] Redirect URLs allowlist: Dashboard → Authentication → URL Configuration → Redirect URLs → add `${NEXT_PUBLIC_SITE_URL}/auth/callback` and the `/auth/callback` URL for every host in `NEXT_PUBLIC_ALLOWED_HOSTS`. At minimum:
+  - `${NEXT_PUBLIC_SITE_URL}/auth/callback` (e.g. `http://localhost:3000/auth/callback` or `https://<production-domain>/auth/callback`)
+  - `http://localhost:3001/auth/callback` (if you add `localhost:3001` to `NEXT_PUBLIC_ALLOWED_HOSTS`)
+  - any staging/preview domains you add to `NEXT_PUBLIC_ALLOWED_HOSTS`
 - [ ] Enable **Google** provider: Dashboard → Authentication → Providers → Google → paste Google OAuth client id/secret (from item 3 below)
 - [ ] Enable **Apple** provider later (needs item 4)
 
@@ -24,7 +28,7 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 ## 3. Google OAuth (Sign in with Google) — unlocks real login
 
 - [ ] console.cloud.google.com → create/select project → APIs & Services → OAuth consent screen (External, test users OK for now)
-- [ ] Credentials → Create OAuth client ID → **Web application** → Authorized redirect URI: `http://localhost:3000/auth/callback` (add production URL later)
+- [ ] Credentials → Create OAuth client ID → **Web application** → Authorized redirect URI: paste the Supabase Auth callback URL shown in Dashboard → Authentication → Providers → Google (e.g. `https://<project-ref>.supabase.co/auth/v1/callback`)
 - [ ] Put client id/secret into the Supabase dashboard (item 1) — not into the repo
 
 ## 4. Apple Sign-In — deferred until Apple Developer Program
@@ -65,4 +69,4 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
 ## What the agent continues meanwhile
 
-All Phase 1 backlog items that do not require live credentials or Apple Developer have been implemented or are in progress (`feat/impl-phase1-remainder`). `map-home`/`discovery-sheet`/`cafe-creation` remain blocked on item 4's Apple Developer purchase; the POI and image services are ready to deploy once you complete items 5–7.
+All non-blocked Phase 1 backlog items have merged to `main` (PRs #19–#22). A critical review of merged auth/proxy/poi PRs surfaced P1 findings, and the fixes are pending review/merge on `fix/post-review-p1-issues`. `map-home`/`discovery-sheet`/`cafe-creation` remain blocked on item 4's Apple Developer purchase; the POI and image services are ready to deploy once you complete items 5–7.

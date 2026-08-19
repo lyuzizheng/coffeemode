@@ -2,10 +2,12 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { GET } from "@/app/auth/callback/route";
 
 const exchangeCodeForSessionMock = vi.fn();
+const signOutMock = vi.fn();
 
 const createSupabaseServerClientMock = vi.fn(() => ({
   auth: {
     exchangeCodeForSession: exchangeCodeForSessionMock,
+    signOut: signOutMock,
   },
 }));
 
@@ -23,6 +25,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   upsertProfileMock.mockReset();
   exchangeCodeForSessionMock.mockReset();
+  signOutMock.mockReset();
 });
 
 describe("GET /auth/callback", () => {
@@ -59,7 +62,7 @@ describe("GET /auth/callback", () => {
     expect(res.headers.get("location")).toBe("http://localhost:3000/?auth=error");
   });
 
-  it("redirects to an error page when the profile upsert fails", async () => {
+  it("redirects to an error page and signs out when the profile upsert fails", async () => {
     exchangeCodeForSessionMock.mockResolvedValue({
       data: { user: { id: "user-1", email: "test@example.com" } },
       error: null,
@@ -71,6 +74,7 @@ describe("GET /auth/callback", () => {
     const res = await GET(new Request("http://localhost:3000/auth/callback?code=abc"));
 
     expect(upsertProfileMock).toHaveBeenCalledTimes(1);
+    expect(signOutMock).toHaveBeenCalledTimes(1);
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toBe(
       "http://localhost:3000/?auth=error&reason=profile_upsert",
@@ -78,6 +82,27 @@ describe("GET /auth/callback", () => {
     expect(errorSpy).toHaveBeenCalledWith(
       "auth/callback: profile upsert failed",
       expect.any(Error),
+    );
+
+    errorSpy.mockRestore();
+  });
+
+  it("still redirects if sign-out fails after a profile upsert failure", async () => {
+    exchangeCodeForSessionMock.mockResolvedValue({
+      data: { user: { id: "user-1", email: "test@example.com" } },
+      error: null,
+    });
+    upsertProfileMock.mockRejectedValue(new Error("Postgres is down"));
+    signOutMock.mockRejectedValue(new Error("Sign-out failed"));
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await GET(new Request("http://localhost:3000/auth/callback?code=abc"));
+
+    expect(signOutMock).toHaveBeenCalledTimes(1);
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe(
+      "http://localhost:3000/?auth=error&reason=profile_upsert",
     );
 
     errorSpy.mockRestore();

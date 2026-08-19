@@ -10,7 +10,7 @@ This is a rewrite, not a migration. The old Vite SPA (`_archive-coffeemode-front
 
 ## Status
 
-Accepted (revised 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
+Accepted (revised 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
 
 ## Stable decisions
 
@@ -38,7 +38,6 @@ coffeemode/
       cafes/
         [id]/
           page.tsx          # Cafe detail (SSR deep link only: share/SEO)
-      proxy.ts            # Supabase session refresh (Next.js 16 middleware convention)
       auth/
         actions.ts          # OAuth sign-in / sign-out server actions
         callback/
@@ -79,6 +78,7 @@ coffeemode/
       stats/                # Incremental work_stats aggregation
     hooks/                  # TanStack Query hooks, geolocation
     types/                  # Shared TypeScript types
+    proxy.ts                # Supabase session refresh (Next.js 16 middleware convention)
     app/globals.css         # Tailwind v4 + HeroUI plugin + tokens
     next.config.ts
     tsconfig.json
@@ -300,10 +300,24 @@ A user checking in 20 times must not outweigh 20 different users. Design:
 ```text
 Providers: Apple OAuth + Google OAuth (no email/password — no email infra)
 Sessions: Supabase SSR cookies (@supabase/ssr)
-Proxy: web/proxy.ts refreshes the session on each request and forwards
-  refreshed cookies; prevents expired access tokens from failing protected routes.
+OAuth redirectTo validation (web/app/auth/actions.ts):
+  - Resolve candidates in this order:
+      1. `Origin` request header if present and allowed.
+      2. `x-forwarded-proto` + `Host` request headers if the `Origin` header is absent and they form an allowed origin.
+      3. `NEXT_PUBLIC_SITE_URL` (always allowed if configured).
+  - Accept only exact canonical `host` values in the allowlist (with non-default port):
+      * host of NEXT_PUBLIC_SITE_URL (always allowed, used as fallback)
+      * comma-separated entries in NEXT_PUBLIC_ALLOWED_HOSTS
+        (supports host[:port], https://host, or //host)
+      * localhost / 127.0.0.1 / [::1] (any port) when no allowlist is configured
+  - Only http: and https: schemes are accepted.
+  - If the request origin is disallowed, fall back to NEXT_PUBLIC_SITE_URL.
+Proxy: web/proxy.ts refreshes the session only when a Supabase session cookie
+  is present; uses getSession() to avoid the unconditional user-validation
+  round-trip that getUser() forces on every request.
 Route handlers: verify session via supabase.auth.getUser() before any Postgres write
-Profiles row: upserted in Postgres on first login (auth callback)
+Profiles row: upserted in Postgres on first login (auth callback); on failure
+  the user is signed out and redirected to /?auth=error&reason=profile_upsert
 No email infra, no magic links.
 ```
 
@@ -410,7 +424,7 @@ Authorization for /api/images/complete:
   - `cafe` target: allowed only when the user is the cafe's `created_by`.
   - `checkin` target: allowed only when the user owns the checkin (`checkins.user_id`).
     The photo is stored in `checkins.photos` and auto-merged into the parent cafe's
-    `gallery` (attributed via `by`/`at`) without requiring cafe ownership.
+    `gallery` (attributed via `by`/`at`/`source`) without requiring cafe ownership.
 
 Photos on the creation/check-in write paths (issue #86):
   - `POST /api/cafes` and `POST /api/checkins` accept `photo_ids` (imageUuids
@@ -502,6 +516,8 @@ Domain: coffeemode.app (or TBD)
 ```text
 NEXT_PUBLIC_SUPABASE_URL        -> Supabase project URL (auth, Next.js + browser)
 NEXT_PUBLIC_SUPABASE_ANON_KEY   -> client-side anon key (auth only, Next.js + browser)
+NEXT_PUBLIC_SITE_URL            -> canonical public origin (no trailing slash); used as safe OAuth redirectTo
+NEXT_PUBLIC_ALLOWED_HOSTS       -> optional comma-separated allowlist for additional OAuth redirectTo hosts
 DATABASE_URL                    -> Self-hosted Postgres connection string (Next.js server-only)
 GOOGLE_PLACES_API_KEY           -> POI Worker only (never in Next.js)
 POI_SERVICE_URL                 -> POI Worker URL (workers.dev now, custom domain later)
@@ -781,7 +797,7 @@ OG meta: cafe cover as og:image on /cafes/[id].
 ```text
 - MapKit JS requires window — client component + next/script CDN load
 - MapKit token JWT must be server-generated (private key never exposed)
-- Supabase SSR cookies: middleware refreshes session on each request
+- Supabase SSR cookies: `web/proxy.ts` refreshes the session only when a Supabase session cookie is present; route handlers verify the session via `getUser()` before any Postgres write
 - Postgres credentials server-side only; client NEVER queries Postgres directly
 - Every /api write verifies Supabase session before touching Postgres
 - R2 S3 credentials live only in the image-service Worker; Next.js uses presigned URLs; credentials never reach the browser
@@ -819,7 +835,7 @@ OG meta: cafe cover as og:image on /cafes/[id].
 - Check-in like toggle updates likes_count and note sort order
 - Soft-deleted check-in hides its photos from cafes.gallery
 - Navigation → ClassPass-style prompt on next visit
-- Session-refresh middleware refreshes Supabase tokens on each request
+- Session-refresh proxy refreshes Supabase tokens only when a Supabase session cookie is present
 - Nearby search capped at 10 km; city search supports nomad filters (wifi/outlets/seats/temp/coffee/overall/min_spend/max_stay/open_now)
 - Image upload enforces 10 MB cap
 - All UI copy goes through next-intl (en + zh)

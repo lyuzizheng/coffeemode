@@ -21,18 +21,18 @@ describe("proxy", () => {
   it("refreshes the session and forwards refreshed cookies", async () => {
     let capturedSetAll: ((cookiesToSet: unknown[]) => void) | undefined;
 
-    const getUser = vi.fn(async () => {
+    const getSession = vi.fn(async () => {
       capturedSetAll?.([
         { name: "sb-access-token", value: "fresh-token", options: {} },
       ]);
-      return { data: { user: { id: "u1" } }, error: null };
+      return { data: { session: { user: { id: "u1" } } }, error: null };
     });
 
     vi.mocked(createServerClient).mockImplementation(
       (_url: string, _key: string, options: unknown) => {
         const opts = options as { cookies: { setAll?: (cookiesToSet: unknown[]) => void } };
         capturedSetAll = opts.cookies.setAll;
-        return { auth: { getUser } } as unknown as ReturnType<typeof createServerClient>;
+        return { auth: { getSession } } as unknown as ReturnType<typeof createServerClient>;
       },
     );
 
@@ -43,7 +43,7 @@ describe("proxy", () => {
 
     const res = await proxy(req);
 
-    expect(getUser).toHaveBeenCalledTimes(1);
+    expect(getSession).toHaveBeenCalledTimes(1);
     expect(res.cookies.get("sb-access-token")?.value).toBe("fresh-token");
     expect(res.status).toBe(200);
   });
@@ -63,12 +63,12 @@ describe("proxy", () => {
 
   it("falls through when session refresh throws", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const getUser = vi.fn(async () => {
+    const getSession = vi.fn(async () => {
       throw new Error("Supabase unreachable");
     });
 
     vi.mocked(createServerClient).mockImplementation(
-      () => ({ auth: { getUser } }) as unknown as ReturnType<typeof createServerClient>,
+      () => ({ auth: { getSession } }) as unknown as ReturnType<typeof createServerClient>,
     );
 
     const req = new NextRequest(new URL("http://localhost/cafes/c1"), {
@@ -78,17 +78,17 @@ describe("proxy", () => {
 
     const res = await proxy(req);
 
-    expect(getUser).toHaveBeenCalledTimes(1);
+    expect(getSession).toHaveBeenCalledTimes(1);
     expect(res.status).toBe(200);
     expect(errorSpy).toHaveBeenCalledTimes(1);
     errorSpy.mockRestore();
   });
 
-  it("skips getUser when there are no cookies", async () => {
-    const getUser = vi.fn(async () => ({ data: { user: null }, error: null }));
+  it("skips getSession when there are no Supabase session cookies", async () => {
+    const getSession = vi.fn(async () => ({ data: { session: null }, error: null }));
 
     vi.mocked(createServerClient).mockImplementation(
-      () => ({ auth: { getUser } }) as unknown as ReturnType<typeof createServerClient>,
+      () => ({ auth: { getSession } }) as unknown as ReturnType<typeof createServerClient>,
     );
 
     const req = new NextRequest(new URL("http://localhost/cafes/c1"), {
@@ -97,7 +97,26 @@ describe("proxy", () => {
 
     const res = await proxy(req);
 
-    expect(getUser).not.toHaveBeenCalled();
+    expect(getSession).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+  });
+
+  it("skips getSession when only unrelated cookies are present", async () => {
+    const getSession = vi.fn(async () => ({ data: { session: null }, error: null }));
+
+    vi.mocked(createServerClient).mockImplementation(
+      () => ({ auth: { getSession } }) as unknown as ReturnType<typeof createServerClient>,
+    );
+
+    const req = new NextRequest(new URL("http://localhost/cafes/c1"), {
+      headers: new Headers(),
+    });
+    req.cookies.set("analytics_id", "abc");
+    req.cookies.set("consent", "yes");
+
+    const res = await proxy(req);
+
+    expect(getSession).not.toHaveBeenCalled();
     expect(res.status).toBe(200);
   });
 });

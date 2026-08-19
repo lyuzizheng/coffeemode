@@ -171,12 +171,17 @@ function inLngRange(lng: number): boolean {
   return lng >= -180 && lng <= 180;
 }
 
+function parseQueryNumber(value: string | null): number {
+  return value === null || value.trim() === "" ? NaN : Number(value);
+}
+
 async function searchPOIs(request: Request, env: Env, _deps: Deps): Promise<Response> {
   const url = new URL(request.url);
   const q = url.searchParams.get("q")?.trim() ?? "";
-  const lat = Number.parseFloat(url.searchParams.get("lat") ?? "");
-  const lng = Number.parseFloat(url.searchParams.get("lng") ?? "");
-  const r = url.searchParams.get("r") ? Number.parseFloat(url.searchParams.get("r")!) : DEFAULT_SEARCH_RADIUS_KM;
+  const lat = parseQueryNumber(url.searchParams.get("lat"));
+  const lng = parseQueryNumber(url.searchParams.get("lng"));
+  const rRaw = url.searchParams.get("r");
+  const r = rRaw ? parseQueryNumber(rRaw) : DEFAULT_SEARCH_RADIUS_KM;
 
   // Validate coordinates when provided: finite AND in range (rejects Infinity, 1e15).
   const latProvided = url.searchParams.has("lat");

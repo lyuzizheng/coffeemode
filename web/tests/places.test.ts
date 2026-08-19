@@ -205,6 +205,18 @@ describe("GET /api/places/search", () => {
     expect(res.status).toBe(400);
   });
 
+  it.each([
+    ["lat", "q=x&lat=37.7junk&lng=-122.4"],
+    ["lng", "q=x&lat=37.7&lng=-122.4junk"],
+    ["r", "q=x&r=5km"],
+  ])("400s without calling the worker for trailing junk in %s", async (_param, query) => {
+    const res = await searchGET(new Request(`${WORKER_URL}/api/places/search?${query}`));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()) as { error: string }).toMatchObject({ error: "invalid_request" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("maps worker errors to the same status", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ error: "boom" }, 502));
     const res = await searchGET(new Request(`${WORKER_URL}/api/places/search?q=x`));

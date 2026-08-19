@@ -9,6 +9,10 @@ import {
   rateLimiter,
 } from "@/lib/rate-limit";
 
+function parseQueryNumber(value: string | null): number {
+  return value === null || value.trim() === "" ? NaN : Number(value);
+}
+
 /**
  * GET /api/places/search?q&lat&lng&r
  * Proxy to the POI cache service search (stored POIs, haversine distance sort).
@@ -19,12 +23,20 @@ import {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const q = searchParams.get("q")?.trim() ?? "";
-  const lat = Number.parseFloat(searchParams.get("lat") ?? "");
-  const lng = Number.parseFloat(searchParams.get("lng") ?? "");
+  const lat = parseQueryNumber(searchParams.get("lat"));
+  const lng = parseQueryNumber(searchParams.get("lng"));
   const rRaw = searchParams.get("r");
-  const r = rRaw ? Number.parseFloat(rRaw) : DEFAULT_SEARCH_RADIUS_KM;
+  const r = rRaw ? parseQueryNumber(rRaw) : DEFAULT_SEARCH_RADIUS_KM;
 
+  const latProvided = searchParams.has("lat");
+  const lngProvided = searchParams.has("lng");
   const hasCoords = !Number.isNaN(lat) && !Number.isNaN(lng);
+  if ((latProvided || lngProvided) && !hasCoords) {
+    return NextResponse.json(
+      { error: "invalid_request", message: "lat/lng must both be numbers" },
+      { status: 400 },
+    );
+  }
   if (q === "" && !hasCoords) {
     return NextResponse.json(
       { error: "invalid_request", message: "q or lat+lng required" },

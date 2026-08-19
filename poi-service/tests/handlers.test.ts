@@ -577,6 +577,17 @@ describe("GET /poi/search", () => {
     expect(res.status).toBe(400);
   });
 
+  it.each([
+    ["lat", "q=x&lat=37.7junk&lng=-122.4"],
+    ["lng", "q=x&lat=37.7&lng=-122.4junk"],
+    ["r", "q=x&r=5km"],
+  ])("400s on trailing junk in %s", async (_param, query) => {
+    const res = await call("GET", `/poi/search?${query}`, makeEnv());
+
+    expect(res.status).toBe(400);
+    expect((await bodyOf(res)).error).toBe("invalid_request");
+  });
+
   it("400s on negative radius", async () => {
     const res = await call("GET", "/poi/search?q=x&r=-1", makeEnv());
     expect(res.status).toBe(400);

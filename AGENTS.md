@@ -33,6 +33,7 @@ priorities or decisions.
 - Any change to `docs/`, `.agents/`, `.codex/`, this file, or the CI/harness
   authority requires `.agents/scripts/docs-review-packet.sh <base>` and an
   independent verdict using `.agents/docs-semantic-review.md`.
-- Do not push or open a PR without user approval unless the user already requested
-  it. Do not merge without explicit authority.
+- Always create a PR after completing a development cycle and follow the
+  closed-loop workflow (`.agents/workflows/closed-loop.md`) until the PR is
+  ready to merge. Do not merge without explicit authority.
 - If no GitHub PR template exists, the PR body must include `## Context`.

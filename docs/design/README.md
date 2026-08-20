@@ -25,3 +25,4 @@ versioned, slice-specific design artifacts that gate UI implementation
 | Slice | Artifact | Status | Issue |
 | --- | --- | --- | --- |
 | discovery-sheet | `discovery-sheet-v1.md` | Draft — pending owner approval | #133 |
+| search-filters | `search-filters-v1.md` | Draft — pending owner approval | #135 |

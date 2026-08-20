@@ -63,7 +63,10 @@ Two scores, one hero. The ✨/📊 marks in meeting notes were shorthand; **no
 emoji in the UI**.
 
 - **Work Score** (composite, weighted dimensions) — primary:
-  - Number in `font-display`, `text-xl`, tabular, `accent` color.
+  - Number in the body font (Inter), `text-xl`, tabular, `accent` color. The
+    display font is reserved for titles and cafe names (spec 0002 typography
+    rules); the hero treatment comes from scale, color, and the bar below,
+    not from the typeface.
   - Thin 2px `accent` bar under the number, width = score %, track
     `surface-tertiary`. This visually rhymes with the WorkProfile dimension
     bars in FULL.
@@ -103,6 +106,12 @@ Placement:
 One sheet, three snap states. Drag handle: 36×4px, `radius-full`,
 `separator` color, centered, 8px top inset. Sheet surface `overlay`, top
 radius `radius-lg`, `shadow-lg` warm tint, 1px top `border`.
+
+Drag/scroll ownership is spec-owned (DG15, spec 0004 §18c): only the
+handle/header drags the sheet; content scrolls and hands a downward pull back
+to the sheet only at scroll-top. Visually this means the handle + header zone
+is the single obvious grab affordance — the handle is always rendered (all
+three snap states), and the header zone gets no competing horizontal chrome.
 
 ### 5.1 PEEK (no selection)
 

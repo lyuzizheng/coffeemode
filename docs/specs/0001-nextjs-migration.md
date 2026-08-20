@@ -515,8 +515,8 @@ explicit opt-in is a V2 feature tracked in #139, not part of #133.
 Mobile downward gestures step FULL → HALF → PEEK. Close and browser Back clear
 selection directly to PEEK. Only the handle/header drags the sheet; detail content
 owns vertical scrolling and hands a downward pull back to the sheet at scroll-top.
-The sheet and desktop drawer are non-modal and do not trap focus. Keyboard
-selection focuses the detail heading; Close restores focus to the source cafe
+The sheet and desktop drawer are non-modal and do not trap focus. Cafe selection
+focuses the detail heading; Close restores focus to the source cafe
 card when it still exists. Reduced-motion users get immediate snap/drawer state
 changes without transition animation.
 
@@ -537,8 +537,8 @@ scan-oriented.
   Same cafe content, rendered server-side with a lightweight
   "Open in map" banner → first-time visitors get a lighter onboarding
   (content first, never a full-screen interruption).
-  A missing or soft-deleted cafe returns a real 404 with "Back to discover".
-  If an in-app detail fetch discovers the cafe is missing/deleted, clear the
+  A missing cafe returns a real 404 with "Back to discover".
+  If an in-app detail fetch discovers the cafe is missing, clear the
   selection, replace the current URL with `/`, return to PEEK, and show a toast.
 
 /profile (separate route):
@@ -924,7 +924,7 @@ gated by the feature slices and owner infrastructure actions.
 - Helpful uses the DG16 ordering tuple; refresh/pagination failures preserve prior content with inline Retry
 - Discovery is non-modal with source-focus restoration and immediate reduced-motion state changes
 - Desktop discovery starts at 1024px; smaller viewports use the mobile sheet
-- Missing/deleted in-app cafes return to `/`/PEEK with a toast; direct SSR links return 404
+- Missing in-app cafes return to `/`/PEEK with a toast; direct SSR links return 404
 - Every new user-visible UI slice has an approved Kimi K3 design artifact before implementation
 - /cafes/[id] is server-rendered (view-source shows content)
 - Image upload produces 3 sizes in R2 with correct metadata

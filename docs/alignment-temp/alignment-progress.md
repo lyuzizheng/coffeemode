@@ -137,7 +137,7 @@
 | DG16 | Helpful ranking | MVP orders by `likes_count DESC, visited_at DESC, id DESC`; the cursor carries that tuple. A daily time-decayed ranking snapshot is deferred to V2 issue #140 |
 | DG17 | Feed failure recovery | Keep the last successful feed while refreshing or paginating; show an inline error and Retry for the failed section; never replace real content with fake cards |
 | DG18 | Focus and reduced motion | Discovery is non-modal: selection focuses the detail heading, Close returns focus to the source card, there is no focus trap, and reduced-motion users get immediate state changes |
-| DG19 | Missing/deleted cafe | A direct SSR deep link returns a real 404 with Back to discover; an in-app miss clears selection, replaces the URL with `/`, returns to PEEK, and shows a toast |
+| DG19 | Missing cafe | A direct SSR deep link returns a real 404 with Back to discover; an in-app miss clears selection, replaces the URL with `/`, returns to PEEK, and shows a toast |
 | DG20 | Responsive switch | Desktop sidebar/drawer starts at `1024px`; smaller viewports use the mobile sheet. Kimi K3 validates tablet-landscape composition |
 
 All new user-visible UI requires a slice-specific Kimi K3 design artifact before

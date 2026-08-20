@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "db:migrate": "node scripts/migrate.mjs",
+    "recompute:work-stats": "node scripts/recompute-work-stats.mjs",
     "test:integration": "RUN_INTEGRATION=1 vitest run tests/integration/db.integration.test.ts --reporter=verbose",
     "typecheck": "tsc --noEmit",
     "check:i18n": "node scripts/check-i18n.mjs",

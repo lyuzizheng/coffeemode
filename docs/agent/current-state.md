@@ -20,8 +20,9 @@ Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisi
 - Issue #118 hardens the real-DB suite against unsafe database targets and order-dependent coverage.
 - Issue #119 preserves image-service storage failures instead of mapping them to `not_found`.
 - Real MinIO/R2 upload -> HEAD -> complete coverage remains a separate follow-up; the current integration gate is Postgres-only.
-- Issue #130 / PR #128 contains the runtime implementation for the current `cafe-creation` slice: Google/Apple Maps link import and Google/Apple provider search share one first-check-in flow. Runtime gates are green, but the slice is `BLOCKED` until Kimi K3 visual review before merge.
-- PR #138 is stacked on PR #128 so its current-runtime claims stay true; merge #128 first, then retarget/rebase #138 onto `main`.
+- Issue #130 / PR #128 contains the runtime implementation for the current `cafe-creation` slice: Google/Apple Maps link import and Google/Apple provider search share one first-check-in flow. Runtime gates are green, but the slice is `BLOCKED` until Kimi K3 visual review before merge (#130).
+- PR #138 (docs: cafe-creation spec and map backlog) is merged to `main`.
+- Issue #146 / work-profile slice completes the map-independent work_stats aggregation: `coerceWorkStats` preserves `experience_score`/`composite_score`, create/edit/soft-delete recompute via `recomputeWorkStats` with `FOR UPDATE`, public-safe `CafeSummary`/`CafeDetail` expose both scores, `web/scripts/recompute-work-stats.mjs` provides the idempotent nightly drift correction and `.github/workflows/nightly-recompute.yml` schedules it at 02:00 UTC with observable failure.
 - Apple live search is configuration-gated and does not block link import or Google search. New user-visible UI implementation is separately design-gated on a slice-specific Kimi K3 artifact.
 
 ## What exists
@@ -81,10 +82,10 @@ _archive-coffeemode-backend/   old Java app — being dropped
    placeholders, set Worker secrets, deploy, wire IMAGE_SERVICE_URL/TOKEN.
 3. poi-cache-service deploy (§7): Cloudflare D1/KV + secrets, apply D1 schema,
    deploy, wire POI_SERVICE_URL/TOKEN.
-4. cafe-creation — complete Kimi K3 visual review of PR #128, then merge (#130)
-5. work-profile aggregation — map-independent backend work
-6. Obtain Kimi K3 artifacts for discovery-sheet (#133), search-filters (#135),
-   check-in, navigation prompt, profile, and cafe-detail/share before UI coding
+4. cafe-creation — complete Kimi K3 visual review, then merge (#130)
+5. Obtain Kimi K3 artifacts for discovery-sheet (#133), search-filters (#135),
+   check-in (#148), navigation prompt (#149), profile (#152), and cafe-detail/share (#150) before UI coding
+   — work-profile (#146) is now COMPLETE and discovery-sheet is unblocked on its dependency
 ```
 
 ### Blocked context (do not start yet)
@@ -93,8 +94,8 @@ _archive-coffeemode-backend/   old Java app — being dropped
 - map-home — Apple MapKit full-screen map + custom markers [BLOCKED on Apple Developer Program; #131, #132]
 - map-discovery-integration — bind discovery/search to MapKit [BLOCKED on map-home; #134]
 - map-creation-entry — map-tap and map-surface creation entry [BLOCKED on map-home; #136]
-- discovery-sheet — [BLOCKED on work-profile and its Kimi K3 artifact]
-- every other new user-visible UI slice — [BLOCKED on its Kimi K3 design artifact]
+- discovery-sheet — [BLOCKED on Kimi K3 discovery artifact (#133); work-profile dependency now COMPLETE]
+- every other new user-visible UI slice — [BLOCKED on its Kimi K3 design artifact (#141): check-in #148, search #135, navigation #149, profile #152, detail/share #150]
 - deploy-vps — Docker + VPS + CDN + CI/CD [BLOCKED on domain + VPS + Cloudflare account]
 - cleanup-legacy — remove old Vite frontend + Java backend [BLOCKED on deploy-vps]
 ```

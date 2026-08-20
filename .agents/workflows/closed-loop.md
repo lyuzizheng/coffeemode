@@ -24,15 +24,23 @@ discover -> deduplicate/file -> verify -> scope/plan -> implement
 6. **Verify**: run focused tests and the relevant package gate. Run real Postgres
    for migrations, SQL, triggers, or DB-backed flows. Run browser/manual evidence
    when user-visible behavior changes.
-7. **Review**: use the tier requirements. Review the complete stable diff;
-   docs/harness authority also requires the independent semantic-review packet.
-8. **Publish**: after push approval (unless the user already requested a PR), open
-   a PR using `.github/pull_request_template.md`. Use `Fixes #N` only for a fully
+7. **Review**: run independent code review (`.agents/workflows/review-code.md`) on
+   the final stable cumulative diff per tier requirements in
+   `.agents/workflows/development-cycle.md` (Standard/High require an
+   independent reviewer who did not author the patch; Fast does not).
+   Docs/harness authority also requires the independent semantic-review packet
+   (`.agents/docs-semantic-review.md` via
+   `.agents/scripts/docs-review-packet.sh <base>`).
+8. **Publish**: always create a PR after completing the development cycle and
+   follow this loop until the PR is ready to merge, per `AGENTS.md`. Open the
+   PR using `.github/pull_request_template.md`. Use `Fixes #N` only for a fully
    satisfied issue; otherwise use `Refs #N` and link the remaining issue.
 9. **CI**: wait for the relevant CI jobs and the aggregate `ci-gate`. Fix the root
    cause of failures; never bypass a gate.
 10. **Close**: merge only with explicit authority. After merge, verify GitHub
-    auto-closed the issue and that linked follow-ups remain open.
+    auto-closed the issue and that linked follow-ups remain open. The independent
+   code reviewer must not be the patch author (`.agents/workflows/review-code.md`
+   Independence rule).
 
 ## Act or ask
 

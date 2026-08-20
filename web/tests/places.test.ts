@@ -11,6 +11,9 @@ import { GET as searchGET } from "@/app/api/places/search/route";
 import { POST as resolvePOST } from "@/app/api/places/resolve/route";
 import type { POI } from "@shared/places/types";
 
+const { getCurrentUserMock } = vi.hoisted(() => ({ getCurrentUserMock: vi.fn() }));
+vi.mock("@/lib/auth/get-user", () => ({ getCurrentUser: getCurrentUserMock }));
+
 const WORKER_URL = "https://poi-service.test.workers.dev";
 const TOKEN = "s3cret-token";
 
@@ -40,6 +43,7 @@ let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   process.env.POI_SERVICE_URL = WORKER_URL;
   process.env.POI_SERVICE_TOKEN = TOKEN;
+  getCurrentUserMock.mockResolvedValue(null);
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
 });
@@ -211,6 +215,7 @@ describe("GET /api/places/search", () => {
   });
 
   it("routes source=google to live external search", async () => {
+    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
     fetchMock.mockResolvedValue(jsonResponse({ results: [] }));
     const res = await searchGET(
       new Request(`${WORKER_URL}/api/places/search?source=google&q=blue%20bottle`),
@@ -218,6 +223,14 @@ describe("GET /api/places/search", () => {
     expect(res.status).toBe(200);
     const [url] = fetchMock.mock.calls[0] as [string];
     expect(url).toBe(`${WORKER_URL}/poi/search/external?q=blue+bottle&r=10`);
+  });
+
+  it("rejects anonymous live Google search before touching the worker", async () => {
+    const res = await searchGET(
+      new Request(`${WORKER_URL}/api/places/search?source=google&q=blue%20bottle`),
+    );
+    expect(res.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("rejects unsupported provider sources", async () => {

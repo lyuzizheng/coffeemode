@@ -149,6 +149,16 @@ describe("parseCreateCafeBody", () => {
     expect(parsed).toEqual(expect.objectContaining({ ok: true, value: expect.objectContaining({ apple_poi_id: applePoiId }) }));
   });
 
+  it("rejects provider ids beyond the 1024-char bound", () => {
+    const parsed = parseCreateCafeBody({
+      name: "Kiosk",
+      ...SG,
+      apple_poi_id: `apple:${"x".repeat(2000)}`,
+      checkin: VALID_CHECKIN,
+    });
+    expect(parsed.ok).toBe(false);
+  });
+
   it("rejects non-object, empty name, and out-of-range coordinates", () => {
     expect(parseCreateCafeBody(null).ok).toBe(false);
     expect(parseCreateCafeBody({ ...validBody(), name: " " }).ok).toBe(false);

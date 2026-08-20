@@ -243,7 +243,6 @@
     "createFailed": "The cafe could not be created.",
     "alreadyExists": "This place is already in CoffeeMode.",
     "created": "Cafe created.",
-    "viewCafe": "View cafe",
     "offline": "Creation unavailable offline",
     "close": "Close",
     "submit": "Create cafe"

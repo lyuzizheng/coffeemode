@@ -55,6 +55,11 @@ function upstreamError(e: unknown): Response {
   return json({ error: "upstream_error", message: "upstream request failed" }, 502);
 }
 
+// Fallback id for Apple places that expose no stable reference: FNV-1a over
+// "lat,lng:label". 32-bit, so collisions and label/coordinate drift can split
+// or merge distinct places — accepted for MVP until Apple offers a
+// server-side id. Must stay byte-identical to `stablePlaceId` in
+// web/components/cafe/apple-place-search.tsx or dedupe silently breaks.
 function stableApplePlaceId(value: string): string {
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {
@@ -341,6 +346,9 @@ function validateExternalEntry(value: unknown, index: number): POI | InvalidEntr
   if (!value || typeof value !== "object") return bad("entry is not an object");
   const v = value as Record<string, unknown>;
   if (typeof v.place_id !== "string" || v.place_id === "") return bad("place_id required");
+  // Opaque provider ids (e.g. Apple MapKit) can be long; 1024 bounds storage
+  // without truncating legitimate references.
+  if (v.place_id.length > 1024) return bad("place_id too long (max 1024)");
   if (v.source !== "google" && v.source !== "apple") return bad("source must be google|apple");
   if (typeof v.name !== "string" || v.name === "") return bad("name required");
   if (v.name.length > 200) return bad("name too long (max 200)");

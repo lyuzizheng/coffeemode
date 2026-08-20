@@ -85,6 +85,7 @@ _archive-coffeemode-backend/   old Java app — being dropped
 5. work-profile aggregation — map-independent backend work
 6. Obtain Kimi K3 artifacts for discovery-sheet (#133), search-filters (#135),
    check-in, navigation prompt, profile, and cafe-detail/share before UI coding
+7. Resolve discovery Helpful ranking formula and deterministic cursor tie-breakers (#133)
 ```
 
 ### Blocked context (do not start yet)
@@ -93,7 +94,8 @@ _archive-coffeemode-backend/   old Java app — being dropped
 - map-home — Apple MapKit full-screen map + custom markers [BLOCKED on Apple Developer Program; #131, #132]
 - map-discovery-integration — bind discovery/search to MapKit [BLOCKED on map-home; #134]
 - map-creation-entry — map-tap and map-surface creation entry [BLOCKED on map-home; #136]
-- discovery-sheet and every other new user-visible UI slice — [BLOCKED on its Kimi K3 design artifact]
+- discovery-sheet — [BLOCKED on work-profile, its Kimi K3 artifact, and Helpful ranking/cursor tie-breakers]
+- every other new user-visible UI slice — [BLOCKED on its Kimi K3 design artifact]
 - deploy-vps — Docker + VPS + CDN + CI/CD [BLOCKED on domain + VPS + Cloudflare account]
 - cleanup-legacy — remove old Vite frontend + Java backend [BLOCKED on deploy-vps]
 ```

@@ -127,8 +127,13 @@
 | DG6 | PEEK characteristics | Compact icons expose wifi, outlets, stay limit, and other available place characteristics; Kimi K3 decides exact iconography and composition |
 | DG7 | Score hierarchy | Both Work/composite and Experience scores appear from HALF onward; Kimi K3 designs their hierarchy |
 | DG8 | Cafe actions | Keep Navigate, Check in, and Share; Kimi K3 decides their HALF/FULL placement; PEEK stays scan-oriented |
-| DG9 | FULL data | FULL uses a real public, unauthenticated, paginated feed of non-deleted check-ins, not permanent fixtures; ordering/pagination and public author identity remain unresolved |
+| DG9 | FULL data | FULL uses a real public, unauthenticated, paginated feed of non-deleted check-ins, not permanent fixtures; DG11-DG13 resolve modes, pagination, and MVP identity while Helpful ranking remains open |
 | DG10 | Sparse data | Show available values with respondent counts; zero-response dimensions say “Not enough check-ins”; never coerce missing data to zero |
+| DG11 | FULL feed modes | Offer both Helpful and Newest; Kimi K3 designs the control and its placement; Helpful's ranking formula remains unresolved |
+| DG12 | Feed pagination | Use server-issued, mode-bound opaque cursors with 20 check-ins per page; no offset pagination |
+| DG13 | MVP author identity | Public cafe/check-in content renders “A nomad” and omits internal author identifiers; named opt-in identity is deferred to V2 issue #139 |
+| DG14 | Sheet dismissal | Downward gestures step FULL → HALF → PEEK; Close and browser Back clear selection directly to PEEK |
+| DG15 | Gesture ownership | Only the handle/header drags the sheet; content owns scrolling and hands a downward pull back to the sheet only at scroll-top |
 
 All new user-visible UI requires a slice-specific Kimi K3 design artifact before
 implementation. Until that artifact exists, exact layout/interaction composition
@@ -148,6 +153,7 @@ is an explicit blocker rather than an agent-invented default.
 - 2026-08-03: Dual scores (✨ experience + 📊 composite), slider-only scoring, "unknown" policy option
 - 2026-08-03: Hermes config — reasoning_effort=max, openrouter provider removed (qwen-coding-plan only)
 - 2026-08-19: Discovery behavior DG1-DG10 agreed; exact visual composition delegated to Kimi K3 and required before UI implementation
+- 2026-08-20: Discovery behavior DG11-DG15 agreed; Helpful ranking remains open, and V2 opt-in author identity is tracked in #139
 
 ## Final tech stack (locked)
 

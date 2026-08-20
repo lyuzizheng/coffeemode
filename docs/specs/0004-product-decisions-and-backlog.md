@@ -7,9 +7,8 @@ Capture the output of the batched subagent review covering frontend/UX design, c
 ## Status
 
 Confirmed — owner replied to the original open questions on 2026-08-08. Revised
-2026-08-19 with discovery decisions DG1-DG10 and the Kimi K3 design gate; FULL
-feed ordering and pagination remain open. Decisions are projected into canonical
-specs `0001` and `0002`.
+2026-08-20 with discovery decisions DG1-DG15; Helpful ranking remains open.
+Decisions are projected into canonical specs `0001` and `0002`.
 
 ## Review scope
 
@@ -35,7 +34,7 @@ Four read-only subagent reviews ran in parallel against the current `main` tree 
 ### Check-in & social semantics
 
 7. **"Every review is a check-in" stays literal.** No separate `reviews` table in MVP. A `checkins` row carries scores, policies, note, and photos.
-8. **Likes preserve future sorting/scoring design space.** A `checkin_likes` table (unique `user_id` + `checkin_id`) is included in the MVP schema. The earlier hot-rank sorting proposal is reopened for the discovery FULL feed; ordering and pagination must be settled before #133 starts. `work_stats` scoring keeps the slider-only signal by default (`social_weight = 0`) but exposes a tunable hook so likes can influence the composite weight later without a schema migration. **Self-likes are not allowed** (owner, 2026-08-18): an author cannot like their own check-in, so `likes_count` and any future weighted signal stay social-only. Enforced in `toggleCheckInLike` (issue #107) and by a `checkin_likes` BEFORE INSERT trigger (migration 0008) for every write path.
+8. **Likes preserve sorting/scoring design space.** A `checkin_likes` table (unique `user_id` + `checkin_id`) is included in the MVP schema. Discovery FULL offers Helpful and Newest modes; Helpful uses likes, but its exact ranking formula remains open. Both modes use server-issued, mode-bound opaque cursors with 20 rows per page. `work_stats` scoring keeps the slider-only signal by default (`social_weight = 0`) but exposes a tunable hook so likes can influence the composite weight later without a schema migration. **Self-likes are not allowed** (owner, 2026-08-18): an author cannot like their own check-in, so `likes_count` and any future weighted signal stay social-only. Enforced in `toggleCheckInLike` (issue #107) and by a `checkin_likes` BEFORE INSERT trigger (migration 0008) for every write path.
 9. **Check-in `note` is a one-off review snippet.** Threaded replies are post-MVP.
 10. **`/profile` shows both "My Cafes" and "My Check-ins".** "My Cafes" = distinct cafes the user has checked into at least once (derived from `checkins`), ordered by latest visit. Because creation is the first check-in, every cafe created by the user appears here. A "created by me" badge is shown where `is_creation=true`. "My Check-ins" = all check-in rows for the user, newest `visited_at` first.
 11. **Browsing/view history is out of MVP scope.** If needed, use lightweight client-side recent views; server-side history is post-MVP.
@@ -49,6 +48,9 @@ Four read-only subagent reviews ran in parallel against the current `main` tree 
 16. **MVP cafe-creation entrances:** (1) Google or Apple Maps link import, and (2) provider search in the creation sheet. Google search runs through the POI service; Apple search runs through MapKit JS when owner credentials are configured. Map-pin creation and a free-form manual form are deferred.
 17. **Cross-source (Google ↔ Apple) duplicate resolution is undefined and post-MVP.** Physical location dedupe is intentionally not solved for MVP.
 18. **Offline creation is disabled in MVP.** Show the offline banner and disable the creation CTA. No mutation queue.
+18a. **MVP public author identity is anonymous.** Public cafe/check-in DTOs render “A nomad” and omit internal author identifiers. Explicit opt-in named identity is deferred to V2 issue #139.
+18b. **Mobile sheet dismissal is stateful.** Downward gestures step FULL → HALF → PEEK; Close and browser Back clear selection directly to PEEK.
+18c. **Sheet drag and detail scroll have separate ownership.** The handle/header drags; detail content scrolls and hands downward movement to the sheet only at scroll-top.
 
 ### Search & filters
 
@@ -160,6 +162,7 @@ surface. These issues remain separate from the Apple credential owner action #13
 - User-customizable Work Score dimension weights.
 - Owner claims via `cafes.owner_id`.
 - Cross-source POI merge / Apple↔Google duplicate resolution.
+- Opt-in named public author identity for cafe creators/check-ins (#139).
 - Xiaohongshu link import.
 - Offline mutation queue.
 
@@ -182,11 +185,8 @@ surface. These issues remain separate from the Apple credential owner action #13
 
 ## Open questions requiring owner decision
 
-- Discovery FULL check-in ordering/pagination and its public cafe/check-in
-  response and author-identity privacy contracts remain unresolved. Public DTOs
-  must not expose internal author identifiers (`CheckIn.user_id` or
-  `StoredImage.by`) by default or be implemented before these decisions; settle
-  them before issue #133 moves from `BLOCKED` to `READY`.
+- Discovery FULL Helpful ranking remains unresolved. Settle its deterministic
+  formula and cursor tie-breakers before issue #133 moves from `BLOCKED` to `READY`.
 
 ## Tests / acceptance criteria
 

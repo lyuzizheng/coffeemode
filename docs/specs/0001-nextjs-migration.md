@@ -10,7 +10,7 @@ This is a rewrite, not a migration. The old Vite SPA (`_archive-coffeemode-front
 
 ## Status
 
-Accepted (revised 2026-08-19 — responsive discovery contract and Kimi K3 design gate; 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
+Accepted (revised 2026-08-20 — discovery feed, anonymity, dismissal, and gesture contracts; 2026-08-19 — responsive discovery contract and Kimi K3 design gate; 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
 
 ## Stable decisions
 
@@ -259,8 +259,9 @@ User-customizable weights: post-MVP.
 Social signal hook:
 
 ```text
-- checkin_likes (user_id + checkin_id) preserves future note-list ranking options;
-  discovery FULL ordering is resolved before #133.
+- checkin_likes (user_id + checkin_id) powers the Helpful feed mode. The mode is
+  accepted, but its exact ranking formula and deterministic cursor tie-breakers
+  are resolved before #133.
 - A tunable social_weight parameter (default 0 at launch) can fold likes into the
   per-checkin contribution before it reaches work_stats. This leaves design space
   for "liked check-ins carry more weight" without a future schema change.
@@ -493,10 +494,18 @@ The map-independent discovery controller accepts CafeSummary[] plus selected sta
 A thin home-page adapter loads the existing nearby-cafes API; MapKit bindings and
 unified search stay in their own slices. CafeSummary must expose a card cover.
 FULL requires a public, unauthenticated, paginated cafe check-in read contract rather than
-permanent fixtures. Its ordering/pagination and public cafe/check-in response and
-author-identity privacy contracts are resolved before #133 implementation. Public
-DTOs must not expose internal author identifiers (`CheckIn.user_id` or
-`StoredImage.by`) by default or be implemented first.
+permanent fixtures. It offers Helpful and Newest modes; Kimi K3 designs the control.
+Both modes use server-issued, mode-bound opaque cursors with 20 check-ins per page,
+never offset pagination. Helpful's exact ranking formula is resolved before #133.
+Its deterministic cursor tie-breakers are resolved with that formula.
+
+MVP public cafe/check-in DTOs render the author as “A nomad” and omit internal
+author identifiers (`CheckIn.user_id` and `StoredImage.by`). Named identity after
+explicit opt-in is a V2 feature tracked in #139, not part of #133.
+
+Mobile downward gestures step FULL → HALF → PEEK. Close and browser Back clear
+selection directly to PEEK. Only the handle/header drags the sheet; detail content
+owns vertical scrolling and hands a downward pull back to the sheet at scroll-top.
 
 Scores stay honest: PEEK prioritizes compact work characteristics, HALF introduces
 both composite Work and Experience scores, and FULL explains their dimensions.
@@ -620,8 +629,8 @@ Rules:
   - Soft delete: set checkins.deleted_at. Deleted check-in photos are hidden from
     cafes.gallery but remain in checkins.photos for audit/recompute.
   - Like toggle on a check-in: update checkin_likes and denormalized checkins.likes_count.
-    The earlier hot-rank proposal for the note list is reopened for the
-    discovery FULL feed; ordering and pagination are settled before #133 starts.
+    FULL exposes Helpful and Newest modes with opaque cursor pagination; Helpful's
+    exact ranking formula and deterministic cursor tie-breakers are settled before #133 starts.
 
 Navigation → check-in prompt (ClassPass-style):
   1. User taps "导航" → navigations row + Google/Apple Maps deep link
@@ -822,7 +831,7 @@ its Kimi K3 artifact.
 4. Work profile display (dimension bars + policy consensus)
 5. Navigation tracking + ClassPass-style return prompt
 6. City search + nomad filters
-7. Check-in like toggle + check-in feed (ordering resolved before #133)
+7. Check-in like toggle + Helpful/Newest cursor-paginated check-in feed
 8. Soft delete with gallery photo hiding
 9. /profile page (My Cafes + My Check-ins)
 ```
@@ -852,6 +861,7 @@ gated by the feature slices and owner infrastructure actions.
 4. Owner claims (owner_id), admin panel
 5. Marker category variants
 6. Data migration from old Java backend
+7. Opt-in named public author identity for cafe creators/check-ins (#139)
 ```
 
 ## Edge cases
@@ -890,7 +900,9 @@ gated by the feature slices and owner infrastructure actions.
 - Discovery: mobile peek → half → full and desktop sidebar/detail drawer share
   selection state, one-push/then-replace URL sync, and Back-to-collapse behavior
 - PEEK shows compact work-characteristic icons; HALF shows both scores; FULL uses
-  real cafe detail and paginated non-deleted check-ins
+  real cafe detail and Helpful/Newest cursor-paginated non-deleted check-ins
+- MVP public cafe/check-in DTOs render “A nomad” and omit internal author identifiers
+- Mobile sheet dismissal and scroll/drag handoff follow the DG14-DG15 contract
 - Every new user-visible UI slice has an approved Kimi K3 design artifact before implementation
 - /cafes/[id] is server-rendered (view-source shows content)
 - Image upload produces 3 sizes in R2 with correct metadata
@@ -898,7 +910,7 @@ gated by the feature slices and owner infrastructure actions.
 - Duplicate google_place_id / apple_poi_id → "exists" flow, no second cafe
 - Check-in stores slider scores 0-100 + policies; work_stats updates incrementally and excludes soft-deleted rows
 - Repeat check-in pre-fills via "same as last time?" flow
-- Check-in like toggle updates likes_count and note sort order
+- Check-in like toggle updates likes_count and the Helpful feed signal
 - Soft-deleted check-in hides its photos from cafes.gallery
 - Navigation → ClassPass-style prompt on next visit
 - Session-refresh proxy refreshes Supabase tokens only when a Supabase session cookie is present

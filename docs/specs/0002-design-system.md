@@ -6,7 +6,7 @@ Define CoffeeMode's visual identity for 2026: modern, restrained, elegant. The c
 
 ## Status
 
-Accepted (revised 2026-08-19 — Kimi K3 design authority and responsive discovery contract; earlier 2026-08-02 — supersedes retro/vintage direction, aligned with bottom-sheet SPA, swipe cards, slider check-in)
+Accepted (revised 2026-08-20 — discovery feed control and gesture constraints; 2026-08-19 — Kimi K3 design authority and responsive discovery contract; earlier 2026-08-02 — supersedes retro/vintage direction, aligned with bottom-sheet SPA, swipe cards, slider check-in)
 
 ## Stable decisions
 
@@ -268,9 +268,13 @@ Mobile:
   Bottom sheet — Google Maps style, one sheet three states:
     PEEK  no selection; horizontal swipe cards with compact work-characteristic icons
     HALF  selected cafe: cover carousel + name + both scores + actions + top work facts
-    FULL  complete real-data detail; map stays visible ~15% at top
+    FULL  complete real-data detail with Helpful/Newest feed modes;
+          map stays visible ~15% at top
   URL sync: first selection pushes /cafes/[id]; selection/height changes replace it;
             Back collapses the whole selection session to /
+  Gesture: downward drag steps FULL → HALF → PEEK; Close/Back clears to PEEK
+  Drag ownership: handle/header moves the sheet; content scrolls and hands off
+                  downward movement only when content is already at scroll-top
   FAB bottom-right (add cafe, login-gated)
   Check-in: drawer above the sheet
 
@@ -332,6 +336,7 @@ Transition: 200ms color transition on theme switch
 - No Material Design, generic SaaS, or AI-slop visual language
 - No Shadcn components; HeroUI v3 is the sole library
 - Kimi K3 design artifact exists for the slice and the implementation matches it
+- Kimi K3 defines the Helpful/Newest control composition within the accepted behavior
 - `web/app/globals.css` implements accent, secondary, radius, and shadow tokens exactly
 - HeroUI `<Toast.Provider>` is mounted in root providers
 ```

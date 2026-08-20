@@ -13,6 +13,7 @@ docs/
   specs/
   adr/
   agent/
+  design/
 ```
 
 ## What belongs where
@@ -57,6 +58,21 @@ pending owner actions
 
 This folder points to specs. It should not become a second product spec layer.
 
+### `docs/design/`
+
+Versioned Kimi K3 visual-design artifacts, one per UI slice.
+
+Use it for:
+
+```text
+slice-specific composition, hierarchy, iconography
+responsive treatment, motion detail, visual states
+owner approval records that unblock UI slices
+```
+
+Artifacts own visual composition only; product behavior stays canonical in
+`docs/specs/`. See `docs/design/README.md` for the artifact contract.
+
 ### `.agents/`
 
 Repo-local agent operating material.
@@ -83,6 +99,7 @@ Authority is concern-based, not a total order:
 | --- | --- |
 | User direction for the active task | User's latest explicit instruction |
 | Intended product and implementation behavior | `docs/specs/*.md` |
+| Visual composition for a UI slice | `docs/design/*.md` (Kimi K3 artifact, once Approved) |
 | Architecture decision and rationale | `docs/adr/*.md`, per each ADR's status |
 | Current implemented behavior | Code and tests |
 | Current phase, focus, and known state | `docs/agent/current-state.md` |

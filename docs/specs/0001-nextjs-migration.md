@@ -10,7 +10,7 @@ This is a rewrite, not a migration. The old Vite SPA (`_archive-coffeemode-front
 
 ## Status
 
-Accepted (revised 2026-08-20 — discovery feed, anonymity, dismissal, and gesture contracts; 2026-08-19 — responsive discovery contract and Kimi K3 design gate; 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
+Accepted (revised 2026-08-20 — discovery ranking, recovery, accessibility, missing-cafe, responsive, feed, anonymity, dismissal, and gesture contracts; 2026-08-19 — responsive discovery contract and Kimi K3 design gate; 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
 
 ## Stable decisions
 
@@ -259,9 +259,9 @@ User-customizable weights: post-MVP.
 Social signal hook:
 
 ```text
-- checkin_likes (user_id + checkin_id) powers the Helpful feed mode. The mode is
-  accepted, but its exact ranking formula and deterministic cursor tie-breakers
-  are resolved before #133.
+- checkin_likes (user_id + checkin_id) powers the Helpful feed mode. MVP sorts
+  `likes_count DESC, visited_at DESC, id DESC`; the opaque cursor carries that
+  deterministic tuple. A versioned daily time-decayed snapshot is deferred to #140.
 - A tunable social_weight parameter (default 0 at launch) can fold likes into the
   per-checkin contribution before it reaches work_stats. This leaves design space
   for "liked check-ins carry more weight" without a future schema change.
@@ -487,8 +487,9 @@ SPA-feel single page. The map page IS the app; no tab bar, no navigation.
   Check-in = drawer over the sheet
   Onboarding = one-time overlay (first visit only)
 
-Desktop uses the same selected-cafe and URL state, but renders a 380px cafe-list
-sidebar plus a right-side detail drawer. PEEK/HALF/FULL snap states are mobile-only.
+At `1024px` and wider, desktop uses the same selected-cafe and URL state but
+renders a 380px cafe-list sidebar plus a right-side detail drawer. Smaller
+viewports use the mobile sheet; PEEK/HALF/FULL snap states are mobile-only.
 
 The map-independent discovery controller accepts CafeSummary[] plus selected state.
 A thin home-page adapter loads the existing nearby-cafes API; MapKit bindings and
@@ -496,8 +497,16 @@ unified search stay in their own slices. CafeSummary must expose a card cover.
 FULL requires a public, unauthenticated, paginated cafe check-in read contract rather than
 permanent fixtures. It offers Helpful and Newest modes; Kimi K3 designs the control.
 Both modes use server-issued, mode-bound opaque cursors with 20 check-ins per page,
-never offset pagination. Helpful's exact ranking formula is resolved before #133.
-Its deterministic cursor tie-breakers are resolved with that formula.
+never offset pagination. Helpful orders by `likes_count DESC, visited_at DESC,
+id DESC`; Newest orders by `visited_at DESC, id DESC`. Each cursor contains its
+mode and the last row's full ordering tuple. Likes may move a check-in between
+requests, so MVP pagination is best-effort and clients deduplicate by check-in id.
+A daily time-decayed, versioned ranking snapshot is a separate V2 feature (#140).
+
+Refresh and pagination use stale-while-revalidate behavior: keep the last
+successful content, show an inline error and Retry beside the failed section,
+and never replace real content with fake cards. Initial loading may use the
+design-system skeleton.
 
 MVP public cafe/check-in DTOs render the author as “A nomad” and omit internal
 author identifiers (`CheckIn.user_id` and `StoredImage.by`). Named identity after
@@ -506,6 +515,10 @@ explicit opt-in is a V2 feature tracked in #139, not part of #133.
 Mobile downward gestures step FULL → HALF → PEEK. Close and browser Back clear
 selection directly to PEEK. Only the handle/header drags the sheet; detail content
 owns vertical scrolling and hands a downward pull back to the sheet at scroll-top.
+The sheet and desktop drawer are non-modal and do not trap focus. Keyboard
+selection focuses the detail heading; Close restores focus to the source cafe
+card when it still exists. Reduced-motion users get immediate snap/drawer state
+changes without transition animation.
 
 Scores stay honest: PEEK prioritizes compact work characteristics, HALF introduces
 both composite Work and Experience scores, and FULL explains their dimensions.
@@ -524,6 +537,9 @@ scan-oriented.
   Same cafe content, rendered server-side with a lightweight
   "Open in map" banner → first-time visitors get a lighter onboarding
   (content first, never a full-screen interruption).
+  A missing or soft-deleted cafe returns a real 404 with "Back to discover".
+  If an in-app detail fetch discovers the cafe is missing/deleted, clear the
+  selection, replace the current URL with `/`, return to PEEK, and show a toast.
 
 /profile (separate route):
   Avatar, my cafes, my check-ins.
@@ -604,6 +620,7 @@ Tier 3 (Post-MVP):
   - Favorites / collections
   - Personalized Work Score ("your" weighted dimensions)
   - Owner claims, social features, contribution scoring
+  - Daily time-decayed Helpful ranking snapshots (#140)
 ```
 
 ### Check-in (打卡) system
@@ -629,8 +646,8 @@ Rules:
   - Soft delete: set checkins.deleted_at. Deleted check-in photos are hidden from
     cafes.gallery but remain in checkins.photos for audit/recompute.
   - Like toggle on a check-in: update checkin_likes and denormalized checkins.likes_count.
-    FULL exposes Helpful and Newest modes with opaque cursor pagination; Helpful's
-    exact ranking formula and deterministic cursor tie-breakers are settled before #133 starts.
+    FULL exposes Helpful and Newest modes with opaque cursor pagination; Helpful
+    sorts by likes_count, visited_at, then id descending.
 
 Navigation → check-in prompt (ClassPass-style):
   1. User taps "导航" → navigations row + Google/Apple Maps deep link
@@ -862,6 +879,7 @@ gated by the feature slices and owner infrastructure actions.
 5. Marker category variants
 6. Data migration from old Java backend
 7. Opt-in named public author identity for cafe creators/check-ins (#139)
+8. Daily time-decayed Helpful ranking snapshots (#140)
 ```
 
 ## Edge cases
@@ -903,6 +921,10 @@ gated by the feature slices and owner infrastructure actions.
   real cafe detail and Helpful/Newest cursor-paginated non-deleted check-ins
 - MVP public cafe/check-in DTOs render “A nomad” and omit internal author identifiers
 - Mobile sheet dismissal and scroll/drag handoff follow the DG14-DG15 contract
+- Helpful uses the DG16 ordering tuple; refresh/pagination failures preserve prior content with inline Retry
+- Discovery is non-modal with source-focus restoration and immediate reduced-motion state changes
+- Desktop discovery starts at 1024px; smaller viewports use the mobile sheet
+- Missing/deleted in-app cafes return to `/`/PEEK with a toast; direct SSR links return 404
 - Every new user-visible UI slice has an approved Kimi K3 design artifact before implementation
 - /cafes/[id] is server-rendered (view-source shows content)
 - Image upload produces 3 sizes in R2 with correct metadata

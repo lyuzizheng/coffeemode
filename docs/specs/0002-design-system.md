@@ -6,7 +6,7 @@ Define CoffeeMode's visual identity for 2026: modern, restrained, elegant. The c
 
 ## Status
 
-Accepted (revised 2026-08-20 — discovery feed control and gesture constraints; 2026-08-19 — Kimi K3 design authority and responsive discovery contract; earlier 2026-08-02 — supersedes retro/vintage direction, aligned with bottom-sheet SPA, swipe cards, slider check-in)
+Accepted (revised 2026-08-20 — discovery feed, recovery, focus, reduced-motion, missing-cafe, breakpoint, and gesture constraints; 2026-08-19 — Kimi K3 design authority and responsive discovery contract; earlier 2026-08-02 — supersedes retro/vintage direction, aligned with bottom-sheet SPA, swipe cards, slider check-in)
 
 ## Stable decisions
 
@@ -255,6 +255,8 @@ ease.smooth        [0.4, 0, 0.2, 1]       standard material-like
 - No animation longer than 450ms in normal flow
 - Map interactions: immediate (no artificial delay)
 - Loading: skeleton shimmer (HeroUI Skeleton), not spinners
+- Feed refresh/pagination: preserve the last successful content and put an inline
+  error + Retry at the failed section; never replace real cards with placeholders
 ```
 
 ## Layout
@@ -282,13 +284,14 @@ Desktop:
   Left sidebar 380px: search + filters + cafe list (scroll)
   Right: full-screen map
   Cafe detail: slide-over from right (Drawer placement="right")
-  Uses the shared selection/URL state; never emulates mobile PEEK/HALF/FULL snaps
+  Activates at 1024px and uses the shared selection/URL state; never emulates
+  mobile PEEK/HALF/FULL snaps
 Deep-link/share landing: dedicated SSR /cafes/[id] in the separate seo-sharing slice
 
 Breakpoints:
   sm: 640px   (large phone landscape)
-  md: 768px   (tablet — switch to sidebar layout)
-  lg: 1024px  (desktop)
+  md: 768px   (tablet — mobile sheet remains active)
+  lg: 1024px  (desktop — switch to sidebar + detail drawer)
   xl: 1280px  (wide desktop)
 ```
 
@@ -309,7 +312,9 @@ Transition: 200ms color transition on theme switch
 - Body text contrast >= 4.5:1 (both themes)
 - Large text contrast >= 3:1
 - Map markers: text alternatives via aria-label
-- Bottom sheet / Drawer: keyboard navigable, focus trapped
+- Discovery sheet / Drawer: keyboard navigable and non-modal; no focus trap
+- Cafe selection focuses the detail heading; Close restores the source-card focus
+- Reduced motion: sheet snaps and drawer state changes complete immediately
 - Fact chips: toggle button semantics (aria-pressed)
 - Filter controls: visible focus states
 - Empty/loading/error states: designed, not raw text
@@ -337,6 +342,8 @@ Transition: 200ms color transition on theme switch
 - No Shadcn components; HeroUI v3 is the sole library
 - Kimi K3 design artifact exists for the slice and the implementation matches it
 - Kimi K3 defines the Helpful/Newest control composition within the accepted behavior
+- Kimi K3 defines the visual treatment for accepted Retry/toast/focus states and
+  validates the mobile-sheet composition through tablet landscape
 - `web/app/globals.css` implements accent, secondary, radius, and shadow tokens exactly
 - HeroUI `<Toast.Provider>` is mounted in root providers
 ```

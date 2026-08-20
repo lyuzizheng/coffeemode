@@ -7,7 +7,7 @@ Capture the output of the batched subagent review covering frontend/UX design, c
 ## Status
 
 Confirmed — owner replied to the original open questions on 2026-08-08. Revised
-2026-08-20 with discovery decisions DG1-DG15; Helpful ranking remains open.
+2026-08-20 with discovery decisions DG1-DG20.
 Decisions are projected into canonical specs `0001` and `0002`.
 
 ## Review scope
@@ -34,7 +34,7 @@ Four read-only subagent reviews ran in parallel against the current `main` tree 
 ### Check-in & social semantics
 
 7. **"Every review is a check-in" stays literal.** No separate `reviews` table in MVP. A `checkins` row carries scores, policies, note, and photos.
-8. **Likes preserve sorting/scoring design space.** A `checkin_likes` table (unique `user_id` + `checkin_id`) is included in the MVP schema. Discovery FULL offers Helpful and Newest modes; Helpful uses likes, but its exact ranking formula remains open. Both modes use server-issued, mode-bound opaque cursors with 20 rows per page. `work_stats` scoring keeps the slider-only signal by default (`social_weight = 0`) but exposes a tunable hook so likes can influence the composite weight later without a schema migration. **Self-likes are not allowed** (owner, 2026-08-18): an author cannot like their own check-in, so `likes_count` and any future weighted signal stay social-only. Enforced in `toggleCheckInLike` (issue #107) and by a `checkin_likes` BEFORE INSERT trigger (migration 0008) for every write path.
+8. **Likes preserve sorting/scoring design space.** A `checkin_likes` table (unique `user_id` + `checkin_id`) is included in the MVP schema. Discovery FULL offers Helpful and Newest modes with server-issued, mode-bound opaque cursors and 20 rows per page. MVP Helpful sorts by `likes_count DESC, visited_at DESC, id DESC`; Newest sorts by `visited_at DESC, id DESC`. Likes may move rows between requests, so clients deduplicate by check-in id. A daily versioned time-decayed ranking snapshot is deferred to V2 issue #140. `work_stats` scoring keeps the slider-only signal by default (`social_weight = 0`) but exposes a tunable hook so likes can influence the composite weight later without a schema migration. **Self-likes are not allowed** (owner, 2026-08-18): an author cannot like their own check-in, so `likes_count` and any future weighted signal stay social-only. Enforced in `toggleCheckInLike` (issue #107) and by a `checkin_likes` BEFORE INSERT trigger (migration 0008) for every write path.
 9. **Check-in `note` is a one-off review snippet.** Threaded replies are post-MVP.
 10. **`/profile` shows both "My Cafes" and "My Check-ins".** "My Cafes" = distinct cafes the user has checked into at least once (derived from `checkins`), ordered by latest visit. Because creation is the first check-in, every cafe created by the user appears here. A "created by me" badge is shown where `is_creation=true`. "My Check-ins" = all check-in rows for the user, newest `visited_at` first.
 11. **Browsing/view history is out of MVP scope.** If needed, use lightweight client-side recent views; server-side history is post-MVP.
@@ -51,6 +51,10 @@ Four read-only subagent reviews ran in parallel against the current `main` tree 
 18a. **MVP public author identity is anonymous.** Public cafe/check-in DTOs render “A nomad” and omit internal author identifiers. Explicit opt-in named identity is deferred to V2 issue #139.
 18b. **Mobile sheet dismissal is stateful.** Downward gestures step FULL → HALF → PEEK; Close and browser Back clear selection directly to PEEK.
 18c. **Sheet drag and detail scroll have separate ownership.** The handle/header drags; detail content scrolls and hands downward movement to the sheet only at scroll-top.
+18d. **Discovery failures preserve useful state.** Refresh/pagination keeps the last successful content and shows a section-level error with Retry; it never replaces real content with fake cards.
+18e. **Discovery is non-modal and reduced-motion safe.** Selection focuses the detail heading, Close restores focus to the source card, no focus trap is used, and reduced-motion state changes complete immediately.
+18f. **Missing cafes have route-specific recovery.** Direct SSR requests return a real 404 with Back to discover. In-app misses clear selection, replace the URL with `/`, return to PEEK, and show a toast.
+18g. **The desktop discovery breakpoint is 1024px.** Smaller viewports keep the mobile sheet; Kimi K3 validates tablet-landscape composition.
 
 ### Search & filters
 
@@ -163,6 +167,7 @@ surface. These issues remain separate from the Apple credential owner action #13
 - Owner claims via `cafes.owner_id`.
 - Cross-source POI merge / Apple↔Google duplicate resolution.
 - Opt-in named public author identity for cafe creators/check-ins (#139).
+- Daily time-decayed Helpful ranking snapshots (#140).
 - Xiaohongshu link import.
 - Offline mutation queue.
 
@@ -185,8 +190,7 @@ surface. These issues remain separate from the Apple credential owner action #13
 
 ## Open questions requiring owner decision
 
-- Discovery FULL Helpful ranking remains unresolved. Settle its deterministic
-  formula and cursor tie-breakers before issue #133 moves from `BLOCKED` to `READY`.
+None for the discovery implementation contract DG1-DG20.
 
 ## Tests / acceptance criteria
 
@@ -198,6 +202,8 @@ surface. These issues remain separate from the Apple credential owner action #13
 - [ ] `/api/checkins` POST handles repeat-visit recency weighting and `social_weight = 0` by default.
 - [ ] `/api/checkins/[id]/like` toggles like and updates `likes_count` without race conditions.
 - [ ] `/api/checkins/[id]/like` rejects self-likes with `403 self_like_forbidden` and still toggles other users' check-ins.
+- [ ] Helpful/Newest feeds use their accepted deterministic tuples and mode-bound opaque cursors.
+- [ ] Discovery recovery, non-modal focus, reduced-motion, missing-cafe, and 1024px breakpoint behaviors have unit/E2E coverage.
 - [ ] Soft-deleted check-in hides its photos from `/cafes/[id]` gallery.
 - [ ] `/api/search` city + filters returns results and respects filter thresholds.
 - [ ] Lighthouse performance score ≥ 80 on `/` and `/cafes/[id]` before public beta.

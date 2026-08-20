@@ -77,16 +77,11 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 - [ ] Provide a Kimi K3 discovery artifact for issue #133 covering mobile
   PEEK/HALF/FULL, desktop sidebar/detail drawer, compact place-characteristic
   icons, both-score hierarchy, Navigate / Check in / Share placement, the
-  Helpful/Newest control, and the accepted drag/scroll behavior.
+  Helpful/Newest control, tablet landscape, failure/Retry and missing-cafe toast
+  states, non-modal focus, and the accepted drag/scroll behavior.
 - [ ] Provide a slice-specific Kimi K3 artifact before starting any other new
   user-visible UI implementation.
 
-## 9. Discovery feed ranking
-
-- [ ] Choose the deterministic Helpful ranking formula and cursor tie-breakers
-  for issue #133. Helpful/Newest modes and 20-item opaque cursors are already
-  fixed; this remaining product decision is question DG16.
-
 ## What the agent continues meanwhile
 
-All non-blocked Phase 1 backlog items have merged to `main` (PRs #19–#22), and the P1 post-review fixes from `fix/post-review-p1-issues` have merged as PR #74. MapKit-specific slices remain blocked on item 4. Cafe creation's Google/Apple link import and Google search work while Apple live search is configuration-gated, but PR #128 still needs item 8's Kimi review. Backend work such as work-profile aggregation may continue; new user-visible UI stays blocked on its item 8 artifact, and discovery additionally waits for item 9. The POI and image services are ready to deploy once you complete items 5–7.
+All non-blocked Phase 1 backlog items have merged to `main` (PRs #19–#22), and the P1 post-review fixes from `fix/post-review-p1-issues` have merged as PR #74. MapKit-specific slices remain blocked on item 4. Cafe creation's Google/Apple link import and Google search work while Apple live search is configuration-gated, but PR #128 still needs item 8's Kimi review. Backend work such as work-profile aggregation may continue; new user-visible UI stays blocked on its item 8 artifact. The POI and image services are ready to deploy once you complete items 5–7.

@@ -1,0 +1,194 @@
+# Check-in System — Design Artifact v1
+
+- Slice: `checkin-system` (issue #148)
+- Status: **Draft — pending owner approval**
+- Author: Kimi K3
+- Date: 2026-08-21
+- Base: stacked on `docs/design/discovery-sheet-v1.md` and
+  `docs/design/search-filters-v1.md` (icon set, control language, task-surface
+  pattern are shared)
+- Specs: `docs/specs/0001-nextjs-migration.md` §Check-in system, §Cafe
+  creation flow; `docs/specs/0002-design-system.md` (components, signature
+  moments); `docs/specs/0004-product-decisions-and-backlog.md` §7–§13
+
+Scope: composition of the check-in drawer, slider/chip/photo controls, repeat
+flow, and the success moment. Behavior (≥1 slider required, unmoved slider not
+recorded, `unknown` as first-class answer, soft delete, photo merge into
+gallery, recency weighting) is canonical in the specs and is referenced, not
+redefined.
+
+---
+
+## 1. Design intent
+
+A check-in is data entry for a person holding a coffee in one hand. The
+drawer must be completable in under 30 seconds with a thumb. Two rules
+follow:
+
+- **Everything optional except one honest signal** (spec: ≥1 slider per
+  check-in). The drawer never demands completeness; it rewards any input.
+- **Unset must look unset.** An unmoved slider records nothing (spec Q59), so
+  the UI must never show a parked thumb as if it were a score of 50. This is
+  the anti-vibe-coding core of this slice: no fake defaults.
+
+## 2. Drawer surface
+
+- **Mobile**: HeroUI Drawer, placement bottom, content-height detent, 92% max
+  height, `radius-lg` top, `overlay` surface. It opens **above the discovery
+  sheet** (spec 0002 layout) — the discovery sheet dims to 60% and is
+  inert while the drawer is open. Modal task surface, same a11y treatment as
+  the search filter panel (`role="dialog"`, focus containment, `Esc`/scrim
+  close, focus returns to the Check in button).
+- **Desktop**: Drawer placement right, 420px, same content, single column.
+- Header: cafe name only (`font-display`, `text-lg`, truncated) plus a 36px
+  ghost close (×) top-right. No `Check in` title — the confirm button at the
+  foot already says it.
+
+## 3. Controls (top to bottom, 16px side padding, 16px section rhythm)
+
+### 3.1 Repeat banner (only when a previous check-in exists)
+
+Spec-mandated "Same as last time?" flow, composed as a compact card at the
+top: `surface-secondary`, `radius-md`, 12px padding. One line:
+`Last visit 12 Aug` (`text-sm`) + `Same` (outline `accent` button) +
+`New` (ghost). Choosing `Same` pre-fills every previously-set slider and
+policy (all become "set" states, user adjusts what changed); choosing `New`
+(or dismissing via ×) leaves everything unset. The banner collapses after a
+choice with a 200ms height animation.
+
+### 3.2 Dimension sliders
+
+Reuse the themed `ScoreSlider` primitive from `web/app/theme-preview/shared.tsx`
+(label + mono tabular accent output + track/fill/thumb) with these refinements:
+
+- Order: wifi, outlets, seats, temperature, coffee — then **overall last**,
+  visually set apart: 1px `separator` above it, label `Overall experience`
+  (`text-sm`, `foreground` instead of `muted`). Overall feeds the Experience
+  score; the five dimensions feed the Work composite — the layout teaches
+  that split without a word of explanation.
+- **Unset state**: track `surface-tertiary`, **no fill**, thumb parked at the
+  left edge at 50% opacity, output shows `—` (`muted`, mono). No number
+  exists until the user touches the slider.
+- **Set state**: first touch snaps the thumb to the touch point, fill renders
+  in `accent`, output flips to the live value (`tnum`, `accent`), thumb does
+  the haptic-style 1.15 scale pulse (120ms, spec 0002 signature moment).
+- Clearing back to unset is not offered — moving a slider is a deliberate
+  act; leaving the whole check-in unsubmitted is the undo. (Edit-mode
+  consequence: a previously recorded dimension cannot be removed from a
+  check-in. Specs are silent on dimension removal during edit; parked as an
+  owner-judgment item at approval.)
+- Slider rows are 56px tall (thumb ≥44px touch target), 12px gaps.
+
+### 3.3 Policy chips
+
+Two `PolicyChips` single-select groups (existing themed pattern):
+`Min spend` (`none | drink | s5 | s10 | s10plus | unknown`) and
+`Max stay` (`unlimited | 3h | 2h | 1h | peak | unknown`) — values per spec,
+with `unknown` rendered as a full chip equal to the others (honest data is
+first-class, spec 0001). Chip: `radius-sm`, 36px height, `surface-secondary`
+idle, selected = `surface` + 1px `accent` border + `accent` text,
+`aria-pressed` toggle semantics. Nothing selected by default.
+
+### 3.4 Note
+
+Autosizing textarea, 2–5 visible rows, `surface` background, `radius-md`,
+`text-base`. Placeholder: `What should the next nomad know?` — one line of
+guidance, no character counter, no formatting toolbar. Label `Note (optional)`
+as a `text-xs` `muted` caption above the field, not floating chrome.
+
+### 3.5 Photos
+
+Optional in this drawer (the ≥1-photo requirement belongs to the creation
+flow, `cafe-creation` slice). A horizontal thumbnail row: 72px squares,
+`radius-md`; first tile is the add tile (dashed 1px `border`, `muted` `+`
+glyph, `text-xs` `Add photos`). Selected photos get a 20px ×-badge top-right
+(`overlay` circle, `danger` glyph). During upload each tile shows a 2px
+`accent` progress bar along its bottom edge (no spinners, spec 0002);
+failures get a `danger` 1px border + tap-to-retry. The 10 MB cap is
+communicated only on violation (toast), not as static fine print.
+
+### 3.6 Confirm
+
+Full-width solid `accent` button, 48px, `radius-sm`, label `Check in`
+(creation variant in the creation slice reads `Add to CoffeeMode ✓` per
+spec). Disabled with a `text-xs` `muted` hint `Move at least one slider`
+beneath it until the ≥1-slider rule is satisfied.
+
+## 4. The success moment (spec-delegated detail)
+
+Spec 0002 mandates: button morphs to ✓ + micro coffee-steam animation +
+toast, restrained, no confetti. Composition:
+
+1. On successful save, the confirm button's label crossfades (120ms) to a ✓
+   glyph that draws itself in via stroke (200ms, `ease.default`); the button
+   background eases `accent` → `secondary` (sage) over 200ms.
+2. Drawer content swaps to a compact success card: centered 24px cup-outline
+   glyph (the §2 discovery icon-set cup) with **two 1.5px steam strokes**
+   that rise 6px and fade, 450ms total, played once, 80ms stagger between
+   them — line-art steam, same stroke language as the icon set, no particles.
+   Below it: `Checked in` (`text-lg`, body font at medium weight — the display
+   font stays reserved for page titles and cafe names, spec 0002 typography
+   rules) and the submitted dimension values as mini
+   WorkBars animating in (300ms, 40ms stagger — the WorkProfile rhyme).
+3. The card holds 900ms, then the drawer closes (150ms exit, faster out than
+   in) and a HeroUI toast confirms: `Check-in saved` with the ✓ glyph.
+4. Reduced motion: the morph and steam are skipped entirely — toast only.
+   The whole sequence is decorative; state is already saved at step 1.
+
+## 5. Edit and soft delete
+
+Editing reuses this exact drawer, pre-filled, titled by the same cafe name,
+confirm label `Save changes`. Delete lives behind a `Delete check-in`
+`danger` text-button at the drawer's foot (edit mode only), guarded by a
+HeroUI confirmation popover (`Delete? This removes your scores.` /
+`Cancel` / `Delete`). No swipe-to-delete gestures anywhere.
+
+## 6. States
+
+- **Submit in flight**: confirm button label → `Saving…`, button disabled at
+  60% opacity (no spinner); controls stay frozen but visible.
+- **Submit failure**: inline row above the confirm button — warning glyph +
+  `Couldn't save your check-in` + outline `Retry`. All input preserved
+  exactly.
+- **Offline**: the global OfflineBanner plus a disabled confirm button.
+  Spec 0001 has no offline mutation queue; creation is explicitly disabled
+  offline (spec 0004 §18), and this drawer applies the same no-queue rule to
+  check-in mutations. (Generalizing §18 from creation to check-ins is parked
+  as an owner-judgment item at approval.)
+- **Validation**: the only rule is ≥1 slider; it is handled by the disabled
+  state + hint (§3.6), never by an error toast after the fact.
+- **Drawer dismissed with input**: no confirm dialog at MVP — input is
+  discarded. (Parked as an owner-judgment P2; draft persistence is a V2
+  candidate, not assumed here.)
+
+## 7. Motion, dark mode, accessibility, i18n
+
+- Timings per spec 0002; assignments above. Drawer spring `ease.spring`
+  restrained; reduced motion → instant state changes, toast-only success.
+- Token-only colors; photos never dimmed in dark mode.
+- Sliders expose `aria-label` + live `aria-valuenow` once set; the unset
+  state announces `not set`. Chips use `aria-pressed`. The success swap sets
+  `aria-live="polite"` so screen readers hear `Check-in saved` from the
+  toast, not the animation.
+- Keys under `checkIn.*` (en/zh). zh references: `Check in` → `打卡`,
+  `Same` / `New` → `和上次一样` / `重新评价`, `Overall experience` →
+  `整体体验`, `Move at least one slider` → `至少滑动一项评分`,
+  `Couldn't save your check-in` → `保存失败`, `Check-in saved` → `打卡成功`.
+
+## 8. Visual acceptance criteria (owner sign-off)
+
+- [ ] Unset sliders are unmistakably unset (no fill, `—` output, parked
+      thumb) — zero fake-default feel.
+- [ ] Overall reads as the summary of the five dimensions, not a sixth peer.
+- [ ] The steam moment is memorable and line-art restrained — no confetti,
+      no particles, no emoji.
+- [ ] Drawer completes one-handed on a 390px-wide phone.
+- [ ] Repeat banner pre-fills honestly and collapses without layout jump.
+- [ ] Dark mode requires no per-component overrides.
+
+## Out of scope (other slices)
+
+Creation-specific requirements (≥1 photo, link import, dedupe prompt) —
+`cafe-creation`; the navigation-triggered prompt that opens this drawer —
+`navigation-prompt`; WorkProfile display of the aggregated result —
+`discovery-sheet` FULL; check-in feed cards — `discovery-sheet` §5.3.

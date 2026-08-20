@@ -73,7 +73,10 @@ Reuse the themed `ScoreSlider` primitive from `web/app/theme-preview/shared.tsx`
   in `accent`, output flips to the live value (`tnum`, `accent`), thumb does
   the haptic-style 1.15 scale pulse (120ms, spec 0002 signature moment).
 - Clearing back to unset is not offered — moving a slider is a deliberate
-  act; leaving the whole check-in unsubmitted is the undo.
+  act; leaving the whole check-in unsubmitted is the undo. (Edit-mode
+  consequence: a previously recorded dimension cannot be removed from a
+  check-in. Specs are silent on dimension removal during edit; parked as an
+  owner-judgment item at approval.)
 - Slider rows are 56px tall (thumb ≥44px touch target), 12px gaps.
 
 ### 3.3 Policy chips
@@ -123,8 +126,9 @@ toast, restrained, no confetti. Composition:
    glyph (the §2 discovery icon-set cup) with **two 1.5px steam strokes**
    that rise 6px and fade, 450ms total, played once, 80ms stagger between
    them — line-art steam, same stroke language as the icon set, no particles.
-   Below it: `Checked in` (`text-lg`, display font is fine here — it is a
-   transient title, not body) and the submitted dimension values as mini
+   Below it: `Checked in` (`text-lg`, body font at medium weight — the display
+   font stays reserved for page titles and cafe names, spec 0002 typography
+   rules) and the submitted dimension values as mini
    WorkBars animating in (300ms, 40ms stagger — the WorkProfile rhyme).
 3. The card holds 900ms, then the drawer closes (150ms exit, faster out than
    in) and a HeroUI toast confirms: `Check-in saved` with the ✓ glyph.
@@ -146,8 +150,11 @@ HeroUI confirmation popover (`Delete? This removes your scores.` /
 - **Submit failure**: inline row above the confirm button — warning glyph +
   `Couldn't save your check-in` + outline `Retry`. All input preserved
   exactly.
-- **Offline**: the global OfflineBanner plus a disabled confirm button
-  (creation/check-in mutations are disabled offline, spec §18).
+- **Offline**: the global OfflineBanner plus a disabled confirm button.
+  Spec 0001 has no offline mutation queue; creation is explicitly disabled
+  offline (spec 0004 §18), and this drawer applies the same no-queue rule to
+  check-in mutations. (Generalizing §18 from creation to check-ins is parked
+  as an owner-judgment item at approval.)
 - **Validation**: the only rule is ≥1 slider; it is handled by the disabled
   state + hint (§3.6), never by an error toast after the fact.
 - **Drawer dismissed with input**: no confirm dialog at MVP — input is

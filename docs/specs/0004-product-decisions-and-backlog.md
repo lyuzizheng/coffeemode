@@ -6,7 +6,9 @@ Capture the output of the batched subagent review covering frontend/UX design, c
 
 ## Status
 
-Confirmed — owner replied to the open questions on 2026-08-08. Unanswered items defaulted to the original recommendation. Decisions have been merged into canonical specs `0001` and `0002`; the `.windsurf/rules/project-rule.md` stale Shadcn directive has also been updated.
+Confirmed — owner replied to the original open questions on 2026-08-08. Revised
+2026-08-20 with discovery decisions DG1-DG20.
+Decisions are projected into canonical specs `0001` and `0002`.
 
 ## Review scope
 
@@ -14,7 +16,7 @@ Four read-only subagent reviews ran in parallel against the current `main` tree 
 
 1. **Frontend/UX design** — design-system consistency, `/profile`, check-in success card, creation flow.
 2. **Check-in & social semantics** — "every review is a check-in", likes/favorites, scoring weight, profile records.
-3. **Cafe creation & discovery** — entry methods (Google Maps import, map-tap, search, manual), edge cases, POI service gaps.
+3. **Cafe creation & discovery** — entry methods (Google/Apple Maps link import and provider search), edge cases, POI service gaps.
 4. **Auth/cache/perf/DB/deploy** — session middleware, caching, performance, database indexes, deploy pipeline.
 
 ## Stable decisions
@@ -27,11 +29,12 @@ Four read-only subagent reviews ran in parallel against the current `main` tree 
 4. **Shadow tokens must match spec or the spec must be updated.** Keep the warm espresso tint. Because `globals.css` already embodies the warm espresso shadows, update `docs/specs/0002-design-system.md` to match `globals.css`.
 5. **In-app type scale ceiling is `text-2xl` (2rem).** Sandbox `theme-preview` hero sizes; page titles and cafe names use `font-display` inside the fixed scale.
 6. **Mount `<Toast.Provider>` in `web/app/providers.tsx`.** HeroUI toast is the canonical success/error surface.
+6a. **Kimi K3 is the visual-design authority for new user-visible UI.** Each UI slice needs a slice-specific Kimi artifact before implementation or visual acceptance. Product behavior remains canonical in specs; agents must not invent the unresolved composition.
 
 ### Check-in & social semantics
 
 7. **"Every review is a check-in" stays literal.** No separate `reviews` table in MVP. A `checkins` row carries scores, policies, note, and photos.
-8. **Likes affect comment sorting and预留 scoring weight design space.** A `checkin_likes` table (unique `user_id` + `checkin_id`) is included in the MVP schema. The check-in note list is sorted by a hot-rank that mixes likes and recency. `work_stats` scoring keeps the slider-only signal by default (`social_weight = 0`) but exposes a tunable hook so likes can influence the composite weight later without a schema migration. **Self-likes are not allowed** (owner, 2026-08-18): an author cannot like their own check-in, so `likes_count` and any future weighted signal stay social-only. Enforced in `toggleCheckInLike` (issue #107) and by a `checkin_likes` BEFORE INSERT trigger (migration 0008) for every write path.
+8. **Likes preserve sorting/scoring design space.** A `checkin_likes` table (unique `user_id` + `checkin_id`) is included in the MVP schema. Discovery FULL offers Helpful and Newest modes with server-issued, mode-bound opaque cursors and 20 rows per page. MVP Helpful sorts by `likes_count DESC, visited_at DESC, id DESC`; Newest sorts by `visited_at DESC, id DESC`. Likes may move rows between requests, so clients deduplicate by check-in id. A daily versioned time-decayed ranking snapshot is deferred to V2 issue #140. `work_stats` scoring keeps the slider-only signal by default (`social_weight = 0`) but exposes a tunable hook so likes can influence the composite weight later without a schema migration. **Self-likes are not allowed** (owner, 2026-08-18): an author cannot like their own check-in, so `likes_count` and any future weighted signal stay social-only. Enforced in `toggleCheckInLike` (issue #107) and by a `checkin_likes` BEFORE INSERT trigger (migration 0008) for every write path.
 9. **Check-in `note` is a one-off review snippet.** Threaded replies are post-MVP.
 10. **`/profile` shows both "My Cafes" and "My Check-ins".** "My Cafes" = distinct cafes the user has checked into at least once (derived from `checkins`), ordered by latest visit. Because creation is the first check-in, every cafe created by the user appears here. A "created by me" badge is shown where `is_creation=true`. "My Check-ins" = all check-in rows for the user, newest `visited_at` first.
 11. **Browsing/view history is out of MVP scope.** If needed, use lightweight client-side recent views; server-side history is post-MVP.
@@ -42,9 +45,16 @@ Four read-only subagent reviews ran in parallel against the current `main` tree 
 
 14. **Creation is the first check-in.** `POST /api/cafes` creates the cafe and a `checkins` row with `is_creation=true` in one transaction.
 15. **Dedupe is mandatory.** Check `google_place_id` / `apple_poi_id` before insert. If a match exists, return `409` with the existing cafe and a "Check in here" prompt.
-16. **MVP creation entry methods:** Google Maps link import, Apple Maps link import, and a manual fallback form. MapKit map-tap and search-result selection come after `map-home`.
+16. **MVP cafe-creation entrances:** (1) Google or Apple Maps link import, and (2) provider search in the creation sheet. Google search runs through the POI service; Apple search runs through MapKit JS when owner credentials are configured. Map-pin creation and a free-form manual form are deferred.
 17. **Cross-source (Google ↔ Apple) duplicate resolution is undefined and post-MVP.** Physical location dedupe is intentionally not solved for MVP.
 18. **Offline creation is disabled in MVP.** Show the offline banner and disable the creation CTA. No mutation queue.
+18a. **MVP public author identity is anonymous.** Public cafe/check-in DTOs render “A nomad” and omit internal author identifiers. Explicit opt-in named identity is deferred to V2 issue #139.
+18b. **Mobile sheet dismissal is stateful.** Downward gestures step FULL → HALF → PEEK; Close and browser Back clear selection directly to PEEK.
+18c. **Sheet drag and detail scroll have separate ownership.** The handle/header drags; detail content scrolls and hands downward movement to the sheet only at scroll-top.
+18d. **Discovery failures preserve useful state.** Refresh/pagination keeps the last successful content and shows a section-level error with Retry; it never replaces real content with fake cards.
+18e. **Discovery is non-modal and reduced-motion safe.** Selection focuses the detail heading, Close restores focus to the source card, no focus trap is used, and reduced-motion state changes complete immediately.
+18f. **Missing cafes have route-specific recovery.** Direct SSR requests return a real 404 with Back to discover. In-app misses clear selection, replace the URL with `/`, return to PEEK, and show a toast.
+18g. **The desktop discovery breakpoint is 1024px.** Smaller viewports keep the mobile sheet; Kimi K3 validates tablet-landscape composition.
 
 ### Search & filters
 
@@ -99,7 +109,10 @@ These tasks can proceed while `map-home` is blocked and before live credentials 
 
 ### Phase 2 — Map-independent feature track
 
-These slices do not require Apple Developer / MapKit. The cafe/check-in API surface already exists, so UI1–UI6 and STAT can proceed in parallel with fixtures or the existing backend.
+The core track can proceed without Apple Developer / MapKit; Apple live-search
+branches remain configuration-gated. Backend work may proceed independently,
+but UI1–UI6 are design-gated on their slice-specific Kimi K3 artifact. PR #128's
+creation UI requires Kimi review before merge.
 
 | ID | Task | Area | Key files |
 | --- | --- | --- | --- |
@@ -109,10 +122,10 @@ These slices do not require Apple Developer / MapKit. The cafe/check-in API surf
 | API4 | Implement `POST /api/checkins/[id]/like` and `DELETE` to toggle like | backend | `web/app/api/checkins/[id]/like/route.ts` |
 | API5 | Implement `POST /api/navigations` and pending-prompt endpoint | backend | `web/app/api/navigations/*` |
 | API6 | Add server-side image processing for creation | backend | `web/lib/images/creation-processor.ts` |
-| API7 | Implement `/api/places/external` proxy and extend worker endpoints | backend | `web/app/api/places/external/route.ts`, `poi-service/src/handlers.ts` |
-| API8 | Extend `poi-service/src/url.ts` to parse Apple Maps share links | backend | `poi-service/src/url.ts` |
+| API7 | Implement `/api/places/external` proxy and extend worker endpoints *(implemented in #130)* | backend | `web/app/api/places/external/route.ts`, `poi-service/src/handlers.ts` |
+| API8 | Extend `poi-service/src/url.ts` to parse Apple Maps share links *(implemented in #130)* | backend | `poi-service/src/url.ts` |
 | API9 | Implement `/api/search` (city + filters) merging own cafes, saved POIs, optional live results | backend | `web/app/api/search/route.ts` |
-| UI1 | Build `CreationSheet` (Google link import + Apple text link import only; map-tap/reverse geocode belongs to `map-creation-entry`, typed name/address manual fallback, dedupe prompt) | frontend | `web/components/cafe/*` |
+| UI1 | Build `CreationSheet` (Google/Apple link import, provider search, dedupe prompt; map-pin/manual deferred) *(implemented in #130)* | frontend | `web/components/cafe/*` |
 | UI2 | Build `CheckInDrawer` with sliders, policy chips, note, photo grid | frontend | `web/components/checkin/*` |
 | UI3 | Implement `CheckInSuccessCard` and button-morph animation | frontend | `web/components/checkin/*` |
 | UI4 | Build `/profile` page (header, stats, My Cafes / My Check-ins tabs) | frontend | `web/app/profile/page.tsx` |
@@ -122,18 +135,18 @@ These slices do not require Apple Developer / MapKit. The cafe/check-in API surf
 
 ### Phase 3 — MapKit integration after `map-home`
 
-These are map-bound integration tasks that need Apple MapKit. The discovery-sheet core,
-link/manual creation, and check-in work can proceed earlier with fixtures or API data;
-only their MapKit integration belongs in this phase. MAP2 consumes `discovery-sheet` core,
-and MAP4 consumes the base `search-filters` surface. The full-screen map itself is owned
-by the blocked `map-home` slice; this phase starts after that slice is available.
+These are map-bound integration tasks that need Apple MapKit and their Kimi K3
+design artifact. Map-independent behavior and backend contracts can proceed earlier;
+only the MapKit integration belongs in this phase. The full-screen map is tracked in #132;
+MAP2 consumes the #133 discovery-sheet core, and MAP4 consumes the #135 base search-filters
+surface. These issues remain separate from the Apple credential owner action #131.
 
 | ID | Task | Area | Key files |
 | --- | --- | --- | --- |
-| MAP2 | Bind the discovery sheet (PEEK/HALF/FULL) to MapKit selection and URL sync | frontend | `web/components/cafe/discovery-sheet.tsx` |
-| MAP3 | Add map-tap creation and reverse geocoding | frontend | `web/components/map/*` |
-| MAP4 | Bind the existing search/filter surface to MapKit and live external result overlays | frontend | `web/components/search/*` |
-| MAP5 | Bind existing cafe-creation entry points to the map FAB and auth gate | frontend | `web/components/layout/*` |
+| MAP2 | Bind the discovery sheet (PEEK/HALF/FULL) to MapKit selection and URL sync *(#134)* | frontend | `web/components/cafe/discovery-sheet.tsx` |
+| MAP3 | Add map-tap creation and reverse geocoding *(#136)* | frontend | `web/components/map/*` |
+| MAP4 | Bind the existing search/filter surface to MapKit and live external result overlays *(#134)* | frontend | `web/components/search/*` |
+| MAP5 | Bind existing cafe-creation entry points to the map FAB and auth gate *(#136)* | frontend | `web/components/layout/*` |
 
 ### Phase 4 — public beta readiness
 
@@ -153,6 +166,8 @@ by the blocked `map-home` slice; this phase starts after that slice is available
 - User-customizable Work Score dimension weights.
 - Owner claims via `cafes.owner_id`.
 - Cross-source POI merge / Apple↔Google duplicate resolution.
+- Opt-in named public author identity for cafe creators/check-ins (#139).
+- Daily time-decayed Helpful ranking snapshots (#140).
 - Xiaohongshu link import.
 - Offline mutation queue.
 
@@ -175,7 +190,7 @@ by the blocked `map-home` slice; this phase starts after that slice is available
 
 ## Open questions requiring owner decision
 
-- None at this time; all review questions have owner answers. New questions discovered during implementation should be added here.
+None for the discovery implementation contract DG1-DG20.
 
 ## Tests / acceptance criteria
 
@@ -187,6 +202,8 @@ by the blocked `map-home` slice; this phase starts after that slice is available
 - [ ] `/api/checkins` POST handles repeat-visit recency weighting and `social_weight = 0` by default.
 - [ ] `/api/checkins/[id]/like` toggles like and updates `likes_count` without race conditions.
 - [ ] `/api/checkins/[id]/like` rejects self-likes with `403 self_like_forbidden` and still toggles other users' check-ins.
+- [ ] Helpful/Newest feeds use their accepted deterministic tuples and mode-bound opaque cursors.
+- [ ] Discovery recovery, non-modal focus, reduced-motion, missing-cafe, and 1024px breakpoint behaviors have unit/E2E coverage.
 - [ ] Soft-deleted check-in hides its photos from `/cafes/[id]` gallery.
 - [ ] `/api/search` city + filters returns results and respects filter thresholds.
 - [ ] Lighthouse performance score ≥ 80 on `/` and `/cafes/[id]` before public beta.

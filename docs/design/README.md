@@ -27,3 +27,7 @@ versioned, slice-specific design artifacts that gate UI implementation
 | discovery-sheet | `discovery-sheet-v1.md` | Draft — pending owner approval | #133 |
 | search-filters | `search-filters-v1.md` | Draft — pending owner approval | #135 |
 | checkin-system | `checkin-system-v1.md` | Draft — pending owner approval | #148 |
+| navigation-prompt | `navigation-prompt-v1.md` | Draft — pending owner approval | #149 |
+| profile-page | `profile-page-v1.md` | Draft — pending owner approval | #152 |
+| seo-sharing | `seo-sharing-v1.md` | Draft — pending owner approval | #150 |
+| onboarding | `onboarding-v1.md` | Draft — pending owner approval | #153 |

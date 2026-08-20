@@ -35,5 +35,4 @@ priorities or decisions.
   independent verdict using `.agents/docs-semantic-review.md`.
 - Do not push or open a PR without user approval unless the user already requested
   it. Do not merge without explicit authority.
-- All commits must be GPG-signed. If no GitHub PR template exists, the PR body must
-  include `## Context`.
+- If no GitHub PR template exists, the PR body must include `## Context`.

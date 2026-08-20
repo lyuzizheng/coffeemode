@@ -460,6 +460,52 @@ describe("POST /poi/resolve", () => {
     });
     expect(res.status).toBe(422);
   });
+
+  it("resolves an Apple Maps share link into a stored Apple POI", async () => {
+    const env = makeEnv();
+    const res = await call("POST", "/poi/resolve", env, {
+      body: {
+        maps_share_url:
+          "https://maps.apple.com/?auid=apple-123&ll=1.285,103.85&q=Arabica%20Singapore",
+      },
+    });
+
+    expect(res.status).toBe(200);
+    expect(await bodyOf(res)).toMatchObject({
+      place_id: "apple-123",
+      source: "apple",
+      name: "Arabica Singapore",
+      lat: 1.285,
+      lng: 103.85,
+    });
+    expect((env.POI_DB as FakeD1).rows).toHaveLength(1);
+  });
+
+  it("resolves an Apple place-id-only link from public page metadata", async () => {
+    const env = makeEnv();
+    const fetchImpl = mockFetch((url, init) => {
+      expect(url).toBe("https://maps.apple.com/place?place-id=I123");
+      expect(init?.method).toBe("GET");
+      return new Response(
+        '<meta property="place:location:latitude" content="1.285"><meta property="place:location:longitude" content="103.85"><meta property="og:title" content="Arabica Singapore">',
+        { status: 200, headers: { "content-type": "text/html" } },
+      );
+    });
+
+    const res = await call("POST", "/poi/resolve", env, {
+      body: { maps_share_url: "https://maps.apple.com/place?place-id=I123" },
+      fetchImpl,
+    });
+
+    expect(res.status).toBe(200);
+    expect(await bodyOf(res)).toMatchObject({
+      place_id: "I123",
+      source: "apple",
+      name: "Arabica Singapore",
+      lat: 1.285,
+      lng: 103.85,
+    });
+  });
 });
 
 describe("GET /poi/search", () => {
@@ -638,6 +684,35 @@ describe("GET /poi/search", () => {
   });
 });
 
+describe("GET /poi/search/external", () => {
+  it("searches Google, stores usable results, and omits results without coordinates", async () => {
+    const env = makeEnv();
+    const fetchImpl = mockFetch((url) => {
+      expect(String(url)).toContain("places.test/v1/places:searchText");
+      return new Response(
+        JSON.stringify({
+          places: [
+            googleDetailResponse({ id: "ChIJLIVE" }),
+            googleDetailResponse({ id: "ChIJNOLOCATION", location: undefined }),
+          ],
+        }),
+        { status: 200 },
+      );
+    });
+
+    const res = await call("GET", "/poi/search/external?q=blue%20bottle&r=5", env, { fetchImpl });
+
+    expect(res.status).toBe(200);
+    expect((await bodyOf(res)).results).toMatchObject([{ place_id: "ChIJLIVE", source: "google" }]);
+    expect((env.POI_DB as FakeD1).rows.map((row) => row.place_id)).toEqual(["ChIJLIVE"]);
+  });
+
+  it("requires a text query", async () => {
+    const res = await call("GET", "/poi/search/external", makeEnv());
+    expect(res.status).toBe(400);
+  });
+});
+
 describe("POST /poi/external", () => {
   it("stores an array of POIs and reports the count", async () => {
     const env = makeEnv();
@@ -662,6 +737,27 @@ describe("POST /poi/external", () => {
     });
     expect(res.status).toBe(200);
     expect((env.POI_DB as FakeD1).rows).toHaveLength(1);
+  });
+
+  it("preserves long opaque provider references", async () => {
+    const env = makeEnv();
+    const placeId = `apple:${"x".repeat(700)}`;
+    const res = await call("POST", "/poi/external", env, {
+      body: [{ place_id: placeId, source: "apple", name: "Coffea", lat: 1.3, lng: 103.9 }],
+    });
+
+    expect(res.status).toBe(200);
+    expect((env.POI_DB as FakeD1).rows[0].place_id).toBe(placeId);
+  });
+
+  it("rejects absurdly long provider references", async () => {
+    const res = await call("POST", "/poi/external", makeEnv(), {
+      body: [
+        { place_id: `apple:${"x".repeat(2000)}`, source: "apple", name: "Coffea", lat: 1.3, lng: 103.9 },
+      ],
+    });
+
+    expect(res.status).toBe(400);
   });
 
   it("400s with per-entry reasons on invalid entries", async () => {

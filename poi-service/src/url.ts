@@ -1,5 +1,5 @@
 /**
- * Google Maps share-URL parsing.
+ * Google and Apple Maps share-URL parsing.
  *
  * Handles the formats users actually paste when creating a cafe:
  *   - https://www.google.com/maps/place/<name>/@lat,lng,zoom/data=!4m...!1s0x..:0x..!8m2!3d..!4d..
@@ -8,9 +8,11 @@
  *   - https://www.google.com/maps?q=<query>
  *   - https://www.google.com/maps/search/<query>/@lat,lng,zoom
  *   - https://maps.google.com/?q=lat,lng
+ *   - https://maps.apple.com/?auid=<id>&ll=lat,lng&q=<name>
  */
 
 export interface ResolvedTarget {
+  source?: "google" | "apple";
   placeId?: string;
   coords?: { lat: number; lng: number };
   query?: string;
@@ -23,13 +25,16 @@ const EXCL_COORDS_RE = /!3d(-?\d{1,3}(?:\.\d+)?)!4d(-?\d{1,3}(?:\.\d+)?)/;
 const Q_PARAM_RE = /[?&]q=([^&]+)/;
 const SEARCH_PATH_RE = /\/maps\/search\/([^/@?]+)/;
 const PLACE_SLUG_RE = /\/maps\/place\/([^/@?]+)/;
+const APPLE_COORDS_PARAMS = ["ll", "coordinate"] as const;
+const APPLE_PLACE_ID_PARAMS = ["auid", "place-id", "place_id"] as const;
 
-const SHORT_HOSTS = new Set(["goo.gl", "maps.app.goo.gl"]);
+const SHORT_HOSTS = new Set(["goo.gl", "maps.app.goo.gl", "maps.apple"]);
 
 // Keep in sync with `isValidMapsUrl` in `web/lib/places/validate-maps-url.ts`
 // (issue #37) — the web route validates before proxying; the worker
 // re-validates the initial URL and every redirect target itself.
-const EXACT_MAPS_HOSTS = new Set(["goo.gl", "maps.app.goo.gl", "maps.apple.com"]);
+const EXACT_MAPS_HOSTS = new Set(["goo.gl", "maps.app.goo.gl", "maps.apple", "maps.apple.com"]);
+const APPLE_MAPS_HOSTS = new Set(["maps.apple", "maps.apple.com"]);
 // google.com, google.<ccTLD>, or google.<known second-level>.<cc> — wide enough
 // for regional domains, tight enough to exclude attacker-registrable TLD
 // shapes like google.evil.io or google.zip.
@@ -57,6 +62,67 @@ export function extractPlaceId(urlStr: string): string | null {
   const hex = urlStr.match(PLACE_ID_RE)?.[1];
   if (hex) return hex;
   return urlStr.match(CHIJ_RE)?.[0] ?? null;
+}
+
+/** Apple Maps share links expose their stable POI reference as `auid` on
+ * current links and `place-id` on some newer web links. */
+export function extractApplePlaceId(urlStr: string): string | null {
+  try {
+    const url = new URL(urlStr);
+    if (!APPLE_MAPS_HOSTS.has(url.hostname.toLowerCase())) return null;
+    for (const param of APPLE_PLACE_ID_PARAMS) {
+      const value = url.searchParams.get(param)?.trim();
+      if (value) return value;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function parseCoordinatePair(value: string | null): { lat: number; lng: number } | null {
+  if (!value) return null;
+  const parts = value.split(",").map((part) => Number.parseFloat(part.trim()));
+  if (
+    parts.length < 2 ||
+    !Number.isFinite(parts[0]) ||
+    !Number.isFinite(parts[1]) ||
+    parts[0] < -90 ||
+    parts[0] > 90 ||
+    parts[1] < -180 ||
+    parts[1] > 180
+  ) {
+    return null;
+  }
+  return { lat: parts[0], lng: parts[1] };
+}
+
+export function extractAppleCoords(urlStr: string): { lat: number; lng: number } | null {
+  try {
+    const url = new URL(urlStr);
+    if (!APPLE_MAPS_HOSTS.has(url.hostname.toLowerCase())) return null;
+    for (const param of APPLE_COORDS_PARAMS) {
+      const coords = parseCoordinatePair(url.searchParams.get(param));
+      if (coords) return coords;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export function extractAppleQuery(urlStr: string): string | null {
+  try {
+    const url = new URL(urlStr);
+    if (!APPLE_MAPS_HOSTS.has(url.hostname.toLowerCase())) return null;
+    for (const param of ["q", "name", "address"]) {
+      const value = url.searchParams.get(param)?.trim();
+      if (value) return value;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 export function extractCoords(urlStr: string): { lat: number; lng: number } | null {
@@ -88,11 +154,74 @@ export function extractQuery(urlStr: string): string | null {
 
 /** Parse a Maps URL without network calls. */
 export function parseMapsUrl(urlStr: string): ResolvedTarget {
+  try {
+    const url = new URL(urlStr);
+    if (APPLE_MAPS_HOSTS.has(url.hostname.toLowerCase())) {
+      return {
+        source: "apple",
+        placeId: extractApplePlaceId(urlStr) ?? undefined,
+        coords: extractAppleCoords(urlStr) ?? undefined,
+        query: extractAppleQuery(urlStr) ?? undefined,
+      };
+    }
+  } catch {
+    return {};
+  }
   const placeId = extractPlaceId(urlStr);
-  if (placeId) return { placeId };
+  if (placeId) return { source: "google", placeId };
   const coords = extractCoords(urlStr);
   const query = extractQuery(urlStr);
-  return { coords: coords ?? undefined, query: query ?? undefined };
+  return { source: "google", coords: coords ?? undefined, query: query ?? undefined };
+}
+
+function htmlAttribute(tag: string, attribute: string): string | null {
+  const match = tag.match(new RegExp(`\\b${attribute}\\s*=\\s*["']([^"']*)["']`, "i"));
+  return match?.[1] ?? null;
+}
+
+function decodeHtml(value: string): string {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+function applePageMeta(html: string, property: string): string | null {
+  for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {
+    if (htmlAttribute(tag, "property") !== property) continue;
+    const content = htmlAttribute(tag, "content");
+    if (content) return decodeHtml(content).trim();
+  }
+  return null;
+}
+
+function enrichAppleTargetFromPage(target: ResolvedTarget, html: string): ResolvedTarget {
+  const coords = parseCoordinatePair(
+    [applePageMeta(html, "place:location:latitude"), applePageMeta(html, "place:location:longitude")]
+      .filter((value): value is string => value !== null)
+      .join(","),
+  );
+  return {
+    ...target,
+    coords: coords ?? target.coords,
+    query: target.query ?? applePageMeta(html, "og:title") ?? undefined,
+  };
+}
+
+async function resolveApplePlacePage(
+  current: string,
+  target: ResolvedTarget,
+  fetchImpl: typeof fetch,
+): Promise<ResolvedTarget> {
+  const response = await fetchImpl(current, {
+    method: "GET",
+    redirect: "manual",
+    headers: { accept: "text/html" },
+  }).catch(() => undefined);
+  if (!response?.ok) return target;
+  return enrichAppleTargetFromPage(target, await response.text());
 }
 
 /**
@@ -116,6 +245,9 @@ export async function resolveShareUrl(
   }
   for (let hop = 0; hop < MAX_REDIRECT_HOPS; hop++) {
     const parsed = parseMapsUrl(current);
+    if (parsed.source === "apple" && parsed.placeId && !parsed.coords) {
+      return await resolveApplePlacePage(current, parsed, fetchImpl);
+    }
     if (parsed.placeId) return parsed;
     if (!isShortLink(current)) return parsed;
 

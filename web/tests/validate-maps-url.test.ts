@@ -26,6 +26,7 @@ describe("isValidMapsUrl", () => {
   it("accepts google short links and apple maps", () => {
     expect(isValidMapsUrl("https://maps.app.goo.gl/abc123")).toBe(true);
     expect(isValidMapsUrl("https://goo.gl/maps/abc")).toBe(true);
+    expect(isValidMapsUrl("https://maps.apple/place?place-id=I123")).toBe(true);
     expect(isValidMapsUrl("https://maps.apple.com/?q=coffee&ll=1.3,103.8")).toBe(true);
   });
 

@@ -13,7 +13,8 @@ Slice: `poi-cache-service` in `docs/agent/implementation-slices.md`.
 | --- | --- | --- |
 | GET | `/poi/:place_id` | Fetch/enrich one POI: KV hot → D1 fresh → Google API → backfill both |
 | POST | `/poi/resolve` | `{maps_share_url}` → POI (cafe creation import path; follows short links) |
-| GET | `/poi/search?q&lat&lng&r` | Search **stored** POIs: name match + haversine distance sort (r in km, default 50) |
+| GET | `/poi/search?q&lat&lng&r` | Search **stored** POIs: name match + haversine distance sort (r in km, default 10) |
+| GET | `/poi/search/external?q&lat&lng&r` | Live Google Places search; usable results are written to D1/KV before returning |
 | POST | `/poi/external` | Store externally-searched POIs: array in body or `{pois: [...]}` (Google live / Apple MapKit refs) |
 
 ## Local development

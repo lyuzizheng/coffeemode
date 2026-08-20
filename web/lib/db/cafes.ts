@@ -74,12 +74,14 @@ export interface CreateCafeInput {
 function optString(
   value: unknown,
   field: string,
-  maxLength: number,
+  maxLength?: number,
 ): ParseResult<string | undefined> {
   if (value === undefined || value === null) return { ok: true, value: undefined };
   if (typeof value !== "string") return fail(`${field} must be a string`);
   const trimmed = value.trim();
-  if (trimmed.length > maxLength) return fail(`${field} is too long (max ${maxLength})`);
+  if (maxLength !== undefined && trimmed.length > maxLength) {
+    return fail(`${field} is too long (max ${maxLength})`);
+  }
   return { ok: true, value: trimmed === "" ? undefined : trimmed };
 }
 
@@ -109,9 +111,11 @@ export function parseCreateCafeBody(body: unknown): ParseResult<CreateCafeInput>
   if (!address.ok) return fail(address.message);
   const city = optString(raw.city, "city", 100);
   if (!city.ok) return fail(city.message);
-  const googlePlaceId = optString(raw.google_place_id, "google_place_id", 128);
+  // Provider references are opaque and can exceed the old 128-char guess
+  // (Apple MapKit ids); 1024 keeps them unbounded-in-practice, bounded-in-fact.
+  const googlePlaceId = optString(raw.google_place_id, "google_place_id", 1024);
   if (!googlePlaceId.ok) return fail(googlePlaceId.message);
-  const applePoiId = optString(raw.apple_poi_id, "apple_poi_id", 128);
+  const applePoiId = optString(raw.apple_poi_id, "apple_poi_id", 1024);
   if (!applePoiId.ok) return fail(applePoiId.message);
 
   const priceRange = raw.price_range;

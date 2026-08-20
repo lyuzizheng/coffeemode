@@ -493,12 +493,13 @@ export function CafeCreationSheet({
                   </div>
                   {duplicateCafeId ? (
                     <p className="text-sm text-warning" role="status">
-                      {t("alreadyExists")} {duplicateCafeId ? <a className="text-link underline" href={`/cafes/${duplicateCafeId}`}>{t("viewCafe")}</a> : null}
+                      {t("alreadyExists")}
                     </p>
                   ) : null}
+                  {/* /cafes/[id] ships with the seo-sharing slice; link these statuses once it lands. */}
                   {createdCafeId ? (
                     <p className="text-sm text-success" role="status">
-                      {t("created")} <a className="text-link underline" href={`/cafes/${createdCafeId}`}>{t("viewCafe")}</a>
+                      {t("created")}
                     </p>
                   ) : null}
                   <Button type="submit" variant="primary" className="w-full" isDisabled={busy || Boolean(createdCafeId)}>

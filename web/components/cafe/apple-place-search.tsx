@@ -61,6 +61,10 @@ async function fetchMapKitToken(): Promise<string> {
   return token;
 }
 
+// Fallback id for MapKit places without an `id`: FNV-1a over "lat,lng:name".
+// 32-bit, so collisions and name/coordinate drift can split or merge distinct
+// places — accepted for MVP. Must stay byte-identical to
+// `stableApplePlaceId` in poi-service/src/handlers.ts or dedupe breaks.
 function stablePlaceId(value: string): string {
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {

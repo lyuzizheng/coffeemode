@@ -243,7 +243,6 @@
     "createFailed": "无法创建咖啡店。",
     "alreadyExists": "这个地点已经在 CoffeeMode 中。",
     "created": "咖啡店已创建。",
-    "viewCafe": "查看咖啡店",
     "offline": "离线时无法创建",
     "close": "关闭",
     "submit": "创建咖啡店"

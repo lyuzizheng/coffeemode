@@ -68,6 +68,11 @@ export async function GET(request: Request) {
   const clampedR = Math.min(r, MAX_SEARCH_RADIUS_KM);
 
   const user = await getCurrentUser();
+  // Live Google search bills per request; only the signed-in creation flow may
+  // trigger it. Stored-cache search stays public for the discovery surface.
+  if (source === "google" && !user) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
   const clientId = getClientIdentifier(request, user);
   const limit = await rateLimiter.check(
     `places:${clientId}`,

@@ -750,6 +750,16 @@ describe("POST /poi/external", () => {
     expect((env.POI_DB as FakeD1).rows[0].place_id).toBe(placeId);
   });
 
+  it("rejects absurdly long provider references", async () => {
+    const res = await call("POST", "/poi/external", makeEnv(), {
+      body: [
+        { place_id: `apple:${"x".repeat(2000)}`, source: "apple", name: "Coffea", lat: 1.3, lng: 103.9 },
+      ],
+    });
+
+    expect(res.status).toBe(400);
+  });
+
   it("400s with per-entry reasons on invalid entries", async () => {
     const res = await call("POST", "/poi/external", makeEnv(), {
       body: {

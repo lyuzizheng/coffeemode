@@ -81,6 +81,33 @@ export function coerceWorkStats(raw: unknown): WorkStats {
       }
     }
   }
+  if (typeof partial.experience_score === "number" || partial.experience_score === null) {
+    stats.experience_score = partial.experience_score;
+  } else if (typeof (partial as Record<string, unknown>).experience_score !== "undefined") {
+    // Guard against non-null non-number persisted values — recompute from dims.
+    stats.experience_score = computeExperienceScore(stats);
+  }
+  if (typeof partial.composite_score === "number" || partial.composite_score === null) {
+    stats.composite_score = partial.composite_score;
+  } else if (typeof (partial as Record<string, unknown>).composite_score !== "undefined") {
+    stats.composite_score = computeCompositeScore(stats);
+  }
+  // Preserve persisted updated_at; emptyWorkStats already set a fresh timestamp
+  // when none exists (e.g. DB default '{}').
+  if (typeof partial.updated_at === "string" && !Number.isNaN(Date.parse(partial.updated_at))) {
+    stats.updated_at = partial.updated_at;
+  }
+  // If scores were not persisted (legacy rows with '{}' default), derive them
+  // from the coerced dims so callers never see null when dims have data —
+  // but do not overwrite explicitly persisted null (no scores yet).
+  const hasPersistedExperience = "experience_score" in (partial as Record<string, unknown>);
+  const hasPersistedComposite = "composite_score" in (partial as Record<string, unknown>);
+  if (!hasPersistedExperience && stats.experience_score === null && stats.dims.overall.n > 0) {
+    stats.experience_score = computeExperienceScore(stats);
+  }
+  if (!hasPersistedComposite && stats.composite_score === null && COMPOSITE_DIMS.some((d) => stats.dims[d].n > 0)) {
+    stats.composite_score = computeCompositeScore(stats);
+  }
   return stats;
 }
 

@@ -291,6 +291,204 @@ export async function createCheckIn(
 }
 
 /* ------------------------------------------------------------------ *
+ * Edit + soft delete — both recompute work_stats from scratch (spec 0001
+ * §Aggregation: edit→recompute, soft-delete→recompute). Incremental fold is
+ * not used here: it assumes the changed check-in is the latest for that
+ * user, but visited_at can be backdated.
+ * ------------------------------------------------------------------ */
+
+export class CheckInForbiddenError extends Error {
+  constructor(message = "not your check-in") {
+    super(message);
+    this.name = "CheckInForbiddenError";
+  }
+}
+
+export interface UpdateCheckInInput {
+  scores?: CheckInScores;
+  min_spend?: MinSpend | null;
+  max_stay?: MaxStay | null;
+  note?: string | null;
+  visited_at?: Date;
+}
+
+export function parseUpdateCheckInBody(body: unknown): ParseResult<UpdateCheckInInput> {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return fail("object body required");
+  }
+  const raw = body as Record<string, unknown>;
+  const hasAny =
+    "scores" in raw || "min_spend" in raw || "max_stay" in raw || "note" in raw || "visited_at" in raw;
+  if (!hasAny) return fail("at least one of scores, min_spend, max_stay, note, visited_at required");
+
+  let scores: CheckInScores | undefined;
+  if ("scores" in raw && raw.scores !== undefined) {
+    if (raw.scores === null) return fail("scores must be an object when provided");
+    const parsed = parseScores(raw.scores, "scores");
+    if (!parsed.ok) return fail(parsed.message);
+    if (Object.keys(parsed.value).length === 0) return fail("scores must contain at least one dimension");
+    scores = parsed.value;
+  }
+
+  let minSpend: MinSpend | null | undefined;
+  if ("min_spend" in raw) {
+    const v = raw.min_spend;
+    if (v === null) minSpend = null;
+    else if (v === undefined) minSpend = undefined;
+    else if (!(MIN_SPEND_VALUES as readonly string[]).includes(v as string)) {
+      return fail(`min_spend must be one of ${MIN_SPEND_VALUES.join("|")} or null`);
+    } else {
+      minSpend = v as MinSpend;
+    }
+  }
+
+  let maxStay: MaxStay | null | undefined;
+  if ("max_stay" in raw) {
+    const v = raw.max_stay;
+    if (v === null) maxStay = null;
+    else if (v === undefined) maxStay = undefined;
+    else if (!(MAX_STAY_VALUES as readonly string[]).includes(v as string)) {
+      return fail(`max_stay must be one of ${MAX_STAY_VALUES.join("|")} or null`);
+    } else {
+      maxStay = v as MaxStay;
+    }
+  }
+
+  let note: string | null | undefined;
+  if ("note" in raw) {
+    const v = raw.note;
+    if (v === null) note = null;
+    else if (v === undefined) note = undefined;
+    else if (typeof v !== "string") return fail("note must be a string or null");
+    else {
+      const trimmed = v.trim();
+      if (trimmed.length > 1000) return fail("note is too long (max 1000)");
+      note = trimmed === "" ? null : trimmed;
+    }
+  }
+
+  let visitedAt: Date | undefined;
+  if ("visited_at" in raw && raw.visited_at !== undefined && raw.visited_at !== null) {
+    const parsed = parseVisitedAt(raw.visited_at, "visited_at");
+    if (!parsed.ok) return fail(parsed.message);
+    visitedAt = parsed.value;
+  } else if ("visited_at" in raw && raw.visited_at === null) {
+    // explicit null is not allowed — visited_at stays as-is or is set to a date
+    return fail("visited_at cannot be null");
+  }
+
+  return { ok: true, value: { scores, min_spend: minSpend, max_stay: maxStay, note, visited_at: visitedAt } };
+}
+
+const SELECT_CHECKIN_FOR_UPDATE_SQL = `
+ select id, cafe_id, user_id, is_creation, scores, min_spend, max_stay, note, photos, visited_at, deleted_at
+ from checkins where id = $1 for update
+`;
+
+export async function updateCheckIn(
+  userId: string,
+  checkinId: string,
+  patch: UpdateCheckInInput,
+): Promise<{ cafeId: string }> {
+  if (!isValidUUID(userId) || !isValidUUID(checkinId)) throw new Error("Invalid user or check-in ID");
+
+  return withTransaction(async (client) => {
+    const inSameTx: RunInTransaction = (fn) =>
+      fn(<T extends Record<string, unknown>>(text: string, params?: unknown[]) =>
+        client.query<T>(text, params),
+      );
+
+    const existing = await client.query<{
+      id: string;
+      cafe_id: string;
+      user_id: string;
+      deleted_at: string | null;
+    }>(SELECT_CHECKIN_FOR_UPDATE_SQL, [checkinId]);
+
+    const row = existing.rows[0];
+    if (!row || row.deleted_at !== null) throw new CheckInNotFoundError();
+    if (row.user_id !== userId) throw new CheckInForbiddenError();
+
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    let idx = 1;
+
+    if (patch.scores !== undefined) {
+      sets.push(`scores = $${idx++}::jsonb`);
+      params.push(JSON.stringify(patch.scores));
+    }
+    if (patch.min_spend !== undefined) {
+      sets.push(`min_spend = $${idx++}`);
+      params.push(patch.min_spend);
+    }
+    if (patch.max_stay !== undefined) {
+      sets.push(`max_stay = $${idx++}`);
+      params.push(patch.max_stay);
+    }
+    if (patch.note !== undefined) {
+      sets.push(`note = $${idx++}`);
+      params.push(patch.note);
+    }
+    if (patch.visited_at !== undefined) {
+      sets.push(`visited_at = $${idx++}`);
+      params.push(patch.visited_at.toISOString());
+    }
+
+    if (sets.length === 0) return { cafeId: row.cafe_id };
+
+    sets.push(`updated_at = now()`);
+    const sql = `update checkins set ${sets.join(", ")} where id = $${idx}`;
+    params.push(checkinId);
+    await client.query(sql, params);
+
+    await recomputeWorkStats(row.cafe_id, 0, inSameTx);
+
+    return { cafeId: row.cafe_id };
+  });
+}
+
+export async function softDeleteCheckIn(userId: string, checkinId: string): Promise<{ cafeId: string }> {
+  if (!isValidUUID(userId) || !isValidUUID(checkinId)) throw new Error("Invalid user or check-in ID");
+
+  return withTransaction(async (client) => {
+    const inSameTx: RunInTransaction = (fn) =>
+      fn(<T extends Record<string, unknown>>(text: string, params?: unknown[]) =>
+        client.query<T>(text, params),
+      );
+
+    const existing = await client.query<{
+      id: string;
+      cafe_id: string;
+      user_id: string;
+      deleted_at: string | null;
+    }>(SELECT_CHECKIN_FOR_UPDATE_SQL, [checkinId]);
+
+    const row = existing.rows[0];
+    if (!row || row.deleted_at !== null) throw new CheckInNotFoundError();
+    if (row.user_id !== userId) throw new CheckInForbiddenError();
+
+    await client.query(
+      `update checkins set deleted_at = now(), updated_at = now() where id = $1`,
+      [checkinId],
+    );
+
+    // Hide this check-in's photos from the cafe gallery (source field).
+    await client.query(
+      `update cafes set gallery = coalesce(
+         (select jsonb_agg(elem) from jsonb_array_elements(coalesce(gallery, '[]'::jsonb)) elem
+          where not (elem->'source'->>'id' = $2)), '[]'::jsonb),
+         updated_at = now()
+       where id = $1`,
+      [row.cafe_id, checkinId],
+    );
+
+    await recomputeWorkStats(row.cafe_id, 0, inSameTx);
+
+    return { cafeId: row.cafe_id };
+  });
+}
+
+/* ------------------------------------------------------------------ *
  * Likes
  * ------------------------------------------------------------------ */
 

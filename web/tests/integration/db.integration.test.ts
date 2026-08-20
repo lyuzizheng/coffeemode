@@ -25,10 +25,13 @@ import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   CafeNotFoundError,
+  CheckInForbiddenError,
   CheckInNotFoundError,
   SelfLikeError,
   createCheckIn,
+  softDeleteCheckIn,
   toggleCheckInLike,
+  updateCheckIn,
 } from "@/lib/db/checkins";
 import {
   CafeExistsError,
@@ -42,6 +45,8 @@ import type { ProcessUrls } from "@/lib/images/image-service-client";
 import type { ProcessedImage } from "@/lib/images/processor";
 import type { ProvisionPhotosDeps } from "@/lib/images/provision-photos";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
+import { recomputeAllWorkStats } from "@/lib/stats/aggregate";
+import { coerceWorkStats } from "@/lib/stats/work-stats";
 
 const RUN_INTEGRATION = process.env.RUN_INTEGRATION === "1";
 const describeDb = RUN_INTEGRATION ? describe : describe.skip;
@@ -512,6 +517,112 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         [CHECKIN_A1],
       );
       expect(remainingLikes.rows[0].n).toBe(0);
+    });
+  });
+
+  describeDb("work-profile aggregation — work_stats correct via create/edit/soft-delete (issue #146)", () => {
+    it("create folds work_stats and coerce preserves both scores via getCafe/listCafesNearby", async () => {
+      // Second user's check-in at the seeded cafe
+      await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 60, wifi: 70 } });
+      const stats = await cafeWorkStats(CAFE_A);
+      expect(stats.n_users).toBe(2);
+      expect(stats.n_checkins).toBe(2);
+      expect(stats.experience_score).toBeCloseTo(60, 6);
+      // Public-safe consumers read through coerceWorkStats
+      const detail = await getCafe(CAFE_A);
+      expect(detail?.work_stats.experience_score).toBe(stats.experience_score);
+      expect(detail?.work_stats.composite_score).toBeDefined();
+      expect(detail?.work_stats.dims.overall.n).toBe(1);
+      const nearby = await listCafesNearby({ lat: 1.35, lng: 103.8, radiusKm: 10, limit: 10 });
+      const seed = nearby.find((c) => c.id === CAFE_A);
+      expect(seed?.work_stats.experience_score).toBe(stats.experience_score);
+    });
+
+    it("edit recomputes work_stats for the cafe (recompute, not incremental fold)", async () => {
+      const first = await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 60 } });
+      const before = await cafeWorkStats(CAFE_A);
+      expect(before.experience_score).toBeCloseTo(60, 6);
+
+      await updateCheckIn(U2, first.checkinId, { scores: { overall: 90 } });
+      const after = await cafeWorkStats(CAFE_A);
+      // Two users now: U1 overall 80 (seed) and U2 90
+      expect(after.n_users).toBe(2);
+      expect(after.n_checkins).toBe(2);
+      expect(after.experience_score).toBeCloseTo(90, 6); // U2's recency-weighted overall is 90
+      expect(after.dims.overall.sum).toBe(90);
+      const detail = await getCafe(CAFE_A);
+      expect(detail?.work_stats.experience_score).toBe(after.experience_score);
+    });
+
+    it("soft-delete hides the check-in from work_stats and from cafes.gallery", async () => {
+      const photoId = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a77";
+      await recordUploadIntent(U2, photoId);
+      const created = await createCheckIn(U2, {
+        cafe_id: CAFE_A,
+        scores: { overall: 55 },
+        photo_ids: [photoId],
+      }, fakeProvisionPhotosDeps());
+      const withPhoto = await cafeWorkStats(CAFE_A);
+      expect(withPhoto.n_checkins).toBe(2);
+      expect(withPhoto.experience_score).toBe(55);
+
+      const galleryBefore = await dbClient.query("select gallery from cafes where id = $1", [CAFE_A]);
+      expect(JSON.stringify(galleryBefore.rows[0].gallery)).toContain(photoId);
+
+      await softDeleteCheckIn(U2, created.checkinId);
+      const after = await cafeWorkStats(CAFE_A);
+      expect(after.n_checkins).toBe(1);
+      expect(after.n_users).toBe(1);
+      // Back to seed user's contribution only
+      expect(after.experience_score).toBeNull(); // seed has no overall dim, only wifi
+      expect(after.dims.overall).toEqual({ sum: 0, n: 0 });
+      // Deleted check-in's photos must not remain in the gallery
+      const galleryAfter = await dbClient.query("select gallery from cafes where id = $1", [CAFE_A]);
+      expect(JSON.stringify(galleryAfter.rows[0].gallery)).not.toContain(photoId);
+      // Soft-deleted row still exists but is hidden from recompute
+      const deletedRow = await dbClient.query("select deleted_at from checkins where id = $1", [created.checkinId]);
+      expect(deletedRow.rows[0].deleted_at).not.toBeNull();
+    });
+
+    it("rejects edit/delete from a non-author with 403-class error", async () => {
+      const inserted = await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 42 } });
+      await expect(updateCheckIn(U1, inserted.checkinId, { scores: { overall: 99 } })).rejects.toBeInstanceOf(
+        CheckInForbiddenError,
+      );
+      await expect(softDeleteCheckIn(U1, inserted.checkinId)).rejects.toBeInstanceOf(CheckInForbiddenError);
+    });
+
+    it("recomputeAllWorkStats is idempotent and repairs drift", async () => {
+      const photoId = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a88";
+      await recordUploadIntent(U2, photoId);
+      await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 77 } }, fakeProvisionPhotosDeps());
+      const goodRaw = await cafeWorkStats(CAFE_A);
+      const good = coerceWorkStats(goodRaw);
+      // Corrupt the cached stats to the DB default
+      await dbClient.query("update cafes set work_stats = '{}'::jsonb where id = $1", [CAFE_A]);
+      const corruptedRaw = await cafeWorkStats(CAFE_A);
+      const corrupted = coerceWorkStats(corruptedRaw);
+      expect(corrupted.n_users).toBe(0);
+      expect(corrupted.experience_score).toBeNull();
+
+      // Repair via the nightly entrypoint (same code the cron runs)
+      await recomputeAllWorkStats(async (sql, params) => dbClient.query(sql, params));
+      const repairedRaw = await cafeWorkStats(CAFE_A);
+      const repaired = coerceWorkStats(repairedRaw);
+      const { updated_at: _goodTs, ...goodNoTs } = good;
+      const { updated_at: _repTs, ...repairedNoTs } = repaired;
+      expect(repairedNoTs).toEqual(goodNoTs);
+
+      // Second run is a no-op (idempotent) — same dims/scores, new timestamp only
+      await recomputeAllWorkStats(async (sql, params) => dbClient.query(sql, params));
+      const repaired2Raw = await cafeWorkStats(CAFE_A);
+      const repaired2 = coerceWorkStats(repaired2Raw);
+      const { updated_at: _rep2Ts, ...repaired2NoTs } = repaired2;
+      expect(repaired2NoTs).toEqual(goodNoTs);
+
+      // Public consumers see the repaired scores through coerce
+      const detail = await getCafe(CAFE_A);
+      expect(detail?.work_stats.experience_score).toBe(good.experience_score);
     });
   });
 });

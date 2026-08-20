@@ -1,0 +1,32 @@
+name: Nightly work_stats recompute
+
+on:
+  schedule:
+    - cron: "0 2 * * *" # 02:00 UTC daily — VPS local time is UTC
+  workflow_dispatch:
+
+jobs:
+  recompute:
+    runs-on: ubuntu-latest
+    # Only run when DATABASE_URL is configured (production VPS or staging).
+    # Failures are observable as a failed workflow run (GitHub notifies).
+    if: ${{ secrets.DATABASE_URL != '' }}
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run work_stats full recompute
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npm run recompute:work-stats

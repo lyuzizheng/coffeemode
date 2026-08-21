@@ -144,21 +144,25 @@ All new user-visible UI requires a slice-specific Kimi K3 design artifact before
 implementation. Until that artifact exists, exact layout/interaction composition
 is an explicit blocker rather than an agent-invented default.
 
-## Round 8 — Design-artifact grill — partial
+## Round 8 — Design-artifact grill — complete
 
 Kimi K3 delivered the map-independent slice artifacts (`docs/design/`, issues
 #133/#135/#148/#149/#150/#152/#153) and grilled the owner on the decisions made
-plus parked judgment items. Rulings so far:
+plus parked judgment items. All ten items ruled (2026-08-21): DG21 explicitly,
+DG22–DG30 by owner agreement with the Kimi recommendations.
 
 | # | Decision | Answer |
 |---|----------|--------|
 | DG21 | Check-in drawer dirty dismiss | Dismissing the check-in drawer with any input (set slider, selected policy chip, note text, staged photo) prompts `Discard this check-in?` with Keep editing / Discard; a pristine drawer closes immediately. Draft persistence stays a V2 candidate. Applied to `docs/design/checkin-system-v1.md` §6 |
-
-Still open (parked in the Draft artifacts, blocking their approval): the
-display-font rule amendment (spec 0002), the Experience sparkle glyph,
-tri-state filter thresholds, modal task surfaces, edit-mode dimension removal,
-offline check-ins, nav-prompt timer pause, banner dismissal persistence, and
-profile pagination.
+| DG22 | Display-font rule | Spec 0002 typography rule amended: display font for page/screen titles, the brand wordmark, and cafe names only — never for data, numbers, or component state labels |
+| DG23 | Experience sparkle glyph | Keep the 14px four-point sparkle SVG as functional score iconography; it is not the banned decorative sparkle |
+| DG24 | Filter threshold steps | Dimension filters are tri-state segments Any / 60+ / 80+; the API keeps the 0–100 threshold contract |
+| DG25 | Modal task surfaces | Confirmed split: filter panel and check-in drawer are modal (focus-contained); the discovery sheet stays non-modal |
+| DG26 | Edit-mode dimension removal | Allowed: in edit mode a set slider row carries a small × returning it to unset; composing stays strict. Applied to `docs/design/checkin-system-v1.md` §3.2/§5 |
+| DG27 | Offline check-ins | Check-in mutations disabled offline (generalizing spec 0004 §18's creation rule; no mutation queue). Applied to `docs/design/checkin-system-v1.md` §6 |
+| DG28 | Nav-prompt timer pause | The 8s auto-collapse pauses on hover/focus/touch; an untouched card still collapses |
+| DG29 | Deep-link banner dismissal | Permanent via a `localStorage` flag in the onboarding storage family. Applied in PR #165 (commit 43b0941, `docs/design/seo-sharing-v1.md` §3) |
+| DG30 | Profile pagination | `Load more` button at 20 per page; no infinite scroll |
 
 ## Decisions log
 
@@ -176,7 +180,7 @@ profile pagination.
 - 2026-08-19: Discovery behavior DG1-DG10 agreed; exact visual composition delegated to Kimi K3 and required before UI implementation
 - 2026-08-20: Discovery behavior DG11-DG15 agreed; V2 opt-in author identity is tracked in #139
 - 2026-08-20: Discovery behavior DG16-DG20 agreed; MVP ranking, recovery, accessibility, missing-cafe handling, and the 1024px responsive switch are settled; daily time-decayed ranking is deferred to V2 issue #140
-- 2026-08-21: Map-independent Kimi K3 artifacts delivered as Drafts (#133/#135/#148 merged via PRs #161/#164/#163; #149/#150/#152/#153 in PR #165); DG21 ruled in artifact grill round 8 — dirty check-in dismiss requires discard confirmation
+- 2026-08-21: Map-independent Kimi K3 artifacts delivered as Drafts (#133/#135/#148 merged via PRs #161/#164/#163; #149/#150/#152/#153 in PR #165); artifact grill round 8 complete — DG21-DG30 ruled (display-font rule amended in spec 0002, edit-mode dimension unset and offline check-in disable confirmed, sparkle glyph kept, tri-state filters, modal task surfaces, timer pause, permanent banner dismissal, profile load-more)
 
 ## Final tech stack (locked)
 

@@ -42,8 +42,8 @@ Accepted
 | --- | --- |
 | `web/` logic/UI | focused test, then `cd web && npm run verify` |
 | `web/db/`, `web/lib/`, DB-backed routes or integration suite | web gate plus `cd web && npm run test:integration` |
+| image pipeline / storage boundary (`image-service/`, `web/lib/images/`) | service gate plus `cd web && npm run test:integration:images` (real MinIO via docker compose) |
 | `poi-service/` | `npm run typecheck && npm test` in `poi-service/` |
-| `image-service/` | `npm run typecheck && npm test` in `image-service/` |
 | docs, `.agents/`, `.codex/`, CI authority | preflight + harness self-test + required independent semantic review |
 
 Risk and independent-review requirements are defined only in
@@ -68,6 +68,8 @@ jobs run only when relevant:
 - `docs-gate`: agent, docs, templates, and harness changes;
 - `application-gate`: `web/` changes;
 - `integration-gate`: DB/SQL-capable web boundaries and shared-package changes;
+- `images-integration-gate`: real MinIO/R2 image round-trip for image-pipeline
+  and storage-boundary changes (same trigger set as `integration-gate`);
 - `image-service-gate`: image-service and shared-package changes;
 - `poi-service-gate`: poi-service and shared-package changes;
 - `ci-gate`: always aggregates selected job results.

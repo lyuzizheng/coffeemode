@@ -112,7 +112,7 @@ _archive-coffeemode-backend/   old Java app — being dropped
 - Postgres-backed rate limiter is ready for production; `RATE_LIMIT_BACKEND` environment variable selects backend
 - `next build` warns about custom Cache-Control for `/_next/static/:path*` — intentional for production hashed chunks
 - `maps_share_url` host validation, 10 km nearby-search cap, and 10 MB image-upload cap are active
-- R2 lifecycle cleanup for abandoned `original/` objects requires a scheduled Worker/script (metadata rules cannot filter)
+- Issue #158 adds the safe orphan-original cleanup: `image-service/scripts/clean-orphan-originals.mjs` (npm run clean:orphan-originals) deletes `original/` objects older than RETENTION_DAYS that lack completion metadata OR are still in the "provision" stage (uploaded but never attached). complete() now REQUIRES stage metadata: the attach flow sends cafe|checkin + target id; the creation flow sends provision + imageUuid (issue #86 pre-target processing). DRY_RUN=1 default, cursor-paginated, batch-bounded, idempotent, structured JSON output; covered by the images integration suite. Production schedule/least-privilege creds remain owner actions (#147, #154).
 - Apple Developer Program purchase pending (needed for MapKit JS and Apple live search only; #131)
 - poi-service/wrangler.toml and image-service/wrangler.toml placeholders are
   documented; deploy blocked on Cloudflare account + secrets (pending-user-actions §6–7)

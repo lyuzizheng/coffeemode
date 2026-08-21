@@ -28,6 +28,11 @@ import {
 } from "@/lib/db/image-uploads";
 import { processImage } from "@/lib/images/processor";
 
+// Storage suites never touch the rate limiter; pin the memory backend so
+// tests/setup.ts's rateLimiter.reset() cannot hit Postgres after this file
+// sets DATABASE_URL (sequential execution shares the process env).
+process.env.RATE_LIMIT_BACKEND = "memory";
+
 const RUN_INTEGRATION = process.env.RUN_INTEGRATION === "1";
 const describeImages = RUN_INTEGRATION ? describe : describe.skip;
 
@@ -205,6 +210,7 @@ describeImages("integration — real MinIO/R2 image round-trip (docker compose u
   }, 120_000);
 
   beforeEach(async () => {
+    if (!minioUp || !dbClient) return; // beforeAll skipped provisioning
     // No silent catch: truncate failure means polluted state → fail visibly.
     await dbClient.query("truncate table image_upload_intents restart identity cascade");
     await dbClient.query(

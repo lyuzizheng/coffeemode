@@ -10,7 +10,7 @@ This is a rewrite, not a migration. The old Vite SPA (`_archive-coffeemode-front
 
 ## Status
 
-Accepted (revised 2026-08-20 — discovery ranking, recovery, accessibility, missing-cafe, responsive, feed, anonymity, dismissal, and gesture contracts; 2026-08-19 — responsive discovery contract and Kimi K3 design gate; 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
+Accepted (revised 2026-08-21 — overall slider mandatory per check-in (DG40); creation composes logged-out with local draft, sign-in at publish (DG39); desktop detail becomes a second left column (DG42); PEEK Work-score watermark (DG43); 2026-08-20 — discovery ranking, recovery, accessibility, missing-cafe, responsive, feed, anonymity, dismissal, and gesture contracts; 2026-08-19 — responsive discovery contract and Kimi K3 design gate; 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
 
 ## Stable decisions
 
@@ -474,12 +474,14 @@ SPA-feel single page. The map page IS the app; no tab bar, no navigation.
       PEEK  — no cafe selected; horizontal swipe cards of nearby cafes
               (~85% width, snap) with compact characteristic icons
               (wifi, outlets, stay limit, and other available work facts)
+              and a low-contrast Work-score watermark numeral (DG43)
       HALF  — selected cafe preview (cover carousel + name + both scores,
               Navigate / Check in / Share, and top facts)
       FULL  — complete detail backed by real data (work profile, hours,
               gallery, paginated non-deleted check-ins)
               map still visible ~15% at top
-  + FAB (add cafe, login-gated)
+  + FAB (add cafe; composing works logged-out from a local draft,
+              sign-in is required at publish — DG39)
   + URL sync: opening the first cafe from / pushes one /cafes/[id] entry;
               changing cafe or HALF/FULL state replaces that entry;
               Back collapses the selection session to / without history spam
@@ -488,8 +490,10 @@ SPA-feel single page. The map page IS the app; no tab bar, no navigation.
   Onboarding = one-time overlay (first visit only)
 
 At `1024px` and wider, desktop uses the same selected-cafe and URL state but
-renders a 380px cafe-list sidebar plus a right-side detail drawer. Smaller
-viewports use the mobile sheet; PEEK/HALF/FULL snap states are mobile-only.
+renders a 380px cafe-list sidebar plus a second left column — the detail
+panel sits immediately right of the sidebar, and the map fills the remaining
+width (DG42). Smaller viewports use the mobile sheet; PEEK/HALF/FULL snap
+states are mobile-only.
 
 The map-independent discovery controller accepts CafeSummary[] plus selected state.
 A thin home-page adapter loads the existing nearby-cafes API; MapKit bindings and
@@ -520,8 +524,10 @@ focuses the detail heading; Close restores focus to the source cafe
 card when it still exists. Reduced-motion users get immediate snap/drawer state
 changes without transition animation.
 
-Scores stay honest: PEEK prioritizes compact work characteristics, HALF introduces
-both composite Work and Experience scores, and FULL explains their dimensions.
+Scores stay honest: PEEK carries the Work score as a large low-contrast
+watermark numeral with its exact value (DG43) alongside compact work
+characteristics, HALF introduces both composite Work and Experience scores
+side by side, and FULL explains their dimensions.
 Every available value shows its respondent count; missing dimensions render as
 "Not enough check-ins" and are never coerced to zero.
 
@@ -626,7 +632,8 @@ Tier 3 (Post-MVP):
 ### Check-in (打卡) system
 
 ```text
-Dimensions (sliders 0-100, each optional — but ≥1 slider required per check-in):
+Dimensions (sliders 0-100; `overall` is required per check-in (DG40), the
+  other five are optional — at least one dimension is encouraged, not forced):
   wifi, outlets, seats, temp, coffee, overall
 
 Policies (chip select, optional per check-in):
@@ -660,7 +667,11 @@ Navigation → check-in prompt (ClassPass-style):
 ### Cafe creation flow (= first check-in)
 
 ```text
-Entry: FAB button (login required)
+Entry: FAB button. Composing works logged-out: link-import analysis, scores,
+policies, note, and photos are kept as a local draft (photos staged locally),
+and Google/Apple sign-in is required only at Publish (DG39). Fully anonymous
+publishing is not allowed — every write stays session-bound for rate limiting
+and abuse control; "A nomad" anonymity is display identity only.
 Creating a cafe IS checking in for the first time — one record pair
 (cafes row + checkins row with is_creation=true).
 
@@ -917,7 +928,7 @@ gated by the feature slices and owner infrastructure actions.
 - Dark mode toggles map + UI simultaneously
 - Discovery: mobile peek → half → full and desktop sidebar/detail drawer share
   selection state, one-push/then-replace URL sync, and Back-to-collapse behavior
-- PEEK shows compact work-characteristic icons; HALF shows both scores; FULL uses
+- PEEK shows compact work-characteristic icons and the Work-score watermark; HALF shows both scores; FULL uses
   real cafe detail and Helpful/Newest cursor-paginated non-deleted check-ins
 - MVP public cafe/check-in DTOs render “A nomad” and omit internal author identifiers
 - Mobile sheet dismissal and scroll/drag handoff follow the DG14-DG15 contract

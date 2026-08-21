@@ -27,7 +27,7 @@ Four read-only subagent reviews ran in parallel against the current `main` tree 
 2. **Add a real `--secondary` sage brand token.** Reconcile `docs/specs/0002-design-system.md` and `web/app/globals.css` so the palette is primary terracotta + secondary sage + status colors. Start with the original 0002 sage value `oklch(45.0% 0.080 155)` and adjust for contrast if needed.
 3. **Use a small radius scale.** Codify `--radius-sm/md/lg/xl` in `globals.css` as small as practical for a dense mobile UI. Initial values: `2px / 4px / 6px / 8px`. `.card` uses `--radius-md` (4px).
 4. **Shadow tokens must match spec or the spec must be updated.** Keep the warm espresso tint. Because `globals.css` already embodies the warm espresso shadows, update `docs/specs/0002-design-system.md` to match `globals.css`.
-5. **In-app type scale ceiling is `text-2xl` (2rem).** Sandbox `theme-preview` hero sizes; page titles and cafe names use `font-display` inside the fixed scale.
+5. **In-app type scale ceiling is `text-2xl` (2rem).** Sandbox `theme-preview` hero sizes; page/screen titles, the brand wordmark, and cafe names use `font-display` inside the fixed scale (per the amended spec 0002 typography rule, DG22). Decorative watermark numerals (e.g. the PEEK Work-score watermark, DG43) may exceed the scale as non-content graphics: `aria-hidden`, pointer-events disabled, ≤8% opacity.
 6. **Mount `<Toast.Provider>` in `web/app/providers.tsx`.** HeroUI toast is the canonical success/error surface.
 6a. **Kimi K3 is the visual-design authority for new user-visible UI.** Each UI slice needs a slice-specific Kimi artifact before implementation or visual acceptance. Product behavior remains canonical in specs; agents must not invent the unresolved composition.
 

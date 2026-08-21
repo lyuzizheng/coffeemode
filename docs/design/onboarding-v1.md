@@ -72,7 +72,7 @@ Crosshair glyph, 44px, `overlay` surface, `radius-md`, `shadow-map`, 1px
 (`muted` glyph), locating (glyph pulses 1200ms, once per tap), located
 (`accent` glyph until the user pans away). On desktop the button moves to
 the top-right map corner (24px inset) so it never collides with the sidebar
-or detail drawer. Keyboard reachable with `aria-label="Locate me"`.
+or the detail column (DG42). Keyboard reachable with `aria-label="Locate me"`.
 
 ## 5. Deep-link arrivals
 

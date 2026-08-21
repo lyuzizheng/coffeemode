@@ -6,14 +6,14 @@ Define CoffeeMode's visual identity for 2026: modern, restrained, elegant. The c
 
 ## Status
 
-Accepted (revised 2026-08-21 — display-font rule clarified: screen titles + brand wordmark permitted, data/numbers/state labels excluded (DG22); 2026-08-20 — discovery feed, recovery, focus, reduced-motion, missing-cafe, breakpoint, and gesture constraints; 2026-08-19 — Kimi K3 design authority and responsive discovery contract; earlier 2026-08-02 — supersedes retro/vintage direction, aligned with bottom-sheet SPA, swipe cards, slider check-in)
+Accepted (revised 2026-08-21 — display-font rule clarified: screen titles + brand wordmark permitted, data/numbers/state labels excluded (DG22); desktop cafe detail becomes a second left column, not a right drawer (DG42); PEEK cards gain a low-contrast Work-score watermark (DG43); FAB creation composes logged-out, sign-in at publish (DG39); 2026-08-20 — discovery feed, recovery, focus, reduced-motion, missing-cafe, breakpoint, and gesture constraints; 2026-08-19 — Kimi K3 design authority and responsive discovery contract; earlier 2026-08-02 — supersedes retro/vintage direction, aligned with bottom-sheet SPA, swipe cards, slider check-in)
 
 ## Stable decisions
 
 ```text
 - HeroUI v3 + Tailwind v4 + Framer Motion (no Shadcn; HeroUI is the sole component library)
 - next-intl from day one (en primary, zh secondary)
-- Responsive map-native discovery: mobile bottom sheet + swipe cards; desktop sidebar + detail drawer
+- Responsive map-native discovery: mobile bottom sheet + swipe cards; desktop sidebar + second-level detail column
 - All scoring = subjective 0-100 sliders; Work Profile bars are the visual hero
 - Anti-vibe-coding: no confetti, no purple gradients, no glass-panel AI-slop
 - Global toast surface: HeroUI <Toast.Provider> mounted in root providers
@@ -269,7 +269,8 @@ Mobile:
   Full-screen Apple Map (dark mode follows theme)
   Floating search bar (top, backdrop-blur)
   Bottom sheet — Google Maps style, one sheet three states:
-    PEEK  no selection; horizontal swipe cards with compact work-characteristic icons
+    PEEK  no selection; horizontal swipe cards with compact work-characteristic
+          icons and a low-contrast Work-score watermark numeral (DG43)
     HALF  selected cafe: cover carousel + name + both scores + actions + top work facts
     FULL  complete real-data detail with Helpful/Newest feed modes;
           map stays visible ~15% at top
@@ -278,13 +279,14 @@ Mobile:
   Gesture: downward drag steps FULL → HALF → PEEK; Close/Back clears to PEEK
   Drag ownership: handle/header moves the sheet; content scrolls and hands off
                   downward movement only when content is already at scroll-top
-  FAB bottom-right (add cafe, login-gated)
+  FAB bottom-right (add cafe; composing works logged-out, sign-in at publish — DG39)
   Check-in: drawer above the sheet
 
 Desktop:
   Left sidebar 380px: search + filters + cafe list (scroll)
-  Right: full-screen map
-  Cafe detail: slide-over from right (Drawer placement="right")
+  Center-right: full-screen map
+  Cafe detail: second left column immediately right of the sidebar (DG42);
+               the map fills the remaining width — no right-side drawer
   Activates at 1024px and uses the shared selection/URL state; never emulates
   mobile PEEK/HALF/FULL snaps
 Deep-link/share landing: dedicated SSR /cafes/[id] in the separate seo-sharing slice
@@ -292,7 +294,7 @@ Deep-link/share landing: dedicated SSR /cafes/[id] in the separate seo-sharing s
 Breakpoints:
   sm: 640px   (large phone landscape)
   md: 768px   (tablet — mobile sheet remains active)
-  lg: 1024px  (desktop — switch to sidebar + detail drawer)
+  lg: 1024px  (desktop — switch to sidebar + detail column)
   xl: 1280px  (wide desktop)
 ```
 

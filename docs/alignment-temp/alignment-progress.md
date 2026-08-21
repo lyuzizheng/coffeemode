@@ -164,6 +164,29 @@ DG22–DG30 by owner agreement with the Kimi recommendations.
 | DG29 | Deep-link banner dismissal | Permanent via a `localStorage` flag in the onboarding storage family. Applied in PR #165 (commit 43b0941, `docs/design/seo-sharing-v1.md` §3) |
 | DG30 | Profile pagination | `Load more` button at 20 per page; no infinite scroll |
 
+## Round 9 — Discovery-sheet grill — complete except DG-Q1
+
+15-question grill on the discovery-sheet artifact (tech/product/UX). Rulings:
+
+| # | Decision | Answer |
+|---|----------|--------|
+| DG31 | Selection state ownership | The discovery controller owns selection/sheet state; the URL is a derived projection, never re-read except popstate |
+| DG32 | Nearby refetch policy | Refetch only on zoom change or ≥1/10-viewport movement, debounced 1s after movement stops; in-flight requests cancelled when the view moves again; no refetch from accidental jiggles |
+| DG33 | Coverless cards | PEEK cards and search rows without a cover render a `surface-tertiary` block + cup glyph |
+| DG34 | Tiny carousels | Fewer than 3 nearby cafes collapse the PEEK carousel to a static row |
+| DG35 | Card tap targets | The whole PEEK card is one tap target (no cover/body split) |
+| DG36 | Toast position | Mobile toasts render top-center below the search bar; bottom belongs to sheet/FAB/pill |
+| DG37 | Feed mode race | Feed requests are mode-keyed; responses from a deserted Helpful/Newest mode are discarded |
+| DG38 | Good-cafe marker emphasis | High-Work-score cafes get a subtle marker emphasis (accent ring), input to the `map-home` artifact; marker variants otherwise remain post-MVP per spec 0001 |
+| DG39 | Creation login gate | Composing works logged-out (link analysis, scores, policies, note, locally staged photos); sign-in is required at Publish; fully anonymous publishing rejected (rate-limit/abuse/data-integrity). Specs 0001/0002 amended |
+| DG40 | Mandatory overall | The `overall` slider is required per check-in; the other five dimensions stay optional. Spec 0001 amended |
+| DG41 | First-run guidance | No filter-specific popup; the one-time onboarding card plus the empty-search hint line carry first-visit guidance |
+| DG42 | Desktop detail placement | Cafe detail is a second left column immediately right of the sidebar; the map fills the remaining width; no right-side drawer. Supersedes DG1's "right detail drawer". Specs 0001/0002 + discovery-sheet-v1 §7 amended |
+| DG43 | PEEK score watermark | The Work score appears in PEEK as a large low-contrast watermark numeral (non-content graphic: ≤8% opacity, `aria-hidden`, single hue, no battery gauge, no multi-hue gradient) plus its exact value in the meta line. Specs 0001/0002 + 0004 §5 (type-ceiling exemption) amended |
+
+Still open: the BottomSheet implementation question (bespoke Framer Motion vs
+`react-spring-bottom-sheet`) — Kimi recommends bespoke, owner has not ruled.
+
 ## Decisions log
 
 - 2026-07-31: Architecture pivot from "migrate Vite SPA + keep Java backend" to "rewrite as full-stack Next.js, drop Java"
@@ -181,6 +204,7 @@ DG22–DG30 by owner agreement with the Kimi recommendations.
 - 2026-08-20: Discovery behavior DG11-DG15 agreed; V2 opt-in author identity is tracked in #139
 - 2026-08-20: Discovery behavior DG16-DG20 agreed; MVP ranking, recovery, accessibility, missing-cafe handling, and the 1024px responsive switch are settled; daily time-decayed ranking is deferred to V2 issue #140
 - 2026-08-21: Map-independent Kimi K3 artifacts delivered as Drafts (#133/#135/#148 merged via PRs #161/#164/#163; #149/#150/#152/#153 in PR #165); artifact grill round 8 complete — DG21-DG30 ruled (display-font rule amended in spec 0002, edit-mode dimension unset and offline check-in disable confirmed, sparkle glyph kept, tri-state filters, modal task surfaces, timer pause, permanent banner dismissal, profile load-more)
+- 2026-08-21: Artifact grill round 9 (discovery-sheet) — DG31-DG43 ruled; specs amended for mandatory overall slider, draft-then-publish creation, desktop left detail column, and PEEK Work-score watermark; BottomSheet implementation question still open
 
 ## Final tech stack (locked)
 

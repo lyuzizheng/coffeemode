@@ -9,13 +9,15 @@
  *   - POST /v1/images/complete verifies the ACTUAL R2 object size via head()
  *     and refuses to issue process URLs when it exceeds the cap (422).
  *
- * Lifecycle: R2 lifecycle rules can delete abandoned `original/` objects
- * older than 7 days. Because R2 lifecycle rules cannot inspect custom
- * metadata (targetType / targetId), the recommended setup is:
- *   1. A lifecycle rule that deletes all `original/` objects after 7 days, OR
- *   2. A scheduled cleanup Worker/script that lists `original/` objects,
- *      keeps objects whose `targetType` metadata is set, and deletes the rest
- *      after 7 days. The cleanup Worker should use the same R2 credentials.
+ * Lifecycle (issue #158): R2 lifecycle rules cannot inspect custom metadata
+ * (targetType / targetId), so a blanket age rule on `original/` is UNSAFE —
+ * completed gallery originals live under the same prefix. The safe cleanup is
+ * `scripts/clean-orphan-originals.mjs` (npm run clean:orphan-originals): it
+ * lists `original/` objects older than RETENTION_DAYS and deletes only those
+ * WITHOUT completion metadata (`x-amz-meta-targettype`), which complete()
+ * always sets on live originals. DRY_RUN=1 default; cursor-paginated and
+ * batch-bounded; idempotent. #154 schedules it in production with
+ * least-privilege R2 credentials (#147).
  */
 import { MAX_UPLOAD_BYTES } from "../../web/shared/images/constants";
 

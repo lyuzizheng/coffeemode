@@ -92,6 +92,16 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
     return error("invalid_request", "imageUuid must be a valid UUID");
   }
 
+  // targetType/targetId are REQUIRED: the cleanup contract (issue #158) treats
+  // metadata-less originals as abandoned. complete() stamps them onto the
+  // re-PUT original, so a completed original without them would be deletable.
+  const safeUserId = sanitizeMetadata(userId);
+  const safeTargetType = sanitizeMetadata(targetType);
+  const safeTargetId = sanitizeMetadata(targetId);
+  if (!safeTargetType || !safeTargetId) {
+    return error("invalid_request", "targetType and targetId are required");
+  }
+
   const normalizedUuid = imageUuid.toLowerCase();
   const keys = makeKeys(normalizedUuid);
   const exists = await headObject(env, keys.original);
@@ -112,12 +122,9 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
   const metadata: Record<string, string> = {
     uploadDate: new Date().toISOString(),
   };
-  const safeUserId = sanitizeMetadata(userId);
-  const safeTargetType = sanitizeMetadata(targetType);
-  const safeTargetId = sanitizeMetadata(targetId);
   if (safeUserId) metadata.userId = safeUserId;
-  if (safeTargetType) metadata.targetType = safeTargetType;
-  if (safeTargetId) metadata.targetId = safeTargetId;
+  metadata.targetType = safeTargetType;
+  metadata.targetId = safeTargetId;
 
   const [originalGet, originalPut, cardPut, thumbnailPut] = await Promise.all([
     presignedGetUrl(env, keys.original),

@@ -63,6 +63,8 @@ services:
       done
       mc mb --ignore-existing local/coffeemode
       mc anonymous set download local/coffeemode
+      mc admin user add local imgtest imgtest-secret || true
+      mc admin policy attach local readwrite --user imgtest
       "
 
 volumes:

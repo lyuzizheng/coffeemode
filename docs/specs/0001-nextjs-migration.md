@@ -254,6 +254,15 @@ Card shows ✨ primary; detail shows both + per-dimension bars.
 
 Fixed global weights (Q61): wifi 30% · outlets 20% · seats 20% · temp 15% · coffee 15%.
 User-customizable weights: post-MVP.
+
+Temperature mapping (DG73): temp sliders record the raw bidirectional value
+(too cold 0 ↔ too hot 100), but the value ENTERING the per-user contribution
+and the `dims.temp` sum is the mapped comfort score:
+  temp_score = 100 − 2 × |raw − 50|     (raw 50 → 100; raw 0 or 100 → 0)
+So `dims.temp.sum/n` is always a mean of comfort scores, consistent with the
+bad→good semantics of the other four dimensions. The raw value stays on the
+check-in row; the nightly recompute (#146) applies the same mapping when
+rebuilding work_stats from check-ins.
 ```
 
 Social signal hook:
@@ -637,7 +646,8 @@ Dimensions (sliders 0-100, continuous integer — no snapped steps (DG60);
   other five are optional — at least one dimension is encouraged, not forced):
   wifi, outlets, seats, temp, coffee, overall
   - temp is bidirectional: too cold ↔ too hot, ideal at the midpoint;
-    aggregation maps distance-from-50 → score (DG73)
+    the value entering aggregation is mapped (temp_score = 100 − 2×|raw−50|,
+    see §Aggregation) (DG73)
 
 Policies (chip select, optional per check-in):
   min_spend: none | drink | s5 | s10 | s10plus | unknown
@@ -953,11 +963,17 @@ Next.js process (e.g. a thin wrapper over `lru-cache`), enforced via one
 middleware/helper every route and script calls. In-memory is correct at
 MVP scale (single VPS container); the config schema + enforcement
 interface are the contract, so swapping the store for Redis/Upstash under
-multi-instance scale is a config change, not a redesign.
+multi-instance scale is a config change, not a redesign. The existing
+Postgres-backed token bucket (issue #23, `RATE_LIMIT_BACKEND`) is a valid
+store behind this same config/interface — this section standardizes the
+config and coverage, it does not mandate replacing that backend; spec 0004
+item 33 is satisfied by this mechanism.
 
 Product rules expressed through it: per-user caps on image
 upload/complete and POI resolve/search; 1 check-in per cafe per user per
-24h (DG64); auth attempts.
+24h (DG64 — enforced as a windowed existence check at the domain layer,
+registered in the same YAML so all limits live in one place); auth
+attempts.
 ```
 
 ## Edge cases

@@ -56,7 +56,13 @@ describe("provisionPhotos", () => {
     });
     // No `source` yet — the target id only exists after the insert.
     expect(photo).not.toHaveProperty("source");
-    expect(deps.getProcessUrls).toHaveBeenCalledWith({ imageUuid: IMG_A, userId: USER });
+    // Pre-target stage marker (issue #158): the worker requires stage metadata.
+    expect(deps.getProcessUrls).toHaveBeenCalledWith({
+      imageUuid: IMG_A,
+      userId: USER,
+      targetType: "provision",
+      targetId: IMG_A,
+    });
   });
 
   it("fails fast: an id without a valid intent is rejected before ANY processing", async () => {

@@ -104,8 +104,10 @@ export async function requestUploadUrl(size: number): Promise<UploadUrlResponse>
 
 /**
  * Fetch presigned process URLs for an uploaded original. `targetType` /
- * `targetId` are optional R2 custom-metadata hints for the worker — the
- * creation flow (issue #86) processes images before its target exists.
+ * `targetId` are REQUIRED by the worker since #158 (cleanup contract): the
+ * attach flow sends the real target ("cafe"|"checkin" + id); the creation
+ * flow (issue #86), which processes images before its target exists, sends
+ * targetType="provision" + targetId=<imageUuid> (PROVISION_TARGET_TYPE).
  */
 export async function getProcessUrls(
   request: Omit<CompleteImageRequest, "targetType" | "targetId"> &

@@ -210,6 +210,7 @@ describeImages("integration — real MinIO/R2 image round-trip (docker compose u
   }, 120_000);
 
   beforeEach(async () => {
+    if (!minioUp || !dbClient) return; // beforeAll skipped provisioning
     // No silent catch: truncate failure means polluted state → fail visibly.
     await dbClient.query("truncate table image_upload_intents restart identity cascade");
     await dbClient.query(

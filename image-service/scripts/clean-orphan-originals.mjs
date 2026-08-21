@@ -116,9 +116,19 @@ async function listOrphanCandidates({ maxKeys, cutoffMs }) {
         // run — the next run re-evaluates. Never delete on uncertain state.
         continue;
       }
+      // Orphan definition (issue #158): an original is abandoned when it has
+      // NO completion marker (pre-#158 or direct-write residue) OR when it is
+      // still in the "provision" stage — uploaded for processing but never
+      // attached to a cafe/check-in. Live gallery originals carry
+      // targetType=cafe|checkin and are never matched.
       const targetType = head.headers.get("x-amz-meta-targettype");
-      if (!targetType) {
-        candidates.push({ key, size: Number(head.headers.get("content-length") ?? 0), lastModified });
+      if (!targetType || targetType === "provision") {
+        candidates.push({
+          key,
+          size: Number(head.headers.get("content-length") ?? 0),
+          lastModified,
+          stage: targetType === "provision" ? "provision" : "markerless",
+        });
       }
       if (candidates.length >= maxKeys) {
         truncated = true;

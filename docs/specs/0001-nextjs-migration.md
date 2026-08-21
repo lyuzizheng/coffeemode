@@ -815,7 +815,7 @@ map-driven navigation.
 ```text
 1. MapKit JS integration (mapkit-react), token endpoint
 2. Full-screen map with cafe markers + clustering + dark mode
-3. Bind the mobile discovery sheet (peek/half/full), desktop sidebar/detail drawer,
+3. Bind the mobile discovery sheet (peek/half/full), desktop sidebar/detail column,
    and horizontal swipe cards to map selection
 4. Bind the one-push/then-replace URL state machine and Back-to-collapse behavior
    to map-driven navigation
@@ -926,7 +926,7 @@ gated by the feature slices and owner infrastructure actions.
 - Apple + Google OAuth login works end-to-end
 - Map renders with cafe markers from Postgres
 - Dark mode toggles map + UI simultaneously
-- Discovery: mobile peek → half → full and desktop sidebar/detail drawer share
+- Discovery: mobile peek → half → full and desktop sidebar/detail column share
   selection state, one-push/then-replace URL sync, and Back-to-collapse behavior
 - PEEK shows compact work-characteristic icons and the Work-score watermark; HALF shows both scores; FULL uses
   real cafe detail and Helpful/Newest cursor-paginated non-deleted check-ins

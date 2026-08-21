@@ -75,7 +75,7 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
 - [ ] Review PR #128's creation flow with Kimi K3 before merge.
 - [ ] Provide a Kimi K3 discovery artifact for issue #133 covering mobile
-  PEEK/HALF/FULL, desktop sidebar/detail drawer, compact place-characteristic
+  PEEK/HALF/FULL, desktop sidebar/detail column, compact place-characteristic
   icons, both-score hierarchy, Navigate / Check in / Share placement, the
   Helpful/Newest control, tablet landscape, failure/Retry and missing-cafe toast
   states, non-modal focus, and the accepted drag/scroll behavior.

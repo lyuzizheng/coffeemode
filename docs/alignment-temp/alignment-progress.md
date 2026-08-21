@@ -181,7 +181,7 @@ DG22–DG30 by owner agreement with the Kimi recommendations.
 | DG39 | Creation login gate | Composing works logged-out (link analysis, scores, policies, note, locally staged photos); sign-in is required at Publish; fully anonymous publishing rejected (rate-limit/abuse/data-integrity). Specs 0001/0002 amended |
 | DG40 | Mandatory overall | The `overall` slider is required per check-in; the other five dimensions stay optional. Spec 0001 amended |
 | DG41 | First-run guidance | No filter-specific popup; the one-time onboarding card plus the empty-search hint line carry first-visit guidance |
-| DG42 | Desktop detail placement | Cafe detail is a second left column immediately right of the sidebar; the map fills the remaining width; no right-side drawer. Supersedes DG1's "right detail drawer". Specs 0001/0002 + discovery-sheet-v1 §7 amended |
+| DG42 | Desktop detail placement | Cafe detail is a second left column immediately right of the sidebar; the map fills the remaining width; no right-side drawer. Supersedes DG1's "right detail drawer" and DG20's "sidebar/drawer" phrasing (the DG20 breakpoint itself stands). Specs 0001/0002 + discovery-sheet-v1 §7 amended |
 | DG43 | PEEK score watermark | The Work score appears in PEEK as a large low-contrast watermark numeral (non-content graphic: ≤8% opacity, `aria-hidden`, single hue, no battery gauge, no multi-hue gradient) plus its exact value in the meta line. Specs 0001/0002 + 0004 §5 (type-ceiling exemption) amended |
 
 Still open: the BottomSheet implementation question (bespoke Framer Motion vs

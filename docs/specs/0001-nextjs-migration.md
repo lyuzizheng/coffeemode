@@ -10,7 +10,7 @@ This is a rewrite, not a migration. The old Vite SPA (`_archive-coffeemode-front
 
 ## Status
 
-Accepted (revised 2026-08-21 — overall slider mandatory per check-in (DG40); creation composes logged-out with local draft, sign-in at publish (DG39); desktop detail becomes a second left column (DG42); PEEK Work-score watermark (DG43); 2026-08-20 — discovery ranking, recovery, accessibility, missing-cafe, responsive, feed, anonymity, dismissal, and gesture contracts; 2026-08-19 — responsive discovery contract and Kimi K3 design gate; 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
+Accepted (revised 2026-08-21 — search-as-you-type ≥3 chars with 400ms debounce, top-10 suggestions without pagination, weak-results threshold, removable filter chips, session-scoped filters, food-only D1 caching, distance labeling (DG44–DG49, DG51–DG58); launch expands from Singapore-only to ~10 launch cities with ISO/IATA city codes (DG50); overall slider mandatory per check-in (DG40); creation composes logged-out with local draft, sign-in at publish (DG39); desktop detail becomes a second left column (DG42); PEEK Work-score watermark (DG43); 2026-08-20 — discovery ranking, recovery, accessibility, missing-cafe, responsive, feed, anonymity, dismissal, and gesture contracts; 2026-08-19 — responsive discovery contract and Kimi K3 design gate; 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
 
 ## Stable decisions
 
@@ -737,25 +737,42 @@ Two search modes:
 2. City search + nomad filters (not geo-radius search)
    - Scope: current city (or city picked by user).
    - Text query: name FTS on own cafes and saved POIs.
+     - Search-as-you-type starts at 3 characters, 400ms debounce (DG44/DG47).
+     - Suggestion rows: top 10 only, rendered under the search bar; no
+       pagination, no "next page" (DG46).
+     - Submit (Enter / search button) shows the results view; plotting results
+       on the map belongs to map-discovery-integration (DG46).
+     - Keyboard contract: Enter submits, Esc clears the query and dismisses
+       suggestions (DG56).
+     - Empty query shows a hint line only — no recents/history (DG55).
    - Filters:
      - dimension minima: wifi, outlets, seats, temp, coffee, overall (0-100 thresholds)
      - min_spend: none | drink | s5 | s10 | s10plus
      - max_stay: unlimited | 3h | 2h | 1h | peak
-     - open_now: boolean
+     - open_now: boolean (default OFF — DG53)
      - future: price_range, policy consensus, work_score threshold
-   - Empty/weak local results → prompt "Search Google / Apple Maps"
+     - Active filters render as removable chips above the result list (DG54).
+     - Filter state is session-scoped; the selected city persists per the
+       storage rules (DG51).
+   - Distances are from the user location when known, otherwise from city
+     center and labeled as such (DG58).
+   - Weak local results (< 3 matches) or empty → prompt "Search Google /
+     Apple Maps" (DG49)
 
 External search (on demand):
   Google: POI service live Places search → results shown AND stored in D1
   Apple:  MapKit JS client search → refs POSTed to POI service
   → every external search enriches the reusable POI store (billing + flywheel)
+  → only food/cafe-category POIs are persisted to D1; unrelated places
+    (ATMs, clinics, etc.) are shown but never cached (DG52)
 
 Distance search on D1: SQLite has no spatial index, but Worker-side haversine
   scan is fine at city scale (thousands of POIs). Escape hatch: if a region's
   saved POIs exceed ~50K, mirror hot POIs into Postgres PostGIS.
 
 Search is a growth flywheel: every miss becomes a potential new cafe.
-Deep-linkable: /search?q=...&city=...&filter_wifi=... (SSR for shareability)
+Deep-linkable: /search?q=...&city=...&filter_wifi=... (SSR for shareability);
+  live filter changes use history replace, never push (DG48)
 Filter UX: thumb-friendly surface, designed in theme-preview before implementation.
 ```
 
@@ -763,7 +780,12 @@ Filter UX: thumb-friendly surface, designed in theme-preview before implementati
 
 ```text
 Global product, current-city only (no "home city" concept).
-MVP: Singapore only; schema supports any city.
+Launch: ~10 cities where specialty coffee culture is strong — Singapore,
+Tokyo, Seoul, Taipei, Shanghai, Bangkok, Hong Kong, Melbourne, Berlin,
+London (DG50). City codes: ISO 3166-1 alpha-2 country code + IATA
+metropolitan code (e.g. SG/SIN, JP/TYO, KR/SEL, TW/TPE, CN/SHA, TH/BKK,
+HK/HKG, AU/MEL, DE/BER, GB/LON). Schema supports any city; new cities are
+added by seeding the city table, no schema change.
 
 First visit to /:
   1. IP geolocation → detect country/city

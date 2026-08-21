@@ -3,7 +3,7 @@
 - Slice: `search-filters` (issue #135)
 - Status: **Draft — pending owner approval**
 - Author: Kimi K3
-- Date: 2026-08-20
+- Date: 2026-08-20 (revised 2026-08-21 — grill round 10 rulings DG44–DG58)
 - Base: stacked on `docs/design/discovery-sheet-v1.md` (icon set, tokens,
   state language are shared)
 - Specs: `docs/specs/0001-nextjs-migration.md` §Search, §Rendering strategy;
@@ -54,6 +54,14 @@ numbers into the same deep-linkable URL parameters (`filter_wifi=60`).
   Tapping it opens the **search overlay**: full-screen, `overlay` surface,
   slides up 300ms `ease.default`. Search field autofocused at top with a
   city scope chip beside it (§5).
+- **Suggestions (search-as-you-type)**: results appear from 3 characters
+  (DG44), debounced 400ms (DG47), as **suggestion rows directly under the
+  search bar** — top 10 matches, no pagination, no "next page" (DG46).
+  Tapping a suggestion opens that place; submitting (Enter / search button)
+  opens the full **results view** in the overlay (§6). Plotting submitted
+  results onto the map belongs to `map-discovery-integration`.
+- **Keyboard**: Enter submits the current query; Esc clears the query and
+  dismisses suggestions; with an empty query, Esc closes the overlay (DG56).
 - **Filter entry**: a Filter button (funnel glyph + active-count badge, e.g.
   `· 3`) pinned at the right end of the search field row. It opens the
   **filter panel**: a HeroUI modal bottom sheet, content-height detent, 85%
@@ -61,15 +69,23 @@ numbers into the same deep-linkable URL parameters (`filter_wifi=60`).
   sheet, this is a bounded task — focus is contained while it is open, `Esc`,
   scrim tap, or drag-down closes it, and closing returns focus to the Filter
   button.
+- **Active filter chips**: when ≥1 filter is active, removable chips render
+  in a horizontal row directly under the search bar (above results), one per
+  active filter with an `✕` (DG54). Removing a chip clears that filter and
+  refetches.
 - **Results**: render inside the search overlay as a vertical list (§6).
 
 ### Desktop (≥1024px)
 
 - Search field + Filter button live at the top of the 380px discovery
-  sidebar (the 48px row reserved by `discovery-sheet-v1` §7).
+  sidebar (the 48px row reserved by `discovery-sheet-v1` §7). Suggestions
+  render as a top-10 dropdown directly under the field — same 3-character
+  trigger and 400ms debounce as mobile.
 - The filter panel is **inline**: a collapsible section directly under the
   search row, pushing results down — no modal on desktop. Same controls, same
   order, two-column grid for the dimension segments when width allows.
+- Active filter chips render under the search row (above results), same as
+  mobile (DG54).
 - Results render as the sidebar list (shared selection state with discovery).
 
 ### SSR `/search`
@@ -87,7 +103,8 @@ Panel header: `Filters` (`text-lg`) left; live result count right
 when ≥1 filter is active.
 
 1. **Open now** — Switch row, always first (time-sensitive intent). Label +
-   switch, 48px row height.
+   switch, 48px row height. Default **OFF** (DG53) — nothing is active until
+   the user touches a control.
 2. **Work dimensions** — six rows (wifi, outlets, seats, temp, coffee,
    overall). Each row: the 14px characteristic icon (discovery-sheet-v1 §2
    set) + label (`text-sm`, 96px) + a three-segment control:
@@ -102,19 +119,25 @@ when ≥1 filter is active.
    filter — filtering by "unknown" selects cafes with no data, which is a
    research tool, not a nomad tool.
 
-**Live apply**: every change applies immediately — results refetch, the URL
-replaces (no history spam), and the header count updates. There is no Apply
+**Live apply**: every change applies immediately — results refetch (debounced
+400ms against rapid toggling, DG47), the URL replaces (never pushes — no
+history spam, DG48), and the header count updates. There is no Apply
 button. Reflow uses Framer `layoutId` list animation (spec 0002 signature
 moment); in-flight changes keep the last successful list with a small inline
 refresh shimmer at the list head, never skeletons over real content.
+**Filter state is session-scoped**: closing the tab clears filters; only the
+selected city persists (DG51, per the spec's storage rules).
 
 ## 5. City scope
 
 City is scope, not a filter: a compact chip button at the left end of the
 search field row — `Singapore ▾` (`text-sm`, `surface-secondary`,
-`radius-sm`, chevron 12px). It opens a `Select` popover of supported cities
-(MVP: Singapore; schema supports more). Changing city clears `q` results and
-refetches; the city persists per the spec's storage rules.
+`radius-sm`, chevron 12px). It opens a `Select` popover of supported cities:
+the ~10 launch cities — Singapore, Tokyo, Seoul, Taipei, Shanghai, Bangkok,
+Hong Kong, Melbourne, Berlin, London (DG50; spec 0001 §Onboarding & city
+model owns the code scheme: ISO 3166-1 alpha-2 + IATA metro). Changing city
+clears `q` results and refetches; the city persists per the spec's storage
+rules (DG51).
 
 ## 6. Result list
 
@@ -122,7 +145,19 @@ Rows reuse the discovery card content language (consistency beats novelty):
 72px 4:3 cover (or a `surface-tertiary` placeholder block with the cup glyph
 for coverless POIs), name (`font-display`, `text-md`), meta line
 (`area · 1.2 km · Open until 22:00`), and the ≤4 characteristic icon row for
-cafes that have work data.
+cafes that have work data. Distance in the meta line is from the user's
+location when known; otherwise it is computed from the city center and
+labeled as such (`1.2 km from city center`, DG58).
+
+**Two result shapes, one row language** (DG46):
+
+- **Suggestion rows** (search-as-you-type, top 10): compact single-line rows
+  under the search bar — name + meta line, no cover thumbnail. Density beats
+  richness here; the user is typing, not browsing.
+- **Results view** (after submit): full rows as above, vertical list; size
+  follows the DG46 top-10 cap with no pagination — relevance ends the list,
+  not a pager. The external prompt (below) is the overflow path when local
+  results run out.
 
 Row types, visually distinguished:
 
@@ -134,12 +169,14 @@ Row types, visually distinguished:
   background — text with a small `+` glyph). Selecting it enters the creation
   flow (owned by the `cafe-creation` slice; this artifact only reserves the
   entry point).
-- **External prompt** — when local results are empty or weak, a footer block
-  replaces "more results" chrome: display-font line `Not finding it?`
-  (`text-md`), then two outline buttons `Search Google Maps` /
-  `Search Apple Maps` (Apple hidden until owner credentials land — the
-  configuration gate is spec-owned). External results append into the same
-  list with the POI badge treatment.
+- **External prompt** — when local results are empty or **weak (fewer than
+  3 matches, DG49)**, a footer block replaces "more results" chrome:
+  display-font line `Not finding it?` (`text-md`), then two outline buttons
+  `Search Google Maps` / `Search Apple Maps` (Apple hidden until owner
+  credentials land — the configuration gate is spec-owned). External results
+  append into the same list with the POI badge treatment. Only
+  food/cafe-category external POIs are persisted to the D1 store; unrelated
+  places are shown but never cached (DG52, spec-owned rule).
 
 ## 7. States
 
@@ -151,7 +188,7 @@ Row types, visually distinguished:
   from §6.
 - **No query yet**: the overlay shows the city scope and a single hint line
   `Search cafes, neighborhoods, or addresses` (`text-sm`, `muted`) — no
-  recents/history (browsing history is out of MVP scope).
+  recents/history (browsing history is out of MVP scope, DG55).
 - **Fetch failure**: last successful list preserved; inline row `Couldn't
   search` + outline `Retry` (`accent`), matching discovery-sheet-v1 §9.
 - **Offline**: global offline banner; search overlay still opens but external
@@ -204,6 +241,17 @@ Keys under `search.*` and `filters.*` (en/zh). zh references: `Filters` →
 - [ ] Live apply keeps the last good list during refetch (no skeleton flash).
 - [ ] Desktop inline filter section and mobile sheet share control order.
 - [ ] Dark mode requires no per-component overrides.
+- [ ] Suggestions appear from 3 characters, top 10 only, under the search
+      bar — no pagination anywhere in search (DG44/DG46).
+- [ ] Active filters render as removable chips above results; removing one
+      refetches (DG54).
+- [ ] Enter submits, Esc clears/dismisses — verified with keyboard only
+      (DG56).
+- [ ] With <3 local matches, the external-search prompt appears (DG49).
+- [ ] Distances read "from city center" when user location is unknown
+      (DG58).
+- [ ] City popover lists the launch-city set; changing city clears query
+      results (DG50).
 
 ## Out of scope (other slices)
 

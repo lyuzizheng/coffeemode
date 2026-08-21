@@ -335,6 +335,10 @@ Anonymous sessions (DG76): Supabase anonymous sign-in issues a session on
   navigation recording, the navigation→check-in prompt, and local drafts all
   work pre-login. Upgrading to Apple/Google links the same account (no data
   loss). Rate limits treat an anonymous session as a per-session user.
+  Privilege split: anonymous sessions cover navigation recording, the
+  prompt, drafts, and rate-limit identity only — publishing and photo
+  upload still require a provider-linked (Apple/Google) account
+  (DG39/DG59/DG66 unchanged).
 No email infra, no magic links.
 ```
 

@@ -10,7 +10,7 @@ This is a rewrite, not a migration. The old Vite SPA (`_archive-coffeemode-front
 
 ## Status
 
-Accepted (revised 2026-08-21 — search-as-you-type ≥3 chars with 400ms debounce, top-10 suggestions without pagination, weak-results threshold, removable filter chips, session-scoped filters, food-only D1 caching, distance labeling (DG44–DG49, DG51–DG58); launch expands from Singapore-only to ~10 launch cities with ISO/IATA city codes (DG50); overall slider mandatory per check-in (DG40); creation composes logged-out with local draft, sign-in at publish (DG39); desktop detail becomes a second left column (DG42); PEEK Work-score watermark (DG43); 2026-08-20 — discovery ranking, recovery, accessibility, missing-cafe, responsive, feed, anonymity, dismissal, and gesture contracts; 2026-08-19 — responsive discovery contract and Kimi K3 design gate; 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
+Accepted (revised 2026-08-21 — check-in write integrity and UX contracts: upload-on-select photos with auth-gated presigned issuance, idempotency keys, edit-does-not-refresh-recency, 90-day Same-as-last-time window, 1-per-cafe-per-24h limit, 500-char notes, 6-photo cap, bidirectional temperature scale, multi-provider sign-in gate (DG59–DG73); universal YAML-configured rate limiting across all APIs and scripts (DG74); search-as-you-type ≥3 chars with 400ms debounce, top-10 suggestions without pagination, weak-results threshold, removable filter chips, session-scoped filters, food-only D1 caching, distance labeling (DG44–DG49, DG51–DG58); launch expands from Singapore-only to ~10 launch cities with ISO/IATA city codes (DG50); overall slider mandatory per check-in (DG40); creation composes logged-out with local draft, sign-in at publish (DG39); desktop detail becomes a second left column (DG42); PEEK Work-score watermark (DG43); 2026-08-20 — discovery ranking, recovery, accessibility, missing-cafe, responsive, feed, anonymity, dismissal, and gesture contracts; 2026-08-19 — responsive discovery contract and Kimi K3 design gate; 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
 
 ## Stable decisions
 
@@ -441,7 +441,7 @@ Photos on the creation/check-in write paths (issue #86):
   - Intents are single-use and consumed inside the creation transaction; a
     foreign, expired, or replayed id aborts the whole write (400
     invalid_photos, no oracle on which id or why).
-  - Cap: 10 photos per check-in.
+  - Cap: 6 photos per check-in (DG68; amends the earlier 10).
 
 Auth:
   - Browser: Supabase session cookie
@@ -632,20 +632,42 @@ Tier 3 (Post-MVP):
 ### Check-in (打卡) system
 
 ```text
-Dimensions (sliders 0-100; `overall` is required per check-in (DG40), the
+Dimensions (sliders 0-100, continuous integer — no snapped steps (DG60);
+  `overall` is required per check-in (DG40), the
   other five are optional — at least one dimension is encouraged, not forced):
   wifi, outlets, seats, temp, coffee, overall
+  - temp is bidirectional: too cold ↔ too hot, ideal at the midpoint;
+    aggregation maps distance-from-50 → score (DG73)
 
 Policies (chip select, optional per check-in):
   min_spend: none | drink | s5 | s10 | s10plus | unknown
   max_stay:  unlimited | 3h | 2h | 1h | peak | unknown
   "unknown" is a first-class answer — honest data beats forced guesses.
 
+Note: optional free text, 500 chars max, public immediately (DG67).
+  Moderation lever at MVP: a Report overflow item on feed cards; no queue.
+
 Rules:
-  - Multiple check-ins per cafe allowed (state changes over time)
-  - No restriction: no navigation required before checking in
+  - Multiple check-ins per cafe allowed (state changes over time), but at
+    most 1 per cafe per user per 24h — further same-day visits edit the
+    existing check-in (DG64; enforced via the universal rate limiter, DG74)
+  - No restriction: no navigation required before checking in, no geofence
+    or presence verification at MVP (DG65)
   - Repeat visit: prompt "Same as last time?" → [same] pre-fills last scores
-    (user adjusts if changed). Repeats are weighted by recency, they don't stack.
+    (user adjusts if changed). Repeats are weighted by recency, they don't
+    stack. Offered only when the last check-in is <90 days old (DG63).
+  - Write integrity: client sends an idempotency key (UUID per drawer open);
+    server enforces uniqueness so retries never double-record (DG61)
+  - Editing a check-in updates values only; recency weighting always keys
+    off the original visited_at (DG62)
+  - Composing works logged-out (scores, policies, note, locally staged
+    photos); publish requires sign-in via a sheet offering all configured
+    providers (Apple + Google, DG66). Photo UPLOAD requires auth: presigned
+    URLs are issued only to authenticated sessions, so logged-out drafts
+    hold photos locally until sign-in (DG59).
+  - Photos upload on selection (progress overlay on the thumbnail, user keeps
+    composing); submit is instant. Orphan uploads (never referenced by a
+    saved check-in) are swept by the R2 lifecycle rule (DG59).
   - Feedback: button morphs to ✓ + micro coffee-steam animation + toast.
     Restrained, memorable, no confetti. (Detailed visual design → Kimi)
   - Check-in photos go to checkins.photos AND auto-merge into cafes.gallery
@@ -915,6 +937,29 @@ gated by the feature slices and owner infrastructure actions.
 8. Daily time-decayed Helpful ranking snapshots (#140)
 ```
 
+### Rate limiting (universal — DG74)
+
+```text
+One rate-limiting mechanism covers ALL API routes and script/automation
+entry points (migrations runner, nightly recompute, orphan sweep, etc.).
+
+Config: a single `web/config/rate-limits.yaml` — per-route/per-script
+limits (requests, window, scope). Scope is per-user when authenticated,
+per-IP otherwise. Code never hardcodes limits; adding or tuning a limit
+is a config edit, not a code change.
+
+Implementation: in-memory token bucket keyed through an LRU map inside the
+Next.js process (e.g. a thin wrapper over `lru-cache`), enforced via one
+middleware/helper every route and script calls. In-memory is correct at
+MVP scale (single VPS container); the config schema + enforcement
+interface are the contract, so swapping the store for Redis/Upstash under
+multi-instance scale is a config change, not a redesign.
+
+Product rules expressed through it: per-user caps on image
+upload/complete and POI resolve/search; 1 check-in per cafe per user per
+24h (DG64); auth attempts.
+```
+
 ## Edge cases
 
 ```text
@@ -937,7 +982,7 @@ gated by the feature slices and owner infrastructure actions.
 - Image upload cap: 10 MB max in presigned PUT; R2 lifecycle cleans orphan original/ objects
 - maps_share_url validation: only known Google/Apple Maps hosts before proxying
 - Search radius cap: nearby is 10 km; city search has no geo radius
-- Rate limiting: per-user caps on image upload/complete and POI resolve/search
+- Rate limiting: universal mechanism + `rate-limits.yaml` (see §Rate limiting — DG74)
 ```
 
 ## Tests / acceptance criteria

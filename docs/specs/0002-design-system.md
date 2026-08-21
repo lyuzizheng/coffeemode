@@ -237,7 +237,7 @@ ease.smooth        [0.4, 0, 0.2, 1]       standard material-like
 ### Signature moments
 
 ```text
-- Map marker tap → sheet rises peek → half (velocity-aware, HeroUI Drawer)
+- Map marker tap → sheet rises peek → half (velocity-aware, bespoke Framer Motion sheet per DG75)
 - Swipe cards: smooth scroll snap + subtle parallax on cover image;
   active card scales ~1.02, neighbors dim slightly — eye-catching but restrained
 - Check-in confirm: button morphs to ✓ + micro coffee-steam animation + toast

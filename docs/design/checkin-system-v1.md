@@ -157,8 +157,10 @@ HeroUI confirmation popover (`Delete? This removes your scores.` /
   check-in mutations. (Owner decision, 2026-08-21 — DG27.)
 - **Validation**: the only rule is ≥1 slider; it is handled by the disabled
   state + hint (§3.6), never by an error toast after the fact.
-- **Drawer dismissed with input**: if any control is dirty (a slider set, a
-  chip selected, note text, or a photo staged), dismissal pauses on a HeroUI
+- **Drawer dismissed with input**: "dirty" means the drawer's state differs
+  from its opening state — in edit mode the pre-filled values are the
+  baseline, so closing an untouched edit drawer never prompts. If dirty,
+  dismissal pauses on a HeroUI
   confirmation: `Discard this check-in?` with `Keep editing` (ghost) and
   `Discard` (`danger` text-button). A pristine drawer closes immediately —
   the confirm appears only when there is something to lose. Draft

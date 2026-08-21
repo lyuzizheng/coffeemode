@@ -161,7 +161,7 @@ DG22–DG30 by owner agreement with the Kimi recommendations.
 | DG26 | Edit-mode dimension removal | Allowed: in edit mode a set slider row carries a small × returning it to unset; composing stays strict. Applied to `docs/design/checkin-system-v1.md` §3.2/§5 |
 | DG27 | Offline check-ins | Check-in mutations disabled offline (generalizing spec 0004 §18's creation rule; no mutation queue). Applied to `docs/design/checkin-system-v1.md` §6 |
 | DG28 | Nav-prompt timer pause | The 8s auto-collapse pauses on hover/focus/touch; an untouched card still collapses |
-| DG29 | Deep-link banner dismissal | Permanent via a `localStorage` flag in the onboarding storage family. Applied to `docs/design/seo-sharing-v1.md` §3 |
+| DG29 | Deep-link banner dismissal | Permanent via a `localStorage` flag in the onboarding storage family. Applied in PR #165 (commit 43b0941, `docs/design/seo-sharing-v1.md` §3) |
 | DG30 | Profile pagination | `Load more` button at 20 per page; no infinite scroll |
 
 ## Decisions log

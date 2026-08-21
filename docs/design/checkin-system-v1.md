@@ -43,7 +43,9 @@ follow:
   sheet** (spec 0002 layout) — the discovery sheet dims to 60% and is
   inert while the drawer is open. Modal task surface, same a11y treatment as
   the search filter panel (`role="dialog"`, focus containment, `Esc`/scrim
-  close, focus returns to the Check in button).
+  close, focus returns to the Check in button). The drawer pads its footer
+  (confirm button) by `env(safe-area-inset-bottom)` and sizes detents in
+  `dvh` per the spec 0002 viewport contract (DG75).
 - **Desktop**: Drawer placement right, 420px, same content, single column.
 - Header: cafe name only (`font-display`, `text-lg`, truncated) plus a 36px
   ghost close (×) top-right. No `Check in` title — the confirm button at the

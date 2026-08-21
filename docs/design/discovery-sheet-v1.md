@@ -4,7 +4,8 @@
 - Status: **Draft — pending owner approval**
 - Author: Kimi K3
 - Date: 2026-08-20 (revised 2026-08-21 — FULL header gains the
-  `Edit your check-in` row per DG72)
+  `Edit your check-in` row per DG72; bespoke Framer Motion sheet +
+  viewport/safe-area contract per DG75)
 - Specs: `docs/specs/0001-nextjs-migration.md` (rendering strategy, discovery
   contract), `docs/specs/0002-design-system.md` (tokens, motion, a11y),
   `docs/specs/0004-product-decisions-and-backlog.md` §18b–18g, DG1–DG20
@@ -107,7 +108,15 @@ Placement:
 
 ## 5. Mobile sheet composition
 
-One sheet, three snap states. Drag handle: 36×4px, `radius-full`,
+One sheet, three snap states. Implementation is a **bespoke Framer Motion
+sheet** (DG75 — drag physics, detent snapping, and the DG15 scroll handoff
+under our control; no third-party sheet library). Detent heights and the
+sheet's geometry use `dvh` units and the footer/FAB zones pad by
+`env(safe-area-inset-bottom)` per the spec 0002 viewport & safe-area
+contract — browser chrome collapse and the home-indicator area never shift
+or cover content.
+
+Drag handle: 36×4px, `radius-full`,
 `separator` color, centered, 8px top inset. Sheet surface `overlay`, top
 radius `radius-lg`, `shadow-lg` warm tint, 1px top `border`.
 

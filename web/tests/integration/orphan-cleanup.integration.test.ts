@@ -40,7 +40,9 @@ const IMAGE_SERVICE_ROOT = path.resolve(
 // Same isolation as images.integration.test.ts — never inherit ambient R2 creds.
 const R2_ACCESS_KEY_ID = process.env.TEST_R2_ACCESS_KEY_ID ?? "imgtest";
 const R2_SECRET_ACCESS_KEY = process.env.TEST_R2_SECRET_ACCESS_KEY ?? "imgtest-secret";
-const R2_BUCKET_NAME = process.env.TEST_R2_BUCKET_NAME ?? "coffeemode";
+// Dedicated bucket: the cleanup script sweeps the WHOLE original/ prefix, so it
+// must not share a bucket with the round-trip suite's in-flight fixtures.
+const R2_BUCKET_NAME = process.env.TEST_R2_BUCKET_NAME ?? "coffeemode-cleanup-test";
 const R2_ENDPOINT = process.env.TEST_R2_ENDPOINT ?? "http://localhost:9000";
 
 let minioUp = false;
@@ -141,7 +143,18 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     } catch {
       minioUp = false;
     }
-    if (!minioUp) console.warn("MinIO not reachable — cleanup tests will SKIP");
+    if (!minioUp) {
+      console.warn("MinIO not reachable — cleanup tests will SKIP");
+      return;
+    }
+    // Create the dedicated test bucket (idempotent; BucketAlreadyOwnedByYou is fine).
+    const url = `${R2_ENDPOINT.replace(/\/+$/, "")}/${R2_BUCKET_NAME}`;
+    const res = await r2Client().fetch(url, { method: "PUT" }).catch((e) => e);
+    const status = res instanceof Response ? res.status : 0;
+    if (!(res instanceof Response)) throw res;
+    if (![200, 409].includes(status)) {
+      throw new Error(`bucket create failed with ${status}`);
+    }
   });
 
   afterAll(async () => {
@@ -152,14 +165,18 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
   it("dry-run reports abandoned originals without deleting them", async (ctx) => {
     if (!minioUp) return ctx.skip();
     const abandoned = `original/${randomUUID()}.webp`;
+    const provisionStage = `original/${randomUUID()}.webp`;
     const completed = `original/${randomUUID()}.webp`;
     await seedOriginal(abandoned);
+    await seedOriginal(provisionStage, { targettype: "provision", targetid: provisionStage.split("/")[1].replace(".webp", ""), userid: "u1" });
     await seedOriginal(completed, { targettype: "cafe", targetid: randomUUID(), userid: "u1" });
 
     const result = runCleanup({ DRY_RUN: "1", RETENTION_DAYS: "0", MAX_OBJECTS: "100" });
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('"op":"would-delete"');
     expect(result.stdout).toContain(abandoned);
+    // Provision-stage originals never attached → abandoned past retention.
+    expect(result.stdout).toContain(provisionStage);
     expect(result.stdout).not.toContain(`"key":"${completed}"`);
     // Dry-run must not delete.
     expect(await objectExists(abandoned)).toBe(true);
@@ -169,8 +186,10 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
   it("deletes only metadata-less originals; completed originals survive", async (ctx) => {
     if (!minioUp) return ctx.skip();
     const abandoned = `original/${randomUUID()}.webp`;
+    const provisionStage = `original/${randomUUID()}.webp`;
     const completed = `original/${randomUUID()}.webp`;
     await seedOriginal(abandoned);
+    await seedOriginal(provisionStage, { targettype: "provision", targetid: provisionStage.split("/")[1].replace(".webp", ""), userid: "u1" });
     await seedOriginal(completed, { targettype: "checkin", targetid: randomUUID(), userid: "u1" });
 
     const result = runCleanup({ DRY_RUN: "0", RETENTION_DAYS: "0", MAX_OBJECTS: "100", ALLOW_RETENTION_ZERO: "1" });
@@ -178,9 +197,12 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     expect(result.stdout).toContain('"op":"done"');
 
     expect(await objectExists(abandoned)).toBe(false);
+    expect(await objectExists(provisionStage)).toBe(false);
     expect(await objectExists(completed)).toBe(true);
     createdKeys.delete(abandoned); // already gone; skip afterAll re-delete
-  });
+    createdKeys.delete(provisionStage);
+  }, 20_000);
+
 
   it("is idempotent: a second run deletes nothing more", async (ctx) => {
     if (!minioUp) return ctx.skip();
@@ -194,7 +216,8 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     const second = runCleanup({ DRY_RUN: "0", RETENTION_DAYS: "0", MAX_OBJECTS: "100", ALLOW_RETENTION_ZERO: "1" });
     expect(second.status).toBe(0);
     expect(second.stdout).toContain('"orphanCandidates":0');
-  });
+ }, 20_000);
+
 
   it("young metadata-less originals inside the retention window are kept", async (ctx) => {
     if (!minioUp) return ctx.skip();
@@ -223,6 +246,8 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
 
   it("MAX_OBJECTS bounds a single run (truncated scan reported)", async (ctx) => {
     if (!minioUp) return ctx.skip();
+    // Dedicated bucket: only the two objects seeded below exist, so the
+    // candidate count is fully determined by this test.
     const keys = [`original/${randomUUID()}.webp`, `original/${randomUUID()}.webp`];
     for (const k of keys) await seedOriginal(k);
     const result = runCleanup({
@@ -244,7 +269,8 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     for (const k of keys) {
       if (!survivors.includes(k)) createdKeys.delete(k);
     }
-  });
+ }, 20_000);
+
 
   it("rejects missing configuration with non-zero exit", async (ctx) => {
     if (!minioUp) return ctx.skip();

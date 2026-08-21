@@ -32,9 +32,17 @@ export interface UploadUrlResponse {
   size?: number;
 }
 
+/**
+ * Stage marker for pre-target processing (issue #86/#158): the creation flow
+ * completes uploads before the cafe/check-in exists. The worker stamps
+ * targetType="provision" + targetId=<imageUuid>; the attach flow re-PUTs
+ * with the real target later.
+ */
+export type CompleteStageType = ImageTargetType | "provision";
+
 export interface CompleteImageRequest {
   imageUuid: string;
-  targetType: ImageTargetType;
+  targetType: CompleteStageType;
   targetId: string;
   isCover?: boolean;
 }

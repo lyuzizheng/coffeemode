@@ -239,6 +239,48 @@ describe("handleComplete", () => {
     expect(response.status).toBe(400);
   });
 
+  it("accepts the provision stage (issue #86): stamps targetId=imageUuid", async () => {
+    const env = baseEnv();
+    const imageUuid = validUuid();
+    await env.R2_BUCKET.put(`original/${imageUuid}.webp`, new Uint8Array([0xde]), {
+      httpMetadata: { contentType: "image/webp" },
+    });
+
+    const response = await handleComplete(
+      makeRequest("POST", "/v1/images/complete", {
+        imageUuid,
+        userId: "u1",
+        targetType: "provision",
+        targetId: "ignored-by-worker",
+      }),
+      env,
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as { originalPut: { headers: Record<string, string> } };
+    // Provision stage pairs the marker with the object itself so the cleanup
+    // contract holds while the real target does not exist yet.
+    expect(data.originalPut.headers["x-amz-meta-targettype"]).toBe("provision");
+    expect(data.originalPut.headers["x-amz-meta-targetid"]).toBe(imageUuid);
+  });
+
+  it("rejects unknown targetType values", async () => {
+    const env = baseEnv();
+    const imageUuid = validUuid();
+    await env.R2_BUCKET.put(`original/${imageUuid}.webp`, new Uint8Array([0xde]), {
+      httpMetadata: { contentType: "image/webp" },
+    });
+    const response = await handleComplete(
+      makeRequest("POST", "/v1/images/complete", {
+        imageUuid,
+        userId: "u1",
+        targetType: "gallery",
+        targetId: "c1",
+      }),
+      env,
+    );
+    expect(response.status).toBe(400);
+  });
+
   it("requires targetType and targetId (issue #158 cleanup contract)", async () => {
     const env = baseEnv();
     const imageUuid = validUuid();

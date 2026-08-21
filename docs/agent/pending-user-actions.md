@@ -64,8 +64,9 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
     scheduled workflow via #154) with least-privilege R2 credentials that allow
     List/Head/Delete on `original/` only: first run with `DRY_RUN=1
     RETENTION_DAYS=7`, review the JSON output, then set `DRY_RUN=0`. The script
-    deletes only metadata-less originals; live gallery originals carry
-    `x-amz-meta-targettype` and are never matched.
+    deletes marker-less originals and provision-stage uploads that were never
+    attached; live gallery originals carry `x-amz-meta-targettype` of
+    cafe|checkin and are never matched.
 
 ## 7. Domain + deploy (later phase)
 

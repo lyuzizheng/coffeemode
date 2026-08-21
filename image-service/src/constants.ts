@@ -11,13 +11,16 @@
  *
  * Lifecycle (issue #158): R2 lifecycle rules cannot inspect custom metadata
  * (targetType / targetId), so a blanket age rule on `original/` is UNSAFE —
- * completed gallery originals live under the same prefix. The safe cleanup is
+ * completed gallery originals live under the same prefix. complete() REQUIRES
+ * stage metadata on every call: targetType="provision" + targetId=<imageUuid>
+ * for the pre-target creation flow (issue #86), or "cafe"/"checkin" + the real
+ * id for attached originals. The safe cleanup is
  * `scripts/clean-orphan-originals.mjs` (npm run clean:orphan-originals): it
  * lists `original/` objects older than RETENTION_DAYS and deletes only those
- * WITHOUT completion metadata (`x-amz-meta-targettype`), which complete()
- * always sets on live originals. DRY_RUN=1 default; cursor-paginated and
- * batch-bounded; idempotent. #154 schedules it in production with
- * least-privilege R2 credentials (#147).
+ * WITHOUT a marker or still in the "provision" stage (never attached). Live
+ * cafe/checkin originals are never matched. DRY_RUN=1 default;
+ * cursor-paginated and batch-bounded; idempotent. #154 schedules it in
+ * production with least-privilege R2 credentials (#147).
  */
 import { MAX_UPLOAD_BYTES } from "../../web/shared/images/constants";
 
@@ -25,6 +28,15 @@ export { MAX_UPLOAD_BYTES };
 
 /** Cache-Control for immutable WebP variants served through Cloudflare. */
 export const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
+
+/**
+ * Stage marker for pre-target processing (issue #86 creation flow): complete()
+ * is called before the cafe/check-in exists, so the original is stamped
+ * targetType="provision" + targetId=<imageUuid>. The attach flow re-PUTs with
+ * the real target later. The #158 cleanup treats provision-stage objects past
+ * retention as abandoned (an upload that never attached).
+ */
+export const PROVISION_TARGET_TYPE = "provision";
 
 /** Default TTL (seconds) for presigned upload/download URLs. The
  *  UPLOAD_URL_TTL_SECONDS wrangler var overrides this when set. */

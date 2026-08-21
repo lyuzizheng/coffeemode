@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { QueryResult } from "pg";
-import type { CompleteImageRequest, StoredImage } from "@/types/images";
+import type { CompleteImageRequest, ImageTargetType, StoredImage } from "@/types/images";
 import type { ProcessUrls } from "./image-service-client";
 import type { ProcessedImage } from "./processor";
 
@@ -216,6 +216,9 @@ export async function completeImageUpload(
   const processUrls = await deps.getProcessUrls({ ...req, userId: user.id });
   const processed = await deps.processImage(req.imageUuid, processUrls);
 
+  // The provision stage never reaches here: completeImageUpload attaches to a
+  // real cafe/check-in, so the route validation has already narrowed the type.
+  const sourceType = req.targetType as ImageTargetType;
   const storedImage: StoredImage = {
     id: req.imageUuid,
     original: processUrls.keys.original,
@@ -225,7 +228,7 @@ export async function completeImageUpload(
     h: processed.height,
     by: user.id,
     at: new Date().toISOString(),
-    source: { type: req.targetType, id: req.targetId },
+    source: { type: sourceType, id: req.targetId },
   };
 
   // 3. Atomic DB writes: the single-use intent consume and the attach

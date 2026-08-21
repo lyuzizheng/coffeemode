@@ -4,7 +4,7 @@ import { isValidUUID } from "../../web/shared/uuid";
 import { validateUploadSize } from "../../web/shared/images/validation";
 import { sanitizeMetadata } from "./validate";
 import { headObject, presignedGetUrl, presignedPutUrl, publicUrl, ttlSeconds } from "./r2";
-import { IMMUTABLE_CACHE_CONTROL, MAX_UPLOAD_BYTES } from "./constants";
+import { IMMUTABLE_CACHE_CONTROL, MAX_UPLOAD_BYTES, PROVISION_TARGET_TYPE } from "./constants";
 
 /** Validation failure envelope — same shape as poi-service
  *  ({ error: code, message? }). */
@@ -92,14 +92,33 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
     return error("invalid_request", "imageUuid must be a valid UUID");
   }
 
-  // targetType/targetId are REQUIRED: the cleanup contract (issue #158) treats
-  // metadata-less originals as abandoned. complete() stamps them onto the
-  // re-PUT original, so a completed original without them would be deletable.
+  // Stage metadata is REQUIRED (issue #158 cleanup contract): complete()
+  // stamps it onto the re-PUT original, so a completed original without a
+  // marker would be deletable. Two stages are accepted:
+  //   - provision: targetType="provision", targetId=<imageUuid> — the creation
+  //     flow processes images BEFORE their cafe/check-in target exists
+  //     (issue #86); the attach flow re-PUTs with the real target later.
+  //   - final: targetType="cafe"|"checkin" + target id — live gallery original.
+  // The cleanup script treats "provision"-stage objects older than retention
+  // as abandoned (an upload that never attached) and keeps cafe/checkin ones.
   const safeUserId = sanitizeMetadata(userId);
   const safeTargetType = sanitizeMetadata(targetType);
   const safeTargetId = sanitizeMetadata(targetId);
   if (!safeTargetType || !safeTargetId) {
     return error("invalid_request", "targetType and targetId are required");
+  }
+  let metadataTargetId: string = safeTargetId;
+  if (
+    safeTargetType !== PROVISION_TARGET_TYPE &&
+    safeTargetType !== "cafe" &&
+    safeTargetType !== "checkin"
+  ) {
+    return error("invalid_request", "targetType must be provision, cafe, or checkin");
+  }
+  if (safeTargetType === PROVISION_TARGET_TYPE) {
+    // Provision-stage marker pairs the object with itself: unique per upload,
+    // never collides with a real cafe/checkin UUID.
+    metadataTargetId = imageUuid;
   }
 
   const normalizedUuid = imageUuid.toLowerCase();
@@ -124,7 +143,7 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
   };
   if (safeUserId) metadata.userId = safeUserId;
   metadata.targetType = safeTargetType;
-  metadata.targetId = safeTargetId;
+  metadata.targetId = metadataTargetId;
 
   const [originalGet, originalPut, cardPut, thumbnailPut] = await Promise.all([
     presignedGetUrl(env, keys.original),

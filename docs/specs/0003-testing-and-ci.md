@@ -42,7 +42,8 @@ Accepted
 | --- | --- |
 | `web/` logic/UI | focused test, then `cd web && npm run verify` |
 | `web/db/`, `web/lib/`, DB-backed routes or integration suite | web gate plus `cd web && npm run test:integration` |
-| image pipeline / storage boundary (`image-service/`, `web/lib/images/`) | service gate plus `cd web && npm run test:integration:images` (real MinIO via docker compose) |
+| `image-service/` | `npm run typecheck && npm test` in `image-service/`; storage-boundary changes also `cd web && npm run test:integration:images` (real MinIO via docker compose) |
+| `web/lib/images/` | web gate plus `cd web && npm run test:integration:images` |
 | `poi-service/` | `npm run typecheck && npm test` in `poi-service/` |
 | docs, `.agents/`, `.codex/`, CI authority | preflight + harness self-test + required independent semantic review |
 

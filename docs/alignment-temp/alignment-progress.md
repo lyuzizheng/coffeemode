@@ -184,8 +184,10 @@ DG22–DG30 by owner agreement with the Kimi recommendations.
 | DG42 | Desktop detail placement | Cafe detail is a second left column immediately right of the sidebar; the map fills the remaining width; no right-side drawer. Supersedes DG1's "right detail drawer" and DG20's "sidebar/drawer" phrasing (the DG20 breakpoint itself stands). Specs 0001/0002 + discovery-sheet-v1 §7 amended |
 | DG43 | PEEK score watermark | The Work score appears in PEEK as a large low-contrast watermark numeral (non-content graphic: ≤8% opacity, `aria-hidden`, single hue, no battery gauge, no multi-hue gradient) plus its exact value in the meta line. Specs 0001/0002 + 0004 §5 (type-ceiling exemption) amended |
 
-Still open: the BottomSheet implementation question (bespoke Framer Motion vs
-`react-spring-bottom-sheet`) — Kimi recommends bespoke, owner has not ruled.
+The round-9 parked question — BottomSheet implementation (bespoke Framer
+Motion vs `react-spring-bottom-sheet`) — was resolved 2026-08-21 as DG75:
+owner-delegated, bespoke Framer Motion, plus a universal viewport/safe-area
+contract (see the round-11 table).
 
 ## Round 10 — Search-filters grill — complete
 
@@ -231,7 +233,8 @@ owner-initiated addition (universal rate limiting). Rulings:
 | DG71 | Success moment | Re-explained to owner; spec 0002 auto-close sequence stands (button ✓ morph → steam card 900ms → drawer close → toast) |
 | DG72 | Edit entry points | Feed-card overflow menu + profile check-in history + an `Edit your check-in` row on the cafe detail when a live check-in exists |
 | DG73 | Temperature scale | Bidirectional: too cold ↔ too hot, ideal at midpoint; endpoint captions on the slider row; aggregation maps distance-from-50 → score. Spec 0001 amended |
-| DG74 | Universal rate limiting | Owner-initiated: one mechanism for all API routes AND script/automation entry points, configured in a single `web/config/rate-limits.yaml` (per-route limits/window/scope); in-memory LRU token bucket at MVP with Redis/Upstash as a config-level swap. New spec 0001 §Rate limiting |
+| DG74 | Universal rate limiting | Owner-initiated: one mechanism for all API routes AND script/automation entry points, configured in a single `web/config/rate-limits.yaml` (per-route limits/window/scope); in-memory LRU token bucket at MVP with Redis/Upstash as a config-level swap; the merged Postgres token bucket (#23) is a valid store behind the same interface. New spec 0001 §Rate limiting |
+| DG75 | BottomSheet implementation + safe area | Owner-delegated ("you decide"): bespoke Framer Motion sheet, no third-party library; plus a universal viewport contract — dvh/svh units for sheet geometry, env(safe-area-inset-*) padding on all bottom-anchored surfaces, viewportFit=cover. Spec 0002 §Layout amended; discovery-sheet-v1 §5 and checkin-system-v1 §2 aligned. Also confirmed: DG70 (two drawer detents) and DG71 (success moment) stand as written |
 
 ## Decisions log
 
@@ -250,9 +253,10 @@ owner-initiated addition (universal rate limiting). Rulings:
 - 2026-08-20: Discovery behavior DG11-DG15 agreed; V2 opt-in author identity is tracked in #139
 - 2026-08-20: Discovery behavior DG16-DG20 agreed; MVP ranking, recovery, accessibility, missing-cafe handling, and the 1024px responsive switch are settled; daily time-decayed ranking is deferred to V2 issue #140
 - 2026-08-21: Map-independent Kimi K3 artifacts delivered as Drafts (#133/#135/#148 merged via PRs #161/#164/#163; #149/#150/#152/#153 in PR #165); artifact grill round 8 complete — DG21-DG30 ruled (display-font rule amended in spec 0002, edit-mode dimension unset and offline check-in disable confirmed, sparkle glyph kept, tri-state filters, modal task surfaces, timer pause, permanent banner dismissal, profile load-more)
-- 2026-08-21: Artifact grill round 9 (discovery-sheet) — DG31-DG43 ruled; specs amended for mandatory overall slider, draft-then-publish creation, desktop left detail column, and PEEK Work-score watermark; BottomSheet implementation question still open
+- 2026-08-21: Artifact grill round 9 (discovery-sheet) — DG31-DG43 ruled; specs amended for mandatory overall slider, draft-then-publish creation, desktop left detail column, and PEEK Work-score watermark; BottomSheet implementation question later resolved as DG75
 - 2026-08-21: Artifact grill round 10 (search-filters) — DG44-DG58 ruled; spec 0001 amended for 3-char/400ms search-as-you-type, top-10 no-pagination suggestions, weak<3 external prompt, food-only D1 caching, session-scoped filters, and a ~10-city launch replacing Singapore-only MVP
 - 2026-08-21: Artifact grill round 11 (check-in system) — DG59-DG74 ruled; spec 0001 amended for check-in write integrity (idempotency, edit-recency, 90-day Same window, 24h frequency, 500-char notes, 6-photo cap, bidirectional temperature, multi-provider sign-in gate) and a new universal YAML-configured rate-limiting section covering all APIs and scripts
+- 2026-08-21: DG75 — BottomSheet is bespoke Framer Motion (owner-delegated); universal viewport/safe-area contract (dvh/svh, env() insets, viewportFit=cover) added to spec 0002 §Layout; round-9's last parked question closed
 
 ## Final tech stack (locked)
 

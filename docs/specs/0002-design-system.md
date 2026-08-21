@@ -6,7 +6,7 @@ Define CoffeeMode's visual identity for 2026: modern, restrained, elegant. The c
 
 ## Status
 
-Accepted (revised 2026-08-21 — display-font rule clarified: screen titles + brand wordmark permitted, data/numbers/state labels excluded (DG22); desktop cafe detail becomes a second left column, not a right drawer (DG42); PEEK cards gain a low-contrast Work-score watermark (DG43); FAB creation composes logged-out, sign-in at publish (DG39); 2026-08-20 — discovery feed, recovery, focus, reduced-motion, missing-cafe, breakpoint, and gesture constraints; 2026-08-19 — Kimi K3 design authority and responsive discovery contract; earlier 2026-08-02 — supersedes retro/vintage direction, aligned with bottom-sheet SPA, swipe cards, slider check-in)
+Accepted (revised 2026-08-21 — viewport & safe-area contract: dvh/svh units, env() insets on all bottom-anchored surfaces, viewportFit=cover; BottomSheet is bespoke Framer Motion (DG75); display-font rule clarified: screen titles + brand wordmark permitted, data/numbers/state labels excluded (DG22); desktop cafe detail becomes a second left column, not a right drawer (DG42); PEEK cards gain a low-contrast Work-score watermark (DG43); FAB creation composes logged-out, sign-in at publish (DG39); 2026-08-20 — discovery feed, recovery, focus, reduced-motion, missing-cafe, breakpoint, and gesture constraints; 2026-08-19 — Kimi K3 design authority and responsive discovery contract; earlier 2026-08-02 — supersedes retro/vintage direction, aligned with bottom-sheet SPA, swipe cards, slider check-in)
 
 ## Stable decisions
 
@@ -237,7 +237,7 @@ ease.smooth        [0.4, 0, 0.2, 1]       standard material-like
 ### Signature moments
 
 ```text
-- Map marker tap → sheet rises peek → half (velocity-aware, HeroUI Drawer)
+- Map marker tap → sheet rises peek → half (velocity-aware, bespoke Framer Motion sheet per DG75)
 - Swipe cards: smooth scroll snap + subtle parallax on cover image;
   active card scales ~1.02, neighbors dim slightly — eye-catching but restrained
 - Check-in confirm: button morphs to ✓ + micro coffee-steam animation + toast
@@ -296,6 +296,19 @@ Breakpoints:
   md: 768px   (tablet — mobile sheet remains active)
   lg: 1024px  (desktop — switch to sidebar + detail column)
   xl: 1280px  (wide desktop)
+
+Viewport & safe area (DG75):
+  Sheet/detent heights and any full-screen geometry use dynamic viewport
+  units (dvh/svh), never raw vh — iOS/Android browser chrome collapsing
+  and expanding must not cause layout jumps.
+  All bottom-anchored surfaces (bottom sheet, check-in drawer, FAB,
+  toasts, collapsed pill) pad by env(safe-area-inset-bottom); floating
+  side chrome respects safe-area-inset-left/right in landscape. The root
+  layout sets viewportFit=cover so the map paints edge-to-edge under the
+  notch.
+  BottomSheet implementation: bespoke Framer Motion (drag physics, detent
+  snapping, and scroll handoff under our control), not a third-party sheet
+  library. Owner-delegated decision, 2026-08-21.
 ```
 
 ## Dark mode

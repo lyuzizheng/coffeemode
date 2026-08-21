@@ -72,11 +72,11 @@ Reuse the themed `ScoreSlider` primitive from `web/app/theme-preview/shared.tsx`
 - **Set state**: first touch snaps the thumb to the touch point, fill renders
   in `accent`, output flips to the live value (`tnum`, `accent`), thumb does
   the haptic-style 1.15 scale pulse (120ms, spec 0002 signature moment).
-- Clearing back to unset is not offered — moving a slider is a deliberate
-  act; leaving the whole check-in unsubmitted is the undo. (Edit-mode
-  consequence: a previously recorded dimension cannot be removed from a
-  check-in. Specs are silent on dimension removal during edit; parked as an
-  owner-judgment item at approval.)
+- Clearing back to unset while composing is not offered — moving a slider is
+  a deliberate act; leaving the whole check-in unsubmitted is the undo. In
+  **edit mode**, a set slider row carries a small × (16px, `muted` → `danger`
+  on hover) that returns it to unset, removing a previously recorded
+  dimension from the check-in. (Owner decision, 2026-08-21 — DG26.)
 - Slider rows are 56px tall (thumb ≥44px touch target), 12px gaps.
 
 ### 3.3 Policy chips
@@ -137,8 +137,9 @@ toast, restrained, no confetti. Composition:
 
 ## 5. Edit and soft delete
 
-Editing reuses this exact drawer, pre-filled, titled by the same cafe name,
-confirm label `Save changes`. Delete lives behind a `Delete check-in`
+Editing reuses this exact drawer, pre-filled (with per-slider unset × per
+§3.2), titled by the same cafe name, confirm label `Save changes`. Delete
+lives behind a `Delete check-in`
 `danger` text-button at the drawer's foot (edit mode only), guarded by a
 HeroUI confirmation popover (`Delete? This removes your scores.` /
 `Cancel` / `Delete`). No swipe-to-delete gestures anywhere.
@@ -153,8 +154,7 @@ HeroUI confirmation popover (`Delete? This removes your scores.` /
 - **Offline**: the global OfflineBanner plus a disabled confirm button.
   Spec 0001 has no offline mutation queue; creation is explicitly disabled
   offline (spec 0004 §18), and this drawer applies the same no-queue rule to
-  check-in mutations. (Generalizing §18 from creation to check-ins is parked
-  as an owner-judgment item at approval.)
+  check-in mutations. (Owner decision, 2026-08-21 — DG27.)
 - **Validation**: the only rule is ≥1 slider; it is handled by the disabled
   state + hint (§3.6), never by an error toast after the fact.
 - **Drawer dismissed with input**: if any control is dirty (a slider set, a

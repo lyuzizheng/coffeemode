@@ -6,7 +6,7 @@ Define CoffeeMode's visual identity for 2026: modern, restrained, elegant. The c
 
 ## Status
 
-Accepted (revised 2026-08-20 — discovery feed, recovery, focus, reduced-motion, missing-cafe, breakpoint, and gesture constraints; 2026-08-19 — Kimi K3 design authority and responsive discovery contract; earlier 2026-08-02 — supersedes retro/vintage direction, aligned with bottom-sheet SPA, swipe cards, slider check-in)
+Accepted (revised 2026-08-21 — display-font rule clarified: screen titles + brand wordmark permitted, data/numbers/state labels excluded (DG22); 2026-08-20 — discovery feed, recovery, focus, reduced-motion, missing-cafe, breakpoint, and gesture constraints; 2026-08-19 — Kimi K3 design authority and responsive discovery contract; earlier 2026-08-02 — supersedes retro/vintage direction, aligned with bottom-sheet SPA, swipe cards, slider check-in)
 
 ## Stable decisions
 
@@ -166,7 +166,8 @@ Rules:
 
 ```text
 - Self-host all fonts (no runtime Google Fonts)
-- Display font for page titles and cafe names only
+- Display font for page/screen titles, the brand wordmark, and cafe names
+  only — never for data, numbers, or component state labels
 - Body and UI labels in Inter/system sans
 - Tabular numerals for ratings, distances, counts
 - Fixed type scale, no oversized marketing type in-app

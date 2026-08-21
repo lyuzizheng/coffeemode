@@ -18,7 +18,8 @@ versioned, slice-specific design artifacts that gate UI implementation
 - Approval and visual acceptance are recorded in the artifact header and linked
   from the slice's GitHub issue (see issue #141 acceptance criteria).
 - Revisions bump the version (`-v2`) rather than rewriting history; superseded
-  versions stay in place.
+  versions stay in place. Drafts may be revised in place; versions bump once
+  Approved.
 
 ## Artifacts
 

@@ -157,9 +157,12 @@ HeroUI confirmation popover (`Delete? This removes your scores.` /
   as an owner-judgment item at approval.)
 - **Validation**: the only rule is ≥1 slider; it is handled by the disabled
   state + hint (§3.6), never by an error toast after the fact.
-- **Drawer dismissed with input**: no confirm dialog at MVP — input is
-  discarded. (Parked as an owner-judgment P2; draft persistence is a V2
-  candidate, not assumed here.)
+- **Drawer dismissed with input**: if any control is dirty (a slider set, a
+  chip selected, note text, or a photo staged), dismissal pauses on a HeroUI
+  confirmation: `Discard this check-in?` with `Keep editing` (ghost) and
+  `Discard` (`danger` text-button). A pristine drawer closes immediately —
+  the confirm appears only when there is something to lose. Draft
+  persistence remains a V2 candidate. (Owner decision, 2026-08-21 — DG21.)
 
 ## 7. Motion, dark mode, accessibility, i18n
 
@@ -173,7 +176,9 @@ HeroUI confirmation popover (`Delete? This removes your scores.` /
 - Keys under `checkIn.*` (en/zh). zh references: `Check in` → `打卡`,
   `Same` / `New` → `和上次一样` / `重新评价`, `Overall experience` →
   `整体体验`, `Move at least one slider` → `至少滑动一项评分`,
-  `Couldn't save your check-in` → `保存失败`, `Check-in saved` → `打卡成功`.
+  `Couldn't save your check-in` → `保存失败`, `Check-in saved` → `打卡成功`,
+  `Discard this check-in?` → `放弃这次打卡？`, `Keep editing` → `继续编辑`,
+  `Discard` → `放弃`.
 
 ## 8. Visual acceptance criteria (owner sign-off)
 
@@ -184,6 +189,8 @@ HeroUI confirmation popover (`Delete? This removes your scores.` /
       no particles, no emoji.
 - [ ] Drawer completes one-handed on a 390px-wide phone.
 - [ ] Repeat banner pre-fills honestly and collapses without layout jump.
+- [ ] Dirty-dismiss confirm (`Discard this check-in?`) appears only when
+      input exists; pristine drawer closes instantly.
 - [ ] Dark mode requires no per-component overrides.
 
 ## Out of scope (other slices)

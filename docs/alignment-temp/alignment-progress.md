@@ -201,7 +201,7 @@ Still open: the BottomSheet implementation question (bespoke Framer Motion vs
 | DG49 | Weak threshold | Fewer than 3 local matches triggers the external-search prompt |
 | DG50 | Launch cities | ~10 at launch: Singapore, Tokyo, Seoul, Taipei, Shanghai, Bangkok, Hong Kong, Melbourne, Berlin, London; codes = ISO 3166-1 alpha-2 + IATA metro. Amends spec 0001's "MVP: Singapore only" |
 | DG51 | State persistence | Filters are session-scoped; the selected city persists per the storage rules |
-| DG52 | D1 caching scope | Only food/cafe-category external POIs are persisted; unrelated places are shown but never cached. Spec 0001 §Search amended |
+| DG52 | D1 caching scope | Only food/cafe-category external POIs are persisted; unrelated places are shown but never cached. Spec 0001 §Search amended; narrows Q51b/Q51c's store-all to food/cafe-category |
 | DG53 | Open-now default | OFF — nothing is active until the user touches a control |
 | DG54 | Active filter chips | Removable chips above results, one per active filter |
 | DG55 | Empty query | Hint line only; no recents/history |

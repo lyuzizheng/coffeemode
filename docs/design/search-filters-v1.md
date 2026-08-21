@@ -154,8 +154,10 @@ labeled as such (`1.2 km from city center`, DG58).
 - **Suggestion rows** (search-as-you-type, top 10): compact single-line rows
   under the search bar — name + meta line, no cover thumbnail. Density beats
   richness here; the user is typing, not browsing.
-- **Results view** (after submit): full rows as above, vertical list,
-  top-10 ordering with no pagination — relevance ends the list, not a pager.
+- **Results view** (after submit): full rows as above, vertical list; size
+  follows the DG46 top-10 cap with no pagination — relevance ends the list,
+  not a pager. The external prompt (below) is the overflow path when local
+  results run out.
 
 Row types, visually distinguished:
 

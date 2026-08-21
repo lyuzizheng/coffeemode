@@ -46,6 +46,7 @@ else
         ;;
       image-service/*)
         image_service=true
+        integration=true
         ;;
       poi-service/*)
         poi_service=true

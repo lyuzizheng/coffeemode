@@ -3,7 +3,8 @@
 - Slice: `discovery-sheet` (issue #133)
 - Status: **Draft — pending owner approval**
 - Author: Kimi K3
-- Date: 2026-08-20
+- Date: 2026-08-20 (revised 2026-08-21 — FULL header gains the
+  `Edit your check-in` row per DG72)
 - Specs: `docs/specs/0001-nextjs-migration.md` (rendering strategy, discovery
   contract), `docs/specs/0002-design-system.md` (tokens, motion, a11y),
   `docs/specs/0004-product-decisions-and-backlog.md` §18b–18g, DG1–DG20
@@ -173,7 +174,11 @@ Check in.
 Map stays visible ~15% at top. Content is a single scroll column:
 
 1. **Header** — cafe name (`font-display`, `text-xl`), address + hours meta
-   lines, then the §3 score pair, then the §4 action row.
+   lines, then the §3 score pair, then the §4 action row. When the viewer
+   has a live check-in at this cafe, an `Edit your check-in` text row
+   (`text-sm`, `accent`) sits directly under the action row and opens the
+   check-in drawer in edit mode (DG72; composition owned by
+   `checkin-system-v1` §5).
 2. **WorkProfile** — the visual hero. Five dimension bars
    (wifi / outlets / seats / temp / coffee), each a row: label (`text-sm`,
    88px fixed), bar track (`surface-tertiary`, 6px height, `radius-full`),

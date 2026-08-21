@@ -209,6 +209,30 @@ Still open: the BottomSheet implementation question (bespoke Framer Motion vs
 | DG57 | zh filter labels | `Any/60+/80+` → `不限/60+/80+` |
 | DG58 | Distance labeling | From user location when known, else from city center labeled as such |
 
+## Round 11 — Check-in system grill — complete
+
+15-question grill on the checkin-system artifact (tech/product/UX), plus one
+owner-initiated addition (universal rate limiting). Rulings:
+
+| # | Decision | Answer |
+|---|----------|--------|
+| DG59 | Photo upload timing | Upload-on-select with image+scrim+progress-bar overlay; composing never blocked; submit instant; orphans swept by R2 lifecycle. Photo upload requires auth — presigned URLs are issued to authenticated sessions only; logged-out drafts stage photos locally until the sign-in gate. Spec 0001 amended |
+| DG60 | Slider granularity | Continuous integer 0–100, no snapped steps |
+| DG61 | Idempotency | Client UUID per drawer open + server-side dedupe; retries never double-record. Spec 0001 amended |
+| DG62 | Edit vs recency | Editing updates values only; recency weighting keys off the original `visited_at` |
+| DG63 | Same-as-last-time window | Offered only when the last check-in is <90 days old |
+| DG64 | Check-in frequency | 1 per cafe per user per 24h; further same-day visits open the existing check-in in edit mode (product behavior, not an error). Enforced via the universal rate limiter (DG74). Spec 0001 amended |
+| DG65 | Presence verification | None — no geofence at MVP |
+| DG66 | Sign-in gate | Publishing requires sign-in via a sheet offering all configured providers (Apple + Google); staged draft publishes after sign-in without re-entry |
+| DG67 | Notes | 500-char hard cap, public immediately; Report-only moderation lever at MVP. Spec 0001 amended |
+| DG68 | Photo cap | 6 per check-in (amends the earlier 10 in spec 0001) |
+| DG69 | Haptics | Weakest device vibration (`navigator.vibrate(10)`) on first slider touch, in addition to the visual pulse |
+| DG70 | Drawer detents | Two detents: opens at content height, draggable to the 92% full-height detent |
+| DG71 | Success moment | Re-explained to owner; spec 0002 auto-close sequence stands (button ✓ morph → steam card 900ms → drawer close → toast) |
+| DG72 | Edit entry points | Feed-card overflow menu + profile check-in history + an `Edit your check-in` row on the cafe detail when a live check-in exists |
+| DG73 | Temperature scale | Bidirectional: too cold ↔ too hot, ideal at midpoint; endpoint captions on the slider row; aggregation maps distance-from-50 → score. Spec 0001 amended |
+| DG74 | Universal rate limiting | Owner-initiated: one mechanism for all API routes AND script/automation entry points, configured in a single `web/config/rate-limits.yaml` (per-route limits/window/scope); in-memory LRU token bucket at MVP with Redis/Upstash as a config-level swap. New spec 0001 §Rate limiting |
+
 ## Decisions log
 
 - 2026-07-31: Architecture pivot from "migrate Vite SPA + keep Java backend" to "rewrite as full-stack Next.js, drop Java"
@@ -228,6 +252,7 @@ Still open: the BottomSheet implementation question (bespoke Framer Motion vs
 - 2026-08-21: Map-independent Kimi K3 artifacts delivered as Drafts (#133/#135/#148 merged via PRs #161/#164/#163; #149/#150/#152/#153 in PR #165); artifact grill round 8 complete — DG21-DG30 ruled (display-font rule amended in spec 0002, edit-mode dimension unset and offline check-in disable confirmed, sparkle glyph kept, tri-state filters, modal task surfaces, timer pause, permanent banner dismissal, profile load-more)
 - 2026-08-21: Artifact grill round 9 (discovery-sheet) — DG31-DG43 ruled; specs amended for mandatory overall slider, draft-then-publish creation, desktop left detail column, and PEEK Work-score watermark; BottomSheet implementation question still open
 - 2026-08-21: Artifact grill round 10 (search-filters) — DG44-DG58 ruled; spec 0001 amended for 3-char/400ms search-as-you-type, top-10 no-pagination suggestions, weak<3 external prompt, food-only D1 caching, session-scoped filters, and a ~10-city launch replacing Singapore-only MVP
+- 2026-08-21: Artifact grill round 11 (check-in system) — DG59-DG74 ruled; spec 0001 amended for check-in write integrity (idempotency, edit-recency, 90-day Same window, 24h frequency, 500-char notes, 6-photo cap, bidirectional temperature, multi-provider sign-in gate) and a new universal YAML-configured rate-limiting section covering all APIs and scripts
 
 ## Final tech stack (locked)
 

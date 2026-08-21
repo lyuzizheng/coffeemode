@@ -3,7 +3,7 @@
 - Slice: `checkin-system` (issue #148)
 - Status: **Draft — pending owner approval**
 - Author: Kimi K3
-- Date: 2026-08-21
+- Date: 2026-08-21 (revised 2026-08-21 — grill round 11 rulings DG59–DG73)
 - Base: stacked on `docs/design/discovery-sheet-v1.md` and
   `docs/design/search-filters-v1.md` (icon set, control language, task-surface
   pattern are shared)
@@ -36,7 +36,10 @@ follow:
 ## 2. Drawer surface
 
 - **Mobile**: HeroUI Drawer, placement bottom, content-height detent, 92% max
-  height, `radius-lg` top, `overlay` surface. It opens **above the discovery
+  height, `radius-lg` top, `overlay` surface. Two detents (DG70): it opens at
+  content height and can be dragged up to the 92% full-height detent (tall
+  content — staged photos, edit mode — gets room; scrolling inside works at
+  either detent). It opens **above the discovery
   sheet** (spec 0002 layout) — the discovery sheet dims to 60% and is
   inert while the drawer is open. Modal task surface, same a11y treatment as
   the search filter panel (`role="dialog"`, focus containment, `Esc`/scrim
@@ -56,7 +59,8 @@ top: `surface-secondary`, `radius-md`, 12px padding. One line:
 `New` (ghost). Choosing `Same` pre-fills every previously-set slider and
 policy (all become "set" states, user adjusts what changed); choosing `New`
 (or dismissing via ×) leaves everything unset. The banner collapses after a
-choice with a 200ms height animation.
+choice with a 200ms height animation. Offered only when the last check-in is
+**<90 days old** (DG63) — a year-old "same" is not information.
 
 ### 3.2 Dimension sliders
 
@@ -68,12 +72,20 @@ Reuse the themed `ScoreSlider` primitive from `web/app/theme-preview/shared.tsx`
   (`text-sm`, `foreground` instead of `muted`). Overall feeds the Experience
   score; the five dimensions feed the Work composite — the layout teaches
   that split without a word of explanation.
+- Values are continuous integers 0–100 (no snapped steps, DG60).
+- **Temperature is bidirectional** (DG73): its scale reads too cold ↔ too
+  hot with the ideal at the midpoint, so its row carries endpoint captions —
+  snowflake line glyph + `Too cold` at the left end, flame line glyph +
+  `Too hot` at the right (`text-xs`, `muted`; glyphs from the discovery
+  icon set, no emoji). The other four dimensions stay uncaptioned bad→good.
 - **Unset state**: track `surface-tertiary`, **no fill**, thumb parked at the
   left edge at 50% opacity, output shows `—` (`muted`, mono). No number
   exists until the user touches the slider.
 - **Set state**: first touch snaps the thumb to the touch point, fill renders
   in `accent`, output flips to the live value (`tnum`, `accent`), thumb does
-  the haptic-style 1.15 scale pulse (120ms, spec 0002 signature moment).
+  the haptic-style 1.15 scale pulse (120ms, spec 0002 signature moment) plus
+  the weakest device vibration (`navigator.vibrate(10)`, DG69 — silently
+  ignored where unsupported, e.g. iOS Safari).
 - Clearing back to unset while composing is not offered — moving a slider is
   a deliberate act; leaving the whole check-in unsubmitted is the undo. In
   **edit mode**, a set slider row carries a small × (16px, `muted` → `danger`
@@ -95,18 +107,26 @@ idle, selected = `surface` + 1px `accent` border + `accent` text,
 
 Autosizing textarea, 2–5 visible rows, `surface` background, `radius-md`,
 `text-base`. Placeholder: `What should the next nomad know?` — one line of
-guidance, no character counter, no formatting toolbar. Label `Note (optional)`
-as a `text-xs` `muted` caption above the field, not floating chrome.
+guidance, no character counter, no formatting toolbar. Hard cap **500
+chars** (DG67; paste/type is truncated at the cap, no error chrome). Label
+`Note (optional)` as a `text-xs` `muted` caption above the field, not
+floating chrome.
 
 ### 3.5 Photos
 
 Optional in this drawer (the ≥1-photo requirement belongs to the creation
 flow, `cafe-creation` slice). A horizontal thumbnail row: 72px squares,
 `radius-md`; first tile is the add tile (dashed 1px `border`, `muted` `+`
-glyph, `text-xs` `Add photos`). Selected photos get a 20px ×-badge top-right
-(`overlay` circle, `danger` glyph). During upload each tile shows a 2px
-`accent` progress bar along its bottom edge (no spinners, spec 0002);
-failures get a `danger` 1px border + tap-to-retry. The 10 MB cap is
+glyph, `text-xs` `Add photos`). Max **6 photos** per check-in (DG68) — the
+add tile disappears at the cap. Selected photos get a 20px ×-badge top-right
+(`overlay` circle, `danger` glyph). **Upload starts on selection** (DG59):
+each tile shows its image immediately under a 40%-black scrim with a 2px
+`accent` progress bar along its bottom edge while the presigned PUT runs —
+the user keeps composing, submit is instant when uploads have finished (no
+spinners, spec 0002); failures get a `danger` 1px border + tap-to-retry.
+Upload requires auth (spec 0001: presigned URLs are issued to authenticated
+sessions only) — a logged-out composer stages photos locally and they upload
+after the sign-in gate (§3.6). The 10 MB cap is
 communicated only on violation (toast), not as static fine print.
 
 ### 3.6 Confirm
@@ -115,6 +135,16 @@ Full-width solid `accent` button, 48px, `radius-sm`, label `Check in`
 (creation variant in the creation slice reads `Add to CoffeeMode ✓` per
 spec). Disabled with a `text-xs` `muted` hint `Set Overall experience to
 check in` beneath it until the required overall slider is set (DG40).
+
+**Sign-in gate (DG66)**: composing works logged-out, but publishing requires
+an account. Tapping `Check in` while logged out opens the sign-in sheet
+offering all configured providers (Apple + Google, per spec 0001 auth);
+after sign-in the pending check-in publishes with its locally staged input
+(photos upload at that point, §3.5) — no re-entry.
+
+**Idempotency (DG61)**: each drawer open generates a UUID sent with the
+mutation; the server dedupes on it, so a retry after a flaky connection can
+never double-record. Invisible in the UI.
 
 ## 4. The success moment (spec-delegated detail)
 
@@ -140,8 +170,13 @@ toast, restrained, no confetti. Composition:
 ## 5. Edit and soft delete
 
 Editing reuses this exact drawer, pre-filled (with per-slider unset × per
-§3.2), titled by the same cafe name, confirm label `Save changes`. Delete
-lives behind a `Delete check-in`
+§3.2), titled by the same cafe name, confirm label `Save changes`. Edit
+entry points (DG72): the overflow menu on your own check-in feed cards, the
+check-in history list on the profile page, and an `Edit your check-in` row
+on the cafe detail when you have a live check-in there. Editing updates
+values only — recency weighting always keys off the original `visited_at`,
+so editing can never launder freshness (DG62). Delete lives behind a
+`Delete check-in`
 `danger` text-button at the drawer's foot (edit mode only), guarded by a
 HeroUI confirmation popover (`Delete? This removes your scores.` /
 `Cancel` / `Delete`). No swipe-to-delete gestures anywhere.
@@ -160,6 +195,11 @@ HeroUI confirmation popover (`Delete? This removes your scores.` /
 - **Validation**: the only rule is the required `overall` slider (DG40); it
   is handled by the disabled
   state + hint (§3.6), never by an error toast after the fact.
+- **Same-day revisit (DG64)**: the 1-per-cafe-per-24h limit is product
+  behavior, not an error — if you already have a live check-in at this cafe
+  from the last 24h, the Check-in entry point opens this drawer in **edit
+  mode** on that check-in instead of composing a new one. The user never
+  sees a 429 for this.
 - **Drawer dismissed with input**: "dirty" means the drawer's state differs
   from its opening state — in edit mode the pre-filled values are the
   baseline, so closing an untouched edit drawer never prompts. If dirty,
@@ -183,7 +223,8 @@ HeroUI confirmation popover (`Delete? This removes your scores.` /
   `整体体验`, `Set Overall experience to check in` → `先给整体体验打分再打卡`,
   `Couldn't save your check-in` → `保存失败`, `Check-in saved` → `打卡成功`,
   `Discard this check-in?` → `放弃这次打卡？`, `Keep editing` → `继续编辑`,
-  `Discard` → `放弃`.
+  `Discard` → `放弃`, `Too cold` / `Too hot` → `太冷` / `太热`,
+  `Edit your check-in` → `修改我的打卡`.
 
 ## 8. Visual acceptance criteria (owner sign-off)
 
@@ -197,6 +238,17 @@ HeroUI confirmation popover (`Delete? This removes your scores.` /
 - [ ] Dirty-dismiss confirm (`Discard this check-in?`) appears only when
       input exists; pristine drawer closes instantly.
 - [ ] Dark mode requires no per-component overrides.
+- [ ] Temperature row carries the `Too cold` / `Too hot` endpoint captions;
+      the other four dimensions stay uncaptioned (DG73).
+- [ ] Photo tiles show image + scrim + progress bar during upload; composing
+      is never blocked by an in-flight upload (DG59).
+- [ ] The add tile disappears at 6 photos (DG68).
+- [ ] Logged-out `Check in` opens the provider sign-in sheet and publishes
+      the staged draft after sign-in — no re-entry (DG66).
+- [ ] A same-day revisit opens the drawer in edit mode on the existing
+      check-in, never an error (DG64).
+- [ ] The drawer drags from content-height to the 92% detent and back
+      without losing scroll position (DG70).
 
 ## Out of scope (other slices)
 

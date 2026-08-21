@@ -12,7 +12,8 @@
   moments); `docs/specs/0004-product-decisions-and-backlog.md` §7–§13
 
 Scope: composition of the check-in drawer, slider/chip/photo controls, repeat
-flow, and the success moment. Behavior (≥1 slider required, unmoved slider not
+flow, and the success moment. Behavior (`overall` slider required per
+check-in (DG40), unmoved slider not
 recorded, `unknown` as first-class answer, soft delete, photo merge into
 gallery, recency weighting) is canonical in the specs and is referenced, not
 redefined.
@@ -25,8 +26,9 @@ A check-in is data entry for a person holding a coffee in one hand. The
 drawer must be completable in under 30 seconds with a thumb. Two rules
 follow:
 
-- **Everything optional except one honest signal** (spec: ≥1 slider per
-  check-in). The drawer never demands completeness; it rewards any input.
+- **Everything optional except one honest signal** (spec: the `overall`
+  slider is required per check-in, DG40; every other control optional). The
+  drawer never demands completeness; it rewards any input.
 - **Unset must look unset.** An unmoved slider records nothing (spec Q59), so
   the UI must never show a parked thumb as if it were a score of 50. This is
   the anti-vibe-coding core of this slice: no fake defaults.
@@ -111,8 +113,8 @@ communicated only on violation (toast), not as static fine print.
 
 Full-width solid `accent` button, 48px, `radius-sm`, label `Check in`
 (creation variant in the creation slice reads `Add to CoffeeMode ✓` per
-spec). Disabled with a `text-xs` `muted` hint `Move at least one slider`
-beneath it until the ≥1-slider rule is satisfied.
+spec). Disabled with a `text-xs` `muted` hint `Set Overall experience to
+check in` beneath it until the required overall slider is set (DG40).
 
 ## 4. The success moment (spec-delegated detail)
 
@@ -155,7 +157,8 @@ HeroUI confirmation popover (`Delete? This removes your scores.` /
   Spec 0001 has no offline mutation queue; creation is explicitly disabled
   offline (spec 0004 §18), and this drawer applies the same no-queue rule to
   check-in mutations. (Owner decision, 2026-08-21 — DG27.)
-- **Validation**: the only rule is ≥1 slider; it is handled by the disabled
+- **Validation**: the only rule is the required `overall` slider (DG40); it
+  is handled by the disabled
   state + hint (§3.6), never by an error toast after the fact.
 - **Drawer dismissed with input**: "dirty" means the drawer's state differs
   from its opening state — in edit mode the pre-filled values are the
@@ -177,7 +180,7 @@ HeroUI confirmation popover (`Delete? This removes your scores.` /
   toast, not the animation.
 - Keys under `checkIn.*` (en/zh). zh references: `Check in` → `打卡`,
   `Same` / `New` → `和上次一样` / `重新评价`, `Overall experience` →
-  `整体体验`, `Move at least one slider` → `至少滑动一项评分`,
+  `整体体验`, `Set Overall experience to check in` → `先给整体体验打分再打卡`,
   `Couldn't save your check-in` → `保存失败`, `Check-in saved` → `打卡成功`,
   `Discard this check-in?` → `放弃这次打卡？`, `Keep editing` → `继续编辑`,
   `Discard` → `放弃`.

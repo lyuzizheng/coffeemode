@@ -81,6 +81,9 @@ emoji in the UI**.
   separated by a 1px `separator` vertical rule. FULL repeats the same pair in
   the detail header, then explains the Work Score's composition in the
   WorkProfile section.
+- PEEK exception (DG43): only the Work score appears before HALF, and only as
+  the decorative watermark numeral plus its exact `Work 82` value in the meta
+  line (§5.1). The full pair still belongs to HALF onward.
 
 ## 4. Cafe actions (resolves DG8)
 
@@ -120,7 +123,7 @@ three snap states), and the header zone gets no competing horizontal chrome.
 │             ────                │  drag handle
 │ ┌───────────┐ ┌───────────┐ ┌───┤
 │ │ cover     │ │ cover     │ │   │  cards ~85% width, snap carousel
-│ │ 88px 4:3  │ │           │ │   │
+│ │ 88px 4:3  │ │        82 │ │   │  Work-score watermark (low contrast)
 │ │ Name      │ │           │ │   │
 │ │ area · km │ │           │ │   │
 │ │ ⌁ 87 ⚡72 │ │           │ │   │  ≤4 characteristic facts
@@ -132,11 +135,21 @@ three snap states), and the header zone gets no competing horizontal chrome.
   `border`. Right column, 12px padding: cafe name (`font-display`, `text-md`,
   single-line truncate), then `area · 1.2 km` (`text-xs`, `muted`), then the
   characteristic icon row (14px icons + `text-xs` values, 12px gaps).
+- **Work-score watermark** (DG43): the composite score as a large numeral
+  bleeding off the card's right edge — body font (numbers never use the
+  display font, DG22), ~4rem at weight 200, `foreground` at 7% opacity,
+  `aria-hidden`, pointer-events disabled, clipped by the card radius. It is
+  a non-content graphic exempt from the type-scale ceiling (spec 0004 §5).
+  Single hue only — no multi-color gradient, no literal battery gauge; the
+  "innovative score display" brief is met by scale and restraint, not
+  chrome. The exact value stays readable as `Work 82` (`text-xs`, tabular,
+  `muted`) at the end of the meta line. A cafe with no Work data renders no
+  watermark and no value — never a zero.
 - Card surface `surface`, 1px `border`, `shadow-sm`; `radius-md`. Active card
   scales to 1.02 and neighbors dim to 60% opacity (signature moment, spec
   0002). Cover gets the subtle parallax on swipe.
-- No scores, no actions, no open/closed badge in PEEK — scan speed over depth.
-  Open/closed appears from HALF.
+- No actions and no open/closed badge in PEEK — scan speed over depth.
+  Open/closed appears from HALF; the full score pair appears from HALF (§3).
 
 ### 5.2 HALF (selected cafe)
 
@@ -214,10 +227,14 @@ appear here.
     cards (cover, name, meta, ≤4 facts) at full sidebar width, 8px vertical
     gaps.
   - Selected row: `surface-secondary` background + 2px `accent` left edge.
-- **Detail drawer**: slide-over from the right, 420px, `overlay` surface,
-  `shadow-lg` warm tint, 1px left `border`, `motion.state` 200ms slide. Content
-  = the FULL composition (§5.3) unchanged. Close button top-right (36px ghost,
-  × glyph) plus `Esc`.
+- **Detail panel — second left column** (DG42): 400px, full height, sitting
+  immediately right of the sidebar; the map fills the remaining width. It
+  opens with a 200ms `motion.state` slide-in from the left edge of its
+  column and closes with `Esc` or the 36px ghost × at its top-right. Surface
+  `overlay`, 1px left `border`, no floating shadow — it is a column, not an
+  overlay. Content = the FULL composition (§5.3) unchanged. Layout:
+  `| sidebar 380px | detail 400px | map (flex) |`; with no selection the
+  detail column is absent and the map spans the rest.
 
 ## 8. Tablet landscape validation (resolves DG20's Kimi check)
 
@@ -290,9 +307,12 @@ All copy via next-intl keys under `discovery.*`; examples above are `en`.
 
 ## 13. Visual acceptance criteria (owner sign-off)
 
-- [ ] PEEK reads as a scannable strip: ≤4 facts, no scores, no actions.
+- [ ] PEEK reads as a scannable strip: ≤4 facts, no actions, and the
+      Work-score watermark is felt more than read (≤8% opacity, single hue).
 - [ ] Work Score is unmistakably the hero from HALF onward; Experience is
       present but subordinate.
+- [ ] Desktop detail sits as a second left column beside the sidebar; the map
+      keeps the remaining width (DG42).
 - [ ] FULL's WorkProfile bars feel like the product's signature, matching the
       restraint rules (no confetti, no gradient, no glass).
 - [ ] Helpful/Newest reads as one segmented control, not two buttons.

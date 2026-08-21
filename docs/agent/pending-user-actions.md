@@ -58,7 +58,14 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
   - `npm run deploy` → workers.dev URL; wire `IMAGE_SERVICE_URL` + `IMAGE_SERVICE_TOKEN` into `web/.env.local`
 - [ ] Configure bucket defenses:
   - Set a maximum upload size (Cloudflare WAF / R2 bucket limits or a `Content-Length`-enforced presigned URL) to mitigate abuse.
-  - Add an R2 lifecycle rule to clean up abandoned `original/` objects. If completed originals share the same prefix, separate pending uploads to a `pending/` prefix first and expire it after 24 h, or expire `original/` only after a safe age that won’t delete live images.
+  - Orphan cleanup (issue #158): do NOT add a blanket R2 lifecycle expiry on
+    `original/` — completed gallery originals share that prefix. Instead schedule
+    `image-service/scripts/clean-orphan-originals.mjs` (e.g. daily cron or GitHub
+    scheduled workflow via #154) with least-privilege R2 credentials that allow
+    List/Head/Delete on `original/` only: first run with `DRY_RUN=1
+    RETENTION_DAYS=7`, review the JSON output, then set `DRY_RUN=0`. The script
+    deletes only metadata-less originals; live gallery originals carry
+    `x-amz-meta-targettype` and are never matched.
 
 ## 7. Domain + deploy (later phase)
 

@@ -221,7 +221,12 @@ describe("handleComplete", () => {
 
   it("returns 404 when original does not exist", async () => {
     const env = baseEnv();
-    const request = makeRequest("POST", "/v1/images/complete", { imageUuid: validUuid() });
+    const request = makeRequest("POST", "/v1/images/complete", {
+      imageUuid: validUuid(),
+      userId: "u1",
+      targetType: "cafe",
+      targetId: "c1",
+    });
     const response = await handleComplete(request, env);
     expect(response.status).toBe(404);
     expect(((await response.json()) as { error: string }).error).toBe("not_found");
@@ -232,6 +237,45 @@ describe("handleComplete", () => {
     const request = makeRequest("POST", "/v1/images/complete", { imageUuid: "not-a-uuid" });
     const response = await handleComplete(request, env);
     expect(response.status).toBe(400);
+  });
+
+  it("requires targetType and targetId (issue #158 cleanup contract)", async () => {
+    const env = baseEnv();
+    const imageUuid = validUuid();
+    await env.R2_BUCKET.put(`original/${imageUuid}.webp`, new Uint8Array([0xde]), {
+      httpMetadata: { contentType: "image/webp" },
+    });
+
+    // Missing both.
+    const missing = await handleComplete(
+      makeRequest("POST", "/v1/images/complete", { imageUuid, userId: "u1" }),
+      env,
+    );
+    expect(missing.status).toBe(400);
+    expect(((await missing.json()) as { error: string }).error).toBe("invalid_request");
+
+    // Missing targetId only.
+    const noId = await handleComplete(
+      makeRequest("POST", "/v1/images/complete", { imageUuid, userId: "u1", targetType: "cafe" }),
+      env,
+    );
+    expect(noId.status).toBe(400);
+
+    // A completed original must always carry the metadata the cleanup
+    // contract relies on.
+    const ok = await handleComplete(
+      makeRequest("POST", "/v1/images/complete", {
+        imageUuid,
+        userId: "u1",
+        targetType: "cafe",
+        targetId: "c1",
+      }),
+      env,
+    );
+    expect(ok.status).toBe(200);
+    const data = (await ok.json()) as { originalPut: { headers: Record<string, string> } };
+    expect(data.originalPut.headers["x-amz-meta-targettype"]).toBe("cafe");
+    expect(data.originalPut.headers["x-amz-meta-targetid"]).toBe("c1");
   });
 
   it("422s when the actual R2 object exceeds the size cap", async () => {
@@ -248,7 +292,12 @@ describe("handleComplete", () => {
       httpMetadata: { contentType: "image/webp" },
     });
 
-    const request = makeRequest("POST", "/v1/images/complete", { imageUuid });
+    const request = makeRequest("POST", "/v1/images/complete", {
+      imageUuid,
+      userId: "u1",
+      targetType: "cafe",
+      targetId: "c1",
+    });
     const response = await handleComplete(request, env);
 
     expect(response.status).toBe(422);
@@ -282,7 +331,12 @@ describe("router", () => {
     const env = baseEnv();
     vi.spyOn(env.R2_BUCKET, "head").mockRejectedValue(new Error("R2 outage"));
 
-    const request = makeRequest("POST", "/v1/images/complete", { imageUuid: validUuid() });
+    const request = makeRequest("POST", "/v1/images/complete", {
+      imageUuid: validUuid(),
+      userId: "u1",
+      targetType: "cafe",
+      targetId: "c1",
+    });
     const response = await handler.fetch(request, env, {} as ExecutionContext);
 
     expect(response.status).toBe(500);
@@ -300,7 +354,12 @@ describe("router", () => {
       vi.fn(async () => new Response("forbidden", { status: 403 })),
     );
 
-    const request = makeRequest("POST", "/v1/images/complete", { imageUuid: validUuid() });
+    const request = makeRequest("POST", "/v1/images/complete", {
+      imageUuid: validUuid(),
+      userId: "u1",
+      targetType: "cafe",
+      targetId: "c1",
+    });
     const response = await handler.fetch(request, env, {} as ExecutionContext);
 
     expect(response.status).toBe(500);

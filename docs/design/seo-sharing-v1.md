@@ -57,9 +57,9 @@ never modal.
   ghost × at the right edge.
 - Desktop: same banner, 420px, bottom-center.
 - Enter: 200ms gentle rise (spec signature moment), never blocking content;
-  dismiss persists for the session (a `sessionStorage` flag — the spec's
-  one-time localStorage rules cover the onboarding overlay; this banner's
-  dismissal persistence is parked as an owner-judgment item).
+  dismissal persists permanently via a `localStorage` flag in the spec's
+  onboarding storage family — a dismissed banner that returns every session
+  is nagging. (Owner decision, 2026-08-21 — DG29.)
 - The banner yields layout: it overlays, it does not push content.
 
 ## 4. Share control

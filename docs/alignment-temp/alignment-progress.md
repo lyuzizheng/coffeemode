@@ -236,6 +236,29 @@ owner-initiated addition (universal rate limiting). Rulings:
 | DG74 | Universal rate limiting | Owner-initiated: one mechanism for all API routes AND script/automation entry points, configured in a single `web/config/rate-limits.yaml` (per-route limits/window/scope); in-memory LRU token bucket at MVP with Redis/Upstash as a config-level swap; the merged Postgres token bucket (#23) is a valid store behind the same interface. New spec 0001 §Rate limiting |
 | DG75 | BottomSheet implementation + safe area | Owner-delegated ("you decide"): bespoke Framer Motion sheet, no third-party library; plus a universal viewport contract — dvh/svh units for sheet geometry, env(safe-area-inset-*) padding on all bottom-anchored surfaces, viewportFit=cover. Spec 0002 §Layout amended; discovery-sheet-v1 §5 and checkin-system-v1 §2 aligned. Also confirmed: DG70 (two drawer detents) and DG71 (success moment) stand as written |
 
+## Round 12 — Navigation-prompt grill — complete
+
+15-question grill on the navigation-prompt artifact (tech/product/UX),
+re-explained in plain language at owner request. Rulings:
+
+| # | Decision | Answer |
+|---|----------|--------|
+| DG76 | Anonymous users | The prompt works for anonymous users via Supabase anonymous sign-in — anonymous sessions get a profiles row, navigation recording and drafts work pre-login, upgrading to Apple/Google links the same account. Spec 0001 §Auth amended |
+| DG77 | Prompt fetch timing | Lazy query after the map reaches idle — never on the critical render path (overruled Kimi's bootstrap-payload recommendation) |
+| DG78 | Prompt timing | Earliest the NEXT DAY after the navigation (amends the old "next visit, >30min" trigger), and the card has three options instead of two-plus-× |
+| DG79 | Auto-resolve | Any check-in at that cafe, from any entry point, silently resolves the pending navigation (outcome `auto`) |
+| DG80 | Outcome storage | `不去了` permanently resolves; all outcomes (visited / wont_go / not_yet / auto) are stored on the navigations row for the navigate→visit funnel. Spec 0001 table amended (`outcome` column) |
+| DG81 | Three options, no close button | No × anywhere. `去过了，打卡！` → check-in drawer; `还没去` closes for now (max 2 re-asks on later days); `不去了` permanently resolves |
+| DG82 | Multiple unresolved | Queued — one prompt per session, most recent first |
+| DG83 | Expiry | Navigations older than 3 months never prompt (overruled Kimi's 7 days) |
+| DG84 | Desktop prompt | Yes — bottom-center over the map, same rules |
+| DG85 | FULL sheet interaction | Defer: the prompt renders only when the sheet is at PEEK/HALF |
+| DG86 | Cover thumbnail | Yes — the card shows the cafe's 48px cover (overruled Kimi's glyph-only recommendation); owner directive: all design must be visually pleasant |
+| DG87 | Copy tone | Owner directive: sweep the wording system — all copy must be 热情真诚 (warm, sincere), cute, with zero commercial/sales feel. New spec 0002 §Copy tone; nav-prompt copy rewritten (`和 {cafe} 见面了吗？`); system-wide sweep of other artifacts is a tracked follow-up |
+| DG88 | Pill lifetime | The pill stays until answered — no second timeout |
+| DG89 | Entry feedback | No sound, no haptic |
+| DG90 | Modal stacking | The prompt defers while any modal task surface is open — never stacks |
+
 ## Decisions log
 
 - 2026-07-31: Architecture pivot from "migrate Vite SPA + keep Java backend" to "rewrite as full-stack Next.js, drop Java"
@@ -257,6 +280,7 @@ owner-initiated addition (universal rate limiting). Rulings:
 - 2026-08-21: Artifact grill round 10 (search-filters) — DG44-DG58 ruled; spec 0001 amended for 3-char/400ms search-as-you-type, top-10 no-pagination suggestions, weak<3 external prompt, food-only D1 caching, session-scoped filters, and a ~10-city launch replacing Singapore-only MVP
 - 2026-08-21: Artifact grill round 11 (check-in system) — DG59-DG74 ruled; spec 0001 amended for check-in write integrity (idempotency, edit-recency, 90-day Same window, 24h frequency, 500-char notes, 6-photo cap, bidirectional temperature, multi-provider sign-in gate) and a new universal YAML-configured rate-limiting section covering all APIs and scripts
 - 2026-08-21: DG75 — BottomSheet is bespoke Framer Motion (owner-delegated); universal viewport/safe-area contract (dvh/svh, env() insets, viewportFit=cover) added to spec 0002 §Layout; round-9's last parked question closed
+- 2026-08-22: Artifact grill round 12 (navigation-prompt) — DG76-DG90 ruled; spec 0001 amended for Supabase anonymous sessions, navigations.outcome column, next-day prompt timing, three-option no-× card, 3-month expiry, and queuing; new spec 0002 §Copy tone (热情真诚, cute, non-commercial); system-wide copy sweep tracked as follow-up
 
 ## Final tech stack (locked)
 

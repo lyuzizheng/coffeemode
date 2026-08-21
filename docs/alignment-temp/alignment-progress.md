@@ -187,6 +187,28 @@ DG22–DG30 by owner agreement with the Kimi recommendations.
 Still open: the BottomSheet implementation question (bespoke Framer Motion vs
 `react-spring-bottom-sheet`) — Kimi recommends bespoke, owner has not ruled.
 
+## Round 10 — Search-filters grill — complete
+
+15-question grill on the search-filters artifact (tech/product/UX). Rulings:
+
+| # | Decision | Answer |
+|---|----------|--------|
+| DG44 | Typing trigger | Search-as-you-type starts at 3 characters |
+| DG45 | Merge architecture | Accepted as designed: `/api/search` merges own cafes (Postgres) with saved POIs (D1 via POI service), dedupes by place_id, own cafe wins; D1 haversine scan is fine at city scale with the 50K escape hatch |
+| DG46 | Pagination | None. Top-10 suggestion rows under the search bar while typing; submit shows the results view; plotting results on the map belongs to `map-discovery-integration` |
+| DG47 | Filter debounce | 400ms against rapid toggling; in-flight refetch superseded by the latest change |
+| DG48 | URL updates | Live filter changes use history replace, never push |
+| DG49 | Weak threshold | Fewer than 3 local matches triggers the external-search prompt |
+| DG50 | Launch cities | ~10 at launch: Singapore, Tokyo, Seoul, Taipei, Shanghai, Bangkok, Hong Kong, Melbourne, Berlin, London; codes = ISO 3166-1 alpha-2 + IATA metro. Amends spec 0001's "MVP: Singapore only" |
+| DG51 | State persistence | Filters are session-scoped; the selected city persists per the storage rules |
+| DG52 | D1 caching scope | Only food/cafe-category external POIs are persisted; unrelated places are shown but never cached. Spec 0001 §Search amended |
+| DG53 | Open-now default | OFF — nothing is active until the user touches a control |
+| DG54 | Active filter chips | Removable chips above results, one per active filter |
+| DG55 | Empty query | Hint line only; no recents/history |
+| DG56 | Keyboard contract | Enter submits; Esc clears query/dismisses suggestions, closes overlay when empty |
+| DG57 | zh filter labels | `Any/60+/80+` → `不限/60+/80+` |
+| DG58 | Distance labeling | From user location when known, else from city center labeled as such |
+
 ## Decisions log
 
 - 2026-07-31: Architecture pivot from "migrate Vite SPA + keep Java backend" to "rewrite as full-stack Next.js, drop Java"
@@ -205,6 +227,7 @@ Still open: the BottomSheet implementation question (bespoke Framer Motion vs
 - 2026-08-20: Discovery behavior DG16-DG20 agreed; MVP ranking, recovery, accessibility, missing-cafe handling, and the 1024px responsive switch are settled; daily time-decayed ranking is deferred to V2 issue #140
 - 2026-08-21: Map-independent Kimi K3 artifacts delivered as Drafts (#133/#135/#148 merged via PRs #161/#164/#163; #149/#150/#152/#153 in PR #165); artifact grill round 8 complete — DG21-DG30 ruled (display-font rule amended in spec 0002, edit-mode dimension unset and offline check-in disable confirmed, sparkle glyph kept, tri-state filters, modal task surfaces, timer pause, permanent banner dismissal, profile load-more)
 - 2026-08-21: Artifact grill round 9 (discovery-sheet) — DG31-DG43 ruled; specs amended for mandatory overall slider, draft-then-publish creation, desktop left detail column, and PEEK Work-score watermark; BottomSheet implementation question still open
+- 2026-08-21: Artifact grill round 10 (search-filters) — DG44-DG58 ruled; spec 0001 amended for 3-char/400ms search-as-you-type, top-10 no-pagination suggestions, weak<3 external prompt, food-only D1 caching, session-scoped filters, and a ~10-city launch replacing Singapore-only MVP
 
 ## Final tech stack (locked)
 

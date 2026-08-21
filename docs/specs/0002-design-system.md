@@ -6,7 +6,7 @@ Define CoffeeMode's visual identity for 2026: modern, restrained, elegant. The c
 
 ## Status
 
-Accepted (revised 2026-08-21 — viewport & safe-area contract: dvh/svh units, env() insets on all bottom-anchored surfaces, viewportFit=cover; BottomSheet is bespoke Framer Motion (DG75); display-font rule clarified: screen titles + brand wordmark permitted, data/numbers/state labels excluded (DG22); desktop cafe detail becomes a second left column, not a right drawer (DG42); PEEK cards gain a low-contrast Work-score watermark (DG43); FAB creation composes logged-out, sign-in at publish (DG39); 2026-08-20 — discovery feed, recovery, focus, reduced-motion, missing-cafe, breakpoint, and gesture constraints; 2026-08-19 — Kimi K3 design authority and responsive discovery contract; earlier 2026-08-02 — supersedes retro/vintage direction, aligned with bottom-sheet SPA, swipe cards, slider check-in)
+Accepted (revised 2026-08-22 — copy tone principle 热情真诚: warm, sincere, cute, never commercial (DG87); 2026-08-21 — viewport & safe-area contract: dvh/svh units, env() insets on all bottom-anchored surfaces, viewportFit=cover; BottomSheet is bespoke Framer Motion (DG75); display-font rule clarified: screen titles + brand wordmark permitted, data/numbers/state labels excluded (DG22); desktop cafe detail becomes a second left column, not a right drawer (DG42); PEEK cards gain a low-contrast Work-score watermark (DG43); FAB creation composes logged-out, sign-in at publish (DG39); 2026-08-20 — discovery feed, recovery, focus, reduced-motion, missing-cafe, breakpoint, and gesture constraints; 2026-08-19 — Kimi K3 design authority and responsive discovery contract; earlier 2026-08-02 — supersedes retro/vintage direction, aligned with bottom-sheet SPA, swipe cards, slider check-in)
 
 ## Stable decisions
 
@@ -320,6 +320,19 @@ Toggle: available in header (sun/moon icon)
 Map: MapKit JS colorScheme toggles in sync with theme
 Images: no dimming (photos should look true)
 Transition: 200ms color transition on theme switch
+```
+
+## Copy tone (DG87)
+
+```text
+All product copy (en + zh) is 热情真诚 — warm, sincere, a little cute.
+It reads like a friend who loves coffee, never like a company:
+  - no commercial/sales phrasing, no growth-hacker pressure
+  - no fake urgency, no guilt trips, no "don't miss out"
+  - questions are asked the way a friend asks them
+  - celebrations are small and genuine, not confetti-in-words
+Concrete wording lives in each design artifact's i18n reference lines;
+this principle governs them and any new copy.
 ```
 
 ## Accessibility

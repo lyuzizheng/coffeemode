@@ -10,7 +10,7 @@ This is a rewrite, not a migration. The old Vite SPA (`_archive-coffeemode-front
 
 ## Status
 
-Accepted (revised 2026-08-21 — check-in write integrity and UX contracts: upload-on-select photos with auth-gated presigned issuance, idempotency keys, edit-does-not-refresh-recency, 90-day Same-as-last-time window, 1-per-cafe-per-24h limit, 500-char notes, 6-photo cap, bidirectional temperature scale, multi-provider sign-in gate (DG59–DG73); universal YAML-configured rate limiting across all APIs and scripts (DG74); search-as-you-type ≥3 chars with 400ms debounce, top-10 suggestions without pagination, weak-results threshold, removable filter chips, session-scoped filters, food-only D1 caching, distance labeling (DG44–DG49, DG51–DG58); launch expands from Singapore-only to ~10 launch cities with ISO/IATA city codes (DG50); overall slider mandatory per check-in (DG40); creation composes logged-out with local draft, sign-in at publish (DG39); desktop detail becomes a second left column (DG42); PEEK Work-score watermark (DG43); 2026-08-20 — discovery ranking, recovery, accessibility, missing-cafe, responsive, feed, anonymity, dismissal, and gesture contracts; 2026-08-19 — responsive discovery contract and Kimi K3 design gate; 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
+Accepted (revised 2026-08-22 — navigation→check-in prompt reworked: anonymous sessions via Supabase anonymous sign-in, navigations.outcome funnel column, next-day earliest prompt, three-option no-× card, 3-month expiry, one-per-session queue (DG76–DG90); 2026-08-21 — check-in write integrity and UX contracts: upload-on-select photos with auth-gated presigned issuance, idempotency keys, edit-does-not-refresh-recency, 90-day Same-as-last-time window, 1-per-cafe-per-24h limit, 500-char notes, 6-photo cap, bidirectional temperature scale, multi-provider sign-in gate (DG59–DG73); universal YAML-configured rate limiting across all APIs and scripts (DG74); search-as-you-type ≥3 chars with 400ms debounce, top-10 suggestions without pagination, weak-results threshold, removable filter chips, session-scoped filters, food-only D1 caching, distance labeling (DG44–DG49, DG51–DG58); launch expands from Singapore-only to ~10 launch cities with ISO/IATA city codes (DG50); overall slider mandatory per check-in (DG40); creation composes logged-out with local draft, sign-in at publish (DG39); desktop detail becomes a second left column (DG42); PEEK Work-score watermark (DG43); 2026-08-20 — discovery ranking, recovery, accessibility, missing-cafe, responsive, feed, anonymity, dismissal, and gesture contracts; 2026-08-19 — responsive discovery contract and Kimi K3 design gate; 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
 
 ## Stable decisions
 
@@ -186,6 +186,7 @@ create table navigations (
   cafe_id     uuid references cafes(id) on delete cascade,
   user_id     uuid references profiles(id),
   resolved    boolean default false,
+  outcome     text,                 -- visited | wont_go | not_yet | auto (DG80)
   created_at  timestamptz default now()
 );
 create index idx_nav_pending on navigations (user_id) where resolved = false;
@@ -329,6 +330,11 @@ Proxy: web/proxy.ts refreshes the session only when a Supabase session cookie
 Route handlers: verify session via supabase.auth.getUser() before any Postgres write
 Profiles row: upserted in Postgres on first login (auth callback); on failure
   the user is signed out and redirected to /?auth=error&reason=profile_upsert
+Anonymous sessions (DG76): Supabase anonymous sign-in issues a session on
+  first visit — anonymous users get a profiles row like any user, so
+  navigation recording, the navigation→check-in prompt, and local drafts all
+  work pre-login. Upgrading to Apple/Google links the same account (no data
+  loss). Rate limits treat an anonymous session as a per-session user.
 No email infra, no magic links.
 ```
 
@@ -688,12 +694,22 @@ Rules:
     FULL exposes Helpful and Newest modes with opaque cursor pagination; Helpful
     sorts by likes_count, visited_at, then id descending.
 
-Navigation → check-in prompt (ClassPass-style):
-  1. User taps "导航" → navigations row + Google/Apple Maps deep link
-  2. On NEXT site visit (not immediately): bottom slide-up card
-     "你上次导航去了 {cafe}，去过了吗？" [打卡 ✓] [没去]
-  3. Trigger: unresolved navigation, >30min since, max 1 prompt per session,
-     auto-collapse to pill after 8s
+Navigation → check-in prompt (ClassPass-style; revised DG76–DG90):
+  1. User taps "导航" → navigations row + Google/Apple Maps deep link.
+     Works for anonymous sessions too (DG76).
+  2. On a LATER day — earliest the next day (DG78; amends the old
+     "next visit, >30min" trigger): bottom slide-up card with the cafe's
+     cover thumbnail (DG86):
+     "和 {cafe} 见面了吗？" [去过了，打卡！] [还没去] [不去了]
+     - 去过了 → opens the check-in drawer (contribute-to-others framing)
+     - 还没去 → closes for now; may re-ask on a later day (max 2 re-asks)
+     - 不去了 → permanently resolves; there is no × close button (DG81)
+  3. Trigger: unresolved navigation younger than 3 months (DG83), max 1
+     prompt per session, auto-collapse to pill after 8s. Multiple unresolved
+     navigations queue — one per session, most recent first (DG82).
+  4. Any check-in at that cafe auto-resolves the pending navigation (DG79).
+     Outcomes (visited / wont_go / not_yet / auto) are stored on the row for
+     the navigate→visit funnel (DG80).
 ```
 
 ### Cafe creation flow (= first check-in)

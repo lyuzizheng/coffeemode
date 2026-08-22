@@ -569,7 +569,8 @@ scan-oriented.
   selection, replace the current URL with `/`, return to PEEK, and show a toast.
 
 /profile (separate route):
-  Avatar, my cafes, my check-ins.
+  Avatar, four tabs — My Check-ins (default), 我的咖啡地图, Favorites,
+  Search History (DG102/DG103).
 ```
 
 ### Data fetching
@@ -946,7 +947,7 @@ its Kimi K3 artifact.
 6. City search + nomad filters
 7. Check-in like toggle + Helpful/Newest cursor-paginated check-in feed
 8. Soft delete with gallery photo hiding
-9. /profile page (My Cafes + My Check-ins)
+9. /profile page (four tabs: My Check-ins default / 我的咖啡地图 / Favorites / Search History)
 ```
 
 ### Phase 5: Polish + Deploy

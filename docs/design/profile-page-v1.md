@@ -11,10 +11,10 @@
   (`/profile`); `docs/specs/0004-product-decisions-and-backlog.md` §10–§11,
   UI4 backlog row
 
-Scope: composition of the `/profile` route. Behavior (My Cafes = distinct
-cafes with ≥1 check-in ordered by latest visit; created-by-me badge on
-`is_creation`; My Check-ins = all rows newest `visited_at` first) is
-canonical in spec 0004 §10 and is referenced, not redefined.
+Scope: composition of the `/profile` route. Behavior (我的咖啡地图 =
+distinct cafes with ≥1 check-in ordered by latest visit; created-by-me
+badge on `is_creation`; My Check-ins = all rows newest `visited_at` first)
+is canonical in spec 0004 §10 and is referenced, not redefined.
 
 ---
 
@@ -69,8 +69,11 @@ user actually set, honest unset rules), a right-aligned like count (heart
 glyph + count, `text-xs`, `muted` — kept, DG100: the quiet feedback loop
 that your data helped someone), and a 36px ghost edit (pencil) button
 opening the check-in drawer in edit mode (checkin-system-v1 §5). Card tap
-→ `/cafes/[id]`. If the cafe was soft-deleted, the card stays but renders
-unlinked with the name in `muted` (DG99).
+selects the cafe in the discovery controller and returns to the map with
+that cafe selected (the DG101 in-app path — never a `/cafes/[id]` route
+hop; the SSR page exists for external share links, not in-app navigation).
+If the cafe was soft-deleted, the card stays but renders inert with the
+name in `muted` (DG99).
 
 ### 我的咖啡地图 (My Coffee Map)
 
@@ -79,7 +82,9 @@ first). Rows reuse the discovery card content language: 72px 4:3 cover,
 cafe name (`font-display`, `text-md`), meta line `Last visit 12 Aug · 3
 check-ins` (`text-xs`, `muted`, tabular). A `Created by me` badge renders
 as plain `secondary` sage text with a small `+` glyph, `text-xs`, after the
-name — text, not a pill background. Row tap → `/cafes/[id]`. Soft-deleted
+name — text, not a pill background. Row tap selects the cafe in the
+discovery controller and returns to the map with that selection (same
+DG101 in-app path as My Check-ins). Soft-deleted
 cafes are hidden entirely (DG99).
 
 ### Favorites (design-ahead)
@@ -129,10 +134,10 @@ The page must navigate like an app, not a website:
 
 - **Anonymous session** (DG94): the page renders the gate, not the data —
   display-font line `Your cafes live here` (`text-xl`), body `Sign in —
-  your check-ins will be waiting · 登录后，你现在的记录都会保留`
-  (`text-sm`, `muted`; the second clause promises the anonymous-history
-  merge), and the standard `SignInButton` (accent, solid, all providers
-  per DG66). No fake preview content.
+  your check-ins will be waiting, and everything you've done so far is
+  kept` (`text-sm`, `muted`; the second clause promises the
+  anonymous-history merge), and the standard `SignInButton` (accent, solid,
+  all providers per DG66). No fake preview content.
 - **Loading**: skeleton hero circle + two stat blocks + 4 cards, HeroUI
   Skeleton shimmer (initial load only).
 - **Empty (new user)**: tabs render normally; My Check-ins shows
@@ -155,7 +160,8 @@ The page must navigate like an app, not a website:
   `我的收藏`, `Search History` → `搜索历史`, `Created by me` → `由我收录`,
   `Sign out` → `退出登录`, `Load more` → `加载更多`, `Your cafes live
   here` → `你的咖啡馆都住在这儿`, `Sign in — your check-ins will be
-  waiting` → `登录一下，你的打卡都在等你`, `No check-ins yet` →
+  waiting, and everything you've done so far is kept` →
+  `登录一下，你的打卡都在等你，现在的记录也都会保留`, `No check-ins yet` →
   `还没有打卡`, `Find a cafe to check in` → `去找家咖啡馆打卡吧`,
   `Couldn't load` → `加载失败，再试试？`, `Clear` → `清空`,
   `还没有收藏` / body `看到喜欢的咖啡馆，点一颗小心心收藏起来`,
@@ -171,7 +177,7 @@ The page must navigate like an app, not a website:
 - [ ] Back (browser, swipe, chevron) always returns to the map as left —
       verify with iOS swipe-back and Android back (DG101).
 - [ ] Anonymous visitors see the gate with the data-preservation promise,
-      never an empty ledger (DG94).
+      never an empty atlas (DG94).
 - [ ] `Created by me` is visible but quiet (text badge, sage).
 - [ ] Dark mode requires no per-component overrides.
 

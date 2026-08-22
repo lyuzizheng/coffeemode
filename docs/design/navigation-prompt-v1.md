@@ -3,7 +3,8 @@
 - Slice: `navigation-prompt` (issue #149)
 - Status: **Draft — pending owner approval**
 - Author: Kimi K3
-- Date: 2026-08-21 (revised 2026-08-22 — grill round 12 rulings DG76–DG90)
+- Date: 2026-08-21 (revised 2026-08-22 — grill round 12 rulings DG76–DG90;
+  queue semantics + final copy per DG91/DG92)
 - Base: `docs/design/discovery-sheet-v1.md`, `docs/design/checkin-system-v1.md`
   (icon set, task-surface pattern, success toast are shared)
 - Specs: `docs/specs/0001-nextjs-migration.md` §Check-in system (navigation →
@@ -41,16 +42,18 @@ mobile and floating bottom-center over the map (360px width) on desktop
 - Layout: single row. Left: **48px cover thumbnail** (`radius-md`, 4:3 crop;
   `surface-tertiary` + cup glyph fallback for coverless cafes) — the user
   recognizes the place instantly (DG86). Middle, two lines: the headline
-  `和 {cafe} 见面了吗？` (`text-sm`, `foreground`, name truncated) and the
+  `有去 {cafe} 喝一杯吗？` (`text-sm`, `foreground`, name truncated) and the
   context line `你{day}还导航来了这里` (`text-xs`, `muted`). **No × button
   anywhere** — the three options are the only exits (DG81).
 - Option row below, full width, 8px gap, three buttons:
-  - `去过了，打卡！` — solid `accent`, flex-1. Opens the check-in drawer
-    (checkin-system-v1) targeted at that cafe; the contribution framing
-    ("your check-in helps the next nomad") lives in the drawer's success
-    moment, not as pressure copy here.
-  - `还没去` — ghost. Closes the card for now; the navigation may ask once
-    more on a later day (max 2 re-asks total, then it auto-resolves).
+  - `有去！` — solid `accent`, flex-1. Opens the check-in drawer
+    (checkin-system-v1) targeted at that cafe; the drawer header carries
+    the warm caption `来打个卡，帮其他 nomad 种草避雷吧！` when entered
+    from this prompt (DG92) — the contribution framing lives there, not as
+    pressure copy on this card.
+  - `还没去` — ghost. Closes the card; the item goes to the **back of the
+    queue** and becomes eligible again after ≥ 1 day (max 2 re-asks, then
+    auto-resolves; DG91).
   - `不去了` — `muted` text-button. Permanently resolves the navigation
     (outcome `wont_go`), no confirmation, no guilt copy.
 - All three answers resolve the prompt. The card never reappears for the
@@ -90,8 +93,14 @@ Framer `layoutId` shared-element transition, 200ms `ease.default`:
   FULL (DG85) and while any modal task surface is open — check-in drawer,
   filter panel, sign-in sheet (DG90). It renders once the UI returns to
   PEEK/HALF with no modal open.
-- **Queue**: several unresolved navigations prompt one per session, most
-  recent first (DG82).
+- **Queue (DG91)**: all promptable items live in a generic per-user
+  prompt-queue service (`web/lib/prompt-queue` — built as a reusable service
+  component for future prompt features, not nav logic coupled into this
+  card). One prompt per session, most recent eligible first. `还没去`
+  sends the item to the **back of the queue**, stamps `last_asked_at`, and
+  it becomes eligible again only after ≥ 1 day; an item dequeued at an
+  ineligible moment is re-queued, never dropped. Max 2 re-asks
+  (`ask_count ≤ 2`), then it auto-resolves.
 - **Expiry**: navigations older than 3 months never prompt (DG83).
 - **Anonymous users**: the prompt works for anonymous sessions (Supabase
   anonymous sign-in, DG76); upgrading to Apple/Google keeps the history.
@@ -104,7 +113,7 @@ Framer `layoutId` shared-element transition, 200ms `ease.default`:
 - **Cafe missing at prompt time**: the prompt simply never renders (the
   unresolved-navigation record pointing at a deleted cafe resolves silently);
   no error UI for a prompt the user never asked for.
-- **Offline**: the prompt can render from local state, but `去过了，打卡！`
+- **Offline**: the prompt can render from local state, but `有去！`
   follows the check-in drawer's offline-disabled treatment
   (checkin-system-v1 §6).
 
@@ -117,10 +126,13 @@ Framer `layoutId` shared-element transition, 200ms `ease.default`:
   full tab order (no ×).
 - Keys under `navPrompt.*`. Copy follows the spec 0002 tone principle
   (DG87 — 热情真诚, cute, non-commercial). zh/en reference pairs:
-  - Headline: `和 {cafe} 见面了吗？` / `Made it to {cafe}?`
+  - Headline: `有去 {cafe} 喝一杯吗？` / `Grabbed a coffee at {cafe}?`
   - Context line: `你{day}还导航来了这里` / `You navigated here {day}`
-  - Options: `去过了，打卡！` / `Visited — check in!` ·
+  - Options: `有去！` / `I did!` ·
     `还没去` / `Not yet` · `不去了` / `Won't go`
+  - Check-in drawer caption (entered from this prompt):
+    `来打个卡，帮其他 nomad 种草避雷吧！` /
+    `Check in — help fellow nomads find the gems and dodge the duds!`
   - Pill: `去过了吗？` / `Made it?`
 
 ## 7. Visual acceptance criteria (owner sign-off)

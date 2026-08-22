@@ -187,6 +187,8 @@ create table navigations (
   user_id     uuid references profiles(id),
   resolved    boolean default false,
   outcome     text,                 -- visited | wont_go | not_yet | auto (DG80)
+  ask_count   int default 0,        -- times the prompt was answered 还没去 (DG91)
+  last_asked_at timestamptz,        -- eligibility: next ask ≥ 1 day later (DG91)
   created_at  timestamptz default now()
 );
 create index idx_nav_pending on navigations (user_id) where resolved = false;
@@ -698,22 +700,31 @@ Rules:
     FULL exposes Helpful and Newest modes with opaque cursor pagination; Helpful
     sorts by likes_count, visited_at, then id descending.
 
-Navigation → check-in prompt (ClassPass-style; revised DG76–DG90):
+Navigation → check-in prompt (ClassPass-style; revised DG76–DG92):
   1. User taps "导航" → navigations row + Google/Apple Maps deep link.
      Works for anonymous sessions too (DG76).
   2. On a LATER day — earliest the next day (DG78; amends the old
      "next visit, >30min" trigger): bottom slide-up card with the cafe's
      cover thumbnail (DG86):
-     "和 {cafe} 见面了吗？" [去过了，打卡！] [还没去] [不去了]
-     - 去过了 → opens the check-in drawer (contribute-to-others framing)
-     - 还没去 → closes for now; may re-ask on a later day (max 2 re-asks)
+     "有去 {cafe} 喝一杯吗？" [有去！] [还没去] [不去了]  (DG92)
+     - 有去！ → opens the check-in drawer with the warm caption
+       "来打个卡，帮其他 nomad 种草避雷吧！" (DG92)
+     - 还没去 → closes for now; re-ask rules below (DG91)
      - 不去了 → permanently resolves; there is no × close button (DG81)
-  3. Trigger: unresolved navigation younger than 3 months (DG83), max 1
-     prompt per session, auto-collapse to pill after 8s. Multiple unresolved
-     navigations queue — one per session, most recent first (DG82).
+  3. Prompt queue (DG91): a generic per-user prompt-queue service
+     (web/lib/prompt-queue — reusable by future prompt features, not
+     nav-specific logic coupled into the component).
+     - Eligibility: unresolved, < 3 months old (DG83), and either never
+       asked or last_asked_at ≥ 1 day ago.
+     - One prompt per session, most recent eligible first; 还没去
+       increments ask_count, stamps last_asked_at, and sends the item to
+       the BACK of the queue — it becomes eligible again after ≥ 1 day;
+       an item dequeued at an ineligible moment is simply re-queued.
+     - Max 2 re-asks (ask_count ≤ 2), then auto-resolves.
   4. Any check-in at that cafe auto-resolves the pending navigation (DG79).
      Outcomes (visited / wont_go / not_yet / auto) are stored on the row for
      the navigate→visit funnel (DG80).
+  5. Auto-collapse to pill after 8s untouched.
 ```
 
 ### Cafe creation flow (= first check-in)

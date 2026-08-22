@@ -25,6 +25,10 @@ priorities or decisions.
 ## Rules
 
 - Make the smallest complete change and preserve unrelated work.
+- Build shared behavior as segregated, reusable service components with clear
+  module boundaries (e.g. the prompt queue, the rate limiter): feature code
+  composes them, never embeds or duplicates them. No duplicated logic, no
+  cross-feature coupling — the repo is expected to grow large (DG91).
 - Never bypass a failing gate; fix the root cause.
 - One production-code writer per change. Reviewers do not author the patch.
 - Run the narrowest test that proves the change, then the relevant package gate.

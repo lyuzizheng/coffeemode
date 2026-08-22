@@ -258,6 +258,8 @@ re-explained in plain language at owner request. Rulings:
 | DG88 | Pill lifetime | The pill stays until answered — no second timeout |
 | DG89 | Entry feedback | No sound, no haptic |
 | DG90 | Modal stacking | The prompt defers while any modal task surface is open — never stacks |
+| DG91 | Re-ask queue design | `还没去` re-asks ≥ 1 day later, sends the item to the BACK of the queue; an item dequeued at an ineligible moment is re-queued, never dropped; max 2 re-asks confirmed. The queue is a generic per-user prompt-queue service (`web/lib/prompt-queue`) reusable by future features. Owner directive added to AGENTS.md rules: shared behavior is built as segregated, reusable service components — no duplication, no cross-feature coupling. Spec 0001 navigations table gains `ask_count` / `last_asked_at` |
+| DG92 | Prompt copy (final) | Headline `有去 {cafe} 喝一杯吗？`; primary `有去！`; on tap the check-in drawer carries the caption `来打个卡，帮其他 nomad 种草避雷吧！`. Supersedes the round-12 nav-prompt wording |
 
 ## Decisions log
 
@@ -281,6 +283,7 @@ re-explained in plain language at owner request. Rulings:
 - 2026-08-21: Artifact grill round 11 (check-in system) — DG59-DG74 ruled; spec 0001 amended for check-in write integrity (idempotency, edit-recency, 90-day Same window, 24h frequency, 500-char notes, 6-photo cap, bidirectional temperature, multi-provider sign-in gate) and a new universal YAML-configured rate-limiting section covering all APIs and scripts
 - 2026-08-21: DG75 — BottomSheet is bespoke Framer Motion (owner-delegated); universal viewport/safe-area contract (dvh/svh, env() insets, viewportFit=cover) added to spec 0002 §Layout; round-9's last parked question closed
 - 2026-08-22: Artifact grill round 12 (navigation-prompt) — DG76-DG90 ruled; spec 0001 amended for Supabase anonymous sessions, navigations.outcome column, next-day prompt timing, three-option no-× card, 3-month expiry, and queuing; new spec 0002 §Copy tone (热情真诚, cute, non-commercial); system-wide copy sweep tracked as follow-up
+- 2026-08-22: DG91-DG92 — re-ask queue semantics (≥1 day, back-of-queue, re-queue on ineligible dequeue, max 2 re-asks) with a generic reusable `web/lib/prompt-queue` service; AGENTS.md gains the reusable-segregated-components repo rule; nav-prompt copy finalized (有去 {cafe} 喝一杯吗？ / 有去！ / 种草避雷 drawer caption)
 
 ## Final tech stack (locked)
 

@@ -49,7 +49,9 @@ follow:
 - **Desktop**: Drawer placement right, 420px, same content, single column.
 - Header: cafe name only (`font-display`, `text-lg`, truncated) plus a 36px
   ghost close (×) top-right. No `Check in` title — the confirm button at the
-  foot already says it.
+  foot already says it. When the drawer is opened from the navigation
+  prompt, a warm caption sits under the cafe name: `来打个卡，帮其他 nomad
+  种草避雷吧！` (`text-xs`, `muted`; DG92).
 
 ## 3. Controls (top to bottom, 16px side padding, 16px section rhythm)
 

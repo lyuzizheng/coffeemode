@@ -3,7 +3,7 @@
 - Slice: `profile-page` (issue #152)
 - Status: **Draft — pending owner approval**
 - Author: Kimi K3
-- Date: 2026-08-21
+- Date: 2026-08-21 (revised 2026-08-22 — copy tone sweep per DG87/DG93)
 - Base: `docs/design/discovery-sheet-v1.md` (card language, segmented
   control), `docs/design/checkin-system-v1.md` (edit drawer)
 - Specs: `docs/specs/0001-nextjs-migration.md` §Rendering strategy
@@ -70,9 +70,9 @@ page, matching the feed page size), not infinite scroll — a ledger ends.
 ## 4. States
 
 - **Unauthenticated**: no redirect. The page renders a calm gate: display
-  font line `Your cafes live here` (`text-xl`), body `Sign in to see your
-  check-ins` (`text-sm`, `muted`), and the standard `SignInButton` (accent,
-  solid). No fake preview content.
+  font line `Your cafes live here` (`text-xl`), body `Sign in — your
+  check-ins will be waiting` (`text-sm`, `muted`), and the standard
+  `SignInButton` (accent, solid). No fake preview content.
 - **Loading**: skeleton header circle + two stat blocks + 4 rows, HeroUI
   Skeleton shimmer (initial load only).
 - **Empty (new user)**: tabs render with zero counts; the active tab shows
@@ -93,7 +93,11 @@ page, matching the feed page size), not infinite scroll — a ledger ends.
   (no icon-only stats).
 - Keys under `profile.*`. zh references: `My Cafes` / `My Check-ins` →
   `我的咖啡馆` / `我的打卡`, `Created by me` → `由我收录`, `Sign out` →
-  `退出登录`, `Load more` → `加载更多`.
+  `退出登录`, `Load more` → `加载更多`, `Your cafes live here` →
+  `你的咖啡馆都住在这儿`, `Sign in — your check-ins will be waiting` →
+  `登录一下，你的打卡都在等你`, `No check-ins yet` → `还没有打卡`,
+  `Find a cafe to check in` → `去找家咖啡馆打卡吧`, `Couldn't load` →
+  `加载失败，再试试？`.
 
 ## 6. Visual acceptance criteria (owner sign-off)
 

@@ -92,7 +92,7 @@ BottomSheet:      Google-Maps-style sheet, snap states peek / half / full
 WorkProfile:      Dimension bars (wifi/outlets/seats/temp/coffee) + policy consensus
 ScoreSlider:      0-100 subjective slider with live value (check-in + creation)
 PolicyChips:      min-spend / max-stay chip groups
-NavPrompt:        ClassPass-style "Did you visit?" slide-up card
+NavPrompt:        ClassPass-style "有去喝一杯吗？" slide-up card (DG92)
 DeepLinkBanner:   Lightweight bottom banner for deep-link first visits
 ```
 
@@ -331,6 +331,8 @@ It reads like a friend who loves coffee, never like a company:
   - no fake urgency, no guilt trips, no "don't miss out"
   - questions are asked the way a friend asks them
   - celebrations are small and genuine, not confetti-in-words
+  - somber moments (404, errors, deletions) stay quiet and honest — cute
+    never jokes at the user's expense
 Concrete wording lives in each design artifact's i18n reference lines;
 this principle governs them and any new copy.
 ```

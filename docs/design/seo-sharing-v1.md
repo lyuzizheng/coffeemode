@@ -3,7 +3,7 @@
 - Slice: `seo-sharing` (issue #150)
 - Status: **Draft — pending owner approval**
 - Author: Kimi K3
-- Date: 2026-08-21
+- Date: 2026-08-21 (revised 2026-08-22 — copy tone sweep per DG87/DG93)
 - Base: `docs/design/discovery-sheet-v1.md` (FULL composition, icon set,
   score hierarchy are reused verbatim)
 - Specs: `docs/specs/0001-nextjs-migration.md` §Rendering strategy
@@ -91,7 +91,8 @@ and final — no cute illustration, no coffee-pun copy.
   anchors (`?feed=newest`), fully keyboard/SSR friendly.
 - Keys under `cafeDetail.*` and `share.*`. zh references: `Open in
   CoffeeMode` → `打开地图探索`, `Link copied` → `链接已复制`, `This cafe is
-  gone` → `这个咖啡馆不存在了`, `Back to discover` → `返回发现`.
+  gone` → `这家咖啡馆找不到了`, `It may have been removed` →
+  `它可能已经被移除了`, `Back to discover` → `返回发现`.
 
 ## 7. Visual acceptance criteria (owner sign-off)
 

@@ -3,7 +3,8 @@
 - Slice: `search-filters` (issue #135)
 - Status: **Draft — pending owner approval**
 - Author: Kimi K3
-- Date: 2026-08-20 (revised 2026-08-21 — grill round 10 rulings DG44–DG58)
+- Date: 2026-08-20 (revised 2026-08-21 — grill round 10 rulings DG44–DG58;
+  2026-08-22 — copy tone sweep per DG87/DG93)
 - Base: stacked on `docs/design/discovery-sheet-v1.md` (icon set, tokens,
   state language are shared)
 - Specs: `docs/specs/0001-nextjs-migration.md` §Search, §Rendering strategy;
@@ -226,8 +227,12 @@ Row types, visually distinguished:
 
 Keys under `search.*` and `filters.*` (en/zh). zh references: `Filters` →
 `筛选`, `Any/60+/80+` → `不限/60+/80+`, `Open now` → `营业中`,
-`Not on CoffeeMode yet` → `还未收录`, `Search Google Maps` →
-`搜索 Google 地图`, `Couldn't search` → `搜索失败`.
+`Not on CoffeeMode yet` → `还未收录`, `Search Google Maps` /
+`Search Apple Maps` → `搜索 Google 地图` / `搜索 Apple 地图`,
+`Not finding it?` → `没找到？`, `No places match these filters` →
+`没有符合这些条件的咖啡馆`, `Try loosening one` → `试试放宽一个条件`,
+`Reset filters` → `重置筛选`, `Search cafes, neighborhoods, or addresses` →
+`搜咖啡馆、街区或地址`, `Couldn't search` → `没搜成功，再试试？`.
 
 ## 11. Visual acceptance criteria (owner sign-off)
 

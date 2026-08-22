@@ -3,7 +3,7 @@
 - Slice: first-visit city + geolocation onboarding (issue #153)
 - Status: **Draft — pending owner approval**
 - Author: Kimi K3
-- Date: 2026-08-21
+- Date: 2026-08-21 (revised 2026-08-22 — copy tone sweep per DG87/DG93)
 - Base: `docs/design/discovery-sheet-v1.md` (icon set, tokens);
   `docs/design/seo-sharing-v1.md` (deep-link banner for deep-link arrivals)
 - Specs: `docs/specs/0001-nextjs-migration.md` §Onboarding & city model;
@@ -98,9 +98,11 @@ artifact asserts no additional UI for that path.
 - Permission outcomes are announced via the toast's polite live region.
 - Keys under `onboarding.*`. zh references (spec-seeded): `Enable location`
   → `开启定位`, `Skip for now` → `暂时跳过`, `Looks like you're in {city}` →
-  `看起来你在 {city}`, `Location is off — pick your city` →
-  `定位未开启 — 请选择城市`, `Find a cafe you can actually work in` →
-  `找到真正能办公的咖啡馆`.
+  `你好像在 {city} 哦`, `Location is off — pick your city` →
+  `定位没开，挑一个城市吧`, `Find a cafe you can actually work in` →
+  `找到真正能办公的咖啡馆`, `Locating…` → `定位中…`,
+  `Use {selected city}` → `就用{selected city}`, `Location access was
+  declined` → `定位没开成功，没关系`.
 
 ## 8. Visual acceptance criteria (owner sign-off)
 

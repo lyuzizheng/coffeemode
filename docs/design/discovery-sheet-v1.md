@@ -5,7 +5,8 @@
 - Author: Kimi K3
 - Date: 2026-08-20 (revised 2026-08-21 — FULL header gains the
   `Edit your check-in` row per DG72; bespoke Framer Motion sheet +
-  viewport/safe-area contract per DG75)
+  viewport/safe-area contract per DG75; 2026-08-22 — copy tone sweep per
+  DG87/DG93)
 - Specs: `docs/specs/0001-nextjs-migration.md` (rendering strategy, discovery
   contract), `docs/specs/0002-design-system.md` (tokens, motion, a11y),
   `docs/specs/0004-product-decisions-and-backlog.md` §18b–18g, DG1–DG20
@@ -270,7 +271,8 @@ HALF on 768×1024 and 1024×768; handle stays reachable with the sheet at FULL.
   bar, HeroUI Skeleton shimmer on `surface` cards. Skeletons are allowed only
   for the initial load (spec 0002).
 - **Empty nearby**: no cards. Display-font line `No cafes nearby yet`
-  (`text-lg`), body `Be the first to check in` (`text-sm`, `muted`), and a
+  (`text-lg`), body `Know a good one? Add it — the next nomad will thank
+  you` (`text-sm`, `muted`), and a
   solid `accent` `Add a cafe` button. No illustration.
 - **Feed refresh/pagination failure** (DG17): previous content stays. Inline
   row at the failed section: warning glyph + `Couldn't load check-ins`
@@ -316,8 +318,13 @@ All timings/easings from spec 0002; this artifact assigns them:
 
 All copy via next-intl keys under `discovery.*`; examples above are `en`.
 `zh` references: `Helpful/Newest` → `最有用/最新`, `Not enough check-ins` →
-`打卡数据不足`, `A nomad` → `一位 nomad`, `No cafes nearby yet` →
-`附近还没有咖啡馆`.
+`打卡还太少啦`, `A nomad` → `一位 nomad`, `No cafes nearby yet` →
+`附近还没有咖啡馆`, `Know a good one? Add it — the next nomad will thank
+you` → `知道一家好店？收录它，帮其他 nomad 种草`,
+`Couldn't load check-ins` → `打卡加载失败，再试试？`,
+`This cafe is no longer available` → `这家咖啡馆找不到了`,
+`No check-ins yet` → `还没有打卡`, `Be the first — Check in` →
+`来当第一个打卡的人！`.
 
 ## 13. Visual acceptance criteria (owner sign-off)
 

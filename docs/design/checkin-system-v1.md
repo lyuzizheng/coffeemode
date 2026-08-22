@@ -3,7 +3,8 @@
 - Slice: `checkin-system` (issue #148)
 - Status: **Draft — pending owner approval**
 - Author: Kimi K3
-- Date: 2026-08-21 (revised 2026-08-21 — grill round 11 rulings DG59–DG73)
+- Date: 2026-08-21 (revised 2026-08-21 — grill round 11 rulings DG59–DG73;
+  2026-08-22 — copy tone sweep per DG87/DG93)
 - Base: stacked on `docs/design/discovery-sheet-v1.md` and
   `docs/design/search-filters-v1.md` (icon set, control language, task-surface
   pattern are shared)
@@ -224,8 +225,10 @@ HeroUI confirmation popover (`Delete? This removes your scores.` /
   toast, not the animation.
 - Keys under `checkIn.*` (en/zh). zh references: `Check in` → `打卡`,
   `Same` / `New` → `和上次一样` / `重新评价`, `Overall experience` →
-  `整体体验`, `Set Overall experience to check in` → `先给整体体验打分再打卡`,
-  `Couldn't save your check-in` → `保存失败`, `Check-in saved` → `打卡成功`,
+  `整体体验`, `Set Overall experience to check in` → `先给整体体验打个分吧`,
+  `What should the next nomad know?` → `下一位 nomad 该知道什么？`,
+  `Couldn't save your check-in` → `没保存成功，再试试？`,
+  `Check-in saved` → `打卡成功，谢谢分享！`,
   `Discard this check-in?` → `放弃这次打卡？`, `Keep editing` → `继续编辑`,
   `Discard` → `放弃`, `Too cold` / `Too hot` → `太冷` / `太热`,
   `Edit your check-in` → `修改我的打卡`.

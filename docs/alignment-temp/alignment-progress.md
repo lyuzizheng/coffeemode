@@ -262,6 +262,25 @@ re-explained in plain language at owner request. Rulings:
 | DG92 | Prompt copy (final) | Headline `有去 {cafe} 喝一杯吗？`; primary `有去！`; on tap the check-in drawer carries the caption `来打个卡，帮其他 nomad 种草避雷吧！`. Supersedes the round-12 nav-prompt wording |
 | DG93 | System-wide copy sweep | All artifacts' en/zh copy brought under the DG87 tone principle: warmer zh state lines (`没保存成功，再试试？`, `打卡成功，谢谢分享！`, `打卡还太少啦`, `你好像在 {city} 哦`, `你的咖啡馆都住在这儿`, `这家咖啡馆找不到了`…), friendlier empty-state bodies, spec 0002 NavPrompt catalog row updated, and a §Copy tone caveat added: somber moments (404/errors/deletions) stay quiet — cute never jokes at the user's expense |
 
+## Round 13 — Profile-page grill — complete
+
+10-question grill on the profile-page artifact (question count set by
+judgment, per owner). Q1–Q7 agreed as recommended; Q8–Q10 expanded by the
+owner. Rulings:
+
+| # | Decision | Answer |
+|---|----------|--------|
+| DG94 | Anonymous sessions on /profile | Anonymous users see the gate, not their data — with an added data-preservation promise (`登录后，你现在的记录都会保留`); the gate offers all sign-in providers |
+| DG95 | Avatar/name fallback | Provider avatar → initial circle; provider name → email prefix (before the `@`, never the full email) |
+| DG96 | /profile SEO/privacy | `noindex`, SSR per request, never CDN-cached |
+| DG97 | Editable fields | Display name (inline, 24 chars) and current city (chip → Select popover) are editable; nothing else |
+| DG98 | Account deletion | MVP ships sign-out only; Delete account is V2 — required before any native app (Apple store rule) |
+| DG99 | Deleted cafes | Soft-deleted cafes are hidden from 我的咖啡地图; their check-in cards remain in My Check-ins, unlinked and muted |
+| DG100 | Like counts | Kept on own check-in cards — the quiet feedback loop that your data helped someone |
+| DG101 | App-like navigation | Owner's core concern: the page must navigate like an app, not a website. Entry via 36px avatar in the search bar (mobile) / sidebar top (desktop); /profile pushes exactly one history entry; browser back / iOS swipe / Android back return to the map exactly as left (selection, detent, scroll intact, no refetch); direct-landing fallback goes to `/`; header back-chevron mirrors the gesture |
+| DG102 | Tabs + design ambition | Default tab is **My Check-ins** (overruled Kimi's My Cafes default). Four tabs: My Check-ins / 我的咖啡地图 / Favorites / Search History — the latter two designed now, shipping with empty states until their features land (favorites stay post-MVP; search history is client-side only). Owner directive: the page must be design-forward, not an old-school Google Maps profile — artifact §1–§3 recomposed (hero header, cards, atlas framing). Spec 0004 §10/§11 + UI4 amended |
+| DG103 | My Cafes zh name | `我的咖啡地图` (My Coffee Map) — owner's pick; if the product later expands beyond coffee, the name is revisited then |
+
 ## Decisions log
 
 - 2026-07-31: Architecture pivot from "migrate Vite SPA + keep Java backend" to "rewrite as full-stack Next.js, drop Java"
@@ -286,6 +305,7 @@ re-explained in plain language at owner request. Rulings:
 - 2026-08-22: Artifact grill round 12 (navigation-prompt) — DG76-DG90 ruled; spec 0001 amended for Supabase anonymous sessions, navigations.outcome column, next-day prompt timing, three-option no-× card, 3-month expiry, and queuing; new spec 0002 §Copy tone (热情真诚, cute, non-commercial); system-wide copy sweep tracked as follow-up
 - 2026-08-22: DG91-DG92 — re-ask queue semantics (≥1 day, back-of-queue, re-queue on ineligible dequeue, max 2 re-asks) with a generic reusable `web/lib/prompt-queue` service; AGENTS.md gains the reusable-segregated-components repo rule; nav-prompt copy finalized (有去 {cafe} 喝一杯吗？ / 有去！ / 种草避雷 drawer caption)
 - 2026-08-22: DG93 — system-wide copy tone sweep applied across all six design artifacts + spec 0002 (warmer zh state lines, friendlier empty states, somber-moments caveat); DG87 follow-up closed
+- 2026-08-22: Artifact grill round 13 (profile-page) — DG94-DG103 ruled; /profile recomposed as a design-forward personal coffee atlas with four tabs (My Check-ins default, 我的咖啡地图, Favorites, Search History), app-like back navigation, anonymous-session gate with data-preservation promise; spec 0004 §10/§11 + UI4 amended
 
 ## Final tech stack (locked)
 

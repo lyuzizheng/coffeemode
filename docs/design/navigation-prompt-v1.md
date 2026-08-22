@@ -65,7 +65,7 @@ After 8s untouched (spec-owned timing), the card morphs into a pill —
 Framer `layoutId` shared-element transition, 200ms `ease.default`:
 
 - Pill: bottom-right, above the sheet/FAB safe zone; `overlay` surface,
-  `radius-full`, `shadow-map`, 36px height: navigation glyph + `去过了吗？`
+  `radius-full`, `shadow-map`, 36px height: navigation glyph + `有去喝一杯吗？`
   (`text-xs`). No × on the pill either — tapping it re-expands the card
   (same `layoutId` morph) where the three options live.
 - The pill **stays until answered** (DG88) — it is 36px tall and off the
@@ -133,7 +133,7 @@ Framer `layoutId` shared-element transition, 200ms `ease.default`:
   - Check-in drawer caption (entered from this prompt):
     `来打个卡，帮其他 nomad 种草避雷吧！` /
     `Check in — help fellow nomads find the gems and dodge the duds!`
-  - Pill: `去过了吗？` / `Made it?`
+  - Pill: `有去喝一杯吗？` / `Grab that coffee?`
 
 ## 7. Visual acceptance criteria (owner sign-off)
 

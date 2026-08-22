@@ -259,7 +259,7 @@ re-explained in plain language at owner request. Rulings:
 | DG89 | Entry feedback | No sound, no haptic |
 | DG90 | Modal stacking | The prompt defers while any modal task surface is open — never stacks |
 | DG91 | Re-ask queue design | `还没去` re-asks ≥ 1 day later, sends the item to the BACK of the queue; an item dequeued at an ineligible moment is re-queued, never dropped; max 2 re-asks confirmed. The queue is a generic per-user prompt-queue service (`web/lib/prompt-queue`) reusable by future features. Owner directive added to AGENTS.md rules: shared behavior is built as segregated, reusable service components — no duplication, no cross-feature coupling. Spec 0001 navigations table gains `ask_count` / `last_asked_at` |
-| DG92 | Prompt copy (final) | Headline `有去 {cafe} 喝一杯吗？`; primary `有去！`; on tap the check-in drawer carries the caption `来打个卡，帮其他 nomad 种草避雷吧！`. Supersedes DG87's first nav-prompt wording |
+| DG92 | Prompt copy (final) | Headline `有去 {cafe} 喝一杯吗？`; primary `有去！`; on tap the check-in drawer carries the caption `来打个卡，帮其他 nomad 种草避雷吧！`. Supersedes the round-12 nav-prompt wording |
 
 ## Decisions log
 

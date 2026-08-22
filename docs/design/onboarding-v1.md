@@ -100,7 +100,9 @@ artifact asserts no additional UI for that path.
   → `开启定位`, `Skip for now` → `暂时跳过`, `Looks like you're in {city}` →
   `你好像在 {city} 哦`, `Location is off — pick your city` →
   `定位没开，挑一个城市吧`, `Find a cafe you can actually work in` →
-  `找到真正能办公的咖啡馆`.
+  `找到真正能办公的咖啡馆`, `Locating…` → `定位中…`,
+  `Use {selected city}` → `就用{selected city}`, `Location access was
+  declined` → `定位没开成功，没关系`.
 
 ## 8. Visual acceptance criteria (owner sign-off)
 

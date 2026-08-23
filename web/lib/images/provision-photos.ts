@@ -38,7 +38,13 @@ export interface ProvisionPhotosDeps {
     imageUuid: string,
     q: ProvisionQueryFn,
   ) => Promise<boolean>;
-  getProcessUrls: (request: { imageUuid: string; userId?: string }) => Promise<ProcessUrls>;
+  getProcessUrls: (request: {
+    imageUuid: string;
+    userId?: string;
+    /** Pre-target stage marker (issue #158): "provision" + targetId=imageUuid. */
+    targetType?: "provision";
+    targetId?: string;
+  }) => Promise<ProcessUrls>;
   processImage: (imageUuid: string, processUrls: ProcessUrls) => Promise<ProcessedImage>;
 }
 
@@ -99,7 +105,17 @@ export async function provisionPhotos(
     const intentOk = await deps.checkUploadIntent(userId, imageUuid);
     if (!intentOk) throw new PhotoIntentError();
 
-    const processUrls = await deps.getProcessUrls({ imageUuid, userId });
+    const processUrls = await deps.getProcessUrls({
+      imageUuid,
+      userId,
+      // Pre-target stage (issue #86): the cafe/check-in does not exist yet.
+      // The worker stamps targetType="provision" + targetId=<imageUuid>; the
+      // attach flow re-PUTs with the real target later. Required since #158:
+      // the worker rejects marker-less completes so cleanup can distinguish
+      // live originals from abandoned uploads.
+      targetType: "provision",
+      targetId: imageUuid,
+    });
     const processed = await deps.processImage(imageUuid, processUrls);
 
     provisioned.push({

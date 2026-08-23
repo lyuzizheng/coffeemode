@@ -22,8 +22,8 @@ The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI 
 - Issue #117 adds CI enforcement for the real-DB integration suite; the local suite is green.
 - Issue #118 hardens the real-DB suite against unsafe database targets and order-dependent coverage.
 - Issue #119 preserves image-service storage failures instead of mapping them to `not_found`.
-- Real MinIO/R2 upload -> HEAD -> complete coverage remains a separate follow-up; the current integration gate is Postgres-only.
-- Issue #130 / PR #128 shipped the `cafe-creation` slice: Google/Apple Maps link import and Google/Apple provider search share one first-check-in flow. PR #128 merged 2026-08-20; the Kimi visual review was completed post-merge on 2026-08-23 (verdict on PR #128) with follow-ups #183 (sheet bottom gap), #184 (DG39 logged-out composing), #185 (photo hint copy). Slice is COMPLETE.
+- Issue #156 adds a real MinIO/R2 image round-trip suite (`web/tests/integration/images.integration.test.ts`, `npm run test:integration:images`): presigned PUT -> HEAD -> processor variant re-upload, `completeImageUpload` end-to-end with real storage + DB gallery/intent metadata + replay rejection, missing-object 404, tampered Content-Type 403, single-use intent consume, and bad-creds 403. Storage failures fail the suite (no silent skip); CI runs it in `images-integration-gate`.
+- Issue #130 / PR #128 shipped the `cafe-creation` slice: Google/Apple Maps link import and Google/Apple provider search share one first-check-in flow. PR #128 merged 2026-08-20; the Kimi visual review was completed post-merge on 2026-08-23 (verdict on PR #128); findings #183–#185 were fixed in PR #187. Slice is COMPLETE.
 - PR #138 (docs: cafe-creation spec and map backlog) is merged to `main`.
 - Issue #146 / work-profile slice completes the map-independent work_stats aggregation: `coerceWorkStats` preserves `experience_score`/`composite_score`, create/edit/soft-delete recompute via `recomputeWorkStats` with `FOR UPDATE`, public-safe `CafeSummary`/`CafeDetail` expose both scores, `web/scripts/recompute-work-stats.mjs` provides the idempotent nightly drift correction and `.github/workflows/nightly-recompute.yml` schedules it at 02:00 UTC with observable failure.
 - Apple live search is configuration-gated and does not block link import or Google search. New user-visible UI implementation is separately design-gated on a slice-specific Kimi K3 artifact.
@@ -115,7 +115,7 @@ _archive-coffeemode-backend/   old Java app — being dropped
 - Postgres-backed rate limiter is ready for production; `RATE_LIMIT_BACKEND` environment variable selects backend
 - `next build` warns about custom Cache-Control for `/_next/static/:path*` — intentional for production hashed chunks
 - `maps_share_url` host validation, 10 km nearby-search cap, and 10 MB image-upload cap are active
-- R2 lifecycle cleanup for abandoned `original/` objects requires a scheduled Worker/script (metadata rules cannot filter)
+- Issue #158 adds the safe orphan-original cleanup: `image-service/scripts/clean-orphan-originals.mjs` (npm run clean:orphan-originals) deletes `original/` objects older than RETENTION_DAYS that lack completion metadata OR are still in the "provision" stage (uploaded but never attached). complete() now REQUIRES stage metadata: the attach flow sends cafe|checkin + target id; the creation flow sends provision + imageUuid (issue #86 pre-target processing). DRY_RUN=1 default, cursor-paginated, batch-bounded, idempotent, structured JSON output; covered by the images integration suite. Production schedule/least-privilege creds remain owner actions (#147, #154).
 - Apple Developer Program purchase pending (needed for MapKit JS and Apple live search only; #131)
 - poi-service/wrangler.toml and image-service/wrangler.toml placeholders are
   documented; deploy blocked on Cloudflare account + secrets (pending-user-actions §6–7)

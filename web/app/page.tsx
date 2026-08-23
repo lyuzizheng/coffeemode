@@ -105,6 +105,9 @@ export default async function HomePage({
                 <Card.Footer className="flex-col gap-2 pt-3">
                   <SignInButton provider="apple" variant="primary" disabled={!configured} />
                   <SignInButton provider="google" variant="outline" disabled={!configured} />
+                  <div className="pt-2">
+                    <CafeCreationTrigger isAuthenticated={false} />
+                  </div>
                 </Card.Footer>
               </>
             )}

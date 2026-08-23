@@ -236,7 +236,7 @@
     "photo": "First photo",
     "photoPlaceholder": "Add a cafe photo",
     "choosePhoto": "Choose photo",
-    "photoHint": "One WebP photo is required. Images are capped at 10 MB.",
+    "photoHint": "One photo is required. It will be converted to WebP — 10 MB limit after conversion.",
     "photoTooLarge": "That photo is larger than 10 MB.",
     "photoUploadFailed": "The photo could not be uploaded.",
     "requiredFields": "Choose a place, score it, add a note, and attach a photo.",
@@ -244,6 +244,7 @@
     "alreadyExists": "This place is already in CoffeeMode.",
     "created": "Cafe created.",
     "offline": "Creation unavailable offline",
+    "signInRequired": "Please sign in to publish — your draft stays here.",
     "close": "Close",
     "submit": "Create cafe"
   },

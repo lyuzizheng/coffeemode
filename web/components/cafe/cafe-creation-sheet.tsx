@@ -16,6 +16,7 @@ import {
 import { useTranslations } from "next-intl";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { ApplePlaceSearch } from "@/components/cafe/apple-place-search";
+import { SignInButton } from "@/app/auth/sign-in-button";
 import { MAX_STAY_VALUES, MIN_SPEND_VALUES, type MaxStay, type MinSpend } from "@/types/checkins";
 import type { UploadUrlResponse } from "@/types/images";
 import type { POI, POISearchResponse } from "@shared/places/types";
@@ -149,9 +150,11 @@ function POIPreview({ poi, name, onNameChange }: { poi: POI; name: string; onNam
 export function CafeCreationSheet({
   isOpen,
   onOpenChange,
+  isAuthenticated = true,
 }: {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
+  isAuthenticated?: boolean;
 }) {
   const t = useTranslations("create");
   const ts = useTranslations("search");
@@ -172,6 +175,7 @@ export function CafeCreationSheet({
   const [error, setError] = useState<string | null>(null);
   const [duplicateCafeId, setDuplicateCafeId] = useState<string | null>(null);
   const [createdCafeId, setCreatedCafeId] = useState<string | null>(null);
+  const [showSignInGate, setShowSignInGate] = useState(false);
 
   const reset = () => {
     setEntryMode("link");
@@ -191,6 +195,7 @@ export function CafeCreationSheet({
     setError(null);
     setDuplicateCafeId(null);
     setCreatedCafeId(null);
+    setShowSignInGate(false);
   };
 
   const selectPOI = async (selected: POI, persist = false) => {
@@ -259,9 +264,15 @@ export function CafeCreationSheet({
       setError(t("requiredFields"));
       return;
     }
+    if (!isAuthenticated) {
+      setError(t("signInRequired"));
+      setShowSignInGate(true);
+      return;
+    }
     setBusy(true);
     setError(null);
     setDuplicateCafeId(null);
+    setShowSignInGate(false);
     try {
       const imageUuid = await uploadPhoto(photo);
       const body = {
@@ -326,8 +337,8 @@ export function CafeCreationSheet({
       }}
     >
       <Drawer.Backdrop />
-      <Drawer.Content placement="bottom" className="max-h-[92dvh]">
-        <Drawer.Dialog>
+      <Drawer.Content placement="bottom">
+        <Drawer.Dialog className="max-h-[92dvh] !pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
           <Drawer.Handle />
           <Drawer.Header>
             <Drawer.Heading>{t("title")}</Drawer.Heading>
@@ -436,7 +447,8 @@ export function CafeCreationSheet({
               {error ? <p className="text-sm text-danger" role="alert">{error}</p> : null}
 
               {poi ? (
-                <form className="space-y-5 border-t border-border pt-5" onSubmit={createCafe}>
+                <>
+                  <form className="space-y-5 border-t border-border pt-5" onSubmit={createCafe}>
                   <POIPreview poi={poi} name={name} onNameChange={setName} />
                   <div className="space-y-4">
                     <div className="rounded-md border border-border bg-surface p-4">
@@ -505,7 +517,17 @@ export function CafeCreationSheet({
                   <Button type="submit" variant="primary" className="w-full" isDisabled={busy || Boolean(createdCafeId)}>
                     {busy ? <Spinner size="sm" /> : t("submit")}
                   </Button>
-                </form>
+                  </form>
+                  {showSignInGate ? (
+                    <div className="space-y-3 border-t border-border pt-5">
+                      <p className="text-sm text-muted">{t("signInRequired")}</p>
+                      <div className="flex flex-col gap-2">
+                        <SignInButton provider="apple" variant="primary" />
+                        <SignInButton provider="google" variant="outline" />
+                      </div>
+                    </div>
+                  ) : null}
+                </>
               ) : null}
             </div>
           </Drawer.Body>
@@ -534,13 +556,12 @@ export function CafeCreationTrigger({ isAuthenticated }: { isAuthenticated: bool
       window.removeEventListener("offline", update);
     };
   }, []);
-  if (!isAuthenticated) return null;
   return (
     <>
       <Button variant="primary" isDisabled={!isOnline} onPress={() => setIsOpen(true)}>
         {isOnline ? t("title") : t("offline")}
       </Button>
-      <CafeCreationSheet isOpen={isOpen} onOpenChange={setIsOpen} />
+      <CafeCreationSheet isOpen={isOpen} onOpenChange={setIsOpen} isAuthenticated={isAuthenticated} />
     </>
   );
 }

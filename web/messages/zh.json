@@ -236,7 +236,7 @@
     "photo": "第一张照片",
     "photoPlaceholder": "添加咖啡店照片",
     "choosePhoto": "选择照片",
-    "photoHint": "必须添加一张 WebP 照片，大小上限为 10 MB。",
+    "photoHint": "需添加一张照片，自动转换为 WebP，转换后不超过 10 MB。",
     "photoTooLarge": "照片超过 10 MB。",
     "photoUploadFailed": "照片上传失败。",
     "requiredFields": "请选择地点、评分，填写备注并添加照片。",
@@ -244,6 +244,7 @@
     "alreadyExists": "这个地点已经在 CoffeeMode 中。",
     "created": "咖啡店已创建。",
     "offline": "离线时无法创建",
+    "signInRequired": "请先登录再发布，草稿会保留在此处。",
     "close": "关闭",
     "submit": "创建咖啡店"
   },

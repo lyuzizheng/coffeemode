@@ -73,7 +73,7 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
 ## 8. Kimi K3 UI design artifacts
 
-- [ ] Review PR #128's creation flow with Kimi K3 before merge.
+- [x] Review PR #128's creation flow with Kimi K3 before merge. (Completed post-merge on 2026-08-23 — verdict on PR #128; follow-ups #183–#185.)
 - [ ] Provide a Kimi K3 discovery artifact for issue #133 covering mobile
   PEEK/HALF/FULL, desktop sidebar/detail column, compact place-characteristic
   icons, both-score hierarchy, Navigate / Check in / Share placement, the
@@ -84,4 +84,4 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
 ## What the agent continues meanwhile
 
-All non-blocked Phase 1 backlog items have merged to `main` (PRs #19–#22), and the P1 post-review fixes from `fix/post-review-p1-issues` have merged as PR #74. MapKit-specific slices remain blocked on item 4. Cafe creation's Google/Apple link import and Google search work while Apple live search is configuration-gated, but PR #128 still needs item 8's Kimi review. Backend work such as work-profile aggregation may continue; new user-visible UI stays blocked on its item 8 artifact. The POI and image services are ready to deploy once you complete items 5–7.
+All non-blocked Phase 1 backlog items have merged to `main` (PRs #19–#22), and the P1 post-review fixes from `fix/post-review-p1-issues` have merged as PR #74. MapKit-specific slices remain blocked on item 4. Cafe creation shipped in PR #128 (merged 2026-08-20) and its item 8 Kimi review completed post-merge on 2026-08-23 (follow-ups #183–#185); Apple live search stays configuration-gated. Backend work such as work-profile aggregation may continue; new user-visible UI stays blocked on its item 8 artifact. The POI and image services are ready to deploy once you complete items 5–7.

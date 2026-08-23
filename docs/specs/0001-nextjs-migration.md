@@ -10,7 +10,7 @@ This is a rewrite, not a migration. The old Vite SPA (`_archive-coffeemode-front
 
 ## Status
 
-Accepted (revised 2026-08-23 — onboarding grill round 15: welcome card immediate + non-modal, wrong-city correction via Select only, Skip lands on the IP-detected city, denied-permission re-entry via locate button with one-time settings toast, no recenter after user pan, blue dot session-persistent, out-of-coverage geolocation auto-creates the city with a first-nomad message, profiles.onboarded authoritative across devices, offline grant still dismisses (DG114–DG123); 2026-08-23 — grill round 14 completed: locale-independent canonical URL made permanent (DG110), 404 nearby-cafes recovery + global location-permission contract (DG111–DG112), check-in feed default = Newest (DG113); 2026-08-23 — cafe URL scheme + SEO/AI-search readiness (JSON-LD, sitemap, llms.txt), two-part cafe page (SSR aggregate shell + client-loaded feed), universal typed config under web/config (DG104–DG107); share flow amended — copy-link always visible, WeChat copy-link popover day-one (DG109), OG description = overall score + curiosity hook (DG108); 2026-08-22 — navigation→check-in prompt reworked: anonymous sessions via Supabase anonymous sign-in, navigations.outcome funnel column, next-day earliest prompt, three-option no-× card, 3-month expiry, one-per-session queue (DG76–DG90); 2026-08-21 — check-in write integrity and UX contracts: upload-on-select photos with auth-gated presigned issuance, idempotency keys, edit-does-not-refresh-recency, 90-day Same-as-last-time window, 1-per-cafe-per-24h limit, 500-char notes, 6-photo cap, bidirectional temperature scale, multi-provider sign-in gate (DG59–DG73); universal YAML-configured rate limiting across all APIs and scripts (DG74); search-as-you-type ≥3 chars with 400ms debounce, top-10 suggestions without pagination, weak-results threshold, removable filter chips, session-scoped filters, food-only D1 caching, distance labeling (DG44–DG49, DG51–DG58); launch expands from Singapore-only to ~10 launch cities with ISO/IATA city codes (DG50); overall slider mandatory per check-in (DG40); creation composes logged-out with local draft, sign-in at publish (DG39); desktop detail becomes a second left column (DG42); PEEK Work-score watermark (DG43); 2026-08-20 — discovery ranking, recovery, accessibility, missing-cafe, responsive, feed, anonymity, dismissal, and gesture contracts; 2026-08-19 — responsive discovery contract and Kimi K3 design gate; 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
+Accepted (revised 2026-08-23 — DG124 (round-14 Q10 resolved by redesign): /cafes/[id] SSR shell hydrates in place into the map app at FULL sheet, DeepLinkBanner abolished, /?cafe= app entry retired (amends DG104/DG106); 2026-08-23 — onboarding grill round 15: welcome card immediate + non-modal, wrong-city correction via Select only, Skip lands on the IP-detected city, denied-permission re-entry via locate button with one-time settings toast, no recenter after user pan, blue dot session-persistent, out-of-coverage geolocation auto-creates the city with a first-nomad message, profiles.onboarded authoritative across devices, offline grant still dismisses (DG114–DG123); 2026-08-23 — grill round 14 completed: locale-independent canonical URL made permanent (DG110), 404 nearby-cafes recovery + global location-permission contract (DG111–DG112), check-in feed default = Newest (DG113); 2026-08-23 — cafe URL scheme + SEO/AI-search readiness (JSON-LD, sitemap, llms.txt), two-part cafe page (SSR aggregate shell + client-loaded feed), universal typed config under web/config (DG104–DG107); share flow amended — copy-link always visible, WeChat copy-link popover day-one (DG109), OG description = overall score + curiosity hook (DG108); 2026-08-22 — navigation→check-in prompt reworked: anonymous sessions via Supabase anonymous sign-in, navigations.outcome funnel column, next-day earliest prompt, three-option no-× card, 3-month expiry, one-per-session queue (DG76–DG90); 2026-08-21 — check-in write integrity and UX contracts: upload-on-select photos with auth-gated presigned issuance, idempotency keys, edit-does-not-refresh-recency, 90-day Same-as-last-time window, 1-per-cafe-per-24h limit, 500-char notes, 6-photo cap, bidirectional temperature scale, multi-provider sign-in gate (DG59–DG73); universal YAML-configured rate limiting across all APIs and scripts (DG74); search-as-you-type ≥3 chars with 400ms debounce, top-10 suggestions without pagination, weak-results threshold, removable filter chips, session-scoped filters, food-only D1 caching, distance labeling (DG44–DG49, DG51–DG58); launch expands from Singapore-only to ~10 launch cities with ISO/IATA city codes (DG50); overall slider mandatory per check-in (DG40); creation composes logged-out with local draft, sign-in at publish (DG39); desktop detail becomes a second left column (DG42); PEEK Work-score watermark (DG43); 2026-08-20 — discovery ranking, recovery, accessibility, missing-cafe, responsive, feed, anonymity, dismissal, and gesture contracts; 2026-08-19 — responsive discovery contract and Kimi K3 design gate; 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
 
 ## Stable decisions
 
@@ -560,11 +560,16 @@ discovery surface Kimi decides exact iconography, score hierarchy, and the
 placement of Navigate / Check in / Share across HALF and FULL; PEEK stays
 scan-oriented.
 
-/cafes/[id] (SSR):
-  Deep link / SEO / share landing only.
-  Same cafe content, rendered server-side with a lightweight
-  "Open in map" banner → first-time visitors get a lighter onboarding
-  (content first, never a full-screen interruption).
+/cafes/[id] (SSR → map app — DG124):
+  Deep link / SEO / share landing that BECOMES the app.
+  First paint is the server-rendered public shell (DG105/DG106: full
+  semantic HTML, no client JS needed) — crawlers, AI search, and link
+  previews see exactly this. After load, the page hydrates in place into
+  the map app: the map materializes behind the content and the shell
+  becomes the FULL sheet (same cafe data, visually continuous); dragging
+  down steps FULL → HALF → PEEK and reveals the map (DG14/DG15 gesture
+  contract applies). There is no DeepLinkBanner and no separate app
+  entry — the drag-down gesture itself is the way into the map.
   A missing cafe returns a real 404 (DG19/DG111): "Back to discover" plus
   a recovery block "附近还有这些咖啡馆" listing nearby cafes relative to
   the GONE cafe's last known location, each linking to its /cafes/[id]
@@ -577,9 +582,9 @@ scan-oriented.
     - Canonical public URL: /cafes/[id] — stable, id-based, never changes
       when a cafe is renamed. Stability is what citations and AI search
       engines reward.
-    - App entry: /?cafe=[id] — loads the map app, selects that cafe (HALF),
-      then history-replaces to a clean URL. Entry mechanism for the SSR
-      page's Check in / Open-in-map actions. Never indexed.
+    - /cafes/[id] IS the app entry (DG124): first paint is the SSR shell,
+      then the page hydrates into the map app with this cafe at FULL.
+      The earlier /?cafe=[id] entry mechanism is retired.
     - /search?q=&city=&filter_* shareable but noindex; /profile noindex.
     - One canonical URL per cafe, permanently (DG110): locale never enters
       the URL — not at MVP, not later. UI language follows the user via
@@ -606,6 +611,10 @@ scan-oriented.
       content) — fetched from the public paginated check-in read contract,
       never embedded in the initial HTML. Crawlers and scrapers get the
       aggregate data; raw user content stays behind the API.
+    Hydration (DG124): once both parts are up, the page becomes the map
+      app — the shell turns into the FULL sheet over the live map. The
+      map loads after paint; first-time visitors get content first,
+      never a full-screen interruption.
 
 /profile (separate route):
   Avatar, four tabs — My Check-ins (default), 我的咖啡地图, Favorites,
@@ -911,8 +920,10 @@ First visit to /:
   "not here?" control (DG115).
 
 First visit via deep link (/cafes/[id], /search?q=):
-  Content first. Lightweight bottom banner "☕ CoffeeMode — [打开地图探索] [✕]".
-  Never a full-screen interruption for a user who arrived with intent.
+  Content first, never a full-screen interruption for a user who arrived
+  with intent: /cafes/[id] lands on the SSR shell and hydrates into the
+  map app at FULL sheet (DG124). No welcome card, no banner — the locate
+  button is the only geolocation surface (DG112).
 
 Storage:
   Non-logged-in: localStorage (current_city, last lat/lng, onboarded, last_visit)
@@ -1126,7 +1137,7 @@ Specs name the parameter and its default; the YAML owns the live value.
 - Apple OAuth: requires services ID + return URL config; redirect flow on mobile
 - work_stats concurrent writes: single-row UPDATE acceptable at MVP scale;
   nightly recompute corrects any drift
-- Deep link first visit: banner onboarding, never full-screen modal
+- Deep link first visit: SSR shell hydrates into the map app at FULL sheet; never a full-screen modal, no banner (DG124)
 - Location permission: OS prompt only after an explicit user tap, never on load/error/deep-link surfaces; every location feature has a no-permission fallback (§Location permission contract — DG112)
 - Check-in soft delete: set deleted_at; recompute work_stats; hide photos from gallery
 - Like toggle: idempotent upsert on checkin_likes; keep checkins.likes_count in sync

@@ -10,7 +10,7 @@ This is a rewrite, not a migration. The old Vite SPA (`_archive-coffeemode-front
 
 ## Status
 
-Accepted (revised 2026-08-23 — grill round 14 completed: locale-independent canonical URL made permanent (DG110), 404 nearby-cafes recovery + global location-permission contract (DG111–DG112), check-in feed default = Newest (DG113); 2026-08-23 — cafe URL scheme + SEO/AI-search readiness (JSON-LD, sitemap, llms.txt), two-part cafe page (SSR aggregate shell + client-loaded feed), universal typed config under web/config (DG104–DG107); share flow amended — copy-link always visible, WeChat copy-link popover day-one (DG109), OG description = overall score + curiosity hook (DG108); 2026-08-22 — navigation→check-in prompt reworked: anonymous sessions via Supabase anonymous sign-in, navigations.outcome funnel column, next-day earliest prompt, three-option no-× card, 3-month expiry, one-per-session queue (DG76–DG90); 2026-08-21 — check-in write integrity and UX contracts: upload-on-select photos with auth-gated presigned issuance, idempotency keys, edit-does-not-refresh-recency, 90-day Same-as-last-time window, 1-per-cafe-per-24h limit, 500-char notes, 6-photo cap, bidirectional temperature scale, multi-provider sign-in gate (DG59–DG73); universal YAML-configured rate limiting across all APIs and scripts (DG74); search-as-you-type ≥3 chars with 400ms debounce, top-10 suggestions without pagination, weak-results threshold, removable filter chips, session-scoped filters, food-only D1 caching, distance labeling (DG44–DG49, DG51–DG58); launch expands from Singapore-only to ~10 launch cities with ISO/IATA city codes (DG50); overall slider mandatory per check-in (DG40); creation composes logged-out with local draft, sign-in at publish (DG39); desktop detail becomes a second left column (DG42); PEEK Work-score watermark (DG43); 2026-08-20 — discovery ranking, recovery, accessibility, missing-cafe, responsive, feed, anonymity, dismissal, and gesture contracts; 2026-08-19 — responsive discovery contract and Kimi K3 design gate; 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
+Accepted (revised 2026-08-23 — onboarding grill round 15: welcome card immediate + non-modal, wrong-city correction via Select only, Skip lands on the IP-detected city, denied-permission re-entry via locate button with one-time settings toast, no recenter after user pan, blue dot session-persistent, out-of-coverage geolocation auto-creates the city with a first-nomad message, profiles.onboarded authoritative across devices, offline grant still dismisses (DG114–DG123); 2026-08-23 — grill round 14 completed: locale-independent canonical URL made permanent (DG110), 404 nearby-cafes recovery + global location-permission contract (DG111–DG112), check-in feed default = Newest (DG113); 2026-08-23 — cafe URL scheme + SEO/AI-search readiness (JSON-LD, sitemap, llms.txt), two-part cafe page (SSR aggregate shell + client-loaded feed), universal typed config under web/config (DG104–DG107); share flow amended — copy-link always visible, WeChat copy-link popover day-one (DG109), OG description = overall score + curiosity hook (DG108); 2026-08-22 — navigation→check-in prompt reworked: anonymous sessions via Supabase anonymous sign-in, navigations.outcome funnel column, next-day earliest prompt, three-option no-× card, 3-month expiry, one-per-session queue (DG76–DG90); 2026-08-21 — check-in write integrity and UX contracts: upload-on-select photos with auth-gated presigned issuance, idempotency keys, edit-does-not-refresh-recency, 90-day Same-as-last-time window, 1-per-cafe-per-24h limit, 500-char notes, 6-photo cap, bidirectional temperature scale, multi-provider sign-in gate (DG59–DG73); universal YAML-configured rate limiting across all APIs and scripts (DG74); search-as-you-type ≥3 chars with 400ms debounce, top-10 suggestions without pagination, weak-results threshold, removable filter chips, session-scoped filters, food-only D1 caching, distance labeling (DG44–DG49, DG51–DG58); launch expands from Singapore-only to ~10 launch cities with ISO/IATA city codes (DG50); overall slider mandatory per check-in (DG40); creation composes logged-out with local draft, sign-in at publish (DG39); desktop detail becomes a second left column (DG42); PEEK Work-score watermark (DG43); 2026-08-20 — discovery ranking, recovery, accessibility, missing-cafe, responsive, feed, anonymity, dismissal, and gesture contracts; 2026-08-19 — responsive discovery contract and Kimi K3 design gate; 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
 
 ## Stable decisions
 
@@ -888,13 +888,27 @@ Tokyo, Seoul, Taipei, Shanghai, Bangkok, Hong Kong, Melbourne, Berlin,
 London (DG50). City codes: ISO 3166-1 alpha-2 country code + IATA
 metropolitan code (e.g. SG/SIN, JP/TYO, KR/SEL, TW/TPE, CN/SHA, TH/BKK,
 HK/HKG, AU/MEL, DE/BER, GB/LON). Schema supports any city; new cities are
-added by seeding the city table, no schema change.
+added by seeding the city table OR auto-created at runtime when a user's
+geolocation resolves outside every known city (DG121) — no schema change
+either way; runtime-created rows derive their codes from the same
+ISO/IATA scheme via reverse geocoding.
 
 First visit to /:
   1. IP geolocation → detect country/city
-  2. Welcome card: detected city + [开启定位] + city picker + skip
-  3. Allow → locate, save location; Skip → default Singapore + manual locate button
-  4. One-time (localStorage flag; on login also persisted)
+  2. Welcome card: detected city + [开启定位] + city picker + skip —
+     rendered immediately over the live map, non-modal (DG114)
+  3. Allow → locate, save location; Skip → the IP-detected city when one
+     was detected, else default Singapore; the manual locate button stays
+     available either way (DG116)
+  4. One-time: localStorage flag for anonymous visits; for logged-in users
+     profiles.onboarded is authoritative — the card never returns on any
+     device (DG122)
+
+  Located outside every known city → the city row is created at runtime
+  and becomes current_city; the user is told they are the first nomad in
+  {city} and encouraged to leave the first check-in to help the next one
+  (DG121). Wrong IP-city correction is the city picker alone — no extra
+  "not here?" control (DG115).
 
 First visit via deep link (/cafes/[id], /search?q=):
   Content first. Lightweight bottom banner "☕ CoffeeMode — [打开地图探索] [✕]".
@@ -902,7 +916,7 @@ First visit via deep link (/cafes/[id], /search?q=):
 
 Storage:
   Non-logged-in: localStorage (current_city, last lat/lng, onboarded, last_visit)
-  Logged-in: profiles.current_city + last_location + last_seen_at
+  Logged-in: profiles.current_city + last_location + last_seen_at + onboarded
   On login: merge localStorage → profiles
 ```
 
@@ -917,6 +931,20 @@ cafe's known location and needs no user geolocation at all (DG111).
 Every location-using feature ships a no-permission fallback: IP-detected or
 default city plus the manual city picker / map pan. Denied permission is a
 normal state, not an error.
+
+The contract gates the OS prompt, not the UI: the first-visit welcome card
+may render at load with the permission primary button — tapping it is the
+explicit gesture (DG118). After an OS-level denial the browser will not
+re-prompt; the locate button is the only re-entry, and a tap while denied
+shows a one-time toast pointing to system settings (DG117).
+
+Map behavior on grant (DG119/DG120): the map recenters on the user with
+one motion.slow beat ONLY if the user has not panned since the card
+appeared; if they have panned, the blue dot simply appears — the user's
+expressed spatial intent wins. The dot then persists for the session, and
+re-tapping the locate button recenters on it. Offline grants behave the
+same: the card dismisses and the map recenters; only nearby content
+follows the global offline treatment (DG123).
 ```
 
 ### PWA & sharing

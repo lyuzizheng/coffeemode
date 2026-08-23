@@ -300,6 +300,27 @@ answer. Rulings:
 | DG112 | Global location-permission contract | Owner directive to audit all location-permission UX: the OS permission prompt fires ONLY after an explicit user tap on a locate control; never on page load, error/empty states, or deep-link/SSR surfaces; every location-using feature ships a no-permission fallback (IP/default city + manual picker). New spec 0001 §Location permission contract |
 | DG113 | Feed default = Newest | Owner overruled the assistant's Helpful recommendation: the cafe check-in feed opens in Newest (`visited_at DESC, id DESC`); Helpful stays one toggle away. Recorded as an owner override. Spec 0001 feed contract + artifact §2 amended |
 
+## Round 15 — Onboarding grill — DG114–DG123 ruled
+
+10-question grill on `docs/design/onboarding-v1.md` (geolocation
+onboarding, #153). All ten ruled, Q8 with a major owner expansion.
+Round-14 Q10 (DeepLinkBanner dismissal scope) remains pending — the owner
+did not recall the banner; it was re-explained and awaits an A/B answer.
+Rulings:
+
+| # | Decision | Answer |
+|---|----------|--------|
+| DG114 | Welcome card timing | The card renders immediately on first visit to `/`, non-modal over the live map (artifact as designed). No delay-until-interaction |
+| DG115 | Wrong IP-city correction | The city Select alone; no extra "not here?" link — wrong detection is a low-frequency path |
+| DG116 | Skip target city | Skip lands on the IP-detected city when one was detected; Singapore default only when there is no detection. Spec 0001 amended |
+| DG117 | Post-denial re-entry | The locate button is the only re-entry after OS-level denial; a tap while denied shows a one-time toast pointing to system settings, never a dead prompt |
+| DG118 | Card vs DG112 contract | The DG112 contract gates the OS prompt, not the UI: the welcome card may render at load with the permission primary button — tapping it is the explicit gesture |
+| DG119 | Recenter on grant | The 450ms recenter beat happens only if the user has NOT panned since the card appeared; after a user pan the blue dot simply appears — expressed spatial intent wins |
+| DG120 | Blue-dot lifecycle | The dot persists for the session; re-tapping the locate button recenters on it (standard map behavior) |
+| DG121 | Out-of-coverage geolocation | Owner expansion over the assistant's nearest-launch-city fallback: when geolocation resolves outside every known city, the city row is CREATED in the DB at runtime and becomes current_city; the user is told they are the first nomad in {city} and encouraged to leave the first check-in to help others. Spec 0001 city model amended |
+| DG122 | One-time flag across devices | For logged-in users `profiles.onboarded` is authoritative — the card never returns on any device; anonymous visits stay localStorage-scoped. Spec 0001 storage block amended |
+| DG123 | Offline grant | An offline first-visit grant still dismisses the card and recenters the map; only nearby content follows the global offline treatment — location is a browser API, not network |
+
 ## Decisions log
 
 - 2026-07-31: Architecture pivot from "migrate Vite SPA + keep Java backend" to "rewrite as full-stack Next.js, drop Java"
@@ -327,6 +348,7 @@ answer. Rulings:
 - 2026-08-22: Artifact grill round 13 (profile-page) — DG94-DG103 ruled; /profile recomposed as a design-forward personal coffee atlas with four tabs (My Check-ins default, 我的咖啡地图, Favorites, Search History), app-like back navigation, anonymous-session gate with data-preservation promise; spec 0004 §10/§11 + UI4 amended
 - 2026-08-23: Artifact grill round 14 (seo-sharing), partial — DG104-DG109 ruled: URL scheme (canonical /cafes/[id], /?cafe= app entry), SEO+AI-search readiness (JSON-LD, sitemap, llms.txt), two-part cafe page (SSR shell + client-loaded feed), universal typed config (web/config), OG overall-only + hook, WeChat day-1 with big Check-in CTA; Q7-Q10 pending owner
 - 2026-08-23: Artifact grill round 14 (seo-sharing) completed except Q10 — DG110-DG113 ruled: locale-independent canonical URL made permanent (cookie/Accept-Language + hreflang x-default), 404 nearby-cafes recovery that never prompts for location, global location-permission contract (explicit-tap-only OS prompt, no-permission fallback everywhere), feed default = Newest (owner override of the Helpful recommendation); Q10 (DeepLinkBanner dismissal scope) still pending owner
+- 2026-08-23: Artifact grill round 15 (onboarding) — DG114-DG123 ruled: immediate non-modal welcome card, Select-only wrong-city correction, Skip lands on the IP-detected city, denied re-entry via locate button + one-time settings toast, DG112 gates the OS prompt not the card UI, no recenter after user pan, session-persistent blue dot, out-of-coverage geolocation auto-creates the city with a first-nomad invitation (owner expansion), profiles.onboarded authoritative across devices, offline grant still dismisses. Grill program complete except round-14 Q10; path clears for implementation (#146 work-profile is the only READY slice)
 
 ## Final tech stack (locked)
 

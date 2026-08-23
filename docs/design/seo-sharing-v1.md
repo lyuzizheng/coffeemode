@@ -38,7 +38,7 @@ Aggregate product data only: title block, the score pair (Work hero +
 Experience), WorkProfile dimension bars with respondent counts, policy
 consensus, cover + gallery, hours. This is what Google, AI crawlers, and
 link previews see — full semantic HTML, JSON-LD, fast from the CDN cache
-(spec-owned, DG104/DG105).
+(spec-owned, DG105/DG107).
 
 **Part 2 — the check-in feed (client-loaded after paint).** Notes are user
 content: they load from the public paginated check-in API once the page is
@@ -101,7 +101,7 @@ name in display font — no generated collage, no sparkle frames.
 
 Preview copy (DG108): `og:title` = `{cafe name} · {city} — CoffeeMode`;
 `og:description` shows the **overall (Experience) score only** plus a
-curiosity hook — the spec's full fact line stays on the page itself:
+curiosity hook — the full fact line stays on the page itself (Part 1 shell):
 - zh: `✨ 87 · 23 位 nomad 打卡 — 这里真的适合办公吗？`
 - en: `✨ 87 from 23 nomads — is it actually work-friendly?`
 (Score omitted honestly when there is no data: `还没有打卡 — 来当第一个？`)

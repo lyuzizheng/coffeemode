@@ -155,8 +155,12 @@ jobs:
         working-directory: .
         run: docker compose run --rm minio-init
 
-      - name: Install dependencies
+      - name: Install web dependencies
         run: npm ci
+
+      - name: Install image-service dependencies (cleanup script runtime)
+        working-directory: .
+        run: npm ci --prefix image-service
 
       - name: Real MinIO/R2 image round-trip tests
         env:

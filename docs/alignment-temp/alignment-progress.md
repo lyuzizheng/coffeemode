@@ -281,11 +281,11 @@ owner. Rulings:
 | DG102 | Tabs + design ambition | Default tab is **My Check-ins** (overruled Kimi's My Cafes default). Four tabs: My Check-ins / 我的咖啡地图 / Favorites / Search History — the latter two designed now, shipping with empty states until their features land (favorites stay post-MVP; search history is client-side only). Owner directive: the page must be design-forward, not an old-school Google Maps profile — artifact §1–§3 recomposed (hero header, cards, atlas framing). Spec 0004 §10/§11 + UI4 amended |
 | DG103 | My Cafes zh name | `我的咖啡地图` (My Coffee Map) — owner's pick; if the product later expands beyond coffee, the name is revisited then |
 
-## Round 14 — SEO-sharing grill — partial (Q7–Q10 pending)
+## Round 14 — SEO-sharing grill — DG104–DG113 ruled (Q10 pending)
 
-10-question grill on the seo-sharing artifact. Q1–Q6 ruled, with owner
-expansions; Q7–Q10 (locale URLs, 404 composition, feed toggle default,
-banner dismissal scope) await owner answers. Rulings so far:
+10-question grill on the seo-sharing artifact. Q1–Q9 ruled (DG104–DG113),
+with owner expansions; Q10 (DeepLinkBanner dismissal scope) awaits owner
+answer. Rulings:
 
 | # | Decision | Answer |
 |---|----------|--------|
@@ -295,6 +295,10 @@ banner dismissal scope) await owner answers. Rulings so far:
 | DG107 | Universal configuration | Owner directive: "ensure these contents are configurable, not scattered in codes — apply to all other features". New spec 0001 §Configuration: product parameters (cache TTLs, search params, prompt-queue params, pagination sizes, caps) live in typed config files (`web/config/app.yaml`, `web/config/rate-limits.yaml`), read via helpers; AGENTS.md rule added |
 | DG108 | OG preview copy | og:description shows the overall (Experience) score ONLY plus a curiosity hook (`✨ 87 · 23 位 nomad 打卡 — 这里真的适合办公吗？`); og:title = `{name} · {city} — CoffeeMode`; empty-state variant honest (`还没有打卡 — 来当第一个？`) |
 | DG109 | WeChat day-1 + big CTA | WeChat is a first-class share target from MVP: copy-link is always a visible action; WeChat UA gets a copy-link popover (`复制链接，发给朋友吧`) instead of a dead native-share call. The SSR page's `Check in` becomes the dominant full-width 56px CTA; Navigate/Share subordinate |
+| DG110 | Locale-independent canonical URL | One canonical URL per cafe, permanently: locale never enters the URL — not at MVP, not later. UI language via cookie/Accept-Language content negotiation, hreflang (x-default → canonical URL) for language targeting; shared links never split into per-locale SEO identities. Spec 0001 URL block amended |
+| DG111 | 404 recovery block | Missing-cafe 404 gains `附近还有这些咖啡馆`: nearby cafes relative to the GONE cafe's last known location, each linking to its `/cafes/[id]`. Hard constraint: the location-permission prompt never fires there — the gone cafe's location is known, so user geolocation is never needed. Spec 0001 §Rendering + artifact §5 amended |
+| DG112 | Global location-permission contract | Owner directive to audit all location-permission UX: the OS permission prompt fires ONLY after an explicit user tap on a locate control; never on page load, error/empty states, or deep-link/SSR surfaces; every location-using feature ships a no-permission fallback (IP/default city + manual picker). New spec 0001 §Location permission contract |
+| DG113 | Feed default = Newest | Owner overruled the assistant's Helpful recommendation: the cafe check-in feed opens in Newest (`visited_at DESC, id DESC`); Helpful stays one toggle away. Recorded as an owner override. Spec 0001 feed contract + artifact §2 amended |
 
 ## Decisions log
 
@@ -322,6 +326,7 @@ banner dismissal scope) await owner answers. Rulings so far:
 - 2026-08-22: DG93 — system-wide copy tone sweep applied across all six design artifacts + spec 0002 (warmer zh state lines, friendlier empty states, somber-moments caveat); DG87 follow-up closed
 - 2026-08-22: Artifact grill round 13 (profile-page) — DG94-DG103 ruled; /profile recomposed as a design-forward personal coffee atlas with four tabs (My Check-ins default, 我的咖啡地图, Favorites, Search History), app-like back navigation, anonymous-session gate with data-preservation promise; spec 0004 §10/§11 + UI4 amended
 - 2026-08-23: Artifact grill round 14 (seo-sharing), partial — DG104-DG109 ruled: URL scheme (canonical /cafes/[id], /?cafe= app entry), SEO+AI-search readiness (JSON-LD, sitemap, llms.txt), two-part cafe page (SSR shell + client-loaded feed), universal typed config (web/config), OG overall-only + hook, WeChat day-1 with big Check-in CTA; Q7-Q10 pending owner
+- 2026-08-23: Artifact grill round 14 (seo-sharing) completed except Q10 — DG110-DG113 ruled: locale-independent canonical URL made permanent (cookie/Accept-Language + hreflang x-default), 404 nearby-cafes recovery that never prompts for location, global location-permission contract (explicit-tap-only OS prompt, no-permission fallback everywhere), feed default = Newest (owner override of the Helpful recommendation); Q10 (DeepLinkBanner dismissal scope) still pending owner
 
 ## Final tech stack (locked)
 

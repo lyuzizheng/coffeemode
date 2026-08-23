@@ -29,6 +29,9 @@ priorities or decisions.
   module boundaries (e.g. the prompt queue, the rate limiter): feature code
   composes them, never embeds or duplicates them. No duplicated logic, no
   cross-feature coupling — the repo is expected to grow large (DG91).
+- Product parameters (thresholds, TTLs, caps, limits) live in typed config
+  files under `web/config/`, read through helpers — never hardcoded or
+  scattered through feature code (DG107).
 - Never bypass a failing gate; fix the root cause.
 - One production-code writer per change. Reviewers do not author the patch.
 - Run the narrowest test that proves the change, then the relevant package gate.

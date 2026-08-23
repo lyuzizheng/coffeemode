@@ -10,7 +10,7 @@ This is a rewrite, not a migration. The old Vite SPA (`_archive-coffeemode-front
 
 ## Status
 
-Accepted (revised 2026-08-22 — navigation→check-in prompt reworked: anonymous sessions via Supabase anonymous sign-in, navigations.outcome funnel column, next-day earliest prompt, three-option no-× card, 3-month expiry, one-per-session queue (DG76–DG90); 2026-08-21 — check-in write integrity and UX contracts: upload-on-select photos with auth-gated presigned issuance, idempotency keys, edit-does-not-refresh-recency, 90-day Same-as-last-time window, 1-per-cafe-per-24h limit, 500-char notes, 6-photo cap, bidirectional temperature scale, multi-provider sign-in gate (DG59–DG73); universal YAML-configured rate limiting across all APIs and scripts (DG74); search-as-you-type ≥3 chars with 400ms debounce, top-10 suggestions without pagination, weak-results threshold, removable filter chips, session-scoped filters, food-only D1 caching, distance labeling (DG44–DG49, DG51–DG58); launch expands from Singapore-only to ~10 launch cities with ISO/IATA city codes (DG50); overall slider mandatory per check-in (DG40); creation composes logged-out with local draft, sign-in at publish (DG39); desktop detail becomes a second left column (DG42); PEEK Work-score watermark (DG43); 2026-08-20 — discovery ranking, recovery, accessibility, missing-cafe, responsive, feed, anonymity, dismissal, and gesture contracts; 2026-08-19 — responsive discovery contract and Kimi K3 design gate; 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
+Accepted (revised 2026-08-23 — cafe URL scheme + SEO/AI-search readiness (JSON-LD, sitemap, llms.txt), two-part cafe page (SSR aggregate shell + client-loaded feed), universal typed config under web/config (DG104–DG107); 2026-08-22 — navigation→check-in prompt reworked: anonymous sessions via Supabase anonymous sign-in, navigations.outcome funnel column, next-day earliest prompt, three-option no-× card, 3-month expiry, one-per-session queue (DG76–DG90); 2026-08-21 — check-in write integrity and UX contracts: upload-on-select photos with auth-gated presigned issuance, idempotency keys, edit-does-not-refresh-recency, 90-day Same-as-last-time window, 1-per-cafe-per-24h limit, 500-char notes, 6-photo cap, bidirectional temperature scale, multi-provider sign-in gate (DG59–DG73); universal YAML-configured rate limiting across all APIs and scripts (DG74); search-as-you-type ≥3 chars with 400ms debounce, top-10 suggestions without pagination, weak-results threshold, removable filter chips, session-scoped filters, food-only D1 caching, distance labeling (DG44–DG49, DG51–DG58); launch expands from Singapore-only to ~10 launch cities with ISO/IATA city codes (DG50); overall slider mandatory per check-in (DG40); creation composes logged-out with local draft, sign-in at publish (DG39); desktop detail becomes a second left column (DG42); PEEK Work-score watermark (DG43); 2026-08-20 — discovery ranking, recovery, accessibility, missing-cafe, responsive, feed, anonymity, dismissal, and gesture contracts; 2026-08-19 — responsive discovery contract and Kimi K3 design gate; 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
 
 ## Stable decisions
 
@@ -568,6 +568,37 @@ scan-oriented.
   If an in-app detail fetch discovers the cafe is missing, clear the
   selection, replace the current URL with `/`, return to PEEK, and show a toast.
 
+  URL scheme (DG104):
+    - Canonical public URL: /cafes/[id] — stable, id-based, never changes
+      when a cafe is renamed. Stability is what citations and AI search
+      engines reward.
+    - App entry: /?cafe=[id] — loads the map app, selects that cafe (HALF),
+      then history-replaces to a clean URL. Entry mechanism for the SSR
+      page's Check in / Open-in-map actions. Never indexed.
+    - /search?q=&city=&filter_* shareable but noindex; /profile noindex.
+    - No locale prefixes at MVP — one canonical URL per cafe, UI language
+      follows the user; shared links never split into two SEO identities.
+
+  SEO & AI-search readiness (DG105):
+    - Full semantic HTML in the first response (headings, address as text)
+      — the public shell needs no client JS.
+    - JSON-LD CafeOrCoffeeShop: name, address, geo, aggregateRating from
+      experience_score (count = n_checkins).
+    - Dynamic sitemap.xml listing all live cafes (lastmod from
+      work_stats.updated_at); robots.txt allows /cafes/*.
+    - llms.txt at the root describing what CoffeeMode is, for AI crawlers.
+    - CDN cache for the shell: s-maxage + stale-while-revalidate, TTLs from
+      config (DG107) — a viral shared link must not hit Postgres per open.
+
+  Two-part rendering (DG106):
+    Part 1 (SSR, crawler-visible): title block, both scores, WorkProfile
+      dimension bars, policy consensus, cover + gallery, hours — aggregate
+      product data only.
+    Part 2 (client API, after load): the check-in feed (notes = user
+      content) — fetched from the public paginated check-in read contract,
+      never embedded in the initial HTML. Crawlers and scrapers get the
+      aggregate data; raw user content stays behind the API.
+
 /profile (separate route):
   Avatar, four tabs — My Check-ins (default), 我的咖啡地图, Favorites,
   Search History (DG102/DG103).
@@ -1006,6 +1037,24 @@ upload/complete and POI resolve/search; 1 check-in per cafe per user per
 24h (DG64 — enforced as a windowed existence check at the domain layer,
 registered in the same YAML so all limits live in one place); auth
 attempts.
+```
+
+### Configuration (universal — DG107)
+
+```text
+Product parameters live in config files, never hardcoded or scattered
+through code. This applies to EVERY feature.
+
+- `web/config/rate-limits.yaml` — all rate limits (DG74).
+- `web/config/app.yaml` — everything else: CDN cache TTLs
+  (s-maxage/stale-while-revalidate per route), search parameters
+  (min 3 chars, 400ms debounce, top-10, weak<3), prompt-queue parameters
+  (≥1 day re-ask, max 2 re-asks, 3-month expiry), pagination sizes,
+  photo caps, note length, etc.
+
+Code reads config through typed helpers (`web/lib/config.ts`); changing a
+parameter is a config edit with a typed schema check, not a code change.
+Specs name the parameter and its default; the YAML owns the live value.
 ```
 
 ## Edge cases

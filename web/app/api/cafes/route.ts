@@ -19,8 +19,10 @@ import {
   rateLimitResponse,
   rateLimiter,
 } from "@/lib/rate-limit";
+import { appConfig } from "@/lib/config";
 
-const MAX_LIST_LIMIT = 50;
+// `cafes.listLimitMax` in web/config/app.yaml (DG107).
+const MAX_LIST_LIMIT = appConfig.cafes.listLimitMax;
 
 /**
  * GET /api/cafes?lat=&lng=&radius_km=&limit=

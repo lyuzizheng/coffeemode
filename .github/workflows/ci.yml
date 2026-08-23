@@ -131,6 +131,38 @@ jobs:
           DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode
         run: npm run test:integration
 
+  images-integration-gate:
+    needs: changes
+    if: needs.changes.outputs.integration == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Start Postgres + MinIO
+        working-directory: .
+        run: docker compose up -d --wait postgres minio
+
+      - name: Init MinIO bucket + test user
+        working-directory: .
+        run: docker compose run --rm minio-init
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Real MinIO/R2 image round-trip tests
+        env:
+          DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode
+        run: npm run test:integration:images
+
   image-service-gate:
     needs: changes
     if: needs.changes.outputs.image_service == 'true'
@@ -187,6 +219,7 @@ jobs:
       - docs-gate
       - application-gate
       - integration-gate
+      - images-integration-gate
       - image-service-gate
       - poi-service-gate
     if: always()

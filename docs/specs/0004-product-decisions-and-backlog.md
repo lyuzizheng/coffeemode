@@ -112,7 +112,7 @@ These tasks can proceed while `map-home` is blocked and before live credentials 
 The core track can proceed without Apple Developer / MapKit; Apple live-search
 branches remain configuration-gated. Backend work may proceed independently,
 but UI1–UI6 are design-gated on their slice-specific Kimi K3 artifact. PR #128's
-creation UI requires Kimi review before merge.
+creation UI was reviewed post-merge on 2026-08-23 (follow-ups #183–#185).
 
 | ID | Task | Area | Key files |
 | --- | --- | --- | --- |

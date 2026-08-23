@@ -23,7 +23,7 @@ The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI 
 - Issue #118 hardens the real-DB suite against unsafe database targets and order-dependent coverage.
 - Issue #119 preserves image-service storage failures instead of mapping them to `not_found`.
 - Issue #156 adds a real MinIO/R2 image round-trip suite (`web/tests/integration/images.integration.test.ts`, `npm run test:integration:images`): presigned PUT -> HEAD -> processor variant re-upload, `completeImageUpload` end-to-end with real storage + DB gallery/intent metadata + replay rejection, missing-object 404, tampered Content-Type 403, single-use intent consume, and bad-creds 403. Storage failures fail the suite (no silent skip); CI runs it in `images-integration-gate`.
-- Issue #130 / PR #128 contains the runtime implementation for the current `cafe-creation` slice: Google/Apple Maps link import and Google/Apple provider search share one first-check-in flow. Runtime gates are green, but the slice is `BLOCKED` until Kimi K3 visual review before merge (#130).
+- Issue #130 / PR #128 shipped the `cafe-creation` slice: Google/Apple Maps link import and Google/Apple provider search share one first-check-in flow. PR #128 merged 2026-08-20; the Kimi visual review was completed post-merge on 2026-08-23 (verdict on PR #128); findings #183–#185 were fixed in PR #187. Slice is COMPLETE.
 - PR #138 (docs: cafe-creation spec and map backlog) is merged to `main`.
 - Issue #146 / work-profile slice completes the map-independent work_stats aggregation: `coerceWorkStats` preserves `experience_score`/`composite_score`, create/edit/soft-delete recompute via `recomputeWorkStats` with `FOR UPDATE`, public-safe `CafeSummary`/`CafeDetail` expose both scores, `web/scripts/recompute-work-stats.mjs` provides the idempotent nightly drift correction and `.github/workflows/nightly-recompute.yml` schedules it at 02:00 UTC with observable failure.
 - Apple live search is configuration-gated and does not block link import or Google search. New user-visible UI implementation is separately design-gated on a slice-specific Kimi K3 artifact.
@@ -85,8 +85,7 @@ _archive-coffeemode-backend/   old Java app — being dropped
    placeholders, set Worker secrets, deploy, wire IMAGE_SERVICE_URL/TOKEN.
 3. poi-cache-service deploy (§7): Cloudflare D1/KV + secrets, apply D1 schema,
    deploy, wire POI_SERVICE_URL/TOKEN.
-4. cafe-creation — complete Kimi K3 visual review, then merge (#130)
-5. Map-independent UI slices are all design-unblocked and READY — pick any of:
+4. Map-independent UI slices are all design-unblocked and READY — pick any of:
    discovery-sheet (#133), search-filters (#135), checkin-system (#148),
    navigation-prompt (#149), profile-page (#152), seo-sharing (#150),
    onboarding-geolocation (#153); app-config (DG107) is the shared config

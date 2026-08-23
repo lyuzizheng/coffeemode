@@ -4,9 +4,10 @@
 - Status: **Draft — pending owner approval**
 - Author: Kimi K3
 - Date: 2026-08-21 (revised 2026-08-22 — copy tone sweep per DG87/DG93;
-  2026-08-23 — grill round 15 rulings DG114–DG123)
+  2026-08-23 — grill round 15 rulings DG114–DG123; DG124 — deep-link
+  banner replaced by SSR→app hydration)
 - Base: `docs/design/discovery-sheet-v1.md` (icon set, tokens);
-  `docs/design/seo-sharing-v1.md` (deep-link banner for deep-link arrivals)
+  `docs/design/seo-sharing-v1.md` (deep-link SSR→app hydration, DG124)
 - Specs: `docs/specs/0001-nextjs-migration.md` §Onboarding & city model;
   `docs/specs/0002-design-system.md` (signature moments, motion.slow)
 
@@ -94,9 +95,11 @@ or the detail column (DG42). Keyboard reachable with `aria-label="Locate me"`.
 
 ## 5. Deep-link arrivals
 
-First visit via `/cafes/[id]` or `/search`: no welcome card at all — the
-spec's lightweight banner applies, composed in seo-sharing-v1 §3. This
-artifact asserts no additional UI for that path.
+First visit via `/cafes/[id]` or `/search`: no welcome card at all. Since
+DG124 the deep-link page itself hydrates into the map app at FULL sheet
+after its SSR first paint (seo-sharing-v1 §3) — the drag-down gesture
+replaces the old banner. This artifact asserts no additional UI for that
+path.
 
 ## 6. States and edges
 

@@ -93,7 +93,6 @@ WorkProfile:      Dimension bars (wifi/outlets/seats/temp/coffee) + policy conse
 ScoreSlider:      0-100 subjective slider with live value (check-in + creation)
 PolicyChips:      min-spend / max-stay chip groups
 NavPrompt:        ClassPass-style "有去喝一杯吗？" slide-up card (DG92)
-DeepLinkBanner:   Lightweight bottom banner for deep-link first visits
 ```
 
 ## Theme tokens

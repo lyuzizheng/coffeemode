@@ -161,7 +161,7 @@ DG22–DG30 by owner agreement with the Kimi recommendations.
 | DG26 | Edit-mode dimension removal | Allowed: in edit mode a set slider row carries a small × returning it to unset; composing stays strict. Applied to `docs/design/checkin-system-v1.md` §3.2/§5 |
 | DG27 | Offline check-ins | Check-in mutations disabled offline (generalizing spec 0004 §18's creation rule; no mutation queue). Applied to `docs/design/checkin-system-v1.md` §6 |
 | DG28 | Nav-prompt timer pause | The 8s auto-collapse pauses on hover/focus/touch; an untouched card still collapses |
-| DG29 | Deep-link banner dismissal | Permanent via a `localStorage` flag in the onboarding storage family. Applied in PR #165 (commit 43b0941, `docs/design/seo-sharing-v1.md` §3) |
+| DG29 | Deep-link banner dismissal | Permanent via a `localStorage` flag in the onboarding storage family. Applied in PR #165 (commit 43b0941, `docs/design/seo-sharing-v1.md` §3). (Superseded by DG124 — the banner was abolished; nothing left to dismiss) |
 | DG30 | Profile pagination | `Load more` button at 20 per page; no infinite scroll |
 
 ## Round 9 — Discovery-sheet grill — complete except DG-Q1
@@ -281,17 +281,18 @@ owner. Rulings:
 | DG102 | Tabs + design ambition | Default tab is **My Check-ins** (overruled Kimi's My Cafes default). Four tabs: My Check-ins / 我的咖啡地图 / Favorites / Search History — the latter two designed now, shipping with empty states until their features land (favorites stay post-MVP; search history is client-side only). Owner directive: the page must be design-forward, not an old-school Google Maps profile — artifact §1–§3 recomposed (hero header, cards, atlas framing). Spec 0004 §10/§11 + UI4 amended |
 | DG103 | My Cafes zh name | `我的咖啡地图` (My Coffee Map) — owner's pick; if the product later expands beyond coffee, the name is revisited then |
 
-## Round 14 — SEO-sharing grill — DG104–DG113 ruled (Q10 pending)
+## Round 14 — SEO-sharing grill — DG104–DG113 ruled (Q10 → DG124, see follow-up)
 
 10-question grill on the seo-sharing artifact. Q1–Q9 ruled (DG104–DG113),
-with owner expansions; Q10 (DeepLinkBanner dismissal scope) awaits owner
-answer. Rulings:
+with owner expansions; Q10 (DeepLinkBanner dismissal scope) was resolved
+after round 15 by redesign — DG124 abolished the banner (see the follow-up
+section below). Rulings:
 
 | # | Decision | Answer |
 |---|----------|--------|
-| DG104 | URL mechanism | Canonical `/cafes/[id]` — stable, id-based, never changes on rename; app entry via `/?cafe=[id]` (loads map, selects cafe at HALF, history-replaces clean); `/search` shareable but noindex; `/profile` noindex; no locale prefixes at MVP. Spec 0001 amended |
+| DG104 | URL mechanism | Canonical `/cafes/[id]` — stable, id-based, never changes on rename; `/search` shareable but noindex; `/profile` noindex; no locale prefixes at MVP. Spec 0001 amended. (The `/?cafe=[id]` app-entry mechanism was later retired by DG124 — `/cafes/[id]` itself hydrates into the map app) |
 | DG105 | SEO + AI-search readiness | Owner directive: "design for AI search, design for SEO optimisation". Full semantic HTML without client JS, JSON-LD CafeOrCoffeeShop with aggregateRating from experience_score, dynamic sitemap.xml (lastmod from work_stats.updated_at), robots.txt allowing /cafes/*, `llms.txt` at the root for AI crawlers, CDN-cached shell. Spec 0001 amended |
-| DG106 | Two-part cafe page | Owner design: Part 1 = SSR public shell (scores, bars, policies, gallery, hours — aggregate data, crawler-visible, no client JS); Part 2 = check-in feed (user content) loaded client-side from the public API, never in initial HTML — anti-scrape data protection + smaller HTML. The `?feed=newest` SSR links become a client-side toggle. Spec 0001 + artifact amended |
+| DG106 | Two-part cafe page | Owner design: Part 1 = SSR public shell (scores, bars, policies, gallery, hours — aggregate data, crawler-visible, no client JS); Part 2 = check-in feed (user content) loaded client-side from the public API, never in initial HTML — anti-scrape data protection + smaller HTML. The `?feed=newest` SSR links become a client-side toggle. Spec 0001 + artifact amended. (A hydration step was later added by DG124 — after both parts load, the page becomes the map app at FULL sheet) |
 | DG107 | Universal configuration | Owner directive: "ensure these contents are configurable, not scattered in codes — apply to all other features". New spec 0001 §Configuration: product parameters (cache TTLs, search params, prompt-queue params, pagination sizes, caps) live in typed config files (`web/config/app.yaml`, `web/config/rate-limits.yaml`), read via helpers; AGENTS.md rule added |
 | DG108 | OG preview copy | og:description shows the overall (Experience) score ONLY plus a curiosity hook (`✨ 87 · 23 位 nomad 打卡 — 这里真的适合办公吗？`); og:title = `{name} · {city} — CoffeeMode`; empty-state variant honest (`还没有打卡 — 来当第一个？`) |
 | DG109 | WeChat day-1 + big CTA | WeChat is a first-class share target from MVP: copy-link is always a visible action; WeChat UA gets a copy-link popover (`复制链接，发给朋友吧`) instead of a dead native-share call. The SSR page's `Check in` becomes the dominant full-width 56px CTA; Navigate/Share subordinate |
@@ -304,8 +305,8 @@ answer. Rulings:
 
 10-question grill on `docs/design/onboarding-v1.md` (geolocation
 onboarding, #153). All ten ruled, Q8 with a major owner expansion.
-Round-14 Q10 (DeepLinkBanner dismissal scope) remains pending — the owner
-did not recall the banner; it was re-explained and awaits an A/B answer.
+Round-14 Q10 was resolved after this round by redesign (DG124 — the
+banner was abolished; see the follow-up section below).
 Rulings:
 
 | # | Decision | Answer |
@@ -320,6 +321,17 @@ Rulings:
 | DG121 | Out-of-coverage geolocation | Owner expansion over the assistant's nearest-launch-city fallback: when geolocation resolves outside every known city, the city row is CREATED in the DB at runtime and becomes current_city; the user is told they are the first nomad in {city} and encouraged to leave the first check-in to help others. Spec 0001 city model amended |
 | DG122 | One-time flag across devices | For logged-in users `profiles.onboarded` is authoritative — the card never returns on any device; anonymous visits stay localStorage-scoped. Spec 0001 storage block amended |
 | DG123 | Offline grant | An offline first-visit grant still dismisses the card and recenters the map; only nearby content follows the global offline treatment — location is a browser API, not network |
+
+## Round 14 follow-up — DG124 (Q10 resolved by redesign)
+
+Re-examining Q10 (DeepLinkBanner dismissal scope), the owner ruled that
+the banner should not exist at all: a shared link should land on the map
+itself — the cafe detail at ~FULL, draggable down to reveal the map. The
+pending A/B dismissal-scope question is void.
+
+| # | Decision | Answer |
+|---|----------|--------|
+| DG124 | `/cafes/[id]` hydrates into the map app | First paint stays the SSR public shell (DG105/DG106 crawler, SEO, and anti-scrape properties intact; MapKit loads after paint); once both parts are up, the page hydrates in place — the map materializes behind the content, the shell becomes the FULL sheet, and the DG14/DG15 drag-down gestures step FULL → HALF → PEEK to reveal the map. DeepLinkBanner abolished (Q10 void); the `/?cafe=[id]` app-entry mechanism retired. Amends DG104/DG106; spec 0001 §Rendering/§Onboarding/§Edge cases, spec 0002 component list, seo-sharing-v1 §2/§3/§6/§7, onboarding-v1 §5 amended |
 
 ## Decisions log
 
@@ -348,7 +360,8 @@ Rulings:
 - 2026-08-22: Artifact grill round 13 (profile-page) — DG94-DG103 ruled; /profile recomposed as a design-forward personal coffee atlas with four tabs (My Check-ins default, 我的咖啡地图, Favorites, Search History), app-like back navigation, anonymous-session gate with data-preservation promise; spec 0004 §10/§11 + UI4 amended
 - 2026-08-23: Artifact grill round 14 (seo-sharing), partial — DG104-DG109 ruled: URL scheme (canonical /cafes/[id], /?cafe= app entry), SEO+AI-search readiness (JSON-LD, sitemap, llms.txt), two-part cafe page (SSR shell + client-loaded feed), universal typed config (web/config), OG overall-only + hook, WeChat day-1 with big Check-in CTA; Q7-Q10 pending owner
 - 2026-08-23: Artifact grill round 14 (seo-sharing) completed except Q10 — DG110-DG113 ruled: locale-independent canonical URL made permanent (cookie/Accept-Language + hreflang x-default), 404 nearby-cafes recovery that never prompts for location, global location-permission contract (explicit-tap-only OS prompt, no-permission fallback everywhere), feed default = Newest (owner override of the Helpful recommendation); Q10 (DeepLinkBanner dismissal scope) still pending owner
-- 2026-08-23: Artifact grill round 15 (onboarding) — DG114-DG123 ruled: immediate non-modal welcome card, Select-only wrong-city correction, Skip lands on the IP-detected city, denied re-entry via locate button + one-time settings toast, DG112 gates the OS prompt not the card UI, no recenter after user pan, session-persistent blue dot, out-of-coverage geolocation auto-creates the city with a first-nomad invitation (owner expansion), profiles.onboarded authoritative across devices, offline grant still dismisses. Grill program complete except round-14 Q10; path clears for implementation (#146 work-profile is the only READY slice)
+- 2026-08-23: Artifact grill round 15 (onboarding) — DG114-DG123 ruled: immediate non-modal welcome card, Select-only wrong-city correction, Skip lands on the IP-detected city, denied re-entry via locate button + one-time settings toast, DG112 gates the OS prompt not the card UI, no recenter after user pan, session-persistent blue dot, out-of-coverage geolocation auto-creates the city with a first-nomad invitation (owner expansion), profiles.onboarded authoritative across devices, offline grant still dismisses
+- 2026-08-23: DG124 — round-14 Q10 resolved by redesign: /cafes/[id] first paint stays the SSR shell, then hydrates in place into the map app at FULL sheet with drag-down to the map; DeepLinkBanner abolished and the /?cafe= app entry retired (amends DG104/DG106). Grill program fully complete; path clears for implementation (#146 work-profile is the only READY slice)
 
 ## Final tech stack (locked)
 

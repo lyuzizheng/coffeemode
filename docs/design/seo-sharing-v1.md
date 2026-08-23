@@ -4,21 +4,21 @@
 - Status: **Draft — pending owner approval**
 - Author: Kimi K3
 - Date: 2026-08-21 (revised 2026-08-22 — copy tone sweep per DG87/DG93;
-  2026-08-23 — grill round 14 rulings DG104–DG113; Q10 banner-dismissal
-  scope still pending)
+  2026-08-23 — grill round 14 rulings DG104–DG113; 2026-08-23 — DG124:
+  the SSR shell hydrates into the map app, DeepLinkBanner abolished)
 - Base: `docs/design/discovery-sheet-v1.md` (FULL composition, icon set,
   score hierarchy are reused verbatim)
 - Specs: `docs/specs/0001-nextjs-migration.md` §Rendering strategy
-  (`/cafes/[id]` SSR), §Onboarding & city model (deep-link banner), §PWA &
-  sharing; `docs/specs/0002-design-system.md` (`DeepLinkBanner` component);
-  DG3, DG19 (route ownership, missing-cafe 404)
+  (`/cafes/[id]` SSR → map app), §Onboarding & city model (deep-link
+  arrivals), §PWA & sharing; DG3, DG19 (route ownership, missing-cafe 404)
 
-Scope: composition of the server-rendered `/cafes/[id]` page, the deep-link
-banner, the share control, and the 404. Behavior (SSR route ownership,
-one-push URL semantics, 404 contract, URL scheme, JSON-LD/sitemap/llms.txt,
-CDN cache TTLs) is canonical in the specs (spec 0001 §Rendering strategy,
-§Onboarding & city model, §PWA & sharing; DG104–DG107, DG110–DG113) and is
-referenced, not redefined.
+Scope: composition of the server-rendered `/cafes/[id]` page, its
+hydration into the map app, the share control, and the 404. Behavior (SSR
+route ownership, one-push URL semantics, 404 contract, URL scheme,
+JSON-LD/sitemap/llms.txt, CDN cache TTLs) is canonical in the specs (spec
+0001 §Rendering strategy,
+§Onboarding & city model, §PWA & sharing; DG104–DG107, DG110–DG113,
+DG124) and is referenced, not redefined.
 
 ---
 
@@ -26,7 +26,8 @@ referenced, not redefined.
 
 This page is the product's handshake with the outside world: a link dropped
 into a chat must open to something complete, fast, and honest — full content
-for a first-time visitor, with a gentle path into the app. Content first,
+for a first-time visitor — and then become the app itself: the shell
+hydrates into the map with this cafe at FULL (DG124). Content first,
 never a full-screen interruption (spec).
 
 ## 2. Page composition — two parts (DG106)
@@ -54,30 +55,27 @@ Bars render at final width without animation (SSR shell: no entry motion).
 **The action block** (DG109 — this page's job is conversion):
 
 - `Check in` — the dominant element: full-width, 56px solid `accent`
-  button, `radius-sm`, `text-base`. Routes through the `/?cafe=[id]` app
-  entry (DG104): the map app opens with this cafe selected and the
-  check-in flow one tap away.
+  button, `radius-sm`, `text-base`. After hydration (DG124) the page IS
+  the map app with this cafe at FULL, so `Check in` opens the check-in
+  drawer directly — no route change, no separate app entry.
 - Below it, a secondary row: `Navigate` (outline sage, provider deep link
   per spec) and `Share` (ghost icon, §4) — same styling as
   discovery-sheet-v1 §4, visually subordinate to the CTA.
 
-## 3. Deep-link banner (DeepLinkBanner)
+## 3. Hydration into the map app (DG124)
 
-First-visit only (spec-owned storage rules): a lightweight bottom banner,
-never modal.
+The DeepLinkBanner is abolished. The way into the map is the page itself:
 
-- Mobile: bottom-anchored bar, full width minus 16px margins, `overlay`
-  surface, `radius-lg`, `shadow-map`, 1px `border`. One tappable row: 20px
-  cup glyph (icon set), `CoffeeMode` (`text-sm`, medium weight), then
-  `Open in CoffeeMode` (`text-sm`, `accent` text) as the action, and a 28px
-  ghost × at the right edge. The action routes through the `/?cafe=[id]`
-  app entry (DG104) — the map opens with this cafe already selected.
-- Desktop: same banner, 420px, bottom-center.
-- Enter: 200ms gentle rise (spec signature moment), never blocking content;
-  dismissal persists permanently via a `localStorage` flag in the spec's
-  onboarding storage family — a dismissed banner that returns every session
-  is nagging. (Owner decision, 2026-08-21 — DG29.)
-- The banner yields layout: it overlays, it does not push content.
+- First paint is the static shell above — the map does NOT block or delay
+  it; MapKit loads after paint.
+- Once Part 1 + Part 2 are up, the map materializes behind the content
+  and the shell becomes the FULL sheet: same cafe data, visually
+  continuous, no route change, no reload. The discovery-sheet gesture
+  contract applies from that moment — dragging down steps FULL → HALF →
+  PEEK and reveals the map (DG14/DG15).
+- First-time deep-link visitors get no welcome card and no banner (spec,
+  DG124); the locate button is the only geolocation surface (DG112).
+- Reduced motion: the map fades in instantly behind the shell; no slide.
 
 ## 4. Share control
 
@@ -123,15 +121,16 @@ ever appear on this page (DG112).
 
 ## 6. Motion, dark mode, accessibility, i18n
 
-- Static shell: the only animations are the banner rise and toast. Reduced
-  motion: banner appears instantly. The feed loads client-side with its own
-  skeleton (§2).
+- Static shell: the only animations are the hydration fade (§3) and toast.
+  Reduced motion: the map appears instantly. The feed loads client-side
+  with its own skeleton (§2).
 - Token-only; images undimmed in dark mode.
-- Banner is `role="region"` with `aria-label`; its × is keyboard reachable;
-  the banner never takes focus on load. The feed-mode toggle is a client
+- After hydration the FULL sheet follows the discovery-sheet accessibility
+  contract (non-modal, focus on the detail heading, drag handle). The
+  feed-mode toggle is a client
   control (Part 2), fully keyboard reachable once loaded.
-- Keys under `cafeDetail.*` and `share.*`. zh references: `Open in
-  CoffeeMode` → `打开地图探索`, `Link copied` → `链接已复制`, `Copy link` →
+- Keys under `cafeDetail.*` and `share.*`. zh references: `Link copied` →
+  `链接已复制`, `Copy link` →
   `复制链接`, `复制链接，发给朋友吧`, `This cafe is
   gone` → `这家咖啡馆找不到了`, `It may have been removed` →
   `它可能已经被移除了`, `Back to discover` → `返回发现`, `More cafes
@@ -145,7 +144,10 @@ ever appear on this page (DG112).
       big `Check in` CTA unmistakable as the page's primary job (DG109).
 - [ ] Inside a WeChat UA, Share shows the copy-link popover — no dead
       native-share call (DG109).
-- [ ] Banner is gentle, dismissible, and never blocks reading.
+- [ ] The shell hydrates into the map app without a route change: the map
+      fades in behind, the shell becomes the FULL sheet, and drag-down
+      steps FULL → HALF → PEEK per the DG14/DG15 contract (DG124).
+- [ ] No banner, no welcome card on deep-link arrivals (DG124).
 - [ ] 404 is honest and quiet; the recovery block lists real nearby cafes
       (of the gone cafe) and never prompts for the user's location
       (DG111/DG112).

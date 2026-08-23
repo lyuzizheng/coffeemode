@@ -4,6 +4,8 @@
 
 Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisions-and-backlog.md` is in progress. Parts A–C and the remaining Phase 1 backlog (D1, D4, D7, A2) have merged to `main` (PRs #19, #20, #21, #22). Infrastructure slices (`image-pipeline`, `poi-cache-service`, `places-proxy`, `auth-foundation`) are code-complete but still pending owner credential/account actions.
 
+The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI artifacts were delivered and grilled (rounds 8–15, DG21–DG124), including the DG124 redesign that makes `/cafes/[id]` hydrate into the map app and abolishes the DeepLinkBanner. Every map-independent UI slice is now design-unblocked and READY in `docs/agent/implementation-slices.md`; the remaining design debt is the three map-bound artifacts, which wait on Apple credentials (#131) anyway.
+
 ## Active focus
 
 - Owner credential/account actions and worker deploys remain outstanding; see `docs/agent/pending-user-actions.md`.
@@ -14,8 +16,9 @@ Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisi
 - Issue #27 (work_stats row locking) is merged (#56).
 - Issue #74 merges the post-review P1 fixes for PRs #66–#73 (OAuth redirect allowlist, proxy session refresh, profile upsert failure, sign-out cache clearing, and upstream POI/image error logging).
 - Issue #114 established that Apple credentials do not block map-independent
-  work. Backend/contracts can still proceed; each new UI slice now separately
-  waits for its Kimi K3 artifact.
+  work. Design gates for those slices are now all cleared — every
+  map-independent UI artifact is delivered and grilled (DG21–DG124); only the
+  map-bound artifacts remain, waiting on Apple credentials (#131).
 - Issue #117 adds CI enforcement for the real-DB integration suite; the local suite is green.
 - Issue #118 hardens the real-DB suite against unsafe database targets and order-dependent coverage.
 - Issue #119 preserves image-service storage failures instead of mapping them to `not_found`.
@@ -83,19 +86,20 @@ _archive-coffeemode-backend/   old Java app — being dropped
 3. poi-cache-service deploy (§7): Cloudflare D1/KV + secrets, apply D1 schema,
    deploy, wire POI_SERVICE_URL/TOKEN.
 4. cafe-creation — complete Kimi K3 visual review, then merge (#130)
-5. Obtain Kimi K3 artifacts for discovery-sheet (#133), search-filters (#135),
-   check-in (#148), navigation prompt (#149), profile (#152), and cafe-detail/share (#150) before UI coding
-   — work-profile (#146) is now COMPLETE and discovery-sheet is unblocked on its dependency
+5. Map-independent UI slices are all design-unblocked and READY — pick any of:
+   discovery-sheet (#133), search-filters (#135), checkin-system (#148),
+   navigation-prompt (#149), profile-page (#152), seo-sharing (#150),
+   onboarding-geolocation (#153); app-config (DG107) is the shared config
+   scaffolding the feature slices consume. One writer per slice
 ```
 
 ### Blocked context (do not start yet)
 
 ```text
-- map-home — Apple MapKit full-screen map + custom markers [BLOCKED on Apple Developer Program; #131, #132]
+- map-home — Apple MapKit full-screen map + custom markers [BLOCKED on Apple Developer Program; #131, #132; map-home design artifact still owed]
 - map-discovery-integration — bind discovery/search to MapKit [BLOCKED on map-home; #134]
 - map-creation-entry — map-tap and map-surface creation entry [BLOCKED on map-home; #136]
-- discovery-sheet — [BLOCKED on Kimi K3 discovery artifact (#133); work-profile dependency now COMPLETE]
-- every other new user-visible UI slice — [BLOCKED on its Kimi K3 design artifact (#141): check-in #148, search #135, navigation #149, profile #152, detail/share #150]
+- deeplink-hydration — /cafes/[id] SSR shell hydrates into the map app at FULL (DG124) [BLOCKED on discovery-sheet + Apple MapKit creds #131; part of #150]
 - deploy-vps — Docker + VPS + CDN + CI/CD [BLOCKED on domain + VPS + Cloudflare account]
 - cleanup-legacy — remove old Vite frontend + Java backend [BLOCKED on deploy-vps]
 ```

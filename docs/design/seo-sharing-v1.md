@@ -4,7 +4,8 @@
 - Status: **Draft — pending owner approval**
 - Author: Kimi K3
 - Date: 2026-08-21 (revised 2026-08-22 — copy tone sweep per DG87/DG93;
-  2026-08-23 — grill round 14 partial rulings DG104–DG109)
+  2026-08-23 — grill round 14 rulings DG104–DG113; Q10 banner-dismissal
+  scope still pending)
 - Base: `docs/design/discovery-sheet-v1.md` (FULL composition, icon set,
   score hierarchy are reused verbatim)
 - Specs: `docs/specs/0001-nextjs-migration.md` §Rendering strategy
@@ -16,8 +17,8 @@ Scope: composition of the server-rendered `/cafes/[id]` page, the deep-link
 banner, the share control, and the 404. Behavior (SSR route ownership,
 one-push URL semantics, 404 contract, URL scheme, JSON-LD/sitemap/llms.txt,
 CDN cache TTLs) is canonical in the specs (spec 0001 §Rendering strategy,
-§Onboarding & city model, §PWA & sharing; DG104–DG107) and is referenced,
-not redefined.
+§Onboarding & city model, §PWA & sharing; DG104–DG107, DG110–DG113) and is
+referenced, not redefined.
 
 ---
 
@@ -43,7 +44,8 @@ link previews see — full semantic HTML, JSON-LD, fast from the CDN cache
 **Part 2 — the check-in feed (client-loaded after paint).** Notes are user
 content: they load from the public paginated check-in API once the page is
 up, never in the initial HTML — scrapers get the aggregates, not the raw
-community content. The Helpful/Newest toggle is a client control hitting
+community content. The feed opens in Newest (default — DG113); the
+Newest/Helpful toggle is a client control hitting
 the same API (no `?feed=` SSR variants). While loading, the feed area shows
 4 skeleton cards; failure keeps the shell intact with an inline Retry.
 
@@ -113,6 +115,12 @@ A real 404 (spec DG19), composed: centered column, display font line
 (`text-sm`, `muted`), solid `accent` button `Back to discover` → `/`. Quiet
 and final — no cute illustration, no coffee-pun copy.
 
+Below the button, a recovery block (DG111): `附近还有这些咖啡馆` — a short
+list of nearby cafes relative to the GONE cafe's last known location, each
+linking to its `/cafes/[id]` page. We already know where the gone cafe was,
+so this block never asks for the user's location — no permission prompt may
+ever appear on this page (DG112).
+
 ## 6. Motion, dark mode, accessibility, i18n
 
 - Static shell: the only animations are the banner rise and toast. Reduced
@@ -126,7 +134,8 @@ and final — no cute illustration, no coffee-pun copy.
   CoffeeMode` → `打开地图探索`, `Link copied` → `链接已复制`, `Copy link` →
   `复制链接`, `复制链接，发给朋友吧`, `This cafe is
   gone` → `这家咖啡馆找不到了`, `It may have been removed` →
-  `它可能已经被移除了`, `Back to discover` → `返回发现`.
+  `它可能已经被移除了`, `Back to discover` → `返回发现`, `More cafes
+  nearby` → `附近还有这些咖啡馆`.
 
 ## 7. Visual acceptance criteria (owner sign-off)
 
@@ -137,7 +146,10 @@ and final — no cute illustration, no coffee-pun copy.
 - [ ] Inside a WeChat UA, Share shows the copy-link popover — no dead
       native-share call (DG109).
 - [ ] Banner is gentle, dismissible, and never blocks reading.
-- [ ] 404 is honest and quiet; the recovery action is unmistakable.
+- [ ] 404 is honest and quiet; the recovery block lists real nearby cafes
+      (of the gone cafe) and never prompts for the user's location
+      (DG111/DG112).
+- [ ] The feed opens in Newest; the Helpful toggle is one tap away (DG113).
 - [ ] The no-cover OG fallback looks designed, not broken; og:description
       carries only the ✨ score + hook (DG108).
 - [ ] Dark mode requires no per-component overrides.

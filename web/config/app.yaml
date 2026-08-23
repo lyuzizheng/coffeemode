@@ -1,0 +1,11 @@
+# Product parameters (DG107). Specs name the parameter and its default; this
+# file owns the live value. Changing a parameter is an edit here with a typed
+# schema check at load, not a code change.
+search:
+  # Maximum allowed nearby-search radius — the product cap (spec 0001). The
+  # POI worker's own bounding-box ceiling (200 km) lives in web/shared; this
+  # proxy cap is deliberately stricter.
+  maxRadiusKm: 10
+cafes:
+  # GET /api/cafes limit cap (also the default when no limit is given).
+  listLimitMax: 50

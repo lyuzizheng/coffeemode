@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
+import { rateLimitConfig } from "@/lib/config";
 import type { RateLimitResult, RateLimiterLike } from "@/lib/rate-limit/types";
 
 interface TokenBucket {
@@ -12,26 +13,16 @@ interface TokenBucket {
   lastAccess: number;
 }
 
-export const IMAGE_RATE_LIMIT = {
-  windowMs: 60_000,
-  maxRequests: 10,
-} as const;
+// Limit values live in `web/config/rate-limits.yaml` (DG74/DG107); these
+// names keep call sites stable while the YAML owns the numbers.
+export const IMAGE_RATE_LIMIT = rateLimitConfig("images");
 
-export const PLACES_RATE_LIMIT = {
-  windowMs: 60_000,
-  maxRequests: 30,
-} as const;
+export const PLACES_RATE_LIMIT = rateLimitConfig("places");
 
 /** Reads are cheap; writes fuse cafe + first check-in + stats in one tx. */
-export const CAFES_READ_RATE_LIMIT = {
-  windowMs: 60_000,
-  maxRequests: 30,
-} as const;
+export const CAFES_READ_RATE_LIMIT = rateLimitConfig("cafes-read");
 
-export const CAFES_WRITE_RATE_LIMIT = {
-  windowMs: 60_000,
-  maxRequests: 10,
-} as const;
+export const CAFES_WRITE_RATE_LIMIT = rateLimitConfig("cafes-write");
 
 /**
  * In-memory token-bucket rate limiter.

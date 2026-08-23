@@ -26,6 +26,7 @@ The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI 
 - Issue #130 / PR #128 shipped the `cafe-creation` slice: Google/Apple Maps link import and Google/Apple provider search share one first-check-in flow. PR #128 merged 2026-08-20; the Kimi visual review was completed post-merge on 2026-08-23 (verdict on PR #128); findings #183–#185 were fixed in PR #187. Slice is COMPLETE.
 - PR #138 (docs: cafe-creation spec and map backlog) is merged to `main`.
 - Issue #146 / work-profile slice completes the map-independent work_stats aggregation: `coerceWorkStats` preserves `experience_score`/`composite_score`, create/edit/soft-delete recompute via `recomputeWorkStats` with `FOR UPDATE`, public-safe `CafeSummary`/`CafeDetail` expose both scores, `web/scripts/recompute-work-stats.mjs` provides the idempotent nightly drift correction and `.github/workflows/nightly-recompute.yml` schedules it at 02:00 UTC with observable failure.
+- Issue #189 / app-config slice adds the universal typed config: `web/config/rate-limits.yaml` owns the 4 API rate-limit buckets, `web/config/app.yaml` owns product parameters (`search.maxRadiusKm`, `cafes.listLimitMax`), and `web/lib/config.ts` loads + schema-validates both at startup (fail-fast on bad shape). Existing call sites migrated with values unchanged; feature slices must consume config, never hardcode.
 - Apple live search is configuration-gated and does not block link import or Google search. New user-visible UI implementation is separately design-gated on a slice-specific Kimi K3 artifact.
 
 ## What exists
@@ -88,8 +89,8 @@ _archive-coffeemode-backend/   old Java app — being dropped
 4. Map-independent UI slices are all design-unblocked and READY — pick any of:
    discovery-sheet (#133), search-filters (#135), checkin-system (#148),
    navigation-prompt (#149), profile-page (#152), seo-sharing (#150),
-   onboarding-geolocation (#153); app-config (DG107) is the shared config
-   scaffolding the feature slices consume. One writer per slice
+   onboarding-geolocation (#153). app-config (#189) is COMPLETE — feature
+   slices consume `web/lib/config.ts`, never hardcode. One writer per slice
 ```
 
 ### Blocked context (do not start yet)

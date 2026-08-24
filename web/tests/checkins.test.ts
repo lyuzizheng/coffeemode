@@ -147,19 +147,28 @@ describe("parseCheckInBody", () => {
     expect(parseCheckInBody(validBody({ photo_ids: [{}] })).ok).toBe(false);
     expect(parseCheckInBody(validBody({ photo_ids: [IMG, IMG] })).ok).toBe(false); // duplicates
     expect(parseCheckInBody(validBody({ photo_ids: [IMG, IMG.toUpperCase()] })).ok).toBe(false); // case-insensitive dupes
-    expect(parseCheckInBody(validBody({ photo_ids: Array(11).fill(IMG) })).ok).toBe(false); // cap
-    expect(parseCheckInBody(validBody({ note: "x".repeat(1001) })).ok).toBe(false);
+    expect(
+      parseCheckInBody(
+        validBody({
+          photo_ids: Array.from(
+            { length: 7 },
+            (_, i) => `a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a5${i.toString(16)}`,
+          ),
+        }),
+      ).ok,
+    ).toBe(false); // cap is 6 (DG68)
+    expect(parseCheckInBody(validBody({ note: "x".repeat(501) })).ok).toBe(false);
     expect(
       parseCheckInBody(validBody({ visited_at: new Date(Date.now() + 60_000).toISOString() })).ok,
     ).toBe(false);
   });
 
-  it("accepts exactly 10 distinct photo ids (cap boundary)", () => {
-    const ten = Array.from(
-      { length: 10 },
+  it("accepts exactly 6 distinct photo ids (cap boundary, DG68)", () => {
+    const six = Array.from(
+      { length: 6 },
       (_, i) => `a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a4${i.toString(16)}`,
     );
-    expect(parseCheckInBody(validBody({ photo_ids: ten })).ok).toBe(true);
+    expect(parseCheckInBody(validBody({ photo_ids: six })).ok).toBe(true);
   });
 
   it("treats an empty photo_ids array and blank note as absent", () => {

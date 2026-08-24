@@ -57,8 +57,9 @@ export function parseScores(value: unknown, field = "scores"): ParseResult<Check
 
 /** Structural check for client-supplied photo references (issue #86):
  *  plain imageUuids from /api/images/upload — never StoredImage payloads.
- *  The server derives keys/dimensions/attribution from upload intents. */
-export const MAX_PHOTOS_PER_CHECKIN = 10;
+ *  The server derives keys/dimensions/attribution from upload intents.
+ *  DG68 caps check-in photos at 6 (amends the earlier 10). */
+export const MAX_PHOTOS_PER_CHECKIN = 6;
 
 export function parsePhotoIds(value: unknown, field = "photo_ids"): ParseResult<string[]> {
   if (!Array.isArray(value)) return fail(`${field} must be an array of image UUIDs`);
@@ -157,7 +158,7 @@ export function parseCheckInBody(body: unknown): ParseResult<CreateCheckInInput>
   if (raw.note !== undefined && raw.note !== null) {
     if (typeof raw.note !== "string") return fail("note must be a string");
     const trimmed = raw.note.trim();
-    if (trimmed.length > 1000) return fail("note is too long (max 1000)");
+    if (trimmed.length > 500) return fail("note is too long (max 500)");
     if (trimmed !== "") note = trimmed;
   }
 
@@ -362,7 +363,7 @@ export function parseUpdateCheckInBody(body: unknown): ParseResult<UpdateCheckIn
     else if (typeof v !== "string") return fail("note must be a string or null");
     else {
       const trimmed = v.trim();
-      if (trimmed.length > 1000) return fail("note is too long (max 1000)");
+      if (trimmed.length > 500) return fail("note is too long (max 500)");
       note = trimmed === "" ? null : trimmed;
     }
   }

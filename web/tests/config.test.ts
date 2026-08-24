@@ -39,6 +39,14 @@ describe("config files", () => {
     expect(appConfig.cafes.listLimitMax).toBe(50);
   });
 
+  it("owns the feed page size (spec 0001: 20 per page, both modes)", () => {
+    expect(appConfig.feed.pageSize).toBe(20);
+  });
+
+  it("owns the discovery fallback center (DG112: no geolocation prompt)", () => {
+    expect(appConfig.discovery.defaultCenter).toEqual({ lat: 1.35, lng: 103.8 });
+  });
+
   it("rateLimitConfig throws on an unknown bucket", () => {
     expect(() => rateLimitConfig("nope")).toThrow(/unknown rate limit "nope"/);
   });
@@ -67,11 +75,16 @@ describe("parseRateLimits validation", () => {
 });
 
 describe("parseAppConfig validation", () => {
+  const validCenter = { defaultCenter: { lat: 1.35, lng: 103.8 } };
+
   it("accepts a valid config", () => {
-    expect(parseAppConfig({ search: { maxRadiusKm: 10 }, cafes: { listLimitMax: 50 } })).toEqual({
+    const valid = {
       search: { maxRadiusKm: 10 },
       cafes: { listLimitMax: 50 },
-    });
+      feed: { pageSize: 20 },
+      discovery: validCenter,
+    };
+    expect(parseAppConfig(valid)).toEqual(valid);
   });
 
   it("rejects a missing section", () => {
@@ -80,7 +93,23 @@ describe("parseAppConfig validation", () => {
 
   it("rejects a wrong type", () => {
     expect(() =>
-      parseAppConfig({ search: { maxRadiusKm: "10" }, cafes: { listLimitMax: 50 } }),
+      parseAppConfig({
+        search: { maxRadiusKm: "10" },
+        cafes: { listLimitMax: 50 },
+        feed: { pageSize: 20 },
+        discovery: validCenter,
+      }),
     ).toThrow(/"search\.maxRadiusKm" must be a positive number/);
+  });
+
+  it("rejects an out-of-range discovery center", () => {
+    expect(() =>
+      parseAppConfig({
+        search: { maxRadiusKm: 10 },
+        cafes: { listLimitMax: 50 },
+        feed: { pageSize: 20 },
+        discovery: { defaultCenter: { lat: 135, lng: 103.8 } },
+      }),
+    ).toThrow(/"discovery\.defaultCenter\.lat" must be a number within \[-90,90\]/);
   });
 });

@@ -357,7 +357,7 @@ const LIST_NEARBY_SQL = `
 select id, slug, name,
        ST_Y(location::geometry) as lat,
        ST_X(location::geometry) as lng,
-       address, city, tz, opening_hours, price_range, work_stats,
+       address, city, tz, opening_hours, price_range, work_stats, cover,
        (location <-> ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography) as distance_m
 from cafes
 where ST_DWithin(location, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography, $3::float8 * 1000)

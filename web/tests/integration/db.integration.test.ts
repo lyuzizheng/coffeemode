@@ -40,6 +40,11 @@ import {
   listCafesNearby,
 } from "@/lib/db/cafes";
 import { recordNavigation } from "@/lib/db/navigations";
+import {
+  FeedCursorError,
+  encodeFeedCursor,
+  listPublicCheckIns,
+} from "@/lib/discovery/feed";
 import { checkUploadIntent, consumeUploadIntent, recordUploadIntent } from "@/lib/db/image-uploads";
 import type { ProcessUrls } from "@/lib/images/image-service-client";
 import type { ProcessedImage } from "@/lib/images/processor";
@@ -626,6 +631,213 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       // Public consumers see the repaired scores through coerce
       const detail = await getCafe(CAFE_A);
       expect(detail?.work_stats.experience_score).toBe(good.experience_score);
+    });
+  });
+
+  describe("check-in feed (discovery-sheet)", () => {
+    // web/config/app.yaml feed.pageSize — the real config value drives paging.
+    const PAGE_SIZE = 20;
+    const BASE_TS = "2026-08-01T10:00:00.000Z";
+
+    function photoJson(i: number) {
+      return JSON.stringify([
+        {
+          id: `img-${i}`,
+          original: `original/img-${i}.webp`,
+          card: `card/img-${i}.webp`,
+          thumbnail: `thumbnail/img-${i}.webp`,
+          w: 800,
+          h: 600,
+          by: U1,
+          at: BASE_TS,
+        },
+      ]);
+    }
+
+    /** Seed `n` check-ins on CAFE_A (author U1), visited 1 minute apart. */
+    async function seedFeedCheckins(n: number): Promise<string[]> {
+      const ids: string[] = [];
+      for (let i = 0; i < n; i++) {
+        const id = randomUUID();
+        ids.push(id);
+        await dbClient.query(
+          `insert into checkins (id, cafe_id, user_id, scores, min_spend, max_stay, note, photos, visited_at)
+           values ($1, $2, $3, '{"wifi": 50}'::jsonb, 'none', '3h', $4, $5::jsonb,
+                   $6::timestamptz + ($7 || ' minutes')::interval)`,
+          [id, CAFE_A, U1, `note ${i}`, photoJson(i), BASE_TS, i],
+        );
+      }
+      return ids;
+    }
+
+    async function walkFeed(
+      mode: "newest" | "helpful",
+      viewerId: string | null = null,
+    ): Promise<{ ids: string[]; pages: number }> {
+      const ids: string[] = [];
+      let cursor: string | undefined;
+      let pages = 0;
+      for (;;) {
+        const page = await listPublicCheckIns({ cafeId: CAFE_A, mode, cursor, viewerId });
+        pages += 1;
+        for (const c of page.checkins) ids.push(c.id);
+        if (!page.nextCursor) break;
+        expect(page.checkins).toHaveLength(PAGE_SIZE);
+        cursor = page.nextCursor;
+        expect(pages).toBeLessThan(10); // runaway-pagination guard
+      }
+      return { ids, pages };
+    }
+
+    it("newest orders visited_at desc and emits the public DTO shape", async () => {
+      const seeded = await seedFeedCheckins(3);
+      const page = await listPublicCheckIns({
+        cafeId: CAFE_A,
+        mode: "newest",
+        viewerId: null,
+      });
+      expect(page.nextCursor).toBeNull();
+      // Seed CHECKIN_A1 defaults visited_at to now() — it leads.
+      expect(page.checkins.map((c) => c.id)).toEqual([
+        CHECKIN_A1,
+        seeded[2],
+        seeded[1],
+        seeded[0],
+      ]);
+      const row = page.checkins[1];
+      expect(row.note).toBe("note 2");
+      expect(row.min_spend).toBe("none");
+      expect(row.max_stay).toBe("3h");
+      expect(row.scores).toEqual({ wifi: 50 });
+      expect(row.likes_count).toBe(0);
+      expect(row.liked_by_viewer).toBe(false);
+      // Public DTO: no author id anywhere (spec 0001).
+      expect(row).not.toHaveProperty("user_id");
+      expect(row).not.toHaveProperty("deleted_at");
+      expect(row.photos).toHaveLength(1);
+      expect(row.photos[0]).not.toHaveProperty("by");
+      expect(row.photos[0].card).toBe(`card/img-2.webp`);
+    });
+
+    it("helpful orders by likes_count desc, then visited_at desc", async () => {
+      const seeded = await seedFeedCheckins(3);
+      // Extra likers (self-like trigger forbids U1 liking U1's check-ins).
+      const U3 = randomUUID();
+      await dbClient.query("insert into profiles (id, display_name) values ($1, 'u3')", [U3]);
+      // seeded[0]: 2 likes, seeded[2]: 1 like, seeded[1] + CHECKIN_A1: 0.
+      await dbClient.query(
+        "insert into checkin_likes (user_id, checkin_id) values ($1, $2), ($3, $2), ($1, $4)",
+        [U2, seeded[0], U3, seeded[2]],
+      );
+      const page = await listPublicCheckIns({
+        cafeId: CAFE_A,
+        mode: "helpful",
+        viewerId: null,
+      });
+      expect(page.checkins.map((c) => c.id)).toEqual([
+        seeded[0],
+        seeded[2],
+        CHECKIN_A1, // 0 likes, visited_at = now() beats the 2026-08-01 seeds
+        seeded[1],
+      ]);
+      expect(page.checkins[0].likes_count).toBe(2);
+      expect(page.checkins[1].likes_count).toBe(1);
+    });
+
+    it("paginates both modes by keyset without dupes or gaps", async () => {
+      await seedFeedCheckins(PAGE_SIZE + 1); // + baseline = PAGE_SIZE + 2 rows
+      for (const mode of ["newest", "helpful"] as const) {
+        const { ids, pages } = await walkFeed(mode);
+        expect(pages).toBe(2);
+        expect(ids).toHaveLength(PAGE_SIZE + 2);
+        expect(new Set(ids).size).toBe(ids.length);
+      }
+    });
+
+    it("excludes soft-deleted check-ins", async () => {
+      const seeded = await seedFeedCheckins(2);
+      await softDeleteCheckIn(U1, seeded[1]);
+      const page = await listPublicCheckIns({
+        cafeId: CAFE_A,
+        mode: "newest",
+        viewerId: null,
+      });
+      expect(page.checkins.map((c) => c.id)).toEqual([CHECKIN_A1, seeded[0]]);
+    });
+
+    it("liked_by_viewer reflects only the viewer's own like", async () => {
+      const seeded = await seedFeedCheckins(1);
+      await dbClient.query("insert into checkin_likes (user_id, checkin_id) values ($1, $2)", [
+        U2,
+        seeded[0],
+      ]);
+      const asLiker = await listPublicCheckIns({
+        cafeId: CAFE_A,
+        mode: "newest",
+        viewerId: U2,
+      });
+      expect(asLiker.checkins.find((c) => c.id === seeded[0])?.liked_by_viewer).toBe(true);
+      const asOther = await listPublicCheckIns({
+        cafeId: CAFE_A,
+        mode: "newest",
+        viewerId: U1,
+      });
+      expect(asOther.checkins.find((c) => c.id === seeded[0])?.liked_by_viewer).toBe(false);
+      const anonymous = await listPublicCheckIns({
+        cafeId: CAFE_A,
+        mode: "newest",
+        viewerId: null,
+      });
+      expect(anonymous.checkins.every((c) => c.liked_by_viewer === false)).toBe(true);
+    });
+
+    it("rejects cross-mode and malformed cursors", async () => {
+      await seedFeedCheckins(1);
+      const newestCursor = encodeFeedCursor({
+        v: 1,
+        mode: "newest",
+        visited_at: BASE_TS,
+        id: CHECKIN_A1,
+      });
+      await expect(
+        listPublicCheckIns({ cafeId: CAFE_A, mode: "helpful", cursor: newestCursor, viewerId: null }),
+      ).rejects.toBeInstanceOf(FeedCursorError);
+      await expect(
+        listPublicCheckIns({ cafeId: CAFE_A, mode: "newest", cursor: "garbage", viewerId: null }),
+      ).rejects.toBeInstanceOf(FeedCursorError);
+    });
+
+    it("survives rows sharing a millisecond across a page boundary", async () => {
+      // Microsecond-distinct visited_at inside one JS millisecond: a cursor
+      // taken after the first row must still return the second (a millis-
+      // truncated cursor would compare BELOW the real stored value and skip
+      // it). Only these two rows exist, so the walk is trivial.
+      await dbClient.query("delete from checkins where cafe_id = $1", [CAFE_A]);
+      const ids: string[] = [];
+      for (const fraction of ["10:00:00.123101", "10:00:00.123102"]) {
+        const id = randomUUID();
+        ids.push(id);
+        await dbClient.query(
+          `insert into checkins (id, cafe_id, user_id, scores, visited_at)
+           values ($1, $2, $3, '{}'::jsonb, $4::timestamptz)`,
+          [id, CAFE_A, U1, `2026-08-01 ${fraction}+00`],
+        );
+      }
+      const first = await listPublicCheckIns({ cafeId: CAFE_A, mode: "newest", viewerId: null });
+      expect(first.checkins.map((c) => c.id)).toEqual([ids[1], ids[0]]);
+      const cursorAfterFirst = encodeFeedCursor({
+        v: 1,
+        mode: "newest",
+        visited_at: "2026-08-01T10:00:00.123102Z",
+        id: ids[1],
+      });
+      const rest = await listPublicCheckIns({
+        cafeId: CAFE_A,
+        mode: "newest",
+        cursor: cursorAfterFirst,
+        viewerId: null,
+      });
+      expect(rest.checkins[0]?.id).toBe(ids[0]);
     });
   });
 });

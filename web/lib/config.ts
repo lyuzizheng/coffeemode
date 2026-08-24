@@ -28,6 +28,15 @@ export interface AppConfig {
   cafes: {
     listLimitMax: number;
   };
+  feed: {
+    pageSize: number;
+  };
+  discovery: {
+    defaultCenter: {
+      lat: number;
+      lng: number;
+    };
+  };
 }
 
 function fail(file: string, keyPath: string, reason: string): never {
@@ -37,6 +46,14 @@ function fail(file: string, keyPath: string, reason: string): never {
 function positiveNumber(file: string, keyPath: string, value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     fail(file, keyPath, "must be a positive number");
+  }
+  return value;
+}
+
+/** A latitude/longitude number bounded to [-limit, limit]. */
+function coordinate(file: string, keyPath: string, value: unknown, limit: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value) > limit) {
+    fail(file, keyPath, `must be a number within [-${limit},${limit}]`);
   }
   return value;
 }
@@ -67,12 +84,23 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
   const root = record(file, "(root)", raw);
   const search = record(file, "search", root.search);
   const cafes = record(file, "cafes", root.cafes);
+  const feed = record(file, "feed", root.feed);
+  const discovery = record(file, "discovery", root.discovery);
+  const defaultCenter = record(file, "discovery.defaultCenter", discovery.defaultCenter);
+  const lat = coordinate(file, "discovery.defaultCenter.lat", defaultCenter.lat, 90);
+  const lng = coordinate(file, "discovery.defaultCenter.lng", defaultCenter.lng, 180);
   return {
     search: {
       maxRadiusKm: positiveNumber(file, "search.maxRadiusKm", search.maxRadiusKm),
     },
     cafes: {
       listLimitMax: positiveNumber(file, "cafes.listLimitMax", cafes.listLimitMax),
+    },
+    feed: {
+      pageSize: positiveNumber(file, "feed.pageSize", feed.pageSize),
+    },
+    discovery: {
+      defaultCenter: { lat, lng },
     },
   };
 }

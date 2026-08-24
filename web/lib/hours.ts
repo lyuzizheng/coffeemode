@@ -94,8 +94,7 @@ function cafeLocalTime(tz: string, instant: Date): CafeLocalTime | null {
  * "unknown", not a guess. Windows are [open, close); close <= open spans
  * midnight (yesterday's window still applies early the next day);
  * close === open reads as open around the clock.
- */
-export function isOpenAt(
+ */export function isOpenAt(
   hours: WeeklyHours | null | undefined,
   tz: string | null | undefined,
   instant: Date = new Date(),
@@ -130,4 +129,41 @@ export function isOpenAt(
   }
 
   return false;
+}
+
+/**
+ * Today's closing wall-clock ("HH:MM", cafe-local) for the "Open until 22:00"
+ * meta line. Returns null when the cafe is closed, the window is open around
+ * the clock / spans midnight (no same-day close to quote), or the inputs are
+ * unknown — callers then render closed/unknown, never a guessed time.
+ */
+export function closingTimeToday(
+  hours: WeeklyHours | null | undefined,
+  tz: string | null | undefined,
+  instant: Date = new Date(),
+): string | null {
+  if (isOpenAt(hours, tz, instant) !== true) return null;
+  // isOpenAt already validated shape + tz, so the local day is resolvable.
+  const local = cafeLocalTime(tz as string, instant);
+  if (!local) return null;
+  const dayIndex = DAY_KEYS.indexOf(local.day);
+  const yesterday = DAY_KEYS[(dayIndex + 6) % 7];
+  const today = (hours as WeeklyHours)[local.day];
+  const previous = (hours as WeeklyHours)[yesterday];
+  // Yesterday's overnight spillover owns the window early in the day.
+  if (previous != null) {
+    const open = parseWallClock(previous.open);
+    const close = parseWallClock(previous.close);
+    if (open !== null && close !== null && close <= open && close !== open && local.minutes < close) {
+      return previous.close;
+    }
+  }
+  if (today != null) {
+    const open = parseWallClock(today.open);
+    const close = parseWallClock(today.close);
+    if (open === null || close === null) return null;
+    if (close <= open) return null; // overnight or 24h — no same-day close
+    return today.close;
+  }
+  return null;
 }

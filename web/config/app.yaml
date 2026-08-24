@@ -12,3 +12,11 @@ cafes:
 feed:
   # Check-in feed page size for both Helpful and Newest modes (spec 0001).
   pageSize: 20
+discovery:
+  # Map-independent fallback center for the nearby-cafes query (DG112: no
+  # geolocation prompt in discovery; the locate button is the
+  # onboarding-geolocation slice's persistent control). Singapore until the
+  # map-bound slices ship.
+  defaultCenter:
+    lat: 1.35
+    lng: 103.8

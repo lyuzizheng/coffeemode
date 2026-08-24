@@ -314,5 +314,84 @@
     "body": "CoffeeMode 在渲染这个页面时遇到了意外错误。重试通常可以解决。",
     "retry": "重试",
     "home": "回到首页"
+  },
+  "discovery": {
+    "work": "Work",
+    "experience": "Experience",
+    "work_score_aria": "Work 分 {score}",
+    "experience_score_aria": "体验分 {score}",
+    "checkins_count": "{count} 次打卡",
+    "responses": "{count} 人评价",
+    "not_enough": "打卡还太少啦",
+    "work_profile_aria": "工作画像",
+    "policy_aria": "规则共识",
+    "min_spend": "最低消费",
+    "max_stay": "停留时长",
+    "policy": {
+      "min_spend": {
+        "none": "无需消费",
+        "drink": "点一杯即可",
+        "s5": "$5",
+        "s10": "$10",
+        "s10plus": "$10+",
+        "unknown": "未知"
+      },
+      "max_stay": {
+        "unlimited": "不限时",
+        "3h": "3h",
+        "2h": "2h",
+        "1h": "1h",
+        "peak": "高峰期限时",
+        "unknown": "未知"
+      }
+    },
+    "dims": {
+      "wifi": "Wi-Fi",
+      "outlets": "插座",
+      "seats": "座位",
+      "temp": "温度",
+      "coffee": "咖啡",
+      "overall": "综合体验"
+    },
+    "facts": {
+      "wifi": "Wi-Fi",
+      "outlets": "插座",
+      "stay": "停留时限",
+      "seats": "座位",
+      "temp": "温度",
+      "coffee": "咖啡"
+    },
+    "feed_title": "打卡",
+    "feed_mode_aria": "打卡排序方式",
+    "feed_modes": {
+      "helpful": "最有用",
+      "newest": "最新"
+    },
+    "a_nomad": "一位 nomad",
+    "like_aria": "点赞这条打卡",
+    "like_signin": "登录后才能点赞",
+    "load_failed": "打卡加载失败，再试试？",
+    "detail_load_failed": "咖啡馆加载失败，再试试？",
+    "retry": "重试",
+    "missing_cafe": "这家咖啡馆找不到了",
+    "empty_feed": "还没有打卡",
+    "be_first": "来当第一个打卡的人！",
+    "open_until": "营业到 {time}",
+    "open_now": "营业中",
+    "closed": "已打烊",
+    "check_in": "打卡",
+    "navigate": "导航",
+    "share": "分享",
+    "share_copied": "链接已复制",
+    "share_failed": "链接复制失败",
+    "close": "关闭",
+    "gallery_aria": "照片",
+    "empty_nearby_title": "附近还没有咖啡馆",
+    "empty_nearby_body": "知道一家好店？收录它，帮其他 nomad 种草",
+    "km_away": "{km} km",
+    "peek_aria": "附近咖啡馆",
+    "sheet_aria": "咖啡馆发现",
+    "sheet_handle_aria": "拖动调整面板高度",
+    "checkin_coming": "打卡编辑器随打卡模块上线——敬请期待"
   }
 }

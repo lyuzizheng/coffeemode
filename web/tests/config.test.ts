@@ -43,6 +43,10 @@ describe("config files", () => {
     expect(appConfig.feed.pageSize).toBe(20);
   });
 
+  it("owns the discovery fallback center (DG112: no geolocation prompt)", () => {
+    expect(appConfig.discovery.defaultCenter).toEqual({ lat: 1.35, lng: 103.8 });
+  });
+
   it("rateLimitConfig throws on an unknown bucket", () => {
     expect(() => rateLimitConfig("nope")).toThrow(/unknown rate limit "nope"/);
   });
@@ -71,8 +75,15 @@ describe("parseRateLimits validation", () => {
 });
 
 describe("parseAppConfig validation", () => {
+  const validCenter = { defaultCenter: { lat: 1.35, lng: 103.8 } };
+
   it("accepts a valid config", () => {
-    const valid = { search: { maxRadiusKm: 10 }, cafes: { listLimitMax: 50 }, feed: { pageSize: 20 } };
+    const valid = {
+      search: { maxRadiusKm: 10 },
+      cafes: { listLimitMax: 50 },
+      feed: { pageSize: 20 },
+      discovery: validCenter,
+    };
     expect(parseAppConfig(valid)).toEqual(valid);
   });
 
@@ -86,7 +97,19 @@ describe("parseAppConfig validation", () => {
         search: { maxRadiusKm: "10" },
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20 },
+        discovery: validCenter,
       }),
     ).toThrow(/"search\.maxRadiusKm" must be a positive number/);
+  });
+
+  it("rejects an out-of-range discovery center", () => {
+    expect(() =>
+      parseAppConfig({
+        search: { maxRadiusKm: 10 },
+        cafes: { listLimitMax: 50 },
+        feed: { pageSize: 20 },
+        discovery: { defaultCenter: { lat: 135, lng: 103.8 } },
+      }),
+    ).toThrow(/"discovery\.defaultCenter\.lat" must be a number within \[-90,90\]/);
   });
 });

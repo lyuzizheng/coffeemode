@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isOpenAt, type WeeklyHours } from "@/lib/hours";
+import { closingTimeToday, isOpenAt, type WeeklyHours } from "@/lib/hours";
 
 // 2026-08-16 is a Sunday, 2026-08-17 a Monday.
 const nineToSixMonday: WeeklyHours = {
@@ -64,5 +64,45 @@ describe("isOpenAt — cafe-local timezone evaluation", () => {
 
   it("returns null for a non-object hours payload from malformed jsonb", () => {
     expect(isOpenAt("not-an-object" as unknown as WeeklyHours, "Asia/Seoul", new Date("2026-08-17T00:00:00Z"))).toBeNull();
+  });
+});
+
+describe("closingTimeToday — the 'Open until 22:00' source (cafe-local)", () => {
+  // Reuse the Seoul fixture: 2026-08-17T00:00:00Z is Monday 09:00 KST.
+  it("returns today's close for a normal same-day window", () => {
+    expect(
+      closingTimeToday(nineToSixMonday, "Asia/Seoul", new Date("2026-08-17T00:00:00Z")),
+    ).toBe("18:00");
+  });
+
+  it("returns yesterday's close while the overnight spillover owns the window", () => {
+    const lateBar: WeeklyHours = { mon: { open: "22:00", close: "02:00" } };
+    // Tuesday 01:00 KST (Monday 16:00 UTC) — still inside Monday's window.
+    expect(
+      closingTimeToday(lateBar, "Asia/Seoul", new Date("2026-08-17T16:00:00Z")),
+    ).toBe("02:00");
+  });
+
+  it("returns null when closed, around the clock, or in tonight's overnight portion", () => {
+    // Closed Tuesday.
+    expect(
+      closingTimeToday(nineToSixMonday, "Asia/Seoul", new Date("2026-08-18T01:00:00Z")),
+    ).toBeNull();
+    // 24h cafe has no same-day close to quote.
+    const always: WeeklyHours = { mon: { open: "00:00", close: "00:00" } };
+    expect(closingTimeToday(always, "Asia/Seoul", new Date("2026-08-17T00:00:00Z"))).toBeNull();
+    // Monday 23:00 KST inside a 22:00→02:00 window: close is tomorrow, not today.
+    const lateBar: WeeklyHours = { mon: { open: "22:00", close: "02:00" } };
+    expect(
+      closingTimeToday(lateBar, "Asia/Seoul", new Date("2026-08-17T14:00:00Z")),
+    ).toBeNull();
+  });
+
+  it("returns null on unknown inputs instead of guessing", () => {
+    expect(closingTimeToday(null, "Asia/Seoul", new Date())).toBeNull();
+    expect(closingTimeToday(nineToSixMonday, null, new Date())).toBeNull();
+    expect(
+      closingTimeToday(nineToSixMonday, "Mars/Olympus", new Date("2026-08-17T00:00:00Z")),
+    ).toBeNull();
   });
 });

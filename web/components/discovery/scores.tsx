@@ -141,7 +141,7 @@ export function WorkProfile({ stats }: { stats: WorkStats }) {
                 <span className="tnum w-7 shrink-0 text-right text-sm text-foreground">
                   {mean}
                 </span>
-                <span className="tnum w-10 shrink-0 text-right text-xs text-muted">
+                <span className="tnum shrink-0 whitespace-nowrap text-right text-xs text-muted">
                   {t("responses", { count: n })}
                 </span>
               </>

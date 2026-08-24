@@ -71,8 +71,12 @@ function MiniScores({ checkin }: { checkin: PublicCheckIn }) {
   const chips = WORK_DIMS.filter((dim: WorkDim) => typeof checkin.scores[dim] === "number");
   if (chips.length === 0) return null;
   return (
-    <p className="tnum text-xs text-muted">
-      {chips.map((dim) => `${t(`dims.${dim}`)} ${Math.round(checkin.scores[dim] ?? 0)}`).join(" · ")}
+    <p className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-muted">
+      {chips.map((dim) => (
+        <span key={dim} className="tnum whitespace-nowrap">
+          {t(`dims.${dim}`)} {Math.round(checkin.scores[dim] ?? 0)}
+        </span>
+      ))}
     </p>
   );
 }

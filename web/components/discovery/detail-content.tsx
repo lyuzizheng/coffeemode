@@ -5,13 +5,13 @@
  * FULL content renders inside the mobile sheet and the desktop detail
  * column (DG42). Selection focuses the detail heading (DG18).
  */
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { Button, toast } from "@heroui/react";
 import { CloseIcon, ShareIcon } from "@/components/icons";
-import { cafeFacts } from "@/lib/discovery/view-model";
+import { cafeFacts, formatDistanceKm } from "@/lib/discovery/view-model";
 import { closingTimeToday, isOpenAt } from "@/lib/hours";
 import type { DiscoveryController } from "@/lib/discovery/use-discovery-controller";
 import type { CafeDetail } from "@/types/cafes";
@@ -169,6 +169,7 @@ export function DetailContent({
   controller,
   onCheckIn,
   onClose,
+  distanceM,
 }: {
   cafeId: string;
   variant: "half" | "full";
@@ -176,6 +177,8 @@ export function DetailContent({
   onCheckIn: () => void;
   /** Desktop only: ghost × at the top-right of the detail column. */
   onClose?: () => void;
+  /** Meters from the query point — summaries carry it, the detail row does not. */
+  distanceM?: number;
 }) {
   const t = useTranslations("discovery");
   const { detailHeadingRef, handleMissingCafe } = controller;
@@ -223,17 +226,21 @@ export function DetailContent({
     </div>
   );
 
+  const km = formatDistanceKm(distanceM);
+  const openState = isOpenAt(cafe.opening_hours, cafe.tz);
+  const metaParts: ReactNode[] = [];
+  if (cafe.city) metaParts.push(cafe.city);
+  if (variant === "full" && cafe.address) metaParts.push(cafe.address);
+  if (km !== null) metaParts.push(t("km_away", { km }));
+  if (openState !== null) metaParts.push(<OpenState key="open" cafe={cafe} />);
   const meta = (
     <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
-      {cafe.city && <span>{cafe.city}</span>}
-      {variant === "full" && cafe.address && (
-        <>
-          {cafe.city ? " · " : ""}
-          <span>{cafe.address}</span>
-        </>
-      )}
-      {(cafe.city || (variant === "full" && cafe.address)) && " · "}
-      <OpenState cafe={cafe} />
+      {metaParts.map((part, i) => (
+        <Fragment key={i}>
+          {i > 0 && <span aria-hidden>·</span>}
+          {typeof part === "string" ? <span>{part}</span> : part}
+        </Fragment>
+      ))}
     </p>
   );
 

@@ -117,6 +117,7 @@ export function DesktopDiscovery({
               controller={controller}
               onCheckIn={onCheckIn}
               onClose={close}
+              distanceM={cafes.find((c) => c.id === selectedCafeId)?.distance_m}
             />
           </motion.div>
         )}

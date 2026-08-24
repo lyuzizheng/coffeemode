@@ -61,32 +61,34 @@ export function useDiscoveryController(): DiscoveryController {
   const restoreFocusTo = useRef<string | null>(null);
 
   // --- URL sync -----------------------------------------------------------
+  // History writes are side effects: they must NOT live inside setState
+  // updaters (StrictMode double-invokes updaters, which would push duplicate
+  // entries — and Next's patched history sets Router state during render).
   const cafeUrl = (id: string) => `/cafes/${id}`;
 
-  const select = useCallback((cafeId: string) => {
-    setSelectedCafeId((prev) => {
-      if (prev === null) {
+  const select = useCallback(
+    (cafeId: string) => {
+      if (selectedCafeId === null) {
         // First selection of the session: one pushed entry.
         window.history.pushState(null, "", cafeUrl(cafeId));
-      } else if (prev !== cafeId) {
+      } else if (selectedCafeId !== cafeId) {
         window.history.replaceState(null, "", cafeUrl(cafeId));
       }
-      return cafeId;
-    });
-    setSnap((prev) => (prev === "full" ? "full" : "half"));
-    focusPending.current = true;
-  }, []);
+      setSelectedCafeId(cafeId);
+      setSnap((prev) => (prev === "full" ? "full" : "half"));
+      focusPending.current = true;
+    },
+    [selectedCafeId],
+  );
 
   const close = useCallback(() => {
-    setSelectedCafeId((prev) => {
-      if (prev !== null) {
-        restoreFocusTo.current = prev;
-        window.history.replaceState(null, "", "/");
-      }
-      return null;
-    });
+    if (selectedCafeId !== null) {
+      restoreFocusTo.current = selectedCafeId;
+      window.history.replaceState(null, "", "/");
+    }
+    setSelectedCafeId(null);
     setSnap("peek");
-  }, []);
+  }, [selectedCafeId]);
 
   const snapTo = useCallback(
     (next: SheetSnap) => {
@@ -94,15 +96,13 @@ export function useDiscoveryController(): DiscoveryController {
         close();
         return;
       }
-      setSnap((prev) => {
-        if (prev !== next) {
-          // Height changes replace the selection entry (no history spam).
-          if (selectedCafeId) window.history.replaceState(null, "", cafeUrl(selectedCafeId));
-        }
-        return next;
-      });
+      // Height changes replace the selection entry (no history spam).
+      if (next !== snap && selectedCafeId) {
+        window.history.replaceState(null, "", cafeUrl(selectedCafeId));
+      }
+      setSnap(next);
     },
-    [close, selectedCafeId],
+    [close, selectedCafeId, snap],
   );
 
   const handleMissingCafe = useCallback(() => {

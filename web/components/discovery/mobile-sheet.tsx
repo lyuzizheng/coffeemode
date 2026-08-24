@@ -251,6 +251,7 @@ export function MobileSheet({
             variant={snap}
             controller={controller}
             onCheckIn={onCheckIn}
+            distanceM={cafes.find((c) => c.id === selectedCafeId)?.distance_m}
           />
         </div>
       )}

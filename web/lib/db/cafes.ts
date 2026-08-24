@@ -18,6 +18,7 @@ import {
 } from "@/types/checkins";
 import {
   fail,
+  MAX_NOTE_LENGTH,
   MERGE_GALLERY_SQL,
   parsePhotoIds,
   parseScores,
@@ -160,7 +161,7 @@ export function parseCreateCafeBody(body: unknown): ParseResult<CreateCafeInput>
   if (typeof note !== "string" || note.trim() === "") {
     return fail("checkin.note (non-empty string) is required on creation (spec 0001)");
   }
-  if (note.trim().length > 1000) return fail("checkin.note is too long (max 1000)");
+  if (note.trim().length > MAX_NOTE_LENGTH) return fail(`checkin.note is too long (max ${MAX_NOTE_LENGTH})`);
 
   if (!Array.isArray(checkinBody.photo_ids) || checkinBody.photo_ids.length === 0) {
     return fail("checkin.photo_ids must contain at least one image UUID (spec 0001)");

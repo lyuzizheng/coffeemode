@@ -37,6 +37,8 @@ describe("config files", () => {
   it("keeps the previously hardcoded app parameter values", () => {
     expect(appConfig.search.maxRadiusKm).toBe(10);
     expect(appConfig.cafes.listLimitMax).toBe(50);
+    expect(appConfig.checkins.photoCap).toBe(6);
+    expect(appConfig.checkins.noteMaxChars).toBe(500);
   });
 
   it("owns the feed page size (spec 0001: 20 per page, both modes)", () => {
@@ -88,6 +90,7 @@ describe("parseAppConfig validation", () => {
     shellCache: { sMaxAgeSeconds: 600, staleWhileRevalidateSeconds: 3600 },
     recoveryLimit: 5,
   };
+  const validCheckins = { photoCap: 6, noteMaxChars: 500 };
 
   it("accepts a valid config", () => {
     const valid = {
@@ -96,12 +99,25 @@ describe("parseAppConfig validation", () => {
       feed: { pageSize: 20 },
       discovery: validCenter,
       seo: validSeo,
+      checkins: validCheckins,
     };
     expect(parseAppConfig(valid)).toEqual(valid);
   });
 
   it("rejects a missing section", () => {
     expect(() => parseAppConfig({ cafes: { listLimitMax: 50 } })).toThrow(/"search" must be a mapping/);
+  });
+
+  it("rejects a missing checkins section", () => {
+    expect(() =>
+      parseAppConfig({
+        search: { maxRadiusKm: 10 },
+        cafes: { listLimitMax: 50 },
+        feed: { pageSize: 20 },
+        discovery: validCenter,
+        seo: validSeo,
+      }),
+    ).toThrow(/"checkins" must be a mapping/);
   });
 
   it("rejects a wrong type", () => {
@@ -112,6 +128,7 @@ describe("parseAppConfig validation", () => {
         feed: { pageSize: 20 },
         discovery: validCenter,
         seo: validSeo,
+        checkins: validCheckins,
       }),
     ).toThrow(/"search\.maxRadiusKm" must be a positive number/);
   });
@@ -124,6 +141,7 @@ describe("parseAppConfig validation", () => {
         feed: { pageSize: 20 },
         discovery: { defaultCenter: { lat: 135, lng: 103.8 } },
         seo: validSeo,
+        checkins: validCheckins,
       }),
     ).toThrow(/"discovery\.defaultCenter\.lat" must be a number within \[-90,90\]/);
   });
@@ -139,7 +157,21 @@ describe("parseAppConfig validation", () => {
           shellCache: { sMaxAgeSeconds: 60.5, staleWhileRevalidateSeconds: 3600 },
           recoveryLimit: 5,
         },
+        checkins: validCheckins,
       }),
     ).toThrow(/"seo\.shellCache\.sMaxAgeSeconds" must be a positive integer/);
+  });
+
+  it("rejects a non-integer checkins cap", () => {
+    expect(() =>
+      parseAppConfig({
+        search: { maxRadiusKm: 10 },
+        cafes: { listLimitMax: 50 },
+        feed: { pageSize: 20 },
+        discovery: validCenter,
+        seo: validSeo,
+        checkins: { photoCap: 6.5, noteMaxChars: 500 },
+      }),
+    ).toThrow(/"checkins\.photoCap" must be a positive integer/);
   });
 });

@@ -38,6 +38,10 @@ export interface AppConfig {
     };
     recoveryLimit: number;
   };
+  checkins: {
+    photoCap: number;
+    noteMaxChars: number;
+  };
 }
 
 function fail(file: string, keyPath: string, reason: string): never {
@@ -99,6 +103,7 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
   const lng = coordinate(file, "discovery.defaultCenter.lng", defaultCenter.lng, 180);
   const seo = record(file, "seo", root.seo);
   const shellCache = record(file, "seo.shellCache", seo.shellCache);
+  const checkins = record(file, "checkins", root.checkins);
   return {
     search: {
       maxRadiusKm: positiveNumber(file, "search.maxRadiusKm", search.maxRadiusKm),
@@ -126,6 +131,10 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
         ),
       },
       recoveryLimit: positiveInteger(file, "seo.recoveryLimit", seo.recoveryLimit),
+    },
+    checkins: {
+      photoCap: positiveInteger(file, "checkins.photoCap", checkins.photoCap),
+      noteMaxChars: positiveInteger(file, "checkins.noteMaxChars", checkins.noteMaxChars),
     },
   };
 }

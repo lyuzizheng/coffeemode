@@ -1,0 +1,15 @@
+# CoffeeMode
+
+CoffeeMode is a crowdsourced guide to cafes worth working from, built by
+and for digital nomads. Instead of vibes, it records facts from real work
+sessions: wifi, outlets, seats/tables, temperature, and coffee quality —
+each scored 0–100 — plus nomad policies (minimum spend, maximum stay).
+
+- Every cafe lives at a permanent URL: /cafes/{id} (canonical, id-based —
+  stable across renames).
+- Cafe pages publish aggregate scores, dimension breakdowns, policy
+  consensus, opening hours, and photos.
+- Two scores per cafe: a weighted Work score (wifi 30%, outlets 20%,
+  seats 20%, temperature 15%, coffee 15%) and an Experience score (mean
+  overall rating).
+- Full sitemap: /sitemap.xml

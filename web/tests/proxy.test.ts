@@ -9,11 +9,18 @@ vi.mock("@supabase/ssr", () => ({
   createServerClient: vi.fn(),
 }));
 
+// Default: every cafe exists, so existing pass-through cases stay intact.
+const cafeExistsMock = vi.fn<(id: string) => Promise<boolean>>(async () => true);
+vi.mock("@/lib/db/cafes", () => ({
+  cafeExists: (id: string) => cafeExistsMock(id),
+}));
+
 import { createServerClient } from "@supabase/ssr";
 
 describe("proxy", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    cafeExistsMock.mockResolvedValue(true);
     process.env.NEXT_PUBLIC_SUPABASE_URL = SUPABASE_URL;
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = ANON_KEY;
   });
@@ -117,6 +124,63 @@ describe("proxy", () => {
     const res = await proxy(req);
 
     expect(getSession).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+  });
+});
+
+describe("proxy gone-cafe 404 (DG19)", () => {
+  const CAFE = "550e8400-e29b-41d4-a716-446655440001";
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = SUPABASE_URL;
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = ANON_KEY;
+  });
+
+  it("rewrites a missing cafe page to the sync 404 target", async () => {
+    cafeExistsMock.mockResolvedValue(false);
+    const req = new NextRequest(new URL(`http://localhost/cafes/${CAFE}`));
+    const res = await proxy(req);
+    expect(res.headers.get("x-middleware-rewrite")).toBe(
+      "http://localhost/__gone-cafe",
+    );
+  });
+
+  it("lets existing cafes through to the page", async () => {
+    cafeExistsMock.mockResolvedValue(true);
+    const req = new NextRequest(new URL(`http://localhost/cafes/${CAFE}`));
+    const res = await proxy(req);
+    expect(res.headers.get("x-middleware-rewrite")).toBeNull();
+    expect(res.status).toBe(200);
+  });
+
+  it("checks subpath requests and non-GET methods never", async () => {
+    cafeExistsMock.mockResolvedValue(false);
+    const og = new NextRequest(new URL(`http://localhost/cafes/${CAFE}/og-image`));
+    expect((await proxy(og)).headers.get("x-middleware-rewrite")).toBeNull();
+    const post = new NextRequest(new URL(`http://localhost/cafes/${CAFE}`), { method: "POST" });
+    expect((await proxy(post)).headers.get("x-middleware-rewrite")).toBeNull();
+    expect(cafeExistsMock).not.toHaveBeenCalled();
+  });
+
+  it("fails open when the existence check cannot reach the DB", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    cafeExistsMock.mockRejectedValue(new Error("connection refused"));
+    const req = new NextRequest(new URL(`http://localhost/cafes/${CAFE}`));
+    const res = await proxy(req);
+    expect(res.headers.get("x-middleware-rewrite")).toBeNull();
+    expect(res.status).toBe(200);
+    errorSpy.mockRestore();
+  });
+
+  it("strips an inbound x-gone-cafe-id so clients cannot inject the marker", async () => {
+    const req = new NextRequest(new URL("http://localhost/"), {
+      headers: { "x-gone-cafe-id": "spoofed" },
+    });
+    const res = await proxy(req);
+    // The sanitized request replaces the header set: the spoofed value must
+    // not be forwarded to rendering.
+    expect(res.headers.get("x-middleware-request-x-gone-cafe-id")).toBeNull();
     expect(res.status).toBe(200);
   });
 });

@@ -37,6 +37,8 @@ import {
   CafeExistsError,
   createCafeWithFirstCheckIn,
   getCafe,
+  getCafeLocation,
+  listCafeSitemapEntries,
   listCafesNearby,
 } from "@/lib/db/cafes";
 import { recordNavigation } from "@/lib/db/navigations";
@@ -838,6 +840,56 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         viewerId: null,
       });
       expect(rest.checkins[0]?.id).toBe(ids[0]);
+    });
+  });
+
+  describeDb("seo-sharing queries — sitemap lastmod + gone-cafe location (#150)", () => {
+    it("sitemap lastmod prefers work_stats.updated_at, falls back to cafes.updated_at", async () => {
+      // Seed cafe has no work_stats.updated_at — the row's updated_at applies.
+      const fallback = await listCafeSitemapEntries();
+      expect(fallback).toHaveLength(1);
+      expect(fallback[0]?.id).toBe(CAFE_A);
+      expect(new Date(fallback[0]?.lastmod ?? "").getTime()).not.toBeNaN();
+
+      // A stats update moves lastmod to the aggregate's timestamp (DG105).
+      await dbClient.query(
+        `update cafes
+         set work_stats = jsonb_set(work_stats, '{updated_at}', '"2030-01-02T03:04:05.000Z"')
+         where id = $1`,
+        [CAFE_A],
+      );
+      const withStats = await listCafeSitemapEntries();
+      expect(withStats[0]?.lastmod).toBe("2030-01-02T03:04:05.000Z");
+    });
+
+    it("orders the sitemap newest-lastmod first", async () => {
+      const older = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a66";
+      const newer = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a77";
+      for (const [id, updated] of [
+        [older, "2030-01-01T00:00:00.000Z"],
+        [newer, "2030-02-01T00:00:00.000Z"],
+      ] as const) {
+        await dbClient.query(
+          `insert into cafes (id, name, location, work_stats)
+           values ($1, $2, ST_SetSRID(ST_MakePoint(103.8, 1.35), 4326)::geography,
+                   jsonb_build_object('updated_at', $3::text))`,
+          [id, `Cafe ${id.slice(-2)}`, updated],
+        );
+      }
+      const entries = await listCafeSitemapEntries();
+      expect(entries.map((e) => e.id).indexOf(newer)).toBeLessThan(
+        entries.map((e) => e.id).indexOf(older),
+      );
+    });
+
+    it("getCafeLocation returns coordinates for live rows, null otherwise", async () => {
+      // Seed point is ST_MakePoint(lng=103.8, lat=1.35).
+      await expect(getCafeLocation(CAFE_A)).resolves.toEqual({ lat: 1.35, lng: 103.8 });
+      await expect(
+        getCafeLocation("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a88"),
+      ).resolves.toBeNull();
+      // Invalid ids are a normal case on the 404 path — never a throw.
+      await expect(getCafeLocation("not-a-uuid")).resolves.toBeNull();
     });
   });
 });

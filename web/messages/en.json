@@ -381,9 +381,6 @@
     "closed": "Closed",
     "check_in": "Check in",
     "navigate": "Navigate",
-    "share": "Share",
-    "share_copied": "Link copied",
-    "share_failed": "Couldn't copy the link",
     "close": "Close",
     "gallery_aria": "Photos",
     "empty_nearby_title": "No cafes nearby yet",
@@ -393,5 +390,20 @@
     "sheet_aria": "Cafe discovery",
     "sheet_handle_aria": "Drag to resize the panel",
     "checkin_coming": "The check-in composer ships with the check-in slice — coming next"
+  },
+  "share": {
+    "aria": "Share",
+    "copied": "Link copied",
+    "failed": "Couldn't copy the link",
+    "copy_link": "Copy link",
+    "wechat_hint": "Copy the link and share it with friends"
+  },
+  "cafeDetail": {
+    "og_hook": "✨ {score} from {count} nomads — is it actually work-friendly?",
+    "og_hook_empty": "No check-ins yet — be the first?",
+    "gone_title": "This cafe is gone",
+    "gone_body": "It may have been removed",
+    "back_to_discover": "Back to discover",
+    "recovery_title": "More cafes nearby"
   }
 }

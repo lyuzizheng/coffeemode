@@ -47,6 +47,14 @@ describe("config files", () => {
     expect(appConfig.discovery.defaultCenter).toEqual({ lat: 1.35, lng: 103.8 });
   });
 
+  it("owns the SEO shell-cache TTLs and recovery limit (DG105/DG107/DG111)", () => {
+    expect(appConfig.seo.shellCache).toEqual({
+      sMaxAgeSeconds: 600,
+      staleWhileRevalidateSeconds: 3600,
+    });
+    expect(appConfig.seo.recoveryLimit).toBe(5);
+  });
+
   it("rateLimitConfig throws on an unknown bucket", () => {
     expect(() => rateLimitConfig("nope")).toThrow(/unknown rate limit "nope"/);
   });
@@ -76,6 +84,10 @@ describe("parseRateLimits validation", () => {
 
 describe("parseAppConfig validation", () => {
   const validCenter = { defaultCenter: { lat: 1.35, lng: 103.8 } };
+  const validSeo = {
+    shellCache: { sMaxAgeSeconds: 600, staleWhileRevalidateSeconds: 3600 },
+    recoveryLimit: 5,
+  };
 
   it("accepts a valid config", () => {
     const valid = {
@@ -83,6 +95,7 @@ describe("parseAppConfig validation", () => {
       cafes: { listLimitMax: 50 },
       feed: { pageSize: 20 },
       discovery: validCenter,
+      seo: validSeo,
     };
     expect(parseAppConfig(valid)).toEqual(valid);
   });
@@ -98,6 +111,7 @@ describe("parseAppConfig validation", () => {
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20 },
         discovery: validCenter,
+        seo: validSeo,
       }),
     ).toThrow(/"search\.maxRadiusKm" must be a positive number/);
   });
@@ -109,7 +123,23 @@ describe("parseAppConfig validation", () => {
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20 },
         discovery: { defaultCenter: { lat: 135, lng: 103.8 } },
+        seo: validSeo,
       }),
     ).toThrow(/"discovery\.defaultCenter\.lat" must be a number within \[-90,90\]/);
+  });
+
+  it("rejects a non-integer seo TTL", () => {
+    expect(() =>
+      parseAppConfig({
+        search: { maxRadiusKm: 10 },
+        cafes: { listLimitMax: 50 },
+        feed: { pageSize: 20 },
+        discovery: validCenter,
+        seo: {
+          shellCache: { sMaxAgeSeconds: 60.5, staleWhileRevalidateSeconds: 3600 },
+          recoveryLimit: 5,
+        },
+      }),
+    ).toThrow(/"seo\.shellCache\.sMaxAgeSeconds" must be a positive integer/);
   });
 });

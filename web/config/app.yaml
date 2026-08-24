@@ -20,3 +20,13 @@ discovery:
   defaultCenter:
     lat: 1.35
     lng: 103.8
+seo:
+  # CDN cache for the SSR /cafes/[id] shell (DG105/DG107): a viral shared
+  # link must not hit Postgres per open. s-maxage is the shared-cache TTL;
+  # stale-while-revalidate serves stale while revalidating in the background.
+  shellCache:
+    sMaxAgeSeconds: 600
+    staleWhileRevalidateSeconds: 3600
+  # 404 recovery block (DG111): how many nearby cafes to list relative to a
+  # gone cafe's last known location. Radius reuses search.maxRadiusKm.
+  recoveryLimit: 5

@@ -381,9 +381,6 @@
     "closed": "已打烊",
     "check_in": "打卡",
     "navigate": "导航",
-    "share": "分享",
-    "share_copied": "链接已复制",
-    "share_failed": "链接复制失败",
     "close": "关闭",
     "gallery_aria": "照片",
     "empty_nearby_title": "附近还没有咖啡馆",
@@ -393,5 +390,20 @@
     "sheet_aria": "咖啡馆发现",
     "sheet_handle_aria": "拖动调整面板高度",
     "checkin_coming": "打卡编辑器随打卡模块上线——敬请期待"
+  },
+  "share": {
+    "aria": "分享",
+    "copied": "链接已复制",
+    "failed": "链接复制失败",
+    "copy_link": "复制链接",
+    "wechat_hint": "复制链接，发给朋友吧"
+  },
+  "cafeDetail": {
+    "og_hook": "✨ {score} · {count} 位 nomad 打卡 — 这里真的适合办公吗？",
+    "og_hook_empty": "还没有打卡 — 来当第一个？",
+    "gone_title": "这家咖啡馆找不到了",
+    "gone_body": "它可能已经被移除了",
+    "back_to_discover": "返回发现",
+    "recovery_title": "附近还有这些咖啡馆"
   }
 }

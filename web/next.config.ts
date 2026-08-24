@@ -1,9 +1,11 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
+import bundleAnalyzer from "@next/bundle-analyzer";
 import { withSerwist } from "@serwist/turbopack";
 import { R2_PUBLIC_HOST, assertR2PublicUrlMatches } from "./lib/images/constants";
 
 const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
+const withBundleAnalyzer = bundleAnalyzer({ enabled: process.env.ANALYZE === "true" });
 
 // Fail the build when the env drifted from the single-source constant (issue #40).
 assertR2PublicUrlMatches(process.env.NEXT_PUBLIC_R2_PUBLIC_URL);
@@ -69,4 +71,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withNextIntl(withSerwist(nextConfig));
+export default withBundleAnalyzer(withNextIntl(withSerwist(nextConfig)));

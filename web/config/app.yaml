@@ -30,3 +30,8 @@ seo:
   # 404 recovery block (DG111): how many nearby cafes to list relative to a
   # gone cafe's last known location. Radius reuses search.maxRadiusKm.
   recoveryLimit: 5
+checkins:
+  # Product caps for check-in content (DG67/DG68, #200): kept in config so a
+  # product decision to change them is a typed YAML edit, not a code change.
+  photoCap: 6
+  noteMaxChars: 500

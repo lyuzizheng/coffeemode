@@ -21,6 +21,7 @@ import {
   type MinSpend,
 } from "@/types/checkins";
 import type { StoredImage } from "@/types/images";
+import { appConfig } from "@/lib/config";
 import { query, withTransaction } from "./postgres";
 import type { PoolClient } from "pg";
 
@@ -58,11 +59,11 @@ export function parseScores(value: unknown, field = "scores"): ParseResult<Check
 /** Structural check for client-supplied photo references (issue #86):
  *  plain imageUuids from /api/images/upload — never StoredImage payloads.
  *  The server derives keys/dimensions/attribution from upload intents.
- *  DG68 caps check-in photos at 6 (amends the earlier 10). */
-export const MAX_PHOTOS_PER_CHECKIN = 6;
+ *  Product caps live in `web/config/app.yaml` (DG107). */
+export const MAX_PHOTOS_PER_CHECKIN = appConfig.checkins.photoCap;
 
-/** DG67 caps note at 500 chars (amends the earlier 1000). */
-export const MAX_NOTE_LENGTH = 500;
+/** DG67 caps note at 500 chars (amends the earlier 1000); lives in config. */
+export const MAX_NOTE_LENGTH = appConfig.checkins.noteMaxChars;
 
 export function parsePhotoIds(value: unknown, field = "photo_ids"): ParseResult<string[]> {
   if (!Array.isArray(value)) return fail(`${field} must be an array of image UUIDs`);

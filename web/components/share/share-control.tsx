@@ -9,33 +9,32 @@
  * and copy-link everywhere else. Copy link is never a hidden fallback:
  * it is always one tap away. Copy feedback is a toast.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslations } from "next-intl";
 import { Button, toast } from "@heroui/react";
 import { ShareIcon } from "@/components/icons";
 import { buildShareData, isWeChatUserAgent } from "@/lib/share";
 
+// The UA never changes within a session: a no-op subscription is enough for
+// useSyncExternalStore. Server snapshot is false (no navigator), so SSR
+// renders the generic share path and the client settles on the real value
+// at hydration without a state-in-effect write.
+const subscribeNoop = () => () => {};
+const readIsWeChat = () => isWeChatUserAgent(navigator.userAgent);
+
 export function ShareControl({
   url,
   title,
-  className,
 }: {
   /** Absolute canonical URL to share. */
   url: string;
   /** Cafe name — native share-sheet title and copied-text context. */
   title: string;
-  /** Button class overrides; defaults to the 36px ghost icon look. */
-  className?: string;
 }) {
   const t = useTranslations("share");
   const [popoverOpen, setPopoverOpen] = useState(false);
-  const [isWeChat, setIsWeChat] = useState(false);
   const rootRef = useRef<HTMLSpanElement | null>(null);
-
-  // UA detection is client-only: SSR renders the generic share path.
-  useEffect(() => {
-    setIsWeChat(isWeChatUserAgent(navigator.userAgent));
-  }, []);
+  const isWeChat = useSyncExternalStore(subscribeNoop, readIsWeChat, () => false);
 
   // Popover dismiss: outside pointer-down or Escape.
   useEffect(() => {
@@ -89,7 +88,7 @@ export function ShareControl({
         variant="ghost"
         isIconOnly
         aria-label={t("aria")}
-        className={className ?? "h-9 w-9 min-w-9 text-muted hover:text-foreground"}
+        className="h-9 w-9 min-w-9 text-muted hover:text-foreground"
         onPress={handleShare}
       >
         <ShareIcon size={16} />

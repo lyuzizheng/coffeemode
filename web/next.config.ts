@@ -75,6 +75,17 @@ const nextConfig: NextConfig = {
         // must not hit Postgres per open. TTLs live in web/config/app.yaml
         // (DG107) — s-maxage for the CDN, stale-while-revalidate so a stale
         // hit never blocks on revalidation.
+        //
+        // LOCALE CAVEAT (review P1-3): the shell is content-negotiated
+        // (cookie/Accept-Language, DG110), but Next overwrites the `Vary`
+        // header on App Router HTML responses with its internal
+        // `rsc, next-router-*` set, so a configured `Vary: Accept-Language`
+        // never ships. Without a shared cache today this is inert; when the
+        // Cloudflare CDN lands (deploy-vps) its cache rule MUST vary on
+        // Accept-Language (and Cookie once a locale switcher exists) or the
+        // first locale to hit a URL would be served to everyone. Recorded in
+        // docs/agent/current-state.md known issues; do not "fix" by removing
+        // s-maxage (DG105 is spec-owned).
         source: "/cafes/:id*",
         headers: [
           {

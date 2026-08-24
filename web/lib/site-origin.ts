@@ -22,8 +22,12 @@ export async function getRequestOrigin(): Promise<string> {
     }
   }
   const h = await headers();
+  // `host` only: x-forwarded-host is client-controllable and would let a
+  // caller mint canonical/OG URLs for an arbitrary origin (host injection).
+  // Behind Cloudflare the Host header carries the original public host;
+  // production pins NEXT_PUBLIC_SITE_URL anyway (DG110).
   const proto = (h.get("x-forwarded-proto") ?? "https").split(",")[0]?.trim() || "https";
-  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const host = h.get("host");
   if (host) return `${proto === "http" ? "http" : "https"}://${host}`;
   return "http://localhost:3000";
 }

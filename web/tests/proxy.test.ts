@@ -10,7 +10,7 @@ vi.mock("@supabase/ssr", () => ({
 }));
 
 // Default: every cafe exists, so existing pass-through cases stay intact.
-const cafeExistsMock = vi.fn(async (_id: string) => true);
+const cafeExistsMock = vi.fn<(id: string) => Promise<boolean>>(async () => true);
 vi.mock("@/lib/db/cafes", () => ({
   cafeExists: (id: string) => cafeExistsMock(id),
 }));
@@ -171,6 +171,17 @@ describe("proxy gone-cafe 404 (DG19)", () => {
     expect(res.headers.get("x-middleware-rewrite")).toBeNull();
     expect(res.status).toBe(200);
     errorSpy.mockRestore();
+  });
+
+  it("strips an inbound x-gone-cafe-id so clients cannot inject the marker", async () => {
+    const req = new NextRequest(new URL("http://localhost/"), {
+      headers: { "x-gone-cafe-id": "spoofed" },
+    });
+    const res = await proxy(req);
+    // The sanitized request replaces the header set: the spoofed value must
+    // not be forwarded to rendering.
+    expect(res.headers.get("x-middleware-request-x-gone-cafe-id")).toBeNull();
+    expect(res.status).toBe(200);
   });
 });
 

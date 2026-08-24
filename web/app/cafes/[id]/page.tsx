@@ -10,7 +10,13 @@ import { GalleryStrip } from "@/components/cafe/gallery-strip";
 import { OpenState } from "@/components/cafe/open-state";
 import { PolicyConsensus, ScorePair, WorkProfile } from "@/components/discovery/scores";
 import { getCafe } from "@/lib/db/cafes";
-import { cafeCanonicalPath, cafeJsonLd, cafeOgImageUrl, ogHookParams } from "@/lib/seo";
+import {
+  cafeCanonicalPath,
+  cafeJsonLd,
+  cafeOgImageUrl,
+  ogHookParams,
+  publicCafeShell,
+} from "@/lib/seo";
 import { getRequestOrigin } from "@/lib/site-origin";
 import { APP_NAME } from "@/lib/site";
 import { CafePageActions } from "./cafe-page-actions";
@@ -87,6 +93,9 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
   const canonical = `${origin}${cafeCanonicalPath(cafe.id)}`;
   const covers = cafe.gallery.map((g) => g.card).filter(Boolean);
   if (covers.length === 0 && cafe.cover) covers.push(cafe.cover);
+  // The public payload contract (DG13): client components receive only the
+  // narrow slices, never the full row (see publicCafeShell).
+  const shell = publicCafeShell(cafe);
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -113,24 +122,16 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
             {cafe.city && <span>{cafe.city}</span>}
             {cafe.city && cafe.address && <span aria-hidden>·</span>}
             {cafe.address && <span>{cafe.address}</span>}
-            <OpenState cafe={cafe} />
+            <OpenState cafe={shell.openState} />
           </p>
         </div>
 
         <ScorePair stats={cafe.work_stats} />
-        <CafePageActions
-          cafe={{ name: cafe.name, lat: cafe.lat, lng: cafe.lng }}
-          shareUrl={canonical}
-        />
+        <CafePageActions cafe={shell.actions} shareUrl={canonical} />
         {/* SSR shell: bars at final width, no entry motion (artifact §2). */}
         <WorkProfile stats={cafe.work_stats} animated={false} />
         <PolicyConsensus stats={cafe.work_stats} />
-        {/* Public-safe slice only: the RSC payload must not carry
-            internal author identifiers (DG13). */}
-        <GalleryStrip
-          photos={cafe.gallery.map((photo) => ({ id: photo.id, thumbnail: photo.thumbnail }))}
-          ariaLabel={td("gallery_aria")}
-        />
+        <GalleryStrip photos={shell.gallery} ariaLabel={td("gallery_aria")} />
 
         {/* DG105: JSON-LD for crawlers and AI search engines. */}
         <script

@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { cafeCanonicalPath, cafeJsonLd, cafeOgImageUrl, ogHookParams } from "@/lib/seo";
+import {
+  cafeCanonicalPath,
+  cafeJsonLd,
+  cafeOgImageUrl,
+  ogHookParams,
+  publicCafeShell,
+} from "@/lib/seo";
 import { emptyWorkStats } from "@/lib/stats/work-stats";
 import type { WorkStats } from "@/lib/stats/work-stats";
+import type { CafeDetail } from "@/types/cafes";
 import type { StoredImage } from "@/types/images";
 
 const CAFE_ID = "550e8400-e29b-41d4-a716-446655440001";
@@ -102,5 +109,64 @@ describe("cafeJsonLd (DG105)", () => {
       "u",
     );
     expect(jsonLd.address).toBeUndefined();
+  });
+});
+
+describe("publicCafeShell (DG13 public-safe payload)", () => {
+  const cafe = {
+    id: CAFE_ID,
+    slug: null,
+    name: "Caracara",
+    lat: 1.2789,
+    lng: 103.8425,
+    address: "12 Keong Saik Rd",
+    city: "Singapore",
+    tz: "Asia/Singapore",
+    opening_hours: null,
+    price_range: null,
+    work_stats: statsWith(80, 5),
+    cover: "card/a.webp",
+    description: null,
+    gallery: [photo("b")],
+    google_place_id: "ChIJ-provider-ref",
+    apple_poi_id: null,
+    created_at: "2026-08-01T00:00:00.000Z",
+    updated_at: "2026-08-01T00:00:00.000Z",
+  } satisfies CafeDetail;
+
+  function collectKeys(value: unknown, out: string[] = []): string[] {
+    if (Array.isArray(value)) {
+      for (const item of value) collectKeys(item, out);
+    } else if (value && typeof value === "object") {
+      for (const [key, item] of Object.entries(value)) {
+        out.push(key);
+        collectKeys(item, out);
+      }
+    }
+    return out;
+  }
+
+  it("carries no internal author identifiers, provider refs, or full-size keys", () => {
+    const shell = publicCafeShell(cafe);
+    const banned = [
+      "by",
+      "user_id",
+      "source",
+      "original",
+      "card",
+      "google_place_id",
+      "apple_poi_id",
+      "work_stats",
+      "address",
+    ];
+    expect(collectKeys(shell).filter((key) => banned.includes(key))).toEqual([]);
+  });
+
+  it("keeps exactly the display slices the shell components need", () => {
+    expect(publicCafeShell(cafe)).toEqual({
+      openState: { opening_hours: null, tz: "Asia/Singapore" },
+      actions: { name: "Caracara", lat: 1.2789, lng: 103.8425 },
+      gallery: [{ id: "b", thumbnail: "thumbnail/b.webp" }],
+    });
   });
 });

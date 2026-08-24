@@ -6,6 +6,7 @@
  */
 import { r2PublicUrl } from "@/lib/images/constants";
 import type { WorkStats } from "@/lib/stats/work-stats";
+import type { WeeklyHours } from "@/lib/hours";
 import type { CafeDetail } from "@/types/cafes";
 
 /** Canonical cafe path — id-based, stable across renames (DG104). */
@@ -68,4 +69,26 @@ export function cafeJsonLd(
     };
   }
   return jsonLd;
+}
+
+/** The exact narrow slices the SSR shell hands to its client components. */
+export interface PublicCafeShell {
+  openState: { opening_hours: WeeklyHours | null; tz: string | null };
+  actions: { name: string; lat: number; lng: number };
+  gallery: { id: string; thumbnail: string }[];
+}
+
+/**
+ * The single place that decides what the public SSR payload carries (DG13).
+ * RSC serializes the runtime prop object, not the TypeScript shape — passing
+ * a full `CafeDetail` to a client component would embed `StoredImage.by`,
+ * provider ids, and full-size R2 keys in the served HTML. The shell composes
+ * exclusively from these slices.
+ */
+export function publicCafeShell(cafe: CafeDetail): PublicCafeShell {
+  return {
+    openState: { opening_hours: cafe.opening_hours, tz: cafe.tz },
+    actions: { name: cafe.name, lat: cafe.lat, lng: cafe.lng },
+    gallery: cafe.gallery.map((photo) => ({ id: photo.id, thumbnail: photo.thumbnail })),
+  };
 }

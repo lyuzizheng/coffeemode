@@ -1,5 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
-import { type NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { cafeExists } from "@/lib/db/cafes";
 
 /**
@@ -20,6 +20,9 @@ import { cafeExists } from "@/lib/db/cafes";
 
 const CAFE_PAGE_PATH = /^\/cafes\/([^/]+)$/;
 
+/** Header the proxy uses to hand the attempted id to the global 404. */
+const GONE_HEADER = "x-gone-cafe-id";
+
 async function isGoneCafePage(request: NextRequest): Promise<boolean> {
   const match = CAFE_PAGE_PATH.exec(request.nextUrl.pathname);
   if (!match) return false;
@@ -33,7 +36,20 @@ async function isGoneCafePage(request: NextRequest): Promise<boolean> {
   }
 }
 
+/**
+ * Clients must not be able to inject the internal marker: strip any inbound
+ * copy so only this proxy's rewrite ever sets it.
+ */
+function sanitizedRequest(request: NextRequest): NextRequest {
+  if (!request.headers.has(GONE_HEADER)) return request;
+  const headers = new Headers(request.headers);
+  headers.delete(GONE_HEADER);
+  return new NextRequest(request, { headers });
+}
+
 export async function proxy(request: NextRequest) {
+  const req = sanitizedRequest(request);
+
   // Gone-cafe deep links get a real 404 (DG19). The cafe page is async, and
   // the root loading boundary streams a matched route's shell with a 200
   // before any page-level notFound() can run — so the 404 must be decided
@@ -43,13 +59,13 @@ export async function proxy(request: NextRequest) {
   // (with the DG111 recovery block). GET/HEAD only — no other method
   // targets the SSR page.
   if (
-    (request.method === "GET" || request.method === "HEAD") &&
-    (await isGoneCafePage(request))
+    (req.method === "GET" || req.method === "HEAD") &&
+    (await isGoneCafePage(req))
   ) {
-    const id = CAFE_PAGE_PATH.exec(request.nextUrl.pathname)?.[1] ?? "";
-    const headers = new Headers(request.headers);
-    headers.set("x-gone-cafe-id", id);
-    return NextResponse.rewrite(new URL("/__gone-cafe", request.url), {
+    const id = CAFE_PAGE_PATH.exec(req.nextUrl.pathname)?.[1] ?? "";
+    const headers = new Headers(req.headers);
+    headers.set(GONE_HEADER, id);
+    return NextResponse.rewrite(new URL("/__gone-cafe", req.url), {
       request: { headers },
     });
   }
@@ -59,31 +75,31 @@ export async function proxy(request: NextRequest) {
 
   // If Supabase is not configured (e.g. local one-off builds), fall through.
   if (!url || !anonKey) {
-    return NextResponse.next({ request });
+    return NextResponse.next({ request: req });
   }
 
-  let response = NextResponse.next({ request });
+  let response = NextResponse.next({ request: req });
 
   // No Supabase session cookies means no refresh work; skip the network
   // round-trip entirely. Analytics / consent / A/B cookies do not count.
-  if (!hasSupabaseSessionCookie(request)) {
+  if (!hasSupabaseSessionCookie(req)) {
     return response;
   }
 
   const supabase = createServerClient(url, anonKey, {
     cookies: {
       getAll() {
-        return request.cookies.getAll();
+        return req.cookies.getAll();
       },
       setAll(cookiesToSet) {
         // Forward refreshed cookies onto the request so route handlers see
         // the latest session, then mirror them (with serialize options) onto
         // the outgoing response.
         for (const { name, value } of cookiesToSet) {
-          request.cookies.set(name, value);
+          req.cookies.set(name, value);
         }
 
-        response = NextResponse.next({ request });
+        response = NextResponse.next({ request: req });
         for (const { name, value, options } of cookiesToSet) {
           response.cookies.set(name, value, options);
         }

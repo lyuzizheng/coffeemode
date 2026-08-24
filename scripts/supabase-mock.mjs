@@ -32,6 +32,7 @@
 const PORT = Number(process.env.SUPABASE_MOCK_PORT ?? 54321);
 const HOST = process.env.HOST ?? "0.0.0.0";
 
+// Keep in sync with web/tests/helpers/auth.ts:fakeJwt (identical HS256 + dummy signature).
 function base64UrlEncode(str) {
   return Buffer.from(str, "utf8").toString("base64url");
 }

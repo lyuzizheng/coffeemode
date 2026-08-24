@@ -1,5 +1,7 @@
 import { vi } from "vitest";
 
+// Keep in sync with scripts/supabase-mock.mjs:fakeJwt (identical HS256 + dummy signature).
+// If you change header/payload shape, update both and add CI grep guard.
 function base64UrlEncode(value: string): string {
   return Buffer.from(value, "utf8").toString("base64url");
 }
@@ -36,7 +38,10 @@ export function decodeFakeJwt(token: string): Record<string, unknown> {
 
 /**
  * Stub getCurrentUser to return an authenticated user.
- * Uses vi.mocked so callers can control resolution per-test.
+ * Uses vi.doMock so callers can control resolution per-test.
+ * Must be called before importing the SUT in the same file, or prefer a
+ * hoisted `vi.mock("@/lib/auth/get-user", ...)` at the top of the test file.
+ * `vi.doMock` at call-time does not rewire an already-imported module.
  */
 export function stubGetCurrentUser(user: { id: string } | null): void {
   vi.doMock("@/lib/auth/get-user", () => ({

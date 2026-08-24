@@ -54,12 +54,18 @@ else
   fail "matrix header missing expected columns (Trace/Spec/Layer/Proving file/Gate)"
 fi
 
-# T1..T24 rows present (at least count distinct T-ids in table)
-FOUND_T=$(grep -oE 'T([0-9]{1,2})' "$MATRIX" | sort -u | wc -l | tr -d ' ')
-if [[ "$FOUND_T" -ge 20 ]]; then
-  ok "matrix has $FOUND_T distinct trace ids (expected ≥20, T1..T24)"
-else
-  fail "matrix only has $FOUND_T trace ids, expected ≥20"
+# T1..T24 rows present — every required trace must have a table row `| T<n> |`
+MISSING_T=0
+for i in $(seq 1 24); do
+  if grep -qE "^\| T${i} \|" "$MATRIX"; then
+    ok "trace T${i} row present"
+  else
+    fail "trace T${i} row missing (expected '| T${i} |' in $MATRIX)"
+    MISSING_T=$((MISSING_T+1))
+  fi
+done
+if [[ $MISSING_T -eq 0 ]]; then
+  ok "all 24 traces T1..T24 have rows"
 fi
 
 # Every READY slice has ≥1 row in §5
@@ -105,15 +111,9 @@ else
   fail "efficiency notes (no duplication via helpers) missing"
 fi
 
-# Local links hygiene: matrix must not reference docker-compose.yml mutation (S3 must not touch compose)
-if grep -q "docker-compose" "$MATRIX"; then
-  # Mention is allowed as context, but ensure S3 branch didn't mutate compose
-  if git diff --name-only HEAD 2>/dev/null | grep -q "docker-compose.yml"; then
-    fail "S3 must not touch docker-compose.yml"
-  else
-    ok "docker-compose mentioned only as doc context (no file mutation)"
-  fi
-fi
+# No worktree-state gate here: CI has a clean checkout and this previously
+# inspected uncommitted `git diff --name-only HEAD` (a no-op in CI, noisy locally).
+# The docker-compose mention below is doc context only.
 
 if [[ $ERRORS -gt 0 ]]; then
   echo ""

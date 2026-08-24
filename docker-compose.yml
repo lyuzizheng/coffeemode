@@ -91,7 +91,7 @@ services:
   # Uses local D1/KV ids from poi-service/wrangler.toml (S2: deterministic local UUIDs
   # so wrangler never rejects YOUR_* placeholders).
   miniflare-poi:
-    image: node:22-alpine
+    image: node:22-bookworm-slim
     working_dir: /workspace/poi-service
     volumes:
       - .:/workspace
@@ -110,13 +110,13 @@ services:
         condition: service_completed_successfully
     command: >
       sh -c "
-        apk add --no-cache curl wget >/dev/null 2>&1 || true;
+        apt-get update -qq && apt-get install -y --no-install-recommends curl wget >/dev/null 2>&1 || true;
         echo '[miniflare-poi] installing deps...';
         npm install --silent || npm install --silent --no-audit;
         echo '[miniflare-poi] applying D1 migrations (local)...';
         npx wrangler d1 migrations apply poi-store --local || echo '[miniflare-poi] d1 migrations apply failed (will retry on next start)';
         echo '[miniflare-poi] starting wrangler dev on :8787 ...';
-        npx wrangler dev --port 8787 --host 0.0.0.0 --local
+        npx wrangler dev --port 8787 --ip 0.0.0.0 --local
       "
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8787/ || curl -f http://127.0.0.1:8787/ || exit 1"]
@@ -130,7 +130,7 @@ services:
   # HEAD checks hit MinIO instead of real R2. The host-side R2_PUBLIC_URL
   # remains http://localhost:9000/coffeemode (anonymously readable).
   miniflare-image:
-    image: node:22-alpine
+    image: node:22-bookworm-slim
     working_dir: /workspace/image-service
     volumes:
       - .:/workspace
@@ -154,11 +154,11 @@ services:
         condition: service_completed_successfully
     command: >
       sh -c "
-        apk add --no-cache curl wget >/dev/null 2>&1 || true;
+        apt-get update -qq && apt-get install -y --no-install-recommends curl wget >/dev/null 2>&1 || true;
         echo '[miniflare-image] installing deps...';
         npm install --silent || npm install --silent --no-audit;
         echo '[miniflare-image] starting wrangler dev on :8788 ...';
-        npx wrangler dev --port 8788 --host 0.0.0.0 --local
+        npx wrangler dev --port 8788 --ip 0.0.0.0 --local
       "
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8788/ || curl -f http://127.0.0.1:8788/ || exit 1"]
@@ -180,6 +180,8 @@ services:
     working_dir: /workspace
     volumes:
       - ./scripts/supabase-mock.mjs:/workspace/scripts/supabase-mock.mjs:ro
+    environment:
+      HOST: 0.0.0.0
     ports:
       - "127.0.0.1:54321:54321"
     command: >

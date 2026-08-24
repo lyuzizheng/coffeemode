@@ -52,12 +52,11 @@ S1 extracted the pre-S1 duplication (`web/tests/integration/db.integration.test.
 
 | Helper | Kind | Owns | Used by |
 |---|---|---|---|
-| `web/tests/helpers/db.ts` | **infra** (Postgres) | `integrationAdminUrl` host-guard, `makeTestDbName`, `provisionTestDatabase`, `runMigrations`, `quotedIdentifier`, `DEFAULT_DB_URL` | `db.integration.test.ts`, `images.integration.test.ts`, `orphan-cleanup.integration.test.ts` |
-| `web/tests/helpers/r2.ts` | **infra** (R2/MinIO) | `R2_*` env isolation (`TEST_R2_*`), `r2Client`/`r2Endpoint`, `presignedPutUrl`/`presignedGetUrl`, `headObject`/`putObject`/`deleteObject`/`objectExists`, `makePayload`/`tinyWebP`, `minioReachable` | `images.integration.test.ts`, `orphan-cleanup.integration.test.ts` |
-| `web/tests/helpers/auth.ts` | **service** (domain) | `fakeJwt`/`decodeFakeJwt`, `createMockSupabaseClient`/`mockSupabaseServerClient`/`stubGetCurrentUser` | `cafes.test.ts`, `checkins.test.ts`, unit auth tests |
-| `web/tests/helpers/fixtures.ts` | **service** (domain) | fixed UUIDs `U1/U2/CAFE_A/CHECKIN_A1`, `seedBaseData`, `fakeProcessUrls`, `fakeProvisionPhotosDeps`, `cafeWorkStats` | `db.integration.test.ts` and any domain integration test |
-| `web/tests/helpers/workers.ts` | **infra** (reserved) | placeholder for S2 miniflare/workerd D1/KV helpers; keeps `helpers/index` re-export stable | S2 `poi-service`/`image-service` local bindings |
-| `web/tests/helpers/index.ts` | barrel | re-exports above | tests import from `@/tests/helpers` |
+| `web/tests/helpers/db.ts` | **infra** (Postgres) | `integrationAdminUrl` host-guard, `makeTestDbName`, `provisionTestDatabase`, `runMigrations`, `quotedIdentifier`, `DEFAULT_DB_URL` | `db.integration.test.ts`, `images.integration.test.ts`, `orphan-cleanup.integration.test.ts` (direct `../helpers/db` imports) |
+| `web/tests/helpers/r2.ts` | **infra** (R2/MinIO) | `R2_*` env isolation (`TEST_R2_*`), `r2Client`/`r2Endpoint`, `presignedPutUrl`/`presignedGetUrl`, `headObject`/`putObject`/`deleteObject`/`objectExists`, `makePayload`/`tinyWebP`, `minioReachable` | `images.integration.test.ts`, `orphan-cleanup.integration.test.ts` (direct `../helpers/r2` imports) |
+| `web/tests/helpers/auth.ts` | **service** (domain) | `fakeJwt`/`decodeFakeJwt`, `createMockSupabaseClient`/`mockSupabaseServerClient`/`stubGetCurrentUser` | available for auth mocking; existing suites still use inline `vi.mock` — next trace that needs JWT mocking should import via `../helpers/auth` (see `scripts/supabase-mock.mjs` sync) |
+| `web/tests/helpers/fixtures.ts` | **service** (domain) | fixed UUIDs `U1/U2/CAFE_A/CHECKIN_A1`, `seedBaseData`, `fakeProcessUrls`, `fakeProvisionPhotosDeps`, `cafeWorkStats` | `db.integration.test.ts` and any domain integration test (direct `../helpers/fixtures` imports) |
+| `web/tests/helpers/index.ts` | barrel | re-exports `db`/`r2`/`auth`/`fixtures` (convenience; tests currently import direct subpaths) | direct `../helpers/*` imports; barrel kept for future `import { foo } from "@/tests/helpers"` |
 | `web/tests/setup.ts` | harness | `beforeEach rateLimiter.reset()`, `afterEach cleanup()` | all Vitest suites |
 
 Infra helpers never import domain logic; service helpers compose infra primitives (e.g., `fixtures.ts` imports `checkUploadIntent` from production but `db.ts` does not).
@@ -73,7 +72,7 @@ Infra helpers never import domain logic; service helpers compose infra primitive
 | Visual regression pixel baselines | `sw.test.ts` / `seo.test.ts` are contract tests, not screenshots | Screenshot baselines and review policy | Accepted baseline policy (0003 visual is non-blocking until then) |
 | Map-bound slices | Blocked on Apple Developer Program (#131) — `map-home`, `map-discovery-integration`, `map-creation-entry`, `deeplink-hydration` | All map + MapKit binding traces | Apple MapKit JS token + miniflare/workerd + Playwright |
 
-None of the gaps affect the READY slices (all have at least one mocked or integration row above). The gaps are tracked as S2 follow-ups and do not block `npm run verify` or the `integration` / `images-integration` gates for web changes.
+None of the gaps affect the READY slices (all have at least one mocked or integration row above). The gaps are tracked as S2 follow-ups and do not block `npm run verify` or the `integration` gate (merged DB+MinIO) for web changes.
 
 ## 5. Slice → trace index (every READY slice has ≥1 row)
 
@@ -94,6 +93,6 @@ Deterministic gate `.agents/scripts/check-coverage-matrix.sh` enforces: (a) `doc
 
 - `docs/specs/0003-testing-and-ci.md` §Test layers, §Relevant local gates, §Commands, Appendix Coverage traceability — this file.
 - `docs/agent/test-kit-plan.md` S1 (helpers) → this doc (S3) → S2 (compose/mocks) can parallel after S1.
-- `web/tests/helpers/*` — shared helpers (S1) that removed duplication.
-- `web/tests/integration/*` — real-DB / real-MinIO suites (opt-in `RUN_INTEGRATION=1`; CI `integration-gate` / `images-integration-gate` run them when web DB/storage boundaries change).
+- `web/tests/helpers/*` — shared helpers (S1) that removed duplication (direct `../helpers/*` subpath imports; `index.ts` barrel is convenience).
+- `web/tests/integration/*` — real-DB / real-MinIO suites (opt-in `RUN_INTEGRATION=1`; CI `integration-gate` runs them when web DB/storage boundaries change — merged from `integration-gate` + `images-integration-gate`).
 

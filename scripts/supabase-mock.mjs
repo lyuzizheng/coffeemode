@@ -30,7 +30,7 @@
  */
 
 const PORT = Number(process.env.SUPABASE_MOCK_PORT ?? 54321);
-const HOST = process.env.HOST ?? "0.0.0.0";
+const HOST = process.env.HOST ?? "127.0.0.1";
 
 // Keep in sync with web/tests/helpers/auth.ts:fakeJwt (identical HS256 + dummy signature).
 function base64UrlEncode(str) {
@@ -156,13 +156,18 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Fallback: 404 but still health-friendly for probes hitting /status etc
-  if (req.method === "GET" && path.startsWith("/auth/")) {
-    json(res, 404, { error: "not_found", message: `mock has no handler for ${path}` });
+  // Fallback: health-friendly for probes hitting /status etc; unknown /auth/* writes get 404
+  if (path.startsWith("/auth/")) {
+    json(res, 404, { error: "not_found", message: `mock has no handler for ${req.method} ${path}` });
     return;
   }
 
-  json(res, 200, { ok: true, service: "supabase-mock", hint: "GET /auth/v1/health" });
+  if (req.method === "GET" && path === "/") {
+    json(res, 200, { ok: true, service: "supabase-mock", hint: "GET /auth/v1/health" });
+    return;
+  }
+
+  json(res, 404, { error: "not_found", message: `mock has no handler for ${req.method} ${path}` });
 });
 
 server.listen(PORT, HOST, () => {

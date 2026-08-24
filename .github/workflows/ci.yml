@@ -51,9 +51,6 @@ jobs:
       - name: Preflight
         run: .agents/scripts/preflight.sh
 
-      - name: Coverage matrix
-        run: .agents/scripts/check-coverage-matrix.sh
-
       - name: Harness self-test
         run: .agents/scripts/harness-self-test.sh
 

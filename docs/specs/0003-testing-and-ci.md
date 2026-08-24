@@ -66,18 +66,19 @@ agent harness: .agents/scripts/preflight.sh, .agents/scripts/harness-self-test.s
 `.agents/scripts/classify-ci-paths.sh` classifies the base/head diff, then stable
 jobs run only when relevant:
 
-- `docs-gate`: agent, docs, templates, and harness changes;
+- `docs-gate`: agent, docs, templates, and harness changes (includes `preflight` which runs `check-coverage-matrix.sh` unconditionally);
 - `application-gate`: `web/` changes;
-- `integration-gate`: DB/SQL-capable web boundaries and shared-package changes;
-- `images-integration-gate`: real MinIO/R2 image round-trip for image-pipeline
-  and storage-boundary changes (same trigger set as `integration-gate`);
+- `integration-gate`: DB/SQL-capable web boundaries and shared-package changes — runs both real Postgres (`npm run test:integration`) and real MinIO/R2 image round-trip (`npm run test:integration:images`) sequentially on one `postgis` service + `docker compose up minio` (merged for efficiency; was `integration-gate` + `images-integration-gate`). Branch protection that still requires the legacy `images-integration-gate` name should migrate to `integration-gate` + `ci-gate` (see migration note below);
 - `image-service-gate`: image-service and shared-package changes;
 - `poi-service-gate`: poi-service and shared-package changes;
 - `ci-gate`: always aggregates selected job results.
 
 The component job names remain stable so existing branch protection receives a
 reported success or skipped result on every PR. `ci-gate` is the preferred single
-required context after repository protection is migrated.
+required context after repository protection is migrated. The `images-integration-gate`
+was merged into `integration-gate` for efficiency — if a branch protection rule still
+lists `images-integration-gate` as required, update it to `integration-gate` (or to
+`ci-gate` alone) before removing the legacy name; new PRs need no migration.
 
 The old separate workflows and the PR `visual-gate` are removed. The visual job
 had no pixel baseline, duplicated install/build work, and could block indefinitely

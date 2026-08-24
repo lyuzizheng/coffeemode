@@ -33,8 +33,8 @@ if you ever wipe volumes.
 | postgres | `postgis/postgis:16-3.4` | `postgres://coffeemode:coffeemode@localhost:5432/coffeemode` (superuser) |
 | minio | `minio/minio` | access key `coffeemode` / secret `coffeemode123`, S3 API on `localhost:9000`, console on `localhost:9001` |
 | minio-init | `minio/mc` | creates bucket `coffeemode` + anonymous read (mirrors a public R2 bucket) |
-| miniflare-poi | `node:22-alpine` + `wrangler dev` (workerd/miniflare) | `http://localhost:8787` (host) / `http://miniflare-poi:8787` (compose network); D1 `poi-store` (`11111111-1111-…`) + KV `poi-cache` (`22222222-2222-…`) from `poi-service/wrangler.toml`; secrets via env `POI_SERVICE_TOKEN=local-dev-token`, `GOOGLE_PLACES_API_KEY=dummy` |
-| miniflare-image | `node:22-alpine` + `wrangler dev` (workerd) | `http://localhost:8788` / `http://miniflare-image:8788`; R2 presigning → MinIO via `R2_ENDPOINT=http://minio:9000` (inside compose) and `R2_PUBLIC_URL=http://localhost:9000/coffeemode`; bucket `coffeemode`; secrets via `IMAGE_SERVICE_TOKEN=local-dev-token`, `R2_ACCESS_KEY_ID/SECRET` |
+| miniflare-poi | `node:22-bookworm-slim` + `wrangler dev` (workerd/miniflare) | `http://localhost:8787` (host) / `http://miniflare-poi:8787` (compose network); D1 `poi-store` (`11111111-1111-…`) + KV `poi-cache` (`22222222-2222-…`) from `poi-service/wrangler.toml`; secrets via env `POI_SERVICE_TOKEN=local-dev-token`, `GOOGLE_PLACES_API_KEY=dummy` |
+| miniflare-image | `node:22-bookworm-slim` + `wrangler dev` (workerd) | `http://localhost:8788` / `http://miniflare-image:8788`; R2 presigning → MinIO via `R2_ENDPOINT=http://minio:9000` (inside compose) and `R2_PUBLIC_URL=http://localhost:9000/coffeemode`; bucket `coffeemode`; secrets via `IMAGE_SERVICE_TOKEN=local-dev-token`, `R2_ACCESS_KEY_ID/SECRET` |
 | supabase-mock | `node:22-alpine` + `scripts/supabase-mock.mjs` | `http://localhost:54321` (same host port as `supabase start`); `GET /auth/v1/health` is the health probe; issues unsigned fake JWTs (same shape as `web/tests/helpers/auth.ts:fakeJwt`); `POST /auth/v1/token` accepts any email |
 
 **Supabase local alternatives.** The compose mock is the zero-deps default. To use
@@ -54,8 +54,10 @@ need a live Supabase — `web/tests/helpers/auth.ts:fakeJwt` + `web/tests/helper
 **Local Cloudflare script mocks.** Both workers run under `wrangler dev`
 (which is `workerd` + `miniflare` under the hood) — no Cloudflare account
 needed. D1/KV/R2 bindings are local: D1 lives in `.wrangler/state` inside the
-`poi-worker-state` volume (persisted to `poi-service/.wrangler` on the host via
-the bind mount), KV is in-memory via miniflare, and R2 is MinIO. The web app's
+named volume `poi-worker-state` (and `image-worker-state` for the image worker);
+the bind mount `. :/workspace` is shadowed at `.wrangler` by the named volume, so
+state is persisted across `docker compose` restarts via the volume, not as loose
+files on the host. KV is in-memory via miniflare, and R2 is MinIO. The web app's
 `web/.env.example` already points `POI_SERVICE_URL=http://localhost:8787` and
 `IMAGE_SERVICE_URL=http://localhost:8788` at these compose services.
 

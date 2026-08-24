@@ -54,6 +54,9 @@ else
       docker-compose.yml)
         integration=true
         ;;
+      scripts/*)
+        integration=true
+        ;;
     esac
   done
 fi

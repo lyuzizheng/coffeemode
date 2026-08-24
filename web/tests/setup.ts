@@ -4,14 +4,15 @@ import { cleanup } from "@testing-library/react";
 import { rateLimiter } from "@/lib/rate-limit";
 
 // Reset the in-memory rate limiter before every test so cumulative request
-// counts do not cause unrelated tests to 429. Integration suites pin
-// RATE_LIMIT_BACKEND=memory via helpers/r2 and helpers/fixtures isolation.
+// counts do not cause unrelated tests to 429. Integration suites that need
+// `RATE_LIMIT_BACKEND=memory` set it in their own `beforeAll` / env;
+// unit runs may have no Postgres — failure there is expected and ignored.
 beforeEach(async () => {
   try {
     await rateLimiter.reset();
   } catch {
-    // Postgres backend may be unavailable when helpers are imported outside
-    // a live DB (unit runs); rate-limit state is still effectively clean.
+    // Postgres backend unavailable in unit runs (no DB) — ignore; any
+    // other failure would be a real bug but this suite has no DB assertion.
   }
 });
 

@@ -4,9 +4,11 @@ compatibility_date = "2024-01-01" # Use a date in the past; update when intentio
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-# Production: replace with your Cloudflare account ID / bucket / CDN base before deploying
-# (see docs/agent/pending-user-actions.md §6). Local kit (S2) uses the defaults below
-# so `docker compose up -d --wait` works without editing; production deploy MUST override.
+# Local kit defaults (S2): so `docker compose up -d --wait` works without editing.
+# Production MUST override these — a forgetful `wrangler deploy` with these
+# localhost values bakes a broken R2 endpoint into prod. Guard: either set
+# `[env.production]` vars below (recommended) or use `wrangler deploy --env production`
+# with prod values in Dash; CI should fail if `R2_ACCOUNT_ID` is still `local`.
 R2_ACCOUNT_ID = "local"
 R2_BUCKET_NAME = "coffeemode"
 R2_PUBLIC_URL = "http://localhost:9000/coffeemode"
@@ -15,6 +17,11 @@ R2_PUBLIC_URL = "http://localhost:9000/coffeemode"
 # (manual `wrangler dev`) use http://localhost:9000. Compose service sets
 # R2_ENDPOINT=http://minio:9000 via environment — this var is the host fallback.
 R2_ENDPOINT = "http://localhost:9000"
+
+# Production env: override all of the above when deploying to Cloudflare.
+# Fill with real values and deploy with `wrangler deploy --env production`.
+# [env.production]
+# vars = { R2_ACCOUNT_ID = "YOUR_ACCOUNT_ID", R2_BUCKET_NAME = "YOUR_BUCKET", R2_PUBLIC_URL = "https://images.coffeemode.app", R2_ENDPOINT = "https://YOUR_ACCOUNT_ID.r2.cloudflarestorage.com" }
 # TTL (seconds) for presigned upload/download URLs. Optional: when unset or
 # invalid, src/constants.ts DEFAULT_UPLOAD_URL_TTL_SECONDS (600) applies.
 # WARNING: must stay well under the 1h upload-intent window

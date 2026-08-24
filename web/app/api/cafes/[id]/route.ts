@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
-import { getCafe } from "@/lib/db/cafes";
+import { getCafe, toPublicCafeDetail } from "@/lib/db/cafes";
 import {
   CAFES_READ_RATE_LIMIT,
   getClientIdentifier,
@@ -44,7 +44,7 @@ export async function GET(
         { status: 404 },
       );
     }
-    return NextResponse.json(cafe);
+    return NextResponse.json(toPublicCafeDetail(cafe));
   } catch (err) {
     console.error("/api/cafes/[id] GET failed", err);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });

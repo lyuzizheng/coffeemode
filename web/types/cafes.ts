@@ -32,3 +32,9 @@ export interface CafeDetail extends Omit<CafeSummary, "distance_m"> {
   created_at: string;
   updated_at: string;
 }
+
+/** Public cafe detail (spec 0001 DG13): gallery `by` is stripped for anonymous surface. */
+export type PublicStoredImage = Omit<StoredImage, "by">;
+export type PublicCafeDetail = Omit<CafeDetail, "gallery"> & {
+  gallery: PublicStoredImage[];
+};

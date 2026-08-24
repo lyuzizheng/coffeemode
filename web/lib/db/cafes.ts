@@ -395,6 +395,18 @@ export async function getCafe(id: string): Promise<CafeDetail | null> {
   return { ...row, work_stats: coerceWorkStats(row.work_stats) };
 }
 
+/**
+ * Public cafe detail projection (spec 0001 DG13): strip `StoredImage.by`
+ * from gallery so the anonymous surface never leaks internal author ids.
+ * Mirrors `web/lib/discovery/feed.ts:159` which does the same for check-in photos.
+ */
+export function toPublicCafeDetail(cafe: CafeDetail): import("@/types/cafes").PublicCafeDetail {
+  return {
+    ...cafe,
+    gallery: (cafe.gallery ?? []).map(({ by: _by, ...image }) => image),
+  };
+}
+
 export interface CafeSitemapEntry {
   id: string;
   /** ISO timestamp. */

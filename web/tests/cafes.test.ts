@@ -505,4 +505,95 @@ describe("GET /api/cafes/[id]", () => {
     expect(found.status).toBe(200);
     await expect(found.json()).resolves.toMatchObject({ name: "Caracara" });
   });
+
+  it("strips StoredImage.by from gallery (DG13 anonymous surface, #197)", async () => {
+    const gallery = [
+      {
+        id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+        original: "original/a.webp",
+        card: "card/a.webp",
+        thumbnail: "thumbnail/a.webp",
+        w: 800,
+        h: 600,
+        by: "550e8400-e29b-41d4-a716-446655440000",
+        at: "2026-08-01T00:00:00.000Z",
+        source: { type: "checkin", id: "c1" },
+      },
+    ];
+    poolQueryMock.mockResolvedValueOnce({
+      rows: [{ id: "c1", name: "Caracara", gallery, work_stats: {} }],
+    });
+    const res = await detailGET(new Request("https://localhost/api/cafes/x"), {
+      params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440001" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { gallery: Array<Record<string, unknown>> };
+    expect(body.gallery).toHaveLength(1);
+    expect(body.gallery[0]).not.toHaveProperty("by");
+    expect(body.gallery[0]).toMatchObject({
+      id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+      card: "card/a.webp",
+    });
+  });
+});
+
+describe("toPublicCafeDetail", () => {
+  it("strips by from every gallery entry while preserving other fields", async () => {
+    const { toPublicCafeDetail } = await import("@/lib/db/cafes");
+    const cafe = {
+      id: "c1",
+      slug: null,
+      name: "Test",
+      lat: 1.35,
+      lng: 103.8,
+      address: null,
+      city: null,
+      tz: null,
+      opening_hours: null,
+      price_range: null,
+      work_stats: {
+        n_users: 0,
+        n_checkins: 0,
+        dims: {} as never,
+        policies: { min_spend: {}, max_stay: {} },
+        experience_score: null,
+        composite_score: null,
+        updated_at: new Date().toISOString(),
+      },
+      cover: null,
+      description: null,
+      gallery: [
+        {
+          id: "img1",
+          original: "original/img1.webp",
+          card: "card/img1.webp",
+          thumbnail: "thumbnail/img1.webp",
+          w: 800,
+          h: 600,
+          by: "user-1",
+          at: "2026-08-01T00:00:00.000Z",
+        },
+        {
+          id: "img2",
+          original: "original/img2.webp",
+          card: "card/img2.webp",
+          thumbnail: "thumbnail/img2.webp",
+          w: 400,
+          h: 300,
+          by: "user-2",
+          at: "2026-08-02T00:00:00.000Z",
+        },
+      ],
+      google_place_id: null,
+      apple_poi_id: null,
+      created_at: "2026-08-01T00:00:00.000Z",
+      updated_at: "2026-08-01T00:00:00.000Z",
+    } as unknown as import("@/types/cafes").CafeDetail;
+    const pub = toPublicCafeDetail(cafe);
+    expect(pub.gallery).toHaveLength(2);
+    for (const img of pub.gallery) {
+      expect(img).not.toHaveProperty("by");
+    }
+    expect((cafe.gallery[0] as unknown as Record<string, unknown>).by).toBe("user-1");
+  });
 });

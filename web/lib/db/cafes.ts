@@ -8,7 +8,7 @@ import {
   type RunInTransaction,
 } from "@/lib/stats/aggregate";
 import { coerceWorkStats } from "@/lib/stats/work-stats";
-import type { CafeDetail, CafeSummary } from "@/types/cafes";
+import type { CafeDetail, CafeSummary, PublicCafeDetail } from "@/types/cafes";
 import {
   MAX_STAY_VALUES,
   MIN_SPEND_VALUES,
@@ -393,6 +393,19 @@ export async function getCafe(id: string): Promise<CafeDetail | null> {
   const row = rows[0];
   if (!row) return null;
   return { ...row, work_stats: coerceWorkStats(row.work_stats) };
+}
+
+/**
+ * Public cafe detail projection (spec 0001 DG13): strip `StoredImage.by`
+ * from gallery so the anonymous surface never leaks internal author ids.
+ * Mirrors `web/lib/discovery/feed.ts:159` which does the same for check-in photos.
+ */
+export function toPublicCafeDetail(cafe: CafeDetail): PublicCafeDetail {
+  return {
+    ...cafe,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip internal author id (DG13)
+    gallery: (cafe.gallery ?? []).map(({ by: _by, ...image }) => image),
+  };
 }
 
 export interface CafeSitemapEntry {

@@ -18,21 +18,21 @@ import { cafeFacts, formatDistanceKm } from "@/lib/discovery/view-model";
 import { cafeCanonicalPath } from "@/lib/seo";
 import { isOpenAt } from "@/lib/hours";
 import type { DiscoveryController } from "@/lib/discovery/use-discovery-controller";
-import type { CafeDetail } from "@/types/cafes";
+import type { PublicCafeDetail } from "@/types/cafes";
 import { CheckinFeed, FeedNotFoundError } from "./checkin-feed";
 import { FactsRow } from "./cafe-card";
 import { InlineError } from "./inline-error";
 import { PolicyConsensus, ScorePair, WorkProfile } from "./scores";
 
-async function fetchCafe(id: string): Promise<CafeDetail> {
+async function fetchCafe(id: string): Promise<PublicCafeDetail> {
   const res = await fetch(`/api/cafes/${id}`);
   if (res.status === 404) throw new FeedNotFoundError();
   if (!res.ok) throw new Error(`cafe failed: ${res.status}`);
-  return (await res.json()) as CafeDetail;
+  return (await res.json()) as PublicCafeDetail;
 }
 
 /** §4 action row: Check in (primary), Navigate (outline), Share (ghost icon). */
-function ActionRow({ cafe, onCheckIn }: { cafe: CafeDetail; onCheckIn: () => void }) {
+function ActionRow({ cafe, onCheckIn }: { cafe: PublicCafeDetail; onCheckIn: () => void }) {
   const t = useTranslations("discovery");
   return (
     <div className="flex items-center gap-2">
@@ -61,7 +61,7 @@ function ActionRow({ cafe, onCheckIn }: { cafe: CafeDetail; onCheckIn: () => voi
 }
 
 /** Top-facts chips (HALF): up to 3, same priority order as PEEK. */
-function FactChips({ cafe }: { cafe: CafeDetail }) {
+function FactChips({ cafe }: { cafe: PublicCafeDetail }) {
   const facts = cafeFacts(cafe, 3);
   if (facts.length === 0) return null;
   return (

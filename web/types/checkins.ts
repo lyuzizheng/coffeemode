@@ -1,4 +1,4 @@
-import type { StoredImage } from "./images";
+import type { PublicStoredImage, StoredImage } from "./images";
 
 /** Check-in slider dimensions, all 0-100. Only scored keys are sent/stored. */
 export interface CheckInScores {
@@ -55,8 +55,7 @@ export interface CheckIn {
   deleted_at: string | null;
 }
 
-/** StoredImage without the internal author id (public feed, spec 0001). */
-export type PublicStoredImage = Omit<StoredImage, "by">;
+
 
 /**
  * Public feed DTO (discovery-sheet): unauthenticated-safe — `user_id` and

@@ -92,6 +92,10 @@ links, planned slices, skill frontmatter, Codex bindings, and CI structure.
 path classification. Deterministic checks do not self-attest semantic correctness;
 agent/docs/CI authority changes require independent semantic review.
 
+### Appendix — Coverage traceability
+
+The traceability matrix lives at `docs/agent/test-coverage.md` (S3 testkit-coverage-doc). It maps every user trace — login Apple/Google, session refresh (`web/proxy.ts`), cafe create, nearby list, detail, check-in lifecycle (create/edit/delete), likes, navigations, image upload/complete, POI search/resolve, 404 recovery, SEO (sitemap/OG), rate limiting — to `Trace × Spec × Layer (unit/mocked/integration/browser) × Proving file × Gate`. Efficiency notes record no-duplication via `web/tests/helpers/*` and the infra (`db`/`r2`) vs service (`auth`/`fixtures`/`workers`) helper split; residual gaps (auth E2E still mocked until Supabase local, POI live search mocked, Workers local via `wrangler dev`, browser E2E manual) are listed there. The deterministic gate `.agents/scripts/check-coverage-matrix.sh` validates completeness (every `READY` slice has ≥1 row) and can be run in CI or as `preflight` follow-on.
+
 ## Acceptance criteria
 
 - `npm run verify` remains the full web type/lint/i18n/unit/build gate.

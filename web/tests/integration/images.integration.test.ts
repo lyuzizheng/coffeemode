@@ -14,9 +14,6 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { execFileSync } from "node:child_process";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { AwsClient } from "aws4fetch";
@@ -27,6 +24,27 @@ import {
   recordUploadIntent,
 } from "@/lib/db/image-uploads";
 import { processImage } from "@/lib/images/processor";
+import {
+  integrationAdminUrl,
+  makeTestDbName,
+  provisionTestDatabase,
+  quotedIdentifier,
+  runMigrations,
+  testDatabaseUrl,
+} from "../helpers/db";
+import { TESTER_ID } from "../helpers/fixtures";
+import {
+  R2_ACCESS_KEY_ID,
+  R2_ENDPOINT,
+  deleteObject as r2DeleteObject,
+  headObject,
+  makePayload,
+  minioReachable,
+  presignedGetUrl,
+  presignedPutUrl,
+  r2Endpoint,
+  tinyWebP,
+} from "../helpers/r2";
 
 // Storage suites never touch the rate limiter; pin the memory backend so
 // tests/setup.ts's rateLimiter.reset() cannot hit Postgres after this file
@@ -36,20 +54,7 @@ process.env.RATE_LIMIT_BACKEND = "memory";
 const RUN_INTEGRATION = process.env.RUN_INTEGRATION === "1";
 const describeImages = RUN_INTEGRATION ? describe : describe.skip;
 
-const DEFAULT_DB_URL = "postgres://coffeemode:coffeemode@localhost:5432/coffeemode";
-const DEFAULT_MINIO_ENDPOINT = "http://localhost:9000";
-const TEST_DB = `coffeemode_test_img_${process.pid}_${randomUUID().replaceAll("-", "").slice(0, 8)}`;
-const WEB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-
-// Local MinIO service account created by `docker compose run --rm minio-init`
-// (docker-compose.yml). Override only when targeting a different store; never
-// inherit ambient R2_* credentials — this suite must stay on the local stack.
-const R2_ACCESS_KEY_ID = process.env.TEST_R2_ACCESS_KEY_ID ?? "imgtest";
-const R2_SECRET_ACCESS_KEY = process.env.TEST_R2_SECRET_ACCESS_KEY ?? "imgtest-secret";
-const R2_BUCKET_NAME = process.env.TEST_R2_BUCKET_NAME ?? "coffeemode";
-const R2_ENDPOINT = process.env.TEST_R2_ENDPOINT ?? DEFAULT_MINIO_ENDPOINT;
-
-const TESTER_ID = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+const TEST_DB = makeTestDbName("coffeemode_test_img");
 
 let testDbUrl = "";
 let adminDbUrl = "";
@@ -59,134 +64,15 @@ let minioUp = false;
 const createdKeys = new Set<string>();
 const cleanupErrors: string[] = [];
 const previousDatabaseUrl = process.env.DATABASE_URL;
-const LOCAL_DB_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
-
-function quotedIdentifier(value: string): string {
-  return `"${value.replaceAll('"', '""')}"`;
-}
-
-function integrationAdminUrl(): string {
-  const raw = process.env.DATABASE_URL ?? DEFAULT_DB_URL;
-  const url = new URL(raw);
-  const remoteOptIn = process.env.ALLOW_REMOTE_INTEGRATION_DB === "1";
-  const hasOverride = ["host", "hostaddr", "socketPath"].some((n) => url.searchParams.has(n));
-  const isLocal = url.hostname === "" || LOCAL_DB_HOSTS.has(url.hostname);
-  if (!remoteOptIn && (hasOverride || !isLocal)) throw new Error(`Refusing integration against host ${url.hostname}`);
-  return url.toString();
-}
-
-function testDatabaseUrl(adminUrl: string): string {
-  const url = new URL(adminUrl);
-  url.pathname = `/${TEST_DB}`;
-  return url.toString();
-}
-
-async function provisionTestDatabase(adminUrl: string): Promise<void> {
-  const admin = new pg.Client(getPoolConfig(adminUrl));
-  await admin.connect();
-  try {
-    await admin.query(`drop database if exists ${quotedIdentifier(TEST_DB)} with (force)`);
-    await admin.query(`create database ${quotedIdentifier(TEST_DB)}`);
-  } finally {
-    await admin.end();
-  }
-}
-
-function runMigrations(url: string): void {
-  execFileSync("node", ["scripts/migrate.mjs"], {
-    cwd: WEB_ROOT,
-    env: { ...process.env, DATABASE_URL: url },
-    stdio: "pipe",
-  });
-}
-
-function r2Endpoint(key: string): string {
-  const base = R2_ENDPOINT.replace(/\/+$/, "");
-  return `${base}/${R2_BUCKET_NAME}/${key}`;
-}
-
-function r2Client(): AwsClient {
-  return new AwsClient({
-    accessKeyId: R2_ACCESS_KEY_ID,
-    secretAccessKey: R2_SECRET_ACCESS_KEY,
-    service: "s3",
-    region: "auto",
-  });
-}
-
-// Mirrors image-service/src/r2.ts presigning (aws4fetch, signQuery+allHeaders);
-// the worker's copy cannot be imported here without dragging workers-types into
-// web's typecheck. Update the two together.
-async function presignedPutUrl(
-  key: string,
-  contentType: string,
-  contentLength?: number,
-): Promise<{ url: string; headers: Record<string, string> }> {
-  const url = `${r2Endpoint(key)}?X-Amz-Expires=600`;
-  const headers: Record<string, string> = { "Content-Type": contentType };
-  if (contentLength !== undefined) headers["Content-Length"] = String(contentLength);
-  const request = new Request(url, { method: "PUT", headers });
-  const signed = await r2Client().sign(request, { aws: { signQuery: true, allHeaders: true } });
-  const outHeaders: Record<string, string> = {};
-  signed.headers.forEach((v, k) => {
-    if (k.toLowerCase() !== "host") outHeaders[k] = v;
-  });
-  delete outHeaders["content-type"];
-  delete outHeaders["content-length"];
-  outHeaders["Content-Type"] = contentType;
-  if (contentLength !== undefined) outHeaders["Content-Length"] = String(contentLength);
-  return { url: signed.url.toString(), headers: outHeaders };
-}
-
-async function presignedGetUrl(key: string): Promise<{ url: string; headers: Record<string, string> }> {
-  const url = `${r2Endpoint(key)}?X-Amz-Expires=600`;
-  const signed = await r2Client().sign(new Request(url), { aws: { signQuery: true } });
-  const headers: Record<string, string> = {};
-  signed.headers.forEach((v, k) => {
-    if (k.toLowerCase() !== "host") headers[k] = v;
-  });
-  return { url: signed.url.toString(), headers };
-}
-
-async function headObject(key: string): Promise<{ size: number } | null> {
-  const res = await r2Client().fetch(r2Endpoint(key), { method: "HEAD", redirect: "manual" });
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`HEAD ${key} failed ${res.status}`);
-  const len = res.headers.get("content-length");
-  if (len === null) throw new Error("missing Content-Length");
-  const size = Number(len);
-  if (Number.isNaN(size)) throw new Error(`invalid Content-Length ${len}`);
-  return { size };
-}
 
 async function deleteObject(key: string): Promise<void> {
   try {
-    const res = await r2Client().fetch(r2Endpoint(key), { method: "DELETE" });
-    if (!res.ok && res.status !== 404) {
-      cleanupErrors.push(`DELETE ${key} failed with ${res.status}`);
-    }
+    await r2DeleteObject(key);
     createdKeys.delete(key);
   } catch (e) {
     cleanupErrors.push(`DELETE ${key} threw ${(e as Error).message}`);
+    createdKeys.delete(key);
   }
-}
-
-async function minioReachable(): Promise<boolean> {
-  try {
-    const res = await fetch(`${R2_ENDPOINT}/minio/health/live`, { signal: AbortSignal.timeout(2000) });
-    return res.ok || res.status === 404;
-  } catch {
-    return false;
-  }
-}
-
-function makePayload(size: number): Uint8Array {
-  return new Uint8Array(Buffer.alloc(size, 0x61));
-}
-
-function tinyWebP(): Uint8Array {
-  const b64 = "UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA";
-  return new Uint8Array(Buffer.from(b64, "base64"));
 }
 
 describeImages("integration — real MinIO/R2 image round-trip (docker compose up -d --wait minio)", () => {
@@ -197,8 +83,8 @@ describeImages("integration — real MinIO/R2 image round-trip (docker compose u
       return;
     }
     adminDbUrl = integrationAdminUrl();
-    testDbUrl = testDatabaseUrl(adminDbUrl);
-    await provisionTestDatabase(adminDbUrl);
+    testDbUrl = testDatabaseUrl(adminDbUrl, TEST_DB);
+    await provisionTestDatabase(adminDbUrl, TEST_DB);
     runMigrations(testDbUrl);
     process.env.DATABASE_URL = testDbUrl;
     dbClient = new pg.Client(getPoolConfig(testDbUrl));

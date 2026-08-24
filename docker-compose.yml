@@ -1,20 +1,30 @@
-# CoffeeMode local dev stack — Postgres (PostGIS) + MinIO (R2 stand-in).
+# CoffeeMode local dev stack — Postgres (PostGIS) + MinIO (R2) + Workers (D1/KV + R2) + Supabase auth mock.
 #
-# This is the "real database / real object store" half of the local test
-# stack. The other half runs entirely on the host:
-#   - image-service / poi-service Workers:  wrangler dev (workerd)
-#   - sharp image processing:               plain Node (VPS-side code runs natively)
+# Full local kit (S2 testkit-compose-mocks):
+#   postgres      — PostGIS 16, real migrations 0001-0008 + PostGIS triggers
+#   minio         — S3-compatible R2 stand-in (aws4fetch SigV4)
+#   minio-init    — one-shot bucket creation (mirrors public R2)
+#   miniflare-poi — poi-service Worker under workerd/miniflare: D1 poi-store + KV poi-cache
+#   miniflare-image — image-service Worker under workerd: R2 presign -> MinIO
+#   supabase-mock — lightweight local Supabase Auth (GoTrue) stand-in on :54321
+#                   (tiny Node http server returning fake JWTs; see scripts/supabase-mock.mjs)
+#                   Alternative: `supabase start` (Supabase CLI) on :54321 — the compose mock
+#                   intentionally uses the same host port so web/.env.example is identical.
 #
-# Usage:
-#   docker compose up -d --wait postgres minio  # start and wait for long-lived services
-#   docker compose run --rm minio-init          # create the local bucket
-#   cd web && npm run db:migrate       # apply web/db/migrations/* against it
-#   cd web && npm run test:integration # real-DB integration suite (RUN_INTEGRATION=1)
+# Usage (single command brings all):
+#   docker compose up -d --wait          # starts postgres+minio+workers+mock, waits for health
+#   docker compose run --rm minio-init   # create the local bucket after MinIO is ready (also runs automatically via depends)
+#   cd web && npm run db:migrate         # apply web/db/migrations/* against postgres
+#   cd web && npm run test:integration   # real-DB integration suite (RUN_INTEGRATION=1)
 #
 # Default connection strings (also the defaults baked into web/scripts/migrate.mjs):
 #   DATABASE_URL=postgres://coffeemode:coffeemode@localhost:5432/coffeemode
 #   MinIO S3 endpoint http://localhost:9000  (access key: coffeemode, secret: coffeemode123)
 #   MinIO console  http://localhost:9001
+#   POI worker     http://localhost:8787  (compose service miniflare-poi, internal http://miniflare-poi:8787)
+#   Image worker   http://localhost:8788  (compose service miniflare-image, internal http://miniflare-image:8788)
+#   Supabase mock  http://localhost:54321 (compose service supabase-mock, internal http://supabase-mock:54321)
+#   Hosts are bound to 127.0.0.1 only — no LAN exposure.
 
 services:
   postgres:
@@ -34,8 +44,9 @@ services:
       retries: 20
 
   # S3-compatible R2 stand-in. image-service signs AWS SigV4 presigned PUTs
-  # (aws4fetch); with R2_ENDPOINT=http://localhost:9000 it targets MinIO,
-  # which accepts the same signatures R2 does.
+  # (aws4fetch); with R2_ENDPOINT=http://minio:9000 (inside compose) or
+  # http://localhost:9000 (host) it targets MinIO, which accepts the same
+  # signatures R2 does.
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
@@ -47,13 +58,20 @@ services:
       - "127.0.0.1:9001:9001"
     volumes:
       - minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:9000/minio/health/live || wget --no-verbose --tries=1 --spider http://127.0.0.1:9000/minio/health/live || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
 
   # One-shot: create the bucket and make reads anonymous (mirrors an R2
   # public bucket, so R2_PUBLIC_URL=http://localhost:9000/coffeemode works).
   minio-init:
     image: minio/mc:RELEASE.2025-08-13T08-35-41Z
     depends_on:
-      - minio
+      minio:
+        condition: service_started
     restart: on-failure:3
     entrypoint: |
       /bin/sh -c "
@@ -67,6 +85,122 @@ services:
       mc admin policy attach local readwrite --user imgtest
       "
 
+  # Cloudflare Worker mock for poi-service: D1 poi-store + KV poi-cache via
+  # wrangler dev (workerd/miniflare). Exposes stored-POI search offline against
+  # local D1/KV; /poi/resolve still stubs Google unless GOOGLE_PLACES_API_KEY is real.
+  # Uses local D1/KV ids from poi-service/wrangler.toml (S2: deterministic local UUIDs
+  # so wrangler never rejects YOUR_* placeholders).
+  miniflare-poi:
+    image: node:22-bookworm-slim
+    working_dir: /workspace/poi-service
+    volumes:
+      - .:/workspace
+      - /workspace/poi-service/node_modules
+      - /workspace/web/node_modules
+      - poi-worker-state:/workspace/poi-service/.wrangler
+    environment:
+      POI_SERVICE_TOKEN: local-dev-token
+      GOOGLE_PLACES_API_KEY: dummy
+    ports:
+      - "127.0.0.1:8787:8787"
+    depends_on:
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    command: >
+      sh -c "
+        apt-get update -qq && apt-get install -y --no-install-recommends curl wget >/dev/null 2>&1 || true;
+        echo '[miniflare-poi] installing deps...';
+        npm install --silent || npm install --silent --no-audit;
+        echo '[miniflare-poi] applying D1 migrations (local)...';
+        npx wrangler d1 migrations apply poi-store --local || echo '[miniflare-poi] d1 migrations apply failed (will retry on next start)';
+        echo '[miniflare-poi] starting wrangler dev on :8787 ...';
+        npx wrangler dev --port 8787 --ip 0.0.0.0 --local
+      "
+    # poi-service auth-gates every route (no public /), so an unauthenticated
+    # probe gets 401 — a 401 response is the healthy signal (worker up, auth on).
+    # wget --spider / curl -f would fail on 401 and --wait would never complete.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/ | grep -qx 401"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+
+  # Cloudflare Worker mock for image-service: presigned R2 URLs via MinIO.
+  # With R2_ENDPOINT=http://minio:9000 the worker's aws4fetch SigV4 flow and
+  # HEAD checks hit MinIO instead of real R2. The host-side R2_PUBLIC_URL
+  # remains http://localhost:9000/coffeemode (anonymously readable).
+  miniflare-image:
+    image: node:22-bookworm-slim
+    working_dir: /workspace/image-service
+    volumes:
+      - .:/workspace
+      - /workspace/image-service/node_modules
+      - /workspace/web/node_modules
+      - image-worker-state:/workspace/image-service/.wrangler
+    environment:
+      IMAGE_SERVICE_TOKEN: local-dev-token
+      R2_ACCESS_KEY_ID: coffeemode
+      R2_SECRET_ACCESS_KEY: coffeemode123
+      R2_BUCKET_NAME: coffeemode
+      R2_ACCOUNT_ID: local
+      R2_ENDPOINT: http://minio:9000
+      R2_PUBLIC_URL: http://localhost:9000/coffeemode
+    ports:
+      - "127.0.0.1:8788:8788"
+    depends_on:
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    command: >
+      sh -c "
+        apt-get update -qq && apt-get install -y --no-install-recommends curl wget >/dev/null 2>&1 || true;
+        echo '[miniflare-image] installing deps...';
+        npm install --silent || npm install --silent --no-audit;
+        echo '[miniflare-image] starting wrangler dev on :8788 ...';
+        npx wrangler dev --port 8788 --ip 0.0.0.0 --local
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8788/ || curl -f http://127.0.0.1:8788/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
+
+  # Lightweight Supabase Auth (GoTrue) mock. A tiny Node http server that
+  # issues unsigned fake JWTs for local tests — no real Supabase project
+  # needed. Mirrors the helper in web/tests/helpers/auth.ts (fakeJwt) so
+  # integration tests and manual flows can inject a user without credentials.
+  # Uses the same host port as `supabase start` (54321) so web/.env.example
+  # works for either the mock or the real Supabase CLI emulator.
+  # To use the real emulator instead: `supabase start` and stop this service
+  # (docker compose stop supabase-mock).
+  supabase-mock:
+    image: node:22-alpine
+    working_dir: /workspace
+    volumes:
+      - ./scripts/supabase-mock.mjs:/workspace/scripts/supabase-mock.mjs:ro
+    environment:
+      HOST: 0.0.0.0
+    ports:
+      - "127.0.0.1:54321:54321"
+    command: >
+      sh -c "
+        apk add --no-cache curl wget >/dev/null 2>&1 || true;
+        node scripts/supabase-mock.mjs
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:54321/auth/v1/health || curl -f http://127.0.0.1:54321/auth/v1/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
 volumes:
   postgres-data:
   minio-data:
+  poi-worker-state:
+  image-worker-state:

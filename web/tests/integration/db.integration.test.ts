@@ -18,9 +18,6 @@
  * (plain unit suite) stays green on machines without Docker.
  */
 import { randomUUID } from "node:crypto";
-import { execFileSync } from "node:child_process";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -47,150 +44,37 @@ import {
   encodeFeedCursor,
   listPublicCheckIns,
 } from "@/lib/discovery/feed";
-import { checkUploadIntent, consumeUploadIntent, recordUploadIntent } from "@/lib/db/image-uploads";
-import type { ProcessUrls } from "@/lib/images/image-service-client";
-import type { ProcessedImage } from "@/lib/images/processor";
-import type { ProvisionPhotosDeps } from "@/lib/images/provision-photos";
+import { recordUploadIntent } from "@/lib/db/image-uploads";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import { recomputeAllWorkStats } from "@/lib/stats/aggregate";
 import { coerceWorkStats } from "@/lib/stats/work-stats";
+import {
+  integrationAdminUrl,
+  makeTestDbName,
+  provisionTestDatabase,
+  quotedIdentifier,
+  runMigrations,
+  testDatabaseUrl,
+} from "../helpers/db";
+import {
+  CAFE_A,
+  CHECKIN_A1,
+  U1,
+  U2,
+  cafeWorkStats,
+  fakeProvisionPhotosDeps,
+  seedBaseData,
+} from "../helpers/fixtures";
 
 const RUN_INTEGRATION = process.env.RUN_INTEGRATION === "1";
 const describeDb = RUN_INTEGRATION ? describe : describe.skip;
 
-const DEFAULT_DB_URL = "postgres://coffeemode:coffeemode@localhost:5432/coffeemode";
-const TEST_DB = `coffeemode_test_${process.pid}_${randomUUID().replaceAll("-", "")}`;
-const LOCAL_DB_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
-const WEB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-
-// Fixed UUIDs so tests are self-describing.
-const U1 = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"; // author / creator
-const U2 = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22"; // second user
-const CAFE_A = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44";
-const CHECKIN_A1 = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55";
+const TEST_DB = makeTestDbName("coffeemode_test");
 
 let testDbUrl = "";
 let adminDbUrl = "";
 let dbClient!: pg.Client; // raw seeding connection (independent of the app pool)
 const previousDatabaseUrl = process.env.DATABASE_URL;
-
-function quotedIdentifier(value: string): string {
-  return `"${value.replaceAll('"', '""')}"`;
-}
-
-function integrationAdminUrl(): string {
-  const raw = process.env.DATABASE_URL ?? DEFAULT_DB_URL;
-  const url = new URL(raw);
-  const remoteOptIn = process.env.ALLOW_REMOTE_INTEGRATION_DB === "1";
-  const hasConnectionHostOverride = ["host", "hostaddr", "socketPath"].some((name) =>
-    url.searchParams.has(name),
-  );
-  const isLocalHost =
-    url.hostname === "" || LOCAL_DB_HOSTS.has(url.hostname);
-  if (
-    !remoteOptIn &&
-    (hasConnectionHostOverride || !isLocalHost)
-  ) {
-    throw new Error(
-      `Refusing real-DB integration against non-local or overridden host ${url.hostname || "(empty)"}; set ALLOW_REMOTE_INTEGRATION_DB=1 only for an explicitly disposable test server`,
-    );
-  }
-  return url.toString();
-}
-
-function testDatabaseUrl(adminUrl: string): string {
-  const url = new URL(adminUrl);
-  url.pathname = `/${TEST_DB}`;
-  return url.toString();
-}
-
-async function provisionTestDatabase(adminUrl: string): Promise<void> {
-  const admin = new pg.Client(getPoolConfig(adminUrl));
-  await admin.connect();
-  try {
-    await admin.query(`drop database if exists ${quotedIdentifier(TEST_DB)} with (force)`);
-    await admin.query(`create database ${quotedIdentifier(TEST_DB)}`);
-  } finally {
-    await admin.end();
-  }
-}
-
-/** Apply migrations using the same runner the CLI uses (dogfooding). */
-function runMigrations(url: string): void {
-  execFileSync("node", ["scripts/migrate.mjs"], {
-    cwd: WEB_ROOT,
-    env: { ...process.env, DATABASE_URL: url },
-    stdio: "pipe",
-  });
-}
-
-async function seedBaseData(): Promise<void> {
-  await dbClient.query(
-    `insert into profiles (id, display_name) values ($1, 'u1'), ($2, 'u2')`,
-    [U1, U2],
-  );
-  await dbClient.query(
-    `insert into cafes (id, name, location, city, created_by, tz)
-     values ($1, 'Seed Cafe', ST_SetSRID(ST_MakePoint(103.8, 1.35), 4326)::geography,
-             'singapore', $2, 'Asia/Singapore')`,
-    [CAFE_A, U1],
-  );
-  await dbClient.query(
-    `insert into checkins (id, cafe_id, user_id, is_creation, scores)
-     values ($1, $2, $3, true, '{"wifi": 80}'::jsonb)`,
-    [CHECKIN_A1, CAFE_A, U1],
-  );
-}
-
-function fakeProcessUrls(imageUuid: string): ProcessUrls {
-  const keys = {
-    original: `original/${imageUuid}.webp`,
-    card: `card/${imageUuid}.webp`,
-    thumbnail: `thumbnail/${imageUuid}.webp`,
-  };
-  const signed = (key: string) => ({ url: `http://images.test/${key}`, headers: {} });
-  return {
-    imageUuid,
-    original: signed(keys.original),
-    originalPut: signed(keys.original),
-    card: signed(keys.card),
-    thumbnail: signed(keys.thumbnail),
-    publicUrls: {
-      original: `http://images.test/${keys.original}`,
-      card: `http://images.test/${keys.card}`,
-      thumbnail: `http://images.test/${keys.thumbnail}`,
-    },
-    keys,
-  };
-}
-
-function fakeProvisionPhotosDeps(): ProvisionPhotosDeps {
-  return {
-    checkUploadIntent,
-    consumeUploadIntent,
-    getProcessUrls: async ({ imageUuid }) => fakeProcessUrls(imageUuid),
-    processImage: async (imageUuid: string): Promise<ProcessedImage> => ({
-      imageUuid,
-      publicUrls: fakeProcessUrls(imageUuid).publicUrls,
-      width: 800,
-      height: 600,
-    }),
-  };
-}
-
-interface WorkStatsShape {
-  n_users: number;
-  n_checkins: number;
-  dims: Record<string, { sum: number; n: number }>;
-  policies: { min_spend: Record<string, number>; max_stay: Record<string, number> };
-  experience_score: number | null;
-}
-
-async function cafeWorkStats(cafeId: string): Promise<WorkStatsShape> {
-  const { rows } = await dbClient.query("select work_stats from cafes where id = $1", [cafeId]);
-  // node-pg parses jsonb columns into JS objects already.
-  return rows[0].work_stats as WorkStatsShape;
-}
 
 describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait postgres)", () => {
   beforeAll(async () => {
@@ -198,8 +82,8 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     // afterAll must connect to the maintenance DB to drop the test DB, not to
     // the test database itself ("cannot drop the currently open database").
     adminDbUrl = integrationAdminUrl();
-    testDbUrl = testDatabaseUrl(adminDbUrl);
-    await provisionTestDatabase(adminDbUrl);
+    testDbUrl = testDatabaseUrl(adminDbUrl, TEST_DB);
+    await provisionTestDatabase(adminDbUrl, TEST_DB);
     runMigrations(testDbUrl);
     // Point the app's shared pool at the test DB before any lib call.
     process.env.DATABASE_URL = testDbUrl;
@@ -216,7 +100,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     await dbClient.query(
       "truncate table profiles, cafes, rate_limits, image_upload_intents, navigations restart identity cascade",
     );
-    await seedBaseData();
+    await seedBaseData(dbClient);
   });
 
   it("rejects a local-looking URL with a remote effective host override", () => {
@@ -378,7 +262,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       const result = await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 60 } });
       expect(result.checkinId).toMatch(/^[0-9a-f-]{36}$/);
 
-      const stats = await cafeWorkStats(CAFE_A);
+      const stats = await cafeWorkStats(dbClient, CAFE_A);
       expect(stats.n_users).toBe(2);
       expect(stats.n_checkins).toBe(2);
       expect(stats.dims.overall).toEqual({ sum: 60, n: 1 });
@@ -445,7 +329,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       );
       expect(consumedIntent.rows).toHaveLength(0);
 
-      const stats = await cafeWorkStats(created.cafeId);
+      const stats = await cafeWorkStats(dbClient, created.cafeId);
       expect(stats.n_users).toBe(1);
       expect(stats.n_checkins).toBe(1);
       expect(stats.dims.overall).toEqual({ sum: 82, n: 1 });
@@ -531,7 +415,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     it("create folds work_stats and coerce preserves both scores via getCafe/listCafesNearby", async () => {
       // Second user's check-in at the seeded cafe
       await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 60, wifi: 70 } });
-      const stats = await cafeWorkStats(CAFE_A);
+      const stats = await cafeWorkStats(dbClient, CAFE_A);
       expect(stats.n_users).toBe(2);
       expect(stats.n_checkins).toBe(2);
       expect(stats.experience_score).toBeCloseTo(60, 6);
@@ -547,11 +431,11 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
 
     it("edit recomputes work_stats for the cafe (recompute, not incremental fold)", async () => {
       const first = await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 60 } });
-      const before = await cafeWorkStats(CAFE_A);
+      const before = await cafeWorkStats(dbClient, CAFE_A);
       expect(before.experience_score).toBeCloseTo(60, 6);
 
       await updateCheckIn(U2, first.checkinId, { scores: { overall: 90 } });
-      const after = await cafeWorkStats(CAFE_A);
+      const after = await cafeWorkStats(dbClient, CAFE_A);
       // Two users now: U1 overall 80 (seed) and U2 90
       expect(after.n_users).toBe(2);
       expect(after.n_checkins).toBe(2);
@@ -569,7 +453,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         scores: { overall: 55 },
         photo_ids: [photoId],
       }, fakeProvisionPhotosDeps());
-      const withPhoto = await cafeWorkStats(CAFE_A);
+      const withPhoto = await cafeWorkStats(dbClient, CAFE_A);
       expect(withPhoto.n_checkins).toBe(2);
       expect(withPhoto.experience_score).toBe(55);
 
@@ -577,7 +461,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(JSON.stringify(galleryBefore.rows[0].gallery)).toContain(photoId);
 
       await softDeleteCheckIn(U2, created.checkinId);
-      const after = await cafeWorkStats(CAFE_A);
+      const after = await cafeWorkStats(dbClient, CAFE_A);
       expect(after.n_checkins).toBe(1);
       expect(after.n_users).toBe(1);
       // Back to seed user's contribution only
@@ -603,18 +487,18 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       const photoId = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a88";
       await recordUploadIntent(U2, photoId);
       await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 77 } }, fakeProvisionPhotosDeps());
-      const goodRaw = await cafeWorkStats(CAFE_A);
+      const goodRaw = await cafeWorkStats(dbClient, CAFE_A);
       const good = coerceWorkStats(goodRaw);
       // Corrupt the cached stats to the DB default
       await dbClient.query("update cafes set work_stats = '{}'::jsonb where id = $1", [CAFE_A]);
-      const corruptedRaw = await cafeWorkStats(CAFE_A);
+      const corruptedRaw = await cafeWorkStats(dbClient, CAFE_A);
       const corrupted = coerceWorkStats(corruptedRaw);
       expect(corrupted.n_users).toBe(0);
       expect(corrupted.experience_score).toBeNull();
 
       // Repair via the nightly entrypoint (same code the cron runs)
       await recomputeAllWorkStats(async (sql, params) => dbClient.query(sql, params));
-      const repairedRaw = await cafeWorkStats(CAFE_A);
+      const repairedRaw = await cafeWorkStats(dbClient, CAFE_A);
       const repaired = coerceWorkStats(repairedRaw);
       const { updated_at: _goodTs, ...goodNoTs } = good;
       void _goodTs;
@@ -624,7 +508,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
 
       // Second run is a no-op (idempotent) — same dims/scores, new timestamp only
       await recomputeAllWorkStats(async (sql, params) => dbClient.query(sql, params));
-      const repaired2Raw = await cafeWorkStats(CAFE_A);
+      const repaired2Raw = await cafeWorkStats(dbClient, CAFE_A);
       const repaired2 = coerceWorkStats(repaired2Raw);
       const { updated_at: _rep2Ts, ...repaired2NoTs } = repaired2;
       void _rep2Ts;

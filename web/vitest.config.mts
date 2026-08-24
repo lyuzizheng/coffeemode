@@ -8,6 +8,9 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./tests/setup.ts"],
     include: ["tests/**/*.test.{ts,tsx}"],
+    // `include` already limits collection to `*.test.*`; `tests/helpers/**` is
+    // excluded by that alone — explicit `exclude` remains only for `node_modules`.
+    exclude: ["node_modules/**", "**/.next/**", "**/coverage/**"],
   },
   resolve: {
     alias: {

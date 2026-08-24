@@ -103,6 +103,9 @@ run_gate "implementation-slices" "$SCRIPTS_DIR/check-implementation-slices.sh"
 # 5. Markdown local links
 run_gate "markdown-links" "$SCRIPTS_DIR/check-links.sh"
 
+# 5b. Test coverage matrix (traceability) — unconditional; deleting the matrix must fail.
+run_gate "coverage-matrix" "$SCRIPTS_DIR/check-coverage-matrix.sh"
+
 # 6. Repo-local agent skills
 run_gate "agent-skills" "$SCRIPTS_DIR/check-agent-skills.sh"
 

@@ -37,7 +37,7 @@ else
         image_service=true
         poi_service=true
         ;;
-      web/db/*|web/lib/*|web/app/api/*|web/tests/integration/*|web/scripts/migrate.mjs|web/package*.json)
+      web/db/*|web/lib/*|web/app/api/*|web/tests/integration/*|web/tests/helpers/*|web/scripts/migrate.mjs|web/package*.json)
         application=true
         integration=true
         ;;
@@ -52,6 +52,9 @@ else
         poi_service=true
         ;;
       docker-compose.yml)
+        integration=true
+        ;;
+      scripts/*)
         integration=true
         ;;
     esac

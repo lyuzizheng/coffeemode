@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
+import { cafeExists } from "@/lib/db/cafes";
 
 /**
  * Session-refresh proxy (spec 0001, 0004).
@@ -9,8 +10,50 @@ import { type NextRequest, NextResponse } from "next/server";
  * session cookie is present, and forwards refreshed cookies to both the
  * request and the response. It never blocks public routes; route handlers
  * call `getUser()` for their own auth decisions.
+ *
+ * It also commits the gone-cafe 404 status (DG19): the cafe page is async,
+ * so the root loading boundary streams its shell with a 200 before a
+ * page-level notFound() can run. Existence is probed here — PK lookup only,
+ * never content — and missing ids are rewritten to a sync page that throws
+ * notFound(), which flushes unstreamed and keeps the real 404 status.
  */
+
+const CAFE_PAGE_PATH = /^\/cafes\/([^/]+)$/;
+
+async function isGoneCafePage(request: NextRequest): Promise<boolean> {
+  const match = CAFE_PAGE_PATH.exec(request.nextUrl.pathname);
+  if (!match) return false;
+  try {
+    return !(await cafeExists(match[1]));
+  } catch (err) {
+    // DB unreachable: fail open. The page handles the error surface; a
+    // degraded soft-404 beats turning every deep link into a 500.
+    console.error("proxy: cafe existence check failed", err);
+    return false;
+  }
+}
+
 export async function proxy(request: NextRequest) {
+  // Gone-cafe deep links get a real 404 (DG19). The cafe page is async, and
+  // the root loading boundary streams a matched route's shell with a 200
+  // before any page-level notFound() can run — so the 404 must be decided
+  // here, before routing. The rewrite target matches NO route: the global
+  // not-found surface commits the 404 status at routing time, and reads the
+  // attempted id from x-gone-cafe-id to render the designed gone-cafe page
+  // (with the DG111 recovery block). GET/HEAD only — no other method
+  // targets the SSR page.
+  if (
+    (request.method === "GET" || request.method === "HEAD") &&
+    (await isGoneCafePage(request))
+  ) {
+    const id = CAFE_PAGE_PATH.exec(request.nextUrl.pathname)?.[1] ?? "";
+    const headers = new Headers(request.headers);
+    headers.set("x-gone-cafe-id", id);
+    return NextResponse.rewrite(new URL("/__gone-cafe", request.url), {
+      request: { headers },
+    });
+  }
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 

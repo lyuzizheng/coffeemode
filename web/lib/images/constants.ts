@@ -24,6 +24,12 @@
  */
 export const R2_PUBLIC_HOST = "images.coffeemode.app";
 
+/** Absolute public CDN URL for an R2 object key (leading slash tolerated). */
+export function r2PublicUrl(key: string): string {
+  const clean = key.startsWith("/") ? key.slice(1) : key;
+  return `https://${R2_PUBLIC_HOST}/${clean}`;
+}
+
 /**
  * Build-time drift guard, called from `next.config.ts`: when
  * `NEXT_PUBLIC_R2_PUBLIC_URL` is set, its host must equal `R2_PUBLIC_HOST`.

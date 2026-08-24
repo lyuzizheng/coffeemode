@@ -394,3 +394,68 @@ export async function getCafe(id: string): Promise<CafeDetail | null> {
   if (!row) return null;
   return { ...row, work_stats: coerceWorkStats(row.work_stats) };
 }
+
+export interface CafeSitemapEntry {
+  id: string;
+  /** ISO timestamp. */
+  lastmod: string;
+}
+
+const LIST_SITEMAP_SQL = `
+select id,
+       coalesce((work_stats->>'updated_at')::timestamptz, updated_at) as lastmod
+from cafes
+order by lastmod desc
+`;
+
+/**
+ * All live cafes for sitemap.xml. lastmod prefers work_stats.updated_at per
+ * DG105 (the aggregate is what actually changes when check-ins land) and
+ * falls back to the row's updated_at for cafes whose stats predate the field.
+ */
+export async function listCafeSitemapEntries(): Promise<CafeSitemapEntry[]> {
+  const { rows } = await query<{ id: string; lastmod: Date } & Record<string, unknown>>(
+    LIST_SITEMAP_SQL,
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    lastmod: new Date(row.lastmod).toISOString(),
+  }));
+}
+
+const GET_LOCATION_SQL = `
+select ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng
+from cafes
+where id = $1
+`;
+
+const EXISTS_SQL = `select 1 from cafes where id = $1`;
+
+/**
+ * Existence probe for the gone-cafe 404 path: the proxy checks this BEFORE
+ * the page streams so a missing cafe gets a real 404 status (DG19) instead
+ * of a streamed soft-404. PK index lookup only — never fetch content here.
+ */
+export async function cafeExists(id: string): Promise<boolean> {
+  if (!isValidUUID(id)) return false;
+  const { rows } = await query<Record<string, unknown>>(EXISTS_SQL, [id]);
+  return rows.length > 0;
+}
+
+/**
+ * A cafe's coordinates when the row still exists. Unlike getCafe this
+ * tolerates invalid ids (returns null) because its caller is the 404
+ * recovery path (DG111), where a malformed id is a normal case. When cafe
+ * soft-delete lands, the kept row keeps this block working.
+ */
+export async function getCafeLocation(
+  id: string,
+): Promise<{ lat: number; lng: number } | null> {
+  if (!isValidUUID(id)) return null;
+  const { rows } = await query<{ lat: number; lng: number } & Record<string, unknown>>(
+    GET_LOCATION_SQL,
+    [id],
+  );
+  const row = rows[0];
+  return row ? { lat: row.lat, lng: row.lng } : null;
+}

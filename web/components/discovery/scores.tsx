@@ -102,10 +102,13 @@ export function ScorePair({ stats }: { stats: WorkStats }) {
  * FULL WorkProfile — the visual hero: five dimension bars, staggered 40ms on
  * entry, reduced motion → final state instantly. A zero-response dimension
  * renders "Not enough check-ins", never a zero bar (DG10).
+ *
+ * `animated={false}` is for the SSR cafe shell, where bars render at final
+ * width with no entry motion (seo-sharing artifact §2).
  */
-export function WorkProfile({ stats }: { stats: WorkStats }) {
+export function WorkProfile({ stats, animated = true }: { stats: WorkStats; animated?: boolean }) {
   const t = useTranslations("discovery");
-  const enter = useEnterMotion();
+  const enter = useEnterMotion() && animated;
 
   return (
     <section aria-label={t("work_profile_aria")} className="flex flex-col gap-2.5">

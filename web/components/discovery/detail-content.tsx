@@ -5,14 +5,18 @@
  * FULL content renders inside the mobile sheet and the desktop detail
  * column (DG42). Selection focuses the detail heading (DG18).
  */
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
-import Image from "next/image";
+import { Fragment, useEffect, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
-import { Button, toast } from "@heroui/react";
-import { CloseIcon, ShareIcon } from "@/components/icons";
+import { Button } from "@heroui/react";
+import { CloseIcon } from "@/components/icons";
+import { CoverCarousel } from "@/components/cafe/cover-carousel";
+import { GalleryStrip } from "@/components/cafe/gallery-strip";
+import { OpenState } from "@/components/cafe/open-state";
+import { ShareControl } from "@/components/share/share-control";
 import { cafeFacts, formatDistanceKm } from "@/lib/discovery/view-model";
-import { closingTimeToday, isOpenAt } from "@/lib/hours";
+import { cafeCanonicalPath } from "@/lib/seo";
+import { isOpenAt } from "@/lib/hours";
 import type { DiscoveryController } from "@/lib/discovery/use-discovery-controller";
 import type { CafeDetail } from "@/types/cafes";
 import { CheckinFeed, FeedNotFoundError } from "./checkin-feed";
@@ -27,83 +31,9 @@ async function fetchCafe(id: string): Promise<CafeDetail> {
   return (await res.json()) as CafeDetail;
 }
 
-/** Open-state meta: success dot + "Open until 22:00", danger dot + "Closed". */
-function OpenState({ cafe }: { cafe: Pick<CafeDetail, "opening_hours" | "tz"> }) {
-  const t = useTranslations("discovery");
-  const open = isOpenAt(cafe.opening_hours, cafe.tz);
-  if (open === null) return null; // unknown hours render nothing, never a guess
-  const close = open ? closingTimeToday(cafe.opening_hours, cafe.tz) : null;
-  return (
-    <span className={`flex items-center gap-1 ${open ? "text-success" : "text-danger"}`}>
-      <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
-      {open
-        ? close
-          ? t("open_until", { time: close })
-          : t("open_now")
-        : t("closed")}
-    </span>
-  );
-}
-
-/** 16:9 cover carousel with page dots; omitted entirely when no photos. */
-function CoverCarousel({ images, alt }: { images: string[]; alt: string }) {
-  const [active, setActive] = useState(0);
-  const trackRef = useRef<HTMLDivElement | null>(null);
-  if (images.length === 0) return null;
-  const onScroll = () => {
-    const el = trackRef.current;
-    if (!el || el.clientWidth === 0) return;
-    setActive(Math.round(el.scrollLeft / el.clientWidth));
-  };
-  return (
-    <div className="relative">
-      <div
-        ref={trackRef}
-        onScroll={onScroll}
-        className="flex snap-x snap-mandatory overflow-x-auto rounded-md md:max-h-[360px]"
-      >
-        {images.map((src, i) => (
-          <div
-            key={src}
-            className="relative aspect-video w-full shrink-0 snap-center overflow-hidden rounded-md border border-separator bg-surface-tertiary"
-          >
-            <Image
-              src={src}
-              alt={i === 0 ? alt : ""}
-              fill
-              sizes="(min-width: 1024px) 400px, 100vw"
-              className="object-cover"
-              priority={i === 0}
-            />
-          </div>
-        ))}
-      </div>
-      {images.length > 1 && (
-        <div className="absolute inset-x-0 bottom-2 flex justify-center gap-1.5" aria-hidden>
-          {images.map((src, i) => (
-            <span
-              key={src}
-              className={`h-[3px] w-[3px] rounded-full ${i === active ? "bg-accent" : "bg-separator"}`}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /** §4 action row: Check in (primary), Navigate (outline), Share (ghost icon). */
 function ActionRow({ cafe, onCheckIn }: { cafe: CafeDetail; onCheckIn: () => void }) {
   const t = useTranslations("discovery");
-  const share = async () => {
-    const url = `${window.location.origin}/cafes/${cafe.id}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      toast(t("share_copied"), { timeout: 4000 });
-    } catch {
-      toast(t("share_failed"), { timeout: 4000 });
-    }
-  };
   return (
     <div className="flex items-center gap-2">
       <Button variant="primary" className="flex-1 rounded-sm" onPress={onCheckIn}>
@@ -122,15 +52,10 @@ function ActionRow({ cafe, onCheckIn }: { cafe: CafeDetail; onCheckIn: () => voi
       >
         {t("navigate")}
       </Button>
-      <Button
-        variant="ghost"
-        isIconOnly
-        aria-label={t("share")}
-        className="h-9 w-9 min-w-9 text-muted hover:text-foreground"
-        onPress={share}
-      >
-        <ShareIcon size={16} />
-      </Button>
+      <ShareControl
+        url={`${window.location.origin}${cafeCanonicalPath(cafe.id)}`}
+        title={cafe.name}
+      />
     </div>
   );
 }
@@ -269,18 +194,7 @@ export function DetailContent({
       <ActionRow cafe={cafe} onCheckIn={onCheckIn} />
       <WorkProfile stats={cafe.work_stats} />
       <PolicyConsensus stats={cafe.work_stats} />
-      {cafe.gallery.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto" aria-label={t("gallery_aria")}>
-          {cafe.gallery.map((photo) => (
-            <span
-              key={photo.id}
-              className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-md border border-separator bg-surface-tertiary"
-            >
-              <Image src={photo.thumbnail} alt="" fill sizes="72px" className="object-cover" />
-            </span>
-          ))}
-        </div>
-      )}
+      <GalleryStrip photos={cafe.gallery} ariaLabel={t("gallery_aria")} />
       <CheckinFeed
         cafeId={cafe.id}
         onMissingCafe={handleMissingCafe}

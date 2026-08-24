@@ -1,7 +1,12 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 import { withSerwist } from "@serwist/turbopack";
+// Config schema (not the server-only runtime module) — Next's config
+// transpiler rejects the `server-only` guard (DG107 values, one source).
+import { loadYaml, parseAppConfig } from "./lib/config-schema";
 import { R2_PUBLIC_HOST, assertR2PublicUrlMatches } from "./lib/images/constants";
+
+const appConfig = parseAppConfig(loadYaml("app.yaml"));
 
 const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
 
@@ -63,6 +68,19 @@ const nextConfig: NextConfig = {
         source: "/api/:path*",
         headers: [
           { key: "Cache-Control", value: "private, no-store, must-revalidate" },
+        ],
+      },
+      {
+        // The SSR cafe shell is public content (DG105): a viral shared link
+        // must not hit Postgres per open. TTLs live in web/config/app.yaml
+        // (DG107) — s-maxage for the CDN, stale-while-revalidate so a stale
+        // hit never blocks on revalidation.
+        source: "/cafes/:id*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: `public, s-maxage=${appConfig.seo.shellCache.sMaxAgeSeconds}, stale-while-revalidate=${appConfig.seo.shellCache.staleWhileRevalidateSeconds}`,
+          },
         ],
       },
     ];

@@ -23,6 +23,9 @@ const ROUTES = [
   { path: "/theme-preview", status: 200 },
   { path: "/~offline", status: 200 },
   { path: "/definitely-not-a-route", status: 404 },
+  // seo-sharing (#150): a gone/invalid cafe id renders the designed cafe 404
+  // (real 404 status, DG19). DB-independent: the id can never resolve.
+  { path: "/cafes/definitely-not-a-cafe", status: 404 },
 ];
 const COLOR_SCHEMES = ["light", "dark"];
 const VIEWPORTS = {

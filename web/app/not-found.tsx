@@ -1,33 +1,17 @@
-"use client";
-
-import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { headers } from "next/headers";
+import { GenericNotFound } from "@/components/errors/generic-not-found";
+import { GoneCafeNotFound } from "@/components/errors/gone-cafe-not-found";
 
 /**
- * Designed 404 (spec 0002: error states are designed, not raw text). Client
- * component so it renders under the root layout's intl provider and stays
- * testable; same layout language as the offline page.
+ * Global 404 dispatcher (spec 0002: error states are designed). Unmatched
+ * routes commit the 404 status at routing time, so this surface is also
+ * where the proxy sends gone-cafe deep links (DG19): a matched route would
+ * stream its shell with a 200 before any page-level notFound() could run.
+ * The proxy marks those requests with x-gone-cafe-id; the attempted id
+ * feeds the DG111 recovery block.
  */
-export default function NotFound() {
-  const t = useTranslations("notFound");
-
-  return (
-    <main className="flex min-h-dvh flex-col items-center justify-center gap-6 px-6 text-center">
-      <p className="tnum font-mono text-xs text-muted">{t("kicker")}</p>
-      <div>
-        <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
-          {t("title")}
-        </h1>
-        <p className="mt-3 max-w-sm text-base leading-relaxed text-muted">
-          {t("body")}
-        </p>
-      </div>
-      <Link
-        href="/"
-        className="cm-focus flex h-10 items-center rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent-hover"
-      >
-        {t("cta")}
-      </Link>
-    </main>
-  );
+export default async function NotFound() {
+  const goneCafeId = (await headers()).get("x-gone-cafe-id");
+  if (goneCafeId) return <GoneCafeNotFound cafeId={goneCafeId} />;
+  return <GenericNotFound />;
 }

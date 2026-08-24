@@ -28,6 +28,7 @@ The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI 
 - Issue #146 / work-profile slice completes the map-independent work_stats aggregation: `coerceWorkStats` preserves `experience_score`/`composite_score`, create/edit/soft-delete recompute via `recomputeWorkStats` with `FOR UPDATE`, public-safe `CafeSummary`/`CafeDetail` expose both scores, `web/scripts/recompute-work-stats.mjs` provides the idempotent nightly drift correction and `.github/workflows/nightly-recompute.yml` schedules it at 02:00 UTC with observable failure.
 - Issue #189 / app-config slice adds the universal typed config: `web/config/rate-limits.yaml` owns the 4 API rate-limit buckets, `web/config/app.yaml` owns product parameters (`search.maxRadiusKm`, `cafes.listLimitMax`), and `web/lib/config.ts` loads + schema-validates both at startup (fail-fast on bad shape). Existing call sites migrated with values unchanged; feature slices must consume config, never hardcode.
 - Issue #133 / discovery-sheet slice (PR #195): the map-independent discovery core is live — bespoke Framer Motion PEEK/HALF/FULL sheet on mobile, 380px sidebar + 400px detail column ≥1024px, one-push/then-replace `/cafes/[id]` URL sync with Back-collapse, public `GET /api/cafes/[id]/checkins` feed (Newest default DG113, mode-bound keyset cursors, 20/page), anonymous "A nomad" DTOs, DG17 inline Retry, DG19 missing-cafe toast flow. `app.yaml` gains `feed.pageSize` and `discovery.defaultCenter` (no geolocation prompt, DG112). The Check in action is an interim toast until `checkin-system`'s drawer lands; `/cafes/[id]` SSR remains `seo-sharing`'s (#150).
+- Issue #150 / seo-sharing slice ships the public SSR `/cafes/[id]` surface: two-part page (Part 1 aggregate shell — ScorePair/WorkProfile/PolicyConsensus/gallery/hours plus JSON-LD CafeOrCoffeeShop with aggregateRating from experience_score; Part 2 the discovery feed component client-loaded, Newest default, never in initial HTML — DG106/DG113), locale-independent canonical + hreflang x-default (DG110), OG hook copy + dynamic no-cover fallback card (DG108), sitemap/robots/llms.txt (DG105), CDN shell cache from `app.yaml` `seo.shellCache` (DG107), WeChat-aware share control swept into discovery (DG109), and a real 404 committed by the proxy before the root loading boundary can stream a soft-404, with the DG111 recovery block (never user geolocation, DG112). Public-safe: the SSR payload carries no `StoredImage.by`/author ids (DG13). DG124 map hydration stays the blocked `deeplink-hydration` slice.
 - Apple live search is configuration-gated and does not block link import or Google search. New user-visible UI implementation is separately design-gated on a slice-specific Kimi K3 artifact.
 
 ## What exists
@@ -61,7 +62,11 @@ web/lib/places/          Server-only POI service client (stored/live search, res
 web/app/api/places/      search + resolve + external-result route handlers with rate limiting,
                          10 km radius cap, and maps URL domain validation
 web/app/api/cafes/       POST (fused create + first check-in, 409 dedupe), GET nearby list
-                         (10 km cap), GET [id] detail
+                         (10 km cap), GET [id] detail, GET [id]/checkins public feed,
+                         GET [id]/recovery (gone-cafe 404 suggestions, DG111)
+web/app/cafes/[id]/      SSR public cafe shell + client-loaded feed (seo-sharing #150):
+                         JSON-LD, canonical/hreflang, OG + dynamic fallback card,
+                         gone-cafe 404; app/sitemap.ts + app/robots.ts + public/llms.txt
 web/lib/rate-limit.ts    Token-bucket rate limiter: in-memory (dev/tests) or Postgres-backed
                          (production/horizontal scale) with a shared client identifier helper
 web/next.config.ts       Long immutable Cache-Control headers for static/PWA assets
@@ -88,9 +93,10 @@ _archive-coffeemode-backend/   old Java app — being dropped
 3. poi-cache-service deploy (§7): Cloudflare D1/KV + secrets, apply D1 schema,
    deploy, wire POI_SERVICE_URL/TOKEN.
 4. Map-independent UI slices are all design-unblocked and READY — pick any of:
-   discovery-sheet (#133), search-filters (#135), checkin-system (#148),
-   navigation-prompt (#149), profile-page (#152), seo-sharing (#150),
-   onboarding-geolocation (#153). app-config (#189) is COMPLETE — feature
+   search-filters (#135), checkin-system (#148),
+   navigation-prompt (#149), profile-page (#152),
+   onboarding-geolocation (#153). discovery-sheet (#133) and seo-sharing (#150)
+   are COMPLETE; app-config (#189) is COMPLETE — feature
    slices consume `web/lib/config.ts`, never hardcode. One writer per slice
 ```
 
@@ -100,7 +106,7 @@ _archive-coffeemode-backend/   old Java app — being dropped
 - map-home — Apple MapKit full-screen map + custom markers [BLOCKED on Apple Developer Program; #131, #132; map-home design artifact still owed]
 - map-discovery-integration — bind discovery/search to MapKit [BLOCKED on map-home; #134]
 - map-creation-entry — map-tap and map-surface creation entry [BLOCKED on map-home; #136]
-- deeplink-hydration — /cafes/[id] SSR shell hydrates into the map app at FULL (DG124) [BLOCKED on discovery-sheet + Apple MapKit creds #131; part of #150]
+- deeplink-hydration — /cafes/[id] SSR shell hydrates into the map app at FULL (DG124) [BLOCKED on Apple MapKit creds #131; the SSR shell it hydrates is seo-sharing (#150), COMPLETE]
 - deploy-vps — Docker + VPS + CDN + CI/CD [BLOCKED on domain + VPS + Cloudflare account]
 - cleanup-legacy — remove old Vite frontend + Java backend [BLOCKED on deploy-vps]
 ```

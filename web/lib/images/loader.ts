@@ -1,7 +1,7 @@
 "use client";
 
 import type { ImageLoader } from "next/image";
-import { R2_PUBLIC_HOST } from "./constants";
+import { R2_PUBLIC_HOST, r2PublicUrl } from "./constants";
 
 /**
  * Custom Next.js image loader for R2 images.
@@ -22,8 +22,7 @@ export const r2ImageLoader: ImageLoader = ({ src }) => {
   if (src.startsWith("http://") || src.startsWith("https://")) return src;
 
   // Relative paths are treated as direct R2 keys under the public CDN.
-  const clean = src.startsWith("/") ? src.slice(1) : src;
-  return `https://${R2_PUBLIC_HOST}/${clean}`;
+  return r2PublicUrl(src);
 };
 
 export default r2ImageLoader;

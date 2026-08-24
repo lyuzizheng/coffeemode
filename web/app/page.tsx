@@ -2,11 +2,13 @@ import { Card } from "@heroui/react";
 import { getTranslations } from "next-intl/server";
 import { profileFromUser } from "@/lib/auth/profiles";
 import { createSupabaseServerClient, isAuthConfigured } from "@/lib/auth/supabase-server";
+import { appConfig } from "@/lib/config";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SignInButton } from "@/app/auth/sign-in-button";
 import { SignOutButton } from "@/app/auth/sign-out-button";
 import { AuthCallbackError } from "@/app/auth/auth-callback-error";
 import { CafeCreationTrigger } from "@/components/cafe/cafe-creation-sheet";
+import { DiscoveryHome } from "@/components/discovery/discovery-home";
 
 // Scaffold-stage home page. The real surface is a full-screen Apple Map with
 // a map-bound discovery sheet (slices: map-home, map-discovery-integration). Until then this page is the honest first
@@ -118,6 +120,17 @@ export default async function HomePage({
       <footer className="px-6 pb-6 text-center">
         <p className="font-mono text-xs text-muted">{t("ethos")}</p>
       </footer>
+
+      {/*
+       * Map-independent discovery layer (#133): the scaffold above stands in
+       * for the map surface until map-home lands. The mobile sheet / desktop
+       * sidebar overlay it; DG112 forbids a geolocation prompt here, so the
+       * nearby query runs against the configured default center.
+       */}
+      <DiscoveryHome
+        defaultCenter={appConfig.discovery.defaultCenter}
+        addCafe={<CafeCreationTrigger isAuthenticated={Boolean(user)} />}
+      />
     </div>
   );
 }

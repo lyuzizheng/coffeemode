@@ -22,6 +22,9 @@ export interface StoredImage {
   source?: StoredImageSource; // where this image originated (cafe or checkin)
 }
 
+/** Public image projection (spec 0001 DG13): author id `by` stripped. */
+export type PublicStoredImage = Omit<StoredImage, "by">;
+
 export interface UploadUrlResponse {
   imageUuid: string;
   uploadUrl: string;

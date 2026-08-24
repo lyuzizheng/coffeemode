@@ -8,7 +8,7 @@ import {
   type RunInTransaction,
 } from "@/lib/stats/aggregate";
 import { coerceWorkStats } from "@/lib/stats/work-stats";
-import type { CafeDetail, CafeSummary } from "@/types/cafes";
+import type { CafeDetail, CafeSummary, PublicCafeDetail } from "@/types/cafes";
 import {
   MAX_STAY_VALUES,
   MIN_SPEND_VALUES,
@@ -400,9 +400,10 @@ export async function getCafe(id: string): Promise<CafeDetail | null> {
  * from gallery so the anonymous surface never leaks internal author ids.
  * Mirrors `web/lib/discovery/feed.ts:159` which does the same for check-in photos.
  */
-export function toPublicCafeDetail(cafe: CafeDetail): import("@/types/cafes").PublicCafeDetail {
+export function toPublicCafeDetail(cafe: CafeDetail): PublicCafeDetail {
   return {
     ...cafe,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip internal author id (DG13)
     gallery: (cafe.gallery ?? []).map(({ by: _by, ...image }) => image),
   };
 }

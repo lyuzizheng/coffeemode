@@ -1,6 +1,6 @@
 import type { WeeklyHours } from "@/lib/hours";
 import type { WorkStats } from "@/lib/stats/work-stats";
-import type { StoredImage } from "./images";
+import type { PublicStoredImage, StoredImage } from "./images";
 
 /** Cafe as returned by list/nearby queries (map + cards). */
 export interface CafeSummary {
@@ -34,7 +34,6 @@ export interface CafeDetail extends Omit<CafeSummary, "distance_m"> {
 }
 
 /** Public cafe detail (spec 0001 DG13): gallery `by` is stripped for anonymous surface. */
-export type PublicStoredImage = Omit<StoredImage, "by">;
 export type PublicCafeDetail = Omit<CafeDetail, "gallery"> & {
   gallery: PublicStoredImage[];
 };

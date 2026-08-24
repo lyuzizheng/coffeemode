@@ -157,6 +157,7 @@ export async function listPublicCheckIns(params: {
     max_stay: row.max_stay,
     note: row.note,
     // Public DTO: strip the internal author id from every photo (spec 0001).
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip internal author id (DG13)
     photos: (row.photos ?? []).map(({ by: _by, ...image }) => image),
     likes_count: row.likes_count,
     liked_by_viewer: viewerId !== null && row.liked_by_viewer === true,

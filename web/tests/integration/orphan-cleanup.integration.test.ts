@@ -22,7 +22,18 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { AwsClient } from "aws4fetch";
+import {
+  R2_ACCESS_KEY_ID,
+  R2_CLEANUP_BUCKET_NAME as R2_BUCKET_NAME,
+  R2_ENDPOINT,
+  R2_SECRET_ACCESS_KEY,
+  deleteObject as r2DeleteObject,
+  minioReachable,
+  objectExists as r2ObjectExists,
+  putObject as r2PutObject,
+  r2Client,
+  r2Endpoint as r2EndpointForBucket,
+} from "../helpers/r2";
 
 // Storage suites never touch the rate limiter; pin the memory backend so
 // tests/setup.ts's rateLimiter.reset() cannot hit Postgres after this file
@@ -37,67 +48,31 @@ const IMAGE_SERVICE_ROOT = path.resolve(
   "../../../image-service",
 );
 
-// Same isolation as images.integration.test.ts — never inherit ambient R2 creds.
-const R2_ACCESS_KEY_ID = process.env.TEST_R2_ACCESS_KEY_ID ?? "imgtest";
-const R2_SECRET_ACCESS_KEY = process.env.TEST_R2_SECRET_ACCESS_KEY ?? "imgtest-secret";
-// Dedicated bucket: the cleanup script sweeps the WHOLE original/ prefix, so it
-// must not share a bucket with the round-trip suite's in-flight fixtures.
-const R2_BUCKET_NAME = process.env.TEST_R2_BUCKET_NAME ?? "coffeemode-cleanup-test";
-const R2_ENDPOINT = process.env.TEST_R2_ENDPOINT ?? "http://localhost:9000";
-
 let minioUp = false;
 const createdKeys = new Set<string>();
 const cleanupErrors: string[] = [];
 
 function r2Endpoint(key: string): string {
-  return `${R2_ENDPOINT.replace(/\/+$/, "")}/${R2_BUCKET_NAME}/${key}`;
-}
-
-function r2Client(): AwsClient {
-  return new AwsClient({
-    accessKeyId: R2_ACCESS_KEY_ID,
-    secretAccessKey: R2_SECRET_ACCESS_KEY,
-    service: "s3",
-    region: "auto",
-  });
+  return r2EndpointForBucket(key, R2_BUCKET_NAME);
 }
 
 async function putObject(key: string, body: Uint8Array, metadata?: Record<string, string>): Promise<void> {
-  const url = `${r2Endpoint(key)}?X-Amz-Expires=600`;
-  const headers: Record<string, string> = { "Content-Type": "image/webp" };
-  for (const [k, v] of Object.entries(metadata ?? {})) headers[`x-amz-meta-${k}`] = v;
-  const request = new Request(url, { method: "PUT", headers });
-  const signed = await r2Client().sign(request, { aws: { signQuery: true, allHeaders: true } });
-  const outHeaders: Record<string, string> = {};
-  signed.headers.forEach((v, k) => {
-    if (k.toLowerCase() !== "host") outHeaders[k] = v;
-  });
-  delete outHeaders["content-type"];
-  outHeaders["Content-Type"] = "image/webp";
-  for (const [k, v] of Object.entries(metadata ?? {})) outHeaders[`x-amz-meta-${k}`] = v;
-  const res = await fetch(signed.url.toString(), {
-    method: "PUT",
-    headers: outHeaders,
-    body: body as unknown as BodyInit,
-  });
-  expect(res.ok).toBe(true);
+  await r2PutObject(key, body, metadata, R2_BUCKET_NAME);
+  // r2PutObject throws on failure (unlike original expect); preserve createdKeys tracking.
   createdKeys.add(key);
 }
 
 async function objectExists(key: string): Promise<boolean> {
-  const res = await r2Client().fetch(r2Endpoint(key), { method: "HEAD", redirect: "manual" });
-  if (res.status === 404) return false;
-  if (!res.ok) throw new Error(`HEAD ${key} failed ${res.status}`);
-  return true;
+  return r2ObjectExists(key, R2_BUCKET_NAME);
 }
 
 async function deleteObject(key: string): Promise<void> {
   try {
-    const res = await r2Client().fetch(r2Endpoint(key), { method: "DELETE" });
-    if (!res.ok && res.status !== 404) cleanupErrors.push(`DELETE ${key} -> ${res.status}`);
+    await r2DeleteObject(key, R2_BUCKET_NAME);
     createdKeys.delete(key);
   } catch (e) {
     cleanupErrors.push(`DELETE ${key} threw ${(e as Error).message}`);
+    createdKeys.delete(key);
   }
 }
 
@@ -137,12 +112,7 @@ function seedOriginal(key: string, metadata?: Record<string, string>): Promise<v
 
 describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
   beforeAll(async () => {
-    try {
-      const res = await fetch(`${R2_ENDPOINT}/minio/health/live`, { signal: AbortSignal.timeout(2000) });
-      minioUp = res.ok || res.status === 404;
-    } catch {
-      minioUp = false;
-    }
+    minioUp = await minioReachable();
     if (!minioUp) {
       console.warn("MinIO not reachable — cleanup tests will SKIP");
       return;

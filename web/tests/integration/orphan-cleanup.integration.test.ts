@@ -260,7 +260,6 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     expect(result.stdout).toContain('"truncated":true');
     // Exactly one candidate processed this run.
     expect(result.stdout).toContain('"orphanCandidates":1');
-    const remaining = keys.filter((k) => createdKeys.has(k) && k !== keys[0]);
     // At least one of the two must remain (only one was processed).
     const survivors = [];
     for (const k of keys) if (await objectExists(k)) survivors.push(k);

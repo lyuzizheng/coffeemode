@@ -615,7 +615,9 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       const repairedRaw = await cafeWorkStats(CAFE_A);
       const repaired = coerceWorkStats(repairedRaw);
       const { updated_at: _goodTs, ...goodNoTs } = good;
+      void _goodTs;
       const { updated_at: _repTs, ...repairedNoTs } = repaired;
+      void _repTs;
       expect(repairedNoTs).toEqual(goodNoTs);
 
       // Second run is a no-op (idempotent) — same dims/scores, new timestamp only
@@ -623,6 +625,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       const repaired2Raw = await cafeWorkStats(CAFE_A);
       const repaired2 = coerceWorkStats(repaired2Raw);
       const { updated_at: _rep2Ts, ...repaired2NoTs } = repaired2;
+      void _rep2Ts;
       expect(repaired2NoTs).toEqual(goodNoTs);
 
       // Public consumers see the repaired scores through coerce

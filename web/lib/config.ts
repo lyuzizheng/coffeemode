@@ -28,6 +28,9 @@ export interface AppConfig {
   cafes: {
     listLimitMax: number;
   };
+  feed: {
+    pageSize: number;
+  };
 }
 
 function fail(file: string, keyPath: string, reason: string): never {
@@ -67,12 +70,16 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
   const root = record(file, "(root)", raw);
   const search = record(file, "search", root.search);
   const cafes = record(file, "cafes", root.cafes);
+  const feed = record(file, "feed", root.feed);
   return {
     search: {
       maxRadiusKm: positiveNumber(file, "search.maxRadiusKm", search.maxRadiusKm),
     },
     cafes: {
       listLimitMax: positiveNumber(file, "cafes.listLimitMax", cafes.listLimitMax),
+    },
+    feed: {
+      pageSize: positiveNumber(file, "feed.pageSize", feed.pageSize),
     },
   };
 }

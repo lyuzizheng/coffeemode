@@ -39,6 +39,10 @@ describe("config files", () => {
     expect(appConfig.cafes.listLimitMax).toBe(50);
   });
 
+  it("owns the feed page size (spec 0001: 20 per page, both modes)", () => {
+    expect(appConfig.feed.pageSize).toBe(20);
+  });
+
   it("rateLimitConfig throws on an unknown bucket", () => {
     expect(() => rateLimitConfig("nope")).toThrow(/unknown rate limit "nope"/);
   });
@@ -68,10 +72,8 @@ describe("parseRateLimits validation", () => {
 
 describe("parseAppConfig validation", () => {
   it("accepts a valid config", () => {
-    expect(parseAppConfig({ search: { maxRadiusKm: 10 }, cafes: { listLimitMax: 50 } })).toEqual({
-      search: { maxRadiusKm: 10 },
-      cafes: { listLimitMax: 50 },
-    });
+    const valid = { search: { maxRadiusKm: 10 }, cafes: { listLimitMax: 50 }, feed: { pageSize: 20 } };
+    expect(parseAppConfig(valid)).toEqual(valid);
   });
 
   it("rejects a missing section", () => {
@@ -80,7 +82,11 @@ describe("parseAppConfig validation", () => {
 
   it("rejects a wrong type", () => {
     expect(() =>
-      parseAppConfig({ search: { maxRadiusKm: "10" }, cafes: { listLimitMax: 50 } }),
+      parseAppConfig({
+        search: { maxRadiusKm: "10" },
+        cafes: { listLimitMax: 50 },
+        feed: { pageSize: 20 },
+      }),
     ).toThrow(/"search\.maxRadiusKm" must be a positive number/);
   });
 });

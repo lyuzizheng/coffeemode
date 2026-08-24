@@ -16,6 +16,8 @@ export interface CafeSummary {
   opening_hours: WeeklyHours | null;
   price_range: number | null;
   work_stats: WorkStats;
+  /** Card-variant R2 key for list/card covers; null when the cafe has no photo yet. */
+  cover: string | null;
   /** Meters from the query point; present on nearby queries. */
   distance_m?: number;
 }
@@ -23,7 +25,6 @@ export interface CafeSummary {
 /** Full cafe row for the detail surface. */
 export interface CafeDetail extends Omit<CafeSummary, "distance_m"> {
   description: string | null;
-  cover: string | null;
   gallery: StoredImage[];
   google_place_id: string | null;
   apple_poi_id: string | null;

@@ -55,6 +55,34 @@ export interface CheckIn {
   deleted_at: string | null;
 }
 
+/** StoredImage without the internal author id (public feed, spec 0001). */
+export type PublicStoredImage = Omit<StoredImage, "by">;
+
+/**
+ * Public feed DTO (discovery-sheet): unauthenticated-safe — `user_id` and
+ * `StoredImage.by` are omitted, the author renders as "A nomad" at MVP.
+ */
+export interface PublicCheckIn {
+  id: string;
+  scores: CheckInScores;
+  min_spend: MinSpend | null;
+  max_stay: MaxStay | null;
+  note: string | null;
+  photos: PublicStoredImage[];
+  likes_count: number;
+  /** Whether the (possibly anonymous) viewer liked this check-in. */
+  liked_by_viewer: boolean;
+  visited_at: string;
+}
+
+export type CheckInFeedMode = "newest" | "helpful";
+
+export interface CheckInFeedPage {
+  checkins: PublicCheckIn[];
+  /** Opaque mode-bound cursor for the next page; null when exhausted. */
+  nextCursor: string | null;
+}
+
 /** Payload used to create or edit a check-in. */
 export interface CheckInInput extends CheckInPolicy {
   cafe_id?: string; // required for create; omitted on edit

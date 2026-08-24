@@ -9,3 +9,6 @@ search:
 cafes:
   # GET /api/cafes limit cap (also the default when no limit is given).
   listLimitMax: 50
+feed:
+  # Check-in feed page size for both Helpful and Newest modes (spec 0001).
+  pageSize: 20

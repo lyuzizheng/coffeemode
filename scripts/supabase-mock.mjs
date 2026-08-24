@@ -156,14 +156,10 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Fallback: health-friendly for probes hitting /status etc; unknown /auth/* writes get 404
+  // Fallback: unknown /auth/* (any method) and everything else get 404 — a 200
+  // fallback would be misparseable as a real GoTrue response by client libs.
   if (path.startsWith("/auth/")) {
     json(res, 404, { error: "not_found", message: `mock has no handler for ${req.method} ${path}` });
-    return;
-  }
-
-  if (req.method === "GET" && path === "/") {
-    json(res, 200, { ok: true, service: "supabase-mock", hint: "GET /auth/v1/health" });
     return;
   }
 

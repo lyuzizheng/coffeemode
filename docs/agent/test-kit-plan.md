@@ -11,7 +11,7 @@ Docker-compose based local kit covering DB, file storage (R2/MinIO), Cloudflare 
 ## Slices
 
 ### S1 testkit-helpers — Shared integration helpers
-- Files: `web/tests/helpers/db.ts`, `helpers/r2.ts`, `helpers/auth.ts`, `helpers/fixtures.ts`, `helpers/workers.ts`, `web/tests/setup.ts`, `vitest.config.mts` helpers exclusion
+- Files: `web/tests/helpers/db.ts`, `helpers/r2.ts`, `helpers/auth.ts`, `helpers/fixtures.ts`, `web/tests/setup.ts`, `vitest.config.mts` helpers exclusion
 - Refactor `db.integration.test.ts`, `images.integration.test.ts`, `orphan-cleanup.integration.test.ts` to import helpers
 - Gates: typecheck, unit, integration
 

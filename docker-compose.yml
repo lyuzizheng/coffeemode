@@ -118,8 +118,11 @@ services:
         echo '[miniflare-poi] starting wrangler dev on :8787 ...';
         npx wrangler dev --port 8787 --ip 0.0.0.0 --local
       "
+    # poi-service auth-gates every route (no public /), so an unauthenticated
+    # probe gets 401 — a 401 response is the healthy signal (worker up, auth on).
+    # wget --spider / curl -f would fail on 401 and --wait would never complete.
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8787/ || curl -f http://127.0.0.1:8787/ || exit 1"]
+      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/ | grep -qx 401"]
       interval: 5s
       timeout: 3s
       retries: 30

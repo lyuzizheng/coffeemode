@@ -6,9 +6,10 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 # Local kit defaults (S2): so `docker compose up -d --wait` works without editing.
 # Production MUST override these — a forgetful `wrangler deploy` with these
-# localhost values bakes a broken R2 endpoint into prod. Guard: either set
-# `[env.production]` vars below (recommended) or use `wrangler deploy --env production`
-# with prod values in Dash; CI should fail if `R2_ACCOUNT_ID` is still `local`.
+# localhost values bakes a broken R2 endpoint into prod. There is no automated
+# guard: before any deploy, set `[env.production]` vars below (recommended) or
+# use `wrangler deploy --env production` with prod values in Dash, and confirm
+# `R2_ACCOUNT_ID` is not still `local`.
 R2_ACCOUNT_ID = "local"
 R2_BUCKET_NAME = "coffeemode"
 R2_PUBLIC_URL = "http://localhost:9000/coffeemode"

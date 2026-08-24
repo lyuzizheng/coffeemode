@@ -4,16 +4,17 @@ compatibility_date = "2024-01-01" # Use a date in the past; update when intentio
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-# Replace with your Cloudflare account ID (public) before deploying.
-R2_ACCOUNT_ID = "YOUR_R2_ACCOUNT_ID"
-# Replace with your R2 bucket name.
-R2_BUCKET_NAME = "YOUR_R2_BUCKET_NAME"
-# Replace with your public R2 / CDN base URL (no trailing slash).
-R2_PUBLIC_URL = "https://YOUR_R2_PUBLIC_URL"
-# Local dev only: point presign + HEAD at an S3-compatible store instead of
-# R2 (e.g. MinIO from docker-compose.yml: http://localhost:9000). See
-# docs/agent/local-dev-stack.md. Unset in production.
-# R2_ENDPOINT = "http://localhost:9000"
+# Production: replace with your Cloudflare account ID / bucket / CDN base before deploying
+# (see docs/agent/pending-user-actions.md §6). Local kit (S2) uses the defaults below
+# so `docker compose up -d --wait` works without editing; production deploy MUST override.
+R2_ACCOUNT_ID = "local"
+R2_BUCKET_NAME = "coffeemode"
+R2_PUBLIC_URL = "http://localhost:9000/coffeemode"
+# Local kit (S2): point presign + HEAD at MinIO instead of real R2.
+# Inside compose the worker reaches MinIO as http://minio:9000; on the host
+# (manual `wrangler dev`) use http://localhost:9000. Compose service sets
+# R2_ENDPOINT=http://minio:9000 via environment — this var is the host fallback.
+R2_ENDPOINT = "http://localhost:9000"
 # TTL (seconds) for presigned upload/download URLs. Optional: when unset or
 # invalid, src/constants.ts DEFAULT_UPLOAD_URL_TTL_SECONDS (600) applies.
 # WARNING: must stay well under the 1h upload-intent window
@@ -23,8 +24,8 @@ UPLOAD_URL_TTL_SECONDS = "600"
 
 [[r2_buckets]]
 binding = "R2_BUCKET"
-# Must match R2_BUCKET_NAME above.
-bucket_name = "YOUR_R2_BUCKET_NAME"
+# Must match R2_BUCKET_NAME above (local: coffeemode).
+bucket_name = "coffeemode"
 
 # Lifecycle: configure an R2 lifecycle rule (Cloudflare dashboard or S3 API)
 # to delete abandoned `original/` objects. Because R2 lifecycle rules cannot

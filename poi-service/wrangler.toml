@@ -24,12 +24,17 @@ compatibility_date = "2024-01-01" # Use a date in the past; update when intentio
 
 [[kv_namespaces]]
 binding = "POI_KV"
-id = "YOUR_KV_NAMESPACE_ID"
+# Local compose (S2): deterministic local ID so `wrangler dev --local` / miniflare-poi
+# never rejects the placeholder. Production: replace with the real id from
+# `wrangler kv namespace create poi-cache`.
+id = "22222222-2222-2222-2222-222222222222"
 
 [[d1_databases]]
 binding = "POI_DB"
 database_name = "poi-store"
-database_id = "YOUR_D1_DATABASE_ID"
+# Local compose (S2): deterministic local ID for `wrangler d1 migrations apply --local`
+# and miniflare-poi. Production: replace with the real id from `wrangler d1 create poi-store`.
+database_id = "11111111-1111-1111-1111-111111111111"
 
 # --- Routing ---
 [observability]

@@ -34,11 +34,18 @@ export function ShareControl({
   const t = useTranslations("share");
   const [popoverOpen, setPopoverOpen] = useState(false);
   const rootRef = useRef<HTMLSpanElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
   const isWeChat = useSyncExternalStore(subscribeNoop, readIsWeChat, () => false);
 
   // Popover dismiss: outside pointer-down or Escape.
+  // Also moves focus into the popover on open and returns it to the trigger on close.
   useEffect(() => {
     if (!popoverOpen) return;
+    // Move focus to the primary action inside the dialog for SR/keyboard users.
+    const popoverEl = popoverRef.current;
+    const focusTarget = popoverEl?.querySelector<HTMLButtonElement>("button");
+    focusTarget?.focus();
     const onPointerDown = (event: PointerEvent) => {
       if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
         setPopoverOpen(false);
@@ -52,6 +59,8 @@ export function ShareControl({
     return () => {
       window.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
+      // Return focus to the trigger when the dialog closes via Escape/outside-click.
+      triggerRef.current?.focus();
     };
   }, [popoverOpen]);
 
@@ -85,9 +94,12 @@ export function ShareControl({
   return (
     <span ref={rootRef} className="relative inline-flex">
       <Button
+        ref={triggerRef as unknown as React.Ref<HTMLButtonElement>}
         variant="ghost"
         isIconOnly
         aria-label={t("aria")}
+        aria-haspopup="dialog"
+        aria-expanded={popoverOpen}
         className="h-9 w-9 min-w-9 text-muted hover:text-foreground"
         onPress={handleShare}
       >
@@ -95,6 +107,7 @@ export function ShareControl({
       </Button>
       {popoverOpen && (
         <div
+          ref={popoverRef}
           role="dialog"
           aria-label={t("copy_link")}
           className="absolute right-0 top-full z-10 mt-2 w-56 rounded-md border border-separator bg-surface p-3 shadow-md"

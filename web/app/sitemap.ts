@@ -4,6 +4,7 @@ import { cafeCanonicalPath } from "@/lib/seo";
 import { getRequestOrigin } from "@/lib/site-origin";
 
 // DB-backed: never prerendered at build (CI builds without Postgres).
+// Cached at the edge via next.config.ts /sitemap.xml s-maxage (DG105).
 export const dynamic = "force-dynamic";
 
 /**

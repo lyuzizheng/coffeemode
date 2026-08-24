@@ -22,10 +22,12 @@ export async function getRequestOrigin(): Promise<string> {
     }
   }
   const h = await headers();
-  // `host` only: x-forwarded-host is client-controllable and would let a
-  // caller mint canonical/OG URLs for an arbitrary origin (host injection).
-  // Behind Cloudflare the Host header carries the original public host;
-  // production pins NEXT_PUBLIC_SITE_URL anyway (DG110).
+  // No trusted edge yet with `Host`-only: without a CDN/reverse-proxy in front,
+  // `Host` is also client-controllable, so pre-domain / local-dev fallbacks here
+  // could in principle mint canonical/OG URLs for an arbitrary host. We still prefer
+  // `host` over `x-forwarded-host` (the latter is always injection-prone and never
+  // set by Cloudflare), and production MUST pin `NEXT_PUBLIC_SITE_URL` (DG110) so
+  // shared links never depend on which host served them; the fallback is dev-only.
   const proto = (h.get("x-forwarded-proto") ?? "https").split(",")[0]?.trim() || "https";
   const host = h.get("host");
   if (host) return `${proto === "http" ? "http" : "https"}://${host}`;

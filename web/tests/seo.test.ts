@@ -5,6 +5,7 @@ import {
   cafeOgImageUrl,
   ogHookParams,
   publicCafeShell,
+  serializeJsonLd,
 } from "@/lib/seo";
 import { emptyWorkStats } from "@/lib/stats/work-stats";
 import type { WorkStats } from "@/lib/stats/work-stats";
@@ -109,6 +110,19 @@ describe("cafeJsonLd (DG105)", () => {
       "u",
     );
     expect(jsonLd.address).toBeUndefined();
+  });
+
+  it("escapes < so stored XSS cannot break out of the ld+json script", () => {
+    const malicious = 'x</script><script>alert(1)</script>';
+    const jsonLd = cafeJsonLd(
+      { name: malicious, address: malicious, city: "SG", lat: 0, lng: 0, work_stats: statsWith(null, 0) },
+      "https://coffeemode.app/cafes/x",
+    );
+    const serialized = serializeJsonLd(jsonLd);
+    expect(serialized).not.toContain("<");
+    expect(serialized).toContain("\\u003c");
+    // The raw name is still present in the object; escaping is at serialization boundary.
+    expect(jsonLd.name).toBe(malicious);
   });
 });
 

@@ -16,6 +16,7 @@ import {
   cafeOgImageUrl,
   ogHookParams,
   publicCafeShell,
+  serializeJsonLd,
 } from "@/lib/seo";
 import { getRequestOrigin } from "@/lib/site-origin";
 import { APP_NAME } from "@/lib/site";
@@ -55,7 +56,14 @@ export async function generateMetadata({
   // DG108: og:title keeps the app name suffix; the cover is the og:image,
   // with the dynamic fallback card when the cafe has no photo yet.
   const ogTitle = `${title} — ${APP_NAME}`;
-  const ogImage = cafeOgImageUrl(cafe) ?? `${url}/og-image`;
+  // Cover is the 400×300 card variant (CARD_SIZE, web/lib/images/processor.ts:43);
+  // the dynamic /og-image fallback is 1200×630. Declare the honest dimensions per source
+  // so share cards don't ship mismatched og:image:width/height.
+  const coverOgImage = cafeOgImageUrl(cafe);
+  const ogImage = coverOgImage ?? `${url}/og-image`;
+  const ogImages = coverOgImage
+    ? [{ url: ogImage, width: 400, height: 300, alt: cafe.name }]
+    : [{ url: ogImage, width: 1200, height: 630, alt: cafe.name }];
 
   return {
     title,
@@ -72,7 +80,7 @@ export async function generateMetadata({
       siteName: APP_NAME,
       type: "website",
       locale: (await getLocale()) === "zh" ? "zh_CN" : "en_US",
-      images: [{ url: ogImage, width: 1200, height: 630, alt: cafe.name }],
+      images: ogImages,
     },
     twitter: {
       card: "summary_large_image",
@@ -136,7 +144,7 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
         {/* DG105: JSON-LD for crawlers and AI search engines. */}
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(cafeJsonLd(cafe, canonical)) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(cafeJsonLd(cafe, canonical)) }}
         />
 
         {/* Part 2 — the check-in feed (DG106): user content loads from the

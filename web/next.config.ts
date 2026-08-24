@@ -86,7 +86,27 @@ const nextConfig: NextConfig = {
         // first locale to hit a URL would be served to everyone. Recorded in
         // docs/agent/current-state.md known issues; do not "fix" by removing
         // s-maxage (DG105 is spec-owned).
+        //
+        // COOKIE / 404 CAVEAT: this header also matches responses that just
+        // refreshed a Supabase session (Set-Cookie present via proxy setAll)
+        // and the proxy-rewritten gone-cafe 404s (/__gone-cafe). Inert with
+        // no shared cache; before the CDN lands its Cache Rule MUST bypass on
+        // `sb-*` request cookies and on Set-Cookie responses, otherwise a
+        // refreshed session cookie is cached and a 404 can pin a URL for up
+        // to s-maxage after the cafe is recreated. See docs/agent/current-state.md.
         source: "/cafes/:id*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: `public, s-maxage=${appConfig.seo.shellCache.sMaxAgeSeconds}, stale-while-revalidate=${appConfig.seo.shellCache.staleWhileRevalidateSeconds}`,
+          },
+        ],
+      },
+      {
+        // Sitemap is the most bot-hit endpoint; without caching every crawl
+        // scans the full cafes table (ORDER BY lastmod). A short s-maxage
+        // bounds origin load (DG105/DG107); cache key is locale-independent.
+        source: "/sitemap.xml",
         headers: [
           {
             key: "Cache-Control",

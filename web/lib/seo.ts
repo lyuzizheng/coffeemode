@@ -71,6 +71,17 @@ export function cafeJsonLd(
   return jsonLd;
 }
 
+/**
+ * Serialize JSON-LD for injection via dangerouslySetInnerHTML.
+ * Escapes `<` as `\u003c` so a stored cafe name like `x</script><script>alert(1)`
+ * cannot break out of the `<script type="application/ld+json">` element on this
+ * public, CDN-cached page. React's normal escaping is bypassed by
+ * dangerouslySetInnerHTML, so the escaping must happen here.
+ */
+export function serializeJsonLd(value: Record<string, unknown>): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
 /** The exact narrow slices the SSR shell hands to its client components. */
 export interface PublicCafeShell {
   openState: { opening_hours: WeeklyHours | null; tz: string | null };

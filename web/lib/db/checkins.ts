@@ -61,6 +61,9 @@ export function parseScores(value: unknown, field = "scores"): ParseResult<Check
  *  DG68 caps check-in photos at 6 (amends the earlier 10). */
 export const MAX_PHOTOS_PER_CHECKIN = 6;
 
+/** DG67 caps note at 500 chars (amends the earlier 1000). */
+export const MAX_NOTE_LENGTH = 500;
+
 export function parsePhotoIds(value: unknown, field = "photo_ids"): ParseResult<string[]> {
   if (!Array.isArray(value)) return fail(`${field} must be an array of image UUIDs`);
   if (value.length > MAX_PHOTOS_PER_CHECKIN) {
@@ -158,7 +161,7 @@ export function parseCheckInBody(body: unknown): ParseResult<CreateCheckInInput>
   if (raw.note !== undefined && raw.note !== null) {
     if (typeof raw.note !== "string") return fail("note must be a string");
     const trimmed = raw.note.trim();
-    if (trimmed.length > 500) return fail("note is too long (max 500)");
+    if (trimmed.length > MAX_NOTE_LENGTH) return fail(`note is too long (max ${MAX_NOTE_LENGTH})`);
     if (trimmed !== "") note = trimmed;
   }
 
@@ -363,7 +366,7 @@ export function parseUpdateCheckInBody(body: unknown): ParseResult<UpdateCheckIn
     else if (typeof v !== "string") return fail("note must be a string or null");
     else {
       const trimmed = v.trim();
-      if (trimmed.length > 500) return fail("note is too long (max 500)");
+      if (trimmed.length > MAX_NOTE_LENGTH) return fail(`note is too long (max ${MAX_NOTE_LENGTH})`);
       note = trimmed === "" ? null : trimmed;
     }
   }

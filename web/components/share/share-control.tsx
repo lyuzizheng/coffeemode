@@ -1,51 +1,40 @@
 "use client";
 
-/**
- * Share control (spec 0001 §PWA & sharing, DG109, artifact §4).
- *
- * One ghost icon button that does the right thing per context: the native
- * share sheet where the Web Share API exists, a copy-link popover inside
- * WeChat (its in-app browser has no share API — day-one WeChat support),
- * and copy-link everywhere else. Copy link is never a hidden fallback:
- * it is always one tap away. Copy feedback is a toast.
- */
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Button, toast } from "@heroui/react";
-import { ShareIcon } from "@/components/icons";
-import { buildShareData, isWeChatUserAgent } from "@/lib/share";
+import { toast } from "@heroui/toast";
+import { Button } from "@/components/ui/button";
 
-// The UA never changes within a session: a no-op subscription is enough for
-// useSyncExternalStore. Server snapshot is false (no navigator), so SSR
-// renders the generic share path and the client settles on the real value
-// at hydration without a state-in-effect write.
-const subscribeNoop = () => () => {};
-const readIsWeChat = () => isWeChatUserAgent(navigator.userAgent);
+interface ShareControlProps {
+  url: string;
+  title: string;
+  text?: string;
+  variant?: "icon" | "full";
+  className?: string;
+}
 
 export function ShareControl({
   url,
   title,
-}: {
-  /** Absolute canonical URL to share. */
-  url: string;
-  /** Cafe name — native share-sheet title and copied-text context. */
-  title: string;
-}) {
+  text,
+  variant = "icon",
+  className,
+}: ShareControlProps) {
   const t = useTranslations("share");
+  const [canShare, setCanShare] = useState(false);
   const [popoverOpen, setPopoverOpen] = useState(false);
-  const rootRef = useRef<HTMLSpanElement | null>(null);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const popoverRef = useRef<HTMLDivElement | null>(null);
-  const isWeChat = useSyncExternalStore(subscribeNoop, readIsWeChat, () => false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
-  // Popover dismiss: outside pointer-down or Escape.
-  // Also moves focus into the popover on open and returns it to the trigger on close.
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      setCanShare(true);
+    }
+  }, []);
+
+  // Listeners close popover on click outside or Escape
   useEffect(() => {
     if (!popoverOpen) return;
-    // Move focus to the primary action inside the dialog for SR/keyboard users.
-    const popoverEl = popoverRef.current;
-    const focusTarget = popoverEl?.querySelector<HTMLButtonElement>("button");
-    focusTarget?.focus();
     const onPointerDown = (event: PointerEvent) => {
       if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
         setPopoverOpen(false);
@@ -54,14 +43,14 @@ export function ShareControl({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setPopoverOpen(false);
     };
+    const triggerEl = triggerRef.current;
     window.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("keydown", onKeyDown);
-    const triggerNode = triggerRef.current;
     return () => {
       window.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
       // Return focus to the trigger when the dialog closes via Escape/outside-click.
-      triggerNode?.focus();
+      triggerEl?.focus();
     };
   }, [popoverOpen]);
 
@@ -74,58 +63,99 @@ export function ShareControl({
     }
   };
 
-  const handleShare = async () => {
-    if (isWeChat) {
+  const handleNativeShare = async () => {
+    try {
+      await navigator.share({
+        title,
+        text: text ?? title,
+        url,
+      });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      // Native share failed/unsupported -> fallback to popover
       setPopoverOpen(true);
-      return;
     }
-    if (typeof navigator.share === "function") {
-      try {
-        await navigator.share(buildShareData(url, title));
-        return;
-      } catch (err) {
-        // AbortError = the user dismissed the native sheet — not a failure.
-        if ((err as DOMException)?.name !== "AbortError") await copyLink();
-        return;
-      }
+  };
+
+  const handleShareClick = () => {
+    if (canShare) {
+      void handleNativeShare();
+    } else {
+      setPopoverOpen((prev) => !prev);
     }
-    await copyLink();
+  };
+
+  const shareTwitter = () => {
+    const tweetText = encodeURIComponent(text ?? title);
+    const tweetUrl = encodeURIComponent(url);
+    window.open(
+      `https://twitter.com/intent/tweet?text=${tweetText}&url=${tweetUrl}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
   };
 
   return (
-    <span ref={rootRef} className="relative inline-flex">
+    <div ref={rootRef} className={`relative inline-block ${className ?? ""}`}>
       <Button
-        ref={triggerRef as unknown as React.Ref<HTMLButtonElement>}
+        ref={triggerRef}
+        type="button"
         variant="ghost"
-        isIconOnly
-        aria-label={t("aria")}
+        size="sm"
+        aria-label={t("share")}
         aria-haspopup="dialog"
         aria-expanded={popoverOpen}
-        className="h-9 w-9 min-w-9 text-muted hover:text-foreground"
-        onPress={handleShare}
+        onPress={handleShareClick}
       >
-        <ShareIcon size={16} />
+        <svg
+          className="w-4 h-4"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+          />
+        </svg>
+        {variant === "full" && <span className="ml-1.5">{t("share")}</span>}
       </Button>
+
       {popoverOpen && (
         <div
-          ref={popoverRef}
           role="dialog"
-          aria-label={t("copy_link")}
-          className="absolute right-0 top-full z-10 mt-2 w-56 rounded-md border border-separator bg-surface p-3 shadow-md"
+          aria-label={t("share_options")}
+          className="absolute right-0 top-full mt-1.5 z-50 min-w-40 rounded-xl bg-surface p-1.5 shadow-xl border border-divider flex flex-col gap-1"
         >
-          <p className="text-xs leading-relaxed text-muted">{t("wechat_hint")}</p>
           <Button
-            variant="primary"
-            className="mt-2 w-full rounded-sm"
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start text-xs font-medium"
             onPress={() => {
-              setPopoverOpen(false);
               void copyLink();
+              setPopoverOpen(false);
             }}
           >
-            {t("copy_link")}
+            📋 {t("copy_link")}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start text-xs font-medium"
+            onPress={() => {
+              shareTwitter();
+              setPopoverOpen(false);
+            }}
+          >
+            🐦 {t("share_x")}
           </Button>
         </div>
       )}
-    </span>
+    </div>
   );
 }

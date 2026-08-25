@@ -13,6 +13,7 @@ import {
   rateLimiter,
 } from "@/lib/rate-limit";
 import type { CompleteImageRequest, CompleteImageResponse, ImageTargetType } from "@/types/images";
+import { isSameOrigin } from "@/lib/security/origin";
 
 export const runtime = "nodejs";
 
@@ -42,6 +43,10 @@ function validateBody(body: unknown): CompleteImageRequest | null {
  * Called by the browser after it has uploaded the original to R2.
  */
 export async function POST(request: Request) {
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ error: "forbidden_origin" }, { status: 403 });
+  }
+
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

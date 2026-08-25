@@ -8,6 +8,7 @@ import {
   rateLimitResponse,
   rateLimiter,
 } from "@/lib/rate-limit";
+import { isSameOrigin } from "@/lib/security/origin";
 
 /**
  * POST /api/places/resolve  {maps_share_url}
@@ -16,6 +17,10 @@ import {
  * worker; this route validates the host before proxying.
  */
 export async function POST(request: Request) {
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ error: "forbidden_origin" }, { status: 403 });
+  }
+
   const body = await request.json().catch(() => null);
   const mapsShareUrl: unknown =
     body && typeof body === "object" && "maps_share_url" in body

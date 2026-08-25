@@ -91,7 +91,7 @@ CafeCard:         Horizontal swipe card (~85% width, snap carousel); compact
 BottomSheet:      Google-Maps-style sheet, snap states peek / half / full
 WorkProfile:      Dimension bars (wifi/outlets/seats/temp/coffee) + policy consensus
 ScoreSlider:      0-100 subjective slider with live value (check-in + creation)
-PolicyChips:      min-spend / max-stay chip groups
+PolicyChips:      max-stay chip group (min-spend group removed, DG125)
 NavPrompt:        ClassPass-style "有去喝一杯吗？" slide-up card (DG92)
 ```
 

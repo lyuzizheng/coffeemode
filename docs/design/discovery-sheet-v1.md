@@ -196,10 +196,11 @@ Map stays visible ~15% at top. Content is a single scroll column:
    Each row ends with its respondent count (`text-xs`, `muted`). A
    zero-response dimension renders the label plus `Not enough check-ins`
    (`text-xs`, `muted`, italic) — never a zero bar (DG10).
-3. **Policy consensus** — two stacked rows: `Min spend` and `Max stay`
-   (`text-sm` labels) with the consensus value as a read-only chip
+3. **Policy consensus** — one row: `Max stay`
+   (`text-sm` label) with the consensus value as a read-only chip
    (`surface-secondary`, `radius-sm`). Unknown consensus renders the
-   `unknown` chip honestly.
+   `unknown` chip honestly. (The `Min spend` row was removed 2026-08-25 —
+   DG125.)
 4. **Gallery** — horizontal thumbnail scroll (72px squares, `radius-md`,
    8px gaps) when photos exist; section omitted entirely when empty.
 5. **Check-in feed** — section heading `Check-ins` (`text-lg`), the §6 mode

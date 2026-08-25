@@ -113,10 +113,11 @@ when ≥1 filter is active.
    (discovery-sheet-v1 §6): `surface-secondary` track, active segment
    `surface` + 1px `border`, 120ms pill slide. `Any` is the default and means
    "no threshold" — the parameter is omitted from the URL entirely.
-3. **Min spend / Max stay** — two `PolicyChips` single-select groups
+3. **Max stay** — one `PolicyChips` single-select group
    (existing theme-preview pattern), with `Any` as the first chip and
-   default. Chip values per spec: `none | drink | s5 | s10 | s10plus` and
-   `unlimited | 3h | 2h | 1h | peak`. `unknown` is **not** offered as a
+   default. Chip values per spec: `unlimited | 3h | 2h | 1h | peak`. (The
+   Min spend group was removed 2026-08-25 — DG125.) `unknown` is **not**
+   offered as a
    filter — filtering by "unknown" selects cafes with no data, which is a
    research tool, not a nomad tool.
 

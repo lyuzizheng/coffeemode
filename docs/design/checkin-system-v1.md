@@ -100,11 +100,11 @@ Reuse the themed `ScoreSlider` primitive from `web/app/theme-preview/shared.tsx`
 
 ### 3.3 Policy chips
 
-Two `PolicyChips` single-select groups (existing themed pattern):
-`Min spend` (`none | drink | s5 | s10 | s10plus | unknown`) and
+One `PolicyChips` single-select group (existing themed pattern):
 `Max stay` (`unlimited | 3h | 2h | 1h | peak | unknown`) — values per spec,
 with `unknown` rendered as a full chip equal to the others (honest data is
-first-class, spec 0001). Chip: `radius-sm`, 36px height, `surface-secondary`
+first-class, spec 0001). (The `Min spend` group was removed 2026-08-25 —
+DG125.) Chip: `radius-sm`, 36px height, `surface-secondary`
 idle, selected = `surface` + 1px `accent` border + `accent` text,
 `aria-pressed` toggle semantics. Nothing selected by default.
 

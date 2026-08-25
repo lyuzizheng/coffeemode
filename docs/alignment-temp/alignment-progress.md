@@ -333,6 +333,24 @@ pending A/B dismissal-scope question is void.
 |---|----------|--------|
 | DG124 | `/cafes/[id]` hydrates into the map app | First paint stays the SSR public shell (DG105/DG106 crawler, SEO, and anti-scrape properties intact; MapKit loads after paint); once both parts are up, the page hydrates in place — the map materializes behind the content, the shell becomes the FULL sheet, and the DG14/DG15 drag-down gestures step FULL → HALF → PEEK to reveal the map. DeepLinkBanner abolished (Q10 void); the `/?cafe=[id]` app-entry mechanism retired. Amends DG104/DG106; spec 0001 §Rendering/§Onboarding/§Edge cases, spec 0002 component list, seo-sharing-v1 §2/§3/§6/§7, onboarding-v1 §5 amended |
 
+## Round 16 — Search-filters post-review grill — DG125–DG130 (DG126 proposed)
+
+Post-merge two-axis review of the search backend (PR #205, issue #135)
+and PRs #209–#212 surfaced spec gaps; owner ruled on the product ones.
+
+| # | Decision | Answer |
+|---|----------|--------|
+| DG125 | `min_spend` removed entirely | Owner: not worth the check-in burden. The concept is removed from check-in, filters, schema (new migration), consensus, i18n, and theme preview. No replacement field; if a price signal is wanted later, surface Google's `price_level` as imported provider metadata on cafe detail — never a voted dimension. Specs 0001/0004 amended |
+| DG126 | `max_stay` re-bucket + slider UX (PROPOSED, pending owner confirm) | Check-in control: segmented slider `<1.5h \| 1.5–3h \| 3h+ \| unlimited` (owner anchored left = `<1.5h` and right = no-limit; middle buckets assistant-proposed). The control visually rests at the unlimited end, but an untouched control casts NO `max_stay` vote — unlimited must be an explicit stop (data-quality guard against skip-votes poisoning consensus). Filter semantics: ordinal ≥ on the bucket lower bound. Spec amendment waits for owner confirmation |
+| DG127 | Unknown-consensus exclusion under active policy filters | When a policy filter is active, cafes with unknown/insufficient consensus are excluded; the UI shows a capsule hint with the excluded count ("N hidden — no data yet") feeding the flywheel. Spec 0001 amended |
+| DG128 | Default city via Cloudflare IP geo | Omitted-city resolution: Cloudflare `CF-IPCity` header (Managed Transform required on the zone) mapped against the curated DG50 city list (ISO alpha-2 + IATA metro), kept in `web/config/`; fallback chain header-city → country match → global default. An explicit `city=` matching no known city → 400, never a silent re-anchor (fixes the PR #205 Singapore-fallback finding). DG121 runtime auto-create stays geolocation-only. Spec 0001 amended |
+| DG129 | Search rate limits + observability | `search` bucket per IP: 30/min, 100/hour, 200/day (multi-window); limit hits fire an alert. Observability: Better Stack integration (owner action: account + token) alongside Cloudflare observability. The same YAML-bucket pattern extends to the unrated profile routes (PR #209 finding). Values live in `web/config/rate-limits.yaml` (DG74/DG107); spec 0001 amended |
+| DG130 | Search response `source` field + live-Google split | `SearchResultItem` gains explicit `source: "coffeemode" \| "stored_poi" \| "google" \| "apple"` (makes #135 AC1 testable at the API level). Live-Google wiring through the POI service splits to a follow-up issue; the backend slice stays stored-only + `is_weak_results`. Spec 0001 amended |
+
+Open: DG46 scope (top-10 binds only suggestion rows vs the whole search
+API) — owner asked for context instead of ruling; recommendation stands
+at top-10 everywhere with the number config-owned. Pending owner.
+
 ## Decisions log
 
 - 2026-07-31: Architecture pivot from "migrate Vite SPA + keep Java backend" to "rewrite as full-stack Next.js, drop Java"
@@ -362,6 +380,7 @@ pending A/B dismissal-scope question is void.
 - 2026-08-23: Artifact grill round 14 (seo-sharing) completed except Q10 — DG110-DG113 ruled: locale-independent canonical URL made permanent (cookie/Accept-Language + hreflang x-default), 404 nearby-cafes recovery that never prompts for location, global location-permission contract (explicit-tap-only OS prompt, no-permission fallback everywhere), feed default = Newest (owner override of the Helpful recommendation); Q10 (DeepLinkBanner dismissal scope) still pending owner
 - 2026-08-23: Artifact grill round 15 (onboarding) — DG114-DG123 ruled: immediate non-modal welcome card, Select-only wrong-city correction, Skip lands on the IP-detected city, denied re-entry via locate button + one-time settings toast, DG112 gates the OS prompt not the card UI, no recenter after user pan, session-persistent blue dot, out-of-coverage geolocation auto-creates the city with a first-nomad invitation (owner expansion), profiles.onboarded authoritative across devices, offline grant still dismisses
 - 2026-08-23: DG124 — round-14 Q10 resolved by redesign: /cafes/[id] first paint stays the SSR shell, then hydrates in place into the map app at FULL sheet with drag-down to the map; DeepLinkBanner abolished and the /?cafe= app entry retired (amends DG104/DG106). Grill program fully complete; path clears for implementation (#146 work-profile is the only READY slice)
+- 2026-08-25: Post-merge review grill round 16 (search-filters) — DG125-DG130 ruled (DG126 PROPOSED, pending owner): min_spend concept removed entirely (price signal, if any, comes from Google's imported price_level, never a voted field); unknown-consensus exclusion + capsule hint under active policy filters; default city resolution via Cloudflare CF-IPCity header against the config-owned DG50 city list with 400 on unknown explicit city; search rate limits 30/min + 100/h + 200/day per IP with Better Stack alerting; SearchResultItem gains an explicit source field and live-Google wiring splits to a follow-up issue. DG126 max_stay re-bucket/slider is PROPOSED pending owner; DG46 API-scope question open
 
 ## Final tech stack (locked)
 

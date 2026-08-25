@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Card } from "@heroui/react";
 import { getTranslations } from "next-intl/server";
 import { profileFromUser } from "@/lib/auth/profiles";
@@ -49,7 +50,32 @@ export default async function HomePage({
         <span className="font-display text-md font-extrabold tracking-tight text-foreground">
           CoffeeMode
         </span>
-        <ThemeToggle />
+        <div className="flex items-center gap-2">
+          <Link
+            href="/profile"
+            aria-label="Profile"
+            className="w-9 h-9 rounded-full bg-surface-secondary border border-border/50 flex items-center justify-center text-foreground hover:bg-surface-tertiary active:scale-95 transition-all text-xs font-semibold"
+          >
+            {user ? (
+              profileFromUser(user).displayName[0]?.toUpperCase() ?? "P"
+            ) : (
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="8" cy="5" r="3" />
+                <path d="M2.5 14a5.5 5.5 0 0 1 11 0" />
+              </svg>
+            )}
+          </Link>
+          <ThemeToggle />
+        </div>
       </header>
 
       <main className="flex flex-1 flex-col items-center justify-center px-6 py-10">

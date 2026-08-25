@@ -6,6 +6,13 @@ search:
   # POI worker's own bounding-box ceiling (200 km) lives in web/shared; this
   # proxy cap is deliberately stricter.
   maxRadiusKm: 10
+  # Suggestion rows cap per DG46 (top-10 only, no pagination).
+  defaultSuggestionLimit: 10
+  maxSuggestionLimit: 10
+  # Weak local results threshold per DG49 (< 3 matches).
+  weakResultsThreshold: 3
+  # Server-side DB fetch cap to bound in-memory filtering.
+  dbFetchCap: 100
 cafes:
   # GET /api/cafes limit cap (also the default when no limit is given).
   listLimitMax: 50

@@ -15,9 +15,10 @@
     "typecheck": "tsc --noEmit",
     "check:i18n": "node scripts/check-i18n.mjs",
     "check:visual": "node scripts/visual-smoke.mjs",
+    "check:bundle": "node scripts/check-bundle-budget.mjs",
     "analyze": "next experimental-analyze --output",
     "lhci": "lhci autorun",
-    "verify": "npm run check:i18n && npm run typecheck && npm run lint && npm run test && npm run build"
+    "verify": "npm run check:i18n && npm run typecheck && npm run lint && npm run test && npm run build && npm run check:bundle"
   },
   "dependencies": {
     "@heroui/react": "^3.2.3",

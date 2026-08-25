@@ -18,9 +18,10 @@ npm run dev        # next dev (Turbopack)
 npm run build      # production build
 npm run lint       # eslint
 npm run typecheck  # tsc --noEmit
-npm run test       # vitest unit tests
-npm run analyze    # bundle analysis (Next 16 diagnostics)
-npm run lhci       # lighthouse CI runs against production build
+npm run test         # vitest unit tests
+npm run analyze      # bundle analysis (Next 16 diagnostics)
+npm run check:bundle # verify bundle chunk size budgets
+npm run lhci         # lighthouse CI runs against production build
 ```
 
 ## Next.js 16 notes (read before editing)

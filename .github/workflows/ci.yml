@@ -91,9 +91,15 @@ jobs:
       - name: Bundle analysis
         run: npm run analyze
 
-      - name: Verify bundle analysis diagnostics
-        run: |
-          test -d .next/diagnostics/analyze
+      - name: Verify bundle budget
+        run: node scripts/check-bundle-budget.mjs
+
+      - name: Upload bundle analysis report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-analysis-report
+          path: web/.next/diagnostics/analyze
+          if-no-files-found: error
 
       - name: Verify PWA artifacts
         run: |

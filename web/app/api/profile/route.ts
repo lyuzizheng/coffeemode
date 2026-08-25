@@ -3,8 +3,6 @@ import { getCurrentUser } from "@/lib/auth/get-user";
 import { getProfile, getUserStats, updateProfile } from "@/lib/db/profile";
 import { isSameOrigin } from "@/lib/security/origin";
 
-export const dynamic = "force-dynamic";
-
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) {

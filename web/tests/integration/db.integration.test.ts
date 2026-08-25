@@ -38,6 +38,13 @@ import {
   listCafeSitemapEntries,
   listCafesNearby,
 } from "@/lib/db/cafes";
+import {
+  getProfile,
+  getUserStats,
+  updateProfile,
+  getUserCheckIns,
+  getUserCafes,
+} from "@/lib/db/profile";
 import { searchCafesInDb } from "@/lib/db/search";
 import { recordNavigation } from "@/lib/db/navigations";
 import {
@@ -799,6 +806,43 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     it("respects the limit parameter and returns work_stats", async () => {
       const results = await searchCafesInDb({ limit: 1 });
       expect(results.length).toBeLessThanOrEqual(1);
+    });
+  });
+
+  describeDb("profile queries on real Postgres (profile-page slice #152)", () => {
+    it("gets user profile and stats accurately", async () => {
+      const p = await getProfile(U1);
+      expect(p).not.toBeNull();
+      expect(p?.id).toBe(U1);
+      expect(p?.displayName).toBe("u1");
+
+      const s = await getUserStats(U1);
+      expect(s.cafesCount).toBeGreaterThanOrEqual(1);
+      expect(s.checkinsCount).toBeGreaterThanOrEqual(1);
+    });
+
+    it("updates display_name and current_city", async () => {
+      const updated = await updateProfile(U1, {
+        displayName: "Nomad Alex",
+        currentCity: "tokyo",
+      });
+      expect(updated?.displayName).toBe("Nomad Alex");
+      expect(updated?.currentCity).toBe("tokyo");
+
+      const fetched = await getProfile(U1);
+      expect(fetched?.displayName).toBe("Nomad Alex");
+      expect(fetched?.currentCity).toBe("tokyo");
+    });
+
+    it("returns user check-ins and distinct cafes with pagination", async () => {
+      const checkinsResult = await getUserCheckIns(U1, { limit: 10 });
+      expect(checkinsResult.items.length).toBeGreaterThanOrEqual(1);
+      expect(checkinsResult.items[0]?.cafeId).toBe(CAFE_A);
+
+      const cafesResult = await getUserCafes(U1, { limit: 10 });
+      expect(cafesResult.items.length).toBeGreaterThanOrEqual(1);
+      expect(cafesResult.items[0]?.id).toBe(CAFE_A);
+      expect(cafesResult.items[0]?.isCreation).toBe(true);
     });
   });
 });

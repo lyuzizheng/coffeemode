@@ -1,0 +1,97 @@
+import { describe, expect, it } from "vitest";
+import { emptyWorkStats } from "@/lib/stats/work-stats";
+import type { CafeSummary } from "@/types/cafes";
+import {
+  getConsensusPolicy,
+  getDimensionAverage,
+  hasWorkFiltersActive,
+  matchesAllFilters,
+  matchesMaxStay,
+  matchesMinSpend,
+  matchesWorkDimension,
+} from "@/lib/search/filter";
+
+function makeCafe(overrides?: Partial<CafeSummary>): CafeSummary {
+  return {
+    id: "cafe-1",
+    slug: "test-cafe",
+    name: "Test Cafe",
+    lat: 1.35,
+    lng: 103.8,
+    address: "123 Orchard Rd",
+    city: "singapore",
+    tz: "Asia/Singapore",
+    opening_hours: {
+      mon: { open: "08:00", close: "20:00" },
+      tue: { open: "08:00", close: "20:00" },
+      wed: { open: "08:00", close: "20:00" },
+      thu: { open: "08:00", close: "20:00" },
+      fri: { open: "08:00", close: "20:00" },
+      sat: { open: "08:00", close: "20:00" },
+      sun: { open: "08:00", close: "20:00" },
+    },
+    price_range: 2,
+    cover: null,
+    work_stats: emptyWorkStats(),
+    ...overrides,
+  };
+}
+
+describe("search/filter helpers", () => {
+  it("computes dimension averages correctly", () => {
+    const stats = emptyWorkStats();
+    expect(getDimensionAverage(stats, "wifi")).toBeNull();
+
+    stats.dims.wifi = { sum: 160, n: 2 };
+    expect(getDimensionAverage(stats, "wifi")).toBe(80);
+
+    stats.experience_score = 85;
+    expect(getDimensionAverage(stats, "overall")).toBe(85);
+  });
+
+  it("evaluates work dimension thresholds", () => {
+    const stats = emptyWorkStats();
+    stats.dims.wifi = { sum: 75, n: 1 };
+    stats.dims.outlets = { sum: 50, n: 1 };
+
+    expect(matchesWorkDimension(stats, "wifi", 60)).toBe(true);
+    expect(matchesWorkDimension(stats, "wifi", 80)).toBe(false);
+    expect(matchesWorkDimension(stats, "outlets", 60)).toBe(false);
+    expect(matchesWorkDimension(stats, "seats", 60)).toBe(false); // no data
+  });
+
+  it("evaluates consensus policies for min_spend and max_stay", () => {
+    expect(getConsensusPolicy({})).toBeNull();
+    expect(getConsensusPolicy({ drink: 3, none: 1 })).toBe("drink");
+
+    const stats = emptyWorkStats();
+    stats.policies.min_spend = { drink: 5, none: 2 };
+    stats.policies.max_stay = { "3h": 4, unlimited: 1 };
+
+    expect(matchesMinSpend(stats, "drink")).toBe(true);
+    expect(matchesMinSpend(stats, "none")).toBe(false);
+    expect(matchesMaxStay(stats, "3h")).toBe(true);
+    expect(matchesMaxStay(stats, "unlimited")).toBe(false);
+  });
+
+  it("checks if any work filters are active", () => {
+    expect(hasWorkFiltersActive({})).toBe(false);
+    expect(hasWorkFiltersActive({ filter_wifi: 60 })).toBe(true);
+    expect(hasWorkFiltersActive({ filter_min_spend: "drink" })).toBe(true);
+    expect(hasWorkFiltersActive({ open_now: true })).toBe(false);
+  });
+
+  it("filters cafe matching all criteria", () => {
+    const stats = emptyWorkStats();
+    stats.dims.wifi = { sum: 85, n: 1 };
+    stats.dims.outlets = { sum: 90, n: 1 };
+    stats.policies.min_spend = { none: 3 };
+
+    const cafe = makeCafe({ work_stats: stats });
+
+    expect(matchesAllFilters(cafe, { filter_wifi: 80, filter_outlets: 60 })).toBe(true);
+    expect(matchesAllFilters(cafe, { filter_wifi: 90 })).toBe(false);
+    expect(matchesAllFilters(cafe, { filter_min_spend: "none" })).toBe(true);
+    expect(matchesAllFilters(cafe, { filter_min_spend: "drink" })).toBe(false);
+  });
+});

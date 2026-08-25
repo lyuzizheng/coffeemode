@@ -38,6 +38,7 @@ import {
   listCafeSitemapEntries,
   listCafesNearby,
 } from "@/lib/db/cafes";
+import { searchCafesInDb } from "@/lib/db/search";
 import { recordNavigation } from "@/lib/db/navigations";
 import {
   FeedCursorError,
@@ -774,6 +775,30 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       ).resolves.toBeNull();
       // Invalid ids are a normal case on the 404 path — never a throw.
       await expect(getCafeLocation("not-a-uuid")).resolves.toBeNull();
+    });
+  });
+
+  describeDb("searchCafesInDb on real Postgres (search and filters)", () => {
+    it("matches cafes by ILIKE substring and FTS text query", async () => {
+      const results = await searchCafesInDb({ q: "Cafe" });
+      expect(results.length).toBeGreaterThanOrEqual(1);
+      expect(results[0]?.name).toContain("Cafe");
+      expect(typeof results[0]?.lat).toBe("number");
+      expect(typeof results[0]?.lng).toBe("number");
+      expect(results[0]?.work_stats).toBeDefined();
+    });
+
+    it("filters cafes by city case-insensitively", async () => {
+      const resultsSing = await searchCafesInDb({ city: "Singapore" });
+      expect(resultsSing.every((c) => c.city?.toLowerCase() === "singapore")).toBe(true);
+
+      const resultsEmpty = await searchCafesInDb({ city: "NonExistentCity" });
+      expect(resultsEmpty).toHaveLength(0);
+    });
+
+    it("respects the limit parameter and returns work_stats", async () => {
+      const results = await searchCafesInDb({ limit: 1 });
+      expect(results.length).toBeLessThanOrEqual(1);
     });
   });
 });

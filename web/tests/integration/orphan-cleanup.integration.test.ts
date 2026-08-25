@@ -32,7 +32,6 @@ import {
   objectExists as r2ObjectExists,
   putObject as r2PutObject,
   r2Client,
-  r2Endpoint as r2EndpointForBucket,
 } from "../helpers/r2";
 
 // Storage suites never touch the rate limiter; pin the memory backend so
@@ -51,10 +50,6 @@ const IMAGE_SERVICE_ROOT = path.resolve(
 let minioUp = false;
 const createdKeys = new Set<string>();
 const cleanupErrors: string[] = [];
-
-function r2Endpoint(key: string): string {
-  return r2EndpointForBucket(key, R2_BUCKET_NAME);
-}
 
 async function putObject(key: string, body: Uint8Array, metadata?: Record<string, string>): Promise<void> {
   await r2PutObject(key, body, metadata, R2_BUCKET_NAME);

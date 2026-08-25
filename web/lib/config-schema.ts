@@ -18,6 +18,10 @@ export interface RateLimitBucket {
 export interface AppConfig {
   search: {
     maxRadiusKm: number;
+    defaultSuggestionLimit: number;
+    maxSuggestionLimit: number;
+    weakResultsThreshold: number;
+    dbFetchCap: number;
   };
   cafes: {
     listLimitMax: number;
@@ -107,6 +111,22 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
   return {
     search: {
       maxRadiusKm: positiveNumber(file, "search.maxRadiusKm", search.maxRadiusKm),
+      defaultSuggestionLimit: positiveInteger(
+        file,
+        "search.defaultSuggestionLimit",
+        search.defaultSuggestionLimit,
+      ),
+      maxSuggestionLimit: positiveInteger(
+        file,
+        "search.maxSuggestionLimit",
+        search.maxSuggestionLimit,
+      ),
+      weakResultsThreshold: positiveInteger(
+        file,
+        "search.weakResultsThreshold",
+        search.weakResultsThreshold,
+      ),
+      dbFetchCap: positiveInteger(file, "search.dbFetchCap", search.dbFetchCap),
     },
     cafes: {
       listLimitMax: positiveNumber(file, "cafes.listLimitMax", cafes.listLimitMax),

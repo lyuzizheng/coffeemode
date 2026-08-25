@@ -7,6 +7,7 @@ import {
   rateLimiter,
 } from "@/lib/rate-limit";
 import { executeSearch } from "@/lib/search/search-service";
+import { WORK_DIM_FILTER_MAP } from "@/lib/search/filter";
 import type { SearchFilters } from "@/lib/search/types";
 import {
   MAX_STAY_VALUES,
@@ -54,12 +55,7 @@ export async function GET(request: Request) {
   const lat = parseNumber(url.searchParams.get("lat"));
   const lng = parseNumber(url.searchParams.get("lng"));
   const openNow = parseBoolean(url.searchParams.get("open_now"));
-  const filterWifi = parseScoreFilter(url.searchParams.get("filter_wifi"));
-  const filterOutlets = parseScoreFilter(url.searchParams.get("filter_outlets"));
-  const filterSeats = parseScoreFilter(url.searchParams.get("filter_seats"));
-  const filterTemp = parseScoreFilter(url.searchParams.get("filter_temp"));
-  const filterCoffee = parseScoreFilter(url.searchParams.get("filter_coffee"));
-  const filterOverall = parseScoreFilter(url.searchParams.get("filter_overall"));
+  const includeLive = parseBoolean(url.searchParams.get("include_live"));
   const filterMinSpend = parseMinSpend(url.searchParams.get("filter_min_spend"));
   const filterMaxStay = parseMaxStay(url.searchParams.get("filter_max_stay"));
   const limitParam = parseNumber(url.searchParams.get("limit"));
@@ -74,6 +70,14 @@ export async function GET(request: Request) {
   if (lng !== undefined && (lng < -180 || lng > 180)) {
     return NextResponse.json(
       { error: "invalid_request", message: "lng must be within [-180, 180]" },
+      { status: 400 },
+    );
+  }
+
+  // Validate limit if provided
+  if (limitParam !== undefined && (!Number.isInteger(limitParam) || limitParam <= 0)) {
+    return NextResponse.json(
+      { error: "invalid_request", message: "limit must be a positive integer" },
       { status: 400 },
     );
   }
@@ -95,16 +99,19 @@ export async function GET(request: Request) {
     lat,
     lng,
     open_now: openNow,
-    filter_wifi: filterWifi,
-    filter_outlets: filterOutlets,
-    filter_seats: filterSeats,
-    filter_temp: filterTemp,
-    filter_coffee: filterCoffee,
-    filter_overall: filterOverall,
+    include_live: includeLive,
     filter_min_spend: filterMinSpend,
     filter_max_stay: filterMaxStay,
     limit: limitParam,
   };
+
+  // Populate work dimension score filters using shared mapping table
+  for (const { key } of WORK_DIM_FILTER_MAP) {
+    const val = parseScoreFilter(url.searchParams.get(key));
+    if (val !== undefined) {
+      filters[key] = val;
+    }
+  }
 
   try {
     const data = await executeSearch(filters);

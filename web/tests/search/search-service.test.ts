@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { executeSearch } from "@/lib/search/search-service";
+import { executeSearch, resolveReferencePoint } from "@/lib/search/search-service";
 import { searchCafesInDb } from "@/lib/db/search";
-import { searchPOIs } from "@/lib/places/poi-client";
+import { searchExternalPOIs, searchPOIs } from "@/lib/places/poi-client";
 import { emptyWorkStats } from "@/lib/stats/work-stats";
 import type { CafeWithExternalIds } from "@/lib/db/search";
 import type { POI } from "@shared/places/types";
@@ -12,6 +12,7 @@ vi.mock("@/lib/db/search", () => ({
 
 vi.mock("@/lib/places/poi-client", () => ({
   searchPOIs: vi.fn(),
+  searchExternalPOIs: vi.fn(),
 }));
 
 function makeDbCafe(overrides?: Partial<CafeWithExternalIds>): CafeWithExternalIds {
@@ -70,8 +71,45 @@ describe("search-service", () => {
     expect(response.results).toHaveLength(2);
     expect(response.results[0].id).toBe("c1");
     expect(response.results[0].type).toBe("cafe");
-    expect(response.results[1].id).toBe("poi_distinct_id");
+    expect(response.results[0].source).toBe("coffeemode");
+    expect(response.results[1].id).toBe("distinct_id");
     expect(response.results[1].type).toBe("poi");
+    expect(response.results[1].source).toBe("google");
+  });
+
+  it("fetches live external POIs when include_live=true and merges them", async () => {
+    const cafe1 = makeDbCafe({ id: "c1", name: "Local Cafe" });
+    const storedPoi = makePoi({ place_id: "stored_pid", name: "Stored POI" });
+    const livePoi = makePoi({ place_id: "live_pid", name: "Live Google POI", source: "google" });
+
+    vi.mocked(searchCafesInDb).mockResolvedValue([cafe1]);
+    vi.mocked(searchPOIs).mockResolvedValue({ results: [storedPoi] });
+    vi.mocked(searchExternalPOIs).mockResolvedValue({ results: [livePoi] });
+
+    const response = await executeSearch({ q: "coffee", include_live: true });
+
+    expect(searchExternalPOIs).toHaveBeenCalledWith(
+      expect.objectContaining({ q: "coffee" }),
+    );
+    expect(response.results).toHaveLength(3);
+    const liveResult = response.results.find((r) => r.id === "live_pid");
+    expect(liveResult).toBeDefined();
+    expect(liveResult?.source).toBe("google");
+  });
+
+  it("handles unknown city without silently re-anchoring to Singapore (DG58)", async () => {
+    const cafe1 = makeDbCafe({ id: "c1", name: "Paris Cafe", city: "paris", lat: 48.85, lng: 2.35 });
+    vi.mocked(searchCafesInDb).mockResolvedValue([cafe1]);
+
+    const ref = resolveReferencePoint(undefined, undefined, "paris");
+    expect(ref.lat).toBeNull();
+    expect(ref.lng).toBeNull();
+    expect(ref.is_from_city_center).toBe(false);
+
+    const response = await executeSearch({ city: "paris" });
+    expect(response.reference_point.lat).toBeNull();
+    expect(response.results[0].distance_m).toBeNull();
+    expect(response.results[0].is_from_city_center).toBe(false);
   });
 
   it("flags weak results when total count < 3 (DG49)", async () => {

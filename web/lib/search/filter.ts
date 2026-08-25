@@ -4,6 +4,33 @@ import type { CafeSummary } from "@/types/cafes";
 import type { MaxStay, MinSpend } from "@/types/checkins";
 import type { SearchFilters } from "./types";
 
+export const WORK_DIM_FILTER_MAP = [
+  { key: "filter_wifi", dim: "wifi" },
+  { key: "filter_outlets", dim: "outlets" },
+  { key: "filter_seats", dim: "seats" },
+  { key: "filter_temp", dim: "temp" },
+  { key: "filter_coffee", dim: "coffee" },
+  { key: "filter_overall", dim: "overall" },
+] as const;
+
+export const MIN_SPEND_ORDER: Record<MinSpend, number> = {
+  none: 0,
+  drink: 1,
+  s5: 2,
+  s10: 3,
+  s10plus: 4,
+  unknown: -1,
+};
+
+export const MAX_STAY_ORDER: Record<MaxStay, number> = {
+  unknown: -1,
+  peak: 0,
+  "1h": 1,
+  "2h": 2,
+  "3h": 3,
+  unlimited: 4,
+};
+
 export function getDimensionAverage(
   stats: WorkStats,
   dim: WorkDim,
@@ -27,7 +54,7 @@ export function matchesWorkDimension(
   return avg >= threshold;
 }
 
-export function getConsensusPolicy(
+export function getConsensusOption(
   counts: Record<string, number> | undefined,
 ): string | null {
   if (!counts) return null;
@@ -46,18 +73,21 @@ export function matchesMinSpend(
   stats: WorkStats,
   minSpend: MinSpend,
 ): boolean {
-  const consensus = getConsensusPolicy(stats.policies?.min_spend);
-  if (!consensus) return false;
-  return consensus === minSpend;
+  const consensus = getConsensusOption(stats.policies?.min_spend) as MinSpend | null;
+  if (!consensus || MIN_SPEND_ORDER[consensus] === undefined) return false;
+  // Ordinal "at most": cafe's minimum spend requirement must be <= user's upper bound.
+  return MIN_SPEND_ORDER[consensus] <= MIN_SPEND_ORDER[minSpend];
 }
 
 export function matchesMaxStay(
   stats: WorkStats,
   maxStay: MaxStay,
 ): boolean {
-  const consensus = getConsensusPolicy(stats.policies?.max_stay);
-  if (!consensus) return false;
-  return consensus === maxStay;
+  const consensus = getConsensusOption(stats.policies?.max_stay) as MaxStay | null;
+  if (!consensus || MAX_STAY_ORDER[consensus] === undefined) return false;
+  if (maxStay === "peak") return consensus === "peak";
+  // Ordinal "at least": cafe's allowed stay must be >= user's desired stay duration.
+  return MAX_STAY_ORDER[consensus] >= MAX_STAY_ORDER[maxStay];
 }
 
 export function matchesAllFilters(
@@ -67,24 +97,13 @@ export function matchesAllFilters(
 ): boolean {
   const stats = cafe.work_stats;
 
-  if (filters.filter_wifi !== undefined) {
-    if (!matchesWorkDimension(stats, "wifi", filters.filter_wifi)) return false;
+  for (const { key, dim } of WORK_DIM_FILTER_MAP) {
+    const threshold = filters[key];
+    if (threshold !== undefined && !matchesWorkDimension(stats, dim, threshold)) {
+      return false;
+    }
   }
-  if (filters.filter_outlets !== undefined) {
-    if (!matchesWorkDimension(stats, "outlets", filters.filter_outlets)) return false;
-  }
-  if (filters.filter_seats !== undefined) {
-    if (!matchesWorkDimension(stats, "seats", filters.filter_seats)) return false;
-  }
-  if (filters.filter_temp !== undefined) {
-    if (!matchesWorkDimension(stats, "temp", filters.filter_temp)) return false;
-  }
-  if (filters.filter_coffee !== undefined) {
-    if (!matchesWorkDimension(stats, "coffee", filters.filter_coffee)) return false;
-  }
-  if (filters.filter_overall !== undefined) {
-    if (!matchesWorkDimension(stats, "overall", filters.filter_overall)) return false;
-  }
+
   if (filters.filter_min_spend !== undefined) {
     if (!matchesMinSpend(stats, filters.filter_min_spend)) return false;
   }
@@ -100,12 +119,7 @@ export function matchesAllFilters(
 
 export function hasWorkFiltersActive(filters: SearchFilters): boolean {
   return (
-    filters.filter_wifi !== undefined ||
-    filters.filter_outlets !== undefined ||
-    filters.filter_seats !== undefined ||
-    filters.filter_temp !== undefined ||
-    filters.filter_coffee !== undefined ||
-    filters.filter_overall !== undefined ||
+    WORK_DIM_FILTER_MAP.some(({ key }) => filters[key] !== undefined) ||
     filters.filter_min_spend !== undefined ||
     filters.filter_max_stay !== undefined
   );

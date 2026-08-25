@@ -36,6 +36,10 @@ describe("config files", () => {
 
   it("keeps the previously hardcoded app parameter values", () => {
     expect(appConfig.search.maxRadiusKm).toBe(10);
+    expect(appConfig.search.defaultSuggestionLimit).toBe(10);
+    expect(appConfig.search.maxSuggestionLimit).toBe(10);
+    expect(appConfig.search.weakResultsThreshold).toBe(3);
+    expect(appConfig.search.dbFetchCap).toBe(100);
     expect(appConfig.cafes.listLimitMax).toBe(50);
     expect(appConfig.checkins.photoCap).toBe(6);
     expect(appConfig.checkins.noteMaxChars).toBe(500);
@@ -85,6 +89,13 @@ describe("parseRateLimits validation", () => {
 });
 
 describe("parseAppConfig validation", () => {
+  const validSearch = {
+    maxRadiusKm: 10,
+    defaultSuggestionLimit: 10,
+    maxSuggestionLimit: 10,
+    weakResultsThreshold: 3,
+    dbFetchCap: 100,
+  };
   const validCenter = { defaultCenter: { lat: 1.35, lng: 103.8 } };
   const validSeo = {
     shellCache: { sMaxAgeSeconds: 600, staleWhileRevalidateSeconds: 3600 },
@@ -94,7 +105,7 @@ describe("parseAppConfig validation", () => {
 
   it("accepts a valid config", () => {
     const valid = {
-      search: { maxRadiusKm: 10 },
+      search: validSearch,
       cafes: { listLimitMax: 50 },
       feed: { pageSize: 20 },
       discovery: validCenter,
@@ -111,7 +122,7 @@ describe("parseAppConfig validation", () => {
   it("rejects a missing checkins section", () => {
     expect(() =>
       parseAppConfig({
-        search: { maxRadiusKm: 10 },
+        search: validSearch,
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20 },
         discovery: validCenter,
@@ -123,7 +134,7 @@ describe("parseAppConfig validation", () => {
   it("rejects a wrong type", () => {
     expect(() =>
       parseAppConfig({
-        search: { maxRadiusKm: "10" },
+        search: { ...validSearch, maxRadiusKm: "10" },
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20 },
         discovery: validCenter,
@@ -136,7 +147,7 @@ describe("parseAppConfig validation", () => {
   it("rejects an out-of-range discovery center", () => {
     expect(() =>
       parseAppConfig({
-        search: { maxRadiusKm: 10 },
+        search: validSearch,
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20 },
         discovery: { defaultCenter: { lat: 135, lng: 103.8 } },
@@ -149,7 +160,7 @@ describe("parseAppConfig validation", () => {
   it("rejects a non-integer seo TTL", () => {
     expect(() =>
       parseAppConfig({
-        search: { maxRadiusKm: 10 },
+        search: validSearch,
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20 },
         discovery: validCenter,
@@ -165,7 +176,7 @@ describe("parseAppConfig validation", () => {
   it("rejects a non-integer checkins cap", () => {
     expect(() =>
       parseAppConfig({
-        search: { maxRadiusKm: 10 },
+        search: validSearch,
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20 },
         discovery: validCenter,

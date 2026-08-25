@@ -1,5 +1,6 @@
 import "server-only";
 
+import { appConfig } from "@/lib/config";
 import { coerceWorkStats } from "@/lib/stats/work-stats";
 import type { CafeSummary } from "@/types/cafes";
 import { query } from "./postgres";
@@ -37,7 +38,7 @@ export async function searchCafesInDb(
 ): Promise<CafeWithExternalIds[]> {
   const q = params.q?.trim() || null;
   const city = params.city?.trim() || null;
-  const limit = params.limit ?? 100;
+  const limit = params.limit ?? appConfig.search.dbFetchCap;
 
   const { rows } = await query<CafeWithExternalIds & Record<string, unknown>>(
     SEARCH_CAFES_SQL,

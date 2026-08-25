@@ -56,11 +56,12 @@ export function ShareControl({
     };
     window.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("keydown", onKeyDown);
+    const triggerNode = triggerRef.current;
     return () => {
       window.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
       // Return focus to the trigger when the dialog closes via Escape/outside-click.
-      triggerRef.current?.focus();
+      triggerNode?.focus();
     };
   }, [popoverOpen]);
 

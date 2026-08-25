@@ -9,6 +9,7 @@ import {
   rateLimitResponse,
   rateLimiter,
 } from "@/lib/rate-limit";
+import { isSameOrigin } from "@/lib/security/origin";
 
 function parseSize(
   body: unknown,
@@ -40,6 +41,10 @@ function parseSize(
  * R2 itself rejects bodies over `size`; `size` over MAX_UPLOAD_BYTES is rejected here.
  */
 export async function POST(request: Request) {
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ error: "forbidden_origin" }, { status: 403 });
+  }
+
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

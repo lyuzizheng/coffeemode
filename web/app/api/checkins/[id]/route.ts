@@ -14,6 +14,7 @@ import {
   rateLimiter,
 } from "@/lib/rate-limit";
 import { isValidUUID } from "@shared/uuid";
+import { isSameOrigin } from "@/lib/security/origin";
 
 /**
  * PATCH /api/checkins/[id]
@@ -26,6 +27,10 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ error: "forbidden_origin" }, { status: 403 });
+  }
+
   const { id } = await params;
   if (!isValidUUID(id)) {
     return NextResponse.json(
@@ -84,9 +89,13 @@ export async function PATCH(
  * 404 when missing or already deleted. 403 when not the author.
  */
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ error: "forbidden_origin" }, { status: 403 });
+  }
+
   const { id } = await params;
   if (!isValidUUID(id)) {
     return NextResponse.json(
@@ -100,7 +109,7 @@ export async function DELETE(
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const clientId = getClientIdentifier(_request, user);
+  const clientId = getClientIdentifier(request, user);
   const rate = await rateLimiter.check(
     `checkins-write:${clientId}`,
     CAFES_WRITE_RATE_LIMIT.windowMs,

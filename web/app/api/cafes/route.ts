@@ -21,6 +21,8 @@ import {
 } from "@/lib/rate-limit";
 import { appConfig } from "@/lib/config";
 
+import { isSameOrigin } from "@/lib/security/origin";
+
 // `cafes.listLimitMax` in web/config/app.yaml (DG107).
 const MAX_LIST_LIMIT = appConfig.cafes.listLimitMax;
 
@@ -100,6 +102,10 @@ export async function GET(request: Request) {
  * caller or was already consumed.
  */
 export async function POST(request: Request) {
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ error: "forbidden_origin" }, { status: 403 });
+  }
+
   const body = await request.json().catch(() => null);
   const parsed = parseCreateCafeBody(body);
   if (!parsed.ok) {

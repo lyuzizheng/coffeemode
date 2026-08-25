@@ -59,7 +59,7 @@ Four read-only subagent reviews ran in parallel against the current `main` tree 
 ### Search & filters
 
 19. **Nearby search radius is 10 km.** `GET /api/cafes?lat=&lng=&r=` defaults to and caps at 10 km.
-20. **Free-text / city search is not geo-radius search.** It filters by city (or current city if omitted) and supports nomad-style filters: min `wifi/outlets/seats/temp/coffee/overall` score thresholds, `min_spend`, `max_stay`, `open_now`, plus future policy filters.
+20. **Free-text / city search is not geo-radius search.** It filters by city (or current city if omitted) and supports nomad-style filters: min `wifi/outlets/seats/temp/coffee/overall` score thresholds, `max_stay`, `open_now`, plus future policy filters.
 21. **Search filter UX is a first-class design task.** The filter surface must be thumb-friendly, clearly distinct from the map, and not a long modal form. Design in `theme-preview` before building.
 
 ### Auth/cache/perf/DB/deploy

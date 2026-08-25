@@ -78,6 +78,8 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 - [ ] Apply the schema: `wrangler d1 migrations apply poi-store --remote`
 - [ ] Set the two worker secrets (values never go in chat/docs): `wrangler secret put POI_SERVICE_TOKEN`, `wrangler secret put GOOGLE_PLACES_API_KEY`
 - [ ] Deploy: `npm run deploy` → workers.dev URL; wire `POI_SERVICE_URL` + `POI_SERVICE_TOKEN` into `web/.env.local`
+- [ ] Enable the Cloudflare "Add visitor location headers" Managed Transform on the zone (sends `CF-IPCity` / `CF-IPCountry`; default-city resolution per DG128)
+- [ ] Create a Better Stack account + alert token for rate-limit/observability alerts (DG129); put the token in `web/.env.local` once the integration lands
 
 ## 8. Kimi K3 UI design artifacts
 

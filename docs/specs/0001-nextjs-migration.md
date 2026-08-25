@@ -2,7 +2,7 @@
 
 ## Goal
 
-Rewrite CoffeeMode as a full-stack Next.js application — **the coworking review platform for digital nomads**. CoffeeMode's moat is data Google Maps doesn't have: wifi quality, power outlets, seat comfort, temperature, coffee quality, minimum spend, and max stay policy — all crowd-sourced through 打卡 (check-ins).
+Rewrite CoffeeMode as a full-stack Next.js application — **the coworking review platform for digital nomads**. CoffeeMode's moat is data Google Maps doesn't have: wifi quality, power outlets, seat comfort, temperature, coffee quality, and max stay policy — all crowd-sourced through 打卡 (check-ins).
 
 Drop the Java Spring Boot backend entirely. CoffeeMode owns its POI database; Google Places and Apple Maps are external references and import sources, never authoritative.
 
@@ -155,7 +155,6 @@ create table checkins (
   --   wifi, outlets, seats, temp, coffee, overall (personal subjective)
   scores      jsonb not null default '{}',
   -- Policies (nomad essentials):
-  min_spend   text,                       -- none | drink | s5 | s10 | s10plus
   max_stay    text,                       -- unlimited | 3h | 2h | 1h | peak
   note        text,
   photos      jsonb default '[]',         -- [{id, original, card, thumbnail, w, h, by, at, source}]
@@ -239,7 +238,6 @@ No defaults, no 50-anchor: an unmoved slider is simply not recorded.
     "overall": { "sum": 922.8, "n": 12 }
   },
   "policies": {
-    "min_spend": { "none": 4, "drink": 7, "s5": 1 },
     "max_stay":  { "unlimited": 8, "2h": 3 }
   },
   "experience_score": 78.2,
@@ -676,7 +674,7 @@ APPLE_MAPKIT_PRIVATE_KEY        -> .p8 private key (server-side)
 CoffeeMode = the coworking review platform for digital nomads.
 Google Maps tells you a cafe is 4.5 stars.
 CoffeeMode tells you if you can sit there with a laptop for 4 hours:
-wifi, outlets, seats, temperature, coffee, min spend, max stay.
+wifi, outlets, seats, temperature, coffee, max stay.
 That data exists nowhere else. It is the product.
 ```
 
@@ -689,7 +687,7 @@ Tier 1 (MVP core):
 
 Tier 2 (MVP, requires login):
   C. Check-in (打卡) — sliders + policies + note + photos, like toggle, soft delete
-  D. Search & filter — city search + nomad filters (wifi/outlets/seats/temp/coffee/overall/min_spend/max_stay/open_now)
+  D. Search & filter — city search + nomad filters (wifi/outlets/seats/temp/coffee/overall/max_stay/open_now)
 
 Tier 3 (Post-MVP):
   - Xiaohongshu link import (best-effort, semi-automatic)
@@ -711,8 +709,7 @@ Dimensions (sliders 0-100, continuous integer — no snapped steps (DG60);
     see §Aggregation) (DG73)
 
 Policies (chip select, optional per check-in):
-  min_spend: none | drink | s5 | s10 | s10plus | unknown
-  max_stay:  unlimited | 3h | 2h | 1h | peak | unknown
+  max_stay: unlimited | 3h | 2h | 1h | peak | unknown
   "unknown" is a first-class answer — honest data beats forced guesses.
 
 Note: optional free text, 500 chars max, public immediately (DG67).
@@ -789,7 +786,7 @@ Creating a cafe IS checking in for the first time — one record pair
 
 Required on creation:
   name, location, ≥1 photo, review note, overall slider,
-  min_spend, max_stay (2 taps — our differentiating data)
+  max_stay (1 tap — our differentiating data)
 Optional: dimension sliders, hours, price range, description
 
 Maps-link import pre-fills the available provider fields: name, address,
@@ -847,7 +844,12 @@ Two search modes:
      POI service. Dedupe by place_id; a created cafe always wins over its raw POI.
 
 2. City search + nomad filters (not geo-radius search)
-   - Scope: current city (or city picked by user).
+   - Scope: current city (or city picked by user). An omitted city resolves
+     from the Cloudflare `CF-IPCity` header mapped against the curated
+     launch-city list (ISO alpha-2 + IATA metro, DG50) kept in `web/config/`;
+     fallback chain header-city → country match → global default. An explicit
+     `city=` that matches no known city returns 400, never a silent
+     re-anchor (DG128).
    - Text query: name FTS on own cafes and saved POIs.
      - Search-as-you-type starts at 3 characters, 400ms debounce (DG44/DG47).
      - Suggestion rows: top 10 only, rendered under the search bar; no
@@ -859,17 +861,24 @@ Two search modes:
      - Empty query shows a hint line only — no recents/history (DG55).
    - Filters:
      - dimension minima: wifi, outlets, seats, temp, coffee, overall (0-100 thresholds)
-     - min_spend: none | drink | s5 | s10 | s10plus
      - max_stay: unlimited | 3h | 2h | 1h | peak
      - open_now: boolean (default OFF — DG53)
      - future: price_range, policy consensus, work_score threshold
      - Active filters render as removable chips above the result list (DG54).
      - Filter state is session-scoped; the selected city persists per the
        storage rules (DG51).
+     - When a policy filter (max_stay) is active, cafes with
+       unknown/insufficient consensus are excluded; the UI shows a capsule
+       hint with the excluded count ("N hidden — no data yet") (DG127).
    - Distances are from the user location when known, otherwise from city
      center and labeled as such (DG58).
    - Weak local results (< 3 matches) or empty → prompt "Search Google /
      Apple Maps" (DG49)
+   - Every search result item carries an explicit `source`: `coffeemode` |
+     `stored_poi` | `google` | `apple`, so results can be grouped/labeled by
+     origin (DG130). Live Google results are wired through the POI service in
+     a follow-up slice; the current backend returns stored sources only plus
+     the weak-results flag.
 
 External search (on demand):
   Google: POI service live Places search → results shown AND stored in D1
@@ -900,10 +909,12 @@ HK/HKG, AU/MEL, DE/BER, GB/LON). Schema supports any city; new cities are
 added by seeding the city table OR auto-created at runtime when a user's
 geolocation resolves outside every known city (DG121) — no schema change
 either way; runtime-created rows derive their codes from the same
-ISO/IATA scheme via reverse geocoding.
+ISO/IATA scheme via reverse geocoding. The curated launch-city list in
+`web/config/` (CF-IPCity mapping, DG128) mirrors this DG50 seed — when a
+city is added or renamed, both are updated in the same change.
 
 First visit to /:
-  1. IP geolocation → detect country/city
+  1. IP geolocation → detect country/city (via Cloudflare CF-IPCity, DG128)
   2. Welcome card: detected city + [开启定位] + city picker + skip —
      rendered immediately over the live map, non-modal (DG114)
   3. Allow → locate, save location; Skip → the IP-detected city when one
@@ -1101,6 +1112,11 @@ upload/complete and POI resolve/search; 1 check-in per cafe per user per
 24h (DG64 — enforced as a windowed existence check at the domain layer,
 registered in the same YAML so all limits live in one place); auth
 attempts.
+
+Search endpoints get a per-IP `search` bucket: 30/min, 100/hour, 200/day
+(multi-window); hitting any limit fires an alert via Better Stack (owner
+action pending) alongside Cloudflare observability (DG129). Values'
+canonical home is `web/config/rate-limits.yaml`.
 ```
 
 ### Configuration (universal — DG107)
@@ -1176,7 +1192,7 @@ Specs name the parameter and its default; the YAML owns the live value.
 - Soft-deleted check-in hides its photos from cafes.gallery
 - Navigation → ClassPass-style prompt on next visit
 - Session-refresh proxy refreshes Supabase tokens only when a Supabase session cookie is present
-- Nearby search capped at 10 km; city search supports nomad filters (wifi/outlets/seats/temp/coffee/overall/min_spend/max_stay/open_now)
+- Nearby search capped at 10 km; city search supports nomad filters (wifi/outlets/seats/temp/coffee/overall/max_stay/open_now)
 - Image upload enforces 10 MB cap
 - All UI copy goes through next-intl (en + zh)
 - Lighthouse performance >= 80 on cafe detail page

@@ -190,7 +190,7 @@ export function parseCheckInBody(body: unknown): ParseResult<CreateCheckInInput>
   };
 }
 
-const CAFE_EXISTS_SQL = "select id from cafes where id = $1";
+const CAFE_EXISTS_SQL = "select id from cafes where id = $1 and deleted_at is null";
 
 const INSERT_CHECKIN_SQL = `
 insert into checkins (cafe_id, user_id, is_creation, scores, min_spend, max_stay, note, photos, visited_at)

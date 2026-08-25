@@ -785,7 +785,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(deleted).toBe(true);
       await expect(getCafeLocation(CAFE_A)).resolves.toEqual({ lat: 1.35, lng: 103.8 });
 
-      // Live queries now exclude the soft-deleted cafe
+      // Live queries and write paths now exclude the soft-deleted cafe
       await expect(getCafe(CAFE_A)).resolves.toBeNull();
       const nearby = await listCafesNearby({ lat: 1.35, lng: 103.8, radiusKm: 10, limit: 10 });
       expect(nearby.some((c) => c.id === CAFE_A)).toBe(false);
@@ -793,6 +793,14 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(sitemap.some((c) => c.id === CAFE_A)).toBe(false);
       const search = await searchCafesInDb({ q: "Cafe" });
       expect(search.some((c) => c.id === CAFE_A)).toBe(false);
+
+      // Write paths reject targeting a soft-deleted cafe
+      await expect(
+        createCheckIn(U1, { cafe_id: CAFE_A, scores: { wifi: 50 } }),
+      ).rejects.toBeInstanceOf(CafeNotFoundError);
+      await expect(
+        recordNavigation(U1, CAFE_A),
+      ).rejects.toBeInstanceOf(CafeNotFoundError);
 
       await expect(
         getCafeLocation("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a88"),

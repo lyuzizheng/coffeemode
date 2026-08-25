@@ -1,7 +1,7 @@
 import { isOpenAt } from "@/lib/hours";
 import type { WorkDim, WorkStats } from "@/lib/stats/work-stats";
 import type { CafeSummary } from "@/types/cafes";
-import type { MaxStay, MinSpend } from "@/types/checkins";
+import type { MaxStay } from "@/types/checkins";
 import type { SearchFilters } from "./types";
 
 export const WORK_DIM_FILTER_MAP = [
@@ -12,15 +12,6 @@ export const WORK_DIM_FILTER_MAP = [
   { key: "filter_coffee", dim: "coffee" },
   { key: "filter_overall", dim: "overall" },
 ] as const;
-
-export const MIN_SPEND_ORDER: Record<MinSpend, number> = {
-  none: 0,
-  drink: 1,
-  s5: 2,
-  s10: 3,
-  s10plus: 4,
-  unknown: -1,
-};
 
 export const MAX_STAY_ORDER: Record<MaxStay, number> = {
   unknown: -1,
@@ -69,16 +60,6 @@ export function getConsensusOption(
   return maxKey;
 }
 
-export function matchesMinSpend(
-  stats: WorkStats,
-  minSpend: MinSpend,
-): boolean {
-  const consensus = getConsensusOption(stats.policies?.min_spend) as MinSpend | null;
-  if (!consensus || MIN_SPEND_ORDER[consensus] === undefined) return false;
-  // Ordinal "at most": cafe's minimum spend requirement must be <= user's upper bound.
-  return MIN_SPEND_ORDER[consensus] <= MIN_SPEND_ORDER[minSpend];
-}
-
 export function matchesMaxStay(
   stats: WorkStats,
   maxStay: MaxStay,
@@ -104,9 +85,6 @@ export function matchesAllFilters(
     }
   }
 
-  if (filters.filter_min_spend !== undefined) {
-    if (!matchesMinSpend(stats, filters.filter_min_spend)) return false;
-  }
   if (filters.filter_max_stay !== undefined) {
     if (!matchesMaxStay(stats, filters.filter_max_stay)) return false;
   }
@@ -120,7 +98,6 @@ export function matchesAllFilters(
 export function hasWorkFiltersActive(filters: SearchFilters): boolean {
   return (
     WORK_DIM_FILTER_MAP.some(({ key }) => filters[key] !== undefined) ||
-    filters.filter_min_spend !== undefined ||
     filters.filter_max_stay !== undefined
   );
 }

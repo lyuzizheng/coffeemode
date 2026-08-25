@@ -44,7 +44,6 @@ export function FormsSection() {
               {t("policy_label")}
             </div>
             <div className="flex flex-wrap gap-2">
-              <Chip variant="secondary">{t("chip_minspend")}</Chip>
               <Chip variant="secondary">{t("chip_maxstay")}</Chip>
               <Chip color="success" variant="soft">
                 {t("chip_laptops")}

@@ -10,7 +10,6 @@ describe("coerceWorkStats preserves persisted scores (issue #146)", () => {
         user_id: "u1",
         is_creation: true,
         scores: { wifi: 70, outlets: 60, seats: 50, temp: 40, coffee: 90, overall: 80 },
-        min_spend: null,
         max_stay: null,
         note: null,
         photos: [],
@@ -63,12 +62,12 @@ describe("coerceWorkStats preserves persisted scores (issue #146)", () => {
 
   it("does not lose dims or policies on round-trip", () => {
     const raw = emptyWorkStats();
-    raw.policies.min_spend = { drink: 2 };
+    raw.policies.max_stay = { unlimited: 2 };
     raw.dims.wifi = { sum: 123, n: 2 };
     (raw as unknown as Record<string, unknown>).experience_score = 77;
     (raw as unknown as Record<string, unknown>).composite_score = 66.5;
     const coerced = coerceWorkStats(JSON.parse(JSON.stringify(raw)));
-    expect(coerced.policies.min_spend.drink).toBe(2);
+    expect(coerced.policies.max_stay.unlimited).toBe(2);
     expect(coerced.dims.wifi).toEqual({ sum: 123, n: 2 });
     expect(coerced.experience_score).toBe(77);
     expect(coerced.composite_score).toBe(66.5);

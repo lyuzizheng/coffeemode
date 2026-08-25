@@ -70,7 +70,6 @@ export function decodeFeedCursor(raw: string, mode: CheckInFeedMode): FeedCursor
 interface FeedRow {
   id: string;
   scores: PublicCheckIn["scores"];
-  min_spend: PublicCheckIn["min_spend"];
   max_stay: PublicCheckIn["max_stay"];
   note: string | null;
   photos: StoredImage[] | null;
@@ -89,7 +88,7 @@ interface FeedRow {
 const CURSOR_TS = `to_char(c.visited_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 
 const NEWEST_SQL = `
-select c.id, c.scores, c.min_spend, c.max_stay, c.note, c.photos, c.likes_count, c.visited_at,
+select c.id, c.scores, c.max_stay, c.note, c.photos, c.likes_count, c.visited_at,
        (cl.user_id is not null) as liked_by_viewer,
        ${CURSOR_TS} as cursor_visited_at
 from checkins c
@@ -102,7 +101,7 @@ limit $5
 `;
 
 const HELPFUL_SQL = `
-select c.id, c.scores, c.min_spend, c.max_stay, c.note, c.photos, c.likes_count, c.visited_at,
+select c.id, c.scores, c.max_stay, c.note, c.photos, c.likes_count, c.visited_at,
        (cl.user_id is not null) as liked_by_viewer,
        ${CURSOR_TS} as cursor_visited_at
 from checkins c
@@ -153,7 +152,6 @@ export async function listPublicCheckIns(params: {
   const checkins: PublicCheckIn[] = pageRows.map((row) => ({
     id: row.id,
     scores: row.scores,
-    min_spend: row.min_spend,
     max_stay: row.max_stay,
     note: row.note,
     // Public DTO: strip the internal author id from every photo (spec 0001).

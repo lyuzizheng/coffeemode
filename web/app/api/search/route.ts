@@ -11,9 +11,7 @@ import { WORK_DIM_FILTER_MAP } from "@/lib/search/filter";
 import type { SearchFilters } from "@/lib/search/types";
 import {
   MAX_STAY_VALUES,
-  MIN_SPEND_VALUES,
   type MaxStay,
-  type MinSpend,
 } from "@/types/checkins";
 
 function parseNumber(value: string | null): number | undefined {
@@ -27,11 +25,6 @@ function parseScoreFilter(value: string | null): number | undefined {
   if (num === undefined) return undefined;
   if (num < 0 || num > 100) return undefined;
   return num;
-}
-
-function parseMinSpend(value: string | null): MinSpend | undefined {
-  if (!value) return undefined;
-  return MIN_SPEND_VALUES.includes(value as MinSpend) ? (value as MinSpend) : undefined;
 }
 
 function parseMaxStay(value: string | null): MaxStay | undefined {
@@ -56,7 +49,6 @@ export async function GET(request: Request) {
   const lng = parseNumber(url.searchParams.get("lng"));
   const openNow = parseBoolean(url.searchParams.get("open_now"));
   const includeLive = parseBoolean(url.searchParams.get("include_live"));
-  const filterMinSpend = parseMinSpend(url.searchParams.get("filter_min_spend"));
   const filterMaxStay = parseMaxStay(url.searchParams.get("filter_max_stay"));
   const limitParam = parseNumber(url.searchParams.get("limit"));
 
@@ -100,7 +92,6 @@ export async function GET(request: Request) {
     lng,
     open_now: openNow,
     include_live: includeLive,
-    filter_min_spend: filterMinSpend,
     filter_max_stay: filterMaxStay,
     limit: limitParam,
   };

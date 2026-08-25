@@ -32,7 +32,6 @@ export interface WorkStats {
   n_checkins: number;
   dims: Record<WorkDim, { sum: number; n: number }>;
   policies: {
-    min_spend: Record<string, number>;
     max_stay: Record<string, number>;
   };
   experience_score: number | null;
@@ -42,7 +41,6 @@ export interface WorkStats {
 
 interface UserContribution {
   dims: Record<WorkDim, number | undefined>;
-  min_spend?: string;
   max_stay?: string;
 }
 
@@ -56,7 +54,7 @@ export function emptyWorkStats(): WorkStats {
     n_users: 0,
     n_checkins: 0,
     dims,
-    policies: { min_spend: {}, max_stay: {} },
+    policies: { max_stay: {} },
     experience_score: null,
     composite_score: null,
     updated_at: new Date().toISOString(),
@@ -70,7 +68,6 @@ export function coerceWorkStats(raw: unknown): WorkStats {
   if (typeof partial.n_users === "number") stats.n_users = partial.n_users;
   if (typeof partial.n_checkins === "number") stats.n_checkins = partial.n_checkins;
   if (partial.policies) {
-    if (partial.policies.min_spend) stats.policies.min_spend = { ...partial.policies.min_spend };
     if (partial.policies.max_stay) stats.policies.max_stay = { ...partial.policies.max_stay };
   }
   if (partial.dims) {
@@ -164,7 +161,6 @@ export function computeUserContribution(
     dims,
     // null and undefined both mean "no answer" — normalize to undefined so
     // policy counters never see null keys.
-    min_spend: latest.min_spend ?? undefined,
     max_stay: latest.max_stay ?? undefined,
   };
 }
@@ -228,7 +224,6 @@ export function applyUserContributionDiff(
     ...stats,
     dims: { ...stats.dims },
     policies: {
-      min_spend: { ...stats.policies.min_spend },
       max_stay: { ...stats.policies.max_stay },
     },
   };
@@ -254,11 +249,6 @@ export function applyUserContributionDiff(
     (isUserPresent(newContribution) ? 1 : 0) - (isUserPresent(oldContribution) ? 1 : 0);
   next.n_checkins = nCheckins;
 
-  updatePolicyCount(
-    next.policies.min_spend,
-    oldContribution?.min_spend,
-    newContribution?.min_spend,
-  );
   updatePolicyCount(
     next.policies.max_stay,
     oldContribution?.max_stay,

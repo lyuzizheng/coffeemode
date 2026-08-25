@@ -68,7 +68,6 @@ function derivedPhoto(checkinId: string) {
 /** The spec-0001 minimum for the creator's first check-in. */
 const VALID_CHECKIN = {
   scores: { wifi: 80, overall: 75 },
-  min_spend: "drink",
   max_stay: "unlimited",
   note: "quiet",
   photo_ids: [IMG],
@@ -89,7 +88,6 @@ function validBody(checkin: Record<string, unknown> = {}) {
 function validCheckinInput(): CreateCafeCheckInInput {
   return {
     scores: { wifi: 80, overall: 75 },
-    min_spend: "drink",
     max_stay: "unlimited",
     note: "quiet",
     photo_ids: [IMG],
@@ -174,9 +172,8 @@ describe("parseCreateCafeBody", () => {
     expect(bad({ wifi: 0, coffee: 100, overall: 50 }).ok).toBe(true); // boundaries inclusive
   });
 
-  it("requires overall, min_spend, max_stay, note, and >=1 photo on creation (spec 0001)", () => {
+  it("requires overall, max_stay, note, and >=1 photo on creation (spec 0001)", () => {
     expect(parseCreateCafeBody(validBody({ scores: { wifi: 80 } })).ok).toBe(false); // no overall
-    expect(parseCreateCafeBody(validBody({ min_spend: undefined })).ok).toBe(false);
     expect(parseCreateCafeBody(validBody({ max_stay: undefined })).ok).toBe(false);
     expect(parseCreateCafeBody(validBody({ note: undefined })).ok).toBe(false);
     expect(parseCreateCafeBody(validBody({ note: "" })).ok).toBe(false);
@@ -191,7 +188,7 @@ describe("parseCreateCafeBody", () => {
   });
 
   it("rejects invalid policy enums and malformed opening_hours", () => {
-    expect(parseCreateCafeBody(validBody({ min_spend: "free" })).ok).toBe(false);
+    expect(parseCreateCafeBody(validBody({ max_stay: "free" })).ok).toBe(false);
     expect(
       parseCreateCafeBody({
         ...validBody(),
@@ -243,11 +240,10 @@ describe("createCafeWithFirstCheckIn", () => {
     expect(checkinInsert[0]).toContain("insert into checkins");
     expect(checkinInsert[1][0]).toBe("cafe-1");
     expect(checkinInsert[0]).toContain("is_creation");
-    // Required first-check-in fields land as params 3-7 (scores, policies, note, photos).
-    expect(checkinInsert[1][3]).toBe("drink");
-    expect(checkinInsert[1][4]).toBe("unlimited");
-    expect(checkinInsert[1][5]).toBe("quiet");
-    expect(checkinInsert[1][6]).toBe(JSON.stringify([])); // photos land after insert
+    // Required first-check-in fields land after scores (max_stay, note, photos).
+    expect(checkinInsert[1][3]).toBe("unlimited");
+    expect(checkinInsert[1][4]).toBe("quiet");
+    expect(checkinInsert[1][5]).toBe(JSON.stringify([])); // photos land after insert
 
     // The single-use intent consume ran INSIDE the transaction.
     expect(provisionDeps.consumeUploadIntent).toHaveBeenCalledWith(
@@ -555,7 +551,7 @@ describe("toPublicCafeDetail", () => {
         n_users: 0,
         n_checkins: 0,
         dims: {} as never,
-        policies: { min_spend: {}, max_stay: {} },
+        policies: { max_stay: {} },
         experience_score: null,
         composite_score: null,
         updated_at: new Date().toISOString(),

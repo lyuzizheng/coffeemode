@@ -75,7 +75,7 @@ export async function recomputeWorkStats(
     await q("select 1 from cafes where id = $1 for update", [cafeId]);
 
     const { rows } = await q<DbCheckIn>(
-      `select id, cafe_id, user_id, is_creation, scores, min_spend, max_stay, note,
+      `select id, cafe_id, user_id, is_creation, scores, max_stay, note,
             photos, likes_count, visited_at, created_at, updated_at, deleted_at
      from checkins
      where cafe_id = $1 and deleted_at is null
@@ -131,7 +131,7 @@ export async function incrementalUpdateWorkStats(
     const currentStats = coerceWorkStats(cafeRows[0]?.work_stats);
 
     const { rows: userRows } = await q<DbCheckIn>(
-      `select id, cafe_id, user_id, is_creation, scores, min_spend, max_stay, note,
+      `select id, cafe_id, user_id, is_creation, scores, max_stay, note,
             photos, likes_count, visited_at, created_at, updated_at, deleted_at
      from checkins
      where cafe_id = $1 and user_id = $2 and deleted_at is null

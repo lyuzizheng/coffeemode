@@ -15,10 +15,8 @@ import {
 import { WORK_DIMS } from "@/lib/stats/work-stats";
 import {
   MAX_STAY_VALUES,
-  MIN_SPEND_VALUES,
   type CheckInScores,
   type MaxStay,
-  type MinSpend,
 } from "@/types/checkins";
 import type { StoredImage } from "@/types/images";
 import { appConfig } from "@/lib/config";
@@ -113,7 +111,6 @@ export class CafeNotFoundError extends Error {
 export interface CreateCheckInInput {
   cafe_id: string;
   scores: CheckInScores;
-  min_spend?: MinSpend;
   max_stay?: MaxStay;
   note?: string;
   photo_ids?: string[];
@@ -140,14 +137,6 @@ export function parseCheckInBody(body: unknown): ParseResult<CreateCheckInInput>
   const scores = parsedScores.value;
   if (Object.keys(scores).length === 0) {
     return fail("scores must contain at least one dimension (spec 0001)");
-  }
-
-  let minSpend: MinSpend | undefined;
-  if (raw.min_spend !== undefined && raw.min_spend !== null) {
-    if (!(MIN_SPEND_VALUES as readonly string[]).includes(raw.min_spend as string)) {
-      return fail(`min_spend must be one of ${MIN_SPEND_VALUES.join("|")}`);
-    }
-    minSpend = raw.min_spend as MinSpend;
   }
 
   let maxStay: MaxStay | undefined;
@@ -181,7 +170,6 @@ export function parseCheckInBody(body: unknown): ParseResult<CreateCheckInInput>
     value: {
       cafe_id: raw.cafe_id,
       scores,
-      min_spend: minSpend,
       max_stay: maxStay,
       note,
       photo_ids: photoIds,
@@ -193,8 +181,8 @@ export function parseCheckInBody(body: unknown): ParseResult<CreateCheckInInput>
 const CAFE_EXISTS_SQL = "select id from cafes where id = $1 and deleted_at is null";
 
 const INSERT_CHECKIN_SQL = `
-insert into checkins (cafe_id, user_id, is_creation, scores, min_spend, max_stay, note, photos, visited_at)
-values ($1, $2, false, $3, $4, $5, $6, $7, coalesce($8, now()))
+insert into checkins (cafe_id, user_id, is_creation, scores, max_stay, note, photos, visited_at)
+values ($1, $2, false, $3, $4, $5, $6, coalesce($7, now()))
 returning id
 `;
 
@@ -269,7 +257,6 @@ export async function createCheckIn(
       input.cafe_id,
       userId,
       JSON.stringify(input.scores),
-      input.min_spend ?? null,
       input.max_stay ?? null,
       input.note ?? null,
       JSON.stringify([]),
@@ -311,7 +298,6 @@ export class CheckInForbiddenError extends Error {
 
 export interface UpdateCheckInInput {
   scores?: CheckInScores;
-  min_spend?: MinSpend | null;
   max_stay?: MaxStay | null;
   note?: string | null;
   visited_at?: Date;
@@ -323,8 +309,8 @@ export function parseUpdateCheckInBody(body: unknown): ParseResult<UpdateCheckIn
   }
   const raw = body as Record<string, unknown>;
   const hasAny =
-    "scores" in raw || "min_spend" in raw || "max_stay" in raw || "note" in raw || "visited_at" in raw;
-  if (!hasAny) return fail("at least one of scores, min_spend, max_stay, note, visited_at required");
+    "scores" in raw || "max_stay" in raw || "note" in raw || "visited_at" in raw;
+  if (!hasAny) return fail("at least one of scores, max_stay, note, visited_at required");
 
   let scores: CheckInScores | undefined;
   if ("scores" in raw && raw.scores !== undefined) {
@@ -333,18 +319,6 @@ export function parseUpdateCheckInBody(body: unknown): ParseResult<UpdateCheckIn
     if (!parsed.ok) return fail(parsed.message);
     if (Object.keys(parsed.value).length === 0) return fail("scores must contain at least one dimension");
     scores = parsed.value;
-  }
-
-  let minSpend: MinSpend | null | undefined;
-  if ("min_spend" in raw) {
-    const v = raw.min_spend;
-    if (v === null) minSpend = null;
-    else if (v === undefined) minSpend = undefined;
-    else if (!(MIN_SPEND_VALUES as readonly string[]).includes(v as string)) {
-      return fail(`min_spend must be one of ${MIN_SPEND_VALUES.join("|")} or null`);
-    } else {
-      minSpend = v as MinSpend;
-    }
   }
 
   let maxStay: MaxStay | null | undefined;
@@ -382,11 +356,11 @@ export function parseUpdateCheckInBody(body: unknown): ParseResult<UpdateCheckIn
     return fail("visited_at cannot be null");
   }
 
-  return { ok: true, value: { scores, min_spend: minSpend, max_stay: maxStay, note, visited_at: visitedAt } };
+  return { ok: true, value: { scores, max_stay: maxStay, note, visited_at: visitedAt } };
 }
 
 const SELECT_CHECKIN_FOR_UPDATE_SQL = `
- select id, cafe_id, user_id, is_creation, scores, min_spend, max_stay, note, photos, visited_at, deleted_at
+ select id, cafe_id, user_id, is_creation, scores, max_stay, note, photos, visited_at, deleted_at
  from checkins where id = $1 for update
 `;
 
@@ -421,10 +395,6 @@ export async function updateCheckIn(
     if (patch.scores !== undefined) {
       sets.push(`scores = $${idx++}::jsonb`);
       params.push(JSON.stringify(patch.scores));
-    }
-    if (patch.min_spend !== undefined) {
-      sets.push(`min_spend = $${idx++}`);
-      params.push(patch.min_spend);
     }
     if (patch.max_stay !== undefined) {
       sets.push(`max_stay = $${idx++}`);

@@ -7,7 +7,6 @@ import {
   hasWorkFiltersActive,
   matchesAllFilters,
   matchesMaxStay,
-  matchesMinSpend,
   matchesWorkDimension,
 } from "@/lib/search/filter";
 
@@ -60,20 +59,13 @@ describe("search/filter helpers", () => {
     expect(matchesWorkDimension(stats, "seats", 60)).toBe(false); // no data
   });
 
-  it("evaluates ordinal consensus policies for min_spend and max_stay", () => {
+  it("evaluates ordinal consensus policies for max_stay", () => {
     expect(getConsensusOption({})).toBeNull();
-    expect(getConsensusOption({ drink: 3, none: 1 })).toBe("drink");
+    expect(getConsensusOption({ unlimited: 3, "3h": 1 })).toBe("unlimited");
 
     const stats = emptyWorkStats();
-    // Cafe requires drink min spend
-    stats.policies.min_spend = { drink: 5, none: 2 };
     // Cafe allows 3h stay
     stats.policies.max_stay = { "3h": 4, unlimited: 1 };
-
-    // Ordinal min_spend: upper bound allowed spend
-    expect(matchesMinSpend(stats, "drink")).toBe(true); // drink <= drink
-    expect(matchesMinSpend(stats, "s5")).toBe(true); // drink <= s5
-    expect(matchesMinSpend(stats, "none")).toBe(false); // drink > none
 
     // Ordinal max_stay: lower bound desired stay
     expect(matchesMaxStay(stats, "1h")).toBe(true); // 3h >= 1h
@@ -85,7 +77,7 @@ describe("search/filter helpers", () => {
   it("checks if any work filters are active", () => {
     expect(hasWorkFiltersActive({})).toBe(false);
     expect(hasWorkFiltersActive({ filter_wifi: 60 })).toBe(true);
-    expect(hasWorkFiltersActive({ filter_min_spend: "drink" })).toBe(true);
+    expect(hasWorkFiltersActive({ filter_max_stay: "2h" })).toBe(true);
     expect(hasWorkFiltersActive({ open_now: true })).toBe(false);
   });
 
@@ -93,13 +85,13 @@ describe("search/filter helpers", () => {
     const stats = emptyWorkStats();
     stats.dims.wifi = { sum: 85, n: 1 };
     stats.dims.outlets = { sum: 90, n: 1 };
-    stats.policies.min_spend = { none: 3 };
+    stats.policies.max_stay = { unlimited: 3 };
 
     const cafe = makeCafe({ work_stats: stats });
 
     expect(matchesAllFilters(cafe, { filter_wifi: 80, filter_outlets: 60 })).toBe(true);
     expect(matchesAllFilters(cafe, { filter_wifi: 90 })).toBe(false);
-    expect(matchesAllFilters(cafe, { filter_min_spend: "none" })).toBe(true);
-    expect(matchesAllFilters(cafe, { filter_min_spend: "drink" })).toBe(true); // none <= drink
+    expect(matchesAllFilters(cafe, { filter_max_stay: "unlimited" })).toBe(true);
+    expect(matchesAllFilters(cafe, { filter_max_stay: "peak" })).toBe(false);
   });
 });

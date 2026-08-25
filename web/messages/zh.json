@@ -138,7 +138,6 @@
       "open_only": "只看营业中",
       "open_only_hint": "把地图过滤为此时营业的咖啡店",
       "policy_label": "店规",
-      "chip_minspend": "最低消费 ¥600",
       "chip_maxstay": "最长停留 2 小时",
       "chip_laptops": "欢迎用电脑"
     },
@@ -172,7 +171,7 @@
     },
     "policyChips": {
       "title": "店规胶囊",
-      "desc": "最低消费与最长停留政策，以小胶囊形式单选。"
+      "desc": "最长停留政策，以小胶囊形式单选。"
     },
     "checkInSuccess": {
       "title": "打卡成功",
@@ -298,21 +297,12 @@
     "filters": "筛选",
     "nearby": "附近",
     "city": "城市",
-    "minSpend": "最低消费",
     "maxStay": "最长停留",
     "openNow": "正在营业",
     "workScore": "办公指数",
     "dimensionMinima": "维度最低分",
     "apply": "应用",
     "reset": "重置",
-    "minSpendOptions": {
-      "none": "无",
-      "drink": "一杯饮品",
-      "s5": "$5",
-      "s10": "$10",
-      "s10plus": "$10+",
-      "unknown": "未知"
-    },
     "maxStayOptions": {
       "unlimited": "不限",
       "3h": "3小时",
@@ -352,17 +342,8 @@
     "not_enough": "打卡还太少啦",
     "work_profile_aria": "工作画像",
     "policy_aria": "规则共识",
-    "min_spend": "最低消费",
     "max_stay": "停留时长",
     "policy": {
-      "min_spend": {
-        "none": "无需消费",
-        "drink": "点一杯即可",
-        "s5": "$5",
-        "s10": "$10",
-        "s10plus": "$10+",
-        "unknown": "未知"
-      },
       "max_stay": {
         "unlimited": "不限时",
         "3h": "3h",

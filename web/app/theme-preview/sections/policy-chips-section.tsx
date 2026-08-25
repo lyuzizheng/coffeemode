@@ -3,7 +3,7 @@
 import { cn } from "@heroui/react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
-import { MAX_STAY_VALUES, MIN_SPEND_VALUES } from "@/types/checkins";
+import { MAX_STAY_VALUES } from "@/types/checkins";
 import { Section } from "../shared";
 
 type PolicyOption = { key: string; label: string };
@@ -45,13 +45,7 @@ export function PolicyChipsSection() {
   const t = useTranslations("themePreview.policyChips");
   const ts = useTranslations("search");
 
-  const [minSpend, setMinSpend] = useState<string>("none");
   const [maxStay, setMaxStay] = useState<string>("unlimited");
-
-  const minSpendOptions: PolicyOption[] = MIN_SPEND_VALUES.map((key) => ({
-    key,
-    label: ts(`minSpendOptions.${key}`),
-  }));
 
   const maxStayOptions: PolicyOption[] = MAX_STAY_VALUES.map((key) => ({
     key,
@@ -61,12 +55,6 @@ export function PolicyChipsSection() {
   return (
     <Section index="09" title={t("title")} desc={t("desc")}>
       <div className="grid gap-8 lg:grid-cols-2">
-        <PolicyChips
-          label={ts("minSpend")}
-          options={minSpendOptions}
-          selected={minSpend}
-          onSelect={setMinSpend}
-        />
         <PolicyChips
           label={ts("maxStay")}
           options={maxStayOptions}

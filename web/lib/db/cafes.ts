@@ -11,10 +11,8 @@ import { coerceWorkStats } from "@/lib/stats/work-stats";
 import type { CafeDetail, CafeSummary, PublicCafeDetail } from "@/types/cafes";
 import {
   MAX_STAY_VALUES,
-  MIN_SPEND_VALUES,
   type CheckInScores,
   type MaxStay,
-  type MinSpend,
 } from "@/types/checkins";
 import {
   fail,
@@ -44,14 +42,13 @@ export class CafeExistsError extends Error {
 
 /**
  * The creator's first check-in. Spec 0001 pins required-on-creation:
- * overall slider, min_spend, max_stay, review note, >=1 photo (the
+ * overall slider, max_stay, review note, >=1 photo (the
  * differentiating data); dimension sliders and visited_at stay optional.
  * Photos are plain image UUIDs (`photo_ids`) — the server provisions them
  * via upload intents and derives StoredImage (issue #86).
  */
 export interface CreateCafeCheckInInput {
   scores: CheckInScores & { overall: number };
-  min_spend: MinSpend;
   max_stay: MaxStay;
   note: string;
   photo_ids: string[];
@@ -148,10 +145,6 @@ export function parseCreateCafeBody(body: unknown): ParseResult<CreateCafeInput>
     return fail("checkin.scores.overall is required on creation (spec 0001)");
   }
 
-  const minSpend = checkinBody.min_spend;
-  if (!(MIN_SPEND_VALUES as readonly string[]).includes(minSpend as string)) {
-    return fail(`checkin.min_spend is required, one of ${MIN_SPEND_VALUES.join("|")} (unknown is a valid answer)`);
-  }
   const maxStay = checkinBody.max_stay;
   if (!(MAX_STAY_VALUES as readonly string[]).includes(maxStay as string)) {
     return fail(`checkin.max_stay is required, one of ${MAX_STAY_VALUES.join("|")} (unknown is a valid answer)`);
@@ -188,7 +181,6 @@ export function parseCreateCafeBody(body: unknown): ParseResult<CreateCafeInput>
       checkin: {
         // overall presence was asserted above; the cast records it in the type.
         scores: scores.value as CheckInScores & { overall: number },
-        min_spend: minSpend as MinSpend,
         max_stay: maxStay as MaxStay,
         note: note.trim(),
         photo_ids: photoIds.value,
@@ -206,8 +198,8 @@ returning id
 `;
 
 const INSERT_FIRST_CHECKIN_SQL = `
-insert into checkins (cafe_id, user_id, is_creation, scores, min_spend, max_stay, note, photos, visited_at)
-values ($1, $2, true, $3, $4, $5, $6, $7, coalesce($8, now()))
+insert into checkins (cafe_id, user_id, is_creation, scores, max_stay, note, photos, visited_at)
+values ($1, $2, true, $3, $4, $5, $6, coalesce($7, now()))
 returning id
 `;
 
@@ -304,7 +296,6 @@ export async function createCafeWithFirstCheckIn(
         cafeId,
         userId,
         JSON.stringify(input.checkin.scores),
-        input.checkin.min_spend,
         input.checkin.max_stay,
         input.checkin.note,
         JSON.stringify([]),

@@ -17,7 +17,7 @@ import { useTranslations } from "next-intl";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { ApplePlaceSearch } from "@/components/cafe/apple-place-search";
 import { SignInButton } from "@/app/auth/sign-in-button";
-import { MAX_STAY_VALUES, MIN_SPEND_VALUES, type MaxStay, type MinSpend } from "@/types/checkins";
+import { MAX_STAY_VALUES, type MaxStay } from "@/types/checkins";
 import type { UploadUrlResponse } from "@/types/images";
 import type { POI, POISearchResponse } from "@shared/places/types";
 
@@ -166,7 +166,6 @@ export function CafeCreationSheet({
   const [poi, setPoi] = useState<POI | null>(null);
   const [name, setName] = useState("");
   const [overall, setOverall] = useState<number | null>(null);
-  const [minSpend, setMinSpend] = useState<MinSpend>("unknown");
   const [maxStay, setMaxStay] = useState<MaxStay>("unknown");
   const [note, setNote] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
@@ -186,7 +185,6 @@ export function CafeCreationSheet({
     setPoi(null);
     setName("");
     setOverall(null);
-    setMinSpend("unknown");
     setMaxStay("unknown");
     setNote("");
     setPhoto(null);
@@ -283,7 +281,6 @@ export function CafeCreationSheet({
         ...(poi.source === "google" ? { google_place_id: poi.place_id } : { apple_poi_id: poi.place_id }),
         checkin: {
           scores: { overall },
-          min_spend: minSpend,
           max_stay: maxStay,
           note: note.trim(),
           photo_ids: [imageUuid],
@@ -321,9 +318,6 @@ export function CafeCreationSheet({
     setError(null);
   };
 
-  const minSpendLabels = Object.fromEntries(
-    MIN_SPEND_VALUES.map((value) => [value, ts(`minSpendOptions.${value}`)]),
-  ) as Record<string, string>;
   const maxStayLabels = Object.fromEntries(
     MAX_STAY_VALUES.map((value) => [value, ts(`maxStayOptions.${value}`)]),
   ) as Record<string, string>;
@@ -470,20 +464,12 @@ export function CafeCreationSheet({
                       </Slider>
                       {overall === null ? <p className="mt-2 text-xs text-muted">{t("scoreRequired")}</p> : null}
                     </div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <PolicyChips
-                        label={ts("minSpend")}
-                        options={policyOptions(MIN_SPEND_VALUES, minSpendLabels) as Array<{ value: MinSpend; label: string }>}
-                        selected={minSpend}
-                        onSelect={setMinSpend}
-                      />
-                      <PolicyChips
-                        label={ts("maxStay")}
-                        options={policyOptions(MAX_STAY_VALUES, maxStayLabels) as Array<{ value: MaxStay; label: string }>}
-                        selected={maxStay}
-                        onSelect={setMaxStay}
-                      />
-                    </div>
+                    <PolicyChips
+                      label={ts("maxStay")}
+                      options={policyOptions(MAX_STAY_VALUES, maxStayLabels) as Array<{ value: MaxStay; label: string }>}
+                      selected={maxStay}
+                      onSelect={setMaxStay}
+                    />
                     <TextField className="w-full" isRequired>
                       <Label>{t("note")}</Label>
                       <TextArea

@@ -10,15 +10,6 @@ export interface CheckInScores {
   overall?: number;
 }
 
-export const MIN_SPEND_VALUES = [
-  "none",
-  "drink",
-  "s5",
-  "s10",
-  "s10plus",
-  "unknown",
-] as const;
-
 export const MAX_STAY_VALUES = [
   "unlimited",
   "3h",
@@ -28,12 +19,10 @@ export const MAX_STAY_VALUES = [
   "unknown",
 ] as const;
 
-export type MinSpend = (typeof MIN_SPEND_VALUES)[number];
 export type MaxStay = (typeof MAX_STAY_VALUES)[number];
 
 /** Policy answers recorded on a check-in. `unknown` is an explicit answer. */
 export interface CheckInPolicy {
-  min_spend?: MinSpend;
   max_stay?: MaxStay;
 }
 
@@ -44,7 +33,6 @@ export interface CheckIn {
   user_id: string;
   is_creation: boolean;
   scores: CheckInScores;
-  min_spend: MinSpend | null;
   max_stay: MaxStay | null;
   note: string | null;
   photos: StoredImage[];
@@ -64,7 +52,6 @@ export interface CheckIn {
 export interface PublicCheckIn {
   id: string;
   scores: CheckInScores;
-  min_spend: MinSpend | null;
   max_stay: MaxStay | null;
   note: string | null;
   photos: PublicStoredImage[];

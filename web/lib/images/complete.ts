@@ -109,7 +109,7 @@ export function isImageServiceError(err: unknown): err is { status: number; mess
 
 async function ownsCafe(q: CompleteQueryFn, cafeId: string, userId: string): Promise<boolean> {
   const result = await q<{ id: string }>(
-    `select id from cafes where id = $1 and created_by = $2`,
+    `select id from cafes where id = $1 and created_by = $2 and deleted_at is null`,
     [cafeId, userId],
   );
   return result.rows.length > 0;

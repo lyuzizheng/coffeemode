@@ -37,6 +37,7 @@ import {
   getCafeLocation,
   listCafeSitemapEntries,
   listCafesNearby,
+  softDeleteCafe,
 } from "@/lib/db/cafes";
 import {
   getProfile,
@@ -164,7 +165,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   });
 
-  it("applies migrations 0001→0008 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0009 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -175,6 +176,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0006_image_upload_intents.sql",
       "0007_checkins_spec_alignment.sql",
       "0008_no_self_likes.sql",
+      "0009_cafe_tombstones.sql",
     ]);
 
     const pgVersion = await dbClient.query("select postgis_version() as v");
@@ -774,9 +776,32 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       );
     });
 
-    it("getCafeLocation returns coordinates for live rows, null otherwise", async () => {
+    it("getCafeLocation returns coordinates for live and soft-deleted rows, null otherwise", async () => {
       // Seed point is ST_MakePoint(lng=103.8, lat=1.35).
       await expect(getCafeLocation(CAFE_A)).resolves.toEqual({ lat: 1.35, lng: 103.8 });
+
+      // Soft-delete the cafe (issue #207): tombstone coordinates remain accessible for 404 recovery
+      const deleted = await softDeleteCafe(CAFE_A);
+      expect(deleted).toBe(true);
+      await expect(getCafeLocation(CAFE_A)).resolves.toEqual({ lat: 1.35, lng: 103.8 });
+
+      // Live queries and write paths now exclude the soft-deleted cafe
+      await expect(getCafe(CAFE_A)).resolves.toBeNull();
+      const nearby = await listCafesNearby({ lat: 1.35, lng: 103.8, radiusKm: 10, limit: 10 });
+      expect(nearby.some((c) => c.id === CAFE_A)).toBe(false);
+      const sitemap = await listCafeSitemapEntries();
+      expect(sitemap.some((c) => c.id === CAFE_A)).toBe(false);
+      const search = await searchCafesInDb({ q: "Cafe" });
+      expect(search.some((c) => c.id === CAFE_A)).toBe(false);
+
+      // Write paths reject targeting a soft-deleted cafe
+      await expect(
+        createCheckIn(U1, { cafe_id: CAFE_A, scores: { wifi: 50 } }),
+      ).rejects.toBeInstanceOf(CafeNotFoundError);
+      await expect(
+        recordNavigation(U1, CAFE_A),
+      ).rejects.toBeInstanceOf(CafeNotFoundError);
+
       await expect(
         getCafeLocation("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a88"),
       ).resolves.toBeNull();

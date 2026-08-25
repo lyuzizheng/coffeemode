@@ -23,7 +23,7 @@ export function parseNavigationBody(body: unknown): ParseResult<{ cafe_id: strin
   return { ok: true, value: { cafe_id: cafeId } };
 }
 
-const CAFE_EXISTS_SQL = "select id from cafes where id = $1";
+const CAFE_EXISTS_SQL = "select id from cafes where id = $1 and deleted_at is null";
 
 const INSERT_NAVIGATION_SQL = `
 insert into navigations (cafe_id, user_id)

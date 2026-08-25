@@ -18,12 +18,8 @@ import { isValidUUID } from "@shared/uuid";
  * limited with the cafes-read bucket. An unknown cafe simply yields an
  * empty list — the caller is already on the 404 page.
  *
- * NOTE: cafes have no tombstone/soft-delete today, so a genuinely gone
- * cafe has no row and this endpoint returns [] on the 404 path; the quiet
- * 404 + Back-to-discover is the whole surface until a tombstone slice
- * retains id+lat/lng on delete (see docs/agent/implementation-slices.md
- * seo-sharing outcome). The endpoint + CafeRecoveryBlock are the wired
- * scaffolding — excluded from the interim recovery contract.
+ * NOTE: Soft-deleted cafes retain location tombstones (deleted_at is not null)
+ * so recovery suggestions find nearby active alternatives (issue #207).
  */
 export async function GET(
   request: Request,

@@ -84,10 +84,11 @@ export async function getUserStats(userId: string): Promise<UserProfileStatsDto>
   }>(
     `
     select
-      count(distinct cafe_id) filter (where deleted_at is null) as cafes_count,
-      count(id) filter (where deleted_at is null) as checkins_count
-    from checkins
-    where user_id = $1
+      count(distinct ch.cafe_id) filter (where ch.deleted_at is null and c.deleted_at is null and c.id is not null) as cafes_count,
+      count(ch.id) filter (where ch.deleted_at is null) as checkins_count
+    from checkins ch
+    left join cafes c on c.id = ch.cafe_id
+    where ch.user_id = $1
     `,
     [userId],
   );
@@ -204,7 +205,7 @@ export async function getUserCheckIns(
       ch.cafe_id,
       coalesce(c.name, 'Unknown cafe') as cafe_name,
       coalesce(c.city, 'singapore') as cafe_city,
-      (c.id is null) as cafe_is_deleted,
+      (c.id is null or c.deleted_at is not null) as cafe_is_deleted,
       ch.visited_at,
       ch.scores,
       ch.likes_count,
@@ -293,7 +294,7 @@ export async function getUserCafes(
       count(ch.id) as checkins_count,
       bool_or(c.created_by = $1 or ch.is_creation = true) as is_creation
     from checkins ch
-    join cafes c on c.id = ch.cafe_id
+    join cafes c on c.id = ch.cafe_id and c.deleted_at is null
     where ch.user_id = $1
       and ch.deleted_at is null
     group by c.id, c.name, c.city, c.cover

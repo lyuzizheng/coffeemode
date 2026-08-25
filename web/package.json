@@ -16,6 +16,7 @@
     "check:i18n": "node scripts/check-i18n.mjs",
     "check:visual": "node scripts/visual-smoke.mjs",
     "analyze": "next experimental-analyze --output",
+    "lhci": "lhci autorun",
     "verify": "npm run check:i18n && npm run typecheck && npm run lint && npm run test && npm run build"
   },
   "dependencies": {
@@ -40,6 +41,7 @@
     "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "@lhci/cli": "^0.15.1",
     "@serwist/turbopack": "^9.5.12",
     "@tailwindcss/postcss": "^4",
     "@tanstack/query-persist-client-core": "^5.101.4",

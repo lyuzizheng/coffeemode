@@ -88,6 +88,13 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Bundle analysis
+        run: npm run analyze
+
+      - name: Verify bundle analysis diagnostics
+        run: |
+          test -d .next/diagnostics/analyze
+
       - name: Verify PWA artifacts
         run: |
           test -f .next/server/app/serwist/sw.js.body

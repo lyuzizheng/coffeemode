@@ -24,7 +24,8 @@ select id, slug, name,
        google_place_id, apple_poi_id,
        work_stats, cover
 from cafes
-where ($1::text is null or $1::text = '' or name ilike '%' || $1 || '%' or to_tsvector('simple', name) @@ plainto_tsquery('simple', $1))
+where deleted_at is null
+  and ($1::text is null or $1::text = '' or name ilike '%' || $1 || '%' or to_tsvector('simple', name) @@ plainto_tsquery('simple', $1))
   and ($2::text is null or $2::text = '' or lower(city) = lower($2))
 order by name asc
 limit $3

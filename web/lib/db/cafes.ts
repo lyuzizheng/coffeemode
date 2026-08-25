@@ -361,7 +361,8 @@ select id, slug, name,
        address, city, tz, opening_hours, price_range, work_stats, cover,
        (location <-> ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography) as distance_m
 from cafes
-where ST_DWithin(location, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography, $3::float8 * 1000)
+where deleted_at is null
+  and ST_DWithin(location, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography, $3::float8 * 1000)
 order by distance_m asc
 limit $4
 `;
@@ -384,10 +385,10 @@ select id, slug, name,
        price_range, google_place_id, apple_poi_id, work_stats,
        created_at, updated_at
 from cafes
-where id = $1
+where id = $1 and deleted_at is null
 `;
 
-/** Single cafe by id; null when missing (routes map this to 404). */
+/** Single cafe by id; null when missing or soft-deleted (routes map this to 404). */
 export async function getCafe(id: string): Promise<CafeDetail | null> {
   if (!isValidUUID(id)) throw new Error("Invalid cafe ID");
   const { rows } = await query<CafeDetail & Record<string, unknown>>(GET_BY_ID_SQL, [id]);
@@ -419,6 +420,7 @@ const LIST_SITEMAP_SQL = `
 select id,
        coalesce((work_stats->>'updated_at')::timestamptz, updated_at) as lastmod
 from cafes
+where deleted_at is null
 order by lastmod desc
 `;
 
@@ -443,7 +445,7 @@ from cafes
 where id = $1
 `;
 
-const EXISTS_SQL = `select 1 from cafes where id = $1`;
+const EXISTS_SQL = `select 1 from cafes where id = $1 and deleted_at is null`;
 
 /**
  * Existence probe for the gone-cafe 404 path: the proxy checks this BEFORE
@@ -457,10 +459,23 @@ export async function cafeExists(id: string): Promise<boolean> {
 }
 
 /**
- * A cafe's coordinates when the row still exists. Unlike getCafe this
- * tolerates invalid ids (returns null) because its caller is the 404
- * recovery path (DG111), where a malformed id is a normal case. When cafe
- * soft-delete lands, the kept row keeps this block working.
+ * Soft delete a cafe by id (issue #207). Retains the row and coordinates
+ * as a location tombstone for 404 recovery suggestions.
+ */
+export async function softDeleteCafe(id: string): Promise<boolean> {
+  if (!isValidUUID(id)) return false;
+  const result = await query(
+    `update cafes set deleted_at = now() where id = $1 and deleted_at is null`,
+    [id],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/**
+ * A cafe's coordinates when the row still exists (including soft-deleted cafes).
+ * Unlike getCafe this tolerates invalid ids (returns null) because its caller is the 404
+ * recovery path (DG111), where a malformed id is a normal case. The kept tombstone row
+ * allows recovery suggestions to find nearby alternatives.
  */
 export async function getCafeLocation(
   id: string,

@@ -37,6 +37,7 @@ import {
   getCafeLocation,
   listCafeSitemapEntries,
   listCafesNearby,
+  reviveCafe,
   softDeleteCafe,
 } from "@/lib/db/cafes";
 import {
@@ -54,6 +55,10 @@ import {
   listPublicCheckIns,
 } from "@/lib/discovery/feed";
 import { recordUploadIntent } from "@/lib/db/image-uploads";
+import {
+  completeImageUpload,
+  defaultCompleteUploadDeps,
+} from "@/lib/images/complete";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import { recomputeAllWorkStats } from "@/lib/stats/aggregate";
 import { coerceWorkStats } from "@/lib/stats/work-stats";
@@ -71,6 +76,7 @@ import {
   U1,
   U2,
   cafeWorkStats,
+  fakeProcessUrls,
   fakeProvisionPhotosDeps,
   seedBaseData,
 } from "../helpers/fixtures";
@@ -165,7 +171,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   });
 
-  it("applies migrations 0001→0010 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0011 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -178,6 +184,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0008_no_self_likes.sql",
       "0009_cafe_tombstones.sql",
       "0010_drop_min_spend.sql",
+      "0011_cafe_tombstone_lifecycle.sql",
     ]);
 
     const pgVersion = await dbClient.query("select postgis_version() as v");
@@ -805,6 +812,66 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       // Invalid ids are a normal case on the 404 path — never a throw.
       await expect(getCafeLocation("not-a-uuid")).resolves.toBeNull();
     });
+
+    it("reviveCafe un-deletes a cafe and restores it to queries and sitemap (issue #219)", async () => {
+      await softDeleteCafe(CAFE_A);
+      expect(await getCafe(CAFE_A)).toBeNull();
+
+      const revived = await reviveCafe(CAFE_A);
+      expect(revived).toBe(true);
+
+      const cafe = await getCafe(CAFE_A);
+      expect(cafe).not.toBeNull();
+      expect(cafe?.id).toBe(CAFE_A);
+
+      const nearby = await listCafesNearby({ lat: 1.35, lng: 103.8, radiusKm: 10, limit: 10 });
+      expect(nearby.some((c) => c.id === CAFE_A)).toBe(true);
+
+      const sitemap = await listCafeSitemapEntries();
+      expect(sitemap.some((c) => c.id === CAFE_A)).toBe(true);
+    });
+
+    it("permits creating a new cafe with the same external POI after soft-delete (issue #219)", async () => {
+      const photoId = randomUUID();
+      await recordUploadIntent(U1, photoId);
+      const initial = await createCafeWithFirstCheckIn(
+        U1,
+        {
+          name: "External Cafe",
+          lat: 1.35,
+          lng: 103.8,
+          google_place_id: "ChIJ_reimport_test",
+          checkin: { scores: { wifi: 80, overall: 80 }, max_stay: "unlimited", note: "first", photo_ids: [photoId] },
+        },
+        fakeProvisionPhotosDeps(),
+      );
+
+      await softDeleteCafe(initial.cafeId);
+
+      const secondPhotoId = randomUUID();
+      await recordUploadIntent(U1, secondPhotoId);
+      const recreated = await createCafeWithFirstCheckIn(
+        U1,
+        {
+          name: "External Cafe Reborn",
+          lat: 1.35,
+          lng: 103.8,
+          google_place_id: "ChIJ_reimport_test",
+          checkin: { scores: { wifi: 90, overall: 90 }, max_stay: "unlimited", note: "second", photo_ids: [secondPhotoId] },
+        },
+        fakeProvisionPhotosDeps(),
+      );
+
+      expect(recreated.cafeId).not.toBe(initial.cafeId);
+      const live = await getCafe(recreated.cafeId);
+      expect(live?.name).toBe("External Cafe Reborn");
+    });
+
+    it("recomputeAllWorkStats skips soft-deleted cafes (issue #219)", async () => {
+      await softDeleteCafe(CAFE_A);
+      await expect(recomputeAllWorkStats(dbClient.query.bind(dbClient))).resolves.toBeUndefined();
+      expect(await getCafe(CAFE_A)).toBeNull();
+    });
   });
 
   describeDb("searchCafesInDb on real Postgres (search and filters)", () => {
@@ -876,6 +943,74 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(cafesResult.items.length).toBeGreaterThanOrEqual(1);
       expect(cafesResult.items[0]?.id).toBe(CAFE_A);
       expect(cafesResult.items[0]?.isCreation).toBe(true);
+    });
+
+    it("correctly handles soft-deleted cafes in stats, check-ins, and cafe lists (issue #219)", async () => {
+      const CAFE_B = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a88";
+      const CHECKIN_B1 = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a99";
+      await dbClient.query(
+        `insert into cafes (id, name, location, city, created_by, tz)
+         values ($1, 'Cafe B', ST_SetSRID(ST_MakePoint(103.8, 1.35), 4326)::geography, 'singapore', $2, 'Asia/Singapore')`,
+        [CAFE_B, U1],
+      );
+      await dbClient.query(
+        `insert into checkins (id, cafe_id, user_id, is_creation, scores)
+         values ($1, $2, $3, false, '{"coffee": 90}'::jsonb)`,
+        [CHECKIN_B1, CAFE_B, U1],
+      );
+
+      const beforeStats = await getUserStats(U1);
+      expect(beforeStats.cafesCount).toBe(2);
+      expect(beforeStats.checkinsCount).toBe(2);
+
+      await softDeleteCafe(CAFE_B);
+
+      // cafesCount excludes soft-deleted cafe; checkinsCount still counts checkins
+      const afterStats = await getUserStats(U1);
+      expect(afterStats.cafesCount).toBe(1);
+      expect(afterStats.checkinsCount).toBe(2);
+
+      // getUserCheckIns returns cafeIsDeleted = true for deleted cafe
+      const checkins = await getUserCheckIns(U1);
+      const bCheckin = checkins.items.find((i) => i.id === CHECKIN_B1);
+      expect(bCheckin?.cafeIsDeleted).toBe(true);
+      const aCheckin = checkins.items.find((i) => i.id === CHECKIN_A1);
+      expect(aCheckin?.cafeIsDeleted).toBe(false);
+
+      // getUserCafes completely excludes soft-deleted cafe
+      const userCafes = await getUserCafes(U1);
+      expect(userCafes.items.some((c) => c.id === CAFE_B)).toBe(false);
+      expect(userCafes.items.some((c) => c.id === CAFE_A)).toBe(true);
+    });
+
+    it("completeImageUpload rejects attaching to a soft-deleted cafe on real Postgres (issue #219)", async () => {
+      const photoId = randomUUID();
+      await recordUploadIntent(U1, photoId);
+      await softDeleteCafe(CAFE_A);
+
+      const deps = {
+        ...defaultCompleteUploadDeps(),
+        getProcessUrls: async ({ imageUuid }: { imageUuid: string }) => fakeProcessUrls(imageUuid),
+        processImage: async (imageUuid: string) => ({
+          imageUuid,
+          publicUrls: fakeProcessUrls(imageUuid).publicUrls,
+          width: 800,
+          height: 600,
+        }),
+      };
+
+      const result = await completeImageUpload(
+        { id: U1 },
+        {
+          imageUuid: photoId,
+          targetType: "cafe",
+          targetId: CAFE_A,
+          isCover: false,
+        },
+        deps,
+      );
+
+      expect(result.attached).toBe(false);
     });
   });
 });

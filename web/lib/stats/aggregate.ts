@@ -95,7 +95,10 @@ export async function recomputeAllWorkStats(
   query: QueryFn,
   socialWeight = 0,
 ): Promise<void> {
-  const { rows } = await query<{ id: string }>("select id from cafes", []);
+  const { rows } = await query<{ id: string }>(
+    "select id from cafes where deleted_at is null",
+    [],
+  );
   for (const { id } of rows) {
     await recomputeWorkStats(id, socialWeight);
   }

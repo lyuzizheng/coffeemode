@@ -106,6 +106,15 @@ export async function DELETE(
 
     const ok = await softDeleteCafe(id, user.id);
     if (!ok) {
+      // Disambiguate the false: non-creator vs a lost delete race (the cafe
+      // was tombstoned between the probe above and the update — issue #228).
+      const stillExists = await cafeExists(id);
+      if (!stillExists) {
+        return NextResponse.json(
+          { error: "not_found", message: "cafe not found" },
+          { status: 404 },
+        );
+      }
       return NextResponse.json(
         { error: "forbidden", message: "only creator can delete cafe" },
         { status: 403 },

@@ -117,7 +117,7 @@ creation UI was reviewed post-merge on 2026-08-23 (follow-ups #183–#185).
 | ID | Task | Area | Key files |
 | --- | --- | --- | --- |
 | API1 | Implement `POST /api/cafes` (create + first check-in, dedupe 409) | backend | `web/app/api/cafes/route.ts` |
-| API2 | Implement `GET /api/cafes`, `GET|PATCH /api/cafes/[id]` | backend | `web/app/api/cafes/[id]/route.ts` |
+| API2 | Implement `GET /api/cafes`, `GET|PATCH|DELETE /api/cafes/[id]` (DELETE = creator-only soft delete retaining a location tombstone: 401 unauthenticated, 404 unknown or already tombstoned, 403 non-creator, `cafes-write` rate limit; revive stays library-only until an entry point is decided; open authz questions — null-`created_by` cafes undeletable, owner-only vs report-driven — tracked in #229) | backend | `web/app/api/cafes/[id]/route.ts` |
 | API3 | Implement `POST /api/checkins` and `PATCH|DELETE /api/checkins/[id]` (soft delete) | backend | `web/app/api/checkins/*` |
 | API4 | Implement `POST /api/checkins/[id]/like` and `DELETE` to toggle like | backend | `web/app/api/checkins/[id]/like/route.ts` |
 | API5 | Implement `POST /api/navigations` and pending-prompt endpoint | backend | `web/app/api/navigations/*` |

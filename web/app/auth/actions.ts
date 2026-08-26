@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/auth/supabase-server";
+import { isSafeReturnPath } from "@/lib/auth/safe-path";
 import {
   getConfiguredOrigin,
   getProtoHost,
@@ -32,18 +33,22 @@ function validateProvider(value: FormDataEntryValue | null): value is OAuthProvi
   return value === "apple" || value === "google";
 }
 
-async function getRedirectTo(): Promise<string | null> {
+async function getRedirectTo(nextPath?: string): Promise<string | null> {
   const requestHeaders = await headers();
   const originHeader = requestHeaders.get("origin");
   const requestOrigin = originHeader ? (isAllowedOrigin(originHeader) ? originHeader : null) : getProtoHost(requestHeaders);
 
+  const search = isSafeReturnPath(nextPath)
+    ? `?next=${encodeURIComponent(nextPath)}`
+    : "";
+
   if (requestOrigin && isAllowedOrigin(requestOrigin)) {
-    return `${requestOrigin}/auth/callback`;
+    return `${requestOrigin}/auth/callback${search}`;
   }
 
   const configuredOrigin = getConfiguredOrigin();
   if (configuredOrigin && isAllowedOrigin(configuredOrigin)) {
-    return `${configuredOrigin}/auth/callback`;
+    return `${configuredOrigin}/auth/callback${search}`;
   }
 
   return null;
@@ -58,7 +63,10 @@ export async function signIn(
     return { error: "invalid_provider" };
   }
 
-  const redirectTo = await getRedirectTo();
+  const next = formData.get("next");
+  const nextPath = typeof next === "string" ? next : undefined;
+
+  const redirectTo = await getRedirectTo(nextPath);
   if (!redirectTo) {
     return { error: "not_configured" };
   }

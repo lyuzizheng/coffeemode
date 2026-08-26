@@ -11,9 +11,11 @@ interface SignInButtonProps {
   variant: "primary" | "outline";
   /** Disabled when auth cannot work (e.g. Supabase env not configured). */
   disabled?: boolean;
+  /** Safe return path after OAuth callback (e.g. "/profile"). */
+  next?: string;
 }
 
-export function SignInButton({ provider, variant, disabled }: SignInButtonProps) {
+export function SignInButton({ provider, variant, disabled, next }: SignInButtonProps) {
   const t = useTranslations("home");
   const [state, formAction, isPending] = useActionState<AuthActionState | undefined, FormData>(
     signIn,
@@ -25,6 +27,7 @@ export function SignInButton({ provider, variant, disabled }: SignInButtonProps)
   return (
     <form action={formAction} className="w-full">
       <input type="hidden" name="provider" value={provider} />
+      {next ? <input type="hidden" name="next" value={next} /> : null}
       <Button
         type="submit"
         variant={variant}

@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
 import { getProfile, getUserStats, updateProfile } from "@/lib/db/profile";
 import { requireSameOrigin } from "@/lib/security/origin";
+import { appConfig } from "@/lib/config";
+import { LAUNCH_CITIES } from "@/lib/cities";
 import {
   checkRateLimit,
   getClientIdentifier,
@@ -77,7 +79,7 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: "invalid_display_name" }, { status: 400 });
       }
       const trimmed = payload.displayName.trim();
-      if (trimmed.length === 0 || trimmed.length > 24) {
+      if (trimmed.length === 0 || trimmed.length > appConfig.profile.displayNameMaxChars) {
         return NextResponse.json({ error: "display_name_length" }, { status: 400 });
       }
       patch.displayName = trimmed;
@@ -88,8 +90,8 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: "invalid_current_city" }, { status: 400 });
       }
       const trimmedCity = payload.currentCity.trim().toLowerCase();
-      if (trimmedCity.length === 0 || trimmedCity.length > 50) {
-        return NextResponse.json({ error: "current_city_length" }, { status: 400 });
+      if (!LAUNCH_CITIES.some((c) => c.id.toLowerCase() === trimmedCity)) {
+        return NextResponse.json({ error: "invalid_current_city" }, { status: 400 });
       }
       patch.currentCity = trimmedCity;
     }

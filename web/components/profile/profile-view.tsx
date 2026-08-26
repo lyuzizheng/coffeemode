@@ -1,11 +1,19 @@
 "use client";
 
-import { useState, useTransition, useId, useSyncExternalStore } from "react";
+import {
+  useState,
+  useTransition,
+  useId,
+  useSyncExternalStore,
+  useEffect,
+  useRef,
+  useCallback,
+} from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { Button } from "@heroui/react";
+import { Button, toast } from "@heroui/react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { HeartIcon, CoffeeIcon } from "@/components/icons";
 import { SignInButton } from "@/app/auth/sign-in-button";
@@ -31,6 +39,99 @@ export interface ProfileViewProps {
 }
 
 type TabType = "checkins" | "map" | "favorites" | "history";
+const TAB_ORDER: readonly TabType[] = ["checkins", "map", "favorites", "history"];
+
+type RelativeTimeKey = "just_now" | "minutes_ago" | "hours_ago" | "days_ago";
+
+function ErrorRow({
+  errorText,
+  retryText,
+  onRetry,
+}: {
+  errorText: string;
+  retryText: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="p-4 bg-surface border border-border rounded-xl flex items-center justify-between text-sm text-muted">
+      <div className="flex items-center gap-2 text-warning">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M8 1.5L14.5 13.5H1.5L8 1.5Z" />
+          <path d="M8 6V9" />
+          <circle cx="8" cy="11.5" r="0.5" fill="currentColor" />
+        </svg>
+        <span className="text-foreground">{errorText}</span>
+      </div>
+      <Button size="sm" variant="outline" onPress={onRetry}>
+        {retryText}
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * 300ms count-up hook for stats (profile-page-v1 §2).
+ * Respects prefers-reduced-motion by rendering the final target value immediately.
+ */
+function useCountUp(target: number): number {
+  const [value, setValue] = useState(0);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || target <= 0) {
+      return;
+    }
+    const prefersReducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    if (prefersReducedMotion) {
+      const frame = requestAnimationFrame(() => setValue(target));
+      return () => cancelAnimationFrame(frame);
+    }
+
+    const startVal = 0;
+    const startTime = performance.now();
+    let frameId: number;
+
+    const tick = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / 300);
+      // Ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setValue(Math.round(startVal + (target - startVal) * eased));
+
+      if (progress < 1) {
+        frameId = requestAnimationFrame(tick);
+      }
+    };
+
+    frameId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameId);
+  }, [target]);
+
+  return value;
+}
+
+/**
+ * Relative time formatter for search history rows (profile-page-v1 §3.4).
+ */
+function formatRelativeTime(
+  timestamp: number,
+  t: (key: RelativeTimeKey, values?: Record<string, string | number>) => string,
+): string {
+  const diffMs = Date.now() - timestamp;
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return t("just_now");
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return t("minutes_ago", { minutes: diffMin });
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return t("hours_ago", { hours: diffHours });
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays <= 7) return t("days_ago", { days: diffDays });
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+  });
+}
 
 async function fetchUserCheckIns(cursor?: string) {
   const url = new URL("/api/profile/checkins", window.location.origin);
@@ -54,23 +155,29 @@ export function ProfileView({
   isAuthenticated,
 }: ProfileViewProps) {
   const t = useTranslations("profile");
+  const locale = useLocale();
   const router = useRouter();
 
   const [profile, setProfile] = useState<UserProfileDto | null>(initialProfile);
   const [stats] = useState<UserProfileStatsDto | null>(initialStats);
   const [activeTab, setActiveTab] = useState<TabType>("checkins");
 
+  // Animated stats count up
+  const animatedCafesCount = useCountUp(stats?.cafesCount ?? 0);
+  const animatedCheckinsCount = useCountUp(stats?.checkinsCount ?? 0);
+
   // Inline name editing state
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(profile?.displayName ?? "");
   const [isSavingName, startSavingName] = useTransition();
 
-  // City selector state
+  // City selector state (DG97 inline city buttons)
   const [isSelectingCity, setIsSelectingCity] = useState(false);
   const [isSavingCity, startSavingCity] = useTransition();
 
-  // Tab IDs for a11y
+  // Tab IDs and refs for a11y arrow navigation
   const baseId = useId();
+  const tabRefs = useRef<Map<TabType, HTMLButtonElement>>(new Map());
 
   // Client-side recent searches subscription
   const recentSearches = useSyncExternalStore(
@@ -149,14 +256,46 @@ export function ProfileView({
     }
   };
 
+  // Keyboard navigation for tablist (profile-page-v1 §6)
+  const handleTabKeyDown = useCallback((e: React.KeyboardEvent, currentTab: TabType) => {
+    const currentIndex = TAB_ORDER.indexOf(currentTab);
+    let nextIndex = -1;
+
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      e.preventDefault();
+      nextIndex = (currentIndex + 1) % TAB_ORDER.length;
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      e.preventDefault();
+      nextIndex = (currentIndex - 1 + TAB_ORDER.length) % TAB_ORDER.length;
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      nextIndex = 0;
+    } else if (e.key === "End") {
+      e.preventDefault();
+      nextIndex = TAB_ORDER.length - 1;
+    }
+
+    if (nextIndex >= 0) {
+      const nextTab = TAB_ORDER[nextIndex];
+      setActiveTab(nextTab);
+      tabRefs.current.get(nextTab)?.focus();
+    }
+  }, []);
+
+  const currentCityObj = LAUNCH_CITIES.find(
+    (c) => c.id.toLowerCase() === (profile?.currentCity ?? "singapore").toLowerCase(),
+  );
   const currentCityName =
-    LAUNCH_CITIES.find((c) => c.id.toLowerCase() === profile?.currentCity.toLowerCase())?.name ??
+    (locale === "zh" ? currentCityObj?.nameZh : currentCityObj?.name) ??
     profile?.currentCity ??
-    "Singapore";
+    t("default_city");
+
+  const avatarFallback =
+    profile?.displayName?.[0]?.toUpperCase() ?? t("default_avatar");
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col items-center">
-      {/* Top App Bar */}
+      {/* Top App Bar (profile-page-v1 §2.1) */}
       <header className="w-full max-w-[640px] px-4 md:px-6 pt-4 pb-2 flex items-center justify-between">
         <button
           onClick={handleBack}
@@ -168,12 +307,20 @@ export function ProfileView({
           </svg>
         </button>
         <span className="font-display font-semibold text-lg">{t("title")}</span>
-        <ThemeToggle />
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          {isAuthenticated && (
+            <SignOutButton
+              variant="ghost"
+              className="inline-flex min-h-12 min-w-12 items-center"
+            />
+          )}
+        </div>
       </header>
 
       <main className="w-full max-w-[640px] px-4 md:px-6 py-4 flex-1 flex flex-col">
         {!isAuthenticated ? (
-          /* Anonymous Gate (DG94) */
+          /* Anonymous Gate (DG94 / profile-page-v1 §1.2) */
           <div className="flex-1 flex flex-col items-center justify-center text-center py-12 px-4 relative">
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.04]">
               <CoffeeIcon size={240} />
@@ -188,12 +335,12 @@ export function ProfileView({
               {t("gate_body")}
             </p>
             <div className="w-full max-w-xs flex flex-col gap-3">
-              <SignInButton provider="apple" variant="primary" />
-              <SignInButton provider="google" variant="outline" />
+              <SignInButton provider="apple" variant="primary" next="/profile" />
+              <SignInButton provider="google" variant="outline" next="/profile" />
             </div>
           </div>
         ) : (
-          /* Authenticated Profile View */
+          /* Authenticated Profile View (profile-page-v1 §2) */
           <>
             {/* Hero Header */}
             <div className="flex flex-col items-center text-center relative pt-2 pb-6">
@@ -213,7 +360,7 @@ export function ProfileView({
                   />
                 ) : (
                   <span className="font-display font-bold text-2xl text-foreground">
-                    {profile?.displayName?.[0]?.toUpperCase() ?? "A"}
+                    {avatarFallback}
                   </span>
                 )}
               </div>
@@ -260,7 +407,7 @@ export function ProfileView({
                 ) : (
                   <>
                     <h1 className="font-display font-bold text-2xl text-foreground">
-                      {profile?.displayName ?? "A nomad"}
+                      {profile?.displayName ?? t("default_name")}
                     </h1>
                     <button
                       onClick={() => {
@@ -278,24 +425,28 @@ export function ProfileView({
                 )}
               </div>
 
-              {/* City Chip */}
-              <div className="relative z-10 mb-4">
+              {/* City Chip & DG97 Inline City Selector */}
+              <div className="relative z-10 mb-2">
                 {isSelectingCity ? (
                   <div className="flex flex-wrap items-center justify-center gap-1.5 max-w-md p-2 bg-surface border border-border rounded-xl shadow-md">
-                    {LAUNCH_CITIES.map((c: CityInfo) => (
-                      <button
-                        key={c.id}
-                        disabled={isSavingCity}
-                        onClick={() => handleSelectCity(c.id)}
-                        className={`px-2.5 py-1 text-xs rounded-lg transition-colors ${
-                          c.id.toLowerCase() === profile?.currentCity.toLowerCase()
-                            ? "bg-primary text-primary-foreground font-medium"
-                            : "bg-surface-secondary text-muted hover:text-foreground"
-                        }`}
-                      >
-                        {c.name}
-                      </button>
-                    ))}
+                    {LAUNCH_CITIES.map((c: CityInfo) => {
+                      const localizedCityName = locale === "zh" ? c.nameZh : c.name;
+                      const isSelected = c.id.toLowerCase() === profile?.currentCity.toLowerCase();
+                      return (
+                        <button
+                          key={c.id}
+                          disabled={isSavingCity}
+                          onClick={() => handleSelectCity(c.id)}
+                          className={`px-2.5 py-1 text-xs rounded-lg transition-colors ${
+                            isSelected
+                              ? "bg-primary text-primary-foreground font-medium"
+                              : "bg-surface-secondary text-muted hover:text-foreground"
+                          }`}
+                        >
+                          {localizedCityName}
+                        </button>
+                      );
+                    })}
                     <button
                       onClick={() => setIsSelectingCity(false)}
                       className="px-2 py-1 text-xs text-muted hover:text-foreground"
@@ -316,91 +467,57 @@ export function ProfileView({
                   </button>
                 )}
               </div>
-
-              {/* Sign out */}
-              <div className="w-full max-w-[140px] mt-1">
-                <SignOutButton />
-              </div>
             </div>
 
-            {/* Stats Row */}
+            {/* Stats Row (profile-page-v1 §2, 300ms count-up + reduced motion) */}
             <div className="w-full bg-surface border border-border rounded-xl p-4 my-4 flex items-center justify-around">
               <div className="flex flex-col items-center">
                 <span className="font-mono font-bold text-2xl text-foreground tabular-nums">
-                  {stats?.cafesCount ?? 0}
+                  {animatedCafesCount}
                 </span>
                 <span className="text-xs text-muted font-medium mt-0.5">{t("stats_cafes")}</span>
               </div>
               <div className="w-px h-8 bg-border" />
               <div className="flex flex-col items-center">
                 <span className="font-mono font-bold text-2xl text-foreground tabular-nums">
-                  {stats?.checkinsCount ?? 0}
+                  {animatedCheckinsCount}
                 </span>
                 <span className="text-xs text-muted font-medium mt-0.5">{t("stats_checkins")}</span>
               </div>
             </div>
 
-            {/* Segmented Control Tabs */}
+            {/* Segmented Control Tabs (profile-page-v1 §6 tablist + arrow keys) */}
             <div
               role="tablist"
+              aria-label={t("title")}
               className="flex items-center gap-1 p-1 bg-surface-secondary rounded-xl my-4 overflow-x-auto no-scrollbar"
             >
-              <button
-                role="tab"
-                id={`${baseId}-tab-checkins`}
-                aria-selected={activeTab === "checkins"}
-                aria-controls={`${baseId}-panel-checkins`}
-                onClick={() => setActiveTab("checkins")}
-                className={`flex-1 min-w-[90px] py-2 px-3 text-xs font-medium rounded-lg transition-all text-center whitespace-nowrap ${
-                  activeTab === "checkins"
-                    ? "bg-surface text-foreground shadow-xs font-semibold"
-                    : "text-muted hover:text-foreground"
-                }`}
-              >
-                {t("tab_checkins")}
-              </button>
-              <button
-                role="tab"
-                id={`${baseId}-tab-map`}
-                aria-selected={activeTab === "map"}
-                aria-controls={`${baseId}-panel-map`}
-                onClick={() => setActiveTab("map")}
-                className={`flex-1 min-w-[90px] py-2 px-3 text-xs font-medium rounded-lg transition-all text-center whitespace-nowrap ${
-                  activeTab === "map"
-                    ? "bg-surface text-foreground shadow-xs font-semibold"
-                    : "text-muted hover:text-foreground"
-                }`}
-              >
-                {t("tab_map")}
-              </button>
-              <button
-                role="tab"
-                id={`${baseId}-tab-favorites`}
-                aria-selected={activeTab === "favorites"}
-                aria-controls={`${baseId}-panel-favorites`}
-                onClick={() => setActiveTab("favorites")}
-                className={`flex-1 min-w-[90px] py-2 px-3 text-xs font-medium rounded-lg transition-all text-center whitespace-nowrap ${
-                  activeTab === "favorites"
-                    ? "bg-surface text-foreground shadow-xs font-semibold"
-                    : "text-muted hover:text-foreground"
-                }`}
-              >
-                {t("tab_favorites")}
-              </button>
-              <button
-                role="tab"
-                id={`${baseId}-tab-history`}
-                aria-selected={activeTab === "history"}
-                aria-controls={`${baseId}-panel-history`}
-                onClick={() => setActiveTab("history")}
-                className={`flex-1 min-w-[90px] py-2 px-3 text-xs font-medium rounded-lg transition-all text-center whitespace-nowrap ${
-                  activeTab === "history"
-                    ? "bg-surface text-foreground shadow-xs font-semibold"
-                    : "text-muted hover:text-foreground"
-                }`}
-              >
-                {t("tab_history")}
-              </button>
+              {TAB_ORDER.map((tabKey) => {
+                const isSelected = activeTab === tabKey;
+                return (
+                  <button
+                    key={tabKey}
+                    ref={(el) => {
+                      if (el) tabRefs.current.set(tabKey, el);
+                      else tabRefs.current.delete(tabKey);
+                    }}
+                    role="tab"
+                    id={`${baseId}-tab-${tabKey}`}
+                    aria-selected={isSelected}
+                    aria-controls={`${baseId}-panel-${tabKey}`}
+                    tabIndex={isSelected ? 0 : -1}
+                    onClick={() => setActiveTab(tabKey)}
+                    onKeyDown={(e) => handleTabKeyDown(e, tabKey)}
+                    className={`flex-1 min-w-[90px] py-2 px-3 text-xs font-medium rounded-lg transition-all text-center whitespace-nowrap ${
+                      isSelected
+                        ? "bg-surface text-foreground shadow-xs font-semibold"
+                        : "text-muted hover:text-foreground"
+                    }`}
+                  >
+                    {t(`tab_${tabKey}`)}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Tab Panels */}
@@ -414,12 +531,11 @@ export function ProfileView({
                   className="flex flex-col gap-3"
                 >
                   {checkinsQuery.isError && (
-                    <div className="p-4 bg-surface border border-border rounded-xl flex items-center justify-between text-sm text-muted">
-                      <span>{t("load_error")}</span>
-                      <Button size="sm" variant="outline" onPress={() => void checkinsQuery.refetch()}>
-                        {t("retry")}
-                      </Button>
-                    </div>
+                    <ErrorRow
+                      errorText={t("load_error")}
+                      retryText={t("retry")}
+                      onRetry={() => void checkinsQuery.refetch()}
+                    />
                   )}
 
                   {!checkinsQuery.isError && checkins.length === 0 && !checkinsQuery.isLoading && (
@@ -447,14 +563,14 @@ export function ProfileView({
                           <div className="flex flex-col">
                             {item.cafeIsDeleted ? (
                               <span className="font-display font-semibold text-muted text-base">
-                                {item.cafeName}
+                                {item.cafeName || t("unknown_cafe")}
                               </span>
                             ) : (
                               <Link
                                 href={`/?cafe=${item.cafeId}`}
                                 className="font-display font-semibold text-foreground text-base hover:text-primary transition-colors"
                               >
-                                {item.cafeName}
+                                {item.cafeName || t("unknown_cafe")}
                               </Link>
                             )}
                             <span className="text-xs text-muted font-mono tabular-nums">
@@ -476,7 +592,8 @@ export function ProfileView({
                               </span>
                             )}
                             <button
-                              aria-label={t("edit_checkin_aria", { cafe: item.cafeName })}
+                              onClick={() => toast(t("edit_checkin_coming"), { timeout: 4000 })}
+                              aria-label={t("edit_checkin_aria", { cafe: item.cafeName || t("unknown_cafe") })}
                               className="p-1.5 text-muted hover:text-foreground active:scale-95 transition-all rounded-full hover:bg-surface-secondary"
                             >
                               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -530,12 +647,11 @@ export function ProfileView({
                   className="flex flex-col gap-3"
                 >
                   {cafesQuery.isError && (
-                    <div className="p-4 bg-surface border border-border rounded-xl flex items-center justify-between text-sm text-muted">
-                      <span>{t("load_error")}</span>
-                      <Button size="sm" variant="outline" onPress={() => void cafesQuery.refetch()}>
-                        {t("retry")}
-                      </Button>
-                    </div>
+                    <ErrorRow
+                      errorText={t("load_error")}
+                      retryText={t("retry")}
+                      onRetry={() => void cafesQuery.refetch()}
+                    />
                   )}
 
                   {!cafesQuery.isError && cafes.length === 0 && !cafesQuery.isLoading && (
@@ -568,7 +684,7 @@ export function ProfileView({
                       <div className="flex-1 min-w-0 flex flex-col">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-display font-semibold text-foreground text-base truncate">
-                            {cafe.name}
+                            {cafe.name || t("unknown_cafe")}
                           </span>
                           {cafe.isCreation && (
                             <span className="text-secondary font-normal text-xs inline-flex items-center gap-0.5">
@@ -641,7 +757,7 @@ export function ProfileView({
                       {recentSearches.map((item) => (
                         <Link
                           key={item.id}
-                          href={`/?q=${encodeURIComponent(item.query)}&city=${encodeURIComponent(item.city)}`}
+                          href="/"
                           className="p-3 bg-surface border border-border rounded-xl flex items-center justify-between hover:border-border/80 active:scale-[0.99] transition-all"
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
@@ -657,10 +773,7 @@ export function ProfileView({
                             </span>
                           </div>
                           <span className="text-xs text-muted font-mono tabular-nums flex-shrink-0">
-                            {new Date(item.timestamp).toLocaleDateString(undefined, {
-                              day: "numeric",
-                              month: "short",
-                            })}
+                            {formatRelativeTime(item.timestamp, t)}
                           </span>
                         </Link>
                       ))}

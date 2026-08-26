@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Card } from "@heroui/react";
 import { getTranslations } from "next-intl/server";
 import { profileFromUser } from "@/lib/auth/profiles";
 import { createSupabaseServerClient, isAuthConfigured } from "@/lib/auth/supabase-server";
@@ -108,38 +107,38 @@ export default async function HomePage({
 
           {authError && <AuthCallbackError reason={authErrorReason} />}
 
-          <Card className="mt-10 w-full p-6">
+          <div className="mt-10 w-full rounded-2xl border border-border/60 bg-surface p-6 shadow-sm">
             {user ? (
               <>
                 <div className="flex flex-col gap-1">
-                  <Card.Title>
+                  <h3 className="font-display text-lg font-bold text-foreground">
                     {t("signed_in_as")} {profileFromUser(user).displayName}
-                  </Card.Title>
-                  <Card.Description>{t("session_ready")}</Card.Description>
+                  </h3>
+                  <p className="text-sm text-muted">{t("session_ready")}</p>
                 </div>
-                <Card.Footer className="flex-col gap-2 pt-4">
+                <div className="flex flex-col gap-2 pt-4">
                   <CafeCreationTrigger isAuthenticated={Boolean(user)} />
                   <SignOutButton />
-                </Card.Footer>
+                </div>
               </>
             ) : (
               <>
-                <Card.Header>
-                  <Card.Title>{t("signin_title")}</Card.Title>
-                  <Card.Description>
+                <div>
+                  <h3 className="font-display text-lg font-bold text-foreground">{t("signin_title")}</h3>
+                  <p className="text-sm text-muted">
                     {configured ? t("signin_subtitle") : t("auth_not_configured")}
-                  </Card.Description>
-                </Card.Header>
-                <Card.Footer className="flex-col gap-2 pt-3">
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 pt-3">
                   <SignInButton provider="apple" variant="primary" disabled={!configured} />
                   <SignInButton provider="google" variant="outline" disabled={!configured} />
                   <div className="pt-2">
                     <CafeCreationTrigger isAuthenticated={false} />
                   </div>
-                </Card.Footer>
+                </div>
               </>
             )}
-          </Card>
+          </div>
         </div>
       </main>
 
@@ -156,6 +155,7 @@ export default async function HomePage({
       <DiscoveryHome
         defaultCenter={appConfig.discovery.defaultCenter}
         addCafe={<CafeCreationTrigger isAuthenticated={Boolean(user)} />}
+        initialCafeId={typeof params.cafe === "string" ? params.cafe : undefined}
       />
     </div>
   );

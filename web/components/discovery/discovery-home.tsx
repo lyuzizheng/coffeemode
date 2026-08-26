@@ -33,16 +33,19 @@ async function fetchNearbyCafes(lat: number, lng: number): Promise<CafeSummary[]
 export function DiscoveryHome({
   defaultCenter,
   addCafe,
+  initialCafeId,
 }: {
   /** Fallback map center (web/config/app.yaml discovery.defaultCenter). */
   defaultCenter: { lat: number; lng: number };
   /** Empty-state CTA slot — the existing creation trigger, auth-aware. */
   addCafe: ReactNode;
+  /** Optional initial selected cafe ID (e.g. from ?cafe= query param) */
+  initialCafeId?: string;
 }) {
   const t = useTranslations("discovery");
   const mounted = useMounted();
   const isDesktop = useMediaQuery("(min-width: 1024px)");
-  const controller = useDiscoveryController();
+  const controller = useDiscoveryController({ initialCafeId });
 
   const cafesQuery = useQuery({
     queryKey: ["cafes-list", defaultCenter.lat, defaultCenter.lng],

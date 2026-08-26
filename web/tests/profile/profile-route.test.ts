@@ -38,6 +38,12 @@ describe("Profile API routes", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getCurrentUser).mockReset();
+    vi.mocked(getProfile).mockReset();
+    vi.mocked(getUserStats).mockReset();
+    vi.mocked(updateProfile).mockReset();
+    vi.mocked(getUserCheckIns).mockReset();
+    vi.mocked(getUserCafes).mockReset();
     vi.mocked(checkRateLimit).mockResolvedValue({ allowed: true, remaining: 10, resetAt: Date.now(), retryAfter: 0 });
   });
 
@@ -110,6 +116,36 @@ describe("Profile API routes", () => {
       expect(res.status).toBe(400);
       const body = await res.json();
       expect(body.error).toBe("display_name_length");
+    });
+
+    it("validates city is a valid launch city", async () => {
+      vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
+      const req = new Request("http://localhost/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentCity: "atlantis" }),
+      }) as NextRequest;
+      const res = await PATCH(req);
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe("invalid_current_city");
+    });
+
+    it("rejects cross-origin mutating requests", async () => {
+      vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
+      const req = new Request("http://localhost/api/profile", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "https://evil.com",
+          Host: "localhost",
+        },
+        body: JSON.stringify({ displayName: "Valid Name" }),
+      }) as NextRequest;
+      const res = await PATCH(req);
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.error).toBe("forbidden_origin");
     });
 
     it("updates and returns updated profile", async () => {

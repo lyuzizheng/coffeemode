@@ -26,13 +26,13 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const rawLimit = searchParams.get("limit");
-  let limit = appConfig.feed.pageSize;
+  let limit = appConfig.profile.listPageSize;
   if (rawLimit !== null) {
     const parsed = parseInt(rawLimit, 10);
     if (Number.isNaN(parsed) || parsed <= 0 || !Number.isInteger(Number(rawLimit))) {
       return NextResponse.json({ error: "invalid_limit" }, { status: 400 });
     }
-    limit = Math.min(50, parsed);
+    limit = Math.min(appConfig.profile.listLimitMax, parsed);
   }
 
   const cursor = searchParams.get("cursor") ?? undefined;

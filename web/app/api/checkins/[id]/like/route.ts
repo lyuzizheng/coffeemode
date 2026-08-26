@@ -12,7 +12,7 @@ import {
   rateLimiter,
 } from "@/lib/rate-limit";
 import { isValidUUID } from "@shared/uuid";
-import { isSameOrigin } from "@/lib/security/origin";
+import { requireSameOrigin } from "@/lib/security/origin";
 
 /**
  * POST /api/checkins/[id]/like
@@ -25,9 +25,8 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!isSameOrigin(request)) {
-    return NextResponse.json({ error: "forbidden_origin" }, { status: 403 });
-  }
+  const originError = requireSameOrigin(request);
+  if (originError) return originError;
 
   const { id } = await params;
   if (!isValidUUID(id)) {

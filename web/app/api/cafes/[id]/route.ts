@@ -13,6 +13,7 @@ import {
   rateLimitResponse,
   rateLimiter,
 } from "@/lib/rate-limit";
+import { requireSameOrigin } from "@/lib/security/origin";
 import { isValidUUID } from "@shared/uuid";
 
 /**
@@ -65,6 +66,9 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const originError = requireSameOrigin(request);
+  if (originError) return originError;
+
   const { id } = await params;
   if (!isValidUUID(id)) {
     return NextResponse.json(

@@ -324,6 +324,10 @@ OAuth redirectTo validation (web/app/auth/actions.ts):
       * localhost / 127.0.0.1 / [::1] (any port) when no allowlist is configured
   - Only http: and https: schemes are accepted.
   - If the request origin is disallowed, fall back to NEXT_PUBLIC_SITE_URL.
+Mutating route CSRF protection (web/lib/security/origin.ts, Issues #208, #218):
+  - Every mutating route handler (POST, PATCH, PUT, DELETE) verifies origin via requireSameOrigin(request).
+  - Checks Sec-Fetch-Site (rejects cross-site), Origin header against request host / NEXT_PUBLIC_ALLOWED_HOSTS, and falls back to Referer header if Origin is omitted.
+  - If rejected, immediately returns `403 { "error": "forbidden_origin", "message": "cross-origin request forbidden" }`.
 Proxy: web/proxy.ts refreshes the session only when a Supabase session cookie
   is present; uses getSession() to avoid the unconditional user-validation
   round-trip that getUser() forces on every request.

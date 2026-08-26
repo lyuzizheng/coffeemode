@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
 import { getProfile, getUserStats, updateProfile } from "@/lib/db/profile";
-import { isSameOrigin } from "@/lib/security/origin";
+import { requireSameOrigin } from "@/lib/security/origin";
 import {
   checkRateLimit,
   getClientIdentifier,
@@ -46,9 +46,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  if (!isSameOrigin(request)) {
-    return NextResponse.json({ error: "forbidden_origin" }, { status: 403 });
-  }
+  const originError = requireSameOrigin(request);
+  if (originError) return originError;
 
   const user = await getCurrentUser();
   if (!user) {

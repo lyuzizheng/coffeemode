@@ -14,7 +14,7 @@ import {
   rateLimiter,
 } from "@/lib/rate-limit";
 import { isValidUUID } from "@shared/uuid";
-import { isSameOrigin } from "@/lib/security/origin";
+import { requireSameOrigin } from "@/lib/security/origin";
 
 /**
  * PATCH /api/checkins/[id]
@@ -27,9 +27,8 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!isSameOrigin(request)) {
-    return NextResponse.json({ error: "forbidden_origin" }, { status: 403 });
-  }
+  const originError = requireSameOrigin(request);
+  if (originError) return originError;
 
   const { id } = await params;
   if (!isValidUUID(id)) {
@@ -92,9 +91,8 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!isSameOrigin(request)) {
-    return NextResponse.json({ error: "forbidden_origin" }, { status: 403 });
-  }
+  const originError = requireSameOrigin(request);
+  if (originError) return originError;
 
   const { id } = await params;
   if (!isValidUUID(id)) {

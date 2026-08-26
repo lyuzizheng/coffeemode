@@ -186,7 +186,9 @@ async function main() {
   const client = new pg.Client(parseConnectionConfig(rawUrl));
   await client.connect();
   try {
-    const { rows } = await client.query("select id from cafes order by id");
+    const { rows } = await client.query(
+      "select id from cafes where deleted_at is null order by id",
+    );
     console.log(`recompute: ${rows.length} cafe(s)`);
     let ok = 0;
     let failed = 0;

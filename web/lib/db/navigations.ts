@@ -1,6 +1,7 @@
 import "server-only";
 
 import { isValidUUID } from "@shared/uuid";
+import { cafeExists } from "./cafes";
 import { CafeNotFoundError, fail, type ParseResult } from "./checkins";
 import { query } from "./postgres";
 
@@ -23,8 +24,6 @@ export function parseNavigationBody(body: unknown): ParseResult<{ cafe_id: strin
   return { ok: true, value: { cafe_id: cafeId } };
 }
 
-const CAFE_EXISTS_SQL = "select id from cafes where id = $1 and deleted_at is null";
-
 const INSERT_NAVIGATION_SQL = `
 insert into navigations (cafe_id, user_id)
 values ($1, $2)
@@ -45,8 +44,8 @@ export async function recordNavigation(
   if (!isValidUUID(cafeId)) throw new Error("Invalid cafe ID");
 
   // Explicit existence check so a missing cafe is a 404, not an FK 500.
-  const cafe = await query<{ id: string } & Record<string, unknown>>(CAFE_EXISTS_SQL, [cafeId]);
-  if (!cafe.rows[0]) throw new CafeNotFoundError(cafeId);
+  const exists = await cafeExists(cafeId);
+  if (!exists) throw new CafeNotFoundError(cafeId);
 
   const { rows } = await query<RecordedNavigation & Record<string, unknown>>(
     INSERT_NAVIGATION_SQL,

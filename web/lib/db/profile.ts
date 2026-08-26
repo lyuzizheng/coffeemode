@@ -84,7 +84,7 @@ export async function getUserStats(userId: string): Promise<UserProfileStatsDto>
   }>(
     `
     select
-      count(distinct ch.cafe_id) filter (where ch.deleted_at is null and c.deleted_at is null and c.id is not null) as cafes_count,
+      count(distinct ch.cafe_id) filter (where ch.deleted_at is null and c.deleted_at is null) as cafes_count,
       count(ch.id) filter (where ch.deleted_at is null) as checkins_count
     from checkins ch
     left join cafes c on c.id = ch.cafe_id

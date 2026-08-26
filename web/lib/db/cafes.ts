@@ -208,8 +208,9 @@ const SET_FIRST_CHECKIN_PHOTOS_SQL = `update checkins set photos = $2::jsonb whe
 
 const FIND_BY_EXTERNAL_ID_SQL = `
 select id from cafes
-where (google_place_id is not null and google_place_id = $1)
-   or (apple_poi_id is not null and apple_poi_id = $2)
+where ((google_place_id is not null and google_place_id = $1)
+   or (apple_poi_id is not null and apple_poi_id = $2))
+  and deleted_at is null
 limit 1
 `;
 
@@ -453,10 +454,29 @@ export async function cafeExists(id: string): Promise<boolean> {
  * Soft delete a cafe by id (issue #207). Retains the row and coordinates
  * as a location tombstone for 404 recovery suggestions.
  */
-export async function softDeleteCafe(id: string): Promise<boolean> {
+export async function softDeleteCafe(id: string, userId?: string): Promise<boolean> {
+  if (!isValidUUID(id)) return false;
+  if (userId && !isValidUUID(userId)) return false;
+  const result = userId
+    ? await query(
+        `update cafes set deleted_at = now() where id = $1 and created_by = $2 and deleted_at is null`,
+        [id, userId],
+      )
+    : await query(
+        `update cafes set deleted_at = now() where id = $1 and deleted_at is null`,
+        [id],
+      );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/**
+ * Revive a soft-deleted cafe by id (issue #219).
+ * Clears deleted_at, making the cafe active again.
+ */
+export async function reviveCafe(id: string): Promise<boolean> {
   if (!isValidUUID(id)) return false;
   const result = await query(
-    `update cafes set deleted_at = now() where id = $1 and deleted_at is null`,
+    `update cafes set deleted_at = null where id = $1 and deleted_at is not null`,
     [id],
   );
   return (result.rowCount ?? 0) > 0;

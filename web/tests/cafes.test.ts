@@ -5,12 +5,13 @@ import {
   getCafe,
   listCafesNearby,
   parseCreateCafeBody,
+  reviveCafe,
   type CreateCafeCheckInInput,
 } from "@/lib/db/cafes";
 import { PhotoIntentError } from "@/lib/images/provision-photos";
 import { ImageServiceError } from "@/lib/images/image-service-client";
 import { GET as listGET, POST as createPOST } from "@/app/api/cafes/route";
-import { GET as detailGET } from "@/app/api/cafes/[id]/route";
+import { DELETE as detailDELETE, GET as detailGET } from "@/app/api/cafes/[id]/route";
 
 const getUserMock = vi.fn();
 const clientQueryMock = vi.fn();
@@ -591,5 +592,68 @@ describe("toPublicCafeDetail", () => {
       expect(img).not.toHaveProperty("by");
     }
     expect((cafe.gallery[0] as unknown as Record<string, unknown>).by).toBe("user-1");
+  });
+});
+
+describe("reviveCafe", () => {
+  it("rejects non-uuid id and executes revive query", async () => {
+    await expect(reviveCafe("invalid-uuid")).resolves.toBe(false);
+    expect(poolQueryMock).not.toHaveBeenCalled();
+
+    poolQueryMock.mockResolvedValueOnce({ rowCount: 1 });
+    const ok = await reviveCafe("550e8400-e29b-41d4-a716-446655440001");
+    expect(ok).toBe(true);
+    expect(poolQueryMock.mock.calls[0][0]).toContain("update cafes set deleted_at = null");
+    expect(poolQueryMock.mock.calls[0][1]).toEqual(["550e8400-e29b-41d4-a716-446655440001"]);
+  });
+});
+
+describe("DELETE /api/cafes/[id]", () => {
+  it("400s on a non-UUID id", async () => {
+    const res = await detailDELETE(new Request("https://localhost/api/cafes/nope", { method: "DELETE" }), {
+      params: Promise.resolve({ id: "nope" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("401s when unauthenticated", async () => {
+    getUserMock.mockResolvedValueOnce({ data: { user: null }, error: null });
+    const res = await detailDELETE(
+      new Request("https://localhost/api/cafes/550e8400-e29b-41d4-a716-446655440001", { method: "DELETE" }),
+      { params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440001" }) },
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("404s when the cafe does not exist", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [] });
+    const res = await detailDELETE(
+      new Request("https://localhost/api/cafes/550e8400-e29b-41d4-a716-446655440001", { method: "DELETE" }),
+      { params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440001" }) },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("403s when user is not creator", async () => {
+    poolQueryMock
+      .mockResolvedValueOnce({ rows: [{ id: "550e8400-e29b-41d4-a716-446655440001" }] }) // cafeExists
+      .mockResolvedValueOnce({ rowCount: 0 }); // softDeleteCafe (user mismatch)
+    const res = await detailDELETE(
+      new Request("https://localhost/api/cafes/550e8400-e29b-41d4-a716-446655440001", { method: "DELETE" }),
+      { params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440001" }) },
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("200s and soft-deletes when creator deletes the cafe", async () => {
+    poolQueryMock
+      .mockResolvedValueOnce({ rows: [{ id: "550e8400-e29b-41d4-a716-446655440001" }] }) // cafeExists
+      .mockResolvedValueOnce({ rowCount: 1 }); // softDeleteCafe
+    const res = await detailDELETE(
+      new Request("https://localhost/api/cafes/550e8400-e29b-41d4-a716-446655440001", { method: "DELETE" }),
+      { params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440001" }) },
+    );
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({ ok: true, id: "550e8400-e29b-41d4-a716-446655440001" });
   });
 });

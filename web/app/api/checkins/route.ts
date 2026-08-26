@@ -13,7 +13,7 @@ import {
   rateLimitResponse,
   rateLimiter,
 } from "@/lib/rate-limit";
-import { isSameOrigin } from "@/lib/security/origin";
+import { requireSameOrigin } from "@/lib/security/origin";
 
 /**
  * POST /api/checkins  {cafe_id, scores?, max_stay?, note?, photo_ids?, visited_at?}
@@ -24,9 +24,8 @@ import { isSameOrigin } from "@/lib/security/origin";
  * when an id was not issued to the caller or was already consumed.
  */
 export async function POST(request: Request) {
-  if (!isSameOrigin(request)) {
-    return NextResponse.json({ error: "forbidden_origin" }, { status: 403 });
-  }
+  const originError = requireSameOrigin(request);
+  if (originError) return originError;
 
   const body = await request.json().catch(() => null);
   const parsed = parseCheckInBody(body);

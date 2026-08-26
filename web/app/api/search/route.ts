@@ -5,6 +5,7 @@ import {
   rateLimitResponse,
   SEARCH_RATE_LIMITS,
 } from "@/lib/rate-limit";
+import { findCity, resolveEffectiveCity } from "@/lib/cities";
 import { executeSearch } from "@/lib/search/search-service";
 import { WORK_DIM_FILTER_MAP } from "@/lib/search/filter";
 import type { SearchFilters } from "@/lib/search/types";
@@ -38,7 +39,7 @@ function parseBoolean(value: string | null): boolean | undefined {
 
 /**
  * GET /api/search
- * Search endpoint merging own cafes and saved POIs with nomad filters (DG44–DG58).
+ * Search endpoint merging own cafes and saved POIs with nomad filters (DG44–DG58, DG128, DG129).
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -49,7 +50,8 @@ export async function GET(request: Request) {
   const openNow = parseBoolean(url.searchParams.get("open_now"));
   const includeLive = parseBoolean(url.searchParams.get("include_live"));
   const filterMaxStay = parseMaxStay(url.searchParams.get("filter_max_stay"));
-  const limitParam = parseNumber(url.searchParams.get("limit"));
+  const rawLimit = url.searchParams.get("limit");
+  const limitParam = parseNumber(rawLimit);
 
   // Validate coordinates if provided
   if (lat !== undefined && (lat < -90 || lat > 90)) {
@@ -65,13 +67,30 @@ export async function GET(request: Request) {
     );
   }
 
-  // Validate limit if provided
+  // Validate limit if provided: non-numeric or non-positive integer -> 400
+  if (rawLimit !== null && rawLimit.trim() !== "" && limitParam === undefined) {
+    return NextResponse.json(
+      { error: "invalid_request", message: "limit must be a positive integer" },
+      { status: 400 },
+    );
+  }
   if (limitParam !== undefined && (!Number.isInteger(limitParam) || limitParam <= 0)) {
     return NextResponse.json(
       { error: "invalid_request", message: "limit must be a positive integer" },
       { status: 400 },
     );
   }
+
+  // DG128: explicit city must be known; reject unknown explicit cities without silent re-anchoring
+  if (city !== undefined && !findCity(city)) {
+    return NextResponse.json(
+      { error: "invalid_request", message: "unknown city" },
+      { status: 400 },
+    );
+  }
+
+  // Resolve effective canonical city ID (DG128 fallback chain when omitted)
+  const effectiveCity = resolveEffectiveCity(request.headers, city);
 
   // Search is rate-limited per IP (DG129)
   const clientId = getClientIdentifier(request, null);
@@ -87,7 +106,7 @@ export async function GET(request: Request) {
 
   const filters: SearchFilters = {
     q,
-    city,
+    city: effectiveCity,
     lat,
     lng,
     open_now: openNow,

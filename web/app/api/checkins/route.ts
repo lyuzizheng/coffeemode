@@ -16,7 +16,7 @@ import {
 import { isSameOrigin } from "@/lib/security/origin";
 
 /**
- * POST /api/checkins  {cafe_id, scores?, min_spend?, max_stay?, note?, photo_ids?, visited_at?}
+ * POST /api/checkins  {cafe_id, scores?, max_stay?, note?, photo_ids?, visited_at?}
  * Regular (non-creation) check-in: insert + gallery merge + work_stats
  * fold in one transaction (spec 0001). Requires auth. 404 when the cafe
  * does not exist. Photos are image UUIDs from /api/images/upload; the

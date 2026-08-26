@@ -28,7 +28,6 @@ function makeCheckIn(overrides: Partial<CheckIn> & { visited_at: string }): Chec
     user_id: "user-1",
     is_creation: false,
     scores: scores ?? {},
-    min_spend: null,
     max_stay: null,
     note: null,
     photos: [],
@@ -64,7 +63,6 @@ describe("computeCafeStats", () => {
     const checkin = makeCheckIn({
       id: "chk-1",
       scores: fullScores,
-      min_spend: "none",
       max_stay: "3h",
       visited_at: "2026-08-01T10:00:00Z",
     });
@@ -76,7 +74,6 @@ describe("computeCafeStats", () => {
     expect(stats.dims.overall).toEqual({ sum: 80, n: 1 });
     expect(stats.dims.wifi).toEqual({ sum: 70, n: 1 });
     expect(stats.experience_score).toBe(80);
-    expect(stats.policies.min_spend.none).toBe(1);
     expect(stats.policies.max_stay["3h"]).toBe(1);
 
     const expectedComposite = COMPOSITE_DIMS.reduce(
@@ -90,14 +87,12 @@ describe("computeCafeStats", () => {
     const first = makeCheckIn({
       id: "chk-1",
       scores: fullScores,
-      min_spend: "none",
       max_stay: "3h",
       visited_at: "2026-08-01T10:00:00Z",
     });
     const second = makeCheckIn({
       id: "chk-2",
       scores: repeatScores,
-      min_spend: "drink",
       max_stay: "unlimited",
       visited_at: "2026-08-02T10:00:00Z",
     });
@@ -114,9 +109,7 @@ describe("computeCafeStats", () => {
       6,
     );
 
-    expect(stats.policies.min_spend.drink).toBe(1);
     expect(stats.policies.max_stay.unlimited).toBe(1);
-    expect(stats.policies.min_spend.none).toBeUndefined();
   });
 
   it("edit recomputes", () => {
@@ -220,7 +213,6 @@ describe("applyUserContributionDiff", () => {
       makeCheckIn({
         id: "chk-1",
         scores: fullScores,
-        min_spend: "none",
         max_stay: "3h",
         visited_at: "2026-08-01T10:00:00Z",
       }),
@@ -234,7 +226,6 @@ describe("applyUserContributionDiff", () => {
     expect(stats.n_users).toBe(0);
     expect(stats.dims.wifi.sum).toBe(0);
     expect(stats.dims.wifi.n).toBe(0);
-    expect(stats.policies.min_spend.none).toBeUndefined();
   });
 });
 
@@ -243,14 +234,12 @@ describe("incrementalUpdateWorkStats", () => {
     const prior = makeCheckIn({
       id: "chk-1",
       scores: fullScores,
-      min_spend: "none",
       max_stay: "3h",
       visited_at: "2026-08-01T10:00:00Z",
     });
     const changed = makeCheckIn({
       id: "chk-2",
       scores: repeatScores,
-      min_spend: "drink",
       max_stay: "unlimited",
       visited_at: "2026-08-02T10:00:00Z",
     });
@@ -325,14 +314,12 @@ describe("recomputeWorkStats", () => {
     const prior = makeCheckIn({
       id: "chk-1",
       scores: fullScores,
-      min_spend: "none",
       max_stay: "3h",
       visited_at: "2026-08-01T10:00:00Z",
     });
     const changed = makeCheckIn({
       id: "chk-2",
       scores: repeatScores,
-      min_spend: "drink",
       max_stay: "unlimited",
       visited_at: "2026-08-02T10:00:00Z",
     });
@@ -416,14 +403,12 @@ describe("recomputeWorkStats", () => {
     const oldRow = makeCheckIn({
       id: "chk-1",
       scores: fullScores,
-      min_spend: "none",
       max_stay: "3h",
       visited_at: "2026-08-01T10:00:00Z",
     });
     const editedRow = makeCheckIn({
       id: "chk-1",
       scores: repeatScores,
-      min_spend: "drink",
       max_stay: "unlimited",
       visited_at: "2026-08-01T10:00:00Z",
     });
@@ -474,7 +459,6 @@ describe("recomputeWorkStats", () => {
     const second = makeCheckIn({
       id: "chk-2",
       scores: repeatScores,
-      min_spend: "drink",
       max_stay: "unlimited",
       visited_at: "2026-08-02T10:00:00Z",
     });
@@ -508,7 +492,6 @@ describe("recomputeWorkStats", () => {
     expect(written.n_users).toBe(1);
     // soft-deleted rows are excluded by the SQL, and the recompute path
     // must not carry policy answers for rows it did not see.
-    expect(written.policies.min_spend.drink).toBe(1);
     expect(written.policies.max_stay.unlimited).toBe(1);
   });
 

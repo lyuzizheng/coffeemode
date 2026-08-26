@@ -49,7 +49,7 @@ describe("policyConsensus", () => {
       s.policies.max_stay = { "3h": 4, unlimited: 2 };
     });
     expect(policyConsensus(stats, "max_stay")).toBe("3h");
-    expect(policyConsensus(stats, "min_spend")).toBeNull();
+    expect(policyConsensus(emptyWorkStats(), "max_stay")).toBeNull();
   });
 });
 
@@ -97,7 +97,6 @@ function checkin(id: string): PublicCheckIn {
   return {
     id,
     scores: {},
-    min_spend: null,
     max_stay: null,
     note: null,
     photos: [],

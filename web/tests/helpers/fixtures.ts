@@ -66,7 +66,7 @@ export interface WorkStatsShape {
   n_users: number;
   n_checkins: number;
   dims: Record<string, { sum: number; n: number }>;
-  policies: { min_spend: Record<string, number>; max_stay: Record<string, number> };
+  policies: { max_stay: Record<string, number> };
   experience_score: number | null;
 }
 

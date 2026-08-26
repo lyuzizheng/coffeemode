@@ -165,7 +165,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   });
 
-  it("applies migrations 0001→0009 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0010 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -177,6 +177,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0007_checkins_spec_alignment.sql",
       "0008_no_self_likes.sql",
       "0009_cafe_tombstones.sql",
+      "0010_drop_min_spend.sql",
     ]);
 
     const pgVersion = await dbClient.query("select postgis_version() as v");
@@ -290,7 +291,6 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         google_place_id: "ChIJ-test-1",
         checkin: {
           scores: { overall: 82 },
-          min_spend: "drink",
           max_stay: "unlimited",
           note: "nice",
           photo_ids: [photoId],
@@ -344,7 +344,6 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(stats.n_checkins).toBe(1);
       expect(stats.dims.overall).toEqual({ sum: 82, n: 1 });
       expect(stats.experience_score).toBe(82);
-      expect(stats.policies.min_spend).toEqual({ drink: 1 });
       expect(stats.policies.max_stay).toEqual({ unlimited: 1 });
 
       // Duplicate external id → 409-class error, no second cafe row.
@@ -356,7 +355,6 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
           google_place_id: "ChIJ-test-1",
           checkin: {
             scores: { overall: 82 },
-            min_spend: "drink",
             max_stay: "unlimited",
             note: "dup",
             photo_ids: [],
@@ -557,8 +555,8 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         const id = randomUUID();
         ids.push(id);
         await dbClient.query(
-          `insert into checkins (id, cafe_id, user_id, scores, min_spend, max_stay, note, photos, visited_at)
-           values ($1, $2, $3, '{"wifi": 50}'::jsonb, 'none', '3h', $4, $5::jsonb,
+          `insert into checkins (id, cafe_id, user_id, scores, max_stay, note, photos, visited_at)
+           values ($1, $2, $3, '{"wifi": 50}'::jsonb, '3h', $4, $5::jsonb,
                    $6::timestamptz + ($7 || ' minutes')::interval)`,
           [id, CAFE_A, U1, `note ${i}`, photoJson(i), BASE_TS, i],
         );
@@ -602,7 +600,6 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       ]);
       const row = page.checkins[1];
       expect(row.note).toBe("note 2");
-      expect(row.min_spend).toBe("none");
       expect(row.max_stay).toBe("3h");
       expect(row.scores).toEqual({ wifi: 50 });
       expect(row.likes_count).toBe(0);

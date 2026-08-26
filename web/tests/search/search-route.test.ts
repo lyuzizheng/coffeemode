@@ -60,7 +60,7 @@ describe("GET /api/search route", () => {
     vi.mocked(executeSearch).mockResolvedValue(mockResponse);
 
     const req = new Request(
-      "http://localhost/api/search?q=coffee&city=tokyo&filter_wifi=80&open_now=true&filter_min_spend=drink&include_live=true",
+      "http://localhost/api/search?q=coffee&city=tokyo&filter_wifi=80&open_now=true&filter_max_stay=unlimited&include_live=true",
     );
     const res = await GET(req);
 
@@ -73,8 +73,7 @@ describe("GET /api/search route", () => {
       open_now: true,
       include_live: true,
       filter_wifi: 80,
-      filter_min_spend: "drink",
-      filter_max_stay: undefined,
+      filter_max_stay: "unlimited",
       limit: undefined,
     });
   });

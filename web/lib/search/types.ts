@@ -1,5 +1,5 @@
 import type { CafeSummary } from "@/types/cafes";
-import type { MaxStay, MinSpend } from "@/types/checkins";
+import type { MaxStay } from "@/types/checkins";
 import type { POI } from "@shared/places/types";
 
 export type SearchResultType = "cafe" | "poi";
@@ -17,7 +17,6 @@ export interface SearchFilters {
   filter_temp?: number;
   filter_coffee?: number;
   filter_overall?: number;
-  filter_min_spend?: MinSpend;
   filter_max_stay?: MaxStay;
   limit?: number;
   include_live?: boolean;

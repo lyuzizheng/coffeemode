@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { ScoreSlider, Section } from "../shared";
 import { PolicyChips } from "./policy-chips-section";
-import { MAX_STAY_VALUES, MIN_SPEND_VALUES } from "@/types/checkins";
+import { MAX_STAY_VALUES } from "@/types/checkins";
 
 const CITIES = [
   { key: "tokyo" },
@@ -32,7 +32,6 @@ export function SearchFilterSection() {
   const tc = useTranslations("checkIn");
 
   const [city, setCity] = useState<string>("tokyo");
-  const [minSpend, setMinSpend] = useState<string>("none");
   const [maxStay, setMaxStay] = useState<string>("unlimited");
   const [openNow, setOpenNow] = useState(true);
   const [thresholds, setThresholds] = useState<Thresholds>(() => {
@@ -49,7 +48,6 @@ export function SearchFilterSection() {
 
   const handleReset = () => {
     setCity("tokyo");
-    setMinSpend("none");
     setMaxStay("unlimited");
     setOpenNow(true);
     const reset: Partial<Thresholds> = {};
@@ -58,11 +56,6 @@ export function SearchFilterSection() {
     }
     setThresholds(reset as Thresholds);
   };
-
-  const minSpendOptions = MIN_SPEND_VALUES.map((key) => ({
-    key,
-    label: ts(`minSpendOptions.${key}`),
-  }));
 
   const maxStayOptions = MAX_STAY_VALUES.map((key) => ({
     key,
@@ -132,12 +125,6 @@ export function SearchFilterSection() {
 
         {/* Policies */}
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
-          <PolicyChips
-            label={ts("minSpend")}
-            options={minSpendOptions}
-            selected={minSpend}
-            onSelect={setMinSpend}
-          />
           <PolicyChips
             label={ts("maxStay")}
             options={maxStayOptions}

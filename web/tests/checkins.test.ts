@@ -70,7 +70,6 @@ function validInput(overrides: Partial<CreateCheckInInput> = {}): CreateCheckInI
   return {
     cafe_id: CAFE,
     scores: { wifi: 80 },
-    min_spend: "drink",
     max_stay: "unlimited",
     note: "quiet",
     photo_ids: [IMG],
@@ -132,14 +131,14 @@ describe("parseCheckInBody", () => {
     expect(parseCheckInBody({ cafe_id: CAFE }).ok).toBe(false);
     expect(parseCheckInBody({ cafe_id: CAFE, scores: {} }).ok).toBe(false);
     expect(parseCheckInBody({ cafe_id: CAFE, note: "  ", photo_ids: [] }).ok).toBe(false);
-    expect(parseCheckInBody({ cafe_id: CAFE, min_spend: "none" }).ok).toBe(false);
+    expect(parseCheckInBody({ cafe_id: CAFE, max_stay: "unlimited" }).ok).toBe(false);
     expect(parseCheckInBody({ cafe_id: CAFE, note: "great", photo_ids: [IMG] }).ok).toBe(false);
     // ...but any single slider is enough, extras optional.
     expect(parseCheckInBody({ cafe_id: CAFE, scores: { overall: 70 } }).ok).toBe(true);
   });
 
   it("rejects bad policy enums, scores, photo_ids, and a future visited_at", () => {
-    expect(parseCheckInBody(validBody({ min_spend: "free" })).ok).toBe(false);
+    expect(parseCheckInBody(validBody({ max_stay: "free" })).ok).toBe(false);
     expect(parseCheckInBody(validBody({ max_stay: "forever" })).ok).toBe(false);
     expect(parseCheckInBody(validBody({ scores: { wifi: 101 } })).ok).toBe(false);
     expect(parseCheckInBody(validBody({ scores: { vibe: 50 } })).ok).toBe(false);
@@ -199,7 +198,6 @@ describe("createCheckIn", () => {
       CAFE,
       USER.id,
       JSON.stringify({ wifi: 80 }),
-      "drink",
       "unlimited",
       "quiet",
       JSON.stringify([]), // photos land after insert — source needs the id

@@ -14,15 +14,10 @@ import { useTranslations } from "next-intl";
 import { SparkleIcon } from "@/components/icons";
 import { duration, ease, useEnterMotion } from "@/lib/motion";
 import { COMPOSITE_DIMS, type WorkStats } from "@/lib/stats/work-stats";
-import { MAX_STAY_VALUES, MIN_SPEND_VALUES, type MaxStay, type MinSpend } from "@/types/checkins";
+import { MAX_STAY_VALUES, type MaxStay } from "@/types/checkins";
 import { dimMean, policyConsensus } from "@/lib/discovery/view-model";
 
 /** Narrow a raw consensus string to the policy's enum, else "unknown". */
-function asMinSpend(value: string | null): MinSpend {
-  return (MIN_SPEND_VALUES as readonly string[]).includes(value ?? "")
-    ? (value as MinSpend)
-    : "unknown";
-}
 function asMaxStay(value: string | null): MaxStay {
   return (MAX_STAY_VALUES as readonly string[]).includes(value ?? "")
     ? (value as MaxStay)
@@ -156,25 +151,18 @@ export function WorkProfile({ stats, animated = true }: { stats: WorkStats; anim
   );
 }
 
-/** FULL policy consensus — Min spend / Max stay rows; unknown renders honestly. */
+/** FULL policy consensus — Max stay row; unknown renders honestly. */
 export function PolicyConsensus({ stats }: { stats: WorkStats }) {
   const t = useTranslations("discovery");
-  const minSpend = asMinSpend(policyConsensus(stats, "min_spend"));
   const maxStay = asMaxStay(policyConsensus(stats, "max_stay"));
-  const rows = [
-    { label: t("min_spend"), text: t(`policy.min_spend.${minSpend}`) },
-    { label: t("max_stay"), text: t(`policy.max_stay.${maxStay}`) },
-  ];
   return (
     <section className="flex flex-col gap-2" aria-label={t("policy_aria")}>
-      {rows.map(({ label, text }) => (
-        <div key={label} className="flex items-center gap-3">
-          <span className="w-[88px] shrink-0 text-sm text-foreground">{label}</span>
-          <span className="rounded-sm bg-surface-secondary px-2.5 py-1.5 text-xs text-foreground">
-            {text}
-          </span>
-        </div>
-      ))}
+      <div className="flex items-center gap-3">
+        <span className="w-[88px] shrink-0 text-sm text-foreground">{t("max_stay")}</span>
+        <span className="rounded-sm bg-surface-secondary px-2.5 py-1.5 text-xs text-foreground">
+          {t(`policy.max_stay.${maxStay}`)}
+        </span>
+      </div>
     </section>
   );
 }

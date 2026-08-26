@@ -138,7 +138,6 @@
       "open_only": "Open now only",
       "open_only_hint": "Filters the map to cafes open at this hour",
       "policy_label": "Policies",
-      "chip_minspend": "Min spend ¥600",
       "chip_maxstay": "2h max stay",
       "chip_laptops": "Laptops welcome"
     },
@@ -172,7 +171,7 @@
     },
     "policyChips": {
       "title": "Policy chips",
-      "desc": "Minimum spend and maximum stay policies, selectable as compact chips."
+      "desc": "Maximum stay policy, selectable as compact chips."
     },
     "checkInSuccess": {
       "title": "Check-in success",
@@ -298,21 +297,12 @@
     "filters": "Filters",
     "nearby": "Nearby",
     "city": "City",
-    "minSpend": "Min spend",
     "maxStay": "Max stay",
     "openNow": "Open now",
     "workScore": "Work score",
     "dimensionMinima": "Dimension minima",
     "apply": "Apply",
     "reset": "Reset",
-    "minSpendOptions": {
-      "none": "None",
-      "drink": "A drink",
-      "s5": "$5",
-      "s10": "$10",
-      "s10plus": "$10+",
-      "unknown": "Unknown"
-    },
     "maxStayOptions": {
       "unlimited": "No limit",
       "3h": "3h",
@@ -352,17 +342,8 @@
     "not_enough": "Not enough check-ins",
     "work_profile_aria": "Work profile",
     "policy_aria": "Policy consensus",
-    "min_spend": "Min spend",
     "max_stay": "Max stay",
     "policy": {
-      "min_spend": {
-        "none": "None",
-        "drink": "1 drink",
-        "s5": "$5",
-        "s10": "$10",
-        "s10plus": "$10+",
-        "unknown": "Unknown"
-      },
       "max_stay": {
         "unlimited": "Unlimited",
         "3h": "3h",

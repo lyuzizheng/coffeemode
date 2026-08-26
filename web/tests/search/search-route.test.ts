@@ -112,13 +112,13 @@ describe("GET /api/search route", () => {
     const req = new Request("http://localhost/api/search?q=coffee");
     await GET(req);
     expect(checkRateLimit).toHaveBeenCalledWith(
-      expect.stringMatching(/^search:/),
+      "search",
+      expect.stringMatching(/^anon:/),
       expect.arrayContaining([
         expect.objectContaining({ windowMs: 60_000, maxRequests: 30 }),
         expect.objectContaining({ windowMs: 3_600_000, maxRequests: 100 }),
         expect.objectContaining({ windowMs: 86_400_000, maxRequests: 200 }),
       ]),
-      "search",
       "GET /api/search",
     );
   });

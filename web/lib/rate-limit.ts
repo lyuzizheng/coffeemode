@@ -162,15 +162,16 @@ function getRateLimiter(): Promise<RateLimiterLike> {
  * for the slowest window). An alert is emitted via the segregated
  * observability service (DG129) on every denial.
  *
- * Buckets are keyed as `baseKey` (single window) or `baseKey:windowMs`
- * (multi-window) so windows do not collide.
+ * Buckets are keyed as `${bucketName}:${clientId}` (single window) or
+ * `${bucketName}:${clientId}:${windowMs}` (multi-window) so windows do not collide.
  */
 export async function checkRateLimit(
-  baseKey: string,
-  buckets: { windowMs: number; maxRequests: number }[],
   bucketName: string,
+  clientId: string,
+  buckets: { windowMs: number; maxRequests: number }[],
   route?: string,
 ): Promise<RateLimitResult> {
+  const baseKey = `${bucketName}:${clientId}`;
   let mostConstrainedAllowed: RateLimitResult | null = null;
   let denied: RateLimitResult | null = null;
   let deniedBucket: { windowMs: number; maxRequests: number } | null = null;
@@ -189,7 +190,6 @@ export async function checkRateLimit(
   }
 
   if (denied && deniedBucket) {
-    const clientId = baseKey.includes(":") ? baseKey.split(":").slice(1).join(":") : baseKey;
     emitRateLimitAlert({
       bucket: bucketName,
       clientId,

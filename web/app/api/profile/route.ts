@@ -10,20 +10,17 @@ import {
   rateLimitResponse,
 } from "@/lib/rate-limit";
 
-export async function GET(request?: NextRequest) {
+export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const clientId = getClientIdentifier(
-    (request ?? new Request("http://localhost/api/profile")) as unknown as Request,
-    user,
-  );
+  const clientId = getClientIdentifier(request, user);
   const rate = await checkRateLimit(
-    `profile-read:${clientId}`,
-    [PROFILE_READ_RATE_LIMIT],
     "profile-read",
+    clientId,
+    [PROFILE_READ_RATE_LIMIT],
     "GET /api/profile",
   );
   if (!rate.allowed) return rateLimitResponse(rate);
@@ -60,9 +57,9 @@ export async function PATCH(request: NextRequest) {
 
   const patchClientId = getClientIdentifier(request, user);
   const patchRate = await checkRateLimit(
-    `profile-write:${patchClientId}`,
-    [PROFILE_WRITE_RATE_LIMIT],
     "profile-write",
+    patchClientId,
+    [PROFILE_WRITE_RATE_LIMIT],
     "PATCH /api/profile",
   );
   if (!patchRate.allowed) return rateLimitResponse(patchRate);

@@ -17,9 +17,9 @@ export async function GET(request: NextRequest) {
 
   const clientId = getClientIdentifier(request, user);
   const rate = await checkRateLimit(
-    `profile-read:${clientId}`,
-    [PROFILE_READ_RATE_LIMIT],
     "profile-read",
+    clientId,
+    [PROFILE_READ_RATE_LIMIT],
     "GET /api/profile/cafes",
   );
   if (!rate.allowed) return rateLimitResponse(rate);

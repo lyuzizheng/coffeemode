@@ -20,12 +20,19 @@ export interface RateLimitAlertPayload {
 }
 
 // Throttle alerts to 1 per 10s per process to avoid log spam under burst.
-let lastEmitAt = 0;
+let lastWarnEmitAt = 0;
+let lastErrorEmitAt = 0;
 const EMIT_THROTTLE_MS = 10_000;
 
-function shouldEmit(now: number): boolean {
-  if (now - lastEmitAt < EMIT_THROTTLE_MS) return false;
-  lastEmitAt = now;
+function shouldEmitWarn(now: number): boolean {
+  if (now - lastWarnEmitAt < EMIT_THROTTLE_MS) return false;
+  lastWarnEmitAt = now;
+  return true;
+}
+
+function shouldEmitError(now: number): boolean {
+  if (now - lastErrorEmitAt < EMIT_THROTTLE_MS) return false;
+  lastErrorEmitAt = now;
   return true;
 }
 
@@ -42,7 +49,7 @@ export function emitRateLimitAlert(payload: RateLimitAlertPayload): void {
   const now = Date.now();
 
   // Always log throttled for local observability / Cloudflare logs.
-  if (shouldEmit(now)) {
+  if (shouldEmitWarn(now)) {
     console.warn(
       `[rate-limit] bucket=${payload.bucket} client=${payload.clientId} windowMs=${payload.windowMs} max=${payload.maxRequests} retryAfter=${payload.retryAfter}s route=${payload.route ?? "-"}`,
     );
@@ -73,12 +80,12 @@ export function emitRateLimitAlert(payload: RateLimitAlertPayload): void {
       body,
       keepalive: true,
     }).catch((err) => {
-      if (shouldEmit(Date.now())) {
+      if (shouldEmitError(Date.now())) {
         console.error("[rate-limit] Better Stack ingest failed", err);
       }
     });
   } catch (err) {
-    if (shouldEmit(Date.now())) {
+    if (shouldEmitError(Date.now())) {
       console.error("[rate-limit] Better Stack alert construction failed", err);
     }
   }
@@ -86,5 +93,6 @@ export function emitRateLimitAlert(payload: RateLimitAlertPayload): void {
 
 /** Reset throttle state — tests only. */
 export function _resetAlertThrottleForTests(): void {
-  lastEmitAt = 0;
+  lastWarnEmitAt = 0;
+  lastErrorEmitAt = 0;
 }

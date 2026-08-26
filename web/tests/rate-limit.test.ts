@@ -211,28 +211,28 @@ describe("checkRateLimit multi-window", () => {
       { windowMs: 60_000, maxRequests: 2 },
       { windowMs: 120_000, maxRequests: 5 },
     ];
-    const base = `search:${getClientIdentifier(new Request("https://localhost/api/search?q=x"), null)}:multi-${Date.now()}-${Math.random()}`;
+    const clientId = `test-client-multi-${Date.now()}`;
 
     // 2 allowed (small window at limit, large still has room)
-    expect((await checkRateLimit(base, buckets, "search")).allowed).toBe(true);
-    expect((await checkRateLimit(base, buckets, "search")).allowed).toBe(true);
+    expect((await checkRateLimit("search", clientId, buckets)).allowed).toBe(true);
+    expect((await checkRateLimit("search", clientId, buckets)).allowed).toBe(true);
 
     // 3rd trips the 60s window (2/2) even though 120s still has room → 429
-    const denied = await checkRateLimit(base, buckets, "search");
+    const denied = await checkRateLimit("search", clientId, buckets);
     expect(denied.allowed).toBe(false);
     expect(denied.retryAfter).toBeGreaterThan(0);
   });
 
   it("emits an alert via the observability hook on deny (DG129)", async () => {
     const buckets = [{ windowMs: 60_000, maxRequests: 1 }];
-    const base = `profile-read:user:test-alert-${Date.now()}`;
-    await checkRateLimit(base, buckets, "profile-read", "GET /api/profile"); // consume
+    const clientId = `user:test-alert-${Date.now()}`;
+    await checkRateLimit("profile-read", clientId, buckets, "GET /api/profile"); // consume
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     // Reset throttle so the alert fires
     const { _resetAlertThrottleForTests } = await import("@/lib/observability/rate-limit-alert");
     _resetAlertThrottleForTests();
 
-    const denied = await checkRateLimit(base, buckets, "profile-read", "GET /api/profile");
+    const denied = await checkRateLimit("profile-read", clientId, buckets, "GET /api/profile");
     expect(denied.allowed).toBe(false);
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();

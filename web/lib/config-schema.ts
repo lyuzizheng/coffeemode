@@ -81,6 +81,14 @@ function record(file: string, keyPath: string, value: unknown): Record<string, u
   return value as Record<string, unknown>;
 }
 
+function parseBucket(file: string, keyPath: string, entry: unknown): RateLimitBucket {
+  const bucket = record(file, keyPath, entry);
+  return {
+    windowMs: positiveNumber(file, `${keyPath}.windowMs`, bucket.windowMs),
+    maxRequests: positiveNumber(file, `${keyPath}.maxRequests`, bucket.maxRequests),
+  };
+}
+
 /** Validate raw parsed YAML into the typed rate-limit table (exported for tests). */
 export function parseRateLimits(raw: unknown, file = "rate-limits.yaml"): Record<string, RateLimitBucket | RateLimitBucket[]> {
   const table = record(file, "(root)", raw);
@@ -88,19 +96,9 @@ export function parseRateLimits(raw: unknown, file = "rate-limits.yaml"): Record
   for (const [name, entry] of Object.entries(table)) {
     if (Array.isArray(entry)) {
       if (entry.length === 0) fail(file, name, "must be a non-empty list of buckets");
-      out[name] = entry.map((item, idx) => {
-        const bucket = record(file, `${name}[${idx}]`, item);
-        return {
-          windowMs: positiveNumber(file, `${name}[${idx}].windowMs`, bucket.windowMs),
-          maxRequests: positiveNumber(file, `${name}[${idx}].maxRequests`, bucket.maxRequests),
-        };
-      });
+      out[name] = entry.map((item, idx) => parseBucket(file, `${name}[${idx}]`, item));
     } else {
-      const bucket = record(file, name, entry);
-      out[name] = {
-        windowMs: positiveNumber(file, `${name}.windowMs`, bucket.windowMs),
-        maxRequests: positiveNumber(file, `${name}.maxRequests`, bucket.maxRequests),
-      };
+      out[name] = parseBucket(file, name, entry);
     }
   }
   return out;

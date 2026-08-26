@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/get-user";
 import {
   checkRateLimit,
   getClientIdentifier,
@@ -74,12 +73,12 @@ export async function GET(request: Request) {
     );
   }
 
-  const user = await getCurrentUser();
-  const clientId = getClientIdentifier(request, user);
+  // Search is rate-limited per IP (DG129)
+  const clientId = getClientIdentifier(request, null);
   const rate = await checkRateLimit(
-    `search:${clientId}`,
-    SEARCH_RATE_LIMITS,
     "search",
+    clientId,
+    SEARCH_RATE_LIMITS,
     "GET /api/search",
   );
   if (!rate.allowed) {

@@ -6,6 +6,7 @@ import {
   appConfig,
   parseAppConfig,
   parseRateLimits,
+  rateLimitBuckets,
   rateLimitConfig,
   rateLimits,
 } from "@/lib/config";
@@ -64,6 +65,17 @@ describe("config files", () => {
   it("rateLimitConfig throws on an unknown bucket", () => {
     expect(() => rateLimitConfig("nope")).toThrow(/unknown rate limit "nope"/);
   });
+
+  it("owns the search + profile rate limits (DG129, #216)", () => {
+    expect(rateLimitBuckets("search")).toEqual([
+      { windowMs: 60_000, maxRequests: 30 },
+      { windowMs: 3_600_000, maxRequests: 100 },
+      { windowMs: 86_400_000, maxRequests: 200 },
+    ]);
+    expect(rateLimitConfig("profile-read")).toEqual({ windowMs: 60_000, maxRequests: 30 });
+    expect(rateLimitConfig("profile-write")).toEqual({ windowMs: 60_000, maxRequests: 10 });
+    expect(() => rateLimitConfig("search")).toThrow(/multi-window/);
+  });
 });
 
 describe("parseRateLimits validation", () => {
@@ -73,12 +85,32 @@ describe("parseRateLimits validation", () => {
     });
   });
 
+  it("accepts a multi-window (list) bucket", () => {
+    expect(
+      parseRateLimits({
+        search: [
+          { windowMs: 60_000, maxRequests: 30 },
+          { windowMs: 3_600_000, maxRequests: 100 },
+        ],
+      }),
+    ).toEqual({
+      search: [
+        { windowMs: 60_000, maxRequests: 30 },
+        { windowMs: 3_600_000, maxRequests: 100 },
+      ],
+    });
+  });
+
   it("rejects a non-mapping bucket", () => {
     expect(() => parseRateLimits({ x: 5 })).toThrow(/"x" must be a mapping/);
   });
 
   it("rejects a missing windowMs", () => {
     expect(() => parseRateLimits({ x: { maxRequests: 5 } })).toThrow(/"x\.windowMs"/);
+  });
+
+  it("rejects an empty list bucket", () => {
+    expect(() => parseRateLimits({ search: [] })).toThrow(/non-empty list/);
   });
 
   it("rejects a non-positive maxRequests", () => {

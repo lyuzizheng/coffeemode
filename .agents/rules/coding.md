@@ -28,6 +28,7 @@ remain in `docs/specs/`; this file owns coding procedure and style only.
 ## Route handlers
 
 - Keep `web/app/api/*` controllers thin; put business behavior in `web/lib/*`.
+- Enforce a rate limit bucket on every route handler (`app/api/*/route.ts`) defined in `web/config/rate-limits.yaml` via `checkRateLimit` or `rateLimiter.check` (DG74).
 - Return the existing JSON error shape and status conventions.
 - Handle expected failures with early returns. Log unexpected failures safely and
   return 500 without exposing upstream bodies or secrets.

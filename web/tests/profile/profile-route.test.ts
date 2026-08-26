@@ -10,6 +10,7 @@ import {
   getUserCheckIns,
   getUserCafes,
 } from "@/lib/db/profile";
+import { checkRateLimit } from "@/lib/rate-limit";
 import type { NextRequest } from "next/server";
 
 vi.mock("@/lib/auth/get-user", () => ({
@@ -24,17 +25,27 @@ vi.mock("@/lib/db/profile", () => ({
   getUserCafes: vi.fn(),
 }));
 
+vi.mock("@/lib/rate-limit", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/rate-limit")>("@/lib/rate-limit");
+  return {
+    ...actual,
+    checkRateLimit: vi.fn().mockResolvedValue({ allowed: true, remaining: 10, resetAt: Date.now(), retryAfter: 0 }),
+  };
+});
+
 describe("Profile API routes", () => {
   const userId = "00000000-0000-4000-8000-000000000001";
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(checkRateLimit).mockResolvedValue({ allowed: true, remaining: 10, resetAt: Date.now(), retryAfter: 0 });
   });
 
   describe("GET /api/profile", () => {
     it("returns 401 when unauthenticated", async () => {
       vi.mocked(getCurrentUser).mockResolvedValueOnce(null);
-      const res = await GET();
+      const req = new Request("http://localhost/api/profile") as NextRequest;
+      const res = await GET(req);
       expect(res.status).toBe(401);
       const body = await res.json();
       expect(body.error).toBe("unauthorized");
@@ -54,7 +65,8 @@ describe("Profile API routes", () => {
         checkinsCount: 12,
       });
 
-      const res = await GET();
+      const req = new Request("http://localhost/api/profile") as NextRequest;
+      const res = await GET(req);
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.profile.displayName).toBe("Nomad Alex");
@@ -67,7 +79,8 @@ describe("Profile API routes", () => {
       vi.mocked(getProfile).mockResolvedValueOnce(null);
       vi.mocked(getUserStats).mockResolvedValueOnce({ cafesCount: 0, checkinsCount: 0 });
 
-      const res = await GET();
+      const req = new Request("http://localhost/api/profile") as NextRequest;
+      const res = await GET(req);
       expect(res.status).toBe(404);
       const body = await res.json();
       expect(body.error).toBe("profile_not_found");
@@ -195,6 +208,45 @@ describe("Profile API routes", () => {
       expect(body.items[0].name).toBe("Kiosk Roastery");
       expect(body.items[0].checkinsCount).toBe(2);
       expect(body.items[0].isCreation).toBe(true);
+    });
+  });
+
+  describe("rate limiting", () => {
+    it("GET /api/profile returns 429 when profile-read bucket trips", async () => {
+      vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
+      vi.mocked(checkRateLimit).mockResolvedValueOnce({ allowed: false, remaining: 0, resetAt: Date.now() + 60000, retryAfter: 60 });
+      const req = new Request("http://localhost/api/profile") as NextRequest;
+      const res = await GET(req);
+      expect(res.status).toBe(429);
+      expect(res.headers.get("Retry-After")).toBe("60");
+    });
+
+    it("PATCH /api/profile returns 429 when profile-write bucket trips", async () => {
+      vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
+      vi.mocked(checkRateLimit).mockResolvedValueOnce({ allowed: false, remaining: 0, resetAt: Date.now() + 60000, retryAfter: 60 });
+      const req = new Request("http://localhost/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName: "New" }),
+      }) as NextRequest;
+      const res = await PATCH(req);
+      expect(res.status).toBe(429);
+    });
+
+    it("GET /api/profile/checkins returns 429 when profile-read bucket trips", async () => {
+      vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
+      vi.mocked(checkRateLimit).mockResolvedValueOnce({ allowed: false, remaining: 0, resetAt: Date.now() + 60000, retryAfter: 60 });
+      const req = new Request("http://localhost/api/profile/checkins") as NextRequest;
+      const res = await getCheckins(req);
+      expect(res.status).toBe(429);
+    });
+
+    it("GET /api/profile/cafes returns 429 when profile-read bucket trips", async () => {
+      vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
+      vi.mocked(checkRateLimit).mockResolvedValueOnce({ allowed: false, remaining: 0, resetAt: Date.now() + 60000, retryAfter: 60 });
+      const req = new Request("http://localhost/api/profile/cafes") as NextRequest;
+      const res = await getCafes(req);
+      expect(res.status).toBe(429);
     });
   });
 });

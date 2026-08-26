@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/get-user";
 import {
-  CAFES_READ_RATE_LIMIT,
+  checkRateLimit,
   getClientIdentifier,
   rateLimitResponse,
-  rateLimiter,
+  SEARCH_RATE_LIMITS,
 } from "@/lib/rate-limit";
 import { executeSearch } from "@/lib/search/search-service";
 import { WORK_DIM_FILTER_MAP } from "@/lib/search/filter";
@@ -74,12 +73,13 @@ export async function GET(request: Request) {
     );
   }
 
-  const user = await getCurrentUser();
-  const clientId = getClientIdentifier(request, user);
-  const rate = await rateLimiter.check(
-    `search:${clientId}`,
-    CAFES_READ_RATE_LIMIT.windowMs,
-    CAFES_READ_RATE_LIMIT.maxRequests,
+  // Search is rate-limited per IP (DG129)
+  const clientId = getClientIdentifier(request, null);
+  const rate = await checkRateLimit(
+    "search",
+    clientId,
+    SEARCH_RATE_LIMITS,
+    "GET /api/search",
   );
   if (!rate.allowed) {
     return rateLimitResponse(rate);

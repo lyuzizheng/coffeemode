@@ -2,8 +2,9 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import { rateLimitConfig } from "@/lib/config";
+import { rateLimitBuckets, rateLimitConfig } from "@/lib/config";
 import type { RateLimitResult, RateLimiterLike } from "@/lib/rate-limit/types";
+import { emitRateLimitAlert } from "@/lib/observability/rate-limit-alert";
 
 interface TokenBucket {
   tokens: number;
@@ -23,6 +24,11 @@ export const PLACES_RATE_LIMIT = rateLimitConfig("places");
 export const CAFES_READ_RATE_LIMIT = rateLimitConfig("cafes-read");
 
 export const CAFES_WRITE_RATE_LIMIT = rateLimitConfig("cafes-write");
+
+// Multi-window bucket for search + profile (DG129, #216) — read via helper
+export const SEARCH_RATE_LIMITS = rateLimitBuckets("search");
+export const PROFILE_READ_RATE_LIMIT = rateLimitConfig("profile-read");
+export const PROFILE_WRITE_RATE_LIMIT = rateLimitConfig("profile-write");
 
 /**
  * In-memory token-bucket rate limiter.
@@ -147,6 +153,58 @@ let backendPromise: Promise<RateLimiterLike> | null = null;
 function getRateLimiter(): Promise<RateLimiterLike> {
   backendPromise ??= createRateLimiter();
   return backendPromise;
+}
+
+/**
+ * Check one or more windows (DG129 multi-window). Each window is checked
+ * sequentially; all windows observe the request. If any window denies,
+ * the request is denied and the longest retryAfter wins (client must wait
+ * for the slowest window). An alert is emitted via the segregated
+ * observability service (DG129) on every denial.
+ *
+ * Buckets are keyed as `${bucketName}:${clientId}` (single window) or
+ * `${bucketName}:${clientId}:${windowMs}` (multi-window) so windows do not collide.
+ */
+export async function checkRateLimit(
+  bucketName: string,
+  clientId: string,
+  buckets: { windowMs: number; maxRequests: number }[],
+  route?: string,
+): Promise<RateLimitResult> {
+  const baseKey = `${bucketName}:${clientId}`;
+  let mostConstrainedAllowed: RateLimitResult | null = null;
+  let denied: RateLimitResult | null = null;
+  let deniedBucket: { windowMs: number; maxRequests: number } | null = null;
+
+  for (const bucket of buckets) {
+    const key = buckets.length > 1 ? `${baseKey}:${bucket.windowMs}` : baseKey;
+    const result = await rateLimiter.check(key, bucket.windowMs, bucket.maxRequests);
+    if (!result.allowed) {
+      if (!denied || result.retryAfter > denied.retryAfter) {
+        denied = result;
+        deniedBucket = bucket;
+      }
+    } else if (!mostConstrainedAllowed || result.remaining < mostConstrainedAllowed.remaining) {
+      mostConstrainedAllowed = result;
+    }
+  }
+
+  if (denied && deniedBucket) {
+    emitRateLimitAlert({
+      bucket: bucketName,
+      clientId,
+      windowMs: deniedBucket.windowMs,
+      maxRequests: deniedBucket.maxRequests,
+      retryAfter: denied.retryAfter,
+      route,
+    });
+    return denied;
+  }
+
+  // All windows allowed — return the tightest (smallest remaining) that was
+  // already consumed above. mostConstrainedAllowed is non-null because
+  // buckets is non-empty and no deny occurred.
+  return mostConstrainedAllowed!;
 }
 
 /**

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/auth/supabase-server";
 import { query } from "@/lib/db/postgres";
 import { upsertProfile } from "@/lib/auth/profiles";
+import { isSafeReturnPath } from "@/lib/auth/safe-path";
 
 export const runtime = "nodejs";
 
@@ -45,5 +46,8 @@ export async function GET(request: Request) {
     );
   }
 
-  return NextResponse.redirect(new URL("/", origin));
+  const next = searchParams.get("next");
+  const returnPath = isSafeReturnPath(next) ? next : "/";
+
+  return NextResponse.redirect(new URL(returnPath, origin));
 }

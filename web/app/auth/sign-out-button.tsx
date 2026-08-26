@@ -9,7 +9,13 @@ import { signOut, type AuthActionState } from "./actions";
 import { AuthErrorMessage } from "./auth-error-message";
 import { idbPersister } from "@/lib/query/persister";
 
-export function SignOutButton() {
+export function SignOutButton({
+  variant = "outline",
+  className = "w-full",
+}: {
+  variant?: "primary" | "outline" | "ghost";
+  className?: string;
+} = {}) {
   const t = useTranslations("home");
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -30,12 +36,12 @@ export function SignOutButton() {
   }, [state, queryClient, router]);
 
   return (
-    <form action={formAction} className="w-full">
+    <form action={formAction} className={className}>
       <Button
         type="submit"
-        variant="outline"
+        variant={variant}
         isDisabled={isPending}
-        className="w-full"
+        className="w-full min-h-[44px]"
         aria-busy={isPending}
       >
         {isPending ? t("signing_out") : t("sign_out")}

@@ -42,3 +42,12 @@ checkins:
   # product decision to change them is a typed YAML edit, not a code change.
   photoCap: 6
   noteMaxChars: 500
+profile:
+  # Profile page primary lists limit cap and default page size (DG107)
+  listLimitMax: 50
+  listPageSize: 20
+  # Max character length for inline display name editing
+  displayNameMaxChars: 24
+  # Max client-side recent searches items stored
+  recentSearchesMax: 20
+

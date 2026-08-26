@@ -44,6 +44,10 @@ describe("config files", () => {
     expect(appConfig.cafes.listLimitMax).toBe(50);
     expect(appConfig.checkins.photoCap).toBe(6);
     expect(appConfig.checkins.noteMaxChars).toBe(500);
+    expect(appConfig.profile.listLimitMax).toBe(50);
+    expect(appConfig.profile.listPageSize).toBe(20);
+    expect(appConfig.profile.displayNameMaxChars).toBe(24);
+    expect(appConfig.profile.recentSearchesMax).toBe(20);
   });
 
   it("owns the feed page size (spec 0001: 20 per page, both modes)", () => {
@@ -134,6 +138,12 @@ describe("parseAppConfig validation", () => {
     recoveryLimit: 5,
   };
   const validCheckins = { photoCap: 6, noteMaxChars: 500 };
+  const validProfile = {
+    listLimitMax: 50,
+    listPageSize: 20,
+    displayNameMaxChars: 24,
+    recentSearchesMax: 20,
+  };
 
   it("accepts a valid config", () => {
     const valid = {
@@ -143,6 +153,7 @@ describe("parseAppConfig validation", () => {
       discovery: validCenter,
       seo: validSeo,
       checkins: validCheckins,
+      profile: validProfile,
     };
     expect(parseAppConfig(valid)).toEqual(valid);
   });
@@ -159,8 +170,22 @@ describe("parseAppConfig validation", () => {
         feed: { pageSize: 20 },
         discovery: validCenter,
         seo: validSeo,
+        profile: validProfile,
       }),
     ).toThrow(/"checkins" must be a mapping/);
+  });
+
+  it("rejects a missing profile section", () => {
+    expect(() =>
+      parseAppConfig({
+        search: validSearch,
+        cafes: { listLimitMax: 50 },
+        feed: { pageSize: 20 },
+        discovery: validCenter,
+        seo: validSeo,
+        checkins: validCheckins,
+      }),
+    ).toThrow(/"profile" must be a mapping/);
   });
 
   it("rejects a wrong type", () => {
@@ -172,6 +197,7 @@ describe("parseAppConfig validation", () => {
         discovery: validCenter,
         seo: validSeo,
         checkins: validCheckins,
+        profile: validProfile,
       }),
     ).toThrow(/"search\.maxRadiusKm" must be a positive number/);
   });
@@ -185,6 +211,7 @@ describe("parseAppConfig validation", () => {
         discovery: { defaultCenter: { lat: 135, lng: 103.8 } },
         seo: validSeo,
         checkins: validCheckins,
+        profile: validProfile,
       }),
     ).toThrow(/"discovery\.defaultCenter\.lat" must be a number within \[-90,90\]/);
   });
@@ -201,6 +228,7 @@ describe("parseAppConfig validation", () => {
           recoveryLimit: 5,
         },
         checkins: validCheckins,
+        profile: validProfile,
       }),
     ).toThrow(/"seo\.shellCache\.sMaxAgeSeconds" must be a positive integer/);
   });
@@ -214,6 +242,7 @@ describe("parseAppConfig validation", () => {
         discovery: validCenter,
         seo: validSeo,
         checkins: { photoCap: 6.5, noteMaxChars: 500 },
+        profile: validProfile,
       }),
     ).toThrow(/"checkins\.photoCap" must be a positive integer/);
   });

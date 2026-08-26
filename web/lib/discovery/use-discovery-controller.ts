@@ -51,13 +51,18 @@ export interface DiscoveryController {
   detailHeadingRef: (el: HTMLElement | null) => void;
 }
 
-export function useDiscoveryController(): DiscoveryController {
+export function useDiscoveryController(options?: { initialCafeId?: string }): DiscoveryController {
   const t = useTranslations("discovery");
-  const [selectedCafeId, setSelectedCafeId] = useState<string | null>(null);
-  const [snap, setSnap] = useState<SheetSnap>("peek");
+  const initialValidId =
+    options?.initialCafeId && isValidUUID(options.initialCafeId)
+      ? options.initialCafeId.toLowerCase()
+      : null;
+
+  const [selectedCafeId, setSelectedCafeId] = useState<string | null>(initialValidId);
+  const [snap, setSnap] = useState<SheetSnap>(() => (initialValidId ? "half" : "peek"));
   const cardRefs = useRef(new Map<string, HTMLElement>());
   const headingEl = useRef<HTMLElement | null>(null);
-  const focusPending = useRef(false);
+  const focusPending = useRef(Boolean(initialValidId));
   const restoreFocusTo = useRef<string | null>(null);
 
   // --- URL sync -----------------------------------------------------------
@@ -110,10 +115,12 @@ export function useDiscoveryController(): DiscoveryController {
     close();
   }, [close, t]);
 
-  // Back/Forward: parse the URL the browser landed on. Back to `/` clears the
-  // selection; Forward to /cafes/<id> re-selects without pushing (the entry
-  // already exists — pushing again would loop).
+  // Normalize initial ?cafe= deep link to canonical /cafes/[id], and attach Back/Forward popstate listener.
   useEffect(() => {
+    if (initialValidId) {
+      window.history.replaceState(null, "", cafeUrl(initialValidId));
+    }
+
     const onPopState = () => {
       const id = cafeIdFromPath(window.location.pathname);
       if (id) {
@@ -127,7 +134,7 @@ export function useDiscoveryController(): DiscoveryController {
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, []);
+  }, [initialValidId]);
 
   // --- Focus handoff (non-modal, DG18) ------------------------------------
   const registerCardRef = useCallback((cafeId: string, el: HTMLElement | null) => {

@@ -6,7 +6,18 @@ export interface RecentSearchItem {
 }
 
 const STORAGE_KEY = "coffeemode:recent_searches:v1";
-const MAX_RECENT_SEARCHES = 20;
+const DEFAULT_MAX_RECENT_SEARCHES = 20;
+
+function getMaxRecentSearches(): number {
+  const raw = process.env.NEXT_PUBLIC_RECENT_SEARCHES_MAX;
+  if (raw) {
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isInteger(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return DEFAULT_MAX_RECENT_SEARCHES;
+}
 
 let cachedSearches: RecentSearchItem[] = [];
 let cachedRaw: string | null = null;
@@ -79,7 +90,7 @@ export function addRecentSearch(query: string, city: string): void {
         timestamp: Date.now(),
       },
       ...filtered,
-    ].slice(0, MAX_RECENT_SEARCHES);
+    ].slice(0, getMaxRecentSearches());
 
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     window.dispatchEvent(new Event("coffeemode:recent-searches-changed"));

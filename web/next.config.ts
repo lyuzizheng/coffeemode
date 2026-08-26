@@ -18,6 +18,10 @@ const nextConfig: NextConfig = {
   // future alternative, not the primary target.
   output: "standalone",
 
+  env: {
+    NEXT_PUBLIC_RECENT_SEARCHES_MAX: String(appConfig.profile.recentSearchesMax),
+  },
+
   images: {
     // R2 images are served through our Cloudflare CDN host only. The raw
     // `r2.cloudflarestorage.com` endpoints are never rendered through

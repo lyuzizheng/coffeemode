@@ -68,7 +68,10 @@ padding. Cafe name (`font-display`, `text-md`) + `visited {date}`
 user actually set, honest unset rules), a right-aligned like count (heart
 glyph + count, `text-xs`, `muted` — kept, DG100: the quiet feedback loop
 that your data helped someone), and a 36px ghost edit (pencil) button
-opening the check-in drawer in edit mode (checkin-system-v1 §5). Card tap
+opening the check-in drawer in edit mode (checkin-system-v1 §5). *(Interim
+contract: until the check-in drawer slice lands, tapping the pencil button
+triggers an informative toast `edit_checkin_coming` matching the DiscoveryHome
+check-in placeholder pattern).* Card tap
 selects the cafe in the discovery controller and returns to the map with
 that cafe selected (the DG101 in-app path — never a `/cafes/[id]` route
 hop; the SSR page exists for external share links, not in-app navigation).
@@ -102,6 +105,9 @@ Client-side recent searches (spec 0004 §11 as amended — lightweight local
 storage, never server-side at MVP). Rows: the query text (`text-sm`,
 `foreground`) + city chip + relative time (`text-xs`, `muted`), leading
 search glyph. Tap → opens the search overlay with the query pre-filled.
+*(Interim contract: until the search overlay UI slice lands, tapping a recent
+search entry returns to `/`, and active searches will record to local storage
+via `addRecentSearch` when the search input surface is wired).*
 A ghost `Clear` text-button at the tab's foot wipes the local history.
 Empty state: `还没有搜索记录` (`text-sm`, `muted`). (This is the profile
 page's private history view; the search overlay itself still shows no

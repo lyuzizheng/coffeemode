@@ -2,6 +2,7 @@ import "server-only";
 
 import { isValidUUID } from "@shared/uuid";
 import { query } from "./postgres";
+import { appConfig } from "@/lib/config";
 import type { CheckInScores } from "@/types/checkins";
 import type { StoredImage } from "@/types/images";
 
@@ -112,7 +113,7 @@ export async function updateProfile(
 
   if (patch.displayName !== undefined) {
     const trimmed = patch.displayName.trim();
-    if (trimmed.length > 0 && trimmed.length <= 24) {
+    if (trimmed.length > 0 && trimmed.length <= appConfig.profile.displayNameMaxChars) {
       params.push(trimmed);
       updates.push(`display_name = $${params.length}`);
     }
@@ -169,7 +170,10 @@ export async function getUserCheckIns(
     return { items: [], nextCursor: null };
   }
 
-  const limit = Math.max(1, Math.min(50, options.limit ?? 20));
+  const limit = Math.max(
+    1,
+    Math.min(appConfig.profile.listLimitMax, options.limit ?? appConfig.profile.listPageSize),
+  );
   const params: unknown[] = [userId, limit + 1];
   let cursorClause = "";
 
@@ -203,8 +207,8 @@ export async function getUserCheckIns(
     select
       ch.id,
       ch.cafe_id,
-      coalesce(c.name, 'Unknown cafe') as cafe_name,
-      coalesce(c.city, 'singapore') as cafe_city,
+      coalesce(c.name, '') as cafe_name,
+      coalesce(c.city, '') as cafe_city,
       (c.id is null or c.deleted_at is not null) as cafe_is_deleted,
       ch.visited_at,
       ch.scores,
@@ -258,7 +262,10 @@ export async function getUserCafes(
     return { items: [], nextCursor: null };
   }
 
-  const limit = Math.max(1, Math.min(50, options.limit ?? 20));
+  const limit = Math.max(
+    1,
+    Math.min(appConfig.profile.listLimitMax, options.limit ?? appConfig.profile.listPageSize),
+  );
   const params: unknown[] = [userId, limit + 1];
   let cursorClause = "";
 

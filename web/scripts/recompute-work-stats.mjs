@@ -73,7 +73,7 @@ function emptyWorkStats() {
     n_users: 0,
     n_checkins: 0,
     dims,
-    policies: { min_spend: {}, max_stay: {} },
+    policies: { max_stay: {} },
     experience_score: null,
     composite_score: null,
     updated_at: new Date().toISOString(),
@@ -99,7 +99,7 @@ function computeExperienceScore(stats) {
 }
 
 function computeUserContribution(checkins) {
-  if (checkins.length === 0) return { dims: {}, min_spend: undefined, max_stay: undefined };
+  if (checkins.length === 0) return { dims: {}, max_stay: undefined };
   const sorted = [...checkins].sort((a, b) => new Date(b.visited_at) - new Date(a.visited_at));
   const latest = sorted[0];
   const dims = {};
@@ -118,7 +118,6 @@ function computeUserContribution(checkins) {
   }
   return {
     dims,
-    min_spend: latest.min_spend ?? undefined,
     max_stay: latest.max_stay ?? undefined,
   };
 }
@@ -127,7 +126,7 @@ function applyUserContributionDiff(stats, oldC, newC, nCheckins) {
   const next = {
     ...stats,
     dims: { ...stats.dims },
-    policies: { min_spend: { ...stats.policies.min_spend }, max_stay: { ...stats.policies.max_stay } },
+    policies: { max_stay: { ...stats.policies.max_stay } },
   };
   for (const d of WORK_DIMS) next.dims[d] = { ...stats.dims[d] };
   for (const dim of WORK_DIMS) {
@@ -143,7 +142,6 @@ function applyUserContributionDiff(stats, oldC, newC, nCheckins) {
     if (oldV !== undefined) { counts[oldV] = (counts[oldV] ?? 0) - 1; if (counts[oldV] === 0) delete counts[oldV]; }
     if (newV !== undefined) counts[newV] = (counts[newV] ?? 0) + 1;
   };
-  bump(next.policies.min_spend, oldC?.min_spend, newC?.min_spend);
   bump(next.policies.max_stay, oldC?.max_stay, newC?.max_stay);
   next.experience_score = computeExperienceScore(next);
   next.composite_score = computeCompositeScore(next);
@@ -171,7 +169,7 @@ function computeCafeStats(checkins) {
 async function recomputeOneCafe(client, cafeId) {
   await client.query("select 1 from cafes where id = $1 for update", [cafeId]);
   const { rows } = await client.query(
-    `select id, cafe_id, user_id, is_creation, scores, min_spend, max_stay, note,
+    `select id, cafe_id, user_id, is_creation, scores, max_stay, note,
             photos, likes_count, visited_at, created_at, updated_at, deleted_at
      from checkins where cafe_id = $1 and deleted_at is null order by visited_at desc`,
     [cafeId],

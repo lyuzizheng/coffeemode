@@ -165,7 +165,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   });
 
-  it("applies migrations 0001→0009 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0010 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -177,6 +177,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0007_checkins_spec_alignment.sql",
       "0008_no_self_likes.sql",
       "0009_cafe_tombstones.sql",
+      "0010_drop_min_spend.sql",
     ]);
 
     const pgVersion = await dbClient.query("select postgis_version() as v");

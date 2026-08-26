@@ -20,7 +20,7 @@
   - Static HeroUI Slider prototype for all 0–100 check-in dimensions plus overall.
 
 - `app/theme-preview/sections/policy-chips-section.tsx`
-  - Reusable `PolicyChips` component and selectable `min_spend` / `max_stay` chip groups using the sage secondary token.
+  - Reusable `PolicyChips` component and selectable policy chip group using the sage secondary token (one policy dimension removed per DG125; see `docs/alignment-temp/alignment-progress.md`).
 
 - `app/theme-preview/sections/check-in-success-section.tsx`
   - `CheckInSuccessCard` bottom-card prototype with cafe name, new work score, actions, and a subtle coffee-steam hint.

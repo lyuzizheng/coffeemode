@@ -3,6 +3,11 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/auth/supabase-server";
+import {
+  getConfiguredOrigin,
+  getProtoHost,
+  isAllowedOrigin,
+} from "@/lib/security/origin";
 
 /**
  * OAuth entry points (spec 0001: Supabase is AUTH ONLY, Apple + Google).
@@ -22,12 +27,6 @@ export type AuthActionState = {
   error?: "invalid_provider" | "not_configured" | "provider_start_failed" | "signout_failed";
   success?: boolean;
 };
-
-import {
-  getConfiguredOrigin,
-  getProtoHost,
-  isAllowedOrigin,
-} from "@/lib/security/origin";
 
 function validateProvider(value: FormDataEntryValue | null): value is OAuthProvider {
   return value === "apple" || value === "google";

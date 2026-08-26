@@ -5,12 +5,11 @@ import { NextResponse } from "next/server";
  *
  * Single source of truth for host allowlisting across auth actions and
  * mutating route handlers. Checks `Sec-Fetch-Site`, `Origin`, and `Referer`
- * headers on state-changing methods (POST, PATCH, PUT, DELETE) to protect
- * cookie-authenticated sessions from cross-site request forgery.
+ * headers to protect cookie-authenticated sessions from cross-site request forgery.
  */
 
-export const ALLOWED_SCHEMES = ["http:", "https:"];
-export const LOCALHOST_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+const ALLOWED_SCHEMES = ["http:", "https:"];
+const LOCALHOST_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
 /** Returns the normalized origin from NEXT_PUBLIC_SITE_URL or null if not configured. */
 export function getConfiguredOrigin(): string | null {
@@ -75,7 +74,7 @@ export function getAllowedHosts(): Set<string> {
 }
 
 /** Checks whether a host/hostname is allowed by configuration or localhost fallback. */
-export function isAllowedHost(host: string, hostname?: string): boolean {
+function isAllowedHost(host: string, hostname?: string): boolean {
   const cleanHost = host.toLowerCase();
   const cleanHostname = (hostname ?? cleanHost.split(":")[0]).toLowerCase();
   const allowed = getAllowedHosts();
@@ -98,7 +97,7 @@ export function isAllowedOrigin(origin: string): boolean {
 }
 
 /** Extracts the effective host from request headers, handling comma-separated forwarded hosts. */
-export function getEffectiveHost(headers: Headers): string | null {
+function getEffectiveHost(headers: Headers): string | null {
   const rawForwarded = headers.get("x-forwarded-host");
   if (rawForwarded) {
     const first = rawForwarded.split(",")[0]?.trim();

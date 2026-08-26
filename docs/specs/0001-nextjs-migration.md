@@ -315,7 +315,7 @@ Sessions: Supabase SSR cookies (@supabase/ssr)
 OAuth redirectTo validation (web/app/auth/actions.ts):
   - Resolve candidates in this order:
       1. `Origin` request header if present and allowed.
-      2. `x-forwarded-proto` + `Host` request headers if the `Origin` header is absent and they form an allowed origin.
+      2. `x-forwarded-proto` + `Host` (or first entry of `x-forwarded-host`) request headers if the `Origin` header is absent and they form an allowed origin.
       3. `NEXT_PUBLIC_SITE_URL` (always allowed if configured).
   - Accept only exact canonical `host` values in the allowlist (with non-default port):
       * host of NEXT_PUBLIC_SITE_URL (always allowed, used as fallback)
@@ -327,6 +327,7 @@ OAuth redirectTo validation (web/app/auth/actions.ts):
 Mutating route CSRF protection (web/lib/security/origin.ts, Issues #208, #218):
   - Every mutating route handler (POST, PATCH, PUT, DELETE) verifies origin via requireSameOrigin(request).
   - Checks Sec-Fetch-Site (rejects cross-site), Origin header against request host / NEXT_PUBLIC_ALLOWED_HOSTS, and falls back to Referer header if Origin is omitted.
+  - Requests with neither Origin nor Referer headers (and not marked cross-site) are permitted to maintain compatibility for non-browser / server-to-server HTTP clients.
   - If rejected, immediately returns `403 { "error": "forbidden_origin", "message": "cross-origin request forbidden" }`.
 Proxy: web/proxy.ts refreshes the session only when a Supabase session cookie
   is present; uses getSession() to avoid the unconditional user-validation

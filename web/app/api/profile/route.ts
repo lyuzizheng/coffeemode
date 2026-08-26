@@ -2,12 +2,31 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
 import { getProfile, getUserStats, updateProfile } from "@/lib/db/profile";
 import { isSameOrigin } from "@/lib/security/origin";
+import {
+  checkRateLimit,
+  getClientIdentifier,
+  PROFILE_READ_RATE_LIMIT,
+  PROFILE_WRITE_RATE_LIMIT,
+  rateLimitResponse,
+} from "@/lib/rate-limit";
 
-export async function GET() {
+export async function GET(request?: NextRequest) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+
+  const clientId = getClientIdentifier(
+    (request ?? new Request("http://localhost/api/profile")) as unknown as Request,
+    user,
+  );
+  const rate = await checkRateLimit(
+    `profile-read:${clientId}`,
+    [PROFILE_READ_RATE_LIMIT],
+    "profile-read",
+    "GET /api/profile",
+  );
+  if (!rate.allowed) return rateLimitResponse(rate);
 
   try {
     const [profile, stats] = await Promise.all([
@@ -38,6 +57,15 @@ export async function PATCH(request: NextRequest) {
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+
+  const patchClientId = getClientIdentifier(request, user);
+  const patchRate = await checkRateLimit(
+    `profile-write:${patchClientId}`,
+    [PROFILE_WRITE_RATE_LIMIT],
+    "profile-write",
+    "PATCH /api/profile",
+  );
+  if (!patchRate.allowed) return rateLimitResponse(patchRate);
 
   try {
     const body = (await request.json()) as unknown;

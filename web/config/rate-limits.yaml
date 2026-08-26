@@ -1,6 +1,8 @@
 # All API rate limits (DG74). Scope is per-user when authenticated, per-IP
 # otherwise. Code never hardcodes limits; tuning one is an edit here.
 # windowMs: bucket window in milliseconds. maxRequests: tokens per window.
+# Multi-window buckets (e.g. search) are a list; hitting ANY window fires 429
+# and an alert (DG129).
 cafes-read:
   windowMs: 60000
   maxRequests: 30
@@ -15,3 +17,17 @@ images:
 places:
   windowMs: 60000
   maxRequests: 30
+# Search is expensive (FTS + optional POI fanout) — multi-window per IP (DG129).
+search:
+  - windowMs: 60000
+    maxRequests: 30
+  - windowMs: 3600000
+    maxRequests: 100
+  - windowMs: 86400000
+    maxRequests: 200
+profile-read:
+  windowMs: 60000
+  maxRequests: 30
+profile-write:
+  windowMs: 60000
+  maxRequests: 10

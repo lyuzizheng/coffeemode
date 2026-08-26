@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as searchGET } from "@/app/api/places/search/route";
 import {
+  checkRateLimit,
   IMAGE_RATE_LIMIT,
   PLACES_RATE_LIMIT,
+  PROFILE_READ_RATE_LIMIT,
   RateLimiter,
+  SEARCH_RATE_LIMITS,
   getClientIdentifier,
   rateLimitResponse,
   rateLimiter,
@@ -200,4 +203,47 @@ describe("Route rate limiting", () => {
 it("exports sensible image and places rate-limit defaults", () => {
   expect(IMAGE_RATE_LIMIT).toEqual({ windowMs: 60_000, maxRequests: 10 });
   expect(PLACES_RATE_LIMIT).toEqual({ windowMs: 60_000, maxRequests: 30 });
+});
+
+describe("checkRateLimit multi-window", () => {
+  it("enforces all windows (each consumes a token, any deny blocks)", async () => {
+    const buckets = [
+      { windowMs: 60_000, maxRequests: 2 },
+      { windowMs: 120_000, maxRequests: 5 },
+    ];
+    const base = `search:${getClientIdentifier(new Request("https://localhost/api/search?q=x"), null)}:multi-${Date.now()}-${Math.random()}`;
+
+    // 2 allowed (small window at limit, large still has room)
+    expect((await checkRateLimit(base, buckets, "search")).allowed).toBe(true);
+    expect((await checkRateLimit(base, buckets, "search")).allowed).toBe(true);
+
+    // 3rd trips the 60s window (2/2) even though 120s still has room → 429
+    const denied = await checkRateLimit(base, buckets, "search");
+    expect(denied.allowed).toBe(false);
+    expect(denied.retryAfter).toBeGreaterThan(0);
+  });
+
+  it("emits an alert via the observability hook on deny (DG129)", async () => {
+    const buckets = [{ windowMs: 60_000, maxRequests: 1 }];
+    const base = `profile-read:user:test-alert-${Date.now()}`;
+    await checkRateLimit(base, buckets, "profile-read", "GET /api/profile"); // consume
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // Reset throttle so the alert fires
+    const { _resetAlertThrottleForTests } = await import("@/lib/observability/rate-limit-alert");
+    _resetAlertThrottleForTests();
+
+    const denied = await checkRateLimit(base, buckets, "profile-read", "GET /api/profile");
+    expect(denied.allowed).toBe(false);
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+});
+
+it("exports search + profile rate-limit defaults (DG129, #216)", () => {
+  expect(SEARCH_RATE_LIMITS).toEqual([
+    { windowMs: 60_000, maxRequests: 30 },
+    { windowMs: 3_600_000, maxRequests: 100 },
+    { windowMs: 86_400_000, maxRequests: 200 },
+  ]);
+  expect(PROFILE_READ_RATE_LIMIT).toEqual({ windowMs: 60_000, maxRequests: 30 });
 });

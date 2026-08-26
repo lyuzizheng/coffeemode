@@ -2,12 +2,27 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
 import { getUserCheckIns } from "@/lib/db/profile";
 import { appConfig } from "@/lib/config";
+import {
+  checkRateLimit,
+  getClientIdentifier,
+  PROFILE_READ_RATE_LIMIT,
+  rateLimitResponse,
+} from "@/lib/rate-limit";
 
 export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+
+  const clientId = getClientIdentifier(request, user);
+  const rate = await checkRateLimit(
+    `profile-read:${clientId}`,
+    [PROFILE_READ_RATE_LIMIT],
+    "profile-read",
+    "GET /api/profile/checkins",
+  );
+  if (!rate.allowed) return rateLimitResponse(rate);
 
   const { searchParams } = new URL(request.url);
   const rawLimit = searchParams.get("limit");

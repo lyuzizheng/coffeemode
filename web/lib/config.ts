@@ -23,10 +23,9 @@ import type { RateLimitBucket } from "./config-schema";
 export type { AppConfig, RateLimitBucket } from "./config-schema";
 export { parseAppConfig, parseRateLimits } from "./config-schema";
 
-/** All rate limits (DG74), keyed by bucket name. */
-export const rateLimits: Readonly<Record<string, RateLimitBucket>> = Object.freeze(
-  parseRateLimits(loadYaml("rate-limits.yaml")),
-);
+/** All rate limits (DG74), keyed by bucket name. Single window or multi-window. */
+export const rateLimits: Readonly<Record<string, RateLimitBucket | RateLimitBucket[]>> =
+  Object.freeze(parseRateLimits(loadYaml("rate-limits.yaml")));
 
 /** Everything else (DG107). */
 export const appConfig = Object.freeze(parseAppConfig(loadYaml("app.yaml")));
@@ -37,5 +36,19 @@ export function rateLimitConfig(name: string): RateLimitBucket {
   if (!bucket) {
     throw new Error(`config rate-limits.yaml: unknown rate limit "${name}"`);
   }
+  if (Array.isArray(bucket)) {
+    throw new Error(
+      `config rate-limits.yaml: "${name}" is multi-window; use rateLimitBuckets("${name}")`,
+    );
+  }
   return bucket;
+}
+
+/** Normalized multi-window view: always returns an array (single bucket wrapped). */
+export function rateLimitBuckets(name: string): RateLimitBucket[] {
+  const bucket = rateLimits[name];
+  if (!bucket) {
+    throw new Error(`config rate-limits.yaml: unknown rate limit "${name}"`);
+  }
+  return Array.isArray(bucket) ? bucket : [bucket];
 }

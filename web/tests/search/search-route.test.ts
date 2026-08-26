@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GET } from "@/app/api/search/route";
 import { executeSearch } from "@/lib/search/search-service";
-import { rateLimiter } from "@/lib/rate-limit";
+import { checkRateLimit } from "@/lib/rate-limit";
 import type { SearchResponse } from "@/lib/search/types";
 
 vi.mock("@/lib/search/search-service", () => ({
@@ -12,9 +12,18 @@ vi.mock("@/lib/auth/get-user", () => ({
   getCurrentUser: vi.fn().mockResolvedValue(null),
 }));
 
+vi.mock("@/lib/rate-limit", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/rate-limit")>("@/lib/rate-limit");
+  return {
+    ...actual,
+    checkRateLimit: vi.fn().mockResolvedValue({ allowed: true, remaining: 10, resetAt: Date.now(), retryAfter: 0 }),
+  };
+});
+
 describe("GET /api/search route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(checkRateLimit).mockResolvedValue({ allowed: true, remaining: 10, resetAt: Date.now(), retryAfter: 0 });
   });
 
   it("rejects out-of-range latitude with 400", async () => {
@@ -79,7 +88,7 @@ describe("GET /api/search route", () => {
   });
 
   it("handles rate limiting with 429", async () => {
-    vi.spyOn(rateLimiter, "check").mockResolvedValueOnce({
+    vi.mocked(checkRateLimit).mockResolvedValueOnce({
       allowed: false,
       retryAfter: 30,
       remaining: 0,
@@ -91,6 +100,27 @@ describe("GET /api/search route", () => {
 
     expect(res.status).toBe(429);
     expect(res.headers.get("retry-after")).toBe("30");
+  });
+
+  it("calls checkRateLimit with the multi-window search buckets", async () => {
+    vi.mocked(executeSearch).mockResolvedValue({
+      results: [],
+      total_count: 0,
+      is_weak_results: true,
+      reference_point: { lat: 1.35, lng: 103.8, is_from_city_center: true },
+    });
+    const req = new Request("http://localhost/api/search?q=coffee");
+    await GET(req);
+    expect(checkRateLimit).toHaveBeenCalledWith(
+      expect.stringMatching(/^search:/),
+      expect.arrayContaining([
+        expect.objectContaining({ windowMs: 60_000, maxRequests: 30 }),
+        expect.objectContaining({ windowMs: 3_600_000, maxRequests: 100 }),
+        expect.objectContaining({ windowMs: 86_400_000, maxRequests: 200 }),
+      ]),
+      "search",
+      "GET /api/search",
+    );
   });
 
   it("returns 500 internal_error when executeSearch throws", async () => {

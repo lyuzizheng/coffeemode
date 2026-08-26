@@ -21,9 +21,17 @@ vi.mock("@/lib/rate-limit", async () => {
 });
 
 describe("GET /api/search route", () => {
+  const mockResponse: SearchResponse = {
+    results: [],
+    total_count: 0,
+    is_weak_results: true,
+    reference_point: { lat: 1.35, lng: 103.8, is_from_city_center: true },
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(checkRateLimit).mockResolvedValue({ allowed: true, remaining: 10, resetAt: Date.now(), retryAfter: 0 });
+    vi.mocked(executeSearch).mockResolvedValue(mockResponse);
   });
 
   it("rejects out-of-range latitude with 400", async () => {
@@ -59,14 +67,50 @@ describe("GET /api/search route", () => {
     expect(res3.status).toBe(400);
   });
 
+  it("rejects non-numeric limit with 400", async () => {
+    const req = new Request("http://localhost/api/search?limit=abc");
+    const res = await GET(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("invalid_request");
+  });
+
+  it("rejects unknown explicit city with 400 (DG128)", async () => {
+    const req = new Request("http://localhost/api/search?city=paris");
+    const res = await GET(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("invalid_request");
+    expect(body.message).toBe("unknown city");
+    expect(executeSearch).not.toHaveBeenCalled();
+  });
+
+  it("resolves omitted city via cf-ipcity header (DG128)", async () => {
+    const req = new Request("http://localhost/api/search?q=coffee", {
+      headers: { "cf-ipcity": "Tokyo", "cf-ipcountry": "JP" },
+    });
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    expect(executeSearch).toHaveBeenCalledWith(expect.objectContaining({ city: "tokyo" }));
+  });
+
+  it("resolves omitted city via cf-ipcountry fallback when cf-ipcity misses", async () => {
+    const req = new Request("http://localhost/api/search?q=coffee", {
+      headers: { "cf-ipcity": "Nowhere", "cf-ipcountry": "SG" },
+    });
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    expect(executeSearch).toHaveBeenCalledWith(expect.objectContaining({ city: "singapore" }));
+  });
+
+  it("falls back to default city when no headers present", async () => {
+    const req = new Request("http://localhost/api/search?q=coffee");
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    expect(executeSearch).toHaveBeenCalledWith(expect.objectContaining({ city: "singapore" }));
+  });
+
   it("parses query params and calls executeSearch", async () => {
-    const mockResponse: SearchResponse = {
-      results: [],
-      total_count: 0,
-      is_weak_results: true,
-      reference_point: { lat: 1.35, lng: 103.8, is_from_city_center: true },
-    };
-    vi.mocked(executeSearch).mockResolvedValue(mockResponse);
 
     const req = new Request(
       "http://localhost/api/search?q=coffee&city=tokyo&filter_wifi=80&open_now=true&filter_max_stay=unlimited&include_live=true",

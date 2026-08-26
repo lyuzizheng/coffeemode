@@ -817,6 +817,17 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(results[0]?.work_stats).toBeDefined();
     });
 
+    it("preserves AND grouping between city filter and name search OR condition", async () => {
+      // Query matches cafe name in DB, but city is constrained to Tokyo where no such cafe exists
+      const resultsTokyo = await searchCafesInDb({ q: "Cafe", city: "tokyo" });
+      expect(resultsTokyo).toHaveLength(0);
+
+      // Query with matching city returns the cafe
+      const resultsSing = await searchCafesInDb({ q: "Cafe", city: "singapore" });
+      expect(resultsSing.length).toBeGreaterThanOrEqual(1);
+      expect(resultsSing.every((c) => c.city?.toLowerCase() === "singapore")).toBe(true);
+    });
+
     it("filters cafes by city case-insensitively", async () => {
       const resultsSing = await searchCafesInDb({ city: "Singapore" });
       expect(resultsSing.every((c) => c.city?.toLowerCase() === "singapore")).toBe(true);

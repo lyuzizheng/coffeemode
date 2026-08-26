@@ -606,6 +606,18 @@ describe("reviveCafe", () => {
     expect(poolQueryMock.mock.calls[0][0]).toContain("update cafes set deleted_at = null");
     expect(poolQueryMock.mock.calls[0][1]).toEqual(["550e8400-e29b-41d4-a716-446655440001"]);
   });
+
+  it("returns false instead of throwing when a re-imported live row blocks revive (issue #228)", async () => {
+    poolQueryMock.mockRejectedValueOnce({ code: "23505" }); // partial unique index rejects the un-delete
+    await expect(reviveCafe("550e8400-e29b-41d4-a716-446655440001")).resolves.toBe(false);
+  });
+
+  it("rethrows errors that are not unique violations", async () => {
+    poolQueryMock.mockRejectedValueOnce(new Error("connection reset"));
+    await expect(reviveCafe("550e8400-e29b-41d4-a716-446655440001")).rejects.toThrow(
+      "connection reset",
+    );
+  });
 });
 
 describe("DELETE /api/cafes/[id]", () => {
@@ -637,12 +649,25 @@ describe("DELETE /api/cafes/[id]", () => {
   it("403s when user is not creator", async () => {
     poolQueryMock
       .mockResolvedValueOnce({ rows: [{ id: "550e8400-e29b-41d4-a716-446655440001" }] }) // cafeExists
-      .mockResolvedValueOnce({ rowCount: 0 }); // softDeleteCafe (user mismatch)
+      .mockResolvedValueOnce({ rowCount: 0 }) // softDeleteCafe (user mismatch)
+      .mockResolvedValueOnce({ rows: [{ id: "550e8400-e29b-41d4-a716-446655440001" }] }); // re-probe: still live
     const res = await detailDELETE(
       new Request("https://localhost/api/cafes/550e8400-e29b-41d4-a716-446655440001", { method: "DELETE" }),
       { params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440001" }) },
     );
     expect(res.status).toBe(403);
+  });
+
+  it("404s when a concurrent delete wins the race (issue #228)", async () => {
+    poolQueryMock
+      .mockResolvedValueOnce({ rows: [{ id: "550e8400-e29b-41d4-a716-446655440001" }] }) // cafeExists probe
+      .mockResolvedValueOnce({ rowCount: 0 }) // softDeleteCafe: winner tombstoned it first
+      .mockResolvedValueOnce({ rows: [] }); // re-probe: gone
+    const res = await detailDELETE(
+      new Request("https://localhost/api/cafes/550e8400-e29b-41d4-a716-446655440001", { method: "DELETE" }),
+      { params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440001" }) },
+    );
+    expect(res.status).toBe(404);
   });
 
   it("200s and soft-deletes when creator deletes the cafe", async () => {

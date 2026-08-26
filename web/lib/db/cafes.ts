@@ -472,14 +472,26 @@ export async function softDeleteCafe(id: string, userId?: string): Promise<boole
 /**
  * Revive a soft-deleted cafe by id (issue #219).
  * Clears deleted_at, making the cafe active again.
+ *
+ * Conflict-safe (issue #228): while the cafe was tombstoned its external POI
+ * id may have been re-imported as a new live row (the 0011 partial unique
+ * indexes allow exactly that). Un-deleting the old row then collides with
+ * `idx_cafes_gplace`/`idx_cafes_apple_poi_id` — the index is the
+ * authoritative, race-proof guard, so a 23505 maps to `false` (not revived),
+ * same as an invalid or non-tombstoned id.
  */
 export async function reviveCafe(id: string): Promise<boolean> {
   if (!isValidUUID(id)) return false;
-  const result = await query(
-    `update cafes set deleted_at = null where id = $1 and deleted_at is not null`,
-    [id],
-  );
-  return (result.rowCount ?? 0) > 0;
+  try {
+    const result = await query(
+      `update cafes set deleted_at = null where id = $1 and deleted_at is not null`,
+      [id],
+    );
+    return (result.rowCount ?? 0) > 0;
+  } catch (err) {
+    if (isUniqueViolation(err)) return false;
+    throw err;
+  }
 }
 
 /**

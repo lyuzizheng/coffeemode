@@ -62,7 +62,8 @@ web/lib/places/          Server-only POI service client (stored/live search, res
 web/app/api/places/      search + resolve + external-result route handlers with rate limiting,
                          10 km radius cap, and maps URL domain validation
 web/app/api/cafes/       POST (fused create + first check-in, 409 dedupe), GET nearby list
-                         (10 km cap), GET [id] detail, GET [id]/checkins public feed,
+                         (10 km cap), GET [id] detail, DELETE [id] (creator-only soft
+                         delete, 401/404/403), GET [id]/checkins public feed,
                          GET [id]/recovery (gone-cafe 404 suggestions, DG111)
 web/app/cafes/[id]/      SSR public cafe shell + client-loaded feed (seo-sharing #150):
                          JSON-LD, canonical/hreflang, OG + dynamic fallback card,

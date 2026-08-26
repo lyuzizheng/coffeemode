@@ -171,7 +171,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   });
 
-  it("applies migrations 0001→0011 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0012 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -185,6 +185,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0009_cafe_tombstones.sql",
       "0010_drop_min_spend.sql",
       "0011_cafe_tombstone_lifecycle.sql",
+      "0012_drop_redundant_cafe_indexes.sql",
     ]);
 
     const pgVersion = await dbClient.query("select postgis_version() as v");
@@ -871,6 +872,63 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       await softDeleteCafe(CAFE_A);
       await expect(recomputeAllWorkStats(dbClient.query.bind(dbClient))).resolves.toBeUndefined();
       expect(await getCafe(CAFE_A)).toBeNull();
+    });
+
+    it("reviveCafe refuses to un-delete when the POI was re-imported live (issue #228)", async () => {
+      // The re-import scenario #225 enabled: tombstone the original, then
+      // recreate the same external POI as a new live row.
+      const photoId = randomUUID();
+      await recordUploadIntent(U1, photoId);
+      const initial = await createCafeWithFirstCheckIn(
+        U1,
+        {
+          name: "Revive Conflict Cafe",
+          lat: 1.35,
+          lng: 103.8,
+          google_place_id: "ChIJ_revive_conflict",
+          checkin: { scores: { wifi: 70, overall: 70 }, max_stay: "unlimited", note: "first", photo_ids: [photoId] },
+        },
+        fakeProvisionPhotosDeps(),
+      );
+      await softDeleteCafe(initial.cafeId);
+
+      const secondPhotoId = randomUUID();
+      await recordUploadIntent(U1, secondPhotoId);
+      const recreated = await createCafeWithFirstCheckIn(
+        U1,
+        {
+          name: "Revive Conflict Cafe Reborn",
+          lat: 1.35,
+          lng: 103.8,
+          google_place_id: "ChIJ_revive_conflict",
+          checkin: { scores: { wifi: 90, overall: 90 }, max_stay: "unlimited", note: "second", photo_ids: [secondPhotoId] },
+        },
+        fakeProvisionPhotosDeps(),
+      );
+
+      // Reviving the old tombstone would collide with the partial unique
+      // index: clean refusal, and both rows keep their state.
+      await expect(reviveCafe(initial.cafeId)).resolves.toBe(false);
+      await expect(getCafe(initial.cafeId)).resolves.toBeNull();
+      const live = await getCafe(recreated.cafeId);
+      expect(live?.name).toBe("Revive Conflict Cafe Reborn");
+
+      // Once the replacement is tombstoned, reviving the original works again.
+      await softDeleteCafe(recreated.cafeId);
+      await expect(reviveCafe(initial.cafeId)).resolves.toBe(true);
+      await expect(getCafe(initial.cafeId)).resolves.not.toBeNull();
+    });
+
+    it("softDeleteCafe with a creator scope deletes only for the creator (issue #228)", async () => {
+      // CAFE_A is seeded with created_by = U1.
+      await expect(softDeleteCafe(CAFE_A, U2)).resolves.toBe(false);
+      await expect(getCafe(CAFE_A)).resolves.not.toBeNull(); // mismatch leaves the row live
+
+      await expect(softDeleteCafe(CAFE_A, U1)).resolves.toBe(true);
+      await expect(getCafe(CAFE_A)).resolves.toBeNull();
+
+      // Already tombstoned: false again, even for the creator.
+      await expect(softDeleteCafe(CAFE_A, U1)).resolves.toBe(false);
     });
   });
 

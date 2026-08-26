@@ -123,3 +123,41 @@ export function findCity(query: string | null | undefined): CityInfo | null {
   }
   return null;
 }
+
+/** Look up a city by ISO 3166-1 alpha-2 country code (e.g. "SG" → Singapore). */
+export function findCityByCountry(countryCode: string | null | undefined): CityInfo | null {
+  if (!countryCode) return null;
+  const normalized = countryCode.trim().toUpperCase();
+  if (!normalized) return null;
+  for (const city of LAUNCH_CITIES) {
+    const prefix = city.code.split("/")[0]?.toUpperCase();
+    if (prefix === normalized) return city;
+  }
+  return null;
+}
+
+/**
+ * Resolve the effective canonical city ID for search/discovery (DG128).
+ * If an explicit city is provided and valid, returns its canonical ID.
+ * If omitted, resolves via Cloudflare headers: cf-ipcity -> cf-ipcountry -> default city.
+ */
+export function resolveEffectiveCity(
+  headers: { get(name: string): string | null },
+  explicitCity?: string,
+): string {
+  if (explicitCity) {
+    const found = findCity(explicitCity);
+    if (found) return found.id;
+  }
+  const cfCity = headers.get("cf-ipcity")?.trim();
+  if (cfCity) {
+    const found = findCity(cfCity);
+    if (found) return found.id;
+  }
+  const cfCountry = headers.get("cf-ipcountry")?.trim();
+  if (cfCountry) {
+    const found = findCityByCountry(cfCountry);
+    if (found) return found.id;
+  }
+  return DEFAULT_CITY.id;
+}

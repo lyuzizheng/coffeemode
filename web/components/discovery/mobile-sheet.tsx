@@ -151,7 +151,7 @@ export function MobileSheet({
   const y = useMotionValue(0);
   const dragControls = useDragControls();
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const pendingPull = useRef<{ event: React.PointerEvent; startY: number } | null>(null);
+  const pendingPull = useRef<{ startY: number } | null>(null);
 
   const { snap, selectedCafeId } = controller;
 
@@ -182,29 +182,28 @@ export function MobileSheet({
 
   if (!mounted || viewportH === 0) return null;
 
-  const onDragEnd = (_: unknown, info: { offset: { y: number }; velocity: { y: number } }) => {
-    const steps: SheetSnap[] = selectedCafeId ? ["peek", "half", "full"] : ["peek"];
-    const current = steps.indexOf(snap);
-    let next = current;
-    if (info.velocity.y > STEP_VELOCITY || info.offset.y > STEP_OFFSET_PX) next = current - 1;
-    else if (info.velocity.y < -STEP_VELOCITY || info.offset.y < -STEP_OFFSET_PX) next = current + 1;
-    next = Math.max(0, Math.min(steps.length - 1, next));
-    const target = steps[next];
-    // Stepping into PEEK clears the selection (18b) — controller.snapTo handles it.
-    controller.snapTo(target);
+  const onDragEnd = (_: unknown, info: PanInfo) => {
+    const next = resolveTargetSnap(
+      snap,
+      y.get(),
+      info.velocity.y,
+      offsets,
+      reduced,
+    );
+    controller.snapTo(next);
   };
 
   // DG15 scroll handoff: a downward pull starts dragging the sheet only when
   // the content is scrolled to its top.
   const onContentPointerDown = (e: React.PointerEvent) => {
     if (contentRef.current && contentRef.current.scrollTop <= 0) {
-      pendingPull.current = { event: e, startY: e.clientY };
+      pendingPull.current = { startY: e.clientY };
     }
   };
   const onContentPointerMove = (e: React.PointerEvent) => {
     const pending = pendingPull.current;
     if (pending && e.clientY - pending.startY > 8) {
-      dragControls.start(pending.event);
+      dragControls.start(e);
       pendingPull.current = null;
     }
   };
@@ -246,7 +245,7 @@ export function MobileSheet({
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
         >
           <DetailContent
-            key={`${selectedCafeId}-${snap}`}
+            key={selectedCafeId}
             cafeId={selectedCafeId}
             variant={snap}
             controller={controller}

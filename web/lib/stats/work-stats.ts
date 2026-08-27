@@ -19,13 +19,17 @@ export const COMPOSITE_DIMS: Exclude<WorkDim, "overall">[] = [
   "coffee",
 ];
 
-export const DIM_WEIGHTS: Record<Exclude<WorkDim, "overall">, number> = {
+export const DEFAULT_DIM_WEIGHTS: Record<Exclude<WorkDim, "overall">, number> = {
   wifi: 0.3,
   outlets: 0.2,
   seats: 0.2,
   temp: 0.15,
   coffee: 0.15,
 };
+
+export const DEFAULT_RECENCY_DECAY = 0.6;
+
+export const DIM_WEIGHTS = DEFAULT_DIM_WEIGHTS;
 
 export interface WorkStats {
   n_users: number;
@@ -125,6 +129,7 @@ function visitTimestamp(c: CheckIn): number {
 export function computeUserContribution(
   checkins: CheckIn[],
   socialWeight = 0,
+  recencyDecay = DEFAULT_RECENCY_DECAY,
 ): UserContribution {
   if (checkins.length === 0) {
     return { dims: { ...emptyDimValues() } };
@@ -137,7 +142,7 @@ export function computeUserContribution(
   const useSocial = socialWeight > 0 && maxLikes > 0;
 
   const weights = sorted.map((c, rank) => {
-    const base = Math.pow(0.6, rank);
+    const base = Math.pow(recencyDecay, rank);
     if (!useSocial) return base;
     const normalized = (c.likes_count ?? 0) / maxLikes;
     return base * (1 + socialWeight * normalized);
@@ -173,22 +178,63 @@ function emptyDimValues(): Record<WorkDim, number | undefined> {
   return dims;
 }
 
-function computeCompositeScore(stats: WorkStats): number | null {
+export function computeCompositeScore(
+  stats: WorkStats,
+  dimWeights: Record<Exclude<WorkDim, "overall">, number> = DEFAULT_DIM_WEIGHTS,
+): number | null {
   let weighted = 0;
   let weightSum = 0;
   for (const dim of COMPOSITE_DIMS) {
     const { sum, n } = stats.dims[dim];
     if (n > 0) {
-      weighted += (sum / n) * DIM_WEIGHTS[dim];
-      weightSum += DIM_WEIGHTS[dim];
+      const weight = dimWeights[dim] ?? DEFAULT_DIM_WEIGHTS[dim];
+      weighted += (sum / n) * weight;
+      weightSum += weight;
     }
   }
   return weightSum > 0 ? weighted / weightSum : null;
 }
 
-function computeExperienceScore(stats: WorkStats): number | null {
+export function computeExperienceScore(stats: WorkStats): number | null {
   const { sum, n } = stats.dims.overall;
   return n > 0 ? sum / n : null;
+}
+
+/** Get unrounded arithmetic mean of a work dimension; null when no responses. */
+export function getDimensionAverage(stats: WorkStats, dim: WorkDim): number | null {
+  if (dim === "overall" && stats.experience_score !== null) {
+    return stats.experience_score;
+  }
+  const entry = stats.dims[dim];
+  return entry && entry.n > 0 ? entry.sum / entry.n : null;
+}
+
+/** Mean of a work dimension, rounded for display; null when no responses. */
+export function dimMean(stats: WorkStats, dim: WorkDim): number | null {
+  const avg = getDimensionAverage(stats, dim);
+  return avg === null ? null : Math.round(avg);
+}
+
+/** Consensus key = the entry with the highest frequency count; null when empty. */
+export function getConsensusOption(counts: Record<string, number> | undefined): string | null {
+  if (!counts) return null;
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const [key, count] of Object.entries(counts)) {
+    if (count > bestCount) {
+      best = key;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+/** Consensus policy answer for a cafe; null when no responses. */
+export function policyConsensus(
+  stats: WorkStats,
+  policy: keyof WorkStats["policies"],
+): string | null {
+  return getConsensusOption(stats.policies[policy]);
 }
 
 function updatePolicyCount(
@@ -205,20 +251,24 @@ function updatePolicyCount(
   }
 }
 
-function isUserPresent(contribution: UserContribution | null): boolean {
-  return contribution !== null && contribution.dims.overall !== undefined;
+export function isUserPresent(contribution: UserContribution | null): boolean {
+  if (!contribution) return false;
+  return (
+    WORK_DIMS.some((dim) => contribution.dims[dim] !== undefined) ||
+    contribution.max_stay !== undefined
+  );
 }
 
 /**
- * Apply the difference between a user's old and new contribution to a cafe's
- * work_stats. Passing `null` for old means the user is new; passing `null` for
- * new means the user is removed.
+ * Pure diff application for a single user's before/after contribution.
+ * Used for O(1) online updates when check-ins are added/edited/deleted.
  */
 export function applyUserContributionDiff(
   stats: WorkStats,
   oldContribution: UserContribution | null,
   newContribution: UserContribution | null,
   nCheckins: number,
+  dimWeights: Record<Exclude<WorkDim, "overall">, number> = DEFAULT_DIM_WEIGHTS,
 ): WorkStats {
   const next = {
     ...stats,
@@ -256,14 +306,19 @@ export function applyUserContributionDiff(
   );
 
   next.experience_score = computeExperienceScore(next);
-  next.composite_score = computeCompositeScore(next);
+  next.composite_score = computeCompositeScore(next, dimWeights);
   next.updated_at = new Date().toISOString();
 
   return next;
 }
 
 /** Pure helper to build work_stats from an array of non-deleted check-ins. */
-export function computeCafeStats(checkins: CheckIn[], socialWeight = 0): WorkStats {
+export function computeCafeStats(
+  checkins: CheckIn[],
+  socialWeight = 0,
+  recencyDecay = DEFAULT_RECENCY_DECAY,
+  dimWeights = DEFAULT_DIM_WEIGHTS,
+): WorkStats {
   const byUser = new Map<string, CheckIn[]>();
   for (const c of checkins) {
     const list = byUser.get(c.user_id) ?? [];
@@ -273,8 +328,8 @@ export function computeCafeStats(checkins: CheckIn[], socialWeight = 0): WorkSta
 
   let stats = emptyWorkStats();
   for (const [, userCheckins] of byUser) {
-    const contribution = computeUserContribution(userCheckins, socialWeight);
-    stats = applyUserContributionDiff(stats, null, contribution, checkins.length);
+    const contribution = computeUserContribution(userCheckins, socialWeight, recencyDecay);
+    stats = applyUserContributionDiff(stats, null, contribution, checkins.length, dimWeights);
   }
 
   stats.n_checkins = checkins.length;

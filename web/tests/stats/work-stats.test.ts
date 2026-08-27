@@ -72,4 +72,74 @@ describe("coerceWorkStats preserves persisted scores (issue #146)", () => {
     expect(coerced.experience_score).toBe(77);
     expect(coerced.composite_score).toBe(66.5);
   });
+
+  it("calculates dimMean and getDimensionAverage accurately", async () => {
+    const { dimMean, getDimensionAverage } = await import("@/lib/stats/work-stats");
+    const raw = emptyWorkStats();
+    raw.dims.wifi = { sum: 170, n: 2 };
+    expect(getDimensionAverage(raw, "wifi")).toBe(85);
+    expect(dimMean(raw, "wifi")).toBe(85);
+
+    raw.dims.wifi = { sum: 175, n: 2 };
+    expect(getDimensionAverage(raw, "wifi")).toBe(87.5);
+    expect(dimMean(raw, "wifi")).toBe(88);
+
+    expect(getDimensionAverage(raw, "seats")).toBeNull();
+    expect(dimMean(raw, "seats")).toBeNull();
+  });
+
+  it("computes consensus options and policy answers", async () => {
+    const { getConsensusOption, policyConsensus } = await import("@/lib/stats/work-stats");
+    expect(getConsensusOption(undefined)).toBeNull();
+    expect(getConsensusOption({})).toBeNull();
+    expect(getConsensusOption({ "2h": 3, unlimited: 5, "1h": 1 })).toBe("unlimited");
+
+    const raw = emptyWorkStats();
+    raw.policies.max_stay = { "2h": 4, unlimited: 2 };
+    expect(policyConsensus(raw, "max_stay")).toBe("2h");
+  });
+
+  it("isUserPresent detects contributions with dimension ratings or stay policies without overall", async () => {
+    const { isUserPresent } = await import("@/lib/stats/work-stats");
+    expect(isUserPresent(null)).toBe(false);
+    expect(
+      isUserPresent({
+        dims: {
+          wifi: undefined,
+          outlets: undefined,
+          seats: undefined,
+          temp: undefined,
+          coffee: undefined,
+          overall: undefined,
+        },
+      }),
+    ).toBe(false);
+
+    expect(
+      isUserPresent({
+        dims: {
+          wifi: 90,
+          outlets: undefined,
+          seats: undefined,
+          temp: undefined,
+          coffee: undefined,
+          overall: undefined,
+        },
+      }),
+    ).toBe(true);
+
+    expect(
+      isUserPresent({
+        dims: {
+          wifi: undefined,
+          outlets: undefined,
+          seats: undefined,
+          temp: undefined,
+          coffee: undefined,
+          overall: undefined,
+        },
+        max_stay: "2h",
+      }),
+    ).toBe(true);
+  });
 });

@@ -1,8 +1,11 @@
 import { isOpenAt } from "@/lib/hours";
 import type { WorkDim, WorkStats } from "@/lib/stats/work-stats";
+import { getConsensusOption, getDimensionAverage } from "@/lib/stats/work-stats";
 import type { CafeSummary } from "@/types/cafes";
 import type { MaxStay } from "@/types/checkins";
 import type { SearchFilters } from "./types";
+
+export { getConsensusOption, getDimensionAverage };
 
 export const WORK_DIM_FILTER_MAP = [
   { key: "filter_wifi", dim: "wifi" },
@@ -22,19 +25,6 @@ export const MAX_STAY_ORDER: Record<MaxStay, number> = {
   unlimited: 4,
 };
 
-export function getDimensionAverage(
-  stats: WorkStats,
-  dim: WorkDim,
-): number | null {
-  if (dim === "overall") {
-    if (stats.experience_score !== null) return stats.experience_score;
-    const entry = stats.dims.overall;
-    return entry && entry.n > 0 ? entry.sum / entry.n : null;
-  }
-  const entry = stats.dims[dim];
-  return entry && entry.n > 0 ? entry.sum / entry.n : null;
-}
-
 export function matchesWorkDimension(
   stats: WorkStats,
   dim: WorkDim,
@@ -43,21 +33,6 @@ export function matchesWorkDimension(
   const avg = getDimensionAverage(stats, dim);
   if (avg === null) return false;
   return avg >= threshold;
-}
-
-export function getConsensusOption(
-  counts: Record<string, number> | undefined,
-): string | null {
-  if (!counts) return null;
-  let maxKey: string | null = null;
-  let maxVal = 0;
-  for (const [key, count] of Object.entries(counts)) {
-    if (count > maxVal) {
-      maxVal = count;
-      maxKey = key;
-    }
-  }
-  return maxKey;
 }
 
 export function matchesMaxStay(

@@ -65,10 +65,12 @@ function scoreRelevance(name: string, q?: string): number {
   if (!q) return 0;
   const lowerName = name.toLowerCase();
   const lowerQ = q.toLowerCase().trim();
-  if (lowerName === lowerQ) return 100;
-  if (lowerName.startsWith(lowerQ)) return 80;
-  if (lowerName.includes(lowerQ)) return 50;
-  return 10;
+  const { exactNameMatch, prefixMatch, fuzzyMatch, secondaryMatch } =
+    appConfig.search.relevanceWeights;
+  if (lowerName === lowerQ) return exactNameMatch;
+  if (lowerName.startsWith(lowerQ)) return prefixMatch;
+  if (lowerName.includes(lowerQ)) return fuzzyMatch;
+  return secondaryMatch;
 }
 
 export async function executeSearch(
@@ -99,7 +101,7 @@ export async function executeSearch(
   const hasWorkFilters = hasWorkFiltersActive(filters);
   let rawPois: POI[] = [];
 
-  if (!hasWorkFilters && filters.q && filters.q.trim().length >= 3) {
+  if (!hasWorkFilters && filters.q && filters.q.trim().length >= appConfig.search.minPoiQueryLength) {
     try {
       const poiRes = await searchPOIs({
         q: filters.q.trim(),

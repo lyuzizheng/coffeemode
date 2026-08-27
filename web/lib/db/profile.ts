@@ -3,6 +3,7 @@ import "server-only";
 import { isValidUUID } from "@shared/uuid";
 import { query } from "./postgres";
 import { appConfig } from "@/lib/config";
+import { DEFAULT_CITY } from "@/lib/cities";
 import type { CheckInScores } from "@/types/checkins";
 import type { StoredImage } from "@/types/images";
 
@@ -79,11 +80,11 @@ export async function getProfile(userId: string): Promise<UserProfileDto | null>
     created_at: Date;
   }>(
     `
-    select id, display_name, avatar_url, coalesce(current_city, 'singapore') as current_city, created_at
+    select id, display_name, avatar_url, coalesce(current_city, $2) as current_city, created_at
     from profiles
     where id = $1
     `,
-    [userId],
+    [userId, DEFAULT_CITY.id],
   );
 
   if (result.rows.length === 0) return null;
@@ -155,6 +156,9 @@ export async function updateProfile(
     return getProfile(userId);
   }
 
+  params.push(DEFAULT_CITY.id);
+  const defaultCityParamIdx = params.length;
+
   const result = await query<{
     id: string;
     display_name: string;
@@ -166,7 +170,7 @@ export async function updateProfile(
     update profiles
     set ${updates.join(", ")}, last_seen_at = now()
     where id = $1
-    returning id, display_name, avatar_url, coalesce(current_city, 'singapore') as current_city, created_at
+    returning id, display_name, avatar_url, coalesce(current_city, $${defaultCityParamIdx}) as current_city, created_at
     `,
     params,
   );

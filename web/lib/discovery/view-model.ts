@@ -5,7 +5,11 @@
  */
 import type { CafeSummary } from "@/types/cafes";
 import type { WorkStats } from "@/lib/stats/work-stats";
+import { dimMean, policyConsensus } from "@/lib/stats/work-stats";
 import type { CheckInFeedPage, PublicCheckIn } from "@/types/checkins";
+
+export type { WorkStats };
+export { dimMean, policyConsensus };
 
 /** Characteristic fact kinds in fixed PEEK priority order (artifact §2). */
 export const FACT_PRIORITY = ["wifi", "outlets", "stay", "seats", "temp", "coffee"] as const;
@@ -15,30 +19,6 @@ export interface Fact {
   kind: FactKind;
   /** Score facts render the integer mean; stay renders the policy label. */
   value: string;
-}
-
-/** Mean of a work dimension, rounded for display; null when no responses. */
-export function dimMean(stats: WorkStats, dim: keyof WorkStats["dims"]): number | null {
-  const d = stats.dims[dim];
-  if (!d || d.n === 0) return null;
-  return Math.round(d.sum / d.n);
-}
-
-/** Consensus policy = the answer with the most responses; null when none. */
-export function policyConsensus(
-  stats: WorkStats,
-  policy: keyof WorkStats["policies"],
-): string | null {
-  const counts = stats.policies[policy];
-  let best: string | null = null;
-  let bestCount = 0;
-  for (const [value, count] of Object.entries(counts)) {
-    if (count > bestCount) {
-      best = value;
-      bestCount = count;
-    }
-  }
-  return best;
 }
 
 /**

@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
+import { apiError } from "@/lib/api/response";
 import { getCafeLocation, listCafesNearby } from "@/lib/db/cafes";
-import { appConfig } from "@/lib/config";
+import { appConfig, rateLimitBuckets } from "@/lib/config";
 import {
-  CAFES_READ_RATE_LIMIT,
+  checkRateLimit,
   getClientIdentifier,
   rateLimitResponse,
-  rateLimiter,
 } from "@/lib/rate-limit";
 import { isValidUUID } from "@shared/uuid";
 
@@ -27,18 +27,16 @@ export async function GET(
 ) {
   const { id } = await params;
   if (!isValidUUID(id)) {
-    return NextResponse.json(
-      { error: "invalid_request", message: "id must be a UUID" },
-      { status: 400 },
-    );
+    return apiError("invalid_request", "id must be a UUID", 400);
   }
 
   const user = await getCurrentUser();
   const clientId = getClientIdentifier(request, user);
-  const rate = await rateLimiter.check(
-    `cafes-read:${clientId}`,
-    CAFES_READ_RATE_LIMIT.windowMs,
-    CAFES_READ_RATE_LIMIT.maxRequests,
+  const rate = await checkRateLimit(
+    "cafes-read",
+    clientId,
+    rateLimitBuckets("cafes-read"),
+    "GET /api/cafes/[id]/recovery",
   );
   if (!rate.allowed) {
     return rateLimitResponse(rate);
@@ -60,6 +58,6 @@ export async function GET(
     return NextResponse.json({ cafes });
   } catch (err) {
     console.error("/api/cafes/[id]/recovery GET failed", err);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiError("internal_error", 500);
   }
 }

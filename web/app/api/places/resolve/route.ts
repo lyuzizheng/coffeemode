@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
+import { apiError } from "@/lib/api/response";
 import { POIServiceError, resolveMapsUrl } from "@/lib/places/poi-client";
 import { isValidMapsUrl } from "@/lib/places/validate-maps-url";
 import {
-  PLACES_RATE_LIMIT,
+  checkRateLimit,
   getClientIdentifier,
   rateLimitResponse,
-  rateLimiter,
 } from "@/lib/rate-limit";
+import { rateLimitBuckets } from "@/lib/config";
 import { requireSameOrigin } from "@/lib/security/origin";
 
 /**
@@ -26,18 +27,16 @@ export async function POST(request: Request) {
       ? (body as Record<string, unknown>).maps_share_url
       : undefined;
   if (typeof mapsShareUrl !== "string" || mapsShareUrl.trim() === "") {
-    return NextResponse.json(
-      { error: "invalid_request", message: "maps_share_url (string) required" },
-      { status: 400 },
-    );
+    return apiError("invalid_request", "maps_share_url (string) required", 400);
   }
 
   const user = await getCurrentUser();
   const clientId = getClientIdentifier(request, user);
-  const limit = await rateLimiter.check(
-    `places:${clientId}`,
-    PLACES_RATE_LIMIT.windowMs,
-    PLACES_RATE_LIMIT.maxRequests,
+  const limit = await checkRateLimit(
+    "places",
+    clientId,
+    rateLimitBuckets("places"),
+    "POST /api/places/resolve",
   );
   if (!limit.allowed) {
     return rateLimitResponse(limit);
@@ -45,10 +44,7 @@ export async function POST(request: Request) {
 
   const trimmedUrl = mapsShareUrl.trim();
   if (!isValidMapsUrl(trimmedUrl)) {
-    return NextResponse.json(
-      { error: "invalid_maps_url", message: "only Google Maps and Apple Maps URLs are allowed" },
-      { status: 400 },
-    );
+    return apiError("invalid_maps_url", "only Google Maps and Apple Maps URLs are allowed", 400);
   }
 
   try {
@@ -56,9 +52,9 @@ export async function POST(request: Request) {
     return NextResponse.json(poi);
   } catch (err) {
     if (err instanceof POIServiceError) {
-      return NextResponse.json({ error: "poi_service", message: err.message }, { status: err.status });
+      return apiError("poi_service", err.message, err.status);
     }
     console.error("/api/places/resolve failed", err);
-    return NextResponse.json({ error: "upstream_error" }, { status: 502 });
+    return apiError("upstream_error", 502);
   }
 }

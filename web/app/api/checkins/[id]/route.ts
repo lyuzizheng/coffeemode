@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
+import { apiError } from "@/lib/api/response";
 import {
   CheckInForbiddenError,
   CheckInNotFoundError,
@@ -8,11 +9,11 @@ import {
   updateCheckIn,
 } from "@/lib/db/checkins";
 import {
-  CAFES_WRITE_RATE_LIMIT,
+  checkRateLimit,
   getClientIdentifier,
   rateLimitResponse,
-  rateLimiter,
 } from "@/lib/rate-limit";
+import { rateLimitBuckets } from "@/lib/config";
 import { isValidUUID } from "@shared/uuid";
 import { requireSameOrigin } from "@/lib/security/origin";
 
@@ -32,31 +33,26 @@ export async function PATCH(
 
   const { id } = await params;
   if (!isValidUUID(id)) {
-    return NextResponse.json(
-      { error: "invalid_request", message: "id must be a UUID" },
-      { status: 400 },
-    );
+    return apiError("invalid_request", "id must be a UUID", 400);
   }
 
   const body = await request.json().catch(() => null);
   const parsed = parseUpdateCheckInBody(body);
   if (!parsed.ok) {
-    return NextResponse.json(
-      { error: "invalid_request", message: parsed.message },
-      { status: 400 },
-    );
+    return apiError("invalid_request", parsed.message, 400);
   }
 
   const user = await getCurrentUser();
   if (!user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return apiError("unauthorized", 401);
   }
 
   const clientId = getClientIdentifier(request, user);
-  const rate = await rateLimiter.check(
-    `checkins-write:${clientId}`,
-    CAFES_WRITE_RATE_LIMIT.windowMs,
-    CAFES_WRITE_RATE_LIMIT.maxRequests,
+  const rate = await checkRateLimit(
+    "cafes-write",
+    clientId,
+    rateLimitBuckets("cafes-write"),
+    "PATCH /api/checkins/[id]",
   );
   if (!rate.allowed) return rateLimitResponse(rate);
 
@@ -65,19 +61,13 @@ export async function PATCH(
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof CheckInNotFoundError) {
-      return NextResponse.json(
-        { error: "not_found", message: "check-in not found" },
-        { status: 404 },
-      );
+      return apiError("not_found", "check-in not found", 404);
     }
     if (err instanceof CheckInForbiddenError) {
-      return NextResponse.json(
-        { error: "forbidden", message: "not your check-in" },
-        { status: 403 },
-      );
+      return apiError("forbidden", "not your check-in", 403);
     }
     console.error("/api/checkins/[id] PATCH failed", err);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiError("internal_error", 500);
   }
 }
 
@@ -96,22 +86,20 @@ export async function DELETE(
 
   const { id } = await params;
   if (!isValidUUID(id)) {
-    return NextResponse.json(
-      { error: "invalid_request", message: "id must be a UUID" },
-      { status: 400 },
-    );
+    return apiError("invalid_request", "id must be a UUID", 400);
   }
 
   const user = await getCurrentUser();
   if (!user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return apiError("unauthorized", 401);
   }
 
   const clientId = getClientIdentifier(request, user);
-  const rate = await rateLimiter.check(
-    `checkins-write:${clientId}`,
-    CAFES_WRITE_RATE_LIMIT.windowMs,
-    CAFES_WRITE_RATE_LIMIT.maxRequests,
+  const rate = await checkRateLimit(
+    "cafes-write",
+    clientId,
+    rateLimitBuckets("cafes-write"),
+    "DELETE /api/checkins/[id]",
   );
   if (!rate.allowed) return rateLimitResponse(rate);
 
@@ -120,18 +108,12 @@ export async function DELETE(
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof CheckInNotFoundError) {
-      return NextResponse.json(
-        { error: "not_found", message: "check-in not found" },
-        { status: 404 },
-      );
+      return apiError("not_found", "check-in not found", 404);
     }
     if (err instanceof CheckInForbiddenError) {
-      return NextResponse.json(
-        { error: "forbidden", message: "not your check-in" },
-        { status: 403 },
-      );
+      return apiError("forbidden", "not your check-in", 403);
     }
     console.error("/api/checkins/[id] DELETE failed", err);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiError("internal_error", 500);
   }
 }

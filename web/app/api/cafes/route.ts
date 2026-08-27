@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
+import { apiError, parseQueryPositiveInt } from "@/lib/api/response";
 import {
   CafeExistsError,
   createCafeWithFirstCheckIn,
@@ -13,14 +14,11 @@ import {
   MAX_SEARCH_RADIUS_KM,
 } from "@/lib/places/constants";
 import {
-  CAFES_READ_RATE_LIMIT,
-  CAFES_WRITE_RATE_LIMIT,
+  checkRateLimit,
   getClientIdentifier,
   rateLimitResponse,
-  rateLimiter,
 } from "@/lib/rate-limit";
-import { appConfig } from "@/lib/config";
-
+import { appConfig, rateLimitBuckets } from "@/lib/config";
 import { requireSameOrigin } from "@/lib/security/origin";
 
 // `cafes.listLimitMax` in web/config/app.yaml (DG107).
@@ -39,45 +37,33 @@ export async function GET(request: Request) {
   const lat = latParam === null ? NaN : Number(latParam);
   const lng = lngParam === null ? NaN : Number(lngParam);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return NextResponse.json(
-      { error: "invalid_request", message: "lat and lng query params (numbers) required" },
-      { status: 400 },
-    );
+    return apiError("invalid_request", "lat and lng query params (numbers) required", 400);
   }
   // Out-of-range coordinates would make PostGIS throw — reject as a 400 instead.
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-    return NextResponse.json(
-      { error: "invalid_request", message: "lat must be within [-90,90], lng within [-180,180]" },
-      { status: 400 },
-    );
+    return apiError("invalid_request", "lat must be within [-90,90], lng within [-180,180]", 400);
   }
 
   const radiusParam = url.searchParams.get("radius_km");
   const radius = radiusParam === null ? DEFAULT_SEARCH_RADIUS_KM : Number(radiusParam);
   if (!Number.isFinite(radius) || radius <= 0) {
-    return NextResponse.json(
-      { error: "invalid_request", message: "radius_km must be a positive number" },
-      { status: 400 },
-    );
+    return apiError("invalid_request", "radius_km must be a positive number", 400);
   }
   const radiusKm = Math.min(radius, MAX_SEARCH_RADIUS_KM);
 
   const limitParam = url.searchParams.get("limit");
-  const parsedLimit = limitParam === null ? MAX_LIST_LIMIT : Number(limitParam);
-  if (!Number.isInteger(parsedLimit) || parsedLimit <= 0) {
-    return NextResponse.json(
-      { error: "invalid_request", message: "limit must be a positive integer" },
-      { status: 400 },
-    );
+  const limit = parseQueryPositiveInt(limitParam, MAX_LIST_LIMIT, MAX_LIST_LIMIT);
+  if (limit === null) {
+    return apiError("invalid_request", "limit must be a positive integer", 400);
   }
-  const limit = Math.min(parsedLimit, MAX_LIST_LIMIT);
 
   const user = await getCurrentUser();
   const clientId = getClientIdentifier(request, user);
-  const rate = await rateLimiter.check(
-    `cafes-read:${clientId}`,
-    CAFES_READ_RATE_LIMIT.windowMs,
-    CAFES_READ_RATE_LIMIT.maxRequests,
+  const rate = await checkRateLimit(
+    "cafes-read",
+    clientId,
+    rateLimitBuckets("cafes-read"),
+    "GET /api/cafes",
   );
   if (!rate.allowed) {
     return rateLimitResponse(rate);
@@ -88,7 +74,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ cafes });
   } catch (err) {
     console.error("/api/cafes GET failed", err);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiError("internal_error", 500);
   }
 }
 
@@ -108,22 +94,20 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const parsed = parseCreateCafeBody(body);
   if (!parsed.ok) {
-    return NextResponse.json(
-      { error: "invalid_request", message: parsed.message },
-      { status: 400 },
-    );
+    return apiError("invalid_request", parsed.message, 400);
   }
 
   const user = await getCurrentUser();
   if (!user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return apiError("unauthorized", 401);
   }
 
   const clientId = getClientIdentifier(request, user);
-  const rate = await rateLimiter.check(
-    `cafes-write:${clientId}`,
-    CAFES_WRITE_RATE_LIMIT.windowMs,
-    CAFES_WRITE_RATE_LIMIT.maxRequests,
+  const rate = await checkRateLimit(
+    "cafes-write",
+    clientId,
+    rateLimitBuckets("cafes-write"),
+    "POST /api/cafes",
   );
   if (!rate.allowed) {
     return rateLimitResponse(rate);
@@ -134,10 +118,7 @@ export async function POST(request: Request) {
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
     if (err instanceof CafeExistsError) {
-      return NextResponse.json(
-        { error: "cafe_exists", cafe_id: err.existingCafeId },
-        { status: 409 },
-      );
+      return apiError("cafe_exists", 409, { cafe_id: err.existingCafeId });
     }
     if (
       err instanceof PhotoIntentError ||
@@ -145,12 +126,9 @@ export async function POST(request: Request) {
       // user-facing class as a bad photo id, not a server fault.
       (err instanceof ImageServiceError && err.status === 404)
     ) {
-      return NextResponse.json(
-        { error: "invalid_photos", message: "one or more photos are invalid" },
-        { status: 400 },
-      );
+      return apiError("invalid_photos", "one or more photos are invalid", 400);
     }
     console.error("/api/cafes POST failed", err);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiError("internal_error", 500);
   }
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
+import { apiError } from "@/lib/api/response";
 import {
   CafeNotFoundError,
   createCheckIn,
@@ -8,11 +9,11 @@ import {
 import { PhotoIntentError } from "@/lib/images/provision-photos";
 import { ImageServiceError } from "@/lib/images/image-service-client";
 import {
-  CAFES_WRITE_RATE_LIMIT,
+  checkRateLimit,
   getClientIdentifier,
   rateLimitResponse,
-  rateLimiter,
 } from "@/lib/rate-limit";
+import { rateLimitBuckets } from "@/lib/config";
 import { requireSameOrigin } from "@/lib/security/origin";
 
 /**
@@ -30,22 +31,20 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const parsed = parseCheckInBody(body);
   if (!parsed.ok) {
-    return NextResponse.json(
-      { error: "invalid_request", message: parsed.message },
-      { status: 400 },
-    );
+    return apiError("invalid_request", parsed.message, 400);
   }
 
   const user = await getCurrentUser();
   if (!user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return apiError("unauthorized", 401);
   }
 
   const clientId = getClientIdentifier(request, user);
-  const rate = await rateLimiter.check(
-    `checkins-write:${clientId}`,
-    CAFES_WRITE_RATE_LIMIT.windowMs,
-    CAFES_WRITE_RATE_LIMIT.maxRequests,
+  const rate = await checkRateLimit(
+    "cafes-write",
+    clientId,
+    rateLimitBuckets("cafes-write"),
+    "POST /api/checkins",
   );
   if (!rate.allowed) {
     return rateLimitResponse(rate);
@@ -56,10 +55,7 @@ export async function POST(request: Request) {
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
     if (err instanceof CafeNotFoundError) {
-      return NextResponse.json(
-        { error: "not_found", message: "cafe not found" },
-        { status: 404 },
-      );
+      return apiError("not_found", "cafe not found", 404);
     }
     if (
       err instanceof PhotoIntentError ||
@@ -67,12 +63,9 @@ export async function POST(request: Request) {
       // user-facing class as a bad photo id, not a server fault.
       (err instanceof ImageServiceError && err.status === 404)
     ) {
-      return NextResponse.json(
-        { error: "invalid_photos", message: "one or more photos are invalid" },
-        { status: 400 },
-      );
+      return apiError("invalid_photos", "one or more photos are invalid", 400);
     }
     console.error("/api/checkins POST failed", err);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiError("internal_error", 500);
   }
 }

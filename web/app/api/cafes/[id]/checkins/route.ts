@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
+import { apiError } from "@/lib/api/response";
 import { getCafe } from "@/lib/db/cafes";
 import {
   FEED_MODES,
@@ -7,11 +8,11 @@ import {
   listPublicCheckIns,
 } from "@/lib/discovery/feed";
 import {
-  CAFES_READ_RATE_LIMIT,
+  checkRateLimit,
   getClientIdentifier,
   rateLimitResponse,
-  rateLimiter,
 } from "@/lib/rate-limit";
+import { rateLimitBuckets } from "@/lib/config";
 import { isValidUUID } from "@shared/uuid";
 import type { CheckInFeedMode } from "@/types/checkins";
 
@@ -29,29 +30,24 @@ export async function GET(
 ) {
   const { id } = await params;
   if (!isValidUUID(id)) {
-    return NextResponse.json(
-      { error: "invalid_request", message: "id must be a UUID" },
-      { status: 400 },
-    );
+    return apiError("invalid_request", "id must be a UUID", 400);
   }
 
   const url = new URL(request.url);
   const modeParam = url.searchParams.get("mode") ?? "newest";
   if (!FEED_MODES.includes(modeParam as CheckInFeedMode)) {
-    return NextResponse.json(
-      { error: "invalid_request", message: `mode must be one of: ${FEED_MODES.join(", ")}` },
-      { status: 400 },
-    );
+    return apiError("invalid_request", `mode must be one of: ${FEED_MODES.join(", ")}`, 400);
   }
   const mode = modeParam as CheckInFeedMode;
   const cursor = url.searchParams.get("cursor") ?? undefined;
 
   const user = await getCurrentUser();
   const clientId = getClientIdentifier(request, user);
-  const rate = await rateLimiter.check(
-    `cafes-read:${clientId}`,
-    CAFES_READ_RATE_LIMIT.windowMs,
-    CAFES_READ_RATE_LIMIT.maxRequests,
+  const rate = await checkRateLimit(
+    "cafes-read",
+    clientId,
+    rateLimitBuckets("cafes-read"),
+    "GET /api/cafes/[id]/checkins",
   );
   if (!rate.allowed) {
     return rateLimitResponse(rate);
@@ -60,10 +56,7 @@ export async function GET(
   try {
     const cafe = await getCafe(id);
     if (!cafe) {
-      return NextResponse.json(
-        { error: "not_found", message: "cafe not found" },
-        { status: 404 },
-      );
+      return apiError("not_found", "cafe not found", 404);
     }
     const page = await listPublicCheckIns({
       cafeId: id,
@@ -74,12 +67,9 @@ export async function GET(
     return NextResponse.json(page);
   } catch (err) {
     if (err instanceof FeedCursorError) {
-      return NextResponse.json(
-        { error: "invalid_request", message: "cursor is invalid or was issued for another mode" },
-        { status: 400 },
-      );
+      return apiError("invalid_request", "cursor is invalid or was issued for another mode", 400);
     }
     console.error("/api/cafes/[id]/checkins GET failed", err);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiError("internal_error", 500);
   }
 }

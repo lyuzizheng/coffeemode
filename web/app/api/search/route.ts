@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/api/response";
 import {
   checkRateLimit,
   getClientIdentifier,
   rateLimitResponse,
-  SEARCH_RATE_LIMITS,
 } from "@/lib/rate-limit";
+import { rateLimitBuckets } from "@/lib/config";
 import { findCity, resolveEffectiveCity } from "@/lib/cities";
 import { executeSearch } from "@/lib/search/search-service";
 import { WORK_DIM_FILTER_MAP } from "@/lib/search/filter";
@@ -55,38 +56,23 @@ export async function GET(request: Request) {
 
   // Validate coordinates if provided
   if (lat !== undefined && (lat < -90 || lat > 90)) {
-    return NextResponse.json(
-      { error: "invalid_request", message: "lat must be within [-90, 90]" },
-      { status: 400 },
-    );
+    return apiError("invalid_request", "lat must be within [-90, 90]", 400);
   }
   if (lng !== undefined && (lng < -180 || lng > 180)) {
-    return NextResponse.json(
-      { error: "invalid_request", message: "lng must be within [-180, 180]" },
-      { status: 400 },
-    );
+    return apiError("invalid_request", "lng must be within [-180, 180]", 400);
   }
 
   // Validate limit if provided: non-numeric or non-positive integer -> 400
   if (rawLimit !== null && rawLimit.trim() !== "" && limitParam === undefined) {
-    return NextResponse.json(
-      { error: "invalid_request", message: "limit must be a positive integer" },
-      { status: 400 },
-    );
+    return apiError("invalid_request", "limit must be a positive integer", 400);
   }
   if (limitParam !== undefined && (!Number.isInteger(limitParam) || limitParam <= 0)) {
-    return NextResponse.json(
-      { error: "invalid_request", message: "limit must be a positive integer" },
-      { status: 400 },
-    );
+    return apiError("invalid_request", "limit must be a positive integer", 400);
   }
 
   // DG128: explicit city must be known; reject unknown explicit cities without silent re-anchoring
   if (city !== undefined && !findCity(city)) {
-    return NextResponse.json(
-      { error: "invalid_request", message: "unknown city" },
-      { status: 400 },
-    );
+    return apiError("invalid_request", "unknown city", 400);
   }
 
   // Resolve effective canonical city ID (DG128 fallback chain when omitted)
@@ -97,7 +83,7 @@ export async function GET(request: Request) {
   const rate = await checkRateLimit(
     "search",
     clientId,
-    SEARCH_RATE_LIMITS,
+    rateLimitBuckets("search"),
     "GET /api/search",
   );
   if (!rate.allowed) {
@@ -128,6 +114,6 @@ export async function GET(request: Request) {
     return NextResponse.json(data);
   } catch (err) {
     console.error("/api/search GET failed", err);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiError("internal_error", 500);
   }
 }

@@ -41,6 +41,21 @@ describe("config files", () => {
     expect(appConfig.search.maxSuggestionLimit).toBe(10);
     expect(appConfig.search.weakResultsThreshold).toBe(3);
     expect(appConfig.search.dbFetchCap).toBe(100);
+    expect(appConfig.search.minPoiQueryLength).toBe(3);
+    expect(appConfig.search.relevanceWeights).toEqual({
+      exactNameMatch: 100,
+      prefixMatch: 80,
+      fuzzyMatch: 50,
+      secondaryMatch: 10,
+    });
+    expect(appConfig.stats.dimWeights).toEqual({
+      wifi: 0.3,
+      outlets: 0.2,
+      seats: 0.2,
+      temp: 0.15,
+      coffee: 0.15,
+    });
+    expect(appConfig.stats.recencyDecay).toBe(0.6);
     expect(appConfig.cafes.listLimitMax).toBe(50);
     expect(appConfig.checkins.photoCap).toBe(6);
     expect(appConfig.checkins.noteMaxChars).toBe(500);
@@ -131,6 +146,23 @@ describe("parseAppConfig validation", () => {
     maxSuggestionLimit: 10,
     weakResultsThreshold: 3,
     dbFetchCap: 100,
+    minPoiQueryLength: 3,
+    relevanceWeights: {
+      exactNameMatch: 100,
+      prefixMatch: 80,
+      fuzzyMatch: 50,
+      secondaryMatch: 10,
+    },
+  };
+  const validStats = {
+    dimWeights: {
+      wifi: 0.3,
+      outlets: 0.2,
+      seats: 0.2,
+      temp: 0.15,
+      coffee: 0.15,
+    },
+    recencyDecay: 0.6,
   };
   const validCenter = { defaultCenter: { lat: 1.35, lng: 103.8 } };
   const validSeo = {
@@ -148,6 +180,7 @@ describe("parseAppConfig validation", () => {
   it("accepts a valid config", () => {
     const valid = {
       search: validSearch,
+      stats: validStats,
       cafes: { listLimitMax: 50 },
       feed: { pageSize: 20 },
       discovery: validCenter,
@@ -166,6 +199,7 @@ describe("parseAppConfig validation", () => {
     expect(() =>
       parseAppConfig({
         search: validSearch,
+        stats: validStats,
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20 },
         discovery: validCenter,
@@ -179,6 +213,7 @@ describe("parseAppConfig validation", () => {
     expect(() =>
       parseAppConfig({
         search: validSearch,
+        stats: validStats,
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20 },
         discovery: validCenter,
@@ -192,6 +227,7 @@ describe("parseAppConfig validation", () => {
     expect(() =>
       parseAppConfig({
         search: { ...validSearch, maxRadiusKm: "10" },
+        stats: validStats,
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20 },
         discovery: validCenter,
@@ -206,6 +242,7 @@ describe("parseAppConfig validation", () => {
     expect(() =>
       parseAppConfig({
         search: validSearch,
+        stats: validStats,
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20 },
         discovery: { defaultCenter: { lat: 135, lng: 103.8 } },
@@ -220,6 +257,7 @@ describe("parseAppConfig validation", () => {
     expect(() =>
       parseAppConfig({
         search: validSearch,
+        stats: validStats,
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20 },
         discovery: validCenter,
@@ -237,6 +275,7 @@ describe("parseAppConfig validation", () => {
     expect(() =>
       parseAppConfig({
         search: validSearch,
+        stats: validStats,
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20 },
         discovery: validCenter,

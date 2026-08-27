@@ -7,6 +7,7 @@ import "server-only";
 
 import type { QueryResult } from "pg";
 import type { CheckIn } from "@/types/checkins";
+import { appConfig } from "@/lib/config";
 import {
   applyUserContributionDiff,
   coerceWorkStats,
@@ -83,7 +84,12 @@ export async function recomputeWorkStats(
       [cafeId],
     );
 
-    const stats = computeCafeStats(rows, socialWeight);
+    const stats = computeCafeStats(
+      rows,
+      socialWeight,
+      appConfig.stats.recencyDecay,
+      appConfig.stats.dimWeights,
+    );
     await writeWorkStats(cafeId, stats, q);
   });
 }
@@ -166,8 +172,16 @@ export async function incrementalUpdateWorkStats(
       newRows = [changedCheckIn, ...userRows];
     }
 
-    const oldContribution = computeUserContribution(priorRows, socialWeight);
-    const newContribution = computeUserContribution(newRows, socialWeight);
+    const oldContribution = computeUserContribution(
+      priorRows,
+      socialWeight,
+      appConfig.stats.recencyDecay,
+    );
+    const newContribution = computeUserContribution(
+      newRows,
+      socialWeight,
+      appConfig.stats.recencyDecay,
+    );
 
     const { rows: countRows } = await q<{ n: number }>(
       "select count(*)::int as n from checkins where cafe_id = $1 and deleted_at is null",
@@ -175,7 +189,13 @@ export async function incrementalUpdateWorkStats(
     );
     const nCheckins = (countRows[0]?.n ?? 0) + (changedCheckIn && !changedInDb ? 1 : 0);
 
-    const nextStats = applyUserContributionDiff(currentStats, oldContribution, newContribution, nCheckins);
+    const nextStats = applyUserContributionDiff(
+      currentStats,
+      oldContribution,
+      newContribution,
+      nCheckins,
+      appConfig.stats.dimWeights,
+    );
     await writeWorkStats(cafeId, nextStats, q);
   });
 }

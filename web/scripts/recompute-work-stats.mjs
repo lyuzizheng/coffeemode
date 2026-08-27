@@ -22,10 +22,31 @@
  */
 
 import pg from "pg";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse } from "yaml";
 
 const DEFAULT_DATABASE_URL = "postgres://coffeemode:coffeemode@localhost:5432/coffeemode";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const appYamlPath = path.resolve(__dirname, "../config/app.yaml");
+
+let DIM_WEIGHTS = { wifi: 0.3, outlets: 0.2, seats: 0.2, temp: 0.15, coffee: 0.15 };
+let RECENCY_DECAY = 0.6;
+
+try {
+  const yamlContent = readFileSync(appYamlPath, "utf8");
+  const parsed = parse(yamlContent);
+  if (parsed?.stats?.dimWeights) {
+    DIM_WEIGHTS = parsed.stats.dimWeights;
+  }
+  if (typeof parsed?.stats?.recencyDecay === "number") {
+    RECENCY_DECAY = parsed.stats.recencyDecay;
+  }
+} catch {
+  // Use fallback defaults if config is unreadable
+}
 
 /** Mirrors web/lib/db/postgres.ts parse logic for sslmode. */
 function parseConnectionConfig(urlString) {
@@ -109,7 +130,7 @@ function computeUserContribution(checkins) {
     for (let i = 0; i < sorted.length; i++) {
       const score = sorted[i].scores?.[dim];
       if (typeof score === "number") {
-        const w = Math.pow(0.6, i);
+        const w = Math.pow(RECENCY_DECAY, i);
         weightedSum += score * w;
         weightTotal += w;
       }
@@ -135,7 +156,8 @@ function applyUserContributionDiff(stats, oldC, newC, nCheckins) {
     if (o !== undefined) { next.dims[dim].sum -= o; next.dims[dim].n -= 1; }
     if (n !== undefined) { next.dims[dim].sum += n; next.dims[dim].n += 1; }
   }
-  const isPresent = (c) => c && c.dims.overall !== undefined;
+  const isPresent = (c) =>
+    c && (WORK_DIMS.some((d) => c.dims[d] !== undefined) || c.max_stay !== undefined);
   next.n_users += (isPresent(newC) ? 1 : 0) - (isPresent(oldC) ? 1 : 0);
   next.n_checkins = nCheckins;
   const bump = (counts, oldV, newV) => {

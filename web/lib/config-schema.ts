@@ -22,6 +22,23 @@ export interface AppConfig {
     maxSuggestionLimit: number;
     weakResultsThreshold: number;
     dbFetchCap: number;
+    minPoiQueryLength: number;
+    relevanceWeights: {
+      exactNameMatch: number;
+      prefixMatch: number;
+      fuzzyMatch: number;
+      secondaryMatch: number;
+    };
+  };
+  stats: {
+    dimWeights: {
+      wifi: number;
+      outlets: number;
+      seats: number;
+      temp: number;
+      coffee: number;
+    };
+    recencyDecay: number;
   };
   cafes: {
     listLimitMax: number;
@@ -114,6 +131,9 @@ export function parseRateLimits(raw: unknown, file = "rate-limits.yaml"): Record
 export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
   const root = record(file, "(root)", raw);
   const search = record(file, "search", root.search);
+  const relevanceWeights = record(file, "search.relevanceWeights", search.relevanceWeights);
+  const stats = record(file, "stats", root.stats);
+  const dimWeights = record(file, "stats.dimWeights", stats.dimWeights);
   const cafes = record(file, "cafes", root.cafes);
   const feed = record(file, "feed", root.feed);
   const discovery = record(file, "discovery", root.discovery);
@@ -143,6 +163,43 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
         search.weakResultsThreshold,
       ),
       dbFetchCap: positiveInteger(file, "search.dbFetchCap", search.dbFetchCap),
+      minPoiQueryLength: positiveInteger(
+        file,
+        "search.minPoiQueryLength",
+        search.minPoiQueryLength,
+      ),
+      relevanceWeights: {
+        exactNameMatch: positiveNumber(
+          file,
+          "search.relevanceWeights.exactNameMatch",
+          relevanceWeights.exactNameMatch,
+        ),
+        prefixMatch: positiveNumber(
+          file,
+          "search.relevanceWeights.prefixMatch",
+          relevanceWeights.prefixMatch,
+        ),
+        fuzzyMatch: positiveNumber(
+          file,
+          "search.relevanceWeights.fuzzyMatch",
+          relevanceWeights.fuzzyMatch,
+        ),
+        secondaryMatch: positiveNumber(
+          file,
+          "search.relevanceWeights.secondaryMatch",
+          relevanceWeights.secondaryMatch,
+        ),
+      },
+    },
+    stats: {
+      dimWeights: {
+        wifi: positiveNumber(file, "stats.dimWeights.wifi", dimWeights.wifi),
+        outlets: positiveNumber(file, "stats.dimWeights.outlets", dimWeights.outlets),
+        seats: positiveNumber(file, "stats.dimWeights.seats", dimWeights.seats),
+        temp: positiveNumber(file, "stats.dimWeights.temp", dimWeights.temp),
+        coffee: positiveNumber(file, "stats.dimWeights.coffee", dimWeights.coffee),
+      },
+      recencyDecay: positiveNumber(file, "stats.recencyDecay", stats.recencyDecay),
     },
     cafes: {
       listLimitMax: positiveNumber(file, "cafes.listLimitMax", cafes.listLimitMax),

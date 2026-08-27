@@ -14,6 +14,30 @@ export interface UserProfileDto {
   createdAt: string;
 }
 
+export class ProfileCursorError extends Error {
+  constructor(message = "invalid cursor") {
+    super(message);
+    this.name = "ProfileCursorError";
+  }
+}
+
+function parseProfileCursor(cursor: string): { visitedAt: string; id: string } {
+  const parts = cursor.split("_");
+  if (parts.length !== 2) {
+    throw new ProfileCursorError();
+  }
+  const [cursorVisitedAt, cursorId] = parts;
+  if (
+    !cursorVisitedAt ||
+    !cursorId ||
+    !isValidUUID(cursorId) ||
+    Number.isNaN(Date.parse(cursorVisitedAt))
+  ) {
+    throw new ProfileCursorError();
+  }
+  return { visitedAt: cursorVisitedAt, id: cursorId };
+}
+
 export interface UserProfileStatsDto {
   cafesCount: number;
   checkinsCount: number;
@@ -178,16 +202,9 @@ export async function getUserCheckIns(
   let cursorClause = "";
 
   if (options.cursor) {
-    const [cursorVisitedAt, cursorId] = options.cursor.split("_");
-    if (
-      cursorVisitedAt &&
-      cursorId &&
-      isValidUUID(cursorId) &&
-      !Number.isNaN(Date.parse(cursorVisitedAt))
-    ) {
-      params.push(cursorVisitedAt, cursorId);
-      cursorClause = `and (ch.visited_at, ch.id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`;
-    }
+    const { visitedAt: cursorVisitedAt, id: cursorId } = parseProfileCursor(options.cursor);
+    params.push(cursorVisitedAt, cursorId);
+    cursorClause = `and (ch.visited_at, ch.id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`;
   }
 
   const result = await query<{
@@ -270,16 +287,9 @@ export async function getUserCafes(
   let cursorClause = "";
 
   if (options.cursor) {
-    const [cursorVisitedAt, cursorId] = options.cursor.split("_");
-    if (
-      cursorVisitedAt &&
-      cursorId &&
-      isValidUUID(cursorId) &&
-      !Number.isNaN(Date.parse(cursorVisitedAt))
-    ) {
-      params.push(cursorVisitedAt, cursorId);
-      cursorClause = `having (max(ch.visited_at), c.id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`;
-    }
+    const { visitedAt: cursorVisitedAt, id: cursorId } = parseProfileCursor(options.cursor);
+    params.push(cursorVisitedAt, cursorId);
+    cursorClause = `having (max(ch.visited_at), c.id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`;
   }
 
   const result = await query<{

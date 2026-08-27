@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
-import { getUserCafes } from "@/lib/db/profile";
+import { getUserCafes, ProfileCursorError } from "@/lib/db/profile";
 import { appConfig } from "@/lib/config";
 import {
   checkRateLimit,
@@ -44,6 +44,9 @@ export async function GET(request: NextRequest) {
       next_cursor: result.nextCursor,
     });
   } catch (error) {
+    if (error instanceof ProfileCursorError) {
+      return NextResponse.json({ error: "invalid_cursor" }, { status: 400 });
+    }
     console.error("GET /api/profile/cafes failed:", error);
     return NextResponse.json({ error: "internal_error" }, { status: 500 });
   }

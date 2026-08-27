@@ -17,13 +17,17 @@ vi.mock("@/lib/auth/get-user", () => ({
   getCurrentUser: vi.fn(),
 }));
 
-vi.mock("@/lib/db/profile", () => ({
-  getProfile: vi.fn(),
-  getUserStats: vi.fn(),
-  updateProfile: vi.fn(),
-  getUserCheckIns: vi.fn(),
-  getUserCafes: vi.fn(),
-}));
+vi.mock("@/lib/db/profile", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/db/profile")>();
+  return {
+    ...actual,
+    getProfile: vi.fn(),
+    getUserStats: vi.fn(),
+    updateProfile: vi.fn(),
+    getUserCheckIns: vi.fn(),
+    getUserCafes: vi.fn(),
+  };
+});
 
 vi.mock("@/lib/rate-limit", async () => {
   const actual = await vi.importActual<typeof import("@/lib/rate-limit")>("@/lib/rate-limit");
@@ -209,6 +213,18 @@ describe("Profile API routes", () => {
       expect(body.items[0].cafeName).toBe("Kiosk");
       expect(body.next_cursor).toBe("2026-08-25T12:00:00.000Z_00000000-0000-4000-8000-000000000010");
     });
+
+    it("returns 400 on invalid cursor", async () => {
+      vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
+      const { ProfileCursorError } = await import("@/lib/db/profile");
+      vi.mocked(getUserCheckIns).mockRejectedValueOnce(new ProfileCursorError());
+
+      const req = new Request("http://localhost/api/profile/checkins?cursor=bad_cursor") as NextRequest;
+      const res = await getCheckins(req);
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe("invalid_cursor");
+    });
   });
 
   describe("GET /api/profile/cafes", () => {
@@ -217,6 +233,18 @@ describe("Profile API routes", () => {
       const req = new Request("http://localhost/api/profile/cafes") as NextRequest;
       const res = await getCafes(req);
       expect(res.status).toBe(401);
+    });
+
+    it("returns 400 on invalid cursor", async () => {
+      vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
+      const { ProfileCursorError } = await import("@/lib/db/profile");
+      vi.mocked(getUserCafes).mockRejectedValueOnce(new ProfileCursorError());
+
+      const req = new Request("http://localhost/api/profile/cafes?cursor=bad_cursor") as NextRequest;
+      const res = await getCafes(req);
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe("invalid_cursor");
     });
 
     it("returns cafes list with checkinsCount and isCreation", async () => {

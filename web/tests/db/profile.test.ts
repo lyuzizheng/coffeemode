@@ -158,9 +158,23 @@ describe("Profile DB helpers", () => {
       expect(res.items[0].cafeName).toBe("Cafe 1");
       expect(res.nextCursor).toBe(`${visitedAt.toISOString()}_${checkinId1}`);
     });
+
+    it("throws ProfileCursorError on invalid cursor string", async () => {
+      await expect(getUserCheckIns(userId, { cursor: "invalid_cursor" })).rejects.toThrow();
+      await expect(getUserCheckIns(userId, { cursor: "not-a-date_00000000-0000-4000-8000-000000000001" })).rejects.toThrow();
+      await expect(getUserCheckIns(userId, { cursor: "2026-08-25T12:00:00.000Z_not-a-uuid" })).rejects.toThrow();
+      await expect(getUserCheckIns(userId, { cursor: "2026-08-25T12:00:00.000Z_00000000-0000-4000-8000-000000000001_extra" })).rejects.toThrow();
+    });
   });
 
   describe("getUserCafes", () => {
+    it("throws ProfileCursorError on invalid cursor string", async () => {
+      await expect(getUserCafes(userId, { cursor: "invalid_cursor" })).rejects.toThrow();
+      await expect(getUserCafes(userId, { cursor: "not-a-date_00000000-0000-4000-8000-000000000001" })).rejects.toThrow();
+      await expect(getUserCafes(userId, { cursor: "2026-08-25T12:00:00.000Z_not-a-uuid" })).rejects.toThrow();
+      await expect(getUserCafes(userId, { cursor: "2026-08-25T12:00:00.000Z_00000000-0000-4000-8000-000000000001_extra" })).rejects.toThrow();
+    });
+
     it("maps distinct visited cafes with isCreation", async () => {
       const lastVisited = new Date("2026-08-25T14:00:00.000Z");
       const cafeId = "00000000-0000-4000-8000-000000000031";

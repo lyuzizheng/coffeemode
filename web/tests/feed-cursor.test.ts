@@ -3,6 +3,7 @@ import {
   FeedCursorError,
   decodeFeedCursor,
   encodeFeedCursor,
+  listPublicCheckIns,
 } from "@/lib/discovery/feed";
 
 const ID = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55";
@@ -81,5 +82,16 @@ describe("feed cursor encode/decode", () => {
       JSON.stringify({ v: 1, mode: "helpful", likes: 1.5, visited_at: VISITED, id: ID }),
     ).toString("base64url");
     expect(() => decodeFeedCursor(fractional, "helpful")).toThrow(FeedCursorError);
+  });
+
+  describe("listPublicCheckIns invalid cafeId guard", () => {
+    it("returns empty result without querying db when cafeId is not a UUID", async () => {
+      const result = await listPublicCheckIns({
+        cafeId: "invalid-cafe-id",
+        mode: "newest",
+        viewerId: null,
+      });
+      expect(result).toEqual({ checkins: [], nextCursor: null });
+    });
   });
 });

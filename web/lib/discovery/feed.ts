@@ -127,6 +127,9 @@ export async function listPublicCheckIns(params: {
   viewerId: string | null;
 }): Promise<CheckInFeedPage> {
   const { cafeId, mode, viewerId } = params;
+  if (!isValidUUID(cafeId)) {
+    return { checkins: [], nextCursor: null };
+  }
   const pageSize = appConfig.feed.pageSize;
   const cursor = params.cursor ? decodeFeedCursor(params.cursor, mode) : null;
 

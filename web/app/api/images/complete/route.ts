@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
+import { apiError } from "@/lib/api/response";
 import { isValidUUID } from "@shared/uuid";
 import {
   completeImageUpload,
@@ -7,11 +8,11 @@ import {
   isImageServiceError,
 } from "@/lib/images/complete";
 import {
-  IMAGE_RATE_LIMIT,
+  checkRateLimit,
   getClientIdentifier,
   rateLimitResponse,
-  rateLimiter,
 } from "@/lib/rate-limit";
+import { rateLimitBuckets } from "@/lib/config";
 import type { CompleteImageRequest, CompleteImageResponse, ImageTargetType } from "@/types/images";
 import { requireSameOrigin } from "@/lib/security/origin";
 
@@ -48,29 +49,29 @@ export async function POST(request: Request) {
 
   const user = await getCurrentUser();
   if (!user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return apiError("unauthorized", 401);
   }
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  const body = await request.json().catch(() => null);
+  if (body === null) {
+    return apiError("invalid_request", "invalid JSON body", 400);
   }
 
   const req = validateBody(body);
   if (!req) {
-    return NextResponse.json(
-      { error: "invalid_request", message: "valid imageUuid, targetType (cafe|checkin), and targetId required" },
-      { status: 400 },
+    return apiError(
+      "invalid_request",
+      "valid imageUuid, targetType (cafe|checkin), and targetId required",
+      400,
     );
   }
 
   const clientId = getClientIdentifier(request, user);
-  const limit = await rateLimiter.check(
-    `images:${clientId}`,
-    IMAGE_RATE_LIMIT.windowMs,
-    IMAGE_RATE_LIMIT.maxRequests,
+  const limit = await checkRateLimit(
+    "images",
+    clientId,
+    rateLimitBuckets("images"),
+    "POST /api/images/complete",
   );
   if (!limit.allowed) {
     return rateLimitResponse(limit);
@@ -79,10 +80,7 @@ export async function POST(request: Request) {
   try {
     const result = await completeImageUpload(user, req, defaultCompleteUploadDeps());
     if (!result.attached || !result.storedImage || !result.processed) {
-      return NextResponse.json(
-        { error: "not_found", message: "target not found or not owned by user" },
-        { status: 404 },
-      );
+      return apiError("not_found", "target not found or not owned by user", 404);
     }
 
     const response: CompleteImageResponse = {
@@ -96,11 +94,8 @@ export async function POST(request: Request) {
   } catch (err) {
     console.error("/api/images/complete failed", err);
     if (isImageServiceError(err)) {
-      return NextResponse.json(
-        { error: "image_service_error", message: err.message },
-        { status: err.status },
-      );
+      return apiError("image_service_error", err.message, err.status);
     }
-    return NextResponse.json({ error: "image_processing_error" }, { status: 502 });
+    return apiError("image_processing_error", 502);
   }
 }

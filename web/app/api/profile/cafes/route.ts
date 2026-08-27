@@ -1,40 +1,39 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
+import { apiError, parseQueryPositiveInt } from "@/lib/api/response";
 import { getUserCafes, ProfileCursorError } from "@/lib/db/profile";
-import { appConfig } from "@/lib/config";
+import { appConfig, rateLimitBuckets } from "@/lib/config";
 import {
   checkRateLimit,
   getClientIdentifier,
-  PROFILE_READ_RATE_LIMIT,
   rateLimitResponse,
 } from "@/lib/rate-limit";
 
 export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return apiError("unauthorized", 401);
   }
 
   const clientId = getClientIdentifier(request, user);
   const rate = await checkRateLimit(
     "profile-read",
     clientId,
-    [PROFILE_READ_RATE_LIMIT],
+    rateLimitBuckets("profile-read"),
     "GET /api/profile/cafes",
   );
   if (!rate.allowed) return rateLimitResponse(rate);
 
   const { searchParams } = new URL(request.url);
   const rawLimit = searchParams.get("limit");
-  let limit = appConfig.profile.listPageSize;
-  if (rawLimit !== null) {
-    const parsed = parseInt(rawLimit, 10);
-    if (Number.isNaN(parsed) || parsed <= 0 || !Number.isInteger(Number(rawLimit))) {
-      return NextResponse.json({ error: "invalid_limit" }, { status: 400 });
-    }
-    limit = Math.min(appConfig.profile.listLimitMax, parsed);
+  const limit = parseQueryPositiveInt(
+    rawLimit,
+    appConfig.profile.listPageSize,
+    appConfig.profile.listLimitMax,
+  );
+  if (limit === null) {
+    return apiError("invalid_limit", 400);
   }
-
   const cursor = searchParams.get("cursor") ?? undefined;
 
   try {
@@ -45,9 +44,9 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     if (error instanceof ProfileCursorError) {
-      return NextResponse.json({ error: "invalid_cursor" }, { status: 400 });
+      return apiError("invalid_cursor", 400);
     }
     console.error("GET /api/profile/cafes failed:", error);
-    return NextResponse.json({ error: "internal_error" }, { status: 500 });
+    return apiError("internal_error", 500);
   }
 }

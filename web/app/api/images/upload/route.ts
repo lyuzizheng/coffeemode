@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
+import { apiError } from "@/lib/api/response";
 import { recordUploadIntent } from "@/lib/db/image-uploads";
 import { ImageServiceError, requestUploadUrl } from "@/lib/images/image-service-client";
 import { validateUploadSize } from "@shared/images/validation";
 import {
-  IMAGE_RATE_LIMIT,
+  checkRateLimit,
   getClientIdentifier,
   rateLimitResponse,
-  rateLimiter,
 } from "@/lib/rate-limit";
+import { rateLimitBuckets } from "@/lib/config";
 import { requireSameOrigin } from "@/lib/security/origin";
 
 function parseSize(
@@ -46,26 +47,21 @@ export async function POST(request: Request) {
 
   const user = await getCurrentUser();
   if (!user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return apiError("unauthorized", 401);
   }
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    body = undefined;
-  }
-
+  const body = await request.json().catch(() => undefined);
   const parsed = parseSize(body);
   if ("error" in parsed) {
-    return NextResponse.json({ error: parsed.code, message: parsed.error }, { status: 400 });
+    return apiError(parsed.code, parsed.error, 400);
   }
 
   const clientId = getClientIdentifier(request, user);
-  const limit = await rateLimiter.check(
-    `images:${clientId}`,
-    IMAGE_RATE_LIMIT.windowMs,
-    IMAGE_RATE_LIMIT.maxRequests,
+  const limit = await checkRateLimit(
+    "images",
+    clientId,
+    rateLimitBuckets("images"),
+    "POST /api/images/upload",
   );
   if (!limit.allowed) {
     return rateLimitResponse(limit);
@@ -79,17 +75,14 @@ export async function POST(request: Request) {
       await recordUploadIntent(user.id, data.imageUuid);
     } catch (intentErr) {
       console.error("/api/images/upload intent record failed", intentErr);
-      return NextResponse.json({ error: "internal_error" }, { status: 500 });
+      return apiError("internal_error", 500);
     }
     return NextResponse.json(data);
   } catch (err) {
     console.error("/api/images/upload failed", err);
     if (err instanceof ImageServiceError) {
-      return NextResponse.json(
-        { error: "image_service_error", message: err.message },
-        { status: err.status },
-      );
+      return apiError("image_service_error", err.message, err.status);
     }
-    return NextResponse.json({ error: "image_service_error" }, { status: 502 });
+    return apiError("image_service_error", 502);
   }
 }

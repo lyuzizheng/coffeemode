@@ -1,20 +1,19 @@
 #!/usr/bin/env node
-// Rendered-page smoke gate (issue #76): boots the production build and
-// screenshots the public route matrix, failing on unexpected HTTP statuses
-// (per-route expectation — the 404 route must return 404), console errors,
-// or page errors. Screenshots land in .visual-smoke/ and are uploaded as a
-// CI artifact on failure. No pixel baselines yet — step one is "CI looks at
-// the rendered app".
+// Rendered-page smoke gate (issue #76, hardened in #248): boots the production
+// standalone build on an ephemeral port and screenshots the public route matrix,
+// failing on unexpected HTTP statuses (per-route expectation — the 404 route must
+// return 404), console errors, or page errors. Screenshots land in .visual-smoke/
+// and are uploaded as a CI artifact on failure.
 import { spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync } from "node:fs";
+import net from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = join(root, ".visual-smoke");
-const port = 3107;
-const base = `http://127.0.0.1:${port}`;
+const dbUrl = process.env.DATABASE_URL ?? "postgres://coffeemode:coffeemode@localhost:5432/coffeemode";
 
 // Each route declares its expected HTTP status; the 404 route keeps the
 // designed not-found page inside the rendered gate (issue #99).
@@ -33,12 +32,29 @@ const VIEWPORTS = {
   desktop: { width: 1440, height: 900, isMobile: false },
 };
 
-if (!existsSync(join(root, ".next", "BUILD_ID"))) {
+if (!process.env.VISUAL_BASE_URL && !existsSync(join(root, ".next", "BUILD_ID"))) {
   console.error("no production build found — run `npm run build` first");
   process.exit(1);
 }
 
-async function waitForServer(attempts = 60) {
+function getFreePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.unref();
+    srv.on("error", reject);
+    srv.listen(0, "127.0.0.1", () => {
+      const address = srv.address();
+      const port = address && typeof address === "object" ? address.port : 0;
+      srv.close((err) => (err ? reject(err) : resolve(port)));
+    });
+  });
+}
+
+function slug(route) {
+  return route.replace(/^[~/]+/, "").replace(/[~/]/g, "-") || "home";
+}
+
+async function waitForServer(base, attempts = 60) {
   for (let i = 0; i < attempts; i += 1) {
     try {
       const res = await fetch(base, { signal: AbortSignal.timeout(1000) });
@@ -51,20 +67,21 @@ async function waitForServer(attempts = 60) {
   throw new Error(`server did not start on ${base}`);
 }
 
-function spawnStandaloneServer() {
-  const standaloneDir = join(root, ".next", "standalone");
+function spawnStandaloneServer({ cwd, port, host = "127.0.0.1", env = {} }) {
+  const standaloneDir = join(cwd, ".next", "standalone");
   const serverPath = join(standaloneDir, "server.js");
   if (!existsSync(serverPath)) {
     throw new Error(`Standalone server not found at ${serverPath}. Run \`npm run build\` first.`);
   }
 
-  const staticSrc = join(root, ".next", "static");
+  // Next standalone requires static assets copied in (matching Dockerfile)
+  const staticSrc = join(cwd, ".next", "static");
   const staticDest = join(standaloneDir, ".next", "static");
   if (existsSync(staticSrc)) {
     cpSync(staticSrc, staticDest, { recursive: true, force: true });
   }
 
-  const publicSrc = join(root, "public");
+  const publicSrc = join(cwd, "public");
   const publicDest = join(standaloneDir, "public");
   if (existsSync(publicSrc)) {
     cpSync(publicSrc, publicDest, { recursive: true, force: true });
@@ -75,25 +92,80 @@ function spawnStandaloneServer() {
     stdio: "ignore",
     env: {
       ...process.env,
+      ...env,
       PORT: String(port),
-      HOSTNAME: "127.0.0.1",
+      HOSTNAME: host,
       NODE_ENV: "production",
       NEXT_TELEMETRY_DISABLED: "1",
     },
   });
 }
 
-const server = spawnStandaloneServer();
-process.on("exit", () => server.kill("SIGTERM"));
+let serverProcess = null;
+let browser = null;
 
-const failures = [];
+async function cleanup() {
+  if (browser) {
+    try {
+      await browser.close();
+    } catch {}
+    browser = null;
+  }
+  if (serverProcess) {
+    try {
+      serverProcess.kill("SIGTERM");
+    } catch {}
+    serverProcess = null;
+  }
+}
 
-try {
-  await waitForServer();
-  mkdirSync(outDir, { recursive: true });
+process.on("exit", () => {
+  if (serverProcess) {
+    try {
+      serverProcess.kill("SIGTERM");
+    } catch {}
+  }
+});
+process.on("SIGINT", async () => {
+  await cleanup();
+  process.exit(130);
+});
+process.on("SIGTERM", async () => {
+  await cleanup();
+  process.exit(143);
+});
+process.on("uncaughtException", async (err) => {
+  console.error("Uncaught exception in visual-smoke:", err);
+  await cleanup();
+  process.exit(1);
+});
+process.on("unhandledRejection", async (err) => {
+  console.error("Unhandled rejection in visual-smoke:", err);
+  await cleanup();
+  process.exit(1);
+});
 
-  const browser = await chromium.launch();
+async function runVisualSmoke() {
+  const port = process.env.VISUAL_PORT ? Number(process.env.VISUAL_PORT) : await getFreePort();
+  const base = process.env.VISUAL_BASE_URL ?? `http://127.0.0.1:${port}`;
+
+  if (!process.env.VISUAL_BASE_URL) {
+    serverProcess = spawnStandaloneServer({
+      cwd: root,
+      port,
+      env: {
+        DATABASE_URL: dbUrl,
+      },
+    });
+  }
+
+  const failures = [];
+
   try {
+    await waitForServer(base);
+    mkdirSync(outDir, { recursive: true });
+
+    browser = await chromium.launch({ headless: true });
     for (const route of ROUTES) {
       for (const scheme of COLOR_SCHEMES) {
         for (const [vpName, vp] of Object.entries(VIEWPORTS)) {
@@ -104,6 +176,12 @@ try {
             isMobile: vp.isMobile,
             deviceScaleFactor: vp.isMobile ? 2 : 1,
           });
+
+          // Stub 3rd party networks to eliminate CI flakiness
+          await context.route("**/*apple-mapkit*", (r) => r.fulfill({ status: 200, body: "" }));
+          await context.route("**/*maps.googleapis.com*", (r) => r.fulfill({ status: 200, json: { status: "OK", results: [] } }));
+          await context.route("**/api/mapkit-token", (r) => r.fulfill({ status: 200, json: { token: "fake-mapkit-token" } }));
+
           const page = await context.newPage();
           const errors = [];
           page.on("console", (msg) => {
@@ -147,15 +225,19 @@ try {
       }
     }
   } finally {
-    await browser.close();
+    await cleanup();
   }
-} finally {
-  server.kill("SIGTERM");
+
+  if (failures.length > 0) {
+    console.error(`\nvisual smoke failed (${failures.length}):`);
+    for (const failure of failures) console.error(`  ${failure}`);
+    process.exit(1);
+  }
+  console.log(`\nvisual smoke passed: ${ROUTES.length * COLOR_SCHEMES.length * Object.keys(VIEWPORTS).length} renderings clean`);
 }
 
-if (failures.length > 0) {
-  console.error(`\nvisual smoke failed (${failures.length}):`);
-  for (const failure of failures) console.error(`  ${failure}`);
+runVisualSmoke().catch(async (err) => {
+  console.error("\n[Visual Smoke] Fatal error during visual smoke suite:", err);
+  await cleanup();
   process.exit(1);
-}
-console.log(`\nvisual smoke passed: ${ROUTES.length * COLOR_SCHEMES.length * Object.keys(VIEWPORTS).length} renderings clean`);
+});

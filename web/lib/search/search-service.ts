@@ -79,10 +79,16 @@ export async function executeSearch(
 ): Promise<SearchResponse> {
   const refPoint = resolveReferencePoint(filters.lat, filters.lng, filters.city);
 
-  // 1. Fetch matching cafes from DB
+  // 1. Fetch matching cafes from DB with work filters pushed down to SQL
   const rawCafes = await searchCafesInDb({
     q: filters.q,
     city: filters.city,
+    filter_wifi: filters.filter_wifi,
+    filter_outlets: filters.filter_outlets,
+    filter_seats: filters.filter_seats,
+    filter_temp: filters.filter_temp,
+    filter_coffee: filters.filter_coffee,
+    filter_overall: filters.filter_overall,
     limit: appConfig.search.dbFetchCap,
   });
 

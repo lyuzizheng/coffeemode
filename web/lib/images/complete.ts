@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { QueryResult } from "pg";
+import { MERGE_GALLERY_SQL } from "@/lib/db/checkins";
 import type { CompleteImageRequest, ImageTargetType, StoredImage } from "@/types/images";
 import type { ProcessUrls } from "./image-service-client";
 import type { ProcessedImage } from "./processor";
@@ -172,16 +173,7 @@ async function attachToCheckin(
 }
 
 async function mergeIntoCafeGallery(q: CompleteQueryFn, image: StoredImage, cafeId: string): Promise<void> {
-  await q(
-    `update cafes
-     set gallery = case
-         when not (coalesce(gallery, '[]'::jsonb) @> $3::jsonb)
-         then coalesce(gallery, '[]'::jsonb) || $1::jsonb
-         else gallery
-       end
-     where id = $2`,
-    [JSON.stringify([image]), cafeId, JSON.stringify([{ id: image.id }])],
-  );
+  await q(MERGE_GALLERY_SQL, [cafeId, JSON.stringify([image])]);
 }
 
 /**

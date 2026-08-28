@@ -6,7 +6,7 @@
 // CI artifact on failure. No pixel baselines yet — step one is "CI looks at
 // the rendered app".
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
@@ -51,15 +51,39 @@ async function waitForServer(attempts = 60) {
   throw new Error(`server did not start on ${base}`);
 }
 
-function slug(route) {
-  return route.replace(/[~/]/g, "") || "home";
+function spawnStandaloneServer() {
+  const standaloneDir = join(root, ".next", "standalone");
+  const serverPath = join(standaloneDir, "server.js");
+  if (!existsSync(serverPath)) {
+    throw new Error(`Standalone server not found at ${serverPath}. Run \`npm run build\` first.`);
+  }
+
+  const staticSrc = join(root, ".next", "static");
+  const staticDest = join(standaloneDir, ".next", "static");
+  if (existsSync(staticSrc)) {
+    cpSync(staticSrc, staticDest, { recursive: true, force: true });
+  }
+
+  const publicSrc = join(root, "public");
+  const publicDest = join(standaloneDir, "public");
+  if (existsSync(publicSrc)) {
+    cpSync(publicSrc, publicDest, { recursive: true, force: true });
+  }
+
+  return spawn(process.execPath, [serverPath], {
+    cwd: standaloneDir,
+    stdio: "ignore",
+    env: {
+      ...process.env,
+      PORT: String(port),
+      HOSTNAME: "127.0.0.1",
+      NODE_ENV: "production",
+      NEXT_TELEMETRY_DISABLED: "1",
+    },
+  });
 }
 
-const server = spawn(
-  join(root, "node_modules", ".bin", "next"),
-  ["start", "-p", String(port), "-H", "127.0.0.1"],
-  { cwd: root, stdio: "ignore" },
-);
+const server = spawnStandaloneServer();
 process.on("exit", () => server.kill("SIGTERM"));
 
 const failures = [];

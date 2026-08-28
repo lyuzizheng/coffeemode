@@ -2,21 +2,22 @@
 /**
  * CoffeeMode Deterministic Playwright E2E Smoke Suite (Issue #155).
  *
- * Proves core MVP journeys end-to-end against a Next.js production build:
+ * Proves core MVP journeys end-to-end against a Next.js standalone production build:
  *   1. Signed-out discovery, theme toggle, and deep links (Home, Cafe Detail, 404 Recovery).
  *   2. Static preview and offline routes (/theme-preview, /~offline).
- *   3. Search and filter interactions.
- *   4. Authenticated profile, stats, and session UI (/profile).
- *   5. Core API health and mutation contract boundaries.
+ *   3. Signed-out profile view and search history panel (/profile).
+ *   4. Core API health and mutation contract boundaries.
  *
  * Invariants:
  *   - Fails visibly on unexpected console errors, unhandled page errors, or broken navigation.
  *   - Third-party boundaries (Apple MapKit, Google Places, Supabase OAuth, R2) are stubbed
  *     via Playwright route interception so CI is 100% deterministic and offline-resilient.
- *   - DB-backed SSR pages use isolated, self-cleaning seeded fixtures when Postgres is available.
+ *   - Spawns standalone Next.js server (`node .next/standalone/server.js`) with static assets.
+ *   - DB-backed SSR pages use isolated, self-cleaning seeded fixtures against Postgres.
+ *   - In CI (`CI=true`), database fixture setup is strictly required and fails fast if missing.
  */
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { cpSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
@@ -61,18 +62,18 @@ async function setupDbFixtures() {
       n_users: 1,
       n_checkins: 1,
       dims: {
-        wifi: { sum: 85, n: 1 },
-        outlets: { sum: 80, n: 1 },
-        seats: { sum: 90, n: 1 },
+        wifi: { sum: 90, n: 1 },
+        outlets: { sum: 85, n: 1 },
+        seats: { sum: 80, n: 1 },
         temp: { sum: 75, n: 1 },
-        coffee: { sum: 80, n: 1 },
+        coffee: { sum: 85, n: 1 },
         overall: { sum: 85, n: 1 },
       },
       policies: {
-        max_stay: {},
+        max_stay: { "3h": 1 },
       },
       experience_score: 85,
-      composite_score: 82,
+      composite_score: 84,
       updated_at: new Date().toISOString(),
     });
 
@@ -93,20 +94,26 @@ async function setupDbFixtures() {
     );
 
     await dbClient.query(
-      `insert into checkins (id, cafe_id, user_id, is_creation, note, scores)
+      `insert into checkins (id, cafe_id, user_id, is_creation, note, scores, max_stay, photos, visited_at)
        values (
          $1,
          $2,
          $3,
          true,
-         'Great nomad setup for testing',
-         '{"wifi": 92, "power": 85, "quiet": 78, "seating": 88}'::jsonb
+         'Great nomad setup for smoke testing with fast wifi and outlets.',
+         '{"wifi": 90, "outlets": 85, "seats": 80, "temp": 75, "coffee": 85, "overall": 85}'::jsonb,
+         '3h',
+         '[]'::jsonb,
+         now()
        )`,
       [E2E_CHECKIN_ID, E2E_CAFE_ID, E2E_USER_ID],
     );
     return true;
   } catch (err) {
-    // If postgres is not running locally, DB-backed SSR will test fallback/404 paths
+    if (process.env.CI) {
+      console.error("[E2E] DB fixture initialization failed in CI:", err);
+      throw err;
+    }
     if (dbClient) {
       try { await dbClient.end(); } catch {}
       dbClient = null;
@@ -125,7 +132,7 @@ async function cleanupDbFixtures() {
 }
 
 // ---------------------------------------------------------------------------
-// Server Lifecycle
+// Standalone Server Lifecycle
 // ---------------------------------------------------------------------------
 async function waitForServer(attempts = 60) {
   for (let i = 0; i < attempts; i += 1) {
@@ -140,22 +147,50 @@ async function waitForServer(attempts = 60) {
   throw new Error(`Server did not start within 30s at ${base}`);
 }
 
+function spawnStandaloneServer({ cwd, port, host = "127.0.0.1", env = {} }) {
+  const standaloneDir = join(cwd, ".next", "standalone");
+  const serverPath = join(standaloneDir, "server.js");
+  if (!existsSync(serverPath)) {
+    throw new Error(`Standalone server not found at ${serverPath}. Run \`npm run build\` first.`);
+  }
+
+  // Next standalone requires static assets copied in (matching Dockerfile)
+  const staticSrc = join(cwd, ".next", "static");
+  const staticDest = join(standaloneDir, ".next", "static");
+  if (existsSync(staticSrc)) {
+    cpSync(staticSrc, staticDest, { recursive: true, force: true });
+  }
+
+  const publicSrc = join(cwd, "public");
+  const publicDest = join(standaloneDir, "public");
+  if (existsSync(publicSrc)) {
+    cpSync(publicSrc, publicDest, { recursive: true, force: true });
+  }
+
+  return spawn(process.execPath, [serverPath], {
+    cwd: standaloneDir,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      ...env,
+      PORT: String(port),
+      HOSTNAME: host,
+      NODE_ENV: "production",
+      NEXT_TELEMETRY_DISABLED: "1",
+    },
+  });
+}
+
 let serverProcess = null;
 
 if (!process.env.E2E_BASE_URL) {
-  serverProcess = spawn(
-    join(root, "node_modules", ".bin", "next"),
-    ["start", "-p", String(port), "-H", "127.0.0.1"],
-    {
-      cwd: root,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        PORT: String(port),
-        DATABASE_URL: dbUrl,
-      },
+  serverProcess = spawnStandaloneServer({
+    cwd: root,
+    port,
+    env: {
+      DATABASE_URL: dbUrl,
     },
-  );
+  });
 
   serverProcess.stdout.on("data", (d) => {
     process.stdout.write(`[Next.js Server] ${d.toString()}`);
@@ -354,10 +389,10 @@ async function runSmokeSuite() {
     }
 
     // -------------------------------------------------------------------------
-    // Test 5: Profile Route (Signed-out & Authenticated view)
+    // Test 5: Profile Route (Signed-out View and Search History Panel)
     // -------------------------------------------------------------------------
     {
-      const label = "T5: Profile View and Session State";
+      const label = "T5: Profile View (Signed-Out)";
       console.log(`[E2E] Running ${label}...`);
       const context = await createContext();
       const page = await context.newPage();
@@ -365,6 +400,12 @@ async function runSmokeSuite() {
 
       const res = await page.goto(`${base}/profile`, { waitUntil: "domcontentloaded" });
       assert(res?.status() === 200, `Expected 200 for /profile, got ${res?.status()}`);
+
+      const pageText = await page.textContent("body");
+      assert(
+        pageText?.includes("Sign in") || pageText?.includes("sign in") || pageText?.includes("登录") || pageText?.includes("Search history"),
+        "Signed-out profile prompt or search history panel not rendered",
+      );
 
       checkErrors();
       await context.close();
@@ -418,24 +459,24 @@ async function runSmokeSuite() {
     }
     if (serverProcess) {
       serverProcess.kill("SIGTERM");
-      serverProcess = null;
     }
   }
-}
 
-runSmokeSuite()
-  .then(() => {
-    if (failures.length > 0) {
-      console.error(`\n[E2E] Smoke suite failed with ${failures.length} issue(s):`);
-      for (const f of failures) console.error(f);
-      process.exit(1);
-    }
-    console.log("\n[E2E] Deterministic MVP smoke suite PASSED cleanly.");
-  })
-  .catch((err) => {
-    console.error(`\n[E2E] Fatal error during smoke suite:`, err);
-    if (serverProcess) {
-      serverProcess.kill("SIGTERM");
+  if (failures.length > 0) {
+    console.error(`\n[E2E] Suite failed with ${failures.length} issue(s):\n`);
+    for (const f of failures) {
+      console.error(`  - ${f}\n`);
     }
     process.exit(1);
-  });
+  }
+
+  console.log("\n[E2E] Deterministic MVP smoke suite PASSED cleanly.\n");
+}
+
+runSmokeSuite().catch((err) => {
+  console.error("\n[E2E] Fatal error during smoke suite:", err);
+  if (serverProcess) {
+    try { serverProcess.kill("SIGTERM"); } catch {}
+  }
+  process.exit(1);
+});

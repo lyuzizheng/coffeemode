@@ -63,6 +63,17 @@ describe("config files", () => {
     expect(appConfig.profile.listPageSize).toBe(20);
     expect(appConfig.profile.displayNameMaxChars).toBe(24);
     expect(appConfig.profile.recentSearchesMax).toBe(20);
+    expect(appConfig.budgets.bundle).toEqual({
+      maxJsChunkBytes: 409600,
+      maxCssChunkBytes: 512000,
+      maxTotalStaticBytes: 5242880,
+    });
+    expect(appConfig.budgets.lighthouse).toEqual({
+      performance: 0.8,
+      accessibility: 0.85,
+      bestPractices: 0.85,
+      seo: 0.85,
+    });
   });
 
   it("owns the feed page size (spec 0001: 20 per page, both modes)", () => {
@@ -176,6 +187,19 @@ describe("parseAppConfig validation", () => {
     displayNameMaxChars: 24,
     recentSearchesMax: 20,
   };
+  const validBudgets = {
+    bundle: {
+      maxJsChunkBytes: 409600,
+      maxCssChunkBytes: 512000,
+      maxTotalStaticBytes: 5242880,
+    },
+    lighthouse: {
+      performance: 0.8,
+      accessibility: 0.85,
+      bestPractices: 0.85,
+      seo: 0.85,
+    },
+  };
 
   it("accepts a valid config", () => {
     const valid = {
@@ -187,6 +211,7 @@ describe("parseAppConfig validation", () => {
       seo: validSeo,
       checkins: validCheckins,
       profile: validProfile,
+      budgets: validBudgets,
     };
     expect(parseAppConfig(valid)).toEqual(valid);
   });
@@ -205,6 +230,7 @@ describe("parseAppConfig validation", () => {
         discovery: validCenter,
         seo: validSeo,
         profile: validProfile,
+        budgets: validBudgets,
       }),
     ).toThrow(/"checkins" must be a mapping/);
   });
@@ -219,8 +245,24 @@ describe("parseAppConfig validation", () => {
         discovery: validCenter,
         seo: validSeo,
         checkins: validCheckins,
+        budgets: validBudgets,
       }),
     ).toThrow(/"profile" must be a mapping/);
+  });
+
+  it("rejects a missing budgets section", () => {
+    expect(() =>
+      parseAppConfig({
+        search: validSearch,
+        stats: validStats,
+        cafes: { listLimitMax: 50 },
+        feed: { pageSize: 20 },
+        discovery: validCenter,
+        seo: validSeo,
+        checkins: validCheckins,
+        profile: validProfile,
+      }),
+    ).toThrow(/"budgets" must be a mapping/);
   });
 
   it("rejects a wrong type", () => {
@@ -234,6 +276,7 @@ describe("parseAppConfig validation", () => {
         seo: validSeo,
         checkins: validCheckins,
         profile: validProfile,
+        budgets: validBudgets,
       }),
     ).toThrow(/"search\.maxRadiusKm" must be a positive number/);
   });
@@ -249,6 +292,7 @@ describe("parseAppConfig validation", () => {
         seo: validSeo,
         checkins: validCheckins,
         profile: validProfile,
+        budgets: validBudgets,
       }),
     ).toThrow(/"discovery\.defaultCenter\.lat" must be a number within \[-90,90\]/);
   });
@@ -267,6 +311,7 @@ describe("parseAppConfig validation", () => {
         },
         checkins: validCheckins,
         profile: validProfile,
+        budgets: validBudgets,
       }),
     ).toThrow(/"seo\.shellCache\.sMaxAgeSeconds" must be a positive integer/);
   });
@@ -282,7 +327,30 @@ describe("parseAppConfig validation", () => {
         seo: validSeo,
         checkins: { photoCap: 6.5, noteMaxChars: 500 },
         profile: validProfile,
+        budgets: validBudgets,
       }),
     ).toThrow(/"checkins\.photoCap" must be a positive integer/);
+  });
+
+  it("rejects an out-of-range lighthouse score threshold", () => {
+    expect(() =>
+      parseAppConfig({
+        search: validSearch,
+        stats: validStats,
+        cafes: { listLimitMax: 50 },
+        feed: { pageSize: 20 },
+        discovery: validCenter,
+        seo: validSeo,
+        checkins: validCheckins,
+        profile: validProfile,
+        budgets: {
+          ...validBudgets,
+          lighthouse: {
+            ...validBudgets.lighthouse,
+            performance: 1.5,
+          },
+        },
+      }),
+    ).toThrow(/"budgets\.lighthouse\.performance" must be a number between 0 and 1/);
   });
 });

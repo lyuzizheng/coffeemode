@@ -102,11 +102,11 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Bundle analysis
-        run: npm run analyze
-
       - name: Verify bundle budget
         run: node scripts/check-bundle-budget.mjs
+
+      - name: Bundle analysis
+        run: npm run analyze
 
       - name: Upload bundle analysis report
         uses: actions/upload-artifact@v4
@@ -135,6 +135,18 @@ jobs:
         env:
           DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode
         run: npm run test:e2e
+
+      - name: Lighthouse CI performance budgets
+        env:
+          DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode
+        run: npm run lhci
+
+      - name: Upload Lighthouse CI report
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-ci-report
+          path: web/.lighthouseci
+          if-no-files-found: error
 
   integration-gate:
     needs: changes

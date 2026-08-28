@@ -1,54 +1,88 @@
 #!/usr/bin/env node
 /**
- * Bundle budget checker — ensures total and individual client chunk sizes
- * stay within agreed MVP performance budgets.
+ * Bundle budget checker (DG107).
  *
- * Budgets:
- * - Single JS chunk: <= 400 KB (uncompressed)
- * - Single CSS chunk: <= 500 KB (uncompressed)
- * - Total client assets (.next/static): <= 5.0 MB
+ * Ensures total and individual client chunk sizes in `.next/static` stay within
+ * agreed performance budgets defined in `web/config/app.yaml`.
+ *
+ * Scans all static assets recursively (.next/static, including chunks/, media/,
+ * and build manifests) to guarantee no uncounted asset regressions.
  */
-import { readdirSync, statSync, existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readdirSync, statSync, existsSync, readFileSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parse } from "yaml";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const chunksDir = join(root, ".next", "static", "chunks");
+const staticDir = join(root, ".next", "static");
+const appYamlPath = join(root, "config", "app.yaml");
 
-if (!existsSync(chunksDir)) {
-  console.error("No build chunks found. Run `npm run build` first.");
+if (!existsSync(staticDir)) {
+  console.error("No build found in web/.next/static — run `npm run build` first.");
   process.exit(1);
 }
 
-const MAX_JS_CHUNK_BYTES = 400 * 1024; // 400 KB
-const MAX_CSS_CHUNK_BYTES = 500 * 1024; // 500 KB
-const MAX_TOTAL_STATIC_BYTES = 5 * 1024 * 1024; // 5 MB
+// Read budgets from config (DG107)
+let maxJsChunkBytes = 400 * 1024;
+let maxCssChunkBytes = 500 * 1024;
+let maxTotalStaticBytes = 5 * 1024 * 1024;
 
-const files = readdirSync(chunksDir);
+try {
+  const yamlContent = readFileSync(appYamlPath, "utf8");
+  const parsed = parse(yamlContent);
+  const bundleBudgets = parsed?.budgets?.bundle;
+  if (bundleBudgets) {
+    if (typeof bundleBudgets.maxJsChunkBytes === "number") {
+      maxJsChunkBytes = bundleBudgets.maxJsChunkBytes;
+    }
+    if (typeof bundleBudgets.maxCssChunkBytes === "number") {
+      maxCssChunkBytes = bundleBudgets.maxCssChunkBytes;
+    }
+    if (typeof bundleBudgets.maxTotalStaticBytes === "number") {
+      maxTotalStaticBytes = bundleBudgets.maxTotalStaticBytes;
+    }
+  }
+} catch (err) {
+  console.warn(`[budget-check] Warning: failed to parse config/app.yaml: ${err.message}. Using defaults.`);
+}
+
+function getAllFiles(dir) {
+  const results = [];
+  const entries = readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...getAllFiles(fullPath));
+    } else if (entry.isFile()) {
+      results.push(fullPath);
+    }
+  }
+  return results;
+}
+
+const allFiles = getAllFiles(staticDir);
 let totalBytes = 0;
 const violations = [];
 
-for (const file of files) {
-  const filePath = join(chunksDir, file);
+for (const filePath of allFiles) {
+  const relPath = relative(staticDir, filePath);
   const stat = statSync(filePath);
-  if (!stat.isFile()) continue;
-
   totalBytes += stat.size;
 
-  if (file.endsWith(".js") && stat.size > MAX_JS_CHUNK_BYTES) {
+  if (filePath.endsWith(".js") && stat.size > maxJsChunkBytes) {
     violations.push(
-      `JS chunk ${file} (${(stat.size / 1024).toFixed(1)} KB) exceeds budget of ${(MAX_JS_CHUNK_BYTES / 1024).toFixed(1)} KB`,
+      `JS file ${relPath} (${(stat.size / 1024).toFixed(1)} KB) exceeds budget of ${(maxJsChunkBytes / 1024).toFixed(1)} KB`,
     );
-  } else if (file.endsWith(".css") && stat.size > MAX_CSS_CHUNK_BYTES) {
+  } else if (filePath.endsWith(".css") && stat.size > maxCssChunkBytes) {
     violations.push(
-      `CSS chunk ${file} (${(stat.size / 1024).toFixed(1)} KB) exceeds budget of ${(MAX_CSS_CHUNK_BYTES / 1024).toFixed(1)} KB`,
+      `CSS file ${relPath} (${(stat.size / 1024).toFixed(1)} KB) exceeds budget of ${(maxCssChunkBytes / 1024).toFixed(1)} KB`,
     );
   }
 }
 
-if (totalBytes > MAX_TOTAL_STATIC_BYTES) {
+if (totalBytes > maxTotalStaticBytes) {
   violations.push(
-    `Total static chunks (${(totalBytes / (1024 * 1024)).toFixed(2)} MB) exceed budget of ${(MAX_TOTAL_STATIC_BYTES / (1024 * 1024)).toFixed(2)} MB`,
+    `Total static assets (${(totalBytes / (1024 * 1024)).toFixed(2)} MB) exceed budget of ${(maxTotalStaticBytes / (1024 * 1024)).toFixed(2)} MB`,
   );
 }
 
@@ -59,5 +93,5 @@ if (violations.length > 0) {
 }
 
 console.log(
-  `\n✅ Bundle budget passed: ${files.length} chunks analyzed (${(totalBytes / 1024).toFixed(1)} KB total, all within budgets).`,
+  `\n✅ Bundle budget passed: ${allFiles.length} static assets analyzed (${(totalBytes / 1024).toFixed(1)} KB total across .next/static, all within budgets).`,
 );

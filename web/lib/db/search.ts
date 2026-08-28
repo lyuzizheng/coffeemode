@@ -78,7 +78,7 @@ export async function searchCafesInDb(
   const limitIdx = values.length;
 
   const sql = `
-select id, slug, name,
+select id, name,
        ST_Y(location::geometry) as lat,
        ST_X(location::geometry) as lng,
        address, city, tz, opening_hours, price_range,

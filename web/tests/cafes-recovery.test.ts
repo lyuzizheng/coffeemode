@@ -18,7 +18,6 @@ const CAFE = "550e8400-e29b-41d4-a716-446655440001";
 function nearbyRow(id: string, distanceM: number) {
   return {
     id,
-    slug: null,
     name: `Cafe ${id.slice(-2)}`,
     lat: 1.27,
     lng: 103.84,

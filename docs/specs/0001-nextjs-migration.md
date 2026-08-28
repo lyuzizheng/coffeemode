@@ -121,7 +121,6 @@ create table profiles (
 -- 2. cafes: CoffeeMode's own POI database
 create table cafes (
   id              uuid primary key default gen_random_uuid(),
-  slug            text unique,
   name            text not null,
   location        geography(POINT, 4326) not null,
   address         text,
@@ -135,7 +134,6 @@ create table cafes (
   google_place_id text,
   apple_poi_id    text,
   created_by      uuid references profiles(id),
-  owner_id        uuid references profiles(id),  -- post-MVP owner claim
   work_stats      jsonb default '{}',     -- incremental aggregation cache (see below)
   created_at      timestamptz default now(),
   updated_at      timestamptz default now(),

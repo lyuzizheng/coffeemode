@@ -129,7 +129,6 @@ describe("cafeJsonLd (DG105)", () => {
 describe("publicCafeShell (DG13 public-safe payload)", () => {
   const cafe = {
     id: CAFE_ID,
-    slug: null,
     name: "Caracara",
     lat: 1.2789,
     lng: 103.8425,

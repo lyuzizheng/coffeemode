@@ -43,7 +43,8 @@ web/db/migrations/       0001_init.sql — core schema (spec 0001);
                          0008_no_self_likes.sql, 0009_cafe_tombstones.sql,
                          0010_drop_min_spend.sql (DG125), 0011_cafe_tombstone_lifecycle.sql,
                          0012_drop_redundant_cafe_indexes.sql,
-                         0013_search_city_index.sql
+                         0013_search_city_index.sql,
+                         0014_fk_indexes_and_partial_gist.sql
 web/lib/auth/            Supabase server client (PKCE), profile upsert logic
 web/lib/db/              Postgres pool (server-side only), withTransaction, atomic like toggle,
                          cafes domain lib (fused create + first check-in + stats, nearby list, getCafe),

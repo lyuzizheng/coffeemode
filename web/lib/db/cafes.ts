@@ -46,13 +46,13 @@ export function resolveCafeTimezone(
     const tz = tzLookup(lat, lng);
     if (tz) return tz;
   } catch {
-    // Coordinate out of bounds or in unmapped waters (RangeError)
+    // Coordinate out of bounds (RangeError: invalid coordinates)
   }
-  if (city) {
-    const matched = findCity(city);
-    if (matched?.tz) return matched.tz;
-  }
-  return "UTC";
+  const fallbackTz = (city && findCity(city)?.tz) || "UTC";
+  console.warn(
+    `[resolveCafeTimezone] Falling back to "${fallbackTz}" for coordinates (${lat}, ${lng}) with city "${city}"`,
+  );
+  return fallbackTz;
 }
 
 /** Thrown when a cafe with the same external POI id already exists. */

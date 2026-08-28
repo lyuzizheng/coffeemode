@@ -90,8 +90,8 @@ _archive-coffeemode-backend/   old Java app — being dropped
 
 ```text
 1. Owner actions (docs/agent/pending-user-actions.md §1–4): Supabase anon key +
-   redirect URLs, Apple/Google provider config, self-hosted Postgres provision +
-   schema (DATABASE_URL), Google OAuth, Apple Developer Program.
+   redirect URLs, Apple/Google provider config, Supabase Postgres provisioning +
+   schema (DATABASE_URL, §2 / #142), Google OAuth, Apple Developer Program.
 2. image-service deploy (§6): create R2 bucket + S3 API token, set wrangler.toml
    placeholders, set Worker secrets, deploy, wire IMAGE_SERVICE_URL/TOKEN.
 3. poi-cache-service deploy (§7): Cloudflare D1/KV + secrets, apply D1 schema,
@@ -120,11 +120,11 @@ _archive-coffeemode-backend/   old Java app — being dropped
 ```text
 - NEXT_PUBLIC_SUPABASE_ANON_KEY not set (only URL + service-role present locally)
 - NEXT_PUBLIC_SITE_URL not set; NEXT_PUBLIC_ALLOWED_HOSTS not configured
-- DATABASE_URL (self-hosted Postgres) not configured for production anywhere (local dev uses `docker compose up -d --wait postgres` + `npm run db:migrate`, see `docs/agent/local-dev-stack.md`)
+- DATABASE_URL (Supabase main Postgres per 0004 decision 34a) not configured for production yet (#142; local dev uses `docker compose up -d --wait postgres` + `npm run db:migrate`, see `docs/agent/local-dev-stack.md`)
 - Supabase dashboard still needs Apple/Google OAuth provider config
 - Session-refresh proxy (`web/proxy.ts`) refreshes only when a Supabase session cookie is present; route handlers verify the session via `getUser()` before any Postgres write
 - Postgres pool tuned with configurable `max`, idle/connection timeouts, error handling, and a graceful shutdown hook registered via Next.js `instrumentation.ts`
-- Postgres-backed rate limiter is ready for production; `RATE_LIMIT_BACKEND` environment variable selects backend
+- Postgres-backed rate limiter available for multi-instance; per decision 34a the single app container runs `RATE_LIMIT_BACKEND=memory` (a Supabase round trip per check is not worth it at MVP scale)
 - `next build` warns about custom Cache-Control for `/_next/static/:path*` — intentional for production hashed chunks
 - `/cafes/[id]` shell carries `s-maxage` (DG105) but Next overwrites `Vary` on App Router HTML responses, so the future Cloudflare CDN (deploy-vps) must vary on Accept-Language — and on Cookie once a locale switcher exists — or a shared cache would pin the first locale to hit a URL (review P1-3; see web/next.config.ts comment). The same `s-maxage` also stamps gone-cafe 404s and any response that just refreshed a Supabase session (`Set-Cookie` via proxy `setAll`): the CDN Cache Rule MUST bypass on `sb-*` request cookies and on `Set-Cookie` responses, otherwise a session cookie is cached or a 404 pins a URL for up to `s-maxage` after recreation (see web/next.config.ts). `sitemap.xml` is now also cached with the same `s-maxage` (DG105/DG107).
 - `maps_share_url` host validation, 10 km nearby-search cap, and 10 MB image-upload cap are active

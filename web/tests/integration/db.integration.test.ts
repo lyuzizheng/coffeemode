@@ -1106,6 +1106,28 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       const overallHigh = await searchCafesInDb({ filter_overall: 95 });
       expect(overallHigh.some((c) => c.id === created.cafeId)).toBe(false);
     });
+
+    it("filters cafes by overall score using dims.overall fallback when experience_score is missing (#274)", async () => {
+      const legacyCafeId = randomUUID();
+      await dbClient.query(
+        `insert into cafes (id, name, location, city, created_by, tz, work_stats)
+         values ($1, 'Legacy Cafe', ST_SetSRID(ST_MakePoint(103.8, 1.35), 4326)::geography,
+                 'singapore', $2, 'Asia/Singapore', $3::jsonb)`,
+        [
+          legacyCafeId,
+          U1,
+          JSON.stringify({
+            dims: { overall: { sum: 180, n: 2 } },
+          }),
+        ],
+      );
+
+      const match = await searchCafesInDb({ filter_overall: 85 });
+      expect(match.some((c) => c.id === legacyCafeId)).toBe(true);
+
+      const high = await searchCafesInDb({ filter_overall: 95 });
+      expect(high.some((c) => c.id === legacyCafeId)).toBe(false);
+    });
   });
 
   describeDb("profile queries on real Postgres (profile-page slice #152)", () => {
@@ -1209,7 +1231,102 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         deps,
       );
 
-      expect(result.attached).toBe(false);
+      expect(result.ok).toBe(false);
+    });
+
+    it("completes checkin-target image upload and merges into cafe gallery on real Postgres (#274)", async () => {
+      const photoId = randomUUID();
+      await recordUploadIntent(U1, photoId);
+
+      const deps = {
+        ...defaultCompleteUploadDeps(),
+        getProcessUrls: async ({ imageUuid }: { imageUuid: string }) => fakeProcessUrls(imageUuid),
+        processImage: async (imageUuid: string) => ({
+          imageUuid,
+          publicUrls: fakeProcessUrls(imageUuid).publicUrls,
+          width: 800,
+          height: 600,
+        }),
+      };
+
+      const result = await completeImageUpload(
+        { id: U1 },
+        {
+          imageUuid: photoId,
+          targetType: "checkin",
+          targetId: CHECKIN_A1,
+        },
+        deps,
+      );
+
+      expect(result.ok).toBe(true);
+      expect(result.storedImage).toMatchObject({
+        id: photoId,
+        source: { type: "checkin", id: CHECKIN_A1 },
+      });
+
+      // Verify photo is attached to checkin
+      const checkinRes = await dbClient.query("select photos from checkins where id = $1", [CHECKIN_A1]);
+      const photos = checkinRes.rows[0].photos as Array<Record<string, unknown>>;
+      expect(photos.some((p) => p.id === photoId)).toBe(true);
+
+      // Verify photo is merged into cafe gallery
+      const cafeRes = await dbClient.query("select gallery from cafes where id = $1", [CAFE_A]);
+      const gallery = cafeRes.rows[0].gallery as Array<Record<string, unknown>>;
+      expect(gallery.some((p) => p.id === photoId)).toBe(true);
+
+      // Verify intent is consumed
+      const intentRes = await dbClient.query(
+        "select image_uuid from image_upload_intents where image_uuid = $1",
+        [photoId],
+      );
+      expect(intentRes.rows).toHaveLength(0);
+    });
+
+    it("completes cafe-target image upload with isCover: true setting cafe cover on real Postgres (#274)", async () => {
+      const photoId = randomUUID();
+      await recordUploadIntent(U1, photoId);
+
+      const deps = {
+        ...defaultCompleteUploadDeps(),
+        getProcessUrls: async ({ imageUuid }: { imageUuid: string }) => fakeProcessUrls(imageUuid),
+        processImage: async (imageUuid: string) => ({
+          imageUuid,
+          publicUrls: fakeProcessUrls(imageUuid).publicUrls,
+          width: 800,
+          height: 600,
+        }),
+      };
+
+      const result = await completeImageUpload(
+        { id: U1 },
+        {
+          imageUuid: photoId,
+          targetType: "cafe",
+          targetId: CAFE_A,
+          isCover: true,
+        },
+        deps,
+      );
+
+      expect(result.ok).toBe(true);
+      expect(result.storedImage).toMatchObject({
+        id: photoId,
+        source: { type: "cafe", id: CAFE_A },
+      });
+
+      // Verify cover is set on cafe and photo is in gallery
+      const cafeRes = await dbClient.query("select cover, gallery from cafes where id = $1", [CAFE_A]);
+      expect(cafeRes.rows[0].cover).toBe(`card/${photoId}.webp`);
+      const gallery = cafeRes.rows[0].gallery as Array<Record<string, unknown>>;
+      expect(gallery.some((p) => p.id === photoId)).toBe(true);
+
+      // Verify intent is consumed
+      const intentRes = await dbClient.query(
+        "select image_uuid from image_upload_intents where image_uuid = $1",
+        [photoId],
+      );
+      expect(intentRes.rows).toHaveLength(0);
     });
   });
 });

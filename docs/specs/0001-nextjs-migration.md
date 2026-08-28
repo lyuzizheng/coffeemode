@@ -100,7 +100,7 @@ Self-hosted VPS  → ALL DATA (Postgres + PostGIS)
 - No Supabase RLS needed for data (data never leaves the server). Supabase anon key is used only for auth flows.
 - Postgres connection: standard `pg` Pool (server-side only). PostGIS enabled via `create extension postgis`.
 
-#### Tables (4 total — deliberately minimal)
+#### Tables (7 total: 5 product + 2 infra — deliberately minimal; applied via migrations 0001–0012)
 
 ```sql
 -- 1. profiles: app-side user record, keyed by Supabase auth user id
@@ -134,12 +134,14 @@ create table cafes (
   owner_id        uuid references profiles(id),  -- post-MVP owner claim
   work_stats      jsonb default '{}',     -- incremental aggregation cache (see below)
   created_at      timestamptz default now(),
-  updated_at      timestamptz default now()
+  updated_at      timestamptz default now(),
+  deleted_at      timestamptz             -- 0009: soft delete; tombstone keeps id + location for 404 recovery (DG111)
 );
 create index idx_cafes_location on cafes using gist (location);
 create index idx_cafes_name_fts on cafes using gin (to_tsvector('simple', name));
-create unique index idx_cafes_gplace on cafes (google_place_id) where google_place_id is not null;  -- dedupe
-create unique index idx_cafes_apple on cafes (apple_poi_id) where apple_poi_id is not null;
+-- 0011: tombstone-aware — a soft-deleted cafe does not block re-importing the same POI
+create unique index idx_cafes_gplace on cafes (google_place_id) where google_place_id is not null and deleted_at is null;  -- dedupe
+create unique index idx_cafes_apple_poi_id on cafes (apple_poi_id) where apple_poi_id is not null and deleted_at is null;
 create index idx_cafes_city on cafes (city);
 create index idx_cafes_created_by on cafes (created_by);
 create index idx_cafes_gallery on cafes using gin (gallery jsonb_path_ops);
@@ -180,6 +182,10 @@ create table checkin_likes (
 );
 
 -- 4. navigations: drives the ClassPass-style "did you visit?" prompt
+-- Implementation status: applied migration 0001 created only
+-- id/cafe_id/user_id/resolved/created_at. The queue columns below
+-- (outcome/ask_count/last_asked_at — DG80/DG91) land with the
+-- navigation-prompt slice (#149) and its reusable prompt queue.
 create table navigations (
   id          uuid primary key default gen_random_uuid(),
   cafe_id     uuid references cafes(id) on delete cascade,
@@ -197,11 +203,20 @@ Notes:
 
 ```text
 - No cafe_images table: image metadata lives in cafes.gallery / checkins.photos JSONB
+  (normalization to an images table is deferred — revisit trigger in 0004 Post-MVP)
 - checkin_likes table exists in MVP to power comment ranking and预留 a social-weight hook
-- No cafe_likes / favorites table: favorites/collections are post-MVP
+- No cafe_likes table: cafe popularity is already expressed via work_stats aggregation
 - No votes/policies tables: everything folds into the check-in row
-- Favorites/collections, follows, owner claims: post-MVP (owner_id column reserved)
-- Soft delete: checkins.deleted_at; photos from a deleted check-in are hidden from cafes.gallery via source
+- Favorites/collections, follows, owner claims: post-MVP (owner_id column reserved);
+  favorites land as cafe_favorites(user_id, cafe_id) composite PK — like ≠ favorite
+  (0004 decision 8a, #254)
+- Soft delete: checkins.deleted_at; photos from a deleted check-in are hidden from cafes.gallery via source;
+  cafes.deleted_at (0009) tombstones keep id + location; provider unique indexes are tombstone-aware (0011)
+- Infra tables (not product domain): rate_limits (0003 — distributed token bucket, one atomic
+  UPSERT per check, web/lib/rate-limit/postgres.ts) and image_upload_intents (0006 — binds a
+  presigned imageUuid to its issuing user, single-use DELETE ... RETURNING inside the creation
+  transaction, web/lib/db/image-uploads.ts). Both stay in Postgres: KV cannot do an atomic
+  single-use consume, is eventually consistent, and caps at 1k writes/day on the free tier
 ```
 
 #### Scoring model — sliders, not votes

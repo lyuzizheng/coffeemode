@@ -7,7 +7,9 @@ Capture the output of the batched subagent review covering frontend/UX design, c
 ## Status
 
 Confirmed — owner replied to the original open questions on 2026-08-08. Revised
-2026-08-20 with discovery decisions DG1-DG20.
+2026-08-20 with discovery decisions DG1-DG20. Revised 2026-08-28 with priority tiers
+(owner direction), the like/favorite split (decision 8a, from #254), the MVP hosting
+posture (decision 34, per ADR-0002 re-check), and Post-MVP revisit triggers (#247).
 Decisions are projected into canonical specs `0001` and `0002`.
 
 ## Review scope
@@ -35,6 +37,7 @@ Four read-only subagent reviews ran in parallel against the current `main` tree 
 
 7. **"Every review is a check-in" stays literal.** No separate `reviews` table in MVP. A `checkins` row carries scores, policies, note, and photos.
 8. **Likes preserve sorting/scoring design space.** A `checkin_likes` table (unique `user_id` + `checkin_id`) is included in the MVP schema. Discovery FULL offers Helpful and Newest modes with server-issued, mode-bound opaque cursors and 20 rows per page. MVP Helpful sorts by `likes_count DESC, visited_at DESC, id DESC`; Newest sorts by `visited_at DESC, id DESC`. Likes may move rows between requests, so clients deduplicate by check-in id. A daily versioned time-decayed ranking snapshot is deferred to V2 issue #140. `work_stats` scoring keeps the slider-only signal by default (`social_weight = 0`) but exposes a tunable hook so likes can influence the composite weight later without a schema migration. **Self-likes are not allowed** (owner, 2026-08-18): an author cannot like their own check-in, so `likes_count` and any future weighted signal stay social-only. Enforced in `toggleCheckInLike` (issue #107) and by a `checkin_likes` BEFORE INSERT trigger (migration 0008) for every write path.
+8a. **Like ≠ favorite.** A like is a public Helpful vote on a check-in (`checkin_likes` only). A favorite is a private bookmark on a cafe: `cafe_favorites(user_id, cafe_id)` with a composite primary key — never a polymorphic `interactions(type, target)` table, which would lose FK cascade and the hot unique index. The table ships when the Favorites feature lands (#254, post-MVP per decision 10). Cafe-level likes are not planned: cafe popularity is already expressed through `work_stats` aggregation.
 9. **Check-in `note` is a one-off review snippet.** Threaded replies are post-MVP.
 10. **`/profile` shows four tabs: "My Check-ins" (default), "我的咖啡地图" (My Coffee Map), "Favorites", "Search History" (DG102).** "My Coffee Map" = distinct cafes the user has checked into at least once (derived from `checkins`), ordered by latest visit. Because creation is the first check-in, every cafe created by the user appears here. A "created by me" badge is shown where `is_creation=true`. "My Check-ins" = all check-in rows for the user, newest `visited_at` first. Favorites and Search History are designed tabs that ship with empty states until their features land (favorites remain post-MVP).
 11. **Server-side browsing/view history is out of MVP scope; the profile "Search History" tab runs on lightweight client-side recent-searches storage only (DG102).** The search overlay itself still shows no recents (DG55).
@@ -76,6 +79,23 @@ Four read-only subagent reviews ran in parallel against the current `main` tree 
 31. **Add DB migration runner to CI** (dry-run on PR, apply on release).
 32. **Validate `maps_share_url` domain in `/api/places/resolve`** before proxying.
 33. **Image and POI routes need rate limiting.** Upload, complete, and POI resolve/search should be per-user rate-limited.
+34. **MVP hosting stays self-hosted VPS + Cloudflare Workers; managed Postgres is deferred.** The Supabase Pro vs Neon comparison (2026-08-27) showed a ≤$20/mo difference at MVP scale — not worth split-brain operations while Supabase Auth is already required. Hyperdrive is bundled into Workers plans, not a separate add-on. Move triggers are listed under Post-MVP. Rate limiting stays Postgres-backed on the single VPS (fail-open; `RATE_LIMIT_BACKEND=memory` is the dev/test default only).
+
+## Priority tiers
+
+Every open issue carries one `tier-*` label; this section is the authority and the labels
+mirror it. The harness (`.agents/`) never owns product priorities.
+
+| Tier | Meaning | Phase mapping |
+| --- | --- | --- |
+| tier-0 | Correctness, security, docs-truth blockers — fix before any feature work | Phase 1 blockers |
+| tier-1 | Launch-gating hygiene: schema/index cleanup, fake or missing CI gates, owner deploy/credential actions | Phase 1 completion |
+| tier-2 | Feature track and test-infra efficiency | Phase 2 |
+| tier-3 | Deferred with an explicit revisit trigger | Phase 3 / Post-MVP |
+
+Deferrals recorded from 2026-08-28 onward must name their re-entry condition (see Post-MVP);
+a deferral without a trigger is an omission, not a decision. Legacy Post-MVP entries predate
+this rule and restate owner-confirmed stable decisions.
 
 ## Data/API/UI behavior
 
@@ -160,7 +180,7 @@ surface. These issues remain separate from the Apple credential owner action #13
 
 ### Post-MVP
 
-- Favorites/collections and "my favorites" list.
+- Favorites/collections and "my favorites" list — private cafe bookmarks via `cafe_favorites(user_id, cafe_id)` composite PK (#254). Trigger: the Favorites tab feature enters a slice (the tab ships empty per decision 10).
 - Server-side browsing history or enhanced local recent views.
 - Threaded replies on check-in notes.
 - User-customizable Work Score dimension weights.
@@ -170,6 +190,11 @@ surface. These issues remain separate from the Apple credential owner action #13
 - Daily time-decayed Helpful ranking snapshots (#140).
 - Xiaohongshu link import.
 - Offline mutation queue.
+- Normalize `cafes.gallery` / `checkins.photos` JSONB into a dedicated `images` table (#24 residual). Trigger: >100k stored images, or a feature needing per-photo operations (moderation, reorder, per-image metadata).
+- Generic history-service (Worker + D1/KV + Cron) for prompt queues and event history. Trigger: a second event type beyond the navigations prompt queue. Rejected for now: a standalone service for one 5-column log is overengineering.
+- Relocate `image_upload_intents` from Postgres into image-service (D1, never KV — KV has no atomic single-use consume and is eventually consistent). Trigger: image-service needs independent deployment. Until then, same-transaction consume with cafe creation is a feature, not a bug.
+- Managed Postgres (Supabase Pro / Neon) + Hyperdrive edge pooling (decision 34). Triggers: an uptime requirement the single VPS cannot meet, DB size or connection pressure, or a multi-instance deploy. Hyperdrive is bundled in Workers plans, not a separate add-on.
+- Friendly slug URLs (`/cafes/[id]/[slug]` as a 302 alias). Canonical stays the stable id `/cafes/[id]` (locale-independent canonical + hreflang x-default, DG110). Trigger: an SEO/CTR experiment after public beta.
 
 ## Edge cases
 

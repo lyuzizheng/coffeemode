@@ -69,6 +69,19 @@ export interface AppConfig {
     displayNameMaxChars: number;
     recentSearchesMax: number;
   };
+  budgets: {
+    bundle: {
+      maxJsChunkBytes: number;
+      maxCssChunkBytes: number;
+      maxTotalStaticBytes: number;
+    };
+    lighthouse: {
+      performance: number;
+      accessibility: number;
+      bestPractices: number;
+      seo: number;
+    };
+  };
 }
 
 function fail(file: string, keyPath: string, reason: string): never {
@@ -85,6 +98,20 @@ function positiveNumber(file: string, keyPath: string, value: unknown): number {
 function positiveInteger(file: string, keyPath: string, value: unknown): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
     fail(file, keyPath, "must be a positive integer");
+  }
+  return value;
+}
+
+/** A number bounded between min and max inclusive. */
+function boundedNumber(
+  file: string,
+  keyPath: string,
+  value: unknown,
+  min: number,
+  max: number,
+): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max) {
+    fail(file, keyPath, `must be a number between ${min} and ${max}`);
   }
   return value;
 }
@@ -144,6 +171,9 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
   const shellCache = record(file, "seo.shellCache", seo.shellCache);
   const checkins = record(file, "checkins", root.checkins);
   const profile = record(file, "profile", root.profile);
+  const budgets = record(file, "budgets", root.budgets);
+  const bundle = record(file, "budgets.bundle", budgets.bundle);
+  const lighthouse = record(file, "budgets.lighthouse", budgets.lighthouse);
   return {
     search: {
       maxRadiusKm: positiveNumber(file, "search.maxRadiusKm", search.maxRadiusKm),
@@ -242,6 +272,49 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
         "profile.recentSearchesMax",
         profile.recentSearchesMax,
       ),
+    },
+    budgets: {
+      bundle: {
+        maxJsChunkBytes: positiveInteger(
+          file,
+          "budgets.bundle.maxJsChunkBytes",
+          bundle.maxJsChunkBytes,
+        ),
+        maxCssChunkBytes: positiveInteger(
+          file,
+          "budgets.bundle.maxCssChunkBytes",
+          bundle.maxCssChunkBytes,
+        ),
+        maxTotalStaticBytes: positiveInteger(
+          file,
+          "budgets.bundle.maxTotalStaticBytes",
+          bundle.maxTotalStaticBytes,
+        ),
+      },
+      lighthouse: {
+        performance: boundedNumber(
+          file,
+          "budgets.lighthouse.performance",
+          lighthouse.performance,
+          0,
+          1,
+        ),
+        accessibility: boundedNumber(
+          file,
+          "budgets.lighthouse.accessibility",
+          lighthouse.accessibility,
+          0,
+          1,
+        ),
+        bestPractices: boundedNumber(
+          file,
+          "budgets.lighthouse.bestPractices",
+          lighthouse.bestPractices,
+          0,
+          1,
+        ),
+        seo: boundedNumber(file, "budgets.lighthouse.seo", lighthouse.seo, 0, 1),
+      },
     },
   };
 }

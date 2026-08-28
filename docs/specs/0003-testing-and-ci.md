@@ -53,9 +53,9 @@ Risk and independent-review requirements are defined only in
 ### Commands
 
 ```text
-web: npm run typecheck, lint, check:i18n, test, build, verify
+web: npm run typecheck, lint, check:i18n, test, build, check:bundle, verify, lhci
 web real DB: npm run db:migrate, npm run test:integration
-web browser smoke: npm run test:e2e (Playwright MVP smoke suite), npm run check:visual (local visual render evidence)
+web browser smoke: npm run test:e2e (Playwright MVP smoke suite), npm run lhci (Lighthouse CI performance budgets), npm run check:visual (local visual render evidence)
 services: npm run typecheck, npm test
 agent harness: .agents/scripts/preflight.sh, .agents/scripts/harness-self-test.sh
 ```
@@ -67,7 +67,7 @@ agent harness: .agents/scripts/preflight.sh, .agents/scripts/harness-self-test.s
 jobs run only when relevant:
 
 - `docs-gate`: agent, docs, templates, and harness changes (includes `preflight` which runs `check-coverage-matrix.sh` unconditionally);
-- `application-gate`: `web/` changes;
+- `application-gate`: `web/` changes (typecheck, lint, i18n key parity, unit tests, build, bundle budget check, bundle analysis, PWA validation, E2E smoke suite, and Lighthouse CI performance budgets against seeded fixtures);
 - `integration-gate`: DB/SQL-capable web boundaries and shared-package changes — runs both real Postgres (`npm run test:integration`) and real MinIO/R2 image round-trip (`npm run test:integration:images`) sequentially on one `postgis` service + `docker compose up minio` (merged for efficiency; was `integration-gate` + `images-integration-gate`). Branch protection that still requires the legacy `images-integration-gate` name should migrate to `integration-gate` + `ci-gate` (see migration note below);
 - `image-service-gate`: image-service and shared-package changes;
 - `poi-service-gate`: poi-service and shared-package changes;
@@ -99,7 +99,9 @@ The traceability matrix lives at `docs/agent/test-coverage.md` (S3 testkit-cover
 
 ## Acceptance criteria
 
-- `npm run verify` remains the full web type/lint/i18n/unit/build gate.
+- `npm run verify` remains the full web type/lint/i18n/unit/build/bundle-budget gate.
+- Lighthouse CI enforces performance (>= 80 on cafe detail per spec 0001:1182), accessibility, best practices, and SEO budgets against seeded deterministic fixtures.
+- The bundle budget measures the clean build output across all of `.next/static` against typed limits in `web/config/app.yaml`.
 - Real Postgres remains required for DB/SQL behavior.
 - CI emits stable required component checks but executes only relevant jobs.
 - A docs-only change does not install application/service dependencies.

@@ -68,4 +68,22 @@ profile:
   displayNameMaxChars: 24
   # Max client-side recent searches items stored
   recentSearchesMax: 20
+budgets:
+  # Bundle size budgets (uncompressed bytes, checked against .next/static)
+  # Rationale: Bounds single chunk weight and total client static payload to ensure fast initial page delivery and low memory footprint on mobile.
+  # Expiry: Review when map-bound client SDKs (MapKit JS) or heavy chart modules land.
+  bundle:
+    maxJsChunkBytes: 409600 # 400 KB
+    maxCssChunkBytes: 512000 # 500 KB
+    maxTotalStaticBytes: 5242880 # 5 MB
+  # Lighthouse audit score thresholds (0.0 to 1.0)
+  # Rationale: Spec 0001:1182 mandates cafe detail performance >= 80 (0.80). Category thresholds
+  # at 85 (0.85) ensure a consistent quality floor across accessibility, best-practices, and SEO.
+  # Expiry: Review when live client-side map rendering replaces SSR placeholder shell.
+  lighthouse:
+    performance: 0.8
+    accessibility: 0.85
+    bestPractices: 0.85
+    seo: 0.85
+
 

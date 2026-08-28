@@ -1,15 +1,19 @@
 #!/usr/bin/env node
-// Rendered-page smoke gate (issue #76, hardened in #248): boots the production
+// Rendered-page smoke gate (issue #76, hardened in #248, refactored in #271): boots the production
 // standalone build on an ephemeral port and screenshots the public route matrix,
 // failing on unexpected HTTP statuses (per-route expectation — the 404 route must
 // return 404), console errors, or page errors. Screenshots land in .visual-smoke/
 // and are uploaded as a CI artifact on failure.
-import { spawn } from "node:child_process";
-import { cpSync, existsSync, mkdirSync } from "node:fs";
-import net from "node:net";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import {
+  getFreePort,
+  spawnStandaloneServer,
+  waitForServer,
+  registerProcessCleanup,
+} from "./lib/standalone-server.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = join(root, ".visual-smoke");
@@ -37,68 +41,8 @@ if (!process.env.VISUAL_BASE_URL && !existsSync(join(root, ".next", "BUILD_ID"))
   process.exit(1);
 }
 
-function getFreePort() {
-  return new Promise((resolve, reject) => {
-    const srv = net.createServer();
-    srv.unref();
-    srv.on("error", reject);
-    srv.listen(0, "127.0.0.1", () => {
-      const address = srv.address();
-      const port = address && typeof address === "object" ? address.port : 0;
-      srv.close((err) => (err ? reject(err) : resolve(port)));
-    });
-  });
-}
-
 function slug(route) {
   return route.replace(/^[~/]+/, "").replace(/[~/]/g, "-") || "home";
-}
-
-async function waitForServer(base, attempts = 60) {
-  for (let i = 0; i < attempts; i += 1) {
-    try {
-      const res = await fetch(base, { signal: AbortSignal.timeout(1000) });
-      if (res.status > 0) return;
-    } catch {
-      // not up yet
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  throw new Error(`server did not start on ${base}`);
-}
-
-function spawnStandaloneServer({ cwd, port, host = "127.0.0.1", env = {} }) {
-  const standaloneDir = join(cwd, ".next", "standalone");
-  const serverPath = join(standaloneDir, "server.js");
-  if (!existsSync(serverPath)) {
-    throw new Error(`Standalone server not found at ${serverPath}. Run \`npm run build\` first.`);
-  }
-
-  // Next standalone requires static assets copied in (matching Dockerfile)
-  const staticSrc = join(cwd, ".next", "static");
-  const staticDest = join(standaloneDir, ".next", "static");
-  if (existsSync(staticSrc)) {
-    cpSync(staticSrc, staticDest, { recursive: true, force: true });
-  }
-
-  const publicSrc = join(cwd, "public");
-  const publicDest = join(standaloneDir, "public");
-  if (existsSync(publicSrc)) {
-    cpSync(publicSrc, publicDest, { recursive: true, force: true });
-  }
-
-  return spawn(process.execPath, [serverPath], {
-    cwd: standaloneDir,
-    stdio: "ignore",
-    env: {
-      ...process.env,
-      ...env,
-      PORT: String(port),
-      HOSTNAME: host,
-      NODE_ENV: "production",
-      NEXT_TELEMETRY_DISABLED: "1",
-    },
-  });
 }
 
 let serverProcess = null;
@@ -119,31 +63,7 @@ async function cleanup() {
   }
 }
 
-process.on("exit", () => {
-  if (serverProcess) {
-    try {
-      serverProcess.kill("SIGTERM");
-    } catch {}
-  }
-});
-process.on("SIGINT", async () => {
-  await cleanup();
-  process.exit(130);
-});
-process.on("SIGTERM", async () => {
-  await cleanup();
-  process.exit(143);
-});
-process.on("uncaughtException", async (err) => {
-  console.error("Uncaught exception in visual-smoke:", err);
-  await cleanup();
-  process.exit(1);
-});
-process.on("unhandledRejection", async (err) => {
-  console.error("Unhandled rejection in visual-smoke:", err);
-  await cleanup();
-  process.exit(1);
-});
+registerProcessCleanup(cleanup);
 
 async function runVisualSmoke() {
   const port = process.env.VISUAL_PORT ? Number(process.env.VISUAL_PORT) : await getFreePort();

@@ -71,8 +71,14 @@ else
     fi
   done
 
-  if grep -qE 'playwright install[[:space:]]*$|check:visual|continue-on-error:[[:space:]]*true' "$workflow"; then
-    echo "ci.yml contains an unbounded browser install, visual gate, or allowed failure"
+  pw_lines=$(grep "playwright install" "$workflow" || true)
+  if [[ -n "$pw_lines" ]] && echo "$pw_lines" | grep -qvE 'playwright install[[:space:]]+chromium[[:space:]]*$'; then
+    echo "ci.yml contains an unapproved playwright install command (only 'playwright install chromium' is allowed)"
+    fail=1
+  fi
+
+  if grep -qE 'check:visual|continue-on-error:[[:space:]]*true' "$workflow"; then
+    echo "ci.yml contains a visual gate or allowed failure"
     fail=1
   fi
 fi

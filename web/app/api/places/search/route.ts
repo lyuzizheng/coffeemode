@@ -38,6 +38,9 @@ export async function GET(request: Request) {
   if ((latProvided || lngProvided) && !hasCoords) {
     return apiError("invalid_request", "lat/lng must both be numbers", 400);
   }
+  if (hasCoords && (lat < -90 || lat > 90 || lng < -180 || lng > 180)) {
+    return apiError("invalid_request", "lat must be [-90, 90] and lng [-180, 180]", 400);
+  }
   if (q === "" && !hasCoords) {
     return apiError("invalid_request", "q or lat+lng required", 400);
   }

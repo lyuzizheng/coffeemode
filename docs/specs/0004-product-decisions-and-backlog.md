@@ -193,8 +193,8 @@ surface. These issues remain separate from the Apple credential owner action #13
 - Xiaohongshu link import.
 - Offline mutation queue.
 - Normalize `cafes.gallery` / `checkins.photos` JSONB into a dedicated `images` table (#24 residual). Trigger: >100k stored images, or a feature needing per-photo operations (moderation, reorder, per-image metadata).
-- Generic history-service (Worker + D1/KV + Cron) for prompt queues and event history. Trigger: a second event type beyond the navigations prompt queue. Rejected for now: a standalone service for one 5-column log is overengineering.
-- Relocate `image_upload_intents` from Postgres into image-service (D1, never KV — KV has no atomic single-use consume and is eventually consistent). Trigger: image-service needs independent deployment. Until then, same-transaction consume with cafe creation is a feature, not a bug.
+- Generic history-service (Worker + D1/KV + Cron) for prompt queues and event history. Trigger: a second event type beyond the navigations prompt queue. Rejected for now (owner-confirmed 2026-08-28): a standalone service for one 5-column log is overengineering; the prompt queue ships as an in-process module per DG91 (`web/lib/prompt-queue`, #149).
+- Relocate `image_upload_intents` from Postgres into image-service (D1, never KV — KV has no atomic single-use consume and is eventually consistent). Trigger: image-service needs independent deployment. Until then, same-transaction consume with cafe creation is a feature, not a bug. (Deferral owner-confirmed 2026-08-28.)
 - Supabase Pro upgrade ($25/mo) for the main database (decision 34a). Triggers: the 7-day pause bites real usage, the 500MB read-only cliff or 5GB egress approaches, backup/PITR becomes a requirement, or a multi-instance deploy lands (which also re-activates the Postgres rate-limit backend). Hyperdrive edge pooling (bundled in Workers plans) only if edge read latency becomes a measured problem.
 - Friendly slug URLs (`/cafes/[id]/[slug]` as a 302 alias). Canonical stays the stable id `/cafes/[id]` (locale-independent canonical + hreflang x-default, DG110). Trigger: an SEO/CTR experiment after public beta.
 

@@ -172,7 +172,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   });
 
-  it("applies migrations 0001→0013 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0014 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -188,6 +188,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0011_cafe_tombstone_lifecycle.sql",
       "0012_drop_redundant_cafe_indexes.sql",
       "0013_search_city_index.sql",
+      "0014_fk_indexes_and_partial_gist.sql",
     ]);
 
     const pgVersion = await dbClient.query("select postgis_version() as v");
@@ -202,6 +203,19 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "trg_checkin_likes_no_self",
       "trg_checkin_likes_sync",
     ]);
+
+    // Issue #244: Verify FK indexes and partial GiST exist, and dead GIN/old GiST dropped
+    const indexRows = await dbClient.query<{ indexname: string }>(
+      `select indexname from pg_indexes where schemaname = 'public'`,
+    );
+    const indexNames = new Set(indexRows.rows.map((r) => r.indexname));
+    expect(indexNames.has("idx_checkin_likes_user_id")).toBe(true);
+    expect(indexNames.has("idx_navigations_cafe_id")).toBe(true);
+    expect(indexNames.has("idx_image_upload_intents_user_id")).toBe(true);
+    expect(indexNames.has("idx_cafes_location_active")).toBe(true);
+    expect(indexNames.has("idx_cafes_location")).toBe(false);
+    expect(indexNames.has("idx_cafes_gallery")).toBe(false);
+    expect(indexNames.has("idx_checkins_photos")).toBe(false);
   });
 
   describeDb("toggleCheckInLike on real SQL", () => {

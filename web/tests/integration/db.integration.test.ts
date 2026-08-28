@@ -978,6 +978,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
           checkin: {
             scores: { overall: 90, wifi: 85, outlets: 80, seats: 75, temp: 70, coffee: 65 },
             max_stay: "unlimited",
+            note: "nice",
             photo_ids: [],
           },
         },

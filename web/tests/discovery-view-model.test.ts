@@ -19,7 +19,6 @@ function statsWith(overrides: (stats: ReturnType<typeof emptyWorkStats>) => void
 function cafeWith(stats: ReturnType<typeof emptyWorkStats>): CafeSummary {
   return {
     id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44",
-    slug: null,
     name: "Test Cafe",
     lat: 1.35,
     lng: 103.8,

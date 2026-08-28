@@ -18,7 +18,6 @@ vi.mock("@/lib/places/poi-client", () => ({
 function makeDbCafe(overrides?: Partial<CafeWithExternalIds>): CafeWithExternalIds {
   return {
     id: "cafe-1",
-    slug: "nylon-coffee",
     name: "Nylon Coffee Roasters",
     lat: 1.275,
     lng: 103.84,

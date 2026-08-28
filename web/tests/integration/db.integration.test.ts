@@ -172,7 +172,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   });
 
-  it("applies migrations 0001→0014 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0015 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -189,6 +189,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0012_drop_redundant_cafe_indexes.sql",
       "0013_search_city_index.sql",
       "0014_fk_indexes_and_partial_gist.sql",
+      "0015_drop_dead_cafe_columns.sql",
     ]);
 
     const pgVersion = await dbClient.query("select postgis_version() as v");
@@ -216,6 +217,14 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     expect(indexNames.has("idx_cafes_location")).toBe(false);
     expect(indexNames.has("idx_cafes_gallery")).toBe(false);
     expect(indexNames.has("idx_checkins_photos")).toBe(false);
+
+    // Issue #253: Verify dead columns owner_id and slug are dropped from cafes
+    const colRows = await dbClient.query<{ column_name: string }>(
+      `select column_name from information_schema.columns where table_name = 'cafes'`,
+    );
+    const colNames = new Set(colRows.rows.map((r) => r.column_name));
+    expect(colNames.has("owner_id")).toBe(false);
+    expect(colNames.has("slug")).toBe(false);
   });
 
   describeDb("toggleCheckInLike on real SQL", () => {

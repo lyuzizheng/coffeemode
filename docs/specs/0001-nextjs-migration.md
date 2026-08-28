@@ -92,13 +92,17 @@ coffeemode/
 ### Data layer — split responsibilities
 
 ```text
-Supabase         → AUTH ONLY (Apple + Google OAuth, sessions)
-Self-hosted VPS  → ALL DATA (Postgres + PostGIS)
+Supabase           → AUTH (Apple + Google OAuth, sessions) + main Postgres/PostGIS
+                     (owner decision 2026-08-28, 0004 decision 34a; free tier first,
+                     upgrade triggers in 0004 Post-MVP)
+Cloudflare Workers → poi-service (D1 + KV) + image-service (R2) microservices
+VPS                → Next.js app only (no database)
+Local dev/CI       → same postgis/postgis:16-3.4 image (docker-compose locally, pinned service container in CI) — unchanged
 ```
 
 - The client never talks to Postgres. All data access goes through Next.js route handlers (server-side), which verify the Supabase session first.
-- No Supabase RLS needed for data (data never leaves the server). Supabase anon key is used only for auth flows.
-- Postgres connection: standard `pg` Pool (server-side only). PostGIS enabled via `create extension postgis`.
+- Product-table data stays server-mediated: route handlers use the pooled Postgres connection, and the tables must NOT be reachable through Supabase's Data API (PostgREST/GraphQL) with the browser anon key — new projects no longer auto-expose new tables, and default grants to `anon`/`authenticated` are revoked at provisioning as a belt-and-suspenders step (`docs/agent/pending-user-actions.md` §2). The anon key is used only for auth flows.
+- Postgres connection: standard `pg` Pool (server-side only), fail-closed SSL (#41). PostGIS enabled via `create extension postgis` (Supabase catalog). Pick the Supabase region closest to the VPS — route handlers run multi-round-trip transactions, so RTT multiplies.
 
 #### Tables (7 total: 5 product + 2 infra — deliberately minimal; applied via migrations 0001–0012)
 
@@ -322,7 +326,7 @@ A user checking in 20 times must not outweigh 20 different users. Design:
    (drift correction; cheap at MVP scale, local resources free).
 ```
 
-### Auth — Supabase (auth only)
+### Auth — Supabase
 
 ```text
 Providers: Apple OAuth + Google OAuth (no email/password — no email infra)
@@ -656,7 +660,7 @@ Primary: VPS (user's own server, public IP)
   - Docker container (next build --output standalone)
   - PM2 or container restart policy
   - Cloudflare CDN proxy (SSL, DDoS, caching)
-  - Nightly work_stats recompute cron (local resources)
+  - Nightly work_stats recompute via GitHub Actions cron (#146; doubles as the Supabase free-tier keep-alive, 34a)
 Fallback: @opennextjs/cloudflare (Workers, Node.js runtime) — post-MVP
 Images: Cloudflare R2 + CDN custom domain
 Domain: coffeemode.app (or TBD)
@@ -669,7 +673,7 @@ NEXT_PUBLIC_SUPABASE_URL        -> Supabase project URL (auth, Next.js + browser
 NEXT_PUBLIC_SUPABASE_ANON_KEY   -> client-side anon key (auth only, Next.js + browser)
 NEXT_PUBLIC_SITE_URL            -> canonical public origin (no trailing slash); used as safe OAuth redirectTo
 NEXT_PUBLIC_ALLOWED_HOSTS       -> optional comma-separated allowlist for additional OAuth redirectTo hosts
-DATABASE_URL                    -> Self-hosted Postgres connection string (Next.js server-only)
+DATABASE_URL                    -> Supabase Postgres pooled connection string (Next.js server-only, sslmode=require); migrations use the session/direct connection (decision 34a)
 GOOGLE_PLACES_API_KEY           -> POI Worker only (never in Next.js)
 POI_SERVICE_URL                 -> POI Worker URL (workers.dev now, custom domain later)
 POI_SERVICE_TOKEN               -> shared secret, Next.js → POI Worker
@@ -1169,7 +1173,7 @@ Specs name the parameter and its default; the YAML owns the live value.
 - image-service token: server-side only; never exposed to browser
 - sharp is a native addon — must be in Docker image (node:slim + libvips)
 - Google Places session tokens: single-use, 3-minute window
-- PostGIS: create extension postgis on self-hosted Postgres (one-time)
+- PostGIS: create extension postgis on the Supabase project (one-time, SQL editor)
 - Apple OAuth: requires services ID + return URL config; redirect flow on mobile
 - work_stats concurrent writes: single-row UPDATE acceptable at MVP scale;
   nightly recompute corrects any drift

@@ -9,7 +9,8 @@ Capture the output of the batched subagent review covering frontend/UX design, c
 Confirmed — owner replied to the original open questions on 2026-08-08. Revised
 2026-08-20 with discovery decisions DG1-DG20. Revised 2026-08-28 with priority tiers
 (owner direction), the like/favorite split (decision 8a, from #254), the MVP hosting
-posture (decision 34, per ADR-0002 re-check), and Post-MVP revisit triggers (#247).
+posture (decision 34, amended by 34a per owner 2026-08-28: Supabase hosts the main DB,
+rate limiting in-memory on the single app container), and Post-MVP revisit triggers (#247).
 Decisions are projected into canonical specs `0001` and `0002`.
 
 ## Review scope
@@ -79,7 +80,8 @@ Four read-only subagent reviews ran in parallel against the current `main` tree 
 31. **Add DB migration runner to CI** (dry-run on PR, apply on release).
 32. **Validate `maps_share_url` domain in `/api/places/resolve`** before proxying.
 33. **Image and POI routes need rate limiting.** Upload, complete, and POI resolve/search should be per-user rate-limited.
-34. **MVP hosting stays self-hosted VPS + Cloudflare Workers; managed Postgres is deferred.** The Supabase Pro vs Neon comparison (2026-08-27) showed a ≤$20/mo difference at MVP scale — not worth split-brain operations while Supabase Auth is already required. Hyperdrive is bundled into Workers plans, not a separate add-on. Move triggers are listed under Post-MVP. Rate limiting stays Postgres-backed on the single VPS (fail-open; `RATE_LIMIT_BACKEND=memory` is the dev/test default only).
+34. **MVP hosting stays self-hosted VPS + Cloudflare Workers; managed Postgres is deferred.** The Supabase Pro vs Neon comparison (2026-08-27) showed a ≤$20/mo difference at MVP scale — not worth split-brain operations while Supabase Auth is already required. Hyperdrive is bundled into Workers plans, not a separate add-on. Move triggers are listed under Post-MVP. Rate limiting stays Postgres-backed on the single VPS (fail-open; `RATE_LIMIT_BACKEND=memory` is the dev/test default only) **(amended by 34a)**.
+34a. **Owner decision (2026-08-28), amends 34: Supabase hosts the main Postgres (free tier first); Cloudflare Workers run the microservices; the single app container runs rate limiting in-memory (`RATE_LIMIT_BACKEND=memory`).** One platform for auth + data removes split-brain operations, and the free tier covers MVP scale (current seed is 14 cafes / 28KB — far below the 500MB cliff). With the database now remote, the Postgres rate-limit backend would add a Supabase round trip to every API request — not worth it on a single container; the backend is retained for a future multi-instance deploy. Known free-tier cliffs and mitigations: 7-day inactivity pause — the nightly recompute workflow doubles as keep-alive once `DATABASE_URL` is a GitHub secret; 500MB then read-only — monitor, upgrade trigger; no free-tier backups — scheduled `pg_dump` to R2. The Neon comparison is void. Provisioning steps: `docs/agent/pending-user-actions.md` §2 (#142).
 
 ## Priority tiers
 
@@ -193,7 +195,7 @@ surface. These issues remain separate from the Apple credential owner action #13
 - Normalize `cafes.gallery` / `checkins.photos` JSONB into a dedicated `images` table (#24 residual). Trigger: >100k stored images, or a feature needing per-photo operations (moderation, reorder, per-image metadata).
 - Generic history-service (Worker + D1/KV + Cron) for prompt queues and event history. Trigger: a second event type beyond the navigations prompt queue. Rejected for now: a standalone service for one 5-column log is overengineering.
 - Relocate `image_upload_intents` from Postgres into image-service (D1, never KV — KV has no atomic single-use consume and is eventually consistent). Trigger: image-service needs independent deployment. Until then, same-transaction consume with cafe creation is a feature, not a bug.
-- Managed Postgres (Supabase Pro / Neon) + Hyperdrive edge pooling (decision 34). Triggers: an uptime requirement the single VPS cannot meet, DB size or connection pressure, or a multi-instance deploy. Hyperdrive is bundled in Workers plans, not a separate add-on.
+- Supabase Pro upgrade ($25/mo) for the main database (decision 34a). Triggers: the 7-day pause bites real usage, the 500MB read-only cliff or 5GB egress approaches, backup/PITR becomes a requirement, or a multi-instance deploy lands (which also re-activates the Postgres rate-limit backend). Hyperdrive edge pooling (bundled in Workers plans) only if edge read latency becomes a measured problem.
 - Friendly slug URLs (`/cafes/[id]/[slug]` as a 302 alias). Canonical stays the stable id `/cafes/[id]` (locale-independent canonical + hreflang x-default, DG110). Trigger: an SEO/CTR experiment after public beta.
 
 ## Edge cases

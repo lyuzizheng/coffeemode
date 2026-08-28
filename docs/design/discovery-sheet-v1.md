@@ -1,7 +1,7 @@
 # Discovery Sheet — Design Artifact v1
 
 - Slice: `discovery-sheet` (issue #133)
-- Status: **Draft — pending owner approval**
+- Status: **Approved — owner, 2026-08-23 (DG21–DG43)**
 - Author: Kimi K3
 - Date: 2026-08-20 (revised 2026-08-21 — FULL header gains the
   `Edit your check-in` row per DG72; bespoke Framer Motion sheet +

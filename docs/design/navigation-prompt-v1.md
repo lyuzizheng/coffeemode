@@ -1,7 +1,7 @@
 # Navigation Prompt — Design Artifact v1
 
 - Slice: `navigation-prompt` (issue #149)
-- Status: **Draft — pending owner approval**
+- Status: **Approved — owner, 2026-08-23 (DG76–DG93)**
 - Author: Kimi K3
 - Date: 2026-08-21 (revised 2026-08-22 — grill round 12 rulings DG76–DG90;
   queue semantics + final copy per DG91/DG92)

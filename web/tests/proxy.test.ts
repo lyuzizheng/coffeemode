@@ -204,10 +204,14 @@ describe("proxy matcher", () => {
     expect("/manifest.webmanifest").not.toMatch(pattern);
   });
 
-  it("excludes public/no-auth API routes", () => {
+  it("excludes public/no-auth health API routes", () => {
     expect("/api/health").not.toMatch(pattern);
     expect("/api/health/ready").not.toMatch(pattern);
-    expect("/api/places/search").not.toMatch(pattern);
-    expect("/api/places/resolve").not.toMatch(pattern);
+  });
+
+  it("includes places API routes for session refresh", () => {
+    expect("/api/places/search").toMatch(pattern);
+    expect("/api/places/resolve").toMatch(pattern);
+    expect("/api/places/external").toMatch(pattern);
   });
 });

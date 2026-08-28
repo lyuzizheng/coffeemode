@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
 import { POIServiceError, storeExternalPOIs } from "@/lib/places/poi-client";
+import { MAX_EXTERNAL_BATCH_SIZE } from "@shared/places/constants";
 import type { POI } from "@shared/places/types";
 import {
   checkRateLimit,
@@ -32,6 +33,13 @@ export async function POST(request: Request) {
       : undefined;
   if (!Array.isArray(pois) || pois.length === 0) {
     return apiError("invalid_request", "pois array required", 400);
+  }
+  if (pois.length > MAX_EXTERNAL_BATCH_SIZE) {
+    return apiError(
+      "invalid_request",
+      `pois array must contain at most ${MAX_EXTERNAL_BATCH_SIZE} items`,
+      400,
+    );
   }
   if (
     !pois.every(

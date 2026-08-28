@@ -11,3 +11,6 @@ export const DEFAULT_SEARCH_RADIUS_KM = 10;
 
 /** Worker-level bounding-box ceiling (km) — keeps bounding boxes sane. */
 export const MAX_SEARCH_RADIUS_KM = 200;
+
+/** Maximum number of external POIs accepted in a single batch request (issue #232). */
+export const MAX_EXTERNAL_BATCH_SIZE = 50;

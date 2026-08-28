@@ -42,6 +42,7 @@ function request(pois: unknown[]): Request {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   getCurrentUserMock.mockResolvedValue(USER);
   storeExternalPOIsMock.mockResolvedValue({ stored: 1 });
 });
@@ -59,5 +60,19 @@ describe("POST /api/places/external", () => {
 
     expect(response.status).toBe(200);
     expect(storeExternalPOIsMock).toHaveBeenCalledWith([APPLE_POI]);
+  });
+
+  it("rejects batch sizes exceeding MAX_EXTERNAL_BATCH_SIZE (50)", async () => {
+    const oversized = Array.from({ length: 51 }, (_, i) => ({
+      ...APPLE_POI,
+      place_id: `apple-place-${i}`,
+    }));
+    const response = await POST(request(oversized));
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toBe("invalid_request");
+    expect(body.message).toBe("pois array must contain at most 50 items");
+    expect(storeExternalPOIsMock).not.toHaveBeenCalled();
   });
 });

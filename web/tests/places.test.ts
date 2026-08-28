@@ -259,6 +259,20 @@ describe("GET /api/places/search", () => {
     expect(res.status).toBe(400);
   });
 
+  it("rejects out-of-bounds coordinates with 400", async () => {
+    const res1 = await searchGET(new Request(`${WORKER_URL}/api/places/search?lat=100&lng=200`));
+    expect(res1.status).toBe(400);
+    const body1 = await res1.json();
+    expect(body1.error).toBe("invalid_request");
+    expect(body1.message).toBe("lat must be [-90, 90] and lng [-180, 180]");
+
+    const res2 = await searchGET(new Request(`${WORKER_URL}/api/places/search?lat=-95&lng=0`));
+    expect(res2.status).toBe(400);
+
+    const res3 = await searchGET(new Request(`${WORKER_URL}/api/places/search?lat=0&lng=185`));
+    expect(res3.status).toBe(400);
+  });
+
   it.each([
     ["lat", "q=x&lat=37.7junk&lng=-122.4"],
     ["lng", "q=x&lat=37.7&lng=-122.4junk"],

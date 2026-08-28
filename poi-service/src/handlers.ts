@@ -439,12 +439,16 @@ export async function handleFetch(
   deps: Deps = { fetchImpl: fetch },
 ): Promise<Response> {
   try {
+    const url = new URL(request.url);
+    const path = url.pathname;
+
+    if (request.method === "GET" && (path === "/" || path === "/health")) {
+      return json({ ok: true, service: "poi-service" });
+    }
+
     if (!(await authorized(request, env))) {
       return unauthorized();
     }
-
-    const url = new URL(request.url);
-    const path = url.pathname;
 
     if (request.method === "GET" && path === "/poi/search/external") {
       return await searchExternalPOIs(request, env, deps);

@@ -185,7 +185,7 @@ export default {
       const path = url.pathname;
       const method = request.method;
 
-      if (method === "GET" && path === "/") {
+      if (method === "GET" && (path === "/" || path === "/health")) {
         return json({ ok: true, service: "image-service" });
       }
 

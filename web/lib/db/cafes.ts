@@ -3,6 +3,7 @@ import "server-only";
 import tzLookup from "tz-lookup";
 import { isValidUUID } from "@shared/uuid";
 import { isValidWeeklyHours, type WeeklyHours } from "@/lib/hours";
+import { findCity } from "@/lib/cities";
 import {
   incrementalUpdateWorkStats,
   type RunInTransaction,
@@ -31,6 +32,28 @@ import {
   type ProvisionPhotosDeps,
 } from "@/lib/images/provision-photos";
 import { query, withTransaction } from "./postgres";
+
+/**
+ * Safely resolves the IANA timezone for a coordinate pair.
+ * Falls back to city-based timezone lookup or "UTC" on coordinate boundary/ocean errors.
+ */
+export function resolveCafeTimezone(
+  lat: number,
+  lng: number,
+  city?: string | null,
+): string {
+  try {
+    const tz = tzLookup(lat, lng);
+    if (tz) return tz;
+  } catch {
+    // Coordinate out of bounds (RangeError: invalid coordinates)
+  }
+  const fallbackTz = (city && findCity(city)?.tz) || "UTC";
+  console.warn(
+    `[resolveCafeTimezone] Falling back to "${fallbackTz}" for coordinates (${lat}, ${lng}) with city "${city}"`,
+  );
+  return fallbackTz;
+}
 
 /** Thrown when a cafe with the same external POI id already exists. */
 export class CafeExistsError extends Error {
@@ -244,7 +267,7 @@ export async function createCafeWithFirstCheckIn(
 ): Promise<{ cafeId: string; checkinId: string; tz: string }> {
   if (!isValidUUID(userId)) throw new Error("Invalid user ID");
 
-  const tz = tzLookup(input.lat, input.lng);
+  const tz = resolveCafeTimezone(input.lat, input.lng, input.city);
   const externalIds = [input.google_place_id ?? null, input.apple_poi_id ?? null];
 
   // Fail fast on a duplicate external id BEFORE provisioning (sharp work

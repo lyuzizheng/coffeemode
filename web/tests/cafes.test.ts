@@ -5,6 +5,7 @@ import {
   getCafe,
   listCafesNearby,
   parseCreateCafeBody,
+  resolveCafeTimezone,
   reviveCafe,
   type CreateCafeCheckInInput,
 } from "@/lib/db/cafes";
@@ -682,3 +683,26 @@ describe("DELETE /api/cafes/[id]", () => {
     await expect(res.json()).resolves.toMatchObject({ ok: true, id: "550e8400-e29b-41d4-a716-446655440001" });
   });
 });
+
+describe("resolveCafeTimezone", () => {
+  it("resolves timezone for known land coordinates", () => {
+    // Singapore
+    expect(resolveCafeTimezone(1.3521, 103.8198)).toBe("Asia/Singapore");
+    // Tokyo
+    expect(resolveCafeTimezone(35.6762, 139.6503)).toBe("Asia/Tokyo");
+    // London
+    expect(resolveCafeTimezone(51.5074, -0.1278)).toBe("Europe/London");
+  });
+
+  it("falls back to city timezone or UTC on boundary/invalid coordinates where tzLookup throws RangeError", () => {
+    // Coordinates out of bounds (91, 0) throw RangeError: invalid coordinates
+    expect(resolveCafeTimezone(91, 0, "singapore")).toBe("Asia/Singapore");
+    expect(resolveCafeTimezone(-91, 0, "tokyo")).toBe("Asia/Tokyo");
+    expect(resolveCafeTimezone(0, 181, "london")).toBe("Europe/London");
+    expect(resolveCafeTimezone(91, 0, null)).toBe("UTC");
+    expect(resolveCafeTimezone(91, 0, "unknown-city")).toBe("UTC");
+    expect(resolveCafeTimezone(NaN, NaN, "berlin")).toBe("Europe/Berlin");
+    expect(resolveCafeTimezone(NaN, NaN, null)).toBe("UTC");
+  });
+});
+

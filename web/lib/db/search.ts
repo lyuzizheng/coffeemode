@@ -8,6 +8,12 @@ import { query } from "./postgres";
 export interface SearchCafesDbParams {
   q?: string;
   city?: string;
+  filter_wifi?: number;
+  filter_outlets?: number;
+  filter_seats?: number;
+  filter_temp?: number;
+  filter_coffee?: number;
+  filter_overall?: number;
   limit?: number;
 }
 
@@ -16,23 +22,18 @@ export interface CafeWithExternalIds extends CafeSummary {
   apple_poi_id: string | null;
 }
 
-const SEARCH_CAFES_SQL = `
-select id, slug, name,
-       ST_Y(location::geometry) as lat,
-       ST_X(location::geometry) as lng,
-       address, city, tz, opening_hours, price_range,
-       google_place_id, apple_poi_id,
-       work_stats, cover
-from cafes
-where deleted_at is null
-  and ($1::text is null or $1::text = '' or name ilike '%' || $1 || '%' or to_tsvector('simple', name) @@ plainto_tsquery('simple', $1))
-  and ($2::text is null or $2::text = '' or lower(city) = lower($2))
-order by name asc
-limit $3
-`;
+const WORK_DIM_COLS = [
+  { key: "filter_wifi", dim: "wifi" },
+  { key: "filter_outlets", dim: "outlets" },
+  { key: "filter_seats", dim: "seats" },
+  { key: "filter_temp", dim: "temp" },
+  { key: "filter_coffee", dim: "coffee" },
+] as const;
 
 /**
- * Search own cafes in Postgres by keyword and city scope.
+ * Search own cafes in Postgres by keyword, city scope, and work filters.
+ * Structured nomad filters are pushed down into SQL so matching cafes are
+ * not truncated by the alphabetical order LIMIT clause.
  */
 export async function searchCafesInDb(
   params: SearchCafesDbParams,
@@ -41,9 +42,57 @@ export async function searchCafesInDb(
   const city = params.city?.trim() || null;
   const limit = params.limit ?? appConfig.search.dbFetchCap;
 
+  const conditions: string[] = ["deleted_at is null"];
+  const values: unknown[] = [];
+
+  values.push(q);
+  const qIdx = values.length;
+  conditions.push(
+    `($${qIdx}::text is null or $${qIdx}::text = '' or name ilike '%' || $${qIdx} || '%' or to_tsvector('simple', name) @@ plainto_tsquery('simple', $${qIdx}))`,
+  );
+
+  values.push(city);
+  const cityIdx = values.length;
+  conditions.push(`($${cityIdx}::text is null or $${cityIdx}::text = '' or lower(city) = lower($${cityIdx}))`);
+
+  for (const { key, dim } of WORK_DIM_COLS) {
+    const val = params[key];
+    if (val !== undefined) {
+      values.push(val);
+      const idx = values.length;
+      conditions.push(
+        `((work_stats->'dims'->'${dim}'->>'n')::numeric > 0 and ((work_stats->'dims'->'${dim}'->>'sum')::numeric / (work_stats->'dims'->'${dim}'->>'n')::numeric) >= $${idx})`,
+      );
+    }
+  }
+
+  if (params.filter_overall !== undefined) {
+    values.push(params.filter_overall);
+    const idx = values.length;
+    conditions.push(
+      `(case when work_stats->>'experience_score' is not null then (work_stats->>'experience_score')::numeric >= $${idx} when (work_stats->'dims'->'overall'->>'n')::numeric > 0 then ((work_stats->'dims'->'overall'->>'sum')::numeric / (work_stats->'dims'->'overall'->>'n')::numeric) >= $${idx} else false end)`,
+    );
+  }
+
+  values.push(limit);
+  const limitIdx = values.length;
+
+  const sql = `
+select id, slug, name,
+       ST_Y(location::geometry) as lat,
+       ST_X(location::geometry) as lng,
+       address, city, tz, opening_hours, price_range,
+       google_place_id, apple_poi_id,
+       work_stats, cover
+from cafes
+where ${conditions.join("\n  and ")}
+order by name asc
+limit $${limitIdx}
+`;
+
   const { rows } = await query<CafeWithExternalIds & Record<string, unknown>>(
-    SEARCH_CAFES_SQL,
-    [q, city, limit],
+    sql,
+    values,
   );
 
   return rows.map((row) => ({

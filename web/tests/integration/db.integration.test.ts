@@ -172,7 +172,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   });
 
-  it("applies migrations 0001→0012 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0013 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -187,6 +187,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0010_drop_min_spend.sql",
       "0011_cafe_tombstone_lifecycle.sql",
       "0012_drop_redundant_cafe_indexes.sql",
+      "0013_search_city_index.sql",
     ]);
 
     const pgVersion = await dbClient.query("select postgis_version() as v");
@@ -1038,6 +1039,49 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     it("respects the limit parameter and returns work_stats", async () => {
       const results = await searchCafesInDb({ limit: 1 });
       expect(results.length).toBeLessThanOrEqual(1);
+    });
+
+    it("filters cafes by work dimensions pushed down to SQL", async () => {
+      const created = await createCafeWithFirstCheckIn(
+        U1,
+        {
+          name: "Zeta Work Hub",
+          lat: 1.35,
+          lng: 103.8,
+          city: "singapore",
+          checkin: {
+            scores: { overall: 90, wifi: 85, outlets: 80, seats: 75, temp: 70, coffee: 65 },
+            max_stay: "unlimited",
+            note: "nice",
+            photo_ids: [],
+          },
+        },
+        fakeProvisionPhotosDeps(),
+      );
+
+      const wifiMatch = await searchCafesInDb({ filter_wifi: 80 });
+      expect(wifiMatch.some((c) => c.id === created.cafeId)).toBe(true);
+
+      const wifiHigh = await searchCafesInDb({ filter_wifi: 95 });
+      expect(wifiHigh.some((c) => c.id === created.cafeId)).toBe(false);
+
+      const outletsMatch = await searchCafesInDb({ filter_outlets: 75 });
+      expect(outletsMatch.some((c) => c.id === created.cafeId)).toBe(true);
+
+      const seatsMatch = await searchCafesInDb({ filter_seats: 70 });
+      expect(seatsMatch.some((c) => c.id === created.cafeId)).toBe(true);
+
+      const tempMatch = await searchCafesInDb({ filter_temp: 65 });
+      expect(tempMatch.some((c) => c.id === created.cafeId)).toBe(true);
+
+      const coffeeMatch = await searchCafesInDb({ filter_coffee: 60 });
+      expect(coffeeMatch.some((c) => c.id === created.cafeId)).toBe(true);
+
+      const overallMatch = await searchCafesInDb({ filter_overall: 85 });
+      expect(overallMatch.some((c) => c.id === created.cafeId)).toBe(true);
+
+      const overallHigh = await searchCafesInDb({ filter_overall: 95 });
+      expect(overallHigh.some((c) => c.id === created.cafeId)).toBe(false);
     });
   });
 

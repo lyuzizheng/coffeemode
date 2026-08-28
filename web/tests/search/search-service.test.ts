@@ -172,7 +172,38 @@ describe("search-service", () => {
     const response = await executeSearch({ filter_wifi: 80 });
 
     expect(searchPOIs).not.toHaveBeenCalled();
+    expect(searchCafesInDb).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filter_wifi: 80,
+      }),
+    );
     expect(response.results).toHaveLength(1);
     expect(response.results[0].type).toBe("cafe");
+  });
+
+  it("passes all work dimension filters to searchCafesInDb for SQL pushdown", async () => {
+    vi.mocked(searchCafesInDb).mockResolvedValue([]);
+
+    await executeSearch({
+      city: "singapore",
+      filter_wifi: 70,
+      filter_outlets: 60,
+      filter_seats: 50,
+      filter_temp: 40,
+      filter_coffee: 80,
+      filter_overall: 75,
+    });
+
+    expect(searchCafesInDb).toHaveBeenCalledWith({
+      q: undefined,
+      city: "singapore",
+      filter_wifi: 70,
+      filter_outlets: 60,
+      filter_seats: 50,
+      filter_temp: 40,
+      filter_coffee: 80,
+      filter_overall: 75,
+      limit: expect.any(Number),
+    });
   });
 });

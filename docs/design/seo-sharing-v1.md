@@ -1,7 +1,7 @@
 # Cafe Detail SSR & Sharing — Design Artifact v1
 
 - Slice: `seo-sharing` (issue #150)
-- Status: **Draft — pending owner approval**
+- Status: **Approved — owner, 2026-08-23 (DG104–DG113, DG124)**
 - Author: Kimi K3
 - Date: 2026-08-21 (revised 2026-08-22 — copy tone sweep per DG87/DG93;
   2026-08-23 — grill round 14 rulings DG104–DG113; 2026-08-23 — DG124:

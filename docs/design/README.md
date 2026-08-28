@@ -25,10 +25,10 @@ versioned, slice-specific design artifacts that gate UI implementation
 
 | Slice | Artifact | Status | Issue |
 | --- | --- | --- | --- |
-| discovery-sheet | `discovery-sheet-v1.md` | Draft — pending owner approval | #133 |
-| search-filters | `search-filters-v1.md` | Draft — pending owner approval | #135 |
-| checkin-system | `checkin-system-v1.md` | Draft — pending owner approval | #148 |
-| navigation-prompt | `navigation-prompt-v1.md` | Draft — pending owner approval | #149 |
-| profile-page | `profile-page-v1.md` | Draft — pending owner approval | #152 |
-| seo-sharing | `seo-sharing-v1.md` | Draft — pending owner approval | #150 |
-| onboarding | `onboarding-v1.md` | Draft — pending owner approval | #153 |
+| discovery-sheet | `discovery-sheet-v1.md` | Approved — owner, 2026-08-23 (DG21–DG43) | #133 |
+| search-filters | `search-filters-v1.md` | Approved — owner, 2026-08-23 (DG44–DG58) | #135 |
+| checkin-system | `checkin-system-v1.md` | Approved — owner, 2026-08-23 (DG59–DG75) | #148 |
+| navigation-prompt | `navigation-prompt-v1.md` | Approved — owner, 2026-08-23 (DG76–DG93) | #149 |
+| profile-page | `profile-page-v1.md` | Approved — owner, 2026-08-23 (DG94–DG103) | #152 |
+| seo-sharing | `seo-sharing-v1.md` | Approved — owner, 2026-08-23 (DG104–DG113) | #150 |
+| onboarding | `onboarding-v1.md` | Approved — owner, 2026-08-23 (DG114–DG123) | #153 |

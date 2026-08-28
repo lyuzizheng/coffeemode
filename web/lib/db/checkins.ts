@@ -193,11 +193,20 @@ const SET_CHECKIN_PHOTOS_SQL = `update checkins set photos = $2::jsonb where id 
  * Append check-in photos to cafes.gallery with provenance (spec 0001:
  * photos auto-merge, no curator approval at MVP; the `source` field on
  * server-derived photos lets gallery queries hide photos from soft-deleted
- * check-ins).
+ * check-ins). Guarded per-element by photo id to prevent duplicate entries
+ * even across timestamp re-stamping and partial array overlap (issues #234, #258).
  */
 export const MERGE_GALLERY_SQL = `
 update cafes
-set gallery = coalesce(gallery, '[]'::jsonb) || $2::jsonb
+set gallery = coalesce(gallery, '[]'::jsonb) || (
+  select coalesce(jsonb_agg(elem), '[]'::jsonb)
+  from jsonb_array_elements($2::jsonb) elem
+  where not exists (
+    select 1
+    from jsonb_array_elements(coalesce(gallery, '[]'::jsonb)) g
+    where g->>'id' = elem->>'id'
+  )
+)
 where id = $1
 `;
 

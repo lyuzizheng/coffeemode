@@ -24,6 +24,7 @@ import {
   CafeNotFoundError,
   CheckInForbiddenError,
   CheckInNotFoundError,
+  MERGE_GALLERY_SQL,
   SelfLikeError,
   createCheckIn,
   softDeleteCheckIn,
@@ -534,6 +535,79 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       // Public consumers see the repaired scores through coerce
       const detail = await getCafe(CAFE_A);
       expect(detail?.work_stats.experience_score).toBe(good.experience_score);
+    });
+  });
+
+  describeDb("MERGE_GALLERY_SQL idempotency and partial-overlap semantics (issues #234, #258)", () => {
+    it("does not duplicate photo in gallery when same id has a different at timestamp", async () => {
+      const photoId = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a99";
+      const photo1 = {
+        id: photoId,
+        original: "https://img.test/p1-orig.jpg",
+        card: "https://img.test/p1-card.webp",
+        thumbnail: "https://img.test/p1-thumb.webp",
+        w: 800,
+        h: 600,
+        by: U1,
+        at: "2026-08-01T10:00:00.000Z",
+        source: { type: "checkin", id: CHECKIN_A1 },
+      };
+      await dbClient.query(MERGE_GALLERY_SQL, [CAFE_A, JSON.stringify([photo1])]);
+
+      const res1 = await dbClient.query("select gallery from cafes where id = $1", [CAFE_A]);
+      const gallery1 = res1.rows[0].gallery ?? [];
+      const count1 = gallery1.filter((p: { id: string }) => p.id === photoId).length;
+      expect(count1).toBe(1);
+
+      // Re-stamp with different 'at' timestamp (e.g. retry re-processing)
+      const photo1Restamped = {
+        ...photo1,
+        at: "2026-08-02T12:00:00.000Z",
+      };
+      await dbClient.query(MERGE_GALLERY_SQL, [CAFE_A, JSON.stringify([photo1Restamped])]);
+
+      const res2 = await dbClient.query("select gallery from cafes where id = $1", [CAFE_A]);
+      const gallery2 = res2.rows[0].gallery ?? [];
+      const count2 = gallery2.filter((p: { id: string }) => p.id === photoId).length;
+      expect(count2).toBe(1);
+    });
+
+    it("appends only new photos on partial overlap without duplicating existing ones", async () => {
+      const photoIdExisting = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a99";
+      const photoIdNew = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a9a";
+      const existingPhoto = {
+        id: photoIdExisting,
+        original: "https://img.test/p-exist.jpg",
+        card: "https://img.test/p-exist.webp",
+        thumbnail: "https://img.test/p-exist.webp",
+        w: 800,
+        h: 600,
+        by: U1,
+        at: "2026-08-01T10:00:00.000Z",
+        source: { type: "checkin", id: CHECKIN_A1 },
+      };
+      const newPhoto = {
+        id: photoIdNew,
+        original: "https://img.test/p-new.jpg",
+        card: "https://img.test/p-new.webp",
+        thumbnail: "https://img.test/p-new.webp",
+        w: 800,
+        h: 600,
+        by: U1,
+        at: "2026-08-01T11:00:00.000Z",
+        source: { type: "checkin", id: CHECKIN_A1 },
+      };
+
+      // Ensure existingPhoto is in gallery
+      await dbClient.query(MERGE_GALLERY_SQL, [CAFE_A, JSON.stringify([existingPhoto])]);
+
+      // Merge array containing both existing and new photo
+      await dbClient.query(MERGE_GALLERY_SQL, [CAFE_A, JSON.stringify([existingPhoto, newPhoto])]);
+
+      const { rows } = await dbClient.query("select gallery from cafes where id = $1", [CAFE_A]);
+      const gallery = rows[0].gallery ?? [];
+      expect(gallery.filter((p: { id: string }) => p.id === photoIdExisting)).toHaveLength(1);
+      expect(gallery.filter((p: { id: string }) => p.id === photoIdNew)).toHaveLength(1);
     });
   });
 

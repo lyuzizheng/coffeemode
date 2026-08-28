@@ -119,14 +119,14 @@ describe("POST /api/images/complete", () => {
     expect(response.status).toBe(400);
   });
 
-  it("404s when the upload was never issued to this user (#33), before any remote work", async () => {
+  it("returns 403 when the upload was never issued to this user (#33), before any remote work", async () => {
     queryMock.mockResolvedValueOnce({ rows: [] }); // intent check finds nothing
     const response = await POST(makeRequest({
       imageUuid: IMAGE_UUID,
       targetType: "cafe",
       targetId: CAFE_ID,
     }));
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(403);
     expect(getProcessUrlsMock).not.toHaveBeenCalled();
   });
 
@@ -142,7 +142,7 @@ describe("POST /api/images/complete", () => {
     expect(getProcessUrlsMock).not.toHaveBeenCalled();
   });
 
-  it("404s when the intent was already consumed or expired (replay)", async () => {
+  it("returns 409 when the intent was already consumed or expired (replay)", async () => {
     queueIntentHit();
     queryMock
       .mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }) // ownership check
@@ -153,7 +153,7 @@ describe("POST /api/images/complete", () => {
       targetType: "cafe",
       targetId: CAFE_ID,
     }));
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(409);
     // The attach must NOT have run.
     const allSql = queryMock.mock.calls.map((c: unknown[]) => String(c[0]));
     expect(allSql.some((sql) => sql.includes("update cafes"))).toBe(false);
@@ -198,7 +198,7 @@ describe("POST /api/images/complete", () => {
     expect(data.message).toBeUndefined();
   });
 
-  it("guards against duplicate gallery entries", async () => {
+  it("guards against duplicate gallery entries with id-based dedup", async () => {
     queueIntentHit();
     queryMock
       .mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }) // ownership check
@@ -213,6 +213,6 @@ describe("POST /api/images/complete", () => {
 
     expect(response.status).toBe(200);
     const [sql] = queryMock.mock.calls[3]; // [intent, ownership, consume, attach]
-    expect(sql).toContain("@>");
+    expect(sql).toContain("g->>'id' = elem->>'id'");
   });
 });

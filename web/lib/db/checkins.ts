@@ -580,3 +580,56 @@ export async function toggleCheckInLike(
     };
   });
 }
+
+const OWNS_CHECKIN_SQL = `
+select cafe_id from checkins where id = $1 and user_id = $2 and deleted_at is null
+`;
+
+export async function ownsCheckin(
+  checkinId: string,
+  userId: string,
+  q = query,
+): Promise<boolean> {
+  if (!isValidUUID(checkinId) || !isValidUUID(userId)) return false;
+  const result = await q<{ cafe_id: string | null }>(OWNS_CHECKIN_SQL, [checkinId, userId]);
+  return result.rows.length > 0;
+}
+
+const ATTACH_IMAGE_TO_CHECKIN_SQL = `
+update checkins
+set photos = coalesce(photos, '[]'::jsonb) || (
+  select coalesce(jsonb_agg(elem), '[]'::jsonb)
+  from jsonb_array_elements($1::jsonb) elem
+  where not exists (
+    select 1
+    from jsonb_array_elements(coalesce(photos, '[]'::jsonb)) g
+    where g->>'id' = elem->>'id'
+  )
+)
+where id = $2 and user_id = $3 and deleted_at is null
+returning id, cafe_id
+`;
+
+export async function attachImageToCheckin(
+  params: {
+    checkinId: string;
+    userId: string;
+    image: StoredImage;
+  },
+  q = query,
+): Promise<{ ok: boolean; cafeId: string | null }> {
+  const result = await q<{ id: string; cafe_id: string | null }>(
+    ATTACH_IMAGE_TO_CHECKIN_SQL,
+    [JSON.stringify([params.image]), params.checkinId, params.userId],
+  );
+  if (result.rows.length === 0) return { ok: false, cafeId: null };
+  return { ok: true, cafeId: result.rows[0].cafe_id };
+}
+
+export async function mergeIntoCafeGallery(
+  cafeId: string,
+  image: StoredImage,
+  q = query,
+): Promise<void> {
+  await q(MERGE_GALLERY_SQL, [cafeId, JSON.stringify([image])]);
+}

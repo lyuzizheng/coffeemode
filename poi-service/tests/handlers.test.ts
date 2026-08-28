@@ -38,6 +38,20 @@ async function bodyOf(res: Response): Promise<Record<string, unknown>> {
   return (await res.json()) as Record<string, unknown>;
 }
 
+describe("health and info", () => {
+  it("responds 200 on unauthenticated GET /", async () => {
+    const res = await call("GET", "/", makeEnv(), { token: undefined });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, service: "poi-service" });
+  });
+
+  it("responds 200 on unauthenticated GET /health", async () => {
+    const res = await call("GET", "/health", makeEnv(), { token: undefined });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, service: "poi-service" });
+  });
+});
+
 describe("auth", () => {
   it("rejects requests without a token", async () => {
     const res = await call("GET", "/poi/search?q=coffee", makeEnv(), { token: undefined });

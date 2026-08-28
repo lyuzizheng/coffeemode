@@ -362,6 +362,15 @@ describe("router", () => {
     expect(data.ok).toBe(true);
   });
 
+  it("GET /health returns ok", async () => {
+    const env = baseEnv();
+    const request = makeRequest("GET", "/health");
+    const response = await handler.fetch(request, env, {} as ExecutionContext);
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as Record<string, unknown>;
+    expect(data.ok).toBe(true);
+  });
+
   it("returns 404 for unknown routes", async () => {
     const env = baseEnv();
     const request = makeRequest("POST", "/v1/images/unknown");

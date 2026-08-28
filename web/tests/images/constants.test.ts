@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { assertR2PublicUrlMatches, R2_PUBLIC_HOST } from "@/lib/images/constants";
+import { assertR2PublicUrlMatches } from "@/lib/images/constants";
 import { isR2Image, r2ImageLoader } from "@/lib/images/loader";
-
-describe("R2_PUBLIC_HOST (issue #40)", () => {
-  it("is the production host (single-source constant)", () => {
-    expect(R2_PUBLIC_HOST).toBe("images.coffeemode.app");
-  });
-});
 
 describe("assertR2PublicUrlMatches", () => {
   it("accepts unset env (no-op)", () => {

@@ -108,19 +108,18 @@ function postRequest(body: unknown): Request {
   });
 }
 
-/** Mock the statements of the happy-path create transaction + stats (pool dedupe check + 9 tx queries). */
+/** Mock the statements of the happy-path create transaction + stats via query dispatcher. */
 function mockCreateHappyPath(cafeId = "cafe-1", checkinId = "checkin-1") {
-  poolQueryMock.mockResolvedValueOnce({ rows: [] }); // pre-provision dedupe check
-  clientQueryMock
-    .mockResolvedValueOnce({ rows: [] }) // dedupe pre-check by external id (authoritative, in tx)
-    .mockResolvedValueOnce({ rows: [{ id: cafeId }] }) // insert cafe
-    .mockResolvedValueOnce({ rows: [{ id: checkinId }] }) // insert first check-in
-    .mockResolvedValueOnce({ rows: [] }) // set derived photos (source needs the id)
-    .mockResolvedValueOnce({ rows: [] }) // gallery auto-merge (spec 0001)
-    .mockResolvedValueOnce({ rows: [{ work_stats: {} }] }) // stats: lock + read cafe
-    .mockResolvedValueOnce({ rows: [] }) // stats: user's check-ins (none in mock)
-    .mockResolvedValueOnce({ rows: [{ n: 1 }] }) // stats: check-in count
-    .mockResolvedValueOnce({ rows: [] }); // stats: update cafes.work_stats
+  const handler = async (sql: string) => {
+    const s = sql.toLowerCase();
+    if (s.includes("insert into cafes")) return { rows: [{ id: cafeId }], rowCount: 1 };
+    if (s.includes("insert into checkins")) return { rows: [{ id: checkinId }], rowCount: 1 };
+    if (s.includes("select work_stats from cafes") || s.includes("for update")) return { rows: [{ work_stats: {} }], rowCount: 1 };
+    if (s.includes("count(*)") || s.includes("count(1)")) return { rows: [{ n: 1 }], rowCount: 1 };
+    return { rows: [], rowCount: 0 };
+  };
+  poolQueryMock.mockImplementation(handler);
+  clientQueryMock.mockImplementation(handler);
 }
 
 beforeEach(() => {

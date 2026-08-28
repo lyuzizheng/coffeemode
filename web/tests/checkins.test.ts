@@ -94,17 +94,23 @@ function postRequest(url: string, body: unknown): Request {
   });
 }
 
-/** Mock the happy-path createCheckIn statements + stats recompute (pool cafe check + 7 tx queries, with photos). */
+/** Mock the happy-path createCheckIn statements + stats recompute via query dispatcher. */
 function mockCheckInHappyPath(checkinId = CHECKIN) {
-  poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
-  clientQueryMock
-    .mockResolvedValueOnce({ rows: [{ id: CAFE }] }) // cafe exists (authoritative, in tx)
-    .mockResolvedValueOnce({ rows: [{ id: checkinId }] }) // insert check-in
-    .mockResolvedValueOnce({ rows: [] }) // set derived photos (source needs the id)
-    .mockResolvedValueOnce({ rows: [] }) // gallery auto-merge (spec 0001)
-    .mockResolvedValueOnce({ rows: [] }) // stats recompute: lock cafe row
-    .mockResolvedValueOnce({ rows: [] }) // stats recompute: read all check-ins
-    .mockResolvedValueOnce({ rows: [] }); // stats recompute: write work_stats
+  const handler = async (sql: string) => {
+    const s = sql.toLowerCase();
+    if (s.includes("from cafes where id = $1") || s.includes("select id from cafes")) {
+      return { rows: [{ id: CAFE }], rowCount: 1 };
+    }
+    if (s.includes("insert into checkins")) {
+      return { rows: [{ id: checkinId }], rowCount: 1 };
+    }
+    if (s.includes("select work_stats from cafes") || s.includes("for update")) {
+      return { rows: [{ work_stats: {} }], rowCount: 1 };
+    }
+    return { rows: [], rowCount: 0 };
+  };
+  poolQueryMock.mockImplementation(handler);
+  clientQueryMock.mockImplementation(handler);
 }
 
 beforeEach(() => {

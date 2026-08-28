@@ -146,6 +146,7 @@ jobs:
         with:
           name: lighthouse-ci-report
           path: web/.lighthouseci
+          include-hidden-files: true
           if-no-files-found: error
 
   integration-gate:

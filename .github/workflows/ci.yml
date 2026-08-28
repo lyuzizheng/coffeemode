@@ -106,6 +106,9 @@ jobs:
           test -f .next/server/app/serwist/sw.js.body
           test -f .next/server/app/manifest.webmanifest.body
 
+      - name: E2E MVP smoke suite
+        run: npm run test:e2e
+
   integration-gate:
     needs: changes
     if: needs.changes.outputs.integration == 'true'

@@ -37,6 +37,13 @@ module.exports = {
       numberOfRuns: 3,
       settings: {
         chromeFlags: "--no-sandbox --headless --disable-gpu --disable-dev-shm-usage",
+        // Calibrate simulated CPU multiplier for virtualized CI containers
+        // to prevent false positives from shared runner CPU contention.
+        throttling: {
+          rttMs: 40,
+          throughputKbps: 10240,
+          cpuSlowdownMultiplier: 2,
+        },
       },
     },
     assert: {

@@ -34,6 +34,7 @@ export function DiscoveryHome({
   defaultCenter,
   addCafe,
   initialCafeId,
+  children,
 }: {
   /** Fallback map center (web/config/app.yaml discovery.defaultCenter). */
   defaultCenter: { lat: number; lng: number };
@@ -41,6 +42,8 @@ export function DiscoveryHome({
   addCafe: ReactNode;
   /** Optional initial selected cafe ID (e.g. from ?cafe= query param) */
   initialCafeId?: string;
+  /** Surface children (e.g. landing scaffold / map) coordinated with discovery */
+  children?: ReactNode;
 }) {
   const t = useTranslations("discovery");
   const mounted = useMounted();
@@ -57,7 +60,7 @@ export function DiscoveryHome({
   // being a dead button.
   const onCheckIn = () => toast(t("checkin_coming"), { timeout: 4000 });
 
-  if (!mounted) return null;
+  if (!mounted) return <>{children}</>;
 
   const props = {
     controller,
@@ -66,5 +69,12 @@ export function DiscoveryHome({
     onCheckIn,
     addCafe,
   };
-  return isDesktop ? <DesktopDiscovery {...props} /> : <MobileSheet {...props} />;
+  return isDesktop ? (
+    <DesktopDiscovery {...props}>{children}</DesktopDiscovery>
+  ) : (
+    <>
+      {children}
+      <MobileSheet {...props} />
+    </>
+  );
 }

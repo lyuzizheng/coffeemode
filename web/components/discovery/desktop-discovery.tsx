@@ -38,12 +38,14 @@ export function DesktopDiscovery({
   isLoading,
   onCheckIn,
   addCafe,
+  children,
 }: {
   controller: DiscoveryController;
   cafes: CafeSummary[];
   isLoading: boolean;
   onCheckIn: () => void;
   addCafe: ReactNode;
+  children?: ReactNode;
 }) {
   const t = useTranslations("discovery");
   const reduced = useReducedMotion();
@@ -58,8 +60,12 @@ export function DesktopDiscovery({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [close]);
 
-  return (
-    <div className="fixed inset-y-0 left-0 z-30 flex" role="region" aria-label={t("sheet_aria")}>
+  const discoveryColumns = (
+    <div
+      className={`${children ? "sticky top-0 h-dvh" : "fixed inset-y-0 left-0"} flex shrink-0 z-30`}
+      role="region"
+      aria-label={t("sheet_aria")}
+    >
       <aside className="flex h-full w-[380px] shrink-0 flex-col border-r border-separator bg-surface">
         {/* Reserved 48px search/filter row — internals belong to search-filters. */}
         <div className="h-12 shrink-0 border-b border-separator" aria-hidden />
@@ -122,6 +128,17 @@ export function DesktopDiscovery({
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+
+  if (!children) return discoveryColumns;
+
+  return (
+    <div className="flex min-h-dvh w-full">
+      {discoveryColumns}
+      <div className="flex-1 min-w-0 min-h-dvh flex flex-col overflow-y-auto">
+        {children}
+      </div>
     </div>
   );
 }

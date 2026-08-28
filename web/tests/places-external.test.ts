@@ -62,6 +62,17 @@ describe("POST /api/places/external", () => {
     expect(storeExternalPOIsMock).toHaveBeenCalledWith([APPLE_POI]);
   });
 
+  it("accepts a batch of exactly MAX_EXTERNAL_BATCH_SIZE (50) items", async () => {
+    const exactly50 = Array.from({ length: 50 }, (_, i) => ({
+      ...APPLE_POI,
+      place_id: `apple-place-${i}`,
+    }));
+    const response = await POST(request(exactly50));
+
+    expect(response.status).toBe(200);
+    expect(storeExternalPOIsMock).toHaveBeenCalledWith(exactly50);
+  });
+
   it("rejects batch sizes exceeding MAX_EXTERNAL_BATCH_SIZE (50)", async () => {
     const oversized = Array.from({ length: 51 }, (_, i) => ({
       ...APPLE_POI,

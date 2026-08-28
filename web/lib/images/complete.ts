@@ -38,13 +38,11 @@ export type CompleteUploadFailureReason =
 export type CompleteUploadResult =
   | {
       ok: true;
-      attached: true;
       storedImage: StoredImage;
       processed: ProcessedImage;
     }
   | {
       ok: false;
-      attached: false;
       reason: CompleteUploadFailureReason;
       storedImage?: undefined;
       processed?: undefined;
@@ -70,17 +68,17 @@ export interface CompleteUploadDeps {
     imageUuid: string,
     q: CompleteQueryFn,
   ) => Promise<boolean>;
-  ownsCafe?: (cafeId: string, userId: string, q?: CompleteQueryFn) => Promise<boolean>;
-  ownsCheckin?: (checkinId: string, userId: string, q?: CompleteQueryFn) => Promise<boolean>;
-  attachImageToCafe?: (
+  ownsCafe: (cafeId: string, userId: string, q?: CompleteQueryFn) => Promise<boolean>;
+  ownsCheckin: (checkinId: string, userId: string, q?: CompleteQueryFn) => Promise<boolean>;
+  attachImageToCafe: (
     params: { cafeId: string; userId: string; image: StoredImage; isCover?: boolean },
     q?: CompleteQueryFn,
   ) => Promise<boolean>;
-  attachImageToCheckin?: (
+  attachImageToCheckin: (
     params: { checkinId: string; userId: string; image: StoredImage },
     q?: CompleteQueryFn,
   ) => Promise<{ ok: boolean; cafeId: string | null }>;
-  mergeIntoCafeGallery?: (cafeId: string, image: StoredImage, q?: CompleteQueryFn) => Promise<void>;
+  mergeIntoCafeGallery: (cafeId: string, image: StoredImage, q?: CompleteQueryFn) => Promise<void>;
   getProcessUrls: (request: CompleteImageRequest & { userId?: string }) => Promise<ProcessUrls>;
   processImage: (imageUuid: string, processUrls: ProcessUrls) => Promise<ProcessedImage>;
 }
@@ -170,29 +168,15 @@ export async function completeImageUpload(
   //    issued to THIS user at upload time, or a leaked URL would let
   //    anyone claim the image. Fail fast before any remote work.
   const intentOk = await deps.checkUploadIntent(user.id, req.imageUuid);
-  if (!intentOk) return { ok: false, attached: false, reason: "intent_not_found" };
-
-  const ownsCafeFn =
-    deps.ownsCafe ??
-    (async (cafeId, userId, q) => {
-      const { ownsCafe } = await import("@/lib/db/cafes");
-      return ownsCafe(cafeId, userId, q);
-    });
-
-  const ownsCheckinFn =
-    deps.ownsCheckin ??
-    (async (checkinId, userId, q) => {
-      const { ownsCheckin } = await import("@/lib/db/checkins");
-      return ownsCheckin(checkinId, userId, q);
-    });
+  if (!intentOk) return { ok: false, reason: "intent_not_found" };
 
   // 1. Fail fast before any remote work: unauthorized callers must not
   //    burn image-service presign or sharp CPU.
   const owned =
     req.targetType === "cafe"
-      ? await ownsCafeFn(req.targetId, user.id, deps.query)
-      : await ownsCheckinFn(req.targetId, user.id, deps.query);
-  if (!owned) return { ok: false, attached: false, reason: "not_owned" };
+      ? await deps.ownsCafe(req.targetId, user.id, deps.query)
+      : await deps.ownsCheckin(req.targetId, user.id, deps.query);
+  if (!owned) return { ok: false, reason: "not_owned" };
 
   // 2. Remote processing OUTSIDE the transaction: presign + resize + R2
   //    are slow I/O and must not hold a DB connection.
@@ -214,56 +198,35 @@ export async function completeImageUpload(
     source: { type: sourceType, id: req.targetId },
   };
 
-  const attachImageToCafeFn =
-    deps.attachImageToCafe ??
-    (async (params, q) => {
-      const { attachImageToCafe } = await import("@/lib/db/cafes");
-      return attachImageToCafe(params, q);
-    });
-
-  const attachImageToCheckinFn =
-    deps.attachImageToCheckin ??
-    (async (params, q) => {
-      const { attachImageToCheckin } = await import("@/lib/db/checkins");
-      return attachImageToCheckin(params, q);
-    });
-
-  const mergeIntoCafeGalleryFn =
-    deps.mergeIntoCafeGallery ??
-    (async (cafeId, image, q) => {
-      const { mergeIntoCafeGallery } = await import("@/lib/db/checkins");
-      return mergeIntoCafeGallery(cafeId, image, q);
-    });
-
   // 3. Atomic DB writes: the single-use intent consume and the attach
   //    share one transaction, so a replayed/mismatched intent rolls the
   //    attach back, and a failure rolls back the checkin append AND the
   //    gallery merge (issues #25, #33, #261).
   return deps.runInTransaction(async (q) => {
     const consumed = await deps.consumeUploadIntent(user.id, req.imageUuid, q);
-    if (!consumed) return { ok: false, attached: false, reason: "intent_consumed" };
+    if (!consumed) return { ok: false, reason: "intent_consumed" };
 
     // NOTE: if the attach below matches 0 rows (the target was deleted or
     // changed owner between the pre-check and this tx), the intent is
     // already consumed — the complete fails closed and the user must re-upload.
     // Rare, fail-closed, accepted at MVP (review #33).
     if (req.targetType === "cafe") {
-      const attached = await attachImageToCafeFn(
+      const attached = await deps.attachImageToCafe(
         { cafeId: req.targetId, userId: user.id, image: storedImage, isCover: req.isCover ?? false },
         q,
       );
-      if (!attached) return { ok: false, attached: false, reason: "target_gone" };
-      return { ok: true, attached: true, storedImage, processed };
+      if (!attached) return { ok: false, reason: "target_gone" };
+      return { ok: true, storedImage, processed };
     }
 
-    const { ok, cafeId } = await attachImageToCheckinFn(
+    const { ok, cafeId } = await deps.attachImageToCheckin(
       { checkinId: req.targetId, userId: user.id, image: storedImage },
       q,
     );
-    if (!ok) return { ok: false, attached: false, reason: "target_gone" };
+    if (!ok) return { ok: false, reason: "target_gone" };
     if (cafeId) {
-      await mergeIntoCafeGalleryFn(cafeId, storedImage, q);
+      await deps.mergeIntoCafeGallery(cafeId, storedImage, q);
     }
-    return { ok: true, attached: true, storedImage, processed };
+    return { ok: true, storedImage, processed };
   });
 }

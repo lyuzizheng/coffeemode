@@ -98,14 +98,14 @@ function postRequest(url: string, body: unknown): Request {
 function mockCheckInHappyPath(checkinId = CHECKIN) {
   const handler = async (sql: string) => {
     const s = sql.toLowerCase();
+    if (s.includes("select work_stats from cafes") || s.includes("for update")) {
+      return { rows: [{ id: CAFE, work_stats: {} }], rowCount: 1 };
+    }
     if (s.includes("from cafes where id = $1") || s.includes("select id from cafes")) {
       return { rows: [{ id: CAFE }], rowCount: 1 };
     }
     if (s.includes("insert into checkins")) {
       return { rows: [{ id: checkinId }], rowCount: 1 };
-    }
-    if (s.includes("select work_stats from cafes") || s.includes("for update")) {
-      return { rows: [{ work_stats: {} }], rowCount: 1 };
     }
     return { rows: [], rowCount: 0 };
   };

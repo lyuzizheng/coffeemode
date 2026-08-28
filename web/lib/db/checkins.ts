@@ -195,6 +195,8 @@ const SET_CHECKIN_PHOTOS_SQL = `update checkins set photos = $2::jsonb where id 
  * server-derived photos lets gallery queries hide photos from soft-deleted
  * check-ins). Guarded per-element by photo id to prevent duplicate entries
  * even across timestamp re-stamping and partial array overlap (issues #234, #258).
+ * Precondition: $2 array must not contain intra-array duplicate IDs (guaranteed
+ * by parsePhotoIds validation on create paths and single-element inputs on complete).
  */
 export const MERGE_GALLERY_SQL = `
 update cafes

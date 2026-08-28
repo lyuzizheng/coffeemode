@@ -134,7 +134,6 @@ describe("completeImageUpload", () => {
     const result = await completeImageUpload({ id: "user-1" }, REQ, deps);
 
     expect(result.ok).toBe(false);
-    expect(result.attached).toBe(false);
     if (!result.ok) {
       expect(result.reason).toBe("not_owned");
     }
@@ -152,7 +151,6 @@ describe("completeImageUpload", () => {
     );
 
     expect(result.ok).toBe(true);
-    expect(result.attached).toBe(true);
     expect(deps.attachImageToCafe).toHaveBeenCalledTimes(1);
     expect(deps.attachImageToCheckin).not.toHaveBeenCalled();
   });
@@ -162,7 +160,6 @@ describe("completeImageUpload", () => {
     const result = await completeImageUpload({ id: "user-1" }, REQ, deps);
 
     expect(result.ok).toBe(true);
-    expect(result.attached).toBe(true);
     expect(result.storedImage?.source).toEqual({ type: "checkin", id: CHECKIN_ID });
     // All writes went through the SAME runInTransaction invocation.
     expect(txQueries).toHaveLength(1);
@@ -176,7 +173,6 @@ describe("completeImageUpload", () => {
     const result = await completeImageUpload({ id: "user-1" }, REQ, deps);
 
     expect(result.ok).toBe(false);
-    expect(result.attached).toBe(false);
     if (!result.ok) {
       expect(result.reason).toBe("intent_not_found");
     }
@@ -193,7 +189,6 @@ describe("completeImageUpload", () => {
     const result = await completeImageUpload({ id: "user-1" }, REQ, deps);
 
     expect(result.ok).toBe(false);
-    expect(result.attached).toBe(false);
     if (!result.ok) {
       expect(result.reason).toBe("intent_consumed");
     }
@@ -209,7 +204,6 @@ describe("completeImageUpload", () => {
     const result = await completeImageUpload({ id: "user-1" }, REQ, deps);
 
     expect(result.ok).toBe(false);
-    expect(result.attached).toBe(false);
     if (!result.ok) {
       expect(result.reason).toBe("target_gone");
     }
@@ -224,7 +218,6 @@ describe("completeImageUpload", () => {
     const result = await completeImageUpload({ id: "user-1" }, REQ, deps);
 
     expect(result.ok).toBe(true);
-    expect(result.attached).toBe(true);
     expect(deps.mergeIntoCafeGallery).not.toHaveBeenCalled();
   });
 

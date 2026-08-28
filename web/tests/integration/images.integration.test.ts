@@ -259,19 +259,12 @@ describeImages("integration — real MinIO/R2 image round-trip (docker compose u
     // Drive the REAL completion service with its default deps: they resolve to
     // the real getProcessUrls (needs IMAGE_SERVICE_* env? no — default deps use
     // the injected client; here we pass explicit deps wired to local MinIO).
-    const { completeImageUpload } = await import("@/lib/images/complete");
+    const { completeImageUpload, defaultCompleteUploadDeps } = await import("@/lib/images/complete");
     const result = await completeImageUpload(
       { id: TESTER_ID },
       { imageUuid, targetType: "cafe" as const, targetId: cafeId },
       {
-        query: async (text: string, params?: unknown[]) =>
-          (await import("@/lib/db/postgres")).query(text as string, params),
-        runInTransaction: async (fn) =>
-          (
-            await import("@/lib/db/postgres")
-          ).withTransaction(async (client) => fn(client.query.bind(client) as never)),
-        checkUploadIntent,
-        consumeUploadIntent,
+        ...defaultCompleteUploadDeps(),
         getProcessUrls: async (req) => ({
           imageUuid: req.imageUuid,
           original: await presignedGetUrl(originalKey),
@@ -288,7 +281,7 @@ describeImages("integration — real MinIO/R2 image round-trip (docker compose u
         processImage,
       },
     );
-    expect(result.attached).toBe(true);
+    expect(result.ok).toBe(true);
     expect(result.storedImage).toMatchObject({
       id: imageUuid,
       w: expect.any(Number),
@@ -319,14 +312,7 @@ describeImages("integration — real MinIO/R2 image round-trip (docker compose u
       { id: TESTER_ID },
       { imageUuid, targetType: "cafe" as const, targetId: cafeId },
       {
-        query: async (text: string, params?: unknown[]) =>
-          (await import("@/lib/db/postgres")).query(text as string, params),
-        runInTransaction: async (fn) =>
-          (
-            await import("@/lib/db/postgres")
-          ).withTransaction(async (client) => fn(client.query.bind(client) as never)),
-        checkUploadIntent,
-        consumeUploadIntent,
+        ...defaultCompleteUploadDeps(),
         getProcessUrls: async (req) => ({
           imageUuid: req.imageUuid,
           original: await presignedGetUrl(originalKey),
@@ -339,7 +325,7 @@ describeImages("integration — real MinIO/R2 image round-trip (docker compose u
         processImage,
       },
     );
-    expect(replay.attached).toBe(false);
+    expect(replay.ok).toBe(false);
     const after = await dbClient.query("select gallery from cafes where id = $1", [cafeId]);
     expect(after.rows[0].gallery).toHaveLength(1);
   });

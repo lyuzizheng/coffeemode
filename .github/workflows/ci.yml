@@ -75,8 +75,6 @@ jobs:
     defaults:
       run:
         working-directory: web
-    env:
-      DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode
     steps:
       - uses: actions/checkout@v4
 
@@ -134,6 +132,8 @@ jobs:
         run: npx playwright install chromium
 
       - name: E2E MVP smoke suite
+        env:
+          DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode
         run: npm run test:e2e
 
   integration-gate:

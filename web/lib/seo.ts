@@ -100,6 +100,6 @@ export function publicCafeShell(cafe: CafeDetail): PublicCafeShell {
   return {
     openState: { opening_hours: cafe.opening_hours, tz: cafe.tz },
     actions: { name: cafe.name, lat: cafe.lat, lng: cafe.lng },
-    gallery: cafe.gallery.map((photo) => ({ id: photo.id, thumbnail: photo.thumbnail })),
+    gallery: (cafe.gallery ?? []).map((photo) => ({ id: photo.id, thumbnail: photo.thumbnail })),
   };
 }

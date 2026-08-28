@@ -99,7 +99,7 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
   const td = await getTranslations("discovery");
   const origin = await getRequestOrigin();
   const canonical = `${origin}${cafeCanonicalPath(cafe.id)}`;
-  const covers = cafe.gallery.map((g) => g.card).filter(Boolean);
+  const covers = (cafe.gallery ?? []).map((g) => g.card).filter(Boolean);
   if (covers.length === 0 && cafe.cover) covers.push(cafe.cover);
   // The public payload contract (DG13): client components receive only the
   // narrow slices, never the full row (see publicCafeShell).

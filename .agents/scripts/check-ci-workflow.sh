@@ -71,7 +71,7 @@ else
     fi
   done
 
-  if grep -qE 'playwright install|check:visual|continue-on-error:[[:space:]]*true' "$workflow"; then
+  if grep -qE 'playwright install[[:space:]]*$|check:visual|continue-on-error:[[:space:]]*true' "$workflow"; then
     echo "ci.yml contains an unbounded browser install, visual gate, or allowed failure"
     fail=1
   fi

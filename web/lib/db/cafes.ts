@@ -410,7 +410,11 @@ export async function getCafe(id: string): Promise<CafeDetail | null> {
   const { rows } = await query<CafeDetail & Record<string, unknown>>(GET_BY_ID_SQL, [id]);
   const row = rows[0];
   if (!row) return null;
-  return { ...row, work_stats: coerceWorkStats(row.work_stats) };
+  return {
+    ...row,
+    gallery: row.gallery ?? [],
+    work_stats: coerceWorkStats(row.work_stats),
+  };
 }
 
 /**

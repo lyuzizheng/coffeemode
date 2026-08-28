@@ -58,6 +58,20 @@ jobs:
     needs: changes
     if: needs.changes.outputs.application == 'true'
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4@sha256:44126d872ac91993766c341e369c539e8196614321765d36a6f1bab0419a5fa5
+        env:
+          POSTGRES_USER: coffeemode
+          POSTGRES_PASSWORD: coffeemode
+          POSTGRES_DB: coffeemode
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U coffeemode -d coffeemode"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
     defaults:
       run:
         working-directory: web
@@ -105,6 +119,22 @@ jobs:
         run: |
           test -f .next/server/app/serwist/sw.js.body
           test -f .next/server/app/manifest.webmanifest.body
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('web/package-lock.json') }}
+
+      - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install chromium
+
+      - name: E2E MVP smoke suite
+        env:
+          DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode
+        run: npm run test:e2e
 
   integration-gate:
     needs: changes

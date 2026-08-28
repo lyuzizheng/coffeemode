@@ -55,7 +55,7 @@ Risk and independent-review requirements are defined only in
 ```text
 web: npm run typecheck, lint, check:i18n, test, build, verify
 web real DB: npm run db:migrate, npm run test:integration
-web browser smoke: npm run check:visual (local/manual evidence; not a required PR job)
+web browser smoke: npm run test:e2e (Playwright MVP smoke suite), npm run check:visual (local visual render evidence)
 services: npm run typecheck, npm test
 agent harness: .agents/scripts/preflight.sh, .agents/scripts/harness-self-test.sh
 ```

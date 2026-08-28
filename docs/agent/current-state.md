@@ -4,14 +4,15 @@
 
 Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisions-and-backlog.md` is in progress. Parts A–C and the remaining Phase 1 backlog (D1, D4, D7, A2) have merged to `main` (PRs #19, #20, #21, #22). Infrastructure slices (`image-pipeline`, `poi-cache-service`, `places-proxy`, `auth-foundation`) are code-complete but still pending owner credential/account actions.
 
-The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI artifacts were delivered and grilled (rounds 8–15, DG21–DG124), including the DG124 redesign that makes `/cafes/[id]` hydrate into the map app and abolishes the DeepLinkBanner. Every map-independent UI slice is design-unblocked; `discovery-sheet` and `seo-sharing` are COMPLETE, the rest READY in `docs/agent/implementation-slices.md`; the remaining design debt is the three map-bound artifacts, which wait on Apple credentials (#131) anyway.
+The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI artifacts were delivered and grilled (rounds 8–15, DG21–DG124), including the DG124 redesign that makes `/cafes/[id]` hydrate into the map app and abolishes the DeepLinkBanner. Every map-independent UI slice is design-unblocked; `discovery-sheet`, `seo-sharing`, and `profile-page` are COMPLETE, the rest READY in `docs/agent/implementation-slices.md`; the remaining design debt is the three map-bound artifacts, which wait on Apple credentials (#131) anyway.
 
 ## Active focus
 
 - Owner credential/account actions and worker deploys remain outstanding; see `docs/agent/pending-user-actions.md`.
 - Issue #23 (distributed Postgres token-bucket rate limiter) is merged.
+- Open issues carry tier-0..3 labels mirroring the priority tiers in `docs/specs/0004` §Priority tiers (authority lives there, not in the harness). Fix order: tier-0 correctness/security/docs-truth first, then tier-1 launch gates.
 - Issue #25 (image completion service with atomic DB writes) is merged.
-- Issue #24's likes_count trigger is merged (#57); #24 stays open for JSONB normalization.
+- Issue #24's likes_count trigger (#57) and work_stats row locking (#56) are merged; #24 stays open (tier-0) until the gallery-merge convergence in #234 lands. JSONB normalization is deferred with a revisit trigger (0004 Post-MVP).
 - Issue #26 (shared packages/common single-source) is merged.
 - Issue #27 (work_stats row locking) is merged (#56).
 - Issue #74 merges the post-review P1 fixes for PRs #66–#73 (OAuth redirect allowlist, proxy session refresh, profile upsert failure, sign-out cache clearing, and upstream POI/image error logging).
@@ -35,11 +36,13 @@ The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI 
 
 ```text
 web/                     Next.js 16 + HeroUI v3 + Tailwind v4 + next-intl (the app)
-web/db/migrations/       0001_init.sql — 4-table schema (spec 0001);
+web/db/migrations/       0001_init.sql — core schema (spec 0001);
                          0002_checkins_and_indexes.sql, 0003_rate_limits.sql,
                          0004_checkin_likes_trigger.sql, 0005_cafe_timezone.sql,
                          0006_image_upload_intents.sql, 0007_checkins_spec_alignment.sql,
-                         0008_no_self_likes.sql
+                         0008_no_self_likes.sql, 0009_cafe_tombstones.sql,
+                         0010_drop_min_spend.sql (DG125), 0011_cafe_tombstone_lifecycle.sql,
+                         0012_drop_redundant_cafe_indexes.sql
 web/lib/auth/            Supabase server client (PKCE), profile upsert logic
 web/lib/db/              Postgres pool (server-side only), withTransaction, atomic like toggle,
                          cafes domain lib (fused create + first check-in + stats, nearby list, getCafe),
@@ -95,9 +98,9 @@ _archive-coffeemode-backend/   old Java app — being dropped
    deploy, wire POI_SERVICE_URL/TOKEN.
 4. Map-independent UI slices are all design-unblocked and READY — pick any of:
    search-filters (#135), checkin-system (#148),
-   navigation-prompt (#149), profile-page (#152),
-   onboarding-geolocation (#153). discovery-sheet (#133) and seo-sharing (#150)
-   are COMPLETE; app-config (#189) is COMPLETE — feature
+   navigation-prompt (#149), onboarding-geolocation (#153).
+   discovery-sheet (#133), seo-sharing (#150), profile-page (#152, PR #209),
+   and app-config (#189) are COMPLETE — feature
    slices consume `web/lib/config.ts`, never hardcode. One writer per slice
 ```
 

@@ -1,7 +1,7 @@
 # Onboarding & Geolocation — Design Artifact v1
 
 - Slice: first-visit city + geolocation onboarding (issue #153)
-- Status: **Draft — pending owner approval**
+- Status: **Approved — owner, 2026-08-23 (DG114–DG123)**
 - Author: Kimi K3
 - Date: 2026-08-21 (revised 2026-08-22 — copy tone sweep per DG87/DG93;
   2026-08-23 — grill round 15 rulings DG114–DG123; DG124 — deep-link

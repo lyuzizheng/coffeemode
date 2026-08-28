@@ -4,7 +4,7 @@
 
 Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisions-and-backlog.md` is in progress. Parts A–C and the remaining Phase 1 backlog (D1, D4, D7, A2) have merged to `main` (PRs #19, #20, #21, #22). Infrastructure slices (`image-pipeline`, `poi-cache-service`, `places-proxy`, `auth-foundation`) are code-complete but still pending owner credential/account actions.
 
-The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI artifacts were delivered and grilled (rounds 8–15, DG21–DG124), including the DG124 redesign that makes `/cafes/[id]` hydrate into the map app and abolishes the DeepLinkBanner. Every map-independent UI slice is design-unblocked; `discovery-sheet`, `seo-sharing`, and `profile-page` are COMPLETE, the rest READY in `docs/agent/implementation-slices.md`; the remaining design debt is the three map-bound artifacts, which wait on Apple credentials (#131) anyway.
+The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI artifacts were delivered and grilled (rounds 8–15, DG21–DG124), including the DG124 redesign that makes `/cafes/[id]` hydrate into the map app and abolishes the DeepLinkBanner. Every map-independent UI slice is design-unblocked; `discovery-sheet`, `seo-sharing`, `profile-page`, and `search-filters` are COMPLETE, the rest READY in `docs/agent/implementation-slices.md`; the remaining design debt is the three map-bound artifacts, which wait on Apple credentials (#131) anyway.
 
 ## Active focus
 
@@ -42,7 +42,8 @@ web/db/migrations/       0001_init.sql — core schema (spec 0001);
                          0006_image_upload_intents.sql, 0007_checkins_spec_alignment.sql,
                          0008_no_self_likes.sql, 0009_cafe_tombstones.sql,
                          0010_drop_min_spend.sql (DG125), 0011_cafe_tombstone_lifecycle.sql,
-                         0012_drop_redundant_cafe_indexes.sql
+                         0012_drop_redundant_cafe_indexes.sql,
+                         0013_search_city_index.sql
 web/lib/auth/            Supabase server client (PKCE), profile upsert logic
 web/lib/db/              Postgres pool (server-side only), withTransaction, atomic like toggle,
                          cafes domain lib (fused create + first check-in + stats, nearby list, getCafe),

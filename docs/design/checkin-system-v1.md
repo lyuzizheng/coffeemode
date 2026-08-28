@@ -1,7 +1,7 @@
 # Check-in System — Design Artifact v1
 
 - Slice: `checkin-system` (issue #148)
-- Status: **Draft — pending owner approval**
+- Status: **Approved — owner, 2026-08-23 (DG59–DG75)**
 - Author: Kimi K3
 - Date: 2026-08-21 (revised 2026-08-21 — grill round 11 rulings DG59–DG73;
   2026-08-22 — copy tone sweep per DG87/DG93)

@@ -1,7 +1,7 @@
 # Profile Page — Design Artifact v1
 
 - Slice: `profile-page` (issue #152)
-- Status: **Draft — pending owner approval**
+- Status: **Approved — owner, 2026-08-23 (DG94–DG103)**
 - Author: Kimi K3
 - Date: 2026-08-21 (revised 2026-08-22 — copy tone sweep per DG87/DG93;
   grill round 13 rulings DG94–DG103)

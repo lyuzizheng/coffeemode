@@ -371,7 +371,7 @@ export interface NearbyCafesQuery {
 }
 
 const LIST_NEARBY_SQL = `
-select id, slug, name,
+select id, name,
        ST_Y(location::geometry) as lat,
        ST_X(location::geometry) as lng,
        address, city, tz, opening_hours, price_range, work_stats, cover,
@@ -394,7 +394,7 @@ export async function listCafesNearby(params: NearbyCafesQuery): Promise<CafeSum
 }
 
 const GET_BY_ID_SQL = `
-select id, slug, name,
+select id, name,
        ST_Y(location::geometry) as lat,
        ST_X(location::geometry) as lng,
        address, city, description, cover, gallery, opening_hours, tz,

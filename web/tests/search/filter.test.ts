@@ -13,7 +13,6 @@ import {
 function makeCafe(overrides?: Partial<CafeSummary>): CafeSummary {
   return {
     id: "cafe-1",
-    slug: "test-cafe",
     name: "Test Cafe",
     lat: 1.35,
     lng: 103.8,

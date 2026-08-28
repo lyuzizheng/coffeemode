@@ -5,7 +5,6 @@ import type { PublicStoredImage, StoredImage } from "./images";
 /** Cafe as returned by list/nearby queries (map + cards). */
 export interface CafeSummary {
   id: string;
-  slug: string | null;
   name: string;
   lat: number;
   lng: number;

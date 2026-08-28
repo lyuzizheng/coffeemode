@@ -78,7 +78,7 @@ None of the gaps affect the READY slices (all have at least one mocked or integr
 
 | Slice (status) | Traces that prove it |
 |---|---|
-| `search-filters` (READY) | T16 POI search (stored + live-gated), T24 config `search.maxRadiusKm` |
+| `search-filters` (COMPLETE) | T16 POI search (stored + live-gated), T24 config `search.maxRadiusKm` |
 | `checkin-system` (READY) | T8 create, T9 edit, T10 delete, T14/T15 photo intents + complete, T12 feed cursors |
 | `navigation-prompt` (READY) | T13 navigations + prompt-queue (tested via `rate-limit`/`navigations` + future queue unit) |
 | `onboarding-geolocation` (READY) | T4 proxy session (onboarding merges `profiles.current_city`) + T6 nearby (city fallback), browser welcome card (visual) |

@@ -540,7 +540,6 @@ describe("toPublicCafeDetail", () => {
     const { toPublicCafeDetail } = await import("@/lib/db/cafes");
     const cafe = {
       id: "c1",
-      slug: null,
       name: "Test",
       lat: 1.35,
       lng: 103.8,

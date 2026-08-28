@@ -79,8 +79,17 @@ export async function POST(request: Request) {
 
   try {
     const result = await completeImageUpload(user, req, defaultCompleteUploadDeps());
-    if (!result.attached || !result.storedImage || !result.processed) {
-      return apiError("not_found", "target not found or not owned by user", 404);
+    if (!result.ok) {
+      switch (result.reason) {
+        case "intent_not_found":
+          return apiError("forbidden", "upload intent invalid or not issued to user", 403);
+        case "not_owned":
+          return apiError("not_found", "target not found or not owned by user", 404);
+        case "intent_consumed":
+          return apiError("conflict", "upload intent already consumed", 409);
+        case "target_gone":
+          return apiError("not_found", "target not found or no longer owned", 404);
+      }
     }
 
     const response: CompleteImageResponse = {

@@ -1,47 +1,46 @@
 import { describe, expect, it, vi } from "vitest";
-import type { QueryResult } from "pg";
-import type { CompleteImageRequest } from "@/types/images";
 import {
   completeImageUpload,
   defaultCompleteUploadDeps,
   type CompleteQueryFn,
   type CompleteUploadDeps,
 } from "@/lib/images/complete";
+import type { CompleteImageRequest, StoredImage } from "@/types/images";
+import type { QueryResult } from "pg";
 
 const CAFE_ID = "11111111-1111-4111-9111-111111111111";
 const CHECKIN_ID = "22222222-2222-4222-a222-222222222222";
-const IMAGE_UUID = "12345678-1234-4123-9234-123456789abc";
+const IMAGE_UUID = "33333333-3333-4333-a333-333333333333";
 
 const REQ: CompleteImageRequest = {
   imageUuid: IMAGE_UUID,
   targetType: "checkin",
   targetId: CHECKIN_ID,
-  isCover: false,
 };
 
 const PROCESS_URLS = {
   imageUuid: IMAGE_UUID,
-  original: { url: "get", headers: {} },
-  originalPut: { url: "put", headers: {} },
-  card: { url: "card", headers: {} },
-  thumbnail: { url: "thumb", headers: {} },
+  original: { url: "https://r2.example.com/orig-signed", headers: {} },
+  originalPut: { url: "https://r2.example.com/orig-put", headers: {} },
+  card: { url: "https://r2.example.com/card-signed", headers: {} },
+  thumbnail: { url: "https://r2.example.com/thumb-signed", headers: {} },
   publicUrls: {
-    original: "https://images.example.com/original/uuid.webp",
-    card: "https://images.example.com/card/uuid.webp",
-    thumbnail: "https://images.example.com/thumb/uuid.webp",
+    original: "https://pub.example.com/original/img.webp",
+    card: "https://pub.example.com/card/img.webp",
+    thumbnail: "https://pub.example.com/thumb/img.webp",
   },
   keys: {
-    original: "original/uuid.webp",
-    card: "card/uuid.webp",
-    thumbnail: "thumb/uuid.webp",
+    original: "original/img.webp",
+    card: "card/img.webp",
+    thumbnail: "thumb/img.webp",
   },
 };
 
 const PROCESSED = {
   imageUuid: IMAGE_UUID,
   publicUrls: PROCESS_URLS.publicUrls,
-  width: 100,
-  height: 80,
+  width: 1200,
+  height: 800,
 };
 
 function makeDeps(overrides: Partial<CompleteUploadDeps> = {}): {
@@ -88,9 +87,6 @@ function makeDeps(overrides: Partial<CompleteUploadDeps> = {}): {
   const deps: CompleteUploadDeps = {
     query,
     runInTransaction,
-    // Issue #33 intent deps default to "issued to this user"; the consume
-    // stub routes a marker statement through the tx so statement-order
-    // assertions see it.
     checkUploadIntent: vi.fn().mockResolvedValue(true),
     consumeUploadIntent: vi.fn(
       async (_userId: string, _imageUuid: string, q: CompleteQueryFn) => {
@@ -98,6 +94,31 @@ function makeDeps(overrides: Partial<CompleteUploadDeps> = {}): {
         return true;
       },
     ),
+    ownsCafe: vi.fn(async (cafeId: string, userId: string, q?: CompleteQueryFn) => {
+      const db = q ?? query;
+      const res = await db<{ id: string }>("select id from cafes where id = $1 and created_by = $2 and deleted_at is null", [cafeId, userId]);
+      return res.rows.length > 0;
+    }),
+    ownsCheckin: vi.fn(async (checkinId: string, userId: string, q?: CompleteQueryFn) => {
+      const db = q ?? query;
+      const res = await db<{ cafe_id: string | null }>("select cafe_id from checkins where id = $1 and user_id = $2 and deleted_at is null", [checkinId, userId]);
+      return res.rows.length > 0;
+    }),
+    attachImageToCafe: vi.fn(async (params: { cafeId: string; userId: string; image: StoredImage; isCover?: boolean }, q?: CompleteQueryFn) => {
+      const db = q ?? query;
+      const res = await db<{ id: string }>("update cafes set gallery = ... where id = $3 and created_by = $4", [params.image, params.isCover, params.cafeId, params.userId]);
+      return (res.rowCount ?? res.rows.length) > 0;
+    }),
+    attachImageToCheckin: vi.fn(async (params: { checkinId: string; userId: string; image: StoredImage }, q?: CompleteQueryFn) => {
+      const db = q ?? query;
+      const res = await db<{ id: string; cafe_id: string | null }>("update checkins set photos = ... where id = $2 and user_id = $3", [params.image, params.checkinId, params.userId]);
+      if (res.rows.length === 0) return { ok: false, cafeId: null };
+      return { ok: true, cafeId: res.rows[0].cafe_id };
+    }),
+    mergeIntoCafeGallery: vi.fn(async (cafeId: string, image: StoredImage, q?: CompleteQueryFn) => {
+      const db = q ?? query;
+      await db("update cafes set gallery = ... where id = $1", [cafeId, image]);
+    }),
     getProcessUrls: vi.fn().mockResolvedValue(PROCESS_URLS),
     processImage: vi.fn().mockResolvedValue(PROCESSED),
     ...overrides,
@@ -108,97 +129,115 @@ function makeDeps(overrides: Partial<CompleteUploadDeps> = {}): {
 
 describe("completeImageUpload", () => {
   it("fails fast before remote work when the target is not owned", async () => {
-    const { deps } = makeDeps();
-    const query = deps.query as unknown as ReturnType<typeof vi.fn>;
-    query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    const { deps } = makeDeps({ ownsCheckin: vi.fn().mockResolvedValue(false) });
 
     const result = await completeImageUpload({ id: "user-1" }, REQ, deps);
 
+    expect(result.ok).toBe(false);
     expect(result.attached).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe("not_owned");
+    }
     expect(deps.getProcessUrls).not.toHaveBeenCalled();
     expect(deps.processImage).not.toHaveBeenCalled();
     expect(deps.runInTransaction).not.toHaveBeenCalled();
   });
 
-  it("attaches to a cafe target with a single update inside the transaction", async () => {
-    const { deps, calls } = makeDeps();
+  it("attaches to a cafe target via repository inside the transaction", async () => {
+    const { deps } = makeDeps();
     const result = await completeImageUpload(
       { id: "user-1" },
       { ...REQ, targetType: "cafe", targetId: CAFE_ID },
       deps,
     );
 
+    expect(result.ok).toBe(true);
     expect(result.attached).toBe(true);
-    const updates = calls.filter((c) => c.sql.includes("update cafes"));
-    expect(updates).toHaveLength(1);
-    expect(updates[0].sql).toContain("created_by = $4");
+    expect(deps.attachImageToCafe).toHaveBeenCalledTimes(1);
+    expect(deps.attachImageToCheckin).not.toHaveBeenCalled();
   });
 
   it("runs intent consume, checkin append and cafe-gallery merge in ONE transaction", async () => {
-    const { deps, calls, txQueries } = makeDeps();
+    const { deps, txQueries } = makeDeps();
     const result = await completeImageUpload({ id: "user-1" }, REQ, deps);
 
+    expect(result.ok).toBe(true);
     expect(result.attached).toBe(true);
     expect(result.storedImage?.source).toEqual({ type: "checkin", id: CHECKIN_ID });
     // All writes went through the SAME runInTransaction invocation.
     expect(txQueries).toHaveLength(1);
-    expect(txQueries[0]).toEqual([
-      expect.stringContaining("image_upload_intents"),
-      expect.stringContaining("update checkins"),
-      expect.stringContaining("update cafes"),
-    ]);
-    const writes = calls.filter((c) => c.sql.includes("update "));
-    expect(writes).toHaveLength(2);
+    expect(deps.attachImageToCheckin).toHaveBeenCalledTimes(1);
+    expect(deps.mergeIntoCafeGallery).toHaveBeenCalledTimes(1);
   });
 
   it("fails fast before ownership/remote work when the upload was not issued to this user (#33)", async () => {
-    const { deps, query } = makeDeps({ checkUploadIntent: vi.fn().mockResolvedValue(false) });
+    const { deps } = makeDeps({ checkUploadIntent: vi.fn().mockResolvedValue(false) });
 
     const result = await completeImageUpload({ id: "user-1" }, REQ, deps);
 
+    expect(result.ok).toBe(false);
     expect(result.attached).toBe(false);
-    expect(query).not.toHaveBeenCalled(); // no ownership check either
+    if (!result.ok) {
+      expect(result.reason).toBe("intent_not_found");
+    }
+    expect(deps.ownsCheckin).not.toHaveBeenCalled();
     expect(deps.getProcessUrls).not.toHaveBeenCalled();
     expect(deps.runInTransaction).not.toHaveBeenCalled();
   });
 
   it("rolls back the attach when the intent consume finds 0 rows (replay/expired/mismatch)", async () => {
-    const { deps, calls } = makeDeps({
+    const { deps } = makeDeps({
       consumeUploadIntent: vi.fn().mockResolvedValue(false),
     });
 
     const result = await completeImageUpload({ id: "user-1" }, REQ, deps);
 
+    expect(result.ok).toBe(false);
     expect(result.attached).toBe(false);
-    expect(calls.some((c) => c.sql.includes("update checkins"))).toBe(false);
-    expect(calls.some((c) => c.sql.includes("update cafes"))).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe("intent_consumed");
+    }
+    expect(deps.attachImageToCheckin).not.toHaveBeenCalled();
+    expect(deps.mergeIntoCafeGallery).not.toHaveBeenCalled();
   });
 
-  it("skips the gallery merge when the checkin has no cafe", async () => {
-    const { deps } = makeDeps();
-    const query = deps.query as unknown as ReturnType<typeof vi.fn>;
-    // Ownership pre-check: checkin exists but belongs to no cafe.
-    query.mockResolvedValueOnce({ rows: [{ cafe_id: null }], rowCount: 1 });
-    // Intent consume marker (result ignored by the stub).
-    query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-    // Attach update: returning cafe_id is null, so no gallery merge.
-    query.mockResolvedValueOnce({ rows: [{ id: CHECKIN_ID, cafe_id: null }], rowCount: 1 });
+  it("returns target_gone when attach matches 0 rows in transaction", async () => {
+    const { deps } = makeDeps({
+      attachImageToCheckin: vi.fn().mockResolvedValue({ ok: false, cafeId: null }),
+    });
 
     const result = await completeImageUpload({ id: "user-1" }, REQ, deps);
 
+    expect(result.ok).toBe(false);
+    expect(result.attached).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe("target_gone");
+    }
+    expect(deps.mergeIntoCafeGallery).not.toHaveBeenCalled();
+  });
+
+  it("skips the gallery merge when the checkin has no cafe", async () => {
+    const { deps } = makeDeps({
+      attachImageToCheckin: vi.fn().mockResolvedValue({ ok: true, cafeId: null }),
+    });
+
+    const result = await completeImageUpload({ id: "user-1" }, REQ, deps);
+
+    expect(result.ok).toBe(true);
     expect(result.attached).toBe(true);
-    const allSql = query.mock.calls.map((c: unknown[]) => String(c[0]));
-    expect(allSql.some((sql) => sql.includes("update cafes"))).toBe(false);
+    expect(deps.mergeIntoCafeGallery).not.toHaveBeenCalled();
   });
 
   it("default deps are constructible without touching pg/sharp at import time", () => {
-    // defaultCompleteUploadDeps must not throw at construction; the heavy
-    // modules are only imported when the returned functions are called.
     expect(() => defaultCompleteUploadDeps()).not.toThrow();
     const deps = defaultCompleteUploadDeps();
-    expect(typeof deps.query).toBe("function");
     expect(typeof deps.runInTransaction).toBe("function");
     expect(typeof deps.checkUploadIntent).toBe("function");
     expect(typeof deps.consumeUploadIntent).toBe("function");
+    expect(typeof deps.ownsCafe).toBe("function");
+    expect(typeof deps.ownsCheckin).toBe("function");
+    expect(typeof deps.attachImageToCafe).toBe("function");
+    expect(typeof deps.attachImageToCheckin).toBe("function");
+    expect(typeof deps.mergeIntoCafeGallery).toBe("function");
   });
 });

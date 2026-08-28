@@ -182,15 +182,16 @@ export function MobileSheet({
 
   if (!mounted || viewportH === 0) return null;
 
-  const onDragEnd = (_: unknown, info: PanInfo) => {
-    const next = resolveTargetSnap(
-      snap,
-      y.get(),
-      info.velocity.y,
-      offsets,
-      reduced,
-    );
-    controller.snapTo(next);
+  const onDragEnd = (_: unknown, info: { offset: { y: number }; velocity: { y: number } }) => {
+    const steps: SheetSnap[] = selectedCafeId ? ["peek", "half", "full"] : ["peek"];
+    const current = steps.indexOf(snap);
+    let next = current;
+    if (info.velocity.y > STEP_VELOCITY || info.offset.y > STEP_OFFSET_PX) next = current - 1;
+    else if (info.velocity.y < -STEP_VELOCITY || info.offset.y < -STEP_OFFSET_PX) next = current + 1;
+    next = Math.max(0, Math.min(steps.length - 1, next));
+    const target = steps[next];
+    // Stepping into PEEK clears the selection (18b) — controller.snapTo handles it.
+    controller.snapTo(target);
   };
 
   // DG15 scroll handoff: a downward pull starts dragging the sheet only when

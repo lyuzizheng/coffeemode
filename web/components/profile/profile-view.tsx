@@ -382,7 +382,7 @@ export function ProfileView({
                         }
                       }}
                       autoFocus
-                      className="px-2 py-1 text-lg font-display font-bold bg-surface-secondary border border-primary rounded-md outline-none text-foreground text-center"
+                      className="px-2 py-1 text-lg font-display font-bold bg-surface-secondary border border-accent rounded-md outline-none text-foreground text-center"
                       placeholder={t("edit_name_placeholder")}
                     />
                     <Button
@@ -439,7 +439,7 @@ export function ProfileView({
                           onClick={() => handleSelectCity(c.id)}
                           className={`px-2.5 py-1 text-xs rounded-lg transition-colors ${
                             isSelected
-                              ? "bg-primary text-primary-foreground font-medium"
+                              ? "bg-accent text-accent-foreground font-medium"
                               : "bg-surface-secondary text-muted hover:text-foreground"
                           }`}
                         >
@@ -543,7 +543,7 @@ export function ProfileView({
                       <p className="text-sm text-muted">{t("empty_checkins")}</p>
                       <Link
                         href="/"
-                        className="text-sm text-primary font-medium hover:underline"
+                        className="text-sm text-accent font-medium hover:underline"
                       >
                         {t("empty_checkins_action")}
                       </Link>
@@ -568,7 +568,7 @@ export function ProfileView({
                             ) : (
                               <Link
                                 href={`/?cafe=${item.cafeId}`}
-                                className="font-display font-semibold text-foreground text-base hover:text-primary transition-colors"
+                                className="font-display font-semibold text-foreground text-base hover:text-accent transition-colors"
                               >
                                 {item.cafeName || t("unknown_cafe")}
                               </Link>

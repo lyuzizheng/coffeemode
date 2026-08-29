@@ -8,9 +8,13 @@
  * selection controller, and switches between the mobile sheet and the
  * desktop sidebar/detail columns at 1024px (18g).
  *
- * Renders nothing until mounted: the scaffold page beneath is the
- * server-rendered placeholder map surface, and discovery layers on top as
- * a client enhancement.
+ * SSR/hydration contract (#275): in landing mode (children present) the
+ * partitioned shell renders on the very first pass — the desktop sidebar
+ * shell is CSS-gated (`hidden lg:flex`), so SSR already reserves the 380px
+ * column and neither mounting nor crossing the 1024px breakpoint ever
+ * re-parents, remounts, or shifts the landing subtree. Mounting gates only
+ * the interactive content (list, detail column, MobileSheet), never the
+ * tree shape.
  */
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -60,8 +64,6 @@ export function DiscoveryHome({
   // being a dead button.
   const onCheckIn = () => toast(t("checkin_coming"), { timeout: 4000 });
 
-  if (!mounted) return <>{children}</>;
-
   const props = {
     controller,
     cafes: cafesQuery.data ?? [],
@@ -69,12 +71,24 @@ export function DiscoveryHome({
     onCheckIn,
     addCafe,
   };
-  return isDesktop ? (
-    <DesktopDiscovery {...props}>{children}</DesktopDiscovery>
-  ) : (
+
+  // Standalone mode (no surface children — the future map surface) keeps the
+  // JS-gated switch: there is no landing subtree to keep stable.
+  if (!children) {
+    if (!mounted) return null;
+    return isDesktop ? <DesktopDiscovery {...props} /> : <MobileSheet {...props} />;
+  }
+
+  // Landing mode: one stable tree across SSR, mount, and breakpoint changes
+  // (#275). The sidebar shell is always rendered and CSS-gated inside
+  // DesktopDiscovery; mounting gates only its interactive content and the
+  // MobileSheet overlay.
+  return (
     <>
-      {children}
-      <MobileSheet {...props} />
+      <DesktopDiscovery {...props} showColumns={mounted && isDesktop}>
+        {children}
+      </DesktopDiscovery>
+      {mounted && !isDesktop ? <MobileSheet {...props} /> : null}
     </>
   );
 }

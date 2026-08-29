@@ -285,7 +285,9 @@ Desktop:
   Left sidebar 380px: search + filters + cafe list (scroll)
   Center-right: full-screen map
   Cafe detail: second left column immediately right of the sidebar (DG42);
-               the map fills the remaining width — no right-side drawer
+               the map fills the remaining width — no right-side drawer;
+               below xl (1280px) the detail column overlays the surface
+               instead of squeezing it (#275)
   Activates at 1024px and uses the shared selection/URL state; never emulates
   mobile PEEK/HALF/FULL snaps
 Deep-link/share landing: dedicated SSR /cafes/[id] in the separate seo-sharing slice

@@ -68,6 +68,7 @@ describe("DesktopDiscovery container partitioning (issue #246)", () => {
         isLoading={false}
         onCheckIn={vi.fn()}
         addCafe={<span>Add Cafe</span>}
+        showColumns
       >
         <div data-testid="landing-content">
           <h1>Marketing Landing Page</h1>
@@ -77,12 +78,46 @@ describe("DesktopDiscovery container partitioning (issue #246)", () => {
     );
 
     // Sidebar discovery region exists
-    expect(screen.getByRole("region", { name: messages.discovery.sheet_aria })).toBeInTheDocument();
+    const region = screen.getByRole("region", { name: messages.discovery.sheet_aria });
+    expect(region).toBeInTheDocument();
     expect(screen.getByText("Common Man Coffee Roasters")).toBeInTheDocument();
 
     // Children landing content is rendered and not covered
-    expect(screen.getByTestId("landing-content")).toBeInTheDocument();
+    const landing = screen.getByTestId("landing-content");
+    expect(landing).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Marketing Landing Page" })).toBeInTheDocument();
+
+    // Structural contract (#275): the region is sticky in-flow (never the old
+    // fixed overlay), CSS-gated below lg, and shares one flex parent with the
+    // landing subtree — a regression to the fixed overlay must fail here.
+    expect(region.className).toContain("sticky");
+    expect(region.className).not.toContain("fixed");
+    expect(region.className).toContain("hidden");
+    expect(region.className).toContain("lg:flex");
+    expect(region.parentElement).toContainElement(landing);
+  });
+
+  it("keeps the sidebar shell mounted with skeletons when column content is gated (#275 SSR contract)", () => {
+    const controller = createMockController();
+    render(
+      <DesktopDiscovery
+        controller={controller}
+        cafes={[mockCafe]}
+        isLoading={false}
+        onCheckIn={vi.fn()}
+        addCafe={<span>Add Cafe</span>}
+        showColumns={false}
+      >
+        <div data-testid="landing-content" />
+      </DesktopDiscovery>,
+      { wrapper: Wrapper },
+    );
+
+    // Shell (region) renders even with content gated — SSR reserves the
+    // column; only the interactive list/detail wait for mount.
+    expect(screen.getByRole("region", { name: messages.discovery.sheet_aria })).toBeInTheDocument();
+    expect(screen.queryByText("Common Man Coffee Roasters")).not.toBeInTheDocument();
+    expect(screen.getByTestId("landing-content")).toBeInTheDocument();
   });
 
   it("renders standalone discovery columns when no children are passed", () => {
@@ -98,7 +133,10 @@ describe("DesktopDiscovery container partitioning (issue #246)", () => {
       { wrapper: Wrapper },
     );
 
-    expect(screen.getByRole("region", { name: messages.discovery.sheet_aria })).toBeInTheDocument();
+    const region = screen.getByRole("region", { name: messages.discovery.sheet_aria });
+    expect(region).toBeInTheDocument();
+    // Standalone (map-surface) mode stays a fixed overlay.
+    expect(region.className).toContain("fixed");
     expect(screen.getByText("Common Man Coffee Roasters")).toBeInTheDocument();
     expect(screen.queryByTestId("landing-content")).not.toBeInTheDocument();
   });

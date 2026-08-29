@@ -6,6 +6,14 @@
  * the map keeps the remaining width. The mobile snap states never appear
  * here. The detail column opens with a 200ms slide-in and closes with Esc
  * or the ghost ×.
+ *
+ * SSR contract (#275): when surface children are present, the sidebar shell
+ * renders on every pass — CSS-gated (`hidden lg:flex`) — so SSR already
+ * reserves the 380px column and neither mounting nor crossing the 1024px
+ * breakpoint ever re-parents or shifts the surface subtree. `showColumns`
+ * gates only the interactive content (list/detail), never the tree shape.
+ * Below 1280px the detail column overlays the surface instead of squeezing
+ * it below its content width.
  */
 import { useEffect, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -39,6 +47,7 @@ export function DesktopDiscovery({
   onCheckIn,
   addCafe,
   children,
+  showColumns = true,
 }: {
   controller: DiscoveryController;
   cafes: CafeSummary[];
@@ -46,6 +55,9 @@ export function DesktopDiscovery({
   onCheckIn: () => void;
   addCafe: ReactNode;
   children?: ReactNode;
+  /** Landing mode only: gates the interactive column content so the shell
+   * itself can render before mount (SSR contract #275). Unused standalone. */
+  showColumns?: boolean;
 }) {
   const t = useTranslations("discovery");
   const reduced = useReducedMotion();
@@ -60,9 +72,16 @@ export function DesktopDiscovery({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [close]);
 
+  // Standalone mode has no shell contract — content always shows.
+  const contentVisible = !children || showColumns;
+
   const discoveryColumns = (
     <div
-      className={`${children ? "sticky top-0 h-dvh" : "fixed inset-y-0 left-0"} flex shrink-0 z-30`}
+      className={
+        children
+          ? "sticky top-0 h-dvh z-30 hidden shrink-0 lg:flex"
+          : "fixed inset-y-0 left-0 z-30 flex shrink-0"
+      }
       role="region"
       aria-label={t("sheet_aria")}
     >
@@ -70,7 +89,7 @@ export function DesktopDiscovery({
         {/* Reserved 48px search/filter row — internals belong to search-filters. */}
         <div className="h-12 shrink-0 border-b border-separator" aria-hidden />
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {isLoading ? (
+          {!contentVisible || isLoading ? (
             <SidebarSkeletons />
           ) : cafes.length === 0 ? (
             <div className="flex flex-col items-start gap-2 p-4">
@@ -107,27 +126,29 @@ export function DesktopDiscovery({
         </div>
       </aside>
 
-      <AnimatePresence>
-        {selectedCafeId && (
-          <motion.div
-            key={selectedCafeId}
-            initial={reduced ? false : { x: -24, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={reduced ? undefined : { x: -24, opacity: 0 }}
-            transition={{ duration: reduced ? 0 : duration.state, ease: ease.default }}
-            className="h-full w-[400px] shrink-0 overflow-y-auto border-l border-separator bg-overlay py-4"
-          >
-            <DetailContent
-              cafeId={selectedCafeId}
-              variant="full"
-              controller={controller}
-              onCheckIn={onCheckIn}
-              onClose={close}
-              distanceM={cafes.find((c) => c.id === selectedCafeId)?.distance_m}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {contentVisible && (
+        <AnimatePresence>
+          {selectedCafeId && (
+            <motion.div
+              key={selectedCafeId}
+              initial={reduced ? false : { x: -24, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={reduced ? undefined : { x: -24, opacity: 0 }}
+              transition={{ duration: reduced ? 0 : duration.state, ease: ease.default }}
+              className="absolute inset-y-0 left-[380px] h-full w-[400px] shrink-0 overflow-y-auto border-l border-separator bg-overlay py-4 shadow-lg xl:static xl:shadow-none"
+            >
+              <DetailContent
+                cafeId={selectedCafeId}
+                variant="full"
+                controller={controller}
+                onCheckIn={onCheckIn}
+                onClose={close}
+                distanceM={cafes.find((c) => c.id === selectedCafeId)?.distance_m}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
     </div>
   );
 
@@ -136,9 +157,7 @@ export function DesktopDiscovery({
   return (
     <div className="flex min-h-dvh w-full">
       {discoveryColumns}
-      <div className="flex-1 min-w-0 min-h-dvh flex flex-col overflow-y-auto">
-        {children}
-      </div>
+      <div className="flex-1 min-w-0 flex flex-col">{children}</div>
     </div>
   );
 }

@@ -104,7 +104,7 @@ Local dev/CI       → same postgis/postgis:16-3.4 image (docker-compose locally
 - Product-table data stays server-mediated: route handlers use the pooled Postgres connection, and the tables must NOT be reachable through Supabase's Data API (PostgREST/GraphQL) with the browser anon key — new projects no longer auto-expose new tables, and default grants to `anon`/`authenticated` are revoked at provisioning as a belt-and-suspenders step (`docs/agent/pending-user-actions.md` §2). The anon key is used only for auth flows.
 - Postgres connection: standard `pg` Pool (server-side only), fail-closed SSL (#41). PostGIS enabled via `create extension postgis` (Supabase catalog). Pick the Supabase region closest to the VPS — route handlers run multi-round-trip transactions, so RTT multiplies.
 
-#### Tables (7 total: 5 product + 2 infra — deliberately minimal; applied via migrations 0001–0012)
+#### Tables (7 total: 5 product + 2 infra — deliberately minimal; applied via migrations 0001–0015)
 
 ```sql
 -- 1. profiles: app-side user record, keyed by Supabase auth user id
@@ -139,14 +139,14 @@ create table cafes (
   updated_at      timestamptz default now(),
   deleted_at      timestamptz             -- 0009: soft delete; tombstone keeps id + location for 404 recovery (DG111)
 );
-create index idx_cafes_location on cafes using gist (location);
+create index idx_cafes_location_active on cafes using gist (location) where deleted_at is null;
 create index idx_cafes_name_fts on cafes using gin (to_tsvector('simple', name));
 -- 0011: tombstone-aware — a soft-deleted cafe does not block re-importing the same POI
 create unique index idx_cafes_gplace on cafes (google_place_id) where google_place_id is not null and deleted_at is null;  -- dedupe
 create unique index idx_cafes_apple_poi_id on cafes (apple_poi_id) where apple_poi_id is not null and deleted_at is null;
 create index idx_cafes_city on cafes (city);
+create index idx_cafes_lower_city on cafes (lower(city)) where deleted_at is null;
 create index idx_cafes_created_by on cafes (created_by);
-create index idx_cafes_gallery on cafes using gin (gallery jsonb_path_ops);
 create index idx_profiles_current_city on profiles (current_city);
 
 -- 3. checkins: 打卡 — every review is a check-in (creation is the first one)
@@ -172,7 +172,6 @@ create index idx_checkins_cafe on checkins (cafe_id, visited_at desc) where dele
 create index idx_checkins_user on checkins (user_id, visited_at desc) where deleted_at is null;
 create index idx_checkins_user_cafe on checkins (user_id, cafe_id, visited_at desc) where deleted_at is null;
 create index idx_checkins_likes on checkins (cafe_id, likes_count desc, visited_at desc) where deleted_at is null;
-create index idx_checkins_photos on checkins using gin (photos jsonb_path_ops);
 
 -- 4a. checkin_likes: social signal for comment ranking and future scoring weight
 create table checkin_likes (
@@ -182,6 +181,7 @@ create table checkin_likes (
   created_at  timestamptz default now(),
   unique (checkin_id, user_id)
 );
+create index idx_checkin_likes_user_id on checkin_likes (user_id);
 
 -- 4. navigations: drives the ClassPass-style "did you visit?" prompt
 -- Implementation status: applied migration 0001 created only
@@ -199,6 +199,7 @@ create table navigations (
   created_at  timestamptz default now()
 );
 create index idx_nav_pending on navigations (user_id) where resolved = false;
+create index idx_navigations_cafe_id on navigations (cafe_id);
 ```
 
 Notes:

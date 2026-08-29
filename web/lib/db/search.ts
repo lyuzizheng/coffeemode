@@ -1,6 +1,7 @@
 import "server-only";
 
 import { appConfig } from "@/lib/config";
+import { acceptableMaxStayLabels } from "@/lib/search/filter";
 import { coerceWorkStats } from "@/lib/stats/work-stats";
 import type { CafeSummary } from "@/types/cafes";
 import type { MaxStay } from "@/types/checkins";
@@ -32,15 +33,6 @@ const WORK_DIM_COLS = [
   { key: "filter_temp", dim: "temp" },
   { key: "filter_coffee", dim: "coffee" },
 ] as const;
-
-export const ACCEPTABLE_MAX_STAYS: Record<MaxStay, string[]> = {
-  peak: ["peak"],
-  "1h": ["1h", "2h", "3h", "unlimited"],
-  "2h": ["2h", "3h", "unlimited"],
-  "3h": ["3h", "unlimited"],
-  unlimited: ["unlimited"],
-  unknown: ["unknown", "peak", "1h", "2h", "3h", "unlimited"],
-};
 
 /**
  * Search own cafes in Postgres by keyword, city scope, and work filters.
@@ -87,10 +79,11 @@ export async function searchCafesInDb(
   }
 
   if (params.filter_max_stay !== undefined) {
-    const allowed = ACCEPTABLE_MAX_STAYS[params.filter_max_stay];
-    if (allowed) {
+    const allowed = acceptableMaxStayLabels(params.filter_max_stay);
+    if (allowed.length > 0) {
       values.push(allowed);
       const idx = values.length;
+      // SQL tie-break (order by value::int desc, key asc) must stay consistent with getConsensusOption in web/lib/stats/work-stats.ts (first-key-in-jsonb-order).
       conditions.push(
         `(select key from jsonb_each_text(case when jsonb_typeof(work_stats->'policies'->'max_stay') = 'object' then work_stats->'policies'->'max_stay' else '{}'::jsonb end) where value ~ '^[0-9]+$' and value::int > 0 order by value::int desc, key asc limit 1) = ANY($${idx}::text[])`,
       );

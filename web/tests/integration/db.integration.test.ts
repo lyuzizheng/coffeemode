@@ -49,6 +49,7 @@ import {
   getUserCafes,
 } from "@/lib/db/profile";
 import { searchCafesInDb } from "@/lib/db/search";
+import { executeSearch } from "@/lib/search/search-service";
 import { recordNavigation } from "@/lib/db/navigations";
 import {
   FeedCursorError,
@@ -1127,6 +1128,102 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
 
       const high = await searchCafesInDb({ filter_overall: 95 });
       expect(high.some((c) => c.id === legacyCafeId)).toBe(false);
+    });
+
+    it("filters cafes by max_stay pushed down to SQL without dropping matches beyond the 100 fetch cap (#272)", async () => {
+      const city = "stay-cap-city";
+      const insertValues: string[] = [];
+      const params: unknown[] = [];
+      let paramIdx = 1;
+
+      // 105 non-matching cafes (max_stay: "1h") named Alpha...
+      for (let i = 0; i < 105; i++) {
+        const id = randomUUID();
+        const name = `Alpha Stay ${i.toString().padStart(3, "0")}`;
+        insertValues.push(
+          `($${paramIdx++}, $${paramIdx++}, ST_SetSRID(ST_MakePoint(103.8, 1.35), 4326)::geography, $${paramIdx++}, $${paramIdx++}, 'Asia/Singapore', $${paramIdx++}::jsonb)`,
+        );
+        params.push(id, name, city, U1, JSON.stringify({ policies: { max_stay: { "1h": 5 } } }));
+      }
+
+      // 15 matching cafes (max_stay: "unlimited") named Zulu... (sort alphabetically after all 105 Alpha cafes)
+      const matchingIds: string[] = [];
+      for (let i = 0; i < 15; i++) {
+        const id = randomUUID();
+        matchingIds.push(id);
+        const name = `Zulu Stay ${i.toString().padStart(3, "0")}`;
+        insertValues.push(
+          `($${paramIdx++}, $${paramIdx++}, ST_SetSRID(ST_MakePoint(103.8, 1.35), 4326)::geography, $${paramIdx++}, $${paramIdx++}, 'Asia/Singapore', $${paramIdx++}::jsonb)`,
+        );
+        params.push(id, name, city, U1, JSON.stringify({ policies: { max_stay: { unlimited: 5 } } }));
+      }
+
+      await dbClient.query(
+        `insert into cafes (id, name, location, city, created_by, tz, work_stats) values ${insertValues.join(", ")}`,
+        params,
+      );
+
+      // Search with filter_max_stay: "2h" (matches "unlimited", but not "1h")
+      // Without SQL pushdown, LIMIT 100 on alphabetical sort would truncate before the Zulu cafes, returning 0 rows.
+      const results = await searchCafesInDb({ city, filter_max_stay: "2h" });
+      expect(results).toHaveLength(15);
+      expect(results.map((c) => c.id).sort()).toEqual(matchingIds.sort());
+      expect(results.every((c) => c.name.startsWith("Zulu Stay"))).toBe(true);
+    });
+
+    it("iteratively fetches open cafes on real Postgres without dropping matches beyond the 100 fetch cap (#272)", async () => {
+      const city = "open-cap-city";
+      const alwaysOpenHours = JSON.stringify({
+        mon: { open: "00:00", close: "23:59" },
+        tue: { open: "00:00", close: "23:59" },
+        wed: { open: "00:00", close: "23:59" },
+        thu: { open: "00:00", close: "23:59" },
+        fri: { open: "00:00", close: "23:59" },
+        sat: { open: "00:00", close: "23:59" },
+        sun: { open: "00:00", close: "23:59" },
+      });
+
+      const insertValues: string[] = [];
+      const params: unknown[] = [];
+      let paramIdx = 1;
+
+      // 105 closed cafes (opening_hours: null) named Alpha...
+      for (let i = 0; i < 105; i++) {
+        const id = randomUUID();
+        const name = `Alpha Closed ${i.toString().padStart(3, "0")}`;
+        insertValues.push(
+          `($${paramIdx++}, $${paramIdx++}, ST_SetSRID(ST_MakePoint(103.8, 1.35), 4326)::geography, $${paramIdx++}, $${paramIdx++}, 'Asia/Singapore', null)`,
+        );
+        params.push(id, name, city, U1);
+      }
+
+      // 15 open cafes named Zulu... (sort alphabetically after all 105 Alpha cafes)
+      for (let i = 0; i < 15; i++) {
+        const id = randomUUID();
+        const name = `Zulu Open ${i.toString().padStart(3, "0")}`;
+        insertValues.push(
+          `($${paramIdx++}, $${paramIdx++}, ST_SetSRID(ST_MakePoint(103.8, 1.35), 4326)::geography, $${paramIdx++}, $${paramIdx++}, 'Asia/Singapore', $${paramIdx++}::jsonb)`,
+        );
+        params.push(id, name, city, U1, alwaysOpenHours);
+      }
+
+      await dbClient.query(
+        `insert into cafes (id, name, location, city, created_by, tz, opening_hours) values ${insertValues.join(", ")}`,
+        params,
+      );
+
+      // executeSearch with open_now: true
+      // With bounded iterative fetch, batch 1 (0..100) fetches Alpha closed cafes (0 matches),
+      // batch 2 (100..120) fetches Zulu open cafes (15 matches), reaching the suggestion limit.
+      const searchRes = await executeSearch(
+        { city, open_now: true },
+        new Date("2026-08-29T10:00:00Z"),
+      );
+
+      expect(searchRes.results.length).toBe(10);
+      expect(searchRes.results.every((r) => r.name.startsWith("Zulu Open"))).toBe(true);
+      expect(searchRes.is_weak_results).toBe(false);
+      expect(searchRes.total_count).toBe(15);
     });
   });
 

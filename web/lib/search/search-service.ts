@@ -3,6 +3,7 @@ import "server-only";
 import { appConfig } from "@/lib/config";
 import { DEFAULT_CITY, findCity } from "@/lib/cities";
 import { searchCafesInDb } from "@/lib/db/search";
+import type { CafeWithExternalIds } from "@/lib/db/search";
 import { searchExternalPOIs, searchPOIs } from "@/lib/places/poi-client";
 import { haversineDistanceM } from "./distance";
 import { hasWorkFiltersActive, matchesAllFilters } from "./filter";
@@ -13,6 +14,10 @@ import type {
   SearchResultItem,
 } from "./types";
 import type { POI } from "@shared/places/types";
+
+export function hasUnpushedFilters(filters: SearchFilters): boolean {
+  return Boolean(filters.open_now);
+}
 
 export function resolveReferencePoint(
   lat?: number,
@@ -79,23 +84,68 @@ export async function executeSearch(
 ): Promise<SearchResponse> {
   const refPoint = resolveReferencePoint(filters.lat, filters.lng, filters.city);
 
-  // 1. Fetch matching cafes from DB with work filters pushed down to SQL
-  const rawCafes = await searchCafesInDb({
-    q: filters.q,
-    city: filters.city,
-    filter_wifi: filters.filter_wifi,
-    filter_outlets: filters.filter_outlets,
-    filter_seats: filters.filter_seats,
-    filter_temp: filters.filter_temp,
-    filter_coffee: filters.filter_coffee,
-    filter_overall: filters.filter_overall,
-    limit: appConfig.search.dbFetchCap,
-  });
+  const hasUnpushed = hasUnpushedFilters(filters);
+  const rawCafes: CafeWithExternalIds[] = [];
+  let filteredCafes: CafeWithExternalIds[] = [];
 
-  // Filter cafes against work attributes and open_now
-  const filteredCafes = rawCafes.filter((cafe) =>
-    matchesAllFilters(cafe, filters, instant),
-  );
+  if (!hasUnpushed) {
+    // 1. Fetch matching cafes from DB with work filters pushed down to SQL
+    const cafes = await searchCafesInDb({
+      q: filters.q,
+      city: filters.city,
+      filter_wifi: filters.filter_wifi,
+      filter_outlets: filters.filter_outlets,
+      filter_seats: filters.filter_seats,
+      filter_temp: filters.filter_temp,
+      filter_coffee: filters.filter_coffee,
+      filter_overall: filters.filter_overall,
+      filter_max_stay: filters.filter_max_stay,
+      limit: appConfig.search.dbFetchCap,
+    });
+    rawCafes.push(...cafes);
+    filteredCafes = rawCafes.filter((cafe) =>
+      matchesAllFilters(cafe, filters, instant),
+    );
+  } else {
+    // Bounded iterative fetch for queries with in-memory filters (e.g. open_now)
+    const targetLimit = Math.max(
+      0,
+      Math.min(
+        filters.limit ?? appConfig.search.defaultSuggestionLimit,
+        appConfig.search.maxSuggestionLimit,
+      ),
+    );
+    const batchSize = appConfig.search.dbFetchCap;
+    const maxBatches = appConfig.search.maxIterativeFetchBatches;
+
+    for (let batch = 0; batch < maxBatches; batch++) {
+      const offset = batch * batchSize;
+      const cafesBatch = await searchCafesInDb({
+        q: filters.q,
+        city: filters.city,
+        filter_wifi: filters.filter_wifi,
+        filter_outlets: filters.filter_outlets,
+        filter_seats: filters.filter_seats,
+        filter_temp: filters.filter_temp,
+        filter_coffee: filters.filter_coffee,
+        filter_overall: filters.filter_overall,
+        filter_max_stay: filters.filter_max_stay,
+        offset,
+        limit: batchSize,
+      });
+
+      rawCafes.push(...cafesBatch);
+
+      const matchingInBatch = cafesBatch.filter((cafe) =>
+        matchesAllFilters(cafe, filters, instant),
+      );
+      filteredCafes.push(...matchingInBatch);
+
+      if (filteredCafes.length >= targetLimit || cafesBatch.length < batchSize) {
+        break;
+      }
+    }
+  }
 
   const existingPlaceIds = new Set<string>();
   for (const cafe of rawCafes) {

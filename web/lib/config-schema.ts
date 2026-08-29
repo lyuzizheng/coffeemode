@@ -22,6 +22,7 @@ export interface AppConfig {
     maxSuggestionLimit: number;
     weakResultsThreshold: number;
     dbFetchCap: number;
+    maxIterativeFetchBatches: number;
     minPoiQueryLength: number;
     relevanceWeights: {
       exactNameMatch: number;
@@ -193,6 +194,11 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
         search.weakResultsThreshold,
       ),
       dbFetchCap: positiveInteger(file, "search.dbFetchCap", search.dbFetchCap),
+      maxIterativeFetchBatches: positiveInteger(
+        file,
+        "search.maxIterativeFetchBatches",
+        search.maxIterativeFetchBatches,
+      ),
       minPoiQueryLength: positiveInteger(
         file,
         "search.minPoiQueryLength",

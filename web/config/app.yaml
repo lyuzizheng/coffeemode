@@ -13,6 +13,8 @@ search:
   weakResultsThreshold: 3
   # Server-side DB fetch cap to bound in-memory filtering.
   dbFetchCap: 100
+  # Maximum iterative fetch batches when evaluating unpushed in-memory filters.
+  maxIterativeFetchBatches: 10
   # Minimum query length to trigger remote POI search proxy
   minPoiQueryLength: 3
   # Relevance ranking score weights for text search

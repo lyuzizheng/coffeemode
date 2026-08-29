@@ -3,6 +3,7 @@ import "server-only";
 import { appConfig } from "@/lib/config";
 import { coerceWorkStats } from "@/lib/stats/work-stats";
 import type { CafeSummary } from "@/types/cafes";
+import type { MaxStay } from "@/types/checkins";
 import { query } from "./postgres";
 
 export interface SearchCafesDbParams {
@@ -14,6 +15,8 @@ export interface SearchCafesDbParams {
   filter_temp?: number;
   filter_coffee?: number;
   filter_overall?: number;
+  filter_max_stay?: MaxStay;
+  offset?: number;
   limit?: number;
 }
 
@@ -29,6 +32,15 @@ const WORK_DIM_COLS = [
   { key: "filter_temp", dim: "temp" },
   { key: "filter_coffee", dim: "coffee" },
 ] as const;
+
+export const ACCEPTABLE_MAX_STAYS: Record<MaxStay, string[]> = {
+  peak: ["peak"],
+  "1h": ["1h", "2h", "3h", "unlimited"],
+  "2h": ["2h", "3h", "unlimited"],
+  "3h": ["3h", "unlimited"],
+  unlimited: ["unlimited"],
+  unknown: ["unknown", "peak", "1h", "2h", "3h", "unlimited"],
+};
 
 /**
  * Search own cafes in Postgres by keyword, city scope, and work filters.
@@ -74,8 +86,26 @@ export async function searchCafesInDb(
     );
   }
 
+  if (params.filter_max_stay !== undefined) {
+    const allowed = ACCEPTABLE_MAX_STAYS[params.filter_max_stay];
+    if (allowed) {
+      values.push(allowed);
+      const idx = values.length;
+      conditions.push(
+        `(select key from jsonb_each_text(case when jsonb_typeof(work_stats->'policies'->'max_stay') = 'object' then work_stats->'policies'->'max_stay' else '{}'::jsonb end) where value ~ '^[0-9]+$' and value::int > 0 order by value::int desc, key asc limit 1) = ANY($${idx}::text[])`,
+      );
+    }
+  }
+
   values.push(limit);
   const limitIdx = values.length;
+
+  let offsetClause = "";
+  if (params.offset !== undefined && params.offset > 0) {
+    values.push(params.offset);
+    const offsetIdx = values.length;
+    offsetClause = `\noffset $${offsetIdx}`;
+  }
 
   const sql = `
 select id, name,
@@ -86,8 +116,8 @@ select id, name,
        work_stats, cover
 from cafes
 where ${conditions.join("\n  and ")}
-order by name asc
-limit $${limitIdx}
+order by name asc, id asc
+limit $${limitIdx}${offsetClause}
 `;
 
   const { rows } = await query<CafeWithExternalIds & Record<string, unknown>>(

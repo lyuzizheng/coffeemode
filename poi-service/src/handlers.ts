@@ -2,11 +2,16 @@
  * HTTP handlers for the POI endpoints.
  * Pure functions over injected Env/Deps — unit-testable without a Worker runtime.
  *
- * Endpoints (all require POI_SERVICE_TOKEN):
- *   GET  /poi/:place_id    KV hot → D1 fresh → Google API → backfill both
- *   POST /poi/resolve      {maps_share_url} → POI (creation import path)
- *   GET  /poi/search       ?q&lat&lng&r — stored POIs, name match + haversine sort
- *   POST /poi/external     store externally-searched POIs (Google live / Apple refs)
+ * Endpoints:
+ *   Unauthenticated:
+ *     GET  /                 service probe
+ *     GET  /health           health check
+ *   Token-gated (require POI_SERVICE_TOKEN):
+ *     GET  /poi/:place_id    KV hot → D1 fresh → Google API → backfill both
+ *     POST /poi/resolve      {maps_share_url} → POI (creation import path)
+ *     GET  /poi/search       ?q&lat&lng&r — stored POIs, name match + haversine sort
+ *     GET  /poi/search/external ?q&lat&lng&r — live Google search + cache backfill
+ *     POST /poi/external     store externally-searched POIs (Google live / Apple refs)
  *
  * Error isolation (W1): handleFetch wraps every handler in try/catch and maps
  * uncaught D1/KV/Google failures to a JSON 500 envelope — workerd's opaque

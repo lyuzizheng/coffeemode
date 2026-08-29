@@ -799,7 +799,7 @@ describe("POST /poi/external", () => {
   });
 
   it("400s when the batch exceeds the entry cap", async () => {
-    const pois = Array.from({ length: 101 }, (_, i) => ({
+    const pois = Array.from({ length: 51 }, (_, i) => ({
       place_id: `bulk-${i}`,
       source: "apple",
       name: `Cafe ${i}`,
@@ -808,7 +808,7 @@ describe("POST /poi/external", () => {
     }));
     const res = await call("POST", "/poi/external", makeEnv(), { body: { pois } });
     expect(res.status).toBe(400);
-    expect(String((await bodyOf(res)).message)).toContain("100");
+    expect(String((await bodyOf(res)).message)).toContain("50");
   });
 
   it("upserts via a single atomic db.batch() call", async () => {

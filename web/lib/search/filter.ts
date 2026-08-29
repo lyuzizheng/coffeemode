@@ -25,6 +25,13 @@ export const MAX_STAY_ORDER: Record<MaxStay, number> = {
   unlimited: 4,
 };
 
+export function acceptableMaxStayLabels(maxStay: MaxStay): MaxStay[] {
+  if (maxStay === "peak") return ["peak"];
+  return (Object.keys(MAX_STAY_ORDER) as MaxStay[]).filter(
+    (label) => MAX_STAY_ORDER[label] >= MAX_STAY_ORDER[maxStay],
+  );
+}
+
 export function matchesWorkDimension(
   stats: WorkStats,
   dim: WorkDim,

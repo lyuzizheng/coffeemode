@@ -41,6 +41,7 @@ describe("config files", () => {
     expect(appConfig.search.maxSuggestionLimit).toBe(10);
     expect(appConfig.search.weakResultsThreshold).toBe(3);
     expect(appConfig.search.dbFetchCap).toBe(100);
+    expect(appConfig.search.maxIterativeFetchBatches).toBe(10);
     expect(appConfig.search.minPoiQueryLength).toBe(3);
     expect(appConfig.search.relevanceWeights).toEqual({
       exactNameMatch: 100,
@@ -157,6 +158,7 @@ describe("parseAppConfig validation", () => {
     maxSuggestionLimit: 10,
     weakResultsThreshold: 3,
     dbFetchCap: 100,
+    maxIterativeFetchBatches: 10,
     minPoiQueryLength: 3,
     relevanceWeights: {
       exactNameMatch: 100,

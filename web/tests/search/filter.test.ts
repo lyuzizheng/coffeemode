@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { emptyWorkStats } from "@/lib/stats/work-stats";
 import type { CafeSummary } from "@/types/cafes";
 import {
+  acceptableMaxStayLabels,
   getConsensusOption,
   getDimensionAverage,
   hasWorkFiltersActive,
@@ -71,6 +72,22 @@ describe("search/filter helpers", () => {
     expect(matchesMaxStay(stats, "2h")).toBe(true); // 3h >= 2h
     expect(matchesMaxStay(stats, "3h")).toBe(true); // 3h >= 3h
     expect(matchesMaxStay(stats, "unlimited")).toBe(false); // 3h < unlimited
+  });
+
+  it("derives acceptable max stay labels consistently with MAX_STAY_ORDER", () => {
+    expect(acceptableMaxStayLabels("peak")).toEqual(["peak"]);
+    expect(acceptableMaxStayLabels("1h")).toEqual(["1h", "2h", "3h", "unlimited"]);
+    expect(acceptableMaxStayLabels("2h")).toEqual(["2h", "3h", "unlimited"]);
+    expect(acceptableMaxStayLabels("3h")).toEqual(["3h", "unlimited"]);
+    expect(acceptableMaxStayLabels("unlimited")).toEqual(["unlimited"]);
+    expect(acceptableMaxStayLabels("unknown")).toEqual([
+      "unknown",
+      "peak",
+      "1h",
+      "2h",
+      "3h",
+      "unlimited",
+    ]);
   });
 
   it("checks if any work filters are active", () => {

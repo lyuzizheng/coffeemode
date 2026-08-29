@@ -180,7 +180,7 @@ describe("search-service", () => {
     expect(response.results[0].type).toBe("cafe");
   });
 
-  it("passes all work dimension filters to searchCafesInDb for SQL pushdown", async () => {
+  it("passes all work dimension filters and max_stay to searchCafesInDb for SQL pushdown", async () => {
     vi.mocked(searchCafesInDb).mockResolvedValue([]);
 
     await executeSearch({
@@ -191,6 +191,7 @@ describe("search-service", () => {
       filter_temp: 40,
       filter_coffee: 80,
       filter_overall: 75,
+      filter_max_stay: "2h",
     });
 
     expect(searchCafesInDb).toHaveBeenCalledWith({
@@ -202,7 +203,89 @@ describe("search-service", () => {
       filter_temp: 40,
       filter_coffee: 80,
       filter_overall: 75,
+      filter_max_stay: "2h",
       limit: expect.any(Number),
     });
+  });
+
+  it("performs bounded iterative fetching across batches when open_now filter is active", async () => {
+    // Batch 1 (offset 0): 100 cafes, all closed
+    const batch1 = Array.from({ length: 100 }, (_, i) =>
+      makeDbCafe({
+        id: `closed-${i}`,
+        name: `Alpha Closed ${i.toString().padStart(3, "0")}`,
+        opening_hours: null,
+      }),
+    );
+
+    // Batch 2 (offset 100): 20 cafes, all open
+    const alwaysOpenHours = {
+      mon: { open: "00:00", close: "23:59" },
+      tue: { open: "00:00", close: "23:59" },
+      wed: { open: "00:00", close: "23:59" },
+      thu: { open: "00:00", close: "23:59" },
+      fri: { open: "00:00", close: "23:59" },
+      sat: { open: "00:00", close: "23:59" },
+      sun: { open: "00:00", close: "23:59" },
+    };
+    const batch2 = Array.from({ length: 20 }, (_, i) =>
+      makeDbCafe({
+        id: `open-${i}`,
+        name: `Zulu Open ${i.toString().padStart(3, "0")}`,
+        opening_hours: alwaysOpenHours,
+      }),
+    );
+
+    vi.mocked(searchCafesInDb).mockImplementation(async (params) => {
+      if ((params.offset ?? 0) === 0) return batch1;
+      if (params.offset === 100) return batch2;
+      return [];
+    });
+
+    const response = await executeSearch(
+      { city: "singapore", open_now: true },
+      new Date("2026-08-29T10:00:00Z"),
+    );
+
+    expect(searchCafesInDb).toHaveBeenCalledTimes(2);
+    expect(searchCafesInDb).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ offset: 0, limit: 100 }),
+    );
+    expect(searchCafesInDb).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ offset: 100, limit: 100 }),
+    );
+    expect(response.results).toHaveLength(10);
+    expect(response.results.every((r) => r.id.startsWith("open-"))).toBe(true);
+  });
+
+  it("stops iterative fetching early once enough open results are collected", async () => {
+    const alwaysOpenHours = {
+      mon: { open: "00:00", close: "23:59" },
+      tue: { open: "00:00", close: "23:59" },
+      wed: { open: "00:00", close: "23:59" },
+      thu: { open: "00:00", close: "23:59" },
+      fri: { open: "00:00", close: "23:59" },
+      sat: { open: "00:00", close: "23:59" },
+      sun: { open: "00:00", close: "23:59" },
+    };
+    const batch1 = Array.from({ length: 100 }, (_, i) =>
+      makeDbCafe({
+        id: `open-batch1-${i}`,
+        name: `Alpha Open ${i.toString().padStart(3, "0")}`,
+        opening_hours: alwaysOpenHours,
+      }),
+    );
+
+    vi.mocked(searchCafesInDb).mockResolvedValue(batch1);
+
+    const response = await executeSearch(
+      { city: "singapore", open_now: true, limit: 5 },
+      new Date("2026-08-29T10:00:00Z"),
+    );
+
+    expect(searchCafesInDb).toHaveBeenCalledTimes(1);
+    expect(response.results).toHaveLength(5);
   });
 });

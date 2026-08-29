@@ -1,8 +1,10 @@
 import "server-only";
 
 import { appConfig } from "@/lib/config";
+import { acceptableMaxStayLabels } from "@/lib/search/filter";
 import { coerceWorkStats } from "@/lib/stats/work-stats";
 import type { CafeSummary } from "@/types/cafes";
+import type { MaxStay } from "@/types/checkins";
 import { query } from "./postgres";
 
 export interface SearchCafesDbParams {
@@ -14,6 +16,8 @@ export interface SearchCafesDbParams {
   filter_temp?: number;
   filter_coffee?: number;
   filter_overall?: number;
+  filter_max_stay?: MaxStay;
+  offset?: number;
   limit?: number;
 }
 
@@ -74,8 +78,27 @@ export async function searchCafesInDb(
     );
   }
 
+  if (params.filter_max_stay !== undefined) {
+    const allowed = acceptableMaxStayLabels(params.filter_max_stay);
+    if (allowed.length > 0) {
+      values.push(allowed);
+      const idx = values.length;
+      // SQL tie-break (order by value::int desc, key asc) must stay consistent with getConsensusOption in web/lib/stats/work-stats.ts (first-key-in-jsonb-order).
+      conditions.push(
+        `(select key from jsonb_each_text(case when jsonb_typeof(work_stats->'policies'->'max_stay') = 'object' then work_stats->'policies'->'max_stay' else '{}'::jsonb end) where value ~ '^[0-9]+$' and value::int > 0 order by value::int desc, key asc limit 1) = ANY($${idx}::text[])`,
+      );
+    }
+  }
+
   values.push(limit);
   const limitIdx = values.length;
+
+  let offsetClause = "";
+  if (params.offset !== undefined && params.offset > 0) {
+    values.push(params.offset);
+    const offsetIdx = values.length;
+    offsetClause = `\noffset $${offsetIdx}`;
+  }
 
   const sql = `
 select id, name,
@@ -86,8 +109,8 @@ select id, name,
        work_stats, cover
 from cafes
 where ${conditions.join("\n  and ")}
-order by name asc
-limit $${limitIdx}
+order by name asc, id asc
+limit $${limitIdx}${offsetClause}
 `;
 
   const { rows } = await query<CafeWithExternalIds & Record<string, unknown>>(

@@ -74,3 +74,28 @@ export async function cafeWorkStats(dbClient: pg.Client, cafeId: string): Promis
   const { rows } = await dbClient.query("select work_stats from cafes where id = $1", [cafeId]);
   return rows[0].work_stats as WorkStatsShape;
 }
+
+const VALID_CHECKIN_FIXTURE = {
+  scores: { wifi: 80, overall: 75 },
+  max_stay: "unlimited",
+  note: "quiet",
+  photo_ids: [U1],
+};
+
+/** Representative invalid payload fixtures for HTTP route boundary translation tests. */
+export const INVALID_CAFE_PAYLOADS = {
+  empty: {},
+  missingName: {
+    lat: 1.2789,
+    lng: 103.8425,
+    checkin: VALID_CHECKIN_FIXTURE,
+  },
+};
+
+export const INVALID_CHECKIN_PAYLOADS = {
+  empty: {},
+  nonUuidCafeId: {
+    cafe_id: "not-a-uuid",
+    scores: { wifi: 80 },
+  },
+};

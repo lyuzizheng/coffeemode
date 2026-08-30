@@ -14,6 +14,7 @@ import { ImageServiceError } from "@/lib/images/image-service-client";
 import { GET as listGET, POST as createPOST } from "@/app/api/cafes/route";
 import { DELETE as detailDELETE, GET as detailGET } from "@/app/api/cafes/[id]/route";
 
+import { INVALID_CAFE_PAYLOADS } from "./helpers/fixtures";
 const getUserMock = vi.fn();
 const clientQueryMock = vi.fn();
 const poolQueryMock = vi.fn();
@@ -137,6 +138,32 @@ describe("parseCreateCafeBody", () => {
     expect(parsed.ok).toBe(true);
   });
 
+  it("accepts a full valid body with all optional fields", () => {
+    const parsed = parseCreateCafeBody({
+      name: "Kiosk",
+      ...SG,
+      address: "123 Main St",
+      city: "singapore",
+      google_place_id: "ChIJx",
+      apple_poi_id: "apple:123",
+      price_range: 2,
+      opening_hours: { mon: { open: "08:00", close: "17:00" } },
+      checkin: {
+        ...VALID_CHECKIN,
+        scores: { wifi: 80, coffee: 90, overall: 85 },
+        visited_at: "2026-08-01T00:00:00.000Z",
+      },
+    });
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.value.address).toBe("123 Main St");
+      expect(parsed.value.city).toBe("singapore");
+      expect(parsed.value.price_range).toBe(2);
+      expect(parsed.value.opening_hours).toEqual({ mon: { open: "08:00", close: "17:00" } });
+      expect(parsed.value.checkin.visited_at).toBeInstanceOf(Date);
+    }
+  });
+
   it("preserves opaque provider ids without truncating them", () => {
     const applePoiId = `apple:${"x".repeat(700)}`;
     const parsed = parseCreateCafeBody({
@@ -145,7 +172,9 @@ describe("parseCreateCafeBody", () => {
       apple_poi_id: applePoiId,
       checkin: VALID_CHECKIN,
     });
-    expect(parsed).toEqual(expect.objectContaining({ ok: true, value: expect.objectContaining({ apple_poi_id: applePoiId }) }));
+    expect(parsed).toEqual(
+      expect.objectContaining({ ok: true, value: expect.objectContaining({ apple_poi_id: applePoiId }) }),
+    );
   });
 
   it("rejects provider ids beyond the 1024-char bound", () => {
@@ -158,11 +187,51 @@ describe("parseCreateCafeBody", () => {
     expect(parsed.ok).toBe(false);
   });
 
-  it("rejects non-object, empty name, and out-of-range coordinates", () => {
+  it("rejects non-object, null, and array bodies", () => {
     expect(parseCreateCafeBody(null).ok).toBe(false);
-    expect(parseCreateCafeBody({ ...validBody(), name: " " }).ok).toBe(false);
+    expect(parseCreateCafeBody("not-an-object").ok).toBe(false);
+    expect(parseCreateCafeBody([]).ok).toBe(false);
+  });
+
+  it("rejects missing, non-string, empty, whitespace-only, and over-length names", () => {
+    expect(parseCreateCafeBody({ ...validBody(), name: undefined }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), name: 123 }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), name: "" }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), name: "   " }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), name: "x".repeat(201) }).ok).toBe(false);
+  });
+
+  it("rejects out-of-range coordinates, strings, NaN, and Infinity", () => {
     expect(parseCreateCafeBody({ ...validBody(), lat: 91 }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), lat: -91 }).ok).toBe(false);
     expect(parseCreateCafeBody({ ...validBody(), lat: "1.2" }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), lat: NaN }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), lat: Infinity }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), lng: 181 }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), lng: -181 }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), lng: "103.8" }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), lng: NaN }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), lng: Infinity }).ok).toBe(false);
+  });
+
+  it("validates optional string lengths (address, city, provider ids)", () => {
+    expect(parseCreateCafeBody({ ...validBody(), address: "x".repeat(301) }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), address: 123 }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), city: "x".repeat(101) }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), city: 123 }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), google_place_id: "x".repeat(1025) }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), google_place_id: 123 }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), apple_poi_id: 123 }).ok).toBe(false);
+  });
+
+  it("validates price_range integer bounds (1 to 4)", () => {
+    expect(parseCreateCafeBody({ ...validBody(), price_range: 0 }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), price_range: 5 }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), price_range: 2.5 }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), price_range: "2" }).ok).toBe(false);
+    for (const p of [1, 2, 3, 4]) {
+      expect(parseCreateCafeBody({ ...validBody(), price_range: p }).ok).toBe(true);
+    }
   });
 
   it("rejects unknown score dimensions and out-of-range scores", () => {
@@ -180,6 +249,14 @@ describe("parseCreateCafeBody", () => {
     expect(parseCreateCafeBody(validBody({ note: "" })).ok).toBe(false);
     expect(parseCreateCafeBody(validBody({ photo_ids: undefined })).ok).toBe(false);
     expect(parseCreateCafeBody(validBody({ photo_ids: [] })).ok).toBe(false);
+  });
+
+  it("rejects missing or non-object checkin", () => {
+    const bodyWithoutCheckin = { name: "Kiosk", ...SG };
+    expect(parseCreateCafeBody(bodyWithoutCheckin).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), checkin: null }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), checkin: [] }).ok).toBe(false);
+    expect(parseCreateCafeBody({ ...validBody(), checkin: "bad" }).ok).toBe(false);
   });
 
   it("rejects malformed photo ids", () => {
@@ -378,10 +455,20 @@ describe("listCafesNearby / getCafe", () => {
 });
 
 describe("POST /api/cafes", () => {
-  it("400s on an invalid body before checking auth", async () => {
+  it("400s with invalid_request error envelope on invalid payloads before checking auth", async () => {
     getUserMock.mockClear();
-    const res = await createPOST(postRequest({ name: "" }));
-    expect(res.status).toBe(400);
+    const invalidBodies = [
+      INVALID_CAFE_PAYLOADS.empty,
+      INVALID_CAFE_PAYLOADS.missingName,
+    ];
+    for (const body of invalidBodies) {
+      const res = await createPOST(postRequest(body));
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toMatchObject({
+        error: "invalid_request",
+        message: expect.any(String),
+      });
+    }
     expect(getUserMock).not.toHaveBeenCalled();
   });
 

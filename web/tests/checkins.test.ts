@@ -5,9 +5,13 @@ import {
   SelfLikeError,
   createCheckIn,
   parseCheckInBody,
+  parsePhotoIds,
+  parseScores,
+  parseVisitedAt,
   toggleCheckInLike,
   type CreateCheckInInput,
 } from "@/lib/db/checkins";
+import { INVALID_CHECKIN_PAYLOADS } from "./helpers/fixtures";
 import { PhotoIntentError } from "@/lib/images/provision-photos";
 import { ImageServiceError } from "@/lib/images/image-service-client";
 import { POST as checkinPOST } from "@/app/api/checkins/route";
@@ -122,9 +126,170 @@ beforeEach(() => {
   provisionDeps.processImage.mockResolvedValue({ imageUuid: IMG, width: 800, height: 600 });
 });
 
+describe("parseScores", () => {
+  it("rejects non-object, null, and array inputs", () => {
+    expect(parseScores(null).ok).toBe(false);
+    expect(parseScores("invalid").ok).toBe(false);
+    expect(parseScores([]).ok).toBe(false);
+    expect(parseScores(123).ok).toBe(false);
+  });
+
+  it("rejects unknown dimensions", () => {
+    const res = parseScores({ vibe: 50 });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.message).toContain("scores.vibe is not a known dimension");
+  });
+
+  it("rejects non-number, NaN, Infinity, and out-of-range scores", () => {
+    expect(parseScores({ wifi: "80" }).ok).toBe(false);
+    expect(parseScores({ wifi: NaN }).ok).toBe(false);
+    expect(parseScores({ wifi: Infinity }).ok).toBe(false);
+    expect(parseScores({ wifi: -1 }).ok).toBe(false);
+    expect(parseScores({ wifi: 101 }).ok).toBe(false);
+  });
+
+  it("accepts valid score ranges and all known work dimensions", () => {
+    const valid = parseScores({
+      wifi: 0,
+      outlets: 50,
+      seats: 100,
+      temp: 80,
+      coffee: 90,
+      overall: 75,
+    });
+    expect(valid.ok).toBe(true);
+    if (valid.ok) {
+      expect(valid.value.wifi).toBe(0);
+      expect(valid.value.seats).toBe(100);
+      expect(valid.value.overall).toBe(75);
+    }
+  });
+
+  it("prefixes error messages with a custom field name", () => {
+    const res = parseScores({ bad: 10 }, "custom.scores");
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.message).toContain("custom.scores.bad");
+  });
+});
+
+describe("parsePhotoIds", () => {
+  it("rejects non-array inputs", () => {
+    expect(parsePhotoIds("not-an-array").ok).toBe(false);
+    expect(parsePhotoIds(null).ok).toBe(false);
+    expect(parsePhotoIds({}).ok).toBe(false);
+  });
+
+  it("rejects array exceeding the maximum photos cap (cap is 6)", () => {
+    const seven = Array.from(
+      { length: 7 },
+      (_, i) => `a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a5${i.toString(16)}`,
+    );
+    const res = parsePhotoIds(seven);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.message).toContain("limited to 6 photos");
+  });
+
+  it("rejects invalid UUID entries and non-string entries", () => {
+    expect(parsePhotoIds(["not-a-uuid"]).ok).toBe(false);
+    expect(parsePhotoIds([123]).ok).toBe(false);
+    expect(parsePhotoIds([null]).ok).toBe(false);
+    expect(parsePhotoIds([{}]).ok).toBe(false);
+  });
+
+  it("rejects duplicate photo UUIDs including case variations", () => {
+    expect(parsePhotoIds([IMG, IMG]).ok).toBe(false);
+    expect(parsePhotoIds([IMG, IMG.toUpperCase()]).ok).toBe(false);
+  });
+  it("accepts exactly 6 distinct photo UUIDs (cap boundary, DG68)", () => {
+    const six = Array.from(
+      { length: 6 },
+      (_, i) => `a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a4${i.toString(16)}`,
+    );
+    const res = parsePhotoIds(six);
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.value).toHaveLength(6);
+    }
+  });
+
+  it("accepts valid photo UUID arrays and normalizes to lowercase", () => {
+    const upper = IMG.toUpperCase();
+    const res = parsePhotoIds([upper]);
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.value).toEqual([IMG.toLowerCase()]);
+    }
+  });
+  it("prefixes error messages with a custom field name", () => {
+    const res = parsePhotoIds(["bad"], "custom.photos");
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.message).toContain("custom.photos");
+  });
+});
+
+describe("parseVisitedAt", () => {
+  it("returns undefined for null or undefined", () => {
+    expect(parseVisitedAt(undefined)).toEqual({ ok: true, value: undefined });
+    expect(parseVisitedAt(null)).toEqual({ ok: true, value: undefined });
+  });
+
+  it("rejects non-string inputs", () => {
+    expect(parseVisitedAt(123456789).ok).toBe(false);
+    expect(parseVisitedAt({}).ok).toBe(false);
+  });
+
+  it("rejects unparseable timestamps", () => {
+    const res = parseVisitedAt("last-tuesday");
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.message).toContain("not a parseable timestamp");
+  });
+
+  it("rejects future timestamps", () => {
+    const future = new Date(Date.now() + 60_000).toISOString();
+    const res = parseVisitedAt(future);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.message).toContain("cannot be in the future");
+  });
+
+  it("accepts valid past/present ISO timestamp strings and returns Date objects", () => {
+    const iso = "2026-08-01T00:00:00.000Z";
+    const res = parseVisitedAt(iso);
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.value).toBeInstanceOf(Date);
+      expect(res.value?.toISOString()).toBe(iso);
+    }
+  });
+
+  it("prefixes error messages with a custom field name", () => {
+    const res = parseVisitedAt("bad", "custom.visited_at");
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.message).toContain("custom.visited_at");
+  });
+});
+
 describe("parseCheckInBody", () => {
   it("accepts a minimal valid body (cafe_id + one score)", () => {
     expect(parseCheckInBody({ cafe_id: CAFE, scores: { wifi: 80 } }).ok).toBe(true);
+  });
+
+  it("accepts a full valid body with all optional fields", () => {
+    const parsed = parseCheckInBody({
+      cafe_id: CAFE,
+      scores: { wifi: 80, coffee: 90 },
+      max_stay: "unlimited",
+      note: "quiet work corner",
+      photo_ids: [IMG],
+      visited_at: "2026-08-01T00:00:00.000Z",
+    });
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.value.cafe_id).toBe(CAFE);
+      expect(parsed.value.max_stay).toBe("unlimited");
+      expect(parsed.value.note).toBe("quiet work corner");
+      expect(parsed.value.photo_ids).toEqual([IMG]);
+      expect(parsed.value.visited_at).toBeInstanceOf(Date);
+    }
   });
 
   it("rejects a non-object body and a missing/invalid cafe_id", () => {
@@ -149,31 +314,17 @@ describe("parseCheckInBody", () => {
     expect(parseCheckInBody(validBody({ scores: { wifi: 101 } })).ok).toBe(false);
     expect(parseCheckInBody(validBody({ scores: { vibe: 50 } })).ok).toBe(false);
     expect(parseCheckInBody(validBody({ photo_ids: ["not-a-uuid"] })).ok).toBe(false);
-    expect(parseCheckInBody(validBody({ photo_ids: [{}] })).ok).toBe(false);
-    expect(parseCheckInBody(validBody({ photo_ids: [IMG, IMG] })).ok).toBe(false); // duplicates
-    expect(parseCheckInBody(validBody({ photo_ids: [IMG, IMG.toUpperCase()] })).ok).toBe(false); // case-insensitive dupes
-    expect(
-      parseCheckInBody(
-        validBody({
-          photo_ids: Array.from(
-            { length: 7 },
-            (_, i) => `a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a5${i.toString(16)}`,
-          ),
-        }),
-      ).ok,
-    ).toBe(false); // cap is 6 (DG68)
     expect(parseCheckInBody(validBody({ note: "x".repeat(501) })).ok).toBe(false);
     expect(
       parseCheckInBody(validBody({ visited_at: new Date(Date.now() + 60_000).toISOString() })).ok,
     ).toBe(false);
   });
 
-  it("accepts exactly 6 distinct photo ids (cap boundary, DG68)", () => {
-    const six = Array.from(
-      { length: 6 },
-      (_, i) => `a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a4${i.toString(16)}`,
-    );
-    expect(parseCheckInBody(validBody({ photo_ids: six })).ok).toBe(true);
+  it("accepts all valid max_stay enum values", () => {
+    const values = ["unlimited", "3h", "2h", "1h", "peak", "unknown"] as const;
+    for (const val of values) {
+      expect(parseCheckInBody(validBody({ max_stay: val })).ok).toBe(true);
+    }
   });
 
   it("treats an empty photo_ids array and blank note as absent", () => {
@@ -391,13 +542,23 @@ describe("toggleCheckInLike", () => {
 describe("POST /api/checkins", () => {
   const url = "https://localhost/api/checkins";
 
-  it("400s on an invalid body before checking auth", async () => {
+  it("400s with invalid_request error envelope on invalid payloads before checking auth", async () => {
     getUserMock.mockClear();
-    const res = await checkinPOST(postRequest(url, {}));
-    expect(res.status).toBe(400);
+    const invalidBodies = [
+      INVALID_CHECKIN_PAYLOADS.empty,
+      INVALID_CHECKIN_PAYLOADS.nonUuidCafeId,
+    ];
+
+    for (const body of invalidBodies) {
+      const res = await checkinPOST(postRequest(url, body));
+      expect(res.status).toBe(400);
+      await expect(res.json()).resolves.toMatchObject({
+        error: "invalid_request",
+        message: expect.any(String),
+      });
+    }
     expect(getUserMock).not.toHaveBeenCalled();
   });
-
   it("401s without a session", async () => {
     getUserMock.mockResolvedValue({ data: { user: null }, error: null });
     const res = await checkinPOST(postRequest(url, validBody()));

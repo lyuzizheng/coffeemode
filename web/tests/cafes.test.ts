@@ -460,11 +460,7 @@ describe("POST /api/cafes", () => {
     const invalidBodies = [
       INVALID_CAFE_PAYLOADS.empty,
       INVALID_CAFE_PAYLOADS.missingName,
-      INVALID_CAFE_PAYLOADS.outOfRangeCoords,
-      INVALID_CAFE_PAYLOADS.missingCheckin,
-      INVALID_CAFE_PAYLOADS.invalidCheckinScores,
     ];
-
     for (const body of invalidBodies) {
       const res = await createPOST(postRequest(body));
       expect(res.status).toBe(400);

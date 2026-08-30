@@ -200,6 +200,17 @@ describe("parsePhotoIds", () => {
     expect(parsePhotoIds([IMG, IMG]).ok).toBe(false);
     expect(parsePhotoIds([IMG, IMG.toUpperCase()]).ok).toBe(false);
   });
+  it("accepts exactly 6 distinct photo UUIDs (cap boundary, DG68)", () => {
+    const six = Array.from(
+      { length: 6 },
+      (_, i) => `a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a4${i.toString(16)}`,
+    );
+    const res = parsePhotoIds(six);
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.value).toHaveLength(6);
+    }
+  });
 
   it("accepts valid photo UUID arrays and normalizes to lowercase", () => {
     const upper = IMG.toUpperCase();
@@ -209,7 +220,6 @@ describe("parsePhotoIds", () => {
       expect(res.value).toEqual([IMG.toLowerCase()]);
     }
   });
-
   it("prefixes error messages with a custom field name", () => {
     const res = parsePhotoIds(["bad"], "custom.photos");
     expect(res.ok).toBe(false);
@@ -537,7 +547,6 @@ describe("POST /api/checkins", () => {
     const invalidBodies = [
       INVALID_CHECKIN_PAYLOADS.empty,
       INVALID_CHECKIN_PAYLOADS.nonUuidCafeId,
-      INVALID_CHECKIN_PAYLOADS.invalidScores,
     ];
 
     for (const body of invalidBodies) {

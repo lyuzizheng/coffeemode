@@ -74,3 +74,57 @@ export async function cafeWorkStats(dbClient: pg.Client, cafeId: string): Promis
   const { rows } = await dbClient.query("select work_stats from cafes where id = $1", [cafeId]);
   return rows[0].work_stats as WorkStatsShape;
 }
+
+/** Representative invalid payload fixtures for HTTP route boundary translation tests. */
+export const INVALID_CAFE_PAYLOADS = {
+  empty: {},
+  nonObject: "invalid-json-body",
+  missingName: {
+    lat: 1.2789,
+    lng: 103.8425,
+    checkin: { scores: { wifi: 80, overall: 75 }, max_stay: "unlimited", note: "quiet", photo_ids: [U1] },
+  },
+  outOfRangeCoords: {
+    name: "Caracara",
+    lat: 999,
+    lng: 103.8425,
+    checkin: { scores: { wifi: 80, overall: 75 }, max_stay: "unlimited", note: "quiet", photo_ids: [U1] },
+  },
+  missingCheckin: {
+    name: "Caracara",
+    lat: 1.2789,
+    lng: 103.8425,
+  },
+  invalidCheckinScores: {
+    name: "Caracara",
+    lat: 1.2789,
+    lng: 103.8425,
+    checkin: { scores: { wifi: 101, overall: 75 }, max_stay: "unlimited", note: "quiet", photo_ids: [U1] },
+  },
+};
+
+export const INVALID_CHECKIN_PAYLOADS = {
+  empty: {},
+  nonObject: "invalid-json-body",
+  nonUuidCafeId: {
+    cafe_id: "not-a-uuid",
+    scores: { wifi: 80 },
+  },
+  missingScores: {
+    cafe_id: CAFE_A,
+  },
+  invalidScores: {
+    cafe_id: CAFE_A,
+    scores: { wifi: 101 },
+  },
+  futureVisitedAt: {
+    cafe_id: CAFE_A,
+    scores: { wifi: 80 },
+    visited_at: new Date(Date.now() + 86400000).toISOString(),
+  },
+  invalidMaxStay: {
+    cafe_id: CAFE_A,
+    scores: { wifi: 80 },
+    max_stay: "forever",
+  },
+};

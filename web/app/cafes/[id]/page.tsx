@@ -133,9 +133,8 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
             <OpenState cafe={shell.openState} />
           </p>
         </div>
-
         <ScorePair stats={cafe.work_stats} />
-        <CafePageActions cafe={shell.actions} shareUrl={canonical} />
+        <CafePageActions cafe={shell.actions} cafeId={cafe.id} shareUrl={canonical} />
         {/* SSR shell: bars at final width, no entry motion (artifact §2). */}
         <WorkProfile stats={cafe.work_stats} animated={false} />
         <PolicyConsensus stats={cafe.work_stats} />

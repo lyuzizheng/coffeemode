@@ -141,7 +141,7 @@ export function MobileSheet({
   controller: DiscoveryController;
   cafes: CafeSummary[];
   isLoading: boolean;
-  onCheckIn: () => void;
+  onCheckIn: (cafeId?: string, cafeName?: string) => void;
   addCafe: ReactNode;
 }) {
   const t = useTranslations("discovery");

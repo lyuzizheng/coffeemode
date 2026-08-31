@@ -17,6 +17,7 @@
  * tree shape.
  */
 import type { ReactNode } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "@heroui/react";
@@ -24,6 +25,7 @@ import { useDiscoveryController } from "@/lib/discovery/use-discovery-controller
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useMounted } from "@/hooks/use-mounted";
 import type { CafeSummary } from "@/types/cafes";
+import { CheckinDrawer } from "@/components/checkin/checkin-drawer";
 import { DesktopDiscovery } from "./desktop-discovery";
 import { MobileSheet } from "./mobile-sheet";
 
@@ -59,10 +61,19 @@ export function DiscoveryHome({
     queryFn: () => fetchNearbyCafes(defaultCenter.lat, defaultCenter.lng),
   });
 
-  // Interim: the check-in composer is checkin-system's drawer (#133 scope
-  // boundary). Until that slice lands, Check in explains itself instead of
-  // being a dead button.
-  const onCheckIn = () => toast(t("checkin_coming"), { timeout: 4000 });
+  const [checkinCafe, setCheckinCafe] = useState<{ id: string; name: string } | null>(null);
+  const [checkinOpen, setCheckinOpen] = useState(false);
+
+  const onCheckIn = (cafeId?: string, cafeName?: string) => {
+    const id = cafeId ?? controller.selectedCafeId;
+    if (!id) {
+      toast(t("checkin_coming"), { timeout: 4000 });
+      return;
+    }
+    const cafe = cafesQuery.data?.find((c) => c.id === id);
+    setCheckinCafe({ id, name: cafeName ?? cafe?.name ?? "Cafe" });
+    setCheckinOpen(true);
+  };
 
   const props = {
     controller,
@@ -72,11 +83,25 @@ export function DiscoveryHome({
     addCafe,
   };
 
+  const checkinDrawer = checkinCafe ? (
+    <CheckinDrawer
+      isOpen={checkinOpen}
+      onOpenChange={setCheckinOpen}
+      cafeId={checkinCafe.id}
+      cafeName={checkinCafe.name}
+    />
+  ) : null;
+
   // Standalone mode (no surface children — the future map surface) keeps the
   // JS-gated switch: there is no landing subtree to keep stable.
   if (!children) {
     if (!mounted) return null;
-    return isDesktop ? <DesktopDiscovery {...props} /> : <MobileSheet {...props} />;
+    return (
+      <>
+        {isDesktop ? <DesktopDiscovery {...props} /> : <MobileSheet {...props} />}
+        {checkinDrawer}
+      </>
+    );
   }
 
   // Landing mode: one stable tree across SSR, mount, and breakpoint changes
@@ -89,6 +114,7 @@ export function DiscoveryHome({
         {children}
       </DesktopDiscovery>
       {mounted && !isDesktop ? <MobileSheet {...props} /> : null}
+      {checkinDrawer}
     </>
   );
 }

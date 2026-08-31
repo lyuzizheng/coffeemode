@@ -1,6 +1,13 @@
+<!--
+PR Title Format (MANDATORY for Multica auto-linking):
+<IDENTIFIER>: <PR Title>
+Example: BRAWUKA-1: [#236] [ARCH] Decompose monolithic frontend components
+-->
+
 ## Issue
 
-- Link: <!-- Fixes #N only if this PR fully satisfies the issue; otherwise Refs #N -->
+- Multica Issue: <!-- Closes <IDENTIFIER> (e.g. Closes BRAWUKA-1) or Refs <IDENTIFIER> -->
+- GitHub Issue: <!-- Fixes #N only if this PR fully satisfies the issue; otherwise Refs #N -->
 - Fix plan: <!-- issue comment URL -->
 - Stack: <!-- base and merge order, or none -->
 

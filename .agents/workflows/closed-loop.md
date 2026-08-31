@@ -33,8 +33,8 @@ discover -> deduplicate/file -> verify -> scope/plan -> implement
    `.agents/scripts/docs-review-packet.sh <base>`).
 8. **Publish**: always create a PR after completing the development cycle and
    follow this loop until the PR is ready to merge, per `AGENTS.md`. Open the
-   PR using `.github/pull_request_template.md`. Use `Fixes #N` only for a fully
-   satisfied issue; otherwise use `Refs #N` and link the remaining issue.
+   PR using `.github/pull_request_template.md`. **PR title MUST start with the Multica Issue Identifier** (e.g. `BRAWUKA-1: [#236] <Title>`) for automatic PR linking. Use `Fixes #N` / `Closes <IDENTIFIER>` only for a fully
+   satisfied issue; otherwise use `Refs #N` / `Refs <IDENTIFIER>` and link the remaining issue.
 9. **CI**: wait for the relevant CI jobs and the aggregate `ci-gate`. Fix the root
    cause of failures; never bypass a gate.
 10. **Close**: merge only with explicit authority. After merge, verify GitHub

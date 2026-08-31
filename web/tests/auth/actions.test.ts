@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { signIn, signOut } from "@/app/auth/actions";
+import { signIn, signOut } from "@/lib/auth/actions";
 
 const redirectMock = vi.fn((url: string) => {
   throw new Error(`NEXT_REDIRECT:${url}`);

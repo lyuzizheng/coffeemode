@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import { AuthCallbackError } from "@/app/auth/auth-callback-error";
+import { AuthCallbackError } from "@/components/auth/auth-callback-error";
 import messages from "../../messages/en.json";
 
 function Wrapper({ children }: { children: React.ReactNode }) {

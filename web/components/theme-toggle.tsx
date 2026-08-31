@@ -4,7 +4,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { duration, ease } from "@/lib/motion";
-import { useMounted } from "@/lib/use-mounted";
+import { useMounted } from "@/hooks/use-mounted";
 
 const OPTIONS = [
   {

@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { useActionState } from "react";
-import { SignOutButton } from "@/app/auth/sign-out-button";
+import { SignOutButton } from "@/components/auth/sign-out-button";
 import messages from "../../messages/en.json";
 
 const clearQueryClientMock = vi.hoisted(() => vi.fn());
@@ -15,7 +15,7 @@ vi.mock("react", async (importOriginal) => {
   return { ...actual, useActionState: vi.fn() };
 });
 
-vi.mock("@/app/auth/actions", () => ({
+vi.mock("@/lib/auth/actions", () => ({
   signIn: vi.fn(),
   signOut: vi.fn(),
 }));

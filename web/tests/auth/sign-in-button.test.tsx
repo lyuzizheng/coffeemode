@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { useActionState } from "react";
-import { SignInButton } from "@/app/auth/sign-in-button";
+import { SignInButton } from "@/components/auth/sign-in-button";
 import messages from "../../messages/en.json";
 
 vi.mock("react", async (importOriginal) => {
@@ -10,7 +10,7 @@ vi.mock("react", async (importOriginal) => {
   return { ...actual, useActionState: vi.fn() };
 });
 
-vi.mock("@/app/auth/actions", () => ({
+vi.mock("@/lib/auth/actions", () => ({
   signIn: vi.fn(),
 }));
 

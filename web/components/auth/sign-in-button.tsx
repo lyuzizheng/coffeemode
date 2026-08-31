@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@heroui/react";
-import { signIn, type AuthActionState, type OAuthProvider } from "./actions";
+import { signIn, type AuthActionState, type OAuthProvider } from "@/lib/auth/actions";
 import { AuthErrorMessage } from "./auth-error-message";
 
 interface SignInButtonProps {

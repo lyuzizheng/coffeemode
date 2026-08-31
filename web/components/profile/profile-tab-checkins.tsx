@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import type { UseInfiniteQueryResult, InfiniteData } from "@tanstack/react-query";
 import { Button, toast } from "@heroui/react";
 import { HeartIcon } from "@/components/icons";
 import { ErrorRow } from "./profile-error-row";
 import type { UserCheckInItemDto } from "@/lib/db/profile";
 
-async function fetchUserCheckIns(cursor?: string) {
+export async function fetchUserCheckIns(cursor?: string) {
   const url = new URL("/api/profile/checkins", window.location.origin);
   if (cursor) url.searchParams.set("cursor", cursor);
   const res = await fetch(url.toString());
@@ -18,19 +18,11 @@ async function fetchUserCheckIns(cursor?: string) {
 
 interface ProfileTabCheckinsProps {
   baseId: string;
-  isAuthenticated: boolean;
+  query: UseInfiniteQueryResult<InfiniteData<{ items: UserCheckInItemDto[]; next_cursor: string | null }>, Error>;
 }
 
-export function ProfileTabCheckins({ baseId, isAuthenticated }: ProfileTabCheckinsProps) {
+export function ProfileTabCheckins({ baseId, query: checkinsQuery }: ProfileTabCheckinsProps) {
   const t = useTranslations("profile");
-
-  const checkinsQuery = useInfiniteQuery({
-    queryKey: ["profile", "checkins"],
-    queryFn: ({ pageParam }) => fetchUserCheckIns(pageParam),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
-    enabled: isAuthenticated,
-  });
 
   const checkins = checkinsQuery.data?.pages.flatMap((page) => page.items) ?? [];
 

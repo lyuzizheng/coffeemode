@@ -11,15 +11,11 @@ import {
 import { useTranslations } from "next-intl";
 import { useState, type FormEvent } from "react";
 import { ApplePlaceSearch } from "@/components/cafe/apple-place-search";
+import { responseMessage } from "@/lib/http";
 import type { POI, POISearchResponse } from "@shared/places/types";
 
-export type EntryMode = "link" | "search";
-export type SearchProvider = "google" | "apple";
-
-async function responseMessage(response: Response, fallback: string): Promise<string> {
-  const body = (await response.json().catch(() => null)) as { message?: string; error?: string } | null;
-  return body?.message || body?.error || fallback;
-}
+type EntryMode = "link" | "search";
+type SearchProvider = "google" | "apple";
 
 interface CafePlaceSearchProps {
   onSelectPOI: (poi: POI, persist?: boolean) => void;

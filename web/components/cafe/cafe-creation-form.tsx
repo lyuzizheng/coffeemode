@@ -14,13 +14,9 @@ import { SignInButton } from "@/components/auth/sign-in-button";
 import { PolicyChips, policyOptions } from "./policy-chips";
 import { POIPreview } from "./poi-preview";
 import { uploadPhoto } from "@/lib/images/client-upload";
+import { responseMessage } from "@/lib/http";
 import { MAX_STAY_VALUES, type MaxStay } from "@/types/checkins";
 import type { POI } from "@shared/places/types";
-
-async function responseMessage(response: Response, fallback: string): Promise<string> {
-  const body = (await response.json().catch(() => null)) as { message?: string; error?: string } | null;
-  return body?.message || body?.error || fallback;
-}
 
 interface CafeCreationFormProps {
   poi: POI;

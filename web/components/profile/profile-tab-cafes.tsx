@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import type { UseInfiniteQueryResult, InfiniteData } from "@tanstack/react-query";
 import { Button } from "@heroui/react";
 import { CoffeeIcon } from "@/components/icons";
 import { ErrorRow } from "./profile-error-row";
 import type { UserCafeItemDto } from "@/lib/db/profile";
 
-async function fetchUserCafes(cursor?: string) {
+export async function fetchUserCafes(cursor?: string) {
   const url = new URL("/api/profile/cafes", window.location.origin);
   if (cursor) url.searchParams.set("cursor", cursor);
   const res = await fetch(url.toString());
@@ -18,19 +18,11 @@ async function fetchUserCafes(cursor?: string) {
 
 interface ProfileTabCafesProps {
   baseId: string;
-  isAuthenticated: boolean;
+  query: UseInfiniteQueryResult<InfiniteData<{ items: UserCafeItemDto[]; next_cursor: string | null }>, Error>;
 }
 
-export function ProfileTabCafes({ baseId, isAuthenticated }: ProfileTabCafesProps) {
+export function ProfileTabCafes({ baseId, query: cafesQuery }: ProfileTabCafesProps) {
   const t = useTranslations("profile");
-
-  const cafesQuery = useInfiniteQuery({
-    queryKey: ["profile", "cafes"],
-    queryFn: ({ pageParam }) => fetchUserCafes(pageParam),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
-    enabled: isAuthenticated,
-  });
 
   const cafes = cafesQuery.data?.pages.flatMap((page) => page.items) ?? [];
 

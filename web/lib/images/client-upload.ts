@@ -1,8 +1,6 @@
 import { MAX_UPLOAD_BYTES } from "@shared/images/constants";
 import type { UploadUrlResponse } from "@/types/images";
 
-export { MAX_UPLOAD_BYTES };
-
 /**
  * Client-side HTML5 canvas image resizing and WebP compression.
  * Scales down to a maximum dimension of 4096px and converts to image/webp.

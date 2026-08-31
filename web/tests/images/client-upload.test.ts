@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { toWebP, uploadPhoto, MAX_UPLOAD_BYTES } from "@/lib/images/client-upload";
+import { toWebP, uploadPhoto } from "@/lib/images/client-upload";
+import { MAX_UPLOAD_BYTES } from "@shared/images/constants";
 
 describe("client-upload", () => {
   beforeEach(() => {

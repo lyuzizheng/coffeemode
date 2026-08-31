@@ -1,9 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { PolicyChips, policyOptions } from "@/components/cafe/policy-chips";
 import { POIPreview } from "@/components/cafe/poi-preview";
-import { CafeCreationTrigger } from "@/components/cafe/cafe-creation-sheet";
+import { CafeCreationSheet, CafeCreationTrigger } from "@/components/cafe/cafe-creation-sheet";
 import messages from "../../messages/en.json";
 import type { POI } from "@shared/places/types";
 
@@ -85,7 +85,11 @@ describe("POIPreview", () => {
   });
 });
 
-describe("CafeCreationTrigger", () => {
+describe("CafeCreationSheet & Trigger", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("renders trigger button and opens sheet when clicked", () => {
     render(<CafeCreationTrigger isAuthenticated={true} />, { wrapper: Wrapper });
 
@@ -94,5 +98,52 @@ describe("CafeCreationTrigger", () => {
 
     fireEvent.click(trigger);
     expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("surfaces server error message when external place persist fails", async () => {
+    const onOpenChange = vi.fn();
+
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("/api/places/resolve")) {
+        return {
+          ok: true,
+          json: async () => ({
+            place_id: "apple-1",
+            source: "apple",
+            name: "Apple Cafe",
+            lat: 1.3,
+            lng: 103.8,
+            address: "Sample Address",
+            types: ["cafe"],
+            business_status: null,
+            hours_json: null,
+            photo_refs: [],
+            fetched_at: new Date().toISOString(),
+          }),
+        };
+      }
+      if (url.includes("/api/places/external")) {
+        return {
+          ok: false,
+          json: async () => ({ error: "External place persist rejected" }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    render(
+      <CafeCreationSheet isOpen={true} onOpenChange={onOpenChange} isAuthenticated={true} />,
+      { wrapper: Wrapper },
+    );
+
+    const input = screen.getByPlaceholderText(/maps\.apple\.com/i);
+    fireEvent.change(input, { target: { value: "https://maps.apple.com/place?id=1" } });
+
+    const resolveBtn = screen.getByRole("button", { name: /Resolve link/i });
+    fireEvent.click(resolveBtn);
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
   });
 });

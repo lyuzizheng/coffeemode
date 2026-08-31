@@ -3,18 +3,12 @@ import pg from "pg";
 import {
   DEFAULT_DB_URL,
   DEFAULT_TEMPLATE_DB_NAME,
-  createTestSchema,
-  dropTestSchema,
   ensureTemplateDatabase,
   integrationAdminUrl,
   makeTestDbName,
-  makeTestSchemaName,
   provisionTestDatabase,
   quotedIdentifier,
-  schemaDatabaseUrl,
-  setSearchPath,
   testDatabaseUrl,
-  withTestSchema,
 } from "./helpers/db";
 import { getPoolConfig } from "@/lib/db/postgres";
 
@@ -40,25 +34,10 @@ describe("db test helpers — unit contracts", () => {
     expect(name2).toMatch(/^myprefix_\d+_[a-f0-9]{32}$/);
     expect(name1).not.toBe(name2);
   });
-
-  it("makeTestSchemaName generates unique names with prefix and pid", () => {
-    const s1 = makeTestSchemaName("custom_schema");
-    const s2 = makeTestSchemaName("custom_schema");
-    expect(s1).toMatch(/^custom_schema_\d+_[a-f0-9]{32}$/);
-    expect(s2).toMatch(/^custom_schema_\d+_[a-f0-9]{32}$/);
-    expect(s1).not.toBe(s2);
-  });
-
   it("testDatabaseUrl replaces pathname on admin url", () => {
     const admin = "postgres://user:pass@localhost:5432/coffeemode";
     const testUrl = testDatabaseUrl(admin, "coffeemode_test_123");
     expect(testUrl).toBe("postgres://user:pass@localhost:5432/coffeemode_test_123");
-  });
-
-  it("schemaDatabaseUrl adds search_path options query parameter", () => {
-    const base = "postgres://user:pass@localhost:5432/coffeemode";
-    const schemaUrl = schemaDatabaseUrl(base, "worker_1");
-    expect(schemaUrl).toContain("options=-c+search_path%3Dworker_1%2Cpublic");
   });
 
   it("integrationAdminUrl accepts local hosts and defaults", () => {
@@ -99,7 +78,7 @@ describe("db test helpers — unit contracts", () => {
   });
 });
 
-describeIntegration("db test helpers — real Postgres template pooling and schema isolation", () => {
+describeIntegration("db test helpers — real Postgres template pooling", () => {
   const createdDbs = new Set<string>();
   const adminUrl = integrationAdminUrl();
 
@@ -209,51 +188,4 @@ describeIntegration("db test helpers — real Postgres template pooling and sche
     }
   });
 
-  it("isolates worker operations via withTestSchema and search_path", async () => {
-    const client = new pg.Client(getPoolConfig(adminUrl));
-    await client.connect();
-    const schemaName = makeTestSchemaName("test_worker_iso");
-
-    try {
-      await withTestSchema(client, schemaName, async () => {
-        await client.query(
-          "create table isolated_records (id serial primary key, label text not null)",
-        );
-        await client.query("insert into isolated_records (label) values ('worker-record')");
-
-        const records = await client.query<{ label: string }>(
-          "select label from isolated_records",
-        );
-        expect(records.rows).toEqual([{ label: "worker-record" }]);
-      });
-
-      // After withTestSchema exits, schema is dropped and search_path is restored
-      const checkRes = await client.query(
-        "select schema_name from information_schema.schemata where schema_name = $1",
-        [schemaName],
-      );
-      expect(checkRes.rows.length).toBe(0);
-    } finally {
-      await client.end();
-    }
-  });
-
-  it("supports manual createTestSchema, setSearchPath, and dropTestSchema lifecycle", async () => {
-    const client = new pg.Client(getPoolConfig(adminUrl));
-    await client.connect();
-    const schemaName = makeTestSchemaName("manual_schema");
-
-    try {
-      await createTestSchema(client, schemaName);
-      await setSearchPath(client, schemaName, "public");
-      await client.query("create table manual_table (id serial primary key, value text)");
-      await client.query("insert into manual_table (value) values ('test-val')");
-      const res = await client.query<{ value: string }>("select value from manual_table");
-      expect(res.rows[0].value).toBe("test-val");
-    } finally {
-      await dropTestSchema(client, schemaName);
-      await client.query("set search_path to public");
-      await client.end();
-    }
-  });
 });

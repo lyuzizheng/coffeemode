@@ -32,11 +32,11 @@ async function fetchCafe(id: string): Promise<PublicCafeDetail> {
 }
 
 /** §4 action row: Check in (primary), Navigate (outline), Share (ghost icon). */
-function ActionRow({ cafe, onCheckIn }: { cafe: PublicCafeDetail; onCheckIn: () => void }) {
+function ActionRow({ cafe, onCheckIn }: { cafe: PublicCafeDetail; onCheckIn: (cafeId?: string, cafeName?: string) => void }) {
   const t = useTranslations("discovery");
   return (
     <div className="flex items-center gap-2">
-      <Button variant="primary" className="flex-1 rounded-sm" onPress={onCheckIn}>
+      <Button variant="primary" className="flex-1 rounded-sm" onPress={() => onCheckIn(cafe.id, cafe.name)}>
         {t("check_in")}
       </Button>
       <Button
@@ -99,7 +99,7 @@ export function DetailContent({
   cafeId: string;
   variant: "half" | "full";
   controller: DiscoveryController;
-  onCheckIn: () => void;
+  onCheckIn: (cafeId?: string, cafeName?: string) => void;
   /** Desktop only: ghost × at the top-right of the detail column. */
   onClose?: () => void;
   /** Meters from the query point — summaries carry it, the detail row does not. */

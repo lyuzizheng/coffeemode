@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 import type { UseInfiniteQueryResult, InfiniteData } from "@tanstack/react-query";
-import { Button, toast } from "@heroui/react";
+import { Button } from "@heroui/react";
 import { HeartIcon } from "@/components/icons";
+import { CheckinDrawer } from "@/components/checkin/checkin-drawer";
 import { ErrorRow } from "./profile-error-row";
 import type { UserCheckInItemDto } from "@/lib/db/profile";
 
@@ -19,10 +21,13 @@ export async function fetchUserCheckIns(cursor?: string) {
 interface ProfileTabCheckinsProps {
   baseId: string;
   query: UseInfiniteQueryResult<InfiniteData<{ items: UserCheckInItemDto[]; next_cursor: string | null }>, Error>;
+  /** The profile page only renders this tab for signed-in users. */
+  isAuthenticated: boolean;
 }
 
-export function ProfileTabCheckins({ baseId, query: checkinsQuery }: ProfileTabCheckinsProps) {
+export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticated }: ProfileTabCheckinsProps) {
   const t = useTranslations("profile");
+  const [editing, setEditing] = useState<UserCheckInItemDto | null>(null);
 
   const checkins = checkinsQuery.data?.pages.flatMap((page) => page.items) ?? [];
 
@@ -95,7 +100,7 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery }: ProfileTabC
                   </span>
                 )}
                 <button
-                  onClick={() => toast(t("edit_checkin_coming"), { timeout: 4000 })}
+                  onClick={() => setEditing(item)}
                   aria-label={t("edit_checkin_aria", { cafe: item.cafeName || t("unknown_cafe") })}
                   className="p-1.5 text-muted hover:text-foreground active:scale-95 transition-all rounded-full hover:bg-surface-secondary"
                 >
@@ -127,6 +132,23 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery }: ProfileTabC
           </div>
         );
       })}
+
+      {editing && (
+        <CheckinDrawer
+          isOpen
+          onOpenChange={(open) => {
+            if (!open) setEditing(null);
+          }}
+          cafeId={editing.cafeId}
+          cafeName={editing.cafeName || t("unknown_cafe")}
+          mode="edit"
+          editCheckinId={editing.id}
+          initialScores={editing.scores}
+          initialMaxStay={editing.maxStay}
+          initialNote={editing.notes}
+          isAuthenticated={isAuthenticated}
+        />
+      )}
 
       {checkinsQuery.hasNextPage && (
         <Button

@@ -133,9 +133,8 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
             <OpenState cafe={shell.openState} />
           </p>
         </div>
-
         <ScorePair stats={cafe.work_stats} />
-        <CafePageActions cafe={shell.actions} shareUrl={canonical} />
+        <CafePageActions cafe={shell.actions} cafeId={cafe.id} shareUrl={canonical} />
         {/* SSR shell: bars at final width, no entry motion (artifact §2). */}
         <WorkProfile stats={cafe.work_stats} animated={false} />
         <PolicyConsensus stats={cafe.work_stats} />
@@ -149,7 +148,7 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
 
         {/* Part 2 — the check-in feed (DG106): user content loads from the
             public API after paint, never embedded in the initial HTML. */}
-        <CafePageFeed cafeId={cafe.id} />
+        <CafePageFeed cafeId={cafe.id} cafeName={cafe.name} />
       </main>
     </div>
   );

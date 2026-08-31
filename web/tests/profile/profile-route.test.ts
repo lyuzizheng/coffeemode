@@ -196,6 +196,7 @@ describe("Profile API routes", () => {
             cafeIsDeleted: false,
             visitedAt: "2026-08-25T12:00:00.000Z",
             scores: { wifi: 85 },
+            maxStay: null,
             likesCount: 3,
             notes: "Great spot",
             photos: [],

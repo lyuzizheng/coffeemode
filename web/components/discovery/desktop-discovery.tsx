@@ -52,7 +52,7 @@ export function DesktopDiscovery({
   controller: DiscoveryController;
   cafes: CafeSummary[];
   isLoading: boolean;
-  onCheckIn: () => void;
+  onCheckIn: (cafeId?: string, cafeName?: string) => void;
   addCafe: ReactNode;
   children?: ReactNode;
   /** Landing mode only: gates the interactive column content so the shell

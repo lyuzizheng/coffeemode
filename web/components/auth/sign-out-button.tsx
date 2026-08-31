@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@heroui/react";
-import { signOut, type AuthActionState } from "./actions";
+import { signOut, type AuthActionState } from "@/lib/auth/actions";
 import { AuthErrorMessage } from "./auth-error-message";
 import { idbPersister } from "@/lib/query/persister";
 

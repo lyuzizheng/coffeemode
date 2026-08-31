@@ -16,7 +16,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { animate, motion, useDragControls, useMotionValue, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { duration, ease } from "@/lib/motion";
-import { useMounted } from "@/lib/use-mounted";
+import { useMounted } from "@/hooks/use-mounted";
 import type { DiscoveryController, SheetSnap } from "@/lib/discovery/use-discovery-controller";
 import type { CafeSummary } from "@/types/cafes";
 import { CafeCardBody } from "./cafe-card";

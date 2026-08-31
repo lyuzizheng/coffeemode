@@ -4,9 +4,9 @@ import { profileFromUser } from "@/lib/auth/profiles";
 import { createSupabaseServerClient, isAuthConfigured } from "@/lib/auth/supabase-server";
 import { appConfig } from "@/lib/config";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { SignInButton } from "@/app/auth/sign-in-button";
-import { SignOutButton } from "@/app/auth/sign-out-button";
-import { AuthCallbackError } from "@/app/auth/auth-callback-error";
+import { SignInButton } from "@/components/auth/sign-in-button";
+import { SignOutButton } from "@/components/auth/sign-out-button";
+import { AuthCallbackError } from "@/components/auth/auth-callback-error";
 import { CafeCreationTrigger } from "@/components/cafe/cafe-creation-sheet";
 import { DiscoveryHome } from "@/components/discovery/discovery-home";
 

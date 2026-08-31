@@ -19,17 +19,18 @@ function getMaxRecentSearches(): number {
   return DEFAULT_MAX_RECENT_SEARCHES;
 }
 
-let cachedSearches: RecentSearchItem[] = [];
+const EMPTY_SEARCHES: RecentSearchItem[] = [];
+let cachedSearches: RecentSearchItem[] = EMPTY_SEARCHES;
 let cachedRaw: string | null = null;
 
 export function getRecentSearches(): RecentSearchItem[] {
-  if (typeof window === "undefined") return [];
+  if (typeof window === "undefined") return EMPTY_SEARCHES;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
+    if (!raw) return EMPTY_SEARCHES;
     const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
+    if (!Array.isArray(parsed)) return EMPTY_SEARCHES;
+    const filtered = parsed.filter(
       (item): item is RecentSearchItem =>
         typeof item === "object" &&
         item !== null &&
@@ -38,8 +39,9 @@ export function getRecentSearches(): RecentSearchItem[] {
         typeof (item as RecentSearchItem).city === "string" &&
         typeof (item as RecentSearchItem).timestamp === "number",
     );
+    return filtered.length === 0 ? EMPTY_SEARCHES : filtered;
   } catch {
-    return [];
+    return EMPTY_SEARCHES;
   }
 }
 
@@ -54,7 +56,7 @@ export function subscribeRecentSearches(callback: () => void): () => void {
 }
 
 export function getRecentSearchesSnapshot(): RecentSearchItem[] {
-  if (typeof window === "undefined") return [];
+  if (typeof window === "undefined") return EMPTY_SEARCHES;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw === cachedRaw) return cachedSearches;
@@ -62,11 +64,9 @@ export function getRecentSearchesSnapshot(): RecentSearchItem[] {
     cachedSearches = getRecentSearches();
     return cachedSearches;
   } catch {
-    return [];
+    return EMPTY_SEARCHES;
   }
 }
-
-const EMPTY_SEARCHES: RecentSearchItem[] = [];
 
 export function getRecentSearchesServerSnapshot(): RecentSearchItem[] {
   return EMPTY_SEARCHES;

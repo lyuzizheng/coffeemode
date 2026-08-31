@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { useMemo, useState } from "react";
-import { useMounted } from "@/lib/use-mounted";
+import { useMounted } from "@/hooks/use-mounted";
 
 /* ------------------------------------------------------------------ colors */
 /* Color utilities for the token inspector. Split out of shared.tsx so the

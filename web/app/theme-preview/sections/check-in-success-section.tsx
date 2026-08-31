@@ -4,7 +4,7 @@ import { Button } from "@heroui/react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { duration, ease, useEnterMotion } from "@/lib/motion";
-import { useMounted } from "@/lib/use-mounted";
+import { useMounted } from "@/hooks/use-mounted";
 import { DEMO_SCORE, Section } from "../shared";
 
 function CoffeeSteam() {

@@ -69,7 +69,6 @@ import {
   makeTestDbName,
   provisionTestDatabase,
   quotedIdentifier,
-  runMigrations,
   testDatabaseUrl,
 } from "../helpers/db";
 import {
@@ -101,7 +100,6 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     adminDbUrl = integrationAdminUrl();
     testDbUrl = testDatabaseUrl(adminDbUrl, TEST_DB);
     await provisionTestDatabase(adminDbUrl, TEST_DB);
-    runMigrations(testDbUrl);
     // Point the app's shared pool at the test DB before any lib call.
     process.env.DATABASE_URL = testDbUrl;
     dbClient = new pg.Client(getPoolConfig(testDbUrl));

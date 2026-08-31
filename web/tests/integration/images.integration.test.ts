@@ -29,7 +29,6 @@ import {
   makeTestDbName,
   provisionTestDatabase,
   quotedIdentifier,
-  runMigrations,
   testDatabaseUrl,
 } from "../helpers/db";
 import { TESTER_ID } from "../helpers/fixtures";
@@ -85,7 +84,6 @@ describeImages("integration — real MinIO/R2 image round-trip (docker compose u
     adminDbUrl = integrationAdminUrl();
     testDbUrl = testDatabaseUrl(adminDbUrl, TEST_DB);
     await provisionTestDatabase(adminDbUrl, TEST_DB);
-    runMigrations(testDbUrl);
     process.env.DATABASE_URL = testDbUrl;
     dbClient = new pg.Client(getPoolConfig(testDbUrl));
     await dbClient.connect();

@@ -48,6 +48,7 @@ export default async function HomePage({
       defaultCenter={appConfig.discovery.defaultCenter}
       addCafe={<CafeCreationTrigger isAuthenticated={Boolean(user)} />}
       initialCafeId={typeof params.cafe === "string" ? params.cafe : undefined}
+      isAuthenticated={Boolean(user)}
     >
       <div className="flex min-h-dvh flex-col">
         <header className="flex items-center justify-between px-5 py-4 sm:px-8">

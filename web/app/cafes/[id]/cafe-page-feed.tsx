@@ -6,22 +6,26 @@
  * the initial HTML. Reuses the discovery feed component unchanged: Newest
  * default (DG113), cursor pagination, stale-while-revalidate (DG17).
  */
-import { useTranslations } from "next-intl";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "@heroui/react";
 import { CheckinFeed } from "@/components/discovery/checkin-feed";
+import { CheckinDrawer } from "@/components/checkin/checkin-drawer";
 
-export function CafePageFeed({ cafeId }: { cafeId: string }) {
-  const t = useTranslations("discovery");
+export function CafePageFeed({ cafeId, cafeName }: { cafeId: string; cafeName: string }) {
   const router = useRouter();
+  const [checkinOpen, setCheckinOpen] = useState(false);
   return (
-    <CheckinFeed
-      cafeId={cafeId}
-      // A feed 404 means the cafe vanished after the shell rendered; the
-      // server owns the 404 surface (DG19), so re-fetch this route.
-      onMissingCafe={() => router.refresh()}
-      // Interim: the drawer arrives with the checkin-system slice.
-      onCheckIn={() => toast(t("checkin_coming"), { timeout: 4000 })}
-    />
+    <>
+      <CheckinFeed
+        cafeId={cafeId}
+        // A feed 404 means the cafe vanished after the shell rendered; the
+        // server owns the 404 surface (DG19), so re-fetch this route.
+        onMissingCafe={() => router.refresh()}
+        onCheckIn={() => setCheckinOpen(true)}
+      />
+      {/* Same auth story as CafePageActions: cached public shell, so the
+          drawer resolves auth client-side. */}
+      <CheckinDrawer isOpen={checkinOpen} onOpenChange={setCheckinOpen} cafeId={cafeId} cafeName={cafeName} />
+    </>
   );
 }

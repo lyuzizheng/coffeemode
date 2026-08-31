@@ -4,7 +4,7 @@ import { isValidUUID } from "@shared/uuid";
 import { query } from "./postgres";
 import { appConfig } from "@/lib/config";
 import { DEFAULT_CITY, LAUNCH_CITIES } from "@/lib/cities";
-import type { CheckInScores } from "@/types/checkins";
+import type { CheckInScores, MaxStay } from "@/types/checkins";
 import type { StoredImage } from "@/types/images";
 
 export type ProfilePatchResult =
@@ -96,6 +96,7 @@ export interface UserCheckInItemDto {
   cafeIsDeleted: boolean;
   visitedAt: string;
   scores: CheckInScores;
+  maxStay: MaxStay | null;
   likesCount: number;
   notes: string | null;
   photos: StoredImage[];
@@ -263,6 +264,7 @@ export async function getUserCheckIns(
     cafe_is_deleted: boolean;
     visited_at: Date;
     scores: CheckInScores | null;
+    max_stay: MaxStay | null;
     likes_count: number;
     notes: string | null;
     photos: StoredImage[] | null;
@@ -277,6 +279,7 @@ export async function getUserCheckIns(
       (c.id is null or c.deleted_at is not null) as cafe_is_deleted,
       ch.visited_at,
       ch.scores,
+      ch.max_stay,
       ch.likes_count,
       ch.note as notes,
       ch.photos,
@@ -303,6 +306,7 @@ export async function getUserCheckIns(
     cafeIsDeleted: Boolean(r.cafe_is_deleted),
     visitedAt: r.visited_at.toISOString(),
     scores: r.scores ?? {},
+    maxStay: r.max_stay ?? null,
     likesCount: Number(r.likes_count ?? 0),
     notes: r.notes,
     photos: Array.isArray(r.photos) ? r.photos : [],

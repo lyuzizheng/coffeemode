@@ -208,7 +208,6 @@
     "retry": "Retry",
     "edit_name_placeholder": "Your name",
     "edit_checkin_aria": "Edit check-in at {cafe}",
-    "edit_checkin_coming": "Check-in editor is coming soon",
     "default_name": "A nomad",
     "default_avatar": "P",
     "default_city": "Singapore",
@@ -322,9 +321,14 @@
     "signInGate": "Sign in to publish your check-in — your draft stays here.",
     "signInRequired": "Please sign in to publish",
     "photosUploading": "Photos are still uploading — wait a moment",
-    "promptCaption": "来打个卡，帮其他 nomad 种草避雷吧！",
+    "promptCaption": "Check in — help the next nomad pick their spot!",
     "notSet": "not set",
-    "clear": "Clear {label}"
+    "clear": "Clear {label}",
+    "editTitle": "Edit check-in",
+    "deleted": "Check-in deleted",
+    "removePhoto": "Remove photo",
+    "dismiss": "Dismiss",
+    "close": "Close"
   },
   "success": {
     "title": "Check-in saved",
@@ -437,7 +441,7 @@
     "peek_aria": "Nearby cafes",
     "sheet_aria": "Cafe discovery",
     "sheet_handle_aria": "Drag to resize the panel",
-    "checkin_coming": "The check-in composer ships with the check-in slice — coming next"
+    "unknown_cafe": "Cafe"
   },
   "share": {
     "aria": "Share",

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef } from "react";
+import { useTranslations } from "next-intl";
 
 interface CheckinSliderProps {
   label: string;
@@ -23,6 +24,7 @@ export function CheckinSlider({
   disabled = false,
   showClear = false,
 }: CheckinSliderProps) {
+  const t = useTranslations("checkIn");
   const trackRef = useRef<HTMLDivElement>(null);
   const isSet = value !== null;
   const displayValue = isSet ? String(value) : "—";
@@ -35,10 +37,6 @@ export function CheckinSlider({
       const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
       const next = Math.round(ratio * 100);
       onChange(next);
-      // Light haptic
-      try {
-        navigator.vibrate?.(10);
-      } catch {}
     },
     [disabled, onChange],
   );
@@ -48,6 +46,10 @@ export function CheckinSlider({
       if (disabled) return;
       (e.target as Element).setPointerCapture?.(e.pointerId);
       setFromClientX(e.clientX);
+      // Light haptic on first touch only — not on every pointermove of the drag.
+      try {
+        navigator.vibrate?.(10);
+      } catch {}
       const handleMove = (ev: PointerEvent) => setFromClientX(ev.clientX);
       const handleUp = () => {
         window.removeEventListener("pointermove", handleMove);
@@ -97,7 +99,7 @@ export function CheckinSlider({
           aria-valuenow={isSet ? value : undefined}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-valuetext={isSet ? String(value) : "not set"}
+          aria-valuetext={isSet ? String(value) : t("notSet")}
           tabIndex={disabled ? -1 : 0}
           onKeyDown={handleKeyDown}
           onPointerDown={handlePointerDown}
@@ -107,7 +109,7 @@ export function CheckinSlider({
         >
           {/* Track */}
           <div
-            className={`absolute inset-y-2 left-0 right-0 rounded-full ${isSet ? "bg-surface-tertiary" : "bg-surface-tertiary"}`}
+            className="absolute inset-y-2 left-0 right-0 rounded-full bg-surface-tertiary"
           />
           {/* Fill */}
           {isSet && (
@@ -130,7 +132,7 @@ export function CheckinSlider({
         {showClear && isSet && onClear && (
           <button
             type="button"
-            aria-label={`Clear ${label}`}
+            aria-label={t("clear", { label })}
             onClick={onClear}
             className="flex h-7 w-7 items-center justify-center rounded-full text-muted hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
@@ -148,10 +150,10 @@ export function CheckinSlider({
               <path d="M8 2v6m0 0a2 2 0 100 4 2 2 0 000-4z" stroke="currentColor" strokeWidth={1.2} fill="none" strokeLinecap="round" />
               <path d="M3 3l2 2M13 3l-2 2" stroke="currentColor" strokeWidth={1} strokeLinecap="round" opacity={0.6} />
             </svg>
-            Too cold
+            {t("tooCold")}
           </span>
           <span className="flex items-center gap-1">
-            Too hot
+            {t("tooHot")}
             <svg width={12} height={12} viewBox="0 0 16 16" aria-hidden>
               <path d="M8 14c2-2 4-4 4-6a4 4 0 10-8 0c0 2 2 4 4 6z" stroke="currentColor" strokeWidth={1.2} fill="none" />
               <path d="M8 10v2" stroke="currentColor" strokeWidth={1.2} strokeLinecap="round" />

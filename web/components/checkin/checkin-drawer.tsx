@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Drawer, toast } from "@heroui/react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -8,6 +8,7 @@ import { CheckinSlider } from "./checkin-slider";
 import { CheckinPhotos, type PhotoUpload } from "./checkin-photos";
 import { CheckinSuccess } from "./checkin-success";
 import { useNetworkStatus } from "@/hooks/use-network-status";
+import { SignInButton } from "@/components/auth/sign-in-button";
 import { responseMessage } from "@/lib/http";
 import type { CheckInScores, MaxStay } from "@/types/checkins";
 import { MAX_STAY_VALUES } from "@/types/checkins";
@@ -31,7 +32,7 @@ interface CheckinDrawerProps {
 function formatLastVisit(iso: string): string {
   try {
     const d = new Date(iso);
-    return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+    return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
   } catch {
     return iso.slice(0, 10);
   }
@@ -44,7 +45,7 @@ function isWithin90Days(iso: string): boolean {
 
 async function fetchLastCheckin(cafeId: string) {
   const res = await fetch(`/api/checkins/last?cafe_id=${encodeURIComponent(cafeId)}`);
-  if (res.status === 401) return null;
+  if (res.status === 401) throw new Error("unauthorized");
   if (!res.ok) throw new Error("failed");
   const body = (await res.json()) as {
     checkin: { id: string; scores: CheckInScores; max_stay: MaxStay | null; note: string | null; visited_at: string } | null;
@@ -62,6 +63,7 @@ function CheckinForm({
   initialNote,
   isAuthenticated,
   onClose,
+  onDirtyChange,
 }: {
   cafeId: string;
   cafeName: string;
@@ -70,8 +72,10 @@ function CheckinForm({
   initialScores?: CheckInScores;
   initialMaxStay?: MaxStay | null;
   initialNote?: string | null;
-  isAuthenticated: boolean;
+  /** Server-known auth state; undefined = resolve client-side (cached public shell). */
+  isAuthenticated?: boolean;
   onClose: () => void;
+  onDirtyChange: (dirty: boolean) => void;
 }) {
   const t = useTranslations("checkIn");
   const ts = useTranslations("search");
@@ -80,6 +84,11 @@ function CheckinForm({
   const isOffline = networkState === "offline";
 
   const isEdit = mode === "edit";
+  // Auth is resolved server-side where the page knows it (home, profile) via the
+  // `isAuthenticated` prop. On the CDN-cached public cafe shell (DG105/DG106) the
+  // prop is undefined and auth is resolved here client-side: the last-check-in
+  // probe 401s for anonymous users, and a 401 from submit/delete drops to the
+  // sign-in gate instead of a raw error.
 
   const [wifi, setWifi] = useState<number | null>(initialScores?.wifi ?? null);
   const [outlets, setOutlets] = useState<number | null>(initialScores?.outlets ?? null);
@@ -95,13 +104,21 @@ function CheckinForm({
   const [showSignInGate, setShowSignInGate] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [repeatDismissed, setRepeatDismissed] = useState(false);
+  const [failedAction, setFailedAction] = useState<"save" | "delete" | null>(null);
 
   const lastCheckinQuery = useQuery({
     queryKey: ["last-checkin", cafeId],
     queryFn: () => fetchLastCheckin(cafeId),
-    enabled: !isEdit && isAuthenticated,
+    enabled: !isEdit && isAuthenticated !== false,
     staleTime: 60_000,
+    retry: false,
   });
+
+  const authProbeFailed =
+    lastCheckinQuery.isError &&
+    lastCheckinQuery.error instanceof Error &&
+    lastCheckinQuery.error.message === "unauthorized";
+  const effectivelyAuthenticated = (isAuthenticated ?? true) && !authProbeFailed;
 
   const lastCheckin = lastCheckinQuery.data;
   const lastVisitWithin90Days = useMemo(() => {
@@ -152,6 +169,12 @@ function CheckinForm({
     );
   }, [isEdit, wifi, outlets, seats, temp, coffee, overall, maxStay, note, photos, initialScores, initialMaxStay, initialNote]);
 
+  // Report dirty state up so the drawer's close guard doesn't scrape the DOM.
+  useEffect(() => {
+    onDirtyChange(isDirty);
+    return () => onDirtyChange(false);
+  }, [isDirty, onDirtyChange]);
+
   const canSubmit = overall !== null && view !== "submitting" && view !== "success";
 
   const submitMutation = useMutation({
@@ -175,6 +198,7 @@ function CheckinForm({
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body),
         });
+        if (res.status === 401) throw new Error("unauthorized");
         if (!res.ok) throw new Error(await responseMessage(res, t("couldntSave")));
         return res.json();
       }
@@ -191,18 +215,21 @@ function CheckinForm({
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
+      if (res.status === 401) throw new Error("unauthorized");
       if (!res.ok) throw new Error(await responseMessage(res, t("couldntSave")));
       return res.json();
     },
     onMutate: () => {
       setView("submitting");
       setError(null);
+      setFailedAction(null);
     },
     onSuccess: () => {
       setView("success");
       queryClient.invalidateQueries({ queryKey: ["cafe", cafeId] });
       queryClient.invalidateQueries({ queryKey: ["cafe-checkins", cafeId] });
       queryClient.invalidateQueries({ queryKey: ["last-checkin", cafeId] });
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
       setTimeout(() => {
         onClose();
         toast(t("saved"), { timeout: 3000 });
@@ -210,6 +237,11 @@ function CheckinForm({
     },
     onError: (err) => {
       setView("form");
+      if (err instanceof Error && err.message === "unauthorized") {
+        setShowSignInGate(true);
+        return;
+      }
+      setFailedAction("save");
       if (err instanceof Error && err.message === "photos_uploading") {
         setError(t("photosUploading"));
       } else {
@@ -222,16 +254,23 @@ function CheckinForm({
     mutationFn: async () => {
       if (!editCheckinId) throw new Error("missing id");
       const res = await fetch(`/api/checkins/${editCheckinId}`, { method: "DELETE" });
+      if (res.status === 401) throw new Error("unauthorized");
       if (!res.ok) throw new Error(await responseMessage(res, t("couldntSave")));
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cafe", cafeId] });
       queryClient.invalidateQueries({ queryKey: ["cafe-checkins", cafeId] });
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
       onClose();
-      toast("Check-in deleted", { timeout: 3000 });
+      toast(t("deleted"), { timeout: 3000 });
     },
     onError: (err) => {
+      if (err instanceof Error && err.message === "unauthorized") {
+        setShowSignInGate(true);
+        return;
+      }
+      setFailedAction("delete");
       setError(err instanceof Error ? err.message : t("couldntSave"));
     },
   });
@@ -242,7 +281,7 @@ function CheckinForm({
       return;
     }
     if (overall === null) return;
-    if (!isAuthenticated) {
+    if (!effectivelyAuthenticated) {
       setShowSignInGate(true);
       return;
     }
@@ -253,14 +292,13 @@ function CheckinForm({
     MAX_STAY_VALUES.map((v) => [v, ts(`maxStayOptions.${v}`)]),
   ) as Record<string, string>;
 
-  // Expose dirty state to parent via data attribute for close guard
   return (
-    <div data-dirty={isDirty ? "true" : "false"} className="flex flex-1 flex-col">
+    <div className="flex flex-1 flex-col">
       <Drawer.Header className="shrink-0 border-b border-separator px-4 py-3">
         <Drawer.Heading className="truncate font-display text-lg">{cafeName}</Drawer.Heading>
         <Drawer.CloseTrigger className="flex h-9 w-9 items-center justify-center rounded-full text-muted hover:bg-surface-secondary">
           <span aria-hidden className="text-xl leading-none">×</span>
-          <span className="sr-only">Close</span>
+          <span className="sr-only">{t("close")}</span>
         </Drawer.CloseTrigger>
         {!isEdit && <p className="mt-1 text-xs text-muted">{t("promptCaption")}</p>}
       </Drawer.Header>
@@ -272,7 +310,7 @@ function CheckinForm({
           <div className="flex flex-col gap-4">
             {showRepeatBanner && lastCheckin && (
               <div className="flex items-center justify-between rounded-md bg-surface-secondary p-3">
-                <span className="text-sm">Last visit {formatLastVisit(lastCheckin.visited_at)}</span>
+                <span className="text-sm">{t("lastVisit", { date: formatLastVisit(lastCheckin.visited_at) })}</span>
                 <div className="flex items-center gap-2">
                   <Button variant="primary" size="sm" onPress={applySameAsLast} className="h-7 rounded-sm px-3 text-xs">
                     {t("same")}
@@ -280,7 +318,7 @@ function CheckinForm({
                   <Button variant="ghost" size="sm" onPress={() => setRepeatDismissed(true)} className="h-7 rounded-sm px-3 text-xs">
                     {t("new")}
                   </Button>
-                  <button type="button" onClick={() => setRepeatDismissed(true)} className="ml-1 text-muted hover:text-foreground" aria-label="Dismiss">
+                  <button type="button" onClick={() => setRepeatDismissed(true)} className="ml-1 text-muted hover:text-foreground" aria-label={t("dismiss")}>
                     ×
                   </button>
                 </div>
@@ -296,7 +334,6 @@ function CheckinForm({
 
               <div className="border-t border-separator pt-3">
                 <CheckinSlider label={t("overallExperience")} value={overall} onChange={setOverall} showClear={isEdit} onClear={() => setOverall(null)} />
-                {overall === null && <p className="mt-1 text-xs text-muted">{t("overallHint")}</p>}
               </div>
             </div>
 
@@ -333,15 +370,22 @@ function CheckinForm({
               />
             </div>
 
-            <div className="space-y-1">
-              <div className="text-xs text-muted">{t("photos")}</div>
-              <CheckinPhotos photos={photos} onChange={setPhotos} maxPhotos={6} />
-            </div>
+            {!isEdit && (
+              <div className="space-y-1">
+                <div className="text-xs text-muted">{t("photos")}</div>
+                <CheckinPhotos photos={photos} onChange={setPhotos} maxPhotos={6} />
+              </div>
+            )}
 
             {error && (
               <div className="flex items-center gap-2 rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
                 <span>{error}</span>
-                <Button variant="outline" size="sm" onPress={() => submitMutation.mutate()} className="ml-auto h-7 text-xs">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onPress={() => (failedAction === "delete" ? deleteMutation.mutate() : submitMutation.mutate())}
+                  className="ml-auto h-7 text-xs"
+                >
                   {t("retry")}
                 </Button>
               </div>
@@ -351,18 +395,8 @@ function CheckinForm({
               <div className="rounded-md border border-separator bg-surface-secondary p-4 text-center">
                 <p className="mb-3 text-sm">{t("signInGate")}</p>
                 <div className="flex flex-col gap-2">
-                  <form action="/api/auth/signin" method="post">
-                    <input type="hidden" name="provider" value="google" />
-                    <Button type="submit" variant="primary" className="w-full">
-                      Continue with Google
-                    </Button>
-                  </form>
-                  <form action="/api/auth/signin" method="post">
-                    <input type="hidden" name="provider" value="apple" />
-                    <Button type="submit" variant="outline" className="w-full">
-                      Continue with Apple
-                    </Button>
-                  </form>
+                  <SignInButton provider="google" variant="primary" />
+                  <SignInButton provider="apple" variant="outline" />
                 </div>
               </div>
             )}
@@ -420,18 +454,21 @@ export function CheckinDrawer({
   initialScores,
   initialMaxStay,
   initialNote,
-  isAuthenticated = true,
+  isAuthenticated,
 }: CheckinDrawerProps) {
+  const t = useTranslations("checkIn");
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const dirtyRef = useRef(false);
+  const handleDirtyChange = useCallback((dirty: boolean) => {
+    dirtyRef.current = dirty;
+  }, []);
 
   const formKey = isOpen ? `${cafeId}-${mode}-${editCheckinId ?? "new"}` : "closed";
 
   const handleCloseAttempt = useCallback(
     (nextOpen: boolean) => {
       if (!nextOpen) {
-        const el = document.querySelector("[data-dirty]");
-        const dirty = el?.getAttribute("data-dirty") === "true";
-        if (dirty) {
+        if (dirtyRef.current) {
           setShowDiscardConfirm(true);
           return;
         }
@@ -445,7 +482,7 @@ export function CheckinDrawer({
     <Drawer.Root isOpen={isOpen} onOpenChange={handleCloseAttempt}>
       <Drawer.Backdrop />
       <Drawer.Content placement="bottom" className="max-h-[92dvh] bg-overlay text-foreground">
-        <Drawer.Dialog aria-label={mode === "edit" ? "Edit check-in" : "Check in"} className="flex max-h-[92dvh] flex-col">
+        <Drawer.Dialog aria-label={mode === "edit" ? t("editTitle") : t("title")} className="flex max-h-[92dvh] flex-col">
           {isOpen && (
             <CheckinForm
               key={formKey}
@@ -458,16 +495,17 @@ export function CheckinDrawer({
               initialNote={initialNote}
               isAuthenticated={isAuthenticated}
               onClose={() => onOpenChange(false)}
+              onDirtyChange={handleDirtyChange}
             />
           )}
 
           {showDiscardConfirm && (
             <div className="absolute inset-0 flex items-end justify-center bg-black/30 p-4">
               <div className="w-full max-w-sm rounded-lg bg-surface p-4 shadow-lg">
-                <p className="mb-4 text-sm font-medium">Discard this check-in?</p>
+                <p className="mb-4 text-sm font-medium">{t("discardTitle")}</p>
                 <div className="flex justify-end gap-2">
                   <Button variant="ghost" onPress={() => setShowDiscardConfirm(false)}>
-                    Keep editing
+                    {t("keepEditing")}
                   </Button>
                   <Button
                     variant="primary"
@@ -477,7 +515,7 @@ export function CheckinDrawer({
                       onOpenChange(false);
                     }}
                   >
-                    Discard
+                    {t("discard")}
                   </Button>
                 </div>
               </div>

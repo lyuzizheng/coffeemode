@@ -61,7 +61,7 @@ export function ProfileView({
 
             <div className="flex-1 flex flex-col py-2">
               {activeTab === "checkins" && (
-                <ProfileTabCheckins baseId={baseId} query={checkinsQuery} />
+                <ProfileTabCheckins baseId={baseId} query={checkinsQuery} isAuthenticated={isAuthenticated} />
               )}
               {activeTab === "map" && (
                 <ProfileTabCafes baseId={baseId} query={cafesQuery} />

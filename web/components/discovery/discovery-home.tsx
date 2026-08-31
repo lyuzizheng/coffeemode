@@ -20,7 +20,6 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { toast } from "@heroui/react";
 import { useDiscoveryController } from "@/lib/discovery/use-discovery-controller";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useMounted } from "@/hooks/use-mounted";
@@ -40,6 +39,7 @@ export function DiscoveryHome({
   defaultCenter,
   addCafe,
   initialCafeId,
+  isAuthenticated,
   children,
 }: {
   /** Fallback map center (web/config/app.yaml discovery.defaultCenter). */
@@ -48,6 +48,8 @@ export function DiscoveryHome({
   addCafe: ReactNode;
   /** Optional initial selected cafe ID (e.g. from ?cafe= query param) */
   initialCafeId?: string;
+  /** Server-known auth state — forwarded to the check-in drawer's sign-in gate. */
+  isAuthenticated?: boolean;
   /** Surface children (e.g. landing scaffold / map) coordinated with discovery */
   children?: ReactNode;
 }) {
@@ -66,12 +68,9 @@ export function DiscoveryHome({
 
   const onCheckIn = (cafeId?: string, cafeName?: string) => {
     const id = cafeId ?? controller.selectedCafeId;
-    if (!id) {
-      toast(t("checkin_coming"), { timeout: 4000 });
-      return;
-    }
+    if (!id) return;
     const cafe = cafesQuery.data?.find((c) => c.id === id);
-    setCheckinCafe({ id, name: cafeName ?? cafe?.name ?? "Cafe" });
+    setCheckinCafe({ id, name: cafeName ?? cafe?.name ?? t("unknown_cafe") });
     setCheckinOpen(true);
   };
 
@@ -89,6 +88,7 @@ export function DiscoveryHome({
       onOpenChange={setCheckinOpen}
       cafeId={checkinCafe.id}
       cafeName={checkinCafe.name}
+      isAuthenticated={isAuthenticated}
     />
   ) : null;
 

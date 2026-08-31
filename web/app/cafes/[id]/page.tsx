@@ -148,7 +148,7 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
 
         {/* Part 2 — the check-in feed (DG106): user content loads from the
             public API after paint, never embedded in the initial HTML. */}
-        <CafePageFeed cafeId={cafe.id} />
+        <CafePageFeed cafeId={cafe.id} cafeName={cafe.name} />
       </main>
     </div>
   );

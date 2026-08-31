@@ -1,9 +1,11 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
+import { useTranslations } from "next-intl";
 
 export function CheckinSuccess({ cafeName }: { cafeName: string }) {
   const reduceMotion = useReducedMotion();
+  const t = useTranslations("checkIn");
 
   if (reduceMotion) {
     return (
@@ -13,7 +15,7 @@ export function CheckinSuccess({ cafeName }: { cafeName: string }) {
             <path d="M4 10l4 4 8-8" stroke="currentColor" strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </div>
-        <p className="text-lg font-medium">Checked in</p>
+        <p className="text-lg font-medium">{t("checkedIn")}</p>
         <p className="text-sm text-muted">{cafeName}</p>
       </div>
     );
@@ -66,7 +68,7 @@ export function CheckinSuccess({ cafeName }: { cafeName: string }) {
         transition={{ duration: 0.2, delay: 0.2 }}
         className="text-lg font-medium"
       >
-        Checked in
+        {t("checkedIn")}
       </motion.p>
       <motion.p
         initial={{ opacity: 0 }}

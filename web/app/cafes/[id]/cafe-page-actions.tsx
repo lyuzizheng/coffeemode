@@ -46,6 +46,10 @@ export function CafePageActions({
           <ShareControl url={shareUrl} title={cafe.name} />
         </div>
       </div>
+      {/* No isAuthenticated prop here: this page is the CDN-cached public shell
+          (DG105/DG106), so per-user auth can't be baked into the HTML. The
+          drawer resolves auth client-side via its last-check-in probe and
+          drops to the sign-in gate on 401. */}
       <CheckinDrawer isOpen={open} onOpenChange={setOpen} cafeId={cafeId} cafeName={cafe.name} />
     </>
   );

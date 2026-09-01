@@ -232,12 +232,12 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
           relevanceWeights.secondaryMatch,
         ),
       },
-      minRelevanceScore: positiveInteger(
-        file,
-          "search.minRelevanceScore",
-          search.minRelevanceScore,
-        ),
+      minRelevanceScore:
+        search.minRelevanceScore === undefined
+          ? 50
+          : positiveInteger(file, "search.minRelevanceScore", search.minRelevanceScore),
       externalSources: (() => {
+        if (search.externalSources === undefined) return { google: true, apple: false };
         const es = record(file, "search.externalSources", search.externalSources);
         if (typeof es.google !== "boolean" || typeof es.apple !== "boolean") {
           fail(file, "search.externalSources", "must be {google:boolean, apple:boolean}");
@@ -245,6 +245,7 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
         return { google: es.google, apple: es.apple };
       })(),
       rankingMode: (() => {
+        if (search.rankingMode === undefined) return "relevance";
         const v = search.rankingMode;
         if (v !== "relevance" && v !== "good_first") {
           fail(file, "search.rankingMode", "must be \"relevance\" or \"good_first\"");

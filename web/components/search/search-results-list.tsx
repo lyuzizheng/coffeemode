@@ -34,6 +34,8 @@ interface SearchResultsListProps {
   mapkitConfigured?: boolean;
   onSelect: (item: SearchResultItem) => void;
   onExternalSearch: (provider: ExternalSearchProvider) => void;
+  /** DG133 pairs the external-search notice with a retry action. */
+  onRetry?: () => void;
 }
 
 function ResultRow({
@@ -94,6 +96,7 @@ export function SearchResultsList({
   mapkitConfigured = process.env.NEXT_PUBLIC_MAPKIT_CONFIGURED === "true",
   onSelect,
   onExternalSearch,
+  onRetry,
 }: SearchResultsListProps) {
   const t = useTranslations("search");
   const { coffeemode, external } = groupSearchResults(response.results);
@@ -109,7 +112,7 @@ export function SearchResultsList({
   return (
     <div className="flex flex-col">
       {!isEmpty && (
-        <div role="list" aria-label={t("results_label")}>
+        <div>
           {coffeemode.length > 0 && (
             <section aria-label={t("group_on_coffeemode")}>
               <GroupHeader label={t("group_on_coffeemode")} />
@@ -134,9 +137,20 @@ export function SearchResultsList({
       )}
 
       {response.warnings?.includes("poi_unavailable") && (
-        <p role="status" className="px-3 pt-2 text-xs text-muted">
-          {t("external_unavailable")}
-        </p>
+        <div className="flex items-center justify-between gap-2 px-3 pt-2">
+          <p role="status" className="text-xs text-muted">
+            {t("external_unavailable")}
+          </p>
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="cm-focus rounded-md border border-border px-2 py-1 text-xs text-accent transition-colors hover:bg-surface-secondary"
+            >
+              {t("retry")}
+            </button>
+          )}
+        </div>
       )}
 
       {showExternalPrompt && (

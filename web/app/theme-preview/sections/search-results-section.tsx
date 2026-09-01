@@ -10,6 +10,7 @@ import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { RankingPreferenceToggle } from "@/components/search/ranking-preference-toggle";
 import { SearchResultsList } from "@/components/search/search-results-list";
+import { UnifiedSearchPanel } from "@/components/search/unified-search-panel";
 import type { SearchResponse } from "@/lib/search/types";
 import { Section } from "../shared";
 
@@ -43,6 +44,14 @@ const DEMO_RESPONSE: SearchResponse = {
   ],
 };
 
+/** Demo fetcher for the live panel preview — simulates the DG140 fixtures path. */
+const demoFetchSearch = async (): Promise<SearchResponse> => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(resolve, 300);
+  await promise;
+  return DEMO_RESPONSE;
+};
+
 export function SearchResultsSection() {
   const t = useTranslations("themePreview.searchResults");
   const [lastAction, setLastAction] = useState<string | null>(null);
@@ -57,6 +66,17 @@ export function SearchResultsSection() {
         <div className="rounded-lg border border-separator bg-surface p-4">
           <RankingPreferenceToggle variant="onboarding" />
         </div>
+        {/* The live panel, mounted here through the demo fetcher until
+            map-discovery-integration (#134) mounts it for real. */}
+        <div className="rounded-lg border border-separator bg-surface p-3">
+          <UnifiedSearchPanel
+            externalSources={{ google: true, apple: true }}
+            mapkitConfigured={false}
+            onSelectResult={(item) => setLastAction(item.name)}
+            onExternalSearch={(provider) => setLastAction(provider)}
+            fetchSearch={demoFetchSearch}
+          />
+        </div>
 
         <div className="rounded-lg border border-separator bg-surface py-2">
           <SearchResultsList
@@ -65,6 +85,7 @@ export function SearchResultsSection() {
             mapkitConfigured={false}
             onSelect={(item) => setLastAction(item.name)}
             onExternalSearch={(provider) => setLastAction(provider)}
+            onRetry={() => setLastAction("retry")}
           />
         </div>
         {lastAction && (

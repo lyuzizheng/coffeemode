@@ -12,9 +12,9 @@
  */
 import { SearchField } from "@heroui/react";
 import { useTranslations } from "next-intl";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { addRecentSearch } from "@/lib/search/recent-searches";
-import { fetchUnifiedSearch } from "@/lib/search/search-client";
+import { fetchUnifiedSearch, type UnifiedSearchParams } from "@/lib/search/search-client";
 import type { SearchResponse, SearchResultItem } from "@/lib/search/types";
 import {
   SearchResultsList,
@@ -47,6 +47,11 @@ export interface UnifiedSearchPanelProps {
   city?: string;
   onSelectResult: (item: SearchResultItem) => void;
   onExternalSearch: (provider: ExternalSearchProvider) => void;
+  /**
+   * DI seam for the DG140 fixtures/MSW path and tests; defaults to the real
+   * `/api/search` client. Production surfaces never pass this.
+   */
+  fetchSearch?: (params: UnifiedSearchParams) => Promise<SearchResponse>;
 }
 
 export function UnifiedSearchPanel({
@@ -55,12 +60,14 @@ export function UnifiedSearchPanel({
   city,
   onSelectResult,
   onExternalSearch,
+  fetchSearch,
 }: UnifiedSearchPanelProps) {
   const t = useTranslations("search");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<SearchStatus>("idle");
   const [response, setResponse] = useState<SearchResponse | null>(null);
   const requestId = useRef(0);
+  const fetcher = fetchSearch ?? fetchUnifiedSearch;
 
   // Below the 3-character trigger (DG44) the panel is idle by derivation —
   // no setState in the effect body. Stale in-flight requests are invalidated
@@ -68,53 +75,46 @@ export function UnifiedSearchPanel({
   const isBelowMinQuery = query.trim().length < MIN_QUERY_LENGTH;
   const effectiveStatus: SearchStatus = isBelowMinQuery ? "idle" : status;
 
-  useEffect(() => {
-    const trimmed = query.trim();
-    if (trimmed.length < MIN_QUERY_LENGTH) {
-      requestId.current += 1;
-      return;
-    }
-    const id = ++requestId.current;
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      // Keep the last good list during refetch — never flash skeletons over
-      // real content (DG141); skeletons are for the first load only.
+  // One runner for both the debounced effect and manual retry. Stale
+  // responses are discarded via the request id; a successful prior status is
+  // kept during refetch so skeletons never flash over real content (DG141).
+  const runSearch = useCallback(
+    (trimmed: string, signal?: AbortSignal) => {
+      const id = ++requestId.current;
       setStatus((prev) => (prev === "success" ? prev : "loading"));
-      fetchUnifiedSearch({ q: trimmed, city, signal: controller.signal })
+      fetcher({ q: trimmed, city, signal })
         .then((data) => {
           if (requestId.current !== id) return;
           setResponse(data);
           setStatus("success");
         })
         .catch((cause: unknown) => {
-          if (requestId.current !== id || controller.signal.aborted) return;
+          if (requestId.current !== id || signal?.aborted) return;
           console.error("unified search failed", cause);
           setStatus("error");
         });
-    }, DEBOUNCE_MS);
+    },
+    [city, fetcher],
+  );
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < MIN_QUERY_LENGTH) {
+      requestId.current += 1;
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => runSearch(trimmed, controller.signal), DEBOUNCE_MS);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, city]);
+  }, [query, city, runSearch]);
 
   const retry = () => {
-    // Re-run the effect chain immediately instead of waiting on the debounce.
+    // Re-run the request immediately instead of waiting on the debounce.
     const trimmed = query.trim();
-    if (trimmed.length < MIN_QUERY_LENGTH) return;
-    const id = ++requestId.current;
-    setStatus("loading");
-    fetchUnifiedSearch({ q: trimmed, city })
-      .then((data) => {
-        if (requestId.current !== id) return;
-        setResponse(data);
-        setStatus("success");
-      })
-      .catch((cause: unknown) => {
-        if (requestId.current !== id) return;
-        console.error("unified search failed", cause);
-        setStatus("error");
-      });
+    if (trimmed.length >= MIN_QUERY_LENGTH) runSearch(trimmed);
   };
 
   // DG56: Esc clears the query and dismisses suggestions.
@@ -165,6 +165,7 @@ export function UnifiedSearchPanel({
           mapkitConfigured={mapkitConfigured}
           onSelect={handleSelect}
           onExternalSearch={onExternalSearch}
+          onRetry={retry}
         />
       )}
     </div>

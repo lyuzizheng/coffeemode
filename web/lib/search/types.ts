@@ -50,4 +50,5 @@ export interface SearchResponse {
   is_weak_results: boolean;
   reference_point: SearchReferencePoint;
   warnings?: string[];
+  search_mode?: "stored_only" | "live";
 }

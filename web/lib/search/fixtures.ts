@@ -1,4 +1,8 @@
 import "server-only";
+import fs from "node:fs";
+import path from "node:path";
+import type { CafeSummary } from "@/types/cafes";
+import type { POI } from "@shared/places/types";
 
 /**
  * DG140 — fixtures double-gate (备选挂载方案).
@@ -9,16 +13,26 @@ import "server-only";
 export function isFixturesEnabled(): boolean {
   return process.env.SEARCH_FIXTURES === "1" && process.env.NODE_ENV !== "production";
 }
-
-// Minimal deterministic fixtures stub — full JSON file lands in Stage 2 (`web/tests/fixtures/search-fixtures.json`).
-// Keeping the loader here avoids scattering `process.env` checks and readFile calls.
 export interface SearchFixtures {
-  cafes: unknown[];
-  pois: unknown[];
+  cafes: CafeSummary[];
+  pois: POI[];
 }
 
 export function getSearchFixtures(): SearchFixtures | null {
   if (!isFixturesEnabled()) return null;
-  // Stage 2 will read `web/tests/fixtures/search-fixtures.json` via fs; return empty stub for now to satisfy type-check.
-  return { cafes: [], pois: [] };
+  try {
+    const candidatePaths = [
+      path.join(process.cwd(), "tests/fixtures/search-fixtures.json"),
+      path.join(process.cwd(), "web/tests/fixtures/search-fixtures.json"),
+    ];
+    for (const candidate of candidatePaths) {
+      if (fs.existsSync(candidate)) {
+        const raw = fs.readFileSync(candidate, "utf-8");
+        return JSON.parse(raw) as SearchFixtures;
+      }
+    }
+  } catch (err) {
+    console.error("Failed to load search fixtures", err);
+  }
+  return null;
 }

@@ -6,7 +6,7 @@ import { useState } from "react";
 import { ScoreSlider, Section } from "../shared";
 import { PolicyChips } from "./policy-chips-section";
 import { MAX_STAY_VALUES } from "@/types/checkins";
-
+import searchFixtures from "@/tests/fixtures/search-fixtures.json";
 const CITIES = [
   { key: "tokyo" },
   { key: "shanghai" },
@@ -139,6 +139,59 @@ export function SearchFilterSection() {
             {ts("reset")}
           </Button>
           <Button variant="primary">{ts("filters")}</Button>
+        </div>
+
+        {/* DG140: Deterministic search fixtures preview for visual smoke & theme-preview */}
+        <div className="mt-8 border-t border-separator pt-6">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-sm font-semibold text-foreground">
+              Fixtures Preview (3 Cafes + 3 Stored POIs + 1 Live Google)
+            </span>
+            <span className="font-mono text-xs text-muted">
+              {searchFixtures.cafes.length + searchFixtures.pois.length} results
+            </span>
+          </div>
+          <div className="space-y-2">
+            {searchFixtures.cafes.map((c) => (
+              <div
+                key={c.id}
+                className="flex items-center justify-between rounded-md border border-border bg-surface-secondary px-3 py-2 text-sm"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate font-medium text-foreground">{c.name}</span>
+                    <span className="rounded bg-accent/15 px-1.5 py-0.5 text-xs font-medium text-accent">
+                      coffeemode
+                    </span>
+                  </div>
+                  <div className="truncate text-xs text-muted">{c.address}</div>
+                </div>
+                <div className="font-mono text-xs font-semibold text-accent">
+                  {c.work_stats.composite_score}
+                </div>
+              </div>
+            ))}
+            {searchFixtures.pois.map((p) => {
+              const isLive = p.place_id.startsWith("ChIJ_FIXTURE_LIVE");
+              const tag = isLive ? "google (live)" : p.source === "apple" ? "apple" : "stored_poi";
+              return (
+                <div
+                  key={p.place_id}
+                  className="flex items-center justify-between rounded-md border border-border bg-surface-secondary px-3 py-2 text-sm"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate font-medium text-foreground">{p.name}</span>
+                      <span className="rounded bg-muted/20 px-1.5 py-0.5 text-xs font-medium text-muted">
+                        {tag}
+                      </span>
+                    </div>
+                    <div className="truncate text-xs text-muted">{p.address}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </Section>

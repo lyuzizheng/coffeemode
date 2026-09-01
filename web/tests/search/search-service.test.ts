@@ -291,7 +291,6 @@ describe("search-service", () => {
 
   it("DG131: empty q does not truncate secondary hits", async () => {
     const cafe1 = makeDbCafe({ id: "c1", name: "Unrelated Cafe" });
-    const poi1 = makePoi({ place_id: "poi_low", name: "Totally Different", lat: 1.35, lng: 103.8 });
     vi.mocked(searchCafesInDb).mockResolvedValue([cafe1]);
     vi.mocked(searchPOIs).mockResolvedValue({ results: [] });
     // q empty — scoreRelevance returns 0 for all, truncation must not apply
@@ -319,5 +318,70 @@ describe("search-service", () => {
     // chigh is prefix 80 >=50, clow is secondary 10 => clow should be truncated
     expect(response.results.some((r) => r.id === "clow")).toBe(false);
     expect(response.results.some((r) => r.id === "chigh")).toBe(true);
+  });
+  it("DG139: poi-source result in top-10 retains poi.place_id, source, lat, lng for creation flow", async () => {
+    vi.mocked(searchCafesInDb).mockResolvedValue([]);
+    vi.mocked(searchPOIs).mockResolvedValue({
+      results: [
+        makePoi({
+          place_id: "ChIJ_DG139_POI",
+          source: "google",
+          name: "Artisan Coffee",
+          lat: 1.285,
+          lng: 103.85,
+        }),
+      ],
+    });
+
+    const res = await executeSearch({ q: "Artisan", city: "singapore" });
+    expect(res.results).toHaveLength(1);
+    const item = res.results[0];
+    expect(item.type).toBe("poi");
+    expect(item.poi).toBeDefined();
+    expect(item.poi?.place_id).toBe("ChIJ_DG139_POI");
+    expect(item.poi?.source).toBe("google");
+    expect(item.poi?.lat).toBe(1.285);
+    expect(item.poi?.lng).toBe(103.85);
+  });
+
+  it("emits structured search.telemetry with 5 frozen fields", async () => {
+    const consoleInfoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.mocked(searchCafesInDb).mockResolvedValue([
+      makeDbCafe({ id: "cafe-1", name: "Alpha Cafe" }),
+    ]);
+
+    const res = await executeSearch({ q: "Alpha", city: "singapore" });
+    expect(res.results).toHaveLength(1);
+
+    expect(consoleInfoSpy).toHaveBeenCalledWith(
+      "search.telemetry",
+      expect.objectContaining({
+        "search.requests": { mode: "stored_only" },
+        "search.duration_ms": expect.any(Number),
+        "search.truncated": false,
+        "search.open_now.batches": 0,
+        "search.poi_degraded": false,
+      }),
+    );
+    consoleInfoSpy.mockRestore();
+  });
+
+  it("DG132: returns search_mode=stored_only when q < 3 even if include_live=true", async () => {
+    vi.mocked(searchCafesInDb).mockResolvedValue([]);
+    const res = await executeSearch({ q: "ab", city: "singapore", include_live: true });
+    expect(res.search_mode).toBe("stored_only");
+    expect(searchExternalPOIs).not.toHaveBeenCalled();
+  });
+
+  it("DG132: returns search_mode=live when live POI search is executed", async () => {
+    vi.mocked(searchCafesInDb).mockResolvedValue([]);
+    vi.mocked(searchPOIs).mockResolvedValue({ results: [] });
+    vi.mocked(searchExternalPOIs).mockResolvedValue({
+      results: [makePoi({ place_id: "live-1", name: "Live Cafe", lat: 1.3, lng: 103.8 })],
+    });
+    const res = await executeSearch({ q: "Live", city: "singapore", include_live: true });
+    expect(res.search_mode).toBe("live");
+    expect(searchExternalPOIs).toHaveBeenCalled();
+    expect(res.results[0].source).toBe("google");
   });
 });

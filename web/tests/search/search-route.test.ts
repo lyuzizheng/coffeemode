@@ -177,7 +177,62 @@ describe("GET /api/search route", () => {
     expect(res.status).toBe(500);
     const body = await res.json();
     expect(body.error).toBe("internal_error");
+    expect(res.headers.get("Cache-Control")).toBeNull();
     expect(consoleSpy).toHaveBeenCalled();
     consoleSpy.mockRestore();
+  });
+
+  it("DG137-B: sets Cache-Control header on success path only", async () => {
+    const req = new Request("http://localhost/api/search?q=coffee");
+    const res = await GET(req);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toBe(
+      "private, max-age=10, stale-while-revalidate=30",
+    );
+  });
+
+  it("DG132: sets X-Search-Mode header based on executeSearch mode", async () => {
+    vi.mocked(executeSearch).mockResolvedValueOnce({
+      ...mockResponse,
+      search_mode: "live",
+    });
+
+    const req = new Request("http://localhost/api/search?q=coffee&include_live=true");
+    const res = await GET(req);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Search-Mode")).toBe("live");
+  });
+
+  it("DG140: prod mode ignores ?fixtures=1 param and executes search", async () => {
+    vi.stubEnv("SEARCH_FIXTURES", "1");
+    vi.stubEnv("NODE_ENV", "production");
+
+    try {
+      const req = new Request("http://localhost/api/search?fixtures=1&q=coffee");
+      const res = await GET(req);
+      expect(res.status).toBe(200);
+      expect(executeSearch).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("DG140: dev mode with SEARCH_FIXTURES=1 returns fixture response without executeSearch", async () => {
+    vi.stubEnv("SEARCH_FIXTURES", "1");
+    vi.stubEnv("NODE_ENV", "development");
+
+    try {
+      vi.mocked(executeSearch).mockClear();
+      const req = new Request("http://localhost/api/search?fixtures=1");
+      const res = await GET(req);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.results.length).toBeGreaterThan(0);
+      expect(executeSearch).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

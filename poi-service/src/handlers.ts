@@ -23,6 +23,7 @@
 import { authorized, internalError, json, unauthorized } from "./auth";
 import {
   DEFAULT_SEARCH_RADIUS_KM,
+  isFoodOrCafePOI,
   MAX_EXTERNAL_BATCH_SIZE,
   MAX_SEARCH_RADIUS_KM,
   SEARCH_RESULT_LIMIT,
@@ -315,18 +316,46 @@ async function searchExternalPOIs(request: Request, env: Env, deps: Deps): Promi
 
   const results: Array<{ poi: POI; raw: GooglePlace }> = [];
   for (const place of googlePlaces.slice(0, SEARCH_RESULT_LIMIT)) {
+    if (!place.location || typeof place.location.latitude !== "number" || typeof place.location.longitude !== "number") {
+      results.push({
+        poi: {
+          place_id: place.id,
+          source: "google",
+          name: place.displayName?.text ?? "Unknown",
+          lat: 0,
+          lng: 0,
+          address: place.formattedAddress ?? null,
+          types: place.types ?? [],
+          business_status: place.businessStatus ?? null,
+          hours_json: place.regularOpeningHours ? JSON.stringify(place.regularOpeningHours) : null,
+          photo_refs: (place.photos ?? []).map((p) => p.name),
+          fetched_at: new Date().toISOString(),
+          not_persisted_reason: "missing_coordinates",
+        },
+        raw: place,
+      });
+      continue;
+    }
+
     try {
-      results.push({ poi: toPOI(place), raw: place });
+      const poi = toPOI(place);
+      if (!isFoodOrCafePOI(place.types)) {
+        poi.not_persisted_reason = "non_food_category";
+      }
+      results.push({ poi, raw: place });
     } catch {
-      // A result without coordinates cannot be created as a cafe.
+      // Safety fallback
     }
   }
 
-  try {
-    await d1UpsertPOIs(env.POI_DB, results.map(({ poi }) => poi));
-    await Promise.all(results.map(({ poi, raw }) => kvPutRaw(env.POI_KV, poi.place_id, raw)));
-  } catch (e) {
-    console.error("external search cache write failed", e);
+  const toPersist = results.filter(({ poi }) => !poi.not_persisted_reason);
+  if (toPersist.length > 0) {
+    try {
+      await d1UpsertPOIs(env.POI_DB, toPersist.map(({ poi }) => poi));
+      await Promise.all(toPersist.map(({ poi, raw }) => kvPutRaw(env.POI_KV, poi.place_id, raw)));
+    } catch (e) {
+      console.error("external search cache write failed", e);
+    }
   }
   return json({ results: results.map(({ poi }) => poi) });
 }

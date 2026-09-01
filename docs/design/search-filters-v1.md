@@ -264,3 +264,16 @@ Keys under `search.*` and `filters.*` (en/zh). zh references: `Filters` →
 Map search overlay and marker binding (`map-discovery-integration`), provider
 search inside creation (`cafe-creation`), the `/api/search` merge/dedupe
 implementation (backend, unblocked), MapKit rendering (`map-home`).
+
+## Appendix — DG131-145 (BRAWUKA-7, 2026-09-01, Owner + Reviewer 15:59)
+
+Stage 1 已落码（PR #290），Stage 2/3 见 `docs/agent/BRAWUKA-7-search-grill.md`：
+
+- DG131 条件截断：`minRelevanceScore=50`，仅 `q` 非空且至少一条 ≥50 时丢弃 `secondary(10)`，空 `q` 不截（随机浏览保护）。
+- DG132 `X-Search-Mode: stored_only|live` 随 `?include_live=` 返回。
+- DG133 `warnings:["poi_unavailable","live_poi_unavailable"]` 降级不丢自有店。
+- DG134 `app.yaml:search.externalSources{google,apple}` 开关，Apple 默认 false 直至 MapKit 就绪。
+- DG136 `rankingMode` 默认 `relevance`，`?ranking=good_first` 时对 `experience≥80`/`composite≥75` 的 cafe +10，偏好存 localStorage。
+- DG140 fixtures 双门控 `SEARCH_FIXTURES=1 && NODE_ENV!=="production"`（`web/lib/search/fixtures.ts`）。
+- DG142 排序兜底 `name → id`（消除 `localeCompare` flaky）。
+- DG144/DG52 food/cafe 过滤与 `not_persisted_reason` 并入 Stage 2（poi-service 全量 `d1UpsertPOIs` 缺口）。

@@ -53,6 +53,8 @@ export async function GET(request: Request) {
   const filterMaxStay = parseMaxStay(url.searchParams.get("filter_max_stay"));
   const rawLimit = url.searchParams.get("limit");
   const limitParam = parseNumber(rawLimit);
+  const rawRanking = url.searchParams.get("ranking")?.trim();
+  const ranking = rawRanking === "good_first" || rawRanking === "relevance" ? rawRanking : undefined;
 
   // Validate coordinates if provided
   if (lat !== undefined && (lat < -90 || lat > 90)) {
@@ -99,6 +101,7 @@ export async function GET(request: Request) {
     include_live: includeLive,
     filter_max_stay: filterMaxStay,
     limit: limitParam,
+    ranking,
   };
 
   // Populate work dimension score filters using shared mapping table
@@ -111,7 +114,10 @@ export async function GET(request: Request) {
 
   try {
     const data = await executeSearch(filters);
-    return NextResponse.json(data);
+    const response = NextResponse.json(data);
+    // DG132: observability header for stored vs live mode
+    response.headers.set("X-Search-Mode", filters.include_live ? "live" : "stored_only");
+    return response;
   } catch (err) {
     console.error("/api/search GET failed", err);
     return apiError("internal_error", 500);

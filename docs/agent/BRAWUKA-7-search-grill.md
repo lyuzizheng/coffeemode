@@ -33,13 +33,13 @@
 - **Q10 定位**：`fixtures` 为**备选挂载方案**（便于 `theme-preview`/visual-smoke/CI 无真实 DB 时验收），不作为主链路；按 Owner 意见**暂不以它替代真实度量**。
 - **Metric 完整方案未就绪**：搜索可观测性（`search.open_now.batches`、`total_count>results.length` 占比、POI 降级率、`X-Search-Mode`、Q7 边缘缓存命中率等）的**指标口径、采集链路、告警阈值、看板**尚未统一设计（涉及 `docs/specs/0003` 的 testing/observability 与未来 Better Stack 集成 DG129）。本 grill 仅在 Q7/Q15 预留埋点位，**不展开完整 metric 设计**；建议另起拟新增的搜索可观测性设计文档（metrics-search-observability）或 ADR，由 Reviewer & Architect 牵头补齐后再进入 C 阶段。
 
-## 分阶段落地计划（供 Reviewer 审）
+## 分阶段落地计划（供 Reviewer 审，已按 15:59 深审裁决更新）
 
-1. **Stage 1（本 issue 后续 PR，不阻塞 `in_review`）**：DG131(截断阈值) + DG133(warnings) + DG134(开关) + DG136(rankingMode 配置与 onboarding 文案) + DG139(测试) + DG142(id 兜底) — 均 `app.yaml` + `search-service/types` + 测试，小改动。
-2. **Stage 2**：DG137 B 缓存 + DG141 补 3 用例 + DG140 fixtures 备选文件。
-3. **Stage 3（另起 issue）**：DG137 C 边缘缓存 与 DG145 C (`open_now` 推 SQL + migration 0015) — 需真实 PostGIS integration 验证 `isOpenAt` 与 SQL 一致性；metric 看板与 DG145 C 同 issue 交付。
+1. **Stage 1（本 PR，直达 Reviewer 复验）**：DG131(条件截断 minRelevanceScore=50，空 q 不截) + DG133(warnings) + DG134(开关 externalSources) + DG136(rankingMode localStorage+?ranking=) + DG139(测试) + DG142(id 兜底) — 均 `app.yaml` + `search-service/types` + `route`，已落码；契约已折入 `docs/specs/0001 §Search`，DG 编号保留。
+2. **Stage 2**：DG137 B 缓存（`Cache-Control: private,max-age=10`）+ DG141 补 3 用例 + DG140 fixtures 双门控文件 + **P1 补齐** DG144(food/cafe 过滤)+DG132 头 `X-Search-Mode`+DG138 距市中心快照测试（原孤儿决议，现并入 Stage 2）。
+3. **Stage 3（另起 issue）**：DG137 C 边缘缓存 与 DG145 C (`open_now` 推 SQL + migration 0016 — 0015 已被占用) — 需真实 PostGIS integration 验证 `isOpenAt` 与 SQL 一致性；metric 5字段最小埋点随 Stage 2 冻结，看板/告警由 Reviewer 另起 ADR。
 
-## 待 Reviewer 深度分析项
+> **P2 已纠正**：`implementation-slices.md` search-filters 行补 Q5-C/Q15-C follow-up 占位；`docs/design/search-filters-v1.md` 追加 DG131-145 附录（治理归位）。
 
 - 分组 + 低分截断是否会误伤 `q` 为空的浏览态（建议空 `q` 时绕过截断）；
 - `rankingMode` 用户设置的存储位（`profiles` vs `localStorage` + 匿名态）与 `onboarding` 文案；

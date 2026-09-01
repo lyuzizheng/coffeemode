@@ -185,6 +185,11 @@
       "title": "Search filters",
       "desc": "Thumb-friendly filter surface: city, dimension minima, policies, and open-now."
     },
+    "searchResults": {
+      "title": "Unified search results",
+      "desc": "Grouped CoffeeMode-first results, city-center distance labels, source-gated external CTAs, and the ranking preference toggle (settings + onboarding).",
+      "last_action": "Last action"
+    },
     "footer": "CoffeeMode — warm paper, espresso ink, one terracotta voice · en/zh via next-intl"
   },
   "profile": {
@@ -361,6 +366,25 @@
       "taipei": "Taipei",
       "seoul": "Seoul",
       "berlin": "Berlin"
+    },
+    "group_on_coffeemode": "On CoffeeMode",
+    "group_more_places": "More places",
+    "not_on_coffeemode": "Not on CoffeeMode yet",
+    "from_city_center": "from city center",
+    "not_finding": "Not finding it?",
+    "search_google_maps": "Search Google Maps",
+    "search_apple_maps": "Search Apple Maps",
+    "search_hint": "Search cafes, neighborhoods, or addresses",
+    "could_not_search": "Couldn't search. Try again?",
+    "retry": "Retry",
+    "external_unavailable": "External search is unavailable right now",
+    "ranking": {
+      "label": "Search ranking",
+      "desc": "Applied to every search on this device — no account needed.",
+      "relevance": "Closest match first",
+      "good_first": "Great cafes first",
+      "onboarding_title": "What should search show first?",
+      "onboarding_body": "Pick once, change anytime. Great cafes first surfaces top-rated spots; closest match first keeps it strictly relevant."
     }
   },
   "notFound": {

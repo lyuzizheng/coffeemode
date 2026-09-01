@@ -11,6 +11,7 @@ import { ProfileTabCheckins, fetchUserCheckIns } from "./profile-tab-checkins";
 import { ProfileTabCafes, fetchUserCafes } from "./profile-tab-cafes";
 import { ProfileTabFavorites } from "./profile-tab-favorites";
 import { ProfileTabHistory } from "./profile-tab-history";
+import { RankingPreferenceToggle } from "@/components/search/ranking-preference-toggle";
 import type { UserProfileDto, UserProfileStatsDto } from "@/lib/db/profile";
 
 export interface ProfileViewProps {
@@ -75,6 +76,11 @@ export function ProfileView({
             </div>
           </>
         )}
+        {/* DG136: ranking preference lives in localStorage, so it is offered
+            to anonymous sessions too — never behind the auth gate. */}
+        <div className="mt-4 border-t border-separator pt-4">
+          <RankingPreferenceToggle />
+        </div>
       </main>
     </div>
   );

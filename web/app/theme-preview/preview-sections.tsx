@@ -11,5 +11,6 @@ export { PolicyChipsSection } from "./sections/policy-chips-section";
 export { ProfileSection } from "./sections/profile-section";
 export { ScoreSliderSection } from "./sections/score-slider-section";
 export { SearchFilterSection } from "./sections/search-filter-section";
+export { SearchResultsSection } from "./sections/search-results-section";
 export { SkeletonSection } from "./sections/skeleton-section";
 export { TypeSection } from "./sections/type-section";

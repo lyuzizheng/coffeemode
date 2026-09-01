@@ -185,6 +185,11 @@
       "title": "搜索筛选",
       "desc": "适合拇指操作的筛选面：城市、维度最低分、店规与营业中开关。"
     },
+    "searchResults": {
+      "title": "统一搜索结果",
+      "desc": "自有咖啡馆优先的分组结果、距市中心距离标注、按来源开关的外部搜索按钮，以及排序偏好开关（设置与新手引导两态）。",
+      "last_action": "最近操作"
+    },
     "footer": "CoffeeMode——暖纸、浓缩墨色与一抹赤陶 · 中英双语由 next-intl 承载"
   },
   "profile": {
@@ -361,6 +366,26 @@
       "taipei": "台北",
       "seoul": "首尔",
       "berlin": "柏林"
+    },
+    "results_label": "搜索结果",
+    "group_on_coffeemode": "已收录的咖啡馆",
+    "group_more_places": "更多地点",
+    "not_on_coffeemode": "还未收录",
+    "from_city_center": "距市中心",
+    "not_finding": "没找到？",
+    "search_google_maps": "搜索 Google 地图",
+    "search_apple_maps": "搜索 Apple 地图",
+    "search_hint": "搜咖啡馆、街区或地址",
+    "could_not_search": "没搜成功，再试试？",
+    "retry": "重试",
+    "external_unavailable": "外部搜索暂时不可用",
+    "ranking": {
+      "label": "搜索排序偏好",
+      "desc": "只保存在这台设备上，无需登录即可生效。",
+      "relevance": "更想找最近的店",
+      "good_first": "更想探索好店",
+      "onboarding_title": "搜索结果想先看什么？",
+      "onboarding_body": "选一次就好，随时可以改。探索好店优先展示高分咖啡馆；找最近的店严格按相关度排序。"
     }
   },
   "notFound": {

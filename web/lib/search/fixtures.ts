@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { CafeSummary } from "@/types/cafes";
 import type { POI } from "@shared/places/types";
+import type { SearchResultSource } from "./types";
 
 /**
  * DG140 — fixtures double-gate (备选挂载方案).
@@ -15,7 +16,7 @@ export function isFixturesEnabled(): boolean {
 }
 export interface SearchFixtures {
   cafes: CafeSummary[];
-  pois: POI[];
+  pois: Array<POI & { search_source?: SearchResultSource }>;
 }
 
 export function getSearchFixtures(): SearchFixtures | null {

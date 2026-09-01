@@ -77,13 +77,7 @@ export async function GET(request: Request) {
         ...fixtures.pois.map((poi) => ({
           id: poi.place_id,
           type: "poi" as const,
-          source: (poi.source === "google"
-            ? poi.place_id.startsWith("ChIJ_FIXTURE_LIVE")
-              ? "google"
-              : "stored_poi"
-            : poi.source === "apple"
-              ? "apple"
-              : "stored_poi") as SearchResultSource,
+          source: (poi.search_source ?? (poi.source === "apple" ? "apple" : "stored_poi")) as SearchResultSource,
           name: poi.name,
           address: poi.address,
           lat: poi.lat,

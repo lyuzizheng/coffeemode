@@ -10,9 +10,9 @@ import { hasWorkFiltersActive, matchesAllFilters } from "./filter";
 import type {
   SearchFilters,
   SearchReferencePoint,
-  SearchResponse,
   SearchResultItem,
   SearchResultSource,
+  SearchServiceResponse,
 } from "./types";
 import type { POI } from "@shared/places/types";
 
@@ -82,7 +82,7 @@ function scoreRelevance(name: string, q?: string): number {
 export async function executeSearch(
   filters: SearchFilters,
   instant?: Date,
-): Promise<SearchResponse> {
+): Promise<SearchServiceResponse> {
   const startTime = performance.now();
   const refPoint = resolveReferencePoint(filters.lat, filters.lng, filters.city);
 
@@ -321,8 +321,7 @@ export async function executeSearch(
 
   const durationMs = Math.round(performance.now() - startTime);
   const truncated = total_count > results.length;
-  const poiDegraded = warnings.length > 0;
-
+  const poiDegraded = warnings.includes("poi_unavailable") || warnings.includes("live_poi_unavailable");
   console.info("search.telemetry", {
     "search.requests": { mode: actualSearchMode },
     "search.duration_ms": durationMs,

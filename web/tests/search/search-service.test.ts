@@ -319,29 +319,51 @@ describe("search-service", () => {
     expect(response.results.some((r) => r.id === "clow")).toBe(false);
     expect(response.results.some((r) => r.id === "chigh")).toBe(true);
   });
-  it("DG139: poi-source result in top-10 retains poi.place_id, source, lat, lng for creation flow", async () => {
-    vi.mocked(searchCafesInDb).mockResolvedValue([]);
-    vi.mocked(searchPOIs).mockResolvedValue({
-      results: [
-        makePoi({
-          place_id: "ChIJ_DG139_POI",
-          source: "google",
-          name: "Artisan Coffee",
-          lat: 1.285,
-          lng: 103.85,
-        }),
-      ],
+  it("DG139: poi-source result in top-10 retains poi.place_id, source, lat, lng after slicing top-10 from larger list", async () => {
+    // 9 higher-ranked cafes (closer distance / higher rank)
+    const headCafes = Array.from({ length: 9 }, (_, i) =>
+      makeDbCafe({
+        id: `cafe-head-${i}`,
+        name: `Artisan Cafe ${i}`,
+        lat: 1.28 + i * 0.0001,
+        lng: 103.85,
+      }),
+    );
+    // 5 lower-ranked cafes (further distance) that get sliced off
+    const tailCafes = Array.from({ length: 5 }, (_, i) =>
+      makeDbCafe({
+        id: `cafe-tail-${i}`,
+        name: `Artisan Tail ${i}`,
+        lat: 1.35 + i * 0.01,
+        lng: 103.85,
+      }),
+    );
+
+    const targetPoi = makePoi({
+      place_id: "ChIJ_DG139_POI",
+      source: "google",
+      name: "Artisan Stored POI",
+      lat: 1.285,
+      lng: 103.85,
     });
 
+    vi.mocked(searchCafesInDb).mockResolvedValue([...headCafes, ...tailCafes]);
+    vi.mocked(searchPOIs).mockResolvedValue({ results: [targetPoi] });
+
     const res = await executeSearch({ q: "Artisan", city: "singapore" });
-    expect(res.results).toHaveLength(1);
-    const item = res.results[0];
-    expect(item.type).toBe("poi");
-    expect(item.poi).toBeDefined();
-    expect(item.poi?.place_id).toBe("ChIJ_DG139_POI");
-    expect(item.poi?.source).toBe("google");
-    expect(item.poi?.lat).toBe(1.285);
-    expect(item.poi?.lng).toBe(103.85);
+    // Total 15 items matched
+    expect(res.total_count).toBe(15);
+    // Capped to top-10 suggestions
+    expect(res.results).toHaveLength(10);
+
+    const targetItem = res.results.find((r) => r.id === "ChIJ_DG139_POI");
+    expect(targetItem).toBeDefined();
+    expect(targetItem?.type).toBe("poi");
+    expect(targetItem?.poi).toBeDefined();
+    expect(targetItem?.poi?.place_id).toBe("ChIJ_DG139_POI");
+    expect(targetItem?.poi?.source).toBe("google");
+    expect(targetItem?.poi?.lat).toBe(1.285);
+    expect(targetItem?.poi?.lng).toBe(103.85);
   });
 
   it("emits structured search.telemetry with 5 frozen fields", async () => {

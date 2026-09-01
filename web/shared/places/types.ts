@@ -22,7 +22,7 @@ export interface POI {
   /** ISO 8601 timestamp of when this record was fetched. */
   fetched_at: string;
   /** Observability field for live external POIs that were not persisted (DG144). */
-  not_persisted_reason?: string;
+  not_persisted_reason?: "non_food_category";
 }
 
 export interface POISearchHit extends POI {

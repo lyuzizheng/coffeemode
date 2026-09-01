@@ -172,8 +172,12 @@ export function SearchFilterSection() {
               </div>
             ))}
             {searchFixtures.pois.map((p) => {
-              const isLive = p.place_id.startsWith("ChIJ_FIXTURE_LIVE");
-              const tag = isLive ? "google (live)" : p.source === "apple" ? "apple" : "stored_poi";
+              const tag =
+                p.search_source === "google"
+                  ? "google (live)"
+                  : p.search_source === "apple" || p.source === "apple"
+                    ? "apple"
+                    : "stored_poi";
               return (
                 <div
                   key={p.place_id}

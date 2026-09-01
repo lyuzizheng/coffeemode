@@ -83,6 +83,7 @@
     {
       "place_id": "ChIJ_FIXTURE_STORED_1",
       "source": "google",
+      "search_source": "stored_poi",
       "name": "Tiong Bahru Bakery",
       "lat": 1.2852,
       "lng": 103.8275,
@@ -96,6 +97,7 @@
     {
       "place_id": "ChIJ_FIXTURE_STORED_2",
       "source": "google",
+      "search_source": "stored_poi",
       "name": "Common Man Coffee Roasters",
       "lat": 1.2917,
       "lng": 103.8378,
@@ -109,6 +111,7 @@
     {
       "place_id": "apple-ref-fixture-stored-3",
       "source": "apple",
+      "search_source": "apple",
       "name": "Alchemist International Plaza",
       "lat": 1.2758,
       "lng": 103.8432,
@@ -122,6 +125,7 @@
     {
       "place_id": "ChIJ_FIXTURE_LIVE_GOOGLE_1",
       "source": "google",
+      "search_source": "google",
       "name": "Blue Bottle Coffee (Live)",
       "lat": 1.2834,
       "lng": 103.8521,

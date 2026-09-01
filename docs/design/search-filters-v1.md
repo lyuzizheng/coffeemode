@@ -277,4 +277,4 @@ Stage 1 已落码（PR #290），Stage 2/3 见 `docs/agent/BRAWUKA-7-search-gril
 - DG137-B 服务端缓存：`GET /api/search` 成功响应头 `Cache-Control: private, max-age=10, stale-while-revalidate=30`（错误码不设）。
 - DG140 fixtures 双门控 `SEARCH_FIXTURES=1 && NODE_ENV!=="production"`（`web/lib/search/fixtures.ts`），`web/tests/fixtures/search-fixtures.json` 提供确定性数据。
 - DG142 排序兜底 `name → id`（消除 `localeCompare` flaky）。
-- DG144/DG52 food/cafe 过滤与 `not_persisted_reason`（poi-service 仅持久化餐饮 POI，非餐饮/无坐标附带原因）。
+- DG144/DG52 food/cafe 过滤与 `not_persisted_reason`（poi-service 仅持久化餐饮 POI，非餐饮附带 `non_food_category` 观测字段）。

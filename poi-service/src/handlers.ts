@@ -316,27 +316,6 @@ async function searchExternalPOIs(request: Request, env: Env, deps: Deps): Promi
 
   const results: Array<{ poi: POI; raw: GooglePlace }> = [];
   for (const place of googlePlaces.slice(0, SEARCH_RESULT_LIMIT)) {
-    if (!place.location || typeof place.location.latitude !== "number" || typeof place.location.longitude !== "number") {
-      results.push({
-        poi: {
-          place_id: place.id,
-          source: "google",
-          name: place.displayName?.text ?? "Unknown",
-          lat: 0,
-          lng: 0,
-          address: place.formattedAddress ?? null,
-          types: place.types ?? [],
-          business_status: place.businessStatus ?? null,
-          hours_json: place.regularOpeningHours ? JSON.stringify(place.regularOpeningHours) : null,
-          photo_refs: (place.photos ?? []).map((p) => p.name),
-          fetched_at: new Date().toISOString(),
-          not_persisted_reason: "missing_coordinates",
-        },
-        raw: place,
-      });
-      continue;
-    }
-
     try {
       const poi = toPOI(place);
       if (!isFoodOrCafePOI(place.types)) {
@@ -344,10 +323,9 @@ async function searchExternalPOIs(request: Request, env: Env, deps: Deps): Promi
       }
       results.push({ poi, raw: place });
     } catch {
-      // Safety fallback
+      // A result without coordinates cannot be created as a cafe.
     }
   }
-
   const toPersist = results.filter(({ poi }) => !poi.not_persisted_reason);
   if (toPersist.length > 0) {
     try {

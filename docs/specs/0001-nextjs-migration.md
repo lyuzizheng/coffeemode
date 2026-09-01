@@ -905,7 +905,7 @@ Two search modes:
    - Tie-breaker: `name` then `id` (DG142) for deterministic ordering.
    - Ranking mode (DG136): `app.yaml:search.rankingMode` default `relevance`; client preference via `?ranking=good_first|relevance` (persisted in localStorage per DG136, not `profiles`), `good_first` adds +10 boost for cafes with `experience_score≥80` or `composite_score≥75`.
    - Fixtures (DG140备选): `web/lib/search/fixtures.ts` double-gated (`SEARCH_FIXTURES=1` && `NODE_ENV!=="production"`), `web/tests/fixtures/search-fixtures.json` for theme-preview/visual-smoke and `?fixtures=1` route short-circuit.
-   - Observability (DG144): live POIs carry optional `not_persisted_reason` (`non_food_category` | `missing_coordinates`).
+   - Observability (DG144): live POIs carry optional `not_persisted_reason` (`non_food_category`).
 External search (on demand):
   Google: POI service live Places search → results shown AND stored in D1
   Apple:  MapKit JS client search → refs POSTed to POI service

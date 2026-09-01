@@ -20,6 +20,7 @@ export interface SearchFilters {
   filter_max_stay?: MaxStay;
   limit?: number;
   include_live?: boolean;
+  ranking?: string;
 }
 
 export interface SearchResultItem {
@@ -43,10 +44,10 @@ export interface SearchReferencePoint {
   city_id?: string;
   city_name?: string;
 }
-
 export interface SearchResponse {
   results: SearchResultItem[];
   total_count: number;
   is_weak_results: boolean;
   reference_point: SearchReferencePoint;
+  warnings?: string[];
 }

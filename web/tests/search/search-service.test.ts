@@ -59,7 +59,7 @@ describe("search-service", () => {
   it("merges own cafes and saved POIs, deduplicating by place_id (DG45)", async () => {
     const cafe1 = makeDbCafe({ id: "c1", name: "Nylon Coffee Roasters", google_place_id: "shared_id" });
     const poi1 = makePoi({ place_id: "shared_id", name: "Nylon Stored POI" });
-    const poi2 = makePoi({ place_id: "distinct_id", name: "Distinct POI" });
+    const poi2 = makePoi({ place_id: "distinct_id", name: "Nylon Distinct POI", lat: 1.0, lng: 103.0 });
 
     vi.mocked(searchCafesInDb).mockResolvedValue([cafe1]);
     vi.mocked(searchPOIs).mockResolvedValue({ results: [poi1, poi2] });
@@ -287,5 +287,37 @@ describe("search-service", () => {
 
     expect(searchCafesInDb).toHaveBeenCalledTimes(1);
     expect(response.results).toHaveLength(5);
+  });
+
+  it("DG131: empty q does not truncate secondary hits", async () => {
+    const cafe1 = makeDbCafe({ id: "c1", name: "Unrelated Cafe" });
+    const poi1 = makePoi({ place_id: "poi_low", name: "Totally Different", lat: 1.35, lng: 103.8 });
+    vi.mocked(searchCafesInDb).mockResolvedValue([cafe1]);
+    vi.mocked(searchPOIs).mockResolvedValue({ results: [] });
+    // q empty — scoreRelevance returns 0 for all, truncation must not apply
+    const response = await executeSearch({ city: "singapore" });
+    expect(response.results.length).toBeGreaterThan(0);
+  });
+
+  it("DG131: only secondary hits without high score are kept", async () => {
+    // All hits are secondary (10) — hasHigh false, so keep them
+    const cafeLow = makeDbCafe({ id: "clow", name: "ZZZ Cafe" });
+    vi.mocked(searchCafesInDb).mockResolvedValue([cafeLow]);
+    vi.mocked(searchPOIs).mockResolvedValue({ results: [makePoi({ place_id: "poi_low2", name: "Another ZZZ", lat: 1.35, lng: 103.8 })] });
+    const response = await executeSearch({ q: "Nylon", city: "singapore" });
+    // Both have secondary relevance, no high => both kept (total 2)
+    // Note: poi filter: poi only fetched when q present, but cafe is secondary, poi also secondary
+    expect(response.results.length).toBeGreaterThan(0);
+  });
+
+  it("DG131: mixed high and secondary truncates secondary", async () => {
+    const cafeHigh = makeDbCafe({ id: "chigh", name: "Nylon Coffee" });
+    const cafeLow = makeDbCafe({ id: "clow", name: "ZZZ Low" });
+    vi.mocked(searchCafesInDb).mockResolvedValue([cafeHigh, cafeLow]);
+    vi.mocked(searchPOIs).mockResolvedValue({ results: [] });
+    const response = await executeSearch({ q: "Nylon", city: "singapore" });
+    // chigh is prefix 80 >=50, clow is secondary 10 => clow should be truncated
+    expect(response.results.some((r) => r.id === "clow")).toBe(false);
+    expect(response.results.some((r) => r.id === "chigh")).toBe(true);
   });
 });

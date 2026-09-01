@@ -23,6 +23,14 @@ search:
     prefixMatch: 80
     fuzzyMatch: 50
     secondaryMatch: 10
+  # Conditional low-relevance truncation per DG131 (only when q non-empty & at least one >=50).
+  minRelevanceScore: 50
+  # External source toggles per DG134 (Apple gated until MapKit ready).
+  externalSources:
+    google: true
+    apple: false
+  # Default ranking mode per DG136 (relevance vs good_first). Client overrides via ?ranking=.
+  rankingMode: relevance
 stats:
   # Work-profile composite score weights (DG107)
   dimWeights:

@@ -49,6 +49,9 @@ describe("config files", () => {
       fuzzyMatch: 50,
       secondaryMatch: 10,
     });
+    expect(appConfig.search.minRelevanceScore).toBe(50);
+    expect(appConfig.search.externalSources).toEqual({ google: true, apple: false });
+    expect(appConfig.search.rankingMode).toBe("relevance");
     expect(appConfig.stats.dimWeights).toEqual({
       wifi: 0.3,
       outlets: 0.2,
@@ -166,6 +169,9 @@ describe("parseAppConfig validation", () => {
       fuzzyMatch: 50,
       secondaryMatch: 10,
     },
+    minRelevanceScore: 50,
+    externalSources: { google: true, apple: false },
+    rankingMode: "relevance",
   };
   const validStats = {
     dimWeights: {

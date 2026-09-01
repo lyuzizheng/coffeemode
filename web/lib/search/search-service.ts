@@ -156,6 +156,7 @@ export async function executeSearch(
   // 2. Fetch POIs if no active work filters and keyword is given
   const hasWorkFilters = hasWorkFiltersActive(filters);
   let rawPois: POI[] = [];
+  const warnings: string[] = [];
 
   if (!hasWorkFilters && filters.q && filters.q.trim().length >= appConfig.search.minPoiQueryLength) {
     try {
@@ -168,6 +169,7 @@ export async function executeSearch(
       rawPois = poiRes.results ?? [];
     } catch (err) {
       console.error("search-service: stored POI search error", err);
+      warnings.push("poi_unavailable");
     }
 
     if (filters.include_live) {
@@ -189,8 +191,19 @@ export async function executeSearch(
         }
       } catch (err) {
         console.error("search-service: live POI search error", err);
+        warnings.push("live_poi_unavailable");
       }
     }
+  }
+
+  // DG134: external source toggle (Apple gated until MapKit ready)
+  const externalSources = appConfig.search.externalSources;
+  if (externalSources) {
+    rawPois = rawPois.filter((poi) => {
+      if (poi.source === "google" && !externalSources.google) return false;
+      if (poi.source === "apple" && !externalSources.apple) return false;
+      return true;
+    });
   }
 
   // Deduplicate POIs: own cafes always win (DG45)
@@ -248,10 +261,25 @@ export async function executeSearch(
     });
   }
 
-  // Sort results: relevance first, then distance
-  items.sort((a, b) => {
-    const relA = scoreRelevance(a.name, filters.q);
-    const relB = scoreRelevance(b.name, filters.q);
+  // DG131: conditional low-relevance truncation — only when q non-empty & at least one >= minRelevanceScore
+  let filteredItems = items;
+  const qTrim = filters.q?.trim() ?? "";
+  if (qTrim !== "") {
+    const minScore = appConfig.search.minRelevanceScore ?? 50;
+    const hasHigh = items.some((it) => scoreRelevance(it.name, filters.q) >= minScore);
+    if (hasHigh) {
+      filteredItems = items.filter((it) => scoreRelevance(it.name, filters.q) >= minScore);
+    }
+  }
+
+  // Sort results: relevance (+ DG136 good_first boost) first, then distance, then name, then id (DG142)
+  const effectiveRanking = filters.ranking ?? appConfig.search.rankingMode;
+  const isGoodFirst = effectiveRanking === "good_first";
+  filteredItems.sort((a, b) => {
+    const boostA = isGoodFirst && a.cafe ? ((a.cafe.work_stats.experience_score != null && a.cafe.work_stats.experience_score >= 80) || (a.cafe.work_stats.composite_score != null && a.cafe.work_stats.composite_score >= 75) ? 10 : 0) : 0;
+    const boostB = isGoodFirst && b.cafe ? ((b.cafe.work_stats.experience_score != null && b.cafe.work_stats.experience_score >= 80) || (b.cafe.work_stats.composite_score != null && b.cafe.work_stats.composite_score >= 75) ? 10 : 0) : 0;
+    const relA = scoreRelevance(a.name, filters.q) + boostA;
+    const relB = scoreRelevance(b.name, filters.q) + boostB;
     if (relA !== relB) return relB - relA;
 
     if (a.distance_m !== null && b.distance_m !== null) {
@@ -259,10 +287,12 @@ export async function executeSearch(
     }
     if (a.distance_m !== null) return -1;
     if (b.distance_m !== null) return 1;
-    return a.name.localeCompare(b.name);
+    const nameCmp = a.name.localeCompare(b.name);
+    if (nameCmp !== 0) return nameCmp;
+    return a.id.localeCompare(b.id);
   });
 
-  const total_count = items.length;
+  const total_count = filteredItems.length;
   const is_weak_results = total_count < appConfig.search.weakResultsThreshold;
 
   // DG46: Top 10 suggestions, strictly capped
@@ -271,12 +301,13 @@ export async function executeSearch(
     appConfig.search.maxSuggestionLimit,
   );
 
-  const results = items.slice(0, Math.max(0, limit));
+  const results = filteredItems.slice(0, Math.max(0, limit));
 
   return {
     results,
     total_count,
     is_weak_results,
     reference_point: refPoint,
+    ...(warnings.length > 0 ? { warnings } : {}),
   };
 }

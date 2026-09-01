@@ -12,6 +12,7 @@ Do not load every spec by default unless the task spans the whole system.
 
 | Spec | Canonical topic |
 | --- | --- |
+| `0000-founder-manifesto.md` | Founder product philosophy: core principles and the three decision gates |
 | `0001-nextjs-migration.md` | Full migration from Vite SPA to Next.js App Router |
 | `0002-design-system.md` | Visual direction, tokens, typography, motion — 2026 standard |
 | `0003-testing-and-ci.md` | Testing strategy, fixture policy, CI gates, automation |

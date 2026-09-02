@@ -921,20 +921,22 @@ Two search modes:
    - Distances are from the user location when known, otherwise from city
      center and labeled as such (DG58).
    - Weak local results (< 3 matches) or empty → prompt "Search Google /
-     Apple Maps" (DG49)
+     Apple Maps" (DG49). External source buttons obey `app.yaml:search.externalSources` (DG134, Apple gated until MapKit ready).
    - Every search result item carries an explicit `source`: `coffeemode` |
      `stored_poi` | `google` | `apple`, so results can be grouped/labeled by
-     origin (DG130). Live Google results are wired through the POI service in
-     a follow-up slice; the current backend returns stored sources only plus
-     the weak-results flag.
-
+     origin (DG130, DG131 grouping: `coffeemode` group first, POI group second, intra-group relevance→distance→name→id). Live Google results are gated by `?include_live=true` plus the weak-results CTA (DG132 `X-Search-Mode: stored_only|live` by actual fanout); backend returns stored sources plus weak-results flag and optional `warnings:["poi_unavailable","live_poi_unavailable","open_now_truncated"]` (DG133, DG145).
+   - Server caching (DG137-B): `GET /api/search` success path returns `Cache-Control: private, max-age=10, stale-while-revalidate=30`.
+   - Conditional low-relevance truncation (DG131): `app.yaml:search.minRelevanceScore=50`; only when `q` non-empty and at least one hit ≥50, discard `secondaryMatch(10)` hits — empty `q` browse never truncates. `total_count` and `is_weak_results` are computed post-truncation.
+   - Tie-breaker: `name` then `id` (DG142) for deterministic ordering.
+   - Ranking mode (DG136): `app.yaml:search.rankingMode` default `relevance`; client preference via `?ranking=good_first|relevance` (persisted in localStorage per DG136, not `profiles`), `good_first` adds +10 boost for cafes with `experience_score≥80` or `composite_score≥75`.
+   - Fixtures (DG140备选): `web/lib/search/fixtures.ts` double-gated (`SEARCH_FIXTURES=1` && `NODE_ENV!=="production"`), `web/tests/fixtures/search-fixtures.json` for theme-preview/visual-smoke and `?fixtures=1` route short-circuit.
+   - Observability (DG144): live POIs carry optional `not_persisted_reason` (`non_food_category`).
 External search (on demand):
   Google: POI service live Places search → results shown AND stored in D1
   Apple:  MapKit JS client search → refs POSTed to POI service
   → every external search enriches the reusable POI store (billing + flywheel)
   → only food/cafe-category POIs are persisted to D1; unrelated places
-    (ATMs, clinics, etc.) are shown but never cached (DG52)
-
+    (ATMs, clinics, etc.) are shown with `not_persisted_reason` but never cached (DG52, DG144)
 Distance search on D1: SQLite has no spatial index, but Worker-side haversine
   scan is fine at city scale (thousands of POIs). Escape hatch: if a region's
   saved POIs exceed ~50K, mirror hot POIs into Postgres PostGIS.

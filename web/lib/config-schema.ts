@@ -30,6 +30,12 @@ export interface AppConfig {
       fuzzyMatch: number;
       secondaryMatch: number;
     };
+    minRelevanceScore: number;
+    externalSources: {
+      google: boolean;
+      apple: boolean;
+    };
+    rankingMode: string;
   };
   stats: {
     dimWeights: {
@@ -226,6 +232,26 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
           relevanceWeights.secondaryMatch,
         ),
       },
+      minRelevanceScore:
+        search.minRelevanceScore === undefined
+          ? 50
+          : positiveInteger(file, "search.minRelevanceScore", search.minRelevanceScore),
+      externalSources: (() => {
+        if (search.externalSources === undefined) return { google: true, apple: false };
+        const es = record(file, "search.externalSources", search.externalSources);
+        if (typeof es.google !== "boolean" || typeof es.apple !== "boolean") {
+          fail(file, "search.externalSources", "must be {google:boolean, apple:boolean}");
+        }
+        return { google: es.google, apple: es.apple };
+      })(),
+      rankingMode: (() => {
+        if (search.rankingMode === undefined) return "relevance";
+        const v = search.rankingMode;
+        if (v !== "relevance" && v !== "good_first") {
+          fail(file, "search.rankingMode", "must be \"relevance\" or \"good_first\"");
+        }
+        return v as string;
+      })(),
     },
     stats: {
       dimWeights: {

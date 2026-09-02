@@ -17,6 +17,7 @@ import {
   ProfileSection,
   ScoreSliderSection,
   SearchFilterSection,
+  SearchResultsSection,
   SkeletonSection,
   TypeSection,
 } from "./preview-sections";
@@ -155,6 +156,7 @@ export function ThemePreview() {
         <CheckInSuccessSection />
         <ProfileSection />
         <SearchFilterSection />
+        <SearchResultsSection />
 
         <footer className="mt-8 border-t border-separator pt-6">
           <p className="font-mono text-xs text-muted">{t("footer")}</p>

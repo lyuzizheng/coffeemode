@@ -1,0 +1,140 @@
+{
+  "cafes": [
+    {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "name": "Chye Seng Huat Hardware",
+      "lat": 1.3118,
+      "lng": 103.8596,
+      "address": "150 Tyrwhitt Rd, Singapore 207563",
+      "city": "singapore",
+      "tz": "Asia/Singapore",
+      "opening_hours": null,
+      "price_range": 2,
+      "work_stats": {
+        "wifi_score": 85,
+        "outlets_score": 75,
+        "seats_score": 90,
+        "temp_score": 80,
+        "coffee_score": 90,
+        "overall_score": 85,
+        "experience_score": 88,
+        "composite_score": 84,
+        "quietness_score": 70,
+        "total_checkins": 42,
+        "first_visited_at": "2026-01-01T00:00:00.000Z",
+        "last_visited_at": "2026-08-01T00:00:00.000Z"
+      },
+      "cover": "fixtures/cshh-cover.jpg"
+    },
+    {
+      "id": "22222222-2222-4222-8222-222222222222",
+      "name": "Apartment Coffee",
+      "lat": 1.3135,
+      "lng": 103.8557,
+      "address": "262 Lavender St, Singapore 338794",
+      "city": "singapore",
+      "tz": "Asia/Singapore",
+      "opening_hours": null,
+      "price_range": 2,
+      "work_stats": {
+        "wifi_score": 90,
+        "outlets_score": 80,
+        "seats_score": 70,
+        "temp_score": 85,
+        "coffee_score": 95,
+        "overall_score": 88,
+        "experience_score": 92,
+        "composite_score": 86,
+        "quietness_score": 80,
+        "total_checkins": 30,
+        "first_visited_at": "2026-02-01T00:00:00.000Z",
+        "last_visited_at": "2026-08-15T00:00:00.000Z"
+      },
+      "cover": "fixtures/apartment-cover.jpg"
+    },
+    {
+      "id": "33333333-3333-4333-8333-333333333333",
+      "name": "Nylon Coffee Roasters",
+      "lat": 1.2789,
+      "lng": 103.8398,
+      "address": "4 Everton Park, #01-40, Singapore 080004",
+      "city": "singapore",
+      "tz": "Asia/Singapore",
+      "opening_hours": null,
+      "price_range": 2,
+      "work_stats": {
+        "wifi_score": 60,
+        "outlets_score": 50,
+        "seats_score": 50,
+        "temp_score": 75,
+        "coffee_score": 98,
+        "overall_score": 78,
+        "experience_score": 80,
+        "composite_score": 72,
+        "quietness_score": 60,
+        "total_checkins": 25,
+        "first_visited_at": "2026-03-01T00:00:00.000Z",
+        "last_visited_at": "2026-08-20T00:00:00.000Z"
+      },
+      "cover": "fixtures/nylon-cover.jpg"
+    }
+  ],
+  "pois": [
+    {
+      "place_id": "ChIJ_FIXTURE_STORED_1",
+      "source": "google",
+      "search_source": "stored_poi",
+      "name": "Tiong Bahru Bakery",
+      "lat": 1.2852,
+      "lng": 103.8275,
+      "address": "56 Eng Hoon St, #01-70, Singapore 160056",
+      "types": ["cafe", "bakery"],
+      "business_status": "OPERATIONAL",
+      "hours_json": null,
+      "photo_refs": ["places/ChIJ_FIXTURE_STORED_1/photos/photo1"],
+      "fetched_at": "2026-08-01T00:00:00.000Z"
+    },
+    {
+      "place_id": "ChIJ_FIXTURE_STORED_2",
+      "source": "google",
+      "search_source": "stored_poi",
+      "name": "Common Man Coffee Roasters",
+      "lat": 1.2917,
+      "lng": 103.8378,
+      "address": "22 Martin Rd, #01-00, Singapore 239058",
+      "types": ["cafe", "restaurant"],
+      "business_status": "OPERATIONAL",
+      "hours_json": null,
+      "photo_refs": ["places/ChIJ_FIXTURE_STORED_2/photos/photo1"],
+      "fetched_at": "2026-08-01T00:00:00.000Z"
+    },
+    {
+      "place_id": "apple-ref-fixture-stored-3",
+      "source": "apple",
+      "search_source": "apple",
+      "name": "Alchemist International Plaza",
+      "lat": 1.2758,
+      "lng": 103.8432,
+      "address": "10 Anson Rd, #01-34, Singapore 079903",
+      "types": ["cafe"],
+      "business_status": "OPERATIONAL",
+      "hours_json": null,
+      "photo_refs": [],
+      "fetched_at": "2026-08-01T00:00:00.000Z"
+    },
+    {
+      "place_id": "ChIJ_FIXTURE_LIVE_GOOGLE_1",
+      "source": "google",
+      "search_source": "google",
+      "name": "Blue Bottle Coffee (Live)",
+      "lat": 1.2834,
+      "lng": 103.8521,
+      "address": "10 Bayfront Ave, Singapore 018956",
+      "types": ["cafe", "coffee_shop"],
+      "business_status": "OPERATIONAL",
+      "hours_json": null,
+      "photo_refs": ["places/ChIJ_FIXTURE_LIVE_GOOGLE_1/photos/photo1"],
+      "fetched_at": "2026-08-01T00:00:00.000Z"
+    }
+  ]
+}

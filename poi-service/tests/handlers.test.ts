@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { handleFetch } from "../src/handlers";
-import type { Env } from "../src/types";
+import type { Env, POI } from "../src/types";
 import { FakeD1, FakeKV, googleDetailResponse, mockFetch } from "./helpers";
 
 const TOKEN = "test-token";
@@ -699,14 +699,15 @@ describe("GET /poi/search", () => {
 });
 
 describe("GET /poi/search/external", () => {
-  it("searches Google, stores usable results, and omits results without coordinates", async () => {
+  it("searches Google, stores food/cafe results, attaches not_persisted_reason for non-food, and omits location-less", async () => {
     const env = makeEnv();
     const fetchImpl = mockFetch((url) => {
       expect(String(url)).toContain("places.test/v1/places:searchText");
       return new Response(
         JSON.stringify({
           places: [
-            googleDetailResponse({ id: "ChIJLIVE" }),
+            googleDetailResponse({ id: "ChIJLIVE", types: ["cafe", "coffee_shop"] }),
+            googleDetailResponse({ id: "ChIJNONFOOD", types: ["bank", "atm"] }),
             googleDetailResponse({ id: "ChIJNOLOCATION", location: undefined }),
           ],
         }),
@@ -717,7 +718,18 @@ describe("GET /poi/search/external", () => {
     const res = await call("GET", "/poi/search/external?q=blue%20bottle&r=5", env, { fetchImpl });
 
     expect(res.status).toBe(200);
-    expect((await bodyOf(res)).results).toMatchObject([{ place_id: "ChIJLIVE", source: "google" }]);
+    const body = (await bodyOf(res)) as { results: POI[] };
+    // ChIJNOLOCATION is omitted (no coordinates)
+    expect(body.results).toHaveLength(2);
+    expect(body.results[0]).toMatchObject({ place_id: "ChIJLIVE", source: "google" });
+    expect(body.results[0].not_persisted_reason).toBeUndefined();
+    expect(body.results[1]).toMatchObject({
+      place_id: "ChIJNONFOOD",
+      source: "google",
+      not_persisted_reason: "non_food_category",
+    });
+
+    // DG144/DG52: Only food/cafe result is persisted to D1
     expect((env.POI_DB as FakeD1).rows.map((row) => row.place_id)).toEqual(["ChIJLIVE"]);
   });
 

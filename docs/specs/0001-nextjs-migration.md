@@ -213,14 +213,8 @@ Notes:
 - Favorites/collections, follows, owner claims: post-MVP (owner_id column reserved);
   favorites land as cafe_favorites(user_id, cafe_id) composite PK — like ≠ favorite
   (0004 decision 8a, #254)
-- Soft delete: cafe deletion is checkin-scoped and never deletes the cafe row (DG125).
-  DELETE /api/cafes/[id] soft-deletes the caller's live checkins inside a FOR UPDATE transaction.
-  If other users have live checkins (>= 1), confirmation is required ({confirm:true}) to hand
-  created_by to the service account (00000000-0000-4000-a000-000000000001 seeded in 0016);
-  without confirmation returns 403 cafe_has_other_checkins.
-  If no other users' checkins remain (n=0), the cafe stays as a public empty shell, excluded from
-  sitemap and marked noindex. Deletion is irreversible with no revive entry point.
-  Individual check-in soft delete sets checkins.deleted_at and hides photos from cafes.gallery via source.
+- Soft delete: checkins.deleted_at; photos from a deleted check-in are hidden from cafes.gallery via source;
+  cafes.deleted_at (0009) tombstones keep id + location; provider unique indexes are tombstone-aware (0011)
 - Infra tables (not product domain): rate_limits (0003 — distributed token bucket, one atomic
   UPSERT per check, web/lib/rate-limit/postgres.ts) and image_upload_intents (0006 — binds a
   presigned imageUuid to its issuing user, single-use DELETE ... RETURNING inside the creation
@@ -769,8 +763,8 @@ Rules:
     Restrained, memorable, no confetti. (Detailed visual design → Kimi)
   - Check-in photos go to checkins.photos AND auto-merge into cafes.gallery
     (attributed with by/at and source={type:"checkin",id}). No curator approval at MVP.
-  - Soft delete: cafe deletion is checkin-scoped (DG125). Setting checkins.deleted_at hides
-    deleted check-in photos from cafes.gallery and recomputes work_stats.
+  - Soft delete: set checkins.deleted_at. Deleted check-in photos are hidden from
+    cafes.gallery but remain in checkins.photos for audit/recompute.
   - Like toggle on a check-in: update checkin_likes and denormalized checkins.likes_count.
     FULL exposes Newest (default — DG113) and Helpful modes with opaque cursor
     pagination; Helpful sorts by likes_count, visited_at, then id descending.
@@ -1186,7 +1180,7 @@ Specs name the parameter and its default; the YAML owns the live value.
   nightly recompute corrects any drift
 - Deep link first visit: SSR shell hydrates into the map app at FULL sheet; never a full-screen modal, no banner (DG124)
 - Location permission: OS prompt only after an explicit user tap, never on load/error/deep-link surfaces; every location feature has a no-permission fallback (§Location permission contract — DG112)
-- Cafe & check-in deletion: checkin-scoped (DG125); cafe row never deleted; empty shells (n=0) excluded from sitemap and marked noindex; community cafes require confirm to hand created_by to service account; photos hidden from gallery
+- Check-in soft delete: set deleted_at; recompute work_stats; hide photos from gallery
 - Like toggle: idempotent upsert on checkin_likes; keep checkins.likes_count in sync
 - Image upload cap: 10 MB max in presigned PUT; R2 lifecycle cleans orphan original/ objects
 - maps_share_url validation: only known Google/Apple Maps hosts before proxying

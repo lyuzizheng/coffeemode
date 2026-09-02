@@ -9,7 +9,6 @@ import {
   recomputeWorkStats,
   type RunInTransaction,
 } from "@/lib/stats/aggregate";
-import { appConfig } from "@/lib/config";
 import { coerceWorkStats } from "@/lib/stats/work-stats";
 import type { CafeDetail, CafeSummary, PublicCafeDetail } from "@/types/cafes";
 import type { StoredImage } from "@/types/images";
@@ -82,7 +81,6 @@ export class CafeHasOtherCheckinsError extends Error {
     this.name = "CafeHasOtherCheckinsError";
   }
 }
-
 export interface DeleteCafeResult {
   ok: true;
   id: string;
@@ -91,6 +89,13 @@ export interface DeleteCafeResult {
   shell: boolean;
 }
 
+const DEFAULT_SERVICE_ACCOUNT_ID = "00000000-0000-4000-a000-000000000001";
+
+/** Resolves service account ID from SERVICE_ACCOUNT_ID env var with fixed UUID fallback (DG107 override). */
+export function getServiceAccountId(): string {
+  const envId = process.env.SERVICE_ACCOUNT_ID?.trim();
+  return envId && isValidUUID(envId) ? envId : DEFAULT_SERVICE_ACCOUNT_ID;
+}
 /**
  * The creator's first check-in. Spec 0001 pins required-on-creation:
  * overall slider, max_stay, review note, >=1 photo (the
@@ -564,34 +569,38 @@ export async function deleteCafe(
     const callerCheckinIds = callerCheckinsRes.rows.map((r) => r.id);
     const k = callerCheckinIds.length;
 
-    if (k === 0) {
-      throw new CafeNotFoundError(cafeId);
-    }
-
+    // If other users have live checkins, confirmation is required before handoff / mutation
     if (others >= 1 && !options?.confirm) {
       throw new CafeHasOtherCheckinsError(others);
     }
 
-    await client.query(
-      `update checkins set deleted_at = now(), updated_at = now()
-       where cafe_id = $1 and user_id = $2 and deleted_at is null`,
-      [cafeId, userId],
-    );
+    // Repeat on own shell: 0 own live checkins and 0 others -> 404 nothing to delete
+    if (k === 0 && others === 0) {
+      throw new CafeNotFoundError(cafeId);
+    }
 
-    await client.query(
-      `update cafes set gallery = coalesce(
-         (select jsonb_agg(elem) from jsonb_array_elements(coalesce(gallery, '[]'::jsonb)) elem
-          where elem->'source'->>'id' is null or not (elem->'source'->>'id' = any($2::text[]))), '[]'::jsonb),
-         updated_at = now()
-       where id = $1`,
-      [cafeId, callerCheckinIds],
-    );
+    if (k > 0) {
+      await client.query(
+        `update checkins set deleted_at = now(), updated_at = now()
+         where cafe_id = $1 and user_id = $2 and deleted_at is null`,
+        [cafeId, userId],
+      );
 
-    await recomputeWorkStats(cafeId, 0, inSameTx);
+      await client.query(
+        `update cafes set gallery = coalesce(
+           (select jsonb_agg(elem) from jsonb_array_elements(coalesce(gallery, '[]'::jsonb)) elem
+            where elem->'source'->>'id' is null or not (elem->'source'->>'id' = any($2::text[]))), '[]'::jsonb),
+           updated_at = now()
+         where id = $1`,
+        [cafeId, callerCheckinIds],
+      );
+
+      await recomputeWorkStats(cafeId, 0, inSameTx);
+    }
 
     const ownerTransferred = others >= 1;
     if (ownerTransferred) {
-      const serviceAccountId = appConfig.cafes.serviceAccountId;
+      const serviceAccountId = getServiceAccountId();
       await client.query(
         `update cafes set created_by = $2 where id = $1 and created_by = $3`,
         [cafeId, serviceAccountId, userId],

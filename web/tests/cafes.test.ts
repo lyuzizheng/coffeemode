@@ -869,6 +869,60 @@ describe("DELETE /api/cafes/[id]", () => {
     expect(updateCall[1]).toEqual([CAFE_ID, SERVICE_ACCOUNT, USER.id]);
   });
 
+  it("403s when caller has 0 live checkins, others have checkins, and confirm is not true (zero mutations)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // cafeExists probe
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ id: CAFE_ID, created_by: USER.id, deleted_at: null }] }) // select cafe for update
+      .mockResolvedValueOnce({ rows: [{ count: "2" }] }) // count others
+      .mockResolvedValueOnce({ rows: [] }); // 0 caller live checkins
+
+    const res = await detailDELETE(
+      new Request(`https://localhost/api/cafes/${CAFE_ID}`, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirm: false }),
+      }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      code: "cafe_has_other_checkins",
+      n: 2,
+    });
+    // Zero mutations after the 3 selects
+    expect(clientQueryMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("200s and transfers ownership when caller has 0 live checkins, others have checkins, and confirm is true", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // cafeExists probe
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ id: CAFE_ID, created_by: USER.id, deleted_at: null }] }) // select cafe for update
+      .mockResolvedValueOnce({ rows: [{ count: "2" }] }) // count others
+      .mockResolvedValueOnce({ rows: [] }) // 0 caller live checkins
+      .mockResolvedValueOnce({ rowCount: 1 }); // update created_by to service account (no checkin/gallery/stats mutations)
+
+    const res = await detailDELETE(
+      new Request(`https://localhost/api/cafes/${CAFE_ID}`, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+      }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
+    );
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      id: CAFE_ID,
+      removed_checkins: 0,
+      owner_transferred: true,
+      shell: false,
+    });
+
+    const updateCall = clientQueryMock.mock.calls[clientQueryMock.mock.calls.length - 1];
+    expect(updateCall[0]).toContain("update cafes set created_by = $2");
+    expect(updateCall[1]).toEqual([CAFE_ID, SERVICE_ACCOUNT, USER.id]);
+  });
   it("404s on repeated delete on own shell (0 own live checkins)", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // cafeExists probe
     clientQueryMock

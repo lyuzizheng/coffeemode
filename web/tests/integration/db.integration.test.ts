@@ -1098,6 +1098,43 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       await expect(deleteCafe(created.cafeId, U1)).rejects.toBeInstanceOf(CafeForbiddenError);
     });
 
+    it("community cafe where creator already soft-deleted checkin individually transfers ownership on confirm", async () => {
+      const photoId = randomUUID();
+      await recordUploadIntent(U1, photoId);
+      const created = await createCafeWithFirstCheckIn(
+        U1,
+        {
+          name: "Individual Soft-Deleted First Cafe",
+          lat: 1.35,
+          lng: 103.8,
+          checkin: { scores: { wifi: 70, overall: 70 }, max_stay: "unlimited", note: "u1 first", photo_ids: [photoId] },
+        },
+        fakeProvisionPhotosDeps(),
+      );
+
+      // U2 checks in
+      await createCheckIn(U2, { cafe_id: created.cafeId, scores: { wifi: 85 } });
+
+      // U1 soft-deletes their check-in individually via softDeleteCheckIn
+      await softDeleteCheckIn(U1, created.checkinId);
+
+      // U1 attempts deleteCafe without confirm -> 403
+      await expect(deleteCafe(created.cafeId, U1, { confirm: false })).rejects.toBeInstanceOf(CafeHasOtherCheckinsError);
+
+      // U1 calls deleteCafe with confirm: true -> 200 with removed_checkins = 0 and owner_transferred = true
+      const result = await deleteCafe(created.cafeId, U1, { confirm: true });
+      expect(result).toEqual({
+        ok: true,
+        id: created.cafeId,
+        removed_checkins: 0,
+        owner_transferred: true,
+        shell: false,
+      });
+
+      const cafeRow = await dbClient.query("select created_by from cafes where id = $1", [created.cafeId]);
+      expect(cafeRow.rows[0].created_by).toBe("00000000-0000-4000-a000-000000000001");
+    });
+
     it("concurrent double-delete has exactly one winner", async () => {
       const photoId = randomUUID();
       await recordUploadIntent(U1, photoId);

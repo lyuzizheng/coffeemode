@@ -6,6 +6,7 @@ import { isValidWeeklyHours, type WeeklyHours } from "@/lib/hours";
 import { findCity } from "@/lib/cities";
 import {
   incrementalUpdateWorkStats,
+  recomputeWorkStats,
   type RunInTransaction,
 } from "@/lib/stats/aggregate";
 import { coerceWorkStats } from "@/lib/stats/work-stats";
@@ -17,6 +18,7 @@ import {
   type MaxStay,
 } from "@/types/checkins";
 import {
+  CafeNotFoundError,
   fail,
   MAX_NOTE_LENGTH,
   MERGE_GALLERY_SQL,
@@ -64,6 +66,36 @@ export class CafeExistsError extends Error {
   }
 }
 
+/** Thrown when a non-creator attempts to delete a cafe (DG125). */
+export class CafeForbiddenError extends Error {
+  constructor(message = "only creator can delete cafe") {
+    super(message);
+    this.name = "CafeForbiddenError";
+  }
+}
+
+/** Thrown when a cafe has other users' live checkins and confirm is not true (DG125). */
+export class CafeHasOtherCheckinsError extends Error {
+  constructor(readonly n: number) {
+    super("cafe has other checkins");
+    this.name = "CafeHasOtherCheckinsError";
+  }
+}
+export interface DeleteCafeResult {
+  ok: true;
+  id: string;
+  removed_checkins: number;
+  owner_transferred: boolean;
+  shell: boolean;
+}
+
+const DEFAULT_SERVICE_ACCOUNT_ID = "00000000-0000-4000-a000-000000000001";
+
+/** Resolves service account ID from SERVICE_ACCOUNT_ID env var with fixed UUID fallback (DG107 override). */
+export function getServiceAccountId(): string {
+  const envId = process.env.SERVICE_ACCOUNT_ID?.trim();
+  return envId && isValidUUID(envId) ? envId : DEFAULT_SERVICE_ACCOUNT_ID;
+}
 /**
  * The creator's first check-in. Spec 0001 pins required-on-creation:
  * overall slider, max_stay, review note, >=1 photo (the
@@ -441,6 +473,7 @@ select id,
        coalesce((work_stats->>'updated_at')::timestamptz, updated_at) as lastmod
 from cafes
 where deleted_at is null
+  and ((work_stats->>'n_checkins') is null or (work_stats->>'n_checkins')::int > 0)
 order by lastmod desc
 `;
 
@@ -479,47 +512,109 @@ export async function cafeExists(id: string): Promise<boolean> {
 }
 
 /**
- * Soft delete a cafe by id (issue #207). Retains the row and coordinates
- * as a location tombstone for 404 recovery suggestions.
- */
-export async function softDeleteCafe(id: string, userId?: string): Promise<boolean> {
-  if (!isValidUUID(id)) return false;
-  if (userId && !isValidUUID(userId)) return false;
-  const result = userId
-    ? await query(
-        `update cafes set deleted_at = now() where id = $1 and created_by = $2 and deleted_at is null`,
-        [id, userId],
-      )
-    : await query(
-        `update cafes set deleted_at = now() where id = $1 and deleted_at is null`,
-        [id],
-      );
-  return (result.rowCount ?? 0) > 0;
-}
-
-/**
- * Revive a soft-deleted cafe by id (issue #219).
- * Clears deleted_at, making the cafe active again.
+ * Cafe deletion is checkin-scoped and never deletes the cafe row (DG125).
+ * Creator-only. Inside a single FOR UPDATE transaction:
+ * - Counts other users' live checkins (`user_id <> caller`).
+ * - If others >= 1 and `options?.confirm !== true` -> throws CafeHasOtherCheckinsError(others).
+ * - Soft-deletes all caller's live checkins, hides photos from gallery, recomputes work_stats.
+ * - If others >= 1: updates `created_by` to the service account.
+ * - Returns { ok: true, id, removed_checkins: k, owner_transferred: others >= 1, shell: others === 0 }.
  *
- * Conflict-safe (issue #228): while the cafe was tombstoned its external POI
- * id may have been re-imported as a new live row (the 0011 partial unique
- * indexes allow exactly that). Un-deleting the old row then collides with
- * `idx_cafes_gplace`/`idx_cafes_apple_poi_id` — the index is the
- * authoritative, race-proof guard, so a 23505 maps to `false` (not revived),
- * same as an invalid or non-tombstoned id.
+ * Idempotency:
+ * - Repeat after handoff: created_by moved -> throws CafeForbiddenError (403).
+ * - Repeat on own shell: 0 own live checkins -> throws CafeNotFoundError (404).
  */
-export async function reviveCafe(id: string): Promise<boolean> {
-  if (!isValidUUID(id)) return false;
-  try {
-    const result = await query(
-      `update cafes set deleted_at = null where id = $1 and deleted_at is not null`,
-      [id],
-    );
-    return (result.rowCount ?? 0) > 0;
-  } catch (err) {
-    if (isUniqueViolation(err)) return false;
-    throw err;
+export async function deleteCafe(
+  cafeId: string,
+  userId: string,
+  options?: { confirm?: boolean },
+): Promise<DeleteCafeResult> {
+  if (!isValidUUID(cafeId) || !isValidUUID(userId)) {
+    throw new CafeNotFoundError(cafeId);
   }
+
+  return withTransaction(async (client) => {
+    const inSameTx: RunInTransaction = (fn) =>
+      fn(<T extends Record<string, unknown>>(text: string, params?: unknown[]) =>
+        client.query<T>(text, params),
+      );
+
+    const cafeRes = await client.query<{
+      id: string;
+      created_by: string | null;
+      deleted_at: string | null;
+    }>(
+      `select id, created_by, deleted_at from cafes where id = $1 for update`,
+      [cafeId],
+    );
+    const cafeRow = cafeRes.rows[0];
+    if (!cafeRow || cafeRow.deleted_at !== null) {
+      throw new CafeNotFoundError(cafeId);
+    }
+
+    if (cafeRow.created_by !== userId) {
+      throw new CafeForbiddenError();
+    }
+
+    const othersRes = await client.query<{ count: string }>(
+      `select count(*)::text from checkins where cafe_id = $1 and deleted_at is null and user_id <> $2`,
+      [cafeId, userId],
+    );
+    const others = Number.parseInt(othersRes.rows[0]?.count ?? "0", 10);
+
+    const callerCheckinsRes = await client.query<{ id: string }>(
+      `select id from checkins where cafe_id = $1 and user_id = $2 and deleted_at is null for update`,
+      [cafeId, userId],
+    );
+    const callerCheckinIds = callerCheckinsRes.rows.map((r) => r.id);
+    const k = callerCheckinIds.length;
+
+    // If other users have live checkins, confirmation is required before handoff / mutation
+    if (others >= 1 && !options?.confirm) {
+      throw new CafeHasOtherCheckinsError(others);
+    }
+
+    // Repeat on own shell: 0 own live checkins and 0 others -> 404 nothing to delete
+    if (k === 0 && others === 0) {
+      throw new CafeNotFoundError(cafeId);
+    }
+
+    if (k > 0) {
+      await client.query(
+        `update checkins set deleted_at = now(), updated_at = now()
+         where cafe_id = $1 and user_id = $2 and deleted_at is null`,
+        [cafeId, userId],
+      );
+
+      await client.query(
+        `update cafes set gallery = coalesce(
+           (select jsonb_agg(elem) from jsonb_array_elements(coalesce(gallery, '[]'::jsonb)) elem
+            where elem->'source'->>'id' is null or not (elem->'source'->>'id' = any($2::text[]))), '[]'::jsonb),
+           updated_at = now()
+         where id = $1`,
+        [cafeId, callerCheckinIds],
+      );
+
+      await recomputeWorkStats(cafeId, 0, inSameTx);
+    }
+
+    const ownerTransferred = others >= 1;
+    if (ownerTransferred) {
+      const serviceAccountId = getServiceAccountId();
+      await client.query(
+        `update cafes set created_by = $2 where id = $1 and created_by = $3`,
+        [cafeId, serviceAccountId, userId],
+      );
+    }
+
+    return {
+      ok: true,
+      id: cafeId,
+      removed_checkins: k,
+      owner_transferred: ownerTransferred,
+      shell: others === 0,
+    };
+  });
 }
 
 /**

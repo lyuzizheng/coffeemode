@@ -3,10 +3,13 @@ import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
 import {
   cafeExists,
+  CafeForbiddenError,
+  CafeHasOtherCheckinsError,
+  deleteCafe,
   getCafe,
-  softDeleteCafe,
   toPublicCafeDetail,
 } from "@/lib/db/cafes";
+import { CafeNotFoundError } from "@/lib/db/checkins";
 import {
   checkRateLimit,
   getClientIdentifier,
@@ -55,7 +58,7 @@ export async function GET(
 
 /**
  * DELETE /api/cafes/[id]
- * Soft-delete a cafe (issue #207, #219). Auth required; only creator can delete.
+ * Checkin-scoped cafe delete (DG125 / issue #229). Auth required; only creator can delete.
  */
 export async function DELETE(
   request: Request,
@@ -91,19 +94,25 @@ export async function DELETE(
       return apiError("not_found", "cafe not found", 404);
     }
 
-    const ok = await softDeleteCafe(id, user.id);
-    if (!ok) {
-      // Disambiguate the false: non-creator vs a lost delete race (the cafe
-      // was tombstoned between the probe above and the update — issue #228).
-      const stillExists = await cafeExists(id);
-      if (!stillExists) {
-        return apiError("not_found", "cafe not found", 404);
-      }
+    const body = await request.json().catch(() => null);
+    const confirm =
+      typeof body === "object" && body !== null && (body as { confirm?: unknown }).confirm === true;
+
+    const result = await deleteCafe(id, user.id, { confirm });
+    return NextResponse.json(result);
+  } catch (err) {
+    if (err instanceof CafeNotFoundError) {
+      return apiError("not_found", "cafe not found", 404);
+    }
+    if (err instanceof CafeForbiddenError) {
       return apiError("forbidden", "only creator can delete cafe", 403);
     }
-
-    return NextResponse.json({ ok: true, id });
-  } catch (err) {
+    if (err instanceof CafeHasOtherCheckinsError) {
+      return apiError("cafe_has_other_checkins", 403, {
+        code: "cafe_has_other_checkins",
+        n: err.n,
+      });
+    }
     console.error("/api/cafes/[id] DELETE failed", err);
     return apiError("internal_error", 500);
   }

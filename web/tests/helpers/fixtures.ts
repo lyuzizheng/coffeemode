@@ -7,12 +7,16 @@ import type { ProvisionPhotosDeps } from "@/lib/images/provision-photos";
 // Fixed UUIDs so tests are self-describing.
 export const U1 = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"; // author / creator
 export const U2 = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22"; // second user
+export const SERVICE_ACCOUNT_ID = "00000000-0000-4000-a000-000000000001";
 export const CAFE_A = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44";
 export const CHECKIN_A1 = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55";
 export const TESTER_ID = U1;
 
 export async function seedBaseData(dbClient: pg.Client): Promise<void> {
-  await dbClient.query(`insert into profiles (id, display_name) values ($1, 'u1'), ($2, 'u2')`, [U1, U2]);
+  await dbClient.query(
+    `insert into profiles (id, display_name) values ($1, 'u1'), ($2, 'u2'), ($3, 'CoffeeMode')`,
+    [U1, U2, SERVICE_ACCOUNT_ID],
+  );
   await dbClient.query(
     `insert into cafes (id, name, location, city, created_by, tz)
      values ($1, 'Seed Cafe', ST_SetSRID(ST_MakePoint(103.8, 1.35), 4326)::geography,

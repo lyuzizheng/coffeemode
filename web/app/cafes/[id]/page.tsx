@@ -65,9 +65,12 @@ export async function generateMetadata({
     ? [{ url: ogImage, width: 400, height: 300, alt: cafe.name }]
     : [{ url: ogImage, width: 1200, height: 630, alt: cafe.name }];
 
+  const isShell = cafe.work_stats?.n_checkins === 0;
+
   return {
     title,
     description,
+    ...(isShell ? { robots: { index: false, follow: true } } : {}),
     alternates: {
       // DG110: one permanent, locale-independent canonical URL per cafe.
       canonical: url,

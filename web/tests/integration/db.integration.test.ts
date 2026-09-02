@@ -33,13 +33,14 @@ import {
 } from "@/lib/db/checkins";
 import {
   CafeExistsError,
+  CafeForbiddenError,
+  CafeHasOtherCheckinsError,
   createCafeWithFirstCheckIn,
+  deleteCafe,
   getCafe,
   getCafeLocation,
   listCafeSitemapEntries,
   listCafesNearby,
-  reviveCafe,
-  softDeleteCafe,
 } from "@/lib/db/cafes";
 import {
   getProfile,
@@ -171,7 +172,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   });
 
-  it("applies migrations 0001→0015 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0016 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -189,8 +190,14 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0013_search_city_index.sql",
       "0014_fk_indexes_and_partial_gist.sql",
       "0015_drop_dead_cafe_columns.sql",
+      "0016_seed_service_account.sql",
     ]);
 
+    const serviceProfile = await dbClient.query(
+      "select * from profiles where id = '00000000-0000-4000-a000-000000000001'",
+    );
+    expect(serviceProfile.rows).toHaveLength(1);
+    expect(serviceProfile.rows[0].display_name).toBe("CoffeeMode");
     const pgVersion = await dbClient.query("select postgis_version() as v");
     expect(pgVersion.rows[0].v).toMatch(/^3\./);
 
@@ -878,16 +885,15 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       );
     });
 
-    it("getCafeLocation returns coordinates for live and soft-deleted rows, null otherwise", async () => {
+    it("getCafeLocation returns coordinates for live and tombstoned rows, null otherwise", async () => {
       // Seed point is ST_MakePoint(lng=103.8, lat=1.35).
       await expect(getCafeLocation(CAFE_A)).resolves.toEqual({ lat: 1.35, lng: 103.8 });
 
-      // Soft-delete the cafe (issue #207): tombstone coordinates remain accessible for 404 recovery
-      const deleted = await softDeleteCafe(CAFE_A);
-      expect(deleted).toBe(true);
+      // Grandfathered tombstone row: tombstone coordinates remain accessible for 404 recovery
+      await dbClient.query("update cafes set deleted_at = now() where id = $1", [CAFE_A]);
       await expect(getCafeLocation(CAFE_A)).resolves.toEqual({ lat: 1.35, lng: 103.8 });
 
-      // Live queries and write paths now exclude the soft-deleted cafe
+      // Live queries and write paths exclude the tombstoned cafe
       await expect(getCafe(CAFE_A)).resolves.toBeNull();
       const nearby = await listCafesNearby({ lat: 1.35, lng: 103.8, radiusKm: 10, limit: 10 });
       expect(nearby.some((c) => c.id === CAFE_A)).toBe(false);
@@ -896,7 +902,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       const search = await searchCafesInDb({ q: "Cafe" });
       expect(search.some((c) => c.id === CAFE_A)).toBe(false);
 
-      // Write paths reject targeting a soft-deleted cafe
+      // Write paths reject targeting a tombstoned cafe
       await expect(
         createCheckIn(U1, { cafe_id: CAFE_A, scores: { wifi: 50 } }),
       ).rejects.toBeInstanceOf(CafeNotFoundError);
@@ -909,123 +915,269 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       ).resolves.toBeNull();
       // Invalid ids are a normal case on the 404 path — never a throw.
       await expect(getCafeLocation("not-a-uuid")).resolves.toBeNull();
+
+      // Restore CAFE_A
+      await dbClient.query("update cafes set deleted_at = null where id = $1", [CAFE_A]);
     });
 
-    it("reviveCafe un-deletes a cafe and restores it to queries and sitemap (issue #219)", async () => {
-      await softDeleteCafe(CAFE_A);
-      expect(await getCafe(CAFE_A)).toBeNull();
-
-      const revived = await reviveCafe(CAFE_A);
-      expect(revived).toBe(true);
-
-      const cafe = await getCafe(CAFE_A);
-      expect(cafe).not.toBeNull();
-      expect(cafe?.id).toBe(CAFE_A);
-
-      const nearby = await listCafesNearby({ lat: 1.35, lng: 103.8, radiusKm: 10, limit: 10 });
-      expect(nearby.some((c) => c.id === CAFE_A)).toBe(true);
-
-      const sitemap = await listCafeSitemapEntries();
-      expect(sitemap.some((c) => c.id === CAFE_A)).toBe(true);
-    });
-
-    it("permits creating a new cafe with the same external POI after soft-delete (issue #219)", async () => {
-      const photoId = randomUUID();
-      await recordUploadIntent(U1, photoId);
-      const initial = await createCafeWithFirstCheckIn(
-        U1,
-        {
-          name: "External Cafe",
-          lat: 1.35,
-          lng: 103.8,
-          google_place_id: "ChIJ_reimport_test",
-          checkin: { scores: { wifi: 80, overall: 80 }, max_stay: "unlimited", note: "first", photo_ids: [photoId] },
-        },
-        fakeProvisionPhotosDeps(),
-      );
-
-      await softDeleteCafe(initial.cafeId);
-
-      const secondPhotoId = randomUUID();
-      await recordUploadIntent(U1, secondPhotoId);
-      const recreated = await createCafeWithFirstCheckIn(
-        U1,
-        {
-          name: "External Cafe Reborn",
-          lat: 1.35,
-          lng: 103.8,
-          google_place_id: "ChIJ_reimport_test",
-          checkin: { scores: { wifi: 90, overall: 90 }, max_stay: "unlimited", note: "second", photo_ids: [secondPhotoId] },
-        },
-        fakeProvisionPhotosDeps(),
-      );
-
-      expect(recreated.cafeId).not.toBe(initial.cafeId);
-      const live = await getCafe(recreated.cafeId);
-      expect(live?.name).toBe("External Cafe Reborn");
-    });
-
-    it("recomputeAllWorkStats skips soft-deleted cafes (issue #219)", async () => {
-      await softDeleteCafe(CAFE_A);
+    it("recomputeAllWorkStats skips tombstoned cafes", async () => {
+      await dbClient.query("update cafes set deleted_at = now() where id = $1", [CAFE_A]);
       await expect(recomputeAllWorkStats(dbClient.query.bind(dbClient))).resolves.toBeUndefined();
       expect(await getCafe(CAFE_A)).toBeNull();
+      await dbClient.query("update cafes set deleted_at = null where id = $1", [CAFE_A]);
     });
+  });
 
-    it("reviveCafe refuses to un-delete when the POI was re-imported live (issue #228)", async () => {
-      // The re-import scenario #225 enabled: tombstone the original, then
-      // recreate the same external POI as a new live row.
+  describeDb("deleteCafe checkin-scoped delete & community handoff (DG125 / #229)", () => {
+    it("sole-owner delete turns cafe into public empty shell, excludes from sitemap, and blocks re-POSTing same POI with 409", async () => {
       const photoId = randomUUID();
       await recordUploadIntent(U1, photoId);
-      const initial = await createCafeWithFirstCheckIn(
+      const created = await createCafeWithFirstCheckIn(
         U1,
         {
-          name: "Revive Conflict Cafe",
+          name: "Sole Owner Cafe",
           lat: 1.35,
           lng: 103.8,
-          google_place_id: "ChIJ_revive_conflict",
-          checkin: { scores: { wifi: 70, overall: 70 }, max_stay: "unlimited", note: "first", photo_ids: [photoId] },
-        },
-        fakeProvisionPhotosDeps(),
-      );
-      await softDeleteCafe(initial.cafeId);
-
-      const secondPhotoId = randomUUID();
-      await recordUploadIntent(U1, secondPhotoId);
-      const recreated = await createCafeWithFirstCheckIn(
-        U1,
-        {
-          name: "Revive Conflict Cafe Reborn",
-          lat: 1.35,
-          lng: 103.8,
-          google_place_id: "ChIJ_revive_conflict",
-          checkin: { scores: { wifi: 90, overall: 90 }, max_stay: "unlimited", note: "second", photo_ids: [secondPhotoId] },
+          google_place_id: "ChIJ_sole_owner_test",
+          checkin: { scores: { wifi: 85, overall: 85 }, max_stay: "unlimited", note: "mine", photo_ids: [photoId] },
         },
         fakeProvisionPhotosDeps(),
       );
 
-      // Reviving the old tombstone would collide with the partial unique
-      // index: clean refusal, and both rows keep their state.
-      await expect(reviveCafe(initial.cafeId)).resolves.toBe(false);
-      await expect(getCafe(initial.cafeId)).resolves.toBeNull();
-      const live = await getCafe(recreated.cafeId);
-      expect(live?.name).toBe("Revive Conflict Cafe Reborn");
+      // Before delete: sitemap includes the cafe
+      const sitemapBefore = await listCafeSitemapEntries();
+      expect(sitemapBefore.some((c) => c.id === created.cafeId)).toBe(true);
 
-      // Once the replacement is tombstoned, reviving the original works again.
-      await softDeleteCafe(recreated.cafeId);
-      await expect(reviveCafe(initial.cafeId)).resolves.toBe(true);
-      await expect(getCafe(initial.cafeId)).resolves.not.toBeNull();
+      // Delete as sole owner
+      const result = await deleteCafe(created.cafeId, U1);
+      expect(result).toEqual({
+        ok: true,
+        id: created.cafeId,
+        removed_checkins: 1,
+        owner_transferred: false,
+        shell: true,
+      });
+
+      // Cafe row remains live in DB (never deleted)
+      const cafeRow = await dbClient.query("select * from cafes where id = $1", [created.cafeId]);
+      expect(cafeRow.rows[0].deleted_at).toBeNull();
+      expect(cafeRow.rows[0].created_by).toBe(U1);
+
+      // Cafe detail remains public and readable as an empty shell
+      const detail = await getCafe(created.cafeId);
+      expect(detail).not.toBeNull();
+      expect(detail?.work_stats.n_checkins).toBe(0);
+      expect(detail?.gallery).toEqual([]);
+
+      // Excluded from sitemap because n_checkins = 0
+      const sitemapAfter = await listCafeSitemapEntries();
+      expect(sitemapAfter.some((c) => c.id === created.cafeId)).toBe(false);
+
+      // Re-POSTing with same google_place_id collides on unique index -> 409 CafeExistsError
+      const newPhotoId = randomUUID();
+      await recordUploadIntent(U1, newPhotoId);
+      await expect(
+        createCafeWithFirstCheckIn(
+          U1,
+          {
+            name: "Duplicate Place Cafe",
+            lat: 1.35,
+            lng: 103.8,
+            google_place_id: "ChIJ_sole_owner_test",
+            checkin: { scores: { wifi: 90, overall: 90 }, max_stay: "unlimited", note: "dup", photo_ids: [newPhotoId] },
+          },
+          fakeProvisionPhotosDeps(),
+        ),
+      ).rejects.toBeInstanceOf(CafeExistsError);
+
+      // Repeat delete on own shell (0 own live checkins left) -> CafeNotFoundError (404)
+      await expect(deleteCafe(created.cafeId, U1)).rejects.toBeInstanceOf(CafeNotFoundError);
     });
 
-    it("softDeleteCafe with a creator scope deletes only for the creator (issue #228)", async () => {
-      // CAFE_A is seeded with created_by = U1.
-      await expect(softDeleteCafe(CAFE_A, U2)).resolves.toBe(false);
-      await expect(getCafe(CAFE_A)).resolves.not.toBeNull(); // mismatch leaves the row live
+    it("community cafe without confirm rejects with 403 (cafe_has_other_checkins) and 0 mutations", async () => {
+      const photoId = randomUUID();
+      await recordUploadIntent(U1, photoId);
+      const created = await createCafeWithFirstCheckIn(
+        U1,
+        {
+          name: "Community Cafe No Confirm",
+          lat: 1.35,
+          lng: 103.8,
+          checkin: { scores: { wifi: 80, overall: 80 }, max_stay: "unlimited", note: "creator", photo_ids: [photoId] },
+        },
+        fakeProvisionPhotosDeps(),
+      );
 
-      await expect(softDeleteCafe(CAFE_A, U1)).resolves.toBe(true);
-      await expect(getCafe(CAFE_A)).resolves.toBeNull();
+      // U2 checks in
+      await createCheckIn(U2, { cafe_id: created.cafeId, scores: { wifi: 90 } });
 
-      // Already tombstoned: false again, even for the creator.
-      await expect(softDeleteCafe(CAFE_A, U1)).resolves.toBe(false);
+      // U1 attempts delete without confirm
+      const err = await deleteCafe(created.cafeId, U1, { confirm: false }).catch((e) => e);
+      expect(err).toBeInstanceOf(CafeHasOtherCheckinsError);
+      expect((err as CafeHasOtherCheckinsError).n).toBe(1);
+
+      // Zero mutations: both checkins live, created_by still U1, work_stats has 2 checkins
+      const cafe = await getCafe(created.cafeId);
+      expect(cafe?.work_stats.n_checkins).toBe(2);
+      const cafeRow = await dbClient.query("select created_by from cafes where id = $1", [created.cafeId]);
+      expect(cafeRow.rows[0].created_by).toBe(U1);
+      const checkins = await dbClient.query(
+        "select id, user_id, deleted_at from checkins where cafe_id = $1 order by visited_at",
+        [created.cafeId],
+      );
+      expect(checkins.rows).toHaveLength(2);
+      expect(checkins.rows[0].deleted_at).toBeNull();
+      expect(checkins.rows[1].deleted_at).toBeNull();
+    });
+
+    it("community cafe with confirm deletes creator checkins, keeps others, transfers created_by to service account, and drops from profile", async () => {
+      const photoId1 = randomUUID();
+      await recordUploadIntent(U1, photoId1);
+      const created = await createCafeWithFirstCheckIn(
+        U1,
+        {
+          name: "Community Cafe Confirmed",
+          lat: 1.35,
+          lng: 103.8,
+          checkin: { scores: { wifi: 75, overall: 75 }, max_stay: "unlimited", note: "u1 checkin 1", photo_ids: [photoId1] },
+        },
+        fakeProvisionPhotosDeps(),
+      );
+
+      // U1 adds a 2nd checkin
+      await createCheckIn(U1, { cafe_id: created.cafeId, scores: { wifi: 80 } });
+
+      // U2 adds a checkin with photo
+      const photoId2 = randomUUID();
+      await recordUploadIntent(U2, photoId2);
+      await createCheckIn(
+        U2,
+        { cafe_id: created.cafeId, scores: { wifi: 95 }, photo_ids: [photoId2] },
+        fakeProvisionPhotosDeps(),
+      );
+
+      // Check U1 profile cafes contains the cafe
+      const u1CafesBefore = await getUserCafes(U1);
+      expect(u1CafesBefore.items.some((c) => c.id === created.cafeId)).toBe(true);
+
+      // U1 deletes with confirm: true
+      const result = await deleteCafe(created.cafeId, U1, { confirm: true });
+      expect(result).toEqual({
+        ok: true,
+        id: created.cafeId,
+        removed_checkins: 2,
+        owner_transferred: true,
+        shell: false,
+      });
+
+      // U1 checkins soft-deleted, U2 checkin intact
+      const checkins = await dbClient.query(
+        "select id, user_id, deleted_at from checkins where cafe_id = $1 order by user_id",
+        [created.cafeId],
+      );
+      const u1Rows = checkins.rows.filter((r) => r.user_id === U1);
+      const u2Rows = checkins.rows.filter((r) => r.user_id === U2);
+      expect(u1Rows).toHaveLength(2);
+      expect(u1Rows.every((r) => r.deleted_at !== null)).toBe(true);
+      expect(u2Rows).toHaveLength(1);
+      expect(u2Rows[0].deleted_at).toBeNull();
+
+      // created_by transferred to service account
+      const cafe = await getCafe(created.cafeId);
+      const cafeRow = await dbClient.query("select created_by from cafes where id = $1", [created.cafeId]);
+      expect(cafeRow.rows[0].created_by).toBe("00000000-0000-4000-a000-000000000001");
+      expect(cafe?.work_stats.n_checkins).toBe(1);
+      // Gallery retained U2's photo and dropped U1's
+      expect(cafe?.gallery).toHaveLength(1);
+
+      // Cafe drops out of U1's profile cafes
+      const u1CafesAfter = await getUserCafes(U1);
+      expect(u1CafesAfter.items.some((c) => c.id === created.cafeId)).toBe(false);
+
+      // Repeat delete by U1 rejects with 403 (no longer creator)
+      await expect(deleteCafe(created.cafeId, U1)).rejects.toBeInstanceOf(CafeForbiddenError);
+    });
+
+    it("community cafe where creator already soft-deleted checkin individually transfers ownership on confirm", async () => {
+      const photoId = randomUUID();
+      await recordUploadIntent(U1, photoId);
+      const created = await createCafeWithFirstCheckIn(
+        U1,
+        {
+          name: "Individual Soft-Deleted First Cafe",
+          lat: 1.35,
+          lng: 103.8,
+          checkin: { scores: { wifi: 70, overall: 70 }, max_stay: "unlimited", note: "u1 first", photo_ids: [photoId] },
+        },
+        fakeProvisionPhotosDeps(),
+      );
+
+      // U2 checks in
+      await createCheckIn(U2, { cafe_id: created.cafeId, scores: { wifi: 85 } });
+
+      // U1 soft-deletes their check-in individually via softDeleteCheckIn
+      await softDeleteCheckIn(U1, created.checkinId);
+
+      // U1 attempts deleteCafe without confirm -> 403
+      await expect(deleteCafe(created.cafeId, U1, { confirm: false })).rejects.toBeInstanceOf(CafeHasOtherCheckinsError);
+
+      // U1 calls deleteCafe with confirm: true -> 200 with removed_checkins = 0 and owner_transferred = true
+      const result = await deleteCafe(created.cafeId, U1, { confirm: true });
+      expect(result).toEqual({
+        ok: true,
+        id: created.cafeId,
+        removed_checkins: 0,
+        owner_transferred: true,
+        shell: false,
+      });
+
+      const cafeRow = await dbClient.query("select created_by from cafes where id = $1", [created.cafeId]);
+      expect(cafeRow.rows[0].created_by).toBe("00000000-0000-4000-a000-000000000001");
+    });
+
+    it("concurrent double-delete has exactly one winner", async () => {
+      const photoId = randomUUID();
+      await recordUploadIntent(U1, photoId);
+      const created = await createCafeWithFirstCheckIn(
+        U1,
+        {
+          name: "Concurrent Delete Cafe",
+          lat: 1.35,
+          lng: 103.8,
+          checkin: { scores: { wifi: 80, overall: 80 }, max_stay: "unlimited", note: "race", photo_ids: [photoId] },
+        },
+        fakeProvisionPhotosDeps(),
+      );
+
+      const [res1, res2] = await Promise.allSettled([
+        deleteCafe(created.cafeId, U1),
+        deleteCafe(created.cafeId, U1),
+      ]);
+
+      const successes = [res1, res2].filter((r) => r.status === "fulfilled");
+      const failures = [res1, res2].filter((r) => r.status === "rejected");
+
+      expect(successes).toHaveLength(1);
+      expect(failures).toHaveLength(1);
+      expect((failures[0] as PromiseRejectedResult).reason).toBeInstanceOf(CafeNotFoundError);
+    });
+
+    it("rejects delete on null created_by with CafeForbiddenError", async () => {
+      const photoId = randomUUID();
+      await recordUploadIntent(U1, photoId);
+      const created = await createCafeWithFirstCheckIn(
+        U1,
+        {
+          name: "Null Creator Cafe",
+          lat: 1.35,
+          lng: 103.8,
+          checkin: { scores: { wifi: 80, overall: 80 }, max_stay: "unlimited", note: "null", photo_ids: [photoId] },
+        },
+        fakeProvisionPhotosDeps(),
+      );
+
+      await dbClient.query("update cafes set created_by = null where id = $1", [created.cafeId]);
+      await expect(deleteCafe(created.cafeId, U1)).rejects.toBeInstanceOf(CafeForbiddenError);
     });
   });
 
@@ -1279,8 +1431,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(beforeStats.cafesCount).toBe(2);
       expect(beforeStats.checkinsCount).toBe(2);
 
-      await softDeleteCafe(CAFE_B);
-
+      await dbClient.query("update cafes set deleted_at = now() where id = $1", [CAFE_B]);
       // cafesCount excludes soft-deleted cafe; checkinsCount still counts checkins
       const afterStats = await getUserStats(U1);
       expect(afterStats.cafesCount).toBe(1);
@@ -1302,8 +1453,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     it("completeImageUpload rejects attaching to a soft-deleted cafe on real Postgres (issue #219)", async () => {
       const photoId = randomUUID();
       await recordUploadIntent(U1, photoId);
-      await softDeleteCafe(CAFE_A);
-
+      await dbClient.query("update cafes set deleted_at = now() where id = $1", [CAFE_A]);
       const deps = {
         ...defaultCompleteUploadDeps(),
         getProcessUrls: async ({ imageUuid }: { imageUuid: string }) => fakeProcessUrls(imageUuid),

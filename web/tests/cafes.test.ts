@@ -6,7 +6,6 @@ import {
   listCafesNearby,
   parseCreateCafeBody,
   resolveCafeTimezone,
-  reviveCafe,
   type CreateCafeCheckInInput,
 } from "@/lib/db/cafes";
 import { PhotoIntentError } from "@/lib/images/provision-photos";
@@ -681,32 +680,18 @@ describe("toPublicCafeDetail", () => {
   });
 });
 
-describe("reviveCafe", () => {
-  it("rejects non-uuid id and executes revive query", async () => {
-    await expect(reviveCafe("invalid-uuid")).resolves.toBe(false);
-    expect(poolQueryMock).not.toHaveBeenCalled();
-
-    poolQueryMock.mockResolvedValueOnce({ rowCount: 1 });
-    const ok = await reviveCafe("550e8400-e29b-41d4-a716-446655440001");
-    expect(ok).toBe(true);
-    expect(poolQueryMock.mock.calls[0][0]).toContain("update cafes set deleted_at = null");
-    expect(poolQueryMock.mock.calls[0][1]).toEqual(["550e8400-e29b-41d4-a716-446655440001"]);
-  });
-
-  it("returns false instead of throwing when a re-imported live row blocks revive (issue #228)", async () => {
-    poolQueryMock.mockRejectedValueOnce({ code: "23505" }); // partial unique index rejects the un-delete
-    await expect(reviveCafe("550e8400-e29b-41d4-a716-446655440001")).resolves.toBe(false);
-  });
-
-  it("rethrows errors that are not unique violations", async () => {
-    poolQueryMock.mockRejectedValueOnce(new Error("connection reset"));
-    await expect(reviveCafe("550e8400-e29b-41d4-a716-446655440001")).rejects.toThrow(
-      "connection reset",
-    );
-  });
-});
-
 describe("DELETE /api/cafes/[id]", () => {
+  const CAFE_ID = "550e8400-e29b-41d4-a716-446655440001";
+  const OTHER_USER = "550e8400-e29b-41d4-a716-446655449999";
+  const SERVICE_ACCOUNT = "00000000-0000-4000-a000-000000000001";
+
+  beforeEach(() => {
+    getUserMock.mockReset();
+    clientQueryMock.mockReset();
+    poolQueryMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: USER }, error: null });
+  });
+
   it("400s on a non-UUID id", async () => {
     const res = await detailDELETE(new Request("https://localhost/api/cafes/nope", { method: "DELETE" }), {
       params: Promise.resolve({ id: "nope" }),
@@ -717,55 +702,256 @@ describe("DELETE /api/cafes/[id]", () => {
   it("401s when unauthenticated", async () => {
     getUserMock.mockResolvedValueOnce({ data: { user: null }, error: null });
     const res = await detailDELETE(
-      new Request("https://localhost/api/cafes/550e8400-e29b-41d4-a716-446655440001", { method: "DELETE" }),
-      { params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440001" }) },
+      new Request(`https://localhost/api/cafes/${CAFE_ID}`, { method: "DELETE" }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
     );
     expect(res.status).toBe(401);
   });
 
-  it("404s when the cafe does not exist", async () => {
-    poolQueryMock.mockResolvedValueOnce({ rows: [] });
+  it("404s when the cafe does not exist (unknown cafe)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [] }); // cafeExists probe
     const res = await detailDELETE(
-      new Request("https://localhost/api/cafes/550e8400-e29b-41d4-a716-446655440001", { method: "DELETE" }),
-      { params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440001" }) },
+      new Request(`https://localhost/api/cafes/${CAFE_ID}`, { method: "DELETE" }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
     );
     expect(res.status).toBe(404);
   });
 
-  it("403s when user is not creator", async () => {
-    poolQueryMock
-      .mockResolvedValueOnce({ rows: [{ id: "550e8400-e29b-41d4-a716-446655440001" }] }) // cafeExists
-      .mockResolvedValueOnce({ rowCount: 0 }) // softDeleteCafe (user mismatch)
-      .mockResolvedValueOnce({ rows: [{ id: "550e8400-e29b-41d4-a716-446655440001" }] }); // re-probe: still live
+  it("404s when the cafe was already tombstoned (deleted_at is not null)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // cafeExists probe
+    clientQueryMock.mockResolvedValueOnce({
+      rows: [{ id: CAFE_ID, created_by: USER.id, deleted_at: "2026-09-01T00:00:00Z" }],
+    }); // select cafe for update
+
     const res = await detailDELETE(
-      new Request("https://localhost/api/cafes/550e8400-e29b-41d4-a716-446655440001", { method: "DELETE" }),
-      { params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440001" }) },
+      new Request(`https://localhost/api/cafes/${CAFE_ID}`, { method: "DELETE" }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("403s when caller is not the creator", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // cafeExists probe
+    clientQueryMock.mockResolvedValueOnce({
+      rows: [{ id: CAFE_ID, created_by: OTHER_USER, deleted_at: null }],
+    }); // select cafe for update
+
+    const res = await detailDELETE(
+      new Request(`https://localhost/api/cafes/${CAFE_ID}`, { method: "DELETE" }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
     );
     expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toMatchObject({
+      error: "forbidden",
+      message: "only creator can delete cafe",
+    });
   });
 
-  it("404s when a concurrent delete wins the race (issue #228)", async () => {
-    poolQueryMock
-      .mockResolvedValueOnce({ rows: [{ id: "550e8400-e29b-41d4-a716-446655440001" }] }) // cafeExists probe
-      .mockResolvedValueOnce({ rowCount: 0 }) // softDeleteCafe: winner tombstoned it first
-      .mockResolvedValueOnce({ rows: [] }); // re-probe: gone
+  it("403s when created_by is null", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // cafeExists probe
+    clientQueryMock.mockResolvedValueOnce({
+      rows: [{ id: CAFE_ID, created_by: null, deleted_at: null }],
+    }); // select cafe for update
+
     const res = await detailDELETE(
-      new Request("https://localhost/api/cafes/550e8400-e29b-41d4-a716-446655440001", { method: "DELETE" }),
-      { params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440001" }) },
+      new Request(`https://localhost/api/cafes/${CAFE_ID}`, { method: "DELETE" }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
+    );
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toMatchObject({
+      error: "forbidden",
+      message: "only creator can delete cafe",
+    });
+  });
+
+  it("403s with code and count when other checkins exist and confirm is not true (zero mutations)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // cafeExists probe
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ id: CAFE_ID, created_by: USER.id, deleted_at: null }] }) // select cafe for update
+      .mockResolvedValueOnce({ rows: [{ count: "2" }] }) // count others
+      .mockResolvedValueOnce({ rows: [{ id: "checkin-1" }] }); // caller checkins
+
+    const res = await detailDELETE(
+      new Request(`https://localhost/api/cafes/${CAFE_ID}`, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirm: false }),
+      }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      code: "cafe_has_other_checkins",
+      n: 2,
+    });
+    // Zero mutations after the 3 selects
+    expect(clientQueryMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("200s and leaves shell when sole owner deletes (others = 0)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // cafeExists probe
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ id: CAFE_ID, created_by: USER.id, deleted_at: null }] }) // select cafe
+      .mockResolvedValueOnce({ rows: [{ count: "0" }] }) // count others
+      .mockResolvedValueOnce({ rows: [{ id: "checkin-1" }] }) // caller checkins
+      .mockResolvedValueOnce({ rowCount: 1 }) // soft delete caller checkins
+      .mockResolvedValueOnce({ rowCount: 1 }) // hide gallery photos
+      .mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }) // recomputeWorkStats lock
+      .mockResolvedValueOnce({ rows: [] }) // recomputeWorkStats live checkins query
+      .mockResolvedValueOnce({ rowCount: 1 }); // writeWorkStats
+
+    const res = await detailDELETE(
+      new Request(`https://localhost/api/cafes/${CAFE_ID}`, { method: "DELETE" }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
+    );
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      id: CAFE_ID,
+      removed_checkins: 1,
+      owner_transferred: false,
+      shell: true,
+    });
+  });
+
+  it("200s and transfers ownership when confirmed on community cafe (others >= 1)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // cafeExists probe
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ id: CAFE_ID, created_by: USER.id, deleted_at: null }] }) // select cafe
+      .mockResolvedValueOnce({ rows: [{ count: "3" }] }) // count others
+      .mockResolvedValueOnce({ rows: [{ id: "checkin-1" }, { id: "checkin-2" }] }) // caller checkins
+      .mockResolvedValueOnce({ rowCount: 2 }) // soft delete caller checkins
+      .mockResolvedValueOnce({ rowCount: 1 }) // hide gallery photos
+      .mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }) // recomputeWorkStats lock
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: "other-ch",
+            cafe_id: CAFE_ID,
+            user_id: OTHER_USER,
+            is_creation: false,
+            scores: { wifi: 80 },
+            max_stay: null,
+            note: null,
+            photos: [],
+            likes_count: 0,
+            visited_at: new Date(),
+            created_at: new Date(),
+            updated_at: new Date(),
+            deleted_at: null,
+          },
+        ],
+      }) // recomputeWorkStats live checkins query
+      .mockResolvedValueOnce({ rowCount: 1 }) // writeWorkStats
+      .mockResolvedValueOnce({ rowCount: 1 }); // update created_by to service account
+
+    const res = await detailDELETE(
+      new Request(`https://localhost/api/cafes/${CAFE_ID}`, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+      }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
+    );
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      id: CAFE_ID,
+      removed_checkins: 2,
+      owner_transferred: true,
+      shell: false,
+    });
+
+    // Verify created_by update used the service account UUID from appConfig
+    const updateCall = clientQueryMock.mock.calls[clientQueryMock.mock.calls.length - 1];
+    expect(updateCall[0]).toContain("update cafes set created_by = $2");
+    expect(updateCall[1]).toEqual([CAFE_ID, SERVICE_ACCOUNT, USER.id]);
+  });
+
+  it("403s when caller has 0 live checkins, others have checkins, and confirm is not true (zero mutations)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // cafeExists probe
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ id: CAFE_ID, created_by: USER.id, deleted_at: null }] }) // select cafe for update
+      .mockResolvedValueOnce({ rows: [{ count: "2" }] }) // count others
+      .mockResolvedValueOnce({ rows: [] }); // 0 caller live checkins
+
+    const res = await detailDELETE(
+      new Request(`https://localhost/api/cafes/${CAFE_ID}`, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirm: false }),
+      }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
+    );
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      code: "cafe_has_other_checkins",
+      n: 2,
+    });
+    // Zero mutations after the 3 selects
+    expect(clientQueryMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("200s and transfers ownership when caller has 0 live checkins, others have checkins, and confirm is true", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // cafeExists probe
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ id: CAFE_ID, created_by: USER.id, deleted_at: null }] }) // select cafe for update
+      .mockResolvedValueOnce({ rows: [{ count: "2" }] }) // count others
+      .mockResolvedValueOnce({ rows: [] }) // 0 caller live checkins
+      .mockResolvedValueOnce({ rowCount: 1 }); // update created_by to service account (no checkin/gallery/stats mutations)
+
+    const res = await detailDELETE(
+      new Request(`https://localhost/api/cafes/${CAFE_ID}`, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+      }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
+    );
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      id: CAFE_ID,
+      removed_checkins: 0,
+      owner_transferred: true,
+      shell: false,
+    });
+
+    const updateCall = clientQueryMock.mock.calls[clientQueryMock.mock.calls.length - 1];
+    expect(updateCall[0]).toContain("update cafes set created_by = $2");
+    expect(updateCall[1]).toEqual([CAFE_ID, SERVICE_ACCOUNT, USER.id]);
+  });
+  it("404s on repeated delete on own shell (0 own live checkins)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // cafeExists probe
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ id: CAFE_ID, created_by: USER.id, deleted_at: null }] }) // select cafe
+      .mockResolvedValueOnce({ rows: [{ count: "0" }] }) // count others
+      .mockResolvedValueOnce({ rows: [] }); // 0 caller live checkins
+
+    const res = await detailDELETE(
+      new Request(`https://localhost/api/cafes/${CAFE_ID}`, { method: "DELETE" }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
     );
     expect(res.status).toBe(404);
   });
 
-  it("200s and soft-deletes when creator deletes the cafe", async () => {
-    poolQueryMock
-      .mockResolvedValueOnce({ rows: [{ id: "550e8400-e29b-41d4-a716-446655440001" }] }) // cafeExists
-      .mockResolvedValueOnce({ rowCount: 1 }); // softDeleteCafe
+  it("403s on repeated delete after handoff (creator transferred to service account)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // cafeExists probe
+    clientQueryMock.mockResolvedValueOnce({
+      rows: [{ id: CAFE_ID, created_by: SERVICE_ACCOUNT, deleted_at: null }],
+    }); // select cafe for update -> created_by is now service account
+
     const res = await detailDELETE(
-      new Request("https://localhost/api/cafes/550e8400-e29b-41d4-a716-446655440001", { method: "DELETE" }),
-      { params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440001" }) },
+      new Request(`https://localhost/api/cafes/${CAFE_ID}`, { method: "DELETE" }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
     );
-    expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toMatchObject({ ok: true, id: "550e8400-e29b-41d4-a716-446655440001" });
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toMatchObject({
+      error: "forbidden",
+      message: "only creator can delete cafe",
+    });
   });
 });
 

@@ -20,7 +20,7 @@
 | DELETE 确认 | 前端自觉 | **契约化**：无 `{confirm:true}` → `403 {code: cafe_has_other_checkins, n}` 零变更；带 confirm 才 `FOR UPDATE` 事务执行（`withTransaction`/`postgres.ts:115`）。 |
 | visibility 列类型 | 未定 | `text + CHECK`，不用 PG enum。 |
 
-新 scope 已拆单（串行，单 writer）：S1 `BRAWUKA-29 cafe-delete-guard`（stage1, Gemini 已启动）= DELETE 事务化 + service account 迁移 + 空壳 sitemap/noindex + 删 `reviveCafe` + DG125；S2 `BRAWUKA-30 cafe-visibility`（stage2, backlog）= visibility 列 + PATCH + 读过滤 + null fallback + DG126；S3 `BRAWUKA-31 cafe-lifecycle-ui`（stage3, backlog 前端）。
+新 scope 已拆单（串行，单 writer）：S1 `BRAWUKA-29 cafe-delete-guard`（stage1, Gemini 已启动）= DELETE 事务化 + service account 迁移 + 空壳 sitemap/noindex + 删 `reviveCafe` + DG146；S2 `BRAWUKA-30 cafe-visibility`（stage2, backlog）= visibility 列 + PATCH + 读过滤 + null fallback + DG147；S3 `BRAWUKA-31 cafe-lifecycle-ui`（stage3, backlog 前端）。
 
 ---
 
@@ -92,17 +92,17 @@ Null-`created_by` 旧分析（`softDeleteCafe` 对 null 行永远不命中）仍
 
 ## 5. Proposed DG / spec delta (updated to S1+S2)
 
-**S1 DG125 — Cafe delete guard + service account + orphan shell (随 BRAWUKA-29 入册)**
+**S1 DG146 — Cafe delete guard + service account + orphan shell (随 BRAWUKA-29 入册)**
 
-> 删除按"其他人活 checkin >=1" 分流：有别人时 `DELETE /api/cafes/[id]` 无 confirm → `403 {code: cafe_has_other_checkins, n}` 零变更；带 `{confirm:true}` 时在 `FOR UPDATE` 事务内删调用者自己的活 checkin，并将 `cafes.created_by` 移交至固定 service account `00000000-0000-4000-a000-000000000001`（env `SERVICE_ACCOUNT_ID`，`profiles` 预置 `INSERT ... ON CONFLICT DO NOTHING`，`profiles.id` 无 FK 到 `auth.users`；owner 06-18 覆盖 DG107 typed-config 建议，以 env 版为准）；只有自己的那条时删 checkin 后保留空壳 cafe（`n=0`，公共可见但 sitemap 排除、详情 X-Robots-Tag: noindex，MVP 不做排名降级）。同 POI 重建仍 409（空壳占部分唯一索引）。旧 `deleted_at` tombstone 保持 404+recovery，不迁移。`cafes-write` 桶 + `requireSameOrigin`。
+> 删除按"其他人活 checkin >=1" 分流：有别人时 `DELETE /api/cafes/[id]` 无 confirm → `403 {code: cafe_has_other_checkins, n}` 零变更；带 `{confirm:true}` 时在 `FOR UPDATE` 事务内删调用者自己的活 checkin，并将 `cafes.created_by` 移交至固定 service account `00000000-0000-4000-a000-000000000001`（env `SERVICE_ACCOUNT_ID`，`profiles` 预置 `INSERT ... ON CONFLICT DO NOTHING`，`profiles.id` 无 FK 到 `auth.users`；owner 06-18 覆盖 DG107 typed-config 建议，以 env 版为准）；只有自己的那条时删 checkin 后保留空壳 cafe（`n=0`，公共可见但 sitemap 排除、详情 robots meta noindex (via Next `metadata.robots`)，MVP 不做排名降级）。同 POI 重建仍 409（空壳占部分唯一索引）。旧 `deleted_at` tombstone 保持 404+recovery，不迁移。`cafes-write` 桶 + `requireSameOrigin`。
 
 Spec 0004 API2 / 0001 增量随 S1 PR 同步，含空壳 noindex 细节；旧 `reviveCafe` 相关 spec 文案删除。
 
-**S2 DG126 — Cafe visibility (随 BRAWUKA-30 入册)**
+**S2 DG147 — Cafe visibility (随 BRAWUKA-30 入册)**
 
 > `cafes.visibility`∈`{public,private}`（`text + CHECK`，非 PG enum；SERVICE_ACCOUNT_ID 以 env 为准，owner 06-18 覆盖 DG107），`PATCH /api/cafes/[id]/visibility` 仅 owner。private 仅对读过滤（公共列表/搜索/附近/sitemap 排除，非 owner 详情 404），不冻结 `work_stats`。`created_by IS NULL` 展示层 fallback 到 service account。
 
-S2 另含 null fallback 展示、读过滤全路径、DG126 入册。
+S2 另含 null fallback 展示、读过滤全路径、DG147 入册。
 
 **S1 schema notes**
 
@@ -120,7 +120,7 @@ S2 另含 null fallback 展示、读过滤全路径、DG126 入册。
 | Field | Value |
 |---|---|
 | Title | DELETE 事务化分流 + service account + 空壳 sitemap/noindex + 删 reviveCafe |
-| Specs | 0001 §Edge cases/Phases, 0004 API2, DG125 |
+| Specs | 0001 §Edge cases/Phases, 0004 API2, DG146 |
 | Depends on | `cafe-creation`, `auth-foundation` (both COMPLETE) |
 | Scope | `DELETE /api/cafes/[id]` 改为：`GET` 鉴权后计 `otherLiveCheckins = count(*) where cafe_id=$1 and user_id!=$caller and deleted_at is null`；`>=1` 且无 confirm → `403 {code,n}`；带 confirm → `withTransaction` 内 `SELECT ... FOR UPDATE` → 删 caller 在该 cafe 的所有活 checkin（`deleted_at=now()` + `work_stats` 重算）+ `UPDATE cafes created_by=serviceId where id=$1 and created_by=$caller`；`==0` 分支同事务删 checkin 留空壳；空壳 sitemap 排除 + 详情 `noindex`；删 `reviveCafe` + 旧测试；service account migration + env `SERVICE_ACCOUNT_ID`；spec 增量同 PR。 |
 | Not in scope | visibility 列/路由、通用 `PATCH`、admin/report、前段 UI |
@@ -134,9 +134,9 @@ Pattern: `FOR UPDATE` 锁 cafe 行 + 单事务删 checkin + 条件移交；完�
 | Field | Value |
 |---|---|
 | Title | visibility 列 + PATCH + 读过滤 + null fallback |
-| Specs | 0001, 0004, DG126 |
+| Specs | 0001, 0004, DG147 |
 | Depends on | S1 |
-| Scope | `alter table cafes add column visibility text default 'public' check (...)`, `PATCH /api/cafes/[id]/visibility` 仅 owner, `cafes-write` + same-origin, 读过滤（列表/搜索/附近/sitemap/非 owner 详情 404），`work_stats` 不冻，`toPublicCafeDetail` 对 `null created_by` fallback 到 service account，DG126。 |
+| Scope | `alter table cafes add column visibility text default 'public' check (...)`, `PATCH /api/cafes/[id]/visibility` 仅 owner, `cafes-write` + same-origin, 读过滤（列表/搜索/附近/sitemap/非 owner 详情 404），`work_stats` 不冻，`toPublicCafeDetail` 对 `null created_by` fallback 到 service account，DG147。 |
 | Test gates | `typecheck`, `unit`, `integration`, `build` |
 
 ### S3 — `BRAWUKA-31 cafe-lifecycle-ui` (stage 3, Backlog, Frontend)

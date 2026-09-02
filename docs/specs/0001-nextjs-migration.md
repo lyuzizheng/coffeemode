@@ -137,10 +137,10 @@ create table cafes (
   work_stats      jsonb default '{}',     -- incremental aggregation cache (see below)
   created_at      timestamptz default now(),
   updated_at      timestamptz default now(),
-  deleted_at      timestamptz,            -- 0009: legacy soft delete; old tombstones keep id+location for 404 recovery (DG111). New user deletes never set this column — see §Cafe lifecycle (DG125)
-  visibility      text default 'public' check (visibility in ('public','private')) -- DG126: reversible hide; 'private' is read-filter only, work_stats not frozen
+  deleted_at      timestamptz,            -- 0009: legacy soft delete; old tombstones keep id+location for 404 recovery (DG111). New user deletes never set this column — see §Cafe lifecycle (DG146)
+  visibility      text default 'public' check (visibility in ('public','private')) -- DG147: reversible hide; 'private' is read-filter only, work_stats not frozen
 );
-create index idx_cafes_location_active on cafes using gist (location) where deleted_at is null and visibility = 'public'; -- DG126: private & tombstone excluded from nearby/discovery
+create index idx_cafes_location_active on cafes using gist (location) where deleted_at is null and visibility = 'public'; -- DG147: private & tombstone excluded from nearby/discovery
 create index idx_cafes_name_fts on cafes using gin (to_tsvector('simple', name));
 -- 0011: tombstone-aware — a soft-deleted cafe does not block re-importing the same POI
 create unique index idx_cafes_gplace on cafes (google_place_id) where google_place_id is not null and deleted_at is null;  -- dedupe
@@ -215,7 +215,7 @@ Notes:
   favorites land as cafe_favorites(user_id, cafe_id) composite PK — like ≠ favorite
   (0004 decision 8a, #254)
 - Soft delete: checkins.deleted_at (is_deleted is not needed — `where deleted_at is null` builds partial indexes directly; `is_deleted boolean` would be a redundant mirror); photos from a deleted check-in are hidden from cafes.gallery via source;
-  cafes.deleted_at (0009) tombstones are legacy for old deletes (DG111); new deletes never use it — they delete the caller's checkin and keep the cafe shell (DG125). Visibility is `text+CHECK` not PG enum. Provider unique indexes remain tombstone-aware (0011) so orphan shells still occupy the POI
+  cafes.deleted_at (0009) tombstones are legacy for old deletes (DG111); new deletes never use it — they delete the caller's checkin and keep the cafe shell (DG146). Visibility is `text+CHECK` not PG enum. Provider unique indexes remain tombstone-aware (0011) so orphan shells still occupy the POI
 - Infra tables (not product domain): rate_limits (0003 — distributed token bucket, one atomic
   UPSERT per check, web/lib/rate-limit/postgres.ts) and image_upload_intents (0006 — binds a
   presigned imageUuid to its issuing user, single-use DELETE ... RETURNING inside the creation
@@ -223,7 +223,7 @@ Notes:
   single-use consume, is eventually consistent, and caps at 1k writes/day on the free tier
 ```
 
-#### Cafe lifecycle — delete guard, orphan shell & visibility (DG125 / DG126, 2026-09-02; owner veto on revive)
+#### Cafe lifecycle — delete guard, orphan shell & visibility (DG146 / DG147, 2026-09-02; owner veto on revive)
 
 ```text
 Revive is removed. Delete is irreversible at user level and never revives (owner: "不能取消删除"); hide is reversible via visibility.
@@ -232,16 +232,16 @@ Delete guard (Q1): otherLiveCheckins = count(*) from checkins where cafe_id=$1 a
   No cafes.is_deleted boolean — guard queries checkins.deleted_at with partial index `where deleted_at is null` (existing idx_checkins_cafe / idx_checkins_user_cafe; optional idx_checkins_cafe_other_live). `is_deleted boolean` would duplicate that predicate and diverge from visibility's text+CHECK.
   Need: existing partial indexes already cover it; no new cafes column.
 
-Visibility (Q1-alt, DG126): cafes.visibility text default 'public' check (visibility in ('public','private')). No PG enum (future extensible). Default public. PATCH /api/cafes/[id]/visibility toggles it (owner only, cafes-write, requireSameOrigin). Read filter: public lists/search/nearby/sitemap include only visibility='public' and deleted_at is null; private is owner-visible only, non-owner GET [id] → 404. work_stats not frozen (DG125 architect裁定) — aggregation ignores deleted checkins only.
+Visibility (Q1-alt, DG147): cafes.visibility text default 'public' check (visibility in ('public','private')). No PG enum (future extensible). Default public. PATCH /api/cafes/[id]/visibility toggles it (owner only, cafes-write, requireSameOrigin). Read filter: public lists/search/nearby/sitemap include only visibility='public' and deleted_at is null; private is owner-visible only, non-owner GET [id] → 404. work_stats not frozen (DG146 architect裁定) — aggregation ignores deleted checkins only.
 
 Deletion branching (owner 2026-09-02):
   - otherLiveCheckins >=1: DELETE without {confirm:true} → 403 {code: cafe_has_other_checkins, n=otherLiveCheckins} with zero side effects. With {confirm:true} → in FOR UPDATE transaction (withTransaction, postgres.ts:115): soft-delete all of the caller's live checkins on that cafe (deleted_at=now(), work_stats recompute, gallery filter via source), and if cafes.created_by == caller then UPDATE cafes SET created_by = $SERVICE_ACCOUNT_ID (env UUID, profiles seeded ON CONFLICT DO NOTHING). Cafe shell stays. profiles.id has no FK to auth.users (0001_init.sql:8 verified) so no real login needed; later Supabase service account + admin site will own it.
-  - otherLiveCheckins ==0 (only caller's checkin): DELETE → same transaction soft-deletes all of the caller's live checkins on that cafe, leaves orphan shell cafe with n=0. Shell remains publicly visible (Q2 A) but sitemap excluded and detail X-Robots-Tag: noindex (thin content). No ranking demotion in MVP. Same POI re-create still 409 because shell occupies the partial unique indexes (google_place_id/apple_poi_id where deleted_at is null).
+  - otherLiveCheckins ==0 (only caller's checkin): DELETE → same transaction soft-deletes all of the caller's live checkins on that cafe, leaves orphan shell cafe with n=0. Shell remains publicly visible (Q2 A) but sitemap excluded and detail robots meta noindex (via Next `metadata.robots`) (thin content). No ranking demotion in MVP. Same POI re-create still 409 because shell occupies the partial unique indexes (google_place_id/apple_poi_id where deleted_at is null).
   - created_by IS NULL rows: reads fallback to service account in toPublicCafeDetail / list DTOs (Q4 ok). No write-time NOT NULL migration in this slice.
 
-Orphan shell contract (Q2 A): public list/search/detail show empty state "暂无打卡，快来做第一个"; excluded from sitemap.xml; detail sends X-Robots-Tag noindex while n=0; nightly recompute skips nothing extra (already excludes soft-deleted checkins).
+Orphan shell contract (Q2 A): public list/search/detail show empty state "暂无打卡，快来做第一个"; excluded from sitemap.xml; detail sends robots meta noindex (via Next `metadata.robots`) while n=0; nightly recompute skips nothing extra (already excludes soft-deleted checkins).
 
-Old tombstones (cafes.deleted_at IS NOT NULL, pre-DG125): keep 404 + GET /api/cafes/[id]/recovery nearby list, no data migration.
+Old tombstones (cafes.deleted_at IS NOT NULL, pre-DG146): keep 404 + GET /api/cafes/[id]/recovery nearby list, no data migration.
 
 Q3/Q4 placement: SERVICE_ACCOUNT_ID lives in env (owner 06-18: "放在 env 里面，后面通过 supabase 新建 service account + admin 网站"), overriding earlier typed-config advice (DG107). Env is the source of truth; app reads process.env.SERVICE_ACCOUNT_ID with the fixed fallback above.
 ```
@@ -711,7 +711,7 @@ NEXT_PUBLIC_R2_PUBLIC_URL       -> Next.js, optional drift guard; host must matc
 APPLE_MAPKIT_TEAM_ID            -> Apple Developer team
 APPLE_MAPKIT_KEY_ID             -> MapKit JS key
 APPLE_MAPKIT_PRIVATE_KEY        -> .p8 private key (server-side)
-SERVICE_ACCOUNT_ID            -> fixed UUID 00000000-0000-4000-a000-000000000001 for orphaned cafes whose owner left (DG125); stored in env (not typed config), seeded as profiles row via INSERT ... ON CONFLICT DO NOTHING; later Supabase service account + admin site will own it
+SERVICE_ACCOUNT_ID            -> fixed UUID 00000000-0000-4000-a000-000000000001 for orphaned cafes whose owner left (DG146); stored in env (not typed config), seeded as profiles row via INSERT ... ON CONFLICT DO NOTHING; later Supabase service account + admin site will own it
 ```
 
 ## Product capabilities
@@ -1206,8 +1206,8 @@ Specs name the parameter and its default; the YAML owns the live value.
 - Deep link first visit: SSR shell hydrates into the map app at FULL sheet; never a full-screen modal, no banner (DG124)
 - Location permission: OS prompt only after an explicit user tap, never on load/error/deep-link surfaces; every location feature has a no-permission fallback (§Location permission contract — DG112)
 - Check-in soft delete: set checkins.deleted_at (no cafes.is_deleted boolean — partial index on deleted_at IS NULL is sufficient; see §Cafe lifecycle); recompute work_stats; hide photos from gallery
-- Cafe delete guard (DG125): otherLiveCheckins >=1 → DELETE without confirm 403 {cafe_has_other_checkins,n} zero changes; with confirm soft-delete all of the caller's live checkins + migrate created_by to SERVICE_ACCOUNT_ID (env) in FOR UPDATE transaction; otherLiveCheckins==0 → soft-delete caller's checkin and leave orphan shell (public but sitemap excluded + X-Robots-Tag: noindex, Q2 A)
-- Cafe visibility (DG126): PATCH /api/cafes/[id]/visibility toggles public|private (text+CHECK, owner only); private is read-filter only (public lists/search/nearby/sitemap exclude, non-owner detail 404), work_stats not frozen
+- Cafe delete guard (DG146): otherLiveCheckins >=1 → DELETE without confirm 403 {cafe_has_other_checkins,n} zero changes; with confirm soft-delete all of the caller's live checkins + migrate created_by to SERVICE_ACCOUNT_ID (env) in FOR UPDATE transaction; otherLiveCheckins==0 → soft-delete caller's checkin and leave orphan shell (public but sitemap excluded + robots meta noindex (via Next `metadata.robots`), Q2 A)
+- Cafe visibility (DG147): PATCH /api/cafes/[id]/visibility toggles public|private (text+CHECK, owner only); private is read-filter only (public lists/search/nearby/sitemap exclude, non-owner detail 404), work_stats not frozen
 - Like toggle: idempotent upsert on checkin_likes; keep checkins.likes_count in sync
 - Image upload cap: 10 MB max in presigned PUT; R2 lifecycle cleans orphan original/ objects
 - maps_share_url validation: only known Google/Apple Maps hosts before proxying

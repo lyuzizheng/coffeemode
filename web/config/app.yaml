@@ -44,6 +44,8 @@ stats:
 cafes:
   # GET /api/cafes limit cap (also the default when no limit is given).
   listLimitMax: 50
+  # Service account placeholder user for community cafes when creator deletes checkins (DG125).
+  serviceAccountId: "00000000-0000-4000-a000-000000000001"
 feed:
   # Check-in feed page size for both Helpful and Newest modes (spec 0001).
   pageSize: 20

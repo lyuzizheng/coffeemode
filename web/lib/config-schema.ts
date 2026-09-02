@@ -49,6 +49,7 @@ export interface AppConfig {
   };
   cafes: {
     listLimitMax: number;
+    serviceAccountId: string;
   };
   feed: {
     pageSize: number;
@@ -265,6 +266,13 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
     },
     cafes: {
       listLimitMax: positiveNumber(file, "cafes.listLimitMax", cafes.listLimitMax),
+      serviceAccountId: (() => {
+        const id = cafes.serviceAccountId;
+        if (typeof id !== "string" || id.trim() === "") {
+          fail(file, "cafes.serviceAccountId", "must be a non-empty string UUID");
+        }
+        return id.trim();
+      })(),
     },
     feed: {
       pageSize: positiveNumber(file, "feed.pageSize", feed.pageSize),

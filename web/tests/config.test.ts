@@ -183,6 +183,10 @@ describe("parseAppConfig validation", () => {
     },
     recencyDecay: 0.6,
   };
+  const validCafes = {
+    listLimitMax: 50,
+    serviceAccountId: "00000000-0000-4000-a000-000000000001",
+  };
   const validCenter = { defaultCenter: { lat: 1.35, lng: 103.8 } };
   const validSeo = {
     shellCache: { sMaxAgeSeconds: 600, staleWhileRevalidateSeconds: 3600 },
@@ -213,7 +217,7 @@ describe("parseAppConfig validation", () => {
     const valid = {
       search: validSearch,
       stats: validStats,
-      cafes: { listLimitMax: 50 },
+      cafes: validCafes,
       feed: { pageSize: 20 },
       discovery: validCenter,
       seo: validSeo,
@@ -222,6 +226,22 @@ describe("parseAppConfig validation", () => {
       budgets: validBudgets,
     };
     expect(parseAppConfig(valid)).toEqual(valid);
+  });
+
+  it("rejects an invalid serviceAccountId", () => {
+    expect(() =>
+      parseAppConfig({
+        search: validSearch,
+        stats: validStats,
+        cafes: { listLimitMax: 50, serviceAccountId: "" },
+        feed: { pageSize: 20 },
+        discovery: validCenter,
+        seo: validSeo,
+        checkins: validCheckins,
+        profile: validProfile,
+        budgets: validBudgets,
+      }),
+    ).toThrow(/"cafes\.serviceAccountId" must be a non-empty string/);
   });
 
   it("rejects a missing section", () => {
@@ -233,7 +253,7 @@ describe("parseAppConfig validation", () => {
       parseAppConfig({
         search: validSearch,
         stats: validStats,
-        cafes: { listLimitMax: 50 },
+        cafes: validCafes,
         feed: { pageSize: 20 },
         discovery: validCenter,
         seo: validSeo,
@@ -248,7 +268,7 @@ describe("parseAppConfig validation", () => {
       parseAppConfig({
         search: validSearch,
         stats: validStats,
-        cafes: { listLimitMax: 50 },
+        cafes: validCafes,
         feed: { pageSize: 20 },
         discovery: validCenter,
         seo: validSeo,
@@ -263,7 +283,7 @@ describe("parseAppConfig validation", () => {
       parseAppConfig({
         search: validSearch,
         stats: validStats,
-        cafes: { listLimitMax: 50 },
+        cafes: validCafes,
         feed: { pageSize: 20 },
         discovery: validCenter,
         seo: validSeo,
@@ -278,7 +298,7 @@ describe("parseAppConfig validation", () => {
       parseAppConfig({
         search: { ...validSearch, maxRadiusKm: "10" },
         stats: validStats,
-        cafes: { listLimitMax: 50 },
+        cafes: validCafes,
         feed: { pageSize: 20 },
         discovery: validCenter,
         seo: validSeo,
@@ -294,7 +314,7 @@ describe("parseAppConfig validation", () => {
       parseAppConfig({
         search: validSearch,
         stats: validStats,
-        cafes: { listLimitMax: 50 },
+        cafes: validCafes,
         feed: { pageSize: 20 },
         discovery: { defaultCenter: { lat: 135, lng: 103.8 } },
         seo: validSeo,
@@ -310,7 +330,7 @@ describe("parseAppConfig validation", () => {
       parseAppConfig({
         search: validSearch,
         stats: validStats,
-        cafes: { listLimitMax: 50 },
+        cafes: validCafes,
         feed: { pageSize: 20 },
         discovery: validCenter,
         seo: {
@@ -329,7 +349,7 @@ describe("parseAppConfig validation", () => {
       parseAppConfig({
         search: validSearch,
         stats: validStats,
-        cafes: { listLimitMax: 50 },
+        cafes: validCafes,
         feed: { pageSize: 20 },
         discovery: validCenter,
         seo: validSeo,
@@ -345,7 +365,7 @@ describe("parseAppConfig validation", () => {
       parseAppConfig({
         search: validSearch,
         stats: validStats,
-        cafes: { listLimitMax: 50 },
+        cafes: validCafes,
         feed: { pageSize: 20 },
         discovery: validCenter,
         seo: validSeo,

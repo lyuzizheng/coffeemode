@@ -23,6 +23,7 @@
 import { authorized, internalError, json, unauthorized } from "./auth";
 import {
   DEFAULT_SEARCH_RADIUS_KM,
+  isFoodOrCafePOI,
   MAX_EXTERNAL_BATCH_SIZE,
   MAX_SEARCH_RADIUS_KM,
   SEARCH_RESULT_LIMIT,
@@ -316,17 +317,23 @@ async function searchExternalPOIs(request: Request, env: Env, deps: Deps): Promi
   const results: Array<{ poi: POI; raw: GooglePlace }> = [];
   for (const place of googlePlaces.slice(0, SEARCH_RESULT_LIMIT)) {
     try {
-      results.push({ poi: toPOI(place), raw: place });
+      const poi = toPOI(place);
+      if (!isFoodOrCafePOI(place.types)) {
+        poi.not_persisted_reason = "non_food_category";
+      }
+      results.push({ poi, raw: place });
     } catch {
       // A result without coordinates cannot be created as a cafe.
     }
   }
-
-  try {
-    await d1UpsertPOIs(env.POI_DB, results.map(({ poi }) => poi));
-    await Promise.all(results.map(({ poi, raw }) => kvPutRaw(env.POI_KV, poi.place_id, raw)));
-  } catch (e) {
-    console.error("external search cache write failed", e);
+  const toPersist = results.filter(({ poi }) => !poi.not_persisted_reason);
+  if (toPersist.length > 0) {
+    try {
+      await d1UpsertPOIs(env.POI_DB, toPersist.map(({ poi }) => poi));
+      await Promise.all(toPersist.map(({ poi, raw }) => kvPutRaw(env.POI_KV, poi.place_id, raw)));
+    } catch (e) {
+      console.error("external search cache write failed", e);
+    }
   }
   return json({ results: results.map(({ poi }) => poi) });
 }

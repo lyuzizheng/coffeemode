@@ -10,8 +10,9 @@ import { hasWorkFiltersActive, matchesAllFilters } from "./filter";
 import type {
   SearchFilters,
   SearchReferencePoint,
-  SearchResponse,
   SearchResultItem,
+  SearchResultSource,
+  SearchServiceResponse,
 } from "./types";
 import type { POI } from "@shared/places/types";
 
@@ -81,12 +82,15 @@ function scoreRelevance(name: string, q?: string): number {
 export async function executeSearch(
   filters: SearchFilters,
   instant?: Date,
-): Promise<SearchResponse> {
+): Promise<SearchServiceResponse> {
+  const startTime = performance.now();
   const refPoint = resolveReferencePoint(filters.lat, filters.lng, filters.city);
 
   const hasUnpushed = hasUnpushedFilters(filters);
   const rawCafes: CafeWithExternalIds[] = [];
   let filteredCafes: CafeWithExternalIds[] = [];
+  let openNowBatches = 0;
+  let openNowTruncated = false;
 
   if (!hasUnpushed) {
     // 1. Fetch matching cafes from DB with work filters pushed down to SQL
@@ -119,6 +123,7 @@ export async function executeSearch(
     const maxBatches = appConfig.search.maxIterativeFetchBatches;
 
     for (let batch = 0; batch < maxBatches; batch++) {
+      openNowBatches = batch + 1;
       const offset = batch * batchSize;
       const cafesBatch = await searchCafesInDb({
         q: filters.q,
@@ -145,6 +150,10 @@ export async function executeSearch(
         break;
       }
     }
+
+    if (filteredCafes.length < targetLimit && openNowBatches >= maxBatches) {
+      openNowTruncated = true;
+    }
   }
 
   const existingPlaceIds = new Set<string>();
@@ -157,6 +166,12 @@ export async function executeSearch(
   const hasWorkFilters = hasWorkFiltersActive(filters);
   let rawPois: POI[] = [];
   const warnings: string[] = [];
+  let actualSearchMode: "stored_only" | "live" = "stored_only";
+  const livePoiIds = new Set<string>();
+
+  if (openNowTruncated) {
+    warnings.push("open_now_truncated");
+  }
 
   if (!hasWorkFilters && filters.q && filters.q.trim().length >= appConfig.search.minPoiQueryLength) {
     try {
@@ -173,6 +188,7 @@ export async function executeSearch(
     }
 
     if (filters.include_live) {
+      actualSearchMode = "live";
       try {
         const liveRes = await searchExternalPOIs({
           q: filters.q.trim(),
@@ -186,6 +202,7 @@ export async function executeSearch(
             if (!storedIds.has(livePoi.place_id)) {
               rawPois.push(livePoi);
               storedIds.add(livePoi.place_id);
+              livePoiIds.add(livePoi.place_id);
             }
           }
         }
@@ -240,13 +257,12 @@ export async function executeSearch(
         ? haversineDistanceM(refPoint.lat, refPoint.lng, poi.lat, poi.lng)
         : null;
 
-    const source =
+    const source: SearchResultSource =
       poi.source === "google"
         ? "google"
         : poi.source === "apple"
           ? "apple"
           : "stored_poi";
-
     items.push({
       id: poi.place_id,
       type: "poi",
@@ -303,11 +319,24 @@ export async function executeSearch(
 
   const results = filteredItems.slice(0, Math.max(0, limit));
 
+  const durationMs = Math.round(performance.now() - startTime);
+  const truncated = total_count > results.length;
+  const poiDegraded = warnings.includes("poi_unavailable") || warnings.includes("live_poi_unavailable");
+  console.info("search.telemetry", {
+    "search.requests": { mode: actualSearchMode },
+    "search.duration_ms": durationMs,
+    "search.truncated": truncated,
+    "search.open_now.batches": openNowBatches,
+    ...(openNowTruncated ? { open_now_truncated: true } : {}),
+    "search.poi_degraded": poiDegraded,
+  });
+
   return {
     results,
     total_count,
     is_weak_results,
     reference_point: refPoint,
     ...(warnings.length > 0 ? { warnings } : {}),
+    search_mode: actualSearchMode,
   };
 }

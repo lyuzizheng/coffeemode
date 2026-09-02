@@ -269,11 +269,12 @@ implementation (backend, unblocked), MapKit rendering (`map-home`).
 
 Stage 1 已落码（PR #290），Stage 2/3 见 `docs/agent/BRAWUKA-7-search-grill.md`：
 
-- DG131 条件截断：`minRelevanceScore=50`，仅 `q` 非空且至少一条 ≥50 时丢弃 `secondary(10)`，空 `q` 不截（随机浏览保护）。
-- DG132 `X-Search-Mode: stored_only|live` 随 `?include_live=` 返回。
-- DG133 `warnings:["poi_unavailable","live_poi_unavailable"]` 降级不丢自有店。
+- DG131 条件截断：`minRelevanceScore=50`，仅 `q` 非空且至少一条 ≥50 时丢弃 `secondary(10)`，空 `q` 不截（随机浏览保护）。`total_count` / `is_weak_results` 均在截断后计算（作为 Q5-C 20% 比例触发判据）。
+- DG132 `X-Search-Mode: stored_only|live` 依实际扇出模式返回（`include_live=true` 但 `q<3` 或存在 nomad 过滤条件无外部扇出时返回 `stored_only`）。
+- DG133 `warnings:["poi_unavailable","live_poi_unavailable","open_now_truncated"]` 降级不丢自有店。
 - DG134 `app.yaml:search.externalSources{google,apple}` 开关，Apple 默认 false 直至 MapKit 就绪。
 - DG136 `rankingMode` 默认 `relevance`，`?ranking=good_first` 时对 `experience≥80`/`composite≥75` 的 cafe +10，偏好存 localStorage。
-- DG140 fixtures 双门控 `SEARCH_FIXTURES=1 && NODE_ENV!=="production"`（`web/lib/search/fixtures.ts`）。
+- DG137-B 服务端缓存：`GET /api/search` 成功响应头 `Cache-Control: private, max-age=10, stale-while-revalidate=30`（错误码不设）。
+- DG140 fixtures 双门控 `SEARCH_FIXTURES=1 && NODE_ENV!=="production"`（`web/lib/search/fixtures.ts`），`web/tests/fixtures/search-fixtures.json` 提供确定性数据。
 - DG142 排序兜底 `name → id`（消除 `localeCompare` flaky）。
-- DG144/DG52 food/cafe 过滤与 `not_persisted_reason` 并入 Stage 2（poi-service 全量 `d1UpsertPOIs` 缺口）。
+- DG144/DG52 food/cafe 过滤与 `not_persisted_reason`（poi-service 仅持久化餐饮 POI，非餐饮附带 `non_food_category` 观测字段）。

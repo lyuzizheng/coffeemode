@@ -473,7 +473,7 @@ select id,
        coalesce((work_stats->>'updated_at')::timestamptz, updated_at) as lastmod
 from cafes
 where deleted_at is null
-  and coalesce((work_stats->>'n_checkins')::int, 0) > 0
+  and ((work_stats->>'n_checkins') is null or (work_stats->>'n_checkins')::int > 0)
 order by lastmod desc
 `;
 

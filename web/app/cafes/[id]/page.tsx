@@ -65,7 +65,7 @@ export async function generateMetadata({
     ? [{ url: ogImage, width: 400, height: 300, alt: cafe.name }]
     : [{ url: ogImage, width: 1200, height: 630, alt: cafe.name }];
 
-  const isShell = (cafe.work_stats?.n_checkins ?? 0) === 0;
+  const isShell = cafe.work_stats?.n_checkins === 0;
 
   return {
     title,

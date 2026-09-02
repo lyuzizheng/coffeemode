@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
-import { getCafeLocation, listCafesNearby } from "@/lib/db/cafes";
+import {
+  findLiveCafeByExternalId,
+  getCafeLocation,
+  getCafeProbe,
+  listCafesNearby,
+} from "@/lib/db/cafes";
 import { appConfig, rateLimitBuckets } from "@/lib/config";
 import {
   checkRateLimit,
@@ -45,7 +50,16 @@ export async function GET(
   try {
     const location = await getCafeLocation(id);
     if (!location) {
-      return NextResponse.json({ cafes: [] });
+      return NextResponse.json({ cafes: [], replacement_id: null });
+    }
+    const probe = await getCafeProbe(id);
+    let replacementId: string | null = null;
+    if (probe && probe.deleted_at !== null) {
+      replacementId = await findLiveCafeByExternalId(
+        probe.google_place_id,
+        probe.apple_poi_id,
+        id,
+      );
     }
     // Fetch one extra row so excluding the cafe itself still fills the limit.
     const nearby = await listCafesNearby({
@@ -55,7 +69,7 @@ export async function GET(
       limit: appConfig.seo.recoveryLimit + 1,
     });
     const cafes = nearby.filter((cafe) => cafe.id !== id).slice(0, appConfig.seo.recoveryLimit);
-    return NextResponse.json({ cafes });
+    return NextResponse.json({ cafes, replacement_id: replacementId });
   } catch (err) {
     console.error("/api/cafes/[id]/recovery GET failed", err);
     return apiError("internal_error", 500);

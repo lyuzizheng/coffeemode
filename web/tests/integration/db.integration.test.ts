@@ -34,8 +34,10 @@ import {
 import {
   CafeExistsError,
   createCafeWithFirstCheckIn,
+  findLiveCafeByExternalId,
   getCafe,
   getCafeLocation,
+  getCafeProbe,
   listCafeSitemapEntries,
   listCafesNearby,
   reviveCafe,
@@ -1026,6 +1028,93 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
 
       // Already tombstoned: false again, even for the creator.
       await expect(softDeleteCafe(CAFE_A, U1)).resolves.toBe(false);
+    });
+
+    it("getCafeProbe returns creator and tombstone state on real Postgres (DG125)", async () => {
+      const probeLive = await getCafeProbe(CAFE_A);
+      expect(probeLive).not.toBeNull();
+      expect(probeLive?.created_by).toBe(U1);
+      expect(probeLive?.deleted_at).toBeNull();
+
+      await softDeleteCafe(CAFE_A, U1);
+      const probeTomb = await getCafeProbe(CAFE_A);
+      expect(probeTomb?.deleted_at).not.toBeNull();
+      expect(probeTomb?.created_by).toBe(U1);
+    });
+
+    it("findLiveCafeByExternalId resolves replacement cafe id on real Postgres (DG125)", async () => {
+      const photoId = randomUUID();
+      await recordUploadIntent(U1, photoId);
+      const initial = await createCafeWithFirstCheckIn(
+        U1,
+        {
+          name: "Original Cafe",
+          lat: 1.35,
+          lng: 103.8,
+          google_place_id: "ChIJ_probe_replacement",
+          checkin: { scores: { wifi: 70, overall: 70 }, max_stay: "unlimited", note: "first", photo_ids: [photoId] },
+        },
+        fakeProvisionPhotosDeps(),
+      );
+      await softDeleteCafe(initial.cafeId, U1);
+
+      // Before recreation: no live cafe for that POI
+      const none = await findLiveCafeByExternalId("ChIJ_probe_replacement", null, initial.cafeId);
+      expect(none).toBeNull();
+
+      const secondPhotoId = randomUUID();
+      await recordUploadIntent(U1, secondPhotoId);
+      const recreated = await createCafeWithFirstCheckIn(
+        U1,
+        {
+          name: "Replaced Cafe",
+          lat: 1.35,
+          lng: 103.8,
+          google_place_id: "ChIJ_probe_replacement",
+          checkin: { scores: { wifi: 90, overall: 90 }, max_stay: "unlimited", note: "second", photo_ids: [secondPhotoId] },
+        },
+        fakeProvisionPhotosDeps(),
+      );
+
+      // After recreation: findLiveCafeByExternalId identifies recreated cafe
+      const found = await findLiveCafeByExternalId("ChIJ_probe_replacement", null, initial.cafeId);
+      expect(found).toBe(recreated.cafeId);
+    });
+
+    it("concurrent double-revive race returns exactly one true on real Postgres (DG125)", async () => {
+      await softDeleteCafe(CAFE_A, U1);
+      expect(await getCafe(CAFE_A)).toBeNull();
+
+      // Two parallel revive attempts on the same tombstoned cafe
+      const [res1, res2] = await Promise.all([
+        reviveCafe(CAFE_A),
+        reviveCafe(CAFE_A),
+      ]);
+
+      // Exactly one succeeds, the other returns false
+      expect([res1, res2].filter((r) => r === true)).toHaveLength(1);
+      expect([res1, res2].filter((r) => r === false)).toHaveLength(1);
+      expect(await getCafe(CAFE_A)).not.toBeNull();
+    });
+
+    it("creator revive restores cafe to queries, search, and sitemap (DG125)", async () => {
+      await softDeleteCafe(CAFE_A, U1);
+      expect(await getCafe(CAFE_A)).toBeNull();
+      const searchBefore = await searchCafesInDb({ q: "Alchemist" });
+      expect(searchBefore.some((c) => c.id === CAFE_A)).toBe(false);
+
+      const ok = await reviveCafe(CAFE_A);
+      expect(ok).toBe(true);
+
+      const cafe = await getCafe(CAFE_A);
+      expect(cafe).not.toBeNull();
+      expect(cafe?.id).toBe(CAFE_A);
+
+      const searchAfter = await searchCafesInDb({ q: "Alchemist" });
+      expect(searchAfter.some((c) => c.id === CAFE_A)).toBe(true);
+
+      const sitemap = await listCafeSitemapEntries();
+      expect(sitemap.some((c) => c.id === CAFE_A)).toBe(true);
     });
   });
 

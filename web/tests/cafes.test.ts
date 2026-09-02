@@ -4,6 +4,8 @@ import {
   createCafeWithFirstCheckIn,
   getCafe,
   listCafesNearby,
+  findLiveCafeByExternalId,
+  getCafeProbe,
   parseCreateCafeBody,
   resolveCafeTimezone,
   reviveCafe,
@@ -13,6 +15,7 @@ import { PhotoIntentError } from "@/lib/images/provision-photos";
 import { ImageServiceError } from "@/lib/images/image-service-client";
 import { GET as listGET, POST as createPOST } from "@/app/api/cafes/route";
 import { DELETE as detailDELETE, GET as detailGET } from "@/app/api/cafes/[id]/route";
+import { POST as revivePOST } from "@/app/api/cafes/[id]/revive/route";
 
 import { INVALID_CAFE_PAYLOADS } from "./helpers/fixtures";
 const getUserMock = vi.fn();
@@ -766,6 +769,219 @@ describe("DELETE /api/cafes/[id]", () => {
     );
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toMatchObject({ ok: true, id: "550e8400-e29b-41d4-a716-446655440001" });
+  });
+});
+
+describe("POST /api/cafes/[id]/revive (DG125)", () => {
+  it("400s on a non-UUID id", async () => {
+    const res = await revivePOST(new Request("https://localhost/api/cafes/nope/revive", { method: "POST" }), {
+      params: Promise.resolve({ id: "nope" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("401s when unauthenticated", async () => {
+    getUserMock.mockResolvedValueOnce({ data: { user: null }, error: null });
+    const res = await revivePOST(
+      new Request("https://localhost/api/cafes/550e8400-e29b-41d4-a716-446655440001/revive", { method: "POST" }),
+      { params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440001" }) },
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("404s when the cafe does not exist (unknown id)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [] }); // getCafeProbe
+    const res = await revivePOST(
+      new Request("https://localhost/api/cafes/550e8400-e29b-41d4-a716-446655440001/revive", { method: "POST" }),
+      { params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440001" }) },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("404s when the cafe is already live (deleted_at is null)", async () => {
+    poolQueryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          deleted_at: null,
+          created_by: USER.id,
+          google_place_id: "ChIJ_1",
+          apple_poi_id: null,
+        },
+      ],
+    });
+    const res = await revivePOST(
+      new Request("https://localhost/api/cafes/550e8400-e29b-41d4-a716-446655440001/revive", { method: "POST" }),
+      { params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440001" }) },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("404s when the tombstone is owned by someone else (no tombstone oracle)", async () => {
+    poolQueryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          deleted_at: new Date(),
+          created_by: "550e8400-e29b-41d4-a716-446655440999", // different user
+          google_place_id: "ChIJ_1",
+          apple_poi_id: null,
+        },
+      ],
+    });
+    const res = await revivePOST(
+      new Request("https://localhost/api/cafes/550e8400-e29b-41d4-a716-446655440001/revive", { method: "POST" }),
+      { params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440001" }) },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("404s when the tombstone has null created_by", async () => {
+    poolQueryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          deleted_at: new Date(),
+          created_by: null,
+          google_place_id: "ChIJ_1",
+          apple_poi_id: null,
+        },
+      ],
+    });
+    const res = await revivePOST(
+      new Request("https://localhost/api/cafes/550e8400-e29b-41d4-a716-446655440001/revive", { method: "POST" }),
+      { params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440001" }) },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("200s and revives when creator revives own tombstoned cafe", async () => {
+    poolQueryMock
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            deleted_at: new Date(),
+            created_by: USER.id,
+            google_place_id: "ChIJ_1",
+            apple_poi_id: null,
+          },
+        ],
+      }) // getCafeProbe
+      .mockResolvedValueOnce({ rowCount: 1 }); // reviveCafe
+
+    const res = await revivePOST(
+      new Request("https://localhost/api/cafes/550e8400-e29b-41d4-a716-446655440001/revive", { method: "POST" }),
+      { params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440001" }) },
+    );
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ ok: true, id: "550e8400-e29b-41d4-a716-446655440001" });
+  });
+
+  it("409s carrying replacement_id when POI is live on a new cafe", async () => {
+    const REPLACEMENT = "550e8400-e29b-41d4-a716-446655440777";
+    poolQueryMock
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            deleted_at: new Date(),
+            created_by: USER.id,
+            google_place_id: "ChIJ_conflict",
+            apple_poi_id: null,
+          },
+        ],
+      }) // getCafeProbe
+      .mockRejectedValueOnce({ code: "23505" }) // reviveCafe unique violation
+      .mockResolvedValueOnce({ rows: [{ id: REPLACEMENT }] }); // findLiveCafeByExternalId
+
+    const res = await revivePOST(
+      new Request("https://localhost/api/cafes/550e8400-e29b-41d4-a716-446655440001/revive", { method: "POST" }),
+      { params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440001" }) },
+    );
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({ error: "conflict", replacement_id: REPLACEMENT });
+  });
+
+  it("404s when revive fails and no replacement exists (lost race)", async () => {
+    poolQueryMock
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            deleted_at: new Date(),
+            created_by: USER.id,
+            google_place_id: "ChIJ_1",
+            apple_poi_id: null,
+          },
+        ],
+      }) // getCafeProbe
+      .mockResolvedValueOnce({ rowCount: 0 }) // reviveCafe returns false
+      .mockResolvedValueOnce({ rows: [] }); // findLiveCafeByExternalId returns null
+
+    const res = await revivePOST(
+      new Request("https://localhost/api/cafes/550e8400-e29b-41d4-a716-446655440001/revive", { method: "POST" }),
+      { params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440001" }) },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("500s on internal error", async () => {
+    poolQueryMock.mockRejectedValueOnce(new Error("db down"));
+    const res = await revivePOST(
+      new Request("https://localhost/api/cafes/550e8400-e29b-41d4-a716-446655440001/revive", { method: "POST" }),
+      { params: Promise.resolve({ id: "550e8400-e29b-41d4-a716-446655440001" }) },
+    );
+    expect(res.status).toBe(500);
+  });
+});
+
+describe("findLiveCafeByExternalId", () => {
+  it("returns null immediately when both external ids are null or empty", async () => {
+    await expect(findLiveCafeByExternalId(null, null)).resolves.toBeNull();
+    await expect(findLiveCafeByExternalId("", "  ")).resolves.toBeNull();
+    expect(poolQueryMock).not.toHaveBeenCalled();
+  });
+
+  it("queries with google_place_id and excludeId", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: "550e8400-e29b-41d4-a716-446655440111" }] });
+    const result = await findLiveCafeByExternalId(
+      "ChIJ_test",
+      null,
+      "550e8400-e29b-41d4-a716-446655440001",
+    );
+    expect(result).toBe("550e8400-e29b-41d4-a716-446655440111");
+    expect(poolQueryMock).toHaveBeenCalledWith(
+      expect.stringContaining("id <> $1 and google_place_id = $2"),
+      ["550e8400-e29b-41d4-a716-446655440001", "ChIJ_test"],
+    );
+  });
+
+  it("queries with both provider ids when present", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: "550e8400-e29b-41d4-a716-446655440222" }] });
+    const result = await findLiveCafeByExternalId(
+      "ChIJ_test",
+      "apple:123",
+      "550e8400-e29b-41d4-a716-446655440001",
+    );
+    expect(result).toBe("550e8400-e29b-41d4-a716-446655440222");
+    expect(poolQueryMock).toHaveBeenCalledWith(
+      expect.stringContaining("google_place_id = $2 or apple_poi_id = $3"),
+      ["550e8400-e29b-41d4-a716-446655440001", "ChIJ_test", "apple:123"],
+    );
+  });
+});
+
+describe("getCafeProbe", () => {
+  it("returns null on non-UUID id", async () => {
+    await expect(getCafeProbe("not-a-uuid")).resolves.toBeNull();
+    expect(poolQueryMock).not.toHaveBeenCalled();
+  });
+
+  it("returns probe result on valid UUID", async () => {
+    const probeData = {
+      deleted_at: null,
+      created_by: USER.id,
+      google_place_id: "ChIJ_1",
+      apple_poi_id: null,
+    };
+    poolQueryMock.mockResolvedValueOnce({ rows: [probeData] });
+    const result = await getCafeProbe("550e8400-e29b-41d4-a716-446655440001");
+    expect(result).toEqual(probeData);
   });
 });
 

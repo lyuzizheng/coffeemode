@@ -133,7 +133,7 @@ create table cafes (
   price_range     smallint,               -- 1-4
   google_place_id text,
   apple_poi_id    text,
-  created_by      uuid references profiles(id),
+  created_by      uuid references profiles(id), -- nullable in MVP for legacy/seed data; null created_by cafes are not API-deletable/revivable (DG125)
   work_stats      jsonb default '{}',     -- incremental aggregation cache (see below)
   created_at      timestamptz default now(),
   updated_at      timestamptz default now(),
@@ -1180,6 +1180,7 @@ Specs name the parameter and its default; the YAML owns the live value.
   nightly recompute corrects any drift
 - Deep link first visit: SSR shell hydrates into the map app at FULL sheet; never a full-screen modal, no banner (DG124)
 - Location permission: OS prompt only after an explicit user tap, never on load/error/deep-link surfaces; every location feature has a no-permission fallback (§Location permission contract — DG112)
+- Cafe soft delete & revive: DELETE /api/cafes/[id] is creator-only, retaining location tombstone (401 unauth, 404 unknown/already-deleted, 403 non-creator, cafes-write bucket); POST /api/cafes/[id]/revive is creator-only, restoring deleted_at = null (401 unauth, 400 bad UUID, uniform 404 for unknown/live/non-creator/null-created_by to prevent tombstone oracle, 409 POI conflict carrying replacement_id if external POI is live on another row, 200 { ok: true, id }, cafes-write bucket); GET /api/cafes/[id]/recovery reports replacement_id when a tomb's POI is live; created_by IS NULL rows are undeletable/unrevivable via API (DG125)
 - Check-in soft delete: set deleted_at; recompute work_stats; hide photos from gallery
 - Like toggle: idempotent upsert on checkin_likes; keep checkins.likes_count in sync
 - Image upload cap: 10 MB max in presigned PUT; R2 lifecycle cleans orphan original/ objects

@@ -540,6 +540,69 @@ export async function getCafeLocation(
   return row ? { lat: row.lat, lng: row.lng } : null;
 }
 
+export interface CafeProbe {
+  deleted_at: Date | string | null;
+  created_by: string | null;
+  google_place_id: string | null;
+  apple_poi_id: string | null;
+}
+
+const GET_CAFE_PROBE_SQL = `
+select deleted_at, created_by, google_place_id, apple_poi_id
+from cafes
+where id = $1
+`;
+
+/**
+ * Minimal probe by cafe id (issue #229 / DG125).
+ * Returns tombstone state, creator ownership, and external POI ids
+ * to feed uniform-404 checks and 409 conflict disambiguation.
+ */
+export async function getCafeProbe(id: string): Promise<CafeProbe | null> {
+  if (!isValidUUID(id)) return null;
+  const { rows } = await query<CafeProbe & Record<string, unknown>>(GET_CAFE_PROBE_SQL, [id]);
+  return rows[0] ?? null;
+}
+
+/**
+ * Look up a live cafe by external provider POI id, excluding a specific cafe id (issue #229 / DG125).
+ * Served by the 0011 partial unique indexes (idx_cafes_gplace / idx_cafes_apple_poi_id).
+ * Returns null immediately if both provider ids are null/empty.
+ * Passing excludeId ensures a concurrent self-revive race resolves to 404, not a self-referencing 409.
+ */
+export async function findLiveCafeByExternalId(
+  googlePlaceId?: string | null,
+  applePoiId?: string | null,
+  excludeId?: string,
+): Promise<string | null> {
+  const gPlace = googlePlaceId && googlePlaceId.trim() !== "" ? googlePlaceId : null;
+  const applePoi = applePoiId && applePoiId.trim() !== "" ? applePoiId : null;
+  if (!gPlace && !applePoi) return null;
+
+  const conditions: string[] = ["deleted_at is null"];
+  const params: unknown[] = [];
+
+  if (excludeId && isValidUUID(excludeId)) {
+    params.push(excludeId);
+    conditions.push(`id <> $${params.length}`);
+  }
+
+  if (gPlace && applePoi) {
+    params.push(gPlace, applePoi);
+    conditions.push(`(google_place_id = $${params.length - 1} or apple_poi_id = $${params.length})`);
+  } else if (gPlace) {
+    params.push(gPlace);
+    conditions.push(`google_place_id = $${params.length}`);
+  } else if (applePoi) {
+    params.push(applePoi);
+    conditions.push(`apple_poi_id = $${params.length}`);
+  }
+
+  const sql = `select id from cafes where ${conditions.join(" and ")} limit 1`;
+  const { rows } = await query<{ id: string } & Record<string, unknown>>(sql, params);
+  return rows[0]?.id ?? null;
+}
+
 const OWNS_CAFE_SQL = `
 select id from cafes where id = $1 and created_by = $2 and deleted_at is null
 `;

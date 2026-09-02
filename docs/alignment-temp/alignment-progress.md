@@ -351,6 +351,14 @@ Open: DG46 scope (top-10 binds only suggestion rows vs the whole search
 API) — owner asked for context instead of ruling; recommendation stands
 at top-10 everywhere with the number config-owned. Pending owner.
 
+## Round 17 — Cafe revive and deletion lifecycle grill (BRAWUKA-10 / #229) — DG125 approved
+
+Design grill on BRAWUKA-10 (GitHub #229) concluded with DG125 approved by Reviewer & Architect.
+
+| # | Decision | Answer |
+|---|----------|--------|
+| DG125 | Cafe revive contract + uniform 404 (no tombstone oracle) | Tombstoned cafes are restorable only by their creator via `POST /api/cafes/[id]/revive`. Contract: 401 unauth / 400 bad UUID / uniform 404 (unknown id, already live, or tomb owned by someone else — no tombstone oracle) / 409 POI conflict with `{ error: "conflict", replacement_id }` / 200 `{ ok: true, id }`. Guards: `requireSameOrigin` + `cafes-write` bucket, same as DELETE. A 23505 from the 0011 partial unique indexes maps to 409. No generic `PATCH /api/cafes/[id]`. `created_by IS NULL` rows are not API-deletable/revivable; moderation is post-MVP. `GET /api/cafes/[id]/recovery` reports `replacement_id` when a tomb's POI is live on a new row. |
+
 ## Decisions log
 
 - 2026-07-31: Architecture pivot from "migrate Vite SPA + keep Java backend" to "rewrite as full-stack Next.js, drop Java"
@@ -381,6 +389,7 @@ at top-10 everywhere with the number config-owned. Pending owner.
 - 2026-08-23: Artifact grill round 15 (onboarding) — DG114-DG123 ruled: immediate non-modal welcome card, Select-only wrong-city correction, Skip lands on the IP-detected city, denied re-entry via locate button + one-time settings toast, DG112 gates the OS prompt not the card UI, no recenter after user pan, session-persistent blue dot, out-of-coverage geolocation auto-creates the city with a first-nomad invitation (owner expansion), profiles.onboarded authoritative across devices, offline grant still dismisses
 - 2026-08-23: DG124 — round-14 Q10 resolved by redesign: /cafes/[id] first paint stays the SSR shell, then hydrates in place into the map app at FULL sheet with drag-down to the map; DeepLinkBanner abolished and the /?cafe= app entry retired (amends DG104/DG106). Grill program fully complete; path clears for implementation (#146 work-profile is the only READY slice)
 - 2026-08-25: Post-merge review grill round 16 (search-filters) — DG125-DG130 ruled (DG126 PROPOSED, pending owner): min_spend concept removed entirely (price signal, if any, comes from Google's imported price_level, never a voted field); unknown-consensus exclusion + capsule hint under active policy filters; default city resolution via Cloudflare CF-IPCity header against the config-owned DG50 city list with 400 on unknown explicit city; search rate limits 30/min + 100/h + 200/day per IP with Better Stack alerting; SearchResultItem gains an explicit source field and live-Google wiring splits to a follow-up issue. DG126 max_stay re-bucket/slider is PROPOSED pending owner; DG46 API-scope question open
+- 2026-09-02: BRAWUKA-10 grill (#229) — DG125 approved: creator-only cafe revive via POST /api/cafes/[id]/revive with uniform 404 (no tombstone oracle), 409 POI conflict carrying replacement_id when POI is live on a new row, and recovery endpoint returns replacement_id for tombstones
 
 ## Final tech stack (locked)
 

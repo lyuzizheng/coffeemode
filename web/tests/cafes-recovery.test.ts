@@ -48,13 +48,23 @@ describe("GET /api/cafes/[id]/recovery (DG111)", () => {
       params: Promise.resolve({ id: CAFE }),
     });
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ cafes: [] });
+    await expect(res.json()).resolves.toEqual({ cafes: [], replacement_id: null });
   });
 
   it("lists nearby cafes excluding the requested cafe, capped by recoveryLimit", async () => {
     getUserMock.mockResolvedValue({ data: { user: null }, error: null });
     poolQueryMock
       .mockResolvedValueOnce({ rows: [{ lat: 1.27, lng: 103.84 }] }) // getCafeLocation
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            deleted_at: null,
+            created_by: "550e8400-e29b-41d4-a716-446655440000",
+            google_place_id: "ChIJ_place_1",
+            apple_poi_id: null,
+          },
+        ],
+      }) // getCafeProbe
       // limit = recoveryLimit + 1 = 6 rows come back, including the cafe itself.
       .mockResolvedValueOnce({
         rows: [
@@ -70,7 +80,7 @@ describe("GET /api/cafes/[id]/recovery (DG111)", () => {
       params: Promise.resolve({ id: CAFE }),
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { cafes: Array<{ id: string }> };
+    const body = (await res.json()) as { cafes: Array<{ id: string }>; replacement_id: string | null };
     expect(body.cafes.map((c) => c.id)).toEqual([
       "550e8400-e29b-41d4-a716-446655440101",
       "550e8400-e29b-41d4-a716-446655440102",
@@ -78,8 +88,35 @@ describe("GET /api/cafes/[id]/recovery (DG111)", () => {
       "550e8400-e29b-41d4-a716-446655440104",
       "550e8400-e29b-41d4-a716-446655440105",
     ]);
+    expect(body.replacement_id).toBeNull();
   });
 
+  it("returns replacement_id when the requested cafe is a tombstone and its external POI is live on a new cafe", async () => {
+    getUserMock.mockResolvedValue({ data: { user: null }, error: null });
+    const REPLACEMENT = "550e8400-e29b-41d4-a716-446655440999";
+    poolQueryMock
+      .mockResolvedValueOnce({ rows: [{ lat: 1.27, lng: 103.84 }] }) // getCafeLocation
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            deleted_at: new Date(),
+            created_by: "550e8400-e29b-41d4-a716-446655440000",
+            google_place_id: "ChIJ_place_1",
+            apple_poi_id: null,
+          },
+        ],
+      }) // getCafeProbe
+      .mockResolvedValueOnce({ rows: [{ id: REPLACEMENT }] }) // findLiveCafeByExternalId
+      .mockResolvedValueOnce({ rows: [nearbyRow(REPLACEMENT, 100)] }); // listCafesNearby
+
+    const res = await recoveryGET(new Request("https://localhost/api/cafes/x/recovery"), {
+      params: Promise.resolve({ id: CAFE }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { cafes: Array<{ id: string }>; replacement_id: string | null };
+    expect(body.replacement_id).toBe(REPLACEMENT);
+    expect(body.cafes).toHaveLength(1);
+  });
   it("500s without leaking upstream errors", async () => {
     getUserMock.mockResolvedValue({ data: { user: null }, error: null });
     poolQueryMock.mockRejectedValueOnce(new Error("connection refused"));

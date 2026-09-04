@@ -66,26 +66,33 @@ assert_test "Healthcheck endpoint (/api/health)" \
 assert_test "Root page render (/)" \
   "curl -fsS -m 10 '${BASE_URL}/' | grep -qi 'CoffeeMode'"
 
-# 3. PostGIS database query via cafes API
-assert_test "PostGIS spatial query (/api/cafes)" \
-  "curl -fsS -m 10 '${BASE_URL}/api/cafes?lat=1.3521&lng=103.8198&radius=5' | grep -q '\['"
+# 3. PostGIS database query via cafes API (lat/lng + radius_km, returns { cafes: [...] })
+assert_test "PostGIS spatial query (/api/cafes?lat=1.3521&lng=103.8198&radius_km=5)" \
+  "curl -fsS -m 10 '${BASE_URL}/api/cafes?lat=1.3521&lng=103.8198&radius_km=5' | grep -qE '\"cafes\":\s*\['"
 
-# 4. Static assets & chunk availability
-assert_test "Next.js static assets chunk resolution" \
-  "curl -fsS -m 5 -I '${BASE_URL}/favicon.ico' | grep -E 'HTTP/(1\.1|2|3) 200'"
+# 4. Static assets & .next/static chunk resolution (verifies Docker standalone asset copy)
+assert_test "Next.js standalone static asset resolution (/_next/static/)" \
+  "ROOT_HTML=\$(curl -fsS -m 10 '${BASE_URL}/'); \
+   STATIC_CHUNK=\$(echo \"\$ROOT_HTML\" | grep -oE '/_next/static/[^\"'\''>[:space:]]+\.(js|css)' | head -n 1); \
+   [[ -n \"\$STATIC_CHUNK\" ]] && curl -fsS -m 5 -o /dev/null '${BASE_URL}\${STATIC_CHUNK}'"
 
 # 5. Security headers verification
 assert_test "Security header (X-Content-Type-Options: nosniff)" \
   "curl -fsS -m 5 -I '${BASE_URL}/api/health' | grep -qi 'x-content-type-options: nosniff'"
 
-# 6. R2 Image CDN availability
+# 6. Cloudflare Worker POI service proxy
+assert_test "POI service worker proxy (/api/places/search?q=coffee)" \
+  "curl -fsS -m 10 '${BASE_URL}/api/places/search?q=coffee' | grep -qE '\"(results|pois|items)\":|\[\{\"'"
+
+# 7. Cloudflare R2 Image CDN availability (verifies DNS, TLS, and edge reachability; fails on network drop/5xx)
 if [[ "$ENV" == "prod" ]]; then
   IMAGE_HOST="https://images.coffeemode.app"
 else
   IMAGE_HOST="https://staging-images.coffeemode.app"
 fi
-assert_test "Cloudflare R2 images CDN connectivity (${IMAGE_HOST})" \
-  "curl -fsS -m 5 -I '${IMAGE_HOST}/' || true"
+assert_test "Cloudflare R2 images CDN edge connectivity (${IMAGE_HOST})" \
+  "STATUS=\$(curl -s -m 5 -o /dev/null -w '%{http_code}' '${IMAGE_HOST}/'); \
+   [[ \"\$STATUS\" =~ ^(200|403|404)$ ]]"
 
 echo "=============================================================================="
 echo "Smoke Test Summary: $((TOTAL - FAILED))/${TOTAL} passed."

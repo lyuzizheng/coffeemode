@@ -2,11 +2,18 @@
 # Architecture: docs/specs/0005-dokploy-vps-and-deployment-architecture.md
 #
 # Production Stack:
-#   - postgres-prod: PostGIS 16 instance on dedicated bridge network
+#   - postgres-prod: PostGIS 16 instance on dedicated bridge network (coffeemode-prod-network)
 #   - web-prod: Next.js standalone container on internal port 3000
-#   - Traefik integration with zero-downtime rolling swaps (start-first)
-#   - Automated Let's Encrypt TLS termination for coffeemode.app & www
-#   - 100% isolated from staging network and staging storage volumes
+#   - Ingress: Web container connects to external traefik-net for Traefik routing
+#   - Isolation: Database and data volumes are 100% isolated from staging
+#
+# Deployment Mode & Zero-Downtime Guarantee:
+#   - Docker Swarm Stack Mode (RECOMMENDED for zero-downtime): With Swarm enabled
+#     on the VPS (`docker swarm init`), Dokploy deploys via `docker stack deploy`,
+#     honoring `deploy.update_config` with `order: start-first`.
+#   - Dokploy Application Mode: Dokploy builds and swaps containers using health checks.
+#   - Plain Docker Compose Mode: `docker compose up -d` recreates the container;
+#     Traefik shifts traffic once the healthcheck passes.
 
 services:
   postgres-prod:
@@ -55,7 +62,7 @@ services:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: 0.0.0.0
-      DATABASE_URL: postgres://${POSTGRES_USER:-coffeemode_prod_user}:${POSTGRES_PASSWORD}@postgres-prod:5432/${POSTGRES_DB:-coffeemode_prod}?sslmode=disable
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be configured in .env.prod or Dokploy environment}
     networks:
       - coffeemode-prod-network
       - traefik-net
@@ -75,14 +82,13 @@ services:
       - "traefik.http.routers.coffeemode-prod.entrypoints=websecure"
       - "traefik.http.routers.coffeemode-prod.tls.certresolver=letsencrypt"
       - "traefik.http.routers.coffeemode-prod.service=coffeemode-prod-svc"
-      # Middlewares: WWW redirect to apex + HSTS/Security headers
+      # Middlewares: WWW redirect to apex + HSTS/Security headers (no-op sslRedirect removed)
       - "traefik.http.routers.coffeemode-prod.middlewares=prod-www-redirect@docker,prod-sec-headers@docker"
       - "traefik.http.middlewares.prod-www-redirect.redirectregex.regex=^https://www\\.${PROD_DOMAIN:-coffeemode.app}/(.*)"
       - "traefik.http.middlewares.prod-www-redirect.redirectregex.replacement=https://${PROD_DOMAIN:-coffeemode.app}/$${1}"
       - "traefik.http.middlewares.prod-www-redirect.redirectregex.permanent=true"
       - "traefik.http.middlewares.prod-sec-headers.headers.browserXssFilter=true"
       - "traefik.http.middlewares.prod-sec-headers.headers.contentTypeNosniff=true"
-      - "traefik.http.middlewares.prod-sec-headers.headers.sslRedirect=true"
       - "traefik.http.middlewares.prod-sec-headers.headers.stsSeconds=31536000"
       - "traefik.http.middlewares.prod-sec-headers.headers.stsIncludeSubdomains=true"
       - "traefik.http.middlewares.prod-sec-headers.headers.stsPreload=true"

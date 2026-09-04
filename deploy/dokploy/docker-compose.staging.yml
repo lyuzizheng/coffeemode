@@ -2,10 +2,15 @@
 # Architecture: docs/specs/0005-dokploy-vps-and-deployment-architecture.md
 #
 # Isolated Staging Stack:
-#   - postgres-staging: PostGIS 16 instance on dedicated bridge network
+#   - postgres-staging: PostGIS 16 instance on dedicated bridge network (coffeemode-staging-network)
 #   - web-staging: Next.js standalone container on internal port 3000
-#   - Traefik integration via labels routing staging.coffeemode.app
-#   - Completely isolated from production network and data volumes
+#   - Ingress: Web container connects to external traefik-net for Traefik routing
+#   - Isolation: Database and data volumes are 100% isolated from production
+#
+# Deployment Mode Note:
+#   - Plain Docker Compose (Dokploy default): deploys via `docker compose up -d`.
+#   - Docker Swarm Mode: if the VPS initializes Docker Swarm (`docker swarm init`),
+#     Dokploy deploys via `docker stack deploy`, which activates `deploy.update_config`.
 
 services:
   postgres-staging:
@@ -24,7 +29,7 @@ services:
       - coffeemode-staging-network
     ports:
       # Bound strictly to localhost loopback for administrative access via SSH tunnel
-      # NEVER expose to 0.0.0.0 or public interface
+      # Port is NEVER exposed on public network interface
       - "127.0.0.1:5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-coffeemode_staging_user} -d ${POSTGRES_DB:-coffeemode_staging}"]
@@ -54,7 +59,7 @@ services:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: 0.0.0.0
-      DATABASE_URL: postgres://${POSTGRES_USER:-coffeemode_staging_user}:${POSTGRES_PASSWORD}@postgres-staging:5432/${POSTGRES_DB:-coffeemode_staging}?sslmode=disable
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be configured in .env.staging or Dokploy environment}
     networks:
       - coffeemode-staging-network
       - traefik-net
@@ -79,11 +84,10 @@ services:
       - "traefik.http.services.coffeemode-staging-svc.loadbalancer.healthcheck.path=/api/health"
       - "traefik.http.services.coffeemode-staging-svc.loadbalancer.healthcheck.interval=10s"
       - "traefik.http.services.coffeemode-staging-svc.loadbalancer.healthcheck.timeout=3s"
-      # Security Middlewares
+      # Security Middlewares (no-op sslRedirect removed from websecure entrypoint)
       - "traefik.http.routers.coffeemode-staging.middlewares=staging-sec-headers@docker"
       - "traefik.http.middlewares.staging-sec-headers.headers.browserXssFilter=true"
       - "traefik.http.middlewares.staging-sec-headers.headers.contentTypeNosniff=true"
-      - "traefik.http.middlewares.staging-sec-headers.headers.sslRedirect=true"
     deploy:
       resources:
         limits:

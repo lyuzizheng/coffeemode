@@ -242,16 +242,16 @@ stage "Step 5/5: Post-Deployment Smoke Test & Health Verification"
 BASE_URL="https://${STAGING_DOMAIN:-staging.coffeemode.app}"
 if [ "$DRY_RUN" = false ]; then
   log "Polling health endpoint on ${BASE_URL}/api/health for release convergence (timeout: 120s)..."
-  MAX_RETRIES=30
+  MAX_RETRIES=24
   RETRY=0
   IS_HEALTHY=false
   while [ $RETRY -lt $MAX_RETRIES ]; do
     RETRY=$((RETRY + 1))
-    if curl -fsS -m 5 "${BASE_URL}/api/health" 2>/dev/null | grep -q '"ok":true'; then
+    if curl -fsS -m 3 "${BASE_URL}/api/health" 2>/dev/null | grep -q '"ok":true'; then
       IS_HEALTHY=true
       break
     fi
-    sleep 4
+    sleep 2
   done
 
   if [ "$IS_HEALTHY" = true ]; then

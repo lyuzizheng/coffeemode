@@ -334,18 +334,18 @@ for env in "${ENVS[@]}"; do
   fi
 
   if [ "$DRY_RUN" = false ]; then
-    # Resolve and validate database password per environment
+    # Resolve password specifically for this environment (no cross-env leak)
     ENV_PASSWORD="${POSTGRES_PASSWORD:-}"
     if [[ -z "$ENV_PASSWORD" && -f "${REPO_ROOT}/deploy/dokploy/.env.${env}" ]]; then
       ENV_PASSWORD="$(grep -E '^POSTGRES_PASSWORD=' "${REPO_ROOT}/deploy/dokploy/.env.${env}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
     fi
     : "${ENV_PASSWORD:?Error: POSTGRES_PASSWORD must be set in environment or deploy/dokploy/.env.${env}}"
 
-    export POSTGRES_PASSWORD="${ENV_PASSWORD}"
-    export DATABASE_URL="postgres://coffeemode_${env}_user:${POSTGRES_PASSWORD}@127.0.0.1:$([ "$env" = "staging" ] && echo 5433 || echo 5432)/coffeemode_${env}?sslmode=disable"
+    DB_URL="postgres://coffeemode_${env}_user:${ENV_PASSWORD}@127.0.0.1:$([ "$env" = "staging" ] && echo 5433 || echo 5432)/coffeemode_${env}?sslmode=disable"
 
-    # Bring up database service only
-    docker compose -f "$COMPOSE_FILE" up -d "postgres-${env}"
+    # Bring up database service with environment-scoped credentials
+    POSTGRES_PASSWORD="${ENV_PASSWORD}" DATABASE_URL="${DB_URL}" \
+      docker compose -f "$COMPOSE_FILE" up -d "postgres-${env}"
     log "Waiting for '${CONTAINER}' to become healthy..."
     MAX_ATTEMPTS=30
     ATTEMPT=0
@@ -383,9 +383,13 @@ for env in "${ENVS[@]}"; do
   DB_PORT="$([ "$env" = "staging" ] && echo 5433 || echo 5432)"
   DB_USER="coffeemode_${env}_user"
   DB_NAME="coffeemode_${env}"
+  CONTAINER="coffeemode-postgres-${env}"
   DB_PASS="${POSTGRES_PASSWORD:-}"
   if [[ -z "$DB_PASS" && -f "${REPO_ROOT}/deploy/dokploy/.env.${env}" ]]; then
     DB_PASS="$(grep -E '^POSTGRES_PASSWORD=' "${REPO_ROOT}/deploy/dokploy/.env.${env}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
+  fi
+  if [ "$DRY_RUN" = false ]; then
+    : "${DB_PASS:?Error: POSTGRES_PASSWORD must be set in environment or deploy/dokploy/.env.${env}}"
   fi
   TARGET_DB_URL="postgres://${DB_USER}:${DB_PASS}@127.0.0.1:${DB_PORT}/${DB_NAME}?sslmode=disable"
 
@@ -426,6 +430,9 @@ if [ "$SKIP_SEED" = false ]; then
     DB_PASS="${POSTGRES_PASSWORD:-}"
     if [[ -z "$DB_PASS" && -f "${REPO_ROOT}/deploy/dokploy/.env.${env}" ]]; then
       DB_PASS="$(grep -E '^POSTGRES_PASSWORD=' "${REPO_ROOT}/deploy/dokploy/.env.${env}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
+    fi
+    if [ "$DRY_RUN" = false ]; then
+      : "${DB_PASS:?Error: POSTGRES_PASSWORD must be set in environment or deploy/dokploy/.env.${env}}"
     fi
 
     if [ "$DRY_RUN" = false ]; then

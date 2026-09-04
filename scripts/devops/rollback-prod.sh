@@ -136,7 +136,15 @@ if [[ "$TARGET_TAG" == "previous" || -z "$TARGET_TAG" ]]; then
   if [[ -n "$RESOLVED_PREV_TAG" ]]; then
     TARGET_TAG="$RESOLVED_PREV_TAG"
   else
-    TARGET_TAG="previous"
+    if [ "$DRY_RUN" = true ]; then
+      TARGET_TAG="previous_dryrun_tag"
+      ok "[DRY-RUN] Using simulated previous tag '${TARGET_TAG}'."
+    else
+      error "CRITICAL: Unable to resolve previous release image tag!"
+      error "No releases recorded in releases.log and no previous local image tags found."
+      error "Please specify a target image tag explicitly via --image-tag <tag>."
+      exit 1
+    fi
   fi
 fi
 

@@ -331,6 +331,7 @@ if [ "$SKIP_DOCKER" = false ]; then
         fi
       fi
     fi
+  else
     ok "[DRY-RUN] Docker Swarm initialization simulated."
   fi
 else

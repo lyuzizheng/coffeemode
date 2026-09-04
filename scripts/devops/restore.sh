@@ -256,17 +256,36 @@ fi
 log "Step 5: Restoring database schema and data into '${TARGET_DB}'..."
 
 if [ "$DRY_RUN" = false ]; then
+  # Resolve and validate database password
+  if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
+    if [[ -f "${REPO_ROOT}/deploy/dokploy/.env.${ENV}" ]]; then
+      POSTGRES_PASSWORD="$(grep -E '^POSTGRES_PASSWORD=' "${REPO_ROOT}/deploy/dokploy/.env.${ENV}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
+    fi
+  fi
+  : "${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be set in environment or deploy/dokploy/.env.${ENV}}"
+
   RESTORE_CMD=(pg_restore -U "$DB_USER" -d "$TARGET_DB" --clean --if-exists --no-owner --verbose)
+  set -o pipefail
 
   if [[ "$BACKUP_PATH" == *.gz ]]; then
     log "Decompressing gzip archive stream to pg_restore..."
-    gzip -dc "$BACKUP_PATH" | docker exec -i -e PGPASSWORD="${POSTGRES_PASSWORD:-}" "$CONTAINER" "${RESTORE_CMD[@]}" || {
-      warn "pg_restore completed with warnings / non-fatal notices."
-    }
+    if ! gzip -dc "$BACKUP_PATH" | docker exec -i -e PGPASSWORD="${POSTGRES_PASSWORD}" "$CONTAINER" "${RESTORE_CMD[@]}"; then
+      if [ "$DRILL_MODE" = false ]; then
+        error "CRITICAL: Live database restore FAILED on '${TARGET_DB}'!"
+        exit 1
+      else
+        warn "pg_restore completed with notices/warnings during recovery drill."
+      fi
+    fi
   else
-    docker exec -i -e PGPASSWORD="${POSTGRES_PASSWORD:-}" "$CONTAINER" "${RESTORE_CMD[@]}" < "$BACKUP_PATH" || {
-      warn "pg_restore completed with warnings / non-fatal notices."
-    }
+    if ! docker exec -i -e PGPASSWORD="${POSTGRES_PASSWORD}" "$CONTAINER" "${RESTORE_CMD[@]}" < "$BACKUP_PATH"; then
+      if [ "$DRILL_MODE" = false ]; then
+        error "CRITICAL: Live database restore FAILED on '${TARGET_DB}'!"
+        exit 1
+      else
+        warn "pg_restore completed with notices/warnings during recovery drill."
+      fi
+    fi
   fi
   ok "Database restore command executed."
 else
@@ -301,9 +320,14 @@ if [ "$DRY_RUN" = false ]; then
   log "Row counts: cafes=${CAFES_COUNT}, checkins=${CHECKINS_COUNT}, profiles=${PROFILES_COUNT}"
 
   # 3. Spatial query contract benchmark
+  # 3. Spatial query contract benchmark (cafes.location geography column per 0001_init.sql)
   SPATIAL_CHECK="$(docker exec -e PGPASSWORD="${POSTGRES_PASSWORD:-}" "$CONTAINER" \
     psql -U "$DB_USER" -d "$TARGET_DB" -t -c \
-    "SELECT count(*) FROM cafes WHERE ST_DWithin(coordinates, ST_SetSRID(ST_MakePoint(103.8198, 1.3521), 4326)::geography, 10000);" 2>/dev/null | tr -d '[:space:]' || echo "0")"
+    "SELECT count(*) FROM cafes WHERE ST_DWithin(location, ST_SetSRID(ST_MakePoint(103.8198, 1.3521), 4326)::geography, 10000);" 2>/dev/null | tr -d '[:space:]' || echo "")"
+  if [[ -z "$SPATIAL_CHECK" ]]; then
+    error "PostGIS spatial query check FAILED on '${TARGET_DB}'."
+    exit 1
+  fi
   ok "PostGIS spatial query test returned ${SPATIAL_CHECK} cafe(s) in range."
 
   # 4. Cleanup drill database

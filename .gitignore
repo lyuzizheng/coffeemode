@@ -50,3 +50,10 @@ docs/reviews/
 coffeemode-frontend/
 coffeemode_backend/
 coffeemode-script/
+
+# Database backups, dumps, and environment files
+backups/
+*.dump
+*.dump.gz
+deploy/dokploy/.env.staging
+deploy/dokploy/.env.prod

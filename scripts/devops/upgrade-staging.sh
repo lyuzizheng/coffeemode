@@ -157,12 +157,20 @@ fi
 stage "Step 3/5: Applying Database Migrations to Staging"
 
 if [ "$SKIP_MIGRATIONS" = false ]; then
+  # Resolve and validate staging database password
+  if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
+    if [[ -f "${REPO_ROOT}/deploy/dokploy/.env.staging" ]]; then
+      POSTGRES_PASSWORD="$(grep -E '^POSTGRES_PASSWORD=' "${REPO_ROOT}/deploy/dokploy/.env.staging" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
+    fi
+  fi
+
   if [ "$DRY_RUN" = false ]; then
+    : "${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be set in environment or deploy/dokploy/.env.staging}"
+    DB_PASS="${POSTGRES_PASSWORD}"
     CONTAINER="coffeemode-postgres-staging"
     DB_USER="coffeemode_staging_user"
     DB_NAME="coffeemode_staging"
     DB_PORT=5433
-    DB_PASS="${POSTGRES_PASSWORD:-coffeemode_staging_password}"
     TARGET_DB_URL="postgres://${DB_USER}:${DB_PASS}@127.0.0.1:${DB_PORT}/${DB_NAME}?sslmode=disable"
 
     if docker ps --filter "name=^/${CONTAINER}$" --format '{{.Status}}' | grep -q "healthy"; then
@@ -175,7 +183,8 @@ if [ "$SKIP_MIGRATIONS" = false ]; then
       elif docker ps --filter "name=^/coffeemode-web-staging$" --format '{{.Status}}' | grep -q "Up"; then
         docker exec "coffeemode-web-staging" npm run db:migrate
       else
-        warn "Web container not running and host Node migrate runner unavailable. Migrations will run at container boot."
+        error "CRITICAL: Unable to run database migrations! Neither web/scripts/migrate.mjs nor running web container is available."
+        exit 1
       fi
       ok "Database schema migrations applied to Staging."
     else
@@ -194,6 +203,12 @@ fi
 # ------------------------------------------------------------------------------
 stage "Step 4/5: Triggering Staging Application Deployment"
 
+RELEASE_TAG="${IMAGE_TAG}"
+if [[ -z "$RELEASE_TAG" || "$RELEASE_TAG" == "latest" ]]; then
+  RELEASE_TAG="$(git -C "${REPO_ROOT}" rev-parse --short HEAD 2>/dev/null || date -u +%Y%m%d_%H%M%SZ)"
+fi
+log "Target Release Tag: ${RELEASE_TAG}"
+
 if [[ -n "$DEPLOY_URL" ]]; then
   log "Calling Dokploy deployment webhook: ${DEPLOY_URL}..."
   if [ "$DRY_RUN" = false ]; then
@@ -210,10 +225,12 @@ else
   log "Deploy webhook not configured. Executing local Docker Compose deploy..."
   COMPOSE_FILE="${REPO_ROOT}/deploy/dokploy/docker-compose.staging.yml"
   if [ "$DRY_RUN" = false ]; then
-    docker compose -f "$COMPOSE_FILE" up -d --build web-staging
-    ok "Docker Compose web-staging container updated."
+    IMAGE_TAG="${RELEASE_TAG}" docker compose -f "$COMPOSE_FILE" build web-staging
+    docker tag "coffeemode-web-staging:${RELEASE_TAG}" "coffeemode-web-staging:latest" 2>/dev/null || true
+    IMAGE_TAG="${RELEASE_TAG}" docker compose -f "$COMPOSE_FILE" up -d web-staging
+    ok "Docker Compose web-staging container updated with tag '${RELEASE_TAG}'."
   else
-    ok "[DRY-RUN] Docker Compose up -d --build web-staging simulated."
+    ok "[DRY-RUN] Docker Compose build & up -d web-staging with tag '${RELEASE_TAG}' simulated."
   fi
 fi
 
@@ -222,10 +239,29 @@ fi
 # ------------------------------------------------------------------------------
 stage "Step 5/5: Post-Deployment Smoke Test & Health Verification"
 
-if [ "$SKIP_SMOKE" = false ]; then
-  if [ "$DRY_RUN" = false ]; then
-    log "Allowing 5s grace period for container initialization..."
-    sleep 5
+BASE_URL="https://${STAGING_DOMAIN:-staging.coffeemode.app}"
+if [ "$DRY_RUN" = false ]; then
+  log "Polling health endpoint on ${BASE_URL}/api/health for release convergence (timeout: 120s)..."
+  MAX_RETRIES=30
+  RETRY=0
+  IS_HEALTHY=false
+  while [ $RETRY -lt $MAX_RETRIES ]; do
+    RETRY=$((RETRY + 1))
+    if curl -fsS -m 5 "${BASE_URL}/api/health" 2>/dev/null | grep -q '"ok":true'; then
+      IS_HEALTHY=true
+      break
+    fi
+    sleep 4
+  done
+
+  if [ "$IS_HEALTHY" = true ]; then
+    ok "Staging healthcheck is green."
+  else
+    error "Timed out waiting for staging healthcheck on ${BASE_URL}/api/health after 120s."
+    exit 1
+  fi
+
+  if [ "$SKIP_SMOKE" = false ]; then
     log "Running automated smoke test suite against Staging..."
     "${SCRIPT_DIR}/smoke-test.sh" staging || {
       error "Smoke tests FAILED on Staging! Inspect logs via 'docker logs coffeemode-web-staging'."
@@ -233,10 +269,10 @@ if [ "$SKIP_SMOKE" = false ]; then
     }
     ok "All staging smoke tests passed."
   else
-    ok "[DRY-RUN] Staging smoke test execution simulated."
+    log "Skipping smoke tests (--skip-smoke)."
   fi
 else
-  log "Skipping smoke tests (--skip-smoke)."
+  ok "[DRY-RUN] Staging health convergence polling and smoke tests simulated."
 fi
 
 echo ""

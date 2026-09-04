@@ -141,9 +141,9 @@ assert_test "Cloudflare R2 images CDN edge connectivity (${IMAGE_HOST})" \
   "STATUS=\$(curl -s -m ${TIMEOUT} -o /dev/null -w '%{http_code}' '${IMAGE_HOST}/'); \
    [[ \"\$STATUS\" =~ ^(200|403|404)$ ]]"
 
-# 8. Image upload intent API contract (verifies API route returns structured JSON or 401 auth gate)
-assert_test "Image upload intent API contract (/api/images/upload-intent)" \
-  "STATUS=\$(curl -s -m ${TIMEOUT} -o /dev/null -w '%{http_code}' -X POST '${BASE_URL}/api/images/upload-intent'); \
+# 8. Image upload API contract (verifies API route returns structured JSON or 400/401 auth gate)
+assert_test "Image upload API contract (/api/images/upload)" \
+  "STATUS=\$(curl -s -m ${TIMEOUT} -o /dev/null -w '%{http_code}' -X POST '${BASE_URL}/api/images/upload'); \
    [[ \"\$STATUS\" =~ ^(200|400|401|403)$ ]]"
 
 echo "=============================================================================="

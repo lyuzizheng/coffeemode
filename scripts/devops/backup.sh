@@ -173,8 +173,30 @@ DB_DUMP_FILE=""
 DB_CHECKSUM_FILE=""
 
 if [[ "$BACKUP_TYPE" == "db" || "$BACKUP_TYPE" == "full" ]]; then
-  log "Step 1: Executing PostgreSQL atomic database backup..."
-  DB_FILENAME="coffeemode_${ENV}_${REASON}_${TIMESTAMP}.dump.gz"
+  log "Step 1: Executing PostgreSQL atomic database backup with GFS retention tier..."
+
+  # Resolve and validate database password
+  if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
+    if [[ -f "${REPO_ROOT}/deploy/dokploy/.env.${ENV}" ]]; then
+      POSTGRES_PASSWORD="$(grep -E '^POSTGRES_PASSWORD=' "${REPO_ROOT}/deploy/dokploy/.env.${ENV}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
+    fi
+  fi
+  if [ "$DRY_RUN" = false ]; then
+    : "${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be set in environment or deploy/dokploy/.env.${ENV}}"
+  fi
+
+  # Determine GFS retention tier based on UTC calendar day
+  DAY_OF_MONTH="$(date -u +"%d")"
+  DAY_OF_WEEK="$(date -u +"%u")" # 7 is Sunday
+  if [[ "$DAY_OF_MONTH" == "01" ]]; then
+    GFS_TIER="monthly"
+  elif [[ "$DAY_OF_WEEK" == "7" ]]; then
+    GFS_TIER="weekly"
+  else
+    GFS_TIER="daily"
+  fi
+
+  DB_FILENAME="coffeemode_${ENV}_${REASON}_${GFS_TIER}_${TIMESTAMP}.dump.gz"
   DB_TEMP_PATH="${OUTPUT_DIR}/.tmp_${DB_FILENAME}"
   DB_DUMP_FILE="${OUTPUT_DIR}/${DB_FILENAME}"
   DB_CHECKSUM_FILE="${DB_DUMP_FILE}.sha256"
@@ -187,8 +209,9 @@ if [[ "$BACKUP_TYPE" == "db" || "$BACKUP_TYPE" == "full" ]]; then
     fi
 
     # 2. Execute pg_dump with custom format (-Fc) piped to gzip
-    log "Streaming compressed pg_dump from container '${CONTAINER}'..."
-    docker exec -e PGPASSWORD="${POSTGRES_PASSWORD:-}" "$CONTAINER" \
+    log "Streaming compressed pg_dump from container '${CONTAINER}' (Tier: ${GFS_TIER})..."
+    set -o pipefail
+    docker exec -e PGPASSWORD="${POSTGRES_PASSWORD}" "$CONTAINER" \
       pg_dump -U "$DB_USER" -d "$DB_NAME" -Fc --verbose | gzip -9 > "$DB_TEMP_PATH"
 
     # 3. Verify non-empty size and atomically move into place
@@ -202,10 +225,10 @@ if [[ "$BACKUP_TYPE" == "db" || "$BACKUP_TYPE" == "full" ]]; then
     # 4. Generate SHA256 checksum for tamper-proof verification
     (cd "$OUTPUT_DIR" && sha256sum "$DB_FILENAME" > "${DB_FILENAME}.sha256")
     FILE_SIZE="$(du -h "$DB_DUMP_FILE" | cut -f1)"
-    ok "Database backup successfully created (${FILE_SIZE}): ${DB_DUMP_FILE}"
+    ok "Database backup successfully created (${FILE_SIZE}, Tier: ${GFS_TIER}): ${DB_DUMP_FILE}"
     ok "SHA256 checksum: $(cat "$DB_CHECKSUM_FILE")"
   else
-    ok "[DRY-RUN] Database backup creation (${DB_FILENAME}) simulated."
+    ok "[DRY-RUN] Database backup creation (${DB_FILENAME}, Tier: ${GFS_TIER}) simulated."
   fi
 fi
 
@@ -214,15 +237,41 @@ fi
 # ------------------------------------------------------------------------------
 VOL_ARCHIVE_FILE=""
 VOL_CHECKSUM_FILE=""
+DATA_ARCHIVE_FILE=""
+DATA_CHECKSUM_FILE=""
 
 if [[ "$BACKUP_TYPE" == "vol" || "$BACKUP_TYPE" == "full" ]]; then
-  log "Step 2: Archiving application configuration and Dokploy stack files..."
+  log "Step 2: Archiving persistent volumes and Dokploy configuration..."
+
+  # 2a. Archive Docker persistent data volume if available
+  DOCKER_VOL="coffeemode_postgres_${ENV}_data"
+  DATA_FILENAME="coffeemode_${ENV}_volumedata_${TIMESTAMP}.tar.gz"
+  DATA_ARCHIVE_FILE="${OUTPUT_DIR}/${DATA_FILENAME}"
+  DATA_CHECKSUM_FILE="${DATA_ARCHIVE_FILE}.sha256"
+
+  if [ "$DRY_RUN" = false ]; then
+    if docker volume inspect "$DOCKER_VOL" >/dev/null 2>&1; then
+      log "Archiving Docker persistent volume '${DOCKER_VOL}'..."
+      docker run --rm \
+        -v "${DOCKER_VOL}:/volume-data:ro" \
+        -v "${OUTPUT_DIR}:/backup-dest" \
+        alpine tar -czf "/backup-dest/${DATA_FILENAME}" -C /volume-data .
+      (cd "$OUTPUT_DIR" && sha256sum "$DATA_FILENAME" > "${DATA_FILENAME}.sha256")
+      VOL_DATA_SIZE="$(du -h "$DATA_ARCHIVE_FILE" | cut -f1)"
+      ok "Persistent volume archive created (${VOL_DATA_SIZE}): ${DATA_ARCHIVE_FILE}"
+    else
+      warn "Docker volume '${DOCKER_VOL}' not found. Skipping physical volume tar."
+    fi
+  else
+    ok "[DRY-RUN] Docker volume '${DOCKER_VOL}' archiving simulated."
+  fi
+
+  # 2b. Archive deploy configs and environment templates
   VOL_FILENAME="coffeemode_${ENV}_config_${TIMESTAMP}.tar.gz"
   VOL_ARCHIVE_FILE="${OUTPUT_DIR}/${VOL_FILENAME}"
   VOL_CHECKSUM_FILE="${VOL_ARCHIVE_FILE}.sha256"
 
   if [ "$DRY_RUN" = false ]; then
-    # Archive deploy configs and environment templates
     tar -czf "$VOL_ARCHIVE_FILE" -C "${REPO_ROOT}" \
       "deploy/dokploy" \
       "scripts/devops" 2>/dev/null || true
@@ -295,20 +344,53 @@ fi
 # ------------------------------------------------------------------------------
 # STEP 4: Automated Retention Pruning
 # ------------------------------------------------------------------------------
-log "Step 4: Pruning local ${ENV} backups older than ${RETENTION_DAYS} days in ${OUTPUT_DIR}..."
+log "Step 4: Executing Grandfather-Father-Son retention lifecycle pruning in ${OUTPUT_DIR}..."
 if [ "$DRY_RUN" = false ]; then
   PRUNED_COUNT=0
+
+  # 1. Prune daily backups older than RETENTION_DAYS (default 7/14 days)
   while IFS= read -r old_file; do
     if [[ -n "$old_file" ]]; then
-      log "Removing expired backup: $(basename "$old_file")"
       rm -f "$old_file" "${old_file}.sha256"
       PRUNED_COUNT=$((PRUNED_COUNT + 1))
     fi
-  done < <(find "$OUTPUT_DIR" -name "coffeemode_${ENV}_*.dump.gz" -type f -mtime "+${RETENTION_DAYS}")
+  done < <(find "$OUTPUT_DIR" -name "coffeemode_${ENV}_*daily_*.dump.gz" -type f -mtime "+${RETENTION_DAYS}" 2>/dev/null || true)
 
-  ok "Pruned ${PRUNED_COUNT} expired local backup(s)."
+  # 2. Prune weekly backups older than 28 days (4 weeks)
+  while IFS= read -r old_file; do
+    if [[ -n "$old_file" ]]; then
+      rm -f "$old_file" "${old_file}.sha256"
+      PRUNED_COUNT=$((PRUNED_COUNT + 1))
+    fi
+  done < <(find "$OUTPUT_DIR" -name "coffeemode_${ENV}_*weekly_*.dump.gz" -type f -mtime +28 2>/dev/null || true)
+
+  # 3. Prune monthly backups older than 90 days (3 months)
+  while IFS= read -r old_file; do
+    if [[ -n "$old_file" ]]; then
+      rm -f "$old_file" "${old_file}.sha256"
+      PRUNED_COUNT=$((PRUNED_COUNT + 1))
+    fi
+  done < <(find "$OUTPUT_DIR" -name "coffeemode_${ENV}_*monthly_*.dump.gz" -type f -mtime +90 2>/dev/null || true)
+
+  # 4. Prune unclassified legacy dumps older than RETENTION_DAYS
+  while IFS= read -r old_file; do
+    if [[ -n "$old_file" ]]; then
+      rm -f "$old_file" "${old_file}.sha256"
+      PRUNED_COUNT=$((PRUNED_COUNT + 1))
+    fi
+  done < <(find "$OUTPUT_DIR" -name "coffeemode_${ENV}_*.dump.gz" ! -name "*weekly*" ! -name "*monthly*" ! -name "*daily*" -type f -mtime "+${RETENTION_DAYS}" 2>/dev/null || true)
+
+  # 5. Prune volume and config archives older than RETENTION_DAYS
+  while IFS= read -r old_file; do
+    if [[ -n "$old_file" ]]; then
+      rm -f "$old_file" "${old_file}.sha256"
+      PRUNED_COUNT=$((PRUNED_COUNT + 1))
+    fi
+  done < <(find "$OUTPUT_DIR" -name "coffeemode_${ENV}_*.tar.gz" -type f -mtime "+${RETENTION_DAYS}" 2>/dev/null || true)
+
+  ok "Pruned ${PRUNED_COUNT} expired archive(s) per GFS lifecycle policy."
 else
-  ok "[DRY-RUN] Retention pruning simulated for threshold > ${RETENTION_DAYS} days."
+  ok "[DRY-RUN] GFS retention pruning simulated (Daily: ${RETENTION_DAYS}d, Weekly: 28d, Monthly: 90d)."
 fi
 
 echo ""

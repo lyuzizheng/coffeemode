@@ -189,11 +189,24 @@ stage "Step 3/6: Pre-Flight Zero-Downtime Migration Checks"
 
 MIGRATIONS_DIR="${REPO_ROOT}/web/db/migrations"
 if [[ -d "$MIGRATIONS_DIR" ]]; then
-  log "Checking migrations for zero-downtime rule compliance..."
-  # Check for locking DDL: CREATE INDEX without CONCURRENTLY
+  log "Checking pending migrations for zero-downtime rule compliance..."
+  # Query already-applied migrations to avoid alert fatigue on historical migrations
+  CONTAINER="coffeemode-postgres-prod"
+  DB_USER="coffeemode_prod_user"
+  DB_NAME="coffeemode_prod"
+  APPLIED_MIGRATIONS=""
+  if [ "$DRY_RUN" = false ] && docker ps --filter "name=^/${CONTAINER}$" --format '{{.Status}}' | grep -q "healthy"; then
+    APPLIED_MIGRATIONS="$(docker exec -e PGPASSWORD="${POSTGRES_PASSWORD:-}" "$CONTAINER" \
+      psql -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT name FROM schema_migrations;" 2>/dev/null || echo "")"
+  fi
+
   for sql_file in "${MIGRATIONS_DIR}"/*.sql; do
+    MIG_NAME="$(basename "$sql_file")"
+    if echo "$APPLIED_MIGRATIONS" | grep -qF "$MIG_NAME"; then
+      continue # Skip historical already-applied migrations
+    fi
     if grep -iqE "CREATE[[:space:]]+INDEX" "$sql_file" 2>/dev/null && ! grep -iqE "CONCURRENTLY" "$sql_file" 2>/dev/null; then
-      warn "Table locking risk in $(basename "$sql_file"): 'CREATE INDEX' without CONCURRENTLY."
+      warn "Table locking risk in pending migration ${MIG_NAME}: 'CREATE INDEX' without CONCURRENTLY."
     fi
   done
   ok "Zero-downtime migration analysis complete."
@@ -204,12 +217,20 @@ fi
 # ------------------------------------------------------------------------------
 stage "Step 4/6: Executing Database Schema Migrations"
 
+# Resolve and validate production database password
+if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
+  if [[ -f "${REPO_ROOT}/deploy/dokploy/.env.prod" ]]; then
+    POSTGRES_PASSWORD="$(grep -E '^POSTGRES_PASSWORD=' "${REPO_ROOT}/deploy/dokploy/.env.prod" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
+  fi
+fi
+
 if [ "$DRY_RUN" = false ]; then
+  : "${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be set in environment or deploy/dokploy/.env.prod}"
+  DB_PASS="${POSTGRES_PASSWORD}"
   CONTAINER="coffeemode-postgres-prod"
   DB_USER="coffeemode_prod_user"
   DB_NAME="coffeemode_prod"
   DB_PORT=5432
-  DB_PASS="${POSTGRES_PASSWORD:-coffeemode_prod_password}"
   TARGET_DB_URL="postgres://${DB_USER}:${DB_PASS}@127.0.0.1:${DB_PORT}/${DB_NAME}?sslmode=disable"
 
   if docker ps --filter "name=^/${CONTAINER}$" --format '{{.Status}}' | grep -q "healthy"; then
@@ -221,6 +242,9 @@ if [ "$DRY_RUN" = false ]; then
       )
     elif docker ps --filter "name=^/coffeemode-web-prod$" --format '{{.Status}}' | grep -q "Up"; then
       docker exec "coffeemode-web-prod" npm run db:migrate
+    else
+      error "CRITICAL: Unable to execute database migrations! Neither web/scripts/migrate.mjs nor running web container is available."
+      exit 1
     fi
     ok "Database schema migrations applied to Production."
   else
@@ -236,6 +260,15 @@ fi
 # ------------------------------------------------------------------------------
 stage "Step 5/6: Zero-Downtime Rolling Container Replacement"
 
+# Resolve release image tag (SHA or timestamp if not specified)
+RELEASE_TAG="${IMAGE_TAG}"
+if [[ -z "$RELEASE_TAG" || "$RELEASE_TAG" == "latest" ]]; then
+  RELEASE_TAG="$(git -C "${REPO_ROOT}" rev-parse --short HEAD 2>/dev/null || date -u +%Y%m%d_%H%M%SZ)"
+fi
+log "Target Release Tag: ${RELEASE_TAG}"
+
+COMPOSE_FILE="${REPO_ROOT}/deploy/dokploy/docker-compose.prod.yml"
+
 if [[ -n "$DEPLOY_URL" ]]; then
   log "Triggering Dokploy production deployment webhook..."
   if [ "$DRY_RUN" = false ]; then
@@ -249,14 +282,26 @@ if [[ -n "$DEPLOY_URL" ]]; then
     ok "[DRY-RUN] Dokploy production deploy webhook call simulated."
   fi
 else
-  log "Deploy webhook not provided. Executing local Docker Compose zero-downtime rolling update..."
-  COMPOSE_FILE="${REPO_ROOT}/deploy/dokploy/docker-compose.prod.yml"
+  log "Executing local Docker Compose zero-downtime rolling update (start-first)..."
   if [ "$DRY_RUN" = false ]; then
-    docker compose -f "$COMPOSE_FILE" up -d --build web-prod
-    ok "Production web container updated."
+    IMAGE_TAG="${RELEASE_TAG}" docker compose -f "$COMPOSE_FILE" build web-prod
+    docker tag "coffeemode-web-prod:${RELEASE_TAG}" "coffeemode-web-prod:latest" 2>/dev/null || true
+    IMAGE_TAG="${RELEASE_TAG}" docker compose -f "$COMPOSE_FILE" up -d web-prod
+    ok "Production web container updated with tag '${RELEASE_TAG}'."
   else
-    ok "[DRY-RUN] Docker Compose up -d --build web-prod simulated."
+    ok "[DRY-RUN] Docker Compose build & up -d web-prod with tag '${RELEASE_TAG}' simulated."
   fi
+fi
+
+# Record release metadata for instant rollback auto-discovery
+RELEASE_HISTORY_DIR="${REPO_ROOT}/backups/prod"
+mkdir -p "$RELEASE_HISTORY_DIR"
+RELEASE_LOG="${RELEASE_HISTORY_DIR}/releases.log"
+if [ "$DRY_RUN" = false ]; then
+  echo "${TIMESTAMP}|${RELEASE_TAG}|${SNAPSHOT_PATH:-}" >> "$RELEASE_LOG"
+  ok "Recorded release in ${RELEASE_LOG}."
+else
+  ok "[DRY-RUN] Recorded release ${RELEASE_TAG} in releases.log simulated."
 fi
 
 # ------------------------------------------------------------------------------
@@ -264,10 +309,29 @@ fi
 # ------------------------------------------------------------------------------
 stage "Step 6/6: Post-Deployment Production Verification"
 
-if [ "$SKIP_SMOKE" = false ]; then
-  if [ "$DRY_RUN" = false ]; then
-    log "Allowing 5s grace period for rolling update convergence..."
-    sleep 5
+BASE_URL="https://${PROD_DOMAIN:-coffeemode.app}"
+if [ "$DRY_RUN" = false ]; then
+  log "Polling health endpoint on ${BASE_URL}/api/health for release convergence (timeout: 120s)..."
+  MAX_RETRIES=30
+  RETRY=0
+  IS_HEALTHY=false
+  while [ $RETRY -lt $MAX_RETRIES ]; do
+    RETRY=$((RETRY + 1))
+    if curl -fsS -m 5 "${BASE_URL}/api/health" 2>/dev/null | grep -q '"ok":true'; then
+      IS_HEALTHY=true
+      break
+    fi
+    sleep 4
+  done
+
+  if [ "$IS_HEALTHY" = true ]; then
+    ok "Production healthcheck is green."
+  else
+    error "Timed out waiting for production healthcheck on ${BASE_URL}/api/health after 120s."
+    exit 1
+  fi
+
+  if [ "$SKIP_SMOKE" = false ]; then
     log "Executing automated smoke test suite against Production..."
     "${SCRIPT_DIR}/smoke-test.sh" prod || {
       error "Production smoke test FAILED!"
@@ -275,10 +339,10 @@ if [ "$SKIP_SMOKE" = false ]; then
     }
     ok "All production smoke tests passed."
   else
-    ok "[DRY-RUN] Production smoke test execution simulated."
+    log "Skipping production smoke tests (--skip-smoke)."
   fi
 else
-  log "Skipping production smoke tests (--skip-smoke)."
+  ok "[DRY-RUN] Production health convergence polling and smoke tests simulated."
 fi
 
 # Success: clear failure trap

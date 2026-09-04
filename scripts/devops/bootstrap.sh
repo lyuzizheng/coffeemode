@@ -220,17 +220,44 @@ provision_dns_record() {
 
   log "Configuring Cloudflare DNS A record: ${record_name} -> ${target_ip} (proxied)..."
   if [ "$DRY_RUN" = false ]; then
-    curl -s -X POST \
-      "https://api.cloudflare.com/client/v4/zones/${cf_zone_id}/dns_records" \
+    # Idempotent lookup-then-upsert to prevent duplicate round-robin DNS records
+    local existing_id
+    existing_id="$(curl -s -X GET \
+      "https://api.cloudflare.com/client/v4/zones/${cf_zone_id}/dns_records?type=A&name=${record_name}" \
       -H "Authorization: Bearer ${cf_token}" \
-      -H "Content-Type: application/json" \
-      -d "{
-        \"type\": \"A\",
-        \"name\": \"${record_name}\",
-        \"content\": \"${target_ip}\",
-        \"ttl\": 1,
-        \"proxied\": true
-      }" >/dev/null 2>&1 || true
+      -H "Content-Type: application/json" | jq -r '.result[0].id // empty')"
+
+    if [[ -n "$existing_id" ]]; then
+      log "Updating existing DNS A record '${record_name}' (${existing_id})..."
+      curl -s -X PUT \
+        "https://api.cloudflare.com/client/v4/zones/${cf_zone_id}/dns_records/${existing_id}" \
+        -H "Authorization: Bearer ${cf_token}" \
+        -H "Content-Type: application/json" \
+        -d "{
+          \"type\": \"A\",
+          \"name\": \"${record_name}\",
+          \"content\": \"${target_ip}\",
+          \"ttl\": 1,
+          \"proxied\": true
+        }" >/dev/null 2>&1 || true
+      ok "DNS record '${record_name}' updated."
+    else
+      log "Creating new DNS A record '${record_name}'..."
+      curl -s -X POST \
+        "https://api.cloudflare.com/client/v4/zones/${cf_zone_id}/dns_records" \
+        -H "Authorization: Bearer ${cf_token}" \
+        -H "Content-Type: application/json" \
+        -d "{
+          \"type\": \"A\",
+          \"name\": \"${record_name}\",
+          \"content\": \"${target_ip}\",
+          \"ttl\": 1,
+          \"proxied\": true
+        }" >/dev/null 2>&1 || true
+      ok "DNS record '${record_name}' created."
+    fi
+  else
+    ok "[DRY-RUN] DNS A record configuration for '${record_name}' simulated."
   fi
 }
 
@@ -240,13 +267,13 @@ if [ "$SKIP_CLOUDFLARE" = false ]; then
   provision_r2_bucket "coffeemode-images-prod"
   provision_r2_bucket "coffeemode-backups"
 
+  # Note: images.coffeemode.app and staging-images.coffeemode.app are Cloudflare R2
+  # custom domains connected directly to R2 buckets, NOT origin VPS A records.
   PUBLIC_IP="$(curl -s -m 5 https://api.ipify.org 2>/dev/null || echo "")"
   if [[ -n "$PUBLIC_IP" && -n "${CLOUDFLARE_ZONE_ID:-}" ]]; then
     provision_dns_record "coffeemode.app" "$PUBLIC_IP"
     provision_dns_record "www.coffeemode.app" "$PUBLIC_IP"
     provision_dns_record "staging.coffeemode.app" "$PUBLIC_IP"
-    provision_dns_record "images.coffeemode.app" "$PUBLIC_IP"
-    provision_dns_record "staging-images.coffeemode.app" "$PUBLIC_IP"
   fi
   ok "Cloudflare edge & storage configuration complete."
 else
@@ -307,13 +334,18 @@ for env in "${ENVS[@]}"; do
   fi
 
   if [ "$DRY_RUN" = false ]; then
-    # Ensure default password if not provided
-    export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-coffeemode_secure_password_${env}}"
-    export DATABASE_URL="${DATABASE_URL:-postgres://coffeemode_${env}_user:${POSTGRES_PASSWORD}@127.0.0.1:$([ "$env" = "staging" ] && echo 5433 || echo 5432)/coffeemode_${env}?sslmode=disable}"
+    # Resolve and validate database password per environment
+    ENV_PASSWORD="${POSTGRES_PASSWORD:-}"
+    if [[ -z "$ENV_PASSWORD" && -f "${REPO_ROOT}/deploy/dokploy/.env.${env}" ]]; then
+      ENV_PASSWORD="$(grep -E '^POSTGRES_PASSWORD=' "${REPO_ROOT}/deploy/dokploy/.env.${env}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
+    fi
+    : "${ENV_PASSWORD:?Error: POSTGRES_PASSWORD must be set in environment or deploy/dokploy/.env.${env}}"
+
+    export POSTGRES_PASSWORD="${ENV_PASSWORD}"
+    export DATABASE_URL="postgres://coffeemode_${env}_user:${POSTGRES_PASSWORD}@127.0.0.1:$([ "$env" = "staging" ] && echo 5433 || echo 5432)/coffeemode_${env}?sslmode=disable"
 
     # Bring up database service only
     docker compose -f "$COMPOSE_FILE" up -d "postgres-${env}"
-
     log "Waiting for '${CONTAINER}' to become healthy..."
     MAX_ATTEMPTS=30
     ATTEMPT=0
@@ -351,7 +383,10 @@ for env in "${ENVS[@]}"; do
   DB_PORT="$([ "$env" = "staging" ] && echo 5433 || echo 5432)"
   DB_USER="coffeemode_${env}_user"
   DB_NAME="coffeemode_${env}"
-  DB_PASS="${POSTGRES_PASSWORD:-coffeemode_secure_password_${env}}"
+  DB_PASS="${POSTGRES_PASSWORD:-}"
+  if [[ -z "$DB_PASS" && -f "${REPO_ROOT}/deploy/dokploy/.env.${env}" ]]; then
+    DB_PASS="$(grep -E '^POSTGRES_PASSWORD=' "${REPO_ROOT}/deploy/dokploy/.env.${env}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
+  fi
   TARGET_DB_URL="postgres://${DB_USER}:${DB_PASS}@127.0.0.1:${DB_PORT}/${DB_NAME}?sslmode=disable"
 
   if [ "$DRY_RUN" = false ]; then
@@ -388,14 +423,25 @@ if [ "$SKIP_SEED" = false ]; then
     log "Bootstrapping service account profile and base records for ${env}..."
     DB_USER="coffeemode_${env}_user"
     DB_NAME="coffeemode_${env}"
-    DB_PASS="${POSTGRES_PASSWORD:-coffeemode_secure_password_${env}}"
+    DB_PASS="${POSTGRES_PASSWORD:-}"
+    if [[ -z "$DB_PASS" && -f "${REPO_ROOT}/deploy/dokploy/.env.${env}" ]]; then
+      DB_PASS="$(grep -E '^POSTGRES_PASSWORD=' "${REPO_ROOT}/deploy/dokploy/.env.${env}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
+    fi
 
     if [ "$DRY_RUN" = false ]; then
-      # Migration 0016 seeds service account, verify presence:
-      docker exec -e PGPASSWORD="$DB_PASS" "coffeemode-postgres-${env}" \
-        psql -U "$DB_USER" -d "$DB_NAME" -c \
-        "INSERT INTO profiles (id, display_name) VALUES ('00000000-0000-4000-a000-000000000001', 'CoffeeMode') ON CONFLICT (id) DO NOTHING;" >/dev/null
-      ok "Service account profile verified in ${env}."
+      # Check if service account profile already exists (seeded by migration 0016)
+      PROFILE_CHECK="$(docker exec -e PGPASSWORD="$DB_PASS" "coffeemode-postgres-${env}" \
+        psql -U "$DB_USER" -d "$DB_NAME" -t -c \
+        "SELECT 1 FROM profiles WHERE id = '00000000-0000-4000-a000-000000000001';" 2>/dev/null | tr -d '[:space:]' || echo "")"
+
+      if [[ "$PROFILE_CHECK" == "1" ]]; then
+        ok "Service account profile already verified in ${env}."
+      else
+        docker exec -e PGPASSWORD="$DB_PASS" "coffeemode-postgres-${env}" \
+          psql -U "$DB_USER" -d "$DB_NAME" -c \
+          "INSERT INTO profiles (id, display_name) VALUES ('00000000-0000-4000-a000-000000000001', 'CoffeeMode') ON CONFLICT (id) DO NOTHING;" >/dev/null
+        ok "Service account profile seeded in ${env}."
+      fi
     else
       ok "[DRY-RUN] Seed bootstrapping simulated for ${env}."
     fi
@@ -404,8 +450,6 @@ else
   stage "Step 6/7: Seed Data Bootstrapping"
   log "Skipping seed data (--skip-seed)."
 fi
-
-# ------------------------------------------------------------------------------
 # STEP 7: Web Application Container Deployment & Verification
 # ------------------------------------------------------------------------------
 if [ "$SKIP_APP" = false ]; then

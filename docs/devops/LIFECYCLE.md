@@ -178,8 +178,8 @@ Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enfor
 - **Trigger**: Anomaly, elevated error rates, or failed post-deploy smoke tests.
 - **Executor**: `scripts/devops/rollback-prod.sh`.
 - **Workflow**:
-  1. Automatically detects the pre-migration snapshot created in Phase 4.
-  2. Reverts the web application container to the previous release image.
+  1. Automatically parses the persistent release history log (`releases.log`) to resolve the previous release's image tag and pre-migration database snapshot path.
+  2. Reverts the web application container to the previous release image (via `docker service rollback` in Swarm mode, or parameterized `IMAGE_TAG` compose update).
   3. Restores the production database to the pre-migration state using `scripts/devops/restore.sh --env prod --file <SNAPSHOT> --yes`.
   4. Runs smoke tests to confirm healthy production recovery.
 
@@ -192,9 +192,15 @@ Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enfor
   # Staging weekly backup on Sunday at 03:00 UTC
   0 3 * * 0 /path/to/coffeemode/scripts/devops/backup.sh --env staging --reason scheduled >> /var/log/coffeemode-backup.log 2>&1
   ```
-- **Offsite Replication**: Backups are SHA256 checksummed and replicated offsite to Cloudflare R2 bucket `s3://coffeemode-backups/<env>/`.
-- **Retention**: Local retention cleans files older than 14 days (prod) or 7 days (staging).
-
+- **Grandfather-Father-Son (GFS) Lifecycle**:
+  - **Daily Tier**: Automated daily backups retained for 14 days (prod) or 7 days (staging).
+  - **Weekly Tier**: Backups taken on Sundays retained for 28 days (4 weeks).
+  - **Monthly Tier**: Backups taken on the 1st of each month retained for 90 days (3 months).
+- **Volume & Configuration Archiving**:
+  - Atomic PostgreSQL compressed dump (`pg_dump -Fc` with gzip-9).
+  - Persistent data volume archiving (`coffeemode_postgres_${ENV}_data` tarball).
+  - Deployment and environment configuration archiving (`.tar.gz` with SHA256 checksums).
+- **Offsite Replication**: Backups and checksums are replicated offsite to Cloudflare R2 bucket `s3://coffeemode-backups/<env>/`.
 ### Phase 7: Cold-Start VPS Provisioning
 - **Target**: Blank Ubuntu or Debian LTS server.
 - **Orchestration**: Run `scripts/devops/bootstrap.sh` from the repository:
@@ -212,7 +218,7 @@ Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enfor
 
 ## 4. Operational Script Reference
 
-All operational scripts live under `scripts/devops/` and are fully executable, idempotent, and self-documenting via `--help`:
+All operational scripts live canonically under `scripts/devops/` and are fully executable, idempotent, and self-documenting via `--help`. Legacy paths under `deploy/dokploy/` provide thin forwarding wrappers delegating to these canonical scripts:
 
 | Script | Purpose | Key Flags |
 | --- | --- | --- |
@@ -220,11 +226,10 @@ All operational scripts live under `scripts/devops/` and are fully executable, i
 | `bootstrap.sh` | End-to-end cold-start orchestrator from zero to live | `--env [staging\|prod\|both]`, `--skip-vps-prep`, `--skip-cloudflare`, `--dry-run` |
 | `upgrade-staging.sh` | Upgrades staging service with migrations and smoke tests | `--deploy-url`, `--skip-backup`, `--image-tag`, `--dry-run` |
 | `upgrade-prod.sh` | Zero-downtime production upgrade with staging gate & safety snapshot | `--skip-staging-gate`, `--deploy-url`, `--image-tag`, `--dry-run` |
-| `rollback-prod.sh` | Instant rollback of container and database to pre-migration state | `--backup-file`, `--image-tag`, `--yes`, `--dry-run` |
-| `backup.sh` | Atomic `pg_dump -Fc` compressed backup + config + R2 upload | `--env`, `--type [db\|vol\|full]`, `--reason`, `--retention-days`, `--dry-run` |
+| `rollback-prod.sh` | Instant rollback of container image and database to pre-migration state | `--backup-file`, `--image-tag`, `--yes`, `--dry-run` |
+| `backup.sh` | Atomic `pg_dump -Fc` compressed backup + volume + R2 GFS upload | `--env`, `--type [db\|vol\|full]`, `--reason`, `--retention-days`, `--dry-run` |
 | `restore.sh` | Restores database archive with PostGIS verification & drill mode | `--env`, `--file`, `--download-r2`, `--drill`, `--yes`, `--dry-run` |
 | `smoke-test.sh` | In-repo post-deployment automated health verification | `staging\|prod`, `--url <override>`, `--timeout <sec>` |
-
 ---
 
 ## 5. Disaster Recovery & Recovery Drill Playbook

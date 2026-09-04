@@ -246,8 +246,12 @@ if [ "$SKIP_UFW" = false ]; then
   run_cmd ufw allow 80/tcp comment "HTTP (Traefik / Let's Encrypt)"
   run_cmd ufw allow 443/tcp comment "HTTPS (Traefik SSL)"
   if [ "$DRY_RUN" = false ]; then
-    ufw --force enable || true
-    ok "UFW firewall active (ports ${SSH_PORT}, 80, 443 allowed; all others denied)."
+    if ufw --force enable; then
+      ok "UFW firewall active (ports ${SSH_PORT}, 80, 443 allowed; all others denied)."
+    else
+      error "UFW firewall activation failed!"
+      exit 1
+    fi
   else
     ok "[DRY-RUN] UFW firewall activation simulated."
   fi
@@ -314,10 +318,19 @@ if [ "$SKIP_DOCKER" = false ]; then
       ok "Docker Swarm is already active on this node."
     else
       log "Initializing Docker Swarm on loopback..."
-      docker swarm init --advertise-addr 127.0.0.1 || true
-      ok "Docker Swarm initialized successfully."
+      if docker swarm init --advertise-addr 127.0.0.1; then
+        ok "Docker Swarm initialized successfully."
+      else
+        warn "Docker Swarm init returned non-zero. Verifying Swarm state..."
+        SWARM_STATE="$(docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null || echo 'inactive')"
+        if [ "$SWARM_STATE" = "active" ]; then
+          ok "Docker Swarm is active."
+        else
+          error "Docker Swarm initialization failed!"
+          exit 1
+        fi
+      fi
     fi
-  else
     ok "[DRY-RUN] Docker Swarm initialization simulated."
   fi
 else
@@ -377,6 +390,6 @@ echo "Firewall (UFW):    Active (Ports ${SSH_PORT}, 80, 443 allowed)"
 echo "Docker Engine:     $(docker --version 2>/dev/null || echo 'Installed')"
 echo "Docker Swarm:      $([ "$SKIP_DOCKER" = false ] && echo 'Active' || echo 'Skipped')"
 echo "Traefik Network:   traefik-net (Ready)"
-echo "Dokploy Dashboard: http://${HOST_IP}:3000"
+echo "Dokploy Dashboard: Bound to port 3000. Access via SSH tunnel: ssh -L 3000:127.0.0.1:3000 root@${HOST_IP}"
 echo "Next Step:         Run ./bootstrap.sh to provision databases and services."
 echo "=============================================================================="

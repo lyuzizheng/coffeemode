@@ -17,6 +17,7 @@ Do not load every spec by default unless the task spans the whole system.
 | `0002-design-system.md` | Visual direction, tokens, typography, motion — 2026 standard |
 | `0003-testing-and-ci.md` | Testing strategy, fixture policy, CI gates, automation |
 | `0004-product-decisions-and-backlog.md` | Subagent review output, proposed decisions, and implementation backlog |
+| `0005-dokploy-vps-and-deployment-architecture.md` | Dokploy VPS Staging/Prod separation, Cloudflare dual-stack matrix, and webhook CI/CD |
 
 ## Adding a new spec
 

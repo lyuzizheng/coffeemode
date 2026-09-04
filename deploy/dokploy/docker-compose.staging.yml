@@ -1,0 +1,111 @@
+# CoffeeMode Staging Stack — Dokploy Docker Compose
+# Architecture: docs/specs/0005-dokploy-vps-and-deployment-architecture.md
+#
+# Isolated Staging Stack:
+#   - postgres-staging: PostGIS 16 instance on dedicated bridge network (coffeemode-staging-network)
+#   - web-staging: Next.js standalone container on internal port 3000
+#   - Ingress: Web container connects to external traefik-net for Traefik routing
+#   - Isolation: Database and data volumes are 100% isolated from production
+#
+# Deployment Mode Note:
+#   - Plain Docker Compose (Dokploy default): deploys via `docker compose up -d`.
+#   - Docker Swarm Mode: if the VPS initializes Docker Swarm (`docker swarm init`),
+#     Dokploy deploys via `docker stack deploy`, which activates `deploy.update_config`.
+
+services:
+  postgres-staging:
+    image: postgis/postgis:16-3.4
+    container_name: coffeemode-postgres-staging
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-coffeemode_staging}
+      POSTGRES_USER: ${POSTGRES_USER:-coffeemode_staging_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Staging postgres password must be set}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_staging_data:/var/lib/postgresql/data
+      - postgres_staging_backups:/backups
+    networks:
+      - coffeemode-staging-network
+    ports:
+      # Bound strictly to localhost loopback for administrative access via SSH tunnel
+      # Port is NEVER exposed on public network interface
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-coffeemode_staging_user} -d ${POSTGRES_DB:-coffeemode_staging}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1536M
+        reservations:
+          cpus: "0.50"
+          memory: 512M
+
+  web-staging:
+    image: coffeemode-web-staging:latest
+    build:
+      context: ../../web
+      dockerfile: Dockerfile
+    container_name: coffeemode-web-staging
+    restart: unless-stopped
+    env_file:
+      - .env.staging
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be configured in .env.staging or Dokploy environment}
+    networks:
+      - coffeemode-staging-network
+      - traefik-net
+    depends_on:
+      postgres-staging:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      # Route staging traffic
+      - "traefik.http.routers.coffeemode-staging.rule=Host(`${STAGING_DOMAIN:-staging.coffeemode.app}`)"
+      - "traefik.http.routers.coffeemode-staging.entrypoints=websecure"
+      - "traefik.http.routers.coffeemode-staging.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.coffeemode-staging.service=coffeemode-staging-svc"
+      # Service & Healthcheck
+      - "traefik.http.services.coffeemode-staging-svc.loadbalancer.server.port=3000"
+      - "traefik.http.services.coffeemode-staging-svc.loadbalancer.healthcheck.path=/api/health"
+      - "traefik.http.services.coffeemode-staging-svc.loadbalancer.healthcheck.interval=10s"
+      - "traefik.http.services.coffeemode-staging-svc.loadbalancer.healthcheck.timeout=3s"
+      # Security Middlewares (no-op sslRedirect removed from websecure entrypoint)
+      - "traefik.http.routers.coffeemode-staging.middlewares=staging-sec-headers@docker"
+      - "traefik.http.middlewares.staging-sec-headers.headers.browserXssFilter=true"
+      - "traefik.http.middlewares.staging-sec-headers.headers.contentTypeNosniff=true"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1024M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+networks:
+  coffeemode-staging-network:
+    name: coffeemode-staging-network
+    driver: bridge
+  traefik-net:
+    external: true
+
+volumes:
+  postgres_staging_data:
+    name: coffeemode_postgres_staging_data
+  postgres_staging_backups:
+    name: coffeemode_postgres_staging_backups

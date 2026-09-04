@@ -79,7 +79,7 @@ web/next.config.ts       Long immutable Cache-Control headers for static/PWA ass
 web/app/sw.ts            Serwist runtime cache (CacheFirst for immutable assets, NetworkOnly for
                          dynamic pages and API routes)
 web/shared/places/types.ts  POI types shared with the worker
-docs/specs/              0001 Next.js rewrite, 0002 design system, 0003 testing/CI
+docs/specs/              0001 Next.js rewrite, 0002 design system, 0003 testing/CI, 0005 Dokploy VPS deploy
 docs/agent/              current state, planned-slice manifest, owner actions
 .agents/                 Agent rules, workflows, skills, scripts, and review gates
 _archive-coffeemode-frontend/  old Vite app — reference only, superseded

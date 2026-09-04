@@ -1,0 +1,126 @@
+# CoffeeMode Production Stack — Dokploy Docker Compose
+# Architecture: docs/specs/0005-dokploy-vps-and-deployment-architecture.md
+#
+# Production Stack:
+#   - postgres-prod: PostGIS 16 instance on dedicated bridge network (coffeemode-prod-network)
+#   - web-prod: Next.js standalone container on internal port 3000
+#   - Ingress: Web container connects to external traefik-net for Traefik routing
+#   - Isolation: Database and data volumes are 100% isolated from staging
+#
+# Deployment Mode & Zero-Downtime Guarantee:
+#   - Docker Swarm Stack Mode (RECOMMENDED for zero-downtime): With Swarm enabled
+#     on the VPS (`docker swarm init`), Dokploy deploys via `docker stack deploy`,
+#     honoring `deploy.update_config` with `order: start-first`.
+#   - Dokploy Application Mode: Dokploy builds and swaps containers using health checks.
+#   - Plain Docker Compose Mode: `docker compose up -d` recreates the container;
+#     Traefik shifts traffic once the healthcheck passes.
+
+services:
+  postgres-prod:
+    image: postgis/postgis:16-3.4
+    container_name: coffeemode-postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-coffeemode_prod}
+      POSTGRES_USER: ${POSTGRES_USER:-coffeemode_prod_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Production postgres password must be set}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+      - postgres_prod_backups:/backups
+    networks:
+      - coffeemode-prod-network
+    ports:
+      # Bound strictly to localhost loopback for administrative access via SSH tunnel
+      # Port 5432 is NEVER exposed to WAN
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-coffeemode_prod_user} -d ${POSTGRES_DB:-coffeemode_prod}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.00"
+          memory: 4096M
+        reservations:
+          cpus: "1.00"
+          memory: 2048M
+
+  web-prod:
+    image: coffeemode-web-prod:latest
+    build:
+      context: ../../web
+      dockerfile: Dockerfile
+    container_name: coffeemode-web-prod
+    restart: unless-stopped
+    env_file:
+      - .env.prod
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be configured in .env.prod or Dokploy environment}
+    networks:
+      - coffeemode-prod-network
+      - traefik-net
+    depends_on:
+      postgres-prod:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 20s
+    labels:
+      - "traefik.enable=true"
+      # Apex & WWW Routing
+      - "traefik.http.routers.coffeemode-prod.rule=Host(`${PROD_DOMAIN:-coffeemode.app}`) || Host(`www.${PROD_DOMAIN:-coffeemode.app}`)"
+      - "traefik.http.routers.coffeemode-prod.entrypoints=websecure"
+      - "traefik.http.routers.coffeemode-prod.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.coffeemode-prod.service=coffeemode-prod-svc"
+      # Middlewares: WWW redirect to apex + HSTS/Security headers (no-op sslRedirect removed)
+      - "traefik.http.routers.coffeemode-prod.middlewares=prod-www-redirect@docker,prod-sec-headers@docker"
+      - "traefik.http.middlewares.prod-www-redirect.redirectregex.regex=^https://www\\.${PROD_DOMAIN:-coffeemode.app}/(.*)"
+      - "traefik.http.middlewares.prod-www-redirect.redirectregex.replacement=https://${PROD_DOMAIN:-coffeemode.app}/$${1}"
+      - "traefik.http.middlewares.prod-www-redirect.redirectregex.permanent=true"
+      - "traefik.http.middlewares.prod-sec-headers.headers.browserXssFilter=true"
+      - "traefik.http.middlewares.prod-sec-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.prod-sec-headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.prod-sec-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.prod-sec-headers.headers.stsPreload=true"
+      # Service & Healthcheck for Zero-Downtime Rolling Swap
+      - "traefik.http.services.coffeemode-prod-svc.loadbalancer.server.port=3000"
+      - "traefik.http.services.coffeemode-prod-svc.loadbalancer.healthcheck.path=/api/health"
+      - "traefik.http.services.coffeemode-prod-svc.loadbalancer.healthcheck.interval=5s"
+      - "traefik.http.services.coffeemode-prod-svc.loadbalancer.healthcheck.timeout=3s"
+    deploy:
+      update_config:
+        order: start-first
+        failure_action: rollback
+        delay: 5s
+        monitor: 15s
+        max_failure_ratio: 0
+      resources:
+        limits:
+          cpus: "2.00"
+          memory: 2048M
+        reservations:
+          cpus: "1.00"
+          memory: 1024M
+
+networks:
+  coffeemode-prod-network:
+    name: coffeemode-prod-network
+    driver: bridge
+  traefik-net:
+    external: true
+
+volumes:
+  postgres_prod_data:
+    name: coffeemode_postgres_prod_data
+  postgres_prod_backups:
+    name: coffeemode_postgres_prod_backups

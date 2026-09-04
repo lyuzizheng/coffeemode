@@ -47,7 +47,7 @@ services:
           memory: 512M
 
   web-staging:
-    image: coffeemode-web-staging:latest
+    image: coffeemode-web-staging:${IMAGE_TAG:-latest}
     build:
       context: ../../web
       dockerfile: Dockerfile

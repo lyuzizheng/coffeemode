@@ -50,7 +50,7 @@ services:
           memory: 2048M
 
   web-prod:
-    image: coffeemode-web-prod:latest
+    image: coffeemode-web-prod:${IMAGE_TAG:-latest}
     build:
       context: ../../web
       dockerfile: Dockerfile

@@ -17,3 +17,4 @@ order live in `.agents/README.md`.
 | `docs/adr/` | Architecture Decision Records with historical context |
 | `docs/agent/` | Current phase, blockers, owner actions, and planned implementation slices |
 | `docs/design/` | Versioned Kimi K3 visual-design artifacts that gate UI slices |
+| `docs/devops/` | End-to-end DevOps lifecycle, cold-start provisioning, and disaster recovery |

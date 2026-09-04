@@ -14,6 +14,7 @@ docs/
   adr/
   agent/
   design/
+  devops/
 ```
 
 ## What belongs where
@@ -73,6 +74,21 @@ owner approval records that unblock UI slices
 Artifacts own visual composition only; product behavior stays canonical in
 `docs/specs/`. See `docs/design/README.md` for the artifact contract.
 
+
+### `docs/devops/`
+
+DevOps operational lifecycle, cold-start provisioning, upgrade automation, and disaster recovery playbooks.
+
+Use it for:
+
+```text
+cold-start VPS provisioning runbooks
+automated backup and retention policies
+staging and production zero-downtime release procedures
+disaster recovery drills and instant rollback playbooks
+```
+
+Canonical operational reference: `docs/devops/LIFECYCLE.md`.
 ### `.agents/`
 
 Repo-local agent operating material.

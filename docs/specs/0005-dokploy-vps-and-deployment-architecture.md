@@ -45,8 +45,8 @@ Accepted (2026-09-04 — BRAWUKA-50 architecture and deployment specification; r
 
 4. Concrete Deployment & Migration Orchestration:
    Because Dokploy compose webhooks do not execute arbitrary host lifecycle scripts,
-   deployments are orchestrated via `deploy/dokploy/deploy-release.sh` (executed via SSH
-   from CI or run directly by an operator):
+   deployments are orchestrated via `deploy/dokploy/deploy-release.sh` (which delegates to
+   the DevOps lifecycle suite in `scripts/devops/` per `docs/devops/LIFECYCLE.md`):
    - Step 1: Pre-migration database backup (`deploy/dokploy/backup-postgres.sh`)
    - Step 2: Database schema migration execution (`npm run db:migrate`)
    - Step 3: Deployment trigger (Dokploy webhook or compose pull/up)
@@ -276,5 +276,6 @@ The automated smoke test suite (`deploy/dokploy/smoke-test.sh`) verifies the fol
 - Database PostGIS 16 container, backup script, and zero-downtime migration protocol are documented and implemented.
 - Environment variable templates exist (.env.staging.example and .env.prod.example).
 - Automated smoke test script exists in deploy/dokploy/smoke-test.sh.
+- Comprehensive operational lifecycle runbook exists in docs/devops/LIFECYCLE.md.
 - .agents/scripts/preflight.sh and .agents/scripts/harness-self-test.sh pass with no errors or broken links.
 ```

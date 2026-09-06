@@ -133,8 +133,10 @@ limit $${limitIdx}${offsetClause}
   const serviceAccountId = getServiceAccountId();
   return rows.map((row) => {
     const effectiveCreatedBy = row.created_by ?? serviceAccountId;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip internal creator id (spec 0001 / DG13)
+    const { created_by: _cb, ...rest } = row;
     return {
-      ...row,
+      ...rest,
       maintainer: effectiveCreatedBy === serviceAccountId ? SERVICE_ACCOUNT_MAINTAINER_LABEL : null,
       work_stats: coerceWorkStats(row.work_stats),
     };

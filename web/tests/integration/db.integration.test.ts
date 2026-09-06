@@ -1636,6 +1636,11 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(await cafeExists(created.cafeId)).toBe(false);
       expect(await cafeExists(created.cafeId, null)).toBe(false);
 
+      // Owner can record navigation to own private cafe (P2); stranger gets CafeNotFoundError
+      const nav = await recordNavigation(U1, created.cafeId);
+      expect(nav.id).toBeDefined();
+      await expect(recordNavigation(U2, created.cafeId)).rejects.toBeInstanceOf(CafeNotFoundError);
+
       // Non-owner (U2) cannot change visibility (403)
       await expect(setCafeVisibility(created.cafeId, U2, "public")).rejects.toBeInstanceOf(CafeForbiddenError);
     });

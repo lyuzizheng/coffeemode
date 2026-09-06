@@ -17,6 +17,7 @@ import { ImageServiceError } from "@/lib/images/image-service-client";
 import { GET as listGET, POST as createPOST } from "@/app/api/cafes/route";
 import { DELETE as detailDELETE, GET as detailGET } from "@/app/api/cafes/[id]/route";
 import { PATCH as visibilityPATCH } from "@/app/api/cafes/[id]/visibility/route";
+import { GET as checkinsGET } from "@/app/api/cafes/[id]/checkins/route";
 
 import { INVALID_CAFE_PAYLOADS } from "./helpers/fixtures";
 const getUserMock = vi.fn();
@@ -616,6 +617,7 @@ describe("GET /api/cafes/[id]", () => {
     });
     expect(res.status).toBe(200);
     const body = await res.json() as { gallery: Array<Record<string, unknown>> };
+    expect(body).not.toHaveProperty("created_by");
     expect(body.gallery).toHaveLength(1);
     expect(body.gallery[0]).not.toHaveProperty("by");
     expect(body.gallery[0]).toMatchObject({
@@ -683,7 +685,7 @@ describe("toPublicCafeDetail", () => {
     expect((cafe.gallery[0] as unknown as Record<string, unknown>).by).toBe("user-1");
   });
 
-  it("renders created_by fallback to SERVICE_ACCOUNT_ID and maintainer label when created_by is null", () => {
+  it("renders created_by fallback to SERVICE_ACCOUNT_ID and maintainer label when created_by is null, stripping raw created_by", () => {
     const cafe = {
       id: "c1",
       name: "Test",
@@ -691,11 +693,11 @@ describe("toPublicCafeDetail", () => {
       gallery: [],
     } as unknown as CafeDetail;
     const pub = toPublicCafeDetail(cafe);
-    expect(pub.created_by).toBe(getServiceAccountId());
+    expect(pub).not.toHaveProperty("created_by");
     expect(pub.maintainer).toBe(SERVICE_ACCOUNT_MAINTAINER_LABEL);
   });
 
-  it("renders maintainer label when created_by is SERVICE_ACCOUNT_ID", () => {
+  it("renders maintainer label when created_by is SERVICE_ACCOUNT_ID and strips raw created_by", () => {
     const cafe = {
       id: "c1",
       name: "Test",
@@ -703,10 +705,11 @@ describe("toPublicCafeDetail", () => {
       gallery: [],
     } as unknown as CafeDetail;
     const pub = toPublicCafeDetail(cafe);
+    expect(pub).not.toHaveProperty("created_by");
     expect(pub.maintainer).toBe(SERVICE_ACCOUNT_MAINTAINER_LABEL);
   });
 
-  it("renders maintainer null when created_by is a regular user", () => {
+  it("renders maintainer null and strips created_by when created_by is a regular user (DG13 / spec 0001 anonymous)", () => {
     const cafe = {
       id: "c1",
       name: "Test",
@@ -714,7 +717,7 @@ describe("toPublicCafeDetail", () => {
       gallery: [],
     } as unknown as CafeDetail;
     const pub = toPublicCafeDetail(cafe);
-    expect(pub.created_by).toBe("550e8400-e29b-41d4-a716-446655440000");
+    expect(pub).not.toHaveProperty("created_by");
     expect(pub.maintainer).toBeNull();
   });
 });
@@ -1153,6 +1156,44 @@ describe("PATCH /api/cafes/[id]/visibility", () => {
     });
     // No update query executed (only 2 queries: isLiveCafe + select)
     expect(poolQueryMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("GET /api/cafes/[id]/checkins", () => {
+  const CAFE_ID = "550e8400-e29b-41d4-a716-446655440001";
+  const OTHER_USER = { id: "550e8400-e29b-41d4-a716-446655449999" };
+
+  beforeEach(() => {
+    getUserMock.mockReset();
+    clientQueryMock.mockReset();
+    poolQueryMock.mockReset();
+  });
+
+  it("200s when owner requests checkins feed for their own private cafe (DG147 / P1-2)", async () => {
+    getUserMock.mockResolvedValue({ data: { user: USER }, error: null });
+    poolQueryMock.mockResolvedValueOnce({
+      rows: [{ id: CAFE_ID, name: "Private Cafe", created_by: USER.id, visibility: "private", work_stats: {} }],
+    });
+    poolQueryMock.mockResolvedValueOnce({ rows: [] });
+
+    const res = await checkinsGET(
+      new Request(`https://localhost/api/cafes/${CAFE_ID}/checkins?mode=newest`),
+      { params: Promise.resolve({ id: CAFE_ID }) },
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("404s when stranger requests checkins feed for a private cafe", async () => {
+    getUserMock.mockResolvedValue({ data: { user: OTHER_USER }, error: null });
+    poolQueryMock.mockResolvedValueOnce({
+      rows: [{ id: CAFE_ID, name: "Private Cafe", created_by: USER.id, visibility: "private", work_stats: {} }],
+    });
+
+    const res = await checkinsGET(
+      new Request(`https://localhost/api/cafes/${CAFE_ID}/checkins?mode=newest`),
+      { params: Promise.resolve({ id: CAFE_ID }) },
+    );
+    expect(res.status).toBe(404);
   });
 });
 

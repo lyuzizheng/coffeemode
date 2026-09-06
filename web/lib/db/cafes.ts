@@ -456,8 +456,10 @@ export async function listCafesNearby(params: NearbyCafesQuery): Promise<CafeSum
   >(sql, values);
   return rows.map((row) => {
     const effectiveCreatedBy = row.created_by ?? serviceAccountId;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip internal creator id (spec 0001 / DG13)
+    const { created_by: _cb, ...rest } = row;
     return {
-      ...row,
+      ...rest,
       maintainer: effectiveCreatedBy === serviceAccountId ? SERVICE_ACCOUNT_MAINTAINER_LABEL : null,
       work_stats: coerceWorkStats(row.work_stats),
     };
@@ -503,19 +505,20 @@ export async function getCafe(
 }
 
 /**
- * Public cafe detail projection (spec 0001 DG13): strip `StoredImage.by`
+ * Public cafe detail projection (spec 0001 DG13): strip creator id and `StoredImage.by`
  * from gallery so the anonymous surface never leaks internal author ids.
- * Null `created_by` renders as the service account ("由 CoffeeMode 维护").
+ * Null created_by falls back to the service account, rendering maintainer as "由 CoffeeMode 维护".
  */
 export function toPublicCafeDetail(cafe: CafeDetail): PublicCafeDetail {
   const serviceAccountId = getServiceAccountId();
   const effectiveCreatedBy = cafe.created_by ?? serviceAccountId;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip internal creator id (spec 0001 / DG13)
+  const { created_by: _cb, gallery, ...rest } = cafe;
   return {
-    ...cafe,
-    created_by: effectiveCreatedBy,
+    ...rest,
     maintainer: effectiveCreatedBy === serviceAccountId ? SERVICE_ACCOUNT_MAINTAINER_LABEL : null,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip internal author id (DG13)
-    gallery: (cafe.gallery ?? []).map(({ by: _by, ...image }) => image),
+    gallery: (gallery ?? []).map(({ by: _by, ...image }) => image),
   };
 }
 

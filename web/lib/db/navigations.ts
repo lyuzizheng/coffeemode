@@ -44,7 +44,7 @@ export async function recordNavigation(
   if (!isValidUUID(cafeId)) throw new Error("Invalid cafe ID");
 
   // Explicit existence check so a missing cafe is a 404, not an FK 500.
-  const exists = await cafeExists(cafeId);
+  const exists = await cafeExists(cafeId, userId);
   if (!exists) throw new CafeNotFoundError(cafeId);
 
   const { rows } = await query<RecordedNavigation & Record<string, unknown>>(

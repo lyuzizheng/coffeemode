@@ -31,17 +31,15 @@ export interface CafeDetail extends Omit<CafeSummary, "distance_m"> {
   gallery: StoredImage[];
   google_place_id: string | null;
   apple_poi_id: string | null;
+  /** Internal creator id; stripped on public projections (spec 0001 DG13). */
   created_by?: string | null;
-  visibility?: CafeVisibility;
-  // created_by is intentionally not exposed: the creator stays anonymous (spec 0001).
   created_at: string;
   updated_at: string;
 }
 
-/** Public cafe detail (spec 0001 DG13): gallery `by` is stripped for anonymous surface. */
-export type PublicCafeDetail = Omit<CafeDetail, "gallery"> & {
+/** Public cafe detail (spec 0001 DG13): creator id and gallery `by` are stripped for anonymous surface. */
+export type PublicCafeDetail = Omit<CafeDetail, "gallery" | "created_by"> & {
   gallery: PublicStoredImage[];
   maintainer?: string | null;
-  created_by?: string | null;
   visibility?: CafeVisibility;
 };

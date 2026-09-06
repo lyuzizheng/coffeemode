@@ -54,7 +54,7 @@ export async function GET(
   }
 
   try {
-    const cafe = await getCafe(id);
+    const cafe = await getCafe(id, user?.id);
     if (!cafe) {
       return apiError("not_found", "cafe not found", 404);
     }

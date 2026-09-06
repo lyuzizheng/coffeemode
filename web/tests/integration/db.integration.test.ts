@@ -52,6 +52,13 @@ import {
   getUserCheckIns,
   getUserCafes,
 } from "@/lib/db/profile";
+import {
+  updateProfileIdentity,
+  getProfileIdentity,
+  InvalidHandleError,
+  HandleTakenError,
+  HandleChangeTooSoonError,
+} from "@/lib/db/identity";
 import { searchCafesInDb } from "@/lib/db/search";
 import { executeSearch } from "@/lib/search/search-service";
 import { recordNavigation } from "@/lib/db/navigations";
@@ -175,7 +182,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   });
 
-  it("applies migrations 0001→0017 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0018 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -195,6 +202,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0015_drop_dead_cafe_columns.sql",
       "0016_seed_service_account.sql",
       "0017_cafe_visibility.sql",
+      "0018_public_identity.sql",
     ]);
 
     const serviceProfile = await dbClient.query(
@@ -243,6 +251,23 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     expect(colNames.has("owner_id")).toBe(false);
     expect(colNames.has("slug")).toBe(false);
     expect(colNames.has("visibility")).toBe(true);
+
+    // Issue #139: Verify 0018_public_identity columns on profiles and unique partial index
+    const profileColRows = await dbClient.query<{ column_name: string; data_type: string; column_default: string | null }>(
+      `select column_name, data_type, column_default from information_schema.columns where table_name = 'profiles'`,
+    );
+    const profileColNames = new Set(profileColRows.rows.map((r) => r.column_name));
+    expect(profileColNames.has("show_public_identity")).toBe(true);
+    expect(profileColNames.has("public_handle")).toBe(true);
+    expect(profileColNames.has("identity_consented_at")).toBe(true);
+    expect(profileColNames.has("public_handle_changed_at")).toBe(true);
+
+    const handleIndexRes = await dbClient.query<{ indexdef: string }>(
+      `select indexdef from pg_indexes where indexname = 'idx_profiles_public_handle'`,
+    );
+    expect(handleIndexRes.rows).toHaveLength(1);
+    expect(handleIndexRes.rows[0].indexdef).toContain("public_handle IS NOT NULL");
+    expect(handleIndexRes.rows[0].indexdef).toContain("UNIQUE INDEX");
   });
 
   describeDb("toggleCheckInLike on real SQL", () => {
@@ -1822,6 +1847,89 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       // Verify work_stats updated
       const cafe = await getCafe(created.cafeId, U1);
       expect(cafe?.work_stats.n_checkins).toBe(2);
+    });
+  });
+
+  describeDb("opt-in public author identity consent lifecycle (DG139 / #139 Stage 1)", () => {
+    it("manages the complete opt-in, handle generation, handle edit, cooldown, and opt-out lifecycle", async () => {
+      const userA = randomUUID();
+      const userB = randomUUID();
+
+      // Seed profiles
+      await dbClient.query(
+        "insert into profiles (id, display_name) values ($1, 'Alex Nomad'), ($2, 'Bob Nomad')",
+        [userA, userB],
+      );
+
+      // 1. Default state: show_public_identity = false, public_handle = null, identity_consented_at = null
+      const initial = await getProfileIdentity(userA);
+      expect(initial).toEqual({
+        showPublicIdentity: false,
+        publicHandle: null,
+        identityConsentedAt: null,
+        publicHandleChangedAt: null,
+      });
+
+      // 2. Opt-in generates collision-safe handle slug(display_name)-xxxx and stamps identity_consented_at
+      const optedIn = await updateProfileIdentity(userA, { showPublicIdentity: true });
+      expect(optedIn.showPublicIdentity).toBe(true);
+      expect(optedIn.publicHandle).toMatch(/^alex-nomad-[0-9a-f]{4}$/);
+      expect(optedIn.identityConsentedAt).not.toBeNull();
+      expect(optedIn.publicHandleChangedAt).toBeNull(); // Allows immediate customization!
+
+      // 3. First user customization of server-generated handle is allowed immediately
+      const customized = await updateProfileIdentity(userA, {
+        showPublicIdentity: true,
+        publicHandle: "alex-custom",
+      });
+      expect(customized.showPublicIdentity).toBe(true);
+      expect(customized.publicHandle).toBe("alex-custom");
+      expect(customized.publicHandleChangedAt).not.toBeNull();
+
+      // 4. Changing handle again within 7 days is rejected with HandleChangeTooSoonError
+      await expect(
+        updateProfileIdentity(userA, {
+          showPublicIdentity: true,
+          publicHandle: "alex-again",
+        }),
+      ).rejects.toThrow(HandleChangeTooSoonError);
+
+      // 5. Invalid handle format is rejected
+      await expect(
+        updateProfileIdentity(userA, {
+          showPublicIdentity: true,
+          publicHandle: "Invalid-Format!",
+        }),
+      ).rejects.toThrow(InvalidHandleError);
+
+      // 6. Opt-out clears identity_consented_at, sets show_public_identity = false, and retains reserved handle
+      const optedOut = await updateProfileIdentity(userA, { showPublicIdentity: false });
+      expect(optedOut.showPublicIdentity).toBe(false);
+      expect(optedOut.publicHandle).toBe("alex-custom");
+      expect(optedOut.identityConsentedAt).toBeNull();
+
+      // Direct DB assertion to verify SQL state
+      const dbRow = await dbClient.query(
+        "select show_public_identity, public_handle, identity_consented_at from profiles where id = $1",
+        [userA],
+      );
+      expect(dbRow.rows[0].show_public_identity).toBe(false);
+      expect(dbRow.rows[0].public_handle).toBe("alex-custom");
+      expect(dbRow.rows[0].identity_consented_at).toBeNull();
+
+      // 7. Anti-squatting: another user cannot claim the reserved handle even while User A is opted out
+      await expect(
+        updateProfileIdentity(userB, {
+          showPublicIdentity: true,
+          publicHandle: "alex-custom",
+        }),
+      ).rejects.toThrow(HandleTakenError);
+
+      // 8. Re-opt-in reuses the reserved handle without generating a new one
+      const reOptedIn = await updateProfileIdentity(userA, { showPublicIdentity: true });
+      expect(reOptedIn.showPublicIdentity).toBe(true);
+      expect(reOptedIn.publicHandle).toBe("alex-custom");
+      expect(reOptedIn.identityConsentedAt).not.toBeNull();
     });
   });
 });

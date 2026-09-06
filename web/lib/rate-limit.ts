@@ -29,6 +29,7 @@ export const CAFES_WRITE_RATE_LIMIT = rateLimitConfig("cafes-write");
 export const SEARCH_RATE_LIMITS = rateLimitBuckets("search");
 export const PROFILE_READ_RATE_LIMIT = rateLimitConfig("profile-read");
 export const PROFILE_WRITE_RATE_LIMIT = rateLimitConfig("profile-write");
+export const IDENTITY_WRITE_RATE_LIMIT = rateLimitConfig("identity-write");
 
 /**
  * In-memory token-bucket rate limiter.

@@ -31,3 +31,6 @@ profile-read:
 profile-write:
   windowMs: 60000
   maxRequests: 10
+identity-write:
+  windowMs: 60000
+  maxRequests: 10

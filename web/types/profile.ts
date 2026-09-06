@@ -10,6 +10,10 @@ export interface Profile {
   last_location: unknown | null;
   last_seen_at: string | null;
   created_at: string;
+  show_public_identity: boolean;
+  public_handle: string | null;
+  identity_consented_at: string | null;
+  public_handle_changed_at: string | null;
 }
 
 /** Derived profile statistics shown on `/profile`. */

@@ -108,6 +108,7 @@ describe("config files", () => {
     ]);
     expect(rateLimitConfig("profile-read")).toEqual({ windowMs: 60_000, maxRequests: 30 });
     expect(rateLimitConfig("profile-write")).toEqual({ windowMs: 60_000, maxRequests: 10 });
+    expect(rateLimitConfig("identity-write")).toEqual({ windowMs: 60_000, maxRequests: 10 });
     expect(() => rateLimitConfig("search")).toThrow(/multi-window/);
   });
 });

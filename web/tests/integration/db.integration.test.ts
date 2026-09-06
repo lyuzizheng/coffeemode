@@ -35,12 +35,15 @@ import {
   CafeExistsError,
   CafeForbiddenError,
   CafeHasOtherCheckinsError,
+  cafeExists,
   createCafeWithFirstCheckIn,
   deleteCafe,
   getCafe,
   getCafeLocation,
+  isLiveCafe,
   listCafeSitemapEntries,
   listCafesNearby,
+  setCafeVisibility,
 } from "@/lib/db/cafes";
 import {
   getProfile,
@@ -172,7 +175,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   });
 
-  it("applies migrations 0001→0016 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0017 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -191,6 +194,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0014_fk_indexes_and_partial_gist.sql",
       "0015_drop_dead_cafe_columns.sql",
       "0016_seed_service_account.sql",
+      "0017_cafe_visibility.sql",
     ]);
 
     const serviceProfile = await dbClient.query(
@@ -224,6 +228,13 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     expect(indexNames.has("idx_cafes_gallery")).toBe(false);
     expect(indexNames.has("idx_checkins_photos")).toBe(false);
 
+    // DG147: Verify idx_cafes_location_active predicate has visibility = 'public' and no redundant idx_cafes_visibility_public
+    const gistRes = await dbClient.query<{ indexdef: string }>(
+      `select indexdef from pg_indexes where indexname = 'idx_cafes_location_active'`,
+    );
+    expect(gistRes.rows[0].indexdef).toContain("visibility = 'public'");
+    expect(indexNames.has("idx_cafes_visibility_public")).toBe(false);
+
     // Issue #253: Verify dead columns owner_id and slug are dropped from cafes
     const colRows = await dbClient.query<{ column_name: string }>(
       `select column_name from information_schema.columns where table_name = 'cafes'`,
@@ -231,6 +242,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     const colNames = new Set(colRows.rows.map((r) => r.column_name));
     expect(colNames.has("owner_id")).toBe(false);
     expect(colNames.has("slug")).toBe(false);
+    expect(colNames.has("visibility")).toBe(true);
   });
 
   describeDb("toggleCheckInLike on real SQL", () => {
@@ -1572,6 +1584,239 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         [photoId],
       );
       expect(intentRes.rows).toHaveLength(0);
+    });
+  });
+
+  describeDb("cafe visibility reversible hide (DG147 / #229)", () => {
+    it("hides private cafe from stranger (404 on getCafe and cafeExists) while owner sees it (200)", async () => {
+      const photoId = randomUUID();
+      await recordUploadIntent(U1, photoId);
+
+      const created = await createCafeWithFirstCheckIn(U1, {
+        name: "Secret Study Cafe",
+        lat: 1.3005,
+        lng: 103.856,
+        city: "singapore",
+        checkin: {
+          scores: { overall: 85, wifi: 90 },
+          max_stay: "unlimited",
+          note: "Quiet and hidden gem",
+          photo_ids: [photoId],
+        },
+      }, fakeProvisionPhotosDeps());
+
+      // Initially public: stranger and anonymous can see it
+      const publicCafeForStranger = await getCafe(created.cafeId, U2);
+      expect(publicCafeForStranger).not.toBeNull();
+      expect(await cafeExists(created.cafeId, U2)).toBe(true);
+      expect(await cafeExists(created.cafeId, null)).toBe(true);
+      expect(await isLiveCafe(created.cafeId)).toBe(true);
+
+      // Owner toggles to private
+      const toggleRes = await setCafeVisibility(created.cafeId, U1, "private");
+      expect(toggleRes).toEqual({ ok: true, id: created.cafeId, visibility: "private" });
+
+      // Cafe remains live while private
+      expect(await isLiveCafe(created.cafeId)).toBe(true);
+
+      // Owner sees it (200 / truthy)
+      const ownerCafe = await getCafe(created.cafeId, U1);
+      expect(ownerCafe).not.toBeNull();
+      expect(ownerCafe?.name).toBe("Secret Study Cafe");
+      expect(await cafeExists(created.cafeId, U1)).toBe(true);
+
+      // Stranger gets 404 (getCafe returns null, cafeExists returns false)
+      const strangerCafe = await getCafe(created.cafeId, U2);
+      expect(strangerCafe).toBeNull();
+      expect(await cafeExists(created.cafeId, U2)).toBe(false);
+
+      // Anonymous gets 404
+      const anonCafe = await getCafe(created.cafeId);
+      expect(anonCafe).toBeNull();
+      expect(await cafeExists(created.cafeId)).toBe(false);
+      expect(await cafeExists(created.cafeId, null)).toBe(false);
+
+      // Non-owner (U2) cannot change visibility (403)
+      await expect(setCafeVisibility(created.cafeId, U2, "public")).rejects.toBeInstanceOf(CafeForbiddenError);
+    });
+
+    it("excludes private cafe from public list, search, nearby, and sitemap, but includes in owner views", async () => {
+      const photoId = randomUUID();
+      await recordUploadIntent(U1, photoId);
+
+      const created = await createCafeWithFirstCheckIn(U1, {
+        name: "Exclusive Hideaway",
+        lat: 1.301,
+        lng: 103.857,
+        city: "singapore",
+        checkin: {
+          scores: { overall: 90, wifi: 95 },
+          max_stay: "unlimited",
+          note: "Members only feel",
+          photo_ids: [photoId],
+        },
+      }, fakeProvisionPhotosDeps());
+
+      // Toggle to private
+      await setCafeVisibility(created.cafeId, U1, "private");
+
+      // 1. listCafesNearby:
+      // Anonymous / stranger: excluded
+      const publicNearby = await listCafesNearby({
+        lat: 1.301,
+        lng: 103.857,
+        radiusKm: 5,
+        limit: 10,
+      });
+      expect(publicNearby.some((c) => c.id === created.cafeId)).toBe(false);
+
+      const strangerNearby = await listCafesNearby({
+        lat: 1.301,
+        lng: 103.857,
+        radiusKm: 5,
+        limit: 10,
+        viewerId: U2,
+      });
+      expect(strangerNearby.some((c) => c.id === created.cafeId)).toBe(false);
+
+      // Owner: present
+      const ownerNearby = await listCafesNearby({
+        lat: 1.301,
+        lng: 103.857,
+        radiusKm: 5,
+        limit: 10,
+        viewerId: U1,
+      });
+      expect(ownerNearby.some((c) => c.id === created.cafeId)).toBe(true);
+
+      // 2. searchCafesInDb:
+      // Stranger / anonymous: excluded
+      const publicSearch = await searchCafesInDb({
+        q: "Exclusive Hideaway",
+        city: "singapore",
+      });
+      expect(publicSearch.some((c) => c.id === created.cafeId)).toBe(false);
+
+      const strangerSearch = await searchCafesInDb({
+        q: "Exclusive Hideaway",
+        city: "singapore",
+        viewerId: U2,
+      });
+      expect(strangerSearch.some((c) => c.id === created.cafeId)).toBe(false);
+
+      // Owner: present
+      const ownerSearch = await searchCafesInDb({
+        q: "Exclusive Hideaway",
+        city: "singapore",
+        viewerId: U1,
+      });
+      expect(ownerSearch.some((c) => c.id === created.cafeId)).toBe(true);
+
+      // 3. listCafeSitemapEntries:
+      // Excluded from sitemap
+      const sitemap = await listCafeSitemapEntries();
+      expect(sitemap.some((entry) => entry.id === created.cafeId)).toBe(false);
+    });
+
+    it("round-trip public→private→public restores visibility", async () => {
+      const photoId = randomUUID();
+      await recordUploadIntent(U1, photoId);
+
+      const created = await createCafeWithFirstCheckIn(U1, {
+        name: "Toggle Test Cafe",
+        lat: 1.302,
+        lng: 103.858,
+        city: "singapore",
+        checkin: {
+          scores: { overall: 80 },
+          max_stay: "unlimited",
+          note: "Testing toggle reversibility",
+          photo_ids: [photoId],
+        },
+      }, fakeProvisionPhotosDeps());
+
+      // 1. Initial: public
+      expect(await cafeExists(created.cafeId, U2)).toBe(true);
+      expect((await searchCafesInDb({ q: "Toggle Test Cafe", viewerId: U2 })).some((c) => c.id === created.cafeId)).toBe(true);
+
+      // 2. Toggle to private
+      await setCafeVisibility(created.cafeId, U1, "private");
+      expect(await cafeExists(created.cafeId, U2)).toBe(false);
+      expect(await getCafe(created.cafeId, U2)).toBeNull();
+      expect((await searchCafesInDb({ q: "Toggle Test Cafe", viewerId: U2 })).some((c) => c.id === created.cafeId)).toBe(false);
+
+      // 3. Toggle back to public
+      await setCafeVisibility(created.cafeId, U1, "public");
+      expect(await cafeExists(created.cafeId, U2)).toBe(true);
+      expect(await getCafe(created.cafeId, U2)).not.toBeNull();
+      expect((await searchCafesInDb({ q: "Toggle Test Cafe", viewerId: U2 })).some((c) => c.id === created.cafeId)).toBe(true);
+    });
+
+    it("another user's profile map hides their private cafes while own profile is unaffected", async () => {
+      const photoId = randomUUID();
+      await recordUploadIntent(U1, photoId);
+
+      const created = await createCafeWithFirstCheckIn(U1, {
+        name: "U1 Private Roast",
+        lat: 1.303,
+        lng: 103.859,
+        city: "singapore",
+        checkin: {
+          scores: { overall: 88 },
+          max_stay: "unlimited",
+          note: "Private cafe visited by creator",
+          photo_ids: [photoId],
+        },
+      }, fakeProvisionPhotosDeps());
+
+      // Toggle to private
+      await setCafeVisibility(created.cafeId, U1, "private");
+
+      // U1 views own profile: cafe is present
+      const ownProfileCafes = await getUserCafes(U1, { viewerId: U1 });
+      expect(ownProfileCafes.items.some((c) => c.id === created.cafeId)).toBe(true);
+
+      // U2 views U1's profile: private cafe is hidden
+      const strangerViewingU1 = await getUserCafes(U1, { viewerId: U2 });
+      expect(strangerViewingU1.items.some((c) => c.id === created.cafeId)).toBe(false);
+
+      // Anonymous viewing U1's profile: private cafe is hidden
+      const anonViewingU1 = await getUserCafes(U1, { viewerId: null });
+      expect(anonViewingU1.items.some((c) => c.id === created.cafeId)).toBe(false);
+    });
+
+    it("work_stats continue computing without freezing or invalidation while private", async () => {
+      const photoId1 = randomUUID();
+      await recordUploadIntent(U1, photoId1);
+
+      const created = await createCafeWithFirstCheckIn(U1, {
+        name: "Stats In Private Cafe",
+        lat: 1.304,
+        lng: 103.860,
+        city: "singapore",
+        checkin: {
+          scores: { overall: 70, wifi: 60 },
+          max_stay: "unlimited",
+          note: "Initial checkin",
+          photo_ids: [photoId1],
+        },
+      }, fakeProvisionPhotosDeps());
+      // Toggle to private
+      await setCafeVisibility(created.cafeId, U1, "private");
+
+      // Add another check-in while private
+      const photoId2 = randomUUID();
+      await recordUploadIntent(U1, photoId2);
+      await createCheckIn(U1, {
+        cafe_id: created.cafeId,
+        scores: { overall: 90, wifi: 80 },
+        max_stay: "unlimited",
+        note: "Second checkin while private",
+        photo_ids: [photoId2],
+      }, fakeProvisionPhotosDeps());
+      // Verify work_stats updated
+      const cafe = await getCafe(created.cafeId, U1);
+      expect(cafe?.work_stats.n_checkins).toBe(2);
     });
   });
 });

@@ -45,7 +45,7 @@ export async function GET(
   }
 
   try {
-    const cafe = await getCafe(id);
+    const cafe = await getCafe(id, user?.id);
     if (!cafe) {
       return apiError("not_found", "cafe not found", 404);
     }
@@ -89,7 +89,7 @@ export async function DELETE(
   }
 
   try {
-    const exists = await cafeExists(id);
+    const exists = await cafeExists(id, user.id);
     if (!exists) {
       return apiError("not_found", "cafe not found", 404);
     }

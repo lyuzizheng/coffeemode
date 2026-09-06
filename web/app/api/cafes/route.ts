@@ -70,7 +70,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const cafes = await listCafesNearby({ lat, lng, radiusKm, limit });
+    const cafes = await listCafesNearby({ lat, lng, radiusKm, limit, viewerId: user?.id });
     return NextResponse.json({ cafes });
   } catch (err) {
     console.error("/api/cafes GET failed", err);

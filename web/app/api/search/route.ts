@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
 import {
   checkRateLimit,
@@ -138,6 +139,8 @@ export async function GET(request: Request) {
   if (!rate.allowed) {
     return rateLimitResponse(rate);
   }
+  const user = await getCurrentUser();
+
 
   const filters: SearchFilters = {
     q,
@@ -149,6 +152,7 @@ export async function GET(request: Request) {
     filter_max_stay: filterMaxStay,
     limit: limitParam,
     ranking,
+    viewer_id: user?.id,
   };
 
   // Populate work dimension score filters using shared mapping table

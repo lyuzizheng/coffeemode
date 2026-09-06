@@ -23,11 +23,31 @@ const CAFE_PAGE_PATH = /^\/cafes\/([^/]+)$/;
 /** Header the proxy uses to hand the attempted id to the global 404. */
 const GONE_HEADER = "x-gone-cafe-id";
 
+async function getProxyUserId(request: NextRequest): Promise<string | null> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey || !hasSupabaseSessionCookie(request)) return null;
+  try {
+    const supabase = createServerClient(url, anonKey, {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+      },
+    });
+    const { data } = await supabase.auth.getUser();
+    return data.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function isGoneCafePage(request: NextRequest): Promise<boolean> {
   const match = CAFE_PAGE_PATH.exec(request.nextUrl.pathname);
   if (!match) return false;
   try {
-    return !(await cafeExists(match[1]));
+    const userId = await getProxyUserId(request);
+    return !(await cafeExists(match[1], userId));
   } catch (err) {
     // DB unreachable: fail open. The page handles the error surface; a
     // degraded soft-404 beats turning every deep link into a 500.

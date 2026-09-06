@@ -104,6 +104,7 @@ export async function executeSearch(
       filter_coffee: filters.filter_coffee,
       filter_overall: filters.filter_overall,
       filter_max_stay: filters.filter_max_stay,
+      viewerId: filters.viewer_id,
       limit: appConfig.search.dbFetchCap,
     });
     rawCafes.push(...cafes);
@@ -136,6 +137,7 @@ export async function executeSearch(
         filter_overall: filters.filter_overall,
         filter_max_stay: filters.filter_max_stay,
         offset,
+        viewerId: filters.viewer_id,
         limit: batchSize,
       });
 

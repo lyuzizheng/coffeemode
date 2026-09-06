@@ -2,6 +2,8 @@ import type { WeeklyHours } from "@/lib/hours";
 import type { WorkStats } from "@/lib/stats/work-stats";
 import type { PublicStoredImage, StoredImage } from "./images";
 
+export type CafeVisibility = "public" | "private";
+
 /** Cafe as returned by list/nearby queries (map + cards). */
 export interface CafeSummary {
   id: string;
@@ -19,6 +21,8 @@ export interface CafeSummary {
   cover: string | null;
   /** Meters from the query point; present on nearby queries. */
   distance_m?: number;
+  maintainer?: string | null;
+  visibility?: CafeVisibility;
 }
 
 /** Full cafe row for the detail surface. */
@@ -27,6 +31,8 @@ export interface CafeDetail extends Omit<CafeSummary, "distance_m"> {
   gallery: StoredImage[];
   google_place_id: string | null;
   apple_poi_id: string | null;
+  created_by?: string | null;
+  visibility?: CafeVisibility;
   // created_by is intentionally not exposed: the creator stays anonymous (spec 0001).
   created_at: string;
   updated_at: string;
@@ -35,4 +41,7 @@ export interface CafeDetail extends Omit<CafeSummary, "distance_m"> {
 /** Public cafe detail (spec 0001 DG13): gallery `by` is stripped for anonymous surface. */
 export type PublicCafeDetail = Omit<CafeDetail, "gallery"> & {
   gallery: PublicStoredImage[];
+  maintainer?: string | null;
+  created_by?: string | null;
+  visibility?: CafeVisibility;
 };

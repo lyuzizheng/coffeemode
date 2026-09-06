@@ -3,15 +3,20 @@ import {
   CafeExistsError,
   createCafeWithFirstCheckIn,
   getCafe,
+  getServiceAccountId,
   listCafesNearby,
   parseCreateCafeBody,
   resolveCafeTimezone,
+  toPublicCafeDetail,
+  SERVICE_ACCOUNT_MAINTAINER_LABEL,
   type CreateCafeCheckInInput,
 } from "@/lib/db/cafes";
+import type { CafeDetail } from "@/types/cafes";
 import { PhotoIntentError } from "@/lib/images/provision-photos";
 import { ImageServiceError } from "@/lib/images/image-service-client";
 import { GET as listGET, POST as createPOST } from "@/app/api/cafes/route";
 import { DELETE as detailDELETE, GET as detailGET } from "@/app/api/cafes/[id]/route";
+import { PATCH as visibilityPATCH } from "@/app/api/cafes/[id]/visibility/route";
 
 import { INVALID_CAFE_PAYLOADS } from "./helpers/fixtures";
 const getUserMock = vi.fn();
@@ -621,8 +626,7 @@ describe("GET /api/cafes/[id]", () => {
 });
 
 describe("toPublicCafeDetail", () => {
-  it("strips by from every gallery entry while preserving other fields", async () => {
-    const { toPublicCafeDetail } = await import("@/lib/db/cafes");
+  it("strips by from every gallery entry while preserving other fields", () => {
     const cafe = {
       id: "c1",
       name: "Test",
@@ -670,13 +674,48 @@ describe("toPublicCafeDetail", () => {
       apple_poi_id: null,
       created_at: "2026-08-01T00:00:00.000Z",
       updated_at: "2026-08-01T00:00:00.000Z",
-    } as unknown as import("@/types/cafes").CafeDetail;
+    } as unknown as CafeDetail;
     const pub = toPublicCafeDetail(cafe);
     expect(pub.gallery).toHaveLength(2);
     for (const img of pub.gallery) {
       expect(img).not.toHaveProperty("by");
     }
     expect((cafe.gallery[0] as unknown as Record<string, unknown>).by).toBe("user-1");
+  });
+
+  it("renders created_by fallback to SERVICE_ACCOUNT_ID and maintainer label when created_by is null", () => {
+    const cafe = {
+      id: "c1",
+      name: "Test",
+      created_by: null,
+      gallery: [],
+    } as unknown as CafeDetail;
+    const pub = toPublicCafeDetail(cafe);
+    expect(pub.created_by).toBe(getServiceAccountId());
+    expect(pub.maintainer).toBe(SERVICE_ACCOUNT_MAINTAINER_LABEL);
+  });
+
+  it("renders maintainer label when created_by is SERVICE_ACCOUNT_ID", () => {
+    const cafe = {
+      id: "c1",
+      name: "Test",
+      created_by: getServiceAccountId(),
+      gallery: [],
+    } as unknown as CafeDetail;
+    const pub = toPublicCafeDetail(cafe);
+    expect(pub.maintainer).toBe(SERVICE_ACCOUNT_MAINTAINER_LABEL);
+  });
+
+  it("renders maintainer null when created_by is a regular user", () => {
+    const cafe = {
+      id: "c1",
+      name: "Test",
+      created_by: "550e8400-e29b-41d4-a716-446655440000",
+      gallery: [],
+    } as unknown as CafeDetail;
+    const pub = toPublicCafeDetail(cafe);
+    expect(pub.created_by).toBe("550e8400-e29b-41d4-a716-446655440000");
+    expect(pub.maintainer).toBeNull();
   });
 });
 
@@ -952,6 +991,168 @@ describe("DELETE /api/cafes/[id]", () => {
       error: "forbidden",
       message: "only creator can delete cafe",
     });
+  });
+});
+
+describe("PATCH /api/cafes/[id]/visibility", () => {
+  const CAFE_ID = "550e8400-e29b-41d4-a716-446655440001";
+  const OTHER_USER = "550e8400-e29b-41d4-a716-446655449999";
+
+  beforeEach(() => {
+    getUserMock.mockReset();
+    clientQueryMock.mockReset();
+    poolQueryMock.mockReset();
+    getUserMock.mockResolvedValue({ data: { user: USER }, error: null });
+  });
+
+  it("400s on a non-UUID id", async () => {
+    const res = await visibilityPATCH(
+      new Request("https://localhost/api/cafes/nope/visibility", {
+        method: "PATCH",
+        body: JSON.stringify({ visibility: "private" }),
+      }),
+      { params: Promise.resolve({ id: "nope" }) },
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("400s on bad enum or invalid body", async () => {
+    const badEnum = await visibilityPATCH(
+      new Request(`https://localhost/api/cafes/${CAFE_ID}/visibility`, {
+        method: "PATCH",
+        body: JSON.stringify({ visibility: "hidden" }),
+      }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
+    );
+    expect(badEnum.status).toBe(400);
+
+    const missingBody = await visibilityPATCH(
+      new Request(`https://localhost/api/cafes/${CAFE_ID}/visibility`, {
+        method: "PATCH",
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
+    );
+    expect(missingBody.status).toBe(400);
+  });
+
+  it("401s when unauthenticated", async () => {
+    getUserMock.mockResolvedValueOnce({ data: { user: null }, error: null });
+    const res = await visibilityPATCH(
+      new Request(`https://localhost/api/cafes/${CAFE_ID}/visibility`, {
+        method: "PATCH",
+        body: JSON.stringify({ visibility: "private" }),
+      }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("404s when the cafe does not exist (unknown cafe)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [] }); // isLiveCafe probe
+    const res = await visibilityPATCH(
+      new Request(`https://localhost/api/cafes/${CAFE_ID}/visibility`, {
+        method: "PATCH",
+        body: JSON.stringify({ visibility: "private" }),
+      }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("404s when the cafe was already tombstoned (deleted_at is not null)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [] }); // isLiveCafe probe (deleted_at is null query)
+    const res = await visibilityPATCH(
+      new Request(`https://localhost/api/cafes/${CAFE_ID}/visibility`, {
+        method: "PATCH",
+        body: JSON.stringify({ visibility: "private" }),
+      }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("403s when caller is not the creator", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // isLiveCafe probe
+    poolQueryMock.mockResolvedValueOnce({
+      rows: [{ id: CAFE_ID, created_by: OTHER_USER, visibility: "public", deleted_at: null }],
+    }); // select cafe in setCafeVisibility
+
+    const res = await visibilityPATCH(
+      new Request(`https://localhost/api/cafes/${CAFE_ID}/visibility`, {
+        method: "PATCH",
+        body: JSON.stringify({ visibility: "private" }),
+      }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
+    );
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toMatchObject({
+      error: "forbidden",
+    });
+  });
+
+  it("403s when created_by is null", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // isLiveCafe probe
+    poolQueryMock.mockResolvedValueOnce({
+      rows: [{ id: CAFE_ID, created_by: null, visibility: "public", deleted_at: null }],
+    }); // select cafe in setCafeVisibility
+
+    const res = await visibilityPATCH(
+      new Request(`https://localhost/api/cafes/${CAFE_ID}/visibility`, {
+        method: "PATCH",
+        body: JSON.stringify({ visibility: "private" }),
+      }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
+    );
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toMatchObject({
+      error: "forbidden",
+    });
+  });
+
+  it("200s and toggles visibility to private", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // isLiveCafe probe
+    poolQueryMock.mockResolvedValueOnce({
+      rows: [{ id: CAFE_ID, created_by: USER.id, visibility: "public", deleted_at: null }],
+    }); // select cafe in setCafeVisibility
+    poolQueryMock.mockResolvedValueOnce({ rows: [] }); // update query
+
+    const res = await visibilityPATCH(
+      new Request(`https://localhost/api/cafes/${CAFE_ID}/visibility`, {
+        method: "PATCH",
+        body: JSON.stringify({ visibility: "private" }),
+      }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
+    );
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      id: CAFE_ID,
+      visibility: "private",
+    });
+  });
+
+  it("200s on idempotent repeat with no mutations", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // isLiveCafe probe
+    poolQueryMock.mockResolvedValueOnce({
+      rows: [{ id: CAFE_ID, created_by: USER.id, visibility: "private", deleted_at: null }],
+    }); // select cafe in setCafeVisibility (already private)
+
+    const res = await visibilityPATCH(
+      new Request(`https://localhost/api/cafes/${CAFE_ID}/visibility`, {
+        method: "PATCH",
+        body: JSON.stringify({ visibility: "private" }),
+      }),
+      { params: Promise.resolve({ id: CAFE_ID }) },
+    );
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      id: CAFE_ID,
+      visibility: "private",
+    });
+    // No update query executed (only 2 queries: isLiveCafe + select)
+    expect(poolQueryMock).toHaveBeenCalledTimes(2);
   });
 });
 

@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
   const cursor = searchParams.get("cursor") ?? undefined;
 
   try {
-    const result = await getUserCafes(user.id, { limit, cursor });
+    const result = await getUserCafes(user.id, { limit, cursor, viewerId: user.id });
     return NextResponse.json({
       items: result.items,
       next_cursor: result.nextCursor,

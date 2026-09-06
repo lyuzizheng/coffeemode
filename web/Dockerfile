@@ -21,6 +21,8 @@ COPY . .
 # CI builds run without credentials; the app throws at request time, not
 # import time, when env is missing.
 ENV NEXT_TELEMETRY_DISABLED=1
+ARG APP_VERSION
+ENV APP_VERSION=${APP_VERSION}
 RUN npm run build
 
 # ---- runtime -------------------------------------------------------------
@@ -29,11 +31,13 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+ARG APP_VERSION
+ENV APP_VERSION=${APP_VERSION}
 
-# Next.js standalone needs the static assets copied in by hand.
+# Next.js standalone needs the static assets and BUILD_ID copied in by hand.
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
+COPY --from=build /app/.next/BUILD_ID ./.next/BUILD_ID
 COPY --from=build /app/public ./public
-
 EXPOSE 3000
 CMD ["node", "server.js"]

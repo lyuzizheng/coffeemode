@@ -55,8 +55,9 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 - [x] Set the placeholders in `image-service/wrangler.toml` `[vars]` / `[env.production]` / `[env.staging]`
 - [x] Deploy image-service:
   - Secrets installed via Cloudflare Worker bindings (`IMAGE_SERVICE_TOKEN`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`)
-  - Deployed to `https://image-service.lyuzizheng.workers.dev` (and `image-service-prod` / `image-service-staging`)
+  - Deployed to `https://image-service-prod.lyuzizheng.workers.dev` (production) and `https://image-service-staging.lyuzizheng.workers.dev` (staging)
   - `IMAGE_SERVICE_URL` and `IMAGE_SERVICE_TOKEN` recorded in local `web/.env.local`
+- [ ] Attach custom domains `images.coffeemode.app` and `staging-images.coffeemode.app` to `coffeemode-images-prod` and `coffeemode-images-staging` R2 buckets once the `coffeemode.app` Cloudflare zone is active (item 7 / issue #142)
 - [ ] Configure bucket defenses:
   - Set a maximum upload size (Cloudflare WAF / R2 bucket limits or a `Content-Length`-enforced presigned URL) to mitigate abuse.
   - Orphan cleanup (issue #158): do NOT add a blanket R2 lifecycle expiry on

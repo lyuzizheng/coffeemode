@@ -186,8 +186,8 @@ Dokploy manages multi-service Docker Compose stacks behind an integrated Traefik
                      │                                                 │
                      ▼                                                 ▼
           deploy-release.sh staging                         deploy-release.sh prod
-  ┌─────────────────────────────────────┐           ┌─────────────────────────────────────┐
-  │ 1. backup-postgres.sh staging       │           │ 1. backup-postgres.sh prod          │
+  ┌───────────────────────────────────────┐           ┌───────────────────────────────────────┐
+  │ 1. backup-postgres.sh staging         │           │ 1. backup-postgres.sh prod            │
   │ 2. npm run db:migrate (repo checkout) │           │ 2. npm run db:migrate (repo checkout) │
   │ 3. Dokploy webhook / compose + poll   │           │ 3. Dokploy webhook / compose + poll   │
   │ 4. smoke-test.sh staging              │           │ 4. smoke-test.sh prod                 │
@@ -201,6 +201,7 @@ Dokploy manages multi-service Docker Compose stacks behind an integrated Traefik
      2. Applies schema migrations: `npm run db:migrate` against `postgres-staging` via repo checkout.
      3. Triggers Dokploy staging deploy webhook (or `docker compose up -d`) and polls `/api/health` for convergence.
      4. Executes automated smoke tests (`deploy/dokploy/smoke-test.sh staging`).
+
 2. **Production Promotion Flow**:
    - **Trigger**: Creation of signed Git release tag `v*` on `main` following staging verification.
    - **Execution**: Run `deploy/dokploy/deploy-release.sh prod`:
@@ -208,6 +209,7 @@ Dokploy manages multi-service Docker Compose stacks behind an integrated Traefik
      2. Applies schema migrations: `npm run db:migrate` against `postgres-prod` via repo checkout.
      3. Triggers Dokploy production deployment and polls `/api/health` for release convergence.
      4. Executes automated smoke tests (`deploy/dokploy/smoke-test.sh prod`).
+
 ### 2. Zero-downtime deployment execution
 
 When the VPS runs in Docker Swarm mode, Dokploy stack deployments honor:
@@ -267,7 +269,7 @@ The automated smoke test suite (`deploy/dokploy/smoke-test.sh`) verifies the fol
 | Cloudflare CDN caching session cookies | Traefik / Next.js emit `Cache-Control: private, no-cache` on authenticated responses. Cloudflare CDN cache rule explicitly configured to BYPASS caching whenever request cookie contains `sb-*` or response header contains `Set-Cookie`. |
 | Accept-Language cache poisoning | Next.js App Router sets `s-maxage` on public pages (`/cafes/[id]`, sitemaps). Cloudflare CDN rule enforces Cache Vary on `Accept-Language` to prevent English visitors from receiving cached Chinese shells (Spec 0001, DG105/DG110). |
 | Docker disk space exhaustion from images | Dokploy scheduled system prune removes dangling images and exited build containers. Host backup retention policy prunes local archives older than 14 days (prod) or 7 days (staging). |
-| Webhook-mode deployment race | Dokploy deploys asynchronously following webhook trigger. Deploy pipeline polls `/api/health` (and `/api/health/version`) until release tag or boot_time updates before executing smoke tests, preventing false green certification of the pre-existing container. |
+| Webhook-mode deployment race | Dokploy deploys asynchronously following webhook trigger. Deploy pipeline polls `/api/health` until release tag or boot_time updates before executing smoke tests, preventing false green certification of the pre-existing container. |
 ## Acceptance criteria
 
 ```text

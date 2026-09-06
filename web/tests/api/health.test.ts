@@ -1,15 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { GET as getHealth, HEAD as headHealth } from "@/app/api/health/route";
-import { GET as getVersion } from "@/app/api/health/version/route";
 import { resolveAppVersion } from "@/lib/version";
 
-describe("health and version API contracts", () => {
+describe("health API contracts", () => {
   const originalEnv = { ...process.env };
 
   beforeEach(() => {
     delete process.env.APP_VERSION;
-    delete process.env.RELEASE_TAG;
-    delete process.env.NEXT_PUBLIC_APP_VERSION;
   });
 
   afterEach(() => {
@@ -34,28 +31,12 @@ describe("health and version API contracts", () => {
     expect(await res.text()).toBe("");
   });
 
-  it("GET /api/health/version returns version and boot_time", async () => {
-    const res = getVersion();
-    expect(res.status).toBe(200);
-
-    const body = await res.json();
-    expect(typeof body.version).toBe("string");
-    expect(body.version.length).toBeGreaterThan(0);
-    expect(typeof body.boot_time).toBe("string");
-  });
-
   it("resolveAppVersion respects APP_VERSION environment variable", () => {
     process.env.APP_VERSION = "v1.2.3-test";
     expect(resolveAppVersion()).toBe("v1.2.3-test");
   });
 
-  it("resolveAppVersion respects RELEASE_TAG when APP_VERSION unset", () => {
-    process.env.RELEASE_TAG = "commit-abc1234";
-    expect(resolveAppVersion()).toBe("commit-abc1234");
-  });
-
-  it("resolveAppVersion respects NEXT_PUBLIC_APP_VERSION fallback", () => {
-    process.env.NEXT_PUBLIC_APP_VERSION = "2026.09.06";
-    expect(resolveAppVersion()).toBe("2026.09.06");
+  it("resolveAppVersion returns development fallback when APP_VERSION unset", () => {
+    expect(resolveAppVersion()).toBe("development");
   });
 });

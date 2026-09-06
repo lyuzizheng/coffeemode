@@ -18,11 +18,6 @@ R2_PUBLIC_URL = "http://localhost:9000/coffeemode"
 # (manual `wrangler dev`) use http://localhost:9000. Compose service sets
 # R2_ENDPOINT=http://minio:9000 via environment — this var is the host fallback.
 R2_ENDPOINT = "http://localhost:9000"
-
-# Production env: override all of the above when deploying to Cloudflare.
-# Fill with real values and deploy with `wrangler deploy --env production`.
-# [env.production]
-# vars = { R2_ACCOUNT_ID = "YOUR_ACCOUNT_ID", R2_BUCKET_NAME = "YOUR_BUCKET", R2_PUBLIC_URL = "https://images.coffeemode.app", R2_ENDPOINT = "https://YOUR_ACCOUNT_ID.r2.cloudflarestorage.com" }
 # TTL (seconds) for presigned upload/download URLs. Optional: when unset or
 # invalid, src/constants.ts DEFAULT_UPLOAD_URL_TTL_SECONDS (600) applies.
 # WARNING: must stay well under the 1h upload-intent window
@@ -35,6 +30,23 @@ binding = "R2_BUCKET"
 # Must match R2_BUCKET_NAME above (local: coffeemode).
 bucket_name = "coffeemode"
 
+# Production env: override all of the above when deploying to Cloudflare.
+# Deploy with `wrangler deploy --env production`.
+[env.production]
+name = "image-service-prod"
+vars = { R2_ACCOUNT_ID = "bf69da5249b63731ad79545d0095e8db", R2_BUCKET_NAME = "coffeemode-images-prod", R2_PUBLIC_URL = "https://images.coffeemode.app", UPLOAD_URL_TTL_SECONDS = "600" }
+[[env.production.r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "coffeemode-images-prod"
+
+# Staging env: isolated staging stack.
+# Deploy with `wrangler deploy --env staging`.
+[env.staging]
+name = "image-service-staging"
+vars = { R2_ACCOUNT_ID = "bf69da5249b63731ad79545d0095e8db", R2_BUCKET_NAME = "coffeemode-images-staging", R2_PUBLIC_URL = "https://staging-images.coffeemode.app", UPLOAD_URL_TTL_SECONDS = "600" }
+[[env.staging.r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "coffeemode-images-staging"
 # Lifecycle: configure an R2 lifecycle rule (Cloudflare dashboard or S3 API)
 # to delete abandoned `original/` objects. Because R2 lifecycle rules cannot
 # inspect custom metadata, the recommended flow is:

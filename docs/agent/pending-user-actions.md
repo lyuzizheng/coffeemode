@@ -51,15 +51,13 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
 ## 6. image-service deploy
 
-- [ ] Create R2 bucket and S3 API token for image uploads
-- [ ] Set the placeholders in `image-service/wrangler.toml` `[vars]`:
-  - `R2_ACCOUNT_ID` (public Cloudflare account id)
-  - `R2_BUCKET_NAME` (must match the `[[r2_buckets]]` `bucket_name`)
-  - `R2_PUBLIC_URL` (your public R2 / CDN base URL, no trailing slash)
-- [ ] In a terminal (from `image-service/`):
-  - `npm install`
-  - Set secrets (values never go in chat/docs): `wrangler secret put IMAGE_SERVICE_TOKEN`, `wrangler secret put R2_ACCESS_KEY_ID`, `wrangler secret put R2_SECRET_ACCESS_KEY`
-  - `npm run deploy` → workers.dev URL; wire `IMAGE_SERVICE_URL` + `IMAGE_SERVICE_TOKEN` into `web/.env.local`
+- [x] Create R2 bucket and S3 API token for image uploads (`coffeemode-images-prod` and `coffeemode-images-staging` provisioned in APAC with CORS configured)
+- [x] Set the placeholders in `image-service/wrangler.toml` `[vars]` / `[env.production]` / `[env.staging]`
+- [x] Deploy image-service:
+  - Secrets installed via Cloudflare Worker bindings (`IMAGE_SERVICE_TOKEN`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`)
+  - Deployed to `https://image-service-prod.lyuzizheng.workers.dev` (production) and `https://image-service-staging.lyuzizheng.workers.dev` (staging)
+  - `IMAGE_SERVICE_URL` and `IMAGE_SERVICE_TOKEN` recorded in local `web/.env.local`
+- [ ] Attach custom domains `images.coffeemode.app` and `staging-images.coffeemode.app` to `coffeemode-images-prod` and `coffeemode-images-staging` R2 buckets once the `coffeemode.app` Cloudflare zone is active (item 7 / issue #142)
 - [ ] Configure bucket defenses:
   - Set a maximum upload size (Cloudflare WAF / R2 bucket limits or a `Content-Length`-enforced presigned URL) to mitigate abuse.
   - Orphan cleanup (issue #158): do NOT add a blanket R2 lifecycle expiry on

@@ -13,7 +13,7 @@ must pass the manifesto's Interaction gate (怎么交互) before shipping.
 
 ## Status
 
-Accepted (revised 2026-09-06 — BRAWUKA-69 human craftsmanship & editorial reset: typography dual ramp & variable serif (--font-serif), spring-first motion tokens & settle budgets, dual-plate printing discipline (plate roles) & --grain material overlay, editorial surfaces & check-in prose, anti-pattern harmonization; revised 2026-09-01 — references 0000-founder-manifesto as the higher-precedence aesthetic authority (#288); 2026-08-22 — copy tone principle 热情真诚: warm, sincere, cute, never commercial (DG87); 2026-08-21 — viewport & safe-area contract: dvh/svh units, env() insets on all bottom-anchored surfaces, viewportFit=cover; BottomSheet is bespoke Framer Motion (DG75); display-font rule clarified: screen titles + brand wordmark permitted, data/numbers/state labels excluded (DG22); desktop cafe detail becomes a second left column, not a right drawer (DG42); PEEK cards gain a low-contrast Work-score watermark (DG43); FAB creation composes logged-out, sign-in at publish (DG39); 2026-08-20 — discovery feed, recovery, focus, reduced-motion, missing-cafe, breakpoint, and gesture constraints; 2026-08-19 — Kimi K3 design authority and responsive discovery contract; earlier 2026-08-02 — supersedes retro/vintage direction, aligned with bottom-sheet SPA, swipe cards, slider check-in)
+Accepted (revised 2026-09-06 — BRAWUKA-69 human craftsmanship & editorial reset: typography dual ramp & variable serif (--font-serif), spring-first motion tokens & settle budgets, dual-plate printing discipline (plate roles) & --grain material overlay, editorial surfaces & check-in prose, anti-pattern harmonization; 2026-09-06 — digital-garden editorial scope settled (BRAWUKA-74): lightweight fulfillment via notes ecosystem; standalone Stories surface rejected; post-map profile notes-collection slice registered; revised 2026-09-01 — references 0000-founder-manifesto as the higher-precedence aesthetic authority (#288); 2026-08-22 — copy tone principle 热情真诚: warm, sincere, cute, never commercial (DG87); 2026-08-21 — viewport & safe-area contract: dvh/svh units, env() insets on all bottom-anchored surfaces, viewportFit=cover; BottomSheet is bespoke Framer Motion (DG75); display-font rule clarified: screen titles + brand wordmark permitted, data/numbers/state labels excluded (DG22); desktop cafe detail becomes a second left column, not a right drawer (DG42); PEEK cards gain a low-contrast Work-score watermark (DG43); FAB creation composes logged-out, sign-in at publish (DG39); 2026-08-20 — discovery feed, recovery, focus, reduced-motion, missing-cafe, breakpoint, and gesture constraints; 2026-08-19 — Kimi K3 design authority and responsive discovery contract; earlier 2026-08-02 — supersedes retro/vintage direction, aligned with bottom-sheet SPA, swipe cards, slider check-in)
 
 ## Stable decisions
 
@@ -29,6 +29,8 @@ Accepted (revised 2026-09-06 — BRAWUKA-69 human craftsmanship & editorial rese
 - Dual typography scales: isolated App ramp (xs-2xl) and Editorial ramp (prose/lede/section/display+opsz); --font-serif for narrative reading, forbidden on utility chrome (BRAWUKA-69)
 - Spring-first motion: settle budgets (150ms/300ms/450ms) replace fixed durations; soft/gentle/snappy presets from lib/motion.ts codified as tokens (BRAWUKA-69)
 - Dual-plate printing discipline: substrate + espresso ink (≥70%) + terracotta spot + sage secondary (≤30%); --grain SVG noise material overlay bound to WCAG AA contrast gate (BRAWUKA-69)
+- Digital garden (manifesto §4) is fulfilled via the check-in notes ecosystem
+  only — standalone Stories/Fieldnotes surfaces are rejected (BRAWUKA-74)
 ```
 
 ## Design personality
@@ -369,11 +371,43 @@ Component transitions:
 - Full-element centered symmetric templates are strictly prohibited on editorial surfaces
 ```
 
-### Digital garden IA placeholder
+### Digital garden scope (BRAWUKA-74 product decision, 2026-09-06)
 
 ```text
-- Digital garden surfaces (Stories / Fieldnotes) remain placeholder-only, awaiting product scope definition in BRAWUKA-74
-- Decision boundary: prior to formal product decision on BRAWUKA-74, no agent may introduce top-level reading routes or speculative navigation tabs
+Manifesto principle 4 (digital garden) is fulfilled lightweight through the
+check-in notes ecosystem — CoffeeMode does NOT introduce a standalone
+Stories/Fieldnotes reading surface.
+
+Approved scope:
+- Check-in note as first-class prose card (see "Check-in note prose card"
+  above; visual pilot via BRAWUKA-73)
+- Profile "手记" (notes) aggregation view — the ONLY new surface this cycle:
+  the user's own notes rendered as an editorial reading collection inside the
+  existing profile tab system. No new top-level route; no IA change
+
+Explicitly rejected (must not grow back without a new product decision):
+- Standalone Stories/Fieldnotes feed and detail reading pages
+- Official or UGC long-form content programs and supply mechanisms
+- Any new top-level reading route (the accepted gate stands: no agent may add
+  top-level reading routes without an explicit product decision)
+- Content moderation / anti-spam infrastructure
+
+Priority vs. map-native main line:
+- Map main line (MapCanvas + check-in core loop) is the absolute priority;
+  NO editorial surface ships before the map
+- Sole pre-map editorial work permitted: the BRAWUKA-73 prose-card visual
+  pilot — design-language application on existing surfaces, not a new product
+  surface (per CEO ruling, BRAWUKA-73 is evaluated after BRAWUKA-71/72 merge)
+- Profile "手记" aggregation view is post-map backlog, registered in
+  docs/agent/implementation-slices.md (also gated on notes accumulating to
+  reading-worthy volume)
+
+Option 3 (full Stories surface) reopen triggers — ALL three required:
+1. Map main line shipped and core retention on target
+2. Data signal of expression overflow (e.g., note-length distribution
+   persistently pressing the 500-char cap)
+3. Explicit Owner approval (content sourcing + moderation cost is a major
+   decision)
 ```
 
 ## Layout

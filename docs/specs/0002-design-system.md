@@ -13,7 +13,7 @@ must pass the manifesto's Interaction gate (怎么交互) before shipping.
 
 ## Status
 
-Accepted (revised 2026-09-01 — references 0000-founder-manifesto as the higher-precedence aesthetic authority (#288); 2026-08-22 — copy tone principle 热情真诚: warm, sincere, cute, never commercial (DG87); 2026-08-21 — viewport & safe-area contract: dvh/svh units, env() insets on all bottom-anchored surfaces, viewportFit=cover; BottomSheet is bespoke Framer Motion (DG75); display-font rule clarified: screen titles + brand wordmark permitted, data/numbers/state labels excluded (DG22); desktop cafe detail becomes a second left column, not a right drawer (DG42); PEEK cards gain a low-contrast Work-score watermark (DG43); FAB creation composes logged-out, sign-in at publish (DG39); 2026-08-20 — discovery feed, recovery, focus, reduced-motion, missing-cafe, breakpoint, and gesture constraints; 2026-08-19 — Kimi K3 design authority and responsive discovery contract; earlier 2026-08-02 — supersedes retro/vintage direction, aligned with bottom-sheet SPA, swipe cards, slider check-in)
+Accepted (revised 2026-09-06 — BRAWUKA-69 human craftsmanship & editorial reset: typography dual ramp & variable serif (--font-serif), spring-first motion tokens & settle budgets, dual-plate printing discipline (plate roles) & --grain material overlay, editorial surfaces & check-in prose, anti-pattern harmonization; 2026-09-06 — digital-garden editorial scope settled (BRAWUKA-74): lightweight fulfillment via notes ecosystem; standalone Stories surface rejected; post-map profile notes-collection slice registered; revised 2026-09-01 — references 0000-founder-manifesto as the higher-precedence aesthetic authority (#288); 2026-08-22 — copy tone principle 热情真诚: warm, sincere, cute, never commercial (DG87); 2026-08-21 — viewport & safe-area contract: dvh/svh units, env() insets on all bottom-anchored surfaces, viewportFit=cover; BottomSheet is bespoke Framer Motion (DG75); display-font rule clarified: screen titles + brand wordmark permitted, data/numbers/state labels excluded (DG22); desktop cafe detail becomes a second left column, not a right drawer (DG42); PEEK cards gain a low-contrast Work-score watermark (DG43); FAB creation composes logged-out, sign-in at publish (DG39); 2026-08-20 — discovery feed, recovery, focus, reduced-motion, missing-cafe, breakpoint, and gesture constraints; 2026-08-19 — Kimi K3 design authority and responsive discovery contract; earlier 2026-08-02 — supersedes retro/vintage direction, aligned with bottom-sheet SPA, swipe cards, slider check-in)
 
 ## Stable decisions
 
@@ -26,6 +26,11 @@ Accepted (revised 2026-09-01 — references 0000-founder-manifesto as the higher
 - Global toast surface: HeroUI <Toast.Provider> mounted in root providers
 - Every new user-visible UI slice requires a Kimi K3 design artifact before
   implementation; agents implement the approved composition rather than inventing it
+- Dual typography scales: isolated App ramp (xs-2xl) and Editorial ramp (prose/lede/section/display+opsz); --font-serif for narrative reading, forbidden on utility chrome (BRAWUKA-69)
+- Spring-first motion: settle budgets (150ms/300ms/450ms) replace fixed durations; soft/gentle/snappy presets from lib/motion.ts codified as tokens (BRAWUKA-69)
+- Dual-plate printing discipline: substrate + espresso ink (≥70%) + terracotta spot + sage secondary (≤30%); --grain SVG noise material overlay bound to WCAG AA contrast gate (BRAWUKA-69)
+- Digital garden (manifesto §4) is fulfilled via the check-in notes ecosystem
+  only — standalone Stories/Fieldnotes surfaces are rejected (BRAWUKA-74)
 ```
 
 ## Design personality
@@ -45,10 +50,14 @@ CoffeeMode should feel like a beautifully designed city guide by a studio that a
 ## Anti-patterns (explicitly avoid)
 
 ```text
-Retro/vintage coffee:
+Retro/vintage coffee kitsch:
   kraft paper textures, bean icons, chalkboard fonts,
   sepia tones, "artisanal" hand-drawn elements,
-  warm-beige-everything, nostalgic serif overload
+  warm-beige-everything kitsch, nostalgic decorative serif overload/flourishes
+  (Harmonization note: this prohibition targets coffee kitsch and cafe gimmicks.
+  It does NOT forbid editorial serif (--font-serif) as a narrative reading voice
+  or warm paper substrate as a physical base. Whole-site serif overload, decorative
+  flourishes/swashes, and tool surfaces in serif remain strictly forbidden.)
 
 Material Design defaults:
   generic elevation, ripples, standard card grids,
@@ -108,6 +117,33 @@ NavPrompt:        ClassPass-style "有去喝一杯吗？" slide-up card (DG92)
 
 HeroUI v3 semantic tokens overridden with the CoffeeMode palette. In HeroUI v3 the brand color is `--accent` (v2 called it `--primary`). The palette is warm-neutral but confident — not muted, not beige. `secondary` is a real brand sage, not a status color.
 
+Plate roles (mono-color dual-plate printing discipline):
+
+```text
+Plate 0  substrate   background/surface —— physical warm paper, counts as zero ink
+Ink 1    dominant    foreground/border/separator —— deep espresso neutral ink (≥70% of colored surface)
+Spot     accent      terracotta: actions, focus rings, interactive links, active states
+                     —— exactly one focal event per viewport
+Plate 2  secondary   sage: strictly limited semantic role = positive work-suitability signals
+                     (WorkProfile bars, live open-state dot, "laptop-friendly" tags)
+                     —— forbidden as decorative large fills; target colored pixel ratio ≤30% per viewport
+Status   status      success/warning/danger —— strictly functional semantics, never decorative
+```
+
+Material token (--grain):
+
+```text
+--grain: SVG feTurbulence noise overlay
+         opacity 0.03–0.05 (light mode) / 0.04–0.06 (dark mode)
+         CSS: pointer-events: none; fixed/absolute overlay
+         Surfaces: background canvas and editorial/hero surfaces only
+         Strict prohibitions: never cover the map canvas; no full-surface color wash;
+                              no third decorative hue
+         Gate invariant: before-and-after WCAG AA contrast calculation table must show zero regressions
+```
+
+Token values:
+
 ```text
 Light mode:
   background:       oklch(98.1% 0.004 82)    warm paper
@@ -162,33 +198,62 @@ Dark mode:
 
 ### Typography
 
+Font families:
+
 ```text
-UI/body:     "Inter" variable (or system-ui fallback)
-Display:     "Satoshi" or "Cabinet Grotesk" (geometric, modern)
-Mono:        "JetBrains Mono" (coordinates, hours, metadata)
+--font-sans:    Inter var
+                UI chrome dedicated (buttons, sheet controls, form inputs, navigation)
+--font-serif:   Self-hosted variable serif (Source Serif 4 Variable, opsz + wght axes, OFL);
+                zh fallback: "Songti SC", "Noto Serif SC", serif
+                Purpose: narrative prose (check-in notes, editorial surfaces)
+                Constraints: minimum 1rem; strictly forbidden on bottom sheets, forms,
+                             buttons, search bars, or other utility/chrome surfaces
+--font-display: Cabinet Grotesk (geometric, modern)
+                Brand wordmark + screen titles + editorial display headlines
+                (if foundry variable cut available swap in, otherwise breathing applies to serif)
+--font-mono:    JetBrains Mono var
+                Coordinates, timestamps, telemetry, Work-score numeric values, tabular numerals
+```
+
+Dual type scale isolation (App ramp vs. Editorial ramp):
+
+```text
+App ramp (UI chrome & utility surfaces — strictly isolated from narrative prose):
+  text-xs    0.75rem   metadata, coordinates, timestamps
+  text-sm    0.8125rem secondary labels, tags
+  text-base  0.875rem  default body, navigation
+  text-md    1.0rem    card titles, list headings
+  text-lg    1.25rem   section headings
+  text-xl    1.5rem    page titles
+  text-2xl   2.0rem    hero/display (landing only)
+
+Editorial ramp (narrative reading & editorial surfaces only — mutually exclusive with App ramp):
+  prose      1.0625rem / 1.75 line-height   narrative reading body
+  lede       1.25rem                        introductory paragraph
+  section    1.75rem                        editorial section heading
+  display    2.5–3.5rem + font-variation-settings opsz   editorial headline
+```
+
+Variable breathing (editorial display only):
+
+```text
+- wght / opsz axes may subtly modulate continuously with scroll position
+- Maximum amplitude ≤ 60 wght units
+- Modulation must be continuous; discrete stepped jumps are strictly prohibited
+- prefers-reduced-motion degrades immediately to static weight (no breathing)
 ```
 
 Rules:
 
 ```text
 - Self-host all fonts (no runtime Google Fonts)
-- Display font for page/screen titles, the brand wordmark, and cafe names
-  only — never for data, numbers, or component state labels
-- Body and UI labels in Inter/system sans
-- Tabular numerals for ratings, distances, counts
+- Display font for page/screen titles, the brand wordmark, cafe names,
+  and editorial display headlines only — never for data, numbers, or component state labels
+- Body and UI labels in Inter/system sans; narrative reading in Source Serif 4
+- Tabular numerals (.tnum) mandatory for ratings, distances, counts, coordinates
 - Fixed type scale, no oversized marketing type in-app
-```
-
-Type scale:
-
-```text
-text-xs    0.75rem   metadata, coordinates, timestamps
-text-sm    0.8125rem secondary labels, tags
-text-base  0.875rem  default body, navigation
-text-md    1.0rem    card titles, list headings
-text-lg    1.25rem   section headings
-text-xl    1.5rem    page titles
-text-2xl   2.0rem    hero/display (landing only)
+- Dual-scale isolation: App ramp never used for long-form narrative prose;
+  Editorial ramp never used for in-app utility chrome, forms, or chips
 ```
 
 ### Spacing and radius
@@ -228,16 +293,36 @@ shadow-map:  0 1px 3px 0 oklch(25% 0.03 50 / 0.06)
 ## Motion
 
 Framer Motion powers all animation (via HeroUI built-in + direct usage).
+Default = spring-first physics. The `lib/motion.ts` presets are codified as canonical tokens.
 
 ```text
-motion.feedback    120ms   button press, toggle, chip select
-motion.state       200ms   card expand, drawer slide
-motion.transition  300ms   page transition, map overlay enter
-motion.slow        450ms   onboarding, first-load reveal
+Spring tokens (primary animation driver):
+  spring.soft    stiffness 180, damping 26   atmospheric elements (coffee steam, watermark breathing)
+  spring.gentle  stiffness 260, damping 30   WorkProfile bars, card reflow, layoutId transitions
+  spring.snappy  stiffness 420, damping 32   bottom sheet detent snap, drawers, toggle thumb
+                                             (critically damped, zero rebound overshoot)
 
-ease.default       [0.22, 1, 0.36, 1]     ease-out-quint
-ease.spring        HeroUI scaleSpring      restrained bounce (sparingly)
-ease.smooth        [0.4, 0, 0.2, 1]       standard material-like
+Bezier curves (strictly restricted to opacity and color cross-fades only):
+  ease.fade      [0.22, 1, 0.36, 1]   ≤200ms duration (cross-fade / color transition only)
+```
+
+Settle budgets (spring stability ceilings, replacing fixed durations):
+
+```text
+settle.feedback    ≤150ms   button press, toggle, chip select settle ceiling
+settle.state       ≤300ms   card expand, drawer slide settle ceiling
+settle.transition  ≤450ms   page transition, map overlay enter settle ceiling
+settle.slow        ≤450ms   onboarding reveal ceiling
+```
+
+Component transitions:
+
+```text
+- BottomSheet detent snap: snappy spring (stiffness 420, damping 32) + drag velocity pass-through
+  (dragMomentum preserved, eliminating rigid bezier tween)
+- WorkProfile bars: gentle spring (stiffness 260, damping 30), aligning code with "spring-loaded" spec
+- Dark mode theme transition: optical lighting transition across surface hierarchy
+  (0ms base / 40ms surface / 80ms elevated overlay stagger, total settle ≤250ms), replacing flat 200ms wash
 ```
 
 ### Signature moments
@@ -248,7 +333,7 @@ ease.smooth        [0.4, 0, 0.2, 1]       standard material-like
   active card scales ~1.02, neighbors dim slightly — eye-catching but restrained
 - Check-in confirm: button morphs to ✓ + micro coffee-steam animation + toast
   (detailed visual design handed to Kimi; must avoid confetti/AI-slop feel)
-- Slider drag: live value + haptic-style scale on thumb; dimension bars animate on load
+- Slider drag: live value + haptic-style scale on thumb; dimension bars animate with gentle spring on load
 - Filter apply: results reflow with layout animation (Framer layoutId)
 - Navigation prompt: slide-up card, auto-collapse to pill after 8s
 - Deep-link banner: gentle rise, never blocks content
@@ -258,12 +343,73 @@ ease.smooth        [0.4, 0, 0.2, 1]       standard material-like
 
 ```text
 - Every animation has prefers-reduced-motion fallback
-- Enter: 200-300ms spring. Exit: 100-150ms (faster out than in)
-- No animation longer than 450ms in normal flow
+- prefers-reduced-motion degrades all springs and transitions immediately to 0ms static states
+- Exits settle faster than enters (100–150ms exit budget vs 200–300ms enter budget)
+- No animation longer than 450ms settle budget in normal flow
 - Map interactions: immediate (no artificial delay)
 - Loading: skeleton shimmer (HeroUI Skeleton), not spinners
 - Feed refresh/pagination: preserve the last successful content and put an inline
   error + Retry at the failed section; never replace real cards with placeholders
+```
+
+## Editorial Surfaces
+
+### Check-in note prose card
+
+```text
+- Check-in note upgraded to first-class prose: --font-serif reading card + --font-mono
+  metadata row (coordinates, timestamp, session telemetry)
+- Long notes utilize expandable footnote-style progressive disclosure
+- Empty check-in notes do NOT render any container or placeholder box (strictly zero visual padding/empty slot decoration)
+```
+
+### Editorial grid & layout rhythm
+
+```text
+- Asymmetric 12-column grid (optional 8/4 split) replacing centered single-column templates
+- Outer margins: ≥ clamp(24px, 6vw, 96px)
+- Breakpoint ≥lg (1024px) enables marginalia side columns for annotations, metadata, and footnotes
+- Optimal prose measure: 62–68ch for narrative reading comfort
+- Full-element centered symmetric templates are strictly prohibited on editorial surfaces
+```
+
+### Digital garden scope (BRAWUKA-74 product decision, 2026-09-06)
+
+```text
+Manifesto principle 4 (digital garden) is fulfilled lightweight through the
+check-in notes ecosystem — CoffeeMode does NOT introduce a standalone
+Stories/Fieldnotes reading surface.
+
+Approved scope:
+- Check-in note as first-class prose card (see "Check-in note prose card"
+  above; visual pilot via BRAWUKA-73)
+- Profile "手记" (notes) aggregation view — the ONLY new surface this cycle:
+  the user's own notes rendered as an editorial reading collection inside the
+  existing profile tab system. No new top-level route; no IA change
+
+Explicitly rejected (must not grow back without a new product decision):
+- Standalone Stories/Fieldnotes feed and detail reading pages
+- Official or UGC long-form content programs and supply mechanisms
+- Any new top-level reading route (the accepted gate stands: no agent may add
+  top-level reading routes without an explicit product decision)
+- Content moderation / anti-spam infrastructure
+
+Priority vs. map-native main line:
+- Map main line (MapCanvas + check-in core loop) is the absolute priority;
+  NO editorial surface ships before the map
+- Sole pre-map editorial work permitted: the BRAWUKA-73 prose-card visual
+  pilot — design-language application on existing surfaces, not a new product
+  surface (per CEO ruling, BRAWUKA-73 is evaluated after BRAWUKA-71/72 merge)
+- Profile "手记" aggregation view is post-map backlog, registered in
+  docs/agent/implementation-slices.md (also gated on notes accumulating to
+  reading-worthy volume)
+
+Option 3 (full Stories surface) reopen triggers — ALL three required:
+1. Map main line shipped and core retention on target
+2. Data signal of expression overflow (e.g., note-length distribution
+   persistently pressing the 500-char cap)
+3. Explicit Owner approval (content sourcing + moderation cost is a major
+   decision)
 ```
 
 ## Layout
@@ -327,7 +473,7 @@ Default: follow system preference (prefers-color-scheme)
 Toggle: available in header (sun/moon icon)
 Map: MapKit JS colorScheme toggles in sync with theme
 Images: no dimming (photos should look true)
-Transition: 200ms color transition on theme switch
+Transition: optical lighting transition across surface hierarchy (0ms base / 40ms surface / 80ms elevated overlay stagger, total settle ≤250ms), replacing flat 200ms cross-fade
 ```
 
 ## Copy tone (DG87)
@@ -367,16 +513,22 @@ this principle governs them and any new copy.
 - Swipe cards and bottom sheet feel premium and eye-catching without vibe-coding tells
 - Work profile bars + score sliders are the visual hero of the cafe detail
 - UI feels like a 2026 design studio portfolio piece
-- No retro/vintage coffee aesthetic anywhere
+- No retro/vintage coffee aesthetic anywhere (coffee kitsch prohibited; editorial serif and warm paper substrate permitted per spec)
 - HeroUI components are themed with CoffeeMode tokens (no default blue)
-- Animation is restrained and elegant — springs, not bounces
-- Dark mode is a true espresso theme with warm undertones
+- Animation is spring-first, restrained, and elegant — spring tokens (soft/gentle/snappy) with settle budgets, not bounces or linear tweens
+- Dual typography scales physically isolated: App ramp (xs-2xl) for chrome/forms, Editorial ramp (prose/lede/section/display) for narrative reading
+- --font-serif (Source Serif 4 Variable + zh fallback) available for narrative prose (min 1rem), strictly excluded from tool/form surfaces
+- Variable breathing (≤60 wght units) restricted to editorial display; prefers-reduced-motion degrades immediately to static weight
+- Plate roles strictly enforced: dominant espresso ink (≥70%), secondary sage (≤30% per viewport, work-suitability only), single terracotta focal event per viewport
+- Material token --grain (SVG feTurbulence) defined with strict opacity limits (0.03-0.05 light / 0.04-0.06 dark), pointer-events: none, never on map canvas, zero WCAG AA contrast regression
+- Editorial surfaces adhere to 12-column asymmetric grid, marginalia at ≥lg, 62-68ch measure, check-in note prose card, and digital garden scope boundaries per §Digital garden scope respected (BRAWUKA-74)
+- Dark mode is a true espresso theme with warm undertones and optical lighting transition
 - Map (Apple Maps dark) feels integrated, not embedded
-- Mobile layout is map-native with bottom sheet
+- Mobile layout is map-native with bottom sheet (snappy spring detent snap with drag momentum pass-through)
 - Desktop layout has proper sidebar + map split
 - Framer Motion layout animations on list reflow
 - All interactive elements have hover/focus/active states
-- prefers-reduced-motion disables all non-essential animation
+- prefers-reduced-motion disables all non-essential animation and instantly zeros springs
 - No Material Design, generic SaaS, or AI-slop visual language
 - No Shadcn components; HeroUI v3 is the sole library
 - Kimi K3 design artifact exists for the slice and the implementation matches it

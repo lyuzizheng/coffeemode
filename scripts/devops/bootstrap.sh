@@ -464,9 +464,14 @@ if [ "$SKIP_APP" = false ]; then
   for env in "${ENVS[@]}"; do
     log "Deploying web application for ${env}..."
     COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.${env}.yml"
+    ENV_FILE="${COMPOSE_DIR}/.env.${env}"
+    COMPOSE_ENV_ARGS=()
+    if [[ -f "$ENV_FILE" ]]; then
+      COMPOSE_ENV_ARGS=(--env-file "$ENV_FILE")
+    fi
 
     if [ "$DRY_RUN" = false ]; then
-      docker compose -f "$COMPOSE_FILE" up -d --build "web-${env}"
+      docker compose "${COMPOSE_ENV_ARGS[@]}" -f "$COMPOSE_FILE" up -d --build "web-${env}"
 
       log "Waiting for 'coffeemode-web-${env}' readiness..."
       sleep 10

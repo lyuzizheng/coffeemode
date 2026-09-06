@@ -122,8 +122,9 @@ Local Dev (Docker / MinIO) ──> PR CI Gates (ci.yml) ──> Merge to main
   │ 2. backup.sh staging          │                                                 │ 2. backup.sh prod (snapshot)  │
   │ 3. npm run db:migrate         │                                                 │ 3. Zero-downtime DDL check    │
   │ 4. Dokploy rolling update     │                                                 │ 4. npm run db:migrate         │
-  │ 5. smoke-test.sh staging      │                                                 │ 5. Dokploy rolling swap       │
-  └───────────────────────────────┘                                                 │ 6. smoke-test.sh prod         │
+  │ 5. Wait for convergence       │                                                 │ 5. Dokploy rolling swap       │
+  │ 6. smoke-test.sh staging      │                                                 │ 6. Wait for convergence       │
+  └───────────────────────────────┘                                                 │ 7. smoke-test.sh prod         │
                                                                                     └───────────────┬───────────────┘
                                                                                                     │
                                                                                             (Anomaly Detected)
@@ -160,7 +161,7 @@ Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enfor
   1. Validates pending migrations for safety.
   2. Creates staging pre-migration database backup.
   3. Executes database migrations against `coffeemode-postgres-staging`.
-  4. Triggers Dokploy staging deploy webhook (or Docker compose rolling rebuild).
+  4. Triggers Dokploy staging deploy webhook (or Docker compose rolling rebuild) and waits for release convergence on `/api/health`.
   5. Runs post-deployment automated smoke tests (`scripts/devops/smoke-test.sh staging`).
 
 ### Phase 4: Production Promotion & Zero-Downtime Deployment
@@ -171,7 +172,7 @@ Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enfor
   2. **Mandatory Safety Snapshot**: Automatically creates a pre-migration snapshot via `scripts/devops/backup.sh --env prod --reason pre-migration`.
   3. **Zero-Downtime Migration Safety Check**: Enforces non-locking DDL (`CREATE INDEX CONCURRENTLY`, nullable fields).
   4. **Migration Execution**: Applies pending migrations against `coffeemode-postgres-prod`.
-  5. **Zero-Downtime Rolling Swap**: Triggers Dokploy rolling update. Traefik directs traffic to the new container once `/api/health` reports healthy.
+  5. **Zero-Downtime Rolling Swap & Convergence**: Triggers Dokploy rolling update. Waits for deployment convergence (release tag, boot_time, or container swap) before running smoke tests. Traefik directs traffic to the new container once `/api/health` reports healthy.
   6. **Post-Deployment Verification**: Runs automated smoke tests (`scripts/devops/smoke-test.sh prod`).
 
 ### Phase 5: Instant Production Rollback
@@ -313,3 +314,13 @@ In drill mode (`--drill`), the script:
   ```bash
   docker image prune -f
   ```
+
+### Manual Docker Compose Execution Note
+Docker Compose interpolates variable expressions like `${DATABASE_URL:?...}` from the host shell environment and project `.env`, not the service `env_file`. When running compose commands manually outside Dokploy, always pass the target environment file:
+```bash
+# Staging manual compose run
+docker compose --env-file deploy/dokploy/.env.staging -f deploy/dokploy/docker-compose.staging.yml up -d
+
+# Production manual compose run
+docker compose --env-file deploy/dokploy/.env.prod -f deploy/dokploy/docker-compose.prod.yml up -d
+```

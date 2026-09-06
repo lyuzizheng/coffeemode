@@ -11,7 +11,15 @@
 #   - Plain Docker Compose (Dokploy default): deploys via `docker compose up -d`.
 #   - Docker Swarm Mode: if the VPS initializes Docker Swarm (`docker swarm init`),
 #     Dokploy deploys via `docker stack deploy`, which activates `deploy.update_config`.
-
+#
+# Manual Execution:
+#   docker compose --env-file .env.staging -f docker-compose.staging.yml up -d
+#
+# Note on Compose Variable Interpolation:
+#   Expressions like ${DATABASE_URL:?...} interpolate from the shell environment
+#   and project environment, not the service `env_file`. When running manually
+#   outside Dokploy, pass `--env-file .env.staging` so Docker Compose resolves
+#   interpolations before starting containers.
 services:
   postgres-staging:
     image: postgis/postgis:16-3.4
@@ -20,7 +28,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-coffeemode_staging}
       POSTGRES_USER: ${POSTGRES_USER:-coffeemode_staging_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Staging postgres password must be set}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in shell environment, via docker compose --env-file .env.staging, or Dokploy environment}
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_staging_data:/var/lib/postgresql/data
@@ -51,6 +59,8 @@ services:
     build:
       context: ../../web
       dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${IMAGE_TAG:-latest}
     container_name: coffeemode-web-staging
     restart: unless-stopped
     env_file:
@@ -59,7 +69,7 @@ services:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: 0.0.0.0
-      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be configured in .env.staging or Dokploy environment}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set in shell environment, via docker compose --env-file .env.staging, or Dokploy environment}
     networks:
       - coffeemode-staging-network
       - traefik-net

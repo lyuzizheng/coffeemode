@@ -225,7 +225,7 @@ App ramp (UI chrome & utility surfaces — strictly isolated from narrative pros
   text-md    1.0rem    card titles, list headings
   text-lg    1.25rem   section headings
   text-xl    1.5rem    page titles
-  text-2xl   2.0rem    hero/display ceiling (landing/cards)
+  text-2xl   2.0rem    hero/display (landing only)
 
 Editorial ramp (narrative reading & editorial surfaces only — mutually exclusive with App ramp):
   prose      1.0625rem / 1.75 line-height   narrative reading body
@@ -247,10 +247,11 @@ Rules:
 
 ```text
 - Self-host all fonts (no runtime Google Fonts)
-- Display font for page/screen titles, the brand wordmark, and cafe names
-  only — never for data, numbers, or component state labels
+- Display font for page/screen titles, the brand wordmark, cafe names,
+  and editorial display headlines only — never for data, numbers, or component state labels
 - Body and UI labels in Inter/system sans; narrative reading in Source Serif 4
 - Tabular numerals (.tnum) mandatory for ratings, distances, counts, coordinates
+- Fixed type scale, no oversized marketing type in-app
 - Dual-scale isolation: App ramp never used for long-form narrative prose;
   Editorial ramp never used for in-app utility chrome, forms, or chips
 ```
@@ -343,6 +344,7 @@ Component transitions:
 ```text
 - Every animation has prefers-reduced-motion fallback
 - prefers-reduced-motion degrades all springs and transitions immediately to 0ms static states
+- Exits settle faster than enters (100–150ms exit budget vs 200–300ms enter budget)
 - No animation longer than 450ms settle budget in normal flow
 - Map interactions: immediate (no artificial delay)
 - Loading: skeleton shimmer (HeroUI Skeleton), not spinners

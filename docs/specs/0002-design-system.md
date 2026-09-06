@@ -4,20 +4,27 @@
 
 Define CoffeeMode's visual identity for 2026: modern, restrained, elegant. The coworking review platform for digital nomads — it must feel designed by someone with taste, not a template, not retro, not generic, and absolutely not vibe-coded. Built on HeroUI v3 + Tailwind v4 + Framer Motion. All copy internationalized (next-intl, en + zh) from day one.
 
+### Product positioning & identity core (定位定义与核心原则, BRAWUKA-69 settled)
+
+CoffeeMode is strictly an **artisan information tool (文艺范的信息工具)**, NOT a reading, publishing, or podcast platform.
+- **Utility first (信息工具属性优先)**: Core mission is solving the user's immediate real-world problem with zero friction — finding specialty cafes, verifying WiFi/outlets/laptop-friendliness (Work Profile index), and completing a 3-second check-in. Speed, information density, and low-cognitive-load navigation are the non-negotiable structural foundation.
+- **Artisan aesthetics, anti-AI vibe coding (文艺范有质感，拒绝 AI Vibe Coding)**: CoffeeMode rejects the statistical mediocrity of generative AI interfaces (no purple/blue cyber glows, no glassmorphic panels, no dead Bento grids, no default Inter sans-serif mono-culture). Instead, human craftsmanship is conveyed through warm paper substrate, disciplined dual-plate spot printing, organic typographic breathing, and tactile spring physics.
+- **Strict scope boundaries (严守工具边界)**: Check-in notes remain concise and functional (≤500 chars). The design system strictly forbids long-form prose feeds, parallax or footnote-style marginalia reading flourishes on check-in notes, or self-indulgent publishing bloat. (The static marginalia layout column in §Editorial grid is a layout device, not a reading flourish, and remains permitted.) Artisan texture is the skin and breath; it must never eclipse or obstruct utility efficiency.
+
 This spec implements principle 6 (Exquisite Aesthetics / Zero Ugly Things) of
 `docs/specs/0000-founder-manifesto.md`, which is the higher-precedence
 authority: the anti-ugly invariants below reaffirm the founder's manifesto —
 warm espresso + secondary sage palette, dense 2px-8px radius, `text-2xl`
 ceiling, first-class skeleton/empty/error states — and every design decision
 must pass the manifesto's Interaction gate (怎么交互) before shipping.
-
 ## Status
 
-Accepted (revised 2026-09-06 — BRAWUKA-69 human craftsmanship & editorial reset: typography dual ramp & variable serif (--font-serif), spring-first motion tokens & settle budgets, dual-plate printing discipline (plate roles) & --grain material overlay, editorial surfaces & check-in prose, anti-pattern harmonization; 2026-09-06 — digital-garden editorial scope settled (BRAWUKA-74): lightweight fulfillment via notes ecosystem; standalone Stories surface rejected; post-map profile notes-collection slice registered; revised 2026-09-01 — references 0000-founder-manifesto as the higher-precedence aesthetic authority (#288); 2026-08-22 — copy tone principle 热情真诚: warm, sincere, cute, never commercial (DG87); 2026-08-21 — viewport & safe-area contract: dvh/svh units, env() insets on all bottom-anchored surfaces, viewportFit=cover; BottomSheet is bespoke Framer Motion (DG75); display-font rule clarified: screen titles + brand wordmark permitted, data/numbers/state labels excluded (DG22); desktop cafe detail becomes a second left column, not a right drawer (DG42); PEEK cards gain a low-contrast Work-score watermark (DG43); FAB creation composes logged-out, sign-in at publish (DG39); 2026-08-20 — discovery feed, recovery, focus, reduced-motion, missing-cafe, breakpoint, and gesture constraints; 2026-08-19 — Kimi K3 design authority and responsive discovery contract; earlier 2026-08-02 — supersedes retro/vintage direction, aligned with bottom-sheet SPA, swipe cards, slider check-in)
+Accepted (revised 2026-09-06 — Founder final settlement on BRAWUKA-69: Product positioning affirmed as artisan information tool (文艺范的信息工具), strictly rejecting reading/podcast/publishing platform creep; anti-AI vibe coding craftsmanship locked; revised 2026-09-06 — BRAWUKA-69 human craftsmanship & editorial reset: typography dual ramp & variable serif (--font-serif), spring-first motion tokens & settle budgets, dual-plate printing discipline (plate roles) & --grain material overlay, editorial surfaces & check-in prose, anti-pattern harmonization; 2026-09-06 — digital-garden editorial scope settled (BRAWUKA-74): lightweight fulfillment via notes ecosystem; standalone Stories surface rejected; post-map profile notes-collection slice registered; revised 2026-09-01 — references 0000-founder-manifesto as the higher-precedence aesthetic authority (#288); 2026-08-22 — copy tone principle 热情真诚: warm, sincere, cute, never commercial (DG87); 2026-08-21 — viewport & safe-area contract: dvh/svh units…
 
 ## Stable decisions
 
 ```text
+- Product positioning invariant: CoffeeMode is strictly an artisan information tool (文艺范的信息工具), NOT a reading/publishing/podcast platform. Utility and information efficiency (finding cafes, laptop-friendliness, 3s check-in) is the foundation; human craftsmanship, paper substrate, and anti-AI-vibe-coding aesthetics are the sensory surface (BRAWUKA-69 settled)
 - HeroUI v3 + Tailwind v4 + Framer Motion (no Shadcn; HeroUI is the sole component library)
 - next-intl from day one (en primary, zh secondary)
 - Responsive map-native discovery: mobile bottom sheet + swipe cards; desktop sidebar + second-level detail column
@@ -43,6 +50,8 @@ color-confident, not muted
 2026 designer sensibility
 map-native, spatial thinking
 coffee-aware without being kitsch
+artisan information tool, not a reading platform
+tactile human craftsmanship, not AI statistical mediocrity
 ```
 
 CoffeeMode should feel like a beautifully designed city guide by a studio that also does brand identity — precise typography, confident color, purposeful motion. Not a "coffee theme" with bean icons and kraft paper textures.
@@ -359,8 +368,9 @@ Component transitions:
 ```text
 - Check-in note upgraded to first-class prose: --font-serif reading card + --font-mono
   metadata row (coordinates, timestamp, session telemetry)
-- Long notes utilize expandable footnote-style progressive disclosure
+- Within the ≤500-char cap, longer notes may use plain expandable progressive disclosure — no parallax, no marginalia ornament
 - Empty check-in notes do NOT render any container or placeholder box (strictly zero visual padding/empty slot decoration)
+- Check-in notes remain utility-first, authentic, and concise (≤500 chars) — never a blog, publishing platform, or sprawling essay; typographic refinement serves readability without imposing editorial bloat
 ```
 
 ### Editorial grid & layout rhythm

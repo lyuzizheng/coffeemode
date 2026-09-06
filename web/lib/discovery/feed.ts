@@ -8,6 +8,7 @@ import type {
   CheckInFeedPage,
   PublicCheckIn,
 } from "@/types/checkins";
+import { toPublicAuthor } from "@/types/identity";
 import type { StoredImage } from "@/types/images";
 
 /**
@@ -78,6 +79,14 @@ interface FeedRow {
   liked_by_viewer: boolean | null;
   /** Microsecond-precision UTC rendering used only for cursor round-trips. */
   cursor_visited_at: string;
+  /**
+   * Consented author columns (spec 0006 Q5/Q8): null unless the author's
+   * profile has `show_public_identity`. The join key (`c.user_id`) is never
+   * selected — FeedRow carries no internal UUID.
+   */
+  author_handle: string | null;
+  author_display_name: string | null;
+  author_avatar_url: string | null;
 }
 
 // `pg` parses timestamptz into a JS Date (millisecond precision). Postgres
@@ -90,10 +99,14 @@ const CURSOR_TS = `to_char(c.visited_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:M
 const NEWEST_SQL = `
 select c.id, c.scores, c.max_stay, c.note, c.photos, c.likes_count, c.visited_at,
        (cl.user_id is not null) as liked_by_viewer,
-       ${CURSOR_TS} as cursor_visited_at
+       ${CURSOR_TS} as cursor_visited_at,
+       case when p.show_public_identity then p.public_handle end as author_handle,
+       case when p.show_public_identity then p.display_name end as author_display_name,
+       case when p.show_public_identity then p.avatar_url end as author_avatar_url
 from checkins c
 left join checkin_likes cl
   on cl.checkin_id = c.id and cl.user_id = $2
+left join profiles p on p.id = c.user_id
 where c.cafe_id = $1 and c.deleted_at is null
   and ($3::timestamptz is null or (c.visited_at, c.id) < ($3::timestamptz, $4::uuid))
 order by c.visited_at desc, c.id desc
@@ -103,10 +116,14 @@ limit $5
 const HELPFUL_SQL = `
 select c.id, c.scores, c.max_stay, c.note, c.photos, c.likes_count, c.visited_at,
        (cl.user_id is not null) as liked_by_viewer,
-       ${CURSOR_TS} as cursor_visited_at
+       ${CURSOR_TS} as cursor_visited_at,
+       case when p.show_public_identity then p.public_handle end as author_handle,
+       case when p.show_public_identity then p.display_name end as author_display_name,
+       case when p.show_public_identity then p.avatar_url end as author_avatar_url
 from checkins c
 left join checkin_likes cl
   on cl.checkin_id = c.id and cl.user_id = $2
+left join profiles p on p.id = c.user_id
 where c.cafe_id = $1 and c.deleted_at is null
   and (
     $3::int is null
@@ -163,6 +180,8 @@ export async function listPublicCheckIns(params: {
     likes_count: row.likes_count,
     liked_by_viewer: viewerId !== null && row.liked_by_viewer === true,
     visited_at: row.visited_at,
+    // Display-only leaf (spec 0006 Q9): null renders the "a_nomad" fallback.
+    author: toPublicAuthor(row),
   }));
 
   let nextCursor: string | null = null;

@@ -7,6 +7,7 @@ import {
   slugifyDisplayName,
   validatePublicHandle,
 } from "@/lib/db/identity";
+import { toPublicAuthor } from "@/types/identity";
 
 describe("Identity - Handle Validation & Regex (Q11)", () => {
   it("matches valid public handles", () => {
@@ -46,6 +47,39 @@ describe("Identity - Handle Validation & Regex (Q11)", () => {
     expect(validatePublicHandle(null as unknown as string)).toBe(false);
     expect(validatePublicHandle(undefined as unknown as string)).toBe(false);
     expect(validatePublicHandle(123 as unknown as string)).toBe(false);
+  });
+});
+
+describe("toPublicAuthor — consented author leaf (spec 0006 Q3)", () => {
+  it("builds the leaf from consented columns, defaulting avatar to null", () => {
+    expect(
+      toPublicAuthor({
+        author_handle: "nomad-1a2b",
+        author_display_name: "Nomad One",
+        author_avatar_url: null,
+      }),
+    ).toEqual({ handle: "nomad-1a2b", display_name: "Nomad One", avatar_url: null });
+    expect(
+      toPublicAuthor({
+        author_handle: "nomad-1a2b",
+        author_display_name: "Nomad One",
+        author_avatar_url: "https://img.example/a.webp",
+      }),
+    ).toEqual({
+      handle: "nomad-1a2b",
+      display_name: "Nomad One",
+      avatar_url: "https://img.example/a.webp",
+    });
+  });
+
+  it("yields null when anonymous, revoked, or profile-missing", () => {
+    expect(toPublicAuthor({})).toBeNull();
+    expect(
+      toPublicAuthor({ author_handle: null, author_display_name: null, author_avatar_url: null }),
+    ).toBeNull();
+    // Handle without display name (or vice versa) never renders a partial leaf.
+    expect(toPublicAuthor({ author_handle: "nomad-1a2b" })).toBeNull();
+    expect(toPublicAuthor({ author_display_name: "Nomad One" })).toBeNull();
   });
 });
 

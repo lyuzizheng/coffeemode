@@ -105,9 +105,9 @@ assert_test() {
   fi
 }
 
-# 1. Healthcheck probe
+# 1. Healthcheck probe & version marker
 assert_test "Healthcheck endpoint (/api/health)" \
-  "curl -fsS -m ${TIMEOUT} '${BASE_URL}/api/health' | grep -q '\"ok\":true'"
+  "curl -fsS -m ${TIMEOUT} '${BASE_URL}/api/health' | grep -q '\"ok\":true' && curl -fsS -m ${TIMEOUT} '${BASE_URL}/api/health' | grep -q '\"version\":'"
 
 # 2. HTTP root render
 assert_test "Root page render (/)" \

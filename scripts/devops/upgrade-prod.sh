@@ -240,10 +240,8 @@ if [ "$DRY_RUN" = false ]; then
         cd "${REPO_ROOT}/web"
         DATABASE_URL="$TARGET_DB_URL" node scripts/migrate.mjs
       )
-    elif docker ps --filter "name=^/coffeemode-web-prod$" --format '{{.Status}}' | grep -q "Up"; then
-      docker exec "coffeemode-web-prod" npm run db:migrate
     else
-      error "CRITICAL: Unable to execute database migrations! Neither web/scripts/migrate.mjs nor running web container is available."
+      error "CRITICAL: Unable to execute database migrations! Repository checkout at '${REPO_ROOT}/web/scripts/migrate.mjs' is required."
       exit 1
     fi
     ok "Database schema migrations applied to Production."
@@ -267,7 +265,27 @@ if [[ -z "$RELEASE_TAG" || "$RELEASE_TAG" == "latest" ]]; then
 fi
 log "Target Release Tag: ${RELEASE_TAG}"
 
+BASE_URL="https://${PROD_DOMAIN:-coffeemode.app}"
+PREV_VERSION=""
+PREV_BOOT_TIME=""
+PREV_CONTAINER_ID=""
+if [ "$DRY_RUN" = false ]; then
+  PRE_PROBE="$(curl -fsS -m 5 "${BASE_URL}/api/health" 2>/dev/null || echo "")"
+  if [[ -n "$PRE_PROBE" ]]; then
+    PREV_VERSION="$(echo "$PRE_PROBE" | grep -oE '"version"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
+    PREV_BOOT_TIME="$(echo "$PRE_PROBE" | grep -oE '"boot_time"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
+  fi
+  if docker ps --filter "name=^/coffeemode-web-prod$" --format '{{.ID}}' &>/dev/null; then
+    PREV_CONTAINER_ID="$(docker ps -q --filter "name=^/coffeemode-web-prod$" 2>/dev/null || echo "")"
+  fi
+fi
+
 COMPOSE_FILE="${REPO_ROOT}/deploy/dokploy/docker-compose.prod.yml"
+ENV_FILE="${REPO_ROOT}/deploy/dokploy/.env.prod"
+COMPOSE_ENV_ARGS=()
+if [[ -f "$ENV_FILE" ]]; then
+  COMPOSE_ENV_ARGS=(--env-file "$ENV_FILE")
+fi
 
 if [[ -n "$DEPLOY_URL" ]]; then
   log "Triggering Dokploy production deployment webhook..."
@@ -284,9 +302,9 @@ if [[ -n "$DEPLOY_URL" ]]; then
 else
   log "Executing local Docker Compose zero-downtime rolling update (start-first)..."
   if [ "$DRY_RUN" = false ]; then
-    IMAGE_TAG="${RELEASE_TAG}" docker compose -f "$COMPOSE_FILE" build web-prod
+    IMAGE_TAG="${RELEASE_TAG}" docker compose "${COMPOSE_ENV_ARGS[@]}" -f "$COMPOSE_FILE" build web-prod
     docker tag "coffeemode-web-prod:${RELEASE_TAG}" "coffeemode-web-prod:latest" 2>/dev/null || true
-    IMAGE_TAG="${RELEASE_TAG}" docker compose -f "$COMPOSE_FILE" up -d web-prod
+    IMAGE_TAG="${RELEASE_TAG}" docker compose "${COMPOSE_ENV_ARGS[@]}" -f "$COMPOSE_FILE" up -d web-prod
     ok "Production web container updated with tag '${RELEASE_TAG}'."
   else
     ok "[DRY-RUN] Docker Compose build & up -d web-prod with tag '${RELEASE_TAG}' simulated."
@@ -309,26 +327,72 @@ fi
 # ------------------------------------------------------------------------------
 stage "Step 6/6: Post-Deployment Production Verification"
 
-BASE_URL="https://${PROD_DOMAIN:-coffeemode.app}"
 if [ "$DRY_RUN" = false ]; then
-  log "Polling health endpoint on ${BASE_URL}/api/health for release convergence (timeout: 120s)..."
-  MAX_RETRIES=24
-  RETRY=0
-  IS_HEALTHY=false
-  while [ $RETRY -lt $MAX_RETRIES ]; do
-    RETRY=$((RETRY + 1))
-    if curl -fsS -m 3 "${BASE_URL}/api/health" 2>/dev/null | grep -q '"ok":true'; then
-      IS_HEALTHY=true
-      break
-    fi
-    sleep 2
-  done
+  if [[ -n "$DEPLOY_URL" ]]; then
+    log "Waiting for Dokploy asynchronous deployment convergence for target release '${RELEASE_TAG}'..."
+    log "Pre-deployment baseline: version='${PREV_VERSION:-none}', boot_time='${PREV_BOOT_TIME:-none}', container='${PREV_CONTAINER_ID:-none}'"
 
-  if [ "$IS_HEALTHY" = true ]; then
-    ok "Production healthcheck is green."
+    MAX_RETRIES=60
+    RETRY=0
+    CONVERGED=false
+    while [ $RETRY -lt $MAX_RETRIES ]; do
+      RETRY=$((RETRY + 1))
+      HEALTH_BODY="$(curl -fsS -m 3 "${BASE_URL}/api/health" 2>/dev/null || echo "")"
+      if echo "$HEALTH_BODY" | grep -q '"ok":true'; then
+        CURR_VERSION="$(echo "$HEALTH_BODY" | grep -oE '"version"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
+        CURR_BOOT_TIME="$(echo "$HEALTH_BODY" | grep -oE '"boot_time"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
+        CURR_CONTAINER_ID=""
+        if docker ps --filter "name=^/coffeemode-web-prod$" --format '{{.ID}}' &>/dev/null; then
+          CURR_CONTAINER_ID="$(docker ps -q --filter "name=^/coffeemode-web-prod$" 2>/dev/null || echo "")"
+        fi
+
+        if [[ -n "$RELEASE_TAG" && "$RELEASE_TAG" != "latest" && "$CURR_VERSION" == "$RELEASE_TAG"* ]]; then
+          CONVERGED=true
+          ok "Target release tag '${RELEASE_TAG}' is confirmed live on ${BASE_URL} (version: ${CURR_VERSION})."
+          break
+        elif [[ -n "$PREV_BOOT_TIME" && -n "$CURR_BOOT_TIME" && "$CURR_BOOT_TIME" != "$PREV_BOOT_TIME" ]]; then
+          CONVERGED=true
+          ok "Deployment swap detected: process boot_time changed from '${PREV_BOOT_TIME}' to '${CURR_BOOT_TIME}'."
+          break
+        elif [[ -n "$PREV_CONTAINER_ID" && -n "$CURR_CONTAINER_ID" && "$CURR_CONTAINER_ID" != "$PREV_CONTAINER_ID" ]]; then
+          CONVERGED=true
+          ok "Container swap detected: container ID updated from '${PREV_CONTAINER_ID}' to '${CURR_CONTAINER_ID}'."
+          break
+        elif [[ -z "$PREV_BOOT_TIME" && -z "$PREV_VERSION" && -z "$PREV_CONTAINER_ID" ]]; then
+          CONVERGED=true
+          ok "Cold-start deployment healthy: ${BASE_URL}/api/health responded ok (version: ${CURR_VERSION:-unknown})."
+          break
+        fi
+      fi
+      sleep 3
+    done
+
+    if [ "$CONVERGED" = true ]; then
+      ok "Production release convergence verified."
+    else
+      error "Timed out waiting for production release to converge after 180s. Live endpoint still reflects pre-deployment state. Dokploy build may have failed or stalled."
+      exit 1
+    fi
   else
-    error "Timed out waiting for production healthcheck on ${BASE_URL}/api/health after 120s."
-    exit 1
+    log "Polling health endpoint on ${BASE_URL}/api/health for release convergence (timeout: 60s)..."
+    MAX_RETRIES=20
+    RETRY=0
+    IS_HEALTHY=false
+    while [ $RETRY -lt $MAX_RETRIES ]; do
+      RETRY=$((RETRY + 1))
+      if curl -fsS -m 3 "${BASE_URL}/api/health" 2>/dev/null | grep -q '"ok":true'; then
+        IS_HEALTHY=true
+        break
+      fi
+      sleep 3
+    done
+
+    if [ "$IS_HEALTHY" = true ]; then
+      ok "Production healthcheck is green."
+    else
+      error "Timed out waiting for production healthcheck on ${BASE_URL}/api/health after 60s."
+      exit 1
+    fi
   fi
 
   if [ "$SKIP_SMOKE" = false ]; then

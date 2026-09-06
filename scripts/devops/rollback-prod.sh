@@ -222,7 +222,12 @@ if [ "$DRY_RUN" = false ]; then
       docker service update --image "coffeemode-web-prod:${TARGET_TAG}" coffeemode-prod_web-prod
   else
     log "Recreating container with IMAGE_TAG=${TARGET_TAG} via Docker Compose..."
-    IMAGE_TAG="${TARGET_TAG}" docker compose -f "$COMPOSE_FILE" up -d web-prod
+    ENV_FILE="${REPO_ROOT}/deploy/dokploy/.env.prod"
+    COMPOSE_ENV_ARGS=()
+    if [[ -f "$ENV_FILE" ]]; then
+      COMPOSE_ENV_ARGS=(--env-file "$ENV_FILE")
+    fi
+    IMAGE_TAG="${TARGET_TAG}" docker compose "${COMPOSE_ENV_ARGS[@]}" -f "$COMPOSE_FILE" up -d web-prod
   fi
   RUNNING_IMG="$(docker inspect --format='{{.Config.Image}}' coffeemode-web-prod 2>/dev/null || echo "coffeemode-web-prod:${TARGET_TAG}")"
   ok "Web container reverted to image: ${RUNNING_IMG}"

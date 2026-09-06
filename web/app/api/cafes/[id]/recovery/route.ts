@@ -53,6 +53,7 @@ export async function GET(
       lng: location.lng,
       radiusKm: appConfig.search.maxRadiusKm,
       limit: appConfig.seo.recoveryLimit + 1,
+      viewerId: user?.id,
     });
     const cafes = nearby.filter((cafe) => cafe.id !== id).slice(0, appConfig.seo.recoveryLimit);
     return NextResponse.json({ cafes });

@@ -9,6 +9,7 @@ import { CoverCarousel } from "@/components/cafe/cover-carousel";
 import { GalleryStrip } from "@/components/cafe/gallery-strip";
 import { OpenState } from "@/components/cafe/open-state";
 import { PolicyConsensus, ScorePair, WorkProfile } from "@/components/discovery/scores";
+import { getCurrentUser } from "@/lib/auth/get-user";
 import { getCafe } from "@/lib/db/cafes";
 import {
   cafeCanonicalPath,
@@ -35,7 +36,8 @@ export const dynamic = "force-dynamic";
 // streamed with a 200 status.
 const loadCafe = cache(async (id: string) => {
   if (!isValidUUID(id)) return null;
-  return getCafe(id);
+  const user = await getCurrentUser();
+  return getCafe(id, user?.id);
 });
 
 export async function generateMetadata({

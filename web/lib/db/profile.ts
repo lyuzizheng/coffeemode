@@ -325,7 +325,7 @@ export async function getUserCheckIns(
  */
 export async function getUserCafes(
   userId: string,
-  options: { limit?: number; cursor?: string } = {},
+  options: { limit?: number; cursor?: string; viewerId?: string | null } = {},
 ): Promise<{ items: UserCafeItemDto[]; nextCursor: string | null }> {
   if (!isValidUUID(userId)) {
     return { items: [], nextCursor: null };
@@ -336,14 +336,19 @@ export async function getUserCafes(
     Math.min(appConfig.profile.listLimitMax, options.limit ?? appConfig.profile.listPageSize),
   );
   const params: unknown[] = [userId, limit + 1];
-  let cursorClause = "";
+  const hasViewer = Boolean(options.viewerId && isValidUUID(options.viewerId));
+  let visibilityClause = "and c.visibility = 'public'";
+  if (hasViewer) {
+    params.push(options.viewerId);
+    visibilityClause = `and (c.visibility = 'public' or c.created_by = $${params.length})`;
+  }
 
+  let cursorClause = "";
   if (options.cursor) {
     const { visitedAt: cursorVisitedAt, id: cursorId } = parseProfileCursor(options.cursor);
     params.push(cursorVisitedAt, cursorId);
     cursorClause = `having (max(ch.visited_at), c.id) < ($${params.length - 1}::timestamptz, $${params.length}::uuid)`;
   }
-
   const result = await query<{
     id: string;
     name: string;
@@ -366,6 +371,7 @@ export async function getUserCafes(
     join cafes c on c.id = ch.cafe_id and c.deleted_at is null
     where ch.user_id = $1
       and ch.deleted_at is null
+      ${visibilityClause}
     group by c.id, c.name, c.city, c.cover
     ${cursorClause}
     order by last_visited_at desc, c.id desc

@@ -10,7 +10,7 @@ import {
   type RunInTransaction,
 } from "@/lib/stats/aggregate";
 import { coerceWorkStats } from "@/lib/stats/work-stats";
-import type { CafeDetail, CafeSummary, PublicCafeDetail } from "@/types/cafes";
+import type { CafeDetail, CafeSummary, CafeVisibility, PublicCafeDetail } from "@/types/cafes";
 import type { StoredImage } from "@/types/images";
 import {
   MAX_STAY_VALUES,
@@ -95,6 +95,15 @@ const DEFAULT_SERVICE_ACCOUNT_ID = "00000000-0000-4000-a000-000000000001";
 export function getServiceAccountId(): string {
   const envId = process.env.SERVICE_ACCOUNT_ID?.trim();
   return envId && isValidUUID(envId) ? envId : DEFAULT_SERVICE_ACCOUNT_ID;
+}
+
+export const SERVICE_ACCOUNT_MAINTAINER_LABEL = "由 CoffeeMode 维护";
+
+/** Resolves the display label for a cafe maintainer (display layer only). */
+export function formatCafeMaintainer(createdBy: string | null | undefined): string | null {
+  const serviceAccountId = getServiceAccountId();
+  const effective = createdBy ?? serviceAccountId;
+  return effective === serviceAccountId ? SERVICE_ACCOUNT_MAINTAINER_LABEL : null;
 }
 /**
  * The creator's first check-in. Spec 0001 pins required-on-creation:
@@ -400,16 +409,34 @@ export interface NearbyCafesQuery {
   lng: number;
   radiusKm: number;
   limit: number;
+  viewerId?: string | null;
 }
 
-const LIST_NEARBY_SQL = `
+const LIST_NEARBY_PUBLIC_SQL = `
 select id, name,
        ST_Y(location::geometry) as lat,
        ST_X(location::geometry) as lng,
        address, city, tz, opening_hours, price_range, work_stats, cover,
+       created_by, visibility,
        (location <-> ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography) as distance_m
 from cafes
 where deleted_at is null
+  and visibility = 'public'
+  and ST_DWithin(location, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography, $3::float8 * 1000)
+order by distance_m asc
+limit $4
+`;
+
+const LIST_NEARBY_VIEWER_SQL = `
+select id, name,
+       ST_Y(location::geometry) as lat,
+       ST_X(location::geometry) as lng,
+       address, city, tz, opening_hours, price_range, work_stats, cover,
+       created_by, visibility,
+       (location <-> ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography) as distance_m
+from cafes
+where deleted_at is null
+  and (visibility = 'public' or created_by = $5)
   and ST_DWithin(location, ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography, $3::float8 * 1000)
 order by distance_m asc
 limit $4
@@ -417,12 +444,26 @@ limit $4
 
 /** Nearby cafes within `radiusKm` of a point, closest first. */
 export async function listCafesNearby(params: NearbyCafesQuery): Promise<CafeSummary[]> {
-  const { rows } = await query<CafeSummary & { distance_m: number } & Record<string, unknown>>(
-    LIST_NEARBY_SQL,
-    [params.lat, params.lng, params.radiusKm, params.limit],
-  );
-  // DB default '{}' is not a full WorkStats — normalize before it reaches the UI.
-  return rows.map((row) => ({ ...row, work_stats: coerceWorkStats(row.work_stats) }));
+  const serviceAccountId = getServiceAccountId();
+  const hasViewer = Boolean(params.viewerId && isValidUUID(params.viewerId));
+  const sql = hasViewer ? LIST_NEARBY_VIEWER_SQL : LIST_NEARBY_PUBLIC_SQL;
+  const values = hasViewer
+    ? [params.lat, params.lng, params.radiusKm, params.limit, params.viewerId]
+    : [params.lat, params.lng, params.radiusKm, params.limit];
+
+  const { rows } = await query<
+    CafeSummary & { created_by?: string | null; distance_m: number } & Record<string, unknown>
+  >(sql, values);
+  return rows.map((row) => {
+    const effectiveCreatedBy = row.created_by ?? serviceAccountId;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip internal creator id (spec 0001 / DG13)
+    const { created_by: _cb, ...rest } = row;
+    return {
+      ...rest,
+      maintainer: effectiveCreatedBy === serviceAccountId ? SERVICE_ACCOUNT_MAINTAINER_LABEL : null,
+      work_stats: coerceWorkStats(row.work_stats),
+    };
+  });
 }
 
 const GET_BY_ID_SQL = `
@@ -431,17 +472,31 @@ select id, name,
        ST_X(location::geometry) as lng,
        address, city, description, cover, gallery, opening_hours, tz,
        price_range, google_place_id, apple_poi_id, work_stats,
+       created_by, visibility,
        created_at, updated_at
 from cafes
 where id = $1 and deleted_at is null
 `;
 
-/** Single cafe by id; null when missing or soft-deleted (routes map this to 404). */
-export async function getCafe(id: string): Promise<CafeDetail | null> {
+/** Single cafe by id; null when missing, soft-deleted, or private to non-creator (404). */
+export async function getCafe(
+  id: string,
+  viewerId?: string | null,
+): Promise<CafeDetail | null> {
   if (!isValidUUID(id)) throw new Error("Invalid cafe ID");
-  const { rows } = await query<CafeDetail & Record<string, unknown>>(GET_BY_ID_SQL, [id]);
+  const { rows } = await query<
+    CafeDetail & { created_by: string | null; visibility: CafeVisibility } & Record<string, unknown>
+  >(GET_BY_ID_SQL, [id]);
   const row = rows[0];
   if (!row) return null;
+
+  // Private is a read-path filter: private + viewer != creator -> 404 (null)
+  if (row.visibility === "private") {
+    if (!viewerId || !isValidUUID(viewerId) || row.created_by !== viewerId) {
+      return null;
+    }
+  }
+
   return {
     ...row,
     gallery: row.gallery ?? [],
@@ -450,15 +505,20 @@ export async function getCafe(id: string): Promise<CafeDetail | null> {
 }
 
 /**
- * Public cafe detail projection (spec 0001 DG13): strip `StoredImage.by`
+ * Public cafe detail projection (spec 0001 DG13): strip creator id and `StoredImage.by`
  * from gallery so the anonymous surface never leaks internal author ids.
- * Mirrors `web/lib/discovery/feed.ts:159` which does the same for check-in photos.
+ * Null created_by falls back to the service account, rendering maintainer as "由 CoffeeMode 维护".
  */
 export function toPublicCafeDetail(cafe: CafeDetail): PublicCafeDetail {
+  const serviceAccountId = getServiceAccountId();
+  const effectiveCreatedBy = cafe.created_by ?? serviceAccountId;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip internal creator id (spec 0001 / DG13)
+  const { created_by: _cb, gallery, ...rest } = cafe;
   return {
-    ...cafe,
+    ...rest,
+    maintainer: effectiveCreatedBy === serviceAccountId ? SERVICE_ACCOUNT_MAINTAINER_LABEL : null,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip internal author id (DG13)
-    gallery: (cafe.gallery ?? []).map(({ by: _by, ...image }) => image),
+    gallery: (gallery ?? []).map(({ by: _by, ...image }) => image),
   };
 }
 
@@ -473,6 +533,7 @@ select id,
        coalesce((work_stats->>'updated_at')::timestamptz, updated_at) as lastmod
 from cafes
 where deleted_at is null
+  and visibility = 'public'
   and ((work_stats->>'n_checkins') is null or (work_stats->>'n_checkins')::int > 0)
 order by lastmod desc
 `;
@@ -498,18 +559,85 @@ from cafes
 where id = $1
 `;
 
-const EXISTS_SQL = `select 1 from cafes where id = $1 and deleted_at is null`;
+const EXISTS_PUBLIC_SQL = `select 1 from cafes where id = $1 and deleted_at is null and visibility = 'public'`;
+const EXISTS_VIEWER_SQL = `select 1 from cafes where id = $1 and deleted_at is null and (visibility = 'public' or created_by = $2)`;
+const EXISTS_LIVE_SQL = `select 1 from cafes where id = $1 and deleted_at is null`;
+
+/** Live-only probe: true when the cafe exists and is not soft-deleted (tombstoned). */
+export async function isLiveCafe(id: string): Promise<boolean> {
+  if (!isValidUUID(id)) return false;
+  const { rows } = await query<Record<string, unknown>>(EXISTS_LIVE_SQL, [id]);
+  return rows.length > 0;
+}
 
 /**
  * Existence probe for the gone-cafe 404 path: the proxy checks this BEFORE
  * the page streams so a missing cafe gets a real 404 status (DG19) instead
- * of a streamed soft-404. PK index lookup only — never fetch content here.
+ * of a streamed soft-404. Private cafes are 404 for non-owners.
  */
-export async function cafeExists(id: string): Promise<boolean> {
+export async function cafeExists(id: string, viewerId?: string | null): Promise<boolean> {
   if (!isValidUUID(id)) return false;
-  const { rows } = await query<Record<string, unknown>>(EXISTS_SQL, [id]);
+  if (viewerId && isValidUUID(viewerId)) {
+    const { rows } = await query<Record<string, unknown>>(EXISTS_VIEWER_SQL, [id, viewerId]);
+    return rows.length > 0;
+  }
+  const { rows } = await query<Record<string, unknown>>(EXISTS_PUBLIC_SQL, [id]);
   return rows.length > 0;
 }
+
+export interface SetCafeVisibilityResult {
+  ok: true;
+  id: string;
+  visibility: CafeVisibility;
+}
+
+/**
+ * Toggles cafe visibility between 'public' and 'private' (DG147 / issue #229).
+ * Reversible, creator-only toggle. Idempotent.
+ */
+export async function setCafeVisibility(
+  cafeId: string,
+  userId: string,
+  visibility: CafeVisibility,
+): Promise<SetCafeVisibilityResult> {
+  if (!isValidUUID(cafeId) || !isValidUUID(userId)) {
+    throw new CafeNotFoundError(cafeId);
+  }
+  if (visibility !== "public" && visibility !== "private") {
+    throw new Error("visibility must be 'public' or 'private'");
+  }
+
+  const res = await query<{
+    id: string;
+    created_by: string | null;
+    visibility: CafeVisibility;
+    deleted_at: string | null;
+  }>(
+    `select id, created_by, visibility, deleted_at from cafes where id = $1`,
+    [cafeId],
+  );
+  const row = res.rows[0];
+  if (!row || row.deleted_at !== null) {
+    throw new CafeNotFoundError(cafeId);
+  }
+
+  if (row.created_by !== userId) {
+    // Covers non-owner and null created_by
+    throw new CafeForbiddenError("only creator can change cafe visibility");
+  }
+
+  if (row.visibility === visibility) {
+    return { ok: true, id: cafeId, visibility };
+  }
+
+  await query(
+    `update cafes set visibility = $2, updated_at = now() where id = $1`,
+    [cafeId, visibility],
+  );
+
+  return { ok: true, id: cafeId, visibility };
+}
+
 
 /**
  * Cafe deletion is checkin-scoped and never deletes the cafe row (DG125).

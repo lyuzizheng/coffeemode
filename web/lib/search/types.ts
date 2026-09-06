@@ -21,6 +21,7 @@ export interface SearchFilters {
   limit?: number;
   include_live?: boolean;
   ranking?: string;
+  viewer_id?: string | null;
 }
 
 export interface SearchResultItem {

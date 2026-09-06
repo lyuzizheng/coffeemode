@@ -1,3 +1,4 @@
+import { isValidUUID } from "@shared/uuid";
 import "server-only";
 
 import { appConfig } from "@/lib/config";
@@ -6,10 +7,12 @@ import { coerceWorkStats } from "@/lib/stats/work-stats";
 import type { CafeSummary } from "@/types/cafes";
 import type { MaxStay } from "@/types/checkins";
 import { query } from "./postgres";
+import { getServiceAccountId, SERVICE_ACCOUNT_MAINTAINER_LABEL } from "./cafes";
 
 export interface SearchCafesDbParams {
   q?: string;
   city?: string;
+  viewerId?: string | null;
   filter_wifi?: number;
   filter_outlets?: number;
   filter_seats?: number;
@@ -48,6 +51,14 @@ export async function searchCafesInDb(
 
   const conditions: string[] = ["deleted_at is null"];
   const values: unknown[] = [];
+
+  if (params.viewerId && isValidUUID(params.viewerId)) {
+    values.push(params.viewerId);
+    const vIdx = values.length;
+    conditions.push(`(visibility = 'public' or created_by = $${vIdx})`);
+  } else {
+    conditions.push("visibility = 'public'");
+  }
 
   values.push(q);
   const qIdx = values.length;
@@ -106,6 +117,7 @@ select id, name,
        ST_X(location::geometry) as lng,
        address, city, tz, opening_hours, price_range,
        google_place_id, apple_poi_id,
+       created_by, visibility,
        work_stats, cover
 from cafes
 where ${conditions.join("\n  and ")}
@@ -118,8 +130,15 @@ limit $${limitIdx}${offsetClause}
     values,
   );
 
-  return rows.map((row) => ({
-    ...row,
-    work_stats: coerceWorkStats(row.work_stats),
-  }));
+  const serviceAccountId = getServiceAccountId();
+  return rows.map((row) => {
+    const effectiveCreatedBy = row.created_by ?? serviceAccountId;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip internal creator id (spec 0001 / DG13)
+    const { created_by: _cb, ...rest } = row;
+    return {
+      ...rest,
+      maintainer: effectiveCreatedBy === serviceAccountId ? SERVICE_ACCOUNT_MAINTAINER_LABEL : null,
+      work_stats: coerceWorkStats(row.work_stats),
+    };
+  });
 }

@@ -521,7 +521,7 @@ this principle governs them and any new copy.
 - Variable breathing (≤60 wght units) restricted to editorial display; prefers-reduced-motion degrades immediately to static weight
 - Plate roles strictly enforced: dominant espresso ink (≥70%), secondary sage (≤30% per viewport, work-suitability only), single terracotta focal event per viewport
 - Material token --grain (SVG feTurbulence) defined with strict opacity limits (0.03-0.05 light / 0.04-0.06 dark), pointer-events: none, never on map canvas, zero WCAG AA contrast regression
-- Editorial surfaces adhere to 12-column asymmetric grid, marginalia at ≥lg, 62-68ch measure, check-in note prose card, and digital garden IA placeholder respected (BRAWUKA-74)
+- Editorial surfaces adhere to 12-column asymmetric grid, marginalia at ≥lg, 62-68ch measure, check-in note prose card, and digital garden scope boundaries per §Digital garden scope respected (BRAWUKA-74)
 - Dark mode is a true espresso theme with warm undertones and optical lighting transition
 - Map (Apple Maps dark) feels integrated, not embedded
 - Mobile layout is map-native with bottom sheet (snappy spring detent snap with drag momentum pass-through)

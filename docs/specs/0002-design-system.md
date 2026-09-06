@@ -9,7 +9,7 @@ Define CoffeeMode's visual identity for 2026: modern, restrained, elegant. The c
 CoffeeMode is strictly an **artisan information tool (文艺范的信息工具)**, NOT a reading, publishing, or podcast platform.
 - **Utility first (信息工具属性优先)**: Core mission is solving the user's immediate real-world problem with zero friction — finding specialty cafes, verifying WiFi/outlets/laptop-friendliness (Work Profile index), and completing a 3-second check-in. Speed, information density, and low-cognitive-load navigation are the non-negotiable structural foundation.
 - **Artisan aesthetics, anti-AI vibe coding (文艺范有质感，拒绝 AI Vibe Coding)**: CoffeeMode rejects the statistical mediocrity of generative AI interfaces (no purple/blue cyber glows, no glassmorphic panels, no dead Bento grids, no default Inter sans-serif mono-culture). Instead, human craftsmanship is conveyed through warm paper substrate, disciplined dual-plate spot printing, organic typographic breathing, and tactile spring physics.
-- **Strict scope boundaries (严守工具边界)**: Check-in notes remain concise and functional (≤500 chars). The design system strictly forbids long-form prose feeds, parallax editorial marginalia footnotes, or self-indulgent publishing bloat. Artisan texture is the skin and breath; it must never eclipse or obstruct utility efficiency.
+- **Strict scope boundaries (严守工具边界)**: Check-in notes remain concise and functional (≤500 chars). The design system strictly forbids long-form prose feeds, parallax or footnote-style marginalia reading flourishes on check-in notes, or self-indulgent publishing bloat. (The static marginalia layout column in §Editorial grid is a layout device, not a reading flourish, and remains permitted.) Artisan texture is the skin and breath; it must never eclipse or obstruct utility efficiency.
 
 This spec implements principle 6 (Exquisite Aesthetics / Zero Ugly Things) of
 `docs/specs/0000-founder-manifesto.md`, which is the higher-precedence
@@ -368,7 +368,7 @@ Component transitions:
 ```text
 - Check-in note upgraded to first-class prose: --font-serif reading card + --font-mono
   metadata row (coordinates, timestamp, session telemetry)
-- Long notes utilize expandable footnote-style progressive disclosure
+- Within the ≤500-char cap, longer notes may use plain expandable progressive disclosure — no parallax, no marginalia ornament
 - Empty check-in notes do NOT render any container or placeholder box (strictly zero visual padding/empty slot decoration)
 - Check-in notes remain utility-first, authentic, and concise (≤500 chars) — never a blog, publishing platform, or sprawling essay; typographic refinement serves readability without imposing editorial bloat
 ```

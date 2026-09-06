@@ -19,7 +19,7 @@ ceiling, first-class skeleton/empty/error states — and every design decision
 must pass the manifesto's Interaction gate (怎么交互) before shipping.
 ## Status
 
-Accepted (revised 2026-09-06 — Founder final settlement on BRAWUKA-69: Product positioning affirmed as artisan information tool (文艺范的信息工具), strictly rejecting reading/podcast/publishing platform creep; anti-AI vibe coding craftsmanship locked; revised 2026-09-06 — BRAWUKA-69 human craftsmanship & editorial reset: typography dual ramp & variable serif (--font-serif), spring-first motion tokens & settle budgets, dual-plate printing discipline (plate roles) & --grain material overlay, editorial surfaces & check-in prose, anti-pattern harmonization; 2026-09-06 — digital-garden editorial scope settled (BRAWUKA-74): lightweight fulfillment via notes ecosystem; standalone Stories surface rejected; post-map profile notes-collection slice registered; revised 2026-09-01 — references 0000-founder-manifesto as the higher-precedence aesthetic authority (#288); 2026-08-22 — copy tone principle 热情真诚: warm, sincere, cute, never commercial (DG87); 2026-08-21 — viewport & safe-area contract: dvh/svh units…
+Accepted (corrected 2026-09-06 — BRAWUKA-74 Option 2 superseded by Owner ruling: digital garden NOT applicable as a product surface; CoffeeMode remains a pure tool; profile notes-collection slice removed; reading-surface gate tightened to explicit-Owner-ruling; revised 2026-09-06 — Founder final settlement on BRAWUKA-69: Product positioning affirmed as artisan information tool (文艺范的信息工具), strictly rejecting reading/podcast/publishing platform creep; anti-AI vibe coding craftsmanship locked; revised 2026-09-06 — BRAWUKA-69 human craftsmanship & editorial reset: typography dual ramp & variable serif (--font-serif), spring-first motion tokens & settle budgets, dual-plate printing discipline (plate roles) & --grain material overlay, editorial surfaces & check-in prose, anti-pattern harmonization; 2026-09-06 — digital-garden editorial scope settled (BRAWUKA-74): lightweight fulfillment via notes ecosystem; standalone Stories surface rejected; post-map profile notes-collection slice registered; revised 2026-09-01 — references 0000-founder-manifesto as the higher-precedence aesthetic authority (#288); 2026-08-22 — copy tone principle 热情真诚: warm, sincere, cute, never commercial (DG87); 2026-08-21 — viewport & safe-area contract: dvh/svh units…
 
 ## Stable decisions
 
@@ -36,8 +36,8 @@ Accepted (revised 2026-09-06 — Founder final settlement on BRAWUKA-69: Product
 - Dual typography scales: isolated App ramp (xs-2xl) and Editorial ramp (prose/lede/section/display+opsz); --font-serif for narrative reading, forbidden on utility chrome (BRAWUKA-69)
 - Spring-first motion: settle budgets (150ms/300ms/450ms) replace fixed durations; soft/gentle/snappy presets from lib/motion.ts codified as tokens (BRAWUKA-69)
 - Dual-plate printing discipline: substrate + espresso ink (≥70%) + terracotta spot + sage secondary (≤30%); --grain SVG noise material overlay bound to WCAG AA contrast gate (BRAWUKA-69)
-- Digital garden (manifesto §4) is fulfilled via the check-in notes ecosystem
-  only — standalone Stories/Fieldnotes surfaces are rejected (BRAWUKA-74)
+- Digital garden (manifesto §4) is NOT fulfilled as a product surface —
+  CoffeeMode stays a pure tool (Owner ruling 2026-09-06, BRAWUKA-74)
 ```
 
 ## Design personality
@@ -383,43 +383,24 @@ Component transitions:
 - Full-element centered symmetric templates are strictly prohibited on editorial surfaces
 ```
 
-### Digital garden scope (BRAWUKA-74 product decision, 2026-09-06)
+### Digital garden — not applicable as a product surface (Owner ruling, 2026-09-06)
 
 ```text
-Manifesto principle 4 (digital garden) is fulfilled lightweight through the
-check-in notes ecosystem — CoffeeMode does NOT introduce a standalone
-Stories/Fieldnotes reading surface.
+Manifesto principle 4 (digital garden) is NOT applicable as a product surface
+(Owner ruling 2026-09-06, BRAWUKA-74). CoffeeMode is a pure tool: it has no
+editorial/reading product surface, and none may be added. The principle's
+aesthetic substance is carried by the design language alone — editorial
+typography, asymmetric grid, and marginalia per §Typography / §Motion /
+§Color & Material and the BRAWUKA-73 pilot — with no corresponding product
+surface.
 
-Approved scope:
-- Check-in note as first-class prose card (see "Check-in note prose card"
-  above; visual pilot via BRAWUKA-73)
-- Profile "手记" (notes) aggregation view — the ONLY new surface this cycle:
-  the user's own notes rendered as an editorial reading collection inside the
-  existing profile tab system. No new top-level route; no IA change
-
-Explicitly rejected (must not grow back without a new product decision):
-- Standalone Stories/Fieldnotes feed and detail reading pages
-- Official or UGC long-form content programs and supply mechanisms
-- Any new top-level reading route (the accepted gate stands: no agent may add
-  top-level reading routes without an explicit product decision)
-- Content moderation / anti-spam infrastructure
-
-Priority vs. map-native main line:
-- Map main line (MapCanvas + check-in core loop) is the absolute priority;
-  NO editorial surface ships before the map
-- Sole pre-map editorial work permitted: the BRAWUKA-73 prose-card visual
-  pilot — design-language application on existing surfaces, not a new product
-  surface (per CEO ruling, BRAWUKA-73 is evaluated after BRAWUKA-71/72 merge)
-- Profile "手记" aggregation view is post-map backlog, registered in
-  docs/agent/implementation-slices.md (also gated on notes accumulating to
-  reading-worthy volume)
-
-Option 3 (full Stories surface) reopen triggers — ALL three required:
-1. Map main line shipped and core retention on target
-2. Data signal of expression overflow (e.g., note-length distribution
-   persistently pressing the 500-char cap)
-3. Explicit Owner approval (content sourcing + moderation cost is a major
-   decision)
+- The profile "手记" (notes) aggregation view is REJECTED; no new editorial
+  surface is introduced.
+- Gate (tightened): no agent may introduce any reading surface or top-level
+  reading route without an explicit Owner ruling.
+- Unaffected: the check-in note prose-card visual and typographic treatment
+  (§Check-in note prose card) remains an accepted design-language application
+  on an existing surface (BRAWUKA-69 Spec Diff; pilot via BRAWUKA-73).
 ```
 
 ## Layout
@@ -531,7 +512,7 @@ this principle governs them and any new copy.
 - Variable breathing (≤60 wght units) restricted to editorial display; prefers-reduced-motion degrades immediately to static weight
 - Plate roles strictly enforced: dominant espresso ink (≥70%), secondary sage (≤30% per viewport, work-suitability only), single terracotta focal event per viewport
 - Material token --grain (SVG feTurbulence) defined with strict opacity limits (0.03-0.05 light / 0.04-0.06 dark), pointer-events: none, never on map canvas, zero WCAG AA contrast regression
-- Editorial surfaces adhere to 12-column asymmetric grid, marginalia at ≥lg, 62-68ch measure, check-in note prose card, and digital garden scope boundaries per §Digital garden scope respected (BRAWUKA-74)
+- Editorial surfaces adhere to 12-column asymmetric grid, marginalia at ≥lg, 62-68ch measure, and the check-in note prose card; no editorial/reading product surface is introduced (Owner ruling 2026-09-06, BRAWUKA-74)
 - Dark mode is a true espresso theme with warm undertones and optical lighting transition
 - Map (Apple Maps dark) feels integrated, not embedded
 - Mobile layout is map-native with bottom sheet (snappy spring detent snap with drag momentum pass-through)

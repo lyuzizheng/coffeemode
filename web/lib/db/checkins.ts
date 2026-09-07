@@ -103,6 +103,20 @@ export class CafeNotFoundError extends Error {
 }
 
 /**
+ * Thrown when a regular check-in collides with the caller's live check-in
+ * for the same cafe inside the revisit window (DG64: at most 1 per cafe
+ * per user per `checkins.revisitWindowHours`). The caller should edit
+ * `existingCheckinId` instead — the drawer does this preemptively, and the
+ * POST route surfaces the id so raced clients can convert silently.
+ */
+export class DuplicateCheckInError extends Error {
+  constructor(public existingCheckinId: string) {
+    super(`duplicate check-in within the revisit window: ${existingCheckinId}`);
+    this.name = "DuplicateCheckInError";
+  }
+}
+
+/**
  * A regular (non-creation) check-in. Spec 0001:541 pins >=1 slider per
  * check-in (creation pins more); policies, note, and photos stay optional
  * extras here. Photos are plain image UUIDs (`photo_ids`) — the server
@@ -179,6 +193,22 @@ export function parseCheckInBody(body: unknown): ParseResult<CreateCheckInInput>
 }
 
 const CAFE_EXISTS_SQL = "select id from cafes where id = $1 and deleted_at is null";
+
+/** DG64 revisit window, hours (DG107: product value lives in app.yaml). */
+export const REVISIT_WINDOW_HOURS = appConfig.checkins.revisitWindowHours;
+
+/**
+ * DG64 windowed existence check: the caller's latest live check-in for this
+ * cafe inside the revisit window, if any. Runs inside the createCheckIn
+ * transaction (after the cafe gate, before the insert) so a raced second
+ * write cannot slip between check and insert.
+ */
+const SELECT_RECENT_CHECKIN_SQL = `
+select id from checkins
+where cafe_id = $1 and user_id = $2 and deleted_at is null
+  and visited_at > now() - ($3 * interval '1 hour')
+order by visited_at desc limit 1
+`;
 
 const INSERT_CHECKIN_SQL = `
 insert into checkins (cafe_id, user_id, is_creation, scores, max_stay, note, photos, visited_at)
@@ -263,6 +293,17 @@ export async function createCheckIn(
 
     const cafe = await client.query<{ id: string }>(CAFE_EXISTS_SQL, [input.cafe_id]);
     if (!cafe.rows[0]) throw new CafeNotFoundError(input.cafe_id);
+
+    // DG64: at most 1 check-in per cafe per user per revisit window. A hit
+    // means "edit the existing check-in" — the drawer preempts this, the
+    // route maps it to 409 with the id for raced clients.
+    const recent = await client.query<{ id: string }>(SELECT_RECENT_CHECKIN_SQL, [
+      input.cafe_id,
+      userId,
+      REVISIT_WINDOW_HOURS,
+    ]);
+    const existingId = recent.rows[0]?.id;
+    if (existingId) throw new DuplicateCheckInError(existingId);
 
     const res = await client.query<{ id: string }>(INSERT_CHECKIN_SQL, [
       input.cafe_id,

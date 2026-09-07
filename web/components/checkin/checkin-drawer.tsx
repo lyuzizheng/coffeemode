@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Drawer, toast } from "@heroui/react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -51,14 +51,43 @@ function isWithin90Days(iso: string): boolean {
   return ageMs < 90 * 24 * 60 * 60 * 1000;
 }
 
+/** The caller's most recent check-in for a cafe, as returned by /api/checkins/last. */
+export interface LastCheckin {
+  id: string;
+  scores: CheckInScores;
+  max_stay: MaxStay | null;
+  note: string | null;
+  visited_at: string;
+}
+
+/**
+ * DG64 same-day-revisit switch: returns the last check-in when it falls
+ * inside the server-provided revisit window (at most 1 per cafe per user
+ * per window — a further visit edits this check-in), else null. A missing
+ * window means "unknown": no preempt, the POST 409 fallback still converts
+ * silently, so the user never sees a conflict either way.
+ */
+export function resolveRevisitCheckin(
+  data: { checkin: LastCheckin | null; revisitWindowHours?: number } | undefined,
+  now: number = Date.now(),
+): LastCheckin | null {
+  const checkin = data?.checkin;
+  const windowHours = data?.revisitWindowHours;
+  if (!checkin || typeof windowHours !== "number" || !(windowHours > 0)) return null;
+  const ageMs = now - new Date(checkin.visited_at).getTime();
+  if (!Number.isFinite(ageMs) || ageMs >= windowHours * 3_600_000) return null;
+  return checkin;
+}
+
 async function fetchLastCheckin(cafeId: string) {
   const res = await fetch(`/api/checkins/last?cafe_id=${encodeURIComponent(cafeId)}`);
   if (res.status === 401) throw new Error("unauthorized");
   if (!res.ok) throw new Error("failed");
   const body = (await res.json()) as {
-    checkin: { id: string; scores: CheckInScores; max_stay: MaxStay | null; note: string | null; visited_at: string } | null;
+    checkin: LastCheckin | null;
+    revisitWindowHours?: number;
   };
-  return body.checkin;
+  return body;
 }
 
 function CheckinForm({
@@ -71,6 +100,9 @@ function CheckinForm({
   initialNote,
   initialPhotos,
   isAuthenticated,
+  lastCheckin,
+  authProbeFailed,
+  lastCheckinLoaded,
   onClose,
   onDirtyChange,
 }: {
@@ -84,6 +116,12 @@ function CheckinForm({
   initialPhotos?: PhotoUpload[];
   /** Server-known auth state; undefined = resolve client-side (cached public shell). */
   isAuthenticated?: boolean;
+  /** Last check-in probe result, owned by CheckinDrawer (shared query). */
+  lastCheckin?: LastCheckin | null;
+  /** True when the probe 401d: anonymous on the cached public shell. */
+  authProbeFailed?: boolean;
+  /** True when the drawer-owned probe completed successfully (DG59 upload gating). */
+  lastCheckinLoaded?: boolean;
   onClose: () => void;
   onDirtyChange: (dirty: boolean) => void;
 }) {
@@ -123,26 +161,18 @@ function CheckinForm({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [repeatDismissed, setRepeatDismissed] = useState(false);
   const [failedAction, setFailedAction] = useState<"save" | "delete" | null>(null);
-
-  const lastCheckinQuery = useQuery({
-    queryKey: ["last-checkin", cafeId],
-    queryFn: () => fetchLastCheckin(cafeId),
-    enabled: !isEdit && isAuthenticated !== false,
-    staleTime: 60_000,
-    retry: false,
-  });
-
-  const authProbeFailed =
-    lastCheckinQuery.isError &&
-    lastCheckinQuery.error instanceof Error &&
-    lastCheckinQuery.error.message === "unauthorized";
+  // Auth is resolved server-side where the page knows it (home, profile) via the
+  // `isAuthenticated` prop. On the CDN-cached public cafe shell (DG105/DG106) the
+  // prop is undefined and auth is resolved client-side: the drawer-owned
+  // last-check-in probe 401s for anonymous users, and a 401 from
+  // submit/delete drops to the sign-in gate instead of a raw error.
   const effectivelyAuthenticated = (isAuthenticated ?? true) && !authProbeFailed;
 
   // Photos upload on selection only once auth is positively known (DG59):
   // server-known pages pass the prop, the cached shell waits for its probe.
   // Until then selections are staged locally and upload at publish time.
   const authConfirmed =
-    isAuthenticated === true || (isAuthenticated === undefined && lastCheckinQuery.isSuccess);
+    isAuthenticated === true || (isAuthenticated === undefined && lastCheckinLoaded);
   const deferUpload = !isEdit && !authConfirmed;
 
   /** Persist the in-progress draft before the full-page OAuth bounce (DG66). */
@@ -176,8 +206,6 @@ function CheckinForm({
   useEffect(() => {
     if (showSignInGate) stagePendingDraft();
   }, [showSignInGate, stagePendingDraft]);
-
-  const lastCheckin = lastCheckinQuery.data;
   const lastVisitWithin90Days = useMemo(() => {
     if (!lastCheckin) return false;
     return isWithin90Days(lastCheckin.visited_at);
@@ -307,6 +335,30 @@ function CheckinForm({
         body: JSON.stringify(body),
       });
       if (res.status === 401) throw new Error("unauthorized");
+      if (res.status === 409) {
+        // Lost a race after the probe (second tab, or input typed before the
+        // probe resolved): DG64 is product behavior, never a user-facing
+        // error — convert to an edit of the existing check-in silently.
+        const conflict = (await res.json().catch(() => null)) as {
+          existing_checkin_id?: unknown;
+        } | null;
+        const existingId = conflict?.existing_checkin_id;
+        if (typeof existingId === "string" && existingId.length > 0) {
+          const patchBody: Record<string, unknown> = {
+            scores,
+            max_stay: maxStay,
+            note: note.trim() ? note.trim() : null,
+          };
+          const retry = await fetch(`/api/checkins/${existingId}`, {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(patchBody),
+          });
+          if (retry.status === 401) throw new Error("unauthorized");
+          if (!retry.ok) throw new Error(await responseMessage(retry, t("couldntSave")));
+          return retry.json();
+        }
+      }
       if (!res.ok) throw new Error(await responseMessage(res, t("couldntSave")));
       return res.json();
     },
@@ -558,43 +610,80 @@ export function CheckinDrawer({
 }: CheckinDrawerProps) {
   const t = useTranslations("checkIn");
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
-  const dirtyRef = useRef(false);
+  const [isDirty, setIsDirty] = useState(false);
   const handleDirtyChange = useCallback((dirty: boolean) => {
-    dirtyRef.current = dirty;
+    setIsDirty(dirty);
   }, []);
 
-  const formKey = isOpen ? `${cafeId}-${mode}-${editCheckinId ?? "new"}` : "closed";
+  // DG64 same-day-revisit probe (shared with the form below via props — one
+  // query key, one network call). Runs for create opens only; explicit edit
+  // opens already know their check-in.
+  const lastCheckinQuery = useQuery({
+    queryKey: ["last-checkin", cafeId],
+    queryFn: () => fetchLastCheckin(cafeId),
+    enabled: isOpen && mode !== "edit" && isAuthenticated !== false,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const authProbeFailed =
+    lastCheckinQuery.isError &&
+    lastCheckinQuery.error instanceof Error &&
+    lastCheckinQuery.error.message === "unauthorized";
+
+  // Preempt create → edit while the draft is still pristine, latched per open
+  // (a dirty draft keeps its input — the POST 409 fallback still converts
+  // silently — so a slow probe never wipes what the user already typed, and
+  // later keystrokes can never flip the mode back under the form).
+  const [preempted, setPreempted] = useState<LastCheckin | null>(null);
+  const [preemptScope, setPreemptScope] = useState<string | null>(null);
+  const scope = isOpen ? `${cafeId}|${mode}` : null;
+  if (scope !== preemptScope) {
+    setPreemptScope(scope);
+    setPreempted(null);
+  }
+  const revisit = mode === "create" ? resolveRevisitCheckin(lastCheckinQuery.data) : null;
+  if (!preempted && revisit && !isDirty) {
+    setPreempted(revisit);
+  }
+  const preempt = preempted ?? (revisit && !isDirty ? revisit : null);
+  const effectiveMode: DrawerMode = preempt ? "edit" : mode;
+  const effectiveEditId = mode === "edit" ? editCheckinId : preempt?.id;
+
+  const formKey = isOpen ? `${cafeId}-${effectiveMode}-${effectiveEditId ?? "new"}` : "closed";
 
   const handleCloseAttempt = useCallback(
     (nextOpen: boolean) => {
       if (!nextOpen) {
-        if (dirtyRef.current) {
+        if (isDirty) {
           setShowDiscardConfirm(true);
           return;
         }
       }
       onOpenChange(nextOpen);
     },
-    [onOpenChange],
+    [onOpenChange, isDirty],
   );
 
   return (
     <Drawer.Root isOpen={isOpen} onOpenChange={handleCloseAttempt}>
       <Drawer.Backdrop />
       <Drawer.Content placement="bottom" className="max-h-[92dvh] bg-overlay text-foreground">
-        <Drawer.Dialog aria-label={mode === "edit" ? t("editTitle") : t("title")} className="flex max-h-[92dvh] flex-col">
+        <Drawer.Dialog aria-label={effectiveMode === "edit" ? t("editTitle") : t("title")} className="flex max-h-[92dvh] flex-col">
           {isOpen && (
             <CheckinForm
               key={formKey}
               cafeId={cafeId}
               cafeName={cafeName}
-              mode={mode}
-              editCheckinId={editCheckinId}
-              initialScores={initialScores}
-              initialMaxStay={initialMaxStay}
-              initialNote={initialNote}
+              mode={effectiveMode}
+              editCheckinId={effectiveEditId}
+              initialScores={initialScores ?? revisit?.scores}
+              initialMaxStay={initialMaxStay ?? revisit?.max_stay ?? null}
+              initialNote={initialNote ?? revisit?.note ?? null}
               initialPhotos={initialPhotos}
               isAuthenticated={isAuthenticated}
+              lastCheckin={lastCheckinQuery.data?.checkin ?? null}
+              authProbeFailed={authProbeFailed}
+              lastCheckinLoaded={lastCheckinQuery.isSuccess}
               onClose={() => onOpenChange(false)}
               onDirtyChange={handleDirtyChange}
             />

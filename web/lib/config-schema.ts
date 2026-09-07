@@ -70,6 +70,7 @@ export interface AppConfig {
     photoCap: number;
     noteMaxChars: number;
     pendingDraftTtlHours: number;
+    revisitWindowHours: number;
   };
   profile: {
     listLimitMax: number;
@@ -295,6 +296,11 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
         file,
         "checkins.pendingDraftTtlHours",
         checkins.pendingDraftTtlHours,
+      ),
+      revisitWindowHours: positiveNumber(
+        file,
+        "checkins.revisitWindowHours",
+        checkins.revisitWindowHours,
       ),
     },
     profile: {

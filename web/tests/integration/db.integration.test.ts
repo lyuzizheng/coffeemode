@@ -24,6 +24,7 @@ import {
   CafeNotFoundError,
   CheckInForbiddenError,
   CheckInNotFoundError,
+  DuplicateCheckInError,
   MERGE_GALLERY_SQL,
   SelfLikeError,
   createCheckIn,
@@ -358,6 +359,36 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(stats.n_checkins).toBe(2);
       expect(stats.dims.overall).toEqual({ sum: 60, n: 1 });
       expect(stats.experience_score).toBe(60);
+    });
+
+    it("createCheckIn rejects a second check-in inside the revisit window, allows one past it (DG64)", async () => {
+      const first = await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 60 } });
+
+      // A same-day revisit is an edit, not a new row: rejected with the live id.
+      const err = await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 70 } }).catch(
+        (e) => e,
+      );
+      expect(err).toBeInstanceOf(DuplicateCheckInError);
+      expect((err as DuplicateCheckInError).existingCheckinId).toBe(first.checkinId);
+
+      // The rejected write leaves no row behind.
+      const { rows } = await dbClient.query(
+        "select count(*)::int as n from checkins where cafe_id = $1 and user_id = $2 and deleted_at is null",
+        [CAFE_A, U2],
+      );
+      expect(rows[0].n).toBe(1);
+
+      // Past the window the same user can check in again (visited_at-keyed).
+      await dbClient.query("update checkins set visited_at = now() - interval '25 hours' where id = $1", [
+        first.checkinId,
+      ]);
+      const second = await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 70 } });
+      expect(second.checkinId).not.toBe(first.checkinId);
+
+      // A soft-deleted check-in no longer blocks the window either.
+      await softDeleteCheckIn(U2, second.checkinId);
+      const third = await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 80 } });
+      expect(third.checkinId).not.toBe(second.checkinId);
     });
 
     it("createCafeWithFirstCheckIn fuses cafe + first check-in + stats and dedupes", async () => {
@@ -1220,6 +1251,12 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         fakeProvisionPhotosDeps(),
       );
 
+      // DG64: U1's fused creation check-in is still live, so age it past the
+      // revisit window — this test covers delete flows, not the window.
+      await dbClient.query("update checkins set visited_at = now() - interval '25 hours' where id = $1", [
+        created.checkinId,
+      ]);
+
       // U1 adds a 2nd checkin
       await createCheckIn(U1, { cafe_id: created.cafeId, scores: { wifi: 80 } });
 
@@ -1972,6 +2009,12 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       }, fakeProvisionPhotosDeps());
       // Toggle to private
       await setCafeVisibility(created.cafeId, U1, "private");
+
+      // DG64: the fused creation check-in is still live, so age it past the
+      // revisit window — this test covers visibility, not the window.
+      await dbClient.query("update checkins set visited_at = now() - interval '25 hours' where id = $1", [
+        created.checkinId,
+      ]);
 
       // Add another check-in while private
       const photoId2 = randomUUID();

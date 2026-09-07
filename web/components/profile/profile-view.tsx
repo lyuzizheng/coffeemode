@@ -12,6 +12,7 @@ import { ProfileTabCafes, fetchUserCafes } from "./profile-tab-cafes";
 import { ProfileTabFavorites } from "./profile-tab-favorites";
 import { ProfileTabHistory } from "./profile-tab-history";
 import { RankingPreferenceToggle } from "@/components/search/ranking-preference-toggle";
+import { PublicIdentityToggle } from "./public-identity-toggle";
 import type { UserProfileDto, UserProfileStatsDto } from "@/lib/db/profile";
 
 export interface ProfileViewProps {
@@ -58,6 +59,11 @@ export function ProfileView({
           <>
             <ProfileHero profile={profile} onProfileChange={setProfile} />
             <ProfileStats stats={stats} />
+            {profile && (
+              <div className="mt-2">
+                <PublicIdentityToggle profile={profile} onProfileChange={setProfile} />
+              </div>
+            )}
             <ProfileTabs activeTab={activeTab} onTabChange={setActiveTab} baseId={baseId} />
 
             <div className="flex-1 flex flex-col py-2">

@@ -26,6 +26,7 @@ import { dedupeCheckins } from "@/lib/discovery/view-model";
 import { duration, ease } from "@/lib/motion";
 import { WORK_DIMS, type WorkDim } from "@/lib/stats/work-stats";
 import type { CheckInFeedMode, CheckInFeedPage, PublicCheckIn } from "@/types/checkins";
+import type { PublicAuthor } from "@/types/identity";
 
 const MODES: CheckInFeedMode[] = ["helpful", "newest"];
 
@@ -49,8 +50,8 @@ export class FeedNotFoundError extends Error {
   }
 }
 
-/** `A nomad · Mar 2026` — MVP identity is anonymous (DG13). */
-function FeedCardMeta({ visitedAt }: { visitedAt: string }) {
+/** `A nomad · Mar 2026`, or the consented author name/avatar (spec 0006). */
+function FeedCardMeta({ visitedAt, author }: { visitedAt: string; author: PublicAuthor | null }) {
   const t = useTranslations("discovery");
   const locale = useLocale();
   const date = new Date(visitedAt);
@@ -58,9 +59,21 @@ function FeedCardMeta({ visitedAt }: { visitedAt: string }) {
     ? ""
     : new Intl.DateTimeFormat(locale, { month: "short", year: "numeric" }).format(date);
   return (
-    <p className="text-sm text-foreground">
-      {t("a_nomad")}
-      {label && <span className="text-muted"> · {label}</span>}
+    <p className="flex items-center gap-1.5 text-sm text-foreground">
+      {author?.avatar_url && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={author.avatar_url}
+          alt=""
+          width={20}
+          height={20}
+          className="h-5 w-5 rounded-full object-cover"
+        />
+      )}
+      <span>
+        {author ? t("by_author", { name: author.display_name }) : t("a_nomad")}
+        {label && <span className="text-muted"> · {label}</span>}
+      </span>
     </p>
   );
 }
@@ -94,7 +107,7 @@ function FeedCard({
   const liked = checkin.liked_by_viewer;
   return (
     <article className="flex flex-col gap-2 rounded-md border border-separator bg-surface p-3">
-      <FeedCardMeta visitedAt={checkin.visited_at} />
+      <FeedCardMeta visitedAt={checkin.visited_at} author={checkin.author} />
       <MiniScores checkin={checkin} />
       {checkin.note && <p className="text-base text-foreground">{checkin.note}</p>}
       {checkin.photos.length > 0 && (

@@ -11,6 +11,7 @@ import {
 } from "@/lib/stats/aggregate";
 import { coerceWorkStats } from "@/lib/stats/work-stats";
 import type { CafeDetail, CafeSummary, CafeVisibility, PublicCafeDetail } from "@/types/cafes";
+import { toPublicAuthor, type AuthorProjectionColumns } from "@/types/identity";
 import type { StoredImage } from "@/types/images";
 import {
   MAX_STAY_VALUES,
@@ -467,22 +468,29 @@ export async function listCafesNearby(params: NearbyCafesQuery): Promise<CafeSum
 }
 
 const GET_BY_ID_SQL = `
-select id, name,
-       ST_Y(location::geometry) as lat,
-       ST_X(location::geometry) as lng,
-       address, city, description, cover, gallery, opening_hours, tz,
-       price_range, google_place_id, apple_poi_id, work_stats,
-       created_by, visibility,
-       created_at, updated_at
-from cafes
-where id = $1 and deleted_at is null
+select c.id, c.name,
+       ST_Y(c.location::geometry) as lat,
+       ST_X(c.location::geometry) as lng,
+       c.address, c.city, c.description, c.cover, c.gallery, c.opening_hours, c.tz,
+       c.price_range, c.google_place_id, c.apple_poi_id, c.work_stats,
+       c.created_by, c.visibility,
+       c.created_at, c.updated_at,
+       case when p.show_public_identity then p.public_handle end as author_handle,
+       case when p.show_public_identity then p.display_name end as author_display_name,
+       case when p.show_public_identity then p.avatar_url end as author_avatar_url
+from cafes c
+left join profiles p on p.id = c.created_by
+where c.id = $1 and c.deleted_at is null
 `;
+
+/** Internal cafe row plus its public-safe author projection columns. */
+export type CafeDetailWithAuthor = CafeDetail & Partial<AuthorProjectionColumns>;
 
 /** Single cafe by id; null when missing, soft-deleted, or private to non-creator (404). */
 export async function getCafe(
   id: string,
   viewerId?: string | null,
-): Promise<CafeDetail | null> {
+): Promise<CafeDetailWithAuthor | null> {
   if (!isValidUUID(id)) throw new Error("Invalid cafe ID");
   const { rows } = await query<
     CafeDetail & { created_by: string | null; visibility: CafeVisibility } & Record<string, unknown>
@@ -508,17 +516,21 @@ export async function getCafe(
  * Public cafe detail projection (spec 0001 DG13): strip creator id and `StoredImage.by`
  * from gallery so the anonymous surface never leaks internal author ids.
  * Null created_by falls back to the service account, rendering maintainer as "由 CoffeeMode 维护".
+ * Author (spec 0006) is the consented creator projection; always null on the
+ * anonymous / service-account / null-`created_by` path (architect correction).
  */
-export function toPublicCafeDetail(cafe: CafeDetail): PublicCafeDetail {
+export function toPublicCafeDetail(cafe: CafeDetailWithAuthor): PublicCafeDetail {
   const serviceAccountId = getServiceAccountId();
   const effectiveCreatedBy = cafe.created_by ?? serviceAccountId;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip internal creator id (spec 0001 / DG13)
-  const { created_by: _cb, gallery, ...rest } = cafe;
+  const isServiceMaintained = effectiveCreatedBy === serviceAccountId;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip internal creator id + raw author columns (spec 0001 / DG13)
+  const { created_by: _cb, gallery, author_handle: _ah, author_display_name: _an, author_avatar_url: _aa, ...rest } = cafe;
   return {
     ...rest,
-    maintainer: effectiveCreatedBy === serviceAccountId ? SERVICE_ACCOUNT_MAINTAINER_LABEL : null,
+    maintainer: isServiceMaintained ? SERVICE_ACCOUNT_MAINTAINER_LABEL : null,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip internal author id (DG13)
     gallery: (gallery ?? []).map(({ by: _by, ...image }) => image),
+    author: isServiceMaintained ? null : toPublicAuthor(cafe),
   };
 }
 

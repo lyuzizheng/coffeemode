@@ -1,3 +1,4 @@
+import type { PublicAuthor } from "./identity";
 import type { PublicStoredImage, StoredImage } from "./images";
 
 /** Check-in slider dimensions, all 0-100. Only scored keys are sent/stored. */
@@ -59,6 +60,11 @@ export interface PublicCheckIn {
   /** Whether the (possibly anonymous) viewer liked this check-in. */
   liked_by_viewer: boolean;
   visited_at: string;
+  /**
+   * Consented public author (spec 0006). Null means the client renders the
+   * existing "a_nomad" copy — default anonymous, revoked, or missing profile.
+   */
+  author: PublicAuthor | null;
 }
 
 export type CheckInFeedMode = "newest" | "helpful";

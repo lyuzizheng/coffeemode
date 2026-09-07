@@ -1,5 +1,6 @@
 import type { WeeklyHours } from "@/lib/hours";
 import type { WorkStats } from "@/lib/stats/work-stats";
+import type { PublicAuthor } from "./identity";
 import type { PublicStoredImage, StoredImage } from "./images";
 
 export type CafeVisibility = "public" | "private";
@@ -42,4 +43,10 @@ export type PublicCafeDetail = Omit<CafeDetail, "gallery" | "created_by"> & {
   gallery: PublicStoredImage[];
   maintainer?: string | null;
   visibility?: CafeVisibility;
+  /**
+   * Consented public author of the cafe creator (spec 0006). Null means the
+   * client renders the existing anonymous copy; always null for null /
+   * service-account `created_by`.
+   */
+  author: PublicAuthor | null;
 };

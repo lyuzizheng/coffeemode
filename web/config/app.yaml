@@ -70,6 +70,9 @@ checkins:
   # product decision to change them is a typed YAML edit, not a code change.
   photoCap: 6
   noteMaxChars: 500
+  # How long the sign-in gate's pending draft (DG66) survives in IndexedDB.
+  # Sized for an interrupted OAuth bounce, not for long-term storage.
+  pendingDraftTtlHours: 72
 profile:
   # Profile page primary lists limit cap and default page size (DG107)
   listLimitMax: 50

@@ -333,6 +333,8 @@
     "signInGate": "请先登录再发布，草稿会保留。",
     "signInRequired": "请先登录再发布",
     "photosUploading": "照片还在上传中，稍等一下",
+    "photosFailed": "部分照片上传失败，点照片重试",
+    "draftRestored": "草稿已恢复，点打卡即可发布",
     "promptCaption": "来打个卡，帮其他 nomad 种草避雷吧！",
     "notSet": "未设置",
     "clear": "清除{label}",

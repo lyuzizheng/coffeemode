@@ -189,7 +189,7 @@ describe("parseAppConfig validation", () => {
     shellCache: { sMaxAgeSeconds: 600, staleWhileRevalidateSeconds: 3600 },
     recoveryLimit: 5,
   };
-  const validCheckins = { photoCap: 6, noteMaxChars: 500 };
+  const validCheckins = { photoCap: 6, noteMaxChars: 500, pendingDraftTtlHours: 72 };
   const validProfile = {
     listLimitMax: 50,
     listPageSize: 20,
@@ -334,7 +334,7 @@ describe("parseAppConfig validation", () => {
         feed: { pageSize: 20 },
         discovery: validCenter,
         seo: validSeo,
-        checkins: { photoCap: 6.5, noteMaxChars: 500 },
+        checkins: { photoCap: 6.5, noteMaxChars: 500, pendingDraftTtlHours: 72 },
         profile: validProfile,
         budgets: validBudgets,
       }),

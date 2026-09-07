@@ -21,6 +21,7 @@ import type { DiscoveryController } from "@/lib/discovery/use-discovery-controll
 import type { PublicCafeDetail } from "@/types/cafes";
 import { CheckinFeed, FeedNotFoundError } from "./checkin-feed";
 import { FactsRow } from "./cafe-card";
+import { CreatorLine } from "./creator-line";
 import { InlineError } from "./inline-error";
 import { PolicyConsensus, ScorePair, WorkProfile } from "./scores";
 
@@ -189,6 +190,7 @@ export function DetailContent({
       <div className="flex flex-col gap-1.5">
         {heading}
         {meta}
+        <CreatorLine author={cafe.author} maintainer={cafe.maintainer ?? null} />
       </div>
       <ScorePair stats={cafe.work_stats} />
       <ActionRow cafe={cafe} onCheckIn={onCheckIn} />

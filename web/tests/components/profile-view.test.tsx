@@ -64,6 +64,10 @@ describe("ProfileView", () => {
       avatarUrl: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      showPublicIdentity: false,
+      publicHandle: null,
+      identityConsentedAt: null,
+      publicHandleChangedAt: null,
     };
 
     const mockStats = {
@@ -96,6 +100,10 @@ describe("ProfileView", () => {
       avatarUrl: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      showPublicIdentity: false,
+      publicHandle: null,
+      identityConsentedAt: null,
+      publicHandleChangedAt: null,
     };
 
     const fetchMock = vi.fn().mockImplementation(async (url: string) => {

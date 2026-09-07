@@ -37,6 +37,10 @@ describe("Profile DB helpers", () => {
             avatar_url: null,
             current_city: "tokyo",
             created_at: new Date("2026-08-25T10:00:00.000Z"),
+            show_public_identity: true,
+            public_handle: "nomad-alex-ab12",
+            identity_consented_at: new Date("2026-09-07T00:00:00.000Z"),
+            public_handle_changed_at: null,
           },
         ],
         command: "SELECT",
@@ -52,6 +56,10 @@ describe("Profile DB helpers", () => {
         avatarUrl: null,
         currentCity: "tokyo",
         createdAt: "2026-08-25T10:00:00.000Z",
+        showPublicIdentity: true,
+        publicHandle: "nomad-alex-ab12",
+        identityConsentedAt: "2026-09-07T00:00:00.000Z",
+        publicHandleChangedAt: null,
       });
     });
   });

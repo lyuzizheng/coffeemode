@@ -8,9 +8,10 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { CoverCarousel } from "@/components/cafe/cover-carousel";
 import { GalleryStrip } from "@/components/cafe/gallery-strip";
 import { OpenState } from "@/components/cafe/open-state";
+import { CreatorLine } from "@/components/discovery/creator-line";
 import { PolicyConsensus, ScorePair, WorkProfile } from "@/components/discovery/scores";
 import { getCurrentUser } from "@/lib/auth/get-user";
-import { getCafe } from "@/lib/db/cafes";
+import { getCafe, toPublicCafeDetail } from "@/lib/db/cafes";
 import {
   cafeCanonicalPath,
   cafeJsonLd,
@@ -108,6 +109,7 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
   if (covers.length === 0 && cafe.cover) covers.push(cafe.cover);
   // The public payload contract (DG13): client components receive only the
   // narrow slices, never the full row (see publicCafeShell).
+  const publicAttribution = toPublicCafeDetail(cafe);
   const shell = publicCafeShell(cafe);
 
   return (
@@ -137,6 +139,7 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
             {cafe.address && <span>{cafe.address}</span>}
             <OpenState cafe={shell.openState} />
           </p>
+          <CreatorLine author={publicAttribution.author} maintainer={publicAttribution.maintainer ?? null} />
         </div>
         <ScorePair stats={cafe.work_stats} />
         <CafePageActions cafe={shell.actions} cafeId={cafe.id} shareUrl={canonical} />

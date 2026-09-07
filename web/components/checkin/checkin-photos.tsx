@@ -8,8 +8,12 @@ import { uploadPhoto } from "@/lib/images/client-upload";
 export interface PhotoUpload {
   id: string;
   previewUrl: string;
-  status: "uploading" | "done" | "error";
+  /** "staged" = held locally (logged-out composer, DG59); uploads at publish time. */
+  status: "staged" | "uploading" | "done" | "error";
   imageUuid?: string;
+  /** Original file, retained so a staged photo can upload later and so the
+      sign-in gate draft (DG66) can carry it through the OAuth bounce. */
+  file?: File;
 }
 
 interface CheckinPhotosProps {
@@ -17,9 +21,12 @@ interface CheckinPhotosProps {
   onChange: React.Dispatch<React.SetStateAction<PhotoUpload[]>>;
   maxPhotos?: number;
   disabled?: boolean;
+  /** When true (auth not confirmed), stage selections locally instead of
+      starting the presigned upload — anonymous sessions get a 401 (DG59). */
+  deferUpload?: boolean;
 }
 
-export function CheckinPhotos({ photos, onChange, maxPhotos = 6, disabled = false }: CheckinPhotosProps) {
+export function CheckinPhotos({ photos, onChange, maxPhotos = 6, disabled = false, deferUpload = false }: CheckinPhotosProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const t = useTranslations("checkIn");
 
@@ -45,7 +52,8 @@ export function CheckinPhotos({ photos, onChange, maxPhotos = 6, disabled = fals
       const mappedEntries: PhotoUpload[] = toUpload.map((file) => ({
         id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         previewUrl: URL.createObjectURL(file),
-        status: "uploading" as const,
+        status: deferUpload ? ("staged" as const) : ("uploading" as const),
+        file,
       }));
 
       // Functional updates throughout: uploads resolve asynchronously, and a
@@ -56,6 +64,12 @@ export function CheckinPhotos({ photos, onChange, maxPhotos = 6, disabled = fals
       const updateEntry = (id: string, patch: Partial<PhotoUpload>) => {
         onChange((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
       };
+
+      // Staged photos (logged-out composer) upload later, at publish time.
+      if (deferUpload) {
+        if (inputRef.current) inputRef.current.value = "";
+        return;
+      }
 
       await Promise.all(
         toUpload.map(async (file, idx) => {
@@ -70,7 +84,7 @@ export function CheckinPhotos({ photos, onChange, maxPhotos = 6, disabled = fals
       );
       if (inputRef.current) inputRef.current.value = "";
     },
-    [photos.length, maxPhotos, disabled, onChange],
+    [photos.length, maxPhotos, disabled, deferUpload, onChange],
   );
 
   const removePhoto = (id: string) => {
@@ -80,6 +94,20 @@ export function CheckinPhotos({ photos, onChange, maxPhotos = 6, disabled = fals
   };
 
   const retryPhoto = (id: string) => {
+    const target = photos.find((p) => p.id === id);
+    // A failed staged photo still holds its File — re-upload in place instead
+    // of making the user re-pick it.
+    if (target?.file && !deferUpload) {
+      onChange((prev) => prev.map((p) => (p.id === id ? { ...p, status: "uploading" } : p)));
+      uploadPhoto(target.file)
+        .then((imageUuid) => {
+          onChange((prev) => prev.map((p) => (p.id === id ? { ...p, status: "done", imageUuid } : p)));
+        })
+        .catch(() => {
+          onChange((prev) => prev.map((p) => (p.id === id ? { ...p, status: "error" } : p)));
+        });
+      return;
+    }
     removePhoto(id);
     inputRef.current?.click();
   };

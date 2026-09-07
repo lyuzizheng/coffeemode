@@ -3,6 +3,8 @@ import localFont from "next/font/local";
 import { getLocale, getMessages } from "next-intl/server";
 import { Providers } from "./providers";
 import { OfflineBanner } from "@/components/offline-banner";
+import { CheckinResume } from "@/components/checkin/checkin-resume";
+import { appConfig } from "@/lib/config";
 import "./globals.css";
 import { APP_DESCRIPTION, APP_NAME, THEME_COLOR } from "@/lib/site";
 
@@ -79,6 +81,7 @@ export default async function RootLayout({
         <Providers locale={locale} messages={messages}>
           <OfflineBanner />
           {children}
+          <CheckinResume draftTtlHours={appConfig.checkins.pendingDraftTtlHours} />
         </Providers>
       </body>
     </html>

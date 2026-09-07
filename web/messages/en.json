@@ -326,6 +326,8 @@
     "signInGate": "Sign in to publish your check-in — your draft stays here.",
     "signInRequired": "Please sign in to publish",
     "photosUploading": "Photos are still uploading — wait a moment",
+    "photosFailed": "Some photos couldn't upload — tap a photo to retry",
+    "draftRestored": "Draft restored — tap Check in to publish",
     "promptCaption": "Check in — help the next nomad pick their spot!",
     "notSet": "not set",
     "clear": "Clear {label}",

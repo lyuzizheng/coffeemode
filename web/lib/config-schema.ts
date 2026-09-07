@@ -69,6 +69,7 @@ export interface AppConfig {
   checkins: {
     photoCap: number;
     noteMaxChars: number;
+    pendingDraftTtlHours: number;
   };
   profile: {
     listLimitMax: number;
@@ -290,6 +291,11 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
     checkins: {
       photoCap: positiveInteger(file, "checkins.photoCap", checkins.photoCap),
       noteMaxChars: positiveInteger(file, "checkins.noteMaxChars", checkins.noteMaxChars),
+      pendingDraftTtlHours: positiveInteger(
+        file,
+        "checkins.pendingDraftTtlHours",
+        checkins.pendingDraftTtlHours,
+      ),
     },
     profile: {
       listLimitMax: positiveInteger(file, "profile.listLimitMax", profile.listLimitMax),

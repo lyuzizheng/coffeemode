@@ -1,10 +1,10 @@
 # Pending User Actions
 
 Things only the repo owner can provide or approve — account creation, credential
-provisioning, dashboard toggles, and required external design artifacts. The
-agent cannot perform these. Credentials are never pasted into chat, docs, or the
-repo; put them in `~/.zshrc` or `web/.env.local` and say "配好了" — the agent reads
-them itself and never echoes them back.
+provisioning, dashboard toggles, and approval of agent-drafted design artifacts
+(spec 0004 decision 6b). The agent cannot perform these. Credentials are never
+pasted into chat, docs, or the repo; put them in `~/.zshrc` or `web/.env.local`
+and say "配好了" — the agent reads them itself and never echoes them back.
 
 Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
@@ -85,14 +85,20 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
 ## 8. Kimi K3 UI design artifacts
 
+Supply route changed (owner 2026-09-07, BRAWUKA-109; spec 0004 decision 6b): agents are
+authorized to produce slice-specific K3 composition proposals autonomously and submit
+them for owner review — the owner reviews, no longer authors. The per-slice artifact
+gate itself (spec 0004 decision 6a) still stands.
+
 - [x] Review PR #128's creation flow with Kimi K3 before merge. (Completed post-merge on 2026-08-23 — verdict on PR #128; follow-ups #183–#185.)
-- [ ] Provide a Kimi K3 discovery artifact for issue #133 covering mobile
+- [x] Provide a Kimi K3 discovery artifact for issue #133 covering mobile
   PEEK/HALF/FULL, desktop sidebar/detail column, compact place-characteristic
   icons, both-score hierarchy, Navigate / Check in / Share placement, the
   Helpful/Newest control, tablet landscape, failure/Retry and missing-cafe toast
-  states, non-modal focus, and the accepted drag/scroll behavior.
-- [ ] Provide a slice-specific Kimi K3 artifact before starting any other new
-  user-visible UI implementation.
+  states, non-modal focus, and the accepted drag/scroll behavior. (Delivered and
+  grilled as DG21–DG43; #133 implemented in PR #195.)
+- [ ] Review slice-specific K3 composition proposals (agent-produced per decision 6b)
+  before any new user-visible UI implementation starts.
 
 ## What the agent continues meanwhile
 

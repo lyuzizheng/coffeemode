@@ -239,7 +239,14 @@
     "statsCities": "cities",
     "mockName": "Jordan Lee",
     "mockInitials": "JL",
-    "mockCity": "Tokyo"
+    "mockCity": "Tokyo",
+    "public_identity_label": "Don't show my name on cafes I create or check-ins I post",
+    "public_handle_label": "Public handle",
+    "public_handle_placeholder": "lowercase, numbers, - and _, 3–30 chars",
+    "identity_error_handle_taken": "That handle is already taken",
+    "identity_error_handle_too_soon": "You can change your handle once every 7 days",
+    "identity_error_invalid_handle": "Handle must be 3–30 chars: lowercase letters, numbers, - and _",
+    "identity_error_generic": "Couldn't save — try again?"
   },
   "create": {
     "title": "Add a cafe",
@@ -446,6 +453,7 @@
       "newest": "Newest"
     },
     "a_nomad": "A nomad",
+    "by_author": "By {name}",
     "like_aria": "Like this check-in",
     "like_signin": "Sign in to like a check-in",
     "load_failed": "Couldn't load check-ins",

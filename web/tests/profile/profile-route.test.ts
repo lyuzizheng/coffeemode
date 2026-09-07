@@ -69,6 +69,10 @@ describe("Profile API routes", () => {
         avatarUrl: null,
         currentCity: "singapore",
         createdAt: "2026-08-25T10:00:00.000Z",
+        showPublicIdentity: false,
+        publicHandle: null,
+        identityConsentedAt: null,
+        publicHandleChangedAt: null,
       });
       vi.mocked(getUserStats).mockResolvedValueOnce({
         cafesCount: 5,
@@ -160,6 +164,10 @@ describe("Profile API routes", () => {
         avatarUrl: null,
         currentCity: "tokyo",
         createdAt: "2026-08-25T10:00:00.000Z",
+        showPublicIdentity: false,
+        publicHandle: null,
+        identityConsentedAt: null,
+        publicHandleChangedAt: null,
       });
 
       const req = new Request("http://localhost/api/profile", {

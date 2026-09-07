@@ -169,6 +169,14 @@ function CheckinForm({
     }).catch(() => {});
   }, [isEdit, cafeId, cafeName, wifi, outlets, seats, temp, coffee, overall, maxStay, note, photos]);
 
+  // The gate renders inline — every field above it stays editable while it
+  // is visible. Gate visibility drives draft staging (stagePendingDraft's
+  // identity tracks all draft fields), so the bounce always restores the
+  // latest input, not the gate-trigger snapshot (DG66 "no re-entry").
+  useEffect(() => {
+    if (showSignInGate) stagePendingDraft();
+  }, [showSignInGate, stagePendingDraft]);
+
   const lastCheckin = lastCheckinQuery.data;
   const lastVisitWithin90Days = useMemo(() => {
     if (!lastCheckin) return false;
@@ -255,8 +263,18 @@ function CheckinForm({
             }
           }),
         );
+        // Write every successful upload back into state before anything can
+        // fail: a retry (failed photos or a failed POST) must reuse these
+        // ids, not re-upload and orphan the first batch in R2.
+        setPhotos((prev) =>
+          prev.map((p) => {
+            const uuid = justUploaded.get(p.id);
+            if (uuid) return { ...p, status: "done", imageUuid: uuid };
+            if (failedIds.has(p.id)) return { ...p, status: "error" as const };
+            return p;
+          }),
+        );
         if (failedIds.size > 0) {
-          setPhotos((prev) => prev.map((p) => (failedIds.has(p.id) ? { ...p, status: "error" } : p)));
           throw new Error("photo_upload_failed");
         }
       }
@@ -313,9 +331,8 @@ function CheckinForm({
     onError: (err) => {
       setView("form");
       if (err instanceof Error && err.message === "unauthorized") {
-        // Session expired mid-compose (the probe raced it): stage the draft
-        // so the OAuth bounce still restores everything (DG66).
-        stagePendingDraft();
+        // Session expired mid-compose (the probe raced it): showing the gate
+        // stages the draft, so the OAuth bounce still restores everything.
         setShowSignInGate(true);
         return;
       }
@@ -362,9 +379,8 @@ function CheckinForm({
     }
     if (overall === null) return;
     if (!effectivelyAuthenticated) {
-      // DG66: persist every input before the OAuth bounce so the resumed
-      // drawer restores it all — no re-entry.
-      stagePendingDraft();
+      // DG66: showing the gate stages every input (and re-stages on further
+      // edits), so the OAuth bounce restores it all — no re-entry.
       setShowSignInGate(true);
       return;
     }

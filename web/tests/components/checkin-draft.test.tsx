@@ -204,4 +204,90 @@ describe("check-in sign-in gate draft (DG66/DG59)", () => {
     await waitFor(() => expect(loadPendingCheckin).not.toHaveBeenCalled());
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
+
+  it("stages the draft and drops to the gate when the submit 401s", async () => {
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/checkins" && init?.method === "POST") {
+        return { ok: false, status: 401, json: async () => ({}) };
+      }
+      return { ok: true, status: 200, json: async () => ({ checkin: null }) };
+    });
+    renderDrawer({ isAuthenticated: true });
+
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Overall experience" }), {
+      key: "ArrowRight",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Check in" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Sign in to publish your check-in/)).toBeInTheDocument();
+    });
+    await waitFor(() => expect(savePendingCheckin).toHaveBeenCalled());
+    const draft = vi.mocked(savePendingCheckin).mock.calls[0][0];
+    expect(draft.cafeId).toBe(CAFE);
+    expect(draft.scores.overall).toBe(51);
+  });
+
+  it("re-stages the draft when input changes while the gate is visible", async () => {
+    renderDrawer({ isAuthenticated: false });
+
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Overall experience" }), {
+      key: "ArrowRight",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Check in" }));
+    await waitFor(() => {
+      expect(screen.getByText(/Sign in to publish your check-in/)).toBeInTheDocument();
+    });
+    expect(savePendingCheckin).toHaveBeenCalledTimes(1);
+
+    // The gate is inline — the composer keeps editing above it.
+    fireEvent.change(screen.getByPlaceholderText("What should the next nomad know?"), {
+      target: { value: "edited after the gate" },
+    });
+    await waitFor(() => expect(savePendingCheckin).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(savePendingCheckin).mock.calls[1][0].note).toBe("edited after the gate");
+  });
+
+  it("reuses publish-time upload ids on retry instead of re-uploading", async () => {
+    vi.mocked(uploadPhoto).mockResolvedValue("uuid-1");
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/checkins" && init?.method === "POST") {
+        // First POST fails after the photo already uploaded; retry succeeds.
+        const posts = vi
+          .mocked(globalThis.fetch)
+          .mock.calls.filter(([u, i]) => u === "/api/checkins" && (i as RequestInit)?.method === "POST").length;
+        if (posts === 1) return { ok: false, status: 500, json: async () => ({ message: "boom" }) };
+        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ checkin: null }) };
+    });
+    const file = new File(["x"], "photo.jpg", { type: "image/jpeg" });
+    renderDrawer({
+      isAuthenticated: true,
+      initialPhotos: [{ id: "p1", previewUrl: "blob:mock-p1", status: "staged", file }],
+    });
+
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Overall experience" }), {
+      key: "ArrowRight",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Check in" }));
+
+    await waitFor(() => expect(uploadPhoto).toHaveBeenCalledTimes(1));
+    const retry = await screen.findByRole("button", { name: "Retry" });
+    fireEvent.click(retry);
+
+    await waitFor(() => {
+      const posts = vi
+        .mocked(globalThis.fetch)
+        .mock.calls.filter(([u, i]) => u === "/api/checkins" && (i as RequestInit)?.method === "POST");
+      expect(posts).toHaveLength(2);
+    });
+    // The retried POST reused the first upload — no re-upload, no orphan.
+    expect(uploadPhoto).toHaveBeenCalledTimes(1);
+    const posts = vi
+      .mocked(globalThis.fetch)
+      .mock.calls.filter(([u, i]) => u === "/api/checkins" && (i as RequestInit)?.method === "POST");
+    const body = JSON.parse((posts[1][1] as RequestInit).body as string) as Record<string, unknown>;
+    expect(body.photo_ids).toEqual(["uuid-1"]);
+  });
 });

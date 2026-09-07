@@ -73,6 +73,11 @@ checkins:
   # How long the sign-in gate's pending draft (DG66) survives in IndexedDB.
   # Sized for an interrupted OAuth bounce, not for long-term storage.
   pendingDraftTtlHours: 72
+  # Same-day revisit window (DG64): at most 1 check-in per cafe per user per
+  # this many hours — a further visit edits the existing check-in. Read by
+  # the createCheckIn windowed existence check and exposed to the drawer via
+  # GET /api/checkins/last so client and server never hardcode it.
+  revisitWindowHours: 24
 profile:
   # Profile page primary lists limit cap and default page size (DG107)
   listLimitMax: 50

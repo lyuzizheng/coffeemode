@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { REVISIT_WINDOW_HOURS } from "@/lib/db/checkins";
 import { GET as lastCheckinGET } from "@/app/api/checkins/last/route";
 
 const getUserMock = vi.fn();
@@ -51,7 +52,7 @@ describe("GET /api/checkins/last", () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [] });
     const res = await lastCheckinGET(getRequest(`https://localhost/api/checkins/last?cafe_id=${CAFE}`));
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ checkin: null });
+    await expect(res.json()).resolves.toEqual({ checkin: null, revisitWindowHours: REVISIT_WINDOW_HOURS });
   });
 
   it("200s with the most recent check-in row", async () => {
@@ -65,7 +66,7 @@ describe("GET /api/checkins/last", () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [row] });
     const res = await lastCheckinGET(getRequest(`https://localhost/api/checkins/last?cafe_id=${CAFE}`));
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ checkin: row });
+    await expect(res.json()).resolves.toEqual({ checkin: row, revisitWindowHours: REVISIT_WINDOW_HOURS });
     // The helper must scope to the caller and the requested cafe.
     expect(poolQueryMock).toHaveBeenCalledWith(expect.any(String), [USER.id, CAFE]);
   });

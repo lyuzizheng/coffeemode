@@ -11,6 +11,9 @@ Confirmed — owner replied to the original open questions on 2026-08-08. Revise
 (owner direction), the like/favorite split (decision 8a, from #254), the MVP hosting
 posture (decision 34, amended by 34a per owner 2026-08-28: Supabase hosts the main DB,
 rate limiting in-memory on the single app container), and Post-MVP revisit triggers (#247).
+Revised 2026-09-07 with owner rulings from the BRAWUKA-109 thread: the launch-gate
+definition, seed-content strategy, and sparse-data display semantics (decisions 35–37),
+plus the K3 design-artifact supply route (decision 6b, amends 6a).
 Decisions are projected into canonical specs `0001` and `0002`.
 
 ## Review scope
@@ -33,6 +36,7 @@ Four read-only subagent reviews ran in parallel against the current `main` tree 
 5. **In-app type scale ceiling is `text-2xl` (2rem).** Sandbox `theme-preview` hero sizes; page/screen titles, the brand wordmark, and cafe names use `font-display` inside the fixed scale (per the amended spec 0002 typography rule, DG22). Decorative watermark numerals (e.g. the PEEK Work-score watermark, DG43) may exceed the scale as non-content graphics: `aria-hidden`, pointer-events disabled, ≤8% opacity.
 6. **Mount `<Toast.Provider>` in `web/app/providers.tsx`.** HeroUI toast is the canonical success/error surface.
 6a. **Kimi K3 is the visual-design authority for new user-visible UI.** Each UI slice needs a slice-specific Kimi artifact before implementation or visual acceptance. Product behavior remains canonical in specs; agents must not invent the unresolved composition.
+6b. **K3 design-artifact supply is agent-autonomous (owner 2026-09-07, BRAWUKA-109 thread).** Amends 6a's supply premise: agents are formally authorized to produce slice composition proposals on their own and submit them for owner review, replacing "owner provides the K3 artifact". The blocking premise of #141 (BRAWUKA-16) is lifted. 6a's gate itself is unchanged — a slice-specific artifact is still required before implementation or visual acceptance; only who drafts it changes.
 
 ### Check-in & social semantics
 
@@ -88,6 +92,12 @@ Four read-only subagent reviews ran in parallel against the current `main` tree 
 33. **Image and POI routes need rate limiting.** Upload, complete, and POI resolve/search should be per-user rate-limited.
 34. **MVP hosting stays self-hosted VPS + Cloudflare Workers; managed Postgres is deferred.** The Supabase Pro vs Neon comparison (2026-08-27) showed a ≤$20/mo difference at MVP scale — not worth split-brain operations while Supabase Auth is already required. Hyperdrive is bundled into Workers plans, not a separate add-on. Move triggers are listed under Post-MVP. Rate limiting stays Postgres-backed on the single VPS (fail-open; `RATE_LIMIT_BACKEND=memory` is the dev/test default only) **(amended by 34a)**.
 34a. **Owner decision (2026-08-28), amends 34: Supabase hosts the main Postgres (free tier first); Cloudflare Workers run the microservices; the single app container runs rate limiting in-memory (`RATE_LIMIT_BACKEND=memory`).** One platform for auth + data removes split-brain operations, and the free tier covers MVP scale (current seed is 14 cafes / 28KB — far below the 500MB cliff). With the database now remote, the Postgres rate-limit backend would add a Supabase round trip to every API request — not worth it on a single container; the backend is retained for a future multi-instance deploy. Known free-tier cliffs and mitigations: 7-day inactivity pause — the nightly recompute workflow doubles as keep-alive once `DATABASE_URL` is a GitHub secret; 500MB then read-only — monitor, upgrade trigger; no free-tier backups — scheduled `pg_dump` to R2. The Neon comparison is void. Provisioning steps: `docs/agent/pending-user-actions.md` §2 (#142).
+
+### Launch gate, seeding & sparse data (owner 2026-09-07, BRAWUKA-109 thread)
+
+35. **Launch gate = every external dependency integrated and the production loop verified bug-free; release form = silent.** The gate is: Apple Developer/MapKit, Supabase production DB + auth, Google Places + the POI worker, and domain/VPS/Cloudflare all wired up, with the full production flow working without bugs. Once that holds, the product may ship immediately — no announcement, no marketing, no growth actions; the owner and friends use it first. A seed-density threshold is explicitly NOT part of the gate (supersedes the PM draft in BRAWUKA-109 question 4, which had proposed one).
+36. **Seed content is produced by the owner checking in personally.** No bulk-import program, no scraped corpus, no growth mechanics — content density accrues from the owner's own check-ins.
+37. **Sparse-data display semantics: whenever any rating data exists, show the score plus a plain check-in count.** There is no "insufficient data" hiding once at least one response exists (owner: show the score even with only two check-ins, plus a very simple count). Confirmed as current behavior on 2026-09-07: `web/components/discovery/scores.tsx` `ScorePair` renders "Not enough check-ins" only when both composite and experience scores are null and otherwise pairs the score with `n_checkins`; `WorkProfile` renders that line only for a zero-response dimension (`dimMean` is null only at `n=0`, `web/lib/stats/work-stats.ts:213`). Recorded to block any future "hide scores below a confidence threshold" regression.
 
 ## Priority tiers
 
@@ -177,6 +187,10 @@ surface. These issues remain separate from the Apple credential owner action #13
 | MAP5 | Bind existing cafe-creation entry points to the map FAB and auth gate *(#136)* | frontend | `web/components/layout/*` |
 
 ### Phase 4 — public beta readiness
+
+The release gate for this phase is decision 35 (owner 2026-09-07): ship silently once
+every external dependency is integrated and the production loop is verified bug-free —
+no announcement or growth actions at launch.
 
 | ID | Task | Area | Key files |
 | --- | --- | --- | --- |

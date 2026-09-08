@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CafeNotFoundError,
   CheckInNotFoundError,
+  DuplicateCheckInError,
+  REVISIT_WINDOW_HOURS,
   SelfLikeError,
   createCheckIn,
   parseCheckInBody,
@@ -107,6 +109,9 @@ function mockCheckInHappyPath(checkinId = CHECKIN) {
     }
     if (s.includes("from cafes where id = $1") || s.includes("select id from cafes")) {
       return { rows: [{ id: CAFE }], rowCount: 1 };
+    }
+    if (s.includes("visited_at > now()")) {
+      return { rows: [], rowCount: 0 }; // no live check-in inside the revisit window
     }
     if (s.includes("insert into checkins")) {
       return { rows: [{ id: checkinId }], rowCount: 1 };
@@ -345,10 +350,11 @@ describe("createCheckIn", () => {
 
     // Intent pre-check and sharp processing ran BEFORE the transaction (no
     // DB connection held during remote work).
-    expect(provisionDeps.checkUploadIntent).toHaveBeenCalledWith(USER.id, IMG);
-    expect(provisionDeps.processImage).toHaveBeenCalledWith(IMG, { keys: FAKE_KEYS });
+    const windowCheck = clientQueryMock.mock.calls[1];
+    expect(windowCheck[0]).toContain("visited_at > now()");
+    expect(windowCheck[1]).toEqual([CAFE, USER.id, REVISIT_WINDOW_HOURS]);
 
-    const insert = clientQueryMock.mock.calls[1];
+    const insert = clientQueryMock.mock.calls[2];
     expect(insert[0]).toContain("insert into checkins");
     expect(insert[0]).toContain("false"); // never a creation check-in
     expect(insert[1]).toEqual([
@@ -369,14 +375,14 @@ describe("createCheckIn", () => {
     );
 
     // Server-derived StoredImage: keys/w/h/by are NOT client-controlled.
-    const setPhotos = clientQueryMock.mock.calls[2];
+    const setPhotos = clientQueryMock.mock.calls[3];
     expect(setPhotos[0]).toContain("update checkins set photos");
     // $1 = checkin id, $2 = photos JSON — matches `set photos = $2::jsonb where id = $1`.
     expect(setPhotos[1][0]).toBe(CHECKIN);
     expect(JSON.parse(setPhotos[1][1] as string)).toEqual([derivedPhoto(CHECKIN)]);
 
     // Photos auto-merge into cafes.gallery with check-in provenance (spec 0001).
-    const gallery = clientQueryMock.mock.calls[3];
+    const gallery = clientQueryMock.mock.calls[4];
     expect(gallery[0]).toContain("update cafes");
     expect(gallery[0]).toContain("gallery");
     expect(gallery[1][0]).toBe(CAFE);
@@ -384,26 +390,26 @@ describe("createCheckIn", () => {
 
     // Stats refresh is a full recompute on the SAME connection (backdated
     // visited_at would corrupt the incremental fold — see lib comment).
-    const statsLock = clientQueryMock.mock.calls[4];
+    const statsLock = clientQueryMock.mock.calls[5];
     expect(statsLock[0]).toContain("for update");
     expect(statsLock[1]).toEqual([CAFE]);
-    expect(clientQueryMock.mock.calls[5][0]).toContain("from checkins");
+    expect(clientQueryMock.mock.calls[6][0]).toContain("from checkins");
   });
 
   it("skips provisioning, photo writes, and the gallery merge when the check-in has no photos", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
     clientQueryMock
-      .mockResolvedValueOnce({ rows: [{ id: CAFE }] })
-      .mockResolvedValueOnce({ rows: [{ id: CHECKIN }] })
+      .mockResolvedValueOnce({ rows: [{ id: CAFE }] }) // in-tx cafe gate
+      .mockResolvedValueOnce({ rows: [] }) // revisit window: no live check-in
+      .mockResolvedValueOnce({ rows: [{ id: CHECKIN }] }) // insert
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
     await createCheckIn(USER.id, validInput({ photo_ids: undefined }));
-
+    expect(clientQueryMock).toHaveBeenCalledTimes(6);
     expect(provisionDeps.checkUploadIntent).not.toHaveBeenCalled();
     expect(provisionDeps.consumeUploadIntent).not.toHaveBeenCalled();
-    expect(clientQueryMock).toHaveBeenCalledTimes(5);
     for (const call of clientQueryMock.mock.calls) {
       expect(call[0]).not.toContain("gallery");
       expect(call[0]).not.toContain("set photos");
@@ -424,13 +430,39 @@ describe("createCheckIn", () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
     provisionDeps.consumeUploadIntent.mockResolvedValue(false);
     clientQueryMock
-      .mockResolvedValueOnce({ rows: [{ id: CAFE }] })
-      .mockResolvedValueOnce({ rows: [{ id: CHECKIN }] });
+      .mockResolvedValueOnce({ rows: [{ id: CAFE }] }) // in-tx cafe gate
+      .mockResolvedValueOnce({ rows: [] }) // revisit window: no live check-in
+      .mockResolvedValueOnce({ rows: [{ id: CHECKIN }] }); // insert
 
     const err = await createCheckIn(USER.id, validInput()).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(PhotoIntentError);
     // Nothing past the insert: no photo write, no gallery merge, no stats.
+    expect(clientQueryMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("rejects a second create inside the revisit window without inserting (DG64)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ id: CAFE }] }) // in-tx cafe gate
+      .mockResolvedValueOnce({ rows: [{ id: CHECKIN }] }); // window hit: live check-in
+
+    const err = await createCheckIn(USER.id, validInput({ photo_ids: undefined })).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(DuplicateCheckInError);
+    expect((err as DuplicateCheckInError).existingCheckinId).toBe(CHECKIN);
+    // The window check runs before the insert: two statements, no insert.
     expect(clientQueryMock).toHaveBeenCalledTimes(2);
+    for (const call of clientQueryMock.mock.calls) {
+      expect(call[0]).not.toContain("insert into checkins");
+    }
+  });
+
+  it("allows a create when the previous check-in is outside the window", async () => {
+    mockCheckInHappyPath();
+    const result = await createCheckIn(USER.id, validInput({ photo_ids: undefined }));
+    expect(result).toEqual({ checkinId: CHECKIN });
+    expect(clientQueryMock.mock.calls[1][1]).toEqual([CAFE, USER.id, REVISIT_WINDOW_HOURS]);
   });
 
   it("throws CafeNotFoundError without provisioning or inserting when the cafe is missing", async () => {
@@ -597,6 +629,19 @@ describe("POST /api/checkins", () => {
     const res = await checkinPOST(postRequest(url, validBody()));
     expect(res.status).toBe(201);
     await expect(res.json()).resolves.toMatchObject({ checkinId: CHECKIN });
+  });
+
+  it("409s duplicate_checkin with the existing id when inside the revisit window (DG64)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ id: CAFE }] }) // in-tx cafe gate
+      .mockResolvedValueOnce({ rows: [{ id: CHECKIN }] }); // window hit
+    const res = await checkinPOST(postRequest(url, validBody({ photo_ids: undefined })));
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toMatchObject({
+      error: "duplicate_checkin",
+      existing_checkin_id: CHECKIN,
+    });
   });
 
   it("429s after the per-user write budget is exhausted", async () => {

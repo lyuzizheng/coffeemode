@@ -239,7 +239,14 @@
     "statsCities": "座城市",
     "mockName": "Jordan Lee",
     "mockInitials": "JL",
-    "mockCity": "东京"
+    "mockCity": "东京",
+    "public_identity_label": "不在我创建的咖啡馆和打卡中公开显示我的名字",
+    "public_handle_label": "公开 Handle",
+    "public_handle_placeholder": "小写字母、数字、- 和 _，3–30 个字符",
+    "identity_error_handle_taken": "这个 handle 已经被占用了",
+    "identity_error_handle_too_soon": "Handle 7 天内只能改一次",
+    "identity_error_invalid_handle": "Handle 格式不对：3–30 个字符，只能用小写字母、数字、- 和 _",
+    "identity_error_generic": "保存失败，再试试？"
   },
   "create": {
     "title": "添加咖啡店",
@@ -326,6 +333,8 @@
     "signInGate": "请先登录再发布，草稿会保留。",
     "signInRequired": "请先登录再发布",
     "photosUploading": "照片还在上传中，稍等一下",
+    "photosFailed": "部分照片上传失败，点照片重试",
+    "draftRestored": "草稿已恢复，点打卡即可发布",
     "promptCaption": "来打个卡，帮其他 nomad 种草避雷吧！",
     "notSet": "未设置",
     "clear": "清除{label}",
@@ -444,6 +453,7 @@
       "newest": "最新"
     },
     "a_nomad": "一位 nomad",
+    "by_author": "{name}",
     "like_aria": "点赞这条打卡",
     "like_signin": "登录后才能点赞",
     "load_failed": "打卡加载失败，再试试？",

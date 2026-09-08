@@ -63,6 +63,7 @@ describe("config files", () => {
     expect(appConfig.cafes.listLimitMax).toBe(50);
     expect(appConfig.checkins.photoCap).toBe(6);
     expect(appConfig.checkins.noteMaxChars).toBe(500);
+    expect(appConfig.checkins.revisitWindowHours).toBe(24);
     expect(appConfig.profile.listLimitMax).toBe(50);
     expect(appConfig.profile.listPageSize).toBe(20);
     expect(appConfig.profile.displayNameMaxChars).toBe(24);
@@ -189,7 +190,7 @@ describe("parseAppConfig validation", () => {
     shellCache: { sMaxAgeSeconds: 600, staleWhileRevalidateSeconds: 3600 },
     recoveryLimit: 5,
   };
-  const validCheckins = { photoCap: 6, noteMaxChars: 500 };
+  const validCheckins = { photoCap: 6, noteMaxChars: 500, pendingDraftTtlHours: 72, revisitWindowHours: 24 };
   const validProfile = {
     listLimitMax: 50,
     listPageSize: 20,
@@ -334,11 +335,30 @@ describe("parseAppConfig validation", () => {
         feed: { pageSize: 20 },
         discovery: validCenter,
         seo: validSeo,
-        checkins: { photoCap: 6.5, noteMaxChars: 500 },
+        checkins: { photoCap: 6.5, noteMaxChars: 500, pendingDraftTtlHours: 72 },
         profile: validProfile,
         budgets: validBudgets,
       }),
     ).toThrow(/"checkins\.photoCap" must be a positive integer/);
+  });
+
+  it("rejects a missing or non-positive revisit window (DG64)", () => {
+    const base = {
+      search: validSearch,
+      stats: validStats,
+      cafes: { listLimitMax: 50 },
+      feed: { pageSize: 20 },
+      discovery: validCenter,
+      seo: validSeo,
+      profile: validProfile,
+      budgets: validBudgets,
+    };
+    expect(() =>
+      parseAppConfig({ ...base, checkins: { photoCap: 6, noteMaxChars: 500, pendingDraftTtlHours: 72 } }),
+    ).toThrow(/"checkins\.revisitWindowHours" must be a positive number/);
+    expect(() =>
+      parseAppConfig({ ...base, checkins: { photoCap: 6, noteMaxChars: 500, pendingDraftTtlHours: 72, revisitWindowHours: 0 } }),
+    ).toThrow(/"checkins\.revisitWindowHours" must be a positive number/);
   });
 
   it("rejects an out-of-range lighthouse score threshold", () => {

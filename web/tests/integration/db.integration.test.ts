@@ -24,6 +24,7 @@ import {
   CafeNotFoundError,
   CheckInForbiddenError,
   CheckInNotFoundError,
+  DuplicateCheckInError,
   MERGE_GALLERY_SQL,
   SelfLikeError,
   createCheckIn,
@@ -35,6 +36,7 @@ import {
   CafeExistsError,
   CafeForbiddenError,
   CafeHasOtherCheckinsError,
+  SERVICE_ACCOUNT_MAINTAINER_LABEL,
   cafeExists,
   createCafeWithFirstCheckIn,
   deleteCafe,
@@ -44,6 +46,8 @@ import {
   listCafeSitemapEntries,
   listCafesNearby,
   setCafeVisibility,
+  toPublicCafeDetail,
+  type CafeDetailWithAuthor,
 } from "@/lib/db/cafes";
 import {
   getProfile,
@@ -85,6 +89,7 @@ import {
 import {
   CAFE_A,
   CHECKIN_A1,
+  SERVICE_ACCOUNT_ID,
   U1,
   U2,
   cafeWorkStats,
@@ -354,6 +359,36 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(stats.n_checkins).toBe(2);
       expect(stats.dims.overall).toEqual({ sum: 60, n: 1 });
       expect(stats.experience_score).toBe(60);
+    });
+
+    it("createCheckIn rejects a second check-in inside the revisit window, allows one past it (DG64)", async () => {
+      const first = await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 60 } });
+
+      // A same-day revisit is an edit, not a new row: rejected with the live id.
+      const err = await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 70 } }).catch(
+        (e) => e,
+      );
+      expect(err).toBeInstanceOf(DuplicateCheckInError);
+      expect((err as DuplicateCheckInError).existingCheckinId).toBe(first.checkinId);
+
+      // The rejected write leaves no row behind.
+      const { rows } = await dbClient.query(
+        "select count(*)::int as n from checkins where cafe_id = $1 and user_id = $2 and deleted_at is null",
+        [CAFE_A, U2],
+      );
+      expect(rows[0].n).toBe(1);
+
+      // Past the window the same user can check in again (visited_at-keyed).
+      await dbClient.query("update checkins set visited_at = now() - interval '25 hours' where id = $1", [
+        first.checkinId,
+      ]);
+      const second = await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 70 } });
+      expect(second.checkinId).not.toBe(first.checkinId);
+
+      // A soft-deleted check-in no longer blocks the window either.
+      await softDeleteCheckIn(U2, second.checkinId);
+      const third = await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 80 } });
+      expect(third.checkinId).not.toBe(second.checkinId);
     });
 
     it("createCafeWithFirstCheckIn fuses cafe + first check-in + stats and dedupes", async () => {
@@ -883,6 +918,141 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     });
   });
 
+  describeDb("public author identity reads (#139 Stage 2)", () => {
+    /** getCafe narrowed for the public projection (asserts the seed row exists). */
+    async function publicDetail(id: string) {
+      const cafe = await getCafe(id);
+      expect(cafe).not.toBeNull();
+      return toPublicCafeDetail(cafe as CafeDetailWithAuthor);
+    }
+
+    function collectKeys(value: unknown, keys = new Set<string>()): Set<string> {
+      if (Array.isArray(value)) {
+        for (const item of value) collectKeys(item, keys);
+      } else if (value && typeof value === "object") {
+        for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+          keys.add(k);
+          collectKeys(v, keys);
+        }
+      }
+      return keys;
+    }
+
+    it("defaults to author:null on cafe detail and both feed modes", async () => {
+      expect((await publicDetail(CAFE_A)).author).toBeNull();
+      for (const mode of ["newest", "helpful"] as const) {
+        const page = await listPublicCheckIns({ cafeId: CAFE_A, mode, viewerId: null });
+        expect(page.checkins.length).toBeGreaterThan(0);
+        for (const c of page.checkins) expect(c.author).toBeNull();
+      }
+    });
+
+    it("opt-in surfaces the consented author on cafe detail and feed", async () => {
+      await dbClient.query(
+        "update profiles set display_name = 'Nomad One', avatar_url = 'https://img.example/a.webp' where id = $1",
+        [U1],
+      );
+      const dto = await updateProfileIdentity(U1, { showPublicIdentity: true });
+      expect(dto.showPublicIdentity).toBe(true);
+      expect(dto.publicHandle).toMatch(/^[a-z0-9][a-z0-9_-]{2,29}$/);
+
+      const expected = {
+        handle: dto.publicHandle,
+        display_name: "Nomad One",
+        avatar_url: "https://img.example/a.webp",
+      };
+      expect((await publicDetail(CAFE_A)).author).toEqual(expected);
+      for (const mode of ["newest", "helpful"] as const) {
+        const page = await listPublicCheckIns({ cafeId: CAFE_A, mode, viewerId: null });
+        expect(page.checkins.find((c) => c.id === CHECKIN_A1)?.author).toEqual(expected);
+      }
+    });
+
+    it("revocation restores author:null with all content intact (no deletion)", async () => {
+      await updateProfileIdentity(U1, { showPublicIdentity: true });
+      const before = await listPublicCheckIns({ cafeId: CAFE_A, mode: "newest", viewerId: null });
+      expect(before.checkins.find((c) => c.id === CHECKIN_A1)?.author).not.toBeNull();
+
+      const revoked = await updateProfileIdentity(U1, { showPublicIdentity: false });
+      expect(revoked.showPublicIdentity).toBe(false);
+
+      expect((await publicDetail(CAFE_A)).author).toBeNull();
+      const after = await listPublicCheckIns({ cafeId: CAFE_A, mode: "newest", viewerId: null });
+      const row = after.checkins.find((c) => c.id === CHECKIN_A1);
+      expect(row).toBeDefined();
+      expect(row?.author).toBeNull();
+      // Content untouched: handle stays reserved, consent timestamp cleared.
+      const kept = await dbClient.query(
+        "select public_handle, identity_consented_at from profiles where id = $1",
+        [U1],
+      );
+      expect(kept.rows[0].public_handle).not.toBeNull();
+      expect(kept.rows[0].identity_consented_at).toBeNull();
+    });
+
+    it("service-account and null created_by cafes keep author:null + maintainer label", async () => {
+      // Even an opted-in service-account profile must never render as author.
+      await dbClient.query(
+        "update profiles set show_public_identity = true, public_handle = 'coffeemode' where id = $1",
+        [SERVICE_ACCOUNT_ID],
+      );
+      for (const createdBy of [SERVICE_ACCOUNT_ID, null]) {
+        await dbClient.query("update cafes set created_by = $1 where id = $2", [createdBy, CAFE_A]);
+        const pub = await publicDetail(CAFE_A);
+        expect(pub.author).toBeNull();
+        expect(pub.maintainer).toBe(SERVICE_ACCOUNT_MAINTAINER_LABEL);
+        expect(pub).not.toHaveProperty("created_by");
+      }
+    });
+
+    it("public DTOs expose no internal UUID and no user_id/by keys", async () => {
+      await dbClient.query("update profiles set display_name = 'Nomad One' where id = $1", [U1]);
+      await updateProfileIdentity(U1, { showPublicIdentity: true });
+      // Stored photo attribution still carries the internal id — the public
+      // projection must strip it.
+      const photoCheckin = randomUUID();
+      await dbClient.query(
+        "insert into checkins (id, cafe_id, user_id, scores, photos) values ($1, $2, $3, '{}'::jsonb, $4::jsonb)",
+        [
+          photoCheckin,
+          CAFE_A,
+          U1,
+          JSON.stringify([
+            {
+              id: "img-x",
+              original: "original/img-x.webp",
+              card: "card/img-x.webp",
+              thumbnail: "thumbnail/img-x.webp",
+              w: 1,
+              h: 1,
+              by: U1,
+              at: "2026-08-01T10:00:00.000Z",
+            },
+          ]),
+        ],
+      );
+      const pub = await publicDetail(CAFE_A);
+      const page = await listPublicCheckIns({ cafeId: CAFE_A, mode: "newest", viewerId: null });
+      const payload = JSON.stringify({ cafe: pub, feed: page });
+      // Internal author UUIDs never appear (cafe/check-in resource ids are public by design).
+      for (const internalId of [U1, U2, SERVICE_ACCOUNT_ID]) {
+        expect(payload).not.toContain(internalId);
+      }
+      const keys = collectKeys({ cafe: pub, feed: page });
+      for (const banned of ["user_id", "by", "created_by"]) {
+        expect(keys.has(banned)).toBe(false);
+      }
+      // The opted-in author is present but carries only public-safe fields.
+      expect(pub.author).toEqual({
+        handle: expect.any(String),
+        display_name: "Nomad One",
+        avatar_url: null,
+      });
+      expect(page.checkins.find((c) => c.id === photoCheckin)?.author).toEqual(pub.author);
+    });
+  });
+
+
   describeDb("seo-sharing queries — sitemap lastmod + gone-cafe location (#150)", () => {
     it("sitemap lastmod prefers work_stats.updated_at, falls back to cafes.updated_at", async () => {
       // Seed cafe has no work_stats.updated_at — the row's updated_at applies.
@@ -1080,6 +1250,12 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         },
         fakeProvisionPhotosDeps(),
       );
+
+      // DG64: U1's fused creation check-in is still live, so age it past the
+      // revisit window — this test covers delete flows, not the window.
+      await dbClient.query("update checkins set visited_at = now() - interval '25 hours' where id = $1", [
+        created.checkinId,
+      ]);
 
       // U1 adds a 2nd checkin
       await createCheckIn(U1, { cafe_id: created.cafeId, scores: { wifi: 80 } });
@@ -1833,6 +2009,12 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       }, fakeProvisionPhotosDeps());
       // Toggle to private
       await setCafeVisibility(created.cafeId, U1, "private");
+
+      // DG64: the fused creation check-in is still live, so age it past the
+      // revisit window — this test covers visibility, not the window.
+      await dbClient.query("update checkins set visited_at = now() - interval '25 hours' where id = $1", [
+        created.checkinId,
+      ]);
 
       // Add another check-in while private
       const photoId2 = randomUUID();

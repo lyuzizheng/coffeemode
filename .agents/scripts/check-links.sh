@@ -30,7 +30,7 @@ while IFS= read -r entry; do
   target="${target%>}"
 
   case "$target" in
-    http://*|https://*|mailto:*|'#'*) continue ;;
+    http://*|https://*|mailto:*|mention://*|'#'*) continue ;;
   esac
 
   path="${target%%#*}"

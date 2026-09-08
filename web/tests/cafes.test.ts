@@ -720,6 +720,52 @@ describe("toPublicCafeDetail", () => {
     expect(pub).not.toHaveProperty("created_by");
     expect(pub.maintainer).toBeNull();
   });
+
+  it("maps consented author columns to the author leaf and strips the raw columns", () => {
+    const cafe = {
+      id: "c1",
+      name: "Test",
+      created_by: "550e8400-e29b-41d4-a716-446655440000",
+      gallery: [],
+      author_handle: "nomad-1a2b",
+      author_display_name: "Nomad One",
+      author_avatar_url: null,
+    } as unknown as CafeDetail;
+    const pub = toPublicCafeDetail(cafe);
+    expect(pub.author).toEqual({
+      handle: "nomad-1a2b",
+      display_name: "Nomad One",
+      avatar_url: null,
+    });
+    expect(pub).not.toHaveProperty("author_handle");
+    expect(pub).not.toHaveProperty("author_display_name");
+    expect(pub).not.toHaveProperty("author_avatar_url");
+  });
+
+  it("yields author null when author columns are absent (anonymous default)", () => {
+    const cafe = {
+      id: "c1",
+      name: "Test",
+      created_by: "550e8400-e29b-41d4-a716-446655440000",
+      gallery: [],
+    } as unknown as CafeDetail;
+    expect(toPublicCafeDetail(cafe).author).toBeNull();
+  });
+
+  it("forces author null on the service-account path even when columns are consented", () => {
+    const cafe = {
+      id: "c1",
+      name: "Test",
+      created_by: getServiceAccountId(),
+      gallery: [],
+      author_handle: "coffeemode",
+      author_display_name: "CoffeeMode",
+      author_avatar_url: null,
+    } as unknown as CafeDetail;
+    const pub = toPublicCafeDetail(cafe);
+    expect(pub.author).toBeNull();
+    expect(pub.maintainer).toBe(SERVICE_ACCOUNT_MAINTAINER_LABEL);
+  });
 });
 
 describe("DELETE /api/cafes/[id]", () => {

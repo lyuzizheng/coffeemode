@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
 import {
   CafeNotFoundError,
+  DuplicateCheckInError,
   createCheckIn,
   parseCheckInBody,
 } from "@/lib/db/checkins";
@@ -56,6 +57,14 @@ export async function POST(request: Request) {
   } catch (err) {
     if (err instanceof CafeNotFoundError) {
       return apiError("not_found", "cafe not found", 404);
+    }
+    if (err instanceof DuplicateCheckInError) {
+      // DG64: same-day revisit — never a user-facing error. The drawer
+      // preempts this via GET /api/checkins/last; raced clients (multi-tab)
+      // convert to PATCH on the returned id without surfacing it.
+      return apiError("duplicate_checkin", "check-in already exists for this visit", 409, {
+        existing_checkin_id: err.existingCheckinId,
+      });
     }
     if (
       err instanceof PhotoIntentError ||

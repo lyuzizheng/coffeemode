@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Drawer, toast } from "@heroui/react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,8 +10,14 @@ import { CheckinSuccess } from "./checkin-success";
 import { useNetworkStatus } from "@/hooks/use-network-status";
 import { SignInButton } from "@/components/auth/sign-in-button";
 import { responseMessage } from "@/lib/http";
+import { uploadPhoto } from "@/lib/images/client-upload";
+import { clearPendingCheckin, savePendingCheckin } from "@/lib/checkin/pending-checkin";
 import type { CheckInScores, MaxStay } from "@/types/checkins";
 import { MAX_STAY_VALUES } from "@/types/checkins";
+
+/** Query flag the OAuth callback round-trip carries so CheckinResume knows
+    to reload the pending draft and reopen the drawer (DG66). */
+export const CHECKIN_RESUME_PARAM = "checkin_resume";
 
 type DrawerMode = "create" | "edit";
 type ViewState = "form" | "success" | "submitting";
@@ -26,6 +32,8 @@ interface CheckinDrawerProps {
   initialScores?: CheckInScores;
   initialMaxStay?: MaxStay | null;
   initialNote?: string | null;
+  /** Restored sign-in gate draft photos (DG66) — staged entries re-upload at publish. */
+  initialPhotos?: PhotoUpload[];
   isAuthenticated?: boolean;
 }
 
@@ -43,14 +51,43 @@ function isWithin90Days(iso: string): boolean {
   return ageMs < 90 * 24 * 60 * 60 * 1000;
 }
 
+/** The caller's most recent check-in for a cafe, as returned by /api/checkins/last. */
+export interface LastCheckin {
+  id: string;
+  scores: CheckInScores;
+  max_stay: MaxStay | null;
+  note: string | null;
+  visited_at: string;
+}
+
+/**
+ * DG64 same-day-revisit switch: returns the last check-in when it falls
+ * inside the server-provided revisit window (at most 1 per cafe per user
+ * per window — a further visit edits this check-in), else null. A missing
+ * window means "unknown": no preempt, the POST 409 fallback still converts
+ * silently, so the user never sees a conflict either way.
+ */
+export function resolveRevisitCheckin(
+  data: { checkin: LastCheckin | null; revisitWindowHours?: number } | undefined,
+  now: number = Date.now(),
+): LastCheckin | null {
+  const checkin = data?.checkin;
+  const windowHours = data?.revisitWindowHours;
+  if (!checkin || typeof windowHours !== "number" || !(windowHours > 0)) return null;
+  const ageMs = now - new Date(checkin.visited_at).getTime();
+  if (!Number.isFinite(ageMs) || ageMs >= windowHours * 3_600_000) return null;
+  return checkin;
+}
+
 async function fetchLastCheckin(cafeId: string) {
   const res = await fetch(`/api/checkins/last?cafe_id=${encodeURIComponent(cafeId)}`);
   if (res.status === 401) throw new Error("unauthorized");
   if (!res.ok) throw new Error("failed");
   const body = (await res.json()) as {
-    checkin: { id: string; scores: CheckInScores; max_stay: MaxStay | null; note: string | null; visited_at: string } | null;
+    checkin: LastCheckin | null;
+    revisitWindowHours?: number;
   };
-  return body.checkin;
+  return body;
 }
 
 function CheckinForm({
@@ -61,7 +98,11 @@ function CheckinForm({
   initialScores,
   initialMaxStay,
   initialNote,
+  initialPhotos,
   isAuthenticated,
+  lastCheckin,
+  authProbeFailed,
+  lastCheckinLoaded,
   onClose,
   onDirtyChange,
 }: {
@@ -72,8 +113,15 @@ function CheckinForm({
   initialScores?: CheckInScores;
   initialMaxStay?: MaxStay | null;
   initialNote?: string | null;
+  initialPhotos?: PhotoUpload[];
   /** Server-known auth state; undefined = resolve client-side (cached public shell). */
   isAuthenticated?: boolean;
+  /** Last check-in probe result, owned by CheckinDrawer (shared query). */
+  lastCheckin?: LastCheckin | null;
+  /** True when the probe 401d: anonymous on the cached public shell. */
+  authProbeFailed?: boolean;
+  /** True when the drawer-owned probe completed successfully (DG59 upload gating). */
+  lastCheckinLoaded?: boolean;
   onClose: () => void;
   onDirtyChange: (dirty: boolean) => void;
 }) {
@@ -82,6 +130,14 @@ function CheckinForm({
   const queryClient = useQueryClient();
   const { state: networkState } = useNetworkStatus();
   const isOffline = networkState === "offline";
+
+  // OAuth returns to this page flagged so CheckinResume reloads the draft.
+  // The gate only renders after user interaction, but keep the read
+  // SSR-safe — this form never mounts on the server in practice.
+  const resumePath =
+    typeof window === "undefined"
+      ? "/"
+      : `${window.location.pathname}?${CHECKIN_RESUME_PARAM}=1`;
 
   const isEdit = mode === "edit";
   // Auth is resolved server-side where the page knows it (home, profile) via the
@@ -98,29 +154,58 @@ function CheckinForm({
   const [overall, setOverall] = useState<number | null>(initialScores?.overall ?? null);
   const [maxStay, setMaxStay] = useState<MaxStay | null>(initialMaxStay ?? null);
   const [note, setNote] = useState(initialNote ?? "");
-  const [photos, setPhotos] = useState<PhotoUpload[]>([]);
+  const [photos, setPhotos] = useState<PhotoUpload[]>(initialPhotos ?? []);
   const [view, setView] = useState<ViewState>("form");
   const [error, setError] = useState<string | null>(null);
   const [showSignInGate, setShowSignInGate] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [repeatDismissed, setRepeatDismissed] = useState(false);
   const [failedAction, setFailedAction] = useState<"save" | "delete" | null>(null);
-
-  const lastCheckinQuery = useQuery({
-    queryKey: ["last-checkin", cafeId],
-    queryFn: () => fetchLastCheckin(cafeId),
-    enabled: !isEdit && isAuthenticated !== false,
-    staleTime: 60_000,
-    retry: false,
-  });
-
-  const authProbeFailed =
-    lastCheckinQuery.isError &&
-    lastCheckinQuery.error instanceof Error &&
-    lastCheckinQuery.error.message === "unauthorized";
+  // Auth is resolved server-side where the page knows it (home, profile) via the
+  // `isAuthenticated` prop. On the CDN-cached public cafe shell (DG105/DG106) the
+  // prop is undefined and auth is resolved client-side: the drawer-owned
+  // last-check-in probe 401s for anonymous users, and a 401 from
+  // submit/delete drops to the sign-in gate instead of a raw error.
   const effectivelyAuthenticated = (isAuthenticated ?? true) && !authProbeFailed;
 
-  const lastCheckin = lastCheckinQuery.data;
+  // Photos upload on selection only once auth is positively known (DG59):
+  // server-known pages pass the prop, the cached shell waits for its probe.
+  // Until then selections are staged locally and upload at publish time.
+  const authConfirmed =
+    isAuthenticated === true || (isAuthenticated === undefined && lastCheckinLoaded);
+  const deferUpload = !isEdit && !authConfirmed;
+
+  /** Persist the in-progress draft before the full-page OAuth bounce (DG66). */
+  const stagePendingDraft = useCallback(() => {
+    if (isEdit) return;
+    // Best-effort: a blocked IndexedDB (private mode) must not break the gate.
+    void savePendingCheckin({
+      cafeId,
+      cafeName,
+      scores: {
+        ...(wifi !== null ? { wifi } : {}),
+        ...(outlets !== null ? { outlets } : {}),
+        ...(seats !== null ? { seats } : {}),
+        ...(temp !== null ? { temp } : {}),
+        ...(coffee !== null ? { coffee } : {}),
+        ...(overall !== null ? { overall } : {}),
+      },
+      maxStay,
+      note,
+      photos: photos
+        .filter((p) => p.file)
+        .map((p) => ({ id: p.id, file: p.file!, ...(p.imageUuid ? { imageUuid: p.imageUuid } : {}) })),
+      createdAt: Date.now(),
+    }).catch(() => {});
+  }, [isEdit, cafeId, cafeName, wifi, outlets, seats, temp, coffee, overall, maxStay, note, photos]);
+
+  // The gate renders inline — every field above it stays editable while it
+  // is visible. Gate visibility drives draft staging (stagePendingDraft's
+  // identity tracks all draft fields), so the bounce always restores the
+  // latest input, not the gate-trigger snapshot (DG66 "no re-entry").
+  useEffect(() => {
+    if (showSignInGate) stagePendingDraft();
+  }, [showSignInGate, stagePendingDraft]);
   const lastVisitWithin90Days = useMemo(() => {
     if (!lastCheckin) return false;
     return isWithin90Days(lastCheckin.visited_at);
@@ -187,9 +272,43 @@ function CheckinForm({
       if (coffee !== null) scores.coffee = coffee;
       if (overall !== null) scores.overall = overall;
 
-      const uploadedIds = photos.filter((p) => p.status === "done" && p.imageUuid).map((p) => p.imageUuid!);
       const hasUploading = photos.some((p) => p.status === "uploading");
       if (hasUploading) throw new Error("photos_uploading");
+
+      // Staged photos (logged-out composer, DG59) upload now, at publish
+      // time — presigned URLs are issued to authenticated sessions only.
+      // Previously failed tiles still hold their File and retry here too.
+      const pendingUploads = photos.filter((p) => p.file && !p.imageUuid);
+      const justUploaded = new Map<string, string>();
+      if (pendingUploads.length > 0) {
+        const failedIds = new Set<string>();
+        await Promise.all(
+          pendingUploads.map(async (p) => {
+            try {
+              justUploaded.set(p.id, await uploadPhoto(p.file!));
+            } catch {
+              failedIds.add(p.id);
+            }
+          }),
+        );
+        // Write every successful upload back into state before anything can
+        // fail: a retry (failed photos or a failed POST) must reuse these
+        // ids, not re-upload and orphan the first batch in R2.
+        setPhotos((prev) =>
+          prev.map((p) => {
+            const uuid = justUploaded.get(p.id);
+            if (uuid) return { ...p, status: "done", imageUuid: uuid };
+            if (failedIds.has(p.id)) return { ...p, status: "error" as const };
+            return p;
+          }),
+        );
+        if (failedIds.size > 0) {
+          throw new Error("photo_upload_failed");
+        }
+      }
+      const uploadedIds = photos
+        .map((p) => p.imageUuid ?? justUploaded.get(p.id))
+        .filter((id): id is string => Boolean(id));
 
       if (isEdit && editCheckinId) {
         const body: Record<string, unknown> = { scores, max_stay: maxStay, note: note.trim() ? note.trim() : null };
@@ -216,6 +335,30 @@ function CheckinForm({
         body: JSON.stringify(body),
       });
       if (res.status === 401) throw new Error("unauthorized");
+      if (res.status === 409) {
+        // Lost a race after the probe (second tab, or input typed before the
+        // probe resolved): DG64 is product behavior, never a user-facing
+        // error — convert to an edit of the existing check-in silently.
+        const conflict = (await res.json().catch(() => null)) as {
+          existing_checkin_id?: unknown;
+        } | null;
+        const existingId = conflict?.existing_checkin_id;
+        if (typeof existingId === "string" && existingId.length > 0) {
+          const patchBody: Record<string, unknown> = {
+            scores,
+            max_stay: maxStay,
+            note: note.trim() ? note.trim() : null,
+          };
+          const retry = await fetch(`/api/checkins/${existingId}`, {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(patchBody),
+          });
+          if (retry.status === 401) throw new Error("unauthorized");
+          if (!retry.ok) throw new Error(await responseMessage(retry, t("couldntSave")));
+          return retry.json();
+        }
+      }
       if (!res.ok) throw new Error(await responseMessage(res, t("couldntSave")));
       return res.json();
     },
@@ -226,6 +369,8 @@ function CheckinForm({
     },
     onSuccess: () => {
       setView("success");
+      // The pending gate draft (DG66) has been published — drop it.
+      void clearPendingCheckin().catch(() => {});
       queryClient.invalidateQueries({ queryKey: ["cafe", cafeId] });
       queryClient.invalidateQueries({ queryKey: ["cafe-checkins", cafeId] });
       queryClient.invalidateQueries({ queryKey: ["last-checkin", cafeId] });
@@ -238,12 +383,16 @@ function CheckinForm({
     onError: (err) => {
       setView("form");
       if (err instanceof Error && err.message === "unauthorized") {
+        // Session expired mid-compose (the probe raced it): showing the gate
+        // stages the draft, so the OAuth bounce still restores everything.
         setShowSignInGate(true);
         return;
       }
       setFailedAction("save");
       if (err instanceof Error && err.message === "photos_uploading") {
         setError(t("photosUploading"));
+      } else if (err instanceof Error && err.message === "photo_upload_failed") {
+        setError(t("photosFailed"));
       } else {
         setError(err instanceof Error ? err.message : t("couldntSave"));
       }
@@ -282,6 +431,8 @@ function CheckinForm({
     }
     if (overall === null) return;
     if (!effectivelyAuthenticated) {
+      // DG66: showing the gate stages every input (and re-stages on further
+      // edits), so the OAuth bounce restores it all — no re-entry.
       setShowSignInGate(true);
       return;
     }
@@ -373,7 +524,7 @@ function CheckinForm({
             {!isEdit && (
               <div className="space-y-1">
                 <div className="text-xs text-muted">{t("photos")}</div>
-                <CheckinPhotos photos={photos} onChange={setPhotos} maxPhotos={6} />
+                <CheckinPhotos photos={photos} onChange={setPhotos} maxPhotos={6} deferUpload={deferUpload} />
               </div>
             )}
 
@@ -395,8 +546,8 @@ function CheckinForm({
               <div className="rounded-md border border-separator bg-surface-secondary p-4 text-center">
                 <p className="mb-3 text-sm">{t("signInGate")}</p>
                 <div className="flex flex-col gap-2">
-                  <SignInButton provider="google" variant="primary" />
-                  <SignInButton provider="apple" variant="outline" />
+                  <SignInButton provider="google" variant="primary" next={resumePath} />
+                  <SignInButton provider="apple" variant="outline" next={resumePath} />
                 </div>
               </div>
             )}
@@ -454,46 +605,85 @@ export function CheckinDrawer({
   initialScores,
   initialMaxStay,
   initialNote,
+  initialPhotos,
   isAuthenticated,
 }: CheckinDrawerProps) {
   const t = useTranslations("checkIn");
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
-  const dirtyRef = useRef(false);
+  const [isDirty, setIsDirty] = useState(false);
   const handleDirtyChange = useCallback((dirty: boolean) => {
-    dirtyRef.current = dirty;
+    setIsDirty(dirty);
   }, []);
 
-  const formKey = isOpen ? `${cafeId}-${mode}-${editCheckinId ?? "new"}` : "closed";
+  // DG64 same-day-revisit probe (shared with the form below via props — one
+  // query key, one network call). Runs for create opens only; explicit edit
+  // opens already know their check-in.
+  const lastCheckinQuery = useQuery({
+    queryKey: ["last-checkin", cafeId],
+    queryFn: () => fetchLastCheckin(cafeId),
+    enabled: isOpen && mode !== "edit" && isAuthenticated !== false,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const authProbeFailed =
+    lastCheckinQuery.isError &&
+    lastCheckinQuery.error instanceof Error &&
+    lastCheckinQuery.error.message === "unauthorized";
+
+  // Preempt create → edit while the draft is still pristine, latched per open
+  // (a dirty draft keeps its input — the POST 409 fallback still converts
+  // silently — so a slow probe never wipes what the user already typed, and
+  // later keystrokes can never flip the mode back under the form).
+  const [preempted, setPreempted] = useState<LastCheckin | null>(null);
+  const [preemptScope, setPreemptScope] = useState<string | null>(null);
+  const scope = isOpen ? `${cafeId}|${mode}` : null;
+  if (scope !== preemptScope) {
+    setPreemptScope(scope);
+    setPreempted(null);
+  }
+  const revisit = mode === "create" ? resolveRevisitCheckin(lastCheckinQuery.data) : null;
+  if (!preempted && revisit && !isDirty) {
+    setPreempted(revisit);
+  }
+  const preempt = preempted ?? (revisit && !isDirty ? revisit : null);
+  const effectiveMode: DrawerMode = preempt ? "edit" : mode;
+  const effectiveEditId = mode === "edit" ? editCheckinId : preempt?.id;
+
+  const formKey = isOpen ? `${cafeId}-${effectiveMode}-${effectiveEditId ?? "new"}` : "closed";
 
   const handleCloseAttempt = useCallback(
     (nextOpen: boolean) => {
       if (!nextOpen) {
-        if (dirtyRef.current) {
+        if (isDirty) {
           setShowDiscardConfirm(true);
           return;
         }
       }
       onOpenChange(nextOpen);
     },
-    [onOpenChange],
+    [onOpenChange, isDirty],
   );
 
   return (
     <Drawer.Root isOpen={isOpen} onOpenChange={handleCloseAttempt}>
       <Drawer.Backdrop />
       <Drawer.Content placement="bottom" className="max-h-[92dvh] bg-overlay text-foreground">
-        <Drawer.Dialog aria-label={mode === "edit" ? t("editTitle") : t("title")} className="flex max-h-[92dvh] flex-col">
+        <Drawer.Dialog aria-label={effectiveMode === "edit" ? t("editTitle") : t("title")} className="flex max-h-[92dvh] flex-col">
           {isOpen && (
             <CheckinForm
               key={formKey}
               cafeId={cafeId}
               cafeName={cafeName}
-              mode={mode}
-              editCheckinId={editCheckinId}
-              initialScores={initialScores}
-              initialMaxStay={initialMaxStay}
-              initialNote={initialNote}
+              mode={effectiveMode}
+              editCheckinId={effectiveEditId}
+              initialScores={initialScores ?? revisit?.scores}
+              initialMaxStay={initialMaxStay ?? revisit?.max_stay ?? null}
+              initialNote={initialNote ?? revisit?.note ?? null}
+              initialPhotos={initialPhotos}
               isAuthenticated={isAuthenticated}
+              lastCheckin={lastCheckinQuery.data?.checkin ?? null}
+              authProbeFailed={authProbeFailed}
+              lastCheckinLoaded={lastCheckinQuery.isSuccess}
               onClose={() => onOpenChange(false)}
               onDirtyChange={handleDirtyChange}
             />

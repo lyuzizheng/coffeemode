@@ -4,7 +4,7 @@
 
 Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisions-and-backlog.md` is in progress. Parts A–C and the remaining Phase 1 backlog (D1, D4, D7, A2) have merged to `main` (PRs #19, #20, #21, #22). Infrastructure slices (`image-pipeline`, `poi-cache-service`, `places-proxy`, `auth-foundation`) are code-complete but still pending owner credential/account actions.
 
-The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI artifacts were delivered and grilled (rounds 8–15, DG21–DG124), including the DG124 redesign that makes `/cafes/[id]` hydrate into the map app and abolishes the DeepLinkBanner. Every map-independent UI slice is design-unblocked; `discovery-sheet`, `seo-sharing`, `profile-page`, and `search-filters` are COMPLETE, the rest READY in `docs/agent/implementation-slices.md`; the remaining design debt is the three map-bound artifacts, which wait on Apple credentials (#131) anyway.
+The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI artifacts were delivered and grilled (rounds 8–15, DG21–DG124), including the DG124 redesign that makes `/cafes/[id]` hydrate into the map app and abolishes the DeepLinkBanner. Every map-independent UI slice is design-unblocked; `discovery-sheet`, `seo-sharing`, `profile-page`, `search-filters`, and `checkin-system` are COMPLETE, the rest READY in `docs/agent/implementation-slices.md`; the remaining design debt is the three map-bound artifacts, which wait on Apple credentials (#131) anyway.
 
 ## Active focus
 
@@ -28,7 +28,7 @@ The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI 
 - PR #138 (docs: cafe-creation spec and map backlog) is merged to `main`.
 - Issue #146 / work-profile slice completes the map-independent work_stats aggregation: `coerceWorkStats` preserves `experience_score`/`composite_score`, create/edit/soft-delete recompute via `recomputeWorkStats` with `FOR UPDATE`, public-safe `CafeSummary`/`CafeDetail` expose both scores, `web/scripts/recompute-work-stats.mjs` provides the idempotent nightly drift correction and `.github/workflows/nightly-recompute.yml` schedules it at 02:00 UTC with observable failure.
 - Issue #189 / app-config slice adds the universal typed config: `web/config/rate-limits.yaml` owns the 4 API rate-limit buckets, `web/config/app.yaml` owns product parameters (`search.maxRadiusKm`, `cafes.listLimitMax`), and `web/lib/config.ts` loads + schema-validates both at startup (fail-fast on bad shape). Existing call sites migrated with values unchanged; feature slices must consume config, never hardcode.
-- Issue #133 / discovery-sheet slice (PR #195): the map-independent discovery core is live — bespoke Framer Motion PEEK/HALF/FULL sheet on mobile, 380px sidebar + 400px detail column ≥1024px, one-push/then-replace `/cafes/[id]` URL sync with Back-collapse, public `GET /api/cafes/[id]/checkins` feed (Newest default DG113, mode-bound keyset cursors, 20/page), anonymous "A nomad" DTOs, DG17 inline Retry, DG19 missing-cafe toast flow. `app.yaml` gains `feed.pageSize` and `discovery.defaultCenter` (no geolocation prompt, DG112). The Check in action is an interim toast until `checkin-system`'s drawer lands; `/cafes/[id]` SSR remains `seo-sharing`'s (#150).
+- Issue #133 / discovery-sheet slice (PR #195): the map-independent discovery core is live — bespoke Framer Motion PEEK/HALF/FULL sheet on mobile, 380px sidebar + 400px detail column ≥1024px, one-push/then-replace `/cafes/[id]` URL sync with Back-collapse, public `GET /api/cafes/[id]/checkins` feed (Newest default DG113, mode-bound keyset cursors, 20/page), anonymous "A nomad" DTOs, DG17 inline Retry, DG19 missing-cafe toast flow. `app.yaml` gains `feed.pageSize` and `discovery.defaultCenter` (no geolocation prompt, DG112). Issue #148 / PR #287 delivered the check-in drawer (integrated across discovery, cafe page actions/feed, and profile); `/cafes/[id]` SSR remains `seo-sharing`'s (#150).
 - Issue #150 / seo-sharing slice ships the public SSR `/cafes/[id]` surface: two-part page (Part 1 aggregate shell — ScorePair/WorkProfile/PolicyConsensus/gallery/hours plus JSON-LD CafeOrCoffeeShop with aggregateRating from experience_score and `serializeJsonLd` XSS escaping; Part 2 the discovery feed component client-loaded, Newest default, never in initial HTML — DG106/DG113), locale-independent canonical + hreflang x-default (DG110), OG hook copy + dynamic no-cover fallback card with honest dimensions (DG108 — 400×300 for cover card, 1200×630 fallback), sitemap/robots/llms.txt (DG105, sitemap with s-maxage), CDN shell cache from `app.yaml` `seo.shellCache` (DG107), WeChat-aware share control with focus management swept into discovery (DG109), and a real 404 committed by the proxy before the root loading boundary can stream a soft-404, with the DG111 recovery block scaffolding (never user geolocation, DG112 — endpoint + block wired but empty until cafe tombstone retains id+lat/lng; quiet 404 is the interim contract). Public-safe: the SSR payload carries no `StoredImage.by`/author ids (DG13). DG124 map hydration stays the blocked `deeplink-hydration` slice.
 - Apple live search is configuration-gated and does not block link import or Google search. New user-visible UI implementation is separately design-gated on a slice-specific Kimi K3 artifact.
 
@@ -73,6 +73,7 @@ web/app/api/cafes/       POST (fused create + first check-in, 409 dedupe), GET n
 web/app/cafes/[id]/      SSR public cafe shell + client-loaded feed (seo-sharing #150):
                          JSON-LD, canonical/hreflang, OG + dynamic fallback card,
                          gone-cafe 404; app/sitemap.ts + app/robots.ts + public/llms.txt
+web/components/checkin/  Check-in drawer, sliders, photo uploader, and success feedback (PR #287)
 web/lib/rate-limit.ts    Token-bucket rate limiter: in-memory (dev/tests) or Postgres-backed
                          (production/horizontal scale) with a shared client identifier helper
 web/next.config.ts       Long immutable Cache-Control headers for static/PWA assets
@@ -99,10 +100,9 @@ _archive-coffeemode-backend/   old Java app — being dropped
 3. poi-cache-service deploy (§7): Cloudflare D1/KV + secrets, apply D1 schema,
    deploy, wire POI_SERVICE_URL/TOKEN.
 4. Map-independent UI slices are all design-unblocked and READY — pick any of:
-   search-filters (#135), checkin-system (#148),
-   navigation-prompt (#149), onboarding-geolocation (#153).
-   discovery-sheet (#133), seo-sharing (#150), profile-page (#152, PR #209),
-   and app-config (#189) are COMPLETE — feature
+   search-filters (#135), navigation-prompt (#149), onboarding-geolocation (#153).
+   discovery-sheet (#133), checkin-system (#148), seo-sharing (#150),
+   profile-page (#152, PR #209), and app-config (#189) are COMPLETE — feature
    slices consume `web/lib/config.ts`, never hardcode. One writer per slice
 ```
 

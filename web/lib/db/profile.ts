@@ -57,6 +57,33 @@ export interface UserProfileDto {
   avatarUrl: string | null;
   currentCity: string;
   createdAt: string;
+  /** Opt-in public author identity (spec 0006); false = anonymous default. */
+  showPublicIdentity: boolean;
+  /** Reserved public handle; null until first opt-in generates one. */
+  publicHandle: string | null;
+  identityConsentedAt: string | null;
+  publicHandleChangedAt: string | null;
+}
+
+type ProfileIdentityRow = {
+  show_public_identity: boolean;
+  public_handle: string | null;
+  identity_consented_at: Date | null;
+  public_handle_changed_at: Date | null;
+};
+
+function mapIdentityFields(row: ProfileIdentityRow): Pick<
+  UserProfileDto,
+  "showPublicIdentity" | "publicHandle" | "identityConsentedAt" | "publicHandleChangedAt"
+> {
+  return {
+    showPublicIdentity: row.show_public_identity,
+    publicHandle: row.public_handle,
+    identityConsentedAt: row.identity_consented_at ? new Date(row.identity_consented_at).toISOString() : null,
+    publicHandleChangedAt: row.public_handle_changed_at
+      ? new Date(row.public_handle_changed_at).toISOString()
+      : null,
+  };
 }
 
 export class ProfileCursorError extends Error {
@@ -123,9 +150,10 @@ export async function getProfile(userId: string): Promise<UserProfileDto | null>
     avatar_url: string | null;
     current_city: string;
     created_at: Date;
-  }>(
+  } & ProfileIdentityRow>(
     `
-    select id, display_name, avatar_url, coalesce(current_city, $2) as current_city, created_at
+    select id, display_name, avatar_url, coalesce(current_city, $2) as current_city, created_at,
+           show_public_identity, public_handle, identity_consented_at, public_handle_changed_at
     from profiles
     where id = $1
     `,
@@ -140,6 +168,7 @@ export async function getProfile(userId: string): Promise<UserProfileDto | null>
     avatarUrl: row.avatar_url,
     currentCity: row.current_city,
     createdAt: row.created_at.toISOString(),
+    ...mapIdentityFields(row),
   };
 }
 
@@ -210,12 +239,13 @@ export async function updateProfile(
     avatar_url: string | null;
     current_city: string;
     created_at: Date;
-  }>(
+  } & ProfileIdentityRow>(
     `
     update profiles
     set ${updates.join(", ")}, last_seen_at = now()
     where id = $1
-    returning id, display_name, avatar_url, coalesce(current_city, $${defaultCityParamIdx}) as current_city, created_at
+    returning id, display_name, avatar_url, coalesce(current_city, $${defaultCityParamIdx}) as current_city, created_at,
+              show_public_identity, public_handle, identity_consented_at, public_handle_changed_at
     `,
     params,
   );
@@ -228,6 +258,7 @@ export async function updateProfile(
     avatarUrl: row.avatar_url,
     currentCity: row.current_city,
     createdAt: row.created_at.toISOString(),
+    ...mapIdentityFields(row),
   };
 }
 

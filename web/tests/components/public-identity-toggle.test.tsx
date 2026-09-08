@@ -31,13 +31,21 @@ describe("PublicIdentityToggle", () => {
     vi.stubGlobal("fetch", vi.fn());
   });
 
-  it("renders unchecked with the ratified copy when opted out", () => {
+  it("renders the ratified positive copy, unchecked while anonymous (default)", () => {
     renderToggle(baseProfile, vi.fn());
 
     expect(
-      screen.getByText("Don't show my name on cafes I create or check-ins I post"),
+      screen.getByText("Show my name on cafes I create or check-ins I post"),
     ).toBeInTheDocument();
+    // OFF = anonymous: the privacy-safe default never publishes the name.
     expect(screen.getByRole("switch")).not.toBeChecked();
+  });
+
+  it("renders checked when the author has opted in to public identity", () => {
+    renderToggle({ ...baseProfile, showPublicIdentity: true }, vi.fn());
+
+    // ON = public: label and switch state agree (spec 0006 Q7, option A).
+    expect(screen.getByRole("switch")).toBeChecked();
   });
 
   it("opts in with an optimistic update and PATCHes showPublicIdentity", async () => {

@@ -7,7 +7,7 @@ import { Section } from "../shared";
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div className="text-center">
-      <div className="tnum font-display text-xl font-bold text-foreground">
+      <div className="tnum font-mono text-xl font-bold text-foreground">
         {value}
       </div>
       <div className="mt-0.5 text-xs text-muted">{label}</div>

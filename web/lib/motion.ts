@@ -10,7 +10,9 @@
 import type { Transition } from "framer-motion";
 import { useEnterMotion } from "@/hooks/use-enter-motion";
 
-/** Durations in seconds — mirror of spec tokens (feedback/state/transition/slow). */
+/** Settle budgets (spec 0002): feedback ≤150ms button/toggle/chip settle;
+ * state ≤300ms card-expand/drawer settle; transition/slow ≤450ms page/map
+ * overlay and onboarding reveal ceilings. Values below sit inside budgets. */
 export const duration = {
   /** Button press, toggle, chip select. */
   feedback: 0.12,
@@ -32,13 +34,20 @@ export const ease = {
   exit: [0.55, 0.06, 0.68, 0.19],
 } as const satisfies Record<string, [number, number, number, number]>;
 
-/** Springs — restrained. No bounce beyond a barely-there overshoot. */
+/** Springs — restrained spec tokens (0002 Motion). No bounce beyond a
+ * barely-there overshoot. Behavior unchanged — token + comment promotion
+ * only; component migration rides the later motion slice. */
 export const spring = {
-  /** Sheets, drawers, overlays. */
+  /** SPRING-GENTLE — stiffness 260 / damping 30.
+     Sheets, drawers, overlays; WorkProfile bars, card reflow, layoutId. */
   gentle: { type: "spring", stiffness: 260, damping: 30 },
-  /** Small controls: chips, toggles, card press. */
+  /** SPRING-SNAPPY — stiffness 420 / damping 32, critically damped.
+     Small controls (chips, toggles, card press), bottom-sheet detent snap
+     + drag velocity pass-through, drawer slides, toggle thumbs. */
   snappy: { type: "spring", stiffness: 420, damping: 32 },
-  /** First-load reveals, work-profile bars. */
+  /** SPRING-SOFT — stiffness 180 / damping 26.
+     Atmospheric elements (coffee steam, watermark breathing), first-load
+     reveals, work-profile bars. */
   soft: { type: "spring", stiffness: 180, damping: 26 },
 } as const satisfies Record<string, Transition>;
 

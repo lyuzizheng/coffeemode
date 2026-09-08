@@ -113,7 +113,7 @@ export default async function HomePage({
 
             {authError && <AuthCallbackError reason={authErrorReason} />}
 
-            <div className="mt-10 w-full rounded-2xl border border-border/60 bg-surface p-6 shadow-sm">
+            <div className="mt-10 w-full rounded-xl border border-border/60 bg-surface p-6 shadow-sm">
               {user ? (
                 <>
                   <div className="flex flex-col gap-1">

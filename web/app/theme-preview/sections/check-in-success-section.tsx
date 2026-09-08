@@ -86,7 +86,7 @@ export function CheckInSuccessSection() {
 
         <div className="mt-5 flex items-center justify-between border-t border-separator pt-4">
           <span className="text-sm text-muted">{ts("newWorkScore")}</span>
-          <span className="tnum font-display text-2xl font-extrabold text-accent">
+          <span className="tnum font-mono text-2xl font-extrabold text-accent">
             {DEMO_SCORE}
           </span>
         </div>

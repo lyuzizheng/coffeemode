@@ -16,10 +16,10 @@ This specification records all 13 owner-confirmed design decisions and 4 binding
 4. **Q4: Storage & schema migration**: Consent state lives on the `profiles` table as new columns: `show_public_identity`, `public_handle`, `identity_consented_at`, and `public_handle_changed_at`. No separate consent table.
 5. **Q5: Revocation semantics**: Immediate global retroactive anonymization via read-time SQL `CASE WHEN p.show_public_identity THEN ... ELSE NULL END`. Opting out restores anonymous attribution on all public reads without deleting or modifying authored cafes or check-ins.
 6. **Q6: Cache invalidation & accepted risk**: Accepted risk: Cloudflare CDN (`s-maxage 600`) and client SWR may serve stale identity for up to ~10 minutes after a toggle. No targeted cache purge is performed in V2.
-7. **Q7: Decoupling check-in vs cafe creator**: A single global switch controls both dimensions. Ratified toggle copy:
-   - zh: `不在我创建的咖啡馆和打卡中公开显示我的名字`
-   - en: `Don't show my name on cafes I create or check-ins I post`
-   - Default state: unchecked (opted-out / anonymous).
+7. **Q7: Decoupling check-in vs cafe creator**: A single global switch controls both dimensions. Ratified toggle copy (positive wording, owner-ratified in the #139 post-merge review):
+   - zh: `在我创建的咖啡馆和打卡中公开显示我的名字`
+   - en: `Show my name on cafes I create or check-ins I post`
+   - Default state: unchecked (opted-out / anonymous). Label and switch state always agree: checked publishes the author's name/avatar, unchecked keeps the author anonymous.
 8. **Q8: Internal UUID desensitization**: Projections join `profiles` internally by UUID but `SELECT` only safe public fields (`public_handle`, `display_name`, `avatar_url`). Internal database UUIDs (`cafes.created_by`, `checkins.user_id`, `StoredImage.by`) never leak into public API responses.
 9. **Q9: API versioning & pagination contract**: `author` is a leaf display field on check-in and cafe DTOs. Mode-bound feed cursors (`newest`/`helpful`) and pagination contracts remain strictly unchanged.
 10. **Q10: Gallery / image attribution**: Cafe and check-in galleries remain anonymous JSONB (`StoredImage.by` is never exposed in public responses). Image attribution follows the containing check-in or cafe's `PublicAuthor`.
@@ -67,9 +67,10 @@ Migration `web/db/migrations/0018_public_identity.sql` adds the following column
   - Authentication: authenticated user required (`getCurrentUser()`), same-origin required (`requireSameOrigin()`).
   - Rate limit: `identity-write` bucket (10/min).
   - Request body: `{ showPublicIdentity: boolean, publicHandle?: string }`.
+  - Response body: single-convention camelCase — `{ ok: true, showPublicIdentity, publicHandle, identityConsentedAt, publicHandleChangedAt }`; no snake_case duplicates.
   - Opt-in: generates handle `slug(display_name)-xxxx` if none exists, sets `show_public_identity = true`, stamps `identity_consented_at = now()`.
   - Handle edit: validates regex `^[a-z0-9][a-z0-9_-]{2,29}$`, checks 7-day cooldown against `public_handle_changed_at`, checks uniqueness across all profiles.
-  - Opt-out: sets `show_public_identity = false`, clears `identity_consented_at = null`, retains `public_handle` in reserved state.
+  - Opt-out: sets `show_public_identity = false`, clears `identity_consented_at = null`, retains `public_handle` in reserved state. A `publicHandle` sent in the same request is still validated and applied — handle management is independent of the consent flag and follows the same edit rules.
   - Error codes:
     - `invalid_handle` (400): Handle does not match regex or format requirements.
     - `handle_taken` (409): Handle is already claimed by another user.

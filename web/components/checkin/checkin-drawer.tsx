@@ -690,7 +690,7 @@ export function CheckinDrawer({
           )}
 
           {showDiscardConfirm && (
-            <div className="absolute inset-0 flex items-end justify-center bg-black/30 p-4">
+            <div className="absolute inset-0 flex items-end justify-center bg-scrim/30 p-4">
               <div className="w-full max-w-sm rounded-lg bg-surface p-4 shadow-lg">
                 <p className="mb-4 text-sm font-medium">{t("discardTitle")}</p>
                 <div className="flex justify-end gap-2">

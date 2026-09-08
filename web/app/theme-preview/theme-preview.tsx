@@ -55,7 +55,7 @@ function HeroPoster() {
             <br />
             Mode
           </div>
-          <div className="tnum font-display text-2xl font-extrabold leading-none opacity-90">
+          <div className="tnum font-mono text-2xl font-extrabold leading-none opacity-90">
             {DEMO_SCORE}
           </div>
         </div>
@@ -63,7 +63,7 @@ function HeroPoster() {
           {ta("tagline")}
         </p>
         <div className="mt-8 border-t border-accent-foreground/20 pt-4 font-mono text-xs opacity-75">
-          Cabinet Grotesk · Inter · JetBrains Mono
+          Cabinet Grotesk · Inter · Source Serif 4 · JetBrains Mono
         </div>
       </div>
 

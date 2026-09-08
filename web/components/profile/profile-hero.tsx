@@ -82,7 +82,7 @@ export function ProfileHero({ profile, onProfileChange }: ProfileHeroProps) {
       </div>
 
       {/* Avatar circle (80px) */}
-      <div className="w-20 h-20 rounded-full bg-surface-tertiary border border-border flex items-center justify-center mb-4 overflow-hidden shadow-xs relative z-10">
+      <div className="w-20 h-20 rounded-full bg-surface-tertiary border border-border flex items-center justify-center mb-4 overflow-hidden shadow-sm relative z-10">
         {profile?.avatarUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img

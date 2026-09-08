@@ -76,7 +76,7 @@ function ResultRow({
             </span>
           )}
         </span>
-        {meta && <span className="truncate text-xs text-muted">{meta}</span>}
+        {meta && <span className="tnum truncate text-xs text-muted">{meta}</span>}
       </button>
     </li>
   );

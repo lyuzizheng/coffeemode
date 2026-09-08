@@ -35,6 +35,17 @@ const jetbrains = localFont({
   display: "swap",
 });
 
+// Editorial serif — Source Serif 4 Variable (OFL), opsz 8–60 + wght 200–900.
+// Latin-subset woff2 (~242KB) built from google/fonts SourceSerif4[opsz,wght].ttf.
+// Narrative reading only (check-in notes, editorial surfaces); forbidden on
+// utility chrome — spec 0002 typography. CJK falls back to system Songti.
+const sourceSerif = localFont({
+  src: "./fonts/source-serif-4-var.woff2",
+  variable: "--font-source-serif",
+  weight: "200 900",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: {
     default: APP_NAME,
@@ -74,7 +85,7 @@ export default async function RootLayout({
   return (
     <html
       lang={locale}
-      className={`${inter.variable} ${cabinet.variable} ${jetbrains.variable} h-full antialiased`}
+      className={`${inter.variable} ${cabinet.variable} ${jetbrains.variable} ${sourceSerif.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full font-sans">

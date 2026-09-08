@@ -58,10 +58,6 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       ...result,
-      show_public_identity: result.showPublicIdentity,
-      public_handle: result.publicHandle,
-      identity_consented_at: result.identityConsentedAt,
-      public_handle_changed_at: result.publicHandleChangedAt,
     });
   } catch (err) {
     if (err instanceof InvalidHandleError) {

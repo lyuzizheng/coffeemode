@@ -239,9 +239,11 @@ describe("PATCH /api/profile/identity", () => {
     expect(body.publicHandle).toBe("alex-4a1f");
     expect(body.identityConsentedAt).toBe("2026-09-06T12:00:00.000Z");
     expect(body.publicHandleChangedAt).toBeNull();
-    // Also asserts snake_case parity
-    expect(body.show_public_identity).toBe(true);
-    expect(body.public_handle).toBe("alex-4a1f");
+    // Response is single-convention camelCase — no snake_case duplicates.
+    expect(body).not.toHaveProperty("show_public_identity");
+    expect(body).not.toHaveProperty("public_handle");
+    expect(body).not.toHaveProperty("identity_consented_at");
+    expect(body).not.toHaveProperty("public_handle_changed_at");
   });
 
   it("returns 200 on successful opt-out, retaining reserved handle", async () => {

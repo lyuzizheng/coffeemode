@@ -240,7 +240,7 @@
     "mockName": "Jordan Lee",
     "mockInitials": "JL",
     "mockCity": "东京",
-    "public_identity_label": "不在我创建的咖啡馆和打卡中公开显示我的名字",
+    "public_identity_label": "在我创建的咖啡馆和打卡中公开显示我的名字",
     "public_handle_label": "公开 Handle",
     "public_handle_placeholder": "小写字母、数字、- 和 _，3–30 个字符",
     "identity_error_handle_taken": "这个 handle 已经被占用了",

@@ -68,7 +68,7 @@ export function ProfileTabs({ activeTab, onTabChange, baseId }: ProfileTabsProps
             onKeyDown={(e) => handleTabKeyDown(e, tabKey)}
             className={`flex-1 min-w-[90px] py-2 px-3 text-xs font-medium rounded-lg transition-all text-center whitespace-nowrap ${
               isSelected
-                ? "bg-surface text-foreground shadow-xs font-semibold"
+                ? "bg-surface text-foreground shadow-sm font-semibold"
                 : "text-muted hover:text-foreground"
             }`}
           >

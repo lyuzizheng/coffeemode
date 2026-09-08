@@ -28,6 +28,34 @@
     system-ui, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo,
     Consolas, monospace;
+  /* Narrative serif — Source Serif 4 Variable (opsz 8–60 + wght 200–900),
+     wired to next/font/local `--font-source-serif` in app/layout.tsx.
+     CJK falls back to on-platform Songti (no CJK webfont shipped).
+     Narrative reading ONLY (check-in notes, editorial surfaces); forbidden
+     on sheets, forms, buttons, search bars, utility chrome — spec 0002. */
+  --font-serif: var(--font-source-serif), Georgia, "Times New Roman",
+    "Songti SC", "Noto Serif SC", serif;
+
+  /* Editorial ramp — narrative reading scale, isolated from the App ramp
+     (xs–2xl above). Editorial tokens MUST NOT appear on sheet/form/tool
+     surfaces; App tokens MUST NOT set long-form narrative prose — spec 0002.
+     No editorial surfaces exist yet (K3 artifact pending BRAWUKA-16); these
+     tokens are the layer this slice ships, no page recomposition. */
+  --text-prose: 1.0625rem;
+  --text-prose--line-height: 1.75;
+  --text-lede: 1.25rem;
+  --text-lede--line-height: 1.6;
+  --text-section: 1.75rem;
+  --text-section--line-height: 1.3;
+  --text-display: 2.5rem;
+  --text-display--line-height: 1.1;
+
+  /* Accent hover state — `hover:bg-accent-hover` used by error/not-found
+     surfaces; mirrors --accent one step toward the background per theme. */
+  --color-accent-hover: var(--accent-hover);
+  /* Warm espresso scrim for overlays (discard-confirm, drawer veils) — never
+     pure black. Use as bg-scrim/30. */
+  --color-scrim: oklch(25% 0.03 50);
 
   /* Fixed type scale — app scale, no marketing sizes. Spec 0002. */
   --text-xs: 0.75rem;
@@ -120,6 +148,7 @@
   /* Brand — burnt sienna terracotta + real sage secondary */
   --accent: oklch(54% 0.15 42);
   --accent-foreground: oklch(98.5% 0.004 80);
+  --accent-hover: oklch(49% 0.15 42);
   --secondary: oklch(45.0% 0.080 155);
   --secondary-foreground: oklch(97.0% 0.005 155);
 
@@ -203,6 +232,7 @@
   /* Brand — terracotta lifted for dark, reads like lamplight + lighter sage */
   --accent: oklch(68% 0.16 46);
   --accent-foreground: oklch(17% 0.015 48);
+  --accent-hover: oklch(72% 0.16 46);
   --secondary: oklch(55.0% 0.080 155);
   --secondary-foreground: oklch(16% 0.03 150);
 
@@ -310,6 +340,31 @@ body {
 .tnum {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
+}
+
+/* Hide scrollbars on horizontal tab/scroll strips while keeping scroll.
+   Used by profile tablist; keeps the dense mobile-first chrome clean. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* --grain material overlay — SVG feTurbulence noise, spec 0002.
+   Opacity 0.03–0.05 light / 0.04–0.06 dark (AA contrast gate applies).
+   Apply ONLY to background canvas and editorial/hero surfaces; never the
+   map canvas. pointer-events:none so it never intercepts input. No
+   consumers yet (K3 artifact pending) — token + utility ship in this slice. */
+.grain-overlay {
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  opacity: 0.04;
+}
+.dark .grain-overlay,
+[data-theme="dark"] .grain-overlay {
+  opacity: 0.05;
 }
 
 /* Visible keyboard focus on bespoke controls (theme toggle, chips, swatches).

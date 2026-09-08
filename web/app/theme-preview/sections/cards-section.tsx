@@ -43,7 +43,7 @@ export function CardsSection() {
                 {t("distance")} · {t("closes_at")}
               </div>
             </div>
-            <div className="tnum font-display text-lg font-extrabold text-accent">
+            <div className="tnum font-mono text-lg font-extrabold text-accent">
               {DEMO_SCORE}
             </div>
           </div>

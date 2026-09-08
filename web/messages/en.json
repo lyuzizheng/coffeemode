@@ -243,7 +243,7 @@
     "mockName": "Jordan Lee",
     "mockInitials": "JL",
     "mockCity": "Tokyo",
-    "public_identity_label": "Don't show my name on cafes I create or check-ins I post",
+    "public_identity_label": "Show my name on cafes I create or check-ins I post",
     "public_handle_label": "Public handle",
     "public_handle_placeholder": "lowercase, numbers, - and _, 3–30 chars",
     "identity_error_handle_taken": "That handle is already taken",

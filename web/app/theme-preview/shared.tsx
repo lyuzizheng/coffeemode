@@ -142,7 +142,7 @@ export function CafeCard({ interactive = true }: { interactive?: boolean }) {
           </div>
         </div>
         <div className="shrink-0 text-right">
-          <div className="tnum font-display text-2xl font-extrabold leading-none text-foreground">
+          <div className="tnum font-mono text-2xl font-extrabold leading-none text-foreground">
             {DEMO_SCORE}
           </div>
           <div className="mt-1 text-xs text-muted">{t("work_score")}</div>

@@ -11,6 +11,11 @@ const RAMP = [
   { cls: "text-base", spec: "text-base · 14/22 · Inter 400" },
   { cls: "text-sm text-muted", spec: "text-sm · 13/20 · Inter 400" },
   { cls: "font-mono text-xs text-muted", spec: "text-xs · 12/16 · JetBrains 400" },
+  /* Editorial ramp — narrative reading only, never utility chrome (spec 0002). */
+  { cls: "font-serif text-display", spec: "display · 40/44 · Serif opsz" },
+  { cls: "font-serif text-section", spec: "section · 28/36 · Serif" },
+  { cls: "font-serif text-lede", spec: "lede · 20/32 · Serif" },
+  { cls: "font-serif text-prose", spec: "prose · 17/28 · Serif" },
 ];
 
 export function TypeSection() {
@@ -42,7 +47,7 @@ export function TypeSection() {
         </div>
 
         {/* Specimens */}
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid gap-6 sm:grid-cols-2">
           <div className="rounded-xl border border-border bg-surface p-5">
             <div className="font-mono text-xs text-muted">{t("display_label")}</div>
             <div className="mt-3 font-display text-2xl font-extrabold tracking-tight text-foreground">
@@ -62,6 +67,13 @@ export function TypeSection() {
               {t("mono_sample")}
             </p>
           </div>
+          <div className="rounded-xl border border-border bg-surface p-5 sm:col-span-2">
+            <div className="font-mono text-xs text-muted">{t("serif_label")}</div>
+            <p className="mt-3 font-serif text-lede text-foreground">
+              {t("serif_sample")}
+            </p>
+            <p className="mt-2 text-sm text-muted">{t("serif_line")}</p>
+          </div>
         </div>
 
         {/* Tabular numerals */}
@@ -71,7 +83,7 @@ export function TypeSection() {
             {[87, 64, 100, 9].map((n) => (
               <span
                 key={n}
-                className="tnum font-display text-xl font-bold text-foreground"
+                className="tnum font-mono text-xl font-bold text-foreground"
               >
                 {n}
                 <span className="text-sm font-medium text-muted">/100</span>

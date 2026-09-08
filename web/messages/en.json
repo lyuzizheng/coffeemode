@@ -85,6 +85,9 @@
       "display_line": "Cafe names and page titles only — never body copy.",
       "sans_sample": "Quiet room, fast wifi, and a window seat that stays open past nine. The flat white is better than it needs to be.",
       "mono_sample": "35.6595° N, 139.7005° E · 08:00–22:00 · 128 check-ins",
+      "serif_label": "Narrative — Source Serif 4",
+      "serif_sample": "A slow morning note: the espresso is bright, the corner table is free, and the rain can wait.",
+      "serif_line": "Check-in notes and editorial surfaces only — never sheets, forms, or buttons.",
       "scale_label": "Type scale",
       "tnum_label": "Tabular numerals — scores never jiggle",
       "tnum_hint": "Every score, distance, and count sets with tabular figures."

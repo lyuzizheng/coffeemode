@@ -69,7 +69,7 @@ export function CardMeta({ cafe }: { cafe: CafeSummary }) {
       : Math.round(cafe.work_stats.composite_score);
   const parts = [cafe.city, km !== null ? t("km_away", { km }) : null].filter(Boolean);
   return (
-    <p className="truncate text-xs text-muted">
+    <p className="tnum truncate text-xs text-muted">
       {parts.join(" · ")}
       {work !== null && (
         <>

@@ -23,3 +23,5 @@ Reject overengineering:
 ## Independence rule
 
 The reviewer must not be the agent that authored the patch. If no independent reviewer is available, report the gate as blocked — do not self-approve.
+
+Deliver the review verdict (`Review verdict: APPROVED` / findings) as a comment on the issue thread, providing the gate evidence and cumulative diff audit per closed-loop Step 7. Do not call `gh pr review --approve` on GitHub: workspace agents share the repository owner credentials, and GitHub rejects PR self-approval.

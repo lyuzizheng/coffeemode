@@ -16,6 +16,7 @@ retirement in `## Stable decisions` §8.
 ### 1. Suite location and gate
 
 - Proving file: `web/tests/integration/user-journey.integration.test.ts`.
+- Staged suites: Path 1–3 core journey runs in `web/tests/integration/user-journey-discovery-creation.integration.test.ts` (BRAWUKA-143); Path 4–6 social/lifecycle runs in `web/tests/integration/user-journey-social-lifecycle.integration.test.ts` (BRAWUKA-144).
 - Runs under the real-DB gate only (`RUN_INTEGRATION=1`), provisioned per
   run via `web/tests/helpers/db.ts` (`provisionTestDatabase` + template
   clone), same as `db.integration.test.ts`. Skipped otherwise so
@@ -27,7 +28,10 @@ retirement in `## Stable decisions` §8.
   `web/lib/discovery/feed.ts`, and `web/lib/images/complete.ts` directly.
   HTTP route shells (`requireSameOrigin`, rate-limit buckets) stay covered
   by the existing mocked route tests; duplicating them here would couple
-  the journey to request plumbing instead of product behavior.
+  the journey to request plumbing instead of product behavior. The recovery
+  route (`GET /api/cafes/[id]/recovery`) is the sanctioned exception, exercising
+  real rate-limit buckets and tombstone fallback per the empty-result recovery
+  requirement (DG111/DG112).
 
 ### 2. Shared mock dataset (single source)
 
@@ -137,7 +141,7 @@ also carries narrow unit edges worth keeping:
 | `tests/checkins.test.ts` (31KB) | DG64/DG61/likes/feed order | invalid-payload matrices, visitor filters |
 | `tests/profile/identity-route.test.ts` | opt-in/out projection | handle regex/cooldown/rate-limit edges |
 | `tests/integration/db.integration.test.ts` (87KB) | triggers, recompute, handoff | canonical SQL-semantics reference |
-| `tests/cafes-recovery.test.ts` | — (not covered) | keep: 404 recovery has no journey leg yet |
+| `tests/cafes-recovery.test.ts` | Path 1 tombstone location + recovery recommendations (DG111/DG112) | keep: route 400 validation and rate-limit error edges |
 
 Rule: no file is removed until the journey is green on `main` for one
 full CI cycle; removals delete only fully-duplicated `it` blocks, never
@@ -180,8 +184,8 @@ Postgres/PostGIS. Pinned by `web/tests/helpers/mocks.test.ts`.
 - All geospatial assertions use real `geography(POINT, 4326)` rows;
   distances come from the query (`distance_m`), never computed in-test.
 - Timezone-dependent `open_now` filtering is intentionally NOT asserted
-  on wall-clock time (flaky); the journey asserts `tz` persistence and
-  deterministic city/score filters instead.
+  on wall-clock time (flaky); asserted via injected instant (`executeSearch(filters, instant)`)
+  against known IANA timezone and weekday opening hours, preserving anti-flakiness.
 - Feed cursor pagination (`encodeFeedCursor`/`nextCursor`) is exercised
   only to first-page order; deep keyset paging stays in
   `tests/feed-cursor.test.ts`.

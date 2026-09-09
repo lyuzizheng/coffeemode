@@ -21,9 +21,10 @@ retirement in `## Stable decisions` §8.
   run via `web/tests/helpers/db.ts` (`provisionTestDatabase` + template
   clone), same as `db.integration.test.ts`. Skipped otherwise so
   `npm test` stays green without Docker.
-- Gate: `cd web && npm run test:integration` (extended to include the new
-  file). No new CI job; `.agents/scripts/classify-ci-paths.sh` already
-  routes `web/tests/**` to `integration-gate`.
+- Gate: `cd web && npm run test:integration:journey` (dedicated journey suite
+  under GitHub Actions CI `integration-gate`; `npm run test:integration` covers
+  DB foundation; `npm run test:integration:all` runs full suite).
+  `.agents/scripts/classify-ci-paths.sh` routes `web/tests/**` to `integration-gate`.
 - Service-layer scope: the suite calls `web/lib/db/*`,
   `web/lib/discovery/feed.ts`, and `web/lib/images/complete.ts` directly.
   HTTP route shells (`requireSameOrigin`, rate-limit buckets) stay covered
@@ -131,22 +132,22 @@ retirement in `## Stable decisions` §8.
 
 ### 9. Legacy test consolidation (phase 3 audit)
 
-The journey subsumes — but does not yet delete — these fragmentary
-suites. Deletion is a follow-up human-confirmed step because each file
-also carries narrow unit edges worth keeping:
+The journey subsumes these fragmentary suites. In Phase 3 (BRAWUKA-145),
+redundant, fully-duplicated happy-path mock tests were safely retired while
+all route-shell validation errors, body-parser edges, payload matrices, and
+race/error conditions were strictly preserved:
 
-| Legacy file | Journey coverage | Keep for |
-| --- | --- | --- |
-| `tests/cafes.test.ts` (49KB) | fused create, nearby, delete, sitemap | route-shell validation errors, body-parser edges |
-| `tests/checkins.test.ts` (31KB) | DG64/DG61/likes/feed order | invalid-payload matrices, visitor filters |
-| `tests/profile/identity-route.test.ts` | opt-in/out projection | handle regex/cooldown/rate-limit edges |
-| `tests/integration/db.integration.test.ts` (87KB) | triggers, recompute, handoff | canonical SQL-semantics reference |
-| `tests/cafes-recovery.test.ts` | Path 1 tombstone location + recovery recommendations (DG111/DG112) | keep: route 400 validation and rate-limit error edges |
+| Legacy file | Journey coverage | Retired in Phase 3 | Keep for |
+| --- | --- | --- | --- |
+| `tests/cafes.test.ts` (48KB) | fused create, nearby, delete, sitemap | `listCafesNearby` mocked SQL check, `createCafeWithFirstCheckIn` happy-path mock | route-shell validation errors, body-parser edges, photo-intent/race/dupe errors |
+| `tests/checkins.test.ts` (30KB) | DG64/DG61/likes/feed order | `createCheckIn` happy-path mock, `toggleCheckInLike` mock echoes | invalid-payload matrices, visitor filters, revisit/idempotency/self-like error edges |
+| `tests/profile/identity-route.test.ts` | opt-in/out projection | (none; kept intact) | handle regex/cooldown/rate-limit edges, camelCase DTO serialization |
+| `tests/integration/db.integration.test.ts` (87KB) | triggers, recompute, handoff | (none; kept intact) | canonical SQL-semantics reference |
+| `tests/cafes-recovery.test.ts` | Path 1 tombstone location + recovery recommendations (DG111/DG112) | (none; kept intact) | route 400 validation and rate-limit error edges |
 
 Rule: no file is removed until the journey is green on `main` for one
 full CI cycle; removals delete only fully-duplicated `it` blocks, never
 whole files blindly.
-
 ### 10. Mock-vs-real boundary contracts and Path I/O matrix
 
 Stage-2 tests substitute fakes at exactly three seams

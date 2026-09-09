@@ -198,6 +198,11 @@ jobs:
           DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode
         run: npm run test:integration
 
+
+      - name: Real Postgres user journey integration tests
+        env:
+          DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode
+        run: npm run test:integration:journey
       - name: Real MinIO/R2 image round-trip tests
         env:
           DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode

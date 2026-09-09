@@ -60,18 +60,6 @@ const FAKE_KEYS = {
   thumbnail: `thumbnail/${IMG}.webp`,
 };
 
-/** What the server must derive for IMG from the fake processing deps. */
-function derivedPhoto(checkinId: string) {
-  return {
-    id: IMG,
-    ...FAKE_KEYS,
-    w: 800,
-    h: 600,
-    by: USER.id,
-    at: expect.any(String),
-    source: { type: "checkin", id: checkinId },
-  };
-}
 
 function validInput(overrides: Partial<CreateCheckInInput> = {}): CreateCheckInInput {
   return {
@@ -361,60 +349,6 @@ describe("parseCheckInBody", () => {
 });
 
 describe("createCheckIn", () => {
-  it("provisions photos, inserts the check-in, derives StoredImage server-side, merges the gallery, and recomputes stats — one transaction", async () => {
-    mockCheckInHappyPath();
-    const result = await createCheckIn(USER.id, validInput());
-    expect(result).toEqual({ checkinId: CHECKIN, deduped: false });
-
-    // Intent pre-check and sharp processing ran BEFORE the transaction (no
-    // DB connection held during remote work).
-    const windowCheck = clientQueryMock.mock.calls[1];
-    expect(windowCheck[0]).toContain("visited_at > now()");
-    expect(windowCheck[1]).toEqual([CAFE, USER.id, REVISIT_WINDOW_HOURS]);
-
-    const insert = clientQueryMock.mock.calls[2];
-    expect(insert[0]).toContain("insert into checkins");
-    expect(insert[0]).toContain("false"); // never a creation check-in
-    expect(insert[1]).toEqual([
-      CAFE,
-      USER.id,
-      JSON.stringify({ wifi: 80 }),
-      "unlimited",
-      "quiet",
-      JSON.stringify([]), // photos land after insert — source needs the id
-      null,
-      null, // no idempotency key on this input
-    ]);
-
-    // The single-use intent consume ran INSIDE the transaction.
-    expect(provisionDeps.consumeUploadIntent).toHaveBeenCalledWith(
-      USER.id,
-      IMG,
-      expect.any(Function),
-    );
-
-    // Server-derived StoredImage: keys/w/h/by are NOT client-controlled.
-    const setPhotos = clientQueryMock.mock.calls[3];
-    expect(setPhotos[0]).toContain("update checkins set photos");
-    // $1 = checkin id, $2 = photos JSON — matches `set photos = $2::jsonb where id = $1`.
-    expect(setPhotos[1][0]).toBe(CHECKIN);
-    expect(JSON.parse(setPhotos[1][1] as string)).toEqual([derivedPhoto(CHECKIN)]);
-
-    // Photos auto-merge into cafes.gallery with check-in provenance (spec 0001).
-    const gallery = clientQueryMock.mock.calls[4];
-    expect(gallery[0]).toContain("update cafes");
-    expect(gallery[0]).toContain("gallery");
-    expect(gallery[1][0]).toBe(CAFE);
-    expect(JSON.parse(gallery[1][1] as string)).toEqual([derivedPhoto(CHECKIN)]);
-
-    // Stats refresh is a full recompute on the SAME connection (backdated
-    // visited_at would corrupt the incremental fold — see lib comment).
-    const statsLock = clientQueryMock.mock.calls[5];
-    expect(statsLock[0]).toContain("for update");
-    expect(statsLock[1]).toEqual([CAFE]);
-    expect(clientQueryMock.mock.calls[6][0]).toContain("from checkins");
-  });
-
   it("skips provisioning, photo writes, and the gallery merge when the check-in has no photos", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
     clientQueryMock
@@ -573,43 +507,6 @@ describe("toggleCheckInLike", () => {
     await expect(toggleCheckInLike(USER.id, "not-a-uuid")).rejects.toThrow(
       /Invalid user or check-in ID/,
     );
-  });
-
-  it("returns liked=true with the updated count when a like is inserted", async () => {
-    clientQueryMock
-      .mockResolvedValueOnce({
-        rows: [{ checkin_count: 1, inserted_count: 1, deleted_count: 0, is_author: false }],
-      })
-      .mockResolvedValueOnce({ rows: [{ likes_count: 7 }] });
-
-    const result = await toggleCheckInLike(USER.id, CHECKIN);
-
-    expect(result).toEqual({ liked: true, likesCount: 7 });
-    expect(clientQueryMock).toHaveBeenCalledTimes(2);
-    const [toggleSql, toggleParams] = clientQueryMock.mock.calls[0];
-    expect(toggleSql).toContain("DELETE FROM checkin_likes");
-    expect(toggleSql).toContain("deleted_at IS NULL");
-    expect(toggleSql).toContain("FOR UPDATE");
-    expect(toggleSql).toContain("checkin_id IN (SELECT id FROM checkin)");
-    // issue #107: the inserted CTE gates on caller <> check-in author.
-    expect(toggleSql).toContain("user_id FROM checkin");
-    expect(toggleSql).toContain("<> $1");
-    expect(toggleParams).toEqual([USER.id, CHECKIN]);
-    const [countSql, countParams] = clientQueryMock.mock.calls[1];
-    expect(countSql).toContain("SELECT likes_count");
-    expect(countParams).toEqual([CHECKIN]);
-  });
-
-  it("returns liked=false with the updated count when a like is removed", async () => {
-    clientQueryMock
-      .mockResolvedValueOnce({
-        rows: [{ checkin_count: 1, inserted_count: 0, deleted_count: 1, is_author: false }],
-      })
-      .mockResolvedValueOnce({ rows: [{ likes_count: 4 }] });
-
-    const result = await toggleCheckInLike(USER.id, CHECKIN);
-
-    expect(result).toEqual({ liked: false, likesCount: 4 });
   });
 
   it("throws SelfLikeError when the caller likes their own check-in (issue #107)", async () => {

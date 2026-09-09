@@ -304,9 +304,11 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
     expect(page2.nextCursor).toBeNull();
     const page1Ids = new Set(page1.checkins.map((c) => c.id));
     expect(page2.checkins.every((c) => !page1Ids.has(c.id))).toBe(true);
-    const seen = new Date(page1.checkins[0]!.visited_at).getTime();
-    for (const c of [...page1.checkins.slice(1), ...page2.checkins]) {
-      expect(new Date(c.visited_at).getTime()).toBeLessThanOrEqual(seen);
+    const allCheckins = [...page1.checkins, ...page2.checkins];
+    for (let i = 1; i < allCheckins.length; i += 1) {
+      expect(new Date(allCheckins[i]!.visited_at).getTime()).toBeLessThanOrEqual(
+        new Date(allCheckins[i - 1]!.visited_at).getTime(),
+      );
     }
 
     // Helpful: two likes lift the oldest check-in above every unliked row.

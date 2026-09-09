@@ -187,7 +187,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   });
 
-  it("applies migrations 0001→0018 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0019 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -208,6 +208,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0016_seed_service_account.sql",
       "0017_cafe_visibility.sql",
       "0018_public_identity.sql",
+      "0019_checkin_idempotency.sql",
     ]);
 
     const serviceProfile = await dbClient.query(
@@ -273,6 +274,21 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     expect(handleIndexRes.rows).toHaveLength(1);
     expect(handleIndexRes.rows[0].indexdef).toContain("public_handle IS NOT NULL");
     expect(handleIndexRes.rows[0].indexdef).toContain("UNIQUE INDEX");
+
+    // BRAWUKA-119 (DG61): 0019 adds a nullable idempotency_key scoped per
+    // user by a partial unique index — NULL rows (legacy, fused creation)
+    // stay outside the uniqueness scope.
+    const checkinColRows = await dbClient.query<{ column_name: string; data_type: string }>(
+      `select column_name, data_type from information_schema.columns where table_name = 'checkins'`,
+    );
+    const keyCol = checkinColRows.rows.find((r) => r.column_name === "idempotency_key");
+    expect(keyCol?.data_type).toBe("uuid");
+    const idemIndexRes = await dbClient.query<{ indexdef: string }>(
+      `select indexdef from pg_indexes where indexname = 'idx_checkins_user_idempotency'`,
+    );
+    expect(idemIndexRes.rows).toHaveLength(1);
+    expect(idemIndexRes.rows[0].indexdef).toContain("UNIQUE INDEX");
+    expect(idemIndexRes.rows[0].indexdef).toContain("idempotency_key IS NOT NULL");
   });
 
   describeDb("toggleCheckInLike on real SQL", () => {
@@ -389,6 +405,50 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       await softDeleteCheckIn(U2, second.checkinId);
       const third = await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 80 } });
       expect(third.checkinId).not.toBe(second.checkinId);
+    });
+
+    it("createCheckIn dedupes on idempotency_key: replay returns the same id, no second row (DG61)", async () => {
+      const key = randomUUID();
+      const first = await createCheckIn(U2, {
+        cafe_id: CAFE_A,
+        scores: { overall: 60 },
+        idempotency_key: key,
+      });
+      expect(first.deduped).toBe(false);
+
+      const stored = await dbClient.query(
+        "select idempotency_key from checkins where id = $1",
+        [first.checkinId],
+      );
+      expect(stored.rows[0].idempotency_key).toBe(key);
+
+      // "Request persisted but response lost": the drawer retries with the
+      // SAME key — the server must return the original id and write nothing.
+      const replay = await createCheckIn(U2, {
+        cafe_id: CAFE_A,
+        scores: { overall: 60 },
+        idempotency_key: key,
+      });
+      expect(replay).toEqual({ checkinId: first.checkinId, deduped: true });
+
+      const { rows } = await dbClient.query(
+        "select count(*)::int as n from checkins where cafe_id = $1 and user_id = $2 and deleted_at is null",
+        [CAFE_A, U2],
+      );
+      expect(rows[0].n).toBe(1);
+
+      // A different key is a different write: past the DG64 window it
+      // inserts a new row instead of deduping.
+      await dbClient.query("update checkins set visited_at = now() - interval '25 hours' where id = $1", [
+        first.checkinId,
+      ]);
+      const second = await createCheckIn(U2, {
+        cafe_id: CAFE_A,
+        scores: { overall: 70 },
+        idempotency_key: randomUUID(),
+      });
+      expect(second.checkinId).not.toBe(first.checkinId);
+      expect(second.deduped).toBe(false);
     });
 
     it("createCafeWithFirstCheckIn fuses cafe + first check-in + stats and dedupes", async () => {

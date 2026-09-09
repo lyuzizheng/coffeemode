@@ -51,6 +51,23 @@ function isWithin90Days(iso: string): boolean {
   return ageMs < 90 * 24 * 60 * 60 * 1000;
 }
 
+/**
+ * DG61 idempotency key: one UUID v4 per drawer open, sent with the create
+ * and reused by every retry of that open — a retry after a flaky connection
+ * can never double-record. crypto.randomUUID is universal in supported
+ * browsers; the Math.random fallback keeps the v4 shape so older WebViews
+ * still validate server-side (uniqueness is time+entropy seeded and the key
+ * is scoped per user, so collision risk is nil).
+ */
+function newIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  const nibble = () => Math.floor(Math.random() * 16).toString(16);
+  const hex = (n: number) => Array.from({ length: n }, nibble).join("");
+  return `${hex(8)}-${hex(4)}-4${hex(3)}-${((parseInt(nibble(), 16) & 0x3) | 0x8).toString(16)}${hex(3)}-${hex(12)}`;
+}
+
 /** The caller's most recent check-in for a cafe, as returned by /api/checkins/last. */
 export interface LastCheckin {
   id: string;
@@ -161,6 +178,11 @@ function CheckinForm({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [repeatDismissed, setRepeatDismissed] = useState(false);
   const [failedAction, setFailedAction] = useState<"save" | "delete" | null>(null);
+  // DG61: one idempotency key per drawer open. useState lazy init pins it
+  // for the life of this form instance — every inline retry of a failed
+  // submit reuses it — while a reopen remounts the form (formKey) and mints
+  // a fresh one. Edit submits never send it (PATCH targets a known id).
+  const [idempotencyKey] = useState(newIdempotencyKey);
   // Auth is resolved server-side where the page knows it (home, profile) via the
   // `isAuthenticated` prop. On the CDN-cached public cafe shell (DG105/DG106) the
   // prop is undefined and auth is resolved client-side: the drawer-owned
@@ -321,9 +343,10 @@ function CheckinForm({
         if (!res.ok) throw new Error(await responseMessage(res, t("couldntSave")));
         return res.json();
       }
-
       const body: Record<string, unknown> = {
         cafe_id: cafeId,
+        // DG61: same key on every retry of this open; the server dedupes.
+        idempotency_key: idempotencyKey,
         scores,
         ...(maxStay ? { max_stay: maxStay } : {}),
         ...(note.trim() ? { note: note.trim() } : {}),

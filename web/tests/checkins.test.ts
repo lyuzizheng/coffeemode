@@ -51,6 +51,7 @@ vi.mock("@/lib/images/provision-photos", async (importOriginal) => ({
 const USER = { id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" };
 const CAFE = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22";
 const CHECKIN = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33";
+const IDEMPOTENCY_KEY = "b1eebc99-9c0b-4ef8-bb6d-6bb9bd380a55";
 const IMG = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44";
 
 const FAKE_KEYS = {
@@ -340,13 +341,30 @@ describe("parseCheckInBody", () => {
       expect(parsed.value.note).toBeUndefined();
     }
   });
+  it("accepts a valid idempotency_key and normalizes it to lowercase (DG61)", () => {
+    const parsed = parseCheckInBody(
+      validBody({ idempotency_key: "B1EEBC99-9C0B-4EF8-BB6D-6BB9BD380A55" }),
+    );
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.value.idempotency_key).toBe("b1eebc99-9c0b-4ef8-bb6d-6bb9bd380a55");
+    }
+  });
+
+  it("rejects a non-UUID idempotency_key but treats null as absent (DG61)", () => {
+    expect(parseCheckInBody(validBody({ idempotency_key: "not-a-uuid" })).ok).toBe(false);
+    expect(parseCheckInBody(validBody({ idempotency_key: 42 })).ok).toBe(false);
+    const absent = parseCheckInBody(validBody({ idempotency_key: null }));
+    expect(absent.ok).toBe(true);
+    if (absent.ok) expect(absent.value.idempotency_key).toBeUndefined();
+  });
 });
 
 describe("createCheckIn", () => {
   it("provisions photos, inserts the check-in, derives StoredImage server-side, merges the gallery, and recomputes stats — one transaction", async () => {
     mockCheckInHappyPath();
     const result = await createCheckIn(USER.id, validInput());
-    expect(result).toEqual({ checkinId: CHECKIN });
+    expect(result).toEqual({ checkinId: CHECKIN, deduped: false });
 
     // Intent pre-check and sharp processing ran BEFORE the transaction (no
     // DB connection held during remote work).
@@ -365,6 +383,7 @@ describe("createCheckIn", () => {
       "quiet",
       JSON.stringify([]), // photos land after insert — source needs the id
       null,
+      null, // no idempotency key on this input
     ]);
 
     // The single-use intent consume ran INSIDE the transaction.
@@ -461,7 +480,7 @@ describe("createCheckIn", () => {
   it("allows a create when the previous check-in is outside the window", async () => {
     mockCheckInHappyPath();
     const result = await createCheckIn(USER.id, validInput({ photo_ids: undefined }));
-    expect(result).toEqual({ checkinId: CHECKIN });
+    expect(result).toEqual({ checkinId: CHECKIN, deduped: false });
     expect(clientQueryMock.mock.calls[1][1]).toEqual([CAFE, USER.id, REVISIT_WINDOW_HOURS]);
   });
 
@@ -482,6 +501,64 @@ describe("createCheckIn", () => {
     expect(poolQueryMock).not.toHaveBeenCalled();
     expect(clientQueryMock).not.toHaveBeenCalled();
     expect(provisionDeps.checkUploadIntent).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid idempotency key before touching the database (DG61)", async () => {
+    await expect(
+      createCheckIn(USER.id, validInput({ idempotency_key: "not-a-uuid" })),
+    ).rejects.toThrow("Invalid idempotency key");
+    expect(poolQueryMock).not.toHaveBeenCalled();
+    expect(clientQueryMock).not.toHaveBeenCalled();
+    expect(provisionDeps.checkUploadIntent).not.toHaveBeenCalled();
+  });
+
+  it("returns the original id without writing when the key was already recorded (DG61 replay)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CHECKIN }] }); // fast-path hit
+
+    const result = await createCheckIn(
+      USER.id,
+      validInput({ photo_ids: undefined, idempotency_key: IDEMPOTENCY_KEY }),
+    );
+    expect(result).toEqual({ checkinId: CHECKIN, deduped: true });
+    // The replay short-circuits before provisioning and the transaction:
+    // single-use intents stay untouched, no second row, no stats rewrite.
+    expect(poolQueryMock).toHaveBeenCalledTimes(1);
+    expect(clientQueryMock).not.toHaveBeenCalled();
+    expect(provisionDeps.checkUploadIntent).not.toHaveBeenCalled();
+  });
+
+  it("converts a raced insert conflict into the winner's id instead of a second row (DG61)", async () => {
+    poolQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("idempotency_key")) return { rows: [], rowCount: 0 }; // fast-path miss
+      return { rows: [{ id: CAFE }], rowCount: 1 }; // pre-provision cafe gate
+    });
+    clientQueryMock.mockImplementation(async (sql: string) => {
+      const s = sql.toLowerCase();
+      if (s.includes("insert into checkins")) return { rows: [], rowCount: 0 }; // ON CONFLICT DO NOTHING
+      if (s.includes("idempotency_key")) return { rows: [{ id: CHECKIN }], rowCount: 1 };
+      if (s.includes("select id from cafes")) return { rows: [{ id: CAFE }], rowCount: 1 };
+      if (s.includes("visited_at > now()")) return { rows: [], rowCount: 0 };
+      return { rows: [], rowCount: 0 };
+    });
+
+    const result = await createCheckIn(
+      USER.id,
+      validInput({ photo_ids: undefined, idempotency_key: IDEMPOTENCY_KEY }),
+    );
+    expect(result).toEqual({ checkinId: CHECKIN, deduped: true });
+    const insert = clientQueryMock.mock.calls.find((call) =>
+      (call[0] as string).toLowerCase().includes("insert into checkins"),
+    )!;
+    expect(insert[1]).toEqual([
+      CAFE,
+      USER.id,
+      JSON.stringify({ wifi: 80 }),
+      "unlimited",
+      "quiet",
+      JSON.stringify([]),
+      null,
+      IDEMPOTENCY_KEY,
+    ]);
   });
 });
 

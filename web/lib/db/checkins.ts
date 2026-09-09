@@ -129,6 +129,13 @@ export interface CreateCheckInInput {
   note?: string;
   photo_ids?: string[];
   visited_at?: Date;
+  /**
+   * DG61 idempotency key (UUID v4, one per drawer open). The server dedupes
+   * on (user_id, idempotency_key): a replay returns the original check-in
+   * id instead of inserting a second row. Absent for the fused
+   * cafe-creation first check-in, which has no drawer key.
+   */
+  idempotency_key?: string;
 }
 
 /** Validate the POST /api/checkins body into a typed input. */
@@ -179,6 +186,14 @@ export function parseCheckInBody(body: unknown): ParseResult<CreateCheckInInput>
   const visitedAt = parseVisitedAt(raw.visited_at);
   if (!visitedAt.ok) return fail(visitedAt.message);
 
+  // DG61: optional client idempotency key (UUID v4, one per drawer open).
+  // Absent/null means "no dedupe" (legacy clients, fused creation flow).
+  let idempotencyKey: string | undefined;
+  if (raw.idempotency_key !== undefined && raw.idempotency_key !== null) {
+    if (!isValidUUID(raw.idempotency_key)) return fail("idempotency_key (UUID v4 string) required");
+    idempotencyKey = (raw.idempotency_key as string).toLowerCase();
+  }
+
   return {
     ok: true,
     value: {
@@ -188,6 +203,7 @@ export function parseCheckInBody(body: unknown): ParseResult<CreateCheckInInput>
       note,
       photo_ids: photoIds,
       visited_at: visitedAt.value,
+      ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
     },
   };
 }
@@ -210,9 +226,23 @@ where cafe_id = $1 and user_id = $2 and deleted_at is null
 order by visited_at desc limit 1
 `;
 
+/**
+ * DG61 idempotency lookup: a replayed key maps back to the original row.
+ * No deleted_at filter: a replay must return the same id even if the row
+ * was soft-deleted between attempts, never a second row. (Retry-after-delete
+ * cannot happen via the drawer UI — retry exists only pre-success — so the
+ * simple "same key, same id" rule holds everywhere.)
+ */
+const SELECT_IDEMPOTENT_CHECKIN_SQL = `
+select id from checkins
+where user_id = $1 and idempotency_key = $2
+limit 1
+`;
+
 const INSERT_CHECKIN_SQL = `
-insert into checkins (cafe_id, user_id, is_creation, scores, max_stay, note, photos, visited_at)
-values ($1, $2, false, $3, $4, $5, $6, coalesce($7, now()))
+insert into checkins (cafe_id, user_id, is_creation, scores, max_stay, note, photos, visited_at, idempotency_key)
+values ($1, $2, false, $3, $4, $5, $6, coalesce($7, now()), $8)
+on conflict (user_id, idempotency_key) where idempotency_key is not null do nothing
 returning id
 `;
 
@@ -269,11 +299,27 @@ export async function createCheckIn(
   userId: string,
   input: CreateCheckInInput,
   deps: ProvisionPhotosDeps = defaultProvisionPhotosDeps(),
-): Promise<{ checkinId: string }> {
+): Promise<{ checkinId: string; deduped: boolean }> {
   if (!isValidUUID(userId)) throw new Error("Invalid user ID");
   if (!isValidUUID(input.cafe_id)) throw new Error("Invalid cafe ID");
+  if (input.idempotency_key !== undefined && !isValidUUID(input.idempotency_key)) {
+    throw new Error("Invalid idempotency key");
+  }
 
   const photoIds = input.photo_ids ?? [];
+  const idempotencyKey = input.idempotency_key;
+
+  // DG61 fast path: a replayed key returns the original id BEFORE photo
+  // provisioning — the first attempt already consumed the single-use upload
+  // intents, so provisioning again would fail the replay outright.
+  if (idempotencyKey) {
+    const replay = await query<{ id: string }>(SELECT_IDEMPOTENT_CHECKIN_SQL, [
+      userId,
+      idempotencyKey,
+    ]);
+    const replayId = replay.rows[0]?.id;
+    if (replayId) return { checkinId: replayId, deduped: true };
+  }
 
   // Fail fast on a missing cafe BEFORE provisioning — sharp processing is
   // wasted work otherwise. The in-transaction check below stays the
@@ -313,8 +359,22 @@ export async function createCheckIn(
       input.note ?? null,
       JSON.stringify([]),
       input.visited_at ?? null,
+      idempotencyKey ?? null,
     ]);
-    const checkinId = res.rows[0]?.id;
+    let checkinId = res.rows[0]?.id;
+    let deduped = false;
+    if (!checkinId && idempotencyKey) {
+      // ON CONFLICT DO NOTHING swallowed a raced first attempt that
+      // committed between the fast-path lookup and this insert: return its
+      // id instead of a second row. (Without a key the insert always
+      // returns a row; a missing id there is a real failure.)
+      const raced = await client.query<{ id: string }>(SELECT_IDEMPOTENT_CHECKIN_SQL, [
+        userId,
+        idempotencyKey,
+      ]);
+      checkinId = raced.rows[0]?.id;
+      deduped = Boolean(checkinId);
+    }
     if (!checkinId) throw new Error("check-in insert returned no id");
 
     if (provisioned.length > 0) {
@@ -330,7 +390,7 @@ export async function createCheckIn(
 
     await recomputeWorkStats(input.cafe_id, 0, inSameTx);
 
-    return { checkinId };
+    return { checkinId, deduped };
   });
 }
 

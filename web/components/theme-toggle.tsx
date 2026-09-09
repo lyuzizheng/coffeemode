@@ -3,7 +3,7 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
-import { duration, ease } from "@/lib/motion";
+import { spring } from "@/lib/motion";
 import { useMounted } from "@/hooks/use-mounted";
 
 const OPTIONS = [
@@ -37,7 +37,8 @@ const OPTIONS = [
 
 /**
  * Segmented light/dark/system control. The sliding thumb is a Framer Motion
- * layout animation; it collapses to an instant swap under reduced motion.
+ * layout animation on the snappy spring (spec 0002 Motion); it collapses to
+ * an instant swap under reduced motion.
  */
 export function ThemeToggle() {
   const t = useTranslations("themePreview.theme");
@@ -70,11 +71,7 @@ export function ThemeToggle() {
               <motion.span
                 layoutId="theme-toggle-thumb"
                 className="absolute inset-0 rounded-md bg-surface shadow-sm"
-                transition={
-                  reduced
-                    ? { duration: 0 }
-                    : { duration: duration.state, ease: ease.default }
-                }
+                transition={reduced ? { duration: 0 } : spring.snappy}
               />
             )}
             <span className="relative flex items-center gap-1.5">

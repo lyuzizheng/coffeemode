@@ -4,15 +4,15 @@
  * Check-in feed (artifact §5.3.5 + §6, spec 0001, DG11/DG17/DG113).
  *
  * Newest is the default mode (DG113). The Helpful/Newest control is one
- * segmented control (role=tablist, arrow keys, 120ms pill slide); switching
- * modes keeps the previous content until the new page arrives
+ * segmented control (role=tablist, arrow keys, snappy-spring pill slide);
+ * switching modes keeps the previous content until the new page arrives
  * (stale-while-revalidate, DG17 — no spinners on switch). Pagination is
  * cursor-based and deduplicated by check-in id.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useLocale, useTranslations } from "next-intl";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { keepPreviousData,
   useInfiniteQuery,
   useMutation,
@@ -23,7 +23,7 @@ import { toast } from "@heroui/react";
 import { HeartIcon } from "@/components/icons";
 import { InlineError } from "./inline-error";
 import { dedupeCheckins } from "@/lib/discovery/view-model";
-import { duration, ease } from "@/lib/motion";
+import { spring } from "@/lib/motion";
 import { WORK_DIMS, type WorkDim } from "@/lib/stats/work-stats";
 import type { CheckInFeedMode, CheckInFeedPage, PublicCheckIn } from "@/types/checkins";
 import type { PublicAuthor } from "@/types/identity";
@@ -158,6 +158,7 @@ export function CheckinFeed({
 }) {
   const t = useTranslations("discovery");
   const [mode, setMode] = useState<CheckInFeedMode>("newest"); // DG113
+  const reduced = useReducedMotion();
   const queryClient = useQueryClient();
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -278,7 +279,7 @@ export function CheckinFeed({
                 {active && (
                   <motion.span
                     layoutId="feed-mode-pill"
-                    transition={{ duration: duration.feedback, ease: ease.default }}
+                    transition={reduced ? { duration: 0 } : spring.snappy}
                     className="absolute inset-0 rounded-sm border border-separator bg-surface"
                     aria-hidden
                   />

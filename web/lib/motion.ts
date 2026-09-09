@@ -35,8 +35,7 @@ export const ease = {
 } as const satisfies Record<string, [number, number, number, number]>;
 
 /** Springs — restrained spec tokens (0002 Motion). No bounce beyond a
- * barely-there overshoot. Behavior unchanged — token + comment promotion
- * only; component migration rides the later motion slice. */
+ * barely-there overshoot. */
 export const spring = {
   /** SPRING-GENTLE — stiffness 260 / damping 30.
      Sheets, drawers, overlays; WorkProfile bars, card reflow, layoutId. */
@@ -47,7 +46,7 @@ export const spring = {
   snappy: { type: "spring", stiffness: 420, damping: 32 },
   /** SPRING-SOFT — stiffness 180 / damping 26.
      Atmospheric elements (coffee steam, watermark breathing), first-load
-     reveals, work-profile bars. */
+     reveals. */
   soft: { type: "spring", stiffness: 180, damping: 26 },
 } as const satisfies Record<string, Transition>;
 

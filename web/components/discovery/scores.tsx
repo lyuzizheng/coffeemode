@@ -12,7 +12,7 @@
 import { motion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { SparkleIcon } from "@/components/icons";
-import { duration, ease, useEnterMotion } from "@/lib/motion";
+import { spring, useEnterMotion } from "@/lib/motion";
 import { COMPOSITE_DIMS, type WorkStats } from "@/lib/stats/work-stats";
 import { MAX_STAY_VALUES, type MaxStay } from "@/types/checkins";
 import { dimMean, policyConsensus } from "@/lib/discovery/view-model";
@@ -94,9 +94,10 @@ export function ScorePair({ stats }: { stats: WorkStats }) {
 }
 
 /**
- * FULL WorkProfile — the visual hero: five dimension bars, staggered 40ms on
- * entry, reduced motion → final state instantly. A zero-response dimension
- * renders "Not enough check-ins", never a zero bar (DG10).
+ * FULL WorkProfile — the visual hero: five dimension bars, gentle spring
+ * staggered 40ms on entry (spec 0002 Motion), reduced motion → final state
+ * instantly. A zero-response dimension renders "Not enough check-ins", never
+ * a zero bar (DG10).
  *
  * `animated={false}` is for the SSR cafe shell, where bars render at final
  * width with no entry motion (seo-sharing artifact §2).
@@ -128,8 +129,7 @@ export function WorkProfile({ stats, animated = true }: { stats: WorkStats; anim
                           initial: { width: 0 },
                           animate: { width: `${mean}%` },
                           transition: {
-                            duration: duration.transition,
-                            ease: ease.default,
+                            ...spring.gentle,
                             delay: i * 0.04,
                           },
                         }

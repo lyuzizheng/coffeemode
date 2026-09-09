@@ -231,6 +231,7 @@ All operational scripts live canonically under `scripts/devops/` and are fully e
 | `backup.sh` | Atomic `pg_dump -Fc` compressed backup + volume + R2 GFS upload | `--env`, `--type [db\|vol\|full]`, `--reason`, `--retention-days`, `--dry-run` |
 | `restore.sh` | Restores database archive with PostGIS verification & drill mode | `--env`, `--file`, `--download-r2`, `--drill`, `--yes`, `--dry-run` |
 | `smoke-test.sh` | In-repo post-deployment automated health verification | `staging\|prod`, `--url <override>`, `--timeout <sec>` |
+| `provision-supabase.sh` | Idempotent Supabase Postgres & Auth provisioning, PostGIS check, and RLS defense | `--database-url`, `--supabase-url`, `--verify-only`, `--dry-run` |
 ---
 
 ## 5. Disaster Recovery & Recovery Drill Playbook

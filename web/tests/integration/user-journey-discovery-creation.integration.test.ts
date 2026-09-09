@@ -16,6 +16,7 @@ import {
   toPublicCafeDetail,
 } from "@/lib/db/cafes";
 import { createCheckIn } from "@/lib/db/checkins";
+import type { MaxStay } from "@/types/checkins";
 import { PUBLIC_HANDLE_REGEX, updateProfileIdentity } from "@/lib/db/identity";
 import { getProfile, updateProfile } from "@/lib/db/profile";
 import { searchCafesInDb } from "@/lib/db/search";
@@ -224,6 +225,15 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
     });
     expect(unlimitedFiltered.map((c) => c.id)).toContain(sgHigh);
     expect(unlimitedFiltered.map((c) => c.id)).not.toContain(sgLow);
+
+    // Boundary assertion (spec 0007 §10): unknown filter_max_stay is safely ignored
+    const unknownStayFiltered = await searchCafesInDb({
+      city: "singapore",
+      filter_max_stay: "invalid_stay_label" as unknown as MaxStay,
+      limit: 20,
+    });
+    expect(unknownStayFiltered.map((c) => c.id)).toContain(sgHigh);
+    expect(unknownStayFiltered.map((c) => c.id)).toContain(sgLow);
   });
 
   it("Path 1: timezone-aware open_now evaluates real operational hours dynamically", async () => {

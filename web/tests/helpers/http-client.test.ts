@@ -1,6 +1,6 @@
 import type pg from "pg";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
 import { requireSameOrigin } from "@/lib/security/origin";
 import { decodeFakeJwt } from "./auth";
@@ -90,7 +90,7 @@ describe("http-client harness", () => {
     expect((await switched.get(echoHandler, "/api/profile")).status).toBe(401);
   });
 
-  it("sends post/patch/put/delete bodies through to the handler", async () => {
+  it("sends post/patch/delete bodies through to the handler", async () => {
     async function bodyEcho(request: Request): Promise<Response> {
       return NextResponse.json({ method: request.method, body: await request.json() });
     }
@@ -103,14 +103,23 @@ describe("http-client harness", () => {
       method: "PATCH",
       body: { v: 2 },
     });
-    expect((await client.put(bodyEcho, "/api/x", { v: 3 })).data).toEqual({
-      method: "PUT",
-      body: { v: 3 },
-    });
     expect((await client.delete(bodyEcho, "/api/x", { confirm: true })).data).toEqual({
       method: "DELETE",
       body: { confirm: true },
     });
+  });
+
+  it("builds NextRequests accepted by NextRequest-typed handlers", async () => {
+    // Mirrors the 6 `NextRequest`-typed app/api handlers (e.g. PATCH
+   // /api/profile/identity): must typecheck AND run without casts.
+    async function nextHandler(request: NextRequest): Promise<Response> {
+      return NextResponse.json({ nextUrl: request.nextUrl.pathname, method: request.method });
+    }
+    const built = buildRouteRequest("GET", "/api/profile");
+    expect(built).toBeInstanceOf(NextRequest);
+    const res = await apiClient().get(nextHandler, "/api/profile");
+    expect(res.status).toBe(200);
+    expect(res.data).toEqual({ nextUrl: "/api/profile", method: "GET" });
   });
 
   it("preserves real HTTP error codes and bodies", async () => {

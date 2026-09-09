@@ -1,15 +1,21 @@
-import { vi } from "vitest";
 import type pg from "pg";
+import { NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
 import { createTestSessionUser, type TestSessionUser } from "./mocks";
 
 /**
  * Multi-user HTTP API test client harness (BRAWUKA-147, Stage 1 of 3).
  *
- * Builds canonical `Request` objects for direct App Router route-handler
+ * Builds canonical `NextRequest` objects for direct App Router route-handler
  * invocation (`GET(req)`, `POST(req, { params })`, …) with the headers real
  * browsers send, and programs the `@/lib/auth/get-user` mock so
  * `getCurrentUser()` resolves to the client's current simulated user.
+ * `NextRequest extends Request`, so both `Request`- and `NextRequest`-typed
+ * handlers accept the built requests.
+ *
+ * Identity is programmed on the process-global mock at request-build time:
+ * do NOT issue concurrent cross-identity calls (e.g. `Promise.all` across
+ * users) — serialize multi-user requests to avoid identity cross-talk.
  *
  * Test files using this harness MUST hoist the auth mock at the top:
  *
@@ -39,7 +45,7 @@ export interface HttpRequestOptions {
   session?: TestSessionUser | null;
 }
 
-export type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
+export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
 
 /** Route-handler context for dynamic segments (`{ params: Promise<{ id }> }`). */
 export interface RouteContext<T extends Record<string, string> = Record<string, string>> {
@@ -79,18 +85,20 @@ function appendQuery(url: string, query?: HttpRequestOptions["query"]): string {
 }
 
 /**
- * Build a canonical route-handler `Request`: absolute localhost origin URL,
+ * Build a canonical route-handler `NextRequest`: absolute localhost origin URL,
  * `Origin: http://localhost:3000` (satisfies `requireSameOrigin`), JSON
  * content type for bodied methods, and a `Bearer <fakeJwt>` authorization
  * header carrying the simulated identity for debuggability. The identity
  * `getCurrentUser()` resolves to is programmed via `setCurrentTestUser`
  * (the mock seam); the header documents which user the request belongs to.
+ * `NextRequest extends Request`, so both `Request`- and `NextRequest`-typed
+ * route handlers accept the built requests.
  */
 export function buildRouteRequest(
   method: HttpMethod,
   path: string,
   options: HttpRequestOptions = {},
-): Request {
+): NextRequest {
   const url = appendQuery(
     path.startsWith("http") ? path : `${TEST_ORIGIN}${path.startsWith("/") ? path : `/${path}`}`,
     options.query,
@@ -104,10 +112,7 @@ export function buildRouteRequest(
     headers["content-type"] ??= "application/json";
     body = typeof options.body === "string" ? options.body : JSON.stringify(options.body);
   }
-  const init: RequestInit = { method, headers };
-  if (body !== undefined) init.body = body;
-  const request = new Request(url, init);
-  return request;
+  return new NextRequest(url, { method, headers, ...(body !== undefined ? { body } : {}) });
 }
 
 /** Parse a handler `Response` preserving the real HTTP status code. */
@@ -146,8 +151,8 @@ export class ApiClient {
     return this.withSession(null);
   }
 
-  /** Build a `Request` for `method` + `path`, programming the auth mock. */
-  raw(method: HttpMethod, path: string, options: HttpRequestOptions = {}): Request {
+  /** Build a `NextRequest` for `method` + `path`, programming the auth mock. */
+  raw(method: HttpMethod, path: string, options: HttpRequestOptions = {}): NextRequest {
     const session = options.session !== undefined ? options.session : this.currentSession;
     setCurrentTestUser(session);
     const request = buildRouteRequest(method, path, options);
@@ -163,71 +168,61 @@ export class ApiClient {
    * Invoke `handler` with a canonical request (and optional route `ctx`),
    * programming the auth mock and parsing the response. Returns
    * `{ status, data, headers }` with the handler's real HTTP status.
+   * `R` accepts both `Request`- and `NextRequest`-typed handlers.
    */
-  async call<T = unknown, C = undefined>(
-    handler: (request: Request, ctx: C) => Promise<Response>,
+  async call<T = unknown, C = undefined, R extends Request = Request>(
+    handler: (request: R, ctx: C) => Promise<Response>,
     method: HttpMethod,
     path: string,
     options: HttpRequestOptions = {},
     ctx?: C,
   ): Promise<ApiResponse<T>> {
     const request = this.raw(method, path, options);
-    const response = await handler(request, ctx as C);
+    const response = await handler(request as unknown as R, ctx as C);
     return parseRouteResponse<T>(response);
   }
 
   /** `GET handler(path, { query })` — no body. */
-  async get<T = unknown, C = undefined>(
-    handler: (request: Request, ctx: C) => Promise<Response>,
+  async get<T = unknown, C = undefined, R extends Request = Request>(
+    handler: (request: R, ctx: C) => Promise<Response>,
     path: string,
     options: Omit<HttpRequestOptions, "body"> = {},
     ctx?: C,
   ): Promise<ApiResponse<T>> {
-    return this.call<T, C>(handler, "GET", path, options, ctx);
+    return this.call<T, C, R>(handler, "GET", path, options, ctx);
   }
 
   /** `POST handler(path, body)` — JSON body. */
-  async post<T = unknown, C = undefined>(
-    handler: (request: Request, ctx: C) => Promise<Response>,
+  async post<T = unknown, C = undefined, R extends Request = Request>(
+    handler: (request: R, ctx: C) => Promise<Response>,
     path: string,
     body?: unknown,
     options: Omit<HttpRequestOptions, "body"> = {},
     ctx?: C,
   ): Promise<ApiResponse<T>> {
-    return this.call<T, C>(handler, "POST", path, { ...options, body }, ctx);
+    return this.call<T, C, R>(handler, "POST", path, { ...options, body }, ctx);
   }
 
   /** `PATCH handler(path, body)` — JSON body. */
-  async patch<T = unknown, C = undefined>(
-    handler: (request: Request, ctx: C) => Promise<Response>,
+  async patch<T = unknown, C = undefined, R extends Request = Request>(
+    handler: (request: R, ctx: C) => Promise<Response>,
     path: string,
     body?: unknown,
     options: Omit<HttpRequestOptions, "body"> = {},
     ctx?: C,
   ): Promise<ApiResponse<T>> {
-    return this.call<T, C>(handler, "PATCH", path, { ...options, body }, ctx);
-  }
-
-  /** `PUT handler(path, body)` — JSON body. */
-  async put<T = unknown, C = undefined>(
-    handler: (request: Request, ctx: C) => Promise<Response>,
-    path: string,
-    body?: unknown,
-    options: Omit<HttpRequestOptions, "body"> = {},
-    ctx?: C,
-  ): Promise<ApiResponse<T>> {
-    return this.call<T, C>(handler, "PUT", path, { ...options, body }, ctx);
+    return this.call<T, C, R>(handler, "PATCH", path, { ...options, body }, ctx);
   }
 
   /** `DELETE handler(path, body?)` — optional JSON body (e.g. `{ confirm }`). */
-  async delete<T = unknown, C = undefined>(
-    handler: (request: Request, ctx: C) => Promise<Response>,
+  async delete<T = unknown, C = undefined, R extends Request = Request>(
+    handler: (request: R, ctx: C) => Promise<Response>,
     path: string,
     body?: unknown,
     options: Omit<HttpRequestOptions, "body"> = {},
     ctx?: C,
   ): Promise<ApiResponse<T>> {
-    return this.call<T, C>(handler, "DELETE", path, { ...options, body }, ctx);
+    return this.call<T, C, R>(handler, "DELETE", path, { ...options, body }, ctx);
   }
 }
 export function apiClient(session: TestSessionUser | null = null): ApiClient {
@@ -296,9 +291,4 @@ export async function seedHttpTestUsers(dbClient: pg.Client, users: HttpTestUser
       [user.id, user.displayName, user.currentCity],
     );
   }
-}
-
-/** Reset the `getCurrentUser` mock between tests (call in `beforeEach`). */
-export function resetTestUser(): void {
-  vi.mocked(getCurrentUser).mockReset();
 }

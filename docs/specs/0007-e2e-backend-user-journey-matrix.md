@@ -16,6 +16,7 @@ retirement in `## Stable decisions` §8.
 ### 1. Suite location and gate
 
 - Proving file: `web/tests/integration/user-journey.integration.test.ts`.
+- Staged suites: Path 1–3 core journey runs in `web/tests/integration/user-journey-discovery-creation.integration.test.ts` (BRAWUKA-143); Path 4–6 social/lifecycle runs in `web/tests/integration/user-journey-social-lifecycle.integration.test.ts` (BRAWUKA-144).
 - Runs under the real-DB gate only (`RUN_INTEGRATION=1`), provisioned per
   run via `web/tests/helpers/db.ts` (`provisionTestDatabase` + template
   clone), same as `db.integration.test.ts`. Skipped otherwise so

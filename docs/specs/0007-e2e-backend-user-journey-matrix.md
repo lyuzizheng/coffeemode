@@ -33,14 +33,24 @@ retirement in `## Stable decisions` §8.
 
 - Source: `web/tests/fixtures/mock-dataset.ts` — exports `MOCK_USERS`,
   `MOCK_CAFES` (Singapore ×3, Tokyo ×2, London ×2 with real
-  lat/lng + IANA tz), and `seedMockDataset(client)`.
+  lat/lng + IANA tz), `MOCK_CHECKINS`, `MOCK_PHOTOS`, and
+  `seedMockDataset(client)`.
 - Deterministic fixed UUIDs (same convention as
   `web/tests/helpers/fixtures.ts`), one profile per journey persona
   (creator U1, visitor U2, solo U3) plus the community service account
   `00000000-0000-4000-a000-000000000001`.
-- Seeded cafes carry `city`, `tz`, `opening_hours`, and `price_range` so
-  filter/timezone assertions are meaningful; `work_stats` is derived by
-  the normal recompute path, never hand-written.
+- Seeded cafes carry `city`, `tz`, `opening_hours` (one venue uses an
+  explicit `null` closed day), and `price_range` so filter/timezone
+  assertions are meaningful; each cafe also carries archetype `scores`
+  (0–100 per WORK_DIM) and descriptive `tags`
+  (`wifi/outlets/quiet/natural_light/spacious`) as fixture metadata —
+  `cafes` has no tags column, so these never touch the schema.
+  `work_stats` is derived by the normal recompute path, never hand-written.
+- `MOCK_CHECKINS` are `createCheckIn` input payloads (one per persona per
+  city, `visitedDaysAgo` backdated clear of the DG64 same-window rule,
+  `photoIds` referencing `MOCK_PHOTOS`); they are NOT auto-inserted, so
+  journey `n_checkins` transition assertions stay exact. `MOCK_PHOTOS`
+  are server-shaped `StoredImage` objects with no storage side effects.
 - The dataset doubles as the local-dev seed shape: same rows can hydrate
   a dev database for manual browser verification.
 
@@ -132,6 +142,38 @@ also carries narrow unit edges worth keeping:
 Rule: no file is removed until the journey is green on `main` for one
 full CI cycle; removals delete only fully-duplicated `it` blocks, never
 whole files blindly.
+
+### 10. Mock-vs-real boundary contracts and Path I/O matrix
+
+Stage-2 tests substitute fakes at exactly three seams
+(`web/tests/helpers/mocks.ts`); everything else runs against real
+Postgres/PostGIS. Pinned by `web/tests/helpers/mocks.test.ts`.
+
+| Path | Input | Output | Boundary assertion | Mock seam |
+| --- | --- | --- | --- | --- |
+| 1 discovery | `{ lat, lng, radiusKm: 10, limit }` / `{ city, q, filter_* }` | closest-first cafe rows; city/keyword/dimension narrowing | Tokyo rows excluded from SG radius; unknown `filter_max_stay` ignored | none (real PostGIS rows) |
+| 2 creation | fused `createCafeWithFirstCheckIn` + `completeImageUpload` | cafe row + creation check-in + gallery image + recomputed `work_stats` | geography point + `city`/`tz` persisted; `author: null` pre-opt-in | `createMockGooglePlacesResponse` (POI inject), `createFakeImageUpload` (WebP bytes) + stubbed process deps |
+| 3 identity | `updateProfile` / `updateProfileIdentity({ showPublicIdentity })` | profile row; `author` flips `null` ↔ public handle | opt-out restores `null` with rows intact; handle stays reserved | `createTestSessionUser` (+ `stubGetCurrentUser`) |
+| 4 check-ins | `createCheckIn` / `updateCheckIn` w/ `idempotency_key` | weighted `work_stats` recompute; feed ordering | DG64 same-window → `DuplicateCheckInError`; DG61 replay → same id + `deduped: true`, one row | `MOCK_CHECKINS` payloads (service path, recompute intact) |
+| 5 likes | `toggleCheckInLike(visitor, checkin)` | `{ liked, likesCount }` toggle symmetry | self-like → `SelfLikeError` (trigger backstop) | none (real trigger) |
+| 6 lifecycle | `deleteCafe(id, user[, { confirm }])` | tombstone vs ownership transfer to service account | solo → shell + sitemap drop; community bare delete → `CafeHasOtherCheckinsError` | none (real lifecycle) |
+
+- Google POI intercept format: the exact `POISearchResponse` shape
+  `searchExternalPOIs` returns — `place_id: ChIJ…`, `source: "google"`,
+  `types` containing `cafe`, `business_status: "OPERATIONAL"`,
+  `hours_json` as serialized Google `regularOpeningHours`
+  (`weekdayDescriptions`), non-empty `photo_refs`, ISO `fetched_at`.
+  Live Google stays behind the poi-service worker (cached); tests
+  `vi.mock("@/lib/places/poi-client")` and never touch the network.
+- Fake Image Buffer spec: minimal valid WebP bytes (`RIFF…WEBP` magic,
+  same bytes as `tinyWebP`), `contentType: "image/webp"`, fresh v4
+  `imageUuid`, `filename: <uuid>.webp`. Intent → complete runs with
+  stubbed `getProcessUrls`/`processImage` (no R2, no sharp); real MinIO
+  round-trips stay in `test:integration:images`.
+- Session user spec: `{ id (v4), displayName, currentCity, jwt }` where
+  `jwt` is the `fakeJwt` HS256 shape decoding to `sub === id`. Profile
+  rows stay with the caller's seeder; route tests pair the factory with
+  `stubGetCurrentUser({ id })`. Real Supabase Auth is never contacted.
 
 ## Data/API/UI behavior when relevant
 

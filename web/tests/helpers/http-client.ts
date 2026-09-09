@@ -292,3 +292,11 @@ export async function seedHttpTestUsers(dbClient: pg.Client, users: HttpTestUser
     );
   }
 }
+
+/**
+ * Reset rate limit counters (truncate rate_limits table).
+ * Spec 0008 §1: harness-owned rate-limit bucket reset between Acts.
+ */
+export async function resetRateLimits(dbClient: pg.Client): Promise<void> {
+  await dbClient.query("truncate table rate_limits restart identity cascade");
+}

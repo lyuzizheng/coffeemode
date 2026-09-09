@@ -18,12 +18,13 @@ import { rateLimitBuckets } from "@/lib/config";
 import { requireSameOrigin } from "@/lib/security/origin";
 
 /**
- * POST /api/checkins  {cafe_id, scores?, max_stay?, note?, photo_ids?, visited_at?}
+ * POST /api/checkins  {cafe_id, scores?, max_stay?, note?, photo_ids?, visited_at?, idempotency_key?}
  * Regular (non-creation) check-in: insert + gallery merge + work_stats
  * fold in one transaction (spec 0001). Requires auth. 404 when the cafe
- * does not exist. Photos are image UUIDs from /api/images/upload; the
  * server provisions and derives them (issue #86) — 400 invalid_photos
  * when an id was not issued to the caller or was already consumed.
+ * DG61: a replayed idempotency_key returns the original {checkinId} with
+ * 200 and writes nothing; a fresh write returns 201.
  */
 export async function POST(request: Request) {
   const originError = requireSameOrigin(request);
@@ -53,7 +54,10 @@ export async function POST(request: Request) {
 
   try {
     const result = await createCheckIn(user.id, parsed.value);
-    return NextResponse.json(result, { status: 201 });
+    // DG61: a replayed idempotency key returns the ORIGINAL id with the
+    // same body shape — 200 marks "already recorded" so retries are
+    // observable, 201 marks a fresh write.
+    return NextResponse.json({ checkinId: result.checkinId }, { status: result.deduped ? 200 : 201 });
   } catch (err) {
     if (err instanceof CafeNotFoundError) {
       return apiError("not_found", "cafe not found", 404);

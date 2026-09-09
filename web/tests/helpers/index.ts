@@ -3,3 +3,4 @@ export * from "./fixtures";
 export * from "./r2";
 export * from "./auth";
 export * from "./mocks";
+export * from "./http-client";

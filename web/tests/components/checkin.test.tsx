@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CheckinSlider } from "@/components/checkin/checkin-slider";
@@ -289,6 +289,93 @@ describe("CheckinDrawer", () => {
       );
     });
     expect(screen.queryByText("Couldn't save your check-in")).not.toBeInTheDocument();
+  });
+
+  it("sends one idempotency key per open and reuses it on inline retry (DG61)", async () => {
+    const posts: Array<Record<string, unknown>> = [];
+    let attempts = 0;
+    globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.startsWith("/api/checkins/last")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ checkin: null, revisitWindowHours: 24 }),
+        });
+      }
+      if (init?.method === "POST") {
+        attempts += 1;
+        posts.push(JSON.parse(init.body as string));
+        if (attempts === 1) {
+          return Promise.resolve({ ok: false, status: 500, json: async () => ({}) });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 201,
+          json: async () => ({ checkinId: CHECKIN }),
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+    });
+    renderDrawer({ isAuthenticated: true });
+    const overall = screen.getByRole("slider", { name: "Overall experience" });
+    fireEvent.keyDown(overall, { key: "ArrowRight" });
+    fireEvent.click(screen.getByRole("button", { name: "Check in" }));
+
+    // First attempt fails: the inline retry UI appears.
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => {
+      expect(posts).toHaveLength(2);
+    });
+    const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    expect(posts[0].idempotency_key).toMatch(uuidV4);
+    // The retry reuses the open's key — the server dedupes instead of
+    // writing a second row.
+    expect(posts[1].idempotency_key).toBe(posts[0].idempotency_key);
+  });
+
+  it("mints a fresh idempotency key on reopen (DG61)", async () => {
+    const posts: Array<Record<string, unknown>> = [];
+    globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.startsWith("/api/checkins/last")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ checkin: null, revisitWindowHours: 24 }),
+        });
+      }
+      if (init?.method === "POST") {
+        posts.push(JSON.parse(init.body as string));
+        return Promise.resolve({
+          ok: true,
+          status: 201,
+          json: async () => ({ checkinId: CHECKIN }),
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+    });
+    const submit = async () => {
+      renderDrawer({ isAuthenticated: true });
+      fireEvent.keyDown(screen.getByRole("slider", { name: "Overall experience" }), {
+        key: "ArrowRight",
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Check in" }));
+      await waitFor(() => {
+        expect(posts.length).toBeGreaterThan(0);
+      });
+    };
+    await submit();
+    const firstKey = posts[0].idempotency_key;
+    cleanup();
+    posts.length = 0;
+    await submit();
+    expect(posts[0].idempotency_key).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(posts[0].idempotency_key).not.toBe(firstKey);
   });
 });
 

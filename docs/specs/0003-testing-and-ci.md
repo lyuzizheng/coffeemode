@@ -85,6 +85,16 @@ had no pixel baseline, duplicated install/build work, and could block indefinite
 while installing Chromium. Local browser evidence remains available through
 `npm run check:visual` for UI work.
 
+### Branch protection & PR review contract
+
+Repository branch protection on `main` enforces stability without blocking automated agent delivery:
+
+- **Required status checks**: `ci-gate` is the mandatory required check context with `strict: true`. Every pull request must be synchronized with the latest `main` branch HEAD and obtain a green `ci-gate` aggregate result before merging.
+- **Administrator enforcement**: `enforce_admins: true` ensures administrator credentials cannot bypass the `ci-gate` requirement.
+- **GitHub PR approvals**: `requiresApprovingReviews: false` (disabled). In the current Multica workspace environment, all agents push branches and author pull requests using the repository owner's GitHub credentials (`lyuzizheng`). Because GitHub strictly forbids PR self-approval (`Review Can not approve your own pull request`), enabling GitHub-native `required_approving_review_count` would structurally block all automated PR merges.
+- **Review enforcement boundary**: Independent code review is enforced semantically and procedurally at Layer 2 within the Multica closed loop (`.agents/workflows/closed-loop.md` and `.agents/workflows/review-code.md`). An independent reviewer agent audits the cumulative diff and test gate evidence, delivering an explicit `Review verdict: APPROVED` on the Multica issue thread before merge authority is granted. Agents MUST NOT invoke `gh pr review --approve` on PRs created under the shared workspace credentials.
+- **Future upgrade path**: If GitHub-native approval enforcement (`required_approving_review_count: 1`) is introduced in the future, a dedicated GitHub App or bot account must first be provisioned for Reviewer & Architect so that the reviewer identity differs from the PR author identity.
+
 ### Agent harness
 
 `.agents/scripts/preflight.sh` checks required sources, script syntax, spec shape,

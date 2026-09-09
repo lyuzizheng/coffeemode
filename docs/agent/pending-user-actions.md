@@ -100,6 +100,15 @@ gate itself (spec 0004 decision 6a) still stands.
 - [ ] Review slice-specific K3 composition proposals (agent-produced per decision 6b)
   before any new user-visible UI implementation starts.
 
+## 9. GitHub Reviewer Bot / App (optional future enhancement)
+
+- [ ] If GitHub-native PR review enforcement (`required_approving_review_count: 1`) is desired on branch protection:
+  - Register a dedicated GitHub App or bot user (e.g. `coffeemode-reviewer-bot`) with Pull Requests read & write permissions.
+  - Install it to `lyuzizheng/coffeemode`.
+  - Provide its bot token to the Multica workspace for the Reviewer & Architect agent.
+  - Update branch protection on `main` to require 1 approving review from that bot.
+  (Until provisioned, branch protection relies on strict `ci-gate` and admin enforcement, while independent code review is verified via Multica issue verdicts per spec 0003 and closed-loop workflow).
+
 ## What the agent continues meanwhile
 
 All non-blocked Phase 1 backlog items have merged to `main` (PRs #19–#22), and the P1 post-review fixes from `fix/post-review-p1-issues` have merged as PR #74. MapKit-specific slices remain blocked on item 4. Cafe creation shipped in PR #128 (merged 2026-08-20) and its item 8 Kimi review completed post-merge on 2026-08-23 (follow-ups #183–#185); Apple live search stays configuration-gated. Backend work such as work-profile aggregation may continue; new user-visible UI stays blocked on its item 8 artifact. The POI and image services are ready to deploy once you complete items 5–7.

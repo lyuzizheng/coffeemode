@@ -31,16 +31,24 @@ discover -> deduplicate/file -> verify -> scope/plan -> implement
    Docs/harness authority also requires the independent semantic-review packet
    (`.agents/docs-semantic-review.md` via
    `.agents/scripts/docs-review-packet.sh <base>`).
+   Deliver the verdict (`Review verdict: APPROVED` or findings) as a comment on
+   the issue thread with test evidence and cumulative diff audit. Do not invoke
+   `gh pr review --approve` on GitHub: workspace agents share the repository owner
+   credentials and GitHub rejects self-approval with a GraphQL error.
 8. **Publish**: always create a PR after completing the development cycle and
    follow this loop until the PR is ready to merge, per `AGENTS.md`. Open the
    PR using `.github/pull_request_template.md`. Use `Fixes #N` only for a fully
    satisfied issue; otherwise use `Refs #N` and link the remaining issue.
 9. **CI**: wait for the relevant CI jobs and the aggregate `ci-gate`. Fix the root
    cause of failures; never bypass a gate.
-10. **Close**: merge only with explicit authority. After merge, verify GitHub
-    auto-closed the issue and that linked follow-ups remain open. The independent
-   code reviewer must not be the patch author (`.agents/workflows/review-code.md`
-   Independence rule).
+10. **Close**: merge only with explicit authority. Verify:
+    - the PR branch is rebased onto the latest `main` HEAD (`strict: true`),
+    - the aggregate `ci-gate` is green,
+    - the independent review verdict (`Review verdict: APPROVED`) is recorded in
+      the issue thread by an agent other than the author (`.agents/workflows/review-code.md`
+      Independence rule).
+    Execute merge via `gh pr merge --squash`. After merge, verify GitHub
+    auto-closed the issue and that linked follow-ups remain open.
 
 ## Act or ask
 

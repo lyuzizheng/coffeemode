@@ -312,14 +312,29 @@ body {
   }
 }
 
-/* 200ms theme cross-fade on the base canvas. Component-level color
-   transitions come from HeroUI; this covers body + custom surfaces.
-   Honors prefers-reduced-motion. */
+/* Theme lighting transition (spec 0002 Motion): light sweeps the surface
+   hierarchy instead of a flat wash — base canvas leads (0ms), surfaces
+   follow at 40ms, elevated overlays at 80ms. 170ms + ≤80ms stagger settles
+   inside the 250ms budget. The surface rules sit in @layer components so an
+   element carrying its own transition-* utility (hover/active feedback)
+   keeps it; component-level color transitions from HeroUI are likewise
+   untouched. Reduced motion: these rules are gated out and the global kill
+   switch below stays in force. */
 @media (prefers-reduced-motion: no-preference) {
   body {
     transition:
-      background-color 200ms var(--ease-default),
-      color 200ms var(--ease-default);
+      background-color 170ms var(--ease-default),
+      color 170ms var(--ease-default);
+  }
+  @layer components {
+    .bg-surface,
+    .bg-surface-secondary,
+    .bg-surface-tertiary {
+      transition: background-color 170ms var(--ease-default) 40ms;
+    }
+    .bg-overlay {
+      transition: background-color 170ms var(--ease-default) 80ms;
+    }
   }
 }
 

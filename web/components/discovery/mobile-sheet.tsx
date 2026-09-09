@@ -15,7 +15,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { animate, motion, useDragControls, useMotionValue, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
-import { duration, ease } from "@/lib/motion";
+import { spring } from "@/lib/motion";
 import { useMounted } from "@/hooks/use-mounted";
 import type { DiscoveryController, SheetSnap } from "@/lib/discovery/use-discovery-controller";
 import type { CafeSummary } from "@/types/cafes";
@@ -41,19 +41,22 @@ function PeekCard({
   onSelect: () => void;
   cardRef: (el: HTMLElement | null) => void;
 }) {
+  const reduced = useReducedMotion();
   return (
-    <button
+    <motion.button
       ref={(el) => cardRef(el)}
       type="button"
       onClick={onSelect}
       // ~85% width on phones; clamp(280px,55%,420px) on tablet (§8).
-      className={`w-[85%] shrink-0 snap-center text-left transition-all md:w-[clamp(280px,55%,420px)] ${
-        active ? "scale-[1.02] opacity-100" : "opacity-60"
-      }`}
-      style={{ transitionDuration: `${duration.state}s`, transitionTimingFunction: "ease-out" }}
+      className="w-[85%] shrink-0 snap-center text-left md:w-[clamp(280px,55%,420px)]"
+      // Active card scales ~1.02, neighbors dim (§8) — gentle spring, no CSS
+      // tween; instant under reduced motion.
+      initial={false}
+      animate={{ scale: active ? 1.02 : 1, opacity: active ? 1 : 0.6 }}
+      transition={reduced ? { duration: 0 } : spring.gentle}
     >
       <CafeCardBody cafe={cafe} />
-    </button>
+    </motion.button>
   );
 }
 
@@ -152,6 +155,8 @@ export function MobileSheet({
   const dragControls = useDragControls();
   const contentRef = useRef<HTMLDivElement | null>(null);
   const pendingPull = useRef<{ startY: number } | null>(null);
+  /** Drag-end velocity handed to the detent snap spring (velocity transfer). */
+  const snapVelocity = useRef(0);
 
   const { snap, selectedCafeId } = controller;
 
@@ -170,12 +175,17 @@ export function MobileSheet({
   };
 
   // Snap state changes animate the sheet; reduced motion snaps instantly (18e).
+  // Detent snaps ride the snappy spring; a drag's release velocity carries
+  // into the snap so a flick lands with its own momentum (spec 0002 Motion).
   useEffect(() => {
     if (viewportH === 0) return;
-    const controls = animate(y, offsets[snap], {
-      duration: reduced ? 0 : duration.transition,
-      ease: ease.default,
-    });
+    const velocity = snapVelocity.current;
+    snapVelocity.current = 0;
+    const controls = animate(
+      y,
+      offsets[snap],
+      reduced ? { duration: 0 } : { ...spring.snappy, velocity },
+    );
     return () => controls.stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snap, viewportH, reduced]);
@@ -190,6 +200,9 @@ export function MobileSheet({
     else if (info.velocity.y < -STEP_VELOCITY || info.offset.y < -STEP_OFFSET_PX) next = current + 1;
     next = Math.max(0, Math.min(steps.length - 1, next));
     const target = steps[next];
+    // Hand the release velocity to the detent snap spring before the snap
+    // state flips; the snap effect consumes and clears it.
+    snapVelocity.current = info.velocity.y;
     // Stepping into PEEK clears the selection (18b) — controller.snapTo handles it.
     controller.snapTo(target);
   };

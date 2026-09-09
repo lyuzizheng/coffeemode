@@ -4,8 +4,8 @@
  * Desktop discovery (≥1024px, artifact §7, DG42/18g): 380px cafe-list
  * sidebar + a second left column (400px) with the FULL detail composition;
  * the map keeps the remaining width. The mobile snap states never appear
- * here. The detail column opens with a 200ms slide-in and closes with Esc
- * or the ghost ×.
+ * here. The detail column slides in on the snappy spring (state settle
+ * budget ≤300ms, spec 0002 Motion) and closes with Esc or the ghost ×.
  *
  * SSR contract (#275): when surface children are present, the sidebar shell
  * renders on every pass — CSS-gated (`hidden lg:flex`) — so SSR already
@@ -18,7 +18,7 @@
 import { useEffect, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
-import { duration, ease } from "@/lib/motion";
+import { spring } from "@/lib/motion";
 import type { DiscoveryController } from "@/lib/discovery/use-discovery-controller";
 import type { CafeSummary } from "@/types/cafes";
 import { CafeCardBody } from "./cafe-card";
@@ -134,7 +134,7 @@ export function DesktopDiscovery({
               initial={reduced ? false : { x: -24, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               exit={reduced ? undefined : { x: -24, opacity: 0 }}
-              transition={{ duration: reduced ? 0 : duration.state, ease: ease.default }}
+              transition={reduced ? { duration: 0 } : spring.snappy}
               className="absolute inset-y-0 left-[380px] h-full w-[400px] shrink-0 overflow-y-auto border-l border-separator bg-overlay py-4 shadow-lg xl:static xl:shadow-none"
             >
               <DetailContent

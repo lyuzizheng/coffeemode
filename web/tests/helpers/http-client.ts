@@ -1,6 +1,7 @@
 import type pg from "pg";
 import { NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
+import { rateLimiter } from "@/lib/rate-limit";
 import { createTestSessionUser, type TestSessionUser } from "./mocks";
 
 /**
@@ -273,6 +274,18 @@ export function createHttpTestUsers(): HttpTestUsers {
     currentCity: "taipei",
   });
   return { userA, userB, userC, userD };
+}
+
+/**
+ * Reset all rate-limit buckets (spec 0008 §1, seam 2).
+ *
+ * Harness-owned infrastructure: clears buckets between Acts so a fast
+ * full-matrix run never 429s on the shared `cafes-write` bucket. Never
+ * asserts or mutates product state. Backend-agnostic — works for both the
+ * in-memory limiter and the Postgres backend.
+ */
+export async function resetRateLimits(): Promise<void> {
+  await rateLimiter.reset();
 }
 
 /**

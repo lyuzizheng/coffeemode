@@ -20,6 +20,7 @@ Do not load every spec by default unless the task spans the whole system.
 | `0005-dokploy-vps-and-deployment-architecture.md` | Dokploy VPS Staging/Prod separation, Cloudflare dual-stack matrix, and webhook CI/CD |
 | `0006-public-author-identity.md` | Opt-in public author identity attribution for cafes and check-ins |
 | `0007-e2e-backend-user-journey-matrix.md` | Multi-user E2E backend journey matrix, mock dataset, legacy consolidation |
+| `0008-http-user-journey-matrix.md` | Real-client HTTP API journey matrix (Paths 1–6), 4-persona lifecycle, reconciliation ledger, Stage 2 slicing |
 
 ## Adding a new spec
 

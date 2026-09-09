@@ -24,13 +24,13 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
 ## 2. Postgres (primary database — Supabase, per 0004 decision 34a, owner 2026-08-28)
 
-- [ ] Create the Supabase project (free tier) in the region closest to the VPS — route handlers run multi-round-trip transactions, so RTT multiplies
-- [ ] Enable PostGIS in the SQL editor: `CREATE EXTENSION postgis;`
-- [ ] Apply the schema with the session/direct connection (not the transaction pooler): `DATABASE_URL=<session-conn> npm run db:migrate` (applies web/db/migrations/0001 onward)
+- [x] Create the Supabase project (free tier) in the region closest to the VPS (CoffeeMode project `rsdzcegylqgccaneomph` active in `ap-southeast-1`)
+- [x] Enable PostGIS in the SQL editor: `CREATE EXTENSION postgis;` (automated & verified via `scripts/devops/provision-supabase.sh`)
+- [x] Apply the schema with the session/direct connection (not the transaction pooler): `DATABASE_URL=<session-conn> npm run db:migrate` (all 19 migrations 0001–0019 applied; automated via `scripts/devops/provision-supabase.sh`)
 - [ ] Put the pooled connection string into the VPS env as `DATABASE_URL` with `?sslmode=require` (fail-closed per #41); keep the session connection string for migrations/CI
 - [ ] Set `RATE_LIMIT_BACKEND=memory` on the app container (decision 34a — single container; Postgres backend retained for a future multi-instance deploy)
 - [ ] Add `DATABASE_URL` as a GitHub Actions secret so the nightly recompute doubles as the free-tier keep-alive (defeats the 7-day inactivity pause)
-- [ ] Verify product tables are NOT reachable via the Supabase Data API (PostgREST) with the browser anon key — new projects no longer auto-expose new tables, but verify and, if needed, `revoke all on <table> from anon, authenticated;` for all 7 app tables, 5 product + 2 infra (invariant in spec 0001 §Data layer)
+- [x] Verify product tables are NOT reachable via the Supabase Data API (PostgREST) with the browser anon key — all application tables have RLS enabled and grants revoked from `anon` & `authenticated` (verified via `scripts/devops/provision-supabase.sh`)
 - [ ] Free-tier cliffs: 500MB DB then read-only (seed negligible today — 14 cafes; re-measure before any bulk import), 5GB egress (images stay on R2), no backups — schedule `pg_dump` to R2 as the cheap mitigation
 
 ## 3. Google OAuth (Sign in with Google) — unlocks real login

@@ -227,7 +227,7 @@ function parseCliArgs() {
 }
 
 // ------------------------------------------------------------------------------
-// Helper: Postgres SSL connection string parser (mirrors web/lib/db/postgres.ts)
+// Helper: Postgres SSL connection string parser (fail-closed per pending-user-actions #41)
 // ------------------------------------------------------------------------------
 function parseConnectionConfig(urlString) {
   const url = new URL(urlString);
@@ -254,15 +254,14 @@ function parseConnectionConfig(urlString) {
       );
     }
   } else {
-    // Default to SSL require for cloud hosted Supabase
+    // Fail-closed default: Supabase hosts use trusted public CA certificates; enforce strict TLS verification.
     if (url.hostname.endsWith(".supabase.co") || url.hostname.endsWith(".supabase.net")) {
-      config.ssl = { rejectUnauthorized: false };
+      config.ssl = { rejectUnauthorized: true };
     }
   }
 
   return config;
 }
-
 function maskString(str, visibleChars = 8) {
   if (!str) return "<none>";
   if (str.length <= visibleChars) return "***";
@@ -354,6 +353,8 @@ async function main() {
 
       if (postgisExt.installed_version) {
         log.success(`PostGIS extension is active (v${postgisExt.installed_version}).`);
+        const postgisVerRes = await client.query("SELECT postgis_full_version();");
+        log.dim(`PostGIS Build: ${postgisVerRes.rows[0].postgis_full_version.split("\n")[0]}`);
       } else {
         log.warn("PostGIS extension is not enabled. Attempting self-healing installation...");
         if (config.dryRun || config.verifyOnly) {
@@ -361,12 +362,10 @@ async function main() {
         } else {
           await client.query("CREATE EXTENSION IF NOT EXISTS postgis;");
           log.success("CREATE EXTENSION IF NOT EXISTS postgis executed successfully.");
+          const postgisVerRes = await client.query("SELECT postgis_full_version();");
+          log.dim(`PostGIS Build: ${postgisVerRes.rows[0].postgis_full_version.split("\n")[0]}`);
         }
       }
-
-      const postgisVerRes = await client.query("SELECT postgis_full_version();");
-      log.dim(`PostGIS Build: ${postgisVerRes.rows[0].postgis_full_version.split("\n")[0]}`);
-
       // ------------------------------------------------------------------------
       // Step 3: Database Migrations
       // ------------------------------------------------------------------------
@@ -422,37 +421,50 @@ async function main() {
       for (const t of expectedTables) {
         if (existingTables.has(t)) {
           log.success(`Table 'public.${t}' exists.`);
+        } else if (config.dryRun) {
+          log.warn(`[DRY RUN] Table 'public.${t}' is not present yet (would be created by migrations).`);
         } else {
           throw new Error(`Integrity Error: Table 'public.${t}' is missing from database.`);
         }
       }
 
       // Check GiST index on cafes (location)
-      const indexRes = await client.query(`
-        SELECT indexname, indexdef 
-        FROM pg_indexes 
-        WHERE tablename = 'cafes' AND indexname = 'idx_cafes_location_active';
-      `);
+      if (existingTables.has("cafes")) {
+        const indexRes = await client.query(`
+          SELECT indexname, indexdef 
+          FROM pg_indexes 
+          WHERE tablename = 'cafes' AND indexname = 'idx_cafes_location_active';
+        `);
 
-      if (indexRes.rows.length > 0) {
-        log.success("Spatial GiST index 'idx_cafes_location_active' exists on cafes.");
-        log.dim(`Index Definition: ${indexRes.rows[0].indexdef}`);
-      } else {
-        throw new Error("Integrity Error: Spatial GiST index 'idx_cafes_location_active' is missing on cafes.");
+        if (indexRes.rows.length > 0) {
+          log.success("Spatial GiST index 'idx_cafes_location_active' exists on cafes.");
+          log.dim(`Index Definition: ${indexRes.rows[0].indexdef}`);
+        } else if (config.dryRun) {
+          log.warn("[DRY RUN] Spatial GiST index 'idx_cafes_location_active' is not present yet (would be created by migrations).");
+        } else {
+          throw new Error("Integrity Error: Spatial GiST index 'idx_cafes_location_active' is missing on cafes.");
+        }
+      } else if (config.dryRun) {
+        log.warn("[DRY RUN] Table 'cafes' not present; skipping spatial GiST index check.");
       }
 
       // Check seed service-account profile
-      const serviceProfileRes = await client.query(`
-        SELECT id, display_name 
-        FROM profiles 
-        WHERE id = '00000000-0000-4000-a000-000000000001';
-      `);
-      if (serviceProfileRes.rows.length > 0) {
-        log.success(`Seed service-account profile verified: ${serviceProfileRes.rows[0].display_name} (${serviceProfileRes.rows[0].id})`);
-      } else {
-        log.warn("Seed service-account '00000000-0000-4000-a000-000000000001' is not present in profiles table.");
+      if (existingTables.has("profiles")) {
+        const serviceProfileRes = await client.query(`
+          SELECT id, display_name 
+          FROM profiles 
+          WHERE id = '00000000-0000-4000-a000-000000000001';
+        `);
+        if (serviceProfileRes.rows.length > 0) {
+          log.success(`Seed service-account profile verified: ${serviceProfileRes.rows[0].display_name} (${serviceProfileRes.rows[0].id})`);
+        } else if (config.dryRun) {
+          log.warn("[DRY RUN] Seed service-account '00000000-0000-4000-a000-000000000001' not present yet (would be inserted by migration 0016).");
+        } else {
+          log.warn("Seed service-account '00000000-0000-4000-a000-000000000001' is not present in profiles table.");
+        }
+      } else if (config.dryRun) {
+        log.warn("[DRY RUN] Table 'profiles' not present; skipping seed service-account check.");
       }
-
       // ------------------------------------------------------------------------
       // Step 5: PostgREST Security Defense (Spec 0001 §Data Layer)
       // ------------------------------------------------------------------------
@@ -507,29 +519,33 @@ async function main() {
         }
       }
 
-      // Verify that anon role cannot read cafes (if role exists)
+      // Verify that anon role cannot read cafes (if role and table exist)
       const anonRoleCheck = await client.query(`
         SELECT 1 FROM pg_roles WHERE rolname = 'anon';
       `);
       if (anonRoleCheck.rows.length > 0) {
-        log.info("Verifying permission denial for anon role...");
-        try {
-          await client.query(`
-            DO $$
-            BEGIN
-              SET LOCAL ROLE anon;
+        if (existingTables.has("cafes")) {
+          log.info("Verifying permission denial for anon role...");
+          try {
+            await client.query(`
+              DO $$
               BEGIN
-                PERFORM count(*) FROM cafes;
-                RAISE EXCEPTION 'CRITICAL: anon role was able to read cafes table!';
-              EXCEPTION WHEN insufficient_privilege THEN
-                -- Expected behavior
-              END;
-            END $$;
-          `);
-          log.success("Permission denial verified: anon role is strictly blocked from data tables.");
-        } catch (err) {
-          log.error(`Security check failed: ${err.message}`);
-          throw err;
+                SET LOCAL ROLE anon;
+                BEGIN
+                  PERFORM count(*) FROM cafes;
+                  RAISE EXCEPTION 'CRITICAL: anon role was able to read cafes table!';
+                EXCEPTION WHEN insufficient_privilege THEN
+                  -- Expected behavior
+                END;
+              END $$;
+            `);
+            log.success("Permission denial verified: anon role is strictly blocked from data tables.");
+          } catch (err) {
+            log.error(`Security check failed: ${err.message}`);
+            throw err;
+          }
+        } else if (config.dryRun) {
+          log.warn("[DRY RUN] Table 'cafes' not present; skipping anon role query simulation.");
         }
       } else {
         log.info("Skipping anon role permission denial test ('anon' role not present in database).");

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import type { UseInfiniteQueryResult, InfiniteData } from "@tanstack/react-query";
 import { Button } from "@heroui/react";
-import { HeartIcon } from "@/components/icons";
+import { HeartIcon, PencilIcon } from "@/components/icons";
 import { CheckinDrawer } from "@/components/checkin/checkin-drawer";
 import { ErrorRow } from "./profile-error-row";
 import type { UserCheckInItemDto } from "@/lib/db/profile";
@@ -104,9 +104,7 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
                   aria-label={t("edit_checkin_aria", { cafe: item.cafeName || t("unknown_cafe") })}
                   className="p-1.5 text-muted hover:text-foreground active:scale-95 transition-all rounded-full hover:bg-surface-secondary"
                 >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M11.5 2.5a1.5 1.5 0 0 1 2 2L4.5 13.5l-3 0.5 0.5-3L11.5 2.5Z" />
-                  </svg>
+                  <PencilIcon size={14} />
                 </button>
               </div>
             </div>

@@ -139,6 +139,11 @@ export function ShareIcon(props: IconProps) {
   );
 }
 
+/** Edit — pencil (check-in edit affordances, DG72). */
+export function PencilIcon(props: IconProps) {
+  return base(props, <path d="M11.5 2.5a1.5 1.5 0 0 1 2 2L4.5 13.5l-3 0.5 0.5-3L11.5 2.5Z" />);
+}
+
 /** Warning — section-level load failures (DG17 Retry row). */
 export function WarningIcon(props: IconProps) {
   return base(

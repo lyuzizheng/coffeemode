@@ -12,6 +12,7 @@ import { SignInButton } from "@/components/auth/sign-in-button";
 import { responseMessage } from "@/lib/http";
 import { uploadPhoto } from "@/lib/images/client-upload";
 import { clearPendingCheckin, savePendingCheckin } from "@/lib/checkin/pending-checkin";
+import { fetchLastCheckin, type LastCheckin } from "@/lib/checkin/last-checkin";
 import type { CheckInScores, MaxStay } from "@/types/checkins";
 import { MAX_STAY_VALUES } from "@/types/checkins";
 
@@ -68,15 +69,6 @@ function newIdempotencyKey(): string {
   return `${hex(8)}-${hex(4)}-4${hex(3)}-${((parseInt(nibble(), 16) & 0x3) | 0x8).toString(16)}${hex(3)}-${hex(12)}`;
 }
 
-/** The caller's most recent check-in for a cafe, as returned by /api/checkins/last. */
-export interface LastCheckin {
-  id: string;
-  scores: CheckInScores;
-  max_stay: MaxStay | null;
-  note: string | null;
-  visited_at: string;
-}
-
 /**
  * DG64 same-day-revisit switch: returns the last check-in when it falls
  * inside the server-provided revisit window (at most 1 per cafe per user
@@ -94,17 +86,6 @@ export function resolveRevisitCheckin(
   const ageMs = now - new Date(checkin.visited_at).getTime();
   if (!Number.isFinite(ageMs) || ageMs >= windowHours * 3_600_000) return null;
   return checkin;
-}
-
-async function fetchLastCheckin(cafeId: string) {
-  const res = await fetch(`/api/checkins/last?cafe_id=${encodeURIComponent(cafeId)}`);
-  if (res.status === 401) throw new Error("unauthorized");
-  if (!res.ok) throw new Error("failed");
-  const body = (await res.json()) as {
-    checkin: LastCheckin | null;
-    revisitWindowHours?: number;
-  };
-  return body;
 }
 
 function CheckinForm({
@@ -433,6 +414,9 @@ function CheckinForm({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cafe", cafeId] });
       queryClient.invalidateQueries({ queryKey: ["cafe-checkins", cafeId] });
+      // The DG72 cafe-page "Edit your check-in" row keys off this probe —
+      // without it the row would linger after the last live check-in is gone.
+      queryClient.invalidateQueries({ queryKey: ["last-checkin", cafeId] });
       queryClient.invalidateQueries({ queryKey: ["profile"] });
       onClose();
       toast(t("deleted"), { timeout: 3000 });

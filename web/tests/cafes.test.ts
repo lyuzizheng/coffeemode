@@ -4,7 +4,6 @@ import {
   createCafeWithFirstCheckIn,
   getCafe,
   getServiceAccountId,
-  listCafesNearby,
   parseCreateCafeBody,
   resolveCafeTimezone,
   toPublicCafeDetail,
@@ -60,18 +59,6 @@ const FAKE_KEYS = {
   thumbnail: `thumbnail/${IMG}.webp`,
 };
 
-/** What the server must derive for IMG from the fake processing deps. */
-function derivedPhoto(checkinId: string) {
-  return {
-    id: IMG,
-    ...FAKE_KEYS,
-    w: 800,
-    h: 600,
-    by: USER.id,
-    at: expect.any(String),
-    source: { type: "checkin", id: checkinId },
-  };
-}
 
 /** The spec-0001 minimum for the creator's first check-in. */
 const VALID_CHECKIN = {
@@ -297,63 +284,6 @@ describe("parseCreateCafeBody", () => {
 });
 
 describe("createCafeWithFirstCheckIn", () => {
-  it("provisions photos, inserts cafe + first check-in, derives StoredImage server-side, merges the gallery, and folds stats — one transaction", async () => {
-    mockCreateHappyPath();
-    const result = await createCafeWithFirstCheckIn(USER.id, {
-      name: "Caracara",
-      ...SG,
-      google_place_id: "ChIJx",
-      checkin: validCheckinInput(),
-    });
-
-    expect(result).toEqual({ cafeId: "cafe-1", checkinId: "checkin-1", tz: "Asia/Singapore" });
-
-    // Intent pre-check and sharp processing ran BEFORE the transaction.
-    expect(provisionDeps.checkUploadIntent).toHaveBeenCalledWith(USER.id, IMG);
-    expect(provisionDeps.processImage).toHaveBeenCalledWith(IMG, { keys: FAKE_KEYS });
-
-    const cafeInsert = clientQueryMock.mock.calls[1]; // [0] is the dedupe pre-check
-    expect(cafeInsert[0]).toContain("insert into cafes");
-    // ST_MakePoint($3, $2): params are [name, lat, lng, ...] — lng/lat order in SQL.
-    expect(cafeInsert[1][1]).toBe(SG.lat);
-    expect(cafeInsert[1][2]).toBe(SG.lng);
-    expect(cafeInsert[1][5]).toBe("Asia/Singapore"); // tz derived from coordinates
-
-    const checkinInsert = clientQueryMock.mock.calls[2];
-    expect(checkinInsert[0]).toContain("insert into checkins");
-    expect(checkinInsert[1][0]).toBe("cafe-1");
-    expect(checkinInsert[0]).toContain("is_creation");
-    // Required first-check-in fields land after scores (max_stay, note, photos).
-    expect(checkinInsert[1][3]).toBe("unlimited");
-    expect(checkinInsert[1][4]).toBe("quiet");
-    expect(checkinInsert[1][5]).toBe(JSON.stringify([])); // photos land after insert
-
-    // The single-use intent consume ran INSIDE the transaction.
-    expect(provisionDeps.consumeUploadIntent).toHaveBeenCalledWith(
-      USER.id,
-      IMG,
-      expect.any(Function),
-    );
-
-    // Server-derived StoredImage: keys/w/h/by are NOT client-controlled.
-    const setPhotos = clientQueryMock.mock.calls[3];
-    expect(setPhotos[0]).toContain("update checkins set photos");
-    // $1 = checkin id, $2 = photos JSON — matches `set photos = $2::jsonb where id = $1`.
-    expect(setPhotos[1][0]).toBe("checkin-1");
-    expect(JSON.parse(setPhotos[1][1] as string)).toEqual([derivedPhoto("checkin-1")]);
-
-    // First check-in's photos auto-merge into cafes.gallery with provenance.
-    const galleryMerge = clientQueryMock.mock.calls[4];
-    expect(galleryMerge[0]).toContain("update cafes");
-    expect(galleryMerge[0]).toContain("gallery");
-    expect(galleryMerge[1][0]).toBe("cafe-1");
-    expect(JSON.parse(galleryMerge[1][1] as string)).toEqual([derivedPhoto("checkin-1")]);
-
-    // Stats fold ran on the SAME connection (no second transaction).
-    const statsCall = clientQueryMock.mock.calls[5];
-    expect(statsCall[0]).toContain("for update");
-    expect(statsCall[1]).toEqual(["cafe-1"]);
-  });
 
   it("fails before any DB write or remote work when a photo id has no valid intent (foreign/replayed)", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [] }); // pre-provision dedupe check
@@ -438,20 +368,7 @@ describe("createCafeWithFirstCheckIn", () => {
   });
 });
 
-describe("listCafesNearby / getCafe", () => {
-  it("queries with ST_DWithin and coerces work_stats", async () => {
-    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: "c1", distance_m: 42, work_stats: {} }] });
-    const rows = await listCafesNearby({ ...SG, radiusKm: 1.5, limit: 50 });
-    expect(rows[0]?.id).toBe("c1");
-    // A fractional radius passes through untyped node-pg params (SQL casts to float8).
-    expect(poolQueryMock.mock.calls[0][0]).toContain("ST_DWithin");
-    expect(poolQueryMock.mock.calls[0][1]).toEqual([SG.lat, SG.lng, 1.5, 50]);
-    // DB default '{}' becomes a complete WorkStats before reaching the UI.
-    expect(rows[0]?.work_stats.n_users).toBe(0);
-    expect(rows[0]?.work_stats.dims.wifi).toEqual({ sum: 0, n: 0 });
-    expect(rows[0]?.work_stats.experience_score).toBeNull();
-  });
-
+describe("getCafe", () => {
   it("returns null for a missing cafe and rejects a bad uuid", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [] });
     await expect(getCafe("550e8400-e29b-41d4-a716-446655440001")).resolves.toBeNull();

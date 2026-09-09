@@ -10,12 +10,14 @@ import {
   createHttpTestUsers,
   HTTP_USER_IDS,
   parseRouteResponse,
+  resetRateLimits,
   routeParams,
   seedHttpTestUsers,
   setCurrentTestUser,
   TEST_ORIGIN,
   type HttpTestUsers,
 } from "./http-client";
+import { createTestSessionUser } from "./mocks";
 
 vi.mock("@/lib/auth/get-user", () => ({
   getCurrentUser: vi.fn(),
@@ -187,5 +189,36 @@ describe("http multi-user environment", () => {
     for (const query of queries) {
       expect(query.text).toContain("on conflict (id) do update");
     }
+  });
+
+  it("seeds extra slice-local personas through the same upsert", async () => {
+    const users: HttpTestUsers = createHttpTestUsers();
+    const extra = createTestSessionUser({ id: "c0000000-0000-4000-a000-0000000000a5" });
+    const queries: Array<{ text: string; values: unknown[] }> = [];
+    const dbClient = {
+      query: async (text: string, values: unknown[]) => {
+        queries.push({ text, values });
+        return { rows: [] };
+      },
+    } as never as pg.Client;
+
+    await seedHttpTestUsers(dbClient, users, [extra]);
+
+    expect(queries).toHaveLength(5);
+    expect(queries[4].values?.[0]).toBe(extra.id);
+  });
+
+  it("resets rate limits with a plain delete", async () => {
+    const queries: string[] = [];
+    const dbClient = {
+      query: async (text: string) => {
+        queries.push(text);
+        return { rows: [] };
+      },
+    } as never as pg.Client;
+
+    await resetRateLimits(dbClient);
+
+    expect(queries).toEqual(["delete from rate_limits"]);
   });
 });

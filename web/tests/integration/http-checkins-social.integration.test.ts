@@ -9,7 +9,13 @@
  * POST /api/cafes (HTTP-only fixtures); aggregates are reconciled through
  * User D's GET reads, never through direct database access. The only
  * database touchpoints are harness-owned infrastructure: persona
- * provisioning (seedHttpTestUsers) and rate-limit bucket resets.
+ * provisioning (seedHttpTestUsers, incl. the fifth feed-pagination persona E)
+ * and rate-limit bucket resets.
+ * Seam note: spec §14 lists no mock seam for Paths 4/5, but this slice
+ * bootstraps cafes through POST /api/cafes, which mandates 1–6 provisioned
+ * photos — so the image-service client module mock below is the §5
+ * preference-order fallback (real worker when the gate provides it, else a
+ * seam-only mock of the image client; route handlers stay real).
   */
 
 import type { NextRequest } from "next/server";
@@ -123,9 +129,10 @@ const cleanupErrors: string[] = [];
 const previousDatabaseUrl = process.env.DATABASE_URL;
 
 const users = createHttpTestUsers();
-// Fifth persona for feed pagination: the cafe creator's fresh creation
-// check-in sits inside the DG64 window, so the creator cannot author
-// backdated feed visits — E absorbs the third rotation slot.
+// Fifth persona for feed pagination (spec §2 fixes four; E is slice-local):
+// the cafe creator's fresh creation check-in sits inside the DG64 window, so
+// the creator cannot author backdated feed visits — E absorbs the third
+// rotation slot. Provisioned via the harness seeder in beforeAll, never SQL.
 const userE = createTestSessionUser({
   id: "c0000000-0000-4000-a000-0000000000a5",
   displayName: "HTTP Erin",
@@ -226,6 +233,8 @@ async function createCafeViaHttp(
     scores: Record<string, number>;
     max_stay: string;
     note: string;
+    /** Optional backdated creation visit (public visited_at contract). */
+    visited_at?: string;
   },
 ): Promise<{ cafeId: string; checkinId: string }> {
   const photoId = await uploadTestWebP(client);
@@ -243,6 +252,7 @@ async function createCafeViaHttp(
         max_stay: input.max_stay,
         note: input.note,
         photo_ids: [photoId],
+        ...(input.visited_at ? { visited_at: input.visited_at } : {}),
       },
     },
   );
@@ -250,6 +260,17 @@ async function createCafeViaHttp(
   expect(res.data.cafeId).toBeDefined();
   expect(res.data.checkinId).toBeDefined();
   return { cafeId: res.data.cafeId, checkinId: res.data.checkinId };
+}
+
+/** Toggle the caller's like on a check-in through the real route. */
+async function likeCheckin(client: ApiClient, checkinId: string) {
+  return client.post<LikeDTO, RouteContext<{ id: string }>>(
+    likePOST,
+    `/api/checkins/${checkinId}/like`,
+    undefined,
+    {},
+    routeParams({ id: checkinId }),
+  );
 }
 
 async function getCafeDetail(cafeId: string): Promise<CafeDetailDTO> {
@@ -301,16 +322,9 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
     dbClient = new pg.Client(getPoolConfig(testDbUrl));
     await dbClient.connect();
 
-    // Harness setup: provision deterministic profiles for users A, B, C, D
-    await seedHttpTestUsers(dbClient, users);
-    // …plus the fifth feed-pagination persona (same harness-owned seam).
-    await dbClient.query(
-      `insert into profiles (id, display_name, current_city)
-       values ($1, $2, $3)
-       on conflict (id) do update set display_name = excluded.display_name,
-                                      current_city = excluded.current_city`,
-      [userE.id, userE.displayName, userE.currentCity],
-    );
+    // Harness setup: provision deterministic profiles for A–D plus the
+    // slice-local fifth persona E (harness-owned seam, no test SQL).
+    await seedHttpTestUsers(dbClient, users, [userE]);
   }, 120_000);
 
   beforeEach(async () => {
@@ -492,6 +506,16 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
     expect(detail.work_stats.n_users).toBe(3);
     expect(detail.work_stats.n_checkins).toBe(3);
     expect(detail.work_stats.policies.max_stay).toEqual({ unlimited: 1, "3h": 1, "2h": 1 });
+
+    // DG13 through the public feed: item photos never carry `by`.
+    const feed = await getFeed(clientD, cafe1Id);
+    expect(feed.status).toBe(200);
+    expect(feed.data.checkins).toHaveLength(3);
+    for (const item of feed.data.checkins) {
+      for (const photo of item.photos) {
+        expect(photo).not.toHaveProperty("by");
+      }
+    }
   });
 
   // =========================================================================
@@ -579,37 +603,44 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
   // 4. 24h window expiry: backdated first visit + 0.6 decay contribution
   // =========================================================================
 
-  it("Path 4: a 25h-old first visit lets the second POST create a new row with a 0.6-decay contribution", async () => {
+  it("Path 4 (DG64 window expiry): a 25h-old first visit lets the second POST create a new row with a 0.6-decay contribution", async () => {
+    // The creator's fused first check-in is itself backdated 25h through the
+    // public visited_at contract — no DB seam.
     const created = await createCafeViaHttp(clientA, {
       name: "Decay House",
       lat: 1.3075,
       lng: 103.8335,
-      scores: { overall: 90, wifi: 90, outlets: 80, seats: 70, temp: 60, coffee: 95 },
+      scores: { overall: 60 },
       max_stay: "unlimited",
       note: "decay anchor",
+      visited_at: new Date(Date.now() - 25 * 3_600_000).toISOString(),
     });
     cafe2Id = created.cafeId;
 
-    // First visit backdated 25h via the public visited_at contract — no DB seam.
-    const first = await clientB.post<{ checkinId: string }>(checkinsPOST, "/api/checkins", {
-      cafe_id: cafe2Id,
-      scores: { overall: 60 },
-      note: "yesterday",
-      visited_at: new Date(Date.now() - 25 * 3_600_000).toISOString(),
-    });
-    expect(first.status).toBe(201);
-
     // Outside the window: a NEW row (201), not a 409.
-    const nextDay = await clientB.post<{ checkinId: string }>(checkinsPOST, "/api/checkins", {
+    const nextDay = await clientA.post<{ checkinId: string }>(checkinsPOST, "/api/checkins", {
       cafe_id: cafe2Id,
       scores: { overall: 80 },
       note: "back today",
     });
     expect(nextDay.status).toBe(201);
-    expect(nextDay.data.checkinId).not.toBe(first.data.checkinId);
+    expect(nextDay.data.checkinId).not.toBe(created.checkinId);
 
-    // B's vote collapses to the recency-weighted mean (80×1 + 60×0.6)/1.6 = 72.5,
-    // so experience = (90 + 72.5)/2 = 81.25 across the two users.
+    // The §7 worked example, asserted directly: the single user's vote is the
+    // recency-weighted mean (80×1 + 60×0.6)/1.6 = 72.5, collapsing to one vote.
+    const solo = await getCafeDetail(cafe2Id);
+    expect(solo.work_stats.experience_score).toBeCloseTo(72.5, 2);
+    expect(solo.work_stats.n_users).toBe(1);
+    expect(solo.work_stats.n_checkins).toBe(2);
+
+    // Composed proof: a second user's fresh overall-90 vote means
+    // experience = (72.5 + 90)/2 = 81.25 across the two users.
+    const second = await clientB.post(checkinsPOST, "/api/checkins", {
+      cafe_id: cafe2Id,
+      scores: { overall: 90 },
+      note: "second user",
+    });
+    expect(second.status).toBe(201);
     const detail = await getCafeDetail(cafe2Id);
     expect(detail.work_stats.experience_score).toBeCloseTo(81.25, 2);
     expect(detail.work_stats.n_users).toBe(2);
@@ -661,7 +692,7 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
   // 6. Feed: newest/helpful orderings, keyset cursor hop, cross-mode 400
   // =========================================================================
 
-  it("Path 4: feed serves newest/helpful orderings, keyset cursor hops, and rejects cross-mode cursors", async () => {
+  it("Path 4 (DG113): feed serves newest/helpful orderings, keyset cursor hops, and rejects cross-mode cursors", async () => {
     const created = await createCafeViaHttp(clientA, {
       name: "Feed Pagination House",
       lat: 1.3085,
@@ -711,12 +742,19 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
       );
     }
 
-    // Unknown mode → 400 listing valid modes; garbage cursor → 400.
+    // Unknown mode → 400 listing valid modes; garbage cursor → 400 invalid_request.
     const badMode = await getFeed(clientD, cafe3Id, { mode: "weird" });
     expect(badMode.status).toBe(400);
     expect(badMode.data).toMatchObject({ error: "invalid_request" });
     const badCursor = await getFeed(clientD, cafe3Id, { cursor: "not-a-cursor" });
     expect(badCursor.status).toBe(400);
+    expect(badCursor.data).toMatchObject({ error: "invalid_request" });
+
+    // Unknown cafe → 404, never an empty feed.
+    const ghostId = randomUUID();
+    const ghostFeed = await getFeed(clientD, ghostId);
+    expect(ghostFeed.status).toBe(404);
+    expect(ghostFeed.data).toMatchObject({ error: "not_found" });
 
     // A cursor issued for newest is rejected under helpful — never a silent reset.
     const crossMode = await getFeed(clientD, cafe3Id, {
@@ -727,33 +765,31 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
     expect(crossMode.data).toMatchObject({ error: "invalid_request" });
 
     // Helpful: two likes lift B's oldest visit above every unliked row.
-    const likeA = await clientA.post<LikeDTO, RouteContext<{ id: string }>>(
-      likePOST,
-      `/api/checkins/${oldestId}/like`,
-      undefined,
-      {},
-      routeParams({ id: oldestId }),
-    );
+    const likeA = await likeCheckin(clientA, oldestId);
     expect(likeA.status).toBe(200);
-    const likeC = await clientC.post<LikeDTO, RouteContext<{ id: string }>>(
-      likePOST,
-      `/api/checkins/${oldestId}/like`,
-      undefined,
-      {},
-      routeParams({ id: oldestId }),
-    );
+    const likeC = await likeCheckin(clientC, oldestId);
     expect(likeC.data).toMatchObject({ liked: true, likesCount: 2 });
 
     const helpful = await getFeed(clientD, cafe3Id, { mode: "helpful" });
     expect(helpful.status).toBe(200);
     expect(helpful.data.checkins[0]?.id).toBe(oldestId);
     expect(helpful.data.checkins[0]?.likes_count).toBe(2);
+    // Full ordering, not just rank-1: likes_count desc across the whole page.
+    for (let i = 1; i < helpful.data.checkins.length; i += 1) {
+      expect(helpful.data.checkins[i]!.likes_count).toBeLessThanOrEqual(
+        helpful.data.checkins[i - 1]!.likes_count,
+      );
+    }
+    expect(helpful.data.checkins.slice(1).every((c) => c.likes_count === 0)).toBe(true);
 
     // Viewer isolation + default anonymity through the public feed surface:
-    // the liker sees liked_by_viewer, D and guests do not; authors stay null.
+    // likers see liked_by_viewer; the author (B, on his own liked check-in),
+    // D, and guests do not; authors stay null.
     const asLiker = await getFeed(clientA, cafe3Id, { mode: "helpful" });
     expect(asLiker.data.checkins[0]?.liked_by_viewer).toBe(true);
     expect(helpful.data.checkins[0]?.liked_by_viewer).toBe(false);
+    const asAuthor = await getFeed(clientB, cafe3Id, { mode: "helpful" });
+    expect(asAuthor.data.checkins.find((c) => c.id === oldestId)?.liked_by_viewer).toBe(false);
     const asGuest = await getFeed(guestClient, cafe3Id);
     expect(asGuest.status).toBe(200);
     expect(asGuest.data.checkins.every((c) => c.liked_by_viewer === false)).toBe(true);
@@ -765,54 +801,48 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
   // =========================================================================
 
   it("Path 5: likes toggle symmetrically, self-likes 403, anonymous 401, viewers stay isolated", async () => {
-    const likePath = `/api/checkins/${bCheckin1Id}/like`;
-    const likeCtx = routeParams({ id: bCheckin1Id });
-
     // A likes B's check-in → 1; again → symmetric unlike → 0.
-    const liked = await clientA.post<LikeDTO, RouteContext<{ id: string }>>(
-      likePOST, likePath, undefined, {}, likeCtx,
-    );
+    const liked = await likeCheckin(clientA, bCheckin1Id);
     expect(liked.status).toBe(200);
     expect(liked.data).toMatchObject({ liked: true, likesCount: 1 });
 
-    const unliked = await clientA.post<LikeDTO, RouteContext<{ id: string }>>(
-      likePOST, likePath, undefined, {}, likeCtx,
-    );
+    const unliked = await likeCheckin(clientA, bCheckin1Id);
     expect(unliked.data).toMatchObject({ liked: false, likesCount: 0 });
 
     // A re-likes and C likes → 2, and helpful mode puts B's check-in first.
-    await clientA.post(likePOST, likePath, undefined, {}, likeCtx);
-    const second = await clientC.post<LikeDTO, RouteContext<{ id: string }>>(
-      likePOST, likePath, undefined, {}, likeCtx,
-    );
+    await likeCheckin(clientA, bCheckin1Id);
+    const second = await likeCheckin(clientC, bCheckin1Id);
     expect(second.data).toMatchObject({ liked: true, likesCount: 2 });
     const helpful = await getFeed(clientD, cafe1Id, { mode: "helpful" });
     expect(helpful.data.checkins[0]?.id).toBe(bCheckin1Id);
     expect(helpful.data.checkins[0]?.likes_count).toBe(2);
 
-    // liked_by_viewer isolation: only the likers see true.
+    // liked_by_viewer isolation across all four postures: likers see true;
+    // the author on his own liked check-in, the authed observer, and guests
+    // see false.
     const asLiker = await getFeed(clientA, cafe1Id, { mode: "helpful" });
     expect(asLiker.data.checkins.find((c) => c.id === bCheckin1Id)?.liked_by_viewer).toBe(true);
     expect(helpful.data.checkins.find((c) => c.id === bCheckin1Id)?.liked_by_viewer).toBe(false);
+    const asAuthor = await getFeed(clientB, cafe1Id, { mode: "helpful" });
+    expect(asAuthor.data.checkins.find((c) => c.id === bCheckin1Id)?.liked_by_viewer).toBe(false);
 
     // Self-like iron rule (spec 0004 decision 8): author liking their own
     // creation check-in is rejected at the route.
-    const selfA = await clientA.post(likePOST, `/api/checkins/${creation1Id}/like`, undefined, {}, routeParams({ id: creation1Id }));
+    const selfA = await likeCheckin(clientA, creation1Id);
     expect(selfA.status).toBe(403);
     expect(selfA.data).toMatchObject({ error: "self_like_forbidden" });
-    const selfB = await clientB.post(likePOST, likePath, undefined, {}, likeCtx);
+    const selfB = await likeCheckin(clientB, bCheckin1Id);
     expect(selfB.status).toBe(403);
     expect(selfB.data).toMatchObject({ error: "self_like_forbidden" });
 
     // Anonymous like → 401; unknown check-in → 404; malformed id → 400.
-    const anonLike = await guestClient.post(likePOST, likePath, undefined, {}, likeCtx);
+    const anonLike = await likeCheckin(guestClient, bCheckin1Id);
     expect(anonLike.status).toBe(401);
     expect(anonLike.data).toMatchObject({ error: "unauthorized" });
-    const ghostId = randomUUID();
-    const ghostLike = await clientA.post(likePOST, `/api/checkins/${ghostId}/like`, undefined, {}, routeParams({ id: ghostId }));
+    const ghostLike = await likeCheckin(clientA, randomUUID());
     expect(ghostLike.status).toBe(404);
     expect(ghostLike.data).toMatchObject({ error: "not_found" });
-    const malformed = await clientA.post(likePOST, "/api/checkins/nope/like", undefined, {}, routeParams({ id: "nope" }));
+    const malformed = await likeCheckin(clientA, "nope");
     expect(malformed.status).toBe(400);
     expect(malformed.data).toMatchObject({ error: "invalid_request" });
 

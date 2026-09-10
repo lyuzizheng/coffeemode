@@ -1,0 +1,278 @@
+{
+  "app/api/places/search/route.ts": {
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "app/api/profile/identity/route.ts": {
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "app/api/search/route.ts": {
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "app/global-error.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "app/page.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "app/theme-preview/sections/motion-section.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "app/theme-preview/sections/search-filter-section.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "app/theme-preview/theme-preview.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "components/cafe/apple-place-search.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "components/cafe/cafe-creation-form.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "components/cafe/cafe-place-search.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "components/checkin/checkin-drawer.tsx": {
+    "max-lines": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 3
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "components/checkin/checkin-photos.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "components/checkin/checkin-slider.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "components/discovery/checkin-feed.tsx": {
+    "max-lines": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 2
+    }
+  },
+  "components/discovery/desktop-discovery.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "components/discovery/detail-content.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "components/discovery/discovery-home.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "components/discovery/mobile-sheet.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "components/profile/profile-hero.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "components/profile/profile-tab-cafes.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "components/profile/profile-tab-checkins.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "components/profile/public-identity-toggle.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "components/search/search-results-list.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "components/search/unified-search-panel.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "components/share/share-control.tsx": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "lib/checkin/pending-checkin.ts": {
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "lib/config-schema.ts": {
+    "max-lines": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "lib/db/cafes/create.ts": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "lib/db/cafes/delete.ts": {
+    "max-lines-per-function": {
+      "count": 2
+    }
+  },
+  "lib/db/checkins/create.ts": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "lib/db/checkins/update.ts": {
+    "sonarjs/no-identical-functions": {
+      "count": 1
+    }
+  },
+  "lib/db/identity.ts": {
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "lib/db/profile.ts": {
+    "max-lines": {
+      "count": 1
+    },
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "lib/db/search.ts": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "lib/discovery/use-discovery-controller.ts": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "lib/hours.ts": {
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "lib/search/search-service.ts": {
+    "max-depth": {
+      "count": 2
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 2
+    }
+  },
+  "lib/security/origin.ts": {
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "lib/stats/work-stats.ts": {
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "lib/validation/cafe.ts": {
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "lib/validation/checkin.ts": {
+    "sonarjs/cognitive-complexity": {
+      "count": 2
+    }
+  },
+  "next.config.ts": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "proxy.ts": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "scripts/check-route-guards.mjs": {
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
+  "scripts/e2e-smoke.mjs": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "scripts/lib/e2e-fixtures.mjs": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "scripts/visual-smoke.mjs": {
+    "max-depth": {
+      "count": 2
+    },
+    "max-lines-per-function": {
+      "count": 1
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  }
+}

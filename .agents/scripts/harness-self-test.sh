@@ -306,6 +306,20 @@ expect_failure "missing reviewer.toml" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_R
 mv "$TEST_ROOT/.codex/agents/reviewer.toml.bak" "$TEST_ROOT/.codex/agents/reviewer.toml"
 
 echo ""
+echo "=== Fault injection: structure guard ==="
+
+# The preflight bridge must propagate a failing structure gate instead of
+# swallowing it. The fixture has no package manager install, so stub the gate
+# with a package.json script that always fails.
+mkdir -p "$TEST_ROOT/web/node_modules/.bin"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$TEST_ROOT/web/node_modules/.bin/eslint"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$TEST_ROOT/web/node_modules/.bin/jscpd"
+chmod +x "$TEST_ROOT/web/node_modules/.bin/eslint" "$TEST_ROOT/web/node_modules/.bin/jscpd"
+printf '{"name":"web","private":true,"scripts":{"check:structure":"echo probe; exit 7"}}\n' > "$TEST_ROOT/web/package.json"
+expect_failure "failing structure gate" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/preflight.sh"
+rm -rf "$TEST_ROOT/web"
+
+echo ""
 echo "=== Fault injection: shell syntax ==="
 
 PROBE="$TEST_ROOT/.agents/scripts/syntax-probe.sh"

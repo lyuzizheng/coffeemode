@@ -184,13 +184,31 @@ MUST 在当次提交内完成拆分。不允许"顺手加一行"把超标文件�
 
 | 文件 | 当前行数 | 超标项 | 只降不升基线 | 复核到期 |
 | --- | --- | --- | --- | --- |
-| `web/lib/db/cafes.ts` | 826 | 文件硬 400 | 826（只允许减少） | 2026-12-31 |
-| `web/lib/db/checkins.ts` | 758 | 文件硬 400 | 758 | 2026-12-31 |
-| `web/components/checkin/checkin-drawer.tsx` | 725 | 文件硬 400 | 725 | 2026-12-31 |
-| `web/components/discovery/checkin-feed.tsx` | 439 | 文件硬 400 | 439 | 2026-12-31 |
+| `web/components/checkin/checkin-drawer.tsx` | 730 | 文件硬 400 | 730（只允许减少） | 2026-12-31 |
+| `web/components/discovery/checkin-feed.tsx` | 440 | 文件硬 400 | 440 | 2026-12-31 |
 | `web/lib/db/profile.ts` | 431 | 文件硬 400 | 431 | 2026-12-31 |
+| `web/lib/config-schema.ts` | 424 | 文件硬 400 | 424 | 2026-12-31 |
 
-第二张表：规则级豁免（`web/eslint-suppressions.json`，41 文件 / 68 条，`32b5bdc` 实测）。用途：结构规则（函数行数/复杂度/`max-depth`/同构函数）对存量文件的逐条 suppress；读取方：`web/eslint.config.mjs`。同样**只降不升**：条目数增长即 CI 失败（`check:structure` 校验 suppression 数量单调递减）；`npx eslint --prune-suppressions` 可剪已自愈条目，重构 PR 应当顺手清除。
+`web/lib/db/cafes.ts`（826）与 `web/lib/db/checkins.ts`（758）已由 BRAWUKA-180 (#356)
+拆分毕业，按 §7.4「毕业行直接删除」从表与机器基线移除，基准值随之下降。
+机器镜像：`web/structure-baseline.json` 的 `files`（每条含 `lines` 与 `reviewBy`），
+由 `scripts/check-file-size.mjs` 读取。`checkin-drawer` 730 / `checkin-feed` 440 是
+守卫合入前 main 上 BRAWUKA-185 (#358) / BRAWUKA-73 (#349) 造成的 +5 / +1，
+`config-schema.ts` 是 BRAWUKA-184 (#357) 引入；基线自记录值起只降不升。
+
+第二张表：规则级豁免（`web/eslint-suppressions.json`，当前 48 文件 / 60 条目 / 68 处违规）。
+用途：结构规则（函数行数/复杂度/`max-depth`/同构函数）对存量文件的逐条 suppress；
+读取方：**ESLint 自身的 bulk suppressions 机制**（`eslint.config.mjs` 不读该文件、不按路径关规则），
+棘轮由 `scripts/check-suppressions.mjs` 校验，预算登记在
+`web/structure-baseline.json` 的 `eslintSuppressions`（`files` / `entries` / `perRule` / `reviewBy`）。
+同样**只降不升**：文件数、条目数或任一规则的违规数增长即 CI 失败，
+`check:structure` 会打印 `suppressed violations: N (budget M)` 让存量在日志里可见；
+`npx eslint --prune-suppressions` 可剪已自愈条目，重构 PR 应当顺手清除；
+缺少 `reviewBy` 或复核到期未处理同样按失败处理（§7.1、§7.3）。
+BRAWUKA-180 (#356) 拆分后存量违规 72 → 68、条目数 60 → 60、文件数 44 → 48：
+一个 god module 拆成多个模块会把同一批豁免摊到更多文件上。三项都是硬棘轮，
+因此这种"债务总量下降但分布变宽"的重构 MUST 同 PR 更新预算并说明（本条即该说明），
+预算 diff 本身进入 review；未说明的增长一律 CI 失败。
 
 规则：
 

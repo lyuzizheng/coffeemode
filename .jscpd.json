@@ -1,0 +1,39 @@
+{
+  "path": [
+    "web",
+    "poi-service/src",
+    "image-service/src",
+    "scripts"
+  ],
+  "format": [
+    "typescript",
+    "tsx",
+    "javascript",
+    "jsx",
+    "css"
+  ],
+  "minLines": 5,
+  "minTokens": 50,
+  "threshold": 3,
+  "reporters": [
+    "console"
+  ],
+  "absolute": true,
+  "ignore": [
+    "**/node_modules/**",
+    "**/.next/**",
+    "**/.next-*/**",
+    "**/coverage/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/tests/**",
+    "**/__tests__/**",
+    "**/test/**",
+    "**/*.test.*",
+    "**/*.spec.*",
+    "**/_archive-*/**",
+    "**/reference/**",
+    "**/messages/**",
+    "**/*.min.*"
+  ]
+}

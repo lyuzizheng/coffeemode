@@ -53,7 +53,7 @@ Risk and independent-review requirements are defined only in
 ### Commands
 
 ```text
-web: npm run typecheck, lint, check:i18n, test, test:coverage, build, check:bundle, verify, lhci
+web: npm run typecheck, lint, check:structure, check:duplication, check:file-size, check:i18n, test, test:coverage, build, check:bundle, verify, lhci
 web real DB: npm run db:migrate, npm run test:integration, npm run test:integration:journey, npm run test:integration:http, npm run test:integration:images, npm run test:integration:all, npm run test:coverage:integration
 web browser smoke: npm run test:e2e (Playwright MVP smoke suite), npm run lhci (Lighthouse CI performance budgets), npm run check:visual (local visual render evidence)
 services: npm run typecheck, npm test
@@ -76,7 +76,7 @@ family, or a registered suite the coverage ratchet does not measure appears
 without a routing decision, or when a unit-only path starts scheduling the
 DB-backed gate:
 
-- `application-gate`: `web/` changes (typecheck, lint, i18n key parity, unit tests, v8 coverage ratchet, build, bundle budget check, bundle analysis, PWA validation, E2E smoke suite, and Lighthouse CI performance budgets against seeded fixtures);
+- `application-gate`: `web/` changes (typecheck, structure guard — file/function budget, duplication budget, layer boundaries, exemption ratchet — lint, i18n key parity, unit tests, v8 coverage ratchet, build, bundle budget check, bundle analysis, PWA validation, E2E smoke suite, and Lighthouse CI performance budgets against seeded fixtures);
 - `integration-gate`: DB/SQL-capable web boundaries and shared-package changes — runs real Postgres DB tests (`npm run test:integration`), real Postgres user-journey tests (`npm run test:integration:journey`), real Postgres HTTP lifecycle tests (`npm run test:integration:http`), and real MinIO/R2 image round-trip (`npm run test:integration:images`) sequentially on one `postgis` service + `docker compose up minio` (merged for efficiency; was `integration-gate` + `images-integration-gate`), then the real-DB coverage ratchet (`npm run test:coverage:integration`) against the same live stack. Branch protection that still requires the legacy `images-integration-gate` name should migrate to `integration-gate` + `ci-gate` (see migration note below);
 - `image-service-gate`: image-service and shared-package changes;
 - `poi-service-gate`: poi-service and shared-package changes;
@@ -108,10 +108,57 @@ Repository branch protection on `main` enforces stability without blocking autom
 
 `.agents/scripts/preflight.sh` checks required sources, script syntax, spec shape,
 links, planned slices, skill frontmatter, Codex bindings, changed-path
-classification, and CI structure.
+classification, CI structure, and the web structure guard (via
+`.agents/scripts/check-structure.sh`, self-skipping when web dependencies are
+absent).
 `.agents/scripts/harness-self-test.sh` fault-injects those checks and verifies CI
 path classification. Deterministic checks do not self-attest semantic correctness;
 agent/docs/CI authority changes require independent semantic review.
+
+### Structure gate
+
+`cd web && npm run check:structure` runs four checks in parallel and exits
+non-zero if any fails:
+
+- **ESLint structural rules** (`web/eslint.config.mjs`): per-file and per-function
+  line budgets, block nesting depth, positional parameter count, cognitive
+  complexity, identical function bodies, and layer boundaries — `app/api` may not
+  import the database driver or embed raw SQL, `components` may not import
+  `lib/db` at runtime, `lib/db` may not import `components`. `npm run lint`
+  reports the same rules, so a violation is never visible in only one gate.
+- **Suppression ratchet** (`npm run check:suppressions`): the rule-level registry
+  `web/eslint-suppressions.json` may only shrink. ESLint reads its own
+  suppressions file, so without this check `npx eslint --suppress-all` would
+  silence the structural rules in one command. The check compares the registry
+  against the `eslintSuppressions` budget in `web/structure-baseline.json` (any
+  growth fails), re-runs ESLint against a committed empty registry
+  (`web/scripts/empty-suppressions.json`) to fail entries whose rule no longer
+  fires, requires the `max-lines` exemptions to match the file-size registry
+  exactly, and prints `suppressed violations: N (budget M)` so the frozen debt is
+  visible in CI logs.
+- **`npm run check:duplication`**: jscpd over hand-written code with the budget in
+  `.jscpd.json`; tests, generated output, and the archived apps are excluded.
+- **`npm run check:file-size`**: per-file budgets plus the grandfathered registry
+  in `web/structure-baseline.json` — a listed file may shrink but never grow, an
+  unlisted file over budget fails, and an exemption without a file fails.
+
+Both registries are only-shrink and are read by the checks above, never by
+`web/eslint.config.mjs` (no rule is switched off by path): file size lives in
+`structure-baseline.json.files`, rule-level exemptions live in
+`eslint-suppressions.json` with their budget alongside. Granting an exemption
+therefore edits both files in one commit and is visible in review.
+
+Thresholds are single-sourced in `web/structure.config.mjs`; policy, pattern
+selection, and the exception process are canonical in the code-quality and
+module-boundaries spec (`0009`). Pre-existing violations live in
+`web/eslint-suppressions.json` (ESLint bulk suppressions), so new code is held to
+the full rules while existing debt stays recorded and prunable with
+`npx eslint --prune-suppressions`. The `application-gate` runs this gate as a
+blocking step and `.agents/scripts/check-ci-workflow.sh` fails preflight if the
+step disappears from `ci.yml`. Locally, `.agents/scripts/preflight.sh` runs it
+through `.agents/scripts/check-structure.sh`, which self-skips when
+`web/node_modules` is absent (docs-only jobs, harness self-test fixture); CI is
+authoritative.
 
 ### Coverage gate
 

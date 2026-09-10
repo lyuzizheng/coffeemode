@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
 import {
   cafeExists,
@@ -10,12 +9,7 @@ import {
   toPublicCafeDetail,
 } from "@/lib/db/cafes";
 import { CafeNotFoundError } from "@/lib/db/checkins";
-import {
-  checkRateLimit,
-  getClientIdentifier,
-  rateLimitResponse,
-} from "@/lib/rate-limit";
-import { rateLimitBuckets } from "@/lib/config";
+import { guard, readJsonBody } from "@/lib/api/guard";
 import { requireSameOrigin } from "@/lib/security/origin";
 import { isValidUUID } from "@shared/uuid";
 
@@ -32,17 +26,12 @@ export async function GET(
     return apiError("invalid_request", "id must be a UUID", 400);
   }
 
-  const user = await getCurrentUser();
-  const clientId = getClientIdentifier(request, user);
-  const rate = await checkRateLimit(
-    "cafes-read",
-    clientId,
-    rateLimitBuckets("cafes-read"),
-    "GET /api/cafes/[id]",
-  );
-  if (!rate.allowed) {
-    return rateLimitResponse(rate);
-  }
+  const gate = await guard(request, {
+    bucket: "cafes-read",
+    route: "GET /api/cafes/[id]",
+  });
+  if (!gate.ok) return gate.response;
+  const { user } = gate;
 
   try {
     const cafe = await getCafe(id, user?.id);
@@ -72,21 +61,13 @@ export async function DELETE(
     return apiError("invalid_request", "id must be a UUID", 400);
   }
 
-  const user = await getCurrentUser();
-  if (!user) {
-    return apiError("unauthorized", 401);
-  }
-
-  const clientId = getClientIdentifier(request, user);
-  const rate = await checkRateLimit(
-    "cafes-write",
-    clientId,
-    rateLimitBuckets("cafes-write"),
-    "DELETE /api/cafes/[id]",
-  );
-  if (!rate.allowed) {
-    return rateLimitResponse(rate);
-  }
+  const gate = await guard(request, {
+    bucket: "cafes-write",
+    requireAuth: true,
+    route: "DELETE /api/cafes/[id]",
+  });
+  if (!gate.ok) return gate.response;
+  const { user } = gate;
 
   try {
     const exists = await cafeExists(id, user.id);
@@ -94,9 +75,13 @@ export async function DELETE(
       return apiError("not_found", "cafe not found", 404);
     }
 
-    const body = await request.json().catch(() => null);
+    const bodyRes = await readJsonBody<{ confirm?: unknown }>(request, {
+      optional: true,
+    });
+    if (!bodyRes.ok) return bodyRes.response;
+    const body = bodyRes.data;
     const confirm =
-      typeof body === "object" && body !== null && (body as { confirm?: unknown }).confirm === true;
+      typeof body === "object" && body !== null && body.confirm === true;
 
     const result = await deleteCafe(id, user.id, { confirm });
     return NextResponse.json(result);

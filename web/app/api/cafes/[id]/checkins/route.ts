@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
 import { getCafe } from "@/lib/db/cafes";
 import {
@@ -7,12 +6,7 @@ import {
   FeedCursorError,
   listPublicCheckIns,
 } from "@/lib/discovery/feed";
-import {
-  checkRateLimit,
-  getClientIdentifier,
-  rateLimitResponse,
-} from "@/lib/rate-limit";
-import { rateLimitBuckets } from "@/lib/config";
+import { guard } from "@/lib/api/guard";
 import { isValidUUID } from "@shared/uuid";
 import type { CheckInFeedMode } from "@/types/checkins";
 
@@ -41,17 +35,12 @@ export async function GET(
   const mode = modeParam as CheckInFeedMode;
   const cursor = url.searchParams.get("cursor") ?? undefined;
 
-  const user = await getCurrentUser();
-  const clientId = getClientIdentifier(request, user);
-  const rate = await checkRateLimit(
-    "cafes-read",
-    clientId,
-    rateLimitBuckets("cafes-read"),
-    "GET /api/cafes/[id]/checkins",
-  );
-  if (!rate.allowed) {
-    return rateLimitResponse(rate);
-  }
+  const gate = await guard(request, {
+    bucket: "cafes-read",
+    route: "GET /api/cafes/[id]/checkins",
+  });
+  if (!gate.ok) return gate.response;
+  const { user } = gate;
 
   try {
     const cafe = await getCafe(id, user?.id);

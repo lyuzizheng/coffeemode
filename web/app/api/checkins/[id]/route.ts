@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
 import {
   CheckInForbiddenError,
@@ -8,12 +7,7 @@ import {
   softDeleteCheckIn,
   updateCheckIn,
 } from "@/lib/db/checkins";
-import {
-  checkRateLimit,
-  getClientIdentifier,
-  rateLimitResponse,
-} from "@/lib/rate-limit";
-import { rateLimitBuckets } from "@/lib/config";
+import { guard, readJsonBody } from "@/lib/api/guard";
 import { isValidUUID } from "@shared/uuid";
 import { requireSameOrigin } from "@/lib/security/origin";
 
@@ -36,25 +30,20 @@ export async function PATCH(
     return apiError("invalid_request", "id must be a UUID", 400);
   }
 
-  const body = await request.json().catch(() => null);
-  const parsed = parseUpdateCheckInBody(body);
+  const bodyRes = await readJsonBody(request);
+  if (!bodyRes.ok) return bodyRes.response;
+  const parsed = parseUpdateCheckInBody(bodyRes.data);
   if (!parsed.ok) {
     return apiError("invalid_request", parsed.message, 400);
   }
 
-  const user = await getCurrentUser();
-  if (!user) {
-    return apiError("unauthorized", 401);
-  }
-
-  const clientId = getClientIdentifier(request, user);
-  const rate = await checkRateLimit(
-    "cafes-write",
-    clientId,
-    rateLimitBuckets("cafes-write"),
-    "PATCH /api/checkins/[id]",
-  );
-  if (!rate.allowed) return rateLimitResponse(rate);
+  const gate = await guard(request, {
+    bucket: "cafes-write",
+    requireAuth: true,
+    route: "PATCH /api/checkins/[id]",
+  });
+  if (!gate.ok) return gate.response;
+  const { user } = gate;
 
   try {
     const result = await updateCheckIn(user.id, id, parsed.value);
@@ -89,19 +78,13 @@ export async function DELETE(
     return apiError("invalid_request", "id must be a UUID", 400);
   }
 
-  const user = await getCurrentUser();
-  if (!user) {
-    return apiError("unauthorized", 401);
-  }
-
-  const clientId = getClientIdentifier(request, user);
-  const rate = await checkRateLimit(
-    "cafes-write",
-    clientId,
-    rateLimitBuckets("cafes-write"),
-    "DELETE /api/checkins/[id]",
-  );
-  if (!rate.allowed) return rateLimitResponse(rate);
+  const gate = await guard(request, {
+    bucket: "cafes-write",
+    requireAuth: true,
+    route: "DELETE /api/checkins/[id]",
+  });
+  if (!gate.ok) return gate.response;
+  const { user } = gate;
 
   try {
     const result = await softDeleteCheckIn(user.id, id);

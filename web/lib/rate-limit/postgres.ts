@@ -2,6 +2,7 @@ import "server-only";
 
 import type { QueryResult } from "pg";
 import { query as poolQuery } from "@/lib/db/postgres";
+import { emitRateLimitAlert } from "@/lib/observability/rate-limit-alert";
 import type { RateLimitResult } from "./types";
 
 /**
@@ -99,12 +100,12 @@ export class PostgresRateLimiter {
         // The CTE always returns exactly one row; treat absence as a
         // storage-layer anomaly and fail open.
         this.logError("rate-limiter returned no row", null);
-        return this.failOpenResult(now);
+        return this.failOpen(key, windowMs, maxRequests, now);
       }
       return mapBucketRow(row as { tokens: unknown; reset_at: unknown }, now);
     } catch (err) {
       this.logError("rate-limiter check failed, failing open", err);
-      return this.failOpenResult(now);
+      return this.failOpen(key, windowMs, maxRequests, now);
     }
   }
 
@@ -120,9 +121,27 @@ export class PostgresRateLimiter {
     // recreates its key atomically, so this DELETE is always safe.
     await this.run("DELETE FROM rate_limits WHERE reset_at < now()");
   }
-
   private failOpenResult(now: number): RateLimitResult {
     return { allowed: true, remaining: Number.MAX_SAFE_INTEGER, resetAt: now, retryAfter: 0 };
+  }
+
+  /**
+   * Fail-open path (BRAWUKA-171): availability-first is unchanged, but the
+   * failure is now observable. Uses the same `emitRateLimitAlert` hook as
+   * the denial path with `reason: "fail_open"` so "limiter enforced" and
+   * "limiter blind" stay distinguishable. The backend only sees the
+   * composite key (`bucket:client[:window]`), so it is forwarded as-is.
+   */
+  private failOpen(key: string, windowMs: number, maxRequests: number, now: number): RateLimitResult {
+    emitRateLimitAlert({
+      bucket: key,
+      clientId: "unknown",
+      windowMs,
+      maxRequests,
+      retryAfter: 0,
+      reason: "fail_open",
+    });
+    return this.failOpenResult(now);
   }
 
   private logError(message: string, err: unknown): void {

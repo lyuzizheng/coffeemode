@@ -218,6 +218,13 @@ async function runSmokeSuite() {
       const res = await page.goto(`${base}/cafes/${E2E_CAFE_ID}`, { waitUntil: "domcontentloaded" });
       const bodyHtml = await page.innerHTML("body");
       assert(res?.status() === 200, `Expected 200 for seeded cafe, got ${res?.status()}`);
+      // BRAWUKA-184: the plain shell is the cacheable class — the static
+      // public header from the single source (app.yaml seo.shellCache).
+      const cc2 = res?.headers()["cache-control"] ?? "";
+      assert(
+        cc2.includes("public") && cc2.includes("s-maxage=600"),
+        `Expected cacheable Cache-Control on plain shell, got "${cc2}"`,
+      );
       assert(bodyHtml.includes("E2E Smoke Cafe"), "Cafe name 'E2E Smoke Cafe' not rendered on page");
       assert(bodyHtml.includes("San Francisco"), "City 'San Francisco' not rendered on page");
 
@@ -245,6 +252,15 @@ async function runSmokeSuite() {
 
       const res = await page.goto(`${base}/cafes/definitely-not-a-cafe`, { waitUntil: "domcontentloaded" });
       assert(res?.status() === 404, `Expected HTTP 404 status for invalid cafe, got ${res?.status()}`);
+      // BRAWUKA-184: the gone-cafe 404 is the bypass class — the proxy
+      // stamps no-store on the rewrite so a recreated cafe never stays gone
+      // in shared cache. (Session-refresh bypass is pinned at unit level in
+      // tests/cafe-shell-cache.test.ts; e2e has no live Supabase session.)
+      const cc3 = res?.headers()["cache-control"] ?? "";
+      assert(
+        cc3.includes("no-store"),
+        `Expected no-store Cache-Control on gone-cafe 404, got "${cc3}"`,
+      );
 
       const pageText = await page.textContent("body");
       assert(

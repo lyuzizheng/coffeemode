@@ -1,0 +1,22 @@
+# Fixture: the configured shape an owner produces once the real resources exist
+# — [env.production] with the ids returned by `wrangler kv namespace create` /
+# `wrangler d1 create`. The guard must accept it and hand off to wrangler.
+name = "poi-service"
+main = "../../src/index.ts"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "POI_KV"
+id = "22222222-2222-2222-2222-222222222222"
+
+[env.production]
+name = "poi-service-prod"
+
+[[env.production.kv_namespaces]]
+binding = "POI_KV"
+id = "9f1c4a2e-7b30-4d55-8a11-6c2d90f4e7b8"
+
+[[env.production.d1_databases]]
+binding = "POI_DB"
+database_name = "poi-store"
+database_id = "3c8d5b10-2f47-4e69-9c02-51ab7de8f334"

@@ -460,6 +460,7 @@
     "by_author": "By {name}",
     "like_aria": "Like this check-in",
     "like_signin": "Sign in to like a check-in",
+    "card_actions_aria": "More actions for this check-in",
     "load_failed": "Couldn't load check-ins",
     "detail_load_failed": "Couldn't load this cafe",
     "retry": "Retry",

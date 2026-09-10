@@ -414,8 +414,8 @@ function CheckinForm({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cafe", cafeId] });
       queryClient.invalidateQueries({ queryKey: ["cafe-checkins", cafeId] });
-      // The DG72 cafe-page "Edit your check-in" row keys off this probe —
-      // without it the row would linger after the last live check-in is gone.
+      // The DG64 revisit probe shares this query key — without it a
+      // reopened drawer would reuse a stale last-check-in answer.
       queryClient.invalidateQueries({ queryKey: ["last-checkin", cafeId] });
       queryClient.invalidateQueries({ queryKey: ["profile"] });
       onClose();

@@ -460,6 +460,7 @@
     "by_author": "{name}",
     "like_aria": "点赞这条打卡",
     "like_signin": "登录后才能点赞",
+    "card_actions_aria": "这条打卡的更多操作",
     "load_failed": "打卡加载失败，再试试？",
     "detail_load_failed": "咖啡馆加载失败，再试试？",
     "retry": "重试",

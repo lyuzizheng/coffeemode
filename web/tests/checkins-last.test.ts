@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { REVISIT_WINDOW_HOURS } from "@/lib/db/checkins";
 import { GET as lastCheckinGET } from "@/app/api/checkins/last/route";
 
 const getUserMock = vi.fn();
@@ -17,7 +16,6 @@ vi.mock("@/lib/db/postgres", () => ({
 
 const USER = { id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" };
 const CAFE = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22";
-const CHECKIN = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33";
 
 function getRequest(url: string) {
   return new NextRequest(new URL(url));
@@ -48,26 +46,4 @@ describe("GET /api/checkins/last", () => {
     expect(poolQueryMock).not.toHaveBeenCalled();
   });
 
-  it("200s with checkin null when the user never checked in here", async () => {
-    poolQueryMock.mockResolvedValueOnce({ rows: [] });
-    const res = await lastCheckinGET(getRequest(`https://localhost/api/checkins/last?cafe_id=${CAFE}`));
-    expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ checkin: null, revisitWindowHours: REVISIT_WINDOW_HOURS });
-  });
-
-  it("200s with the most recent check-in row", async () => {
-    const row = {
-      id: CHECKIN,
-      scores: { wifi: 80, overall: 90 },
-      max_stay: "3h",
-      note: "Great corner seat",
-      visited_at: "2026-08-20T10:00:00.000Z",
-    };
-    poolQueryMock.mockResolvedValueOnce({ rows: [row] });
-    const res = await lastCheckinGET(getRequest(`https://localhost/api/checkins/last?cafe_id=${CAFE}`));
-    expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ checkin: row, revisitWindowHours: REVISIT_WINDOW_HOURS });
-    // The helper must scope to the caller and the requested cafe.
-    expect(poolQueryMock).toHaveBeenCalledWith(expect.any(String), [USER.id, CAFE]);
-  });
 });

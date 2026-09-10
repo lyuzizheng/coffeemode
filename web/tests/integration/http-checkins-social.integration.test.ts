@@ -42,10 +42,10 @@ import {
   type RouteContext,
 } from "../helpers/http-client";
 import {
+  cleanupIntegrationDatabase,
   integrationAdminUrl,
   makeTestDbName,
   provisionTestDatabase,
-  quotedIdentifier,
   testDatabaseUrl,
 } from "../helpers/db";
 import {
@@ -357,18 +357,10 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
     }
 
     if (RUN_INTEGRATION && testDbUrl) {
-      const admin = new pg.Client(getPoolConfig(adminDbUrl));
       try {
-        await admin.connect();
-        await admin.query(`drop database if exists ${quotedIdentifier(TEST_DB)} with (force)`);
+        await cleanupIntegrationDatabase(adminDbUrl, TEST_DB);
       } catch (err) {
         errors.push(err);
-      } finally {
-        try {
-          await admin.end();
-        } catch (err) {
-          errors.push(err);
-        }
       }
     }
 
@@ -378,7 +370,7 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
     if (errors.length > 0) {
       throw new AggregateError(errors, "http-checkins-social integration cleanup failed");
     }
-  });
+  }, 60_000);
 
   // =========================================================================
   // 1. POST /api/checkins contract: auth, origin, validation, unknown cafe

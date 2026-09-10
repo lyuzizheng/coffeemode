@@ -165,6 +165,60 @@ describe("Postgres pool lifecycle", () => {
     await closePool();
     expect(currentMockPool!.end).toHaveBeenCalledOnce();
   });
+  it("arms the close watchdog while ending and clears it on success", async () => {
+    vi.useFakeTimers();
+    try {
+      process.env.DATABASE_URL = "postgres://u:p@localhost/db";
+      getPool();
+      const { promise, resolve } = Promise.withResolvers<void>();
+      currentMockPool!.end.mockReturnValue(promise);
+      const baseline = vi.getTimerCount();
+      const closed = closePool();
+      expect(vi.getTimerCount()).toBe(baseline + 1);
+      resolve();
+      await closed;
+      expect(vi.getTimerCount()).toBe(baseline);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("unrefs the watchdog when the runtime timer supports it", async () => {
+    const unref = vi.fn();
+    // Named const with reason: stubGlobal needs a setTimeout-shaped factory
+    // whose return carries an observable unref; no real timer is armed.
+    const stubSetTimeout: typeof setTimeout = ((handler: () => void) => {
+      void handler;
+      return { unref };
+    }) as unknown as typeof setTimeout;
+    vi.stubGlobal("setTimeout", stubSetTimeout);
+    try {
+      process.env.DATABASE_URL = "postgres://u:p@localhost/db";
+      getPool();
+      currentMockPool!.end.mockResolvedValue(undefined);
+      await closePool();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(unref).toHaveBeenCalledOnce();
+  });
+
+  it("resolves via the watchdog when pool.end() hangs", async () => {
+    vi.useFakeTimers();
+    try {
+      process.env.DATABASE_URL = "postgres://u:p@localhost/db";
+      getPool();
+      const { promise } = Promise.withResolvers<void>();
+      currentMockPool!.end.mockReturnValue(promise);
+      const closed = closePool();
+      await vi.advanceTimersByTimeAsync(5000);
+      await closed;
+      expect(currentMockPool!.end).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
 });
 
 describe("withTransaction", () => {

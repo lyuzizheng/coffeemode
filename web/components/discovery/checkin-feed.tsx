@@ -1,13 +1,16 @@
 "use client";
 
 /**
- * Check-in feed (artifact §5.3.5 + §6, spec 0001, DG11/DG17/DG113).
+ * Check-in feed (artifact §5.3.5 + §6, spec 0001, DG11/DG17/DG72/DG113).
  *
- * Newest is the default mode (DG113). The Helpful/Newest control is one
- * segmented control (role=tablist, arrow keys, snappy-spring pill slide);
- * switching modes keeps the previous content until the new page arrives
- * (stale-while-revalidate, DG17 — no spinners on switch). Pagination is
- * cursor-based and deduplicated by check-in id.
+ * Newest is the default mode (DG113). Your own cards carry an overflow menu
+ * with an edit entry opening the check-in drawer prefilled (DG72; the
+ * profile history list is the other entry — owner verdict BRAWUKA-120).
+ * The Helpful/Newest control is one segmented control (role=tablist, arrow
+ * keys, snappy-spring pill slide); switching modes keeps the previous
+ * content until the new page arrives (stale-while-revalidate, DG17 — no
+ * spinners on switch). Pagination is cursor-based and deduplicated by
+ * check-in id.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
@@ -20,7 +23,8 @@ import { keepPreviousData,
   type InfiniteData,
 } from "@tanstack/react-query";
 import { toast } from "@heroui/react";
-import { HeartIcon } from "@/components/icons";
+import { DotsIcon, HeartIcon, PencilIcon } from "@/components/icons";
+import { CheckinDrawer } from "@/components/checkin/checkin-drawer";
 import { InlineError } from "./inline-error";
 import { dedupeCheckins } from "@/lib/discovery/view-model";
 import { spring } from "@/lib/motion";
@@ -96,18 +100,90 @@ function MiniScores({ checkin }: { checkin: PublicCheckIn }) {
 
 function FeedCard({
   checkin,
+  cafeId,
+  cafeName,
   onLike,
   likePending,
 }: {
   checkin: PublicCheckIn;
+  cafeId: string;
+  cafeName: string;
   onLike: (checkin: PublicCheckIn) => void;
   likePending: boolean;
 }) {
   const t = useTranslations("discovery");
+  const tCheckin = useTranslations("checkIn");
   const liked = checkin.liked_by_viewer;
+  // DG72 edit entry: the overflow menu renders only on the viewer's own
+  // cards (`owned_by_viewer` is a server-computed boolean — no user_id ever
+  // reaches the client, DG13). It opens the same drawer in edit mode,
+  // prefilled from the feed DTO.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
+  // Menu dismiss: outside pointer-down or Escape; focus returns to trigger.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
+
   return (
     <article className="flex flex-col gap-2 rounded-md border border-separator bg-surface p-3">
-      <FeedCardMeta visitedAt={checkin.visited_at} author={checkin.author} />
+      <div className="flex items-start justify-between gap-2">
+        <FeedCardMeta visitedAt={checkin.visited_at} author={checkin.author} />
+        {checkin.owned_by_viewer && (
+          <div ref={menuRef} className="relative shrink-0">
+            <button
+              ref={triggerRef}
+              type="button"
+              aria-label={t("card_actions_aria")}
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
+              onClick={() => setMenuOpen((v) => !v)}
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-sm text-muted transition-colors hover:text-foreground"
+            >
+              <DotsIcon size={16} />
+            </button>
+            {menuOpen && (
+              <div
+                role="menu"
+                className="absolute top-full right-0 z-10 min-w-44 rounded-md border border-separator bg-overlay py-1 shadow-lg"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setEditing(true);
+                  }}
+                  className="flex min-h-11 w-full items-center gap-2 px-3 text-sm text-foreground transition-colors hover:bg-surface-secondary"
+                >
+                  <PencilIcon size={14} />
+                  {tCheckin("editYourCheckIn")}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
       <MiniScores checkin={checkin} />
       {checkin.note && <p className="text-base text-foreground">{checkin.note}</p>}
       {checkin.photos.length > 0 && (
@@ -143,16 +219,35 @@ function FeedCard({
           <span className="tnum">{checkin.likes_count}</span>
         </button>
       </div>
+      {/* Same drawer as the profile history edit entry (DG72): prefilled from
+          the feed DTO. Save/delete invalidation lives in the drawer itself. */}
+      {editing && (
+        <CheckinDrawer
+          isOpen
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) setEditing(false);
+          }}
+          cafeId={cafeId}
+          cafeName={cafeName}
+          mode="edit"
+          editCheckinId={checkin.id}
+          initialScores={checkin.scores}
+          initialMaxStay={checkin.max_stay}
+          initialNote={checkin.note}
+        />
+      )}
     </article>
   );
 }
 
 export function CheckinFeed({
   cafeId,
+  cafeName,
   onMissingCafe,
   onCheckIn,
 }: {
   cafeId: string;
+  cafeName: string;
   onMissingCafe: () => void;
   onCheckIn: () => void;
 }) {
@@ -317,6 +412,8 @@ export function CheckinFeed({
             <FeedCard
               key={checkin.id}
               checkin={checkin}
+              cafeId={cafeId}
+              cafeName={cafeName}
               onLike={(c) => likeMutation.mutate(c)}
               likePending={likeMutation.isPending}
             />

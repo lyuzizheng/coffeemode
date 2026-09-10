@@ -45,10 +45,10 @@ import {
   type RouteContext,
 } from "../helpers/http-client";
 import {
+  cleanupIntegrationDatabase,
   integrationAdminUrl,
   makeTestDbName,
   provisionTestDatabase,
-  quotedIdentifier,
   testDatabaseUrl,
 } from "../helpers/db";
 import {
@@ -446,18 +446,10 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     }
 
     if (RUN_INTEGRATION && testDbUrl) {
-      const admin = new pg.Client(getPoolConfig(adminDbUrl));
       try {
-        await admin.connect();
-        await admin.query(`drop database if exists ${quotedIdentifier(TEST_DB)} with (force)`);
+        await cleanupIntegrationDatabase(adminDbUrl, TEST_DB);
       } catch (err) {
         errors.push(err);
-      } finally {
-        try {
-          await admin.end();
-        } catch (err) {
-          errors.push(err);
-        }
       }
     }
 
@@ -466,7 +458,7 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     if (errors.length > 0) {
       throw new AggregateError(errors, "http-user-lifecycle integration cleanup failed");
     }
-  });
+  }, 60_000);
 
   it("Act 0 (harness): liveness smoke, persona sessions resolve, POI seam injects the google shape with zero network", async () => {
     // Liveness smoke (spec §11): the sync GET takes no request — parse directly.
@@ -591,7 +583,6 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     });
     expect(cafe4.tz).toBe("Asia/Singapore");
     cafe4Id = cafe4.cafeId;
-
     // Initial aggregate is exactly the creator's single contribution (User D reads).
     // composite: 90*.3 + 80*.2 + 70*.2 + 60*.15 + 95*.15 = 80.25.
     const detail = await getCafeDetailAs(clientD, cafe1Id);
@@ -902,7 +893,6 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
       expect(cafe4.work_stats.experience_score).toBe(95);
       expect(cafe4.work_stats.n_users).toBe(1);
       expect(cafe4.work_stats.n_checkins).toBe(1);
-
       // Distance order holds from D's doorstep in both postures.
       const nearby = await observer.get<NearbyDTO>(cafesGET, "/api/cafes", {
         query: { lat: D_LAT, lng: D_LNG, radius_km: 10 },
@@ -953,7 +943,6 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     expect(tokyoBoosted.status).toBe(200);
     expect(tokyoBoosted.data.results[0]?.cafe?.id).toBe(cafe2Id);
     expect(tokyoBoosted.data.results[0]?.cafe?.work_stats.experience_score).toBeCloseTo(88.33, 2);
-
     // Profile stats move with lifecycle events (distinct live cafes visited / live check-ins).
     const statsA = await clientA.get<ProfileDTO, NoCtx, NextRequest>(profileGET, "/api/profile");
     expect(statsA.data.stats).toEqual({ cafesCount: 2, checkinsCount: 2 });

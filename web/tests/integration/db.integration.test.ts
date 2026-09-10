@@ -80,10 +80,10 @@ import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import { recomputeAllWorkStats } from "@/lib/stats/aggregate";
 import { coerceWorkStats } from "@/lib/stats/work-stats";
 import {
+  cleanupIntegrationDatabase,
   integrationAdminUrl,
   makeTestDbName,
   provisionTestDatabase,
-  quotedIdentifier,
   testDatabaseUrl,
 } from "../helpers/db";
 import {
@@ -163,18 +163,10 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       errors.push(error);
     }
     if (RUN_INTEGRATION && testDbUrl) {
-      const admin = new pg.Client(getPoolConfig(adminDbUrl));
       try {
-        await admin.connect();
-        await admin.query(`drop database if exists ${quotedIdentifier(TEST_DB)} with (force)`);
+        await cleanupIntegrationDatabase(adminDbUrl, TEST_DB);
       } catch (error) {
         errors.push(error);
-      } finally {
-        try {
-          await admin.end();
-        } catch (error) {
-          errors.push(error);
-        }
       }
     }
     if (previousDatabaseUrl === undefined) {
@@ -185,7 +177,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     if (errors.length > 0) {
       throw new AggregateError(errors, "real-DB integration cleanup failed");
     }
-  });
+  }, 60_000);
 
   it("applies migrations 0001→0019 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
@@ -926,6 +918,34 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         viewerId: null,
       });
       expect(anonymous.checkins.every((c) => c.liked_by_viewer === false)).toBe(true);
+    });
+
+    it("owned_by_viewer marks only the author's own rows, never leaking user_id", async () => {
+      await seedFeedCheckins(1); // authored by U1, like the CHECKIN_A1 baseline
+      const asAuthor = await listPublicCheckIns({
+        cafeId: CAFE_A,
+        mode: "newest",
+        viewerId: U1,
+      });
+      expect(asAuthor.checkins).toHaveLength(2);
+      expect(asAuthor.checkins.every((c) => c.owned_by_viewer === true)).toBe(true);
+      const asOther = await listPublicCheckIns({
+        cafeId: CAFE_A,
+        mode: "newest",
+        viewerId: U2,
+      });
+      expect(asOther.checkins.every((c) => c.owned_by_viewer === false)).toBe(true);
+      const anonymous = await listPublicCheckIns({
+        cafeId: CAFE_A,
+        mode: "newest",
+        viewerId: null,
+      });
+      expect(anonymous.checkins.every((c) => c.owned_by_viewer === false)).toBe(true);
+      // DG13: ownership is a boolean — the author's id appears nowhere in the DTO.
+      for (const c of asAuthor.checkins) {
+        expect(c).not.toHaveProperty("user_id");
+        expect(JSON.stringify(c)).not.toContain(U1);
+      }
     });
 
     it("rejects cross-mode and malformed cursors", async () => {

@@ -99,6 +99,17 @@ jobs:
       - name: Unit tests
         run: npm run test
 
+      - name: Coverage ratchet (v8 thresholds in vitest.config.mts)
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: web/coverage
+          if-no-files-found: error
+
       - name: Build
         run: npm run build
 
@@ -203,10 +214,10 @@ jobs:
         env:
           DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode
         run: npm run test:integration:journey
-      - name: Real Postgres HTTP discovery integration tests
+      - name: Real Postgres HTTP lifecycle integration tests
         env:
           DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode
-        run: npm run test:integration:http-discovery
+        run: npm run test:integration:http
       - name: Real MinIO/R2 image round-trip tests
         env:
           DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode

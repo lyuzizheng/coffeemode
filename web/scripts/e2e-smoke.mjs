@@ -146,11 +146,12 @@ async function runSmokeSuite() {
         ) {
           return;
         }
-        // DG72/DG105: the CDN-cached cafe shell probes /api/checkins/last
-        // client-side to find the viewer's live check-in; signed-out, its
-        // 401 is the contract's anonymous answer (the UI treats it as
-        // "no row"), not a fault. Exempt exactly that subresource error —
-        // any other endpoint's non-2xx still fails the gate.
+        // DG64/DG105: the check-in drawer probes /api/checkins/last
+        // client-side on open (CDN-cached shell, per-user auth can't bake
+        // into HTML); signed-out, its 401 is the contract's anonymous
+        // answer (the drawer drops to the sign-in gate), not a fault.
+        // Exempt exactly that subresource error — any other endpoint's
+        // non-2xx still fails the gate.
         if (
           msg.location()?.url?.startsWith(`${base}/api/checkins/last`) &&
           msg.text().startsWith(

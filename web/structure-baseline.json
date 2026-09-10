@@ -1,0 +1,30 @@
+{
+  "$comment": "Grandfathered structure exemptions (spec 0009 §exceptions). Registry only: read by eslint.config.mjs (structural rules off for these paths) and scripts/check-file-size.mjs (ratchet: a listed file may shrink, never grow). Additions require review and a split follow-up; removals are always welcome.",
+  "files": [
+    {
+      "path": "lib/db/cafes.ts",
+      "lines": 826,
+      "reason": "over budget before the guard existed — split tracked by the BRAWUKA-175 quality program"
+    },
+    {
+      "path": "lib/db/checkins.ts",
+      "lines": 758,
+      "reason": "over budget before the guard existed — split tracked by the BRAWUKA-175 quality program"
+    },
+    {
+      "path": "components/checkin/checkin-drawer.tsx",
+      "lines": 725,
+      "reason": "over budget before the guard existed — split tracked by the BRAWUKA-175 quality program"
+    },
+    {
+      "path": "components/discovery/checkin-feed.tsx",
+      "lines": 439,
+      "reason": "over budget before the guard existed — split tracked by the BRAWUKA-175 quality program"
+    },
+    {
+      "path": "lib/db/profile.ts",
+      "lines": 431,
+      "reason": "over budget before the guard existed — split tracked by the BRAWUKA-175 quality program"
+    }
+  ]
+}

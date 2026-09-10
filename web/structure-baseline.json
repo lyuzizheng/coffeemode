@@ -29,8 +29,8 @@
     },
     {
       "path": "components/discovery/checkin-feed.tsx",
-      "lines": 439,
-      "reason": "over budget before the guard existed — split tracked by the BRAWUKA-175 quality program"
+      "lines": 440,
+      "reason": "over budget before the guard existed — split tracked by the BRAWUKA-175 quality program. Raised 439 → 440 on rebase: BRAWUKA-73 (#349) grew the file on main before this guard gated main; the only-shrink ratchet binds from 440."
     },
     {
       "path": "lib/db/profile.ts",

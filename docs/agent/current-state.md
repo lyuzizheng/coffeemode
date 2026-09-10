@@ -21,7 +21,7 @@ The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI 
   map-independent UI artifact is delivered and grilled (DG21–DG124); only the
   map-bound artifacts remain, waiting on Apple credentials (#131).
 - Issue #117 adds CI enforcement for the real-DB integration suite; the local suite is green.
-- BRAWUKA-146 / spec 0008 defines the real-client HTTP journey matrix (Paths 1–6 through route handlers only): Stage 1 harness `web/tests/helpers/http-client.ts` (PR #331, pending merge), Stage 2 = slices 2A–2D + the `http-user-lifecycle` capstone, Stage 3 prunes the legacy tests per spec 0008 §12.
+- BRAWUKA-146 / spec 0008 real-client HTTP journey matrix (Paths 1–6 through route handlers only): Stage 1 harness (BRAWUKA-147, merged #330), Stage 2 suites (BRAWUKA-156..159, BRAWUKA-149), and Stage 3 (BRAWUKA-150): test suite audited and pruned per spec 0008 §12, `test:integration:http` mounted as canonical gate in CI, database teardown hardened.
 - Issue #118 hardens the real-DB suite against unsafe database targets and order-dependent coverage.
 - Issue #119 preserves image-service storage failures instead of mapping them to `not_found`.
 - Issue #156 adds a real MinIO/R2 image round-trip suite (`web/tests/integration/images.integration.test.ts`, `npm run test:integration:images`): presigned PUT -> HEAD -> processor variant re-upload, `completeImageUpload` end-to-end with real storage + DB gallery/intent metadata + replay rejection, missing-object 404, tampered Content-Type 403, single-use intent consume, and bad-creds 403. Storage failures fail the suite (no silent skip); CI runs it in `integration-gate` (merged DB+MinIO; was `images-integration-gate`).

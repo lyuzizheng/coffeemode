@@ -216,59 +216,6 @@ describe("PATCH /api/profile/identity", () => {
     expect(body.error).toBe("profile_not_found");
   });
 
-  it("returns 200 and updated identity state on successful opt-in", async () => {
-    vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
-    vi.mocked(updateProfileIdentity).mockResolvedValueOnce({
-      showPublicIdentity: true,
-      publicHandle: "alex-4a1f",
-      identityConsentedAt: "2026-09-06T12:00:00.000Z",
-      publicHandleChangedAt: null,
-    });
-
-    const req = new Request("http://localhost/api/profile/identity", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ showPublicIdentity: true }),
-    }) as NextRequest;
-
-    const res = await PATCH(req);
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.ok).toBe(true);
-    expect(body.showPublicIdentity).toBe(true);
-    expect(body.publicHandle).toBe("alex-4a1f");
-    expect(body.identityConsentedAt).toBe("2026-09-06T12:00:00.000Z");
-    expect(body.publicHandleChangedAt).toBeNull();
-    // Response is single-convention camelCase — no snake_case duplicates.
-    expect(body).not.toHaveProperty("show_public_identity");
-    expect(body).not.toHaveProperty("public_handle");
-    expect(body).not.toHaveProperty("identity_consented_at");
-    expect(body).not.toHaveProperty("public_handle_changed_at");
-  });
-
-  it("returns 200 on successful opt-out, retaining reserved handle", async () => {
-    vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
-    vi.mocked(updateProfileIdentity).mockResolvedValueOnce({
-      showPublicIdentity: false,
-      publicHandle: "alex-4a1f",
-      identityConsentedAt: null,
-      publicHandleChangedAt: null,
-    });
-
-    const req = new Request("http://localhost/api/profile/identity", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ showPublicIdentity: false }),
-    }) as NextRequest;
-
-    const res = await PATCH(req);
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.ok).toBe(true);
-    expect(body.showPublicIdentity).toBe(false);
-    expect(body.publicHandle).toBe("alex-4a1f");
-    expect(body.identityConsentedAt).toBeNull();
-  });
 
   it("returns 500 when updateProfileIdentity throws an unexpected error", async () => {
     vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });

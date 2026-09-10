@@ -28,40 +28,6 @@ describe("Profile DB helpers", () => {
       expect(poolQueryMock).not.toHaveBeenCalled();
     });
 
-    it("returns mapped DTO on hit", async () => {
-      poolQueryMock.mockResolvedValueOnce({
-        rows: [
-          {
-            id: userId,
-            display_name: "Nomad Alex",
-            avatar_url: null,
-            current_city: "tokyo",
-            created_at: new Date("2026-08-25T10:00:00.000Z"),
-            show_public_identity: true,
-            public_handle: "nomad-alex-ab12",
-            identity_consented_at: new Date("2026-09-07T00:00:00.000Z"),
-            public_handle_changed_at: null,
-          },
-        ],
-        command: "SELECT",
-        rowCount: 1,
-        oid: 0,
-        fields: [],
-      });
-
-      const profile = await getProfile(userId);
-      expect(profile).toEqual({
-        id: userId,
-        displayName: "Nomad Alex",
-        avatarUrl: null,
-        currentCity: "tokyo",
-        createdAt: "2026-08-25T10:00:00.000Z",
-        showPublicIdentity: true,
-        publicHandle: "nomad-alex-ab12",
-        identityConsentedAt: "2026-09-07T00:00:00.000Z",
-        publicHandleChangedAt: null,
-      });
-    });
   });
 
   describe("getUserStats", () => {
@@ -93,26 +59,6 @@ describe("Profile DB helpers", () => {
       expect(await updateProfile(invalidId, { displayName: "Valid" })).toBeNull();
     });
 
-    it("updates display_name and returns updated DTO", async () => {
-      poolQueryMock.mockResolvedValueOnce({
-        rows: [
-          {
-            id: userId,
-            display_name: "New Name",
-            avatar_url: null,
-            current_city: "singapore",
-            created_at: new Date("2026-08-25T10:00:00.000Z"),
-          },
-        ],
-        command: "UPDATE",
-        rowCount: 1,
-        oid: 0,
-        fields: [],
-      });
-
-      const updated = await updateProfile(userId, { displayName: "New Name" });
-      expect(updated?.displayName).toBe("New Name");
-    });
   });
 
   describe("getUserCheckIns", () => {

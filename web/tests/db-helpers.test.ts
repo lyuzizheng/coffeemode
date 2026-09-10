@@ -3,6 +3,7 @@ import pg from "pg";
 import {
   DEFAULT_DB_URL,
   DEFAULT_TEMPLATE_DB_NAME,
+  cleanupIntegrationDatabase,
   ensureTemplateDatabase,
   integrationAdminUrl,
   makeTestDbName,
@@ -83,16 +84,14 @@ describeIntegration("db test helpers — real Postgres template pooling", () => 
   const adminUrl = integrationAdminUrl();
 
   afterAll(async () => {
-    const admin = new pg.Client(getPoolConfig(adminUrl));
-    await admin.connect();
-    try {
-      for (const dbName of createdDbs) {
-        await admin.query(`drop database if exists ${quotedIdentifier(dbName)} with (force)`);
+    for (const dbName of createdDbs) {
+      try {
+        await cleanupIntegrationDatabase(adminUrl, dbName);
+      } catch {
+        // ignore cleanup errors on teardown
       }
-    } finally {
-      await admin.end();
     }
-  });
+  }, 60_000);
 
   it("ensureTemplateDatabase provisions and migrates the template database", async () => {
     const customTemplate = makeTestDbName("coffeemode_tpl_test");

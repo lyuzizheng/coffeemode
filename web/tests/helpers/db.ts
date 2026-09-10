@@ -154,3 +154,25 @@ export function runMigrations(url: string): void {
     stdio: "pipe",
   });
 }
+
+/**
+ * Safely clean up and drop a dedicated test database after integration tests.
+ * Configures bounded timeouts to prevent connection hangs and eliminate afterAll timeouts.
+ */
+export async function cleanupIntegrationDatabase(
+  adminUrl: string,
+  testDbName: string,
+): Promise<void> {
+  const config = getPoolConfig(adminUrl);
+  const admin = new pg.Client({
+    ...config,
+    connectionTimeoutMillis: 10_000,
+    statement_timeout: 30_000,
+  });
+  try {
+    await admin.connect();
+    await admin.query(`drop database if exists ${quotedIdentifier(testDbName)} with (force)`);
+  } finally {
+    await admin.end().catch(() => {});
+  }
+}

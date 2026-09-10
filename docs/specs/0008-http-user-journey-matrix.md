@@ -322,10 +322,11 @@ executes the audit against this list:
 | `tests/integration/db.integration.test.ts` | — | keep intact (canonical SQL semantics: triggers 0004/0008, migrations, concurrency the HTTP layer cannot reach) | — |
 | `tests/feed-cursor.test.ts`, `tests/stats/*`, `tests/search/*` (non-route), component/auth/helper suites | — | keep intact (codec edges, pure math, UI) | — |
 
-Deleting `tests/integration/user-journey.integration.test.ts` lands in the
-same change as a spec 0007 §1 amendment retiring its "proving file" line —
-the two 0007 split suites remain the service-layer proof.
-
+Stage 3 (BRAWUKA-150) completed this audit and pruning:
+- Deleted `tests/integration/user-journey.integration.test.ts` (100% covered by split suites + HTTP suites).
+- Pruned mocked happy-path blocks from `tests/cafes.test.ts`, `tests/checkins.test.ts`, `tests/checkins-last.test.ts`, `tests/db/profile.test.ts`, and `tests/profile/identity-route.test.ts`.
+- Mounted canonical `test:integration:http` script in `package.json` and aligned GitHub Actions CI `integration-gate`.
+- Hardened database teardown: centralized `cleanupIntegrationDatabase` with connection/query timeouts, bounded `closePool` with timeout race, and configured vitest `hookTimeout: 60_000` to eliminate `afterAll` cleanup timeouts.
 ### 13. Stage 2 implementation slicing (BRAWUKA-146)
 
 Stage 2 is re-architected from one monolithic issue into four depth slices

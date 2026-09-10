@@ -400,12 +400,6 @@ describe("POST /api/cafes", () => {
     expect(res.status).toBe(401);
   });
 
-  it("201s with the fused create result", async () => {
-    mockCreateHappyPath();
-    const res = await createPOST(postRequest(validBody()));
-    expect(res.status).toBe(201);
-    await expect(res.json()).resolves.toMatchObject({ cafeId: "cafe-1", checkinId: "checkin-1" });
-  });
 
   it("400s invalid_photos when a photo id was not issued to the caller", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [] }); // pre-provision dedupe check
@@ -794,85 +788,6 @@ describe("DELETE /api/cafes/[id]", () => {
     expect(clientQueryMock).toHaveBeenCalledTimes(3);
   });
 
-  it("200s and leaves shell when sole owner deletes (others = 0)", async () => {
-    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // cafeExists probe
-    clientQueryMock
-      .mockResolvedValueOnce({ rows: [{ id: CAFE_ID, created_by: USER.id, deleted_at: null }] }) // select cafe
-      .mockResolvedValueOnce({ rows: [{ count: "0" }] }) // count others
-      .mockResolvedValueOnce({ rows: [{ id: "checkin-1" }] }) // caller checkins
-      .mockResolvedValueOnce({ rowCount: 1 }) // soft delete caller checkins
-      .mockResolvedValueOnce({ rowCount: 1 }) // hide gallery photos
-      .mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }) // recomputeWorkStats lock
-      .mockResolvedValueOnce({ rows: [] }) // recomputeWorkStats live checkins query
-      .mockResolvedValueOnce({ rowCount: 1 }); // writeWorkStats
-
-    const res = await detailDELETE(
-      new Request(`https://localhost/api/cafes/${CAFE_ID}`, { method: "DELETE" }),
-      { params: Promise.resolve({ id: CAFE_ID }) },
-    );
-    expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({
-      ok: true,
-      id: CAFE_ID,
-      removed_checkins: 1,
-      owner_transferred: false,
-      shell: true,
-    });
-  });
-
-  it("200s and transfers ownership when confirmed on community cafe (others >= 1)", async () => {
-    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // cafeExists probe
-    clientQueryMock
-      .mockResolvedValueOnce({ rows: [{ id: CAFE_ID, created_by: USER.id, deleted_at: null }] }) // select cafe
-      .mockResolvedValueOnce({ rows: [{ count: "3" }] }) // count others
-      .mockResolvedValueOnce({ rows: [{ id: "checkin-1" }, { id: "checkin-2" }] }) // caller checkins
-      .mockResolvedValueOnce({ rowCount: 2 }) // soft delete caller checkins
-      .mockResolvedValueOnce({ rowCount: 1 }) // hide gallery photos
-      .mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }) // recomputeWorkStats lock
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            id: "other-ch",
-            cafe_id: CAFE_ID,
-            user_id: OTHER_USER,
-            is_creation: false,
-            scores: { wifi: 80 },
-            max_stay: null,
-            note: null,
-            photos: [],
-            likes_count: 0,
-            visited_at: new Date(),
-            created_at: new Date(),
-            updated_at: new Date(),
-            deleted_at: null,
-          },
-        ],
-      }) // recomputeWorkStats live checkins query
-      .mockResolvedValueOnce({ rowCount: 1 }) // writeWorkStats
-      .mockResolvedValueOnce({ rowCount: 1 }); // update created_by to service account
-
-    const res = await detailDELETE(
-      new Request(`https://localhost/api/cafes/${CAFE_ID}`, {
-        method: "DELETE",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ confirm: true }),
-      }),
-      { params: Promise.resolve({ id: CAFE_ID }) },
-    );
-    expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({
-      ok: true,
-      id: CAFE_ID,
-      removed_checkins: 2,
-      owner_transferred: true,
-      shell: false,
-    });
-
-    // Verify created_by update used the service account UUID from appConfig
-    const updateCall = clientQueryMock.mock.calls[clientQueryMock.mock.calls.length - 1];
-    expect(updateCall[0]).toContain("update cafes set created_by = $2");
-    expect(updateCall[1]).toEqual([CAFE_ID, SERVICE_ACCOUNT, USER.id]);
-  });
 
   it("403s when caller has 0 live checkins, others have checkins, and confirm is not true (zero mutations)", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // cafeExists probe
@@ -899,35 +814,6 @@ describe("DELETE /api/cafes/[id]", () => {
     expect(clientQueryMock).toHaveBeenCalledTimes(3);
   });
 
-  it("200s and transfers ownership when caller has 0 live checkins, others have checkins, and confirm is true", async () => {
-    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // cafeExists probe
-    clientQueryMock
-      .mockResolvedValueOnce({ rows: [{ id: CAFE_ID, created_by: USER.id, deleted_at: null }] }) // select cafe for update
-      .mockResolvedValueOnce({ rows: [{ count: "2" }] }) // count others
-      .mockResolvedValueOnce({ rows: [] }) // 0 caller live checkins
-      .mockResolvedValueOnce({ rowCount: 1 }); // update created_by to service account (no checkin/gallery/stats mutations)
-
-    const res = await detailDELETE(
-      new Request(`https://localhost/api/cafes/${CAFE_ID}`, {
-        method: "DELETE",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ confirm: true }),
-      }),
-      { params: Promise.resolve({ id: CAFE_ID }) },
-    );
-    expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({
-      ok: true,
-      id: CAFE_ID,
-      removed_checkins: 0,
-      owner_transferred: true,
-      shell: false,
-    });
-
-    const updateCall = clientQueryMock.mock.calls[clientQueryMock.mock.calls.length - 1];
-    expect(updateCall[0]).toContain("update cafes set created_by = $2");
-    expect(updateCall[1]).toEqual([CAFE_ID, SERVICE_ACCOUNT, USER.id]);
-  });
   it("404s on repeated delete on own shell (0 own live checkins)", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // cafeExists probe
     clientQueryMock

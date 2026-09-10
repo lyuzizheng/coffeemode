@@ -15,8 +15,7 @@ retirement in `## Stable decisions` §8.
 
 ### 1. Suite location and gate
 
-- Proving file: `web/tests/integration/user-journey.integration.test.ts`.
-- Staged suites: Path 1–3 core journey runs in `web/tests/integration/user-journey-discovery-creation.integration.test.ts` (BRAWUKA-143); Path 4–6 social/lifecycle runs in `web/tests/integration/user-journey-social-lifecycle.integration.test.ts` (BRAWUKA-144).
+- Service-layer suites: Path 1–3 core journey runs in `web/tests/integration/user-journey-discovery-creation.integration.test.ts` (BRAWUKA-143); Path 4–6 social/lifecycle runs in `web/tests/integration/user-journey-social-lifecycle.integration.test.ts` (BRAWUKA-144). The monolithic prototype `user-journey.integration.test.ts` was safely retired in Stage 3 (BRAWUKA-150 / spec 0008 §12) as pure duplication of the two split suites and the 5 HTTP suites.
 - Runs under the real-DB gate only (`RUN_INTEGRATION=1`), provisioned per
   run via `web/tests/helpers/db.ts` (`provisionTestDatabase` + template
   clone), same as `db.integration.test.ts`. Skipped otherwise so
@@ -137,17 +136,19 @@ redundant, fully-duplicated happy-path mock tests were safely retired while
 all route-shell validation errors, body-parser edges, payload matrices, and
 race/error conditions were strictly preserved:
 
-| Legacy file | Journey coverage | Retired in Phase 3 | Keep for |
+| Legacy file | Journey coverage | Retired in Phase 3 / Stage 3 | Keep for |
 | --- | --- | --- | --- |
-| `tests/cafes.test.ts` (48KB) | fused create, nearby, delete, sitemap | `listCafesNearby` mocked SQL check, `createCafeWithFirstCheckIn` happy-path mock | route-shell validation errors, body-parser edges, photo-intent/race/dupe errors |
+| `tests/integration/user-journey.integration.test.ts` | Paths 1–6 duplicate of split + HTTP suites | retired completely in BRAWUKA-150 | — |
+| `tests/cafes.test.ts` (48KB) | fused create, nearby, delete, sitemap | `listCafesNearby` mocked SQL check, `createCafeWithFirstCheckIn` happy-path mock, mocked delete happy-path | route-shell validation errors, body-parser edges, photo-intent/race/dupe errors |
 | `tests/checkins.test.ts` (30KB) | DG64/DG61/likes/feed order | `createCheckIn` happy-path mock, `toggleCheckInLike` mock echoes | invalid-payload matrices, visitor filters, revisit/idempotency/self-like error edges |
-| `tests/profile/identity-route.test.ts` | opt-in/out projection | (none; kept intact) | handle regex/cooldown/rate-limit edges, camelCase DTO serialization |
+| `tests/profile/identity-route.test.ts` | opt-in/out projection | mocked-route 200 happy paths retired in BRAWUKA-150 | handle regex/cooldown/rate-limit edges, camelCase DTO serialization |
 | `tests/integration/db.integration.test.ts` (87KB) | triggers, recompute, handoff | (none; kept intact) | canonical SQL-semantics reference |
 | `tests/cafes-recovery.test.ts` | Path 1 tombstone location + recovery recommendations (DG111/DG112) | (none; kept intact) | route 400 validation and rate-limit error edges |
 
 Rule: no file is removed until the journey is green on `main` for one
 full CI cycle; removals delete only fully-duplicated `it` blocks, never
-whole files blindly.
+whole files blindly (with the exception of `user-journey.integration.test.ts`
+which was 100% superseded by the two split suites and the HTTP suites).
 ### 10. Mock-vs-real boundary contracts and Path I/O matrix
 
 Stage-2 tests substitute fakes at exactly three seams
@@ -207,8 +208,7 @@ Postgres/PostGIS. Pinned by `web/tests/helpers/mocks.test.ts`.
 
 ## Tests / acceptance criteria
 
-- `RUN_INTEGRATION=1 npx vitest run tests/integration/user-journey.integration.test.ts`
-  passes against `docker compose up -d --wait postgres`.
+- `RUN_INTEGRATION=1 npm run test:integration:journey` passes against `docker compose up -d --wait postgres`.
 - `npm run test:integration` (extended) passes — old + new suites green
   together, proving no helper/template interference.
 - `npm run typecheck` and `npm run lint` pass on the new files.

@@ -3,7 +3,6 @@ import {
   CafeNotFoundError,
   CheckInNotFoundError,
   DuplicateCheckInError,
-  REVISIT_WINDOW_HOURS,
   SelfLikeError,
   createCheckIn,
   parseCheckInBody,
@@ -411,12 +410,6 @@ describe("createCheckIn", () => {
     }
   });
 
-  it("allows a create when the previous check-in is outside the window", async () => {
-    mockCheckInHappyPath();
-    const result = await createCheckIn(USER.id, validInput({ photo_ids: undefined }));
-    expect(result).toEqual({ checkinId: CHECKIN, deduped: false });
-    expect(clientQueryMock.mock.calls[1][1]).toEqual([CAFE, USER.id, REVISIT_WINDOW_HOURS]);
-  });
 
   it("throws CafeNotFoundError without provisioning or inserting when the cafe is missing", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [] }); // pre-provision cafe check
@@ -598,12 +591,6 @@ describe("POST /api/checkins", () => {
     expect(clientQueryMock).not.toHaveBeenCalled();
   });
 
-  it("201s with the new check-in id", async () => {
-    mockCheckInHappyPath();
-    const res = await checkinPOST(postRequest(url, validBody()));
-    expect(res.status).toBe(201);
-    await expect(res.json()).resolves.toMatchObject({ checkinId: CHECKIN });
-  });
 
   it("409s duplicate_checkin with the existing id when inside the revisit window (DG64)", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
@@ -657,16 +644,6 @@ describe("POST /api/checkins/[id]/like", () => {
     await expect(res.json()).resolves.toMatchObject({ error: "not_found" });
   });
 
-  it("200s with the toggle result", async () => {
-    clientQueryMock
-      .mockResolvedValueOnce({
-        rows: [{ checkin_count: 1, inserted_count: 1, deleted_count: 0, is_author: false }],
-      })
-      .mockResolvedValueOnce({ rows: [{ likes_count: 7 }] });
-    const res = await likePOST(...likeRequest(CHECKIN));
-    expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ liked: true, likesCount: 7 });
-  });
 
   it("403s self_like_forbidden when the caller is the check-in author", async () => {
     clientQueryMock.mockResolvedValueOnce({

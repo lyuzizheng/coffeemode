@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Image from "next/image";
 import { useTranslations, useLocale } from "next-intl";
 import { Button } from "@heroui/react";
 import { CoffeeIcon } from "@/components/icons";
@@ -84,11 +85,12 @@ export function ProfileHero({ profile, onProfileChange }: ProfileHeroProps) {
       {/* Avatar circle (80px) */}
       <div className="w-20 h-20 rounded-full bg-surface-tertiary border border-border flex items-center justify-center mb-4 overflow-hidden shadow-sm relative z-10">
         {profile?.avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <Image
             src={profile.avatarUrl}
             alt={profile.displayName}
-            className="w-full h-full object-cover"
+            fill
+            sizes="80px"
+            className="object-cover"
           />
         ) : (
           <span className="font-display font-bold text-2xl text-foreground">

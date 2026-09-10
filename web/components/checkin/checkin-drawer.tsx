@@ -197,7 +197,12 @@ function CheckinForm({
       note,
       photos: photos
         .filter((p) => p.file)
-        .map((p) => ({ id: p.id, file: p.file!, ...(p.imageUuid ? { imageUuid: p.imageUuid } : {}) })),
+        .map((p) => ({
+          id: p.id,
+          name: p.file!.name || "photo.jpg",
+          file: p.file!,
+          ...(p.imageUuid ? { imageUuid: p.imageUuid } : {}),
+        })),
       createdAt: Date.now(),
     }).catch(() => {});
   }, [isEdit, cafeId, cafeName, wifi, outlets, seats, temp, coffee, overall, maxStay, note, photos]);

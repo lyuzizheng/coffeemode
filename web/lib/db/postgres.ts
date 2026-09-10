@@ -105,10 +105,20 @@ export async function closePool(): Promise<void> {
   if (!pool) return;
   const current = pool;
   pool = null;
-  await Promise.race([
-    current.end(),
-    new Promise<void>((resolve) => setTimeout(resolve, 5000)),
-  ]);
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      current.end(),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, 5000);
+        // The watchdog must never hold the event loop open on its own.
+        // typeof-narrowing: Node runtimes return a Timeout object here.
+        if (typeof timer === "object") timer.unref();
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**

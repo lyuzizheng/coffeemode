@@ -2,12 +2,14 @@
 /**
  * Unified structure gate (spec 0009).
  *
- * Runs the three structure checks in parallel and fails if any of them fails:
+ * Runs the four structure checks in parallel and fails if any of them fails:
  *   - ESLint structural rules (file/function budget, nesting, complexity,
  *     identical functions, layer boundaries), reporting only the rule ids owned
  *     by this guard — everything else stays `npm run lint`'s job. ESLint's
  *     suppressions file (`web/eslint-suppressions.json`) carries the
  *     pre-existing violations, so this pass reports new code only.
+ *   - suppression ratchet: the registry above may only shrink, stale exemptions
+ *     must be pruned, and `max-lines` exemptions must match the size baseline.
  *   - jscpd duplication budget (`.jscpd.json` at the repo root).
  *   - `scripts/check-file-size.mjs` file budget + grandfathered ratchet.
  *
@@ -64,6 +66,16 @@ async function eslintStructure() {
   return { name: result.name, ok: findings.length === 0, detail: findings.join("\n") };
 }
 
+async function suppressionRatchet() {
+  const result = await exec(
+    "suppression ratchet",
+    process.execPath,
+    [join("scripts", "check-suppressions.mjs")],
+    webRoot,
+  );
+  return { name: result.name, ok: result.ok, detail: output(result) };
+}
+
 async function duplicationBudget() {
   // `.jscpd.json` must mirror `LIMITS.duplication`: jscpd reads JSON, this guard
   // reads the module, and a silent drift between them would weaken the gate.
@@ -87,7 +99,12 @@ async function fileBudget() {
   return { name: result.name, ok: result.ok, detail: output(result) };
 }
 
-const checks = await Promise.all([eslintStructure(), duplicationBudget(), fileBudget()]);
+const checks = await Promise.all([
+  eslintStructure(),
+  suppressionRatchet(),
+  duplicationBudget(),
+  fileBudget(),
+]);
 
 let failed = 0;
 for (const check of checks) {

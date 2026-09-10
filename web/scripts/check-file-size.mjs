@@ -17,7 +17,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { LIMITS, SOURCE_SCAN, loadGrandfathered } from "../structure.config.mjs";
+import { LIMITS, SOURCE_SCAN, loadBaseline } from "../structure.config.mjs";
 
 const webRoot = fileURLToPath(new URL("..", import.meta.url));
 const printBaseline = process.argv.includes("--print-baseline");
@@ -71,7 +71,7 @@ const measured = collectSourceFiles().map((file) => ({
   lines: countLines(readFileSync(file, "utf8")),
 }));
 
-const grandfathered = loadGrandfathered();
+const grandfathered = loadBaseline().files;
 const exemptions = new Map(grandfathered.map((entry) => [entry.path, entry]));
 
 const errors = [];

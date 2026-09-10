@@ -10,6 +10,7 @@
     "check:structure": "node scripts/check-structure.mjs",
     "check:duplication": "jscpd --config ../.jscpd.json",
     "check:file-size": "node scripts/check-file-size.mjs",
+    "check:suppressions": "node scripts/check-suppressions.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "db:migrate": "node scripts/migrate.mjs",

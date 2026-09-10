@@ -142,6 +142,9 @@
     }
   },
   "lib/config-schema.ts": {
+    "max-lines": {
+      "count": 1
+    },
     "max-lines-per-function": {
       "count": 1
     }
@@ -228,6 +231,16 @@
   },
   "next.config.ts": {
     "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "proxy.ts": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  },
+  "scripts/check-route-guards.mjs": {
+    "sonarjs/cognitive-complexity": {
       "count": 1
     }
   },

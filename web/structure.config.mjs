@@ -102,10 +102,22 @@ export const STRUCTURAL_RULE_IDS = Object.freeze([
   "no-restricted-syntax",
 ]);
 
+/**
+ * The two exemption registries (spec 0009 §exceptions):
+ *   - `eslint-suppressions.json` — RULE-level exemptions, applied by ESLint
+ *     itself; read by `scripts/check-suppressions.mjs` (ratchet + staleness).
+ *   - `structure-baseline.json` — FILE-size exemptions plus the budget for the
+ *     rule-level registry; read by `scripts/check-file-size.mjs` and
+ *     `scripts/check-suppressions.mjs`. `eslint.config.mjs` reads neither.
+ * Both are only-shrink: growth fails `npm run check:structure`.
+ */
+export const SUPPRESSIONS_FILE = "eslint-suppressions.json";
+/** Committed empty registry: re-runs ESLint against the full violation inventory. */
+export const EMPTY_SUPPRESSIONS_FILE = "scripts/empty-suppressions.json";
+
 const baselinePath = new URL("./structure-baseline.json", import.meta.url);
 
-/** Grandfathered exemptions; see `web/structure-baseline.json` header. */
-export function loadGrandfathered() {
-  const parsed = JSON.parse(readFileSync(baselinePath, "utf8"));
-  return parsed.files;
+/** Full registry file: `files` (size baseline) and `eslintSuppressions` (budget). */
+export function loadBaseline() {
+  return JSON.parse(readFileSync(baselinePath, "utf8"));
 }

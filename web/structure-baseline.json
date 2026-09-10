@@ -1,5 +1,16 @@
 {
-  "$comment": "Grandfathered structure exemptions (spec 0009 §exceptions). Registry only: read by eslint.config.mjs (structural rules off for these paths) and scripts/check-file-size.mjs (ratchet: a listed file may shrink, never grow). Additions require review and a split follow-up; removals are always welcome.",
+  "$comment": "Structure-guard registries (spec 0009 §exceptions). Two registries with different jobs live here; web/eslint.config.mjs reads neither and switches no rule off by path. (1) `files` = the FILE-SIZE baseline: files above the hard line budget, read by scripts/check-file-size.mjs, only-shrink (a listed file may get smaller, never bigger). (2) `eslintSuppressions` = the BUDGET for the RULE-level registry in web/eslint-suppressions.json — that registry is what actually exempts code (ESLint bulk suppressions), and scripts/check-suppressions.mjs enforces it: any growth (new file, new rule, per-rule count +1) fails, entries whose rule no longer fires must be pruned, and the set of files carrying a `max-lines` suppression must equal (1). Adding or removing an exemption therefore edits both files in the same commit and shows up in review.",
+  "eslintSuppressions": {
+    "files": 43,
+    "entries": 60,
+    "perRule": {
+      "max-depth": 4,
+      "max-lines": 6,
+      "max-lines-per-function": 43,
+      "sonarjs/cognitive-complexity": 15,
+      "sonarjs/no-identical-functions": 3
+    }
+  },
   "files": [
     {
       "path": "lib/db/cafes.ts",
@@ -25,6 +36,11 @@
       "path": "lib/db/profile.ts",
       "lines": 431,
       "reason": "over budget before the guard existed — split tracked by the BRAWUKA-175 quality program"
+    },
+    {
+      "path": "lib/config-schema.ts",
+      "lines": 424,
+      "reason": "crossed the hard budget when BRAWUKA-184 (#357) merged on main, i.e. before this guard gated main — pre-guard debt, split tracked by the BRAWUKA-175 quality program"
     }
   ]
 }

@@ -156,7 +156,7 @@ MUST 在当次提交内完成拆分。不允许"顺手加一行"把超标文件�
 - Facade：`web/lib/api/response.ts`（`apiError` 统一错误形状 L19、query 解析 `parseQueryPositiveInt` L58）；`web/lib/config.ts`（`rateLimits`/`appConfig` 冻结单例 + `rateLimitConfig` 访问守卫，YAML 数字归 `web/config/*.yaml`，DG107）。
 - 门禁 Facade（已定型，PR #359）：`web/lib/api/guard.ts` 的 `guard(request, { bucket, requireAuth, route })` 是唯一门禁入口——桶名编译期 + 运行时双校验 → 鉴权（401）→ clientId → 多窗口限流（429），`{ ok, user, clientId } | { ok: false, response }` 显式返回；`readJsonBody` 同模块收敛 body 解析。路由 MUST 经它进入，MUST NOT 手抄门禁样板（`scripts/check-route-guards.mjs` 全仓强制）。
 - 形状复用：`web/shared/places/geo.ts`（`haversineKm` 跨服务唯一真相）。
-- DI：`web/lib/stats/aggregate.ts`（`QueryFn` 类型 L31 + `defaultRunInTransaction()` 生产默认值 L49，聚合函数经 `query: QueryFn` L101 / `runInTransaction` L71、L130 注入——单测传假查询器即可覆盖，无需起库）。
+- DI：`web/lib/stats/aggregate.ts`（`QueryFn` 类型 L36 + `defaultRunInTransaction()` 生产默认值 L47，聚合函数经 `query: QueryFn` L101 / `runInTransaction` L71、L130 注入——单测传假查询器即可覆盖，无需起库）。
 
 本仓反例（禁止重演，括号内为正确动作）：
 
@@ -241,8 +241,15 @@ BRAWUKA-180 (#356) 拆分后存量违规 72 → 68、条目数 60 → 60、文�
 4. Workers（`poi-service/`、`image-service/`）阈值与本表相同；跨服务重复
    （FNV-1a、Maps 校验判例）唯一真相收敛到 `web/shared/`，Workers 不各自为政。
 5. 测试文件（体积、拆分手法、状态隔离、DB 断言策略）全部归 0003 所有；本规范对测试唯一的建议是：跨 `it` 共享可变状态（如模块级 `let cafe1Id`）是脆弱写法，新测试 SHOULD 每个 `it` 自建数据，存量迁移按 0003 排期。
-6. 事务客户端适配器收敛建议：`cafes.ts`（2 处）、`checkins.ts`（3 处）手写 `inSameTx: RunInTransaction` 包装器，
-   `complete.ts`（`CompleteQueryFn`）、`aggregate.ts`（`QueryFn`）各自定义一套——新代码 SHOULD 复用 `web/lib/db/postgres.ts` 导出的标准事务类型，存量五处在顺带重构时再收敛，不单独立项。
+6. 事务客户端适配器已收敛（BRAWUKA-182，`main` `7609e64`）：canonical 来源是
+   `web/lib/db/postgres.ts`（`TxQueryFn` / `RunInTransaction` / `txQueryFrom(client)` /
+   `txRunnerFrom(client)`）；`cafes/create|delete`、`checkins/create|update` 的 5 处
+   `inSameTx` 闭包与 4 处 `client.query.bind(client) as …` 结构转换全部改为复用；
+   `complete.ts`（`CompleteQueryFn`）、`stats/aggregate.ts`（`QueryFn`）、
+   `db/image-uploads.ts`（`IntentQueryFn`）、`images/provision-photos.ts`
+   （`ProvisionQueryFn`）的手写形状收敛为别名。新代码 MUST 复用 canonical 类型，
+   MUST NOT 再定义等价形状；`withTransaction` 仍是唯一事务边界（单次尝试、无自动重试
+   —— 重试从外层经 `withTransaction` 重进，幂等由 DG61 保证）。
 
 ## Tests / acceptance criteria
 

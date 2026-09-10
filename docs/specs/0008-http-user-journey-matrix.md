@@ -20,31 +20,49 @@ bug — assertions are never weakened to fit the code.
 ### 1. HTTP-only boundary and harness
 
 - All product-visible behavior is exercised through the Stage 1 harness
-  `web/tests/helpers/http-client.ts` (BRAWUKA-147, PR #331 — OPEN at spec
-  time; it is a pending-merge dependency and Stage 2 slices start only after
-  it lands on `main`). Real harness surface: `createHttpSession(userId)`
-  binds a persona to verb shortcuts (`session.post(handler, path, { json })`)
-  that run under `runAsHttpUser`, so A/B/C/D interleave safely;
-  `createAnonymousSession()` is the User-D read-only posture;
-  `buildHttpRequest` builds real headers/cookies/query/FormData;
-  `callRouteJson` / `readJsonResponse` return `{ status, body, headers,
-  text }`. Each consuming test file installs the auth seam itself with the
-  ready-made `httpAuthMockFactory()` — the `vi.mock("@/lib/auth/get-user")`
-  call must live in the test file, per the harness header.
+  `web/tests/helpers/http-client.ts` (BRAWUKA-147, PR #330 — MERGED as
+  commit `0760cbc`; it is the binding harness contract for all Stage 2
+  slices). Real harness surface:
+  - `apiClient(session)` builds an `ApiClient` bound to one simulated
+    identity, with verb shortcuts `get` / `post` / `patch` / `delete`
+    (plus `call` for full control and `raw` for a hand-built
+    `NextRequest`) that invoke real route handlers and return
+    `{ status, data, headers }` via `parseRouteResponse`. Identity can be
+    switched per client (`withSession`, `asGuest`) or per call
+    (`HttpRequestOptions.session`); `apiClient().asGuest()` (null
+    session) is the User-D anonymous read posture.
+  - `buildRouteRequest(method, path, { query, body, headers })` builds the
+    canonical `NextRequest` (absolute localhost origin URL,
+    `Origin: http://localhost:3000` satisfying `requireSameOrigin`, JSON
+    content type for bodied methods); `routeParams({ id })` builds the
+    dynamic-segment route context.
+  - Auth seam: each consuming test file installs
+    `vi.mock("@/lib/auth/get-user", () => ({ getCurrentUser: vi.fn() }))`
+    at the top (hoisted, per the harness header). Every client request
+    programs that mock via `setCurrentTestUser` (also exported for
+    hand-built requests); without the file-level mock it throws instead
+    of running as the wrong identity. Identity is process-global at
+    request-build time, so multi-user requests MUST be serialized — no
+    concurrent cross-identity `Promise.all`.
 - Exactly two non-HTTP seams exist, both harness-owned infrastructure, and
-  neither may assert or mutate product state. Neither exists in PR #331 yet —
-  both are small harness extensions that land with slice 2A as Stage 2
-  prerequisites:
-  1. one-time persona provisioning — a harness-owned seeder inserting the
-     four persona profile rows under fixed UUIDs
-     (`web/tests/helpers/fixtures.ts` convention); no product assertion may
-     run through it;
-  2. rate-limit bucket reset between Acts — a harness-owned
-     `resetRateLimits()` clearing the `rate_limits` table, because the
-     `cafes-write` bucket is 10/min shared across cafe writes, check-ins,
-     likes, and navigations and a fast full-matrix run would otherwise 429.
-- Test code never reads or writes the database for setup, verification, or
-  reconciliation. All data对账 happens through User D's GET calls (§10).
+  neither may assert or mutate product state. Both are landed in the
+  harness (not pending):
+  1. one-time persona provisioning — `seedHttpTestUsers(dbClient, users,
+     extraUsers?)` upserting profile rows for the deterministic
+     `createHttpTestUsers()` A/B/C/D identities (`HTTP_USER_IDS` fixed
+     UUIDs) plus slice-local extras; no product assertion may run
+     through it;
+  2. rate-limit bucket reset between Acts — harness-owned
+     `resetRateLimits(dbClient?)` deleting the `rate_limits` rows (when a
+     `dbClient` is passed) AND resetting the in-memory limiter, because
+     the `cafes-write` bucket is 10/min shared across cafe writes,
+     check-ins, likes, and navigations and a fast full-matrix run would
+     otherwise 429. `web/tests/setup.ts` additionally resets the
+     in-memory limiter before every test (unit-run safety); it is
+     complementary, not a substitute — integration suites call the
+     harness export explicitly.
+- Outside the two harness-owned seams above, test code never reads or writes
+  the database for setup, verification, or reconciliation. All data对账 happens through User D's GET calls (§10).
 - Suite gate: `RUN_INTEGRATION=1` against the provisioned template-clone
   Postgres/PostGIS (`web/tests/helpers/db.ts`) plus MinIO for the image
   round-trip, same CI `integration-gate` footing as the 0007 suites.

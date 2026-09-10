@@ -248,6 +248,9 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Deploy config guard (staging and production must resolve deployable)
+        run: npm run deploy:check
+
   poi-service-gate:
     needs: changes
     if: needs.changes.outputs.poi_service == 'true'

@@ -36,6 +36,7 @@ else
     "pull_request:" \
     "cancel-in-progress: true" \
     "classify-ci-paths.sh" \
+    "check-ci-classification.sh" \
     "preflight.sh" \
     "harness-self-test.sh" \
     "docs-gate:" \
@@ -64,7 +65,7 @@ else
     fi
   done
 
-  for requirement in "postgis/postgis:" "@sha256:" "npm run test:integration" "DATABASE_URL:" "pg_isready"; do
+  for requirement in "postgis/postgis:" "@sha256:" "npm run test:integration" "DATABASE_URL:" "pg_isready" "npm run test:coverage:integration" "coverage-integration"; do
     if ! grep -q "$requirement" "$workflow"; then
       echo "ci.yml missing real-DB requirement: $requirement"
       fail=1
@@ -93,6 +94,11 @@ done
 
 if [[ ! -x .agents/scripts/classify-ci-paths.sh ]]; then
   echo "CI classifier is missing or not executable"
+  fail=1
+fi
+
+if [[ ! -x .agents/scripts/check-ci-classification.sh ]]; then
+  echo "CI classification self-check is missing or not executable"
   fail=1
 fi
 

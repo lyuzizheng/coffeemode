@@ -41,6 +41,11 @@ jobs:
               .agents/scripts/classify-ci-paths.sh >> "$GITHUB_OUTPUT"
           fi
 
+      # Runs on every PR (unlike the docs-gate harness checks) so a new gated test
+      # file or a new path family cannot ship with the wrong gate selection.
+      - name: Verify path→gate classification
+        run: .agents/scripts/check-ci-classification.sh
+
   docs-gate:
     needs: changes
     if: needs.changes.outputs.docs == 'true'
@@ -222,6 +227,22 @@ jobs:
         env:
           DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode
         run: npm run test:integration:images
+
+      # The unit coverage step in `application-gate` runs with the real-DB specs
+      # skipped, so it cannot see `lib/db/**` — the layer this job is about. This
+      # ratchets that layer alone (BRAWUKA-173).
+      - name: Real-DB coverage ratchet (lib/db)
+        env:
+          DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode
+        run: npm run test:coverage:integration
+
+      - name: Upload real-DB coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-integration-report
+          path: web/coverage-integration
+          if-no-files-found: ignore
 
   image-service-gate:
     needs: changes

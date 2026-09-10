@@ -1,14 +1,8 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
 import { POIServiceError, resolveMapsUrl } from "@/lib/places/poi-client";
 import { isValidMapsUrl } from "@/lib/places/validate-maps-url";
-import {
-  checkRateLimit,
-  getClientIdentifier,
-  rateLimitResponse,
-} from "@/lib/rate-limit";
-import { rateLimitBuckets } from "@/lib/config";
+import { guard, readJsonBody } from "@/lib/api/guard";
 import { requireSameOrigin } from "@/lib/security/origin";
 
 /**
@@ -21,25 +15,21 @@ export async function POST(request: Request) {
   const originError = requireSameOrigin(request);
   if (originError) return originError;
 
-  const body = await request.json().catch(() => null);
+  const gate = await guard(request, {
+    bucket: "places",
+    route: "POST /api/places/resolve",
+  });
+  if (!gate.ok) return gate.response;
+
+  const bodyRes = await readJsonBody<Record<string, unknown>>(request);
+  if (!bodyRes.ok) return bodyRes.response;
+  const body = bodyRes.data;
   const mapsShareUrl: unknown =
     body && typeof body === "object" && "maps_share_url" in body
-      ? (body as Record<string, unknown>).maps_share_url
+      ? body.maps_share_url
       : undefined;
   if (typeof mapsShareUrl !== "string" || mapsShareUrl.trim() === "") {
     return apiError("invalid_request", "maps_share_url (string) required", 400);
-  }
-
-  const user = await getCurrentUser();
-  const clientId = getClientIdentifier(request, user);
-  const limit = await checkRateLimit(
-    "places",
-    clientId,
-    rateLimitBuckets("places"),
-    "POST /api/places/resolve",
-  );
-  if (!limit.allowed) {
-    return rateLimitResponse(limit);
   }
 
   const trimmedUrl = mapsShareUrl.trim();

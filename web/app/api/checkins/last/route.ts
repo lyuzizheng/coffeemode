@@ -1,9 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
 import { REVISIT_WINDOW_HOURS, getLastCheckinForCafe } from "@/lib/db/checkins";
-import { checkRateLimit, getClientIdentifier, rateLimitResponse } from "@/lib/rate-limit";
-import { rateLimitBuckets } from "@/lib/config";
+import { guard } from "@/lib/api/guard";
 import { isValidUUID } from "@shared/uuid";
 
 /**
@@ -15,24 +13,19 @@ import { isValidUUID } from "@shared/uuid";
  * Returns { checkin: {...} | null, revisitWindowHours: number }.
  */
 export async function GET(request: NextRequest) {
-  const user = await getCurrentUser();
-  if (!user) {
-    return apiError("unauthorized", 401);
-  }
+  const gate = await guard(request, {
+    bucket: "cafes-read",
+    requireAuth: true,
+    route: "GET /api/checkins/last",
+  });
+  if (!gate.ok) return gate.response;
+  const { user } = gate;
 
   const cafeId = request.nextUrl.searchParams.get("cafe_id");
   if (!cafeId || !isValidUUID(cafeId)) {
     return apiError("invalid_request", "cafe_id (UUID) required", 400);
   }
 
-  const clientId = getClientIdentifier(request, user);
-  const rate = await checkRateLimit(
-    "cafes-read",
-    clientId,
-    rateLimitBuckets("cafes-read"),
-    "GET /api/checkins/last",
-  );
-  if (!rate.allowed) return rateLimitResponse(rate);
 
   try {
     const checkin = await getLastCheckinForCafe(user.id, cafeId);

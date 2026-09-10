@@ -1,13 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
 import { requireSameOrigin } from "@/lib/security/origin";
-import { rateLimitBuckets } from "@/lib/config";
-import {
-  checkRateLimit,
-  getClientIdentifier,
-  rateLimitResponse,
-} from "@/lib/rate-limit";
+import { guard, readJsonBody } from "@/lib/api/guard";
 import {
   updateProfileIdentity,
   InvalidHandleError,
@@ -20,21 +14,17 @@ export async function PATCH(request: NextRequest) {
   const originError = requireSameOrigin(request);
   if (originError) return originError;
 
-  const user = await getCurrentUser();
-  if (!user) {
-    return apiError("unauthorized", 401);
-  }
+  const gate = await guard(request, {
+    bucket: "identity-write",
+    requireAuth: true,
+    route: "PATCH /api/profile/identity",
+  });
+  if (!gate.ok) return gate.response;
+  const { user } = gate;
 
-  const clientId = getClientIdentifier(request, user);
-  const rate = await checkRateLimit(
-    "identity-write",
-    clientId,
-    rateLimitBuckets("identity-write"),
-    "PATCH /api/profile/identity",
-  );
-  if (!rate.allowed) return rateLimitResponse(rate);
-
-  const body = await request.json().catch(() => null);
+  const bodyRes = await readJsonBody(request);
+  if (!bodyRes.ok) return bodyRes.response;
+  const body = bodyRes.data;
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
     return apiError("invalid_request", "invalid JSON body", 400);
   }

@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
 import {
   CafeForbiddenError,
@@ -7,12 +6,7 @@ import {
   setCafeVisibility,
 } from "@/lib/db/cafes";
 import { CafeNotFoundError } from "@/lib/db/checkins";
-import {
-  checkRateLimit,
-  getClientIdentifier,
-  rateLimitResponse,
-} from "@/lib/rate-limit";
-import { rateLimitBuckets } from "@/lib/config";
+import { guard, readJsonBody } from "@/lib/api/guard";
 import { requireSameOrigin } from "@/lib/security/origin";
 import { isValidUUID } from "@shared/uuid";
 import type { CafeVisibility } from "@/types/cafes";
@@ -35,7 +29,9 @@ export async function PATCH(
     return apiError("invalid_request", "id must be a UUID", 400);
   }
 
-  const body = await request.json().catch(() => null);
+  const bodyRes = await readJsonBody<Record<string, unknown>>(request);
+  if (!bodyRes.ok) return bodyRes.response;
+  const body = bodyRes.data;
   const rawVisibility =
     typeof body === "object" && body !== null && "visibility" in body
       ? body.visibility
@@ -49,21 +45,13 @@ export async function PATCH(
   }
   const visibility = rawVisibility as CafeVisibility;
 
-  const user = await getCurrentUser();
-  if (!user) {
-    return apiError("unauthorized", 401);
-  }
-
-  const clientId = getClientIdentifier(request, user);
-  const rate = await checkRateLimit(
-    "cafes-write",
-    clientId,
-    rateLimitBuckets("cafes-write"),
-    "PATCH /api/cafes/[id]/visibility",
-  );
-  if (!rate.allowed) {
-    return rateLimitResponse(rate);
-  }
+  const gate = await guard(request, {
+    bucket: "cafes-write",
+    requireAuth: true,
+    route: "PATCH /api/cafes/[id]/visibility",
+  });
+  if (!gate.ok) return gate.response;
+  const { user } = gate;
 
   try {
     const live = await isLiveCafe(id);

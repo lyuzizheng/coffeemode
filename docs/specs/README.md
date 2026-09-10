@@ -21,6 +21,7 @@ Do not load every spec by default unless the task spans the whole system.
 | `0006-public-author-identity.md` | Opt-in public author identity attribution for cafes and check-ins |
 | `0007-e2e-backend-user-journey-matrix.md` | Multi-user E2E backend journey matrix, mock dataset, legacy consolidation |
 | `0008-http-user-journey-matrix.md` | Real-client HTTP API journey matrix (Paths 1–6), 4-persona lifecycle, reconciliation ledger, Stage 2 slicing |
+| `0009-code-quality-and-module-boundaries.md` | Code quality and module boundaries: thresholds, split/extract rules, pattern selection, exemptions |
 
 ## Adding a new spec
 

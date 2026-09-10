@@ -34,6 +34,12 @@ remain in `docs/specs/`; this file owns coding procedure and style only.
   return 500 without exposing upstream bodies or secrets.
 - Update the owning spec when a public route contract changes.
 
+## Structure
+
+- Module boundaries, size thresholds, split/extract rules, pattern selection,
+  and exemptions live in `docs/specs/0009-code-quality-and-module-boundaries.md`.
+  Structure questions defer to that spec; this file does not restate its numbers.
+
 ## Tests
 
 Follow `docs/specs/0003-testing-and-ci.md` and

@@ -66,8 +66,7 @@ function FeedCardMeta({ visitedAt, author }: { visitedAt: string; author: Public
   return (
     <p className="flex items-center gap-1.5 text-sm text-foreground">
       {author?.avatar_url && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+        <Image
           src={author.avatar_url}
           alt=""
           width={20}

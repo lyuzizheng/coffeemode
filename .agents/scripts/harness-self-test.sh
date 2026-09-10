@@ -13,6 +13,10 @@ trap 'rm -rf "$TEST_ROOT"' EXIT
 
 # Copy harness-relevant files
 cp -R docs .agents .github .codex AGENTS.md "$TEST_ROOT/" 2>/dev/null || true
+# Classifier inputs: the registered suites (`web/package.json`) and the
+# `RUN_INTEGRATION` test sources it must route to `integration-gate`.
+mkdir -p "$TEST_ROOT/web"
+cp -R web/package.json web/tests "$TEST_ROOT/web/" 2>/dev/null || true
 # Ensure git context for diff-based checks
 (
   cd "$TEST_ROOT"
@@ -87,6 +91,7 @@ echo "=== Baseline: all checks pass on clean copy ==="
 expect_pass "preflight" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/preflight.sh"
 expect_pass "check-docs-consistency" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-docs-consistency.sh"
 expect_pass "check-ci-workflow" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-workflow.sh"
+expect_pass "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
 expect_pass "check-implementation-slices" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-implementation-slices.sh"
 expect_pass "check-links" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-links.sh"
 expect_pass "check-agent-skills" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-agent-skills.sh"
@@ -166,6 +171,53 @@ expect_classifier "shared package change" $'application=true\nintegration=true\n
 expect_classifier "CI authority change" $'application=true\nintegration=true\nimage_service=true\npoi_service=true\ndocs=true' ".github/workflows/ci.yml"
 expect_classifier "future workflow authority change" $'application=true\nintegration=true\nimage_service=true\npoi_service=true\ndocs=true' ".github/workflows/security.yml"
 expect_classifier "generated agent adapter change" "$FALSES"$'\ndocs=true' "web/AGENTS.md"
+# Integration-gated paths must schedule `integration-gate` (BRAWUKA-173): these
+# files hold `RUN_INTEGRATION` cases, so an application-only classification would
+# report green while the gated specs never ran.
+INTEGRATION_GATED=$'application=true\nintegration=true\nimage_service=false\npoi_service=false\ndocs=false'
+expect_classifier "gated devops suite" "$INTEGRATION_GATED" "web/tests/devops/staging-journey.test.ts"
+expect_classifier "gated test helper entrypoint" "$INTEGRATION_GATED" "web/tests/db-helpers.test.ts"
+expect_classifier "gated integration suite" "$INTEGRATION_GATED" "web/tests/integration/db.integration.test.ts"
+# Explicitly ungated families must select nothing (documented no-gate decision).
+expect_classifier "archived reference tree" "$FALSES"$'\ndocs=false' "_archive-coffeemode-frontend/src/App.tsx"
+expect_classifier "raw dataset snapshot" "$FALSES"$'\ndocs=false' "database-data/cafes.json"
+
+echo ""
+echo "=== Fault injection: check-ci-classification ==="
+
+CLASSIFIER_FIXTURE="$TEST_ROOT/.agents/scripts/classify-ci-paths.sh"
+
+# A gated path dropped from the classifier's integration rule.
+cp "$CLASSIFIER_FIXTURE" "$CLASSIFIER_FIXTURE.bak"
+sed 's#|web/tests/devops/\*##' "$CLASSIFIER_FIXTURE.bak" > "$CLASSIFIER_FIXTURE"
+if assert_mutated "gated path dropped from classifier" "$CLASSIFIER_FIXTURE.bak" "$CLASSIFIER_FIXTURE"; then
+  expect_failure "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
+fi
+mv "$CLASSIFIER_FIXTURE.bak" "$CLASSIFIER_FIXTURE"
+
+# A new RUN_INTEGRATION source outside the classified patterns — the exact miss
+# this gate exists to catch.
+PROBE_TEST_DIR="$TEST_ROOT/web/tests/harness-probe"
+mkdir -p "$PROBE_TEST_DIR"
+printf 'const RUN_INTEGRATION = process.env.RUN_INTEGRATION === "1";\n' > "$PROBE_TEST_DIR/probe.test.ts"
+expect_failure "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
+rm -rf "$PROBE_TEST_DIR"
+
+# A brand-new path family with no routing rule.
+mkdir -p "$TEST_ROOT/newtop"
+printf 'probe\n' > "$TEST_ROOT/newtop/file.txt"
+(cd "$TEST_ROOT" && git add newtop/file.txt)
+expect_failure "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
+rm -rf "$TEST_ROOT/newtop"
+
+# A registered suite the real-DB coverage ratchet never measures.
+PKG_FIXTURE="$TEST_ROOT/web/package.json"
+cp "$PKG_FIXTURE" "$PKG_FIXTURE.bak"
+sed 's# tests/db-helpers.test.ts tests/devops --config# tests/db-helpers.test.ts --config#' "$PKG_FIXTURE.bak" > "$PKG_FIXTURE"
+if assert_mutated "coverage script no longer measures a registered suite" "$PKG_FIXTURE.bak" "$PKG_FIXTURE"; then
+  expect_failure "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
+fi
+mv "$PKG_FIXTURE.bak" "$PKG_FIXTURE"
 
 echo ""
 echo "=== Fault injection: check-implementation-slices ==="

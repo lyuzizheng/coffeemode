@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+/coverage-integration
 /.visual-smoke/
 /.lighthouseci/
 

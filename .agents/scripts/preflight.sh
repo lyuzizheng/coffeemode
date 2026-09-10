@@ -97,6 +97,9 @@ run_gate "doc-consistency" "$SCRIPTS_DIR/check-docs-consistency.sh"
 # 3. CI workflow structure
 run_gate "ci-workflow" "$SCRIPTS_DIR/check-ci-workflow.sh"
 
+# 3b. Changed-path classification (which job runs for which path)
+run_gate "ci-classification" "$SCRIPTS_DIR/check-ci-classification.sh"
+
 # 4. Implementation slices (ruby validator)
 run_gate "implementation-slices" "$SCRIPTS_DIR/check-implementation-slices.sh"
 

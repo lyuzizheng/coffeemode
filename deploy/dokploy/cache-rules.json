@@ -1,0 +1,18 @@
+{
+  "$note": "BRAWUKA-184: edge cache rule for the SSR /cafes/* shell. GENERATED from web/config/app.yaml seo.shellCache via web/lib/cache-policy.ts cafeShellCdnRules() — do not edit by hand. web/tests/cafe-shell-cache.test.ts fails on drift.",
+  "scope": {
+    "paths": ["/cafes/*"]
+  },
+  "cacheable": {
+    "statuses": [200],
+    "cacheControl": "public, s-maxage=600, stale-while-revalidate=3600",
+    "staleWhileRevalidateSeconds": 3600
+  },
+  "bypass": {
+    "onResponseSetCookie": true,
+    "onStatusesOtherThan": [200],
+    "onRequestCookiePrefixes": ["sb-"]
+  },
+  "varyOn": ["Accept-Language"],
+  "sharedCacheAcrossLocales": false
+}

@@ -1,14 +1,8 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
 import { DEFAULT_SEARCH_RADIUS_KM, MAX_SEARCH_RADIUS_KM } from "@/lib/places/constants";
 import { POIServiceError, searchExternalPOIs, searchPOIs } from "@/lib/places/poi-client";
-import {
-  checkRateLimit,
-  getClientIdentifier,
-  rateLimitResponse,
-} from "@/lib/rate-limit";
-import { rateLimitBuckets } from "@/lib/config";
+import { guard } from "@/lib/api/guard";
 
 function parseQueryNumber(value: string | null): number {
   return value === null || value.trim() === "" ? NaN : Number(value);
@@ -56,22 +50,14 @@ export async function GET(request: Request) {
 
   const clampedR = Math.min(r, MAX_SEARCH_RADIUS_KM);
 
-  const user = await getCurrentUser();
   // Live Google search bills per request; only the signed-in creation flow may
-  // trigger it. Stored-cache search stays public for the discovery surface.
-  if (source === "google" && !user) {
-    return apiError("unauthorized", 401);
-  }
-  const clientId = getClientIdentifier(request, user);
-  const limit = await checkRateLimit(
-    "places",
-    clientId,
-    rateLimitBuckets("places"),
-    "GET /api/places/search",
-  );
-  if (!limit.allowed) {
-    return rateLimitResponse(limit);
-  }
+  // trigger it (requireAuth: source === "google"). Stored-cache search stays public.
+  const gate = await guard(request, {
+    bucket: "places",
+    requireAuth: source === "google",
+    route: "GET /api/places/search",
+  });
+  if (!gate.ok) return gate.response;
 
   try {
     const data =

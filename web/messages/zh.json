@@ -346,7 +346,9 @@
     "deleted": "打卡已删除",
     "removePhoto": "移除照片",
     "dismiss": "忽略",
-    "close": "关闭"
+    "close": "关闭",
+    "noteShowMore": "展开",
+    "noteShowLess": "收起"
   },
   "success": {
     "title": "打卡已保存",

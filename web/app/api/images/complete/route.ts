@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
 import { isValidUUID } from "@shared/uuid";
 import {
@@ -7,12 +6,7 @@ import {
   defaultCompleteUploadDeps,
   isImageServiceError,
 } from "@/lib/images/complete";
-import {
-  checkRateLimit,
-  getClientIdentifier,
-  rateLimitResponse,
-} from "@/lib/rate-limit";
-import { rateLimitBuckets } from "@/lib/config";
+import { guard, readJsonBody } from "@/lib/api/guard";
 import type { CompleteImageRequest, CompleteImageResponse, ImageTargetType } from "@/types/images";
 import { requireSameOrigin } from "@/lib/security/origin";
 
@@ -47,15 +41,17 @@ export async function POST(request: Request) {
   const originError = requireSameOrigin(request);
   if (originError) return originError;
 
-  const user = await getCurrentUser();
-  if (!user) {
-    return apiError("unauthorized", 401);
-  }
+  const gate = await guard(request, {
+    bucket: "images",
+    requireAuth: true,
+    route: "POST /api/images/complete",
+  });
+  if (!gate.ok) return gate.response;
+  const { user } = gate;
 
-  const body = await request.json().catch(() => null);
-  if (body === null) {
-    return apiError("invalid_request", "invalid JSON body", 400);
-  }
+  const bodyRes = await readJsonBody(request);
+  if (!bodyRes.ok) return bodyRes.response;
+  const body = bodyRes.data;
 
   const req = validateBody(body);
   if (!req) {
@@ -66,16 +62,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const clientId = getClientIdentifier(request, user);
-  const limit = await checkRateLimit(
-    "images",
-    clientId,
-    rateLimitBuckets("images"),
-    "POST /api/images/complete",
-  );
-  if (!limit.allowed) {
-    return rateLimitResponse(limit);
-  }
 
   try {
     const result = await completeImageUpload(user, req, defaultCompleteUploadDeps());

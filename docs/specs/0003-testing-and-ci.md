@@ -54,7 +54,7 @@ Risk and independent-review requirements are defined only in
 
 ```text
 web: npm run typecheck, lint, check:i18n, test, test:coverage, build, check:bundle, verify, lhci
-web real DB: npm run db:migrate, npm run test:integration, npm run test:integration:journey, npm run test:integration:http, npm run test:integration:images, npm run test:integration:all
+web real DB: npm run db:migrate, npm run test:integration, npm run test:integration:journey, npm run test:integration:http, npm run test:integration:images, npm run test:integration:all, npm run test:coverage:integration
 web browser smoke: npm run test:e2e (Playwright MVP smoke suite), npm run lhci (Lighthouse CI performance budgets), npm run check:visual (local visual render evidence)
 services: npm run typecheck, npm test
 staging journey: STAGING_DATABASE_URL=<staging postgres> scripts/devops/run-staging-journey.sh --suite <journey|http|db|all> (setup via setup-supabase.mjs, cleanup via web/scripts/cleanup-stale-test-dbs.mjs --apply)
@@ -65,10 +65,19 @@ agent harness: .agents/scripts/preflight.sh, .agents/scripts/harness-self-test.s
 
 `.github/workflows/ci.yml` runs on every pull request and push to `main`.
 `.agents/scripts/classify-ci-paths.sh` classifies the base/head diff, then stable
-jobs run only when relevant:
+jobs run only when relevant. Every tracked path matches exactly one rule in that
+classifier — including the deliberately ungated families (`_archive-*/`,
+`database-data/`, repository hygiene files), which carry an explicit empty arm
+so "no gate" is a recorded decision rather than an omission. A path that holds a
+`RUN_INTEGRATION=1` suite, or that such a suite consumes, sets
+`integration=true`. `.agents/scripts/check-ci-classification.sh` runs on every PR
+(cheap: no dependency install) and fails when a new gated test file, a new path
+family, or a registered suite the coverage ratchet does not measure appears
+without a routing decision, or when a unit-only path starts scheduling the
+DB-backed gate:
 
 - `application-gate`: `web/` changes (typecheck, lint, i18n key parity, unit tests, v8 coverage ratchet, build, bundle budget check, bundle analysis, PWA validation, E2E smoke suite, and Lighthouse CI performance budgets against seeded fixtures);
-- `integration-gate`: DB/SQL-capable web boundaries and shared-package changes — runs real Postgres DB tests (`npm run test:integration`), real Postgres user-journey tests (`npm run test:integration:journey`), real Postgres HTTP lifecycle tests (`npm run test:integration:http`), and real MinIO/R2 image round-trip (`npm run test:integration:images`) sequentially on one `postgis` service + `docker compose up minio` (merged for efficiency; was `integration-gate` + `images-integration-gate`). Branch protection that still requires the legacy `images-integration-gate` name should migrate to `integration-gate` + `ci-gate` (see migration note below);
+- `integration-gate`: DB/SQL-capable web boundaries and shared-package changes — runs real Postgres DB tests (`npm run test:integration`), real Postgres user-journey tests (`npm run test:integration:journey`), real Postgres HTTP lifecycle tests (`npm run test:integration:http`), and real MinIO/R2 image round-trip (`npm run test:integration:images`) sequentially on one `postgis` service + `docker compose up minio` (merged for efficiency; was `integration-gate` + `images-integration-gate`), then the real-DB coverage ratchet (`npm run test:coverage:integration`) against the same live stack. Branch protection that still requires the legacy `images-integration-gate` name should migrate to `integration-gate` + `ci-gate` (see migration note below);
 - `image-service-gate`: image-service and shared-package changes;
 - `poi-service-gate`: poi-service and shared-package changes;
 - `ci-gate`: always aggregates selected job results.
@@ -98,7 +107,8 @@ Repository branch protection on `main` enforces stability without blocking autom
 ### Agent harness
 
 `.agents/scripts/preflight.sh` checks required sources, script syntax, spec shape,
-links, planned slices, skill frontmatter, Codex bindings, and CI structure.
+links, planned slices, skill frontmatter, Codex bindings, changed-path
+classification, and CI structure.
 `.agents/scripts/harness-self-test.sh` fault-injects those checks and verifies CI
 path classification. Deterministic checks do not self-attest semantic correctness;
 agent/docs/CI authority changes require independent semantic review.
@@ -110,12 +120,27 @@ ratchet floors declared in `web/vitest.config.mts` (`lines/functions/branches/
 statements`) over `web/lib/**`, `web/shared/**`, and `web/proxy.ts`. Route
 shells (`web/app/**`) are excluded: they are thin wrappers proven by mocked
 route tests plus the real-DB HTTP journey suites, and line coverage over them
-measures file count, not logic. The `application-gate` runs the coverage step
-as blocking, and `.agents/scripts/check-ci-workflow.sh` fails preflight if the
-step is removed from `ci.yml`. Floors are set just below the measured
-unit-suite baseline; a PR that adds covered code raises the floors it
-improves — lowering a floor requires a spec-amending justification in the PR,
+measures file count, not logic. Modules that compile to no executable statement
+(type-only, pure re-export) are excluded too — v8 reports them as 0/0 = 100%,
+an entry that reads as verified while proving nothing. The `application-gate`
+runs the coverage step as blocking, and `.agents/scripts/check-ci-workflow.sh`
+fails preflight if the step is removed from `ci.yml`. Floors are set just below
+the measured unit-suite baseline; a PR that adds covered code raises the floors
+it improves — lowering a floor requires a spec-amending justification in the PR,
 never a drive-by edit. Per-file waivers are prohibited.
+
+Unit coverage cannot measure the data layer: every `RUN_INTEGRATION=1` spec
+self-skips, so `web/lib/db/**` is exercised only through its mocks there
+(`lib/db/search.ts` reported 2.12% under the unit run and 100% against real
+Postgres). `npm run test:coverage:integration` therefore runs the registered
+real-DB suites once more under the live Postgres/PostGIS + MinIO stack and
+enforces its own floors — declared in `web/vitest.integration-coverage.config.mts`
+and scoped to `web/lib/db/**`, the layer whose contract is SQL semantics. It runs
+blocking in `integration-gate` (reusing the stack that job already starts) and
+uploads `web/coverage-integration`; `check-ci-workflow.sh` fails preflight if the
+step or its artifact is removed. Every file registered in a `test:integration:*`
+script must be measured by this ratchet — asserted by
+`.agents/scripts/check-ci-classification.sh`.
 
 ### Test maintenance contract
 
@@ -133,8 +158,10 @@ How tests evolve when features land (one writer per change, per `AGENTS.md`):
 - New integration suite → provision via `provisionTestDatabase` and drop via
   `cleanupIntegrationDatabase` in `afterAll`; gate the file on
   `RUN_INTEGRATION` with `describe.skip` by default so `npm test` stays
-  Docker-free, and register the file in the matching `test:integration:*`
-  script (CI `integration-gate` runs only registered files).
+  Docker-free, and register the file in the matching `test:integration:*` script
+  (CI `integration-gate` runs only registered files) plus in
+  `test:coverage:integration`, which the real-DB ratchet measures —
+  `.agents/scripts/check-ci-classification.sh` fails when the two disagree.
 - New staging-affecting flow → extend `scripts/devops/run-staging-journey.sh`
   suites and `docs/devops/LIFECYCLE.md`, never point integration helpers at
   staging without `ALLOW_REMOTE_INTEGRATION_DB=1`.
@@ -153,6 +180,8 @@ The traceability matrix lives at `docs/agent/test-coverage.md` (S3 testkit-cover
 - The bundle budget measures the clean build output across all of `.next/static` against typed limits in `web/config/app.yaml`.
 - Real Postgres remains required for DB/SQL behavior.
 - `npm run test:coverage` enforces the v8 ratchet floors in `web/vitest.config.mts`; removing the coverage step from `ci.yml` fails preflight.
+- `npm run test:coverage:integration` enforces the real-DB `web/lib/db/**` floors in `web/vitest.integration-coverage.config.mts` under `RUN_INTEGRATION=1`; removing that step or its uploaded report from `ci.yml` fails preflight.
+- A changed path that holds (or feeds) a `RUN_INTEGRATION` suite schedules `integration-gate`; `.agents/scripts/check-ci-classification.sh` asserts this on every PR, and fails on any tracked path with no routing rule.
 - CI emits stable required component checks but executes only relevant jobs.
 - A docs-only change does not install application/service dependencies.
 - A UI-only web change does not start Postgres.

@@ -346,7 +346,9 @@
     "deleted": "Check-in deleted",
     "removePhoto": "Remove photo",
     "dismiss": "Dismiss",
-    "close": "Close"
+    "close": "Close",
+    "noteShowMore": "Show more",
+    "noteShowLess": "Show less"
   },
   "success": {
     "title": "Check-in saved",

@@ -59,9 +59,34 @@ seo:
   # CDN cache for the SSR /cafes/[id] shell (DG105/DG107): a viral shared
   # link must not hit Postgres per open. s-maxage is the shared-cache TTL;
   # stale-while-revalidate serves stale while revalidating in the background.
+  # The static `Cache-Control: public, …` header only describes the cacheable
+  # case. The bypass fields below are the executable side of that header
+  # (BRAWUKA-184): the proxy enforces them per response (see
+  # lib/cache-policy.ts) and the edge cache rule MUST enforce them before
+  # the CDN lands (see deploy/dokploy/cache-rules.json, generated from these
+  # values). Without them a session cookie or a 404 would be served
+  # cross-user from shared cache.
   shellCache:
     sMaxAgeSeconds: 600
     staleWhileRevalidateSeconds: 3600
+    # Only these statuses may sit in shared cache. Every other status — the
+    # proxy-rewritten gone-cafe 404, 500s, redirects — MUST bypass.
+    cacheableStatuses: [200]
+    # A response carrying Set-Cookie (Supabase session refresh via the proxy)
+    # MUST bypass, otherwise a refreshed session cookie is cached cross-user.
+    bypassOnSetCookieResponse: true
+    # Request-cookie name prefixes that force an edge bypass (Supabase
+    # session cookies). The origin cannot see the edge cache key, so this is
+    # a CDN-rule condition, not an origin header.
+    bypassOnRequestCookiePrefixes: ["sb-"]
+    # The shell is content-negotiated (cookie/Accept-Language, DG110), but
+    # Next overwrites Vary on App Router HTML with its internal
+    # `rsc, next-router-*` set, so origin-declared Vary never ships. The edge
+    # MUST key on these headers instead. `sharedCacheAcrossLocales: false`
+    # states explicitly that locales MUST NOT share a cache entry — without
+    # it the first locale to hit a URL would be served to everyone.
+    varyHeaders: ["Accept-Language"]
+    sharedCacheAcrossLocales: false
   # 404 recovery block (DG111): how many nearby cafes to list relative to a
   # gone cafe's last known location. Radius reuses search.maxRadiusKm.
   recoveryLimit: 5

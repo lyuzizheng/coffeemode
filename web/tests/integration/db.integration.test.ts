@@ -2220,10 +2220,10 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         at: new Date().toISOString(),
       };
     }
-    // Real-delay exception: the lost-race tests below coordinate TWO live Postgres
-    // connections (an uncommitted holder + the victim insert blocked on its unique
-    // index). Fake timers cannot advance real DB I/O, so a short wall-clock pause
-    // lets the victim reach its blocked INSERT before the holder commits.
+    // Wall-clock pause (not a fake-timer case): the lost-race tests below coordinate
+    // TWO live Postgres connections (an uncommitted holder + the victim insert blocked
+    // on its unique index). Fake timers cannot advance real DB I/O, so a short real
+    // delay lets the victim reach its blocked INSERT before the holder commits.
     function sleepForRace(): Promise<void> {
       const { promise, resolve } = Promise.withResolvers<void>();
       setTimeout(resolve, 500);

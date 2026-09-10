@@ -1,14 +1,8 @@
 import { ImageResponse } from "next/og";
 import { isValidUUID } from "@shared/uuid";
-import { getCurrentUser } from "@/lib/auth/get-user";
 import { getCafe } from "@/lib/db/cafes";
 import { BACKGROUND_COLOR } from "@/lib/site";
-import {
-  CAFES_READ_RATE_LIMIT,
-  getClientIdentifier,
-  rateLimitResponse,
-  rateLimiter,
-} from "@/lib/rate-limit";
+import { guard } from "@/lib/api/guard";
 
 /**
  * Dynamic og:image fallback (artifact §4): for cafes without a cover, the
@@ -34,16 +28,11 @@ export async function GET(
 
   // Satori renders are the most CPU-expensive read in the cafes family;
   // same anonymous bucket as the other DB-reading GETs (DG74).
-  const user = await getCurrentUser();
-  const clientId = getClientIdentifier(request, user);
-  const rate = await rateLimiter.check(
-    `cafes-read:${clientId}`,
-    CAFES_READ_RATE_LIMIT.windowMs,
-    CAFES_READ_RATE_LIMIT.maxRequests,
-  );
-  if (!rate.allowed) {
-    return rateLimitResponse(rate);
-  }
+  const gate = await guard(request, {
+    bucket: "cafes-read",
+    route: "GET /cafes/[id]/og-image",
+  });
+  if (!gate.ok) return gate.response;
 
   let cafe: Awaited<ReturnType<typeof getCafe>> = null;
   try {

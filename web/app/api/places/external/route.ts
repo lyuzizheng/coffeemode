@@ -1,15 +1,9 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
 import { POIServiceError, storeExternalPOIs } from "@/lib/places/poi-client";
 import { MAX_EXTERNAL_BATCH_SIZE } from "@shared/places/constants";
 import type { POI } from "@shared/places/types";
-import {
-  checkRateLimit,
-  getClientIdentifier,
-  rateLimitResponse,
-} from "@/lib/rate-limit";
-import { rateLimitBuckets } from "@/lib/config";
+import { guard, readJsonBody } from "@/lib/api/guard";
 import { requireSameOrigin } from "@/lib/security/origin";
 
 /**
@@ -23,10 +17,16 @@ export async function POST(request: Request) {
   const originError = requireSameOrigin(request);
   if (originError) return originError;
 
-  const user = await getCurrentUser();
-  if (!user) return apiError("unauthorized", 401);
+  const gate = await guard(request, {
+    bucket: "places",
+    requireAuth: true,
+    route: "POST /api/places/external",
+  });
+  if (!gate.ok) return gate.response;
 
-  const body = await request.json().catch(() => null);
+  const bodyRes = await readJsonBody<{ pois?: unknown }>(request);
+  if (!bodyRes.ok) return bodyRes.response;
+  const body = bodyRes.data;
   const pois =
     body && typeof body === "object" && "pois" in body
       ? (body as Record<string, unknown>).pois
@@ -56,14 +56,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const clientId = getClientIdentifier(request, user);
-  const limit = await checkRateLimit(
-    "places",
-    clientId,
-    rateLimitBuckets("places"),
-    "POST /api/places/external",
-  );
-  if (!limit.allowed) return rateLimitResponse(limit);
 
   try {
     const result = await storeExternalPOIs(pois as POI[]);

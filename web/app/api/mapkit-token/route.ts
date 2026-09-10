@@ -1,12 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
-import { rateLimitBuckets } from "@/lib/config";
 import { generateMapKitToken, getMapKitConfig } from "@/lib/places/mapkit";
-import {
-  checkRateLimit,
-  getClientIdentifier,
-  rateLimitResponse,
-} from "@/lib/rate-limit";
+import { guard } from "@/lib/api/guard";
 
 export const runtime = "nodejs";
 
@@ -18,14 +13,12 @@ export const runtime = "nodejs";
  * configured keeps the Apple search tab honest during local development.
  */
 export async function GET(request: Request) {
-  const clientId = getClientIdentifier(request, null);
-  const limit = await checkRateLimit(
-    "places",
-    clientId,
-    rateLimitBuckets("places"),
-    "GET /api/mapkit-token",
-  );
-  if (!limit.allowed) return rateLimitResponse(limit);
+  const gate = await guard(request, {
+    bucket: "places",
+    route: "GET /api/mapkit-token",
+    ipOnly: true,
+  });
+  if (!gate.ok) return gate.response;
 
   const config = getMapKitConfig();
   if (!config) {

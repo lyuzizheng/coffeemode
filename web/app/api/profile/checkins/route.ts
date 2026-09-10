@@ -1,28 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError, parseQueryPositiveInt } from "@/lib/api/response";
 import { getUserCheckIns, ProfileCursorError } from "@/lib/db/profile";
-import { appConfig, rateLimitBuckets } from "@/lib/config";
-import {
-  checkRateLimit,
-  getClientIdentifier,
-  rateLimitResponse,
-} from "@/lib/rate-limit";
+import { appConfig } from "@/lib/config";
+import { guard } from "@/lib/api/guard";
 
 export async function GET(request: NextRequest) {
-  const user = await getCurrentUser();
-  if (!user) {
-    return apiError("unauthorized", 401);
-  }
-
-  const clientId = getClientIdentifier(request, user);
-  const rate = await checkRateLimit(
-    "profile-read",
-    clientId,
-    rateLimitBuckets("profile-read"),
-    "GET /api/profile/checkins",
-  );
-  if (!rate.allowed) return rateLimitResponse(rate);
+  const gate = await guard(request, {
+    bucket: "profile-read",
+    requireAuth: true,
+    route: "GET /api/profile/checkins",
+  });
+  if (!gate.ok) return gate.response;
+  const { user } = gate;
 
   const { searchParams } = new URL(request.url);
   const rawLimit = searchParams.get("limit");

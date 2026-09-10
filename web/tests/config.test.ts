@@ -93,6 +93,11 @@ describe("config files", () => {
     expect(appConfig.seo.shellCache).toEqual({
       sMaxAgeSeconds: 600,
       staleWhileRevalidateSeconds: 3600,
+      cacheableStatuses: [200],
+      bypassOnSetCookieResponse: true,
+      bypassOnRequestCookiePrefixes: ["sb-"],
+      varyHeaders: ["Accept-Language"],
+      sharedCacheAcrossLocales: false,
     });
     expect(appConfig.seo.recoveryLimit).toBe(5);
   });
@@ -187,7 +192,15 @@ describe("parseAppConfig validation", () => {
   };
   const validCenter = { defaultCenter: { lat: 1.35, lng: 103.8 } };
   const validSeo = {
-    shellCache: { sMaxAgeSeconds: 600, staleWhileRevalidateSeconds: 3600 },
+    shellCache: {
+      sMaxAgeSeconds: 600,
+      staleWhileRevalidateSeconds: 3600,
+      cacheableStatuses: [200],
+      bypassOnSetCookieResponse: true,
+      bypassOnRequestCookiePrefixes: ["sb-"],
+      varyHeaders: ["Accept-Language"],
+      sharedCacheAcrossLocales: false,
+    },
     recoveryLimit: 5,
   };
   const validCheckins = { photoCap: 6, noteMaxChars: 500, pendingDraftTtlHours: 72, revisitWindowHours: 24 };

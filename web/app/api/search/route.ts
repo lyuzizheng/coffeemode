@@ -1,12 +1,6 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
-import {
-  checkRateLimit,
-  getClientIdentifier,
-  rateLimitResponse,
-} from "@/lib/rate-limit";
-import { rateLimitBuckets } from "@/lib/config";
+import { guard } from "@/lib/api/guard";
 import { findCity, resolveEffectiveCity } from "@/lib/cities";
 import { executeSearch } from "@/lib/search/search-service";
 import { getSearchFixtures, isFixturesEnabled } from "@/lib/search/fixtures";
@@ -129,17 +123,13 @@ export async function GET(request: Request) {
   const effectiveCity = resolveEffectiveCity(request.headers, city);
 
   // Search is rate-limited per IP (DG129)
-  const clientId = getClientIdentifier(request, null);
-  const rate = await checkRateLimit(
-    "search",
-    clientId,
-    rateLimitBuckets("search"),
-    "GET /api/search",
-  );
-  if (!rate.allowed) {
-    return rateLimitResponse(rate);
-  }
-  const user = await getCurrentUser();
+  const gate = await guard(request, {
+    bucket: "search",
+    route: "GET /api/search",
+    ipOnly: true,
+  });
+  if (!gate.ok) return gate.response;
+  const { user } = gate;
 
 
   const filters: SearchFilters = {

@@ -1,14 +1,8 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
 import { CafeNotFoundError } from "@/lib/validation/checkin";
 import { parseNavigationBody, recordNavigation } from "@/lib/db/navigations";
-import {
-  checkRateLimit,
-  getClientIdentifier,
-  rateLimitResponse,
-} from "@/lib/rate-limit";
-import { rateLimitBuckets } from "@/lib/config";
+import { guard, readJsonBody } from "@/lib/api/guard";
 import { requireSameOrigin } from "@/lib/security/origin";
 
 /**
@@ -21,27 +15,20 @@ export async function POST(request: Request) {
   const originError = requireSameOrigin(request);
   if (originError) return originError;
 
-  const body = await request.json().catch(() => null);
-  const parsed = parseNavigationBody(body);
+  const bodyRes = await readJsonBody(request);
+  if (!bodyRes.ok) return bodyRes.response;
+  const parsed = parseNavigationBody(bodyRes.data);
   if (!parsed.ok) {
     return apiError("invalid_request", parsed.message, 400);
   }
 
-  const user = await getCurrentUser();
-  if (!user) {
-    return apiError("unauthorized", 401);
-  }
-
-  const clientId = getClientIdentifier(request, user);
-  const rate = await checkRateLimit(
-    "cafes-write",
-    clientId,
-    rateLimitBuckets("cafes-write"),
-    "POST /api/navigations",
-  );
-  if (!rate.allowed) {
-    return rateLimitResponse(rate);
-  }
+  const gate = await guard(request, {
+    bucket: "cafes-write",
+    requireAuth: true,
+    route: "POST /api/navigations",
+  });
+  if (!gate.ok) return gate.response;
+  const { user } = gate;
 
   try {
     const navigation = await recordNavigation(user.id, parsed.value.cafe_id);

@@ -1,17 +1,11 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
 import { toggleCheckInLike } from "@/lib/db/checkins";
 import {
   CheckInNotFoundError,
   SelfLikeError,
 } from "@/lib/validation/checkin";
-import {
-  checkRateLimit,
-  getClientIdentifier,
-  rateLimitResponse,
-} from "@/lib/rate-limit";
-import { rateLimitBuckets } from "@/lib/config";
+import { guard } from "@/lib/api/guard";
 import { isValidUUID } from "@shared/uuid";
 import { requireSameOrigin } from "@/lib/security/origin";
 
@@ -34,21 +28,13 @@ export async function POST(
     return apiError("invalid_request", "id must be a UUID", 400);
   }
 
-  const user = await getCurrentUser();
-  if (!user) {
-    return apiError("unauthorized", 401);
-  }
-
-  const clientId = getClientIdentifier(request, user);
-  const rate = await checkRateLimit(
-    "cafes-write",
-    clientId,
-    rateLimitBuckets("cafes-write"),
-    "POST /api/checkins/[id]/like",
-  );
-  if (!rate.allowed) {
-    return rateLimitResponse(rate);
-  }
+  const gate = await guard(request, {
+    bucket: "cafes-write",
+    requireAuth: true,
+    route: "POST /api/checkins/[id]/like",
+  });
+  if (!gate.ok) return gate.response;
+  const { user } = gate;
 
   try {
     const result = await toggleCheckInLike(user.id, id);

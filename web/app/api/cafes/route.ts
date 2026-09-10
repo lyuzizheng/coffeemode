@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError, parseQueryPositiveInt } from "@/lib/api/response";
 import { createCafeWithFirstCheckIn, listCafesNearby } from "@/lib/db/cafes";
 import {
@@ -12,12 +11,8 @@ import {
   DEFAULT_SEARCH_RADIUS_KM,
   MAX_SEARCH_RADIUS_KM,
 } from "@/lib/places/constants";
-import {
-  checkRateLimit,
-  getClientIdentifier,
-  rateLimitResponse,
-} from "@/lib/rate-limit";
-import { appConfig, rateLimitBuckets } from "@/lib/config";
+import { appConfig } from "@/lib/config";
+import { guard, readJsonBody } from "@/lib/api/guard";
 import { requireSameOrigin } from "@/lib/security/origin";
 
 // `cafes.listLimitMax` in web/config/app.yaml (DG107).
@@ -56,17 +51,12 @@ export async function GET(request: Request) {
     return apiError("invalid_request", "limit must be a positive integer", 400);
   }
 
-  const user = await getCurrentUser();
-  const clientId = getClientIdentifier(request, user);
-  const rate = await checkRateLimit(
-    "cafes-read",
-    clientId,
-    rateLimitBuckets("cafes-read"),
-    "GET /api/cafes",
-  );
-  if (!rate.allowed) {
-    return rateLimitResponse(rate);
-  }
+  const gate = await guard(request, {
+    bucket: "cafes-read",
+    route: "GET /api/cafes",
+  });
+  if (!gate.ok) return gate.response;
+  const { user } = gate;
 
   try {
     const cafes = await listCafesNearby({ lat, lng, radiusKm, limit, viewerId: user?.id });
@@ -90,27 +80,20 @@ export async function POST(request: Request) {
   const originError = requireSameOrigin(request);
   if (originError) return originError;
 
-  const body = await request.json().catch(() => null);
-  const parsed = parseCreateCafeBody(body);
+  const bodyRes = await readJsonBody(request);
+  if (!bodyRes.ok) return bodyRes.response;
+  const parsed = parseCreateCafeBody(bodyRes.data);
   if (!parsed.ok) {
     return apiError("invalid_request", parsed.message, 400);
   }
 
-  const user = await getCurrentUser();
-  if (!user) {
-    return apiError("unauthorized", 401);
-  }
-
-  const clientId = getClientIdentifier(request, user);
-  const rate = await checkRateLimit(
-    "cafes-write",
-    clientId,
-    rateLimitBuckets("cafes-write"),
-    "POST /api/cafes",
-  );
-  if (!rate.allowed) {
-    return rateLimitResponse(rate);
-  }
+  const gate = await guard(request, {
+    bucket: "cafes-write",
+    requireAuth: true,
+    route: "POST /api/cafes",
+  });
+  if (!gate.ok) return gate.response;
+  const { user } = gate;
 
   try {
     const result = await createCafeWithFirstCheckIn(user.id, parsed.value);

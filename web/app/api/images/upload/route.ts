@@ -1,15 +1,9 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
 import { recordUploadIntent } from "@/lib/db/image-uploads";
 import { ImageServiceError, requestUploadUrl } from "@/lib/images/image-service-client";
 import { validateUploadSize } from "@shared/images/validation";
-import {
-  checkRateLimit,
-  getClientIdentifier,
-  rateLimitResponse,
-} from "@/lib/rate-limit";
-import { rateLimitBuckets } from "@/lib/config";
+import { guard, readJsonBody } from "@/lib/api/guard";
 import { requireSameOrigin } from "@/lib/security/origin";
 
 function parseSize(
@@ -45,26 +39,19 @@ export async function POST(request: Request) {
   const originError = requireSameOrigin(request);
   if (originError) return originError;
 
-  const user = await getCurrentUser();
-  if (!user) {
-    return apiError("unauthorized", 401);
-  }
+  const gate = await guard(request, {
+    bucket: "images",
+    requireAuth: true,
+    route: "POST /api/images/upload",
+  });
+  if (!gate.ok) return gate.response;
+  const { user } = gate;
 
-  const body = await request.json().catch(() => undefined);
-  const parsed = parseSize(body);
+  const bodyRes = await readJsonBody(request);
+  if (!bodyRes.ok) return bodyRes.response;
+  const parsed = parseSize(bodyRes.data);
   if ("error" in parsed) {
     return apiError(parsed.code, parsed.error, 400);
-  }
-
-  const clientId = getClientIdentifier(request, user);
-  const limit = await checkRateLimit(
-    "images",
-    clientId,
-    rateLimitBuckets("images"),
-    "POST /api/images/upload",
-  );
-  if (!limit.allowed) {
-    return rateLimitResponse(limit);
   }
 
   try {

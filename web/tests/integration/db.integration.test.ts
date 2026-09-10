@@ -920,6 +920,34 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(anonymous.checkins.every((c) => c.liked_by_viewer === false)).toBe(true);
     });
 
+    it("owned_by_viewer marks only the author's own rows, never leaking user_id", async () => {
+      await seedFeedCheckins(1); // authored by U1, like the CHECKIN_A1 baseline
+      const asAuthor = await listPublicCheckIns({
+        cafeId: CAFE_A,
+        mode: "newest",
+        viewerId: U1,
+      });
+      expect(asAuthor.checkins).toHaveLength(2);
+      expect(asAuthor.checkins.every((c) => c.owned_by_viewer === true)).toBe(true);
+      const asOther = await listPublicCheckIns({
+        cafeId: CAFE_A,
+        mode: "newest",
+        viewerId: U2,
+      });
+      expect(asOther.checkins.every((c) => c.owned_by_viewer === false)).toBe(true);
+      const anonymous = await listPublicCheckIns({
+        cafeId: CAFE_A,
+        mode: "newest",
+        viewerId: null,
+      });
+      expect(anonymous.checkins.every((c) => c.owned_by_viewer === false)).toBe(true);
+      // DG13: ownership is a boolean — the author's id appears nowhere in the DTO.
+      for (const c of asAuthor.checkins) {
+        expect(c).not.toHaveProperty("user_id");
+        expect(JSON.stringify(c)).not.toContain(U1);
+      }
+    });
+
     it("rejects cross-mode and malformed cursors", async () => {
       await seedFeedCheckins(1);
       const newestCursor = encodeFeedCursor({

@@ -199,6 +199,7 @@ export function DetailContent({
       <GalleryStrip photos={cafe.gallery} ariaLabel={t("gallery_aria")} />
       <CheckinFeed
         cafeId={cafe.id}
+        cafeName={cafe.name}
         onMissingCafe={handleMissingCafe}
         onCheckIn={onCheckIn}
       />

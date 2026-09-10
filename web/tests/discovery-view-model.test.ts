@@ -101,6 +101,7 @@ function checkin(id: string): PublicCheckIn {
     photos: [],
     likes_count: 0,
     liked_by_viewer: false,
+    owned_by_viewer: false,
     visited_at: "2026-08-01T10:00:00.000Z",
     author: null,
   };

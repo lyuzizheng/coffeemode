@@ -63,6 +63,11 @@ export interface AppConfig {
     shellCache: {
       sMaxAgeSeconds: number;
       staleWhileRevalidateSeconds: number;
+      cacheableStatuses: number[];
+      bypassOnSetCookieResponse: boolean;
+      bypassOnRequestCookiePrefixes: string[];
+      varyHeaders: string[];
+      sharedCacheAcrossLocales: boolean;
     };
     recoveryLimit: number;
   };
@@ -138,6 +143,31 @@ function record(file: string, keyPath: string, value: unknown): Record<string, u
     fail(file, keyPath, "must be a mapping");
   }
   return value as Record<string, unknown>;
+}
+
+function flag(file: string, keyPath: string, value: unknown): boolean {
+  if (typeof value !== "boolean") {
+    fail(file, keyPath, "must be a boolean");
+  }
+  return value;
+}
+
+function stringList(file: string, keyPath: string, value: unknown): string[] {
+  if (!Array.isArray(value) || value.some((v) => typeof v !== "string" || v.length === 0)) {
+    fail(file, keyPath, "must be a list of non-empty strings");
+  }
+  return [...value] as string[];
+}
+
+function statusList(file: string, keyPath: string, value: unknown): number[] {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.some((v) => typeof v !== "number" || !Number.isInteger(v) || v < 100 || v > 599)
+  ) {
+    fail(file, keyPath, "must be a non-empty list of HTTP status codes");
+  }
+  return [...value] as number[];
 }
 
 function parseBucket(file: string, keyPath: string, entry: unknown): RateLimitBucket {
@@ -285,6 +315,31 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
           file,
           "seo.shellCache.staleWhileRevalidateSeconds",
           shellCache.staleWhileRevalidateSeconds,
+        ),
+        cacheableStatuses: statusList(
+          file,
+          "seo.shellCache.cacheableStatuses",
+          shellCache.cacheableStatuses,
+        ),
+        bypassOnSetCookieResponse: flag(
+          file,
+          "seo.shellCache.bypassOnSetCookieResponse",
+          shellCache.bypassOnSetCookieResponse,
+        ),
+        bypassOnRequestCookiePrefixes: stringList(
+          file,
+          "seo.shellCache.bypassOnRequestCookiePrefixes",
+          shellCache.bypassOnRequestCookiePrefixes,
+        ),
+        varyHeaders: stringList(
+          file,
+          "seo.shellCache.varyHeaders",
+          shellCache.varyHeaders,
+        ),
+        sharedCacheAcrossLocales: flag(
+          file,
+          "seo.shellCache.sharedCacheAcrossLocales",
+          shellCache.sharedCacheAcrossLocales,
         ),
       },
       recoveryLimit: positiveInteger(file, "seo.recoveryLimit", seo.recoveryLimit),

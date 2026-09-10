@@ -158,7 +158,9 @@ mock at all. For a real local Supabase, use `supabase start` as above.
 
 ## 5. What still needs real Cloudflare/Supabase
 
-- Deploying either Worker (`wrangler deploy`) — local dev needs no account.
+- Deploying either Worker — `npm run deploy -- --env <staging|production>` from
+  `image-service/` or `poi-service/`; local dev needs no account, and the guarded
+  entrypoint (`scripts/deploy.mjs`) refuses to ship the local-dev defaults above.
 - **Web-side image display**: `web/lib/images/loader.ts` and `next.config.ts`
   hardcode the real CDN host and a build-time drift guard (`images.coffeemode.app`),
   so a browser round-trip through the UI still resolves to production R2 —

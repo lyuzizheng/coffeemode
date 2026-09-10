@@ -151,7 +151,7 @@ Local Dev (Docker / MinIO) ──> PR CI Gates (ci.yml) ──> Merge to main
 ### Phase 2: Pull Request & Automated CI Gates
 Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enforcing canonical gates per Spec 0003:
 1. `docs-gate`: Validates documentation consistency, implementation slices, and test coverage matrix.
-2. `application-gate`: Runs TypeScript typecheck, ESLint, i18n key parity, Vitest unit tests, standalone build, bundle budget audit, and Playwright E2E smoke tests.
+2. `application-gate`: Runs TypeScript typecheck, ESLint, i18n key parity, Vitest unit tests, v8 coverage ratchet, standalone build, bundle budget audit, and Playwright E2E smoke tests.
 3. `integration-gate`: Tests real PostGIS migrations, spatial queries, concurrent checkins, and MinIO/R2 image round-trip.
 
 ### Phase 3: Staging Continuous Deployment
@@ -163,6 +163,18 @@ Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enfor
   3. Executes database migrations against `coffeemode-postgres-staging`.
   4. Triggers Dokploy staging deploy webhook (or Docker compose rolling rebuild) and waits for release convergence on `/api/health`.
   5. Runs post-deployment automated smoke tests (`scripts/devops/smoke-test.sh staging`).
+  6. Runs full user-journey verification against staging Supabase Postgres
+     (setup → journey suites → cleanup), per Spec 0003 §Commands:
+     ```bash
+     STAGING_DATABASE_URL=postgres://<staging-host>/coffeemode_staging \
+       SUPABASE_URL=https://<ref>.supabase.co \
+       SUPABASE_SERVICE_ROLE_KEY=<key> \
+       scripts/devops/run-staging-journey.sh --suite all
+     ```
+     Each suite provisions isolated `{prefix}_{pid}_{uuid}` databases and
+     drops them in `afterAll`; orphans from crashed runs are swept by
+     `web/scripts/cleanup-stale-test-dbs.mjs --apply` (dry-run by default).
+     Never run two instances concurrently against one server.
 
 ### Phase 4: Production Promotion & Zero-Downtime Deployment
 - **Trigger**: Git signed release tag (`v*`) created on `main` following verified staging validation and Reviewer & Architect approval.

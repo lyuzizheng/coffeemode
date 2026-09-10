@@ -99,6 +99,17 @@ jobs:
       - name: Unit tests
         run: npm run test
 
+      - name: Coverage ratchet (v8 thresholds in vitest.config.mts)
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: web/coverage
+          if-no-files-found: error
+
       - name: Build
         run: npm run build
 

@@ -39,8 +39,8 @@
   /* Editorial ramp — narrative reading scale, isolated from the App ramp
      (xs–2xl above). Editorial tokens MUST NOT appear on sheet/form/tool
      surfaces; App tokens MUST NOT set long-form narrative prose — spec 0002.
-     No editorial surfaces exist yet (K3 artifact pending BRAWUKA-16); these
-     tokens are the layer this slice ships, no page recomposition. */
+     First editorial surface: the BRAWUKA-73 pilot (check-in note prose card
+     + landing recomposition). */
   --text-prose: 1.0625rem;
   --text-prose--line-height: 1.75;
   --text-lede: 1.25rem;

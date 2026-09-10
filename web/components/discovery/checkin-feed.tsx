@@ -25,6 +25,7 @@ import { keepPreviousData,
 import { toast } from "@heroui/react";
 import { DotsIcon, HeartIcon, PencilIcon } from "@/components/icons";
 import { CheckinDrawer } from "@/components/checkin/checkin-drawer";
+import { CheckinNote } from "@/components/checkin/checkin-note";
 import { InlineError } from "./inline-error";
 import { dedupeCheckins } from "@/lib/discovery/view-model";
 import { spring } from "@/lib/motion";
@@ -185,7 +186,7 @@ function FeedCard({
         )}
       </div>
       <MiniScores checkin={checkin} />
-      {checkin.note && <p className="text-base text-foreground">{checkin.note}</p>}
+      <CheckinNote note={checkin.note ?? ""} />
       {checkin.photos.length > 0 && (
         <div className="flex gap-2 overflow-x-auto">
           {checkin.photos.map((photo) => (

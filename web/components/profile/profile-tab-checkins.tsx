@@ -7,6 +7,7 @@ import type { UseInfiniteQueryResult, InfiniteData } from "@tanstack/react-query
 import { Button } from "@heroui/react";
 import { HeartIcon, PencilIcon } from "@/components/icons";
 import { CheckinDrawer } from "@/components/checkin/checkin-drawer";
+import { CheckinNote } from "@/components/checkin/checkin-note";
 import { ErrorRow } from "./profile-error-row";
 import type { UserCheckInItemDto } from "@/lib/db/profile";
 
@@ -122,11 +123,7 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
               </div>
             )}
 
-            {item.notes && (
-              <p className="text-xs text-foreground/80 line-clamp-2 mt-0.5">
-                {item.notes}
-              </p>
-            )}
+            <CheckinNote note={item.notes ?? ""} />
           </div>
         );
       })}

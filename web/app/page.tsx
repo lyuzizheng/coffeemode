@@ -50,8 +50,14 @@ export default async function HomePage({
       initialCafeId={typeof params.cafe === "string" ? params.cafe : undefined}
       isAuthenticated={Boolean(user)}
     >
+      {/* Editorial recomposition (spec 0002 §Editorial grid, BRAWUKA-73):
+          asymmetric 12-column grid (8/4 split at ≥lg) with a static
+          marginalia column; outer margins ≥ clamp(24px, 6vw, 96px). IA,
+          copy, and interactions are unchanged — only composition and
+          typography move. Mobile collapses to a single column that keeps
+          an asymmetric indent rhythm instead of centering. */}
       <div className="flex min-h-dvh flex-col">
-        <header className="flex items-center justify-between px-5 py-4 sm:px-8">
+        <header className="flex items-center justify-between px-[clamp(24px,6vw,96px)] py-4">
           <span className="font-display text-md font-extrabold tracking-tight text-foreground">
             CoffeeMode
           </span>
@@ -83,17 +89,20 @@ export default async function HomePage({
           </div>
         </header>
 
-        <main className="flex flex-1 flex-col items-center justify-center px-6 py-10">
-          <div className="w-full max-w-md">
+        <main className="mx-auto grid w-full max-w-6xl flex-1 grid-cols-1 gap-10 px-[clamp(24px,6vw,96px)] py-10 lg:grid-cols-12 lg:gap-8">
+          <div className="min-w-0 lg:col-span-8 lg:col-start-1">
             <p className="font-mono text-xs text-muted">{t("kicker")}</p>
-            <h1 className="mt-3 font-display text-2xl font-bold tracking-tight text-foreground">
+            <h1
+              className="mt-3 max-w-[16ch] font-serif text-display text-balance tracking-tight text-foreground sm:text-[3.25rem] sm:leading-[1.08]"
+              style={{ fontVariationSettings: '"opsz" 60' }}
+            >
               {t("hero_title")}
             </h1>
-            <p className="mt-2 text-base leading-relaxed text-muted">
+            <p className="mt-3 max-w-xl text-lede leading-relaxed text-muted">
               {t("hero_subtitle")}
             </p>
 
-            <ol className="mt-10 space-y-5 border-t border-separator pt-6">
+            <ol className="ml-4 mt-10 max-w-xl space-y-5 border-t border-separator pt-6 sm:ml-8 lg:ml-0 lg:max-w-none">
               {steps.map((key, i) => (
                 <li key={key} className="flex gap-4">
                   <span className="tnum mt-0.5 shrink-0 font-mono text-xs text-accent">
@@ -113,7 +122,7 @@ export default async function HomePage({
 
             {authError && <AuthCallbackError reason={authErrorReason} />}
 
-            <div className="mt-10 w-full rounded-xl border border-border/60 bg-surface p-6 shadow-sm">
+            <div className="mt-10 w-full max-w-xl rounded-md border border-border/60 bg-surface p-6 shadow-sm">
               {user ? (
                 <>
                   <div className="flex flex-col gap-1">
@@ -146,9 +155,28 @@ export default async function HomePage({
               )}
             </div>
           </div>
+
+          {/* Static marginalia column (≥lg only): a layout device per spec
+              §Editorial grid — plain static echo of existing copy (section
+              index + ethos), no links, no motion, no disclosure. */}
+          <aside aria-label={t("kicker")} className="hidden min-w-0 lg:col-span-4 lg:block">
+            <div className="border-l border-separator pl-6">
+              <ol className="space-y-3">
+                {steps.map((key, i) => (
+                  <li key={key} className="flex gap-3">
+                    <span className="tnum shrink-0 font-mono text-xs text-accent">
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    <span className="text-sm text-muted">{t(`steps.${key}.title`)}</span>
+                  </li>
+                ))}
+              </ol>
+              <p className="mt-6 font-mono text-xs leading-relaxed text-muted">{t("ethos")}</p>
+            </div>
+          </aside>
         </main>
 
-        <footer className="px-6 pb-6 text-center">
+        <footer className="px-[clamp(24px,6vw,96px)] pb-6">
           <p className="font-mono text-xs text-muted">{t("ethos")}</p>
         </footer>
       </div>

@@ -1,3 +1,4 @@
+import { getRequestId, logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
 import { recordUploadIntent } from "@/lib/db/image-uploads";
@@ -61,12 +62,12 @@ export async function POST(request: Request) {
       // rejects UUIDs that were never issued to the caller.
       await recordUploadIntent(user.id, data.imageUuid);
     } catch (intentErr) {
-      console.error("/api/images/upload intent record failed", intentErr);
+      logError({ route: "POST /api/images/upload intent", requestId: getRequestId(request), error: intentErr, status: 500 });
       return apiError("internal_error", 500);
     }
     return NextResponse.json(data);
   } catch (err) {
-    console.error("/api/images/upload failed", err);
+    logError({ route: "POST /api/images/upload", requestId: getRequestId(request), error: err, status: err instanceof ImageServiceError ? err.status : 502 });
     if (err instanceof ImageServiceError) {
       return apiError("image_service_error", err.message, err.status);
     }

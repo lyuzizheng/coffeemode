@@ -163,14 +163,12 @@ describe("poi-client", () => {
     });
 
     expect(errorSpy).toHaveBeenCalledTimes(1);
-    const [, logged] = errorSpy.mock.calls[0] as [string, Record<string, unknown>];
-    expect(logged).toEqual(
-      expect.objectContaining({
-        status: 500,
-        message: "POI service unavailable",
-      }),
-    );
-    expect(logged).not.toHaveProperty("body");
+    const [raw] = errorSpy.mock.calls[0];
+    const line = JSON.parse(raw as string) as Record<string, unknown>;
+    expect(line).toMatchObject({ type: "error", route: "poi-service" });
+    expect(line.error as string).toContain("POI service unavailable");
+    expect(line.error as string).toContain('"status":500');
+    expect(line.error as string).not.toContain("stack trace");
     errorSpy.mockRestore();
   });
 

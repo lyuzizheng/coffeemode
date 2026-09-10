@@ -1,3 +1,4 @@
+import { logError } from "@/lib/observability/server-log";
 import "server-only";
 
 import { createServerClient } from "@supabase/ssr";
@@ -42,9 +43,12 @@ export async function createSupabaseServerClient() {
           if (isReadOnlyCookieError(e)) {
             return;
           }
-          console.error("supabase-server: failed to set cookies", {
-            names: cookiesToSet.map(({ name }) => name),
-            error: e instanceof Error ? e.message : String(e),
+          logError({
+            route: "supabase-server set cookies",
+            error: {
+              names: cookiesToSet.map(({ name }) => name),
+              message: e instanceof Error ? e.message : String(e),
+            },
           });
           throw e;
         }

@@ -1,3 +1,4 @@
+import { getRequestId, logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
 import { CafeNotFoundError } from "@/lib/validation/checkin";
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
     if (err instanceof CafeNotFoundError) {
       return apiError("not_found", "cafe not found", 404);
     }
-    console.error("/api/navigations POST failed", err);
+    logError({ route: "POST /api/navigations", requestId: getRequestId(request), error: err, status: 500 });
     return apiError("internal_error", 500);
   }
 }

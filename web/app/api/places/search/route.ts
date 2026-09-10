@@ -1,3 +1,4 @@
+import { getRequestId, logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
 import { DEFAULT_SEARCH_RADIUS_KM, MAX_SEARCH_RADIUS_KM } from "@/lib/places/constants";
@@ -80,7 +81,7 @@ export async function GET(request: Request) {
     if (err instanceof POIServiceError) {
       return apiError("poi_service", err.message, err.status);
     }
-    console.error("/api/places/search failed", err);
+    logError({ route: "GET /api/places/search", requestId: getRequestId(request), error: err, status: 502 });
     return apiError("upstream_error", 502);
   }
 }

@@ -1,3 +1,4 @@
+import { logError } from "@/lib/observability/server-log";
 import "server-only";
 
 import { WORKER_TIMEOUT_MS } from "@/lib/http";
@@ -66,7 +67,7 @@ function headers(token: string): Record<string, string> {
 function upstreamError(endpoint: "upload" | "complete", response: Response): ImageServiceError {
   const upstreamStatus = response.status;
   void response.body?.cancel().catch(() => {});
-  console.error("image-service error", { endpoint, status: upstreamStatus });
+  logError({ route: `image-service ${endpoint}`, error: { status: upstreamStatus } });
 
   let message = "Image service returned an error";
   let status = upstreamStatus;

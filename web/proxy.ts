@@ -2,6 +2,11 @@ import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 import { CAFE_SHELL_BYPASS_CACHE_CONTROL } from "@/lib/cache-policy";
 import { cafeExists } from "@/lib/db/cafes";
+import {
+  REQUEST_ID_HEADER,
+  getRequestId,
+  logError,
+} from "@/lib/observability/server-log";
 
 /**
  * Session-refresh proxy (spec 0001, 0004).
@@ -52,7 +57,7 @@ async function isGoneCafePage(request: NextRequest): Promise<boolean> {
   } catch (err) {
     // DB unreachable: fail open. The page handles the error surface; a
     // degraded soft-404 beats turning every deep link into a 500.
-    console.error("proxy: cafe existence check failed", err);
+    logError({ route: "proxy gone-cafe check", requestId: getRequestId(request), error: err });
     return false;
   }
 }
@@ -142,7 +147,7 @@ async function handleProxy(request: NextRequest) {
   try {
     await supabase.auth.getSession();
   } catch (e) {
-    console.error("proxy: session refresh failed", e);
+    logError({ route: "proxy session refresh", requestId: getRequestId(req), error: e });
   }
 
   // BRAWUKA-184: a response carrying a refreshed session (Set-Cookie) MUST
@@ -164,10 +169,19 @@ async function handleProxy(request: NextRequest) {
  */
 export async function proxy(request: NextRequest) {
   const start = Date.now();
-  const response = await handleProxy(request);
+  // BRAWUKA-168: one id per request. Reuse a valid inbound x-request-id so
+  // upstream callers can correlate; otherwise generate. Forwarded on the
+  // request headers so route handlers read the same value via getRequestId();
+  // echoed back so clients can quote it in bug reports.
+  const requestId = getRequestId(request);
+  const headers = new Headers(request.headers);
+  headers.set(REQUEST_ID_HEADER, requestId);
+  const response = await handleProxy(new NextRequest(request, { headers }));
+  response.headers.set(REQUEST_ID_HEADER, requestId);
   console.log(
     JSON.stringify({
       type: "access",
+      request_id: requestId,
       method: request.method,
       path: request.nextUrl.pathname + request.nextUrl.search,
       status: response.status,

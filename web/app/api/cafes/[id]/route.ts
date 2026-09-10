@@ -1,3 +1,4 @@
+import { getRequestId, logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
 import {
@@ -42,7 +43,7 @@ export async function GET(
     }
     return NextResponse.json(toPublicCafeDetail(cafe));
   } catch (err) {
-    console.error("/api/cafes/[id] GET failed", err);
+    logError({ route: "GET /api/cafes/[id]", requestId: getRequestId(request), error: err, status: 500 });
     return apiError("internal_error", 500);
   }
 }
@@ -100,7 +101,7 @@ export async function DELETE(
         n: err.n,
       });
     }
-    console.error("/api/cafes/[id] DELETE failed", err);
+    logError({ route: "DELETE /api/cafes/[id]", requestId: getRequestId(request), error: err, status: 500 });
     return apiError("internal_error", 500);
   }
 }

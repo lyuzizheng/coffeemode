@@ -1,3 +1,4 @@
+import { getRequestId, logError } from "@/lib/observability/server-log";
 import { NextResponse, type NextRequest } from "next/server";
 import { apiError } from "@/lib/api/response";
 import { requireSameOrigin } from "@/lib/security/origin";
@@ -62,7 +63,7 @@ export async function PATCH(request: NextRequest) {
     if (err instanceof ProfileNotFoundError) {
       return apiError("profile_not_found", 404);
     }
-    console.error("PATCH /api/profile/identity failed:", err);
+    logError({ route: "PATCH /api/profile/identity", requestId: getRequestId(request), error: err, status: 500 });
     return apiError("internal_error", 500);
   }
 }

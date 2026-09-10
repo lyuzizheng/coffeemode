@@ -1,3 +1,4 @@
+import { getRequestId, logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
 import { getCafeLocation, listCafesNearby } from "@/lib/db/cafes";
@@ -48,7 +49,7 @@ export async function GET(
     const cafes = nearby.filter((cafe) => cafe.id !== id).slice(0, appConfig.seo.recoveryLimit);
     return NextResponse.json({ cafes });
   } catch (err) {
-    console.error("/api/cafes/[id]/recovery GET failed", err);
+    logError({ route: "GET /api/cafes/[id]/recovery", requestId: getRequestId(request), error: err, status: 500 });
     return apiError("internal_error", 500);
   }
 }

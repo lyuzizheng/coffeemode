@@ -277,24 +277,17 @@ export function createHttpTestUsers(): HttpTestUsers {
 }
 
 /**
- * Reset all rate-limit buckets (spec 0008 §1, seam 2).
- *
- * Harness-owned infrastructure: clears buckets between Acts so a fast
- * full-matrix run never 429s on the shared `cafes-write` bucket. Never
- * asserts or mutates product state. Backend-agnostic — works for both the
- * in-memory limiter and the Postgres backend.
+ * Insert profile rows for the four lifecycle users (upsert by id), plus any
+ * slice-local `extraUsers` (e.g. pagination personas), so route handlers
+ * that read `profiles` see the same identities the auth mock resolves.
+ * Pair with `seedMockDataset`-style seeders for cafes/check-ins.
  */
-export async function resetRateLimits(): Promise<void> {
-  await rateLimiter.reset();
-}
-
-/**
- * Insert profile rows for the four lifecycle users (upsert by id), so route
- * handlers that read `profiles` see the same identities the auth mock
- * resolves. Pair with `seedMockDataset`-style seeders for cafes/check-ins.
- */
-export async function seedHttpTestUsers(dbClient: pg.Client, users: HttpTestUsers): Promise<void> {
-  const all = [users.userA, users.userB, users.userC, users.userD];
+export async function seedHttpTestUsers(
+  dbClient: pg.Client,
+  users: HttpTestUsers,
+  extraUsers: TestSessionUser[] = [],
+): Promise<void> {
+  const all = [users.userA, users.userB, users.userC, users.userD, ...extraUsers];
   for (const user of all) {
     await dbClient.query(
       `insert into profiles (id, display_name, current_city)
@@ -307,9 +300,13 @@ export async function seedHttpTestUsers(dbClient: pg.Client, users: HttpTestUser
 }
 
 /**
- * Reset rate limit counters (truncate rate_limits table).
+ * Reset rate limit counters (delete all bucket rows and in-memory state).
  * Spec 0008 §1: harness-owned rate-limit bucket reset between Acts.
+ * Plain DELETE: rate_limits has no identity column and no dependents.
  */
-export async function resetRateLimits(dbClient: pg.Client): Promise<void> {
-  await dbClient.query("truncate table rate_limits restart identity cascade");
+export async function resetRateLimits(dbClient?: pg.Client): Promise<void> {
+  if (dbClient) {
+    await dbClient.query("delete from rate_limits");
+  }
+  await rateLimiter.reset();
 }

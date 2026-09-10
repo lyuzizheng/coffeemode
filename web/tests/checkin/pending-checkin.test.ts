@@ -26,6 +26,7 @@ describe("pending-checkin persistence (real IndexedDB)", () => {
     photos: [
       {
         id: "p-1",
+        name: "photo1.jpg",
         file: new File(["image-content"], "photo1.jpg", { type: "image/jpeg" }),
         imageUuid: "img-uuid-1",
       },
@@ -47,7 +48,7 @@ describe("pending-checkin persistence (real IndexedDB)", () => {
     expect(loaded?.photos[0].id).toBe("p-1");
     expect(loaded?.photos[0].imageUuid).toBe("img-uuid-1");
     expect(loaded?.photos[0].file).toBeInstanceOf(Blob);
-    expect(loaded?.photos[0].file.name).toBe("photo1.jpg");
+    expect(loaded?.photos[0].name).toBe("photo1.jpg");
   });
 
   it("overwrites an older draft when a newer one is saved (single active draft)", async () => {
@@ -240,8 +241,10 @@ describe("pending-checkin persistence (real IndexedDB)", () => {
     it("rejects missing required fields", () => {
       expect(isPendingCheckinDraft({ ...validDraft, cafeId: "" })).toBe(false);
       expect(isPendingCheckinDraft({ ...validDraft, photos: [null] })).toBe(false);
-      expect(isPendingCheckinDraft({ ...validDraft, photos: [{ id: "", file: new File([], "f.jpg") }] })).toBe(false);
-      expect(isPendingCheckinDraft({ ...validDraft, photos: [{ id: "p1", file: new File([], "f.jpg"), imageUuid: 123 }] })).toBe(false);
+      expect(isPendingCheckinDraft({ ...validDraft, photos: [{ id: "", name: "f.jpg", file: new File([], "f.jpg") }] })).toBe(false);
+      expect(isPendingCheckinDraft({ ...validDraft, photos: [{ id: "p1", name: "", file: new File([], "f.jpg") }] })).toBe(false);
+      expect(isPendingCheckinDraft({ ...validDraft, photos: [{ id: "p1", file: new File([], "f.jpg") }] })).toBe(false);
+      expect(isPendingCheckinDraft({ ...validDraft, photos: [{ id: "p1", name: "f.jpg", file: new File([], "f.jpg"), imageUuid: 123 }] })).toBe(false);
       expect(isPendingCheckinDraft({ ...validDraft, cafeName: 123 })).toBe(false);
       expect(isPendingCheckinDraft({ ...validDraft, note: null })).toBe(false);
       expect(isPendingCheckinDraft({ ...validDraft, createdAt: -5 })).toBe(false);

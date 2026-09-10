@@ -120,8 +120,8 @@ describe("check-in sign-in gate draft (DG66/DG59)", () => {
     expect(draft.scores.overall).toBe(51);
     expect(draft.note).toBe("great espresso bar");
     expect(draft.photos).toHaveLength(1);
+    expect(draft.photos[0].name).toBe("photo.jpg");
     expect(draft.photos[0].file).toBe(file);
-
     // Verify draft was genuinely persisted in IndexedDB and can be loaded back
     const stored = await loadPendingCheckin(72 * 3_600_000);
     expect(stored).not.toBeNull();
@@ -174,7 +174,7 @@ describe("check-in sign-in gate draft (DG66/DG59)", () => {
       scores: { wifi: 60, overall: 80 },
       maxStay: null,
       note: "restored note",
-      photos: [{ id: "p1", file }],
+      photos: [{ id: "p1", name: "photo.jpg", file }],
       createdAt: Date.now(),
     });
     vi.mocked(uploadPhoto).mockResolvedValue("uuid-9");

@@ -20,7 +20,8 @@ import type { CheckInScores, MaxStay } from "@/types/checkins";
 
 export interface PendingCheckinPhoto {
   id: string;
-  file: File;
+  name: string;
+  file: File | Blob;
   /** Present when the photo already uploaded before the bounce (e.g. the auth probe raced the session expiring). */
   imageUuid?: string;
 }
@@ -55,6 +56,7 @@ export function isPendingCheckinDraft(val: unknown): val is PendingCheckinDraft 
     if (typeof photo !== "object" || photo === null) return false;
     const record = photo as Record<string, unknown>;
     if (typeof record.id !== "string" || !record.id) return false;
+    if (typeof record.name !== "string" || !record.name) return false;
     const file = record.file;
     if (typeof file !== "object" || file === null) return false;
     const isBlobLike =

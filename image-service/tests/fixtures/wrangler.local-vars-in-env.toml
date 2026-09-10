@@ -1,0 +1,16 @@
+# Fixture: a declared [env.production] block that still carries the local-dev
+# values (copy-paste of the top-level [vars]). The guard must refuse it on the
+# values alone, independent of the missing-section check.
+name = "image-service"
+main = "../../src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+R2_ACCOUNT_ID = "local"
+
+[env.production]
+name = "image-service-prod"
+vars = { R2_ACCOUNT_ID = "local", R2_BUCKET_NAME = "coffeemode", R2_PUBLIC_URL = "http://localhost:9000/coffeemode", R2_ENDPOINT = "http://localhost:9000", UPLOAD_URL_TTL_SECONDS = "600" }
+[[env.production.r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "coffeemode"

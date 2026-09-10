@@ -1,0 +1,17 @@
+# Fixture: the exact shape a forgetful `wrangler deploy` (or an `--env` name that
+# is not declared) resolves to — top-level local-dev values, no `[env.*]` blocks.
+# Used by tests/deploy-guard.test.ts.
+name = "image-service"
+main = "../../src/index.ts"
+compatibility_date = "2024-01-01"
+
+[vars]
+R2_ACCOUNT_ID = "local"
+R2_BUCKET_NAME = "coffeemode"
+R2_PUBLIC_URL = "http://localhost:9000/coffeemode"
+R2_ENDPOINT = "http://localhost:9000"
+UPLOAD_URL_TTL_SECONDS = "600"
+
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "coffeemode"

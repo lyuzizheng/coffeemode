@@ -30,6 +30,16 @@ export default defineConfig({
         "config/**",
         "**/*.d.ts",
         "lib/db/migrations/**",
+        // Type-only and re-export modules emit no statements, so v8 reports
+        // them as 0/0 = 100% — an entry that reads as fully covered while
+        // proving nothing. They contribute nothing to the aggregate ratio
+        // either; they are excluded so the report lists only measured code
+        // (BRAWUKA-173). Add a path here only when it compiles to no
+        // executable statement.
+        "lib/rate-limit/types.ts",
+        "lib/search/distance.ts",
+        "lib/search/types.ts",
+        "shared/places/types.ts",
       ],
       // Ratchet floors (BRAWUKA-166): measured unit-suite coverage minus a
       thresholds: {

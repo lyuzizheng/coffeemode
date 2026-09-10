@@ -118,6 +118,25 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        // Baseline security headers on every response (BRAWUKA-167).
+        // HSTS only in production: Traefik terminates TLS there; local dev
+        // and non-TLS staging must never receive it.
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          ...(process.env.NODE_ENV === "production"
+            ? [
+                {
+                  key: "Strict-Transport-Security",
+                  value: "max-age=31536000; includeSubDomains",
+                },
+              ]
+            : []),
+        ],
+      },
     ];
   },
 };

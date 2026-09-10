@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
+import { softDeleteCheckIn, updateCheckIn } from "@/lib/db/checkins";
 import {
   CheckInForbiddenError,
   CheckInNotFoundError,
   parseUpdateCheckInBody,
-  softDeleteCheckIn,
-  updateCheckIn,
-} from "@/lib/db/checkins";
+} from "@/lib/validation/checkin";
 import { guard, readJsonBody } from "@/lib/api/guard";
 import { isValidUUID } from "@shared/uuid";
 import { requireSameOrigin } from "@/lib/security/origin";

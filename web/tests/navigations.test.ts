@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { CafeNotFoundError } from "@/lib/db/checkins";
+import { CafeNotFoundError } from "@/lib/validation/checkin";
 import { parseNavigationBody, recordNavigation } from "@/lib/db/navigations";
 import { POST as navPOST } from "@/app/api/navigations/route";
 

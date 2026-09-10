@@ -10,6 +10,8 @@ import "server-only";
  * configured; locally it is a no-op besides a throttled console.warn.
  */
 
+export type RateLimitAlertReason = "rate_limited" | "fail_open";
+
 export interface RateLimitAlertPayload {
   bucket: string;
   clientId: string;
@@ -17,6 +19,12 @@ export interface RateLimitAlertPayload {
   maxRequests: number;
   retryAfter: number;
   route?: string;
+  /**
+   * Why the alert fired. `rate_limited` (default) = a bucket denied a
+   * request and 429 behavior applied; `fail_open` = the limiter backend
+   * failed and the request was allowed without enforcement (BRAWUKA-171).
+   */
+  reason?: RateLimitAlertReason;
 }
 
 // Throttle alerts to 1 per 10s per process to avoid log spam under burst.
@@ -47,11 +55,12 @@ function betterStackUrl(): string | null {
  */
 export function emitRateLimitAlert(payload: RateLimitAlertPayload): void {
   const now = Date.now();
+  const reason: RateLimitAlertReason = payload.reason ?? "rate_limited";
 
   // Always log throttled for local observability / Cloudflare logs.
   if (shouldEmitWarn(now)) {
     console.warn(
-      `[rate-limit] bucket=${payload.bucket} client=${payload.clientId} windowMs=${payload.windowMs} max=${payload.maxRequests} retryAfter=${payload.retryAfter}s route=${payload.route ?? "-"}`,
+      `[rate-limit] reason=${reason} bucket=${payload.bucket} client=${payload.clientId} windowMs=${payload.windowMs} max=${payload.maxRequests} retryAfter=${payload.retryAfter}s route=${payload.route ?? "-"}`,
     );
   }
 
@@ -63,8 +72,9 @@ export function emitRateLimitAlert(payload: RateLimitAlertPayload): void {
   try {
     const body = JSON.stringify({
       dt: new Date(now).toISOString(),
-      level: "warn",
-      event: "rate_limited",
+      level: reason === "fail_open" ? "error" : "warn",
+      event: reason === "fail_open" ? "rate_limiter_fail_open" : "rate_limited",
+      reason,
       bucket: payload.bucket,
       client_id: payload.clientId,
       window_ms: payload.windowMs,

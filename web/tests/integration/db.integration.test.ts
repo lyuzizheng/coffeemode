@@ -29,7 +29,10 @@ import {
 } from "@/lib/validation/checkin";
 import {
   MERGE_GALLERY_SQL,
+  attachImageToCheckin,
   createCheckIn,
+  getLastCheckinForCafe,
+  ownsCheckin,
   softDeleteCheckIn,
   toggleCheckInLike,
   updateCheckIn,
@@ -41,14 +44,18 @@ import {
 } from "@/lib/validation/cafe";
 import {
   SERVICE_ACCOUNT_MAINTAINER_LABEL,
+  attachImageToCafe,
   cafeExists,
   createCafeWithFirstCheckIn,
   deleteCafe,
+  formatCafeMaintainer,
   getCafe,
   getCafeLocation,
   isLiveCafe,
   listCafeSitemapEntries,
   listCafesNearby,
+  ownsCafe,
+  resolveCafeTimezone,
   setCafeVisibility,
   toPublicCafeDetail,
   type CafeDetailWithAuthor,
@@ -69,7 +76,7 @@ import {
 } from "@/lib/db/identity";
 import { searchCafesInDb } from "@/lib/db/search";
 import { executeSearch } from "@/lib/search/search-service";
-import { recordNavigation } from "@/lib/db/navigations";
+import { parseNavigationBody, recordNavigation } from "@/lib/db/navigations";
 import {
   FeedCursorError,
   encodeFeedCursor,
@@ -80,6 +87,7 @@ import {
   completeImageUpload,
   defaultCompleteUploadDeps,
 } from "@/lib/images/complete";
+import type { StoredImage } from "@/types/images";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import { recomputeAllWorkStats } from "@/lib/stats/aggregate";
 import { coerceWorkStats } from "@/lib/stats/work-stats";
@@ -2196,6 +2204,228 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(reOptedIn.showPublicIdentity).toBe(true);
       expect(reOptedIn.publicHandle).toBe("alex-custom");
       expect(reOptedIn.identityConsentedAt).not.toBeNull();
+    });
+  });
+  describeDb("BRAWUKA-180 split-module backfill on real SQL", () => {
+    function fakeStoredImage(by: string): StoredImage {
+      const imageUuid = randomUUID();
+      return {
+        id: imageUuid,
+        original: `original/${imageUuid}.webp`,
+        card: `card/${imageUuid}.webp`,
+        thumbnail: `thumbnail/${imageUuid}.webp`,
+        w: 800,
+        h: 600,
+        by,
+        at: new Date().toISOString(),
+      };
+    }
+    // Real-delay exception: the lost-race tests below coordinate TWO live Postgres
+    // connections (an uncommitted holder + the victim insert blocked on its unique
+    // index). Fake timers cannot advance real DB I/O, so a short wall-clock pause
+    // lets the victim reach its blocked INSERT before the holder commits.
+    function sleepForRace(): Promise<void> {
+      const { promise, resolve } = Promise.withResolvers<void>();
+      setTimeout(resolve, 500);
+      return promise;
+    }
+
+    it("parseNavigationBody validates bodies; recordNavigation writes and 404s", async () => {
+      expect(parseNavigationBody(null)).toEqual({ ok: false, message: "object body required" });
+      expect(parseNavigationBody([])).toEqual({ ok: false, message: "object body required" });
+      expect(parseNavigationBody({})).toEqual({ ok: false, message: "cafe_id (UUID string) required" });
+      expect(parseNavigationBody({ cafe_id: "not-a-uuid" })).toEqual({
+        ok: false,
+        message: "cafe_id (UUID string) required",
+      });
+      expect(parseNavigationBody({ cafe_id: CAFE_A })).toEqual({ ok: true, value: { cafe_id: CAFE_A } });
+
+      const recorded = await recordNavigation(U1, CAFE_A);
+      expect(recorded.id).toMatch(/^[0-9a-f-]{36}$/);
+      const stored = await dbClient.query("select cafe_id, user_id from navigations where id = $1", [
+        recorded.id,
+      ]);
+      expect(stored.rows[0]).toMatchObject({ cafe_id: CAFE_A, user_id: U1 });
+
+      await expect(recordNavigation(U1, randomUUID())).rejects.toBeInstanceOf(CafeNotFoundError);
+      await expect(recordNavigation("bad-id", CAFE_A)).rejects.toThrow("Invalid user ID");
+      await expect(recordNavigation(U1, "bad-id")).rejects.toThrow("Invalid cafe ID");
+    });
+
+    it("service-account display + timezone fallback (cafes/meta)", async () => {
+      expect(formatCafeMaintainer(null)).toBe(SERVICE_ACCOUNT_MAINTAINER_LABEL);
+      expect(formatCafeMaintainer(undefined)).toBe(SERVICE_ACCOUNT_MAINTAINER_LABEL);
+      expect(formatCafeMaintainer(SERVICE_ACCOUNT_ID)).toBe(SERVICE_ACCOUNT_MAINTAINER_LABEL);
+      expect(formatCafeMaintainer(U1)).toBeNull();
+      expect(resolveCafeTimezone(999, 999)).toBe("UTC");
+      expect(resolveCafeTimezone(999, 999, "singapore")).toBe("Asia/Singapore");
+
+      // A null created_by renders as service-maintained in list + detail projections.
+      const nullOwnerId = randomUUID();
+      await dbClient.query(
+        `insert into cafes (id, name, location, created_by, tz)
+         values ($1, 'Null Owner', ST_SetSRID(ST_MakePoint(103.8, 1.35), 4326)::geography, null, 'Asia/Singapore')`,
+        [nullOwnerId],
+      );
+      const nearby = await listCafesNearby({ lat: 1.35, lng: 103.8, radiusKm: 5, limit: 10 });
+      expect(nearby.find((c) => c.id === nullOwnerId)?.maintainer).toBe(SERVICE_ACCOUNT_MAINTAINER_LABEL);
+      const detail = await getCafe(nullOwnerId);
+      expect(detail && toPublicCafeDetail(detail).maintainer).toBe(SERVICE_ACCOUNT_MAINTAINER_LABEL);
+    });
+
+    it("setCafeVisibility guards + idempotent toggle persist to the row", async () => {
+      await expect(setCafeVisibility("bad-id", U1, "public")).rejects.toBeInstanceOf(CafeNotFoundError);
+      await expect(setCafeVisibility(randomUUID(), U1, "public")).rejects.toBeInstanceOf(CafeNotFoundError);
+      await expect(setCafeVisibility(CAFE_A, U1, "hidden" as "public")).rejects.toThrow("visibility must be");
+      await expect(setCafeVisibility(CAFE_A, U2, "private")).rejects.toBeInstanceOf(CafeForbiddenError);
+
+      expect(await setCafeVisibility(CAFE_A, U1, "private")).toEqual({
+        ok: true,
+        id: CAFE_A,
+        visibility: "private",
+      });
+      expect(await setCafeVisibility(CAFE_A, U1, "private")).toEqual({
+        ok: true,
+        id: CAFE_A,
+        visibility: "private",
+      });
+      expect(await setCafeVisibility(CAFE_A, U1, "public")).toEqual({
+        ok: true,
+        id: CAFE_A,
+        visibility: "public",
+      });
+      const stored = await dbClient.query("select visibility from cafes where id = $1", [CAFE_A]);
+      expect(stored.rows[0].visibility).toBe("public");
+    });
+
+    it("a lost external-id race collapses to the winner via the 23505 gate", async () => {
+      const photoId = randomUUID();
+      await recordUploadIntent(U1, photoId);
+      const holder = new pg.Client(getPoolConfig(testDbUrl));
+      await holder.connect();
+      const holderCafe = randomUUID();
+      try {
+        // Uncommitted winner: the victim's fast-path + in-tx pre-check both miss,
+        // so its insert blocks on the unique index and hits the 23505 catch.
+        await holder.query("begin");
+        await holder.query(
+          `insert into cafes (id, name, location, google_place_id, created_by, tz)
+           values ($1, 'Race Holder', ST_SetSRID(ST_MakePoint(103.8, 1.35), 4326)::geography,
+                   'ChIJ-race-1', $2, 'Asia/Singapore')`,
+          [holderCafe, U1],
+        );
+        const pending = createCafeWithFirstCheckIn(
+          U1,
+          {
+            name: "Race Loser",
+            lat: 1.35,
+            lng: 103.8,
+            google_place_id: "ChIJ-race-1",
+            checkin: { scores: { overall: 70 }, max_stay: "unlimited", note: "race", photo_ids: [photoId] },
+          },
+          fakeProvisionPhotosDeps(),
+        );
+        await sleepForRace();
+        await holder.query("commit");
+        const err = await pending.then(
+          () => null,
+          (e) => e,
+        );
+        expect(err).toBeInstanceOf(CafeExistsError);
+        expect((err as CafeExistsError).existingCafeId).toBe(holderCafe);
+      } finally {
+        await holder.end().catch(() => undefined);
+      }
+    });
+
+    it("createCheckIn validates the key and wins the insert race via ON CONFLICT", async () => {
+      await expect(
+        createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 60 }, idempotency_key: "bad" }),
+      ).rejects.toThrow("Invalid idempotency key");
+
+      const key = randomUUID();
+      const holder = new pg.Client(getPoolConfig(testDbUrl));
+      await holder.connect();
+      try {
+        await holder.query("begin");
+        await holder.query(
+          `insert into checkins (cafe_id, user_id, is_creation, scores, idempotency_key)
+           values ($1, $2, false, '{}', $3)`,
+          [CAFE_A, U2, key],
+        );
+        const pending = createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 60 }, idempotency_key: key });
+        await sleepForRace();
+        await holder.query("commit");
+        const result = await pending;
+        expect(result.deduped).toBe(true);
+        const stored = await dbClient.query(
+          "select id from checkins where user_id = $1 and idempotency_key = $2",
+          [U2, key],
+        );
+        expect(stored.rows).toHaveLength(1);
+        expect(result.checkinId).toBe(stored.rows[0].id);
+      } finally {
+        await holder.end().catch(() => undefined);
+      }
+    });
+
+    it("updateCheckIn applies visited_at; toggleCheckInLike validates ids", async () => {
+      const stamped = new Date("2024-05-01T08:00:00.000Z");
+      const { cafeId } = await updateCheckIn(U1, CHECKIN_A1, { visited_at: stamped });
+      expect(cafeId).toBe(CAFE_A);
+      const stored = await dbClient.query("select visited_at from checkins where id = $1", [CHECKIN_A1]);
+      expect(new Date(stored.rows[0].visited_at).toISOString()).toBe(stamped.toISOString());
+      await expect(toggleCheckInLike("bad", CHECKIN_A1)).rejects.toThrow("Invalid user or check-in ID");
+    });
+
+    it("checkin reads: ownership, attach miss/hit, last-checkin lookup", async () => {
+      expect(await ownsCheckin("bad-id", U1)).toBe(false);
+      expect(await ownsCheckin(CHECKIN_A1, U2)).toBe(false);
+      expect(await ownsCheckin(CHECKIN_A1, U1)).toBe(true);
+
+      const miss = await attachImageToCheckin({
+        checkinId: randomUUID(),
+        userId: U1,
+        image: fakeStoredImage(U1),
+      });
+      expect(miss).toEqual({ ok: false, cafeId: null });
+
+      expect(await getLastCheckinForCafe("bad-id", CAFE_A)).toBeNull();
+      expect(await getLastCheckinForCafe(U2, CAFE_A)).toBeNull();
+      const created = await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 77 }, note: "last one" });
+      const last = await getLastCheckinForCafe(U2, CAFE_A);
+      expect(last?.id).toBe(created.checkinId);
+      expect(last?.scores).toEqual({ overall: 77 });
+
+      const image = fakeStoredImage(U2);
+      const attached = await attachImageToCheckin({ checkinId: created.checkinId, userId: U2, image });
+      expect(attached).toEqual({ ok: true, cafeId: CAFE_A });
+      const photos = await dbClient.query("select photos from checkins where id = $1", [created.checkinId]);
+      expect(JSON.stringify(photos.rows[0].photos)).toContain(image.id);
+    });
+
+    it("cafe image ownership + attach miss/hit with cover", async () => {
+      expect(await ownsCafe("bad-id", U1)).toBe(false);
+      expect(await ownsCafe(CAFE_A, U2)).toBe(false);
+      expect(await ownsCafe(CAFE_A, U1)).toBe(true);
+
+      const image = fakeStoredImage(U1);
+      expect(await attachImageToCafe({ cafeId: CAFE_A, userId: U2, image })).toBe(false);
+      expect(await attachImageToCafe({ cafeId: CAFE_A, userId: U1, image, isCover: true })).toBe(true);
+      const stored = await dbClient.query("select gallery, cover from cafes where id = $1", [CAFE_A]);
+      expect(JSON.stringify(stored.rows[0].gallery)).toContain(image.id);
+      expect(stored.rows[0].cover).toBe(image.card);
+    });
+
+    it("cafe reads: invalid id, missing row, existence probes", async () => {
+      await expect(getCafe("bad-id")).rejects.toThrow("Invalid cafe ID");
+      expect(await getCafe(randomUUID())).toBeNull();
+      expect(await cafeExists("bad-id")).toBe(false);
+      expect(await cafeExists(randomUUID())).toBe(false);
+      expect(await cafeExists(CAFE_A)).toBe(true);
+      expect(await cafeExists(CAFE_A, U1)).toBe(true);
+      expect(await cafeExists(CAFE_A, U2)).toBe(true);
+      expect(await isLiveCafe(randomUUID())).toBe(false);
     });
   });
 });

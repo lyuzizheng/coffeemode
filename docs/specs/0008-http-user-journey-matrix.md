@@ -44,9 +44,10 @@ bug — assertions are never weakened to fit the code.
     of running as the wrong identity. Identity is process-global at
     request-build time, so multi-user requests MUST be serialized — no
     concurrent cross-identity `Promise.all`.
-- Exactly two non-HTTP seams exist, both harness-owned infrastructure, and
-  neither may assert or mutate product state. Both are landed in the
-  harness (not pending):
+- Exactly three non-HTTP seams exist across the matrix (two harness-owned
+  infrastructure and one read-only verification seam). Infrastructure seams
+  may not assert or mutate product state. Both infrastructure seams are
+  landed in the harness (not pending):
   1. one-time persona provisioning — `seedHttpTestUsers(dbClient, users,
      extraUsers?)` upserting profile rows for the deterministic
      `createHttpTestUsers()` A/B/C/D identities (`HTTP_USER_IDS` fixed
@@ -60,9 +61,16 @@ bug — assertions are never weakened to fit the code.
      otherwise 429. `web/tests/setup.ts` additionally resets the
      in-memory limiter before every test (unit-run safety); it is
      complementary, not a substitute — integration suites call the
-     harness export explicitly.
-- Outside the two harness-owned seams above, test code never reads or writes
-  the database for setup, verification, or reconciliation. All data对账 happens through User D's GET calls (§10).
+     harness export explicitly;
+  3. upload-intent DB verification read (Slice 2B / Path 2) — a read-only query
+     on `image_upload_intents` (`select user_id from image_upload_intents where image_uuid = $1`)
+     to verify that `POST /api/images/upload` recorded intent ownership before consumption.
+     This is blessed as an approved verification seam because `image_upload_intents` has no
+     external HTTP read surface (the BRAWUKA-157 contract explicitly mandated verifying this
+     record) and the check is strictly read-only with zero mutation.
+- Outside the two harness-owned seams and the approved intent verification read above,
+  test code never reads or writes the database for setup, verification, or
+  reconciliation. All data对账 happens through User D's GET calls (§10).
 - Suite gate: `RUN_INTEGRATION=1` against the provisioned template-clone
   Postgres/PostGIS (`web/tests/helpers/db.ts`) plus MinIO for the image
   round-trip, same CI `integration-gate` footing as the 0007 suites.

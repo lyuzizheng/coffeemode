@@ -1,6 +1,7 @@
 import type pg from "pg";
 import { NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
+import { rateLimiter } from "@/lib/rate-limit";
 import { createTestSessionUser, type TestSessionUser } from "./mocks";
 
 /**
@@ -299,10 +300,13 @@ export async function seedHttpTestUsers(
 }
 
 /**
- * Reset rate limit counters (delete all bucket rows).
+ * Reset rate limit counters (delete all bucket rows and in-memory state).
  * Spec 0008 §1: harness-owned rate-limit bucket reset between Acts.
  * Plain DELETE: rate_limits has no identity column and no dependents.
  */
-export async function resetRateLimits(dbClient: pg.Client): Promise<void> {
-  await dbClient.query("delete from rate_limits");
+export async function resetRateLimits(dbClient?: pg.Client): Promise<void> {
+  if (dbClient) {
+    await dbClient.query("delete from rate_limits");
+  }
+  await rateLimiter.reset();
 }

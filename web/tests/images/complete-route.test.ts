@@ -6,7 +6,9 @@ const getUserMock = vi.fn();
 const getProcessUrlsMock = vi.fn();
 const processImageMock = vi.fn();
 
-vi.mock("@/lib/db/postgres", () => ({
+vi.mock("@/lib/db/postgres", async (importOriginal) => ({
+  // Real tx adapters: pure functions of the client, same routing as production.
+  ...(await importOriginal<typeof import("@/lib/db/postgres")>()),
   query: (...args: unknown[]) => queryMock(...args),
   withTransaction: async (fn: (client: { query: typeof queryMock }) => unknown) =>
     fn({ query: queryMock }),

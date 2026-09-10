@@ -1,16 +1,13 @@
 import "server-only";
 
 import { isValidUUID } from "@shared/uuid";
-import {
-  recomputeWorkStats,
-  type RunInTransaction,
-} from "@/lib/stats/aggregate";
+import { recomputeWorkStats } from "@/lib/stats/aggregate";
 import { CafeNotFoundError } from "@/lib/validation/checkin";
 import {
   CafeForbiddenError,
   CafeHasOtherCheckinsError,
 } from "@/lib/validation/cafe";
-import { withTransaction } from "../postgres";
+import { txRunnerFrom, withTransaction } from "../postgres";
 import { getServiceAccountId } from "./meta";
 
 export interface DeleteCafeResult {
@@ -45,11 +42,6 @@ export async function deleteCafe(
   }
 
   return withTransaction(async (client) => {
-    const inSameTx: RunInTransaction = (fn) =>
-      fn(<T extends Record<string, unknown>>(text: string, params?: unknown[]) =>
-        client.query<T>(text, params),
-      );
-
     const cafeRes = await client.query<{
       id: string;
       created_by: string | null;
@@ -106,7 +98,7 @@ export async function deleteCafe(
         [cafeId, callerCheckinIds],
       );
 
-      await recomputeWorkStats(cafeId, 0, inSameTx);
+      await recomputeWorkStats(cafeId, 0, txRunnerFrom(client));
     }
 
     const ownerTransferred = others >= 1;

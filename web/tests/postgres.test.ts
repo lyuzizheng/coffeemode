@@ -4,6 +4,8 @@ import {
   getPool,
   getPoolConfig,
   registerPoolShutdownHandlers,
+  txQueryFrom,
+  txRunnerFrom,
   withTransaction,
 } from "@/lib/db/postgres";
 
@@ -286,5 +288,51 @@ describe("registerPoolShutdownHandlers", () => {
     expect(sigintCalls.length).toBe(1);
 
     onSpy.mockRestore();
+  });
+});
+
+describe("transaction adapters", () => {
+  it("txQueryFrom routes statements to the given client with text and params", async () => {
+    const clientQuery = vi.fn().mockResolvedValue({ rows: [{ id: 1 }] });
+    const q = txQueryFrom({ query: clientQuery } as never);
+
+    const result = await q<{ id: number }>("SELECT $1", [1]);
+
+    expect(result).toEqual({ rows: [{ id: 1 }] });
+    expect(clientQuery).toHaveBeenCalledOnce();
+    expect(clientQuery).toHaveBeenCalledWith("SELECT $1", [1]);
+  });
+
+  it("txRunnerFrom runs the callback on the same client without opening a nested transaction", async () => {
+    const clientQuery = vi.fn().mockResolvedValue({ rows: [] });
+    const client = { query: clientQuery } as never;
+
+    await txRunnerFrom(client)(async (q) => {
+      await q("select 1 from cafes where id = $1 for update", ["cafe-1"]);
+    });
+
+    expect(clientQuery).toHaveBeenCalledOnce();
+    expect(clientQuery).toHaveBeenCalledWith("select 1 from cafes where id = $1 for update", [
+      "cafe-1",
+    ]);
+  });
+
+  it("txRunnerFrom preserves statement order on the same client", async () => {
+    const clientQuery = vi.fn().mockResolvedValue({ rows: [] });
+    const client = { query: clientQuery } as never;
+
+    await txRunnerFrom(client)(async (q) => {
+      await q("select 1 from cafes where id = $1 for update", ["cafe-1"]);
+      await q("update cafes set work_stats = $1 where id = $2", ["{}", "cafe-1"]);
+    });
+
+    expect(clientQuery).toHaveBeenCalledTimes(2);
+    expect(clientQuery).toHaveBeenNthCalledWith(1, "select 1 from cafes where id = $1 for update", [
+      "cafe-1",
+    ]);
+    expect(clientQuery).toHaveBeenNthCalledWith(2, "update cafes set work_stats = $1 where id = $2", [
+      "{}",
+      "cafe-1",
+    ]);
   });
 });

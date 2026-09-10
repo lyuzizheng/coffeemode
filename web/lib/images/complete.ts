@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { QueryResult } from "pg";
+import type { RunInTransaction, TxQueryFn } from "@/lib/db/postgres";
 import type { CompleteImageRequest, ImageTargetType, StoredImage } from "@/types/images";
 import type { ProcessUrls } from "./image-service-client";
 import type { ProcessedImage } from "./processor";
@@ -21,13 +21,14 @@ import type { ProcessedImage } from "./processor";
  *      together via repositories, so the gallery can never diverge from the checkin.
  */
 
-export type CompleteQueryFn = <T extends Record<string, unknown>>(
-  text: string,
-  params?: unknown[],
-) => Promise<QueryResult<T>>;
+/**
+ * Transaction-scoped query function shared with every transactional caller.
+ * Canonical shape lives in `lib/db/postgres` (spec 0009 §Edge cases 6);
+ * this alias keeps existing imports working.
+ */
+export type CompleteQueryFn = TxQueryFn;
 
-/** Runs `fn` on one connection inside a transaction (BEGIN/COMMIT/ROLLBACK). */
-export type RunInTransaction = <T>(fn: (q: CompleteQueryFn) => Promise<T>) => Promise<T>;
+export type { RunInTransaction };
 
 export type CompleteUploadFailureReason =
   | "intent_not_found"
@@ -95,10 +96,8 @@ export function defaultCompleteUploadDeps(): CompleteUploadDeps {
       return query(text, params);
     },
     runInTransaction: async (fn) => {
-      const { withTransaction } = await import("@/lib/db/postgres");
-      return withTransaction(async (client) =>
-        fn(client.query.bind(client) as CompleteQueryFn),
-      );
+      const { withTransaction, txQueryFrom } = await import("@/lib/db/postgres");
+      return withTransaction((client) => fn(txQueryFrom(client)));
     },
     checkUploadIntent: async (userId, imageUuid) => {
       const { checkUploadIntent } = await import("@/lib/db/image-uploads");

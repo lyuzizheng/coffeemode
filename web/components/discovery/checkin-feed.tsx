@@ -16,12 +16,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useLocale, useTranslations } from "next-intl";
 import { motion, useReducedMotion } from "framer-motion";
-import { keepPreviousData,
-  useInfiniteQuery,
-  useMutation,
-  useQueryClient,
-  type InfiniteData,
-} from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { toast } from "@heroui/react";
 import { DotsIcon, HeartIcon, PencilIcon } from "@/components/icons";
 import { CheckinDrawer } from "@/components/checkin/checkin-drawer";
@@ -220,8 +215,7 @@ function FeedCard({
           <span className="tnum">{checkin.likes_count}</span>
         </button>
       </div>
-      {/* Same drawer as the profile history edit entry (DG72): prefilled from
-          the feed DTO. Save/delete invalidation lives in the drawer itself. */}
+      {/* Same drawer as the profile history edit entry (DG72): prefilled from the feed DTO. Save/delete invalidation lives in the drawer itself. */}
       {editing && (
         <CheckinDrawer
           isOpen

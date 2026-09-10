@@ -156,7 +156,7 @@ MUST 在当次提交内完成拆分。不允许"顺手加一行"把超标文件�
 - Facade：`web/lib/api/response.ts`（`apiError` 统一错误形状 L19、query 解析 `parseQueryPositiveInt` L58）；`web/lib/config.ts`（`rateLimits`/`appConfig` 冻结单例 + `rateLimitConfig` 访问守卫，YAML 数字归 `web/config/*.yaml`，DG107）。
 - 门禁 Facade（已定型，PR #359）：`web/lib/api/guard.ts` 的 `guard(request, { bucket, requireAuth, route })` 是唯一门禁入口——桶名编译期 + 运行时双校验 → 鉴权（401）→ clientId → 多窗口限流（429），`{ ok, user, clientId } | { ok: false, response }` 显式返回；`readJsonBody` 同模块收敛 body 解析。路由 MUST 经它进入，MUST NOT 手抄门禁样板（`scripts/check-route-guards.mjs` 全仓强制）。
 - 形状复用：`web/shared/places/geo.ts`（`haversineKm` 跨服务唯一真相）。
-- DI：`web/lib/stats/aggregate.ts`（`QueryFn` 类型 L36 + `defaultRunInTransaction()` 生产默认值 L47，聚合函数经 `query: QueryFn` L101 / `runInTransaction` L71、L130 注入——单测传假查询器即可覆盖，无需起库）。
+- DI：`web/lib/stats/aggregate.ts`（`QueryFn` 类型 L36 + `defaultRunInTransaction()` 生产默认值 L47，聚合函数经 `query: QueryFn` L99、L204 / `runInTransaction` L69、L128 注入——单测传假查询器即可覆盖，无需起库）。
 
 本仓反例（禁止重演，括号内为正确动作）：
 
@@ -244,7 +244,9 @@ BRAWUKA-180 (#356) 拆分后存量违规 72 → 68、条目数 60 → 60、文�
 6. 事务客户端适配器已收敛（BRAWUKA-182，`main` `7609e64`）：canonical 来源是
    `web/lib/db/postgres.ts`（`TxQueryFn` / `RunInTransaction` / `txQueryFrom(client)` /
    `txRunnerFrom(client)`）；`cafes/create|delete`、`checkins/create|update` 的 5 处
-   `inSameTx` 闭包与 4 处 `client.query.bind(client) as …` 结构转换全部改为复用；
+   `inSameTx` 闭包，以及 `db/cafes/create.ts`、`db/checkins/create.ts`、
+   `images/complete.ts`、`stats/aggregate.ts` 的 4 处 `client.query.bind(client) as …`
+   结构转换，全部改为复用标准适配器；
    `complete.ts`（`CompleteQueryFn`）、`stats/aggregate.ts`（`QueryFn`）、
    `db/image-uploads.ts`（`IntentQueryFn`）、`images/provision-photos.ts`
    （`ProvisionQueryFn`）的手写形状收敛为别名。新代码 MUST 复用 canonical 类型，

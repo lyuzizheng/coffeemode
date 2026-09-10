@@ -8,6 +8,7 @@
  * existing anonymous `a_nomad` copy. Gallery credit stays anonymous (Q10) —
  * this line attributes the cafe, never individual photos.
  */
+import Image from "next/image";
 import { useTranslations } from "next-intl";
 import type { PublicAuthor } from "@/types/identity";
 
@@ -24,8 +25,7 @@ export function CreatorLine({
     return (
       <p className="flex items-center gap-1.5 text-xs text-muted">
         {author.avatar_url && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <Image
             src={author.avatar_url}
             alt=""
             width={16}

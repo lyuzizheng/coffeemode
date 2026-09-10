@@ -26,7 +26,7 @@ describe("CreatorLine", () => {
 
     expect(screen.getByText("By Alice")).toBeInTheDocument();
     const img = container.querySelector("img");
-    expect(img?.getAttribute("src")).toBe("https://img.example/a.webp");
+    expect(decodeURIComponent(img?.getAttribute("src") ?? "")).toContain("https://img.example/a.webp");
     expect(img?.getAttribute("alt")).toBe("");
   });
 

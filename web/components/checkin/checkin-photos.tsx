@@ -123,7 +123,7 @@ export function CheckinPhotos({ photos, onChange, maxPhotos = 6, disabled = fals
             photo.status === "error" ? "border-danger" : "border-border"
           }`}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {/* eslint-disable-next-line @next/next/no-img-element -- Local blob URL (URL.createObjectURL) for unuploaded draft preview; Next.js Image loader does not process in-memory client blob URLs */}
           <img src={photo.previewUrl} alt="" className="h-full w-full object-cover" draggable={false} />
           {photo.status === "uploading" && (
             <div className="absolute inset-0 bg-black/40">

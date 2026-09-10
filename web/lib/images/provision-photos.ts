@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { QueryResult } from "pg";
+import type { TxQueryFn } from "@/lib/db/postgres";
 import type { StoredImage } from "@/types/images";
 import type { ProcessUrls } from "./image-service-client";
 import type { ProcessedImage } from "./processor";
@@ -25,11 +25,12 @@ import type { ProcessedImage } from "./processor";
  * back together with the cafe/check-in insert and gallery merge.
  */
 
-/** Minimal query-fn shape so consume can run on a transaction connection. */
-export type ProvisionQueryFn = <T extends Record<string, unknown>>(
-  text: string,
-  params?: unknown[],
-) => Promise<QueryResult<T>>;
+/**
+ * Minimal query-fn shape so consume can run on a transaction connection.
+ * Canonical shape lives in `lib/db/postgres` (spec 0009 §Edge cases 6);
+ * this alias keeps existing imports working.
+ */
+export type ProvisionQueryFn = TxQueryFn;
 
 export interface ProvisionPhotosDeps {
   checkUploadIntent: (userId: string, imageUuid: string) => Promise<boolean>;

@@ -1,10 +1,7 @@
 import "server-only";
 
 import { isValidUUID } from "@shared/uuid";
-import {
-  incrementalUpdateWorkStats,
-  type RunInTransaction,
-} from "@/lib/stats/aggregate";
+import { incrementalUpdateWorkStats } from "@/lib/stats/aggregate";
 import {
   CafeExistsError,
   type CreateCafeInput,
@@ -16,7 +13,7 @@ import {
   type ProvisionPhotosDeps,
 } from "@/lib/images/provision-photos";
 import { MERGE_GALLERY_SQL, photosWithSource } from "../checkins/gallery";
-import { query, withTransaction } from "../postgres";
+import { query, txQueryFrom, txRunnerFrom, withTransaction } from "../postgres";
 import { resolveCafeTimezone } from "./meta";
 
 const INSERT_CAFE_SQL = `
@@ -137,7 +134,7 @@ export async function createCafeWithFirstCheckIn(
 
       // Single-use consume inside the tx: a replay/foreign id aborts the
       // whole creation (issue #86).
-      const q = client.query.bind(client) as Parameters<typeof consumeProvisionedIntents>[2];
+      const q = txQueryFrom(client);
       await consumeProvisionedIntents(userId, photoIds, q, deps);
 
       // The first check-in's photos auto-merge into the gallery too (spec 0001).
@@ -146,11 +143,7 @@ export async function createCafeWithFirstCheckIn(
       await client.query(SET_FIRST_CHECKIN_PHOTOS_SQL, [checkinId, JSON.stringify(photos)]);
       await client.query(MERGE_GALLERY_SQL, [cafeId, JSON.stringify(photos)]);
 
-      const inSameTx: RunInTransaction = (fn) =>
-        fn(<T extends Record<string, unknown>>(text: string, params?: unknown[]) =>
-          client.query<T>(text, params),
-        );
-      await incrementalUpdateWorkStats(cafeId, userId, undefined, 0, inSameTx);
+      await incrementalUpdateWorkStats(cafeId, userId, undefined, 0, txRunnerFrom(client));
 
       return { cafeId, checkinId, tz };
     });

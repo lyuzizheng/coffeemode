@@ -161,16 +161,11 @@
   },
   "lib/db/cafes/delete.ts": {
     "max-lines-per-function": {
-      "count": 2
+      "count": 1
     }
   },
   "lib/db/checkins/create.ts": {
     "max-lines-per-function": {
-      "count": 1
-    }
-  },
-  "lib/db/checkins/update.ts": {
-    "sonarjs/no-identical-functions": {
       "count": 1
     }
   },

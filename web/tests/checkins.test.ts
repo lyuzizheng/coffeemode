@@ -26,7 +26,10 @@ vi.mock("@/lib/auth/supabase-server", () => ({
   isAuthConfigured: () => true,
 }));
 
-vi.mock("@/lib/db/postgres", () => ({
+vi.mock("@/lib/db/postgres", async (importOriginal) => ({
+  // Real tx adapters: they are pure functions of the client, so the fake
+  // client below exercises the same statement routing as production.
+  ...(await importOriginal<typeof import("@/lib/db/postgres")>()),
   withTransaction: (fn: (client: { query: typeof clientQueryMock }) => unknown) =>
     fn({ query: clientQueryMock }),
   query: (...args: unknown[]) => poolQueryMock(...args),

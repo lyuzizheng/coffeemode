@@ -1,16 +1,13 @@
 import "server-only";
 
 import { isValidUUID } from "@shared/uuid";
-import {
-  recomputeWorkStats,
-  type RunInTransaction,
-} from "@/lib/stats/aggregate";
+import { recomputeWorkStats } from "@/lib/stats/aggregate";
 import {
   CheckInForbiddenError,
   CheckInNotFoundError,
   type UpdateCheckInInput,
 } from "@/lib/validation/checkin";
-import { withTransaction } from "../postgres";
+import { txRunnerFrom, withTransaction } from "../postgres";
 
 /* ------------------------------------------------------------------ *
  * Edit + soft delete — both recompute work_stats from scratch (spec 0001
@@ -32,11 +29,6 @@ export async function updateCheckIn(
   if (!isValidUUID(userId) || !isValidUUID(checkinId)) throw new Error("Invalid user or check-in ID");
 
   return withTransaction(async (client) => {
-    const inSameTx: RunInTransaction = (fn) =>
-      fn(<T extends Record<string, unknown>>(text: string, params?: unknown[]) =>
-        client.query<T>(text, params),
-      );
-
     const existing = await client.query<{
       id: string;
       cafe_id: string;
@@ -76,7 +68,7 @@ export async function updateCheckIn(
     params.push(checkinId);
     await client.query(sql, params);
 
-    await recomputeWorkStats(row.cafe_id, 0, inSameTx);
+    await recomputeWorkStats(row.cafe_id, 0, txRunnerFrom(client));
 
     return { cafeId: row.cafe_id };
   });
@@ -86,11 +78,6 @@ export async function softDeleteCheckIn(userId: string, checkinId: string): Prom
   if (!isValidUUID(userId) || !isValidUUID(checkinId)) throw new Error("Invalid user or check-in ID");
 
   return withTransaction(async (client) => {
-    const inSameTx: RunInTransaction = (fn) =>
-      fn(<T extends Record<string, unknown>>(text: string, params?: unknown[]) =>
-        client.query<T>(text, params),
-      );
-
     const existing = await client.query<{
       id: string;
       cafe_id: string;
@@ -117,7 +104,7 @@ export async function softDeleteCheckIn(userId: string, checkinId: string): Prom
       [row.cafe_id, checkinId],
     );
 
-    await recomputeWorkStats(row.cafe_id, 0, inSameTx);
+    await recomputeWorkStats(row.cafe_id, 0, txRunnerFrom(client));
 
     return { cafeId: row.cafe_id };
   });

@@ -7,17 +7,14 @@ import {
   provisionPhotos,
   type ProvisionPhotosDeps,
 } from "@/lib/images/provision-photos";
-import {
-  recomputeWorkStats,
-  type RunInTransaction,
-} from "@/lib/stats/aggregate";
+import { recomputeWorkStats } from "@/lib/stats/aggregate";
 import {
   CafeNotFoundError,
   DuplicateCheckInError,
   REVISIT_WINDOW_HOURS,
   type CreateCheckInInput,
 } from "@/lib/validation/checkin";
-import { query, withTransaction } from "../postgres";
+import { query, txQueryFrom, txRunnerFrom, withTransaction } from "../postgres";
 import { MERGE_GALLERY_SQL, photosWithSource } from "./gallery";
 
 const CAFE_EXISTS_SQL = "select id from cafes where id = $1 and deleted_at is null";
@@ -114,11 +111,6 @@ export async function createCheckIn(
   const provisioned = await provisionPhotos(userId, photoIds, deps);
 
   return withTransaction(async (client) => {
-    const inSameTx: RunInTransaction = (fn) =>
-      fn(<T extends Record<string, unknown>>(text: string, params?: unknown[]) =>
-        client.query<T>(text, params),
-      );
-
     const cafe = await client.query<{ id: string }>(CAFE_EXISTS_SQL, [input.cafe_id]);
     if (!cafe.rows[0]) throw new CafeNotFoundError(input.cafe_id);
 
@@ -162,7 +154,7 @@ export async function createCheckIn(
     if (provisioned.length > 0) {
       // Single-use consume inside the tx: a replay/foreign id aborts the
       // whole check-in (issue #86).
-      const q = client.query.bind(client) as Parameters<typeof consumeProvisionedIntents>[2];
+      const q = txQueryFrom(client);
       await consumeProvisionedIntents(userId, photoIds, q, deps);
       const photos = photosWithSource(provisioned, checkinId);
       // $1 = checkin id, $2 = photos JSON (the SET clause's $2::jsonb).
@@ -170,7 +162,7 @@ export async function createCheckIn(
       await client.query(MERGE_GALLERY_SQL, [input.cafe_id, JSON.stringify(photos)]);
     }
 
-    await recomputeWorkStats(input.cafe_id, 0, inSameTx);
+    await recomputeWorkStats(input.cafe_id, 0, txRunnerFrom(client));
 
     return { checkinId, deduped };
   });

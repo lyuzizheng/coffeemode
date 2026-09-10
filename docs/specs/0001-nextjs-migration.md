@@ -1169,6 +1169,29 @@ action pending) alongside Cloudflare observability (DG129). Values'
 canonical home is `web/config/rate-limits.yaml`.
 ```
 
+```text
+Route → auth → rate-limit对照表 (BRAWUKA-163, 2026-09-10核实; 现状即正确):
+REQUIRED (17, 无user→401 `{error:"unauthorized"}` 无message, 信封已统一):
+POST /api/cafes, DELETE /api/cafes/[id], PATCH /api/cafes/[id]/visibility
+  → cafes-write; POST /api/checkins, PATCH+DELETE /api/checkins/[id],
+  POST /api/checkins/[id]/like → cafes-write; GET /api/checkins/last
+  → cafes-read; POST /api/images/upload, POST /api/images/complete → images;
+  POST /api/navigations → cafes-write; POST /api/places/external → places;
+  GET+PATCH /api/profile → profile-read/profile-write;
+  GET /api/profile/cafes, GET /api/profile/checkins → profile-read;
+  PATCH /api/profile/identity → identity-write.
+OPTIONAL (7, getCurrentUser仅作viewer装饰/限流key, 匿名可服务, DG13/DG105公开浏览):
+GET /api/cafes, GET /api/cafes/[id], GET /api/cafes/[id]/checkins,
+  GET /api/cafes/[id]/recovery → cafes-read; GET /api/search → search;
+  GET /api/places/search → places (仅source=google分支要求登录);
+  POST /api/places/resolve → places (user仅作限流key, 无401路径).
+NONE (3): GET /api/mapkit-token → places (不调getCurrentUser);
+  GET+HEAD /api/health (无鉴权无限流, 活性探针刻意).
+约定: 无checkins专用桶, 读→cafes-read、写→cafes-write; 8桶见
+  web/config/rate-limits.yaml; 不建共享requireUser助手 (行为已统一, gate
+  顺序各路由刻意不同, 见BRAWUKA-163裁决).
+```
+
 ### Configuration (universal — DG107)
 
 ```text

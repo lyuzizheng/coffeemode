@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CHECK_SQL, PostgresRateLimiter, mapBucketRow } from "@/lib/rate-limit/postgres";
+import { _resetAlertThrottleForTests } from "@/lib/observability/rate-limit-alert";
 import { createRateLimiter, RateLimiter } from "@/lib/rate-limit";
 
 /** Minimal pg-shaped fake: returns one row per check call. */
@@ -92,6 +93,53 @@ describe("PostgresRateLimiter", () => {
     const limiter = new PostgresRateLimiter(run, () => 0);
     await limiter.reset();
     expect(run).toHaveBeenCalledWith("DELETE FROM rate_limits");
+  });
+});
+
+describe("PostgresRateLimiter fail-open observability (BRAWUKA-171)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("emits one fail_open alert when the database is unavailable", async () => {
+    const run = vi.fn().mockRejectedValue(new Error("db down"));
+    const limiter = new PostgresRateLimiter(run, () => 0);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    _resetAlertThrottleForTests();
+
+    const result = await limiter.check("key", 60_000, 5);
+
+    expect(result.allowed).toBe(true);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0][0]).toContain("fail_open");
+  });
+
+  it("emits a fail_open alert when the query returns no row", async () => {
+    const limiter = new PostgresRateLimiter(fakeQuery([]), () => 0);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    _resetAlertThrottleForTests();
+
+    const result = await limiter.check("key", 60_000, 5);
+
+    expect(result.allowed).toBe(true);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0][0]).toContain("fail_open");
+  });
+
+  it("does not alert on the healthy path", async () => {
+    const limiter = new PostgresRateLimiter(
+      fakeQuery([{ tokens: 4, reset_at: new Date(60_000) }]),
+      () => 0,
+    );
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    _resetAlertThrottleForTests();
+
+    const result = await limiter.check("key", 60_000, 5);
+
+    expect(result.allowed).toBe(true);
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 });
 

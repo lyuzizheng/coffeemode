@@ -13,6 +13,10 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
+    // `vitest.integration-coverage.config.mts` extends `vitest.config.mts`; TS
+    // resolves a `.mts` specifier only when this is on. `noEmit` is already set,
+    // so no build output depends on it.
+    "allowImportingTsExtensions": true,
     "plugins": [
       {
         "name": "next"

@@ -95,7 +95,7 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Structure guard (file/function budget, duplication, layer boundaries)
+      - name: Structure guard (budgets, duplication, layer boundaries, exemption ratchet)
         run: npm run check:structure
 
       - name: Lint

@@ -20,6 +20,10 @@
  *      the files in `structure-baseline.json.files`, so a rule-level suppression
  *      can never bypass the file-size ratchet.
  *
+ * The budget also carries `reviewBy`: spec 0009 §7.1 forbids merging an exemption
+ * without an expiry date, and §7.3 requires a quarterly review, so an overdue date
+ * fails the gate instead of living only in prose.
+ *
  * Prints `suppressed violations: N (budget M)` so the frozen debt is visible in
  * every CI log. `--print-budget` prints the `eslintSuppressions` block for the
  * current tree (reviewed by hand; never auto-written).
@@ -81,6 +85,7 @@ if (printBudget) {
         perRule: Object.fromEntries(
           Object.entries(current.perRule).sort(([a], [b]) => a.localeCompare(b)),
         ),
+        ...(budget?.reviewBy ? { reviewBy: budget.reviewBy } : {}),
       },
       null,
       2,
@@ -135,6 +140,12 @@ const notes = [];
 
 // 1. Budget ratchet — growth fails, shrinkage asks for a tighter budget.
 const budgetRule = (rule) => budget.perRule[rule] ?? 0;
+// spec 0009 §7.1: an exemption without a review date must not be mergeable.
+if (!budget.reviewBy || Number.isNaN(Date.parse(budget.reviewBy))) {
+  errors.push("eslintSuppressions.reviewBy is missing or not a date — spec 0009 §7.1 requires an expiry date for rule-level exemptions");
+} else if (Date.parse(budget.reviewBy) < Date.now()) {
+  errors.push(`rule-level exemption review was due ${budget.reviewBy} (spec 0009 §7.3) — split the code, renew with a new date, or open a P1 debt issue`);
+}
 if (current.files > budget.files) {
   errors.push(
     `registry covers ${current.files} files, budget ${budget.files} — a new rule-level exemption must be approved and the budget raised in the same commit`,
@@ -202,7 +213,7 @@ for (const path of expected) {
 for (const note of notes) console.log(`note: ${note}`);
 for (const error of errors) console.log(`FAIL: ${error}`);
 console.log(
-  `suppressed violations: ${current.violations} (budget ${budgetViolations}) across ${current.files} files / ${current.entries} entries`,
+  `suppressed violations: ${current.violations} (budget ${budgetViolations}) across ${current.files} files / ${current.entries} entries; review due ${budget.reviewBy ?? "unset"}`,
 );
 const liveTotal = Object.values(live).reduce(
   (total, rules) => total + Object.values(rules).reduce((a, b) => a + b, 0),

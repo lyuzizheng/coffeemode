@@ -141,6 +141,11 @@
       "count": 1
     }
   },
+  "lib/checkin/pending-checkin.ts": {
+    "sonarjs/cognitive-complexity": {
+      "count": 1
+    }
+  },
   "lib/config-schema.ts": {
     "max-lines": {
       "count": 1

@@ -186,11 +186,27 @@ MUST 在当次提交内完成拆分。不允许"顺手加一行"把超标文件�
 | --- | --- | --- | --- | --- |
 | `web/lib/db/cafes.ts` | 826 | 文件硬 400 | 826（只允许减少） | 2026-12-31 |
 | `web/lib/db/checkins.ts` | 758 | 文件硬 400 | 758 | 2026-12-31 |
-| `web/components/checkin/checkin-drawer.tsx` | 725 | 文件硬 400 | 725 | 2026-12-31 |
-| `web/components/discovery/checkin-feed.tsx` | 439 | 文件硬 400 | 439 | 2026-12-31 |
+| `web/components/checkin/checkin-drawer.tsx` | 730 | 文件硬 400 | 730 | 2026-12-31 |
+| `web/components/discovery/checkin-feed.tsx` | 440 | 文件硬 400 | 440 | 2026-12-31 |
 | `web/lib/db/profile.ts` | 431 | 文件硬 400 | 431 | 2026-12-31 |
+| `web/lib/config-schema.ts` | 424 | 文件硬 400 | 424 | 2026-12-31 |
 
-第二张表：规则级豁免（`web/eslint-suppressions.json`，41 文件 / 68 条，`32b5bdc` 实测）。用途：结构规则（函数行数/复杂度/`max-depth`/同构函数）对存量文件的逐条 suppress；读取方：`web/eslint.config.mjs`。同样**只降不升**：条目数增长即 CI 失败（`check:structure` 校验 suppression 数量单调递减）；`npx eslint --prune-suppressions` 可剪已自愈条目，重构 PR 应当顺手清除。
+机器镜像：`web/structure-baseline.json` 的 `files`（每条含 `lines` 与 `reviewBy`），
+由 `scripts/check-file-size.mjs` 读取。`checkin-drawer` 730 / `checkin-feed` 440 是
+守卫合入前 main 上 BRAWUKA-185 (#358) / BRAWUKA-73 (#349) 造成的 +5 / +1，
+`config-schema.ts` 是 BRAWUKA-184 (#357) 引入；基线自记录值起只降不升。
+
+第二张表：规则级豁免（`web/eslint-suppressions.json`，当前 44 文件 / 61 条目 / 72 处违规）。
+用途：结构规则（函数行数/复杂度/`max-depth`/同构函数）对存量文件的逐条 suppress；
+读取方：**ESLint 自身的 bulk suppressions 机制**（`eslint.config.mjs` 不读该文件、不按路径关规则），
+棘轮由 `scripts/check-suppressions.mjs` 校验，预算登记在
+`web/structure-baseline.json` 的 `eslintSuppressions`（`files` / `entries` / `perRule` / `reviewBy`）。
+同样**只降不升**：文件数、条目数或任一规则的违规数增长即 CI 失败，
+`check:structure` 会打印 `suppressed violations: N (budget M)` 让存量在日志里可见；
+`npx eslint --prune-suppressions` 可剪已自愈条目，重构 PR 应当顺手清除；
+缺少 `reviewBy` 或复核到期未处理同样按失败处理（§7.1、§7.3）。
+本轮新登记的条目全部来自守卫合入前的 main：`proxy.ts`、`scripts/check-route-guards.mjs`、
+`lib/checkin/pending-checkin.ts`，以及 `lib/config-schema.ts` 的 `max-lines`（#357 / #358 / #359）。
 
 规则：
 

@@ -78,6 +78,16 @@ const errors = [];
 const warnings = [];
 const notes = [];
 
+// spec 0009 §7.1/§7.3: a size exemption must carry a review date, and an overdue
+// review is a gate failure rather than a note in prose.
+for (const entry of grandfathered) {
+  if (!entry.reviewBy || Number.isNaN(Date.parse(entry.reviewBy))) {
+    errors.push(`${entry.path}: exemption has no reviewBy date — spec 0009 §7.1 requires one`);
+  } else if (Date.parse(entry.reviewBy) < Date.now()) {
+    errors.push(`${entry.path}: exemption review was due ${entry.reviewBy} (spec 0009 §7.3) — split the file, renew the date, or open a P1 debt issue`);
+  }
+}
+
 for (const file of measured) {
   const exemption = exemptions.get(file.path);
   if (exemption) {
@@ -126,7 +136,7 @@ for (const error of errors) console.log(`FAIL: ${error}`);
 
 const largest = measured.reduce((max, file) => Math.max(max, file.lines), 0);
 console.log(
-  `file budget: ${measured.length} files, largest ${largest} lines, hard ${LIMITS.maxLines}, soft ${LIMITS.softLines}, exemptions ${grandfathered.length}`,
+  `file budget: ${measured.length} files, largest ${largest} lines, hard ${LIMITS.maxLines}, soft ${LIMITS.softLines}, exemptions ${grandfathered.length} (review due ${grandfathered[0]?.reviewBy ?? "unset"})`,
 );
 
 if (errors.length > 0) {

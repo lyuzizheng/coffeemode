@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
+import { CAFE_SHELL_BYPASS_CACHE_CONTROL } from "@/lib/cache-policy";
 import { cafeExists } from "@/lib/db/cafes";
 
 /**
@@ -85,9 +86,14 @@ async function handleProxy(request: NextRequest) {
     const id = CAFE_PAGE_PATH.exec(req.nextUrl.pathname)?.[1] ?? "";
     const headers = new Headers(req.headers);
     headers.set(GONE_HEADER, id);
-    return NextResponse.rewrite(new URL("/__gone-cafe", req.url), {
+    const gone = NextResponse.rewrite(new URL("/__gone-cafe", req.url), {
       request: { headers },
     });
+    // BRAWUKA-184: a 404 MUST NOT sit in shared cache (a recreated cafe
+    // would stay gone for up to s-maxage). The static public header from
+    // next.config matches this path, so stamp the bypass here.
+    gone.headers.set("Cache-Control", CAFE_SHELL_BYPASS_CACHE_CONTROL);
+    return gone;
   }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -106,6 +112,7 @@ async function handleProxy(request: NextRequest) {
     return response;
   }
 
+  let sessionRefreshed = false;
   const supabase = createServerClient(url, anonKey, {
     cookies: {
       getAll() {
@@ -115,6 +122,7 @@ async function handleProxy(request: NextRequest) {
         // Forward refreshed cookies onto the request so route handlers see
         // the latest session, then mirror them (with serialize options) onto
         // the outgoing response.
+        if (cookiesToSet.length > 0) sessionRefreshed = true;
         for (const { name, value } of cookiesToSet) {
           req.cookies.set(name, value);
         }
@@ -135,6 +143,15 @@ async function handleProxy(request: NextRequest) {
     await supabase.auth.getSession();
   } catch (e) {
     console.error("proxy: session refresh failed", e);
+  }
+
+  // BRAWUKA-184: a response carrying a refreshed session (Set-Cookie) MUST
+  // NOT sit in shared cache — otherwise one user's session cookie is served
+  // cross-user. Anonymous pass-through (no Set-Cookie) keeps the static
+  // public header; sb-* request cookies without a refresh are handled by the
+  // edge bypass rule (deploy/dokploy/cache-rules.json).
+  if (sessionRefreshed) {
+    response.headers.set("Cache-Control", CAFE_SHELL_BYPASS_CACHE_CONTROL);
   }
 
   return response;

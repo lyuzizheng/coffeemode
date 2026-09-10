@@ -67,7 +67,7 @@ function sanitizedRequest(request: NextRequest): NextRequest {
   return new NextRequest(request, { headers });
 }
 
-export async function proxy(request: NextRequest) {
+async function handleProxy(request: NextRequest) {
   const req = sanitizedRequest(request);
 
   // Gone-cafe deep links get a real 404 (DG19). The cafe page is async, and
@@ -137,6 +137,26 @@ export async function proxy(request: NextRequest) {
     console.error("proxy: session refresh failed", e);
   }
 
+  return response;
+}
+
+/**
+ * Proxy entry (BRAWUKA-167): access log wrapper around the session/gone-cafe
+ * proxy. Observability only — one JSON line per request
+ * (method/path/status/duration_ms). Never blocks or rewrites.
+ */
+export async function proxy(request: NextRequest) {
+  const start = Date.now();
+  const response = await handleProxy(request);
+  console.log(
+    JSON.stringify({
+      type: "access",
+      method: request.method,
+      path: request.nextUrl.pathname + request.nextUrl.search,
+      status: response.status,
+      duration_ms: Date.now() - start,
+    }),
+  );
   return response;
 }
 

@@ -46,13 +46,19 @@ function CheckinResumeInner({ draftTtlHours }: CheckinResumeProps) {
       .then((stored) => {
         if (cancelled || !stored) return;
         setPhotos(
-          stored.photos.map((p) => ({
-            id: p.id,
-            previewUrl: URL.createObjectURL(p.file),
-            status: p.imageUuid ? ("done" as const) : ("staged" as const),
-            ...(p.imageUuid ? { imageUuid: p.imageUuid } : {}),
-            file: p.file,
-          })),
+          stored.photos.map((p) => {
+            const restoredFile =
+              p.file instanceof File
+                ? p.file
+                : new File([p.file], p.name || "photo.jpg", { type: p.file.type });
+            return {
+              id: p.id,
+              previewUrl: URL.createObjectURL(p.file),
+              status: p.imageUuid ? ("done" as const) : ("staged" as const),
+              ...(p.imageUuid ? { imageUuid: p.imageUuid } : {}),
+              file: restoredFile,
+            };
+          }),
         );
         setDraft(stored);
         setOpen(true);

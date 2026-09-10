@@ -1,4 +1,4 @@
-import { get, set, del, createStore } from "idb-keyval";
+import { get, set, del, createStore, type UseStore } from "idb-keyval";
 import type { CheckInScores, MaxStay } from "@/types/checkins";
 
 /**
@@ -20,7 +20,8 @@ import type { CheckInScores, MaxStay } from "@/types/checkins";
 
 export interface PendingCheckinPhoto {
   id: string;
-  file: File;
+  name: string;
+  file: File | Blob;
   /** Present when the photo already uploaded before the bounce (e.g. the auth probe raced the session expiring). */
   imageUuid?: string;
 }
@@ -35,28 +36,95 @@ export interface PendingCheckinDraft {
   createdAt: number;
 }
 
-const draftStore = createStore("coffeemode-pending-checkin", "draft");
-const DRAFT_KEY = "pending";
+export const DRAFT_STORE_NAME = "coffeemode-pending-checkin";
+export const DRAFT_OBJECT_STORE = "draft";
+export const DRAFT_KEY = "pending";
 
-export async function savePendingCheckin(draft: PendingCheckinDraft): Promise<void> {
-  await set(DRAFT_KEY, draft, draftStore);
+export const draftStore = createStore(DRAFT_STORE_NAME, DRAFT_OBJECT_STORE);
+
+export function isPendingCheckinDraft(val: unknown): val is PendingCheckinDraft {
+  if (typeof val !== "object" || val === null) return false;
+  const d = val as Record<string, unknown>;
+  if (typeof d.cafeId !== "string" || !d.cafeId) return false;
+  if (typeof d.cafeName !== "string") return false;
+  if (typeof d.note !== "string") return false;
+  if (typeof d.createdAt !== "number" || !Number.isFinite(d.createdAt) || d.createdAt <= 0) return false;
+  if (typeof d.scores !== "object" || d.scores === null || Array.isArray(d.scores)) return false;
+  if (d.maxStay !== null && d.maxStay !== undefined && typeof d.maxStay !== "string") return false;
+  if (!Array.isArray(d.photos)) return false;
+  for (const photo of d.photos) {
+    if (typeof photo !== "object" || photo === null) return false;
+    const record = photo as Record<string, unknown>;
+    if (typeof record.id !== "string" || !record.id) return false;
+    if (typeof record.name !== "string" || !record.name) return false;
+    const file = record.file;
+    if (typeof file !== "object" || file === null) return false;
+    const isBlobLike =
+      file instanceof Blob ||
+      "name" in file ||
+      "size" in file;
+    if (!isBlobLike) return false;
+    if (record.imageUuid !== undefined && typeof record.imageUuid !== "string") return false;
+  }
+  return true;
+}
+
+export async function savePendingCheckin(
+  draft: PendingCheckinDraft,
+  store: UseStore = draftStore,
+): Promise<void> {
+  if (!isPendingCheckinDraft(draft)) {
+    throw new TypeError("Invalid pending check-in draft");
+  }
+  await set(DRAFT_KEY, draft, store);
 }
 
 /**
- * Loads the pending draft, or null when none exists or it has outlived
- * `ttlMs` (checkins.pendingDraftTtlHours, DG107). An expired draft is
- * cleared eagerly so the store never grows stale entries.
+ * Loads the pending draft, or null when none exists, it has outlived
+ * `ttlMs` (checkins.pendingDraftTtlHours, DG107), or the stored data
+ * is corrupted/unreadable. An expired or corrupted draft is cleared
+ * eagerly so the store never grows stale or broken entries.
  */
-export async function loadPendingCheckin(ttlMs: number): Promise<PendingCheckinDraft | null> {
-  const draft = await get<PendingCheckinDraft>(DRAFT_KEY, draftStore);
-  if (!draft) return null;
-  if (Date.now() - draft.createdAt > ttlMs) {
-    await del(DRAFT_KEY, draftStore);
+export async function loadPendingCheckin(
+  ttlMs: number,
+  store: UseStore = draftStore,
+): Promise<PendingCheckinDraft | null> {
+  let draft: unknown;
+  try {
+    draft = await get<unknown>(DRAFT_KEY, store);
+  } catch {
+    // IndexedDB read error / deserialization failure: clear corrupt state eagerly
+    try {
+      await del(DRAFT_KEY, store);
+    } catch {
+      // ignore
+    }
     return null;
   }
+
+  if (!draft) return null;
+
+  if (!isPendingCheckinDraft(draft)) {
+    try {
+      await del(DRAFT_KEY, store);
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
+  if (Date.now() - draft.createdAt > ttlMs) {
+    try {
+      await del(DRAFT_KEY, store);
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
   return draft;
 }
 
-export async function clearPendingCheckin(): Promise<void> {
-  await del(DRAFT_KEY, draftStore);
+export async function clearPendingCheckin(store: UseStore = draftStore): Promise<void> {
+  await del(DRAFT_KEY, store);
 }

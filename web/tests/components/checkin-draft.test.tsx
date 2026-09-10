@@ -9,6 +9,7 @@ import {
   loadPendingCheckin,
   clearPendingCheckin,
 } from "@/lib/checkin/pending-checkin";
+import * as pendingCheckin from "@/lib/checkin/pending-checkin";
 import { uploadPhoto } from "@/lib/images/client-upload";
 import messages from "../../messages/en.json";
 
@@ -16,14 +17,6 @@ import messages from "../../messages/en.json";
 // singleton; the fetch mocks below would flip tests offline mid-run.
 vi.mock("@/hooks/use-network-status", () => ({
   useNetworkStatus: () => ({ state: "online", isOnline: true }),
-}));
-
-// IndexedDB is not available in jsdom — the store module is mocked and its
-// calls asserted directly.
-vi.mock("@/lib/checkin/pending-checkin", () => ({
-  savePendingCheckin: vi.fn().mockResolvedValue(undefined),
-  loadPendingCheckin: vi.fn().mockResolvedValue(null),
-  clearPendingCheckin: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/images/client-upload", () => ({
@@ -76,10 +69,11 @@ function postedCheckinBody(): Record<string, unknown> {
 }
 
 describe("check-in sign-in gate draft (DG66/DG59)", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    vi.restoreAllMocks();
     mockSearch = "";
-    vi.mocked(loadPendingCheckin).mockResolvedValue(null);
+    await clearPendingCheckin();
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -102,6 +96,7 @@ describe("check-in sign-in gate draft (DG66/DG59)", () => {
   });
 
   it("persists the full draft and points OAuth back here at the gate (DG66)", async () => {
+    const saveSpy = vi.spyOn(pendingCheckin, "savePendingCheckin");
     renderDrawer({ isAuthenticated: false });
 
     fireEvent.keyDown(screen.getByRole("slider", { name: "Overall experience" }), {
@@ -118,14 +113,20 @@ describe("check-in sign-in gate draft (DG66/DG59)", () => {
     await waitFor(() => {
       expect(screen.getByText(/Sign in to publish your check-in/)).toBeInTheDocument();
     });
-    expect(savePendingCheckin).toHaveBeenCalledOnce();
-    const draft = vi.mocked(savePendingCheckin).mock.calls[0][0];
+    await waitFor(() => expect(saveSpy).toHaveBeenCalledOnce());
+    const draft = saveSpy.mock.calls[0][0];
     expect(draft.cafeId).toBe(CAFE);
     expect(draft.cafeName).toBe("Kiosk");
     expect(draft.scores.overall).toBe(51);
     expect(draft.note).toBe("great espresso bar");
     expect(draft.photos).toHaveLength(1);
+    expect(draft.photos[0].name).toBe("photo.jpg");
     expect(draft.photos[0].file).toBe(file);
+    // Verify draft was genuinely persisted in IndexedDB and can be loaded back
+    const stored = await loadPendingCheckin(72 * 3_600_000);
+    expect(stored).not.toBeNull();
+    expect(stored?.cafeId).toBe(CAFE);
+    expect(stored?.note).toBe("great espresso bar");
 
     const nextInputs = document.querySelectorAll('input[name="next"]');
     expect(nextInputs).toHaveLength(2);
@@ -139,6 +140,7 @@ describe("check-in sign-in gate draft (DG66/DG59)", () => {
   });
 
   it("uploads staged photos at publish time and posts their ids (DG59)", async () => {
+    const clearSpy = vi.spyOn(pendingCheckin, "clearPendingCheckin");
     vi.mocked(uploadPhoto).mockResolvedValue("uuid-1");
     const file = new File(["x"], "photo.jpg", { type: "image/jpeg" });
     renderDrawer({
@@ -159,26 +161,27 @@ describe("check-in sign-in gate draft (DG66/DG59)", () => {
       ),
     );
     expect(postedCheckinBody().photo_ids).toEqual(["uuid-1"]);
-    expect(clearPendingCheckin).toHaveBeenCalled();
+    await waitFor(() => expect(clearSpy).toHaveBeenCalled());
   });
 
   it("restores the draft after the OAuth bounce and publishes with one tap (DG66)", async () => {
+    const clearSpy = vi.spyOn(pendingCheckin, "clearPendingCheckin");
     mockSearch = "checkin_resume=1";
     const file = new File(["x"], "photo.jpg", { type: "image/jpeg" });
-    vi.mocked(loadPendingCheckin).mockResolvedValue({
+    await savePendingCheckin({
       cafeId: CAFE,
       cafeName: "Kiosk",
       scores: { wifi: 60, overall: 80 },
       maxStay: null,
       note: "restored note",
-      photos: [{ id: "p1", file }],
+      photos: [{ id: "p1", name: "photo.jpg", file }],
       createdAt: Date.now(),
     });
     vi.mocked(uploadPhoto).mockResolvedValue("uuid-9");
 
     render(<CheckinResume draftTtlHours={72} />, { wrapper: Wrapper });
 
-    // The drawer reopens with every input restored.
+    // The drawer reopens with every input restored from real IndexedDB.
     await screen.findByRole("dialog", { name: "Check in" });
     expect(mockReplace).toHaveBeenCalled();
     expect(screen.getByDisplayValue("restored note")).toBeInTheDocument();
@@ -196,16 +199,19 @@ describe("check-in sign-in gate draft (DG66/DG59)", () => {
     expect(body.scores).toEqual({ wifi: 60, overall: 80 });
     expect(body.note).toBe("restored note");
     expect(body.photo_ids).toEqual(["uuid-9"]);
-    await waitFor(() => expect(clearPendingCheckin).toHaveBeenCalled());
+    await waitFor(() => expect(clearSpy).toHaveBeenCalled());
+    expect(await loadPendingCheckin(72 * 3_600_000)).toBeNull();
   });
 
   it("does not open the drawer without the resume flag", async () => {
+    const loadSpy = vi.spyOn(pendingCheckin, "loadPendingCheckin");
     render(<CheckinResume draftTtlHours={72} />, { wrapper: Wrapper });
-    await waitFor(() => expect(loadPendingCheckin).not.toHaveBeenCalled());
+    await waitFor(() => expect(loadSpy).not.toHaveBeenCalled());
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("stages the draft and drops to the gate when the submit 401s", async () => {
+    const saveSpy = vi.spyOn(pendingCheckin, "savePendingCheckin");
     globalThis.fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/checkins" && init?.method === "POST") {
         return { ok: false, status: 401, json: async () => ({}) };
@@ -222,13 +228,17 @@ describe("check-in sign-in gate draft (DG66/DG59)", () => {
     await waitFor(() => {
       expect(screen.getByText(/Sign in to publish your check-in/)).toBeInTheDocument();
     });
-    await waitFor(() => expect(savePendingCheckin).toHaveBeenCalled());
-    const draft = vi.mocked(savePendingCheckin).mock.calls[0][0];
+    await waitFor(() => expect(saveSpy).toHaveBeenCalled());
+    const draft = saveSpy.mock.calls[0][0];
     expect(draft.cafeId).toBe(CAFE);
     expect(draft.scores.overall).toBe(51);
+
+    const stored = await loadPendingCheckin(72 * 3_600_000);
+    expect(stored?.cafeId).toBe(CAFE);
   });
 
   it("re-stages the draft when input changes while the gate is visible", async () => {
+    const saveSpy = vi.spyOn(pendingCheckin, "savePendingCheckin");
     renderDrawer({ isAuthenticated: false });
 
     fireEvent.keyDown(screen.getByRole("slider", { name: "Overall experience" }), {
@@ -238,16 +248,18 @@ describe("check-in sign-in gate draft (DG66/DG59)", () => {
     await waitFor(() => {
       expect(screen.getByText(/Sign in to publish your check-in/)).toBeInTheDocument();
     });
-    expect(savePendingCheckin).toHaveBeenCalledTimes(1);
+    expect(saveSpy).toHaveBeenCalledTimes(1);
 
     // The gate is inline — the composer keeps editing above it.
     fireEvent.change(screen.getByPlaceholderText("What should the next nomad know?"), {
       target: { value: "edited after the gate" },
     });
-    await waitFor(() => expect(savePendingCheckin).toHaveBeenCalledTimes(2));
-    expect(vi.mocked(savePendingCheckin).mock.calls[1][0].note).toBe("edited after the gate");
-  });
+    await waitFor(() => expect(saveSpy).toHaveBeenCalledTimes(2));
+    expect(saveSpy.mock.calls[1][0].note).toBe("edited after the gate");
 
+    const stored = await loadPendingCheckin(72 * 3_600_000);
+    expect(stored?.note).toBe("edited after the gate");
+  });
   it("reuses publish-time upload ids on retry instead of re-uploading", async () => {
     vi.mocked(uploadPhoto).mockResolvedValue("uuid-1");
     globalThis.fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {

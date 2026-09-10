@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  CafeExistsError,
   createCafeWithFirstCheckIn,
   getCafe,
   getServiceAccountId,
-  parseCreateCafeBody,
   resolveCafeTimezone,
   toPublicCafeDetail,
   SERVICE_ACCOUNT_MAINTAINER_LABEL,
-  type CreateCafeCheckInInput,
 } from "@/lib/db/cafes";
+import {
+  CafeExistsError,
+  parseCreateCafeBody,
+  type CreateCafeCheckInInput,
+} from "@/lib/validation/cafe";
 import type { CafeDetail } from "@/types/cafes";
 import { PhotoIntentError } from "@/lib/images/provision-photos";
 import { ImageServiceError } from "@/lib/images/image-service-client";

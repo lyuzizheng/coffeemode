@@ -2,7 +2,11 @@ import "server-only";
 
 import { isValidUUID } from "@shared/uuid";
 import { cafeExists } from "./cafes";
-import { CafeNotFoundError, fail, type ParseResult } from "./checkins";
+import {
+  CafeNotFoundError,
+  fail,
+  type ParseResult,
+} from "../validation/checkin";
 import { query } from "./postgres";
 
 /** A row in the `navigations` table — one "导航" tap (spec 0001). */

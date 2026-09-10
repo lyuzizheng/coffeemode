@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
-import { CafeNotFoundError } from "@/lib/db/checkins";
+import { CafeNotFoundError } from "@/lib/validation/checkin";
 import { parseNavigationBody, recordNavigation } from "@/lib/db/navigations";
 import { guard, readJsonBody } from "@/lib/api/guard";
 import { requireSameOrigin } from "@/lib/security/origin";

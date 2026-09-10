@@ -2,13 +2,15 @@ import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
 import {
   cafeExists,
-  CafeForbiddenError,
-  CafeHasOtherCheckinsError,
   deleteCafe,
   getCafe,
   toPublicCafeDetail,
 } from "@/lib/db/cafes";
-import { CafeNotFoundError } from "@/lib/db/checkins";
+import {
+  CafeForbiddenError,
+  CafeHasOtherCheckinsError,
+} from "@/lib/validation/cafe";
+import { CafeNotFoundError } from "@/lib/validation/checkin";
 import { guard, readJsonBody } from "@/lib/api/guard";
 import { requireSameOrigin } from "@/lib/security/origin";
 import { isValidUUID } from "@shared/uuid";

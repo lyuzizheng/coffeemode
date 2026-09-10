@@ -1,17 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createCheckIn, toggleCheckInLike } from "@/lib/db/checkins";
 import {
   CafeNotFoundError,
   CheckInNotFoundError,
   DuplicateCheckInError,
   SelfLikeError,
-  createCheckIn,
   parseCheckInBody,
   parsePhotoIds,
   parseScores,
   parseVisitedAt,
-  toggleCheckInLike,
   type CreateCheckInInput,
-} from "@/lib/db/checkins";
+} from "@/lib/validation/checkin";
 import { INVALID_CHECKIN_PAYLOADS } from "./helpers/fixtures";
 import { PhotoIntentError } from "@/lib/images/provision-photos";
 import { ImageServiceError } from "@/lib/images/image-service-client";

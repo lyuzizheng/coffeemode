@@ -7,8 +7,8 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { CafeExistsError } from "@/lib/validation/cafe";
 import {
-  CafeExistsError,
   createCafeWithFirstCheckIn,
   getCafe,
   getCafeLocation,

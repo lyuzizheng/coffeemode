@@ -46,12 +46,23 @@ wrangler d1 migrations apply poi-store --remote
 
 ## Deploy checklist (owner)
 
-1. Create resources: `wrangler d1 create poi-store` and `wrangler kv namespace create poi-cache`,
-   then copy the returned ids into `wrangler.toml`.
+1. Create resources per environment: `wrangler d1 create poi-store-staging` /
+   `poi-store` and `wrangler kv namespace create poi-cache-staging` / `poi-cache`,
+   then paste the returned ids into a `[env.staging]` / `[env.production]` block
+   in `wrangler.toml`. The top-level bindings stay as the local-dev placeholders
+   (`11111111-…` / `22222222-…`) for the compose stack and are never deployed.
 2. Apply migrations (above).
-3. `wrangler secret put POI_SERVICE_TOKEN` and `wrangler secret put GOOGLE_PLACES_API_KEY`.
-4. `npm run deploy` — workers.dev URL works immediately; custom domain after the
-   domain lands.
+3. `wrangler secret put POI_SERVICE_TOKEN --env staging` and
+   `wrangler secret put GOOGLE_PLACES_API_KEY --env staging` (same for production).
+4. `npm run deploy -- --env staging` (then `--env production`) — workers.dev URL
+   works immediately; custom domain after the domain lands.
+
+`--env` is required and the deploy is guarded by `scripts/deploy.mjs`: it resolves
+`wrangler.toml` for that environment and refuses to deploy while the resolved
+bindings are the local-dev placeholders or while the environment has no
+`[env.<name>]` block — otherwise a bare `wrangler deploy` ships a Worker bound to
+namespaces and D1 databases that do not exist. Validate without deploying with
+`npm run deploy -- --env production --check`.
 
 ## Design notes
 

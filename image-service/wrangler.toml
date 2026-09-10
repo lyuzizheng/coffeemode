@@ -5,11 +5,14 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 # Local kit defaults (S2): so `docker compose up -d --wait` works without editing.
-# Production MUST override these — a forgetful `wrangler deploy` with these
-# localhost values bakes a broken R2 endpoint into prod. There is no automated
-# guard: before any deploy, set `[env.production]` vars below (recommended) or
-# use `wrangler deploy --env production` with prod values in Dash, and confirm
-# `R2_ACCOUNT_ID` is not still `local`.
+# These values are for local dev only (host `wrangler dev` + the compose MinIO
+# service); they MUST NOT reach a deployed Worker — minio/localhost endpoints
+# break every presigned upload and HEAD check in production.
+#
+# Deploy through the guarded entrypoint: `npm run deploy -- --env production`.
+# scripts/deploy.mjs refuses any resolved config (including the top-level vars
+# below, and `--env` names that are not declared here) that still points at local
+# dev, so a forgetful bare `wrangler deploy` cannot ship these values.
 R2_ACCOUNT_ID = "local"
 R2_BUCKET_NAME = "coffeemode"
 R2_PUBLIC_URL = "http://localhost:9000/coffeemode"
@@ -30,20 +33,24 @@ binding = "R2_BUCKET"
 # Must match R2_BUCKET_NAME above (local: coffeemode).
 bucket_name = "coffeemode"
 
-# Production env: override all of the above when deploying to Cloudflare.
-# Deploy with `wrangler deploy --env production`.
+# Production env: full override of the local-dev [vars] above — `vars` and
+# `r2_buckets` are not inherited by environments, so every value is repeated.
+# `R2_ENDPOINT = ""` is deliberate: production signs against the real R2
+# endpoint derived from R2_ACCOUNT_ID, and the empty value keeps wrangler from
+# warning that the top-level localhost endpoint is missing here.
+# Deploy with `npm run deploy -- --env production` (guard: scripts/deploy.mjs).
 [env.production]
 name = "image-service-prod"
-vars = { R2_ACCOUNT_ID = "bf69da5249b63731ad79545d0095e8db", R2_BUCKET_NAME = "coffeemode-images-prod", R2_PUBLIC_URL = "https://images.coffeemode.app", UPLOAD_URL_TTL_SECONDS = "600" }
+vars = { R2_ACCOUNT_ID = "bf69da5249b63731ad79545d0095e8db", R2_BUCKET_NAME = "coffeemode-images-prod", R2_PUBLIC_URL = "https://images.coffeemode.app", R2_ENDPOINT = "", UPLOAD_URL_TTL_SECONDS = "600" }
 [[env.production.r2_buckets]]
 binding = "R2_BUCKET"
 bucket_name = "coffeemode-images-prod"
 
-# Staging env: isolated staging stack.
-# Deploy with `wrangler deploy --env staging`.
+# Staging env: isolated staging stack (same override rules as production).
+# Deploy with `npm run deploy -- --env staging` (guard: scripts/deploy.mjs).
 [env.staging]
 name = "image-service-staging"
-vars = { R2_ACCOUNT_ID = "bf69da5249b63731ad79545d0095e8db", R2_BUCKET_NAME = "coffeemode-images-staging", R2_PUBLIC_URL = "https://staging-images.coffeemode.app", UPLOAD_URL_TTL_SECONDS = "600" }
+vars = { R2_ACCOUNT_ID = "bf69da5249b63731ad79545d0095e8db", R2_BUCKET_NAME = "coffeemode-images-staging", R2_PUBLIC_URL = "https://staging-images.coffeemode.app", R2_ENDPOINT = "", UPLOAD_URL_TTL_SECONDS = "600" }
 [[env.staging.r2_buckets]]
 binding = "R2_BUCKET"
 bucket_name = "coffeemode-images-staging"

@@ -52,8 +52,8 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 ## 6. image-service deploy
 
 - [x] Create R2 bucket and S3 API token for image uploads (`coffeemode-images-prod` and `coffeemode-images-staging` provisioned in APAC with CORS configured)
-- [x] Set the placeholders in `image-service/wrangler.toml` `[vars]` / `[env.production]` / `[env.staging]`
-- [x] Deploy image-service:
+- [x] Set the per-environment values in `image-service/wrangler.toml` `[env.production]` / `[env.staging]` (the top-level `[vars]` stay as the local-dev defaults and are never deployed)
+- [x] Deployed image-service (workers `image-service-prod` / `image-service-staging`; redeploys go through the guarded `npm run deploy -- --env staging|production`):
   - Secrets installed via Cloudflare Worker bindings (`IMAGE_SERVICE_TOKEN`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`)
   - Deployed to `https://image-service-prod.lyuzizheng.workers.dev` (production) and `https://image-service-staging.lyuzizheng.workers.dev` (staging)
   - `IMAGE_SERVICE_URL` and `IMAGE_SERVICE_TOKEN` recorded in local `web/.env.local`
@@ -74,12 +74,12 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
 - [ ] Point domain at the VPS; Cloudflare proxy/CDN in front
 - [ ] Cloudflare account for the POI worker (`poi.coffeemode.app` once the domain lands)
-- [ ] In a terminal (from `poi-service/`), create the resources and copy the returned ids into `poi-service/wrangler.toml`:
-  - `wrangler d1 create poi-store` → paste `database_id` into `POI_DB`
-  - `wrangler kv namespace create poi-cache` → paste `id` into `POI_KV`
+- [ ] In a terminal (from `poi-service/`), create the per-environment resources and add a `[env.staging]` / `[env.production]` block to `poi-service/wrangler.toml` (spec 0005 §3 names):
+  - `wrangler d1 create poi-store-staging` / `poi-store` → paste `database_id` into `POI_DB`
+  - `wrangler kv namespace create poi-cache-staging` / `poi-cache` → paste `id` into `POI_KV`
 - [ ] Apply the schema: `wrangler d1 migrations apply poi-store --remote`
-- [ ] Set the two worker secrets (values never go in chat/docs): `wrangler secret put POI_SERVICE_TOKEN`, `wrangler secret put GOOGLE_PLACES_API_KEY`
-- [ ] Deploy: `npm run deploy` → workers.dev URL; wire `POI_SERVICE_URL` + `POI_SERVICE_TOKEN` into `web/.env.local`
+- [ ] Set the two worker secrets (values never go in chat/docs): `wrangler secret put POI_SERVICE_TOKEN --env production`, `wrangler secret put GOOGLE_PLACES_API_KEY --env production`
+- [ ] Deploy: `npm run deploy -- --env production` (guarded — refuses while the placeholder ids are still configured) → workers.dev URL; wire `POI_SERVICE_URL` + `POI_SERVICE_TOKEN` into `web/.env.local`
 - [ ] Enable the Cloudflare "Add visitor location headers" Managed Transform on the zone (sends `CF-IPCity` / `CF-IPCountry`; default-city resolution per DG128)
 - [ ] Create a Better Stack account + alert token for rate-limit/observability alerts (DG129); put the token in `web/.env.local` once the integration lands
 

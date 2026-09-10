@@ -18,6 +18,7 @@ export function CafePageFeed({ cafeId, cafeName }: { cafeId: string; cafeName: s
     <>
       <CheckinFeed
         cafeId={cafeId}
+        cafeName={cafeName}
         // A feed 404 means the cafe vanished after the shell rendered; the
         // server owns the 404 surface (DG19), so re-fetch this route.
         onMissingCafe={() => router.refresh()}

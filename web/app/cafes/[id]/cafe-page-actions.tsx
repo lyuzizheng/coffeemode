@@ -5,21 +5,17 @@
  * the dominant full-width 56px Check-in CTA, with Navigate and Share visually
  * subordinate below it. The check-in drawer is the checkin-system slice.
  *
- * DG72 entry point: when the viewer has a live check-in at this cafe, a
- * quiet "Edit your check-in" row sits under the actions and opens the same
- * drawer in edit mode, prefilled. This shell is CDN-cached (DG105/DG106),
- * so live-check-in detection is a client-side /api/checkins/last probe —
- * anonymous viewers 401 and simply never see the row. Same query key as the
- * drawer's DG64 probe, so both share one network call.
+ * Owner verdict (BRAWUKA-120, 2026-09-10): this page carries no edit entry —
+ * editing your own check-in lives on the feed card overflow menu and the
+ * profile history list (DG72). The drawer still probes /api/checkins/last
+ * client-side when opened (DG64 revisit switch); anonymous viewers 401 and
+ * drop to the sign-in gate.
  */
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { useQuery } from "@tanstack/react-query";
 import { Button } from "@heroui/react";
-import { PencilIcon } from "@/components/icons";
 import { ShareControl } from "@/components/share/share-control";
 import { CheckinDrawer } from "@/components/checkin/checkin-drawer";
-import { fetchLastCheckin, type LastCheckin } from "@/lib/checkin/last-checkin";
 import type { CafeDetail } from "@/types/cafes";
 
 export function CafePageActions({
@@ -32,19 +28,7 @@ export function CafePageActions({
   shareUrl: string;
 }) {
   const t = useTranslations("discovery");
-  const tCheckin = useTranslations("checkIn");
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<LastCheckin | null>(null);
-
-  // No isAuthenticated prop anywhere on this page (cached public shell), so
-  // the probe doubles as the auth signal: 401 resolves to "no row".
-  const liveCheckinQuery = useQuery({
-    queryKey: ["last-checkin", cafeId],
-    queryFn: () => fetchLastCheckin(cafeId),
-    staleTime: 60_000,
-    retry: false,
-  });
-  const liveCheckin = liveCheckinQuery.data?.checkin ?? null;
 
   return (
     <>
@@ -68,37 +52,12 @@ export function CafePageActions({
           </Button>
           <ShareControl url={shareUrl} title={cafe.name} />
         </div>
-        {liveCheckin && (
-          <button
-            type="button"
-            onClick={() => setEditing(liveCheckin)}
-            className="mx-auto flex min-h-11 items-center gap-1.5 rounded-sm px-3 text-sm text-muted transition-colors hover:text-foreground"
-          >
-            <PencilIcon size={13} />
-            {tCheckin("editYourCheckIn")}
-          </button>
-        )}
       </div>
       {/* No isAuthenticated prop here: this page is the CDN-cached public shell
           (DG105/DG106), so per-user auth can't be baked into the HTML. The
           drawer resolves auth client-side via its last-check-in probe and
           drops to the sign-in gate on 401. */}
       <CheckinDrawer isOpen={open} onOpenChange={setOpen} cafeId={cafeId} cafeName={cafe.name} />
-      {editing && (
-        <CheckinDrawer
-          isOpen
-          onOpenChange={(nextOpen) => {
-            if (!nextOpen) setEditing(null);
-          }}
-          cafeId={cafeId}
-          cafeName={cafe.name}
-          mode="edit"
-          editCheckinId={editing.id}
-          initialScores={editing.scores}
-          initialMaxStay={editing.max_stay}
-          initialNote={editing.note}
-        />
-      )}
     </>
   );
 }

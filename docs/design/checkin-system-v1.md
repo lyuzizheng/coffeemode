@@ -176,9 +176,12 @@ toast, restrained, no confetti. Composition:
 
 Editing reuses this exact drawer, pre-filled (with per-slider unset × per
 §3.2), titled by the same cafe name, confirm label `Save changes`. Edit
-entry points (DG72): the overflow menu on your own check-in feed cards, the
-check-in history list on the profile page, and an `Edit your check-in` row
-on the cafe detail when you have a live check-in there. Editing updates
+entry points (DG72): the overflow menu on your own check-in feed cards and
+the check-in history list on the profile page. (Owner verdict BRAWUKA-120,
+2026-09-10: the cafe detail page carries no edit entry — it stays a pure
+conversion surface. The feed card menu keys off a server-computed
+`owned_by_viewer` boolean on the public DTO; no `user_id` ever reaches the
+client, so DG13 anonymity holds.) Editing updates
 values only — recency weighting always keys off the original `visited_at`,
 so editing can never launder freshness (DG62). Delete lives behind a
 `Delete check-in`

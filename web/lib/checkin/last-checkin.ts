@@ -11,10 +11,9 @@ export interface LastCheckin {
 
 /**
  * Shared probe for the caller's last check-in at a cafe — the DG64 revisit
- * switch in the drawer and the DG72 "Edit your check-in" row on the cafe
- * page both key off it (one query key, one network call). 401 throws
- * Error("unauthorized"): anonymous on a CDN-cached shell is an expected
- * answer, never a retried failure.
+ * switch in the drawer keys off it (one query key, one network call).
+ * 401 throws Error("unauthorized"): anonymous on a CDN-cached shell is an
+ * expected answer, never a retried failure.
  */
 export async function fetchLastCheckin(cafeId: string) {
   const res = await fetch(`/api/checkins/last?cafe_id=${encodeURIComponent(cafeId)}`);

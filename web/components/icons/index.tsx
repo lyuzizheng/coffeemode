@@ -144,6 +144,18 @@ export function PencilIcon(props: IconProps) {
   return base(props, <path d="M11.5 2.5a1.5 1.5 0 0 1 2 2L4.5 13.5l-3 0.5 0.5-3L11.5 2.5Z" />);
 }
 
+/** Overflow — horizontal ellipsis for the own-check-in card menu (DG72). */
+export function DotsIcon(props: IconProps) {
+  return base(
+    props,
+    <>
+      <circle cx="3" cy="8" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="8" cy="8" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="13" cy="8" r="0.9" fill="currentColor" stroke="none" />
+    </>,
+  );
+}
+
 /** Warning — section-level load failures (DG17 Retry row). */
 export function WarningIcon(props: IconProps) {
   return base(

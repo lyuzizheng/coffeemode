@@ -59,6 +59,12 @@ export interface PublicCheckIn {
   likes_count: number;
   /** Whether the (possibly anonymous) viewer liked this check-in. */
   liked_by_viewer: boolean;
+  /**
+   * Whether this check-in belongs to the viewer (DG72 feed-card edit entry).
+   * Server-computed boolean only — the DTO never carries `user_id`, so other
+   * viewers learn nothing about who wrote the row (DG13 anonymity holds).
+   */
+  owned_by_viewer: boolean;
   visited_at: string;
   /**
    * Consented public author (spec 0006). Null means the client renders the

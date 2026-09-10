@@ -77,6 +77,12 @@ interface FeedRow {
   likes_count: number;
   visited_at: string;
   liked_by_viewer: boolean | null;
+  /**
+   * Server-computed ownership bit (DG72): true only for the viewer's own
+   * rows. A boolean comparison result — never the author's `user_id`
+   * (DG13: FeedRow carries no internal UUID).
+   */
+  owned_by_viewer: boolean | null;
   /** Microsecond-precision UTC rendering used only for cursor round-trips. */
   cursor_visited_at: string;
   /**
@@ -99,6 +105,7 @@ const CURSOR_TS = `to_char(c.visited_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:M
 const NEWEST_SQL = `
 select c.id, c.scores, c.max_stay, c.note, c.photos, c.likes_count, c.visited_at,
        (cl.user_id is not null) as liked_by_viewer,
+       (c.user_id = $2) as owned_by_viewer,
        ${CURSOR_TS} as cursor_visited_at,
        case when p.show_public_identity then p.public_handle end as author_handle,
        case when p.show_public_identity then p.display_name end as author_display_name,
@@ -116,6 +123,7 @@ limit $5
 const HELPFUL_SQL = `
 select c.id, c.scores, c.max_stay, c.note, c.photos, c.likes_count, c.visited_at,
        (cl.user_id is not null) as liked_by_viewer,
+       (c.user_id = $2) as owned_by_viewer,
        ${CURSOR_TS} as cursor_visited_at,
        case when p.show_public_identity then p.public_handle end as author_handle,
        case when p.show_public_identity then p.display_name end as author_display_name,
@@ -135,7 +143,8 @@ limit $6
 
 /**
  * One page of non-deleted public check-ins for a cafe. `viewerId` is null
- * for anonymous sessions — `liked_by_viewer` is then false for every row.
+ * for anonymous sessions — `liked_by_viewer` and `owned_by_viewer` are then
+ * false for every row.
  */
 export async function listPublicCheckIns(params: {
   cafeId: string;
@@ -179,6 +188,7 @@ export async function listPublicCheckIns(params: {
     photos: (row.photos ?? []).map(({ by: _by, ...image }) => image),
     likes_count: row.likes_count,
     liked_by_viewer: viewerId !== null && row.liked_by_viewer === true,
+    owned_by_viewer: viewerId !== null && row.owned_by_viewer === true,
     visited_at: row.visited_at,
     // Display-only leaf (spec 0006 Q9): null renders the "a_nomad" fallback.
     author: toPublicAuthor(row),

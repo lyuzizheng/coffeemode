@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -17,14 +17,6 @@ vi.mock("@/lib/checkin/pending-checkin", () => ({
 }));
 
 const CAFE = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22";
-const CHECKIN = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33";
-const LIVE_CHECKIN = {
-  id: CHECKIN,
-  scores: { wifi: 80, overall: 90 },
-  max_stay: "3h",
-  note: "Corner seat",
-  visited_at: new Date(Date.now() - 30 * 60 * 60 * 1000).toISOString(), // past the DG64 window
-};
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   const queryClient = new QueryClient({
@@ -48,10 +40,14 @@ function renderActions() {
   );
 }
 
-function mockProbe(body: () => Promise<unknown>, status = 200) {
+function mockFetch() {
   globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    if (url.startsWith("/api/checkins/last")) {
-      return Promise.resolve({ ok: status === 200, status, json: body });
+    if (typeof url === "string" && url.startsWith("/api/checkins/last")) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({ checkin: null, revisitWindowHours: 24 }),
+      });
     }
     if (init?.method === "PATCH" || init?.method === "DELETE") {
       return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
@@ -60,91 +56,39 @@ function mockProbe(body: () => Promise<unknown>, status = 200) {
   });
 }
 
-describe("CafePageActions (DG72 edit entry)", () => {
+// Owner verdict (BRAWUKA-120, 2026-09-10): the cafe detail page carries no
+// edit entry — editing lives on the feed card overflow menu and the profile
+// history list (DG72). These tests pin the conversion-only action block.
+describe("CafePageActions (no edit entry per owner verdict)", () => {
   beforeEach(() => {
-    mockProbe(async () => ({ checkin: null, revisitWindowHours: 24 }));
+    mockFetch();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
-  it("keeps the conversion block — Check in, Navigate, Share — with no edit row when the viewer has no live check-in", async () => {
+  it("renders the conversion block — Check in, Navigate, Share — and nothing else", () => {
     renderActions();
     expect(screen.getByRole("button", { name: "Check in" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Navigate" })).toBeInTheDocument();
-    await waitFor(() => {
-      expect(globalThis.fetch).toHaveBeenCalledWith(expect.stringContaining("/api/checkins/last"));
-    });
     expect(screen.queryByRole("button", { name: /Edit your check-in/ })).not.toBeInTheDocument();
   });
 
-  it("hides the edit row for anonymous viewers (probe 401)", async () => {
-    mockProbe(async () => ({}), 401);
+  it("never probes /api/checkins/last on mount — the drawer probes on open (DG64)", async () => {
     renderActions();
-    await waitFor(() => {
-      expect(globalThis.fetch).toHaveBeenCalledWith(expect.stringContaining("/api/checkins/last"));
-    });
-    await waitFor(() => {
-      expect(screen.queryByRole("button", { name: /Edit your check-in/ })).not.toBeInTheDocument();
-    });
-  });
-
-  it("shows the edit row with a live check-in and opens the drawer prefilled in edit mode", async () => {
-    mockProbe(async () => ({ checkin: LIVE_CHECKIN, revisitWindowHours: 24 }));
-    renderActions();
-
-    const row = await screen.findByRole("button", { name: /Edit your check-in/ });
-    fireEvent.click(row);
-
-    // Edit chrome, prefilled from the probe — not a blank create form.
-    expect(await screen.findByRole("dialog", { name: "Edit check-in" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save changes" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Delete check-in" })).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("What should the next nomad know?")).toHaveValue(
-      "Corner seat",
-    );
-    expect(screen.getByRole("slider", { name: "Overall experience" })).toHaveAttribute(
-      "aria-valuenow",
-      "90",
+    // Let any mount-time queries settle.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Check in" })).toBeInTheDocument());
+    const { promise: settled, resolve: settle } = Promise.withResolvers<void>();
+    setTimeout(settle, 50);
+    await settled;
+    expect(globalThis.fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/checkins/last"),
     );
   });
 
-  it("saves through PATCH on the probed check-in id", async () => {
-    mockProbe(async () => ({ checkin: LIVE_CHECKIN, revisitWindowHours: 24 }));
+  it("opens the create drawer from the Check-in CTA", async () => {
     renderActions();
-
-    fireEvent.click(await screen.findByRole("button", { name: /Edit your check-in/ }));
-    fireEvent.click(await screen.findByRole("button", { name: "Save changes" }));
-
-    await waitFor(() => {
-      expect(globalThis.fetch).toHaveBeenCalledWith(
-        `/api/checkins/${CHECKIN}`,
-        expect.objectContaining({ method: "PATCH" }),
-      );
-    });
-  });
-
-  it("drops the edit row once the live check-in is deleted from the drawer", async () => {
-    let live = true;
-    globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-      if (url.startsWith("/api/checkins/last")) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => ({ checkin: live ? LIVE_CHECKIN : null, revisitWindowHours: 24 }),
-        });
-      }
-      if (init?.method === "DELETE") {
-        live = false;
-        return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
-      }
-      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
-    });
-    renderActions();
-
-    fireEvent.click(await screen.findByRole("button", { name: /Edit your check-in/ }));
-    fireEvent.click(await screen.findByRole("button", { name: "Delete check-in" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
-
-    await waitFor(() => {
-      expect(screen.queryByRole("button", { name: /Edit your check-in/ })).not.toBeInTheDocument();
-    });
+    fireEvent.click(screen.getByRole("button", { name: "Check in" }));
+    expect(await screen.findByRole("dialog", { name: "Check in" })).toBeInTheDocument();
   });
 });

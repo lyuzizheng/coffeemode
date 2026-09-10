@@ -1,13 +1,8 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
 import { getCafeLocation, listCafesNearby } from "@/lib/db/cafes";
-import { appConfig, rateLimitBuckets } from "@/lib/config";
-import {
-  checkRateLimit,
-  getClientIdentifier,
-  rateLimitResponse,
-} from "@/lib/rate-limit";
+import { appConfig } from "@/lib/config";
+import { guard } from "@/lib/api/guard";
 import { isValidUUID } from "@shared/uuid";
 
 /**
@@ -30,17 +25,12 @@ export async function GET(
     return apiError("invalid_request", "id must be a UUID", 400);
   }
 
-  const user = await getCurrentUser();
-  const clientId = getClientIdentifier(request, user);
-  const rate = await checkRateLimit(
-    "cafes-read",
-    clientId,
-    rateLimitBuckets("cafes-read"),
-    "GET /api/cafes/[id]/recovery",
-  );
-  if (!rate.allowed) {
-    return rateLimitResponse(rate);
-  }
+  const gate = await guard(request, {
+    bucket: "cafes-read",
+    route: "GET /api/cafes/[id]/recovery",
+  });
+  if (!gate.ok) return gate.response;
+  const { user } = gate;
 
   try {
     const location = await getCafeLocation(id);

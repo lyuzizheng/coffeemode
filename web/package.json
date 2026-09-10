@@ -19,12 +19,13 @@
     "test:coverage:integration": "RUN_INTEGRATION=1 vitest run tests/integration tests/db-helpers.test.ts tests/devops --config vitest.integration-coverage.config.mts",
     "typecheck": "tsc --noEmit",
     "check:i18n": "node scripts/check-i18n.mjs",
+    "check:guards": "node scripts/check-route-guards.mjs",
     "check:visual": "node scripts/visual-smoke.mjs",
     "test:e2e": "node scripts/e2e-smoke.mjs",
     "check:bundle": "node scripts/check-bundle-budget.mjs",
     "analyze": "next experimental-analyze --output",
     "lhci": "node scripts/run-lhci.mjs",
-    "verify": "npm run check:i18n && npm run typecheck && npm run lint && npm run test && npm run build && npm run check:bundle"
+    "verify": "npm run check:i18n && npm run check:guards && npm run typecheck && npm run lint && npm run test && npm run build && npm run check:bundle"
   },
   "dependencies": {
     "@heroui/react": "^3.2.3",

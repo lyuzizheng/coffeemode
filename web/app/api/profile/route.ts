@@ -1,29 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
 import { getProfile, getUserStats, parseProfilePatch, updateProfile } from "@/lib/db/profile";
 import { requireSameOrigin } from "@/lib/security/origin";
-import { rateLimitBuckets } from "@/lib/config";
-import {
-  checkRateLimit,
-  getClientIdentifier,
-  rateLimitResponse,
-} from "@/lib/rate-limit";
+import { guard, readJsonBody } from "@/lib/api/guard";
 
 export async function GET(request: NextRequest) {
-  const user = await getCurrentUser();
-  if (!user) {
-    return apiError("unauthorized", 401);
-  }
-
-  const clientId = getClientIdentifier(request, user);
-  const rate = await checkRateLimit(
-    "profile-read",
-    clientId,
-    rateLimitBuckets("profile-read"),
-    "GET /api/profile",
-  );
-  if (!rate.allowed) return rateLimitResponse(rate);
+  const gate = await guard(request, {
+    bucket: "profile-read",
+    requireAuth: true,
+    route: "GET /api/profile",
+  });
+  if (!gate.ok) return gate.response;
+  const { user } = gate;
 
   try {
     const [profile, stats] = await Promise.all([
@@ -49,22 +37,17 @@ export async function PATCH(request: NextRequest) {
   const originError = requireSameOrigin(request);
   if (originError) return originError;
 
-  const user = await getCurrentUser();
-  if (!user) {
-    return apiError("unauthorized", 401);
-  }
+  const gate = await guard(request, {
+    bucket: "profile-write",
+    requireAuth: true,
+    route: "PATCH /api/profile",
+  });
+  if (!gate.ok) return gate.response;
+  const { user } = gate;
 
-  const patchClientId = getClientIdentifier(request, user);
-  const patchRate = await checkRateLimit(
-    "profile-write",
-    patchClientId,
-    rateLimitBuckets("profile-write"),
-    "PATCH /api/profile",
-  );
-  if (!patchRate.allowed) return rateLimitResponse(patchRate);
-
-  const body = await request.json().catch(() => null);
-  const parsed = parseProfilePatch(body);
+  const bodyRes = await readJsonBody(request);
+  if (!bodyRes.ok) return bodyRes.response;
+  const parsed = parseProfilePatch(bodyRes.data);
   if (!parsed.ok) {
     return apiError(parsed.error, parsed.status);
   }

@@ -51,7 +51,7 @@ export async function PATCH(
 
   const user = await getCurrentUser();
   if (!user) {
-    return apiError("unauthorized", "authentication required", 401);
+    return apiError("unauthorized", 401);
   }
 
   const clientId = getClientIdentifier(request, user);

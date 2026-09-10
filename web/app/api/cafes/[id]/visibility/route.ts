@@ -16,6 +16,7 @@ import { rateLimitBuckets } from "@/lib/config";
 import { requireSameOrigin } from "@/lib/security/origin";
 import { isValidUUID } from "@shared/uuid";
 import type { CafeVisibility } from "@/types/cafes";
+import { logError } from "@/lib/observability/server-log";
 
 /**
  * PATCH /api/cafes/[id]/visibility
@@ -80,7 +81,7 @@ export async function PATCH(
     if (err instanceof CafeForbiddenError) {
       return apiError("forbidden", err.message, 403);
     }
-    console.error("/api/cafes/[id]/visibility PATCH failed", err);
+    logError("PATCH /api/cafes/[id]/visibility", err, request);
     return apiError("internal_error", 500);
   }
 }

@@ -15,6 +15,7 @@ import {
 import { rateLimitBuckets } from "@/lib/config";
 import { isValidUUID } from "@shared/uuid";
 import type { CheckInFeedMode } from "@/types/checkins";
+import { logError } from "@/lib/observability/server-log";
 
 /**
  * GET /api/cafes/[id]/checkins?mode=&cursor=
@@ -69,7 +70,7 @@ export async function GET(
     if (err instanceof FeedCursorError) {
       return apiError("invalid_request", "cursor is invalid or was issued for another mode", 400);
     }
-    console.error("/api/cafes/[id]/checkins GET failed", err);
+    logError("GET /api/cafes/[id]/checkins", err, request);
     return apiError("internal_error", 500);
   }
 }

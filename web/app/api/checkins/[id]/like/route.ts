@@ -14,6 +14,7 @@ import {
 import { rateLimitBuckets } from "@/lib/config";
 import { isValidUUID } from "@shared/uuid";
 import { requireSameOrigin } from "@/lib/security/origin";
+import { logError } from "@/lib/observability/server-log";
 
 /**
  * POST /api/checkins/[id]/like
@@ -60,7 +61,7 @@ export async function POST(
     if (err instanceof SelfLikeError) {
       return apiError("self_like_forbidden", "you cannot like your own check-in", 403);
     }
-    console.error("/api/checkins/[id]/like POST failed", err);
+    logError("POST /api/checkins/[id]/like", err, request);
     return apiError("internal_error", 500);
   }
 }

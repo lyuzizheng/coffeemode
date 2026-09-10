@@ -11,6 +11,7 @@ import {
 } from "@/lib/rate-limit";
 import { rateLimitBuckets } from "@/lib/config";
 import { requireSameOrigin } from "@/lib/security/origin";
+import { logError } from "@/lib/observability/server-log";
 
 /**
  * POST /api/places/external
@@ -72,7 +73,7 @@ export async function POST(request: Request) {
     if (err instanceof POIServiceError) {
       return apiError("poi_service", err.message, err.status);
     }
-    console.error("/api/places/external failed", err);
+    logError("POST /api/places/external", err, request);
     return apiError("upstream_error", 502);
   }
 }

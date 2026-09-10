@@ -9,6 +9,7 @@ import {
   rateLimitResponse,
 } from "@/lib/rate-limit";
 import { rateLimitBuckets } from "@/lib/config";
+import { logError } from "@/lib/observability/server-log";
 
 function parseQueryNumber(value: string | null): number {
   return value === null || value.trim() === "" ? NaN : Number(value);
@@ -94,7 +95,7 @@ export async function GET(request: Request) {
     if (err instanceof POIServiceError) {
       return apiError("poi_service", err.message, err.status);
     }
-    console.error("/api/places/search failed", err);
+    logError("GET /api/places/search", err, request);
     return apiError("upstream_error", 502);
   }
 }

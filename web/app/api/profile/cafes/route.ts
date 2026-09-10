@@ -8,6 +8,7 @@ import {
   getClientIdentifier,
   rateLimitResponse,
 } from "@/lib/rate-limit";
+import { logError } from "@/lib/observability/server-log";
 
 export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
     if (error instanceof ProfileCursorError) {
       return apiError("invalid_cursor", 400);
     }
-    console.error("GET /api/profile/cafes failed:", error);
+    logError("GET /api/profile/cafes", error, request);
     return apiError("internal_error", 500);
   }
 }

@@ -10,6 +10,7 @@ import {
 } from "@/lib/rate-limit";
 import { rateLimitBuckets } from "@/lib/config";
 import { requireSameOrigin } from "@/lib/security/origin";
+import { logError } from "@/lib/observability/server-log";
 
 /**
  * POST /api/places/resolve  {maps_share_url}
@@ -54,7 +55,7 @@ export async function POST(request: Request) {
     if (err instanceof POIServiceError) {
       return apiError("poi_service", err.message, err.status);
     }
-    console.error("/api/places/resolve failed", err);
+    logError("POST /api/places/resolve", err, request);
     return apiError("upstream_error", 502);
   }
 }

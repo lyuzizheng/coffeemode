@@ -20,6 +20,7 @@ import {
 } from "@/lib/rate-limit";
 import { appConfig, rateLimitBuckets } from "@/lib/config";
 import { requireSameOrigin } from "@/lib/security/origin";
+import { logError } from "@/lib/observability/server-log";
 
 // `cafes.listLimitMax` in web/config/app.yaml (DG107).
 const MAX_LIST_LIMIT = appConfig.cafes.listLimitMax;
@@ -73,7 +74,7 @@ export async function GET(request: Request) {
     const cafes = await listCafesNearby({ lat, lng, radiusKm, limit, viewerId: user?.id });
     return NextResponse.json({ cafes });
   } catch (err) {
-    console.error("/api/cafes GET failed", err);
+    logError("GET /api/cafes", err, request);
     return apiError("internal_error", 500);
   }
 }
@@ -128,7 +129,7 @@ export async function POST(request: Request) {
     ) {
       return apiError("invalid_photos", "one or more photos are invalid", 400);
     }
-    console.error("/api/cafes POST failed", err);
+    logError("POST /api/cafes", err, request);
     return apiError("internal_error", 500);
   }
 }

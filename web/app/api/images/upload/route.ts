@@ -11,6 +11,7 @@ import {
 } from "@/lib/rate-limit";
 import { rateLimitBuckets } from "@/lib/config";
 import { requireSameOrigin } from "@/lib/security/origin";
+import { logError } from "@/lib/observability/server-log";
 
 function parseSize(
   body: unknown,
@@ -74,12 +75,12 @@ export async function POST(request: Request) {
       // rejects UUIDs that were never issued to the caller.
       await recordUploadIntent(user.id, data.imageUuid);
     } catch (intentErr) {
-      console.error("/api/images/upload intent record failed", intentErr);
+      logError("POST /api/images/upload", intentErr, request);
       return apiError("internal_error", 500);
     }
     return NextResponse.json(data);
   } catch (err) {
-    console.error("/api/images/upload failed", err);
+    logError("POST /api/images/upload", err, request);
     if (err instanceof ImageServiceError) {
       return apiError("image_service_error", err.message, err.status);
     }

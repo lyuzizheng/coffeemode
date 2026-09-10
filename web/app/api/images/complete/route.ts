@@ -15,6 +15,7 @@ import {
 import { rateLimitBuckets } from "@/lib/config";
 import type { CompleteImageRequest, CompleteImageResponse, ImageTargetType } from "@/types/images";
 import { requireSameOrigin } from "@/lib/security/origin";
+import { logError } from "@/lib/observability/server-log";
 
 export const runtime = "nodejs";
 
@@ -101,7 +102,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(response);
   } catch (err) {
-    console.error("/api/images/complete failed", err);
+    logError("POST /api/images/complete", err, request);
     if (isImageServiceError(err)) {
       return apiError("image_service_error", err.message, err.status);
     }

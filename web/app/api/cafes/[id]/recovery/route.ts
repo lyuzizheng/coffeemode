@@ -9,6 +9,7 @@ import {
   rateLimitResponse,
 } from "@/lib/rate-limit";
 import { isValidUUID } from "@shared/uuid";
+import { logError } from "@/lib/observability/server-log";
 
 /**
  * GET /api/cafes/[id]/recovery
@@ -58,7 +59,7 @@ export async function GET(
     const cafes = nearby.filter((cafe) => cafe.id !== id).slice(0, appConfig.seo.recoveryLimit);
     return NextResponse.json({ cafes });
   } catch (err) {
-    console.error("/api/cafes/[id]/recovery GET failed", err);
+    logError("GET /api/cafes/[id]/recovery", err, request);
     return apiError("internal_error", 500);
   }
 }

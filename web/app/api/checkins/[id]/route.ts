@@ -16,6 +16,7 @@ import {
 import { rateLimitBuckets } from "@/lib/config";
 import { isValidUUID } from "@shared/uuid";
 import { requireSameOrigin } from "@/lib/security/origin";
+import { logError } from "@/lib/observability/server-log";
 
 /**
  * PATCH /api/checkins/[id]
@@ -66,7 +67,7 @@ export async function PATCH(
     if (err instanceof CheckInForbiddenError) {
       return apiError("forbidden", "not your check-in", 403);
     }
-    console.error("/api/checkins/[id] PATCH failed", err);
+    logError("PATCH /api/checkins/[id]", err, request);
     return apiError("internal_error", 500);
   }
 }
@@ -113,7 +114,7 @@ export async function DELETE(
     if (err instanceof CheckInForbiddenError) {
       return apiError("forbidden", "not your check-in", 403);
     }
-    console.error("/api/checkins/[id] DELETE failed", err);
+    logError("DELETE /api/checkins/[id]", err, request);
     return apiError("internal_error", 500);
   }
 }

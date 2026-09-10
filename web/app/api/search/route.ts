@@ -16,6 +16,7 @@ import {
   MAX_STAY_VALUES,
   type MaxStay,
 } from "@/types/checkins";
+import { logError } from "@/lib/observability/server-log";
 
 function parseNumber(value: string | null): number | undefined {
   if (value === null || value.trim() === "") return undefined;
@@ -172,7 +173,7 @@ export async function GET(request: Request) {
     response.headers.set("X-Search-Mode", search_mode ?? "stored_only");
     return response;
   } catch (err) {
-    console.error("/api/search GET failed", err);
+    logError("GET /api/search", err, request);
     return apiError("internal_error", 500);
   }
 }

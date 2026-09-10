@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 import { cafeExists } from "@/lib/db/cafes";
+import { REQUEST_ID_HEADER } from "@/lib/observability/server-log";
 
 /**
  * Session-refresh proxy (spec 0001, 0004).
@@ -141,16 +142,25 @@ async function handleProxy(request: NextRequest) {
 }
 
 /**
- * Proxy entry (BRAWUKA-167): access log wrapper around the session/gone-cafe
- * proxy. Observability only — one JSON line per request
- * (method/path/status/duration_ms). Never blocks or rewrites.
+ * Proxy entry (BRAWUKA-167 access log, BRAWUKA-168 request-id): mints one
+ * `x-request-id` per request, forwards it downstream so route handlers can
+ * correlate, mirrors it on the response, and logs one JSON access line
+ * (method/path/status/duration_ms/request_id). Observability only — never
+ * blocks or rewrites.
  */
 export async function proxy(request: NextRequest) {
   const start = Date.now();
-  const response = await handleProxy(request);
+  const requestId = crypto.randomUUID();
+  const downstreamHeaders = new Headers(request.headers);
+  downstreamHeaders.set(REQUEST_ID_HEADER, requestId);
+  const response = await handleProxy(
+    new NextRequest(request, { headers: downstreamHeaders }),
+  );
+  response.headers.set(REQUEST_ID_HEADER, requestId);
   console.log(
     JSON.stringify({
       type: "access",
+      request_id: requestId,
       method: request.method,
       path: request.nextUrl.pathname + request.nextUrl.search,
       status: response.status,

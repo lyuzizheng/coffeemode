@@ -9,6 +9,7 @@ import {
   getClientIdentifier,
   rateLimitResponse,
 } from "@/lib/rate-limit";
+import { logError } from "@/lib/observability/server-log";
 
 export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
       stats,
     });
   } catch (error) {
-    console.error("GET /api/profile failed:", error);
+    logError("GET /api/profile", error, request);
     return apiError("internal_error", 500);
   }
 }
@@ -77,7 +78,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ profile: updated });
   } catch (error) {
-    console.error("PATCH /api/profile failed:", error);
+    logError("PATCH /api/profile", error, request);
     return apiError("internal_error", 500);
   }
 }

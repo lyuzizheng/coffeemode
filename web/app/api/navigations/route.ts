@@ -10,6 +10,7 @@ import {
 } from "@/lib/rate-limit";
 import { rateLimitBuckets } from "@/lib/config";
 import { requireSameOrigin } from "@/lib/security/origin";
+import { logError } from "@/lib/observability/server-log";
 
 /**
  * POST /api/navigations  {cafe_id}
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
     if (err instanceof CafeNotFoundError) {
       return apiError("not_found", "cafe not found", 404);
     }
-    console.error("/api/navigations POST failed", err);
+    logError("POST /api/navigations", err, request);
     return apiError("internal_error", 500);
   }
 }

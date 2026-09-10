@@ -16,6 +16,7 @@ import {
 } from "@/lib/rate-limit";
 import { rateLimitBuckets } from "@/lib/config";
 import { requireSameOrigin } from "@/lib/security/origin";
+import { logError } from "@/lib/observability/server-log";
 
 /**
  * POST /api/checkins  {cafe_id, scores?, max_stay?, note?, photo_ids?, visited_at?, idempotency_key?}
@@ -78,7 +79,7 @@ export async function POST(request: Request) {
     ) {
       return apiError("invalid_photos", "one or more photos are invalid", 400);
     }
-    console.error("/api/checkins POST failed", err);
+    logError("POST /api/checkins", err, request);
     return apiError("internal_error", 500);
   }
 }

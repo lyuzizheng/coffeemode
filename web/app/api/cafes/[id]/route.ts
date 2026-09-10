@@ -18,6 +18,7 @@ import {
 import { rateLimitBuckets } from "@/lib/config";
 import { requireSameOrigin } from "@/lib/security/origin";
 import { isValidUUID } from "@shared/uuid";
+import { logError } from "@/lib/observability/server-log";
 
 /**
  * GET /api/cafes/[id]
@@ -51,7 +52,7 @@ export async function GET(
     }
     return NextResponse.json(toPublicCafeDetail(cafe));
   } catch (err) {
-    console.error("/api/cafes/[id] GET failed", err);
+    logError("GET /api/cafes/[id]", err, request);
     return apiError("internal_error", 500);
   }
 }
@@ -113,7 +114,7 @@ export async function DELETE(
         n: err.n,
       });
     }
-    console.error("/api/cafes/[id] DELETE failed", err);
+    logError("DELETE /api/cafes/[id]", err, request);
     return apiError("internal_error", 500);
   }
 }

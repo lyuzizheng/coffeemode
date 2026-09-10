@@ -7,6 +7,7 @@ import {
   getClientIdentifier,
   rateLimitResponse,
 } from "@/lib/rate-limit";
+import { logError } from "@/lib/observability/server-log";
 
 export const runtime = "nodejs";
 
@@ -36,7 +37,7 @@ export async function GET(request: Request) {
     const token = generateMapKitToken(config);
     return NextResponse.json({ token });
   } catch (err) {
-    console.error("/api/mapkit-token failed to sign token", err);
+    logError("GET /api/mapkit-token", err, request);
     return apiError("mapkit_token_error", 500);
   }
 }

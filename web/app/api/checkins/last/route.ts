@@ -5,6 +5,7 @@ import { REVISIT_WINDOW_HOURS, getLastCheckinForCafe } from "@/lib/db/checkins";
 import { checkRateLimit, getClientIdentifier, rateLimitResponse } from "@/lib/rate-limit";
 import { rateLimitBuckets } from "@/lib/config";
 import { isValidUUID } from "@shared/uuid";
+import { logError } from "@/lib/observability/server-log";
 
 /**
  * GET /api/checkins/last?cafe_id=<uuid>
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest) {
     const checkin = await getLastCheckinForCafe(user.id, cafeId);
     return NextResponse.json({ checkin, revisitWindowHours: REVISIT_WINDOW_HOURS });
   } catch (err) {
-    console.error("/api/checkins/last GET failed", err);
+    logError("GET /api/checkins/last", err, request);
     return apiError("internal_error", 500);
   }
 }

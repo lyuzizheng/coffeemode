@@ -15,6 +15,7 @@ import {
   HandleChangeTooSoonError,
   ProfileNotFoundError,
 } from "@/lib/db/identity";
+import { logError } from "@/lib/observability/server-log";
 
 export async function PATCH(request: NextRequest) {
   const originError = requireSameOrigin(request);
@@ -72,7 +73,7 @@ export async function PATCH(request: NextRequest) {
     if (err instanceof ProfileNotFoundError) {
       return apiError("profile_not_found", 404);
     }
-    console.error("PATCH /api/profile/identity failed:", err);
+    logError("PATCH /api/profile/identity", err, request);
     return apiError("internal_error", 500);
   }
 }

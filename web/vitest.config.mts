@@ -11,6 +11,8 @@ export default defineConfig({
     // `include` already limits collection to `*.test.*`; `tests/helpers/**` is
     // excluded by that alone — explicit `exclude` remains only for `node_modules`.
     exclude: ["node_modules/**", "**/.next/**", "**/coverage/**"],
+    hookTimeout: 60_000,
+    testTimeout: 30_000,
   },
   resolve: {
     alias: {

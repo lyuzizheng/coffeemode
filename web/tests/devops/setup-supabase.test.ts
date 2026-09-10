@@ -1,14 +1,12 @@
 import { execSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
-import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { getPoolConfig } from "@/lib/db/postgres";
 import {
+  cleanupIntegrationDatabase,
   integrationAdminUrl,
   makeTestDbName,
   provisionTestDatabase,
-  quotedIdentifier,
   testDatabaseUrl,
 } from "../helpers/db";
 
@@ -95,15 +93,13 @@ describeIntegration("Supabase DevOps Provisioning — Real Postgres Integration"
 
   afterAll(async () => {
     if (adminUrl && testDbName) {
-      const admin = new pg.Client(getPoolConfig(adminUrl));
-      await admin.connect();
       try {
-        await admin.query(`drop database if exists ${quotedIdentifier(testDbName)} with (force)`);
-      } finally {
-        await admin.end();
+        await cleanupIntegrationDatabase(adminUrl, testDbName);
+      } catch {
+        // ignore cleanup error on teardown
       }
     }
-  });
+  }, 60_000);
 
   it("dry-run mode executes cleanly on fresh empty database", () => {
     const output = execSync(

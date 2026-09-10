@@ -30,10 +30,10 @@ import { executeSearch } from "@/lib/search/search-service";
 import { GET as recoveryGET } from "@/app/api/cafes/[id]/recovery/route";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import {
+  cleanupIntegrationDatabase,
   integrationAdminUrl,
   makeTestDbName,
   provisionTestDatabase,
-  quotedIdentifier,
   testDatabaseUrl,
 } from "../helpers/db";
 import { cafeWorkStats, fakeProcessUrls } from "../helpers/fixtures";
@@ -111,18 +111,10 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
       errors.push(error);
     }
     if (RUN_INTEGRATION && testDbUrl) {
-      const admin = new pg.Client(getPoolConfig(adminDbUrl));
       try {
-        await admin.connect();
-        await admin.query(`drop database if exists ${quotedIdentifier(TEST_DB)} with (force)`);
+        await cleanupIntegrationDatabase(adminDbUrl, TEST_DB);
       } catch (error) {
         errors.push(error);
-      } finally {
-        try {
-          await admin.end();
-        } catch (error) {
-          errors.push(error);
-        }
       }
     }
     if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
@@ -130,7 +122,7 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
     if (errors.length > 0) {
       throw new AggregateError(errors, "discovery-creation journey integration cleanup failed");
     }
-  });
+  }, 60_000);
 
   // =========================================================================
   // Path 1: Discovery & Filters

@@ -12,10 +12,10 @@ import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import type { SearchResponse } from "@/lib/search/types";
 import type { CafeSummary } from "@/types/cafes";
 import {
+  cleanupIntegrationDatabase,
   integrationAdminUrl,
   makeTestDbName,
   provisionTestDatabase,
-  quotedIdentifier,
   testDatabaseUrl,
 } from "../helpers/db";
 import {
@@ -374,18 +374,10 @@ describeHttp("HTTP Discovery & Filters (Path 1)", () => {
       errors.push(error);
     }
     if (RUN_INTEGRATION && testDbUrl) {
-      const admin = new pg.Client(getPoolConfig(adminDbUrl));
       try {
-        await admin.connect();
-        await admin.query(`drop database if exists ${quotedIdentifier(TEST_DB)} with (force)`);
+        await cleanupIntegrationDatabase(adminDbUrl, TEST_DB);
       } catch (error) {
         errors.push(error);
-      } finally {
-        try {
-          await admin.end();
-        } catch (error) {
-          errors.push(error);
-        }
       }
     }
     if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
@@ -393,7 +385,7 @@ describeHttp("HTTP Discovery & Filters (Path 1)", () => {
     if (errors.length > 0) {
       throw new AggregateError(errors, "http-discovery-filters integration cleanup failed");
     }
-  });
+  }, 60_000);
 
   // ——— GET /api/cafes spatial matrix ———
 

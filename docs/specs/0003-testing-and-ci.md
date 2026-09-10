@@ -54,7 +54,7 @@ Risk and independent-review requirements are defined only in
 
 ```text
 web: npm run typecheck, lint, check:i18n, test, build, check:bundle, verify, lhci
-web real DB: npm run db:migrate, npm run test:integration, npm run test:integration:journey, npm run test:integration:all
+web real DB: npm run db:migrate, npm run test:integration, npm run test:integration:journey, npm run test:integration:http, npm run test:integration:images, npm run test:integration:all
 web browser smoke: npm run test:e2e (Playwright MVP smoke suite), npm run lhci (Lighthouse CI performance budgets), npm run check:visual (local visual render evidence)
 services: npm run typecheck, npm test
 agent harness: .agents/scripts/preflight.sh, .agents/scripts/harness-self-test.sh
@@ -68,7 +68,7 @@ jobs run only when relevant:
 
 - `docs-gate`: agent, docs, templates, and harness changes (includes `preflight` which runs `check-coverage-matrix.sh` unconditionally);
 - `application-gate`: `web/` changes (typecheck, lint, i18n key parity, unit tests, build, bundle budget check, bundle analysis, PWA validation, E2E smoke suite, and Lighthouse CI performance budgets against seeded fixtures);
-- `integration-gate`: DB/SQL-capable web boundaries and shared-package changes — runs real Postgres DB tests (`npm run test:integration`), real Postgres user-journey tests (`npm run test:integration:journey`), and real MinIO/R2 image round-trip (`npm run test:integration:images`) sequentially on one `postgis` service + `docker compose up minio` (merged for efficiency; was `integration-gate` + `images-integration-gate`). Branch protection that still requires the legacy `images-integration-gate` name should migrate to `integration-gate` + `ci-gate` (see migration note below);
+- `integration-gate`: DB/SQL-capable web boundaries and shared-package changes — runs real Postgres DB tests (`npm run test:integration`), real Postgres user-journey tests (`npm run test:integration:journey`), real Postgres HTTP lifecycle tests (`npm run test:integration:http`), and real MinIO/R2 image round-trip (`npm run test:integration:images`) sequentially on one `postgis` service + `docker compose up minio` (merged for efficiency; was `integration-gate` + `images-integration-gate`). Branch protection that still requires the legacy `images-integration-gate` name should migrate to `integration-gate` + `ci-gate` (see migration note below);
 - `image-service-gate`: image-service and shared-package changes;
 - `poi-service-gate`: poi-service and shared-package changes;
 - `ci-gate`: always aggregates selected job results.

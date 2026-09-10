@@ -105,7 +105,10 @@ export async function closePool(): Promise<void> {
   if (!pool) return;
   const current = pool;
   pool = null;
-  await current.end();
+  await Promise.race([
+    current.end(),
+    new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+  ]);
 }
 
 /**

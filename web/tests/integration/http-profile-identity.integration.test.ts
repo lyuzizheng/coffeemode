@@ -34,10 +34,10 @@ import {
   type RouteContext,
 } from "../helpers/http-client";
 import {
+  cleanupIntegrationDatabase,
   integrationAdminUrl,
   makeTestDbName,
   provisionTestDatabase,
-  quotedIdentifier,
   testDatabaseUrl,
 } from "../helpers/db";
 
@@ -149,18 +149,10 @@ describePath3("path 3 — profile & public identity lifecycle over HTTP (spec 00
       errors.push(error);
     }
     if (RUN_INTEGRATION && testDbUrl) {
-      const admin = new pg.Client(getPoolConfig(adminDbUrl));
       try {
-        await admin.connect();
-        await admin.query(`drop database if exists ${quotedIdentifier(TEST_DB)} with (force)`);
+        await cleanupIntegrationDatabase(adminDbUrl, TEST_DB);
       } catch (error) {
         errors.push(error);
-      } finally {
-        try {
-          await admin.end();
-        } catch (error) {
-          errors.push(error);
-        }
       }
     }
     if (previousDatabaseUrl === undefined) {
@@ -171,7 +163,7 @@ describePath3("path 3 — profile & public identity lifecycle over HTTP (spec 00
     if (errors.length > 0) {
       throw new AggregateError(errors, "profile-identity integration cleanup failed");
     }
-  });
+  }, 60_000);
 
   it("path 3 (spec 0008 §6): GET /api/profile as anonymous → 401 unauthorized", async () => {
     const res = await apiClient(null).get<ErrorPayload, NoCtx, NextRequest>(

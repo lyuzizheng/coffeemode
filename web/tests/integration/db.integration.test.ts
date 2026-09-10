@@ -25,8 +25,10 @@ import {
   CheckInForbiddenError,
   CheckInNotFoundError,
   DuplicateCheckInError,
-  MERGE_GALLERY_SQL,
   SelfLikeError,
+} from "@/lib/validation/checkin";
+import {
+  MERGE_GALLERY_SQL,
   createCheckIn,
   softDeleteCheckIn,
   toggleCheckInLike,
@@ -36,6 +38,8 @@ import {
   CafeExistsError,
   CafeForbiddenError,
   CafeHasOtherCheckinsError,
+} from "@/lib/validation/cafe";
+import {
   SERVICE_ACCOUNT_MAINTAINER_LABEL,
   cafeExists,
   createCafeWithFirstCheckIn,

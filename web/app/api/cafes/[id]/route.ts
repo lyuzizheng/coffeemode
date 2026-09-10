@@ -3,13 +3,15 @@ import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
 import {
   cafeExists,
-  CafeForbiddenError,
-  CafeHasOtherCheckinsError,
   deleteCafe,
   getCafe,
   toPublicCafeDetail,
 } from "@/lib/db/cafes";
-import { CafeNotFoundError } from "@/lib/db/checkins";
+import {
+  CafeForbiddenError,
+  CafeHasOtherCheckinsError,
+} from "@/lib/validation/cafe";
+import { CafeNotFoundError } from "@/lib/validation/checkin";
 import {
   checkRateLimit,
   getClientIdentifier,

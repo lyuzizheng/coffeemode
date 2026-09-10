@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
-import { CafeNotFoundError } from "@/lib/db/checkins";
+import { CafeNotFoundError } from "@/lib/validation/checkin";
 import { parseNavigationBody, recordNavigation } from "@/lib/db/navigations";
 import {
   checkRateLimit,

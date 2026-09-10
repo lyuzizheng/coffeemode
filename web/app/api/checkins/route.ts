@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
+import { createCheckIn } from "@/lib/db/checkins";
 import {
   CafeNotFoundError,
   DuplicateCheckInError,
-  createCheckIn,
   parseCheckInBody,
-} from "@/lib/db/checkins";
+} from "@/lib/validation/checkin";
 import { PhotoIntentError } from "@/lib/images/provision-photos";
 import { ImageServiceError } from "@/lib/images/image-service-client";
 import {

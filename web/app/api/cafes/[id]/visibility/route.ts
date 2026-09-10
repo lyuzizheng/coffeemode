@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
-import {
-  CafeForbiddenError,
-  isLiveCafe,
-  setCafeVisibility,
-} from "@/lib/db/cafes";
-import { CafeNotFoundError } from "@/lib/db/checkins";
+import { isLiveCafe, setCafeVisibility } from "@/lib/db/cafes";
+import { CafeForbiddenError } from "@/lib/validation/cafe";
+import { CafeNotFoundError } from "@/lib/validation/checkin";
 import {
   checkRateLimit,
   getClientIdentifier,

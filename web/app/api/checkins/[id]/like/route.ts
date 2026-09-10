@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
+import { toggleCheckInLike } from "@/lib/db/checkins";
 import {
   CheckInNotFoundError,
   SelfLikeError,
-  toggleCheckInLike,
-} from "@/lib/db/checkins";
+} from "@/lib/validation/checkin";
 import {
   checkRateLimit,
   getClientIdentifier,

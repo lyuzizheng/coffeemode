@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError, parseQueryPositiveInt } from "@/lib/api/response";
+import { createCafeWithFirstCheckIn, listCafesNearby } from "@/lib/db/cafes";
 import {
   CafeExistsError,
-  createCafeWithFirstCheckIn,
-  listCafesNearby,
   parseCreateCafeBody,
-} from "@/lib/db/cafes";
+} from "@/lib/validation/cafe";
 import { PhotoIntentError } from "@/lib/images/provision-photos";
 import { ImageServiceError } from "@/lib/images/image-service-client";
 import {

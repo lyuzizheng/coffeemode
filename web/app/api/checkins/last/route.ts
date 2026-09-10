@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
 import { apiError } from "@/lib/api/response";
-import { REVISIT_WINDOW_HOURS, getLastCheckinForCafe } from "@/lib/db/checkins";
+import { getLastCheckinForCafe } from "@/lib/db/checkins";
+import { REVISIT_WINDOW_HOURS } from "@/lib/validation/checkin";
 import { checkRateLimit, getClientIdentifier, rateLimitResponse } from "@/lib/rate-limit";
 import { rateLimitBuckets } from "@/lib/config";
 import { isValidUUID } from "@shared/uuid";

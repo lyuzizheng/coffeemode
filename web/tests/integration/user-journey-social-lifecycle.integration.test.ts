@@ -24,6 +24,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   CafeExistsError,
   CafeHasOtherCheckinsError,
+} from "@/lib/validation/cafe";
+import {
   createCafeWithFirstCheckIn,
   deleteCafe,
   getCafe,
@@ -31,13 +33,15 @@ import {
   toPublicCafeDetail,
 } from "@/lib/db/cafes";
 import {
-  CafeNotFoundError,
-  DuplicateCheckInError,
-  SelfLikeError,
   createCheckIn,
   toggleCheckInLike,
   updateCheckIn,
 } from "@/lib/db/checkins";
+import {
+  CafeNotFoundError,
+  DuplicateCheckInError,
+  SelfLikeError,
+} from "@/lib/validation/checkin";
 import { listPublicCheckIns } from "@/lib/discovery/feed";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import {

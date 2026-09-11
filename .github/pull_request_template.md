@@ -14,6 +14,17 @@
 - Behavior/API/schema/UI impact:
 - Root cause and sibling sites checked:
 
+## Structure
+
+<!-- Canonical thresholds: docs/specs/0009-code-quality-and-module-boundaries.md §3. -->
+
+- [ ] No file crossed a hard threshold (400 lines / 80 per function / complexity 15 / depth 4 / params 5) without being split in this PR.
+- [ ] Touched oversize files were split in this PR, or a `[STRUCT-EXEMPT]` issue is linked and the ratchet entry updated (0009 §7).
+- [ ] No duplicated logic added: 2nd occurrence extracted to a helper; repeated shape uses factory/composition (0009 §5). `npm run check:structure` passes.
+- [ ] New abstraction (if any): pattern (Factory / Strategy / Adapter / Facade / DI) and rejected alternative stated below; more than one call site, or the 2nd implementation is named (0009 §6).
+- Pattern/reason:
+- Exemption registration:
+
 ## Verification
 
 <!-- Exact relevant commands and results. Mark non-applicable gates explicitly. -->

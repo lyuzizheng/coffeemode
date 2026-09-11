@@ -174,14 +174,6 @@ export function useCheckinMutation(options: UseCheckinMutationOptions) {
     setFailedAction,
   });
 
-  const retry = useCallback(() => {
-    if (failedAction === "delete") {
-      deleteMutation.mutate();
-    } else if (submitMutation.variables) {
-      submitMutation.mutate(submitMutation.variables);
-    }
-  }, [failedAction, deleteMutation, submitMutation]);
-
   return {
     view,
     error,
@@ -189,6 +181,5 @@ export function useCheckinMutation(options: UseCheckinMutationOptions) {
     failedAction,
     submit: submitMutation.mutate,
     deleteCheckin: deleteMutation.mutate,
-    retry,
   };
 }

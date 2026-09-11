@@ -89,7 +89,7 @@ export function CheckinForm(props: CheckinFormProps) {
             )}
 
             {state.mutation.error && (
-              <CheckinErrorBanner error={state.mutation.error} onRetry={state.mutation.retry} />
+              <CheckinErrorBanner error={state.mutation.error} onRetry={state.handleRetry} />
             )}
 
             {state.showSignInGate && <CheckinSignInGate resumePath={resumePath} />}

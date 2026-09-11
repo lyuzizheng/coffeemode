@@ -205,6 +205,10 @@ export function useCheckinFormState(options: UseCheckinFormStateOptions) {
 
   const canSubmit = scoresState.overall !== null && mutation.view !== "submitting" && mutation.view !== "success";
 
+  // Retry re-reads live form state (pre-split: `mutate()` with no vars), so
+  // edits made after a failure are not silently dropped.
+  const handleRetry = () =>
+    mutation.failedAction === "delete" ? mutation.deleteCheckin() : handleSubmit();
   const handleSubmit = () =>
     executeSubmit({
       isOffline,
@@ -233,6 +237,7 @@ export function useCheckinFormState(options: UseCheckinFormStateOptions) {
     showSignInGate,
     canSubmit,
     handleSubmit,
+    handleRetry,
     mutation,
     repeat,
   };

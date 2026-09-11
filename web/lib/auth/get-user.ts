@@ -1,3 +1,4 @@
+import { logError } from "@/lib/observability/server-log";
 import "server-only";
 
 import { createSupabaseServerClient, isAuthConfigured } from "./supabase-server";
@@ -20,7 +21,7 @@ export async function getCurrentUser(): Promise<{ id: string } | null> {
     // Network blips or Supabase outages should not crash public API routes.
     // Route handlers treat a null user as an unauthenticated caller and
     // continue with rate-limited anonymous behavior.
-    console.error("getCurrentUser failed:", e);
+    logError({ route: "getCurrentUser", error: e });
     return null;
   }
 }

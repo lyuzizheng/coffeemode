@@ -1,3 +1,4 @@
+import { logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
 import { isLiveCafe, setCafeVisibility } from "@/lib/db/cafes";
@@ -65,7 +66,7 @@ export async function PATCH(
     if (err instanceof CafeForbiddenError) {
       return apiError("forbidden", err.message, 403);
     }
-    console.error("/api/cafes/[id]/visibility PATCH failed", err);
+    logError({ route: gate.route, request, error: err, status: 500 });
     return apiError("internal_error", 500);
   }
 }

@@ -1,6 +1,20 @@
 name = "image-service"
 main = "src/index.ts"
-compatibility_date = "2024-01-01" # Use a date in the past; update when intentionally adopting newer runtime behaviour.
+# Pinned deliberately: this date is a runtime contract, so it moves only in a
+# reviewed commit — never implicitly, and never "today". 2025-08-01 is the newest
+# date whose default-on flag set (Cloudflare "compatibility flags" history) was
+# reviewed against this Worker, and it stays well below the workerd build pinned
+# in package-lock.json.
+#
+# The bump from 2024-01-01 is exactly what `nodejs_compat` below needed: v2 mode
+# applies from compatibility date 2024-09-23 onward, i.e. real Node built-ins plus
+# Wrangler's unenv polyfills instead of v1's import-only shims. Measured `typeof`
+# on the pinned workerd: Buffer undefined -> function, process undefined -> object
+# (process.versions.node "22.14.0"), process.env undefined -> object. That is what
+# the flag protects — any npm dependency that reaches for `node:*` / Buffer /
+# process. This Worker's own source uses only Web Crypto (aws4fetch) and
+# crypto.randomUUID(), so the exposure is transitive, not direct.
+compatibility_date = "2025-08-01"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]

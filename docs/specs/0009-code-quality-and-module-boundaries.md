@@ -20,7 +20,7 @@
 | 视觉、token、动效、无障碍 | `docs/specs/0002-design-system.md` | 不触碰；只规定 `components/**` 的 import 方向（§2），不管组件长什么样 |
 | 测试分层、fixture 政策、CI 门禁、覆盖率棘轮 | `docs/specs/0003-testing-and-ci.md` | 不改动任何覆盖率数字；本规范只新增"结构门禁"维度，见 §3 |
 | 编码流程与风格（早返回、命名、注释写 why） | `.agents/rules/coding.md` | 不重复；结构问题（拆分/抽取/模式选型）以本规范为准，风格问题以 coding.md 为准 |
-| 阈值数字（行数/复杂度/重复/边界） | **本规范 §3（政策正文）** | 机器镜像 `web/structure.config.mjs`（+ `.jscpd.json` / `structure-baseline.json`）逐字实现；改数 MUST 同 PR 改三处（改数规则） |
+| 阈值数字（行数/复杂度/重复/边界） | **本规范 §3（政策正文）** | 机器镜像 `web/structure.config.mjs`（+ `.jscpd.json` / `structure-baseline.json`）逐字实现，日常判定镜像 `.agents/rules/coding.md`（`### Decidable structure checks`）；改数 MUST 同 PR 改四处（改数规则） |
 
 取舍说明：0001 规定"route handler 保持 thin、业务进 `web/lib/*`"，
 但没有规定 `lib/` 内部如何分家——`cafes.ts` 正是从这个空白长出来的。
@@ -99,7 +99,7 @@ lib/* ──────────────────▶ shared/* · type
 - 生成物/migration/`_archive-*` 不计入任何阈值。
 - `poi-service/`、`image-service/` 同样适用本表（Workers 代码无豁免）。
 
-改数规则：阈值变更 MUST 同 PR 改三处——本规范 §3（政策正文）、`web/structure.config.mjs`（机器源）、`.jscpd.json`（`duplication` 镜像，`check:structure` 会断言镜像一致）；只改工具不改文档（或反之）的 PR 视为 P0 违规（两份真相）。
+改数规则：阈值变更 MUST 同 PR 改四处——本规范 §3（政策正文）、`web/structure.config.mjs`（机器源）、`.jscpd.json`（`duplication` 镜像，`check:structure` 会断言镜像一致）、`.agents/rules/coding.md`（`### Decidable structure checks` 日常判定镜像）；只改部分位置（或改工具不改文档）的 PR 视为 P0 违规（两份真相）。
 
 ### §4 "同 commit 拆分"规则与拆分手法
 
@@ -184,7 +184,7 @@ MUST 在当次提交内完成拆分。不允许"顺手加一行"把超标文件�
 
 | 文件 | 当前行数 | 超标项 | 只降不升基线 | 复核到期 |
 | --- | --- | --- | --- | --- |
-| `web/components/discovery/checkin-feed.tsx` | 440 | 文件硬 400 | 440 | 2026-12-31 |
+| `web/components/discovery/checkin-feed.tsx` | 433 | 文件硬 400 | 433（只允许减少） | 2026-12-31 |
 | `web/lib/db/profile.ts` | 431 | 文件硬 400 | 431 | 2026-12-31 |
 | `web/lib/config-schema.ts` | 424 | 文件硬 400 | 424 | 2026-12-31 |
 
@@ -192,11 +192,11 @@ MUST 在当次提交内完成拆分。不允许"顺手加一行"把超标文件�
 拆分毕业；`web/components/checkin/checkin-drawer.tsx`（730）已由 BRAWUKA-197 拆分毕业，
 按 §7.4「毕业行直接删除」从表与机器基线移除，基准值随之下降。
 机器镜像：`web/structure-baseline.json` 的 `files`（每条含 `lines` 与 `reviewBy`），
-由 `scripts/check-file-size.mjs` 读取。`checkin-feed` 440 是
-守卫合入前 main 上 BRAWUKA-73 (#349) 造成的 +1，
-`config-schema.ts` 是 BRAWUKA-184 (#357) 引入；基线自记录值起只降不升。
+由 `scripts/check-file-size.mjs` 读取。`checkin-feed` 的 440 是 BRAWUKA-73 (#349) 造成的 +1，
+已由 BRAWUKA-73 (#361) 在 main 上压到 433，登记值同步下调（BRAWUKA-200，PR 标题写 434、
+合入后的树实测 433）；`config-schema.ts` 是 BRAWUKA-184 (#357) 引入；基线自记录值起只降不升。
 
-第二张表：规则级豁免（`web/eslint-suppressions.json`，当前 48 文件 / 60 条目 / 68 处违规）。
+第二张表：规则级豁免（`web/eslint-suppressions.json`，当前 46 文件 / 56 条目 / 61 处违规）。
 用途：结构规则（函数行数/复杂度/`max-depth`/同构函数）对存量文件的逐条 suppress；
 读取方：**ESLint 自身的 bulk suppressions 机制**（`eslint.config.mjs` 不读该文件、不按路径关规则），
 棘轮由 `scripts/check-suppressions.mjs` 校验，预算登记在
@@ -213,7 +213,7 @@ BRAWUKA-180 (#356) 拆分后存量违规 72 → 68、条目数 60 → 60、文�
 规则：
 
 1. 申请：新超标需求 MUST 开 issue（标题含 `[STRUCT-EXEMPT]`），说明超标维度、行数/条目数、到期日、拆分计划，reviewer（非作者）批准后方可合入，清单同步 +1 行（含 `structure-baseline.json` / `eslint-suppressions.json` 镜像）。**新规则级豁免同样必须由非作者 reviewer 批准并写明到期日**，无到期日的 suppressions 不得合入。
-2. 只降不升：清单文件的行数 / suppressions 条目数 MUST 单调递减；任何使其上升的 commit（即使未过硬阈值增量）CI 按失败处理。重构 PR 应当顺手削减清单数字、清除自愈条目。
+2. 只降不升：清单文件的行数 / suppressions 条目数 MUST 单调递减；任何使其上升的 commit（即使未过硬阈值增量）CI 按失败处理。重构 PR 应当顺手削减清单数字、清除自愈条目。**登记值本身同样单调递减**：文件缩小后（仍 > 硬阈值 400）登记值大于实际行数即 CI 失败（`check-file-size` 报 stale 并给出应下调到的数字）——棘轮只有在登记值与实际行数同步时才真正收紧，允许"文件已缩小、登记值不动"等于把旧上限永久保留；确需保留余量（如本 PR 后续还要在同一文件加回几行）MUST 在 PR 说明理由并由非作者 reviewer 批准，且登记值仍 MUST ≤ 原值。
 3. 到期复核：每季度末（3/6/9/12 月末）复核清单；到期未拆 MUST 续期（更新到期日 + 说明）或升级为 P1 技术债 issue。循环依赖（§2.6）不适用本节。
 4. 删除即胜利：`profile-view.tsx` 900+ 行 → ~93 行 + 组件簇（audit §5.4 已还债）是清单毕业的范本：毕业行直接删除，不留"曾超标"纪念。
 
@@ -260,7 +260,7 @@ BRAWUKA-180 (#356) 拆分后存量违规 72 → 68、条目数 60 → 60、文�
 - [ ] 新增/改动文件对照 §3 表：行数/函数/复杂度/深度/参数无硬超标，或超标部分已同 commit 拆分。
 - [ ] 新增逻辑全文搜索无第 2 处重复（`jscpd` 本地通过）；新增抽象写明模式 + 被否方案（§6.2）。
 - [ ] 无 §2 禁令边（其中第 1–3 条及 SQL 由守卫自动拦截，第 4–6 条靠人工按【规范红线】打回）。
-- [ ] 阈值数字与本规范 §3 一致；如改了数字，§3 + `structure.config.mjs` + `.jscpd.json` 已同 PR 同步（§3 改数规则）。
+- [ ] 阈值数字与本规范 §3 一致；如改了数字，§3 + `structure.config.mjs` + `.jscpd.json` + `.agents/rules/coding.md` 已同 PR 同步（§3 改数规则）。
 - [ ] 祖父清单文件行数未上升（`git diff --stat` 对照 §7 基线）。
 
  reviewer 清单：软 250 文件是否回应；§4 触发矩阵是否命中；例外申请是否有 issue + 到期日。
@@ -276,5 +276,5 @@ BRAWUKA-180 (#356) 拆分后存量违规 72 → 68、条目数 60 → 60、文�
 要复制？第 2 次就是最后一次：直接抽（§5），jscpd 会替 reviewer 先看到。
 要新建抽象？先答：调用点 ≥2（§6.1）+ 模式名 + 被否方案（§6.2），缺一不建。
 要破层？只有 §7 登记一条路，且循环依赖无路（§2.6）。
-要改数字？§3 + structure.config.mjs + .jscpd.json 同 PR 改（改数规则），少一处就是 P0。
+要改数字？§3 + structure.config.mjs + .jscpd.json + .agents/rules/coding.md 同 PR 改（改数规则），少一处就是 P0。
 ```

@@ -1,3 +1,4 @@
+import { logError } from "@/lib/observability/server-log";
 import "server-only";
 
 import { appConfig } from "@/lib/config";
@@ -185,7 +186,7 @@ export async function executeSearch(
       });
       rawPois = poiRes.results ?? [];
     } catch (err) {
-      console.error("search-service: stored POI search error", err);
+      logError({ route: "search-service stored POI search", error: err });
       warnings.push("poi_unavailable");
     }
 
@@ -209,7 +210,7 @@ export async function executeSearch(
           }
         }
       } catch (err) {
-        console.error("search-service: live POI search error", err);
+        logError({ route: "search-service live POI search", error: err });
         warnings.push("live_poi_unavailable");
       }
     }

@@ -158,7 +158,8 @@ three snap states), and the header zone gets no competing horizontal chrome.
   watermark and no value — never a zero.
 - Card surface `surface`, 1px `border`, `shadow-sm`; `radius-md`. Active card
   scales to 1.02 and neighbors dim to 60% opacity (signature moment, spec
-  0002). Cover gets the subtle parallax on swipe.
+  0002). Cover parallax on swipe is design intent, not implemented (no
+  scroll-driven transform in code; see §10).
 - No actions and no open/closed badge in PEEK — scan speed over depth.
   Open/closed appears from HALF; the full score pair appears from HALF (§3).
 
@@ -271,8 +272,9 @@ HALF on 768×1024 and 1024×768; handle stays reachable with the sheet at FULL.
 ## 9. States
 
 - **Initial loading**: skeleton cards — cover block + two text bars + icon-row
-  bar, HeroUI Skeleton shimmer on `surface` cards. Skeletons are allowed only
-  for the initial load (spec 0002).
+  bar, hand-rolled `animate-pulse` shells on `surface` cards (not the HeroUI
+  `Skeleton` component). Skeletons render only while a query has no data yet
+  — never on refetch, mode switch, or pagination (spec 0002).
 - **Empty nearby**: no cards. Display-font line `No cafes nearby yet`
   (`text-lg`), body `Know a good one? Add it — the next nomad will thank
   you` (`text-sm`, `muted`), and a
@@ -298,8 +300,9 @@ assigns the tokens:
 - Sheet snap state changes: `spring.snappy` (stiffness 420, damping 32) +
   drag-velocity pass-through; settle ceiling `settle.state` ≤300ms;
   reduced motion → instant.
-- Card snap/parallax: scroll-driven, no added duration; active-card scale/dim
-  on `spring.gentle` (stiffness 260, damping 30).
+- Card snap: `snap-mandatory` scroll snap, no added duration; active-card
+  scale/dim on `spring.gentle` (stiffness 260, damping 30). Cover parallax is
+  design intent, not implemented.
 - Score bars (§3 hero + WorkProfile): width on `spring.gentle` (stiffness 260,
   damping 30), rows staggered 40ms, once on entry; reduced motion → final
   state instantly.
@@ -307,10 +310,11 @@ assigns the tokens:
   `settle.feedback` ≤150ms); content swaps with no added animation
   (stale-while-revalidate, DG17).
 - Skeleton → content: instant swap, no added animation (skeletons render only
-  on the initial pending pass).
+  while a query has no data yet — never on refetch, mode switch, or
+  pagination).
 - Toast: HeroUI v3 default — 350ms view-transition slide in *and* out;
-  exceeds the spec 0002 exit budget (100–150ms) — deviation tracked in
-  BRAWUKA-207.
+  exceeds both the spec 0002 enter (200–300ms) and exit (100–150ms) budgets —
+  registered exception, see spec 0002 §Motion (BRAWUKA-207).
 
 ## 11. Dark mode and accessibility
 

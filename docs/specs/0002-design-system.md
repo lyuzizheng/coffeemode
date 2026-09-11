@@ -359,6 +359,12 @@ Component transitions:
 - Loading: skeleton shimmer (HeroUI Skeleton), not spinners
 - Feed refresh/pagination: preserve the last successful content and put an inline
   error + Retry at the failed section; never replace real cards with placeholders
+- Third-party exception (HeroUI toast, BRAWUKA-207): enter/exit slide is the
+  library view-transition default, 350ms each — above both the enter
+  (200–300ms) and exit (100–150ms) budgets. Accepted: the Toast provider
+  exposes placement/maxVisibleToasts/timeout only, no duration hook; retuning
+  would mean overriding library-internal ::view-transition keyframes.
+  Revisit if HeroUI exposes a duration hook.
 ```
 
 ## Editorial Surfaces

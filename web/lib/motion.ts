@@ -38,7 +38,7 @@ export const ease = {
  * barely-there overshoot. */
 export const spring = {
   /** SPRING-GENTLE — stiffness 260 / damping 30.
-     Sheets, drawers, overlays; WorkProfile bars, card reflow, layoutId. */
+     WorkProfile bars, card reflow, layoutId transitions (spec 0002 §Motion). */
   gentle: { type: "spring", stiffness: 260, damping: 30 },
   /** SPRING-SNAPPY — stiffness 420 / damping 32, critically damped.
      Small controls (chips, toggles, card press), bottom-sheet detent snap

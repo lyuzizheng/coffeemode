@@ -65,9 +65,18 @@ export function emptyWorkStats(): WorkStats {
   };
 }
 
+/** Plain-object view of an unknown JSON payload (DB jsonb can be anything). */
+function asRecord(value: unknown): Record<string, unknown> {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>; // narrowed to a non-array object above
+  }
+  return {};
+}
+
 /** Coerce an unknown (e.g. JSON-decoded) payload into a complete WorkStats. */
 export function coerceWorkStats(raw: unknown): WorkStats {
-  const partial = (raw ?? {}) as Partial<WorkStats>;
+  const record = asRecord(raw);
+  const partial = record as Partial<WorkStats>;
   const stats = emptyWorkStats();
   if (typeof partial.n_users === "number") stats.n_users = partial.n_users;
   if (typeof partial.n_checkins === "number") stats.n_checkins = partial.n_checkins;
@@ -84,13 +93,13 @@ export function coerceWorkStats(raw: unknown): WorkStats {
   }
   if (typeof partial.experience_score === "number" || partial.experience_score === null) {
     stats.experience_score = partial.experience_score;
-  } else if (typeof (partial as Record<string, unknown>).experience_score !== "undefined") {
+  } else if (typeof record.experience_score !== "undefined") {
     // Guard against non-null non-number persisted values — recompute from dims.
     stats.experience_score = computeExperienceScore(stats);
   }
   if (typeof partial.composite_score === "number" || partial.composite_score === null) {
     stats.composite_score = partial.composite_score;
-  } else if (typeof (partial as Record<string, unknown>).composite_score !== "undefined") {
+  } else if (typeof record.composite_score !== "undefined") {
     stats.composite_score = computeCompositeScore(stats);
   }
   // Preserve persisted updated_at; emptyWorkStats already set a fresh timestamp
@@ -101,8 +110,8 @@ export function coerceWorkStats(raw: unknown): WorkStats {
   // If scores were not persisted (legacy rows with '{}' default), derive them
   // from the coerced dims so callers never see null when dims have data —
   // but do not overwrite explicitly persisted null (no scores yet).
-  const hasPersistedExperience = "experience_score" in (partial as Record<string, unknown>);
-  const hasPersistedComposite = "composite_score" in (partial as Record<string, unknown>);
+  const hasPersistedExperience = "experience_score" in record;
+  const hasPersistedComposite = "composite_score" in record;
   if (!hasPersistedExperience && stats.experience_score === null && stats.dims.overall.n > 0) {
     stats.experience_score = computeExperienceScore(stats);
   }

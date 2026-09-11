@@ -14,7 +14,7 @@ export function useStagedPhotos(initialPhotos?: PhotoUpload[]) {
     // Staged photos (logged-out composer, DG59) upload now, at publish
     // time — presigned URLs are issued to authenticated sessions only.
     // Previously failed tiles still hold their File and retry here too.
-    const pendingUploads = photos.filter((p) => p.file && !p.imageUuid);
+    const pendingUploads = photos.filter((p): p is PhotoUpload & { file: File } => p.file !== undefined && !p.imageUuid);
     const justUploaded = new Map<string, string>();
 
     if (pendingUploads.length > 0) {
@@ -22,7 +22,7 @@ export function useStagedPhotos(initialPhotos?: PhotoUpload[]) {
       await Promise.all(
         pendingUploads.map(async (p) => {
           try {
-            justUploaded.set(p.id, await uploadPhoto(p.file!));
+            justUploaded.set(p.id, await uploadPhoto(p.file));
           } catch {
             failedIds.add(p.id);
           }

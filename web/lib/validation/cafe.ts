@@ -173,7 +173,9 @@ export function parseCreateCafeBody(body: unknown): ParseResult<CreateCafeInput>
       city: city.value,
       google_place_id: googlePlaceId.value,
       apple_poi_id: applePoiId.value,
-      opening_hours: (raw.opening_hours as WeeklyHours | null | undefined) ?? undefined,
+      // Validated by isValidWeeklyHours above — the predicate narrows
+      // raw.opening_hours, so no cast is needed (weakening the guard breaks tsc).
+      opening_hours: raw.opening_hours ?? undefined,
       price_range: (priceRange as number | null | undefined) ?? undefined,
       checkin: {
         // overall presence was asserted above; the cast records it in the type.

@@ -20,8 +20,8 @@
     },
     {
       "path": "components/discovery/checkin-feed.tsx",
-      "lines": 440,
-      "reason": "over budget before the guard existed — split tracked by the BRAWUKA-175 quality program. Raised 439 → 440 on rebase: BRAWUKA-73 (#349) grew the file on main before this guard gated main; the only-shrink ratchet binds from 440.",
+      "lines": 433,
+      "reason": "over budget before the guard existed — split tracked by the BRAWUKA-175 quality program. Raised 439 → 440 on rebase: BRAWUKA-73 (#349) grew the file on main before this guard gated main. Lowered 440 → 433 (BRAWUKA-200): BRAWUKA-73 (#361) shrank the file on main but left this registry stale — the guard only failed growth, so the 440 ceiling stayed in force; the commit title says 434, the merged tree measures 433, and the registry now equals the tree. The ratchet binds from 433.",
       "reviewBy": "2026-12-31"
     },
     {

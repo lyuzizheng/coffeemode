@@ -65,9 +65,12 @@ describe("getCurrentUser", () => {
     const user = await getCurrentUser();
 
     expect(user).toBeNull();
-    expect(consoleError).toHaveBeenCalledWith(
-      "getCurrentUser failed:",
-      expect.any(Error),
-    );
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    const [raw] = consoleError.mock.calls[0];
+    expect(JSON.parse(raw as string)).toMatchObject({
+      type: "error",
+      route: "getCurrentUser",
+      error: "network blip",
+    });
   });
 });

@@ -5,14 +5,20 @@
  * Fails when:
  *   - a source file exceeds `LIMITS.maxLines` and is not grandfathered;
  *   - a grandfathered file grows past its recorded line count ("only down");
+ *   - a grandfathered entry is stale — the file shrank below the recorded count
+ *     while still over the hard budget, so the old ceiling stays in force until
+ *     the registry is lowered in the same change (spec 0009 §7.2);
  *   - a grandfathered entry points at a file that no longer exists.
  *
  * Warns when a file crosses the soft budget. The ESLint `max-lines` rule
  * enforces the same hard budget; this script adds the soft budget, the
  * exemption registry, and the ratchet that ESLint cannot express.
  *
- * `--print-baseline` prints the JSON body for `web/structure-baseline.json`
- * from the current tree (never auto-writes: the registry is reviewed).
+ * `--print-baseline` prints the registry body for `web/structure-baseline.json`
+ * built from the current tree: it refreshes `lines` on the entries already in
+ * the registry and keeps their `reason` / `reviewBy` / `$comment`. New entries
+ * carry no `reviewBy` — spec 0009 §7.1 requires a reviewed date, so the draft
+ * must be finished by hand. Never auto-writes: the registry is reviewed.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join, relative, sep } from "node:path";
@@ -71,7 +77,8 @@ const measured = collectSourceFiles().map((file) => ({
   lines: countLines(readFileSync(file, "utf8")),
 }));
 
-const grandfathered = loadBaseline().files;
+const baseline = loadBaseline();
+const grandfathered = baseline.files;
 const exemptions = new Map(grandfathered.map((entry) => [entry.path, entry]));
 
 const errors = [];
@@ -100,6 +107,10 @@ for (const file of measured) {
       notes.push(
         `${file.path}: ${file.lines} lines is now within the ${LIMITS.maxLines}-line budget — remove its baseline exemption and let the ratchet take over`,
       );
+    } else if (file.lines < exemption.lines) {
+      errors.push(
+        `${file.path}: ${file.lines} lines, grandfathered at ${exemption.lines} — the registry is stale, so the old ceiling is still in force: lower \`lines\` to ${file.lines} in structure-baseline.json (spec 0009 §7.2 keeps the registry down-only); keeping headroom needs the reason recorded in the PR and a non-author reviewer's approval`,
+      );
     } else {
       notes.push(`${file.path}: grandfathered ${file.lines}/${exemption.lines} lines`);
     }
@@ -119,14 +130,23 @@ for (const path of exemptions.keys()) {
 }
 
 if (printBaseline) {
-  const entries = measured
+  const known = new Map(grandfathered.map((entry) => [entry.path, entry]));
+  const files = measured
     .filter((file) => file.lines > LIMITS.maxLines)
-    .map((file) => ({
-      path: file.path,
-      lines: file.lines,
-      reason: "over budget before the guard existed — split tracked by the BRAWUKA-175 quality program",
-    }));
-  process.stdout.write(`${JSON.stringify(entries, null, 2)}\n`);
+    .map((file) => {
+      const entry = known.get(file.path);
+      if (entry) return { ...entry, lines: file.lines };
+      return {
+        path: file.path,
+        lines: file.lines,
+        reason:
+          "over budget before the guard existed — split tracked by the BRAWUKA-175 quality program",
+      };
+    });
+  console.error(
+    "note: --print-baseline refreshes `lines` from the tree and keeps each registered entry's `reason` / `reviewBy`; a new entry has no review date yet — fill in a reviewed `reviewBy` (spec 0009 §7.1) before committing.",
+  );
+  process.stdout.write(`${JSON.stringify({ ...baseline, files }, null, 2)}\n`);
   process.exit(0);
 }
 

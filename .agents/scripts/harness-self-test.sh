@@ -18,9 +18,10 @@ cp -R docs .agents .github .codex AGENTS.md "$TEST_ROOT/" 2>/dev/null || true
 mkdir -p "$TEST_ROOT/web"
 cp -R web/package.json web/tests "$TEST_ROOT/web/" 2>/dev/null || true
 # Runtime-pin inputs: the manifests, lockfiles, Worker configs, Dockerfile and
-# compose file `check-runtime-pins.sh` reads. The gate treats any missing one as
-# a failure (so it cannot half-run), which means the fixture must carry them —
-# including the two service trees, which the classifier check does not need.
+# compose file `check-runtime-pins.sh` reads, plus the workflows it walks (copied
+# with `.github/`). The gate treats any missing one as a failure (so it cannot
+# half-run), which means the fixture must carry them — including the two service
+# trees, which the classifier check does not need.
 cp web/package-lock.json web/Dockerfile "$TEST_ROOT/web/" 2>/dev/null || true
 for svc in poi-service image-service; do
   mkdir -p "$TEST_ROOT/$svc"
@@ -364,6 +365,65 @@ if assert_mutated "compatibility_date removed" "$PIN_WRANGLER.bak" "$PIN_WRANGLE
   expect_failure "compatibility_date missing" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-runtime-pins.sh"
 fi
 mv "$PIN_WRANGLER.bak" "$PIN_WRANGLER"
+
+# The pin lives in every workflow that provisions Node, not only in ci.yml: a
+# nightly job that installs in web/ and recomputes against the production
+# database shows the same drift (BRAWUKA-202).
+PIN_NIGHTLY="$TEST_ROOT/.github/workflows/nightly-recompute.yml"
+cp "$PIN_NIGHTLY" "$PIN_NIGHTLY.bak"
+sed 's/^          node-version: 22$/          node-version: 24/' "$PIN_NIGHTLY.bak" > "$PIN_NIGHTLY"
+if assert_mutated "nightly workflow pins a different Node major" "$PIN_NIGHTLY.bak" "$PIN_NIGHTLY"; then
+  expect_failure "nightly workflow node-version drift" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-runtime-pins.sh"
+fi
+mv "$PIN_NIGHTLY.bak" "$PIN_NIGHTLY"
+
+# A workflow the gate has never seen is checked the same way, or "one more
+# workflow" becomes the blind spot again.
+PIN_NEW="$TEST_ROOT/.github/workflows/harness-probe.yml"
+cat > "$PIN_NEW" <<'YAML'
+name: Harness probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - run: npm ci
+YAML
+expect_failure "new workflow with a drifted node-version" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-runtime-pins.sh"
+
+# Installing a package while pinning nothing at all: the runner default would
+# silently become the runtime that touches production.
+cat > "$PIN_NEW" <<'YAML'
+name: Harness probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: npm ci
+YAML
+expect_failure "workflow installing a package with no node-version" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-runtime-pins.sh"
+rm "$PIN_NEW"
 
 # The preflight bridge must propagate the gate rather than swallow it.
 cp "$TEST_ROOT/poi-service/package.json" "$TEST_ROOT/poi-service/package.json.keep"

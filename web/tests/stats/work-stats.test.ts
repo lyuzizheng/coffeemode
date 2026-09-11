@@ -142,4 +142,14 @@ describe("coerceWorkStats preserves persisted scores (issue #146)", () => {
       }),
     ).toBe(true);
   });
+
+  it("coerces non-object payloads to empty stats without throwing (BRAWUKA-189)", () => {
+    for (const raw of ["corrupt", 42, true, null, undefined, []] as unknown[]) {
+      const coerced = coerceWorkStats(raw);
+      expect(coerced.n_users).toBe(0);
+      expect(coerced.n_checkins).toBe(0);
+      expect(coerced.experience_score).toBeNull();
+      expect(coerced.composite_score).toBeNull();
+    }
+  });
 });

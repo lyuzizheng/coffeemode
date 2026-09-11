@@ -95,7 +95,7 @@ export function ShareControl({
   return (
     <span ref={rootRef} className="relative inline-flex">
       <Button
-        ref={triggerRef as unknown as React.Ref<HTMLButtonElement>}
+        ref={triggerRef}
         variant="ghost"
         isIconOnly
         aria-label={t("aria")}

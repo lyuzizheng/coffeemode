@@ -34,11 +34,11 @@ export function useCheckinDraft({
       maxStay,
       note,
       photos: photos
-        .filter((p) => p.file)
+        .filter((p): p is PhotoUpload & { file: File } => p.file !== undefined)
         .map((p) => ({
           id: p.id,
-          name: p.file!.name || "photo.jpg",
-          file: p.file!,
+          name: p.file.name || "photo.jpg",
+          file: p.file,
           ...(p.imageUuid ? { imageUuid: p.imageUuid } : {}),
         })),
       createdAt: Date.now(),

@@ -143,13 +143,15 @@ export function closingTimeToday(
   instant: Date = new Date(),
 ): string | null {
   if (isOpenAt(hours, tz, instant) !== true) return null;
-  // isOpenAt already validated shape + tz, so the local day is resolvable.
-  const local = cafeLocalTime(tz as string, instant);
+  // isOpenAt is true only for a usable hours object and a non-empty tz;
+  // re-asserted here so the compiler sees the narrowing (never fires at runtime).
+  if (typeof hours !== "object" || hours === null || !tz) return null;
+  const local = cafeLocalTime(tz, instant);
   if (!local) return null;
   const dayIndex = DAY_KEYS.indexOf(local.day);
   const yesterday = DAY_KEYS[(dayIndex + 6) % 7];
-  const today = (hours as WeeklyHours)[local.day];
-  const previous = (hours as WeeklyHours)[yesterday];
+  const today = hours[local.day];
+  const previous = hours[yesterday];
   // Yesterday's overnight spillover owns the window early in the day.
   if (previous != null) {
     const open = parseWallClock(previous.open);

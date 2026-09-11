@@ -196,9 +196,13 @@ export async function checkRateLimit(
   }
 
   // All windows allowed — return the tightest (smallest remaining) that was
-  // already consumed above. mostConstrainedAllowed is non-null because
-  // buckets is non-empty and no deny occurred.
-  return mostConstrainedAllowed!;
+  // already consumed above. buckets is non-empty and no deny occurred, so
+  // mostConstrainedAllowed is set; the throw makes that invariant runtime
+  // code instead of a comment (an empty buckets array is a caller bug).
+  if (!mostConstrainedAllowed) {
+    throw new Error("unreachable: checkRateLimit allowed with no constrained window");
+  }
+  return mostConstrainedAllowed;
 }
 
 /**

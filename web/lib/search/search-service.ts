@@ -6,7 +6,7 @@ import { DEFAULT_CITY, findCity } from "@/lib/cities";
 import { searchCafesInDb } from "@/lib/db/search";
 import type { CafeWithExternalIds } from "@/lib/db/search";
 import { searchExternalPOIs, searchPOIs } from "@/lib/places/poi-client";
-import { haversineDistanceM } from "./distance";
+import { haversineDistanceM } from "@shared/places/geo";
 import { hasWorkFiltersActive, matchesAllFilters } from "./filter";
 import type {
   SearchFilters,

@@ -29,14 +29,17 @@ export default defineConfig({
         "scripts/**",
         "config/**",
         "**/*.d.ts",
-        // Type-only and re-export modules emit no statements, so v8 reports
-        // them as 0/0 = 100% — an entry that reads as fully covered while
-        // proving nothing. They contribute nothing to the aggregate ratio
-        // either; they are excluded so the report lists only measured code
-        // (BRAWUKA-173). Add a path here only when it compiles to no
-        // executable statement.
+        // Type-only modules emit no statements, so v8 reports them as
+        // 0/0 = 100% — an entry that reads as fully covered while proving
+        // nothing. They contribute nothing to the aggregate ratio either;
+        // they are excluded so the report lists only measured code
+        // (BRAWUKA-173). Add a path here ONLY when it compiles to no
+        // executable statement — verified by transpiling it, not by reading
+        // the filename. A re-export module is NOT eligible: it emits a
+        // statement and it is a zero-value indirection layer, so delete it and
+        // point callers at the single source instead (spec 0009 §5/§6;
+        // `lib/search/distance.ts` was removed this way by BRAWUKA-203).
         "lib/rate-limit/types.ts",
-        "lib/search/distance.ts",
         "lib/search/types.ts",
         "shared/places/types.ts",
       ],

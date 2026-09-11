@@ -200,11 +200,15 @@ export function MobileSheet({
     else if (info.velocity.y < -STEP_VELOCITY || info.offset.y < -STEP_OFFSET_PX) next = current + 1;
     next = Math.max(0, Math.min(steps.length - 1, next));
     const target = steps[next];
-    // Hand the release velocity to the detent snap spring before the snap
-    // state flips; the snap effect consumes and clears it.
-    snapVelocity.current = info.velocity.y;
-    // Stepping into PEEK clears the selection (18b) — controller.snapTo handles it.
-    controller.snapTo(target);
+    if (target !== snap) {
+      // Hand the release velocity to the detent snap spring before the snap
+      // state flips; the snap effect consumes and clears it.
+      snapVelocity.current = info.velocity.y;
+      // Stepping into PEEK clears the selection (18b) — controller.snapTo handles it.
+      controller.snapTo(target);
+    } else {
+      animate(y, offsets[snap], reduced ? { duration: 0 } : spring.snappy);
+    }
   };
 
   // DG15 scroll handoff: a downward pull starts dragging the sheet only when

@@ -184,16 +184,16 @@ MUST 在当次提交内完成拆分。不允许"顺手加一行"把超标文件�
 
 | 文件 | 当前行数 | 超标项 | 只降不升基线 | 复核到期 |
 | --- | --- | --- | --- | --- |
-| `web/components/checkin/checkin-drawer.tsx` | 730 | 文件硬 400 | 730（只允许减少） | 2026-12-31 |
 | `web/components/discovery/checkin-feed.tsx` | 440 | 文件硬 400 | 440 | 2026-12-31 |
 | `web/lib/db/profile.ts` | 431 | 文件硬 400 | 431 | 2026-12-31 |
 | `web/lib/config-schema.ts` | 424 | 文件硬 400 | 424 | 2026-12-31 |
 
 `web/lib/db/cafes.ts`（826）与 `web/lib/db/checkins.ts`（758）已由 BRAWUKA-180 (#356)
-拆分毕业，按 §7.4「毕业行直接删除」从表与机器基线移除，基准值随之下降。
+拆分毕业；`web/components/checkin/checkin-drawer.tsx`（730）已由 BRAWUKA-197 拆分毕业，
+按 §7.4「毕业行直接删除」从表与机器基线移除，基准值随之下降。
 机器镜像：`web/structure-baseline.json` 的 `files`（每条含 `lines` 与 `reviewBy`），
-由 `scripts/check-file-size.mjs` 读取。`checkin-drawer` 730 / `checkin-feed` 440 是
-守卫合入前 main 上 BRAWUKA-185 (#358) / BRAWUKA-73 (#349) 造成的 +5 / +1，
+由 `scripts/check-file-size.mjs` 读取。`checkin-feed` 440 是
+守卫合入前 main 上 BRAWUKA-73 (#349) 造成的 +1，
 `config-schema.ts` 是 BRAWUKA-184 (#357) 引入；基线自记录值起只降不升。
 
 第二张表：规则级豁免（`web/eslint-suppressions.json`，当前 48 文件 / 60 条目 / 68 处违规）。

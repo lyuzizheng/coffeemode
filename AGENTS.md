@@ -44,3 +44,22 @@ priorities or decisions.
   closed-loop workflow (`.agents/workflows/closed-loop.md`) until the PR is
   ready to merge. Do not merge without explicit authority.
 - If no GitHub PR template exists, the PR body must include `## Context`.
+
+## Structure and scale
+
+- Canonical numbers live in `docs/specs/0009-code-quality-and-module-boundaries.md`
+  §3; the machine mirror is `web/structure.config.mjs` (enforced by
+  `npm run check:structure` from `web/`). This file states behavior only and
+  MUST NOT fork those numbers.
+- A commit that pushes any file past a hard threshold MUST complete the split
+  inside the same commit (Extract Module / Extract Function / Parameter Object /
+  Split by concern, per 0009 §4). NEVER "add one more line" to an already
+  oversize (god) module, and NEVER defer the split to a follow-up.
+- The 2nd occurrence of the same logic MUST be extracted to a helper; a repeated
+  shape MUST become a factory/composition function with differences as
+  parameters — never a copied structure (0009 §5).
+- New abstractions MUST name the pattern (Factory / Strategy / Adapter / Facade /
+  DI) and the rejected alternative in the PR; single-use abstractions are
+  rejected (0009 §6).
+- Oversize files ship only via a `[STRUCT-EXEMPT]` issue plus a ratchet entry
+  (0009 §7). Reviewers reject unregistered over-threshold changes.

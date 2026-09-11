@@ -239,6 +239,10 @@ describe("checkRateLimit multi-window", () => {
   });
 });
 
+  it("throws an unreachable error on an empty buckets array (caller bug, BRAWUKA-189)", async () => {
+    await expect(checkRateLimit("search", "test-client-empty", [])).rejects.toThrow("unreachable");
+  });
+
 it("exports search + profile rate-limit defaults (DG129, #216)", () => {
   expect(SEARCH_RATE_LIMITS).toEqual([
     { windowMs: 60_000, maxRequests: 30 },

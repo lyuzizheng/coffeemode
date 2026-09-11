@@ -170,16 +170,25 @@ type ReadJsonBodyResult<T = unknown> =
 /**
  * Unified JSON body parser (BRAWUKA-181).
  * Parses request body as JSON; returns 400 invalid_request on malformed/invalid JSON.
+ * Empty body with `{ optional: true }` yields `data: null` — typed, not cast.
  */
 export async function readJsonBody<T = unknown>(
   request: Request,
+  options: ReadJsonBodyOptions & { optional: true },
+): Promise<ReadJsonBodyResult<T | null>>;
+export async function readJsonBody<T = unknown>(
+  request: Request,
   options?: ReadJsonBodyOptions,
-): Promise<ReadJsonBodyResult<T>> {
+): Promise<ReadJsonBodyResult<T>>;
+export async function readJsonBody<T = unknown>(
+  request: Request,
+  options?: ReadJsonBodyOptions,
+): Promise<ReadJsonBodyResult<T | null>> {
   try {
     const text = await request.text();
     if (!text || text.trim() === "") {
       if (options?.optional) {
-        return { ok: true, data: null as unknown as T };
+        return { ok: true, data: null };
       }
       return {
         ok: false,

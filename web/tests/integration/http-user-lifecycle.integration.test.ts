@@ -460,7 +460,7 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     }
   }, 60_000);
 
-  it("Act 0 (harness): liveness smoke, persona sessions resolve, POI seam injects the google shape with zero network", async () => {
+  async function runAct0() {
     // Liveness smoke (spec §11): the sync GET takes no request — parse directly.
     const health = await parseRouteResponse<{ ok: boolean }>(healthGET());
     expect(health.status).toBe(200);
@@ -487,9 +487,9 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     expect(hit.place_id).toMatch(/^ChIJ/);
     expect(hit.types).toContain("cafe");
     expect(hit.business_status).toBe("OPERATIONAL");
-  });
+  }
 
-  it("Act 1 (Path 2): A/B/C create Cafe 1 (Singapore) / 2 (Tokyo) / 3 (London) plus a boosted Singapore ranking fixture, with fused check-ins, tz derivation, and default anonymity", async () => {
+  async function runAct1() {
     // §11 spot-checks (full matrices stay slice-owned): anonymous 401, cross-site 403.
     const anon = await guestClient.post(cafesPOST, "/api/cafes", {
       name: "Ghost Cafe",
@@ -597,9 +597,9 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     expect(detail.maintainer).toBeNull();
     expect(detail.gallery).toHaveLength(1);
     expect(detail.gallery[0]?.source).toEqual({ type: "checkin", id: creation1Id });
-  });
+  }
 
-  it("Act 2 (Path 1, DG46/DG128): User D anonymous discovery truth table — distance order, city switch, open_now trio, min-score, weak-results fallback", async () => {
+  async function runAct2() {
     // Geo-nearby: Singapore cafes present closest-first (Cafe 1, then the
     // farther ranking fixture); Tokyo/London excluded by distance.
     const nearby = await guestClient.get<NearbyDTO>(cafesGET, "/api/cafes", {
@@ -683,9 +683,9 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     // Response hygiene: cache + search-mode headers present.
     expect(tokyo.headers.get("cache-control")).toContain("private");
     expect(tokyo.headers.get("x-search-mode")).toBeTruthy();
-  });
+  }
 
-  it("Act 3 (Path 4, DG61): cross check-ins recompute aggregates; the DG61 replay pair writes exactly one row (Cafe 2 n_checkins 3)", async () => {
+  async function runAct3() {
     // §10 rows 2–3: B → 1 (all 60s, 3h), C → 1 (all 75s, 2h).
     const bVisit = await clientB.post<{ checkinId: string }>(checkinsPOST, "/api/checkins", {
       cafe_id: cafe1Id,
@@ -753,9 +753,9 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     expect(cafe3.work_stats.experience_score).toBe(40);
     expect(cafe3.work_stats.n_users).toBe(1);
     expect(cafe3.work_stats.n_checkins).toBe(1);
-  });
+  }
 
-  it("Act 4 (Path 4, DG64): B's 24h revisit 409s, then last → PATCH edit moves experience 75 → 78.33 with composite untouched", async () => {
+  async function runAct4() {
     const revisit = await clientB.post(checkinsPOST, "/api/checkins", {
       cafe_id: cafe1Id,
       scores: { overall: 65 },
@@ -799,9 +799,9 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     expect(cafe1.work_stats.n_users).toBe(3);
     expect(cafe1.work_stats.n_checkins).toBe(3);
     expect(cafe1.work_stats.policies.max_stay).toEqual({ unlimited: 1, "2h": 1 });
-  });
+  }
 
-  it("Act 5 (Path 3, spec 0006): A renames, opts identity on then off — public projection flips and restores losslessly, released handle stays reserved", async () => {
+  async function runAct5() {
     const renamed = await clientA.patch<{ profile: { displayName: string } }, NoCtx, NextRequest>(
       profilePATCH,
       "/api/profile",
@@ -866,9 +866,9 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     });
     expect(stolen.status).toBe(409);
     expect(stolen.data).toMatchObject({ error: "handle_taken" });
-  });
+  }
 
-  it("Act 6 (ledger, DG13/DG136): User D reconciles the full §10 ledger anonymously and authenticated — aggregates, order, feed, viewer flags, projections, good_first boost, stats", async () => {
+  async function runAct6() {
     for (const observer of [guestClient, clientD]) {
       const cafe1 = await getCafeDetailAs(observer, cafe1Id);
       expect(cafe1.work_stats.experience_score).toBeCloseTo(78.33, 2);
@@ -952,9 +952,9 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     expect(statsC.data.stats).toEqual({ cafesCount: 3, checkinsCount: 3 });
     const statsD = await clientD.get<ProfileDTO, NoCtx, NextRequest>(profileGET, "/api/profile");
     expect(statsD.data.stats).toEqual({ cafesCount: 0, checkinsCount: 0 });
-  });
+  }
 
-  it("Act 7 (Path 5, spec 0004 decision 8): A/C like B's Cafe 1 check-in to likes_count 2 with helpful-first; self-like 403, anonymous 401", async () => {
+  async function runAct7() {
     const liked = await likeCheckin(clientA, bCheckin1Id);
     expect(liked.status).toBe(200);
     expect(liked.data).toMatchObject({ liked: true, likesCount: 1 });
@@ -997,9 +997,9 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     const ghostLike = await likeCheckin(clientA, randomUUID());
     expect(ghostLike.status).toBe(404);
     expect(ghostLike.data).toMatchObject({ error: "not_found" });
-  });
+  }
 
-  it("Act 8 (Path 6, DG125/DG146): Cafe 3 shells, Cafe 1 hands off to the service account, User D re-reconciles the post-deletion ledger", async () => {
+  async function runAct8() {
     // Authorization line: non-creator B deleting Cafe 3 → 403 forbidden.
     const forbidden = await clientB.delete(
       cafeDELETE,
@@ -1126,5 +1126,25 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     expect(statsC.data.stats).toEqual({ cafesCount: 2, checkinsCount: 2 });
     const statsB = await clientB.get<ProfileDTO, NoCtx, NextRequest>(profileGET, "/api/profile");
     expect(statsB.data.stats).toEqual({ cafesCount: 3, checkinsCount: 3 });
-  });
+  }
+
+  it("Acts 0–8 (spec 0008 §3, §10, §9): full 4-user composed lifecycle causal timeline", async () => {
+    await runAct0();
+    await resetRateLimits(dbClient);
+    await runAct1();
+    await resetRateLimits(dbClient);
+    await runAct2();
+    await resetRateLimits(dbClient);
+    await runAct3();
+    await resetRateLimits(dbClient);
+    await runAct4();
+    await resetRateLimits(dbClient);
+    await runAct5();
+    await resetRateLimits(dbClient);
+    await runAct6();
+    await resetRateLimits(dbClient);
+    await runAct7();
+    await resetRateLimits(dbClient);
+    await runAct8();
+  }, 120_000);
 });

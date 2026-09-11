@@ -21,7 +21,7 @@ import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   R2_ACCESS_KEY_ID,
   R2_CLEANUP_BUCKET_NAME as R2_BUCKET_NAME,
@@ -48,22 +48,38 @@ const IMAGE_SERVICE_ROOT = path.resolve(
 );
 
 let minioUp = false;
+let currentBucket = "";
 const createdKeys = new Set<string>();
 const cleanupErrors: string[] = [];
 
+async function createTestBucket(): Promise<string> {
+  const bucket = `test-orphan-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  const url = `${R2_ENDPOINT.replace(/\/+$/, "")}/${bucket}`;
+  const res = await r2Client().fetch(url, { method: "PUT" });
+  if (![200, 409].includes(res.status)) {
+    throw new Error(`bucket create failed with ${res.status}`);
+  }
+  return bucket;
+}
+
+async function deleteTestBucket(bucket: string): Promise<void> {
+  const url = `${R2_ENDPOINT.replace(/\/+$/, "")}/${bucket}`;
+  await r2Client().fetch(url, { method: "DELETE" }).catch(() => {});
+}
+
 async function putObject(key: string, body: Uint8Array, metadata?: Record<string, string>): Promise<void> {
-  await r2PutObject(key, body, metadata, R2_BUCKET_NAME);
+  await r2PutObject(key, body, metadata, currentBucket);
   // r2PutObject throws on failure (unlike original expect); preserve createdKeys tracking.
   createdKeys.add(key);
 }
 
 async function objectExists(key: string): Promise<boolean> {
-  return r2ObjectExists(key, R2_BUCKET_NAME);
+  return r2ObjectExists(key, currentBucket);
 }
 
 async function deleteObject(key: string): Promise<void> {
   try {
-    await r2DeleteObject(key, R2_BUCKET_NAME);
+    await r2DeleteObject(key, currentBucket);
     createdKeys.delete(key);
   } catch (e) {
     cleanupErrors.push(`DELETE ${key} threw ${(e as Error).message}`);
@@ -86,7 +102,7 @@ function runCleanup(env: Record<string, string>): RunResult {
         TEST_R2_ACCESS_KEY_ID: undefined,
         R2_ACCESS_KEY_ID,
         R2_SECRET_ACCESS_KEY,
-        R2_BUCKET_NAME,
+        R2_BUCKET_NAME: currentBucket || R2_BUCKET_NAME,
         R2_ENDPOINT,
         ...env,
       } as NodeJS.ProcessEnv,
@@ -112,18 +128,24 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
       console.warn("MinIO not reachable — cleanup tests will SKIP");
       return;
     }
-    // Create the dedicated test bucket (idempotent; BucketAlreadyOwnedByYou is fine).
-    const url = `${R2_ENDPOINT.replace(/\/+$/, "")}/${R2_BUCKET_NAME}`;
-    const res = await r2Client().fetch(url, { method: "PUT" }).catch((e) => e);
-    const status = res instanceof Response ? res.status : 0;
-    if (!(res instanceof Response)) throw res;
-    if (![200, 409].includes(status)) {
-      throw new Error(`bucket create failed with ${status}`);
+  });
+
+  beforeEach(async () => {
+    if (!minioUp) return;
+    currentBucket = await createTestBucket();
+    createdKeys.clear();
+  });
+
+  afterEach(async () => {
+    if (!minioUp || !currentBucket) return;
+    for (const key of [...createdKeys]) {
+      await deleteObject(key);
     }
+    await deleteTestBucket(currentBucket);
+    currentBucket = "";
   });
 
   afterAll(async () => {
-    for (const key of [...createdKeys]) await deleteObject(key);
     if (cleanupErrors.length) throw new AggregateError(cleanupErrors.map((m) => new Error(m)), "cleanup failures");
   });
 

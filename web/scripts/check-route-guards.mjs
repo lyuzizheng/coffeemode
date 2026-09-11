@@ -12,7 +12,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH"];
-
+const MUTATING_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);
 // Explicitly exempted routes with documented architectural reasons
 const EXEMPT_ROUTES = new Set([
   "app/api/health/route.ts", // Lightweight probe for Docker / Dokploy / Traefik
@@ -78,6 +78,13 @@ export function checkRouteGuards(webRootDir) {
             file: relPath,
             method,
             reason: `Exported handler ${method} missing call to guard()`,
+          });
+        }
+        if (MUTATING_METHODS.has(method) && !content.includes("requireSameOrigin")) {
+          violations.push({
+            file: relPath,
+            method,
+            reason: `Mutating handler ${method} missing call to requireSameOrigin`,
           });
         }
       }

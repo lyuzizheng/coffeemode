@@ -7,7 +7,10 @@ describe("assertR2PublicUrlMatches", () => {
     expect(() => assertR2PublicUrlMatches(undefined)).not.toThrow();
   });
 
-
+  it("accepts matching configured host with or without scheme", () => {
+    expect(() => assertR2PublicUrlMatches("https://images.coffeemode.app")).not.toThrow();
+    expect(() => assertR2PublicUrlMatches("images.coffeemode.app")).not.toThrow();
+  });
   it("throws on a drifted host", () => {
     expect(() => assertR2PublicUrlMatches("https://cdn.example.com")).toThrow(/does not match/);
   });

@@ -484,15 +484,22 @@ describe("recomputeWorkStats", () => {
       scores: fullScores,
       visited_at: "2026-08-01T10:00:00Z",
     });
+    const deletedRow = makeCheckIn({
+      id: "chk-2",
+      scores: repeatScores,
+      visited_at: "2026-08-01T11:00:00Z",
+      deleted_at: "2026-08-01T12:00:00Z",
+    });
 
     const calls: { sql: string; params: unknown[] }[] = [];
     const query = vi.fn(async (sql: string, params?: unknown[]) => {
       calls.push({ sql, params: params ?? [] });
       if (sql.includes("from checkins")) {
-        // The SQL filters deleted_at is null; the mock honors it.
+        // Mock simulates DB: if WHERE has deleted_at is null, exclude deletedRow; else return both
+        const rows = sql.includes("deleted_at is null") ? [kept] : [kept, deletedRow];
         return {
-          rows: params?.[0] === "cafe-1" ? [kept] : [],
-          rowCount: 1,
+          rows: params?.[0] === "cafe-1" ? rows : [],
+          rowCount: rows.length,
         } as unknown as QueryResult<CheckIn>;
       }
       return { rows: [], rowCount: 0 } as unknown as QueryResult<Record<string, unknown>>;

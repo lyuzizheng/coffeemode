@@ -356,7 +356,9 @@ Component transitions:
 - Exits settle faster than enters (100–150ms exit budget vs 200–300ms enter budget)
 - No animation longer than 450ms settle budget in normal flow
 - Map interactions: immediate (no artificial delay)
-- Loading: skeleton shimmer (HeroUI Skeleton), not spinners
+- Loading: skeleton shimmer, not spinners — HeroUI Skeleton where the component
+  fits; hand-rolled animate-pulse shells (discovery, search) are element-level
+  CSS animation covered by the reduced-motion kill switch.
 - Feed refresh/pagination: preserve the last successful content and put an inline
   error + Retry at the failed section; never replace real cards with placeholders
 - Third-party exception (HeroUI toast, BRAWUKA-207): enter/exit slide is the
@@ -364,6 +366,11 @@ Component transitions:
   (200–300ms) and exit (100–150ms) budgets. Accepted: the Toast provider
   exposes placement/maxVisibleToasts/timeout only, no duration hook; retuning
   would mean overriding library-internal ::view-transition keyframes.
+  Known gap, not covered: no prefers-reduced-motion fallback — the library
+  ships no media query for its toast view-transition block and always calls
+  startViewTransition, while the app kill switch (`*` selector) does not match
+  view-transition pseudo-elements (350ms retained under reduce, measured).
+  Tracked for an app-side guard in BRAWUKA-208.
   Revisit if HeroUI exposes a duration hook.
 ```
 

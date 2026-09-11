@@ -223,10 +223,11 @@ right).
 - Segment: `text-sm`, 10px horizontal padding. Active segment gets `surface`
   background + 1px `border` + `foreground` text; inactive is `muted`.
 - Labels: `Helpful`, `Newest` (i18n keys, zh: `最有用` / `最新`).
-- Switch animation: 120ms (`motion.feedback`) background slide on the active
-  pill; feed content crossfades in 200ms with a `layoutId` reflow. No spinners
-  on mode switch — previous mode's content stays until the new page arrives
-  (stale-while-revalidate, DG17).
+- Switch animation: the active pill slides on `spring.snappy` (settle ceiling
+  `settle.feedback` ≤150ms, spec 0002 §Motion); feed content swaps with no
+  added animation — previous mode's content stays until the new page arrives
+  (stale-while-revalidate, DG17). The `layoutId` reflow belongs to the pill
+  only, not the content.
 - The control scrolls with the feed (not sticky); at MVP page sizes the header
   is one gesture away.
 
@@ -245,9 +246,10 @@ appear here.
   - Selected row: `surface-secondary` background + 2px `accent` left edge.
 - **Detail panel — second left column** (DG42): 400px, full height, sitting
   immediately right of the sidebar; the map fills the remaining width. It
-  opens with a 200ms `motion.state` slide-in from the left edge of its
-  column and closes with `Esc` or the 36px ghost × at its top-right. Surface
-  `overlay`, 1px left `border`, no floating shadow — it is a column, not an
+  opens with a `spring.snappy` slide-in from the left edge of its column
+  (state settle budget `settle.state` ≤300ms, spec 0002 §Motion) and closes
+  with `Esc` or the 36px ghost × at its top-right. Surface `overlay`, 1px
+  left `border`, no floating shadow — it is a column, not an
   overlay. Content = the FULL composition (§5.3) unchanged. Layout:
   `| sidebar 380px | detail 400px | map (flex) |`; with no selection the
   detail column is absent and the map spans the rest.
@@ -277,7 +279,8 @@ HALF on 768×1024 and 1024×768; handle stays reachable with the sheet at FULL.
   solid `accent` `Add a cafe` button. No illustration.
 - **Feed refresh/pagination failure** (DG17): previous content stays. Inline
   row at the failed section: warning glyph + `Couldn't load check-ins`
-  (`text-sm`) + outline `Retry` button (`accent` text/border). 200ms fade-in.
+  (`text-sm`) + outline `Retry` button (`accent` text/border), fading in on
+  `duration.state` (`ease.default`, inside the `settle.state` ≤300ms ceiling).
 - **Missing cafe in-app** (DG19): selection clears, URL replaces to `/`,
   sheet returns to PEEK, and a HeroUI toast slides up: neutral `overlay`
   surface, foreground text `This cafe is no longer available`, 4s, no icon
@@ -289,22 +292,33 @@ HALF on 768×1024 and 1024×768; handle stays reachable with the sheet at FULL.
 
 ## 10. Motion detail
 
-All timings/easings from spec 0002; this artifact assigns them:
+All motion follows spec 0002 §Motion (single owner); this artifact only
+assigns the tokens:
 
-- Sheet snap state changes: 300ms `ease.default`; reduced motion → instant.
+- Sheet snap state changes: `spring.snappy` (stiffness 420, damping 32) +
+  drag-velocity pass-through; settle ceiling `settle.state` ≤300ms;
+  reduced motion → instant.
 - Card snap/parallax: scroll-driven, no added duration; active-card scale/dim
-  200ms `ease.default`.
-- Score bars (§3 hero + WorkProfile): width animates 300ms `ease.default`,
-  rows staggered 40ms, once on entry; reduced motion → final state instantly.
-- Feed mode switch: 120ms pill slide + 200ms content crossfade.
-- Skeleton → content: 150ms fade.
-- Toast in 200ms / out 150ms.
+  on `spring.gentle` (stiffness 260, damping 30).
+- Score bars (§3 hero + WorkProfile): width on `spring.gentle` (stiffness 260,
+  damping 30), rows staggered 40ms, once on entry; reduced motion → final
+  state instantly.
+- Feed mode switch: active pill on `spring.snappy` (settle ceiling
+  `settle.feedback` ≤150ms); content swaps with no added animation
+  (stale-while-revalidate, DG17).
+- Skeleton → content: instant swap, no added animation (skeletons render only
+  on the initial pending pass).
+- Toast: HeroUI v3 default — 350ms view-transition slide in *and* out;
+  exceeds the spec 0002 exit budget (100–150ms) — deviation tracked in
+  BRAWUKA-207.
 
 ## 11. Dark mode and accessibility
 
 - Every value above is a semantic token — dark mode is the espresso palette
-  from spec 0002 with zero per-component overrides. Cover images are never
-  dimmed.
+  from spec 0002 with zero per-component overrides. Theme change is a
+  surface-hierarchy lighting transition — base canvas leads (0ms), surfaces
+  follow at 40ms, elevated overlays at 80ms, total settle ≤250ms (spec 0002
+  §Motion). Cover images are never dimmed.
 - Non-modal sheet and drawer; no focus trap. Selection focuses the detail
   heading; Close restores focus to the source card (DG18, spec-owned).
 - The segmented control is a `role="tablist"` pair with arrow-key navigation.

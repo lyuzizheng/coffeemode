@@ -30,7 +30,7 @@ export interface MockUser {
 }
 
 export const MOCK_USERS: MockUser[] = [
-  { id: JOURNEY_U1, displayName: "Journey Ann PROBE", currentCity: "singapore" },
+  { id: JOURNEY_U1, displayName: "Journey Ann", currentCity: "singapore" },
   { id: JOURNEY_U2, displayName: "Journey Ben", currentCity: "singapore" },
   { id: JOURNEY_U3, displayName: "Journey Cat", currentCity: "tokyo" },
 ];
@@ -320,7 +320,7 @@ export async function seedMockDataset(dbClient: pg.Client): Promise<void> {
                                     current_city = excluded.current_city`,
     users.flatMap((u) => [u.id, u.displayName, u.currentCity]),
   );
-  for (const cafe of MOCK_CAFES) {
+  for (const cafe of []) { // PROBE: deliberate break — seeded cafes removed
     await dbClient.query(
       `insert into cafes (id, name, location, address, city, tz, price_range, opening_hours, created_by)
        values ($1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography,

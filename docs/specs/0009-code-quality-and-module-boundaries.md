@@ -182,16 +182,16 @@ MUST 在当次提交内完成拆分。不允许"顺手加一行"把超标文件�
 
 确需超标的文件走登记制，不走口头豁免。存量豁免有**两张**机器登记表（政策正文在本节，两处镜像与正文 MUST 1:1，增删同 PR）：
 
-| 文件 | 当前行数 | 超标项 | 只降不升基线 | 复核到期 |
-| --- | --- | --- | --- | --- |
-| `web/components/checkin/checkin-drawer.tsx` | 730 | 文件硬 400 | 730（只允许减少） | 2026-12-31 |
-| `web/components/discovery/checkin-feed.tsx` | 433 | 文件硬 400 | 433（只允许减少） | 2026-12-31 |
-| `web/lib/db/profile.ts` | 431 | 文件硬 400 | 431 | 2026-12-31 |
-| `web/lib/config-schema.ts` | 424 | 文件硬 400 | 424 | 2026-12-31 |
+| 文件 | 当前行数 | 超标项 | 只降不升基线 | 复核到期 | 责任人 |
+| --- | --- | --- | --- | --- | --- |
+| `web/components/checkin/checkin-drawer.tsx` | 730 | 文件硬 400 | 730（只允许减少） | 2026-12-31 | BRAWUKA-95 |
+| `web/components/discovery/checkin-feed.tsx` | 433 | 文件硬 400 | 433（只允许减少） | 2026-12-31 | BRAWUKA-175 |
+| `web/lib/db/profile.ts` | 431 | 文件硬 400 | 431 | 2026-12-31 | BRAWUKA-175 |
+| `web/lib/config-schema.ts` | 424 | 文件硬 400 | 424 | 2026-12-31 | BRAWUKA-175 |
 
 `web/lib/db/cafes.ts`（826）与 `web/lib/db/checkins.ts`（758）已由 BRAWUKA-180 (#356)
 拆分毕业，按 §7.4「毕业行直接删除」从表与机器基线移除，基准值随之下降。
-机器镜像：`web/structure-baseline.json` 的 `files`（每条含 `lines` 与 `reviewBy`），
+机器镜像：`web/structure-baseline.json` 的 `files`（每条含 `lines`、`owner` 与 `reviewBy`），
 由 `scripts/check-file-size.mjs` 读取。`checkin-drawer` 730 是守卫合入前 main 上
 BRAWUKA-185 (#358) 造成的 +5；`checkin-feed` 的 440 是 BRAWUKA-73 (#349) 造成的 +1，
 已由 BRAWUKA-73 (#361) 在 main 上压到 433，登记值同步下调（BRAWUKA-200，PR 标题写 434、

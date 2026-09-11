@@ -341,3 +341,5 @@ export async function seedMockDataset(dbClient: pg.Client): Promise<void> {
     );
   }
 }
+
+// probe: harmless fixture touch to observe gate scheduling (BRAWUKA-206).

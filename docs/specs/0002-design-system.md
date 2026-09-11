@@ -366,12 +366,14 @@ Component transitions:
   (200–300ms) and exit (100–150ms) budgets. Accepted: the Toast provider
   exposes placement/maxVisibleToasts/timeout only, no duration hook; retuning
   would mean overriding library-internal ::view-transition keyframes.
-  Known gap, not covered: no prefers-reduced-motion fallback — the library
-  ships no media query for its toast view-transition block and always calls
-  startViewTransition, while the app kill switch (`*` selector) does not match
-  view-transition pseudo-elements (350ms retained under reduce, measured).
-  Tracked for an app-side guard in BRAWUKA-208.
-  Revisit if HeroUI exposes a duration hook.
+  Revisit the 350ms exception if HeroUI exposes a duration hook.
+  Reduced motion is covered by the app-side guard (BRAWUKA-208):
+  `web/app/globals.css:360-365` sets `animation: none` on the
+  `::view-transition-group|image-pair|old|new(*)` tree inside the existing
+  `prefers-reduced-motion: reduce` block — the block's `*` element rules cannot
+  match view-transition pseudo-elements, so the library's toast-slide keyframes
+  and the UA group crossfade are zeroed only under reduce; normal flow keeps
+  the 350ms default.
 ```
 
 ## Editorial Surfaces

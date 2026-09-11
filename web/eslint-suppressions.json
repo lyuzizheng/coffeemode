@@ -57,17 +57,6 @@
       "count": 1
     }
   },
-  "components/checkin/checkin-drawer.tsx": {
-    "max-lines": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 3
-    },
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
   "components/checkin/checkin-photos.tsx": {
     "max-lines-per-function": {
       "count": 1

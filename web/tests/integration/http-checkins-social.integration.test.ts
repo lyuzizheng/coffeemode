@@ -638,6 +638,12 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
   // =========================================================================
 
   it("Path 4 (DG64 window expiry): a 25h-old first visit lets the second POST create a new row with a 0.6-decay contribution", async () => {
+    // Frozen anchor: every visited_at below derives from this single instant,
+    // never from execution duration. The 25h backdate keeps a 1h margin
+    // outside the server's 24h revisit window (the server applies its own
+    // now(), so the margin — not a frozen server clock — is what absorbs
+    // the seconds this test body takes to run).
+    const anchor = Date.now();
     // The creator's fused first check-in is itself backdated 25h through the
     // public visited_at contract — no DB seam.
     const uniquePlaceId = `ChIJEXPIRYHOUSE_${randomUUID().replace(/-/g, "").slice(0, 10)}`;
@@ -652,7 +658,7 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
       scores: { overall: 60 },
       max_stay: "unlimited",
       note: "decay anchor",
-      visited_at: new Date(Date.now() - 25 * 3_600_000).toISOString(),
+      visited_at: new Date(anchor - 25 * 3_600_000).toISOString(),
     });
     createdCafeIds.add(created.cafeId);
     const cafe2Id = created.cafeId;
@@ -742,11 +748,12 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
     expect(replayed?.scores.overall).toBe(70);
   });
 
-  // =========================================================================
-  // 6. Feed: newest/helpful orderings, keyset cursor hop, cross-mode 400
-  // =========================================================================
-
   it("Path 4 (DG113): feed serves newest/helpful orderings, keyset cursor hops, and rejects cross-mode cursors", async () => {
+    // Frozen anchor (same rationale as the Path 4 window-expiry test above):
+    // all 20 backdates derive from one instant, so feed ordering never
+    // depends on per-iteration execution time. Each visit stays >24h old so
+    // DG64 never trips, with gaps (3h) far above any clock skew.
+    const anchor = Date.now();
     const uniquePlaceId = `ChIJFEEDPAGINATE_${randomUUID().replace(/-/g, "").slice(0, 10)}`;
     const created = await createCafeViaHttp(clientA, {
       name: "Feed Pagination House",
@@ -775,7 +782,7 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
         cafe_id: cafe3Id,
         scores: { overall: 70 },
         note: `feed visit ${i}`,
-        visited_at: new Date(Date.now() - (25 + i * 3) * 3_600_000).toISOString(),
+        visited_at: new Date(anchor - (25 + i * 3) * 3_600_000).toISOString(),
       });
       expect(res.status, `feed visit ${i} creates`).toBe(201);
       if (i === 19) oldestId = res.data.checkinId;

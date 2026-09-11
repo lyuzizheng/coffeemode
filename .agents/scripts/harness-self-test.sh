@@ -13,16 +13,22 @@ trap 'rm -rf "$TEST_ROOT"' EXIT
 
 # Copy harness-relevant files
 cp -R docs .agents .github .codex AGENTS.md "$TEST_ROOT/" 2>/dev/null || true
-# Classifier inputs: the registered suites (`web/package.json`) and the
-# `RUN_INTEGRATION` test sources it must route to `integration-gate`.
+# Classifier inputs: the registered suites (`web/package.json`), the
+# `RUN_INTEGRATION` test sources it must route to `integration-gate`, and the
+# vitest config whose `setupFiles`/`resolve.alias` define the import closure
+# rooted at those sources (BRAWUKA-206). The closure now *fails* on a specifier it
+# cannot resolve, so the fixture must carry the whole tracked source tree those
+# imports point at — not just `tests/` — or a fixture that is missing a module
+# would look like a detector bug. Tracked files only: no `node_modules`, no
+# `.next`, no coverage output.
 mkdir -p "$TEST_ROOT/web"
-cp -R web/package.json web/tests "$TEST_ROOT/web/" 2>/dev/null || true
+(cd "$ROOT" && git ls-files -z web scripts | tar --null -T - -cf -) | (cd "$TEST_ROOT" && tar -xf -)
 # Runtime-pin inputs: the manifests, lockfiles, Worker configs, Dockerfile and
 # compose file `check-runtime-pins.sh` reads, plus the workflows it walks (copied
 # with `.github/`). The gate treats any missing one as a failure (so it cannot
 # half-run), which means the fixture must carry them — including the two service
-# trees, which the classifier check does not need.
-cp web/package-lock.json web/Dockerfile "$TEST_ROOT/web/" 2>/dev/null || true
+# trees, which the classifier check does not need. `web/package-lock.json` and
+# `web/Dockerfile` arrive with the tracked source tree above.
 for svc in poi-service image-service; do
   mkdir -p "$TEST_ROOT/$svc"
   cp "$svc/package.json" "$svc/package-lock.json" "$svc/wrangler.toml" "$TEST_ROOT/$svc/" 2>/dev/null || true
@@ -227,6 +233,28 @@ INTEGRATION_GATED=$'application=true\nintegration=true\nimage_service=false\npoi
 expect_classifier "gated devops suite" "$INTEGRATION_GATED" "web/tests/devops/staging-journey.test.ts"
 expect_classifier "gated test helper entrypoint" "$INTEGRATION_GATED" "web/tests/db-helpers.test.ts"
 expect_classifier "gated integration suite" "$INTEGRATION_GATED" "web/tests/integration/db.integration.test.ts"
+# A suite's harness runs only where the suite runs, so the fixture the journey
+# suites read (and the setup file every suite loads) is gated too (BRAWUKA-206).
+expect_classifier "journey fixture" "$INTEGRATION_GATED" "web/tests/fixtures/mock-dataset.ts"
+expect_classifier "suite setup file" "$INTEGRATION_GATED" "web/tests/setup.ts"
+expect_classifier "stubbed server-only module" "$INTEGRATION_GATED" "web/tests/mocks/server-only.ts"
+expect_classifier "sweeper module a gated suite drives" "$INTEGRATION_GATED" "web/scripts/cleanup-stale-test-dbs.mjs"
+expect_classifier "shared runtime module a gated suite imports" "$INTEGRATION_GATED" "web/shared/uuid.ts"
+# Everything else under `web/tests/**` that is not a test file is harness, so the
+# default arm gates it however a suite reaches it — static import, dynamic import,
+# or an `fs` read by path (BRAWUKA-206 review).
+expect_classifier "harness file in an unclassified family" "$INTEGRATION_GATED" "web/tests/journey-support/probe-fixture.ts"
+expect_classifier "harness data file in an unclassified family" "$INTEGRATION_GATED" "web/tests/journey-support/probe-fs.json"
+expect_classifier "harness file beside a unit-only suite" "$INTEGRATION_GATED" "web/tests/components/component-fixture.ts"
+# Unit-only test files are the one thing under `web/tests/**` that stays out, and
+# only by explicit allowlist. Product configuration and gate scripts are gated:
+# `web/lib/config.ts` loads the former at import time and the suites invoke the
+# latter by path.
+APPLICATION_ONLY=$'application=true\nintegration=false\nimage_service=false\npoi_service=false\ndocs=false'
+expect_classifier "unit-only nested test file" "$APPLICATION_ONLY" "web/tests/shared/places/geo.test.ts"
+expect_classifier "unit-only root test file" "$APPLICATION_ONLY" "web/tests/cafes.test.ts"
+expect_classifier "product configuration" "$INTEGRATION_GATED" "web/config/app.yaml"
+expect_classifier "gate script a suite invokes by path" "$INTEGRATION_GATED" "web/scripts/run-lhci.mjs"
 # Explicitly ungated families must select nothing (documented no-gate decision).
 expect_classifier "archived reference tree" "$FALSES"$'\ndocs=false' "_archive-coffeemode-frontend/src/App.tsx"
 expect_classifier "raw dataset snapshot" "$FALSES"$'\ndocs=false' "database-data/cafes.json"
@@ -251,6 +279,118 @@ mkdir -p "$PROBE_TEST_DIR"
 printf 'const RUN_INTEGRATION = process.env.RUN_INTEGRATION === "1";\n' > "$PROBE_TEST_DIR/probe.test.ts"
 expect_failure "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
 rm -rf "$PROBE_TEST_DIR"
+
+# A new fixture under `web/tests/**`, reached the three ways a suite reaches its
+# harness (BRAWUKA-206 review). The classifier's default for a non-test file in
+# that tree is `integration-gate`, so none of these can land ungated — and the
+# fault injection below proves the checker, not just the arm, holds that line.
+CONSUMER_PROBE_DIR="$TEST_ROOT/web/tests/journey-support"
+CONSUMER_SUITE="$TEST_ROOT/web/tests/integration/user-journey-discovery-creation.integration.test.ts"
+
+# a) an ESM-style `.js` specifier naming a `.ts` fixture.
+# b) an `fs` read by path, which no import rule can see.
+mkdir -p "$CONSUMER_PROBE_DIR"
+printf 'export const PROBE_ROWS = [{ id: "probe" }];\n' > "$CONSUMER_PROBE_DIR/probe-ext.ts"
+printf '{"rows": [{"id": "probe"}]}\n' > "$CONSUMER_PROBE_DIR/probe-fs.json"
+cp "$CONSUMER_SUITE" "$CONSUMER_SUITE.bak"
+{
+  printf 'import { PROBE_ROWS } from "../journey-support/probe-ext.js";\n'
+  printf 'const PROBE_FS = JSON.parse(readFileSync(new URL("../journey-support/probe-fs.json", import.meta.url), "utf8"));\n'
+  cat "$CONSUMER_SUITE.bak"
+} > "$CONSUMER_SUITE"
+if assert_mutated "gated suite reads a new fixture by .js specifier and by path" "$CONSUMER_SUITE.bak" "$CONSUMER_SUITE"; then
+  expect_pass "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
+fi
+mv "$CONSUMER_SUITE.bak" "$CONSUMER_SUITE"
+(cd "$TEST_ROOT" && git add web/tests/journey-support)
+
+# The default arm is what makes those two forms safe, so narrowing it must be
+# caught: the checker asserts the same property over tracked harness files
+# whether or not any import points at them.
+cp "$CLASSIFIER_FIXTURE" "$CLASSIFIER_FIXTURE.bak"
+sed 's#^      web/tests/\*)$#      web/tests/__narrowed__*)#' "$CLASSIFIER_FIXTURE.bak" > "$CLASSIFIER_FIXTURE"
+if assert_mutated "web/tests fail-safe default narrowed" "$CLASSIFIER_FIXTURE.bak" "$CLASSIFIER_FIXTURE"; then
+  expect_failure "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
+fi
+mv "$CLASSIFIER_FIXTURE.bak" "$CLASSIFIER_FIXTURE"
+rm -rf "$CONSUMER_PROBE_DIR"
+(cd "$TEST_ROOT" && git rm -r -q --cached web/tests/journey-support 2>/dev/null || true)
+
+# A fixture outside the test tree is only gated if the closure reaches it, so an
+# ESM-style `.js` specifier naming a `.ts` source must be followed: without that
+# mapping the fixture drops out of the closure and the gate stays green.
+OUTSIDE_FIXTURE_DIR="$TEST_ROOT/web/probe-fixtures"
+mkdir -p "$OUTSIDE_FIXTURE_DIR"
+printf 'export const PROBE_ROWS = [{ id: "probe" }];\n' > "$OUTSIDE_FIXTURE_DIR/rows.ts"
+cp "$CONSUMER_SUITE" "$CONSUMER_SUITE.bak"
+printf 'import { PROBE_ROWS } from "../../probe-fixtures/rows.js";\n' | cat - "$CONSUMER_SUITE.bak" > "$CONSUMER_SUITE"
+if assert_mutated "gated suite imports an out-of-tree fixture as .js" "$CONSUMER_SUITE.bak" "$CONSUMER_SUITE"; then
+  expect_failure "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
+fi
+mv "$CONSUMER_SUITE.bak" "$CONSUMER_SUITE"
+rm -rf "$OUTSIDE_FIXTURE_DIR"
+
+# A specifier that names an in-repo file but resolves to nothing would shrink the
+# closure silently, which is the failure this gate exists to stop.
+cp "$CONSUMER_SUITE" "$CONSUMER_SUITE.bak"
+printf 'import { PROBE_ROWS } from "../journey-support/does-not-exist";\n' | cat - "$CONSUMER_SUITE.bak" > "$CONSUMER_SUITE"
+if assert_mutated "gated suite imports an unresolvable relative specifier" "$CONSUMER_SUITE.bak" "$CONSUMER_SUITE"; then
+  expect_failure "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
+fi
+mv "$CONSUMER_SUITE.bak" "$CONSUMER_SUITE"
+
+# A dynamic specifier whose static prefix does not route to the DB-backed gate
+# cannot be judged, so it fails instead of passing quietly.
+cp "$CONSUMER_SUITE" "$CONSUMER_SUITE.bak"
+printf 'const PROBE_DYN = await import(`@/messages/${"en"}.json`);\n' | cat - "$CONSUMER_SUITE.bak" > "$CONSUMER_SUITE"
+if assert_mutated "gated suite dynamically imports an ungated family" "$CONSUMER_SUITE.bak" "$CONSUMER_SUITE"; then
+  expect_failure "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
+fi
+mv "$CONSUMER_SUITE.bak" "$CONSUMER_SUITE"
+
+# The same dynamic form over a prefix that *is* gated needs no exemption: every
+# child of it schedules the gate, so the check accepts it rather than demanding a
+# routing decision for something already covered.
+cp "$CONSUMER_SUITE" "$CONSUMER_SUITE.bak"
+printf 'const PROBE_DYN = await import(`@/lib/db/${"search"}.ts`);\n' | cat - "$CONSUMER_SUITE.bak" > "$CONSUMER_SUITE"
+if assert_mutated "gated suite dynamically imports a gated family" "$CONSUMER_SUITE.bak" "$CONSUMER_SUITE"; then
+  expect_pass "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
+fi
+mv "$CONSUMER_SUITE.bak" "$CONSUMER_SUITE"
+
+# A path named in prose is not a dependency: a comment mentioning a unit-only
+# test file must not drag it into the gated set.
+COMMENT_SUITE="$TEST_ROOT/web/tests/integration/http-user-lifecycle.integration.test.ts"
+cp "$COMMENT_SUITE" "$COMMENT_SUITE.bak"
+printf '// see tests/components/checkin.test.tsx for the unit-level shape\n' | cat - "$COMMENT_SUITE.bak" > "$COMMENT_SUITE"
+if assert_mutated "comment naming a unit-only test file" "$COMMENT_SUITE.bak" "$COMMENT_SUITE"; then
+  expect_pass "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
+fi
+mv "$COMMENT_SUITE.bak" "$COMMENT_SUITE"
+
+# The closure is derived from the runner's own resolution rules, so it must fail
+# loudly when it cannot follow one instead of silently shrinking the gated set.
+VITEST_FIXTURE="$TEST_ROOT/web/vitest.config.mts"
+cp "$VITEST_FIXTURE" "$VITEST_FIXTURE.bak"
+sed 's#setupFiles: \["\./tests/setup\.ts"\]#setupFiles: ["@/tests/setup.ts"]#' "$VITEST_FIXTURE.bak" > "$VITEST_FIXTURE"
+if assert_mutated "setupFiles switched to a specifier the closure cannot follow" "$VITEST_FIXTURE.bak" "$VITEST_FIXTURE"; then
+  expect_failure "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
+fi
+mv "$VITEST_FIXTURE.bak" "$VITEST_FIXTURE"
+
+cp "$VITEST_FIXTURE" "$VITEST_FIXTURE.bak"
+sed 's#setupFiles: \["\./tests/setup\.ts"\]#setupFiles: ["./tests/setup.ts", "./tests/missing.ts"]#' "$VITEST_FIXTURE.bak" > "$VITEST_FIXTURE"
+if assert_mutated "setupFiles declares a file that does not exist" "$VITEST_FIXTURE.bak" "$VITEST_FIXTURE"; then
+  expect_failure "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
+fi
+mv "$VITEST_FIXTURE.bak" "$VITEST_FIXTURE"
+
+cp "$VITEST_FIXTURE" "$VITEST_FIXTURE.bak"
+sed 's#"server-only": path.resolve(import.meta.dirname, "\./tests/mocks/server-only\.ts"),#&\n      "@probe": path.resolve(__dirname, "./probe"),#' "$VITEST_FIXTURE.bak" > "$VITEST_FIXTURE"
+if assert_mutated "resolve.alias entry the closure cannot follow" "$VITEST_FIXTURE.bak" "$VITEST_FIXTURE"; then
+  expect_failure "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
+fi
+mv "$VITEST_FIXTURE.bak" "$VITEST_FIXTURE"
 
 # A brand-new path family with no routing rule.
 mkdir -p "$TEST_ROOT/newtop"

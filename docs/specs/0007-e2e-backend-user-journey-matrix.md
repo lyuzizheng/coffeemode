@@ -23,10 +23,43 @@ retirement in `## Stable decisions` §8.
 - Gate: `cd web && npm run test:integration:journey` (dedicated journey suite
   under GitHub Actions CI `integration-gate`; `npm run test:integration` covers
   DB foundation; `npm run test:integration:all` runs full suite).
-  `.agents/scripts/classify-ci-paths.sh` routes `web/tests/integration/**`,
-  `web/tests/helpers/**`, `web/tests/devops/**`, and `web/tests/db-helpers.test.ts`
-  to `integration-gate` (other `web/tests/**` paths are unit-only and schedule
-  `application-gate` alone).
+  `.agents/scripts/classify-ci-paths.sh` routes the gated suites themselves
+  (`web/tests/integration/**`, `web/tests/helpers/**`, `web/tests/devops/**`,
+  `web/tests/db-helpers.test.ts`) and everything they read to `integration-gate`.
+  Suites and their harness are inseparable: a fixture-only change must still run
+  the suites that read it. What the classifier and
+  `.agents/scripts/check-ci-classification.sh` guarantee between them
+  (BRAWUKA-206), and where each guarantee stops:
+
+  - **Inside `web/tests/**` the default is gated.** Every path there that is not
+    a `*.test.ts(x)` file — fixtures (`fixtures/mock-dataset.ts`, this spec's
+    seed), helpers, `setup.ts` (vitest `setupFiles`), `mocks/**`, JSON data — is
+    harness some suite reads, and a suite reaches its harness by static import,
+    dynamic import, or an `fs` read by path. No import-based rule covers the last
+    two, so the family defaults to `integration=true` and a new fixture cannot
+    land ungated whichever way it is consumed. Only `*.test.ts(x)` files stay
+    unit-only (`application-gate` alone), by an explicit allowlist that matches
+    test files and nothing else — so a non-test file dropped into a unit-only
+    family is gated, and a test file nested deeper than the allowlist spells out
+    is over-gated rather than ungated. Unit-only is the right default for those
+    because a suite that passes without Postgres does not need the DB-backed
+    gate.
+  - **Outside `web/tests/**`, reachability is derived, not listed.** The
+    self-check walks the import closure rooted at the gated sources — the
+    `RUN_INTEGRATION` files, the registered `test:integration*` suites, the files
+    `test:coverage:integration` measures, and the vitest `setupFiles` — resolving
+    relative specifiers (including a `.js`/`.mjs` specifier that names a `.ts`
+    source) and the vitest `resolve.alias` table. Any closure member must select
+    `integration=true`. A specifier the check cannot resolve, and a dynamic
+    specifier whose static prefix lands outside `web/tests/**`, **fail the
+    check** rather than shrinking the set quietly.
+  - **Product and ops paths the suites execute are gated by their arms**:
+    `web/lib/**`, `web/db/**`, `web/app/api/**`, `web/shared/**`, `web/types/**`,
+    `web/config/**` (rate limits and budgets `web/lib/config.ts` loads at import
+    time), `web/scripts/**`, and repo-level `scripts/**`. A file outside
+    `web/tests/**` that a gated suite reads only through a computed path is gated
+    if one of those arms covers its family; the check cannot enumerate that case,
+    which is why the arms are stated as the boundary of the guarantee.
 - Service-layer scope: the suite calls `web/lib/db/*`,
   `web/lib/discovery/feed.ts`, and `web/lib/images/complete.ts` directly.
   HTTP route shells (`requireSameOrigin`, rate-limit buckets) stay covered

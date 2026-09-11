@@ -190,9 +190,9 @@ Dark mode:
   muted:            oklch(72% 0.015 60)      secondary text
   default:          oklch(26.5% 0.013 52)    neutral controls
 
-  accent:           oklch(68% 0.16 46)       lighter terracotta
+  accent:           oklch(68% 0.16 46)       lighter terracotta (6.27:1 on accent-foreground)
   accent-foreground: oklch(17% 0.015 48)
-  secondary:        oklch(55.0% 0.080 155)   lighter sage (brand)
+  secondary:        oklch(58.0% 0.080 155)   lighter sage (brand); 55.0% raised for the AA gate (4.14:1 → 4.69:1, BRAWUKA-130)
   secondary-foreground: oklch(16% 0.03 150)
 
   success:          oklch(70% 0.13 150)
@@ -511,6 +511,17 @@ this principle governs them and any new copy.
 - Empty/loading/error states: designed, not raw text
 - Color never the only signal (icon + text accompany status)
 - Rating: not just dots — include numeric value (aria-label)
+- Dark theme brand pairs — WCAG 2.x contrast of the token pair, computed
+  oklch -> linear sRGB -> relative luminance (Ottosson OKLab matrices; the sRGB
+  transfer function is applied ONCE, so never re-linearise an already-linear
+  channel). Ratios below are from the token values; the browser's own painted
+  bytes agree within 8-bit quantisation.
+
+    pair (dark)                                        before    after
+    accent on accent-foreground                        6.27:1    6.27:1   pass
+    secondary on secondary-foreground (filled button)   4.14:1    4.69:1   pass (BRAWUKA-130)
+
+  Zero regressions; the accent pair was already above the gate and is unchanged.
 ```
 
 ## Acceptance criteria

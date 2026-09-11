@@ -8,6 +8,8 @@
  *   - a grandfathered entry is stale — the file shrank below the recorded count
  *     while still over the hard budget, so the old ceiling stays in force until
  *     the registry is lowered in the same change (spec 0009 §7.2);
+ *   - a grandfathered file dropped into budget (≤ `LIMITS.maxLines`) — graduated
+ *     files must delete the exemption immediately (spec 0009 §7.4);
  *   - a grandfathered entry points at a file that no longer exists.
  *
  * Warns when a file crosses the soft budget. The ESLint `max-lines` rule
@@ -104,8 +106,8 @@ for (const file of measured) {
         `${file.path}: ${file.lines} lines, grandfathered at ${exemption.lines} — exemptions may only shrink (split the file instead of growing it)`,
       );
     } else if (file.lines <= LIMITS.maxLines) {
-      notes.push(
-        `${file.path}: ${file.lines} lines is now within the ${LIMITS.maxLines}-line budget — remove its baseline exemption and let the ratchet take over`,
+      errors.push(
+        `${file.path}: ${file.lines} lines is now within the ${LIMITS.maxLines}-line budget — delete the baseline exemption (spec 0009 §7.4: graduated files must not retain exemptions and let the ratchet take over)`,
       );
     } else if (file.lines < exemption.lines) {
       errors.push(

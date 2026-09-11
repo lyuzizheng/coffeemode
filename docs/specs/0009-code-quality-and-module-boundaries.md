@@ -186,15 +186,14 @@ MUST 在当次提交内完成拆分。不允许"顺手加一行"把超标文件�
 | --- | --- | --- | --- | --- | --- |
 | `web/components/checkin/checkin-drawer.tsx` | 730 | 文件硬 400 | 730（只允许减少） | 2026-12-31 | BRAWUKA-95 |
 | `web/lib/db/profile.ts` | 431 | 文件硬 400 | 431 | 2026-12-31 | BRAWUKA-175 |
-| `web/lib/config-schema.ts` | 424 | 文件硬 400 | 424 | 2026-12-31 | BRAWUKA-175 |
 
 `web/lib/db/cafes.ts`（826）与 `web/lib/db/checkins.ts`（758）已由 BRAWUKA-180 (#356)
 拆分毕业，按 §7.4「毕业行直接删除」从表与机器基线移除，基准值随之下降。
 机器镜像：`web/structure-baseline.json` 的 `files`（每条含 `lines`、`owner` 与 `reviewBy`），
 由 `scripts/check-file-size.mjs` 读取。`checkin-drawer` 730 是守卫合入前 main 上
 BRAWUKA-185 (#358) 造成的 +5；`checkin-feed` 的 440 是 BRAWUKA-73 (#349) 造成的 +1，
-已由 BRAWUKA-73 (#361) 在 main 上压到 433（BRAWUKA-200 同步登记值），
-随后由 BRAWUKA-198 (#368) 拆分为 `use-checkin-feed.ts` + `feed-card.tsx` + 薄壳并毕业；`config-schema.ts` 是 BRAWUKA-184 (#357) 引入；基线自记录值起只降不升。
+已由 BRAWUKA-73 (#361) 在 main 上压到 433（BRAWUKA-200 同步登记值），随后由 BRAWUKA-198 (#368) 拆分毕业，
+合入后的树实测 433）；`config-schema.ts` 是 BRAWUKA-184 (#357) 引入，已由 BRAWUKA-194 (#362) 拆分为 `web/lib/config-schema/*` 并毕业；基线自记录值起只降不升。
 
 第二张表：规则级豁免（`web/eslint-suppressions.json`，当前 48 文件 / 60 条目 / 68 处违规）。
 用途：结构规则（函数行数/复杂度/`max-depth`/同构函数）对存量文件的逐条 suppress；

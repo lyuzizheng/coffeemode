@@ -4,10 +4,10 @@
     "files": 46,
     "entries": 57,
     "perRule": {
-      "max-depth": 4,
-      "max-lines": 3,
       "max-lines-per-function": 40,
-      "sonarjs/cognitive-complexity": 16
+      "max-depth": 4,
+      "sonarjs/cognitive-complexity": 16,
+      "max-lines": 3
     },
     "reviewBy": "2026-12-31"
   },
@@ -17,13 +17,6 @@
       "lines": 730,
       "owner": "BRAWUKA-95",
       "reason": "over budget before the guard existed — split tracked by the BRAWUKA-175 quality program. Raised 725 → 730 on rebase: BRAWUKA-185 (#358) grew the file on main before this guard gated main; the only-shrink ratchet binds from 730.",
-      "reviewBy": "2026-12-31"
-    },
-    {
-      "path": "lib/config-schema.ts",
-      "lines": 424,
-      "owner": "BRAWUKA-175",
-      "reason": "crossed the hard budget when BRAWUKA-184 (#357) merged on main, i.e. before this guard gated main — pre-guard debt, split tracked by the BRAWUKA-175 quality program",
       "reviewBy": "2026-12-31"
     },
     {

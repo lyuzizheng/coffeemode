@@ -138,14 +138,6 @@
       "count": 1
     }
   },
-  "lib/config-schema.ts": {
-    "max-lines": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 1
-    }
-  },
   "lib/db/cafes/create.ts": {
     "max-lines-per-function": {
       "count": 1

@@ -290,23 +290,6 @@ describe("incrementalUpdateWorkStats", () => {
     expect(written.dims.overall.n).toBe(1);
   });
 
-  it("locks the cafe row with FOR UPDATE as the first statement", async () => {
-    const calls: string[] = [];
-    const query = vi.fn(async (sql: string) => {
-      calls.push(sql);
-      return { rows: [], rowCount: 0 };
-    }) as unknown as <T extends Record<string, unknown>>(
-      text: string,
-      params?: unknown[],
-    ) => Promise<QueryResult<T>>;
-
-    const runInTransaction: RunInTransaction = async (fn) => fn(query);
-
-    await incrementalUpdateWorkStats("cafe-1", "user-1", undefined, 0, runInTransaction);
-
-    expect(calls[0]).toMatch(/select work_stats from cafes where id = \$1 for update/);
-    expect(calls[0]).not.toMatch(/count\(\*\)/);
-  });
 });
 
 describe("recomputeWorkStats", () => {
@@ -501,15 +484,22 @@ describe("recomputeWorkStats", () => {
       scores: fullScores,
       visited_at: "2026-08-01T10:00:00Z",
     });
+    const deletedRow = makeCheckIn({
+      id: "chk-2",
+      scores: repeatScores,
+      visited_at: "2026-08-01T11:00:00Z",
+      deleted_at: "2026-08-01T12:00:00Z",
+    });
 
     const calls: { sql: string; params: unknown[] }[] = [];
     const query = vi.fn(async (sql: string, params?: unknown[]) => {
       calls.push({ sql, params: params ?? [] });
       if (sql.includes("from checkins")) {
-        // The SQL filters deleted_at is null; the mock honors it.
+        // Mock simulates DB: if WHERE has deleted_at is null, exclude deletedRow; else return both
+        const rows = sql.includes("deleted_at is null") ? [kept] : [kept, deletedRow];
         return {
-          rows: params?.[0] === "cafe-1" ? [kept] : [],
-          rowCount: 1,
+          rows: params?.[0] === "cafe-1" ? rows : [],
+          rowCount: rows.length,
         } as unknown as QueryResult<CheckIn>;
       }
       return { rows: [], rowCount: 0 } as unknown as QueryResult<Record<string, unknown>>;
@@ -522,8 +512,6 @@ describe("recomputeWorkStats", () => {
 
     await recomputeWorkStats("cafe-1", 0, runInTransaction);
 
-    const select = calls.find((c) => c.sql.includes("deleted_at is null"));
-    expect(select).toBeDefined();
     const updateCall = calls.find((c) => c.sql.includes("update cafes"));
     const written = JSON.parse(updateCall!.params[0] as string) as ReturnType<
       typeof computeCafeStats

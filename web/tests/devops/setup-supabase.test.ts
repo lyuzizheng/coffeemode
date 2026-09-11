@@ -2,6 +2,7 @@ import { execSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { parseConnectionConfig } from "../../../scripts/devops/setup-supabase.mjs";
 import {
   cleanupIntegrationDatabase,
   integrationAdminUrl,
@@ -64,17 +65,46 @@ describe("Supabase DevOps Provisioning — Unit Contracts", () => {
     expect(files[18]).toBe("0019_checkin_idempotency.sql");
   });
 
-  it("enforces fail-closed SSL verification for Supabase hosts", () => {
-    const testCode = `
-      import { createRequire } from "node:module";
-      const req = createRequire(process.cwd() + "/package.json");
-      const url = new URL("postgresql://postgres:test@db.rsdzcegylqgccaneomph.supabase.co:5432/postgres");
-      const isSupabase = url.hostname.endsWith(".supabase.co") || url.hostname.endsWith(".supabase.net");
-      console.log(JSON.stringify({ isSupabase }));
-    `;
-    const output = execSync(`node -e '${testCode}'`, { encoding: "utf8" });
-    const parsed = JSON.parse(output.trim());
-    expect(parsed.isSupabase).toBe(true);
+  describe("parseConnectionConfig SSL enforcement", () => {
+    it("enforces strict TLS verification by default for Supabase hosts", () => {
+      const configCo = parseConnectionConfig(
+        "postgresql://postgres:test@db.rsdzcegylqgccaneomph.supabase.co:5432/postgres",
+      );
+      expect(configCo.ssl).toEqual({ rejectUnauthorized: true });
+
+      const configNet = parseConnectionConfig(
+        "postgresql://postgres:test@db.project.supabase.net:5432/postgres",
+      );
+      expect(configNet.ssl).toEqual({ rejectUnauthorized: true });
+    });
+
+    it("does not force SSL for non-Supabase hosts without sslmode", () => {
+      const config = parseConnectionConfig("postgresql://postgres:test@localhost:5432/postgres");
+      expect(config.ssl).toBeUndefined();
+    });
+
+    it("honors explicit sslmode overrides", () => {
+      expect(
+        parseConnectionConfig("postgresql://user:pass@db.supabase.co:5432/db?sslmode=disable").ssl,
+      ).toBe(false);
+      expect(
+        parseConnectionConfig(
+          "postgresql://user:pass@db.supabase.co:5432/db?sslmode=allow-self-signed",
+        ).ssl,
+      ).toEqual({ rejectUnauthorized: false });
+      expect(
+        parseConnectionConfig("postgresql://user:pass@localhost:5432/db?sslmode=require").ssl,
+      ).toEqual({ rejectUnauthorized: true });
+      expect(
+        parseConnectionConfig("postgresql://user:pass@localhost:5432/db?sslmode=verify-full").ssl,
+      ).toEqual({ rejectUnauthorized: true });
+    });
+
+    it("rejects unrecognized sslmode values", () => {
+      expect(() =>
+        parseConnectionConfig("postgresql://user:pass@localhost:5432/db?sslmode=invalid"),
+      ).toThrow(/Unrecognized sslmode "invalid"/);
+    });
   });
 });
 

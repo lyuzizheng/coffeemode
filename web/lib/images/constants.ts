@@ -34,8 +34,8 @@ export function r2PublicUrl(key: string): string {
  * Build-time drift guard, called from `next.config.ts`: when
  * `NEXT_PUBLIC_R2_PUBLIC_URL` is set, its host must equal `R2_PUBLIC_HOST`.
  */
-export function assertR2PublicUrlMatches(raw: string | undefined): void {
-  if (!raw) return;
+export function assertR2PublicUrlMatches(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
   let host: string;
   try {
     host = new URL(raw.includes("://") ? raw : `https://${raw}`).hostname;
@@ -49,4 +49,5 @@ export function assertR2PublicUrlMatches(raw: string | undefined): void {
         `single source — update it there; the service-worker bundle cannot read env.`,
     );
   }
+  return host;
 }

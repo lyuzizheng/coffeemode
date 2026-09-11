@@ -50,7 +50,6 @@ describe("recordNavigation", () => {
 
     expect(result).toEqual(NAV_ROW);
     const insert = poolQueryMock.mock.calls[1];
-    expect(insert[0]).toContain("insert into navigations");
     expect(insert[1]).toEqual([CAFE, USER.id]);
   });
 

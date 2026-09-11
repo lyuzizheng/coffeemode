@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * ==============================================================================
  * CoffeeMode Supabase Production Setup & Verification Suite
@@ -228,8 +227,11 @@ function parseCliArgs() {
 
 // ------------------------------------------------------------------------------
 // Helper: Postgres SSL connection string parser (fail-closed per pending-user-actions #41)
-// ------------------------------------------------------------------------------
-function parseConnectionConfig(urlString) {
+/**
+ * @param {string} urlString
+ * @returns {{ connectionString: string, ssl?: boolean | { rejectUnauthorized: boolean } }}
+ */
+export function parseConnectionConfig(urlString) {
   const url = new URL(urlString);
   const sslmode = url.searchParams.get("sslmode");
   url.searchParams.delete("sslmode");
@@ -628,10 +630,13 @@ async function main() {
   console.log(`${color.bold}${color.green}==============================================================${color.reset}\n`);
 }
 
-main().catch((err) => {
-  log.error(`Execution halted due to error: ${err.message}`);
-  if (process.env.DEBUG || process.argv.includes("--verbose")) {
-    console.error(err);
-  }
-  process.exit(1);
-});
+const isDirectRun = process.argv[1] && path.resolve(process.argv[1]) === __filename;
+if (isDirectRun) {
+  main().catch((err) => {
+    log.error(`Execution halted due to error: ${err.message}`);
+    if (process.env.DEBUG || process.argv.includes("--verbose")) {
+      console.error(err);
+    }
+    process.exit(1);
+  });
+}

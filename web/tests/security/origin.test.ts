@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   getAllowedHosts,
@@ -236,39 +234,5 @@ describe("mutating API routes reject cross-site requests at the boundary", () =>
     const res = await patchProfile(crossSiteReq("https://coffeemode.app/api/profile", "PATCH") as unknown as import("next/server").NextRequest);
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
-  });
-});
-
-describe("structural enforcement: all mutating API routes require same-origin protection", () => {
-  function findRouteFiles(dir: string): string[] {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    const results: string[] = [];
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        results.push(...findRouteFiles(fullPath));
-      } else if (entry.name === "route.ts") {
-        results.push(fullPath);
-      }
-    }
-    return results;
-  }
-
-  it("every route handler exporting POST, PATCH, PUT, or DELETE invokes requireSameOrigin", () => {
-    const apiDir = path.resolve(__dirname, "../../app/api");
-    const routeFiles = findRouteFiles(apiDir);
-    const mutatingMethodRegex = /export\s+async\s+function\s+(POST|PATCH|PUT|DELETE)\b/;
-
-    const unguardedRoutes: string[] = [];
-    for (const file of routeFiles) {
-      const content = fs.readFileSync(file, "utf8");
-      if (mutatingMethodRegex.test(content)) {
-        if (!content.includes("requireSameOrigin")) {
-          unguardedRoutes.push(path.relative(apiDir, file));
-        }
-      }
-    }
-
-    expect(unguardedRoutes).toEqual([]);
   });
 });

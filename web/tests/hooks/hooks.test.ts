@@ -1,5 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
+import React from "react";
+import { renderToString } from "react-dom/server";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useMounted } from "@/hooks/use-mounted";
 import { useCountUp } from "@/hooks/use-count-up";
@@ -53,7 +55,13 @@ describe("useMediaQuery", () => {
 });
 
 describe("useMounted", () => {
-  it("returns true on client after mount", () => {
+  it("returns false during server rendering and true after client mount", () => {
+    function ServerComponent() {
+      const mounted = useMounted();
+      return React.createElement("div", null, mounted ? "client" : "server");
+    }
+    expect(renderToString(React.createElement(ServerComponent))).toContain("server");
+
     const { result } = renderHook(() => useMounted());
     expect(result.current).toBe(true);
   });
@@ -113,6 +121,6 @@ describe("useCountUp", () => {
 describe("useEnterMotion", () => {
   it("returns true when mounted and reduced motion is not preferred", () => {
     const { result } = renderHook(() => useEnterMotion());
-    expect(typeof result.current).toBe("boolean");
+    expect(result.current).toBe(true);
   });
 });

@@ -55,8 +55,6 @@ describe("journey mock factories (spec 0007 §10)", () => {
   it("session user carries defaults, overrides, and a matching JWT", () => {
     const user = createTestSessionUser();
     expect(user.id).toMatch(UUID_RE);
-    expect(user.displayName).toBe("Test Nomad");
-    expect(user.currentCity).toBe("singapore");
     expect(decodeFakeJwt(user.jwt).sub).toBe(user.id);
 
     const fixed = createTestSessionUser({

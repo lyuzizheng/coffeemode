@@ -1,19 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { assertR2PublicUrlMatches } from "@/lib/images/constants";
+import { assertR2PublicUrlMatches, R2_PUBLIC_HOST, r2PublicUrl } from "@/lib/images/constants";
 import { isR2Image, r2ImageLoader } from "@/lib/images/loader";
 
 describe("assertR2PublicUrlMatches", () => {
-  it("accepts unset env (no-op)", () => {
-    expect(() => assertR2PublicUrlMatches(undefined)).not.toThrow();
-    expect(() => assertR2PublicUrlMatches("")).not.toThrow();
+  it("returns undefined for unset env (no-op)", () => {
+    expect(assertR2PublicUrlMatches(undefined)).toBeUndefined();
+    expect(assertR2PublicUrlMatches("")).toBeUndefined();
   });
 
-  it("accepts matching hosts, with or without scheme", () => {
-    expect(() => assertR2PublicUrlMatches("https://images.coffeemode.app")).not.toThrow();
-    expect(() => assertR2PublicUrlMatches("https://images.coffeemode.app/base")).not.toThrow();
-    expect(() => assertR2PublicUrlMatches("images.coffeemode.app")).not.toThrow();
+  it("parses matching host with or without scheme and path", () => {
+    expect(assertR2PublicUrlMatches("https://images.coffeemode.app")).toBe(R2_PUBLIC_HOST);
+    expect(assertR2PublicUrlMatches("https://images.coffeemode.app/base")).toBe(R2_PUBLIC_HOST);
+    expect(assertR2PublicUrlMatches("images.coffeemode.app")).toBe(R2_PUBLIC_HOST);
   });
-
   it("throws on a drifted host", () => {
     expect(() => assertR2PublicUrlMatches("https://cdn.example.com")).toThrow(/does not match/);
   });
@@ -21,8 +20,12 @@ describe("assertR2PublicUrlMatches", () => {
   it("throws on garbage values", () => {
     expect(() => assertR2PublicUrlMatches("http://[")).toThrow(/Invalid NEXT_PUBLIC_R2_PUBLIC_URL/);
   });
-});
 
+  it("constructs canonical public CDN URLs via r2PublicUrl", () => {
+    expect(r2PublicUrl("avatars/user.webp")).toBe("https://images.coffeemode.app/avatars/user.webp");
+    expect(r2PublicUrl("/avatars/user.webp")).toBe("https://images.coffeemode.app/avatars/user.webp");
+  });
+});
 describe("r2ImageLoader / isR2Image", () => {
   it("maps relative keys onto the CDN host", () => {
     expect(r2ImageLoader({ src: "abc/card.webp", width: 800, quality: 75 })).toBe(

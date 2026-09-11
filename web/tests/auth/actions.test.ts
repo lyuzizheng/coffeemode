@@ -50,215 +50,106 @@ describe("signIn", () => {
     expect(result).toEqual({ error: "invalid_provider" });
   });
 
-  it("redirects to the OAuth URL on success", async () => {
+  type OAuthCase = {
+    name: string;
+    env?: Record<string, string>;
+    headers?: Record<string, string>;
+    provider: "apple" | "google";
+    expectedRedirectTo: string;
+  };
+
+  it.each<OAuthCase>([
+    {
+      name: "redirects to the OAuth URL on success",
+      provider: "apple",
+      expectedRedirectTo: "http://localhost:3000/auth/callback",
+    },
+    {
+      name: "uses NEXT_PUBLIC_SITE_URL over request headers",
+      env: { NEXT_PUBLIC_SITE_URL: "https://app.example.com" },
+      provider: "google",
+      expectedRedirectTo: "https://app.example.com/auth/callback",
+    },
+    {
+      name: "ignores a forged Origin header when NEXT_PUBLIC_SITE_URL is set",
+      env: { NEXT_PUBLIC_SITE_URL: "https://app.example.com" },
+      headers: { origin: "https://evil.com" },
+      provider: "apple",
+      expectedRedirectTo: "https://app.example.com/auth/callback",
+    },
+    {
+      name: "allows an allowlisted host via NEXT_PUBLIC_ALLOWED_HOSTS",
+      env: { NEXT_PUBLIC_ALLOWED_HOSTS: "staging.example.com" },
+      headers: { origin: "https://staging.example.com" },
+      provider: "apple",
+      expectedRedirectTo: "https://staging.example.com/auth/callback",
+    },
+    {
+      name: "prefers an allowlisted request Origin over NEXT_PUBLIC_SITE_URL",
+      env: {
+        NEXT_PUBLIC_SITE_URL: "https://app.example.com",
+        NEXT_PUBLIC_ALLOWED_HOSTS: "staging.example.com",
+      },
+      headers: { origin: "https://staging.example.com" },
+      provider: "apple",
+      expectedRedirectTo: "https://staging.example.com/auth/callback",
+    },
+    {
+      name: "falls back to NEXT_PUBLIC_SITE_URL when the request Origin is not allowed",
+      env: { NEXT_PUBLIC_SITE_URL: "https://app.example.com" },
+      headers: { origin: "https://evil.com" },
+      provider: "apple",
+      expectedRedirectTo: "https://app.example.com/auth/callback",
+    },
+    {
+      name: "falls back to x-forwarded-proto and host when Origin is missing",
+      headers: { "x-forwarded-proto": "https", host: "localhost:3000" },
+      provider: "apple",
+      expectedRedirectTo: "https://localhost:3000/auth/callback",
+    },
+    {
+      name: "allows IPv6 localhost",
+      headers: { origin: "http://[::1]:3000" },
+      provider: "apple",
+      expectedRedirectTo: "http://[::1]:3000/auth/callback",
+    },
+    {
+      name: "parses NEXT_PUBLIC_ALLOWED_HOSTS with schemes and ports",
+      env: { NEXT_PUBLIC_ALLOWED_HOSTS: "https://staging.example.com, staging.example.com:3000" },
+      headers: { origin: "https://staging.example.com:3000" },
+      provider: "apple",
+      expectedRedirectTo: "https://staging.example.com:3000/auth/callback",
+    },
+    {
+      name: "falls back to request headers when NEXT_PUBLIC_SITE_URL is malformed",
+      env: { NEXT_PUBLIC_SITE_URL: "not a url" },
+      headers: { origin: "https://localhost:3000" },
+      provider: "apple",
+      expectedRedirectTo: "https://localhost:3000/auth/callback",
+    },
+  ])("$name", async ({ env, headers: requestHeaders, provider, expectedRedirectTo }) => {
+    if (env) {
+      Object.assign(process.env, env);
+    }
+    if (requestHeaders) {
+      headersMock.mockImplementation(async () => new Headers(requestHeaders));
+    }
     signInWithOAuthMock.mockResolvedValueOnce({
-      data: { url: "https://supabase.example.com/oauth?provider=apple" },
+      data: { url: `https://supabase.example.com/oauth?provider=${provider}` },
       error: null,
     });
 
     const formData = new FormData();
-    formData.set("provider", "apple");
+    formData.set("provider", provider);
 
     await expect(signIn(undefined, formData)).rejects.toThrow(
-      "NEXT_REDIRECT:https://supabase.example.com/oauth?provider=apple",
+      `NEXT_REDIRECT:https://supabase.example.com/oauth?provider=${provider}`,
     );
 
     expect(signInWithOAuthMock).toHaveBeenCalledWith({
-      provider: "apple",
+      provider,
       options: {
-        redirectTo: "http://localhost:3000/auth/callback",
-      },
-    });
-  });
-
-  it("uses NEXT_PUBLIC_SITE_URL over request headers", async () => {
-    process.env.NEXT_PUBLIC_SITE_URL = "https://app.example.com";
-    signInWithOAuthMock.mockResolvedValueOnce({
-      data: { url: "https://supabase.example.com/oauth?provider=google" },
-      error: null,
-    });
-
-    const formData = new FormData();
-    formData.set("provider", "google");
-
-    await expect(signIn(undefined, formData)).rejects.toThrow("NEXT_REDIRECT:");
-
-    expect(signInWithOAuthMock).toHaveBeenCalledWith({
-      provider: "google",
-      options: {
-        redirectTo: "https://app.example.com/auth/callback",
-      },
-    });
-  });
-
-  it("ignores a forged Origin header when NEXT_PUBLIC_SITE_URL is set", async () => {
-    process.env.NEXT_PUBLIC_SITE_URL = "https://app.example.com";
-    headersMock.mockImplementation(async () => new Headers({ origin: "https://evil.com" }));
-    signInWithOAuthMock.mockResolvedValueOnce({
-      data: { url: "https://supabase.example.com/oauth?provider=apple" },
-      error: null,
-    });
-
-    const formData = new FormData();
-    formData.set("provider", "apple");
-
-    await expect(signIn(undefined, formData)).rejects.toThrow("NEXT_REDIRECT:");
-
-    expect(signInWithOAuthMock).toHaveBeenCalledWith({
-      provider: "apple",
-      options: {
-        redirectTo: "https://app.example.com/auth/callback",
-      },
-    });
-  });
-
-  it("allows an allowlisted host via NEXT_PUBLIC_ALLOWED_HOSTS", async () => {
-    process.env.NEXT_PUBLIC_ALLOWED_HOSTS = "staging.example.com";
-    headersMock.mockImplementation(async () => new Headers({ origin: "https://staging.example.com" }));
-    signInWithOAuthMock.mockResolvedValueOnce({
-      data: { url: "https://supabase.example.com/oauth?provider=apple" },
-      error: null,
-    });
-
-    const formData = new FormData();
-    formData.set("provider", "apple");
-
-    await expect(signIn(undefined, formData)).rejects.toThrow("NEXT_REDIRECT:");
-
-    expect(signInWithOAuthMock).toHaveBeenCalledWith({
-      provider: "apple",
-      options: {
-        redirectTo: "https://staging.example.com/auth/callback",
-      },
-    });
-  });
-
-  it("prefers an allowlisted request Origin over NEXT_PUBLIC_SITE_URL", async () => {
-    process.env.NEXT_PUBLIC_SITE_URL = "https://app.example.com";
-    process.env.NEXT_PUBLIC_ALLOWED_HOSTS = "staging.example.com";
-    headersMock.mockImplementation(async () => new Headers({ origin: "https://staging.example.com" }));
-    signInWithOAuthMock.mockResolvedValueOnce({
-      data: { url: "https://supabase.example.com/oauth?provider=apple" },
-      error: null,
-    });
-
-    const formData = new FormData();
-    formData.set("provider", "apple");
-
-    await expect(signIn(undefined, formData)).rejects.toThrow("NEXT_REDIRECT:");
-
-    expect(signInWithOAuthMock).toHaveBeenCalledWith({
-      provider: "apple",
-      options: {
-        redirectTo: "https://staging.example.com/auth/callback",
-      },
-    });
-  });
-
-  it("falls back to NEXT_PUBLIC_SITE_URL when the request Origin is not allowed", async () => {
-    process.env.NEXT_PUBLIC_SITE_URL = "https://app.example.com";
-    headersMock.mockImplementation(async () => new Headers({ origin: "https://evil.com" }));
-    signInWithOAuthMock.mockResolvedValueOnce({
-      data: { url: "https://supabase.example.com/oauth?provider=apple" },
-      error: null,
-    });
-
-    const formData = new FormData();
-    formData.set("provider", "apple");
-
-    await expect(signIn(undefined, formData)).rejects.toThrow("NEXT_REDIRECT:");
-
-    expect(signInWithOAuthMock).toHaveBeenCalledWith({
-      provider: "apple",
-      options: {
-        redirectTo: "https://app.example.com/auth/callback",
-      },
-    });
-  });
-
-  it("falls back to x-forwarded-proto and host when Origin is missing", async () => {
-    headersMock.mockImplementation(async () =>
-      new Headers({
-        "x-forwarded-proto": "https",
-        host: "localhost:3000",
-      }),
-    );
-    signInWithOAuthMock.mockResolvedValueOnce({
-      data: { url: "https://supabase.example.com/oauth?provider=apple" },
-      error: null,
-    });
-
-    const formData = new FormData();
-    formData.set("provider", "apple");
-
-    await expect(signIn(undefined, formData)).rejects.toThrow("NEXT_REDIRECT:");
-
-    expect(signInWithOAuthMock).toHaveBeenCalledWith({
-      provider: "apple",
-      options: {
-        redirectTo: "https://localhost:3000/auth/callback",
-      },
-    });
-  });
-
-  it("allows IPv6 localhost", async () => {
-    headersMock.mockImplementation(async () => new Headers({ origin: "http://[::1]:3000" }));
-    signInWithOAuthMock.mockResolvedValueOnce({
-      data: { url: "https://supabase.example.com/oauth?provider=apple" },
-      error: null,
-    });
-
-    const formData = new FormData();
-    formData.set("provider", "apple");
-
-    await expect(signIn(undefined, formData)).rejects.toThrow("NEXT_REDIRECT:");
-
-    expect(signInWithOAuthMock).toHaveBeenCalledWith({
-      provider: "apple",
-      options: {
-        redirectTo: "http://[::1]:3000/auth/callback",
-      },
-    });
-  });
-
-  it("parses NEXT_PUBLIC_ALLOWED_HOSTS with schemes and ports", async () => {
-    process.env.NEXT_PUBLIC_ALLOWED_HOSTS = "https://staging.example.com, staging.example.com:3000";
-    headersMock.mockImplementation(async () => new Headers({ origin: "https://staging.example.com:3000" }));
-    signInWithOAuthMock.mockResolvedValueOnce({
-      data: { url: "https://supabase.example.com/oauth?provider=apple" },
-      error: null,
-    });
-
-    const formData = new FormData();
-    formData.set("provider", "apple");
-
-    await expect(signIn(undefined, formData)).rejects.toThrow("NEXT_REDIRECT:");
-
-    expect(signInWithOAuthMock).toHaveBeenCalledWith({
-      provider: "apple",
-      options: {
-        redirectTo: "https://staging.example.com:3000/auth/callback",
-      },
-    });
-  });
-
-  it("falls back to request headers when NEXT_PUBLIC_SITE_URL is malformed", async () => {
-    process.env.NEXT_PUBLIC_SITE_URL = "not a url";
-    headersMock.mockImplementation(async () => new Headers({ origin: "https://localhost:3000" }));
-    signInWithOAuthMock.mockResolvedValueOnce({
-      data: { url: "https://supabase.example.com/oauth?provider=apple" },
-      error: null,
-    });
-
-    const formData = new FormData();
-    formData.set("provider", "apple");
-
-    await expect(signIn(undefined, formData)).rejects.toThrow("NEXT_REDIRECT:");
-
-    expect(signInWithOAuthMock).toHaveBeenCalledWith({
-      provider: "apple",
-      options: {
-        redirectTo: "https://localhost:3000/auth/callback",
+        redirectTo: expectedRedirectTo,
       },
     });
   });

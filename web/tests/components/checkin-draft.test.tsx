@@ -237,6 +237,40 @@ describe("check-in sign-in gate draft (DG66/DG59)", () => {
     expect(stored?.cafeId).toBe(CAFE);
   });
 
+  it("stages the draft and drops to the gate when the publish-time photo upload 401s", async () => {
+    const saveSpy = vi.spyOn(pendingCheckin, "savePendingCheckin");
+    vi.mocked(uploadPhoto).mockRejectedValue(new Error("unauthorized"));
+    const file = new File(["x"], "photo.jpg", { type: "image/jpeg" });
+    renderDrawer({
+      isAuthenticated: true,
+      initialPhotos: [{ id: "p1", previewUrl: "blob:mock-p1", status: "staged", file }],
+    });
+
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Overall experience" }), {
+      key: "ArrowRight",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Check in" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Sign in to publish your check-in/)).toBeInTheDocument();
+    });
+    await waitFor(() => expect(saveSpy).toHaveBeenCalled());
+    const draft = saveSpy.mock.calls[0][0];
+    expect(draft.cafeId).toBe(CAFE);
+    expect(draft.photos).toHaveLength(1);
+
+    const stored = await loadPendingCheckin(72 * 3_600_000);
+    expect(stored?.cafeId).toBe(CAFE);
+    expect(stored?.photos).toHaveLength(1);
+
+    // The ordinary photo-failure branch must not run: no inline retry, no POST attempt.
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+    expect(globalThis.fetch).not.toHaveBeenCalledWith(
+      "/api/checkins",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("re-stages the draft when input changes while the gate is visible", async () => {
     const saveSpy = vi.spyOn(pendingCheckin, "savePendingCheckin");
     renderDrawer({ isAuthenticated: false });

@@ -139,6 +139,18 @@ describe("client-upload", () => {
       );
     });
 
+    it("throws unauthorized when presigned URL fetch returns 401", async () => {
+      const file = new File(["valid image"], "photo.webp", { type: "image/webp" });
+
+      globalThis.fetch = vi.fn().mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: async () => ({ error: "unauthorized" }),
+      });
+
+      await expect(uploadPhoto(file)).rejects.toThrow("unauthorized");
+    });
+
     it("throws photo_upload_failed when presigned URL fetch fails", async () => {
       const file = new File(["valid image"], "photo.webp", { type: "image/webp" });
 

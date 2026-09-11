@@ -106,9 +106,11 @@ export function CafeCreationForm({
       onError(
         message === "photo_too_large"
           ? t("photoTooLarge")
-          : message === "photo_upload_failed" || message === "photo_conversion_failed"
-            ? t("photoUploadFailed")
-            : message,
+            : message === "photo_upload_failed" ||
+                message === "photo_conversion_failed" ||
+                message === "unauthorized"
+              ? t("photoUploadFailed")
+              : message,
       );
     } finally {
       setBusy(false);

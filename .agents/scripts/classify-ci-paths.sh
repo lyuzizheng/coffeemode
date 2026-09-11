@@ -82,6 +82,11 @@ else
       web/*)
         application=true
         ;;
+      # Repo-level structure-guard config (spec 0009): `application-gate` reads it
+      # through `npm run check:structure`, and nothing else does.
+      .jscpd.json)
+        application=true
+        ;;
       image-service/*)
         image_service=true
         integration=true

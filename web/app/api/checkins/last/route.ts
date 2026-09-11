@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { apiError } from "@/lib/api/response";
-import { REVISIT_WINDOW_HOURS, getLastCheckinForCafe } from "@/lib/db/checkins";
+import { getLastCheckinForCafe } from "@/lib/db/checkins";
+import { REVISIT_WINDOW_HOURS } from "@/lib/validation/checkin";
 import { guard } from "@/lib/api/guard";
 import { isValidUUID } from "@shared/uuid";
 

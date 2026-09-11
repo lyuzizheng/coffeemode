@@ -5,7 +5,7 @@
  */
 import "server-only";
 
-import type { QueryResult } from "pg";
+import type { RunInTransaction, TxQueryFn } from "@/lib/db/postgres";
 import type { CheckIn } from "@/types/checkins";
 import { appConfig } from "@/lib/config";
 import {
@@ -28,16 +28,14 @@ export {
   emptyWorkStats,
 } from "./work-stats";
 
-export type QueryFn = <T extends Record<string, unknown>>(
-  text: string,
-  params?: unknown[],
-) => Promise<QueryResult<T>>;
-
 /**
- * Runs `fn` on a single connection inside a transaction (BEGIN/COMMIT/ROLLBACK).
- * The callback receives the transaction-scoped query function.
+ * Transaction-scoped query function shared with every transactional caller.
+ * Canonical shape lives in `lib/db/postgres` (spec 0009 §Edge cases 6);
+ * this alias keeps existing imports working.
  */
-export type RunInTransaction = <T>(fn: (q: QueryFn) => Promise<T>) => Promise<T>;
+export type QueryFn = TxQueryFn;
+
+export type { RunInTransaction };
 
 /**
  * Default transaction runner backed by the shared Postgres pool.
@@ -48,8 +46,8 @@ export type RunInTransaction = <T>(fn: (q: QueryFn) => Promise<T>) => Promise<T>
  */
 export function defaultRunInTransaction(): RunInTransaction {
   return async (fn) => {
-    const { withTransaction } = await import("@/lib/db/postgres");
-    return withTransaction(async (client) => fn(client.query.bind(client) as QueryFn));
+    const { withTransaction, txQueryFrom } = await import("@/lib/db/postgres");
+    return withTransaction((client) => fn(txQueryFrom(client)));
   };
 }
 

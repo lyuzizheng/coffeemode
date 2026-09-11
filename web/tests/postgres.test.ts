@@ -4,6 +4,8 @@ import {
   getPool,
   getPoolConfig,
   registerPoolShutdownHandlers,
+  txQueryFrom,
+  txRunnerFrom,
   withTransaction,
 } from "@/lib/db/postgres";
 
@@ -286,5 +288,98 @@ describe("registerPoolShutdownHandlers", () => {
     expect(sigintCalls.length).toBe(1);
 
     onSpy.mockRestore();
+  });
+});
+
+describe("transaction adapters", () => {
+  it("txQueryFrom routes statements to the given client with text and params", async () => {
+    const clientQuery = vi.fn().mockResolvedValue({ rows: [{ id: 1 }] });
+    const q = txQueryFrom({ query: clientQuery } as never);
+
+    const result = await q<{ id: number }>("SELECT $1", [1]);
+
+    expect(result).toEqual({ rows: [{ id: 1 }] });
+    expect(clientQuery).toHaveBeenCalledOnce();
+    expect(clientQuery).toHaveBeenCalledWith("SELECT $1", [1]);
+  });
+
+  it("txRunnerFrom runs the callback on the same client without opening a nested transaction", async () => {
+    const clientQuery = vi.fn().mockResolvedValue({ rows: [] });
+    const client = { query: clientQuery } as never;
+
+    await txRunnerFrom(client)(async (q) => {
+      await q("select 1 from cafes where id = $1 for update", ["cafe-1"]);
+    });
+
+    expect(clientQuery).toHaveBeenCalledOnce();
+    expect(clientQuery).toHaveBeenCalledWith("select 1 from cafes where id = $1 for update", [
+      "cafe-1",
+    ]);
+  });
+
+  it("txRunnerFrom preserves statement order on the same client", async () => {
+    const clientQuery = vi.fn().mockResolvedValue({ rows: [] });
+    const client = { query: clientQuery } as never;
+
+    await txRunnerFrom(client)(async (q) => {
+      await q("select 1 from cafes where id = $1 for update", ["cafe-1"]);
+      await q("update cafes set work_stats = $1 where id = $2", ["{}", "cafe-1"]);
+    });
+
+    expect(clientQuery).toHaveBeenCalledTimes(2);
+    expect(clientQuery).toHaveBeenNthCalledWith(1, "select 1 from cafes where id = $1 for update", [
+      "cafe-1",
+    ]);
+    expect(clientQuery).toHaveBeenNthCalledWith(2, "update cafes set work_stats = $1 where id = $2", [
+      "{}",
+      "cafe-1",
+    ]);
+  });
+
+  it("rolls back without COMMIT when the callback fails after adapter statements, and a re-entry takes a new connection", async () => {
+    process.env.DATABASE_URL = "postgres://u:p@localhost/db";
+
+    const firstQuery = vi.fn();
+    const firstRelease = vi.fn();
+    const secondQuery = vi.fn();
+    const secondRelease = vi.fn();
+    currentMockPool!.connect
+      .mockResolvedValueOnce({ query: firstQuery, release: firstRelease })
+      .mockResolvedValueOnce({ query: secondQuery, release: secondRelease });
+
+    firstQuery.mockResolvedValue({ rows: [] });
+    secondQuery.mockResolvedValue({ rows: [] });
+
+    await expect(
+      withTransaction(async (client) => {
+        await txRunnerFrom(client)((q) =>
+          q("select 1 from cafes where id = $1 for update", ["cafe-1"]),
+        );
+        throw new Error("retryable");
+      }),
+    ).rejects.toThrow("retryable");
+
+    expect(firstQuery).toHaveBeenCalledTimes(3);
+    expect(firstQuery).toHaveBeenNthCalledWith(1, "BEGIN");
+    expect(firstQuery).toHaveBeenNthCalledWith(2, "select 1 from cafes where id = $1 for update", [
+      "cafe-1",
+    ]);
+    expect(firstQuery).toHaveBeenNthCalledWith(3, "ROLLBACK");
+    expect(firstRelease).toHaveBeenCalledOnce();
+
+    await withTransaction(async (client) => {
+      await txRunnerFrom(client)((q) =>
+        q("select 1 from cafes where id = $1 for update", ["cafe-1"]),
+      );
+    });
+
+    expect(currentMockPool!.connect).toHaveBeenCalledTimes(2);
+    expect(secondQuery).toHaveBeenCalledTimes(3);
+    expect(secondQuery).toHaveBeenNthCalledWith(1, "BEGIN");
+    expect(secondQuery).toHaveBeenNthCalledWith(2, "select 1 from cafes where id = $1 for update", [
+      "cafe-1",
+    ]);
+    expect(secondQuery).toHaveBeenNthCalledWith(3, "COMMIT");
+    expect(secondRelease).toHaveBeenCalledOnce();
   });
 });

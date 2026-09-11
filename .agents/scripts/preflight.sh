@@ -115,6 +115,10 @@ run_gate "agent-skills" "$SCRIPTS_DIR/check-agent-skills.sh"
 # 7. Codex agent configuration
 run_gate "codex-agents" "$SCRIPTS_DIR/check-codex-agents.sh"
 
+# 8. Structure guard (web): ESLint structure rules + jscpd + file-size ratchet.
+# Self-skips when web/node_modules is absent; CI's application-gate is authoritative.
+run_gate "structure-guard" "$SCRIPTS_DIR/check-structure.sh"
+
 # Summary
 echo "===================="
 if [[ $ERRORS -gt 0 ]]; then

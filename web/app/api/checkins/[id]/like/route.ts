@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
+import { toggleCheckInLike } from "@/lib/db/checkins";
 import {
   CheckInNotFoundError,
   SelfLikeError,
-  toggleCheckInLike,
-} from "@/lib/db/checkins";
+} from "@/lib/validation/checkin";
 import { guard } from "@/lib/api/guard";
 import { isValidUUID } from "@shared/uuid";
 import { requireSameOrigin } from "@/lib/security/origin";

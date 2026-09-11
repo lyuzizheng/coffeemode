@@ -1,17 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createCheckIn, toggleCheckInLike } from "@/lib/db/checkins";
 import {
   CafeNotFoundError,
   CheckInNotFoundError,
   DuplicateCheckInError,
   SelfLikeError,
-  createCheckIn,
   parseCheckInBody,
   parsePhotoIds,
   parseScores,
   parseVisitedAt,
-  toggleCheckInLike,
   type CreateCheckInInput,
-} from "@/lib/db/checkins";
+} from "@/lib/validation/checkin";
 import { INVALID_CHECKIN_PAYLOADS } from "./helpers/fixtures";
 import { PhotoIntentError } from "@/lib/images/provision-photos";
 import { ImageServiceError } from "@/lib/images/image-service-client";
@@ -27,7 +26,10 @@ vi.mock("@/lib/auth/supabase-server", () => ({
   isAuthConfigured: () => true,
 }));
 
-vi.mock("@/lib/db/postgres", () => ({
+vi.mock("@/lib/db/postgres", async (importOriginal) => ({
+  // Real tx adapters: they are pure functions of the client, so the fake
+  // client below exercises the same statement routing as production.
+  ...(await importOriginal<typeof import("@/lib/db/postgres")>()),
   withTransaction: (fn: (client: { query: typeof clientQueryMock }) => unknown) =>
     fn({ query: clientQueryMock }),
   query: (...args: unknown[]) => poolQueryMock(...args),

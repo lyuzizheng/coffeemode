@@ -1,5 +1,5 @@
 import "server-only";
-import { Pool, type PoolClient, type PoolConfig } from "pg";
+import { Pool, type PoolClient, type PoolConfig, type QueryResult } from "pg";
 
 /**
  * Self-hosted Postgres connection pool (spec 0001 / ADR-0002, decision #25).
@@ -124,6 +124,11 @@ export async function closePool(): Promise<void> {
 /**
  * Run a callback inside a transaction. The callback receives a PoolClient
  * that must be used for all queries in the transaction.
+ *
+ * Single attempt, no automatic retry: a retry must re-enter through
+ * `withTransaction` (a fresh connection and transaction), never reuse the
+ * released client. Write paths that need an outer retry carry idempotency
+ * keys (DG61) so re-entry is safe.
  */
 export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await getPool().connect();
@@ -138,6 +143,44 @@ export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>)
   } finally {
     client.release();
   }
+}
+
+/**
+ * Transaction-scoped query function: the single query shape every
+ * transactional caller shares (spec 0009 §Edge cases 6). `withTransaction`
+ * stays the only transaction boundary (BEGIN/COMMIT/ROLLBACK live there);
+ * this type only describes how statements run once inside it.
+ */
+export type TxQueryFn = <T extends Record<string, unknown>>(
+  text: string,
+  params?: unknown[],
+) => Promise<QueryResult<T>>;
+
+/**
+ * Runs `fn` on a single connection inside a transaction. The callback
+ * receives the transaction-scoped {@link TxQueryFn}.
+ */
+export type RunInTransaction = <T>(fn: (q: TxQueryFn) => Promise<T>) => Promise<T>;
+
+/**
+ * Adapt a transaction client to a {@link TxQueryFn} so statements run on
+ * the caller's connection (same order, same rollback scope, no new
+ * transaction). Replaces the per-callsite `client.query.bind(client)` casts.
+ */
+export function txQueryFrom(client: PoolClient): TxQueryFn {
+  return <T extends Record<string, unknown>>(text: string, params?: unknown[]) =>
+    client.query<T>(text, params);
+}
+
+/**
+ * Adapt a transaction client to a {@link RunInTransaction} for the
+ * `inTx`-injected helpers (`recomputeWorkStats`,
+ * `incrementalUpdateWorkStats`): their statements join the caller's
+ * transaction instead of opening a second one (which would self-deadlock
+ * on the held row lock).
+ */
+export function txRunnerFrom(client: PoolClient): RunInTransaction {
+  return (fn) => fn(txQueryFrom(client));
 }
 
 /**

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useTranslations } from "next-intl";
 import type { UseInfiniteQueryResult, InfiniteData } from "@tanstack/react-query";
 import { Button } from "@heroui/react";
@@ -53,13 +54,14 @@ export function ProfileTabCafes({ baseId, query: cafesQuery }: ProfileTabCafesPr
           href={`/?cafe=${cafe.id}`}
           className="p-3 bg-surface border border-border rounded-xl flex items-center gap-3 hover:border-border/80 active:scale-[0.99] transition-all"
         >
-          <div className="w-[72px] h-[54px] rounded-lg bg-surface-secondary border border-border/40 flex-shrink-0 flex items-center justify-center overflow-hidden">
+          <div className="relative w-[72px] h-[54px] rounded-lg bg-surface-secondary border border-border/40 flex-shrink-0 flex items-center justify-center overflow-hidden">
             {cafe.cover ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <Image
                 src={cafe.cover}
                 alt={cafe.name}
-                className="w-full h-full object-cover"
+                fill
+                sizes="72px"
+                className="object-cover"
               />
             ) : (
               <div className="text-muted/60">

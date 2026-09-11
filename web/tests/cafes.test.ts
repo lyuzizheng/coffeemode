@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  CafeExistsError,
   createCafeWithFirstCheckIn,
   getCafe,
   getServiceAccountId,
-  parseCreateCafeBody,
   resolveCafeTimezone,
   toPublicCafeDetail,
   SERVICE_ACCOUNT_MAINTAINER_LABEL,
-  type CreateCafeCheckInInput,
 } from "@/lib/db/cafes";
+import {
+  CafeExistsError,
+  parseCreateCafeBody,
+  type CreateCafeCheckInInput,
+} from "@/lib/validation/cafe";
 import type { CafeDetail } from "@/types/cafes";
 import { PhotoIntentError } from "@/lib/images/provision-photos";
 import { ImageServiceError } from "@/lib/images/image-service-client";
@@ -28,7 +30,10 @@ vi.mock("@/lib/auth/supabase-server", () => ({
   isAuthConfigured: () => true,
 }));
 
-vi.mock("@/lib/db/postgres", () => ({
+vi.mock("@/lib/db/postgres", async (importOriginal) => ({
+  // Real tx adapters: they are pure functions of the client, so the fake
+  // client below exercises the same statement routing as production.
+  ...(await importOriginal<typeof import("@/lib/db/postgres")>()),
   withTransaction: (fn: (client: { query: typeof clientQueryMock }) => unknown) =>
     fn({ query: clientQueryMock }),
   query: (...args: unknown[]) => poolQueryMock(...args),

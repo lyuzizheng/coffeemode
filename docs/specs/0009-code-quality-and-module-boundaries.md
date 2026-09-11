@@ -156,7 +156,7 @@ MUST 在当次提交内完成拆分。不允许"顺手加一行"把超标文件�
 - Facade：`web/lib/api/response.ts`（`apiError` 统一错误形状 L19、query 解析 `parseQueryPositiveInt` L58）；`web/lib/config.ts`（`rateLimits`/`appConfig` 冻结单例 + `rateLimitConfig` 访问守卫，YAML 数字归 `web/config/*.yaml`，DG107）。
 - 门禁 Facade（已定型，PR #359）：`web/lib/api/guard.ts` 的 `guard(request, { bucket, requireAuth, route })` 是唯一门禁入口——桶名编译期 + 运行时双校验 → 鉴权（401）→ clientId → 多窗口限流（429），`{ ok, user, clientId } | { ok: false, response }` 显式返回；`readJsonBody` 同模块收敛 body 解析。路由 MUST 经它进入，MUST NOT 手抄门禁样板（`scripts/check-route-guards.mjs` 全仓强制）。
 - 形状复用：`web/shared/places/geo.ts`（`haversineKm` 跨服务唯一真相）。
-- DI：`web/lib/stats/aggregate.ts`（`QueryFn` 类型 L31 + `defaultRunInTransaction()` 生产默认值 L49，聚合函数经 `query: QueryFn` L101 / `runInTransaction` L71、L130 注入——单测传假查询器即可覆盖，无需起库）。
+- DI：`web/lib/stats/aggregate.ts`（`QueryFn` 类型 L36 + `defaultRunInTransaction()` 生产默认值 L47，聚合函数经 `query: QueryFn` L99、L204 / `runInTransaction` L69、L128 注入——单测传假查询器即可覆盖，无需起库）。
 
 本仓反例（禁止重演，括号内为正确动作）：
 
@@ -184,13 +184,31 @@ MUST 在当次提交内完成拆分。不允许"顺手加一行"把超标文件�
 
 | 文件 | 当前行数 | 超标项 | 只降不升基线 | 复核到期 |
 | --- | --- | --- | --- | --- |
-| `web/lib/db/cafes.ts` | 826 | 文件硬 400 | 826（只允许减少） | 2026-12-31 |
-| `web/lib/db/checkins.ts` | 758 | 文件硬 400 | 758 | 2026-12-31 |
-| `web/components/checkin/checkin-drawer.tsx` | 725 | 文件硬 400 | 725 | 2026-12-31 |
-| `web/components/discovery/checkin-feed.tsx` | 439 | 文件硬 400 | 439 | 2026-12-31 |
+| `web/components/checkin/checkin-drawer.tsx` | 730 | 文件硬 400 | 730（只允许减少） | 2026-12-31 |
+| `web/components/discovery/checkin-feed.tsx` | 440 | 文件硬 400 | 440 | 2026-12-31 |
 | `web/lib/db/profile.ts` | 431 | 文件硬 400 | 431 | 2026-12-31 |
+| `web/lib/config-schema.ts` | 424 | 文件硬 400 | 424 | 2026-12-31 |
 
-第二张表：规则级豁免（`web/eslint-suppressions.json`，41 文件 / 68 条，`32b5bdc` 实测）。用途：结构规则（函数行数/复杂度/`max-depth`/同构函数）对存量文件的逐条 suppress；读取方：`web/eslint.config.mjs`。同样**只降不升**：条目数增长即 CI 失败（`check:structure` 校验 suppression 数量单调递减）；`npx eslint --prune-suppressions` 可剪已自愈条目，重构 PR 应当顺手清除。
+`web/lib/db/cafes.ts`（826）与 `web/lib/db/checkins.ts`（758）已由 BRAWUKA-180 (#356)
+拆分毕业，按 §7.4「毕业行直接删除」从表与机器基线移除，基准值随之下降。
+机器镜像：`web/structure-baseline.json` 的 `files`（每条含 `lines` 与 `reviewBy`），
+由 `scripts/check-file-size.mjs` 读取。`checkin-drawer` 730 / `checkin-feed` 440 是
+守卫合入前 main 上 BRAWUKA-185 (#358) / BRAWUKA-73 (#349) 造成的 +5 / +1，
+`config-schema.ts` 是 BRAWUKA-184 (#357) 引入；基线自记录值起只降不升。
+
+第二张表：规则级豁免（`web/eslint-suppressions.json`，当前 48 文件 / 60 条目 / 68 处违规）。
+用途：结构规则（函数行数/复杂度/`max-depth`/同构函数）对存量文件的逐条 suppress；
+读取方：**ESLint 自身的 bulk suppressions 机制**（`eslint.config.mjs` 不读该文件、不按路径关规则），
+棘轮由 `scripts/check-suppressions.mjs` 校验，预算登记在
+`web/structure-baseline.json` 的 `eslintSuppressions`（`files` / `entries` / `perRule` / `reviewBy`）。
+同样**只降不升**：文件数、条目数或任一规则的违规数增长即 CI 失败，
+`check:structure` 会打印 `suppressed violations: N (budget M)` 让存量在日志里可见；
+`npx eslint --prune-suppressions` 可剪已自愈条目，重构 PR 应当顺手清除；
+缺少 `reviewBy` 或复核到期未处理同样按失败处理（§7.1、§7.3）。
+BRAWUKA-180 (#356) 拆分后存量违规 72 → 68、条目数 60 → 60、文件数 44 → 48：
+一个 god module 拆成多个模块会把同一批豁免摊到更多文件上。三项都是硬棘轮，
+因此这种"债务总量下降但分布变宽"的重构 MUST 同 PR 更新预算并说明（本条即该说明），
+预算 diff 本身进入 review；未说明的增长一律 CI 失败。
 
 规则：
 
@@ -223,8 +241,17 @@ MUST 在当次提交内完成拆分。不允许"顺手加一行"把超标文件�
 4. Workers（`poi-service/`、`image-service/`）阈值与本表相同；跨服务重复
    （FNV-1a、Maps 校验判例）唯一真相收敛到 `web/shared/`，Workers 不各自为政。
 5. 测试文件（体积、拆分手法、状态隔离、DB 断言策略）全部归 0003 所有；本规范对测试唯一的建议是：跨 `it` 共享可变状态（如模块级 `let cafe1Id`）是脆弱写法，新测试 SHOULD 每个 `it` 自建数据，存量迁移按 0003 排期。
-6. 事务客户端适配器收敛建议：`cafes.ts`（2 处）、`checkins.ts`（3 处）手写 `inSameTx: RunInTransaction` 包装器，
-   `complete.ts`（`CompleteQueryFn`）、`aggregate.ts`（`QueryFn`）各自定义一套——新代码 SHOULD 复用 `web/lib/db/postgres.ts` 导出的标准事务类型，存量五处在顺带重构时再收敛，不单独立项。
+6. 事务客户端适配器已收敛（BRAWUKA-182，`main` `7609e64`）：canonical 来源是
+   `web/lib/db/postgres.ts`（`TxQueryFn` / `RunInTransaction` / `txQueryFrom(client)` /
+   `txRunnerFrom(client)`）；`cafes/create|delete`、`checkins/create|update` 的 5 处
+   `inSameTx` 闭包，以及 `db/cafes/create.ts`、`db/checkins/create.ts`、
+   `images/complete.ts`、`stats/aggregate.ts` 的 4 处 `client.query.bind(client) as …`
+   结构转换，全部改为复用标准适配器；
+   `complete.ts`（`CompleteQueryFn`）、`stats/aggregate.ts`（`QueryFn`）、
+   `db/image-uploads.ts`（`IntentQueryFn`）、`images/provision-photos.ts`
+   （`ProvisionQueryFn`）的手写形状收敛为别名。新代码 MUST 复用 canonical 类型，
+   MUST NOT 再定义等价形状；`withTransaction` 仍是唯一事务边界（单次尝试、无自动重试
+   —— 重试从外层经 `withTransaction` 重进，幂等由 DG61 保证）。
 
 ## Tests / acceptance criteria
 

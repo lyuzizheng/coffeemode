@@ -66,6 +66,7 @@ function headers(token: string): Record<string, string> {
  */
 function upstreamError(endpoint: "upload" | "complete", response: Response): ImageServiceError {
   const upstreamStatus = response.status;
+  // Benign: best-effort cancel of unread upstream response stream.
   void response.body?.cancel().catch(() => {});
   logError({ route: `image-service ${endpoint}`, error: { status: upstreamStatus } });
 

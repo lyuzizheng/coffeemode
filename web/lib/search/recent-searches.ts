@@ -41,6 +41,7 @@ export function getRecentSearches(): RecentSearchItem[] {
     );
     return filtered.length === 0 ? EMPTY_SEARCHES : filtered;
   } catch {
+    // Benign: corrupted JSON or blocked localStorage access degrades to empty searches list.
     return EMPTY_SEARCHES;
   }
 }
@@ -64,6 +65,7 @@ export function getRecentSearchesSnapshot(): RecentSearchItem[] {
     cachedSearches = getRecentSearches();
     return cachedSearches;
   } catch {
+    // Benign: localStorage read failure degrades snapshot to empty list.
     return EMPTY_SEARCHES;
   }
 }
@@ -105,6 +107,6 @@ export function clearRecentSearches(): void {
     window.localStorage.removeItem(STORAGE_KEY);
     window.dispatchEvent(new Event("coffeemode:recent-searches-changed"));
   } catch {
-    // Ignore errors
+    // Benign: localStorage removeItem failure in private mode is ignored.
   }
 }

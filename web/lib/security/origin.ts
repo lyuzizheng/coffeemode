@@ -20,6 +20,7 @@ export function getConfiguredOrigin(): string | null {
     if (!ALLOWED_SCHEMES.includes(url.protocol)) return null;
     return url.origin;
   } catch {
+    // Benign: invalid NEXT_PUBLIC_SITE_URL format returns null.
     return null;
   }
 }
@@ -32,6 +33,7 @@ export function parseAllowlistEntry(entry: string): { host: string; hostname: st
     try {
       hostPart = new URL(entry.startsWith("//") ? `http:${entry}` : entry).host;
     } catch {
+      // Benign: invalid URL syntax in allowlist entry returns null.
       return null;
     }
   }
@@ -42,6 +44,7 @@ export function parseAllowlistEntry(entry: string): { host: string; hostname: st
     const url = new URL(`http://${hostPart}`);
     return { host: url.host.toLowerCase(), hostname: url.hostname.toLowerCase() };
   } catch {
+    // Benign: host part cannot form a valid HTTP URL returns null.
     return null;
   }
 }
@@ -90,6 +93,7 @@ export function isAllowedOrigin(origin: string): boolean {
   try {
     url = new URL(origin);
   } catch {
+    // Benign: malformed origin string is not allowed.
     return false;
   }
   if (!ALLOWED_SCHEMES.includes(url.protocol)) return false;
@@ -121,6 +125,7 @@ export function getProtoHost(requestHeaders: Headers): string | null {
     if (!ALLOWED_SCHEMES.includes(url.protocol)) return null;
     return url.origin;
   } catch {
+    // Benign: malformed proto/host URL returns null.
     return null;
   }
 }
@@ -173,6 +178,7 @@ export function isSameOrigin(request: Request): boolean {
       }
       return isAllowedHost(refererUrl.host, refererUrl.hostname);
     } catch {
+      // Benign: malformed Referer header cannot match allowed origin.
       return false;
     }
   }

@@ -48,11 +48,19 @@ let browser = null;
 
 const cleanup = async () => {
   if (browser) {
-    try { await browser.close(); } catch {}
+    try {
+      await browser.close();
+    } catch {
+      // Benign: browser may have crashed or already closed during test execution.
+    }
     browser = null;
   }
   if (serverProcess) {
-    try { serverProcess.kill("SIGTERM"); } catch {}
+    try {
+      serverProcess.kill("SIGTERM");
+    } catch {
+      // Benign: server process may have already exited.
+    }
     serverProcess = null;
   }
   await cleanupDbFixtures(dbClient);

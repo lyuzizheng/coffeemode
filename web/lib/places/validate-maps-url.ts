@@ -26,6 +26,7 @@ export function isValidMapsUrl(mapsShareUrl: string): boolean {
   try {
     url = new URL(mapsShareUrl);
   } catch {
+    // Benign: malformed URL string is not a valid maps URL.
     return false;
   }
 

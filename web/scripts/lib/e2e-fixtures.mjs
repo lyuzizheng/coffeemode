@@ -105,7 +105,11 @@ export async function setupDbFixtures({
       throw err;
     }
     if (dbClient) {
-      try { await dbClient.end(); } catch {}
+      try {
+        await dbClient.end();
+      } catch {
+        // Benign: best-effort client termination during setup failure teardown.
+      }
       dbClient = null;
     }
     return { hasDb: false, dbClient: null };
@@ -118,12 +122,15 @@ export async function cleanupDbFixtures(dbClient) {
     await dbClient.query(`delete from checkins where cafe_id = $1 or id = $2`, [E2E_CAFE_ID, E2E_CHECKIN_ID]);
     await dbClient.query(`delete from cafes where id = $1`, [E2E_CAFE_ID]);
     await dbClient.query(`delete from profiles where id = $1`, [E2E_USER_ID]);
-  } catch {}
+  } catch (err) {
+    console.warn("[e2e-fixtures] cleanupDbFixtures failed to delete rows:", err?.message ?? err);
+  }
 }
-
 export async function closeDbClient(dbClient) {
   if (!dbClient) return;
   try {
     await dbClient.end();
-  } catch {}
+  } catch {
+    // Benign: best-effort close; client may already be disconnected.
+  }
 }

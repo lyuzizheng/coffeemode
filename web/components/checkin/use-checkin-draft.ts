@@ -42,6 +42,7 @@ export function useCheckinDraft({
           ...(p.imageUuid ? { imageUuid: p.imageUuid } : {}),
         })),
       createdAt: Date.now(),
+      // Benign: saving draft to IndexedDB is best-effort; quota or private mode failures must not break editing.
     }).catch(() => {});
   }, [isEdit, cafeId, cafeName, scores, maxStay, note, photos]);
 

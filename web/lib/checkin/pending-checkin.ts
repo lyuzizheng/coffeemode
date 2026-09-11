@@ -97,7 +97,7 @@ export async function loadPendingCheckin(
     try {
       await del(DRAFT_KEY, store);
     } catch {
-      // ignore
+      // Benign: best-effort cleanup of corrupt draft; IndexedDB deletion failure in private mode is ignored.
     }
     return null;
   }
@@ -108,7 +108,7 @@ export async function loadPendingCheckin(
     try {
       await del(DRAFT_KEY, store);
     } catch {
-      // ignore
+      // Benign: best-effort cleanup of invalid draft; IndexedDB deletion failure in private mode is ignored.
     }
     return null;
   }
@@ -117,7 +117,7 @@ export async function loadPendingCheckin(
     try {
       await del(DRAFT_KEY, store);
     } catch {
-      // ignore
+      // Benign: best-effort cleanup of expired draft; IndexedDB deletion failure in private mode is ignored.
     }
     return null;
   }

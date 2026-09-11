@@ -52,13 +52,17 @@ async function cleanup() {
   if (browser) {
     try {
       await browser.close();
-    } catch {}
+    } catch {
+      // Benign: browser may have crashed or already closed during test execution.
+    }
     browser = null;
   }
   if (serverProcess) {
     try {
       serverProcess.kill("SIGTERM");
-    } catch {}
+    } catch {
+      // Benign: server process may have already exited.
+    }
     serverProcess = null;
   }
 }

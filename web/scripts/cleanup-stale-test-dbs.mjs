@@ -140,6 +140,7 @@ async function main() {
     }
     console.log(`Done: dropped ${candidates.length} stale test database(s).`);
   } finally {
+    // Benign: best-effort admin connection termination on script exit.
     await admin.end().catch(() => {});
   }
 }

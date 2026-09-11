@@ -26,6 +26,7 @@ export function getMapKitConfig(): MapKitConfig | null {
     const origin = new URL(configuredOrigin).origin;
     return { teamId, keyId, privateKey, origin };
   } catch {
+    // Benign: malformed origin URL treats MapKit as unconfigured.
     return null;
   }
 }

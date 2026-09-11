@@ -24,6 +24,7 @@ export function getRankingPreference(): RankingPreference | null {
     const parsed = JSON.parse(raw) as unknown;
     return isRankingPreference(parsed) ? parsed : null;
   } catch {
+    // Benign: corrupted JSON or blocked localStorage access degrades to default (null).
     return null;
   }
 }
@@ -62,6 +63,7 @@ export function getRankingPreferenceSnapshot(): RankingPreference | null {
     cachedValue = getRankingPreference();
     return cachedValue;
   } catch {
+    // Benign: localStorage read failure degrades snapshot to null.
     return null;
   }
 }

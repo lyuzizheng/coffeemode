@@ -38,7 +38,11 @@ let dbClient = null;
 
 const cleanup = async () => {
   if (serverProcess) {
-    try { serverProcess.kill("SIGTERM"); } catch {}
+    try {
+      serverProcess.kill("SIGTERM");
+    } catch {
+      // Benign: server process may have already exited.
+    }
     serverProcess = null;
   }
   await cleanupDbFixtures(dbClient);
@@ -61,7 +65,9 @@ async function ensureChromePath() {
     if (executable && existsSync(executable)) {
       process.env.CHROME_PATH = executable;
     }
-  } catch {}
+  } catch (err) {
+    console.warn("[LHCI] Failed to auto-resolve Chromium path from Playwright:", err?.message ?? err);
+  }
 }
 
 async function runLhci() {

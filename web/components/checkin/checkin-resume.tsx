@@ -80,6 +80,7 @@ function CheckinResumeInner({ draftTtlHours }: CheckinResumeProps) {
       // The draft's job is done either way: a successful publish already
       // cleared it, and closing without publishing went through the discard
       // confirm. Never let a consumed draft linger.
+      // Benign: best-effort IndexedDB cleanup; storage errors in private mode must not throw.
       void clearPendingCheckin().catch(() => {});
     }
   };

@@ -4,8 +4,12 @@ import { NextIntlClientProvider } from "next-intl";
 import { PolicyChips, policyOptions } from "@/components/cafe/policy-chips";
 import { POIPreview } from "@/components/cafe/poi-preview";
 import { CafeCreationSheet, CafeCreationTrigger } from "@/components/cafe/cafe-creation-sheet";
+import { CafeCreationForm } from "@/components/cafe/cafe-creation-form";
+import { uploadPhoto } from "@/lib/images/client-upload";
 import messages from "../../messages/en.json";
 import type { POI } from "@shared/places/types";
+
+vi.mock("@/lib/images/client-upload", () => ({ uploadPhoto: vi.fn() }));
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   return (
@@ -145,5 +149,65 @@ describe("CafeCreationSheet & Trigger", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
+  });
+});
+
+describe("CafeCreationForm session expiry (BRAWUKA-124)", () => {
+  const poi: POI = {
+    place_id: "apple-1",
+    source: "apple",
+    name: "Apple Cafe",
+    lat: 1.3,
+    lng: 103.8,
+    address: "Sample Address",
+    types: ["cafe"],
+    business_status: null,
+    hours_json: null,
+    photo_refs: [],
+    fetched_at: new Date().toISOString(),
+  };
+
+  function renderForm(onError: (m: string | null) => void) {
+    return render(
+      <CafeCreationForm poi={poi} name="Apple Cafe" onNameChange={() => {}} isAuthenticated onError={onError} />,
+      { wrapper: Wrapper },
+    );
+  }
+
+  async function fillAndSubmit() {
+    fireEvent.change(screen.getByRole("slider", { name: "Overall work score" }), { target: { value: "80" } });
+    fireEvent.change(screen.getByPlaceholderText("How was the wifi, seats, and vibe?"), { target: { value: "great wifi" } });
+    const file = new File(["x"], "photo.jpg", { type: "image/jpeg" });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.click(screen.getByRole("button", { name: "Create cafe" }));
+  }
+
+  it("routes a photo-upload 401 to the sign-in gate, not to a photo-retry message", async () => {
+    const onError = vi.fn();
+    vi.mocked(uploadPhoto).mockRejectedValue(new Error("unauthorized"));
+    renderForm(onError);
+    await fillAndSubmit();
+
+    await waitFor(() => expect(screen.getByText(/Please sign in to publish/i)).toBeInTheDocument());
+    const shown = onError.mock.calls.map((c) => c[0]).filter(Boolean) as string[];
+    expect(shown.some((m) => /photo/i.test(m))).toBe(false);
+  });
+
+  it("routes a create-POST 401 to the sign-in gate too (photo upload succeeded)", async () => {
+    const onError = vi.fn();
+    vi.mocked(uploadPhoto).mockResolvedValue("img-uuid-1");
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+      if (String(url).includes("/api/cafes")) {
+        return { ok: false, status: 401, json: async () => ({ error: "unauthorized" }) };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    });
+    renderForm(onError);
+    await fillAndSubmit();
+
+    await waitFor(() => expect(screen.getByText(/Please sign in to publish/i)).toBeInTheDocument());
+    const shown = onError.mock.calls.map((c) => c[0]).filter(Boolean) as string[];
+    expect(shown.some((m) => /photo/i.test(m))).toBe(false);
   });
 });

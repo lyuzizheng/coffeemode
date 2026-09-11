@@ -26,6 +26,21 @@ interface CafeCreationFormProps {
   onError: (error: string | null) => void;
 }
 
+/**
+ * Map a submit failure to the message shown under the form (BRAWUKA-124:
+ * session expiry is handled by the caller, before this runs).
+ */
+function submitFailureMessage(
+  message: string,
+  t: ReturnType<typeof useTranslations<"create">>,
+): string {
+  if (message === "photo_too_large") return t("photoTooLarge");
+  if (message === "photo_upload_failed" || message === "photo_conversion_failed") {
+    return t("photoUploadFailed");
+  }
+  return message;
+}
+
 export function CafeCreationForm({
   poi,
   name,
@@ -103,13 +118,16 @@ export function CafeCreationForm({
       setCreatedCafeId(result.cafeId ?? null);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : t("createFailed");
-      onError(
-        message === "photo_too_large"
-          ? t("photoTooLarge")
-          : message === "photo_upload_failed" || message === "photo_conversion_failed"
-            ? t("photoUploadFailed")
-            : message,
-      );
+      // A 401 here is a session problem, not a photo problem: it arrives either
+      // from the publish-time photo upload or from POST /api/cafes. Both are
+      // unrecoverable by retrying, so send the user to the gate (which the
+      // form already has) instead of blaming the photo.
+      if (message === "unauthorized") {
+        onError(t("signInRequired"));
+        setShowSignInGate(true);
+        return;
+      }
+      onError(submitFailureMessage(message, t));
     } finally {
       setBusy(false);
     }

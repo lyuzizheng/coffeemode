@@ -44,8 +44,14 @@ export async function uploadPhoto(file: File): Promise<string> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ size: webp.size }),
   });
-  // Benign: non-JSON error responses (e.g. gateway 502) safely parse as null before failing on line 49.
+  // Benign: non-JSON error responses (e.g. gateway 502) safely parse as null before failing on line 50.
   const uploadData = (await uploadResponse.json().catch(() => null)) as UploadUrlResponse | null;
+  // Session expiry between the last-check-in probe and publish surfaces here
+  // as 401 (presigned URLs are issued to authenticated sessions only). Throw
+  // the shared "unauthorized" marker — same convention as the check-in POST /
+  // PATCH / DELETE paths — so the drawer opens the sign-in gate instead of
+  // trapping the user in a photo-retry loop that can never succeed.
+  if (uploadResponse.status === 401) throw new Error("unauthorized");
   if (!uploadResponse.ok || !uploadData?.uploadUrl || !uploadData.imageUuid) {
     throw new Error("photo_upload_failed");
   }

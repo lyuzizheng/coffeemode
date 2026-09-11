@@ -19,11 +19,19 @@ export function useStagedPhotos(initialPhotos?: PhotoUpload[]) {
 
     if (pendingUploads.length > 0) {
       const failedIds = new Set<string>();
+      let unauthorized = false;
       await Promise.all(
         pendingUploads.map(async (p) => {
           try {
             justUploaded.set(p.id, await uploadPhoto(p.file));
-          } catch {
+          } catch (err) {
+            // A 401 is a session problem, not a photo problem: per-photo
+            // retry can never succeed, so escalate to the sign-in gate
+            // instead of marking the tile failed.
+            if (err instanceof Error && err.message === "unauthorized") {
+              unauthorized = true;
+              return;
+            }
             failedIds.add(p.id);
           }
         }),
@@ -41,6 +49,9 @@ export function useStagedPhotos(initialPhotos?: PhotoUpload[]) {
         }),
       );
 
+      // Session expiry dominates: the mutation's onError routes this to
+      // onRequireSignIn, which stages the draft and opens the gate.
+      if (unauthorized) throw new Error("unauthorized");
       if (failedIds.size > 0) {
         throw new Error("photo_upload_failed");
       }

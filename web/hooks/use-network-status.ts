@@ -5,7 +5,7 @@ import { useSyncExternalStore } from "react";
 const PING_INTERVAL_MS = 15000;
 const PING_URL = "/api/health";
 
-export type NetworkState = "online" | "offline" | "unknown";
+type NetworkState = "online" | "offline" | "unknown";
 
 type Listener = () => void;
 

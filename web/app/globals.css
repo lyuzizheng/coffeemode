@@ -229,11 +229,17 @@
   --default: oklch(26.5% 0.013 52);
   --default-foreground: var(--foreground);
 
-  /* Brand — terracotta lifted for dark, reads like lamplight + lighter sage */
+  /* Brand — terracotta lifted for dark, reads like lamplight + lighter sage.
+     AA gate (spec 0002); ratios are the token-pair contrast from the token
+     values (oklch -> linear sRGB -> relative luminance). accent on
+     accent-foreground 6.27:1 (pass, unchanged). Sage on secondary-foreground
+     measured 4.14:1 in the filled secondary button — under the gate — so the
+     sage is lifted 55.0% → 58.0% with hue 155 and C 0.080 held, for 4.69:1
+     (the browser's own painted bytes agree within quantisation: 4.71:1). */
   --accent: oklch(68% 0.16 46);
   --accent-foreground: oklch(17% 0.015 48);
   --accent-hover: oklch(72% 0.16 46);
-  --secondary: oklch(55.0% 0.080 155);
+  --secondary: oklch(58.0% 0.080 155);
   --secondary-foreground: oklch(16% 0.03 150);
 
   /* Status — lighter values carry dark text, warm-light on espresso */

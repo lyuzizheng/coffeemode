@@ -17,7 +17,7 @@ import type {
 } from "./types";
 import type { POI } from "@shared/places/types";
 
-export function hasUnpushedFilters(filters: SearchFilters): boolean {
+function hasUnpushedFilters(filters: SearchFilters): boolean {
   return Boolean(filters.open_now);
 }
 

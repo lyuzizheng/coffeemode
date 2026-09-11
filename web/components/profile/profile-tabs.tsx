@@ -4,7 +4,7 @@ import { useCallback, useRef } from "react";
 import { useTranslations } from "next-intl";
 
 export type TabType = "checkins" | "map" | "favorites" | "history";
-export const TAB_ORDER: readonly TabType[] = ["checkins", "map", "favorites", "history"];
+const TAB_ORDER: readonly TabType[] = ["checkins", "map", "favorites", "history"];
 
 interface ProfileTabsProps {
   activeTab: TabType;

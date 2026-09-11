@@ -11,9 +11,9 @@ import "server-only";
  * configured; locally it is a no-op besides a throttled console.warn.
  */
 
-export type RateLimitAlertReason = "rate_limited" | "fail_open";
+type RateLimitAlertReason = "rate_limited" | "fail_open";
 
-export interface RateLimitAlertPayload {
+interface RateLimitAlertPayload {
   bucket: string;
   clientId: string;
   windowMs: number;

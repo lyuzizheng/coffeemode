@@ -1,6 +1,6 @@
 import { MAX_UPLOAD_BYTES } from "./constants";
 
-export type UploadSizeValidation =
+type UploadSizeValidation =
   | { ok: true; size: number }
   | { ok: false; code: "missing" | "invalid" | "size_exceeded"; error: string };
 

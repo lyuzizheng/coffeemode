@@ -15,7 +15,7 @@ import {
 
 export type ViewState = "form" | "success" | "submitting";
 
-export interface SubmitCheckinParams {
+interface SubmitCheckinParams {
   scores: CheckInScores;
   maxStay: MaxStay | null;
   note: string;

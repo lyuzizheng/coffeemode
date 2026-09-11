@@ -2,7 +2,7 @@ import "server-only";
 
 import { NextResponse } from "next/server";
 
-export interface ApiErrorBody {
+interface ApiErrorBody {
   error: string;
   message?: string;
   [key: string]: unknown;

@@ -60,7 +60,7 @@ export function FactsRow({ facts }: { facts: Fact[] }) {
 }
 
 /** Meta line: `area · 1.2 km` + exact Work value at the end (DG43). */
-export function CardMeta({ cafe }: { cafe: CafeSummary }) {
+function CardMeta({ cafe }: { cafe: CafeSummary }) {
   const t = useTranslations("discovery");
   const km = formatDistanceKm(cafe.distance_m);
   const work =

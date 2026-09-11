@@ -6,7 +6,7 @@ function base64Url(value: string): string {
   return Buffer.from(value).toString("base64url");
 }
 
-export interface MapKitConfig {
+interface MapKitConfig {
   teamId: string;
   keyId: string;
   privateKey: string;

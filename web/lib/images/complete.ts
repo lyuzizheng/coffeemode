@@ -30,13 +30,13 @@ export type CompleteQueryFn = TxQueryFn;
 
 export type { RunInTransaction };
 
-export type CompleteUploadFailureReason =
+type CompleteUploadFailureReason =
   | "intent_not_found"
   | "not_owned"
   | "intent_consumed"
   | "target_gone";
 
-export type CompleteUploadResult =
+type CompleteUploadResult =
   | {
       ok: true;
       storedImage: StoredImage;

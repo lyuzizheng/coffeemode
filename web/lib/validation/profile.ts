@@ -8,7 +8,7 @@ import { LAUNCH_CITIES } from "@/lib/cities";
  * `lib/validation/**`, never in the persistence layer; BRAWUKA-199 review).
  */
 
-export type ProfilePatchResult =
+type ProfilePatchResult =
   | { ok: true; patch: { displayName?: string; currentCity?: string } }
   | { ok: false; error: string; status: number };
 

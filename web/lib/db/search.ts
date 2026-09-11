@@ -9,7 +9,7 @@ import type { MaxStay } from "@/types/checkins";
 import { query } from "./postgres";
 import { getServiceAccountId, SERVICE_ACCOUNT_MAINTAINER_LABEL } from "./cafes";
 
-export interface SearchCafesDbParams {
+interface SearchCafesDbParams {
   q?: string;
   city?: string;
   viewerId?: string | null;

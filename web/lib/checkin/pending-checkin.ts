@@ -18,7 +18,7 @@ import type { CheckInScores, MaxStay } from "@/types/checkins";
  * time.
  */
 
-export interface PendingCheckinPhoto {
+interface PendingCheckinPhoto {
   id: string;
   name: string;
   file: File | Blob;
@@ -36,8 +36,8 @@ export interface PendingCheckinDraft {
   createdAt: number;
 }
 
-export const DRAFT_STORE_NAME = "coffeemode-pending-checkin";
-export const DRAFT_OBJECT_STORE = "draft";
+const DRAFT_STORE_NAME = "coffeemode-pending-checkin";
+const DRAFT_OBJECT_STORE = "draft";
 export const DRAFT_KEY = "pending";
 
 export const draftStore = createStore(DRAFT_STORE_NAME, DRAFT_OBJECT_STORE);

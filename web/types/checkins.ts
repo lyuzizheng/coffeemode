@@ -80,21 +80,3 @@ export interface CheckInFeedPage {
   /** Opaque mode-bound cursor for the next page; null when exhausted. */
   nextCursor: string | null;
 }
-
-/** Payload used to create or edit a check-in. */
-export interface CheckInInput extends CheckInPolicy {
-  cafe_id?: string; // required for create; omitted on edit
-  scores: CheckInScores;
-  note?: string;
-  photos?: StoredImage[];
-  visited_at?: string;
-  is_creation?: boolean;
-}
-
-/** A like on a check-in. Source of truth for `checkins.likes_count`. */
-export interface CheckInLike {
-  id: string;
-  user_id: string;
-  checkin_id: string;
-  created_at: string;
-}

@@ -2,7 +2,7 @@ import type { CafeSummary } from "@/types/cafes";
 import type { MaxStay } from "@/types/checkins";
 import type { POI } from "@shared/places/types";
 
-export type SearchResultType = "cafe" | "poi";
+type SearchResultType = "cafe" | "poi";
 export type SearchResultSource = "coffeemode" | "stored_poi" | "google" | "apple";
 
 export interface SearchFilters {

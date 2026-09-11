@@ -40,7 +40,7 @@ function SearchSkeletons() {
   );
 }
 
-export interface UnifiedSearchPanelProps {
+interface UnifiedSearchPanelProps {
   externalSources: ExternalSourceFlags;
   mapkitConfigured?: boolean;
   /** Effective city scope; omitted → server header/default resolution (DG128). */

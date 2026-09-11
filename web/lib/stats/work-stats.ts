@@ -19,7 +19,7 @@ export const COMPOSITE_DIMS: Exclude<WorkDim, "overall">[] = [
   "coffee",
 ];
 
-export const DEFAULT_DIM_WEIGHTS: Record<Exclude<WorkDim, "overall">, number> = {
+const DEFAULT_DIM_WEIGHTS: Record<Exclude<WorkDim, "overall">, number> = {
   wifi: 0.3,
   outlets: 0.2,
   seats: 0.2,
@@ -27,7 +27,7 @@ export const DEFAULT_DIM_WEIGHTS: Record<Exclude<WorkDim, "overall">, number> = 
   coffee: 0.15,
 };
 
-export const DEFAULT_RECENCY_DECAY = 0.6;
+const DEFAULT_RECENCY_DECAY = 0.6;
 
 export const DIM_WEIGHTS = DEFAULT_DIM_WEIGHTS;
 

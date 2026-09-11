@@ -10,7 +10,7 @@ import {
 import { query } from "./postgres";
 
 /** A row in the `navigations` table — one "导航" tap (spec 0001). */
-export interface RecordedNavigation {
+interface RecordedNavigation {
   id: string;
   resolved: boolean;
   created_at: string;

@@ -15,7 +15,7 @@ import { RankingPreferenceToggle } from "@/components/search/ranking-preference-
 import { PublicIdentityToggle } from "./public-identity-toggle";
 import type { UserProfileDto, UserProfileStatsDto } from "@/lib/db/profile";
 
-export interface ProfileViewProps {
+interface ProfileViewProps {
   initialProfile: UserProfileDto | null;
   initialStats: UserProfileStatsDto | null;
   isAuthenticated: boolean;

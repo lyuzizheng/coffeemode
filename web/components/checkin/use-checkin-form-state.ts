@@ -28,7 +28,7 @@ function newIdempotencyKey(): string {
   return `${hex(8)}-${hex(4)}-4${hex(3)}-${((parseInt(nibble(), 16) & 0x3) | 0x8).toString(16)}${hex(3)}-${hex(12)}`;
 }
 
-export function useRepeatVisitBanner({
+function useRepeatVisitBanner({
   lastCheckin,
   isEdit,
   onApply,

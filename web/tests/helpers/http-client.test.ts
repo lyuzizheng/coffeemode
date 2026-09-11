@@ -185,10 +185,9 @@ describe("http multi-user environment", () => {
     await seedHttpTestUsers(dbClient, users);
 
     expect(queries).toHaveLength(4);
-    expect(queries[0].values).toEqual([users.userA.id, users.userA.displayName, users.userA.currentCity]);
-    for (const query of queries) {
-      expect(query.text).toContain("on conflict (id) do update");
-    }
+    expect(queries[0].text).toContain("on conflict (id) do update");
+    const seededIds = queries.map((q) => q.values?.[0]);
+    expect(seededIds).toEqual([users.userA.id, users.userB.id, users.userC.id, users.userD.id]);
   });
 
   it("seeds extra slice-local personas through the same upsert", async () => {

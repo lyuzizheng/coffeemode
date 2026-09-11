@@ -64,17 +64,21 @@ describe("Supabase DevOps Provisioning — Unit Contracts", () => {
     expect(files[18]).toBe("0019_checkin_idempotency.sql");
   });
 
-  it("enforces fail-closed SSL verification for Supabase hosts", () => {
-    const testCode = `
-      import { createRequire } from "node:module";
-      const req = createRequire(process.cwd() + "/package.json");
-      const url = new URL("postgresql://postgres:test@db.rsdzcegylqgccaneomph.supabase.co:5432/postgres");
-      const isSupabase = url.hostname.endsWith(".supabase.co") || url.hostname.endsWith(".supabase.net");
-      console.log(JSON.stringify({ isSupabase }));
-    `;
-    const output = execSync(`node -e '${testCode}'`, { encoding: "utf8" });
-    const parsed = JSON.parse(output.trim());
-    expect(parsed.isSupabase).toBe(true);
+  it("enforces fail-closed SSL verification for Supabase hosts in setup-supabase.mjs", () => {
+    try {
+      execSync(
+        `node "${SETUP_SCRIPT}" --database-url "postgresql://postgres:test@db.rsdzcegylqgccaneomph.supabase.co:5432/postgres" --dry-run`,
+        { encoding: "utf8", stdio: "pipe" },
+      );
+      expect.unreachable("expected command to exit non-zero when connecting to remote host");
+    } catch (err: unknown) {
+      const error = err as { status: number; stdout: string; stderr: string };
+      expect(error.status).toBe(1);
+      const output = `${error.stdout ?? ""}\n${error.stderr ?? ""}`;
+      expect(output).toContain("Database URL configured: postgresql://postgres:****@db.rsdzcegylqgccaneomph.supabase.co:5432/postgres");
+      expect(output).toContain("Connecting to Supabase Database & PostGIS Check");
+      expect(output).toMatch(/getaddrinfo|ENOTFOUND|Execution halted/);
+    }
   });
 });
 

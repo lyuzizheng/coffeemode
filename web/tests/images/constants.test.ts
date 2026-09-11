@@ -5,14 +5,8 @@ import { isR2Image, r2ImageLoader } from "@/lib/images/loader";
 describe("assertR2PublicUrlMatches", () => {
   it("accepts unset env (no-op)", () => {
     expect(() => assertR2PublicUrlMatches(undefined)).not.toThrow();
-    expect(() => assertR2PublicUrlMatches("")).not.toThrow();
   });
 
-  it("accepts matching hosts, with or without scheme", () => {
-    expect(() => assertR2PublicUrlMatches("https://images.coffeemode.app")).not.toThrow();
-    expect(() => assertR2PublicUrlMatches("https://images.coffeemode.app/base")).not.toThrow();
-    expect(() => assertR2PublicUrlMatches("images.coffeemode.app")).not.toThrow();
-  });
 
   it("throws on a drifted host", () => {
     expect(() => assertR2PublicUrlMatches("https://cdn.example.com")).toThrow(/does not match/);

@@ -111,14 +111,28 @@ check — no dependencies, so it never self-skips) enforces:
   `docker-compose.yml`, and `web/Dockerfile`. The gate walks every file in
   `.github/workflows/` instead of naming one: each `node-version` is attributed
   to the package(s) that job installs into — its `defaults.run.working-directory`
-  or a step's, the setup-node step's `cache-dependency-path`, or an
-  `npm --prefix <package>` install — and compared with that package's own floor.
+  or a step's, the setup-node step's `cache-dependency-path`, a `cd <package>`
+  inside the install step, or a manager dir flag (`npm --prefix <package>`,
+  `pnpm --dir <package>`, `yarn --cwd <package>`) — and compared with that
+  package's own floor. An install is any `npm`/`pnpm`/`yarn`/`bun` install verb
+  (`ci`, `clean-install`, `install`, `i`, with flags and their values allowed
+  between manager and verb) or a manager command carrying a frozen install flag
+  (`yarn --frozen-lockfile`, `yarn --immutable`); `corepack` only enables the
+  manager named after it, and tool
+  runners that never fetch dependencies (`npx`, `pnpm dlx`, `yarn run`, `bunx`)
+  do not count as installs.
   So `nightly-recompute.yml`, which installs in `web/` and recomputes against the
   production database every night, cannot silently keep a stale Node major. A
   `node-version` the gate cannot attribute to a package, a job that installs into
   a package and pins no `node-version` at all, and a range the gate cannot read
   as a floor (a caret, a disjunction, `*`) each fail rather than passing as
-  consistent.
+  consistent. Known residuals, accepted and recorded here rather than left open:
+  an install hidden behind a script wrapper (`run: node scripts/install-web.mjs`)
+  or a composite/reusable action (`uses: ./.github/actions/...`) names no
+  manager or directory the parser reads, so such a pin SKIP-passes — acceptable
+  while the repo holds only plain-manager workflows. An expression-valued
+  directory (`working-directory: ${{ inputs.dir }}`) resolves to no known
+  package and fails closed (BAD) instead.
 - **TypeScript**: one declared range across the three packages, one version
   resolved in all three lockfiles, and the declared range's major equal to the
   resolved version's — so "aligned" is a property of the installed tree, not

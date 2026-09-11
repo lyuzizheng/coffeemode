@@ -69,6 +69,25 @@ expect_failure() {
   fi
 }
 
+# Like expect_failure, but the gate must also name the offending file: a drift
+# attributed to the wrong package (or reported without a path) still exits
+# nonzero, so exit status alone cannot prove the attribution is right.
+expect_failure_matching() {
+  local label="$1" pattern="$2"; shift 2
+  local out
+  if out="$("$@" 2>&1)"; then
+    echo "  MISSED: harness failed to detect: $label"
+    FAIL=$((FAIL + 1))
+  elif grep -qF "$pattern" <<< "$out"; then
+    echo "  ok: detected injected fault: $label"
+    PASS=$((PASS + 1))
+  else
+    echo "  MISSED: fault detected but attribution wrong (no '$pattern'): $label"
+    printf '%s\n' "$out" | head -5 | sed 's/^/    /'
+    FAIL=$((FAIL + 1))
+  fi
+}
+
 expect_classifier() {
   local label="$1" expected="$2"
   shift 2
@@ -520,6 +539,52 @@ jobs:
 YAML
 expect_failure "workflow installing a package with no node-version" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-runtime-pins.sh"
 rm "$PIN_NEW"
+
+# A non-npm install must be caught with the right attribution, not merely fail
+# somehow: the probe file carries no working-directory or cache signal, so only
+# the install step itself (`pnpm --dir web install`, space-form flag value —
+# BRAWUKA-205) can attribute the drifted pin to web/. The assertion matches the
+# probe path in the output, so a mis-attribution to another package counts as
+# a miss rather than a pass.
+PIN_PNPM="$TEST_ROOT/.github/workflows/probe-pnpm.yml"
+cat > "$PIN_PNPM" <<'YAML'
+name: Harness pnpm probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - run: pnpm --dir web install
+YAML
+expect_failure_matching "pnpm install with space-form --dir drifted" ".github/workflows/probe-pnpm.yml" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-runtime-pins.sh"
+
+# Same class, other manager and flag spelling: `yarn --cwd web install` must
+# attribute to web/ as well.
+cat > "$PIN_PNPM" <<'YAML'
+name: Harness pnpm probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - run: yarn --cwd web install
+YAML
+expect_failure_matching "yarn install with space-form --cwd drifted" ".github/workflows/probe-pnpm.yml" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-runtime-pins.sh"
+rm "$PIN_PNPM"
 
 # The preflight bridge must propagate the gate rather than swallow it.
 cp "$TEST_ROOT/poi-service/package.json" "$TEST_ROOT/poi-service/package.json.keep"

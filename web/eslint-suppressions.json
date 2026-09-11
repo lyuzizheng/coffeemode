@@ -150,14 +150,6 @@
       "count": 1
     }
   },
-  "lib/db/profile.ts": {
-    "max-lines": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 1
-    }
-  },
   "lib/db/search.ts": {
     "max-lines-per-function": {
       "count": 1

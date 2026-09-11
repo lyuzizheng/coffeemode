@@ -31,7 +31,7 @@ Pass/fail items for everyday decisions. Threshold numbers are owned by
 `docs/specs/0009-code-quality-and-module-boundaries.md` §3 (machine mirror:
 `web/structure.config.mjs`, enforced by `npm run check:structure` from `web/`);
 this file mirrors them and MUST NOT fork them — change numbers only via the 0009
-改数规则 (spec §3 + `structure.config.mjs` + `.jscpd.json` in the same PR).
+改数规则 (spec §3 + `structure.config.mjs` + `.jscpd.json` + this file, same PR).
 
 - File ≤400 lines hard / ≤250 soft; function ≤80 lines; complexity ≤15;
   depth ≤4; params ≤5. A commit crossing a hard limit MUST split in the same
@@ -61,7 +61,8 @@ this file mirrors them and MUST NOT fork them — change numbers only via the 00
 
 - Module boundaries, size thresholds, split/extract rules, pattern selection,
   and exemptions live in `docs/specs/0009-code-quality-and-module-boundaries.md`.
-  Structure questions defer to that spec; this file does not restate its numbers.
+  The `### Decidable structure checks` above mirrors the §3 numbers for daily
+  use; threshold changes MUST sync this file in the same PR (0009 §3 改数规则).
 
 ## Tests
 

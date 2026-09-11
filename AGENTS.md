@@ -33,7 +33,10 @@ priorities or decisions.
   files under `web/config/`, read through helpers — never hardcoded or
   scattered through feature code (DG107).
 - Never bypass a failing gate; fix the root cause.
-- One production-code writer per change. Reviewers do not author the patch.
+- One production-code writer per change. Reviewers do not author the patch;
+  who holds the review gate when the designated reviewer agent is unavailable
+  is defined in `.agents/workflows/review-code.md` §Review authority, and the
+  substitution must be recorded with its own evidence on the issue thread.
 - Run the narrowest test that proves the change, then the relevant package gate.
 - Database migrations, embedded SQL, and DB-backed flows require the real-Postgres
   gate defined in `docs/specs/0003-testing-and-ci.md`.

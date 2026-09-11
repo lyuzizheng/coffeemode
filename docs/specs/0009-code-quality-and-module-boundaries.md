@@ -209,7 +209,7 @@ BRAWUKA-180 (#356) 拆分后存量违规 72 → 68、条目数 60 → 60、文�
 
 规则：
 
-1. 申请：新超标需求 MUST 开 issue（标题含 `[STRUCT-EXEMPT]`），说明超标维度、行数/条目数、到期日、拆分计划，reviewer（非作者）批准后方可合入，清单同步 +1 行（含 `structure-baseline.json` / `eslint-suppressions.json` 镜像）。**新规则级豁免同样必须由非作者 reviewer 批准并写明到期日**，无到期日的 suppressions 不得合入。
+1. 申请：新超标需求 MUST 开 issue（标题含 `[STRUCT-EXEMPT]`），说明超标维度、行数/条目数、到期日、拆分计划，非作者 reviewer（其定义与替代顺序见 `.agents/workflows/review-code.md` §Review authority）批准后方可合入，清单同步 +1 行（含 `structure-baseline.json` / `eslint-suppressions.json` 镜像）。**新规则级豁免同样必须由非作者 reviewer 批准并写明到期日**，无到期日的 suppressions 不得合入。
 2. 只降不升：清单文件的行数 / suppressions 条目数 MUST 单调递减；任何使其上升的 commit（即使未过硬阈值增量）CI 按失败处理。重构 PR 应当顺手削减清单数字、清除自愈条目。**登记值本身同样单调递减**：文件缩小后（仍 > 硬阈值 400）登记值大于实际行数即 CI 失败（`check-file-size` 报 stale 并给出应下调到的数字）——棘轮只有在登记值与实际行数同步时才真正收紧，允许"文件已缩小、登记值不动"等于把旧上限永久保留；确需保留余量（如本 PR 后续还要在同一文件加回几行）MUST 在 PR 说明理由并由非作者 reviewer 批准，且登记值仍 MUST ≤ 原值。
 3. 到期复核：每季度末（3/6/9/12 月末）复核清单；到期未拆 MUST 续期（更新到期日 + 说明）或升级为 P1 技术债 issue。循环依赖（§2.6）不适用本节。
 4. 删除即胜利：`profile-view.tsx` 900+ 行 → ~93 行 + 组件簇（audit §5.4 已还债）是清单毕业的范本：毕业行直接删除，不留"曾超标"纪念。

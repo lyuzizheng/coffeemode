@@ -27,7 +27,9 @@ discover -> deduplicate/file -> verify -> scope/plan -> implement
 7. **Review**: run independent code review (`.agents/workflows/review-code.md`) on
    the final stable cumulative diff per tier requirements in
    `.agents/workflows/development-cycle.md` (Standard/High require an
-   independent reviewer who did not author the patch; Fast does not).
+   independent reviewer who did not author the patch; Fast does not). Substitute
+   reviewers are permitted only in the order given by that workflow's
+   §Review authority, and the substitution must be recorded on the issue thread.
    Docs/harness authority also requires the independent semantic-review packet
    (`.agents/docs-semantic-review.md` via
    `.agents/scripts/docs-review-packet.sh <base>`).

@@ -3,7 +3,7 @@
 Use this gate after deterministic checks when a change touches `docs/`, `.agents/`,
 `.codex/`, root `AGENTS.md`, agent/tool adapters, or CI/harness authority.
 
-The reviewer must not be the agent that authored the patch. If no independent reviewer is available, the semantic gate cannot return `pass`; report the gate as blocked.
+The reviewer must not be the agent that authored the patch. Who holds this gate when the designated reviewer is unavailable is defined once in `.agents/workflows/review-code.md` §Review authority — apply that order here too. If no non-author reviewer is available, the semantic gate cannot return `pass`; report the gate as blocked.
 
 ## Inputs
 

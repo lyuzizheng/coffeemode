@@ -35,8 +35,34 @@ Reject overengineering:
 - No config option without a user who needs it.
 - No "future-proofing" that adds indirection today.
 
-## Independence rule
+## Review authority
 
-The reviewer must not be the agent that authored the patch. If no independent reviewer is available, report the gate as blocked — do not self-approve.
+The reviewer MUST NOT be the agent that authored the patch, and an author NEVER
+approves its own change.
+
+Reviewer of record, in order:
+
+1. The designated reviewer agent for this repository (the agent holding the
+   `coffeemode-code-review` skill), when it did not author the patch.
+2. If that agent is unavailable — provider outage, quota exhaustion, or it
+   authored the patch — the workspace reviewer-of-record agent takes the gate.
+   The substitute is still a non-author. Substituting the reviewer NEVER waives
+   a check: every gate below applies unchanged.
+3. If neither is available, report the gate as blocked. Do not self-approve.
+
+A substitute reviewer MUST record on the issue thread:
+
+- which reviewer was unavailable and why (the observed error, not a guess);
+- whether it authored the fix design under review — the workspace coordinator
+  often specifies the fix, so say so plainly rather than implying distance that
+  does not exist;
+- the evidence it verified itself: commands run with their output, files read,
+  and the specific claims checked against the code rather than the PR body.
+
+A verdict that only restates the author's summary is not a review. Independence
+is about the agent, not the tooling: re-run the check you rely on instead of
+trusting a green CI dot, and when the reviewer supplied the fix design, prove
+the result by execution (reproduction, reverse test, or measurement) — never by
+affirming the design.
 
 Deliver the review verdict (`Review verdict: APPROVED` / findings) as a comment on the issue thread, providing the gate evidence and cumulative diff audit per closed-loop Step 7. Do not call `gh pr review --approve` on GitHub: workspace agents share the repository owner credentials, and GitHub rejects PR self-approval.

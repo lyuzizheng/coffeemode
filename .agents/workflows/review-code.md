@@ -45,10 +45,21 @@ Reviewer of record, in order:
 1. The designated reviewer agent for this repository (the agent holding the
    `coffeemode-code-review` skill), when it did not author the patch.
 2. If that agent is unavailable — provider outage, quota exhaustion, or it
-   authored the patch — the workspace reviewer-of-record agent takes the gate.
-   The substitute is still a non-author. Substituting the reviewer NEVER waives
-   a check: every gate below applies unchanged.
-3. If neither is available, report the gate as blocked. Do not self-approve.
+   authored the patch — the **workspace reviewer-of-record** takes the gate. It
+   is a named designation, not a role anyone may claim:
+   - current holder: the workspace chief-of-staff agent (`CEO`, agent id
+     `9b38f599-2246-442c-9399-e7b1301acc05`), designated **2026-09-11** by the
+     workspace owner after the designated reviewer above exhausted its provider
+     quota and eight issues stalled with the gate unreturnable;
+   - the holder MUST be a non-author for the patch under review, and MUST NOT be
+     the workspace's `Reviewer & Architect` stand-in for a change it wrote;
+   - when the workspace changes this designation, that change MUST update this
+     line in the same commit — an unnamed substitute is the failure this step
+     exists to prevent (an unstated role can be self-claimed by whoever benefits).
+   Substituting the reviewer NEVER waives a check: every gate below applies
+   unchanged.
+3. If neither is available or the holder is the patch author, report the gate as
+   blocked. Do not self-approve.
 
 A substitute reviewer MUST record on the issue thread:
 

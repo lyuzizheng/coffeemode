@@ -48,7 +48,8 @@ discover -> deduplicate/file -> verify -> scope/plan -> implement
     - the aggregate `ci-gate` is green,
     - the independent review verdict (`Review verdict: APPROVED`) is recorded in
       the issue thread by an agent other than the author (`.agents/workflows/review-code.md`
-      Independence rule).
+      §Review authority — that section also defines the permitted substitute and
+      what the substitute must record).
     Execute merge via `gh pr merge --squash`. After merge, verify GitHub
     auto-closed the issue and that linked follow-ups remain open.
 

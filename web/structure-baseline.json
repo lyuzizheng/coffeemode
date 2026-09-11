@@ -1,12 +1,12 @@
 {
   "$comment": "Structure-guard registries (spec 0009 §7). Two registries with different jobs live here; web/eslint.config.mjs reads neither and switches no rule off by path. (1) `files` = the FILE-SIZE baseline: files above the hard line budget, read by scripts/check-file-size.mjs, only-shrink (a listed file may get smaller, never bigger; each entry carries a `reviewBy` date, see spec 0009 §7.1/§7.3). (2) `eslintSuppressions` = the BUDGET for the RULE-level registry in web/eslint-suppressions.json — that registry is what actually exempts code (ESLint bulk suppressions) and scripts/check-suppressions.mjs enforces it: any growth (file count, entry count, per-rule violation count) fails, entries whose rule no longer fires must be pruned, the set of files carrying a `max-lines` suppression must equal (1), and a missing or overdue `reviewBy` fails. Adding or removing an exemption therefore edits both files in the same commit and shows up in review.",
   "eslintSuppressions": {
-    "files": 47,
-    "entries": 59,
+    "files": 46,
+    "entries": 57,
     "perRule": {
       "max-depth": 4,
-      "max-lines": 4,
-      "max-lines-per-function": 42,
+      "max-lines": 3,
+      "max-lines-per-function": 40,
       "sonarjs/cognitive-complexity": 16
     },
     "reviewBy": "2026-12-31"
@@ -16,12 +16,6 @@
       "path": "components/checkin/checkin-drawer.tsx",
       "lines": 730,
       "reason": "over budget before the guard existed — split tracked by the BRAWUKA-175 quality program. Raised 725 → 730 on rebase: BRAWUKA-185 (#358) grew the file on main before this guard gated main; the only-shrink ratchet binds from 730.",
-      "reviewBy": "2026-12-31"
-    },
-    {
-      "path": "components/discovery/checkin-feed.tsx",
-      "lines": 440,
-      "reason": "over budget before the guard existed — split tracked by the BRAWUKA-175 quality program. Raised 439 → 440 on rebase: BRAWUKA-73 (#349) grew the file on main before this guard gated main; the only-shrink ratchet binds from 440.",
       "reviewBy": "2026-12-31"
     },
     {

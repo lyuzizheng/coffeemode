@@ -1,3 +1,4 @@
+import { logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
 import { isValidUUID } from "@shared/uuid";
@@ -87,7 +88,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(response);
   } catch (err) {
-    console.error("/api/images/complete failed", err);
+    logError({ route: gate.route, request, error: err, status: isImageServiceError(err) ? err.status : 502 });
     if (isImageServiceError(err)) {
       return apiError("image_service_error", err.message, err.status);
     }

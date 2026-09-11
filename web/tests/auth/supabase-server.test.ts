@@ -98,13 +98,14 @@ describe("createSupabaseServerClient", () => {
       ]),
     ).toThrow("Cookie value is too large");
 
-    expect(errorSpy).toHaveBeenCalledWith(
-      "supabase-server: failed to set cookies",
-      expect.objectContaining({
-        names: ["sb-access-token"],
-        error: "Cookie value is too large",
-      }),
-    );
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const [raw] = errorSpy.mock.calls[0];
+    const line = JSON.parse(raw as string) as Record<string, unknown>;
+    expect(line).toMatchObject({ type: "error", route: "supabase-server set cookies" });
+    expect(JSON.parse(line.error as string)).toEqual({
+      names: ["sb-access-token"],
+      message: "Cookie value is too large",
+    });
 
     errorSpy.mockRestore();
   });

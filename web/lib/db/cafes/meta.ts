@@ -34,11 +34,15 @@ export function getServiceAccountId(): string {
   return envId && isValidUUID(envId) ? envId : DEFAULT_SERVICE_ACCOUNT_ID;
 }
 
-export const SERVICE_ACCOUNT_MAINTAINER_LABEL = "由 CoffeeMode 维护";
-
-/** Resolves the display label for a cafe maintainer (display layer only). */
-export function formatCafeMaintainer(createdBy: string | null | undefined): string | null {
+/**
+ * True when the cafe is attributed to the CoffeeMode service account — a
+ * community-imported or handed-off cafe with no human owner. Null/undefined
+ * `created_by` falls back to the service account (DG107 / DG146 handoff).
+ *
+ * Returns a decidable marker, never copy: the user-visible maintainer line is
+ * the client's `discovery.maintained_by_service` message (spec 0002 i18n).
+ */
+export function isServiceMaintained(createdBy: string | null | undefined): boolean {
   const serviceAccountId = getServiceAccountId();
-  const effective = createdBy ?? serviceAccountId;
-  return effective === serviceAccountId ? SERVICE_ACCOUNT_MAINTAINER_LABEL : null;
+  return (createdBy ?? serviceAccountId) === serviceAccountId;
 }

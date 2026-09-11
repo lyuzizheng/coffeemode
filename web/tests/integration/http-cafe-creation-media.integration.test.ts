@@ -649,7 +649,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
       tz: string;
       google_place_id: string;
       author: unknown;
-      maintainer: unknown;
+      maintained_by_service: unknown;
       gallery: Array<{ id: string; source?: { type: string; id: string }; by?: unknown }>;
       work_stats: {
         experience_score: number | null;
@@ -669,8 +669,8 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
 
     // Default anonymity (DG13 / spec 0006): author is null on public read
     expect(cafe.author).toBeNull();
-    // Maintainer is null while owned by original creator (not handed to service account)
-    expect(cafe.maintainer).toBeNull();
+    // Not service-maintained while owned by the original creator
+    expect(cafe.maintained_by_service).toBe(false);
 
     // Gallery verification: photo atomically bound with checkin source; 'by' stripped (DG13)
     expect(cafe.gallery).toHaveLength(1);

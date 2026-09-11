@@ -124,8 +124,9 @@ journey that conflates them is testing a contract that does not exist.
   fixture cafe 12 km out (10 km cap, spec 0001/0004). `limit` caps at 50.
   Results order by `distance_m` ascending; empty area → `200 { cafes: [] }`,
   never an error. Anonymous viewers see `visibility = 'public'` only.
-  `CafeSummary` never leaks `created_by`; a service-account-owned cafe shows
-  `maintainer: "由 CoffeeMode 维护"`.
+  `CafeSummary` never leaks `created_by`; a service-account-owned cafe carries
+  the locale-independent marker `maintained_by_service: true` (the maintainer
+  line itself is client copy — `discovery.maintained_by_service`, spec 0002).
 - `GET /api/search?city=tokyo` — city switch scopes results to Tokyo and
   anchors `reference_point` there. Explicit unknown city → 400
   `invalid_request`, never a silent re-anchor (DG128 — city resolution is the
@@ -190,8 +191,8 @@ journey that conflates them is testing a contract that does not exist.
   `invalid_photos`; second create with the same `google_place_id` → 409
   `cafe_exists` carrying `cafe_id`; future `visited_at` → 400.
 - Default anonymity (DG13, spec 0006): a fresh cafe's `GET /api/cafes/[id]`
-  projects `author: null`, gallery images carry no `by`, and `maintainer` is
-  null while creator-owned.
+  projects `author: null`, gallery images carry no `by`, and
+  `maintained_by_service` is false while creator-owned.
 
 ### 6. Path 3 — profile, settings, public identity
 
@@ -280,8 +281,8 @@ entry is an unrelated cafe-actions ruling.
   `{ error: "cafe_has_other_checkins", code: "cafe_has_other_checkins",
   n: 2 }`; with `{ confirm: true }` → `200 { owner_transferred: true,
   removed_checkins: 1, shell: false }`. Afterwards: `created_by` is the
-  service account; detail projects `author: null` plus `maintainer: "由
-  CoffeeMode 维护"`; the feed retains only B's and C's check-ins; aggregates
+  service account; detail projects `author: null` plus
+  `maintained_by_service: true`; the feed retains only B's and C's check-ins; aggregates
   recompute without A (experience 72.5, composite 67.5, `n_users 2`); A's
   repeat DELETE → 403 (no longer creator). User D re-runs the §10 ledger
   against the post-deletion state.
@@ -307,7 +308,7 @@ or `toBeCloseTo(..., 2)` for floats. Composite weights: wifi .30, outlets
 | After Act 3 | `experience 75`, `composite 71.75`, `n_users 3`, `n_checkins 3`, policies `{unlimited:1, 3h:1, 2h:1}` | `experience 88.33`, `n_checkins 3` (DG61 pair = one row) | `experience 40`, `n_users 1` |
 | After Act 4 (B edit) | `experience 78.33`, composite unchanged `71.75` | — | — |
 | After Act 7 (likes) | B's check-in `likes_count 2`, helpful-first | — | — |
-| After Act 8 (deletions) | `experience 72.5`, `composite 67.5`, `n_users 2`, `n_checkins 2`, maintainer branded | unchanged | shell: `n_checkins 0`, still listed |
+| After Act 8 (deletions) | `experience 72.5`, `composite 67.5`, `n_users 2`, `n_checkins 2`, `maintained_by_service: true` | unchanged | shell: `n_checkins 0`, still listed |
 
 Geo truth table (D at 1.3521, 103.8198): Cafe 1 present in the 10 km list,
 closest-first; Cafe 2/3 excluded by distance (Tokyo/London). Slice 2A adds
@@ -397,7 +398,7 @@ suite that turns individual path contracts into one lifecycle story. Stage 3
 - All distances come from PostGIS (`distance_m`), never computed in-test;
   ordering assertions, not meter-exact thresholds.
 - Public surfaces never expose `created_by` or image `by` (DG13); the
-  service-account maintainer string `由 CoffeeMode 维护` is the only owner
+  service-account marker `maintained_by_service: true` is the only owner
   signal a handoff cafe shows.
 - This suite asserts API truth only; no UI rendering is in scope.
 

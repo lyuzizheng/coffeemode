@@ -104,10 +104,18 @@ check — no dependencies, so it never self-skips) enforces:
 
 - **Node floor**: `web/`, `poi-service/`, and `image-service/` each declare the
   same `engines.node` floor as a `>=MAJOR[.MINOR[.PATCH]]` range, and that major
-  matches every `node-version` in `ci.yml`, `web/Dockerfile`, and the
-  `node:*` images in `docker-compose.yml`. CI's `node-version: 22` is the
-  authoritative floor; a range the gate cannot read as a floor (a caret, a
-  disjunction, `*`) fails rather than being mis-read as consistent.
+  matches every workflow job that installs into a package, the `node:*` images in
+  `docker-compose.yml`, and `web/Dockerfile`. The gate walks every file in
+  `.github/workflows/` instead of naming one: each `node-version` is attributed
+  to the package(s) that job installs into — its `defaults.run.working-directory`
+  or a step's, the setup-node step's `cache-dependency-path`, or an
+  `npm --prefix <package>` install — and compared with that package's own floor.
+  So `nightly-recompute.yml`, which installs in `web/` and recomputes against the
+  production database every night, cannot silently keep a stale Node major. A
+  `node-version` the gate cannot attribute to a package, a job that installs into
+  a package and pins no `node-version` at all, and a range the gate cannot read
+  as a floor (a caret, a disjunction, `*`) each fail rather than passing as
+  consistent.
 - **TypeScript**: one declared range across the three packages, one version
   resolved in all three lockfiles, and the declared range's major equal to the
   resolved version's — so "aligned" is a property of the installed tree, not

@@ -170,8 +170,11 @@ non-zero if any fails:
 - **`npm run check:duplication`**: jscpd over hand-written code with the budget in
   `.jscpd.json`; tests, generated output, and the archived apps are excluded.
 - **`npm run check:file-size`**: per-file budgets plus the grandfathered registry
-  in `web/structure-baseline.json` — a listed file may shrink but never grow, an
-  unlisted file over budget fails, and an exemption without a file fails.
+  in `web/structure-baseline.json` — a listed file may shrink but never grow, a
+  listed file that shrank below its recorded count fails until the registry's
+  `lines` is lowered to match (the registry is down-only too, so the ceiling
+  actually tightens), an unlisted file over budget fails, and an exemption
+  without a file fails.
 
 Both registries are only-shrink and are read by the checks above, never by
 `web/eslint.config.mjs` (no rule is switched off by path): file size lives in

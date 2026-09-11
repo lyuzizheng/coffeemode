@@ -17,6 +17,16 @@ cp -R docs .agents .github .codex AGENTS.md "$TEST_ROOT/" 2>/dev/null || true
 # `RUN_INTEGRATION` test sources it must route to `integration-gate`.
 mkdir -p "$TEST_ROOT/web"
 cp -R web/package.json web/tests "$TEST_ROOT/web/" 2>/dev/null || true
+# Runtime-pin inputs: the manifests, lockfiles, Worker configs, Dockerfile and
+# compose file `check-runtime-pins.sh` reads. The gate treats any missing one as
+# a failure (so it cannot half-run), which means the fixture must carry them —
+# including the two service trees, which the classifier check does not need.
+cp web/package-lock.json web/Dockerfile "$TEST_ROOT/web/" 2>/dev/null || true
+for svc in poi-service image-service; do
+  mkdir -p "$TEST_ROOT/$svc"
+  cp "$svc/package.json" "$svc/package-lock.json" "$svc/wrangler.toml" "$TEST_ROOT/$svc/" 2>/dev/null || true
+done
+cp docker-compose.yml "$TEST_ROOT/" 2>/dev/null || true
 # Ensure git context for diff-based checks
 (
   cd "$TEST_ROOT"
@@ -92,6 +102,7 @@ expect_pass "preflight" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scr
 expect_pass "check-docs-consistency" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-docs-consistency.sh"
 expect_pass "check-ci-workflow" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-workflow.sh"
 expect_pass "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
+expect_pass "check-runtime-pins" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-runtime-pins.sh"
 expect_pass "check-implementation-slices" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-implementation-slices.sh"
 expect_pass "check-links" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-links.sh"
 expect_pass "check-agent-skills" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-agent-skills.sh"
@@ -304,6 +315,61 @@ mv "$TOML.bak" "$TOML"
 mv "$TEST_ROOT/.codex/agents/reviewer.toml" "$TEST_ROOT/.codex/agents/reviewer.toml.bak"
 expect_failure "missing reviewer.toml" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-codex-agents.sh"
 mv "$TEST_ROOT/.codex/agents/reviewer.toml.bak" "$TEST_ROOT/.codex/agents/reviewer.toml"
+
+echo ""
+echo "=== Fault injection: check-runtime-pins ==="
+
+# One drift class per injection, each one a real way the repo drifted before
+# (BRAWUKA-190): a per-package Node bump, a forked TypeScript major, a
+# Worker date that would move with the platform.
+PIN_PKG="$TEST_ROOT/poi-service/package.json"
+cp "$PIN_PKG" "$PIN_PKG.bak"
+sed 's/"node": ">=22"/"node": ">=24"/' "$PIN_PKG.bak" > "$PIN_PKG"
+if assert_mutated "engines floor bumped in one package" "$PIN_PKG.bak" "$PIN_PKG"; then
+  expect_failure "one package's engines floor diverges" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-runtime-pins.sh"
+fi
+mv "$PIN_PKG.bak" "$PIN_PKG"
+
+cp "$PIN_PKG" "$PIN_PKG.bak"
+sed 's/"typescript": "\^5.9.3"/"typescript": "^7.0.2"/' "$PIN_PKG.bak" > "$PIN_PKG"
+if assert_mutated "typescript major forked in one package" "$PIN_PKG.bak" "$PIN_PKG"; then
+  expect_failure "typescript major forked" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-runtime-pins.sh"
+fi
+mv "$PIN_PKG.bak" "$PIN_PKG"
+
+# The lockfile, not just the manifest, must agree — otherwise "aligned" is a
+# claim about package.json that the installed tree contradicts.
+PIN_LOCK="$TEST_ROOT/poi-service/package-lock.json"
+cp "$PIN_LOCK" "$PIN_LOCK.bak"
+sed 's/"version": "5.9.3"/"version": "5.4.5"/' "$PIN_LOCK.bak" > "$PIN_LOCK"
+if assert_mutated "lockfile resolves a different typescript" "$PIN_LOCK.bak" "$PIN_LOCK"; then
+  expect_failure "lockfile typescript drift" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-runtime-pins.sh"
+fi
+mv "$PIN_LOCK.bak" "$PIN_LOCK"
+
+# A future date silently adopts compatibility flags as Cloudflare ships them,
+# which is the drift the pin exists to stop.
+PIN_WRANGLER="$TEST_ROOT/image-service/wrangler.toml"
+cp "$PIN_WRANGLER" "$PIN_WRANGLER.bak"
+sed 's/^compatibility_date = .*/compatibility_date = "2027-01-01"/' "$PIN_WRANGLER.bak" > "$PIN_WRANGLER"
+if assert_mutated "compatibility_date moved into the future" "$PIN_WRANGLER.bak" "$PIN_WRANGLER"; then
+  expect_failure "future compatibility_date" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-runtime-pins.sh"
+fi
+mv "$PIN_WRANGLER.bak" "$PIN_WRANGLER"
+
+# Unpinned at all: the old state this gate replaced.
+cp "$PIN_WRANGLER" "$PIN_WRANGLER.bak"
+grep -v '^compatibility_date = ' "$PIN_WRANGLER.bak" > "$PIN_WRANGLER"
+if assert_mutated "compatibility_date removed" "$PIN_WRANGLER.bak" "$PIN_WRANGLER"; then
+  expect_failure "compatibility_date missing" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-runtime-pins.sh"
+fi
+mv "$PIN_WRANGLER.bak" "$PIN_WRANGLER"
+
+# The preflight bridge must propagate the gate rather than swallow it.
+cp "$TEST_ROOT/poi-service/package.json" "$TEST_ROOT/poi-service/package.json.keep"
+sed 's/"node": ">=22"/"node": ">=24"/' "$TEST_ROOT/poi-service/package.json.keep" > "$TEST_ROOT/poi-service/package.json"
+expect_failure "preflight propagates a failing runtime pin" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/preflight.sh"
+mv "$TEST_ROOT/poi-service/package.json.keep" "$TEST_ROOT/poi-service/package.json"
 
 echo ""
 echo "=== Fault injection: structure guard ==="

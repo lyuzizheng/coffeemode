@@ -1,3 +1,4 @@
+import { logError } from "@/lib/observability/server-log";
 import { NextResponse, type NextRequest } from "next/server";
 import { apiError } from "@/lib/api/response";
 import { getLastCheckinForCafe } from "@/lib/db/checkins";
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
     const checkin = await getLastCheckinForCafe(user.id, cafeId);
     return NextResponse.json({ checkin, revisitWindowHours: REVISIT_WINDOW_HOURS });
   } catch (err) {
-    console.error("/api/checkins/last GET failed", err);
+    logError({ route: gate.route, request, error: err, status: 500 });
     return apiError("internal_error", 500);
   }
 }

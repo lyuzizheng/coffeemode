@@ -46,6 +46,8 @@ export type GuardOkResult<Auth extends boolean> = {
   ok: true;
   user: Auth extends true ? AuthenticatedUser : AuthenticatedUser | null;
   clientId: string;
+  /** Resolved route descriptor (explicit `route` or `METHOD path` fallback). */
+  route: string;
 };
 
 export type GuardErrResult = {
@@ -152,6 +154,7 @@ export async function guard(
     ok: true,
     user,
     clientId,
+    route: resolvedRoute,
   };
 }
 

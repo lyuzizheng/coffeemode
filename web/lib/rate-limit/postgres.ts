@@ -1,3 +1,4 @@
+import { logError as logServerError } from "@/lib/observability/server-log";
 import "server-only";
 
 import type { QueryResult } from "pg";
@@ -148,6 +149,9 @@ export class PostgresRateLimiter {
     const now = Date.now();
     if (now - this.lastErrorLog < 60_000) return; // throttle to 1/min
     this.lastErrorLog = now;
-    console.error(message, err);
+    logServerError({
+      route: "rate-limit postgres",
+      error: err == null ? message : { detail: message, cause: err instanceof Error ? err.message : String(err) },
+    });
   }
 }

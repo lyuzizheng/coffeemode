@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
-import { getLocale, getMessages, getTimeZone } from "next-intl/server";
+import { getLocale, getMessages } from "next-intl/server";
 import { Providers } from "./providers";
 import { OfflineBanner } from "@/components/offline-banner";
 import { CheckinResume } from "@/components/checkin/checkin-resume";
@@ -81,11 +81,6 @@ export default async function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const locale = await getLocale();
   const messages = await getMessages();
-  // Read the timeZone back out of `i18n/request.ts` instead of repeating the
-  // literal. The client provider is server-rendered during SSR, and a missing
-  // timeZone makes use-intl log IntlError(ENVIRONMENT_FALLBACK) on every
-  // request (BRAWUKA-214) — plus it drops SSR/client date formatting parity.
-  const timeZone = await getTimeZone();
 
   return (
     <html
@@ -94,7 +89,7 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full font-sans">
-        <Providers locale={locale} messages={messages} timeZone={timeZone}>
+        <Providers locale={locale} messages={messages}>
           <OfflineBanner />
           {children}
           <CheckinResume draftTtlHours={appConfig.checkins.pendingDraftTtlHours} />

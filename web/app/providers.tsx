@@ -12,23 +12,16 @@ import { getQueryClient } from "@/lib/query/client";
 import { persistOptions } from "@/lib/query/persist-options";
 import { idbPersister } from "@/lib/query/persister";
 import { SW_URL } from "@/lib/sw-rules";
+import { TIME_ZONE } from "@/i18n/config";
 
 export function Providers({
   children,
   locale,
   messages,
-  timeZone,
 }: {
   children: ReactNode;
   locale: string;
   messages: Record<string, unknown>;
-  /**
-   * Required: `use-intl` logs IntlError(ENVIRONMENT_FALLBACK) from
-   * `useTranslations` whenever a client component renders on the server
-   * without one, which is every SSR request (BRAWUKA-214). The root layout
-   * forwards it from the request config, so there is one source of truth.
-   */
-  timeZone: string;
 }) {
   const queryClient = getQueryClient();
 
@@ -42,8 +35,12 @@ export function Providers({
     queryClient.clear();
   }, [queryClient]);
 
+  // `timeZone` is required: client components using next-intl render on the
+  // server too, and without it use-intl logs IntlError(ENVIRONMENT_FALLBACK) on
+  // every request (BRAWUKA-214). It comes from the same constant as the server
+  // request config, so the two cannot drift apart.
   return (
-    <NextIntlClientProvider locale={locale} messages={messages} timeZone={timeZone}>
+    <NextIntlClientProvider locale={locale} messages={messages} timeZone={TIME_ZONE}>
       <PersistQueryClientProvider
         client={queryClient}
         persistOptions={persistOptions}

@@ -1,5 +1,6 @@
 import { getRequestConfig } from "next-intl/server";
 import { cookies, headers } from "next/headers";
+import { TIME_ZONE } from "./config";
 
 // Locale resolution, in order: explicit cookie choice (a future switcher sets
 // it) → Accept-Language negotiation → en default. Without this, requestLocale
@@ -22,13 +23,9 @@ export default getRequestConfig(async ({ requestLocale }) => {
 
   return {
     locale,
-    // The single source for the app's timeZone. next-intl v4 needs it for
-    // SSR/client markup parity; without one, `useTranslations` in the
-    // server-rendered client provider logs ENVIRONMENT_FALLBACK on every
-    // request. `app/layout.tsx` reads this value back via `getTimeZone()` and
-    // hands it to that provider — do not set it anywhere else. CoffeeMode has
-    // no date-formatting surface yet; UTC keeps SSR and hydration identical.
-    timeZone: "UTC",
+    // Shared with the client provider in `app/providers.tsx`; see
+    // `i18n/config.ts` for why the two must never drift apart.
+    timeZone: TIME_ZONE,
     messages: (await import(`../messages/${locale}.json`)).default,
   };
 });

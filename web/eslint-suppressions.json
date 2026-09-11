@@ -78,14 +78,6 @@
       "count": 1
     }
   },
-  "components/discovery/checkin-feed.tsx": {
-    "max-lines": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 2
-    }
-  },
   "components/discovery/desktop-discovery.tsx": {
     "max-lines-per-function": {
       "count": 1

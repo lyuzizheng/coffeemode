@@ -339,7 +339,14 @@ body {
 }
 
 /* Reduced motion: kill non-essential animation globally. HeroUI's skeleton
-   shimmer and caret blink are CSS keyframes — neutralize them here. */
+   shimmer and caret blink are CSS keyframes — neutralize them here.
+   The element rules cannot reach the view-transition pseudo-element tree: `*`
+   matches elements only, while HeroUI's toast slides through
+   `::view-transition-new(.toast-bottom):only-child` (350ms, toast.css) plus the
+   UA's own group/image-pair crossfade. Those are neutralized explicitly below;
+   normal flow keeps the library's 350ms default (spec 0002's BRAWUKA-207
+   toast budget exception stands — this is the reduced-motion fallback, not a
+   retiming of the library). */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -348,6 +355,13 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  ::view-transition-group(*),
+  ::view-transition-image-pair(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
   }
 }
 

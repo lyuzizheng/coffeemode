@@ -100,6 +100,11 @@ run_gate "ci-workflow" "$SCRIPTS_DIR/check-ci-workflow.sh"
 # 3b. Changed-path classification (which job runs for which path)
 run_gate "ci-classification" "$SCRIPTS_DIR/check-ci-classification.sh"
 
+# 3c. Runtime pins (engines / TypeScript / Worker compatibility_date). This one
+# needs no dependencies installed and no web workspace, so it always runs —
+# unlike the structure guard below, which self-skips.
+run_gate "runtime-pins" "$SCRIPTS_DIR/check-runtime-pins.sh"
+
 # 4. Implementation slices (ruby validator)
 run_gate "implementation-slices" "$SCRIPTS_DIR/check-implementation-slices.sh"
 

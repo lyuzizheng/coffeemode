@@ -20,7 +20,7 @@
 | 视觉、token、动效、无障碍 | `docs/specs/0002-design-system.md` | 不触碰；只规定 `components/**` 的 import 方向（§2），不管组件长什么样 |
 | 测试分层、fixture 政策、CI 门禁、覆盖率棘轮 | `docs/specs/0003-testing-and-ci.md` | 不改动任何覆盖率数字；本规范只新增"结构门禁"维度，见 §3 |
 | 编码流程与风格（早返回、命名、注释写 why） | `.agents/rules/coding.md` | 不重复；结构问题（拆分/抽取/模式选型）以本规范为准，风格问题以 coding.md 为准 |
-| 阈值数字（行数/复杂度/重复/边界） | **本规范 §3（政策正文）** | 机器镜像 `web/structure.config.mjs`（+ `.jscpd.json` / `structure-baseline.json`）逐字实现；改数 MUST 同 PR 改三处（改数规则） |
+| 阈值数字（行数/复杂度/重复/边界） | **本规范 §3（政策正文）** | 机器镜像 `web/structure.config.mjs`（+ `.jscpd.json` / `structure-baseline.json`）逐字实现，日常判定镜像 `.agents/rules/coding.md`（`### Decidable structure checks`）；改数 MUST 同 PR 改四处（改数规则） |
 
 取舍说明：0001 规定"route handler 保持 thin、业务进 `web/lib/*`"，
 但没有规定 `lib/` 内部如何分家——`cafes.ts` 正是从这个空白长出来的。
@@ -99,7 +99,7 @@ lib/* ──────────────────▶ shared/* · type
 - 生成物/migration/`_archive-*` 不计入任何阈值。
 - `poi-service/`、`image-service/` 同样适用本表（Workers 代码无豁免）。
 
-改数规则：阈值变更 MUST 同 PR 改三处——本规范 §3（政策正文）、`web/structure.config.mjs`（机器源）、`.jscpd.json`（`duplication` 镜像，`check:structure` 会断言镜像一致）；只改工具不改文档（或反之）的 PR 视为 P0 违规（两份真相）。
+改数规则：阈值变更 MUST 同 PR 改四处——本规范 §3（政策正文）、`web/structure.config.mjs`（机器源）、`.jscpd.json`（`duplication` 镜像，`check:structure` 会断言镜像一致）、`.agents/rules/coding.md`（`### Decidable structure checks` 日常判定镜像）；只改部分位置（或改工具不改文档）的 PR 视为 P0 违规（两份真相）。
 
 ### §4 "同 commit 拆分"规则与拆分手法
 
@@ -261,7 +261,7 @@ BRAWUKA-180 (#356) 拆分后存量违规 72 → 68、条目数 60 → 60、文�
 - [ ] 新增/改动文件对照 §3 表：行数/函数/复杂度/深度/参数无硬超标，或超标部分已同 commit 拆分。
 - [ ] 新增逻辑全文搜索无第 2 处重复（`jscpd` 本地通过）；新增抽象写明模式 + 被否方案（§6.2）。
 - [ ] 无 §2 禁令边（其中第 1–3 条及 SQL 由守卫自动拦截，第 4–6 条靠人工按【规范红线】打回）。
-- [ ] 阈值数字与本规范 §3 一致；如改了数字，§3 + `structure.config.mjs` + `.jscpd.json` 已同 PR 同步（§3 改数规则）。
+- [ ] 阈值数字与本规范 §3 一致；如改了数字，§3 + `structure.config.mjs` + `.jscpd.json` + `.agents/rules/coding.md` 已同 PR 同步（§3 改数规则）。
 - [ ] 祖父清单文件行数未上升（`git diff --stat` 对照 §7 基线）。
 
  reviewer 清单：软 250 文件是否回应；§4 触发矩阵是否命中；例外申请是否有 issue + 到期日。
@@ -277,5 +277,5 @@ BRAWUKA-180 (#356) 拆分后存量违规 72 → 68、条目数 60 → 60、文�
 要复制？第 2 次就是最后一次：直接抽（§5），jscpd 会替 reviewer 先看到。
 要新建抽象？先答：调用点 ≥2（§6.1）+ 模式名 + 被否方案（§6.2），缺一不建。
 要破层？只有 §7 登记一条路，且循环依赖无路（§2.6）。
-要改数字？§3 + structure.config.mjs + .jscpd.json 同 PR 改（改数规则），少一处就是 P0。
+要改数字？§3 + structure.config.mjs + .jscpd.json + .agents/rules/coding.md 同 PR 改（改数规则），少一处就是 P0。
 ```

@@ -13,11 +13,14 @@
 # into a failure, and `.agents/scripts/check-ci-classification.sh` runs it over
 # `git ls-files` on every CI run, so a new path family cannot ship without an
 # explicit routing decision. A path that holds a `RUN_INTEGRATION=1` suite, or
-# that such a suite consumes transitively (a fixture, harness module, or shared
-# runtime module the suite imports), MUST set `integration=true`; the same
-# self-check derives that set from `web/package.json`, the test sources, and the
-# import closure rooted at them (BRAWUKA-206) — the arms below are its routing,
-# not its definition.
+# that such a suite consumes, MUST set `integration=true` — and inside
+# `web/tests/**` that is the *default*, not something each new harness file has
+# to be added for: a suite's fixture can be reached by static import, dynamic
+# import, or an `fs` read by path, so no import-based rule is complete there
+# (BRAWUKA-206). The same self-check derives the import-reachable set from
+# `web/package.json`, the test sources, and the vitest config, asserts it over
+# the sources rather than the arms below, and fails on a specifier it cannot
+# resolve instead of silently shrinking the set.
 set -euo pipefail
 
 application=false
@@ -70,21 +73,48 @@ else
         ;;
       # Integration-gated web paths: real Postgres/PostGIS or real MinIO/R2.
       # `web/db/*`, `web/lib/*`, and `web/app/api/*` are the layers the gated
-      # suites exercise, `web/shared/*` and `web/types/*` are the runtime
-      # modules they import (same policy as `packages/common/*`).
-      web/db/*|web/lib/*|web/app/api/*|web/shared/*|web/types/*|web/scripts/migrate.mjs|web/scripts/cleanup-stale-test-dbs.mjs|web/package*.json)
+      # suites exercise; `web/shared/*` and `web/types/*` are the runtime modules
+      # they import (same policy as `packages/common/*`); `web/config/*` is the
+      # product configuration `web/lib/config.ts` loads at import time (rate
+      # limits and budgets the HTTP suites assert on); `web/scripts/*` is gate and
+      # migration machinery the suites invoke by path (`migrate.mjs`,
+      # `cleanup-stale-test-dbs.mjs`), the same policy as repo-level `scripts/*`.
+      web/db/*|web/lib/*|web/app/api/*|web/shared/*|web/types/*|web/config/*|web/scripts/*|web/package*.json)
         application=true
         integration=true
         ;;
-      # The gated suites themselves plus everything they consume inside
-      # `web/tests/**`: `web/tests/integration/*` are the suites, `helpers/*` and
-      # `fixtures/*` their harness, `devops/*` and `db-helpers.test.ts` carry
-      # their own `RUN_INTEGRATION` cases, `setup.ts` runs ahead of every suite
-      # (vitest `setupFiles`), and `mocks/*` is reached through the `server-only`
-      # alias. Anything else under `web/tests/**` (e.g. a unit-only
-      # `web/tests/components/*.test.tsx`) is unit-only and stays out of the
-      # DB-backed gate.
+      # The gated suites plus the harness they are known to read:
+      # `web/tests/integration/*` are the suites, `helpers/*` and `fixtures/*`
+      # their harness, `devops/*` and `db-helpers.test.ts` carry their own
+      # `RUN_INTEGRATION` cases, `setup.ts` runs ahead of every suite (vitest
+      # `setupFiles`), and `mocks/*` is reached through the `server-only` alias.
+      # This arm is matched before the unit-only allowlist below so a gated
+      # suite nested in a unit-only family cannot fall through to it.
       web/tests/integration/*|web/tests/helpers/*|web/tests/fixtures/*|web/tests/devops/*|web/tests/mocks/*|web/tests/db-helpers.test.ts|web/tests/setup.ts)
+        application=true
+        integration=true
+        ;;
+      # Unit-only test files (explicit allowlist): a `*.test.ts(x)` here outside
+      # the gated arm passes without Postgres, so scheduling the DB-backed gate
+      # for it would only cost CI minutes. Matched by test-file pattern, not by
+      # directory, so a *non-test* file dropped into one of these families stays
+      # in the fail-safe default arm below instead of inheriting unit-only
+      # (BRAWUKA-206 review). Four levels covers the deepest suite in the tree;
+      # anything deeper falls to the default, which is the safe direction.
+      web/tests/*.test.ts|web/tests/*.test.tsx|web/tests/*/*.test.ts|web/tests/*/*.test.tsx|web/tests/*/*/*.test.ts|web/tests/*/*/*.test.tsx|web/tests/*/*/*/*.test.ts|web/tests/*/*/*/*.test.tsx)
+        application=true
+        ;;
+      # Fail-safe default for the rest of the test tree: anything under
+      # `web/tests/**` that is neither a gated suite nor a unit-only test file is
+      # harness — a fixture, helper, snapshot, or data file some suite reads.
+      # A suite's result is only proven where the suite runs, and a fixture can
+      # be reached by static import, dynamic import, or an `fs` read by path, so
+      # no import-based rule can be complete here. Gating the whole family by
+      # default makes the failure direction safe: a new harness file starts
+      # `integration-gate` immediately instead of landing ungated, and
+      # `.agents/scripts/check-ci-classification.sh` asserts the same property
+      # over every tracked non-test file under `web/tests/**`.
+      web/tests/*)
         application=true
         integration=true
         ;;

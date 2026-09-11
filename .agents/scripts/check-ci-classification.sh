@@ -243,8 +243,13 @@ normalize_path() {
 # Resolve an import specifier to a repository file the way the runner does for
 # in-repo forms: relative paths and the `resolve.alias` table. Package
 # specifiers (node builtins, npm) resolve outside the tree and are not followed.
+# A `.js`/`.mjs`/`.jsx` specifier may name a TypeScript source (the ESM-style
+# specifier TypeScript and the bundler both accept), so those extensions are
+# tried against `.ts`/`.tsx`/`.mts` too — without that, a gated suite importing
+# its fixture as `…/probe.js` would take the fixture out of the closure silently
+# (BRAWUKA-206 review).
 resolve_import() {
-  local from="$1" spec="$2" alias target base=""
+  local from="$1" spec="$2" alias target base="" stem
   if [[ "$spec" == ./* || "$spec" == ../* ]]; then
     base="$(normalize_path "$(dirname "$from")/$spec")"
   else
@@ -261,14 +266,22 @@ resolve_import() {
     done <<< "$import_aliases"
   fi
   [[ -n "$base" ]] || return 0
-  local suffix
-  for suffix in "" .ts .tsx .js .mjs .mts .json /index.ts /index.tsx /index.js; do
-    if [[ -f "$base$suffix" ]]; then
-      printf '%s\n' "$base$suffix"
+  local candidates=("$base" "$base".ts "$base".tsx "$base".js "$base".mjs "$base".mts
+    "$base".json "$base"/index.ts "$base"/index.tsx "$base"/index.js)
+  case "$base" in
+    *.js|*.mjs|*.cjs|*.jsx)
+      stem="${base%.*}"
+      candidates+=("$stem".ts "$stem".tsx "$stem".mts)
+      ;;
+  esac
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    if [[ -f "$candidate" ]]; then
+      printf '%s\n' "$candidate"
       return 0
     fi
   done
-  return 0
+  return 1
 }
 
 # Import specifiers only: a path named in prose (`// see tests/components/x.tsx`)
@@ -279,6 +292,38 @@ specifiers() {
     sed -E "s/^[^\"']*[\"']([^\"']+)[\"']$/\1/" || true
 }
 
+# Dynamic specifiers (`import(\`../dir/${name}.ts\`)`) carry a static prefix and
+# a computed tail, so the tail cannot be enumerated. The prefix is still a lower
+# bound on where the target lives, so it is returned for the caller to judge.
+dynamic_specifier_prefixes() {
+  sed -E 's@^[[:space:]]*//.*@@' "$1" 2>/dev/null |
+    grep -oE '(import|require)[[:space:]]*\([[:space:]]*[`][^`]*[`]' |
+    sed -E 's@^[^(]*\([[:space:]]*[`]([^`]*)[`]$@\1@' || true
+}
+
+# The normalized in-repo base a specifier points at, without extension probing:
+# a dynamic specifier's prefix names a directory, not a file.
+resolve_base() {
+  local from="$1" spec="$2" alias target
+  spec="${spec%/}"
+  if [[ "$spec" == ./* || "$spec" == ../* ]]; then
+    normalize_path "$(dirname "$from")/$spec"
+    return 0
+  fi
+  while IFS=$'\t' read -r alias target; do
+    [[ -n "$alias" && -n "$target" ]] || continue
+    if [[ "$spec" == "$alias" ]]; then
+      normalize_path "$target"
+      return 0
+    fi
+    if [[ "$spec" == "$alias"/?* ]]; then
+      normalize_path "$target/${spec#"$alias"/}"
+      return 0
+    fi
+  done <<< "$import_aliases"
+  return 0
+}
+
 closure_roots="$gated"$'\n'
 for file in ${registered_files[@]+"${registered_files[@]}"} ${measured_files[@]+"${measured_files[@]}"} ${setup_files[@]+"${setup_files[@]}"}; do
   closure_roots="$closure_roots$file"$'\n'
@@ -287,6 +332,8 @@ done
 members=""
 visited=$'\n'
 queue="$closure_roots"
+unresolved=""
+dynamic_uncovered=""
 while [[ -n "$queue" ]]; do
   file="${queue%%$'\n'*}"
   if [[ "$queue" == *$'\n'* ]]; then queue="${queue#*$'\n'}"; else queue=""; fi
@@ -300,12 +347,43 @@ while [[ -n "$queue" ]]; do
   esac
   while IFS= read -r spec; do
     [[ -n "$spec" ]] || continue
-    resolved="$(resolve_import "$file" "$spec")"
-    [[ -n "$resolved" ]] || continue
-    if [[ "$visited" == *$'\n'"$resolved"$'\n'* ]]; then continue; fi
-    queue="$queue$resolved"$'\n'
+    # A specifier that names a file in this repository must be followable: if it
+    # resolves to nothing, the closure would shrink silently, which is the whole
+    # failure this gate exists to stop. Bare specifiers (node builtins, npm) and
+    # alias-table missies are not in-repo by construction.
+    if resolved="$(resolve_import "$file" "$spec")"; then
+      if [[ "$visited" == *$'\n'"$resolved"$'\n'* ]]; then continue; fi
+      queue="$queue$resolved"$'\n'
+    elif [[ "$spec" == ./* || "$spec" == ../* || "$spec" == @/* || "$spec" == @shared/* || "$spec" == server-only ]]; then
+      unresolved="$unresolved$file → $spec"$'\n'
+    fi
   done < <(specifiers "$file")
+
+  # A dynamic specifier's tail cannot be enumerated. Its static prefix is still a
+  # lower bound: if *everything* under that prefix routes to `integration-gate`,
+  # the target cannot land ungated whatever it names. The prefix is judged by
+  # classifying a child of it, so a prefix that lands on a gated family (an alias
+  # into `web/lib/**`, or a directory inside `web/tests/**`) is accepted and only
+  # a genuinely undecidable one fails.
+  while IFS= read -r dynamic; do
+    [[ -n "$dynamic" ]] || continue
+    prefix="${dynamic%%\$\{*}"
+    resolved_prefix="$(resolve_base "$file" "$prefix")"
+    if [[ -n "$resolved_prefix" ]] && grep -qx 'integration=true' <<< "$(classify "$resolved_prefix/__dynamic_probe__")"; then
+      continue
+    fi
+    dynamic_uncovered="$dynamic_uncovered$file → $dynamic (static prefix '${resolved_prefix:-none}' does not route to integration-gate)"$'\n'
+  done < <(dynamic_specifier_prefixes "$file")
 done
+
+if [[ -n "$unresolved" ]]; then
+  fail "import specifiers the closure cannot resolve (a silent shrink is how a path lands ungated):"
+  printf '%s\n' "$unresolved" | sed 's/^/    /'
+fi
+if [[ -n "$dynamic_uncovered" ]]; then
+  fail "dynamic specifiers whose static prefix does not route to integration-gate:"
+  printf '%s\n' "$dynamic_uncovered" | sed 's/^/    /'
+fi
 
 member_count=0
 ungated=""
@@ -329,6 +407,40 @@ elif [[ -z "$ungated" ]]; then
 else
   fail "paths consumed by a RUN_INTEGRATION suite are not routed to integration-gate:"
   printf '%s\n' "$ungated" | sed 's/^/    /'
+fi
+
+# 4c. Harness files inside `web/tests/**`, independent of how a suite reaches
+#     them (BRAWUKA-206 review). A fixture, helper, snapshot, or data file can be
+#     read by static import, dynamic import, or `fs` by path; only the first is
+#     visible to the import closure in 4b, so the invariant is asserted over the
+#     files themselves: a test file may be unit-only, a non-test file is harness
+#     and must schedule `integration-gate`. That is the same rule the
+#     classifier's `web/tests/*` default arm encodes, so this step fails if that
+#     arm is narrowed or reordered — the two cannot drift apart.
+if git rev-parse --git-dir >/dev/null 2>&1; then
+  harness_total=0
+  harness_ungated=""
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    case "$path" in
+      *.test.ts|*.test.tsx) continue ;;
+    esac
+    harness_total=$((harness_total+1))
+    if ! grep -qx 'integration=true' <<< "$(classify "$path")"; then
+      harness_ungated="$harness_ungated$path"$'\n'
+    fi
+  done <<< "$(git ls-files web/tests)"
+
+  if [[ $harness_total -eq 0 ]]; then
+    fail "no non-test files found under web/tests — the detector is broken"
+  elif [[ -z "$harness_ungated" ]]; then
+    ok "all $harness_total non-test file(s) under web/tests route to integration-gate"
+  else
+    fail "harness files a gated suite may read are not routed to integration-gate:"
+    printf '%s\n' "$harness_ungated" | sed 's/^/    /'
+  fi
+else
+  fail "not a git repository — cannot check the web/tests harness routing"
 fi
 
 # 5. The inverse invariant (spec 0003 acceptance: "a UI-only web change does not

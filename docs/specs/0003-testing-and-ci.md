@@ -69,14 +69,19 @@ jobs run only when relevant. Every tracked path matches exactly one rule in that
 classifier — including the deliberately ungated families (`_archive-*/`,
 `database-data/`, repository hygiene files), which carry an explicit empty arm
 so "no gate" is a recorded decision rather than an omission. A path that holds a
-`RUN_INTEGRATION=1` suite, or that such a suite consumes — transitively, through
-its fixtures, helpers, setup file, and the runtime modules they import — sets
-`integration=true`. `.agents/scripts/check-ci-classification.sh` runs on every PR
-(cheap: no dependency install) and derives that set from the sources, the
-registered suites, and the import closure rooted at them, so a new fixture or
-helper module cannot land ungated; it fails when a new gated test file, a new
-path family, or a registered suite the coverage ratchet does not measure appears
-without a routing decision, or when a unit-only path starts scheduling the
+`RUN_INTEGRATION=1` suite, or that such a suite reads, sets `integration=true` —
+inside `web/tests/**` that is the default for every non-test file, because a
+suite can reach a fixture by static import, dynamic import, or an `fs` read by
+path and no import-based rule covers the last two; the allowlist that keeps
+`*.test.ts(x)` files unit-only matches test files alone (BRAWUKA-206).
+`.agents/scripts/check-ci-classification.sh` runs on every PR (cheap: no
+dependency install) and derives the out-of-tree set from the sources, the
+registered suites, and the import closure rooted at them — failing on a specifier
+it cannot resolve instead of shrinking the set quietly — while asserting over the
+tracked files that every non-test path under `web/tests/**` is gated regardless of
+how it is reached. It fails when a new gated test file, a new path family, an
+ungated harness file, or a registered suite the coverage ratchet does not measure
+appears without a routing decision, or when a unit-only path starts scheduling the
 DB-backed gate:
 
 - `application-gate`: `web/` changes (typecheck, structure guard — file/function budget, duplication budget, layer boundaries, exemption ratchet — lint, i18n key parity, unit tests, v8 coverage ratchet, build, bundle budget check, bundle analysis, PWA validation, E2E smoke suite, and Lighthouse CI performance budgets against seeded fixtures);
@@ -288,7 +293,7 @@ The traceability matrix lives at `docs/agent/test-coverage.md` (S3 testkit-cover
 - `npm run test:coverage` enforces the v8 ratchet floors in `web/vitest.config.mts`; removing the coverage step from `ci.yml` fails preflight.
 - `npm run test:coverage:integration` enforces the real-DB `web/lib/db/**` floors in `web/vitest.integration-coverage.config.mts` under `RUN_INTEGRATION=1`; removing that step or its uploaded report from `ci.yml` fails preflight.
 - Each `integration-gate` step is pinned individually by exact `run:` command in `.agents/scripts/check-ci-workflow.sh`: deleting `npm run test:integration`, `test:integration:journey`, `test:integration:http`, `test:integration:images`, or `test:coverage:integration` from `ci.yml` fails preflight, and a shorter command never satisfies a longer one's requirement.
-- A changed path that holds (or feeds) a `RUN_INTEGRATION` suite schedules `integration-gate`; `.agents/scripts/check-ci-classification.sh` asserts this on every PR, and fails on any tracked path with no routing rule.
+- A changed path that holds (or feeds) a `RUN_INTEGRATION` suite schedules `integration-gate`; `.agents/scripts/check-ci-classification.sh` asserts this on every PR — non-test files under `web/tests/**` by default however they are consumed, import-reachable paths by closure, failing on a specifier it cannot resolve — and fails on any tracked path with no routing rule.
 - All three packages declare the same `engines.node` floor as CI and the container images; `.agents/scripts/check-runtime-pins.sh` fails on any divergence, on a missing declaration, or on a floor it cannot parse.
 - All three packages declare and resolve one TypeScript version; a per-package major bump fails.
 - Both Workers pin a valid, non-future `compatibility_date`; removing it or pushing it into the future fails.

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CafePageActions } from "@/app/cafes/[id]/cafe-page-actions";
@@ -76,13 +76,27 @@ describe("CafePageActions (no edit entry per owner verdict)", () => {
 
   it("never probes /api/checkins/last on mount — the drawer probes on open (DG64)", async () => {
     renderActions();
-    // Let any mount-time queries settle.
     await waitFor(() => expect(screen.getByRole("button", { name: "Check in" })).toBeInTheDocument());
-    const { promise: settled, resolve: settle } = Promise.withResolvers<void>();
-    setTimeout(settle, 50);
-    await settled;
+    // Deterministic precondition instead of sleep: the drawer is closed, so
+    // the last-check-in query stays disabled by construction
+    // (`enabled: isOpen && ...` in useCheckinDrawerState) — the probe cannot
+    // fire no matter how long mount settles.
+    expect(screen.queryByRole("dialog", { name: "Check in" })).not.toBeInTheDocument();
+    // Flush any mount-time async work, then assert the probe never fired.
+    await act(async () => {});
     expect(globalThis.fetch).not.toHaveBeenCalledWith(
       expect.stringContaining("/api/checkins/last"),
+    );
+  });
+
+  it("probes /api/checkins/last when the drawer opens — the positive half of the DG64 gate", async () => {
+    renderActions();
+    fireEvent.click(screen.getByRole("button", { name: "Check in" }));
+    expect(await screen.findByRole("dialog", { name: "Check in" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/checkins/last"),
+      ),
     );
   });
 

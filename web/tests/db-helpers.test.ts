@@ -111,16 +111,13 @@ describeIntegration("db test helpers — real Postgres template pooling", () => 
     }
   });
 
-  it("provisionTestDatabase clones template DB quickly with all tables and PostGIS", async () => {
+  it("provisionTestDatabase clones template DB with all tables and PostGIS", async () => {
     const dbName = makeTestDbName("perf_clone_test");
     createdDbs.add(dbName);
 
-    const t0 = Date.now();
+    // No wall-clock budget: clone latency is runner-dependent and proves no
+    // behavior. Perf is tracked by an independent benchmark job, not here.
     await provisionTestDatabase(adminUrl, dbName, { useTemplate: true });
-    const duration = Date.now() - t0;
-
-    // Fast template clone should complete well under standard 15-migration sequential run
-    expect(duration).toBeLessThan(5000);
 
     const client = new pg.Client(getPoolConfig(testDatabaseUrl(adminUrl, dbName)));
     await client.connect();

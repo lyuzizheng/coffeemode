@@ -1,3 +1,4 @@
+import { logError } from "@/lib/observability/server-log";
 import "server-only";
 
 import { WORKER_TIMEOUT_MS } from "@/lib/http";
@@ -76,7 +77,7 @@ async function poiFetch(
     else if (upstreamStatus === 422) message = "POI could not be resolved";
     else if (upstreamStatus >= 500) message = "POI service unavailable";
     else if (upstreamStatus >= 400) message = "Invalid POI request";
-    console.error("POI service error", { status: upstreamStatus, message });
+    logError({ route: "poi-service", error: { status: upstreamStatus, message } });
     throw new POIServiceError(
       message,
       upstreamStatus === 401 ? 502 : upstreamStatus,

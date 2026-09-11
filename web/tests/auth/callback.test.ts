@@ -79,10 +79,15 @@ describe("GET /auth/callback", () => {
     expect(res.headers.get("location")).toBe(
       "http://localhost:3000/?auth=error&reason=profile_upsert",
     );
-    expect(errorSpy).toHaveBeenCalledWith(
-      "auth/callback: profile upsert failed",
-      expect.any(Error),
-    );
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const [raw] = errorSpy.mock.calls[0];
+    const line = JSON.parse(raw as string) as Record<string, unknown>;
+    expect(line).toMatchObject({
+      type: "error",
+      route: "GET /auth/callback profile-upsert",
+      error: "Postgres is down",
+    });
+    expect(typeof line.request_id).toBe("string");
 
     errorSpy.mockRestore();
   });

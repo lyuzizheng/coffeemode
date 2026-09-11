@@ -1,3 +1,4 @@
+import { logError } from "@/lib/observability/server-log";
 import "server-only";
 import { Pool, type PoolClient, type PoolConfig, type QueryResult } from "pg";
 
@@ -84,7 +85,7 @@ export function getPoolConfig(urlString = process.env.DATABASE_URL): PoolConfig 
 
 function attachPoolHandlers(poolInstance: Pool) {
   poolInstance.on("error", (err) => {
-    console.error("Postgres pool error:", err);
+    logError({ route: "postgres pool", error: err });
   });
 }
 
@@ -201,7 +202,7 @@ export function registerPoolShutdownHandlers() {
         await closePool();
         process.exitCode = 0;
       } catch (e) {
-        console.error(`Error closing Postgres pool during ${signal}:`, e);
+        logError({ route: "postgres pool shutdown", error: e });
         process.exitCode = 1;
         setTimeout(() => process.exit(process.exitCode ?? 1), 5000).unref();
       }

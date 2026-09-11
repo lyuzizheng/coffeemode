@@ -298,7 +298,12 @@ describe("signIn", () => {
     const result = await signIn(undefined, formData);
     expect(result).toEqual({ error: "provider_start_failed" });
     // Raw provider detail stays in the server log, never reaches the client.
-    expect(spy).toHaveBeenCalledWith("signIn: OAuth start failed", "OAuth provider unavailable");
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(spy.mock.calls[0][0] as string)).toMatchObject({
+      type: "error",
+      route: "auth signIn OAuth",
+      error: "OAuth provider unavailable",
+    });
     spy.mockRestore();
   });
 });
@@ -320,7 +325,11 @@ describe("signOut", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const result = await signOut(undefined, formData);
     expect(result).toEqual({ error: "signout_failed" });
-    expect(spy).toHaveBeenCalledWith("signOut failed", "Session not found");
+    expect(JSON.parse(spy.mock.calls[0][0] as string)).toMatchObject({
+      type: "error",
+      route: "auth signOut",
+      error: "Session not found",
+    });
     spy.mockRestore();
   });
 });

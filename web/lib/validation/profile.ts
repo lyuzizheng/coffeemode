@@ -2,11 +2,16 @@ import "server-only";
 
 import { appConfig } from "@/lib/config";
 import { LAUNCH_CITIES } from "@/lib/cities";
-import type { ProfilePatchResult } from "./types";
 
 /**
- * Validate and sanitize a profile PATCH request body (DG107).
+ * Profile PATCH payload validation (spec 0009 §1: request validation lives in
+ * `lib/validation/**`, never in the persistence layer; BRAWUKA-199 review).
  */
+
+export type ProfilePatchResult =
+  | { ok: true; patch: { displayName?: string; currentCity?: string } }
+  | { ok: false; error: string; status: number };
+
 export function parseProfilePatch(body: unknown): ProfilePatchResult {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
     return { ok: false, error: "invalid_body", status: 400 };

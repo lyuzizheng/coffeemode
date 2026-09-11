@@ -1,6 +1,8 @@
+import { logError } from "@/lib/observability/server-log";
 import { NextResponse, type NextRequest } from "next/server";
 import { apiError } from "@/lib/api/response";
-import { getProfile, getUserStats, parseProfilePatch, updateProfile } from "@/lib/db/profile";
+import { getProfile, getUserStats, updateProfile } from "@/lib/db/profile";
+import { parseProfilePatch } from "@/lib/validation/profile";
 import { requireSameOrigin } from "@/lib/security/origin";
 import { guard, readJsonBody } from "@/lib/api/guard";
 
@@ -28,7 +30,7 @@ export async function GET(request: NextRequest) {
       stats,
     });
   } catch (error) {
-    console.error("GET /api/profile failed:", error);
+    logError({ route: gate.route, request, error, status: 500 });
     return apiError("internal_error", 500);
   }
 }
@@ -60,7 +62,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ profile: updated });
   } catch (error) {
-    console.error("PATCH /api/profile failed:", error);
+    logError({ route: gate.route, request, error, status: 500 });
     return apiError("internal_error", 500);
   }
 }

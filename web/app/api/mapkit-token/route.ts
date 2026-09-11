@@ -1,3 +1,4 @@
+import { logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
 import { generateMapKitToken, getMapKitConfig } from "@/lib/places/mapkit";
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
     const token = generateMapKitToken(config);
     return NextResponse.json({ token });
   } catch (err) {
-    console.error("/api/mapkit-token failed to sign token", err);
+    logError({ route: gate.route, request, error: err, status: 500 });
     return apiError("mapkit_token_error", 500);
   }
 }

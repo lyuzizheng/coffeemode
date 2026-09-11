@@ -215,3 +215,53 @@ describe("proxy matcher", () => {
     expect("/api/places/external").toMatch(pattern);
   });
 });
+
+describe("proxy request-id (BRAWUKA-168)", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    cafeExistsMock.mockResolvedValue(true);
+    process.env.NEXT_PUBLIC_SUPABASE_URL = SUPABASE_URL;
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = ANON_KEY;
+    vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+
+  async function accessLine(res: Response): Promise<Record<string, unknown>> {
+    const logSpy = vi.mocked(console.log);
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    const [raw] = logSpy.mock.calls[0];
+    const line = JSON.parse(raw as string) as Record<string, unknown>;
+    expect(line).toMatchObject({ type: "access", status: res.status });
+    return line;
+  }
+
+  it("generates, echoes, and access-logs one id per request", async () => {
+    const res = await proxy(new NextRequest(new URL("http://localhost/api/cafes")));
+    const requestId = res.headers.get("x-request-id");
+    expect(requestId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+    expect((await accessLine(res)).request_id).toBe(requestId);
+  });
+
+  it("reuses a valid inbound id so error lines correlate", async () => {
+    const inbound = crypto.randomUUID();
+    const res = await proxy(
+      new NextRequest(new URL("http://localhost/api/cafes"), {
+        headers: new Headers({ "x-request-id": inbound }),
+      }),
+    );
+    expect(res.headers.get("x-request-id")).toBe(inbound);
+    expect((await accessLine(res)).request_id).toBe(inbound);
+  });
+
+  it("regenerates a forged inbound id", async () => {
+    const res = await proxy(
+      new NextRequest(new URL("http://localhost/api/cafes"), {
+        headers: new Headers({ "x-request-id": "attacker-chosen" }),
+      }),
+    );
+    const requestId = res.headers.get("x-request-id");
+    expect(requestId).not.toBe("attacker-chosen");
+    expect((await accessLine(res)).request_id).toBe(requestId);
+  });
+});

@@ -66,6 +66,7 @@ describe("guard helper (BRAWUKA-181)", () => {
       if (result.ok) {
         expect(result.user).toBeNull();
         expect(result.clientId).toMatch(/^anon:/);
+        expect(result.route).toBe("GET /api/cafes");
       }
       expect(checkRateLimit).toHaveBeenCalledWith(
         "cafes-read",
@@ -195,8 +196,12 @@ describe("guard helper (BRAWUKA-181)", () => {
     it("uses fallback method and pathname when route is omitted", async () => {
       const req = new Request("http://localhost/api/cafes?limit=10", { method: "GET" });
 
-      await guard(req, { bucket: "cafes-read" });
+      const result = await guard(req, { bucket: "cafes-read" });
 
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.route).toBe("GET /api/cafes");
+      }
       expect(checkRateLimit).toHaveBeenCalledWith(
         "cafes-read",
         expect.any(String),

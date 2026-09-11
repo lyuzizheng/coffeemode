@@ -1,3 +1,4 @@
+import { logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
 import { toggleCheckInLike } from "@/lib/db/checkins";
@@ -46,7 +47,7 @@ export async function POST(
     if (err instanceof SelfLikeError) {
       return apiError("self_like_forbidden", "you cannot like your own check-in", 403);
     }
-    console.error("/api/checkins/[id]/like POST failed", err);
+    logError({ route: gate.route, request, error: err, status: 500 });
     return apiError("internal_error", 500);
   }
 }

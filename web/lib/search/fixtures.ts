@@ -1,3 +1,4 @@
+import { logError } from "@/lib/observability/server-log";
 import "server-only";
 import fs from "node:fs";
 import path from "node:path";
@@ -33,7 +34,7 @@ export function getSearchFixtures(): SearchFixtures | null {
       }
     }
   } catch (err) {
-    console.error("Failed to load search fixtures", err);
+    logError({ route: "search fixtures", error: err });
   }
   return null;
 }

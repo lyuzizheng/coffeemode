@@ -3,10 +3,6 @@ import "server-only";
 import type { CheckInScores, MaxStay } from "@/types/checkins";
 import type { StoredImage } from "@/types/images";
 
-export type ProfilePatchResult =
-  | { ok: true; patch: { displayName?: string; currentCity?: string } }
-  | { ok: false; error: string; status: number };
-
 export interface UserProfileDto {
   id: string;
   displayName: string;

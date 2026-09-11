@@ -1,3 +1,4 @@
+import { logError } from "@/lib/observability/server-log";
 import { NextResponse, type NextRequest } from "next/server";
 import { apiError, parseQueryPositiveInt } from "@/lib/api/response";
 import { getUserCheckIns, ProfileCursorError } from "@/lib/db/profile";
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
     if (error instanceof ProfileCursorError) {
       return apiError("invalid_cursor", 400);
     }
-    console.error("GET /api/profile/checkins failed:", error);
+    logError({ route: gate.route, request, error, status: 500 });
     return apiError("internal_error", 500);
   }
 }

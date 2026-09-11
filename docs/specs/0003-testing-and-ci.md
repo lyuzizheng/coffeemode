@@ -58,7 +58,7 @@ web real DB: npm run db:migrate, npm run test:integration, npm run test:integrat
 web browser smoke: npm run test:e2e (Playwright MVP smoke suite), npm run lhci (Lighthouse CI performance budgets), npm run check:visual (local visual render evidence)
 services: npm run typecheck, npm test
 staging journey: STAGING_DATABASE_URL=<staging postgres> scripts/devops/run-staging-journey.sh --suite <journey|http|db|all> (setup via setup-supabase.mjs, cleanup via web/scripts/cleanup-stale-test-dbs.mjs --apply)
-agent harness: .agents/scripts/preflight.sh, .agents/scripts/harness-self-test.sh
+agent harness: .agents/scripts/preflight.sh, .agents/scripts/harness-self-test.sh, .agents/scripts/check-runtime-pins.sh
 ```
 
 ### CI design
@@ -94,6 +94,37 @@ had no pixel baseline, duplicated install/build work, and could block indefinite
 while installing Chromium. Local browser evidence remains available through
 `npm run check:visual` for UI work.
 
+### Runtime pins
+
+`engines.node`, the `typescript` version, and each Worker's
+`compatibility_date` are a declared, machine-checked contract, not a property of
+whichever machine ran the install. `.agents/scripts/check-runtime-pins.sh` (in
+preflight, and in the always-running `changes` CI job alongside the classifier
+check — no dependencies, so it never self-skips) enforces:
+
+- **Node floor**: `web/`, `poi-service/`, and `image-service/` each declare the
+  same `engines.node` floor as a `>=MAJOR[.MINOR[.PATCH]]` range, and that major
+  matches every `node-version` in `ci.yml`, `web/Dockerfile`, and the
+  `node:*` images in `docker-compose.yml`. CI's `node-version: 22` is the
+  authoritative floor; a range the gate cannot read as a floor (a caret, a
+  disjunction, `*`) fails rather than being mis-read as consistent.
+- **TypeScript**: one declared range across the three packages, one version
+  resolved in all three lockfiles, and the declared range's major equal to the
+  resolved version's — so "aligned" is a property of the installed tree, not
+  just of `package.json`. A deliberate fork must be recorded here first.
+- **Worker runtime**: both `wrangler.toml` files pin a valid ISO
+  `compatibility_date` that is not in the future. A future date does not fail the
+  build; it silently adopts compatibility flags as Cloudflare ships them, which
+  is exactly the drift the pin prevents. The two services are not required to
+  share a date: image-service enables `nodejs_compat` (which needs
+  `compatibility_date >= 2024-09-23` for v2 semantics) and poi-service does not.
+
+`engine-strict` is deliberately **not** enabled. Measured on npm 11: an
+unsatisfiable `engines` range without it is an `EBADENGINE` warning and `npm ci`
+still exits 0. Enabling it would hard-fail a contributor's local install on an
+older Node while changing nothing in CI, where the version is controlled — so the
+pin is enforced by this gate instead of by the installer.
+
 ### Branch protection & PR review contract
 
 Repository branch protection on `main` enforces stability without blocking automated agent delivery:
@@ -108,7 +139,7 @@ Repository branch protection on `main` enforces stability without blocking autom
 
 `.agents/scripts/preflight.sh` checks required sources, script syntax, spec shape,
 links, planned slices, skill frontmatter, Codex bindings, changed-path
-classification, CI structure, and the web structure guard (via
+classification, runtime pins, CI structure, and the web structure guard (via
 `.agents/scripts/check-structure.sh`, self-skipping when web dependencies are
 absent).
 `.agents/scripts/harness-self-test.sh` fault-injects those checks and verifies CI
@@ -232,6 +263,9 @@ The traceability matrix lives at `docs/agent/test-coverage.md` (S3 testkit-cover
 - `npm run test:coverage` enforces the v8 ratchet floors in `web/vitest.config.mts`; removing the coverage step from `ci.yml` fails preflight.
 - `npm run test:coverage:integration` enforces the real-DB `web/lib/db/**` floors in `web/vitest.integration-coverage.config.mts` under `RUN_INTEGRATION=1`; removing that step or its uploaded report from `ci.yml` fails preflight.
 - A changed path that holds (or feeds) a `RUN_INTEGRATION` suite schedules `integration-gate`; `.agents/scripts/check-ci-classification.sh` asserts this on every PR, and fails on any tracked path with no routing rule.
+- All three packages declare the same `engines.node` floor as CI and the container images; `.agents/scripts/check-runtime-pins.sh` fails on any divergence, on a missing declaration, or on a floor it cannot parse.
+- All three packages declare and resolve one TypeScript version; a per-package major bump fails.
+- Both Workers pin a valid, non-future `compatibility_date`; removing it or pushing it into the future fails.
 - CI emits stable required component checks but executes only relevant jobs.
 - A docs-only change does not install application/service dependencies.
 - A UI-only web change does not start Postgres.

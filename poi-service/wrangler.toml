@@ -3,7 +3,23 @@
 
 name = "poi-service"
 main = "src/index.ts"
-compatibility_date = "2024-01-01" # Use a date in the past; update when intentionally adopting newer runtime behaviour.
+# Pinned deliberately: this date is a runtime contract, so it moves only in a
+# reviewed commit — never implicitly, and never "today". 2025-08-01 is the newest
+# date whose default-on flag set (Cloudflare "compatibility flags" history) was
+# reviewed against this Worker, and it stays well below the workerd build pinned
+# in package-lock.json.
+#
+# Bumped from 2024-01-01 to pick up that window's runtime spec fixes — the ones
+# with any surface here are standard URL parsing in fetch() and cross-request
+# promise resolution; uppercase HTTP methods, TransformStream backpressure and
+# the Cache API changes are no-ops for this Worker (it calls GET/POST/HEAD with
+# uppercase literals, uses no streams and no Cache API, and follows short-link
+# redirects itself via `redirect: "manual"`).
+#
+# No `nodejs_compat` flag: src/ imports no Node built-in. Node compatibility only
+# becomes default at compatibility_date 2026-08-04 — this date stays below it, so
+# the Worker keeps running without Node globals.
+compatibility_date = "2025-08-01"
 
 # --- Secrets (never committed) ---
 #   POI_SERVICE_TOKEN       shared secret for service-to-service auth

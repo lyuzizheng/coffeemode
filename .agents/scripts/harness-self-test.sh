@@ -164,6 +164,24 @@ if assert_mutated "integration command missing" "$WF.bak" "$WF"; then
 fi
 mv "$WF.bak" "$WF"
 
+# Each real-DB suite is its own step: deleting exactly one must be detected with
+# its siblings still present, so `npm run test:integration` cannot stand in for
+# `test:integration:journey` / `:http` / `:images` (BRAWUKA-148). The removal is
+# line-anchored because the bare command is a prefix of the longer ones.
+for step_command in \
+  "npm run test:integration" \
+  "npm run test:integration:journey" \
+  "npm run test:integration:http" \
+  "npm run test:integration:images" \
+  "npm run test:coverage:integration"; do
+  cp "$WF" "$WF.bak"
+  grep -vE "^[[:space:]]*run:[[:space:]]*${step_command}[[:space:]]*$" "$WF.bak" > "$WF"
+  if assert_mutated "step removed: $step_command" "$WF.bak" "$WF"; then
+    expect_failure "integration step missing: $step_command" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-workflow.sh"
+  fi
+  mv "$WF.bak" "$WF"
+done
+
 # Remove changed-path conditioning from one stable job.
 cp "$WF" "$WF.bak"
 grep -v "needs.changes.outputs.integration == 'true'" "$WF.bak" > "$WF"

@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       // rejects UUIDs that were never issued to the caller.
       await recordUploadIntent(user.id, data.imageUuid);
     } catch (intentErr) {
-      logError({ route: gate.route, request, error: intentErr, status: 500 });
+      logError({ route: `${gate.route} intent`, request, error: intentErr, status: 500 });
       return apiError("internal_error", 500);
     }
     return NextResponse.json(data);

@@ -65,9 +65,26 @@ else
     fi
   done
 
-  for requirement in "postgis/postgis:" "@sha256:" "npm run test:integration" "DATABASE_URL:" "pg_isready" "npm run test:coverage:integration" "coverage-integration"; do
+  for requirement in "postgis/postgis:" "@sha256:" "DATABASE_URL:" "pg_isready" "coverage-integration"; do
     if ! grep -q "$requirement" "$workflow"; then
       echo "ci.yml missing real-DB requirement: $requirement"
+      fail=1
+    fi
+  done
+
+  # Every real-DB suite runs as its own step, so each command is pinned
+  # individually and exactly. `npm run test:integration` is a prefix of
+  # `test:integration:journey` / `:http` / `:images`, so a substring check keeps
+  # passing after any single step is deleted — the suite would silently stop
+  # running while the gate stayed green (BRAWUKA-148).
+  for integration_command in \
+    "npm run test:integration" \
+    "npm run test:integration:journey" \
+    "npm run test:integration:http" \
+    "npm run test:integration:images" \
+    "npm run test:coverage:integration"; do
+    if ! grep -qE "^[[:space:]]*(-[[:space:]]+)?run:[[:space:]]*${integration_command}[[:space:]]*$" "$workflow"; then
+      echo "ci.yml missing real-DB step: $integration_command"
       fail=1
     fi
   done

@@ -270,6 +270,7 @@ The traceability matrix lives at `docs/agent/test-coverage.md` (S3 testkit-cover
 - Real Postgres remains required for DB/SQL behavior.
 - `npm run test:coverage` enforces the v8 ratchet floors in `web/vitest.config.mts`; removing the coverage step from `ci.yml` fails preflight.
 - `npm run test:coverage:integration` enforces the real-DB `web/lib/db/**` floors in `web/vitest.integration-coverage.config.mts` under `RUN_INTEGRATION=1`; removing that step or its uploaded report from `ci.yml` fails preflight.
+- Each `integration-gate` step is pinned individually by exact `run:` command in `.agents/scripts/check-ci-workflow.sh`: deleting `npm run test:integration`, `test:integration:journey`, `test:integration:http`, `test:integration:images`, or `test:coverage:integration` from `ci.yml` fails preflight, and a shorter command never satisfies a longer one's requirement.
 - A changed path that holds (or feeds) a `RUN_INTEGRATION` suite schedules `integration-gate`; `.agents/scripts/check-ci-classification.sh` asserts this on every PR, and fails on any tracked path with no routing rule.
 - All three packages declare the same `engines.node` floor as CI and the container images; `.agents/scripts/check-runtime-pins.sh` fails on any divergence, on a missing declaration, or on a floor it cannot parse.
 - All three packages declare and resolve one TypeScript version; a per-package major bump fails.

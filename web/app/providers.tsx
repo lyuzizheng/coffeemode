@@ -17,10 +17,18 @@ export function Providers({
   children,
   locale,
   messages,
+  timeZone,
 }: {
   children: ReactNode;
   locale: string;
   messages: Record<string, unknown>;
+  /**
+   * Required: `use-intl` logs IntlError(ENVIRONMENT_FALLBACK) from
+   * `useTranslations` whenever a client component renders on the server
+   * without one, which is every SSR request (BRAWUKA-214). The root layout
+   * forwards it from the request config, so there is one source of truth.
+   */
+  timeZone: string;
 }) {
   const queryClient = getQueryClient();
 
@@ -35,7 +43,7 @@ export function Providers({
   }, [queryClient]);
 
   return (
-    <NextIntlClientProvider locale={locale} messages={messages}>
+    <NextIntlClientProvider locale={locale} messages={messages} timeZone={timeZone}>
       <PersistQueryClientProvider
         client={queryClient}
         persistOptions={persistOptions}

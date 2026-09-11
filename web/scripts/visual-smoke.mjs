@@ -9,6 +9,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import {
+  collectServerRenderErrors,
   getFreePort,
   spawnStandaloneServer,
   waitForServer,
@@ -73,14 +74,21 @@ async function runVisualSmoke() {
   const port = process.env.VISUAL_PORT ? Number(process.env.VISUAL_PORT) : await getFreePort();
   const base = process.env.VISUAL_BASE_URL ?? `http://127.0.0.1:${port}`;
 
+  // Empty when VISUAL_BASE_URL points at a server this script does not own.
+  let serverRenderErrors = [];
+
   if (!process.env.VISUAL_BASE_URL) {
     serverProcess = spawnStandaloneServer({
       cwd: root,
       port,
+      // stderr only: the server's render errors are invisible to the
+      // browser-side collectors below, so this gate has to read them itself.
+      stdio: ["ignore", "ignore", "pipe"],
       env: {
         DATABASE_URL: dbUrl,
       },
     });
+    serverRenderErrors = collectServerRenderErrors(serverProcess);
   }
 
   const failures = [];
@@ -150,6 +158,12 @@ async function runVisualSmoke() {
     }
   } finally {
     await cleanup();
+  }
+
+  if (serverRenderErrors.length > 0) {
+    failures.push(
+      `server-side intl errors (ENVIRONMENT_FALLBACK):\n    ${serverRenderErrors.join("\n    ")}`,
+    );
   }
 
   if (failures.length > 0) {

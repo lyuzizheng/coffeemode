@@ -63,6 +63,7 @@ Layer 1 is deterministic and CI-enforced:
 | `scripts/check-ci-workflow.sh` | Unified CI structure and required test contracts |
 | `scripts/classify-ci-paths.sh` | Changed-path to relevant CI-job classification |
 | `scripts/check-ci-classification.sh` | Classifier routing contract: gated suites, rule coverage, ratchet inputs |
+| `scripts/check-runtime-pins.sh` | Runtime drift: `engines.node`, TypeScript version, Worker `compatibility_date` |
 | `scripts/check-implementation-slices.sh` | Planned product-slice manifest validation |
 | `scripts/check-links.sh` | Local Markdown links |
 | `scripts/check-agent-skills.sh` | Skill frontmatter and names |

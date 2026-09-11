@@ -46,6 +46,13 @@ jobs:
       - name: Verify path→gate classification
         run: .agents/scripts/check-ci-classification.sh
 
+      # Likewise unconditional and dependency-free: `engines`, the TypeScript
+      # version, and the Worker `compatibility_date` must agree across web/,
+      # poi-service/, image-service/, CI, and the container images. A per-package
+      # bump would otherwise only surface as a machine-specific difference.
+      - name: Verify runtime pins (engines / TypeScript / Worker compatibility_date)
+        run: .agents/scripts/check-runtime-pins.sh
+
   docs-gate:
     needs: changes
     if: needs.changes.outputs.docs == 'true'

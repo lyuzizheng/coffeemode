@@ -113,8 +113,9 @@ check — no dependencies, so it never self-skips) enforces:
   `pnpm --dir <package>`, `yarn --cwd <package>`) — and compared with that
   package's own floor. An install is any `npm`/`pnpm`/`yarn`/`bun` install verb
   (`ci`, `clean-install`, `install`, `i`, with flags and their values allowed
-  between manager and verb) or a frozen install flag (`--frozen-lockfile`,
-  `--immutable`); `corepack` only enables the manager named after it, and tool
+  between manager and verb) or a manager command carrying a frozen install flag
+  (`yarn --frozen-lockfile`, `yarn --immutable`); `corepack` only enables the
+  manager named after it, and tool
   runners that never fetch dependencies (`npx`, `pnpm dlx`, `yarn run`, `bunx`)
   do not count as installs.
   So `nightly-recompute.yml`, which installs in `web/` and recomputes against the

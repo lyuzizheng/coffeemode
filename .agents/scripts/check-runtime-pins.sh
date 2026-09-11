@@ -179,10 +179,12 @@ fi
 # A `node-version` the gate cannot attribute to a package fails rather than
 # skips, and so does a job that installs into a package the gate cannot name:
 # "nothing detected" (SKIP) and "detected but unattributable" (BAD) are
-# different records, so an installer this parser does not understand extends
-# the gate instead of quietly escaping it. The walk is written in `awk` rather
-# than with a YAML library, so the check keeps running where nothing is
-# installed.
+# different records, so an install the gate detects but cannot attribute fails
+# (BAD) instead of passing. Installs it never detects at all — a script
+# wrapper, a composite action — are the accepted residuals recorded in
+# docs/specs/0003-testing-and-ci.md (Runtime pins). The walk is written in
+# `awk` rather than with a YAML library, so the check keeps running where
+# nothing is installed.
 floors=""
 for pkg in "${PACKAGES[@]}"; do
   floors+="${pkg}=$(floor_for "$pkg" || true),"

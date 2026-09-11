@@ -20,7 +20,7 @@ import type { RateLimitResult } from "./types";
  * protection layer; it must not take the API down with it.
  */
 
-export type RateLimitQueryFn = (
+type RateLimitQueryFn = (
   text: string,
   params?: unknown[],
 ) => Promise<QueryResult<Record<string, unknown>>>;

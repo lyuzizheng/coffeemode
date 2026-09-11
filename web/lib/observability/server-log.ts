@@ -41,7 +41,7 @@ export function getRequestId(request: { headers: Headers }): string {
   return isValidRequestId(inbound) ? inbound : crypto.randomUUID();
 }
 
-export interface ServerErrorFields {
+interface ServerErrorFields {
   /** Handler literal, e.g. `"GET /api/cafes"`. Prefer `gate.route` — one literal per handler. */
   route: string;
   /** The caught value — Error, message string, or small internal object. */

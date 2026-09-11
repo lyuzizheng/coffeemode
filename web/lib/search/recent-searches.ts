@@ -1,4 +1,4 @@
-export interface RecentSearchItem {
+interface RecentSearchItem {
   id: string;
   query: string;
   city: string;

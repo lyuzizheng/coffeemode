@@ -19,7 +19,7 @@ import { toast } from "@heroui/react";
 import { dedupeCheckins } from "@/lib/discovery/view-model";
 import type { CheckInFeedMode, CheckInFeedPage, PublicCheckIn } from "@/types/checkins";
 
-export async function fetchFeedPage(
+async function fetchFeedPage(
   cafeId: string,
   mode: CheckInFeedMode,
   cursor?: string,

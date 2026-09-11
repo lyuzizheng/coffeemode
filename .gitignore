@@ -57,3 +57,9 @@ backups/
 *.dump.gz
 deploy/dokploy/.env.staging
 deploy/dokploy/.env.prod
+
+# Raw dataset snapshots (no reader in repo; BRAWUKA-188 removed the last
+# tracked Mongo-style snapshot `database-data/cafes.json`, superseded by
+# Supabase migrations in `web/db/migrations/` + fixtures in
+# `web/tests/fixtures/mock-dataset.ts`)
+database-data/

@@ -8,7 +8,7 @@ import "server-only";
  * the app must never be clobbered by provider metadata on re-login.
  */
 
-export type SupabaseUserLike = {
+type SupabaseUserLike = {
   id: string;
   email?: string | null;
   user_metadata?: {
@@ -21,7 +21,7 @@ export type SupabaseUserLike = {
   };
 };
 
-export type ProfileInput = {
+type ProfileInput = {
   id: string;
   displayName: string;
   avatarUrl: string | null;
@@ -46,7 +46,7 @@ export function profileFromUser(user: SupabaseUserLike): ProfileInput {
 }
 
 /** Minimal query-runner shape so the upsert is testable with a mock. */
-export type QueryRunner = (text: string, params: unknown[]) => Promise<unknown>;
+type QueryRunner = (text: string, params: unknown[]) => Promise<unknown>;
 
 const UPSERT_SQL = `
   insert into profiles (id, display_name, avatar_url, last_seen_at)

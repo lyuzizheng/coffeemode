@@ -7,7 +7,7 @@ import type { SearchResultItem } from "./types";
  * intra-group order (relevance → distance → name → id, DG142) is preserved;
  * no cross-group re-sort happens here.
  */
-export interface GroupedSearchResults {
+interface GroupedSearchResults {
   coffeemode: SearchResultItem[];
   external: SearchResultItem[];
 }

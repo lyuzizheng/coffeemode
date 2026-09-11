@@ -12,7 +12,7 @@
  * tests, and the deploy export can all import this module.
  */
 
-export interface CafeShellCachePolicy {
+interface CafeShellCachePolicy {
   sMaxAgeSeconds: number;
   staleWhileRevalidateSeconds: number;
   /** Only these statuses may sit in shared cache (gone-cafe 404s must not). */
@@ -39,7 +39,7 @@ export function cafeShellCacheControl(policy: CafeShellCachePolicy): string {
   );
 }
 
-export interface CafeShellResponseSignal {
+interface CafeShellResponseSignal {
   /** Final response status (404 for the gone-cafe surface). */
   status: number;
   /** True when the response carries Set-Cookie (session refresh). */
@@ -59,7 +59,7 @@ export function shouldBypassCafeShellCache(
   return false;
 }
 
-export interface CafeShellCdnRules {
+interface CafeShellCdnRules {
   scope: { paths: string[] };
   cacheable: {
     statuses: number[];

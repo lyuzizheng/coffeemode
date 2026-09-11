@@ -20,16 +20,9 @@ export const IMAGE_RATE_LIMIT = rateLimitConfig("images");
 
 export const PLACES_RATE_LIMIT = rateLimitConfig("places");
 
-/** Reads are cheap; writes fuse cafe + first check-in + stats in one tx. */
-export const CAFES_READ_RATE_LIMIT = rateLimitConfig("cafes-read");
-
-export const CAFES_WRITE_RATE_LIMIT = rateLimitConfig("cafes-write");
-
 // Multi-window bucket for search + profile (DG129, #216) — read via helper
 export const SEARCH_RATE_LIMITS = rateLimitBuckets("search");
 export const PROFILE_READ_RATE_LIMIT = rateLimitConfig("profile-read");
-export const PROFILE_WRITE_RATE_LIMIT = rateLimitConfig("profile-write");
-export const IDENTITY_WRITE_RATE_LIMIT = rateLimitConfig("identity-write");
 
 /**
  * In-memory token-bucket rate limiter.

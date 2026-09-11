@@ -15,7 +15,7 @@ export const SW_URL = "/serwist/sw.js";
 
 export type CacheStrategy = "network-only" | "network-first" | "cache-first";
 
-export interface CacheTuning {
+interface CacheTuning {
   cacheName: string;
   maxEntries?: number;
   maxAgeSeconds?: number;

@@ -27,9 +27,9 @@ export const RATE_LIMIT_BUCKET_NAMES = [
 
 export type RateLimitBucketName = (typeof RATE_LIMIT_BUCKET_NAMES)[number];
 
-export type AuthenticatedUser = { id: string };
+type AuthenticatedUser = { id: string };
 
-export interface GuardOptions<Auth extends boolean = boolean> {
+interface GuardOptions<Auth extends boolean = boolean> {
   /** Bucket name declared in rate-limits.yaml */
   bucket: RateLimitBucketName;
   /** Whether the route requires an authenticated user (returns 401 when unauthenticated) */
@@ -42,7 +42,7 @@ export interface GuardOptions<Auth extends boolean = boolean> {
   ipOnly?: boolean;
 }
 
-export type GuardOkResult<Auth extends boolean> = {
+type GuardOkResult<Auth extends boolean> = {
   ok: true;
   user: Auth extends true ? AuthenticatedUser : AuthenticatedUser | null;
   clientId: string;
@@ -50,12 +50,12 @@ export type GuardOkResult<Auth extends boolean> = {
   route: string;
 };
 
-export type GuardErrResult = {
+type GuardErrResult = {
   ok: false;
   response: NextResponse;
 };
 
-export type GuardResult<Auth extends boolean = boolean> =
+type GuardResult<Auth extends boolean = boolean> =
   | GuardOkResult<Auth>
   | GuardErrResult;
 
@@ -158,12 +158,12 @@ export async function guard(
   };
 }
 
-export interface ReadJsonBodyOptions {
+interface ReadJsonBodyOptions {
   /** If true, returns data: null when request body is empty instead of returning 400 */
   optional?: boolean;
 }
 
-export type ReadJsonBodyResult<T = unknown> =
+type ReadJsonBodyResult<T = unknown> =
   | { ok: true; data: T }
   | { ok: false; response: NextResponse };
 

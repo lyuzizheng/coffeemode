@@ -18,7 +18,7 @@ import {
 } from "./use-checkin-form-state";
 
 export { CHECKIN_RESUME_PARAM };
-export type CheckinFormProps = UseCheckinFormStateOptions;
+type CheckinFormProps = UseCheckinFormStateOptions;
 
 function CheckinFormHeader({ cafeName, isEdit }: { cafeName: string; isEdit: boolean }) {
   const t = useTranslations("checkIn");

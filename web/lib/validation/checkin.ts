@@ -42,7 +42,7 @@ export function parseScores(value: unknown, field = "scores"): ParseResult<Check
  *  plain imageUuids from /api/images/upload — never StoredImage payloads.
  *  The server derives keys/dimensions/attribution from upload intents.
  *  Product caps live in `web/config/app.yaml` (DG107). */
-export const MAX_PHOTOS_PER_CHECKIN = appConfig.checkins.photoCap;
+const MAX_PHOTOS_PER_CHECKIN = appConfig.checkins.photoCap;
 
 /** DG67 caps note at 500 chars (amends the earlier 1000); lives in config. */
 export const MAX_NOTE_LENGTH = appConfig.checkins.noteMaxChars;

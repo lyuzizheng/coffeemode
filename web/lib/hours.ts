@@ -8,7 +8,7 @@
 // guessed boolean.
 
 const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
-export type DayKey = (typeof DAY_KEYS)[number];
+type DayKey = (typeof DAY_KEYS)[number];
 
 const WEEKDAY_TO_KEY: Record<string, DayKey> = {
   Sun: "sun",
@@ -20,7 +20,7 @@ const WEEKDAY_TO_KEY: Record<string, DayKey> = {
   Sat: "sat",
 };
 
-export interface DayHours {
+interface DayHours {
   /** "HH:MM" 24-hour wall clock, cafe-local. */
   open: string;
   /** "HH:MM"; close <= open means the window spans midnight. */

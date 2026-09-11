@@ -39,7 +39,7 @@ export async function updateCheckin({
   return res.json();
 }
 
-export async function handleConflictRevisit({
+async function handleConflictRevisit({
   res,
   scores,
   maxStay,

@@ -29,7 +29,7 @@ export class POIServiceError extends Error {
   }
 }
 
-export interface POIConfig {
+interface POIConfig {
   baseUrl: string;
   token: string;
 }

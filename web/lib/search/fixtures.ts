@@ -15,7 +15,7 @@ import type { SearchResultSource } from "./types";
 export function isFixturesEnabled(): boolean {
   return process.env.SEARCH_FIXTURES === "1" && process.env.NODE_ENV !== "production";
 }
-export interface SearchFixtures {
+interface SearchFixtures {
   cafes: CafeSummary[];
   pois: Array<POI & { search_source?: SearchResultSource }>;
 }

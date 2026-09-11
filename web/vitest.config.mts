@@ -29,7 +29,6 @@ export default defineConfig({
         "scripts/**",
         "config/**",
         "**/*.d.ts",
-        "lib/db/migrations/**",
         // Type-only and re-export modules emit no statements, so v8 reports
         // them as 0/0 = 100% — an entry that reads as fully covered while
         // proving nothing. They contribute nothing to the aggregate ratio

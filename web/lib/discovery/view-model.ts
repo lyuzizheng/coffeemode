@@ -12,7 +12,7 @@ export type { WorkStats };
 export { dimMean, policyConsensus };
 
 /** Characteristic fact kinds in fixed PEEK priority order (artifact §2). */
-export const FACT_PRIORITY = ["wifi", "outlets", "stay", "seats", "temp", "coffee"] as const;
+const FACT_PRIORITY = ["wifi", "outlets", "stay", "seats", "temp", "coffee"] as const;
 export type FactKind = (typeof FACT_PRIORITY)[number];
 
 export interface Fact {

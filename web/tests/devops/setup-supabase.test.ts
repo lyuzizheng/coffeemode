@@ -98,6 +98,12 @@ describe("Supabase DevOps Provisioning — Unit Contracts", () => {
       expect(
         parseConnectionConfig("postgresql://user:pass@localhost:5432/db?sslmode=verify-full").ssl,
       ).toEqual({ rejectUnauthorized: true });
+      expect(
+        parseConnectionConfig("postgresql://user:pass@localhost:5432/db?sslmode=prefer").ssl,
+      ).toEqual({ rejectUnauthorized: true });
+      expect(
+        parseConnectionConfig("postgresql://user:pass@localhost:5432/db?sslmode=verify-ca").ssl,
+      ).toEqual({ rejectUnauthorized: true });
     });
 
     it("rejects unrecognized sslmode values", () => {

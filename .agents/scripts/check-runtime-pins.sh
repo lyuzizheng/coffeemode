@@ -238,14 +238,14 @@ workflow_pin_records() {
 
   # An install fetches the dependencies of a package, whatever manager spells it:
   # `npm`/`pnpm`/`yarn`/`bun` install verbs (`ci`, `clean-install`, `install`,
-  # `i`), with flags allowed between manager and verb
-  # (`pnpm --dir web install`), plus the frozen forms that can stand without
-  # the verb (`yarn --frozen-lockfile`, yarn berry `yarn --immutable`).
-  # `corepack` only enables the manager named after it, so it needs no branch
-  # of its own. Tool runners that never fetch (`npx`, `pnpm dlx`, `yarn run`,
-  # `bunx`) name no install verb and stay excluded.
+  # `i`), with flags and their values allowed between manager and verb
+  # (`pnpm --dir web install`, `yarn --cwd=web install`), plus the frozen forms
+  # that can stand without the verb (`yarn --frozen-lockfile`, yarn berry
+  # `yarn --immutable`). `corepack` only enables the manager named after it, so
+  # it needs no branch of its own. Tool runners that never fetch (`npx`,
+  # `pnpm dlx`, `yarn run`, `bunx`) name no install verb and stay excluded.
   function is_install(text) {
-    if (text ~ /(^|[^[:alnum:]_-])(npm|pnpm|yarn|bun)[[:space:]]+(-[^[:space:]]+[[:space:]]+)*(ci|clean-install|install|i)([^[:alnum:]_-]|$)/) return 1
+    if (text ~ /(^|[^[:alnum:]_-])(npm|pnpm|yarn|bun)[[:space:]]+(-[^[:space:]=]+([[:space:]=]+[^[:space:]]+)?[[:space:]]+)*(ci|clean-install|install|i)([^[:alnum:]_-]|$)/) return 1
     if (text ~ /(^|[^[:alnum:]_-])(npm|pnpm|yarn|bun)([^[:alnum:]_-]|$)/ && text ~ /--frozen-lockfile|--immutable/) return 1
     return 0
   }

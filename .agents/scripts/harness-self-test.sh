@@ -320,6 +320,30 @@ expect_failure "failing structure gate" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_
 rm -rf "$TEST_ROOT/web"
 
 echo ""
+echo "=== Fault injection: file-size ratchet registry staleness ==="
+
+# The size registry (`structure-baseline.json.files`) is down-only: a file that
+# shrank below its recorded count must fail until the entry is lowered, otherwise
+# the old ceiling stays in force and the ratchet never tightens (spec 0009 §7.2).
+mkdir -p "$TEST_ROOT/web/scripts" "$TEST_ROOT/web/components"
+cp web/scripts/check-file-size.mjs "$TEST_ROOT/web/scripts/"
+cp web/structure.config.mjs "$TEST_ROOT/web/"
+seq 1 401 | sed 's/.*/export const value& = &;/' > "$TEST_ROOT/web/components/stale.tsx"
+
+write_size_baseline() {
+  printf '{\n  "files": [\n    { "path": "components/stale.tsx", "lines": %s, "reason": "harness-self-test fixture", "reviewBy": "2099-12-31" }\n  ]\n}\n' "$1" \
+    > "$TEST_ROOT/web/structure-baseline.json"
+}
+
+write_size_baseline 401
+expect_pass "file-size ratchet accepts a registry that matches the tree" \
+  node "$TEST_ROOT/web/scripts/check-file-size.mjs"
+write_size_baseline 402
+expect_failure "file-size ratchet rejects a stale registry (401 lines recorded as 402)" \
+  node "$TEST_ROOT/web/scripts/check-file-size.mjs"
+rm -rf "$TEST_ROOT/web"
+
+echo ""
 echo "=== Fault injection: shell syntax ==="
 
 PROBE="$TEST_ROOT/.agents/scripts/syntax-probe.sh"

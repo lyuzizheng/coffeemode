@@ -1,4 +1,4 @@
-import { getRequestId, logError } from "@/lib/observability/server-log";
+import { logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
 import { apiError, parseQueryPositiveInt } from "@/lib/api/response";
 import { createCafeWithFirstCheckIn, listCafesNearby } from "@/lib/db/cafes";
@@ -63,7 +63,7 @@ export async function GET(request: Request) {
     const cafes = await listCafesNearby({ lat, lng, radiusKm, limit, viewerId: user?.id });
     return NextResponse.json({ cafes });
   } catch (err) {
-    logError({ route: "GET /api/cafes", requestId: getRequestId(request), error: err, status: 500 });
+    logError({ route: gate.route, request, error: err, status: 500 });
     return apiError("internal_error", 500);
   }
 }
@@ -111,7 +111,7 @@ export async function POST(request: Request) {
     ) {
       return apiError("invalid_photos", "one or more photos are invalid", 400);
     }
-    logError({ route: "POST /api/cafes", requestId: getRequestId(request), error: err, status: 500 });
+    logError({ route: gate.route, request, error: err, status: 500 });
     return apiError("internal_error", 500);
   }
 }

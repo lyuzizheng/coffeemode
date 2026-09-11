@@ -1,4 +1,4 @@
-import { getRequestId, logError } from "@/lib/observability/server-log";
+import { logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
 import { softDeleteCheckIn, updateCheckIn } from "@/lib/db/checkins";
@@ -55,7 +55,7 @@ export async function PATCH(
     if (err instanceof CheckInForbiddenError) {
       return apiError("forbidden", "not your check-in", 403);
     }
-    logError({ route: "PATCH /api/checkins/[id]", requestId: getRequestId(request), error: err, status: 500 });
+    logError({ route: gate.route, request, error: err, status: 500 });
     return apiError("internal_error", 500);
   }
 }
@@ -96,7 +96,7 @@ export async function DELETE(
     if (err instanceof CheckInForbiddenError) {
       return apiError("forbidden", "not your check-in", 403);
     }
-    logError({ route: "DELETE /api/checkins/[id]", requestId: getRequestId(request), error: err, status: 500 });
+    logError({ route: gate.route, request, error: err, status: 500 });
     return apiError("internal_error", 500);
   }
 }

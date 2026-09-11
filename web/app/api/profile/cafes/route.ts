@@ -1,4 +1,4 @@
-import { getRequestId, logError } from "@/lib/observability/server-log";
+import { logError } from "@/lib/observability/server-log";
 import { NextResponse, type NextRequest } from "next/server";
 import { apiError, parseQueryPositiveInt } from "@/lib/api/response";
 import { getUserCafes, ProfileCursorError } from "@/lib/db/profile";
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     if (error instanceof ProfileCursorError) {
       return apiError("invalid_cursor", 400);
     }
-    logError({ route: "GET /api/profile/cafes", requestId: getRequestId(request), error, status: 500 });
+    logError({ route: gate.route, request, error, status: 500 });
     return apiError("internal_error", 500);
   }
 }

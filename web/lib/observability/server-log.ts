@@ -42,11 +42,13 @@ export function getRequestId(request: { headers: Headers }): string {
 }
 
 export interface ServerErrorFields {
-  /** Handler literal, e.g. `"GET /api/cafes"`. Keep stable/greppable. */
+  /** Handler literal, e.g. `"GET /api/cafes"`. Prefer `gate.route` — one literal per handler. */
   route: string;
   /** The caught value — Error, message string, or small internal object. */
   error: unknown;
-  /** From `getRequestId(request)`; null when no request context exists. */
+  /** Request to resolve the id from. Preferred over `requestId` when in scope. */
+  request?: { headers: Headers };
+  /** Explicit id; wins over `request`. Kept for lib code without request context. */
   requestId?: string | null;
   /** HTTP status about to be returned, when known. */
   status?: number;
@@ -87,10 +89,11 @@ function extractError(error: unknown): { message: string; stack?: string } {
 /** Emit one JSON error line. Never throws. */
 export function logError(fields: ServerErrorFields): void {
   const { message, stack } = extractError(fields.error);
+  const requestId = fields.requestId ?? (fields.request ? getRequestId(fields.request) : null);
   console.error(
     JSON.stringify({
       type: "error",
-      request_id: fields.requestId ?? null,
+      request_id: requestId,
       route: fields.route,
       ...(fields.status !== undefined ? { status: fields.status } : {}),
       error: message,

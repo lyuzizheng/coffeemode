@@ -1,4 +1,4 @@
-import { getRequestId, logError } from "@/lib/observability/server-log";
+import { logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
 import { getCafe } from "@/lib/db/cafes";
@@ -59,7 +59,7 @@ export async function GET(
     if (err instanceof FeedCursorError) {
       return apiError("invalid_request", "cursor is invalid or was issued for another mode", 400);
     }
-    logError({ route: "GET /api/cafes/[id]/checkins", requestId: getRequestId(request), error: err, status: 500 });
+    logError({ route: gate.route, request, error: err, status: 500 });
     return apiError("internal_error", 500);
   }
 }

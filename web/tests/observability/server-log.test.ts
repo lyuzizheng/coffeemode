@@ -72,6 +72,36 @@ describe("logError", () => {
     expect(typeof line.stack).toBe("string");
   });
 
+  it("resolves request_id from request headers, reusing a valid inbound id", () => {
+    const id = crypto.randomUUID();
+    const req = new Request("http://localhost/api/cafes", {
+      headers: { [REQUEST_ID_HEADER]: id },
+    });
+    logError({ route: "GET /api/cafes", request: req, error: new Error("boom") });
+
+    expect(loggedLine()).toMatchObject({ request_id: id });
+  });
+
+  it("regenerates request_id from request headers when forged", () => {
+    const req = new Request("http://localhost/api/cafes", {
+      headers: { [REQUEST_ID_HEADER]: "attacker-chosen" },
+    });
+    logError({ route: "GET /api/cafes", request: req, error: new Error("boom") });
+
+    const line = loggedLine();
+    expect(line.request_id).not.toBe("attacker-chosen");
+    expect(isValidRequestId(line.request_id)).toBe(true);
+  });
+
+  it("prefers an explicit requestId over request headers", () => {
+    const req = new Request("http://localhost/api/cafes", {
+      headers: { [REQUEST_ID_HEADER]: crypto.randomUUID() },
+    });
+    logError({ route: "GET /api/cafes", request: req, requestId: "explicit", error: "x" });
+
+    expect(loggedLine()).toMatchObject({ request_id: "explicit" });
+  });
+
   it("nulls request_id without request context and omits status", () => {
     logError({ route: "postgres pool", error: new Error("boom") });
 

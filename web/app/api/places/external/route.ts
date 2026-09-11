@@ -1,4 +1,4 @@
-import { getRequestId, logError } from "@/lib/observability/server-log";
+import { logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
 import { POIServiceError, storeExternalPOIs } from "@/lib/places/poi-client";
@@ -65,7 +65,7 @@ export async function POST(request: Request) {
     if (err instanceof POIServiceError) {
       return apiError("poi_service", err.message, err.status);
     }
-    logError({ route: "POST /api/places/external", requestId: getRequestId(request), error: err, status: 502 });
+    logError({ route: gate.route, request, error: err, status: 502 });
     return apiError("upstream_error", 502);
   }
 }

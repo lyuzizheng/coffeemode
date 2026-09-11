@@ -1,4 +1,4 @@
-import { getRequestId, logError } from "@/lib/observability/server-log";
+import { logError } from "@/lib/observability/server-log";
 import { ImageResponse } from "next/og";
 import { isValidUUID } from "@shared/uuid";
 import { getCafe } from "@/lib/db/cafes";
@@ -39,7 +39,7 @@ export async function GET(
   try {
     cafe = await getCafe(id);
   } catch (err) {
-    logError({ route: "GET /cafes/[id]/og-image", requestId: getRequestId(request), error: err, status: 500 });
+    logError({ route: "GET /cafes/[id]/og-image", request, error: err, status: 500 });
     return new Response("Internal error", { status: 500 });
   }
   if (!cafe) {

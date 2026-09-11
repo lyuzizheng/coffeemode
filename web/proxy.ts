@@ -57,7 +57,7 @@ async function isGoneCafePage(request: NextRequest): Promise<boolean> {
   } catch (err) {
     // DB unreachable: fail open. The page handles the error surface; a
     // degraded soft-404 beats turning every deep link into a 500.
-    logError({ route: "proxy gone-cafe check", requestId: getRequestId(request), error: err });
+    logError({ route: "proxy gone-cafe check", request, error: err });
     return false;
   }
 }
@@ -147,7 +147,7 @@ async function handleProxy(request: NextRequest) {
   try {
     await supabase.auth.getSession();
   } catch (e) {
-    logError({ route: "proxy session refresh", requestId: getRequestId(req), error: e });
+    logError({ route: "proxy session refresh", request: req, error: e });
   }
 
   // BRAWUKA-184: a response carrying a refreshed session (Set-Cookie) MUST

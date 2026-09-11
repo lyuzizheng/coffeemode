@@ -1,4 +1,4 @@
-import { getRequestId, logError } from "@/lib/observability/server-log";
+import { logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/auth/supabase-server";
 import { query } from "@/lib/db/postgres";
@@ -36,11 +36,11 @@ export async function GET(request: Request) {
   try {
     await upsertProfile(data.user, query);
   } catch (err) {
-    logError({ route: "GET /auth/callback profile-upsert", requestId: getRequestId(request), error: err });
+    logError({ route: "GET /auth/callback profile-upsert", request, error: err });
     try {
       await supabase.auth.signOut();
     } catch (signOutError) {
-      logError({ route: "GET /auth/callback sign-out", requestId: getRequestId(request), error: signOutError });
+      logError({ route: "GET /auth/callback sign-out", request, error: signOutError });
     }
     return NextResponse.redirect(
       new URL("/?auth=error&reason=profile_upsert", origin),

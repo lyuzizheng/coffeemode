@@ -1,4 +1,4 @@
-import { getRequestId, logError } from "@/lib/observability/server-log";
+import { logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
 import { createCheckIn } from "@/lib/db/checkins";
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
     ) {
       return apiError("invalid_photos", "one or more photos are invalid", 400);
     }
-    logError({ route: "POST /api/checkins", requestId: getRequestId(request), error: err, status: 500 });
+    logError({ route: gate.route, request, error: err, status: 500 });
     return apiError("internal_error", 500);
   }
 }

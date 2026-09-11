@@ -17,11 +17,10 @@
  * preference-order fallback (real worker when the gate provides it, else a
  * seam-only mock of the image client; route handlers stay real).
   */
-
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NextRequest } from "next/server";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as cafesPOST } from "@/app/api/cafes/route";
 import { GET as cafeDetailGET } from "@/app/api/cafes/[id]/route";
 import { GET as feedGET } from "@/app/api/cafes/[id]/checkins/route";
@@ -235,6 +234,10 @@ async function createCafeViaHttp(
     note: string;
     /** Optional backdated creation visit (public visited_at contract). */
     visited_at?: string;
+    address?: string;
+    city?: string;
+    google_place_id?: string;
+    price_range?: number;
   },
 ): Promise<{ cafeId: string; checkinId: string }> {
   const photoId = await uploadTestWebP(client);
@@ -245,8 +248,10 @@ async function createCafeViaHttp(
       name: input.name,
       lat: input.lat,
       lng: input.lng,
-      address: "1 Test Rd, Singapore",
-      city: "singapore",
+      address: input.address ?? "1 Test Rd, Singapore",
+      city: input.city ?? "singapore",
+      ...(input.google_place_id ? { google_place_id: input.google_place_id } : {}),
+      ...(input.price_range !== undefined ? { price_range: input.price_range } : {}),
       checkin: {
         scores: input.scores,
         max_stay: input.max_stay,
@@ -298,15 +303,6 @@ async function getFeed(
   return { status: res.status, data: res.data };
 }
 
-// Shared journey state across the ordered Path 4 → 5 flow.
-let cafe1Id = "";
-let creation1Id = "";
-let bCheckin1Id = "";
-let cCheckin1Id = "";
-let cafe2Id = "";
-let cafe3Id = "";
-let creation3Id = "";
-
 describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP suite", () => {
   beforeAll(async () => {
     const minioUp = await minioReachable();
@@ -330,6 +326,17 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
   beforeEach(async () => {
     await resetRateLimits(dbClient);
   });
+  const createdCafeIds = new Set<string>();
+  afterEach(async () => {
+    if (!dbClient) return;
+    for (const cafeId of createdCafeIds) {
+      await dbClient.query("delete from checkin_likes where checkin_id in (select id from checkins where cafe_id = $1)", [cafeId]);
+      await dbClient.query("delete from checkins where cafe_id = $1", [cafeId]);
+      await dbClient.query("delete from cafes where id = $1", [cafeId]);
+    }
+    createdCafeIds.clear();
+  });
+
 
   afterAll(async () => {
     const errors: unknown[] = [];
@@ -459,17 +466,22 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
 
   it("Path 4: multi-user check-ins each contribute one weighted vote (experience 75, composite 71.75)", async () => {
     // Spec §10 input matrix: A creates with full dims, B all-60s, C all-75s.
+    const uniquePlaceId = `ChIJDYNAMICSHOUSE_${randomUUID().replace(/-/g, "").slice(0, 10)}`;
     const created = await createCafeViaHttp(clientA, {
       name: "Dynamics House",
       lat: 1.3065,
       lng: 103.8325,
+      address: "1 Orchard Rd, Singapore",
+      city: "singapore",
+      google_place_id: uniquePlaceId,
+      price_range: 2,
       scores: { overall: 90, wifi: 90, outlets: 80, seats: 70, temp: 60, coffee: 95 },
       max_stay: "unlimited",
-      note: "creator first impression",
+      note: "creator",
     });
-    cafe1Id = created.cafeId;
-    creation1Id = created.checkinId;
-
+    createdCafeIds.add(created.cafeId);
+    const cafe1Id = created.cafeId;
+    const creation1Id = created.checkinId;
     const second = await clientB.post<{ checkinId: string }>(checkinsPOST, "/api/checkins", {
       cafe_id: cafe1Id,
       scores: { overall: 60, wifi: 60, outlets: 60, seats: 60, temp: 60, coffee: 60 },
@@ -479,7 +491,6 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
     expect(second.status).toBe(201);
     expect(second.data.checkinId).toBeDefined();
     expect(second.data.checkinId).not.toBe(creation1Id);
-    bCheckin1Id = second.data.checkinId;
 
     const third = await clientC.post<{ checkinId: string }>(checkinsPOST, "/api/checkins", {
       cafe_id: cafe1Id,
@@ -488,8 +499,6 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
       note: "community visitor",
     });
     expect(third.status).toBe(201);
-    cCheckin1Id = third.data.checkinId;
-
     // Reconciliation through User D's read: mean of the three per-user votes.
     // experience (90+60+75)/3 = 75; composite .3*75+.2*71.67+.2*68.33+.15*65+.15*76.67 = 71.75
     const detail = await getCafeDetail(cafe1Id);
@@ -515,6 +524,39 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
   // =========================================================================
 
   it("Path 4 (DG64): 24h revisit returns 409 + existing_checkin_id, then last → PATCH edit recomputes the aggregate", async () => {
+    // Setup dedicated cafe and check-ins: A creates cafe (90 all dims), B checks in (60 all dims), C checks in (75 all dims)
+    const cafe = await createCafeViaHttp(clientA, {
+      name: "Revisit Dynamics House",
+      lat: 1.3065,
+      lng: 103.8325,
+      address: "1 Orchard Rd, Singapore",
+      city: "singapore",
+      google_place_id: `ChIJDG64REVISIT_${randomUUID().replace(/-/g, "").slice(0, 10)}`,
+      price_range: 2,
+      scores: { overall: 90, wifi: 90, outlets: 80, seats: 70, temp: 60, coffee: 95 },
+      max_stay: "unlimited",
+      note: "creator",
+    });
+    createdCafeIds.add(cafe.cafeId);
+    const cafe1Id = cafe.cafeId;
+
+    const bCheckin = await clientB.post<{ checkinId: string }>(checkinsPOST, "/api/checkins", {
+      cafe_id: cafe1Id,
+      scores: { overall: 60, wifi: 60, outlets: 60, seats: 60, temp: 60, coffee: 60 },
+      max_stay: "3h",
+      note: "visitor perspective",
+    });
+    expect(bCheckin.status).toBe(201);
+    const bCheckin1Id = bCheckin.data.checkinId;
+
+    const cCheckin = await clientC.post<{ checkinId: string }>(checkinsPOST, "/api/checkins", {
+      cafe_id: cafe1Id,
+      scores: { overall: 75, wifi: 75, outlets: 75, seats: 75, temp: 75, coffee: 75 },
+      max_stay: "2h",
+      note: "community visitor",
+    });
+    expect(cCheckin.status).toBe(201);
+
     // B's second POST inside the 24h window → 409 with the live row id.
     const revisit = await clientB.post(checkinsPOST, "/api/checkins", {
       cafe_id: cafe1Id,
@@ -598,16 +640,22 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
   it("Path 4 (DG64 window expiry): a 25h-old first visit lets the second POST create a new row with a 0.6-decay contribution", async () => {
     // The creator's fused first check-in is itself backdated 25h through the
     // public visited_at contract — no DB seam.
+    const uniquePlaceId = `ChIJEXPIRYHOUSE_${randomUUID().replace(/-/g, "").slice(0, 10)}`;
     const created = await createCafeViaHttp(clientA, {
       name: "Decay House",
       lat: 1.3075,
       lng: 103.8335,
+      address: "2 Orchard Rd, Singapore",
+      city: "singapore",
+      google_place_id: uniquePlaceId,
+      price_range: 2,
       scores: { overall: 60 },
       max_stay: "unlimited",
       note: "decay anchor",
       visited_at: new Date(Date.now() - 25 * 3_600_000).toISOString(),
     });
-    cafe2Id = created.cafeId;
+    createdCafeIds.add(created.cafeId);
+    const cafe2Id = created.cafeId;
 
     // Outside the window: a NEW row (201), not a 409.
     const nextDay = await clientA.post<{ checkinId: string }>(checkinsPOST, "/api/checkins", {
@@ -644,10 +692,24 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
   // =========================================================================
 
   it("Path 4 (DG61): a replayed idempotency key returns 200 with the same id and writes no duplicate", async () => {
+    const cafe = await createCafeViaHttp(clientA, {
+      name: "Idempotency House",
+      lat: 1.3048,
+      lng: 103.8318,
+      address: "1 Orchard Rd, Singapore",
+      city: "singapore",
+      google_place_id: `ChIJIDEMPOTENT_${randomUUID().replace(/-/g, "").slice(0, 10)}`,
+      price_range: 2,
+      scores: { overall: 80 },
+      max_stay: "unlimited",
+      note: "creator",
+    });
+    createdCafeIds.add(cafe.cafeId);
+    const cafe2Id = cafe.cafeId;
+
     const feedBefore = await getFeed(clientD, cafe2Id);
     expect(feedBefore.status).toBe(200);
     const rowsBefore = feedBefore.data.checkins.length;
-
     const key = randomUUID();
     const first = await clientC.post<{ checkinId: string }>(checkinsPOST, "/api/checkins", {
       cafe_id: cafe2Id,
@@ -685,16 +747,22 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
   // =========================================================================
 
   it("Path 4 (DG113): feed serves newest/helpful orderings, keyset cursor hops, and rejects cross-mode cursors", async () => {
+    const uniquePlaceId = `ChIJFEEDPAGINATE_${randomUUID().replace(/-/g, "").slice(0, 10)}`;
     const created = await createCafeViaHttp(clientA, {
       name: "Feed Pagination House",
       lat: 1.3085,
       lng: 103.8345,
-      scores: { overall: 85, wifi: 85, outlets: 80, seats: 75, temp: 70, coffee: 88 },
+      address: "3 Orchard Rd, Singapore",
+      city: "singapore",
+      google_place_id: uniquePlaceId,
+      price_range: 2,
+      scores: { overall: 80 },
       max_stay: "unlimited",
       note: "feed anchor",
     });
-    cafe3Id = created.cafeId;
-    creation3Id = created.checkinId;
+    createdCafeIds.add(created.cafeId);
+    const cafe3Id = created.cafeId;
+    const creation3Id = created.checkinId;
 
     // 20 further visits, each backdated >24h so DG64 never trips. User E takes
     // the third rotation slot (the creator's fresh creation check-in blocks A);
@@ -793,6 +861,40 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
   // =========================================================================
 
   it("Path 5: likes toggle symmetrically, self-likes 403, anonymous 401, viewers stay isolated", async () => {
+    const cafe = await createCafeViaHttp(clientA, {
+      name: "Likes Toggle House",
+      lat: 1.3048,
+      lng: 103.8318,
+      address: "1 Orchard Rd, Singapore",
+      city: "singapore",
+      google_place_id: `ChIJLIKESTOGGLE_${randomUUID().replace(/-/g, "").slice(0, 10)}`,
+      price_range: 2,
+      scores: { overall: 90 },
+      max_stay: "unlimited",
+      note: "creator",
+    });
+    createdCafeIds.add(cafe.cafeId);
+    const cafe1Id = cafe.cafeId;
+    const creation1Id = cafe.checkinId;
+
+    const bCheckin = await clientB.post<{ checkinId: string }>(checkinsPOST, "/api/checkins", {
+      cafe_id: cafe1Id,
+      scores: { overall: 60, wifi: 60, outlets: 60, seats: 60, temp: 60, coffee: 60 },
+      max_stay: "3h",
+      note: "visitor perspective",
+    });
+    expect(bCheckin.status).toBe(201);
+    const bCheckin1Id = bCheckin.data.checkinId;
+
+    const cCheckin = await clientC.post<{ checkinId: string }>(checkinsPOST, "/api/checkins", {
+      cafe_id: cafe1Id,
+      scores: { overall: 75, wifi: 75, outlets: 75, seats: 75, temp: 75, coffee: 75 },
+      max_stay: "2h",
+      note: "community visitor",
+    });
+    expect(cCheckin.status).toBe(201);
+    const cCheckin1Id = cCheckin.data.checkinId;
+
     // A likes B's check-in → 1; again → symmetric unlike → 0.
     const liked = await likeCheckin(clientA, bCheckin1Id);
     expect(liked.status).toBe(200);

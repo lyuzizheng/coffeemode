@@ -10,7 +10,7 @@
 
 import { randomUUID } from "node:crypto";
 import pg from "pg";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as cafesPOST, GET as cafesGET } from "@/app/api/cafes/route";
 import { GET as cafeDetailGET } from "@/app/api/cafes/[id]/route";
 import { GET as checkinsGET } from "@/app/api/cafes/[id]/checkins/route";
@@ -209,6 +209,17 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     if (!minioUp || !dbClient) return;
     await resetRateLimits(dbClient);
   });
+  const createdCafeIds = new Set<string>();
+  afterEach(async () => {
+    if (!dbClient) return;
+    for (const cafeId of createdCafeIds) {
+      await dbClient.query("delete from checkin_likes where checkin_id in (select id from checkins where cafe_id = $1)", [cafeId]);
+      await dbClient.query("delete from checkins where cafe_id = $1", [cafeId]);
+      await dbClient.query("delete from cafes where id = $1", [cafeId]);
+    }
+    createdCafeIds.clear();
+  });
+
 
   afterAll(async () => {
     const errors: unknown[] = [];
@@ -579,15 +590,12 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
   // 5. Successful 201 Creation, Fused Checkin, TZ, Gallery & Initial Aggregate
   // =========================================================================
 
-  let createdCafeId = "";
-  let createdCheckinId = "";
-  let createdPhotoId = "";
-
   it("Path 2: POST /api/cafes creates cafe with fused checkin, derives tz, binds gallery, and maps initial aggregate", async (ctx) => {
     if (!minioUp) return ctx.skip();
     // User A uploads valid WebP
     const uploadA = await uploadTestWebP(clientA);
-    createdPhotoId = uploadA.imageUuid;
+    const createdPhotoId = uploadA.imageUuid;
+    const pioneerPlaceId = `ChIJORCHARDPIONEER_${randomUUID().replace(/-/g, "").slice(0, 10)}`;
 
     // Spec 0008 §5 / §10: User A creates Cafe 1 in Singapore
     // Scores: wifi 90, outlets 80, seats 70, temp 60, coffee 95, overall 90, max_stay unlimited
@@ -600,7 +608,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
         lng: 103.8318,
         address: "1 Orchard Rd, Singapore",
         city: "singapore",
-        google_place_id: "ChIJORCHARDPIONEER01",
+        google_place_id: pioneerPlaceId,
         price_range: 2,
         opening_hours: {
           mon: { open: "08:00", close: "22:00" },
@@ -631,10 +639,9 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     expect(createRes.data.cafeId).toBeDefined();
     expect(createRes.data.checkinId).toBeDefined();
     expect(createRes.data.tz).toBe("Asia/Singapore");
-
-    createdCafeId = createRes.data.cafeId;
-    createdCheckinId = createRes.data.checkinId;
-
+    const createdCafeId = createRes.data.cafeId;
+    const createdCheckinId = createRes.data.checkinId;
+    createdCafeIds.add(createdCafeId);
     // Reconciliation via User D (external observer) GET /api/cafes/[id]
     const detailRes = await clientD.get<{
       id: string;
@@ -658,7 +665,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     expect(cafe.id).toBe(createdCafeId);
     expect(cafe.name).toBe("Orchard Pioneer Roasters");
     expect(cafe.tz).toBe("Asia/Singapore");
-    expect(cafe.google_place_id).toBe("ChIJORCHARDPIONEER01");
+    expect(cafe.google_place_id).toBe(pioneerPlaceId);
 
     // Default anonymity (DG13 / spec 0006): author is null on public read
     expect(cafe.author).toBeNull();
@@ -724,7 +731,23 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
 
   it("Path 2: POST /api/cafes rejects reused already-consumed photo ID on subsequent creation (Edge Case 5)", async (ctx) => {
     if (!minioUp) return ctx.skip();
-    // Attempt to reuse createdPhotoId which was consumed in the previous test
+    // User A uploads valid WebP and creates initial cafe to consume it
+    const uploadA = await uploadTestWebP(clientA);
+    const initialRes = await clientA.post<{ cafeId: string }>(cafesPOST, "/api/cafes", {
+      name: `Initial Photo Cafe ${randomUUID().slice(0, 8)}`,
+      lat: 1.3048,
+      lng: 103.8318,
+      checkin: {
+        scores: { overall: 80 },
+        max_stay: "2h",
+        note: "Initial photo consumption",
+        photo_ids: [uploadA.imageUuid],
+      },
+    });
+    expect(initialRes.status).toBe(201);
+    createdCafeIds.add(initialRes.data.cafeId);
+
+    // Attempt to reuse uploadA.imageUuid which was consumed in the previous creation
     const reusedRes = await clientA.post(cafesPOST, "/api/cafes", {
       name: "Reused Photo Cafe",
       lat: 1.3100,
@@ -733,7 +756,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
         scores: { overall: 75 },
         max_stay: "2h",
         note: "Attempting to double-consume photo ID",
-        photo_ids: [createdPhotoId],
+        photo_ids: [uploadA.imageUuid],
       },
     });
     expect(reusedRes.status).toBe(400);
@@ -746,9 +769,25 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
 
   it("Path 2: POST /api/cafes returns 409 cafe_exists when google_place_id is already registered", async (ctx) => {
     if (!minioUp) return ctx.skip();
+    const dupePlaceId = `ChIJORCHARD_DUPE_${randomUUID().replace(/-/g, "").slice(0, 10)}`;
+    const uploadA = await uploadTestWebP(clientA);
+    const originalRes = await clientA.post<{ cafeId: string }>(cafesPOST, "/api/cafes", {
+      name: "Original Place Venue",
+      lat: 1.3048,
+      lng: 103.8318,
+      google_place_id: dupePlaceId,
+      checkin: {
+        scores: { overall: 80 },
+        max_stay: "2h",
+        note: "Original venue",
+        photo_ids: [uploadA.imageUuid],
+      },
+    });
+    expect(originalRes.status).toBe(201);
+    createdCafeIds.add(originalRes.data.cafeId);
+
     // User B attempts to create a cafe with the same Google Place ID
     const uploadB = await uploadTestWebP(clientB);
-
     const dupeRes = await clientB.post<{ error: string; cafe_id: string }>(
       cafesPOST,
       "/api/cafes",
@@ -756,7 +795,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
         name: "Duplicate Google Place Venue",
         lat: 1.3048,
         lng: 103.8318,
-        google_place_id: "ChIJORCHARDPIONEER01",
+        google_place_id: dupePlaceId,
         checkin: {
           scores: { overall: 70 },
           max_stay: "3h",
@@ -768,7 +807,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
 
     expect(dupeRes.status).toBe(409);
     expect(dupeRes.data.error).toBe("cafe_exists");
-    expect(dupeRes.data.cafe_id).toBe(createdCafeId);
+    expect(dupeRes.data.cafe_id).toBe(originalRes.data.cafeId);
   });
 
   // =========================================================================
@@ -798,6 +837,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     );
     expect(tokyoRes.status).toBe(201);
     expect(tokyoRes.data.tz).toBe("Asia/Tokyo");
+    createdCafeIds.add(tokyoRes.data.cafeId);
 
     // User C creates London cafe (51.5133, -0.1364)
     const uploadLondon = await uploadTestWebP(clientC);
@@ -820,5 +860,6 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     );
     expect(londonRes.status).toBe(201);
     expect(londonRes.data.tz).toBe("Europe/London");
+    createdCafeIds.add(londonRes.data.cafeId);
   });
 });

@@ -6,7 +6,7 @@
  */
 import { randomUUID } from "node:crypto";
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { CafeExistsError } from "@/lib/validation/cafe";
 import {
   createCafeWithFirstCheckIn,
@@ -66,10 +66,9 @@ let adminDbUrl = "";
 let dbClient!: pg.Client;
 const previousDatabaseUrl = process.env.DATABASE_URL;
 
-// Journey state preserved across sequential Path 1→3 tests
-let journeyCafeId = "";
-let journeyCreationCheckinId = "";
-
+// Track per-test created resources for afterEach cleanup
+const createdCafeIds = new Set<string>();
+const createdUserIds = new Set<string>();
 function imageStubDeps() {
   return {
     ...defaultCompleteUploadDeps(),
@@ -97,6 +96,19 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
     );
     await seedMockDataset(dbClient);
   }, 120_000);
+
+  afterEach(async () => {
+    for (const cafeId of createdCafeIds) {
+      await dbClient.query("delete from checkin_likes where checkin_id in (select id from checkins where cafe_id = $1)", [cafeId]);
+      await dbClient.query("delete from checkins where cafe_id = $1", [cafeId]);
+      await dbClient.query("delete from cafes where id = $1", [cafeId]);
+    }
+    createdCafeIds.clear();
+    for (const userId of createdUserIds) {
+      await dbClient.query("delete from profiles where id = $1", [userId]);
+    }
+    createdUserIds.clear();
+  });
 
   afterAll(async () => {
     const errors: unknown[] = [];
@@ -304,8 +316,9 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
   // =========================================================================
 
   it("Path 2: mock Google POI injection validates place_id persistence and prevents duplicate collision", async () => {
+    const uniquePlaceId = `ChIJTESTJOURNEYPOI_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
     const mockPoi = createMockGooglePlacesResponse({
-      place_id: "ChIJTESTJOURNEYPOI01",
+      place_id: uniquePlaceId,
       name: "Google POI Seed Roasters",
       address: "100 Orchard Blvd, Singapore",
       lat: 1.3042,
@@ -313,7 +326,7 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
     }).results[0]!;
 
     // POI schema boundary validation
-    expect(mockPoi.place_id).toBe("ChIJTESTJOURNEYPOI01");
+    expect(mockPoi.place_id).toBe(uniquePlaceId);
     expect(mockPoi.source).toBe("google");
     expect(mockPoi.business_status).toBe("OPERATIONAL");
     expect(mockPoi.types).toContain("cafe");
@@ -334,6 +347,7 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
       },
     });
     expect(created.cafeId).toBeDefined();
+    createdCafeIds.add(created.cafeId);
 
     // Verify google_place_id persistence in DB
     const persisted = await dbClient.query(
@@ -379,9 +393,9 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
         photo_ids: [],
       },
     });
-    journeyCafeId = flagship.cafeId;
-    journeyCreationCheckinId = flagship.checkinId;
     expect(flagship.tz).toBe("Asia/Singapore");
+    createdCafeIds.add(flagship.cafeId);
+    const journeyCafeId = flagship.cafeId;
 
     // 2. WebP fake image upload fixture
     const fakeUpload = createFakeImageUpload();
@@ -444,8 +458,23 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
   });
 
   it("Path 2: fused creation transaction produces initial work_stats and guarantees default anonymity", async () => {
+    const flagship = await createCafeWithFirstCheckIn(JOURNEY_U1, {
+      name: `Fused Stats Roasters ${randomUUID().slice(0, 8)}`,
+      lat: 1.3065,
+      lng: 103.8325,
+      address: "10 Orchard Gate, Singapore",
+      city: "singapore",
+      checkin: {
+        scores: { overall: 85, wifi: 90, outlets: 85, seats: 80, coffee: 90 },
+        max_stay: "unlimited",
+        note: "Initial impression for journey verification",
+        photo_ids: [],
+      },
+    });
+    createdCafeIds.add(flagship.cafeId);
+
     // Verify coordinates, timezone, city, and initial aggregated stats
-    const stats = await cafeWorkStats(dbClient, journeyCafeId);
+    const stats = await cafeWorkStats(dbClient, flagship.cafeId);
     expect(stats.n_checkins).toBe(1);
     expect(stats.n_users).toBe(1);
     expect(stats.dims.wifi?.sum).toBe(90);
@@ -456,7 +485,7 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
     expect(stats.dims.overall?.n).toBe(1);
 
     // The "A nomad" Promise: author is strictly null prior to explicit opt-in
-    const detail = await getCafe(journeyCafeId);
+    const detail = await getCafe(flagship.cafeId);
     expect(detail).not.toBeNull();
     const publicDetail = toPublicCafeDetail(detail!);
     expect(publicDetail.author).toBeNull();
@@ -467,46 +496,91 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
   // =========================================================================
 
   it("Path 3: profile read/write persists display name and resident city updates", async () => {
-    const initial = await getProfile(JOURNEY_U1);
+    const testUser = randomUUID();
+    createdUserIds.add(testUser);
+    await dbClient.query("insert into profiles (id, display_name, current_city) values ($1, $2, 'singapore')", [
+      testUser,
+      "Journey Ann",
+    ]);
+
+    const initial = await getProfile(testUser);
     expect(initial?.displayName).toBe("Journey Ann");
 
-    const updated = await updateProfile(JOURNEY_U1, {
+    const updated = await updateProfile(testUser, {
       displayName: "Nomad Explorer Ann",
       currentCity: "london",
     });
     expect(updated?.displayName).toBe("Nomad Explorer Ann");
     expect(updated?.currentCity).toBe("london");
 
-    const readBack = await getProfile(JOURNEY_U1);
+    const readBack = await getProfile(testUser);
     expect(readBack?.displayName).toBe("Nomad Explorer Ann");
     expect(readBack?.currentCity).toBe("london");
   });
 
   it("Path 3: default anonymity guarantee holds across cafe detail and public check-in feed", async () => {
+    const testCafe = await createCafeWithFirstCheckIn(JOURNEY_U1, {
+      name: `Anon Default Roasters ${randomUUID().slice(0, 8)}`,
+      lat: 1.3065,
+      lng: 103.8325,
+      address: "10 Orchard Gate, Singapore",
+      city: "singapore",
+      checkin: {
+        scores: { overall: 85 },
+        max_stay: "unlimited",
+        note: "Pre-consent anonymity verification",
+        photo_ids: [],
+      },
+    });
+    createdCafeIds.add(testCafe.cafeId);
+
     // Pre-consent: author must be null on both detail and check-in feed
-    const cafeDetail = toPublicCafeDetail((await getCafe(journeyCafeId))!);
+    const cafeDetail = toPublicCafeDetail((await getCafe(testCafe.cafeId))!);
     expect(cafeDetail.author).toBeNull();
 
     const feed = await listPublicCheckIns({
-      cafeId: journeyCafeId,
+      cafeId: testCafe.cafeId,
       mode: "newest",
       viewerId: null,
     });
-    const firstCheckin = feed.checkins.find((c) => c.id === journeyCreationCheckinId);
+    const firstCheckin = feed.checkins.find((c) => c.id === testCafe.checkinId);
     expect(firstCheckin).toBeDefined();
     expect(firstCheckin?.author).toBeNull();
   });
 
   it("Path 3: public identity toggle reveals name/avatar on opt-in and cleanly reverts to null on opt-out", async () => {
-    // 1. Assign avatar to profile
+    // 1. Dedicated test user and cafe
+    const testUser = randomUUID();
+    createdUserIds.add(testUser);
+    await dbClient.query("insert into profiles (id, display_name, current_city) values ($1, $2, 'singapore')", [
+      testUser,
+      "Nomad Explorer Ann",
+    ]);
+
+    const testCafe = await createCafeWithFirstCheckIn(testUser, {
+      name: `Identity Toggle Roasters ${randomUUID().slice(0, 8)}`,
+      lat: 1.3065,
+      lng: 103.8325,
+      address: "10 Orchard Gate, Singapore",
+      city: "singapore",
+      checkin: {
+        scores: { overall: 85 },
+        max_stay: "unlimited",
+        note: "Public identity toggle test",
+        photo_ids: [],
+      },
+    });
+    createdCafeIds.add(testCafe.cafeId);
+
+    // Assign avatar to profile
     const avatarUrl = "https://images.example.com/nomad-ann.webp";
     await dbClient.query("update profiles set avatar_url = $1 where id = $2", [
       avatarUrl,
-      JOURNEY_U1,
+      testUser,
     ]);
 
     // 2. Toggle public identity ON
-    const optedIn = await updateProfileIdentity(JOURNEY_U1, {
+    const optedIn = await updateProfileIdentity(testUser, {
       showPublicIdentity: true,
     });
     expect(optedIn.showPublicIdentity).toBe(true);
@@ -514,7 +588,7 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
     expect(optedIn.identityConsentedAt).not.toBeNull();
 
     // 3. Verify public projection reveals handle, display name and avatar
-    const publicCafe = toPublicCafeDetail((await getCafe(journeyCafeId))!);
+    const publicCafe = toPublicCafeDetail((await getCafe(testCafe.cafeId))!);
     expect(publicCafe.author).toEqual({
       handle: optedIn.publicHandle,
       display_name: "Nomad Explorer Ann",
@@ -522,11 +596,11 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
     });
 
     const publicFeed = await listPublicCheckIns({
-      cafeId: journeyCafeId,
+      cafeId: testCafe.cafeId,
       mode: "newest",
       viewerId: null,
     });
-    const publicCheckin = publicFeed.checkins.find((c) => c.id === journeyCreationCheckinId);
+    const publicCheckin = publicFeed.checkins.find((c) => c.id === testCafe.checkinId);
     expect(publicCheckin?.author).toEqual({
       handle: optedIn.publicHandle,
       display_name: "Nomad Explorer Ann",
@@ -534,25 +608,25 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
     });
 
     // 4. Toggle public identity OFF (lossless opt-out)
-    const optedOut = await updateProfileIdentity(JOURNEY_U1, {
+    const optedOut = await updateProfileIdentity(testUser, {
       showPublicIdentity: false,
     });
     expect(optedOut.showPublicIdentity).toBe(false);
 
     // 5. Verify immediate revert to author: null
-    const anonCafe = toPublicCafeDetail((await getCafe(journeyCafeId))!);
+    const anonCafe = toPublicCafeDetail((await getCafe(testCafe.cafeId))!);
     expect(anonCafe.author).toBeNull();
 
     const anonFeed = await listPublicCheckIns({
-      cafeId: journeyCafeId,
+      cafeId: testCafe.cafeId,
       mode: "newest",
       viewerId: null,
     });
-    const anonCheckin = anonFeed.checkins.find((c) => c.id === journeyCreationCheckinId);
+    const anonCheckin = anonFeed.checkins.find((c) => c.id === testCafe.checkinId);
     expect(anonCheckin?.author).toBeNull();
 
     // 6. Underlying profile data remains preserved and intact
-    const profile = await getProfile(JOURNEY_U1);
+    const profile = await getProfile(testUser);
     expect(profile?.displayName).toBe("Nomad Explorer Ann");
     expect(profile?.avatarUrl).toBe(avatarUrl);
     expect(profile?.publicHandle).toBe(optedIn.publicHandle);

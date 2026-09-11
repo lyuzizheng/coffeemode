@@ -20,7 +20,7 @@
  */
 import { randomUUID } from "node:crypto";
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   CafeExistsError,
   CafeHasOtherCheckinsError,
@@ -57,7 +57,6 @@ import {
   JOURNEY_U1,
   JOURNEY_U2,
   JOURNEY_U3,
-  MOCK_CAFES,
   seedMockDataset,
 } from "../fixtures/mock-dataset";
 
@@ -71,19 +70,19 @@ let adminDbUrl = "";
 let dbClient!: pg.Client;
 const previousDatabaseUrl = process.env.DATABASE_URL;
 
-// Journey state shared across the ordered paths.
-let socialCafeId = "";
-let creationCheckinId = "";
-let visitorCheckinId = "";
-let revisitCheckinId = "";
-let feedCafeId = "";
-let feedCreationCheckinId = "";
-let oldestFeedCheckinId = "";
-let soloCafeId = "";
-
-const TOMBSTONE_PLACE_ID = "ChIJ_journey_solo_tombstone_01";
 
 describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
+  const createdCafeIds = new Set<string>();
+  afterEach(async () => {
+    if (!dbClient) return;
+    for (const cafeId of createdCafeIds) {
+      await dbClient.query("delete from checkin_likes where checkin_id in (select id from checkins where cafe_id = $1)", [cafeId]);
+      await dbClient.query("delete from checkins where cafe_id = $1", [cafeId]);
+      await dbClient.query("delete from cafes where id = $1", [cafeId]);
+    }
+    createdCafeIds.clear();
+  });
+
   beforeAll(async () => {
     adminDbUrl = integrationAdminUrl();
     testDbUrl = testDatabaseUrl(adminDbUrl, TEST_DB);
@@ -137,9 +136,8 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
         photo_ids: [],
       },
     });
-    socialCafeId = created.cafeId;
-    creationCheckinId = created.checkinId;
-
+    createdCafeIds.add(created.cafeId);
+    const socialCafeId = created.cafeId;
     const afterCreate = await cafeWorkStats(dbClient, socialCafeId);
     expect(afterCreate.n_checkins).toBe(1);
     expect(afterCreate.n_users).toBe(1);
@@ -150,7 +148,6 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
       scores: { overall: 50, wifi: 60 },
       note: "visitor perspective",
     });
-    visitorCheckinId = second.checkinId;
     expect(second.deduped).toBe(false);
 
     // One check-in per user: each contribution carries weight 1, so the
@@ -163,6 +160,24 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
   });
 
   it("Path 4: DG64 same-window revisit throws DuplicateCheckInError and converts to an edit", async () => {
+    const created = await createCafeWithFirstCheckIn(JOURNEY_U1, {
+      name: `Revisit House ${randomUUID().slice(0, 8)}`,
+      lat: 1.3065,
+      lng: 103.8325,
+      address: "2 Orchard Rd, Singapore",
+      city: "singapore",
+      checkin: { scores: { overall: 90 }, max_stay: "unlimited", note: "creator", photo_ids: [] },
+    });
+    createdCafeIds.add(created.cafeId);
+    const socialCafeId = created.cafeId;
+
+    const second = await createCheckIn(JOURNEY_U2, {
+      cafe_id: socialCafeId,
+      scores: { overall: 50, wifi: 60 },
+      note: "visitor perspective",
+    });
+    const visitorCheckinId = second.checkinId;
+
     const err = await createCheckIn(JOURNEY_U2, {
       cafe_id: socialCafeId,
       scores: { overall: 95 },
@@ -188,6 +203,24 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
   });
 
   it("Path 4: DG64 cross-24h revisit creates a new record instead of editing", async () => {
+    const created = await createCafeWithFirstCheckIn(JOURNEY_U1, {
+      name: `Cross24h House ${randomUUID().slice(0, 8)}`,
+      lat: 1.3065,
+      lng: 103.8325,
+      address: "2 Orchard Rd, Singapore",
+      city: "singapore",
+      checkin: { scores: { overall: 90 }, max_stay: "unlimited", note: "creator", photo_ids: [] },
+    });
+    createdCafeIds.add(created.cafeId);
+    const socialCafeId = created.cafeId;
+
+    const second = await createCheckIn(JOURNEY_U2, {
+      cafe_id: socialCafeId,
+      scores: { overall: 50, wifi: 60 },
+      note: "visitor perspective",
+    });
+    const visitorCheckinId = second.checkinId;
+
     await dbClient.query(
       "update checkins set visited_at = now() - interval '25 hours', updated_at = now() where id = $1",
       [visitorCheckinId],
@@ -198,7 +231,7 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
       scores: { overall: 80 },
       note: "back the next day",
     });
-    revisitCheckinId = revisit.checkinId;
+    const revisitCheckinId = revisit.checkinId;
     expect(revisitCheckinId).not.toBe(visitorCheckinId);
     expect(revisit.deduped).toBe(false);
 
@@ -214,7 +247,15 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
   });
 
   it("Path 4: DG61 idempotency key replays to the same check-in without a duplicate row", async () => {
-    const londonCafe = MOCK_CAFES[5]!.id;
+    const created = await createCafeWithFirstCheckIn(JOURNEY_U1, {
+      name: `Idempotency Cafe ${randomUUID().slice(0, 8)}`,
+      lat: 51.5133,
+      lng: -0.1364,
+      city: "london",
+      checkin: { scores: { overall: 80 }, max_stay: "unlimited", note: "anchor", photo_ids: [] },
+    });
+    createdCafeIds.add(created.cafeId);
+    const londonCafe = created.cafeId;
     const key = randomUUID();
     const first = await createCheckIn(JOURNEY_U3, {
       cafe_id: londonCafe,
@@ -256,8 +297,10 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
         photo_ids: [],
       },
     });
-    feedCafeId = created.cafeId;
-    feedCreationCheckinId = created.checkinId;
+    createdCafeIds.add(created.cafeId);
+    const feedCafeId = created.cafeId;
+    const feedCreationCheckinId = created.checkinId;
+    let oldestFeedCheckinId = "";
 
     // 21 further visitors, each with one staggered backdated visit (>24h
     // old, so DG64 never trips) for a deterministic newest order.
@@ -320,6 +363,17 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
   });
 
   it("Path 5: like/unlike toggles atomically with symmetric counters (DG08)", async () => {
+    const created = await createCafeWithFirstCheckIn(JOURNEY_U1, {
+      name: `Like Toggle House ${randomUUID().slice(0, 8)}`,
+      lat: 1.3065,
+      lng: 103.8325,
+      address: "2 Orchard Rd, Singapore",
+      city: "singapore",
+      checkin: { scores: { overall: 90 }, max_stay: "unlimited", note: "anchor", photo_ids: [] },
+    });
+    createdCafeIds.add(created.cafeId);
+    const creationCheckinId = created.checkinId;
+
     const liked = await toggleCheckInLike(JOURNEY_U2, creationCheckinId);
     expect(liked).toEqual({ liked: true, likesCount: 1 });
 
@@ -344,6 +398,17 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
   });
 
   it("Path 5: self-like is rejected by the service guard and the 0008 DB trigger backstop", async () => {
+    const created = await createCafeWithFirstCheckIn(JOURNEY_U1, {
+      name: `Self Like House ${randomUUID().slice(0, 8)}`,
+      lat: 1.3065,
+      lng: 103.8325,
+      address: "2 Orchard Rd, Singapore",
+      city: "singapore",
+      checkin: { scores: { overall: 90 }, max_stay: "unlimited", note: "anchor", photo_ids: [] },
+    });
+    createdCafeIds.add(created.cafeId);
+    const creationCheckinId = created.checkinId;
+
     await expect(
       toggleCheckInLike(JOURNEY_U1, creationCheckinId),
     ).rejects.toBeInstanceOf(SelfLikeError);
@@ -368,12 +433,13 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
   });
 
   it("Path 6: solo cafe deletes to a tombstone shell that blocks repeat POI import and leaves the sitemap", async () => {
+    const tombstonePlaceId = `ChIJ_journey_solo_${randomUUID().replace(/-/g, "").slice(0, 10)}`;
     const solo = await createCafeWithFirstCheckIn(JOURNEY_U3, {
       name: "Solo Tombstone Pop-up",
       lat: 35.6595,
       lng: 139.7005,
       city: "tokyo",
-      google_place_id: TOMBSTONE_PLACE_ID,
+      google_place_id: tombstonePlaceId,
       checkin: {
         scores: { overall: 75 },
         max_stay: "2h",
@@ -381,8 +447,8 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
         photo_ids: [],
       },
     });
-    soloCafeId = solo.cafeId;
-
+    createdCafeIds.add(solo.cafeId);
+    const soloCafeId = solo.cafeId;
     const result = await deleteCafe(soloCafeId, JOURNEY_U3);
     expect(result).toEqual({
       ok: true,
@@ -399,7 +465,7 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
       [soloCafeId],
     );
     expect(shell.rows[0].deleted_at).toBeNull();
-    expect(shell.rows[0].google_place_id).toBe(TOMBSTONE_PLACE_ID);
+    expect(shell.rows[0].google_place_id).toBe(tombstonePlaceId);
     const ownLive = await dbClient.query(
       "select count(*)::int as n from checkins where cafe_id = $1 and deleted_at is null",
       [soloCafeId],
@@ -412,7 +478,7 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
       lat: 35.6595,
       lng: 139.7005,
       city: "tokyo",
-      google_place_id: TOMBSTONE_PLACE_ID,
+      google_place_id: tombstonePlaceId,
       checkin: { scores: { overall: 70 }, max_stay: "2h", note: "retry", photo_ids: [] },
     }).catch((e) => e);
     expect(dup).toBeInstanceOf(CafeExistsError);
@@ -428,6 +494,33 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
   });
 
   it("Path 6: community cafe requires confirm, then hands off to the service account keeping other check-ins (DG125)", async () => {
+    const created = await createCafeWithFirstCheckIn(JOURNEY_U1, {
+      name: `Community Delete House ${randomUUID().slice(0, 8)}`,
+      lat: 1.3065,
+      lng: 103.8325,
+      address: "2 Orchard Rd, Singapore",
+      city: "singapore",
+      checkin: { scores: { overall: 90 }, max_stay: "unlimited", note: "creator", photo_ids: [] },
+    });
+    createdCafeIds.add(created.cafeId);
+    const socialCafeId = created.cafeId;
+
+    // Visitor U2 adds 2 checkins (one backdated so DG64 allows second)
+    const visit1 = await createCheckIn(JOURNEY_U2, {
+      cafe_id: socialCafeId,
+      scores: { overall: 70 },
+      note: "visitor 1",
+    });
+    await dbClient.query(
+      "update checkins set visited_at = now() - interval '25 hours', updated_at = now() where id = $1",
+      [visit1.checkinId],
+    );
+    await createCheckIn(JOURNEY_U2, {
+      cafe_id: socialCafeId,
+      scores: { overall: 80 },
+      note: "visitor 2",
+    });
+
     const err = await deleteCafe(socialCafeId, JOURNEY_U1).catch((e) => e);
     expect(err).toBeInstanceOf(CafeHasOtherCheckinsError);
     expect((err as CafeHasOtherCheckinsError).n).toBe(2);

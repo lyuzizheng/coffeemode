@@ -18,13 +18,6 @@
       "owner": "BRAWUKA-95",
       "reason": "over budget before the guard existed — split tracked by the BRAWUKA-175 quality program. Raised 725 → 730 on rebase: BRAWUKA-185 (#358) grew the file on main before this guard gated main; the only-shrink ratchet binds from 730.",
       "reviewBy": "2026-12-31"
-    },
-    {
-      "path": "lib/db/profile.ts",
-      "lines": 431,
-      "owner": "BRAWUKA-175",
-      "reason": "over budget before the guard existed — split tracked by the BRAWUKA-175 quality program",
-      "reviewBy": "2026-12-31"
     }
   ]
 }

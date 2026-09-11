@@ -185,7 +185,6 @@ MUST 在当次提交内完成拆分。不允许"顺手加一行"把超标文件�
 | 文件 | 当前行数 | 超标项 | 只降不升基线 | 复核到期 | 责任人 |
 | --- | --- | --- | --- | --- | --- |
 | `web/components/checkin/checkin-drawer.tsx` | 730 | 文件硬 400 | 730（只允许减少） | 2026-12-31 | BRAWUKA-95 |
-| `web/lib/db/profile.ts` | 431 | 文件硬 400 | 431 | 2026-12-31 | BRAWUKA-175 |
 
 `web/lib/db/cafes.ts`（826）与 `web/lib/db/checkins.ts`（758）已由 BRAWUKA-180 (#356)
 拆分毕业，按 §7.4「毕业行直接删除」从表与机器基线移除，基准值随之下降。

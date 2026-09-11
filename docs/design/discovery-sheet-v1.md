@@ -306,10 +306,11 @@ assigns the tokens:
 - Feed mode switch: active pill on `spring.snappy` (settle ceiling
   `settle.feedback` ≤150ms); content swaps with no added animation
   (stale-while-revalidate, DG17).
-- Skeleton → content: opacity-only cross-fade under the `ease.fade` (≤200ms)
-  ceiling; reduced motion → final state instantly.
-- Toast: enter inside the 200–300ms enter budget, exit inside the 100–150ms
-  exit budget (spec 0002 §Motion Rules; HeroUI defaults).
+- Skeleton → content: instant swap, no added animation (skeletons render only
+  on the initial pending pass).
+- Toast: HeroUI v3 default — 350ms view-transition slide in *and* out;
+  exceeds the spec 0002 exit budget (100–150ms) — deviation tracked in
+  BRAWUKA-207.
 
 ## 11. Dark mode and accessibility
 

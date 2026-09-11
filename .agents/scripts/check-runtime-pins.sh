@@ -161,16 +161,28 @@ fi
 # Any workflow that installs a package's dependencies and runs its code
 # provisions Node itself, so the pin is not in one file. Each `node-version` is
 # attributed to the package(s) that job installs into — its `working-directory`
-# (job default or step), the setup-node step's `cache-dependency-path`, or an
-# `npm --prefix <pkg>` install — and compared with that package's own floor.
+# (job default or step), the setup-node step's `cache-dependency-path`, a `cd`
+# into the package inside the install step (`cd web && pnpm install`), or a
+# manager dir flag (`npm --prefix <pkg>`, `pnpm --dir <pkg>`,
+# `yarn --cwd <pkg>`) — and compared with that package's own floor.
 # `nightly-recompute.yml` (02:00 UTC, `web/`, production database) is why the
 # single-file check was not enough: with `engine-strict` off, a floor bump that
 # left it behind installs with an `EBADENGINE` warning and still exits 0.
 #
+# An install is recognised by what it does (fetch a package's dependencies),
+# never by one command name: `npm`, `pnpm`, `yarn` and `bun` install verbs
+# (`ci`, `clean-install`, `install`, `i`) and the frozen forms
+# (`--frozen-lockfile`, yarn berry `--immutable`) all count. `corepack` only
+# enables the manager that follows it, so `corepack enable && pnpm install` is
+# covered by the manager branch.
+#
 # A `node-version` the gate cannot attribute to a package fails rather than
-# skips: a workflow shape this parser does not understand must extend the gate,
-# never quietly escape it. The walk is written in `awk` rather than with a YAML
-# library, so the check keeps running where nothing is installed.
+# skips, and so does a job that installs into a package the gate cannot name:
+# "nothing detected" (SKIP) and "detected but unattributable" (BAD) are
+# different records, so an installer this parser does not understand extends
+# the gate instead of quietly escaping it. The walk is written in `awk` rather
+# than with a YAML library, so the check keeps running where nothing is
+# installed.
 floors=""
 for pkg in "${PACKAGES[@]}"; do
   floors+="${pkg}=$(floor_for "$pkg" || true),"
@@ -224,9 +236,52 @@ workflow_pin_records() {
     emit("BAD", line, "-", reason)
   }
 
+  # An install fetches the dependencies of a package, whatever manager spells it:
+  # `npm`/`pnpm`/`yarn`/`bun` install verbs (`ci`, `clean-install`, `install`,
+  # `i`), with flags allowed between manager and verb
+  # (`pnpm --dir web install`), plus the frozen forms that can stand without
+  # the verb (`yarn --frozen-lockfile`, yarn berry `yarn --immutable`).
+  # `corepack` only enables the manager named after it, so it needs no branch
+  # of its own. Tool runners that never fetch (`npx`, `pnpm dlx`, `yarn run`,
+  # `bunx`) name no install verb and stay excluded.
+  function is_install(text) {
+    if (text ~ /(^|[^[:alnum:]_-])(npm|pnpm|yarn|bun)[[:space:]]+(-[^[:space:]]+[[:space:]]+)*(ci|clean-install|install|i)([^[:alnum:]_-]|$)/) return 1
+    if (text ~ /(^|[^[:alnum:]_-])(npm|pnpm|yarn|bun)([^[:alnum:]_-]|$)/ && text ~ /--frozen-lockfile|--immutable/) return 1
+    return 0
+  }
+
+  # The install step itself can name the package: `cd web && pnpm install`,
+  # `pushd poi-service`, or a manager dir flag (`npm --prefix <pkg>`,
+  # `pnpm --dir <pkg>`, `yarn --cwd <pkg>`). Returns "" when nothing in the
+  # step names a package this gate knows, which finish_job then fails rather
+  # than mis-attributes.
+  function install_dir(text,   s, target, pre, d) {
+    s = text
+    while (match(s, /(cd|pushd)[[:space:]]+[^[:space:];|&"]+/)) {
+      target = substr(s, RSTART, RLENGTH)
+      if (RSTART > 1) {
+        pre = substr(s, RSTART - 1, 1)
+        if (pre ~ /[[:alnum:]_-]/) { s = substr(s, RSTART + 1); continue }
+      }
+      sub(/^(cd|pushd)[[:space:]]+/, "", target)
+      d = package_dir(target)
+      if (d != "") return d
+      s = substr(s, RSTART + RLENGTH)
+    }
+    s = text
+    while (match(s, /--(prefix|dir|cwd)[[:space:]=]+[^[:space:];|&"]+/)) {
+      target = substr(s, RSTART, RLENGTH)
+      sub(/^--(prefix|dir|cwd)[[:space:]=]+/, "", target)
+      d = package_dir(target)
+      if (d != "") return d
+      s = substr(s, RSTART + RLENGTH)
+    }
+    return ""
+  }
+
   # Buffered until the job ends: the packages a job installs into are only fully
   # known after its last step.
-  function finish_step() {
+  function finish_step(   d) {
     if (step_setup && step_has_node) {
       npins++
       pin_line[npins] = step_node_line
@@ -235,9 +290,13 @@ workflow_pin_records() {
       if (pin_dir[npins] == "") pin_dir[npins] = job_wd_pkg
       if (pin_dir[npins] == "") pin_dir[npins] = step_cache_pkg
     }
-    if (step_text ~ /(^|[^[:alnum:]_-])npm[[:space:]]+(ci|install|i)([^[:alnum:]_-]|$)/) {
+    if (is_install(step_text)) {
       job_installs = 1
       if (step_wd_pkg != "") installed[step_wd_pkg] = 1
+      else {
+        d = install_dir(step_text)
+        if (d != "") installed[d] = 1
+      }
     }
     s = step_text
     while (match(s, /--prefix[[:space:]=]+[^[:space:]]+/)) {
@@ -257,7 +316,7 @@ workflow_pin_records() {
       for (d in installed) if (!(d in seen)) { seen[d] = 1; n++ }
       if (n == 0) {
         if (job_installs) {
-          bad(pin_line[i], "declares node-version but the gate cannot tell which package it installs into — give the job a defaults.run.working-directory or install with npm --prefix")
+          bad(pin_line[i], "declares node-version but the gate cannot tell which package it installs into — give the job a defaults.run.working-directory, a step working-directory, a cache-dependency-path, or install inside the package directory (cd <pkg> / --prefix|--dir|--cwd <pkg>)")
         } else {
           emit("SKIP", pin_line[i], "-", pin_major[i])
         }
@@ -409,7 +468,7 @@ check_workflow_pins() {
         fi
         ;;
       SKIP)
-        ok "$wf job $wjob node-version: $wvalue — the job installs no package, so no package floor applies"
+        ok "$wf job $wjob node-version: $wvalue — no npm/pnpm/yarn/bun install detected in this job, so no package floor applies"
         ;;
       BAD)
         fail "$wf:$wline job $wjob $wvalue"

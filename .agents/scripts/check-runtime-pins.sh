@@ -12,6 +12,11 @@
 # moves one package, one container, or one Worker alone fails here instead of
 # surfacing later as a machine-specific difference.
 #
+# The Node pin is checked wherever it lives, not only in `ci.yml`:
+# `nightly-recompute.yml` runs `npm ci` in `web/` against the production database
+# every night, so the gate walks every workflow and attributes each
+# `node-version` to the package that job installs into (BRAWUKA-202).
+#
 # What it deliberately does NOT check:
 #   - `engine-strict`. Measured on npm 11: without it, an unsatisfiable
 #     `engines` range is an `EBADENGINE` warning and `npm ci` still exits 0.
@@ -30,7 +35,7 @@ cd "$ROOT"
 
 PACKAGES=(web poi-service image-service)
 WORKERS=(poi-service image-service)
-CI_WORKFLOW=".github/workflows/ci.yml"
+WORKFLOWS_DIR=".github/workflows"
 WEB_DOCKERFILE="web/Dockerfile"
 COMPOSE="docker-compose.yml"
 
@@ -51,20 +56,35 @@ done
 for pkg in "${WORKERS[@]}"; do
   REQUIRED+=("$pkg/wrangler.toml")
 done
-REQUIRED+=("$CI_WORKFLOW" "$WEB_DOCKERFILE" "$COMPOSE")
+REQUIRED+=("$WEB_DOCKERFILE" "$COMPOSE")
 
 for required in "${REQUIRED[@]}"; do
   if [[ ! -f "$required" ]]; then
     fail "missing $required — cannot verify the runtime pins"
   fi
 done
+
+# The workflow set is discovered, never named: the pin lives in every workflow
+# that provisions Node, and a hardcoded file list is exactly the blind spot this
+# check exists to close. An absent or empty directory would instead leave the
+# loop below with nothing to verify, so it is a failure, not an empty run.
+WORKFLOW_FILES=()
+for candidate in "$WORKFLOWS_DIR"/*.yml "$WORKFLOWS_DIR"/*.yaml; do
+  [[ -f "$candidate" ]] || continue
+  WORKFLOW_FILES+=("$candidate")
+done
+if [[ "${#WORKFLOW_FILES[@]}" -eq 0 ]]; then
+  fail "$WORKFLOWS_DIR holds no workflow — no workflow Node pin can be verified"
+fi
+
 if [[ $ERRORS -gt 0 ]]; then
   echo ""
   echo "check-runtime-pins FAILED with $ERRORS error(s)."
   exit 1
 fi
 
-# --- 1. engines.node: same floor in every package, equal to CI and the images ---
+# --- 1. engines.node: same floor in every package, equal to the workflows and
+# the images ---
 
 # Reads the `"engines"` object out of a package.json (`awk`, so a one-line object
 # works as well as the multi-line form).
@@ -91,16 +111,22 @@ engine_floor() {
 }
 
 node_floor=""
+# Parallel to PACKAGES: the declared floor of each package, empty when it is
+# missing or unreadable. A package with an empty entry still fails every pin
+# attributed to it, so this map can never turn a check into a silent pass.
+FLOOR_RAW=()
 for pkg in "${PACKAGES[@]}"; do
   manifest="$pkg/package.json"
   floor="$(engine_floor "$manifest")"
   case "$floor" in
-    "") fail "$manifest declares no engines.node" ; continue ;;
+    "") fail "$manifest declares no engines.node" ; FLOOR_RAW+=("") ; continue ;;
     unsupported-range:*)
       fail "$manifest engines.node \"${floor#unsupported-range:}\" is not a supported floor range (expected >=MAJOR[.MINOR[.PATCH]])"
+      FLOOR_RAW+=("")
       continue
       ;;
   esac
+  FLOOR_RAW+=("$floor")
   if [[ -z "$node_floor" ]]; then
     node_floor="$floor"
   elif [[ "$floor" != "$node_floor" ]]; then
@@ -110,27 +136,291 @@ for pkg in "${PACKAGES[@]}"; do
   ok "$manifest engines.node >=$floor"
 done
 
+# Each workflow pin is compared with its own package's floor, so a pin is
+# attributed to the package that job installs into rather than to one
+# repo-wide number.
+floor_for() {
+  local want="$1" i
+  for i in "${!PACKAGES[@]}"; do
+    if [[ "${PACKAGES[$i]}" == "$want" ]]; then
+      printf '%s\n' "${FLOOR_RAW[$i]}"
+      return 0
+    fi
+  done
+  return 1
+}
+
 if [[ -z "$node_floor" ]]; then
   echo ""
   echo "check-runtime-pins FAILED with $ERRORS error(s)."
   exit 1
 fi
 
-# CI's `node-version` is the authoritative floor: every occurrence must agree,
-# so neither an engines bump without CI nor a CI bump without engines passes.
-ci_majors="$(grep -E '^[[:space:]]*node-version:' "$CI_WORKFLOW" |
-  sed -nE 's/.*node-version:[[:space:]]*["'"'"']?([0-9]+).*/\1/p' | sort -u)"
-if [[ -z "$ci_majors" ]]; then
-  fail "$CI_WORKFLOW declares no node-version — the CI floor is unverifiable"
-else
-  while IFS= read -r major; do
-    if [[ "$major" != "$node_floor" ]]; then
-      fail "$CI_WORKFLOW pins node-version: $major but engines.node floors at >=$node_floor"
-    else
-      ok "$CI_WORKFLOW node-version: $major matches engines.node"
-    fi
-  done <<< "$ci_majors"
-fi
+# --- 1b. Workflow `node-version`: every job that installs into a package ---
+#
+# Any workflow that installs a package's dependencies and runs its code
+# provisions Node itself, so the pin is not in one file. Each `node-version` is
+# attributed to the package(s) that job installs into — its `working-directory`
+# (job default or step), the setup-node step's `cache-dependency-path`, or an
+# `npm --prefix <pkg>` install — and compared with that package's own floor.
+# `nightly-recompute.yml` (02:00 UTC, `web/`, production database) is why the
+# single-file check was not enough: with `engine-strict` off, a floor bump that
+# left it behind installs with an `EBADENGINE` warning and still exits 0.
+#
+# A `node-version` the gate cannot attribute to a package fails rather than
+# skips: a workflow shape this parser does not understand must extend the gate,
+# never quietly escape it. The walk is written in `awk` rather than with a YAML
+# library, so the check keeps running where nothing is installed.
+floors=""
+for pkg in "${PACKAGES[@]}"; do
+  floors+="${pkg}=$(floor_for "$pkg" || true),"
+done
+floors="${floors%,}"
+
+workflow_pin_records() {
+  awk -v floors="$floors" '
+  BEGIN {
+    pkgcount = split(floors, entry, ",")
+    for (i = 1; i <= pkgcount; i++) {
+      eq = index(entry[i], "=")
+      if (eq > 0) {
+        name = substr(entry[i], 1, eq - 1)
+        FLOOR[name] = substr(entry[i], eq + 1)
+        ORDER[i] = name
+      }
+    }
+  }
+
+  function indent_of(s) { match(s, /^ */); return RLENGTH }
+
+  function strip_value(line,   v) {
+    v = line
+    sub(/^[^:]*:/, "", v)
+    sub(/[[:space:]]+#.*$/, "", v)
+    gsub(/["]/, "", v)
+    gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+    return v
+  }
+
+  # A directory is only meaningful when a package owns it; `.`, `..` and any
+  # other path are not package roots, so they map to nothing.
+  function package_dir(value,   d) {
+    d = strip_value(value)
+    gsub(/^[.\/]+/, "", d)
+    gsub(/\/+$/, "", d)
+    return (d in FLOOR) ? d : ""
+  }
+
+  # Records are tab separated, and `read` collapses an empty field between two
+  # tabs — so a job the walk could not name still emits a placeholder instead of
+  # shifting every later field left.
+  function emit(kind, line, dir, value) {
+    printf "%s\t%s\t%d\t%s\t%s\n", kind, (job == "" ? "?" : job), line, dir, value
+  }
+
+  # A pin shape this gate cannot attribute is a failure, reported with the line
+  # it sits on so the author sees which one must change.
+  function bad(line, reason) {
+    emit("BAD", line, "-", reason)
+  }
+
+  # Buffered until the job ends: the packages a job installs into are only fully
+  # known after its last step.
+  function finish_step() {
+    if (step_setup && step_has_node) {
+      npins++
+      pin_line[npins] = step_node_line
+      pin_major[npins] = step_node_major
+      pin_dir[npins] = step_wd_pkg
+      if (pin_dir[npins] == "") pin_dir[npins] = job_wd_pkg
+      if (pin_dir[npins] == "") pin_dir[npins] = step_cache_pkg
+    }
+    if (step_text ~ /(^|[^[:alnum:]_-])npm[[:space:]]+(ci|install|i)([^[:alnum:]_-]|$)/) {
+      job_installs = 1
+      if (step_wd_pkg != "") installed[step_wd_pkg] = 1
+    }
+    s = step_text
+    while (match(s, /--prefix[[:space:]=]+[^[:space:]]+/)) {
+      target = substr(s, RSTART, RLENGTH)
+      sub(/^--prefix[[:space:]=]+/, "", target)
+      d = package_dir(target)
+      if (d != "") { installed[d] = 1; job_installs = 1 }
+      s = substr(s, RSTART + RLENGTH)
+    }
+  }
+
+  function finish_job(   i, d, k, n, seen, list) {
+    for (i = 1; i <= npins; i++) {
+      n = 0
+      delete seen
+      if (pin_dir[i] != "") { seen[pin_dir[i]] = 1; n++ }
+      for (d in installed) if (!(d in seen)) { seen[d] = 1; n++ }
+      if (n == 0) {
+        if (job_installs) {
+          bad(pin_line[i], "declares node-version but the gate cannot tell which package it installs into — give the job a defaults.run.working-directory or install with npm --prefix")
+        } else {
+          emit("SKIP", pin_line[i], "-", pin_major[i])
+        }
+        continue
+      }
+      for (k = 1; k <= pkgcount; k++) {
+        d = ORDER[k]
+        if (d in seen) emit("PIN", pin_line[i], d, pin_major[i])
+      }
+    }
+    if (job_installs && npins == 0) {
+      list = ""
+      for (k = 1; k <= pkgcount; k++) {
+        d = ORDER[k]
+        if (d in installed) list = list (list == "" ? "" : ", ") d
+      }
+      if (list == "") list = job_wd_pkg
+      if (list == "") list = "a directory the gate cannot attribute"
+      bad(job_line, "installs dependencies in " list " but pins no node-version — the run would use whatever Node the runner ships")
+    }
+  }
+
+  function reset_step() {
+    step_text = ""; step_setup = 0; step_wd_pkg = ""; step_cache_pkg = ""
+    step_has_node = 0; step_node_line = 0; step_node_major = ""
+  }
+
+  function reset_job() {
+    job = ""; job_line = 0; job_wd_pkg = ""; job_installs = 0; npins = 0
+    in_defaults = 0; defaults_run = 0; in_steps = 0
+    delete installed
+    reset_step()
+  }
+
+  BEGIN { reset_job(); injobs = 0; candidates = 0; recorded = 0 }
+
+  # Blocks are tracked by indentation, which these workflows write with two
+  # spaces per level. A file written with another width is not read as one job
+  # with steps: its pins are reported as unattributable, and the
+  # `candidates == recorded` guard in END catches any pin the walk stepped over
+  # entirely — either way the gate fails instead of mis-attributing a pin.
+  {
+    line = $0
+    ind = indent_of(line)
+    # Counted before any other rule can `next` past the line, so the guard in
+    # END catches a structure this parser walked out of.
+    if (line ~ /^[[:space:]]*node-version:/) candidates++
+
+    if (line ~ /^jobs:[[:space:]]*$/) { injobs = 1; next }
+    if (!injobs) next
+
+    if (ind == 2 && line !~ /^[[:space:]]*#/) {
+      finish_step()
+      finish_job()
+      reset_job()
+      job = line
+      sub(/^[[:space:]]+/, "", job)
+      sub(/:.*$/, "", job)
+      job_line = NR
+      next
+    }
+
+    is_comment = (line ~ /^[[:space:]]*#/)
+    is_blank = (line ~ /^[[:space:]]*$/)
+
+    # Only a real dedent leaves a block: a blank line carries no indentation at
+    # all and must not end the `steps:` it sits inside.
+    if (!is_blank && ind <= 4) {
+      in_defaults = 0
+      in_steps = 0
+    }
+    if (line ~ /^    defaults:[[:space:]]*$/) { in_defaults = 1; defaults_run = 0; next }
+    if (line ~ /^    steps:[[:space:]]*$/) { in_steps = 1; next }
+
+    if (in_defaults) {
+      if (line ~ /^      run:[[:space:]]*$/) { defaults_run = 1; next }
+      if (defaults_run && line ~ /^        working-directory:/) {
+        job_wd_pkg = package_dir(line)
+      }
+      next
+    }
+
+    # The pin lives in one place: the `with:` block of a setup-node step, which
+    # is where the runtime for that job is chosen. Any other `node-version:` — a
+    # matrix axis, another action — is a shape this gate cannot attribute, and
+    # fails with its own line instead of being silently skipped.
+    if (line ~ /^[[:space:]]*node-version:/) {
+      pin_key = line
+      sub(/^[[:space:]]*(-[[:space:]]+)?/, "", pin_key)
+      if (in_steps && step_setup) {
+        step_has_node = 1
+        step_node_line = NR
+        step_node_major = strip_value(pin_key)
+      } else {
+        bad(NR, "declares node-version outside an actions/setup-node step — the gate cannot tell which package engines it must satisfy")
+      }
+      recorded++
+    }
+
+    if (in_steps) {
+      if (ind == 6 && line ~ /^      -[[:space:]]/) {
+        finish_step()
+        reset_step()
+      }
+      if (!is_comment) step_text = step_text "\n" line
+
+      key = line
+      sub(/^[[:space:]]*(-[[:space:]]+)?/, "", key)
+
+      if (key ~ /^uses:[[:space:]]*actions\/setup-node([@[:space:]]|$)/) step_setup = 1
+      if (key ~ /^working-directory:/) step_wd_pkg = package_dir(key)
+      if (key ~ /^cache-dependency-path:/) {
+        cache = strip_value(key)
+        sub(/\/.*$/, "", cache)
+        step_cache_pkg = package_dir(cache)
+      }
+      next
+    }
+  }
+
+  END {
+    finish_step()
+    finish_job()
+    if (candidates != recorded) {
+      emit("BAD", 0, "-", candidates " node-version pin(s) but only " recorded " attributed — extend this gate for the structure it could not read")
+    }
+  }
+  ' "$1"
+}
+
+check_workflow_pins() {
+  local wf="$1" records kind wjob wline wdir wvalue floor
+  records="$(workflow_pin_records "$wf")" || {
+    fail "$wf could not be parsed for node-version pins"
+    return 0
+  }
+  [[ -n "$records" ]] || return 0
+  while IFS=$'\t' read -r kind wjob wline wdir wvalue; do
+    [[ -n "$kind" ]] || continue
+    case "$kind" in
+      PIN)
+        floor="$(floor_for "$wdir" || true)"
+        if [[ -z "$floor" ]]; then
+          fail "$wf:$wline job $wjob pins node-version: $wvalue but $wdir/package.json declares no readable engines.node floor"
+        elif [[ "$wvalue" != "$floor" ]]; then
+          fail "$wf:$wline job $wjob pins node-version: $wvalue but $wdir/package.json floors engines.node at >=$floor"
+        else
+          ok "$wf job $wjob node-version: $wvalue matches $wdir/package.json engines.node >=$floor"
+        fi
+        ;;
+      SKIP)
+        ok "$wf job $wjob node-version: $wvalue — the job installs no package, so no package floor applies"
+        ;;
+      BAD)
+        fail "$wf:$wline job $wjob $wvalue"
+        ;;
+    esac
+  done <<< "$records"
+}
+
+for wf in "${WORKFLOW_FILES[@]}"; do
+  check_workflow_pins "$wf"
+done
 
 # Containers are the other place the runtime is pinned: a Dockerfile or compose
 # image that drifts from `engines` ships a different Node than CI tests.

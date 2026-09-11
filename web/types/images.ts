@@ -41,7 +41,7 @@ export interface UploadUrlResponse {
  * targetType="provision" + targetId=<imageUuid>; the attach flow re-PUTs
  * with the real target later.
  */
-export type CompleteStageType = ImageTargetType | "provision";
+type CompleteStageType = ImageTargetType | "provision";
 
 export interface CompleteImageRequest {
   imageUuid: string;

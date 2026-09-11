@@ -6,7 +6,6 @@ import { DEFAULT_CITY, findCity } from "@/lib/cities";
 import { searchCafesInDb } from "@/lib/db/search";
 import type { CafeWithExternalIds } from "@/lib/db/search";
 import { searchExternalPOIs, searchPOIs } from "@/lib/places/poi-client";
-import { haversineDistanceM } from "./distance";
 import { hasWorkFiltersActive, matchesAllFilters } from "./filter";
 import type {
   SearchFilters,
@@ -15,6 +14,7 @@ import type {
   SearchResultSource,
   SearchServiceResponse,
 } from "./types";
+import { haversineDistanceM } from "@shared/places/geo";
 import type { POI } from "@shared/places/types";
 
 function hasUnpushedFilters(filters: SearchFilters): boolean {

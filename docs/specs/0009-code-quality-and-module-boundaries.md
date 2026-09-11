@@ -164,12 +164,12 @@ MUST 在当次提交内完成拆分。不允许"顺手加一行"把超标文件�
 - Maps 分享链接校验在 `web/lib/places/validate-maps-url.ts` 与 `poi-service/src/url.ts` 各写一套正则（→ 并入 `web/shared/places/` 唯一实现，audit §4.1）。
 - 经纬度越界检查在 `web/lib/db/cafes.ts` L167–171 与 `web/app/api/cafes/route.ts` L43 内联重复，且 audit 点名的 `isValidCoordinate` 至今不存在（→ 在 `web/shared/places/geo.ts` 新建并三处替换；本规范生效后第 2 处重复即触发 §5 流程）。
 - `web/components/cafe/cafe-creation-sheet.tsx` 曾硬编码 `MAX_UPLOAD_BYTES = 10MB`（audit §4.2 指出后已整改：常量收敛至 `web/shared/images/constants.ts`，由 `web/shared/images/validation.ts`、`web/lib/images/client-upload.ts`、`web/lib/images/processor.ts` 共用——DG107"数字进 YAML/共享常量"的正例定型）。
-- `web/lib/search/distance.ts`：2 行透传重导出，唯一调用点是 `web/tests/search/distance.test.ts`（→ 删除，指测试直引 `@shared/places/geo`）。单用一次的抽象不是抽象，是间接层（见 §6）。
+- `web/lib/search/distance.ts` 曾是 2 行透传重导出（`export { haversineDistanceM, haversineKm } from "@shared/places/geo"`），唯一调用点是自己的一次性测试（→ 删除，指测试直引 `@shared/places/geo`）。**BRAWUKA-203 已执行**：文件删除，生产调用点 `web/lib/search/search-service.ts` 与测试 `web/tests/shared/places/geo.test.ts` 直引 `@shared/places/geo`，`web/vitest.config.mts` 的 `coverage.exclude` 同步移除该路径（排除只掩盖而非度量）。单用一次的抽象不是抽象，是间接层（见 §6）；判例保留，禁止重演。
 - DI 反例：为测试在模块全局声明可变 mock 单例，或把简单函数包进 class 只为"可注入"（→ 改传参，删容器）。
 
 ### §6 抽象否决项
 
-1. 单一使用者否决：新抽象只有一处调用点时 MUST NOT 合并（`distance.ts` 为判例）。
+1. 单一使用者否决：新抽象只有一处调用点时 MUST NOT 合并（`distance.ts` 为判例，BRAWUKA-203 已执行删除）。
    例外：Strategy/Adapter/Facade 面向"已知第 2 个实现"（如新限流后端、新第三方）时，
    PR 必须写明第 2 个实现是什么，否则按单用否决。
 2. 投机否决：coding.md 已禁 speculative options/TODO/placeholder；本规范补充——

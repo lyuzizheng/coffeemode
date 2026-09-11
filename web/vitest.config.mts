@@ -29,14 +29,16 @@ export default defineConfig({
         "scripts/**",
         "config/**",
         "**/*.d.ts",
-        // Type-only and re-export modules emit no statements, so v8 reports
-        // them as 0/0 = 100% — an entry that reads as fully covered while
-        // proving nothing. They contribute nothing to the aggregate ratio
-        // either; they are excluded so the report lists only measured code
+        // Type-only modules emit no statements, so v8 reports them as
+        // 0/0 = 100% — an entry that reads as fully covered while proving
+        // nothing. They contribute nothing to the aggregate ratio either;
+        // they are excluded so the report lists only measured code
         // (BRAWUKA-173). Add a path here only when it compiles to no
-        // executable statement.
+        // executable statement — verify with
+        // `npx tsc <file> --outDir <tmp> --module esnext --target es2022
+        //  --moduleResolution bundler --skipLibCheck`; the emit must be
+        // exactly `export {};` (BRAWUKA-203 re-proved all three entries).
         "lib/rate-limit/types.ts",
-        "lib/search/distance.ts",
         "lib/search/types.ts",
         "shared/places/types.ts",
       ],

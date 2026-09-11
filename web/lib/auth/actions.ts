@@ -1,5 +1,7 @@
 "use server";
 
+import { logError } from "@/lib/observability/server-log";
+
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/auth/supabase-server";
@@ -82,7 +84,7 @@ export async function signIn(
     // Keep the provider detail in the server log; the client gets a stable
     // code mapped to localized copy — no raw English provider strings in the
     // UI (issue #103).
-    console.error("signIn: OAuth start failed", error?.message ?? "no url");
+    logError({ route: "auth signIn OAuth", error: error?.message ?? "no url" });
     return { error: "provider_start_failed" };
   }
 
@@ -101,7 +103,7 @@ export async function signOut(
   const { error } = await supabase.auth.signOut();
 
   if (error) {
-    console.error("signOut failed", error.message);
+    logError({ route: "auth signOut", error: error.message });
     return { error: "signout_failed" };
   }
 

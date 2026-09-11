@@ -19,15 +19,15 @@
       "reviewBy": "2026-12-31"
     },
     {
-      "path": "lib/db/profile.ts",
-      "lines": 431,
-      "reason": "over budget before the guard existed — split tracked by the BRAWUKA-175 quality program",
-      "reviewBy": "2026-12-31"
-    },
-    {
       "path": "lib/config-schema.ts",
       "lines": 424,
       "reason": "crossed the hard budget when BRAWUKA-184 (#357) merged on main, i.e. before this guard gated main — pre-guard debt, split tracked by the BRAWUKA-175 quality program",
+      "reviewBy": "2026-12-31"
+    },
+    {
+      "path": "lib/db/profile.ts",
+      "lines": 431,
+      "reason": "over budget before the guard existed — split tracked by the BRAWUKA-175 quality program",
       "reviewBy": "2026-12-31"
     }
   ]

@@ -1,3 +1,4 @@
+import { logError } from "./server-log";
 import "server-only";
 
 /**
@@ -91,12 +92,12 @@ export function emitRateLimitAlert(payload: RateLimitAlertPayload): void {
       keepalive: true,
     }).catch((err) => {
       if (shouldEmitError(Date.now())) {
-        console.error("[rate-limit] Better Stack ingest failed", err);
+        logError({ route: "rate-limit alert", error: err });
       }
     });
   } catch (err) {
     if (shouldEmitError(Date.now())) {
-      console.error("[rate-limit] Better Stack alert construction failed", err);
+      logError({ route: "rate-limit alert", error: err });
     }
   }
 }

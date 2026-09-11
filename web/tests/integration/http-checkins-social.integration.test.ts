@@ -748,6 +748,10 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
     expect(replayed?.scores.overall).toBe(70);
   });
 
+  // =========================================================================
+  // 6. Feed: newest/helpful orderings, keyset cursor hop, cross-mode 400
+  // =========================================================================
+
   it("Path 4 (DG113): feed serves newest/helpful orderings, keyset cursor hops, and rejects cross-mode cursors", async () => {
     // Frozen anchor (same rationale as the Path 4 window-expiry test above):
     // all 20 backdates derive from one instant, so feed ordering never

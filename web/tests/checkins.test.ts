@@ -6,11 +6,13 @@ import {
   DuplicateCheckInError,
   SelfLikeError,
   parseCheckInBody,
+  parseMaxStayFilter,
   parsePhotoIds,
   parseScores,
   parseVisitedAt,
   type CreateCheckInInput,
 } from "@/lib/validation/checkin";
+import { MAX_STAY_VALUES } from "@/types/checkins";
 import { INVALID_CHECKIN_PAYLOADS } from "./helpers/fixtures";
 import { PhotoIntentError } from "@/lib/images/provision-photos";
 import { ImageServiceError } from "@/lib/images/image-service-client";
@@ -260,6 +262,25 @@ describe("parseVisitedAt", () => {
     const res = parseVisitedAt("bad", "custom.visited_at");
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.message).toContain("custom.visited_at");
+  });
+});
+
+describe("parseMaxStayFilter", () => {
+  it("returns undefined when the filter is absent or empty", () => {
+    expect(parseMaxStayFilter(null)).toBeUndefined();
+    expect(parseMaxStayFilter("")).toBeUndefined();
+  });
+
+  it("accepts every domain label in MAX_STAY_VALUES", () => {
+    for (const label of MAX_STAY_VALUES) {
+      expect(parseMaxStayFilter(label)).toBe(label);
+    }
+  });
+
+  it("ignores unknown labels instead of rejecting them", () => {
+    expect(parseMaxStayFilter("invalid_stay_label")).toBeUndefined();
+    expect(parseMaxStayFilter("3H")).toBeUndefined();
+    expect(parseMaxStayFilter(" 3h")).toBeUndefined();
   });
 });
 

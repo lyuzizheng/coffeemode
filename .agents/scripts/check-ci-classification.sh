@@ -5,9 +5,13 @@
 # Why this exists: a path whose rule omits `integration=true` makes CI skip
 # `integration-gate` while `ci-gate` still reports green — a `RUN_INTEGRATION`
 # suite "passes" without running. The recurring failure mode is a NEW gated test
-# file landing outside `web/tests/integration/` or `web/tests/helpers/`, so this
-# gate derives the gated set from the sources instead of trusting the pattern
-# list, and enforces that every tracked path matches an explicit rule.
+# file landing outside `web/tests/integration/` or `web/tests/helpers/`, or a NEW
+# fixture/harness module imported by one (BRAWUKA-206: a change to
+# `web/tests/fixtures/mock-dataset.ts` scheduled `application-gate` alone while
+# both journey suites read it). So this gate derives the gated set from the
+# sources — suites, registered scripts, measured files, and their import
+# closure — instead of trusting the pattern list, and enforces that every tracked
+# path matches an explicit rule.
 set -euo pipefail
 
 ROOT="${COFFEEMODE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
@@ -152,6 +156,179 @@ else
     expect_flag "RUN_INTEGRATION source" "$file" "application=true"
   done <<< "$gated"
   ok "$gated_count RUN_INTEGRATION source(s) routed to integration-gate"
+fi
+
+# 4b. Transitive consumers (BRAWUKA-206): a suite's harness is only proven where
+#     the suite runs, so every module reachable from a gated source — its
+#     fixtures, helper modules, and the shared runtime modules they pull in —
+#     must schedule `integration-gate` too. The set comes from the import graph
+#     rooted at the gated sources, not from the classifier's arm list, so the
+#     next fixture or helper cannot land ungated.
+VITEST_CONFIG="web/vitest.config.mts"
+setup_files=()
+import_aliases=""
+
+if [[ -f "$VITEST_CONFIG" ]]; then
+  # `setupFiles` runs ahead of every suite, the gated ones included. Every entry
+  # must be a `./`-relative quoted path: an entry in any other form would drop
+  # out of the closure silently, which is the whole failure this gate exists to
+  # stop, so an unparsed entry is a hard failure rather than a smaller set.
+  setup_block="$(awk '
+    /setupFiles:[[:space:]]*\[/ { flag = 1 }
+    flag {
+      print
+      depth += gsub(/\[/, "[")
+      depth -= gsub(/\]/, "]")
+      if (depth <= 0) exit
+    }
+  ' "$VITEST_CONFIG")"
+  setup_entries="$(grep -oE '"\./[^"]+"' <<< "$setup_block" | tr -d '"' || true)"
+  setup_declared="$(grep -oE '"[^"]+"' <<< "$setup_block" | wc -l | tr -d ' ')"
+  setup_parsed="$(grep -c . <<< "$setup_entries" || true)"
+  if [[ "$setup_declared" != "$setup_parsed" ]]; then
+    fail "$VITEST_CONFIG setupFiles uses a form this check cannot follow ($setup_declared entries, $setup_parsed parsed) — use a \"./\"-relative path"
+  fi
+  while IFS= read -r entry; do
+    [[ -n "$entry" ]] || continue
+    if [[ -f "web/${entry#./}" ]]; then
+      setup_files+=("web/${entry#./}")
+    else
+      fail "$VITEST_CONFIG declares setup file $entry, which does not exist"
+    fi
+  done <<< "$setup_entries"
+
+  # `resolve.alias` is what a specifier in a test actually loads, so the closure
+  # follows the runner's own table rather than a second, drifting copy of it.
+  # Same completeness rule: a table entry in a form the parser does not know
+  # would silently shrink the closure, so it fails instead.
+  alias_block="$(awk '
+    /alias:[[:space:]]*\{/ { flag = 1 }
+    flag {
+      print
+      depth += gsub(/\{/, "{")
+      depth -= gsub(/\}/, "}")
+      if (depth <= 0) exit
+    }
+  ' "$VITEST_CONFIG")"
+  alias_declared="$(grep -c 'path\.resolve(' <<< "$alias_block" || true)"
+  import_aliases="$(sed -nE 's/^[[:space:]]*"([^"]+)"[[:space:]]*:[[:space:]]*path\.resolve\(import\.meta\.dirname(,[[:space:]]*"([^"]*)")?[[:space:]]*\).*/\1\tweb\/\3/p' <<< "$alias_block")"
+  alias_parsed="$(grep -c . <<< "$import_aliases" || true)"
+  if [[ "$alias_declared" != "$alias_parsed" ]]; then
+    fail "$VITEST_CONFIG resolve.alias uses a form this check cannot follow ($alias_declared entries, $alias_parsed parsed) — use path.resolve(import.meta.dirname[,...])"
+  fi
+else
+  fail "$VITEST_CONFIG missing — cannot derive the suites' resolution rules"
+fi
+
+if [[ ${#setup_files[@]} -eq 0 ]]; then
+  fail "no vitest setupFiles derived from $VITEST_CONFIG — the detector is broken"
+fi
+if [[ -z "$import_aliases" ]]; then
+  fail "no resolve.alias derived from $VITEST_CONFIG — the detector is broken"
+fi
+
+# Drop one trailing path segment ("a/b" → "a", "a" → "").
+normalize_path() {
+  local path="$1" segment out="" IFS=/
+  for segment in $path; do
+    case "$segment" in
+      ""|.) ;;
+      ..) if [[ "$out" == */* ]]; then out="${out%/*}"; else out=""; fi ;;
+      *) out="${out:+$out/}$segment" ;;
+    esac
+  done
+  printf '%s' "$out"
+}
+
+# Resolve an import specifier to a repository file the way the runner does for
+# in-repo forms: relative paths and the `resolve.alias` table. Package
+# specifiers (node builtins, npm) resolve outside the tree and are not followed.
+resolve_import() {
+  local from="$1" spec="$2" alias target base=""
+  if [[ "$spec" == ./* || "$spec" == ../* ]]; then
+    base="$(normalize_path "$(dirname "$from")/$spec")"
+  else
+    while IFS=$'\t' read -r alias target; do
+      [[ -n "$alias" && -n "$target" ]] || continue
+      if [[ "$spec" == "$alias" ]]; then
+        base="$(normalize_path "$target")"
+        break
+      fi
+      if [[ "$spec" == "$alias"/?* ]]; then
+        base="$(normalize_path "$target/${spec#"$alias"/}")"
+        break
+      fi
+    done <<< "$import_aliases"
+  fi
+  [[ -n "$base" ]] || return 0
+  local suffix
+  for suffix in "" .ts .tsx .js .mjs .mts .json /index.ts /index.tsx /index.js; do
+    if [[ -f "$base$suffix" ]]; then
+      printf '%s\n' "$base$suffix"
+      return 0
+    fi
+  done
+  return 0
+}
+
+# Import specifiers only: a path named in prose (`// see tests/components/x.tsx`)
+# is not a dependency, and treating it as one would fail a gate over a comment.
+specifiers() {
+  sed -E 's@^[[:space:]]*//.*@@; s@^[[:space:]]*\*.*@@; s@/\*.*\*/@@' "$1" 2>/dev/null |
+    grep -oE "(from|import|require)[[:space:]]*\(?[[:space:]]*[\"'][^\"']+[\"']" |
+    sed -E "s/^[^\"']*[\"']([^\"']+)[\"']$/\1/" || true
+}
+
+closure_roots="$gated"$'\n'
+for file in ${registered_files[@]+"${registered_files[@]}"} ${measured_files[@]+"${measured_files[@]}"} ${setup_files[@]+"${setup_files[@]}"}; do
+  closure_roots="$closure_roots$file"$'\n'
+done
+
+members=""
+visited=$'\n'
+queue="$closure_roots"
+while [[ -n "$queue" ]]; do
+  file="${queue%%$'\n'*}"
+  if [[ "$queue" == *$'\n'* ]]; then queue="${queue#*$'\n'}"; else queue=""; fi
+  [[ -n "$file" ]] || continue
+  if [[ "$visited" == *$'\n'"$file"$'\n'* ]]; then continue; fi
+  visited="$visited$file"$'\n'
+  members="$members$file"$'\n'
+  case "$file" in
+    *.ts|*.tsx|*.js|*.mjs|*.mts) ;;
+    *) continue ;;
+  esac
+  while IFS= read -r spec; do
+    [[ -n "$spec" ]] || continue
+    resolved="$(resolve_import "$file" "$spec")"
+    [[ -n "$resolved" ]] || continue
+    if [[ "$visited" == *$'\n'"$resolved"$'\n'* ]]; then continue; fi
+    queue="$queue$resolved"$'\n'
+  done < <(specifiers "$file")
+done
+
+member_count=0
+ungated=""
+while IFS= read -r member; do
+  [[ -n "$member" ]] || continue
+  member_count=$((member_count+1))
+  member_output="$(classify "$member")"
+  if ! grep -qx 'integration=true' <<< "$member_output"; then
+    ungated="$ungated$member (integration=false)"$'\n'
+  fi
+  # Everything under `web/` is also in scope for the unit/typecheck gate.
+  if [[ "$member" == web/* ]] && ! grep -qx 'application=true' <<< "$member_output"; then
+    ungated="$ungated$member (application=false)"$'\n'
+  fi
+done <<< "$members"
+
+if [[ $member_count -eq 0 ]]; then
+  fail "no import closure derived from the gated sources — the detector is broken"
+elif [[ -z "$ungated" ]]; then
+  ok "$member_count path(s) consumed by the gated suites route to integration-gate"
+else
+  fail "paths consumed by a RUN_INTEGRATION suite are not routed to integration-gate:"
+  printf '%s\n' "$ungated" | sed 's/^/    /'
 fi
 
 # 5. The inverse invariant (spec 0003 acceptance: "a UI-only web change does not

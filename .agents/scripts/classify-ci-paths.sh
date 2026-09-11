@@ -12,9 +12,12 @@
 # no-op arm instead of falling through silently. `--strict` turns a fall-through
 # into a failure, and `.agents/scripts/check-ci-classification.sh` runs it over
 # `git ls-files` on every CI run, so a new path family cannot ship without an
-# explicit routing decision. A path that holds a `RUN_INTEGRATION=1` suite (or
-# that such a suite consumes) MUST set `integration=true`; the same self-check
-# derives that set from `web/package.json` and the test sources.
+# explicit routing decision. A path that holds a `RUN_INTEGRATION=1` suite, or
+# that such a suite consumes transitively (a fixture, harness module, or shared
+# runtime module the suite imports), MUST set `integration=true`; the same
+# self-check derives that set from `web/package.json`, the test sources, and the
+# import closure rooted at them (BRAWUKA-206) — the arms below are its routing,
+# not its definition.
 set -euo pipefail
 
 application=false
@@ -66,16 +69,22 @@ else
         poi_service=true
         ;;
       # Integration-gated web paths: real Postgres/PostGIS or real MinIO/R2.
-      # `web/tests/db-helpers.test.ts` and `web/tests/devops/*` carry
-      # `RUN_INTEGRATION` cases that only `integration-gate` executes;
-      # `web/tests/integration/*` and `web/tests/helpers/*` are the suites and
-      # their harness. Anything else under `web/tests/**` is unit-only and stays
-      # out of the DB-backed gate.
-      web/db/*|web/lib/*|web/app/api/*|web/scripts/migrate.mjs|web/package*.json)
+      # `web/db/*`, `web/lib/*`, and `web/app/api/*` are the layers the gated
+      # suites exercise, `web/shared/*` and `web/types/*` are the runtime
+      # modules they import (same policy as `packages/common/*`).
+      web/db/*|web/lib/*|web/app/api/*|web/shared/*|web/types/*|web/scripts/migrate.mjs|web/scripts/cleanup-stale-test-dbs.mjs|web/package*.json)
         application=true
         integration=true
         ;;
-      web/tests/integration/*|web/tests/helpers/*|web/tests/devops/*|web/tests/db-helpers.test.ts)
+      # The gated suites themselves plus everything they consume inside
+      # `web/tests/**`: `web/tests/integration/*` are the suites, `helpers/*` and
+      # `fixtures/*` their harness, `devops/*` and `db-helpers.test.ts` carry
+      # their own `RUN_INTEGRATION` cases, `setup.ts` runs ahead of every suite
+      # (vitest `setupFiles`), and `mocks/*` is reached through the `server-only`
+      # alias. Anything else under `web/tests/**` (e.g. a unit-only
+      # `web/tests/components/*.test.tsx`) is unit-only and stays out of the
+      # DB-backed gate.
+      web/tests/integration/*|web/tests/helpers/*|web/tests/fixtures/*|web/tests/devops/*|web/tests/mocks/*|web/tests/db-helpers.test.ts|web/tests/setup.ts)
         application=true
         integration=true
         ;;

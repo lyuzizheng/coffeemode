@@ -69,10 +69,13 @@ jobs run only when relevant. Every tracked path matches exactly one rule in that
 classifier — including the deliberately ungated families (`_archive-*/`,
 `database-data/`, repository hygiene files), which carry an explicit empty arm
 so "no gate" is a recorded decision rather than an omission. A path that holds a
-`RUN_INTEGRATION=1` suite, or that such a suite consumes, sets
+`RUN_INTEGRATION=1` suite, or that such a suite consumes — transitively, through
+its fixtures, helpers, setup file, and the runtime modules they import — sets
 `integration=true`. `.agents/scripts/check-ci-classification.sh` runs on every PR
-(cheap: no dependency install) and fails when a new gated test file, a new path
-family, or a registered suite the coverage ratchet does not measure appears
+(cheap: no dependency install) and derives that set from the sources, the
+registered suites, and the import closure rooted at them, so a new fixture or
+helper module cannot land ungated; it fails when a new gated test file, a new
+path family, or a registered suite the coverage ratchet does not measure appears
 without a routing decision, or when a unit-only path starts scheduling the
 DB-backed gate:
 

@@ -13,10 +13,13 @@ trap 'rm -rf "$TEST_ROOT"' EXIT
 
 # Copy harness-relevant files
 cp -R docs .agents .github .codex AGENTS.md "$TEST_ROOT/" 2>/dev/null || true
-# Classifier inputs: the registered suites (`web/package.json`) and the
-# `RUN_INTEGRATION` test sources it must route to `integration-gate`.
+# Classifier inputs: the registered suites (`web/package.json`), the
+# `RUN_INTEGRATION` test sources it must route to `integration-gate`, and the
+# vitest config whose `setupFiles`/`resolve.alias` define the import closure
+# rooted at those sources (BRAWUKA-206).
 mkdir -p "$TEST_ROOT/web"
 cp -R web/package.json web/tests "$TEST_ROOT/web/" 2>/dev/null || true
+cp web/vitest.config.mts "$TEST_ROOT/web/" 2>/dev/null || true
 # Runtime-pin inputs: the manifests, lockfiles, Worker configs, Dockerfile and
 # compose file `check-runtime-pins.sh` reads, plus the workflows it walks (copied
 # with `.github/`). The gate treats any missing one as a failure (so it cannot
@@ -208,6 +211,13 @@ INTEGRATION_GATED=$'application=true\nintegration=true\nimage_service=false\npoi
 expect_classifier "gated devops suite" "$INTEGRATION_GATED" "web/tests/devops/staging-journey.test.ts"
 expect_classifier "gated test helper entrypoint" "$INTEGRATION_GATED" "web/tests/db-helpers.test.ts"
 expect_classifier "gated integration suite" "$INTEGRATION_GATED" "web/tests/integration/db.integration.test.ts"
+# A suite's harness runs only where the suite runs, so the fixture the journey
+# suites read (and the setup file every suite loads) is gated too (BRAWUKA-206).
+expect_classifier "journey fixture" "$INTEGRATION_GATED" "web/tests/fixtures/mock-dataset.ts"
+expect_classifier "suite setup file" "$INTEGRATION_GATED" "web/tests/setup.ts"
+expect_classifier "stubbed server-only module" "$INTEGRATION_GATED" "web/tests/mocks/server-only.ts"
+expect_classifier "sweeper module a gated suite drives" "$INTEGRATION_GATED" "web/scripts/cleanup-stale-test-dbs.mjs"
+expect_classifier "shared runtime module a gated suite imports" "$INTEGRATION_GATED" "web/shared/uuid.ts"
 # Explicitly ungated families must select nothing (documented no-gate decision).
 expect_classifier "archived reference tree" "$FALSES"$'\ndocs=false' "_archive-coffeemode-frontend/src/App.tsx"
 expect_classifier "raw dataset snapshot" "$FALSES"$'\ndocs=false' "database-data/cafes.json"
@@ -232,6 +242,74 @@ mkdir -p "$PROBE_TEST_DIR"
 printf 'const RUN_INTEGRATION = process.env.RUN_INTEGRATION === "1";\n' > "$PROBE_TEST_DIR/probe.test.ts"
 expect_failure "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
 rm -rf "$PROBE_TEST_DIR"
+
+# A new fixture consumed by a gated suite, in a family the classifier routes to
+# `application-gate` alone (BRAWUKA-206): the closure rooted at the gated sources
+# must reject it, or the journey suites keep skipping whenever their harness
+# changes. Untracked on purpose — only the closure, not `git ls-files` coverage,
+# can see it.
+CONSUMER_PROBE_DIR="$TEST_ROOT/web/tests/journey-support"
+mkdir -p "$CONSUMER_PROBE_DIR"
+printf 'export const PROBE_ROWS = [{ id: "probe" }];\n' > "$CONSUMER_PROBE_DIR/probe-fixture.ts"
+CONSUMER_SUITE="$TEST_ROOT/web/tests/integration/user-journey-discovery-creation.integration.test.ts"
+cp "$CONSUMER_SUITE" "$CONSUMER_SUITE.bak"
+printf 'import { PROBE_ROWS } from "../journey-support/probe-fixture";\n' | cat - "$CONSUMER_SUITE.bak" > "$CONSUMER_SUITE"
+if assert_mutated "gated suite imports a new fixture" "$CONSUMER_SUITE.bak" "$CONSUMER_SUITE"; then
+  expect_failure "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
+fi
+mv "$CONSUMER_SUITE.bak" "$CONSUMER_SUITE"
+rm -rf "$CONSUMER_PROBE_DIR"
+
+# The same probe once a routing arm names its family: the detector must accept a
+# path the classifier actually gates, rather than failing on any new fixture.
+mkdir -p "$CONSUMER_PROBE_DIR"
+printf 'export const PROBE_ROWS = [{ id: "probe" }];\n' > "$CONSUMER_PROBE_DIR/probe-fixture.ts"
+cp "$CONSUMER_SUITE" "$CONSUMER_SUITE.bak"
+printf 'import { PROBE_ROWS } from "../journey-support/probe-fixture";\n' | cat - "$CONSUMER_SUITE.bak" > "$CONSUMER_SUITE"
+CONSUMER_CLASSIFIER="$TEST_ROOT/.agents/scripts/classify-ci-paths.sh"
+cp "$CONSUMER_CLASSIFIER" "$CONSUMER_CLASSIFIER.bak"
+sed 's#web/tests/fixtures/\*|#web/tests/fixtures/*|web/tests/journey-support/*|#' \
+  "$CONSUMER_CLASSIFIER.bak" > "$CONSUMER_CLASSIFIER"
+if assert_mutated "probe family routed by the classifier" "$CONSUMER_CLASSIFIER.bak" "$CONSUMER_CLASSIFIER"; then
+  expect_pass "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
+fi
+mv "$CONSUMER_CLASSIFIER.bak" "$CONSUMER_CLASSIFIER"
+mv "$CONSUMER_SUITE.bak" "$CONSUMER_SUITE"
+rm -rf "$CONSUMER_PROBE_DIR"
+
+# A path named in prose is not a dependency: a comment mentioning a unit-only
+# test file must not drag it into the gated set.
+COMMENT_SUITE="$TEST_ROOT/web/tests/integration/http-user-lifecycle.integration.test.ts"
+cp "$COMMENT_SUITE" "$COMMENT_SUITE.bak"
+printf '// see tests/components/checkin.test.tsx for the unit-level shape\n' | cat - "$COMMENT_SUITE.bak" > "$COMMENT_SUITE"
+if assert_mutated "comment naming a unit-only test file" "$COMMENT_SUITE.bak" "$COMMENT_SUITE"; then
+  expect_pass "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
+fi
+mv "$COMMENT_SUITE.bak" "$COMMENT_SUITE"
+
+# The closure is derived from the runner's own resolution rules, so it must fail
+# loudly when it cannot follow one instead of silently shrinking the gated set.
+VITEST_FIXTURE="$TEST_ROOT/web/vitest.config.mts"
+cp "$VITEST_FIXTURE" "$VITEST_FIXTURE.bak"
+sed 's#setupFiles: \["\./tests/setup\.ts"\]#setupFiles: ["@/tests/setup.ts"]#' "$VITEST_FIXTURE.bak" > "$VITEST_FIXTURE"
+if assert_mutated "setupFiles switched to a specifier the closure cannot follow" "$VITEST_FIXTURE.bak" "$VITEST_FIXTURE"; then
+  expect_failure "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
+fi
+mv "$VITEST_FIXTURE.bak" "$VITEST_FIXTURE"
+
+cp "$VITEST_FIXTURE" "$VITEST_FIXTURE.bak"
+sed 's#setupFiles: \["\./tests/setup\.ts"\]#setupFiles: ["./tests/setup.ts", "./tests/missing.ts"]#' "$VITEST_FIXTURE.bak" > "$VITEST_FIXTURE"
+if assert_mutated "setupFiles declares a file that does not exist" "$VITEST_FIXTURE.bak" "$VITEST_FIXTURE"; then
+  expect_failure "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
+fi
+mv "$VITEST_FIXTURE.bak" "$VITEST_FIXTURE"
+
+cp "$VITEST_FIXTURE" "$VITEST_FIXTURE.bak"
+sed 's#"server-only": path.resolve(import.meta.dirname, "\./tests/mocks/server-only\.ts"),#&\n      "@probe": path.resolve(__dirname, "./probe"),#' "$VITEST_FIXTURE.bak" > "$VITEST_FIXTURE"
+if assert_mutated "resolve.alias entry the closure cannot follow" "$VITEST_FIXTURE.bak" "$VITEST_FIXTURE"; then
+  expect_failure "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
+fi
+mv "$VITEST_FIXTURE.bak" "$VITEST_FIXTURE"
 
 # A brand-new path family with no routing rule.
 mkdir -p "$TEST_ROOT/newtop"

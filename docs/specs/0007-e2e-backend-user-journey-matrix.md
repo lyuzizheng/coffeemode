@@ -23,10 +23,18 @@ retirement in `## Stable decisions` §8.
 - Gate: `cd web && npm run test:integration:journey` (dedicated journey suite
   under GitHub Actions CI `integration-gate`; `npm run test:integration` covers
   DB foundation; `npm run test:integration:all` runs full suite).
-  `.agents/scripts/classify-ci-paths.sh` routes `web/tests/integration/**`,
-  `web/tests/helpers/**`, `web/tests/devops/**`, and `web/tests/db-helpers.test.ts`
-  to `integration-gate` (other `web/tests/**` paths are unit-only and schedule
-  `application-gate` alone).
+  `.agents/scripts/classify-ci-paths.sh` routes the gated suites themselves
+  (`web/tests/integration/**`, `web/tests/helpers/**`, `web/tests/devops/**`,
+  `web/tests/db-helpers.test.ts`) and everything they consume —
+  `web/tests/fixtures/**` (this spec's `mock-dataset.ts`), `web/tests/setup.ts`,
+  `web/tests/mocks/**`, plus the `web/lib/**`, `web/app/api/**`, `web/shared/**`,
+  `web/types/**`, `scripts/devops/**`, and `web/scripts/*` modules reachable from
+  them — to `integration-gate`. Suites and their harness are inseparable: a
+  fixture-only change must still run the suites that read it. Paths under
+  `web/tests/**` outside those families are unit-only and schedule
+  `application-gate` alone. `.agents/scripts/check-ci-classification.sh` derives
+  this set from the sources and their import closure (not from the classifier's
+  pattern list), so a new fixture or helper cannot land ungated (BRAWUKA-206).
 - Service-layer scope: the suite calls `web/lib/db/*`,
   `web/lib/discovery/feed.ts`, and `web/lib/images/complete.ts` directly.
   HTTP route shells (`requireSameOrigin`, rate-limit buckets) stay covered

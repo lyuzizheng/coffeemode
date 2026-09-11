@@ -1,13 +1,9 @@
 import { logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
-import { apiError } from "@/lib/api/response";
+import { apiError, parseQueryNumberOrNaN } from "@/lib/api/response";
 import { DEFAULT_SEARCH_RADIUS_KM, MAX_SEARCH_RADIUS_KM } from "@/lib/places/constants";
 import { POIServiceError, searchExternalPOIs, searchPOIs } from "@/lib/places/poi-client";
 import { guard } from "@/lib/api/guard";
-
-function parseQueryNumber(value: string | null): number {
-  return value === null || value.trim() === "" ? NaN : Number(value);
-}
 
 /**
  * GET /api/places/search?q&lat&lng&r
@@ -22,10 +18,10 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const q = searchParams.get("q")?.trim() ?? "";
   const source = searchParams.get("source") ?? "stored";
-  const lat = parseQueryNumber(searchParams.get("lat"));
-  const lng = parseQueryNumber(searchParams.get("lng"));
+  const lat = parseQueryNumberOrNaN(searchParams.get("lat"));
+  const lng = parseQueryNumberOrNaN(searchParams.get("lng"));
   const rRaw = searchParams.get("r");
-  const r = rRaw ? parseQueryNumber(rRaw) : DEFAULT_SEARCH_RADIUS_KM;
+  const r = rRaw ? parseQueryNumberOrNaN(rRaw) : DEFAULT_SEARCH_RADIUS_KM;
 
   const latProvided = searchParams.has("lat");
   const lngProvided = searchParams.has("lng");

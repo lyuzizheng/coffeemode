@@ -20,6 +20,15 @@ export function fail<T>(message: string): ParseResult<T> {
   return { ok: false, message };
 }
 
+/**
+ * Parse the `filter_max_stay` query filter (DG44). Only the domain's
+ * `MAX_STAY_VALUES` are accepted; absent or unknown labels are ignored.
+ */
+export function parseMaxStayFilter(value: string | null): MaxStay | undefined {
+  if (!value) return undefined;
+  return MAX_STAY_VALUES.includes(value as MaxStay) ? (value as MaxStay) : undefined;
+}
+
 /** Score map keyed by WORK_DIMS, each 0-100. `field` prefixes error messages. */
 export function parseScores(value: unknown, field = "scores"): ParseResult<CheckInScores> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {

@@ -1,39 +1,18 @@
 import { logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
-import { apiError } from "@/lib/api/response";
+import {
+  apiError,
+  parseQueryBoolean,
+  parseQueryNumber,
+  parseQueryScore,
+} from "@/lib/api/response";
 import { guard } from "@/lib/api/guard";
 import { findCity, resolveEffectiveCity } from "@/lib/cities";
 import { executeSearch } from "@/lib/search/search-service";
 import { getSearchFixtures, isFixturesEnabled } from "@/lib/search/fixtures";
 import { WORK_DIM_FILTER_MAP } from "@/lib/search/filter";
 import type { SearchFilters, SearchResultItem, SearchResultSource } from "@/lib/search/types";
-import {
-  MAX_STAY_VALUES,
-  type MaxStay,
-} from "@/types/checkins";
-
-function parseNumber(value: string | null): number | undefined {
-  if (value === null || value.trim() === "") return undefined;
-  const num = Number(value);
-  return Number.isFinite(num) ? num : undefined;
-}
-
-function parseScoreFilter(value: string | null): number | undefined {
-  const num = parseNumber(value);
-  if (num === undefined) return undefined;
-  if (num < 0 || num > 100) return undefined;
-  return num;
-}
-
-function parseMaxStay(value: string | null): MaxStay | undefined {
-  if (!value) return undefined;
-  return MAX_STAY_VALUES.includes(value as MaxStay) ? (value as MaxStay) : undefined;
-}
-
-function parseBoolean(value: string | null): boolean | undefined {
-  if (value === null) return undefined;
-  return value === "true" || value === "1";
-}
+import { parseMaxStayFilter } from "@/lib/validation/checkin";
 
 /**
  * GET /api/search
@@ -43,13 +22,13 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const q = url.searchParams.get("q")?.trim() || undefined;
   const city = url.searchParams.get("city")?.trim() || undefined;
-  const lat = parseNumber(url.searchParams.get("lat"));
-  const lng = parseNumber(url.searchParams.get("lng"));
-  const openNow = parseBoolean(url.searchParams.get("open_now"));
-  const includeLive = parseBoolean(url.searchParams.get("include_live"));
-  const filterMaxStay = parseMaxStay(url.searchParams.get("filter_max_stay"));
+  const lat = parseQueryNumber(url.searchParams.get("lat"));
+  const lng = parseQueryNumber(url.searchParams.get("lng"));
+  const openNow = parseQueryBoolean(url.searchParams.get("open_now"));
+  const includeLive = parseQueryBoolean(url.searchParams.get("include_live"));
+  const filterMaxStay = parseMaxStayFilter(url.searchParams.get("filter_max_stay"));
   const rawLimit = url.searchParams.get("limit");
-  const limitParam = parseNumber(rawLimit);
+  const limitParam = parseQueryNumber(rawLimit);
   const rawRanking = url.searchParams.get("ranking")?.trim();
   const ranking = rawRanking === "good_first" || rawRanking === "relevance" ? rawRanking : undefined;
 
@@ -148,7 +127,7 @@ export async function GET(request: Request) {
 
   // Populate work dimension score filters using shared mapping table
   for (const { key } of WORK_DIM_FILTER_MAP) {
-    const val = parseScoreFilter(url.searchParams.get(key));
+    const val = parseQueryScore(url.searchParams.get(key));
     if (val !== undefined) {
       filters[key] = val;
     }

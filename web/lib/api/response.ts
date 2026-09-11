@@ -67,3 +67,47 @@ export function parseQueryPositiveInt(
   }
   return Math.min(parsed, maxVal);
 }
+
+/**
+ * Parse an optional finite numeric query parameter.
+ * Absent, blank, and non-numeric input all yield `undefined` so the caller
+ * applies its own default.
+ *
+ * Intentionally paired with `parseQueryNumberOrNaN`, not replaceable by it:
+ * `undefined` and `NaN` are different sentinels for the callers below.
+ */
+export function parseQueryNumber(raw: string | null): number | undefined {
+  if (raw === null || raw.trim() === "") return undefined;
+  const num = Number(raw);
+  return Number.isFinite(num) ? num : undefined;
+}
+
+/**
+ * Parse a numeric query parameter that callers guard with `Number.isNaN`.
+ * Absent, blank, and non-numeric input all yield `NaN`, so `Infinity`-style
+ * input stays distinguishable from "absent" (`parseQueryNumber` would fold it
+ * into `undefined` and change which validation branch fires).
+ */
+export function parseQueryNumberOrNaN(raw: string | null): number {
+  return raw === null || raw.trim() === "" ? NaN : Number(raw);
+}
+
+/**
+ * Parse an optional 0-100 score filter (work-dimension thresholds).
+ * Non-numeric and out-of-range input are dropped (`undefined`), never clamped.
+ */
+export function parseQueryScore(raw: string | null): number | undefined {
+  const num = parseQueryNumber(raw);
+  if (num === undefined || num < 0 || num > 100) return undefined;
+  return num;
+}
+
+/**
+ * Parse an optional boolean query flag.
+ * Only `"true"` and `"1"` are true; any other present value is false, and only
+ * absence yields `undefined`.
+ */
+export function parseQueryBoolean(raw: string | null): boolean | undefined {
+  if (raw === null) return undefined;
+  return raw === "true" || raw === "1";
+}

@@ -185,16 +185,17 @@ MUST 在当次提交内完成拆分。不允许"顺手加一行"把超标文件�
 | 文件 | 当前行数 | 超标项 | 只降不升基线 | 复核到期 |
 | --- | --- | --- | --- | --- |
 | `web/components/checkin/checkin-drawer.tsx` | 730 | 文件硬 400 | 730（只允许减少） | 2026-12-31 |
-| `web/components/discovery/checkin-feed.tsx` | 440 | 文件硬 400 | 440 | 2026-12-31 |
+| `web/components/discovery/checkin-feed.tsx` | 433 | 文件硬 400 | 433（只允许减少） | 2026-12-31 |
 | `web/lib/db/profile.ts` | 431 | 文件硬 400 | 431 | 2026-12-31 |
 | `web/lib/config-schema.ts` | 424 | 文件硬 400 | 424 | 2026-12-31 |
 
 `web/lib/db/cafes.ts`（826）与 `web/lib/db/checkins.ts`（758）已由 BRAWUKA-180 (#356)
 拆分毕业，按 §7.4「毕业行直接删除」从表与机器基线移除，基准值随之下降。
 机器镜像：`web/structure-baseline.json` 的 `files`（每条含 `lines` 与 `reviewBy`），
-由 `scripts/check-file-size.mjs` 读取。`checkin-drawer` 730 / `checkin-feed` 440 是
-守卫合入前 main 上 BRAWUKA-185 (#358) / BRAWUKA-73 (#349) 造成的 +5 / +1，
-`config-schema.ts` 是 BRAWUKA-184 (#357) 引入；基线自记录值起只降不升。
+由 `scripts/check-file-size.mjs` 读取。`checkin-drawer` 730 是守卫合入前 main 上
+BRAWUKA-185 (#358) 造成的 +5；`checkin-feed` 的 440 是 BRAWUKA-73 (#349) 造成的 +1，
+已由 BRAWUKA-73 (#361) 在 main 上压到 433，登记值同步下调（BRAWUKA-200，PR 标题写 434、
+合入后的树实测 433）；`config-schema.ts` 是 BRAWUKA-184 (#357) 引入；基线自记录值起只降不升。
 
 第二张表：规则级豁免（`web/eslint-suppressions.json`，当前 48 文件 / 60 条目 / 68 处违规）。
 用途：结构规则（函数行数/复杂度/`max-depth`/同构函数）对存量文件的逐条 suppress；
@@ -213,7 +214,7 @@ BRAWUKA-180 (#356) 拆分后存量违规 72 → 68、条目数 60 → 60、文�
 规则：
 
 1. 申请：新超标需求 MUST 开 issue（标题含 `[STRUCT-EXEMPT]`），说明超标维度、行数/条目数、到期日、拆分计划，reviewer（非作者）批准后方可合入，清单同步 +1 行（含 `structure-baseline.json` / `eslint-suppressions.json` 镜像）。**新规则级豁免同样必须由非作者 reviewer 批准并写明到期日**，无到期日的 suppressions 不得合入。
-2. 只降不升：清单文件的行数 / suppressions 条目数 MUST 单调递减；任何使其上升的 commit（即使未过硬阈值增量）CI 按失败处理。重构 PR 应当顺手削减清单数字、清除自愈条目。
+2. 只降不升：清单文件的行数 / suppressions 条目数 MUST 单调递减；任何使其上升的 commit（即使未过硬阈值增量）CI 按失败处理。重构 PR 应当顺手削减清单数字、清除自愈条目。**登记值本身同样单调递减**：文件缩小后（仍 > 硬阈值 400）登记值大于实际行数即 CI 失败（`check-file-size` 报 stale 并给出应下调到的数字）——棘轮只有在登记值与实际行数同步时才真正收紧，允许"文件已缩小、登记值不动"等于把旧上限永久保留；确需保留余量（如本 PR 后续还要在同一文件加回几行）MUST 在 PR 说明理由并由非作者 reviewer 批准，且登记值仍 MUST ≤ 原值。
 3. 到期复核：每季度末（3/6/9/12 月末）复核清单；到期未拆 MUST 续期（更新到期日 + 说明）或升级为 P1 技术债 issue。循环依赖（§2.6）不适用本节。
 4. 删除即胜利：`profile-view.tsx` 900+ 行 → ~93 行 + 组件簇（audit §5.4 已还债）是清单毕业的范本：毕业行直接删除，不留"曾超标"纪念。
 

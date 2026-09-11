@@ -307,15 +307,18 @@ export const MOCK_PHOTOS: StoredImage[] = [
 
 /** Insert all dataset profiles + cafes. Check-ins are created by the journey itself. */
 export async function seedMockDataset(dbClient: pg.Client): Promise<void> {
+  // Single source: profile rows come from MOCK_USERS, not re-hardcoded literals.
+  const users: MockUser[] = [
+    ...MOCK_USERS,
+    { id: JOURNEY_SERVICE_ACCOUNT_ID, displayName: "CoffeeMode", currentCity: "singapore" },
+  ];
+  const placeholders = users.map((_, i) => `($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`).join(",\n           ");
   await dbClient.query(
     `insert into profiles (id, display_name, current_city)
-     values ($1, 'Journey Ann', 'singapore'),
-            ($2, 'Journey Ben', 'singapore'),
-            ($3, 'Journey Cat', 'tokyo'),
-            ($4, 'CoffeeMode', 'singapore')
+     values ${placeholders}
      on conflict (id) do update set display_name = excluded.display_name,
                                     current_city = excluded.current_city`,
-    [JOURNEY_U1, JOURNEY_U2, JOURNEY_U3, JOURNEY_SERVICE_ACCOUNT_ID],
+    users.flatMap((u) => [u.id, u.displayName, u.currentCity]),
   );
   for (const cafe of MOCK_CAFES) {
     await dbClient.query(

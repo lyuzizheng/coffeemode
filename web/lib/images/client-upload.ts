@@ -44,6 +44,7 @@ export async function uploadPhoto(file: File): Promise<string> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ size: webp.size }),
   });
+  // Benign: non-JSON error responses (e.g. gateway 502) safely parse as null before failing on line 49.
   const uploadData = (await uploadResponse.json().catch(() => null)) as UploadUrlResponse | null;
   if (!uploadResponse.ok || !uploadData?.uploadUrl || !uploadData.imageUuid) {
     throw new Error("photo_upload_failed");

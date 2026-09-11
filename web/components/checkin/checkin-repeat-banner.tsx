@@ -9,6 +9,7 @@ function formatLastVisit(iso: string): string {
     const d = new Date(iso);
     return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
   } catch {
+    // Benign: invalid date string degrades to raw YYYY-MM-DD prefix.
     return iso.slice(0, 10);
   }
 }

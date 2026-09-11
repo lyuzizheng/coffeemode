@@ -121,6 +121,18 @@ export async function closePool(): Promise<void> {
     clearTimeout(timer);
   }
 }
+function recordRollbackError(err: unknown, rollbackErr: unknown): void {
+  logError({ route: "postgres withTransaction rollback", error: rollbackErr });
+  if (!err || typeof err !== "object") return;
+  try {
+    if (Reflect.get(err, "cause") === undefined) {
+      Reflect.set(err, "cause", rollbackErr);
+    }
+    Reflect.set(err, "rollbackError", rollbackErr);
+  } catch {
+    // Object may be frozen or non-extensible
+  }
+}
 
 /**
  * Run a callback inside a transaction. The callback receives a PoolClient
@@ -139,7 +151,22 @@ export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>)
     await client.query("COMMIT");
     return result;
   } catch (err) {
-    await client.query("ROLLBACK").catch(() => {});
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackErr) {
+      // Subordinate failure: the transaction was aborted by the primary error (err).
+      // Rollback failure is secondary (typically because the underlying connection
+      // dropped or was terminated).
+      //
+      // Aggregation strategy: Structured log + subordinate attachment (cause/rollbackError)
+      // 1. Primary error thrown first: throwing AggregateError or replacing `err` would
+      //    break callers inspecting `err.code` (e.g. Postgres unique violation 23505) or type.
+      // 2. Structured logging via `logError`: surfaces the rollback failure immediately in
+      //    server-side logs for troubleshooting without mutating caller error flow.
+      // 3. Subordinate attachment: attach rollbackErr to `err.cause` (if unset) and `err.rollbackError`
+      //    so programmatic inspection can observe both errors while keeping `err` primary.
+      recordRollbackError(err, rollbackErr);
+    }
     throw err;
   } finally {
     client.release();

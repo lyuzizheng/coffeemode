@@ -173,6 +173,7 @@ export async function cleanupIntegrationDatabase(
     await admin.connect();
     await admin.query(`drop database if exists ${quotedIdentifier(testDbName)} with (force)`);
   } finally {
+    // Benign: best-effort teardown client termination.
     await admin.end().catch(() => {});
   }
 }

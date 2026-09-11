@@ -40,6 +40,7 @@ export function isR2Image(src: string): boolean {
     try {
       return new URL(src).hostname === R2_PUBLIC_HOST;
     } catch {
+      // Benign: malformed URL string cannot match the R2 host.
       return false;
     }
   }

@@ -64,6 +64,7 @@ async function createTestBucket(): Promise<string> {
 
 async function deleteTestBucket(bucket: string): Promise<void> {
   const url = `${R2_ENDPOINT.replace(/\/+$/, "")}/${bucket}`;
+  // Benign: teardown deletion of ephemeral test bucket; bucket may already be deleted.
   await r2Client().fetch(url, { method: "DELETE" }).catch(() => {});
 }
 

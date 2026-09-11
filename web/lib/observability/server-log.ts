@@ -82,6 +82,7 @@ function extractError(error: unknown): { message: string; stack?: string } {
     const json = JSON.stringify(error);
     return { message: truncate(json ?? String(error)) };
   } catch {
+    // Benign: fallback for non-serializable objects (e.g. circular references).
     return { message: String(error) };
   }
 }

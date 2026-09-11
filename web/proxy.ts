@@ -44,6 +44,7 @@ async function getProxyUserId(request: NextRequest): Promise<string | null> {
     const { data } = await supabase.auth.getUser();
     return data.user?.id ?? null;
   } catch {
+    // Benign: Supabase session verification failure treats proxy request as unauthenticated.
     return null;
   }
 }

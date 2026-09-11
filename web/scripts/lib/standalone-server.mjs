@@ -96,13 +96,17 @@ export function registerProcessCleanup(cleanupFn) {
     isCleaning = true;
     try {
       await cleanupFn();
-    } catch {}
+    } catch (err) {
+      console.warn("[standalone-server] Error during async cleanup:", err?.message ?? err);
+    }
   };
 
   process.on("exit", () => {
     try {
       cleanupFn(true);
-    } catch {}
+    } catch {
+      // Benign: synchronous process exit handler cannot await; best-effort teardown.
+    }
   });
   process.on("SIGINT", async () => {
     await runCleanup();

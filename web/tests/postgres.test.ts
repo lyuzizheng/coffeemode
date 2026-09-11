@@ -273,6 +273,84 @@ describe("withTransaction", () => {
     expect(clientQuery).toHaveBeenNthCalledWith(2, "ROLLBACK");
     expect(clientRelease).toHaveBeenCalledOnce();
   });
+
+  it("aggregates rollback failure into structured log and error cause when ROLLBACK fails", async () => {
+    process.env.DATABASE_URL = "postgres://u:p@localhost/db";
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const clientQuery = vi.fn();
+    const clientRelease = vi.fn();
+    currentMockPool!.connect.mockResolvedValue({
+      query: clientQuery,
+      release: clientRelease,
+    });
+
+    const primaryError = new Error("primary query failed");
+    const rollbackError = new Error("connection dropped during rollback");
+
+    clientQuery.mockResolvedValueOnce({ rows: [] }); // BEGIN
+    clientQuery.mockRejectedValueOnce(rollbackError); // ROLLBACK fails
+
+    let caught: unknown;
+    try {
+      await withTransaction(async () => {
+        throw primaryError;
+      });
+    } catch (e) {
+      caught = e;
+    }
+
+    // 1. Primary error is thrown first (not replaced by AggregateError or rollback error)
+    expect(caught).toBe(primaryError);
+    // 2. Subordinate rollback error is attached to cause and rollbackError
+    expect(Reflect.get(primaryError, "cause")).toBe(rollbackError);
+    expect(Reflect.get(primaryError, "rollbackError")).toBe(rollbackError);
+    // 3. Structured log emitted with route and error details
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    const loggedJson = JSON.parse(consoleErrorSpy.mock.calls[0][0] as string);
+    expect(loggedJson.type).toBe("error");
+    expect(loggedJson.route).toBe("postgres withTransaction rollback");
+    expect(loggedJson.error).toContain("connection dropped during rollback");
+
+    expect(clientRelease).toHaveBeenCalledOnce();
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("preserves pre-existing error cause when rollback fails", async () => {
+    process.env.DATABASE_URL = "postgres://u:p@localhost/db";
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const clientQuery = vi.fn();
+    const clientRelease = vi.fn();
+    currentMockPool!.connect.mockResolvedValue({
+      query: clientQuery,
+      release: clientRelease,
+    });
+
+    const originalCause = new Error("original root cause");
+    const primaryError = new Error("primary query failed", { cause: originalCause });
+    const rollbackError = new Error("connection dropped during rollback");
+
+    clientQuery.mockResolvedValueOnce({ rows: [] }); // BEGIN
+    clientQuery.mockRejectedValueOnce(rollbackError); // ROLLBACK fails
+
+    let caught: unknown;
+    try {
+      await withTransaction(async () => {
+        throw primaryError;
+      });
+    } catch (e) {
+      caught = e;
+    }
+
+    expect(caught).toBe(primaryError);
+    // Pre-existing cause is preserved
+    expect(Reflect.get(primaryError, "cause")).toBe(originalCause);
+    // Rollback error still attached to rollbackError
+    expect(Reflect.get(primaryError, "rollbackError")).toBe(rollbackError);
+
+    consoleErrorSpy.mockRestore();
+  });
 });
 
 describe("registerPoolShutdownHandlers", () => {

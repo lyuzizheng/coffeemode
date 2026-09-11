@@ -11,6 +11,7 @@ export const WORKER_TIMEOUT_MS = 5000;
  * Safely extracts error message from API response JSON or returns the fallback.
  */
 export async function responseMessage(response: Response, fallback: string): Promise<string> {
+  // Benign: response body may not be JSON (e.g. 502/504 gateway HTML error); safe parse falls back.
   const body = (await response.json().catch(() => null)) as { message?: string; error?: string } | null;
   return body?.message || body?.error || fallback;
 }

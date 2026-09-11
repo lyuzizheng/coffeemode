@@ -70,6 +70,7 @@ async function poiFetch(
     const upstreamStatus = res.status;
     // Cancel the body stream without buffering it. Upstream error bodies may
     // contain internal worker details or be unbounded in size.
+    // Benign: best-effort cancel of unread upstream response stream.
     await res.body?.cancel().catch(() => {});
     let message = "POI service returned an error";
     if (upstreamStatus === 401) message = "POI service unavailable";

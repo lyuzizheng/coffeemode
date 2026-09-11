@@ -58,12 +58,14 @@ async function fetchOriginal(original: ProcessUrls["original"]): Promise<Buffer>
     signal: AbortSignal.timeout(R2_DOWNLOAD_TIMEOUT_MS),
   });
   if (!response.ok) {
+    // Benign: best-effort cancel of response body stream on download failure.
     await response.body?.cancel().catch(() => {});
     throw new Error(`failed to download original image: ${response.status}`);
   }
 
   const declared = Number(response.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > MAX_ORIGINAL_DOWNLOAD_BYTES) {
+    // Benign: best-effort cancel of response body stream when size exceeds cap.
     await response.body?.cancel().catch(() => {});
     throw new Error(
       `original image exceeds the ${MAX_ORIGINAL_DOWNLOAD_BYTES} byte download cap`,
@@ -90,6 +92,7 @@ async function fetchOriginal(original: ProcessUrls["original"]): Promise<Buffer>
       chunks.push(Buffer.from(value));
     }
   } catch (err) {
+    // Benign: best-effort cancel of response body stream on read error.
     await response.body.cancel().catch(() => {});
     throw err;
   }
@@ -109,6 +112,7 @@ async function uploadVariant(
     signal: AbortSignal.timeout(R2_UPLOAD_TIMEOUT_MS),
   });
   if (!response.ok) {
+    // Benign: best-effort cancel of response body stream on upload failure.
     await response.body?.cancel().catch(() => {});
     throw new Error(`failed to upload image variant: ${response.status}`);
   }

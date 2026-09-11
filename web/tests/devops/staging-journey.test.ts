@@ -115,6 +115,7 @@ describeIntegration("Stale test-DB sweeper — real Postgres", () => {
   });
 
   afterAll(async () => {
+    // Benign: teardown cleanup of ephemeral orphan test database.
     await cleanupIntegrationDatabase(adminUrl, orphanDb).catch(() => {});
   });
 

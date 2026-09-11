@@ -125,6 +125,7 @@ export async function applyMigrations(client) {
           console.log(`applied ${file}`);
           count += 1;
         } catch (err) {
+          // Benign: best-effort rollback on migration step failure; primary error is thrown below.
           await client.query("rollback").catch(() => {});
           throw new Error(
             `migration ${file} failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -133,6 +134,7 @@ export async function applyMigrations(client) {
       }
     }
   } finally {
+    // Benign: best-effort release of migration advisory lock; auto-released on session disconnect.
     await client.query(`select pg_advisory_unlock(${MIGRATION_LOCK_KEY_SQL})`).catch(() => {});
   }
   return count;

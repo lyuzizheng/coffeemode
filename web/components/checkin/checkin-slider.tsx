@@ -49,7 +49,11 @@ export function CheckinSlider({
       // Light haptic on first touch only — not on every pointermove of the drag.
       try {
         navigator.vibrate?.(10);
-      } catch {}
+      } catch {
+        // Benign: navigator.vibrate can reject with SecurityError/NotAllowedError
+        // under iframe permissions or unsupported hardware; haptic failure must
+        // never interrupt or prevent slider dragging.
+      }
       const handleMove = (ev: PointerEvent) => setFromClientX(ev.clientX);
       const handleUp = () => {
         window.removeEventListener("pointermove", handleMove);

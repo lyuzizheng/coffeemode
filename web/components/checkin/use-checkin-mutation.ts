@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { toast } from "@heroui/react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -92,6 +92,7 @@ function useSubmitMutation({
     },
     onSuccess: () => {
       setView("success");
+      // Benign: clearing consumed draft from IndexedDB is best-effort; failures in private mode are ignored.
       void clearPendingCheckin().catch(() => {});
       invalidateCheckinQueries(queryClient, cafeId);
       setTimeout(() => {

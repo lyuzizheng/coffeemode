@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { haversineDistanceM } from "@/lib/search/distance";
+import { haversineDistanceM } from "@shared/places/geo";
 
 describe("haversineDistanceM", () => {
   it("calculates zero distance for identical coordinates", () => {

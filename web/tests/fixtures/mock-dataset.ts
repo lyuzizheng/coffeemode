@@ -30,7 +30,7 @@ export interface MockUser {
 }
 
 export const MOCK_USERS: MockUser[] = [
-  { id: JOURNEY_U1, displayName: "Journey Ann", currentCity: "singapore" },
+  { id: JOURNEY_U1, displayName: "Journey Ann PROBE", currentCity: "singapore" },
   { id: JOURNEY_U2, displayName: "Journey Ben", currentCity: "singapore" },
   { id: JOURNEY_U3, displayName: "Journey Cat", currentCity: "tokyo" },
 ];

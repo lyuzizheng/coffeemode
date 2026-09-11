@@ -69,22 +69,27 @@ export function checkRouteGuards(webRootDir) {
     }
 
     // Check exported HTTP methods
+    // Strip comments to check actual calls, not imports or comments
+    const strippedContent = content.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "");
+    const hasGuardCall = /\bguard\s*\(/.test(strippedContent);
+    const hasRequireSameOriginCall = /\brequireSameOrigin\s*\(/.test(strippedContent);
+
+    // Check exported HTTP methods
     for (const method of HTTP_METHODS) {
       const exportRegex = new RegExp(`export\\s+(async\\s+)?function\\s+${method}\\b`);
       if (exportRegex.test(content)) {
-        // Ensure guard( is called in the route file
-        if (!content.includes("guard(")) {
+        if (!hasGuardCall) {
           violations.push({
             file: relPath,
             method,
             reason: `Exported handler ${method} missing call to guard()`,
           });
         }
-        if (MUTATING_METHODS.has(method) && !content.includes("requireSameOrigin")) {
+        if (MUTATING_METHODS.has(method) && !hasRequireSameOriginCall) {
           violations.push({
             file: relPath,
             method,
-            reason: `Mutating handler ${method} missing call to requireSameOrigin`,
+            reason: `Mutating handler ${method} missing call to requireSameOrigin()`,
           });
         }
       }

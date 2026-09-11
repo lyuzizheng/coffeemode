@@ -142,7 +142,9 @@ describe("signIn", () => {
     const formData = new FormData();
     formData.set("provider", provider);
 
-    await expect(signIn(undefined, formData)).rejects.toThrow("NEXT_REDIRECT:");
+    await expect(signIn(undefined, formData)).rejects.toThrow(
+      `NEXT_REDIRECT:https://supabase.example.com/oauth?provider=${provider}`,
+    );
 
     expect(signInWithOAuthMock).toHaveBeenCalledWith({
       provider,

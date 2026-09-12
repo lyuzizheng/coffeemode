@@ -94,7 +94,8 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
     await dbClient.query(
       "truncate table profiles, cafes, rate_limits, image_upload_intents, navigations restart identity cascade",
     );
-    await seedMockDataset(dbClient);
+    // configUrl stays the pre-overwrite admin URL: DATABASE_URL now names the test DB (BRAWUKA-216).
+    await seedMockDataset(dbClient, { configUrl: adminDbUrl });
   }, 120_000);
 
   afterEach(async () => {

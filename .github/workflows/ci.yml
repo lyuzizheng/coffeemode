@@ -160,11 +160,15 @@ jobs:
       - name: E2E MVP smoke suite
         env:
           DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode
+          # Ephemeral CI database: the fail-closed seed guard (BRAWUKA-216) needs an explicit opt-in to seed it.
+          ALLOW_SEED_DEV_DB: "1"
         run: npm run test:e2e
 
       - name: Lighthouse CI performance budgets
         env:
           DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode
+          # Ephemeral CI database: the fail-closed seed guard (BRAWUKA-216) needs an explicit opt-in to seed it.
+          ALLOW_SEED_DEV_DB: "1"
         run: npm run lhci
 
       - name: Upload Lighthouse CI report

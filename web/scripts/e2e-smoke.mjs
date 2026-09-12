@@ -7,6 +7,7 @@
  *   2. Static preview and offline routes (/theme-preview, /~offline).
  *   3. Signed-out profile view and search history panel (/profile).
  *   4. Core API health and mutation contract boundaries.
+ *   5. Check-in drawer geometry (BRAWUKA-217, lib/checkin-drawer-gate.mjs).
  *
  * Invariants:
  *   - Fails visibly on unexpected console errors, unhandled page errors, or broken navigation.
@@ -33,6 +34,7 @@ import {
   waitForServer,
   registerProcessCleanup,
 } from "./lib/standalone-server.mjs";
+import { runCheckinDrawerGate } from "./lib/checkin-drawer-gate.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dbUrl = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
@@ -361,6 +363,14 @@ async function runSmokeSuite() {
       // 401 without auth session, 201 when authenticated
       assert(navRes.status === 401 || navRes.status === 201, `/api/navigations returned unexpected ${navRes.status}`);
 
+      console.log(`[E2E] ok ${label}`);
+    }
+
+    // Test 7: check-in drawer geometry (BRAWUKA-217) — see lib/checkin-drawer-gate.mjs.
+    if (hasDb) {
+      const label = "T7: Check-in Drawer CTA Inside the Viewport";
+      console.log(`[E2E] Running ${label}...`);
+      await runCheckinDrawerGate({ label, base, cafeId: E2E_CAFE_ID, createContext, attachErrorCollector });
       console.log(`[E2E] ok ${label}`);
     }
 

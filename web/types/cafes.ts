@@ -22,7 +22,12 @@ export interface CafeSummary {
   cover: string | null;
   /** Meters from the query point; present on nearby queries. */
   distance_m?: number;
-  maintainer?: string | null;
+  /**
+   * True when the cafe is attributed to the CoffeeMode service account (no
+   * human owner). A marker, not copy — the client renders the localized
+   * maintainer line from `discovery.maintained_by_service` (spec 0002 i18n).
+   */
+  maintained_by_service: boolean;
   visibility?: CafeVisibility;
 }
 
@@ -41,7 +46,6 @@ export interface CafeDetail extends Omit<CafeSummary, "distance_m"> {
 /** Public cafe detail (spec 0001 DG13): creator id and gallery `by` are stripped for anonymous surface. */
 export type PublicCafeDetail = Omit<CafeDetail, "gallery" | "created_by"> & {
   gallery: PublicStoredImage[];
-  maintainer?: string | null;
   visibility?: CafeVisibility;
   /**
    * Consented public author of the cafe creator (spec 0006). Null means the

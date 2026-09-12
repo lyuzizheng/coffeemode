@@ -139,7 +139,10 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
             {cafe.address && <span>{cafe.address}</span>}
             <OpenState cafe={shell.openState} />
           </p>
-          <CreatorLine author={publicAttribution.author} maintainer={publicAttribution.maintainer ?? null} />
+          <CreatorLine
+            author={publicAttribution.author}
+            maintainedByService={publicAttribution.maintained_by_service}
+          />
         </div>
         <ScorePair stats={cafe.work_stats} />
         <CafePageActions cafe={shell.actions} cafeId={cafe.id} shareUrl={canonical} />

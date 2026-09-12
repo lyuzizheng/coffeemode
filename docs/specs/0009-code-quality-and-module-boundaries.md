@@ -36,7 +36,7 @@
 | 路由编排 | `web/app/api/*/route.ts` | 解析 query/body → 门禁 `guard()` → 调 `lib/*` → 错误映射（见 `## Data / API / UI behavior` 路由 thin 契约） | SQL/`pg` 直接调用；业务规则；超过 1 屏的分支 |
 | HTTP 关注点 | `web/lib/api/*`、`web/lib/auth/*`、`web/lib/security/*`、`web/lib/rate-limit*` | 鉴权、限流、origin 校验、错误形状、query 解析 | 业务语义（如"建馆必须带首条打卡"）；SQL |
 | 校验/解析 | `web/lib/validation/<domain>.ts`（纯函数；BRAWUKA-180 在并行分支落地 `cafe.ts`/`checkin.ts`，合入后以新模块为准） | 所有请求体/参数校验：`parse*`、`optString` 类 helpers | SQL；`server-only` 以外的副作用；跨 domain 引用 |
-| 持久化 | `web/lib/db/*` | SQL、事务、`query`/`withTransaction` 调用、行映射 | 请求校验；sitemap/SEO 组装；展示投影（strip 字段、maintainer 文案） |
+| 持久化 | `web/lib/db/*` | SQL、事务、`query`/`withTransaction` 调用、行映射 | 请求校验；sitemap/SEO 组装；展示投影（strip 字段）；面向用户的文案（服务端只产出可判定标记，如 `maintained_by_service`） |
 | 领域服务 | `web/lib/<domain>/*`（`places`、`images`、`stats`、`checkin`、`discovery`…） | 跨表/跨系统的业务编排 | 直写 SQL（必须经 `lib/db`）；HTTP 状态码 |
 | 共享叶子 | `web/shared/*`、`web/types/*`、`web/lib/hours.ts`、`web/lib/cities.ts` | 纯常量/纯函数/类型，被所有层引用 | 引用 `lib/`、`app/`、`components/`（叶子不得长出依赖） |
 | UI | `web/components/**`、`web/app/**/page.tsx` | 渲染、交互、HeroUI 装配（0002 拥有） | `import` 任何 `lib/db/**`；直连 Postgres；内联业务校验 |
@@ -46,7 +46,7 @@
 - 校验：`optString`（L138）、`parseCreateCafeBody`（L153–256，经纬度/价格/营业时间/首条打卡全套规则）；
 - CRUD/事务：`createCafeWithFirstCheckIn`（L306）、`listCafesNearby`（L447）、`getCafe`（L490）、`setCafeVisibility`（L610）、`deleteCafe`（L667）、`attachImageToCafe`（L808）；
 - SEO：`CafeSitemapEntry` + `listCafeSitemapEntries`（L537–566，被 `web/app/sitemap.ts` 消费）；
-- 展示投影：`formatCafeMaintainer`（L104）、`toPublicCafeDetail`（L522–535，strip `created_by`/gallery 作者字段）。
+- 展示投影：`isServiceMaintained`（L104）、`toPublicCafeDetail`（L522–535，strip `created_by`/gallery 作者字段）。
 
 连锁证据：`web/app/api/cafes/route.ts` L4–9 从 `@/lib/db/cafes` 同时 import
 `parseCreateCafeBody`（校验）和 `createCafeWithFirstCheckIn`（事务）——
@@ -120,7 +120,7 @@ MUST 在当次提交内完成拆分。不允许"顺手加一行"把超标文件�
 `cafes.ts` 示范拆分（示例方向，非强制文件名）：
 `parseCreateCafeBody` + `optString` → `web/lib/validation/cafes.ts`；
 `listCafeSitemapEntries` + `CafeSitemapEntry` → `web/lib/db/cafe-sitemap.ts`（SEO 查询仍是 SQL，归持久层子模块，不与 CRUD 主文件混放）；
-`toPublicCafeDetail` + `formatCafeMaintainer` → 展示投影归领域服务；
+`toPublicCafeDetail` + `isServiceMaintained` → 展示投影归领域服务；
 `web/lib/db/cafes.ts` 只留 CRUD/事务。路由改从新位置 import（依赖方向见 §2）。
 
 手法 2 — Extract Function：被测行为优先抽。

@@ -99,7 +99,7 @@ function CheckinDiscardDialog({
           </Button>
           <Button
             variant="primary"
-            className="bg-danger text-white hover:bg-danger/90"
+            className="bg-danger text-danger-foreground hover:bg-danger/90"
             onPress={onDiscard}
           >
             {t("discard")}

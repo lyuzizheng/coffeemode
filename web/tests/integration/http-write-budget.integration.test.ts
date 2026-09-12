@@ -126,7 +126,7 @@ type IdCtx = RouteContext<{ id: string }>;
 interface CafeDetailDTO {
   work_stats: { n_checkins: number; n_users: number };
   gallery: unknown[];
-  maintainer: string | null;
+  maintained_by_service: boolean;
 }
 
 /**
@@ -299,7 +299,7 @@ describeBudget("http write budget + delete race (BRAWUKA-165)", () => {
     expect(detail.status).toBe(200);
     expect(detail.data.work_stats.n_checkins).toBe(0);
     expect(detail.data.gallery).toEqual([]);
-    expect(detail.data.maintainer).toBeNull();
+    expect(detail.data.maintained_by_service).toBe(false);
 
     // Sanity: the cafe row is untouched by the limiter-adjacent surface.
     const nearby = await clientA.get<{ cafes: Array<{ id: string }> }>(cafesGET, "/api/cafes", {

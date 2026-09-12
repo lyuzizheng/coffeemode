@@ -10,10 +10,7 @@ import type {
 } from "@/types/cafes";
 import { toPublicAuthor, type AuthorProjectionColumns } from "@/types/identity";
 import { query } from "../postgres";
-import {
-  getServiceAccountId,
-  SERVICE_ACCOUNT_MAINTAINER_LABEL,
-} from "./meta";
+import { isServiceMaintained } from "./meta";
 
 export interface NearbyCafesQuery {
   lat: number;
@@ -55,7 +52,6 @@ limit $4
 
 /** Nearby cafes within `radiusKm` of a point, closest first. */
 export async function listCafesNearby(params: NearbyCafesQuery): Promise<CafeSummary[]> {
-  const serviceAccountId = getServiceAccountId();
   const hasViewer = Boolean(params.viewerId && isValidUUID(params.viewerId));
   const sql = hasViewer ? LIST_NEARBY_VIEWER_SQL : LIST_NEARBY_PUBLIC_SQL;
   const values = hasViewer
@@ -66,12 +62,11 @@ export async function listCafesNearby(params: NearbyCafesQuery): Promise<CafeSum
     CafeSummary & { created_by?: string | null; distance_m: number } & Record<string, unknown>
   >(sql, values);
   return rows.map((row) => {
-    const effectiveCreatedBy = row.created_by ?? serviceAccountId;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip internal creator id (spec 0001 / DG13)
     const { created_by: _cb, ...rest } = row;
     return {
       ...rest,
-      maintainer: effectiveCreatedBy === serviceAccountId ? SERVICE_ACCOUNT_MAINTAINER_LABEL : null,
+      maintained_by_service: isServiceMaintained(row.created_by),
       work_stats: coerceWorkStats(row.work_stats),
     };
   });
@@ -125,22 +120,21 @@ export async function getCafe(
 /**
  * Public cafe detail projection (spec 0001 DG13): strip creator id and `StoredImage.by`
  * from gallery so the anonymous surface never leaks internal author ids.
- * Null created_by falls back to the service account, rendering maintainer as "由 CoffeeMode 维护".
+ * Null created_by falls back to the service account: `maintained_by_service`
+ * is true and the client renders the localized maintainer line.
  * Author (spec 0006) is the consented creator projection; always null on the
  * anonymous / service-account / null-`created_by` path (architect correction).
  */
 export function toPublicCafeDetail(cafe: CafeDetailWithAuthor): PublicCafeDetail {
-  const serviceAccountId = getServiceAccountId();
-  const effectiveCreatedBy = cafe.created_by ?? serviceAccountId;
-  const isServiceMaintained = effectiveCreatedBy === serviceAccountId;
+  const serviceMaintained = isServiceMaintained(cafe.created_by);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip internal creator id + raw author columns (spec 0001 / DG13)
   const { created_by: _cb, gallery, author_handle: _ah, author_display_name: _an, author_avatar_url: _aa, ...rest } = cafe;
   return {
     ...rest,
-    maintainer: isServiceMaintained ? SERVICE_ACCOUNT_MAINTAINER_LABEL : null,
+    maintained_by_service: serviceMaintained,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip internal author id (DG13)
     gallery: (gallery ?? []).map(({ by: _by, ...image }) => image),
-    author: isServiceMaintained ? null : toPublicAuthor(cafe),
+    author: serviceMaintained ? null : toPublicAuthor(cafe),
   };
 }
 

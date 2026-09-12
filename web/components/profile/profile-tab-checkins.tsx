@@ -9,6 +9,7 @@ import { HeartIcon, PencilIcon } from "@/components/icons";
 import { CheckinDrawer } from "@/components/checkin/checkin-drawer";
 import { CheckinNote } from "@/components/checkin/checkin-note";
 import { ErrorRow } from "./profile-error-row";
+import { WORK_DIMS, type WorkDim } from "@/lib/stats/work-stats";
 import type { UserCheckInItemDto } from "@/lib/db/profile";
 
 export async function fetchUserCheckIns(cursor?: string) {
@@ -28,6 +29,9 @@ interface ProfileTabCheckinsProps {
 
 export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticated }: ProfileTabCheckinsProps) {
   const t = useTranslations("profile");
+  // Dimension labels reuse the discovery vocabulary (`discovery.dims.*`) so the
+  // same score never renders under two different names (BRAWUKA-218).
+  const tDims = useTranslations("discovery");
   const [editing, setEditing] = useState<UserCheckInItemDto | null>(null);
 
   const checkins = checkinsQuery.data?.pages.flatMap((page) => page.items) ?? [];
@@ -60,7 +64,7 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
       )}
 
       {checkins.map((item) => {
-        const scoreEntries = Object.entries(item.scores);
+        const dims = WORK_DIMS.filter((dim: WorkDim) => typeof item.scores[dim] === "number");
         return (
           <div
             key={item.id}
@@ -110,14 +114,14 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
               </div>
             </div>
 
-            {scoreEntries.length > 0 && (
+            {dims.length > 0 && (
               <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted font-mono">
-                {scoreEntries.map(([k, score]) => (
+                {dims.map((dim) => (
                   <span
-                    key={k}
+                    key={dim}
                     className="px-2 py-0.5 rounded-md bg-surface-secondary border border-border/40 tabular-nums"
                   >
-                    {k} {Math.round(score)}
+                    {tDims(`dims.${dim}`)} {Math.round(item.scores[dim] ?? 0)}
                   </span>
                 ))}
               </div>

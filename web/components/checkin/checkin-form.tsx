@@ -56,7 +56,7 @@ export function CheckinForm(props: CheckinFormProps) {
       : `${window.location.pathname}?${CHECKIN_RESUME_PARAM}=1`;
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <CheckinFormHeader cafeName={props.cafeName} isEdit={state.isEdit} />
 
       <Drawer.Body className="flex-1 overflow-y-auto px-4 py-4">

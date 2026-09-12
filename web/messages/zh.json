@@ -460,6 +460,7 @@
     },
     "a_nomad": "一位 nomad",
     "by_author": "{name}",
+    "maintained_by_service": "由 CoffeeMode 维护",
     "like_aria": "点赞这条打卡",
     "like_signin": "登录后才能点赞",
     "card_actions_aria": "这条打卡的更多操作",

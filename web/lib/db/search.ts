@@ -7,7 +7,7 @@ import { coerceWorkStats } from "@/lib/stats/work-stats";
 import type { CafeSummary } from "@/types/cafes";
 import type { MaxStay } from "@/types/checkins";
 import { query } from "./postgres";
-import { getServiceAccountId, SERVICE_ACCOUNT_MAINTAINER_LABEL } from "./cafes";
+import { isServiceMaintained } from "./cafes";
 
 interface SearchCafesDbParams {
   q?: string;
@@ -125,19 +125,16 @@ order by name asc, id asc
 limit $${limitIdx}${offsetClause}
 `;
 
-  const { rows } = await query<CafeWithExternalIds & Record<string, unknown>>(
-    sql,
-    values,
-  );
+  const { rows } = await query<
+    CafeWithExternalIds & { created_by?: string | null } & Record<string, unknown>
+  >(sql, values);
 
-  const serviceAccountId = getServiceAccountId();
   return rows.map((row) => {
-    const effectiveCreatedBy = row.created_by ?? serviceAccountId;
     // eslint-disable-next-line @typescript-eslint/no-unused-vars -- strip internal creator id (spec 0001 / DG13)
     const { created_by: _cb, ...rest } = row;
     return {
       ...rest,
-      maintainer: effectiveCreatedBy === serviceAccountId ? SERVICE_ACCOUNT_MAINTAINER_LABEL : null,
+      maintained_by_service: isServiceMaintained(row.created_by),
       work_stats: coerceWorkStats(row.work_stats),
     };
   });

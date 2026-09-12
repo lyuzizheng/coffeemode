@@ -3,7 +3,9 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ProfileView } from "@/components/profile/profile-view";
+import { WORK_DIMS } from "@/lib/stats/work-stats";
 import messages from "../../messages/en.json";
+import zhMessages from "../../messages/zh.json";
 
 const pushMock = vi.fn();
 const backMock = vi.fn();
@@ -184,5 +186,88 @@ describe("ProfileView", () => {
     fireEvent.click(checkinsTab);
     expect(checkinsTab).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("Artisan Cafe")).toBeInTheDocument();
+  });
+});
+
+/**
+ * BRAWUKA-218: the check-in card chips must render the catalog dimension
+ * names (`discovery.dims.*`, the same vocabulary the feed card uses), never
+ * the raw `scores` object keys (`temp`, `wifi`, …).
+ */
+describe("ProfileView check-in score chips", () => {
+  const scores = { wifi: 82, outlets: 78, seats: 75, temp: 88, coffee: 92, overall: 88 };
+
+  beforeEach(() => {
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("/api/profile/checkins")) {
+        return {
+          ok: true,
+          json: async () => ({
+            items: [
+              {
+                id: "chk-1",
+                cafeId: "cafe-1",
+                cafeName: "Nanyang Roastery",
+                cafeCity: "singapore",
+                cafeIsDeleted: false,
+                visitedAt: "2026-09-03T04:00:00.000Z",
+                scores,
+                maxStay: "3h",
+                likesCount: 12,
+                notes: null,
+                photos: [],
+                isCreation: false,
+              },
+            ],
+            next_cursor: null,
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({ items: [], next_cursor: null }) };
+    }) as unknown as typeof fetch;
+  });
+
+  function renderProfile(locale: "en" | "zh") {
+    return render(
+      <NextIntlClientProvider
+        locale={locale}
+        messages={locale === "en" ? messages : zhMessages}
+      >
+        <QueryClientProvider
+          client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+        >
+          <ProfileView
+            initialProfile={{
+              id: "user-1",
+              displayName: "Coffee Lover",
+              avatarUrl: null,
+              currentCity: "singapore",
+              createdAt: "2026-01-01T00:00:00.000Z",
+              showPublicIdentity: false,
+              publicHandle: null,
+              identityConsentedAt: null,
+              publicHandleChangedAt: null,
+            }}
+            initialStats={{ cafesCount: 1, checkinsCount: 1 }}
+            isAuthenticated
+          />
+        </QueryClientProvider>
+      </NextIntlClientProvider>,
+    );
+  }
+
+  it.each([
+    ["en", ["Temperature 88", "Wifi 82", "Seats 75", "Coffee 92", "Outlets 78", "Overall 88"]],
+    ["zh", ["温度 88", "Wi-Fi 82", "座位 75", "咖啡 92", "插座 78", "综合体验 88"]],
+  ] as const)("renders translated dimension names in %s", async (locale, chips) => {
+    renderProfile(locale);
+
+    await waitFor(() => expect(screen.getByText("Nanyang Roastery")).toBeInTheDocument());
+    for (const chip of chips) {
+      expect(screen.getByText(chip)).toBeInTheDocument();
+    }
+    for (const dim of WORK_DIMS) {
+      expect(screen.queryByText(new RegExp(`^${dim} \\d+$`))).toBeNull();
+    }
   });
 });

@@ -151,7 +151,7 @@ interface CafeDetailDTO {
   name: string;
   tz: string;
   author: unknown;
-  maintainer: unknown;
+  maintained_by_service: unknown;
   gallery: Array<{ id: string; source?: { type: string; id: string }; by?: unknown }>;
   work_stats: {
     experience_score: number | null;

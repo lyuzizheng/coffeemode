@@ -1,16 +1,24 @@
 import { afterAll, describe, expect, it } from "vitest";
 import pg from "pg";
 import {
+  assertSafeSeedTarget,
+  databaseNameFromUrl,
   DEFAULT_DB_URL,
   DEFAULT_TEMPLATE_DB_NAME,
   cleanupIntegrationDatabase,
+  DEV_DATABASE_NAME,
   ensureTemplateDatabase,
   integrationAdminUrl,
   makeTestDbName,
   provisionTestDatabase,
   quotedIdentifier,
+  SEED_DEV_DB_OPT_IN,
   testDatabaseUrl,
 } from "./helpers/db";
+import {
+  assertSafeSeedTarget as assertSafeSeedTargetMjs,
+  databaseNameFromUrl as databaseNameFromUrlMjs,
+} from "../scripts/lib/seed-guard.mjs";
 import { getPoolConfig } from "@/lib/db/postgres";
 
 const RUN_INTEGRATION = process.env.RUN_INTEGRATION === "1";
@@ -76,6 +84,80 @@ describe("db test helpers — unit contracts", () => {
       if (originalOptIn === undefined) delete process.env.ALLOW_REMOTE_INTEGRATION_DB;
       else process.env.ALLOW_REMOTE_INTEGRATION_DB = originalOptIn;
     }
+  });
+});
+
+describe("seed guard — fail-closed dev-database protection (BRAWUKA-216)", () => {
+  const originalDbUrl = process.env.DATABASE_URL;
+  const originalOptIn = process.env[SEED_DEV_DB_OPT_IN];
+
+  afterAll(() => {
+    if (originalDbUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = originalDbUrl;
+    if (originalOptIn === undefined) delete process.env[SEED_DEV_DB_OPT_IN];
+    else process.env[SEED_DEV_DB_OPT_IN] = originalOptIn;
+  });
+
+  it("databaseNameFromUrl reads the path segment, never the whole URL", () => {
+    expect(databaseNameFromUrl("postgres://coffeemode:coffeemode@localhost:5432/coffeemode")).toBe("coffeemode");
+    expect(databaseNameFromUrl("postgres://u:p@host:5432/mydev?sslmode=require")).toBe("mydev");
+    expect(databaseNameFromUrlMjs("postgres://u:p@host:5432/mydev?sslmode=require")).toBe("mydev");
+  });
+
+  it("refuses the default dev database and names it in the error", () => {
+    delete process.env.DATABASE_URL;
+    delete process.env[SEED_DEV_DB_OPT_IN];
+    expect(() => assertSafeSeedTarget(DEV_DATABASE_NAME, "seedMockDataset")).toThrow(
+      /Refusing seedMockDataset against database "coffeemode"/,
+    );
+  });
+
+  it("refuses a custom configured dev database by name", () => {
+    process.env.DATABASE_URL = "postgres://coffeemode:coffeemode@localhost:5432/mydev";
+    delete process.env[SEED_DEV_DB_OPT_IN];
+    expect(() => assertSafeSeedTarget("mydev", "seedMockDataset")).toThrow(/against database "mydev"/);
+    expect(() => assertSafeSeedTarget("otherdb", "seedMockDataset")).not.toThrow();
+  });
+
+  it("keeps the documented dev name protected when DATABASE_URL points elsewhere", () => {
+    process.env.DATABASE_URL = "postgres://coffeemode:coffeemode@localhost:5432/mydev";
+    delete process.env[SEED_DEV_DB_OPT_IN];
+    expect(() => assertSafeSeedTarget("coffeemode", "seedMockDataset")).toThrow(/against database "coffeemode"/);
+  });
+
+  it("refuses when the target equals the call-time DATABASE_URL: callers pass the pre-overwrite admin URL", () => {
+    const testDbUrl = "postgres://coffeemode:coffeemode@localhost:5432/coffeemode_test_1_abc";
+    process.env.DATABASE_URL = testDbUrl;
+    delete process.env[SEED_DEV_DB_OPT_IN];
+    expect(() => assertSafeSeedTarget("coffeemode_test_1_abc", "seedMockDataset")).toThrow(/Refusing/);
+    expect(() =>
+      assertSafeSeedTarget("coffeemode_test_1_abc", "seedMockDataset", "postgres://coffeemode:coffeemode@localhost:5432/coffeemode"),
+    ).not.toThrow();
+  });
+
+  it("fails closed on an unresolvable target name", () => {
+    delete process.env.DATABASE_URL;
+    delete process.env[SEED_DEV_DB_OPT_IN];
+    expect(() => assertSafeSeedTarget("", "seedMockDataset")).toThrow(/"\(unknown\)"/);
+  });
+
+  it("ALLOW_SEED_DEV_DB=1 explicitly overrides the refusal", () => {
+    delete process.env.DATABASE_URL;
+    process.env[SEED_DEV_DB_OPT_IN] = "1";
+    expect(() => assertSafeSeedTarget("coffeemode", "seedMockDataset")).not.toThrow();
+    delete process.env[SEED_DEV_DB_OPT_IN];
+  });
+
+  it("script-side mirror reaches the same verdicts", () => {
+    delete process.env.DATABASE_URL;
+    delete process.env[SEED_DEV_DB_OPT_IN];
+    const dev = "postgres://coffeemode:coffeemode@localhost:5432/coffeemode";
+    const test = "postgres://coffeemode:coffeemode@localhost:5432/coffeemode_test_9_def";
+    expect(() => assertSafeSeedTargetMjs(dev, { seeder: "setupDbFixtures" })).toThrow(/against database "coffeemode"/);
+    expect(assertSafeSeedTargetMjs(test, { seeder: "setupDbFixtures" }).skipped).toBe(false);
+    process.env[SEED_DEV_DB_OPT_IN] = "1";
+    expect(assertSafeSeedTargetMjs(dev, { seeder: "setupDbFixtures" }).skipped).toBe(true);
+    delete process.env[SEED_DEV_DB_OPT_IN];
   });
 });
 

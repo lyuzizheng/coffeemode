@@ -26,6 +26,11 @@ Accepted
 
 - CI never depends on live backend services, provider keys, private data, or live
   LLM calls.
+- Fixtures only ever write test databases; the dev database is owned by
+  `check:visual`, never seeded (fail-closed guard: `assertSafeSeedTarget` in
+  `web/tests/helpers/db.ts` + `web/scripts/lib/seed-guard.mjs`, cleanup via
+  `web/scripts/clean-dev-fixtures.mjs --apply`; override with
+  `ALLOW_SEED_DEV_DB=1`).
 - Map and external-service tests use static fixtures or mocked boundaries.
 - Tests encode intended contracts, not the current implementation.
 - A bug fix adds a regression test that fails on the reproduced defect when the

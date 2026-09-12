@@ -1,0 +1,13 @@
+# pre-commit hooks for CoffeeMode
+# Install: pre-commit install
+# Or via: .agents/scripts/setup-hooks.sh
+
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+        name: gitleaks (secret scan)
+        entry: gitleaks protect --source . --staged --verbose --redact
+        language: system
+        pass_filenames: false

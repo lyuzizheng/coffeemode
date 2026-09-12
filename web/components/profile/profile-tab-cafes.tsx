@@ -76,7 +76,7 @@ export function ProfileTabCafes({ baseId, query: cafesQuery }: ProfileTabCafesPr
                 {cafe.name || t("unknown_cafe")}
               </span>
               {cafe.isCreation && (
-                <span className="text-secondary font-normal text-xs inline-flex items-center gap-0.5">
+                <span className="text-muted font-normal text-xs inline-flex items-center gap-0.5">
                   <span>+</span>
                   <span>{t("created_by_me")}</span>
                 </span>

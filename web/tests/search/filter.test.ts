@@ -32,6 +32,7 @@ function makeCafe(overrides?: Partial<CafeSummary>): CafeSummary {
     price_range: 2,
     cover: null,
     work_stats: emptyWorkStats(),
+    maintained_by_service: false,
     ...overrides,
   };
 }

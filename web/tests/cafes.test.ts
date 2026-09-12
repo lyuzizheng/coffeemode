@@ -5,7 +5,6 @@ import {
   getServiceAccountId,
   resolveCafeTimezone,
   toPublicCafeDetail,
-  SERVICE_ACCOUNT_MAINTAINER_LABEL,
 } from "@/lib/db/cafes";
 import {
   CafeExistsError,
@@ -601,7 +600,7 @@ describe("toPublicCafeDetail", () => {
     expect((cafe.gallery[0] as unknown as Record<string, unknown>).by).toBe("user-1");
   });
 
-  it("renders created_by fallback to SERVICE_ACCOUNT_ID and maintainer label when created_by is null, stripping raw created_by", () => {
+  it("marks maintained_by_service when created_by is null, stripping raw created_by and never shipping copy", () => {
     const cafe = {
       id: "c1",
       name: "Test",
@@ -610,10 +609,12 @@ describe("toPublicCafeDetail", () => {
     } as unknown as CafeDetail;
     const pub = toPublicCafeDetail(cafe);
     expect(pub).not.toHaveProperty("created_by");
-    expect(pub.maintainer).toBe(SERVICE_ACCOUNT_MAINTAINER_LABEL);
+    expect(pub.maintained_by_service).toBe(true);
+    // The DTO carries a marker only: the maintainer line is client copy (spec 0002 i18n).
+    expect(pub).not.toHaveProperty("maintainer");
   });
 
-  it("renders maintainer label when created_by is SERVICE_ACCOUNT_ID and strips raw created_by", () => {
+  it("marks maintained_by_service when created_by is SERVICE_ACCOUNT_ID and strips raw created_by", () => {
     const cafe = {
       id: "c1",
       name: "Test",
@@ -622,10 +623,10 @@ describe("toPublicCafeDetail", () => {
     } as unknown as CafeDetail;
     const pub = toPublicCafeDetail(cafe);
     expect(pub).not.toHaveProperty("created_by");
-    expect(pub.maintainer).toBe(SERVICE_ACCOUNT_MAINTAINER_LABEL);
+    expect(pub.maintained_by_service).toBe(true);
   });
 
-  it("renders maintainer null and strips created_by when created_by is a regular user (DG13 / spec 0001 anonymous)", () => {
+  it("leaves maintained_by_service false and strips created_by when created_by is a regular user (DG13 / spec 0001 anonymous)", () => {
     const cafe = {
       id: "c1",
       name: "Test",
@@ -634,7 +635,7 @@ describe("toPublicCafeDetail", () => {
     } as unknown as CafeDetail;
     const pub = toPublicCafeDetail(cafe);
     expect(pub).not.toHaveProperty("created_by");
-    expect(pub.maintainer).toBeNull();
+    expect(pub.maintained_by_service).toBe(false);
   });
 
   it("maps consented author columns to the author leaf and strips the raw columns", () => {
@@ -680,7 +681,7 @@ describe("toPublicCafeDetail", () => {
     } as unknown as CafeDetail;
     const pub = toPublicCafeDetail(cafe);
     expect(pub.author).toBeNull();
-    expect(pub.maintainer).toBe(SERVICE_ACCOUNT_MAINTAINER_LABEL);
+    expect(pub.maintained_by_service).toBe(true);
   });
 });
 

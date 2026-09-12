@@ -64,3 +64,33 @@ database_id = "11111111-1111-1111-1111-111111111111"
 # --- Routing ---
 [observability]
 enabled = true
+
+# Staging env: isolated staging stack (spec 0005 §3). `kv_namespaces` and
+# `d1_databases` are not inherited by environments, so both are repeated here.
+# Production's KV and D1 ids are distinct namespaces/databases — never shared.
+# Deploy with `npm run deploy -- --env staging` (guard: scripts/deploy.mjs).
+[env.staging]
+name = "poi-service-staging"
+
+[[env.staging.kv_namespaces]]
+binding = "POI_KV"
+id = "9f7f807aa68b47e3bbb6ecaf15c5f571"
+
+[[env.staging.d1_databases]]
+binding = "POI_DB"
+database_name = "poi-store-staging"
+database_id = "d069da6b-07e5-4fc0-b6a9-a685b3bef8b8"
+
+# Production env: isolated production stack (spec 0005 §3).
+# Deploy with `npm run deploy -- --env production` (guard: scripts/deploy.mjs).
+[env.production]
+name = "poi-service-prod"
+
+[[env.production.kv_namespaces]]
+binding = "POI_KV"
+id = "be0e4111b70f482ca23ed1f833142f88"
+
+[[env.production.d1_databases]]
+binding = "POI_DB"
+database_name = "poi-store"
+database_id = "7d01d154-03a7-4483-8b54-83f2c310af3b"

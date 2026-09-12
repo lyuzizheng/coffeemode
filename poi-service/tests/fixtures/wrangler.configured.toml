@@ -14,7 +14,7 @@ name = "poi-service-prod"
 
 [[env.production.kv_namespaces]]
 binding = "POI_KV"
-id = "9f1c4a2e-7b30-4d55-8a11-6c2d90f4e7b8"
+id = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
 
 [[env.production.d1_databases]]
 binding = "POI_DB"

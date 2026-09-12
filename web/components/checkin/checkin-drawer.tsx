@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckinForm, CHECKIN_RESUME_PARAM } from "./checkin-form";
 import type { PhotoUpload } from "./checkin-photos";
 import { fetchLastCheckin, type LastCheckin } from "@/lib/checkin/last-checkin";
+import { isUnauthorized } from "@/lib/http";
 import type { CheckInScores, MaxStay } from "@/types/checkins";
 
 export { CHECKIN_RESUME_PARAM };
@@ -99,7 +100,7 @@ function CheckinDiscardDialog({
           </Button>
           <Button
             variant="primary"
-            className="bg-danger text-white hover:bg-danger/90"
+            className="bg-danger text-danger-foreground hover:bg-danger/90"
             onPress={onDiscard}
           >
             {t("discard")}
@@ -134,10 +135,7 @@ function useCheckinDrawerState({
     retry: false,
   });
 
-  const authProbeFailed =
-    lastCheckinQuery.isError &&
-    lastCheckinQuery.error instanceof Error &&
-    lastCheckinQuery.error.message === "unauthorized";
+  const authProbeFailed = lastCheckinQuery.isError && isUnauthorized(lastCheckinQuery.error);
 
   const { revisit, effectiveMode, effectiveEditId } = useRevisitPreempt({
     isOpen,

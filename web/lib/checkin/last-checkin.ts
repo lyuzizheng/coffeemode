@@ -1,3 +1,4 @@
+import { UNAUTHORIZED } from "@/lib/http";
 import type { CheckInScores, MaxStay } from "@/types/checkins";
 
 /** The caller's most recent check-in for a cafe, as returned by /api/checkins/last. */
@@ -17,7 +18,7 @@ export interface LastCheckin {
  */
 export async function fetchLastCheckin(cafeId: string) {
   const res = await fetch(`/api/checkins/last?cafe_id=${encodeURIComponent(cafeId)}`);
-  if (res.status === 401) throw new Error("unauthorized");
+  if (res.status === 401) throw new Error(UNAUTHORIZED);
   if (!res.ok) throw new Error("failed");
   const body = (await res.json()) as {
     checkin: LastCheckin | null;

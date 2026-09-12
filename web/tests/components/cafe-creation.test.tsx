@@ -4,12 +4,35 @@ import { NextIntlClientProvider } from "next-intl";
 import { PolicyChips, policyOptions } from "@/components/cafe/policy-chips";
 import { POIPreview } from "@/components/cafe/poi-preview";
 import { CafeCreationSheet, CafeCreationTrigger } from "@/components/cafe/cafe-creation-sheet";
-import { CafeCreationForm } from "@/components/cafe/cafe-creation-form";
 import { uploadPhoto } from "@/lib/images/client-upload";
 import messages from "../../messages/en.json";
 import type { POI } from "@shared/places/types";
 
 vi.mock("@/lib/images/client-upload", () => ({ uploadPhoto: vi.fn() }));
+
+// MapKit loads from Apple's CDN in a real browser; the stub is the service
+// boundary that hands a selected Apple place back to the sheet.
+const APPLE_PLACE = vi.hoisted<POI>(() => ({
+  place_id: "apple-1",
+  source: "apple",
+  name: "Apple Cafe",
+  lat: 1.3,
+  lng: 103.8,
+  address: "Sample Address",
+  types: ["cafe"],
+  business_status: null,
+  hours_json: null,
+  photo_refs: [],
+  fetched_at: "2026-01-01T00:00:00.000Z",
+}));
+
+vi.mock("@/components/cafe/apple-place-search", () => ({
+  ApplePlaceSearch: ({ onSelect }: { onSelect: (poi: POI) => void }) => (
+    <button type="button" onClick={() => onSelect(APPLE_PLACE)}>
+      Pick an Apple place
+    </button>
+  ),
+}));
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   return (
@@ -152,62 +175,141 @@ describe("CafeCreationSheet & Trigger", () => {
   });
 });
 
-describe("CafeCreationForm session expiry (BRAWUKA-124)", () => {
-  const poi: POI = {
-    place_id: "apple-1",
-    source: "apple",
-    name: "Apple Cafe",
-    lat: 1.3,
-    lng: 103.8,
-    address: "Sample Address",
-    types: ["cafe"],
-    business_status: null,
-    hours_json: null,
-    photo_refs: [],
-    fetched_at: new Date().toISOString(),
-  };
-
-  function renderForm(onError: (m: string | null) => void) {
-    return render(
-      <CafeCreationForm poi={poi} name="Apple Cafe" onNameChange={() => {}} isAuthenticated onError={onError} />,
-      { wrapper: Wrapper },
-    );
+describe("CafeCreationSheet session expiry (BRAWUKA-124/BRAWUKA-212)", () => {
+  function jsonResponse(status: number, body: unknown) {
+    return { ok: status >= 200 && status < 300, status, json: async () => body };
   }
 
-  async function fillAndSubmit() {
-    fireEvent.change(screen.getByRole("slider", { name: "Overall work score" }), { target: { value: "80" } });
-    fireEvent.change(screen.getByPlaceholderText("How was the wifi, seats, and vibe?"), { target: { value: "great wifi" } });
-    const file = new File(["x"], "photo.jpg", { type: "image/jpeg" });
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-    fireEvent.change(input, { target: { files: [file] } });
+  /** Resolve-link succeeds; every other route defers to the test's handler. */
+  function mockRoutes(handler: (url: string) => { ok: boolean; status: number; json: () => Promise<unknown> }) {
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+      const target = String(url);
+      if (target.includes("/api/places/resolve")) return jsonResponse(200, APPLE_PLACE);
+      return handler(target);
+    });
+  }
+
+  async function openSheetWithPoi() {
+    render(<CafeCreationSheet isOpen onOpenChange={vi.fn()} isAuthenticated />, { wrapper: Wrapper });
+    fireEvent.change(screen.getByPlaceholderText(/maps\.apple\.com/i), {
+      target: { value: "https://maps.apple.com/place?id=1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Resolve link/i }));
+    await screen.findByRole("button", { name: "Create cafe" });
+  }
+
+  function fileInput(): HTMLInputElement {
+    const input = document.querySelector('input[type="file"]');
+    if (!input) throw new Error("photo input not rendered");
+    return input as HTMLInputElement;
+  }
+
+  function fillAndSubmit() {
+    fireEvent.change(screen.getByRole("slider", { name: "Overall work score" }), {
+      target: { value: "80" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("How was the wifi, seats, and vibe?"), {
+      target: { value: "great wifi" },
+    });
+    fireEvent.change(fileInput(), {
+      target: { files: [new File(["x"], "photo.jpg", { type: "image/jpeg" })] },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Create cafe" }));
   }
 
-  it("routes a photo-upload 401 to the sign-in gate, not to a photo-retry message", async () => {
-    const onError = vi.fn();
-    vi.mocked(uploadPhoto).mockRejectedValue(new Error("unauthorized"));
-    renderForm(onError);
-    await fillAndSubmit();
+  async function expectSignInGate() {
+    await waitFor(() => {
+      expect(screen.getByText(/Please sign in to publish/)).toBeInTheDocument();
+    });
+    // A dead session is not a form error, and no raw code may surface here.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByText("unauthorized")).not.toBeInTheDocument();
+  }
 
-    await waitFor(() => expect(screen.getByText(/Please sign in to publish/i)).toBeInTheDocument());
-    const shown = onError.mock.calls.map((c) => c[0]).filter(Boolean) as string[];
-    expect(shown.some((m) => /photo/i.test(m))).toBe(false);
+  beforeEach(() => {
+    vi.mocked(uploadPhoto).mockReset();
   });
 
-  it("routes a create-POST 401 to the sign-in gate too (photo upload succeeded)", async () => {
-    const onError = vi.fn();
+  it("routes the create POST's 401 to the drawer's sign-in gate", async () => {
     vi.mocked(uploadPhoto).mockResolvedValue("img-uuid-1");
-    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
-      if (String(url).includes("/api/cafes")) {
-        return { ok: false, status: 401, json: async () => ({ error: "unauthorized" }) };
-      }
-      return { ok: true, status: 200, json: async () => ({}) };
-    });
-    renderForm(onError);
-    await fillAndSubmit();
+    mockRoutes((url) => (url.includes("/api/cafes") ? jsonResponse(401, { error: "unauthorized" }) : jsonResponse(200, {})));
 
-    await waitFor(() => expect(screen.getByText(/Please sign in to publish/i)).toBeInTheDocument());
-    const shown = onError.mock.calls.map((c) => c[0]).filter(Boolean) as string[];
-    expect(shown.some((m) => /photo/i.test(m))).toBe(false);
+    await openSheetWithPoi();
+    fillAndSubmit();
+
+    await expectSignInGate();
+  });
+
+  it("routes a publish-time photo upload 401 to the gate without posting", async () => {
+    vi.mocked(uploadPhoto).mockRejectedValue(new Error("unauthorized"));
+    mockRoutes(() => jsonResponse(200, {}));
+
+    await openSheetWithPoi();
+    fillAndSubmit();
+
+    await expectSignInGate();
+    expect(globalThis.fetch).not.toHaveBeenCalledWith(
+      "/api/cafes",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("routes a Google place-search 401 to the gate instead of the alert slot", async () => {
+    mockRoutes((url) => (url.includes("/api/places/search") ? jsonResponse(401, { error: "unauthorized" }) : jsonResponse(200, {})));
+
+    render(<CafeCreationSheet isOpen onOpenChange={vi.fn()} isAuthenticated />, { wrapper: Wrapper });
+    fireEvent.click(screen.getByRole("tab", { name: "Search a place" }));
+    fireEvent.change(screen.getByPlaceholderText("Search for a cafe"), {
+      target: { value: "blue bottle" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+
+    await expectSignInGate();
+  });
+
+  it("routes an Apple place-persist 401 to the gate", async () => {
+    mockRoutes((url) => (url.includes("/api/places/external") ? jsonResponse(401, { error: "unauthorized" }) : jsonResponse(200, {})));
+
+    render(<CafeCreationSheet isOpen onOpenChange={vi.fn()} isAuthenticated />, { wrapper: Wrapper });
+    fireEvent.click(screen.getByRole("tab", { name: "Search a place" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apple Maps" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pick an Apple place" }));
+
+    await expectSignInGate();
+  });
+
+  it("shows generic copy for an unmapped server code and logs the code", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(uploadPhoto).mockResolvedValue("img-uuid-1");
+    mockRoutes((url) => (url.includes("/api/cafes") ? jsonResponse(500, { error: "internal_error" }) : jsonResponse(200, {})));
+
+    await openSheetWithPoi();
+    fillAndSubmit();
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("The cafe could not be created.");
+    });
+    expect(screen.queryByText("internal_error")).not.toBeInTheDocument();
+    expect(warn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ code: "internal_error" }),
+    );
+  });
+
+  it("shows generic copy for an unmapped client upload marker", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(uploadPhoto).mockRejectedValue(new Error("image_processing_error"));
+    mockRoutes(() => jsonResponse(200, {}));
+
+    await openSheetWithPoi();
+    fillAndSubmit();
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("The cafe could not be created.");
+    });
+    expect(warn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ code: "image_processing_error" }),
+    );
   });
 });

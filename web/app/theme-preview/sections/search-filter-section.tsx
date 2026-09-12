@@ -160,7 +160,7 @@ export function SearchFilterSection() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="truncate font-medium text-foreground">{c.name}</span>
-                    <span className="rounded bg-accent/15 px-1.5 py-0.5 text-xs font-medium text-accent">
+                    <span className="rounded px-1.5 py-0.5 text-xs font-medium text-accent">
                       coffeemode
                     </span>
                   </div>

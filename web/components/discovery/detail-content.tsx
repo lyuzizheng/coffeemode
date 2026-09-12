@@ -191,7 +191,7 @@ export function DetailContent({
       <div className="flex flex-col gap-1.5">
         {heading}
         {meta}
-        <CreatorLine author={cafe.author} maintainer={cafe.maintainer ?? null} />
+        <CreatorLine author={cafe.author} maintainedByService={cafe.maintained_by_service} />
       </div>
       <ScorePair stats={cafe.work_stats} />
       <ActionRow cafe={cafe} onCheckIn={onCheckIn} />

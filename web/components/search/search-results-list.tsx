@@ -70,7 +70,7 @@ function ResultRow({
             {item.name}
           </span>
           {item.type === "poi" && (
-            <span className="shrink-0 text-xs text-secondary">
+            <span className="shrink-0 text-xs text-muted">
               <span aria-hidden>+ </span>
               {t("not_on_coffeemode")}
             </span>

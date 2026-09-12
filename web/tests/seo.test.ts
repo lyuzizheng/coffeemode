@@ -140,6 +140,7 @@ describe("publicCafeShell (DG13 public-safe payload)", () => {
     work_stats: statsWith(80, 5),
     cover: "card/a.webp",
     description: null,
+    maintained_by_service: false,
     gallery: [photo("b")],
     google_place_id: "ChIJ-provider-ref",
     apple_poi_id: null,

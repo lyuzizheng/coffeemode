@@ -1,7 +1,7 @@
 "use client";
 
 import type { QueryClient } from "@tanstack/react-query";
-import { responseMessage } from "@/lib/http";
+import { responseMessage, throwIfUnauthorized } from "@/lib/http";
 import type { CheckInScores, MaxStay } from "@/types/checkins";
 
 export function invalidateCheckinQueries(queryClient: QueryClient, cafeId: string) {
@@ -34,7 +34,7 @@ export async function updateCheckin({
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (res.status === 401) throw new Error("unauthorized");
+  throwIfUnauthorized(res);
   if (!res.ok) throw new Error(await responseMessage(res, fallbackErrorMessage));
   return res.json();
 }
@@ -98,7 +98,7 @@ export async function createCheckin({
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (res.status === 401) throw new Error("unauthorized");
+  throwIfUnauthorized(res);
   if (res.status === 409) {
     return handleConflictRevisit({ res, scores, maxStay, note, fallbackErrorMessage });
   }
@@ -114,7 +114,7 @@ export async function deleteCheckin({
   fallbackErrorMessage: string;
 }) {
   const res = await fetch(`/api/checkins/${editCheckinId}`, { method: "DELETE" });
-  if (res.status === 401) throw new Error("unauthorized");
+  throwIfUnauthorized(res);
   if (!res.ok) throw new Error(await responseMessage(res, fallbackErrorMessage));
   return res.json();
 }

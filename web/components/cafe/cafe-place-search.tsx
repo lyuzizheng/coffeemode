@@ -11,7 +11,7 @@ import {
 import { useTranslations } from "next-intl";
 import { useState, type FormEvent } from "react";
 import { ApplePlaceSearch } from "@/components/cafe/apple-place-search";
-import { responseMessage } from "@/lib/http";
+import { isUnauthorized, responseMessage, throwIfUnauthorized } from "@/lib/http";
 import type { POI, POISearchResponse } from "@shared/places/types";
 
 type EntryMode = "link" | "search";
@@ -20,9 +20,12 @@ type SearchProvider = "google" | "apple";
 interface CafePlaceSearchProps {
   onSelectPOI: (poi: POI, persist?: boolean) => void;
   onError: (error: string | null) => void;
+  /** `GET /api/places/search?source=google` is auth-gated; a 401 belongs to the
+      drawer's sign-in gate, not to this component's alert slot. */
+  onRequireSignIn: () => void;
 }
 
-export function CafePlaceSearch({ onSelectPOI, onError }: CafePlaceSearchProps) {
+export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn }: CafePlaceSearchProps) {
   const t = useTranslations("create");
   const [entryMode, setEntryMode] = useState<EntryMode>("link");
   const [provider, setProvider] = useState<SearchProvider>("google");
@@ -60,10 +63,15 @@ export function CafePlaceSearch({ onSelectPOI, onError }: CafePlaceSearchProps) 
     onError(null);
     try {
       const response = await fetch(`/api/places/search?source=google&q=${encodeURIComponent(query.trim())}`);
+      throwIfUnauthorized(response);
       if (!response.ok) throw new Error(await responseMessage(response, t("searchFailed")));
       const data = (await response.json()) as POISearchResponse;
       setSearchResults(data.results);
     } catch (cause) {
+      if (isUnauthorized(cause)) {
+        onRequireSignIn();
+        return;
+      }
       onError(cause instanceof Error ? cause.message : t("searchFailed"));
     } finally {
       setSearching(false);

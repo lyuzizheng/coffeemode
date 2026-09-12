@@ -53,6 +53,35 @@ jobs:
       - name: Verify runtime pins (engines / TypeScript / Worker compatibility_date)
         run: .agents/scripts/check-runtime-pins.sh
 
+  secret-scan:
+    name: secret-scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          GITLEAKS_VERSION="8.30.1"
+          GITLEAKS_SHA256="551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" -o /tmp/gitleaks.tar.gz
+          echo "${GITLEAKS_SHA256}  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Scan incremental changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
+            gitleaks detect --source . --verbose --redact
+          else
+            gitleaks detect --source . --log-opts="$BASE_SHA..$HEAD_SHA" --verbose --redact
+          fi
+
   docs-gate:
     needs: changes
     if: needs.changes.outputs.docs == 'true'
@@ -314,6 +343,7 @@ jobs:
   ci-gate:
     needs:
       - changes
+      - secret-scan
       - docs-gate
       - application-gate
       - integration-gate

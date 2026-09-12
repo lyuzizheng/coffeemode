@@ -139,6 +139,12 @@ else
       deploy/*|docker-compose.yml|scripts/*)
         integration=true
         ;;
+      # Secret-scanning config: `.gitleaks.toml` is read by the `secret-scan` job
+      # in `ci.yml` and by `secret-scan.yml`; `.pre-commit-config.yaml` is the
+      # local hook manifest. Neither is a product gate input, but both must be
+      # classified so `check-ci-classification.sh` does not flag them.
+      .gitleaks.toml|.pre-commit-config.yaml)
+        ;;
       # Explicitly ungated — no product code, script, or gate input reads these.
       #   _archive-coffeemode-frontend/, _archive-coffeemode-backend/
       #       legacy Vite/Java trees, reference only (`.agents/rules/coding.md`)

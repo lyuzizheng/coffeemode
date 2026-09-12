@@ -47,6 +47,18 @@ export const DEPLOY_TARGETS = {
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/**
+ * Cloudflare KV namespace ids are 32 lowercase hex characters with no dashes —
+ * that is what `wrangler kv namespace create` prints and the only shape the API
+ * accepts (a dashed UUID is rejected with `could not parse UUID ... invalid
+ * namespace format`). D1 database ids are UUIDs. Validating both against the
+ * UUID shape refused every real KV namespace.
+ */
+const KV_NAMESPACE_ID = /^[0-9a-f]{32}$/;
+const ID_SHAPES = {
+  kv: { pattern: KV_NAMESPACE_ID, label: "a 32-character hex KV namespace id" },
+  d1: { pattern: UUID, label: "a UUID" },
+};
 /** `11111111-…` / `22222222-…`: the deterministic local-dev placeholder ids. */
 const PLACEHOLDER_ID = /^([0-9a-f])\1{7}-/;
 
@@ -57,18 +69,19 @@ const USAGE = `usage: node scripts/deploy.mjs --env <${Object.keys(DEPLOY_TARGET
   --config <file>  wrangler config to read (default: ${DEFAULT_CONFIG_FILE})`;
 
 /** Reason an id is not a real Cloudflare resource id, or null when it is. */
-function idProblem(id) {
+function idProblem(id, kind) {
   if (id === "") {
     return "is empty";
   }
   if (id === "local") {
     return "is the local-dev placeholder";
   }
-  if (!UUID.test(id)) {
-    return "is not a Cloudflare resource id (expected a UUID)";
-  }
   if (PLACEHOLDER_ID.test(id)) {
     return "is the deterministic local-dev placeholder id, not a real resource";
+  }
+  const { pattern, label } = ID_SHAPES[kind];
+  if (!pattern.test(id)) {
+    return `is not a Cloudflare resource id (expected ${label})`;
   }
   return null;
 }
@@ -101,7 +114,7 @@ export function evaluateDeployConfig({ env, config, hasEnvSection, configFile = 
         `KV namespace created by \`wrangler kv namespace create ${target.kvCreate}\` (${SETUP_DOC}).`,
     );
   } else {
-    const problem = idProblem(String(kv.id ?? ""));
+    const problem = idProblem(String(kv.id ?? ""), "kv");
     if (problem) {
       violations.push(
         `POI_KV id ${JSON.stringify(kv.id)} ${problem}; paste the id returned by ` +
@@ -117,7 +130,7 @@ export function evaluateDeployConfig({ env, config, hasEnvSection, configFile = 
         `created by \`wrangler d1 create ${target.database}\` (${SETUP_DOC}).`,
     );
   } else {
-    const problem = idProblem(String(db.database_id ?? ""));
+    const problem = idProblem(String(db.database_id ?? ""), "d1");
     if (problem) {
       violations.push(
         `POI_DB database_id ${JSON.stringify(db.database_id)} ${problem}; paste the id returned by ` +

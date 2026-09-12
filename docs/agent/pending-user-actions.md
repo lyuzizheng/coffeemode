@@ -49,6 +49,14 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 - [ ] console.cloud.google.com → enable **Places API (New)** → create API key → restrict to that API + (later) IP/HTTP referrers
 - [ ] The key goes ONLY into the POI Worker (`poi-service/.dev.vars`, never committed). Next.js never sees it.
 
+**Only remaining owner item for the POI service** (2026-09-12, BRAWUKA-222): the four
+Cloudflare resources, both migrations, both deployments and both `POI_SERVICE_TOKEN`
+secrets are done. Until this key is installed on both Workers
+(`wrangler secret put GOOGLE_PLACES_API_KEY --env staging|production`, or the equivalent
+Cloudflare API call), `/poi/:place_id`, the query path of `/poi/resolve`, and
+`/poi/search/external` answer 502 `upstream_error`; `POST /poi/external` → `GET /poi/search`
+and the KV hot-cache read path are unaffected and verified working.
+
 ## 6. image-service deploy
 
 - [x] Create R2 bucket and S3 API token for image uploads (`coffeemode-images-prod` and `coffeemode-images-staging` provisioned in APAC with CORS configured)
@@ -74,12 +82,15 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
 - [ ] Point domain at the VPS; Cloudflare proxy/CDN in front
 - [ ] Cloudflare account for the POI worker (`poi.coffeemode.app` once the domain lands)
-- [ ] In a terminal (from `poi-service/`), create the per-environment resources and add a `[env.staging]` / `[env.production]` block to `poi-service/wrangler.toml` (spec 0005 §3 names):
-  - `wrangler d1 create poi-store-staging` / `poi-store` → paste `database_id` into `POI_DB`
-  - `wrangler kv namespace create poi-cache-staging` / `poi-cache` → paste `id` into `POI_KV`
-- [ ] Apply the schema: `wrangler d1 migrations apply poi-store --remote`
-- [ ] Set the two worker secrets (values never go in chat/docs): `wrangler secret put POI_SERVICE_TOKEN --env production`, `wrangler secret put GOOGLE_PLACES_API_KEY --env production`
-- [ ] Deploy: `npm run deploy -- --env production` (guarded — refuses while the placeholder ids are still configured) → workers.dev URL; wire `POI_SERVICE_URL` + `POI_SERVICE_TOKEN` into `web/.env.local`
+- [x] In a terminal (from `poi-service/`), create the per-environment resources and add a `[env.staging]` / `[env.production]` block to `poi-service/wrangler.toml` (spec 0005 §3 names): (done 2026-09-12, BRAWUKA-222 — created on the `Lyuzizheng@gmail.com` account via Cloudflare MCP; `wrangler.toml` now carries real ids for both environments, the top-level local-dev placeholders untouched)
+  - `poi-store-staging` = `d069da6b-07e5-4fc0-b6a9-a685b3bef8b8`, `poi-store` = `7d01d154-03a7-4483-8b54-83f2c310af3b` (`POI_DB`)
+  - `poi-cache-staging` = `9f7f807aa68b47e3bbb6ecaf15c5f571`, `poi-cache` = `be0e4111b70f482ca23ed1f833142f88` (`POI_KV`)
+- [x] Apply the schema: `wrangler d1 migrations apply poi-store --remote` (done 2026-09-12, BRAWUKA-222 — `0001_init.sql` applied to both remote databases; `pois` + both indexes verified by remote query, and the `0001_init.sql` row recorded in `d1_migrations` so a later `wrangler d1 migrations apply` is a no-op)
+- [~] Set the two worker secrets (values never go in chat/docs): `wrangler secret put POI_SERVICE_TOKEN --env production`, `wrangler secret put GOOGLE_PLACES_API_KEY --env production`
+  - `POI_SERVICE_TOKEN` installed on both Workers (self-generated, 2026-09-12).
+  - `GOOGLE_PLACES_API_KEY` NOT installed — still blocked on item 5. Until it is, `/poi/:place_id`, `/poi/resolve` (query path) and `/poi/search/external` return 502 `upstream_error`; every other path works.
+- [x] Deploy: `npm run deploy -- --env production` (guarded — refuses while the placeholder ids are still configured) → workers.dev URL; wire `POI_SERVICE_URL` + `POI_SERVICE_TOKEN` into `web/.env.local` (done 2026-09-12, BRAWUKA-222 — both environments deployed and verified: `https://poi-service-staging.lyuzizheng.workers.dev`, `https://poi-service-prod.lyuzizheng.workers.dev`; `npm run deploy -- --env staging|production --check` now passes)
+- [ ] Provide a Cloudflare API token so deploys can run without an interactive login: `CLOUDFLARE_API_TOKEN` (scoped to Workers Scripts:Edit, D1:Edit, Workers KV Storage:Edit on the account) + `CLOUDFLARE_ACCOUNT_ID=bf69da5249b63731ad79545d0095e8db`. `~/.zshrc` has no such token and the local wrangler OAuth session expired 2026-02-01, so `npm run deploy` / `wrangler d1 migrations apply --remote` cannot run on a fresh machine — the 2026-09-12 deploy was executed through the Cloudflare API instead.
 - [ ] Enable the Cloudflare "Add visitor location headers" Managed Transform on the zone (sends `CF-IPCity` / `CF-IPCountry`; default-city resolution per DG128)
 - [ ] Create a Better Stack account + alert token for rate-limit/observability alerts (DG129); put the token in `web/.env.local` once the integration lands
 

@@ -27,7 +27,7 @@ function placeholderConfig(env: Env) {
 function configuredConfig(env: Env) {
   return {
     name: DEPLOY_TARGETS[env].worker,
-    kv_namespaces: [{ binding: "POI_KV", id: "9f1c4a2e-7b30-4d55-8a11-6c2d90f4e7b8" }],
+    kv_namespaces: [{ binding: "POI_KV", id: "a1b2c3d4e5f60718293a4b5c6d7e8f90" }],
     d1_databases: [
       { binding: "POI_DB", database_name: DEPLOY_TARGETS[env].database, database_id: "3c8d5b10-2f47-4e69-9c02-51ab7de8f334" },
     ],
@@ -102,6 +102,18 @@ describe("evaluateDeployConfig", () => {
 
     expect(evaluateDeployConfig({ env: "production", config, hasEnvSection: true }).join("\n")).toMatch(
       /database_name is "poi-store-staging"/,
+    );
+  });
+
+  it("flags a KV id in a shape Cloudflare does not accept", () => {
+    // A dashed UUID is not a KV namespace id: the API rejects it (`could not
+    // parse UUID from request's namespace_id ... invalid namespace format`), so
+    // the guard must not wave it through.
+    const config = configuredConfig("production");
+    config.kv_namespaces[0].id = "9f1c4a2e-7b30-4d55-8a11-6c2d90f4e7b8";
+
+    expect(evaluateDeployConfig({ env: "production", config, hasEnvSection: true }).join("\n")).toMatch(
+      /POI_KV id .* is not a Cloudflare resource id/,
     );
   });
 });

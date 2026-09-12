@@ -48,7 +48,11 @@ services:
   # http://localhost:9000 (host) it targets MinIO, which accepts the same
   # signatures R2 does.
   minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # quay.io, not Docker Hub: MinIO withdrew its Docker Hub images, so
+    # `docker compose up minio` now dies with "pull access denied for
+    # minio/minio, repository does not exist" before any test runs — which is
+    # what broke the CI integration-gate. Same release tag, still pinned.
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: coffeemode
@@ -68,7 +72,7 @@ services:
   # One-shot: create the bucket and make reads anonymous (mirrors an R2
   # public bucket, so R2_PUBLIC_URL=http://localhost:9000/coffeemode works).
   minio-init:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
     depends_on:
       minio:
         condition: service_started

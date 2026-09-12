@@ -4,6 +4,7 @@ import { useState } from "react";
 import { toast } from "@heroui/react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { isUnauthorized, userFacingMessage } from "@/lib/http";
 import { clearPendingCheckin } from "@/lib/checkin/pending-checkin";
 import type { CheckInScores, MaxStay } from "@/types/checkins";
 import {
@@ -35,13 +36,10 @@ function resolveSubmitError(
   err: unknown,
   t: (key: "photosUploading" | "photosFailed" | "couldntSave") => string,
 ): string {
-  if (err instanceof Error && err.message === "photos_uploading") {
-    return t("photosUploading");
-  }
-  if (err instanceof Error && err.message === "photo_upload_failed") {
-    return t("photosFailed");
-  }
-  return err instanceof Error ? err.message : t("couldntSave");
+  if (!(err instanceof Error)) return t("couldntSave");
+  if (err.message === "photos_uploading") return t("photosUploading");
+  if (err.message === "photo_upload_failed") return t("photosFailed");
+  return userFacingMessage(err.message, t("couldntSave"));
 }
 
 function useSubmitMutation({
@@ -102,7 +100,7 @@ function useSubmitMutation({
     },
     onError: (err) => {
       setView("form");
-      if (err instanceof Error && err.message === "unauthorized") {
+      if (isUnauthorized(err)) {
         onRequireSignIn();
         return;
       }
@@ -144,12 +142,14 @@ function useDeleteMutation({
       toast(t("deleted"), { timeout: 3000 });
     },
     onError: (err) => {
-      if (err instanceof Error && err.message === "unauthorized") {
+      if (isUnauthorized(err)) {
         onRequireSignIn();
         return;
       }
       setFailedAction("delete");
-      setError(err instanceof Error ? err.message : t("couldntSave"));
+      setError(
+        err instanceof Error ? userFacingMessage(err.message, t("couldntSave")) : t("couldntSave"),
+      );
     },
   });
 }

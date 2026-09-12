@@ -4,6 +4,7 @@
  */
 import pg from "pg";
 import { applyMigrations } from "../migrate.mjs";
+import { assertSafeSeedTarget } from "./seed-guard.mjs";
 
 export const E2E_USER_ID = "e2e00000-0000-4000-a000-000000000001";
 export const E2E_CAFE_ID = "e2e00000-0000-4000-a000-000000000002";
@@ -15,6 +16,9 @@ export async function setupDbFixtures({
   dbUrl = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
   tag = "[E2E]",
 } = {}) {
+  // Fail-closed (BRAWUKA-216): never seed the dev database without an explicit
+  // opt-in. Runs before try/catch so the refusal is never demoted to fallback mode.
+  assertSafeSeedTarget(dbUrl, { seeder: "setupDbFixtures" });
   let dbClient = null;
   try {
     dbClient = new pg.Client({ connectionString: dbUrl });

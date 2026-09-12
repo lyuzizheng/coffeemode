@@ -96,21 +96,25 @@ export async function waitForServer(
 const SERVER_RENDER_ERRORS = ["ENVIRONMENT_FALLBACK"];
 
 /**
- * Pipe a standalone server's stderr into `onLine`, returning the live array of
- * collected render errors (mutated as output arrives, so read it at the end).
+ * Fail `failures` when a standalone server logs a server-render error, and
+ * forward the rest of its log to `onLine`.
+ *
+ * Next writes these errors to the server process's stderr, so the browser-side
+ * collectors every gate uses (`page` console / `pageerror`) never see them:
+ * BRAWUKA-214 was exactly that blind spot — a client provider rendered without
+ * an intl `timeZone` logged ENVIRONMENT_FALLBACK on every SSR request while
+ * every page-level assertion stayed green.
  */
-export function collectServerRenderErrors(child, { onLine } = {}) {
-  const errors = [];
+export function reportServerRenderErrors(child, { failures, onLine } = {}) {
   child.stderr.on("data", (data) => {
     const text = data.toString();
     // Node runtime notices, not application faults.
     if (text.includes("ExperimentalWarning")) return;
     if (SERVER_RENDER_ERRORS.some((signature) => text.includes(signature))) {
-      errors.push(text);
+      failures.push(`server-side intl errors (ENVIRONMENT_FALLBACK):\n  ${text.trim()}`);
     }
     onLine?.(text);
   });
-  return errors;
 }
 
 /**

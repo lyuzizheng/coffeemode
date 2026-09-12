@@ -28,7 +28,7 @@ import {
   DEFAULT_DATABASE_URL,
 } from "./lib/e2e-fixtures.mjs";
 import {
-  collectServerRenderErrors,
+  reportServerRenderErrors,
   getFreePort,
   spawnStandaloneServer,
   waitForServer,
@@ -93,9 +93,6 @@ async function runSmokeSuite() {
   dbClient = fixtureResult.dbClient;
   console.log(`[E2E] DB fixture initialized: ${hasDb ? "yes (Postgres)" : "no (fallback mode)"}`);
 
-  // Empty when E2E_BASE_URL points at a server this suite does not own.
-  let serverRenderErrors = [];
-
   if (!process.env.E2E_BASE_URL) {
     serverProcess = spawnStandaloneServer({
       cwd: root,
@@ -109,7 +106,8 @@ async function runSmokeSuite() {
     serverProcess.stdout.on("data", (d) => {
       process.stdout.write(`[Next.js Server] ${d.toString()}`);
     });
-    serverRenderErrors = collectServerRenderErrors(serverProcess, {
+    reportServerRenderErrors(serverProcess, {
+      failures,
       onLine: (text) => process.stderr.write(`[Next.js Server ERROR] ${text}`),
     });
   }
@@ -367,12 +365,6 @@ async function runSmokeSuite() {
 
   } finally {
     await cleanup();
-  }
-
-  if (serverRenderErrors.length > 0) {
-    failures.push(
-      `server-side intl errors (ENVIRONMENT_FALLBACK):\n  ${serverRenderErrors.join("\n  ")}`,
-    );
   }
 
   if (failures.length > 0) {

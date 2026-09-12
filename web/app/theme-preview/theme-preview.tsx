@@ -59,10 +59,10 @@ function HeroPoster() {
             {DEMO_SCORE}
           </div>
         </div>
-        <p className="mt-5 max-w-xs text-base leading-relaxed opacity-85">
+        <p className="mt-5 max-w-xs text-base leading-relaxed opacity-95">
           {ta("tagline")}
         </p>
-        <div className="mt-8 border-t border-accent-foreground/20 pt-4 font-mono text-xs opacity-75">
+        <div className="mt-8 border-t border-accent-foreground/20 pt-4 font-mono text-xs opacity-95">
           Cabinet Grotesk · Inter · Source Serif 4 · JetBrains Mono
         </div>
       </div>

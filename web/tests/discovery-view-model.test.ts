@@ -29,6 +29,7 @@ function cafeWith(stats: ReturnType<typeof emptyWorkStats>): CafeSummary {
     price_range: null,
     work_stats: stats,
     cover: null,
+    maintained_by_service: false,
   };
 }
 

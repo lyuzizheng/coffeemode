@@ -1,3 +1,4 @@
+import { assertSafeSeedClient } from "../helpers/db";
 import type pg from "pg";
 import type { CheckInScores, MaxStay } from "@/types/checkins";
 import type { StoredImage } from "@/types/images";
@@ -306,7 +307,11 @@ export const MOCK_PHOTOS: StoredImage[] = [
 ];
 
 /** Insert all dataset profiles + cafes. Check-ins are created by the journey itself. */
-export async function seedMockDataset(dbClient: pg.Client): Promise<void> {
+export async function seedMockDataset(dbClient: pg.Client, options: { configUrl?: string } = {}): Promise<void> {
+  // Fail-closed (BRAWUKA-216): never seed the configured dev database; journey
+  // suites pass the pre-overwrite admin URL because they repoint DATABASE_URL
+  // at the test database before seeding.
+  await assertSafeSeedClient(dbClient, "seedMockDataset", options.configUrl);
   // Single source: profile rows come from MOCK_USERS, not re-hardcoded literals.
   const users: MockUser[] = [
     ...MOCK_USERS,

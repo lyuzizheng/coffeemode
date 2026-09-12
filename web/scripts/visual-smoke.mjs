@@ -1,13 +1,16 @@
 #!/usr/bin/env node
-// Rendered-page smoke gate (issue #76, hardened in #248, refactored in #271): boots the production
-// standalone build on an ephemeral port and screenshots the public route matrix,
-// failing on unexpected HTTP statuses (per-route expectation — the 404 route must
-// return 404), console errors, or page errors. Screenshots land in .visual-smoke/
-// and are uploaded as a CI artifact on failure.
+// Rendered-page smoke gate (issue #76, hardened in #248, refactored in #271):
+// boots the production standalone build on an ephemeral port and screenshots the
+// public route matrix, failing on unexpected HTTP statuses (per-route
+// expectation — the 404 route must return 404), console errors, page errors, or
+// any rendered text under its WCAG AA contrast threshold (BRAWUKA-219 — the
+// painted-byte audit in lib/contrast-audit.mjs). Screenshots land in
+// .visual-smoke/ and are uploaded as a CI artifact on failure.
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { auditPageContrast, formatContrastOffenders } from "./lib/contrast-audit.mjs";
 import {
   getFreePort,
   spawnStandaloneServer,
@@ -31,6 +34,11 @@ const ROUTES = [
   { path: "/cafes/definitely-not-a-cafe", status: 404 },
 ];
 const COLOR_SCHEMES = ["light", "dark"];
+
+/** Stand-in for a cafe cover when the R2 CDN is stubbed (see the route table). */
+const PLACEHOLDER_COVER =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="6"><rect width="8" height="6" fill="#e7e2dc"/></svg>';
+
 const VIEWPORTS = {
   mobile: { width: 390, height: 844, isMobile: true },
   desktop: { width: 1440, height: 900, isMobile: false },
@@ -43,6 +51,19 @@ if (!process.env.VISUAL_BASE_URL && !existsSync(join(root, ".next", "BUILD_ID"))
 
 function slug(route) {
   return route.replace(/^[~/]+/, "").replace(/[~/]/g, "-") || "home";
+}
+
+/**
+ * Spec 0002 AA gate: body text >= 4.5:1, large text >= 3:1, measured from the
+ * browser's own painted bytes (alpha, tint and mixing included). Decorative
+ * `aria-hidden` subtrees and inactive controls are exempt inside the audit. A
+ * rendering with no text to measure is a broken audit, not a pass.
+ */
+function contrastProblems(label, contrast) {
+  const coverage = `contrast: ${contrast.checked} text samples, ${contrast.decorative} decorative exempt`;
+  if (contrast.checked === 0) return [`${label} [${coverage}] — the audit measured no text at all`];
+  if (contrast.offenders.length === 0) return [];
+  return [formatContrastOffenders(`${label} [${coverage}]`, contrast.offenders)];
 }
 
 let serverProcess = null;
@@ -105,6 +126,13 @@ async function runVisualSmoke() {
           await context.route("**/*apple-mapkit*", (r) => r.fulfill({ status: 200, body: "" }));
           await context.route("**/*maps.googleapis.com*", (r) => r.fulfill({ status: 200, json: { status: "OK", results: [] } }));
           await context.route("**/api/mapkit-token", (r) => r.fulfill({ status: 200, json: { token: "fake-mapkit-token" } }));
+          // Cafe covers live on the R2 CDN (`NEXT_PUBLIC_R2_PUBLIC_URL`). Whether
+          // a local seed's cover host resolves is not this gate's business; an
+          // unreachable CDN would fail the run on image loads before any status
+          // or contrast assertion is read.
+          await context.route("**/images.coffeemode.app/**", (r) =>
+            r.fulfill({ status: 200, contentType: "image/svg+xml", body: PLACEHOLDER_COVER }),
+          );
 
           const page = await context.newPage();
           const errors = [];
@@ -138,12 +166,24 @@ async function runVisualSmoke() {
             path: join(outDir, `${slug(route.path)}-${scheme}-${vpName}.png`),
             fullPage: true,
           });
+
+          // Spec 0002 AA gate — see contrastProblems above. Reporting stays a
+          // single if/else: the file's frozen suppression budget (spec 0009)
+          // covers exactly two depth violations here, and a branch chain would
+          // silently spend more.
+          const contrast = await auditPageContrast(page);
+          const problems = [
+            ...(errors.length > 0 ? [`${label}\n    ${errors.join("\n    ")}`] : []),
+            ...contrastProblems(label, contrast),
+          ];
           await context.close();
 
-          if (errors.length > 0) {
-            failures.push(`${label}\n    ${errors.join("\n    ")}`);
+          if (problems.length > 0) {
+            failures.push(problems.join("\n"));
           } else {
-            console.log(`ok ${label}`);
+            console.log(
+              `ok ${label} (contrast: ${contrast.checked} text samples, ${contrast.decorative} decorative exempt)`,
+            );
           }
         }
       }

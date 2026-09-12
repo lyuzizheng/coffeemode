@@ -26,6 +26,11 @@ Accepted
 
 - CI never depends on live backend services, provider keys, private data, or live
   LLM calls.
+- Fixtures only ever write test databases; the dev database is owned by
+  `check:visual`, never seeded (fail-closed guard: `assertSafeSeedTarget` in
+  `web/tests/helpers/db.ts` + `web/scripts/lib/seed-guard.mjs`, cleanup via
+  `web/scripts/clean-dev-fixtures.mjs --apply`; override with
+  `ALLOW_SEED_DEV_DB=1`).
 - Map and external-service tests use static fixtures or mocked boundaries.
 - Tests encode intended contracts, not the current implementation.
 - A bug fix adds a regression test that fails on the reproduced defect when the
@@ -100,7 +105,12 @@ lists `images-integration-gate` as required, update it to `integration-gate` (or
 The old separate workflows and the PR `visual-gate` are removed. The visual job
 had no pixel baseline, duplicated install/build work, and could block indefinitely
 while installing Chromium. Local browser evidence remains available through
-`npm run check:visual` for UI work.
+`npm run check:visual` for UI work — it boot-checks the route matrix and scores
+every rendered text sample against the spec 0002 WCAG AA thresholds (body
+>= 4.5:1, large >= 3:1) from the browser's painted bytes, so a token or class
+misuse that only exists on a page is caught there rather than in CI
+(BRAWUKA-219). Token pairs themselves are asserted in `npm test` by
+`web/tests/design-tokens-contrast.test.ts`, which does run in CI.
 
 ### Runtime pins
 

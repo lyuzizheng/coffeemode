@@ -187,7 +187,7 @@ interface CafeDetailDTO {
   name: string;
   tz: string | null;
   author: { handle: string; display_name: string; avatar_url: string | null } | null;
-  maintainer: string | null;
+  maintained_by_service: boolean;
   gallery: Array<{ id: string; source?: { type: string; id: string } }>;
   work_stats: WorkStatsDTO;
 }
@@ -198,7 +198,7 @@ interface NearbyDTO {
     name: string;
     distance_m?: number;
     visibility?: string;
-    maintainer?: string | null;
+    maintained_by_service: boolean;
     work_stats: WorkStatsDTO;
   }>;
 }
@@ -592,9 +592,9 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     expect(detail.work_stats.n_checkins).toBe(1);
     expect(detail.work_stats.policies.max_stay).toEqual({ unlimited: 1 });
 
-    // Default anonymity (DG13): author null, maintainer null while creator-owned.
+    // Default anonymity (DG13): author null, not service-maintained while creator-owned.
     expect(detail.author).toBeNull();
-    expect(detail.maintainer).toBeNull();
+    expect(detail.maintained_by_service).toBe(false);
     expect(detail.gallery).toHaveLength(1);
     expect(detail.gallery[0]?.source).toEqual({ type: "checkin", id: creation1Id });
   }
@@ -877,7 +877,7 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
       expect(cafe1.work_stats.n_checkins).toBe(3);
       // A opted back out in Act 5: anonymous surface again.
       expect(cafe1.author).toBeNull();
-      expect(cafe1.maintainer).toBeNull();
+      expect(cafe1.maintained_by_service).toBe(false);
 
       const cafe2 = await getCafeDetailAs(observer, cafe2Id);
       expect(cafe2.work_stats.experience_score).toBeCloseTo(88.33, 2);
@@ -1030,7 +1030,7 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     expect(shellDetail.work_stats.n_checkins).toBe(0);
     expect(shellDetail.work_stats.n_users).toBe(0);
     expect(shellDetail.gallery).toEqual([]);
-    expect(shellDetail.maintainer).toBeNull();
+    expect(shellDetail.maintained_by_service).toBe(false);
 
     const shellFeed = await getFeed(clientD, cafe3Id);
     expect(shellFeed.status).toBe(200);
@@ -1084,12 +1084,12 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     expect(repeat.status).toBe(403);
     expect(repeat.data).toMatchObject({ error: "forbidden" });
 
-    // Post-handoff detail: system maintainer brand, anonymous author, feed
+    // Post-handoff detail: service-maintained marker + anonymous author, feed
     // retains only B's and C's check-ins, aggregates recomputed without A
     // (experience (70+75)/2 = 72.5; dims all (60+75)/2 → composite 67.5).
     const handed = await getCafeDetailAs(clientD, cafe1Id);
     expect(handed.author).toBeNull();
-    expect(handed.maintainer).toBe("由 CoffeeMode 维护");
+    expect(handed.maintained_by_service).toBe(true);
     expect(handed.work_stats.experience_score).toBeCloseTo(72.5, 2);
     expect(handed.work_stats.composite_score).toBeCloseTo(67.5, 2);
     expect(handed.work_stats.n_users).toBe(2);
@@ -1111,7 +1111,7 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
       query: { lat: D_LAT, lng: D_LNG, radius_km: 10 },
     });
     const handedSummary = sgNearby.data.cafes.find((c) => c.id === cafe1Id);
-    expect(handedSummary?.maintainer).toBe("由 CoffeeMode 维护");
+    expect(handedSummary?.maintained_by_service).toBe(true);
 
     // Cafe 2 is untouched by the lifecycle acts.
     const cafe2 = await getCafeDetailAs(clientD, cafe2Id);

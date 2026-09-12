@@ -460,6 +460,7 @@
     },
     "a_nomad": "A nomad",
     "by_author": "By {name}",
+    "maintained_by_service": "Maintained by CoffeeMode",
     "like_aria": "Like this check-in",
     "like_signin": "Sign in to like a check-in",
     "card_actions_aria": "More actions for this check-in",

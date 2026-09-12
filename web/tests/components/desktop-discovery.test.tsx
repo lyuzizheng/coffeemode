@@ -28,6 +28,7 @@ const mockCafe: CafeSummary = {
   price_range: 2,
   cover: "/card/test.webp",
   distance_m: 250,
+  maintained_by_service: false,
   work_stats: {
     ...emptyWorkStats(),
     n_users: 1,

@@ -30,6 +30,7 @@ function makeDbCafe(overrides?: Partial<CafeWithExternalIds>): CafeWithExternalI
     google_place_id: "gplace_123",
     apple_poi_id: null,
     work_stats: emptyWorkStats(),
+    maintained_by_service: false,
     ...overrides,
   };
 }

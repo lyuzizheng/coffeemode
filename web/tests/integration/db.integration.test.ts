@@ -43,15 +43,14 @@ import {
   CafeHasOtherCheckinsError,
 } from "@/lib/validation/cafe";
 import {
-  SERVICE_ACCOUNT_MAINTAINER_LABEL,
   attachImageToCafe,
   cafeExists,
   createCafeWithFirstCheckIn,
   deleteCafe,
-  formatCafeMaintainer,
   getCafe,
   getCafeLocation,
   isLiveCafe,
+  isServiceMaintained,
   listCafeSitemapEntries,
   listCafesNearby,
   ownsCafe,
@@ -1082,7 +1081,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(kept.rows[0].identity_consented_at).toBeNull();
     });
 
-    it("service-account and null created_by cafes keep author:null + maintainer label", async () => {
+    it("service-account and null created_by cafes keep author:null + maintained_by_service marker", async () => {
       // Even an opted-in service-account profile must never render as author.
       await dbClient.query(
         "update profiles set show_public_identity = true, public_handle = 'coffeemode' where id = $1",
@@ -1092,7 +1091,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         await dbClient.query("update cafes set created_by = $1 where id = $2", [createdBy, CAFE_A]);
         const pub = await publicDetail(CAFE_A);
         expect(pub.author).toBeNull();
-        expect(pub.maintainer).toBe(SERVICE_ACCOUNT_MAINTAINER_LABEL);
+        expect(pub.maintained_by_service).toBe(true);
         expect(pub).not.toHaveProperty("created_by");
       }
     });
@@ -2252,15 +2251,15 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       await expect(recordNavigation(U1, "bad-id")).rejects.toThrow("Invalid cafe ID");
     });
 
-    it("service-account display + timezone fallback (cafes/meta)", async () => {
-      expect(formatCafeMaintainer(null)).toBe(SERVICE_ACCOUNT_MAINTAINER_LABEL);
-      expect(formatCafeMaintainer(undefined)).toBe(SERVICE_ACCOUNT_MAINTAINER_LABEL);
-      expect(formatCafeMaintainer(SERVICE_ACCOUNT_ID)).toBe(SERVICE_ACCOUNT_MAINTAINER_LABEL);
-      expect(formatCafeMaintainer(U1)).toBeNull();
+    it("service-account marker + timezone fallback (cafes/meta)", async () => {
+      expect(isServiceMaintained(null)).toBe(true);
+      expect(isServiceMaintained(undefined)).toBe(true);
+      expect(isServiceMaintained(SERVICE_ACCOUNT_ID)).toBe(true);
+      expect(isServiceMaintained(U1)).toBe(false);
       expect(resolveCafeTimezone(999, 999)).toBe("UTC");
       expect(resolveCafeTimezone(999, 999, "singapore")).toBe("Asia/Singapore");
 
-      // A null created_by renders as service-maintained in list + detail projections.
+      // A null created_by is marked service-maintained in list + detail projections.
       const nullOwnerId = randomUUID();
       await dbClient.query(
         `insert into cafes (id, name, location, created_by, tz)
@@ -2268,9 +2267,9 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         [nullOwnerId],
       );
       const nearby = await listCafesNearby({ lat: 1.35, lng: 103.8, radiusKm: 5, limit: 10 });
-      expect(nearby.find((c) => c.id === nullOwnerId)?.maintainer).toBe(SERVICE_ACCOUNT_MAINTAINER_LABEL);
+      expect(nearby.find((c) => c.id === nullOwnerId)?.maintained_by_service).toBe(true);
       const detail = await getCafe(nullOwnerId);
-      expect(detail && toPublicCafeDetail(detail).maintainer).toBe(SERVICE_ACCOUNT_MAINTAINER_LABEL);
+      expect(detail && toPublicCafeDetail(detail).maintained_by_service).toBe(true);
     });
 
     it("setCafeVisibility guards + idempotent toggle persist to the row", async () => {

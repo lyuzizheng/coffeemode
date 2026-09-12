@@ -4,9 +4,10 @@
  * Cafe creator attribution line (spec 0006 Q3/Q12, Stage 3).
  *
  * Precedence: consented `author` first; then the service-account maintainer
- * label (`maintainer`, locale-independent by server contract); otherwise the
- * existing anonymous `a_nomad` copy. Gallery credit stays anonymous (Q10) —
- * this line attributes the cafe, never individual photos.
+ * line, which the server signals as the locale-independent
+ * `maintained_by_service` marker and the client renders in the active locale;
+ * otherwise the existing anonymous `a_nomad` copy. Gallery credit stays
+ * anonymous (Q10) — this line attributes the cafe, never individual photos.
  */
 import Image from "next/image";
 import { useTranslations } from "next-intl";
@@ -14,10 +15,10 @@ import type { PublicAuthor } from "@/types/identity";
 
 export function CreatorLine({
   author,
-  maintainer,
+  maintainedByService,
 }: {
   author: PublicAuthor | null;
-  maintainer: string | null;
+  maintainedByService: boolean;
 }) {
   const t = useTranslations("discovery");
 
@@ -38,8 +39,8 @@ export function CreatorLine({
     );
   }
 
-  if (maintainer) {
-    return <p className="text-xs text-muted">{maintainer}</p>;
+  if (maintainedByService) {
+    return <p className="text-xs text-muted">{t("maintained_by_service")}</p>;
   }
 
   return <p className="text-xs text-muted">{t("a_nomad")}</p>;

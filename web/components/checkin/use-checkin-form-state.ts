@@ -1,10 +1,8 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { useTranslations } from "next-intl";
-import { useStagedPhotos } from "./use-staged-photos";
-import { useCheckinMutation } from "./use-checkin-mutation";
 import { useCheckinScoresState, type CheckinScoresState } from "./use-checkin-scores";
+import { useCheckinSubmit } from "./use-checkin-submit";
 import { useCheckinDraft, useCheckinDirty } from "./use-checkin-draft";
 import type { PhotoUpload } from "./checkin-photos";
 import { useNetworkStatus } from "@/hooks/use-network-status";
@@ -17,15 +15,6 @@ export type DrawerMode = "create" | "edit";
 function isWithin90Days(iso: string): boolean {
   const ageMs = Date.now() - new Date(iso).getTime();
   return ageMs < 90 * 24 * 60 * 60 * 1000;
-}
-
-function newIdempotencyKey(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  const nibble = () => Math.floor(Math.random() * 16).toString(16);
-  const hex = (n: number) => Array.from({ length: n }, nibble).join("");
-  return `${hex(8)}-${hex(4)}-4${hex(3)}-${((parseInt(nibble(), 16) & 0x3) | 0x8).toString(16)}${hex(3)}-${hex(12)}`;
 }
 
 function useRepeatVisitBanner({
@@ -56,40 +45,6 @@ function useRepeatVisitBanner({
     applySameAsLast,
     dismissRepeat: () => setRepeatDismissed(true),
   };
-}
-
-function executeSubmit({
-  isOffline,
-  overall,
-  effectivelyAuthenticated,
-  setError,
-  setShowSignInGate,
-  submit,
-  scores,
-  maxStay,
-  note,
-  offlineMessage,
-}: {
-  isOffline: boolean;
-  overall: number | null;
-  effectivelyAuthenticated: boolean;
-  setError: (err: string) => void;
-  setShowSignInGate: (show: boolean) => void;
-  submit: (p: { scores: CheckInScores; maxStay: MaxStay | null; note: string }) => void;
-  scores: CheckInScores;
-  maxStay: MaxStay | null;
-  note: string;
-  offlineMessage: string;
-}) {
-  if (isOffline) {
-    setError(offlineMessage);
-  } else if (overall !== null) {
-    if (!effectivelyAuthenticated) {
-      setShowSignInGate(true);
-    } else {
-      submit({ scores, maxStay, note });
-    }
-  }
 }
 
 export interface UseCheckinFormStateOptions {
@@ -165,7 +120,6 @@ function useCheckinLifecycle({
 }
 
 export function useCheckinFormState(options: UseCheckinFormStateOptions) {
-  const t = useTranslations("checkIn");
   const { state: networkState } = useNetworkStatus();
   const isOffline = networkState === "offline";
   const isEdit = options.mode === "edit";
@@ -173,24 +127,21 @@ export function useCheckinFormState(options: UseCheckinFormStateOptions) {
   const scoresState = useCheckinScoresState(options.initialScores);
   const [maxStay, setMaxStay] = useState<MaxStay | null>(options.initialMaxStay ?? null);
   const [note, setNote] = useState(options.initialNote ?? "");
-  const [showSignInGate, setShowSignInGate] = useState(false);
-  const [idempotencyKey] = useState(newIdempotencyKey);
-  const { photos, setPhotos, uploadPendingPhotos } = useStagedPhotos(options.initialPhotos);
-
-  const mutation = useCheckinMutation({
-    cafeId: options.cafeId,
-    isEdit,
-    editCheckinId: options.editCheckinId,
-    idempotencyKey,
-    uploadPendingPhotos,
-    onClose: options.onClose,
-    onRequireSignIn: () => setShowSignInGate(true),
-  });
 
   const effectivelyAuthenticated = (options.isAuthenticated ?? true) && !options.authProbeFailed;
   const authConfirmed =
     options.isAuthenticated === true ||
     (options.isAuthenticated === undefined && options.lastCheckinLoaded);
+
+  const submit = useCheckinSubmit({
+    options,
+    scoresState,
+    maxStay,
+    note,
+    isOffline,
+    effectivelyAuthenticated,
+  });
+  const { photos, showSignInGate } = submit;
 
   const repeat = useCheckinLifecycle({
     options,
@@ -203,25 +154,8 @@ export function useCheckinFormState(options: UseCheckinFormStateOptions) {
     showSignInGate,
   });
 
-  const canSubmit = scoresState.overall !== null && mutation.view !== "submitting" && mutation.view !== "success";
-
-  // Retry re-reads live form state (pre-split: `mutate()` with no vars), so
-  // edits made after a failure are not silently dropped.
-  const handleRetry = () =>
-    mutation.failedAction === "delete" ? mutation.deleteCheckin() : handleSubmit();
-  const handleSubmit = () =>
-    executeSubmit({
-      isOffline,
-      overall: scoresState.overall,
-      effectivelyAuthenticated,
-      setError: mutation.setError,
-      setShowSignInGate,
-      submit: mutation.submit,
-      scores: scoresState.scores,
-      maxStay,
-      note,
-      offlineMessage: t("offline"),
-    });
+  const canSubmit =
+    scoresState.overall !== null && submit.mutation.view !== "submitting" && submit.mutation.view !== "success";
 
   return {
     isEdit,
@@ -233,12 +167,13 @@ export function useCheckinFormState(options: UseCheckinFormStateOptions) {
     note,
     setNote,
     photos,
-    setPhotos,
+    setPhotos: submit.setPhotos,
     showSignInGate,
+    requireSignIn: submit.requireSignIn,
     canSubmit,
-    handleSubmit,
-    handleRetry,
-    mutation,
+    handleSubmit: submit.handleSubmit,
+    handleRetry: submit.handleRetry,
+    mutation: submit.mutation,
     repeat,
   };
 }

@@ -1,4 +1,5 @@
 import { MAX_UPLOAD_BYTES } from "@shared/images/constants";
+import { UNAUTHORIZED } from "@/lib/http";
 import type { UploadUrlResponse } from "@/types/images";
 
 /**
@@ -51,7 +52,7 @@ export async function uploadPhoto(file: File): Promise<string> {
   // the shared "unauthorized" marker — same convention as the check-in POST /
   // PATCH / DELETE paths — so the drawer opens the sign-in gate instead of
   // trapping the user in a photo-retry loop that can never succeed.
-  if (uploadResponse.status === 401) throw new Error("unauthorized");
+  if (uploadResponse.status === 401) throw new Error(UNAUTHORIZED);
   if (!uploadResponse.ok || !uploadData?.uploadUrl || !uploadData.imageUuid) {
     throw new Error("photo_upload_failed");
   }

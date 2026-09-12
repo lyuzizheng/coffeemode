@@ -3,6 +3,7 @@
 import { useCallback, useRef } from "react";
 import { useEffect } from "react";
 import { useTranslations } from "next-intl";
+import { isUnauthorized } from "@/lib/http";
 import { uploadPhoto } from "@/lib/images/client-upload";
 
 export interface PhotoUpload {
@@ -24,9 +25,19 @@ interface CheckinPhotosProps {
   /** When true (auth not confirmed), stage selections locally instead of
       starting the presigned upload — anonymous sessions get a 401 (DG59). */
   deferUpload?: boolean;
+  /** An upload was rejected with 401: the session is gone, so the caller opens
+      the sign-in gate instead of letting the tile pretend retry can help. */
+  onRequireSignIn?: () => void;
 }
 
-export function CheckinPhotos({ photos, onChange, maxPhotos = 6, disabled = false, deferUpload = false }: CheckinPhotosProps) {
+export function CheckinPhotos({
+  photos,
+  onChange,
+  maxPhotos = 6,
+  disabled = false,
+  deferUpload = false,
+  onRequireSignIn,
+}: CheckinPhotosProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const t = useTranslations("checkIn");
 
@@ -41,6 +52,31 @@ export function CheckinPhotos({ photos, onChange, maxPhotos = 6, disabled = fals
       for (const p of photosRef.current) URL.revokeObjectURL(p.previewUrl);
     };
   }, []);
+
+  const updateEntry = useCallback(
+    (id: string, patch: Partial<PhotoUpload>) => {
+      onChange((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+    },
+    [onChange],
+  );
+
+  /**
+   * A 401 is a session problem, not a photo problem: no retry can succeed.
+   * Return the tile to `staged` — it keeps its File, so the publish-time upload
+   * after sign-in still carries it — and raise the gate instead of a tile error
+   * the user can only retry into the same failure (BRAWUKA-212).
+   */
+  const markUploadFailure = useCallback(
+    (id: string, cause: unknown) => {
+      if (isUnauthorized(cause)) {
+        updateEntry(id, { status: "staged" });
+        onRequireSignIn?.();
+        return;
+      }
+      updateEntry(id, { status: "error" });
+    },
+    [updateEntry, onRequireSignIn],
+  );
 
   const handleFiles = useCallback(
     async (files: FileList | null) => {
@@ -61,10 +97,6 @@ export function CheckinPhotos({ photos, onChange, maxPhotos = 6, disabled = fals
       // resurrect removed ones.
       onChange((prev) => [...prev, ...mappedEntries]);
 
-      const updateEntry = (id: string, patch: Partial<PhotoUpload>) => {
-        onChange((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
-      };
-
       // Staged photos (logged-out composer) upload later, at publish time.
       if (deferUpload) {
         if (inputRef.current) inputRef.current.value = "";
@@ -77,14 +109,14 @@ export function CheckinPhotos({ photos, onChange, maxPhotos = 6, disabled = fals
           try {
             const imageUuid = await uploadPhoto(file);
             updateEntry(id, { status: "done", imageUuid });
-          } catch {
-            updateEntry(id, { status: "error" });
+          } catch (cause) {
+            markUploadFailure(id, cause);
           }
         }),
       );
       if (inputRef.current) inputRef.current.value = "";
     },
-    [photos.length, maxPhotos, disabled, deferUpload, onChange],
+    [photos.length, maxPhotos, disabled, deferUpload, onChange, updateEntry, markUploadFailure],
   );
 
   const removePhoto = (id: string) => {
@@ -98,14 +130,10 @@ export function CheckinPhotos({ photos, onChange, maxPhotos = 6, disabled = fals
     // A failed staged photo still holds its File — re-upload in place instead
     // of making the user re-pick it.
     if (target?.file && !deferUpload) {
-      onChange((prev) => prev.map((p) => (p.id === id ? { ...p, status: "uploading" } : p)));
+      updateEntry(id, { status: "uploading" });
       uploadPhoto(target.file)
-        .then((imageUuid) => {
-          onChange((prev) => prev.map((p) => (p.id === id ? { ...p, status: "done", imageUuid } : p)));
-        })
-        .catch(() => {
-          onChange((prev) => prev.map((p) => (p.id === id ? { ...p, status: "error" } : p)));
-        });
+        .then((imageUuid) => updateEntry(id, { status: "done", imageUuid }))
+        .catch((cause) => markUploadFailure(id, cause));
       return;
     }
     removePhoto(id);

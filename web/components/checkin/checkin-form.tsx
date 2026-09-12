@@ -10,7 +10,7 @@ import { CheckinPhotos } from "./checkin-photos";
 import { CheckinSuccess } from "./checkin-success";
 import { CheckinFormFooter } from "./checkin-form-footer";
 import { CheckinDeleteSection } from "./checkin-delete-section";
-import { CheckinSignInGate } from "./checkin-sign-in-gate";
+import { SignInGate } from "@/components/auth/sign-in-gate";
 import {
   useCheckinFormState,
   type UseCheckinFormStateOptions,
@@ -84,6 +84,7 @@ export function CheckinForm(props: CheckinFormProps) {
                   onChange={state.setPhotos}
                   maxPhotos={6}
                   deferUpload={state.deferUpload}
+                  onRequireSignIn={state.requireSignIn}
                 />
               </div>
             )}
@@ -92,7 +93,9 @@ export function CheckinForm(props: CheckinFormProps) {
               <CheckinErrorBanner error={state.mutation.error} onRetry={state.handleRetry} />
             )}
 
-            {state.showSignInGate && <CheckinSignInGate resumePath={resumePath} />}
+            {state.showSignInGate && (
+              <SignInGate message={t("signInGate")} next={resumePath} />
+            )}
             {state.isEdit && <CheckinDeleteSection onDelete={state.mutation.deleteCheckin} />}
           </div>
         )}

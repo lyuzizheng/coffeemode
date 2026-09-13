@@ -59,7 +59,7 @@ function CafeCreationPane({
   const t = useTranslations("create");
 
   return (
-    <Drawer.Body className="overflow-y-auto">
+    <Drawer.Body className="overflow-y-auto px-4">
       <div className="mx-auto w-full max-w-2xl space-y-5 pb-4">
         <CafePlaceSearch
           key={searchKey}
@@ -171,7 +171,7 @@ export function CafeCreationSheet({
       <Drawer.Content placement="bottom">
         <Drawer.Dialog className="max-h-[92dvh] !pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
           <Drawer.Handle />
-          <Drawer.Header>
+          <Drawer.Header className="px-4">
             <Drawer.Heading>{t("title")}</Drawer.Heading>
             <p className="text-sm text-muted">{t("firstCheckinHint")}</p>
           </Drawer.Header>
@@ -187,7 +187,7 @@ export function CafeCreationSheet({
             onError={place.setError}
             onRequireSignIn={requireSignIn}
           />
-          <Drawer.Footer>
+          <Drawer.Footer className="px-4">
             <Drawer.CloseTrigger className="cm-focus rounded-sm border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-surface-secondary">
               {t("close")}
             </Drawer.CloseTrigger>

@@ -10,7 +10,7 @@ export function ProfileStats({ stats }: { stats: UserProfileStatsDto | null }) {
   const animatedCheckinsCount = useCountUp(stats?.checkinsCount ?? 0);
 
   return (
-    <div className="w-full bg-surface border border-border rounded-xl p-4 my-4 flex items-center justify-around">
+    <div className="w-full bg-surface border border-border rounded-xl p-3 my-3 flex items-center justify-around">
       <div className="flex flex-col items-center">
         <span className="font-mono font-bold text-2xl text-foreground tabular-nums">
           {animatedCafesCount}

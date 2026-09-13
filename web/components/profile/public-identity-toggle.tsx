@@ -164,10 +164,11 @@ export function PublicIdentityToggle({
               variant="primary"
               onPress={handleSaveHandle}
               isDisabled={pending || handleDraft.trim().length === 0}
+              className="-my-1"
             >
               {t("save")}
             </Button>
-            <Button size="sm" variant="outline" onPress={() => setHandleDraft(null)}>
+            <Button size="sm" variant="outline" onPress={() => setHandleDraft(null)} className="-my-1">
               {t("cancel")}
             </Button>
           </div>

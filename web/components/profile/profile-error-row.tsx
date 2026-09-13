@@ -21,7 +21,7 @@ export function ErrorRow({
         </svg>
         <span className="text-foreground">{errorText}</span>
       </div>
-      <Button size="sm" variant="outline" onPress={onRetry}>
+      <Button size="sm" variant="outline" onPress={onRetry} className="-my-1.5">
         {retryText}
       </Button>
     </div>

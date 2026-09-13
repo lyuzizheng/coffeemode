@@ -95,6 +95,7 @@ export function ProfileTabHistory({ baseId }: { baseId: string }) {
               size="sm"
               variant="outline"
               onPress={clearRecentSearches}
+              className="-my-1"
             >
               {t("clear_history")}
             </Button>

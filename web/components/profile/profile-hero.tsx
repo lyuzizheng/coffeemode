@@ -111,7 +111,7 @@ export function ProfileHero({ profile, onProfileChange }: ProfileHeroProps) {
                 }
               }}
               autoFocus
-              className="px-2 py-1 text-lg font-display font-bold bg-surface-secondary border border-accent rounded-md outline-none text-foreground text-center"
+              className="min-h-11 px-2 py-1 text-lg font-display font-bold bg-surface-secondary border border-accent rounded-md outline-none text-foreground text-center"
               placeholder={t("edit_name_placeholder")}
             />
             <Button
@@ -119,6 +119,7 @@ export function ProfileHero({ profile, onProfileChange }: ProfileHeroProps) {
               variant="primary"
               onPress={handleSaveName}
               isDisabled={isSavingName || !nameInput.trim()}
+              className="-my-1"
             >
               {t("save")}
             </Button>
@@ -129,6 +130,7 @@ export function ProfileHero({ profile, onProfileChange }: ProfileHeroProps) {
                 setNameInput(profile?.displayName ?? "");
                 setIsEditingName(false);
               }}
+              className="-my-1"
             >
               {t("cancel")}
             </Button>

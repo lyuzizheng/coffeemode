@@ -74,7 +74,11 @@ import {
 } from "@/lib/db/identity";
 import { searchCafesInDb } from "@/lib/db/search";
 import { executeSearch } from "@/lib/search/search-service";
-import { parseNavigationBody, recordNavigation } from "@/lib/db/navigations";
+import {
+  navigationPromptQueue,
+  parseNavigationBody,
+  recordNavigation,
+} from "@/lib/db/navigations";
 import {
   FeedCursorError,
   encodeFeedCursor,
@@ -190,7 +194,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   }, 60_000);
 
-  it("applies migrations 0001→0019 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0020 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -212,6 +216,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0017_cafe_visibility.sql",
       "0018_public_identity.sql",
       "0019_checkin_idempotency.sql",
+      "0020_navigation_prompt_queue.sql",
     ]);
 
     const serviceProfile = await dbClient.query(
@@ -594,6 +599,90 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       await expect(
         recordNavigation(U2, "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a00"),
       ).rejects.toBeInstanceOf(CafeNotFoundError);
+    });
+
+    it("navigation prompt queue: eligibility, answers, and auto-resolve on real SQL", async () => {
+      // Fresh navigation — too young to prompt (DG78: earliest next day).
+      const fresh = await recordNavigation(U2, CAFE_A);
+      expect(await navigationPromptQueue.next(U2)).toBeNull();
+
+      // Age it past the 24h minimum — now it is the eligible prompt.
+      await dbClient.query(
+        "update navigations set created_at = now() - interval '2 days' where id = $1",
+        [fresh.id],
+      );
+      const item = await navigationPromptQueue.next(U2);
+      expect(item?.id).toBe(fresh.id);
+      expect(item?.cafe.name).toBe("Seed Cafe");
+
+      // 还没去 → back of the queue: stamped, counted, not eligible again
+      // until the re-ask delay passes.
+      await navigationPromptQueue.answer(U2, fresh.id, "not_yet");
+      expect(await navigationPromptQueue.next(U2)).toBeNull();
+      let row = (
+        await dbClient.query(
+          "select resolved, outcome, ask_count, last_asked_at from navigations where id = $1",
+          [fresh.id],
+        )
+      ).rows[0];
+      expect(row).toMatchObject({ resolved: false, outcome: null, ask_count: 1 });
+      expect(row.last_asked_at).toBeTruthy();
+
+      // Past the re-ask delay it is eligible again; the (maxReasks + 1)-th
+      // "not yet" auto-resolves (DG91).
+      await dbClient.query(
+        "update navigations set last_asked_at = now() - interval '2 days' where id = $1",
+        [fresh.id],
+      );
+      expect((await navigationPromptQueue.next(U2))?.id).toBe(fresh.id);
+      await navigationPromptQueue.answer(U2, fresh.id, "not_yet");
+      await dbClient.query(
+        "update navigations set last_asked_at = now() - interval '2 days' where id = $1",
+        [fresh.id],
+      );
+      await navigationPromptQueue.answer(U2, fresh.id, "not_yet");
+      row = (
+        await dbClient.query(
+          "select resolved, outcome, ask_count from navigations where id = $1",
+          [fresh.id],
+        )
+      ).rows[0];
+      expect(row).toMatchObject({ resolved: true, outcome: "auto", ask_count: 3 });
+
+      // Expired (> 3 months, DG83) and resolved rows never prompt.
+      const old = await recordNavigation(U2, CAFE_A);
+      await dbClient.query(
+        "update navigations set created_at = now() - interval '100 days' where id = $1",
+        [old.id],
+      );
+      expect(await navigationPromptQueue.next(U2)).toBeNull();
+
+      // 不去了 resolves permanently and idempotently — a repeat answer
+      // returns the stored outcome instead of overwriting it (DG80).
+      const gone = await recordNavigation(U2, CAFE_A);
+      await dbClient.query(
+        "update navigations set created_at = now() - interval '2 days' where id = $1",
+        [gone.id],
+      );
+      await navigationPromptQueue.answer(U2, gone.id, "wont_go");
+      await expect(
+        navigationPromptQueue.answer(U2, gone.id, "visited"),
+      ).resolves.toEqual({ status: "answered", outcome: "wont_go" });
+      await expect(
+        navigationPromptQueue.answer(U2, "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a00", "visited"),
+      ).resolves.toEqual({ status: "gone" });
+
+      // DG79: a check-in at the cafe silently resolves the pending
+      // navigation inside the same transaction.
+      const pending = await recordNavigation(U2, CAFE_A);
+      await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 70 } });
+      row = (
+        await dbClient.query(
+          "select resolved, outcome from navigations where id = $1",
+          [pending.id],
+        )
+      ).rows[0];
+      expect(row).toMatchObject({ resolved: true, outcome: "auto" });
     });
 
     it("0004 sync trigger keeps likes_count correct on direct and cascade writes", async () => {

@@ -378,12 +378,13 @@ describe("createCheckIn", () => {
       .mockResolvedValueOnce({ rows: [{ id: CAFE }] }) // in-tx cafe gate
       .mockResolvedValueOnce({ rows: [] }) // revisit window: no live check-in
       .mockResolvedValueOnce({ rows: [{ id: CHECKIN }] }) // insert
+      .mockResolvedValueOnce({ rows: [] }) // DG79 navigation auto-resolve
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
 
     await createCheckIn(USER.id, validInput({ photo_ids: undefined }));
-    expect(clientQueryMock).toHaveBeenCalledTimes(7);
+    expect(clientQueryMock).toHaveBeenCalledTimes(8);
     expect(provisionDeps.checkUploadIntent).not.toHaveBeenCalled();
     expect(provisionDeps.consumeUploadIntent).not.toHaveBeenCalled();
     for (const call of clientQueryMock.mock.calls) {

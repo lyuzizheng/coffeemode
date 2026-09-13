@@ -107,6 +107,14 @@ export function CoffeeIcon(props: IconProps) {
   );
 }
 
+/** Navigation — paper-plane arrow (nav-prompt pill, "导航" affordances). */
+export function NavigationIcon(props: IconProps) {
+  return base(
+    props,
+    <path d="M8 1.75 13.5 14.25 8 11.25 2.5 14.25Z" />,
+  );
+}
+
 /** Experience score mark — four-point sparkle. */
 export function SparkleIcon(props: IconProps) {
   return base(

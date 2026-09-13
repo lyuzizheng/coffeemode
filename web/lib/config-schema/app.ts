@@ -3,6 +3,7 @@ import { parseBudgetsSection } from "./budgets";
 import { parseCheckinsSection } from "./checkins";
 import { parseImagesSection } from "./images";
 import { parseProfileSection } from "./profile";
+import { parsePromptQueueSection } from "./prompt-queue";
 import { parseQuerySection } from "./query";
 import { parseSearchSection } from "./search";
 import { parseSeoSection } from "./seo";
@@ -62,6 +63,10 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
     discovery: parseDiscoverySection(file, root.discovery),
     seo: parseSeoSection(file, record(file, "seo", root.seo)),
     checkins: parseCheckinsSection(file, record(file, "checkins", root.checkins)),
+    promptQueue: parsePromptQueueSection(
+      file,
+      record(file, "promptQueue", root.promptQueue),
+    ),
     profile: parseProfileSection(file, record(file, "profile", root.profile)),
     images: parseImagesSection(file, record(file, "images", root.images)),
     query: parseQuerySection(file, record(file, "query", root.query)),

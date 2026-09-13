@@ -136,7 +136,14 @@ describe("sw runtime rules", () => {
   });
 
   it("guards every /api/* path with network-only (issue #46: defaultCache has a 24h NetworkFirst 'apis' catch-all)", () => {
-    const api = ["/api/cafes", "/api/cafes/", "/api/checkins/", "/api/navigations"];
+    const api = [
+      "/api/cafes",
+      "/api/cafes/",
+      "/api/checkins/",
+      "/api/navigations",
+      "/api/navigations/prompt",
+      "/api/navigations/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44/resolve",
+    ];
     const apiRule = RUNTIME_RULES.find((r) => r.name === "api");
     expect(apiRule?.handler).toBe("network-only");
     for (const path of api) {

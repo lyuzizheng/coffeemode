@@ -489,6 +489,16 @@
     "sheet_handle_aria": "Drag to resize the panel",
     "unknown_cafe": "Cafe"
   },
+  "navPrompt": {
+    "headline": "Grabbed a coffee at {cafe}?",
+    "context": "You navigated here {day}",
+    "day_yesterday": "yesterday",
+    "day_count": "{count} days ago",
+    "yes": "I did!",
+    "notYet": "Not yet",
+    "wontGo": "Won't go",
+    "pill": "Grab that coffee?"
+  },
   "share": {
     "aria": "Share",
     "copied": "Link copied",

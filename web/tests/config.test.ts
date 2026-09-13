@@ -67,6 +67,13 @@ describe("config files", () => {
     expect(appConfig.checkins.photoCap).toBe(6);
     expect(appConfig.checkins.noteMaxChars).toBe(500);
     expect(appConfig.checkins.revisitWindowHours).toBe(24);
+    expect(appConfig.promptQueue).toEqual({
+      minAgeHours: 24,
+      expiryDays: 90,
+      reaskDelayHours: 24,
+      maxReasks: 2,
+      autoCollapseMs: 8000,
+    });
     expect(appConfig.profile.listLimitMax).toBe(50);
     expect(appConfig.profile.listPageSize).toBe(20);
     expect(appConfig.profile.displayNameMaxChars).toBe(24);
@@ -230,6 +237,7 @@ describe("parseAppConfig validation", () => {
     recoveryLimit: 5,
   };
   const validCheckins = { photoCap: 6, noteMaxChars: 500, pendingDraftTtlHours: 72, revisitWindowHours: 24 };
+  const validPromptQueue = { minAgeHours: 24, expiryDays: 90, reaskDelayHours: 24, maxReasks: 2, autoCollapseMs: 8000 };
   const validProfile = {
     listLimitMax: 50,
     listPageSize: 20,
@@ -274,6 +282,7 @@ describe("parseAppConfig validation", () => {
       feed: { pageSize: 20 },
       discovery: validCenter,
       seo: validSeo,
+        promptQueue: validPromptQueue,
       checkins: validCheckins,
       profile: validProfile,
       images: validImages,
@@ -297,6 +306,7 @@ describe("parseAppConfig validation", () => {
         feed: { pageSize: 20 },
         discovery: validCenter,
         seo: validSeo,
+        promptQueue: validPromptQueue,
         profile: validProfile,
         budgets: validBudgets,
       }),
@@ -312,6 +322,7 @@ describe("parseAppConfig validation", () => {
         feed: { pageSize: 20 },
         discovery: validCenter,
         seo: validSeo,
+        promptQueue: validPromptQueue,
         checkins: validCheckins,
         budgets: validBudgets,
       }),
@@ -327,6 +338,7 @@ describe("parseAppConfig validation", () => {
         feed: { pageSize: 20 },
         discovery: validCenter,
         seo: validSeo,
+        promptQueue: validPromptQueue,
         checkins: validCheckins,
         profile: validProfile,
         images: validImages,
@@ -345,6 +357,7 @@ describe("parseAppConfig validation", () => {
         feed: { pageSize: 20 },
         discovery: validCenter,
         seo: validSeo,
+        promptQueue: validPromptQueue,
         checkins: validCheckins,
         profile: validProfile,
         budgets: validBudgets,
@@ -361,6 +374,7 @@ describe("parseAppConfig validation", () => {
         feed: { pageSize: 20 },
         discovery: { defaultCenter: { lat: 135, lng: 103.8 } },
         seo: validSeo,
+        promptQueue: validPromptQueue,
         checkins: validCheckins,
         profile: validProfile,
         budgets: validBudgets,
@@ -381,6 +395,7 @@ describe("parseAppConfig validation", () => {
           recoveryLimit: 5,
         },
         checkins: validCheckins,
+        promptQueue: validPromptQueue,
         profile: validProfile,
         budgets: validBudgets,
       }),
@@ -396,6 +411,7 @@ describe("parseAppConfig validation", () => {
         feed: { pageSize: 20 },
         discovery: validCenter,
         seo: validSeo,
+        promptQueue: validPromptQueue,
         checkins: { photoCap: 6.5, noteMaxChars: 500, pendingDraftTtlHours: 72 },
         profile: validProfile,
         budgets: validBudgets,
@@ -411,6 +427,7 @@ describe("parseAppConfig validation", () => {
       feed: { pageSize: 20 },
       discovery: validCenter,
       seo: validSeo,
+        promptQueue: validPromptQueue,
       profile: validProfile,
       budgets: validBudgets,
     };
@@ -431,6 +448,7 @@ describe("parseAppConfig validation", () => {
         feed: { pageSize: 20 },
         discovery: validCenter,
         seo: validSeo,
+        promptQueue: validPromptQueue,
         checkins: validCheckins,
         profile: validProfile,
         images: validImages,
@@ -454,6 +472,7 @@ describe("parseAppConfig validation", () => {
       feed: { pageSize: 20 },
       discovery: validCenter,
       seo: validSeo,
+        promptQueue: validPromptQueue,
       checkins: validCheckins,
       profile: validProfile,
       images: validImages,
@@ -482,6 +501,7 @@ describe("parseAppConfig validation", () => {
         feed: { pageSize: 20 },
         discovery: validCenter,
         seo: validSeo,
+        promptQueue: validPromptQueue,
         checkins: validCheckins,
         profile: validProfile,
         images: validImages,
@@ -501,6 +521,7 @@ describe("parseAppConfig validation", () => {
         feed: { pageSize: 20 },
         discovery: validCenter,
         seo: validSeo,
+        promptQueue: validPromptQueue,
         checkins: validCheckins,
         profile: validProfile,
         images: validImages,
@@ -519,6 +540,7 @@ describe("parseAppConfig validation", () => {
       feed: { pageSize: 20 },
       discovery: validCenter,
       seo: validSeo,
+        promptQueue: validPromptQueue,
       checkins: validCheckins,
       images: validImages,
       query: validQuery,
@@ -550,6 +572,7 @@ describe("parseAppConfig validation", () => {
       feed: { pageSize: 20 },
       discovery: validCenter,
       seo: validSeo,
+        promptQueue: validPromptQueue,
       checkins: validCheckins,
       profile: validProfile,
       budgets: validBudgets,

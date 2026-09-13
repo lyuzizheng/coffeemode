@@ -43,4 +43,17 @@ export async function runApiContractGate({ base, cafeId }) {
   });
   // 401 without auth session, 201 when authenticated
   assert(navRes.status === 401 || navRes.status === 201, `/api/navigations returned unexpected ${navRes.status}`);
+
+  const promptRes = await fetch(`${base}/api/navigations/prompt`);
+  // Auth-gated read: 401 without a session.
+  assert(promptRes.status === 401, `/api/navigations/prompt returned unexpected ${promptRes.status}`);
+
+  const resolveRes = await fetch(`${base}/api/navigations/${cafeId}/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: base },
+    body: JSON.stringify({ outcome: "wont_go" }),
+  });
+  // 401 without auth session (the seeded id is a cafe, not a navigation —
+  // auth runs before the row lookup).
+  assert(resolveRes.status === 401, `/api/navigations/[id]/resolve returned unexpected ${resolveRes.status}`);
 }

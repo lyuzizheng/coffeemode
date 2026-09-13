@@ -13,6 +13,7 @@ import {
   type ProvisionPhotosDeps,
 } from "@/lib/images/provision-photos";
 import { MERGE_GALLERY_SQL, photosWithSource } from "../checkins/gallery";
+import { autoResolveNavigationsTx } from "../navigations";
 import { query, txQueryFrom, txRunnerFrom, withTransaction } from "../postgres";
 import { resolveCafeTimezone } from "./meta";
 
@@ -142,6 +143,10 @@ export async function createCafeWithFirstCheckIn(
       // $1 = checkin id, $2 = photos JSON (the SET clause's $2::jsonb).
       await client.query(SET_FIRST_CHECKIN_PHOTOS_SQL, [checkinId, JSON.stringify(photos)]);
       await client.query(MERGE_GALLERY_SQL, [cafeId, JSON.stringify(photos)]);
+
+      // DG79: the first check-in is still "a check-in at that cafe" — any
+      // pending navigation to it resolves silently with outcome `auto`.
+      await autoResolveNavigationsTx(q, userId, cafeId);
 
       await incrementalUpdateWorkStats(cafeId, userId, undefined, 0, txRunnerFrom(client));
 

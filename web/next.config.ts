@@ -34,6 +34,7 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_QUERY_STALE_TIME_MS: String(appConfig.query.staleTimeMs),
     NEXT_PUBLIC_QUERY_GC_TIME_MS: String(appConfig.query.gcTimeMs),
     NEXT_PUBLIC_QUERY_PERSIST_MAX_AGE_MS: String(appConfig.query.persistMaxAgeMs),
+    NEXT_PUBLIC_NAV_PROMPT_COLLAPSE_MS: String(appConfig.promptQueue.autoCollapseMs),
   },
 
   images: {

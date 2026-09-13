@@ -11,7 +11,7 @@ export function ButtonsSection() {
       <div className="space-y-6">
         <div className="flex flex-wrap items-center gap-3">
           <Button variant="primary">{t("check_in")}</Button>
-          <Button variant="secondary" className="bg-secondary text-secondary-foreground hover:bg-secondary/90">
+          <Button variant="secondary" className="bg-secondary text-secondary-foreground hover:bg-secondary-hover">
             {t("add_cafe")}
           </Button>
           <Button variant="tertiary">{t("save")}</Button>

@@ -27,7 +27,7 @@ const LIGHT_BASELINE = {
 };
 
 /** The documented pairs, per theme. Long-form descriptions live in spec 0002. */
-const PAIRS = ["accent/accent-foreground", "secondary/secondary-foreground", "danger/danger-foreground"];
+const PAIRS = ["accent/accent-foreground", "secondary/secondary-foreground", "secondary-hover/secondary-foreground", "danger/danger-foreground"];
 
 const CSS = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
 

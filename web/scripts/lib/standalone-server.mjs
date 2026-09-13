@@ -86,6 +86,38 @@ export async function waitForServer(
 }
 
 /**
+ * Signatures of server-rendered failures that must fail a gate. Next writes
+ * these to the server process's stderr; a browser-side collector (page console
+ * / `pageerror`, as `visual-smoke` and `e2e-smoke` use) never sees them.
+ * BRAWUKA-214 was exactly that blind spot: a client provider rendered without
+ * an intl `timeZone` logged ENVIRONMENT_FALLBACK on every SSR request while
+ * every page-level assertion stayed green.
+ */
+const SERVER_RENDER_ERRORS = ["ENVIRONMENT_FALLBACK"];
+
+/**
+ * Fail `failures` when a standalone server logs a server-render error, and
+ * forward the rest of its log to `onLine`.
+ *
+ * Next writes these errors to the server process's stderr, so the browser-side
+ * collectors every gate uses (`page` console / `pageerror`) never see them:
+ * BRAWUKA-214 was exactly that blind spot — a client provider rendered without
+ * an intl `timeZone` logged ENVIRONMENT_FALLBACK on every SSR request while
+ * every page-level assertion stayed green.
+ */
+export function reportServerRenderErrors(child, { failures, onLine } = {}) {
+  child.stderr.on("data", (data) => {
+    const text = data.toString();
+    // Node runtime notices, not application faults.
+    if (text.includes("ExperimentalWarning")) return;
+    if (SERVER_RENDER_ERRORS.some((signature) => text.includes(signature))) {
+      failures.push(`server-side intl errors (ENVIRONMENT_FALLBACK):\n  ${text.trim()}`);
+    }
+    onLine?.(text);
+  });
+}
+
+/**
  * Register process signal handlers (SIGINT, SIGTERM, exit) for graceful cleanup.
  */
 export function registerProcessCleanup(cleanupFn) {

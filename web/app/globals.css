@@ -50,9 +50,11 @@
   --text-display: 2.5rem;
   --text-display--line-height: 1.1;
 
-  /* Accent hover state — `hover:bg-accent-hover` used by error/not-found
-     surfaces; mirrors --accent one step toward the background per theme. */
+  /* Hover states — `hover:bg-accent-hover` / `hover:bg-secondary-hover`;
+     each mirrors its base one step toward the theme's ink (darker in light,
+     lighter in dark), never toward the background. */
   --color-accent-hover: var(--accent-hover);
+  --color-secondary-hover: var(--secondary-hover);
   /* Warm espresso scrim for overlays (discard-confirm, drawer veils) — never
      pure black. Use as bg-scrim/30. */
   --color-scrim: oklch(25% 0.03 50);
@@ -151,6 +153,7 @@
   --accent-hover: oklch(49% 0.15 42);
   --secondary: oklch(45.0% 0.080 155);
   --secondary-foreground: oklch(97.0% 0.005 155);
+  --secondary-hover: oklch(40.0% 0.080 155);
 
   /* Status */
   --success: oklch(52% 0.11 152);
@@ -236,13 +239,17 @@
      measured 4.14:1 in the filled secondary button — under the gate — so the
      sage is lifted 55.0% → 58.0% with hue 155 and C 0.080 held, for 4.69:1
      (the browser's own painted bytes agree within quantisation: 4.71:1).
-     Sage is a fill/spot colour, never small text: at 58% it reads 4.11:1 on
-     surface-secondary, so secondary-text labels use --muted (BRAWUKA-219). */
+    Sage is a fill/spot colour, never small text: at 58% it reads 4.11:1 on
+    surface-secondary, so secondary-text labels use --muted (BRAWUKA-219).
+    --secondary-hover lifts the sage one step toward the ink (58% -> 62%,
+    same +4 as accent) so the filled button's hover reads 5.52:1 instead of
+    the 3.99:1 a bg-secondary/90 mix produced (BRAWUKA-209). */
   --accent: oklch(68% 0.16 46);
   --accent-foreground: oklch(17% 0.015 48);
   --accent-hover: oklch(72% 0.16 46);
   --secondary: oklch(58.0% 0.080 155);
   --secondary-foreground: oklch(16% 0.03 150);
+  --secondary-hover: oklch(62.0% 0.080 155);
 
   /* Status — lighter values carry dark text, warm-light on espresso.
      danger is both a plate and a text colour (error copy, the liked heart,

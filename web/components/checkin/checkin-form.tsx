@@ -1,7 +1,9 @@
 "use client";
 
 import { Button, Drawer } from "@heroui/react";
+import { useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
+import { useEffect, useRef } from "react";
 import { CheckinScores } from "./checkin-scores";
 import { CheckinMaxStay } from "./checkin-max-stay";
 import { CheckinNoteInput } from "./checkin-note-input";
@@ -46,10 +48,29 @@ function CheckinErrorBanner({ error, onRetry }: { error: string; onRetry: () => 
   );
 }
 
+/**
+ * The gate mounts at the bottom of a drawer body that is already scrolled
+ * past the fold — without this it lands off-screen and the submit looks
+ * dead (BRAWUKA-247). Returns the ref to wrap the gate with.
+ */
+function useSignInGateScroll(showSignInGate: boolean) {
+  const gateRef = useRef<HTMLDivElement>(null);
+  const reducedMotion = useReducedMotion();
+  useEffect(() => {
+    if (showSignInGate) {
+      gateRef.current?.scrollIntoView({
+        block: "nearest",
+        behavior: reducedMotion ? "auto" : "smooth",
+      });
+    }
+  }, [showSignInGate, reducedMotion]);
+  return gateRef;
+}
+
 export function CheckinForm(props: CheckinFormProps) {
   const t = useTranslations("checkIn");
   const state = useCheckinFormState(props);
-
+  const signInGateRef = useSignInGateScroll(state.showSignInGate);
   const resumePath =
     typeof window === "undefined"
       ? "/"
@@ -94,7 +115,9 @@ export function CheckinForm(props: CheckinFormProps) {
             )}
 
             {state.showSignInGate && (
-              <SignInGate message={t("signInGate")} next={resumePath} />
+              <div ref={signInGateRef}>
+                <SignInGate message={t("signInGate")} next={resumePath} />
+              </div>
             )}
             {state.isEdit && <CheckinDeleteSection onDelete={state.mutation.deleteCheckin} />}
           </div>

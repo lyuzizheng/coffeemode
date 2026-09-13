@@ -97,7 +97,9 @@ export function ScorePair({ stats }: { stats: WorkStats }) {
  * FULL WorkProfile — the visual hero: five dimension bars, gentle spring
  * staggered 40ms on entry (spec 0002 Motion), reduced motion → final state
  * instantly. A zero-response dimension renders "Not enough check-ins", never
- * a zero bar (DG10).
+ * a zero bar (DG10). When EVERY dimension is empty the whole section
+ * collapses — ScorePair already carries the single "Not enough check-ins"
+ * line, and five identical rows would read as a bug (BRAWUKA-247).
  *
  * `animated={false}` is for the SSR cafe shell, where bars render at final
  * width with no entry motion (seo-sharing artifact §2).
@@ -105,11 +107,14 @@ export function ScorePair({ stats }: { stats: WorkStats }) {
 export function WorkProfile({ stats, animated = true }: { stats: WorkStats; animated?: boolean }) {
   const t = useTranslations("discovery");
   const enter = useEnterMotion() && animated;
+  const means = COMPOSITE_DIMS.map((dim) => dimMean(stats, dim));
+
+  if (means.every((mean) => mean === null)) return null;
 
   return (
     <section aria-label={t("work_profile_aria")} className="flex flex-col gap-2.5">
       {COMPOSITE_DIMS.map((dim, i) => {
-        const mean = dimMean(stats, dim);
+        const mean = means[i];
         const n = stats.dims[dim]?.n ?? 0;
         return (
           <div key={dim} className="flex items-center gap-3">

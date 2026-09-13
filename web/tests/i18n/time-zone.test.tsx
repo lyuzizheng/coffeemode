@@ -13,9 +13,9 @@ import messages from "../../messages/en.json";
  * context time-zone-less, which logs `IntlError(ENVIRONMENT_FALLBACK)` on every
  * server render and splits date output between SSR and hydration.
  *
- * Only next-intl's module-level wrapper and the Next request context are
- * mocked; the request config, the constant, and the provider chain are the real
- * ones.
+ * Only next-intl's module-level wrapper, the Next request context, and the
+ * query persister are mocked; the request config, the constant, and the
+ * provider chain are the real ones.
  */
 vi.mock("next-intl/server", () => ({
   // Outside the RSC condition `next-intl/server` resolves to a throwing stub
@@ -27,6 +27,20 @@ vi.mock("next-intl/server", () => ({
 vi.mock("next/headers", () => ({
   cookies: async () => ({ get: () => undefined }),
   headers: async () => new Headers({ "accept-language": "en" }),
+}));
+
+// BRAWUKA-259: `Providers` embeds `PersistQueryClientProvider`, whose IndexedDB
+// restore resolves asynchronously — under load it can settle after vitest tears
+// down jsdom, and its trailing `setState` then reads the deleted `window`
+// (`ReferenceError: window is not defined`, flaky unhandled rejection). The
+// restore result is orthogonal to this file's assertions (intl `timeZone`
+// only), so resolve it synchronously instead of touching the real IndexedDB.
+vi.mock("@/lib/query/persister", () => ({
+  idbPersister: {
+    persistClient: vi.fn(async () => {}),
+    restoreClient: vi.fn(async () => undefined),
+    removeClient: vi.fn(async () => {}),
+  },
 }));
 
 const INSTANT = new Date("2026-01-02T03:04:05.000Z");

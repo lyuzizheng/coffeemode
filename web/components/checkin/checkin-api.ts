@@ -57,13 +57,17 @@ async function handleConflictRevisit({
   } | null;
   const existingId = conflict?.existing_checkin_id;
   if (typeof existingId === "string" && existingId.length > 0) {
-    return updateCheckin({
+    const checkin = await updateCheckin({
       editCheckinId: existingId,
       scores,
       maxStay,
       note,
       fallbackErrorMessage,
     });
+    // PATCH carries no photos (creation-time contract): any photo_ids the
+    // POST body staged are dropped here, and the caller must say so
+    // (BRAWUKA-126).
+    return { checkin, convertedToEdit: true };
   }
   throw new Error(await responseMessage(res, fallbackErrorMessage));
 }
@@ -103,7 +107,7 @@ export async function createCheckin({
     return handleConflictRevisit({ res, scores, maxStay, note, fallbackErrorMessage });
   }
   if (!res.ok) throw new Error(await responseMessage(res, fallbackErrorMessage));
-  return res.json();
+  return { checkin: await res.json(), convertedToEdit: false };
 }
 
 export async function deleteCheckin({

@@ -1,4 +1,5 @@
 import type { PersistQueryClientOptions } from "@tanstack/react-query-persist-client";
+import { getQueryPersistMaxAgeMs } from "@/lib/client-env";
 import { idbPersister } from "./persister";
 import { PERSISTED_QUERY_KEYS } from "./keys";
 
@@ -7,11 +8,13 @@ import { PERSISTED_QUERY_KEYS } from "./keys";
  *
  * Only allow-listed keys that reached `success` are written to IndexedDB.
  * Other queries stay in memory and are refetched on the next session.
+ * Retention is owned by `app.yaml` `query.persistMaxAgeMs`, via
+ * NEXT_PUBLIC_QUERY_PERSIST_MAX_AGE_MS env (BRAWUKA-250).
  */
 export const persistOptions: Omit<PersistQueryClientOptions, "queryClient"> = {
   persister: idbPersister,
   buster: "v1",
-  maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+  maxAge: getQueryPersistMaxAgeMs(), // 7 days
   dehydrateOptions: {
     // Allow-listed key AND settled success. `dehydrateQuery` attaches a
     // `promise` field to any query still in `pending`; a Promise cannot pass

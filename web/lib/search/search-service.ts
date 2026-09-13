@@ -284,7 +284,7 @@ export async function executeSearch(
   let filteredItems = items;
   const qTrim = filters.q?.trim() ?? "";
   if (qTrim !== "") {
-    const minScore = appConfig.search.minRelevanceScore ?? 50;
+    const minScore = appConfig.search.minRelevanceScore;
     const hasHigh = items.some((it) => scoreRelevance(it.name, filters.q) >= minScore);
     if (hasHigh) {
       filteredItems = items.filter((it) => scoreRelevance(it.name, filters.q) >= minScore);
@@ -294,9 +294,12 @@ export async function executeSearch(
   // Sort results: relevance (+ DG136 good_first boost) first, then distance, then name, then id (DG142)
   const effectiveRanking = filters.ranking ?? appConfig.search.rankingMode;
   const isGoodFirst = effectiveRanking === "good_first";
+  const { experienceMin, compositeMin, boost } = appConfig.search.goodFirst;
+  const goodFirstBoost = (stats: { experience_score: number | null; composite_score: number | null } | null | undefined): number =>
+    isGoodFirst && stats != null && ((stats.experience_score != null && stats.experience_score >= experienceMin) || (stats.composite_score != null && stats.composite_score >= compositeMin)) ? boost : 0;
   filteredItems.sort((a, b) => {
-    const boostA = isGoodFirst && a.cafe ? ((a.cafe.work_stats.experience_score != null && a.cafe.work_stats.experience_score >= 80) || (a.cafe.work_stats.composite_score != null && a.cafe.work_stats.composite_score >= 75) ? 10 : 0) : 0;
-    const boostB = isGoodFirst && b.cafe ? ((b.cafe.work_stats.experience_score != null && b.cafe.work_stats.experience_score >= 80) || (b.cafe.work_stats.composite_score != null && b.cafe.work_stats.composite_score >= 75) ? 10 : 0) : 0;
+    const boostA = goodFirstBoost(a.cafe?.work_stats);
+    const boostB = goodFirstBoost(b.cafe?.work_stats);
     const relA = scoreRelevance(a.name, filters.q) + boostA;
     const relB = scoreRelevance(b.name, filters.q) + boostB;
     if (relA !== relB) return relB - relA;

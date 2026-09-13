@@ -23,6 +23,17 @@ const nextConfig: NextConfig = {
 
   env: {
     NEXT_PUBLIC_RECENT_SEARCHES_MAX: String(appConfig.profile.recentSearchesMax),
+    // BRAWUKA-250: app.yaml-owned values mirrored to the browser. The client
+    // bundle cannot read web/config — these are the only client channel.
+    NEXT_PUBLIC_CHECKIN_NOTE_MAX: String(appConfig.checkins.noteMaxChars),
+    NEXT_PUBLIC_DISPLAY_NAME_MAX: String(appConfig.profile.displayNameMaxChars),
+    NEXT_PUBLIC_HANDLE_MAX: String(appConfig.profile.handle.maxChars),
+    NEXT_PUBLIC_IMAGE_MAX_DIMENSION: String(appConfig.images.maxOriginalDimension),
+    NEXT_PUBLIC_SEARCH_MIN_QUERY_LENGTH: String(appConfig.search.client.minQueryLength),
+    NEXT_PUBLIC_SEARCH_DEBOUNCE_MS: String(appConfig.search.client.debounceMs),
+    NEXT_PUBLIC_QUERY_STALE_TIME_MS: String(appConfig.query.staleTimeMs),
+    NEXT_PUBLIC_QUERY_GC_TIME_MS: String(appConfig.query.gcTimeMs),
+    NEXT_PUBLIC_QUERY_PERSIST_MAX_AGE_MS: String(appConfig.query.persistMaxAgeMs),
   },
 
   images: {

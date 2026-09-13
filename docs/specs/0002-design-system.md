@@ -313,6 +313,30 @@ Spring tokens (primary animation driver):
 
 Bezier curves (strictly restricted to opacity and color cross-fades only):
   ease.fade      [0.22, 1, 0.36, 1]   ≤200ms duration (cross-fade / color transition only)
+
+Duration presets (tween lengths for non-spring transitions — each sits
+inside its settle budget below):
+  duration.feedback    0.12s   button press, toggle, chip select
+  duration.state       0.2s    card expand, drawer slide
+  duration.transition  0.3s    page transition, map overlay enter
+  duration.slow        0.45s   onboarding, first-load reveal — hard ceiling
+```
+
+Choreography tokens (named delays/staggers — no site invents its own numbers):
+
+```text
+stagger.checkinSuccess   steamA 0.15, steamB 0.23, title 0.2, cafeName 0.3
+                         check-in success card: steam puffs, then text
+stagger.heroPoster       card 0.12, scoreBar 0.2   theme-preview poster reveal
+stagger.workProfile      step 0.04   per-bar cascade on WorkProfile load
+
+ambient.steam            duration 0.4, loop, step 0.1 per wisp
+                         looping coffee-steam wisps — ambient loops never
+                         settle, so they are exempt from settle budgets but
+                         still capped at the 450ms ceiling
+
+cardInteraction.active / .inactive   peek-strip affordance: active card
+                         scales ~1.02, neighbors dim to 0.6 (spring.gentle)
 ```
 
 Settle budgets (spring stability ceilings, replacing fixed durations):

@@ -146,7 +146,7 @@ export function DetailContent({
           variant="ghost"
           isIconOnly
           aria-label={t("close")}
-          className="h-9 w-9 min-w-9 text-muted hover:text-foreground"
+          className="-m-1 h-11 w-11 min-w-11 text-muted hover:text-foreground"
           onPress={onClose}
         >
           <CloseIcon size={16} />

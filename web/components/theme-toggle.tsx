@@ -63,14 +63,14 @@ export function ThemeToggle() {
             aria-pressed={selected}
             aria-label={t(opt.value)}
             onClick={() => setTheme(opt.value)}
-            className={`cm-focus relative flex h-10 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors duration-150 sm:px-3 ${
+            className={`cm-focus relative -my-0.5 flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-md px-2.5 text-xs transition-colors duration-150 sm:px-3 ${
               selected ? "text-foreground" : "text-muted hover:text-foreground"
             }`}
           >
             {selected && (
               <motion.span
                 layoutId="theme-toggle-thumb"
-                className="absolute inset-0 rounded-md bg-surface shadow-sm"
+                className="absolute inset-x-0 inset-y-0.5 rounded-md bg-surface shadow-sm"
                 transition={reduced ? { duration: 0 } : spring.snappy}
               />
             )}

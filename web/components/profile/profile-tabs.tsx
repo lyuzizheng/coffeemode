@@ -114,13 +114,17 @@ export function ProfileTabs({ activeTab, onTabChange, baseId }: ProfileTabsProps
             tabIndex={isSelected ? 0 : -1}
             onClick={() => onTabChange(tabKey)}
             onKeyDown={(e) => handleTabKeyDown(e, tabKey, onTabChange, tabRefs.current)}
-            className={`flex-1 min-w-[90px] py-2 px-3 text-xs font-medium rounded-lg transition-all text-center whitespace-nowrap ${
-              isSelected
-                ? "bg-surface text-foreground shadow-sm font-semibold"
-                : "text-muted hover:text-foreground"
-            }`}
+            className="group -my-1.5 flex min-h-11 flex-1 items-center justify-center"
           >
-            {t(`tab_${tabKey}`)}
+            <span
+              className={`min-w-[90px] rounded-lg px-3 py-2 text-center text-xs font-medium whitespace-nowrap transition-all ${
+                isSelected
+                  ? "bg-surface text-foreground shadow-sm font-semibold"
+                  : "text-muted group-hover:text-foreground"
+              }`}
+            >
+              {t(`tab_${tabKey}`)}
+            </span>
           </button>
         );
       })}

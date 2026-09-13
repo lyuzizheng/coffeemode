@@ -144,7 +144,7 @@ export function ProfileHero({ profile, onProfileChange }: ProfileHeroProps) {
                 setIsEditingName(true);
               }}
               aria-label={t("edit_name_placeholder")}
-              className="p-1 text-muted hover:text-foreground active:scale-95 transition-all rounded-full"
+              className="-m-2.5 flex h-11 w-11 items-center justify-center text-muted hover:text-foreground active:scale-95 transition-all rounded-full"
             >
               <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M11.5 2.5a1.5 1.5 0 0 1 2 2L4.5 13.5l-3 0.5 0.5-3L11.5 2.5Z" />
@@ -166,19 +166,23 @@ export function ProfileHero({ profile, onProfileChange }: ProfileHeroProps) {
                   key={c.id}
                   disabled={isSavingCity}
                   onClick={() => handleSelectCity(c.id)}
-                  className={`px-2.5 py-1 text-xs rounded-lg transition-colors ${
-                    isSelected
-                      ? "bg-accent text-accent-foreground font-medium"
-                      : "bg-surface-secondary text-muted hover:text-foreground"
-                  }`}
+                  className="group -my-2.5 inline-flex min-h-11 items-center"
                 >
-                  {localizedCityName}
+                  <span
+                    className={`rounded-lg px-2.5 py-1 text-xs transition-colors ${
+                      isSelected
+                        ? "bg-accent text-accent-foreground font-medium"
+                        : "bg-surface-secondary text-muted group-hover:text-foreground"
+                    }`}
+                  >
+                    {localizedCityName}
+                  </span>
                 </button>
               );
             })}
             <button
               onClick={() => setIsSelectingCity(false)}
-              className="px-2 py-1 text-xs text-muted hover:text-foreground"
+              className="-my-2.5 inline-flex min-h-11 items-center px-2 text-xs text-muted hover:text-foreground"
             >
               {t("cancel")}
             </button>
@@ -186,13 +190,15 @@ export function ProfileHero({ profile, onProfileChange }: ProfileHeroProps) {
         ) : (
           <button
             onClick={() => setIsSelectingCity(true)}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-secondary border border-border/50 text-xs text-muted hover:text-foreground active:scale-95 transition-all"
+            className="group -my-2.5 inline-flex min-h-11 items-center"
           >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M8 1.5A4.5 4.5 0 0 0 3.5 6c0 3.5 4.5 8.5 4.5 8.5s4.5-5 4.5-8.5A4.5 4.5 0 0 0 8 1.5Z" />
-              <circle cx="8" cy="6" r="1.5" />
-            </svg>
-            <span>{currentCityName}</span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-border/50 bg-surface-secondary px-2.5 py-1 text-xs text-muted transition-all group-hover:text-foreground group-active:scale-95">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8 1.5A4.5 4.5 0 0 0 3.5 6c0 3.5 4.5 8.5 4.5 8.5s4.5-5 4.5-8.5A4.5 4.5 0 0 0 8 1.5Z" />
+                <circle cx="8" cy="6" r="1.5" />
+              </svg>
+              <span>{currentCityName}</span>
+            </span>
           </button>
         )}
       </div>

@@ -42,7 +42,7 @@ export function CheckinNote({ note }: { note: string }) {
           aria-expanded={expanded}
           aria-controls={bodyId}
           onClick={() => setExpanded((v) => !v)}
-          className="cm-focus mt-1 font-mono text-xs text-muted underline underline-offset-2 transition-colors hover:text-foreground"
+          className="cm-focus -my-3 mt-1 inline-flex min-h-11 items-center font-mono text-xs text-muted underline underline-offset-2 transition-colors hover:text-foreground"
         >
           {expanded ? t("noteShowLess") : t("noteShowMore")}
         </button>

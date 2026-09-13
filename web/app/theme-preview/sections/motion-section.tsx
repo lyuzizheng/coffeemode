@@ -71,9 +71,11 @@ export function MotionSection() {
                   onClick={() =>
                     setOrder((prev) => [...prev.slice(1), prev[0]])
                   }
-                  className="rounded-lg border border-border bg-surface px-3.5 py-1.5 text-sm text-foreground transition-colors duration-150 hover:bg-surface-secondary active:scale-[0.97]"
+                  className="group -my-1.5 inline-flex min-h-11 items-center"
                 >
-                  {td(key)}
+                  <span className="rounded-lg border border-border bg-surface px-3.5 py-1.5 text-sm text-foreground transition-colors duration-150 group-hover:bg-surface-secondary group-active:scale-[0.97]">
+                    {td(key)}
+                  </span>
                 </button>
               </motion.li>
             ))}

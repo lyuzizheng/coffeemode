@@ -26,13 +26,17 @@ export function CheckinMaxStay({ value, onChange }: CheckinMaxStayProps) {
             type="button"
             aria-pressed={value === option}
             onClick={() => onChange(value === option ? null : option)}
-            className={`h-9 rounded-sm border px-3 text-xs font-medium transition-colors ${
-              value === option
-                ? "border-accent bg-surface text-accent"
-                : "border-border bg-surface-secondary text-foreground hover:bg-surface-tertiary"
-            }`}
+            className="group cm-focus relative -my-1 flex min-h-11 min-w-11 items-center justify-center"
           >
-            {maxStayLabels[option] ?? option}
+            <span
+              className={`flex h-9 items-center rounded-sm border px-3 text-xs font-medium transition-colors ${
+                value === option
+                  ? "border-accent bg-surface text-accent"
+                  : "border-border bg-surface-secondary text-foreground group-hover:bg-surface-tertiary"
+              }`}
+            >
+              {maxStayLabels[option] ?? option}
+            </span>
           </button>
         ))}
       </div>

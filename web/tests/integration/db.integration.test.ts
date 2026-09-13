@@ -68,7 +68,6 @@ import {
 } from "@/lib/db/profile";
 import {
   updateProfileIdentity,
-  getProfileIdentity,
   InvalidHandleError,
   HandleTakenError,
   HandleChangeTooSoonError,
@@ -2166,8 +2165,8 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       );
 
       // 1. Default state: show_public_identity = false, public_handle = null, identity_consented_at = null
-      const initial = await getProfileIdentity(userA);
-      expect(initial).toEqual({
+      const initial = await getProfile(userA);
+      expect(initial).toMatchObject({
         showPublicIdentity: false,
         publicHandle: null,
         identityConsentedAt: null,

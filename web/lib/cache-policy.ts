@@ -27,7 +27,7 @@ interface CafeShellCachePolicy {
   sharedCacheAcrossLocales: boolean;
 }
 
-/** Stamped per response by the proxy whenever {@link shouldBypass} holds. */
+/** Stamped per response by the proxy on session-refresh and gone-cafe responses. */
 export const CAFE_SHELL_BYPASS_CACHE_CONTROL =
   "private, no-store, must-revalidate";
 
@@ -37,26 +37,6 @@ export function cafeShellCacheControl(policy: CafeShellCachePolicy): string {
     `public, s-maxage=${policy.sMaxAgeSeconds}, ` +
     `stale-while-revalidate=${policy.staleWhileRevalidateSeconds}`
   );
-}
-
-interface CafeShellResponseSignal {
-  /** Final response status (404 for the gone-cafe surface). */
-  status: number;
-  /** True when the response carries Set-Cookie (session refresh). */
-  setCookiePresent: boolean;
-}
-
-/**
- * Per-response bypass decision. True = MUST NOT be shared-cached: the proxy
- * stamps {@link CAFE_SHELL_BYPASS_CACHE_CONTROL} and the edge rule bypasses.
- */
-export function shouldBypassCafeShellCache(
-  policy: CafeShellCachePolicy,
-  signal: CafeShellResponseSignal,
-): boolean {
-  if (!policy.cacheableStatuses.includes(signal.status)) return true;
-  if (policy.bypassOnSetCookieResponse && signal.setCookiePresent) return true;
-  return false;
 }
 
 interface CafeShellCdnRules {

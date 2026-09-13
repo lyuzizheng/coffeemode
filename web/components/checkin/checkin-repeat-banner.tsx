@@ -1,13 +1,13 @@
 "use client";
 
 import { Button } from "@heroui/react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import type { LastCheckin } from "@/lib/checkin/last-checkin";
 
-function formatLastVisit(iso: string): string {
+function formatLastVisit(iso: string, locale: string): string {
   try {
     const d = new Date(iso);
-    return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+    return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(d);
   } catch {
     // Benign: invalid date string degrades to raw YYYY-MM-DD prefix.
     return iso.slice(0, 10);
@@ -26,10 +26,11 @@ export function CheckinRepeatBanner({
   onDismiss,
 }: CheckinRepeatBannerProps) {
   const t = useTranslations("checkIn");
+  const locale = useLocale();
 
   return (
     <div className="flex items-center justify-between rounded-md bg-surface-secondary p-3">
-      <span className="text-sm">{t("lastVisit", { date: formatLastVisit(lastCheckin.visited_at) })}</span>
+      <span className="text-sm">{t("lastVisit", { date: formatLastVisit(lastCheckin.visited_at, locale) })}</span>
       <div className="flex items-center gap-2">
         <Button variant="primary" size="sm" onPress={onApplySame} className="h-7 rounded-sm px-3 text-xs">
           {t("same")}

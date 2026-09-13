@@ -15,8 +15,9 @@
  * its CTAs obey `app.yaml:search.externalSources` (DG134) and Apple stays
  * hidden until MapKit is configured (DG143).
  */
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { formatDistanceKm } from "@/lib/discovery/view-model";
+import { displayCityName } from "@/lib/cities";
 import { groupSearchResults } from "@/lib/search/grouped-results";
 import type { SearchResponse, SearchResultItem } from "@/lib/search/types";
 
@@ -47,10 +48,11 @@ function ResultRow({
 }) {
   const t = useTranslations("search");
   const tDiscovery = useTranslations("discovery");
+  const locale = useLocale();
 
   const km = formatDistanceKm(item.distance_m);
   const meta = [
-    item.type === "cafe" ? (item.cafe?.city ?? item.address) : item.address,
+    item.type === "cafe" ? (displayCityName(item.cafe?.city, locale) || item.address) : item.address,
     km !== null ? tDiscovery("km_away", { km }) : null,
     // DG138: fallback-anchor distances must say so (距市中心).
     item.is_from_city_center && km !== null ? t("from_city_center") : null,

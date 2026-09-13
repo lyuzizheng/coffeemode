@@ -416,10 +416,10 @@
     "home": "回到首页"
   },
   "discovery": {
-    "work": "Work",
-    "experience": "Experience",
-    "work_score_aria": "Work 分 {score}",
-    "experience_score_aria": "体验分 {score}",
+    "work": "办公指数",
+    "experience": "体验感",
+    "work_score_aria": "办公指数 {score}",
+    "experience_score_aria": "体验感 {score}",
     "checkins_count": "{count} 次打卡",
     "responses": "{count} 人评价",
     "not_enough": "打卡还太少啦",

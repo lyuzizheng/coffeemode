@@ -6,7 +6,7 @@
  * column (DG42). Selection focuses the detail heading (DG18).
  */
 import { Fragment, useEffect, type ReactNode } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@heroui/react";
 import { CloseIcon } from "@/components/icons";
@@ -17,6 +17,7 @@ import { ShareControl } from "@/components/share/share-control";
 import { cafeFacts, formatDistanceKm } from "@/lib/discovery/view-model";
 import { cafeCanonicalPath } from "@/lib/seo";
 import { isOpenAt } from "@/lib/hours";
+import { displayCityName } from "@/lib/cities";
 import type { DiscoveryController } from "@/lib/discovery/use-discovery-controller";
 import type { PublicCafeDetail } from "@/types/cafes";
 import { CheckinFeed } from "./checkin-feed";
@@ -108,6 +109,7 @@ export function DetailContent({
   distanceM?: number;
 }) {
   const t = useTranslations("discovery");
+  const locale = useLocale();
   const { detailHeadingRef, handleMissingCafe } = controller;
   const query = useQuery({
     queryKey: ["cafe", cafeId],
@@ -156,7 +158,7 @@ export function DetailContent({
   const km = formatDistanceKm(distanceM);
   const openState = isOpenAt(cafe.opening_hours, cafe.tz);
   const metaParts: ReactNode[] = [];
-  if (cafe.city) metaParts.push(cafe.city);
+  if (cafe.city) metaParts.push(displayCityName(cafe.city, locale));
   if (variant === "full" && cafe.address) metaParts.push(cafe.address);
   if (km !== null) metaParts.push(t("km_away", { km }));
   if (openState !== null) metaParts.push(<OpenState key="open" cafe={cafe} />);

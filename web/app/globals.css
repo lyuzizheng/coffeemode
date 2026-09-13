@@ -316,6 +316,27 @@ body {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* DG69 signature moment (spec 0002): the check-in slider thumb pulses to
+   1.15 scale on first touch, 120ms, paired with navigator.vibrate(10).
+   The translateY(-50%) centering must live inside the keyframes — a
+   keyframed `transform` overrides the utility for the animation's
+   duration. The global prefers-reduced-motion kill switch neutralizes it. */
+@keyframes checkin-thumb-pulse {
+  0% {
+    transform: translateY(-50%) scale(1);
+  }
+  50% {
+    transform: translateY(-50%) scale(1.15);
+  }
+  100% {
+    transform: translateY(-50%) scale(1);
+  }
+}
+
+.checkin-thumb-pulse {
+  animation: checkin-thumb-pulse 120ms var(--ease-default);
+}
+
 /* Standalone PWA: lock to viewport height and disable overscroll. */
 @media (display-mode: standalone) {
   html,

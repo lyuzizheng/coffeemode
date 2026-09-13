@@ -56,6 +56,8 @@ export interface UseCheckinFormStateOptions {
   initialMaxStay?: MaxStay | null;
   initialNote?: string | null;
   initialPhotos?: PhotoUpload[];
+  /** DG92: navigation-prompt-only caption under the cafe name (default off). */
+  promptCaption?: boolean;
   isAuthenticated?: boolean;
   lastCheckin?: LastCheckin | null;
   authProbeFailed?: boolean;

@@ -11,6 +11,7 @@ import {
 } from "@/lib/checkin/pending-checkin";
 import * as pendingCheckin from "@/lib/checkin/pending-checkin";
 import { uploadPhoto } from "@/lib/images/client-upload";
+import { toast } from "@heroui/react";
 import messages from "../../messages/en.json";
 
 // The real hook pings /api/health on an interval through a module-level
@@ -23,6 +24,11 @@ vi.mock("@/lib/images/client-upload", () => ({
   uploadPhoto: vi.fn(),
   toWebP: vi.fn(),
 }));
+
+vi.mock("@heroui/react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@heroui/react")>();
+  return { ...actual, toast: vi.fn() };
+});
 
 let mockSearch = "";
 const mockReplace = vi.fn();
@@ -376,5 +382,19 @@ describe("check-in sign-in gate draft (DG66/DG59)", () => {
       .mock.calls.filter(([u, i]) => u === "/api/checkins" && (i as RequestInit)?.method === "POST");
     const body = JSON.parse((posts[1][1] as RequestInit).body as string) as Record<string, unknown>;
     expect(body.photo_ids).toEqual(["uuid-1"]);
+  });
+
+  it("toasts the 10 MB reason when an upload is rejected for size (artifact §3.5)", async () => {
+    vi.mocked(uploadPhoto).mockRejectedValue(new Error("photo_too_large"));
+    renderDrawer({ isAuthenticated: true });
+
+    const file = new File(["x"], "huge.jpg", { type: "image/jpeg" });
+    fireEvent.change(fileInput(), { target: { files: [file] } });
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith("That photo is larger than 10 MB.", { timeout: 4000 }),
+    );
+    // The tile keeps its retry affordance — the toast only names the reason.
+    expect(await screen.findByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 });

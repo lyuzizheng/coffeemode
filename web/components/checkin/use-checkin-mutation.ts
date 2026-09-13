@@ -34,11 +34,12 @@ interface UseCheckinMutationOptions {
 
 function resolveSubmitError(
   err: unknown,
-  t: (key: "photosUploading" | "photosFailed" | "couldntSave") => string,
+  t: (key: "photosUploading" | "photosFailed" | "photoTooLarge" | "couldntSave") => string,
 ): string {
   if (!(err instanceof Error)) return t("couldntSave");
   if (err.message === "photos_uploading") return t("photosUploading");
   if (err.message === "photo_upload_failed") return t("photosFailed");
+  if (err.message === "photo_too_large") return t("photoTooLarge");
   return userFacingMessage(err.message, t("couldntSave"));
 }
 
@@ -101,10 +102,12 @@ function useSubmitMutation({
       void clearPendingCheckin().catch(() => {});
       invalidateCheckinQueries(queryClient, cafeId);
       clearTimeout(closeTimerRef.current);
+      // Artifact §4 step 3: the success card holds 900ms, then the drawer
+      // closes and the toast confirms.
       closeTimerRef.current = window.setTimeout(() => {
         onClose();
         toast(t("saved"), { timeout: 3000 });
-      }, 1200);
+      }, 900);
     },
     onError: (err) => {
       setView("form");

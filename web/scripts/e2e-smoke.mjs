@@ -35,6 +35,8 @@ import {
   registerProcessCleanup,
 } from "./lib/standalone-server.mjs";
 import { runCheckinDrawerGate } from "./lib/checkin-drawer-gate.mjs";
+import { runCheckinSubmitGate } from "./lib/checkin-submit-gate.mjs";
+import { runApiContractGate } from "./lib/api-contract-gate.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dbUrl = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
@@ -329,40 +331,12 @@ async function runSmokeSuite() {
     }
 
     // -------------------------------------------------------------------------
-    // Test 6: Core Domain API Contracts
+    // Test 6: Core Domain API Contracts — see lib/api-contract-gate.mjs.
     // -------------------------------------------------------------------------
     {
       const label = "T6: Core API Contract Endpoints";
       console.log(`[E2E] Running ${label}...`);
-
-      const healthRes = await fetch(`${base}/api/health`);
-      assert(healthRes.status === 200, `/api/health returned ${healthRes.status}`);
-
-      const cafesRes = await fetch(`${base}/api/cafes?lat=37.7749&lng=-122.4194`);
-      assert(cafesRes.status === 200, `/api/cafes returned ${cafesRes.status}`);
-      const cafesData = await cafesRes.json();
-      assert(Array.isArray(cafesData.cafes), "/api/cafes response missing 'cafes' array");
-
-      const searchRes = await fetch(`${base}/api/search?q=smoke`);
-      assert(searchRes.status === 200, `/api/search returned ${searchRes.status}`);
-
-      const placesRes = await fetch(`${base}/api/places/search?q=smoke&lat=37.7749&lng=-122.4194`);
-      // 200 when POI service is live, 503 with standard envelope when unconfigured
-      assert(
-        placesRes.status === 200 || placesRes.status === 503,
-        `/api/places/search returned unexpected status ${placesRes.status}`,
-      );
-
-      const navRes = await fetch(`${base}/api/navigations`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Origin: base },
-        body: JSON.stringify({
-          cafe_id: E2E_CAFE_ID,
-        }),
-      });
-      // 401 without auth session, 201 when authenticated
-      assert(navRes.status === 401 || navRes.status === 201, `/api/navigations returned unexpected ${navRes.status}`);
-
+      await runApiContractGate({ base, cafeId: E2E_CAFE_ID });
       console.log(`[E2E] ok ${label}`);
     }
 
@@ -371,6 +345,14 @@ async function runSmokeSuite() {
       const label = "T7: Check-in Drawer CTA Inside the Viewport";
       console.log(`[E2E] Running ${label}...`);
       await runCheckinDrawerGate({ label, base, cafeId: E2E_CAFE_ID, createContext, attachErrorCollector });
+      console.log(`[E2E] ok ${label}`);
+    }
+
+    // Test 8: check-in submit flow (BRAWUKA-121) — see lib/checkin-submit-gate.mjs.
+    if (hasDb) {
+      const label = "T8: Check-in Submit Flow (Mocked Auth Boundary)";
+      console.log(`[E2E] Running ${label}...`);
+      await runCheckinSubmitGate({ label, base, cafeId: E2E_CAFE_ID, createContext, attachErrorCollector });
       console.log(`[E2E] ok ${label}`);
     }
 

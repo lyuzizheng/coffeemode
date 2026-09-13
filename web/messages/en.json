@@ -337,6 +337,7 @@
     "signInRequired": "Please sign in to publish",
     "photosUploading": "Photos are still uploading — wait a moment",
     "photosFailed": "Some photos couldn't upload — tap a photo to retry",
+    "photoTooLarge": "That photo is larger than 10 MB.",
     "draftRestored": "Draft restored — tap Check in to publish",
     "promptCaption": "Check in — help the next nomad pick their spot!",
     "notSet": "not set",

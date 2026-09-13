@@ -22,7 +22,15 @@ import {
 export { CHECKIN_RESUME_PARAM };
 type CheckinFormProps = UseCheckinFormStateOptions;
 
-function CheckinFormHeader({ cafeName, isEdit }: { cafeName: string; isEdit: boolean }) {
+function CheckinFormHeader({
+  cafeName,
+  isEdit,
+  promptCaption,
+}: {
+  cafeName: string;
+  isEdit: boolean;
+  promptCaption: boolean;
+}) {
   const t = useTranslations("checkIn");
   return (
     <Drawer.Header className="shrink-0 border-b border-separator px-4 py-3">
@@ -31,7 +39,9 @@ function CheckinFormHeader({ cafeName, isEdit }: { cafeName: string; isEdit: boo
         <span aria-hidden className="text-xl leading-none">×</span>
         <span className="sr-only">{t("close")}</span>
       </Drawer.CloseTrigger>
-      {!isEdit && <p className="mt-1 text-xs text-muted">{t("promptCaption")}</p>}
+      {promptCaption && !isEdit && (
+        <p className="mt-1 text-xs text-muted">{t("promptCaption")}</p>
+      )}
     </Drawer.Header>
   );
 }
@@ -78,11 +88,15 @@ export function CheckinForm(props: CheckinFormProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <CheckinFormHeader cafeName={props.cafeName} isEdit={state.isEdit} />
+      <CheckinFormHeader
+        cafeName={props.cafeName}
+        isEdit={state.isEdit}
+        promptCaption={props.promptCaption ?? false}
+      />
 
       <Drawer.Body className="flex-1 overflow-y-auto px-4 py-4">
         {state.mutation.view === "success" ? (
-          <CheckinSuccess cafeName={props.cafeName} />
+          <CheckinSuccess cafeName={props.cafeName} scores={state.scoresState.scores} />
         ) : (
           <div className="flex flex-col gap-4">
             {state.repeat.showRepeatBanner && props.lastCheckin && (
@@ -124,16 +138,17 @@ export function CheckinForm(props: CheckinFormProps) {
         )}
       </Drawer.Body>
 
-      {state.mutation.view !== "success" && (
-        <CheckinFormFooter
-          view={state.mutation.view}
-          isEdit={state.isEdit}
-          canSubmit={state.canSubmit}
-          isOffline={state.isOffline}
-          overallIsNull={state.scoresState.overall === null}
-          onSubmit={state.handleSubmit}
-        />
-      )}
+      {/* The footer stays mounted through the success view: artifact §4 step 1
+          morphs the confirm button to a ✓ while the body swaps to the success
+          card — unmounting it would skip the signature moment. */}
+      <CheckinFormFooter
+        view={state.mutation.view}
+        isEdit={state.isEdit}
+        canSubmit={state.canSubmit}
+        isOffline={state.isOffline}
+        overallIsNull={state.scoresState.overall === null}
+        onSubmit={state.handleSubmit}
+      />
     </div>
   );
 }

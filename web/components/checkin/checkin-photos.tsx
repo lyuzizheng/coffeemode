@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef } from "react";
+import { toast } from "@heroui/react";
 import { useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { isUnauthorized } from "@/lib/http";
@@ -73,9 +74,14 @@ export function CheckinPhotos({
         onRequireSignIn?.();
         return;
       }
+      // The 10 MB cap is communicated only on violation (artifact §3.5): a
+      // toast names the reason; the tile still gets its retry affordance.
+      if (cause instanceof Error && cause.message === "photo_too_large") {
+        toast(t("photoTooLarge"), { timeout: 4000 });
+      }
       updateEntry(id, { status: "error" });
     },
-    [updateEntry, onRequireSignIn],
+    [updateEntry, onRequireSignIn, t],
   );
 
   const handleFiles = useCallback(

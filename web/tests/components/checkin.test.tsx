@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CheckinSlider } from "@/components/checkin/checkin-slider";
 import { CheckinDrawer, resolveRevisitCheckin } from "@/components/checkin/checkin-drawer";
+import { resolveDetentRelease } from "@/components/checkin/use-drawer-detents";
 import messages from "../../messages/en.json";
 // The real hook pings /api/health on an interval through a module-level
 // singleton; the fetch mocks below would flip tests offline mid-run.
@@ -104,6 +105,23 @@ describe("CheckinSlider", () => {
     fireEvent.pointerMove(window, { clientX: 40 });
     fireEvent.pointerMove(window, { clientX: 50 });
     expect(vibrate).toHaveBeenCalledTimes(1);
+    fireEvent.pointerUp(window);
+
+    vi.restoreAllMocks();
+  });
+
+  it("pulses the thumb on first touch (DG69)", () => {
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
+      left: 0, width: 100, top: 0, right: 100, bottom: 10, height: 10, x: 0, y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    render(<CheckinSlider label="Wifi" value={null} onChange={() => {}} />, { wrapper: Wrapper });
+    const slider = screen.getByRole("slider", { name: "Wifi" });
+
+    expect(slider.querySelector(".checkin-thumb-pulse")).toBeNull();
+    fireEvent.pointerDown(slider, { clientX: 30, pointerId: 1 });
+    expect(slider.querySelector(".checkin-thumb-pulse")).not.toBeNull();
     fireEvent.pointerUp(window);
 
     vi.restoreAllMocks();
@@ -382,7 +400,176 @@ describe("CheckinDrawer", () => {
     );
     expect(posts[0].idempotency_key).not.toBe(firstKey);
   });
+
+  it("shows the DG92 prompt caption only when the caller opts in", () => {
+    const { unmount } = render(
+      <CheckinDrawer
+        isOpen
+        onOpenChange={() => {}}
+        cafeId={CAFE}
+        cafeName="Kiosk"
+        isAuthenticated
+      />,
+      { wrapper: Wrapper },
+    );
+    expect(
+      screen.queryByText("Check in — help the next nomad pick their spot!"),
+    ).not.toBeInTheDocument();
+    unmount();
+
+    render(
+      <CheckinDrawer
+        isOpen
+        onOpenChange={() => {}}
+        cafeId={CAFE}
+        cafeName="Kiosk"
+        isAuthenticated
+        promptCaption
+      />,
+      { wrapper: Wrapper },
+    );
+    expect(
+      screen.getByText("Check in — help the next nomad pick their spot!"),
+    ).toBeInTheDocument();
+  });
+
+  it("pads the footer by the bottom safe-area inset (DG75)", () => {
+    renderDrawer({ isAuthenticated: true });
+    const footer = document.querySelector('[data-slot="drawer-footer"]');
+    expect(footer?.className).toContain("safe-area-inset-bottom");
+  });
+
+  it("invalidates the persisted cafes-list key on submit (BRAWUKA-121)", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      </NextIntlClientProvider>
+    );
+    globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return Promise.resolve({ ok: true, status: 201, json: async () => ({ checkinId: CHECKIN }) });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({ checkin: null, revisitWindowHours: 24 }),
+      });
+    });
+
+    render(
+      <CheckinDrawer
+        isOpen
+        onOpenChange={() => {}}
+        cafeId={CAFE}
+        cafeName="Kiosk"
+        isAuthenticated
+      />,
+      { wrapper },
+    );
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Overall experience" }), {
+      key: "ArrowRight",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Check in" }));
+
+    await waitFor(() => {
+      expect(invalidate).toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: ["cafes-list"] }),
+      );
+    });
+  });
+
+  it("holds the success card for the spec's 900ms before closing (artifact §4)", async () => {
+    vi.useFakeTimers();
+    try {
+      globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+        if (init?.method === "POST") {
+          return Promise.resolve({ ok: true, status: 201, json: async () => ({ checkinId: CHECKIN }) });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ checkin: null, revisitWindowHours: 24 }),
+        });
+      });
+      const onOpenChange = renderDrawer({ isAuthenticated: true });
+
+      fireEvent.keyDown(screen.getByRole("slider", { name: "Overall experience" }), {
+        key: "ArrowRight",
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Check in" }));
+
+      // Flush the POST microtasks so the success view mounts and the dwell
+      // timer starts.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(screen.getByText("Checked in")).toBeInTheDocument();
+
+      await vi.advanceTimersByTimeAsync(899);
+      expect(onOpenChange).not.toHaveBeenCalledWith(false);
+      await vi.advanceTimersByTimeAsync(2);
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("echoes submitted dimensions as mini WorkBars in the success card (artifact §4)", async () => {
+    globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return Promise.resolve({ ok: true, status: 201, json: async () => ({ checkinId: CHECKIN }) });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({ checkin: null, revisitWindowHours: 24 }),
+      });
+    });
+    renderDrawer({ isAuthenticated: true });
+
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Wifi" }), { key: "End" });
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Overall experience" }), {
+      key: "ArrowRight",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Check in" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Checked in")).toBeInTheDocument();
+    });
+    // The form unmounted, so this "Wifi" label is the mini bar echoing the
+    // submitted value — not the slider row.
+    expect(screen.getByText("Wifi")).toBeInTheDocument();
+    expect(screen.getByText("100")).toBeInTheDocument();
+  });
 });
+
+describe("resolveDetentRelease (DG70)", () => {
+  const base = { translate: 0, height: 300, velocity: 0, naturalHeight: 300, maxHeight: 736 };
+
+  it("dismisses past the 30% fraction or on a fast downward flick", () => {
+    expect(
+      resolveDetentRelease({ ...base, translate: 100, height: 300 }),
+    ).toBe("dismiss");
+    expect(
+      resolveDetentRelease({ ...base, translate: 10, velocity: 0.6 }),
+    ).toBe("dismiss");
+  });
+
+  it("snaps back to the content detent on a small downward drag", () => {
+    expect(resolveDetentRelease({ ...base, translate: 10 })).toBe("collapse");
+  });
+
+  it("expands on an upward flick and collapses on a downward one", () => {
+    expect(resolveDetentRelease({ ...base, velocity: -0.6 })).toBe("expand");
+    expect(resolveDetentRelease({ ...base, velocity: 0.6 })).toBe("collapse");
+  });
+
+  it("settles on the nearer detent when released slowly", () => {
+    expect(resolveDetentRelease({ ...base, height: 600 })).toBe("expand");
+    expect(resolveDetentRelease({ ...base, height: 400 })).toBe("collapse");
+  });
+});
+
 
 describe("resolveRevisitCheckin", () => {
   const NOW = new Date("2026-09-07T12:00:00.000Z").getTime();

@@ -39,26 +39,6 @@ export function cafeShellCacheControl(policy: CafeShellCachePolicy): string {
   );
 }
 
-interface CafeShellResponseSignal {
-  /** Final response status (404 for the gone-cafe surface). */
-  status: number;
-  /** True when the response carries Set-Cookie (session refresh). */
-  setCookiePresent: boolean;
-}
-
-/**
- * Per-response bypass decision. True = MUST NOT be shared-cached: the proxy
- * stamps {@link CAFE_SHELL_BYPASS_CACHE_CONTROL} and the edge rule bypasses.
- */
-export function shouldBypassCafeShellCache(
-  policy: CafeShellCachePolicy,
-  signal: CafeShellResponseSignal,
-): boolean {
-  if (!policy.cacheableStatuses.includes(signal.status)) return true;
-  if (policy.bypassOnSetCookieResponse && signal.setCookiePresent) return true;
-  return false;
-}
-
 interface CafeShellCdnRules {
   scope: { paths: string[] };
   cacheable: {

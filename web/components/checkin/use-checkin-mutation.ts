@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "@heroui/react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -60,20 +60,28 @@ function useSubmitMutation({
 }) {
   const t = useTranslations("checkIn");
   const queryClient = useQueryClient();
+  const closeTimerRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(closeTimerRef.current);
+    };
+  }, []);
 
   return useMutation({
     mutationFn: async (params: SubmitCheckinParams) => {
       const uploadedIds = await uploadPendingPhotos();
       if (isEdit && editCheckinId) {
-        return updateCheckin({
+        await updateCheckin({
           editCheckinId,
           scores: params.scores,
           maxStay: params.maxStay,
           note: params.note,
           fallbackErrorMessage: t("couldntSave"),
         });
+        return { photosDropped: false };
       }
-      return createCheckin({
+      const { convertedToEdit } = await createCheckin({
         cafeId,
         idempotencyKey,
         scores: params.scores,
@@ -82,20 +90,24 @@ function useSubmitMutation({
         uploadedIds,
         fallbackErrorMessage: t("couldntSave"),
       });
+      // A raced 409 silently converts to PATCH, which carries no photos —
+      // the uploaded ids are orphaned and the user must be told (BRAWUKA-126).
+      return { photosDropped: convertedToEdit && uploadedIds.length > 0 };
     },
     onMutate: () => {
       setView("submitting");
       setError(null);
       setFailedAction(null);
     },
-    onSuccess: () => {
+    onSuccess: ({ photosDropped }) => {
       setView("success");
       // Benign: clearing consumed draft from IndexedDB is best-effort; failures in private mode are ignored.
       void clearPendingCheckin().catch(() => {});
       invalidateCheckinQueries(queryClient, cafeId);
-      setTimeout(() => {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = window.setTimeout(() => {
         onClose();
-        toast(t("saved"), { timeout: 3000 });
+        toast(photosDropped ? t("savedWithoutPhotos") : t("saved"), { timeout: 3000 });
       }, 1200);
     },
     onError: (err) => {

@@ -50,10 +50,38 @@ export const spring = {
   soft: { type: "spring", stiffness: 180, damping: 26 },
 } as const satisfies Record<string, Transition>;
 
+/** Named choreography delays — absolute offsets and per-index steps for
+ * multi-element sequences. Keep per-site delay literals out of components. */
+export const stagger = {
+  /** Check-in success: two steam puffs, then title, then cafe name. */
+  checkinSuccess: { steamA: 0.15, steamB: 0.23, title: 0.2, cafeName: 0.3 },
+  /** Theme-preview hero poster: score card, then its score bar fill. */
+  heroPoster: { card: 0.12, scoreBar: 0.2 },
+  /** WorkProfile bars: per-row delay step. */
+  workProfile: { step: 0.04 },
+} as const;
+
+/** Looping ambient motion — decorative, always gated behind reduced-motion. */
+export const ambient = {
+  /** Coffee steam wisps: looping rise-and-fade, `step` offsets each wisp. */
+  steam: {
+    step: 0.1,
+    transition: {
+      duration: 0.4,
+      repeat: Infinity,
+      repeatType: "loop",
+      ease: ease.default,
+    },
+  },
+} as const satisfies Record<string, { step: number; transition: Transition }>;
+
 /** Card hover/press — the CoffeeMode "alive" feel. Lift a hair, press a hair. */
 export const cardInteraction = {
   whileHover: { y: -2, transition: { duration: duration.feedback, ease: ease.default } },
   whileTap: { scale: 0.985, transition: { duration: duration.feedback, ease: ease.default } },
+  /** Active/inactive affordance for selectable cards (peek strip §8). */
+  active: { scale: 1.02, opacity: 1 },
+  inactive: { scale: 1, opacity: 0.6 },
 } as const;
 
 export { useEnterMotion };

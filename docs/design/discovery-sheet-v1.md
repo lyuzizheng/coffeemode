@@ -282,7 +282,7 @@ HALF on 768×1024 and 1024×768; handle stays reachable with the sheet at FULL.
 - **Feed refresh/pagination failure** (DG17): previous content stays. Inline
   row at the failed section: warning glyph + `Couldn't load check-ins`
   (`text-sm`) + outline `Retry` button (`accent` text/border), fading in on
-  `duration.state` (`ease.default`, inside the `settle.state` ≤300ms ceiling).
+  `ease.fade` (inside the `settle.state` ≤300ms ceiling).
 - **Missing cafe in-app** (DG19): selection clears, URL replaces to `/`,
   sheet returns to PEEK, and a HeroUI toast slides up: neutral `overlay`
   surface, foreground text `This cafe is no longer available`, 4s, no icon

@@ -3,7 +3,7 @@
 import { Button } from "@heroui/react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
-import { duration, ease, useEnterMotion } from "@/lib/motion";
+import { ambient, duration, ease, useEnterMotion } from "@/lib/motion";
 import { useMounted } from "@/hooks/use-mounted";
 import { DEMO_SCORE, Section } from "../shared";
 
@@ -43,11 +43,8 @@ function CoffeeSteam() {
           initial={{ opacity: 0, y: 1 }}
           animate={{ opacity: [0, 0.5, 0], y: [0, -3, -6] }}
           transition={{
-            duration: 0.4,
-            repeat: Infinity,
-            repeatType: "loop",
-            delay: i * 0.1,
-            ease: ease.default,
+            ...ambient.steam.transition,
+            delay: i * ambient.steam.step,
           }}
         />
       ))}

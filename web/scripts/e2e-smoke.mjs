@@ -29,6 +29,7 @@ import {
   DEFAULT_DATABASE_URL,
 } from "./lib/e2e-fixtures.mjs";
 import {
+  reportServerRenderErrors,
   getFreePort,
   spawnStandaloneServer,
   waitForServer,
@@ -107,11 +108,9 @@ async function runSmokeSuite() {
     serverProcess.stdout.on("data", (d) => {
       process.stdout.write(`[Next.js Server] ${d.toString()}`);
     });
-    serverProcess.stderr.on("data", (d) => {
-      const s = d.toString();
-      if (!s.includes("ExperimentalWarning")) {
-        process.stderr.write(`[Next.js Server ERROR] ${s}`);
-      }
+    reportServerRenderErrors(serverProcess, {
+      failures,
+      onLine: (text) => process.stderr.write(`[Next.js Server ERROR] ${text}`),
     });
   }
 

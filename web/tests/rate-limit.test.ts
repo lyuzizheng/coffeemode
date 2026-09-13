@@ -2,15 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as searchGET } from "@/app/api/places/search/route";
 import {
   checkRateLimit,
-  IMAGE_RATE_LIMIT,
-  PLACES_RATE_LIMIT,
-  PROFILE_READ_RATE_LIMIT,
   RateLimiter,
-  SEARCH_RATE_LIMITS,
   getClientIdentifier,
   rateLimitResponse,
   rateLimiter,
 } from "@/lib/rate-limit";
+import { rateLimitBuckets, rateLimitConfig } from "@/lib/config";
 
 const WORKER_URL = "https://poi-service.test.workers.dev";
 const TOKEN = "s3cret-token";
@@ -183,11 +180,12 @@ describe("Route rate limiting", () => {
     fetchMock.mockResolvedValue(jsonResponse({ results: [] }));
 
     // Exhaust the anonymous places bucket.
-    for (let i = 0; i < PLACES_RATE_LIMIT.maxRequests; i++) {
+    const placesLimit = rateLimitConfig("places");
+    for (let i = 0; i < placesLimit.maxRequests; i++) {
       await rateLimiter.check(
         `places:${getClientIdentifier(new Request("https://localhost/api/places/search?q=x"), null)}`,
-        PLACES_RATE_LIMIT.windowMs,
-        PLACES_RATE_LIMIT.maxRequests,
+        placesLimit.windowMs,
+        placesLimit.maxRequests,
       );
     }
 
@@ -200,9 +198,9 @@ describe("Route rate limiting", () => {
   });
 });
 
-it("exports sensible image and places rate-limit defaults", () => {
-  expect(IMAGE_RATE_LIMIT).toEqual({ windowMs: 60_000, maxRequests: 10 });
-  expect(PLACES_RATE_LIMIT).toEqual({ windowMs: 60_000, maxRequests: 30 });
+it("reads image and places rate-limit defaults from rate-limits.yaml (DG74/DG107)", () => {
+  expect(rateLimitConfig("images")).toEqual({ windowMs: 60_000, maxRequests: 10 });
+  expect(rateLimitConfig("places")).toEqual({ windowMs: 60_000, maxRequests: 30 });
 });
 
 describe("checkRateLimit multi-window", () => {
@@ -243,11 +241,11 @@ describe("checkRateLimit multi-window", () => {
     await expect(checkRateLimit("search", "test-client-empty", [])).rejects.toThrow("unreachable");
   });
 
-it("exports search + profile rate-limit defaults (DG129, #216)", () => {
-  expect(SEARCH_RATE_LIMITS).toEqual([
+it("reads search + profile rate-limit defaults from rate-limits.yaml (DG129, #216)", () => {
+  expect(rateLimitBuckets("search")).toEqual([
     { windowMs: 60_000, maxRequests: 30 },
     { windowMs: 3_600_000, maxRequests: 100 },
     { windowMs: 86_400_000, maxRequests: 200 },
   ]);
-  expect(PROFILE_READ_RATE_LIMIT).toEqual({ windowMs: 60_000, maxRequests: 30 });
+  expect(rateLimitConfig("profile-read")).toEqual({ windowMs: 60_000, maxRequests: 30 });
 });

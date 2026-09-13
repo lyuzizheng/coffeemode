@@ -7,7 +7,6 @@ import {
   CAFE_SHELL_BYPASS_CACHE_CONTROL,
   cafeShellCacheControl,
   cafeShellCdnRules,
-  shouldBypassCafeShellCache,
 } from "@/lib/cache-policy";
 import { appConfig, parseAppConfig } from "@/lib/config";
 import { proxy } from "@/proxy";
@@ -38,28 +37,6 @@ describe("cafe shell cache policy (single source)", () => {
     expect(cafeShellCacheControl(appConfig.seo.shellCache)).toBe(
       "public, s-maxage=600, stale-while-revalidate=3600",
     );
-  });
-
-  it("keeps the cacheable case cacheable", () => {
-    expect(
-      shouldBypassCafeShellCache(appConfig.seo.shellCache, {
-        status: 200,
-        setCookiePresent: false,
-      }),
-    ).toBe(false);
-  });
-
-  it("bypasses Set-Cookie responses and non-cacheable statuses", () => {
-    const policy = appConfig.seo.shellCache;
-    expect(
-      shouldBypassCafeShellCache(policy, { status: 200, setCookiePresent: true }),
-    ).toBe(true);
-    expect(
-      shouldBypassCafeShellCache(policy, { status: 404, setCookiePresent: false }),
-    ).toBe(true);
-    expect(
-      shouldBypassCafeShellCache(policy, { status: 500, setCookiePresent: false }),
-    ).toBe(true);
   });
 
   it("declares locales uncacheable across each other (DG110)", () => {

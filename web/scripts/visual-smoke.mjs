@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { auditPageContrast, formatContrastOffenders } from "./lib/contrast-audit.mjs";
 import {
+  reportServerRenderErrors,
   getFreePort,
   spawnStandaloneServer,
   waitForServer,
@@ -94,17 +95,21 @@ async function runVisualSmoke() {
   const port = process.env.VISUAL_PORT ? Number(process.env.VISUAL_PORT) : await getFreePort();
   const base = process.env.VISUAL_BASE_URL ?? `http://127.0.0.1:${port}`;
 
+  const failures = [];
+
   if (!process.env.VISUAL_BASE_URL) {
     serverProcess = spawnStandaloneServer({
       cwd: root,
       port,
+      // stderr only: the server's render errors are invisible to the
+      // browser-side collectors below, so this gate has to read them itself.
+      stdio: ["ignore", "ignore", "pipe"],
       env: {
         DATABASE_URL: dbUrl,
       },
     });
+    reportServerRenderErrors(serverProcess, { failures });
   }
-
-  const failures = [];
 
   try {
     await waitForServer(base);

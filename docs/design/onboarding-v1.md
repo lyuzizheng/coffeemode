@@ -9,7 +9,7 @@
 - Base: `docs/design/discovery-sheet-v1.md` (icon set, tokens);
   `docs/design/seo-sharing-v1.md` (deep-link SSR→app hydration, DG124)
 - Specs: `docs/specs/0001-nextjs-migration.md` §Onboarding & city model;
-  `docs/specs/0002-design-system.md` (signature moments, motion.slow)
+  `docs/specs/0002-design-system.md` (signature moments, `settle.slow`)
 
 Scope: composition of the first-visit welcome card, the geolocation
 permission choreography, and the locate button. Behavior (IP geolocation,
@@ -61,7 +61,7 @@ returns on any device, DG122).
   button label becomes `Locating…` at 60% opacity (no spinner).
 - **Granted**: card dismisses, map centers on the user with the standard
   blue-dot treatment, and the discovery sheet loads nearby cafes. One
-  `motion.slow` (450ms) ease on the map recenter — the single celebratory
+  `settle.slow` (≤450ms) recenter — the single celebratory
   beat, and it is spatial, not decorative. Exception (DG119): if the user
   has panned the map since the card appeared, there is no recenter — the
   blue dot simply appears where they are looking; their expressed spatial

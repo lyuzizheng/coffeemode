@@ -12,7 +12,7 @@
 import { motion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { SparkleIcon } from "@/components/icons";
-import { spring, useEnterMotion } from "@/lib/motion";
+import { spring, stagger, useEnterMotion } from "@/lib/motion";
 import { COMPOSITE_DIMS, type WorkStats } from "@/lib/stats/work-stats";
 import { MAX_STAY_VALUES, type MaxStay } from "@/types/checkins";
 import { dimMean, policyConsensus } from "@/lib/discovery/view-model";
@@ -135,7 +135,7 @@ export function WorkProfile({ stats, animated = true }: { stats: WorkStats; anim
                           animate: { width: `${mean}%` },
                           transition: {
                             ...spring.gentle,
-                            delay: i * 0.04,
+                            delay: i * stagger.workProfile.step,
                           },
                         }
                       : { initial: false, style: { width: `${mean}%` } })}

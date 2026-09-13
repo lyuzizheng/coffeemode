@@ -5,7 +5,7 @@ export type ImageTargetType = "cafe" | "checkin";
  * `checkins.photos`. Lets the gallery query hide photos whose source check-in
  * has been soft-deleted (spec 0001, 0004).
  */
-export interface StoredImageSource {
+interface StoredImageSource {
   type: ImageTargetType;
   id: string;
 }

@@ -20,6 +20,17 @@ import { MERGE_GALLERY_SQL, photosWithSource } from "./gallery";
 const CAFE_EXISTS_SQL = "select id from cafes where id = $1 and deleted_at is null";
 
 /**
+ * BRAWUKA-125: serialize concurrent creates for the same user+cafe.
+ * Transaction-scoped (`pg_advisory_xact_lock` releases on commit/rollback,
+ * safe under pooling — never `pg_advisory_lock`). First statement in the
+ * transaction so a waiter holds no other lock (no deadlock cycle). A
+ * `hashtext` collision only over-serializes unrelated pairs, never misses.
+ * The waiter then re-reads committed rows (READ COMMITTED per-statement
+ * snapshot) and hits the DG64 window check → DuplicateCheckInError.
+ */
+const ACQUIRE_CREATE_LOCK_SQL = "select pg_advisory_xact_lock(hashtext($1 || ':' || $2))";
+
+/**
  * DG64 windowed existence check: the caller's latest live check-in for this
  * cafe inside the revisit window, if any. Runs inside the createCheckIn
  * transaction (after the cafe gate, before the insert) so a raced second
@@ -111,6 +122,8 @@ export async function createCheckIn(
   const provisioned = await provisionPhotos(userId, photoIds, deps);
 
   return withTransaction(async (client) => {
+    // BRAWUKA-125: must be the first statement — waiters hold no other lock.
+    await client.query(ACQUIRE_CREATE_LOCK_SQL, [userId, input.cafe_id]);
     const cafe = await client.query<{ id: string }>(CAFE_EXISTS_SQL, [input.cafe_id]);
     if (!cafe.rows[0]) throw new CafeNotFoundError(input.cafe_id);
 

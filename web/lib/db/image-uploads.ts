@@ -5,10 +5,9 @@ import { query, type TxQueryFn } from "./postgres";
 
 /**
  * Minimal query-fn shape so consume can run on a transaction connection.
- * Canonical shape lives in `./postgres` (spec 0009 §Edge cases 6);
- * this alias keeps existing imports working.
+ * Canonical shape lives in `./postgres` (spec 0009 §Edge cases 6).
  */
-export type IntentQueryFn = TxQueryFn;
+type IntentQueryFn = TxQueryFn;
 
 /**
  * Upload intents (issue #33): bind a presigned imageUuid to the user it

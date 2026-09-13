@@ -22,11 +22,6 @@ export const MAX_STAY_VALUES = [
 
 export type MaxStay = (typeof MAX_STAY_VALUES)[number];
 
-/** Policy answers recorded on a check-in. `unknown` is an explicit answer. */
-export interface CheckInPolicy {
-  max_stay?: MaxStay;
-}
-
 /** A row in the `checkins` table (every review is a check-in). */
 export interface CheckIn {
   id: string;

@@ -12,6 +12,7 @@ import { getQueryClient } from "@/lib/query/client";
 import { persistOptions } from "@/lib/query/persist-options";
 import { idbPersister } from "@/lib/query/persister";
 import { SW_URL } from "@/lib/sw-rules";
+import { TIME_ZONE } from "@/i18n/config";
 
 export function Providers({
   children,
@@ -34,8 +35,12 @@ export function Providers({
     queryClient.clear();
   }, [queryClient]);
 
+  // `timeZone` is required: client components using next-intl render on the
+  // server too, and without it use-intl logs IntlError(ENVIRONMENT_FALLBACK) on
+  // every request (BRAWUKA-214). It comes from the same constant as the server
+  // request config, so the two cannot drift apart.
   return (
-    <NextIntlClientProvider locale={locale} messages={messages}>
+    <NextIntlClientProvider locale={locale} messages={messages} timeZone={TIME_ZONE}>
       <PersistQueryClientProvider
         client={queryClient}
         persistOptions={persistOptions}

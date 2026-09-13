@@ -374,6 +374,7 @@ describe("createCheckIn", () => {
   it("skips provisioning, photo writes, and the gallery merge when the check-in has no photos", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
     clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ lock: 1 }] }) // BRAWUKA-125 advisory xact lock
       .mockResolvedValueOnce({ rows: [{ id: CAFE }] }) // in-tx cafe gate
       .mockResolvedValueOnce({ rows: [] }) // revisit window: no live check-in
       .mockResolvedValueOnce({ rows: [{ id: CHECKIN }] }) // insert
@@ -382,7 +383,7 @@ describe("createCheckIn", () => {
       .mockResolvedValueOnce({ rows: [] });
 
     await createCheckIn(USER.id, validInput({ photo_ids: undefined }));
-    expect(clientQueryMock).toHaveBeenCalledTimes(6);
+    expect(clientQueryMock).toHaveBeenCalledTimes(7);
     expect(provisionDeps.checkUploadIntent).not.toHaveBeenCalled();
     expect(provisionDeps.consumeUploadIntent).not.toHaveBeenCalled();
     for (const call of clientQueryMock.mock.calls) {
@@ -405,6 +406,7 @@ describe("createCheckIn", () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
     provisionDeps.consumeUploadIntent.mockResolvedValue(false);
     clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ lock: 1 }] }) // BRAWUKA-125 advisory xact lock
       .mockResolvedValueOnce({ rows: [{ id: CAFE }] }) // in-tx cafe gate
       .mockResolvedValueOnce({ rows: [] }) // revisit window: no live check-in
       .mockResolvedValueOnce({ rows: [{ id: CHECKIN }] }); // insert
@@ -412,12 +414,13 @@ describe("createCheckIn", () => {
     const err = await createCheckIn(USER.id, validInput()).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(PhotoIntentError);
     // Nothing past the insert: no photo write, no gallery merge, no stats.
-    expect(clientQueryMock).toHaveBeenCalledTimes(3);
+    expect(clientQueryMock).toHaveBeenCalledTimes(4);
   });
 
   it("rejects a second create inside the revisit window without inserting (DG64)", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
     clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ lock: 1 }] }) // BRAWUKA-125 advisory xact lock
       .mockResolvedValueOnce({ rows: [{ id: CAFE }] }) // in-tx cafe gate
       .mockResolvedValueOnce({ rows: [{ id: CHECKIN }] }); // window hit: live check-in
 
@@ -426,8 +429,8 @@ describe("createCheckIn", () => {
     );
     expect(err).toBeInstanceOf(DuplicateCheckInError);
     expect((err as DuplicateCheckInError).existingCheckinId).toBe(CHECKIN);
-    // The window check runs before the insert: two statements, no insert.
-    expect(clientQueryMock).toHaveBeenCalledTimes(2);
+    // Lock + gate + window check, no insert.
+    expect(clientQueryMock).toHaveBeenCalledTimes(3);
     for (const call of clientQueryMock.mock.calls) {
       expect(call[0]).not.toContain("insert into checkins");
     }
@@ -618,6 +621,7 @@ describe("POST /api/checkins", () => {
   it("409s duplicate_checkin with the existing id when inside the revisit window (DG64)", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
     clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ lock: 1 }] }) // BRAWUKA-125 advisory xact lock
       .mockResolvedValueOnce({ rows: [{ id: CAFE }] }) // in-tx cafe gate
       .mockResolvedValueOnce({ rows: [{ id: CHECKIN }] }); // window hit
     const res = await checkinPOST(postRequest(url, validBody({ photo_ids: undefined })));

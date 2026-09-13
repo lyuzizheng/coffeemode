@@ -62,6 +62,12 @@ export interface UseCheckinFormStateOptions {
   lastCheckinLoaded?: boolean;
   onClose: () => void;
   onDirtyChange: (dirty: boolean) => void;
+  /**
+   * Reports the staged photo count synchronously from inside the photo
+   * setter — the drawer's preempt check runs on render and cannot wait for
+   * an effect to learn photos were just staged (BRAWUKA-126).
+   */
+  onStagedPhotosChange?: (count: number) => void;
 }
 
 function useCheckinLifecycle({

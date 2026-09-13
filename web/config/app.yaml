@@ -64,6 +64,13 @@ cafes:
 feed:
   # Check-in feed page size for both Helpful and Newest modes (spec 0001).
   pageSize: 20
+  # Daily time-decayed Helpful ranking snapshot (DG148, #140): score =
+  # likes_count × 0.5^(age_days / halfLifeDays), age from visited_at.
+  # Superseded snapshot runs older than snapshotRetentionDays are deleted
+  # on publish.
+  helpful:
+    halfLifeDays: 14
+    snapshotRetentionDays: 7
 discovery:
   # Map-independent fallback center for the nearby-cafes query (DG112: no
   # geolocation prompt in discovery; the locate button is the

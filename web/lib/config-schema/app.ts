@@ -36,8 +36,17 @@ function parseCafesSection(file: string, value: unknown): AppConfig["cafes"] {
 
 function parseFeedSection(file: string, value: unknown): AppConfig["feed"] {
   const feed = record(file, "feed", value);
+  const helpful = record(file, "feed.helpful", feed.helpful);
   return {
     pageSize: positiveNumber(file, "feed.pageSize", feed.pageSize),
+    helpful: {
+      halfLifeDays: positiveNumber(file, "feed.helpful.halfLifeDays", helpful.halfLifeDays),
+      snapshotRetentionDays: positiveNumber(
+        file,
+        "feed.helpful.snapshotRetentionDays",
+        helpful.snapshotRetentionDays,
+      ),
+    },
   };
 }
 

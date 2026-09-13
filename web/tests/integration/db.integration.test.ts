@@ -2204,6 +2204,97 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(reOptedIn.publicHandle).toBe("alex-custom");
       expect(reOptedIn.identityConsentedAt).not.toBeNull();
     });
+    it("applies a publicHandle sent in the same request as opt-out (spec 0006)", async () => {
+      const userA = randomUUID();
+      await dbClient.query(
+        "insert into profiles (id, display_name) values ($1, 'Alex Nomad')",
+        [userA],
+      );
+      // Opt-in with an auto-generated handle: public_handle_changed_at stays
+      // null, so the first user-chosen edit is permitted immediately.
+      const optedIn = await updateProfileIdentity(userA, {
+        showPublicIdentity: true,
+      });
+      expect(optedIn.identityConsentedAt).not.toBeNull();
+      expect(optedIn.publicHandleChangedAt).toBeNull();
+
+      // Opt-out carrying a new handle: handle is still validated and applied —
+      // handle management is independent of the consent flag.
+      const optedOut = await updateProfileIdentity(userA, {
+        showPublicIdentity: false,
+        publicHandle: "alex-offline",
+      });
+      expect(optedOut.showPublicIdentity).toBe(false);
+      expect(optedOut.publicHandle).toBe("alex-offline");
+      expect(optedOut.identityConsentedAt).toBeNull();
+      expect(optedOut.publicHandleChangedAt).not.toBeNull();
+
+      const dbRow = await dbClient.query(
+        "select show_public_identity, public_handle, identity_consented_at, public_handle_changed_at from profiles where id = $1",
+        [userA],
+      );
+      expect(dbRow.rows[0].show_public_identity).toBe(false);
+      expect(dbRow.rows[0].public_handle).toBe("alex-offline");
+      expect(dbRow.rows[0].identity_consented_at).toBeNull();
+      expect(dbRow.rows[0].public_handle_changed_at).not.toBeNull();
+    });
+
+    it("rejects an invalid publicHandle sent with opt-out and leaves consent untouched", async () => {
+      const userA = randomUUID();
+      await dbClient.query(
+        "insert into profiles (id, display_name) values ($1, 'Alex Nomad')",
+        [userA],
+      );
+      await updateProfileIdentity(userA, {
+        showPublicIdentity: true,
+        publicHandle: "alex-custom",
+      });
+
+      await expect(
+        updateProfileIdentity(userA, {
+          showPublicIdentity: false,
+          publicHandle: "Invalid-Format!",
+        }),
+      ).rejects.toThrow(InvalidHandleError);
+
+      // Validation throws before the write: the opt-out is not applied either.
+      const dbRow = await dbClient.query(
+        "select show_public_identity, public_handle, identity_consented_at from profiles where id = $1",
+        [userA],
+      );
+      expect(dbRow.rows[0].show_public_identity).toBe(true);
+      expect(dbRow.rows[0].public_handle).toBe("alex-custom");
+      expect(dbRow.rows[0].identity_consented_at).not.toBeNull();
+    });
+
+    it("enforces the 7-day cooldown on a publicHandle sent with opt-out", async () => {
+      const userA = randomUUID();
+      await dbClient.query(
+        "insert into profiles (id, display_name) values ($1, 'Alex Nomad')",
+        [userA],
+      );
+      // User-chosen handle stamps public_handle_changed_at; a second change
+      // inside 7 days is rejected even when the request also opts out.
+      await updateProfileIdentity(userA, {
+        showPublicIdentity: true,
+        publicHandle: "alex-custom",
+      });
+
+      await expect(
+        updateProfileIdentity(userA, {
+          showPublicIdentity: false,
+          publicHandle: "alex-offline",
+        }),
+      ).rejects.toThrow(HandleChangeTooSoonError);
+
+      const dbRow = await dbClient.query(
+        "select show_public_identity, public_handle, identity_consented_at from profiles where id = $1",
+        [userA],
+      );
+      expect(dbRow.rows[0].show_public_identity).toBe(true);
+      expect(dbRow.rows[0].public_handle).toBe("alex-custom");
+      expect(dbRow.rows[0].identity_consented_at).not.toBeNull();
+    });
   });
   describeDb("BRAWUKA-180 split-module backfill on real SQL", () => {
     function fakeStoredImage(by: string): StoredImage {

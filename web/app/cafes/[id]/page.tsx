@@ -122,7 +122,7 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
       <header className="flex items-center justify-between px-4 py-4 sm:px-6">
         <Link
           href="/"
-          className="font-display text-md font-extrabold tracking-tight text-foreground"
+          className="-my-2.5 inline-flex min-h-11 items-center font-display text-md font-extrabold tracking-tight text-foreground"
         >
           {APP_NAME}
         </Link>

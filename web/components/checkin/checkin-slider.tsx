@@ -107,18 +107,18 @@ export function CheckinSlider({
           tabIndex={disabled ? -1 : 0}
           onKeyDown={handleKeyDown}
           onPointerDown={handlePointerDown}
-          className={`relative h-7 flex-1 select-none rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+          className={`relative -my-2 h-11 flex-1 select-none rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
             disabled ? "opacity-60" : "cursor-pointer"
           }`}
         >
           {/* Track */}
           <div
-            className="absolute inset-y-2 left-0 right-0 rounded-full bg-surface-tertiary"
+            className="absolute inset-y-4 left-0 right-0 rounded-full bg-surface-tertiary"
           />
           {/* Fill */}
           {isSet && (
             <div
-              className="absolute inset-y-2 left-0 rounded-full bg-accent transition-[width] duration-75"
+              className="absolute inset-y-4 left-0 rounded-full bg-accent transition-[width] duration-75"
               style={{ width: `${value}%` }}
             />
           )}
@@ -138,7 +138,7 @@ export function CheckinSlider({
             type="button"
             aria-label={t("clear", { label })}
             onClick={onClear}
-            className="flex h-7 w-7 items-center justify-center rounded-full text-muted hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="flex h-11 w-11 -my-2 items-center justify-center rounded-full text-muted hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             <svg width={12} height={12} viewBox="0 0 12 12" aria-hidden>
               <path d="M2 2l8 8M10 2L2 10" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" />

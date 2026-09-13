@@ -32,13 +32,18 @@ export function CheckinRepeatBanner({
     <div className="flex items-center justify-between rounded-md bg-surface-secondary p-3">
       <span className="text-sm">{t("lastVisit", { date: formatLastVisit(lastCheckin.visited_at, locale) })}</span>
       <div className="flex items-center gap-2">
-        <Button variant="primary" size="sm" onPress={onApplySame} className="h-7 rounded-sm px-3 text-xs">
+        <Button variant="primary" size="sm" onPress={onApplySame} className="-my-2 rounded-sm px-3 text-xs">
           {t("same")}
         </Button>
-        <Button variant="ghost" size="sm" onPress={onDismiss} className="h-7 rounded-sm px-3 text-xs">
+        <Button variant="ghost" size="sm" onPress={onDismiss} className="-my-2 rounded-sm px-3 text-xs">
           {t("new")}
         </Button>
-        <button type="button" onClick={onDismiss} className="ml-1 text-muted hover:text-foreground" aria-label={t("dismiss")}>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="-m-2 ml-1 flex h-11 w-11 items-center justify-center text-muted hover:text-foreground"
+          aria-label={t("dismiss")}
+        >
           ×
         </button>
       </div>

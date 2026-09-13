@@ -149,7 +149,7 @@ export function PublicIdentityToggle({
               }}
               autoFocus
               placeholder={t("public_handle_placeholder")}
-              className="w-full rounded-md border border-accent bg-surface-secondary px-2 py-1 text-sm text-foreground outline-none"
+              className="w-full rounded-md border border-accent bg-surface-secondary px-2 py-1 min-h-11 text-sm text-foreground outline-none"
             />
           ) : (
             <span className="truncate text-sm text-muted">
@@ -177,7 +177,7 @@ export function PublicIdentityToggle({
             onClick={() => setHandleDraft(profile.publicHandle ?? "")}
             disabled={pending}
             aria-label={t("public_handle_label")}
-            className="shrink-0 rounded-full p-1 text-muted transition-all hover:text-foreground active:scale-95"
+            className="-m-2.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted transition-all hover:text-foreground active:scale-95"
           >
             <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M11.5 2.5a1.5 1.5 0 0 1 2 2L4.5 13.5l-3 0.5 0.5-3L11.5 2.5Z" />

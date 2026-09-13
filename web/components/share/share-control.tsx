@@ -101,7 +101,7 @@ export function ShareControl({
         aria-label={t("aria")}
         aria-haspopup="dialog"
         aria-expanded={popoverOpen}
-        className="h-9 w-9 min-w-9 text-muted hover:text-foreground"
+        className="-m-1 h-11 w-11 min-w-11 text-muted hover:text-foreground"
         onPress={handleShare}
       >
         <ShareIcon size={16} />

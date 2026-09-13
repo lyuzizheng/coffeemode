@@ -449,3 +449,106 @@ body {
 .chip {
   border-radius: var(--radius-sm);
 }
+
+/* ----------------------------------------------------------------------------
+   Minimum hit area — BRAWUKA-249 (Apple HIG 44px).
+   Every interactive control's box reaches ≥44px. Where the painted control
+   must stay compact, the box grows via padding/negative margins or an inner
+   visual span — never by shrinking the hit area.
+   ------------------------------------------------------------------------- */
+
+/* HeroUI buttons: base is h-10/md:h-9 (40/36px) — under the 44px floor.
+   Pin the box; compact rows keep their footprint with -my-* on the instance. */
+.button {
+  min-height: 44px;
+}
+.button--icon-only {
+  min-width: 44px;
+}
+
+/* Close buttons (drawer, search-field clear): box reaches 44px. Inside the
+   44px search-field group the painted disc stays compact via padding +
+   background-clip; elsewhere the disc itself grows to 44px. */
+.close-button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.search-field .close-button {
+  padding: 10px;
+  background-clip: content-box;
+}
+
+/* Text inputs and field shells: 36–40px → 44px. The search input itself
+   stretches to the group's height so its own box reaches 44px too. */
+.input,
+.search-field__group,
+.search-field__input,
+.select__trigger {
+  min-height: 44px;
+}
+
+/* HeroUI tabs: tab box 44px with -6px margins so the list keeps its 32px
+   footprint; the pill indicator stays 32px centered. Secondary (underline)
+   variant keeps its own bottom-line indicator and grows to 44px rows. */
+.tabs[data-orientation="horizontal"]:not(.tabs--secondary) .tabs__tab {
+  min-height: 44px;
+  margin-block: -6px;
+}
+.tabs[data-orientation="horizontal"]:not(.tabs--secondary) .tabs__indicator {
+  top: 6px;
+  height: calc(100% - 12px);
+}
+.tabs--secondary[data-orientation="horizontal"] .tabs__tab {
+  min-height: 44px;
+}
+
+/* HeroUI slider thumb: the painted 24×20px thumb stays — padding +
+   background-clip keep the accent plate at content-box size while the grab
+   box reaches 44px tall (React Aria centers it via translate). The thumb's
+   inner input carries role=slider inside a 1px clipped span — unclip it and
+   let the input cover a 44×44 box centered on the thumb. */
+.slider[data-orientation="horizontal"] .slider__thumb {
+  height: 44px;
+  padding-block: 12px;
+  background-clip: content-box;
+}
+.slider__thumb > div:has(> input) {
+  clip: auto !important;
+  clip-path: none !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  overflow: visible !important;
+}
+.slider__thumb input {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  transform: translate(-50%, -50%);
+}
+
+/* HeroUI switch: the real control is a bare checkbox input inside a 1px
+   clipped span inside .switch__content (position: relative). Unclip the span,
+   stretch it to 44px tall centered on the label row, and let the input fill
+   it — appearance:none keeps it unpainted while the box reaches 44px. */
+.switch__content > span:has(> input[role="switch"]) {
+  clip: auto !important;
+  clip-path: none !important;
+  width: 100% !important;
+  height: 44px !important;
+  margin: 0 !important;
+  overflow: visible !important;
+  top: 50% !important;
+  transform: translateY(-50%);
+}
+.switch__content input[role="switch"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  appearance: none;
+}

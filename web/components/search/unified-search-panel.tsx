@@ -151,7 +151,7 @@ export function UnifiedSearchPanel({
           <button
             type="button"
             onClick={retry}
-            className="cm-focus rounded-md border border-border px-3 py-1.5 text-sm text-accent transition-colors hover:bg-surface-secondary"
+            className="cm-focus -my-1.5 inline-flex min-h-11 items-center rounded-md border border-border px-3 text-sm text-accent transition-colors hover:bg-surface-secondary"
           >
             {t("retry")}
           </button>

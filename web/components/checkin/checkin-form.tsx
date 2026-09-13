@@ -27,7 +27,7 @@ function CheckinFormHeader({ cafeName, isEdit }: { cafeName: string; isEdit: boo
   return (
     <Drawer.Header className="shrink-0 border-b border-separator px-4 py-3">
       <Drawer.Heading className="truncate font-display text-lg">{cafeName}</Drawer.Heading>
-      <Drawer.CloseTrigger className="flex h-9 w-9 items-center justify-center rounded-full text-muted hover:bg-surface-secondary">
+      <Drawer.CloseTrigger className="flex h-11 w-11 -m-1 items-center justify-center rounded-full text-muted hover:bg-surface-secondary">
         <span aria-hidden className="text-xl leading-none">×</span>
         <span className="sr-only">{t("close")}</span>
       </Drawer.CloseTrigger>
@@ -41,7 +41,7 @@ function CheckinErrorBanner({ error, onRetry }: { error: string; onRetry: () => 
   return (
     <div className="flex items-center gap-2 rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
       <span>{error}</span>
-      <Button variant="outline" size="sm" onPress={onRetry} className="ml-auto h-7 text-xs">
+      <Button variant="outline" size="sm" onPress={onRetry} className="ml-auto -my-2 text-xs">
         {t("retry")}
       </Button>
     </div>

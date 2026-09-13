@@ -18,7 +18,7 @@ export function CheckinDeleteSection({ onDelete }: CheckinDeleteSectionProps) {
         <button
           type="button"
           onClick={() => setShowConfirm(true)}
-          className="text-sm text-danger hover:underline"
+          className="-my-2.5 inline-flex min-h-11 items-center text-sm text-danger hover:underline"
         >
           {t("deleteCheckin")}
         </button>
@@ -29,7 +29,7 @@ export function CheckinDeleteSection({ onDelete }: CheckinDeleteSectionProps) {
             variant="ghost"
             size="sm"
             onPress={() => setShowConfirm(false)}
-            className="ml-auto h-7 text-xs"
+            className="ml-auto -my-2 text-xs"
           >
             {t("cancel")}
           </Button>
@@ -37,7 +37,7 @@ export function CheckinDeleteSection({ onDelete }: CheckinDeleteSectionProps) {
             variant="primary"
             size="sm"
             onPress={onDelete}
-            className="h-7 bg-danger text-danger-foreground hover:bg-danger/90 text-xs"
+            className="-my-2 bg-danger text-danger-foreground hover:bg-danger/90 text-xs"
           >
             {t("delete")}
           </Button>

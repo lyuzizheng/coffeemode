@@ -56,7 +56,7 @@ function FeedModeTabs({
             aria-selected={active}
             tabIndex={active ? 0 : -1}
             onClick={() => onChange(m)}
-            className={`relative h-full rounded-sm px-2.5 text-sm ${
+            className={`relative -my-2 flex min-h-11 items-center rounded-sm px-2.5 text-sm ${
               active ? "text-foreground" : "text-muted"
             }`}
           >
@@ -64,7 +64,7 @@ function FeedModeTabs({
               <motion.span
                 layoutId="feed-mode-pill"
                 transition={reduced ? { duration: 0 } : spring.snappy}
-                className="absolute inset-0 rounded-sm border border-separator bg-surface"
+                className="absolute inset-x-0 inset-y-2 rounded-sm border border-separator bg-surface"
                 aria-hidden
               />
             )}

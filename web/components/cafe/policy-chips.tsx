@@ -25,13 +25,17 @@ export function PolicyChips<T extends string>({
             type="button"
             aria-pressed={selected === option.value}
             onClick={() => onSelect(option.value)}
-            className={`cm-focus h-9 rounded-sm border px-3 text-xs font-medium transition-colors duration-150 ${
-              selected === option.value
-                ? "border-secondary bg-secondary text-secondary-foreground"
-                : "border-border bg-surface-secondary text-foreground hover:bg-surface-tertiary"
-            }`}
+            className="group cm-focus relative -my-1 flex min-h-11 min-w-11 items-center justify-center"
           >
-            {option.label}
+            <span
+              className={`flex h-9 items-center rounded-sm border px-3 text-xs font-medium transition-colors duration-150 ${
+                selected === option.value
+                  ? "border-secondary bg-secondary text-secondary-foreground"
+                  : "border-border bg-surface-secondary text-foreground group-hover:bg-surface-tertiary"
+              }`}
+            >
+              {option.label}
+            </span>
           </button>
         ))}
       </div>

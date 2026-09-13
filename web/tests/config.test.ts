@@ -67,6 +67,8 @@ describe("config files", () => {
     expect(appConfig.checkins.photoCap).toBe(6);
     expect(appConfig.checkins.noteMaxChars).toBe(500);
     expect(appConfig.checkins.revisitWindowHours).toBe(24);
+    expect(appConfig.profile.listLimitMax).toBe(50);
+    expect(appConfig.profile.listPageSize).toBe(20);
     expect(appConfig.profile.displayNameMaxChars).toBe(24);
     expect(appConfig.profile.recentSearchesMax).toBe(20);
     expect(appConfig.profile.handle).toEqual({

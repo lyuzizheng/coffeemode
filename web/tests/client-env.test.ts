@@ -24,14 +24,16 @@ afterEach(() => {
 
 describe("envPositiveInt", () => {
   it("returns the fallback when missing, empty, or malformed", () => {
+    // The parser takes the already-resolved value: callers pass static
+    // `process.env.NEXT_PUBLIC_X` references so Next inlines them at build.
     vi.stubEnv("NEXT_PUBLIC_CLIENT_ENV_PROBE", "");
-    expect(envPositiveInt("NEXT_PUBLIC_CLIENT_ENV_PROBE", 7)).toBe(7);
+    expect(envPositiveInt(process.env.NEXT_PUBLIC_CLIENT_ENV_PROBE, 7)).toBe(7);
     vi.stubEnv("NEXT_PUBLIC_CLIENT_ENV_PROBE", "nope");
-    expect(envPositiveInt("NEXT_PUBLIC_CLIENT_ENV_PROBE", 7)).toBe(7);
+    expect(envPositiveInt(process.env.NEXT_PUBLIC_CLIENT_ENV_PROBE, 7)).toBe(7);
     vi.stubEnv("NEXT_PUBLIC_CLIENT_ENV_PROBE", "0");
-    expect(envPositiveInt("NEXT_PUBLIC_CLIENT_ENV_PROBE", 7)).toBe(7);
+    expect(envPositiveInt(process.env.NEXT_PUBLIC_CLIENT_ENV_PROBE, 7)).toBe(7);
     vi.stubEnv("NEXT_PUBLIC_CLIENT_ENV_PROBE", "12");
-    expect(envPositiveInt("NEXT_PUBLIC_CLIENT_ENV_PROBE", 7)).toBe(12);
+    expect(envPositiveInt(process.env.NEXT_PUBLIC_CLIENT_ENV_PROBE, 7)).toBe(12);
   });
 });
 

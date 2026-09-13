@@ -2,7 +2,6 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import { rateLimitBuckets, rateLimitConfig } from "@/lib/config";
 import type { RateLimitResult, RateLimiterLike } from "@/lib/rate-limit/types";
 import { emitRateLimitAlert } from "@/lib/observability/rate-limit-alert";
 
@@ -13,16 +12,6 @@ interface TokenBucket {
   maxRequests: number;
   lastAccess: number;
 }
-
-// Limit values live in `web/config/rate-limits.yaml` (DG74/DG107); these
-// names keep call sites stable while the YAML owns the numbers.
-export const IMAGE_RATE_LIMIT = rateLimitConfig("images");
-
-export const PLACES_RATE_LIMIT = rateLimitConfig("places");
-
-// Multi-window bucket for search + profile (DG129, #216) — read via helper
-export const SEARCH_RATE_LIMITS = rateLimitBuckets("search");
-export const PROFILE_READ_RATE_LIMIT = rateLimitConfig("profile-read");
 
 /**
  * In-memory token-bucket rate limiter.

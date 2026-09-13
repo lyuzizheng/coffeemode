@@ -68,7 +68,6 @@ import {
 } from "@/lib/db/profile";
 import {
   updateProfileIdentity,
-  getProfileIdentity,
   InvalidHandleError,
   HandleTakenError,
   HandleChangeTooSoonError,
@@ -2166,13 +2165,14 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       );
 
       // 1. Default state: show_public_identity = false, public_handle = null, identity_consented_at = null
-      const initial = await getProfileIdentity(userA);
-      expect(initial).toEqual({
-        showPublicIdentity: false,
-        publicHandle: null,
-        identityConsentedAt: null,
-        publicHandleChangedAt: null,
-      });
+      const initial = await dbClient.query(
+        "select show_public_identity, public_handle, identity_consented_at, public_handle_changed_at from profiles where id = $1",
+        [userA],
+      );
+      expect(initial.rows[0].show_public_identity).toBe(false);
+      expect(initial.rows[0].public_handle).toBeNull();
+      expect(initial.rows[0].identity_consented_at).toBeNull();
+      expect(initial.rows[0].public_handle_changed_at).toBeNull();
 
       // 2. Opt-in generates collision-safe handle slug(display_name)-xxxx and stamps identity_consented_at
       const optedIn = await updateProfileIdentity(userA, { showPublicIdentity: true });

@@ -18,8 +18,12 @@ import pg from "pg";
  *     unmatchable, and `*_template` databases never match (no suffix).
  *   - `--apply` drops only candidates with zero backends
  *     (`pg_stat_activity`), so a database still being provisioned is skipped.
+ *   - `--only <name>` (repeatable) narrows the sweep to exact database names;
+ *     the `isTestDatabaseName` gate still applies, so it can never widen scope.
+ *     The vitest suite uses it so a parallel run cannot drop another suite's
+ *     live scratch database (BRAWUKA-255).
  *   - Default mode is dry-run: lists candidates, drops nothing.
- *   - Run only when no journey is in flight against the same server.
+ *   - Run an unfiltered `--apply` only when no journey is in flight.
  *
  * Usage:
  *   node scripts/cleanup-stale-test-dbs.mjs [--database-url <url>] [--apply] [--verbose]
@@ -44,6 +48,8 @@ Usage:
 Options:
   --database-url <url>   Admin connection string (default: $DATABASE_URL or local dev DB)
   --apply                Actually drop candidates (default: dry-run, list only)
+  --only <name>          Restrict candidates to exact database name(s); repeatable.
+                         Names failing the test-database pattern are ignored.
   --verbose              Log each inspected database
   -h, --help             Show this help message and exit
 
@@ -51,12 +57,13 @@ Safety:
   Non-local hosts require ALLOW_REMOTE_INTEGRATION_DB=1 (same vocabulary as
   web/tests/helpers/db.ts). Only pid+uuid-suffixed test databases match;
   template databases and real databases never match. --apply skips databases
-  with active backends. Run only when no journey is in flight.
+  with active backends. Run an unfiltered --apply only when no journey is in
+  flight; use --only to scope a sweep to specific databases.
 `.trim());
 }
 
 function parseArgs(argv) {
-  const opts = { databaseUrl: null, apply: false, verbose: false };
+  const opts = { databaseUrl: null, apply: false, verbose: false, only: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "-h" || a === "--help") {
@@ -72,6 +79,13 @@ function parseArgs(argv) {
       opts.apply = true;
     } else if (a === "--verbose") {
       opts.verbose = true;
+    } else if (a === "--only") {
+      const name = argv[++i];
+      if (!name) {
+        console.error("--only requires a value");
+        process.exit(1);
+      }
+      opts.only.push(name);
     } else {
       console.error(`Unknown option: ${a} (see --help)`);
       process.exit(1);
@@ -98,6 +112,45 @@ function assertRemoteOptIn(raw) {
   }
   return url.toString();
 }
+/**
+ * Split inspected databases into droppable candidates and busy test databases,
+ * honoring the optional --only scope. Rows outside the test-name pattern or the
+ * --only set are never candidates.
+ */
+function partitionTestDatabases(rows, onlyNames) {
+  const onlySet = new Set(onlyNames);
+  for (const name of onlySet) {
+    if (!isTestDatabaseName(name)) {
+      console.warn(`Ignoring --only ${name}: not a provisioned test-database name.`);
+    }
+  }
+  const inScope = (name) => onlySet.size === 0 || onlySet.has(name);
+  const candidates = [];
+  const busy = [];
+  for (const r of rows) {
+    if (!isTestDatabaseName(r.datname) || !inScope(r.datname)) continue;
+    if (Number(r.backends) === 0) {
+      candidates.push(r);
+    } else {
+      busy.push(r);
+    }
+  }
+  return { candidates, busy, inScope };
+}
+
+/** Log each inspected database with its sweep disposition. */
+function reportDatabaseStates(rows, busyNames, inScope, verbose) {
+  for (const r of rows) {
+    if (verbose || isTestDatabaseName(r.datname)) {
+      const state = busyNames.has(r.datname)
+        ? "[busy-skip]"
+        : isTestDatabaseName(r.datname) && inScope(r.datname)
+          ? "[candidate]"
+          : "[keep]";
+      console.log(`${state} ${r.datname} (backends=${r.backends})`);
+    }
+  }
+}
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
@@ -114,17 +167,9 @@ async function main() {
       WHERE d.datistemplate = false
       ORDER BY d.datname
     `);
-    const candidates = rows.filter(
-      (r) => isTestDatabaseName(r.datname) && Number(r.backends) === 0,
-    );
-    const busy = rows.filter((r) => isTestDatabaseName(r.datname) && Number(r.backends) > 0);
+    const { candidates, busy, inScope } = partitionTestDatabases(rows, opts.only);
     const busyNames = new Set(busy.map((r) => r.datname));
-    for (const r of rows) {
-      if (opts.verbose || isTestDatabaseName(r.datname)) {
-        const state = busyNames.has(r.datname) ? "[busy-skip]" : isTestDatabaseName(r.datname) ? "[candidate]" : "[keep]";
-        console.log(`${state} ${r.datname} (backends=${r.backends})`);
-      }
-    }
+    reportDatabaseStates(rows, busyNames, inScope, opts.verbose);
     if (candidates.length === 0) {
       console.log(busy.length > 0 ? `No droppable test databases found (${busy.length} busy, skipped).` : "No stale test databases found.");
       return;

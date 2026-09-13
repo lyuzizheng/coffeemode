@@ -1,3 +1,4 @@
+import { appConfig } from "@/lib/config";
 import { isValidWeeklyHours, type WeeklyHours } from "@/lib/hours";
 import {
   MAX_STAY_VALUES,
@@ -102,7 +103,7 @@ export function parseCreateCafeBody(body: unknown): ParseResult<CreateCafeInput>
     return fail("lng must be a number between -180 and 180");
   }
 
-  const address = optString(raw.address, "address", 300);
+  const address = optString(raw.address, "address", appConfig.validation.cafeAddressMaxChars);
   if (!address.ok) return fail(address.message);
   const city = optString(raw.city, "city", 100);
   if (!city.ok) return fail(city.message);

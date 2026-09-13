@@ -82,6 +82,7 @@ None of the gaps affect the READY slices (all have at least one mocked or integr
 | `checkin-system` (COMPLETE) | T8 create, T9 edit, T10 delete, T14/T15 photo intents + complete, T12 feed cursors |
 | `navigation-prompt` (READY) | T13 navigations + prompt-queue (tested via `rate-limit`/`navigations` + future queue unit) |
 | `onboarding-geolocation` (READY) | T4 proxy session (onboarding merges `profiles.current_city`) + T6 nearby (city fallback), browser welcome card (visual) |
+| `helpful-ranking-snapshot` (READY) | T12 feed cursors (Helpful mode) + new snapshot traces: scoring/idempotence/atomic-publish unit + real-Postgres integration, expired-version 410 restart |
 | `profile-page` (COMPLETE) | T2 profiles, T10 delete (profile tabs read filtered `deleted_at`), T12 feed personal scope |
 | `issue-33-upload-intents` (COMPLETE) | T14/T15 intent single-use consume |
 | `issue-86-server-derived-photos` (COMPLETE) | T8/T15 `photo_ids` → server `StoredImage` |

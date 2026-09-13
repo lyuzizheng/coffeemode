@@ -20,6 +20,19 @@ export interface AppConfig {
       apple: boolean;
     };
     rankingMode: string;
+    goodFirst: {
+      experienceMin: number;
+      compositeMin: number;
+      boost: number;
+    };
+    responseCache: {
+      maxAgeSeconds: number;
+      staleWhileRevalidateSeconds: number;
+    };
+    client: {
+      minQueryLength: number;
+      debounceMs: number;
+    };
   };
   stats: {
     dimWeights: {
@@ -66,6 +79,29 @@ export interface AppConfig {
     listPageSize: number;
     displayNameMaxChars: number;
     recentSearchesMax: number;
+    handle: {
+      minChars: number;
+      maxChars: number;
+      changeCooldownDays: number;
+      slugMaxChars: number;
+      generateMaxAttempts: number;
+    };
+  };
+  images: {
+    maxOriginalDimension: number;
+    webpQuality: number;
+    r2DownloadTimeoutMs: number;
+    r2UploadTimeoutMs: number;
+    downloadSlackBytes: number;
+  };
+  query: {
+    staleTimeMs: number;
+    gcTimeMs: number;
+    persistMaxAgeMs: number;
+  };
+  validation: {
+    cafeAddressMaxChars: number;
+    profileCityMaxChars: number;
   };
   budgets: {
     bundle: {

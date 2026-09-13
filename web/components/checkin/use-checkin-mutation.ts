@@ -14,6 +14,14 @@ import {
   invalidateCheckinQueries,
 } from "./checkin-api";
 
+/**
+ * Post-save success UX (BRAWUKA-250). Interaction-design timings, not product
+ * knobs: they change with UX review, so they stay named constants here rather
+ * than `app.yaml` + env plumbing.
+ */
+const SUCCESS_CLOSE_DELAY_MS = 900;
+const SUCCESS_TOAST_TIMEOUT_MS = 3000;
+
 export type ViewState = "form" | "success" | "submitting";
 
 interface SubmitCheckinParams {
@@ -73,15 +81,16 @@ function useSubmitMutation({
     mutationFn: async (params: SubmitCheckinParams) => {
       const uploadedIds = await uploadPendingPhotos();
       if (isEdit && editCheckinId) {
-        return updateCheckin({
+        await updateCheckin({
           editCheckinId,
           scores: params.scores,
           maxStay: params.maxStay,
           note: params.note,
           fallbackErrorMessage: t("couldntSave"),
         });
+        return { photosDropped: false };
       }
-      return createCheckin({
+      const { convertedToEdit } = await createCheckin({
         cafeId,
         idempotencyKey,
         scores: params.scores,
@@ -90,24 +99,24 @@ function useSubmitMutation({
         uploadedIds,
         fallbackErrorMessage: t("couldntSave"),
       });
+      // A raced 409 silently converts to PATCH, which carries no photos — the uploaded ids are orphaned and the user must be told (BRAWUKA-126).
+      return { photosDropped: convertedToEdit && uploadedIds.length > 0 };
     },
     onMutate: () => {
       setView("submitting");
       setError(null);
       setFailedAction(null);
     },
-    onSuccess: () => {
+    onSuccess: ({ photosDropped }) => {
       setView("success");
       // Benign: clearing consumed draft from IndexedDB is best-effort; failures in private mode are ignored.
       void clearPendingCheckin().catch(() => {});
       invalidateCheckinQueries(queryClient, cafeId);
-      clearTimeout(closeTimerRef.current);
-      // Artifact §4 step 3: the success card holds 900ms, then the drawer
-      // closes and the toast confirms.
+      // Artifact §4 step 3: the success card holds 900ms, then the drawer closes and the toast confirms.
       closeTimerRef.current = window.setTimeout(() => {
         onClose();
-        toast(t("saved"), { timeout: 3000 });
-      }, 900);
+        toast(photosDropped ? t("savedWithoutPhotos") : t("saved"), { timeout: SUCCESS_TOAST_TIMEOUT_MS });
+      }, SUCCESS_CLOSE_DELAY_MS);
     },
     onError: (err) => {
       setView("form");

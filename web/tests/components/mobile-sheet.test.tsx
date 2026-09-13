@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -405,6 +405,114 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
     expect(halfAnim).toBeDefined();
     expect(halfAnim?.transition).toMatchObject(spring.snappy);
     expect(startVelocity(halfAnim?.transition)).toBe(0);
+  });
+});
+
+describe("MobileSheet adaptive HALF detent (BRAWUKA-248)", () => {
+  // jsdom has no ResizeObserver; stub it and drive offsetHeight directly.
+  let roCallback: ResizeObserverCallback | null;
+  let observedEl: Element | null;
+
+  const controller: DiscoveryController = {
+    selectedCafeId: mockCafe.id,
+    snap: "half",
+    select: vi.fn(),
+    snapTo: vi.fn(),
+    close: vi.fn(),
+    handleMissingCafe: vi.fn(),
+    registerCardRef: vi.fn(),
+    detailHeadingRef: vi.fn(),
+  };
+
+  function renderHalf() {
+    return render(
+      <MobileSheet
+        controller={controller}
+        cafes={[mockCafe]}
+        isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
+        onCheckIn={vi.fn()}
+        addCafe={<span>Add Cafe</span>}
+      />,
+      { wrapper: createWrapper() },
+    );
+  }
+
+  function measure(height: number) {
+    const el = observedEl;
+    if (!el || !roCallback) throw new Error("sheet did not observe a content element");
+    Object.defineProperty(el, "offsetHeight", { configurable: true, value: height });
+    act(() => {
+      roCallback!([{ target: el } as ResizeObserverEntry], {} as ResizeObserver);
+    });
+  }
+
+  beforeEach(() => {
+    mockReducedMotion = false;
+    animateCalls.length = 0;
+    window.innerHeight = 800;
+    roCallback = null;
+    observedEl = null;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(cb: ResizeObserverCallback) {
+          roCallback = cb;
+        }
+        observe(el: Element) {
+          observedEl = el;
+        }
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // viewport 800 → sheet 680; HALF visible = clamp(196, content+24, 400).
+  it("short content shrinks HALF to content + handle chrome", () => {
+    renderHalf();
+    // Mount detent is the 50dvh ceiling (unmeasured content).
+    expect(consumeMountDetentY()).toBe(280);
+
+    measure(200);
+    // 200 + 24 handle = 224 visible → y = 680 - 224 = 456.
+    const shrink = animateCalls.find((call) => call.target === 456);
+    expect(shrink).toBeDefined();
+    expect(shrink?.transition).toMatchObject(spring.snappy);
+
+    // A sub-threshold drag settles on the adaptive detent, not 50dvh.
+    animateCalls.length = 0;
+    const sheet = screen.getByRole("region", { name: messages.discovery.sheet_aria });
+    const onDragEnd = getDragEndHandler(sheet);
+    act(() => {
+      onDragEnd(null, { offset: { y: 30 }, velocity: { y: 100 } });
+    });
+    expect(animateCalls.find((call) => call.target === 456)).toBeDefined();
+  });
+
+  it("floor: tiny content never drops HALF below PEEK + handle", () => {
+    renderHalf();
+    consumeMountDetentY();
+
+    measure(50);
+    // Floor = 172 PEEK + 24 handle = 196 visible → y = 680 - 196 = 484,
+    // still above the PEEK detent (508).
+    expect(animateCalls.find((call) => call.target === 484)).toBeDefined();
+  });
+
+  it("ceiling: tall content keeps HALF at 50dvh with no re-animation", () => {
+    renderHalf();
+    consumeMountDetentY();
+
+    measure(900);
+    // 900 + 24 > 400 ceiling → detent stays 280; targetY unchanged, so the
+    // snap effect must not fire again.
+    expect(animateCalls).toHaveLength(0);
   });
 });
 

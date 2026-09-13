@@ -1,5 +1,21 @@
 # CoffeeMode Web — File Notes
 
+
+## 2026-09-13 (BRAWUKA-209 — dark sage hover residual)
+
+- `app/globals.css`
+  - Added `--secondary-hover` in both themes (light 40.0%, dark 62.0% — one
+    step toward the theme's ink, mirroring `--accent-hover`) and mapped
+    `--color-secondary-hover` in `@theme`.
+- `app/theme-preview/sections/buttons-section.tsx`
+  - Filled secondary example now uses `hover:bg-secondary-hover` instead of
+    `hover:bg-secondary/90`; the 90% mix graded 3.99:1 in dark, the token
+    reads 5.52:1.
+- `app/theme-preview/sections/color-section.tsx`
+  - Added the `secondary-hover` swatch to the brand token group.
+- `tests/design-tokens-contrast.test.ts`
+  - Added `secondary-hover/secondary-foreground` to the AA-gated pairs.
+
 ## 2026-08-08 Part A (feat/impl-design-tokens)
 
 - `app/globals.css`

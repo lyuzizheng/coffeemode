@@ -313,7 +313,10 @@ Social signal hook:
 ```text
 - checkin_likes (user_id + checkin_id) powers the Helpful feed mode. MVP sorts
   `likes_count DESC, visited_at DESC, id DESC`; the opaque cursor carries that
-  deterministic tuple. A versioned daily time-decayed snapshot is deferred to #140.
+  deterministic tuple. V2 (DG148, #140) replaces this with a daily time-decayed
+  snapshot: `score = likes_count × 0.5^(age_days/14)` on `visited_at`, keyed
+  `(score, visited_at, id)` within the active ranking version; the live tuple
+  remains the fallback until the first snapshot is published.
 - A tunable social_weight parameter (default 0 at launch) can fold likes into the
   per-checkin contribution before it reaches work_stats. This leaves design space
   for "liked check-ins carry more weight" without a future schema change.
@@ -568,11 +571,17 @@ FULL requires a public, unauthenticated, paginated cafe check-in read contract r
 permanent fixtures. It offers Newest (default — DG113) and Helpful modes;
 Kimi K3 designs the control.
 Both modes use server-issued, mode-bound opaque cursors with 20 check-ins per page,
-never offset pagination. Helpful orders by `likes_count DESC, visited_at DESC,
-id DESC`; Newest orders by `visited_at DESC, id DESC`. Each cursor contains its
-mode and the last row's full ordering tuple. Likes may move a check-in between
-requests, so MVP pagination is best-effort and clients deduplicate by check-in id.
-A daily time-decayed, versioned ranking snapshot is a separate V2 feature (#140).
+never offset pagination. Newest orders by `visited_at DESC, id DESC`. Helpful's
+MVP ordering is `likes_count DESC, visited_at DESC, id DESC` — best-effort, since
+likes may move a check-in between requests and clients deduplicate by check-in id.
+V2 (DG148, #140) replaces it with a daily, time-decayed, versioned snapshot:
+`score = likes_count × 0.5^(age_days/14)` on `visited_at`, zero-like rows score 0
+and order by `visited_at DESC, id DESC`. The nightly job publishes one immutable
+ranking version atomically (previous version keeps serving on failure; superseded
+versions retained 7 days). Helpful cursors bind to that version and carry
+`(score, visited_at, id)`; an expired version returns `410 cursor_version_expired`
+and the client restarts from page one. Until the first snapshot publishes, the
+live MVP tuple remains the fallback ordering.
 
 Refresh and pagination use stale-while-revalidate behavior: keep the last
 successful content, show an inline error and Retry beside the failed section,

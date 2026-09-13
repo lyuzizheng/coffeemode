@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { Button, Drawer } from "@heroui/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Button, Drawer, toast } from "@heroui/react";
 import { useTranslations } from "next-intl";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { CheckinForm, CHECKIN_RESUME_PARAM } from "./checkin-form";
@@ -79,7 +79,50 @@ function useRevisitPreempt({
     revisit,
     effectiveMode,
     effectiveEditId,
+    preempted: Boolean(preempt),
+    scope,
   };
+}
+
+/**
+ * A preempted create drops whatever photos were staged — the picker unmounts
+ * with the form remount. The staged count arrives synchronously through the
+ * returned callback (an effect would lose the preempt race), and the notice
+ * fires once per drawer open (BRAWUKA-126).
+ */
+function usePhotoDropNotice({
+  scope,
+  preempted,
+  initialPhotos,
+}: {
+  scope: string | null;
+  preempted: boolean;
+  initialPhotos?: PhotoUpload[];
+}) {
+  const t = useTranslations("checkIn");
+  const stagedCountRef = useRef(0);
+  const notifiedRef = useRef(false);
+  const scopeRef = useRef<string | null>(null);
+
+  // Declared before the notice effect so a scope change resets first.
+  useEffect(() => {
+    if (scope !== scopeRef.current) {
+      scopeRef.current = scope;
+      stagedCountRef.current = initialPhotos?.length ?? 0;
+      notifiedRef.current = false;
+    }
+  }, [scope, initialPhotos]);
+
+  useEffect(() => {
+    if (preempted && stagedCountRef.current > 0 && !notifiedRef.current) {
+      notifiedRef.current = true;
+      toast(t("photosNotSavedOnRevisit"), { timeout: 4000 });
+    }
+  }, [preempted, t]);
+
+  return useCallback((count: number) => {
+    stagedCountRef.current = count;
+  }, []);
 }
 
 function CheckinDiscardDialog({
@@ -104,7 +147,7 @@ function CheckinDiscardDialog({
           </Button>
           <Button
             variant="primary"
-            className="bg-danger text-danger-foreground hover:bg-danger/90"
+            className="bg-danger-solid text-white hover:bg-danger-solid/90"
             onPress={onDiscard}
           >
             {t("discard")}
@@ -114,6 +157,13 @@ function CheckinDiscardDialog({
     </div>
   );
 }
+
+/**
+ * Last-checkin probe freshness (BRAWUKA-250). A per-query override, not the
+ * global default: the revisit preempt must see a fresh answer each open, but
+ * refetching on every render would spam the endpoint.
+ */
+const LAST_CHECKIN_STALE_TIME_MS = 60_000;
 
 interface CheckinDrawerState {
   isDirty: boolean;
@@ -125,6 +175,8 @@ interface CheckinDrawerState {
   revisit: LastCheckin | null;
   effectiveMode: DrawerMode;
   effectiveEditId?: string;
+  preempted: boolean;
+  scope: string | null;
   formKey: string;
 }
 
@@ -148,13 +200,13 @@ function useCheckinDrawerState({
     queryKey: ["last-checkin", cafeId],
     queryFn: () => fetchLastCheckin(cafeId),
     enabled: isOpen && mode !== "edit" && isAuthenticated !== false,
-    staleTime: 60_000,
+    staleTime: LAST_CHECKIN_STALE_TIME_MS,
     retry: false,
   });
 
   const authProbeFailed = lastCheckinQuery.isError && isUnauthorized(lastCheckinQuery.error);
 
-  const { revisit, effectiveMode, effectiveEditId } = useRevisitPreempt({
+  const { revisit, effectiveMode, effectiveEditId, preempted, scope } = useRevisitPreempt({
     isOpen,
     cafeId,
     mode,
@@ -175,6 +227,8 @@ function useCheckinDrawerState({
     revisit,
     effectiveMode,
     effectiveEditId,
+    preempted,
+    scope,
     formKey,
   };
 }
@@ -187,6 +241,7 @@ function CheckinDrawerSurface({
   isOpen,
   onOpenChange,
   handleCloseAttempt,
+  onStagedPhotosChange,
 }: {
   props: CheckinDrawerProps;
   state: CheckinDrawerState;
@@ -194,8 +249,10 @@ function CheckinDrawerSurface({
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   handleCloseAttempt: (nextOpen: boolean) => void;
+  onStagedPhotosChange: (count: number) => void;
 }) {
   const t = useTranslations("checkIn");
+
   return (
     <Drawer.Root isOpen={isOpen} onOpenChange={handleCloseAttempt}>
       <Drawer.Backdrop />
@@ -229,6 +286,7 @@ function CheckinDrawerSurface({
               lastCheckinLoaded={state.lastCheckinQuery.isSuccess}
               onClose={() => onOpenChange(false)}
               onDirtyChange={state.setIsDirty}
+              onStagedPhotosChange={onStagedPhotosChange}
             />
           )}
 
@@ -255,6 +313,11 @@ export function CheckinDrawer(props: CheckinDrawerProps) {
     isAuthenticated,
     editCheckinId,
   });
+  const onStagedPhotosChange = usePhotoDropNotice({
+    scope: state.scope,
+    preempted: state.preempted,
+    initialPhotos: props.initialPhotos,
+  });
   const handleCloseAttempt = useCallback(
     (nextOpen: boolean) => {
       if (!nextOpen && state.isDirty) {
@@ -279,6 +342,7 @@ export function CheckinDrawer(props: CheckinDrawerProps) {
       isOpen={isOpen}
       onOpenChange={onOpenChange}
       handleCloseAttempt={handleCloseAttempt}
+      onStagedPhotosChange={onStagedPhotosChange}
     />
   );
 }

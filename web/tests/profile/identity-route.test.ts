@@ -232,4 +232,66 @@ describe("PATCH /api/profile/identity", () => {
     const body = await res.json();
     expect(body.error).toBe("internal_error");
   });
+
+  it("forwards publicHandle with opt-out and returns the applied identity", async () => {
+    vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
+    vi.mocked(updateProfileIdentity).mockResolvedValueOnce({
+      showPublicIdentity: false,
+      publicHandle: "alex-offline",
+      identityConsentedAt: null,
+      publicHandleChangedAt: "2026-09-13T00:00:00.000Z",
+    });
+
+    const req = new Request("http://localhost/api/profile/identity", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ showPublicIdentity: false, publicHandle: "alex-offline" }),
+    }) as NextRequest;
+
+    const res = await PATCH(req);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.showPublicIdentity).toBe(false);
+    expect(body.publicHandle).toBe("alex-offline");
+    expect(body.identityConsentedAt).toBeNull();
+    // Spec 0006: handle management is independent of the consent flag — the
+    // route must pass publicHandle through on opt-out, not drop it.
+    expect(updateProfileIdentity).toHaveBeenCalledWith(userId, {
+      showPublicIdentity: false,
+      publicHandle: "alex-offline",
+    });
+  });
+
+  it("returns 400 with invalid_handle when opt-out carries an invalid handle", async () => {
+    vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
+    vi.mocked(updateProfileIdentity).mockRejectedValueOnce(new InvalidHandleError());
+
+    const req = new Request("http://localhost/api/profile/identity", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ showPublicIdentity: false, publicHandle: "Invalid-Caps!" }),
+    }) as NextRequest;
+
+    const res = await PATCH(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("invalid_handle");
+  });
+
+  it("returns 400 with handle_change_too_soon when opt-out carries a handle inside the cooldown", async () => {
+    vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
+    vi.mocked(updateProfileIdentity).mockRejectedValueOnce(new HandleChangeTooSoonError());
+
+    const req = new Request("http://localhost/api/profile/identity", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ showPublicIdentity: false, publicHandle: "alex-offline" }),
+    }) as NextRequest;
+
+    const res = await PATCH(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("handle_change_too_soon");
+  });
 });

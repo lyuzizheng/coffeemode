@@ -89,6 +89,7 @@ import type { StoredImage } from "@/types/images";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import { recomputeAllWorkStats } from "@/lib/stats/aggregate";
 import { coerceWorkStats } from "@/lib/stats/work-stats";
+import { appConfig } from "@/lib/config";
 import {
   cleanupIntegrationDatabase,
   integrationAdminUrl,
@@ -700,18 +701,18 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       await recordUploadIntent(U2, photoId);
       await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 77 } }, fakeProvisionPhotosDeps());
       const goodRaw = await cafeWorkStats(dbClient, CAFE_A);
-      const good = coerceWorkStats(goodRaw);
+      const good = coerceWorkStats(goodRaw, appConfig.stats.dimWeights);
       // Corrupt the cached stats to the DB default
       await dbClient.query("update cafes set work_stats = '{}'::jsonb where id = $1", [CAFE_A]);
       const corruptedRaw = await cafeWorkStats(dbClient, CAFE_A);
-      const corrupted = coerceWorkStats(corruptedRaw);
+      const corrupted = coerceWorkStats(corruptedRaw, appConfig.stats.dimWeights);
       expect(corrupted.n_users).toBe(0);
       expect(corrupted.experience_score).toBeNull();
 
       // Repair via the nightly entrypoint (same code the cron runs)
       await recomputeAllWorkStats(async (sql, params) => dbClient.query(sql, params));
       const repairedRaw = await cafeWorkStats(dbClient, CAFE_A);
-      const repaired = coerceWorkStats(repairedRaw);
+      const repaired = coerceWorkStats(repairedRaw, appConfig.stats.dimWeights);
       const { updated_at: _goodTs, ...goodNoTs } = good;
       void _goodTs;
       const { updated_at: _repTs, ...repairedNoTs } = repaired;
@@ -721,7 +722,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       // Second run is a no-op (idempotent) — same dims/scores, new timestamp only
       await recomputeAllWorkStats(async (sql, params) => dbClient.query(sql, params));
       const repaired2Raw = await cafeWorkStats(dbClient, CAFE_A);
-      const repaired2 = coerceWorkStats(repaired2Raw);
+      const repaired2 = coerceWorkStats(repaired2Raw, appConfig.stats.dimWeights);
       const { updated_at: _rep2Ts, ...repaired2NoTs } = repaired2;
       void _rep2Ts;
       expect(repaired2NoTs).toEqual(goodNoTs);
@@ -2234,6 +2235,97 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(reOptedIn.showPublicIdentity).toBe(true);
       expect(reOptedIn.publicHandle).toBe("alex-custom");
       expect(reOptedIn.identityConsentedAt).not.toBeNull();
+    });
+    it("applies a publicHandle sent in the same request as opt-out (spec 0006)", async () => {
+      const userA = randomUUID();
+      await dbClient.query(
+        "insert into profiles (id, display_name) values ($1, 'Alex Nomad')",
+        [userA],
+      );
+      // Opt-in with an auto-generated handle: public_handle_changed_at stays
+      // null, so the first user-chosen edit is permitted immediately.
+      const optedIn = await updateProfileIdentity(userA, {
+        showPublicIdentity: true,
+      });
+      expect(optedIn.identityConsentedAt).not.toBeNull();
+      expect(optedIn.publicHandleChangedAt).toBeNull();
+
+      // Opt-out carrying a new handle: handle is still validated and applied —
+      // handle management is independent of the consent flag.
+      const optedOut = await updateProfileIdentity(userA, {
+        showPublicIdentity: false,
+        publicHandle: "alex-offline",
+      });
+      expect(optedOut.showPublicIdentity).toBe(false);
+      expect(optedOut.publicHandle).toBe("alex-offline");
+      expect(optedOut.identityConsentedAt).toBeNull();
+      expect(optedOut.publicHandleChangedAt).not.toBeNull();
+
+      const dbRow = await dbClient.query(
+        "select show_public_identity, public_handle, identity_consented_at, public_handle_changed_at from profiles where id = $1",
+        [userA],
+      );
+      expect(dbRow.rows[0].show_public_identity).toBe(false);
+      expect(dbRow.rows[0].public_handle).toBe("alex-offline");
+      expect(dbRow.rows[0].identity_consented_at).toBeNull();
+      expect(dbRow.rows[0].public_handle_changed_at).not.toBeNull();
+    });
+
+    it("rejects an invalid publicHandle sent with opt-out and leaves consent untouched", async () => {
+      const userA = randomUUID();
+      await dbClient.query(
+        "insert into profiles (id, display_name) values ($1, 'Alex Nomad')",
+        [userA],
+      );
+      await updateProfileIdentity(userA, {
+        showPublicIdentity: true,
+        publicHandle: "alex-custom",
+      });
+
+      await expect(
+        updateProfileIdentity(userA, {
+          showPublicIdentity: false,
+          publicHandle: "Invalid-Format!",
+        }),
+      ).rejects.toThrow(InvalidHandleError);
+
+      // Validation throws before the write: the opt-out is not applied either.
+      const dbRow = await dbClient.query(
+        "select show_public_identity, public_handle, identity_consented_at from profiles where id = $1",
+        [userA],
+      );
+      expect(dbRow.rows[0].show_public_identity).toBe(true);
+      expect(dbRow.rows[0].public_handle).toBe("alex-custom");
+      expect(dbRow.rows[0].identity_consented_at).not.toBeNull();
+    });
+
+    it("enforces the 7-day cooldown on a publicHandle sent with opt-out", async () => {
+      const userA = randomUUID();
+      await dbClient.query(
+        "insert into profiles (id, display_name) values ($1, 'Alex Nomad')",
+        [userA],
+      );
+      // User-chosen handle stamps public_handle_changed_at; a second change
+      // inside 7 days is rejected even when the request also opts out.
+      await updateProfileIdentity(userA, {
+        showPublicIdentity: true,
+        publicHandle: "alex-custom",
+      });
+
+      await expect(
+        updateProfileIdentity(userA, {
+          showPublicIdentity: false,
+          publicHandle: "alex-offline",
+        }),
+      ).rejects.toThrow(HandleChangeTooSoonError);
+
+      const dbRow = await dbClient.query(
+        "select show_public_identity, public_handle, identity_consented_at from profiles where id = $1",
+        [userA],
+      );
+      expect(dbRow.rows[0].show_public_identity).toBe(true);
+      expect(dbRow.rows[0].public_handle).toBe("alex-custom");
+      expect(dbRow.rows[0].identity_consented_at).not.toBeNull();
     });
   });
   describeDb("BRAWUKA-180 split-module backfill on real SQL", () => {

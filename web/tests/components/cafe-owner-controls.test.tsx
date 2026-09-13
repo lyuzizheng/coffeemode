@@ -97,7 +97,7 @@ describe("CafeOwnerControls", () => {
     expect(toggle).not.toBeChecked();
   });
 
-  it("confirms with the shell copy, then DELETEs with confirm:true", async () => {
+  it("confirms with the shell copy, then sends a bare DELETE (no confirm)", async () => {
     const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
       if (init?.method === "DELETE") {
         return jsonResponse(200, { ok: true, id: CAFE, removed_checkins: 1, owner_transferred: false, shell: true });
@@ -122,7 +122,10 @@ describe("CafeOwnerControls", () => {
         expect.objectContaining({ method: "DELETE" }),
       );
     });
-    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ confirm: true });
+    // DG146: the first DELETE is unconfirmed — only a bare request can
+    // surface 403 cafe_has_other_checkins; confirm:true would silently
+    // hand the cafe off under the wrong copy.
+    expect(fetchMock.mock.calls[0][1]?.body).toBeUndefined();
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
   });
 
@@ -131,6 +134,7 @@ describe("CafeOwnerControls", () => {
     const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
       if (init?.method === "DELETE") {
         deleteCalls += 1;
+        // The real API only returns this 403 for an UNCONFIRMED delete.
         if (deleteCalls === 1) {
           return jsonResponse(403, {
             error: "cafe_has_other_checkins",
@@ -152,6 +156,9 @@ describe("CafeOwnerControls", () => {
     expect(
       await screen.findByText(/has 3 check-ins from others/i),
     ).toBeInTheDocument();
+
+    // First call was bare; only the handoff retry carries confirm:true.
+    expect(fetchMock.mock.calls[0][1]?.body).toBeUndefined();
 
     fireEvent.click(screen.getByRole("button", { name: "Delete my check-in" }));
 

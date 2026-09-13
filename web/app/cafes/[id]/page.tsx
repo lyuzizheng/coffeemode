@@ -105,17 +105,24 @@ export async function generateMetadata({
     },
   };
 }
-/** Title + meta + attribution block — the badge is owner-only (DG147). */
+/** Title + meta + attribution block — the badge is owner-only (DG147).
+    Props are the narrow public slices only: `openState` feeds the client
+    `OpenState`, so a full `CafeDetail` here would serialize `created_by`,
+    provider ids, and R2 keys into the served HTML (DG13). */
 function CafeHeading({
-  cafe,
+  name,
+  address,
   cityName,
+  openState,
   isPrivate,
   privateBadge,
   author,
   maintainedByService,
 }: {
-  cafe: CafeDetail;
+  name: string;
+  address: string | null;
   cityName: string | null;
+  openState: { opening_hours: CafeDetail["opening_hours"]; tz: CafeDetail["tz"] };
   isPrivate: boolean;
   privateBadge: string;
   author: PublicCafeDetail["author"];
@@ -125,7 +132,7 @@ function CafeHeading({
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <h1 className="font-display text-xl font-bold tracking-tight text-foreground">
-          {cafe.name}
+          {name}
         </h1>
         {isPrivate && (
           <span className="rounded-sm bg-surface-secondary px-2 py-0.5 text-xs text-muted">
@@ -135,9 +142,9 @@ function CafeHeading({
       </div>
       <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
         {cityName && <span>{cityName}</span>}
-        {cityName && cafe.address && <span aria-hidden>·</span>}
-        {cafe.address && <span>{cafe.address}</span>}
-        <OpenState cafe={cafe} />
+        {cityName && address && <span aria-hidden>·</span>}
+        {address && <span>{address}</span>}
+        <OpenState cafe={openState} />
       </p>
       <CreatorLine author={author} maintainedByService={maintainedByService} />
     </div>
@@ -186,8 +193,10 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
         <CoverCarousel images={covers} alt={cafe.name} />
 
         <CafeHeading
-          cafe={cafe}
+          name={cafe.name}
+          address={cafe.address}
           cityName={cityName}
+          openState={shell.openState}
           isPrivate={isPrivate}
           privateBadge={tc("private_badge")}
           author={publicAttribution.author}

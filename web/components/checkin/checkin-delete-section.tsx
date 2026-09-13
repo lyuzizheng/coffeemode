@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@heroui/react";
 import { useTranslations } from "next-intl";
+import { DangerConfirm } from "@/components/danger-confirm";
 
 interface CheckinDeleteSectionProps {
   onDelete: () => void;
@@ -23,25 +23,13 @@ export function CheckinDeleteSection({ onDelete }: CheckinDeleteSectionProps) {
           {t("deleteCheckin")}
         </button>
       ) : (
-        <div className="flex items-center gap-2 rounded-md border border-danger/30 bg-danger/10 p-3">
-          <span className="text-sm">{t("deleteConfirm")}</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onPress={() => setShowConfirm(false)}
-            className="ml-auto -my-2 text-xs"
-          >
-            {t("cancel")}
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            onPress={onDelete}
-            className="-my-2 bg-danger-solid text-white hover:bg-danger-solid/90 text-xs"
-          >
-            {t("delete")}
-          </Button>
-        </div>
+        <DangerConfirm
+          message={t("deleteConfirm")}
+          confirmLabel={t("delete")}
+          cancelLabel={t("cancel")}
+          onCancel={() => setShowConfirm(false)}
+          onConfirm={onDelete}
+        />
       )}
     </div>
   );

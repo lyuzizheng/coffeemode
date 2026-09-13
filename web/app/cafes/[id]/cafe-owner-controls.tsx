@@ -18,7 +18,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
-import { Button, Label, Switch, toast } from "@heroui/react";
+import { Label, Switch, toast } from "@heroui/react";
+import { DangerConfirm } from "@/components/danger-confirm";
 import { invalidateCheckinQueries } from "@/components/checkin/checkin-api";
 import type { CafeVisibility } from "@/types/cafes";
 
@@ -79,33 +80,18 @@ function DeleteConfirmBox({
 }) {
   const t = useTranslations("cafeDetail");
   return (
-    <div className="flex flex-col gap-3 rounded-md border border-danger/30 bg-danger/10 p-3">
-      <p className="text-sm text-foreground">
-        {step === "handoff"
+    <DangerConfirm
+      message={
+        step === "handoff"
           ? t("delete_handoff_body", { n: otherCheckins })
-          : t("delete_confirm_body")}
-      </p>
-      <div className="flex justify-end gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onPress={onCancel}
-          isDisabled={pending}
-          className="-my-1 text-xs"
-        >
-          {t("cancel")}
-        </Button>
-        <Button
-          variant="primary"
-          size="sm"
-          onPress={onConfirm}
-          isDisabled={pending}
-          className="-my-1 bg-danger-solid text-xs text-white hover:bg-danger-solid/90"
-        >
-          {step === "handoff" ? t("delete_mine") : t("delete")}
-        </Button>
-      </div>
-    </div>
+          : t("delete_confirm_body")
+      }
+      confirmLabel={step === "handoff" ? t("delete_mine") : t("delete")}
+      cancelLabel={t("cancel")}
+      pending={pending}
+      onCancel={onCancel}
+      onConfirm={onConfirm}
+    />
   );
 }
 
@@ -121,10 +107,18 @@ function DeleteSection({ cafeId }: { cafeId: string }) {
     if (pending) return;
     setPending(true);
     try {
+      // DG146 contract: the first DELETE goes out UNCONFIRMED — only a bare
+      // request can surface 403 cafe_has_other_checkins (the API never throws
+      // it once confirm:true is set). The handoff retry below is the only
+      // call that carries { confirm: true }.
       const res = await fetch(`/api/cafes/${cafeId}`, {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirm: true }),
+        ...(step === "handoff"
+          ? {
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ confirm: true }),
+            }
+          : {}),
       });
       if (res.ok) {
         // The cafe drops out of "我的咖啡地图" server-side; refresh the local

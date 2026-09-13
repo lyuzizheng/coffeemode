@@ -173,11 +173,13 @@ export function CheckinPhotos({
             type="button"
             aria-label={t("removePhoto")}
             onClick={() => removePhoto(photo.id)}
-            className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-overlay text-white hover:bg-black/60"
+            className="absolute right-0 top-0 flex h-11 w-11 items-start justify-end p-1"
           >
-            <svg width={10} height={10} viewBox="0 0 10 10" aria-hidden>
-              <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" />
-            </svg>
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-overlay text-white hover:bg-black/60">
+              <svg width={10} height={10} viewBox="0 0 10 10" aria-hidden>
+                <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" />
+              </svg>
+            </span>
           </button>
         </div>
       ))}

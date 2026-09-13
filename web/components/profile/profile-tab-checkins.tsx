@@ -57,7 +57,7 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
           <p className="text-sm text-muted">{t("empty_checkins")}</p>
           <Link
             href="/"
-            className="text-sm text-accent font-medium hover:underline"
+            className="-my-2.5 inline-flex min-h-11 items-center text-sm text-accent font-medium hover:underline"
           >
             {t("empty_checkins_action")}
           </Link>
@@ -82,7 +82,7 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
                 ) : (
                   <Link
                     href={`/?cafe=${item.cafeId}`}
-                    className="font-display font-semibold text-foreground text-base hover:text-accent transition-colors"
+                    className="-my-2.5 inline-flex min-h-11 items-center font-display font-semibold text-foreground text-base hover:text-accent transition-colors"
                   >
                     {item.cafeName || t("unknown_cafe")}
                   </Link>
@@ -108,7 +108,7 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
                 <button
                   onClick={() => setEditing(item)}
                   aria-label={t("edit_checkin_aria", { cafe: item.cafeName || t("unknown_cafe") })}
-                  className="p-1.5 text-muted hover:text-foreground active:scale-95 transition-all rounded-full hover:bg-surface-secondary"
+                  className="-m-2.5 flex h-11 w-11 items-center justify-center text-muted hover:text-foreground active:scale-95 transition-all rounded-full hover:bg-surface-secondary"
                 >
                   <PencilIcon size={14} />
                 </button>

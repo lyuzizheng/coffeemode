@@ -178,6 +178,7 @@ Light mode:
   warning-foreground: oklch(26% 0.03 55)
   danger:           oklch(50% 0.17 26)       clay red
   danger-foreground: oklch(98.5% 0.004 60)
+  danger-solid:     oklch(50% 0.17 26)       filled-button plate; equals danger in light, independent token (BRAWUKA-211)
 
 Dark mode:
   background:       oklch(15.5% 0.012 50)    deep espresso
@@ -201,11 +202,12 @@ Dark mode:
   success-foreground: oklch(16% 0.03 150)
   warning:          oklch(76% 0.14 75)
   warning-foreground: oklch(24% 0.04 60)
-  danger:           oklch(70% 0.19 27)       clay plate; 64% + warm-light ink graded 3.37:1 and darkening the plate instead dropped danger-as-text to 3.17:1, so it carries dark ink like success/warning (BRAWUKA-219)
+  danger:           oklch(70% 0.19 27)       text/border colour only — error copy, liked heart, "closed"; carries dark ink like success/warning (BRAWUKA-219)
   danger-foreground: oklch(16% 0.01 60)
+  danger-solid:     oklch(56% 0.19 27)       filled-button plate for white label text — 5.12:1; the roles split because no single L clears AA as both plate and text (BRAWUKA-211)
 ```
 
-`web/app/globals.css` maps `--color-secondary` / `--color-secondary-foreground` / `--color-secondary-hover` in `@theme` and overrides `--accent`, `--accent-foreground`, `--secondary`, `--secondary-foreground`, `--secondary-hover`, plus `surface`, `border`, `separator`, `muted`, and `default` in both `:root` (light) and `.dark` so the brand palette is available through HeroUI semantic tokens.
+`web/app/globals.css` maps `--color-secondary` / `--color-secondary-foreground` / `--color-secondary-hover` / `--color-danger-solid` in `@theme` and overrides `--accent`, `--accent-foreground`, `--secondary`, `--secondary-foreground`, `--secondary-hover`, `--danger`, `--danger-foreground`, `--danger-solid`, plus `surface`, `border`, `separator`, `muted`, and `default` in both `:root` (light) and `.dark` so the brand palette is available through HeroUI semantic tokens.
 
 ### Typography
 
@@ -556,17 +558,17 @@ this principle governs them and any new copy.
 
     pair (dark)                                        before    after
     accent on accent-foreground                        6.27:1    6.27:1   pass
-    secondary on secondary-foreground (filled button)   4.14:1    4.69:1   pass (BRAWUKA-130)
-    secondary-hover on secondary-foreground (hover)     3.99:1    5.52:1   pass (BRAWUKA-209; before = bg-secondary/90 mix)
     danger on danger-foreground (filled button)         3.37:1    6.72:1   pass (BRAWUKA-219)
+    white on danger-solid (filled button)               3.68:1    5.12:1   pass (BRAWUKA-211; before = white on the 64% plate)
     danger as text on surface-secondary                 3.17:1    5.92:1   pass (BRAWUKA-219, at a 55% plate)
 
   Zero regressions; the accent pair was already above the gate and is unchanged.
 
   Secondary text on dark surfaces uses `--muted`, not `--secondary`: sage is a
-  fill/spot colour, and at 58% it reads 4.11:1 on surface-secondary. The pair
-  above covers both of danger's roles in dark — plate and text — because a
-  single mid-luminance value cannot clear the gate in both.
+  fill/spot colour, and at 58% it reads 4.11:1 on surface-secondary. Danger's
+  dark roles are split across two tokens — `--danger` is the text/border
+  colour and `--danger-solid` the filled-button plate — because a single
+  mid-luminance value cannot clear the gate in both (BRAWUKA-211).
 
   The gate is enforced in two places: `web/tests/design-tokens-contrast.test.ts`
   asserts these token pairs (and that hue/chroma are held) in `npm test`, and

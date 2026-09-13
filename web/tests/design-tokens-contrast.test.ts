@@ -24,10 +24,11 @@ const QUANTISATION = 0.05;
 const LIGHT_BASELINE = {
   "secondary/secondary-foreground": 6.57,
   "danger/danger-foreground": 6.27,
+  "white/danger-solid": 6.54,
 };
 
 /** The documented pairs, per theme. Long-form descriptions live in spec 0002. */
-const PAIRS = ["accent/accent-foreground", "secondary/secondary-foreground", "secondary-hover/secondary-foreground", "danger/danger-foreground"];
+const PAIRS = ["accent/accent-foreground", "secondary/secondary-foreground", "secondary-hover/secondary-foreground", "danger/danger-foreground", "white/danger-solid"];
 
 const CSS = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
 
@@ -51,9 +52,13 @@ function token(block: string, name: string): string {
 const LIGHT = themeBlock(':root,\n.light,\n[data-theme="light"]');
 const DARK = themeBlock('.dark,\n[data-theme="dark"]');
 
+/** `white` in a pair is the literal white a `text-white` label paints. */
+const WHITE = "oklch(100% 0 0)";
+
 function ratioOf(block: string, pair: string): number {
   const [foreground, background] = pair.split("/");
-  return oklchPairRatio(token(block, `--${foreground}`), token(block, `--${background}`));
+  const fg = foreground === "white" ? WHITE : token(block, `--${foreground}`);
+  return oklchPairRatio(fg, token(block, `--${background}`));
 }
 
 describe("design token contrast (spec 0002 AA gate)", () => {
@@ -77,7 +82,9 @@ describe("design token contrast (spec 0002 AA gate)", () => {
   it("dark brand hue and chroma are held", () => {
     const sage = parseOklch(token(DARK, "--secondary"));
     const danger = parseOklch(token(DARK, "--danger"));
+    const dangerSolid = parseOklch(token(DARK, "--danger-solid"));
     expect({ chroma: sage.chroma, hue: sage.hue }).toEqual({ chroma: 0.08, hue: 155 });
     expect({ chroma: danger.chroma, hue: danger.hue }).toEqual({ chroma: 0.19, hue: 27 });
+    expect({ chroma: dangerSolid.chroma, hue: dangerSolid.hue }).toEqual({ chroma: 0.19, hue: 27 });
   });
 });

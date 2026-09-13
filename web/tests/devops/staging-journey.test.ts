@@ -68,7 +68,12 @@ describe("Stale test-DB sweeper — CLI contracts", () => {
   it("prints usage with --help", () => {
     const out = sh(`node "${SWEEPER}" --help`);
     expect(out).toContain("--apply");
+    expect(out).toContain("--only");
     expect(out).toContain("ALLOW_REMOTE_INTEGRATION_DB=1");
+  });
+
+  it("fails fast when --only has no value", () => {
+    shFails(`node "${SWEEPER}" --only`);
   });
 
   it("fails fast on an unknown flag", () => {
@@ -133,15 +138,28 @@ describeIntegration("Stale test-DB sweeper — real Postgres", () => {
     }
   });
 
-  it("--apply drops the orphan", async () => {
-    const out = sh(`node "${SWEEPER}" --database-url "${adminUrl}" --apply`);
-    expect(out).toContain(`Dropped ${orphanDb}`);
+  it("--apply --only drops only the named orphan, never a bystander test DB", async () => {
+    // BRAWUKA-255: an unfiltered --apply in this parallel vitest run dropped
+    // setup-supabase.test.ts's live scratch DB (supa_prov_test_* sits at zero
+    // backends between its execSync subprocesses). The sweep must stay scoped
+    // to the orphan this suite created; the bystander simulates a sibling
+    // suite's database and must survive.
+    const bystanderDb = makeTestDbName("supa_prov_test");
     const admin = new pg.Client({ connectionString: adminUrl });
     await admin.connect();
     try {
-      const res = await admin.query("SELECT 1 FROM pg_database WHERE datname = $1", [orphanDb]);
-      expect(res.rows.length).toBe(0);
+      await admin.query(`CREATE DATABASE "${bystanderDb}"`);
+      const out = sh(`node "${SWEEPER}" --database-url "${adminUrl}" --apply --only "${orphanDb}"`);
+      expect(out).toContain(`Dropped ${orphanDb}`);
+      expect(out).not.toContain(`Dropped ${bystanderDb}`);
+      const res = await admin.query(
+        "SELECT datname FROM pg_database WHERE datname = ANY($1)",
+        [[orphanDb, bystanderDb]],
+      );
+      const surviving = res.rows.map((r) => r.datname);
+      expect(surviving).toEqual([bystanderDb]);
     } finally {
+      await admin.query(`DROP DATABASE IF EXISTS "${bystanderDb}" WITH (FORCE)`).catch(() => {});
       await admin.end();
     }
   });

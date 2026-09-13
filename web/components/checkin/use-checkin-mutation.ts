@@ -19,7 +19,7 @@ import {
  * knobs: they change with UX review, so they stay named constants here rather
  * than `app.yaml` + env plumbing.
  */
-const SUCCESS_CLOSE_DELAY_MS = 1200;
+const SUCCESS_CLOSE_DELAY_MS = 900;
 const SUCCESS_TOAST_TIMEOUT_MS = 3000;
 
 export type ViewState = "form" | "success" | "submitting";
@@ -42,11 +42,12 @@ interface UseCheckinMutationOptions {
 
 function resolveSubmitError(
   err: unknown,
-  t: (key: "photosUploading" | "photosFailed" | "couldntSave") => string,
+  t: (key: "photosUploading" | "photosFailed" | "photoTooLarge" | "couldntSave") => string,
 ): string {
   if (!(err instanceof Error)) return t("couldntSave");
   if (err.message === "photos_uploading") return t("photosUploading");
   if (err.message === "photo_upload_failed") return t("photosFailed");
+  if (err.message === "photo_too_large") return t("photoTooLarge");
   return userFacingMessage(err.message, t("couldntSave"));
 }
 
@@ -99,8 +100,7 @@ function useSubmitMutation({
         uploadedIds,
         fallbackErrorMessage: t("couldntSave"),
       });
-      // A raced 409 silently converts to PATCH, which carries no photos —
-      // the uploaded ids are orphaned and the user must be told (BRAWUKA-126).
+      // A raced 409 silently converts to PATCH, which carries no photos — the uploaded ids are orphaned and the user must be told (BRAWUKA-126).
       return { photosDropped: convertedToEdit && uploadedIds.length > 0 };
     },
     onMutate: () => {
@@ -113,7 +113,7 @@ function useSubmitMutation({
       // Benign: clearing consumed draft from IndexedDB is best-effort; failures in private mode are ignored.
       void clearPendingCheckin().catch(() => {});
       invalidateCheckinQueries(queryClient, cafeId);
-      clearTimeout(closeTimerRef.current);
+      // Artifact §4 step 3: the success card holds 900ms, then the drawer closes and the toast confirms.
       closeTimerRef.current = window.setTimeout(() => {
         onClose();
         toast(photosDropped ? t("savedWithoutPhotos") : t("saved"), { timeout: SUCCESS_TOAST_TIMEOUT_MS });

@@ -157,8 +157,9 @@ Spec 0002 mandates: button morphs to ✓ + micro coffee-steam animation +
 toast, restrained, no confetti. Composition:
 
 1. On successful save, the confirm button's label crossfades (120ms) to a ✓
-   glyph that draws itself in via stroke (200ms, `ease.default`); the button
-   background eases `accent` → `secondary` (sage) over 200ms.
+   glyph that draws itself in via stroke (`spring.gentle`, inside the
+   `settle.state` ≤300ms ceiling); the button
+   background eases `accent` → `secondary` (sage) over 200ms on `ease.fade`.
 2. Drawer content swaps to a compact success card: centered 24px cup-outline
    glyph (the §2 discovery icon-set cup) with **two 1.5px steam strokes**
    that rise 6px and fade, 450ms total, played once, 80ms stagger between
@@ -219,8 +220,8 @@ HeroUI confirmation popover (`Delete? This removes your scores.` /
 
 ## 7. Motion, dark mode, accessibility, i18n
 
-- Timings per spec 0002; assignments above. Drawer spring `ease.spring`
-  restrained; reduced motion → instant state changes, toast-only success.
+- Timings per spec 0002; assignments above. Drawer spring `spring.snappy`;
+  reduced motion → instant state changes, toast-only success.
 - Token-only colors; photos never dimmed in dark mode.
 - Sliders expose `aria-label` + live `aria-valuenow` once set; the unset
   state announces `not set`. Chips use `aria-pressed`. The success swap sets

@@ -1011,7 +1011,7 @@ re-prompt; the locate button is the only re-entry, and a tap while denied
 shows a one-time toast pointing to system settings (DG117).
 
 Map behavior on grant (DG119/DG120): the map recenters on the user with
-one motion.slow beat ONLY if the user has not panned since the card
+one `settle.slow` (≤450ms) beat ONLY if the user has not panned since the card
 appeared; if they have panned, the blue dot simply appears — the user's
 expressed spatial intent wins. The dot then persists for the session, and
 re-tapping the locate button recenters on it. Offline grants behave the

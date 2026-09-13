@@ -131,30 +131,6 @@ interface ProfileRow extends Record<string, unknown> {
   public_handle_changed_at: Date | string | null;
 }
 
-/** Get public identity state for a user. */
-export async function getProfileIdentity(userId: string): Promise<ProfileIdentityDto | null> {
-  if (!isValidUUID(userId)) return null;
-
-  const result = await query<ProfileRow>(
-    `
-    select id, display_name, show_public_identity, public_handle, identity_consented_at, public_handle_changed_at
-    from profiles
-    where id = $1
-    `,
-    [userId],
-  );
-
-  if (result.rows.length === 0) return null;
-  const row = result.rows[0];
-
-  return {
-    showPublicIdentity: row.show_public_identity,
-    publicHandle: row.public_handle,
-    identityConsentedAt: row.identity_consented_at ? new Date(row.identity_consented_at).toISOString() : null,
-    publicHandleChangedAt: row.public_handle_changed_at ? new Date(row.public_handle_changed_at).toISOString() : null,
-  };
-}
-
 /**
  * Update public identity consent and handle for a profile.
  * Implements Stage 1 write-side semantics:

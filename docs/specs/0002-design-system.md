@@ -170,6 +170,7 @@ Light mode:
   accent-foreground: oklch(98.5% 0.004 80)   white on accent
   secondary:        oklch(45.0% 0.080 155)   deep sage green (brand)
   secondary-foreground: oklch(97.0% 0.005 155) white on secondary
+  secondary-hover:  oklch(40.0% 0.080 155)   sage one step toward the ink (BRAWUKA-209)
 
   success:          oklch(52% 0.11 152)      sage green status
   success-foreground: oklch(98% 0.01 140)
@@ -177,6 +178,7 @@ Light mode:
   warning-foreground: oklch(26% 0.03 55)
   danger:           oklch(50% 0.17 26)       clay red
   danger-foreground: oklch(98.5% 0.004 60)
+  danger-solid:     oklch(50% 0.17 26)       filled-button plate; equals danger in light, independent token (BRAWUKA-211)
 
 Dark mode:
   background:       oklch(15.5% 0.012 50)    deep espresso
@@ -194,16 +196,18 @@ Dark mode:
   accent-foreground: oklch(17% 0.015 48)
   secondary:        oklch(58.0% 0.080 155)   lighter sage (brand); 55.0% raised for the AA gate (4.14:1 → 4.69:1, BRAWUKA-130)
   secondary-foreground: oklch(16% 0.03 150)
+  secondary-hover:  oklch(62.0% 0.080 155)   sage one step toward the ink; 5.52:1 on secondary-foreground (BRAWUKA-209)
 
   success:          oklch(70% 0.13 150)
   success-foreground: oklch(16% 0.03 150)
   warning:          oklch(76% 0.14 75)
   warning-foreground: oklch(24% 0.04 60)
-  danger:           oklch(70% 0.19 27)       clay plate; 64% + warm-light ink graded 3.37:1 and darkening the plate instead dropped danger-as-text to 3.17:1, so it carries dark ink like success/warning (BRAWUKA-219)
+  danger:           oklch(70% 0.19 27)       text/border colour only — error copy, liked heart, "closed"; carries dark ink like success/warning (BRAWUKA-219)
   danger-foreground: oklch(16% 0.01 60)
+  danger-solid:     oklch(56% 0.19 27)       filled-button plate for white label text — 5.12:1; the roles split because no single L clears AA as both plate and text (BRAWUKA-211)
 ```
 
-`web/app/globals.css` maps `--color-secondary` / `--color-secondary-foreground` in `@theme` and overrides `--accent`, `--accent-foreground`, `--secondary`, `--secondary-foreground`, plus `surface`, `border`, `separator`, `muted`, and `default` in both `:root` (light) and `.dark` so the brand palette is available through HeroUI semantic tokens.
+`web/app/globals.css` maps `--color-secondary` / `--color-secondary-foreground` / `--color-secondary-hover` / `--color-danger-solid` in `@theme` and overrides `--accent`, `--accent-foreground`, `--secondary`, `--secondary-foreground`, `--secondary-hover`, `--danger`, `--danger-foreground`, `--danger-solid`, plus `surface`, `border`, `separator`, `muted`, and `default` in both `:root` (light) and `.dark` so the brand palette is available through HeroUI semantic tokens.
 
 ### Typography
 
@@ -311,8 +315,43 @@ Spring tokens (primary animation driver):
   spring.snappy  stiffness 420, damping 32   bottom sheet detent snap, drawers, toggle thumb
                                              (critically damped, zero rebound overshoot)
 
-Bezier curves (strictly restricted to opacity and color cross-fades only):
-  ease.fade      [0.22, 1, 0.36, 1]   ≤200ms duration (cross-fade / color transition only)
+Bezier curves (restricted to opacity/color cross-fades, short enter/exit
+tweens, and the cardInteraction micro-interactions — never layout motion):
+  ease.fade      [0.22, 1, 0.36, 1]   ≤200ms duration (cross-fade / color transition only);
+                                      spec vocabulary — maps to ease.default in
+                                      lib/motion.ts (CSS twin: --ease-default)
+  ease.smooth    [0.4, 0, 0.2, 1]     symmetric curve for color/theme cross-fades
+                                      (reserved — no current consumer)
+  ease.exit      [0.55, 0.06, 0.68, 0.19]   exit/dismissal fades — decelerating-in
+                                      reads faster leaving (reserved)
+
+Duration presets (tween lengths for non-spring transitions — each sits
+inside its settle budget below):
+  duration.feedback    0.12s   button press, toggle, chip select
+  duration.state       0.2s    card expand, drawer slide
+  duration.transition  0.3s    page transition, map overlay enter
+  duration.slow        0.45s   onboarding, first-load reveal — hard ceiling
+```
+
+Choreography tokens (named delays/staggers — no site invents its own numbers):
+
+```text
+stagger.checkinSuccess   steamA 0.15, steamB 0.23, title 0.2, cafeName 0.3
+                         check-in success card: steam puffs, then text
+stagger.heroPoster       card 0.12, scoreBar 0.2   theme-preview poster reveal
+stagger.workProfile      step 0.04   per-bar cascade on WorkProfile load
+
+ambient.steam            duration 0.4, loop, step 0.1 per wisp
+                         looping coffee-steam wisps — ambient loops never
+                         settle, so they are exempt from settle budgets but
+                         still capped at the 450ms ceiling
+
+cardInteraction.whileHover   y -2 lift on duration.feedback + ease.default —
+                             the "alive" hover feel on interactive cards
+cardInteraction.whileTap     scale 0.985 press on duration.feedback + ease.default
+
+cardInteraction.active / .inactive   peek-strip affordance: active card
+                         scales ~1.02, neighbors dim to 0.6 (spring.gentle)
 ```
 
 Settle budgets (spring stability ceilings, replacing fixed durations):
@@ -519,16 +558,17 @@ this principle governs them and any new copy.
 
     pair (dark)                                        before    after
     accent on accent-foreground                        6.27:1    6.27:1   pass
-    secondary on secondary-foreground (filled button)   4.14:1    4.69:1   pass (BRAWUKA-130)
     danger on danger-foreground (filled button)         3.37:1    6.72:1   pass (BRAWUKA-219)
+    white on danger-solid (filled button)               3.68:1    5.12:1   pass (BRAWUKA-211; before = white on the 64% plate)
     danger as text on surface-secondary                 3.17:1    5.92:1   pass (BRAWUKA-219, at a 55% plate)
 
   Zero regressions; the accent pair was already above the gate and is unchanged.
 
   Secondary text on dark surfaces uses `--muted`, not `--secondary`: sage is a
-  fill/spot colour, and at 58% it reads 4.11:1 on surface-secondary. The pair
-  above covers both of danger's roles in dark — plate and text — because a
-  single mid-luminance value cannot clear the gate in both.
+  fill/spot colour, and at 58% it reads 4.11:1 on surface-secondary. Danger's
+  dark roles are split across two tokens — `--danger` is the text/border
+  colour and `--danger-solid` the filled-button plate — because a single
+  mid-luminance value cannot clear the gate in both (BRAWUKA-211).
 
   The gate is enforced in two places: `web/tests/design-tokens-contrast.test.ts`
   asserts these token pairs (and that hue/chroma are held) in `npm test`, and

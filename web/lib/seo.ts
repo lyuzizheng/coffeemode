@@ -83,7 +83,7 @@ export function serializeJsonLd(value: Record<string, unknown>): string {
 }
 
 /** The exact narrow slices the SSR shell hands to its client components. */
-export interface PublicCafeShell {
+interface PublicCafeShell {
   openState: { opening_hours: WeeklyHours | null; tz: string | null };
   actions: { name: string; lat: number; lng: number };
   gallery: { id: string; thumbnail: string }[];

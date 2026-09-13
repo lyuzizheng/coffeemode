@@ -27,7 +27,7 @@ export function isUnauthorized(cause: unknown): boolean {
  * Structured triage line for a code that was deliberately kept out of the UI.
  * Diagnosability is the only reason the code is logged at all — do not delete.
  */
-export function logErrorCode(code: string, context: string): void {
+function logErrorCode(code: string, context: string): void {
   console.warn("[api-error] machine code withheld from the UI", { code, context });
 }
 

@@ -175,7 +175,9 @@ export function DetailContent({
 
   if (variant === "half") {
     return (
-      <div className="flex flex-col gap-3 px-4">
+      // pb clears the home indicator: the adaptive HALF detent (BRAWUKA-248)
+      // hugs this column, so its bottom edge is the screen edge.
+      <div className="flex flex-col gap-3 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <CoverCarousel images={covers} alt={cafe.name} />
         <div className="flex flex-col gap-1">
           {heading}

@@ -4,9 +4,10 @@
  * Mobile discovery sheet (artifact §5, DG14/DG15/DG75).
  *
  * One bespoke Framer Motion sheet, three detents: PEEK (card strip, no
- * selection), HALF (50dvh), FULL (85dvh — the map stays visible ~15% at
- * top). Geometry uses dvh + env(safe-area-inset-bottom) per the spec 0002
- * viewport contract. Drag/scroll ownership (spec 0004 18c): only the
+ * selection), HALF (content-adaptive up to 50dvh — BRAWUKA-248), FULL
+ * (85dvh — the map stays visible ~15% at top). Geometry uses dvh +
+ * env(safe-area-inset-bottom) per the spec 0002 viewport contract.
+ * Drag/scroll ownership (spec 0004 18c): only the
  * handle/header zone drags the sheet; detail content scrolls natively and
  * hands a downward pull back to the sheet only at scroll-top. Downward
  * gestures step FULL → HALF → PEEK one detent per gesture (18b); stepping
@@ -15,7 +16,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { animate, motion, useDragControls, useMotionValue, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
-import { spring } from "@/lib/motion";
+import { cardInteraction, spring } from "@/lib/motion";
 import { useMounted } from "@/hooks/use-mounted";
 import type { DiscoveryController, SheetSnap } from "@/lib/discovery/use-discovery-controller";
 import type { CafeSummary } from "@/types/cafes";
@@ -27,6 +28,8 @@ import { InlineError } from "./inline-error";
 const PEEK_VISIBLE_PX = 172;
 const SHEET_HEIGHT_VH = 0.85;
 const HALF_VISIBLE_VH = 0.5;
+/** Handle chrome above the content column: pt-2 + 4px bar + pb-3. */
+const HANDLE_VISIBLE_PX = 24;
 /** Drag distance/velocity that commits a detent step. */
 const STEP_OFFSET_PX = 60;
 const STEP_VELOCITY = 300;
@@ -53,7 +56,7 @@ function PeekCard({
       // Active card scales ~1.02, neighbors dim (§8) — gentle spring, no CSS
       // tween; instant under reduced motion.
       initial={false}
-      animate={{ scale: active ? 1.02 : 1, opacity: active ? 1 : 0.6 }}
+      animate={active ? cardInteraction.active : cardInteraction.inactive}
       transition={reduced ? { duration: 0 } : spring.gentle}
     >
       <CafeCardBody cafe={cafe} />
@@ -171,6 +174,12 @@ export function MobileSheet({
   const y = useMotionValue(0);
   const dragControls = useDragControls();
   const contentRef = useRef<HTMLDivElement | null>(null);
+  /** Inner wrapper whose natural height the HALF detent adapts to. */
+  const [contentEl, setContentEl] = useState<HTMLDivElement | null>(null);
+  /** Natural HALF content height (px); null until measured → HALF = 50dvh. */
+  const [contentH, setContentH] = useState<number | null>(null);
+  /** True while a sheet drag is in flight; the snap effect must not fight it. */
+  const dragging = useRef(false);
   const pendingPull = useRef<{ startY: number } | null>(null);
   /** Drag-end velocity handed to the detent snap spring (velocity transfer). */
   const snapVelocity = useRef(0);
@@ -184,32 +193,57 @@ export function MobileSheet({
     return () => window.removeEventListener("resize", update);
   }, []);
 
+  // BRAWUKA-248: HALF is content-adaptive — visible height clamps to
+  // [PEEK + handle, content + handle, 50dvh]. The floor keeps HALF strictly
+  // above PEEK so the detent order never degenerates; the snap set stays
+  // fixed at PEEK/HALF/FULL — only HALF's rendered height tightens.
+  const halfVisible =
+    contentH === null
+      ? viewportH * HALF_VISIBLE_VH
+      : Math.min(
+          viewportH * HALF_VISIBLE_VH,
+          Math.max(PEEK_VISIBLE_PX + HANDLE_VISIBLE_PX, contentH + HANDLE_VISIBLE_PX),
+        );
   const sheetH = viewportH * SHEET_HEIGHT_VH;
   const offsets: Record<SheetSnap, number> = {
     full: 0,
-    half: sheetH - viewportH * HALF_VISIBLE_VH,
+    half: sheetH - halfVisible,
     peek: sheetH - PEEK_VISIBLE_PX,
   };
+  const targetY = offsets[snap];
+
+  // Measure the HALF content column's natural height so the detent can hug
+  // it. The callback ref re-fires whenever the column mounts/remounts (first
+  // render is gated on viewportH, and PEEK swaps the subtree). jsdom has no
+  // ResizeObserver; unmeasured content keeps the 50dvh ceiling, which is
+  // also the pre-measurement default.
+  useEffect(() => {
+    if (!contentEl || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setContentH(contentEl.offsetHeight));
+    observer.observe(contentEl);
+    return () => observer.disconnect();
+  }, [contentEl]);
 
   // Snap state changes animate the sheet; reduced motion snaps instantly (18e).
   // Detent snaps ride the snappy spring; a drag's release velocity carries
   // into the snap so a flick lands with its own momentum (spec 0002 Motion).
   useEffect(() => {
-    if (viewportH === 0) return;
+    if (viewportH === 0 || dragging.current) return;
     const velocity = snapVelocity.current;
     snapVelocity.current = 0;
     const controls = animate(
       y,
-      offsets[snap],
+      targetY,
       reduced ? { duration: 0 } : { ...spring.snappy, velocity },
     );
     return () => controls.stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snap, viewportH, reduced]);
+  }, [targetY, reduced]);
 
   if (!mounted || viewportH === 0) return null;
 
   const onDragEnd = (_: unknown, info: { offset: { y: number }; velocity: { y: number } }) => {
+    dragging.current = false;
     const steps: SheetSnap[] = selectedCafeId ? ["peek", "half", "full"] : ["peek"];
     const current = steps.indexOf(snap);
     let next = current;
@@ -255,6 +289,9 @@ export function MobileSheet({
       dragConstraints={{ top: 0, bottom: offsets.peek }}
       dragElastic={0.08}
       dragMomentum={false}
+      onDragStart={() => {
+        dragging.current = true;
+      }}
       onDragEnd={onDragEnd}
       className="fixed inset-x-0 bottom-0 z-30 flex flex-col rounded-t-lg border-t border-separator bg-overlay shadow-lg"
       role="region"
@@ -286,14 +323,16 @@ export function MobileSheet({
           onPointerCancel={clearPendingPull}
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
         >
-          <DetailContent
-            key={selectedCafeId}
-            cafeId={selectedCafeId}
-            variant={snap}
-            controller={controller}
-            onCheckIn={onCheckIn}
-            distanceM={cafes.find((c) => c.id === selectedCafeId)?.distance_m}
-          />
+          <div ref={setContentEl}>
+            <DetailContent
+              key={selectedCafeId}
+              cafeId={selectedCafeId}
+              variant={snap}
+              controller={controller}
+              onCheckIn={onCheckIn}
+              distanceM={cafes.find((c) => c.id === selectedCafeId)?.distance_m}
+            />
+          </div>
         </div>
       )}
     </motion.div>

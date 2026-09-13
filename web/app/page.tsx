@@ -65,25 +65,27 @@ export default async function HomePage({
             <Link
               href="/profile"
               aria-label="Profile"
-              className="w-9 h-9 rounded-full bg-surface-secondary border border-border/50 flex items-center justify-center text-foreground hover:bg-surface-tertiary active:scale-95 transition-all text-xs font-semibold"
+              className="group -m-1 flex h-11 w-11 items-center justify-center"
             >
-              {user ? (
-                profileFromUser(user).displayName[0]?.toUpperCase() ?? "P"
-              ) : (
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <circle cx="8" cy="5" r="3" />
-                  <path d="M2.5 14a5.5 5.5 0 0 1 11 0" />
-                </svg>
-              )}
+              <span className="flex h-9 w-9 items-center justify-center rounded-full border border-border/50 bg-surface-secondary text-xs font-semibold text-foreground transition-all group-hover:bg-surface-tertiary group-active:scale-95">
+                {user ? (
+                  profileFromUser(user).displayName[0]?.toUpperCase() ?? "P"
+                ) : (
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="8" cy="5" r="3" />
+                    <path d="M2.5 14a5.5 5.5 0 0 1 11 0" />
+                  </svg>
+                )}
+              </span>
             </Link>
             <ThemeToggle />
           </div>

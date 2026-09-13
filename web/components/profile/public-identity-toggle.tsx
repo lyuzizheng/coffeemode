@@ -13,6 +13,7 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Button, Label, Switch } from "@heroui/react";
 import type { UserProfileDto } from "@/lib/db/profile";
+import { getHandleMaxChars } from "@/lib/client-env";
 
 type IdentityErrorKey =
   | "identity_error_handle_taken"
@@ -140,7 +141,7 @@ export function PublicIdentityToggle({
           {handleDraft !== null ? (
             <input
               type="text"
-              maxLength={30}
+              maxLength={getHandleMaxChars()}
               value={handleDraft}
               onChange={(e) => setHandleDraft(e.target.value)}
               onKeyDown={(e) => {

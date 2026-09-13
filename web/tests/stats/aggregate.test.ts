@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { QueryResult } from "pg";
 import type { CheckIn } from "@/types/checkins";
+import { appConfig } from "@/lib/config";
 import {
   COMPOSITE_DIMS,
-  DIM_WEIGHTS,
   RunInTransaction,
   applyUserContributionDiff,
   computeCafeStats,
@@ -49,6 +49,10 @@ const fullScores = {
   overall: 80,
 };
 
+// Single source (BRAWUKA-250): weights/decay live in app.yaml; tests pass them explicitly.
+const DECAY = appConfig.stats.recencyDecay;
+const WEIGHTS = appConfig.stats.dimWeights;
+
 const repeatScores = {
   wifi: 80,
   outlets: 70,
@@ -67,7 +71,7 @@ describe("computeCafeStats", () => {
       visited_at: "2026-08-01T10:00:00Z",
     });
 
-    const stats = computeCafeStats([checkin]);
+    const stats = computeCafeStats([checkin], 0, DECAY, WEIGHTS);
 
     expect(stats.n_users).toBe(1);
     expect(stats.n_checkins).toBe(1);
@@ -77,7 +81,7 @@ describe("computeCafeStats", () => {
     expect(stats.policies.max_stay["3h"]).toBe(1);
 
     const expectedComposite = COMPOSITE_DIMS.reduce(
-      (sum, dim) => sum + fullScores[dim] * DIM_WEIGHTS[dim],
+      (sum, dim) => sum + fullScores[dim] * WEIGHTS[dim],
       0,
     );
     expect(stats.composite_score).toBeCloseTo(expectedComposite, 6);
@@ -97,7 +101,7 @@ describe("computeCafeStats", () => {
       visited_at: "2026-08-02T10:00:00Z",
     });
 
-    const stats = computeCafeStats([first, second]);
+    const stats = computeCafeStats([first, second], 0, DECAY, WEIGHTS);
 
     expect(stats.n_users).toBe(1);
     expect(stats.n_checkins).toBe(2);
@@ -124,10 +128,10 @@ describe("computeCafeStats", () => {
       visited_at: "2026-08-02T10:00:00Z",
     });
 
-    const before = computeCafeStats([first, second]);
+    const before = computeCafeStats([first, second], 0, DECAY, WEIGHTS);
 
     const edited = { ...second, scores: { ...second.scores, overall: 50 } };
-    const after = computeCafeStats([first, edited]);
+    const after = computeCafeStats([first, edited], 0, DECAY, WEIGHTS);
 
     expect(after.dims.overall.sum / after.dims.overall.n).toBeCloseTo(
       (50 * 1 + 80 * 0.6) / 1.6,
@@ -154,7 +158,7 @@ describe("computeCafeStats", () => {
 
     // computeCafeStats expects already-filtered non-deleted rows.
     const active = [first, deleted].filter((c) => c.deleted_at === null);
-    const stats = computeCafeStats(active);
+    const stats = computeCafeStats(active, 0, DECAY, WEIGHTS);
     expect(stats.n_checkins).toBe(1);
     expect(stats.dims.overall).toEqual({ sum: 80, n: 1 });
   });
@@ -173,13 +177,14 @@ describe("computeCafeStats", () => {
       visited_at: "2026-08-01T10:00:00Z",
     });
 
-    const withLikesSw0 = computeUserContribution([newest, older], 0);
+    const withLikesSw0 = computeUserContribution([newest, older], 0, DECAY);
     const withoutLikes = computeUserContribution(
       [
         { ...newest, likes_count: 0 },
         { ...older, likes_count: 0 },
       ],
       0,
+      DECAY,
     );
 
     expect(withLikesSw0.dims.overall).toBeCloseTo(withoutLikes.dims.overall!, 6);
@@ -188,7 +193,7 @@ describe("computeCafeStats", () => {
       6,
     );
 
-    const withSocial = computeUserContribution([newest, older], 0.5);
+    const withSocial = computeUserContribution([newest, older], 0.5, DECAY);
     expect(withSocial.dims.overall).not.toBeCloseTo(withLikesSw0.dims.overall!, 6);
   });
 
@@ -199,9 +204,9 @@ describe("computeCafeStats", () => {
       visited_at: "2026-08-01T10:00:00Z",
     });
 
-    const stats = computeCafeStats([checkin]);
-    const weighted = 60 * DIM_WEIGHTS.wifi + 90 * DIM_WEIGHTS.coffee;
-    const weightSum = DIM_WEIGHTS.wifi + DIM_WEIGHTS.coffee;
+    const stats = computeCafeStats([checkin], 0, DECAY, WEIGHTS);
+    const weighted = 60 * WEIGHTS.wifi + 90 * WEIGHTS.coffee;
+    const weightSum = WEIGHTS.wifi + WEIGHTS.coffee;
     expect(stats.composite_score).toBeCloseTo(weighted / weightSum, 6);
   });
 });
@@ -209,20 +214,24 @@ describe("computeCafeStats", () => {
 describe("applyUserContributionDiff", () => {
   it("adds a new user and removes a user correctly", () => {
     let stats = emptyWorkStats();
-    const user = computeUserContribution([
-      makeCheckIn({
-        id: "chk-1",
-        scores: fullScores,
-        max_stay: "3h",
-        visited_at: "2026-08-01T10:00:00Z",
-      }),
-    ]);
+    const user = computeUserContribution(
+      [
+        makeCheckIn({
+          id: "chk-1",
+          scores: fullScores,
+          max_stay: "3h",
+          visited_at: "2026-08-01T10:00:00Z",
+        }),
+      ],
+      0,
+      DECAY,
+    );
 
-    stats = applyUserContributionDiff(stats, null, user, 1);
+    stats = applyUserContributionDiff(stats, null, user, 1, WEIGHTS);
     expect(stats.n_users).toBe(1);
     expect(stats.dims.wifi.sum).toBe(70);
 
-    stats = applyUserContributionDiff(stats, user, null, 0);
+    stats = applyUserContributionDiff(stats, user, null, 0, WEIGHTS);
     expect(stats.n_users).toBe(0);
     expect(stats.dims.wifi.sum).toBe(0);
     expect(stats.dims.wifi.n).toBe(0);
@@ -261,7 +270,7 @@ describe("incrementalUpdateWorkStats", () => {
       }
       if (sql.includes("select work_stats")) {
         // The DB already reflects the prior check-in's contribution.
-        const priorStats = computeCafeStats([prior]);
+        const priorStats = computeCafeStats([prior], 0, DECAY, WEIGHTS);
         return {
           rows: [{ work_stats: priorStats }],
           rowCount: 1,
@@ -406,7 +415,7 @@ describe("recomputeWorkStats", () => {
         return { rows: [oldRow], rowCount: 1 } as unknown as QueryResult<CheckIn>;
       }
       if (sql.includes("select work_stats")) {
-        return { rows: [{ work_stats: computeCafeStats([oldRow]) }], rowCount: 1 } as unknown as QueryResult<{
+        return { rows: [{ work_stats: computeCafeStats([oldRow], 0, DECAY, WEIGHTS) }], rowCount: 1 } as unknown as QueryResult<{
           work_stats: unknown;
         }>;
       }

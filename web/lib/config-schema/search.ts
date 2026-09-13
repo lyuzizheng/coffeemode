@@ -49,6 +49,39 @@ function parseRankingMode(file: string, value: unknown): string {
   return value as string;
 }
 
+function parseGoodFirst(file: string, value: unknown): SearchConfig["goodFirst"] {
+  const goodFirst = record(file, "search.goodFirst", value);
+  return {
+    experienceMin: positiveNumber(file, "search.goodFirst.experienceMin", goodFirst.experienceMin),
+    compositeMin: positiveNumber(file, "search.goodFirst.compositeMin", goodFirst.compositeMin),
+    boost: positiveNumber(file, "search.goodFirst.boost", goodFirst.boost),
+  };
+}
+
+function parseResponseCache(file: string, value: unknown): SearchConfig["responseCache"] {
+  const responseCache = record(file, "search.responseCache", value);
+  return {
+    maxAgeSeconds: positiveInteger(
+      file,
+      "search.responseCache.maxAgeSeconds",
+      responseCache.maxAgeSeconds,
+    ),
+    staleWhileRevalidateSeconds: positiveInteger(
+      file,
+      "search.responseCache.staleWhileRevalidateSeconds",
+      responseCache.staleWhileRevalidateSeconds,
+    ),
+  };
+}
+
+function parseSearchClient(file: string, value: unknown): SearchConfig["client"] {
+  const client = record(file, "search.client", value);
+  return {
+    minQueryLength: positiveInteger(file, "search.client.minQueryLength", client.minQueryLength),
+    debounceMs: positiveInteger(file, "search.client.debounceMs", client.debounceMs),
+  };
+}
+
 /** Validate the `search` subtree of app.yaml. */
 export function parseSearchSection(file: string, search: Record<string, unknown>): SearchConfig {
   return {
@@ -86,5 +119,8 @@ export function parseSearchSection(file: string, search: Record<string, unknown>
         : positiveInteger(file, "search.minRelevanceScore", search.minRelevanceScore),
     externalSources: parseExternalSources(file, search.externalSources),
     rankingMode: parseRankingMode(file, search.rankingMode),
+    goodFirst: parseGoodFirst(file, search.goodFirst),
+    responseCache: parseResponseCache(file, search.responseCache),
+    client: parseSearchClient(file, search.client),
   };
 }

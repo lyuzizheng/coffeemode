@@ -52,6 +52,9 @@ describe("config files", () => {
     expect(appConfig.search.minRelevanceScore).toBe(50);
     expect(appConfig.search.externalSources).toEqual({ google: true, apple: false });
     expect(appConfig.search.rankingMode).toBe("relevance");
+    expect(appConfig.search.goodFirst).toEqual({ experienceMin: 80, compositeMin: 75, boost: 10 });
+    expect(appConfig.search.responseCache).toEqual({ maxAgeSeconds: 10, staleWhileRevalidateSeconds: 30 });
+    expect(appConfig.search.client).toEqual({ minQueryLength: 3, debounceMs: 400 });
     expect(appConfig.stats.dimWeights).toEqual({
       wifi: 0.3,
       outlets: 0.2,
@@ -68,6 +71,26 @@ describe("config files", () => {
     expect(appConfig.profile.listPageSize).toBe(20);
     expect(appConfig.profile.displayNameMaxChars).toBe(24);
     expect(appConfig.profile.recentSearchesMax).toBe(20);
+    expect(appConfig.profile.handle).toEqual({
+      minChars: 3,
+      maxChars: 30,
+      changeCooldownDays: 7,
+      slugMaxChars: 25,
+      generateMaxAttempts: 10,
+    });
+    expect(appConfig.images).toEqual({
+      maxOriginalDimension: 4096,
+      webpQuality: 80,
+      r2DownloadTimeoutMs: 30000,
+      r2UploadTimeoutMs: 30000,
+      downloadSlackBytes: 524288,
+    });
+    expect(appConfig.query).toEqual({
+      staleTimeMs: 300000,
+      gcTimeMs: 86400000,
+      persistMaxAgeMs: 604800000,
+    });
+    expect(appConfig.validation).toEqual({ cafeAddressMaxChars: 300, profileCityMaxChars: 50 });
     expect(appConfig.budgets.bundle).toEqual({
       maxJsChunkBytes: 409600,
       maxCssChunkBytes: 512000,
@@ -179,6 +202,9 @@ describe("parseAppConfig validation", () => {
     minRelevanceScore: 50,
     externalSources: { google: true, apple: false },
     rankingMode: "relevance",
+    goodFirst: { experienceMin: 80, compositeMin: 75, boost: 10 },
+    responseCache: { maxAgeSeconds: 10, staleWhileRevalidateSeconds: 30 },
+    client: { minQueryLength: 3, debounceMs: 400 },
   };
   const validStats = {
     dimWeights: {
@@ -209,6 +235,13 @@ describe("parseAppConfig validation", () => {
     listPageSize: 20,
     displayNameMaxChars: 24,
     recentSearchesMax: 20,
+    handle: {
+      minChars: 3,
+      maxChars: 30,
+      changeCooldownDays: 7,
+      slugMaxChars: 25,
+      generateMaxAttempts: 10,
+    },
   };
   const validBudgets = {
     bundle: {
@@ -223,6 +256,15 @@ describe("parseAppConfig validation", () => {
       seo: 0.85,
     },
   };
+  const validImages = {
+    maxOriginalDimension: 4096,
+    webpQuality: 80,
+    r2DownloadTimeoutMs: 30000,
+    r2UploadTimeoutMs: 30000,
+    downloadSlackBytes: 524288,
+  };
+  const validQuery = { staleTimeMs: 300000, gcTimeMs: 86400000, persistMaxAgeMs: 604800000 };
+  const validValidation = { cafeAddressMaxChars: 300, profileCityMaxChars: 50 };
 
   it("accepts a valid config", () => {
     const valid = {
@@ -234,6 +276,9 @@ describe("parseAppConfig validation", () => {
       seo: validSeo,
       checkins: validCheckins,
       profile: validProfile,
+      images: validImages,
+      query: validQuery,
+      validation: validValidation,
       budgets: validBudgets,
     };
     expect(parseAppConfig(valid)).toEqual(valid);
@@ -284,6 +329,9 @@ describe("parseAppConfig validation", () => {
         seo: validSeo,
         checkins: validCheckins,
         profile: validProfile,
+        images: validImages,
+        query: validQuery,
+        validation: validValidation,
       }),
     ).toThrow(/"budgets" must be a mapping/);
   });
@@ -385,6 +433,9 @@ describe("parseAppConfig validation", () => {
         seo: validSeo,
         checkins: validCheckins,
         profile: validProfile,
+        images: validImages,
+        query: validQuery,
+        validation: validValidation,
         budgets: {
           ...validBudgets,
           lighthouse: {
@@ -395,4 +446,123 @@ describe("parseAppConfig validation", () => {
       }),
     ).toThrow(/"budgets\.lighthouse\.performance" must be a number between 0 and 1/);
   });
+
+  it("rejects a missing or mistyped search.goodFirst (BRAWUKA-250)", () => {
+    const base = {
+      stats: validStats,
+      cafes: { listLimitMax: 50 },
+      feed: { pageSize: 20 },
+      discovery: validCenter,
+      seo: validSeo,
+      checkins: validCheckins,
+      profile: validProfile,
+      images: validImages,
+      query: validQuery,
+      validation: validValidation,
+      budgets: validBudgets,
+    };
+    expect(() =>
+      parseAppConfig({ ...base, search: { ...validSearch, goodFirst: undefined } }),
+    ).toThrow(/"search\.goodFirst" must be a mapping/);
+    expect(() =>
+      parseAppConfig({
+        ...base,
+        search: { ...validSearch, goodFirst: { experienceMin: 80, compositeMin: 75, boost: -1 } },
+      }),
+    ).toThrow(/"search\.goodFirst\.boost" must be a positive number/);
+  });
+
+  it("rejects a missing or mistyped search.responseCache (BRAWUKA-250)", () => {
+    const searchWithoutCache = { ...validSearch, responseCache: undefined };
+    expect(() =>
+      parseAppConfig({
+        search: searchWithoutCache,
+        stats: validStats,
+        cafes: { listLimitMax: 50 },
+        feed: { pageSize: 20 },
+        discovery: validCenter,
+        seo: validSeo,
+        checkins: validCheckins,
+        profile: validProfile,
+        images: validImages,
+        query: validQuery,
+        validation: validValidation,
+        budgets: validBudgets,
+      }),
+    ).toThrow(/"search\.responseCache" must be a mapping/);
+  });
+
+  it("rejects a missing or mistyped search.client (BRAWUKA-250)", () => {
+    expect(() =>
+      parseAppConfig({
+        search: { ...validSearch, client: { minQueryLength: 3, debounceMs: 0 } },
+        stats: validStats,
+        cafes: { listLimitMax: 50 },
+        feed: { pageSize: 20 },
+        discovery: validCenter,
+        seo: validSeo,
+        checkins: validCheckins,
+        profile: validProfile,
+        images: validImages,
+        query: validQuery,
+        validation: validValidation,
+        budgets: validBudgets,
+      }),
+    ).toThrow(/"search\.client\.debounceMs" must be a positive integer/);
+  });
+
+  it("rejects an inverted or mistyped profile.handle (BRAWUKA-250)", () => {
+    const base = {
+      search: validSearch,
+      stats: validStats,
+      cafes: { listLimitMax: 50 },
+      feed: { pageSize: 20 },
+      discovery: validCenter,
+      seo: validSeo,
+      checkins: validCheckins,
+      images: validImages,
+      query: validQuery,
+      validation: validValidation,
+      budgets: validBudgets,
+    };
+    expect(() =>
+      parseAppConfig({
+        ...base,
+        profile: {
+          ...validProfile,
+          handle: { minChars: 31, maxChars: 30, changeCooldownDays: 7, slugMaxChars: 25, generateMaxAttempts: 10 },
+        },
+      }),
+    ).toThrow(/"profile\.handle" "minChars" \(31\) must not exceed "maxChars" \(30\)/);
+    expect(() =>
+      parseAppConfig({
+        ...base,
+        profile: { ...validProfile, handle: { ...validProfile.handle, slugMaxChars: 0 } },
+      }),
+    ).toThrow(/"profile\.handle\.slugMaxChars" must be a positive integer/);
+  });
+
+  it("rejects mistyped images/query/validation sections (BRAWUKA-250)", () => {
+    const base = {
+      search: validSearch,
+      stats: validStats,
+      cafes: { listLimitMax: 50 },
+      feed: { pageSize: 20 },
+      discovery: validCenter,
+      seo: validSeo,
+      checkins: validCheckins,
+      profile: validProfile,
+      budgets: validBudgets,
+    };
+    expect(() =>
+      parseAppConfig({ ...base, images: { ...validImages, webpQuality: 101 }, query: validQuery, validation: validValidation }),
+    ).toThrow(/"images\.webpQuality" must be a number between 1 and 100/);
+    expect(() =>
+      parseAppConfig({ ...base, images: validImages, query: { ...validQuery, gcTimeMs: -1 }, validation: validValidation }),
+    ).toThrow(/"query\.gcTimeMs" must be a positive integer/);
+    expect(() =>
+      parseAppConfig({ ...base, images: validImages, query: validQuery, validation: { cafeAddressMaxChars: 300 } }),
+    ).toThrow(/"validation\.profileCityMaxChars" must be a positive integer/);
+  });
+
 });

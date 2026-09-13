@@ -7,6 +7,7 @@ import { Button } from "@heroui/react";
 import { CoffeeIcon } from "@/components/icons";
 import { LAUNCH_CITIES, displayCityName, type CityInfo } from "@/lib/cities";
 import type { UserProfileDto } from "@/lib/db/profile";
+import { getDisplayNameMaxChars } from "@/lib/client-env";
 
 interface ProfileHeroProps {
   profile: UserProfileDto | null;
@@ -26,7 +27,8 @@ export function ProfileHero({ profile, onProfileChange }: ProfileHeroProps) {
 
   const handleSaveName = () => {
     const trimmed = nameInput.trim();
-    if (!trimmed || trimmed.length > 24) return;
+    // Server enforces `profile.displayNameMaxChars`; this only avoids a doomed request.
+    if (!trimmed || trimmed.length > getDisplayNameMaxChars()) return;
     startSavingName(async () => {
       try {
         const res = await fetch("/api/profile", {
@@ -100,7 +102,7 @@ export function ProfileHero({ profile, onProfileChange }: ProfileHeroProps) {
           <div className="flex items-center gap-1.5">
             <input
               type="text"
-              maxLength={24}
+              maxLength={getDisplayNameMaxChars()}
               value={nameInput}
               onChange={(e) => setNameInput(e.target.value)}
               onKeyDown={(e) => {

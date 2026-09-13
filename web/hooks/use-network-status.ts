@@ -2,7 +2,10 @@
 
 import { useSyncExternalStore } from "react";
 
+/** Active HEAD probe cadence — internal watchdog, not a product knob (BRAWUKA-250). */
 const PING_INTERVAL_MS = 15000;
+/** Probe abort timeout: slower than this counts as offline. */
+const PING_TIMEOUT_MS = 3000;
 const PING_URL = "/api/health";
 
 type NetworkState = "online" | "offline" | "unknown";
@@ -58,7 +61,7 @@ class NetworkStatusStore {
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
+    const timeout = setTimeout(() => controller.abort(), PING_TIMEOUT_MS);
     this.pendingControllers.add(controller);
 
     try {

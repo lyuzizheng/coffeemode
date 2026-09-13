@@ -152,6 +152,9 @@ function minimalValid() {
       maxIterativeFetchBatches: 10,
       minPoiQueryLength: 3,
       relevanceWeights: { exactNameMatch: 100, prefixMatch: 80, fuzzyMatch: 50, secondaryMatch: 10 },
+      goodFirst: { experienceMin: 80, compositeMin: 75, boost: 10 },
+      responseCache: { maxAgeSeconds: 10, staleWhileRevalidateSeconds: 30 },
+      client: { minQueryLength: 3, debounceMs: 400 },
     },
     stats: {
       dimWeights: { wifi: 0.3, outlets: 0.2, seats: 0.2, temp: 0.15, coffee: 0.15 },
@@ -173,7 +176,10 @@ function minimalValid() {
       recoveryLimit: 5,
     },
     checkins: { photoCap: 6, noteMaxChars: 500, pendingDraftTtlHours: 72, revisitWindowHours: 24 },
-    profile: { listLimitMax: 50, listPageSize: 20, displayNameMaxChars: 24, recentSearchesMax: 20 },
+    profile: { listLimitMax: 50, listPageSize: 20, displayNameMaxChars: 24, recentSearchesMax: 20, handle: { minChars: 3, maxChars: 30, changeCooldownDays: 7, slugMaxChars: 25, generateMaxAttempts: 10 } },
+    images: { maxOriginalDimension: 4096, webpQuality: 80, r2DownloadTimeoutMs: 30000, r2UploadTimeoutMs: 30000, downloadSlackBytes: 524288 },
+    query: { staleTimeMs: 300000, gcTimeMs: 86400000, persistMaxAgeMs: 604800000 },
+    validation: { cafeAddressMaxChars: 300, profileCityMaxChars: 50 },
     budgets: {
       bundle: { maxJsChunkBytes: 409600, maxCssChunkBytes: 512000, maxTotalStaticBytes: 5242880 },
       lighthouse: { performance: 0.8, accessibility: 0.85, bestPractices: 0.85, seo: 0.85 },

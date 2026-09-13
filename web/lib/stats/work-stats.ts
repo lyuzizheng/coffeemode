@@ -19,17 +19,13 @@ export const COMPOSITE_DIMS: Exclude<WorkDim, "overall">[] = [
   "coffee",
 ];
 
-const DEFAULT_DIM_WEIGHTS: Record<Exclude<WorkDim, "overall">, number> = {
-  wifi: 0.3,
-  outlets: 0.2,
-  seats: 0.2,
-  temp: 0.15,
-  coffee: 0.15,
-};
-
-const DEFAULT_RECENCY_DECAY = 0.6;
-
-export const DIM_WEIGHTS = DEFAULT_DIM_WEIGHTS;
+/**
+ * Weight/decay values are owned by `web/config/app.yaml` (`stats.*`) and
+ * passed explicitly by server callers (BRAWUKA-250). This module stays pure
+ * and client-safe — it cannot import the server-only config — so the values
+ * arrive as required parameters, never as a second literal copy here.
+ */
+export type DimWeights = Record<Exclude<WorkDim, "overall">, number>;
 
 export interface WorkStats {
   n_users: number;
@@ -74,7 +70,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 /** Coerce an unknown (e.g. JSON-decoded) payload into a complete WorkStats. */
-export function coerceWorkStats(raw: unknown): WorkStats {
+export function coerceWorkStats(raw: unknown, dimWeights: DimWeights): WorkStats {
   const record = asRecord(raw);
   const partial = record as Partial<WorkStats>;
   const stats = emptyWorkStats();
@@ -100,7 +96,7 @@ export function coerceWorkStats(raw: unknown): WorkStats {
   if (typeof partial.composite_score === "number" || partial.composite_score === null) {
     stats.composite_score = partial.composite_score;
   } else if (typeof record.composite_score !== "undefined") {
-    stats.composite_score = computeCompositeScore(stats);
+    stats.composite_score = computeCompositeScore(stats, dimWeights);
   }
   // Preserve persisted updated_at; emptyWorkStats already set a fresh timestamp
   // when none exists (e.g. DB default '{}').
@@ -116,7 +112,7 @@ export function coerceWorkStats(raw: unknown): WorkStats {
     stats.experience_score = computeExperienceScore(stats);
   }
   if (!hasPersistedComposite && stats.composite_score === null && COMPOSITE_DIMS.some((d) => stats.dims[d].n > 0)) {
-    stats.composite_score = computeCompositeScore(stats);
+    stats.composite_score = computeCompositeScore(stats, dimWeights);
   }
   return stats;
 }
@@ -129,7 +125,8 @@ function visitTimestamp(c: CheckIn): number {
 /**
  * Compute one user's contribution to a cafe.
  *
- * Scores are weighted by recency rank: newest = 0.6^0 = 1, previous = 0.6, …
+ * Scores are weighted by recency rank: the newest check-in gets full weight
+ * and older ones decay geometrically by `recencyDecay` (config `stats.*`).
  * When social_weight > 0, each weight is multiplied by
  * (1 + social_weight * normalized_likes) where normalized_likes is the
  * check-in's likes_count divided by that user's max likes_count in this set.
@@ -138,7 +135,7 @@ function visitTimestamp(c: CheckIn): number {
 export function computeUserContribution(
   checkins: CheckIn[],
   socialWeight = 0,
-  recencyDecay = DEFAULT_RECENCY_DECAY,
+  recencyDecay: number,
 ): UserContribution {
   if (checkins.length === 0) {
     return { dims: { ...emptyDimValues() } };
@@ -189,14 +186,14 @@ function emptyDimValues(): Record<WorkDim, number | undefined> {
 
 export function computeCompositeScore(
   stats: WorkStats,
-  dimWeights: Record<Exclude<WorkDim, "overall">, number> = DEFAULT_DIM_WEIGHTS,
+  dimWeights: DimWeights,
 ): number | null {
   let weighted = 0;
   let weightSum = 0;
   for (const dim of COMPOSITE_DIMS) {
     const { sum, n } = stats.dims[dim];
     if (n > 0) {
-      const weight = dimWeights[dim] ?? DEFAULT_DIM_WEIGHTS[dim];
+      const weight = dimWeights[dim];
       weighted += (sum / n) * weight;
       weightSum += weight;
     }
@@ -277,7 +274,7 @@ export function applyUserContributionDiff(
   oldContribution: UserContribution | null,
   newContribution: UserContribution | null,
   nCheckins: number,
-  dimWeights: Record<Exclude<WorkDim, "overall">, number> = DEFAULT_DIM_WEIGHTS,
+  dimWeights: DimWeights,
 ): WorkStats {
   const next = {
     ...stats,
@@ -325,8 +322,8 @@ export function applyUserContributionDiff(
 export function computeCafeStats(
   checkins: CheckIn[],
   socialWeight = 0,
-  recencyDecay = DEFAULT_RECENCY_DECAY,
-  dimWeights = DEFAULT_DIM_WEIGHTS,
+  recencyDecay: number,
+  dimWeights: DimWeights,
 ): WorkStats {
   const byUser = new Map<string, CheckIn[]>();
   for (const c of checkins) {

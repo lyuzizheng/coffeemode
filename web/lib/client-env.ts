@@ -71,3 +71,8 @@ export function getQueryGcTimeMs(): number {
 export function getQueryPersistMaxAgeMs(): number {
   return envPositiveInt(process.env.NEXT_PUBLIC_QUERY_PERSIST_MAX_AGE_MS, 604_800_000);
 }
+
+/** `promptQueue.autoCollapseMs` — nav-prompt card → pill delay (spec-owned 8s). */
+export function getNavPromptCollapseMs(): number {
+  return envPositiveInt(process.env.NEXT_PUBLIC_NAV_PROMPT_COLLAPSE_MS, 8_000);
+}

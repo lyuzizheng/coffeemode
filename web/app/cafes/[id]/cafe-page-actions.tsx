@@ -16,6 +16,7 @@ import { useTranslations } from "next-intl";
 import { Button } from "@heroui/react";
 import { ShareControl } from "@/components/share/share-control";
 import { CheckinDrawer } from "@/components/checkin/checkin-drawer";
+import { recordNavigationTap } from "@/lib/navigations";
 import type { CafeDetail } from "@/types/cafes";
 
 export function CafePageActions({
@@ -40,13 +41,14 @@ export function CafePageActions({
           <Button
             variant="outline"
             className="flex-1"
-            onPress={() =>
+            onPress={() => {
+              recordNavigationTap(cafeId);
               window.open(
                 `https://www.google.com/maps/dir/?api=1&destination=${cafe.lat},${cafe.lng}`,
                 "_blank",
                 "noopener,noreferrer",
-              )
-            }
+              );
+            }}
           >
             {t("navigate")}
           </Button>

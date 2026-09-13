@@ -74,6 +74,13 @@ export interface AppConfig {
     pendingDraftTtlHours: number;
     revisitWindowHours: number;
   };
+  promptQueue: {
+    minAgeHours: number;
+    expiryDays: number;
+    reaskDelayHours: number;
+    maxReasks: number;
+    autoCollapseMs: number;
+  };
   profile: {
     listLimitMax: number;
     listPageSize: number;

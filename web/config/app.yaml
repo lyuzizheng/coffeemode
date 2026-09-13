@@ -120,6 +120,20 @@ checkins:
   # the createCheckIn windowed existence check and exposed to the drawer via
   # GET /api/checkins/last so client and server never hardcode it.
   revisitWindowHours: 24
+promptQueue:
+  # Navigation return-prompt parameters (DG78/DG83/DG91, spec 0001). The
+  # generic queue service (web/lib/prompt-queue) reads these; the client-side
+  # auto-collapse timing is delivered via NEXT_PUBLIC_NAV_PROMPT_COLLAPSE_MS.
+  # A navigation never prompts before this age — earliest the next day (DG78).
+  minAgeHours: 24
+  # Navigations older than this never prompt (DG83).
+  expiryDays: 90
+  # "还没去" sends the item to the back of the queue for at least this long (DG91).
+  reaskDelayHours: 24
+  # Re-ask cap: the (maxReasks + 1)-th "not yet" auto-resolves (DG91).
+  maxReasks: 2
+  # Card → pill auto-collapse delay (spec-owned 8s; client reads via env).
+  autoCollapseMs: 8000
 profile:
   # Profile page primary lists limit cap and default page size (DG107)
   listLimitMax: 50

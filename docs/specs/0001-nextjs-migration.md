@@ -185,10 +185,9 @@ create table checkin_likes (
 create index idx_checkin_likes_user_id on checkin_likes (user_id);
 
 -- 4. navigations: drives the ClassPass-style "did you visit?" prompt
--- Implementation status: applied migration 0001 created only
--- id/cafe_id/user_id/resolved/created_at. The queue columns below
--- (outcome/ask_count/last_asked_at — DG80/DG91) land with the
--- navigation-prompt slice (#149) and its reusable prompt queue.
+-- Implementation status: migration 0020 (navigation-prompt slice, #149)
+-- added the queue columns (outcome/ask_count/last_asked_at — DG80/DG91)
+-- alongside the reusable web/lib/prompt-queue service.
 create table navigations (
   id          uuid primary key default gen_random_uuid(),
   cafe_id     uuid references cafes(id) on delete cascade,

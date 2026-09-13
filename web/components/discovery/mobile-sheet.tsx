@@ -158,6 +158,7 @@ export function MobileSheet({
   onRetry,
   onCheckIn,
   addCafe,
+  navPrompt,
 }: {
   controller: DiscoveryController;
   cafes: CafeSummary[];
@@ -166,6 +167,9 @@ export function MobileSheet({
   onRetry: () => void;
   onCheckIn: (cafeId?: string, cafeName?: string) => void;
   addCafe: ReactNode;
+  /** Return-visit prompt (DG85): rendered above the sheet at PEEK/HALF so it
+   * tracks drags; the host passes null when the queue is empty. */
+  navPrompt?: ReactNode;
 }) {
   const t = useTranslations("discovery");
   const mounted = useMounted();
@@ -297,6 +301,10 @@ export function MobileSheet({
       role="region"
       aria-label={t("sheet_aria")}
     >
+      {/* DG85: the prompt renders only at PEEK/HALF — at FULL the sheet owns
+          the viewport and the card waits for the step back down. Anchored
+          bottom-full inside the sheet so the 12px gap tracks drags. */}
+      {snap !== "full" ? navPrompt : null}
       <div
         onPointerDown={(e) => dragControls.start(e)}
         className="flex shrink-0 cursor-grab touch-none justify-center pb-3 pt-2 active:cursor-grabbing"

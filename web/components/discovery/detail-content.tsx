@@ -16,6 +16,7 @@ import { OpenState } from "@/components/cafe/open-state";
 import { ShareControl } from "@/components/share/share-control";
 import { cafeFacts, formatDistanceKm } from "@/lib/discovery/view-model";
 import { cafeCanonicalPath } from "@/lib/seo";
+import { recordNavigationTap } from "@/lib/navigations";
 import { isOpenAt } from "@/lib/hours";
 import { displayCityName } from "@/lib/cities";
 import type { DiscoveryController } from "@/lib/discovery/use-discovery-controller";
@@ -45,13 +46,16 @@ function ActionRow({ cafe, onCheckIn }: { cafe: PublicCafeDetail; onCheckIn: (ca
       <Button
         variant="outline"
         className="min-w-24"
-        onPress={() =>
+        onPress={() => {
+          // The recorded row is what the return-visit prompt queue serves
+          // on a later day (DG78); fire-and-forget — never block the link.
+          recordNavigationTap(cafe.id);
           window.open(
             `https://www.google.com/maps/dir/?api=1&destination=${cafe.lat},${cafe.lng}`,
             "_blank",
             "noopener,noreferrer",
-          )
-        }
+          );
+        }}
       >
         {t("navigate")}
       </Button>

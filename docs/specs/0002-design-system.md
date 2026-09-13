@@ -313,8 +313,15 @@ Spring tokens (primary animation driver):
   spring.snappy  stiffness 420, damping 32   bottom sheet detent snap, drawers, toggle thumb
                                              (critically damped, zero rebound overshoot)
 
-Bezier curves (strictly restricted to opacity and color cross-fades only):
-  ease.fade      [0.22, 1, 0.36, 1]   ≤200ms duration (cross-fade / color transition only)
+Bezier curves (restricted to opacity/color cross-fades, short enter/exit
+tweens, and the cardInteraction micro-interactions — never layout motion):
+  ease.fade      [0.22, 1, 0.36, 1]   ≤200ms duration (cross-fade / color transition only);
+                                      spec vocabulary — maps to ease.default in
+                                      lib/motion.ts (CSS twin: --ease-default)
+  ease.smooth    [0.4, 0, 0.2, 1]     symmetric curve for color/theme cross-fades
+                                      (reserved — no current consumer)
+  ease.exit      [0.55, 0.06, 0.68, 0.19]   exit/dismissal fades — decelerating-in
+                                      reads faster leaving (reserved)
 
 Duration presets (tween lengths for non-spring transitions — each sits
 inside its settle budget below):
@@ -336,6 +343,10 @@ ambient.steam            duration 0.4, loop, step 0.1 per wisp
                          looping coffee-steam wisps — ambient loops never
                          settle, so they are exempt from settle budgets but
                          still capped at the 450ms ceiling
+
+cardInteraction.whileHover   y -2 lift on duration.feedback + ease.default —
+                             the "alive" hover feel on interactive cards
+cardInteraction.whileTap     scale 0.985 press on duration.feedback + ease.default
 
 cardInteraction.active / .inactive   peek-strip affordance: active card
                          scales ~1.02, neighbors dim to 0.6 (spring.gentle)

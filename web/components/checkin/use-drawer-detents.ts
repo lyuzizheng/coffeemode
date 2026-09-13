@@ -132,12 +132,16 @@ function snapToDetent(
 ) {
   const nextExpanded = release === "expand";
   const target = Math.round(nextExpanded ? d.maxHeight : d.naturalHeight);
+  // offsetHeight is clamped by max-h-[92dvh] — compare against the clamped
+  // target, or a cap-clamped collapse (naturalHeight > maxHeight) reads as
+  // a change that never transitions and leaks the listener.
+  const clamped = Math.min(target, d.maxHeight);
   const hadTransform = dialog.style.transform !== "";
 
   // A snap that changes nothing computed (already at the detent, or the
   // max-h cap clamps the target) fires no transitionend — settle inline
   // immediately instead of leaking the listener into the next gesture.
-  const willTransition = dialog.offsetHeight !== target || hadTransform;
+  const willTransition = dialog.offsetHeight !== clamped || hadTransform;
 
   snapCleanup.get(dialog)?.();
   dialog.style.transition = SNAP_TRANSITION;
@@ -148,13 +152,18 @@ function snapToDetent(
     dialog.style.transition = "";
     dialog.style.height = "";
   } else {
+    // The cleanup removes its own listener: a superseded snap must not stay
+    // registered and fire on the next real transitionend, clearing the new
+    // snap's styles mid-animation.
+    const onEnd = () => cleanup();
     const cleanup = () => {
+      dialog.removeEventListener("transitionend", onEnd);
       dialog.style.transition = "";
       dialog.style.height = "";
       snapCleanup.delete(dialog);
     };
     snapCleanup.set(dialog, cleanup);
-    dialog.addEventListener("transitionend", cleanup, { once: true });
+    dialog.addEventListener("transitionend", onEnd);
   }
   setExpanded(nextExpanded);
 }

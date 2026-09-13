@@ -78,6 +78,8 @@ export function DiscoveryHome({
     controller,
     cafes: cafesQuery.data ?? [],
     isLoading: cafesQuery.isPending,
+    isError: cafesQuery.isError,
+    onRetry: () => cafesQuery.refetch(),
     onCheckIn,
     addCafe,
   };

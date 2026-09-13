@@ -21,6 +21,7 @@ import type { DiscoveryController, SheetSnap } from "@/lib/discovery/use-discove
 import type { CafeSummary } from "@/types/cafes";
 import { CafeCardBody } from "./cafe-card";
 import { DetailContent } from "./detail-content";
+import { InlineError } from "./inline-error";
 
 /** Visible sheet height at PEEK (px) — cover row + padding; safe-area is padded inside. */
 const PEEK_VISIBLE_PX = 172;
@@ -83,11 +84,15 @@ function PeekSkeletons() {
 function PeekStrip({
   cafes,
   isLoading,
+  isError,
+  onRetry,
   controller,
   addCafe,
 }: {
   cafes: CafeSummary[];
   isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
   controller: DiscoveryController;
   addCafe: ReactNode;
 }) {
@@ -96,6 +101,14 @@ function PeekStrip({
   const stripRef = useRef<HTMLDivElement | null>(null);
 
   if (isLoading) return <PeekSkeletons />;
+  // BRAWUKA-231: a failed fetch must not masquerade as "no cafes nearby".
+  if (isError && cafes.length === 0) {
+    return (
+      <div className="px-4 pb-2">
+        <InlineError message={t("nearby_load_failed")} onRetry={onRetry} />
+      </div>
+    );
+  }
   if (cafes.length === 0) {
     return (
       <div className="flex flex-col items-start gap-2 px-4 pb-2">
@@ -138,12 +151,16 @@ export function MobileSheet({
   controller,
   cafes,
   isLoading,
+  isError,
+  onRetry,
   onCheckIn,
   addCafe,
 }: {
   controller: DiscoveryController;
   cafes: CafeSummary[];
   isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
   onCheckIn: (cafeId?: string, cafeName?: string) => void;
   addCafe: ReactNode;
 }) {
@@ -252,7 +269,14 @@ export function MobileSheet({
       </div>
 
       {snap === "peek" || !selectedCafeId ? (
-        <PeekStrip cafes={cafes} isLoading={isLoading} controller={controller} addCafe={addCafe} />
+        <PeekStrip
+          cafes={cafes}
+          isLoading={isLoading}
+          isError={isError}
+          onRetry={onRetry}
+          controller={controller}
+          addCafe={addCafe}
+        />
       ) : (
         <div
           ref={contentRef}

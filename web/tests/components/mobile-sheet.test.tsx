@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -143,6 +143,8 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
         controller={controller}
         cafes={[mockCafe]}
         isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
         onCheckIn={vi.fn()}
         addCafe={<span>Add Cafe</span>}
       />,
@@ -183,6 +185,8 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
         controller={controller}
         cafes={[mockCafe]}
         isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
         onCheckIn={vi.fn()}
         addCafe={<span>Add Cafe</span>}
       />,
@@ -223,6 +227,8 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
         controller={controller}
         cafes={[mockCafe]}
         isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
         onCheckIn={vi.fn()}
         addCafe={<span>Add Cafe</span>}
       />,
@@ -267,6 +273,8 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
         controller={controller}
         cafes={[mockCafe]}
         isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
         onCheckIn={vi.fn()}
         addCafe={<span>Add Cafe</span>}
       />,
@@ -291,6 +299,8 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
           controller={controller}
           cafes={[mockCafe]}
           isLoading={false}
+          isError={false}
+          onRetry={vi.fn()}
           onCheckIn={vi.fn()}
           addCafe={<span>Add Cafe</span>}
         />,
@@ -329,6 +339,8 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
         controller={controller}
         cafes={[mockCafe]}
         isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
         onCheckIn={vi.fn()}
         addCafe={<span>Add Cafe</span>}
       />,
@@ -358,6 +370,8 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
           controller={controller}
           cafes={[mockCafe]}
           isLoading={false}
+          isError={false}
+          onRetry={vi.fn()}
           onCheckIn={vi.fn()}
           addCafe={<span>Add Cafe</span>}
         />,
@@ -379,6 +393,8 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
           controller={controller}
           cafes={[mockCafe]}
           isLoading={false}
+          isError={false}
+          onRetry={vi.fn()}
           onCheckIn={vi.fn()}
           addCafe={<span>Add Cafe</span>}
         />,
@@ -389,5 +405,71 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
     expect(halfAnim).toBeDefined();
     expect(halfAnim?.transition).toMatchObject(spring.snappy);
     expect(startVelocity(halfAnim?.transition)).toBe(0);
+  });
+});
+
+describe("MobileSheet peek strip error branch (BRAWUKA-231)", () => {
+  beforeEach(() => {
+    mockReducedMotion = false;
+    animateCalls.length = 0;
+    window.innerHeight = 800;
+  });
+
+  it("renders inline error with Retry instead of the empty state when the cafes query fails", () => {
+    const onRetry = vi.fn();
+    render(
+      <MobileSheet
+        controller={{
+          selectedCafeId: null,
+          snap: "peek",
+          select: vi.fn(),
+          snapTo: vi.fn(),
+          close: vi.fn(),
+          handleMissingCafe: vi.fn(),
+          registerCardRef: vi.fn(),
+          detailHeadingRef: vi.fn(),
+        }}
+        cafes={[]}
+        isLoading={false}
+        isError
+        onRetry={onRetry}
+        onCheckIn={vi.fn()}
+        addCafe={<span>Add Cafe</span>}
+      />,
+      { wrapper: createWrapper() },
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Couldn't load nearby cafes");
+    expect(screen.queryByText("No cafes nearby yet")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the empty state for a genuine empty result (no error)", () => {
+    render(
+      <MobileSheet
+        controller={{
+          selectedCafeId: null,
+          snap: "peek",
+          select: vi.fn(),
+          snapTo: vi.fn(),
+          close: vi.fn(),
+          handleMissingCafe: vi.fn(),
+          registerCardRef: vi.fn(),
+          detailHeadingRef: vi.fn(),
+        }}
+        cafes={[]}
+        isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
+        onCheckIn={vi.fn()}
+        addCafe={<span>Add Cafe</span>}
+      />,
+      { wrapper: createWrapper() },
+    );
+
+    expect(screen.getByText("No cafes nearby yet")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

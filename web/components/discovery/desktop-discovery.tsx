@@ -23,6 +23,7 @@ import type { DiscoveryController } from "@/lib/discovery/use-discovery-controll
 import type { CafeSummary } from "@/types/cafes";
 import { CafeCardBody } from "./cafe-card";
 import { DetailContent } from "./detail-content";
+import { InlineError } from "./inline-error";
 
 function SidebarSkeletons() {
   return (
@@ -44,6 +45,8 @@ export function DesktopDiscovery({
   controller,
   cafes,
   isLoading,
+  isError,
+  onRetry,
   onCheckIn,
   addCafe,
   children,
@@ -52,6 +55,8 @@ export function DesktopDiscovery({
   controller: DiscoveryController;
   cafes: CafeSummary[];
   isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
   onCheckIn: (cafeId?: string, cafeName?: string) => void;
   addCafe: ReactNode;
   children?: ReactNode;
@@ -91,6 +96,11 @@ export function DesktopDiscovery({
         <div className="min-h-0 flex-1 overflow-y-auto">
           {!contentVisible || isLoading ? (
             <SidebarSkeletons />
+          ) : isError && cafes.length === 0 ? (
+            // BRAWUKA-231: a failed fetch must not masquerade as "no cafes nearby".
+            <div className="p-3">
+              <InlineError message={t("nearby_load_failed")} onRetry={onRetry} />
+            </div>
           ) : cafes.length === 0 ? (
             <div className="flex flex-col items-start gap-2 p-4">
               <p className="font-display text-lg font-bold text-foreground">

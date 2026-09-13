@@ -82,6 +82,9 @@ export function mapBucketRow(
   };
 }
 
+/** Fail-open error-log throttle: at most one log line per minute per process (BRAWUKA-250). */
+const ERROR_LOG_THROTTLE_MS = 60_000;
+
 export class PostgresRateLimiter {
   private lastCleanup = 0;
   private lastErrorLog = 0;
@@ -147,7 +150,7 @@ export class PostgresRateLimiter {
 
   private logError(message: string, err: unknown): void {
     const now = Date.now();
-    if (now - this.lastErrorLog < 60_000) return; // throttle to 1/min
+    if (now - this.lastErrorLog < ERROR_LOG_THROTTLE_MS) return;
     this.lastErrorLog = now;
     logServerError({
       route: "rate-limit postgres",

@@ -1,8 +1,10 @@
 import { QueryClient, isServer } from "@tanstack/react-query";
+import { getQueryGcTimeMs, getQueryStaleTimeMs } from "@/lib/client-env";
 import { shouldRetryQuery } from "./retry";
 
-const STALE_TIME_MS = 1000 * 60 * 5; // 5 minutes
-const GC_TIME_MS = 1000 * 60 * 60 * 24; // 24 hours
+/** TanStack defaults owned by `app.yaml` `query.*`, via NEXT_PUBLIC_QUERY_* env (BRAWUKA-250). */
+const STALE_TIME_MS = getQueryStaleTimeMs(); // 5 minutes
+const GC_TIME_MS = getQueryGcTimeMs(); // 24 hours
 
 function makeQueryClient(): QueryClient {
   return new QueryClient({

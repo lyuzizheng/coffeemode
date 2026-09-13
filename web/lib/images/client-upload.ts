@@ -1,10 +1,12 @@
 import { MAX_UPLOAD_BYTES } from "@shared/images/constants";
+import { getImageMaxDimension } from "@/lib/client-env";
 import { UNAUTHORIZED } from "@/lib/http";
 import type { UploadUrlResponse } from "@/types/images";
 
 /**
  * Client-side HTML5 canvas image resizing and WebP compression.
- * Scales down to a maximum dimension of 4096px and converts to image/webp.
+ * Downscales to `images.maxOriginalDimension` (same product cap as the
+ * server output, via NEXT_PUBLIC_IMAGE_MAX_DIMENSION) and converts to WebP.
  */
 export function toWebP(file: File): Promise<Blob> {
   if (file.type === "image/webp") return Promise.resolve(file);
@@ -12,7 +14,7 @@ export function toWebP(file: File): Promise<Blob> {
   const image = new Image();
   const objectUrl = URL.createObjectURL(file);
   image.onload = () => {
-    const scale = Math.min(1, 4096 / Math.max(image.naturalWidth, image.naturalHeight));
+    const scale = Math.min(1, getImageMaxDimension() / Math.max(image.naturalWidth, image.naturalHeight));
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
     canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));

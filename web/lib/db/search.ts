@@ -135,7 +135,7 @@ limit $${limitIdx}${offsetClause}
     return {
       ...rest,
       maintained_by_service: isServiceMaintained(row.created_by),
-      work_stats: coerceWorkStats(row.work_stats),
+      work_stats: coerceWorkStats(row.work_stats, appConfig.stats.dimWeights),
     };
   });
 }

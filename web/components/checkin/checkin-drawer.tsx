@@ -111,6 +111,13 @@ function CheckinDiscardDialog({
   );
 }
 
+/**
+ * Last-checkin probe freshness (BRAWUKA-250). A per-query override, not the
+ * global default: the revisit preempt must see a fresh answer each open, but
+ * refetching on every render would spam the endpoint.
+ */
+const LAST_CHECKIN_STALE_TIME_MS = 60_000;
+
 function useCheckinDrawerState({
   isOpen,
   cafeId,
@@ -131,7 +138,7 @@ function useCheckinDrawerState({
     queryKey: ["last-checkin", cafeId],
     queryFn: () => fetchLastCheckin(cafeId),
     enabled: isOpen && mode !== "edit" && isAuthenticated !== false,
-    staleTime: 60_000,
+    staleTime: LAST_CHECKIN_STALE_TIME_MS,
     retry: false,
   });
 

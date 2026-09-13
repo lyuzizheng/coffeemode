@@ -28,7 +28,7 @@ export async function updateProfile(
 
   if (patch.currentCity !== undefined) {
     const trimmedCity = patch.currentCity.trim().toLowerCase();
-    if (trimmedCity.length > 0 && trimmedCity.length <= 50) {
+    if (trimmedCity.length > 0 && trimmedCity.length <= appConfig.validation.profileCityMaxChars) {
       params.push(trimmedCity);
       updates.push(`current_city = $${params.length}`);
     }

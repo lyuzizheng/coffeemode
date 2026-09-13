@@ -16,10 +16,9 @@ import {
   type WorkStats,
 } from "./work-stats";
 
-export type { WorkStats } from "./work-stats";
+export type { DimWeights, WorkStats } from "./work-stats";
 export {
   COMPOSITE_DIMS,
-  DIM_WEIGHTS,
   WORK_DIMS,
   applyUserContributionDiff,
   coerceWorkStats,
@@ -135,7 +134,7 @@ export async function incrementalUpdateWorkStats(
       "select work_stats from cafes where id = $1 for update",
       [cafeId],
     );
-    const currentStats = coerceWorkStats(cafeRows[0]?.work_stats);
+    const currentStats = coerceWorkStats(cafeRows[0]?.work_stats, appConfig.stats.dimWeights);
 
     const { rows: userRows } = await q<DbCheckIn>(
       `select id, cafe_id, user_id, is_creation, scores, max_stay, note,

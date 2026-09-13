@@ -25,12 +25,23 @@ search:
     secondaryMatch: 10
   # Conditional low-relevance truncation per DG131 (only when q non-empty & at least one >=50).
   minRelevanceScore: 50
-  # External source toggles per DG134 (Apple gated until MapKit ready).
-  externalSources:
-    google: true
-    apple: false
-  # Default ranking mode per DG136 (relevance vs good_first). Client overrides via ?ranking=.
-  rankingMode: relevance
+  # DG136 good_first ranking: cafes at/above these work-profile scores get
+  # `boost` added to their relevance before sorting (BRAWUKA-250).
+  goodFirst:
+    experienceMin: 80
+    compositeMin: 75
+    boost: 10
+  # Private Cache-Control for GET /api/search success responses (DG137-B).
+  responseCache:
+    maxAgeSeconds: 10
+    staleWhileRevalidateSeconds: 30
+  # Client search-as-you-type knobs (DG44/DG47). Owned here, delivered to the
+  # browser via NEXT_PUBLIC_SEARCH_* env (next.config.ts) — the client bundle
+  # cannot read this file. Distinct from minPoiQueryLength above (server POI
+  # trigger); do not merge them (BRAWUKA-250).
+  client:
+    minQueryLength: 3
+    debounceMs: 400
 stats:
   # Work-profile composite score weights (DG107)
   dimWeights:
@@ -111,6 +122,40 @@ profile:
   displayNameMaxChars: 24
   # Max client-side recent searches items stored
   recentSearchesMax: 20
+  # Public handle rules (spec 0006 Q11, BRAWUKA-250). The handle regex bounds
+  # derive from minChars/maxChars in lib/db/identity.ts — edit here, not there.
+  handle:
+    minChars: 3
+    maxChars: 30
+    # Cooldown between user-chosen handle edits.
+    changeCooldownDays: 7
+    # Truncation cap for the display-name slug base.
+    slugMaxChars: 25
+    # Collision retries for `slug-xxxx` generation.
+    generateMaxAttempts: 10
+images:
+  # Server output cap and client canvas downscale target (single product cap,
+  # BRAWUKA-250). The client reads it via NEXT_PUBLIC_IMAGE_MAX_DIMENSION.
+  maxOriginalDimension: 4096
+  # WebP encode quality for card/thumbnail variants.
+  webpQuality: 80
+  # R2 fetch guards for the image processor.
+  r2DownloadTimeoutMs: 30000
+  r2UploadTimeoutMs: 30000
+  # Headroom over the web/shared upload cap before the processor aborts a
+  # download (rounding tolerance, still bounds memory per request).
+  downloadSlackBytes: 524288 # 512 KiB
+query:
+  # TanStack Query defaults, owned here and delivered to the browser via
+  # NEXT_PUBLIC_QUERY_* env (next.config.ts) — the client bundle cannot read
+  # this file (BRAWUKA-250).
+  staleTimeMs: 300000 # 5 minutes
+  gcTimeMs: 86400000 # 24 hours
+  persistMaxAgeMs: 604800000 # 7 days IndexedDB retention
+validation:
+  # Server field-length caps (BRAWUKA-250).
+  cafeAddressMaxChars: 300
+  profileCityMaxChars: 50
 budgets:
   # Bundle size budgets (uncompressed bytes, checked against .next/static)
   # Rationale: Bounds single chunk weight and total client static payload to ensure fast initial page delivery and low memory footprint on mobile.

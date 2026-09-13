@@ -90,6 +90,7 @@ import type { StoredImage } from "@/types/images";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import { recomputeAllWorkStats } from "@/lib/stats/aggregate";
 import { coerceWorkStats } from "@/lib/stats/work-stats";
+import { appConfig } from "@/lib/config";
 import {
   cleanupIntegrationDatabase,
   integrationAdminUrl,
@@ -701,18 +702,18 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       await recordUploadIntent(U2, photoId);
       await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 77 } }, fakeProvisionPhotosDeps());
       const goodRaw = await cafeWorkStats(dbClient, CAFE_A);
-      const good = coerceWorkStats(goodRaw);
+      const good = coerceWorkStats(goodRaw, appConfig.stats.dimWeights);
       // Corrupt the cached stats to the DB default
       await dbClient.query("update cafes set work_stats = '{}'::jsonb where id = $1", [CAFE_A]);
       const corruptedRaw = await cafeWorkStats(dbClient, CAFE_A);
-      const corrupted = coerceWorkStats(corruptedRaw);
+      const corrupted = coerceWorkStats(corruptedRaw, appConfig.stats.dimWeights);
       expect(corrupted.n_users).toBe(0);
       expect(corrupted.experience_score).toBeNull();
 
       // Repair via the nightly entrypoint (same code the cron runs)
       await recomputeAllWorkStats(async (sql, params) => dbClient.query(sql, params));
       const repairedRaw = await cafeWorkStats(dbClient, CAFE_A);
-      const repaired = coerceWorkStats(repairedRaw);
+      const repaired = coerceWorkStats(repairedRaw, appConfig.stats.dimWeights);
       const { updated_at: _goodTs, ...goodNoTs } = good;
       void _goodTs;
       const { updated_at: _repTs, ...repairedNoTs } = repaired;
@@ -722,7 +723,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       // Second run is a no-op (idempotent) — same dims/scores, new timestamp only
       await recomputeAllWorkStats(async (sql, params) => dbClient.query(sql, params));
       const repaired2Raw = await cafeWorkStats(dbClient, CAFE_A);
-      const repaired2 = coerceWorkStats(repaired2Raw);
+      const repaired2 = coerceWorkStats(repaired2Raw, appConfig.stats.dimWeights);
       const { updated_at: _rep2Ts, ...repaired2NoTs } = repaired2;
       void _rep2Ts;
       expect(repaired2NoTs).toEqual(goodNoTs);

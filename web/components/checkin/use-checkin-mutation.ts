@@ -14,6 +14,14 @@ import {
   invalidateCheckinQueries,
 } from "./checkin-api";
 
+/**
+ * Post-save success UX (BRAWUKA-250). Interaction-design timings, not product
+ * knobs: they change with UX review, so they stay named constants here rather
+ * than `app.yaml` + env plumbing.
+ */
+const SUCCESS_CLOSE_DELAY_MS = 1200;
+const SUCCESS_TOAST_TIMEOUT_MS = 3000;
+
 export type ViewState = "form" | "success" | "submitting";
 
 interface SubmitCheckinParams {
@@ -103,8 +111,8 @@ function useSubmitMutation({
       clearTimeout(closeTimerRef.current);
       closeTimerRef.current = window.setTimeout(() => {
         onClose();
-        toast(t("saved"), { timeout: 3000 });
-      }, 1200);
+        toast(t("saved"), { timeout: SUCCESS_TOAST_TIMEOUT_MS });
+      }, SUCCESS_CLOSE_DELAY_MS);
     },
     onError: (err) => {
       setView("form");

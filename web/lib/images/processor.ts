@@ -3,17 +3,20 @@ import "server-only";
 import sharp from "sharp";
 import type { OutputInfo } from "sharp";
 import { MAX_UPLOAD_BYTES } from "@shared/images/constants";
+import { appConfig } from "@/lib/config";
 import type { ProcessUrls } from "./image-service-client";
+
+const IMAGE_TUNING = appConfig.images;
 
 /**
  * Download guard for the image processor (bytes). Uploads are capped at
  * `MAX_UPLOAD_BYTES` (web/shared), but the processor must not trust
  * that alone: it streams the R2 original and aborts once this many bytes
- * arrive. The small headroom over the upload cap keeps legitimate uploads
- * from failing on rounding while still bounding memory to ~10 MB per
- * request.
+ * arrive. The small headroom (`images.downloadSlackBytes`) over the upload
+ * cap keeps legitimate uploads from failing on rounding while still bounding
+ * memory to ~10 MB per request.
  */
-const MAX_ORIGINAL_DOWNLOAD_BYTES = MAX_UPLOAD_BYTES + 512 * 1024;
+const MAX_ORIGINAL_DOWNLOAD_BYTES = MAX_UPLOAD_BYTES + IMAGE_TUNING.downloadSlackBytes;
 
 export interface ProcessedImage {
   imageUuid: string;
@@ -26,19 +29,20 @@ export interface ProcessedImage {
   height: number;
 }
 
-const R2_DOWNLOAD_TIMEOUT_MS = 30000;
-const R2_UPLOAD_TIMEOUT_MS = 30000;
+const R2_DOWNLOAD_TIMEOUT_MS = IMAGE_TUNING.r2DownloadTimeoutMs;
+const R2_UPLOAD_TIMEOUT_MS = IMAGE_TUNING.r2UploadTimeoutMs;
 
 /** Sharp's `limitInputPixels` guard — (2^13)^2 = 8192 x 8192.
  *  A 10 MB compressed image can still declare 16K x 16K, which would exhaust
- *  memory at decode time. The output variants are capped at 4096px, so
- *  8192px gives headroom for legitimate high-res uploads while bounding the
- *  decompression surface to ~67 MP. */
+ *  memory at decode time. The output variants are capped at
+ *  `images.maxOriginalDimension`, so 8192px gives headroom for legitimate
+ *  high-res uploads while bounding the decompression surface to ~67 MP. */
 const MAX_INPUT_PIXELS = 67_108_864;
 
-const WEBP_QUALITY = 80;
+const WEBP_QUALITY = IMAGE_TUNING.webpQuality;
 
-const ORIGINAL_MAX_DIMENSION = 4096;
+/** Server output cap; the client downscales to the same value (BRAWUKA-250). */
+const ORIGINAL_MAX_DIMENSION = IMAGE_TUNING.maxOriginalDimension;
 
 const CARD_SIZE = { width: 400, height: 300 };
 const THUMBNAIL_SIZE = { width: 200, height: 200 };

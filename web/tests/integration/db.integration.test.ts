@@ -410,6 +410,37 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(third.checkinId).not.toBe(second.checkinId);
     });
 
+    it("serializes two concurrent createCheckIn calls: one wins, one throws DuplicateCheckInError (BRAWUKA-125)", async () => {
+      // True concurrency: both transactions overlap. The pg_advisory_xact_lock
+      // in createCheckIn serializes same user+cafe writers, so the loser
+      // re-reads the winner's committed row (READ COMMITTED per-statement
+      // snapshot) and hits the DG64 window check. Distinct idempotency keys
+      // keep the DG61 dedupe path out of the picture.
+      const [a, b] = await Promise.allSettled([
+        createCheckIn(U2, {
+          cafe_id: CAFE_A,
+          scores: { overall: 60 },
+          idempotency_key: randomUUID(),
+        }),
+        createCheckIn(U2, {
+          cafe_id: CAFE_A,
+          scores: { overall: 70 },
+          idempotency_key: randomUUID(),
+        }),
+      ]);
+      const fulfilled = [a, b].filter((r) => r.status === "fulfilled");
+      const rejected = [a, b].filter((r) => r.status === "rejected");
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(DuplicateCheckInError);
+
+      const { rows } = await dbClient.query(
+        "select count(*)::int as n from checkins where cafe_id = $1 and user_id = $2 and deleted_at is null",
+        [CAFE_A, U2],
+      );
+      expect(rows[0].n).toBe(1);
+    });
+
     it("createCheckIn dedupes on idempotency_key: replay returns the same id, no second row (DG61)", async () => {
       const key = randomUUID();
       const first = await createCheckIn(U2, {

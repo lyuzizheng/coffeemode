@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "@heroui/react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -60,6 +60,13 @@ function useSubmitMutation({
 }) {
   const t = useTranslations("checkIn");
   const queryClient = useQueryClient();
+  const closeTimerRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(closeTimerRef.current);
+    };
+  }, []);
 
   return useMutation({
     mutationFn: async (params: SubmitCheckinParams) => {
@@ -93,7 +100,8 @@ function useSubmitMutation({
       // Benign: clearing consumed draft from IndexedDB is best-effort; failures in private mode are ignored.
       void clearPendingCheckin().catch(() => {});
       invalidateCheckinQueries(queryClient, cafeId);
-      setTimeout(() => {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = window.setTimeout(() => {
         onClose();
         toast(t("saved"), { timeout: 3000 });
       }, 1200);

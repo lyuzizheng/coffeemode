@@ -444,6 +444,56 @@ describe("CheckinDrawer", () => {
     );
   });
 
+  it("does not upload restored draft photos when a preempted edit submits (BRAWUKA-269)", async () => {
+    vi.mocked(uploadPhoto).mockClear();
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData(["last-checkin", CAFE], {
+      checkin: {
+        id: CHECKIN,
+        scores: { overall: 90 },
+        max_stay: null,
+        note: null,
+        visited_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+      },
+      revisitWindowHours: 24,
+    });
+    globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (init?.method === "PATCH") {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ cafeId: CAFE }) });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+    });
+    renderDrawer(
+      {
+        isAuthenticated: true,
+        initialPhotos: [
+          {
+            id: "p1",
+            previewUrl: "blob:fake",
+            status: "staged",
+            file: new File(["x"], "p.jpg", { type: "image/jpeg" }),
+          },
+        ],
+      },
+      queryClient,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Edit check-in" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        `/api/checkins/${CHECKIN}`,
+        expect.objectContaining({ method: "PATCH" }),
+      );
+    });
+    // The PATCH contract drops photos — uploading them first would only
+    // orphan the objects in R2.
+    expect(vi.mocked(uploadPhoto)).not.toHaveBeenCalled();
+  });
+
   it("does not toast the photo notice when a preempted create had no staged photos", async () => {
     toastSpy.mockClear();
     const visited_at = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();

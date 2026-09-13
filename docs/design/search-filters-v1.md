@@ -53,7 +53,7 @@ numbers into the same deep-linkable URL parameters (`filter_wifi=60`).
 
 - **Entry**: the floating top search bar (map home) or the sidebar search row.
   Tapping it opens the **search overlay**: full-screen, `overlay` surface,
-  slides up 300ms `ease.default`. Search field autofocused at top with a
+  slides up on `spring.snappy` (settle `settle.state` ≤300ms). Search field autofocused at top with a
   city scope chip beside it (§5).
 - **Suggestions (search-as-you-type)**: results appear from 3 characters
   (DG44), debounced 400ms (DG47), as **suggestion rows directly under the
@@ -201,12 +201,14 @@ Row types, visually distinguished:
 
 ## 8. Motion detail
 
-- Overlay enter/exit: 300ms/150ms `ease.default` slide-up.
-- Filter panel: HeroUI sheet spring (`ease.spring`, restrained); reduced
-  motion → instant.
-- Segment/chip selection: 120ms `motion.feedback`.
-- Result count change: 200ms crossfade on the number.
-- List reflow on filter change: Framer `layoutId`, ≤300ms.
+- Overlay enter/exit: slide-up on `spring.snappy`, settle `settle.state`
+  ≤300ms; exit within the 100–150ms exit budget.
+- Filter panel: HeroUI sheet spring `spring.snappy` (settle `settle.state`
+  ≤300ms); reduced motion → instant.
+- Segment/chip selection: settle `settle.feedback` ≤150ms.
+- Result count change: 200ms crossfade on the number (`ease.fade`).
+- List reflow on filter change: Framer `layoutId` on `spring.gentle`,
+  settle `settle.state` ≤300ms.
 
 ## 9. Dark mode and accessibility
 

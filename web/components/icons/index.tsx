@@ -180,3 +180,15 @@ export function WarningIcon(props: IconProps) {
 export function CloseIcon(props: IconProps) {
   return base(props, <path d="M4.5 4.5l7 7M11.5 4.5l-7 7" />);
 }
+
+/** Locate — crosshair (onboarding locate button, DG116/DG120). */
+export function LocateIcon(props: IconProps) {
+  return base(
+    props,
+    <>
+      <circle cx="8" cy="8" r="3.25" />
+      <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2" />
+      <circle cx="8" cy="8" r="0.9" fill="currentColor" stroke="none" />
+    </>,
+  );
+}

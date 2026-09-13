@@ -8,6 +8,10 @@ export interface UserProfileDto {
   displayName: string;
   avatarUrl: string | null;
   currentCity: string;
+  /** Last granted geolocation (DG120 session dot / returning-visit center). */
+  lastLocation: { lat: number; lng: number } | null;
+  /** Welcome card dismissed — authoritative across devices (DG122). */
+  onboarded: boolean;
   createdAt: string;
   /** Opt-in public author identity (spec 0006); false = anonymous default. */
   showPublicIdentity: boolean;

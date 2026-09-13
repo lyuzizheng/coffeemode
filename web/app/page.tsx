@@ -1,14 +1,17 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { getTranslations } from "next-intl/server";
 import { profileFromUser } from "@/lib/auth/profiles";
 import { createSupabaseServerClient, isAuthConfigured } from "@/lib/auth/supabase-server";
 import { appConfig } from "@/lib/config";
+import { detectIpCity, findCity } from "@/lib/cities";
+import { getProfile } from "@/lib/db/profile";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SignInButton } from "@/components/auth/sign-in-button";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { AuthCallbackError } from "@/components/auth/auth-callback-error";
 import { CafeCreationTrigger } from "@/components/cafe/cafe-creation-sheet";
-import { DiscoveryHome } from "@/components/discovery/discovery-home";
+import { OnboardingHome } from "@/components/onboarding/onboarding-home";
 
 // Scaffold-stage home page. The real surface is a full-screen Apple Map with
 // a map-bound discovery sheet (slices: map-home, map-discovery-integration). Until then this page is the honest first
@@ -41,15 +44,43 @@ export default async function HomePage({
     }
   }
 
+  // First-visit onboarding (spec 0001 §Onboarding, DG114–DG123): the IP
+  // detection is a header read — it never blocks render. For signed-in
+  // users the profile's onboarded flag and stored city/location decide the
+  // starting center and whether the card can appear at all (DG122).
+  const requestHeaders = await headers();
+  const detectedCity = detectIpCity(requestHeaders);
+  let profile = null;
+  if (user) {
+    try {
+      profile = await getProfile(user.id);
+    } catch {
+      // Postgres unavailable: treat as anonymous — localStorage carries the
+      // onboarding state until the next signed-in visit merges it.
+      profile = null;
+    }
+  }
+  const profileCity = profile ? findCity(profile.currentCity) : null;
+  const initialCenter =
+    profileCity?.center ??
+    profile?.lastLocation ??
+    detectedCity?.center ??
+    appConfig.discovery.defaultCenter;
+  const initialCafeId = typeof params.cafe === "string" ? params.cafe : undefined;
+
   const steps = ["find", "checkin", "keep"] as const;
 
   return (
-    <DiscoveryHome
-      defaultCenter={appConfig.discovery.defaultCenter}
-      addCafe={<CafeCreationTrigger isAuthenticated={Boolean(user)} />}
-      initialCafeId={typeof params.cafe === "string" ? params.cafe : undefined}
+    <OnboardingHome
+      detectedCity={detectedCity}
+      initialCenter={initialCenter}
       isAuthenticated={Boolean(user)}
+      serverOnboarded={profile?.onboarded ?? false}
+      suppressCard={initialCafeId !== undefined}
+      addCafe={<CafeCreationTrigger isAuthenticated={Boolean(user)} />}
+      initialCafeId={initialCafeId}
     >
+
       {/* Editorial recomposition (spec 0002 §Editorial grid, BRAWUKA-73):
           asymmetric 12-column grid (8/4 split at ≥lg) with a static
           marginalia column; outer margins ≥ clamp(24px, 6vw, 96px). IA,
@@ -182,6 +213,6 @@ export default async function HomePage({
           <p className="font-mono text-xs text-muted">{t("ethos")}</p>
         </footer>
       </div>
-    </DiscoveryHome>
+    </OnboardingHome>
   );
 }

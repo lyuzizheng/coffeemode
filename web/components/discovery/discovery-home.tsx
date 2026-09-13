@@ -38,20 +38,26 @@ async function fetchNearbyCafes(lat: number, lng: number): Promise<CafeSummary[]
 }
 
 export function DiscoveryHome({
-  defaultCenter,
+  center,
   addCafe,
   initialCafeId,
   isAuthenticated,
+  mapOverlay,
   children,
 }: {
-  /** Fallback map center (web/config/app.yaml discovery.defaultCenter). */
-  defaultCenter: { lat: number; lng: number };
+  /** Nearby-query center — the onboarding slice's resolved city/location,
+   * or the configured `discovery.defaultCenter` fallback. */
+  center: { lat: number; lng: number };
   /** Empty-state CTA slot — the existing creation trigger, auth-aware. */
   addCafe: ReactNode;
   /** Optional initial selected cafe ID (e.g. from ?cafe= query param) */
   initialCafeId?: string;
   /** Server-known auth state — forwarded to the check-in drawer's sign-in gate. */
   isAuthenticated?: boolean;
+  /** Map-surface overlays (welcome card, locate button). On mobile they
+   * render only while the sheet sits at PEEK so they never cover the
+   * half/full detail content; on desktop they are always visible. */
+  mapOverlay?: ReactNode;
   /** Surface children (e.g. landing scaffold / map) coordinated with discovery */
   children?: ReactNode;
 }) {
@@ -61,9 +67,14 @@ export function DiscoveryHome({
   const controller = useDiscoveryController({ initialCafeId });
 
   const cafesQuery = useQuery({
-    queryKey: ["cafes-list", defaultCenter.lat, defaultCenter.lng],
-    queryFn: () => fetchNearbyCafes(defaultCenter.lat, defaultCenter.lng),
+    queryKey: ["cafes-list", center.lat, center.lng],
+    queryFn: () => fetchNearbyCafes(center.lat, center.lng),
   });
+
+  // Map overlays never cover the mobile sheet's half/full detail content.
+  const overlay = mapOverlay && (isDesktop || controller.snap === "peek")
+    ? mapOverlay
+    : null;
 
   const [checkinCafe, setCheckinCafe] = useState<{
     id: string;
@@ -127,6 +138,7 @@ export function DiscoveryHome({
       <>
         {isDesktop ? <DesktopDiscovery {...props} /> : <MobileSheet {...props} />}
         {isDesktop ? navPromptView("surface") : null}
+        {overlay}
         {checkinDrawer}
       </>
     );
@@ -143,6 +155,7 @@ export function DiscoveryHome({
       </DesktopDiscovery>
       {mounted && !isDesktop ? <MobileSheet {...props} /> : null}
       {mounted && isDesktop ? navPromptView("surface") : null}
+      {mounted ? overlay : null}
       {checkinDrawer}
     </>
   );

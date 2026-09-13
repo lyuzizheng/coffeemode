@@ -23,6 +23,7 @@ export const RATE_LIMIT_BUCKET_NAMES = [
   "profile-read",
   "profile-write",
   "identity-write",
+  "onboarding",
 ] as const;
 
 export type RateLimitBucketName = (typeof RATE_LIMIT_BUCKET_NAMES)[number];

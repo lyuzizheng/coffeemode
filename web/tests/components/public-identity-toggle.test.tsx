@@ -9,6 +9,8 @@ const baseProfile: UserProfileDto = {
   id: "user-1",
   displayName: "Coffee Lover",
   currentCity: "singapore",
+      lastLocation: null,
+      onboarded: false,
   avatarUrl: null,
   createdAt: new Date().toISOString(),
   showPublicIdentity: false,

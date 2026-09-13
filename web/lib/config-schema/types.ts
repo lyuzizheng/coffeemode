@@ -60,6 +60,10 @@ export interface AppConfig {
       lng: number;
     };
   };
+  onboarding: {
+    cityCoverageKm: number;
+    geolocationTimeoutMs: number;
+  };
   seo: {
     shellCache: {
       sMaxAgeSeconds: number;

@@ -1,3 +1,5 @@
+import { haversineKm } from "@shared/places/geo";
+
 export interface Coordinates {
   lat: number;
   lng: number;
@@ -147,6 +149,50 @@ export function displayCityName(city: string | null | undefined, locale: string)
   if (found) return locale === "zh" ? found.nameZh : found.name;
   return city.charAt(0).toUpperCase() + city.slice(1);
 }
+/**
+ * IP-detected launch city for the first-visit welcome card (DG128/DG116).
+ * Returns null when neither Cloudflare header maps to a launch city — the
+ * card then omits the detection line and Skip falls back to DEFAULT_CITY.
+ * Client-safe: takes a headers-like getter, never imports next/headers.
+ */
+export function detectIpCity(
+  headers: { get(name: string): string | null },
+): CityInfo | null {
+  const cfCity = headers.get("cf-ipcity")?.trim();
+  if (cfCity) {
+    const found = findCity(cfCity);
+    if (found) return found;
+  }
+  const cfCountry = headers.get("cf-ipcountry")?.trim();
+  if (cfCountry) {
+    const found = findCityByCountry(cfCountry);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * Nearest launch city to a coordinate pair within `coverageKm` (DG121).
+ * Returns null when the user is outside every known city — the caller then
+ * treats the IP-detected city name (or nothing) as a runtime-created city.
+ */
+export function nearestLaunchCity(
+  lat: number,
+  lng: number,
+  coverageKm: number,
+): CityInfo | null {
+  let best: CityInfo | null = null;
+  let bestKm = coverageKm;
+  for (const city of LAUNCH_CITIES) {
+    const km = haversineKm(lat, lng, city.center.lat, city.center.lng);
+    if (km <= bestKm) {
+      best = city;
+      bestKm = km;
+    }
+  }
+  return best;
+}
+
 
 /**
  * Resolve the effective canonical city ID for search/discovery (DG128).
@@ -161,15 +207,7 @@ export function resolveEffectiveCity(
     const found = findCity(explicitCity);
     if (found) return found.id;
   }
-  const cfCity = headers.get("cf-ipcity")?.trim();
-  if (cfCity) {
-    const found = findCity(cfCity);
-    if (found) return found.id;
-  }
-  const cfCountry = headers.get("cf-ipcountry")?.trim();
-  if (cfCountry) {
-    const found = findCityByCountry(cfCountry);
-    if (found) return found.id;
-  }
+  const detected = detectIpCity(headers);
+  if (detected) return detected.id;
   return DEFAULT_CITY.id;
 }

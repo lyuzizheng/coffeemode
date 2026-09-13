@@ -34,3 +34,9 @@ profile-write:
 identity-write:
   windowMs: 60000
   maxRequests: 10
+
+# First-visit locate: resolves a granted geolocation to a city and persists
+# it for signed-in users (DG121). Anonymous callers hit it once per grant.
+onboarding:
+  windowMs: 60000
+  maxRequests: 10

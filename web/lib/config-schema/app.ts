@@ -60,6 +60,18 @@ function parseDiscoverySection(file: string, value: unknown): AppConfig["discove
     },
   };
 }
+function parseOnboardingSection(file: string, value: unknown): AppConfig["onboarding"] {
+  const onboarding = record(file, "onboarding", value);
+  return {
+    cityCoverageKm: positiveNumber(file, "onboarding.cityCoverageKm", onboarding.cityCoverageKm),
+    geolocationTimeoutMs: positiveNumber(
+      file,
+      "onboarding.geolocationTimeoutMs",
+      onboarding.geolocationTimeoutMs,
+    ),
+  };
+}
+
 
 /** Validate raw parsed YAML into the typed app config (exported for tests). */
 export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
@@ -70,6 +82,7 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
     cafes: parseCafesSection(file, root.cafes),
     feed: parseFeedSection(file, root.feed),
     discovery: parseDiscoverySection(file, root.discovery),
+    onboarding: parseOnboardingSection(file, record(file, "onboarding", root.onboarding)),
     seo: parseSeoSection(file, record(file, "seo", root.seo)),
     checkins: parseCheckinsSection(file, record(file, "checkins", root.checkins)),
     promptQueue: parsePromptQueueSection(

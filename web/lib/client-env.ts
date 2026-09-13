@@ -76,3 +76,8 @@ export function getQueryPersistMaxAgeMs(): number {
 export function getNavPromptCollapseMs(): number {
   return envPositiveInt(process.env.NEXT_PUBLIC_NAV_PROMPT_COLLAPSE_MS, 8_000);
 }
+
+/** `onboarding.geolocationTimeoutMs` — browser geolocation timeout (DG112). */
+export function getOnboardingGeolocationTimeoutMs(): number {
+  return envPositiveInt(process.env.NEXT_PUBLIC_ONBOARDING_GEOLOCATION_TIMEOUT_MS, 10_000);
+}

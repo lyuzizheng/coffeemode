@@ -50,10 +50,45 @@ export const spring = {
   soft: { type: "spring", stiffness: 180, damping: 26 },
 } as const satisfies Record<string, Transition>;
 
+/** Choreographed delays (seconds) — named per moment so no site invents its
+ * own numbers. */
+export const stagger = {
+  /** Check-in success card: steam puffs rise, then headline, then caption. */
+  checkinSuccess: {
+    steam: [0.15, 0.23],
+    headline: 0.2,
+    caption: 0.3,
+  },
+  /** WorkProfile dimension bars: per-bar cascade step on load. */
+  workProfile: { barStep: 0.04 },
+  /** Theme-preview hero poster: score card trails the poster, score bar last. */
+  heroPoster: { card: 0.12, bar: 0.2 },
+} as const;
+
+/** Ambient loops — continuous decorative motion exempt from settle budgets
+ * (they never settle). Keep durations inside the 450ms ceiling anyway. */
+export const ambient = {
+  /** Looping coffee-steam wisps (theme-preview check-in success demo). */
+  steam: {
+    transition: {
+      duration: 0.4,
+      repeat: Infinity,
+      repeatType: "loop",
+      ease: ease.default,
+    },
+    /** Per-wisp phase offset — multiply by the wisp index. */
+    step: 0.1,
+  },
+} as const satisfies Record<string, { transition: Transition; step: number }>;
+
 /** Card hover/press — the CoffeeMode "alive" feel. Lift a hair, press a hair. */
 export const cardInteraction = {
   whileHover: { y: -2, transition: { duration: duration.feedback, ease: ease.default } },
   whileTap: { scale: 0.985, transition: { duration: duration.feedback, ease: ease.default } },
+  /** Peek-strip affordance (spec 0002 §Signature moments): active card scales
+   * ~1.02, neighbors dim. Pair with a `spring.gentle` transition. */
+  active: { scale: 1.02, opacity: 1 },
+  inactive: { scale: 1, opacity: 0.6 },
 } as const;
 
 export { useEnterMotion };

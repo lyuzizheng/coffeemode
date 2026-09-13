@@ -315,6 +315,23 @@ Bezier curves (strictly restricted to opacity and color cross-fades only):
   ease.fade      [0.22, 1, 0.36, 1]   ≤200ms duration (cross-fade / color transition only)
 ```
 
+Choreography tokens (named delays/staggers — no site invents its own numbers):
+
+```text
+stagger.checkinSuccess   steam [0.15, 0.23], headline 0.2, caption 0.3
+                         check-in success card: steam puffs, then text
+stagger.workProfile      barStep 0.04   per-bar cascade on WorkProfile load
+stagger.heroPoster       card 0.12, bar 0.2   theme-preview poster reveal
+
+ambient.steam            duration 0.4, loop, step 0.1 per wisp
+                         looping coffee-steam wisps — ambient loops never
+                         settle, so they are exempt from settle budgets but
+                         still capped at the 450ms ceiling
+
+cardInteraction.active / .inactive   peek-strip affordance: active card
+                         scales ~1.02, neighbors dim to 0.6 (spring.gentle)
+```
+
 Settle budgets (spring stability ceilings, replacing fixed durations):
 
 ```text

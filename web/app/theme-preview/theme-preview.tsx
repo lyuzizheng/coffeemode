@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { duration, ease, useEnterMotion } from "@/lib/motion";
+import { duration, ease, spring, stagger, useEnterMotion } from "@/lib/motion";
 import { DEMO_SCORE } from "./shared";
 import {
   ButtonsSection,
@@ -77,7 +77,7 @@ function HeroPoster() {
               transition: {
                 duration: duration.slow,
                 ease: ease.default,
-                delay: 0.12,
+                delay: stagger.heroPoster.card,
               },
             }
           : { initial: false })}
@@ -98,7 +98,7 @@ function HeroPoster() {
                 ? {
                     initial: { width: 0 },
                     animate: { width: "87%" },
-                    transition: { type: "spring", stiffness: 180, damping: 26, delay: 0.2 },
+                    transition: { ...spring.soft, delay: stagger.heroPoster.scoreBar },
                   }
                 : { initial: false, animate: { width: "87%" }, transition: { duration: 0 } })}
             />

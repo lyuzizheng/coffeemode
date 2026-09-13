@@ -106,11 +106,11 @@ _archive-coffeemode-backend/   old Java app — being dropped
    (2026-09-12) against their own D1/KV bindings; what remains is owner-side —
    install GOOGLE_PLACES_API_KEY (§5) and a Cloudflare deploy API token, then
    attach the custom domain once the zone is live.
-4. Map-independent UI slices are all design-unblocked and READY — pick any of:
-   onboarding-geolocation (#153), helpful-ranking-snapshot (#140).
-   discovery-sheet (#133), checkin-system (#148), seo-sharing (#150),
-   profile-page (#152, PR #209), search-filters (#135), navigation-prompt
-   (#149), and app-config (#189) are COMPLETE — feature slices consume
+4. Map-independent UI slices: helpful-ranking-snapshot (#140) is
+   design-unblocked and READY. discovery-sheet (#133), checkin-system (#148),
+   seo-sharing (#150), profile-page (#152, PR #209), search-filters (#135),
+   navigation-prompt (#149), app-config (#189), and onboarding-geolocation
+   (#153, PR #450) are COMPLETE — feature slices consume
    `web/lib/config.ts`, never hardcode. One writer per slice
 ```
 

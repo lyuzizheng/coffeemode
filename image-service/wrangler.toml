@@ -53,8 +53,17 @@ bucket_name = "coffeemode"
 # endpoint derived from R2_ACCOUNT_ID, and the empty value keeps wrangler from
 # warning that the top-level localhost endpoint is missing here.
 # Deploy with `npm run deploy -- --env production` (guard: scripts/deploy.mjs).
+# Custom-domain route (BRAWUKA-236): takes effect on the next deploy once the
+# `coffeemode.app` Cloudflare zone is active — the domain is not yet
+# registered, so until then this worker stays reachable only via workers.dev.
+# After the web app switches IMAGE_SERVICE_URL to the custom domain and the
+# cutover is verified, add `workers_dev = false` here to retire the
+# workers.dev route.
 [env.production]
 name = "image-service-prod"
+routes = [
+  { pattern = "image-service.coffeemode.app", custom_domain = true },
+]
 vars = { R2_ACCOUNT_ID = "bf69da5249b63731ad79545d0095e8db", R2_BUCKET_NAME = "coffeemode-images-prod", R2_PUBLIC_URL = "https://images.coffeemode.app", R2_ENDPOINT = "", UPLOAD_URL_TTL_SECONDS = "600" }
 [[env.production.r2_buckets]]
 binding = "R2_BUCKET"
@@ -62,8 +71,15 @@ bucket_name = "coffeemode-images-prod"
 
 # Staging env: isolated staging stack (same override rules as production).
 # Deploy with `npm run deploy -- --env staging` (guard: scripts/deploy.mjs).
+# Custom-domain route (BRAWUKA-236): same zone precondition as production —
+# activates on the next deploy after the `coffeemode.app` zone exists. Add
+# `workers_dev = false` only after the web app is verified on
+# `image-service.staging.coffeemode.app`.
 [env.staging]
 name = "image-service-staging"
+routes = [
+  { pattern = "image-service.staging.coffeemode.app", custom_domain = true },
+]
 vars = { R2_ACCOUNT_ID = "bf69da5249b63731ad79545d0095e8db", R2_BUCKET_NAME = "coffeemode-images-staging", R2_PUBLIC_URL = "https://staging-images.coffeemode.app", R2_ENDPOINT = "", UPLOAD_URL_TTL_SECONDS = "600" }
 [[env.staging.r2_buckets]]
 binding = "R2_BUCKET"

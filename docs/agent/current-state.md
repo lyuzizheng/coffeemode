@@ -101,11 +101,16 @@ _archive-coffeemode-backend/   old Java app — being dropped
    schema (DATABASE_URL, §2 / #142), Google OAuth, Apple Developer Program.
 2. image-service residual (§6): both Workers are deployed; what remains is the
    `images.` / `staging-images.coffeemode.app` custom domains once the zone is
-   live, plus bucket defenses and orphan-cleanup scheduling.
+   live, plus bucket defenses and orphan-cleanup scheduling. The
+   `image-service.*` worker routes are declared in wrangler.toml (BRAWUKA-236)
+   and attach on the next deploy after the zone exists.
 3. poi-cache-service residual (§7): both environments are deployed and verified
    (2026-09-12) against their own D1/KV bindings; what remains is owner-side —
    install GOOGLE_PLACES_API_KEY (§5) and a Cloudflare deploy API token, then
-   attach the custom domain once the zone is live.
+   the declared `poi.*` custom-domain routes (BRAWUKA-236) attach on the next
+   deploy once the zone is live. NOTE: `coffeemode.app` itself is not yet
+   registered (NXDOMAIN 2026-09-13) — domain registration is the new blocker
+   for every `*.coffeemode.app` hostname.
 4. Map-independent UI slices are all design-unblocked and READY — pick any of:
    search-filters (#135), navigation-prompt (#149), onboarding-geolocation (#153).
    discovery-sheet (#133), checkin-system (#148), seo-sharing (#150),

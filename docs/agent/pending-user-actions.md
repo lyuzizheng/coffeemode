@@ -80,8 +80,30 @@ and the KV hot-cache read path are unaffected and verified working.
 
 ## 7. Domain + deploy (later phase)
 
-- [ ] Point domain at the VPS; Cloudflare proxy/CDN in front
-- [ ] Cloudflare account for the POI worker (`poi.coffeemode.app` once the domain lands)
+- [ ] **Register `coffeemode.app`** — the domain is currently unregistered
+  (NXDOMAIN, verified 2026-09-13, BRAWUKA-236). Every `*.coffeemode.app`
+  hostname in the specs — apex, `staging.`, `images.`, `staging-images.`,
+  `poi.`, `image-service.` — is blocked on this. Until the domain exists, no
+  Cloudflare zone can be created and no custom route can be attached.
+- [ ] Point domain at the VPS; Cloudflare proxy/CDN in front (create the
+  `coffeemode.app` zone, set the registrar nameservers to the assigned CF
+  nameservers, wait for zone status = Active)
+- [ ] Worker route migration (BRAWUKA-236) — once the zone is Active:
+  1. Redeploy both workers so the declared custom-domain routes attach:
+     `npm run deploy -- --env staging` and `--env production` in
+     `poi-service/` and `image-service/` (routes already declared in each
+     `wrangler.toml`: `poi.coffeemode.app`, `poi.staging.coffeemode.app`,
+     `image-service.coffeemode.app`, `image-service.staging.coffeemode.app`).
+  2. Update the Dokploy env vars `POI_SERVICE_URL` / `IMAGE_SERVICE_URL` to
+     the custom domains (values in `deploy/dokploy/.env.*.example`) and
+     rolling-restart the web app; verify `/api/places/search` and
+     `/api/images/upload` end-to-end.
+  3. Only then set `workers_dev = false` in each `[env.*]` block (or disable
+     the workers.dev route in Settings → Domains & Routes) and redeploy —
+     never before step 2 is verified, or the web app loses its upstream.
+  4. Shared-secret headers (`x-poi-service-token` / `x-image-service-token`)
+     stay unchanged — the zone route is defense-in-depth, not a token
+     replacement.
 - [x] In a terminal (from `poi-service/`), create the per-environment resources and add a `[env.staging]` / `[env.production]` block to `poi-service/wrangler.toml` (spec 0005 §3 names): (done 2026-09-12, BRAWUKA-222 — created on the `Lyuzizheng@gmail.com` account via Cloudflare MCP; `wrangler.toml` now carries real ids for both environments, the top-level local-dev placeholders untouched)
   - `poi-store-staging` = `d069da6b-07e5-4fc0-b6a9-a685b3bef8b8`, `poi-store` = `7d01d154-03a7-4483-8b54-83f2c310af3b` (`POI_DB`)
   - `poi-cache-staging` = `9f7f807aa68b47e3bbb6ecaf15c5f571`, `poi-cache` = `be0e4111b70f482ca23ed1f833142f88` (`POI_KV`)

@@ -37,7 +37,7 @@ export function CheckinDeleteSection({ onDelete }: CheckinDeleteSectionProps) {
             variant="primary"
             size="sm"
             onPress={onDelete}
-            className="h-7 bg-danger text-danger-foreground hover:bg-danger/90 text-xs"
+            className="h-7 bg-danger-solid text-white hover:bg-danger-solid/90 text-xs"
           >
             {t("delete")}
           </Button>

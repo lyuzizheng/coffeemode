@@ -15,7 +15,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { animate, motion, useDragControls, useMotionValue, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
-import { spring } from "@/lib/motion";
+import { cardInteraction, spring } from "@/lib/motion";
 import { useMounted } from "@/hooks/use-mounted";
 import type { DiscoveryController, SheetSnap } from "@/lib/discovery/use-discovery-controller";
 import type { CafeSummary } from "@/types/cafes";
@@ -53,7 +53,7 @@ function PeekCard({
       // Active card scales ~1.02, neighbors dim (§8) — gentle spring, no CSS
       // tween; instant under reduced motion.
       initial={false}
-      animate={{ scale: active ? 1.02 : 1, opacity: active ? 1 : 0.6 }}
+      animate={active ? cardInteraction.active : cardInteraction.inactive}
       transition={reduced ? { duration: 0 } : spring.gentle}
     >
       <CafeCardBody cafe={cafe} />

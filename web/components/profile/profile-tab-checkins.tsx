@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import type { UseInfiniteQueryResult, InfiniteData } from "@tanstack/react-query";
 import { Button } from "@heroui/react";
 import { HeartIcon, PencilIcon } from "@/components/icons";
@@ -29,6 +29,7 @@ interface ProfileTabCheckinsProps {
 
 export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticated }: ProfileTabCheckinsProps) {
   const t = useTranslations("profile");
+  const locale = useLocale();
   // Dimension labels reuse the discovery vocabulary (`discovery.dims.*`) so the
   // same score never renders under two different names (BRAWUKA-218).
   const tDims = useTranslations("discovery");
@@ -88,11 +89,11 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
                 )}
                 <span className="text-xs text-muted font-mono tabular-nums">
                   {t("last_visit", {
-                    date: new Date(item.visitedAt).toLocaleDateString(undefined, {
+                    date: new Intl.DateTimeFormat(locale, {
                       day: "numeric",
                       month: "short",
                       year: "numeric",
-                    }),
+                    }).format(new Date(item.visitedAt)),
                   })}
                 </span>
               </div>

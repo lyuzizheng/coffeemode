@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Button } from "@heroui/react";
 import {
   subscribeRecentSearches,
@@ -10,11 +10,13 @@ import {
   getRecentSearchesServerSnapshot,
   clearRecentSearches,
 } from "@/lib/search/recent-searches";
+import { displayCityName } from "@/lib/cities";
 
 type RelativeTimeKey = "just_now" | "minutes_ago" | "hours_ago" | "days_ago";
 
 function formatRelativeTime(
   timestamp: number,
+  locale: string,
   t: (key: RelativeTimeKey, values?: Record<string, string | number>) => string,
 ): string {
   const diffMs = Date.now() - timestamp;
@@ -26,14 +28,15 @@ function formatRelativeTime(
   if (diffHours < 24) return t("hours_ago", { hours: diffHours });
   const diffDays = Math.floor(diffHours / 24);
   if (diffDays <= 7) return t("days_ago", { days: diffDays });
-  return new Date(timestamp).toLocaleDateString(undefined, {
+  return new Intl.DateTimeFormat(locale, {
     day: "numeric",
     month: "short",
-  });
+  }).format(new Date(timestamp));
 }
 
 export function ProfileTabHistory({ baseId }: { baseId: string }) {
   const t = useTranslations("profile");
+  const locale = useLocale();
 
   const recentSearches = useSyncExternalStore(
     subscribeRecentSearches,
@@ -79,11 +82,11 @@ export function ProfileTabHistory({ baseId }: { baseId: string }) {
                   {item.query}
                 </span>
                 <span className="px-2 py-0.5 rounded-full bg-surface-secondary text-[11px] text-muted">
-                  {item.city}
+                  {displayCityName(item.city, locale)}
                 </span>
               </div>
               <span className="text-xs text-muted font-mono tabular-nums flex-shrink-0">
-                {formatRelativeTime(item.timestamp, t)}
+                {formatRelativeTime(item.timestamp, locale, t)}
               </span>
             </Link>
           ))}

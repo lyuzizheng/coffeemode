@@ -78,7 +78,7 @@ function useSubmitMutation({
 
   return useMutation({
     mutationFn: async (params: SubmitCheckinParams) => {
-      const uploadedIds = await uploadPendingPhotos();
+      // Edit PATCHes carry no photo_ids — uploading staged photos would only orphan them in R2 (BRAWUKA-269).
       if (isEdit && editCheckinId) {
         await updateCheckin({
           editCheckinId,
@@ -89,6 +89,7 @@ function useSubmitMutation({
         });
         return { photosDropped: false };
       }
+      const uploadedIds = await uploadPendingPhotos();
       const { convertedToEdit } = await createCheckin({
         cafeId,
         idempotencyKey,

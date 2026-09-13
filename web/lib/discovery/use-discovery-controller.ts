@@ -22,6 +22,9 @@ import { useTranslations } from "next-intl";
 import { toast } from "@heroui/react";
 import { isValidUUID } from "@shared/uuid";
 
+/** Missing-cafe notice duration — interaction-design timing, not a product knob (BRAWUKA-250). */
+const MISSING_CAFE_TOAST_TIMEOUT_MS = 4000;
+
 export type SheetSnap = "peek" | "half" | "full";
 
 const CAFE_PATH = /^\/cafes\/([0-9a-fA-F-]{36})$/;
@@ -111,7 +114,7 @@ export function useDiscoveryController(options?: { initialCafeId?: string }): Di
   );
 
   const handleMissingCafe = useCallback(() => {
-    toast(t("missing_cafe"), { timeout: 4000 });
+    toast(t("missing_cafe"), { timeout: MISSING_CAFE_TOAST_TIMEOUT_MS });
     close();
   }, [close, t]);
 

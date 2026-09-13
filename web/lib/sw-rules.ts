@@ -41,6 +41,21 @@ export interface SwRule {
  * The catch-all `api` rule below guards every API route, present and
  * future, so individual API rules are no longer enumerated here.
  */
+
+/**
+ * Service-worker cache tuning (BRAWUKA-250). These stay named module-level
+ * constants rather than `app.yaml` values: the worker bundle cannot read
+ * server config (or even `process.env` — see `lib/images/constants.ts`), so
+ * config ownership is unreachable here. Eviction caps and TTLs for immutable
+ * assets are internal mechanics, not product knobs.
+ */
+const R2_IMAGES_MAX_ENTRIES = 200;
+const R2_IMAGES_MAX_AGE_SECONDS = 30 * 24 * 60 * 60; // 30 days
+const NEXT_STATIC_MAX_ENTRIES = 200;
+const NEXT_STATIC_MAX_AGE_SECONDS = 365 * 24 * 60 * 60; // 1 year
+const STATIC_ASSETS_MAX_ENTRIES = 100;
+const STATIC_ASSETS_MAX_AGE_SECONDS = 365 * 24 * 60 * 60; // 1 year
+
 export const RUNTIME_RULES: SwRule[] = [
   // The home page is dynamic (reads cookies); never cache it. The offline
   // fallback page handles navigation when the network is unavailable.
@@ -80,7 +95,7 @@ export const RUNTIME_RULES: SwRule[] = [
     method: "GET",
     matcher: ({ url }) => url.hostname === R2_PUBLIC_HOST,
     handler: "cache-first",
-    cache: { cacheName: "r2-images", maxEntries: 200, maxAgeSeconds: 30 * 24 * 60 * 60 },
+    cache: { cacheName: "r2-images", maxEntries: R2_IMAGES_MAX_ENTRIES, maxAgeSeconds: R2_IMAGES_MAX_AGE_SECONDS },
   },
   // Immutable build assets.
   {
@@ -90,8 +105,8 @@ export const RUNTIME_RULES: SwRule[] = [
     handler: "cache-first",
     cache: {
       cacheName: "next-static-assets",
-      maxEntries: 200,
-      maxAgeSeconds: 365 * 24 * 60 * 60,
+      maxEntries: NEXT_STATIC_MAX_ENTRIES,
+      maxAgeSeconds: NEXT_STATIC_MAX_AGE_SECONDS,
     },
   },
   // Immutable app icons and fonts.
@@ -101,6 +116,6 @@ export const RUNTIME_RULES: SwRule[] = [
     matcher: ({ url }) =>
       url.pathname.startsWith("/icons/") || url.pathname.startsWith("/fonts/"),
     handler: "cache-first",
-    cache: { cacheName: "static-assets", maxEntries: 100, maxAgeSeconds: 365 * 24 * 60 * 60 },
+    cache: { cacheName: "static-assets", maxEntries: STATIC_ASSETS_MAX_ENTRIES, maxAgeSeconds: STATIC_ASSETS_MAX_AGE_SECONDS },
   },
 ];

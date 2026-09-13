@@ -2,6 +2,7 @@ import "server-only";
 
 import { isValidUUID } from "@shared/uuid";
 import { coerceWorkStats } from "@/lib/stats/work-stats";
+import { appConfig } from "@/lib/config";
 import type {
   CafeDetail,
   CafeSummary,
@@ -67,7 +68,7 @@ export async function listCafesNearby(params: NearbyCafesQuery): Promise<CafeSum
     return {
       ...rest,
       maintained_by_service: isServiceMaintained(row.created_by),
-      work_stats: coerceWorkStats(row.work_stats),
+      work_stats: coerceWorkStats(row.work_stats, appConfig.stats.dimWeights),
     };
   });
 }
@@ -113,7 +114,7 @@ export async function getCafe(
   return {
     ...row,
     gallery: row.gallery ?? [],
-    work_stats: coerceWorkStats(row.work_stats),
+    work_stats: coerceWorkStats(row.work_stats, appConfig.stats.dimWeights),
   };
 }
 

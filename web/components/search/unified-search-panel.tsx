@@ -2,7 +2,7 @@
 
 /**
  * Unified map-independent search panel (search-filters-v1 §3/§6/§7):
- * search-as-you-type from 3 characters with a 400ms debounce (DG44/DG47),
+ * search-as-you-type per `search.client` (DG44/DG47),
  * top-10 results rendered as DG131 groups via `SearchResultsList`, and
  * first-class states — hint before typing, 4-row skeleton on first load,
  * inline error + retry with the last good list preserved (DG141).
@@ -13,6 +13,7 @@
 import { SearchField } from "@heroui/react";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getSearchDebounceMs, getSearchMinQueryLength } from "@/lib/client-env";
 import { addRecentSearch } from "@/lib/search/recent-searches";
 import { fetchUnifiedSearch, type UnifiedSearchParams } from "@/lib/search/search-client";
 import type { SearchResponse, SearchResultItem } from "@/lib/search/types";
@@ -22,8 +23,9 @@ import {
   type ExternalSourceFlags,
 } from "./search-results-list";
 
-const MIN_QUERY_LENGTH = 3; // DG44
-const DEBOUNCE_MS = 400; // DG47
+/** Search-as-you-type trigger (DG44) and debounce (DG47), owned by `app.yaml` `search.client`. */
+const MIN_QUERY_LENGTH = getSearchMinQueryLength();
+const DEBOUNCE_MS = getSearchDebounceMs();
 
 type SearchStatus = "idle" | "loading" | "success" | "error";
 
@@ -69,7 +71,7 @@ export function UnifiedSearchPanel({
   const requestId = useRef(0);
   const fetcher = fetchSearch ?? fetchUnifiedSearch;
 
-  // Below the 3-character trigger (DG44) the panel is idle by derivation —
+  // Below the minimum-query trigger (DG44, `search.client.minQueryLength`) the panel is idle by derivation —
   // no setState in the effect body. Stale in-flight requests are invalidated
   // via the request id.
   const isBelowMinQuery = query.trim().length < MIN_QUERY_LENGTH;

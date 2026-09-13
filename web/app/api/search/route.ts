@@ -12,8 +12,11 @@ import { executeSearch } from "@/lib/search/search-service";
 import { getSearchFixtures, isFixturesEnabled } from "@/lib/search/fixtures";
 import { WORK_DIM_FILTER_MAP } from "@/lib/search/filter";
 import type { SearchFilters, SearchResultItem, SearchResultSource } from "@/lib/search/types";
+import { appConfig } from "@/lib/config";
 import { parseMaxStayFilter } from "@/lib/validation/checkin";
 
+/** Private Cache-Control for success responses (DG137-B, values in app.yaml `search.responseCache`). */
+const SEARCH_RESPONSE_CACHE_CONTROL = `private, max-age=${appConfig.search.responseCache.maxAgeSeconds}, stale-while-revalidate=${appConfig.search.responseCache.staleWhileRevalidateSeconds}`;
 /**
  * GET /api/search
  * Search endpoint merging own cafes and saved POIs with nomad filters (DG44–DG58, DG128, DG129).
@@ -74,7 +77,7 @@ export async function GET(request: Request) {
           city_name: "Singapore",
         },
       });
-      response.headers.set("Cache-Control", "private, max-age=10, stale-while-revalidate=30");
+      response.headers.set("Cache-Control", SEARCH_RESPONSE_CACHE_CONTROL);
       response.headers.set("X-Search-Mode", "stored_only");
       return response;
     }
@@ -137,7 +140,7 @@ export async function GET(request: Request) {
     const { search_mode, ...searchResponse } = await executeSearch(filters);
     const response = NextResponse.json(searchResponse);
     // DG137-B: Cache-Control on success path only
-    response.headers.set("Cache-Control", "private, max-age=10, stale-while-revalidate=30");
+    response.headers.set("Cache-Control", SEARCH_RESPONSE_CACHE_CONTROL);
     // DG132: observability header for actual stored vs live fanout mode
     response.headers.set("X-Search-Mode", search_mode ?? "stored_only");
     return response;

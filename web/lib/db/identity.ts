@@ -1,20 +1,26 @@
 import "server-only";
 
 import { randomBytes } from "node:crypto";
+import { appConfig } from "@/lib/config";
 import { query } from "@/lib/db/postgres";
 import { isValidUUID } from "@shared/uuid";
 import type { ProfileIdentityDto } from "@/types/identity";
 
-/**
- * Handle regex per Spec / Decision Q11:
- * - Starts with lowercase alphanumeric [a-z0-9]
- * - Followed by 2 to 29 characters from [a-z0-9_-]
- * - Total length: 3 to 30 characters
- */
-export const PUBLIC_HANDLE_REGEX = /^[a-z0-9][a-z0-9_-]{2,29}$/;
+const HANDLE_RULES = appConfig.profile.handle;
 
-/** Cooldown window for user-chosen handle edits: 7 days in ms. */
-export const HANDLE_CHANGE_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * Handle regex per Spec / Decision Q11, bounds from `app.yaml`
+ * `profile.handle` (BRAWUKA-250: edit the YAML, not this file):
+ * - Starts with lowercase alphanumeric [a-z0-9]
+ * - Followed by (minChars-1) to (maxChars-1) characters from [a-z0-9_-]
+ */
+export const PUBLIC_HANDLE_REGEX = new RegExp(
+  `^[a-z0-9][a-z0-9_-]{${HANDLE_RULES.minChars - 1},${HANDLE_RULES.maxChars - 1}}$`,
+);
+
+/** Cooldown window for user-chosen handle edits, from `profile.handle.changeCooldownDays`. */
+export const HANDLE_CHANGE_COOLDOWN_MS =
+  HANDLE_RULES.changeCooldownDays * 24 * 60 * 60 * 1000;
 
 export class InvalidHandleError extends Error {
   constructor(message = "invalid_handle") {
@@ -53,7 +59,7 @@ export function validatePublicHandle(handle: string): boolean {
 /**
  * Derive a clean base slug from display_name.
  * Converts to lowercase, strips non-alphanumeric chars into hyphens,
- * trims repeated/leading/trailing hyphens, and truncates to max 25 chars.
+ * trims repeated/leading/trailing hyphens, and truncates to `profile.handle.slugMaxChars`.
  * If empty or non-ASCII, falls back to "nomad".
  */
 export function slugifyDisplayName(displayName: string): string {
@@ -64,8 +70,8 @@ export function slugifyDisplayName(displayName: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-  if (slug.length > 25) {
-    slug = slug.slice(0, 25).replace(/-+$/, "");
+  if (slug.length > HANDLE_RULES.slugMaxChars) {
+    slug = slug.slice(0, HANDLE_RULES.slugMaxChars).replace(/-+$/, "");
   }
 
   if (slug.length === 0 || !/^[a-z0-9]/.test(slug)) {
@@ -76,7 +82,7 @@ export function slugifyDisplayName(displayName: string): string {
 }
 
 /**
- * Check if the user is permitted to change their handle now based on 7-day cooldown.
+ * Check if the user is permitted to change their handle now based on the `profile.handle` cooldown.
  * Null publicHandleChangedAt means the handle was server-generated (or never set),
  * which permits the first user edit immediately.
  */
@@ -99,7 +105,7 @@ export async function generatePublicHandle(
   isHandleTaken?: (handle: string) => Promise<boolean>,
 ): Promise<string> {
   const base = slugifyDisplayName(displayName);
-  const maxAttempts = 10;
+  const maxAttempts = HANDLE_RULES.generateMaxAttempts;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const suffix = randomBytes(2).toString("hex");
@@ -181,8 +187,10 @@ export async function updateProfileIdentity(
     }
   }
 
-  const maxAttempts = 5;
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+  // Retries for the compare-and-swap identity update under concurrent writes.
+  // Internal race mechanics, not a product knob: a named constant, not config.
+  const UPDATE_MAX_ATTEMPTS = 5;
+  for (let attempt = 0; attempt < UPDATE_MAX_ATTEMPTS; attempt++) {
     let newPublicHandle: string | null = current.public_handle;
     let newPublicHandleChangedAt: Date | null = current.public_handle_changed_at
       ? new Date(current.public_handle_changed_at)

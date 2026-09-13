@@ -1,9 +1,12 @@
 import { coordinate, positiveNumber, record } from "./primitives";
 import { parseBudgetsSection } from "./budgets";
 import { parseCheckinsSection } from "./checkins";
+import { parseImagesSection } from "./images";
 import { parseProfileSection } from "./profile";
+import { parseQuerySection } from "./query";
 import { parseSearchSection } from "./search";
 import { parseSeoSection } from "./seo";
+import { parseValidationSection } from "./validation";
 import type { AppConfig } from "./types";
 
 export type { AppConfig } from "./types";
@@ -60,6 +63,9 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
     seo: parseSeoSection(file, record(file, "seo", root.seo)),
     checkins: parseCheckinsSection(file, record(file, "checkins", root.checkins)),
     profile: parseProfileSection(file, record(file, "profile", root.profile)),
+    images: parseImagesSection(file, record(file, "images", root.images)),
+    query: parseQuerySection(file, record(file, "query", root.query)),
+    validation: parseValidationSection(file, record(file, "validation", root.validation)),
     budgets: parseBudgetsSection(file, record(file, "budgets", root.budgets)),
   };
 }

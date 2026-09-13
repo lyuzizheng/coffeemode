@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { appConfig } from "@/lib/config";
 import { coerceWorkStats, emptyWorkStats, computeCafeStats } from "@/lib/stats/work-stats";
+
+// Single source (BRAWUKA-250): weights/decay live in app.yaml; tests pass them explicitly.
+const DECAY = appConfig.stats.recencyDecay;
+const WEIGHTS = appConfig.stats.dimWeights;
 
 describe("coerceWorkStats preserves persisted scores (issue #146)", () => {
   it("round-trips experience_score and composite_score", () => {
@@ -19,10 +24,10 @@ describe("coerceWorkStats preserves persisted scores (issue #146)", () => {
         updated_at: "2026-08-01T10:00:00Z",
         deleted_at: null,
       },
-    ]);
+    ], 0, DECAY, WEIGHTS);
     // Simulate JSON round-trip through Postgres jsonb.
     const raw = JSON.parse(JSON.stringify(stats));
-    const coerced = coerceWorkStats(raw);
+    const coerced = coerceWorkStats(raw, WEIGHTS);
     expect(coerced.experience_score).toBe(stats.experience_score);
     expect(coerced.composite_score).toBe(stats.composite_score);
     expect(coerced.updated_at).toBe(stats.updated_at);
@@ -32,7 +37,7 @@ describe("coerceWorkStats preserves persisted scores (issue #146)", () => {
 
   it("preserves explicitly persisted null scores (no dims)", () => {
     const raw = { n_users: 0, n_checkins: 0, experience_score: null, composite_score: null };
-    const coerced = coerceWorkStats(raw);
+    const coerced = coerceWorkStats(raw, WEIGHTS);
     expect(coerced.experience_score).toBeNull();
     expect(coerced.composite_score).toBeNull();
   });
@@ -46,16 +51,16 @@ describe("coerceWorkStats preserves persisted scores (issue #146)", () => {
         overall: { sum: 80, n: 1 },
       },
     };
-    const coerced = coerceWorkStats(raw);
+    const coerced = coerceWorkStats(raw, WEIGHTS);
     expect(coerced.experience_score).toBe(80);
     expect(coerced.composite_score).not.toBeNull();
   });
 
   it("preserves updated_at when valid, falls back otherwise", () => {
     const iso = "2026-08-02T10:00:00Z";
-    expect(coerceWorkStats({ updated_at: iso }).updated_at).toBe(iso);
+    expect(coerceWorkStats({ updated_at: iso }, WEIGHTS).updated_at).toBe(iso);
     // invalid timestamp keeps the fresh empty timestamp (is a valid ISO)
-    const fallback = coerceWorkStats({ updated_at: "not-a-date" }).updated_at;
+    const fallback = coerceWorkStats({ updated_at: "not-a-date" }, WEIGHTS).updated_at;
     expect(() => new Date(fallback).toISOString()).not.toThrow();
     expect(new Date(fallback).getTime()).not.toBeNaN();
   });
@@ -66,7 +71,7 @@ describe("coerceWorkStats preserves persisted scores (issue #146)", () => {
     raw.dims.wifi = { sum: 123, n: 2 };
     (raw as unknown as Record<string, unknown>).experience_score = 77;
     (raw as unknown as Record<string, unknown>).composite_score = 66.5;
-    const coerced = coerceWorkStats(JSON.parse(JSON.stringify(raw)));
+    const coerced = coerceWorkStats(JSON.parse(JSON.stringify(raw)), WEIGHTS);
     expect(coerced.policies.max_stay.unlimited).toBe(2);
     expect(coerced.dims.wifi).toEqual({ sum: 123, n: 2 });
     expect(coerced.experience_score).toBe(77);
@@ -145,7 +150,7 @@ describe("coerceWorkStats preserves persisted scores (issue #146)", () => {
 
   it("coerces non-object payloads to empty stats without throwing (BRAWUKA-189)", () => {
     for (const raw of ["corrupt", 42, true, null, undefined, []] as unknown[]) {
-      const coerced = coerceWorkStats(raw);
+      const coerced = coerceWorkStats(raw, WEIGHTS);
       expect(coerced.n_users).toBe(0);
       expect(coerced.n_checkins).toBe(0);
       expect(coerced.experience_score).toBeNull();

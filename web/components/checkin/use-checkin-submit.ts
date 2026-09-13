@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, type Dispatch, type SetStateAction } from "react";
 import { useTranslations } from "next-intl";
 import { useStagedPhotos } from "./use-staged-photos";
+import type { PhotoUpload } from "./checkin-photos";
 import { useCheckinMutation } from "./use-checkin-mutation";
 import type { CheckinScoresState } from "./use-checkin-scores";
 import type { UseCheckinFormStateOptions } from "./use-checkin-form-state";
@@ -72,9 +73,24 @@ export function useCheckinSubmit({
   effectivelyAuthenticated: boolean;
 }) {
   const t = useTranslations("checkIn");
+  const { photos, setPhotos: setPhotosState, uploadPendingPhotos } = useStagedPhotos(
+    options.initialPhotos,
+  );
+  const setPhotos = useCallback<Dispatch<SetStateAction<PhotoUpload[]>>>(
+    (next) => {
+      setPhotosState((prev) => {
+        const resolved = typeof next === "function" ? next(prev) : next;
+        // Synchronous report: the drawer's preempt check runs on render and
+        // cannot wait for an effect to learn photos were just staged
+        // (BRAWUKA-126). Idempotent — StrictMode may replay the updater.
+        options.onStagedPhotosChange?.(resolved.length);
+        return resolved;
+      });
+    },
+    [setPhotosState, options],
+  );
   const [showSignInGate, setShowSignInGate] = useState(false);
   const [idempotencyKey] = useState(newIdempotencyKey);
-  const { photos, setPhotos, uploadPendingPhotos } = useStagedPhotos(options.initialPhotos);
   const requireSignIn = useCallback(() => setShowSignInGate(true), []);
 
   const mutation = useCheckinMutation({

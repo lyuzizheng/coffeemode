@@ -189,7 +189,7 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
 
       {/* Part 1 — the public shell (DG106): aggregate product data only,
           full semantic HTML, no client JS needed for the content. */}
-      <main className="mx-auto flex w-full max-w-[640px] flex-1 flex-col gap-5 px-4 pb-12 sm:px-6">
+      <main className="mx-auto flex w-full max-w-[640px] flex-1 flex-col gap-3.5 px-4 pb-8 sm:px-6">
         <CoverCarousel images={covers} alt={cafe.name} />
 
         <CafeHeading

@@ -29,11 +29,10 @@ export {
 } from "./work-stats";
 
 /**
- * Transaction-scoped query function shared with every transactional caller.
- * Canonical shape lives in `lib/db/postgres` (spec 0009 §Edge cases 6);
- * this alias keeps existing imports working.
+ * Transaction-scoped query function for this module's signatures.
+ * Canonical shape lives in `lib/db/postgres` (spec 0009 §Edge cases 6).
  */
-export type QueryFn = TxQueryFn;
+type QueryFn = TxQueryFn;
 
 export type { RunInTransaction };
 
@@ -44,7 +43,7 @@ export type { RunInTransaction };
  * own runner) and the memory-only dev path never load the driver — same
  * pattern as the rate limiter's lazy backend (issue #23).
  */
-export function defaultRunInTransaction(): RunInTransaction {
+function defaultRunInTransaction(): RunInTransaction {
   return async (fn) => {
     const { withTransaction, txQueryFrom } = await import("@/lib/db/postgres");
     return withTransaction((client) => fn(txQueryFrom(client)));

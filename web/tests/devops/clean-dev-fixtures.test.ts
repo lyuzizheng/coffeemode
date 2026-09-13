@@ -14,14 +14,14 @@ import { isTestDatabaseName } from "../../scripts/cleanup-stale-test-dbs.mjs";
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const CLEANER = path.join(REPO_ROOT, "web/scripts/clean-dev-fixtures.mjs");
 
-// Sweeper-exclusion invariant (BRAWUKA-225): the stale test-DB sweeper
-// (`cleanup-stale-test-dbs.mjs --apply`, exercised by staging-journey.test.ts
-// in the same parallel vitest run) drops every zero-backend database matching
-// `isTestDatabaseName`. A `coffeemode_*` temp DB here sits at zero backends
-// between its short-lived connections, so the sweeper intermittently dropped
-// it mid-suite ("database ... does not exist"). This prefix deliberately
-// avoids the sweeper's `coffeemode_`/`supa_prov_test_` prefixes; the `it`
-// below pins that so a future rename cannot reintroduce the race.
+// Sweeper-exclusion invariant (BRAWUKA-225, hardened by BRAWUKA-255): the stale
+// test-DB sweeper (`cleanup-stale-test-dbs.mjs --apply`) drops every zero-backend
+// database matching `isTestDatabaseName`. The vitest suite now scopes its sweep
+// with `--only`, but the operational sweeps in `run-staging-journey.sh` stay
+// unfiltered, and a `coffeemode_*` temp DB here sits at zero backends between
+// its short-lived connections. This prefix deliberately avoids the sweeper's
+// `coffeemode_`/`supa_prov_test_` prefixes; the `it` below pins that so a
+// future rename cannot reintroduce the race.
 const CLEANER_DB_PREFIX = "cleaner_dev";
 
 const RUN_INTEGRATION = process.env.RUN_INTEGRATION === "1";

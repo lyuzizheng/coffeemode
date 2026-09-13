@@ -47,8 +47,8 @@ function PeekCard({
       ref={(el) => cardRef(el)}
       type="button"
       onClick={onSelect}
-      // ~85% width on phones; clamp(280px,55%,420px) on tablet (§8).
-      className="w-[85%] shrink-0 snap-center text-left md:w-[clamp(280px,55%,420px)]"
+      // ~72% width on phones so the 2nd card peeks ≥50px; clamp(280px,55%,420px) on tablet (§8).
+      className="w-[72%] shrink-0 snap-center text-left md:w-[clamp(280px,55%,420px)]"
       // Active card scales ~1.02, neighbors dim (§8) — gentle spring, no CSS
       // tween; instant under reduced motion.
       initial={false}
@@ -66,7 +66,7 @@ function PeekSkeletons() {
       {[0, 1].map((i) => (
         <div
           key={i}
-          className="flex w-[85%] shrink-0 gap-3 rounded-md border border-separator bg-surface p-3 md:w-[clamp(280px,55%,420px)]"
+          className="flex w-[72%] shrink-0 gap-3 rounded-md border border-separator bg-surface p-3 md:w-[clamp(280px,55%,420px)]"
         >
           <div className="h-[66px] w-[88px] animate-pulse rounded-md bg-surface-tertiary" />
           <div className="flex flex-1 flex-col justify-center gap-2">

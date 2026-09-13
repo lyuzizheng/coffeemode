@@ -33,7 +33,7 @@ export function CafePageActions({
   return (
     <>
       <div className="flex flex-col gap-2">
-        <Button variant="primary" className="h-14 w-full rounded-sm text-base" onPress={() => setOpen(true)}>
+        <Button variant="primary" className="h-12 w-full rounded-sm text-base" onPress={() => setOpen(true)}>
           {t("check_in")}
         </Button>
         <div className="flex items-center gap-2">

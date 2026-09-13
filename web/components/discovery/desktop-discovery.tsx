@@ -86,8 +86,6 @@ export function DesktopDiscovery({
       aria-label={t("sheet_aria")}
     >
       <aside className="flex h-full w-[380px] shrink-0 flex-col border-r border-separator bg-surface">
-        {/* Reserved 48px search/filter row — internals belong to search-filters. */}
-        <div className="h-12 shrink-0 border-b border-separator" aria-hidden />
         <div className="min-h-0 flex-1 overflow-y-auto">
           {!contentVisible || isLoading ? (
             <SidebarSkeletons />

@@ -71,20 +71,20 @@ export function ProfileHero({ profile, onProfileChange }: ProfileHeroProps) {
     profile?.displayName?.[0]?.toUpperCase() ?? t("default_avatar");
 
   return (
-    <div className="flex flex-col items-center text-center relative pt-2 pb-6">
+    <div className="flex flex-col items-center text-center relative pt-2 pb-4">
       {/* Cup watermark background */}
       <div className="absolute top-2 left-1/2 -translate-x-1/2 pointer-events-none opacity-[0.06] text-foreground">
         <CoffeeIcon size={120} />
       </div>
 
-      {/* Avatar circle (80px) */}
-      <div className="w-20 h-20 rounded-full bg-surface-tertiary border border-border flex items-center justify-center mb-4 overflow-hidden shadow-sm relative z-10">
+      {/* Avatar circle (64px) */}
+      <div className="w-16 h-16 rounded-full bg-surface-tertiary border border-border flex items-center justify-center mb-4 overflow-hidden shadow-sm relative z-10">
         {profile?.avatarUrl ? (
           <Image
             src={profile.avatarUrl}
             alt={profile.displayName}
             fill
-            sizes="80px"
+            sizes="64px"
             className="object-cover"
           />
         ) : (

@@ -294,6 +294,13 @@
   border-radius: var(--radius-md);
 }
 
+/* HeroUI v3 bottom drawers pad the dialog shell p-6 while our header/body/
+   footer sections carry their own px-4 — the shell padding is a second,
+   double layer. Zero it on the --bottom variant only (BRAWUKA-246 D2). */
+.drawer__dialog--bottom {
+  padding: 0;
+}
+
 html,
 body {
   min-height: 100%;

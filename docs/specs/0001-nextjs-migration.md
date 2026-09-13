@@ -104,7 +104,7 @@ Local dev/CI       → same postgis/postgis:16-3.4 image (docker-compose locally
 - Product-table data stays server-mediated: route handlers use the pooled Postgres connection, and the tables must NOT be reachable through Supabase's Data API (PostgREST/GraphQL) with the browser anon key — new projects no longer auto-expose new tables, and default grants to `anon`/`authenticated` are revoked at provisioning as a belt-and-suspenders step (`docs/agent/pending-user-actions.md` §2). The anon key is used only for auth flows.
 - Postgres connection: standard `pg` Pool (server-side only), fail-closed SSL (#41). PostGIS enabled via `create extension postgis` (Supabase catalog). Pick the Supabase region closest to the VPS — route handlers run multi-round-trip transactions, so RTT multiplies.
 
-#### Tables (7 total: 5 product + 2 infra — deliberately minimal; applied via migrations 0001–0016)
+#### Tables (7 total: 5 product + 2 infra — deliberately minimal; applied via migrations 0001–0022)
 
 ```sql
 -- 1. profiles: app-side user record, keyed by Supabase auth user id
@@ -115,6 +115,7 @@ create table profiles (
   current_city  text default 'singapore',
   last_location geography(POINT, 4326),
   last_seen_at  timestamptz,
+  onboarded     bool not null default false, -- 0022: welcome-card dismissed; authoritative across devices (DG122)
   created_at    timestamptz default now()
 );
 

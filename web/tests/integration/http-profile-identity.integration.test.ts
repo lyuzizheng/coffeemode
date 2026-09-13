@@ -223,15 +223,17 @@ describePath3("path 3 — profile & public identity lifecycle over HTTP (spec 00
     expect(ok.data.profile.displayName).toBe("Pioneer Ann");
   });
 
-  it("path 3 (spec 0008 §6, DG50): PATCH /api/profile validates currentCity against launch cities", async () => {
+  it("path 3 (spec 0008 §6, DG121): PATCH /api/profile accepts launch and runtime cities, rejects empty/oversize", async () => {
     const client = apiClient(users.userA);
-    const bad = await client.patch<ErrorPayload, NoCtx, NextRequest>(
-      patchProfileRoute,
-      "/api/profile",
-      { currentCity: "atlantis" },
-    );
-    expect(bad.status).toBe(400);
-    expect(bad.data.error).toBe("invalid_current_city");
+    for (const currentCity of ["", "x".repeat(51)]) {
+      const bad = await client.patch<ErrorPayload, NoCtx, NextRequest>(
+        patchProfileRoute,
+        "/api/profile",
+        { currentCity },
+      );
+      expect(bad.status).toBe(400);
+      expect(bad.data.error).toBe("invalid_current_city");
+    }
     const ok = await client.patch<{ profile: UserProfileDto }, NoCtx, NextRequest>(
       patchProfileRoute,
       "/api/profile",
@@ -239,6 +241,38 @@ describePath3("path 3 — profile & public identity lifecycle over HTTP (spec 00
     );
     expect(ok.status).toBe(200);
     expect(ok.data.profile.currentCity).toBe("tokyo");
+    // DG121: a geolocation outside every launch city creates the city at
+    // runtime — the profile must accept and persist it.
+    const runtime = await client.patch<{ profile: UserProfileDto }, NoCtx, NextRequest>(
+      patchProfileRoute,
+      "/api/profile",
+      { currentCity: "lisbon" },
+    );
+    expect(runtime.status).toBe(200);
+    expect(runtime.data.profile.currentCity).toBe("lisbon");
+  });
+
+  it("path 3 (spec 0008 §6, DG122): PATCH /api/profile persists onboarded + lastLocation", async () => {
+    const res = await apiClient(users.userD).patch<
+      { profile: UserProfileDto },
+      NoCtx,
+      NextRequest
+    >(patchProfileRoute, "/api/profile", {
+      onboarded: true,
+      lastLocation: { lat: 1.3521, lng: 103.8198 },
+    });
+    expect(res.status).toBe(200);
+    expect(res.data.profile.onboarded).toBe(true);
+    expect(res.data.profile.lastLocation?.lat).toBeCloseTo(1.3521, 4);
+    expect(res.data.profile.lastLocation?.lng).toBeCloseTo(103.8198, 4);
+
+    const bad = await apiClient(users.userD).patch<ErrorPayload, NoCtx, NextRequest>(
+      patchProfileRoute,
+      "/api/profile",
+      { lastLocation: { lat: 91, lng: 0 } },
+    );
+    expect(bad.status).toBe(400);
+    expect(bad.data.error).toBe("invalid_last_location");
   });
 
   it("path 3 (spec 0008 §6, DG107): PATCH /api/profile rejects empty patch + anonymous writes", async () => {

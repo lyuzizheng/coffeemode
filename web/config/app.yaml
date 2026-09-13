@@ -79,6 +79,15 @@ discovery:
   defaultCenter:
     lat: 1.35
     lng: 103.8
+onboarding:
+  # A granted geolocation resolves to the nearest launch city within this
+  # radius; beyond it the IP-detected city becomes a runtime city (DG121).
+  cityCoverageKm: 50
+  # Browser geolocation timeout for the welcome card and locate button.
+  # Mirrored to the client via NEXT_PUBLIC_ONBOARDING_GEOLOCATION_TIMEOUT_MS
+  # (next.config.ts) — the client bundle cannot read this file.
+  geolocationTimeoutMs: 10000
+
 seo:
   # CDN cache for the SSR /cafes/[id] shell (DG105/DG107): a viral shared
   # link must not hit Postgres per open. s-maxage is the shared-cache TTL;

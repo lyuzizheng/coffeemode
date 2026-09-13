@@ -499,6 +499,22 @@
     "wontGo": "不去了",
     "pill": "有去喝一杯吗？"
   },
+  "onboarding": {
+    "headline": "找到真正能办公的咖啡馆",
+    "detected": "你好像在 {city} 哦",
+    "enable_location": "开启定位",
+    "locating": "定位中…",
+    "skip": "暂时跳过",
+    "pick_city": "挑一个城市",
+    "use_city": "就用{city}",
+    "location_off": "定位没开，挑一个城市吧",
+    "declined_toast": "定位没开成功，没关系",
+    "unavailable_toast": "没拿到你的位置，挑一个城市吧",
+    "first_nomad": "你是 {city} 的第一位 nomad — 打个卡，帮后来的 nomad 种草避雷吧",
+    "settings_toast": "定位没开 — 去系统设置里打开吧",
+    "locate_aria": "定位我的位置",
+    "dialog_aria": "欢迎"
+  },
   "share": {
     "aria": "分享",
     "copied": "链接已复制",

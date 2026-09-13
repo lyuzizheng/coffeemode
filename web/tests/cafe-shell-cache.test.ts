@@ -163,6 +163,7 @@ function minimalValid() {
     cafes: { listLimitMax: 50 },
     feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
     discovery: { defaultCenter: { lat: 1.35, lng: 103.8 } },
+    onboarding: { cityCoverageKm: 50, geolocationTimeoutMs: 10000 },
     seo: {
       shellCache: {
         sMaxAgeSeconds: 600,

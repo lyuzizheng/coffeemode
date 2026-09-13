@@ -68,6 +68,8 @@ describe("Profile API routes", () => {
         displayName: "Nomad Alex",
         avatarUrl: null,
         currentCity: "singapore",
+      lastLocation: null,
+      onboarded: false,
         createdAt: "2026-08-25T10:00:00.000Z",
         showPublicIdentity: false,
         publicHandle: null,
@@ -126,17 +128,23 @@ describe("Profile API routes", () => {
       expect(body.error).toBe("display_name_length");
     });
 
-    it("validates city is a valid launch city", async () => {
-      vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
-      const req = new Request("http://localhost/api/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentCity: "atlantis" }),
-      }) as NextRequest;
-      const res = await PATCH(req);
-      expect(res.status).toBe(400);
-      const body = await res.json();
-      expect(body.error).toBe("invalid_current_city");
+    it("validates currentCity is a bounded non-empty string (DG121 runtime cities)", async () => {
+      vi.mocked(getCurrentUser).mockResolvedValue({ id: userId });
+      for (const body of [
+        { currentCity: "" },
+        { currentCity: "   " },
+        { currentCity: "x".repeat(51) },
+        { currentCity: 42 },
+      ]) {
+        const req = new Request("http://localhost/api/profile", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }) as NextRequest;
+        const res = await PATCH(req);
+        expect(res.status).toBe(400);
+        expect((await res.json()).error).toBe("invalid_current_city");
+      }
     });
 
     it("rejects cross-origin mutating requests", async () => {
@@ -163,6 +171,8 @@ describe("Profile API routes", () => {
         displayName: "Valid Name",
         avatarUrl: null,
         currentCity: "tokyo",
+      lastLocation: null,
+      onboarded: false,
         createdAt: "2026-08-25T10:00:00.000Z",
         showPublicIdentity: false,
         publicHandle: null,

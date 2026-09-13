@@ -499,6 +499,22 @@
     "wontGo": "Won't go",
     "pill": "Grab that coffee?"
   },
+  "onboarding": {
+    "headline": "Find a cafe you can actually work in",
+    "detected": "Looks like you're in {city}",
+    "enable_location": "Enable location",
+    "locating": "Locating…",
+    "skip": "Skip for now",
+    "pick_city": "Pick a city",
+    "use_city": "Use {city}",
+    "location_off": "Location is off — pick your city",
+    "declined_toast": "Location access was declined",
+    "unavailable_toast": "Couldn't get your location — pick your city",
+    "first_nomad": "You're the first nomad in {city} — check in and help the next one",
+    "settings_toast": "Location is off — enable it in system settings",
+    "locate_aria": "Locate me",
+    "dialog_aria": "Welcome"
+  },
   "share": {
     "aria": "Share",
     "copied": "Link copied",

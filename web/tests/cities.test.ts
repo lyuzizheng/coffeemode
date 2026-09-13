@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_CITY,
+  detectIpCity,
   findCity,
   findCityByCountry,
   LAUNCH_CITIES,
+  nearestLaunchCity,
   resolveEffectiveCity,
 } from "@/lib/cities";
 
@@ -64,5 +66,25 @@ describe("cities (DG50, DG128)", () => {
   it("defaults to Singapore", () => {
     expect(DEFAULT_CITY.id).toBe("singapore");
     expect(DEFAULT_CITY.code).toBe("SG/SIN");
+  });
+
+  it("detects the IP city for the welcome card (detectIpCity, DG128)", () => {
+    expect(detectIpCity(new Headers({ "cf-ipcity": "Tokyo" }))?.id).toBe("tokyo");
+    expect(
+      detectIpCity(new Headers({ "cf-ipcity": "Nowhere", "cf-ipcountry": "KR" }))?.id,
+    ).toBe("seoul");
+    expect(detectIpCity(new Headers({ "cf-ipcity": "Nowhere", "cf-ipcountry": "FR" }))).toBeNull();
+    expect(detectIpCity(new Headers())).toBeNull();
+  });
+
+  it("resolves the nearest launch city inside coverage, null beyond it (DG121)", () => {
+    // ~10 km from Singapore center → in coverage.
+    expect(nearestLaunchCity(1.29, 103.85, 50)?.id).toBe("singapore");
+    // Johor Bahru is closer to Singapore than to any other launch city.
+    expect(nearestLaunchCity(1.49, 103.74, 50)?.id).toBe("singapore");
+    // Lisbon: outside every launch city's 50 km radius.
+    expect(nearestLaunchCity(38.72, -9.14, 50)).toBeNull();
+    // A wider radius still picks the nearest city, not the first match.
+    expect(nearestLaunchCity(48.85, 2.35, 600)?.id).toBe("london");
   });
 });

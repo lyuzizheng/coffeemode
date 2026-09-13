@@ -471,8 +471,8 @@
     "detail_load_failed": "咖啡馆加载失败，再试试？",
     "retry": "重试",
     "missing_cafe": "这家咖啡馆找不到了",
-    "empty_feed": "还没有打卡",
-    "be_first": "来当第一个打卡的人！",
+    "empty_feed": "暂无打卡",
+    "be_first": "快来做第一个",
     "open_until": "营业到 {time}",
     "open_now": "营业中",
     "closed": "已打烊",
@@ -501,6 +501,19 @@
     "gone_title": "这家咖啡馆找不到了",
     "gone_body": "它可能已经被移除了",
     "back_to_discover": "返回发现",
-    "recovery_title": "附近还有这些咖啡馆"
+    "recovery_title": "附近还有这些咖啡馆",
+    "private_badge": "仅你可见",
+    "owner_controls_aria": "管理这家咖啡馆",
+    "visibility_label": "仅你可见",
+    "visibility_hint": "隐藏后仅你可见，可随时公开",
+    "visibility_failed": "设置失败，再试试？",
+    "delete_cafe": "删除",
+    "delete_confirm_body": "删除后你的打卡将被移除，cafe 将保留为空状态（暂无信息），是否继续？",
+    "delete_handoff_body": "这家已有 {n} 条其他人的打卡，删除将仅删除你的打卡，cafe 将移交给系统账号，是否继续？",
+    "delete_mine": "删除我的打卡",
+    "cancel": "取消",
+    "delete": "删除",
+    "delete_done": "已删除",
+    "delete_failed": "删除失败，再试试？"
   }
 }

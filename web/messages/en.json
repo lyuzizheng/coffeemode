@@ -472,7 +472,7 @@
     "retry": "Retry",
     "missing_cafe": "This cafe is no longer available",
     "empty_feed": "No check-ins yet",
-    "be_first": "Be the first — Check in",
+    "be_first": "Be the first",
     "open_until": "Open until {time}",
     "open_now": "Open now",
     "closed": "Closed",
@@ -501,6 +501,19 @@
     "gone_title": "This cafe is gone",
     "gone_body": "It may have been removed",
     "back_to_discover": "Back to discover",
-    "recovery_title": "More cafes nearby"
+    "recovery_title": "More cafes nearby",
+    "private_badge": "Only you can see this",
+    "owner_controls_aria": "Manage this cafe",
+    "visibility_label": "Only visible to you",
+    "visibility_hint": "Hidden from everyone else — you can make it public anytime",
+    "visibility_failed": "Couldn't update visibility — try again?",
+    "delete_cafe": "Delete",
+    "delete_confirm_body": "Deleting removes your check-in; the cafe stays as an empty shell (no info). Continue?",
+    "delete_handoff_body": "This cafe has {n} check-ins from others. Deleting removes only your check-ins and hands the cafe to the system account. Continue?",
+    "delete_mine": "Delete my check-in",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "delete_done": "Deleted",
+    "delete_failed": "Couldn't delete — try again?"
   }
 }

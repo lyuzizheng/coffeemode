@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useTranslations, useLocale } from "next-intl";
 import { Button } from "@heroui/react";
 import { CoffeeIcon } from "@/components/icons";
-import { LAUNCH_CITIES, type CityInfo } from "@/lib/cities";
+import { LAUNCH_CITIES, displayCityName, type CityInfo } from "@/lib/cities";
 import type { UserProfileDto } from "@/lib/db/profile";
 
 interface ProfileHeroProps {
@@ -64,13 +64,8 @@ export function ProfileHero({ profile, onProfileChange }: ProfileHeroProps) {
     });
   };
 
-  const currentCityObj = LAUNCH_CITIES.find(
-    (c) => c.id.toLowerCase() === (profile?.currentCity ?? "singapore").toLowerCase(),
-  );
   const currentCityName =
-    (locale === "zh" ? currentCityObj?.nameZh : currentCityObj?.name) ??
-    profile?.currentCity ??
-    t("default_city");
+    displayCityName(profile?.currentCity ?? "singapore", locale) || t("default_city");
 
   const avatarFallback =
     profile?.displayName?.[0]?.toUpperCase() ?? t("default_avatar");

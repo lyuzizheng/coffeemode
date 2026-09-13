@@ -49,6 +49,10 @@ export interface AppConfig {
   };
   feed: {
     pageSize: number;
+    helpful: {
+      halfLifeDays: number;
+      snapshotRetentionDays: number;
+    };
   };
   discovery: {
     defaultCenter: {

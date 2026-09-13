@@ -62,7 +62,7 @@ mobile and floating bottom-center over the map (360px width) on desktop
 ## 3. Auto-collapse to pill
 
 After 8s untouched (spec-owned timing), the card morphs into a pill —
-Framer `layoutId` shared-element transition, 200ms `ease.default`:
+Framer `layoutId` shared-element transition on `spring.gentle`:
 
 - Pill: bottom-right, above the sheet/FAB safe zone; `overlay` surface,
   `radius-full`, `shadow-map`, 36px height: navigation glyph + `有去喝一杯吗？`
@@ -76,8 +76,9 @@ Framer `layoutId` shared-element transition, 200ms `ease.default`:
 
 ## 4. Motion and reduced motion
 
-- Enter: 300ms slide-up `ease.default` + 8px fade. Exit: 150ms slide-down.
-- Card ↔ pill morph: 200ms. All springs restrained (spec 0002).
+- Enter: slide-up on `spring.snappy` + 8px fade on `ease.fade`, settle
+  `settle.state` ≤300ms. Exit: 150ms slide-down.
+- Card ↔ pill morph: `spring.gentle`. All springs restrained (spec 0002).
 - **No sound, no haptic** on entry (DG89) — a polite interruption doesn't
   buzz.
 - Reduced motion: card appears/disappears instantly; the 8s auto-collapse

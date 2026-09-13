@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import type { UseInfiniteQueryResult, InfiniteData } from "@tanstack/react-query";
 import { Button } from "@heroui/react";
 import { CoffeeIcon } from "@/components/icons";
@@ -24,6 +24,7 @@ interface ProfileTabCafesProps {
 
 export function ProfileTabCafes({ baseId, query: cafesQuery }: ProfileTabCafesProps) {
   const t = useTranslations("profile");
+  const locale = useLocale();
 
   const cafes = cafesQuery.data?.pages.flatMap((page) => page.items) ?? [];
 
@@ -85,10 +86,10 @@ export function ProfileTabCafes({ baseId, query: cafesQuery }: ProfileTabCafesPr
 
             <span className="text-xs text-muted font-mono tabular-nums mt-1">
               {t("last_visit", {
-                date: new Date(cafe.lastVisitedAt).toLocaleDateString(undefined, {
+                date: new Intl.DateTimeFormat(locale, {
                   day: "numeric",
                   month: "short",
-                }),
+                }).format(new Date(cafe.lastVisitedAt)),
               })}{" "}
               · {t("checkins_count", { count: cafe.checkinsCount })}
             </span>

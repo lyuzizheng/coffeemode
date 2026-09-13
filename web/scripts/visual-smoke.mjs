@@ -150,6 +150,7 @@ async function runVisualSmoke() {
   }
 
   const failures = [];
+  let rendered = 0;
 
   /**
    * One browser context with the third-party stubs every rendering shares.
@@ -276,6 +277,7 @@ async function runVisualSmoke() {
           await renderEntry({ entry, scheme, vpName, vp });
         }
       }
+      rendered += COLOR_SCHEMES.length * Object.keys(VIEWPORTS).length;
     }
   } finally {
     await cleanup();
@@ -286,7 +288,7 @@ async function runVisualSmoke() {
     for (const failure of failures) console.error(`  ${failure}`);
     process.exit(1);
   }
-  console.log(`\nvisual smoke passed: ${ENTRIES.length * COLOR_SCHEMES.length * Object.keys(VIEWPORTS).length} renderings clean`);
+  console.log(`\nvisual smoke passed: ${rendered} renderings clean`);
 }
 
 runVisualSmoke().catch(async (err) => {

@@ -541,6 +541,37 @@ describe("CheckinDrawer", () => {
     expect(screen.getByText("Wifi")).toBeInTheDocument();
     expect(screen.getByText("100")).toBeInTheDocument();
   });
+
+  it("a tap on the detent handle leaves the dialog height unpinned (DG70)", () => {
+    renderDrawer({ isAuthenticated: true });
+    const dialog = screen.getByRole("dialog", { name: "Check in" });
+    const handle = dialog.querySelector('[data-slot="drawer-handle"]');
+    expect(handle).not.toBeNull();
+
+    fireEvent.pointerDown(handle!, { clientY: 500, pointerId: 1, button: 0 });
+    fireEvent.pointerUp(handle!, { clientY: 500, pointerId: 1 });
+
+    // No threshold crossed → no measurement, no inline pin.
+    expect((dialog as HTMLElement).style.height).toBe("");
+    expect((dialog as HTMLElement).style.transition).toBe("");
+  });
+
+  it("a second finger's pointerup does not kill an in-flight detent drag (DG70)", () => {
+    renderDrawer({ isAuthenticated: true });
+    const dialog = screen.getByRole("dialog", { name: "Check in" }) as HTMLElement;
+    const handle = dialog.querySelector('[data-slot="drawer-handle"]')!;
+
+    fireEvent.pointerDown(handle, { clientY: 500, pointerId: 1, button: 0 });
+    fireEvent.pointerMove(handle, { clientY: 400, pointerId: 1 });
+    // Second finger lifts mid-drag — the primary gesture must survive.
+    fireEvent.pointerUp(handle, { clientY: 400, pointerId: 2 });
+    fireEvent.pointerMove(handle, { clientY: 380, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientY: 380, pointerId: 1 });
+
+    // The real release still settles the dialog (jsdom heights are 0, so the
+    // release resolves to a detent snap, not a dismiss).
+    expect(dialog.style.transform).toBe("");
+  });
 });
 
 describe("resolveDetentRelease (DG70)", () => {
@@ -558,6 +589,7 @@ describe("resolveDetentRelease (DG70)", () => {
   it("snaps back to the content detent on a small downward drag", () => {
     expect(resolveDetentRelease({ ...base, translate: 10 })).toBe("collapse");
   });
+
 
   it("expands on an upward flick and collapses on a downward one", () => {
     expect(resolveDetentRelease({ ...base, velocity: -0.6 })).toBe("expand");

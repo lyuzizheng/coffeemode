@@ -36,7 +36,9 @@ const DIALOG_SELECTOR = '[data-slot="drawer-dialog"]';
 interface DetentDrag {
   pointerId: number;
   startY: number;
-  /** Dialog height when the gesture began (the detent it started from). */
+  /** Dialog height when the gesture activated (the detent it started from).
+      Measured at threshold-crossing, not pointerdown — a tap must not pin
+      the dialog's height. */
   startHeight: number;
   /** Natural content height measured with the max-height cap lifted. */
   naturalHeight: number;
@@ -47,6 +49,11 @@ interface DetentDrag {
   velocity: number;
   active: boolean;
 }
+
+/** Pending snap cleanup per dialog — a no-change snap never fires
+ *  transitionend, so the listener would leak into the next gesture and
+ *  clear its styles mid-animation. */
+const snapCleanup = new WeakMap<HTMLElement, () => void>();
 
 export interface DrawerDetents {
   expanded: boolean;
@@ -124,17 +131,31 @@ function snapToDetent(
   setExpanded: (v: boolean) => void,
 ) {
   const nextExpanded = release === "expand";
+  const target = Math.round(nextExpanded ? d.maxHeight : d.naturalHeight);
+  const hadTransform = dialog.style.transform !== "";
+
+  // A snap that changes nothing computed (already at the detent, or the
+  // max-h cap clamps the target) fires no transitionend — settle inline
+  // immediately instead of leaking the listener into the next gesture.
+  const willTransition = dialog.offsetHeight !== target || hadTransform;
+
+  snapCleanup.get(dialog)?.();
   dialog.style.transition = SNAP_TRANSITION;
   dialog.style.transform = "";
-  dialog.style.height = `${nextExpanded ? d.maxHeight : d.naturalHeight}px`;
-  dialog.addEventListener(
-    "transitionend",
-    () => {
+  dialog.style.height = `${target}px`;
+
+  if (!willTransition) {
+    dialog.style.transition = "";
+    dialog.style.height = "";
+  } else {
+    const cleanup = () => {
       dialog.style.transition = "";
       dialog.style.height = "";
-    },
-    { once: true },
-  );
+      snapCleanup.delete(dialog);
+    };
+    snapCleanup.set(dialog, cleanup);
+    dialog.addEventListener("transitionend", cleanup, { once: true });
+  }
   setExpanded(nextExpanded);
 }
 
@@ -169,44 +190,57 @@ function finishDrag(
   if (release === "dismiss") {
     // Restore rest geometry before closing: if the discard confirm
     // intercepts, the drawer sits settled behind it instead of frozen
-    // mid-drag.
+    // mid-drag. The forced reflow commits the restore under
+    // transition:none (no snap-back animation); transition is then
+    // restored so HeroUI's own close animation still runs.
+    snapCleanup.get(dialog)?.();
     dialog.style.transition = "none";
     dialog.style.transform = "";
     dialog.style.height = "";
+    void dialog.offsetHeight;
+    dialog.style.transition = "";
     onRequestClose();
     return;
   }
   snapToDetent(dialog, d, release, setExpanded);
 }
 
-/** Gesture start: measure both detents (content height needs the cap lifted
- *  for one read) and capture the pointer on the handle. */
+/** Gesture start: record the pointer and capture it on the handle. No DOM
+ *  writes here — a tap that never crosses the threshold must leave the
+ *  dialog untouched. */
 function beginDrag(e: React.PointerEvent<HTMLElement>, dragRef: React.RefObject<DetentDrag | null>) {
   if (e.button !== 0) return;
   // Keep HeroUI's dismiss-only drag out of this gesture entirely.
   e.stopPropagation();
-  const dialog = e.currentTarget.closest<HTMLElement>(DIALOG_SELECTOR);
-  if (!dialog) return;
-
-  const startHeight = dialog.offsetHeight;
-  dialog.style.height = "auto";
-  dialog.style.maxHeight = "none";
-  const naturalHeight = dialog.offsetHeight;
-  dialog.style.maxHeight = "";
-  dialog.style.height = `${startHeight}px`;
+  if (!e.currentTarget.closest<HTMLElement>(DIALOG_SELECTOR)) return;
 
   dragRef.current = {
     pointerId: e.pointerId,
     startY: e.clientY,
-    startHeight,
-    naturalHeight,
-    maxHeight: window.innerHeight * 0.92,
+    startHeight: 0,
+    naturalHeight: 0,
+    maxHeight: 0,
     lastY: e.clientY,
     lastTime: Date.now(),
     velocity: 0,
     active: false,
   };
-  e.currentTarget.setPointerCapture(e.pointerId);
+  e.currentTarget.setPointerCapture?.(e.pointerId);
+}
+
+/** Threshold crossed: the gesture is real. Measure both detents (content
+ *  height needs the cap lifted for one read) and pin the current height so
+ *  subsequent moves drive pixels. */
+function activateDrag(dialog: HTMLElement, d: DetentDrag) {
+  d.startHeight = dialog.offsetHeight;
+  dialog.style.height = "auto";
+  dialog.style.maxHeight = "none";
+  d.naturalHeight = dialog.offsetHeight;
+  dialog.style.maxHeight = "";
+  dialog.style.height = `${d.startHeight}px`;
+  d.maxHeight = window.innerHeight * 0.92;
+  d.active = true;
+  dialog.style.transition = "none";
 }
 
 export function useDrawerDetents({
@@ -240,16 +274,18 @@ export function useDrawerDetents({
 
     if (!d.active) {
       if (Math.abs(e.clientY - d.startY) < DRAG_THRESHOLD) return;
-      d.active = true;
-      dialog.style.transition = "none";
+      activateDrag(dialog, d);
     }
     applyDragMove(dialog, d, e.clientY);
   };
 
   const onFinish = (e: React.PointerEvent<HTMLElement>, cancelled: boolean) => {
     const d = dragRef.current;
+    // A second finger's pointerup must not kill the primary gesture: check
+    // the id before clearing the ref.
+    if (!d || e.pointerId !== d.pointerId) return;
     dragRef.current = null;
-    if (!d || e.pointerId !== d.pointerId || !d.active) return;
+    if (!d.active) return;
     finishDrag(e, d, cancelled, setExpanded, onRequestClose);
   };
 

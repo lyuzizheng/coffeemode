@@ -79,13 +79,14 @@ function parseConnectionConfig(urlString) {
  *  the TS code uses: select non-deleted check-ins ordered by visited_at desc,
  *  compute the weighted means in JS, then single-row UPDATE.
  *
- *  The JS weights here mirror web/lib/stats/work-stats.ts exactly:
+ *  The JS weights here mirror web/lib/stats/work-stats.ts exactly (with
+ *  values loaded from web/config/app.yaml `stats` at the top of this file;
+ *  the literal there is the fallback):
  *    w_i = 0.6^rank_from_newest, social_weight=0 at launch.
  */
 
 const WORK_DIMS = ["wifi", "outlets", "seats", "temp", "coffee", "overall"];
 const COMPOSITE_DIMS = ["wifi", "outlets", "seats", "temp", "coffee"];
-const DIM_WEIGHTS = { wifi: 0.3, outlets: 0.2, seats: 0.2, temp: 0.15, coffee: 0.15 };
 
 function emptyWorkStats() {
   const dims = {};

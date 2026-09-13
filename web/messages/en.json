@@ -316,6 +316,8 @@
     "photos": "Photos (optional, up to 6)",
     "addPhotos": "Add photos",
     "saved": "Check-in saved",
+    "photosNotSavedOnRevisit": "Switched to updating today's check-in — photos can only be added on the first check-in, so they weren't saved",
+    "savedWithoutPhotos": "Check-in updated — photos weren't saved (they can only be added on the first check-in)",
     "checkedIn": "Checked in",
     "submit": "Check in",
     "saveChanges": "Save changes",

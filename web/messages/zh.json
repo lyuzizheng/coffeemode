@@ -316,6 +316,8 @@
     "photos": "照片（选填，最多 6 张）",
     "addPhotos": "添加照片",
     "saved": "打卡成功，谢谢分享！",
+    "photosNotSavedOnRevisit": "已切换为更新今日打卡——照片仅首次打卡可添加，本次未保存",
+    "savedWithoutPhotos": "打卡已更新——照片未保存（仅首次打卡可添加）",
     "checkedIn": "已打卡",
     "submit": "打卡",
     "saveChanges": "保存修改",

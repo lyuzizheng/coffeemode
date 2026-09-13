@@ -86,6 +86,7 @@ and the KV hot-cache read path are unaffected and verified working.
 
 ## 7. Domain + deploy (later phase)
 
+- [ ] **Register `coffeemode.app`** — the domain is currently UNREGISTERED (NXDOMAIN at the .app registry, verified 2026-09-13 via BRAWUKA-235 audit). Every spec/compose file assumes it; it must be registered before BRAWUKA-238 (Tunnel + DNS) can start, and left unregistered it can be taken by anyone
 - [ ] Point domain at the VPS; Cloudflare proxy/CDN in front
 - [ ] Cloudflare account for the POI worker (`poi-service.cafemood.app` once the domain lands)
 - [x] In a terminal (from `poi-service/`), create the per-environment resources and add a `[env.staging]` / `[env.production]` block to `poi-service/wrangler.toml` (spec 0005 §3 names): (done 2026-09-12, BRAWUKA-222 — created on the `Lyuzizheng@gmail.com` account via Cloudflare MCP; `wrangler.toml` now carries real ids for both environments, the top-level local-dev placeholders untouched)
@@ -118,7 +119,7 @@ and the KV hot-cache read path are unaffected and verified working.
      `x-image-service-token`) stay unchanged — the zone route is
      defense-in-depth, not a token replacement.
 - [ ] Enable the Cloudflare "Add visitor location headers" Managed Transform on the zone (sends `CF-IPCity` / `CF-IPCountry`; default-city resolution per DG128)
-- [ ] Create a Better Stack account + alert token for rate-limit/observability alerts (DG129); put the token in `web/.env.local` once the integration lands
+- [ ] Create a Better Stack account + alert token for rate-limit/observability alerts (DG129); put the ingest URL in `web/.env.local` / Dokploy env as `BETTER_STACK_INGEST_URL` — the app-side integration is implemented and verified end-to-end against a local sink (BRAWUKA-235); only the account + token remain
 
 ## 8. Kimi K3 UI design artifacts
 

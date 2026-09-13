@@ -103,6 +103,10 @@
   /* Brand secondary — real sage. */
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
+  /* Filled danger buttons only — the dark plate is darker than --danger so
+     white label text clears AA; --danger itself stays the text/border role.
+     Spec 0002 (BRAWUKA-211). */
+  --color-danger-solid: var(--danger-solid);
 
   /* Signature ease — ease-out-quint, fast attack long settle. Overrides
      HeroUI's --ease-out-quint (0.23,1,0.32,1) with the spec curve. */
@@ -162,6 +166,10 @@
   --warning-foreground: oklch(26% 0.03 55);
   --danger: oklch(50% 0.17 26);
   --danger-foreground: oklch(98.5% 0.004 60);
+  /* Filled-button plate; equals --danger in light (white already clears AA on
+     it) but is an independent token so the roles can diverge — as they do in
+     dark (BRAWUKA-211). */
+  --danger-solid: oklch(50% 0.17 26);
 
   /* Component colors */
   --segment: oklch(99.4% 0.002 82);
@@ -252,18 +260,18 @@
   --secondary-hover: oklch(62.0% 0.080 155);
 
   /* Status — lighter values carry dark text, warm-light on espresso.
-     danger is both a plate and a text colour (error copy, the liked heart,
-     "closed"), so it follows the success/warning pattern: lifted to the same
-     70% lightness with dark ink. The previous 64% plate with a warm-light
-     foreground cleared neither role — 3.37:1 as a fill, and lowering it to
-     55% (the other way to fix the fill) would have dropped danger-as-text to
-     3.17:1 on surface-secondary (BRAWUKA-219). */
+     danger's two roles are split (BRAWUKA-211): --danger is the text/border
+     colour (error copy, the liked heart, "closed") at 70% with dark ink
+     (BRAWUKA-219), while --danger-solid is the filled-button plate, dark
+     enough for white label text — a single mid-luminance value cannot clear
+     AA in both roles. */
   --success: oklch(70% 0.13 150);
   --success-foreground: oklch(16% 0.03 150);
   --warning: oklch(76% 0.14 75);
   --warning-foreground: oklch(24% 0.04 60);
   --danger: oklch(70% 0.19 27);
   --danger-foreground: oklch(16% 0.01 60);
+  --danger-solid: oklch(56% 0.19 27);
 
   /* Component colors */
   --segment: oklch(30% 0.012 52);

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { ReactNode } from "react";
 import { DesktopDiscovery } from "@/components/discovery/desktop-discovery";
@@ -67,6 +67,8 @@ describe("DesktopDiscovery container partitioning (issue #246)", () => {
         controller={controller}
         cafes={[mockCafe]}
         isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
         onCheckIn={vi.fn()}
         addCafe={<span>Add Cafe</span>}
         showColumns
@@ -105,6 +107,8 @@ describe("DesktopDiscovery container partitioning (issue #246)", () => {
         controller={controller}
         cafes={[mockCafe]}
         isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
         onCheckIn={vi.fn()}
         addCafe={<span>Add Cafe</span>}
         showColumns={false}
@@ -128,6 +132,8 @@ describe("DesktopDiscovery container partitioning (issue #246)", () => {
         controller={controller}
         cafes={[mockCafe]}
         isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
         onCheckIn={vi.fn()}
         addCafe={<span>Add Cafe</span>}
       />,
@@ -140,5 +146,65 @@ describe("DesktopDiscovery container partitioning (issue #246)", () => {
     expect(region.className).toContain("fixed");
     expect(screen.getByText("Common Man Coffee Roasters")).toBeInTheDocument();
     expect(screen.queryByTestId("landing-content")).not.toBeInTheDocument();
+  });
+});
+
+describe("DesktopDiscovery sidebar error branch (BRAWUKA-231)", () => {
+  it("renders inline error with Retry instead of the empty state when the cafes query fails", () => {
+    const onRetry = vi.fn();
+    render(
+      <DesktopDiscovery
+        controller={createMockController()}
+        cafes={[]}
+        isLoading={false}
+        isError
+        onRetry={onRetry}
+        onCheckIn={vi.fn()}
+        addCafe={<span>Add Cafe</span>}
+      />,
+      { wrapper: Wrapper },
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Couldn't load nearby cafes");
+    expect(screen.queryByText("No cafes nearby yet")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the empty state for a genuine empty result (no error)", () => {
+    render(
+      <DesktopDiscovery
+        controller={createMockController()}
+        cafes={[]}
+        isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
+        onCheckIn={vi.fn()}
+        addCafe={<span>Add Cafe</span>}
+      />,
+      { wrapper: Wrapper },
+    );
+
+    expect(screen.getByText("No cafes nearby yet")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("keeps the loaded list when a refetch fails (previous content stays)", () => {
+    render(
+      <DesktopDiscovery
+        controller={createMockController()}
+        cafes={[mockCafe]}
+        isLoading={false}
+        isError
+        onRetry={vi.fn()}
+        onCheckIn={vi.fn()}
+        addCafe={<span>Add Cafe</span>}
+      />,
+      { wrapper: Wrapper },
+    );
+
+    expect(screen.getByText("Common Man Coffee Roasters")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

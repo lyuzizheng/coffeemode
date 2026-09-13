@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -100,6 +100,25 @@ function getDragEndHandler(element: HTMLElement) {
   throw new Error("onDragEnd handler not found on motion fiber");
 }
 
+/**
+ * Reads the target of the snap effect's mount-time animate call — the sheet's
+ * initial detent — and clears the log. The value comes from the component, not
+ * from a re-derivation of its layout constants, and it is consumed BEFORE the
+ * interaction under test, so a later assertion can only be satisfied by a new
+ * animate call to that detent.
+ */
+function consumeMountDetentY(): number {
+  const mountCall = animateCalls[animateCalls.length - 1];
+  if (!mountCall) throw new Error("snap effect emitted no animate call on mount");
+  animateCalls.length = 0;
+  return mountCall.target;
+}
+
+/** A transition's start velocity; an omitted field means "starts from rest". */
+function startVelocity(transition: unknown): number {
+  return (transition as { velocity?: number } | undefined)?.velocity ?? 0;
+}
+
 describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
   beforeEach(() => {
     mockReducedMotion = false;
@@ -124,6 +143,8 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
         controller={controller}
         cafes={[mockCafe]}
         isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
         onCheckIn={vi.fn()}
         addCafe={<span>Add Cafe</span>}
       />,
@@ -133,17 +154,16 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
     const sheet = screen.getByRole("region", { name: messages.discovery.sheet_aria });
     const onDragEnd = getDragEndHandler(sheet);
 
-    animateCalls.length = 0;
+    // The sheet's own mount-time snap fixes the HALF detent this drag must return to.
+    const detentY = consumeMountDetentY();
 
     // Sub-threshold drag: offset = 30px (<= 60), velocity = 100px/s (<= 300)
     act(() => {
       onDragEnd(null, { offset: { y: 30 }, velocity: { y: 100 } });
     });
 
-    // Detent did not change: animate MUST be called to return y to offsets[half]
-    // 800 * 0.85 = 680 (sheetH). HALF visible = 800 * 0.5 = 400. offset[half] = 680 - 400 = 280.
-    const expectedHalfOffset = 800 * 0.85 - 800 * 0.5;
-    const returnAnim = animateCalls.find((call) => call.target === expectedHalfOffset);
+    // Detent did not change: animate MUST be called to return y to that detent.
+    const returnAnim = animateCalls.find((call) => call.target === detentY);
     expect(returnAnim).toBeDefined();
     expect(returnAnim?.transition).toEqual(spring.snappy);
   });
@@ -165,6 +185,8 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
         controller={controller}
         cafes={[mockCafe]}
         isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
         onCheckIn={vi.fn()}
         addCafe={<span>Add Cafe</span>}
       />,
@@ -174,16 +196,15 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
     const sheet = screen.getByRole("region", { name: messages.discovery.sheet_aria });
     const onDragEnd = getDragEndHandler(sheet);
 
-    animateCalls.length = 0;
+    // The sheet's own mount-time snap fixes the PEEK detent this drag must return to.
+    const detentY = consumeMountDetentY();
 
     // Sub-threshold drag: offset = 25px (<= 60), velocity = 80px/s (<= 300)
     act(() => {
       onDragEnd(null, { offset: { y: 25 }, velocity: { y: 80 } });
     });
 
-    // 800 * 0.85 = 680 (sheetH). PEEK visible = 172. offset[peek] = 680 - 172 = 508.
-    const expectedPeekOffset = 800 * 0.85 - 172;
-    const returnAnim = animateCalls.find((call) => call.target === expectedPeekOffset);
+    const returnAnim = animateCalls.find((call) => call.target === detentY);
     expect(returnAnim).toBeDefined();
     expect(returnAnim?.transition).toEqual(spring.snappy);
   });
@@ -206,6 +227,8 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
         controller={controller}
         cafes={[mockCafe]}
         isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
         onCheckIn={vi.fn()}
         addCafe={<span>Add Cafe</span>}
       />,
@@ -215,14 +238,14 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
     const sheet = screen.getByRole("region", { name: messages.discovery.sheet_aria });
     const onDragEnd = getDragEndHandler(sheet);
 
-    animateCalls.length = 0;
+    // The sheet's own mount-time snap fixes the HALF detent this drag must return to.
+    const detentY = consumeMountDetentY();
 
     act(() => {
       onDragEnd(null, { offset: { y: 35 }, velocity: { y: 120 } });
     });
 
-    const expectedHalfOffset = 800 * 0.85 - 800 * 0.5;
-    const returnAnim = animateCalls.find((call) => call.target === expectedHalfOffset);
+    const returnAnim = animateCalls.find((call) => call.target === detentY);
     expect(returnAnim).toBeDefined();
     expect(returnAnim?.transition).toEqual({ duration: 0 });
   });
@@ -250,6 +273,8 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
         controller={controller}
         cafes={[mockCafe]}
         isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
         onCheckIn={vi.fn()}
         addCafe={<span>Add Cafe</span>}
       />,
@@ -274,19 +299,21 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
           controller={controller}
           cafes={[mockCafe]}
           isLoading={false}
+          isError={false}
+          onRetry={vi.fn()}
           onCheckIn={vi.fn()}
           addCafe={<span>Add Cafe</span>}
         />,
       );
     });
 
-    // Programmatic snap animation must start from rest (velocity = 0), not with the stale 250px/s
+    // Programmatic snap animation must start from rest (velocity = 0), not with the stale 250px/s.
+    // The contract is the snappy token plus a rest start — not whether `velocity`
+    // is present on the transition object (omitting it is behaviourally 0).
     const fullAnim = animateCalls.find((call) => call.target === 0);
     expect(fullAnim).toBeDefined();
-    expect(fullAnim?.transition).toEqual({
-      ...spring.snappy,
-      velocity: 0,
-    });
+    expect(fullAnim?.transition).toMatchObject(spring.snappy);
+    expect(startVelocity(fullAnim?.transition)).toBe(0);
   });
 
   it("supra-threshold drag hands off release velocity to the detent snap effect", () => {
@@ -312,6 +339,8 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
         controller={controller}
         cafes={[mockCafe]}
         isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
         onCheckIn={vi.fn()}
         addCafe={<span>Add Cafe</span>}
       />,
@@ -321,7 +350,9 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
     const sheet = screen.getByRole("region", { name: messages.discovery.sheet_aria });
     const onDragEnd = getDragEndHandler(sheet);
 
-    animateCalls.length = 0;
+    // The sheet's own mount-time snap fixes the HALF detent the later
+    // programmatic snap must return to.
+    const halfDetentY = consumeMountDetentY();
 
     // Supra-threshold upward flick: velocity = -400 px/s (< -STEP_VELOCITY), offset = -70px (< -STEP_OFFSET_PX)
     // Steps: ["peek", "half", "full"]. Current index is 1 (half). Next is 2 (full).
@@ -339,6 +370,8 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
           controller={controller}
           cafes={[mockCafe]}
           isLoading={false}
+          isError={false}
+          onRetry={vi.fn()}
           onCheckIn={vi.fn()}
           addCafe={<span>Add Cafe</span>}
         />,
@@ -348,10 +381,8 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
     // Snap effect consumed velocity -400
     const fullAnim = animateCalls.find((call) => call.target === 0);
     expect(fullAnim).toBeDefined();
-    expect(fullAnim?.transition).toEqual({
-      ...spring.snappy,
-      velocity: -400,
-    });
+    expect(fullAnim?.transition).toMatchObject(spring.snappy);
+    expect(startVelocity(fullAnim?.transition)).toBe(-400);
 
     // A subsequent programmatic snap after that must start from rest (velocity = 0)
     animateCalls.length = 0;
@@ -362,17 +393,83 @@ describe("MobileSheet drag and snap behavior (BRAWUKA-135)", () => {
           controller={controller}
           cafes={[mockCafe]}
           isLoading={false}
+          isError={false}
+          onRetry={vi.fn()}
           onCheckIn={vi.fn()}
           addCafe={<span>Add Cafe</span>}
         />,
       );
     });
 
-    const halfAnim = animateCalls.find((call) => call.target === 800 * 0.85 - 800 * 0.5);
+    const halfAnim = animateCalls.find((call) => call.target === halfDetentY);
     expect(halfAnim).toBeDefined();
-    expect(halfAnim?.transition).toEqual({
-      ...spring.snappy,
-      velocity: 0,
-    });
+    expect(halfAnim?.transition).toMatchObject(spring.snappy);
+    expect(startVelocity(halfAnim?.transition)).toBe(0);
+  });
+});
+
+describe("MobileSheet peek strip error branch (BRAWUKA-231)", () => {
+  beforeEach(() => {
+    mockReducedMotion = false;
+    animateCalls.length = 0;
+    window.innerHeight = 800;
+  });
+
+  it("renders inline error with Retry instead of the empty state when the cafes query fails", () => {
+    const onRetry = vi.fn();
+    render(
+      <MobileSheet
+        controller={{
+          selectedCafeId: null,
+          snap: "peek",
+          select: vi.fn(),
+          snapTo: vi.fn(),
+          close: vi.fn(),
+          handleMissingCafe: vi.fn(),
+          registerCardRef: vi.fn(),
+          detailHeadingRef: vi.fn(),
+        }}
+        cafes={[]}
+        isLoading={false}
+        isError
+        onRetry={onRetry}
+        onCheckIn={vi.fn()}
+        addCafe={<span>Add Cafe</span>}
+      />,
+      { wrapper: createWrapper() },
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Couldn't load nearby cafes");
+    expect(screen.queryByText("No cafes nearby yet")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the empty state for a genuine empty result (no error)", () => {
+    render(
+      <MobileSheet
+        controller={{
+          selectedCafeId: null,
+          snap: "peek",
+          select: vi.fn(),
+          snapTo: vi.fn(),
+          close: vi.fn(),
+          handleMissingCafe: vi.fn(),
+          registerCardRef: vi.fn(),
+          detailHeadingRef: vi.fn(),
+        }}
+        cafes={[]}
+        isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
+        onCheckIn={vi.fn()}
+        addCafe={<span>Add Cafe</span>}
+      />,
+      { wrapper: createWrapper() },
+    );
+
+    expect(screen.getByText("No cafes nearby yet")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

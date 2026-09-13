@@ -137,6 +137,10 @@ describe("CheckinDrawer", () => {
   });
 
   it("gates on submit when unauthenticated instead of posting", async () => {
+    // jsdom lacks scrollIntoView; the gate must call it so the prompt is not
+    // stranded below the drawer fold (BRAWUKA-247).
+    const scrollIntoView = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoView;
     renderDrawer({ isAuthenticated: false });
 
     const overall = screen.getByRole("slider", { name: "Overall experience" });
@@ -146,6 +150,7 @@ describe("CheckinDrawer", () => {
     await waitFor(() => {
       expect(screen.getByText(/Sign in to publish your check-in/)).toBeInTheDocument();
     });
+    expect(scrollIntoView).toHaveBeenCalled();
     expect(screen.getByRole("button", { name: /Continue with Google/i })).toBeInTheDocument();
     expect(globalThis.fetch).not.toHaveBeenCalledWith(
       "/api/checkins",

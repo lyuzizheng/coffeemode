@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import type { PhotoUpload } from "./checkin-photos";
+import { isUnauthorized, UNAUTHORIZED } from "@/lib/http";
 import { uploadPhoto } from "@/lib/images/client-upload";
 
 export function useStagedPhotos(initialPhotos?: PhotoUpload[]) {
@@ -28,7 +29,7 @@ export function useStagedPhotos(initialPhotos?: PhotoUpload[]) {
             // A 401 is a session problem, not a photo problem: per-photo
             // retry can never succeed, so escalate to the sign-in gate
             // instead of marking the tile failed.
-            if (err instanceof Error && err.message === "unauthorized") {
+            if (isUnauthorized(err)) {
               unauthorized = true;
               return;
             }
@@ -51,7 +52,7 @@ export function useStagedPhotos(initialPhotos?: PhotoUpload[]) {
 
       // Session expiry dominates: the mutation's onError routes this to
       // onRequireSignIn, which stages the draft and opens the gate.
-      if (unauthorized) throw new Error("unauthorized");
+      if (unauthorized) throw new Error(UNAUTHORIZED);
       if (failedIds.size > 0) {
         throw new Error("photo_upload_failed");
       }

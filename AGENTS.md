@@ -48,6 +48,17 @@ priorities or decisions.
   ready to merge. Do not merge without explicit authority.
 - If no GitHub PR template exists, the PR body must include `## Context`.
 
+## Secret scanning
+
+- Pre-commit hook: `.pre-commit-config.yaml` runs `gitleaks protect --staged` on
+  every commit. Install once per clone with `.agents/scripts/setup-hooks.sh`
+  (requires `pre-commit` and `gitleaks` on PATH).
+- CI: `.github/workflows/ci.yml` runs an incremental `gitleaks detect` on every
+  push/PR; `.github/workflows/secret-scan.yml` runs a full-history scan weekly.
+- GitHub Secret scanning and Push protection are enabled on the repository.
+- Allowlist lives in `.gitleaks.toml` — only placeholders, `*.example` files,
+  and test fixtures may be added; never disable a rule globally to silence noise.
+
 ## Structure and scale
 
 - Canonical numbers live in `docs/specs/0009-code-quality-and-module-boundaries.md`

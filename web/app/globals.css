@@ -395,6 +395,22 @@ body {
   display: none;
 }
 
+/* Edge fade for horizontally scrollable strips whose scrollbar is hidden —
+   the dissolve is the only affordance that more content sits off-canvas
+   (profile tablist, BRAWUKA-247). Applied only while that edge is clipped. */
+.scroll-fade-start {
+  mask-image: linear-gradient(to right, transparent, black 24px);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 24px);
+}
+.scroll-fade-end {
+  mask-image: linear-gradient(to left, transparent, black 24px);
+  -webkit-mask-image: linear-gradient(to left, transparent, black 24px);
+}
+.scroll-fade-x {
+  mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
+}
+
 /* --grain material overlay — SVG feTurbulence noise, spec 0002.
    Opacity 0.03–0.05 light / 0.04–0.06 dark (AA contrast gate applies).
    Apply ONLY to background canvas and editorial/hero surfaces; never the

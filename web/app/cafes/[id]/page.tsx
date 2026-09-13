@@ -11,6 +11,7 @@ import { OpenState } from "@/components/cafe/open-state";
 import { CreatorLine } from "@/components/discovery/creator-line";
 import { PolicyConsensus, ScorePair, WorkProfile } from "@/components/discovery/scores";
 import { getCurrentUser } from "@/lib/auth/get-user";
+import { displayCityName } from "@/lib/cities";
 import { getCafe, toPublicCafeDetail } from "@/lib/db/cafes";
 import {
   cafeCanonicalPath,
@@ -51,11 +52,13 @@ export async function generateMetadata({
   if (!cafe) notFound(); // real 404, before streaming starts (DG19)
 
   const t = await getTranslations("cafeDetail");
+  const locale = await getLocale();
+  const cityName = displayCityName(cafe.city, locale);
   const origin = await getRequestOrigin();
   const url = `${origin}${cafeCanonicalPath(cafe.id)}`;
   const hook = ogHookParams(cafe.work_stats);
   const description = hook ? t("og_hook", hook) : t("og_hook_empty");
-  const title = cafe.city ? `${cafe.name} · ${cafe.city}` : cafe.name;
+  const title = cityName ? `${cafe.name} · ${cityName}` : cafe.name;
   // DG108: og:title keeps the app name suffix; the cover is the og:image,
   // with the dynamic fallback card when the cafe has no photo yet.
   const ogTitle = `${title} — ${APP_NAME}`;
@@ -85,7 +88,7 @@ export async function generateMetadata({
       url,
       siteName: APP_NAME,
       type: "website",
-      locale: (await getLocale()) === "zh" ? "zh_CN" : "en_US",
+      locale: locale === "zh" ? "zh_CN" : "en_US",
       images: ogImages,
     },
     twitter: {
@@ -103,6 +106,8 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
   if (!cafe) notFound();
 
   const td = await getTranslations("discovery");
+  const locale = await getLocale();
+  const cityName = displayCityName(cafe.city, locale);
   const origin = await getRequestOrigin();
   const canonical = `${origin}${cafeCanonicalPath(cafe.id)}`;
   const covers = (cafe.gallery ?? []).map((g) => g.card).filter(Boolean);
@@ -134,8 +139,8 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
             {cafe.name}
           </h1>
           <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
-            {cafe.city && <span>{cafe.city}</span>}
-            {cafe.city && cafe.address && <span aria-hidden>·</span>}
+            {cityName && <span>{cityName}</span>}
+            {cityName && cafe.address && <span aria-hidden>·</span>}
             {cafe.address && <span>{cafe.address}</span>}
             <OpenState cafe={shell.openState} />
           </p>

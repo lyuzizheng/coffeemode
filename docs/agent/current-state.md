@@ -8,7 +8,10 @@ The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI 
 
 ## Active focus
 
-- Owner credential/account actions and worker deploys remain outstanding; see `docs/agent/pending-user-actions.md`.
+- Owner credential/account actions remain outstanding; both edge Workers
+  (`poi-service`, `image-service`) are deployed to staging and production, so what
+  is left there is the POI Google Places key, a Cloudflare deploy API token, and
+  custom domains — see `docs/agent/pending-user-actions.md`.
 - Issue #23 (distributed Postgres token-bucket rate limiter) is merged.
 - Open issues carry tier-0..3 labels mirroring the priority tiers in `docs/specs/0004` §Priority tiers (authority lives there, not in the harness). Fix order: tier-0 correctness/security/docs-truth first, then tier-1 launch gates.
 - Issue #25 (image completion service with atomic DB writes) is merged.
@@ -96,10 +99,13 @@ _archive-coffeemode-backend/   old Java app — being dropped
 1. Owner actions (docs/agent/pending-user-actions.md §1–4): Supabase anon key +
    redirect URLs, Apple/Google provider config, Supabase Postgres provisioning +
    schema (DATABASE_URL, §2 / #142), Google OAuth, Apple Developer Program.
-2. image-service deploy (§6): create R2 bucket + S3 API token, set wrangler.toml
-   placeholders, set Worker secrets, deploy, wire IMAGE_SERVICE_URL/TOKEN.
-3. poi-cache-service deploy (§7): Cloudflare D1/KV + secrets, apply D1 schema,
-   deploy, wire POI_SERVICE_URL/TOKEN.
+2. image-service residual (§6): both Workers are deployed; what remains is the
+   `images.` / `staging-images.coffeemode.app` custom domains once the zone is
+   live, plus bucket defenses and orphan-cleanup scheduling.
+3. poi-cache-service residual (§7): both environments are deployed and verified
+   (2026-09-12) against their own D1/KV bindings; what remains is owner-side —
+   install GOOGLE_PLACES_API_KEY (§5) and a Cloudflare deploy API token, then
+   attach the custom domain once the zone is live.
 4. Map-independent UI slices are all design-unblocked and READY — pick any of:
    search-filters (#135), navigation-prompt (#149), onboarding-geolocation (#153).
    discovery-sheet (#133), checkin-system (#148), seo-sharing (#150),
@@ -133,8 +139,12 @@ _archive-coffeemode-backend/   old Java app — being dropped
 - `maps_share_url` host validation, 10 km nearby-search cap, and 10 MB image-upload cap are active
 - Issue #158 adds the safe orphan-original cleanup: `image-service/scripts/clean-orphan-originals.mjs` (npm run clean:orphan-originals) deletes `original/` objects older than RETENTION_DAYS that lack completion metadata OR are still in the "provision" stage (uploaded but never attached). complete() now REQUIRES stage metadata: the attach flow sends cafe|checkin + target id; the creation flow sends provision + imageUuid (issue #86 pre-target processing). DRY_RUN=1 default, cursor-paginated, batch-bounded, idempotent, structured JSON output; covered by the images integration suite. Production schedule/least-privilege creds remain owner actions (#147, #154).
 - Apple Developer Program purchase pending (needed for MapKit JS and Apple live search only; #131)
-- poi-service/wrangler.toml and image-service/wrangler.toml placeholders are
-  documented; deploy blocked on Cloudflare account + secrets (pending-user-actions §6–7)
+- poi-service is deployed to both environments (its `poi-store`/`poi-cache` D1 + KV
+  resources applied 2026-09-12) but still runs without `GOOGLE_PLACES_API_KEY`, so
+  its Google-upstream routes answer 502 `upstream_error`; a Cloudflare deploy API
+  token is owed too (pending-user-actions §5, §7). The wrangler.toml placeholder
+  bindings remain the local-dev compose kit — image-service custom domains are
+  likewise still owner actions (§6).
 ```
 
 ## Latest review

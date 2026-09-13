@@ -1,7 +1,9 @@
 "use client";
 
 import { Button, Drawer } from "@heroui/react";
+import { useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
+import { useEffect, useRef } from "react";
 import { CheckinScores } from "./checkin-scores";
 import { CheckinMaxStay } from "./checkin-max-stay";
 import { CheckinNoteInput } from "./checkin-note-input";
@@ -10,7 +12,7 @@ import { CheckinPhotos } from "./checkin-photos";
 import { CheckinSuccess } from "./checkin-success";
 import { CheckinFormFooter } from "./checkin-form-footer";
 import { CheckinDeleteSection } from "./checkin-delete-section";
-import { CheckinSignInGate } from "./checkin-sign-in-gate";
+import { SignInGate } from "@/components/auth/sign-in-gate";
 import {
   useCheckinFormState,
   type UseCheckinFormStateOptions,
@@ -46,10 +48,29 @@ function CheckinErrorBanner({ error, onRetry }: { error: string; onRetry: () => 
   );
 }
 
+/**
+ * The gate mounts at the bottom of a drawer body that is already scrolled
+ * past the fold — without this it lands off-screen and the submit looks
+ * dead (BRAWUKA-247). Returns the ref to wrap the gate with.
+ */
+function useSignInGateScroll(showSignInGate: boolean) {
+  const gateRef = useRef<HTMLDivElement>(null);
+  const reducedMotion = useReducedMotion();
+  useEffect(() => {
+    if (showSignInGate) {
+      gateRef.current?.scrollIntoView({
+        block: "nearest",
+        behavior: reducedMotion ? "auto" : "smooth",
+      });
+    }
+  }, [showSignInGate, reducedMotion]);
+  return gateRef;
+}
+
 export function CheckinForm(props: CheckinFormProps) {
   const t = useTranslations("checkIn");
   const state = useCheckinFormState(props);
-
+  const signInGateRef = useSignInGateScroll(state.showSignInGate);
   const resumePath =
     typeof window === "undefined"
       ? "/"
@@ -84,6 +105,7 @@ export function CheckinForm(props: CheckinFormProps) {
                   onChange={state.setPhotos}
                   maxPhotos={6}
                   deferUpload={state.deferUpload}
+                  onRequireSignIn={state.requireSignIn}
                 />
               </div>
             )}
@@ -92,7 +114,11 @@ export function CheckinForm(props: CheckinFormProps) {
               <CheckinErrorBanner error={state.mutation.error} onRetry={state.handleRetry} />
             )}
 
-            {state.showSignInGate && <CheckinSignInGate resumePath={resumePath} />}
+            {state.showSignInGate && (
+              <div ref={signInGateRef}>
+                <SignInGate message={t("signInGate")} next={resumePath} />
+              </div>
+            )}
             {state.isEdit && <CheckinDeleteSection onDelete={state.mutation.deleteCheckin} />}
           </div>
         )}

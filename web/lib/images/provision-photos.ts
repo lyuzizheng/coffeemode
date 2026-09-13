@@ -27,10 +27,9 @@ import type { ProcessedImage } from "./processor";
 
 /**
  * Minimal query-fn shape so consume can run on a transaction connection.
- * Canonical shape lives in `lib/db/postgres` (spec 0009 §Edge cases 6);
- * this alias keeps existing imports working.
+ * Canonical shape lives in `lib/db/postgres` (spec 0009 §Edge cases 6).
  */
-export type ProvisionQueryFn = TxQueryFn;
+type ProvisionQueryFn = TxQueryFn;
 
 export interface ProvisionPhotosDeps {
   checkUploadIntent: (userId: string, imageUuid: string) => Promise<boolean>;

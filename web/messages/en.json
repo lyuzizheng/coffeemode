@@ -465,6 +465,7 @@
     "like_signin": "Sign in to like a check-in",
     "card_actions_aria": "More actions for this check-in",
     "load_failed": "Couldn't load check-ins",
+    "nearby_load_failed": "Couldn't load nearby cafes",
     "detail_load_failed": "Couldn't load this cafe",
     "retry": "Retry",
     "missing_cafe": "This cafe is no longer available",

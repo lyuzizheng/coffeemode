@@ -15,8 +15,13 @@
  * file budget.
  */
 
-/** Smallest supported phone width, plus the desktop column (18g breakpoint). */
+/**
+ * The three viewports BRAWUKA-217 measured: the narrow phone that overflowed the
+ * most, the default phone, then the desktop column (18g breakpoint). Narrowest
+ * first so a regression fails on the smallest screen it affects.
+ */
 const VIEWPORTS = [
+  { name: "360x800", width: 360, height: 800, isMobile: true },
   { name: "390x844", width: 390, height: 844, isMobile: true },
   { name: "1440x900", width: 1440, height: 900, isMobile: false },
 ];

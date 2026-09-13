@@ -24,7 +24,7 @@ export function CheckinFormFooter({
   const t = useTranslations("checkIn");
 
   return (
-    <Drawer.Footer className="shrink-0 border-t border-separator bg-surface p-4">
+    <Drawer.Footer className="shrink-0 -mx-6 flex-col items-stretch border-t border-separator bg-surface p-4">
       <Button
         variant="primary"
         className="w-full h-12 rounded-sm text-base font-medium"
@@ -34,9 +34,9 @@ export function CheckinFormFooter({
         {view === "submitting" ? t("saving") : isEdit ? t("saveChanges") : t("submit")}
       </Button>
       {!canSubmit && overallIsNull && view === "form" && (
-        <p className="mt-2 text-center text-xs text-muted">{t("overallHint")}</p>
+        <p className="text-center text-xs text-muted">{t("overallHint")}</p>
       )}
-      {isOffline && <p className="mt-2 text-center text-xs text-muted">{t("offline")}</p>}
+      {isOffline && <p className="text-center text-xs text-muted">{t("offline")}</p>}
     </Drawer.Footer>
   );
 }

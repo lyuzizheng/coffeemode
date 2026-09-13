@@ -15,12 +15,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { animate, motion, useDragControls, useMotionValue, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
-import { spring } from "@/lib/motion";
+import { cardInteraction, spring } from "@/lib/motion";
 import { useMounted } from "@/hooks/use-mounted";
 import type { DiscoveryController, SheetSnap } from "@/lib/discovery/use-discovery-controller";
 import type { CafeSummary } from "@/types/cafes";
 import { CafeCardBody } from "./cafe-card";
 import { DetailContent } from "./detail-content";
+import { InlineError } from "./inline-error";
 
 /** Visible sheet height at PEEK (px) — cover row + padding; safe-area is padded inside. */
 const PEEK_VISIBLE_PX = 172;
@@ -52,7 +53,7 @@ function PeekCard({
       // Active card scales ~1.02, neighbors dim (§8) — gentle spring, no CSS
       // tween; instant under reduced motion.
       initial={false}
-      animate={{ scale: active ? 1.02 : 1, opacity: active ? 1 : 0.6 }}
+      animate={active ? cardInteraction.active : cardInteraction.inactive}
       transition={reduced ? { duration: 0 } : spring.gentle}
     >
       <CafeCardBody cafe={cafe} />
@@ -83,11 +84,15 @@ function PeekSkeletons() {
 function PeekStrip({
   cafes,
   isLoading,
+  isError,
+  onRetry,
   controller,
   addCafe,
 }: {
   cafes: CafeSummary[];
   isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
   controller: DiscoveryController;
   addCafe: ReactNode;
 }) {
@@ -96,6 +101,14 @@ function PeekStrip({
   const stripRef = useRef<HTMLDivElement | null>(null);
 
   if (isLoading) return <PeekSkeletons />;
+  // BRAWUKA-231: a failed fetch must not masquerade as "no cafes nearby".
+  if (isError && cafes.length === 0) {
+    return (
+      <div className="px-4 pb-2">
+        <InlineError message={t("nearby_load_failed")} onRetry={onRetry} />
+      </div>
+    );
+  }
   if (cafes.length === 0) {
     return (
       <div className="flex flex-col items-start gap-2 px-4 pb-2">
@@ -138,12 +151,16 @@ export function MobileSheet({
   controller,
   cafes,
   isLoading,
+  isError,
+  onRetry,
   onCheckIn,
   addCafe,
 }: {
   controller: DiscoveryController;
   cafes: CafeSummary[];
   isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
   onCheckIn: (cafeId?: string, cafeName?: string) => void;
   addCafe: ReactNode;
 }) {
@@ -252,7 +269,14 @@ export function MobileSheet({
       </div>
 
       {snap === "peek" || !selectedCafeId ? (
-        <PeekStrip cafes={cafes} isLoading={isLoading} controller={controller} addCafe={addCafe} />
+        <PeekStrip
+          cafes={cafes}
+          isLoading={isLoading}
+          isError={isError}
+          onRetry={onRetry}
+          controller={controller}
+          addCafe={addCafe}
+        />
       ) : (
         <div
           ref={contentRef}

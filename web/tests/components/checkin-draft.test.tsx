@@ -271,6 +271,47 @@ describe("check-in sign-in gate draft (DG66/DG59)", () => {
     );
   });
 
+  it("opens the gate instead of a retry tile when an immediate photo upload 401s", async () => {
+    const saveSpy = vi.spyOn(pendingCheckin, "savePendingCheckin");
+    vi.mocked(uploadPhoto).mockRejectedValue(new Error("unauthorized"));
+    renderDrawer({ isAuthenticated: true });
+
+    fireEvent.change(fileInput(), {
+      target: { files: [new File(["x"], "photo.jpg", { type: "image/jpeg" })] },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Sign in to publish your check-in/)).toBeInTheDocument();
+    });
+    // Not a tile error: retrying this tile could never succeed.
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+    expect(document.querySelector(".border-danger")).not.toBeInTheDocument();
+
+    // The selection survives the gate, so the post-OAuth resume can still publish it.
+    await waitFor(() => expect(saveSpy).toHaveBeenCalled());
+    expect(saveSpy.mock.calls.at(-1)?.[0].photos).toHaveLength(1);
+    expect((await loadPendingCheckin(72 * 3_600_000))?.photos).toHaveLength(1);
+  });
+
+  it("escalates a 401 raised by a tile retry to the gate too", async () => {
+    vi.mocked(uploadPhoto)
+      .mockRejectedValueOnce(new Error("photo_upload_failed"))
+      .mockRejectedValueOnce(new Error("unauthorized"));
+    renderDrawer({ isAuthenticated: true });
+
+    fireEvent.change(fileInput(), {
+      target: { files: [new File(["x"], "photo.jpg", { type: "image/jpeg" })] },
+    });
+
+    // A genuine photo failure still offers the in-place retry.
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Sign in to publish your check-in/)).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+  });
+
   it("re-stages the draft when input changes while the gate is visible", async () => {
     const saveSpy = vi.spyOn(pendingCheckin, "savePendingCheckin");
     renderDrawer({ isAuthenticated: false });

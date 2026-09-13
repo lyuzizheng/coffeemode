@@ -7,7 +7,7 @@
  * card is the tap target.
  */
 import Image from "next/image";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   CoffeeIcon,
   OutletsIcon,
@@ -18,6 +18,7 @@ import {
   type IconProps,
 } from "@/components/icons";
 import { cafeFacts, formatDistanceKm, type Fact, type FactKind } from "@/lib/discovery/view-model";
+import { displayCityName } from "@/lib/cities";
 import type { CafeSummary } from "@/types/cafes";
 
 const FACT_ICONS: Record<FactKind, (props: IconProps) => React.ReactNode> = {
@@ -62,12 +63,13 @@ export function FactsRow({ facts }: { facts: Fact[] }) {
 /** Meta line: `area · 1.2 km` + exact Work value at the end (DG43). */
 function CardMeta({ cafe }: { cafe: CafeSummary }) {
   const t = useTranslations("discovery");
+  const locale = useLocale();
   const km = formatDistanceKm(cafe.distance_m);
   const work =
     cafe.work_stats.composite_score === null
       ? null
       : Math.round(cafe.work_stats.composite_score);
-  const parts = [cafe.city, km !== null ? t("km_away", { km }) : null].filter(Boolean);
+  const parts = [displayCityName(cafe.city, locale), km !== null ? t("km_away", { km }) : null].filter(Boolean);
   return (
     <p className="tnum truncate text-xs text-muted">
       {parts.join(" · ")}
@@ -112,7 +114,7 @@ export function CafeCardBody({ cafe }: { cafe: CafeSummary }) {
       {work !== null && (
         <span
           aria-hidden
-          className="tnum pointer-events-none absolute -right-1 top-1/2 -translate-y-1/2 select-none text-[4rem] font-extralight leading-none text-foreground/[0.07]"
+          className="tnum pointer-events-none absolute -right-1 top-1/2 -translate-y-1/2 select-none text-3xl font-extralight leading-none text-foreground/[0.07]"
         >
           {work}
         </span>

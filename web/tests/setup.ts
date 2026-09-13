@@ -35,6 +35,13 @@ if (typeof NodeBlob !== "undefined") {
     (window as unknown as { Blob: unknown }).Blob = NodeBlob;
   }
 }
+
+// jsdom does not implement scrollIntoView; components that scroll a revealed
+// element into view (check-in sign-in gate, BRAWUKA-247) need a callable
+// no-op. Tests assert the call by spying on this prototype method.
+if (typeof window !== "undefined" && !window.HTMLElement.prototype.scrollIntoView) {
+  window.HTMLElement.prototype.scrollIntoView = () => {};
+}
 import "fake-indexeddb/auto";
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach } from "vitest";

@@ -1,0 +1,46 @@
+# gitleaks configuration for CoffeeMode
+# Docs: https://github.com/gitleaks/gitleaks#configuration
+# Version pinned in .pre-commit-config.yaml and CI workflow.
+
+title = "CoffeeMode gitleaks config"
+
+[extend]
+# Use the default rule set; do not trim rules to silence noise.
+useDefault = true
+
+[allowlist]
+description = "CoffeeMode allowlist: placeholders, examples, and test fixtures only"
+paths = [
+  # Example / template files
+  '''.*\.example$''',
+  '''.*\.env\.example$''',
+  '''.*\.env\..*\.example$''',
+  # Test fixtures with known fake values
+  '''web/tests/.*''',
+  '''web_landing/src/test/.*''',
+  '''server_our_village/service/.*/.*_test\.go$''',
+  # Documentation that legitimately shows placeholder shapes
+  '''docs/security/.*''',
+  '''.*DEPLOYMENT_GUIDE\.md$''',
+  '''.*README\.md$''',
+]
+regexes = [
+  # Placeholder shapes
+  '''your-.*-key''',
+  '''your-.*-token''',
+  '''your-.*-secret''',
+  '''<YOUR_[A-Z_]+>''',
+  '''samplesecret''',
+  '''changeme''',
+  '''xxx+''',
+  '''REPLACE_ME''',
+  '''local-dev-token''',
+  # Test UUIDs used in fixtures (a0eebc99-…, b1eebc99-…, f1a2b3c4-…)
+  '''[a-f]0eebc99-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}''',
+  '''f1a2b3c4-d5e6-47f8-9a0b-1c2d3e4f5a6b''',
+  # Public-by-design keys (Supabase publishable, hCaptcha site key, Turnstile site key)
+  '''sb_publishable_[A-Za-z0-9_-]+''',
+  '''1x00000000000000000000AA''',
+  '''0x4AAAAA[A-Za-z0-9_-]+''',
+  '''fa140dac-5888-4d02-a00c-a8986d681db2''',
+]

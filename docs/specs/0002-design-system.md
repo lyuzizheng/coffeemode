@@ -170,6 +170,7 @@ Light mode:
   accent-foreground: oklch(98.5% 0.004 80)   white on accent
   secondary:        oklch(45.0% 0.080 155)   deep sage green (brand)
   secondary-foreground: oklch(97.0% 0.005 155) white on secondary
+  secondary-hover:  oklch(40.0% 0.080 155)   sage one step toward the ink (BRAWUKA-209)
 
   success:          oklch(52% 0.11 152)      sage green status
   success-foreground: oklch(98% 0.01 140)
@@ -194,6 +195,7 @@ Dark mode:
   accent-foreground: oklch(17% 0.015 48)
   secondary:        oklch(58.0% 0.080 155)   lighter sage (brand); 55.0% raised for the AA gate (4.14:1 → 4.69:1, BRAWUKA-130)
   secondary-foreground: oklch(16% 0.03 150)
+  secondary-hover:  oklch(62.0% 0.080 155)   sage one step toward the ink; 5.52:1 on secondary-foreground (BRAWUKA-209)
 
   success:          oklch(70% 0.13 150)
   success-foreground: oklch(16% 0.03 150)
@@ -203,7 +205,7 @@ Dark mode:
   danger-foreground: oklch(16% 0.01 60)
 ```
 
-`web/app/globals.css` maps `--color-secondary` / `--color-secondary-foreground` in `@theme` and overrides `--accent`, `--accent-foreground`, `--secondary`, `--secondary-foreground`, plus `surface`, `border`, `separator`, `muted`, and `default` in both `:root` (light) and `.dark` so the brand palette is available through HeroUI semantic tokens.
+`web/app/globals.css` maps `--color-secondary` / `--color-secondary-foreground` / `--color-secondary-hover` in `@theme` and overrides `--accent`, `--accent-foreground`, `--secondary`, `--secondary-foreground`, `--secondary-hover`, plus `surface`, `border`, `separator`, `muted`, and `default` in both `:root` (light) and `.dark` so the brand palette is available through HeroUI semantic tokens.
 
 ### Typography
 
@@ -544,6 +546,7 @@ this principle governs them and any new copy.
     pair (dark)                                        before    after
     accent on accent-foreground                        6.27:1    6.27:1   pass
     secondary on secondary-foreground (filled button)   4.14:1    4.69:1   pass (BRAWUKA-130)
+    secondary-hover on secondary-foreground (hover)     3.99:1    5.52:1   pass (BRAWUKA-209; before = bg-secondary/90 mix)
     danger on danger-foreground (filled button)         3.37:1    6.72:1   pass (BRAWUKA-219)
     danger as text on surface-secondary                 3.17:1    5.92:1   pass (BRAWUKA-219, at a 55% plate)
 

@@ -23,7 +23,7 @@ export function ProfileHeader({ isAuthenticated }: { isAuthenticated: boolean })
       <button
         onClick={handleBack}
         aria-label={t("back")}
-        className="inline-flex items-center justify-center w-10 h-10 -ml-2 rounded-full hover:bg-surface-secondary text-foreground active:scale-95 transition-all"
+        className="inline-flex items-center justify-center w-11 h-11 -ml-2.5 -my-0.5 rounded-full hover:bg-surface-secondary text-foreground active:scale-95 transition-all"
       >
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M12.5 15L7.5 10L12.5 5" />

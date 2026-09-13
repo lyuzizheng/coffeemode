@@ -26,7 +26,7 @@ export function GoneCafeNotFound({ cafeId }: { cafeId?: string }) {
       </div>
       <Link
         href="/"
-        className="cm-focus flex h-10 items-center rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent-hover"
+        className="cm-focus flex h-11 items-center rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent-hover"
       >
         {t("back_to_discover")}
       </Link>

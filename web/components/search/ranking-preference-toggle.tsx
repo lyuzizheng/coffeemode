@@ -51,13 +51,17 @@ export function RankingPreferenceToggle({
             role="radio"
             aria-checked={active}
             onClick={() => setRankingPreference(option)}
-            className={`cm-focus rounded-sm px-3 py-1.5 text-sm transition-colors duration-120 ${
-              active
-                ? "border border-separator bg-surface font-medium text-foreground"
-                : "border border-transparent text-muted hover:text-foreground"
-            }`}
+            className="group cm-focus -my-1.5 flex min-h-11 items-center"
           >
-            {t(option)}
+            <span
+              className={`rounded-sm px-3 py-1.5 text-sm transition-colors duration-120 ${
+                active
+                  ? "border border-separator bg-surface font-medium text-foreground"
+                  : "border border-transparent text-muted group-hover:text-foreground"
+              }`}
+            >
+              {t(option)}
+            </span>
           </button>
         );
       })}

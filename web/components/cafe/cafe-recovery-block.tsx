@@ -49,7 +49,7 @@ export function CafeRecoveryBlock({ cafeId }: { cafeId?: string }) {
             <li key={cafe.id}>
               <Link
                 href={`/cafes/${cafe.id}`}
-                className="cm-focus flex items-baseline justify-between gap-3 rounded-sm px-1 py-1.5 text-sm text-foreground transition-colors hover:text-accent"
+                className="cm-focus -my-1.5 flex min-h-11 items-baseline justify-between gap-3 rounded-sm px-1 text-sm text-foreground transition-colors hover:text-accent"
               >
                 <span className="truncate">{cafe.name}</span>
                 {km !== null && <span className="tnum shrink-0 text-xs text-muted">{km} km</span>}

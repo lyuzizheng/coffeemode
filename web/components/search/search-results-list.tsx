@@ -147,7 +147,7 @@ export function SearchResultsList({
             <button
               type="button"
               onClick={onRetry}
-              className="cm-focus rounded-md border border-border px-2 py-1 text-xs text-accent transition-colors hover:bg-surface-secondary"
+              className="cm-focus -my-2 inline-flex min-h-11 items-center rounded-md border border-border px-2 text-xs text-accent transition-colors hover:bg-surface-secondary"
             >
               {t("retry")}
             </button>
@@ -163,7 +163,7 @@ export function SearchResultsList({
               <button
                 type="button"
                 onClick={() => onExternalSearch("google")}
-                className="cm-focus rounded-md border border-border px-3 py-2 text-sm text-foreground transition-colors hover:bg-surface-secondary"
+                className="cm-focus -my-1 inline-flex min-h-11 items-center rounded-md border border-border px-3 text-sm text-foreground transition-colors hover:bg-surface-secondary"
               >
                 {t("search_google_maps")}
               </button>
@@ -172,7 +172,7 @@ export function SearchResultsList({
               <button
                 type="button"
                 onClick={() => onExternalSearch("apple")}
-                className="cm-focus rounded-md border border-border px-3 py-2 text-sm text-foreground transition-colors hover:bg-surface-secondary"
+                className="cm-focus -my-1 inline-flex min-h-11 items-center rounded-md border border-border px-3 text-sm text-foreground transition-colors hover:bg-surface-secondary"
               >
                 {t("search_apple_maps")}
               </button>

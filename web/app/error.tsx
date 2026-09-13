@@ -41,13 +41,13 @@ export default function Error({
         <button
           type="button"
           onClick={retry}
-          className="cm-focus h-10 rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent-hover"
+          className="cm-focus h-11 rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent-hover"
         >
           {t("retry")}
         </button>
         <Link
           href="/"
-          className="cm-focus flex h-10 items-center rounded-md border border-border bg-surface px-4 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-surface-secondary"
+          className="cm-focus flex h-11 items-center rounded-md border border-border bg-surface px-4 text-sm font-medium text-foreground transition-colors duration-150 hover:bg-surface-secondary"
         >
           {t("home")}
         </Link>

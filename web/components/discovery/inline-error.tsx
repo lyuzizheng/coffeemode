@@ -28,7 +28,7 @@ export function InlineError({
     >
       <WarningIcon size={14} className="shrink-0 text-muted" />
       <span className="flex-1 text-sm text-foreground">{message}</span>
-      <Button variant="outline" size="sm" onPress={onRetry}>
+      <Button variant="outline" size="sm" onPress={onRetry} className="-my-1.5">
         {t("retry")}
       </Button>
     </motion.div>

@@ -76,6 +76,11 @@ export default async function HomePage({
       initialCenter={initialCenter}
       isAuthenticated={Boolean(user)}
       serverOnboarded={profile?.onboarded ?? false}
+      profileSeed={
+        profile
+          ? { currentCity: profile.currentCity, lastLocation: profile.lastLocation }
+          : undefined
+      }
       suppressCard={initialCafeId !== undefined}
       addCafe={<CafeCreationTrigger isAuthenticated={Boolean(user)} />}
       initialCafeId={initialCafeId}

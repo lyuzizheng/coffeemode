@@ -21,6 +21,7 @@ export function OnboardingHome({
   initialCenter,
   isAuthenticated,
   serverOnboarded,
+  profileSeed,
   suppressCard,
   addCafe,
   initialCafeId,
@@ -34,6 +35,8 @@ export function OnboardingHome({
   isAuthenticated: boolean;
   /** profiles.onboarded — authoritative for signed-in users (DG122). */
   serverOnboarded: boolean;
+  /** Signed-in profile fields mirrored into localStorage on merge (DG122). */
+  profileSeed?: { currentCity: string; lastLocation: Coordinates | null };
   /** Deep-link-style arrivals (?cafe=) never see the card (DG124). */
   suppressCard?: boolean;
   addCafe: ReactNode;
@@ -46,6 +49,7 @@ export function OnboardingHome({
     initialCenter,
     isAuthenticated,
     serverOnboarded,
+    profileSeed,
     suppressCard,
   });
 

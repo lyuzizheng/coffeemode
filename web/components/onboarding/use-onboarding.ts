@@ -62,9 +62,13 @@ async function persistProfile(patch: {
 
 /** Anonymous returning visitors resume at their stored city/location before
  * the first nearby fetch — the lazy initializer reads localStorage during
- * hydration; center only feeds the query key, never markup. */
-function useOnboardingCenter(initialCenter: Coordinates) {
+ * hydration; center only feeds the query key, never markup. For signed-in
+ * users the server-computed `initialCenter` (profile city → last location →
+ * detected city → default) is authoritative (DG122): a stale anonymous
+ * `currentCity` on this device must never override it. */
+function useOnboardingCenter(initialCenter: Coordinates, isAuthenticated: boolean) {
   return useState<Coordinates>(() => {
+    if (isAuthenticated) return initialCenter;
     const stored = readOnboardingState();
     if (!stored) return initialCenter;
     const storedCity = stored.currentCity ? findCity(stored.currentCity) : null;
@@ -74,12 +78,26 @@ function useOnboardingCenter(initialCenter: Coordinates) {
 
 /** Mount reconciliation (DG122): anonymous onboarded state merges into the
  * profile; a server-onboarded profile seeds localStorage for later
- * signed-out visits on this device. */
-function useOnboardingMerge(serverOnboarded: boolean, isAuthenticated: boolean) {
+ * signed-out visits on this device. The profile's city/location are also
+ * mirrored down so the anonymous fallback can never go stale against the
+ * authoritative row. */
+function useOnboardingMerge(
+  serverOnboarded: boolean,
+  isAuthenticated: boolean,
+  profileSeed?: { currentCity: string; lastLocation: Coordinates | null },
+) {
   useEffect(() => {
     const stored = readOnboardingState();
     if (serverOnboarded) {
-      if (!stored?.onboarded) writeOnboardingState({ onboarded: true });
+      writeOnboardingState({
+        onboarded: true,
+        ...(profileSeed?.currentCity
+          ? { currentCity: profileSeed.currentCity }
+          : {}),
+        ...(profileSeed?.lastLocation
+          ? { lastLocation: profileSeed.lastLocation }
+          : {}),
+      });
       return;
     }
     if (!stored || !isAuthenticated) return;
@@ -117,8 +135,8 @@ function useLocateFlow({
   const enable = async () => {
     setLocating(true);
     const result = await request();
+    setLocating(false);
     if (!result.ok) {
-      setLocating(false);
       onCardDenied(result.reason);
       return;
     }
@@ -216,6 +234,7 @@ export function useOnboarding({
   initialCenter,
   isAuthenticated,
   serverOnboarded,
+  profileSeed,
   suppressCard,
 }: {
   /** IP-detected launch city (DG128); null → no detection line. */
@@ -226,6 +245,8 @@ export function useOnboarding({
   isAuthenticated: boolean;
   /** profiles.onboarded — authoritative for signed-in users (DG122). */
   serverOnboarded: boolean;
+  /** Signed-in profile fields mirrored into localStorage on merge (DG122). */
+  profileSeed?: { currentCity: string; lastLocation: Coordinates | null };
   /** Deep-link-style arrivals (?cafe=) never see the card (DG124). */
   suppressCard?: boolean;
 }) {
@@ -242,9 +263,9 @@ export function useOnboarding({
   const [selectedCityId, setSelectedCityId] = useState(
     detectedCity?.id ?? DEFAULT_CITY.id,
   );
-  const [center, setCenter] = useOnboardingCenter(initialCenter);
+  const [center, setCenter] = useOnboardingCenter(initialCenter, isAuthenticated);
 
-  useOnboardingMerge(serverOnboarded, isAuthenticated);
+  useOnboardingMerge(serverOnboarded, isAuthenticated, profileSeed);
 
   const { commitCity, applyGrantedLocation } = useOnboardingCommit({
     isAuthenticated,

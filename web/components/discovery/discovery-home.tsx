@@ -37,6 +37,15 @@ async function fetchNearbyCafes(lat: number, lng: number): Promise<CafeSummary[]
   return body.cafes;
 }
 
+/** Map overlays never cover the mobile sheet's half/full detail content. */
+function gateMapOverlay(
+  mapOverlay: ReactNode | undefined,
+  isDesktop: boolean,
+  snap: string,
+): ReactNode {
+  return mapOverlay && (isDesktop || snap === "peek") ? mapOverlay : null;
+}
+
 export function DiscoveryHome({
   center,
   addCafe,
@@ -71,10 +80,7 @@ export function DiscoveryHome({
     queryFn: () => fetchNearbyCafes(center.lat, center.lng),
   });
 
-  // Map overlays never cover the mobile sheet's half/full detail content.
-  const overlay = mapOverlay && (isDesktop || controller.snap === "peek")
-    ? mapOverlay
-    : null;
+  const overlay = gateMapOverlay(mapOverlay, isDesktop, controller.snap);
 
   const [checkinCafe, setCheckinCafe] = useState<{
     id: string;

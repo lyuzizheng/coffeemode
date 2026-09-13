@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CheckinSlider } from "@/components/checkin/checkin-slider";
 import { CheckinDrawer, resolveRevisitCheckin } from "@/components/checkin/checkin-drawer";
+import { uploadPhoto } from "@/lib/images/client-upload";
 import messages from "../../messages/en.json";
 // The real hook pings /api/health on an interval through a module-level
 // singleton; the fetch mocks below would flip tests offline mid-run.
@@ -16,22 +17,44 @@ vi.mock("@/lib/checkin/pending-checkin", () => ({
   loadPendingCheckin: vi.fn().mockResolvedValue(null),
   clearPendingCheckin: vi.fn().mockResolvedValue(undefined),
 }));
+// Toasts are asserted via spy — HeroUI renders them into a portal outside
+// the tree under test.
+const toastSpy = vi.fn();
+vi.mock("@heroui/react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@heroui/react")>();
+  return { ...actual, toast: (...args: unknown[]) => toastSpy(...args) };
+});
+// jsdom has no canvas/Image pipeline — photo uploads resolve instantly.
+vi.mock("@/lib/images/client-upload", () => ({
+  uploadPhoto: vi.fn().mockResolvedValue("img-uuid-1"),
+}));
 
 const CAFE = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22";
 const CHECKIN = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33";
 
-function Wrapper({ children }: { children: React.ReactNode }) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  return (
-    <NextIntlClientProvider locale="en" messages={messages}>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    </NextIntlClientProvider>
-  );
+function makeWrapper(queryClient?: QueryClient) {
+  return function Wrapper({ children }: { children: React.ReactNode }) {
+    // A fresh client per render keeps last-checkin cache from leaking
+    // between tests; callers may inject a pre-seeded one instead.
+    const client =
+      queryClient ??
+      new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+    return (
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      </NextIntlClientProvider>
+    );
+  };
 }
 
-function renderDrawer(props?: Partial<React.ComponentProps<typeof CheckinDrawer>>) {
+const Wrapper = makeWrapper();
+
+function renderDrawer(
+  props?: Partial<React.ComponentProps<typeof CheckinDrawer>>,
+  queryClient?: QueryClient,
+) {
   const onOpenChange = vi.fn();
   render(
     <CheckinDrawer
@@ -41,7 +64,7 @@ function renderDrawer(props?: Partial<React.ComponentProps<typeof CheckinDrawer>
       cafeName="Kiosk"
       {...props}
     />,
-    { wrapper: Wrapper },
+    { wrapper: queryClient ? makeWrapper(queryClient) : Wrapper },
   );
   return onOpenChange;
 }
@@ -294,6 +317,135 @@ describe("CheckinDrawer", () => {
       );
     });
     expect(screen.queryByText("Couldn't save your check-in")).not.toBeInTheDocument();
+  });
+
+  it("toasts that photos were not saved when a raced 409 converts to PATCH (BRAWUKA-126)", async () => {
+    toastSpy.mockClear();
+    globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.startsWith("/api/checkins/last")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ checkin: null, revisitWindowHours: 24 }),
+        });
+      }
+      if (init?.method === "PATCH") {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ cafeId: CAFE }) });
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 409,
+        json: async () => ({ error: "duplicate_checkin", existing_checkin_id: CHECKIN }),
+      });
+    });
+    renderDrawer({ isAuthenticated: true });
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/checkins/last"),
+      );
+    });
+
+    // Stage a photo, then submit: the POST 409s and silently converts to a
+    // PATCH that cannot carry photo_ids.
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, {
+      target: { files: [new File(["x"], "p.jpg", { type: "image/jpeg" })] },
+    });
+    // Wait for the mocked upload to flip the tile off "uploading" —
+    // submitting mid-upload short-circuits with photos_uploading.
+    await waitFor(() => {
+      expect(vi.mocked(uploadPhoto)).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".animate-pulse")).toBeNull();
+    });
+    const overall = screen.getByRole("slider", { name: "Overall experience" });
+    fireEvent.keyDown(overall, { key: "ArrowRight" });
+    fireEvent.click(screen.getByRole("button", { name: "Check in" }));
+
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        `/api/checkins/${CHECKIN}`,
+        expect.objectContaining({ method: "PATCH" }),
+      );
+    });
+    // The PATCH contract carries no photos — the body must not smuggle them.
+    const patchCall = vi
+      .mocked(globalThis.fetch)
+      .mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PATCH");
+    expect(JSON.parse((patchCall?.[1] as RequestInit).body as string)).not.toHaveProperty(
+      "photo_ids",
+    );
+    await waitFor(
+      () => {
+        expect(toastSpy).toHaveBeenCalledWith(
+          "Check-in updated — photos weren't saved (they can only be added on the first check-in)",
+          expect.objectContaining({ timeout: 3000 }),
+        );
+      },
+      { timeout: 3000 },
+    );
+  });
+
+  it("toasts that staged photos were not saved when the revisit probe preempts to edit (BRAWUKA-126)", async () => {
+    toastSpy.mockClear();
+    // A cached probe resolves synchronously on mount, so the preempt fires on
+    // the first render — before the restored photos can mark the form dirty.
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData(["last-checkin", CAFE], {
+      checkin: {
+        id: CHECKIN,
+        scores: { overall: 90 },
+        max_stay: null,
+        note: null,
+        visited_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+      },
+      revisitWindowHours: 24,
+    });
+    renderDrawer(
+      {
+        isAuthenticated: true,
+        initialPhotos: [
+          {
+            id: "p1",
+            previewUrl: "blob:fake",
+            status: "staged",
+            file: new File(["x"], "p.jpg", { type: "image/jpeg" }),
+          },
+        ],
+      },
+      queryClient,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Edit check-in" })).toBeInTheDocument();
+    });
+    expect(toastSpy).toHaveBeenCalledWith(
+      "Switched to updating today's check-in — photos can only be added on the first check-in, so they weren't saved",
+      expect.objectContaining({ timeout: 4000 }),
+    );
+  });
+
+  it("does not toast the photo notice when a preempted create had no staged photos", async () => {
+    toastSpy.mockClear();
+    const visited_at = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        checkin: { id: CHECKIN, scores: { overall: 90 }, visited_at },
+        revisitWindowHours: 24,
+      }),
+    });
+    renderDrawer({ isAuthenticated: true });
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Edit check-in" })).toBeInTheDocument();
+    });
+    expect(toastSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("photos"),
+      expect.anything(),
+    );
   });
 
   it("sends one idempotency key per open and reuses it on inline retry (DG61)", async () => {

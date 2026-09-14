@@ -121,6 +121,7 @@ function makeDeps(overrides: Partial<CompleteUploadDeps> = {}): {
     }),
     getProcessUrls: vi.fn().mockResolvedValue(PROCESS_URLS),
     processImage: vi.fn().mockResolvedValue(PROCESSED),
+    deleteImageVariants: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 
@@ -181,7 +182,7 @@ describe("completeImageUpload", () => {
     expect(deps.runInTransaction).not.toHaveBeenCalled();
   });
 
-  it("rolls back the attach when the intent consume finds 0 rows (replay/expired/mismatch)", async () => {
+  it("attaches first and consumes last: replayed intent rolls the attach back", async () => {
     const { deps } = makeDeps({
       consumeUploadIntent: vi.fn().mockResolvedValue(false),
     });
@@ -192,13 +193,18 @@ describe("completeImageUpload", () => {
     if (!result.ok) {
       expect(result.reason).toBe("intent_consumed");
     }
-    expect(deps.attachImageToCheckin).not.toHaveBeenCalled();
+    // Attach ran (and will roll back with the tx); the gallery merge never ran.
+    expect(deps.attachImageToCheckin).toHaveBeenCalledTimes(1);
     expect(deps.mergeIntoCafeGallery).not.toHaveBeenCalled();
+    // P1: the orphaned R2 variants are compensated.
+    expect(deps.deleteImageVariants).toHaveBeenCalledWith(IMAGE_UUID);
   });
 
-  it("returns target_gone when attach matches 0 rows in transaction", async () => {
+  it("returns target_gone WITHOUT consuming the intent, so a retry can succeed", async () => {
+    const consume = vi.fn().mockResolvedValue(true);
     const { deps } = makeDeps({
       attachImageToCheckin: vi.fn().mockResolvedValue({ ok: false, cafeId: null }),
+      consumeUploadIntent: consume,
     });
 
     const result = await completeImageUpload({ id: "user-1" }, REQ, deps);
@@ -207,7 +213,23 @@ describe("completeImageUpload", () => {
     if (!result.ok) {
       expect(result.reason).toBe("target_gone");
     }
+    expect(consume).not.toHaveBeenCalled();
     expect(deps.mergeIntoCafeGallery).not.toHaveBeenCalled();
+    // P1: the orphaned R2 variants are compensated.
+    expect(deps.deleteImageVariants).toHaveBeenCalledWith(IMAGE_UUID);
+  });
+
+  it("compensates R2 variants when the cafe attach misses", async () => {
+    const { deps } = makeDeps({
+      attachImageToCafe: vi.fn().mockResolvedValue(false),
+    });
+    const result = await completeImageUpload(
+      { id: "user-1" },
+      { ...REQ, targetType: "cafe", targetId: CAFE_ID },
+      deps,
+    );
+    expect(result.ok).toBe(false);
+    expect(deps.deleteImageVariants).toHaveBeenCalledWith(IMAGE_UUID);
   });
 
   it("skips the gallery merge when the checkin has no cafe", async () => {
@@ -219,6 +241,7 @@ describe("completeImageUpload", () => {
 
     expect(result.ok).toBe(true);
     expect(deps.mergeIntoCafeGallery).not.toHaveBeenCalled();
+    expect(deps.deleteImageVariants).not.toHaveBeenCalled();
   });
 
   it("default deps are constructible without touching pg/sharp at import time", () => {
@@ -232,5 +255,6 @@ describe("completeImageUpload", () => {
     expect(typeof deps.attachImageToCafe).toBe("function");
     expect(typeof deps.attachImageToCheckin).toBe("function");
     expect(typeof deps.mergeIntoCafeGallery).toBe("function");
+    expect(typeof deps.deleteImageVariants).toBe("function");
   });
 });

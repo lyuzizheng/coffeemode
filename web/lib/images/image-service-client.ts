@@ -64,7 +64,7 @@ function headers(token: string): Record<string, string> {
  * 401 (bad service token) must not surface as a user-facing 401. Mirrors
  * the poi-client pattern.
  */
-function upstreamError(endpoint: "upload" | "complete", response: Response): ImageServiceError {
+function upstreamError(endpoint: "upload" | "complete" | "delete", response: Response): ImageServiceError {
   const upstreamStatus = response.status;
   // Benign: best-effort cancel of unread upstream response stream.
   void response.body?.cancel().catch(() => {});
@@ -133,4 +133,29 @@ export async function getProcessUrls(
   }
 
   return response.json();
+}
+
+/**
+ * Best-effort R2 compensation (BRAWUKA-279): delete the variants `processImage`
+ * wrote after the DB transaction rolled back. The worker derives all three
+ * keys from `imageUuid`, so no key material crosses this boundary. Never
+ * throws for a missing variant (the worker reports those); throws
+ * ImageServiceError only on transport/upstream failure so callers can log it
+ * without failing the already-failed write.
+ */
+export async function deleteImageVariants(imageUuid: string): Promise<void> {
+  const { url, token } = getEnv();
+  const response = await fetch(`${url}/v1/images/delete`, {
+    method: "POST",
+    headers: headers(token),
+    body: JSON.stringify({ imageUuid }),
+    signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    throw upstreamError("delete", response);
+  }
+  // Benign: drain the small JSON body; the deleted/missing split is only
+  // telemetry for the compensation log, not control flow.
+  await response.body?.cancel().catch(() => {});
 }

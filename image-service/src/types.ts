@@ -39,6 +39,7 @@ export interface CompleteRequest {
   targetId?: string;
 }
 
+
 export interface CompleteResponse {
   imageUuid: string;
   original: PresignedUrl;      // presigned GET for the original
@@ -55,5 +56,16 @@ export interface CompleteResponse {
     card: string;
     thumbnail: string;
   };
+}
+
+export interface DeleteRequest {
+  imageUuid: string;
+  userId?: string;
+}
+
+export interface DeleteResponse {
+  imageUuid: string;
+  deleted: string[];
+  missing: string[];
 }
 

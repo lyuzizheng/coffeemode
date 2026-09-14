@@ -1,7 +1,7 @@
 import { logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
-import { getCafe } from "@/lib/db/cafes";
+import { cafeExists } from "@/lib/db/cafes";
 import {
   FEED_MODES,
   FeedCursorError,
@@ -18,7 +18,8 @@ import type { CheckInFeedMode } from "@/types/checkins";
  * rate limited; `mode` defaults to `newest` (DG113) and cursors are
  * mode-bound — a cursor issued for another mode is a 400, never a silent
  * reset. 404 when the cafe does not exist (drives the in-app missing-cafe
- * recovery flow).
+ * recovery flow). Existence uses the narrow `cafeExists` probe (BRAWUKA-279:
+ * `select 1`, same visibility semantics) — never the wide `getCafe` row.
  */
 export async function GET(
   request: Request,
@@ -45,8 +46,8 @@ export async function GET(
   const { user } = gate;
 
   try {
-    const cafe = await getCafe(id, user?.id);
-    if (!cafe) {
+    const exists = await cafeExists(id, user?.id);
+    if (!exists) {
       return apiError("not_found", "cafe not found", 404);
     }
     const page = await listPublicCheckIns({

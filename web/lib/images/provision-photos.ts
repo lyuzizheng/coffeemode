@@ -12,24 +12,28 @@ import type { ProcessedImage } from "./processor";
  * Clients send only `photo_ids` (imageUuids from /api/images/upload); the
  * server derives everything else. For each id we:
  *
- *   1. Fail-fast pre-check the upload intent (issue #33 binding) BEFORE any
- *      remote work, so a caller holding someone else's (leaked) imageUuid
- *      cannot burn image-service presign or sharp CPU.
+ *   1. Fail-fast pre-check ALL upload intents in ONE batched query (issue
+ *      #33 binding, BRAWUKA-279) BEFORE any remote work, so a caller holding
+ *      someone else's (leaked) imageUuid cannot burn image-service presign
+ *      or sharp CPU.
  *   2. Process the image (presign + sharp resize + R2 writes) OUTSIDE any
  *      transaction — slow I/O must not hold a DB connection.
  *   3. Build the StoredImage server-side: deterministic R2 keys from the
  *      process URLs, real dimensions from sharp, `by` = the caller.
  *
  * The single-use intent consume happens later, INSIDE the creation
- * transaction (`consumeProvisionedIntents`), so the consume commits or rolls
- * back together with the cafe/check-in insert and gallery merge.
+ * transaction (`consumeProvisionedIntents`, one batched DELETE), so the
+ * consume commits or rolls back together with the cafe/check-in insert and
+ * gallery merge. When that transaction rolls back, the caller runs
+ * `compensateProvisionedPhotos` (best-effort R2 deletes via the
+ * image-service delete endpoint); the #158 sweeper stays the backstop.
  */
 
 /**
  * Minimal query-fn shape so consume can run on a transaction connection.
  * Canonical shape lives in `lib/db/postgres` (spec 0009 §Edge cases 6).
  */
-type ProvisionQueryFn = TxQueryFn;
+export type ProvisionQueryFn = TxQueryFn;
 
 export interface ProvisionPhotosDeps {
   checkUploadIntent: (userId: string, imageUuid: string) => Promise<boolean>;
@@ -47,6 +51,16 @@ export interface ProvisionPhotosDeps {
     imageUuid: string,
     q: ProvisionQueryFn,
   ) => Promise<boolean>;
+  /**
+   * Batched single-use consume (BRAWUKA-279): one DELETE inside the caller's
+   * transaction regardless of photo count. Falls back to per-id
+   * `consumeUploadIntent` calls when absent (tests, legacy fakes).
+   */
+  consumeUploadIntents?: (
+    userId: string,
+    imageUuids: string[],
+    q: ProvisionQueryFn,
+  ) => Promise<boolean>;
   getProcessUrls: (request: {
     imageUuid: string;
     userId?: string;
@@ -55,6 +69,13 @@ export interface ProvisionPhotosDeps {
     targetId?: string;
   }) => Promise<ProcessUrls>;
   processImage: (imageUuid: string, processUrls: ProcessUrls) => Promise<ProcessedImage>;
+  /**
+   * Best-effort R2 compensation (BRAWUKA-279): delete the variants
+   * `processImage` already wrote when the caller's transaction rolls back.
+   * Defaults to the image-service delete endpoint; never throws past the
+   * caller (compensation failure is logged, not rethrown).
+   */
+  deleteProvisionedVariants?: (imageUuid: string) => Promise<void>;
 }
 
 /**
@@ -76,6 +97,10 @@ export function defaultProvisionPhotosDeps(): ProvisionPhotosDeps {
       const { consumeUploadIntent } = await import("@/lib/db/image-uploads");
       return consumeUploadIntent(userId, imageUuid, q);
     },
+    consumeUploadIntents: async (userId, imageUuids, q) => {
+      const { consumeUploadIntents } = await import("@/lib/db/image-uploads");
+      return consumeUploadIntents(userId, imageUuids, q);
+    },
     getProcessUrls: async (request) => {
       const { getProcessUrls } = await import("@/lib/images/image-service-client");
       return getProcessUrls(request);
@@ -83,6 +108,15 @@ export function defaultProvisionPhotosDeps(): ProvisionPhotosDeps {
     processImage: async (imageUuid, processUrls) => {
       const { processImage } = await import("@/lib/images/processor");
       return processImage(imageUuid, processUrls);
+    },
+    deleteProvisionedVariants: async (imageUuid) => {
+      const { deleteImageVariants } = await import("@/lib/images/image-service-client");
+      const { logError } = await import("@/lib/observability/server-log");
+      try {
+        await deleteImageVariants(imageUuid);
+      } catch (err) {
+        logError({ route: "provision-photos compensate", error: err });
+      }
     },
   };
 }
@@ -101,7 +135,6 @@ export class PhotoIntentError extends Error {
 
 /** StoredImage without `source` — the target id only exists after insert. */
 export type ProvisionedPhoto = Omit<StoredImage, "source">;
-
 /**
  * Batch intent pre-check, then bounded-concurrency processing (BRAWUKA-281
  * P1). All intents resolve BEFORE any remote work — a caller holding a
@@ -170,11 +203,14 @@ export async function provisionPhotos(
   return results;
 }
 
+
 /**
  * Consume every photo's upload intent inside the caller's transaction. Any
  * id that fails to consume (replay, foreign, or expired since the
  * pre-check) throws PhotoIntentError so the whole creation rolls back —
- * the DELETEs roll back too, leaving the remaining intents reusable.
+ * the DELETE rolls back too, leaving the remaining intents reusable.
+ * Prefers the batched `consumeUploadIntents` seam (one DELETE); falls back
+ * to per-id `consumeUploadIntent` calls for legacy fakes.
  */
 export async function consumeProvisionedIntents(
   userId: string,
@@ -182,8 +218,29 @@ export async function consumeProvisionedIntents(
   q: ProvisionQueryFn,
   deps: ProvisionPhotosDeps,
 ): Promise<void> {
+  if (photoIds.length === 0) return;
+  if (deps.consumeUploadIntents) {
+    const consumed = await deps.consumeUploadIntents(userId, photoIds, q);
+    if (!consumed) throw new PhotoIntentError();
+    return;
+  }
   for (const imageUuid of photoIds) {
     const consumed = await deps.consumeUploadIntent(userId, imageUuid, q);
     if (!consumed) throw new PhotoIntentError();
   }
+}
+/**
+ * Best-effort R2 compensation for a rolled-back creation (BRAWUKA-279):
+ * delete the variants `provisionPhotos` already wrote. Called AFTER the
+ * transaction throws, so the DB side has already rolled back; R2 has no
+ * transaction, hence this explicit cleanup. Failures are swallowed (logged
+ * inside the dep) — the caller must rethrow its original error, and the
+ * #158 sweeper remains the backstop for anything this misses.
+ */
+export async function compensateProvisionedPhotos(
+  photoIds: string[],
+  deps: ProvisionPhotosDeps,
+): Promise<void> {
+  if (!deps.deleteProvisionedVariants) return;
+  await Promise.allSettled(photoIds.map((id) => deps.deleteProvisionedVariants!(id)));
 }

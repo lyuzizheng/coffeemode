@@ -2,6 +2,7 @@ import "server-only";
 
 import { isValidUUID } from "@shared/uuid";
 import {
+  compensateProvisionedPhotos,
   consumeProvisionedIntents,
   defaultProvisionPhotosDeps,
   provisionPhotos,
@@ -122,67 +123,76 @@ export async function createCheckIn(
 
   const provisioned = await provisionPhotos(userId, photoIds, deps);
 
-  return withTransaction(async (client) => {
-    // BRAWUKA-125: must be the first statement — waiters hold no other lock.
-    await client.query(ACQUIRE_CREATE_LOCK_SQL, [userId, input.cafe_id]);
-    const cafe = await client.query<{ id: string }>(CAFE_EXISTS_SQL, [input.cafe_id]);
-    if (!cafe.rows[0]) throw new CafeNotFoundError(input.cafe_id);
+  try {
+    return await withTransaction(async (client) => {
+      // BRAWUKA-125: must be the first statement — waiters hold no other lock.
+      await client.query(ACQUIRE_CREATE_LOCK_SQL, [userId, input.cafe_id]);
+      const cafe = await client.query<{ id: string }>(CAFE_EXISTS_SQL, [input.cafe_id]);
+      if (!cafe.rows[0]) throw new CafeNotFoundError(input.cafe_id);
 
-    // DG64: at most 1 check-in per cafe per user per revisit window. A hit
-    // means "edit the existing check-in" — the drawer preempts this, the
-    // route maps it to 409 with the id for raced clients.
-    const recent = await client.query<{ id: string }>(SELECT_RECENT_CHECKIN_SQL, [
-      input.cafe_id,
-      userId,
-      REVISIT_WINDOW_HOURS,
-    ]);
-    const existingId = recent.rows[0]?.id;
-    if (existingId) throw new DuplicateCheckInError(existingId);
-
-    const res = await client.query<{ id: string }>(INSERT_CHECKIN_SQL, [
-      input.cafe_id,
-      userId,
-      JSON.stringify(input.scores),
-      input.max_stay ?? null,
-      input.note ?? null,
-      JSON.stringify([]),
-      input.visited_at ?? null,
-      idempotencyKey ?? null,
-    ]);
-    let checkin_id = res.rows[0]?.id;
-    let deduped = false;
-    if (!checkin_id && idempotencyKey) {
-      // ON CONFLICT DO NOTHING swallowed a raced first attempt that
-      // committed between the fast-path lookup and this insert: return its
-      // id instead of a second row. (Without a key the insert always
-      // returns a row; a missing id there is a real failure.)
-      const raced = await client.query<{ id: string }>(SELECT_IDEMPOTENT_CHECKIN_SQL, [
+      // DG64: at most 1 check-in per cafe per user per revisit window. A hit
+      // means "edit the existing check-in" — the drawer preempts this, the
+      // route maps it to 409 with the id for raced clients.
+      const recent = await client.query<{ id: string }>(SELECT_RECENT_CHECKIN_SQL, [
+        input.cafe_id,
         userId,
-        idempotencyKey,
+        REVISIT_WINDOW_HOURS,
       ]);
-      checkin_id = raced.rows[0]?.id;
-      deduped = Boolean(checkin_id);
-    }
-    if (!checkin_id) throw new Error("check-in insert returned no id");
+      const existingId = recent.rows[0]?.id;
+      if (existingId) throw new DuplicateCheckInError(existingId);
 
-    if (provisioned.length > 0) {
-      // Single-use consume inside the tx: a replay/foreign id aborts the
-      // whole check-in (issue #86).
-      const q = txQueryFrom(client);
-      await consumeProvisionedIntents(userId, photoIds, q, deps);
-      const photos = photosWithSource(provisioned, checkin_id);
-      // $1 = checkin id, $2 = photos JSON (the SET clause's $2::jsonb).
-      await client.query(SET_CHECKIN_PHOTOS_SQL, [checkin_id, JSON.stringify(photos)]);
-      await client.query(MERGE_GALLERY_SQL, [input.cafe_id, JSON.stringify(photos)]);
-    }
+      const res = await client.query<{ id: string }>(INSERT_CHECKIN_SQL, [
+        input.cafe_id,
+        userId,
+        JSON.stringify(input.scores),
+        input.max_stay ?? null,
+        input.note ?? null,
+        JSON.stringify([]),
+        input.visited_at ?? null,
+        idempotencyKey ?? null,
+      ]);
+      let checkin_id = res.rows[0]?.id;
+      let deduped = false;
+      if (!checkin_id && idempotencyKey) {
+        // ON CONFLICT DO NOTHING swallowed a raced first attempt that
+        // committed between the fast-path lookup and this insert: return its
+        // id instead of a second row. (Without a key the insert always
+        // returns a row; a missing id there is a real failure.)
+        const raced = await client.query<{ id: string }>(SELECT_IDEMPOTENT_CHECKIN_SQL, [
+          userId,
+          idempotencyKey,
+        ]);
+        checkin_id = raced.rows[0]?.id;
+        deduped = Boolean(checkin_id);
+      }
+      if (!checkin_id) throw new Error("check-in insert returned no id");
 
-    // DG79: any check-in at this cafe silently resolves the user's pending
-    // navigations to it (outcome `auto`) — same transaction, so the prompt
-    // can never fire for a visit the check-in already proves.
-    await autoResolveNavigationsTx(txQueryFrom(client), userId, input.cafe_id);
+      if (provisioned.length > 0) {
+        // Single-use consume inside the tx: a replay/foreign id aborts the
+        // whole check-in (issue #86).
+        const q = txQueryFrom(client);
+        await consumeProvisionedIntents(userId, photoIds, q, deps);
+        const photos = photosWithSource(provisioned, checkin_id);
+        // $1 = checkin id, $2 = photos JSON (the SET clause's $2::jsonb).
+        await client.query(SET_CHECKIN_PHOTOS_SQL, [checkin_id, JSON.stringify(photos)]);
+        await client.query(MERGE_GALLERY_SQL, [input.cafe_id, JSON.stringify(photos)]);
+      }
 
-    await recomputeWorkStats(input.cafe_id, 0, txRunnerFrom(client));
+      // DG79: any check-in at this cafe silently resolves the user's pending
+      // navigations to it (outcome `auto`) — same transaction, so the prompt
+      // can never fire for a visit the check-in already proves.
+      await autoResolveNavigationsTx(txQueryFrom(client), userId, input.cafe_id);
 
-    return { checkin_id, deduped };
-  });
+      await recomputeWorkStats(input.cafe_id, 0, txRunnerFrom(client));
+
+      return { checkin_id, deduped };
+    });
+  } catch (err) {
+    // P1 (BRAWUKA-279): the transaction rolled back but the R2 variants
+    // `provisionPhotos` wrote survive — compensate best-effort. The intents
+    // stay unconsumed (the consume rolled back too), so a retry with the
+    // same photo ids can still succeed; the #158 sweeper is the backstop.
+    if (provisioned.length > 0) await compensateProvisionedPhotos(photoIds, deps);
+    throw err;
+  }
 }

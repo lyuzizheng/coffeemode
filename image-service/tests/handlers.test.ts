@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AwsClient } from "aws4fetch";
 import { R2HeadObjectError, headObject } from "../src/r2";
-import handler, { handleComplete, handleUpload } from "../src/index";
+import handler, { handleComplete, handleDelete, handleUpload } from "../src/index";
 import { MAX_UPLOAD_BYTES } from "../src/constants";
 import { baseEnv } from "./helpers";
 
@@ -262,6 +262,63 @@ describe("handleComplete", () => {
     expect(data.originalPut.headers["x-amz-meta-targettype"]).toBe("provision");
     expect(data.originalPut.headers["x-amz-meta-targetid"]).toBe(imageUuid);
   });
+});
+
+describe("handleDelete", () => {
+  it("deletes all three variant keys derived from imageUuid", async () => {
+    const env = baseEnv();
+    const imageUuid = validUuid();
+    for (const prefix of ["original", "card", "thumbnail"]) {
+      await env.R2_BUCKET.put(`${prefix}/${imageUuid}.webp`, new Uint8Array([0xde]), {
+        httpMetadata: { contentType: "image/webp" },
+      });
+    }
+
+    const response = await handleDelete(
+      makeRequest("POST", "/v1/images/delete", { imageUuid, userId: "u1" }),
+      env,
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as { imageUuid: string; deleted: string[]; missing: string[] };
+    expect(data.imageUuid).toBe(imageUuid);
+    expect(data.deleted.sort()).toEqual(
+      [`original/${imageUuid}.webp`, `card/${imageUuid}.webp`, `thumbnail/${imageUuid}.webp`].sort(),
+    );
+    expect(data.missing).toEqual([]);
+    for (const prefix of ["original", "card", "thumbnail"]) {
+      expect(await env.R2_BUCKET.head(`${prefix}/${imageUuid}.webp`)).toBeNull();
+    }
+  });
+
+  it("reports missing keys instead of failing (idempotent retry)", async () => {
+    const env = baseEnv();
+    const imageUuid = validUuid();
+    await env.R2_BUCKET.put(`original/${imageUuid}.webp`, new Uint8Array([0xde]), {
+      httpMetadata: { contentType: "image/webp" },
+    });
+
+    const response = await handleDelete(makeRequest("POST", "/v1/images/delete", { imageUuid }), env);
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as { deleted: string[]; missing: string[] };
+    expect(data.deleted).toEqual([`original/${imageUuid}.webp`]);
+    expect(data.missing.sort()).toEqual(
+      [`card/${imageUuid}.webp`, `thumbnail/${imageUuid}.webp`].sort(),
+    );
+  });
+
+  it("rejects invalid UUIDs and unauthenticated callers", async () => {
+    const env = baseEnv();
+    expect(
+      (await handleDelete(makeRequest("POST", "/v1/images/delete", { imageUuid: "nope" }), env)).status,
+    ).toBe(400);
+    const anon = new Request("https://image-service.example.com/v1/images/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imageUuid: validUuid() }),
+    });
+    expect((await handleDelete(anon, env)).status).toBe(401);
+  });
+});
 
   it("rejects unknown targetType values", async () => {
     const env = baseEnv();
@@ -348,7 +405,6 @@ describe("handleComplete", () => {
     expect(data.message).toContain(String(MAX_UPLOAD_BYTES));
     vi.restoreAllMocks();
   });
-});
 
 describe("router", () => {
   afterEach(() => vi.unstubAllGlobals());

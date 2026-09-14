@@ -7,6 +7,7 @@ import {
   type CreateCafeInput,
 } from "@/lib/validation/cafe";
 import {
+  compensateProvisionedPhotos,
   consumeProvisionedIntents,
   defaultProvisionPhotosDeps,
   provisionPhotos,
@@ -153,6 +154,11 @@ export async function createCafeWithFirstCheckIn(
       return { cafe_id, checkin_id, tz };
     });
   } catch (err) {
+    // P1 (BRAWUKA-279): the transaction rolled back but the R2 variants
+    // `provisionPhotos` wrote survive — compensate best-effort. The intents
+    // stay unconsumed (the consume rolled back too), so the caller can retry
+    // against the existing cafe; the #158 sweeper is the backstop.
+    if (provisioned.length > 0) await compensateProvisionedPhotos(photoIds, deps);
     if (err instanceof CafeExistsError) throw err;
     if (isUniqueViolation(err)) {
       // Concurrent create won the race; the transaction has rolled back

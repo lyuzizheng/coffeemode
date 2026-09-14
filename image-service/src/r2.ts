@@ -65,6 +65,48 @@ export async function headObject(
   return { size: head.size };
 }
 
+/**
+ * Delete the R2 objects at `keys`. Missing keys are reported, not errors:
+ * the caller's compensation path is best-effort and idempotent (a retry
+ * must not fail because a previous attempt already deleted the object).
+ * Throws on a storage failure so the caller can log it; a non-empty
+ * `deleted` + `missing` split is returned otherwise.
+ */
+export async function deleteObjects(
+  env: Env,
+  keys: string[],
+): Promise<{ deleted: string[]; missing: string[] }> {
+  const deleted: string[] = [];
+  const missing: string[] = [];
+  if (env.R2_ENDPOINT) {
+    const aws = r2Client(env);
+    const base = env.R2_ENDPOINT.replace(/\/+$/, "");
+    for (const key of keys) {
+      const res = await aws.fetch(`${base}/${env.R2_BUCKET_NAME}/${key}`, { method: "DELETE" });
+      if (res.ok || res.status === 404) {
+        // Benign: drain the body so the socket can be reused.
+        await res.body?.cancel().catch(() => {});
+        (res.status === 404 ? missing : deleted).push(key);
+      } else {
+        // Benign: drain before throwing so the error path never leaks a stream.
+        await res.body?.cancel().catch(() => {});
+        throw new Error(`R2 DELETE ${key} failed with status ${res.status}`);
+      }
+    }
+    return { deleted, missing };
+  }
+  for (const key of keys) {
+    const head = await env.R2_BUCKET.head(key);
+    if (!head) {
+      missing.push(key);
+      continue;
+    }
+    await env.R2_BUCKET.delete(key);
+    deleted.push(key);
+  }
+  return { deleted, missing };
+}
+
 export function ttlSeconds(env: Env): number {
   const parsed = Number.parseInt(env.UPLOAD_URL_TTL_SECONDS ?? "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_UPLOAD_URL_TTL_SECONDS;

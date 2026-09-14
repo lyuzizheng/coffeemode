@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach, type Mock } from "vitest";
-import { getProcessUrls, requestUploadUrl } from "@/lib/images/image-service-client";
+import { deleteImageVariants, getProcessUrls, requestUploadUrl } from "@/lib/images/image-service-client";
 
 describe("image-service-client", () => {
   let fetchSpy: Mock;
@@ -124,6 +124,23 @@ describe("image-service-client", () => {
     await expect(getProcessUrls({ imageUuid: "u", targetType: "cafe", targetId: "t" })).rejects.toMatchObject({
       message: "Image not found",
       status: 404,
+    });
+  });
+
+  it("deleteImageVariants posts to /v1/images/delete with the imageUuid", async () => {
+    fetchSpy.mockResolvedValue(new Response(JSON.stringify({ imageUuid: "u", deleted: [], missing: [] }), { status: 200 }));
+    await deleteImageVariants("u");
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("https://image-service.example.com/v1/images/delete");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse((init?.body as string) ?? "{}")).toEqual({ imageUuid: "u" });
+  });
+
+  it("deleteImageVariants throws ImageServiceError on upstream failure", async () => {
+    fetchSpy.mockResolvedValue(new Response("boom", { status: 500 }));
+    await expect(deleteImageVariants("u")).rejects.toMatchObject({
+      name: "ImageServiceError",
+      status: 500,
     });
   });
 });

@@ -1,9 +1,9 @@
-import type { CompleteRequest, CompleteResponse, Env, UploadResponse } from "./types";
+import type { CompleteRequest, CompleteResponse, DeleteResponse, Env, UploadResponse } from "./types";
 import { authorized, internalError, json, unauthorized } from "./auth";
 import { isValidUUID } from "../../web/shared/uuid";
 import { validateUploadSize } from "../../web/shared/images/validation";
 import { sanitizeMetadata } from "./validate";
-import { headObject, presignedGetUrl, presignedPutUrl, publicUrl, ttlSeconds } from "./r2";
+import { deleteObjects, headObject, presignedGetUrl, presignedPutUrl, publicUrl, ttlSeconds } from "./r2";
 import { IMMUTABLE_CACHE_CONTROL, MAX_UPLOAD_BYTES, PROVISION_TARGET_TYPE } from "./constants";
 
 /** Validation failure envelope — same shape as poi-service
@@ -178,6 +178,43 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
   return json(response);
 }
 
+/**
+ * Best-effort compensation for the web creation/complete flows (BRAWUKA-279):
+ * after `processImage` writes variants to R2, a DB transaction may still roll
+ * back (duplicate check-in, consumed intent, unique conflict). The caller then
+ * POSTs here to delete the orphaned variants. All three variant keys are
+ * derived server-side from `imageUuid`, so a caller cannot delete arbitrary
+ * objects; missing keys are reported, never errors (idempotent retries).
+ */
+export async function handleDelete(request: Request, env: Env): Promise<Response> {
+  if (!(await authorized(request, env))) {
+    return unauthorized();
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return error("invalid_request", "invalid JSON body");
+  }
+  if (!body || typeof body !== "object") {
+    return error("invalid_request", "invalid JSON body");
+  }
+
+  const record = body as Record<string, unknown>;
+  const imageUuid = record.imageUuid;
+  if (typeof imageUuid !== "string" || !isValidUUID(imageUuid)) {
+    return error("invalid_request", "imageUuid must be a valid UUID");
+  }
+  sanitizeMetadata(record.userId);
+
+  const normalizedUuid = imageUuid.toLowerCase();
+  const keys = makeKeys(normalizedUuid);
+  const { deleted, missing } = await deleteObjects(env, [keys.original, keys.card, keys.thumbnail]);
+  const response: DeleteResponse = { imageUuid: normalizedUuid, deleted, missing };
+  return json(response);
+}
+
 export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     try {
@@ -195,6 +232,10 @@ export default {
 
       if (method === "POST" && path === "/v1/images/complete") {
         return await handleComplete(request, env);
+      }
+
+      if (method === "POST" && path === "/v1/images/delete") {
+        return await handleDelete(request, env);
       }
 
       return error("not_found", "route not found", 404);

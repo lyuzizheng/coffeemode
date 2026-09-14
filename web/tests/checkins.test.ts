@@ -40,8 +40,8 @@ vi.mock("@/lib/db/postgres", async (importOriginal) => ({
 // Real provisionPhotos/consumeProvisionedIntents run against these fake deps;
 // only the default-deps factory is swapped (issue #86 seam).
 const provisionDeps = {
-  checkUploadIntent: vi.fn(),
-  consumeUploadIntent: vi.fn(),
+  checkUploadIntents: vi.fn(),
+  consumeUploadIntents: vi.fn(),
   getProcessUrls: vi.fn(),
   processImage: vi.fn(),
 };
@@ -117,8 +117,8 @@ function mockCheckInHappyPath(checkinId = CHECKIN) {
 beforeEach(() => {
   vi.resetAllMocks();
   signedIn();
-  provisionDeps.checkUploadIntent.mockResolvedValue(true);
-  provisionDeps.consumeUploadIntent.mockResolvedValue(true);
+  provisionDeps.checkUploadIntents.mockResolvedValue([IMG]);
+  provisionDeps.consumeUploadIntents.mockResolvedValue(true);
   provisionDeps.getProcessUrls.mockResolvedValue({ keys: FAKE_KEYS });
   provisionDeps.processImage.mockResolvedValue({ imageUuid: IMG, width: 800, height: 600 });
 });
@@ -385,8 +385,8 @@ describe("createCheckIn", () => {
 
     await createCheckIn(USER.id, validInput({ photo_ids: undefined }));
     expect(clientQueryMock).toHaveBeenCalledTimes(8);
-    expect(provisionDeps.checkUploadIntent).not.toHaveBeenCalled();
-    expect(provisionDeps.consumeUploadIntent).not.toHaveBeenCalled();
+    expect(provisionDeps.checkUploadIntents).not.toHaveBeenCalled();
+    expect(provisionDeps.consumeUploadIntents).not.toHaveBeenCalled();
     for (const call of clientQueryMock.mock.calls) {
       expect(call[0]).not.toContain("gallery");
       expect(call[0]).not.toContain("set photos");
@@ -395,7 +395,7 @@ describe("createCheckIn", () => {
 
   it("fails before the transaction when a photo id has no valid intent (foreign/replayed)", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
-    provisionDeps.checkUploadIntent.mockResolvedValue(false);
+    provisionDeps.checkUploadIntents.mockResolvedValue([]);
 
     const err = await createCheckIn(USER.id, validInput()).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(PhotoIntentError);
@@ -405,7 +405,7 @@ describe("createCheckIn", () => {
 
   it("aborts the check-in when the intent consume loses a replay race inside the tx", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
-    provisionDeps.consumeUploadIntent.mockResolvedValue(false);
+    provisionDeps.consumeUploadIntents.mockResolvedValue(false);
     clientQueryMock
       .mockResolvedValueOnce({ rows: [{ lock: 1 }] }) // BRAWUKA-125 advisory xact lock
       .mockResolvedValueOnce({ rows: [{ id: CAFE }] }) // in-tx cafe gate
@@ -443,7 +443,7 @@ describe("createCheckIn", () => {
 
     const err = await createCheckIn(USER.id, validInput()).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(CafeNotFoundError);
-    expect(provisionDeps.checkUploadIntent).not.toHaveBeenCalled(); // no wasted sharp work
+    expect(provisionDeps.checkUploadIntents).not.toHaveBeenCalled(); // no wasted sharp work
     expect(clientQueryMock).not.toHaveBeenCalled();
   });
 
@@ -454,7 +454,7 @@ describe("createCheckIn", () => {
     );
     expect(poolQueryMock).not.toHaveBeenCalled();
     expect(clientQueryMock).not.toHaveBeenCalled();
-    expect(provisionDeps.checkUploadIntent).not.toHaveBeenCalled();
+    expect(provisionDeps.checkUploadIntents).not.toHaveBeenCalled();
   });
 
   it("rejects an invalid idempotency key before touching the database (DG61)", async () => {
@@ -463,7 +463,7 @@ describe("createCheckIn", () => {
     ).rejects.toThrow("Invalid idempotency key");
     expect(poolQueryMock).not.toHaveBeenCalled();
     expect(clientQueryMock).not.toHaveBeenCalled();
-    expect(provisionDeps.checkUploadIntent).not.toHaveBeenCalled();
+    expect(provisionDeps.checkUploadIntents).not.toHaveBeenCalled();
   });
 
   it("returns the original id without writing when the key was already recorded (DG61 replay)", async () => {
@@ -478,7 +478,7 @@ describe("createCheckIn", () => {
     // single-use intents stay untouched, no second row, no stats rewrite.
     expect(poolQueryMock).toHaveBeenCalledTimes(1);
     expect(clientQueryMock).not.toHaveBeenCalled();
-    expect(provisionDeps.checkUploadIntent).not.toHaveBeenCalled();
+    expect(provisionDeps.checkUploadIntents).not.toHaveBeenCalled();
   });
 
   it("converts a raced insert conflict into the winner's id instead of a second row (DG61)", async () => {
@@ -600,7 +600,7 @@ describe("POST /api/checkins", () => {
 
   it("400s invalid_photos when a photo id was not issued to the caller", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] });
-    provisionDeps.checkUploadIntent.mockResolvedValue(false);
+    provisionDeps.checkUploadIntents.mockResolvedValue([]);
     const res = await checkinPOST(postRequest(url, validBody()));
     expect(res.status).toBe(400);
     await expect(res.json()).resolves.toMatchObject({ error: "invalid_photos" });

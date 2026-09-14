@@ -41,8 +41,8 @@ vi.mock("@/lib/db/postgres", async (importOriginal) => ({
 // Real provisionPhotos/consumeProvisionedIntents run against these fake deps;
 // only the default-deps factory is swapped (issue #86 seam).
 const provisionDeps = {
-  checkUploadIntent: vi.fn(),
-  consumeUploadIntent: vi.fn(),
+  checkUploadIntents: vi.fn(),
+  consumeUploadIntents: vi.fn(),
   getProcessUrls: vi.fn(),
   processImage: vi.fn(),
 };
@@ -122,8 +122,8 @@ function mockCreateHappyPath(cafeId = "cafe-1", checkinId = "checkin-1") {
 beforeEach(() => {
   vi.resetAllMocks();
   signedIn();
-  provisionDeps.checkUploadIntent.mockResolvedValue(true);
-  provisionDeps.consumeUploadIntent.mockResolvedValue(true);
+  provisionDeps.checkUploadIntents.mockResolvedValue([IMG]);
+  provisionDeps.consumeUploadIntents.mockResolvedValue(true);
   provisionDeps.getProcessUrls.mockResolvedValue({ keys: FAKE_KEYS });
   provisionDeps.processImage.mockResolvedValue({ imageUuid: IMG, width: 800, height: 600 });
 });
@@ -291,7 +291,7 @@ describe("createCafeWithFirstCheckIn", () => {
 
   it("fails before any DB write or remote work when a photo id has no valid intent (foreign/replayed)", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [] }); // pre-provision dedupe check
-    provisionDeps.checkUploadIntent.mockResolvedValue(false);
+    provisionDeps.checkUploadIntents.mockResolvedValue([]);
 
     const err = await createCafeWithFirstCheckIn(USER.id, {
       name: "x",
@@ -306,7 +306,7 @@ describe("createCafeWithFirstCheckIn", () => {
 
   it("aborts the creation when the intent consume loses a replay race inside the tx", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [] }); // pre-provision dedupe check
-    provisionDeps.consumeUploadIntent.mockResolvedValue(false);
+    provisionDeps.consumeUploadIntents.mockResolvedValue(false);
     clientQueryMock
       .mockResolvedValueOnce({ rows: [] }) // dedupe pre-check
       .mockResolvedValueOnce({ rows: [{ id: "cafe-1" }] }) // insert cafe
@@ -335,7 +335,7 @@ describe("createCafeWithFirstCheckIn", () => {
 
     expect(err).toBeInstanceOf(CafeExistsError);
     expect((err as CafeExistsError).existingCafeId).toBe("existing-7");
-    expect(provisionDeps.checkUploadIntent).not.toHaveBeenCalled(); // no wasted sharp work
+    expect(provisionDeps.checkUploadIntents).not.toHaveBeenCalled(); // no wasted sharp work
     expect(clientQueryMock).not.toHaveBeenCalled(); // no transaction attempted
   });
 
@@ -407,7 +407,7 @@ describe("POST /api/cafes", () => {
 
   it("400s invalid_photos when a photo id was not issued to the caller", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [] }); // pre-provision dedupe check
-    provisionDeps.checkUploadIntent.mockResolvedValue(false);
+    provisionDeps.checkUploadIntents.mockResolvedValue([]);
     const res = await createPOST(postRequest(validBody()));
     expect(res.status).toBe(400);
     await expect(res.json()).resolves.toMatchObject({ error: "invalid_photos" });
@@ -1028,9 +1028,7 @@ describe("GET /api/cafes/[id]/checkins", () => {
 
   it("200s when owner requests checkins feed for their own private cafe (DG147 / P1-2)", async () => {
     getUserMock.mockResolvedValue({ data: { user: USER }, error: null });
-    poolQueryMock.mockResolvedValueOnce({
-      rows: [{ id: CAFE_ID, name: "Private Cafe", created_by: USER.id, visibility: "private", work_stats: {} }],
-    });
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ "?column?": 1 }] }); // cafeExists probe
     poolQueryMock.mockResolvedValueOnce({ rows: [] });
 
     const res = await checkinsGET(
@@ -1038,13 +1036,13 @@ describe("GET /api/cafes/[id]/checkins", () => {
       { params: Promise.resolve({ id: CAFE_ID }) },
     );
     expect(res.status).toBe(200);
+    expect(poolQueryMock.mock.calls[0][0]).toContain("select 1 from cafes");
+    expect(poolQueryMock.mock.calls[0][0]).not.toContain("gallery");
   });
 
   it("404s when stranger requests checkins feed for a private cafe", async () => {
     getUserMock.mockResolvedValue({ data: { user: OTHER_USER }, error: null });
-    poolQueryMock.mockResolvedValueOnce({
-      rows: [{ id: CAFE_ID, name: "Private Cafe", created_by: USER.id, visibility: "private", work_stats: {} }],
-    });
+    poolQueryMock.mockResolvedValueOnce({ rows: [] }); // cafeExists probe: invisible
 
     const res = await checkinsGET(
       new Request(`https://localhost/api/cafes/${CAFE_ID}/checkins?mode=newest`),

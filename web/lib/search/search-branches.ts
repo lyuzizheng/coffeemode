@@ -70,48 +70,48 @@ async function fetchIterativeCafes(
   const filteredCafes: CafeWithExternalIds[] = [];
   let openNowBatches = 0;
   let openNowTruncated = false;
-    const targetLimit = Math.max(
-      0,
-      Math.min(
-        filters.limit ?? appConfig.search.defaultSuggestionLimit,
-        appConfig.search.maxSuggestionLimit,
-      ),
+  const targetLimit = Math.max(
+    0,
+    Math.min(
+      filters.limit ?? appConfig.search.defaultSuggestionLimit,
+      appConfig.search.maxSuggestionLimit,
+    ),
+  );
+  const batchSize = appConfig.search.dbFetchCap;
+  const maxBatches = appConfig.search.maxIterativeFetchBatches;
+
+  for (let batch = 0; batch < maxBatches; batch++) {
+    openNowBatches = batch + 1;
+    const offset = batch * batchSize;
+    const cafesBatch = await searchCafesInDb({
+      q: filters.q,
+      city: filters.city,
+      filter_wifi: filters.filter_wifi,
+      filter_outlets: filters.filter_outlets,
+      filter_seats: filters.filter_seats,
+      filter_temp: filters.filter_temp,
+      filter_coffee: filters.filter_coffee,
+      filter_overall: filters.filter_overall,
+      filter_max_stay: filters.filter_max_stay,
+      offset,
+      viewerId: filters.viewer_id,
+      limit: batchSize,
+    });
+
+    rawCafes.push(...cafesBatch);
+
+    const matchingInBatch = cafesBatch.filter((cafe) =>
+      matchesAllFilters(cafe, filters, instant),
     );
-    const batchSize = appConfig.search.dbFetchCap;
-    const maxBatches = appConfig.search.maxIterativeFetchBatches;
+    filteredCafes.push(...matchingInBatch);
 
-    for (let batch = 0; batch < maxBatches; batch++) {
-      openNowBatches = batch + 1;
-      const offset = batch * batchSize;
-      const cafesBatch = await searchCafesInDb({
-        q: filters.q,
-        city: filters.city,
-        filter_wifi: filters.filter_wifi,
-        filter_outlets: filters.filter_outlets,
-        filter_seats: filters.filter_seats,
-        filter_temp: filters.filter_temp,
-        filter_coffee: filters.filter_coffee,
-        filter_overall: filters.filter_overall,
-        filter_max_stay: filters.filter_max_stay,
-        offset,
-        viewerId: filters.viewer_id,
-        limit: batchSize,
-      });
-
-      rawCafes.push(...cafesBatch);
-
-      const matchingInBatch = cafesBatch.filter((cafe) =>
-        matchesAllFilters(cafe, filters, instant),
-      );
-      filteredCafes.push(...matchingInBatch);
-
-      if (filteredCafes.length >= targetLimit || cafesBatch.length < batchSize) {
-        break;
-      }
+    if (filteredCafes.length >= targetLimit || cafesBatch.length < batchSize) {
+      break;
     }
-    if (filteredCafes.length < targetLimit && openNowBatches >= maxBatches) {
-      openNowTruncated = true;
-    }
+  }
+  if (filteredCafes.length < targetLimit && openNowBatches >= maxBatches) {
+    openNowTruncated = true;
+  }
 
   return { rawCafes, filteredCafes, openNowBatches, openNowTruncated };
 }

@@ -11,6 +11,7 @@ import {
 } from "./search-branches";
 import type {
   SearchFilters,
+  SearchReferencePoint,
   SearchResultItem,
   SearchResultSource,
   SearchServiceResponse,
@@ -103,7 +104,6 @@ export async function executeSearch(
 
   const warnings: string[] = [];
   let actualSearchMode: "stored_only" | "live" = "stored_only";
-  const livePoiIds = new Set<string>();
 
   if (openNowTruncated) {
     warnings.push("open_now_truncated");
@@ -121,7 +121,6 @@ export async function executeSearch(
       if (!storedIds.has(livePoi.place_id)) {
         rawPois.push(livePoi);
         storedIds.add(livePoi.place_id);
-        livePoiIds.add(livePoi.place_id);
       }
     }
   }

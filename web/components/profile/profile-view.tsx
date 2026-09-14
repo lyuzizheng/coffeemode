@@ -31,6 +31,15 @@ export function ProfileView({
   const [activeTab, setActiveTab] = useState<TabType>("checkins");
   const baseId = useId();
 
+  // The map tab is the only consumer of the cafes query: keep it disabled
+  // until first visited so a plain profile load skips one paginated DB
+  // query per visit (BRAWUKA-281 P2). The comment above stays true in the
+  // other direction — once fetched, the cache persists across tab switches.
+  const [mapTabVisited, setMapTabVisited] = useState(activeTab === "map");
+  const handleTabChange = (tab: TabType) => {
+    if (tab === "map") setMapTabVisited(true);
+    setActiveTab(tab);
+  };
   // Queries mounted unconditionally at view level to preserve prefetch & cache across tab switches
   const checkinsQuery = useInfiniteQuery({
     queryKey: ["profile", "checkins"],
@@ -45,7 +54,7 @@ export function ProfileView({
     queryFn: ({ pageParam }) => fetchUserCafes(pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && mapTabVisited,
   });
 
   return (
@@ -64,7 +73,7 @@ export function ProfileView({
                 <PublicIdentityToggle profile={profile} onProfileChange={setProfile} />
               </div>
             )}
-            <ProfileTabs activeTab={activeTab} onTabChange={setActiveTab} baseId={baseId} />
+            <ProfileTabs activeTab={activeTab} onTabChange={handleTabChange} baseId={baseId} />
 
             <div className="flex-1 flex flex-col py-2">
               {activeTab === "checkins" && (

@@ -87,6 +87,18 @@ describe("useCountUp", () => {
     expect(result.current).toBe(0);
   });
 
+  it("BRAWUKA-281 P2: resets to 0 when the target drops to 0", () => {
+    const { result, rerender } = renderHook(({ target }: { target: number }) => useCountUp(target), {
+      initialProps: { target: 42 },
+    });
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(result.current).toBe(42);
+    rerender({ target: 0 });
+    expect(result.current).toBe(0);
+  });
+
   it("animates up to target value over time", () => {
     let now = 1000;
     vi.spyOn(performance, "now").mockImplementation(() => now);

@@ -7,10 +7,15 @@ import { useEffect, useState } from "react";
  * Respects prefers-reduced-motion by rendering the final target value immediately.
  */
 export function useCountUp(target: number, durationMs: number = 300): number {
-  const [value, setValue] = useState(0);
+  // Zero/negative targets never animate: derive them during render so a
+  // stat dropping to 0 cannot keep showing its stale value (BRAWUKA-281
+  // P2). Positive targets animate from 0 via the effect below.
+  const [value, setValue] = useState(target <= 0 ? target : 0);
+  const settledNonPositive = target <= 0 && value !== target;
+  if (settledNonPositive) setValue(target);
 
   useEffect(() => {
-    if (typeof window === "undefined" || target <= 0) {
+    if (target <= 0) {
       return;
     }
     const prefersReducedMotion = window.matchMedia(

@@ -1,25 +1,21 @@
-import { logError } from "@/lib/observability/server-log";
 import "server-only";
 
 import { appConfig } from "@/lib/config";
 import { DEFAULT_CITY, findCity } from "@/lib/cities";
-import { searchCafesInDb } from "@/lib/db/search";
-import type { CafeWithExternalIds } from "@/lib/db/search";
-import { searchExternalPOIs, searchPOIs } from "@/lib/places/poi-client";
 import { haversineDistanceM } from "@shared/places/geo";
-import { hasWorkFiltersActive, matchesAllFilters } from "./filter";
+import {
+  fetchCafesForSearch,
+  fetchLivePois,
+  fetchStoredPois,
+  resolvePoiQuery,
+} from "./search-branches";
 import type {
   SearchFilters,
-  SearchReferencePoint,
   SearchResultItem,
   SearchResultSource,
   SearchServiceResponse,
 } from "./types";
 import type { POI } from "@shared/places/types";
-
-function hasUnpushedFilters(filters: SearchFilters): boolean {
-  return Boolean(filters.open_now);
-}
 
 export function resolveReferencePoint(
   lat?: number,
@@ -87,87 +83,24 @@ export async function executeSearch(
   const startTime = performance.now();
   const refPoint = resolveReferencePoint(filters.lat, filters.lng, filters.city);
 
-  const hasUnpushed = hasUnpushedFilters(filters);
-  const rawCafes: CafeWithExternalIds[] = [];
-  let filteredCafes: CafeWithExternalIds[] = [];
-  let openNowBatches = 0;
-  let openNowTruncated = false;
+  // The three branches are mutually independent: POI dedup runs after all
+  // three settle, so they fan out concurrently — total latency is the max
+  // of the branches, not the sum (BRAWUKA-281 P1).
+  const poiQuery = resolvePoiQuery(filters);
+  const wantLive = poiQuery !== null && Boolean(filters.include_live);
 
-  if (!hasUnpushed) {
-    // 1. Fetch matching cafes from DB with work filters pushed down to SQL
-    const cafes = await searchCafesInDb({
-      q: filters.q,
-      city: filters.city,
-      filter_wifi: filters.filter_wifi,
-      filter_outlets: filters.filter_outlets,
-      filter_seats: filters.filter_seats,
-      filter_temp: filters.filter_temp,
-      filter_coffee: filters.filter_coffee,
-      filter_overall: filters.filter_overall,
-      filter_max_stay: filters.filter_max_stay,
-      viewerId: filters.viewer_id,
-      limit: appConfig.search.dbFetchCap,
-    });
-    rawCafes.push(...cafes);
-    filteredCafes = rawCafes.filter((cafe) =>
-      matchesAllFilters(cafe, filters, instant),
-    );
-  } else {
-    // Bounded iterative fetch for queries with in-memory filters (e.g. open_now)
-    const targetLimit = Math.max(
-      0,
-      Math.min(
-        filters.limit ?? appConfig.search.defaultSuggestionLimit,
-        appConfig.search.maxSuggestionLimit,
-      ),
-    );
-    const batchSize = appConfig.search.dbFetchCap;
-    const maxBatches = appConfig.search.maxIterativeFetchBatches;
+  const [cafeRes, storedRes, liveRes] = await Promise.all([
+    fetchCafesForSearch(filters, instant),
+    poiQuery !== null
+      ? fetchStoredPois(poiQuery, refPoint)
+      : Promise.resolve({ results: [] as POI[], failed: false }),
+    wantLive && poiQuery !== null
+      ? fetchLivePois(poiQuery, refPoint)
+      : Promise.resolve({ results: [] as POI[], failed: false }),
+  ]);
 
-    for (let batch = 0; batch < maxBatches; batch++) {
-      openNowBatches = batch + 1;
-      const offset = batch * batchSize;
-      const cafesBatch = await searchCafesInDb({
-        q: filters.q,
-        city: filters.city,
-        filter_wifi: filters.filter_wifi,
-        filter_outlets: filters.filter_outlets,
-        filter_seats: filters.filter_seats,
-        filter_temp: filters.filter_temp,
-        filter_coffee: filters.filter_coffee,
-        filter_overall: filters.filter_overall,
-        filter_max_stay: filters.filter_max_stay,
-        offset,
-        viewerId: filters.viewer_id,
-        limit: batchSize,
-      });
+  const { rawCafes, filteredCafes, openNowBatches, openNowTruncated } = cafeRes;
 
-      rawCafes.push(...cafesBatch);
-
-      const matchingInBatch = cafesBatch.filter((cafe) =>
-        matchesAllFilters(cafe, filters, instant),
-      );
-      filteredCafes.push(...matchingInBatch);
-
-      if (filteredCafes.length >= targetLimit || cafesBatch.length < batchSize) {
-        break;
-      }
-    }
-
-    if (filteredCafes.length < targetLimit && openNowBatches >= maxBatches) {
-      openNowTruncated = true;
-    }
-  }
-
-  const existingPlaceIds = new Set<string>();
-  for (const cafe of rawCafes) {
-    if (cafe.google_place_id) existingPlaceIds.add(cafe.google_place_id);
-    if (cafe.apple_poi_id) existingPlaceIds.add(cafe.apple_poi_id);
-  }
-
-  // 2. Fetch POIs if no active work filters and keyword is given
-  const hasWorkFilters = hasWorkFiltersActive(filters);
-  let rawPois: POI[] = [];
   const warnings: string[] = [];
   let actualSearchMode: "stored_only" | "live" = "stored_only";
   const livePoiIds = new Set<string>();
@@ -175,45 +108,28 @@ export async function executeSearch(
   if (openNowTruncated) {
     warnings.push("open_now_truncated");
   }
+  if (storedRes.failed) warnings.push("poi_unavailable");
+  if (wantLive) {
+    actualSearchMode = "live";
+    if (liveRes.failed) warnings.push("live_poi_unavailable");
+  }
 
-  if (!hasWorkFilters && filters.q && filters.q.trim().length >= appConfig.search.minPoiQueryLength) {
-    try {
-      const poiRes = await searchPOIs({
-        q: filters.q.trim(),
-        lat: refPoint.lat ?? undefined,
-        lng: refPoint.lng ?? undefined,
-        r: appConfig.search.maxRadiusKm,
-      });
-      rawPois = poiRes.results ?? [];
-    } catch (err) {
-      logError({ route: "search-service stored POI search", error: err });
-      warnings.push("poi_unavailable");
-    }
-
-    if (filters.include_live) {
-      actualSearchMode = "live";
-      try {
-        const liveRes = await searchExternalPOIs({
-          q: filters.q.trim(),
-          lat: refPoint.lat ?? undefined,
-          lng: refPoint.lng ?? undefined,
-          r: appConfig.search.maxRadiusKm,
-        });
-        if (liveRes?.results) {
-          const storedIds = new Set(rawPois.map((p) => p.place_id));
-          for (const livePoi of liveRes.results) {
-            if (!storedIds.has(livePoi.place_id)) {
-              rawPois.push(livePoi);
-              storedIds.add(livePoi.place_id);
-              livePoiIds.add(livePoi.place_id);
-            }
-          }
-        }
-      } catch (err) {
-        logError({ route: "search-service live POI search", error: err });
-        warnings.push("live_poi_unavailable");
+  let rawPois: POI[] = [...storedRes.results];
+  if (wantLive && !liveRes.failed) {
+    const storedIds = new Set(rawPois.map((p) => p.place_id));
+    for (const livePoi of liveRes.results) {
+      if (!storedIds.has(livePoi.place_id)) {
+        rawPois.push(livePoi);
+        storedIds.add(livePoi.place_id);
+        livePoiIds.add(livePoi.place_id);
       }
     }
+  }
+
+  const existingPlaceIds = new Set<string>();
+  for (const cafe of rawCafes) {
+    if (cafe.google_place_id) existingPlaceIds.add(cafe.google_place_id);
+    if (cafe.apple_poi_id) existingPlaceIds.add(cafe.apple_poi_id);
   }
 
   // DG134: external source toggle (Apple gated until MapKit ready)

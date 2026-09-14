@@ -231,4 +231,37 @@ describe("useNavPrompt", () => {
     expect(onCheckIn).toHaveBeenCalledWith(ITEM.cafe.id, ITEM.cafe.name);
     expect(screen.getByTestId("item").textContent).toBe("none");
   });
+
+  it("BRAWUKA-281 P2: a wedged SW stops polling after ~5s and still loads the prompt", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ prompt: ITEM }), { status: 200 }),
+    );
+    const neverActive = { active: { state: "activating" } };
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: { ready: Promise.resolve(neverActive), controller: null },
+    });
+    render(
+      <Wrapper>
+        <Hook />
+      </Wrapper>,
+    );
+    // Past the 100×50ms cap the loop must exit and schedule the fetch
+    // (fallback setTimeout 1500ms) — 8s covers both legs.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8_000);
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/api/navigations/prompt");
+    expect(screen.getByTestId("item").textContent).toBe("Seed Cafe");
+    // No unbounded tail: nothing more fires after another 30s.
+    fetchMock.mockClear();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: undefined,
+    });
+  });
 });

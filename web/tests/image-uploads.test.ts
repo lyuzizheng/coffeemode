@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   checkUploadIntent,
+  checkUploadIntents,
   consumeUploadIntent,
   recordUploadIntent,
 } from "@/lib/db/image-uploads";
@@ -43,12 +44,31 @@ describe("checkUploadIntent", () => {
     expect(sql).toContain("interval '1 hour'");
     expect(params).toEqual([IMAGE, USER]);
   });
-
   it("returns false for a missing/expired/mismatched intent and for invalid ids", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [] });
     await expect(checkUploadIntent(USER, IMAGE)).resolves.toBe(false);
     await expect(checkUploadIntent("nope", IMAGE)).resolves.toBe(false);
     expect(poolQueryMock).toHaveBeenCalledTimes(1); // invalid ids never hit the DB
+  });
+});
+
+describe("checkUploadIntents", () => {
+  it("batches the pre-check into one ANY($2) round trip", async () => {
+    const IMG2 = "22345678-1234-4123-9234-123456789abc";
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ image_uuid: IMAGE }] });
+    await expect(checkUploadIntents(USER, [IMAGE, IMG2])).resolves.toEqual([IMAGE]);
+    expect(poolQueryMock).toHaveBeenCalledTimes(1);
+    const [sql, params] = poolQueryMock.mock.calls[0];
+    expect(sql).toContain("image_uuid = any($2)");
+    expect(sql).toContain("interval '1 hour'");
+    expect(params).toEqual([USER, [IMAGE, IMG2]]);
+  });
+
+  it("short-circuits empty input and skips invalid ids without touching the DB", async () => {
+    await expect(checkUploadIntents(USER, [])).resolves.toEqual([]);
+    await expect(checkUploadIntents("nope", [IMAGE])).resolves.toEqual([]);
+    await expect(checkUploadIntents(USER, ["nope"])).resolves.toEqual([]);
+    expect(poolQueryMock).not.toHaveBeenCalled();
   });
 });
 

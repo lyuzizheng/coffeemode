@@ -46,6 +46,26 @@ export async function checkUploadIntent(userId: string, imageUuid: string): Prom
 }
 
 /**
+ * Batched pre-check for multi-photo creates (BRAWUKA-281 P1): one batched
+ * DB round trip instead of N sequential `checkUploadIntent` reads. Returns
+ * the subset of `imageUuids` whose intent is valid for `userId`. Invalid
+ * ids are skipped (never reach SQL); an empty input short-circuits.
+ */
+export async function checkUploadIntents(userId: string, imageUuids: string[]): Promise<string[]> {
+  const valid = imageUuids.filter(
+    (id) => isValidUUID(userId) && isValidUUID(id),
+  );
+  if (valid.length === 0) return [];
+  const { rows } = await query<{ image_uuid: string }>(
+    `select image_uuid from image_upload_intents
+     where user_id = $1 and image_uuid = any($2)
+       and created_at > now() - interval '${INTENT_WINDOW}'`,
+    [userId, valid],
+  );
+  return rows.map((row) => row.image_uuid);
+}
+
+/**
  * Consume the intent: single-use DELETE ... RETURNING. 0 rows = not
  * issued to this user, expired, or a replay — the caller must treat the
  * complete as failed. Pass the transaction's query fn (`q`) so the

@@ -407,4 +407,61 @@ describe("search-service", () => {
     expect(searchExternalPOIs).toHaveBeenCalled();
     expect(res.results[0].source).toBe("google");
   });
+
+  it("BRAWUKA-281 P1: fans out DB + stored + live concurrently (latency is max, not sum)", async () => {
+    const started: string[] = [];
+    vi.mocked(searchCafesInDb).mockImplementation(async () => {
+      started.push("db");
+      await new Promise<void>((resolve) => setTimeout(resolve, 40));
+      return [makeDbCafe({ id: "c1", name: "Parallel Cafe" })];
+    });
+    vi.mocked(searchPOIs).mockImplementation(async () => {
+      started.push("stored");
+      await new Promise<void>((resolve) => setTimeout(resolve, 40));
+      return { results: [makePoi({ place_id: "poi-1", name: "Parallel Stored" })] };
+    });
+    vi.mocked(searchExternalPOIs).mockImplementation(async () => {
+      started.push("live");
+      await new Promise<void>((resolve) => setTimeout(resolve, 40));
+      return { results: [makePoi({ place_id: "poi-live", name: "Parallel Live", source: "google" })] };
+    });
+
+    const t0 = performance.now();
+    const res = await executeSearch({ q: "Parallel", city: "singapore", include_live: true });
+    const elapsed = performance.now() - t0;
+
+    // All three branches started before any finished (~40ms each): a
+    // serial run would take >= 120ms, the fan-out takes ~max (well under).
+    expect(started).toEqual(expect.arrayContaining(["db", "stored", "live"]));
+    expect(elapsed).toBeLessThan(110);
+    expect(res.results.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("BRAWUKA-281 P1: partial POI failure keeps warnings and the surviving branches", async () => {
+    vi.mocked(searchCafesInDb).mockResolvedValue([makeDbCafe({ id: "c1", name: "Survivor Cafe" })]);
+    vi.mocked(searchPOIs).mockRejectedValue(new Error("stored down"));
+    vi.mocked(searchExternalPOIs).mockResolvedValue({
+      results: [makePoi({ place_id: "live-1", name: "Live Survivor", source: "google" })],
+    });
+
+    const res = await executeSearch({ q: "Survivor", city: "singapore", include_live: true });
+    expect(res.warnings).toContain("poi_unavailable");
+    expect(res.warnings).not.toContain("live_poi_unavailable");
+    expect(res.search_mode).toBe("live");
+    expect(res.results.some((r) => r.id === "c1")).toBe(true);
+    expect(res.results.some((r) => r.id === "live-1")).toBe(true);
+  });
+
+  it("BRAWUKA-281 P1: live failure degrades to live_poi_unavailable without losing stored results", async () => {
+    vi.mocked(searchCafesInDb).mockResolvedValue([makeDbCafe({ id: "c1", name: "Stored Cafe" })]);
+    vi.mocked(searchPOIs).mockResolvedValue({
+      results: [makePoi({ place_id: "stored-1", name: "Stored Survivor" })],
+    });
+    vi.mocked(searchExternalPOIs).mockRejectedValue(new Error("live down"));
+
+    const res = await executeSearch({ q: "Stored", city: "singapore", include_live: true });
+    expect(res.warnings).toContain("live_poi_unavailable");
+    expect(res.warnings).not.toContain("poi_unavailable");
+    expect(res.results.some((r) => r.id === "stored-1")).toBe(true);
+  });
 });

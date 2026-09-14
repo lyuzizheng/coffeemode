@@ -96,7 +96,7 @@ describe("ProfileView", () => {
     expect(screen.getByRole("tab", { name: "Search History" })).toBeInTheDocument();
   });
 
-  it("mounts both checkins and cafes queries at view root and persists data across tab switches", async () => {
+  it("defers the cafes query until the map tab is first visited", async () => {
     const mockProfile = {
       id: "user-1",
       displayName: "Coffee Lover",
@@ -169,15 +169,21 @@ describe("ProfileView", () => {
       expect(screen.getByText("Artisan Cafe")).toBeInTheDocument();
     });
 
-    // Both queries were triggered upon mount
+    // BRAWUKA-281 P2: the cafes query stays disabled until the map tab is
+    // first visited — a plain profile load skips one paginated DB query.
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/profile/checkins"));
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/profile/cafes"));
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/profile/cafes"));
 
-    // Switch to My Coffee Map
+    // Switch to My Coffee Map — the cafes query fires exactly once.
     const mapTab = screen.getByRole("tab", { name: "My Coffee Map" });
     fireEvent.click(mapTab);
     expect(mapTab).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText("Created by me")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/profile/cafes"));
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Created by me")).toBeInTheDocument();
+    });
 
     // Switch to Favorites
     const favoritesTab = screen.getByRole("tab", { name: "Favorites" });

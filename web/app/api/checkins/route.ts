@@ -19,7 +19,7 @@ import { requireSameOrigin } from "@/lib/security/origin";
  * does not exist. Photos are image UUIDs from /api/images/upload; the
  * server provisions and derives them (issue #86) — 400 invalid_photos
  * when an id was not issued to the caller or was already consumed.
- * DG61: a replayed idempotency_key returns the original {checkinId} with
+ * DG61: a replayed idempotency_key returns the original {checkin_id} with
  * 200 and writes nothing; a fresh write returns 201.
  */
 export async function POST(request: Request) {
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
     // DG61: a replayed idempotency key returns the ORIGINAL id with the
     // same body shape — 200 marks "already recorded" so retries are
     // observable, 201 marks a fresh write.
-    return NextResponse.json({ checkinId: result.checkinId }, { status: result.deduped ? 200 : 201 });
+    return NextResponse.json({ checkin_id: result.checkin_id }, { status: result.deduped ? 200 : 201 });
   } catch (err) {
     if (err instanceof CafeNotFoundError) {
       return apiError("not_found", "cafe not found", 404);

@@ -159,7 +159,7 @@ async function uploadTestWebP(client: ApiClient): Promise<string> {
  */
 async function createSoleOwnerCafe(client: ApiClient, nonce: string): Promise<string> {
   const photoId = await uploadTestWebP(client);
-  const res = await client.post<{ cafeId: string; checkinId: string }>(cafesPOST, "/api/cafes", {
+  const res = await client.post<{ cafe_id: string; checkin_id: string }>(cafesPOST, "/api/cafes", {
     name: `Race Shell ${nonce}`,
     lat: 1.3048,
     lng: 103.8318,
@@ -175,7 +175,7 @@ async function createSoleOwnerCafe(client: ApiClient, nonce: string): Promise<st
     },
   });
   expect(res.status).toBe(201);
-  return res.data.cafeId;
+  return res.data.cafe_id;
 }
 
 describeBudget("http write budget + delete race (BRAWUKA-165)", () => {

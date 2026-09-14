@@ -28,17 +28,17 @@ export interface UserProfileStatsDto {
 
 export interface UserCheckInItemDto {
   id: string;
-  cafeId: string;
-  cafeName: string;
-  cafeCity: string;
-  cafeIsDeleted: boolean;
-  visitedAt: string;
+  cafe_id: string;
+  cafe_name: string;
+  cafe_city: string;
+  cafe_is_deleted: boolean;
+  visited_at: string;
   scores: CheckInScores;
-  maxStay: MaxStay | null;
-  likesCount: number;
+  max_stay: MaxStay | null;
+  likes_count: number;
   notes: string | null;
   photos: StoredImage[];
-  isCreation: boolean;
+  is_creation: boolean;
 }
 
 export interface UserCafeItemDto {
@@ -46,7 +46,7 @@ export interface UserCafeItemDto {
   name: string;
   city: string;
   cover: string | null;
-  lastVisitedAt: string;
-  checkinsCount: number;
-  isCreation: boolean;
+  last_visited_at: string;
+  checkins_count: number;
+  is_creation: boolean;
 }

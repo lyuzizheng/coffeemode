@@ -90,7 +90,7 @@ export async function createCheckIn(
   userId: string,
   input: CreateCheckInInput,
   deps: ProvisionPhotosDeps = defaultProvisionPhotosDeps(),
-): Promise<{ checkinId: string; deduped: boolean }> {
+): Promise<{ checkin_id: string; deduped: boolean }> {
   if (!isValidUUID(userId)) throw new Error("Invalid user ID");
   if (!isValidUUID(input.cafe_id)) throw new Error("Invalid cafe ID");
   if (input.idempotency_key !== undefined && !isValidUUID(input.idempotency_key)) {
@@ -109,7 +109,7 @@ export async function createCheckIn(
       idempotencyKey,
     ]);
     const replayId = replay.rows[0]?.id;
-    if (replayId) return { checkinId: replayId, deduped: true };
+    if (replayId) return { checkin_id: replayId, deduped: true };
   }
 
   // Fail fast on a missing cafe BEFORE provisioning — sharp processing is
@@ -149,9 +149,9 @@ export async function createCheckIn(
       input.visited_at ?? null,
       idempotencyKey ?? null,
     ]);
-    let checkinId = res.rows[0]?.id;
+    let checkin_id = res.rows[0]?.id;
     let deduped = false;
-    if (!checkinId && idempotencyKey) {
+    if (!checkin_id && idempotencyKey) {
       // ON CONFLICT DO NOTHING swallowed a raced first attempt that
       // committed between the fast-path lookup and this insert: return its
       // id instead of a second row. (Without a key the insert always
@@ -160,19 +160,19 @@ export async function createCheckIn(
         userId,
         idempotencyKey,
       ]);
-      checkinId = raced.rows[0]?.id;
-      deduped = Boolean(checkinId);
+      checkin_id = raced.rows[0]?.id;
+      deduped = Boolean(checkin_id);
     }
-    if (!checkinId) throw new Error("check-in insert returned no id");
+    if (!checkin_id) throw new Error("check-in insert returned no id");
 
     if (provisioned.length > 0) {
       // Single-use consume inside the tx: a replay/foreign id aborts the
       // whole check-in (issue #86).
       const q = txQueryFrom(client);
       await consumeProvisionedIntents(userId, photoIds, q, deps);
-      const photos = photosWithSource(provisioned, checkinId);
+      const photos = photosWithSource(provisioned, checkin_id);
       // $1 = checkin id, $2 = photos JSON (the SET clause's $2::jsonb).
-      await client.query(SET_CHECKIN_PHOTOS_SQL, [checkinId, JSON.stringify(photos)]);
+      await client.query(SET_CHECKIN_PHOTOS_SQL, [checkin_id, JSON.stringify(photos)]);
       await client.query(MERGE_GALLERY_SQL, [input.cafe_id, JSON.stringify(photos)]);
     }
 
@@ -183,6 +183,6 @@ export async function createCheckIn(
 
     await recomputeWorkStats(input.cafe_id, 0, txRunnerFrom(client));
 
-    return { checkinId, deduped };
+    return { checkin_id, deduped };
   });
 }

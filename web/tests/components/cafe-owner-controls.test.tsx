@@ -138,7 +138,6 @@ describe("CafeOwnerControls", () => {
         if (deleteCalls === 1) {
           return jsonResponse(403, {
             error: "cafe_has_other_checkins",
-            code: "cafe_has_other_checkins",
             n: 3,
           });
         }

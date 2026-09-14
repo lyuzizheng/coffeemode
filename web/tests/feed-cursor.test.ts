@@ -129,7 +129,7 @@ describe("feed cursor encode/decode", () => {
         mode: "newest",
         viewerId: null,
       });
-      expect(result).toEqual({ checkins: [], nextCursor: null });
+      expect(result).toEqual({ checkins: [], next_cursor: null });
     });
   });
 });

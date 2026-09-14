@@ -13,7 +13,7 @@ import { requireSameOrigin } from "@/lib/security/origin";
 /**
  * POST /api/checkins/[id]/like
  * Toggle the current user's like on a check-in; the CTE keeps
- * checkins.likes_count in sync atomically. Returns {liked, likesCount}.
+ * checkins.likes_count in sync atomically. Returns {liked, likes_count}.
  * Requires auth; 404 when the check-in is missing or soft-deleted;
  * 403 self_like_forbidden when the caller tries to like their own check-in.
  */

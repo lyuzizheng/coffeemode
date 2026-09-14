@@ -26,17 +26,17 @@ type UserCheckInRow = {
 function toUserCheckInItems(rows: UserCheckInRow[]): UserCheckInItemDto[] {
   return rows.map((r) => ({
     id: r.id,
-    cafeId: r.cafe_id,
-    cafeName: r.cafe_name,
-    cafeCity: r.cafe_city,
-    cafeIsDeleted: Boolean(r.cafe_is_deleted),
-    visitedAt: r.visited_at.toISOString(),
+    cafe_id: r.cafe_id,
+    cafe_name: r.cafe_name,
+    cafe_city: r.cafe_city,
+    cafe_is_deleted: Boolean(r.cafe_is_deleted),
+    visited_at: r.visited_at.toISOString(),
     scores: r.scores ?? {},
-    maxStay: r.max_stay ?? null,
-    likesCount: Number(r.likes_count ?? 0),
+    max_stay: r.max_stay ?? null,
+    likes_count: Number(r.likes_count ?? 0),
     notes: r.notes,
     photos: Array.isArray(r.photos) ? r.photos : [],
-    isCreation: Boolean(r.is_creation),
+    is_creation: Boolean(r.is_creation),
   }));
 }
 
@@ -47,9 +47,9 @@ function toUserCheckInItems(rows: UserCheckInRow[]): UserCheckInItemDto[] {
 export async function getUserCheckIns(
   userId: string,
   options: { limit?: number; cursor?: string } = {},
-): Promise<{ items: UserCheckInItemDto[]; nextCursor: string | null }> {
+): Promise<{ items: UserCheckInItemDto[]; next_cursor: string | null }> {
   if (!isValidUUID(userId)) {
-    return { items: [], nextCursor: null };
+    return { items: [], next_cursor: null };
   }
 
   const limit = Math.max(
@@ -96,7 +96,7 @@ export async function getUserCheckIns(
   const items = toUserCheckInItems(rawItems);
 
   const last = items[items.length - 1];
-  const nextCursor = hasMore && last ? `${last.visitedAt}_${last.id}` : null;
+  const next_cursor = hasMore && last ? `${last.visited_at}_${last.id}` : null;
 
-  return { items, nextCursor };
+  return { items, next_cursor };
 }

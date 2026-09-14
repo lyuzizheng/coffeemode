@@ -111,8 +111,8 @@ function checkin(id: string): PublicCheckIn {
 describe("dedupeCheckins", () => {
   it("keeps the first occurrence when a row moves between pages", () => {
     const pages: CheckInFeedPage[] = [
-      { checkins: [checkin("a"), checkin("b")], nextCursor: "c1" },
-      { checkins: [checkin("b"), checkin("c")], nextCursor: null },
+      { checkins: [checkin("a"), checkin("b")], next_cursor: "c1" },
+      { checkins: [checkin("b"), checkin("c")], next_cursor: null },
     ];
     expect(dedupeCheckins(pages).map((c) => c.id)).toEqual(["a", "b", "c"]);
   });

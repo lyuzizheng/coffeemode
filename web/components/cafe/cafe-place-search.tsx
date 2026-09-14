@@ -12,6 +12,7 @@ import { useTranslations } from "next-intl";
 import { useState, type FormEvent } from "react";
 import { ApplePlaceSearch } from "@/components/cafe/apple-place-search";
 import { isUnauthorized, responseMessage, throwIfUnauthorized } from "@/lib/http";
+import { readOnboardingState } from "@/lib/onboarding-store";
 import type { POI, POISearchResponse } from "@shared/places/types";
 
 type EntryMode = "link" | "search";
@@ -62,7 +63,15 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn }: CafeP
     setSearching(true);
     onError(null);
     try {
-      const response = await fetch(`/api/places/search?source=google&q=${encodeURIComponent(query.trim())}`);
+      // Bias live Google results toward the user's known center (BRAWUKA-280):
+      // the worker sorts by distance only when lat/lng arrive.
+      const stored = readOnboardingState()?.lastLocation ?? null;
+      const params = new URLSearchParams({ source: "google", q: query.trim() });
+      if (stored) {
+        params.set("lat", String(stored.lat));
+        params.set("lng", String(stored.lng));
+      }
+      const response = await fetch(`/api/places/search?${params}`);
       throwIfUnauthorized(response);
       if (!response.ok) throw new Error(await responseMessage(response, t("searchFailed")));
       const data = (await response.json()) as POISearchResponse;

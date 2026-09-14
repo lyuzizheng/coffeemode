@@ -46,7 +46,7 @@ function mockFetch() {
       return Promise.resolve({
         ok: true,
         status: 200,
-        json: async () => ({ checkin: null, revisitWindowHours: 24 }),
+        json: async () => ({ checkin: null, revisit_window_hours: 24 }),
       });
     }
     if (init?.method === "PATCH" || init?.method === "DELETE") {

@@ -12,7 +12,6 @@ import { DELETE as deleteCafe } from "@/app/api/cafes/[id]/route";
 import { POST as postCheckin } from "@/app/api/checkins/route";
 import { PATCH as patchCheckin, DELETE as deleteCheckin } from "@/app/api/checkins/[id]/route";
 import { POST as postCheckinLike } from "@/app/api/checkins/[id]/like/route";
-import { POST as postImageComplete } from "@/app/api/images/complete/route";
 import { POST as postImageUpload } from "@/app/api/images/upload/route";
 import { POST as postNavigation } from "@/app/api/navigations/route";
 import { POST as postPlacesExternal } from "@/app/api/places/external/route";
@@ -196,12 +195,6 @@ describe("mutating API routes reject cross-site requests at the boundary", () =>
 
   it("POST /api/checkins/[id]/like rejects cross-origin", async () => {
     const res = await postCheckinLike(crossSiteReq("https://coffeemode.app/api/checkins/1/like", "POST"), dummyParams);
-    expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
-  });
-
-  it("POST /api/images/complete rejects cross-origin", async () => {
-    const res = await postImageComplete(crossSiteReq("https://coffeemode.app/api/images/complete", "POST"));
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });

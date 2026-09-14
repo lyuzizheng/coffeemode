@@ -339,6 +339,7 @@
     "signInRequired": "请先登录再发布",
     "photosUploading": "照片还在上传中，稍等一下",
     "photosFailed": "部分照片上传失败，点照片重试",
+    "photoTooLarge": "照片超过 10 MB。",
     "draftRestored": "草稿已恢复，点打卡即可发布",
     "promptCaption": "来打个卡，帮其他 nomad 种草避雷吧！",
     "notSet": "未设置",
@@ -487,6 +488,32 @@
     "sheet_aria": "咖啡馆发现",
     "sheet_handle_aria": "拖动调整面板高度",
     "unknown_cafe": "咖啡店"
+  },
+  "navPrompt": {
+    "headline": "有去 {cafe} 喝一杯吗？",
+    "context": "你{day}还导航来了这里",
+    "day_yesterday": "昨天",
+    "day_count": "{count}天前",
+    "yes": "有去！",
+    "notYet": "还没去",
+    "wontGo": "不去了",
+    "pill": "有去喝一杯吗？"
+  },
+  "onboarding": {
+    "headline": "找到真正能办公的咖啡馆",
+    "detected": "你好像在 {city} 哦",
+    "enable_location": "开启定位",
+    "locating": "定位中…",
+    "skip": "暂时跳过",
+    "pick_city": "挑一个城市",
+    "use_city": "就用{city}",
+    "location_off": "定位没开，挑一个城市吧",
+    "declined_toast": "定位没开成功，没关系",
+    "unavailable_toast": "没拿到你的位置，挑一个城市吧",
+    "first_nomad": "你是 {city} 的第一位 nomad — 打个卡，帮后来的 nomad 种草避雷吧",
+    "settings_toast": "定位没开 — 去系统设置里打开吧",
+    "locate_aria": "定位我的位置",
+    "dialog_aria": "欢迎"
   },
   "share": {
     "aria": "分享",

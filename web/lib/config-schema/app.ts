@@ -3,6 +3,7 @@ import { parseBudgetsSection } from "./budgets";
 import { parseCheckinsSection } from "./checkins";
 import { parseImagesSection } from "./images";
 import { parseProfileSection } from "./profile";
+import { parsePromptQueueSection } from "./prompt-queue";
 import { parseQuerySection } from "./query";
 import { parseSearchSection } from "./search";
 import { parseSeoSection } from "./seo";
@@ -35,8 +36,17 @@ function parseCafesSection(file: string, value: unknown): AppConfig["cafes"] {
 
 function parseFeedSection(file: string, value: unknown): AppConfig["feed"] {
   const feed = record(file, "feed", value);
+  const helpful = record(file, "feed.helpful", feed.helpful);
   return {
     pageSize: positiveNumber(file, "feed.pageSize", feed.pageSize),
+    helpful: {
+      halfLifeDays: positiveNumber(file, "feed.helpful.halfLifeDays", helpful.halfLifeDays),
+      snapshotRetentionDays: positiveNumber(
+        file,
+        "feed.helpful.snapshotRetentionDays",
+        helpful.snapshotRetentionDays,
+      ),
+    },
   };
 }
 
@@ -50,6 +60,18 @@ function parseDiscoverySection(file: string, value: unknown): AppConfig["discove
     },
   };
 }
+function parseOnboardingSection(file: string, value: unknown): AppConfig["onboarding"] {
+  const onboarding = record(file, "onboarding", value);
+  return {
+    cityCoverageKm: positiveNumber(file, "onboarding.cityCoverageKm", onboarding.cityCoverageKm),
+    geolocationTimeoutMs: positiveNumber(
+      file,
+      "onboarding.geolocationTimeoutMs",
+      onboarding.geolocationTimeoutMs,
+    ),
+  };
+}
+
 
 /** Validate raw parsed YAML into the typed app config (exported for tests). */
 export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
@@ -60,8 +82,13 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
     cafes: parseCafesSection(file, root.cafes),
     feed: parseFeedSection(file, root.feed),
     discovery: parseDiscoverySection(file, root.discovery),
+    onboarding: parseOnboardingSection(file, record(file, "onboarding", root.onboarding)),
     seo: parseSeoSection(file, record(file, "seo", root.seo)),
     checkins: parseCheckinsSection(file, record(file, "checkins", root.checkins)),
+    promptQueue: parsePromptQueueSection(
+      file,
+      record(file, "promptQueue", root.promptQueue),
+    ),
     profile: parseProfileSection(file, record(file, "profile", root.profile)),
     images: parseImagesSection(file, record(file, "images", root.images)),
     query: parseQuerySection(file, record(file, "query", root.query)),

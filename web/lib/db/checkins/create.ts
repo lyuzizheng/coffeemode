@@ -15,6 +15,7 @@ import {
   type CreateCheckInInput,
 } from "@/lib/validation/checkin";
 import { query, txQueryFrom, txRunnerFrom, withTransaction } from "../postgres";
+import { autoResolveNavigationsTx } from "../navigations";
 import { MERGE_GALLERY_SQL, photosWithSource } from "./gallery";
 
 const CAFE_EXISTS_SQL = "select id from cafes where id = $1 and deleted_at is null";
@@ -174,6 +175,11 @@ export async function createCheckIn(
       await client.query(SET_CHECKIN_PHOTOS_SQL, [checkinId, JSON.stringify(photos)]);
       await client.query(MERGE_GALLERY_SQL, [input.cafe_id, JSON.stringify(photos)]);
     }
+
+    // DG79: any check-in at this cafe silently resolves the user's pending
+    // navigations to it (outcome `auto`) — same transaction, so the prompt
+    // can never fire for a visit the check-in already proves.
+    await autoResolveNavigationsTx(txQueryFrom(client), userId, input.cafe_id);
 
     await recomputeWorkStats(input.cafe_id, 0, txRunnerFrom(client));
 

@@ -63,9 +63,14 @@ export function ProfileSection() {
           <Tabs.Root defaultSelectedKey="cafes" variant="secondary" aria-label={tp("title")}>
             <Tabs.ListContainer>
               <Tabs.List>
-                <Tabs.Tab id="cafes">{tp("myCafes")}</Tabs.Tab>
-                <Tabs.Tab id="checkins">{tp("myCheckins")}</Tabs.Tab>
-                <Tabs.Indicator />
+                <Tabs.Tab id="cafes">
+                  {tp("myCafes")}
+                  <Tabs.Indicator />
+                </Tabs.Tab>
+                <Tabs.Tab id="checkins">
+                  {tp("myCheckins")}
+                  <Tabs.Indicator />
+                </Tabs.Tab>
               </Tabs.List>
             </Tabs.ListContainer>
             <Tabs.Panel id="cafes" className="pt-4">

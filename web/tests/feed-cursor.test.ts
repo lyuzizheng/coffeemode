@@ -84,6 +84,44 @@ describe("feed cursor encode/decode", () => {
     expect(() => decodeFeedCursor(fractional, "helpful")).toThrow(FeedCursorError);
   });
 
+  it("round-trips a helpful v2 snapshot cursor (DG148)", () => {
+    const raw = encodeFeedCursor({
+      v: 2,
+      mode: "helpful",
+      run: ID,
+      score: 3.25,
+      visited_at: VISITED,
+      id: ID,
+    });
+    expect(raw).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(decodeFeedCursor(raw, "helpful")).toEqual({
+      v: 2,
+      mode: "helpful",
+      run: ID,
+      score: 3.25,
+      visited_at: VISITED,
+      id: ID,
+    });
+  });
+  it("rejects malformed v2 snapshot cursors", () => {
+    // v2 is helpful-only: a v2 cursor decoded as newest is invalid.
+    const helpfulV2 = Buffer.from(
+      JSON.stringify({ v: 2, mode: "helpful", run: ID, score: 1, visited_at: VISITED, id: ID }),
+    ).toString("base64url");
+    expect(() => decodeFeedCursor(helpfulV2, "newest")).toThrow(FeedCursorError);
+    // Bad run id, non-finite/negative score, bad date, bad row id.
+    for (const body of [
+      { v: 2, mode: "helpful", run: "nope", score: 1, visited_at: VISITED, id: ID },
+      { v: 2, mode: "helpful", run: ID, score: -0.5, visited_at: VISITED, id: ID },
+      { v: 2, mode: "helpful", run: ID, score: Number.NaN, visited_at: VISITED, id: ID },
+      { v: 2, mode: "helpful", run: ID, score: 1, visited_at: "not-a-date", id: ID },
+      { v: 2, mode: "helpful", run: ID, score: 1, visited_at: VISITED, id: "nope" },
+      { v: 2, mode: "helpful", score: 1, visited_at: VISITED, id: ID },
+    ]) {
+      const raw = Buffer.from(JSON.stringify(body)).toString("base64url");
+      expect(() => decodeFeedCursor(raw, "helpful")).toThrow(FeedCursorError);
+    }
+  });
   describe("listPublicCheckIns invalid cafeId guard", () => {
     it("returns empty result without querying db when cafeId is not a UUID", async () => {
       const result = await listPublicCheckIns({

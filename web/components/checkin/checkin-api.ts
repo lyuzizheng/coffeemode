@@ -9,6 +9,11 @@ export function invalidateCheckinQueries(queryClient: QueryClient, cafeId: strin
   queryClient.invalidateQueries({ queryKey: ["cafe-checkins", cafeId] });
   queryClient.invalidateQueries({ queryKey: ["last-checkin", cafeId] });
   queryClient.invalidateQueries({ queryKey: ["profile"] });
+  // The discovery list renders work_stats.composite_score on every card and
+  // "cafes-list" is IndexedDB-persisted — without this the new check-in's
+  // score stays stale across tab reopens (keys.ts: mutations invalidate
+  // every affected key explicitly).
+  queryClient.invalidateQueries({ queryKey: ["cafes-list"] });
 }
 
 export async function updateCheckin({

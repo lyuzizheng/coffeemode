@@ -64,6 +64,13 @@ cafes:
 feed:
   # Check-in feed page size for both Helpful and Newest modes (spec 0001).
   pageSize: 20
+  # Daily time-decayed Helpful ranking snapshot (DG148, #140): score =
+  # likes_count × 0.5^(age_days / halfLifeDays), age from visited_at.
+  # Superseded snapshot runs older than snapshotRetentionDays are deleted
+  # on publish.
+  helpful:
+    halfLifeDays: 14
+    snapshotRetentionDays: 7
 discovery:
   # Map-independent fallback center for the nearby-cafes query (DG112: no
   # geolocation prompt in discovery; the locate button is the
@@ -72,6 +79,15 @@ discovery:
   defaultCenter:
     lat: 1.35
     lng: 103.8
+onboarding:
+  # A granted geolocation resolves to the nearest launch city within this
+  # radius; beyond it the IP-detected city becomes a runtime city (DG121).
+  cityCoverageKm: 50
+  # Browser geolocation timeout for the welcome card and locate button.
+  # Mirrored to the client via NEXT_PUBLIC_ONBOARDING_GEOLOCATION_TIMEOUT_MS
+  # (next.config.ts) — the client bundle cannot read this file.
+  geolocationTimeoutMs: 10000
+
 seo:
   # CDN cache for the SSR /cafes/[id] shell (DG105/DG107): a viral shared
   # link must not hit Postgres per open. s-maxage is the shared-cache TTL;
@@ -120,6 +136,20 @@ checkins:
   # the createCheckIn windowed existence check and exposed to the drawer via
   # GET /api/checkins/last so client and server never hardcode it.
   revisitWindowHours: 24
+promptQueue:
+  # Navigation return-prompt parameters (DG78/DG83/DG91, spec 0001). The
+  # generic queue service (web/lib/prompt-queue) reads these; the client-side
+  # auto-collapse timing is delivered via NEXT_PUBLIC_NAV_PROMPT_COLLAPSE_MS.
+  # A navigation never prompts before this age — earliest the next day (DG78).
+  minAgeHours: 24
+  # Navigations older than this never prompt (DG83).
+  expiryDays: 90
+  # "还没去" sends the item to the back of the queue for at least this long (DG91).
+  reaskDelayHours: 24
+  # Re-ask cap: the (maxReasks + 1)-th "not yet" auto-resolves (DG91).
+  maxReasks: 2
+  # Card → pill auto-collapse delay (spec-owned 8s; client reads via env).
+  autoCollapseMs: 8000
 profile:
   # Profile page primary lists limit cap and default page size (DG107)
   listLimitMax: 50

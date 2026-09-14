@@ -67,6 +67,13 @@ describe("config files", () => {
     expect(appConfig.checkins.photoCap).toBe(6);
     expect(appConfig.checkins.noteMaxChars).toBe(500);
     expect(appConfig.checkins.revisitWindowHours).toBe(24);
+    expect(appConfig.promptQueue).toEqual({
+      minAgeHours: 24,
+      expiryDays: 90,
+      reaskDelayHours: 24,
+      maxReasks: 2,
+      autoCollapseMs: 8000,
+    });
     expect(appConfig.profile.listLimitMax).toBe(50);
     expect(appConfig.profile.listPageSize).toBe(20);
     expect(appConfig.profile.displayNameMaxChars).toBe(24);
@@ -106,6 +113,10 @@ describe("config files", () => {
 
   it("owns the feed page size (spec 0001: 20 per page, both modes)", () => {
     expect(appConfig.feed.pageSize).toBe(20);
+  });
+
+  it("owns the helpful snapshot knobs (DG148: 14-day half-life, 7-day retention)", () => {
+    expect(appConfig.feed.helpful).toEqual({ halfLifeDays: 14, snapshotRetentionDays: 7 });
   });
 
   it("owns the discovery fallback center (DG112: no geolocation prompt)", () => {
@@ -230,6 +241,7 @@ describe("parseAppConfig validation", () => {
     recoveryLimit: 5,
   };
   const validCheckins = { photoCap: 6, noteMaxChars: 500, pendingDraftTtlHours: 72, revisitWindowHours: 24 };
+  const validPromptQueue = { minAgeHours: 24, expiryDays: 90, reaskDelayHours: 24, maxReasks: 2, autoCollapseMs: 8000 };
   const validProfile = {
     listLimitMax: 50,
     listPageSize: 20,
@@ -265,15 +277,18 @@ describe("parseAppConfig validation", () => {
   };
   const validQuery = { staleTimeMs: 300000, gcTimeMs: 86400000, persistMaxAgeMs: 604800000 };
   const validValidation = { cafeAddressMaxChars: 300, profileCityMaxChars: 50 };
+  const validOnboarding = { cityCoverageKm: 50, geolocationTimeoutMs: 10000 };
 
   it("accepts a valid config", () => {
     const valid = {
       search: validSearch,
       stats: validStats,
       cafes: { listLimitMax: 50 },
-      feed: { pageSize: 20 },
+      feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
       discovery: validCenter,
+      onboarding: validOnboarding,
       seo: validSeo,
+        promptQueue: validPromptQueue,
       checkins: validCheckins,
       profile: validProfile,
       images: validImages,
@@ -294,9 +309,11 @@ describe("parseAppConfig validation", () => {
         search: validSearch,
         stats: validStats,
         cafes: { listLimitMax: 50 },
-        feed: { pageSize: 20 },
+        feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
         discovery: validCenter,
+      onboarding: validOnboarding,
         seo: validSeo,
+        promptQueue: validPromptQueue,
         profile: validProfile,
         budgets: validBudgets,
       }),
@@ -309,9 +326,11 @@ describe("parseAppConfig validation", () => {
         search: validSearch,
         stats: validStats,
         cafes: { listLimitMax: 50 },
-        feed: { pageSize: 20 },
+        feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
         discovery: validCenter,
+      onboarding: validOnboarding,
         seo: validSeo,
+        promptQueue: validPromptQueue,
         checkins: validCheckins,
         budgets: validBudgets,
       }),
@@ -324,9 +343,11 @@ describe("parseAppConfig validation", () => {
         search: validSearch,
         stats: validStats,
         cafes: { listLimitMax: 50 },
-        feed: { pageSize: 20 },
+        feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
         discovery: validCenter,
+      onboarding: validOnboarding,
         seo: validSeo,
+        promptQueue: validPromptQueue,
         checkins: validCheckins,
         profile: validProfile,
         images: validImages,
@@ -342,9 +363,11 @@ describe("parseAppConfig validation", () => {
         search: { ...validSearch, maxRadiusKm: "10" },
         stats: validStats,
         cafes: { listLimitMax: 50 },
-        feed: { pageSize: 20 },
+        feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
         discovery: validCenter,
+      onboarding: validOnboarding,
         seo: validSeo,
+        promptQueue: validPromptQueue,
         checkins: validCheckins,
         profile: validProfile,
         budgets: validBudgets,
@@ -358,9 +381,10 @@ describe("parseAppConfig validation", () => {
         search: validSearch,
         stats: validStats,
         cafes: { listLimitMax: 50 },
-        feed: { pageSize: 20 },
+        feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
         discovery: { defaultCenter: { lat: 135, lng: 103.8 } },
         seo: validSeo,
+        promptQueue: validPromptQueue,
         checkins: validCheckins,
         profile: validProfile,
         budgets: validBudgets,
@@ -374,13 +398,15 @@ describe("parseAppConfig validation", () => {
         search: validSearch,
         stats: validStats,
         cafes: { listLimitMax: 50 },
-        feed: { pageSize: 20 },
+        feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
         discovery: validCenter,
+      onboarding: validOnboarding,
         seo: {
           shellCache: { sMaxAgeSeconds: 60.5, staleWhileRevalidateSeconds: 3600 },
           recoveryLimit: 5,
         },
         checkins: validCheckins,
+        promptQueue: validPromptQueue,
         profile: validProfile,
         budgets: validBudgets,
       }),
@@ -393,9 +419,11 @@ describe("parseAppConfig validation", () => {
         search: validSearch,
         stats: validStats,
         cafes: { listLimitMax: 50 },
-        feed: { pageSize: 20 },
+        feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
         discovery: validCenter,
+      onboarding: validOnboarding,
         seo: validSeo,
+        promptQueue: validPromptQueue,
         checkins: { photoCap: 6.5, noteMaxChars: 500, pendingDraftTtlHours: 72 },
         profile: validProfile,
         budgets: validBudgets,
@@ -408,9 +436,11 @@ describe("parseAppConfig validation", () => {
       search: validSearch,
       stats: validStats,
       cafes: { listLimitMax: 50 },
-      feed: { pageSize: 20 },
+      feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
       discovery: validCenter,
+      onboarding: validOnboarding,
       seo: validSeo,
+        promptQueue: validPromptQueue,
       profile: validProfile,
       budgets: validBudgets,
     };
@@ -428,9 +458,11 @@ describe("parseAppConfig validation", () => {
         search: validSearch,
         stats: validStats,
         cafes: { listLimitMax: 50 },
-        feed: { pageSize: 20 },
+        feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
         discovery: validCenter,
+      onboarding: validOnboarding,
         seo: validSeo,
+        promptQueue: validPromptQueue,
         checkins: validCheckins,
         profile: validProfile,
         images: validImages,
@@ -451,9 +483,11 @@ describe("parseAppConfig validation", () => {
     const base = {
       stats: validStats,
       cafes: { listLimitMax: 50 },
-      feed: { pageSize: 20 },
+      feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
       discovery: validCenter,
+      onboarding: validOnboarding,
       seo: validSeo,
+        promptQueue: validPromptQueue,
       checkins: validCheckins,
       profile: validProfile,
       images: validImages,
@@ -479,9 +513,11 @@ describe("parseAppConfig validation", () => {
         search: searchWithoutCache,
         stats: validStats,
         cafes: { listLimitMax: 50 },
-        feed: { pageSize: 20 },
+        feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
         discovery: validCenter,
+      onboarding: validOnboarding,
         seo: validSeo,
+        promptQueue: validPromptQueue,
         checkins: validCheckins,
         profile: validProfile,
         images: validImages,
@@ -498,9 +534,11 @@ describe("parseAppConfig validation", () => {
         search: { ...validSearch, client: { minQueryLength: 3, debounceMs: 0 } },
         stats: validStats,
         cafes: { listLimitMax: 50 },
-        feed: { pageSize: 20 },
+        feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
         discovery: validCenter,
+      onboarding: validOnboarding,
         seo: validSeo,
+        promptQueue: validPromptQueue,
         checkins: validCheckins,
         profile: validProfile,
         images: validImages,
@@ -516,9 +554,11 @@ describe("parseAppConfig validation", () => {
       search: validSearch,
       stats: validStats,
       cafes: { listLimitMax: 50 },
-      feed: { pageSize: 20 },
+      feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
       discovery: validCenter,
+      onboarding: validOnboarding,
       seo: validSeo,
+        promptQueue: validPromptQueue,
       checkins: validCheckins,
       images: validImages,
       query: validQuery,
@@ -547,9 +587,11 @@ describe("parseAppConfig validation", () => {
       search: validSearch,
       stats: validStats,
       cafes: { listLimitMax: 50 },
-      feed: { pageSize: 20 },
+      feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
       discovery: validCenter,
+      onboarding: validOnboarding,
       seo: validSeo,
+        promptQueue: validPromptQueue,
       checkins: validCheckins,
       profile: validProfile,
       budgets: validBudgets,

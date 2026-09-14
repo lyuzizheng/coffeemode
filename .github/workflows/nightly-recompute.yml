@@ -35,3 +35,7 @@ jobs:
       - name: Run work_stats full recompute
         if: ${{ env.DATABASE_URL != '' }}
         run: npm run recompute:work-stats
+
+      - name: Snapshot Helpful ranking (DG148)
+        if: ${{ env.DATABASE_URL != '' }}
+        run: npm run snapshot:helpful-ranking

@@ -53,8 +53,9 @@ export const spring = {
 /** Named choreography delays — absolute offsets and per-index steps for
  * multi-element sequences. Keep per-site delay literals out of components. */
 export const stagger = {
-  /** Check-in success: two steam puffs, then title, then cafe name. */
-  checkinSuccess: { steamA: 0.15, steamB: 0.23, title: 0.2, cafeName: 0.3 },
+  /** Check-in success: two steam puffs, then title, then cafe name, then the
+      submitted-dimension mini WorkBars (per-bar step = workProfile.step). */
+  checkinSuccess: { steamA: 0.15, steamB: 0.23, title: 0.2, cafeName: 0.3, bars: 0.35 },
   /** Theme-preview hero poster: score card, then its score bar fill. */
   heroPoster: { card: 0.12, scoreBar: 0.2 },
   /** WorkProfile bars: per-row delay step. */

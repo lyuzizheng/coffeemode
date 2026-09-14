@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 
 interface CheckinSliderProps {
@@ -26,6 +26,12 @@ export function CheckinSlider({
 }: CheckinSliderProps) {
   const t = useTranslations("checkIn");
   const trackRef = useRef<HTMLDivElement>(null);
+  // DG69: the thumb's 1.15 scale pulse (120ms, spec 0002 signature moment)
+  // rides on the same first touch as navigator.vibrate. Bumping the key
+  // remounts the thumb so the CSS keyframe replays on every press; the
+  // global prefers-reduced-motion kill switch neutralizes it for reduced
+  // motion users.
+  const [pulse, setPulse] = useState(0);
   const isSet = value !== null;
   const displayValue = isSet ? String(value) : "—";
 
@@ -46,6 +52,7 @@ export function CheckinSlider({
       if (disabled) return;
       (e.target as Element).setPointerCapture?.(e.pointerId);
       setFromClientX(e.clientX);
+      setPulse((n) => n + 1);
       // Light haptic on first touch only — not on every pointermove of the drag.
       try {
         navigator.vibrate?.(10);
@@ -124,11 +131,12 @@ export function CheckinSlider({
           )}
           {/* Thumb */}
           <div
+            key={pulse}
             className={`absolute top-1/2 h-7 w-7 -translate-y-1/2 rounded-full border-2 bg-surface shadow-sm transition-[left,transform,opacity] duration-75 ${
               isSet
                 ? "border-accent opacity-100"
                 : "border-border opacity-50"
-            }`}
+            } ${pulse > 0 ? "checkin-thumb-pulse" : ""}`}
             style={{ left: isSet ? `calc(${value}% - 14px)` : "0px" }}
           />
         </div>

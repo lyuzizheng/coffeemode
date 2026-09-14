@@ -31,13 +31,37 @@ export class FeedCursorError extends Error {
   }
 }
 
-interface FeedCursorPayload {
+/**
+ * A Helpful v2 cursor bound to a snapshot run that is no longer active
+ * (DG148). The client restarts from page one; the route maps this to
+ * `410 {code:"cursor_version_expired"}`.
+ */
+export class FeedCursorExpiredError extends Error {
+  constructor(message = "cursor version expired") {
+    super(message);
+    this.name = "FeedCursorExpiredError";
+  }
+}
+
+interface FeedCursorV1 {
   v: 1;
   mode: CheckInFeedMode;
   likes?: number;
   visited_at: string;
   id: string;
 }
+
+/** Helpful snapshot cursor (DG148): bound to the run that issued it. */
+interface FeedCursorV2 {
+  v: 2;
+  mode: "helpful";
+  run: string;
+  score: number;
+  visited_at: string;
+  id: string;
+}
+
+type FeedCursorPayload = FeedCursorV1 | FeedCursorV2;
 
 export function encodeFeedCursor(payload: FeedCursorPayload): string {
   return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
@@ -51,12 +75,38 @@ export function decodeFeedCursor(raw: string, mode: CheckInFeedMode): FeedCursor
   } catch {
     throw new FeedCursorError();
   }
-  const p = parsed as Partial<FeedCursorPayload> | null;
+  const p = parsed as {
+    v?: unknown;
+    mode?: unknown;
+    likes?: unknown;
+    run?: unknown;
+    score?: unknown;
+    visited_at?: unknown;
+    id?: unknown;
+  } | null;
+  if (p === null || typeof p !== "object" || p.mode !== mode) {
+    throw new FeedCursorError();
+  }
+  if (p.v === 2) {
+    // Snapshot cursor: helpful only, bound to its issuing run (DG148).
+    if (
+      mode !== "helpful" ||
+      typeof p.run !== "string" ||
+      !isValidUUID(p.run) ||
+      typeof p.score !== "number" ||
+      !Number.isFinite(p.score) ||
+      p.score < 0 ||
+      typeof p.visited_at !== "string" ||
+      Number.isNaN(Date.parse(p.visited_at)) ||
+      typeof p.id !== "string" ||
+      !isValidUUID(p.id)
+    ) {
+      throw new FeedCursorError();
+    }
+    return p as FeedCursorV2;
+  }
   if (
-    p === null ||
-    typeof p !== "object" ||
     p.v !== 1 ||
-    p.mode !== mode ||
     typeof p.visited_at !== "string" ||
     Number.isNaN(Date.parse(p.visited_at)) ||
     typeof p.id !== "string" ||
@@ -65,7 +115,7 @@ export function decodeFeedCursor(raw: string, mode: CheckInFeedMode): FeedCursor
   ) {
     throw new FeedCursorError();
   }
-  return p as FeedCursorPayload;
+  return p as FeedCursorV1;
 }
 
 interface FeedRow {
@@ -75,6 +125,8 @@ interface FeedRow {
   note: string | null;
   photos: StoredImage[] | null;
   likes_count: number;
+  /** Frozen decay score — selected only on the snapshot read path (DG148). */
+  snapshot_score: number | null;
   visited_at: string;
   liked_by_viewer: boolean | null;
   /**
@@ -141,6 +193,116 @@ order by c.likes_count desc, c.visited_at desc, c.id desc
 limit $6
 `;
 
+const CURSOR_TS_ENTRY = `to_char(e.visited_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+
+/**
+ * Snapshot read path (DG148): order by the frozen `(score, visited_at,
+ * checkin_id)` tuple within the active run, join `checkins` for the DTO,
+ * and keep `deleted_at is null` live — the snapshot freezes order, not
+ * visibility, so check-ins deleted after publication vanish from pages.
+ * `likes_count` is the frozen snapshot value, so likes granted after
+ * publication affect only the next snapshot.
+ */
+const HELPFUL_SNAPSHOT_SQL = `
+select c.id, c.scores, c.max_stay, c.note, c.photos, e.likes_count, c.visited_at,
+       e.score as snapshot_score,
+       (cl.user_id is not null) as liked_by_viewer,
+       (c.user_id = $2) as owned_by_viewer,
+       ${CURSOR_TS_ENTRY} as cursor_visited_at,
+       case when p.show_public_identity then p.public_handle end as author_handle,
+       case when p.show_public_identity then p.display_name end as author_display_name,
+       case when p.show_public_identity then p.avatar_url end as author_avatar_url
+from helpful_ranking_entries e
+join checkins c on c.id = e.checkin_id
+left join checkin_likes cl
+  on cl.checkin_id = c.id and cl.user_id = $2
+left join profiles p on p.id = c.user_id
+where e.run_id = $1 and e.cafe_id = $3 and c.deleted_at is null
+  and (
+    $4::double precision is null
+    or (e.score, e.visited_at, e.checkin_id) < ($4::double precision, $5::timestamptz, $6::uuid)
+  )
+order by e.score desc, e.visited_at desc, e.checkin_id desc
+limit $7
+`;
+
+/** The currently served snapshot run, or null before the first publish. */
+async function getActiveHelpfulRunId(): Promise<string | null> {
+  const { rows } = await query<{ id: string }>(
+    "select id from helpful_ranking_runs where status = 'active' limit 1",
+  );
+  return rows[0]?.id ?? null;
+}
+
+type FeedRowResult = FeedRow & Record<string, unknown>;
+
+/**
+ * One over-fetched Helpful page plus the run that served it (null while no
+ * snapshot is published — the live-tuple SQL stays the fallback ordering).
+ * Stale-version cursors throw FeedCursorExpiredError (DG148).
+ */
+async function queryHelpfulPage(
+  cafeId: string,
+  viewerId: string | null,
+  cursor: FeedCursorPayload | null,
+  pageSize: number,
+): Promise<{ rows: FeedRowResult[]; runId: string | null }> {
+  const runId = await getActiveHelpfulRunId();
+  if (runId === null) {
+    // A v2 cursor names a run that no longer exists (or never did).
+    if (cursor?.v === 2) throw new FeedCursorExpiredError();
+    const { rows } = await query<FeedRowResult>(HELPFUL_SQL, [
+      cafeId,
+      viewerId,
+      cursor?.v === 1 ? (cursor.likes ?? null) : null,
+      cursor?.visited_at ?? null,
+      cursor?.id ?? null,
+      pageSize + 1,
+    ]);
+    return { rows, runId: null };
+  }
+  // v1 cursors predate snapshots and are valid only while no active run
+  // exists; a v2 cursor for any other run is a stale version.
+  if (cursor && (cursor.v === 1 || cursor.run !== runId)) {
+    throw new FeedCursorExpiredError();
+  }
+  const { rows } = await query<FeedRowResult>(HELPFUL_SNAPSHOT_SQL, [
+    runId,
+    viewerId,
+    cafeId,
+    cursor?.v === 2 ? cursor.score : null,
+    cursor?.visited_at ?? null,
+    cursor?.id ?? null,
+    pageSize + 1,
+  ]);
+  return { rows, runId };
+}
+
+/** Next-page cursor for the row a page ended on (v2 while a snapshot serves). */
+function encodeNextCursor(
+  mode: CheckInFeedMode,
+  runId: string | null,
+  last: FeedRowResult,
+): string {
+  if (mode === "helpful" && runId !== null) {
+    return encodeFeedCursor({
+      v: 2,
+      mode: "helpful",
+      run: runId,
+      score: last.snapshot_score ?? 0,
+      visited_at: last.cursor_visited_at,
+      id: last.id,
+    });
+  }
+  return encodeFeedCursor({
+    v: 1,
+    mode,
+    likes: mode === "helpful" ? last.likes_count : undefined,
+    visited_at: last.cursor_visited_at,
+    id: last.id,
+  });
+}
+
 /**
  * One page of non-deleted public check-ins for a cafe. `viewerId` is null
  * for anonymous sessions — `liked_by_viewer` and `owned_by_viewer` are then
@@ -159,23 +321,19 @@ export async function listPublicCheckIns(params: {
   const pageSize = appConfig.feed.pageSize;
   const cursor = params.cursor ? decodeFeedCursor(params.cursor, mode) : null;
 
-  const { rows } =
-    mode === "newest"
-      ? await query<FeedRow & Record<string, unknown>>(NEWEST_SQL, [
-          cafeId,
-          viewerId,
-          cursor?.visited_at ?? null,
-          cursor?.id ?? null,
-          pageSize + 1,
-        ])
-      : await query<FeedRow & Record<string, unknown>>(HELPFUL_SQL, [
-          cafeId,
-          viewerId,
-          cursor?.likes ?? null,
-          cursor?.visited_at ?? null,
-          cursor?.id ?? null,
-          pageSize + 1,
-        ]);
+  let rows: FeedRowResult[];
+  let helpfulRunId: string | null = null;
+  if (mode === "newest") {
+    ({ rows } = await query<FeedRowResult>(NEWEST_SQL, [
+      cafeId,
+      viewerId,
+      cursor?.visited_at ?? null,
+      cursor?.id ?? null,
+      pageSize + 1,
+    ]));
+  } else {
+    ({ rows, runId: helpfulRunId } = await queryHelpfulPage(cafeId, viewerId, cursor, pageSize));
+  }
 
   const pageRows = rows.slice(0, pageSize);
   const checkins: PublicCheckIn[] = pageRows.map((row) => ({
@@ -196,14 +354,7 @@ export async function listPublicCheckIns(params: {
 
   let nextCursor: string | null = null;
   if (rows.length > pageSize && pageRows.length > 0) {
-    const last = pageRows[pageRows.length - 1];
-    nextCursor = encodeFeedCursor({
-      v: 1,
-      mode,
-      likes: mode === "helpful" ? last.likes_count : undefined,
-      visited_at: last.cursor_visited_at,
-      id: last.id,
-    });
+    nextCursor = encodeNextCursor(mode, helpfulRunId, pageRows[pageRows.length - 1]);
   }
   return { checkins, nextCursor };
 }

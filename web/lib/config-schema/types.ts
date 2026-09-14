@@ -49,12 +49,20 @@ export interface AppConfig {
   };
   feed: {
     pageSize: number;
+    helpful: {
+      halfLifeDays: number;
+      snapshotRetentionDays: number;
+    };
   };
   discovery: {
     defaultCenter: {
       lat: number;
       lng: number;
     };
+  };
+  onboarding: {
+    cityCoverageKm: number;
+    geolocationTimeoutMs: number;
   };
   seo: {
     shellCache: {
@@ -73,6 +81,13 @@ export interface AppConfig {
     noteMaxChars: number;
     pendingDraftTtlHours: number;
     revisitWindowHours: number;
+  };
+  promptQueue: {
+    minAgeHours: number;
+    expiryDays: number;
+    reaskDelayHours: number;
+    maxReasks: number;
+    autoCollapseMs: number;
   };
   profile: {
     listLimitMax: number;

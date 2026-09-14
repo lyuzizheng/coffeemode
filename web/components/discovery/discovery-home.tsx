@@ -25,6 +25,8 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { useMounted } from "@/hooks/use-mounted";
 import type { CafeSummary } from "@/types/cafes";
 import { CheckinDrawer } from "@/components/checkin/checkin-drawer";
+import { NavPromptView } from "./nav-prompt";
+import { useNavPrompt } from "./use-nav-prompt";
 import { DesktopDiscovery } from "./desktop-discovery";
 import { MobileSheet } from "./mobile-sheet";
 
@@ -35,21 +37,36 @@ async function fetchNearbyCafes(lat: number, lng: number): Promise<CafeSummary[]
   return body.cafes;
 }
 
+/** Map overlays never cover the mobile sheet's half/full detail content. */
+function gateMapOverlay(
+  mapOverlay: ReactNode | undefined,
+  isDesktop: boolean,
+  snap: string,
+): ReactNode {
+  return mapOverlay && (isDesktop || snap === "peek") ? mapOverlay : null;
+}
+
 export function DiscoveryHome({
-  defaultCenter,
+  center,
   addCafe,
   initialCafeId,
   isAuthenticated,
+  mapOverlay,
   children,
 }: {
-  /** Fallback map center (web/config/app.yaml discovery.defaultCenter). */
-  defaultCenter: { lat: number; lng: number };
+  /** Nearby-query center — the onboarding slice's resolved city/location,
+   * or the configured `discovery.defaultCenter` fallback. */
+  center: { lat: number; lng: number };
   /** Empty-state CTA slot — the existing creation trigger, auth-aware. */
   addCafe: ReactNode;
   /** Optional initial selected cafe ID (e.g. from ?cafe= query param) */
   initialCafeId?: string;
   /** Server-known auth state — forwarded to the check-in drawer's sign-in gate. */
   isAuthenticated?: boolean;
+  /** Map-surface overlays (welcome card, locate button). On mobile they
+   * render only while the sheet sits at PEEK so they never cover the
+   * half/full detail content; on desktop they are always visible. */
+  mapOverlay?: ReactNode;
   /** Surface children (e.g. landing scaffold / map) coordinated with discovery */
   children?: ReactNode;
 }) {
@@ -59,20 +76,43 @@ export function DiscoveryHome({
   const controller = useDiscoveryController({ initialCafeId });
 
   const cafesQuery = useQuery({
-    queryKey: ["cafes-list", defaultCenter.lat, defaultCenter.lng],
-    queryFn: () => fetchNearbyCafes(defaultCenter.lat, defaultCenter.lng),
+    queryKey: ["cafes-list", center.lat, center.lng],
+    queryFn: () => fetchNearbyCafes(center.lat, center.lng),
   });
 
-  const [checkinCafe, setCheckinCafe] = useState<{ id: string; name: string } | null>(null);
+  const overlay = gateMapOverlay(mapOverlay, isDesktop, controller.snap);
+
+  const [checkinCafe, setCheckinCafe] = useState<{
+    id: string;
+    name: string;
+    promptCaption: boolean;
+  } | null>(null);
   const [checkinOpen, setCheckinOpen] = useState(false);
 
-  const onCheckIn = (cafeId?: string, cafeName?: string) => {
+  const onCheckIn = (cafeId?: string, cafeName?: string, promptCaption = false) => {
     const id = cafeId ?? controller.selectedCafeId;
     if (!id) return;
     const cafe = cafesQuery.data?.find((c) => c.id === id);
-    setCheckinCafe({ id, name: cafeName ?? cafe?.name ?? t("unknown_cafe") });
+    setCheckinCafe({ id, name: cafeName ?? cafe?.name ?? t("unknown_cafe"), promptCaption });
     setCheckinOpen(true);
   };
+
+  // DG85/DG90: the prompt defers while the sheet is at FULL or the check-in
+  // drawer (a modal task surface) is open; it renders once the UI returns
+  // to PEEK/HALF with nothing modal above it.
+  const navPrompt = useNavPrompt({
+    enabled: mounted && controller.snap !== "full" && !checkinOpen,
+    onCheckIn: (cafeId, cafeName) => onCheckIn(cafeId, cafeName, true),
+  });
+  const navPromptView = (placement: "sheet" | "surface") =>
+    navPrompt.item ? (
+      <NavPromptView
+        item={navPrompt.item}
+        pending={navPrompt.pending}
+        onAnswer={navPrompt.answer}
+        placement={placement}
+      />
+    ) : null;
 
   const props = {
     controller,
@@ -82,6 +122,7 @@ export function DiscoveryHome({
     onRetry: () => cafesQuery.refetch(),
     onCheckIn,
     addCafe,
+    navPrompt: navPromptView("sheet"),
   };
 
   const checkinDrawer = checkinCafe ? (
@@ -91,6 +132,7 @@ export function DiscoveryHome({
       cafeId={checkinCafe.id}
       cafeName={checkinCafe.name}
       isAuthenticated={isAuthenticated}
+      promptCaption={checkinCafe.promptCaption}
     />
   ) : null;
 
@@ -101,6 +143,8 @@ export function DiscoveryHome({
     return (
       <>
         {isDesktop ? <DesktopDiscovery {...props} /> : <MobileSheet {...props} />}
+        {isDesktop ? navPromptView("surface") : null}
+        {overlay}
         {checkinDrawer}
       </>
     );
@@ -116,6 +160,8 @@ export function DiscoveryHome({
         {children}
       </DesktopDiscovery>
       {mounted && !isDesktop ? <MobileSheet {...props} /> : null}
+      {mounted && isDesktop ? navPromptView("surface") : null}
+      {mounted ? overlay : null}
       {checkinDrawer}
     </>
   );

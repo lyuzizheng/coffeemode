@@ -6,6 +6,8 @@ import {
   getDisplayNameMaxChars,
   getHandleMaxChars,
   getImageMaxDimension,
+  getNavPromptCollapseMs,
+  getOnboardingGeolocationTimeoutMs,
   getQueryGcTimeMs,
   getQueryPersistMaxAgeMs,
   getQueryStaleTimeMs,
@@ -48,6 +50,10 @@ describe("client config fallbacks match app.yaml", () => {
     expect(getQueryStaleTimeMs()).toBe(appConfig.query.staleTimeMs);
     expect(getQueryGcTimeMs()).toBe(appConfig.query.gcTimeMs);
     expect(getQueryPersistMaxAgeMs()).toBe(appConfig.query.persistMaxAgeMs);
+    expect(getNavPromptCollapseMs()).toBe(appConfig.promptQueue.autoCollapseMs);
+    expect(getOnboardingGeolocationTimeoutMs()).toBe(
+      appConfig.onboarding.geolocationTimeoutMs,
+    );
   });
 
   it("keeps the previously hardcoded client values (no behavior change)", () => {
@@ -60,6 +66,8 @@ describe("client config fallbacks match app.yaml", () => {
     expect(getQueryStaleTimeMs()).toBe(300_000);
     expect(getQueryGcTimeMs()).toBe(86_400_000);
     expect(getQueryPersistMaxAgeMs()).toBe(604_800_000);
+    expect(getNavPromptCollapseMs()).toBe(8_000);
+    expect(getOnboardingGeolocationTimeoutMs()).toBe(10_000);
   });
 
   it("honors env overrides from next.config.ts", () => {
@@ -69,5 +77,7 @@ describe("client config fallbacks match app.yaml", () => {
     expect(getSearchDebounceMs()).toBe(250);
     vi.stubEnv("NEXT_PUBLIC_QUERY_GC_TIME_MS", "3600000");
     expect(getQueryGcTimeMs()).toBe(3_600_000);
+    vi.stubEnv("NEXT_PUBLIC_ONBOARDING_GEOLOCATION_TIMEOUT_MS", "8000");
+    expect(getOnboardingGeolocationTimeoutMs()).toBe(8_000);
   });
 });

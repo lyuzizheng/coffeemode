@@ -5,6 +5,7 @@ import { getCafe } from "@/lib/db/cafes";
 import {
   FEED_MODES,
   FeedCursorError,
+  FeedCursorExpiredError,
   listPublicCheckIns,
 } from "@/lib/discovery/feed";
 import { guard } from "@/lib/api/guard";
@@ -56,6 +57,11 @@ export async function GET(
     });
     return NextResponse.json(page);
   } catch (err) {
+    if (err instanceof FeedCursorExpiredError) {
+      return apiError("cursor_version_expired", "snapshot version expired; restart from page one", 410, {
+        code: "cursor_version_expired",
+      });
+    }
     if (err instanceof FeedCursorError) {
       return apiError("invalid_request", "cursor is invalid or was issued for another mode", 400);
     }

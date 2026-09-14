@@ -339,6 +339,7 @@
     "signInRequired": "Please sign in to publish",
     "photosUploading": "Photos are still uploading — wait a moment",
     "photosFailed": "Some photos couldn't upload — tap a photo to retry",
+    "photoTooLarge": "That photo is larger than 10 MB.",
     "draftRestored": "Draft restored — tap Check in to publish",
     "promptCaption": "Check in — help the next nomad pick their spot!",
     "notSet": "not set",
@@ -487,6 +488,32 @@
     "sheet_aria": "Cafe discovery",
     "sheet_handle_aria": "Drag to resize the panel",
     "unknown_cafe": "Cafe"
+  },
+  "navPrompt": {
+    "headline": "Grabbed a coffee at {cafe}?",
+    "context": "You navigated here {day}",
+    "day_yesterday": "yesterday",
+    "day_count": "{count} days ago",
+    "yes": "I did!",
+    "notYet": "Not yet",
+    "wontGo": "Won't go",
+    "pill": "Grab that coffee?"
+  },
+  "onboarding": {
+    "headline": "Find a cafe you can actually work in",
+    "detected": "Looks like you're in {city}",
+    "enable_location": "Enable location",
+    "locating": "Locating…",
+    "skip": "Skip for now",
+    "pick_city": "Pick a city",
+    "use_city": "Use {city}",
+    "location_off": "Location is off — pick your city",
+    "declined_toast": "Location access was declined",
+    "unavailable_toast": "Couldn't get your location — pick your city",
+    "first_nomad": "You're the first nomad in {city} — check in and help the next one",
+    "settings_toast": "Location is off — enable it in system settings",
+    "locate_aria": "Locate me",
+    "dialog_aria": "Welcome"
   },
   "share": {
     "aria": "Share",

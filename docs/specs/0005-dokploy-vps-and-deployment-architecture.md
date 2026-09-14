@@ -157,7 +157,7 @@ Dokploy manages multi-service Docker Compose stacks behind an integrated Traefik
 | Secondary Web Domain | None | `www.coffeemode.app` (301 redirect to apex) |
 | Cloudflare Proxy Mode | Orange-cloud (Proxied) | Orange-cloud (Proxied) |
 | SSL / TLS Encryption | Full (Strict) | Full (Strict) |
-| Min TLS Version | TLS 1.3 | TLS 1.3 |
+| Min TLS Version | TLS 1.2 (observe, then tighten to 1.3) | TLS 1.2 (observe, then tighten to 1.3) |
 | Edge Caching Rule | Bypass cache for all routes | Cache HTML shells (`s-maxage`); Bypass on `sb-*` cookies & `Set-Cookie` |
 | Edge Cache Vary Header | N/A | Vary: `Accept-Language` (prevents locale cross-pollution, Spec 0001) |
 | Cloudflare Managed Transforms | Add visitor location headers (`CF-IPCity`, `CF-IPCountry`) | Add visitor location headers (`CF-IPCity`, `CF-IPCountry`) |

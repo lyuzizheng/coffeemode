@@ -86,6 +86,17 @@ services:
         reservations:
           cpus: "1.00"
           memory: 1024M
+  cloudflared-prod:
+    image: cloudflare/cloudflared:latest
+    container_name: coffeemode-cloudflared-prod
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TUNNEL_TOKEN_PROD:?CLOUDFLARED_TUNNEL_TOKEN_PROD must be set in Dokploy environment}
+    networks:
+      - coffeemode-prod-network
+      - traefik-net
+    depends_on:
+      web-prod:
+        condition: service_healthy
 
 networks:
   coffeemode-prod-network:

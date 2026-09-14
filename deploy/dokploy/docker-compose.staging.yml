@@ -71,6 +71,17 @@ services:
         reservations:
           cpus: "0.25"
           memory: 256M
+  cloudflared-staging:
+    image: cloudflare/cloudflared:latest
+    container_name: coffeemode-cloudflared-staging
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TUNNEL_TOKEN_STAGING:?CLOUDFLARED_TUNNEL_TOKEN_STAGING must be set in Dokploy environment}
+    networks:
+      - coffeemode-staging-network
+      - traefik-net
+    depends_on:
+      web-staging:
+        condition: service_healthy
 
 networks:
   coffeemode-staging-network:

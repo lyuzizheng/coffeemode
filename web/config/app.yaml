@@ -211,3 +211,10 @@ budgets:
     seo: 0.85
 
 
+runtimeConfig:
+  # Edge cache for GET /api/config (BRAWUKA-284): operator edits land ≤60s
+  # without a redeploy; each PoP revalidates at most once per minute
+  # (manifesto principle 5: extreme cost-efficiency).
+  responseCache:
+    sMaxAgeSeconds: 60
+    staleWhileRevalidateSeconds: 300

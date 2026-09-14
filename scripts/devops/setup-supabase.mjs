@@ -410,6 +410,7 @@ async function main() {
         "navigations",
         "rate_limits",
         "image_upload_intents",
+        "runtime_config",
         "schema_migrations",
       ];
 

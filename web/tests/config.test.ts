@@ -277,6 +277,7 @@ describe("parseAppConfig validation", () => {
   };
   const validQuery = { staleTimeMs: 300000, gcTimeMs: 86400000, persistMaxAgeMs: 604800000 };
   const validValidation = { cafeAddressMaxChars: 300, profileCityMaxChars: 50 };
+  const validRuntimeConfig = { responseCache: { sMaxAgeSeconds: 60, staleWhileRevalidateSeconds: 300 } };
   const validOnboarding = { cityCoverageKm: 50, geolocationTimeoutMs: 10000 };
 
   it("accepts a valid config", () => {
@@ -294,9 +295,10 @@ describe("parseAppConfig validation", () => {
       images: validImages,
       query: validQuery,
       validation: validValidation,
+      runtimeConfig: validRuntimeConfig,
       budgets: validBudgets,
     };
-    expect(parseAppConfig(valid)).toEqual(valid);
+    expect(parseAppConfig(valid)).toEqual({ ...valid, runtimeConfig: validRuntimeConfig });
   });
 
   it("rejects a missing section", () => {
@@ -353,6 +355,7 @@ describe("parseAppConfig validation", () => {
         images: validImages,
         query: validQuery,
         validation: validValidation,
+      runtimeConfig: validRuntimeConfig,
       }),
     ).toThrow(/"budgets" must be a mapping/);
   });
@@ -468,6 +471,7 @@ describe("parseAppConfig validation", () => {
         images: validImages,
         query: validQuery,
         validation: validValidation,
+      runtimeConfig: validRuntimeConfig,
         budgets: {
           ...validBudgets,
           lighthouse: {
@@ -493,6 +497,7 @@ describe("parseAppConfig validation", () => {
       images: validImages,
       query: validQuery,
       validation: validValidation,
+      runtimeConfig: validRuntimeConfig,
       budgets: validBudgets,
     };
     expect(() =>
@@ -523,6 +528,7 @@ describe("parseAppConfig validation", () => {
         images: validImages,
         query: validQuery,
         validation: validValidation,
+      runtimeConfig: validRuntimeConfig,
         budgets: validBudgets,
       }),
     ).toThrow(/"search\.responseCache" must be a mapping/);
@@ -544,6 +550,7 @@ describe("parseAppConfig validation", () => {
         images: validImages,
         query: validQuery,
         validation: validValidation,
+      runtimeConfig: validRuntimeConfig,
         budgets: validBudgets,
       }),
     ).toThrow(/"search\.client\.debounceMs" must be a positive integer/);
@@ -563,6 +570,7 @@ describe("parseAppConfig validation", () => {
       images: validImages,
       query: validQuery,
       validation: validValidation,
+      runtimeConfig: validRuntimeConfig,
       budgets: validBudgets,
     };
     expect(() =>
@@ -594,7 +602,7 @@ describe("parseAppConfig validation", () => {
         promptQueue: validPromptQueue,
       checkins: validCheckins,
       profile: validProfile,
-      budgets: validBudgets,
+      runtimeConfig: validRuntimeConfig,
     };
     expect(() =>
       parseAppConfig({ ...base, images: { ...validImages, webpQuality: 101 }, query: validQuery, validation: validValidation }),

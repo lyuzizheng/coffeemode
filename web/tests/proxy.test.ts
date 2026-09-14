@@ -204,9 +204,11 @@ describe("proxy matcher", () => {
     expect("/manifest.webmanifest").not.toMatch(pattern);
   });
 
-  it("excludes public/no-auth health API routes", () => {
+
+  it("excludes the heartbeat and runtime-config probes (BRAWUKA-284)", () => {
     expect("/api/health").not.toMatch(pattern);
-    expect("/api/health/ready").not.toMatch(pattern);
+    expect("/api/heartbeat").not.toMatch(pattern);
+    expect("/api/config").not.toMatch(pattern);
   });
 
   it("includes places API routes for session refresh", () => {

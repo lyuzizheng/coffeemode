@@ -23,8 +23,10 @@ import {
 } from "@/lib/seo";
 import { getRequestOrigin } from "@/lib/site-origin";
 import { APP_NAME } from "@/lib/site";
+import type { CafeDetail, PublicCafeDetail } from "@/types/cafes";
 import { CafePageActions } from "./cafe-page-actions";
 import { CafePageFeed } from "./cafe-page-feed";
+import { CafeOwnerControls } from "./cafe-owner-controls";
 
 // DB-backed SSR page: render per request; the CDN cache header on /cafes/:id
 // (next.config.ts, TTLs from web/config/app.yaml — DG105/DG107) absorbs the
@@ -36,9 +38,13 @@ export const dynamic = "force-dynamic";
 // resolves before the HTML shell flushes, which is what commits the real
 // 404 status (DG19). A notFound() thrown only from the page body would be
 // streamed with a 200 status.
+// React `cache` dedupes the viewer lookup across loadCafe + the page body —
+// one Supabase getUser() per request, not two.
+const loadViewer = cache(async () => getCurrentUser());
+
 const loadCafe = cache(async (id: string) => {
   if (!isValidUUID(id)) return null;
-  const user = await getCurrentUser();
+  const user = await loadViewer();
   return getCafe(id, user?.id);
 });
 
@@ -99,13 +105,65 @@ export async function generateMetadata({
     },
   };
 }
+/** Title + meta + attribution block — the badge is owner-only (DG147).
+    Props are the narrow public slices only: `openState` feeds the client
+    `OpenState`, so a full `CafeDetail` here would serialize `created_by`,
+    provider ids, and R2 keys into the served HTML (DG13). */
+function CafeHeading({
+  name,
+  address,
+  cityName,
+  openState,
+  isPrivate,
+  privateBadge,
+  author,
+  maintainedByService,
+}: {
+  name: string;
+  address: string | null;
+  cityName: string | null;
+  openState: { opening_hours: CafeDetail["opening_hours"]; tz: CafeDetail["tz"] };
+  isPrivate: boolean;
+  privateBadge: string;
+  author: PublicCafeDetail["author"];
+  maintainedByService: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <h1 className="font-display text-xl font-bold tracking-tight text-foreground">
+          {name}
+        </h1>
+        {isPrivate && (
+          <span className="rounded-sm bg-surface-secondary px-2 py-0.5 text-xs text-muted">
+            {privateBadge}
+          </span>
+        )}
+      </div>
+      <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
+        {cityName && <span>{cityName}</span>}
+        {cityName && address && <span aria-hidden>·</span>}
+        {address && <span>{address}</span>}
+        <OpenState cafe={openState} />
+      </p>
+      <CreatorLine author={author} maintainedByService={maintainedByService} />
+    </div>
+  );
+}
 
 export default async function CafePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const cafe = await loadCafe(id);
   if (!cafe) notFound();
+  const viewer = await loadViewer();
+  // Owner view (DG146/DG147): delete + hide controls and the private badge
+  // render only for the creator. Signed-in requests bypass the CDN shell
+  // cache (sb-* cookie rule), so this never leaks into the shared shell.
+  const isOwner = Boolean(viewer && cafe.created_by === viewer.id);
+  const isPrivate = cafe.visibility === "private";
 
   const td = await getTranslations("discovery");
+  const tc = await getTranslations("cafeDetail");
   const locale = await getLocale();
   const cityName = displayCityName(cafe.city, locale);
   const origin = await getRequestOrigin();
@@ -134,21 +192,16 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
       <main className="mx-auto flex w-full max-w-[640px] flex-1 flex-col gap-5 px-4 pb-12 sm:px-6">
         <CoverCarousel images={covers} alt={cafe.name} />
 
-        <div className="flex flex-col gap-1.5">
-          <h1 className="font-display text-xl font-bold tracking-tight text-foreground">
-            {cafe.name}
-          </h1>
-          <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
-            {cityName && <span>{cityName}</span>}
-            {cityName && cafe.address && <span aria-hidden>·</span>}
-            {cafe.address && <span>{cafe.address}</span>}
-            <OpenState cafe={shell.openState} />
-          </p>
-          <CreatorLine
-            author={publicAttribution.author}
-            maintainedByService={publicAttribution.maintained_by_service}
-          />
-        </div>
+        <CafeHeading
+          name={cafe.name}
+          address={cafe.address}
+          cityName={cityName}
+          openState={shell.openState}
+          isPrivate={isPrivate}
+          privateBadge={tc("private_badge")}
+          author={publicAttribution.author}
+          maintainedByService={publicAttribution.maintained_by_service}
+        />
         <ScorePair stats={cafe.work_stats} />
         <CafePageActions cafe={shell.actions} cafeId={cafe.id} shareUrl={canonical} />
         {/* SSR shell: bars at final width, no entry motion (artifact §2). */}
@@ -165,6 +218,13 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
         {/* Part 2 — the check-in feed (DG106): user content loads from the
             public API after paint, never embedded in the initial HTML. */}
         <CafePageFeed cafeId={cafe.id} cafeName={cafe.name} />
+        {isOwner && (
+          <CafeOwnerControls
+            cafeId={cafe.id}
+            initialVisibility={cafe.visibility ?? "public"}
+            hasCheckins={(cafe.work_stats?.n_checkins ?? 0) > 0}
+          />
+        )}
       </main>
     </div>
   );

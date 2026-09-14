@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-CoffeeMode began as a Vite React SPA (`_archive-coffeemode-frontend/`) plus a Java Spring Boot backend (`_archive-coffeemode-backend/`) with MongoDB. The design grill (rounds 1–6, see `docs/alignment-temp/alignment-progress.md`) re-scoped the product as a digital-nomad coworking review platform and revisited the stack end to end.
+CoffeeMode began as a Vite React SPA plus a Java Spring Boot backend with MongoDB (both removed in BRAWUKA-277). The design grill (rounds 1–6, see `docs/alignment-temp/alignment-progress.md`) re-scoped the product as a digital-nomad coworking review platform and revisited the stack end to end.
 
 Key constraints:
 
@@ -28,5 +28,5 @@ Rewrite the product as a single Next.js 15+ (currently 16.x) full-stack applicat
 
 - One deployable unit for the app instead of two; server code lives in Next.js route handlers and server actions.
 - Sharp runs on the VPS for image processing (Workers CPU limits are too tight for that).
-- The legacy `coffeemode-frontend/` and `coffeemode_backend/` directories have been archived as `_archive-coffeemode-frontend/` and `_archive-coffeemode-backend/` and remain only as historical reference.
+- The legacy `coffeemode-frontend/` and `coffeemode_backend/` trees were removed after the rewrite landed (BRAWUKA-277); no legacy source remains in the repo.
 - Product and implementation details live in `docs/specs/0001-nextjs-migration.md`; this ADR records only the architectural direction.

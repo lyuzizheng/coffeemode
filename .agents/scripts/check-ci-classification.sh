@@ -451,7 +451,7 @@ expect_flag "unit-only mocked route test" "web/tests/profile/profile-route.test.
 
 # 6. Explicit policy for the ungated families (BRAWUKA-173 requirement 2): no
 #    product code, script, or gate input reads them, so they must select nothing.
-for path in "_archive-coffeemode-frontend/src/App.tsx" "_archive-coffeemode-backend/build.gradle" "database-data/cafes.json"; do
+for path in "database-data/cafes.json"; do
   if [[ "$(classify "$path" | sort -u)" == "application=false
 docs=false
 image_service=false

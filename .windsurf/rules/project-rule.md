@@ -4,6 +4,6 @@ trigger: always_on
 
 The canonical coding rules for this repo live in `.agents/rules/coding.md`.
 
-Read that file first — it is the single source of truth for stack, style, and backend route-handler rules. This repo uses HeroUI v3 (not Shadcn/Radix) and Next.js 16 in `web/` (the Java backend is archived).
+Read that file first — it is the single source of truth for stack, style, and backend route-handler rules. This repo uses HeroUI v3 (not Shadcn/Radix) and Next.js 16 in `web/`.
 
 For orientation and the source-of-truth hierarchy, follow `.agents/README.md`, `docs/STRUCTURE.md`, and `AGENTS.md`.

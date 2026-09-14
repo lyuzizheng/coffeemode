@@ -8,8 +8,6 @@ remain in `docs/specs/`; this file owns coding procedure and style only.
 - Active application code is in `web/` (Next.js 16, HeroUI v3, Tailwind v4,
   next-intl, Postgres, Supabase Auth).
 - `poi-service/` and `image-service/` are Cloudflare Workers.
-- `_archive-coffeemode-frontend/` and `_archive-coffeemode-backend/` are reference
-  only, not active implementation targets.
 - Do not introduce Shadcn, Radix, or Material. Follow
   `docs/specs/0002-design-system.md`.
 - Clients call Next.js route handlers; they never connect to Postgres directly.

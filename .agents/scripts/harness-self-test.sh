@@ -256,7 +256,6 @@ expect_classifier "unit-only root test file" "$APPLICATION_ONLY" "web/tests/cafe
 expect_classifier "product configuration" "$INTEGRATION_GATED" "web/config/app.yaml"
 expect_classifier "gate script a suite invokes by path" "$INTEGRATION_GATED" "web/scripts/run-lhci.mjs"
 # Explicitly ungated families must select nothing (documented no-gate decision).
-expect_classifier "archived reference tree" "$FALSES"$'\ndocs=false' "_archive-coffeemode-frontend/src/App.tsx"
 expect_classifier "raw dataset snapshot" "$FALSES"$'\ndocs=false' "database-data/cafes.json"
 
 echo ""

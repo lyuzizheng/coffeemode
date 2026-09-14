@@ -7,8 +7,6 @@ CoffeeMode MonoRepo
 - /web                    Next.js 16 full-stack app (active)
 - /poi-service            Cloudflare Worker POI cache service
 - /image-service          Cloudflare Worker image upload service
-- /_archive-coffeemode-frontend  legacy Vite app (archived)
-- /_archive-coffeemode-backend   legacy Java backend (archived)
 
 ## Tech Stack
 
@@ -17,5 +15,4 @@ CoffeeMode MonoRepo
 - Self-hosted Postgres + Supabase Auth
 - Cloudflare Workers (Wrangler) for the POI cache and image services
 
-Coding rules: `.agents/rules/coding.md`. Spring Boot powered the
-now-archived Java backend under `_archive-coffeemode-backend/`.
+Coding rules: `.agents/rules/coding.md`.

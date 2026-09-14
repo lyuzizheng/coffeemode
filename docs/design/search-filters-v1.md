@@ -166,8 +166,8 @@ Row types, visually distinguished:
 - **Own cafe** — full row as above; selecting it opens the discovery detail
   (shared selection state) on map home, or navigates to `/cafes/[id]` from
   the SSR page.
-- **Saved POI not yet on CoffeeMode** — same row + a muted text badge
-  `Not on CoffeeMode yet` (`text-xs`, `secondary` sage text, no pill
+- **Saved POI not yet on CafeMood** — same row + a muted text badge
+  `Not on CafeMood yet` (`text-xs`, `secondary` sage text, no pill
   background — text with a small `+` glyph). Selecting it enters the creation
   flow (owned by the `cafe-creation` slice; this artifact only reserves the
   entry point).
@@ -230,7 +230,7 @@ Row types, visually distinguished:
 
 Keys under `search.*` and `filters.*` (en/zh). zh references: `Filters` →
 `筛选`, `Any/60+/80+` → `不限/60+/80+`, `Open now` → `营业中`,
-`Not on CoffeeMode yet` → `还未收录`, `Search Google Maps` /
+`Not on CafeMood yet` → `还未收录`, `Search Google Maps` /
 `Search Apple Maps` → `搜索 Google 地图` / `搜索 Apple 地图`,
 `Not finding it?` → `没找到？`, `No places match these filters` →
 `没有符合这些条件的咖啡馆`, `Try loosening one` → `试试放宽一个条件`,

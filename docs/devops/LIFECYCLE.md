@@ -1,6 +1,6 @@
-# CoffeeMode End-to-End DevOps & Infrastructure Lifecycle Plan
+# CafeMood End-to-End DevOps & Infrastructure Lifecycle Plan
 
-This document establishes the canonical operational lifecycle, deployment runbooks, and disaster recovery procedures for CoffeeMode. It governs cold-start server provisioning, automated dual-stack staging/production upgrades, zero-downtime rolling swaps, and offsite disaster recovery in accordance with Spec 0000 (Founder Manifesto, Principle 5: Extreme Cost-Efficiency) and Spec 0005 (Dokploy VPS Staging/Prod Separation and Webhook CI/CD Architecture).
+This document establishes the canonical operational lifecycle, deployment runbooks, and disaster recovery procedures for CafeMood. It governs cold-start server provisioning, automated dual-stack staging/production upgrades, zero-downtime rolling swaps, and offsite disaster recovery in accordance with Spec 0000 (Founder Manifesto, Principle 5: Extreme Cost-Efficiency) and Spec 0005 (Dokploy VPS Staging/Prod Separation and Webhook CI/CD Architecture).
 
 ---
 
@@ -64,7 +64,7 @@ This document establishes the canonical operational lifecycle, deployment runboo
                              │               │
                              │ (traefik-net) │
                              │               │
-             Host: staging.coffeemode.app    │ Host: coffeemode.app
+             Host: staging.cafemood.app    │ Host: cafemood.app
                              │               │
             ┌────────────────▼───┐       ┌───▼────────────────┐
             │   Staging Stack    │       │  Production Stack  │
@@ -86,8 +86,8 @@ This document establishes the canonical operational lifecycle, deployment runboo
 
 | Dimension | Staging Environment | Production Environment |
 | --- | --- | --- |
-| **Primary Ingress Domain** | `staging.coffeemode.app` | `coffeemode.app` (apex) |
-| **Secondary Domain** | None | `www.coffeemode.app` (301 redirect to apex) |
+| **Primary Ingress Domain** | `staging.cafemood.app` | `cafemood.app` (apex) |
+| **Secondary Domain** | None | `www.cafemood.app` (301 redirect to apex) |
 | **Backend Docker Network** | `coffeemode-staging-network` | `coffeemode-prod-network` |
 | **Ingress Network** | `traefik-net` | `traefik-net` |
 | **Database** | Supabase STAGING project (Postgres + PostGIS, `ap-southeast-1`) | Supabase PROD project (Postgres + PostGIS, `ap-southeast-1`) |
@@ -97,7 +97,7 @@ This document establishes the canonical operational lifecycle, deployment runboo
 | **Local Backup Dir**   | `backups/staging/` | `backups/prod/` |
 | **Cloudflare R2 Bucket**  | `coffeemode-images-staging` | `coffeemode-images-prod` |
 | **Cloudflare R2 Backups** | `s3://coffeemode-backups/staging/` (REQUIRED — Supabase free has no auto-backups) | `s3://coffeemode-backups/prod/` (REQUIRED — Supabase free has no auto-backups) |
-| **Public Image CDN Host** | `staging-images.coffeemode.app` | `images.coffeemode.app` |
+| **Public Image CDN Host** | `staging-images.cafemood.app` | `images.cafemood.app` |
 | **Worker Services**       | `image-service-staging`, `poi-service-staging` | `image-service-prod`, `poi-service-prod` |
 | **Local Backup Retention**| 7 days | 14 days (30 days in Cloudflare R2) |
 ---
@@ -297,7 +297,7 @@ In drill mode (`--drill`), the script always targets the STAGING Supabase projec
 
 ## 6. Troubleshooting & Emergency Runbook
 ### Emergency Contacts & Role Handoff
-- **DevOps Engineer**: `CoffeeMode DevOps Engineer` (ID: `1ef2f9d7-6869-40ec-ac8f-c36b6fc83e98`)
+- **DevOps Engineer**: `CafeMood DevOps Engineer` (ID: `1ef2f9d7-6869-40ec-ac8f-c36b6fc83e98`)
 - **Reviewer & Architect**: `Reviewer & Architect` (ID: `39d21aed-70bd-47ec-8c74-f3215135cccf`)
 - **Owner (Major Decisions & Escalations)**: `Zizheng Lyu` (ID: `4e729c90-66e8-400c-910f-ea0a6e79ee61`)
 ### Common Triage Commands

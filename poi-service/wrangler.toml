@@ -1,4 +1,4 @@
-# CoffeeMode POI cache service — Cloudflare Worker
+# CafeMood POI cache service — Cloudflare Worker
 # Docs: docs/specs/0001-nextjs-migration.md § "POI cache service"
 
 name = "poi-service"

@@ -87,7 +87,7 @@ export async function GET(
         >
           {cafe.name}
         </div>
-        <div style={{ display: "flex", fontSize: 28, color: "#b34917" }}>CoffeeMode</div>
+        <div style={{ display: "flex", fontSize: 28, color: "#b34917" }}>CafeMood</div>
       </div>
     ),
     { width: 1200, height: 630 },

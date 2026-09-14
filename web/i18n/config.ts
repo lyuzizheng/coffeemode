@@ -12,7 +12,7 @@
  * Keep this module dependency-free: `app/providers.tsx` is a client component,
  * so it must not import `i18n/request.ts` (which reads `next/headers`).
  *
- * CoffeeMode has no date-formatting surface yet; UTC keeps SSR and hydration
+ * CafeMood has no date-formatting surface yet; UTC keeps SSR and hydration
  * identical.
  */
 export const TIME_ZONE = "UTC";

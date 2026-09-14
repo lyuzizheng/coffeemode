@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# CoffeeMode Production Instant Rollback Suite
+# CafeMood Production Instant Rollback Suite
 # Architecture: docs/specs/0005-dokploy-vps-and-deployment-architecture.md
 # Lifecycle:    docs/devops/LIFECYCLE.md
 #
@@ -277,5 +277,5 @@ echo -e "${BOLD}${GREEN}Production Rollback Completed Successfully!${NC}"
 echo "=============================================================================="
 echo "Restored Snapshot: ${BACKUP_FILE}"
 echo "Status:            Operational & Verified"
-echo "URL:               https://${PROD_DOMAIN:-coffeemode.app}"
+echo "URL:               https://${PROD_DOMAIN:-cafemood.app}"
 echo "=============================================================================="

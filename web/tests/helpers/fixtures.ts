@@ -14,7 +14,7 @@ export const TESTER_ID = U1;
 
 export async function seedBaseData(dbClient: pg.Client): Promise<void> {
   await dbClient.query(
-    `insert into profiles (id, display_name) values ($1, 'u1'), ($2, 'u2'), ($3, 'CoffeeMode')`,
+    `insert into profiles (id, display_name) values ($1, 'u1'), ($2, 'u2'), ($3, 'CafeMood')`,
     [U1, U2, SERVICE_ACCOUNT_ID],
   );
   await dbClient.query(

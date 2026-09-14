@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * CoffeeMode Helpful ranking nightly snapshot (DG148, #140).
+ * CafeMood Helpful ranking nightly snapshot (DG148, #140).
  *
  * Builds one global ranking run per execution: inserts a `building` run,
  * fills `helpful_ranking_entries` with ONE `INSERT ... SELECT` computing

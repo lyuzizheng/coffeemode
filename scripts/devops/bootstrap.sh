@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# CoffeeMode Cold-Start Infrastructure Orchestrator
+# CafeMood Cold-Start Infrastructure Orchestrator
 # Architecture: docs/specs/0005-dokploy-vps-and-deployment-architecture.md
 # Lifecycle:    docs/devops/LIFECYCLE.md
 #
@@ -11,7 +11,7 @@
 #   4. Supabase project verification (prod + staging, PostGIS present) —
 #      databases live in Supabase (BRAWUKA-241), no local postgres containers
 #   5. Database schema migration bootstrapping over DIRECT_URL (session)
-#   6. Initial seed bootstrapping (CoffeeMode service account & base data)
+#   6. Initial seed bootstrapping (CafeMood service account & base data)
 #   7. Web application container deployment behind Traefik
 #   8. Automated post-bootstrap smoke test verification
 #
@@ -126,7 +126,7 @@ run_cmd() {
   fi
 }
 
-stage "Starting CoffeeMode Cold-Start Orchestration"
+stage "Starting CafeMood Cold-Start Orchestration"
 log "Target Environment: ${TARGET_ENV}"
 log "Repository Root:    ${REPO_ROOT}"
 log "Dry-Run:            ${DRY_RUN}"
@@ -221,7 +221,7 @@ provision_r2_bucket() {
         "rules": [
           {
             "allowed": {
-              "origins": ["https://coffeemode.app", "https://staging.coffeemode.app", "http://localhost:3000"],
+              "origins": ["https://cafemood.app", "https://staging.cafemood.app", "http://localhost:3000"],
               "methods": ["GET", "PUT", "HEAD"],
               "headers": ["*"]
             },
@@ -293,13 +293,13 @@ if [ "$SKIP_CLOUDFLARE" = false ]; then
   provision_r2_bucket "coffeemode-images-prod"
   provision_r2_bucket "coffeemode-backups"
 
-  # Note: images.coffeemode.app and staging-images.coffeemode.app are Cloudflare R2
+  # Note: images.cafemood.app and staging-images.cafemood.app are Cloudflare R2
   # custom domains connected directly to R2 buckets, NOT origin VPS A records.
   PUBLIC_IP="$(curl -s -m 5 https://api.ipify.org 2>/dev/null || echo "")"
   if [[ -n "$PUBLIC_IP" && -n "${CLOUDFLARE_ZONE_ID:-}" ]]; then
-    provision_dns_record "coffeemode.app" "$PUBLIC_IP"
-    provision_dns_record "www.coffeemode.app" "$PUBLIC_IP"
-    provision_dns_record "staging.coffeemode.app" "$PUBLIC_IP"
+    provision_dns_record "cafemood.app" "$PUBLIC_IP"
+    provision_dns_record "www.cafemood.app" "$PUBLIC_IP"
+    provision_dns_record "staging.cafemood.app" "$PUBLIC_IP"
   fi
   ok "Cloudflare edge & storage configuration complete."
 else
@@ -428,7 +428,7 @@ if [ "$SKIP_SEED" = false ]; then
         ok "Service account profile already verified in ${env}."
       else
         psql "$SEED_URL" -v ON_ERROR_STOP=1 -q -c \
-          "INSERT INTO profiles (id, display_name) VALUES ('00000000-0000-4000-a000-000000000001', 'CoffeeMode') ON CONFLICT (id) DO NOTHING;" >/dev/null
+          "INSERT INTO profiles (id, display_name) VALUES ('00000000-0000-4000-a000-000000000001', 'CafeMood') ON CONFLICT (id) DO NOTHING;" >/dev/null
         ok "Service account profile seeded in ${env}."
       fi
     else
@@ -475,7 +475,7 @@ fi
 
 echo ""
 echo "=============================================================================="
-echo -e "${BOLD}${GREEN}CoffeeMode Cold-Start Orchestration Completed Successfully!${NC}"
+echo -e "${BOLD}${GREEN}CafeMood Cold-Start Orchestration Completed Successfully!${NC}"
 echo "=============================================================================="
 echo "Environments: ${TARGET_ENV}"
 echo "Databases:    PostgreSQL 16 + PostGIS active"

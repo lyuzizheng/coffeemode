@@ -1,7 +1,7 @@
 {
   "name": "image-service",
   "version": "1.0.0",
-  "description": "CoffeeMode image upload microservice \u2014 Cloudflare Worker that signs presigned R2 URLs.",
+  "description": "CafeMood image upload microservice \u2014 Cloudflare Worker that signs presigned R2 URLs.",
   "private": true,
   "type": "module",
   "engines": {

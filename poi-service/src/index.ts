@@ -1,5 +1,5 @@
 /**
- * CoffeeMode POI cache service — Cloudflare Worker entry.
+ * CafeMood POI cache service — Cloudflare Worker entry.
  * Spec: docs/specs/0001-nextjs-migration.md § "POI cache service".
  */
 

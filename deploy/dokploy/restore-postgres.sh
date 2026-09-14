@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# CoffeeMode PostgreSQL Restore Forwarder (Thin Wrapper)
+# CafeMood PostgreSQL Restore Forwarder (Thin Wrapper)
 # Canonical Implementation: scripts/devops/restore.sh
 # Architecture: docs/specs/0005-dokploy-vps-and-deployment-architecture.md
 # ==============================================================================

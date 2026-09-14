@@ -194,7 +194,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   }, 60_000);
 
-  it("applies migrations 0001→0023 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0024 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -220,13 +220,14 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0021_helpful_ranking.sql",
       "0022_profiles_onboarded.sql",
       "0023_runtime_config.sql",
+      "0024_service_account_rename.sql",
     ]);
 
     const serviceProfile = await dbClient.query(
       "select * from profiles where id = '00000000-0000-4000-a000-000000000001'",
     );
     expect(serviceProfile.rows).toHaveLength(1);
-    expect(serviceProfile.rows[0].display_name).toBe("CoffeeMode");
+    expect(serviceProfile.rows[0].display_name).toBe("CafeMood");
     const pgVersion = await dbClient.query("select postgis_version() as v");
     expect(pgVersion.rows[0].v).toMatch(/^3\./);
 

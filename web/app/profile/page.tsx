@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("profile");
   return {
-    title: `${t("title")} · CoffeeMode`,
+    title: `${t("title")} · CafeMood`,
     robots: {
       index: false,
       follow: false,

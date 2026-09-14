@@ -1,6 +1,6 @@
 # Image Service
 
-Cloudflare Worker that signs presigned R2 URLs for the CoffeeMode image pipeline.
+Cloudflare Worker that signs presigned R2 URLs for the CafeMood image pipeline.
 
 ## What it does
 

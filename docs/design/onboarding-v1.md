@@ -37,7 +37,7 @@ interactive behind it; no scrim.
 
 Content, top to bottom, 16px padding, 12px rhythm:
 
-1. 24px cup glyph (icon set) + `CoffeeMode` wordmark (`font-display`,
+1. 24px cup glyph (icon set) + `CafeMood` wordmark (`font-display`,
    `text-lg`) — the only place the wordmark appears in-app.
 2. Headline: `Find a cafe you can actually work in` (`text-md`, display
    font).

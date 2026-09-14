@@ -1,5 +1,5 @@
 /**
- * CoffeeMode motion vocabulary — spec 0002.
+ * CafeMood motion vocabulary — spec 0002.
  *
  * Restrained springs, faster out than in, nothing longer than 450ms in normal
  * flow. Every consumer must respect prefers-reduced-motion — use the
@@ -76,7 +76,7 @@ export const ambient = {
   },
 } as const satisfies Record<string, { step: number; transition: Transition }>;
 
-/** Card hover/press — the CoffeeMode "alive" feel. Lift a hair, press a hair. */
+/** Card hover/press — the CafeMood "alive" feel. Lift a hair, press a hair. */
 export const cardInteraction = {
   whileHover: { y: -2, transition: { duration: duration.feedback, ease: ease.default } },
   whileTap: { scale: 0.985, transition: { duration: duration.feedback, ease: ease.default } },

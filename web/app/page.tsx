@@ -95,7 +95,7 @@ export default async function HomePage({
       <div className="flex min-h-dvh flex-col">
         <header className="flex items-center justify-between px-[clamp(24px,6vw,96px)] py-4">
           <span className="font-display text-md font-extrabold tracking-tight text-foreground">
-            CoffeeMode
+            CafeMood
           </span>
           <div className="flex items-center gap-2">
             <Link

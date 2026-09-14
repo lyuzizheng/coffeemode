@@ -162,7 +162,7 @@ export function WelcomeCard({
         <div className="flex items-center gap-2">
           <CoffeeIcon size={24} className="text-accent" />
           <span className="font-display text-lg font-bold text-foreground">
-            CoffeeMode
+            CafeMood
           </span>
         </div>
 

@@ -315,7 +315,7 @@ export async function seedMockDataset(dbClient: pg.Client, options: { configUrl?
   // Single source: profile rows come from MOCK_USERS, not re-hardcoded literals.
   const users: MockUser[] = [
     ...MOCK_USERS,
-    { id: JOURNEY_SERVICE_ACCOUNT_ID, displayName: "CoffeeMode", currentCity: "singapore" },
+    { id: JOURNEY_SERVICE_ACCOUNT_ID, displayName: "CafeMood", currentCity: "singapore" },
   ];
   const placeholders = users.map((_, i) => `($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`).join(",\n           ");
   await dbClient.query(

@@ -80,7 +80,7 @@ describe("SearchResultsList — DG131 grouped rendering", () => {
     renderList({ response: mixed });
 
     const headers = screen.getAllByRole("heading").map((h) => h.textContent);
-    expect(headers).toEqual(["On CoffeeMode", "More places"]);
+    expect(headers).toEqual(["On CafeMood", "More places"]);
 
     const rows = screen.getAllByRole("button").map((b) => b.textContent ?? "");
     const order = ["Place c1", "Place c2", "Place g1", "Place s1"].map((name) =>
@@ -92,13 +92,13 @@ describe("SearchResultsList — DG131 grouped rendering", () => {
 
   it("renders no group header for an empty group", () => {
     renderList({ response: makeResponse([makeItem("c1", "coffeemode")]) });
-    expect(screen.getByRole("heading", { name: "On CoffeeMode" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "On CafeMood" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "More places" })).not.toBeInTheDocument();
   });
 
-  it("marks POI rows as not yet on CoffeeMode", () => {
+  it("marks POI rows as not yet on CafeMood", () => {
     renderList({ response: mixed });
-    expect(screen.getAllByText(/Not on CoffeeMode yet/)).toHaveLength(2);
+    expect(screen.getAllByText(/Not on CafeMood yet/)).toHaveLength(2);
   });
 });
 

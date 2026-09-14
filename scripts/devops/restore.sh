@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# CoffeeMode Disaster Recovery & Database Restoration Suite
+# CafeMood Disaster Recovery & Database Restoration Suite
 # Architecture: docs/specs/0005-dokploy-vps-and-deployment-architecture.md
 # Lifecycle:    docs/devops/LIFECYCLE.md
 #
@@ -302,7 +302,7 @@ else
 fi
 
 echo "=============================================================================="
-echo -e "${BOLD}CoffeeMode Disaster Recovery Suite${NC}"
+echo -e "${BOLD}CafeMood Disaster Recovery Suite${NC}"
 echo "Environment:     ${ENV}"
 echo "Mode:            $([ "$DRILL_MODE" = true ] && echo "NON-DESTRUCTIVE RECOVERY DRILL (staging scratch db)" || echo "LIVE RESTORATION")"
 echo "Target:          $([ "$DRILL_MODE" = true ] && echo "staging scratch database ${DRILL_DB}" || echo "Supabase ${ENV} project (DATABASE_URL)")"

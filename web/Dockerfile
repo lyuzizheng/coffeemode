@@ -1,4 +1,4 @@
-# CoffeeMode web — standalone deploy (ADR-0001: VPS + Docker)
+# CafeMood web — standalone deploy (ADR-0001: VPS + Docker)
 #
 # With `output: "standalone"` Next.js emits a minimal server under
 # .next/standalone, but it does NOT include static assets. Copying

@@ -1,4 +1,4 @@
-# CoffeeMode Production Stack — Dokploy Docker Compose
+# CafeMood Production Stack — Dokploy Docker Compose
 # Architecture: docs/specs/0005-dokploy-vps-and-deployment-architecture.md
 #
 # Production Stack (BRAWUKA-241; decision 34a / BRAWUKA-240 D1):
@@ -53,14 +53,14 @@ services:
     labels:
       - "traefik.enable=true"
       # Apex & WWW Routing
-      - "traefik.http.routers.coffeemode-prod.rule=Host(`${PROD_DOMAIN:-coffeemode.app}`) || Host(`www.${PROD_DOMAIN:-coffeemode.app}`)"
+      - "traefik.http.routers.coffeemode-prod.rule=Host(`${PROD_DOMAIN:-cafemood.app}`) || Host(`www.${PROD_DOMAIN:-cafemood.app}`)"
       - "traefik.http.routers.coffeemode-prod.entrypoints=websecure"
       - "traefik.http.routers.coffeemode-prod.tls.certresolver=letsencrypt"
       - "traefik.http.routers.coffeemode-prod.service=coffeemode-prod-svc"
       # Middlewares: WWW redirect to apex + HSTS/Security headers (no-op sslRedirect removed)
       - "traefik.http.routers.coffeemode-prod.middlewares=prod-www-redirect@docker,prod-sec-headers@docker"
-      - "traefik.http.middlewares.prod-www-redirect.redirectregex.regex=^https://www\\.${PROD_DOMAIN:-coffeemode.app}/(.*)"
-      - "traefik.http.middlewares.prod-www-redirect.redirectregex.replacement=https://${PROD_DOMAIN:-coffeemode.app}/$${1}"
+      - "traefik.http.middlewares.prod-www-redirect.redirectregex.regex=^https://www\\.${PROD_DOMAIN:-cafemood.app}/(.*)"
+      - "traefik.http.middlewares.prod-www-redirect.redirectregex.replacement=https://${PROD_DOMAIN:-cafemood.app}/$${1}"
       - "traefik.http.middlewares.prod-www-redirect.redirectregex.permanent=true"
       - "traefik.http.middlewares.prod-sec-headers.headers.browserXssFilter=true"
       - "traefik.http.middlewares.prod-sec-headers.headers.contentTypeNosniff=true"

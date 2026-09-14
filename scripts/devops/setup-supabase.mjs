@@ -1,6 +1,6 @@
 /**
  * ==============================================================================
- * CoffeeMode Supabase Production Setup & Verification Suite
+ * CafeMood Supabase Production Setup & Verification Suite
  * Architecture: docs/specs/0001-nextjs-migration.md §Data layer
  * Product Decisions: docs/specs/0004-product-decisions-and-backlog.md (34a & 35)
  *
@@ -76,7 +76,7 @@ const log = {
 // ------------------------------------------------------------------------------
 function showHelp() {
   console.log(`
-CoffeeMode Supabase Provisioning & Verification Suite
+CafeMood Supabase Provisioning & Verification Suite
 
 Usage:
   node scripts/devops/setup-supabase.mjs [options]
@@ -275,7 +275,7 @@ function maskString(str, visibleChars = 8) {
 // ------------------------------------------------------------------------------
 async function main() {
   console.log(`${color.bold}==============================================================${color.reset}`);
-  console.log(`${color.bold}  CoffeeMode Supabase Provisioning & Verification Suite       ${color.reset}`);
+  console.log(`${color.bold}  CafeMood Supabase Provisioning & Verification Suite       ${color.reset}`);
   console.log(`${color.bold}==============================================================${color.reset}`);
 
   const config = parseCliArgs();
@@ -603,7 +603,7 @@ async function main() {
         }
         log.success(`Client getSession() succeeded without error (current session: ${sessionData.session ? "active" : "null"}).`);
 
-        const testRedirectUrl = "https://coffeemode.app/auth/callback";
+        const testRedirectUrl = "https://cafemood.app/auth/callback";
         const { data: oauthData, error: oauthErr } = await supabase.auth.signInWithOAuth({
           provider: "google",
           options: { redirectTo: testRedirectUrl },

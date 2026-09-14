@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# CoffeeMode Release Deployment Forwarder (Thin Wrapper)
+# CafeMood Release Deployment Forwarder (Thin Wrapper)
 # Canonical Implementation: scripts/devops/upgrade-staging.sh & upgrade-prod.sh
 # Architecture: docs/specs/0005-dokploy-vps-and-deployment-architecture.md
 # ==============================================================================

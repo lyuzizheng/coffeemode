@@ -1,4 +1,4 @@
-# CoffeeMode Web
+# CafeMood Web
 
 Next.js full-stack application. Spec: `../docs/specs/0001-nextjs-migration.md`.
 Design system: `../docs/specs/0002-design-system.md`.

@@ -1,6 +1,6 @@
 # Local Dev Stack — Real Postgres + Local Workers (Compose Full Kit, S2)
 
-How to run CoffeeMode's full chain locally without any Cloudflare/R2/Supabase
+How to run CafeMood's full chain locally without any Cloudflare/R2/Supabase
 credentials: a real Postgres/PostGIS via Docker, MinIO as an R2 stand-in, both
 Workers under `workerd`/`miniflare` via compose, and a lightweight Supabase Auth
 mock. One `docker compose up -d --wait` brings the whole kit.
@@ -162,7 +162,7 @@ mock at all. For a real local Supabase, use `supabase start` as above.
   `image-service/` or `poi-service/`; local dev needs no account, and the guarded
   entrypoint (`scripts/deploy.mjs`) refuses to ship the local-dev defaults above.
 - **Web-side image display**: `web/lib/images/loader.ts` and `next.config.ts`
-  hardcode the real CDN host and a build-time drift guard (`images.coffeemode.app`),
+  hardcode the real CDN host and a build-time drift guard (`images.cafemood.app`),
   so a browser round-trip through the UI still resolves to production R2 —
   only the API/DB/image-service worker flow is local. Relaxing the drift guard
   for a local `R2_PUBLIC_URL` is a future, explicit opt-in.

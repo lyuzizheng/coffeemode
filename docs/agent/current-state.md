@@ -98,7 +98,7 @@ docs/agent/              current state, planned-slice manifest, owner actions
    redirect URLs, Apple/Google provider config, Supabase Postgres provisioning +
    schema (DATABASE_URL, §2 / #142), Google OAuth, Apple Developer Program.
 2. image-service residual (§6): both Workers are deployed; what remains is the
-   `images.` / `staging-images.coffeemode.app` custom domains once the zone is
+   `images.` / `staging-images.cafemood.app` custom domains once the zone is
    live, plus bucket defenses and orphan-cleanup scheduling.
 3. poi-cache-service residual (§7): both environments are deployed and verified
    (2026-09-12) against their own D1/KV bindings; what remains is owner-side —

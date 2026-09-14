@@ -7,7 +7,7 @@ import { R2_PUBLIC_HOST, r2PublicUrl } from "./constants";
  * Custom Next.js image loader for R2 images.
  *
  * The image pipeline already generates WebP variants (`original`, `card`,
- * `thumbnail`) and stores them at `images.coffeemode.app`. Re-optimizing
+ * `thumbnail`) and stores them at `images.cafemood.app`. Re-optimizing
  * those through `/_next/image` adds VPS CPU and complicates CDN caching.
  * This loader returns the direct R2 URL, letting Cloudflare cache the
  * immutable asset forever. Used as `loaderFile` in `next.config.ts`, so it
@@ -34,7 +34,7 @@ export default r2ImageLoader;
  * Next.js loader for non-R2 images.
  */
 export function isR2Image(src: string): boolean {
-  // Path boundary after the host: `images.coffeemode.app.evil.com` must not match.
+  // Path boundary after the host: `images.cafemood.app.evil.com` must not match.
   if (src.startsWith(`https://${R2_PUBLIC_HOST}/`)) return true;
   if (src.startsWith("https://")) {
     try {

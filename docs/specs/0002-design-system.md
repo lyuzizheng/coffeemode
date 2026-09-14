@@ -2,13 +2,13 @@
 
 ## Goal
 
-Define CoffeeMode's visual identity for 2026: modern, restrained, elegant. The coworking review platform for digital nomads — it must feel designed by someone with taste, not a template, not retro, not generic, and absolutely not vibe-coded. Built on HeroUI v3 + Tailwind v4 + Framer Motion. All copy internationalized (next-intl, en + zh) from day one.
+Define CafeMood's visual identity for 2026: modern, restrained, elegant. The coworking review platform for digital nomads — it must feel designed by someone with taste, not a template, not retro, not generic, and absolutely not vibe-coded. Built on HeroUI v3 + Tailwind v4 + Framer Motion. All copy internationalized (next-intl, en + zh) from day one.
 
 ### Product positioning & identity core (定位定义与核心原则, BRAWUKA-69 settled)
 
-CoffeeMode is strictly an **artisan information tool (文艺范的信息工具)**, NOT a reading, publishing, or podcast platform.
+CafeMood is strictly an **artisan information tool (文艺范的信息工具)**, NOT a reading, publishing, or podcast platform.
 - **Utility first (信息工具属性优先)**: Core mission is solving the user's immediate real-world problem with zero friction — finding specialty cafes, verifying WiFi/outlets/laptop-friendliness (Work Profile index), and completing a 3-second check-in. Speed, information density, and low-cognitive-load navigation are the non-negotiable structural foundation.
-- **Artisan aesthetics, anti-AI vibe coding (文艺范有质感，拒绝 AI Vibe Coding)**: CoffeeMode rejects the statistical mediocrity of generative AI interfaces (no purple/blue cyber glows, no glassmorphic panels, no dead Bento grids, no default Inter sans-serif mono-culture). Instead, human craftsmanship is conveyed through warm paper substrate, disciplined dual-plate spot printing, organic typographic breathing, and tactile spring physics.
+- **Artisan aesthetics, anti-AI vibe coding (文艺范有质感，拒绝 AI Vibe Coding)**: CafeMood rejects the statistical mediocrity of generative AI interfaces (no purple/blue cyber glows, no glassmorphic panels, no dead Bento grids, no default Inter sans-serif mono-culture). Instead, human craftsmanship is conveyed through warm paper substrate, disciplined dual-plate spot printing, organic typographic breathing, and tactile spring physics.
 - **Strict scope boundaries (严守工具边界)**: Check-in notes remain concise and functional (≤500 chars). The design system strictly forbids long-form prose feeds, parallax or footnote-style marginalia reading flourishes on check-in notes, or self-indulgent publishing bloat. (The static marginalia layout column in §Editorial grid is a layout device, not a reading flourish, and remains permitted.) Artisan texture is the skin and breath; it must never eclipse or obstruct utility efficiency.
 
 This spec implements principle 6 (Exquisite Aesthetics / Zero Ugly Things) of
@@ -19,12 +19,12 @@ ceiling, first-class skeleton/empty/error states — and every design decision
 must pass the manifesto's Interaction gate (怎么交互) before shipping.
 ## Status
 
-Accepted (corrected 2026-09-06 — BRAWUKA-74 Option 2 superseded by Owner ruling: digital garden NOT applicable as a product surface; CoffeeMode remains a pure tool; profile notes-collection slice removed; reading-surface gate tightened to explicit-Owner-ruling; revised 2026-09-06 — Founder final settlement on BRAWUKA-69: Product positioning affirmed as artisan information tool (文艺范的信息工具), strictly rejecting reading/podcast/publishing platform creep; anti-AI vibe coding craftsmanship locked; revised 2026-09-06 — BRAWUKA-69 human craftsmanship & editorial reset: typography dual ramp & variable serif (--font-serif), spring-first motion tokens & settle budgets, dual-plate printing discipline (plate roles) & --grain material overlay, editorial surfaces & check-in prose, anti-pattern harmonization; 2026-09-06 — digital-garden editorial scope settled (BRAWUKA-74): lightweight fulfillment via notes ecosystem; standalone Stories surface rejected; post-map profile notes-collection slice registered; revised 2026-09-01 — references 0000-founder-manifesto as the higher-precedence aesthetic authority (#288); 2026-08-22 — copy tone principle 热情真诚: warm, sincere, cute, never commercial (DG87); 2026-08-21 — viewport & safe-area contract: dvh/svh units…
+Accepted (corrected 2026-09-06 — BRAWUKA-74 Option 2 superseded by Owner ruling: digital garden NOT applicable as a product surface; CafeMood remains a pure tool; profile notes-collection slice removed; reading-surface gate tightened to explicit-Owner-ruling; revised 2026-09-06 — Founder final settlement on BRAWUKA-69: Product positioning affirmed as artisan information tool (文艺范的信息工具), strictly rejecting reading/podcast/publishing platform creep; anti-AI vibe coding craftsmanship locked; revised 2026-09-06 — BRAWUKA-69 human craftsmanship & editorial reset: typography dual ramp & variable serif (--font-serif), spring-first motion tokens & settle budgets, dual-plate printing discipline (plate roles) & --grain material overlay, editorial surfaces & check-in prose, anti-pattern harmonization; 2026-09-06 — digital-garden editorial scope settled (BRAWUKA-74): lightweight fulfillment via notes ecosystem; standalone Stories surface rejected; post-map profile notes-collection slice registered; revised 2026-09-01 — references 0000-founder-manifesto as the higher-precedence aesthetic authority (#288); 2026-08-22 — copy tone principle 热情真诚: warm, sincere, cute, never commercial (DG87); 2026-08-21 — viewport & safe-area contract: dvh/svh units…
 
 ## Stable decisions
 
 ```text
-- Product positioning invariant: CoffeeMode is strictly an artisan information tool (文艺范的信息工具), NOT a reading/publishing/podcast platform. Utility and information efficiency (finding cafes, laptop-friendliness, 3s check-in) is the foundation; human craftsmanship, paper substrate, and anti-AI-vibe-coding aesthetics are the sensory surface (BRAWUKA-69 settled)
+- Product positioning invariant: CafeMood is strictly an artisan information tool (文艺范的信息工具), NOT a reading/publishing/podcast platform. Utility and information efficiency (finding cafes, laptop-friendliness, 3s check-in) is the foundation; human craftsmanship, paper substrate, and anti-AI-vibe-coding aesthetics are the sensory surface (BRAWUKA-69 settled)
 - HeroUI v3 + Tailwind v4 + Framer Motion (no Shadcn; HeroUI is the sole component library)
 - next-intl from day one (en primary, zh secondary)
 - Responsive map-native discovery: mobile bottom sheet + swipe cards; desktop sidebar + second-level detail column
@@ -37,7 +37,7 @@ Accepted (corrected 2026-09-06 — BRAWUKA-74 Option 2 superseded by Owner rulin
 - Spring-first motion: settle budgets (150ms/300ms/450ms) replace fixed durations; soft/gentle/snappy presets from lib/motion.ts codified as tokens (BRAWUKA-69)
 - Dual-plate printing discipline: substrate + espresso ink (≥70%) + terracotta spot + sage secondary (≤30%); --grain SVG noise material overlay bound to WCAG AA contrast gate (BRAWUKA-69)
 - Digital garden (manifesto §4) is NOT fulfilled as a product surface —
-  CoffeeMode stays a pure tool (Owner ruling 2026-09-06, BRAWUKA-74)
+  CafeMood stays a pure tool (Owner ruling 2026-09-06, BRAWUKA-74)
 ```
 
 ## Design personality
@@ -54,7 +54,7 @@ artisan information tool, not a reading platform
 tactile human craftsmanship, not AI statistical mediocrity
 ```
 
-CoffeeMode should feel like a beautifully designed city guide by a studio that also does brand identity — precise typography, confident color, purposeful motion. Not a "coffee theme" with bean icons and kraft paper textures.
+CafeMood should feel like a beautifully designed city guide by a studio that also does brand identity — precise typography, confident color, purposeful motion. Not a "coffee theme" with bean icons and kraft paper textures.
 
 ## Anti-patterns (explicitly avoid)
 
@@ -124,7 +124,7 @@ NavPrompt:        ClassPass-style "有去喝一杯吗？" slide-up card (DG92)
 
 ### Color system
 
-HeroUI v3 semantic tokens overridden with the CoffeeMode palette. In HeroUI v3 the brand color is `--accent` (v2 called it `--primary`). The palette is warm-neutral but confident — not muted, not beige. `secondary` is a real brand sage, not a status color.
+HeroUI v3 semantic tokens overridden with the CafeMood palette. In HeroUI v3 the brand color is `--accent` (v2 called it `--primary`). The palette is warm-neutral but confident — not muted, not beige. `secondary` is a real brand sage, not a status color.
 
 Plate roles (mono-color dual-plate printing discipline):
 
@@ -441,7 +441,7 @@ Component transitions:
 
 ```text
 Manifesto principle 4 (digital garden) is NOT applicable as a product surface
-(Owner ruling 2026-09-06, BRAWUKA-74). CoffeeMode is a pure tool: it has no
+(Owner ruling 2026-09-06, BRAWUKA-74). CafeMood is a pure tool: it has no
 editorial/reading product surface, and none may be added. The principle's
 aesthetic substance is carried by the design language alone — editorial
 typography, asymmetric grid, and marginalia per §Typography / §Motion /
@@ -584,7 +584,7 @@ this principle governs them and any new copy.
 - Work profile bars + score sliders are the visual hero of the cafe detail
 - UI feels like a 2026 design studio portfolio piece
 - No retro/vintage coffee aesthetic anywhere (coffee kitsch prohibited; editorial serif and warm paper substrate permitted per spec)
-- HeroUI components are themed with CoffeeMode tokens (no default blue)
+- HeroUI components are themed with CafeMood tokens (no default blue)
 - Animation is spring-first, restrained, and elegant — spring tokens (soft/gentle/snappy) with settle budgets, not bounces or linear tweens
 - Dual typography scales physically isolated: App ramp (xs-2xl) for chrome/forms, Editorial ramp (prose/lede/section/display) for narrative reading
 - --font-serif (Source Serif 4 Variable + zh fallback) available for narrative prose (min 1rem), strictly excluded from tool/form surfaces

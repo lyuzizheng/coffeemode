@@ -25,7 +25,7 @@ export function getConfiguredOrigin(): string | null {
   }
 }
 
-/** Parses a host allowlist entry (e.g. "staging.coffeemode.app:3000" or "https://staging.coffeemode.app"). */
+/** Parses a host allowlist entry (e.g. "staging.cafemood.app:3000" or "https://staging.cafemood.app"). */
 export function parseAllowlistEntry(entry: string): { host: string; hostname: string } | null {
   let hostPart = entry;
 

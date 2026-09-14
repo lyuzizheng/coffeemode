@@ -1,5 +1,5 @@
 /**
- * CoffeeMode bespoke icon set (discovery-sheet artifact §2, resolves DG6).
+ * CafeMood bespoke icon set (discovery-sheet artifact §2, resolves DG6).
  *
  * 16×16 viewBox, 1.5px stroke, round caps/joins, `currentColor`, geometric.
  * HeroUI built-ins are used where they exist; this set covers only what

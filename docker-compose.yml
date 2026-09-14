@@ -1,4 +1,4 @@
-# CoffeeMode local dev stack — Postgres (PostGIS) + MinIO (R2) + Workers (D1/KV + R2) + Supabase auth mock.
+# CafeMood local dev stack — Postgres (PostGIS) + MinIO (R2) + Workers (D1/KV + R2) + Supabase auth mock.
 #
 # Full local kit (S2 testkit-compose-mocks):
 #   postgres      — PostGIS 16, real migrations 0001-0008 + PostGIS triggers

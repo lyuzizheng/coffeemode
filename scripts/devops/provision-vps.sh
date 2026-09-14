@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# CoffeeMode VPS Cold-Start Provisioning & Hardening Suite
+# CafeMood VPS Cold-Start Provisioning & Hardening Suite
 # Architecture: docs/specs/0005-dokploy-vps-and-deployment-architecture.md
 # Lifecycle:    docs/devops/LIFECYCLE.md
 #
@@ -197,7 +197,7 @@ if [ "$SKIP_SWAP" = false ]; then
 
     # Kernel parameter tuning for production PostGIS & Next.js workloads
     cat > /etc/sysctl.d/99-coffeemode.conf <<'EOF'
-# CoffeeMode production kernel sysctl parameters
+# CafeMood production kernel sysctl parameters
 vm.swappiness=10
 vm.vfs_cache_pressure=50
 vm.max_map_count=262144
@@ -383,7 +383,7 @@ HOST_IP="$(curl -s -m 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '
 
 echo ""
 echo "=============================================================================="
-echo -e "${BOLD}${GREEN}CoffeeMode VPS Cold-Start Provisioning Complete!${NC}"
+echo -e "${BOLD}${GREEN}CafeMood VPS Cold-Start Provisioning Complete!${NC}"
 echo "=============================================================================="
 echo "Host Public IP:    ${HOST_IP}"
 echo "SSH Port:          ${SSH_PORT}"

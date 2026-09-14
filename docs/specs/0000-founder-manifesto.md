@@ -3,7 +3,7 @@
 ## Goal
 
 Codify the founder's product philosophy and engineering principles as the
-canonical decision authority for CoffeeMode. Every feature proposal, design
+canonical decision authority for CafeMood. Every feature proposal, design
 choice, and cost tradeoff is judged against this manifesto before any other
 spec. Specs 0001-0004 implement these principles; none may contradict them.
 
@@ -107,6 +107,11 @@ than shipping a compromise.
 ```
 
 ## Acceptance criteria
+
+> 2026-09-14 — Product renamed from CoffeeMode to CafeMood; primary domain
+> is now cafemood.app (staging: staging.cafemood.app). Earlier references to
+> "CoffeeMode" / "coffeemode.app" in history, ADRs, and applied migrations
+> are the pre-rename name and stay as written.
 
 ```text
 - This file exists as the canonical founder manifesto, indexed in

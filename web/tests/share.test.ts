@@ -24,9 +24,9 @@ describe("isWeChatUserAgent (DG109)", () => {
 
 describe("buildShareData", () => {
   it("packages title and url for the native share sheet", () => {
-    expect(buildShareData("https://coffeemode.app/cafes/x", "Caracara")).toEqual({
+    expect(buildShareData("https://cafemood.app/cafes/x", "Caracara")).toEqual({
       title: "Caracara",
-      url: "https://coffeemode.app/cafes/x",
+      url: "https://cafemood.app/cafes/x",
     });
   });
 });

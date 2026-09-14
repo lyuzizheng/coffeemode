@@ -137,7 +137,7 @@ communicated only on violation (toast), not as static fine print.
 ### 3.6 Confirm
 
 Full-width solid `accent` button, 48px, `radius-sm`, label `Check in`
-(creation variant in the creation slice reads `Add to CoffeeMode ✓` per
+(creation variant in the creation slice reads `Add to CafeMood ✓` per
 spec). Disabled with a `text-xs` `muted` hint `Set Overall experience to
 check in` beneath it until the required overall slider is set (DG40).
 

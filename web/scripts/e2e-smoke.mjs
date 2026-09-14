@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * CoffeeMode Deterministic Playwright E2E Smoke Suite (Issue #155, refactored in #271).
+ * CafeMood Deterministic Playwright E2E Smoke Suite (Issue #155, refactored in #271).
  *
  * Proves core MVP journeys end-to-end against a Next.js standalone production build:
  *   1. Signed-out discovery, theme toggle, and deep links (Home, Cafe Detail, 404 Recovery).
@@ -198,7 +198,7 @@ async function runSmokeSuite() {
 
       // Verify brand presence and theme toggle
       const headerText = await page.textContent("header");
-      assert(headerText?.includes("CoffeeMode"), "Brand header 'CoffeeMode' not found");
+      assert(headerText?.includes("CafeMood"), "Brand header 'CafeMood' not found");
 
       // Verify profile link exists
       const profileLink = await page.locator("a[href='/profile']");

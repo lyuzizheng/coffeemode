@@ -23,7 +23,7 @@ export interface CafeSummary {
   /** Meters from the query point; present on nearby queries. */
   distance_m?: number;
   /**
-   * True when the cafe is attributed to the CoffeeMode service account (no
+   * True when the cafe is attributed to the CafeMood service account (no
    * human owner). A marker, not copy — the client renders the localized
    * maintainer line from `discovery.maintained_by_service` (spec 0002 i18n).
    */

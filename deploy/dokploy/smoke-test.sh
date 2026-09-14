@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# CoffeeMode Automated Smoke Test Forwarder (Thin Wrapper)
+# CafeMood Automated Smoke Test Forwarder (Thin Wrapper)
 # Canonical Implementation: scripts/devops/smoke-test.sh
 # Architecture: docs/specs/0005-dokploy-vps-and-deployment-architecture.md
 # ==============================================================================

@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "CoffeeMode",
+    "name": "CafeMood",
     "tagline": "找到最适合办公的咖啡店",
     "scores": {
       "experience": "体验感",
@@ -49,7 +49,7 @@
   "offline": {
     "banner": "网络连接不稳定——部分信息可能不是最新的。",
     "title": "你已离线",
-    "body": "CoffeeMode 需要网络才能加载最新的咖啡店数据。你之前浏览过的页面也许仍然可用。",
+    "body": "CafeMood 需要网络才能加载最新的咖啡店数据。你之前浏览过的页面也许仍然可用。",
     "retry": "重试"
   },
   "themePreview": {
@@ -193,7 +193,7 @@
       "desc": "自有咖啡馆优先的分组结果、距市中心距离标注、按来源开关的外部搜索按钮，以及排序偏好开关（设置与新手引导两态）。",
       "last_action": "最近操作"
     },
-    "footer": "CoffeeMode——暖纸、浓缩墨色与一抹赤陶 · 中英双语由 next-intl 承载"
+    "footer": "CafeMood——暖纸、浓缩墨色与一抹赤陶 · 中英双语由 next-intl 承载"
   },
   "profile": {
     "title": "个人主页",
@@ -290,7 +290,7 @@
     "photoUploadFailed": "照片上传失败。",
     "requiredFields": "请选择地点、评分，填写备注并添加照片。",
     "createFailed": "无法创建咖啡店。",
-    "alreadyExists": "这个地点已经在 CoffeeMode 中。",
+    "alreadyExists": "这个地点已经在 CafeMood 中。",
     "created": "咖啡店已创建。",
     "offline": "离线时无法创建",
     "signInRequired": "请先登录再发布，草稿会保留在此处。",
@@ -414,7 +414,7 @@
   "error": {
     "kicker": "错误",
     "title": "页面出错了",
-    "body": "CoffeeMode 在渲染这个页面时遇到了意外错误。重试通常可以解决。",
+    "body": "CafeMood 在渲染这个页面时遇到了意外错误。重试通常可以解决。",
     "retry": "重试",
     "home": "回到首页"
   },
@@ -463,7 +463,7 @@
     },
     "a_nomad": "一位 nomad",
     "by_author": "{name}",
-    "maintained_by_service": "由 CoffeeMode 维护",
+    "maintained_by_service": "由 CafeMood 维护",
     "like_aria": "点赞这条打卡",
     "like_signin": "登录后才能点赞",
     "card_actions_aria": "这条打卡的更多操作",

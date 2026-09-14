@@ -54,12 +54,12 @@ describe("ogHookParams (DG108)", () => {
 describe("cafeOgImageUrl", () => {
   it("prefers the cover key on the public CDN", () => {
     const url = cafeOgImageUrl({ cover: "card/a.webp", gallery: [photo("b")] });
-    expect(url).toBe("https://images.coffeemode.app/card/a.webp");
+    expect(url).toBe("https://images.cafemood.app/card/a.webp");
   });
 
   it("falls back to the first gallery card", () => {
     const url = cafeOgImageUrl({ cover: null, gallery: [photo("b")] });
-    expect(url).toBe("https://images.coffeemode.app/card/b.webp");
+    expect(url).toBe("https://images.cafemood.app/card/b.webp");
   });
 
   it("is null when the cafe has no photo — the dynamic fallback card applies", () => {
@@ -79,13 +79,13 @@ describe("cafeJsonLd (DG105)", () => {
   it("describes a CafeOrCoffeeShop with geo and a text address", () => {
     const jsonLd = cafeJsonLd(
       { ...base, work_stats: statsWith(86.6, 23) },
-      `https://coffeemode.app/cafes/${CAFE_ID}`,
+      `https://cafemood.app/cafes/${CAFE_ID}`,
     );
     expect(jsonLd).toMatchObject({
       "@context": "https://schema.org",
       "@type": "CafeOrCoffeeShop",
       name: "Caracara",
-      url: `https://coffeemode.app/cafes/${CAFE_ID}`,
+      url: `https://cafemood.app/cafes/${CAFE_ID}`,
       address: "12 Keong Saik Rd, Singapore",
       geo: { "@type": "GeoCoordinates", latitude: 1.2789, longitude: 103.8425 },
     });
@@ -116,7 +116,7 @@ describe("cafeJsonLd (DG105)", () => {
     const malicious = 'x</script><script>alert(1)</script>';
     const jsonLd = cafeJsonLd(
       { name: malicious, address: malicious, city: "SG", lat: 0, lng: 0, work_stats: statsWith(null, 0) },
-      "https://coffeemode.app/cafes/x",
+      "https://cafemood.app/cafes/x",
     );
     const serialized = serializeJsonLd(jsonLd);
     expect(serialized).not.toContain("<");

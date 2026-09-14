@@ -2,7 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 /**
- * CoffeeMode dev-database fixture cleaner (BRAWUKA-216).
+ * CafeMood dev-database fixture cleaner (BRAWUKA-216).
  *
  * Deterministic test fixtures (`b0000000-*` journey mock-dataset,
  * `c0000000-*` HTTP lifecycle users, plus the reserved `a0000000-*` /
@@ -47,7 +47,7 @@ function fixturePatterns() {
 
 function showHelp() {
   console.log(`
-CoffeeMode dev-database fixture cleaner (BRAWUKA-216)
+CafeMood dev-database fixture cleaner (BRAWUKA-216)
 
 Usage:
   node scripts/clean-dev-fixtures.mjs [options]

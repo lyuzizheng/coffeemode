@@ -1,5 +1,5 @@
 /**
- * Shared Postgres DB fixture management for CoffeeMode E2E and LHCI runners.
+ * Shared Postgres DB fixture management for CafeMood E2E and LHCI runners.
  * Provides deterministic user, cafe, and check-in records with idempotent seeding and self-cleaning teardown.
  */
 import pg from "pg";

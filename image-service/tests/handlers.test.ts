@@ -46,7 +46,7 @@ describe("handleUpload", () => {
     expect(data.imageUuid).toMatch(/^[0-9a-f-]{36}$/);
     expect(data.uploadUrl).toContain(`original/${data.imageUuid}.webp`);
     expect(data.uploadUrl).toContain("X-Amz-Expires=");
-    expect(data.publicUrl).toBe(`https://images.coffeemode.app/original/${data.imageUuid}.webp`);
+    expect(data.publicUrl).toBe(`https://images.cafemood.app/original/${data.imageUuid}.webp`);
     expect(data.uploadHeaders["Content-Type"]).toBe("image/webp");
     expect(new Date(data.expiresAt).getTime()).toBeGreaterThan(Date.now());
   });
@@ -209,7 +209,7 @@ describe("handleComplete", () => {
     expect(data.originalPut.url).toContain(`original/${imageUuid}.webp`);
     expect(data.card.url).toContain(`card/${imageUuid}.webp`);
     expect(data.thumbnail.url).toContain(`thumbnail/${imageUuid}.webp`);
-    expect(data.publicUrls.original).toBe(`https://images.coffeemode.app/original/${imageUuid}.webp`);
+    expect(data.publicUrls.original).toBe(`https://images.cafemood.app/original/${imageUuid}.webp`);
 
     // Metadata is baked into the signed PUT URLs so the Next.js processor
     // uploads it back to R2 without needing R2 credentials.

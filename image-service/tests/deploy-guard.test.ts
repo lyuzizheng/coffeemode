@@ -102,7 +102,7 @@ describe("evaluateDeployConfig", () => {
 
   it("flags a public CDN host that no longer matches the pinned target", () => {
     const config = deployableConfig("production");
-    config.vars.R2_PUBLIC_URL = "https://staging-images.coffeemode.app";
+    config.vars.R2_PUBLIC_URL = "https://staging-images.cafemood.app";
 
     expect(
       evaluateDeployConfig({ env: "production", config, hasEnvSection: true }).join("\n"),

@@ -676,7 +676,7 @@ describe("toPublicCafeDetail", () => {
       created_by: getServiceAccountId(),
       gallery: [],
       author_handle: "coffeemode",
-      author_display_name: "CoffeeMode",
+      author_display_name: "CafeMood",
       author_avatar_url: null,
     } as unknown as CafeDetail;
     const pub = toPublicCafeDetail(cafe);

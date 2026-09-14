@@ -599,7 +599,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
 
     // Spec 0008 §5 / §10: User A creates Cafe 1 in Singapore
     // Scores: wifi 90, outlets 80, seats 70, temp 60, coffee 95, overall 90, max_stay unlimited
-    const createRes = await clientA.post<{ cafeId: string; checkinId: string; tz: string }>(
+    const createRes = await clientA.post<{ cafe_id: string; checkin_id: string; tz: string }>(
       cafesPOST,
       "/api/cafes",
       {
@@ -636,12 +636,12 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     );
 
     expect(createRes.status).toBe(201);
-    expect(createRes.data.cafeId).toBeDefined();
-    expect(createRes.data.checkinId).toBeDefined();
+    expect(createRes.data.cafe_id).toBeDefined();
+    expect(createRes.data.checkin_id).toBeDefined();
     expect(createRes.data.tz).toBe("Asia/Singapore");
-    const createdCafeId = createRes.data.cafeId;
-    const createdCheckinId = createRes.data.checkinId;
-    createdCafeIds.add(createdCafeId);
+    const created_cafe_id = createRes.data.cafe_id;
+    const created_checkin_id = createRes.data.checkin_id;
+    createdCafeIds.add(created_cafe_id);
     // Reconciliation via User D (external observer) GET /api/cafes/[id]
     const detailRes = await clientD.get<{
       id: string;
@@ -658,11 +658,11 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
         n_checkins: number;
         policies: { max_stay: Record<string, number> };
       };
-    }, RouteContext<{ id: string }>>(cafeDetailGET, `/api/cafes/${createdCafeId}`, {}, routeParams({ id: createdCafeId }));
+    }, RouteContext<{ id: string }>>(cafeDetailGET, `/api/cafes/${created_cafe_id}`, {}, routeParams({ id: created_cafe_id }));
 
     expect(detailRes.status).toBe(200);
     const cafe = detailRes.data;
-    expect(cafe.id).toBe(createdCafeId);
+    expect(cafe.id).toBe(created_cafe_id);
     expect(cafe.name).toBe("Orchard Pioneer Roasters");
     expect(cafe.tz).toBe("Asia/Singapore");
     expect(cafe.google_place_id).toBe(pioneerPlaceId);
@@ -677,7 +677,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     expect(cafe.gallery[0]?.id).toBe(createdPhotoId);
     expect(cafe.gallery[0]?.source).toEqual({
       type: "checkin",
-      id: createdCheckinId,
+      id: created_checkin_id,
     });
     expect(cafe.gallery[0]?.by).toBeUndefined();
 
@@ -700,13 +700,13 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
         max_stay: string;
         note: string;
       }>;
-      nextCursor: string | null;
-    }, RouteContext<{ id: string }>>(checkinsGET, `/api/cafes/${createdCafeId}/checkins`, {}, routeParams({ id: createdCafeId }));
+      next_cursor: string | null;
+    }, RouteContext<{ id: string }>>(checkinsGET, `/api/cafes/${created_cafe_id}/checkins`, {}, routeParams({ id: created_cafe_id }));
 
     expect(feedRes.status).toBe(200);
     expect(feedRes.data.checkins).toHaveLength(1);
     const firstCheckin = feedRes.data.checkins[0]!;
-    expect(firstCheckin.id).toBe(createdCheckinId);
+    expect(firstCheckin.id).toBe(created_checkin_id);
     expect(firstCheckin.scores.overall).toBe(90);
     expect(firstCheckin.author).toBeNull();
     expect(firstCheckin.photos).toHaveLength(1);
@@ -720,7 +720,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
       query: { lat: 1.3048, lng: 103.8318, radius_km: 10 },
     });
     expect(nearbyRes.status).toBe(200);
-    const foundInNearby = nearbyRes.data.cafes.find((c) => c.id === createdCafeId);
+    const foundInNearby = nearbyRes.data.cafes.find((c) => c.id === created_cafe_id);
     expect(foundInNearby).toBeDefined();
     expect(foundInNearby?.name).toBe("Orchard Pioneer Roasters");
   });
@@ -733,7 +733,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     if (!minioUp) return ctx.skip();
     // User A uploads valid WebP and creates initial cafe to consume it
     const uploadA = await uploadTestWebP(clientA);
-    const initialRes = await clientA.post<{ cafeId: string }>(cafesPOST, "/api/cafes", {
+    const initialRes = await clientA.post<{ cafe_id: string }>(cafesPOST, "/api/cafes", {
       name: `Initial Photo Cafe ${randomUUID().slice(0, 8)}`,
       lat: 1.3048,
       lng: 103.8318,
@@ -745,7 +745,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
       },
     });
     expect(initialRes.status).toBe(201);
-    createdCafeIds.add(initialRes.data.cafeId);
+    createdCafeIds.add(initialRes.data.cafe_id);
 
     // Attempt to reuse uploadA.imageUuid which was consumed in the previous creation
     const reusedRes = await clientA.post(cafesPOST, "/api/cafes", {
@@ -771,7 +771,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     if (!minioUp) return ctx.skip();
     const dupePlaceId = `ChIJORCHARD_DUPE_${randomUUID().replace(/-/g, "").slice(0, 10)}`;
     const uploadA = await uploadTestWebP(clientA);
-    const originalRes = await clientA.post<{ cafeId: string }>(cafesPOST, "/api/cafes", {
+    const originalRes = await clientA.post<{ cafe_id: string }>(cafesPOST, "/api/cafes", {
       name: "Original Place Venue",
       lat: 1.3048,
       lng: 103.8318,
@@ -784,7 +784,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
       },
     });
     expect(originalRes.status).toBe(201);
-    createdCafeIds.add(originalRes.data.cafeId);
+    createdCafeIds.add(originalRes.data.cafe_id);
 
     // User B attempts to create a cafe with the same Google Place ID
     const uploadB = await uploadTestWebP(clientB);
@@ -807,7 +807,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
 
     expect(dupeRes.status).toBe(409);
     expect(dupeRes.data.error).toBe("cafe_exists");
-    expect(dupeRes.data.cafe_id).toBe(originalRes.data.cafeId);
+    expect(dupeRes.data.cafe_id).toBe(originalRes.data.cafe_id);
   });
 
   // =========================================================================
@@ -818,7 +818,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     if (!minioUp) return ctx.skip();
     // User B creates Tokyo cafe (35.6580, 139.7016)
     const uploadTokyo = await uploadTestWebP(clientB);
-    const tokyoRes = await clientB.post<{ cafeId: string; tz: string }>(
+    const tokyoRes = await clientB.post<{ cafe_id: string; tz: string }>(
       cafesPOST,
       "/api/cafes",
       {
@@ -837,11 +837,11 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     );
     expect(tokyoRes.status).toBe(201);
     expect(tokyoRes.data.tz).toBe("Asia/Tokyo");
-    createdCafeIds.add(tokyoRes.data.cafeId);
+    createdCafeIds.add(tokyoRes.data.cafe_id);
 
     // User C creates London cafe (51.5133, -0.1364)
     const uploadLondon = await uploadTestWebP(clientC);
-    const londonRes = await clientC.post<{ cafeId: string; tz: string }>(
+    const londonRes = await clientC.post<{ cafe_id: string; tz: string }>(
       cafesPOST,
       "/api/cafes",
       {
@@ -860,6 +860,6 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     );
     expect(londonRes.status).toBe(201);
     expect(londonRes.data.tz).toBe("Europe/London");
-    createdCafeIds.add(londonRes.data.cafeId);
+    createdCafeIds.add(londonRes.data.cafe_id);
   });
 });

@@ -916,3 +916,14 @@ describe("router", () => {
     expect((await call("POST", "/poi/search", makeEnv())).status).toBe(404);
   });
 });
+
+describe("stableApplePlaceId parity (BRAWUKA-280)", () => {
+  it("is deterministic and emits apple:hex ids", async () => {
+    const { stableApplePlaceId } = await import("../../web/shared/places/apple-place-id");
+    expect(stableApplePlaceId("1.3521,103.8198:Blue Bottle")).toMatch(/^apple:[0-9a-f]{8}$/);
+    expect(stableApplePlaceId("1.3521,103.8198:Blue Bottle")).toBe(
+      stableApplePlaceId("1.3521,103.8198:Blue Bottle"),
+    );
+    expect(stableApplePlaceId("a")).not.toBe(stableApplePlaceId("b"));
+  });
+});

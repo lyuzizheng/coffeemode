@@ -542,5 +542,8 @@
     "delete": "Delete",
     "delete_done": "Deleted",
     "delete_failed": "Couldn't delete — try again?"
+  },
+  "runtime": {
+    "announcement": "Announcement"
   }
 }

@@ -70,21 +70,21 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
           <div
             key={item.id}
             className={`p-3 bg-surface border border-border rounded-xl flex flex-col gap-2 transition-all ${
-              item.cafeIsDeleted ? "opacity-60" : "hover:border-border/80"
+              item.cafe_is_deleted ? "opacity-60" : "hover:border-border/80"
             }`}
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex flex-col">
-                {item.cafeIsDeleted ? (
+                {item.cafe_is_deleted ? (
                   <span className="font-display font-semibold text-muted text-base">
-                    {item.cafeName || t("unknown_cafe")}
+                    {item.cafe_name || t("unknown_cafe")}
                   </span>
                 ) : (
                   <Link
-                    href={`/?cafe=${item.cafeId}`}
+                    href={`/?cafe=${item.cafe_id}`}
                     className="-my-2.5 inline-flex min-h-11 items-center font-display font-semibold text-foreground text-base hover:text-accent transition-colors"
                   >
-                    {item.cafeName || t("unknown_cafe")}
+                    {item.cafe_name || t("unknown_cafe")}
                   </Link>
                 )}
                 <span className="text-xs text-muted font-mono tabular-nums">
@@ -93,21 +93,21 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
                       day: "numeric",
                       month: "short",
                       year: "numeric",
-                    }).format(new Date(item.visitedAt)),
+                    }).format(new Date(item.visited_at)),
                   })}
                 </span>
               </div>
 
               <div className="flex items-center gap-2">
-                {item.likesCount > 0 && (
+                {item.likes_count > 0 && (
                   <span className="inline-flex items-center gap-1 text-xs text-muted font-mono tabular-nums">
                     <HeartIcon size={13} filled={false} />
-                    {item.likesCount}
+                    {item.likes_count}
                   </span>
                 )}
                 <button
                   onClick={() => setEditing(item)}
-                  aria-label={t("edit_checkin_aria", { cafe: item.cafeName || t("unknown_cafe") })}
+                  aria-label={t("edit_checkin_aria", { cafe: item.cafe_name || t("unknown_cafe") })}
                   className="-m-2.5 flex h-11 w-11 items-center justify-center text-muted hover:text-foreground active:scale-95 transition-all rounded-full hover:bg-surface-secondary"
                 >
                   <PencilIcon size={14} />
@@ -139,12 +139,12 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
           onOpenChange={(open) => {
             if (!open) setEditing(null);
           }}
-          cafeId={editing.cafeId}
-          cafeName={editing.cafeName || t("unknown_cafe")}
+          cafeId={editing.cafe_id}
+          cafeName={editing.cafe_name || t("unknown_cafe")}
           mode="edit"
           editCheckinId={editing.id}
           initialScores={editing.scores}
-          initialMaxStay={editing.maxStay}
+          initialMaxStay={editing.max_stay}
           initialNote={editing.notes}
           isAuthenticated={isAuthenticated}
         />

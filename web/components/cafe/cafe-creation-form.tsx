@@ -118,8 +118,8 @@ export function CafeCreationForm({
         return;
       }
       if (!response.ok) throw new Error(await responseMessage(response, t("createFailed")));
-      const result = (await response.json()) as { cafeId?: string };
-      setCreatedCafeId(result.cafeId ?? null);
+      const result = (await response.json()) as { cafe_id?: string };
+      setCreatedCafeId(result.cafe_id ?? null);
     } catch (cause) {
       // A 401 is a session problem, not a photo problem: blaming the photo
       // would leave the user retrying a request that can never succeed.

@@ -40,14 +40,20 @@ export function throwIfUnauthorized(response: Response): void {
  * Message a failed response should show.
  *
  * `message` is route-authored prose (`apiError()` sets it only when a route
- * wrote one, e.g. the rate limiter) and is safe to render. `error` is a machine
- * code — `internal_error`, `upstream_error`, … — which is operator vocabulary
- * and MUST NOT reach a user: it is logged for triage and replaced with
- * `fallback`, the caller's localized copy (BRAWUKA-212).
+ * wrote one, e.g. validation detail) and is safe to render. `error` is a
+ * machine code — `internal_error`, `rate_limited`, `upstream_error`, … —
+ * which is operator vocabulary and MUST NOT reach a user: it is logged for
+ * triage and replaced with `fallback`, the caller's localized copy
+ * (BRAWUKA-212, BRAWUKA-280). The 429 envelope carries the code only, so a
+ * localized caller never renders hardcoded English.
  */
 export async function responseMessage(response: Response, fallback: string): Promise<string> {
   // Benign: response body may not be JSON (e.g. 502/504 gateway HTML error); safe parse falls back.
   const body = (await response.json().catch(() => null)) as { message?: string; error?: string } | null;
+  if (response.status === 429) {
+    if (body?.error) logErrorCode(body.error, `${response.status} ${response.url}`);
+    return fallback;
+  }
   if (body?.message) return body.message;
   if (body?.error) logErrorCode(body.error, `${response.status} ${response.url}`);
   return fallback;

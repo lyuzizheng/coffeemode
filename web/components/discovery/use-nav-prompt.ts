@@ -6,13 +6,10 @@
  * lookup and the resolve POST; the view owns the card↔pill presentation.
  */
 import { useCallback, useEffect, useState } from "react";
+import type { NavPromptItemDto } from "@shared/navigations/prompt";
 
 /** The promptable navigation DTO served by GET /api/navigations/prompt. */
-export interface NavPromptItem {
-  id: string;
-  created_at: string;
-  cafe: { id: string; name: string; cover: string | null };
-}
+export type NavPromptItem = NavPromptItemDto;
 
 export type NavPromptAnswer = "visited" | "wont_go" | "not_yet";
 

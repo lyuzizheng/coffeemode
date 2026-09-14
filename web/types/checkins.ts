@@ -73,5 +73,5 @@ export type CheckInFeedMode = "newest" | "helpful";
 export interface CheckInFeedPage {
   checkins: PublicCheckIn[];
   /** Opaque mode-bound cursor for the next page; null when exhausted. */
-  nextCursor: string | null;
+  next_cursor: string | null;
 }

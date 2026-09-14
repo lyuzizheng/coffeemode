@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CheckinFeed } from "@/components/discovery/checkin-feed";
+import { useCheckinFeed } from "@/components/discovery/use-checkin-feed";
 import messages from "../../messages/en.json";
 import type { PublicCheckIn } from "@/types/checkins";
 // The real hook pings /api/health on an interval through a module-level
@@ -45,7 +46,7 @@ function mockFeed() {
         status: 200,
         json: async () => ({
           checkins: [card(OWN_ID, true, "Corner seat"), card(OTHER_ID, false, "Great espresso")],
-          nextCursor: null,
+          next_cursor: null,
         }),
       });
     }
@@ -73,6 +74,84 @@ function renderFeed() {
     { wrapper: Wrapper },
   );
 }
+
+// BRAWUKA-280: a 410 cursor_version_expired must not trap the feed in a
+// retry loop that resends the dead cursor. The hook exposes a retry that
+// resets the infinite query so the next request carries no cursor (page one).
+describe("CheckinFeed expired-cursor recovery", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+  });
+
+  it("resets the query on retry so page one refetches without the dead cursor", async () => {
+    const seen: string[] = [];
+    globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+      seen.push(String(url));
+      // Page one issues a live cursor; the snapshot rotates before the next
+      // page fetch, so that cursor arrives dead.
+      if (seen.length === 1) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ checkins: [card(OWN_ID, true, "Corner seat")], next_cursor: "dead-cursor" }),
+        });
+      }
+      if (seen.length === 2) {
+        return Promise.resolve({
+          ok: false,
+          status: 410,
+          json: async () => ({ error: "cursor_version_expired" }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({ checkins: [card(OWN_ID, true, "Corner seat")], next_cursor: null }),
+      });
+    });
+
+    function Probe() {
+      const { query, retryFromFirstPage } = useCheckinFeed(CAFE, "helpful");
+      return (
+        <>
+          <button type="button" onClick={() => void query.fetchNextPage()}>
+            load-next
+          </button>
+          <button type="button" onClick={() => void retryFromFirstPage()}>
+            retry-first-page
+          </button>
+          <span>{query.data ? "loaded" : "loading"}</span>
+          <span>{query.hasNextPage ? "has-next" : "no-next"}</span>
+        </>
+      );
+    }
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <QueryClientProvider client={queryClient}>{<Probe />}</QueryClientProvider>
+      </NextIntlClientProvider>,
+    );
+
+    // The seeded cache carries a dead next-page cursor: the first
+    // next-page fetch replays it into a 410, and the exposed retry resets
+    // the query so page one refetches with no cursor param.
+    await screen.findByText("loaded");
+    fireEvent.click(screen.getByRole("button", { name: "load-next" }));
+    await waitFor(() => expect(seen.length).toBeGreaterThanOrEqual(2), { timeout: 3000 });
+    expect(seen[1]).toContain("cursor=dead-cursor");
+    fireEvent.click(await screen.findByRole("button", { name: "retry-first-page" }));
+    await waitFor(() => expect(seen.length).toBeGreaterThanOrEqual(2), { timeout: 3000 });
+    expect(seen[seen.length - 1]).not.toContain("cursor=");
+    expect(seen[seen.length - 1]).not.toContain("dead-cursor");
+  });
+});
 
 // DG72 feed-card edit entry (owner verdict BRAWUKA-120): only the viewer's
 // own cards expose the overflow menu, opening the drawer prefilled in edit

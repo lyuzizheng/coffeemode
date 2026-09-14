@@ -28,8 +28,9 @@ import {
   MAX_SEARCH_RADIUS_KM,
   SEARCH_RESULT_LIMIT,
 } from "./constants";
-import type { Deps, Env, POI, POISearchHit } from "./types";
 import { fetchPlaceDetails, textSearch, toPOI, GoogleApiError, type GooglePlace } from "./google";
+import type { Deps, Env, POI, POISearchHit } from "./types";
+import { stableApplePlaceId } from "../../web/shared/places/apple-place-id";
 import {
   d1GetPOI,
   d1SearchPOIs,
@@ -61,19 +62,8 @@ function upstreamError(e: unknown): Response {
   return json({ error: "upstream_error", message: "upstream request failed" }, 502);
 }
 
-// Fallback id for Apple places that expose no stable reference: FNV-1a over
-// "lat,lng:label". 32-bit, so collisions and label/coordinate drift can split
-// or merge distinct places — accepted for MVP until Apple offers a
-// server-side id. Must stay byte-identical to `stablePlaceId` in
-// web/components/cafe/apple-place-search.tsx or dedupe silently breaks.
-function stableApplePlaceId(value: string): string {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `apple:${(hash >>> 0).toString(16).padStart(8, "0")}`;
-}
+// Apple Maps has no server-side Places API: a share URL with coordinates but
+// no stored reference falls back to the shared `stableApplePlaceId` hash.
 
 // --- GET /poi/:place_id ---
 

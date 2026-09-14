@@ -6,7 +6,7 @@
  * this cafe's feed, rolls back from snapshots on error, and revalidates on
  * settle. Render stays in `checkin-feed.tsx`; cards stay in `feed-card.tsx`.
  */
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useTranslations } from "next-intl";
 import {
   keepPreviousData,
@@ -14,6 +14,7 @@ import {
   useMutation,
   useQueryClient,
   type InfiniteData,
+  type QueryClient,
 } from "@tanstack/react-query";
 import { toast } from "@heroui/react";
 import { dedupeCheckins } from "@/lib/discovery/view-model";
@@ -28,6 +29,7 @@ async function fetchFeedPage(
   if (cursor) params.set("cursor", cursor);
   const res = await fetch(`/api/cafes/${cafeId}/checkins?${params}`);
   if (res.status === 404) throw new FeedNotFoundError();
+  if (res.status === 410) throw new FeedCursorExpiredError();
   if (!res.ok) throw new Error(`feed failed: ${res.status}`);
   return (await res.json()) as CheckInFeedPage;
 }
@@ -36,6 +38,18 @@ export class FeedNotFoundError extends Error {
   constructor() {
     super("cafe not found");
     this.name = "FeedNotFoundError";
+  }
+}
+
+/**
+ * The helpful snapshot rotated under a live cursor (410
+ * `cursor_version_expired`). The stored cursor is dead — the only recovery
+ * is discarding cached pages and restarting from page one (BRAWUKA-280).
+ */
+export class FeedCursorExpiredError extends Error {
+  constructor() {
+    super("feed cursor expired; restart from page one");
+    this.name = "FeedCursorExpiredError";
   }
 }
 
@@ -55,26 +69,63 @@ export function useCheckinFeed(cafeId: string, mode: CheckInFeedMode) {
   const t = useTranslations("discovery");
   const queryClient = useQueryClient();
 
-  const query = useInfiniteQuery({
-    queryKey: ["cafe-checkins", cafeId, mode],
-    queryFn: ({ pageParam }) => fetchFeedPage(cafeId, mode, pageParam),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
-    // DG17: previous mode's content stays until the new page arrives.
-    placeholderData: keepPreviousData,
-  });
+  const query = useFeedQuery(queryClient, cafeId, mode);
 
   const checkins = useMemo(
     () => (query.data ? dedupeCheckins(query.data.pages) : []),
     [query.data],
   );
 
-  const likeMutation = useMutation({
+  const likeMutation = useLikeMutation(queryClient, cafeId, t("like_signin"), t("load_failed"));
+
+  return {
+    query,
+    checkins,
+    like: (checkin: PublicCheckIn) => likeMutation.mutate(checkin),
+    likePending: likeMutation.isPending,
+    /**
+     * Retry that never re-sends a dead cursor: clears cached pages (and
+     * their page params) then refetches from page one. Plain `refetch()` or
+     * `fetchNextPage()` would replay the expired cursor into another 410.
+     */
+    retryFromFirstPage: () => queryClient.resetQueries({ queryKey: ["cafe-checkins", cafeId, mode] }),
+  };
+}
+
+function useFeedQuery(
+  queryClient: QueryClient,
+  cafeId: string,
+  mode: CheckInFeedMode,
+) {
+  const query = useInfiniteQuery({
+    queryKey: ["cafe-checkins", cafeId, mode],
+    queryFn: ({ pageParam }) => fetchFeedPage(cafeId, mode, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
+    // A 410 means the stored cursor is dead — never auto-retry it.
+    retry: (failureCount, error) =>
+      error instanceof FeedCursorExpiredError ? false : failureCount < 2,
+    // DG17: previous mode's content stays until the new page arrives.
+    placeholderData: keepPreviousData,
+  });
+
+  // A 410 means the stored cursor is dead: retrying would just resend it.
+  // Drop the cached pages so there is no dead cursor left to re-send, then
+  // refetch from page one (BRAWUKA-280).
+  const expired = query.error instanceof FeedCursorExpiredError;
+  useEffect(() => {
+    if (!expired) return;
+    queryClient.resetQueries({ queryKey: ["cafe-checkins", cafeId, mode] });
+  }, [expired, queryClient, cafeId, mode]);
+  return query;
+}
+function useLikeMutation(queryClient: QueryClient, cafeId: string, signInCopy: string, failedCopy: string) {
+  return useMutation({
     mutationFn: async (checkin: PublicCheckIn) => {
       const res = await fetch(`/api/checkins/${checkin.id}/like`, { method: "POST" });
       if (res.status === 401) throw new LikeAuthError();
       if (!res.ok) throw new Error(`like failed: ${res.status}`);
-      return (await res.json()) as { liked: boolean; likesCount: number };
+      return (await res.json()) as { liked: boolean; likes_count: number };
     },
     onMutate: async (checkin) => {
       // Optimistic toggle across every cached mode of this cafe's feed.
@@ -109,20 +160,13 @@ export function useCheckinFeed(cafeId: string, mode: CheckInFeedMode) {
         queryClient.setQueryData(key, data);
       }
       if (err instanceof LikeAuthError) {
-        toast(t("like_signin"), { timeout: 4000 });
+        toast(signInCopy, { timeout: 4000 });
       } else {
-        toast(t("load_failed"), { timeout: 4000 });
+        toast(failedCopy, { timeout: 4000 });
       }
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["cafe-checkins", cafeId] });
     },
   });
-
-  return {
-    query,
-    checkins,
-    like: (checkin: PublicCheckIn) => likeMutation.mutate(checkin),
-    likePending: likeMutation.isPending,
-  };
 }

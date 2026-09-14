@@ -279,27 +279,27 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
         photo_ids: [],
       },
     });
-    const tombstoneId = temp.cafeId;
+    const tombstone_id = temp.cafe_id;
 
     // Soft-delete: retain coordinates tombstone
-    await dbClient.query("update cafes set deleted_at = now() where id = $1", [tombstoneId]);
+    await dbClient.query("update cafes set deleted_at = now() where id = $1", [tombstone_id]);
 
     // getCafeLocation still retrieves coordinates of soft-deleted cafe for recovery
-    const location = await getCafeLocation(tombstoneId);
+    const location = await getCafeLocation(tombstone_id);
     expect(location).not.toBeNull();
     expect(location?.lat).toBeCloseTo(1.305, 3);
     expect(location?.lng).toBeCloseTo(103.832, 3);
 
     // Call GET /api/cafes/[id]/recovery endpoint
     const recoveryRes = await recoveryGET(
-      new Request(`https://localhost/api/cafes/${tombstoneId}/recovery`),
-      { params: Promise.resolve({ id: tombstoneId }) },
+      new Request(`https://localhost/api/cafes/${tombstone_id}/recovery`),
+      { params: Promise.resolve({ id: tombstone_id }) },
     );
     expect(recoveryRes.status).toBe(200);
     const recoveryData = (await recoveryRes.json()) as { cafes: Array<{ id: string; name: string }> };
     expect(recoveryData.cafes.length).toBeGreaterThan(0);
     // Crucial recovery invariant: the gone cafe itself is strictly excluded from suggestions
-    expect(recoveryData.cafes.every((c) => c.id !== tombstoneId)).toBe(true);
+    expect(recoveryData.cafes.every((c) => c.id !== tombstone_id)).toBe(true);
 
     // Non-existent UUID gracefully returns an empty list without 500 error
     const nonExistentId = randomUUID();
@@ -347,13 +347,13 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
         photo_ids: [],
       },
     });
-    expect(created.cafeId).toBeDefined();
-    createdCafeIds.add(created.cafeId);
+    expect(created.cafe_id).toBeDefined();
+    createdCafeIds.add(created.cafe_id);
 
     // Verify google_place_id persistence in DB
     const persisted = await dbClient.query(
       "select google_place_id from cafes where id = $1",
-      [created.cafeId],
+      [created.cafe_id],
     );
     expect(persisted.rows[0]?.google_place_id).toBe(mockPoi.place_id);
 
@@ -395,8 +395,8 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
       },
     });
     expect(flagship.tz).toBe("Asia/Singapore");
-    createdCafeIds.add(flagship.cafeId);
-    const journeyCafeId = flagship.cafeId;
+    createdCafeIds.add(flagship.cafe_id);
+    const journey_cafe_id = flagship.cafe_id;
 
     // 2. WebP fake image upload fixture
     const fakeUpload = createFakeImageUpload();
@@ -406,7 +406,7 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
     // Unrecorded intent must fail
     const unrecordedResult = await completeImageUpload(
       { id: JOURNEY_U1 },
-      { imageUuid: fakeUpload.imageUuid, targetType: "cafe", targetId: journeyCafeId, isCover: false },
+      { imageUuid: fakeUpload.imageUuid, targetType: "cafe", targetId: journey_cafe_id, isCover: false },
       imageStubDeps(),
     );
     expect(unrecordedResult.ok).toBe(false);
@@ -418,7 +418,7 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
     await recordUploadIntent(JOURNEY_U1, fakeUpload.imageUuid);
     const completeResult = await completeImageUpload(
       { id: JOURNEY_U1 },
-      { imageUuid: fakeUpload.imageUuid, targetType: "cafe", targetId: journeyCafeId, isCover: false },
+      { imageUuid: fakeUpload.imageUuid, targetType: "cafe", targetId: journey_cafe_id, isCover: false },
       imageStubDeps(),
     );
     expect(completeResult.ok).toBe(true);
@@ -427,7 +427,7 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
     // Verify atomic mount into cafes.gallery in Postgres
     const galleryRes = await dbClient.query(
       "select gallery from cafes where id = $1",
-      [journeyCafeId],
+      [journey_cafe_id],
     );
     const gallery = galleryRes.rows[0]?.gallery as Array<{ id: string }>;
     expect(gallery).toBeInstanceOf(Array);
@@ -436,7 +436,7 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
     // Single-use intent guarantee: re-completing the same intent must fail
     const replayResult = await completeImageUpload(
       { id: JOURNEY_U1 },
-      { imageUuid: fakeUpload.imageUuid, targetType: "cafe", targetId: journeyCafeId, isCover: false },
+      { imageUuid: fakeUpload.imageUuid, targetType: "cafe", targetId: journey_cafe_id, isCover: false },
       imageStubDeps(),
     );
     expect(replayResult.ok).toBe(false);
@@ -449,7 +449,7 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
     await recordUploadIntent(JOURNEY_U1, foreignUpload.imageUuid);
     const foreignResult = await completeImageUpload(
       { id: JOURNEY_U2 },
-      { imageUuid: foreignUpload.imageUuid, targetType: "cafe", targetId: journeyCafeId, isCover: false },
+      { imageUuid: foreignUpload.imageUuid, targetType: "cafe", targetId: journey_cafe_id, isCover: false },
       imageStubDeps(),
     );
     expect(foreignResult.ok).toBe(false);
@@ -472,10 +472,10 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
         photo_ids: [],
       },
     });
-    createdCafeIds.add(flagship.cafeId);
+    createdCafeIds.add(flagship.cafe_id);
 
     // Verify coordinates, timezone, city, and initial aggregated stats
-    const stats = await cafeWorkStats(dbClient, flagship.cafeId);
+    const stats = await cafeWorkStats(dbClient, flagship.cafe_id);
     expect(stats.n_checkins).toBe(1);
     expect(stats.n_users).toBe(1);
     expect(stats.dims.wifi?.sum).toBe(90);
@@ -486,7 +486,7 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
     expect(stats.dims.overall?.n).toBe(1);
 
     // The "A nomad" Promise: author is strictly null prior to explicit opt-in
-    const detail = await getCafe(flagship.cafeId);
+    const detail = await getCafe(flagship.cafe_id);
     expect(detail).not.toBeNull();
     const publicDetail = toPublicCafeDetail(detail!);
     expect(publicDetail.author).toBeNull();
@@ -520,7 +520,7 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
   });
 
   it("Path 3: default anonymity guarantee holds across cafe detail and public check-in feed", async () => {
-    const testCafe = await createCafeWithFirstCheckIn(JOURNEY_U1, {
+    const test_cafe = await createCafeWithFirstCheckIn(JOURNEY_U1, {
       name: `Anon Default Roasters ${randomUUID().slice(0, 8)}`,
       lat: 1.3065,
       lng: 103.8325,
@@ -533,18 +533,18 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
         photo_ids: [],
       },
     });
-    createdCafeIds.add(testCafe.cafeId);
+    createdCafeIds.add(test_cafe.cafe_id);
 
     // Pre-consent: author must be null on both detail and check-in feed
-    const cafeDetail = toPublicCafeDetail((await getCafe(testCafe.cafeId))!);
+    const cafeDetail = toPublicCafeDetail((await getCafe(test_cafe.cafe_id))!);
     expect(cafeDetail.author).toBeNull();
 
     const feed = await listPublicCheckIns({
-      cafeId: testCafe.cafeId,
+      cafeId: test_cafe.cafe_id,
       mode: "newest",
       viewerId: null,
     });
-    const firstCheckin = feed.checkins.find((c) => c.id === testCafe.checkinId);
+    const firstCheckin = feed.checkins.find((c) => c.id === test_cafe.checkin_id);
     expect(firstCheckin).toBeDefined();
     expect(firstCheckin?.author).toBeNull();
   });
@@ -558,7 +558,7 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
       "Nomad Explorer Ann",
     ]);
 
-    const testCafe = await createCafeWithFirstCheckIn(testUser, {
+    const test_cafe = await createCafeWithFirstCheckIn(testUser, {
       name: `Identity Toggle Roasters ${randomUUID().slice(0, 8)}`,
       lat: 1.3065,
       lng: 103.8325,
@@ -571,7 +571,7 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
         photo_ids: [],
       },
     });
-    createdCafeIds.add(testCafe.cafeId);
+    createdCafeIds.add(test_cafe.cafe_id);
 
     // Assign avatar to profile
     const avatarUrl = "https://images.example.com/nomad-ann.webp";
@@ -589,7 +589,7 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
     expect(optedIn.identityConsentedAt).not.toBeNull();
 
     // 3. Verify public projection reveals handle, display name and avatar
-    const publicCafe = toPublicCafeDetail((await getCafe(testCafe.cafeId))!);
+    const publicCafe = toPublicCafeDetail((await getCafe(test_cafe.cafe_id))!);
     expect(publicCafe.author).toEqual({
       handle: optedIn.publicHandle,
       display_name: "Nomad Explorer Ann",
@@ -597,11 +597,11 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
     });
 
     const publicFeed = await listPublicCheckIns({
-      cafeId: testCafe.cafeId,
+      cafeId: test_cafe.cafe_id,
       mode: "newest",
       viewerId: null,
     });
-    const publicCheckin = publicFeed.checkins.find((c) => c.id === testCafe.checkinId);
+    const publicCheckin = publicFeed.checkins.find((c) => c.id === test_cafe.checkin_id);
     expect(publicCheckin?.author).toEqual({
       handle: optedIn.publicHandle,
       display_name: "Nomad Explorer Ann",
@@ -615,15 +615,15 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
     expect(optedOut.showPublicIdentity).toBe(false);
 
     // 5. Verify immediate revert to author: null
-    const anonCafe = toPublicCafeDetail((await getCafe(testCafe.cafeId))!);
+    const anonCafe = toPublicCafeDetail((await getCafe(test_cafe.cafe_id))!);
     expect(anonCafe.author).toBeNull();
 
     const anonFeed = await listPublicCheckIns({
-      cafeId: testCafe.cafeId,
+      cafeId: test_cafe.cafe_id,
       mode: "newest",
       viewerId: null,
     });
-    const anonCheckin = anonFeed.checkins.find((c) => c.id === testCafe.checkinId);
+    const anonCheckin = anonFeed.checkins.find((c) => c.id === test_cafe.checkin_id);
     expect(anonCheckin?.author).toBeNull();
 
     // 6. Underlying profile data remains preserved and intact

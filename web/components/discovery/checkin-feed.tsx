@@ -116,7 +116,7 @@ export function CheckinFeed({
   const [mode, setMode] = useState<CheckInFeedMode>("newest"); // DG113
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const { query, checkins, like, likePending } = useCheckinFeed(cafeId, mode);
+  const { query, checkins, like, likePending, retryFromFirstPage } = useCheckinFeed(cafeId, mode);
 
   // A 404 from the feed means the cafe is gone — route to the DG19 flow.
   useEffect(() => {
@@ -147,7 +147,7 @@ export function CheckinFeed({
         <FeedSkeleton />
       ) : query.isError && checkins.length === 0 ? (
         query.error instanceof FeedNotFoundError ? null : (
-          <InlineError message={t("load_failed")} onRetry={() => query.refetch()} />
+          <InlineError message={t("load_failed")} onRetry={() => retryFromFirstPage()} />
         )
       ) : checkins.length === 0 ? (
         <FeedEmpty onCheckIn={onCheckIn} />
@@ -167,7 +167,7 @@ export function CheckinFeed({
             <div className="h-10 animate-pulse rounded-md bg-surface-secondary" aria-hidden />
           )}
           {query.isError && (
-            <InlineError message={t("load_failed")} onRetry={() => query.fetchNextPage()} />
+            <InlineError message={t("load_failed")} onRetry={() => retryFromFirstPage()} />
           )}
           <div ref={sentinelRef} className="h-px" aria-hidden />
         </div>

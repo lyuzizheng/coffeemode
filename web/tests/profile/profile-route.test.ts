@@ -208,20 +208,20 @@ describe("Profile API routes", () => {
         items: [
           {
             id: "00000000-0000-4000-8000-000000000010",
-            cafeId: "00000000-0000-4000-8000-000000000020",
-            cafeName: "Kiosk",
-            cafeCity: "singapore",
-            cafeIsDeleted: false,
-            visitedAt: "2026-08-25T12:00:00.000Z",
+            cafe_id: "00000000-0000-4000-8000-000000000020",
+            cafe_name: "Kiosk",
+            cafe_city: "singapore",
+            cafe_is_deleted: false,
+            visited_at: "2026-08-25T12:00:00.000Z",
             scores: { wifi: 85 },
-            maxStay: null,
-            likesCount: 3,
+            max_stay: null,
+            likes_count: 3,
             notes: "Great spot",
             photos: [],
-            isCreation: true,
+            is_creation: true,
           },
         ],
-        nextCursor: "2026-08-25T12:00:00.000Z_00000000-0000-4000-8000-000000000010",
+        next_cursor: "2026-08-25T12:00:00.000Z_00000000-0000-4000-8000-000000000010",
       });
 
       const req = new Request("http://localhost/api/profile/checkins?limit=10") as NextRequest;
@@ -229,7 +229,7 @@ describe("Profile API routes", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.items.length).toBe(1);
-      expect(body.items[0].cafeName).toBe("Kiosk");
+      expect(body.items[0].cafe_name).toBe("Kiosk");
       expect(body.next_cursor).toBe("2026-08-25T12:00:00.000Z_00000000-0000-4000-8000-000000000010");
     });
 
@@ -275,12 +275,12 @@ describe("Profile API routes", () => {
             name: "Kiosk Roastery",
             city: "singapore",
             cover: "cafes/cover.webp",
-            lastVisitedAt: "2026-08-25T12:00:00.000Z",
-            checkinsCount: 2,
-            isCreation: true,
+            last_visited_at: "2026-08-25T12:00:00.000Z",
+            checkins_count: 2,
+            is_creation: true,
           },
         ],
-        nextCursor: null,
+        next_cursor: null,
       });
 
       const req = new Request("http://localhost/api/profile/cafes") as NextRequest;
@@ -289,8 +289,8 @@ describe("Profile API routes", () => {
       const body = await res.json();
       expect(body.items.length).toBe(1);
       expect(body.items[0].name).toBe("Kiosk Roastery");
-      expect(body.items[0].checkinsCount).toBe(2);
-      expect(body.items[0].isCreation).toBe(true);
+      expect(body.items[0].checkins_count).toBe(2);
+      expect(body.items[0].is_creation).toBe(true);
     });
   });
 

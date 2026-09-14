@@ -137,15 +137,15 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
         photo_ids: [],
       },
     });
-    createdCafeIds.add(created.cafeId);
-    const socialCafeId = created.cafeId;
-    const afterCreate = await cafeWorkStats(dbClient, socialCafeId);
+    createdCafeIds.add(created.cafe_id);
+    const social_cafe_id = created.cafe_id;
+    const afterCreate = await cafeWorkStats(dbClient, social_cafe_id);
     expect(afterCreate.n_checkins).toBe(1);
     expect(afterCreate.n_users).toBe(1);
     expect(afterCreate.experience_score).toBe(90);
 
     const second = await createCheckIn(JOURNEY_U2, {
-      cafe_id: socialCafeId,
+      cafe_id: social_cafe_id,
       scores: { overall: 50, wifi: 60 },
       note: "visitor perspective",
     });
@@ -153,7 +153,7 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
 
     // One check-in per user: each contribution carries weight 1, so the
     // persisted aggregate is the exact two-user mean.
-    const stats = await cafeWorkStats(dbClient, socialCafeId);
+    const stats = await cafeWorkStats(dbClient, social_cafe_id);
     expect(stats.n_checkins).toBe(2);
     expect(stats.n_users).toBe(2);
     expect(stats.dims.overall).toMatchObject({ sum: 140, n: 2 });
@@ -169,36 +169,36 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
       city: "singapore",
       checkin: { scores: { overall: 90 }, max_stay: "unlimited", note: "creator", photo_ids: [] },
     });
-    createdCafeIds.add(created.cafeId);
-    const socialCafeId = created.cafeId;
+    createdCafeIds.add(created.cafe_id);
+    const social_cafe_id = created.cafe_id;
 
     const second = await createCheckIn(JOURNEY_U2, {
-      cafe_id: socialCafeId,
+      cafe_id: social_cafe_id,
       scores: { overall: 50, wifi: 60 },
       note: "visitor perspective",
     });
-    const visitorCheckinId = second.checkinId;
+    const visitor_checkin_id = second.checkin_id;
 
     const err = await createCheckIn(JOURNEY_U2, {
-      cafe_id: socialCafeId,
+      cafe_id: social_cafe_id,
       scores: { overall: 95 },
     }).catch((e) => e);
     expect(err).toBeInstanceOf(DuplicateCheckInError);
-    expect((err as DuplicateCheckInError).existingCheckinId).toBe(visitorCheckinId);
+    expect((err as DuplicateCheckInError).existingCheckinId).toBe(visitor_checkin_id);
 
-    await updateCheckIn(JOURNEY_U2, visitorCheckinId, {
+    await updateCheckIn(JOURNEY_U2, visitor_checkin_id, {
       scores: { overall: 60 },
       note: "revisited and revised",
     });
     const edited = await dbClient.query(
       "select note, scores from checkins where id = $1",
-      [visitorCheckinId],
+      [visitor_checkin_id],
     );
     expect(edited.rows[0].note).toBe("revisited and revised");
     expect(edited.rows[0].scores.overall).toBe(60);
     const liveCount = await dbClient.query(
       "select count(*)::int as n from checkins where cafe_id = $1 and user_id = $2 and deleted_at is null",
-      [socialCafeId, JOURNEY_U2],
+      [social_cafe_id, JOURNEY_U2],
     );
     expect(liveCount.rows[0].n).toBe(1);
   });
@@ -212,37 +212,37 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
       city: "singapore",
       checkin: { scores: { overall: 90 }, max_stay: "unlimited", note: "creator", photo_ids: [] },
     });
-    createdCafeIds.add(created.cafeId);
-    const socialCafeId = created.cafeId;
+    createdCafeIds.add(created.cafe_id);
+    const social_cafe_id = created.cafe_id;
 
     const second = await createCheckIn(JOURNEY_U2, {
-      cafe_id: socialCafeId,
+      cafe_id: social_cafe_id,
       scores: { overall: 50, wifi: 60 },
       note: "visitor perspective",
     });
-    const visitorCheckinId = second.checkinId;
+    const visitor_checkin_id = second.checkin_id;
 
     await dbClient.query(
       "update checkins set visited_at = now() - interval '25 hours', updated_at = now() where id = $1",
-      [visitorCheckinId],
+      [visitor_checkin_id],
     );
 
     const revisit = await createCheckIn(JOURNEY_U2, {
-      cafe_id: socialCafeId,
+      cafe_id: social_cafe_id,
       scores: { overall: 80 },
       note: "back the next day",
     });
-    const revisitCheckinId = revisit.checkinId;
-    expect(revisitCheckinId).not.toBe(visitorCheckinId);
+    const revisit_checkin_id = revisit.checkin_id;
+    expect(revisit_checkin_id).not.toBe(visitor_checkin_id);
     expect(revisit.deduped).toBe(false);
 
     const live = await dbClient.query<{ id: string }>(
       "select id from checkins where cafe_id = $1 and user_id = $2 and deleted_at is null order by visited_at asc",
-      [socialCafeId, JOURNEY_U2],
+      [social_cafe_id, JOURNEY_U2],
     );
-    expect(live.rows.map((r) => r.id)).toEqual([visitorCheckinId, revisitCheckinId]);
+    expect(live.rows.map((r) => r.id)).toEqual([visitor_checkin_id, revisit_checkin_id]);
 
-    const stats = await cafeWorkStats(dbClient, socialCafeId);
+    const stats = await cafeWorkStats(dbClient, social_cafe_id);
     expect(stats.n_checkins).toBe(3);
     expect(stats.n_users).toBe(2);
   });
@@ -255,11 +255,11 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
       city: "london",
       checkin: { scores: { overall: 80 }, max_stay: "unlimited", note: "anchor", photo_ids: [] },
     });
-    createdCafeIds.add(created.cafeId);
-    const londonCafe = created.cafeId;
+    createdCafeIds.add(created.cafe_id);
+    const london_cafe = created.cafe_id;
     const key = randomUUID();
     const first = await createCheckIn(JOURNEY_U3, {
-      cafe_id: londonCafe,
+      cafe_id: london_cafe,
       scores: { overall: 60 },
       note: "first attempt",
       idempotency_key: key,
@@ -267,17 +267,17 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
     expect(first.deduped).toBe(false);
 
     const replay = await createCheckIn(JOURNEY_U3, {
-      cafe_id: londonCafe,
+      cafe_id: london_cafe,
       scores: { overall: 10 },
       note: "retried with different payload",
       idempotency_key: key,
     });
-    expect(replay.checkinId).toBe(first.checkinId);
+    expect(replay.checkin_id).toBe(first.checkin_id);
     expect(replay.deduped).toBe(true);
 
     const rows = await dbClient.query(
       "select count(*)::int as n, max(note) as note from checkins where cafe_id = $1 and user_id = $2 and deleted_at is null",
-      [londonCafe, JOURNEY_U3],
+      [london_cafe, JOURNEY_U3],
     );
     expect(rows.rows[0].n).toBe(1);
     // The replay returns the original id; the first payload wins.
@@ -298,10 +298,10 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
         photo_ids: [],
       },
     });
-    createdCafeIds.add(created.cafeId);
-    const feedCafeId = created.cafeId;
-    const feedCreationCheckinId = created.checkinId;
-    let oldestFeedCheckinId = "";
+    createdCafeIds.add(created.cafe_id);
+    const feed_cafe_id = created.cafe_id;
+    const feed_creation_checkin_id = created.checkin_id;
+    let oldest_feed_checkin_id = "";
 
     // 21 further visitors, each with one staggered backdated visit (>24h
     // old, so DG64 never trips) for a deterministic newest order.
@@ -315,33 +315,33 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
       );
       const visitedAt = new Date(Date.now() - (48 + i * 3) * 3_600_000);
       const res = await createCheckIn(id, {
-        cafe_id: feedCafeId,
+        cafe_id: feed_cafe_id,
         scores: { overall: 70 },
         note: `feed visit ${i}`,
         visited_at: visitedAt,
       });
-      if (i === 20) oldestFeedCheckinId = res.checkinId;
+      if (i === 20) oldest_feed_checkin_id = res.checkin_id;
     }
 
     // Newest: the live creation check-in (visited_at now) leads; 22 rows
     // paginate 20 + 2 across the pageSize boundary.
     const page1 = await listPublicCheckIns({
-      cafeId: feedCafeId,
+      cafeId: feed_cafe_id,
       mode: "newest",
       viewerId: null,
     });
     expect(page1.checkins).toHaveLength(20);
-    expect(page1.checkins[0]?.id).toBe(feedCreationCheckinId);
-    expect(typeof page1.nextCursor).toBe("string");
+    expect(page1.checkins[0]?.id).toBe(feed_creation_checkin_id);
+    expect(typeof page1.next_cursor).toBe("string");
 
     const page2 = await listPublicCheckIns({
-      cafeId: feedCafeId,
+      cafeId: feed_cafe_id,
       mode: "newest",
-      cursor: page1.nextCursor!,
+      cursor: page1.next_cursor!,
       viewerId: null,
     });
     expect(page2.checkins).toHaveLength(2);
-    expect(page2.nextCursor).toBeNull();
+    expect(page2.next_cursor).toBeNull();
     const page1Ids = new Set(page1.checkins.map((c) => c.id));
     expect(page2.checkins.every((c) => !page1Ids.has(c.id))).toBe(true);
     const allCheckins = [...page1.checkins, ...page2.checkins];
@@ -352,14 +352,14 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
     }
 
     // Helpful: two likes lift the oldest check-in above every unliked row.
-    await toggleCheckInLike(JOURNEY_U1, oldestFeedCheckinId);
-    await toggleCheckInLike(JOURNEY_U3, oldestFeedCheckinId);
+    await toggleCheckInLike(JOURNEY_U1, oldest_feed_checkin_id);
+    await toggleCheckInLike(JOURNEY_U3, oldest_feed_checkin_id);
     const helpful = await listPublicCheckIns({
-      cafeId: feedCafeId,
+      cafeId: feed_cafe_id,
       mode: "helpful",
       viewerId: null,
     });
-    expect(helpful.checkins[0]?.id).toBe(oldestFeedCheckinId);
+    expect(helpful.checkins[0]?.id).toBe(oldest_feed_checkin_id);
     expect(helpful.checkins[0]?.likes_count).toBe(2);
   });
 
@@ -372,11 +372,11 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
       city: "singapore",
       checkin: { scores: { overall: 90 }, max_stay: "unlimited", note: "anchor", photo_ids: [] },
     });
-    createdCafeIds.add(created.cafeId);
-    const creationCheckinId = created.checkinId;
+    createdCafeIds.add(created.cafe_id);
+    const creationCheckinId = created.checkin_id;
 
     const liked = await toggleCheckInLike(JOURNEY_U2, creationCheckinId);
-    expect(liked).toEqual({ liked: true, likesCount: 1 });
+    expect(liked).toEqual({ liked: true, likes_count: 1 });
 
     const stored = await dbClient.query(
       "select likes_count from checkins where id = $1",
@@ -390,7 +390,7 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
     expect(likeRows.rows[0].n).toBe(1);
 
     const unliked = await toggleCheckInLike(JOURNEY_U2, creationCheckinId);
-    expect(unliked).toEqual({ liked: false, likesCount: 0 });
+    expect(unliked).toEqual({ liked: false, likes_count: 0 });
     const afterUnlike = await dbClient.query(
       "select likes_count from checkins where id = $1",
       [creationCheckinId],
@@ -407,8 +407,8 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
       city: "singapore",
       checkin: { scores: { overall: 90 }, max_stay: "unlimited", note: "anchor", photo_ids: [] },
     });
-    createdCafeIds.add(created.cafeId);
-    const creationCheckinId = created.checkinId;
+    createdCafeIds.add(created.cafe_id);
+    const creationCheckinId = created.checkin_id;
 
     await expect(
       toggleCheckInLike(JOURNEY_U1, creationCheckinId),
@@ -448,8 +448,8 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
         photo_ids: [],
       },
     });
-    createdCafeIds.add(solo.cafeId);
-    const soloCafeId = solo.cafeId;
+    createdCafeIds.add(solo.cafe_id);
+    const soloCafeId = solo.cafe_id;
     const result = await deleteCafe(soloCafeId, JOURNEY_U3);
     expect(result).toEqual({
       ok: true,
@@ -503,54 +503,54 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
       city: "singapore",
       checkin: { scores: { overall: 90 }, max_stay: "unlimited", note: "creator", photo_ids: [] },
     });
-    createdCafeIds.add(created.cafeId);
-    const socialCafeId = created.cafeId;
+    createdCafeIds.add(created.cafe_id);
+    const social_cafe_id = created.cafe_id;
 
     // Visitor U2 adds 2 checkins (one backdated so DG64 allows second)
     const visit1 = await createCheckIn(JOURNEY_U2, {
-      cafe_id: socialCafeId,
+      cafe_id: social_cafe_id,
       scores: { overall: 70 },
       note: "visitor 1",
     });
     await dbClient.query(
       "update checkins set visited_at = now() - interval '25 hours', updated_at = now() where id = $1",
-      [visit1.checkinId],
+      [visit1.checkin_id],
     );
     await createCheckIn(JOURNEY_U2, {
-      cafe_id: socialCafeId,
+      cafe_id: social_cafe_id,
       scores: { overall: 80 },
       note: "visitor 2",
     });
 
-    const err = await deleteCafe(socialCafeId, JOURNEY_U1).catch((e) => e);
+    const err = await deleteCafe(social_cafe_id, JOURNEY_U1).catch((e) => e);
     expect(err).toBeInstanceOf(CafeHasOtherCheckinsError);
     expect((err as CafeHasOtherCheckinsError).n).toBe(2);
 
-    const result = await deleteCafe(socialCafeId, JOURNEY_U1, { confirm: true });
+    const result = await deleteCafe(social_cafe_id, JOURNEY_U1, { confirm: true });
     expect(result.owner_transferred).toBe(true);
     expect(result.shell).toBe(false);
     expect(result.removed_checkins).toBe(1);
 
     const owner = await dbClient.query(
       "select created_by from cafes where id = $1",
-      [socialCafeId],
+      [social_cafe_id],
     );
     expect(owner.rows[0].created_by).toBe(JOURNEY_SERVICE_ACCOUNT_ID);
 
     // Only the caller's check-ins were removed; the visitor's two live on.
     const remaining = await dbClient.query(
       "select user_id, count(*)::int as n from checkins where cafe_id = $1 and deleted_at is null group by user_id",
-      [socialCafeId],
+      [social_cafe_id],
     );
     expect(remaining.rows).toHaveLength(1);
     expect(remaining.rows[0].user_id).toBe(JOURNEY_U2);
     expect(remaining.rows[0].n).toBe(2);
 
-    const stats = await cafeWorkStats(dbClient, socialCafeId);
+    const stats = await cafeWorkStats(dbClient, social_cafe_id);
     expect(stats.n_checkins).toBe(2);
     expect(stats.n_users).toBe(1);
 
     // Service-account托管永远匿名 (spec 0006 correction 2).
-    expect(toPublicCafeDetail((await getCafe(socialCafeId))!).author).toBeNull();
+    expect(toPublicCafeDetail((await getCafe(social_cafe_id))!).author).toBeNull();
   });
 });

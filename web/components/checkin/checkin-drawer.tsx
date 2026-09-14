@@ -34,11 +34,11 @@ interface CheckinDrawerProps {
 }
 
 export function resolveRevisitCheckin(
-  data: { checkin: LastCheckin | null; revisitWindowHours?: number } | undefined,
+  data: { checkin: LastCheckin | null; revisit_window_hours?: number } | undefined,
   now: number = Date.now(),
 ): LastCheckin | null {
   const checkin = data?.checkin;
-  const windowHours = data?.revisitWindowHours;
+  const windowHours = data?.revisit_window_hours;
   if (!checkin || typeof windowHours !== "number" || !(windowHours > 0)) return null;
   const ageMs = now - new Date(checkin.visited_at).getTime();
   if (!Number.isFinite(ageMs) || ageMs >= windowHours * 3_600_000) return null;
@@ -57,7 +57,7 @@ function useRevisitPreempt({
   cafeId: string;
   mode: DrawerMode;
   isDirty: boolean;
-  lastCheckinData: { checkin: LastCheckin | null; revisitWindowHours?: number } | undefined;
+  lastCheckinData: { checkin: LastCheckin | null; revisit_window_hours?: number } | undefined;
   editCheckinId?: string;
 }) {
   const [preempted, setPreempted] = useState<LastCheckin | null>(null);
@@ -170,7 +170,7 @@ interface CheckinDrawerState {
   setIsDirty: (dirty: boolean) => void;
   showDiscardConfirm: boolean;
   setShowDiscardConfirm: (show: boolean) => void;
-  lastCheckinQuery: UseQueryResult<{ checkin: LastCheckin | null; revisitWindowHours?: number }>;
+  lastCheckinQuery: UseQueryResult<{ checkin: LastCheckin | null; revisit_window_hours?: number }>;
   authProbeFailed: boolean;
   revisit: LastCheckin | null;
   effectiveMode: DrawerMode;

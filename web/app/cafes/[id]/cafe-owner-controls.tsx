@@ -27,7 +27,6 @@ type DeleteStep = "idle" | "confirm" | "handoff";
 
 interface DeleteErrorBody {
   error?: string;
-  code?: string;
   n?: number;
 }
 
@@ -131,7 +130,7 @@ function DeleteSection({ cafeId }: { cafeId: string }) {
         return;
       }
       const body = (await res.json().catch(() => null)) as DeleteErrorBody | null;
-      if (res.status === 403 && body?.code === "cafe_has_other_checkins") {
+      if (res.status === 403 && body?.error === "cafe_has_other_checkins") {
         setOtherCheckins(typeof body.n === "number" ? body.n : 0);
         setStep("handoff");
         return;

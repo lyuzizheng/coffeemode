@@ -24,6 +24,8 @@ export const RATE_LIMIT_BUCKET_NAMES = [
   "profile-write",
   "identity-write",
   "onboarding",
+  "heartbeat",
+  "runtime-config",
 ] as const;
 
 export type RateLimitBucketName = (typeof RATE_LIMIT_BUCKET_NAMES)[number];

@@ -156,7 +156,7 @@ describe("CheckinDrawer", () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ checkin: null, revisitWindowHours: 24 }),
+      json: async () => ({ checkin: null, revisit_window_hours: 24 }),
     });
   });
 
@@ -254,7 +254,7 @@ describe("CheckinDrawer", () => {
           note: "Corner seat",
           visited_at,
         },
-        revisitWindowHours: 24,
+        revisit_window_hours: 24,
       }),
     });
     renderDrawer({ isAuthenticated: true });
@@ -287,7 +287,7 @@ describe("CheckinDrawer", () => {
           note: "Corner seat",
           visited_at,
         },
-        revisitWindowHours: 24,
+        revisit_window_hours: 24,
       }),
     });
     renderDrawer({ isAuthenticated: true });
@@ -306,7 +306,7 @@ describe("CheckinDrawer", () => {
         return Promise.resolve({
           ok: true,
           status: 200,
-          json: async () => ({ checkin: null, revisitWindowHours: 24 }),
+          json: async () => ({ checkin: null, revisit_window_hours: 24 }),
         });
       }
       if (init?.method === "PATCH") {
@@ -344,7 +344,7 @@ describe("CheckinDrawer", () => {
         return Promise.resolve({
           ok: true,
           status: 200,
-          json: async () => ({ checkin: null, revisitWindowHours: 24 }),
+          json: async () => ({ checkin: null, revisit_window_hours: 24 }),
         });
       }
       if (init?.method === "PATCH") {
@@ -418,7 +418,7 @@ describe("CheckinDrawer", () => {
         note: null,
         visited_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
       },
-      revisitWindowHours: 24,
+      revisit_window_hours: 24,
     });
     renderDrawer(
       {
@@ -455,7 +455,7 @@ describe("CheckinDrawer", () => {
         note: null,
         visited_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
       },
-      revisitWindowHours: 24,
+      revisit_window_hours: 24,
     });
     globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
       if (init?.method === "PATCH") {
@@ -502,7 +502,7 @@ describe("CheckinDrawer", () => {
       status: 200,
       json: async () => ({
         checkin: { id: CHECKIN, scores: { overall: 90 }, visited_at },
-        revisitWindowHours: 24,
+        revisit_window_hours: 24,
       }),
     });
     renderDrawer({ isAuthenticated: true });
@@ -524,7 +524,7 @@ describe("CheckinDrawer", () => {
         return Promise.resolve({
           ok: true,
           status: 200,
-          json: async () => ({ checkin: null, revisitWindowHours: 24 }),
+          json: async () => ({ checkin: null, revisit_window_hours: 24 }),
         });
       }
       if (init?.method === "POST") {
@@ -536,7 +536,7 @@ describe("CheckinDrawer", () => {
         return Promise.resolve({
           ok: true,
           status: 201,
-          json: async () => ({ checkinId: CHECKIN }),
+          json: async () => ({ checkin_id: CHECKIN }),
         });
       }
       return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
@@ -569,7 +569,7 @@ describe("CheckinDrawer", () => {
         return Promise.resolve({
           ok: true,
           status: 200,
-          json: async () => ({ checkin: null, revisitWindowHours: 24 }),
+          json: async () => ({ checkin: null, revisit_window_hours: 24 }),
         });
       }
       if (init?.method === "POST") {
@@ -577,7 +577,7 @@ describe("CheckinDrawer", () => {
         return Promise.resolve({
           ok: true,
           status: 201,
-          json: async () => ({ checkinId: CHECKIN }),
+          json: async () => ({ checkin_id: CHECKIN }),
         });
       }
       return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
@@ -651,12 +651,12 @@ describe("CheckinDrawer", () => {
     );
     globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
       if (init?.method === "POST") {
-        return Promise.resolve({ ok: true, status: 201, json: async () => ({ checkinId: CHECKIN }) });
+        return Promise.resolve({ ok: true, status: 201, json: async () => ({ checkin_id: CHECKIN }) });
       }
       return Promise.resolve({
         ok: true,
         status: 200,
-        json: async () => ({ checkin: null, revisitWindowHours: 24 }),
+        json: async () => ({ checkin: null, revisit_window_hours: 24 }),
       });
     });
 
@@ -687,12 +687,12 @@ describe("CheckinDrawer", () => {
     try {
       globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
         if (init?.method === "POST") {
-          return Promise.resolve({ ok: true, status: 201, json: async () => ({ checkinId: CHECKIN }) });
+          return Promise.resolve({ ok: true, status: 201, json: async () => ({ checkin_id: CHECKIN }) });
         }
         return Promise.resolve({
           ok: true,
           status: 200,
-          json: async () => ({ checkin: null, revisitWindowHours: 24 }),
+          json: async () => ({ checkin: null, revisit_window_hours: 24 }),
         });
       });
       const onOpenChange = renderDrawer({ isAuthenticated: true });
@@ -719,12 +719,12 @@ describe("CheckinDrawer", () => {
   it("echoes submitted dimensions as mini WorkBars in the success card (artifact §4)", async () => {
     globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
       if (init?.method === "POST") {
-        return Promise.resolve({ ok: true, status: 201, json: async () => ({ checkinId: CHECKIN }) });
+        return Promise.resolve({ ok: true, status: 201, json: async () => ({ checkin_id: CHECKIN }) });
       }
       return Promise.resolve({
         ok: true,
         status: 200,
-        json: async () => ({ checkin: null, revisitWindowHours: 24 }),
+        json: async () => ({ checkin: null, revisit_window_hours: 24 }),
       });
     });
     renderDrawer({ isAuthenticated: true });
@@ -818,18 +818,18 @@ describe("resolveRevisitCheckin", () => {
   it("returns the check-in when it falls inside the server-provided window", () => {
     const visited_at = new Date(NOW - 2 * 60 * 60 * 1000).toISOString();
     expect(
-      resolveRevisitCheckin({ checkin: row(visited_at), revisitWindowHours: 24 }, NOW),
+      resolveRevisitCheckin({ checkin: row(visited_at), revisit_window_hours: 24 }, NOW),
     ).toEqual(row(visited_at));
   });
 
   it("returns null at/past the window edge, without a check-in, or without a window", () => {
     const atEdge = new Date(NOW - 24 * 60 * 60 * 1000).toISOString();
-    expect(resolveRevisitCheckin({ checkin: row(atEdge), revisitWindowHours: 24 }, NOW)).toBeNull();
+    expect(resolveRevisitCheckin({ checkin: row(atEdge), revisit_window_hours: 24 }, NOW)).toBeNull();
     const pastEdge = new Date(NOW - 25 * 60 * 60 * 1000).toISOString();
     expect(
-      resolveRevisitCheckin({ checkin: row(pastEdge), revisitWindowHours: 24 }, NOW),
+      resolveRevisitCheckin({ checkin: row(pastEdge), revisit_window_hours: 24 }, NOW),
     ).toBeNull();
-    expect(resolveRevisitCheckin({ checkin: null, revisitWindowHours: 24 }, NOW)).toBeNull();
+    expect(resolveRevisitCheckin({ checkin: null, revisit_window_hours: 24 }, NOW)).toBeNull();
     const recent = new Date(NOW - 60 * 60 * 1000).toISOString();
     expect(resolveRevisitCheckin({ checkin: row(recent) }, NOW)).toBeNull();
     expect(resolveRevisitCheckin(undefined, NOW)).toBeNull();

@@ -69,7 +69,7 @@ export async function createCafeWithFirstCheckIn(
   userId: string,
   input: CreateCafeInput,
   deps: ProvisionPhotosDeps = defaultProvisionPhotosDeps(),
-): Promise<{ cafeId: string; checkinId: string; tz: string }> {
+): Promise<{ cafe_id: string; checkin_id: string; tz: string }> {
   if (!isValidUUID(userId)) throw new Error("Invalid user ID");
 
   const tz = resolveCafeTimezone(input.lat, input.lng, input.city);
@@ -118,11 +118,11 @@ export async function createCafeWithFirstCheckIn(
         externalIds[1],
         userId,
       ]);
-      const cafeId = cafeRes.rows[0]?.id;
-      if (!cafeId) throw new Error("cafe insert returned no id");
+      const cafe_id = cafeRes.rows[0]?.id;
+      if (!cafe_id) throw new Error("cafe insert returned no id");
 
       const checkinRes = await client.query<{ id: string }>(INSERT_FIRST_CHECKIN_SQL, [
-        cafeId,
+        cafe_id,
         userId,
         JSON.stringify(input.checkin.scores),
         input.checkin.max_stay,
@@ -130,8 +130,8 @@ export async function createCafeWithFirstCheckIn(
         JSON.stringify([]),
         input.checkin.visited_at ?? null,
       ]);
-      const checkinId = checkinRes.rows[0]?.id;
-      if (!checkinId) throw new Error("check-in insert returned no id");
+      const checkin_id = checkinRes.rows[0]?.id;
+      if (!checkin_id) throw new Error("check-in insert returned no id");
 
       // Single-use consume inside the tx: a replay/foreign id aborts the
       // whole creation (issue #86).
@@ -139,18 +139,18 @@ export async function createCafeWithFirstCheckIn(
       await consumeProvisionedIntents(userId, photoIds, q, deps);
 
       // The first check-in's photos auto-merge into the gallery too (spec 0001).
-      const photos = photosWithSource(provisioned, checkinId);
+      const photos = photosWithSource(provisioned, checkin_id);
       // $1 = checkin id, $2 = photos JSON (the SET clause's $2::jsonb).
-      await client.query(SET_FIRST_CHECKIN_PHOTOS_SQL, [checkinId, JSON.stringify(photos)]);
-      await client.query(MERGE_GALLERY_SQL, [cafeId, JSON.stringify(photos)]);
+      await client.query(SET_FIRST_CHECKIN_PHOTOS_SQL, [checkin_id, JSON.stringify(photos)]);
+      await client.query(MERGE_GALLERY_SQL, [cafe_id, JSON.stringify(photos)]);
 
       // DG79: the first check-in is still "a check-in at that cafe" — any
       // pending navigation to it resolves silently with outcome `auto`.
-      await autoResolveNavigationsTx(q, userId, cafeId);
+      await autoResolveNavigationsTx(q, userId, cafe_id);
 
-      await incrementalUpdateWorkStats(cafeId, userId, undefined, 0, txRunnerFrom(client));
+      await incrementalUpdateWorkStats(cafe_id, userId, undefined, 0, txRunnerFrom(client));
 
-      return { cafeId, checkinId, tz };
+      return { cafe_id, checkin_id, tz };
     });
   } catch (err) {
     if (err instanceof CafeExistsError) throw err;

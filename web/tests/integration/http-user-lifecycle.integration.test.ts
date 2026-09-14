@@ -228,7 +228,7 @@ interface FeedItemDTO {
 
 interface FeedPageDTO {
   checkins: FeedItemDTO[];
-  nextCursor: string | null;
+  next_cursor: string | null;
 }
 
 interface ProfileDTO {
@@ -322,9 +322,9 @@ async function createCafeViaHttp(
     max_stay: string;
     note: string;
   },
-): Promise<{ cafeId: string; checkinId: string; tz: string }> {
+): Promise<{ cafe_id: string; checkin_id: string; tz: string }> {
   const photoId = await uploadTestWebP(client);
-  const res = await client.post<{ cafeId: string; checkinId: string; tz: string }>(
+  const res = await client.post<{ cafe_id: string; checkin_id: string; tz: string }>(
     cafesPOST,
     "/api/cafes",
     {
@@ -345,9 +345,9 @@ async function createCafeViaHttp(
     },
   );
   expect(res.status).toBe(201);
-  expect(res.data.cafeId).toBeDefined();
-  expect(res.data.checkinId).toBeDefined();
-  return { cafeId: res.data.cafeId, checkinId: res.data.checkinId, tz: res.data.tz };
+  expect(res.data.cafe_id).toBeDefined();
+  expect(res.data.checkin_id).toBeDefined();
+  return { cafe_id: res.data.cafe_id, checkin_id: res.data.checkin_id, tz: res.data.tz };
 }
 
 /** Read one cafe detail through the given client's GET (authed User D or guest). */
@@ -379,7 +379,7 @@ async function getFeed(
 
 /** Toggle the caller's like on a check-in through the real route. */
 async function likeCheckin(client: ApiClient, checkinId: string) {
-  return client.post<{ liked: boolean; likesCount: number }, IdCtx, Request>(
+  return client.post<{ liked: boolean; likes_count: number }, IdCtx, Request>(
     likePOST,
     `/api/checkins/${checkinId}/like`,
     undefined,
@@ -389,13 +389,13 @@ async function likeCheckin(client: ApiClient, checkinId: string) {
 }
 
 // Shared timeline state across the ordered Acts 0–8 flow.
-let cafe1Id = "";
-let cafe2Id = "";
-let cafe3Id = "";
-let cafe4Id = "";
-let creation1Id = "";
-let bCheckin1Id = "";
-let cCheckin1Id = "";
+let cafe1_id = "";
+let cafe2_id = "";
+let cafe3_id = "";
+let cafe4_id = "";
+let creation1_id = "";
+let b_checkin1_id = "";
+let c_checkin1_id = "";
 
 describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3, §10, §9)", () => {
   beforeAll(async () => {
@@ -529,8 +529,8 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
       note: "Flagship pioneering work cafe in Orchard",
     });
     expect(cafe1.tz).toBe("Asia/Singapore");
-    cafe1Id = cafe1.cafeId;
-    creation1Id = cafe1.checkinId;
+    cafe1_id = cafe1.cafe_id;
+    creation1_id = cafe1.checkin_id;
 
     // §10 row 4: B → Cafe 2 (creation), overall-only 85, 3h, explicitly closed days.
     const cafe2 = await createCafeViaHttp(clientB, {
@@ -547,7 +547,7 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
       note: "Quiet spot in Shibuya",
     });
     expect(cafe2.tz).toBe("Asia/Tokyo");
-    cafe2Id = cafe2.cafeId;
+    cafe2_id = cafe2.cafe_id;
 
     // §10 row 7: C → Cafe 3 (creation, solo), overall 40, unknown stay, no hours.
     const cafe3 = await createCafeViaHttp(clientC, {
@@ -563,7 +563,7 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
       note: "Central London study cafe",
     });
     expect(cafe3.tz).toBe("Europe/London");
-    cafe3Id = cafe3.cafeId;
+    cafe3_id = cafe3.cafe_id;
 
     // Ranking-scope fixture (spec §4 good_first, capstone-owned): B creates a
     // second Singapore cafe at overall 95 (≥80 → boosted), placed farther
@@ -582,10 +582,10 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
       note: "High-scoring second Singapore spot",
     });
     expect(cafe4.tz).toBe("Asia/Singapore");
-    cafe4Id = cafe4.cafeId;
+    cafe4_id = cafe4.cafe_id;
     // Initial aggregate is exactly the creator's single contribution (User D reads).
     // composite: 90*.3 + 80*.2 + 70*.2 + 60*.15 + 95*.15 = 80.25.
-    const detail = await getCafeDetailAs(clientD, cafe1Id);
+    const detail = await getCafeDetailAs(clientD, cafe1_id);
     expect(detail.work_stats.experience_score).toBe(90);
     expect(detail.work_stats.composite_score).toBeCloseTo(80.25, 2);
     expect(detail.work_stats.n_users).toBe(1);
@@ -596,7 +596,7 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     expect(detail.author).toBeNull();
     expect(detail.maintained_by_service).toBe(false);
     expect(detail.gallery).toHaveLength(1);
-    expect(detail.gallery[0]?.source).toEqual({ type: "checkin", id: creation1Id });
+    expect(detail.gallery[0]?.source).toEqual({ type: "checkin", id: creation1_id });
   }
 
   async function runAct2() {
@@ -607,11 +607,11 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     });
     expect(nearby.status).toBe(200);
     const nearbyIds = nearby.data.cafes.map((c) => c.id);
-    expect(nearbyIds).toContain(cafe1Id);
-    expect(nearbyIds).toContain(cafe4Id);
-    expect(nearbyIds).not.toContain(cafe2Id);
-    expect(nearbyIds).not.toContain(cafe3Id);
-    expect(nearbyIds.slice(0, 2)).toEqual([cafe1Id, cafe4Id]);
+    expect(nearbyIds).toContain(cafe1_id);
+    expect(nearbyIds).toContain(cafe4_id);
+    expect(nearbyIds).not.toContain(cafe2_id);
+    expect(nearbyIds).not.toContain(cafe3_id);
+    expect(nearbyIds.slice(0, 2)).toEqual([cafe1_id, cafe4_id]);
     expect(typeof nearby.data.cafes[0]?.distance_m).toBe("number");
     // Response hygiene: public visibility, never leaks created_by.
     expect(nearby.data.cafes[0]).toMatchObject({ visibility: "public" });
@@ -636,13 +636,13 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
       query: { city: "tokyo" },
     });
     expect(tokyo.status).toBe(200);
-    expect(tokyo.data.results.some((r) => r.cafe?.id === cafe2Id)).toBe(true);
+    expect(tokyo.data.results.some((r) => r.cafe?.id === cafe2_id)).toBe(true);
 
     const london = await guestClient.get<SearchDTO>(searchGET, "/api/search", {
       query: { city: "london" },
     });
     expect(london.status).toBe(200);
-    expect(london.data.results.some((r) => r.cafe?.id === cafe3Id)).toBe(true);
+    expect(london.data.results.some((r) => r.cafe?.id === cafe3_id)).toBe(true);
 
     // Explicit unknown city → 400 invalid_request, never a silent re-anchor (DG128).
     const unknownCity = await guestClient.get(searchGET, "/api/search", {
@@ -656,19 +656,19 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
       query: { open_now: true },
     });
     expect(sgOpen.status).toBe(200);
-    expect(sgOpen.data.results.some((r) => r.cafe?.id === cafe1Id)).toBe(true);
+    expect(sgOpen.data.results.some((r) => r.cafe?.id === cafe1_id)).toBe(true);
 
     const tokyoOpen = await guestClient.get<SearchDTO>(searchGET, "/api/search", {
       query: { city: "tokyo", open_now: true },
     });
     expect(tokyoOpen.status).toBe(200);
-    expect(tokyoOpen.data.results.some((r) => r.cafe?.id === cafe2Id)).toBe(false);
+    expect(tokyoOpen.data.results.some((r) => r.cafe?.id === cafe2_id)).toBe(false);
 
     const londonOpen = await guestClient.get<SearchDTO>(searchGET, "/api/search", {
       query: { city: "london", open_now: true },
     });
     expect(londonOpen.status).toBe(200);
-    expect(londonOpen.data.results.some((r) => r.cafe?.id === cafe3Id)).toBe(false);
+    expect(londonOpen.data.results.some((r) => r.cafe?.id === cafe3_id)).toBe(false);
 
     // Min-score: Cafe 3 (experience 40) is excluded by filter_overall=60, and
     // the impossible combination answers with the weak-results empty state.
@@ -687,27 +687,27 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
 
   async function runAct3() {
     // §10 rows 2–3: B → 1 (all 60s, 3h), C → 1 (all 75s, 2h).
-    const bVisit = await clientB.post<{ checkinId: string }>(checkinsPOST, "/api/checkins", {
-      cafe_id: cafe1Id,
+    const bVisit = await clientB.post<{ checkin_id: string }>(checkinsPOST, "/api/checkins", {
+      cafe_id: cafe1_id,
       scores: { overall: 60, wifi: 60, outlets: 60, seats: 60, temp: 60, coffee: 60 },
       max_stay: "3h",
       note: "visitor perspective",
     });
     expect(bVisit.status).toBe(201);
-    bCheckin1Id = bVisit.data.checkinId;
+    b_checkin1_id = bVisit.data.checkin_id;
 
-    const cVisit = await clientC.post<{ checkinId: string }>(checkinsPOST, "/api/checkins", {
-      cafe_id: cafe1Id,
+    const cVisit = await clientC.post<{ checkin_id: string }>(checkinsPOST, "/api/checkins", {
+      cafe_id: cafe1_id,
       scores: { overall: 75, wifi: 75, outlets: 75, seats: 75, temp: 75, coffee: 75 },
       max_stay: "2h",
       note: "community visitor",
     });
     expect(cVisit.status).toBe(201);
-    cCheckin1Id = cVisit.data.checkinId;
+    c_checkin1_id = cVisit.data.checkin_id;
 
     // §10 rows 5–6: A → 2 (88, 3h), C → 2 (92, 2h) with the same key twice.
-    const aVisit2 = await clientA.post<{ checkinId: string }>(checkinsPOST, "/api/checkins", {
-      cafe_id: cafe2Id,
+    const aVisit2 = await clientA.post<{ checkin_id: string }>(checkinsPOST, "/api/checkins", {
+      cafe_id: cafe2_id,
       scores: { overall: 88 },
       max_stay: "3h",
       note: "pioneer visits Tokyo",
@@ -715,8 +715,8 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     expect(aVisit2.status).toBe(201);
 
     const idempotencyKey = randomUUID();
-    const first = await clientC.post<{ checkinId: string }>(checkinsPOST, "/api/checkins", {
-      cafe_id: cafe2Id,
+    const first = await clientC.post<{ checkin_id: string }>(checkinsPOST, "/api/checkins", {
+      cafe_id: cafe2_id,
       scores: { overall: 92 },
       max_stay: "2h",
       note: "community visitor in Tokyo",
@@ -724,18 +724,18 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     });
     expect(first.status).toBe(201);
 
-    const replay = await clientC.post<{ checkinId: string }>(checkinsPOST, "/api/checkins", {
-      cafe_id: cafe2Id,
+    const replay = await clientC.post<{ checkin_id: string }>(checkinsPOST, "/api/checkins", {
+      cafe_id: cafe2_id,
       scores: { overall: 10 },
       max_stay: "2h",
       note: "retried with different payload",
       idempotency_key: idempotencyKey,
     });
     expect(replay.status).toBe(200);
-    expect(replay.data.checkinId).toBe(first.data.checkinId);
+    expect(replay.data.checkin_id).toBe(first.data.checkin_id);
 
     // §10 checkpoint after Act 3 (User D reads).
-    const cafe1 = await getCafeDetailAs(clientD, cafe1Id);
+    const cafe1 = await getCafeDetailAs(clientD, cafe1_id);
     expect(cafe1.work_stats.experience_score).toBe(75);
     expect(cafe1.work_stats.composite_score).toBeCloseTo(71.75, 2);
     expect(cafe1.work_stats.n_users).toBe(3);
@@ -743,13 +743,13 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     expect(cafe1.work_stats.policies.max_stay).toEqual({ unlimited: 1, "3h": 1, "2h": 1 });
 
     // (85 + 88 + 92) / 3 = 88.33; the DG61 pair counts as one row.
-    const cafe2 = await getCafeDetailAs(clientD, cafe2Id);
+    const cafe2 = await getCafeDetailAs(clientD, cafe2_id);
     expect(cafe2.work_stats.experience_score).toBeCloseTo(88.33, 2);
     expect(cafe2.work_stats.n_users).toBe(3);
     expect(cafe2.work_stats.n_checkins).toBe(3);
     expect(cafe2.work_stats.policies.max_stay).toEqual({ "3h": 2, "2h": 1 });
 
-    const cafe3 = await getCafeDetailAs(clientD, cafe3Id);
+    const cafe3 = await getCafeDetailAs(clientD, cafe3_id);
     expect(cafe3.work_stats.experience_score).toBe(40);
     expect(cafe3.work_stats.n_users).toBe(1);
     expect(cafe3.work_stats.n_checkins).toBe(1);
@@ -757,43 +757,43 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
 
   async function runAct4() {
     const revisit = await clientB.post(checkinsPOST, "/api/checkins", {
-      cafe_id: cafe1Id,
+      cafe_id: cafe1_id,
       scores: { overall: 65 },
       note: "second take",
     });
     expect(revisit.status).toBe(409);
-    expect(revisit.data).toMatchObject({ error: "duplicate_checkin", existing_checkin_id: bCheckin1Id });
+    expect(revisit.data).toMatchObject({ error: "duplicate_checkin", existing_checkin_id: b_checkin1_id });
 
     const lastRes = await clientB.get<
-      { checkin: { id: string; scores: Record<string, number> } | null; revisitWindowHours: number },
+      { checkin: { id: string; scores: Record<string, number> } | null; revisit_window_hours: number },
       NoCtx,
       NextRequest
     >(checkinsLastGET, "/api/checkins/last", {
-      query: { cafe_id: cafe1Id },
+      query: { cafe_id: cafe1_id },
     });
     expect(lastRes.status).toBe(200);
-    expect(lastRes.data.revisitWindowHours).toBe(24);
-    expect(lastRes.data.checkin?.id).toBe(bCheckin1Id);
+    expect(lastRes.data.revisit_window_hours).toBe(24);
+    expect(lastRes.data.checkin?.id).toBe(b_checkin1_id);
     expect(lastRes.data.checkin?.scores.overall).toBe(60);
 
     // PATCH replaces the whole scores object: all dims resubmitted at 60 so
     // only overall moves and the composite holds.
-    const editRes = await clientB.patch<{ cafeId: string }, IdCtx, Request>(
+    const editRes = await clientB.patch<{ cafe_id: string }, IdCtx, Request>(
       checkinPATCH,
-      `/api/checkins/${bCheckin1Id}`,
+      `/api/checkins/${b_checkin1_id}`,
       {
         scores: { overall: 70, wifi: 60, outlets: 60, seats: 60, temp: 60, coffee: 60 },
         note: "revisited and revised",
         max_stay: null,
       },
       {},
-      routeParams({ id: bCheckin1Id }),
+      routeParams({ id: b_checkin1_id }),
     );
     expect(editRes.status).toBe(200);
-    expect(editRes.data).toMatchObject({ cafeId: cafe1Id });
+    expect(editRes.data).toMatchObject({ cafeId: cafe1_id });
 
     // (90 + 70 + 75) / 3 = 78.33; composite holds 71.75; B's cleared max_stay drops out.
-    const cafe1 = await getCafeDetailAs(clientD, cafe1Id);
+    const cafe1 = await getCafeDetailAs(clientD, cafe1_id);
     expect(cafe1.work_stats.experience_score).toBeCloseTo(78.33, 2);
     expect(cafe1.work_stats.composite_score).toBeCloseTo(71.75, 2);
     expect(cafe1.work_stats.n_users).toBe(3);
@@ -811,12 +811,12 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     expect(renamed.data.profile.displayName).toBe("Pioneer Ann");
 
     const readAuthorAs = async (client: ApiClient) => {
-      const detail = await getCafeDetailAs(client, cafe1Id);
-      const feed = await getFeed(client, cafe1Id);
+      const detail = await getCafeDetailAs(client, cafe1_id);
+      const feed = await getFeed(client, cafe1_id);
       expect(feed.status).toBe(200);
       return {
         detail: detail.author,
-        feed: feed.data.checkins.find((c) => c.id === creation1Id)?.author ?? null,
+        feed: feed.data.checkins.find((c) => c.id === creation1_id)?.author ?? null,
       };
     };
 
@@ -870,7 +870,7 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
 
   async function runAct6() {
     for (const observer of [guestClient, clientD]) {
-      const cafe1 = await getCafeDetailAs(observer, cafe1Id);
+      const cafe1 = await getCafeDetailAs(observer, cafe1_id);
       expect(cafe1.work_stats.experience_score).toBeCloseTo(78.33, 2);
       expect(cafe1.work_stats.composite_score).toBeCloseTo(71.75, 2);
       expect(cafe1.work_stats.n_users).toBe(3);
@@ -879,17 +879,17 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
       expect(cafe1.author).toBeNull();
       expect(cafe1.maintained_by_service).toBe(false);
 
-      const cafe2 = await getCafeDetailAs(observer, cafe2Id);
+      const cafe2 = await getCafeDetailAs(observer, cafe2_id);
       expect(cafe2.work_stats.experience_score).toBeCloseTo(88.33, 2);
       expect(cafe2.work_stats.n_users).toBe(3);
       expect(cafe2.work_stats.n_checkins).toBe(3);
 
-      const cafe3 = await getCafeDetailAs(observer, cafe3Id);
+      const cafe3 = await getCafeDetailAs(observer, cafe3_id);
       expect(cafe3.work_stats.experience_score).toBe(40);
       expect(cafe3.work_stats.n_users).toBe(1);
       expect(cafe3.work_stats.n_checkins).toBe(1);
 
-      const cafe4 = await getCafeDetailAs(observer, cafe4Id);
+      const cafe4 = await getCafeDetailAs(observer, cafe4_id);
       expect(cafe4.work_stats.experience_score).toBe(95);
       expect(cafe4.work_stats.n_users).toBe(1);
       expect(cafe4.work_stats.n_checkins).toBe(1);
@@ -898,13 +898,13 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
         query: { lat: D_LAT, lng: D_LNG, radius_km: 10 },
       });
       expect(nearby.status).toBe(200);
-      expect(nearby.data.cafes.map((c) => c.id).slice(0, 2)).toEqual([cafe1Id, cafe4Id]);
+      expect(nearby.data.cafes.map((c) => c.id).slice(0, 2)).toEqual([cafe1_id, cafe4_id]);
 
       // Feed newest-first (DG113): C's visit, then B's, then A's creation.
-      const feed = await getFeed(observer, cafe1Id);
+      const feed = await getFeed(observer, cafe1_id);
       expect(feed.status).toBe(200);
       expect(feed.data.checkins).toHaveLength(3);
-      expect(feed.data.checkins.map((c) => c.id)).toEqual([cCheckin1Id, bCheckin1Id, creation1Id]);
+      expect(feed.data.checkins.map((c) => c.id)).toEqual([c_checkin1_id, b_checkin1_id, creation1_id]);
       for (const item of feed.data.checkins) {
         expect(item.liked_by_viewer).toBe(false);
         expect(item.author).toBeNull();
@@ -924,15 +924,15 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     expect(relevanceMode.status).toBe(200);
     expect(
       relevanceMode.data.results.map((r) => r.cafe?.id).slice(0, 2),
-    ).toEqual([cafe1Id, cafe4Id]);
+    ).toEqual([cafe1_id, cafe4_id]);
 
     const goodFirst = await guestClient.get<SearchDTO>(searchGET, "/api/search", {
       query: { lat: D_LAT, lng: D_LNG, ranking: "good_first" },
     });
     expect(goodFirst.status).toBe(200);
     expect(goodFirst.data.results.map((r) => r.cafe?.id).slice(0, 2)).toEqual([
-      cafe4Id,
-      cafe1Id,
+      cafe4_id,
+      cafe1_id,
     ]);
 
     // The spec's named case: Cafe 2 (experience 88.33 ≥ 80) ranks first under
@@ -941,7 +941,7 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
       query: { city: "tokyo", ranking: "good_first" },
     });
     expect(tokyoBoosted.status).toBe(200);
-    expect(tokyoBoosted.data.results[0]?.cafe?.id).toBe(cafe2Id);
+    expect(tokyoBoosted.data.results[0]?.cafe?.id).toBe(cafe2_id);
     expect(tokyoBoosted.data.results[0]?.cafe?.work_stats.experience_score).toBeCloseTo(88.33, 2);
     // Profile stats move with lifecycle events (distinct live cafes visited / live check-ins).
     const statsA = await clientA.get<ProfileDTO, NoCtx, NextRequest>(profileGET, "/api/profile");
@@ -955,43 +955,43 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
   }
 
   async function runAct7() {
-    const liked = await likeCheckin(clientA, bCheckin1Id);
+    const liked = await likeCheckin(clientA, b_checkin1_id);
     expect(liked.status).toBe(200);
-    expect(liked.data).toMatchObject({ liked: true, likesCount: 1 });
+    expect(liked.data).toMatchObject({ liked: true, likes_count: 1 });
 
-    const unliked = await likeCheckin(clientA, bCheckin1Id);
-    expect(unliked.data).toMatchObject({ liked: false, likesCount: 0 });
+    const unliked = await likeCheckin(clientA, b_checkin1_id);
+    expect(unliked.data).toMatchObject({ liked: false, likes_count: 0 });
 
-    const reliked = await likeCheckin(clientA, bCheckin1Id);
-    expect(reliked.data).toMatchObject({ liked: true, likesCount: 1 });
-    const second = await likeCheckin(clientC, bCheckin1Id);
-    expect(second.data).toMatchObject({ liked: true, likesCount: 2 });
+    const reliked = await likeCheckin(clientA, b_checkin1_id);
+    expect(reliked.data).toMatchObject({ liked: true, likes_count: 1 });
+    const second = await likeCheckin(clientC, b_checkin1_id);
+    expect(second.data).toMatchObject({ liked: true, likes_count: 2 });
 
-    const helpful = await getFeed(clientD, cafe1Id, { mode: "helpful" });
+    const helpful = await getFeed(clientD, cafe1_id, { mode: "helpful" });
     expect(helpful.status).toBe(200);
-    expect(helpful.data.checkins[0]?.id).toBe(bCheckin1Id);
+    expect(helpful.data.checkins[0]?.id).toBe(b_checkin1_id);
     expect(helpful.data.checkins[0]?.likes_count).toBe(2);
 
     // liked_by_viewer isolation: likers see true; the author, the authed
     // observer, and guests see false.
-    const asLiker = await getFeed(clientA, cafe1Id, { mode: "helpful" });
-    expect(asLiker.data.checkins.find((c) => c.id === bCheckin1Id)?.liked_by_viewer).toBe(true);
-    expect(helpful.data.checkins.find((c) => c.id === bCheckin1Id)?.liked_by_viewer).toBe(false);
-    const asAuthor = await getFeed(clientB, cafe1Id, { mode: "helpful" });
-    expect(asAuthor.data.checkins.find((c) => c.id === bCheckin1Id)?.liked_by_viewer).toBe(false);
-    const asGuest = await getFeed(guestClient, cafe1Id);
+    const asLiker = await getFeed(clientA, cafe1_id, { mode: "helpful" });
+    expect(asLiker.data.checkins.find((c) => c.id === b_checkin1_id)?.liked_by_viewer).toBe(true);
+    expect(helpful.data.checkins.find((c) => c.id === b_checkin1_id)?.liked_by_viewer).toBe(false);
+    const asAuthor = await getFeed(clientB, cafe1_id, { mode: "helpful" });
+    expect(asAuthor.data.checkins.find((c) => c.id === b_checkin1_id)?.liked_by_viewer).toBe(false);
+    const asGuest = await getFeed(guestClient, cafe1_id);
     expect(asGuest.data.checkins.every((c) => c.liked_by_viewer === false)).toBe(true);
 
     // Self-like iron rule: authors liking their own rows are rejected at the route.
-    const selfA = await likeCheckin(clientA, creation1Id);
+    const selfA = await likeCheckin(clientA, creation1_id);
     expect(selfA.status).toBe(403);
     expect(selfA.data).toMatchObject({ error: "self_like_forbidden" });
-    const selfB = await likeCheckin(clientB, bCheckin1Id);
+    const selfB = await likeCheckin(clientB, b_checkin1_id);
     expect(selfB.status).toBe(403);
     expect(selfB.data).toMatchObject({ error: "self_like_forbidden" });
 
     // Anonymous like → 401; unknown check-in → 404.
-    const anonLike = await likeCheckin(guestClient, bCheckin1Id);
+    const anonLike = await likeCheckin(guestClient, b_checkin1_id);
     expect(anonLike.status).toBe(401);
     expect(anonLike.data).toMatchObject({ error: "unauthorized" });
     const ghostLike = await likeCheckin(clientA, randomUUID());
@@ -1003,10 +1003,10 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     // Authorization line: non-creator B deleting Cafe 3 → 403 forbidden.
     const forbidden = await clientB.delete(
       cafeDELETE,
-      `/api/cafes/${cafe3Id}`,
+      `/api/cafes/${cafe3_id}`,
       undefined,
       {},
-      routeParams({ id: cafe3Id }),
+      routeParams({ id: cafe3_id }),
     );
     expect(forbidden.status).toBe(403);
     expect(forbidden.data).toMatchObject({ error: "forbidden" });
@@ -1016,23 +1016,23 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
       { ok: boolean; id: string; removed_checkins: number; owner_transferred: boolean; shell: boolean },
       IdCtx,
       Request
-    >(cafeDELETE, `/api/cafes/${cafe3Id}`, undefined, {}, routeParams({ id: cafe3Id }));
+    >(cafeDELETE, `/api/cafes/${cafe3_id}`, undefined, {}, routeParams({ id: cafe3_id }));
     expect(shell.status).toBe(200);
     expect(shell.data).toEqual({
       ok: true,
-      id: cafe3Id,
+      id: cafe3_id,
       removed_checkins: 1,
       owner_transferred: false,
       shell: true,
     });
 
-    const shellDetail = await getCafeDetailAs(clientD, cafe3Id);
+    const shellDetail = await getCafeDetailAs(clientD, cafe3_id);
     expect(shellDetail.work_stats.n_checkins).toBe(0);
     expect(shellDetail.work_stats.n_users).toBe(0);
     expect(shellDetail.gallery).toEqual([]);
     expect(shellDetail.maintained_by_service).toBe(false);
 
-    const shellFeed = await getFeed(clientD, cafe3Id);
+    const shellFeed = await getFeed(clientD, cafe3_id);
     expect(shellFeed.status).toBe(200);
     expect(shellFeed.data.checkins).toEqual([]);
 
@@ -1041,7 +1041,7 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
       query: { lat: CAFE3_LAT, lng: CAFE3_LNG, radius_km: 10 },
     });
     expect(londonNearby.status).toBe(200);
-    expect(londonNearby.data.cafes.map((c) => c.id)).toContain(cafe3Id);
+    expect(londonNearby.data.cafes.map((c) => c.id)).toContain(cafe3_id);
 
     // C's check-in no longer lists anywhere under her profile.
     const cCheckins = await clientC.get<{ items: unknown[] }, NoCtx, NextRequest>(
@@ -1049,25 +1049,25 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
       "/api/profile/checkins",
     );
     expect(cCheckins.status).toBe(200);
-    expect(JSON.stringify(cCheckins.data.items)).not.toContain(cafe3Id);
+    expect(JSON.stringify(cCheckins.data.items)).not.toContain(cafe3_id);
 
     // Community cafe: A's bare DELETE → 403 cafe_has_other_checkins with n=2.
-    const bare = await clientA.delete(cafeDELETE, `/api/cafes/${cafe1Id}`, undefined, {}, routeParams({
-      id: cafe1Id,
+    const bare = await clientA.delete(cafeDELETE, `/api/cafes/${cafe1_id}`, undefined, {}, routeParams({
+      id: cafe1_id,
     }));
     expect(bare.status).toBe(403);
-    expect(bare.data).toMatchObject({ error: "cafe_has_other_checkins", code: "cafe_has_other_checkins", n: 2 });
+    expect(bare.data).toMatchObject({ error: "cafe_has_other_checkins", n: 2 });
 
     // With confirm: handoff to the service account, A's row removed.
     const handoff = await clientA.delete<
       { ok: boolean; id: string; removed_checkins: number; owner_transferred: boolean; shell: boolean },
       IdCtx,
       Request
-    >(cafeDELETE, `/api/cafes/${cafe1Id}`, { confirm: true }, {}, routeParams({ id: cafe1Id }));
+    >(cafeDELETE, `/api/cafes/${cafe1_id}`, { confirm: true }, {}, routeParams({ id: cafe1_id }));
     expect(handoff.status).toBe(200);
     expect(handoff.data).toEqual({
       ok: true,
-      id: cafe1Id,
+      id: cafe1_id,
       removed_checkins: 1,
       owner_transferred: true,
       shell: false,
@@ -1076,10 +1076,10 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     // A's repeat DELETE → 403: she is no longer the creator.
     const repeat = await clientA.delete(
       cafeDELETE,
-      `/api/cafes/${cafe1Id}`,
+      `/api/cafes/${cafe1_id}`,
       undefined,
       {},
-      routeParams({ id: cafe1Id }),
+      routeParams({ id: cafe1_id }),
     );
     expect(repeat.status).toBe(403);
     expect(repeat.data).toMatchObject({ error: "forbidden" });
@@ -1087,7 +1087,7 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     // Post-handoff detail: service-maintained marker + anonymous author, feed
     // retains only B's and C's check-ins, aggregates recomputed without A
     // (experience (70+75)/2 = 72.5; dims all (60+75)/2 → composite 67.5).
-    const handed = await getCafeDetailAs(clientD, cafe1Id);
+    const handed = await getCafeDetailAs(clientD, cafe1_id);
     expect(handed.author).toBeNull();
     expect(handed.maintained_by_service).toBe(true);
     expect(handed.work_stats.experience_score).toBeCloseTo(72.5, 2);
@@ -1096,25 +1096,25 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     expect(handed.work_stats.n_checkins).toBe(2);
     expect(handed.work_stats.policies.max_stay).toEqual({ "2h": 1 });
 
-    const handedFeed = await getFeed(clientD, cafe1Id);
+    const handedFeed = await getFeed(clientD, cafe1_id);
     expect(handedFeed.status).toBe(200);
     expect(handedFeed.data.checkins.map((c) => c.id).sort()).toEqual(
-      [bCheckin1Id, cCheckin1Id].sort(),
+      [b_checkin1_id, c_checkin1_id].sort(),
     );
     // Act 7 likes survive the handoff: B's check-in still carries both likes.
-    const handedHelpful = await getFeed(clientD, cafe1Id, { mode: "helpful" });
-    expect(handedHelpful.data.checkins[0]?.id).toBe(bCheckin1Id);
+    const handedHelpful = await getFeed(clientD, cafe1_id, { mode: "helpful" });
+    expect(handedHelpful.data.checkins[0]?.id).toBe(b_checkin1_id);
     expect(handedHelpful.data.checkins[0]?.likes_count).toBe(2);
 
     // Service-account brand is the only owner signal on the nearby surface too.
     const sgNearby = await guestClient.get<NearbyDTO>(cafesGET, "/api/cafes", {
       query: { lat: D_LAT, lng: D_LNG, radius_km: 10 },
     });
-    const handedSummary = sgNearby.data.cafes.find((c) => c.id === cafe1Id);
+    const handedSummary = sgNearby.data.cafes.find((c) => c.id === cafe1_id);
     expect(handedSummary?.maintained_by_service).toBe(true);
 
     // Cafe 2 is untouched by the lifecycle acts.
-    const cafe2 = await getCafeDetailAs(clientD, cafe2Id);
+    const cafe2 = await getCafeDetailAs(clientD, cafe2_id);
     expect(cafe2.work_stats.experience_score).toBeCloseTo(88.33, 2);
     expect(cafe2.work_stats.n_users).toBe(3);
     expect(cafe2.work_stats.n_checkins).toBe(3);

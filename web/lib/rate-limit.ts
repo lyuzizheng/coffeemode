@@ -228,8 +228,11 @@ export function getClientIdentifier(request: Request, user?: { id: string } | nu
 
 /** Build a 429 response from a rate-limit result. */
 export function rateLimitResponse(result: RateLimitResult): NextResponse {
+  // Machine code only — never a `message`: `responseMessage` renders 429s
+  // with the caller's localized fallback, so any English prose here would
+  // leak into localized UI (BRAWUKA-280).
   return NextResponse.json(
-    { error: "rate_limited", message: "too many requests, please try again later" },
+    { error: "rate_limited" },
     {
       status: 429,
       headers: { "Retry-After": String(result.retryAfter) },

@@ -22,9 +22,9 @@ function toUserCafeItems(rows: UserCafeRow[]): UserCafeItemDto[] {
     name: r.name,
     city: r.city,
     cover: r.cover,
-    lastVisitedAt: r.last_visited_at.toISOString(),
-    checkinsCount: Number(r.checkins_count ?? 0),
-    isCreation: Boolean(r.is_creation),
+    last_visited_at: r.last_visited_at.toISOString(),
+    checkins_count: Number(r.checkins_count ?? 0),
+    is_creation: Boolean(r.is_creation),
   }));
 }
 
@@ -35,9 +35,9 @@ function toUserCafeItems(rows: UserCafeRow[]): UserCafeItemDto[] {
 export async function getUserCafes(
   userId: string,
   options: { limit?: number; cursor?: string; viewerId?: string | null } = {},
-): Promise<{ items: UserCafeItemDto[]; nextCursor: string | null }> {
+): Promise<{ items: UserCafeItemDto[]; next_cursor: string | null }> {
   if (!isValidUUID(userId)) {
-    return { items: [], nextCursor: null };
+    return { items: [], next_cursor: null };
   }
 
   const limit = Math.max(
@@ -86,7 +86,7 @@ export async function getUserCafes(
   const items = toUserCafeItems(rawItems);
 
   const last = items[items.length - 1];
-  const nextCursor = hasMore && last ? `${last.lastVisitedAt}_${last.id}` : null;
+  const next_cursor = hasMore && last ? `${last.last_visited_at}_${last.id}` : null;
 
-  return { items, nextCursor };
+  return { items, next_cursor };
 }

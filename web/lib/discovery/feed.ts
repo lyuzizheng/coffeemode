@@ -316,7 +316,7 @@ export async function listPublicCheckIns(params: {
 }): Promise<CheckInFeedPage> {
   const { cafeId, mode, viewerId } = params;
   if (!isValidUUID(cafeId)) {
-    return { checkins: [], nextCursor: null };
+    return { checkins: [], next_cursor: null };
   }
   const pageSize = appConfig.feed.pageSize;
   const cursor = params.cursor ? decodeFeedCursor(params.cursor, mode) : null;
@@ -352,9 +352,9 @@ export async function listPublicCheckIns(params: {
     author: toPublicAuthor(row),
   }));
 
-  let nextCursor: string | null = null;
+  let next_cursor: string | null = null;
   if (rows.length > pageSize && pageRows.length > 0) {
-    nextCursor = encodeNextCursor(mode, helpfulRunId, pageRows[pageRows.length - 1]);
+    next_cursor = encodeNextCursor(mode, helpfulRunId, pageRows[pageRows.length - 1]);
   }
-  return { checkins, nextCursor };
+  return { checkins, next_cursor };
 }

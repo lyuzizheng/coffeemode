@@ -12,7 +12,7 @@ import { isValidUUID } from "@shared/uuid";
  * and the DG64 same-day-revisit switch) plus the live revisit window, so the
  * drawer derives edit-vs-create from server truth instead of a hardcoded 24h.
  * Requires auth; 401 when unauthenticated, 400 for invalid cafe_id.
- * Returns { checkin: {...} | null, revisitWindowHours: number }.
+ * Returns { checkin: {...} | null, revisit_window_hours: number }.
  */
 export async function GET(request: NextRequest) {
   const gate = await guard(request, {
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const checkin = await getLastCheckinForCafe(user.id, cafeId);
-    return NextResponse.json({ checkin, revisitWindowHours: REVISIT_WINDOW_HOURS });
+    return NextResponse.json({ checkin, revisit_window_hours: REVISIT_WINDOW_HOURS });
   } catch (err) {
     logError({ route: gate.route, request, error: err, status: 500 });
     return apiError("internal_error", 500);

@@ -14,7 +14,7 @@ import { withTransaction } from "../postgres";
 
 export interface ToggleLikeResult {
   liked: boolean;
-  likesCount: number;
+  likes_count: number;
 }
 
 const TOGGLE_LIKE_SQL = `
@@ -52,8 +52,8 @@ function validateIds(userId: string, checkinId: string) {
  * Atomically toggle a like on a check-in and keep `checkins.likes_count`
  * in sync with the `checkin_likes` table in one transaction.
  *
- * Returns `{ liked: true, likesCount }` when the like was added and
- * `{ liked: false, likesCount }` when it was removed. Throws
+ * Returns `{ liked: true, likes_count }` when the like was added and
+ * `{ liked: false, likes_count }` when it was removed. Throws
  * `CheckInNotFoundError` if the check-in does not exist or is soft-deleted.
  *
  * Self-likes are not allowed (issue #107): the insert is gated on
@@ -97,7 +97,7 @@ export async function toggleCheckInLike(
 
     return {
       liked: row.inserted_count > 0,
-      likesCount: countRows[0]?.likes_count ?? 0,
+      likes_count: countRows[0]?.likes_count ?? 0,
     };
   });
 }

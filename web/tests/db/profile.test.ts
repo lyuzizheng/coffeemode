@@ -64,10 +64,10 @@ describe("Profile DB helpers", () => {
   describe("getUserCheckIns", () => {
     it("returns empty list for invalid uuid", async () => {
       const res = await getUserCheckIns(invalidId);
-      expect(res).toEqual({ items: [], nextCursor: null });
+      expect(res).toEqual({ items: [], next_cursor: null });
     });
 
-    it("maps items and generates nextCursor when hasMore", async () => {
+    it("maps items and generates next_cursor when hasMore", async () => {
       const visitedAt = new Date("2026-08-25T12:00:00.000Z");
       const checkinId1 = "00000000-0000-4000-8000-000000000011";
       const checkinId2 = "00000000-0000-4000-8000-000000000012";
@@ -109,8 +109,8 @@ describe("Profile DB helpers", () => {
 
       const res = await getUserCheckIns(userId, { limit: 1 });
       expect(res.items.length).toBe(1);
-      expect(res.items[0].cafeName).toBe("Cafe 1");
-      expect(res.nextCursor).toBe(`${visitedAt.toISOString()}_${checkinId1}`);
+      expect(res.items[0].cafe_name).toBe("Cafe 1");
+      expect(res.next_cursor).toBe(`${visitedAt.toISOString()}_${checkinId1}`);
     });
 
     it("throws ProfileCursorError on invalid cursor string", async () => {
@@ -154,9 +154,9 @@ describe("Profile DB helpers", () => {
       const res = await getUserCafes(userId, { limit: 10 });
       expect(res.items.length).toBe(1);
       expect(res.items[0].name).toBe("My Roastery");
-      expect(res.items[0].checkinsCount).toBe(3);
-      expect(res.items[0].isCreation).toBe(true);
-      expect(res.nextCursor).toBeNull();
+      expect(res.items[0].checkins_count).toBe(3);
+      expect(res.items[0].is_creation).toBe(true);
+      expect(res.next_cursor).toBeNull();
     });
   });
 });

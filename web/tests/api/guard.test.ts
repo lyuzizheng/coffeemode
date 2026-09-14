@@ -141,10 +141,9 @@ describe("guard helper (BRAWUKA-181)", () => {
         expect(result.response.status).toBe(429);
         expect(result.response.headers.get("Retry-After")).toBe("45");
         const body = await result.response.json();
-        expect(body).toEqual({
-          error: "rate_limited",
-          message: "too many requests, please try again later",
-        });
+        // Machine code only (BRAWUKA-280): the client renders its own
+        // localized fallback, never hardcoded English from the envelope.
+        expect(body).toEqual({ error: "rate_limited" });
       }
     });
 

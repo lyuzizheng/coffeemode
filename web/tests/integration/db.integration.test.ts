@@ -304,7 +304,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
   describeDb("toggleCheckInLike on real SQL", () => {
     it("likes and unlikes another user's check-in, keeping likes_count in sync", async () => {
       const liked = await toggleCheckInLike(U2, CHECKIN_A1);
-      expect(liked).toEqual({ liked: true, likesCount: 1 });
+      expect(liked).toEqual({ liked: true, likes_count: 1 });
 
       const { rows } = await dbClient.query(
         "select likes_count from checkins where id = $1",
@@ -313,7 +313,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(rows[0].likes_count).toBe(1);
 
       const unliked = await toggleCheckInLike(U2, CHECKIN_A1);
-      expect(unliked).toEqual({ liked: false, likesCount: 0 });
+      expect(unliked).toEqual({ liked: false, likes_count: 0 });
     });
 
     it("rejects a self-like with SelfLikeError and writes nothing", async () => {
@@ -365,7 +365,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       }
 
       const legacy = await toggleCheckInLike(U1, CHECKIN_A1);
-      expect(legacy).toEqual({ liked: false, likesCount: 0 });
+      expect(legacy).toEqual({ liked: false, likes_count: 0 });
 
       const { rows } = await dbClient.query(
         "select count(*)::int as n from checkin_likes where checkin_id = $1",
@@ -378,7 +378,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
   describeDb("write paths on real SQL", () => {
     it("createCheckIn folds the new check-in into work_stats (recompute)", async () => {
       const result = await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 60 } });
-      expect(result.checkinId).toMatch(/^[0-9a-f-]{36}$/);
+      expect(result.checkin_id).toMatch(/^[0-9a-f-]{36}$/);
 
       const stats = await cafeWorkStats(dbClient, CAFE_A);
       expect(stats.n_users).toBe(2);
@@ -395,7 +395,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         (e) => e,
       );
       expect(err).toBeInstanceOf(DuplicateCheckInError);
-      expect((err as DuplicateCheckInError).existingCheckinId).toBe(first.checkinId);
+      expect((err as DuplicateCheckInError).existingCheckinId).toBe(first.checkin_id);
 
       // The rejected write leaves no row behind.
       const { rows } = await dbClient.query(
@@ -406,15 +406,15 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
 
       // Past the window the same user can check in again (visited_at-keyed).
       await dbClient.query("update checkins set visited_at = now() - interval '25 hours' where id = $1", [
-        first.checkinId,
+        first.checkin_id,
       ]);
       const second = await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 70 } });
-      expect(second.checkinId).not.toBe(first.checkinId);
+      expect(second.checkin_id).not.toBe(first.checkin_id);
 
       // A soft-deleted check-in no longer blocks the window either.
-      await softDeleteCheckIn(U2, second.checkinId);
+      await softDeleteCheckIn(U2, second.checkin_id);
       const third = await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 80 } });
-      expect(third.checkinId).not.toBe(second.checkinId);
+      expect(third.checkin_id).not.toBe(second.checkin_id);
     });
 
     it("serializes two concurrent createCheckIn calls: one wins, one throws DuplicateCheckInError (BRAWUKA-125)", async () => {
@@ -459,7 +459,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
 
       const stored = await dbClient.query(
         "select idempotency_key from checkins where id = $1",
-        [first.checkinId],
+        [first.checkin_id],
       );
       expect(stored.rows[0].idempotency_key).toBe(key);
 
@@ -470,7 +470,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         scores: { overall: 60 },
         idempotency_key: key,
       });
-      expect(replay).toEqual({ checkinId: first.checkinId, deduped: true });
+      expect(replay).toEqual({ checkin_id: first.checkin_id, deduped: true });
 
       const { rows } = await dbClient.query(
         "select count(*)::int as n from checkins where cafe_id = $1 and user_id = $2 and deleted_at is null",
@@ -481,14 +481,14 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       // A different key is a different write: past the DG64 window it
       // inserts a new row instead of deduping.
       await dbClient.query("update checkins set visited_at = now() - interval '25 hours' where id = $1", [
-        first.checkinId,
+        first.checkin_id,
       ]);
       const second = await createCheckIn(U2, {
         cafe_id: CAFE_A,
         scores: { overall: 70 },
         idempotency_key: randomUUID(),
       });
-      expect(second.checkinId).not.toBe(first.checkinId);
+      expect(second.checkin_id).not.toBe(first.checkin_id);
       expect(second.deduped).toBe(false);
     });
 
@@ -512,7 +512,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
 
       const storedCheckIn = await dbClient.query(
         "select is_creation, photos from checkins where id = $1",
-        [created.checkinId],
+        [created.checkin_id],
       );
       expect(storedCheckIn.rows[0].is_creation).toBe(true);
       expect(storedCheckIn.rows[0].photos).toEqual([
@@ -525,12 +525,12 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
           h: 600,
           by: U1,
           at: expect.any(String),
-          source: { type: "checkin", id: created.checkinId },
+          source: { type: "checkin", id: created.checkin_id },
         }),
       ]);
 
       const storedGallery = await dbClient.query("select gallery from cafes where id = $1", [
-        created.cafeId,
+        created.cafe_id,
       ]);
       expect(storedGallery.rows[0].gallery).toEqual([
         expect.objectContaining({
@@ -542,7 +542,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
           h: 600,
           by: U1,
           at: expect.any(String),
-          source: { type: "checkin", id: created.checkinId },
+          source: { type: "checkin", id: created.checkin_id },
         }),
       ]);
       const consumedIntent = await dbClient.query(
@@ -551,7 +551,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       );
       expect(consumedIntent.rows).toHaveLength(0);
 
-      const stats = await cafeWorkStats(dbClient, created.cafeId);
+      const stats = await cafeWorkStats(dbClient, created.cafe_id);
       expect(stats.n_users).toBe(1);
       expect(stats.n_checkins).toBe(1);
       expect(stats.dims.overall).toEqual({ sum: 82, n: 1 });
@@ -574,7 +574,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         }),
       ).rejects.toBeInstanceOf(CafeExistsError);
 
-      const cafe = await getCafe(created.cafeId);
+      const cafe = await getCafe(created.cafe_id);
       expect(cafe?.tz).toBe("Asia/Singapore");
       expect(cafe?.name).toBe("New Cafe");
 
@@ -738,7 +738,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       const before = await cafeWorkStats(dbClient, CAFE_A);
       expect(before.experience_score).toBeCloseTo(60, 6);
 
-      await updateCheckIn(U2, first.checkinId, { scores: { overall: 90 } });
+      await updateCheckIn(U2, first.checkin_id, { scores: { overall: 90 } });
       const after = await cafeWorkStats(dbClient, CAFE_A);
       // Two users now: U1 overall 80 (seed) and U2 90
       expect(after.n_users).toBe(2);
@@ -764,7 +764,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       const galleryBefore = await dbClient.query("select gallery from cafes where id = $1", [CAFE_A]);
       expect(JSON.stringify(galleryBefore.rows[0].gallery)).toContain(photoId);
 
-      await softDeleteCheckIn(U2, created.checkinId);
+      await softDeleteCheckIn(U2, created.checkin_id);
       const after = await cafeWorkStats(dbClient, CAFE_A);
       expect(after.n_checkins).toBe(1);
       expect(after.n_users).toBe(1);
@@ -775,16 +775,16 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       const galleryAfter = await dbClient.query("select gallery from cafes where id = $1", [CAFE_A]);
       expect(JSON.stringify(galleryAfter.rows[0].gallery)).not.toContain(photoId);
       // Soft-deleted row still exists but is hidden from recompute
-      const deletedRow = await dbClient.query("select deleted_at from checkins where id = $1", [created.checkinId]);
+      const deletedRow = await dbClient.query("select deleted_at from checkins where id = $1", [created.checkin_id]);
       expect(deletedRow.rows[0].deleted_at).not.toBeNull();
     });
 
     it("rejects edit/delete from a non-author with 403-class error", async () => {
       const inserted = await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 42 } });
-      await expect(updateCheckIn(U1, inserted.checkinId, { scores: { overall: 99 } })).rejects.toBeInstanceOf(
+      await expect(updateCheckIn(U1, inserted.checkin_id, { scores: { overall: 99 } })).rejects.toBeInstanceOf(
         CheckInForbiddenError,
       );
-      await expect(softDeleteCheckIn(U1, inserted.checkinId)).rejects.toBeInstanceOf(CheckInForbiddenError);
+      await expect(softDeleteCheckIn(U1, inserted.checkin_id)).rejects.toBeInstanceOf(CheckInForbiddenError);
     });
 
     it("recomputeAllWorkStats is idempotent and repairs drift", async () => {
@@ -944,9 +944,9 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         const page = await listPublicCheckIns({ cafeId: CAFE_A, mode, cursor, viewerId });
         pages += 1;
         for (const c of page.checkins) ids.push(c.id);
-        if (!page.nextCursor) break;
+        if (!page.next_cursor) break;
         expect(page.checkins).toHaveLength(PAGE_SIZE);
-        cursor = page.nextCursor;
+        cursor = page.next_cursor;
         expect(pages).toBeLessThan(10); // runaway-pagination guard
       }
       return { ids, pages };
@@ -959,7 +959,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         mode: "newest",
         viewerId: null,
       });
-      expect(page.nextCursor).toBeNull();
+      expect(page.next_cursor).toBeNull();
       // Seed CHECKIN_A1 defaults visited_at to now() — it leads.
       expect(page.checkins.map((c) => c.id)).toEqual([
         CHECKIN_A1,
@@ -1366,32 +1366,32 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
 
       // Before delete: sitemap includes the cafe
       const sitemapBefore = await listCafeSitemapEntries();
-      expect(sitemapBefore.some((c) => c.id === created.cafeId)).toBe(true);
+      expect(sitemapBefore.some((c) => c.id === created.cafe_id)).toBe(true);
 
       // Delete as sole owner
-      const result = await deleteCafe(created.cafeId, U1);
+      const result = await deleteCafe(created.cafe_id, U1);
       expect(result).toEqual({
         ok: true,
-        id: created.cafeId,
+        id: created.cafe_id,
         removed_checkins: 1,
         owner_transferred: false,
         shell: true,
       });
 
       // Cafe row remains live in DB (never deleted)
-      const cafeRow = await dbClient.query("select * from cafes where id = $1", [created.cafeId]);
+      const cafeRow = await dbClient.query("select * from cafes where id = $1", [created.cafe_id]);
       expect(cafeRow.rows[0].deleted_at).toBeNull();
       expect(cafeRow.rows[0].created_by).toBe(U1);
 
       // Cafe detail remains public and readable as an empty shell
-      const detail = await getCafe(created.cafeId);
+      const detail = await getCafe(created.cafe_id);
       expect(detail).not.toBeNull();
       expect(detail?.work_stats.n_checkins).toBe(0);
       expect(detail?.gallery).toEqual([]);
 
       // Excluded from sitemap because n_checkins = 0
       const sitemapAfter = await listCafeSitemapEntries();
-      expect(sitemapAfter.some((c) => c.id === created.cafeId)).toBe(false);
+      expect(sitemapAfter.some((c) => c.id === created.cafe_id)).toBe(false);
 
       // Re-POSTing with same google_place_id collides on unique index -> 409 CafeExistsError
       const newPhotoId = randomUUID();
@@ -1411,7 +1411,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       ).rejects.toBeInstanceOf(CafeExistsError);
 
       // Repeat delete on own shell (0 own live checkins left) -> CafeNotFoundError (404)
-      await expect(deleteCafe(created.cafeId, U1)).rejects.toBeInstanceOf(CafeNotFoundError);
+      await expect(deleteCafe(created.cafe_id, U1)).rejects.toBeInstanceOf(CafeNotFoundError);
     });
 
     it("community cafe without confirm rejects with 403 (cafe_has_other_checkins) and 0 mutations", async () => {
@@ -1429,21 +1429,21 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       );
 
       // U2 checks in
-      await createCheckIn(U2, { cafe_id: created.cafeId, scores: { wifi: 90 } });
+      await createCheckIn(U2, { cafe_id: created.cafe_id, scores: { wifi: 90 } });
 
       // U1 attempts delete without confirm
-      const err = await deleteCafe(created.cafeId, U1, { confirm: false }).catch((e) => e);
+      const err = await deleteCafe(created.cafe_id, U1, { confirm: false }).catch((e) => e);
       expect(err).toBeInstanceOf(CafeHasOtherCheckinsError);
       expect((err as CafeHasOtherCheckinsError).n).toBe(1);
 
       // Zero mutations: both checkins live, created_by still U1, work_stats has 2 checkins
-      const cafe = await getCafe(created.cafeId);
+      const cafe = await getCafe(created.cafe_id);
       expect(cafe?.work_stats.n_checkins).toBe(2);
-      const cafeRow = await dbClient.query("select created_by from cafes where id = $1", [created.cafeId]);
+      const cafeRow = await dbClient.query("select created_by from cafes where id = $1", [created.cafe_id]);
       expect(cafeRow.rows[0].created_by).toBe(U1);
       const checkins = await dbClient.query(
         "select id, user_id, deleted_at from checkins where cafe_id = $1 order by visited_at",
-        [created.cafeId],
+        [created.cafe_id],
       );
       expect(checkins.rows).toHaveLength(2);
       expect(checkins.rows[0].deleted_at).toBeNull();
@@ -1467,30 +1467,30 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       // DG64: U1's fused creation check-in is still live, so age it past the
       // revisit window — this test covers delete flows, not the window.
       await dbClient.query("update checkins set visited_at = now() - interval '25 hours' where id = $1", [
-        created.checkinId,
+        created.checkin_id,
       ]);
 
       // U1 adds a 2nd checkin
-      await createCheckIn(U1, { cafe_id: created.cafeId, scores: { wifi: 80 } });
+      await createCheckIn(U1, { cafe_id: created.cafe_id, scores: { wifi: 80 } });
 
       // U2 adds a checkin with photo
       const photoId2 = randomUUID();
       await recordUploadIntent(U2, photoId2);
       await createCheckIn(
         U2,
-        { cafe_id: created.cafeId, scores: { wifi: 95 }, photo_ids: [photoId2] },
+        { cafe_id: created.cafe_id, scores: { wifi: 95 }, photo_ids: [photoId2] },
         fakeProvisionPhotosDeps(),
       );
 
       // Check U1 profile cafes contains the cafe
       const u1CafesBefore = await getUserCafes(U1);
-      expect(u1CafesBefore.items.some((c) => c.id === created.cafeId)).toBe(true);
+      expect(u1CafesBefore.items.some((c) => c.id === created.cafe_id)).toBe(true);
 
       // U1 deletes with confirm: true
-      const result = await deleteCafe(created.cafeId, U1, { confirm: true });
+      const result = await deleteCafe(created.cafe_id, U1, { confirm: true });
       expect(result).toEqual({
         ok: true,
-        id: created.cafeId,
+        id: created.cafe_id,
         removed_checkins: 2,
         owner_transferred: true,
         shell: false,
@@ -1499,7 +1499,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       // U1 checkins soft-deleted, U2 checkin intact
       const checkins = await dbClient.query(
         "select id, user_id, deleted_at from checkins where cafe_id = $1 order by user_id",
-        [created.cafeId],
+        [created.cafe_id],
       );
       const u1Rows = checkins.rows.filter((r) => r.user_id === U1);
       const u2Rows = checkins.rows.filter((r) => r.user_id === U2);
@@ -1509,8 +1509,8 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(u2Rows[0].deleted_at).toBeNull();
 
       // created_by transferred to service account
-      const cafe = await getCafe(created.cafeId);
-      const cafeRow = await dbClient.query("select created_by from cafes where id = $1", [created.cafeId]);
+      const cafe = await getCafe(created.cafe_id);
+      const cafeRow = await dbClient.query("select created_by from cafes where id = $1", [created.cafe_id]);
       expect(cafeRow.rows[0].created_by).toBe("00000000-0000-4000-a000-000000000001");
       expect(cafe?.work_stats.n_checkins).toBe(1);
       // Gallery retained U2's photo and dropped U1's
@@ -1518,10 +1518,10 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
 
       // Cafe drops out of U1's profile cafes
       const u1CafesAfter = await getUserCafes(U1);
-      expect(u1CafesAfter.items.some((c) => c.id === created.cafeId)).toBe(false);
+      expect(u1CafesAfter.items.some((c) => c.id === created.cafe_id)).toBe(false);
 
       // Repeat delete by U1 rejects with 403 (no longer creator)
-      await expect(deleteCafe(created.cafeId, U1)).rejects.toBeInstanceOf(CafeForbiddenError);
+      await expect(deleteCafe(created.cafe_id, U1)).rejects.toBeInstanceOf(CafeForbiddenError);
     });
 
     it("community cafe where creator already soft-deleted checkin individually transfers ownership on confirm", async () => {
@@ -1539,25 +1539,25 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       );
 
       // U2 checks in
-      await createCheckIn(U2, { cafe_id: created.cafeId, scores: { wifi: 85 } });
+      await createCheckIn(U2, { cafe_id: created.cafe_id, scores: { wifi: 85 } });
 
       // U1 soft-deletes their check-in individually via softDeleteCheckIn
-      await softDeleteCheckIn(U1, created.checkinId);
+      await softDeleteCheckIn(U1, created.checkin_id);
 
       // U1 attempts deleteCafe without confirm -> 403
-      await expect(deleteCafe(created.cafeId, U1, { confirm: false })).rejects.toBeInstanceOf(CafeHasOtherCheckinsError);
+      await expect(deleteCafe(created.cafe_id, U1, { confirm: false })).rejects.toBeInstanceOf(CafeHasOtherCheckinsError);
 
       // U1 calls deleteCafe with confirm: true -> 200 with removed_checkins = 0 and owner_transferred = true
-      const result = await deleteCafe(created.cafeId, U1, { confirm: true });
+      const result = await deleteCafe(created.cafe_id, U1, { confirm: true });
       expect(result).toEqual({
         ok: true,
-        id: created.cafeId,
+        id: created.cafe_id,
         removed_checkins: 0,
         owner_transferred: true,
         shell: false,
       });
 
-      const cafeRow = await dbClient.query("select created_by from cafes where id = $1", [created.cafeId]);
+      const cafeRow = await dbClient.query("select created_by from cafes where id = $1", [created.cafe_id]);
       expect(cafeRow.rows[0].created_by).toBe("00000000-0000-4000-a000-000000000001");
     });
 
@@ -1576,8 +1576,8 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       );
 
       const [res1, res2] = await Promise.allSettled([
-        deleteCafe(created.cafeId, U1),
-        deleteCafe(created.cafeId, U1),
+        deleteCafe(created.cafe_id, U1),
+        deleteCafe(created.cafe_id, U1),
       ]);
 
       const successes = [res1, res2].filter((r) => r.status === "fulfilled");
@@ -1602,8 +1602,8 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         fakeProvisionPhotosDeps(),
       );
 
-      await dbClient.query("update cafes set created_by = null where id = $1", [created.cafeId]);
-      await expect(deleteCafe(created.cafeId, U1)).rejects.toBeInstanceOf(CafeForbiddenError);
+      await dbClient.query("update cafes set created_by = null where id = $1", [created.cafe_id]);
+      await expect(deleteCafe(created.cafe_id, U1)).rejects.toBeInstanceOf(CafeForbiddenError);
     });
   });
 
@@ -1660,28 +1660,28 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       );
 
       const wifiMatch = await searchCafesInDb({ filter_wifi: 80 });
-      expect(wifiMatch.some((c) => c.id === created.cafeId)).toBe(true);
+      expect(wifiMatch.some((c) => c.id === created.cafe_id)).toBe(true);
 
       const wifiHigh = await searchCafesInDb({ filter_wifi: 95 });
-      expect(wifiHigh.some((c) => c.id === created.cafeId)).toBe(false);
+      expect(wifiHigh.some((c) => c.id === created.cafe_id)).toBe(false);
 
       const outletsMatch = await searchCafesInDb({ filter_outlets: 75 });
-      expect(outletsMatch.some((c) => c.id === created.cafeId)).toBe(true);
+      expect(outletsMatch.some((c) => c.id === created.cafe_id)).toBe(true);
 
       const seatsMatch = await searchCafesInDb({ filter_seats: 70 });
-      expect(seatsMatch.some((c) => c.id === created.cafeId)).toBe(true);
+      expect(seatsMatch.some((c) => c.id === created.cafe_id)).toBe(true);
 
       const tempMatch = await searchCafesInDb({ filter_temp: 65 });
-      expect(tempMatch.some((c) => c.id === created.cafeId)).toBe(true);
+      expect(tempMatch.some((c) => c.id === created.cafe_id)).toBe(true);
 
       const coffeeMatch = await searchCafesInDb({ filter_coffee: 60 });
-      expect(coffeeMatch.some((c) => c.id === created.cafeId)).toBe(true);
+      expect(coffeeMatch.some((c) => c.id === created.cafe_id)).toBe(true);
 
       const overallMatch = await searchCafesInDb({ filter_overall: 85 });
-      expect(overallMatch.some((c) => c.id === created.cafeId)).toBe(true);
+      expect(overallMatch.some((c) => c.id === created.cafe_id)).toBe(true);
 
       const overallHigh = await searchCafesInDb({ filter_overall: 95 });
-      expect(overallHigh.some((c) => c.id === created.cafeId)).toBe(false);
+      expect(overallHigh.some((c) => c.id === created.cafe_id)).toBe(false);
     });
 
     it("filters cafes by overall score using dims.overall fallback when experience_score is missing (#274)", async () => {
@@ -1831,12 +1831,12 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     it("returns user check-ins and distinct cafes with pagination", async () => {
       const checkinsResult = await getUserCheckIns(U1, { limit: 10 });
       expect(checkinsResult.items.length).toBeGreaterThanOrEqual(1);
-      expect(checkinsResult.items[0]?.cafeId).toBe(CAFE_A);
+      expect(checkinsResult.items[0]?.cafe_id).toBe(CAFE_A);
 
       const cafesResult = await getUserCafes(U1, { limit: 10 });
       expect(cafesResult.items.length).toBeGreaterThanOrEqual(1);
       expect(cafesResult.items[0]?.id).toBe(CAFE_A);
-      expect(cafesResult.items[0]?.isCreation).toBe(true);
+      expect(cafesResult.items[0]?.is_creation).toBe(true);
     });
 
     it("correctly handles soft-deleted cafes in stats, check-ins, and cafe lists (issue #219)", async () => {
@@ -1866,9 +1866,9 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       // getUserCheckIns returns cafeIsDeleted = true for deleted cafe
       const checkins = await getUserCheckIns(U1);
       const bCheckin = checkins.items.find((i) => i.id === CHECKIN_B1);
-      expect(bCheckin?.cafeIsDeleted).toBe(true);
+      expect(bCheckin?.cafe_is_deleted).toBe(true);
       const aCheckin = checkins.items.find((i) => i.id === CHECKIN_A1);
-      expect(aCheckin?.cafeIsDeleted).toBe(false);
+      expect(aCheckin?.cafe_is_deleted).toBe(false);
 
       // getUserCafes completely excludes soft-deleted cafe
       const userCafes = await getUserCafes(U1);
@@ -2020,43 +2020,43 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       }, fakeProvisionPhotosDeps());
 
       // Initially public: stranger and anonymous can see it
-      const publicCafeForStranger = await getCafe(created.cafeId, U2);
+      const publicCafeForStranger = await getCafe(created.cafe_id, U2);
       expect(publicCafeForStranger).not.toBeNull();
-      expect(await cafeExists(created.cafeId, U2)).toBe(true);
-      expect(await cafeExists(created.cafeId, null)).toBe(true);
-      expect(await isLiveCafe(created.cafeId)).toBe(true);
+      expect(await cafeExists(created.cafe_id, U2)).toBe(true);
+      expect(await cafeExists(created.cafe_id, null)).toBe(true);
+      expect(await isLiveCafe(created.cafe_id)).toBe(true);
 
       // Owner toggles to private
-      const toggleRes = await setCafeVisibility(created.cafeId, U1, "private");
-      expect(toggleRes).toEqual({ ok: true, id: created.cafeId, visibility: "private" });
+      const toggleRes = await setCafeVisibility(created.cafe_id, U1, "private");
+      expect(toggleRes).toEqual({ ok: true, id: created.cafe_id, visibility: "private" });
 
       // Cafe remains live while private
-      expect(await isLiveCafe(created.cafeId)).toBe(true);
+      expect(await isLiveCafe(created.cafe_id)).toBe(true);
 
       // Owner sees it (200 / truthy)
-      const ownerCafe = await getCafe(created.cafeId, U1);
+      const ownerCafe = await getCafe(created.cafe_id, U1);
       expect(ownerCafe).not.toBeNull();
       expect(ownerCafe?.name).toBe("Secret Study Cafe");
-      expect(await cafeExists(created.cafeId, U1)).toBe(true);
+      expect(await cafeExists(created.cafe_id, U1)).toBe(true);
 
       // Stranger gets 404 (getCafe returns null, cafeExists returns false)
-      const strangerCafe = await getCafe(created.cafeId, U2);
+      const strangerCafe = await getCafe(created.cafe_id, U2);
       expect(strangerCafe).toBeNull();
-      expect(await cafeExists(created.cafeId, U2)).toBe(false);
+      expect(await cafeExists(created.cafe_id, U2)).toBe(false);
 
       // Anonymous gets 404
-      const anonCafe = await getCafe(created.cafeId);
+      const anonCafe = await getCafe(created.cafe_id);
       expect(anonCafe).toBeNull();
-      expect(await cafeExists(created.cafeId)).toBe(false);
-      expect(await cafeExists(created.cafeId, null)).toBe(false);
+      expect(await cafeExists(created.cafe_id)).toBe(false);
+      expect(await cafeExists(created.cafe_id, null)).toBe(false);
 
       // Owner can record navigation to own private cafe (P2); stranger gets CafeNotFoundError
-      const nav = await recordNavigation(U1, created.cafeId);
+      const nav = await recordNavigation(U1, created.cafe_id);
       expect(nav.id).toBeDefined();
-      await expect(recordNavigation(U2, created.cafeId)).rejects.toBeInstanceOf(CafeNotFoundError);
+      await expect(recordNavigation(U2, created.cafe_id)).rejects.toBeInstanceOf(CafeNotFoundError);
 
       // Non-owner (U2) cannot change visibility (403)
-      await expect(setCafeVisibility(created.cafeId, U2, "public")).rejects.toBeInstanceOf(CafeForbiddenError);
+      await expect(setCafeVisibility(created.cafe_id, U2, "public")).rejects.toBeInstanceOf(CafeForbiddenError);
     });
 
     it("excludes private cafe from public list, search, nearby, and sitemap, but includes in owner views", async () => {
@@ -2077,7 +2077,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       }, fakeProvisionPhotosDeps());
 
       // Toggle to private
-      await setCafeVisibility(created.cafeId, U1, "private");
+      await setCafeVisibility(created.cafe_id, U1, "private");
 
       // 1. listCafesNearby:
       // Anonymous / stranger: excluded
@@ -2087,7 +2087,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         radiusKm: 5,
         limit: 10,
       });
-      expect(publicNearby.some((c) => c.id === created.cafeId)).toBe(false);
+      expect(publicNearby.some((c) => c.id === created.cafe_id)).toBe(false);
 
       const strangerNearby = await listCafesNearby({
         lat: 1.301,
@@ -2096,7 +2096,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         limit: 10,
         viewerId: U2,
       });
-      expect(strangerNearby.some((c) => c.id === created.cafeId)).toBe(false);
+      expect(strangerNearby.some((c) => c.id === created.cafe_id)).toBe(false);
 
       // Owner: present
       const ownerNearby = await listCafesNearby({
@@ -2106,7 +2106,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         limit: 10,
         viewerId: U1,
       });
-      expect(ownerNearby.some((c) => c.id === created.cafeId)).toBe(true);
+      expect(ownerNearby.some((c) => c.id === created.cafe_id)).toBe(true);
 
       // 2. searchCafesInDb:
       // Stranger / anonymous: excluded
@@ -2114,14 +2114,14 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         q: "Exclusive Hideaway",
         city: "singapore",
       });
-      expect(publicSearch.some((c) => c.id === created.cafeId)).toBe(false);
+      expect(publicSearch.some((c) => c.id === created.cafe_id)).toBe(false);
 
       const strangerSearch = await searchCafesInDb({
         q: "Exclusive Hideaway",
         city: "singapore",
         viewerId: U2,
       });
-      expect(strangerSearch.some((c) => c.id === created.cafeId)).toBe(false);
+      expect(strangerSearch.some((c) => c.id === created.cafe_id)).toBe(false);
 
       // Owner: present
       const ownerSearch = await searchCafesInDb({
@@ -2129,12 +2129,12 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         city: "singapore",
         viewerId: U1,
       });
-      expect(ownerSearch.some((c) => c.id === created.cafeId)).toBe(true);
+      expect(ownerSearch.some((c) => c.id === created.cafe_id)).toBe(true);
 
       // 3. listCafeSitemapEntries:
       // Excluded from sitemap
       const sitemap = await listCafeSitemapEntries();
-      expect(sitemap.some((entry) => entry.id === created.cafeId)).toBe(false);
+      expect(sitemap.some((entry) => entry.id === created.cafe_id)).toBe(false);
     });
 
     it("round-trip public→private→public restores visibility", async () => {
@@ -2155,20 +2155,20 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       }, fakeProvisionPhotosDeps());
 
       // 1. Initial: public
-      expect(await cafeExists(created.cafeId, U2)).toBe(true);
-      expect((await searchCafesInDb({ q: "Toggle Test Cafe", viewerId: U2 })).some((c) => c.id === created.cafeId)).toBe(true);
+      expect(await cafeExists(created.cafe_id, U2)).toBe(true);
+      expect((await searchCafesInDb({ q: "Toggle Test Cafe", viewerId: U2 })).some((c) => c.id === created.cafe_id)).toBe(true);
 
       // 2. Toggle to private
-      await setCafeVisibility(created.cafeId, U1, "private");
-      expect(await cafeExists(created.cafeId, U2)).toBe(false);
-      expect(await getCafe(created.cafeId, U2)).toBeNull();
-      expect((await searchCafesInDb({ q: "Toggle Test Cafe", viewerId: U2 })).some((c) => c.id === created.cafeId)).toBe(false);
+      await setCafeVisibility(created.cafe_id, U1, "private");
+      expect(await cafeExists(created.cafe_id, U2)).toBe(false);
+      expect(await getCafe(created.cafe_id, U2)).toBeNull();
+      expect((await searchCafesInDb({ q: "Toggle Test Cafe", viewerId: U2 })).some((c) => c.id === created.cafe_id)).toBe(false);
 
       // 3. Toggle back to public
-      await setCafeVisibility(created.cafeId, U1, "public");
-      expect(await cafeExists(created.cafeId, U2)).toBe(true);
-      expect(await getCafe(created.cafeId, U2)).not.toBeNull();
-      expect((await searchCafesInDb({ q: "Toggle Test Cafe", viewerId: U2 })).some((c) => c.id === created.cafeId)).toBe(true);
+      await setCafeVisibility(created.cafe_id, U1, "public");
+      expect(await cafeExists(created.cafe_id, U2)).toBe(true);
+      expect(await getCafe(created.cafe_id, U2)).not.toBeNull();
+      expect((await searchCafesInDb({ q: "Toggle Test Cafe", viewerId: U2 })).some((c) => c.id === created.cafe_id)).toBe(true);
     });
 
     it("another user's profile map hides their private cafes while own profile is unaffected", async () => {
@@ -2189,19 +2189,19 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       }, fakeProvisionPhotosDeps());
 
       // Toggle to private
-      await setCafeVisibility(created.cafeId, U1, "private");
+      await setCafeVisibility(created.cafe_id, U1, "private");
 
       // U1 views own profile: cafe is present
       const ownProfileCafes = await getUserCafes(U1, { viewerId: U1 });
-      expect(ownProfileCafes.items.some((c) => c.id === created.cafeId)).toBe(true);
+      expect(ownProfileCafes.items.some((c) => c.id === created.cafe_id)).toBe(true);
 
       // U2 views U1's profile: private cafe is hidden
       const strangerViewingU1 = await getUserCafes(U1, { viewerId: U2 });
-      expect(strangerViewingU1.items.some((c) => c.id === created.cafeId)).toBe(false);
+      expect(strangerViewingU1.items.some((c) => c.id === created.cafe_id)).toBe(false);
 
       // Anonymous viewing U1's profile: private cafe is hidden
       const anonViewingU1 = await getUserCafes(U1, { viewerId: null });
-      expect(anonViewingU1.items.some((c) => c.id === created.cafeId)).toBe(false);
+      expect(anonViewingU1.items.some((c) => c.id === created.cafe_id)).toBe(false);
     });
 
     it("work_stats continue computing without freezing or invalidation while private", async () => {
@@ -2221,26 +2221,26 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         },
       }, fakeProvisionPhotosDeps());
       // Toggle to private
-      await setCafeVisibility(created.cafeId, U1, "private");
+      await setCafeVisibility(created.cafe_id, U1, "private");
 
       // DG64: the fused creation check-in is still live, so age it past the
       // revisit window — this test covers visibility, not the window.
       await dbClient.query("update checkins set visited_at = now() - interval '25 hours' where id = $1", [
-        created.checkinId,
+        created.checkin_id,
       ]);
 
       // Add another check-in while private
       const photoId2 = randomUUID();
       await recordUploadIntent(U1, photoId2);
       await createCheckIn(U1, {
-        cafe_id: created.cafeId,
+        cafe_id: created.cafe_id,
         scores: { overall: 90, wifi: 80 },
         max_stay: "unlimited",
         note: "Second checkin while private",
         photo_ids: [photoId2],
       }, fakeProvisionPhotosDeps());
       // Verify work_stats updated
-      const cafe = await getCafe(created.cafeId, U1);
+      const cafe = await getCafe(created.cafe_id, U1);
       expect(cafe?.work_stats.n_checkins).toBe(2);
     });
   });
@@ -2576,7 +2576,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
           [U2, key],
         );
         expect(stored.rows).toHaveLength(1);
-        expect(result.checkinId).toBe(stored.rows[0].id);
+        expect(result.checkin_id).toBe(stored.rows[0].id);
       } finally {
         await holder.end().catch(() => undefined);
       }
@@ -2607,13 +2607,13 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(await getLastCheckinForCafe(U2, CAFE_A)).toBeNull();
       const created = await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 77 }, note: "last one" });
       const last = await getLastCheckinForCafe(U2, CAFE_A);
-      expect(last?.id).toBe(created.checkinId);
+      expect(last?.id).toBe(created.checkin_id);
       expect(last?.scores).toEqual({ overall: 77 });
 
       const image = fakeStoredImage(U2);
-      const attached = await attachImageToCheckin({ checkinId: created.checkinId, userId: U2, image });
+      const attached = await attachImageToCheckin({ checkinId: created.checkin_id, userId: U2, image });
       expect(attached).toEqual({ ok: true, cafeId: CAFE_A });
-      const photos = await dbClient.query("select photos from checkins where id = $1", [created.checkinId]);
+      const photos = await dbClient.query("select photos from checkins where id = $1", [created.checkin_id]);
       expect(JSON.stringify(photos.rows[0].photos)).toContain(image.id);
     });
 

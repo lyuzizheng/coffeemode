@@ -769,7 +769,7 @@ describe("DELETE /api/cafes/[id]", () => {
     });
   });
 
-  it("403s with code and count when other checkins exist and confirm is not true (zero mutations)", async () => {
+  it("403s with error code and count when other checkins exist and confirm is not true (zero mutations)", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // cafeExists probe
     clientQueryMock
       .mockResolvedValueOnce({ rows: [{ id: CAFE_ID, created_by: USER.id, deleted_at: null }] }) // select cafe for update
@@ -787,9 +787,10 @@ describe("DELETE /api/cafes/[id]", () => {
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body).toMatchObject({
-      code: "cafe_has_other_checkins",
+      error: "cafe_has_other_checkins",
       n: 2,
     });
+    expect(body).not.toHaveProperty("code");
     // Zero mutations after the 3 selects
     expect(clientQueryMock).toHaveBeenCalledTimes(3);
   });
@@ -813,9 +814,10 @@ describe("DELETE /api/cafes/[id]", () => {
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body).toMatchObject({
-      code: "cafe_has_other_checkins",
+      error: "cafe_has_other_checkins",
       n: 2,
     });
+    expect(body).not.toHaveProperty("code");
     // Zero mutations after the 3 selects
     expect(clientQueryMock).toHaveBeenCalledTimes(3);
   });

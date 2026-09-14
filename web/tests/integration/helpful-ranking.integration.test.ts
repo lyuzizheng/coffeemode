@@ -163,7 +163,7 @@ describeDb("integration — helpful ranking snapshot (DG148)", () => {
 
     const page = await listPublicCheckIns({ cafeId: CAFE_A, mode: "helpful", viewerId: null });
     expect(page.checkins.map((check) => check.id)).toEqual([b, c, a, CHECKIN_A1]);
-    expect(page.nextCursor).toBeNull(); // single short page — no cursor issued
+    expect(page.next_cursor).toBeNull(); // single short page — no cursor issued
   });
 
   it("is idempotent: a re-run publishes a new run, exactly one stays active", async () => {
@@ -195,12 +195,12 @@ describeDb("integration — helpful ranking snapshot (DG148)", () => {
       const page = await listPublicCheckIns({ cafeId: CAFE_A, mode: "helpful", cursor, viewerId: null });
       pages += 1;
       for (const check of page.checkins) ids.push(check.id);
-      if (!page.nextCursor) break;
+      if (!page.next_cursor) break;
       // Every issued cursor is bound to the serving run.
-      const decoded = decodeFeedCursor(page.nextCursor, "helpful");
+      const decoded = decodeFeedCursor(page.next_cursor, "helpful");
       expect(decoded.v).toBe(2);
       if (decoded.v === 2) expect(decoded.run).toBe(run);
-      cursor = page.nextCursor;
+      cursor = page.next_cursor;
       expect(pages).toBeLessThan(10);
     }
     expect(pages).toBe(2);
@@ -269,8 +269,8 @@ describeDb("integration — helpful ranking snapshot (DG148)", () => {
       { params: Promise.resolve({ id: CAFE_A }) },
     );
     expect(res.status).toBe(410);
-    const body = (await res.json()) as { code?: string };
-    expect(body.code).toBe("cursor_version_expired");
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe("cursor_version_expired");
 
     // Newest mode never consults snapshots.
     const newest = await listPublicCheckIns({ cafeId: CAFE_A, mode: "newest", viewerId: null });

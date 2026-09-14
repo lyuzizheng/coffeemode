@@ -104,8 +104,8 @@ interface CafesBody {
 }
 
 interface CreateCafeBody {
-  cafeId: string;
-  checkinId: string;
+  cafe_id: string;
+  checkin_id: string;
   tz: string;
 }
 
@@ -114,7 +114,7 @@ interface UploadBody {
 }
 
 interface CheckinBody {
-  checkinId: string;
+  checkin_id: string;
 }
 
 const users = createHttpTestUsers();
@@ -160,7 +160,7 @@ async function createCafe(
     },
   });
   expect(created.status).toBe(201);
-  return created.data.cafeId;
+  return created.data.cafe_id;
 }
 
 async function postCheckin(

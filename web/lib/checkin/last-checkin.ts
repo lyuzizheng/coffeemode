@@ -22,7 +22,7 @@ export async function fetchLastCheckin(cafeId: string) {
   if (!res.ok) throw new Error("failed");
   const body = (await res.json()) as {
     checkin: LastCheckin | null;
-    revisitWindowHours?: number;
+    revisit_window_hours?: number;
   };
   return body;
 }

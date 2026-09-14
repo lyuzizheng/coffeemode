@@ -52,16 +52,19 @@ describe("responseMessage (BRAWUKA-212)", () => {
     );
   });
 
-  it("keeps route-authored prose, which is written for users", async () => {
+  it("withholds the 429 machine code and renders the localized fallback", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    const message = await responseMessage(
-      jsonResponse({ error: "rate_limited", message: "too many requests, please try again later" }, 429),
-      "Search is unavailable right now.",
+    // The 429 envelope carries the code only (BRAWUKA-280) — zh callers
+    // must never render hardcoded English, even when a `message` slips in.
+    for (const body of [{ error: "rate_limited" }, { error: "rate_limited", message: "too many requests" }]) {
+      const message = await responseMessage(jsonResponse(body, 429), "搜索暂不可用。");
+      expect(message).toBe("搜索暂不可用。");
+    }
+    expect(warn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ code: "rate_limited" }),
     );
-
-    expect(message).toBe("too many requests, please try again later");
-    expect(warn).not.toHaveBeenCalled();
   });
 
   it("falls back when the body is not JSON at all", async () => {

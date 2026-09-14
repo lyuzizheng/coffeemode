@@ -28,6 +28,7 @@ export async function GET(request: Request) {
     bucket: "heartbeat",
     route: "GET /api/heartbeat",
     ipOnly: true,
+    user: null,
   });
   if (!gate.ok) return gate.response;
   try {

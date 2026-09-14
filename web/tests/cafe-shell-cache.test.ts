@@ -181,6 +181,7 @@ function minimalValid() {
     images: { maxOriginalDimension: 4096, webpQuality: 80, r2DownloadTimeoutMs: 30000, r2UploadTimeoutMs: 30000, downloadSlackBytes: 524288 },
     query: { staleTimeMs: 300000, gcTimeMs: 86400000, persistMaxAgeMs: 604800000 },
     runtimeConfig: { responseCache: { sMaxAgeSeconds: 60, staleWhileRevalidateSeconds: 300 } },
+    validation: { cafeAddressMaxChars: 300, profileCityMaxChars: 50 },
     budgets: {
       bundle: { maxJsChunkBytes: 409600, maxCssChunkBytes: 512000, maxTotalStaticBytes: 5242880 },
       lighthouse: { performance: 0.8, accessibility: 0.85, bestPractices: 0.85, seo: 0.85 },

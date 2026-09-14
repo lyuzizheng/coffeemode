@@ -28,6 +28,7 @@ export async function GET(request: Request) {
     bucket: "runtime-config",
     route: "GET /api/config",
     ipOnly: true,
+    user: null,
   });
   if (!gate.ok) return gate.response;
   try {

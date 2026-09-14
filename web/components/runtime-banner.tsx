@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { fetchRuntimeConfig, pickBannerText } from "@/lib/runtime-banners";
+import { fetchRuntimeConfig, pickBannerText, selectLiveBanner } from "@/lib/runtime-banners";
 
 /**
  * Runtime announcement banner (BRAWUKA-284): operator-editable notices via
@@ -24,7 +24,7 @@ export function RuntimeBanner() {
     let cancelled = false;
     fetchRuntimeConfig().then((config) => {
       if (cancelled || !config) return;
-      const banner = config.banners[0] ?? null;
+      const banner = selectLiveBanner(config.banners);
       if (!banner) return;
       setText(pickBannerText(banner, locale) || null);
       setHref(typeof banner.href === "string" && banner.href.length > 0 ? banner.href : null);

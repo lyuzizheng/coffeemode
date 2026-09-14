@@ -603,6 +603,7 @@ describe("parseAppConfig validation", () => {
       checkins: validCheckins,
       profile: validProfile,
       runtimeConfig: validRuntimeConfig,
+      budgets: validBudgets,
     };
     expect(() =>
       parseAppConfig({ ...base, images: { ...validImages, webpQuality: 101 }, query: validQuery, validation: validValidation }),

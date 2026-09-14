@@ -7,7 +7,7 @@
 # Orchestrates automated, safe staging releases:
 #   1. Pre-flight migration safety check
 #   2. Pre-migration database snapshot via ./backup.sh --env staging
-#   3. Database schema migration execution against postgres-staging
+#   3. Database schema migration execution over DIRECT_URL (Supabase session/direct)
 #   4. Staging Next.js image rebuild and rolling restart (Dokploy webhook / compose)
 #   5. Automated post-deploy smoke test verification
 #
@@ -157,45 +157,37 @@ fi
 stage "Step 3/5: Applying Database Migrations to Staging"
 
 if [ "$SKIP_MIGRATIONS" = false ]; then
-  # Resolve and validate staging database password
-  if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
-    if [[ -f "${REPO_ROOT}/deploy/dokploy/.env.staging" ]]; then
-      POSTGRES_PASSWORD="$(grep -E '^POSTGRES_PASSWORD=' "${REPO_ROOT}/deploy/dokploy/.env.staging" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
-    fi
+  # Supabase rule: DDL migrations MUST run over a session/direct connection
+  # (DIRECT_URL, sslmode=require) — never the transaction pooler.
+  MIGRATION_URL=""
+  if [[ -n "${DIRECT_URL:-}" ]]; then
+    MIGRATION_URL="$DIRECT_URL"
+  elif [[ -f "${REPO_ROOT}/deploy/dokploy/.env.staging" ]]; then
+    MIGRATION_URL="$(grep -E '^DIRECT_URL=' "${REPO_ROOT}/deploy/dokploy/.env.staging" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
   fi
 
   if [ "$DRY_RUN" = false ]; then
-    : "${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be set in environment or deploy/dokploy/.env.staging}"
-    DB_PASS="${POSTGRES_PASSWORD}"
-    CONTAINER="coffeemode-postgres-staging"
-    DB_USER="coffeemode_staging_user"
-    DB_NAME="coffeemode_staging"
-    DB_PORT=5433
-    TARGET_DB_URL="postgres://${DB_USER}:${DB_PASS}@127.0.0.1:${DB_PORT}/${DB_NAME}?sslmode=disable"
-
-    if docker ps --filter "name=^/${CONTAINER}$" --format '{{.Status}}' | grep -q "healthy"; then
-      log "Target container '${CONTAINER}' is healthy. Applying migrations..."
-      if [[ -f "${REPO_ROOT}/web/scripts/migrate.mjs" ]]; then
-        (
-          cd "${REPO_ROOT}/web"
-          DATABASE_URL="$TARGET_DB_URL" node scripts/migrate.mjs
-        )
-      else
-        error "CRITICAL: Unable to run database migrations! Repository checkout at '${REPO_ROOT}/web/scripts/migrate.mjs' is required."
-        exit 1
-      fi
-      ok "Database schema migrations applied to Staging."
-    else
-      error "Database container '${CONTAINER}' is not healthy or running."
+    if [[ -z "$MIGRATION_URL" ]]; then
+      error "DIRECT_URL (Supabase session/direct connection) must be set in environment or deploy/dokploy/.env.staging"
       exit 1
     fi
+    log "Applying migrations over Supabase session connection (DIRECT_URL)..."
+    if [[ -f "${REPO_ROOT}/web/scripts/migrate.mjs" ]]; then
+      (
+        cd "${REPO_ROOT}/web"
+        DATABASE_URL="$MIGRATION_URL" node scripts/migrate.mjs
+      )
+    else
+      error "CRITICAL: Unable to run database migrations! Repository checkout at '${REPO_ROOT}/web/scripts/migrate.mjs' is required."
+      exit 1
+    fi
+    ok "Database schema migrations applied to Staging."
   else
-    ok "[DRY-RUN] Staging database schema migration simulated."
+    ok "[DRY-RUN] Staging database schema migration simulated (DIRECT_URL session connection, no container check)."
   fi
 else
   log "Skipping database migrations (--skip-migrations)."
 fi
-
 # ------------------------------------------------------------------------------
 # STEP 4: Trigger Staging Service Deployment
 # ------------------------------------------------------------------------------

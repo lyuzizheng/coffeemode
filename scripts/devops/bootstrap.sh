@@ -8,8 +8,9 @@
 #   1. Runs VPS hardening & Dokploy setup (via ./provision-vps.sh)
 #   2. Cloudflare edge & storage provisioning (R2 buckets, CORS, DNS)
 #   3. Docker networks (traefik-net, isolated staging & prod bridges)
-#   4. PostGIS 16 database provisioning with healthcheck verification
-#   5. Database schema migration bootstrapping (all 16 SQL migrations)
+#   4. Supabase project verification (prod + staging, PostGIS present) —
+#      databases live in Supabase (BRAWUKA-241), no local postgres containers
+#   5. Database schema migration bootstrapping over DIRECT_URL (session)
 #   6. Initial seed bootstrapping (CoffeeMode service account & base data)
 #   7. Web application container deployment behind Traefik
 #   8. Automated post-bootstrap smoke test verification
@@ -294,7 +295,7 @@ if [ "$DRY_RUN" = false ]; then
     ok "Network 'traefik-net' already exists."
   fi
 
-  # 2. Environment networks and volumes
+  # 2. Environment networks (no postgres data volumes: Supabase is the primary)
   for env in "${ENVS[@]}"; do
     NET_NAME="coffeemode-${env}-network"
     if ! docker network inspect "$NET_NAME" >/dev/null 2>&1; then
@@ -303,73 +304,44 @@ if [ "$DRY_RUN" = false ]; then
     else
       ok "Network '${NET_NAME}' already exists."
     fi
-
-    # Persistent PostgreSQL and Backup volumes
-    DATA_VOL="coffeemode_postgres_${env}_data"
-    BACKUP_VOL="coffeemode_postgres_${env}_backups"
-
-    docker volume create "$DATA_VOL" >/dev/null
-    docker volume create "$BACKUP_VOL" >/dev/null
-    ok "Volumes '${DATA_VOL}' and '${BACKUP_VOL}' verified."
   done
 else
   ok "[DRY-RUN] Docker network and volume creation simulated."
 fi
 
 # ------------------------------------------------------------------------------
-# STEP 4: PostgreSQL 16 + PostGIS Launch & Healthcheck
+# STEP 4: Supabase Project Verification (no local postgres containers)
+#
+# Databases live in Supabase per BRAWUKA-240 D1 / decision 34a. Cold-start only
+# verifies each target Supabase project is reachable and PostGIS-enabled;
+# provisioning itself happens in the Supabase dashboard (owner) + provision-supabase.sh.
 # ------------------------------------------------------------------------------
-stage "Step 4/7: PostgreSQL 16 + PostGIS Deployment & Healthcheck"
-
-COMPOSE_DIR="${REPO_ROOT}/deploy/dokploy"
+stage "Step 4/7: Supabase Project Verification"
 
 for env in "${ENVS[@]}"; do
-  log "Deploying PostgreSQL 16 PostGIS container for ${env}..."
-  CONTAINER="coffeemode-postgres-${env}"
-  COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.${env}.yml"
-
-  if [ ! -f "$COMPOSE_FILE" ]; then
-    error "Compose file not found: ${COMPOSE_FILE}"
-    exit 1
+  log "Verifying Supabase ${env} project connectivity..."
+  ENV_DIRECT_URL="${DIRECT_URL:-}"
+  if [[ -z "$ENV_DIRECT_URL" && -f "${REPO_ROOT}/deploy/dokploy/.env.${env}" ]]; then
+    ENV_DIRECT_URL="$(grep -E '^(DIRECT_URL|DATABASE_URL)=' "${REPO_ROOT}/deploy/dokploy/.env.${env}" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
   fi
 
   if [ "$DRY_RUN" = false ]; then
-    # Resolve password specifically for this environment (no cross-env leak)
-    ENV_PASSWORD="${POSTGRES_PASSWORD:-}"
-    if [[ -z "$ENV_PASSWORD" && -f "${REPO_ROOT}/deploy/dokploy/.env.${env}" ]]; then
-      ENV_PASSWORD="$(grep -E '^POSTGRES_PASSWORD=' "${REPO_ROOT}/deploy/dokploy/.env.${env}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
-    fi
-    : "${ENV_PASSWORD:?Error: POSTGRES_PASSWORD must be set in environment or deploy/dokploy/.env.${env}}"
-
-    DB_URL="postgres://coffeemode_${env}_user:${ENV_PASSWORD}@127.0.0.1:$([ "$env" = "staging" ] && echo 5433 || echo 5432)/coffeemode_${env}?sslmode=disable"
-
-    # Bring up database service with environment-scoped credentials
-    POSTGRES_PASSWORD="${ENV_PASSWORD}" DATABASE_URL="${DB_URL}" \
-      docker compose -f "$COMPOSE_FILE" up -d "postgres-${env}"
-    log "Waiting for '${CONTAINER}' to become healthy..."
-    MAX_ATTEMPTS=30
-    ATTEMPT=0
-    HEALTHY=false
-
-    while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-      ATTEMPT=$((ATTEMPT + 1))
-      STATUS="$(docker inspect --format='{{json .State.Health.Status}}' "$CONTAINER" 2>/dev/null || echo '"unknown"')"
-      if [ "$STATUS" = '"healthy"' ]; then
-        HEALTHY=true
-        break
-      fi
-      sleep 2
-    done
-
-    if [ "$HEALTHY" = true ]; then
-      ok "Database '${CONTAINER}' is healthy and ready for connections."
-    else
-      error "Database '${CONTAINER}' failed to become healthy after $((MAX_ATTEMPTS * 2))s."
-      docker logs --tail 20 "$CONTAINER"
+    if [[ -z "$ENV_DIRECT_URL" ]]; then
+      error "DIRECT_URL (or deploy/dokploy/.env.${env} connection string) is required for ${env}"
       exit 1
     fi
+    if ! command -v psql >/dev/null 2>&1; then
+      error "psql not found in PATH. Install postgresql-client to verify Supabase projects."
+      exit 1
+    fi
+    POSTGIS_CHECK="$(psql "$ENV_DIRECT_URL" -t -c "SELECT PostGIS_Version();" 2>/dev/null | tr -d '[:space:]' || echo "")"
+    if [[ -z "$POSTGIS_CHECK" ]]; then
+      error "Supabase ${env} project unreachable or PostGIS missing."
+      exit 1
+    fi
+    ok "Supabase ${env} project verified (PostGIS ${POSTGIS_CHECK})."
   else
-    ok "[DRY-RUN] Deployment of 'postgres-${env}' simulated."
+    ok "[DRY-RUN] Supabase ${env} project verification simulated."
   fi
 done
 
@@ -379,40 +351,28 @@ done
 stage "Step 5/7: Database Schema Migration Bootstrapping"
 
 for env in "${ENVS[@]}"; do
-  log "Applying migrations to ${env} database..."
-  DB_PORT="$([ "$env" = "staging" ] && echo 5433 || echo 5432)"
-  DB_USER="coffeemode_${env}_user"
-  DB_NAME="coffeemode_${env}"
-  CONTAINER="coffeemode-postgres-${env}"
-  DB_PASS="${POSTGRES_PASSWORD:-}"
-  if [[ -z "$DB_PASS" && -f "${REPO_ROOT}/deploy/dokploy/.env.${env}" ]]; then
-    DB_PASS="$(grep -E '^POSTGRES_PASSWORD=' "${REPO_ROOT}/deploy/dokploy/.env.${env}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
+  log "Applying migrations to Supabase ${env} project..."
+  # DDL must run over DIRECT_URL (session/direct, sslmode=require).
+  MIGRATION_URL="${DIRECT_URL:-}"
+  if [[ -z "$MIGRATION_URL" && -f "${REPO_ROOT}/deploy/dokploy/.env.${env}" ]]; then
+    MIGRATION_URL="$(grep -E '^DIRECT_URL=' "${REPO_ROOT}/deploy/dokploy/.env.${env}" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
   fi
-  if [ "$DRY_RUN" = false ]; then
-    : "${DB_PASS:?Error: POSTGRES_PASSWORD must be set in environment or deploy/dokploy/.env.${env}}"
-  fi
-  TARGET_DB_URL="postgres://${DB_USER}:${DB_PASS}@127.0.0.1:${DB_PORT}/${DB_NAME}?sslmode=disable"
 
   if [ "$DRY_RUN" = false ]; then
-    if [[ -f "${REPO_ROOT}/web/scripts/migrate.mjs" && -f "${REPO_ROOT}/web/package.json" ]]; then
-      log "Running migrations via Node runner against ${TARGET_DB_URL}..."
-      (
-        cd "${REPO_ROOT}/web"
-        DATABASE_URL="$TARGET_DB_URL" node scripts/migrate.mjs
-      )
-      ok "All migrations successfully applied to ${env}."
-    else
-      # Fallback: run inside container if local Node is absent
-      log "Executing migrations inside database container '${CONTAINER}'..."
-      for sql_file in "${REPO_ROOT}/web/db/migrations"/*.sql; do
-        if [ -f "$sql_file" ]; then
-          log "Applying $(basename "$sql_file")..."
-          docker exec -i -e PGPASSWORD="$DB_PASS" "coffeemode-postgres-${env}" \
-            psql -U "$DB_USER" -d "$DB_NAME" < "$sql_file" >/dev/null
-        fi
-      done
-      ok "Migrations applied via container psql to ${env}."
+    if [[ -z "$MIGRATION_URL" ]]; then
+      error "DIRECT_URL (Supabase session/direct) is required in environment or deploy/dokploy/.env.${env}"
+      exit 1
     fi
+    if [[ ! -f "${REPO_ROOT}/web/scripts/migrate.mjs" ]]; then
+      error "Migration runner not found at web/scripts/migrate.mjs."
+      exit 1
+    fi
+    log "Running migrations via Node runner over DIRECT_URL (session)..."
+    (
+      cd "${REPO_ROOT}/web"
+      DATABASE_URL="$MIGRATION_URL" node scripts/migrate.mjs
+    )
+    ok "All migrations successfully applied to Supabase ${env}."
   else
     ok "[DRY-RUN] Schema migrations execution simulated for ${env}."
   fi
@@ -424,28 +384,25 @@ done
 if [ "$SKIP_SEED" = false ]; then
   stage "Step 6/7: Seed Data Bootstrapping"
   for env in "${ENVS[@]}"; do
-    log "Bootstrapping service account profile and base records for ${env}..."
-    DB_USER="coffeemode_${env}_user"
-    DB_NAME="coffeemode_${env}"
-    DB_PASS="${POSTGRES_PASSWORD:-}"
-    if [[ -z "$DB_PASS" && -f "${REPO_ROOT}/deploy/dokploy/.env.${env}" ]]; then
-      DB_PASS="$(grep -E '^POSTGRES_PASSWORD=' "${REPO_ROOT}/deploy/dokploy/.env.${env}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
-    fi
-    if [ "$DRY_RUN" = false ]; then
-      : "${DB_PASS:?Error: POSTGRES_PASSWORD must be set in environment or deploy/dokploy/.env.${env}}"
+    log "Bootstrapping service account profile and base records for Supabase ${env}..."
+    SEED_URL="${DIRECT_URL:-}"
+    if [[ -z "$SEED_URL" && -f "${REPO_ROOT}/deploy/dokploy/.env.${env}" ]]; then
+      SEED_URL="$(grep -E '^(DIRECT_URL|DATABASE_URL)=' "${REPO_ROOT}/deploy/dokploy/.env.${env}" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
     fi
 
     if [ "$DRY_RUN" = false ]; then
+      if [[ -z "$SEED_URL" ]]; then
+        error "DIRECT_URL (or deploy/dokploy/.env.${env} connection string) is required for ${env}"
+        exit 1
+      fi
       # Check if service account profile already exists (seeded by migration 0016)
-      PROFILE_CHECK="$(docker exec -e PGPASSWORD="$DB_PASS" "coffeemode-postgres-${env}" \
-        psql -U "$DB_USER" -d "$DB_NAME" -t -c \
+      PROFILE_CHECK="$(psql "$SEED_URL" -t -c \
         "SELECT 1 FROM profiles WHERE id = '00000000-0000-4000-a000-000000000001';" 2>/dev/null | tr -d '[:space:]' || echo "")"
 
       if [[ "$PROFILE_CHECK" == "1" ]]; then
         ok "Service account profile already verified in ${env}."
       else
-        docker exec -e PGPASSWORD="$DB_PASS" "coffeemode-postgres-${env}" \
-          psql -U "$DB_USER" -d "$DB_NAME" -c \
+        psql "$SEED_URL" -v ON_ERROR_STOP=1 -q -c \
           "INSERT INTO profiles (id, display_name) VALUES ('00000000-0000-4000-a000-000000000001', 'CoffeeMode') ON CONFLICT (id) DO NOTHING;" >/dev/null
         ok "Service account profile seeded in ${env}."
       fi

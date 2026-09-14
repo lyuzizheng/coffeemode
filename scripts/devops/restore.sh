@@ -4,13 +4,21 @@
 # Architecture: docs/specs/0005-dokploy-vps-and-deployment-architecture.md
 # Lifecycle:    docs/devops/LIFECYCLE.md
 #
-# Restores and verifies PostgreSQL + PostGIS database archives:
+# Restores and verifies Supabase Postgres + PostGIS database archives over a
+# connection string (no local container):
 #   1. Pre-restore SHA256 checksum & pg_restore header integrity check
 #   2. Optional Cloudflare R2 automated archive download
-#   3. Safety guards & active client connection termination
-#   4. Atomic pg_restore execution (--clean --if-exists --no-owner)
+#   3. Safety guards & active client connection termination (Supabase-safe:
+#      own session only, never pg_terminate_backend on shared pooler)
+#   4. pg_restore execution (--clean --if-exists --no-owner) via local
+#      pg_restore client against DATABASE_URL (pooled, sslmode=require)
 #   5. Post-restore verification: PostGIS extension, table counts, spatial queries
-#   6. Non-destructive drill mode (--drill) for scheduled recovery exercises
+#   6. Non-destructive drill mode (--drill): restores into a scratch database on
+#      the STAGING Supabase project, verifies, then drops it
+#
+# Database topology (BRAWUKA-240 D1 / decision 34a): prod and staging each live
+# in their own Supabase project (region ap-southeast-1). --drill ALWAYS targets
+# staging regardless of --env so prod data is never at risk.
 #
 # Usage:
 #   ./restore.sh [options]
@@ -20,9 +28,16 @@
 #   -e, --env <staging|prod>  Target environment (required)
 #   -f, --file <path>         Path to local backup archive (.dump or .dump.gz)
 #   --download-r2 <filename>  Download archive from Cloudflare R2 before restoring
-#   --drill                   Simulated non-destructive recovery drill (uses temporary DB)
+#   --drill                   Non-destructive drill: restore to a scratch database
+#                             on the STAGING Supabase project, verify, drop it
 #   --yes                     Bypass confirmation prompt (required for automated pipelines)
 #   --dry-run                 Log planned actions without modifying system state
+#
+# Environment:
+#   DATABASE_URL              Supabase pooled connection string for --env
+#                             (sslmode=require). Falls back to .env.<env>.
+#   STAGING_DATABASE_URL      Supabase staging connection string (--drill target).
+#                             Falls back to .env.staging. Required for --drill.
 #
 # Examples:
 #   ./restore.sh --env staging --file /backups/coffeemode_staging_snapshot.dump.gz --yes
@@ -159,20 +174,83 @@ if [[ -z "$BACKUP_PATH" ]]; then
   exit 1
 fi
 
-CONTAINER="coffeemode-postgres-${ENV}"
-DB_USER="coffeemode_${ENV}_user"
-TARGET_DB="coffeemode_${ENV}"
-
+# Resolve a Supabase connection string from env or deploy/dokploy/.env.<e>.
+# Prefers DIRECT_URL (session/direct) for admin DDL; falls back to DATABASE_URL
+# (pooled). pg_restore/pg_dump/psql each open short-lived sessions only.
+# (Portable: no bash-4 ${var^^} — scripts run under bash 3.2 on macOS/VPS.)
+resolve_conn_url() {
+  local e="$1"
+  if [[ -n "${DIRECT_URL:-}" && "$e" == "$ENV" ]]; then
+    printf '%s' "$DIRECT_URL"
+    return 0
+  fi
+  if [[ "$e" == "staging" && -n "${STAGING_DATABASE_URL:-}" ]]; then
+    printf '%s' "$STAGING_DATABASE_URL"
+    return 0
+  fi
+  if [[ "$e" == "prod" && -n "${PROD_DATABASE_URL:-}" ]]; then
+    printf '%s' "$PROD_DATABASE_URL"
+    return 0
+  fi
+  if [[ "$e" == "$ENV" && -n "${DATABASE_URL:-}" ]]; then
+    printf '%s' "$DATABASE_URL"
+    return 0
+  fi
+  local env_file="${REPO_ROOT}/deploy/dokploy/.env.${e}"
+  if [[ -f "$env_file" ]]; then
+    local url
+    url="$(grep -E '^(DIRECT_URL|DATABASE_URL)=' "$env_file" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
+    if [[ -n "$url" ]]; then
+      printf '%s' "$url"
+      return 0
+    fi
+  fi
+  return 1
+}
+RESTORE_URL=""
+DRILL_DB=""
 if [ "$DRILL_MODE" = true ]; then
-  TARGET_DB="coffeemode_${ENV}_drill"
+  # Drill always targets the STAGING Supabase project under a scratch db name.
+  if [ "$DRY_RUN" = false ]; then
+    STAGING_URL=""
+    if [[ -n "${STAGING_DATABASE_URL:-}" ]]; then
+      STAGING_URL="$STAGING_DATABASE_URL"
+    elif [[ -n "${STAGING_DIRECT_URL:-}" ]]; then
+      STAGING_URL="$STAGING_DIRECT_URL"
+    elif ! STAGING_URL="$(resolve_conn_url staging)"; then
+      error "STAGING_DATABASE_URL (or deploy/dokploy/.env.staging DATABASE_URL) is required for --drill"
+      exit 1
+    fi
+    # Split off query string, then swap the dbname path segment.
+    STAGING_Q=""
+    STAGING_BASE="$STAGING_URL"
+    if [[ "$STAGING_URL" == *"?"* ]]; then
+      STAGING_Q="?${STAGING_URL#*\?}"
+      STAGING_BASE="${STAGING_URL%%\?*}"
+    fi
+    STAGING_SERVER="${STAGING_BASE%/*}"
+    DRILL_DB="restore_drill_$(date -u +%Y%m%d_%H%M%S)_$$"
+    ADMIN_URL="${STAGING_SERVER}/postgres${STAGING_Q}"
+    RESTORE_URL="${STAGING_SERVER}/${DRILL_DB}${STAGING_Q}"
+  else
+    RESTORE_URL="<staging-url>/<drill-db>"
+  fi
+else
+  if [ "$DRY_RUN" = false ]; then
+    if ! RESTORE_URL="$(resolve_conn_url "$ENV")"; then
+      error "DATABASE_URL must be set in environment or deploy/dokploy/.env.${ENV} (Supabase pooled, sslmode=require)"
+      exit 1
+    fi
+  else
+    RESTORE_URL="<database-url>"
+  fi
 fi
 
 echo "=============================================================================="
 echo -e "${BOLD}CoffeeMode Disaster Recovery Suite${NC}"
 echo "Environment:     ${ENV}"
-echo "Mode:            $([ "$DRILL_MODE" = true ] && echo "NON-DESTRUCTIVE RECOVERY DRILL" || echo "LIVE RESTORATION")"
-echo "Target Container:${CONTAINER}"
-echo "Target Database: ${TARGET_DB}"
+echo "Mode:            $([ "$DRILL_MODE" = true ] && echo "NON-DESTRUCTIVE RECOVERY DRILL (staging scratch db)" || echo "LIVE RESTORATION")"
+echo "Target:          $([ "$DRILL_MODE" = true ] && echo "staging scratch database ${DRILL_DB}" || echo "Supabase ${ENV} project (DATABASE_URL)")"
 echo "Backup Archive:  ${BACKUP_PATH}"
 echo "=============================================================================="
 
@@ -213,7 +291,7 @@ fi
 if [ "$DRILL_MODE" = false ] && [ "$DRY_RUN" = false ]; then
   if [ "$CONFIRM_FLAG" = false ]; then
     echo ""
-    echo -e "${BOLD}${RED}CRITICAL WARNING: This operation will overwrite database '${TARGET_DB}'!${NC}"
+    echo -e "${BOLD}${RED}CRITICAL WARNING: This will overwrite the Supabase ${ENV} database!${NC}"
     read -rp "Are you sure you want to proceed with live database restore? (Type 'RESTORE' to confirm): " CONFIRMATION
     if [[ "$CONFIRMATION" != "RESTORE" ]]; then
       echo "Restoration aborted by operator."
@@ -223,68 +301,55 @@ if [ "$DRILL_MODE" = false ] && [ "$DRY_RUN" = false ]; then
 fi
 
 # ------------------------------------------------------------------------------
-# STEP 4: Target Container Health & Database Preparation
+# STEP 4: Target Preparation (drill scratch db; no container health check)
 # ------------------------------------------------------------------------------
-log "Step 4: Preparing database container '${CONTAINER}'..."
+log "Step 4: Preparing restore target..."
 
 if [ "$DRY_RUN" = false ]; then
-  if ! docker ps --filter "name=^/${CONTAINER}$" --format '{{.Status}}' | grep -q "healthy"; then
-    error "Database container '${CONTAINER}' is not healthy or running."
-    exit 1
-  fi
+  for bin in pg_restore psql; do
+    if ! command -v "$bin" >/dev/null 2>&1; then
+      error "${bin} not found in PATH. Install postgresql-client to run restores."
+      exit 1
+    fi
+  done
 
   if [ "$DRILL_MODE" = true ]; then
-    log "Creating temporary drill database '${TARGET_DB}'..."
-    docker exec -e PGPASSWORD="${POSTGRES_PASSWORD:-}" "$CONTAINER" \
-      psql -U "$DB_USER" -d postgres -c "DROP DATABASE IF EXISTS ${TARGET_DB};" >/dev/null
-    docker exec -e PGPASSWORD="${POSTGRES_PASSWORD:-}" "$CONTAINER" \
-      psql -U "$DB_USER" -d postgres -c "CREATE DATABASE ${TARGET_DB} OWNER ${DB_USER};" >/dev/null
-    ok "Temporary drill database created: ${TARGET_DB}"
+    log "Creating scratch drill database '${DRILL_DB}' on the staging Supabase project..."
+    psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
+      -c "DROP DATABASE IF EXISTS \"${DRILL_DB}\";" \
+      -c "CREATE DATABASE \"${DRILL_DB}\";" >/dev/null
+    ok "Scratch drill database created: ${DRILL_DB}"
   else
-    log "Terminating active connections to '${TARGET_DB}'..."
-    docker exec -e PGPASSWORD="${POSTGRES_PASSWORD:-}" "$CONTAINER" \
-      psql -U "$DB_USER" -d postgres -c \
-      "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${TARGET_DB}' AND pid <> pg_backend_pid();" || true
+    log "Live restore target: Supabase ${ENV} project (no connection termination: shared pooler is left untouched)."
   fi
 else
-  ok "[DRY-RUN] Database preparation and connection termination simulated."
+  ok "[DRY-RUN] Database preparation simulated."
 fi
 
 # ------------------------------------------------------------------------------
 # STEP 5: Database Restoration via pg_restore
 # ------------------------------------------------------------------------------
-log "Step 5: Restoring database schema and data into '${TARGET_DB}'..."
+RESTORE_LABEL="$([ "$DRILL_MODE" = true ] && echo "scratch database '${DRILL_DB}' (staging)" || echo "Supabase ${ENV} project")"
+log "Step 5: Restoring database schema and data into ${RESTORE_LABEL}..."
 
 if [ "$DRY_RUN" = false ]; then
-  # Resolve and validate database password
-  if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
-    if [[ -f "${REPO_ROOT}/deploy/dokploy/.env.${ENV}" ]]; then
-      POSTGRES_PASSWORD="$(grep -E '^POSTGRES_PASSWORD=' "${REPO_ROOT}/deploy/dokploy/.env.${ENV}" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
-    fi
-  fi
-  : "${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be set in environment or deploy/dokploy/.env.${ENV}}"
-
-  RESTORE_CMD=(pg_restore -U "$DB_USER" -d "$TARGET_DB" --clean --if-exists --no-owner --verbose)
   set -o pipefail
 
-  if [[ "$BACKUP_PATH" == *.gz ]]; then
-    log "Decompressing gzip archive stream to pg_restore..."
-    if ! gzip -dc "$BACKUP_PATH" | docker exec -i -e PGPASSWORD="${POSTGRES_PASSWORD}" "$CONTAINER" "${RESTORE_CMD[@]}"; then
-      if [ "$DRILL_MODE" = false ]; then
-        error "CRITICAL: Live database restore FAILED on '${TARGET_DB}'!"
-        exit 1
-      else
-        warn "pg_restore completed with notices/warnings during recovery drill."
-      fi
+  run_pg_restore() {
+    if [[ "$BACKUP_PATH" == *.gz ]]; then
+      log "Decompressing gzip archive stream to pg_restore..."
+      gzip -dc "$BACKUP_PATH" | pg_restore -d "$RESTORE_URL" --clean --if-exists --no-owner --verbose
+    else
+      pg_restore -d "$RESTORE_URL" --clean --if-exists --no-owner --verbose < "$BACKUP_PATH"
     fi
-  else
-    if ! docker exec -i -e PGPASSWORD="${POSTGRES_PASSWORD}" "$CONTAINER" "${RESTORE_CMD[@]}" < "$BACKUP_PATH"; then
-      if [ "$DRILL_MODE" = false ]; then
-        error "CRITICAL: Live database restore FAILED on '${TARGET_DB}'!"
-        exit 1
-      else
-        warn "pg_restore completed with notices/warnings during recovery drill."
-      fi
+  }
+
+  if ! run_pg_restore; then
+    if [ "$DRILL_MODE" = false ]; then
+      error "CRITICAL: Live database restore FAILED on Supabase ${ENV}!"
+      exit 1
+    else
+      warn "pg_restore completed with notices/warnings during recovery drill."
     fi
   fi
   ok "Database restore command executed."
@@ -299,43 +364,37 @@ log "Step 6: Executing post-restore data and spatial contract verification..."
 
 if [ "$DRY_RUN" = false ]; then
   # 1. PostGIS extension verification
-  POSTGIS_VERSION="$(docker exec -e PGPASSWORD="${POSTGRES_PASSWORD:-}" "$CONTAINER" \
-    psql -U "$DB_USER" -d "$TARGET_DB" -t -c "SELECT PostGIS_Version();" 2>/dev/null | tr -d '[:space:]' || echo "")"
+  POSTGIS_VERSION="$(psql "$RESTORE_URL" -t -c "SELECT PostGIS_Version();" 2>/dev/null | tr -d '[:space:]' || echo "")"
 
   if [[ -n "$POSTGIS_VERSION" ]]; then
     ok "PostGIS extension verified: ${POSTGIS_VERSION}"
   else
-    error "PostGIS extension check FAILED on '${TARGET_DB}'."
+    error "PostGIS extension check FAILED on ${RESTORE_LABEL}."
     exit 1
   fi
 
   # 2. Table row counts
-  CAFES_COUNT="$(docker exec -e PGPASSWORD="${POSTGRES_PASSWORD:-}" "$CONTAINER" \
-    psql -U "$DB_USER" -d "$TARGET_DB" -t -c "SELECT count(*) FROM cafes;" 2>/dev/null | tr -d '[:space:]' || echo "0")"
-  CHECKINS_COUNT="$(docker exec -e PGPASSWORD="${POSTGRES_PASSWORD:-}" "$CONTAINER" \
-    psql -U "$DB_USER" -d "$TARGET_DB" -t -c "SELECT count(*) FROM checkins;" 2>/dev/null | tr -d '[:space:]' || echo "0")"
-  PROFILES_COUNT="$(docker exec -e PGPASSWORD="${POSTGRES_PASSWORD:-}" "$CONTAINER" \
-    psql -U "$DB_USER" -d "$TARGET_DB" -t -c "SELECT count(*) FROM profiles;" 2>/dev/null | tr -d '[:space:]' || echo "0")"
+  CAFES_COUNT="$(psql "$RESTORE_URL" -t -c "SELECT count(*) FROM cafes;" 2>/dev/null | tr -d '[:space:]' || echo "0")"
+  CHECKINS_COUNT="$(psql "$RESTORE_URL" -t -c "SELECT count(*) FROM checkins;" 2>/dev/null | tr -d '[:space:]' || echo "0")"
+  PROFILES_COUNT="$(psql "$RESTORE_URL" -t -c "SELECT count(*) FROM profiles;" 2>/dev/null | tr -d '[:space:]' || echo "0")"
 
   log "Row counts: cafes=${CAFES_COUNT}, checkins=${CHECKINS_COUNT}, profiles=${PROFILES_COUNT}"
 
-  # 3. Spatial query contract benchmark
   # 3. Spatial query contract benchmark (cafes.location geography column per 0001_init.sql)
-  SPATIAL_CHECK="$(docker exec -e PGPASSWORD="${POSTGRES_PASSWORD:-}" "$CONTAINER" \
-    psql -U "$DB_USER" -d "$TARGET_DB" -t -c \
+  SPATIAL_CHECK="$(psql "$RESTORE_URL" -t -c \
     "SELECT count(*) FROM cafes WHERE ST_DWithin(location, ST_SetSRID(ST_MakePoint(103.8198, 1.3521), 4326)::geography, 10000);" 2>/dev/null | tr -d '[:space:]' || echo "")"
   if [[ -z "$SPATIAL_CHECK" ]]; then
-    error "PostGIS spatial query check FAILED on '${TARGET_DB}'."
+    error "PostGIS spatial query check FAILED on ${RESTORE_LABEL}."
     exit 1
   fi
   ok "PostGIS spatial query test returned ${SPATIAL_CHECK} cafe(s) in range."
 
-  # 4. Cleanup drill database
+  # 4. Cleanup drill scratch database on the staging project
   if [ "$DRILL_MODE" = true ]; then
-    log "Cleaning up temporary drill database '${TARGET_DB}'..."
-    docker exec -e PGPASSWORD="${POSTGRES_PASSWORD:-}" "$CONTAINER" \
-      psql -U "$DB_USER" -d postgres -c "DROP DATABASE ${TARGET_DB};" >/dev/null
-    ok "Temporary drill database removed."
+    log "Cleaning up scratch drill database '${DRILL_DB}'..."
+    psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
+      -c "DROP DATABASE IF EXISTS \"${DRILL_DB}\";" >/dev/null
+    ok "Scratch drill database removed."
   fi
 else
   ok "[DRY-RUN] Post-restore validation queries simulated."
@@ -351,7 +410,7 @@ if [ "$DRILL_MODE" = true ]; then
   echo "Result:          PASSED — All PostGIS spatial contracts verified."
 else
   echo -e "${BOLD}${GREEN}Database Restoration Completed Successfully!${NC}"
-  echo "Target Database: ${TARGET_DB}"
+  echo "Target:          Supabase ${ENV} project"
   echo "Status:          Active & Verified"
 fi
 echo "=============================================================================="

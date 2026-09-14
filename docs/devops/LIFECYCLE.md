@@ -72,17 +72,16 @@ This document establishes the canonical operational lifecycle, deployment runboo
             │ coffeemode-web-    │       │ coffeemode-web-    │
             │ staging (:3000)    │       │ prod (:3000)       │
             │         │          │       │         │          │
-            │ coffeemode-staging-│       │ coffeemode-prod-   │
-            │ network (isolated) │       │ network (isolated) │
-            │         │          │       │         │          │
-            │ postgres-staging   │       │ postgres-prod      │
-            │ (:5432 internal)   │       │ (:5432 internal)   │
-            │ (127.0.0.1:5433)   │       │ (127.0.0.1:5432)   │
-            │         │          │       │         │          │
-            │ Named Volumes:     │       │ Named Volumes:     │
-            │ - data_staging     │       │ - data_prod        │
-            │ - backups_staging  │       │ - backups_prod     │
-            └────────────────────┘       └────────────────────┘
+            │ DATABASE_URL ──────┼──┐    │ DATABASE_URL ──────┼──┐
+            └────────────────────┘  │    └────────────────────┘  │
+                                    ▼                           ▼
+                    ┌───────────────────────┐   ┌───────────────────────┐
+                    │ Supabase STAGING      │   │ Supabase PROD         │
+                    │ Postgres + PostGIS    │   │ Postgres + PostGIS    │
+                    │ region ap-southeast-1 │   │ region ap-southeast-1 │
+                    │ (pooled :6543 app /   │   │ (pooled :6543 app /   │
+                    │  direct :5432 DDL)    │   │  direct :5432 DDL)    │
+                    └───────────────────────┘   └───────────────────────┘
 ```
 
 | Dimension | Staging Environment | Production Environment |
@@ -91,18 +90,16 @@ This document establishes the canonical operational lifecycle, deployment runboo
 | **Secondary Domain** | None | `www.coffeemode.app` (301 redirect to apex) |
 | **Backend Docker Network** | `coffeemode-staging-network` | `coffeemode-prod-network` |
 | **Ingress Network** | `traefik-net` | `traefik-net` |
-| **Database Container** | `coffeemode-postgres-staging` | `coffeemode-postgres-prod` |
-| **Database Name / User** | `coffeemode_staging` / `coffeemode_staging_user` | `coffeemode_prod` / `coffeemode_prod_user` |
-| **Database Loopback Port**| `127.0.0.1:5433` (SSH tunnel only) | `127.0.0.1:5432` (SSH tunnel only) |
-| **WAN Database Exposure**| Never exposed (`0.0.0.0` blocked) | Never exposed (`0.0.0.0` blocked) |
-| **Persistent Data Volume**| `coffeemode_postgres_staging_data` | `coffeemode_postgres_prod_data` |
-| **Local Backup Volume**   | `coffeemode_postgres_staging_backups` | `coffeemode_postgres_prod_backups` |
+| **Database** | Supabase STAGING project (Postgres + PostGIS, `ap-southeast-1`) | Supabase PROD project (Postgres + PostGIS, `ap-southeast-1`) |
+| **App Connection** | `DATABASE_URL` pooled (`:6543`, `sslmode=require`) | `DATABASE_URL` pooled (`:6543`, `sslmode=require`) |
+| **Migration/Backup Connection** | `DIRECT_URL` session/direct (`:5432`, `sslmode=require`) | `DIRECT_URL` session/direct (`:5432`, `sslmode=require`) |
+| **WAN Database Exposure**| Supabase-managed (no VPS postgres port) | Supabase-managed (no VPS postgres port) |
+| **Local Backup Dir**   | `backups/staging/` | `backups/prod/` |
 | **Cloudflare R2 Bucket**  | `coffeemode-images-staging` | `coffeemode-images-prod` |
-| **Cloudflare R2 Backups** | `s3://coffeemode-backups/staging/` | `s3://coffeemode-backups/prod/` |
+| **Cloudflare R2 Backups** | `s3://coffeemode-backups/staging/` (REQUIRED — Supabase free has no auto-backups) | `s3://coffeemode-backups/prod/` (REQUIRED — Supabase free has no auto-backups) |
 | **Public Image CDN Host** | `staging-images.coffeemode.app` | `images.coffeemode.app` |
 | **Worker Services**       | `image-service-staging`, `poi-service-staging` | `image-service-prod`, `poi-service-prod` |
 | **Local Backup Retention**| 7 days | 14 days (30 days in Cloudflare R2) |
-
 ---
 
 ## 3. Lifecycle Phase Breakdown
@@ -160,7 +157,7 @@ Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enfor
 - **Workflow**:
   1. Validates pending migrations for safety.
   2. Creates staging pre-migration database backup.
-  3. Executes database migrations against `coffeemode-postgres-staging`.
+  3. Executes database migrations over `DIRECT_URL` (Supabase staging session/direct connection).
   4. Triggers Dokploy staging deploy webhook (or Docker compose rolling rebuild) and waits for release convergence on `/api/health`.
   5. Runs post-deployment automated smoke tests (`scripts/devops/smoke-test.sh staging`).
   6. Runs full user-journey verification against staging Supabase Postgres
@@ -183,8 +180,8 @@ Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enfor
   1. **Pre-Promotion Staging Gate**: Executes smoke tests against Staging. If Staging is degraded or failing, production upgrade is immediately aborted.
   2. **Mandatory Safety Snapshot**: Automatically creates a pre-migration snapshot via `scripts/devops/backup.sh --env prod --reason pre-migration`.
   3. **Zero-Downtime Migration Safety Check**: Enforces non-locking DDL (`CREATE INDEX CONCURRENTLY`, nullable fields).
-  4. **Migration Execution**: Applies pending migrations against `coffeemode-postgres-prod`.
-  5. **Zero-Downtime Rolling Swap & Convergence**: Triggers Dokploy rolling update. Waits for deployment convergence (release tag, boot_time, or container swap) before running smoke tests. Traefik directs traffic to the new container once `/api/health` reports healthy.
+  4. **Migration Execution**: Applies pending migrations over `DIRECT_URL` (Supabase prod session/direct connection — never the transaction pooler).
+  5. **Zero-Downtime Rolling Swap & Convergence**: Triggers Dokploy rolling update. Waits for deployment convergence before running smoke tests. Traefik directs traffic to the new container once `/api/health` reports healthy.
   6. **Post-Deployment Verification**: Runs automated smoke tests (`scripts/devops/smoke-test.sh prod`).
 
 ### Phase 5: Instant Production Rollback
@@ -208,11 +205,13 @@ Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enfor
 - **Grandfather-Father-Son (GFS) Lifecycle**:
   - **Daily Tier**: Automated daily backups retained for 14 days (prod) or 7 days (staging).
   - **Weekly Tier**: Backups taken on Sundays retained for 28 days (4 weeks).
-  - **Monthly Tier**: Backups taken on the 1st of each month retained for 90 days (3 months).
-- **Volume & Configuration Archiving**:
+- **Database Backup Source**:
+  - `pg_dump -Fc` runs against `DATABASE_URL` (Supabase pooled, `sslmode=require`) with gzip-9; single session, never parallel.
+  - REQUIRED (not optional): Supabase free tier ships no automated backups, so `pg_dump → R2` is the only offsite copy.
+- **Configuration Archiving**:
   - Atomic PostgreSQL compressed dump (`pg_dump -Fc` with gzip-9).
-  - Persistent data volume archiving (`coffeemode_postgres_${ENV}_data` tarball).
   - Deployment and environment configuration archiving (`.tar.gz` with SHA256 checksums).
+  - No physical volume tar: there is no self-hosted postgres data volume.
 - **Offsite Replication**: Backups and checksums are replicated offsite to Cloudflare R2 bucket `s3://coffeemode-backups/<env>/`.
 ### Phase 7: Cold-Start VPS Provisioning
 - **Target**: Blank Ubuntu or Debian LTS server.
@@ -222,8 +221,8 @@ Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enfor
   3. Installs Docker CE, Docker Compose plugin, and initializes Docker Swarm.
   4. Configures Dokploy PaaS and Traefik reverse proxy on ports 80/443.
   5. Provisions Cloudflare R2 buckets (`coffeemode-images-staging`, `coffeemode-images-prod`, `coffeemode-backups`), CORS rules, and DNS records.
-  6. Creates isolated bridge networks and persistent storage volumes.
-  7. Brings up PostgreSQL 16 + PostGIS instances and runs all 16 database migrations.
+  6. Creates isolated bridge networks (`coffeemode-staging-network`, `coffeemode-prod-network`).
+  7. Verifies Supabase prod + staging projects (PostGIS present) and runs migrations over `DIRECT_URL` (session/direct).
   8. Seeds service account profile (`00000000-0000-4000-a000-000000000001`).
   9. Builds and deploys web containers and runs end-to-end smoke tests.
 
@@ -287,12 +286,12 @@ To verify backup viability without touching production or staging data, run non-
 ```bash
 ./scripts/devops/restore.sh --env staging --file /path/to/backup.dump.gz --drill
 ```
-In drill mode (`--drill`), the script:
+In drill mode (`--drill`), the script always targets the STAGING Supabase project:
 1. Validates SHA256 checksum and archive integrity.
-2. Creates a temporary database `coffeemode_staging_drill`.
-3. Restores schema, tables, and spatial data into the temporary database.
+2. Creates a scratch database `restore_drill_<timestamp>_<pid>` on staging.
+3. Restores schema, tables, and spatial data into the scratch database.
 4. Executes PostGIS extension checks, row count audits, and spatial queries.
-5. Destroys the temporary database and reports a verified `PASSED` result.
+5. Drops the scratch database and reports a verified `PASSED` result.
 
 ---
 
@@ -310,9 +309,9 @@ In drill mode (`--drill`), the script:
   ```bash
   docker logs --tail 100 -f coffeemode-web-prod
   ```
-- **Inspect database logs**:
+- **Verify Supabase connectivity** (no local postgres container):
   ```bash
-  docker logs --tail 100 -f coffeemode-postgres-prod
+  psql "$DIRECT_URL" -c "SELECT PostGIS_Version();"
   ```
 - **Verify Traefik ingress status**:
   ```bash

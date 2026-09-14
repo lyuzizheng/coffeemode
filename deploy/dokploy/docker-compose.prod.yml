@@ -1,12 +1,13 @@
 # CoffeeMode Production Stack — Dokploy Docker Compose
 # Architecture: docs/specs/0005-dokploy-vps-and-deployment-architecture.md
 #
-# Production Stack:
-#   - postgres-prod: PostGIS 16 instance on dedicated bridge network (coffeemode-prod-network)
+# Production Stack (BRAWUKA-241; decision 34a / BRAWUKA-240 D1):
 #   - web-prod: Next.js standalone container on internal port 3000
+#   - Database: Supabase prod project (Postgres + PostGIS, region ap-southeast-1)
+#     reached over DATABASE_URL (pooled, sslmode=require). No self-hosted
+#     postgres service exists in this stack.
 #   - Ingress: Web container connects to external traefik-net for Traefik routing
-#   - Isolation: Database and data volumes are 100% isolated from staging
-#
+#   - Isolation: Staging uses its own Supabase project; stacks share nothing
 # Deployment Mode & Zero-Downtime Guarantee:
 #   - Docker Swarm Stack Mode (RECOMMENDED for zero-downtime): With Swarm enabled
 #     on the VPS (`docker swarm init`), Dokploy deploys via `docker stack deploy`,
@@ -24,39 +25,6 @@
 #   outside Dokploy, pass `--env-file .env.prod` so Docker Compose resolves
 #   interpolations before starting containers.
 services:
-  postgres-prod:
-    image: postgis/postgis:16-3.4
-    container_name: coffeemode-postgres-prod
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-coffeemode_prod}
-      POSTGRES_USER: ${POSTGRES_USER:-coffeemode_prod_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in shell environment, via docker compose --env-file .env.prod, or Dokploy environment}
-      PGDATA: /var/lib/postgresql/data/pgdata
-    volumes:
-      - postgres_prod_data:/var/lib/postgresql/data
-      - postgres_prod_backups:/backups
-    networks:
-      - coffeemode-prod-network
-    ports:
-      # Bound strictly to localhost loopback for administrative access via SSH tunnel
-      # Port 5432 is NEVER exposed to WAN
-      - "127.0.0.1:5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-coffeemode_prod_user} -d ${POSTGRES_DB:-coffeemode_prod}"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-      start_period: 10s
-    deploy:
-      resources:
-        limits:
-          cpus: "2.00"
-          memory: 4096M
-        reservations:
-          cpus: "1.00"
-          memory: 2048M
-
   web-prod:
     image: coffeemode-web-prod:${IMAGE_TAG:-latest}
     build:
@@ -76,9 +44,6 @@ services:
     networks:
       - coffeemode-prod-network
       - traefik-net
-    depends_on:
-      postgres-prod:
-        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1"]
       interval: 5s
@@ -129,8 +94,3 @@ networks:
   traefik-net:
     external: true
 
-volumes:
-  postgres_prod_data:
-    name: coffeemode_postgres_prod_data
-  postgres_prod_backups:
-    name: coffeemode_postgres_prod_backups

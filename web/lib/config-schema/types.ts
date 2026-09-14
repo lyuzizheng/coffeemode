@@ -114,6 +114,12 @@ export interface AppConfig {
     gcTimeMs: number;
     persistMaxAgeMs: number;
   };
+  runtimeConfig: {
+    responseCache: {
+      sMaxAgeSeconds: number;
+      staleWhileRevalidateSeconds: number;
+    };
+  };
   validation: {
     cafeAddressMaxChars: number;
     profileCityMaxChars: number;

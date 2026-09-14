@@ -5,6 +5,7 @@ import { parseImagesSection } from "./images";
 import { parseProfileSection } from "./profile";
 import { parsePromptQueueSection } from "./prompt-queue";
 import { parseQuerySection } from "./query";
+import { parseRuntimeConfigSection } from "./runtime";
 import { parseSearchSection } from "./search";
 import { parseSeoSection } from "./seo";
 import { parseValidationSection } from "./validation";
@@ -90,8 +91,9 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
       record(file, "promptQueue", root.promptQueue),
     ),
     profile: parseProfileSection(file, record(file, "profile", root.profile)),
-    images: parseImagesSection(file, record(file, "images", root.images)),
     query: parseQuerySection(file, record(file, "query", root.query)),
+    runtimeConfig: parseRuntimeConfigSection(file, record(file, "runtimeConfig", root.runtimeConfig)),
+    images: parseImagesSection(file, record(file, "images", root.images)),
     validation: parseValidationSection(file, record(file, "validation", root.validation)),
     budgets: parseBudgetsSection(file, record(file, "budgets", root.budgets)),
   };

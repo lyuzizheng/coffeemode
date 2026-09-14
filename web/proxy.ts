@@ -203,6 +203,6 @@ function hasSupabaseSessionCookie(request: NextRequest): boolean {
 
 export const config = {
   matcher: [
-    "/((?!_next/|serwist/|icons/|fonts/|manifest\\.webmanifest|favicon\\.ico|api/health(?:/.*)?).*)",
+    "/((?!_next/|serwist/|icons/|fonts/|manifest\\.webmanifest|favicon\\.ico|api/health(?:/.*)?|api/heartbeat(?:/.*)?|api/config(?:/.*)?).*)",
   ],
 };

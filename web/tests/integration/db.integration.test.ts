@@ -194,7 +194,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   }, 60_000);
 
-  it("applies migrations 0001→0022 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0023 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -219,6 +219,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0020_navigation_prompt_queue.sql",
       "0021_helpful_ranking.sql",
       "0022_profiles_onboarded.sql",
+      "0023_runtime_config.sql",
     ]);
 
     const serviceProfile = await dbClient.query(

@@ -5,7 +5,7 @@
 # Lifecycle:    docs/devops/LIFECYCLE.md
 #
 # Runs in-repo post-deployment verification without third-party SaaS dependencies.
-# Verifies 8 operational contracts:
+# Verifies 10 operational contracts:
 #   1. Healthcheck probe (/api/health -> {"ok":true})
 #   2. HTML root page render (/ -> title CoffeeMode)
 #   3. PostGIS database spatial query (/api/cafes?lat=1.3521&lng=103.8198&radius_km=5)
@@ -14,6 +14,8 @@
 #   6. Cloudflare Worker POI service proxy (/api/places/search?q=coffee)
 #   7. Cloudflare R2 images CDN edge connectivity
 #   8. Image upload intent API contract verification
+#   9. Keepalive probe (/api/heartbeat -> {"db":"up"}, BRAWUKA-284)
+#   10. Runtime config (/api/config -> flags/banners, BRAWUKA-284)
 #
 # Usage:
 #   ./smoke-test.sh [options] [staging|prod] [BASE_URL_OVERRIDE]
@@ -35,6 +37,10 @@ set -euo pipefail
 ENV="staging"
 URL_OVERRIDE=""
 TIMEOUT=10
+# BRAWUKA-237: the WAF suspicious-UA rule challenges curl's default UA on
+# /api/*. Every API probe below identifies as the whitelisted smoke UA (the
+# same rule also whitelists the Better Stack monitor UA for /api/heartbeat).
+SMOKE_UA="coffeemode-smoke/1.0"
 
 show_help() {
   sed -n '2,/^# ==/p' "$0" | sed 's/^# \?//'
@@ -107,7 +113,7 @@ assert_test() {
 
 # 1. Healthcheck probe & version marker
 assert_test "Healthcheck endpoint (/api/health)" \
-  "curl -fsS -m ${TIMEOUT} '${BASE_URL}/api/health' | grep -q '\"ok\":true' && curl -fsS -m ${TIMEOUT} '${BASE_URL}/api/health' | grep -q '\"version\":'"
+  "curl -fsS -m ${TIMEOUT} -A \"${SMOKE_UA}\" '${BASE_URL}/api/health' | grep -q '\"ok\":true' && curl -fsS -m ${TIMEOUT} -A \"${SMOKE_UA}\" '${BASE_URL}/api/health' | grep -q '\"version\":'"
 
 # 2. HTTP root render
 assert_test "Root page render (/)" \
@@ -115,7 +121,7 @@ assert_test "Root page render (/)" \
 
 # 3. PostGIS database query via cafes API (lat/lng + radius_km, returns { cafes: [...] })
 assert_test "PostGIS spatial query (/api/cafes?lat=1.3521&lng=103.8198&radius_km=5)" \
-  "curl -fsS -m ${TIMEOUT} '${BASE_URL}/api/cafes?lat=1.3521&lng=103.8198&radius_km=5' | grep -qE '\"cafes\":\s*\['"
+  "curl -fsS -m ${TIMEOUT} -A \"${SMOKE_UA}\" '${BASE_URL}/api/cafes?lat=1.3521&lng=103.8198&radius_km=5' | grep -qE '\"cafes\":\s*\['"
 
 # 4. Static assets & .next/static chunk resolution (verifies Docker standalone asset copy)
 assert_test "Next.js standalone static asset resolution (/_next/static/)" \
@@ -125,11 +131,11 @@ assert_test "Next.js standalone static asset resolution (/_next/static/)" \
 
 # 5. Security headers verification
 assert_test "Security header (X-Content-Type-Options: nosniff)" \
-  "curl -fsS -m ${TIMEOUT} -I '${BASE_URL}/api/health' | grep -qi 'x-content-type-options: nosniff'"
+  "curl -fsS -m ${TIMEOUT} -A \"${SMOKE_UA}\" -I '${BASE_URL}/api/health' | grep -qi 'x-content-type-options: nosniff'"
 
 # 6. Cloudflare Worker POI service proxy
 assert_test "POI service worker proxy (/api/places/search?q=coffee)" \
-  "curl -fsS -m ${TIMEOUT} '${BASE_URL}/api/places/search?q=coffee' | grep -qE '\"(results|pois|items)\":|\[\{\"'"
+  "curl -fsS -m ${TIMEOUT} -A \"${SMOKE_UA}\" '${BASE_URL}/api/places/search?q=coffee' | grep -qE '\"(results|pois|items)\":|\[\{\"'"
 
 # 7. Cloudflare R2 Image CDN availability (verifies DNS, TLS, and edge reachability)
 if [[ "$ENV" == "prod" ]]; then
@@ -143,8 +149,16 @@ assert_test "Cloudflare R2 images CDN edge connectivity (${IMAGE_HOST})" \
 
 # 8. Image upload API contract (verifies API route returns structured JSON or 400/401 auth gate)
 assert_test "Image upload API contract (/api/images/upload)" \
-  "STATUS=\$(curl -s -m ${TIMEOUT} -o /dev/null -w '%{http_code}' -X POST '${BASE_URL}/api/images/upload'); \
+  "STATUS=\$(curl -s -m ${TIMEOUT} -A \"${SMOKE_UA}\" -o /dev/null -w '%{http_code}' -X POST '${BASE_URL}/api/images/upload'); \
    [[ \"\$STATUS\" =~ ^(200|400|401|403)$ ]]"
+
+# 9. Keepalive probe (BRAWUKA-284): real DB round-trip, Better Stack polls this.
+assert_test "Heartbeat probe (/api/heartbeat)" \
+  "curl -fsS -m ${TIMEOUT} -A \"${SMOKE_UA}\" '${BASE_URL}/api/heartbeat' | grep -q '\"db\":\"up\"'"
+
+# 10. Runtime config (BRAWUKA-284): operator content, edge-cached <=60s.
+assert_test "Runtime config (/api/config)" \
+  "curl -fsS -m ${TIMEOUT} -A \"${SMOKE_UA}\" '${BASE_URL}/api/config' | grep -qE '\"(flags|banners)\":'"
 
 echo "=============================================================================="
 echo "Smoke Test Summary: $((TOTAL - FAILED))/${TOTAL} passed."

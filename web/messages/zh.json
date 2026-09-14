@@ -542,5 +542,8 @@
     "delete": "删除",
     "delete_done": "已删除",
     "delete_failed": "删除失败，再试试？"
+  },
+  "runtime": {
+    "announcement": "公告"
   }
 }

@@ -139,6 +139,31 @@ else
   ENVS=("$TARGET_ENV")
 fi
 
+# Per-env session-connection lookup (BRAWUKA-241 P0/P1): STAGING_DIRECT_URL /
+# PROD_DIRECT_URL first, then deploy/dokploy/.env.<env> DIRECT_URL. Unscoped
+# ambient DIRECT_URL/DATABASE_URL are NEVER consulted, so --env both cannot run
+# both passes against the same project.
+scoped_session_url() {
+  local e="$1"
+  local prefix
+  if [[ "$e" == "staging" ]]; then prefix="STAGING"; else prefix="PROD"; fi
+  local var="${prefix}_DIRECT_URL"
+  if [[ -n "${!var:-}" ]]; then
+    printf '%s' "${!var}"
+    return 0
+  fi
+  local env_file="${REPO_ROOT}/deploy/dokploy/.env.${e}"
+  if [[ -f "$env_file" ]]; then
+    local url
+    url="$(grep -E '^DIRECT_URL=' "$env_file" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
+    if [[ -n "$url" ]]; then
+      printf '%s' "$url"
+      return 0
+    fi
+  fi
+  return 1
+}
+
 # ------------------------------------------------------------------------------
 # STEP 1: VPS Hardening & Base Environment Provisioning
 # ------------------------------------------------------------------------------
@@ -320,14 +345,14 @@ stage "Step 4/7: Supabase Project Verification"
 
 for env in "${ENVS[@]}"; do
   log "Verifying Supabase ${env} project connectivity..."
-  ENV_DIRECT_URL="${DIRECT_URL:-}"
-  if [[ -z "$ENV_DIRECT_URL" && -f "${REPO_ROOT}/deploy/dokploy/.env.${env}" ]]; then
-    ENV_DIRECT_URL="$(grep -E '^(DIRECT_URL|DATABASE_URL)=' "${REPO_ROOT}/deploy/dokploy/.env.${env}" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
+  ENV_DIRECT_URL=""
+  if ! ENV_DIRECT_URL="$(scoped_session_url "$env")"; then
+    ENV_DIRECT_URL=""
   fi
 
   if [ "$DRY_RUN" = false ]; then
     if [[ -z "$ENV_DIRECT_URL" ]]; then
-      error "DIRECT_URL (or deploy/dokploy/.env.${env} connection string) is required for ${env}"
+      error "Session connection for ${env} is required: STAGING_DIRECT_URL/PROD_DIRECT_URL or deploy/dokploy/.env.${env} DIRECT_URL"
       exit 1
     fi
     if ! command -v psql >/dev/null 2>&1; then
@@ -352,15 +377,15 @@ stage "Step 5/7: Database Schema Migration Bootstrapping"
 
 for env in "${ENVS[@]}"; do
   log "Applying migrations to Supabase ${env} project..."
-  # DDL must run over DIRECT_URL (session/direct, sslmode=require).
-  MIGRATION_URL="${DIRECT_URL:-}"
-  if [[ -z "$MIGRATION_URL" && -f "${REPO_ROOT}/deploy/dokploy/.env.${env}" ]]; then
-    MIGRATION_URL="$(grep -E '^DIRECT_URL=' "${REPO_ROOT}/deploy/dokploy/.env.${env}" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
+  # DDL must run over the per-env session connection (sslmode=require).
+  MIGRATION_URL=""
+  if ! MIGRATION_URL="$(scoped_session_url "$env")"; then
+    MIGRATION_URL=""
   fi
 
   if [ "$DRY_RUN" = false ]; then
     if [[ -z "$MIGRATION_URL" ]]; then
-      error "DIRECT_URL (Supabase session/direct) is required in environment or deploy/dokploy/.env.${env}"
+      error "Session connection for ${env} is required: STAGING_DIRECT_URL/PROD_DIRECT_URL or deploy/dokploy/.env.${env} DIRECT_URL"
       exit 1
     fi
     if [[ ! -f "${REPO_ROOT}/web/scripts/migrate.mjs" ]]; then
@@ -385,14 +410,14 @@ if [ "$SKIP_SEED" = false ]; then
   stage "Step 6/7: Seed Data Bootstrapping"
   for env in "${ENVS[@]}"; do
     log "Bootstrapping service account profile and base records for Supabase ${env}..."
-    SEED_URL="${DIRECT_URL:-}"
-    if [[ -z "$SEED_URL" && -f "${REPO_ROOT}/deploy/dokploy/.env.${env}" ]]; then
-      SEED_URL="$(grep -E '^(DIRECT_URL|DATABASE_URL)=' "${REPO_ROOT}/deploy/dokploy/.env.${env}" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
+    SEED_URL=""
+    if ! SEED_URL="$(scoped_session_url "$env")"; then
+      SEED_URL=""
     fi
 
     if [ "$DRY_RUN" = false ]; then
       if [[ -z "$SEED_URL" ]]; then
-        error "DIRECT_URL (or deploy/dokploy/.env.${env} connection string) is required for ${env}"
+        error "Session connection for ${env} is required: STAGING_DIRECT_URL/PROD_DIRECT_URL or deploy/dokploy/.env.${env} DIRECT_URL"
         exit 1
       fi
       # Check if service account profile already exists (seeded by migration 0016)

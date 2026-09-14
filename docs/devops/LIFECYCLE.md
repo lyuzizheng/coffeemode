@@ -309,9 +309,10 @@ In drill mode (`--drill`), the script always targets the STAGING Supabase projec
   ```bash
   docker logs --tail 100 -f coffeemode-web-prod
   ```
-- **Verify Supabase connectivity** (no local postgres container):
+- **Verify Supabase connectivity** (no local postgres container; per-env scoped vars only):
   ```bash
-  psql "$DIRECT_URL" -c "SELECT PostGIS_Version();"
+  psql "$PROD_DIRECT_URL" -c "SELECT PostGIS_Version();"     # prod
+  psql "$STAGING_DIRECT_URL" -c "SELECT PostGIS_Version();"  # staging
   ```
 - **Verify Traefik ingress status**:
   ```bash

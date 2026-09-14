@@ -27,18 +27,20 @@
 #   -t, --type <db|vol|full>  Backup target: db, vol (configs), or full (default: full)
 #   -r, --reason <string>     Backup reason: scheduled | pre-migration | manual (default: manual)
 #   -o, --output-dir <path>   Destination directory for local archives
-#   --retention-days <days>   Local retention threshold in days (default: 14 for prod, 7 for staging)
 #   --upload-r2               Force upload to Cloudflare R2 (requires R2 credentials)
 #   --no-upload-r2            Disable Cloudflare R2 upload
+#   --url <conn>              Explicit connection-string override (opt-in escape hatch
+#                             for manual runs; bypasses per-env scoping — use with care)
 #   --dry-run                 Log planned actions without modifying system state
 #
-# Environment:
-#   DATABASE_URL              Supabase pooled connection string (sslmode=require).
-#                             Falls back to DATABASE_URL in deploy/dokploy/.env.<env>.
+# Environment (per-env only — unscoped DATABASE_URL/DIRECT_URL are NEVER read,
+# so --env cannot be silently retargeted by the caller's shell, BRAWUKA-241 P0):
+#   STAGING_DIRECT_URL / PROD_DIRECT_URL       Session/direct connection (preferred)
+#   STAGING_DATABASE_URL / PROD_DATABASE_URL   Pooled connection (fallback)
+#   deploy/dokploy/.env.<env>                  DIRECT_URL line first, then DATABASE_URL
 #
 # Examples:
 #   ./backup.sh --env staging
-#   ./backup.sh --env prod --reason pre-migration
 #   ./backup.sh --env prod --type db --retention-days 30
 #   ./backup.sh --dry-run
 # ==============================================================================
@@ -58,7 +60,7 @@ OUTPUT_DIR=""
 RETENTION_DAYS=""
 FORCE_UPLOAD_R2=false
 DISABLE_UPLOAD_R2=false
-DRY_RUN=false
+URL_OVERRIDE=""
 
 show_help() {
   sed -n '2,/^# ==/p' "$0" | sed 's/^# \?//'
@@ -97,6 +99,10 @@ while [[ $# -gt 0 ]]; do
     --no-upload-r2)
       DISABLE_UPLOAD_R2=true
       shift
+      ;;
+    --url)
+      URL_OVERRIDE="${2:?Error: --url requires a connection string}"
+      shift 2
       ;;
     --dry-run)
       DRY_RUN=true
@@ -139,22 +145,36 @@ fi
 
 TIMESTAMP="$(date -u +"%Y%m%d_%H%M%SZ")"
 
-# Resolve the Supabase connection string. pg_dump opens a single session, so a
-# direct/session-mode URL is preferred when DIRECT_URL is set; otherwise the
-# pooled DATABASE_URL is used (keep it single-connection: never add -j/parallel).
+# Resolve the Supabase connection string for --env (per-env only).
+# Precedence: --url override > <ENV>_DIRECT_URL > <ENV>_DATABASE_URL >
+# deploy/dokploy/.env.<env> (DIRECT_URL line first, then DATABASE_URL).
+# Unscoped ambient DATABASE_URL/DIRECT_URL are NEVER consulted (BRAWUKA-241 P0):
+# the shell's exported URL must not silently retarget --env.
+# pg_dump opens a single session (never add -j/parallel against the pooler).
 resolve_database_url() {
-  if [[ -n "${DIRECT_URL:-}" ]]; then
-    printf '%s' "$DIRECT_URL"
+  if [[ -n "$URL_OVERRIDE" ]]; then
+    printf '%s' "$URL_OVERRIDE"
     return 0
   fi
-  if [[ -n "${DATABASE_URL:-}" ]]; then
-    printf '%s' "$DATABASE_URL"
+  local prefix
+  if [[ "$ENV" == "staging" ]]; then prefix="STAGING"; else prefix="PROD"; fi
+  local direct_var="${prefix}_DIRECT_URL"
+  local pooled_var="${prefix}_DATABASE_URL"
+  if [[ -n "${!direct_var:-}" ]]; then
+    printf '%s' "${!direct_var}"
+    return 0
+  fi
+  if [[ -n "${!pooled_var:-}" ]]; then
+    printf '%s' "${!pooled_var}"
     return 0
   fi
   local env_file="${REPO_ROOT}/deploy/dokploy/.env.${ENV}"
   if [[ -f "$env_file" ]]; then
     local url
-    url="$(grep -E '^(DIRECT_URL|DATABASE_URL)=' "$env_file" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
+    url="$(grep -E '^DIRECT_URL=' "$env_file" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
+    if [[ -z "$url" ]]; then
+      url="$(grep -E '^DATABASE_URL=' "$env_file" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
+    fi
     if [[ -n "$url" ]]; then
       printf '%s' "$url"
       return 0
@@ -162,6 +182,7 @@ resolve_database_url() {
   fi
   return 1
 }
+
 # Logging Utilities
 # ------------------------------------------------------------------------------
 BOLD='\033[1m'
@@ -188,14 +209,14 @@ echo "Timestamp (UTC): ${TIMESTAMP}"
 echo "=============================================================================="
 
 BACKUP_DB_URL=""
-if [ "$DRY_RUN" = false ]; then
+if [ "${DRY_RUN:-false}" = false ]; then
   if ! BACKUP_DB_URL="$(resolve_database_url)"; then
-    echo "Error: DATABASE_URL must be set in environment or deploy/dokploy/.env.${ENV} (Supabase pooled, sslmode=require)" >&2
+    echo "Error: per-env connection for ${ENV} is required: STAGING_*/PROD_* scoped vars, --url override, or deploy/dokploy/.env.${ENV}" >&2
     exit 1
   fi
 fi
 
-if [ "$DRY_RUN" = false ]; then
+if [ "${DRY_RUN:-false}" = false ]; then
   mkdir -p "$OUTPUT_DIR"
 fi
 

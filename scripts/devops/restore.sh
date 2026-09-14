@@ -31,13 +31,15 @@
 #   --drill                   Non-destructive drill: restore to a scratch database
 #                             on the STAGING Supabase project, verify, drop it
 #   --yes                     Bypass confirmation prompt (required for automated pipelines)
+#   --url <conn>              Explicit connection-string override (opt-in escape hatch;
+#                             bypasses per-env scoping — use with care)
 #   --dry-run                 Log planned actions without modifying system state
 #
-# Environment:
-#   DATABASE_URL              Supabase pooled connection string for --env
-#                             (sslmode=require). Falls back to .env.<env>.
-#   STAGING_DATABASE_URL      Supabase staging connection string (--drill target).
-#                             Falls back to .env.staging. Required for --drill.
+# Environment (per-env only — unscoped DATABASE_URL/DIRECT_URL are NEVER read,
+# so --env cannot be silently retargeted by the caller's shell, BRAWUKA-241 P0):
+#   STAGING_DIRECT_URL / STAGING_DATABASE_URL   Staging project (drill target too)
+#   PROD_DIRECT_URL / PROD_DATABASE_URL         Prod project (live restores only)
+#   deploy/dokploy/.env.<env>                   DIRECT_URL line first, then DATABASE_URL
 #
 # Examples:
 #   ./restore.sh --env staging --file /backups/coffeemode_staging_snapshot.dump.gz --yes
@@ -59,6 +61,7 @@ BACKUP_PATH=""
 R2_FILENAME=""
 DRILL_MODE=false
 CONFIRM_FLAG=false
+URL_OVERRIDE=""
 DRY_RUN=false
 
 show_help() {
@@ -90,6 +93,10 @@ while [[ $# -gt 0 ]]; do
     --yes)
       CONFIRM_FLAG=true
       shift
+      ;;
+    --url)
+      URL_OVERRIDE="${2:?Error: --url requires a connection string}"
+      shift 2
       ;;
     --dry-run)
       DRY_RUN=true
@@ -174,32 +181,42 @@ if [[ -z "$BACKUP_PATH" ]]; then
   exit 1
 fi
 
-# Resolve a Supabase connection string from env or deploy/dokploy/.env.<e>.
-# Prefers DIRECT_URL (session/direct) for admin DDL; falls back to DATABASE_URL
-# (pooled). pg_restore/pg_dump/psql each open short-lived sessions only.
-# (Portable: no bash-4 ${var^^} — scripts run under bash 3.2 on macOS/VPS.)
-resolve_conn_url() {
+# Per-env connection-string resolution (BRAWUKA-241 P0/P1).
+# Sources, in order: --url override > <ENV>_DIRECT_URL > <ENV>_DATABASE_URL >
+# deploy/dokploy/.env.<env> (DIRECT_URL line first, then DATABASE_URL).
+# Unscoped ambient DATABASE_URL/DIRECT_URL are NEVER consulted: with them in the
+# shell, --env staging could otherwise pg_restore --clean into prod.
+# Drill path calls resolve_staging_url() only — staging sources, never prod.
+env_file_url() {
+  local key="$1" file="$2"
+  grep -E "^${key}=" "$file" 2>/dev/null | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo ""
+}
+
+resolve_live_url() {
   local e="$1"
-  if [[ -n "${DIRECT_URL:-}" && "$e" == "$ENV" ]]; then
-    printf '%s' "$DIRECT_URL"
+  if [[ -n "$URL_OVERRIDE" ]]; then
+    printf '%s' "$URL_OVERRIDE"
     return 0
   fi
-  if [[ "$e" == "staging" && -n "${STAGING_DATABASE_URL:-}" ]]; then
-    printf '%s' "$STAGING_DATABASE_URL"
+  local prefix
+  if [[ "$e" == "staging" ]]; then prefix="STAGING"; else prefix="PROD"; fi
+  local direct_var="${prefix}_DIRECT_URL"
+  local pooled_var="${prefix}_DATABASE_URL"
+  if [[ -n "${!direct_var:-}" ]]; then
+    printf '%s' "${!direct_var}"
     return 0
   fi
-  if [[ "$e" == "prod" && -n "${PROD_DATABASE_URL:-}" ]]; then
-    printf '%s' "$PROD_DATABASE_URL"
-    return 0
-  fi
-  if [[ "$e" == "$ENV" && -n "${DATABASE_URL:-}" ]]; then
-    printf '%s' "$DATABASE_URL"
+  if [[ -n "${!pooled_var:-}" ]]; then
+    printf '%s' "${!pooled_var}"
     return 0
   fi
   local env_file="${REPO_ROOT}/deploy/dokploy/.env.${e}"
   if [[ -f "$env_file" ]]; then
     local url
-    url="$(grep -E '^(DIRECT_URL|DATABASE_URL)=' "$env_file" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
+    url="$(env_file_url DIRECT_URL "$env_file")"
+    if [[ -z "$url" ]]; then
+      url="$(env_file_url DATABASE_URL "$env_file")"
+    fi
     if [[ -n "$url" ]]; then
       printf '%s' "$url"
       return 0
@@ -207,18 +224,56 @@ resolve_conn_url() {
   fi
   return 1
 }
+
+# Drill target: STAGING project only. Never consults unscoped vars, never prod.
+resolve_staging_url() {
+  if [[ -n "$URL_OVERRIDE" ]]; then
+    printf '%s' "$URL_OVERRIDE"
+    return 0
+  fi
+  if [[ -n "${STAGING_DIRECT_URL:-}" ]]; then
+    printf '%s' "$STAGING_DIRECT_URL"
+    return 0
+  fi
+  if [[ -n "${STAGING_DATABASE_URL:-}" ]]; then
+    printf '%s' "$STAGING_DATABASE_URL"
+    return 0
+  fi
+  local env_file="${REPO_ROOT}/deploy/dokploy/.env.staging"
+  if [[ -f "$env_file" ]]; then
+    local url
+    url="$(env_file_url DIRECT_URL "$env_file")"
+    if [[ -z "$url" ]]; then
+      url="$(env_file_url DATABASE_URL "$env_file")"
+    fi
+    if [[ -n "$url" ]]; then
+      printf '%s' "$url"
+      return 0
+    fi
+  fi
+  return 1
+}
+
 RESTORE_URL=""
 DRILL_DB=""
+ADMIN_URL=""
+# P2: drop the drill scratch db on ANY exit (failure, signal, success path
+# already drops it explicitly — the second DROP is IF EXISTS, so idempotent).
+cleanup_drill_db() {
+  if [[ "$DRILL_MODE" == "true" && -n "${DRILL_DB:-}" && -n "${ADMIN_URL:-}" && "$DRY_RUN" == "false" ]]; then
+    psql "$ADMIN_URL" -v ON_ERROR_STOP=0 -q \
+      -c "DROP DATABASE IF EXISTS \"${DRILL_DB}\";" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup_drill_db EXIT
+
 if [ "$DRILL_MODE" = true ]; then
   # Drill always targets the STAGING Supabase project under a scratch db name.
+  # Staging-only sources: never prod vars, never unscoped ambient vars.
   if [ "$DRY_RUN" = false ]; then
     STAGING_URL=""
-    if [[ -n "${STAGING_DATABASE_URL:-}" ]]; then
-      STAGING_URL="$STAGING_DATABASE_URL"
-    elif [[ -n "${STAGING_DIRECT_URL:-}" ]]; then
-      STAGING_URL="$STAGING_DIRECT_URL"
-    elif ! STAGING_URL="$(resolve_conn_url staging)"; then
-      error "STAGING_DATABASE_URL (or deploy/dokploy/.env.staging DATABASE_URL) is required for --drill"
+    if ! STAGING_URL="$(resolve_staging_url)"; then
+      error "STAGING_DIRECT_URL / STAGING_DATABASE_URL (or deploy/dokploy/.env.staging) is required for --drill"
       exit 1
     fi
     # Split off query string, then swap the dbname path segment.
@@ -237,8 +292,8 @@ if [ "$DRILL_MODE" = true ]; then
   fi
 else
   if [ "$DRY_RUN" = false ]; then
-    if ! RESTORE_URL="$(resolve_conn_url "$ENV")"; then
-      error "DATABASE_URL must be set in environment or deploy/dokploy/.env.${ENV} (Supabase pooled, sslmode=require)"
+    if ! RESTORE_URL="$(resolve_live_url "$ENV")"; then
+      error "Per-env connection string for ${ENV} is required: STAGING_*/PROD_* scoped vars or deploy/dokploy/.env.${ENV}"
       exit 1
     fi
   else

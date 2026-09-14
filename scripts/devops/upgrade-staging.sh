@@ -22,6 +22,8 @@
 #   --deploy-url <url>    Dokploy deployment webhook URL override
 #   --deploy-token <tok>  Dokploy deployment token override
 #   --image-tag <tag>     Specific image tag or commit sha to deploy
+#   --db-url <conn>       Explicit STAGING session connection override (opt-in;
+#                         bypasses per-env scoping — use with care)
 #   --dry-run             Log planned actions without modifying system state
 #
 # Examples:
@@ -44,6 +46,7 @@ SKIP_SMOKE=false
 DEPLOY_URL="${DOKPLOY_STAGING_DEPLOY_URL:-${DOKPLOY_DEPLOY_URL:-}}"
 DEPLOY_TOKEN="${DOKPLOY_STAGING_DEPLOY_TOKEN:-${DOKPLOY_DEPLOY_TOKEN:-}}"
 IMAGE_TAG="latest"
+DB_URL_OVERRIDE=""
 DRY_RUN=false
 
 show_help() {
@@ -78,6 +81,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --image-tag)
       IMAGE_TAG="${2:?Error: --image-tag requires a tag argument}"
+      shift 2
+      ;;
+    --db-url)
+      DB_URL_OVERRIDE="${2:?Error: --db-url requires a connection string}"
       shift 2
       ;;
     --dry-run)
@@ -157,21 +164,24 @@ fi
 stage "Step 3/5: Applying Database Migrations to Staging"
 
 if [ "$SKIP_MIGRATIONS" = false ]; then
-  # Supabase rule: DDL migrations MUST run over a session/direct connection
-  # (DIRECT_URL, sslmode=require) — never the transaction pooler.
+  # STAGING-scoped session connection only (BRAWUKA-241 P0): --db-url >
+  # STAGING_DIRECT_URL > .env.staging DIRECT_URL. Unscoped DIRECT_URL is
+  # never read, so a prod URL in the shell cannot retarget staging migrations.
   MIGRATION_URL=""
-  if [[ -n "${DIRECT_URL:-}" ]]; then
-    MIGRATION_URL="$DIRECT_URL"
+  if [[ -n "$DB_URL_OVERRIDE" ]]; then
+    MIGRATION_URL="$DB_URL_OVERRIDE"
+  elif [[ -n "${STAGING_DIRECT_URL:-}" ]]; then
+    MIGRATION_URL="$STAGING_DIRECT_URL"
   elif [[ -f "${REPO_ROOT}/deploy/dokploy/.env.staging" ]]; then
     MIGRATION_URL="$(grep -E '^DIRECT_URL=' "${REPO_ROOT}/deploy/dokploy/.env.staging" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
   fi
 
   if [ "$DRY_RUN" = false ]; then
     if [[ -z "$MIGRATION_URL" ]]; then
-      error "DIRECT_URL (Supabase session/direct connection) must be set in environment or deploy/dokploy/.env.staging"
+      error "STAGING session connection is required: STAGING_DIRECT_URL or deploy/dokploy/.env.staging DIRECT_URL"
       exit 1
     fi
-    log "Applying migrations over Supabase session connection (DIRECT_URL)..."
+    log "Applying migrations over STAGING session connection (DIRECT_URL)..."
     if [[ -f "${REPO_ROOT}/web/scripts/migrate.mjs" ]]; then
       (
         cd "${REPO_ROOT}/web"
@@ -183,7 +193,7 @@ if [ "$SKIP_MIGRATIONS" = false ]; then
     fi
     ok "Database schema migrations applied to Staging."
   else
-    ok "[DRY-RUN] Staging database schema migration simulated (DIRECT_URL session connection, no container check)."
+    ok "[DRY-RUN] Staging database schema migration simulated (STAGING_DIRECT_URL session connection, no container check)."
   fi
 else
   log "Skipping database migrations (--skip-migrations)."

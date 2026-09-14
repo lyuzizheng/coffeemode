@@ -31,7 +31,6 @@
     "**/test/**",
     "**/*.test.*",
     "**/*.spec.*",
-    "**/_archive-*/**",
     "**/reference/**",
     "**/messages/**",
     "**/*.min.*"

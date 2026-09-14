@@ -6,7 +6,7 @@ Rewrite CoffeeMode as a full-stack Next.js application — **the coworking revie
 
 Drop the Java Spring Boot backend entirely. CoffeeMode owns its POI database; Google Places and Apple Maps are external references and import sources, never authoritative.
 
-This is a rewrite, not a migration. The old Vite SPA (`_archive-coffeemode-frontend/`) and Java backend (`_archive-coffeemode-backend/`) are archived reference material only.
+This is a rewrite, not a migration. The old Vite SPA and Java backend were removed after the rewrite landed (BRAWUKA-277); no legacy source remains in the repo.
 
 ## Status
 

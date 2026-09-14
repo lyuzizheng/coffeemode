@@ -4,30 +4,6 @@
 ./.env.development
 ./.env.production
 
-# Archived legacy projects — keep source/docs, ignore generated/sensitive artifacts
-_archive-coffeemode-backend/.idea
-_archive-coffeemode-backend/.vscode
-_archive-coffeemode-backend/.env
-_archive-coffeemode-backend/.env.local
-_archive-coffeemode-backend/.env.development
-_archive-coffeemode-backend/.env.production
-_archive-coffeemode-backend/bin
-_archive-coffeemode-backend/.gradle
-_archive-coffeemode-backend/build
-_archive-coffeemode-backend/src/main/resources/serviceAccountKey.json
-_archive-coffeemode-backend/.DS_Store
-
-_archive-coffeemode-frontend/.idea
-_archive-coffeemode-frontend/.vscode
-_archive-coffeemode-frontend/.env
-_archive-coffeemode-frontend/.env.local
-_archive-coffeemode-frontend/.env.development
-_archive-coffeemode-frontend/.env.production
-_archive-coffeemode-frontend/node_modules
-_archive-coffeemode-frontend/dist
-_archive-coffeemode-frontend/build
-_archive-coffeemode-frontend/.DS_Store
-
 poi-service/node_modules/
 poi-service/.dev.vars
 poi-service/.wrangler/
@@ -35,21 +11,12 @@ image-service/node_modules/
 image-service/.dev.vars
 image-service/.wrangler/
 node_modules/
-_archive-coffeemode-frontend/public/js/mapsJavaScriptAPI.js
-_archive-coffeemode-frontend/public/js/mapsJavaScriptAPI.js.map
-_archive-coffeemode-frontend/public/js/mapsJavaScriptAPI.js.map.gz
-_archive-coffeemode-frontend/public/js/mapsJavaScriptAPI.js.map.gz.map
 .DS_Store
 **/.DS_Store
 
 # Generated review packets (not source)
 docs/reviews/
 .review-tmp/
-
-# Stray legacy project copies — canonical homes are _archive-*
-coffeemode-frontend/
-coffeemode_backend/
-coffeemode-script/
 
 # Database backups, dumps, and environment files
 backups/

@@ -87,8 +87,6 @@ web/shared/places/types.ts  POI types shared with the worker
 docs/specs/              0001 Next.js rewrite, 0002 design system, 0003 testing/CI, 0005 Dokploy VPS deploy
 docs/agent/              current state, planned-slice manifest, owner actions
 .agents/                 Agent rules, workflows, skills, scripts, and review gates
-_archive-coffeemode-frontend/  old Vite app — reference only, superseded
-_archive-coffeemode-backend/   old Java app — being dropped
 ```
 
 ## What's next

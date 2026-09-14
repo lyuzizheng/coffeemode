@@ -146,13 +146,11 @@ else
       .gitleaks.toml|.pre-commit-config.yaml)
         ;;
       # Explicitly ungated — no product code, script, or gate input reads these.
-      #   _archive-coffeemode-frontend/, _archive-coffeemode-backend/
-      #       legacy Vite/Java trees, reference only (`.agents/rules/coding.md`)
       #   database-data/
       #       raw dataset snapshot with no reader in this repository
       #   .gitignore, .DS_Store
       #       repository hygiene files
-      _archive-*/*|database-data/*|.gitignore|.DS_Store|*.DS_Store)
+      database-data/*|.gitignore|.DS_Store|*.DS_Store)
         ;;
       *)
         unmatched+=("$path")

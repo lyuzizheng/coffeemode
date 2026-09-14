@@ -95,8 +95,8 @@ lib/* ──────────────────▶ shared/* · type
 作用域说明（这就是"按文件类型区分"的全部含义）：
 
 - ESLint 结构规则 + `check-file-size` 作用于 `SOURCE_GLOBS` / `SOURCE_SCAN`（`app`、`components`、`lib`、`shared`、`config`、`scripts`）；**测试文件（含 `tests/`、`*.test.*`）明确排除在外**——测试体积预算归 `docs/specs/0003-testing-and-ci.md` 所有，本规范不给测试定数字、不扫描测试（`SOURCE_GLOBS` 注释原文："Tests are deliberately absent: spec 0003 owns test-maintenance budgets"）。
-- `jscpd` 忽略 `tests/`、生成物、`dist/`、`_archive-*`（`.jscpd.json` 落仓值与本表一致）。
-- 生成物/migration/`_archive-*` 不计入任何阈值。
+- `jscpd` 忽略 `tests/`、生成物、`dist/`（`.jscpd.json` 落仓值与本表一致）。
+- 生成物/migration 不计入任何阈值。
 - `poi-service/`、`image-service/` 同样适用本表（Workers 代码无豁免）。
 
 改数规则：阈值变更 MUST 同 PR 改四处——本规范 §3（政策正文）、`web/structure.config.mjs`（机器源）、`.jscpd.json`（`duplication` 镜像，`check:structure` 会断言镜像一致）、`.agents/rules/coding.md`（`### Decidable structure checks` 日常判定镜像）；只改部分位置（或改工具不改文档）的 PR 视为 P0 违规（两份真相）。

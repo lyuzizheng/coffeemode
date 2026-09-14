@@ -71,8 +71,8 @@ agent harness: .agents/scripts/preflight.sh, .agents/scripts/harness-self-test.s
 `.github/workflows/ci.yml` runs on every pull request and push to `main`.
 `.agents/scripts/classify-ci-paths.sh` classifies the base/head diff, then stable
 jobs run only when relevant. Every tracked path matches exactly one rule in that
-classifier — including the deliberately ungated families (`_archive-*/`,
-`database-data/`, repository hygiene files), which carry an explicit empty arm
+classifier — including the deliberately ungated families (`database-data/`,
+repository hygiene files), which carry an explicit empty arm
 so "no gate" is a recorded decision rather than an omission. A path that holds a
 `RUN_INTEGRATION=1` suite, or that such a suite reads, sets `integration=true` —
 inside `web/tests/**` that is the default for every non-test file, because a

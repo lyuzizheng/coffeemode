@@ -1,6 +1,6 @@
 # Security Observability Runbook
 
-Baseline procedure for watching the Cloudflare edge once `coffeemode.app` is
+Baseline procedure for watching the Cloudflare edge once `cafemood.app` is
 proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
 `LIFECYCLE.md`; nothing here requires paid tooling.
 

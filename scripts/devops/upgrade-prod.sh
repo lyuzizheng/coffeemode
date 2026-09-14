@@ -8,7 +8,8 @@
 #   1. Pre-Promotion Gate: Enforces green Staging smoke tests before proceeding
 #   2. Mandatory Safety Snapshot: Runs ./backup.sh --env prod --reason pre-migration
 #   3. Zero-Downtime Migration Rules: Pre-flight checks for non-breaking DDL
-#   4. Database Migration Execution: Applies migrations against postgres-prod
+#   4. Database Migration Execution: Applies migrations over DIRECT_URL (Supabase
+#      session/direct connection — never the transaction pooler)
 #   5. Zero-Downtime Rolling Swap: Triggers Dokploy/Traefik container update (start-first)
 #   6. Post-Deployment Verification: Runs smoke-test.sh prod
 #   7. Instant Rollback Trap: Alerts with rollback-prod.sh on any pipeline failure
@@ -24,6 +25,8 @@
 #   --deploy-url <url>        Dokploy production deploy webhook URL
 #   --deploy-token <tok>      Dokploy production deploy webhook token
 #   --image-tag <tag>         Specific release image tag or commit sha
+#   --db-url <conn>           Explicit PROD session connection override (opt-in;
+#                             bypasses per-env scoping — use with care)
 #   --dry-run                 Log planned actions without modifying system state
 #
 # Examples:
@@ -46,6 +49,7 @@ SKIP_SMOKE=false
 DEPLOY_URL="${DOKPLOY_PROD_DEPLOY_URL:-${DOKPLOY_DEPLOY_URL:-}}"
 DEPLOY_TOKEN="${DOKPLOY_PROD_DEPLOY_TOKEN:-${DOKPLOY_DEPLOY_TOKEN:-}}"
 IMAGE_TAG="latest"
+DB_URL_OVERRIDE=""
 DRY_RUN=false
 SNAPSHOT_PATH=""
 TIMESTAMP="$(date -u +"%Y%m%d_%H%M%SZ")"
@@ -83,8 +87,11 @@ while [[ $# -gt 0 ]]; do
       IMAGE_TAG="${2:?Error: --image-tag requires a tag argument}"
       shift 2
       ;;
+    --db-url)
+      DB_URL_OVERRIDE="${2:?Error: --db-url requires a connection string}"
+      shift 2
+      ;;
     --dry-run)
-      DRY_RUN=true
       shift
       ;;
     *)
@@ -188,16 +195,38 @@ fi
 stage "Step 3/6: Pre-Flight Zero-Downtime Migration Checks"
 
 MIGRATIONS_DIR="${REPO_ROOT}/web/db/migrations"
+# PROD-scoped session connection only (BRAWUKA-241 P0): --db-url override >
+# PROD_DIRECT_URL > .env.prod DIRECT_URL. Unscoped DIRECT_URL is never read,
+# so a staging URL in the shell cannot retarget prod migrations.
+resolve_prod_migration_url() {
+  if [[ -n "$DB_URL_OVERRIDE" ]]; then
+    printf '%s' "$DB_URL_OVERRIDE"
+    return 0
+  fi
+  if [[ -n "${PROD_DIRECT_URL:-}" ]]; then
+    printf '%s' "$PROD_DIRECT_URL"
+    return 0
+  fi
+  local env_file="${REPO_ROOT}/deploy/dokploy/.env.prod"
+  if [[ -f "$env_file" ]]; then
+    local url
+    url="$(grep -E '^DIRECT_URL=' "$env_file" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
+    if [[ -n "$url" ]]; then
+      printf '%s' "$url"
+      return 0
+    fi
+  fi
+  return 1
+}
+
 if [[ -d "$MIGRATIONS_DIR" ]]; then
   log "Checking pending migrations for zero-downtime rule compliance..."
-  # Query already-applied migrations to avoid alert fatigue on historical migrations
-  CONTAINER="coffeemode-postgres-prod"
-  DB_USER="coffeemode_prod_user"
-  DB_NAME="coffeemode_prod"
+  # Best-effort applied-migration lookup over the PROD session connection;
+  # failures degrade to scanning all files rather than aborting the pipeline.
   APPLIED_MIGRATIONS=""
-  if [ "$DRY_RUN" = false ] && docker ps --filter "name=^/${CONTAINER}$" --format '{{.Status}}' | grep -q "healthy"; then
-    APPLIED_MIGRATIONS="$(docker exec -e PGPASSWORD="${POSTGRES_PASSWORD:-}" "$CONTAINER" \
-      psql -U "$DB_USER" -d "$DB_NAME" -t -c "SELECT name FROM schema_migrations;" 2>/dev/null || echo "")"
+  PROBE_URL=""
+  if [ "$DRY_RUN" = false ] && PROBE_URL="$(resolve_prod_migration_url 2>/dev/null)" && command -v psql >/dev/null 2>&1; then
+    APPLIED_MIGRATIONS="$(psql "$PROBE_URL" -t -c "SELECT name FROM schema_migrations;" 2>/dev/null || echo "")"
   fi
 
   for sql_file in "${MIGRATIONS_DIR}"/*.sql; do
@@ -217,40 +246,25 @@ fi
 # ------------------------------------------------------------------------------
 stage "Step 4/6: Executing Database Schema Migrations"
 
-# Resolve and validate production database password
-if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
-  if [[ -f "${REPO_ROOT}/deploy/dokploy/.env.prod" ]]; then
-    POSTGRES_PASSWORD="$(grep -E '^POSTGRES_PASSWORD=' "${REPO_ROOT}/deploy/dokploy/.env.prod" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
-  fi
-fi
-
 if [ "$DRY_RUN" = false ]; then
-  : "${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be set in environment or deploy/dokploy/.env.prod}"
-  DB_PASS="${POSTGRES_PASSWORD}"
-  CONTAINER="coffeemode-postgres-prod"
-  DB_USER="coffeemode_prod_user"
-  DB_NAME="coffeemode_prod"
-  DB_PORT=5432
-  TARGET_DB_URL="postgres://${DB_USER}:${DB_PASS}@127.0.0.1:${DB_PORT}/${DB_NAME}?sslmode=disable"
-
-  if docker ps --filter "name=^/${CONTAINER}$" --format '{{.Status}}' | grep -q "healthy"; then
-    log "Production database '${CONTAINER}' is healthy. Applying migrations..."
-    if [[ -f "${REPO_ROOT}/web/scripts/migrate.mjs" ]]; then
-      (
-        cd "${REPO_ROOT}/web"
-        DATABASE_URL="$TARGET_DB_URL" node scripts/migrate.mjs
-      )
-    else
-      error "CRITICAL: Unable to execute database migrations! Repository checkout at '${REPO_ROOT}/web/scripts/migrate.mjs' is required."
-      exit 1
-    fi
-    ok "Database schema migrations applied to Production."
-  else
-    error "Production database container '${CONTAINER}' is not healthy or running."
+  MIGRATION_URL=""
+  if ! MIGRATION_URL="$(resolve_prod_migration_url)"; then
+    error "PROD session connection is required: PROD_DIRECT_URL or deploy/dokploy/.env.prod DIRECT_URL"
     exit 1
   fi
+  log "Applying migrations over PROD session connection (DIRECT_URL)..."
+  if [[ -f "${REPO_ROOT}/web/scripts/migrate.mjs" ]]; then
+    (
+      cd "${REPO_ROOT}/web"
+      DATABASE_URL="$MIGRATION_URL" node scripts/migrate.mjs
+    )
+  else
+    error "CRITICAL: Unable to execute database migrations! Repository checkout at '${REPO_ROOT}/web/scripts/migrate.mjs' is required."
+    exit 1
+  fi
+  ok "Database schema migrations applied to Production."
 else
-  ok "[DRY-RUN] Production database schema migration simulated."
+  ok "[DRY-RUN] Production database schema migration simulated (PROD_DIRECT_URL session connection, no container check)."
 fi
 
 # ------------------------------------------------------------------------------

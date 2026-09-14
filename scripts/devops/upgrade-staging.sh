@@ -7,7 +7,7 @@
 # Orchestrates automated, safe staging releases:
 #   1. Pre-flight migration safety check
 #   2. Pre-migration database snapshot via ./backup.sh --env staging
-#   3. Database schema migration execution against postgres-staging
+#   3. Database schema migration execution over DIRECT_URL (Supabase session/direct)
 #   4. Staging Next.js image rebuild and rolling restart (Dokploy webhook / compose)
 #   5. Automated post-deploy smoke test verification
 #
@@ -22,6 +22,8 @@
 #   --deploy-url <url>    Dokploy deployment webhook URL override
 #   --deploy-token <tok>  Dokploy deployment token override
 #   --image-tag <tag>     Specific image tag or commit sha to deploy
+#   --db-url <conn>       Explicit STAGING session connection override (opt-in;
+#                         bypasses per-env scoping — use with care)
 #   --dry-run             Log planned actions without modifying system state
 #
 # Examples:
@@ -44,6 +46,7 @@ SKIP_SMOKE=false
 DEPLOY_URL="${DOKPLOY_STAGING_DEPLOY_URL:-${DOKPLOY_DEPLOY_URL:-}}"
 DEPLOY_TOKEN="${DOKPLOY_STAGING_DEPLOY_TOKEN:-${DOKPLOY_DEPLOY_TOKEN:-}}"
 IMAGE_TAG="latest"
+DB_URL_OVERRIDE=""
 DRY_RUN=false
 
 show_help() {
@@ -78,6 +81,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --image-tag)
       IMAGE_TAG="${2:?Error: --image-tag requires a tag argument}"
+      shift 2
+      ;;
+    --db-url)
+      DB_URL_OVERRIDE="${2:?Error: --db-url requires a connection string}"
       shift 2
       ;;
     --dry-run)
@@ -157,45 +164,40 @@ fi
 stage "Step 3/5: Applying Database Migrations to Staging"
 
 if [ "$SKIP_MIGRATIONS" = false ]; then
-  # Resolve and validate staging database password
-  if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
-    if [[ -f "${REPO_ROOT}/deploy/dokploy/.env.staging" ]]; then
-      POSTGRES_PASSWORD="$(grep -E '^POSTGRES_PASSWORD=' "${REPO_ROOT}/deploy/dokploy/.env.staging" | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
-    fi
+  # STAGING-scoped session connection only (BRAWUKA-241 P0): --db-url >
+  # STAGING_DIRECT_URL > .env.staging DIRECT_URL. Unscoped DIRECT_URL is
+  # never read, so a prod URL in the shell cannot retarget staging migrations.
+  MIGRATION_URL=""
+  if [[ -n "$DB_URL_OVERRIDE" ]]; then
+    MIGRATION_URL="$DB_URL_OVERRIDE"
+  elif [[ -n "${STAGING_DIRECT_URL:-}" ]]; then
+    MIGRATION_URL="$STAGING_DIRECT_URL"
+  elif [[ -f "${REPO_ROOT}/deploy/dokploy/.env.staging" ]]; then
+    MIGRATION_URL="$(grep -E '^DIRECT_URL=' "${REPO_ROOT}/deploy/dokploy/.env.staging" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
   fi
 
   if [ "$DRY_RUN" = false ]; then
-    : "${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be set in environment or deploy/dokploy/.env.staging}"
-    DB_PASS="${POSTGRES_PASSWORD}"
-    CONTAINER="coffeemode-postgres-staging"
-    DB_USER="coffeemode_staging_user"
-    DB_NAME="coffeemode_staging"
-    DB_PORT=5433
-    TARGET_DB_URL="postgres://${DB_USER}:${DB_PASS}@127.0.0.1:${DB_PORT}/${DB_NAME}?sslmode=disable"
-
-    if docker ps --filter "name=^/${CONTAINER}$" --format '{{.Status}}' | grep -q "healthy"; then
-      log "Target container '${CONTAINER}' is healthy. Applying migrations..."
-      if [[ -f "${REPO_ROOT}/web/scripts/migrate.mjs" ]]; then
-        (
-          cd "${REPO_ROOT}/web"
-          DATABASE_URL="$TARGET_DB_URL" node scripts/migrate.mjs
-        )
-      else
-        error "CRITICAL: Unable to run database migrations! Repository checkout at '${REPO_ROOT}/web/scripts/migrate.mjs' is required."
-        exit 1
-      fi
-      ok "Database schema migrations applied to Staging."
-    else
-      error "Database container '${CONTAINER}' is not healthy or running."
+    if [[ -z "$MIGRATION_URL" ]]; then
+      error "STAGING session connection is required: STAGING_DIRECT_URL or deploy/dokploy/.env.staging DIRECT_URL"
       exit 1
     fi
+    log "Applying migrations over STAGING session connection (DIRECT_URL)..."
+    if [[ -f "${REPO_ROOT}/web/scripts/migrate.mjs" ]]; then
+      (
+        cd "${REPO_ROOT}/web"
+        DATABASE_URL="$MIGRATION_URL" node scripts/migrate.mjs
+      )
+    else
+      error "CRITICAL: Unable to run database migrations! Repository checkout at '${REPO_ROOT}/web/scripts/migrate.mjs' is required."
+      exit 1
+    fi
+    ok "Database schema migrations applied to Staging."
   else
-    ok "[DRY-RUN] Staging database schema migration simulated."
+    ok "[DRY-RUN] Staging database schema migration simulated (STAGING_DIRECT_URL session connection, no container check)."
   fi
 else
   log "Skipping database migrations (--skip-migrations)."
 fi
-
 # ------------------------------------------------------------------------------
 # STEP 4: Trigger Staging Service Deployment
 # ------------------------------------------------------------------------------

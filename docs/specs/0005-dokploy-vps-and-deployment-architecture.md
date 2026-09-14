@@ -27,19 +27,22 @@ Accepted (2026-09-04 — BRAWUKA-50 architecture and deployment specification; r
      `--env-file .env.<env>` so Docker Compose resolves variables before starting containers.
 
 2. Dual-Stack Environment Architecture (Backend & Data Isolation):
-   Staging and Production environments run as separate Dokploy compose stacks.
+   Staging and Production environments run as separate Dokploy compose stacks,
+   each backed by its own Supabase project (BRAWUKA-240 D1 / decision 34a).
    - Database, storage, and backend networks are 100% isolated:
-     - Staging Database: postgres-staging (PostGIS 16) on isolated coffeemode-staging-network
-     - Production Database: postgres-prod (PostGIS 16) on isolated coffeemode-prod-network
-     - Independent persistent data volumes and backup volumes.
-   - Web Ingress Network: The web containers connect to their respective backend
-     database network plus the shared external `traefik-net` bridge for Traefik ingress.
+     - Staging Database: Supabase STAGING project (Postgres + PostGIS 16, region ap-southeast-1)
+     - Production Database: Supabase PROD project (Postgres + PostGIS 16, region ap-southeast-1)
+     - App runtime connects over `DATABASE_URL` (Supavisor pooled `:6543`, `sslmode=require`);
+       migrations/backups/restores run over `DIRECT_URL` (session/direct `:5432`, `sslmode=require`).
+     - No self-hosted postgres service exists in either compose stack (removed BRAWUKA-241).
+     - Independent local backup dirs (`backups/staging/`, `backups/prod/`).
+   - Web Ingress Network: The web containers attach to their respective backend
+     bridge network plus the shared external `traefik-net` bridge for Traefik ingress.
    - Cloudflare Edge Isolation:
      - Staging: image-service-staging, poi-service-staging, coffeemode-images-staging R2 bucket,
        staging.coffeemode.app subdomain routing.
      - Production: image-service-prod, poi-service-prod, coffeemode-images-prod R2 bucket,
        coffeemode.app apex and www routing.
-
 3. Trunk-Based CI/CD Branching Model:
    CoffeeMode operates strictly on a trunk-based git workflow (Spec 0003):
    - Staging Auto-Deploy: Every merge or push to `main` triggers Staging deployment
@@ -118,41 +121,36 @@ Dokploy manages multi-service Docker Compose stacks behind an integrated Traefik
             │ coffeemode-web-    │       │ coffeemode-web-    │
             │ staging (:3000)    │       │ prod (:3000)       │
             │         │          │       │         │          │
-            │ coffeemode-staging-│       │ coffeemode-prod-   │
-            │ network (isolated) │       │ network (isolated) │
-            │         │          │       │         │          │
-            │ postgres-staging   │       │ postgres-prod      │
-            │ (:5432 internal)   │       │ (:5432 internal)   │
-            │         │          │       │         │          │
-            │ Named Volumes:     │       │ Named Volumes:     │
-            │ - data_staging     │       │ - data_prod        │
-            │ - backups_staging  │       │ - backups_prod     │
-            └────────────────────┘       └────────────────────┘
+            │ DATABASE_URL ──────┼──┐    │ DATABASE_URL ──────┼──┐
+            └────────────────────┘  │    └────────────────────┘  │
+                                    ▼                           ▼
+                    ┌───────────────────────┐   ┌───────────────────────┐
+                    │ Supabase STAGING      │   │ Supabase PROD         │
+                    │ Postgres + PostGIS 16 │   │ Postgres + PostGIS 16 │
+                    │ ap-southeast-1        │   │ ap-southeast-1        │
+                    └───────────────────────┘   └───────────────────────┘
 ```
 
 ### 2. Network & storage isolation guarantees
 
 1. **Network topology**:
-   - `coffeemode-staging-network`: Isolated bridge connecting `coffeemode-web-staging` and `postgres-staging`.
-   - `coffeemode-prod-network`: Isolated bridge connecting `coffeemode-web-prod` and `postgres-prod`.
+   - `coffeemode-staging-network`: Isolated bridge for the staging web container.
+   - `coffeemode-prod-network`: Isolated bridge for the production web container.
    - `traefik-net`: External bridge shared only by the web tier (`web-staging`, `web-prod`) and Traefik for HTTP ingress routing.
-   - Database containers (`postgres-staging`, `postgres-prod`) do NOT connect to `traefik-net`. Containers in the Staging network cannot resolve DNS names or initiate TCP connections to the Production database.
-   - Neither database exposes port 5432 to public interfaces. Administrative access is restricted to loopback (`127.0.0.1`) bastion SSH tunnels.
+   - Databases live in Supabase (separate staging/prod projects) — no database
+     containers attach to any VPS network. Cross-env isolation is enforced at
+     the Supabase project + credential level.
+   - No database port is exposed on the VPS. Supabase connectivity is outbound
+     TLS (`sslmode=require`) over `DATABASE_URL` / `DIRECT_URL`.
 
 2. **Persistent storage mounts**:
-   - Staging Data: `coffeemode_postgres_staging_data` mounted to `/var/lib/postgresql/data`.
-   - Staging Backups: `coffeemode_postgres_staging_backups` mounted to `/backups` (retention: 7 days).
-   - Production Data: `coffeemode_postgres_prod_data` mounted to `/var/lib/postgresql/data`.
-   - Production Backups: `coffeemode_postgres_prod_backups` mounted to `/backups` (retention: 14 days local, 30 days R2).
+   - Local backup dirs: `backups/staging/` (retention: 7 days), `backups/prod/` (retention: 14 days local, 30 days R2).
+   - No postgres data volumes exist (Supabase primary, BRAWUKA-241).
 
 3. **Resource allocation & limits**:
    - `coffeemode-web-prod`: CPU limit: 2.0 cores, Memory limit: 2 GB (Reservation: 1.0 core, 1 GB).
-   - `postgres-prod`: CPU limit: 2.0 cores, Memory limit: 4 GB (Reservation: 1.0 core, 2 GB).
    - `coffeemode-web-staging`: CPU limit: 1.0 core, Memory limit: 1 GB.
-   - `postgres-staging`: CPU limit: 1.0 core, Memory limit: 1.5 GB.
-
-### 3. Cloudflare dual services & edge matrix
-
+   - Database compute is Supabase-managed (not VPS-reserved).
 | Dimension | Staging Environment | Production Environment |
 | --- | --- | --- |
 | Primary Web Domain | `staging.coffeemode.app` | `coffeemode.app` (apex) |
@@ -197,21 +195,18 @@ Dokploy manages multi-service Docker Compose stacks behind an integrated Traefik
 1. **Staging Continuous Deployment Flow**:
    - **Trigger**: Merge or push to `main` branch after GitHub Actions test gates pass.
    - **Execution**: Run `deploy/dokploy/deploy-release.sh staging`:
-     1. Creates staging database backup (`deploy/dokploy/backup-postgres.sh staging pre-migration`).
-     2. Applies schema migrations: `npm run db:migrate` against `postgres-staging` via repo checkout.
+     1. Creates staging database backup (`backup.sh --env staging --reason pre-migration` against Supabase staging `DATABASE_URL`).
+     2. Applies schema migrations over `DIRECT_URL` (Supabase staging session/direct) via repo checkout.
      3. Triggers Dokploy staging deploy webhook (or `docker compose up -d`) and polls `/api/health` for convergence.
      4. Executes automated smoke tests (`deploy/dokploy/smoke-test.sh staging`).
 
 2. **Production Promotion Flow**:
    - **Trigger**: Creation of signed Git release tag `v*` on `main` following staging verification.
    - **Execution**: Run `deploy/dokploy/deploy-release.sh prod`:
-     1. Creates mandatory production database backup (`deploy/dokploy/backup-postgres.sh prod pre-migration`).
-     2. Applies schema migrations: `npm run db:migrate` against `postgres-prod` via repo checkout.
+     1. Creates mandatory production database backup (`backup.sh --env prod --reason pre-migration` against Supabase prod `DATABASE_URL`).
+     2. Applies schema migrations over `DIRECT_URL` (Supabase prod session/direct — never the transaction pooler) via repo checkout.
      3. Triggers Dokploy production deployment and polls `/api/health` for release convergence.
      4. Executes automated smoke tests (`deploy/dokploy/smoke-test.sh prod`).
-
-### 2. Zero-downtime deployment execution
-
 When the VPS runs in Docker Swarm mode, Dokploy stack deployments honor:
 
 ```yaml
@@ -231,11 +226,14 @@ deploy:
 ### 3. Database safety & rollback runbook
 
 1. **Pre-migration snapshot**:
-   `deploy/dokploy/backup-postgres.sh` executes `pg_dump -Fc` before every migration.
-   Snapshots are stored in `/backups/coffeemode_${ENV}_pre-migration_${TIMESTAMP}.dump`.
+   `scripts/devops/backup.sh --env <env> --reason pre-migration` executes `pg_dump -Fc`
+   against the Supabase `DATABASE_URL` (pooled, `sslmode=require`) before every migration.
+   REQUIRED: Supabase free tier ships no automated backups, so `pg_dump → R2`
+   (`s3://coffeemode-backups/<env>/`) is the only offsite copy.
+   Snapshots are stored in `backups/<env>/coffeemode_${ENV}_pre-migration_<tier>_<TIMESTAMP>.dump.gz`.
    Retention: 14 days locally for production (30 days in R2), 7 days locally for staging.
 
-2. **Zero-downtime migration rules**:
+2. **Zero-downtime migration rules** (migrations run over `DIRECT_URL` session/direct — never the transaction pooler):
    - Adding columns: MUST be nullable or specify a constant default (`DEFAULT '...'`).
    - Adding indexes: MUST use `CREATE INDEX CONCURRENTLY` to avoid table locking.
    - Modifying columns: Add new column, backfill data, switch application code, drop old column in a subsequent release.
@@ -245,13 +243,12 @@ deploy:
    - **Application rollback**: Roll back to the previous Git commit/image tag via Dokploy dashboard or webhook.
    - **Database rollback**:
      ```bash
-     deploy/dokploy/restore-postgres.sh prod /backups/coffeemode_prod_pre-migration_<TIMESTAMP>.dump
+     scripts/devops/restore.sh --env prod --file backups/prod/coffeemode_prod_pre-migration_<tier>_<TIMESTAMP>.dump.gz --yes
      ```
-
-### 4. Staging verification checklist & automated smoke tests
-
-The automated smoke test suite (`deploy/dokploy/smoke-test.sh`) verifies the following criteria:
-
+   - **Recovery drill** (non-destructive, always on staging):
+     ```bash
+     scripts/devops/restore.sh --env staging --file <backup>.dump.gz --drill
+     ```
 - [ ] Healthcheck endpoint `GET /api/health` returns `{"ok":true}` and version/boot_time markers with HTTP 200.
 - [ ] Root page `GET /` returns HTTP 200 with HTML shell and title CoffeeMode.
 - [ ] PostGIS spatial query `GET /api/cafes?lat=1.3521&lng=103.8198&radius_km=5` returns HTTP 200 with `{"cafes":[...]}`.
@@ -277,8 +274,7 @@ The automated smoke test suite (`deploy/dokploy/smoke-test.sh`) verifies the fol
 - Dual-stack Staging and Production isolation rules are codified across compute, database, storage, and edge.
 - Docker Compose configuration templates exist for both Staging and Production in deploy/dokploy/.
 - Concrete release orchestrator script exists in deploy/dokploy/deploy-release.sh.
-- Database PostGIS 16 container, backup script, and zero-downtime migration protocol are documented and implemented.
-- Environment variable templates exist (.env.staging.example and .env.prod.example).
+- Database Supabase projects (prod + staging, PostGIS 16), backup script, and zero-downtime migration protocol are documented and implemented.
 - Automated smoke test script exists in deploy/dokploy/smoke-test.sh.
 - Comprehensive operational lifecycle runbook exists in docs/devops/LIFECYCLE.md.
 - .agents/scripts/preflight.sh and .agents/scripts/harness-self-test.sh pass with no errors or broken links.

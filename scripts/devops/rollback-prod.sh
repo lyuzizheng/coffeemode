@@ -102,8 +102,8 @@ stage() { echo -e "\n${BOLD}${CYAN}=== $* ===${NC}"; }
 stage "Step 1/4: Pre-Migration Snapshot & Image Tag Identification"
 
 # Resolve previous release tag from release history log
+# (Supabase topology: local backup dir; legacy docker volume path removed BRAWUKA-241)
 SEARCH_DIRS=(
-  "/var/lib/docker/volumes/coffeemode_postgres_prod_backups/_data"
   "${REPO_ROOT}/backups/prod"
 )
 

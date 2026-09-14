@@ -1,12 +1,12 @@
 import "server-only";
 
 import { isValidUUID } from "@shared/uuid";
+import type { NavPromptItemDto } from "@shared/navigations/prompt";
 import { appConfig } from "@/lib/config";
 import {
   PromptQueue,
   type PromptAnswer,
   type PromptOutcome,
-  type PromptQueueItem,
   type PromptQueueStore,
 } from "@/lib/prompt-queue";
 import { cafeExists } from "./cafes";
@@ -25,9 +25,7 @@ interface RecordedNavigation {
 }
 
 /** The promptable projection of a navigation row, joined to its cafe. */
-export interface NavigationPromptItem extends PromptQueueItem {
-  cafe: { id: string; name: string; cover: string | null };
-}
+export type NavigationPromptItem = NavPromptItemDto;
 
 /** Validate the POST /api/navigations body. */
 export function parseNavigationBody(body: unknown): ParseResult<{ cafe_id: string }> {

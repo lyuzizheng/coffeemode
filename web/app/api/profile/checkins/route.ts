@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     const result = await getUserCheckIns(user.id, { limit, cursor });
     return NextResponse.json({
       items: result.items,
-      next_cursor: result.nextCursor,
+      next_cursor: result.next_cursor,
     });
   } catch (error) {
     if (error instanceof ProfileCursorError) {

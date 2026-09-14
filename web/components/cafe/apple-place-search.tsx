@@ -4,7 +4,7 @@ import { Button, SearchField, Spinner } from "@heroui/react";
 import { useTranslations } from "next-intl";
 import { useEffect, useState, type FormEvent } from "react";
 import type { POI } from "@shared/places/types";
-
+import { stableApplePlaceId } from "@shared/places/apple-place-id";
 const MAPKIT_SCRIPT = "https://cdn.apple-mapkit.com/mk/5.x.x/mapkit.js";
 
 interface MapKitPlace {
@@ -61,25 +61,13 @@ async function fetchMapKitToken(): Promise<string> {
   return token;
 }
 
-// Fallback id for MapKit places without an `id`: FNV-1a over "lat,lng:name".
-// 32-bit, so collisions and name/coordinate drift can split or merge distinct
-// places — accepted for MVP. Must stay byte-identical to
-// `stableApplePlaceId` in poi-service/src/handlers.ts or dedupe breaks.
-function stablePlaceId(value: string): string {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `apple:${(hash >>> 0).toString(16).padStart(8, "0")}`;
-}
 
 function toPOI(place: MapKitPlace): POI | null {
   const name = place.name?.trim();
   const coordinate = place.coordinate;
   if (!name || !coordinate) return null;
   const placeId =
-    place.id?.trim() || stablePlaceId(`${coordinate.latitude},${coordinate.longitude}:${name}`);
+    place.id?.trim() || stableApplePlaceId(`${coordinate.latitude},${coordinate.longitude}:${name}`);
   return {
     place_id: placeId,
     source: "apple",

@@ -76,7 +76,7 @@ export function ProfileTabCafes({ baseId, query: cafesQuery }: ProfileTabCafesPr
               <span className="font-display font-semibold text-foreground text-base truncate">
                 {cafe.name || t("unknown_cafe")}
               </span>
-              {cafe.isCreation && (
+              {cafe.is_creation && (
                 <span className="text-muted font-normal text-xs inline-flex items-center gap-0.5">
                   <span>+</span>
                   <span>{t("created_by_me")}</span>
@@ -89,9 +89,9 @@ export function ProfileTabCafes({ baseId, query: cafesQuery }: ProfileTabCafesPr
                 date: new Intl.DateTimeFormat(locale, {
                   day: "numeric",
                   month: "short",
-                }).format(new Date(cafe.lastVisitedAt)),
+                }).format(new Date(cafe.last_visited_at)),
               })}{" "}
-              · {t("checkins_count", { count: cafe.checkinsCount })}
+              · {t("checkins_count", { count: cafe.checkins_count })}
             </span>
           </div>
         </Link>

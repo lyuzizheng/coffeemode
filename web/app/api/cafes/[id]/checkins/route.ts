@@ -58,9 +58,7 @@ export async function GET(
     return NextResponse.json(page);
   } catch (err) {
     if (err instanceof FeedCursorExpiredError) {
-      return apiError("cursor_version_expired", "snapshot version expired; restart from page one", 410, {
-        code: "cursor_version_expired",
-      });
+      return apiError("cursor_version_expired", "snapshot version expired; restart from page one", 410);
     }
     if (err instanceof FeedCursorError) {
       return apiError("invalid_request", "cursor is invalid or was issued for another mode", 400);

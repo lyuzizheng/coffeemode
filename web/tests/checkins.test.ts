@@ -473,7 +473,7 @@ describe("createCheckIn", () => {
       USER.id,
       validInput({ photo_ids: undefined, idempotency_key: IDEMPOTENCY_KEY }),
     );
-    expect(result).toEqual({ checkinId: CHECKIN, deduped: true });
+    expect(result).toEqual({ checkin_id: CHECKIN, deduped: true });
     // The replay short-circuits before provisioning and the transaction:
     // single-use intents stay untouched, no second row, no stats rewrite.
     expect(poolQueryMock).toHaveBeenCalledTimes(1);
@@ -499,7 +499,7 @@ describe("createCheckIn", () => {
       USER.id,
       validInput({ photo_ids: undefined, idempotency_key: IDEMPOTENCY_KEY }),
     );
-    expect(result).toEqual({ checkinId: CHECKIN, deduped: true });
+    expect(result).toEqual({ checkin_id: CHECKIN, deduped: true });
     const insert = clientQueryMock.mock.calls.find((call) =>
       (call[0] as string).toLowerCase().includes("insert into checkins"),
     )!;
@@ -551,7 +551,7 @@ describe("toggleCheckInLike", () => {
 
     const result = await toggleCheckInLike(USER.id, CHECKIN);
 
-    expect(result).toEqual({ liked: false, likesCount: 2 });
+    expect(result).toEqual({ liked: false, likes_count: 2 });
   });
 
   it("throws CheckInNotFoundError when the check-in does not exist or is soft-deleted", async () => {

@@ -96,10 +96,7 @@ export async function DELETE(
       return apiError("forbidden", "only creator can delete cafe", 403);
     }
     if (err instanceof CafeHasOtherCheckinsError) {
-      return apiError("cafe_has_other_checkins", 403, {
-        code: "cafe_has_other_checkins",
-        n: err.n,
-      });
+      return apiError("cafe_has_other_checkins", 403, { n: err.n });
     }
     logError({ route: gate.route, request, error: err, status: 500 });
     return apiError("internal_error", 500);

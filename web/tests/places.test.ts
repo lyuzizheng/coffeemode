@@ -43,6 +43,7 @@ let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   process.env.POI_SERVICE_URL = WORKER_URL;
   process.env.POI_SERVICE_TOKEN = TOKEN;
+  process.env.TURNSTILE_SECRET_KEY = "test-turnstile-secret";
   getCurrentUserMock.mockResolvedValue(null);
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
@@ -52,6 +53,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   delete process.env.POI_SERVICE_URL;
   delete process.env.POI_SERVICE_TOKEN;
+  delete process.env.TURNSTILE_SECRET_KEY;
   vi.unstubAllGlobals();
 });
 
@@ -298,66 +300,98 @@ describe("GET /api/places/search", () => {
 });
 
 describe("POST /api/places/resolve", () => {
-  it("proxies a maps share URL to the worker", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(SAMPLE_POI));
+  const resolveBody = (extra: Record<string, unknown> = {}) =>
+    JSON.stringify({ maps_share_url: "https://maps.app.goo.gl/xyz", ...extra });
 
-    const res = await resolvePOST(
-      new Request(`${WORKER_URL}/api/places/resolve`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ maps_share_url: "https://maps.app.goo.gl/xyz" }),
-      }),
+  const resolveRequest = (body: string) =>
+    new Request(`${WORKER_URL}/api/places/resolve`, {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "localhost:3000" },
+      body,
+    });
+
+  /** Stub a passing siteverify; the worker falls back to a persistent 200 stub. */
+  function mockTurnstilePass(workerBody: unknown = SAMPLE_POI, workerStatus = 200) {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ success: true, action: "places-resolve", hostname: "localhost" }),
     );
+    fetchMock.mockResolvedValue(jsonResponse(workerBody, workerStatus));
+  }
+
+  it("proxies a maps share URL to the worker", async () => {
+    mockTurnstilePass();
+
+    const res = await resolvePOST(resolveRequest(resolveBody({ "cf-turnstile-response": "fresh-token" })));
 
     expect(res.status).toBe(200);
     expect(((await res.json()) as { name: string }).name).toBe("Blue Bottle Coffee");
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+    );
+    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
     expect(url).toBe(`${WORKER_URL}/poi/resolve`);
     expect(JSON.parse(String(init.body))).toEqual({
       maps_share_url: "https://maps.app.goo.gl/xyz",
     });
   });
 
-  it("400s without maps_share_url", async () => {
-    const res = await resolvePOST(
-      new Request(`${WORKER_URL}/api/places/resolve`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({}),
-      }),
-    );
-    expect(res.status).toBe(400);
+  it("403s without a token and never reaches the worker", async () => {
+    const res = await resolvePOST(resolveRequest(resolveBody()));
+    expect(res.status).toBe(403);
+    expect((await res.json()) as { error: string }).toMatchObject({ error: "bot_verification_failed" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("maps worker 422 (unresolvable) through for allowed hosts", async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ error: "unresolvable" }, 422));
+  it("403s for a forged token and never reaches the worker", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ success: false, "error-codes": ["invalid-input-response"] }),
+    );
     const res = await resolvePOST(
-      new Request(`${WORKER_URL}/api/places/resolve`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ maps_share_url: "https://maps.app.goo.gl/nope" }),
-      }),
+      resolveRequest(resolveBody({ "cf-turnstile-response": "forged-token" })),
+    );
+    expect(res.status).toBe(403);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when siteverify is unreachable", async () => {
+    fetchMock.mockRejectedValueOnce(new Error("connection reset"));
+    const res = await resolvePOST(
+      resolveRequest(resolveBody({ "cf-turnstile-response": "fresh-token" })),
+    );
+    expect(res.status).toBe(403);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("400s without maps_share_url", async () => {
+    mockTurnstilePass();
+    const res = await resolvePOST(resolveRequest(JSON.stringify({ "cf-turnstile-response": "fresh-token" })));
+    expect(res.status).toBe(400);
+    // siteverify passes, the worker is never reached.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("maps worker 422 (unresolvable) through for allowed hosts", async () => {
+    mockTurnstilePass({ error: "unresolvable" }, 422);
+    const res = await resolvePOST(
+      resolveRequest(resolveBody({ maps_share_url: "https://maps.app.goo.gl/nope", "cf-turnstile-response": "fresh" })),
     );
     expect(res.status).toBe(422);
   });
 
   it("400s for disallowed maps_share_url domains", async () => {
+    mockTurnstilePass();
     const res = await resolvePOST(
-      new Request(`${WORKER_URL}/api/places/resolve`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ maps_share_url: "https://example.com/nope" }),
-      }),
+      resolveRequest(resolveBody({ maps_share_url: "https://example.com/nope", "cf-turnstile-response": "fresh" })),
     );
     expect(res.status).toBe(400);
     expect((await res.json()) as { error: string }).toEqual({
       error: "invalid_maps_url",
       message: expect.stringContaining("Google Maps and Apple Maps"),
     });
-    expect(fetchMock).not.toHaveBeenCalled();
+    // siteverify passes, the worker is never reached.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
-
   it("400s for http URLs, non-map google subdomains, and lookalikes (issue #37)", async () => {
     for (const maps_share_url of [
       "http://www.google.com/maps/place/foo",
@@ -366,25 +400,23 @@ describe("POST /api/places/resolve", () => {
       "https://google.com.evil.com/maps",
       "https://google.evil.io/maps/place/x/data=!4m6!3m5!1s0x8085:0x9f2c",
     ]) {
+      mockTurnstilePass();
       const res = await resolvePOST(
-        new Request(`${WORKER_URL}/api/places/resolve`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ maps_share_url }),
-        }),
+        resolveRequest(resolveBody({ maps_share_url, "cf-turnstile-response": "fresh" })),
       );
       expect(res.status).toBe(400);
     }
-    expect(fetchMock).not.toHaveBeenCalled();
+    // One siteverify call per attempt, zero worker calls.
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    for (const [url] of fetchMock.mock.calls as [string, RequestInit][]) {
+      expect(url).toBe("https://challenges.cloudflare.com/turnstile/v0/siteverify");
+    }
   });
 
   it("400s for malformed maps_share_url", async () => {
+    mockTurnstilePass();
     const res = await resolvePOST(
-      new Request(`${WORKER_URL}/api/places/resolve`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ maps_share_url: "not-a-url" }),
-      }),
+      resolveRequest(resolveBody({ maps_share_url: "not-a-url", "cf-turnstile-response": "fresh" })),
     );
     expect(res.status).toBe(400);
     expect((await res.json()) as { error: string }).toEqual({
@@ -394,15 +426,13 @@ describe("POST /api/places/resolve", () => {
   });
 
   it("allows Google Maps subdomains", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(SAMPLE_POI));
+    mockTurnstilePass();
     const res = await resolvePOST(
-      new Request(`${WORKER_URL}/api/places/resolve`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ maps_share_url: "https://www.google.com/maps/place/foo" }),
-      }),
+      resolveRequest(
+        resolveBody({ maps_share_url: "https://www.google.com/maps/place/foo", "cf-turnstile-response": "fresh" }),
+      ),
     );
     expect(res.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

@@ -49,6 +49,12 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 - [ ] console.cloud.google.com → enable **Places API (New)** → create API key → restrict to that API + (later) IP/HTTP referrers
 - [ ] The key goes ONLY into the POI Worker (`poi-service/.dev.vars`, never committed). Next.js never sees it.
 
+## 5a. Cloudflare Turnstile widget + keys — for anonymous `POST /api/places/resolve` (BRAWUKA-239)
+
+- [ ] Cloudflare dashboard → Turnstile → Add widget → type Managed (invisible mode is set client-side per surface), domains: `cafemood.app`, `staging.cafemood.app`, `localhost`, `127.0.0.1` (free, unlimited validations; if staging sits behind Cloudflare Access, add the Access login host too or the challenge cannot load there)
+- [ ] Put the secret into the app env as `TURNSTILE_SECRET_KEY` (server-only; VPS env / secrets manager — never `NEXT_PUBLIC_*`, never chat/docs/repo) and the sitekey as `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (rebuild after setting — Next inlines it into the client bundle). Dev/test without keys skip verification; production without `TURNSTILE_SECRET_KEY` fails closed (403 `bot_verification_failed`)
+- [ ] Verify: anonymous `POST /api/places/resolve` without/forged token → 403; real browser link-import flow → 200
+
 **Only remaining owner item for the POI service** (2026-09-12, BRAWUKA-222): the four
 Cloudflare resources, both migrations, both deployments and both `POI_SERVICE_TOKEN`
 secrets are done. Until this key is installed on both Workers

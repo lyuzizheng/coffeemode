@@ -1,4 +1,4 @@
-import type { CompleteRequest, CompleteResponse, DeleteResponse, Env, UploadResponse } from "./types";
+import type { CompleteRequest, CompleteResponse, DeleteRequest, DeleteResponse, Env, UploadResponse } from "./types";
 import { authorized, internalError, json, unauthorized } from "./auth";
 import { isValidUUID } from "../../web/shared/uuid";
 import { validateUploadSize } from "../../web/shared/images/validation";
@@ -182,9 +182,11 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
  * Best-effort compensation for the web creation/complete flows (BRAWUKA-279):
  * after `processImage` writes variants to R2, a DB transaction may still roll
  * back (duplicate check-in, consumed intent, unique conflict). The caller then
- * POSTs here to delete the orphaned variants. All three variant keys are
- * derived server-side from `imageUuid`, so a caller cannot delete arbitrary
- * objects; missing keys are reported, never errors (idempotent retries).
+ * POSTs here to delete the orphaned variants. Variant keys are derived
+ * server-side from `imageUuid`, so a caller cannot delete arbitrary objects;
+ * missing keys are reported, never errors (idempotent retries). With
+ * `keepOriginal: true` only the derived variants (`card/`, `thumbnail/`) are
+ * deleted — the original survives so a retry can re-derive them.
  */
 export async function handleDelete(request: Request, env: Env): Promise<Response> {
   if (!(await authorized(request, env))) {
@@ -201,16 +203,17 @@ export async function handleDelete(request: Request, env: Env): Promise<Response
     return error("invalid_request", "invalid JSON body");
   }
 
-  const record = body as Record<string, unknown>;
+  const record = body as DeleteRequest & Record<string, unknown>;
   const imageUuid = record.imageUuid;
   if (typeof imageUuid !== "string" || !isValidUUID(imageUuid)) {
     return error("invalid_request", "imageUuid must be a valid UUID");
   }
-  sanitizeMetadata(record.userId);
+  const keepOriginal = record.keepOriginal === true;
 
   const normalizedUuid = imageUuid.toLowerCase();
   const keys = makeKeys(normalizedUuid);
-  const { deleted, missing } = await deleteObjects(env, [keys.original, keys.card, keys.thumbnail]);
+  const targets = keepOriginal ? [keys.card, keys.thumbnail] : [keys.original, keys.card, keys.thumbnail];
+  const { deleted, missing } = await deleteObjects(env, targets);
   const response: DeleteResponse = { imageUuid: normalizedUuid, deleted, missing };
   return json(response);
 }

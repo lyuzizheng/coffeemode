@@ -149,11 +149,22 @@ describe("provisionPhotos", () => {
     expect(deps.checkUploadIntents).toHaveBeenCalledWith(USER, [IMG_A, IMG_B]);
     expect(deps.processImage).toHaveBeenCalledTimes(2);
   });
-
   it("returns an empty list for no photo ids without touching deps", async () => {
     const deps = fakeDeps();
     await expect(provisionPhotos(USER, [], deps)).resolves.toEqual([]);
     expect(deps.checkUploadIntents).not.toHaveBeenCalled();
+  });
+
+  it("compensates already-provisioned photos when a later photo fails mid-loop", async () => {
+    const deps = fakeDeps({
+      processImage: vi
+        .fn()
+        .mockResolvedValueOnce({ width: 1600, height: 1200 })
+        .mockRejectedValueOnce(new Error("sharp blew up")),
+    });
+    await expect(provisionPhotos(USER, [IMG_A, IMG_B], deps)).rejects.toThrow("sharp blew up");
+    expect(deps.deleteProvisionedVariants).toHaveBeenCalledTimes(1);
+    expect(deps.deleteProvisionedVariants).toHaveBeenCalledWith(IMG_A);
   });
 });
 

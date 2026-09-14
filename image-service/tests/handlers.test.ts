@@ -290,20 +290,46 @@ describe("handleDelete", () => {
     }
   });
 
-  it("reports missing keys instead of failing (idempotent retry)", async () => {
+  it("is idempotent: a second delete still succeeds with the same keys reported", async () => {
     const env = baseEnv();
     const imageUuid = validUuid();
     await env.R2_BUCKET.put(`original/${imageUuid}.webp`, new Uint8Array([0xde]), {
       httpMetadata: { contentType: "image/webp" },
     });
 
-    const response = await handleDelete(makeRequest("POST", "/v1/images/delete", { imageUuid }), env);
+    const first = await handleDelete(makeRequest("POST", "/v1/images/delete", { imageUuid }), env);
+    expect(first.status).toBe(200);
+    const second = await handleDelete(makeRequest("POST", "/v1/images/delete", { imageUuid }), env);
+    expect(second.status).toBe(200);
+    // Binding-path R2 delete is idempotent: missing keys succeed, so every
+    // key lands in `deleted` (the S3/MinIO path reports 404s in `missing`).
+    const data = (await second.json()) as { deleted: string[]; missing: string[] };
+    expect(data.deleted.sort()).toEqual(
+      [`original/${imageUuid}.webp`, `card/${imageUuid}.webp`, `thumbnail/${imageUuid}.webp`].sort(),
+    );
+    expect(data.missing).toEqual([]);
+  });
+
+  it("keepOriginal deletes only derived variants so a retry can re-derive them", async () => {
+    const env = baseEnv();
+    const imageUuid = validUuid();
+    for (const prefix of ["original", "card", "thumbnail"]) {
+      await env.R2_BUCKET.put(`${prefix}/${imageUuid}.webp`, new Uint8Array([0xde]), {
+        httpMetadata: { contentType: "image/webp" },
+      });
+    }
+
+    const response = await handleDelete(
+      makeRequest("POST", "/v1/images/delete", { imageUuid, keepOriginal: true }),
+      env,
+    );
     expect(response.status).toBe(200);
     const data = (await response.json()) as { deleted: string[]; missing: string[] };
-    expect(data.deleted).toEqual([`original/${imageUuid}.webp`]);
-    expect(data.missing.sort()).toEqual(
+    expect(data.deleted.sort()).toEqual(
       [`card/${imageUuid}.webp`, `thumbnail/${imageUuid}.webp`].sort(),
     );
+    expect(await env.R2_BUCKET.head(`original/${imageUuid}.webp`)).not.toBeNull();
+    expect(await env.R2_BUCKET.head(`card/${imageUuid}.webp`)).toBeNull();
   });
 
   it("rejects invalid UUIDs and unauthenticated callers", async () => {

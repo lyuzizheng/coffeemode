@@ -84,10 +84,11 @@ export interface CompleteUploadDeps {
   processImage: (imageUuid: string, processUrls: ProcessUrls) => Promise<ProcessedImage>;
   /**
    * Best-effort R2 compensation (BRAWUKA-279): delete the variants
-   * `processImage` wrote when the transaction returns non-ok. Never throws
-   * past the caller (compensation failure is logged, not rethrown).
+   * `processImage` wrote when the transaction fails. With `keepOriginal`
+   * only the derived variants (`card/`, `thumbnail/`) go and the original
+   * survives for a retry; otherwise all three go. Never throws past the
    */
-  deleteImageVariants?: (imageUuid: string) => Promise<void>;
+  deleteImageVariants?: (imageUuid: string, options?: { keepOriginal?: boolean }) => Promise<void>;
 }
 
 /**
@@ -141,11 +142,11 @@ export function defaultCompleteUploadDeps(): CompleteUploadDeps {
       const { processImage } = await import("@/lib/images/processor");
       return processImage(imageUuid, processUrls);
     },
-    deleteImageVariants: async (imageUuid) => {
+    deleteImageVariants: async (imageUuid, options) => {
       const { deleteImageVariants } = await import("@/lib/images/image-service-client");
       const { logError } = await import("@/lib/observability/server-log");
       try {
-        await deleteImageVariants(imageUuid);
+        await deleteImageVariants(imageUuid, options);
       } catch (err) {
         logError({ route: "completeImageUpload compensate", error: err });
       }
@@ -205,6 +206,28 @@ async function attachThenConsume(
     return { ok: true, storedImage, processed } as const;
   });
 }
+/**
+ * Best-effort R2 compensation that never masks the transaction outcome.
+ * `keepOriginal` preserves `original/` for a retry (the intent survives);
+ * otherwise all three variants go (the image is unusable).
+ */
+async function compensateVariants(
+  deps: CompleteUploadDeps,
+  imageUuid: string,
+  keepOriginal: boolean,
+): Promise<void> {
+  if (!deps.deleteImageVariants) return;
+  try {
+    if (keepOriginal) {
+      await deps.deleteImageVariants(imageUuid, { keepOriginal: true });
+    } else {
+      await deps.deleteImageVariants(imageUuid);
+    }
+  } catch (err) {
+    const { logError } = await import("@/lib/observability/server-log");
+    logError({ route: "completeImageUpload compensate", error: err });
+  }
+}
 
 /**
  * Complete an image upload: verify ownership, process variants remotely,
@@ -255,21 +278,24 @@ export async function completeImageUpload(
 
   // 3. Atomic DB writes via attach-then-consume (see helper): ownership is
   //    rechecked inside the tx, and `target_gone` no longer burns the intent.
-  const txResult = await attachThenConsume(user, req, storedImage, processed, deps);
-
-  // P1 (BRAWUKA-279): step 2 wrote R2 variants outside the transaction, so a
-  // non-ok transaction outcome orphans them — compensate best-effort via the
-  // image-service delete endpoint. The `target_gone` path no longer consumes
-  // the intent, so a retry can still succeed; the #158 sweeper is the
-  // backstop for anything this misses. Compensation failure never masks the
-  // transaction outcome.
-  if (!txResult.ok && deps.deleteImageVariants) {
-    try {
-      await deps.deleteImageVariants(req.imageUuid);
-    } catch (err) {
-      const { logError } = await import("@/lib/observability/server-log");
-      logError({ route: "completeImageUpload compensate", error: err });
-    }
+  let txResult: CompleteUploadResult;
+  try {
+    txResult = await attachThenConsume(user, req, storedImage, processed, deps);
+  } catch (err) {
+    // P1 review: a THROW inside the transaction (pg error, connection drop,
+    // serialization failure) must also compensate — the variants step 2
+    // wrote would otherwise leak. The intent survives a throw (no commit),
+    // so keep the original for a retry and delete only derived variants.
+    await compensateVariants(deps, req.imageUuid, true);
+    throw err;
+  }
+  // P1 (BRAWUKA-279): a non-ok outcome orphans the derived variants —
+  // compensate best-effort. `target_gone` keeps the original (the intent is
+  // preserved, so the retry re-runs getProcessUrls against it and re-PUTs
+  // the derived variants); `intent_consumed` deletes everything (unusable).
+  // The #158 sweeper is the backstop for anything this misses.
+  if (!txResult.ok) {
+    await compensateVariants(deps, req.imageUuid, txResult.reason === "target_gone");
   }
   return txResult;
 }

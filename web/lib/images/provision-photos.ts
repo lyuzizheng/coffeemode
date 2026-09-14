@@ -141,7 +141,9 @@ export type ProvisionedPhoto = Omit<StoredImage, "source">;
  * leaked/expired id burns no image-service presign or sharp CPU. Processing
  * runs with concurrency 2 (sharp is CPU work; `processImage` already
  * parallelizes its own 3 resize/upload legs internally). Output order
- * follows input order.
+ * follows input order. A mid-loop remote failure compensates the
+ * already-provisioned ids best-effort (P2 review: same leak class as the
+ * audited item, one step earlier) before rethrowing the original error.
  */
 export async function provisionPhotos(
   userId: string,
@@ -199,7 +201,13 @@ export async function provisionPhotos(
       }
     },
   );
-  await Promise.all(workers);
+  try {
+    await Promise.all(workers);
+  } catch (err) {
+    const doneIds = results.filter((r): r is ProvisionedPhoto => r !== undefined).map((r) => r.id);
+    await compensateProvisionedPhotos(doneIds, deps);
+    throw err;
+  }
   return results;
 }
 

@@ -137,18 +137,23 @@ export async function getProcessUrls(
 
 /**
  * Best-effort R2 compensation (BRAWUKA-279): delete the variants `processImage`
- * wrote after the DB transaction rolled back. The worker derives all three
- * keys from `imageUuid`, so no key material crosses this boundary. Never
- * throws for a missing variant (the worker reports those); throws
- * ImageServiceError only on transport/upstream failure so callers can log it
- * without failing the already-failed write.
+ * wrote after the DB transaction rolled back. The worker derives keys from
+ * `imageUuid`, so no key material crosses this boundary. With `keepOriginal`
+ * only the derived variants (`card/`, `thumbnail/`) are deleted and the
+ * original survives for a retry; otherwise all three variants go. Missing
+ * variants are reported, never errors; throws ImageServiceError only on
+ * transport/upstream failure so callers can log it without failing the
+ * already-failed write.
  */
-export async function deleteImageVariants(imageUuid: string): Promise<void> {
+export async function deleteImageVariants(
+  imageUuid: string,
+  options?: { keepOriginal?: boolean },
+): Promise<void> {
   const { url, token } = getEnv();
   const response = await fetch(`${url}/v1/images/delete`, {
     method: "POST",
     headers: headers(token),
-    body: JSON.stringify({ imageUuid }),
+    body: JSON.stringify({ imageUuid, ...(options?.keepOriginal ? { keepOriginal: true } : {}) }),
     signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
   });
 

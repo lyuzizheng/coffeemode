@@ -61,6 +61,13 @@ export interface CompleteResponse {
 export interface DeleteRequest {
   imageUuid: string;
   userId?: string;
+  /**
+   * Keep `original/` and delete only the derived variants (`card/`,
+   * `thumbnail/`). Used when the caller preserves the single-use intent for
+   * a retry: the retry re-runs `getProcessUrls` (HEAD on the original) and
+   * `processImage` re-PUTs the derived variants anyway.
+   */
+  keepOriginal?: boolean;
 }
 
 export interface DeleteResponse {
@@ -68,4 +75,5 @@ export interface DeleteResponse {
   deleted: string[];
   missing: string[];
 }
+
 

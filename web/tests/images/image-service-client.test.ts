@@ -143,4 +143,11 @@ describe("image-service-client", () => {
       status: 500,
     });
   });
+
+  it("deleteImageVariants forwards keepOriginal for retry-safe compensation", async () => {
+    fetchSpy.mockResolvedValue(new Response(JSON.stringify({ imageUuid: "u", deleted: [], missing: [] }), { status: 200 }));
+    await deleteImageVariants("u", { keepOriginal: true });
+    const [, init] = fetchSpy.mock.calls[0];
+    expect(JSON.parse((init?.body as string) ?? "{}")).toEqual({ imageUuid: "u", keepOriginal: true });
+  });
 });

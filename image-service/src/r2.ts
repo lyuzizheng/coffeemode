@@ -66,11 +66,12 @@ export async function headObject(
 }
 
 /**
- * Delete the R2 objects at `keys`. Missing keys are reported, not errors:
- * the caller's compensation path is best-effort and idempotent (a retry
- * must not fail because a previous attempt already deleted the object).
- * Throws on a storage failure so the caller can log it; a non-empty
- * `deleted` + `missing` split is returned otherwise.
+ * Delete the R2 objects at `keys`. The caller's compensation path is
+ * best-effort and idempotent (a retry must not fail because a previous
+ * attempt already deleted the object). On the S3/MinIO path a 404 DELETE is
+ * reported in `missing`; on the binding path R2 delete itself is idempotent
+ * so every key lands in `deleted`. Throws on a storage failure so the
+ * caller can log it.
  */
 export async function deleteObjects(
   env: Env,
@@ -96,11 +97,8 @@ export async function deleteObjects(
     return { deleted, missing };
   }
   for (const key of keys) {
-    const head = await env.R2_BUCKET.head(key);
-    if (!head) {
-      missing.push(key);
-      continue;
-    }
+    // R2 delete is idempotent: deleting a missing key succeeds, so no
+    // per-key HEAD is needed (P2 review: the head was a wasted op per key).
     await env.R2_BUCKET.delete(key);
     deleted.push(key);
   }

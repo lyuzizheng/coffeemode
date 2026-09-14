@@ -189,9 +189,11 @@ export async function createCheckIn(
     });
   } catch (err) {
     // P1 (BRAWUKA-279): the transaction rolled back but the R2 variants
-    // `provisionPhotos` wrote survive — compensate best-effort. The intents
-    // stay unconsumed (the consume rolled back too), so a retry with the
-    // same photo ids can still succeed; the #158 sweeper is the backstop.
+    // `provisionPhotos` wrote survive — compensate best-effort (all three
+    // variants: the creation flow has no retry gate, so the audit's
+    // zero-objects gate holds). The intents stay unconsumed (the consume
+    // rolled back too), so the caller must re-upload before retrying with
+    // the same photo ids; the #158 sweeper is the backstop.
     if (provisioned.length > 0) await compensateProvisionedPhotos(photoIds, deps);
     throw err;
   }

@@ -61,6 +61,7 @@ RETENTION_DAYS=""
 FORCE_UPLOAD_R2=false
 DISABLE_UPLOAD_R2=false
 URL_OVERRIDE=""
+DRY_RUN=false
 
 show_help() {
   sed -n '2,/^# ==/p' "$0" | sed 's/^# \?//'
@@ -209,14 +210,14 @@ echo "Timestamp (UTC): ${TIMESTAMP}"
 echo "=============================================================================="
 
 BACKUP_DB_URL=""
-if [ "${DRY_RUN:-false}" = false ]; then
+if [ "$DRY_RUN" = false ]; then
   if ! BACKUP_DB_URL="$(resolve_database_url)"; then
     echo "Error: per-env connection for ${ENV} is required: STAGING_*/PROD_* scoped vars, --url override, or deploy/dokploy/.env.${ENV}" >&2
     exit 1
   fi
 fi
 
-if [ "${DRY_RUN:-false}" = false ]; then
+if [ "$DRY_RUN" = false ]; then
   mkdir -p "$OUTPUT_DIR"
 fi
 

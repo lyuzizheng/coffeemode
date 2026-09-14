@@ -55,8 +55,14 @@ function schedulePromptLoad(load: () => void, isCancelled: () => boolean): () =>
   void (async () => {
     const reg = await sw.ready;
     // Poll until the active worker reports `activated` — `ready` can
-    // resolve while it is still `activating`.
-    while (reg.active && reg.active.state !== "activated") {
+    // resolve while it is still `activating`. Capped at ~5s (BRAWUKA-281
+    // P2): a worker wedged in `activating`/`installed` must not spin a
+    // 20Hz timer for the whole session. Past the cap, proceed to schedule
+    // anyway — the fetch degrades to network rather than hanging forever.
+    const MAX_ATTEMPTS = 100;
+    let attempts = 0;
+    while (reg.active && reg.active.state !== "activated" && attempts < MAX_ATTEMPTS) {
+      attempts += 1;
       await new Promise<void>((resolve) => setTimeout(resolve, 50));
       if (stopped || isCancelled()) return;
     }

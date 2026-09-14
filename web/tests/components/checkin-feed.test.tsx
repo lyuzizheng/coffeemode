@@ -153,6 +153,64 @@ describe("CheckinFeed expired-cursor recovery", () => {
   });
 });
 
+// BRAWUKA-281 P2: a like in flight must disable only its own card's button.
+// The hook exposes `likePendingId` (the in-flight check-in id, null idle);
+// rendering passes `likePending={likePendingId === checkin.id}`.
+describe("CheckinFeed per-card like pending", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+  });
+
+  it("liking card A keeps card B's button enabled", async () => {
+    let releaseLike!: () => void;
+    const likeGate = new Promise<void>((resolve) => {
+      releaseLike = resolve;
+    });
+    globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (typeof url === "string" && url.startsWith(`/api/cafes/${CAFE}/checkins`)) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            checkins: [card(OWN_ID, true, "Corner seat"), card(OTHER_ID, false, "Great espresso")],
+            next_cursor: null,
+          }),
+        });
+      }
+      if (typeof url === "string" && url.includes("/api/checkins/") && url.endsWith("/like")) {
+        return likeGate.then(() => ({
+          ok: true,
+          status: 200,
+          json: async () => ({ liked: true, likes_count: 1 }),
+        }));
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+    });
+
+    renderFeed();
+    const likeButtons = await screen.findAllByRole("button", { name: "Like this check-in" });
+    expect(likeButtons).toHaveLength(2);
+
+    fireEvent.click(likeButtons[0] as HTMLElement);
+    await waitFor(() => {
+      expect((likeButtons[0] as HTMLButtonElement).disabled).toBe(true);
+    });
+    // Card B stays interactive while A's like is in flight.
+    expect((likeButtons[1] as HTMLButtonElement).disabled).toBe(false);
+
+    releaseLike();
+    await waitFor(() => {
+      expect((likeButtons[0] as HTMLButtonElement).disabled).toBe(false);
+    });
+  });
+});
 // DG72 feed-card edit entry (owner verdict BRAWUKA-120): only the viewer's
 // own cards expose the overflow menu, opening the drawer prefilled in edit
 // mode. jsdom has no IntersectionObserver — the paging sentinel is stubbed.

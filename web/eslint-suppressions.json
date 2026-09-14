@@ -166,9 +166,6 @@
     }
   },
   "lib/search/search-service.ts": {
-    "max-depth": {
-      "count": 2
-    },
     "max-lines-per-function": {
       "count": 1
     },

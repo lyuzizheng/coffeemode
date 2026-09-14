@@ -75,19 +75,64 @@ describe("provisionPhotos", () => {
     expect(deps.processImage).not.toHaveBeenCalled();
   });
 
-  it("processes sequentially and stops at the first bad intent", async () => {
+  it("batch pre-checks all intents before ANY processing (fail-fast gate)", async () => {
     const deps = fakeDeps({
       checkUploadIntent: vi
         .fn()
-        .mockResolvedValueOnce(true) // IMG_A ok — gets processed
+        .mockResolvedValueOnce(true) // IMG_A ok
         .mockResolvedValueOnce(false), // IMG_B rejected
     });
 
     await expect(provisionPhotos(USER, [IMG_A, IMG_B], deps)).rejects.toBeInstanceOf(
       PhotoIntentError,
     );
-    expect(deps.processImage).toHaveBeenCalledTimes(1); // IMG_A only
-    expect(deps.processImage).toHaveBeenCalledWith(IMG_A, expect.anything());
+    // The batch gate resolves first, so neither photo burns remote work.
+    expect(deps.processImage).not.toHaveBeenCalled();
+    expect(deps.getProcessUrls).not.toHaveBeenCalled();
+  });
+
+  it("prefers the batched checkUploadIntents seam (one DB round trip) when provided", async () => {
+    const checkUploadIntent = vi.fn();
+    const checkUploadIntents = vi.fn().mockResolvedValue([IMG_A]);
+    const deps = fakeDeps({ checkUploadIntent, checkUploadIntents });
+
+    await expect(provisionPhotos(USER, [IMG_A, IMG_B], deps)).rejects.toBeInstanceOf(
+      PhotoIntentError,
+    );
+    expect(checkUploadIntents).toHaveBeenCalledTimes(1);
+    expect(checkUploadIntents).toHaveBeenCalledWith(USER, [IMG_A, IMG_B]);
+    expect(checkUploadIntent).not.toHaveBeenCalled();
+    expect(deps.processImage).not.toHaveBeenCalled();
+  });
+
+  it("processes multiple photos concurrently with one intent batch", async () => {
+    const deps = fakeDeps({
+      checkUploadIntents: vi.fn().mockResolvedValue([IMG_A, IMG_B]),
+    });
+
+    const photos = await provisionPhotos(USER, [IMG_A, IMG_B], deps);
+    expect(photos.map((p) => p.id)).toEqual([IMG_A, IMG_B]);
+    expect(deps.checkUploadIntents).toHaveBeenCalledTimes(1);
+    expect(deps.processImage).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns results in input order under bounded concurrency", async () => {
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const deps = fakeDeps({
+      checkUploadIntents: vi.fn().mockResolvedValue([IMG_A, IMG_B]),
+      processImage: vi.fn().mockImplementation(async (id: string) => {
+        if (id === IMG_A) await firstGate;
+        return { width: 1600, height: 1200 };
+      }),
+    });
+
+    const pending = provisionPhotos(USER, [IMG_A, IMG_B], deps);
+    releaseFirst();
+    const photos = await pending;
+    expect(photos.map((p) => p.id)).toEqual([IMG_A, IMG_B]);
   });
 
   it("returns an empty list for no photo ids without touching deps", async () => {

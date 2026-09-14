@@ -33,6 +33,15 @@ type ProvisionQueryFn = TxQueryFn;
 
 export interface ProvisionPhotosDeps {
   checkUploadIntent: (userId: string, imageUuid: string) => Promise<boolean>;
+  /**
+   * Batch pre-check for multi-photo creates (BRAWUKA-281 P1): one batched
+   * DB round trip instead of N sequential `checkUploadIntent` reads.
+   * Returns the subset of `imageUuids` whose intent is valid. Defaults to
+   * N parallel `checkUploadIntent` calls when the caller only supplies the
+   * per-id check (tests, legacy fakes); the production factory below wires
+   * the real batched query.
+   */
+  checkUploadIntents?: (userId: string, imageUuids: string[]) => Promise<string[]>;
   consumeUploadIntent: (
     userId: string,
     imageUuid: string,
@@ -58,6 +67,10 @@ export function defaultProvisionPhotosDeps(): ProvisionPhotosDeps {
     checkUploadIntent: async (userId, imageUuid) => {
       const { checkUploadIntent } = await import("@/lib/db/image-uploads");
       return checkUploadIntent(userId, imageUuid);
+    },
+    checkUploadIntents: async (userId, imageUuids) => {
+      const { checkUploadIntents } = await import("@/lib/db/image-uploads");
+      return checkUploadIntents(userId, imageUuids);
     },
     consumeUploadIntent: async (userId, imageUuid, q) => {
       const { consumeUploadIntent } = await import("@/lib/db/image-uploads");
@@ -90,21 +103,35 @@ export class PhotoIntentError extends Error {
 export type ProvisionedPhoto = Omit<StoredImage, "source">;
 
 /**
- * Pre-check intents and process every photo id, sequentially (sharp is CPU
- * work; bounded by the per-request photo cap). Throws PhotoIntentError on
- * the first id whose intent does not check out — before that image is
- * processed.
+ * Batch intent pre-check, then bounded-concurrency processing (BRAWUKA-281
+ * P1). All intents resolve BEFORE any remote work — a caller holding a
+ * leaked/expired id burns no image-service presign or sharp CPU. Processing
+ * runs with concurrency 2 (sharp is CPU work; `processImage` already
+ * parallelizes its own 3 resize/upload legs internally). Output order
+ * follows input order.
  */
 export async function provisionPhotos(
   userId: string,
   photoIds: string[],
   deps: ProvisionPhotosDeps,
 ): Promise<ProvisionedPhoto[]> {
-  const provisioned: ProvisionedPhoto[] = [];
-  for (const imageUuid of photoIds) {
-    const intentOk = await deps.checkUploadIntent(userId, imageUuid);
-    if (!intentOk) throw new PhotoIntentError();
+  if (photoIds.length === 0) return [];
 
+  const validIds = deps.checkUploadIntents
+    ? await deps.checkUploadIntents(userId, photoIds)
+    : (
+        await Promise.all(
+          photoIds.map(async (imageUuid) =>
+            (await deps.checkUploadIntent(userId, imageUuid)) ? imageUuid : null,
+          ),
+        )
+      ).filter((id): id is string => id !== null);
+  if (validIds.length !== photoIds.length) throw new PhotoIntentError();
+
+  const CONCURRENCY = 2;
+  const results = new Array<ProvisionedPhoto>(photoIds.length);
+  let next = 0;
+  const processOne = async (imageUuid: string): Promise<ProvisionedPhoto> => {
     const processUrls = await deps.getProcessUrls({
       imageUuid,
       userId,
@@ -118,7 +145,7 @@ export async function provisionPhotos(
     });
     const processed = await deps.processImage(imageUuid, processUrls);
 
-    provisioned.push({
+    return {
       id: imageUuid,
       original: processUrls.keys.original,
       card: processUrls.keys.card,
@@ -127,9 +154,20 @@ export async function provisionPhotos(
       h: processed.height,
       by: userId,
       at: new Date().toISOString(),
-    });
-  }
-  return provisioned;
+    };
+  };
+  const workers = Array.from(
+    { length: Math.min(CONCURRENCY, photoIds.length) },
+    async () => {
+      while (next < photoIds.length) {
+        const index = next;
+        next += 1;
+        results[index] = await processOne(photoIds[index] as string);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
 }
 
 /**

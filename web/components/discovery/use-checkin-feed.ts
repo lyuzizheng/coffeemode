@@ -6,7 +6,7 @@
  * this cafe's feed, rolls back from snapshots on error, and revalidates on
  * settle. Render stays in `checkin-feed.tsx`; cards stay in `feed-card.tsx`.
  */
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useTranslations } from "next-intl";
 import {
   keepPreviousData,
@@ -77,12 +77,24 @@ export function useCheckinFeed(cafeId: string, mode: CheckInFeedMode) {
   );
 
   const likeMutation = useLikeMutation(queryClient, cafeId, t("like_signin"), t("load_failed"));
+  const mutateLike = likeMutation.mutate;
+
+  // Stable identity so a memoized FeedCard does not re-render on every
+  // parent render (BRAWUKA-281 P2). `mutate` is stable across renders;
+  // depending on the whole mutation object would defeat the memo.
+  const like = useCallback(
+    (checkin: PublicCheckIn) => mutateLike(checkin),
+    [mutateLike],
+  );
+  // Per-card pending: a like in flight disables only its own card's button.
+  // `variables` is the check-in passed to `mutate`; null when idle.
+  const likePendingId = likeMutation.isPending ? (likeMutation.variables?.id ?? null) : null;
 
   return {
     query,
     checkins,
-    like: (checkin: PublicCheckIn) => likeMutation.mutate(checkin),
-    likePending: likeMutation.isPending,
+    like,
+    likePendingId,
     /**
      * Retry that never re-sends a dead cursor: clears cached pages (and
      * their page params) then refetches from page one. Plain `refetch()` or

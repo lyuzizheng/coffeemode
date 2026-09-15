@@ -9,7 +9,6 @@ import {
   type PromptOutcome,
   type PromptQueueStore,
 } from "@/lib/prompt-queue";
-import { cafeExists } from "./cafes";
 import {
   CafeNotFoundError,
   fail,
@@ -41,7 +40,12 @@ export function parseNavigationBody(body: unknown): ParseResult<{ cafe_id: strin
 
 const INSERT_NAVIGATION_SQL = `
 insert into navigations (cafe_id, user_id)
-values ($1, $2)
+select $1, $2
+where exists (
+  select 1 from cafes
+  where id = $1 and deleted_at is null
+    and (visibility = 'public' or created_by = $2)
+)
 returning id, resolved, created_at
 `;
 
@@ -49,7 +53,10 @@ returning id, resolved, created_at
  * Record a navigation intent ("导航" tap). Drives the ClassPass-style
  * "did you visit?" prompt on a later visit (spec 0001, DG78); the prompt
  * itself is served by `navigationPromptQueue` below. Throws
- * CafeNotFoundError when the cafe does not exist.
+ * CafeNotFoundError when the cafe does not exist. Single statement
+ * (BRAWUKA-279): the visibility gate lives inside the INSERT, so there is
+ * one roundtrip and no TOCTOU — a cafe deleted between check and write
+ * yields 0 rows (404), never an FK 500.
  */
 export async function recordNavigation(
   userId: string,
@@ -58,16 +65,12 @@ export async function recordNavigation(
   if (!isValidUUID(userId)) throw new Error("Invalid user ID");
   if (!isValidUUID(cafeId)) throw new Error("Invalid cafe ID");
 
-  // Explicit existence check so a missing cafe is a 404, not an FK 500.
-  const exists = await cafeExists(cafeId, userId);
-  if (!exists) throw new CafeNotFoundError(cafeId);
-
   const { rows } = await query<RecordedNavigation & Record<string, unknown>>(
     INSERT_NAVIGATION_SQL,
     [cafeId, userId],
   );
   const row = rows[0];
-  if (!row) throw new Error("navigation insert returned no row");
+  if (!row) throw new CafeNotFoundError(cafeId);
   return row;
 }
 

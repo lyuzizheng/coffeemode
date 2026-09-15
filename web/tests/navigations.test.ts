@@ -49,20 +49,21 @@ describe("parseNavigationBody", () => {
 });
 
 describe("recordNavigation", () => {
-  it("inserts the row after verifying the cafe exists", async () => {
-    poolQueryMock
-      .mockResolvedValueOnce({ rows: [{ id: CAFE }] }) // cafe exists
-      .mockResolvedValueOnce({ rows: [NAV_ROW] }); // insert
+  it("inserts the row in ONE statement with the visibility gate inside", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [NAV_ROW] }); // insert…select…where exists
 
     const result = await recordNavigation(USER.id, CAFE);
 
     expect(result).toEqual(NAV_ROW);
-    const insert = poolQueryMock.mock.calls[1];
-    expect(insert[1]).toEqual([CAFE, USER.id]);
+    expect(poolQueryMock).toHaveBeenCalledTimes(1);
+    const [sql, params] = poolQueryMock.mock.calls[0];
+    expect(sql).toContain("where exists");
+    expect(sql).toContain("visibility");
+    expect(params).toEqual([CAFE, USER.id]);
   });
 
-  it("throws CafeNotFoundError without inserting when the cafe is missing", async () => {
-    poolQueryMock.mockResolvedValueOnce({ rows: [] });
+  it("throws CafeNotFoundError without a row when the cafe is missing/invisible", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [] }); // 0 rows: gate failed
 
     const err = await recordNavigation(USER.id, CAFE).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(CafeNotFoundError);
@@ -108,9 +109,7 @@ describe("POST /api/navigations", () => {
   });
 
   it("201s with the recorded navigation", async () => {
-    poolQueryMock
-      .mockResolvedValueOnce({ rows: [{ id: CAFE }] })
-      .mockResolvedValueOnce({ rows: [NAV_ROW] });
+    poolQueryMock.mockResolvedValueOnce({ rows: [NAV_ROW] }); // single-statement insert
     const res = await navPOST(postRequest({ cafe_id: CAFE }));
     expect(res.status).toBe(201);
     await expect(res.json()).resolves.toMatchObject({ id: NAV_ROW.id, resolved: false });

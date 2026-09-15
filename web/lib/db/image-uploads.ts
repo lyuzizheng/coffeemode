@@ -45,6 +45,7 @@ export async function checkUploadIntent(userId: string, imageUuid: string): Prom
   return rows.length > 0;
 }
 
+
 /**
  * Batched pre-check for multi-photo creates (BRAWUKA-281 P1): one batched
  * DB round trip instead of N sequential `checkUploadIntent` reads. Returns
@@ -87,4 +88,25 @@ export async function consumeUploadIntent(
     [imageUuid, userId],
   );
   return rows.length > 0;
+}
+/**
+ * Batched single-use consume (BRAWUKA-279): one DELETE inside the caller's
+ * transaction regardless of photo count. True iff every id was consumed;
+ * otherwise the caller must abort so the whole creation rolls back.
+ */
+export async function consumeUploadIntents(
+  userId: string,
+  imageUuids: string[],
+  q: IntentQueryFn = query,
+): Promise<boolean> {
+  if (imageUuids.length === 0) return true;
+  if (!isValidUUID(userId) || imageUuids.some((id) => !isValidUUID(id))) return false;
+  const { rows } = await q<{ image_uuid: string }>(
+    `delete from image_upload_intents
+     where user_id = $1 and image_uuid = any($2)
+       and created_at > now() - interval '${INTENT_WINDOW}'
+     returning image_uuid`,
+    [userId, imageUuids],
+  );
+  return new Set(rows.map((r) => r.image_uuid)).size === new Set(imageUuids).size;
 }

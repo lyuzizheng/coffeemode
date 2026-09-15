@@ -39,6 +39,7 @@ export interface CompleteRequest {
   targetId?: string;
 }
 
+
 export interface CompleteResponse {
   imageUuid: string;
   original: PresignedUrl;      // presigned GET for the original
@@ -56,4 +57,23 @@ export interface CompleteResponse {
     thumbnail: string;
   };
 }
+
+export interface DeleteRequest {
+  imageUuid: string;
+  userId?: string;
+  /**
+   * Keep `original/` and delete only the derived variants (`card/`,
+   * `thumbnail/`). Used when the caller preserves the single-use intent for
+   * a retry: the retry re-runs `getProcessUrls` (HEAD on the original) and
+   * `processImage` re-PUTs the derived variants anyway.
+   */
+  keepOriginal?: boolean;
+}
+
+export interface DeleteResponse {
+  imageUuid: string;
+  deleted: string[];
+  missing: string[];
+}
+
 

@@ -121,6 +121,7 @@ function makeDeps(overrides: Partial<CompleteUploadDeps> = {}): {
     }),
     getProcessUrls: vi.fn().mockResolvedValue(PROCESS_URLS),
     processImage: vi.fn().mockResolvedValue(PROCESSED),
+    deleteImageVariants: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 
@@ -181,7 +182,7 @@ describe("completeImageUpload", () => {
     expect(deps.runInTransaction).not.toHaveBeenCalled();
   });
 
-  it("rolls back the attach when the intent consume finds 0 rows (replay/expired/mismatch)", async () => {
+  it("attaches first and consumes last: replayed intent rolls the attach back, all variants compensated", async () => {
     const { deps } = makeDeps({
       consumeUploadIntent: vi.fn().mockResolvedValue(false),
     });
@@ -192,22 +193,61 @@ describe("completeImageUpload", () => {
     if (!result.ok) {
       expect(result.reason).toBe("intent_consumed");
     }
-    expect(deps.attachImageToCheckin).not.toHaveBeenCalled();
+    // Attach ran (and will roll back with the tx); the gallery merge never ran.
+    expect(deps.attachImageToCheckin).toHaveBeenCalledTimes(1);
     expect(deps.mergeIntoCafeGallery).not.toHaveBeenCalled();
+    // intent_consumed: the image is unusable — delete everything.
+    expect(deps.deleteImageVariants).toHaveBeenCalledWith(IMAGE_UUID);
   });
 
-  it("returns target_gone when attach matches 0 rows in transaction", async () => {
+  it("target_gone keeps the intent AND the original, so the same complete retries successfully", async () => {
+    const consume = vi.fn().mockResolvedValue(true);
+    const attach = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, cafeId: null })
+      .mockResolvedValueOnce({ ok: true, cafeId: null });
     const { deps } = makeDeps({
-      attachImageToCheckin: vi.fn().mockResolvedValue({ ok: false, cafeId: null }),
+      attachImageToCheckin: attach,
+      consumeUploadIntent: consume,
     });
 
-    const result = await completeImageUpload({ id: "user-1" }, REQ, deps);
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.reason).toBe("target_gone");
+    const first = await completeImageUpload({ id: "user-1" }, REQ, deps);
+    expect(first.ok).toBe(false);
+    if (!first.ok) {
+      expect(first.reason).toBe("target_gone");
     }
+    expect(consume).not.toHaveBeenCalled();
     expect(deps.mergeIntoCafeGallery).not.toHaveBeenCalled();
+    // target_gone: derived variants compensated, original kept for the retry.
+    expect(deps.deleteImageVariants).toHaveBeenCalledWith(IMAGE_UUID, { keepOriginal: true });
+
+    const retry = await completeImageUpload({ id: "user-1" }, REQ, deps);
+    expect(retry.ok).toBe(true);
+    expect(consume).toHaveBeenCalledTimes(1);
+    expect(deps.deleteImageVariants).toHaveBeenCalledTimes(1);
+  });
+
+  it("a throw inside the transaction compensates derived variants and rethrows", async () => {
+    const boom = new Error("connection drop");
+    const { deps } = makeDeps({
+      runInTransaction: vi.fn().mockRejectedValue(boom) as unknown as CompleteUploadDeps["runInTransaction"],
+    });
+
+    await expect(completeImageUpload({ id: "user-1" }, REQ, deps)).rejects.toBe(boom);
+    expect(deps.deleteImageVariants).toHaveBeenCalledWith(IMAGE_UUID, { keepOriginal: true });
+  });
+
+  it("target_gone on a cafe target also keeps the original for retry", async () => {
+    const { deps } = makeDeps({
+      attachImageToCafe: vi.fn().mockResolvedValue(false),
+    });
+    const result = await completeImageUpload(
+      { id: "user-1" },
+      { ...REQ, targetType: "cafe", targetId: CAFE_ID },
+      deps,
+    );
+    expect(result.ok).toBe(false);
+    expect(deps.deleteImageVariants).toHaveBeenCalledWith(IMAGE_UUID, { keepOriginal: true });
   });
 
   it("skips the gallery merge when the checkin has no cafe", async () => {
@@ -219,6 +259,7 @@ describe("completeImageUpload", () => {
 
     expect(result.ok).toBe(true);
     expect(deps.mergeIntoCafeGallery).not.toHaveBeenCalled();
+    expect(deps.deleteImageVariants).not.toHaveBeenCalled();
   });
 
   it("default deps are constructible without touching pg/sharp at import time", () => {
@@ -232,5 +273,6 @@ describe("completeImageUpload", () => {
     expect(typeof deps.attachImageToCafe).toBe("function");
     expect(typeof deps.attachImageToCheckin).toBe("function");
     expect(typeof deps.mergeIntoCafeGallery).toBe("function");
+    expect(typeof deps.deleteImageVariants).toBe("function");
   });
 });

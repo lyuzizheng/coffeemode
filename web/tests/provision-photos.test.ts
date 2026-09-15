@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  compensateProvisionedPhotos,
   consumeProvisionedIntents,
   PhotoIntentError,
   provisionPhotos,
@@ -20,7 +21,9 @@ const IMG_B = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55";
 function fakeDeps(overrides: Partial<ProvisionPhotosDeps> = {}): ProvisionPhotosDeps {
   return {
     checkUploadIntent: vi.fn().mockResolvedValue(true),
+    checkUploadIntents: vi.fn().mockImplementation((_: string, ids: string[]) => Promise.resolve(ids)),
     consumeUploadIntent: vi.fn().mockResolvedValue(true),
+    consumeUploadIntents: vi.fn().mockResolvedValue(true),
     getProcessUrls: vi.fn().mockImplementation((req: { imageUuid: string }) =>
       Promise.resolve({
         keys: {
@@ -31,6 +34,7 @@ function fakeDeps(overrides: Partial<ProvisionPhotosDeps> = {}): ProvisionPhotos
       }),
     ),
     processImage: vi.fn().mockResolvedValue({ width: 1600, height: 1200 }),
+    deleteProvisionedVariants: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -64,19 +68,20 @@ describe("provisionPhotos", () => {
       targetId: IMG_A,
     });
   });
-
-  it("fails fast: an id without a valid intent is rejected before ANY processing", async () => {
+  it("fails fast: any id without a valid intent rejects the batch before ANY processing", async () => {
     const deps = fakeDeps({
-      checkUploadIntent: vi.fn().mockResolvedValue(false),
+      checkUploadIntents: vi.fn().mockResolvedValue([]),
     });
 
     await expect(provisionPhotos(USER, [IMG_A], deps)).rejects.toBeInstanceOf(PhotoIntentError);
+    expect(deps.checkUploadIntents).toHaveBeenCalledWith(USER, [IMG_A]);
     expect(deps.getProcessUrls).not.toHaveBeenCalled();
     expect(deps.processImage).not.toHaveBeenCalled();
   });
 
   it("batch pre-checks all intents before ANY processing (fail-fast gate)", async () => {
     const deps = fakeDeps({
+      checkUploadIntents: undefined,
       checkUploadIntent: vi
         .fn()
         .mockResolvedValueOnce(true) // IMG_A ok
@@ -135,30 +140,84 @@ describe("provisionPhotos", () => {
     expect(photos.map((p) => p.id)).toEqual([IMG_A, IMG_B]);
   });
 
+  it("pre-checks all intents in ONE batched query before processing any photo", async () => {
+    const deps = fakeDeps({
+      checkUploadIntents: vi.fn().mockResolvedValue([IMG_A, IMG_B]),
+    });
+
+    await provisionPhotos(USER, [IMG_A, IMG_B], deps);
+    expect(deps.checkUploadIntents).toHaveBeenCalledTimes(1);
+    expect(deps.checkUploadIntents).toHaveBeenCalledWith(USER, [IMG_A, IMG_B]);
+    expect(deps.processImage).toHaveBeenCalledTimes(2);
+  });
   it("returns an empty list for no photo ids without touching deps", async () => {
     const deps = fakeDeps();
     await expect(provisionPhotos(USER, [], deps)).resolves.toEqual([]);
-    expect(deps.checkUploadIntent).not.toHaveBeenCalled();
+    expect(deps.checkUploadIntents).not.toHaveBeenCalled();
+  });
+
+  it("compensates already-provisioned photos when a later photo fails mid-loop", async () => {
+    const deps = fakeDeps({
+      processImage: vi
+        .fn()
+        .mockResolvedValueOnce({ width: 1600, height: 1200 })
+        .mockRejectedValueOnce(new Error("sharp blew up")),
+    });
+    await expect(provisionPhotos(USER, [IMG_A, IMG_B], deps)).rejects.toThrow("sharp blew up");
+    expect(deps.deleteProvisionedVariants).toHaveBeenCalledTimes(1);
+    expect(deps.deleteProvisionedVariants).toHaveBeenCalledWith(IMG_A);
   });
 });
 
 describe("consumeProvisionedIntents", () => {
-  it("consumes every intent on the transaction's query fn", async () => {
+  it("consumes all intents in ONE batched DELETE on the transaction's query fn", async () => {
     const q = vi.fn();
     const deps = fakeDeps();
     await consumeProvisionedIntents(USER, [IMG_A, IMG_B], q, deps);
 
-    expect(deps.consumeUploadIntent).toHaveBeenNthCalledWith(1, USER, IMG_A, q);
-    expect(deps.consumeUploadIntent).toHaveBeenNthCalledWith(2, USER, IMG_B, q);
+    expect(deps.consumeUploadIntents).toHaveBeenCalledTimes(1);
+    expect(deps.consumeUploadIntents).toHaveBeenCalledWith(USER, [IMG_A, IMG_B], q);
   });
 
-  it("throws PhotoIntentError on the first id that fails to consume", async () => {
+  it("throws PhotoIntentError when the batch consume fails", async () => {
     const deps = fakeDeps({
-      consumeUploadIntent: vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false),
+      consumeUploadIntents: vi.fn().mockResolvedValue(false),
     });
 
     await expect(
       consumeProvisionedIntents(USER, [IMG_A, IMG_B], vi.fn(), deps),
     ).rejects.toBeInstanceOf(PhotoIntentError);
+  });
+
+  it("skips the DELETE for no photo ids", async () => {
+    const deps = fakeDeps();
+    await expect(consumeProvisionedIntents(USER, [], vi.fn(), deps)).resolves.toBeUndefined();
+    expect(deps.consumeUploadIntents).not.toHaveBeenCalled();
+  });
+
+  it("falls back to per-id consume when the batch seam is absent (legacy fakes)", async () => {
+    const q = vi.fn();
+    const consumeUploadIntent = vi.fn().mockResolvedValue(true);
+    const deps = fakeDeps({ consumeUploadIntents: undefined, consumeUploadIntent });
+    await consumeProvisionedIntents(USER, [IMG_A, IMG_B], q, deps);
+    expect(consumeUploadIntent).toHaveBeenNthCalledWith(1, USER, IMG_A, q);
+    expect(consumeUploadIntent).toHaveBeenNthCalledWith(2, USER, IMG_B, q);
+  });
+});
+
+describe("compensateProvisionedPhotos", () => {
+  it("best-effort deletes every provisioned variant after a rollback", async () => {
+    const deps = fakeDeps();
+    await compensateProvisionedPhotos([IMG_A, IMG_B], deps);
+    expect(deps.deleteProvisionedVariants).toHaveBeenCalledTimes(2);
+    expect(deps.deleteProvisionedVariants).toHaveBeenCalledWith(IMG_A);
+    expect(deps.deleteProvisionedVariants).toHaveBeenCalledWith(IMG_B);
+  });
+
+  it("is a no-op without a delete dep (sweeper backstop)", async () => {
+    const { checkUploadIntent, checkUploadIntents, consumeUploadIntent, consumeUploadIntents, getProcessUrls, processImage } = fakeDeps();
+    await expect(
+      compensateProvisionedPhotos([IMG_A], { checkUploadIntent, checkUploadIntents, consumeUploadIntent, consumeUploadIntents, getProcessUrls, processImage }),
+    ).resolves.toBeUndefined();
   });
 });

@@ -1,5 +1,5 @@
 import pg from "pg";
-import { checkUploadIntent, consumeUploadIntent } from "@/lib/db/image-uploads";
+import { checkUploadIntent, checkUploadIntents, consumeUploadIntent, consumeUploadIntents } from "@/lib/db/image-uploads";
 import type { ProcessUrls } from "@/lib/images/image-service-client";
 import type { ProcessedImage } from "@/lib/images/processor";
 import type { ProvisionPhotosDeps } from "@/lib/images/provision-photos";
@@ -55,7 +55,9 @@ export function fakeProcessUrls(imageUuid: string): ProcessUrls {
 export function fakeProvisionPhotosDeps(): ProvisionPhotosDeps {
   return {
     checkUploadIntent,
+    checkUploadIntents,
     consumeUploadIntent,
+    consumeUploadIntents,
     getProcessUrls: async ({ imageUuid }) => fakeProcessUrls(imageUuid),
     processImage: async (imageUuid: string): Promise<ProcessedImage> => ({
       imageUuid,

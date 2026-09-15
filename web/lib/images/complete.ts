@@ -82,6 +82,13 @@ export interface CompleteUploadDeps {
   mergeIntoCafeGallery: (cafeId: string, image: StoredImage, q?: CompleteQueryFn) => Promise<void>;
   getProcessUrls: (request: CompleteImageRequest & { userId?: string }) => Promise<ProcessUrls>;
   processImage: (imageUuid: string, processUrls: ProcessUrls) => Promise<ProcessedImage>;
+  /**
+   * Best-effort R2 compensation (BRAWUKA-279): delete the variants
+   * `processImage` wrote when the transaction fails. With `keepOriginal`
+   * only the derived variants (`card/`, `thumbnail/`) go and the original
+   * survives for a retry; otherwise all three go. Never throws past the
+   */
+  deleteImageVariants?: (imageUuid: string, options?: { keepOriginal?: boolean }) => Promise<void>;
 }
 
 /**
@@ -135,6 +142,15 @@ export function defaultCompleteUploadDeps(): CompleteUploadDeps {
       const { processImage } = await import("@/lib/images/processor");
       return processImage(imageUuid, processUrls);
     },
+    deleteImageVariants: async (imageUuid, options) => {
+      const { deleteImageVariants } = await import("@/lib/images/image-service-client");
+      const { logError } = await import("@/lib/observability/server-log");
+      try {
+        await deleteImageVariants(imageUuid, options);
+      } catch (err) {
+        logError({ route: "completeImageUpload compensate", error: err });
+      }
+    },
   };
 }
 
@@ -148,6 +164,69 @@ export function isImageServiceError(err: unknown): err is { status: number; mess
     "message" in err &&
     typeof (err as { message: unknown }).message === "string"
   );
+}
+
+/**
+ * Attach-first transaction body (BRAWUKA-279): the attach (whose
+ * `where … and user_id` rechecks ownership inside the tx) runs FIRST; the
+ * single-use intent consume runs LAST, so a raced target delete returns
+ * `target_gone` WITHOUT burning the intent — the same complete can be
+ * retried. A replayed/mismatched intent still rolls the attach back
+ * (issues #25, #33, #261).
+ */
+async function attachThenConsume(
+  user: { id: string },
+  req: CompleteImageRequest,
+  storedImage: StoredImage,
+  processed: ProcessedImage,
+  deps: CompleteUploadDeps,
+): Promise<CompleteUploadResult> {
+  return deps.runInTransaction(async (q) => {
+    if (req.targetType === "cafe") {
+      const attached = await deps.attachImageToCafe(
+        { cafeId: req.targetId, userId: user.id, image: storedImage, isCover: req.isCover ?? false },
+        q,
+      );
+      if (!attached) return { ok: false, reason: "target_gone" } as const;
+      const consumed = await deps.consumeUploadIntent(user.id, req.imageUuid, q);
+      if (!consumed) return { ok: false, reason: "intent_consumed" } as const;
+      return { ok: true, storedImage, processed } as const;
+    }
+
+    const { ok, cafeId } = await deps.attachImageToCheckin(
+      { checkinId: req.targetId, userId: user.id, image: storedImage },
+      q,
+    );
+    if (!ok) return { ok: false, reason: "target_gone" } as const;
+    const consumed = await deps.consumeUploadIntent(user.id, req.imageUuid, q);
+    if (!consumed) return { ok: false, reason: "intent_consumed" } as const;
+    if (cafeId) {
+      await deps.mergeIntoCafeGallery(cafeId, storedImage, q);
+    }
+    return { ok: true, storedImage, processed } as const;
+  });
+}
+/**
+ * Best-effort R2 compensation that never masks the transaction outcome.
+ * `keepOriginal` preserves `original/` for a retry (the intent survives);
+ * otherwise all three variants go (the image is unusable).
+ */
+async function compensateVariants(
+  deps: CompleteUploadDeps,
+  imageUuid: string,
+  keepOriginal: boolean,
+): Promise<void> {
+  if (!deps.deleteImageVariants) return;
+  try {
+    if (keepOriginal) {
+      await deps.deleteImageVariants(imageUuid, { keepOriginal: true });
+    } else {
+      await deps.deleteImageVariants(imageUuid);
+    }
+  } catch (err) {
+    const { logError } = await import("@/lib/observability/server-log");
+    logError({ route: "completeImageUpload compensate", error: err });
+  }
 }
 
 /**
@@ -197,35 +276,26 @@ export async function completeImageUpload(
     source: { type: sourceType, id: req.targetId },
   };
 
-  // 3. Atomic DB writes: the single-use intent consume and the attach
-  //    share one transaction, so a replayed/mismatched intent rolls the
-  //    attach back, and a failure rolls back the checkin append AND the
-  //    gallery merge (issues #25, #33, #261).
-  return deps.runInTransaction(async (q) => {
-    const consumed = await deps.consumeUploadIntent(user.id, req.imageUuid, q);
-    if (!consumed) return { ok: false, reason: "intent_consumed" };
-
-    // NOTE: if the attach below matches 0 rows (the target was deleted or
-    // changed owner between the pre-check and this tx), the intent is
-    // already consumed — the complete fails closed and the user must re-upload.
-    // Rare, fail-closed, accepted at MVP (review #33).
-    if (req.targetType === "cafe") {
-      const attached = await deps.attachImageToCafe(
-        { cafeId: req.targetId, userId: user.id, image: storedImage, isCover: req.isCover ?? false },
-        q,
-      );
-      if (!attached) return { ok: false, reason: "target_gone" };
-      return { ok: true, storedImage, processed };
-    }
-
-    const { ok, cafeId } = await deps.attachImageToCheckin(
-      { checkinId: req.targetId, userId: user.id, image: storedImage },
-      q,
-    );
-    if (!ok) return { ok: false, reason: "target_gone" };
-    if (cafeId) {
-      await deps.mergeIntoCafeGallery(cafeId, storedImage, q);
-    }
-    return { ok: true, storedImage, processed };
-  });
+  // 3. Atomic DB writes via attach-then-consume (see helper): ownership is
+  //    rechecked inside the tx, and `target_gone` no longer burns the intent.
+  let txResult: CompleteUploadResult;
+  try {
+    txResult = await attachThenConsume(user, req, storedImage, processed, deps);
+  } catch (err) {
+    // P1 review: a THROW inside the transaction (pg error, connection drop,
+    // serialization failure) must also compensate — the variants step 2
+    // wrote would otherwise leak. The intent survives a throw (no commit),
+    // so keep the original for a retry and delete only derived variants.
+    await compensateVariants(deps, req.imageUuid, true);
+    throw err;
+  }
+  // P1 (BRAWUKA-279): a non-ok outcome orphans the derived variants —
+  // compensate best-effort. `target_gone` keeps the original (the intent is
+  // preserved, so the retry re-runs getProcessUrls against it and re-PUTs
+  // the derived variants); `intent_consumed` deletes everything (unusable).
+  // The #158 sweeper is the backstop for anything this misses.
+  if (!txResult.ok) {
+    await compensateVariants(deps, req.imageUuid, txResult.reason === "target_gone");
+  }
+  return txResult;
 }

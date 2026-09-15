@@ -65,6 +65,46 @@ export async function headObject(
   return { size: head.size };
 }
 
+/**
+ * Delete the R2 objects at `keys`. The caller's compensation path is
+ * best-effort and idempotent (a retry must not fail because a previous
+ * attempt already deleted the object). On the S3/MinIO path a 404 DELETE is
+ * reported in `missing`; on the binding path R2 delete itself is idempotent
+ * so every key lands in `deleted`. Throws on a storage failure so the
+ * caller can log it.
+ */
+export async function deleteObjects(
+  env: Env,
+  keys: string[],
+): Promise<{ deleted: string[]; missing: string[] }> {
+  const deleted: string[] = [];
+  const missing: string[] = [];
+  if (env.R2_ENDPOINT) {
+    const aws = r2Client(env);
+    const base = env.R2_ENDPOINT.replace(/\/+$/, "");
+    for (const key of keys) {
+      const res = await aws.fetch(`${base}/${env.R2_BUCKET_NAME}/${key}`, { method: "DELETE" });
+      if (res.ok || res.status === 404) {
+        // Benign: drain the body so the socket can be reused.
+        await res.body?.cancel().catch(() => {});
+        (res.status === 404 ? missing : deleted).push(key);
+      } else {
+        // Benign: drain before throwing so the error path never leaks a stream.
+        await res.body?.cancel().catch(() => {});
+        throw new Error(`R2 DELETE ${key} failed with status ${res.status}`);
+      }
+    }
+    return { deleted, missing };
+  }
+  for (const key of keys) {
+    // R2 delete is idempotent: deleting a missing key succeeds, so no
+    // per-key HEAD is needed (P2 review: the head was a wasted op per key).
+    await env.R2_BUCKET.delete(key);
+    deleted.push(key);
+  }
+  return { deleted, missing };
+}
+
 export function ttlSeconds(env: Env): number {
   const parsed = Number.parseInt(env.UPLOAD_URL_TTL_SECONDS ?? "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_UPLOAD_URL_TTL_SECONDS;

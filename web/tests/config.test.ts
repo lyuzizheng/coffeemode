@@ -98,6 +98,14 @@ describe("config files", () => {
       persistMaxAgeMs: 604800000,
     });
     expect(appConfig.validation).toEqual({ cafeAddressMaxChars: 300, profileCityMaxChars: 50 });
+    expect(appConfig.map).toEqual({
+      tileStyle: {
+        light: "https://tiles.openfreemap.org/styles/liberty",
+        dark: "https://tiles.openfreemap.org/styles/dark",
+      },
+      glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
+      sprite: "https://tiles.openfreemap.org/sprites/ofm_f384/ofm",
+    });
     expect(appConfig.budgets.bundle).toEqual({
       maxJsChunkBytes: 409600,
       maxCssChunkBytes: 512000,
@@ -279,6 +287,14 @@ describe("parseAppConfig validation", () => {
   const validValidation = { cafeAddressMaxChars: 300, profileCityMaxChars: 50 };
   const validRuntimeConfig = { responseCache: { sMaxAgeSeconds: 60, staleWhileRevalidateSeconds: 300 } };
   const validOnboarding = { cityCoverageKm: 50, geolocationTimeoutMs: 10000 };
+  const validMap = {
+    tileStyle: {
+      light: "https://tiles.openfreemap.org/styles/liberty",
+      dark: "https://tiles.openfreemap.org/styles/dark",
+    },
+    glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
+    sprite: "https://tiles.openfreemap.org/sprites/ofm_f384/ofm",
+  };
 
   it("accepts a valid config", () => {
     const valid = {
@@ -293,6 +309,7 @@ describe("parseAppConfig validation", () => {
       checkins: validCheckins,
       profile: validProfile,
       images: validImages,
+      map: validMap,
       query: validQuery,
       validation: validValidation,
       runtimeConfig: validRuntimeConfig,
@@ -353,6 +370,7 @@ describe("parseAppConfig validation", () => {
         checkins: validCheckins,
         profile: validProfile,
         images: validImages,
+        map: validMap,
         query: validQuery,
         validation: validValidation,
       runtimeConfig: validRuntimeConfig,
@@ -469,6 +487,7 @@ describe("parseAppConfig validation", () => {
         checkins: validCheckins,
         profile: validProfile,
         images: validImages,
+        map: validMap,
         query: validQuery,
         validation: validValidation,
       runtimeConfig: validRuntimeConfig,
@@ -495,6 +514,7 @@ describe("parseAppConfig validation", () => {
       checkins: validCheckins,
       profile: validProfile,
       images: validImages,
+      map: validMap,
       query: validQuery,
       validation: validValidation,
       runtimeConfig: validRuntimeConfig,
@@ -526,6 +546,7 @@ describe("parseAppConfig validation", () => {
         checkins: validCheckins,
         profile: validProfile,
         images: validImages,
+        map: validMap,
         query: validQuery,
         validation: validValidation,
       runtimeConfig: validRuntimeConfig,
@@ -548,6 +569,7 @@ describe("parseAppConfig validation", () => {
         checkins: validCheckins,
         profile: validProfile,
         images: validImages,
+        map: validMap,
         query: validQuery,
         validation: validValidation,
       runtimeConfig: validRuntimeConfig,
@@ -568,6 +590,7 @@ describe("parseAppConfig validation", () => {
         promptQueue: validPromptQueue,
       checkins: validCheckins,
       images: validImages,
+      map: validMap,
       query: validQuery,
       validation: validValidation,
       runtimeConfig: validRuntimeConfig,
@@ -590,6 +613,40 @@ describe("parseAppConfig validation", () => {
     ).toThrow(/"profile\.handle\.slugMaxChars" must be a positive integer/);
   });
 
+  it("owns the basemap hosting switch (BRAWUKA-313: four URLs, public ↔ self-hosted)", () => {
+    expect(appConfig.map.tileStyle.light).toBe("https://tiles.openfreemap.org/styles/liberty");
+    expect(appConfig.map.tileStyle.dark).toBe("https://tiles.openfreemap.org/styles/dark");
+    expect(appConfig.map.glyphs).toBe("https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf");
+    expect(appConfig.map.sprite).toBe("https://tiles.openfreemap.org/sprites/ofm_f384/ofm");
+  });
+
+  it("rejects a missing or non-https map section (BRAWUKA-313)", () => {
+    const base = {
+      search: validSearch,
+      stats: validStats,
+      cafes: { listLimitMax: 50 },
+      feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
+      discovery: validCenter,
+      onboarding: validOnboarding,
+      seo: validSeo,
+      promptQueue: validPromptQueue,
+      checkins: validCheckins,
+      profile: validProfile,
+      images: validImages,
+      query: validQuery,
+      validation: validValidation,
+      runtimeConfig: validRuntimeConfig,
+      budgets: validBudgets,
+    };
+    expect(() => parseAppConfig({ ...base })).toThrow(/"map" must be a mapping/);
+    expect(() =>
+      parseAppConfig({ ...base, map: { ...validMap, tileStyle: { light: "http://tiles.example.com/a", dark: validMap.tileStyle.dark } } }),
+    ).toThrow(/"map\.tileStyle\.light" must be an https: URL/);
+    expect(() =>
+      parseAppConfig({ ...base, map: { ...validMap, glyphs: "" } }),
+    ).toThrow(/"map\.glyphs" must be a non-empty string/);
+  });
+
   it("rejects mistyped images/query/validation sections (BRAWUKA-250)", () => {
     const base = {
       search: validSearch,
@@ -606,13 +663,13 @@ describe("parseAppConfig validation", () => {
       budgets: validBudgets,
     };
     expect(() =>
-      parseAppConfig({ ...base, images: { ...validImages, webpQuality: 101 }, query: validQuery, validation: validValidation }),
+      parseAppConfig({ ...base, images: { ...validImages, webpQuality: 101 }, map: validMap, query: validQuery, validation: validValidation }),
     ).toThrow(/"images\.webpQuality" must be a number between 1 and 100/);
     expect(() =>
-      parseAppConfig({ ...base, images: validImages, query: { ...validQuery, gcTimeMs: -1 }, validation: validValidation }),
+      parseAppConfig({ ...base, images: validImages, map: validMap, query: { ...validQuery, gcTimeMs: -1 }, validation: validValidation }),
     ).toThrow(/"query\.gcTimeMs" must be a positive integer/);
     expect(() =>
-      parseAppConfig({ ...base, images: validImages, query: validQuery, validation: { cafeAddressMaxChars: 300 } }),
+      parseAppConfig({ ...base, images: validImages, map: validMap, query: validQuery, validation: { cafeAddressMaxChars: 300 } }),
     ).toThrow(/"validation\.profileCityMaxChars" must be a positive integer/);
   });
 

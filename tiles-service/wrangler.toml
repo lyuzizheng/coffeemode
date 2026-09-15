@@ -1,0 +1,71 @@
+# CafeMood tiles service — Cloudflare Worker + R2 (BRAWUKA-313)
+# Docs: BRAWUKA-308 §3, docs/devops/maptiles-runbook.md
+#
+# The WORKER owns the tile hostname (`tiles.cafemood.app` /
+# `staging-tiles.cafemood.app`) via a Worker Route — NOT an R2 custom
+# domain. The R2 bucket is origin storage only (never directly addressed):
+# the Worker range-reads tile bytes out of `planet/{version}/planet.pmtiles`
+# and serves styles/assets as object bytes. Attaching the hostname as an R2
+# custom domain instead would bypass the Worker entirely and 404 every tile.
+
+name = "tiles-service"
+main = "src/index.ts"
+# Pinned deliberately: same reviewed runtime contract as poi-service and
+# image-service (2025-08-01 is the newest date whose default-on flag set was
+# reviewed against these Workers). Moves only in a reviewed commit.
+#
+# No `nodejs_compat` flag: src/ imports no Node built-in (Web fetch/URL only).
+compatibility_date = "2025-08-01"
+
+# --- Vars (committed pins, not secrets) ---
+#   PLANET_VERSION   live planet version, e.g. 20260913_164504_pt.
+# Rotated on each monthly promote by editing the per-env `[vars]` below +
+# redeploying — the TileJSON embeds the version, so a version switch IS a
+# deploy (unlike a secret rotation, which would leave edge caches stale).
+# Local dev: override in .dev.vars (gitignored).
+# `npm run deploy` goes through scripts/deploy.mjs, which requires `--env`
+# and rejects the placeholder bucket, so a bare `wrangler deploy` cannot ship
+# a Worker bound to a bucket that does not exist. Same pattern as poi-service.
+#
+# To deploy:
+# 1. Create the buckets (scripts/devops/provision-maptiles.sh --env staging|production):
+#      cafemode-maptiles-staging   (production: cafemode-maptiles)
+# 2. Pin PLANET_VERSION per env below (+ redeploy — the TileJSON embeds it).
+# 3. Fill the bucket (scripts/devops/build-maptiles.sh) and verify
+#    (scripts/devops/verify-maptiles.sh) BEFORE switching app.yaml.
+
+[[r2_buckets]]
+binding = "TILES_BUCKET"
+# Local-dev placeholder. Never deployed — see the note above.
+bucket_name = "cafemode-maptiles-local"
+
+[vars]
+PLANET_VERSION = "local"
+ALLOWED_ORIGINS = "http://localhost:3000"
+
+# Staging env: isolated staging stack (spec 0005 §3). `vars` and
+# `r2_buckets` are not inherited by environments, so both are repeated here.
+# Deploy with `npm run deploy -- --env staging` (guard: scripts/deploy.mjs).
+[env.staging]
+name = "tiles-service-staging"
+vars = { PLANET_VERSION = "20260913_164504_pt", ALLOWED_ORIGINS = "https://cafemood.app,https://staging.cafemood.app,http://localhost:3000" }
+# Worker Route: the Worker owns staging-tiles.cafemood.app (zone: cafemood.app).
+# Attach in dashboard: Workers & Pages → tiles-service-staging → Settings →
+# Domains & Routes → Add Custom Domain. Do NOT attach this hostname as an R2
+# custom domain — that would bypass the Worker and 404 every tile.
+routes = [{ pattern = "staging-tiles.cafemood.app/*", zone_name = "cafemood.app" }]
+[[env.staging.r2_buckets]]
+binding = "TILES_BUCKET"
+bucket_name = "cafemode-maptiles-staging"
+
+# Production env: isolated production stack (spec 0005 §3).
+# Deploy with `npm run deploy -- --env production` (guard: scripts/deploy.mjs).
+[env.production]
+name = "tiles-service-prod"
+vars = { PLANET_VERSION = "20260913_164504_pt", ALLOWED_ORIGINS = "https://cafemood.app,https://www.cafemood.app" }
+# Worker Route: the Worker owns tiles.cafemood.app (zone: cafemood.app).
+# Same dashboard attach as staging; never an R2 custom domain.
+routes = [{ pattern = "tiles.cafemood.app/*", zone_name = "cafemood.app" }]
+[[env.production.r2_buckets]]
+binding = "TILES_BUCKET"
+bucket_name = "cafemode-maptiles"

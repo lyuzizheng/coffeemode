@@ -340,6 +340,33 @@ jobs:
       - name: Unit tests
         run: npm test
 
+  tiles-service-gate:
+    needs: changes
+    if: needs.changes.outputs.poi_service == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tiles-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tiles-service/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Deploy config guard (staging and production must resolve deployable)
+        run: npm run deploy:check
   ci-gate:
     needs:
       - changes
@@ -349,6 +376,7 @@ jobs:
       - integration-gate
       - image-service-gate
       - poi-service-gate
+      - tiles-service-gate
     if: always()
     runs-on: ubuntu-latest
     steps:

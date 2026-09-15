@@ -130,7 +130,7 @@ else
         image_service=true
         integration=true
         ;;
-      poi-service/*)
+      poi-service/*|tiles-service/*)
         poi_service=true
         ;;
       # Dokploy deployment definitions and the devops forwarders they ship with

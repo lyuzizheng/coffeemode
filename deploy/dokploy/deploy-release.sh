@@ -18,10 +18,19 @@ fi
 
 ENV="${1:-staging}"
 
+case "$ENV" in
+  staging|prod)
+    shift || true
+    ;;
+  *)
+    echo "Error: first argument must be 'staging' or 'prod' (got '$ENV')." >&2
+    echo "Usage: ./deploy-release.sh [staging|prod] [options...]" >&2
+    exit 1
+    ;;
+esac
+
 if [[ "$ENV" == "prod" ]]; then
-  shift || true
   exec "${SCRIPT_DIR}/../../scripts/devops/upgrade-prod.sh" "$@"
 else
-  shift || true
   exec "${SCRIPT_DIR}/../../scripts/devops/upgrade-staging.sh" "$@"
 fi

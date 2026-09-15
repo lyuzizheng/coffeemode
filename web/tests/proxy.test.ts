@@ -10,9 +10,11 @@ vi.mock("@supabase/ssr", () => ({
 }));
 
 // Default: every cafe exists, so existing pass-through cases stay intact.
-const cafeExistsMock = vi.fn<(id: string) => Promise<boolean>>(async () => true);
+// Two-param signature mirrors cafeExists(id, viewerId): the second arg is
+// the VERIFIED user id (via getUser), or null for anonymous/unverifiable.
+const cafeExistsMock = vi.fn<(id: string, viewerId?: string | null) => Promise<boolean>>(async () => true);
 vi.mock("@/lib/db/cafes", () => ({
-  cafeExists: (id: string) => cafeExistsMock(id),
+  cafeExists: (id: string, viewerId?: string | null) => cafeExistsMock(id, viewerId),
 }));
 
 import { createServerClient } from "@supabase/ssr";
@@ -34,12 +36,13 @@ describe("proxy", () => {
       ]);
       return { data: { session: { user: { id: "u1" } } }, error: null };
     });
+    const getUser = vi.fn(async () => ({ data: { user: { id: "u1" } }, error: null }));
 
     vi.mocked(createServerClient).mockImplementation(
       (_url: string, _key: string, options: unknown) => {
         const opts = options as { cookies: { setAll?: (cookiesToSet: unknown[]) => void } };
         capturedSetAll = opts.cookies.setAll;
-        return { auth: { getSession } } as unknown as ReturnType<typeof createServerClient>;
+        return { auth: { getSession, getUser } } as unknown as ReturnType<typeof createServerClient>;
       },
     );
 
@@ -53,6 +56,38 @@ describe("proxy", () => {
     expect(getSession).toHaveBeenCalledTimes(1);
     expect(res.cookies.get("sb-access-token")?.value).toBe("fresh-token");
     expect(res.status).toBe(200);
+  });
+
+  it("uses one client so token rotation is persisted (no forced logout)", async () => {
+    vi.mocked(createServerClient).mockImplementation(
+      () => ({ auth: { getSession: vi.fn(async () => ({ data: { session: null }, error: null })), getUser: vi.fn(async () => ({ data: { user: null }, error: null })) } }) as unknown as ReturnType<typeof createServerClient>,
+    );
+
+    const req = new NextRequest(new URL("http://localhost/api/cafes"), {
+      headers: new Headers(),
+    });
+    req.cookies.set("sb-access-token", "stale-token");
+
+    await proxy(req);
+    expect(createServerClient).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips getUser on non-cafe routes", async () => {
+    const getSession = vi.fn(async () => ({ data: { session: { user: { id: "u1" } } }, error: null }));
+    const getUser = vi.fn(async () => ({ data: { user: { id: "u1" } }, error: null }));
+
+    vi.mocked(createServerClient).mockImplementation(
+      () => ({ auth: { getSession, getUser } }) as unknown as ReturnType<typeof createServerClient>,
+    );
+
+    const req = new NextRequest(new URL("http://localhost/api/cafes"), {
+      headers: new Headers(),
+    });
+    req.cookies.set("sb-access-token", "stale-token");
+
+    await proxy(req);
+    expect(getSession).toHaveBeenCalledTimes(1);
+    expect(getUser).not.toHaveBeenCalled();
   });
 
   it("falls through when supabase env is missing", async () => {
@@ -73,9 +108,10 @@ describe("proxy", () => {
     const getSession = vi.fn(async () => {
       throw new Error("Supabase unreachable");
     });
+    const getUser = vi.fn(async () => ({ data: { user: null }, error: null }));
 
     vi.mocked(createServerClient).mockImplementation(
-      () => ({ auth: { getSession } }) as unknown as ReturnType<typeof createServerClient>,
+      () => ({ auth: { getSession, getUser } }) as unknown as ReturnType<typeof createServerClient>,
     );
 
     const req = new NextRequest(new URL("http://localhost/cafes/c1"), {
@@ -172,7 +208,6 @@ describe("proxy gone-cafe 404 (DG19)", () => {
     expect(res.status).toBe(200);
     errorSpy.mockRestore();
   });
-
   it("strips an inbound x-gone-cafe-id so clients cannot inject the marker", async () => {
     const req = new NextRequest(new URL("http://localhost/"), {
       headers: { "x-gone-cafe-id": "spoofed" },
@@ -182,6 +217,70 @@ describe("proxy gone-cafe 404 (DG19)", () => {
     // not be forwarded to rendering.
     expect(res.headers.get("x-middleware-request-x-gone-cafe-id")).toBeNull();
     expect(res.status).toBe(200);
+  });
+
+  it("passes the verified user id to the visibility check (BRAWUKA-315)", async () => {
+    cafeExistsMock.mockResolvedValue(true);
+    const getSession = vi.fn(async () => ({
+      data: { session: { user: { id: "spoofable-id" } } },
+      error: null,
+    }));
+    const getUser = vi.fn(async () => ({
+      data: { user: { id: "verified-user" } },
+      error: null,
+    }));
+    vi.mocked(createServerClient).mockImplementation(
+      () => ({ auth: { getSession, getUser } }) as unknown as ReturnType<typeof createServerClient>,
+    );
+
+    const req = new NextRequest(new URL(`http://localhost/cafes/${CAFE}`));
+    req.cookies.set("sb-access-token", "stale-token");
+
+    const res = await proxy(req);
+    expect(res.status).toBe(200);
+    expect(getUser).toHaveBeenCalledTimes(1);
+    expect(cafeExistsMock).toHaveBeenCalledWith(CAFE, "verified-user");
+  });
+
+  it("passes null when the session cannot be verified (BRAWUKA-315)", async () => {
+    cafeExistsMock.mockResolvedValue(true);
+    const getSession = vi.fn(async () => ({
+      data: { session: { user: { id: "spoofable-id" } } },
+      error: null,
+    }));
+    const getUser = vi.fn(async () => ({ data: { user: null }, error: null }));
+    vi.mocked(createServerClient).mockImplementation(
+      () => ({ auth: { getSession, getUser } }) as unknown as ReturnType<typeof createServerClient>,
+    );
+
+    const req = new NextRequest(new URL(`http://localhost/cafes/${CAFE}`));
+    req.cookies.set("sb-access-token", "forged-token");
+
+    await proxy(req);
+    expect(cafeExistsMock).toHaveBeenCalledWith(CAFE, null);
+  });
+
+  it("passes null with no session cookies and skips verification (BRAWUKA-315)", async () => {
+    cafeExistsMock.mockResolvedValue(true);
+    const getUser = vi.fn(async () => ({
+      data: { user: { id: "must-not-be-used" } },
+      error: null,
+    }));
+    vi.mocked(createServerClient).mockImplementation(
+      () =>
+        ({
+          auth: {
+            getSession: vi.fn(async () => ({ data: { session: null }, error: null })),
+            getUser,
+          },
+        }) as unknown as ReturnType<typeof createServerClient>,
+    );
+
+    const req = new NextRequest(new URL(`http://localhost/cafes/${CAFE}`));
+    await proxy(req);
+    expect(createServerClient).not.toHaveBeenCalled();
+    expect(getUser).not.toHaveBeenCalled();
+    expect(cafeExistsMock).toHaveBeenCalledWith(CAFE, null);
   });
 });
 

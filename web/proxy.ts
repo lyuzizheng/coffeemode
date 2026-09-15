@@ -29,31 +29,13 @@ const CAFE_PAGE_PATH = /^\/cafes\/([^/]+)$/;
 /** Header the proxy uses to hand the attempted id to the global 404. */
 const GONE_HEADER = "x-gone-cafe-id";
 
-async function getProxyUserId(request: NextRequest): Promise<string | null> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anonKey || !hasSupabaseSessionCookie(request)) return null;
-  try {
-    const supabase = createServerClient(url, anonKey, {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-      },
-    });
-    const { data } = await supabase.auth.getUser();
-    return data.user?.id ?? null;
-  } catch {
-    // Benign: Supabase session verification failure treats proxy request as unauthenticated.
-    return null;
-  }
-}
-
-async function isGoneCafePage(request: NextRequest): Promise<boolean> {
+async function isGoneCafePage(
+  request: NextRequest,
+  userId: string | null,
+): Promise<boolean> {
   const match = CAFE_PAGE_PATH.exec(request.nextUrl.pathname);
   if (!match) return false;
   try {
-    const userId = await getProxyUserId(request);
     return !(await cafeExists(match[1], userId));
   } catch (err) {
     // DB unreachable: fail open. The page handles the error surface; a
@@ -73,9 +55,77 @@ function sanitizedRequest(request: NextRequest): NextRequest {
   headers.delete(GONE_HEADER);
   return new NextRequest(request, { headers });
 }
-
 async function handleProxy(request: NextRequest) {
   const req = sanitizedRequest(request);
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  let response = NextResponse.next({ request: req });
+  let userId: string | null = null;
+  let sessionRefreshed = false;
+
+  // Session refresh runs FIRST, on the single client that owns setAll.
+  // A second client calling getUser() here would refresh an expired session
+  // and silently drop the rotated refresh token (no setAll → ssr discards
+  // the write); this client's later getSession() then fails on the consumed
+  // token and emits session-removal cookies — a forced logout. getSession()
+  // only decodes the local session without validating the JWT, so userId
+  // stays null until verified below.
+  if (url && anonKey && hasSupabaseSessionCookie(req)) {
+    const supabase = createServerClient(url, anonKey, {
+      cookies: {
+        getAll() {
+          return req.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          // Forward refreshed cookies onto the request so route handlers see
+          // the latest session, then mirror them (with serialize options)
+          // onto the outgoing response.
+          if (cookiesToSet.length > 0) sessionRefreshed = true;
+          for (const { name, value } of cookiesToSet) {
+            req.cookies.set(name, value);
+          }
+
+          response = NextResponse.next({ request: req });
+          for (const { name, value, options } of cookiesToSet) {
+            response.cookies.set(name, value, options);
+          }
+        },
+      },
+    });
+
+    // `getSession()` refreshes only when the access token is expired, and
+    // does not force a network validation on every request like `getUser()`
+    // does. If Supabase is unreachable, fall through so public routes and
+    // the offline page do not 500.
+    try {
+      await supabase.auth.getSession();
+    } catch (e) {
+      logError({ route: "proxy session refresh", request: req, error: e });
+    }
+
+    // Verify the user for the gone-cafe visibility check on the SAME client
+    // (it owns setAll, so a refresh here is persisted). getSession() above
+    // only decodes the session without validating the JWT — passing its
+    // user id to cafeExists() would let a self-signed sb-*-auth-token cookie
+    // impersonate any user for the private-cafe existence probe. Scoped to
+    // cafe GET/HEAD so the cost matches the old baseline (one getUser() per
+    // cafe page view, none elsewhere).
+    if (
+      (req.method === "GET" || req.method === "HEAD") &&
+      CAFE_PAGE_PATH.test(req.nextUrl.pathname)
+    ) {
+      try {
+        const { data } = await supabase.auth.getUser();
+        userId = data.user?.id ?? null;
+      } catch {
+        // Benign: treat an unverifiable session as anonymous; the page's own
+        // getUser() renders the final auth surface.
+        userId = null;
+      }
+    }
+  }
 
   // Gone-cafe deep links get a real 404 (DG19). The cafe page is async, and
   // the root loading boundary streams a matched route's shell with a 200
@@ -87,9 +137,11 @@ async function handleProxy(request: NextRequest) {
   // targets the SSR page.
   if (
     (req.method === "GET" || req.method === "HEAD") &&
-    (await isGoneCafePage(req))
+    (await isGoneCafePage(req, userId))
   ) {
     const id = CAFE_PAGE_PATH.exec(req.nextUrl.pathname)?.[1] ?? "";
+    // req.headers already carries any refreshed session cookies (setAll
+    // mutated req.cookies above), so the rewrite forwards them upstream.
     const headers = new Headers(req.headers);
     headers.set(GONE_HEADER, id);
     const gone = NextResponse.rewrite(new URL("/__gone-cafe", req.url), {
@@ -100,55 +152,6 @@ async function handleProxy(request: NextRequest) {
     // next.config matches this path, so stamp the bypass here.
     gone.headers.set("Cache-Control", CAFE_SHELL_BYPASS_CACHE_CONTROL);
     return gone;
-  }
-
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  // If Supabase is not configured (e.g. local one-off builds), fall through.
-  if (!url || !anonKey) {
-    return NextResponse.next({ request: req });
-  }
-
-  let response = NextResponse.next({ request: req });
-
-  // No Supabase session cookies means no refresh work; skip the network
-  // round-trip entirely. Analytics / consent / A/B cookies do not count.
-  if (!hasSupabaseSessionCookie(req)) {
-    return response;
-  }
-
-  let sessionRefreshed = false;
-  const supabase = createServerClient(url, anonKey, {
-    cookies: {
-      getAll() {
-        return req.cookies.getAll();
-      },
-      setAll(cookiesToSet) {
-        // Forward refreshed cookies onto the request so route handlers see
-        // the latest session, then mirror them (with serialize options) onto
-        // the outgoing response.
-        if (cookiesToSet.length > 0) sessionRefreshed = true;
-        for (const { name, value } of cookiesToSet) {
-          req.cookies.set(name, value);
-        }
-
-        response = NextResponse.next({ request: req });
-        for (const { name, value, options } of cookiesToSet) {
-          response.cookies.set(name, value, options);
-        }
-      },
-    },
-  });
-
-  // `getSession()` refreshes only when the access token is expired, and does
-  // not force a network validation on every request like `getUser()` does.
-  // If Supabase is unreachable, fall through so public routes and the
-  // offline page do not 500.
-  try {
-    await supabase.auth.getSession();
-  } catch (e) {
-    logError({ route: "proxy session refresh", request: req, error: e });
   }
 
   // BRAWUKA-184: a response carrying a refreshed session (Set-Cookie) MUST

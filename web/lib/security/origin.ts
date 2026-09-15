@@ -100,21 +100,15 @@ export function isAllowedOrigin(origin: string): boolean {
   return isAllowedHost(url.host, url.hostname);
 }
 
-/** Extracts the effective host from request headers, handling comma-separated forwarded hosts. */
-function getEffectiveHost(headers: Headers): string | null {
-  const rawForwarded = headers.get("x-forwarded-host");
-  if (rawForwarded) {
-    const first = rawForwarded.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return headers.get("host");
-}
-
 /** Reconstructs proto + host origin for OAuth redirects. */
 export function getProtoHost(requestHeaders: Headers): string | null {
   const rawProto = requestHeaders.get("x-forwarded-proto");
   const proto = rawProto === "http" ? "http" : "https";
-  const host = getEffectiveHost(requestHeaders);
+  // BRAWUKA-282 P1-1: `host` only — `x-forwarded-host` is client-injectable
+  // on every deployment here (no edge strips it; Cloudflare never sets it,
+  // see `site-origin.ts`) and must never feed origin decisions. Callers
+  // (auth actions) additionally require the result to pass `isAllowedOrigin`.
+  const host = requestHeaders.get("host");
   if (!host) return null;
 
   const cleanHost = host.replace(/^https?:\/\//, "");
@@ -145,8 +139,10 @@ export function isSameOrigin(request: Request): boolean {
     return false;
   }
 
-  // 2. Extract expected host from request headers
-  const host = getEffectiveHost(request.headers);
+  // 2. Compare against `host` + the configured allowlist. Never consult
+  // `x-forwarded-host`: a forged `Origin: https://evil` +
+  // `X-Forwarded-Host: evil` pair must not pass as same-origin.
+  const host = request.headers.get("host");
 
   const origin = request.headers.get("origin");
   if (origin) {

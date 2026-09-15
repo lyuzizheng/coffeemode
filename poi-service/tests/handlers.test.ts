@@ -797,6 +797,30 @@ describe("GET /poi/search/external", () => {
     expect(otherCell.status).toBe(200);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
+
+  it("caches an all-non-food upstream hit so the repeat skips Google (BRAWUKA-283 P2-2)", async () => {
+    const env = makeEnv();
+    const fetchImpl = vi.fn(
+      mockFetch(() =>
+        new Response(
+          JSON.stringify({
+            places: [googleDetailResponse({ id: "ChIJONLYBANK", types: ["bank", "atm"] })],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    const first = await call("GET", "/poi/search/external?q=atm&r=5", env, { fetchImpl });
+    expect(first.status).toBe(200);
+    expect(((await bodyOf(first)) as { results: POI[] }).results).toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    const second = await call("GET", "/poi/search/external?q=atm&r=5", env, { fetchImpl });
+    expect(second.status).toBe(200);
+    expect(((await bodyOf(second)) as { results: POI[] }).results).toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("POST /poi/external", () => {

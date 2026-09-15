@@ -90,19 +90,15 @@ function renderWithClient(queryClient: QueryClient, ui: ReactNode) {
 }
 
 describe("cafe detail SSR seeding (BRAWUKA-283 P2-3)", () => {
-  it("mounts DetailContent from initialCafe without fetching", async () => {
+  it("serves a setQueryData-seeded [cafe, id] entry with no detail fetch", async () => {
     const fetchSpy = stubFetch();
     vi.stubGlobal("fetch", fetchSpy);
     try {
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      queryClient.setQueryData(["cafe", CAFE_ID], SEEDED_CAFE, { updatedAt: Date.now() });
       renderWithClient(
-        new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-        <DetailContent
-          cafeId={CAFE_ID}
-          variant="full"
-          controller={stubController()}
-          onCheckIn={vi.fn()}
-          initialCafe={SEEDED_CAFE}
-        />,
+        queryClient,
+        <DetailContent cafeId={CAFE_ID} variant="full" controller={stubController()} onCheckIn={vi.fn()} />,
       );
       expect(await screen.findByRole("heading", { name: "Seeded Roastery" })).toBeInTheDocument();
       expectNoDetailFetch(fetchSpy);

@@ -328,16 +328,17 @@ async function searchExternalPOIs(request: Request, env: Env, deps: Deps): Promi
   }
   const toPersist = results.filter(({ poi }) => !poi.not_persisted_reason);
   const pois = results.map(({ poi }) => poi);
-  if (toPersist.length > 0) {
-    try {
+  try {
+    if (toPersist.length > 0) {
       await d1UpsertPOIs(env.POI_DB, toPersist.map(({ poi }) => poi));
       await Promise.all(toPersist.map(({ poi, raw }) => kvPutRaw(env.POI_KV, poi.place_id, raw)));
-      // Cache the full POI list served (best-effort, next to the raw/D1
-      // writes) so repeat queries skip the billed upstream call.
-      await kvPutSearchQuery(env.POI_KV, queryKey, pois);
-    } catch (e) {
-      console.error("external search cache write failed", e);
     }
+    // Cache what was served (BRAWUKA-283 P2-2), not what was persisted: an
+    // all-non-food (or empty) upstream hit is still billable, and repeating
+    // it must not call Google again.
+    await kvPutSearchQuery(env.POI_KV, queryKey, pois);
+  } catch (e) {
+    console.error("external search cache write failed", e);
   }
   return json({ results: pois });
 }

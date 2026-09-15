@@ -217,4 +217,34 @@ describe("handleFetch", () => {
     expect(denied.headers.get("Access-Control-Allow-Origin")).toBeNull();
     expect(allowedOrigin(new Request("https://x.test", { headers: { Origin: "https://evil.test" } }), env)).toBe("");
   });
+
+  it("never replays a cached ACAO to another origin", async () => {
+    const store = new Map<string, Response>();
+    const cache = {
+      async match(key: string) {
+        return store.get(key);
+      },
+      async put(key: string, res: Response) {
+        store.set(key, res);
+      },
+    };
+    const g = globalThis as unknown as { caches?: { default: typeof cache } };
+    const prev = g.caches;
+    g.caches = { default: cache };
+    try {
+      const env = makeEnv();
+      const url = "https://staging-tiles.cafemood.app/planet/0/0/0.pbf";
+      const first = await handleFetch(new Request(url, { headers: { Origin: "https://cafemood.app" } }), env, undefined);
+      expect(first.headers.get("Access-Control-Allow-Origin")).toBe("https://cafemood.app");
+      const second = await handleFetch(
+        new Request(url, { headers: { Origin: "https://staging.cafemood.app" } }),
+        env,
+        undefined,
+      );
+      expect(second.headers.get("Access-Control-Allow-Origin")).toBe("https://staging.cafemood.app");
+    } finally {
+      if (prev === undefined) delete g.caches;
+      else g.caches = prev;
+    }
+  });
 });

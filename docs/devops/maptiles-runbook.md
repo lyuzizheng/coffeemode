@@ -40,9 +40,8 @@ VER=20260913_164504_pt   # or: --version latest
 # 2. Verify staging BEFORE touching production
 ./scripts/devops/verify-maptiles.sh --env staging --expect-version "$VER"
 
-# 3. Pin the staging Worker to the new version + deploy (one deploy — the
-# `wrangler secret put` below is the old flow, kept for reference; prefer the
-# vars edit so the version is reviewable in git)
+# 3. Pin the staging Worker to the new version + deploy (vars edit keeps the
+# version reviewable in git)
 #    edit tiles-service/wrangler.toml [env.staging].vars.PLANET_VERSION = "$VER"
 (cd tiles-service && npm run deploy -- --env staging)
 

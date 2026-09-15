@@ -33,9 +33,10 @@
 #   R2_ACCOUNT_ID                             Cloudflare account id
 #   R2_ENDPOINT                               Optional S3 endpoint override
 #                                             (default: https://<account>.r2.cloudflarestorage.com)
-#
 # Worker-Route attach + CORS stay owner-side dashboard steps (each prints as
 # a pending action): the API token that creates buckets cannot attach zones.
+# (Bucket CORS itself is vestigial — the Worker serves all bytes with its own
+# per-origin CORS; the rules apply only to direct bucket access.)
 # ==============================================================================
 
 set -euo pipefail
@@ -175,9 +176,12 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# Step 2: CORS for MapLibre range fetches (GET + Range from the app origins)
+# Step 2: vestigial bucket CORS (kept, harmless). The bucket is never
+# browser-facing — the Worker serves all tile/asset bytes with its own
+# per-origin CORS — so these rules take effect only on direct bucket access
+# (operator debugging, never the map surface).
 # ------------------------------------------------------------------------------
-log "Step 2/3: applying CORS for browser tile/glyph fetches..."
+log "Step 2/3: applying vestigial bucket CORS (direct-access fallback only)..."
 CORS_JSON="$(mktemp)"
 trap 'rm -f "$CORS_JSON"' EXIT
 cat > "$CORS_JSON" <<'EOF'

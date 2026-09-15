@@ -7,9 +7,9 @@ import { handleFetch } from "./handlers";
 import type { Env } from "./types";
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
-      return await handleFetch(request, env);
+      return await handleFetch(request, env, ctx);
     } catch (e) {
       console.error("tiles-service fatal:", e);
       return new Response(JSON.stringify({ error: "internal_error" }), {

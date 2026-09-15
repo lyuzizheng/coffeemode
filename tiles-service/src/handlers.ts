@@ -74,7 +74,7 @@ function corsHeaders(request: Request, env: Env, extra?: Record<string, string>)
 export async function handleFetch(
   request: Request,
   env: Env,
-  ctx?: { waitUntil(promise: Promise<unknown>): void },
+  ctx?: ExecutionContext,
 ): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
@@ -87,13 +87,20 @@ export async function handleFetch(
   }
 
   // Edge cache (Cloudflare `caches.default`, absent in tests/Node): skip
-  // when unavailable — correctness never depends on it.
+  // when unavailable — correctness never depends on it. The cached entry
+  // stores the payload headers only; CORS is re-derived per request below,
+  // so one origin's `Access-Control-Allow-Origin` is never replayed to
+  // another. Only 200s are cached — the Cache API rejects 204s.
   const cache = edgeCache();
   if (cache) {
     const cached = await cache.match(request.url);
     if (cached) {
       const headers = corsHeaders(request, env);
-      for (const [key, value] of cached.headers) headers.set(key, value);
+      for (const [key, value] of cached.headers) {
+        if (key.toLowerCase() === "access-control-allow-origin") continue;
+        if (key.toLowerCase() === "vary") continue;
+        headers.set(key, value);
+      }
       return new Response(cached.body, { headers, status: cached.status });
     }
   }
@@ -105,7 +112,9 @@ export async function handleFetch(
       if (!headers.has(key)) headers.set(key, value);
     }
     const response = new Response(body, { headers, status });
-    ctx?.waitUntil(cache?.put(request.url, response.clone()) ?? Promise.resolve());
+    if (status === 200) {
+      ctx?.waitUntil(cache?.put(request.url, response.clone()) ?? Promise.resolve());
+    }
     return response;
   };
 

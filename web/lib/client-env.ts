@@ -26,6 +26,11 @@ export function envPositiveInt(raw: string | undefined, fallback: number): numbe
   }
   return fallback;
 }
+/** Parse an already-resolved env string; fall back when missing or empty. */
+export function envNonEmptyString(raw: string | undefined, fallback: string): string {
+  return raw !== undefined && raw !== "" ? raw : fallback;
+}
+
 
 /** `checkins.noteMaxChars` — check-in note input cap. */
 export function getCheckinNoteMaxChars(): number {
@@ -75,6 +80,32 @@ export function getQueryPersistMaxAgeMs(): number {
 /** `promptQueue.autoCollapseMs` — nav-prompt card → pill delay (spec-owned 8s). */
 export function getNavPromptCollapseMs(): number {
   return envPositiveInt(process.env.NEXT_PUBLIC_NAV_PROMPT_COLLAPSE_MS, 8_000);
+}
+
+/** `map.tileStyle.light` — full style document URL for the light basemap. */
+export function getMapTileStyleLight(): string {
+  return envNonEmptyString(
+    process.env.NEXT_PUBLIC_MAP_TILE_STYLE_LIGHT,
+    "https://tiles.openfreemap.org/styles/liberty",
+  );
+}
+
+/** `map.tileStyle.dark` — full style document URL for the dark basemap. */
+export function getMapTileStyleDark(): string {
+  return envNonEmptyString(
+    process.env.NEXT_PUBLIC_MAP_TILE_STYLE_DARK,
+    "https://tiles.openfreemap.org/styles/dark",
+  );
+}
+
+/** `map.defaultZoom` — city-level zoom when the resolved center changes. */
+export function getMapDefaultZoom(): number {
+  return envPositiveInt(process.env.NEXT_PUBLIC_MAP_DEFAULT_ZOOM, 12);
+}
+
+/** `map.focusZoom` — street-level zoom when a cafe is selected. */
+export function getMapFocusZoom(): number {
+  return envPositiveInt(process.env.NEXT_PUBLIC_MAP_FOCUS_ZOOM, 15);
 }
 
 /** `onboarding.geolocationTimeoutMs` — browser geolocation timeout (DG112). */

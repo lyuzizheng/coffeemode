@@ -1,4 +1,4 @@
-import { fail, record } from "./primitives";
+import { boundedNumber, fail, record } from "./primitives";
 import type { AppConfig } from "./types";
 
 type MapConfig = AppConfig["map"];
@@ -27,7 +27,8 @@ function templateUrl(file: string, keyPath: string, value: unknown): string {
   return url;
 }
 
-/** Validate the `map` subtree of app.yaml (basemap hosting switch, BRAWUKA-313). */
+/** Validate the `map` subtree of app.yaml (basemap hosting switch, BRAWUKA-313;
+ * zoom levels added by map-home, BRAWUKA-311). */
 export function parseMapSection(file: string, map: Record<string, unknown>): MapConfig {
   const tileStyle = record(file, "map.tileStyle", map.tileStyle);
   return {
@@ -37,5 +38,7 @@ export function parseMapSection(file: string, map: Record<string, unknown>): Map
     },
     glyphs: templateUrl(file, "map.glyphs", map.glyphs),
     sprite: httpsUrl(file, "map.sprite", map.sprite),
+    defaultZoom: boundedNumber(file, "map.defaultZoom", map.defaultZoom, 1, 22),
+    focusZoom: boundedNumber(file, "map.focusZoom", map.focusZoom, 1, 22),
   };
 }

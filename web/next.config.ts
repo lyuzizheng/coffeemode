@@ -38,6 +38,12 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_ONBOARDING_GEOLOCATION_TIMEOUT_MS: String(
       appConfig.onboarding.geolocationTimeoutMs,
     ),
+    // map-home (BRAWUKA-311): basemap style URLs + zoom — the only tile-host
+    // coupling (glyphs/sprite live inside the style documents).
+    NEXT_PUBLIC_MAP_TILE_STYLE_LIGHT: appConfig.map.tileStyle.light,
+    NEXT_PUBLIC_MAP_TILE_STYLE_DARK: appConfig.map.tileStyle.dark,
+    NEXT_PUBLIC_MAP_DEFAULT_ZOOM: String(appConfig.map.defaultZoom),
+    NEXT_PUBLIC_MAP_FOCUS_ZOOM: String(appConfig.map.focusZoom),
   },
 
   images: {

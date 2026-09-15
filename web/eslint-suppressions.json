@@ -22,11 +22,6 @@
       "count": 1
     }
   },
-  "app/page.tsx": {
-    "max-lines-per-function": {
-      "count": 1
-    }
-  },
   "app/theme-preview/sections/motion-section.tsx": {
     "max-lines-per-function": {
       "count": 1

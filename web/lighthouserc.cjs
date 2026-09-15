@@ -47,12 +47,34 @@ module.exports = {
       },
     },
     assert: {
-      assertions: {
-        "categories:performance": ["error", { minScore: lighthouseThresholds.performance }],
-        "categories:accessibility": ["error", { minScore: lighthouseThresholds.accessibility }],
-        "categories:best-practices": ["error", { minScore: lighthouseThresholds.bestPractices }],
-        "categories:seo": ["error", { minScore: lighthouseThresholds.seo }],
-      },
+      // Per-URL performance floor (map-home, BRAWUKA-311 review): `/` is a
+      // WebGL map surface now — the static-scaffold 0.8 can't hold it, so it
+      // gets its own calibrated floor (budgets.lighthouse.performanceHome).
+      // assertMatrix can't mix with top-level `assertions`, so every rule
+      // lives in the matrix; the non-home row matches any URL with a path
+      // beyond `/` (and would also cover future asserted routes).
+      assertMatrix: [
+        {
+          matchingUrlPattern: ".*",
+          assertions: {
+            "categories:accessibility": ["error", { minScore: lighthouseThresholds.accessibility }],
+            "categories:best-practices": ["error", { minScore: lighthouseThresholds.bestPractices }],
+            "categories:seo": ["error", { minScore: lighthouseThresholds.seo }],
+          },
+        },
+        {
+          matchingUrlPattern: "^https?://[^/]+/$",
+          assertions: {
+            "categories:performance": ["error", { minScore: lighthouseThresholds.performanceHome }],
+          },
+        },
+        {
+          matchingUrlPattern: "^https?://[^/]+/.+",
+          assertions: {
+            "categories:performance": ["error", { minScore: lighthouseThresholds.performance }],
+          },
+        },
+      ],
     },
     upload: {
       target: "filesystem",

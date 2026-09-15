@@ -8,31 +8,8 @@
     }
   },
   "home": {
-    "kicker": "为在咖啡店办公的人",
-    "hero_title": "在好咖啡店里办公",
-    "hero_subtitle": "来自数字游民的真实 wifi、插座、座位情报——不靠感觉。",
-    "steps": {
-      "find": {
-        "title": "找店",
-        "body": "附近的咖啡店，按 wifi、插座、座位、温度、咖啡 0–100 打分——来自真正在那里工作过的人。"
-      },
-      "checkin": {
-        "title": "打卡",
-        "body": "离开后花三十秒拖几个滑杆。这就是全部的反馈循环。"
-      },
-      "keep": {
-        "title": "留存",
-        "body": "你的店和分数都会留下——下一座城市、下一周，依然属于你。"
-      }
-    },
-    "ethos": "一个安静的工具：没有信息流，没有广告，没有噪音。",
-    "cta_search": "搜索咖啡店",
-    "search_placeholder": "搜索附近的咖啡店",
-    "signin_title": "登录",
-    "signin_subtitle": "打卡、给 wifi 打分，积累你的办公档案。",
     "continue_apple": "使用 Apple 继续",
     "continue_google": "使用 Google 继续",
-    "auth_not_configured": "登录还没准备好——请稍后再来。",
     "auth_error": "登录没有完成，请重试。",
     "auth_error_profile": "你已登录，但个人资料设置没有完成。请重新登录以重试。",
     "auth_err_invalid_provider": "该登录方式暂不可用。",
@@ -40,8 +17,6 @@
     "auth_err_start": "登录无法开始，请重试。",
     "auth_err_signout": "退出没有完成，请重试。",
     "auth_err_generic": "出了点问题，请重试。",
-    "signed_in_as": "已登录",
-    "session_ready": "你的会话已生效。",
     "signing_in": "登录中...",
     "sign_out": "退出登录",
     "signing_out": "退出中..."
@@ -545,5 +520,11 @@
   },
   "runtime": {
     "announcement": "公告"
+  },
+  "map": {
+    "aria": "咖啡馆地图",
+    "error_title": "地图加载失败",
+    "error_body": "列表不受影响，仍可查看咖啡馆详情。",
+    "retry": "重试"
   }
 }

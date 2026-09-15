@@ -70,7 +70,7 @@ Infra helpers never import domain logic; service helpers compose infra primitive
 | Image service Worker local | Storage proven via real MinIO (`images.integration.test.ts`); Worker itself still mocked (`image-service-client.test.ts`) | `image-service` presign + metadata path through a local workerd/miniflare instance | S2 `miniflare-image` / workerd for `image-service` with `R2_*` → MinIO |
 | Browser / Playwright e2e | Automated `npm run test:e2e` Playwright smoke covers Discovery, SSR Shell with DB fixture, 404 Recovery, Static/Offline, Signed-out Profile, Core APIs (Issue #155), check-in drawer geometry (BRAWUKA-217), and the check-in submit flow with a mocked auth boundary (BRAWUKA-121); `npm run check:visual` adds the open drawer to the rendered matrix (needs the seeded fixture: `ALLOW_SEED_DEV_DB=1` locally) | Full interactive drag/gesture visual baselines | Map-bound and gesture interaction slices |
 | Visual regression pixel baselines | `sw.test.ts` / `seo.test.ts` are contract tests, not screenshots | Screenshot baselines and review policy | Accepted baseline policy (0003 visual is non-blocking until then) |
-| Map-bound slices | Blocked on Apple Developer Program (#131) — `map-home`, `map-discovery-integration`, `map-creation-entry`, `deeplink-hydration` | All map + MapKit binding traces | Apple MapKit JS token + miniflare/workerd + Playwright |
+| Map-bound slices | `map-home` landed (BRAWUKA-311): e2e T1 asserts the map canvas or designed error state + live sidebar; visual smoke renders `/` in both schemes with the tile host stubbed (`scripts/lib/tile-stubs.mjs`) | Interactive map traces (pin tap → selection, cluster zoom, flyTo) | `map-discovery-integration` / `map-creation-entry` slices |
 
 None of the gaps affect the READY slices (all have at least one mocked or integration row above). The gaps are tracked as S2 follow-ups and do not block `npm run verify` or the `integration` gate (merged DB+MinIO) for web changes.
 
@@ -87,6 +87,10 @@ None of the gaps affect the READY slices (all have at least one mocked or integr
 | `issue-33-upload-intents` (COMPLETE) | T14/T15 intent single-use consume |
 | `issue-86-server-derived-photos` (COMPLETE) | T8/T15 `photo_ids` → server `StoredImage` |
 | `issue-98-auth-error-feedback` etc. (COMPLETE) | T2/T3 auth error codes |
+| `map-home` (COMPLETE) | e2e T1 (map canvas/error state + sidebar, tile host stubbed) + visual `home` entries both schemes; config schema pins `map:` section (`config.test.ts`, `client-env.test.ts`) |
+| `map-discovery-integration` (READY) | e2e T1 + visual `home` entries (selection/marker binding landed with map-home) |
+| `map-creation-entry` (READY) | e2e T1 + visual `home` entries (map surface exists to bind) |
+| `deeplink-hydration` (READY) | T2 SSR shell + e2e T2 (the map app it hydrates into is live) |
 
 Deterministic gate `.agents/scripts/check-coverage-matrix.sh` enforces: (a) `docs/agent/test-coverage.md` exists, (b) the 24 required traces T1–T24 are present, (c) every `READY` slice in `docs/agent/implementation-slices.md` maps to at least one row in §5.
 

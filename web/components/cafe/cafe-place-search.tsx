@@ -9,12 +9,18 @@ import {
   TextField,
 } from "@heroui/react";
 import { useTranslations } from "next-intl";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApplePlaceSearch } from "@/components/cafe/apple-place-search";
 import { isUnauthorized, responseMessage, throwIfUnauthorized } from "@/lib/http";
 import { readOnboardingState } from "@/lib/onboarding-store";
+import {
+  executeWidgetForToken,
+  getTurnstileSiteKey,
+  removeResolveWidget,
+  renderInvisibleResolveWidget,
+  resetResolveWidget,
+} from "@/lib/security/turnstile-client";
 import type { POI, POISearchResponse } from "@shared/places/types";
-
 type EntryMode = "link" | "search";
 type SearchProvider = "google" | "apple";
 
@@ -35,17 +41,70 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn }: CafeP
   const [searchResults, setSearchResults] = useState<POI[]>([]);
   const [busy, setBusy] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [turnstileReady, setTurnstileReady] = useState(false);
+  const turnstileRef = useRef<HTMLDivElement | null>(null);
+  const widgetIdRef = useRef<string | null>(null);
+
+  // Invisible Turnstile widget for the maps-link resolve (BRAWUKA-239):
+  // rendered once while the link tab is active, executed per submit so
+  // every POST carries a fresh single-use token; reset after each attempt
+  // so retries mint a new one. Skipped when no sitekey is configured.
+  useEffect(() => {
+    if (entryMode !== "link") return;
+    const sitekey = getTurnstileSiteKey();
+    const container = turnstileRef.current;
+    if (!sitekey || !container) return;
+    let cancelled = false;
+    let widgetId: string | null = null;
+    renderInvisibleResolveWidget(container, sitekey)
+      .then((id) => {
+        if (cancelled) {
+          removeResolveWidget(id);
+          return;
+        }
+        widgetId = id;
+        widgetIdRef.current = id;
+        setTurnstileReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) onError(t("resolveFailed"));
+      });
+    return () => {
+      cancelled = true;
+      setTurnstileReady(false);
+      widgetIdRef.current = null;
+      if (widgetId) removeResolveWidget(widgetId);
+    };
+  }, [entryMode, onError, t]);
 
   const resolveLink = async (event: FormEvent) => {
     event.preventDefault();
     if (!mapsUrl.trim()) return;
+    const sitekey = getTurnstileSiteKey();
+    const widgetId = widgetIdRef.current;
+    let turnstileToken: string | null = null;
+    if (sitekey) {
+      if (!turnstileReady || !widgetId) {
+        onError(t("resolveFailed"));
+        return;
+      }
+      try {
+        turnstileToken = await executeWidgetForToken(widgetId);
+      } catch {
+        onError(t("resolveFailed"));
+        return;
+      }
+    }
     setBusy(true);
     onError(null);
     try {
       const response = await fetch("/api/places/resolve", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ maps_share_url: mapsUrl.trim() }),
+        body: JSON.stringify({
+          maps_share_url: mapsUrl.trim(),
+          ...(turnstileToken ? { "cf-turnstile-response": turnstileToken } : {}),
+        }),
       });
       if (!response.ok) throw new Error(await responseMessage(response, t("resolveFailed")));
       const resolvedPoi = (await response.json()) as POI;
@@ -54,6 +113,13 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn }: CafeP
       onError(cause instanceof Error ? cause.message : t("resolveFailed"));
     } finally {
       setBusy(false);
+      if (sitekey && widgetId) {
+        try {
+          await resetResolveWidget(widgetId);
+        } catch {
+          // Benign: reset failure only affects the next retry token freshness.
+        }
+      }
     }
   };
 
@@ -126,6 +192,8 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn }: CafeP
               {busy ? <Spinner size="sm" /> : t("resolveLink")}
             </Button>
           </div>
+          {/* Invisible Turnstile challenge host for POST /api/places/resolve. */}
+          <div ref={turnstileRef} aria-hidden="true" />
         </form>
       ) : (
         <div className="space-y-3">

@@ -50,6 +50,30 @@ describe("GET /auth/callback", () => {
     expect(res.headers.get("location")).toBe("http://localhost:3000/");
   });
 
+  it("falls back to / for backslash protocol-relative next (BRAWUKA-282 P2-5 gate)", async () => {
+    exchangeCodeForSessionMock.mockResolvedValue({ data: { user: { id: "user-1" } }, error: null });
+    upsertProfileMock.mockResolvedValue({ id: "user-1", inserted: true });
+
+    for (const next of ["/\\evil.example", "/%5cevil.example", "//evil.example", "/%2f%2fevil.example"]) {
+      const res = await GET(
+        new Request(`http://localhost:3000/auth/callback?code=abc&next=${next}`),
+      );
+      expect(res.status).toBe(307);
+      expect(res.headers.get("location")).toBe("http://localhost:3000/");
+    }
+  });
+
+  it("still honors a plain internal next path", async () => {
+    exchangeCodeForSessionMock.mockResolvedValue({ data: { user: { id: "user-1" } }, error: null });
+    upsertProfileMock.mockResolvedValue({ id: "user-1", inserted: true });
+
+    const res = await GET(
+      new Request("http://localhost:3000/auth/callback?code=abc&next=%2Fcafes%2F123"),
+    );
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe("http://localhost:3000/cafes/123");
+  });
+
   it("redirects to an error page when the code exchange fails", async () => {
     exchangeCodeForSessionMock.mockResolvedValue({
       data: { user: null },

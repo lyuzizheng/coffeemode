@@ -184,7 +184,11 @@ export async function proxy(request: NextRequest) {
       type: "access",
       request_id: requestId,
       method: request.method,
-      path: request.nextUrl.pathname + request.nextUrl.search,
+      // BRAWUKA-282 P1-3: pathname only, never `search`. The matcher covers
+      // `/auth/callback`, so logging `pathname + search` wrote the one-time
+      // OAuth `code=` into stdout on every login (pre-exchange, still valid),
+      // plus raw user query terms on `/api/search?q=…`.
+      path: request.nextUrl.pathname,
       status: response.status,
       duration_ms: Date.now() - start,
     }),

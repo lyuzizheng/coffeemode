@@ -1,5 +1,5 @@
 /**
- * Real MinIO/R2 integration — presign → PUT → HEAD → processor round-trip.
+ * @vitest-environment node
  *
  * Requires:
  *   docker compose up -d --wait postgres minio

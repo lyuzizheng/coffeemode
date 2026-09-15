@@ -95,7 +95,20 @@ describe("auth", () => {
 describe("GET /poi/:place_id", () => {
   it("serves from KV hot cache without hitting D1/Google", async () => {
     const kv = new FakeKV();
-    await kv.put("raw:google:ChIJTEST123", JSON.stringify(googleDetailResponse()));
+    const cachedPoi = {
+      place_id: "ChIJTEST123",
+      source: "google",
+      name: "Blue Bottle Coffee",
+      lat: 37.7825,
+      lng: -122.4077,
+      address: "66 Mint St, San Francisco, CA 94103",
+      types: ["cafe", "coffee_shop"],
+      business_status: "OPERATIONAL",
+      hours_json: JSON.stringify({ periods: [] }),
+      fetched_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+    };
+    await kv.put("poi:ChIJTEST123", JSON.stringify(cachedPoi));
     const env = makeEnv({ POI_KV: kv });
     const fetchImpl = vi.fn(mockFetch(() => new Response("should not be called", { status: 599 })));
 
@@ -120,8 +133,8 @@ describe("GET /poi/:place_id", () => {
       types: '["cafe"]',
       business_status: "OPERATIONAL",
       hours_json: null,
-      photo_refs: "[]",
       fetched_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
     });
     const env = makeEnv({ POI_DB: db });
     const fetchImpl = vi.fn(mockFetch(() => new Response("should not be called", { status: 599 })));
@@ -149,7 +162,7 @@ describe("GET /poi/:place_id", () => {
     expect(url).toContain("places.test/v1/places/ChIJTEST123");
     const init = fetchImpl.mock.calls[0][1] as { headers?: Record<string, string> };
     expect(init?.headers?.["X-Goog-FieldMask"]).toMatch(/^id,/);
-    expect((env.POI_KV as FakeKV).has("raw:google:ChIJTEST123")).toBe(true);
+    expect((env.POI_KV as FakeKV).has("poi:ChIJTEST123")).toBe(true);
     expect((env.POI_DB as FakeD1).rows).toHaveLength(1);
   });
 
@@ -165,8 +178,8 @@ describe("GET /poi/:place_id", () => {
       types: "[]",
       business_status: null,
       hours_json: null,
-      photo_refs: "[]",
-      fetched_at: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(), // 30d old
+      fetched_at: new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString(), // 14d old: stale (>7d) but unexpired (<30d)
+      expires_at: new Date(Date.now() + 16 * 24 * 3600 * 1000).toISOString(),
     });
     const env = makeEnv({ POI_DB: db });
     const fetchImpl = mockFetch(() => new Response("boom", { status: 500 }));
@@ -189,8 +202,8 @@ describe("GET /poi/:place_id", () => {
       types: "[]",
       business_status: null,
       hours_json: null,
-      photo_refs: "[]",
-      fetched_at: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
+      fetched_at: new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString(),
+      expires_at: new Date(Date.now() + 16 * 24 * 3600 * 1000).toISOString(),
     });
     const env = makeEnv({ POI_DB: db });
     const fetchImpl = mockFetch(() =>
@@ -218,8 +231,8 @@ describe("GET /poi/:place_id", () => {
       types: '["cafe"]',
       business_status: null,
       hours_json: null,
-      photo_refs: "[]",
       fetched_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
     });
     const env = makeEnv({ POI_DB: db });
     const fetchImpl = vi.fn(mockFetch(() => new Response("no", { status: 599 })));
@@ -243,8 +256,8 @@ describe("GET /poi/:place_id", () => {
       types: '["cafe"]',
       business_status: null,
       hours_json: null,
-      photo_refs: "[]",
-      fetched_at: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(), // 30d old
+      fetched_at: new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString(),
+      expires_at: new Date(Date.now() + 16 * 24 * 3600 * 1000).toISOString(),
     });
     const env = makeEnv({ POI_DB: db });
     const fetchImpl = vi.fn(mockFetch(() => new Response("no", { status: 599 })));
@@ -268,8 +281,8 @@ describe("GET /poi/:place_id", () => {
       types: "[]",
       business_status: null,
       hours_json: null,
-      photo_refs: "[]",
-      fetched_at: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
+      fetched_at: new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString(),
+      expires_at: new Date(Date.now() + 16 * 24 * 3600 * 1000).toISOString(),
     });
     const env = makeEnv({ POI_DB: db });
     const fetchImpl = mockFetch(() =>
@@ -310,7 +323,7 @@ describe("GET /poi/:place_id", () => {
     const b = await bodyOf(res);
     expect(b.place_id).toBe("0x8085:0x9f2c");
     // The decoded id is used for KV backfill and the Google fetch.
-    expect((env.POI_KV as FakeKV).has("raw:google:0x8085:0x9f2c")).toBe(true);
+    expect((env.POI_KV as FakeKV).has("poi:0x8085:0x9f2c")).toBe(true);
     expect(fetchImpl.mock.calls[0][0] as string).toContain("places.test/v1/places/0x8085%3A0x9f2c");
   });
 
@@ -333,7 +346,7 @@ describe("GET /poi/:place_id", () => {
 
   it("falls through corrupt KV cache to D1", async () => {
     const kv = new FakeKV();
-    await kv.put("raw:google:ChIJCORRUPT", "{not json!!");
+    await kv.put("poi:ChIJCORRUPT", "{not json!!");
     const db = new FakeD1();
     db.rows.push({
       place_id: "ChIJCORRUPT",
@@ -345,8 +358,8 @@ describe("GET /poi/:place_id", () => {
       types: "[]",
       business_status: null,
       hours_json: null,
-      photo_refs: "[]",
       fetched_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
     });
     const env = makeEnv({ POI_KV: kv, POI_DB: db });
     const fetchImpl = vi.fn(mockFetch(() => new Response("should not be called", { status: 599 })));
@@ -535,7 +548,8 @@ describe("GET /poi/search", () => {
       db.rows.push({
         place_id, source, name, lat, lng,
         address: null, types: '["cafe"]', business_status: null,
-        hours_json: null, photo_refs: "[]", fetched_at: now,
+        hours_json: null, fetched_at: now,
+        expires_at: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
       });
     }
   }
@@ -593,7 +607,8 @@ describe("GET /poi/search", () => {
       db.rows.push({
         place_id, source: "google", name, lat, lng,
         address: null, types: '["cafe"]', business_status: null,
-        hours_json: null, photo_refs: "[]", fetched_at: now,
+        hours_json: null, fetched_at: now,
+        expires_at: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
       });
     }
     const env = makeEnv({ POI_DB: db });
@@ -613,7 +628,8 @@ describe("GET /poi/search", () => {
       db.rows.push({
         place_id, source: "google", name: `Pole ${place_id}`, lat: 89.4, lng,
         address: null, types: '["cafe"]', business_status: null,
-        hours_json: null, photo_refs: "[]", fetched_at: now,
+        hours_json: null, fetched_at: now,
+        expires_at: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
       });
     }
     const env = makeEnv({ POI_DB: db });
@@ -685,8 +701,8 @@ describe("GET /poi/search", () => {
         types: '["cafe"]',
         business_status: null,
         hours_json: null,
-        photo_refs: "[]",
         fetched_at: now,
+        expires_at: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
       });
     }
     const env = makeEnv({ POI_DB: db });
@@ -853,22 +869,21 @@ describe("POST /poi/external", () => {
     expect((b.entries as Array<{ index: number; reason: string }>).map((e) => e.index)).toEqual([0, 1]);
   });
 
-  it("rejects non-string array elements in types/photo_refs", async () => {
+  it("rejects non-string array elements in types", async () => {
     const res = await call("POST", "/poi/external", makeEnv(), {
       body: {
         pois: [
           { place_id: "a", source: "google", name: "A", lat: 1, lng: 103, types: ["cafe", 7] },
-          { place_id: "b", source: "google", name: "B", lat: 1, lng: 103, photo_refs: [null] },
-          { place_id: "c", source: "google", name: "C", lat: 1, lng: 103, types: "cafe" },
+          { place_id: "b", source: "google", name: "B", lat: 1, lng: 103, types: "cafe" },
         ],
       },
     });
     expect(res.status).toBe(400);
     const b = await bodyOf(res);
     const entries = b.entries as Array<{ index: number; reason: string }>;
-    expect(entries.map((e) => e.index)).toEqual([0, 1, 2]);
+    expect(entries.map((e) => e.index)).toEqual([0, 1]);
     expect(entries[0].reason).toContain("types");
-    expect(entries[1].reason).toContain("photo_refs");
+    expect(entries[1].reason).toContain("types");
   });
 
   it("rejects unparseable hours_json, accepts valid JSON (issue #39)", async () => {
@@ -925,5 +940,167 @@ describe("stableApplePlaceId parity (BRAWUKA-280)", () => {
       stableApplePlaceId("1.3521,103.8198:Blue Bottle"),
     );
     expect(stableApplePlaceId("a")).not.toBe(stableApplePlaceId("b"));
+  });
+});
+
+describe("D1/KV cache expiry and cleanup (BRAWUKA-294)", () => {
+  it("does not serve expired rows from D1 on getPOI", async () => {
+    const db = new FakeD1();
+    db.rows.push({
+      place_id: "apple-expired-1",
+      source: "apple",
+      name: "Expired Apple Cafe",
+      lat: 1.0,
+      lng: 103.0,
+      address: null,
+      types: '["cafe"]',
+      business_status: null,
+      hours_json: null,
+      fetched_at: new Date(Date.now() - 35 * 24 * 3600 * 1000).toISOString(),
+      expires_at: new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString(),
+    });
+    const env = makeEnv({ POI_DB: db });
+    const res = await call("GET", "/poi/apple-expired-1", env);
+    expect(res.status).toBe(404);
+  });
+
+  it("does not serve expired rows from D1 search", async () => {
+    const db = new FakeD1();
+    db.rows.push({
+      place_id: "active-1",
+      source: "google",
+      name: "Active Cafe",
+      lat: 1.3,
+      lng: 103.8,
+      address: null,
+      types: '["cafe"]',
+      business_status: null,
+      hours_json: null,
+      fetched_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+    });
+    db.rows.push({
+      place_id: "expired-1",
+      source: "google",
+      name: "Expired Cafe",
+      lat: 1.3,
+      lng: 103.8,
+      address: null,
+      types: '["cafe"]',
+      business_status: null,
+      hours_json: null,
+      fetched_at: new Date(Date.now() - 40 * 24 * 3600 * 1000).toISOString(),
+      expires_at: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString(),
+    });
+    const env = makeEnv({ POI_DB: db });
+    const res = await call("GET", "/poi/search?lat=1.3&lng=103.8", env);
+    expect(res.status).toBe(200);
+    const { results } = (await bodyOf(res)) as { results: Array<{ place_id: string }> };
+    expect(results).toHaveLength(1);
+    expect(results[0].place_id).toBe("active-1");
+  });
+
+  it("purges expired rows during upsert and sets expires_at to fetched_at + 30d", async () => {
+    const db = new FakeD1();
+    const kv = new FakeKV();
+    db.rows.push({
+      place_id: "to-be-purged",
+      source: "google",
+      name: "Old Expired",
+      lat: 1.0,
+      lng: 103.0,
+      address: null,
+      types: '["cafe"]',
+      business_status: null,
+      hours_json: null,
+      fetched_at: new Date(Date.now() - 40 * 24 * 3600 * 1000).toISOString(),
+      expires_at: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString(),
+    });
+    const env = makeEnv({ POI_DB: db, POI_KV: kv });
+    const fetchImpl = mockFetch(() =>
+      new Response(JSON.stringify(googleDetailResponse({ id: "ChIJNEW123" })), { status: 200 }),
+    );
+    const res = await call("GET", "/poi/ChIJNEW123", env, { fetchImpl });
+    expect(res.status).toBe(200);
+    // Expired row should be purged
+    expect(db.rows.find((r) => r.place_id === "to-be-purged")).toBeUndefined();
+    // Newly inserted row should have expires_at = fetched_at + 30d
+    const inserted = db.rows.find((r) => r.place_id === "ChIJNEW123");
+    expect(inserted).toBeDefined();
+    const fetchedMs = Date.parse(inserted!.fetched_at as string);
+    const expiresMs = Date.parse(inserted!.expires_at as string);
+    expect(expiresMs - fetchedMs).toBe(30 * 24 * 3600 * 1000);
+    expect(inserted).not.toHaveProperty("photo_refs");
+
+    // KV has normalized POI under poi: prefix
+    expect(kv.has("poi:ChIJNEW123")).toBe(true);
+    expect(kv.has("raw:google:ChIJNEW123")).toBe(false);
+    const cached = JSON.parse((await kv.get("poi:ChIJNEW123"))!);
+    expect(cached).toMatchObject({
+      place_id: "ChIJNEW123",
+      source: "google",
+      name: "Blue Bottle Coffee",
+    });
+    expect(cached).not.toHaveProperty("photos");
+    expect(cached).not.toHaveProperty("photo_refs");
+  });
+
+  it("POST /poi/external writes expires_at = fetched_at + 30d and purges expired rows", async () => {
+    const db = new FakeD1();
+    db.rows.push({
+      place_id: "expired-external",
+      source: "apple",
+      name: "Expired External",
+      lat: 1.0,
+      lng: 103.0,
+      address: null,
+      types: '["cafe"]',
+      business_status: null,
+      hours_json: null,
+      fetched_at: new Date(Date.now() - 40 * 24 * 3600 * 1000).toISOString(),
+      expires_at: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString(),
+    });
+    const env = makeEnv({ POI_DB: db });
+    const res = await call("POST", "/poi/external", env, {
+      body: {
+        pois: [
+          {
+            place_id: "fresh-external-1",
+            source: "apple",
+            name: "Fresh External",
+            lat: 1.3,
+            lng: 103.8,
+            types: ["cafe"],
+          },
+        ],
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(db.rows.find((r) => r.place_id === "expired-external")).toBeUndefined();
+    const stored = db.rows.find((r) => r.place_id === "fresh-external-1");
+    expect(stored).toBeDefined();
+    const fetchedMs = Date.parse(stored!.fetched_at as string);
+    const expiresMs = Date.parse(stored!.expires_at as string);
+    expect(expiresMs - fetchedMs).toBe(30 * 24 * 3600 * 1000);
+  });
+
+  it("does not serve rows expired earlier today (same-day ISO comparison parity)", async () => {
+    const db = new FakeD1();
+    db.rows.push({
+      place_id: "same-day-expired",
+      source: "apple",
+      name: "Same Day Expired Cafe",
+      lat: 1.0,
+      lng: 103.0,
+      address: null,
+      types: '["cafe"]',
+      business_status: null,
+      hours_json: null,
+      fetched_at: new Date(Date.now() - (30 * 24 * 3600 + 3600) * 1000).toISOString(),
+      expires_at: new Date(Date.now() - 3600 * 1000).toISOString(), // expired 1 hour ago today
+    });
+    const env = makeEnv({ POI_DB: db });
+    const res = await call("GET", "/poi/same-day-expired", env);
+    expect(res.status).toBe(404);
   });
 });

@@ -35,8 +35,8 @@ GOOGLE_PLACES_API_KEY=...
 
 ## Data store
 
-- **KV** — hot cache of raw Google Places responses, key `raw:google:<place_id>`, TTL ~7d.
-- **D1** — durable normalized POI store (`pois` table). Schema in `migrations/0001_init.sql`.
+- **KV** — hot cache of normalized POI records, key `poi:<place_id>`, TTL ~7d.
+- **D1** — bounded POI cache (expires_at, 30d; `pois` table). Schema in `migrations/`.
 
 ```bash
 # one-time, after the namespaces exist (owner actions — docs/agent/pending-user-actions.md §7)
@@ -66,8 +66,8 @@ namespaces and D1 databases that do not exist. Validate without deploying with
 
 ## Design notes
 
-- Field masks on every Google call keep billing minimal; photos are stored as
-  references (`photo.name`) and fetched lazily.
+- Field masks on every Google call keep billing minimal; Google photos are not
+  persisted (cafes store user-uploaded check-in photos).
 - Apple POIs have no server-side upstream — they are stored via `POST /poi/external`
   and served from D1 only.
 - Graceful degradation: a stale D1 row is served if the Google refresh fails.

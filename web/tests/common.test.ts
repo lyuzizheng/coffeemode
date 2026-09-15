@@ -123,7 +123,6 @@ describe("shared constants", () => {
       types: [],
       business_status: null,
       hours_json: null,
-      photo_refs: [],
       fetched_at: "2026-08-09T00:00:00.000Z",
     };
     expect(poi.source).toBe("google");

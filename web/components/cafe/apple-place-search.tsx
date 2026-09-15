@@ -78,7 +78,6 @@ function toPOI(place: MapKitPlace): POI | null {
     types: place.pointOfInterestCategory ? [place.pointOfInterestCategory] : [],
     business_status: null,
     hours_json: null,
-    photo_refs: [],
     fetched_at: new Date().toISOString(),
   };
 }

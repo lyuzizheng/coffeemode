@@ -205,15 +205,15 @@ export function getClientIdentifier(request: Request, user?: { id: string } | nu
   if (user?.id) return `user:${user.id}`;
 
   const ua = request.headers.get("user-agent") ?? "";
-  // Trust model (review 2026-08-09): Cloudflare sets CF-Connecting-IP on every
-  // request it proxies, so it is authoritative when present. X-Real-IP and
-  // X-Forwarded-For are client-influenceable (XFF leftmost is trivially
-  // spoofable) and are only fallbacks for non-CF deployments. Never let a
-  // spoofable header win over the authoritative one.
-  const cfIp = request.headers.get("cf-connecting-ip") ?? "";
-  const realIp = request.headers.get("x-real-ip") ?? "";
-  const forwarded = request.headers.get("x-forwarded-for") ?? "";
-  const ip = cfIp || realIp || forwarded.split(",").pop()?.trim() || "unknown";
+  // Trust model (BRAWUKA-282 P1-2): only `cf-connecting-ip` — set by
+  // Cloudflare on every request it proxies — is authoritative. `x-real-ip`
+  // and `x-forwarded-for` are client-injectable (Traefik here neither sets
+  // nor strips them), so consulting them lets an anonymous client mint a
+  // fresh `anon:` bucket per request by rotating a forged header and walk
+  // past every IP-dimension limit (search, places, mapkit-token, anon
+  // cafes-read). Two requests with different forged `X-Real-IP` values must
+  // therefore share one bucket.
+  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
 
   if (!ua && ip === "unknown") {
     return "anon:local-dev";

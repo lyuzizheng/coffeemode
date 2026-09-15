@@ -85,10 +85,7 @@ import {
   listPublicCheckIns,
 } from "@/lib/discovery/feed";
 import { recordUploadIntent } from "@/lib/db/image-uploads";
-import {
-  completeImageUpload,
-  defaultCompleteUploadDeps,
-} from "@/lib/images/complete";
+import { PhotoIntentError } from "@/lib/images/provision-photos";
 import type { StoredImage } from "@/types/images";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import { recomputeAllWorkStats } from "@/lib/stats/aggregate";
@@ -108,7 +105,6 @@ import {
   U1,
   U2,
   cafeWorkStats,
-  fakeProcessUrls,
   fakeProvisionPhotosDeps,
   seedBaseData,
 } from "../helpers/fixtures";
@@ -1878,70 +1874,40 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(userCafes.items.some((c) => c.id === CAFE_A)).toBe(true);
     });
 
-    it("completeImageUpload rejects attaching to a soft-deleted cafe on real Postgres (issue #219)", async () => {
+    it("check-in creation rejects attaching to a soft-deleted cafe on real Postgres (issue #219)", async () => {
       const photoId = randomUUID();
       await recordUploadIntent(U1, photoId);
       await dbClient.query("update cafes set deleted_at = now() where id = $1", [CAFE_A]);
-      const deps = {
-        ...defaultCompleteUploadDeps(),
-        getProcessUrls: async ({ imageUuid }: { imageUuid: string }) => fakeProcessUrls(imageUuid),
-        processImage: async (imageUuid: string) => ({
-          imageUuid,
-          publicUrls: fakeProcessUrls(imageUuid).publicUrls,
-          width: 800,
-          height: 600,
-        }),
-      };
 
-      const result = await completeImageUpload(
-        { id: U1 },
-        {
-          imageUuid: photoId,
-          targetType: "cafe",
-          targetId: CAFE_A,
-          isCover: false,
-        },
-        deps,
-      );
-
-      expect(result.ok).toBe(false);
+      await expect(
+        createCheckIn(
+          U1,
+          { cafe_id: CAFE_A, scores: { overall: 80 }, photo_ids: [photoId] },
+          fakeProvisionPhotosDeps(),
+        ),
+      ).rejects.toThrow(CafeNotFoundError);
     });
 
-    it("completes checkin-target image upload and merges into cafe gallery on real Postgres (#274)", async () => {
+    it("completes checkin-target photo upload and merges into cafe gallery on real Postgres (#274)", async () => {
+      // U2 has no check-in at CAFE_A (U1 owns the seed CHECKIN_A1), so the
+      // DG64 revisit gate cannot fire — only the photo path is exercised.
       const photoId = randomUUID();
-      await recordUploadIntent(U1, photoId);
+      await recordUploadIntent(U2, photoId);
 
-      const deps = {
-        ...defaultCompleteUploadDeps(),
-        getProcessUrls: async ({ imageUuid }: { imageUuid: string }) => fakeProcessUrls(imageUuid),
-        processImage: async (imageUuid: string) => ({
-          imageUuid,
-          publicUrls: fakeProcessUrls(imageUuid).publicUrls,
-          width: 800,
-          height: 600,
-        }),
-      };
-
-      const result = await completeImageUpload(
-        { id: U1 },
-        {
-          imageUuid: photoId,
-          targetType: "checkin",
-          targetId: CHECKIN_A1,
-        },
-        deps,
+      const created = await createCheckIn(
+        U2,
+        { cafe_id: CAFE_A, scores: { overall: 80 }, photo_ids: [photoId] },
+        fakeProvisionPhotosDeps(),
       );
+      expect(created.checkin_id).toBeDefined();
 
-      expect(result.ok).toBe(true);
-      expect(result.storedImage).toMatchObject({
-        id: photoId,
-        source: { type: "checkin", id: CHECKIN_A1 },
-      });
-
-      // Verify photo is attached to checkin
-      const checkinRes = await dbClient.query("select photos from checkins where id = $1", [CHECKIN_A1]);
+      // Verify photo is attached to checkin with source attribution
+      const checkinRes = await dbClient.query("select photos from checkins where id = $1", [created.checkin_id]);
       const photos = checkinRes.rows[0].photos as Array<Record<string, unknown>>;
       expect(photos.some((p) => p.id === photoId)).toBe(true);
+      expect(photos.find((p) => p.id === photoId)).toMatchObject({
+        source: { type: "checkin", id: created.checkin_id },
+      });
 
       // Verify photo is merged into cafe gallery
       const cafeRes = await dbClient.query("select gallery from cafes where id = $1", [CAFE_A]);
@@ -1956,41 +1922,30 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(intentRes.rows).toHaveLength(0);
     });
 
-    it("completes cafe-target image upload with isCover: true setting cafe cover on real Postgres (#274)", async () => {
+    it("creation photo upload consumes the intent and mounts into gallery on real Postgres (#274)", async () => {
       const photoId = randomUUID();
       await recordUploadIntent(U1, photoId);
 
-      const deps = {
-        ...defaultCompleteUploadDeps(),
-        getProcessUrls: async ({ imageUuid }: { imageUuid: string }) => fakeProcessUrls(imageUuid),
-        processImage: async (imageUuid: string) => ({
-          imageUuid,
-          publicUrls: fakeProcessUrls(imageUuid).publicUrls,
-          width: 800,
-          height: 600,
-        }),
-      };
-
-      const result = await completeImageUpload(
-        { id: U1 },
+      const created = await createCafeWithFirstCheckIn(
+        U1,
         {
-          imageUuid: photoId,
-          targetType: "cafe",
-          targetId: CAFE_A,
-          isCover: true,
+          name: `Cover Photo Roasters ${randomUUID().slice(0, 8)}`,
+          lat: 1.3005,
+          lng: 103.832,
+          city: "singapore",
+          checkin: {
+            scores: { overall: 80 },
+            max_stay: "unlimited",
+            note: "Photo attach verification",
+            photo_ids: [photoId],
+          },
         },
-        deps,
+        fakeProvisionPhotosDeps(),
       );
+      expect(created.cafe_id).toBeDefined();
 
-      expect(result.ok).toBe(true);
-      expect(result.storedImage).toMatchObject({
-        id: photoId,
-        source: { type: "cafe", id: CAFE_A },
-      });
-
-      // Verify cover is set on cafe and photo is in gallery
-      const cafeRes = await dbClient.query("select cover, gallery from cafes where id = $1", [CAFE_A]);
-      expect(cafeRes.rows[0].cover).toBe(`card/${photoId}.webp`);
+      // Verify photo is in gallery
+      const cafeRes = await dbClient.query("select gallery from cafes where id = $1", [created.cafe_id]);
       const gallery = cafeRes.rows[0].gallery as Array<Record<string, unknown>>;
       expect(gallery.some((p) => p.id === photoId)).toBe(true);
 
@@ -2000,6 +1955,30 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         [photoId],
       );
       expect(intentRes.rows).toHaveLength(0);
+
+      await dbClient.query("delete from checkins where cafe_id = $1", [created.cafe_id]);
+      await dbClient.query("delete from cafes where id = $1", [created.cafe_id]);
+    });
+
+    it("creation photo upload with an unrecorded intent fails fast (single-use guarantee)", async () => {
+      await expect(
+        createCafeWithFirstCheckIn(
+          U1,
+          {
+            name: `Unrecorded Photo Roasters ${randomUUID().slice(0, 8)}`,
+            lat: 1.3005,
+            lng: 103.832,
+            city: "singapore",
+            checkin: {
+              scores: { overall: 80 },
+              max_stay: "unlimited",
+              note: "Unrecorded intent verification",
+              photo_ids: [randomUUID()],
+            },
+          },
+          fakeProvisionPhotosDeps(),
+        ),
+      ).rejects.toBeInstanceOf(PhotoIntentError);
     });
   });
 

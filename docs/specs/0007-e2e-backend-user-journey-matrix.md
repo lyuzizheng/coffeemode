@@ -61,7 +61,7 @@ retirement in `## Stable decisions` §8.
     if one of those arms covers its family; the check cannot enumerate that case,
     which is why the arms are stated as the boundary of the guarantee.
 - Service-layer scope: the suite calls `web/lib/db/*`,
-  `web/lib/discovery/feed.ts`, and `web/lib/images/complete.ts` directly.
+  `web/lib/discovery/feed.ts`, and `web/lib/images/provision-photos.ts` (via the creation/check-in write paths) directly.
   HTTP route shells (`requireSameOrigin`, rate-limit buckets) stay covered
   by the existing mocked route tests; duplicating them here would couple
   the journey to request plumbing instead of product behavior. The recovery
@@ -111,10 +111,10 @@ retirement in `## Stable decisions` §8.
   (spec 0001): one call writes the cafe row (PostGIS geography point,
   `city`, `tz`) plus the creator's first check-in and recomputes
   `work_stats`.
-- Photo mounting is proven at the service seam with
-  `completeImageUpload` + stubbed image-service deps (fake process URLs,
-  no network, no R2): intent → complete → gallery row contains the
-  stored image. Real MinIO round-trips stay in
+- Photo mounting is proven through the live `createCheckIn` write path with
+  the real `fakeProvisionPhotosDeps` seam (no network, no R2): record intent →
+  create check-in with `photo_ids` → `checkins.photos` and `cafes.gallery`
+  rows contain the stored image. Real MinIO round-trips stay in
   `test:integration:images`.
 - Fresh cafes project `author: null` through `toPublicCafeDetail`
   (the "A nomad" default, spec 0006) until the creator opts in.
@@ -194,7 +194,7 @@ Postgres/PostGIS. Pinned by `web/tests/helpers/mocks.test.ts`.
 | Path | Input | Output | Boundary assertion | Mock seam |
 | --- | --- | --- | --- | --- |
 | 1 discovery | `{ lat, lng, radiusKm: 10, limit }` / `{ city, q, filter_* }` | closest-first cafe rows; city/keyword/dimension narrowing | Tokyo rows excluded from SG radius; unknown `filter_max_stay` ignored | none (real PostGIS rows) |
-| 2 creation | fused `createCafeWithFirstCheckIn` + `completeImageUpload` | cafe row + creation check-in + gallery image + recomputed `work_stats` | geography point + `city`/`tz` persisted; `author: null` pre-opt-in | `createMockGooglePlacesResponse` (POI inject), `createFakeImageUpload` (WebP bytes) + stubbed process deps |
+| 2 creation | fused `createCafeWithFirstCheckIn` + `createCheckIn` photo attach | cafe row + creation check-in + gallery image + recomputed `work_stats` | geography point + `city`/`tz` persisted; `author: null` pre-opt-in | `createMockGooglePlacesResponse` (POI inject), `createFakeImageUpload` (WebP bytes) + real provision seam |
 | 3 identity | `updateProfile` / `updateProfileIdentity({ showPublicIdentity })` | profile row; `author` flips `null` ↔ public handle | opt-out restores `null` with rows intact; handle stays reserved | `createTestSessionUser` (+ `stubGetCurrentUser`) |
 | 4 check-ins | `createCheckIn` / `updateCheckIn` w/ `idempotency_key` | weighted `work_stats` recompute; feed ordering | DG64 same-window → `DuplicateCheckInError`; DG61 replay → same id + `deduped: true`, one row | `MOCK_CHECKINS` payloads (service path, recompute intact) |
 | 5 likes | `toggleCheckInLike(visitor, checkin)` | `{ liked, likesCount }` toggle symmetry | self-like → `SelfLikeError` (trigger backstop) | none (real trigger) |

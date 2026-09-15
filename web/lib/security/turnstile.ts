@@ -44,9 +44,12 @@ interface SiteverifyResult {
 /**
  * Hostnames a siteverify `hostname` may match: the deployment allowlist
  * (`NEXT_PUBLIC_SITE_URL` + `NEXT_PUBLIC_ALLOWED_HOSTS`, via `getAllowedHosts`)
- * plus the request's own host (the frontend the caller is on). Falls back to
- * loopback when nothing is configured, mirroring `isSameOrigin` dev behavior.
- * Production allowlists never include loopback — configure `NEXT_PUBLIC_SITE_URL`.
+ * plus the request's own `host` (the frontend the caller is on). Never
+ * consults `x-forwarded-host`: client-injectable on every deployment here
+ * (BRAWUKA-282 P1-1 — Cloudflare never sets it, no edge strips it).
+ * Falls back to loopback when nothing is configured, mirroring `isSameOrigin`
+ * dev behavior. Production allowlists never include loopback — configure
+ * `NEXT_PUBLIC_SITE_URL`.
  */
 function expectedHostnames(request: Request): Set<string> {
   const names = new Set<string>();
@@ -54,8 +57,7 @@ function expectedHostnames(request: Request): Set<string> {
     const hostname = host.split(":")[0]?.trim().toLowerCase();
     if (hostname) names.add(hostname);
   }
-  const forwarded = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
-  const effective = forwarded || request.headers.get("host")?.trim();
+  const effective = request.headers.get("host")?.trim();
   if (effective) {
     try {
       names.add(new URL(`http://${effective}`).hostname.toLowerCase());

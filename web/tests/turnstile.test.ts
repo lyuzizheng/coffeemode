@@ -98,6 +98,16 @@ describe("verifyTurnstileToken", () => {
     if (!mismatch.ok) expect(mismatch.code).toBe("turnstile_rejected");
   });
 
+  it("ignores a forged x-forwarded-host when checking hostname (BRAWUKA-282)", async () => {
+    fetchMock.mockResolvedValue(
+      siteverifyResponse({ ...SITEVERIFY_SUCCESS, hostname: "evil.com" }),
+    );
+    const req = resolveRequest("localhost:3000");
+    req.headers.set("x-forwarded-host", "evil.com");
+    const result = await verifyTurnstileToken("token", req);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("turnstile_rejected");
+  });
   it("forwards the client IP to siteverify when present", async () => {
     fetchMock.mockResolvedValue(siteverifyResponse(SITEVERIFY_SUCCESS));
     await verifyTurnstileToken("token", resolveRequest("localhost:3000", "203.0.113.7"));

@@ -93,7 +93,7 @@ Accepted (2026-09-04 — BRAWUKA-50 architecture and deployment specification; r
 
 ### 1. Service topology & container architecture
 
-Dokploy manages multi-service Docker Compose stacks behind an integrated Traefik reverse proxy. Incoming traffic arrives at the VPS on ports 80 and 443, where Traefik handles TLS termination (Let's Encrypt automated ACME HTTP/DNS challenge) and routes to target application containers via Docker network labels.
+Dokploy manages multi-service Docker Compose stacks behind an integrated Traefik reverse proxy. Incoming traffic arrives at the VPS on ports 80 and 443, where Traefik handles TLS termination (Let's Encrypt automated ACME HTTP/DNS challenge) and routes to target application containers via Docker network labels. With BRAWUKA-238 the Cloudflare-proxied path terminates at `cloudflared` (token-mode tunnel, `restart: unless-stopped`), which forwards to Traefik over `traefik-net` — no inbound ports need to stay open for tunneled hostnames.
 
 ```text
                                   Internet
@@ -104,7 +104,7 @@ Dokploy manages multi-service Docker Compose stacks behind an integrated Traefik
                     └────────────────┬────────────────┘
                                      │
                                      ▼
-                     VPS Host (Dokploy / Docker Engine)
+                                     │ (tunnel → traefik-net)
                                      │
                     ┌────────────────┴────────────────┐
                     │      Traefik Reverse Proxy      │
@@ -134,9 +134,9 @@ Dokploy manages multi-service Docker Compose stacks behind an integrated Traefik
 ### 2. Network & storage isolation guarantees
 
 1. **Network topology**:
-   - `coffeemode-staging-network`: Isolated bridge for the staging web container.
-   - `coffeemode-prod-network`: Isolated bridge for the production web container.
-   - `traefik-net`: External bridge shared only by the web tier (`web-staging`, `web-prod`) and Traefik for HTTP ingress routing.
+   - `coffeemode-staging-network`: Isolated bridge connecting `coffeemode-web-staging` and `cloudflared-staging`.
+   - `coffeemode-prod-network`: Isolated bridge connecting `coffeemode-web-prod` and `cloudflared-prod`.
+   - `traefik-net`: External bridge shared by the web tier (`web-staging`, `web-prod`), the tunnel tier (`cloudflared-staging`, `cloudflared-prod`), and Traefik for HTTP ingress routing.
    - Databases live in Supabase (separate staging/prod projects) — no database
      containers attach to any VPS network. Cross-env isolation is enforced at
      the Supabase project + credential level.
@@ -151,13 +151,17 @@ Dokploy manages multi-service Docker Compose stacks behind an integrated Traefik
    - `coffeemode-web-prod`: CPU limit: 2.0 cores, Memory limit: 2 GB (Reservation: 1.0 core, 1 GB).
    - `coffeemode-web-staging`: CPU limit: 1.0 core, Memory limit: 1 GB.
    - Database compute is Supabase-managed (not VPS-reserved).
+   - `cloudflared-staging` / `cloudflared-prod`: CPU limit: 0.5 core, Memory limit: 256 MB (Reservation: 0.1 core, 64 MB).
+
+### 3. Cloudflare dual services & edge matrix
+
 | Dimension | Staging Environment | Production Environment |
 | --- | --- | --- |
 | Primary Web Domain | `staging.coffeemode.app` | `coffeemode.app` (apex) |
 | Secondary Web Domain | None | `www.coffeemode.app` (301 redirect to apex) |
 | Cloudflare Proxy Mode | Orange-cloud (Proxied) | Orange-cloud (Proxied) |
 | SSL / TLS Encryption | Full (Strict) | Full (Strict) |
-| Min TLS Version | TLS 1.3 | TLS 1.3 |
+| Min TLS Version | TLS 1.2 (observe, then tighten to 1.3) | TLS 1.2 (observe, then tighten to 1.3) |
 | Edge Caching Rule | Bypass cache for all routes | Cache HTML shells (`s-maxage`); Bypass on `sb-*` cookies & `Set-Cookie` |
 | Edge Cache Vary Header | N/A | Vary: `Accept-Language` (prevents locale cross-pollution, Spec 0001) |
 | Cloudflare Managed Transforms | Add visitor location headers (`CF-IPCity`, `CF-IPCountry`) | Add visitor location headers (`CF-IPCity`, `CF-IPCountry`) |

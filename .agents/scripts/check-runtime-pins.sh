@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Runtime pin gate (BRAWUKA-190): one Node major and one TypeScript version
-# across `web/`, `poi-service/`, `image-service/`, and a frozen Worker
-# `compatibility_date`.
+# across `web/`, `poi-service/`, `image-service/`, `tiles-service/`, and a
+# frozen Worker `compatibility_date`.
 #
-# Why this exists: no package declared `engines`, the two Workers used
-# TypeScript `^7` while `web/` used `^5`, and both Workers pinned
-# `compatibility_date = "2024-01-01"`. So "which runtime and toolchain is this
+# Why this exists: no package declared `engines`, the Workers used a forked
+# TypeScript major while `web/` used `^5`, and Workers pinned an old
+# `compatibility_date`. So "which runtime and toolchain is this
 # commit built against" was answered by whatever the local machine happened to
 # have installed (CI pins Node 22; the containers pin `node:22-*`). This gate
 # turns those pins into a declared, machine-checked contract: a change that
@@ -23,11 +23,11 @@
 #     Turning it on would hard-fail local `npm ci` for a contributor on an
 #     older Node and change nothing in CI (where the version is controlled), so
 #     the pin is enforced by this gate, not by the installer.
-#   - Equality between the two Workers' `compatibility_date` values. They carry
+#   - Equality between the Workers' `compatibility_date` values. They carry
 #     different runtime surface (image-service enables `nodejs_compat`,
-#     poi-service does not), so both must be pinned, valid, and not in the
-#     future — but each service adopting a newer runtime is a deliberate,
-#     separate change by design.
+#     poi-service and tiles-service do not), so each must be pinned, valid,
+#     and not in the future — but each service adopting a newer runtime is a
+#     deliberate, separate change by design.
 set -euo pipefail
 
 ROOT="${COFFEEMODE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
@@ -504,7 +504,7 @@ check_image_majors() {
 check_image_majors "$WEB_DOCKERFILE" 'FROM[[:space:]]+node:[0-9]+[0-9a-z.-]*'
 check_image_majors "$COMPOSE" 'image:[[:space:]]*node:[0-9]+[0-9a-z.-]*'
 
-# --- 2. TypeScript: one declared range, one resolved version, in all three ---
+# --- 2. TypeScript: one declared range, one resolved version, in every package ---
 
 ts_range=""
 ts_resolved=""

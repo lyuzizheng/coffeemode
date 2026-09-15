@@ -26,10 +26,10 @@ mkdir -p "$TEST_ROOT/web"
 # Runtime-pin inputs: the manifests, lockfiles, Worker configs, Dockerfile and
 # compose file `check-runtime-pins.sh` reads, plus the workflows it walks (copied
 # with `.github/`). The gate treats any missing one as a failure (so it cannot
-# half-run), which means the fixture must carry them — including the two service
+# half-run), which means the fixture must carry them — including the three service
 # trees, which the classifier check does not need. `web/package-lock.json` and
 # `web/Dockerfile` arrive with the tracked source tree above.
-for svc in poi-service image-service; do
+for svc in poi-service image-service tiles-service; do
   mkdir -p "$TEST_ROOT/$svc"
   cp "$svc/package.json" "$svc/package-lock.json" "$svc/wrangler.toml" "$TEST_ROOT/$svc/" 2>/dev/null || true
 done

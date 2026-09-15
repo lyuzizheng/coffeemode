@@ -2,6 +2,7 @@ import { coordinate, positiveNumber, record } from "./primitives";
 import { parseBudgetsSection } from "./budgets";
 import { parseCheckinsSection } from "./checkins";
 import { parseImagesSection } from "./images";
+import { parseMapSection } from "./map";
 import { parseProfileSection } from "./profile";
 import { parsePromptQueueSection } from "./prompt-queue";
 import { parseQuerySection } from "./query";
@@ -94,6 +95,7 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
     query: parseQuerySection(file, record(file, "query", root.query)),
     runtimeConfig: parseRuntimeConfigSection(file, record(file, "runtimeConfig", root.runtimeConfig)),
     images: parseImagesSection(file, record(file, "images", root.images)),
+    map: parseMapSection(file, record(file, "map", root.map)),
     validation: parseValidationSection(file, record(file, "validation", root.validation)),
     budgets: parseBudgetsSection(file, record(file, "budgets", root.budgets)),
   };

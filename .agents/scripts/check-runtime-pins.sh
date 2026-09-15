@@ -33,8 +33,8 @@ set -euo pipefail
 ROOT="${COFFEEMODE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 cd "$ROOT"
 
-PACKAGES=(web poi-service image-service)
-WORKERS=(poi-service image-service)
+PACKAGES=(web poi-service image-service tiles-service)
+WORKERS=(poi-service image-service tiles-service)
 WORKFLOWS_DIR=".github/workflows"
 WEB_DOCKERFILE="web/Dockerfile"
 COMPOSE="docker-compose.yml"

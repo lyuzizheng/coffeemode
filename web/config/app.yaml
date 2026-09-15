@@ -61,6 +61,24 @@ stats:
 cafes:
   # GET /api/cafes limit cap (also the default when no limit is given).
   listLimitMax: 50
+
+# Basemap hosting switch (BRAWUKA-308/BRAWUKA-313): the ONLY coupling point
+# between the web map surface (BRAWUKA-311) and tile hosting. Public instance
+# and self-hosted R2 are interchangeable here — switching hosting is a config
+# edit, never a code change. Self-hosted values come from
+# `scripts/devops/provision-maptiles.sh --print-config`.
+map:
+  # Fully-qualified style documents. Public: OpenFreeMap releases. Self-hosted:
+  # R2 copies written by `scripts/devops/build-maptiles.sh` step 6 (embedded
+  # source rewritten to a pmtiles:// URL) — exact values from
+  # `scripts/devops/provision-maptiles.sh --print-config`.
+  tileStyle:
+    light: https://tiles.openfreemap.org/styles/liberty
+    dark: https://tiles.openfreemap.org/styles/dark
+  # Font + sprite templates (`{fontstack}`/`{range}` are MapLibre tokens,
+  # passed through verbatim — never interpolate here).
+  glyphs: https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf
+  sprite: https://tiles.openfreemap.org/sprites/ofm_f384/ofm
 feed:
   # Check-in feed page size for both Helpful and Newest modes (spec 0001).
   pageSize: 20

@@ -109,6 +109,14 @@ export interface AppConfig {
     r2UploadTimeoutMs: number;
     downloadSlackBytes: number;
   };
+  map: {
+    tileStyle: {
+      light: string;
+      dark: string;
+    };
+    glyphs: string;
+    sprite: string;
+  };
   query: {
     staleTimeMs: number;
     gcTimeMs: number;

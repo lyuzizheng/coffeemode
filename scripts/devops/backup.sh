@@ -91,6 +91,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --retention-days)
       RETENTION_DAYS="${2:?Error: --retention-days requires an integer}"
+      if ! [[ "$RETENTION_DAYS" =~ ^[0-9]+$ ]]; then
+        echo "Error: --retention-days must be a non-negative integer (got '$RETENTION_DAYS')." >&2
+        exit 1
+      fi
       shift 2
       ;;
     --upload-r2)

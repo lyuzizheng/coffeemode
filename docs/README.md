@@ -1,6 +1,6 @@
-# CoffeeMode Documentation
+# CafeMood Documentation
 
-Canonical documentation for the CoffeeMode project — a map-centric web application for discovering work-friendly cafes and spaces.
+Canonical documentation for the CafeMood project — a map-centric web application for discovering work-friendly cafes and spaces.
 
 ## Reading rule
 

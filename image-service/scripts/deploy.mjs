@@ -37,12 +37,12 @@ export const DEPLOY_TARGETS = {
   staging: {
     worker: "image-service-staging",
     bucket: "coffeemode-images-staging",
-    publicUrl: "https://staging-images.coffeemode.app",
+    publicUrl: "https://staging-images.cafemood.app",
   },
   production: {
     worker: "image-service-prod",
     bucket: "coffeemode-images-prod",
-    publicUrl: "https://images.coffeemode.app",
+    publicUrl: "https://images.cafemood.app",
   },
 };
 

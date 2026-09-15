@@ -2,7 +2,7 @@
 
 ## Goal
 
-Define and codify the canonical production-ready technical architecture for running CoffeeMode on a Dokploy-managed Virtual Private Server (VPS). This architecture enforces isolation between Staging and Production stacks, establishes dual Cloudflare edge and R2 storage environments, and standardizes automated webhook-based CI/CD without third-party SaaS overhead or external cost cliffs.
+Define and codify the canonical production-ready technical architecture for running CafeMood on a Dokploy-managed Virtual Private Server (VPS). This architecture enforces isolation between Staging and Production stacks, establishes dual Cloudflare edge and R2 storage environments, and standardizes automated webhook-based CI/CD without third-party SaaS overhead or external cost cliffs.
 
 ## Status
 
@@ -12,7 +12,7 @@ Accepted (2026-09-04 — BRAWUKA-50 architecture and deployment specification; r
 
 ```text
 1. Self-Hosted Dokploy VPS PaaS & Deployment Modes:
-   CoffeeMode deploys on a dedicated self-hosted Dokploy PaaS running on a single
+   CafeMood deploys on a dedicated self-hosted Dokploy PaaS running on a single
    hardened Linux VPS (Debian/Ubuntu LTS) with Docker Engine and Traefik reverse proxy.
    Dokploy supports two compose deployment modes:
    - Docker Swarm Stack Mode (RECOMMENDED for zero-downtime): With Docker Swarm
@@ -40,11 +40,11 @@ Accepted (2026-09-04 — BRAWUKA-50 architecture and deployment specification; r
      bridge network plus the shared external `traefik-net` bridge for Traefik ingress.
    - Cloudflare Edge Isolation:
      - Staging: image-service-staging, poi-service-staging, coffeemode-images-staging R2 bucket,
-       staging.coffeemode.app subdomain routing.
+       staging.cafemood.app subdomain routing.
      - Production: image-service-prod, poi-service-prod, coffeemode-images-prod R2 bucket,
-       coffeemode.app apex and www routing.
+       cafemood.app apex and www routing.
 3. Trunk-Based CI/CD Branching Model:
-   CoffeeMode operates strictly on a trunk-based git workflow (Spec 0003):
+   CafeMood operates strictly on a trunk-based git workflow (Spec 0003):
    - Staging Auto-Deploy: Every merge or push to `main` triggers Staging deployment
      following successful GitHub Actions CI verification gates.
    - Production Promotion: Promoted strictly from signed Git release tags (`v*`)
@@ -113,7 +113,7 @@ Dokploy manages multi-service Docker Compose stacks behind an integrated Traefik
                              │               │
                              │ (traefik-net) │
                              │               │
-             Host: staging.coffeemode.app    │ Host: coffeemode.app
+             Host: staging.cafemood.app    │ Host: cafemood.app
                              │               │
             ┌────────────────▼───┐       ┌───▼────────────────┐
             │   Staging Stack    │       │  Production Stack  │
@@ -157,8 +157,8 @@ Dokploy manages multi-service Docker Compose stacks behind an integrated Traefik
 
 | Dimension | Staging Environment | Production Environment |
 | --- | --- | --- |
-| Primary Web Domain | `staging.coffeemode.app` | `coffeemode.app` (apex) |
-| Secondary Web Domain | None | `www.coffeemode.app` (301 redirect to apex) |
+| Primary Web Domain | `staging.cafemood.app` | `cafemood.app` (apex) |
+| Secondary Web Domain | None | `www.cafemood.app` (301 redirect to apex) |
 | Cloudflare Proxy Mode | Orange-cloud (Proxied) | Orange-cloud (Proxied) |
 | SSL / TLS Encryption | Full (Strict) | Full (Strict) |
 | Min TLS Version | TLS 1.2 (observe, then tighten to 1.3) | TLS 1.2 (observe, then tighten to 1.3) |
@@ -166,7 +166,7 @@ Dokploy manages multi-service Docker Compose stacks behind an integrated Traefik
 | Edge Cache Vary Header | N/A | Vary: `Accept-Language` (prevents locale cross-pollution, Spec 0001) |
 | Cloudflare Managed Transforms | Add visitor location headers (`CF-IPCity`, `CF-IPCountry`) | Add visitor location headers (`CF-IPCity`, `CF-IPCountry`) |
 | Image Storage (R2 Bucket) | `coffeemode-images-staging` | `coffeemode-images-prod` |
-| Public Image CDN Domain | `staging-images.coffeemode.app` | `images.coffeemode.app` (`R2_PUBLIC_HOST` in `web/lib/images/constants.ts`) |
+| Public Image CDN Domain | `staging-images.cafemood.app` | `images.cafemood.app` (`R2_PUBLIC_HOST` in `web/lib/images/constants.ts`) |
 | Image Worker Service | `image-service-staging` | `image-service-prod` |
 | POI Worker Service | `poi-service-staging` | `poi-service-prod` |
 | Worker D1 Database | `poi-store-staging` | `poi-store` |
@@ -254,7 +254,7 @@ deploy:
      scripts/devops/restore.sh --env staging --file <backup>.dump.gz --drill
      ```
 - [ ] Healthcheck endpoint `GET /api/health` returns `{"ok":true}` and version/boot_time markers with HTTP 200.
-- [ ] Root page `GET /` returns HTTP 200 with HTML shell and title CoffeeMode.
+- [ ] Root page `GET /` returns HTTP 200 with HTML shell and title CafeMood.
 - [ ] PostGIS spatial query `GET /api/cafes?lat=1.3521&lng=103.8198&radius_km=5` returns HTTP 200 with `{"cafes":[...]}`.
 - [ ] Next.js standalone static asset resolution: extracts `/_next/static/` asset path from `/` and verifies HTTP 200.
 - [ ] Security header: `X-Content-Type-Options: nosniff`.

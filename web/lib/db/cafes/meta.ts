@@ -35,7 +35,7 @@ export function getServiceAccountId(): string {
 }
 
 /**
- * True when the cafe is attributed to the CoffeeMode service account — a
+ * True when the cafe is attributed to the CafeMood service account — a
  * community-imported or handed-off cafe with no human owner. Null/undefined
  * `created_by` falls back to the service account (DG107 / DG146 handoff).
  *

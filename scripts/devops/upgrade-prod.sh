@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# CoffeeMode Production Zero-Downtime Upgrade Suite
+# CafeMood Production Zero-Downtime Upgrade Suite
 # Architecture: docs/specs/0005-dokploy-vps-and-deployment-architecture.md
 # Lifecycle:    docs/devops/LIFECYCLE.md
 #
@@ -279,7 +279,7 @@ if [[ -z "$RELEASE_TAG" || "$RELEASE_TAG" == "latest" ]]; then
 fi
 log "Target Release Tag: ${RELEASE_TAG}"
 
-BASE_URL="https://${PROD_DOMAIN:-coffeemode.app}"
+BASE_URL="https://${PROD_DOMAIN:-cafemood.app}"
 PREV_VERSION=""
 PREV_BOOT_TIME=""
 PREV_CONTAINER_ID=""
@@ -434,5 +434,5 @@ echo "Environment: production"
 echo "Release Tag: ${IMAGE_TAG}"
 echo "Snapshot:    ${SNAPSHOT_PATH:-None}"
 echo "Status:      Healthy & Live"
-echo "URL:         https://${PROD_DOMAIN:-coffeemode.app}"
+echo "URL:         https://${PROD_DOMAIN:-cafemood.app}"
 echo "=============================================================================="

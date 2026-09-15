@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# CoffeeMode Automated Backup & R2 Replication Suite
+# CafeMood Automated Backup & R2 Replication Suite
 # Architecture: docs/specs/0005-dokploy-vps-and-deployment-architecture.md
 # Lifecycle:    docs/devops/LIFECYCLE.md
 #
@@ -199,7 +199,7 @@ warn()  { echo -e "${BOLD}${YELLOW}[WARN]${NC}  $*"; }
 error() { echo -e "${BOLD}${RED}[ERROR]${NC} $*" >&2; }
 
 echo "=============================================================================="
-echo "CoffeeMode Automated Backup Suite"
+echo "CafeMood Automated Backup Suite"
 echo "Environment:     ${ENV}"
 echo "Backup Type:     ${BACKUP_TYPE}"
 echo "Reason:          ${REASON}"

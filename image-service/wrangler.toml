@@ -55,7 +55,7 @@ bucket_name = "coffeemode"
 # Deploy with `npm run deploy -- --env production` (guard: scripts/deploy.mjs).
 [env.production]
 name = "image-service-prod"
-vars = { R2_ACCOUNT_ID = "bf69da5249b63731ad79545d0095e8db", R2_BUCKET_NAME = "coffeemode-images-prod", R2_PUBLIC_URL = "https://images.coffeemode.app", R2_ENDPOINT = "", UPLOAD_URL_TTL_SECONDS = "600" }
+vars = { R2_ACCOUNT_ID = "bf69da5249b63731ad79545d0095e8db", R2_BUCKET_NAME = "coffeemode-images-prod", R2_PUBLIC_URL = "https://images.cafemood.app", R2_ENDPOINT = "", UPLOAD_URL_TTL_SECONDS = "600" }
 [[env.production.r2_buckets]]
 binding = "R2_BUCKET"
 bucket_name = "coffeemode-images-prod"
@@ -64,7 +64,7 @@ bucket_name = "coffeemode-images-prod"
 # Deploy with `npm run deploy -- --env staging` (guard: scripts/deploy.mjs).
 [env.staging]
 name = "image-service-staging"
-vars = { R2_ACCOUNT_ID = "bf69da5249b63731ad79545d0095e8db", R2_BUCKET_NAME = "coffeemode-images-staging", R2_PUBLIC_URL = "https://staging-images.coffeemode.app", R2_ENDPOINT = "", UPLOAD_URL_TTL_SECONDS = "600" }
+vars = { R2_ACCOUNT_ID = "bf69da5249b63731ad79545d0095e8db", R2_BUCKET_NAME = "coffeemode-images-staging", R2_PUBLIC_URL = "https://staging-images.cafemood.app", R2_ENDPOINT = "", UPLOAD_URL_TTL_SECONDS = "600" }
 [[env.staging.r2_buckets]]
 binding = "R2_BUCKET"
 bucket_name = "coffeemode-images-staging"

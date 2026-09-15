@@ -2,7 +2,7 @@
 
 ## Goal
 
-Keep CoffeeMode's documentation small, canonical, and readable by AI coding agents without duplicate product truth.
+Keep CafeMood's documentation small, canonical, and readable by AI coding agents without duplicate product truth.
 
 ## Folder contract
 

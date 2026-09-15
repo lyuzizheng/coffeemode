@@ -52,12 +52,12 @@ describe("CreatorLine", () => {
 
   it("renders the service-maintained marker in the active locale", () => {
     const { unmount } = renderLine({ author: null, maintainedByService: true }, "en");
-    expect(screen.getByText("Maintained by CoffeeMode")).toBeInTheDocument();
+    expect(screen.getByText("Maintained by CafeMood")).toBeInTheDocument();
     expect(screen.queryByText("A nomad")).toBeNull();
     unmount();
 
     renderLine({ author: null, maintainedByService: true }, "zh");
-    expect(screen.getByText("由 CoffeeMode 维护")).toBeInTheDocument();
+    expect(screen.getByText("由 CafeMood 维护")).toBeInTheDocument();
     expect(screen.queryByText("一位 nomad")).toBeNull();
   });
 
@@ -68,7 +68,7 @@ describe("CreatorLine", () => {
     });
 
     expect(screen.getByText("By Alice")).toBeInTheDocument();
-    expect(screen.queryByText("Maintained by CoffeeMode")).toBeNull();
+    expect(screen.queryByText("Maintained by CafeMood")).toBeNull();
   });
 
   it("keeps zh anonymous and named copy in parity", () => {

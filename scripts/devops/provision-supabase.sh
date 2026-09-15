@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# CoffeeMode Supabase Production Provisioning Orchestrator
+# CafeMood Supabase Production Provisioning Orchestrator
 # Architecture: docs/specs/0001-nextjs-migration.md §Data layer
 # Decisions:    docs/specs/0004-product-decisions-and-backlog.md (34a & 35)
 # Lifecycle:    docs/devops/LIFECYCLE.md

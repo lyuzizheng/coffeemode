@@ -405,7 +405,7 @@ Auth:                Supabase Auth only (Apple + Google OAuth, no email)
 Image storage:       Cloudflare R2 (S3 API, public bucket + CDN)
 Image processing:    sharp on VPS (original + card + thumbnail WebP)
 Image upload:        image-service Cloudflare Worker (presigned R2 URLs)
-POI cache:           Cloudflare Worker + D1 + KV (poi.coffeemode.app), Google key lives here
+POI cache:           Cloudflare Worker + D1 + KV (poi-service.cafemood.app), Google key lives here
 Google Places:       via POI service only (never direct from Next.js)
 Deployment:          VPS Docker (next standalone) + Cloudflare CDN/proxy
 CI:                  GitHub Actions

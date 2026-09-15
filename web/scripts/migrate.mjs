@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * CoffeeMode migration runner — applies web/db/migrations/*.sql in order
+ * CafeMood migration runner — applies web/db/migrations/*.sql in order
  * against a Postgres database, tracking applied files in schema_migrations.
  *
  * This closes the "SQL validated by reasoning only" gap: every migration

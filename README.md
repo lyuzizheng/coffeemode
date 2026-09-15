@@ -1,6 +1,6 @@
 # coffeemode
 
-CoffeeMode MonoRepo
+CafeMood MonoRepo (repo name `lyuzizheng/coffeemode` keeps its pre-rename name)
 
 ## Components
 

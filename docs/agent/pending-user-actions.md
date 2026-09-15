@@ -24,7 +24,7 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
 ## 2. Postgres (primary database — Supabase, per 0004 decision 34a, owner 2026-08-28)
 
-- [x] Create the Supabase project (free tier) in the region closest to the VPS (CoffeeMode project `rsdzcegylqgccaneomph` active in `ap-southeast-1`)
+- [x] Create the Supabase project (free tier) in the region closest to the VPS (CafeMood project `rsdzcegylqgccaneomph` active in `ap-southeast-1`)
 - [x] Enable PostGIS in the SQL editor: `CREATE EXTENSION postgis;` (automated & verified via `scripts/devops/provision-supabase.sh`)
 - [x] Apply the schema with the session/direct connection (not the transaction pooler): `DATABASE_URL=<session-conn> npm run db:migrate` (all 19 migrations 0001–0019 applied; automated via `scripts/devops/provision-supabase.sh`)
 - [ ] Put the pooled connection string into the VPS env as `DATABASE_URL` with `?sslmode=require` (fail-closed per #41); keep the session connection string for migrations/CI
@@ -65,7 +65,7 @@ and the KV hot-cache read path are unaffected and verified working.
   - Secrets installed via Cloudflare Worker bindings (`IMAGE_SERVICE_TOKEN`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`)
   - Deployed to `https://image-service-prod.lyuzizheng.workers.dev` (production) and `https://image-service-staging.lyuzizheng.workers.dev` (staging)
   - `IMAGE_SERVICE_URL` and `IMAGE_SERVICE_TOKEN` recorded in local `web/.env.local`
-- [ ] Attach custom domains `images.coffeemode.app` and `staging-images.coffeemode.app` to `coffeemode-images-prod` and `coffeemode-images-staging` R2 buckets once the `coffeemode.app` Cloudflare zone is active (item 7 / issue #142)
+- [ ] Attach custom domains `images.cafemood.app` and `staging-images.cafemood.app` to `coffeemode-images-prod` and `coffeemode-images-staging` R2 buckets once the `cafemood.app` Cloudflare zone is active (item 7 / issue #142)
 - [ ] Configure bucket defenses:
   - Set a maximum upload size (Cloudflare WAF / R2 bucket limits or a `Content-Length`-enforced presigned URL) to mitigate abuse.
   - Orphan cleanup (issue #158): do NOT add a blanket R2 lifecycle expiry on
@@ -81,7 +81,7 @@ and the KV hot-cache read path are unaffected and verified working.
 ## 7. Domain + deploy (later phase)
 
 - [ ] Point domain at the VPS; Cloudflare proxy/CDN in front
-- [ ] Cloudflare account for the POI worker (`poi.coffeemode.app` once the domain lands)
+- [ ] Cloudflare account for the POI worker (`poi-service.cafemood.app` once the domain lands)
 - [x] In a terminal (from `poi-service/`), create the per-environment resources and add a `[env.staging]` / `[env.production]` block to `poi-service/wrangler.toml` (spec 0005 §3 names): (done 2026-09-12, BRAWUKA-222 — created on the `Lyuzizheng@gmail.com` account via Cloudflare MCP; `wrangler.toml` now carries real ids for both environments, the top-level local-dev placeholders untouched)
   - `poi-store-staging` = `d069da6b-07e5-4fc0-b6a9-a685b3bef8b8`, `poi-store` = `7d01d154-03a7-4483-8b54-83f2c310af3b` (`POI_DB`)
   - `poi-cache-staging` = `9f7f807aa68b47e3bbb6ecaf15c5f571`, `poi-cache` = `be0e4111b70f482ca23ed1f833142f88` (`POI_KV`)

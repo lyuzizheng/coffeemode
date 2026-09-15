@@ -2,7 +2,7 @@
 
 ## Goal
 
-Prove the full CoffeeMode backend behaves as one coherent product from
+Prove the full CafeMood backend behaves as one coherent product from
 real multi-user journeys — not just isolated module contracts. Six user
 paths (discovery → creation → identity → check-ins → likes → lifecycle)
 run in dependency order against real Postgres/PostGIS in a single

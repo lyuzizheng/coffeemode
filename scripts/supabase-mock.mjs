@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * CoffeeMode local Supabase Auth mock (S2 testkit-compose-mocks).
+ * CafeMood local Supabase Auth mock (S2 testkit-compose-mocks).
  *
  * Tiny GoTrue stand-in for `docker compose` local kit. It does NOT implement
  * Supabase — it only returns deterministic unsigned fake JWTs so that

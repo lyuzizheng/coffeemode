@@ -98,7 +98,7 @@ describe("sw runtime rules", () => {
       {
         name: "r2 images (by host)",
         pathname: "/variants/abc.webp",
-        host: "images.coffeemode.app",
+        host: "images.cafemood.app",
         matches: ["r2-images"],
         notMatches: ["next-static", "static-assets"],
       },

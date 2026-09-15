@@ -4,6 +4,10 @@ ADRs record architecture decisions with historical context. They do not replace 
 
 Every ADR must have a `## Status` heading with one of: `Proposed`, `Accepted`, `Superseded`, `Deprecated`, `Rejected`.
 
+> 2026-09-14 — Product renamed from CoffeeMode to CafeMood (primary domain
+> cafemood.app). ADR bodies keep their pre-rename wording as timestamped
+> history; new decisions use CafeMood.
+
 ## Index
 
 | ADR | Title | Status |

@@ -1,4 +1,4 @@
-# poi-service — CoffeeMode POI cache microservice
+# poi-service — CafeMood POI cache microservice
 
 Cloudflare Worker (Workers + D1 + KV) that is the **only** place in the app that
 talks to Google Places. Every Google call is cached once for everyone; the API

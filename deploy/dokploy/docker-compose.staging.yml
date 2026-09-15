@@ -1,4 +1,4 @@
-# CoffeeMode Staging Stack — Dokploy Docker Compose
+# CafeMood Staging Stack — Dokploy Docker Compose
 # Architecture: docs/specs/0005-dokploy-vps-and-deployment-architecture.md
 #
 # Isolated Staging Stack (BRAWUKA-241; decision 34a / BRAWUKA-240 D1b):
@@ -50,7 +50,7 @@ services:
     labels:
       - "traefik.enable=true"
       # Route staging traffic
-      - "traefik.http.routers.coffeemode-staging.rule=Host(`${STAGING_DOMAIN:-staging.coffeemode.app}`)"
+      - "traefik.http.routers.coffeemode-staging.rule=Host(`${STAGING_DOMAIN:-staging.cafemood.app}`)"
       - "traefik.http.routers.coffeemode-staging.entrypoints=websecure"
       - "traefik.http.routers.coffeemode-staging.tls.certresolver=letsencrypt"
       - "traefik.http.routers.coffeemode-staging.service=coffeemode-staging-svc"

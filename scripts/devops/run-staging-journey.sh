@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# CoffeeMode Staging User-Journey Runner
+# CafeMood Staging User-Journey Runner
 # Lifecycle:    docs/devops/LIFECYCLE.md (staging verification)
 # Test layers: docs/specs/0003-testing-and-ci.md
 #
@@ -39,7 +39,7 @@ fail() { echo "[staging-journey] FAIL: $*" >&2; exit 1; }
 
 usage() {
   cat <<'EOF'
-CoffeeMode Staging User-Journey Runner
+CafeMood Staging User-Journey Runner
 
 Usage:
   STAGING_DATABASE_URL=postgres://... scripts/devops/run-staging-journey.sh [options]

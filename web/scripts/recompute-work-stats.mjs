@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * CoffeeMode work_stats nightly recompute — idempotent drift correction.
+ * CafeMood work_stats nightly recompute — idempotent drift correction.
  *
  * Recomputes every cafe's work_stats from its non-deleted check-ins
  * (spec 0001 §Aggregation). This is the same recomputeWorkStats used by

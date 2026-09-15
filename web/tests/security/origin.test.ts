@@ -28,9 +28,9 @@ describe("isSameOrigin and allowlist unification", () => {
   });
 
   it("parses allowlist entries correctly", () => {
-    expect(parseAllowlistEntry("https://staging.coffeemode.app:3000")).toEqual({
-      host: "staging.coffeemode.app:3000",
-      hostname: "staging.coffeemode.app",
+    expect(parseAllowlistEntry("https://staging.cafemood.app:3000")).toEqual({
+      host: "staging.cafemood.app:3000",
+      hostname: "staging.cafemood.app",
     });
     expect(parseAllowlistEntry("//preview.example.com")).toEqual({
       host: "preview.example.com",
@@ -40,17 +40,17 @@ describe("isSameOrigin and allowlist unification", () => {
   });
 
   it("honors NEXT_PUBLIC_ALLOWED_HOSTS and NEXT_PUBLIC_SITE_URL", () => {
-    process.env.NEXT_PUBLIC_SITE_URL = "https://coffeemode.app";
-    process.env.NEXT_PUBLIC_ALLOWED_HOSTS = "staging.coffeemode.app, preview.coffeemode.app:8080";
+    process.env.NEXT_PUBLIC_SITE_URL = "https://cafemood.app";
+    process.env.NEXT_PUBLIC_ALLOWED_HOSTS = "staging.cafemood.app, preview.cafemood.app:8080";
 
     const allowed = getAllowedHosts();
-    expect(allowed.has("coffeemode.app")).toBe(true);
-    expect(allowed.has("staging.coffeemode.app")).toBe(true);
-    expect(allowed.has("preview.coffeemode.app:8080")).toBe(true);
+    expect(allowed.has("cafemood.app")).toBe(true);
+    expect(allowed.has("staging.cafemood.app")).toBe(true);
+    expect(allowed.has("preview.cafemood.app:8080")).toBe(true);
     expect(allowed.has("evil.com")).toBe(false);
 
-    expect(isAllowedOrigin("https://staging.coffeemode.app")).toBe(true);
-    expect(isAllowedOrigin("https://preview.coffeemode.app:8080")).toBe(true);
+    expect(isAllowedOrigin("https://staging.cafemood.app")).toBe(true);
+    expect(isAllowedOrigin("https://preview.cafemood.app:8080")).toBe(true);
     expect(isAllowedOrigin("https://evil.com")).toBe(false);
   });
 
@@ -59,18 +59,18 @@ describe("isSameOrigin and allowlist unification", () => {
       method: "POST",
       headers: {
         host: "internal-alb",
-        "x-forwarded-host": "coffeemode.app, proxy.aws.internal",
-        origin: "https://coffeemode.app",
+        "x-forwarded-host": "cafemood.app, proxy.aws.internal",
+        origin: "https://cafemood.app",
       },
     });
     expect(isSameOrigin(req)).toBe(true);
   });
 
   it("rejects when Sec-Fetch-Site is cross-site", () => {
-    const req = new Request("https://coffeemode.app/api/checkins", {
+    const req = new Request("https://cafemood.app/api/checkins", {
       method: "POST",
       headers: {
-        host: "coffeemode.app",
+        host: "cafemood.app",
         "sec-fetch-site": "cross-site",
         origin: "https://evil.com",
       },
@@ -79,22 +79,22 @@ describe("isSameOrigin and allowlist unification", () => {
   });
 
   it("accepts when Sec-Fetch-Site is same-origin and Origin matches Host", () => {
-    const req = new Request("https://coffeemode.app/api/checkins", {
+    const req = new Request("https://cafemood.app/api/checkins", {
       method: "POST",
       headers: {
-        host: "coffeemode.app",
+        host: "cafemood.app",
         "sec-fetch-site": "same-origin",
-        origin: "https://coffeemode.app",
+        origin: "https://cafemood.app",
       },
     });
     expect(isSameOrigin(req)).toBe(true);
   });
 
   it("rejects malformed Origin header", () => {
-    const req = new Request("https://coffeemode.app/api/cafes", {
+    const req = new Request("https://cafemood.app/api/cafes", {
       method: "POST",
       headers: {
-        host: "coffeemode.app",
+        host: "cafemood.app",
         origin: "not-a-valid-url",
       },
     });
@@ -102,20 +102,20 @@ describe("isSameOrigin and allowlist unification", () => {
   });
 
   it("accepts when Origin is absent and no cross-site indicators exist", () => {
-    const req = new Request("https://coffeemode.app/api/checkins", {
+    const req = new Request("https://cafemood.app/api/checkins", {
       method: "POST",
       headers: {
-        host: "coffeemode.app",
+        host: "cafemood.app",
       },
     });
     expect(isSameOrigin(req)).toBe(true);
   });
 
   it("rejects mismatched Referer when Origin is absent", () => {
-    const req = new Request("https://coffeemode.app/api/checkins", {
+    const req = new Request("https://cafemood.app/api/checkins", {
       method: "POST",
       headers: {
-        host: "coffeemode.app",
+        host: "cafemood.app",
         referer: "https://attacker.org/phishing",
       },
     });
@@ -123,26 +123,26 @@ describe("isSameOrigin and allowlist unification", () => {
   });
 
   it("accepts matching Referer when Origin is absent", () => {
-    const req = new Request("https://coffeemode.app/api/checkins", {
+    const req = new Request("https://cafemood.app/api/checkins", {
       method: "POST",
       headers: {
-        host: "coffeemode.app",
-        referer: "https://coffeemode.app/cafes/123",
+        host: "cafemood.app",
+        referer: "https://cafemood.app/cafes/123",
       },
     });
     expect(isSameOrigin(req)).toBe(true);
   });
 
   it("requireSameOrigin returns null for same-origin and 403 response for cross-origin", () => {
-    const okReq = new Request("https://coffeemode.app/api/checkins", {
+    const okReq = new Request("https://cafemood.app/api/checkins", {
       method: "POST",
-      headers: { host: "coffeemode.app", origin: "https://coffeemode.app" },
+      headers: { host: "cafemood.app", origin: "https://cafemood.app" },
     });
     expect(requireSameOrigin(okReq)).toBeNull();
 
-    const badReq = new Request("https://coffeemode.app/api/checkins", {
+    const badReq = new Request("https://cafemood.app/api/checkins", {
       method: "POST",
-      headers: { host: "coffeemode.app", origin: "https://attacker.evil" },
+      headers: { host: "cafemood.app", origin: "https://attacker.evil" },
     });
     const errorRes = requireSameOrigin(badReq);
     expect(errorRes).not.toBeNull();
@@ -155,7 +155,7 @@ describe("mutating API routes reject cross-site requests at the boundary", () =>
     new Request(url, {
       method,
       headers: {
-        host: "coffeemode.app",
+        host: "cafemood.app",
         "sec-fetch-site": "cross-site",
         origin: "https://attacker.evil",
       },
@@ -164,67 +164,67 @@ describe("mutating API routes reject cross-site requests at the boundary", () =>
   const dummyParams = { params: Promise.resolve({ id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" }) };
 
   it("POST /api/cafes rejects cross-origin", async () => {
-    const res = await postCafe(crossSiteReq("https://coffeemode.app/api/cafes", "POST"));
+    const res = await postCafe(crossSiteReq("https://cafemood.app/api/cafes", "POST"));
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
 
   it("DELETE /api/cafes/[id] rejects cross-origin", async () => {
-    const res = await deleteCafe(crossSiteReq("https://coffeemode.app/api/cafes/1", "DELETE"), dummyParams);
+    const res = await deleteCafe(crossSiteReq("https://cafemood.app/api/cafes/1", "DELETE"), dummyParams);
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
 
   it("POST /api/checkins rejects cross-origin", async () => {
-    const res = await postCheckin(crossSiteReq("https://coffeemode.app/api/checkins", "POST"));
+    const res = await postCheckin(crossSiteReq("https://cafemood.app/api/checkins", "POST"));
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
 
   it("PATCH /api/checkins/[id] rejects cross-origin", async () => {
-    const res = await patchCheckin(crossSiteReq("https://coffeemode.app/api/checkins/1", "PATCH"), dummyParams);
+    const res = await patchCheckin(crossSiteReq("https://cafemood.app/api/checkins/1", "PATCH"), dummyParams);
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
 
   it("DELETE /api/checkins/[id] rejects cross-origin", async () => {
-    const res = await deleteCheckin(crossSiteReq("https://coffeemode.app/api/checkins/1", "DELETE"), dummyParams);
+    const res = await deleteCheckin(crossSiteReq("https://cafemood.app/api/checkins/1", "DELETE"), dummyParams);
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
 
   it("POST /api/checkins/[id]/like rejects cross-origin", async () => {
-    const res = await postCheckinLike(crossSiteReq("https://coffeemode.app/api/checkins/1/like", "POST"), dummyParams);
+    const res = await postCheckinLike(crossSiteReq("https://cafemood.app/api/checkins/1/like", "POST"), dummyParams);
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
 
   it("POST /api/images/upload rejects cross-origin", async () => {
-    const res = await postImageUpload(crossSiteReq("https://coffeemode.app/api/images/upload", "POST"));
+    const res = await postImageUpload(crossSiteReq("https://cafemood.app/api/images/upload", "POST"));
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
 
   it("POST /api/navigations rejects cross-origin", async () => {
-    const res = await postNavigation(crossSiteReq("https://coffeemode.app/api/navigations", "POST"));
+    const res = await postNavigation(crossSiteReq("https://cafemood.app/api/navigations", "POST"));
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
 
   it("POST /api/places/external rejects cross-origin", async () => {
-    const res = await postPlacesExternal(crossSiteReq("https://coffeemode.app/api/places/external", "POST"));
+    const res = await postPlacesExternal(crossSiteReq("https://cafemood.app/api/places/external", "POST"));
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
 
   it("POST /api/places/resolve rejects cross-origin", async () => {
-    const res = await postPlacesResolve(crossSiteReq("https://coffeemode.app/api/places/resolve", "POST"));
+    const res = await postPlacesResolve(crossSiteReq("https://cafemood.app/api/places/resolve", "POST"));
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
 
   it("PATCH /api/profile rejects cross-origin", async () => {
-    const res = await patchProfile(crossSiteReq("https://coffeemode.app/api/profile", "PATCH") as unknown as import("next/server").NextRequest);
+    const res = await patchProfile(crossSiteReq("https://cafemood.app/api/profile", "PATCH") as unknown as import("next/server").NextRequest);
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });

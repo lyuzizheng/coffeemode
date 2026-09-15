@@ -1,6 +1,6 @@
-# CoffeeMode
+# CafeMood
 
-CoffeeMode is a crowdsourced guide to cafes worth working from, built by
+CafeMood is a crowdsourced guide to cafes worth working from, built by
 and for digital nomads. Instead of vibes, it records facts from real work
 sessions: wifi, outlets, seats/tables, temperature, and coffee quality —
 each scored 0–100 — plus nomad policies (minimum spend, maximum stay).

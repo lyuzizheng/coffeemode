@@ -50,7 +50,7 @@ const sourceSerif = localFont({
 export const metadata: Metadata = {
   title: {
     default: APP_NAME,
-    template: "%s · CoffeeMode",
+    template: "%s · CafeMood",
   },
   description: APP_DESCRIPTION,
   applicationName: APP_NAME,

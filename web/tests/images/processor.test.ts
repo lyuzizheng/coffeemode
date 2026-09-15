@@ -23,9 +23,9 @@ function makeProcessUrls(imageUuid: string): ProcessUrls {
       headers: { "Content-Type": "image/webp" },
     },
     publicUrls: {
-      original: `https://images.coffeemode.app/original/${imageUuid}.webp`,
-      card: `https://images.coffeemode.app/card/${imageUuid}.webp`,
-      thumbnail: `https://images.coffeemode.app/thumbnail/${imageUuid}.webp`,
+      original: `https://images.cafemood.app/original/${imageUuid}.webp`,
+      card: `https://images.cafemood.app/card/${imageUuid}.webp`,
+      thumbnail: `https://images.cafemood.app/thumbnail/${imageUuid}.webp`,
     },
     keys: {
       original: `original/${imageUuid}.webp`,

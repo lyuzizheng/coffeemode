@@ -121,7 +121,7 @@ export function ThemePreview() {
       <header className="sticky top-0 z-20 border-b border-separator bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-5 py-3 sm:px-8">
           <span className="font-display text-md font-extrabold tracking-tight">
-            CoffeeMode
+            CafeMood
           </span>
           <ThemeToggle />
         </div>

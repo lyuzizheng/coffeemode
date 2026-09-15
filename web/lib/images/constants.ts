@@ -22,7 +22,7 @@
  * `web/shared/images/constants.ts`; `web/lib/images/processor.ts`
  * imports it directly.
  */
-export const R2_PUBLIC_HOST = "images.coffeemode.app";
+export const R2_PUBLIC_HOST = "images.cafemood.app";
 
 /** Absolute public CDN URL for an R2 object key (leading slash tolerated). */
 export function r2PublicUrl(key: string): string {

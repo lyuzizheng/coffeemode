@@ -2,7 +2,7 @@
 
 ## Goal
 
-Prove CoffeeMode behaves as one coherent product when driven exactly the way a
+Prove CafeMood behaves as one coherent product when driven exactly the way a
 real client drives it: every state change and every assertion goes through the
 external HTTP API (Next.js Route Handlers, standard `Request` → `Response`),
 never through `lib/db/*` internals. This spec composes the founder-mandated

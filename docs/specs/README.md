@@ -1,6 +1,6 @@
-# CoffeeMode Canonical Specs
+# CafeMood Canonical Specs
 
-`docs/specs/` is the canonical implementation source of truth for CoffeeMode.
+`docs/specs/` is the canonical implementation source of truth for CafeMood.
 
 ## Reading rule
 

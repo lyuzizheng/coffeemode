@@ -99,7 +99,7 @@ the cafe cover; when the cafe has no cover, the fallback is a flat
 `background`-colored card with the cup glyph centered at 32px and the cafe
 name in display font — no generated collage, no sparkle frames.
 
-Preview copy (DG108): `og:title` = `{cafe name} · {city} — CoffeeMode`;
+Preview copy (DG108): `og:title` = `{cafe name} · {city} — CafeMood`;
 `og:description` shows the **overall (Experience) score only** plus a
 curiosity hook — the full fact line stays on the page itself (Part 1 shell):
 - zh: `✨ 87 · 23 位 nomad 打卡 — 这里真的适合办公吗？`

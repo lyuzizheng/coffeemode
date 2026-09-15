@@ -2,7 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 /**
- * CoffeeMode stale integration-test database sweeper.
+ * CafeMood stale integration-test database sweeper.
  *
  * Journey / HTTP / DB integration suites provision one database per run via
  * `web/tests/helpers/db.ts` (`{prefix}_{pid}_{uuid32}`, e.g.
@@ -40,7 +40,7 @@ const TEST_DB_PATTERN = /^[a-z0-9_]+_[0-9]+_[0-9a-f]{32}$/;
 
 function showHelp() {
   console.log(`
-CoffeeMode stale integration-test database sweeper
+CafeMood stale integration-test database sweeper
 
 Usage:
   node scripts/cleanup-stale-test-dbs.mjs [options]

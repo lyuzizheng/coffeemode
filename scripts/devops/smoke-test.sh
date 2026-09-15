@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# CoffeeMode Automated Smoke Test & Health Verification Suite
+# CafeMood Automated Smoke Test & Health Verification Suite
 # Architecture: docs/specs/0005-dokploy-vps-and-deployment-architecture.md
 # Lifecycle:    docs/devops/LIFECYCLE.md
 #
 # Runs in-repo post-deployment verification without third-party SaaS dependencies.
 # Verifies 10 operational contracts:
 #   1. Healthcheck probe (/api/health -> {"ok":true})
-#   2. HTML root page render (/ -> title CoffeeMode)
+#   2. HTML root page render (/ -> title CafeMood)
 #   3. PostGIS database spatial query (/api/cafes?lat=1.3521&lng=103.8198&radius_km=5)
 #   4. Standalone Next.js static chunk resolution (/_next/static/...)
 #   5. Security headers (X-Content-Type-Options: nosniff)
@@ -79,9 +79,9 @@ done
 if [[ -n "$URL_OVERRIDE" ]]; then
   BASE_URL="$URL_OVERRIDE"
 elif [[ "$ENV" == "staging" ]]; then
-  BASE_URL="https://${STAGING_DOMAIN:-staging.coffeemode.app}"
+  BASE_URL="https://${STAGING_DOMAIN:-staging.cafemood.app}"
 else
-  BASE_URL="https://${PROD_DOMAIN:-coffeemode.app}"
+  BASE_URL="https://${PROD_DOMAIN:-cafemood.app}"
 fi
 
 # Remove trailing slash
@@ -91,7 +91,7 @@ FAILED=0
 TOTAL=0
 
 echo "=============================================================================="
-echo "CoffeeMode Automated Smoke Test Suite"
+echo "CafeMood Automated Smoke Test Suite"
 echo "Target Environment: ${ENV}"
 echo "Base URL:           ${BASE_URL}"
 echo "Timeout:            ${TIMEOUT}s"
@@ -117,7 +117,7 @@ assert_test "Healthcheck endpoint (/api/health)" \
 
 # 2. HTTP root render
 assert_test "Root page render (/)" \
-  "curl -fsS -m ${TIMEOUT} '${BASE_URL}/' | grep -qi 'CoffeeMode'"
+  "curl -fsS -m ${TIMEOUT} '${BASE_URL}/' | grep -qi 'CafeMood'"
 
 # 3. PostGIS database query via cafes API (lat/lng + radius_km, returns { cafes: [...] })
 assert_test "PostGIS spatial query (/api/cafes?lat=1.3521&lng=103.8198&radius_km=5)" \
@@ -139,9 +139,9 @@ assert_test "POI service worker proxy (/api/places/search?q=coffee)" \
 
 # 7. Cloudflare R2 Image CDN availability (verifies DNS, TLS, and edge reachability)
 if [[ "$ENV" == "prod" ]]; then
-  IMAGE_HOST="https://images.coffeemode.app"
+  IMAGE_HOST="https://images.cafemood.app"
 else
-  IMAGE_HOST="https://staging-images.coffeemode.app"
+  IMAGE_HOST="https://staging-images.cafemood.app"
 fi
 assert_test "Cloudflare R2 images CDN edge connectivity (${IMAGE_HOST})" \
   "STATUS=\$(curl -s -m ${TIMEOUT} -o /dev/null -w '%{http_code}' '${IMAGE_HOST}/'); \

@@ -2,7 +2,7 @@
 
 /**
  * Unified search result list (DG131) — renders the server-ordered
- * `SearchResponse` as two stable groups: CoffeeMode cafes first, then the
+ * `SearchResponse` as two stable groups: CafeMood cafes first, then the
  * POI group (`stored_poi`/`google`/`apple`). Grouping is pure presentation
  * over `groupSearchResults`; intra-group order is exactly what the server
  * sent (relevance → distance → name → id, DG142) — no re-sorting here.

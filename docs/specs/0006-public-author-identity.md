@@ -2,7 +2,7 @@
 
 ## Goal
 
-Provide an explicit, user-consented public author identity attribution for cafe creators and check-in authors in CoffeeMode V2, evolving from the MVP anonymous baseline ("A nomad") without leaking internal user UUIDs or breaking existing cache and query contracts.
+Provide an explicit, user-consented public author identity attribution for cafe creators and check-in authors in CafeMood V2, evolving from the MVP anonymous baseline ("A nomad") without leaking internal user UUIDs or breaking existing cache and query contracts.
 
 ## Stable decisions
 
@@ -35,7 +35,7 @@ This specification records all 13 owner-confirmed design decisions and 4 binding
 ### Architect corrections (binding)
 
 1. **Migration numbering**: Migration is `web/db/migrations/0018_public_identity.sql` (0016 seed service account and 0017 cafe visibility are already allocated).
-2. **Service account edge case (P1)**: When `cafes.created_by` is null or belongs to the community service account (`00000000-0000-4000-a000-000000000001`, "CoffeeMode"), the author projection must always evaluate to `author: null` to preserve maintainer branding and prevent impersonation.
+2. **Service account edge case (P1)**: When `cafes.created_by` is null or belongs to the community service account (`00000000-0000-4000-a000-000000000001`, "CafeMood"), the author projection must always evaluate to `author: null` to preserve maintainer branding and prevent impersonation.
 3. **Dedicated endpoint**: Dedicated `PATCH /api/profile/identity` route rather than overloading cosmetic profile patch (`PATCH /api/profile`).
 4. **Anti-squatting & cooldown**: Partial unique index `idx_profiles_public_handle` is defined `where public_handle is not null` (NOT conditional on `show_public_identity`) so handles remain reserved upon revocation. `public_handle_changed_at` timestamp column tracks user-initiated edits to enforce the 7-day cooldown.
 

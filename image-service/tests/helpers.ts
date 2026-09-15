@@ -146,7 +146,7 @@ export function baseEnv(): {
     R2_ACCESS_KEY_ID: "test-access-key",
     R2_SECRET_ACCESS_KEY: "test-secret-key",
     R2_BUCKET_NAME: "cafemode",
-    R2_PUBLIC_URL: "https://images.coffeemode.app",
+    R2_PUBLIC_URL: "https://images.cafemood.app",
     UPLOAD_URL_TTL_SECONDS: "600",
     R2_BUCKET: new FakeR2Bucket(),
   };

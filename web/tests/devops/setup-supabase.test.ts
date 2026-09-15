@@ -27,7 +27,7 @@ describe("Supabase DevOps Provisioning — Unit Contracts", () => {
 
   it("setup-supabase.mjs outputs help text cleanly", () => {
     const output = execSync(`node "${SETUP_SCRIPT}" --help`, { encoding: "utf8" });
-    expect(output).toContain("CoffeeMode Supabase Provisioning & Verification Suite");
+    expect(output).toContain("CafeMood Supabase Provisioning & Verification Suite");
     expect(output).toContain("--database-url");
     expect(output).toContain("--supabase-url");
     expect(output).toContain("--service-role-key");
@@ -37,7 +37,7 @@ describe("Supabase DevOps Provisioning — Unit Contracts", () => {
 
   it("provision-supabase.sh outputs help text cleanly", () => {
     const output = execSync(`bash "${PROVISION_SHELL_SCRIPT}" --help`, { encoding: "utf8" });
-    expect(output).toContain("CoffeeMode Supabase Production Provisioning Orchestrator");
+    expect(output).toContain("CafeMood Supabase Production Provisioning Orchestrator");
     expect(output).toContain("--database-url");
     expect(output).toContain("--supabase-url");
   });

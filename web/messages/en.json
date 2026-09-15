@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "CoffeeMode",
+    "name": "CafeMood",
     "tagline": "Find the perfect cafe to work from",
     "scores": {
       "experience": "Experience",
@@ -49,7 +49,7 @@
   "offline": {
     "banner": "Connection is unstable — some info may be outdated.",
     "title": "You're offline",
-    "body": "CoffeeMode needs a connection to load fresh cafe data. Pages you've already visited may still work.",
+    "body": "CafeMood needs a connection to load fresh cafe data. Pages you've already visited may still work.",
     "retry": "Try again"
   },
   "themePreview": {
@@ -190,10 +190,10 @@
     },
     "searchResults": {
       "title": "Unified search results",
-      "desc": "Grouped CoffeeMode-first results, city-center distance labels, source-gated external CTAs, and the ranking preference toggle (settings + onboarding).",
+      "desc": "Grouped CafeMood-first results, city-center distance labels, source-gated external CTAs, and the ranking preference toggle (settings + onboarding).",
       "last_action": "Last action"
     },
-    "footer": "CoffeeMode — warm paper, espresso ink, one terracotta voice · en/zh via next-intl"
+    "footer": "CafeMood — warm paper, espresso ink, one terracotta voice · en/zh via next-intl"
   },
   "profile": {
     "title": "Profile",
@@ -290,7 +290,7 @@
     "photoUploadFailed": "The photo could not be uploaded.",
     "requiredFields": "Choose a place, score it, add a note, and attach a photo.",
     "createFailed": "The cafe could not be created.",
-    "alreadyExists": "This place is already in CoffeeMode.",
+    "alreadyExists": "This place is already in CafeMood.",
     "created": "Cafe created.",
     "offline": "Creation unavailable offline",
     "signInRequired": "Please sign in to publish — your draft stays here.",
@@ -385,9 +385,9 @@
       "seoul": "Seoul",
       "berlin": "Berlin"
     },
-    "group_on_coffeemode": "On CoffeeMode",
+    "group_on_coffeemode": "On CafeMood",
     "group_more_places": "More places",
-    "not_on_coffeemode": "Not on CoffeeMode yet",
+    "not_on_coffeemode": "Not on CafeMood yet",
     "from_city_center": "from city center",
     "not_finding": "Not finding it?",
     "search_google_maps": "Search Google Maps",
@@ -414,7 +414,7 @@
   "error": {
     "kicker": "Error",
     "title": "Something broke",
-    "body": "CoffeeMode hit an unexpected error while rendering this page. Trying again usually fixes it.",
+    "body": "CafeMood hit an unexpected error while rendering this page. Trying again usually fixes it.",
     "retry": "Try again",
     "home": "Back to home"
   },
@@ -463,7 +463,7 @@
     },
     "a_nomad": "A nomad",
     "by_author": "By {name}",
-    "maintained_by_service": "Maintained by CoffeeMode",
+    "maintained_by_service": "Maintained by CafeMood",
     "like_aria": "Like this check-in",
     "like_signin": "Sign in to like a check-in",
     "card_actions_aria": "More actions for this check-in",

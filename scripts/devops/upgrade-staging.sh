@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# CoffeeMode Staging Service Upgrade Suite
+# CafeMood Staging Service Upgrade Suite
 # Architecture: docs/specs/0005-dokploy-vps-and-deployment-architecture.md
 # Lifecycle:    docs/devops/LIFECYCLE.md
 #
@@ -209,7 +209,7 @@ if [[ -z "$RELEASE_TAG" || "$RELEASE_TAG" == "latest" ]]; then
 fi
 log "Target Release Tag: ${RELEASE_TAG}"
 
-BASE_URL="https://${STAGING_DOMAIN:-staging.coffeemode.app}"
+BASE_URL="https://${STAGING_DOMAIN:-staging.cafemood.app}"
 PREV_VERSION=""
 PREV_BOOT_TIME=""
 PREV_CONTAINER_ID=""
@@ -348,5 +348,5 @@ echo "==========================================================================
 echo "Environment: staging"
 echo "Image Tag:   ${IMAGE_TAG}"
 echo "Status:      Healthy & Verified"
-echo "URL:         https://${STAGING_DOMAIN:-staging.coffeemode.app}"
+echo "URL:         https://${STAGING_DOMAIN:-staging.cafemood.app}"
 echo "=============================================================================="

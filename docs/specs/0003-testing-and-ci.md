@@ -2,7 +2,7 @@
 
 ## Goal
 
-Define the canonical test layers, gate selection, and CI behavior for CoffeeMode
+Define the canonical test layers, gate selection, and CI behavior for CafeMood
 without making unrelated packages or external services part of every change.
 
 ## Status

@@ -2,9 +2,9 @@
 
 ## Goal
 
-Rewrite CoffeeMode as a full-stack Next.js application — **the coworking review platform for digital nomads**. CoffeeMode's moat is data Google Maps doesn't have: wifi quality, power outlets, seat comfort, temperature, coffee quality, and max stay policy — all crowd-sourced through 打卡 (check-ins).
+Rewrite CafeMood as a full-stack Next.js application — **the coworking review platform for digital nomads**. CafeMood's moat is data Google Maps doesn't have: wifi quality, power outlets, seat comfort, temperature, coffee quality, and max stay policy — all crowd-sourced through 打卡 (check-ins).
 
-Drop the Java Spring Boot backend entirely. CoffeeMode owns its POI database; Google Places and Apple Maps are external references and import sources, never authoritative.
+Drop the Java Spring Boot backend entirely. CafeMood owns its POI database; Google Places and Apple Maps are external references and import sources, never authoritative.
 
 This is a rewrite, not a migration. The old Vite SPA and Java backend were removed after the rewrite landed (BRAWUKA-277); no legacy source remains in the repo.
 
@@ -30,7 +30,7 @@ next-intl — i18n (English primary + Chinese, from day one)
 ### Project structure
 
 ```text
-coffeemode/
+cafemood/  (repo directory `coffeemode/` keeps its pre-rename name; see ADR index note)
   web/                      # Next.js full-stack application
     app/
       layout.tsx            # Root: fonts, HeroUIProvider, theme, metadata
@@ -104,7 +104,7 @@ Local dev/CI       → same postgis/postgis:16-3.4 image (docker-compose locally
 - Product-table data stays server-mediated: route handlers use the pooled Postgres connection, and the tables must NOT be reachable through Supabase's Data API (PostgREST/GraphQL) with the browser anon key — new projects no longer auto-expose new tables, and default grants to `anon`/`authenticated` are revoked at provisioning as a belt-and-suspenders step (`docs/agent/pending-user-actions.md` §2). The anon key is used only for auth flows.
 - Postgres connection: standard `pg` Pool (server-side only), fail-closed SSL (#41). PostGIS enabled via `create extension postgis` (Supabase catalog). Pick the Supabase region closest to the VPS — route handlers run multi-round-trip transactions, so RTT multiplies.
 
-#### Tables (7 total: 5 product + 2 infra — deliberately minimal; applied via migrations 0001–0022)
+#### Tables (7 total: 5 product + 2 infra — deliberately minimal; applied via migrations 0001–0024)
 
 ```sql
 -- 1. profiles: app-side user record, keyed by Supabase auth user id
@@ -119,7 +119,7 @@ create table profiles (
   created_at    timestamptz default now()
 );
 
--- 2. cafes: CoffeeMode's own POI database
+-- 2. cafes: CafeMood's own POI database
 create table cafes (
   id              uuid primary key default gen_random_uuid(),
   name            text not null,
@@ -413,7 +413,7 @@ MapKit JS capabilities used:
 - Geocoding (mapkit.Geocoder) — reserved for the deferred map-tap/manual flow (map-creation-entry slice, #136)
 ```
 
-**CoffeeMode maintains its own POI database.** MapKit renders and assists search; it does not replace the cafes table. Custom marker: existing coffee-cup design (brown circle, white cup), status dot (open/closed); category variants post-MVP.
+**CafeMood maintains its own POI database.** MapKit renders and assists search; it does not replace the cafes table. Custom marker: existing coffee-cup design (brown circle, white cup), status dot (open/closed); category variants post-MVP.
 
 ### Google Places API (retained)
 
@@ -433,7 +433,7 @@ Dedupe: google_place_id unique index; existing cafe → show it + prompt to chec
 Independent, reusable POI microservice — separate from the Next.js app, so any future service can reuse it and Google billing is cached once for everyone.
 
 ```text
-poi.coffeemode.app (Cloudflare Worker)
+poi-service.cafemood.app (Cloudflare Worker)
   KV  — hot cache: raw Google Places responses (TTL ~7d)
   D1  — normalized POI store (warm cache, durable):
         place_id, source (google|apple), name, lat, lng, address,
@@ -450,7 +450,7 @@ Endpoints (all require POI_SERVICE_TOKEN header):
   POST /poi/external             persist browser-selected Apple MapKit refs
 
 Hosting: Cloudflare workers.dev subdomain first; custom domain
-      (poi.coffeemode.app) once domain setup lands. D1 + KV both on free plan.
+      (poi-service.cafemood.app) once domain setup lands. D1 + KV both on free plan.
 
 Auth: shared secret header (POI_SERVICE_TOKEN). Service-to-service only;
       never called from the browser.
@@ -653,7 +653,7 @@ scan-oriented.
       experience_score (count = n_checkins).
     - Dynamic sitemap.xml listing all live cafes (lastmod from
       work_stats.updated_at); robots.txt allows /cafes/*.
-    - llms.txt at the root describing what CoffeeMode is, for AI crawlers.
+    - llms.txt at the root describing what CafeMood is, for AI crawlers.
     - CDN cache for the shell: s-maxage + stale-while-revalidate, TTLs from
       config (DG107) — a viral shared link must not hit Postgres per open.
 
@@ -695,7 +695,7 @@ Primary: VPS (user's own server, public IP)
   - Nightly work_stats recompute via GitHub Actions cron (#146; doubles as the Supabase free-tier keep-alive, 34a)
 Fallback: @opennextjs/cloudflare (Workers, Node.js runtime) — post-MVP
 Images: Cloudflare R2 + CDN custom domain
-Domain: coffeemode.app (or TBD)
+Domain: cafemood.app (or TBD)
 ```
 
 ### Environment config
@@ -728,9 +728,9 @@ SERVICE_ACCOUNT_ID            -> fixed UUID 00000000-0000-4000-a000-000000000001
 ### Positioning
 
 ```text
-CoffeeMode = the coworking review platform for digital nomads.
+CafeMood = the coworking review platform for digital nomads.
 Google Maps tells you a cafe is 4.5 stars.
-CoffeeMode tells you if you can sit there with a laptop for 4 hours:
+CafeMood tells you if you can sit there with a laptop for 4 hours:
 wifi, outlets, seats, temperature, coffee, max stay.
 That data exists nowhere else. It is the product.
 ```
@@ -861,7 +861,7 @@ Entrances:
      a. Paste a Google or Apple Maps share link
      b. Server resolves → normalized POI (Google Place Details, or Apple share-link data)
      c. Show HALF-sheet preview pre-filled (name, address, location, provider reference)
-     d. User adds their review + sliders → [添加到 CoffeeMode ✓]
+     d. User adds their review + sliders → [添加到 CafeMood ✓]
      e. Dedupe: google_place_id / apple_poi_id exists → "已存在" + prompt to check in instead
   2. Provider search:
      a. Search Google Maps through the POI service, or Apple Maps through MapKit JS
@@ -878,7 +878,7 @@ Offline: creation is disabled; show OfflineBanner and no mutation queue.
 ### External POI references
 
 ```text
-CoffeeMode POI = authoritative record in cafes table
+CafeMood POI = authoritative record in cafes table
 External references (optional, for enrichment):
   - google_place_id: link to Google Places (unique, dedupe key)
   - apple_poi_id: link to Apple Maps POI

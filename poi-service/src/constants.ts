@@ -16,6 +16,13 @@ export const SEARCH_RESULT_LIMIT = 100;
 export const CACHE_TTL_SECONDS = 7 * 24 * 3600; // ~7d
 
 /**
+ * Live Google query-level cache TTL (BRAWUKA-283 P2-2): short on purpose.
+ * Repeat searches (two users, retries, a debounce miss) skip the billed
+ * upstream call for 10 minutes; fresh enough for a creation entry point.
+ */
+export const SEARCH_QUERY_CACHE_TTL_SECONDS = 600;
+
+/**
  * DG144 / DG52 — Category allowlist for D1/KV persistence.
  * Only food/cafe-category external POIs are persisted.
  */

@@ -37,8 +37,12 @@ import {
   d1UpsertPOI,
   d1UpsertPOIs,
   isFresh,
+  kvDeleteRaw,
   kvGetRaw,
+  kvGetSearchQuery,
   kvPutRaw,
+  kvPutSearchQuery,
+  searchQueryKey,
 } from "./store";
 import { resolveShareUrl } from "./url";
 
@@ -292,6 +296,12 @@ async function searchExternalPOIs(request: Request, env: Env, deps: Deps): Promi
     );
   }
 
+  // Live-search query cache (BRAWUKA-283 P2-2): a TTL hit returns the POI
+  // list already persisted during the first search — no billed upstream call.
+  const queryKey = searchQueryKey(q, latProvided ? lat : undefined, lngProvided ? lng : undefined, r);
+  const cached = await kvGetSearchQuery(env.POI_KV, queryKey);
+  if (cached) return json({ results: cached });
+
   let googlePlaces: GooglePlace[];
   try {
     googlePlaces = await textSearch(
@@ -317,15 +327,20 @@ async function searchExternalPOIs(request: Request, env: Env, deps: Deps): Promi
     }
   }
   const toPersist = results.filter(({ poi }) => !poi.not_persisted_reason);
-  if (toPersist.length > 0) {
-    try {
+  const pois = results.map(({ poi }) => poi);
+  try {
+    if (toPersist.length > 0) {
       await d1UpsertPOIs(env.POI_DB, toPersist.map(({ poi }) => poi));
       await Promise.all(toPersist.map(({ poi, raw }) => kvPutRaw(env.POI_KV, poi.place_id, raw)));
-    } catch (e) {
-      console.error("external search cache write failed", e);
     }
+    // Cache what was served (BRAWUKA-283 P2-2), not what was persisted: an
+    // all-non-food (or empty) upstream hit is still billable, and repeating
+    // it must not call Google again.
+    await kvPutSearchQuery(env.POI_KV, queryKey, pois);
+  } catch (e) {
+    console.error("external search cache write failed", e);
   }
-  return json({ results: results.map(({ poi }) => poi) });
+  return json({ results: pois });
 }
 
 // --- POST /poi/external ---
@@ -427,7 +442,15 @@ async function storeExternal(request: Request, env: Env): Promise<Response> {
   }
 
   // Atomic batch: one round-trip, all-or-nothing (no partial writes on failure).
-  await d1UpsertPOIs(env.POI_DB, validated as POI[]);
+  // Then invalidate the KV hot cache for every written id: getPOI serves KV
+  // hits without consulting D1, so a stale raw entry (up to CACHE_TTL_SECONDS
+  // old) would otherwise shadow the fresh D1 row (BRAWUKA-283 P2-1). A
+  // delete storm races the cache-write path, not the read path — a lost
+  // delete would only resurrect a stale entry, never serve a write that
+  // never happened — so a best-effort post-write delete is the safe order.
+  const pois = validated as POI[];
+  await d1UpsertPOIs(env.POI_DB, pois);
+  await Promise.all(pois.map((poi) => kvDeleteRaw(env.POI_KV, poi.place_id)));
   return json({ stored: validated.length });
 }
 

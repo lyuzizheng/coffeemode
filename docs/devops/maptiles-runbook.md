@@ -11,14 +11,15 @@ planet refresh, the public ↔ self-hosted switch, and the rollback path.
 | Buckets (`cafemode-maptiles`, `cafemode-maptiles-staging`) | `scripts/devops/provision-maptiles.sh` |
 | Monthly build (MBTiles → PMTiles → R2 + fonts/sprites/styles) | `scripts/devops/build-maptiles.sh` |
 | Pre-switch verification (TileJSON/style/glyph/equivalence/latency) | `scripts/devops/verify-maptiles.sh` |
-| Thin serving Worker (TileJSON/styles/redirects, never proxies bytes) | `tiles-service/` |
+| Thin serving Worker (TileJSON/tiles/styles/assets from R2 byte ranges) | `tiles-service/` |
 | Hosting switch (the ONLY web coupling point) | `web/config/app.yaml` `map:` + `web/lib/config-schema/map.ts` |
 
-Bucket layout (immutable per version, one mutable pointer):
+Bucket layout (immutable versioned archives; the Worker pins the live version
+via `PLANET_VERSION` — `current.txt` is an informational pointer only):
 
 ```text
 planet/{version}/planet.pmtiles   ~80GB versioned archive (immutable)
-planet/current.txt                live-version pointer (rewritten on promote)
+planet/current.txt                informational version pointer (see above)
 fonts/{fontstack}/{range}.pbf     Noto Sans glyph ranges (immutable per file)
 natural_earth/ne2sr/{z}/{x}/{y}.png  shaded-relief raster, z0-6 only (~2MB, immutable per file)
 sprites/ofm_f384/ofm{,@2x}.{json,png}
@@ -39,14 +40,16 @@ VER=20260913_164504_pt   # or: --version latest
 # 2. Verify staging BEFORE touching production
 ./scripts/devops/verify-maptiles.sh --env staging --expect-version "$VER"
 
-# 3. Rotate the staging Worker to the new version + redeploy
-wrangler secret put PLANET_VERSION --env staging   # paste $VER
+# 3. Pin the staging Worker to the new version + deploy (one deploy — the
+# `wrangler secret put` below is the old flow, kept for reference; prefer the
+# vars edit so the version is reviewable in git)
+#    edit tiles-service/wrangler.toml [env.staging].vars.PLANET_VERSION = "$VER"
 (cd tiles-service && npm run deploy -- --env staging)
 
 # 4. Repeat for production, then switch app.yaml (paste from --print-config)
 ./scripts/devops/build-maptiles.sh --env production --version "$VER"
 ./scripts/devops/verify-maptiles.sh --env production --expect-version "$VER"
-wrangler secret put PLANET_VERSION --env production
+#    edit tiles-service/wrangler.toml [env.production].vars.PLANET_VERSION = "$VER"
 (cd tiles-service && npm run deploy -- --env production)
 ./scripts/devops/provision-maptiles.sh --env production --print-config
 ```
@@ -55,7 +58,8 @@ Build-machine requirements: ~250GB scratch disk (MBTiles + PMTiles side by
 side during convert), no big RAM (Planetiler is NOT needed — `pmtiles
 convert` is a single-step repackage). A plain VPS or local machine works;
 `curl -C -` resumes an interrupted download, and re-running the script is
-safe (versioned keys are immutable; only `current.txt` moves).
+safe (versioned keys are immutable; the Worker only serves the pinned
+`PLANET_VERSION`, so a half-uploaded version is never live).
 
 ## The hosting switch (public ↔ self-hosted = one config edit)
 
@@ -86,7 +90,7 @@ state with the discovery sheet still usable.
 
 | Failure | Rollback (seconds–minutes, no rebuild) |
 | --- | --- |
-| New planet version renders badly | Rewrite `planet/current.txt` to the previous version + reset the `PLANET_VERSION` secret + redeploy the Worker (old archive is immutable and still in the bucket) |
+| New planet version renders badly | Revert `[env.*].vars.PLANET_VERSION` to the previous version + redeploy the Worker (old archive is immutable and still in the bucket; `planet/current.txt` is informational only) |
 | Self-hosted origin unhealthy | Revert the four `map:` URLs to the public instance (one config edit, redeploy web) |
 | Broken style rewrite | Re-upload the previous month's `styles/*.json` (kept in the build work-dir) or revert to public style URLs |
 

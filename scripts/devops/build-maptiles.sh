@@ -14,12 +14,14 @@
 #
 # Layout inside the bucket (see provision-maptiles.sh):
 #   planet/{version}/planet.pmtiles   versioned archive (immutable, ~80GB)
-#   planet/current.txt                live-version pointer (rewritten on promote)
+#   planet/current.txt                informational version pointer (the Worker
+#                                     pins the live version via PLANET_VERSION)
 #   fonts/... sprites/... styles/...  synced asset trees (immutable per file)
 #
-# Promotion is two-phase: upload everything first, then rewrite current.txt
-# last — readers never see a half-written version. Rollback rewrites
-# current.txt to the previous version (one object, seconds).
+# Promotion is two-phase: upload everything first, then pin PLANET_VERSION +
+# redeploy the Worker last — readers never see a half-written version.
+# Rollback reverts the PLANET_VERSION pin + redeploys (old archive is
+# immutable and still in the bucket).
 #
 # Usage:
 #   ./build-maptiles.sh --env staging --version 20260913_164504_pt
@@ -32,7 +34,7 @@
 #   R2_ENDPOINT                               Optional S3 endpoint override
 #
 # Tools (checked up front, installed by the operator, never vendored):
-#   curl, sha256sum, pmtiles CLI (go-pmtiles), aws CLI
+#   curl, sha256sum, pmtiles CLI (go-pmtiles), aws CLI, python3
 # ==============================================================================
 
 set -euo pipefail
@@ -119,7 +121,7 @@ run_cmd() {
 # ------------------------------------------------------------------------------
 # Preconditions
 # ------------------------------------------------------------------------------
-for tool in curl sha256sum pmtiles aws; do
+for tool in curl sha256sum pmtiles aws python3; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     error "Required tool '$tool' not found. Install it first (see runbook §Build machine)."
     exit 1
@@ -300,16 +302,17 @@ EOF
 fi
 
 # ------------------------------------------------------------------------------
-# Step 7: promote — rewrite current.txt LAST (the only mutable pointer)
+# Step 7: record the version pointer (informational — the WORKER pins the
+# live version via PLANET_VERSION in tiles-service/wrangler.toml, see runbook)
 # ------------------------------------------------------------------------------
-log "Step 7/7: promoting version (planet/current.txt → $VERSION)..."
+log "Step 7/7: recording version pointer (planet/current.txt → $VERSION)..."
 if [[ "$DRY_RUN" == true ]]; then
   run_cmd env "${AWS_ENV[@]}" aws s3 cp "-" "s3://${BUCKET}/planet/current.txt" --endpoint-url "$ENDPOINT"
 else
   printf '%s\n' "$VERSION" | env "${AWS_ENV[@]}" aws s3 cp - "s3://${BUCKET}/planet/current.txt" \
     --endpoint-url "$ENDPOINT" --content-type "text/plain"
 fi
-ok "Promoted planet/$VERSION as current."
+ok "Recorded planet/$VERSION as current."
 
 echo ""
 ok "Build complete: r2:${BUCKET}/planet/${VERSION}/planet.pmtiles (+ fonts/sprites/styles)."

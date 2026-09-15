@@ -8,10 +8,10 @@ poi-service/node_modules/
 poi-service/.dev.vars
 poi-service/.wrangler/
 image-service/node_modules/
-tiles-service/node_modules/
 image-service/.dev.vars
-tiles-service/.dev.vars
 image-service/.wrangler/
+tiles-service/node_modules/
+tiles-service/.dev.vars
 tiles-service/.wrangler/
 node_modules/
 .DS_Store

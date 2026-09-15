@@ -77,6 +77,13 @@ if [[ -z "$ORIGIN" ]]; then
   fi
 fi
 
+for tool in curl python3; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "  FAIL: required tool '$tool' not found" >&2
+    exit 1
+  fi
+done
+
 FAILURES=0
 pass() { echo "  ok: $*"; }
 fail() { echo "  FAIL: $*"; FAILURES=$((FAILURES + 1)); }
@@ -85,7 +92,10 @@ echo "Verifying basemap origin: $ORIGIN"
 
 # --- 1. TileJSON reachable, vector source present, tiles template absolute ---
 TILEJSON="$(curl -fsSL --max-time "$TIMEOUT" "${ORIGIN}/planet" || echo "")"
-if [[ -z "$TILEJSON" ]]; then
+TILEJSON_CODE="$(curl -s -o /dev/null -w "%{http_code}" --max-time "$TIMEOUT" "${ORIGIN}/planet" || echo "000")"
+if [[ "$TILEJSON_CODE" == 3* ]]; then
+  fail "GET ${ORIGIN}/planet redirects (HTTP $TILEJSON_CODE) — TileJSON must return bytes, not a 302"
+elif [[ -z "$TILEJSON" ]]; then
   fail "GET ${ORIGIN}/planet unreachable"
 else
   pass "TileJSON reachable (${#TILEJSON} bytes)"
@@ -97,13 +107,14 @@ else
   else fail "TileJSON maxzoom != 14"; fi
 fi
 
-# --- 2. Live version pointer (self-hosted only) ---
+# --- 2. Live version check (self-hosted only): the TileJSON tiles template
+# must embed the expected version (the Worker pins it via PLANET_VERSION;
+# planet/current.txt in the bucket is informational only).
 if [[ -n "$EXPECT_VERSION" ]]; then
-  LIVE="$(curl -fsSL --max-time "$TIMEOUT" "${ORIGIN}/planet/current.txt" 2>/dev/null | tr -d '[:space:]' || echo "")"
-  if [[ "$LIVE" == "$EXPECT_VERSION" ]]; then
-    pass "current.txt == $EXPECT_VERSION"
+  if printf '%s' "$TILEJSON" | grep -q "/planet/${EXPECT_VERSION}/{z}/{x}/{y}.pbf"; then
+    pass "TileJSON embeds live version $EXPECT_VERSION"
   else
-    fail "current.txt is '${LIVE:-<unreachable>}' (expected $EXPECT_VERSION)"
+    fail "TileJSON does not embed expected version $EXPECT_VERSION"
   fi
 fi
 
@@ -169,7 +180,7 @@ except Exception:
     print('')
 " 2>/dev/null || echo "")"
 if [[ -z "$TILE_URL" ]]; then
-  TILE_URL="${ORIGIN}/planet/20260906_080001_pt/{z}/{x}/{y}.pbf"
+  fail "no tiles template in TileJSON — cannot sample tiles (not falling back to a pinned version)"
 fi
 SAMPLE_URL="${TILE_URL/\{z\}/10}"
 SAMPLE_URL="${SAMPLE_URL/\{x\}/824}"
@@ -178,15 +189,19 @@ TMP_TIMES="$(mktemp)"
 trap 'rm -f "$TMP_TIMES"' EXIT
 OK_COUNT=0
 for _ in $(seq 1 "$SAMPLES"); do
-  LINE="$(curl -s -o /dev/null -w "%{http_code} %{time_total}" --max-time "$TIMEOUT" "$SAMPLE_URL" || echo "000 0")"
-  CODE="${LINE%% *}"
-  SECS="${LINE##* }"
-  if [[ "$CODE" == "200" || "$CODE" == "206" ]]; then
+  BODY_FILE="$(mktemp)"
+  LINE="$(curl -s -o "$BODY_FILE" -w "%{http_code} %{time_total} %{content_type} %{size_download}" --max-time "$TIMEOUT" "$SAMPLE_URL" || echo "000 0")"
+  CODE="$(printf '%s' "$LINE" | cut -d' ' -f1)"
+  SECS="$(printf '%s' "$LINE" | cut -d' ' -f2)"
+  CTYPE="$(printf '%s' "$LINE" | cut -d' ' -f3)"
+  SIZE="$(printf '%s' "$LINE" | cut -d' ' -f4)"
+  if [[ "$CODE" == "200" && ("$CTYPE" == application/x-protobuf* || "$CTYPE" == application/vnd.mapbox-vector-tile*) && "$SIZE" -gt 0 ]]; then
     OK_COUNT=$((OK_COUNT + 1))
     python3 -c "print(int(float('$SECS') * 1000))"
   else
-    echo "ERR($CODE)" >&2
+    echo "ERR(code=$CODE type=$CTYPE size=$SIZE)" >&2
   fi >> "$TMP_TIMES"
+  rm -f "$BODY_FILE"
 done
 if [[ "$OK_COUNT" -lt "$SAMPLES" ]]; then
   fail "tile fetches: $OK_COUNT/$SAMPLES succeeded"
@@ -207,13 +222,26 @@ if [[ "$ORIGIN" != "https://tiles.openfreemap.org"* ]]; then
   SELF_TILE="$(mktemp)"; PUB_TILE="$(mktemp)"
   trap 'rm -f "$TMP_TIMES" "$SELF_TILE" "$PUB_TILE"' EXIT
   curl -fsSL --max-time "$TIMEOUT" -o "$SELF_TILE" "$SAMPLE_URL" || true
-  PUB_URL="https://tiles.openfreemap.org/planet/20260906_080001_pt/10/824/426.pbf"
-  curl -fsSL --max-time "$TIMEOUT" -o "$PUB_TILE" "$PUB_URL" || true
+  # Public comparison tile: derive the version from the PUBLIC live TileJSON
+  # (OFM rotates planet weekly — never pin a version here).
+  PUB_TILE_TEMPLATE="$(curl -fsSL --max-time "$TIMEOUT" https://tiles.openfreemap.org/planet 2>/dev/null | python3 -c "
+import json,sys
+try:
+    print(json.load(sys.stdin)['tiles'][0])
+except Exception:
+    print('')
+" 2>/dev/null || echo "")"
+  PUB_URL="${PUB_TILE_TEMPLATE/\{z\}/10}"
+  PUB_URL="${PUB_URL/\{x\}/824}"
+  PUB_URL="${PUB_URL/\{y\}/426}"
+  if [[ -n "$PUB_URL" ]]; then
+    curl -fsSL --max-time "$TIMEOUT" -o "$PUB_TILE" "$PUB_URL" || true
+  fi
   if [[ -s "$SELF_TILE" && -s "$PUB_TILE" ]]; then
     if cmp -s "$SELF_TILE" "$PUB_TILE"; then
       pass "sample tile byte-identical to public instance (same planet version)"
     else
-      echo "  note: sample tile differs from public instance (expected across planet versions — compare current.txt dates, not a failure)"
+      echo "  note: sample tile differs from public instance (expected across planet versions — compare TileJSON dates, not a failure)"
     fi
   else
     fail "could not fetch both tiles for equivalence comparison"

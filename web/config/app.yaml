@@ -69,9 +69,9 @@ cafes:
 # `scripts/devops/provision-maptiles.sh --print-config`.
 map:
   # Fully-qualified style documents. Public: OpenFreeMap releases. Self-hosted:
-  # R2 copies written by `scripts/devops/build-maptiles.sh` step 6 (embedded
-  # source rewritten to a pmtiles:// URL) — exact values from
-  # `scripts/devops/provision-maptiles.sh --print-config`.
+  # Worker-served copies from R2 (`scripts/devops/build-maptiles.sh` step 6
+  # rewrites the embedded source to this Worker's `/planet` TileJSON URL) —
+  # exact values from `scripts/devops/provision-maptiles.sh --print-config`.
   tileStyle:
     light: https://tiles.openfreemap.org/styles/liberty
     dark: https://tiles.openfreemap.org/styles/dark

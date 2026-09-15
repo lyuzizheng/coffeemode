@@ -9,8 +9,13 @@
 
 /** Minimal structural interface so tests can inject fakes. */
 export interface R2Like {
-  get(key: string, options?: { range?: { offset: number; length: number } | { offset?: number; suffix?: number } }): Promise<R2ObjectLike | null>;
-  head(key: string): Promise<R2ObjectHeadLike | null>;
+  get(
+    key: string,
+    options?: {
+      range?: { offset: number; length: number } | { offset?: number; suffix?: number };
+      onlyIf?: { etagMatches?: string };
+    },
+  ): Promise<R2ObjectLike | null>;
 }
 
 export interface R2ObjectHeadLike {
@@ -23,21 +28,20 @@ export interface R2ObjectHeadLike {
 export interface R2ObjectLike extends R2ObjectHeadLike {
   readonly body: ReadableStream | null;
   readonly range?: { offset: number; length: number };
+  arrayBuffer(): Promise<ArrayBuffer>;
 }
 
 export interface Env {
   /** R2 bucket holding planet/*.pmtiles + fonts/sprites/styles (per-env). */
   TILES_BUCKET: R2Like;
   /**
-   * Live planet version, e.g. `20260913_164504_pt` (plain `wrangler secret`
-   * value per env — rotated by build-maptiles.sh on each monthly promote).
-   * Kept out of the bucket so a version switch needs no redeploy.
+   * Live planet version, e.g. `20260913_164504_pt` (a `[vars]` value per
+   * env — rotated by editing wrangler.toml + redeploy on each monthly
+   * promote; the TileJSON embeds it, so a version switch IS a deploy).
    */
   PLANET_VERSION: string;
-  /** Public basemap origin, e.g. `https://tiles.cafemood.app` (staging: staging-tiles). */
-  TILES_PUBLIC_ORIGIN?: string;
-}
-
-export interface Deps {
-  fetchImpl: typeof fetch;
+  /** Allowed CORS origins, comma-separated (`*` echoes the request origin). */
+  ALLOWED_ORIGINS?: string;
+  /** Cache-Control for tile/TileJSON responses. */
+  CACHE_CONTROL?: string;
 }

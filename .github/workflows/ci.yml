@@ -377,6 +377,7 @@ jobs:
       - image-service-gate
       - poi-service-gate
       - tiles-service-gate
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Require selected jobs

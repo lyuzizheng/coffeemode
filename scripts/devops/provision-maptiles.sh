@@ -14,9 +14,10 @@
 #   staging:    cafemode-maptiles-staging  (served at staging-tiles.cafemood.app)
 #   production: cafemode-maptiles          (served at tiles.cafemood.app)
 #
-# Layout inside each bucket (written by build-maptiles.sh):
+# Layout inside each bucket (written by build-maptiles.sh; the Worker pins
+# the live version via PLANET_VERSION — current.txt is informational only):
 #   planet/{version}/planet.pmtiles   versioned planet archive (immutable)
-#   planet/current.txt                pointer to the live version
+#   planet/current.txt                informational version pointer
 #   fonts/{fontstack}/{range}.pbf     Noto Sans glyph ranges (immutable)
 #   sprites/ofm_f384/ofm{,@2x}.{json,png}  sprite set (immutable)
 #   styles/{positron,bright,liberty,dark,fiord}.json  rewritten style docs
@@ -33,7 +34,7 @@
 #   R2_ENDPOINT                               Optional S3 endpoint override
 #                                             (default: https://<account>.r2.cloudflarestorage.com)
 #
-# Custom-domain attach + CORS stay owner-side dashboard steps (each prints as
+# Worker-Route attach + CORS stay owner-side dashboard steps (each prints as
 # a pending action): the API token that creates buckets cannot attach zones.
 # ==============================================================================
 
@@ -119,8 +120,9 @@ print_config() {
   cat <<EOF
 # BRAWUKA-313 self-hosted basemap ($ENV, bucket: $BUCKET). Paste under
 # web/config/app.yaml map block — this is the whole hosting switch.
+# (Four URLs only — the TileJSON URL is derived from tileStyle at runtime,
+# so there is deliberately no tileJsonUrl key.)
 map:
-  tileJsonUrl: https://$DOMAIN/planet
   tileStyle:
     light: https://$DOMAIN/styles/liberty.json
     dark: https://$DOMAIN/styles/dark.json
@@ -194,15 +196,14 @@ EOF
 run_cmd env "${AWS_ENV[@]}" aws s3api put-bucket-cors --bucket "$BUCKET" \
   --cors-configuration "file://${CORS_JSON}" --endpoint-url "$ENDPOINT"
 ok "CORS applied."
-
-# ------------------------------------------------------------------------------
-# Step 3: owner-side dashboard steps (printed, never automated)
-# ------------------------------------------------------------------------------
 log "Step 3/3: owner-side dashboard steps (not automatable with this token):"
-echo "  1. Cloudflare dashboard → R2 → bucket '$BUCKET' → Settings → Custom Domains:"
-echo "     connect '$DOMAIN' (requires the cafemood.app zone, BRAWUKA-238)."
+echo "  1. Cloudflare dashboard → Workers & Pages → tiles-service-$ENV → Settings →"
+echo "     Domains & Routes → Add Custom Domain: '$DOMAIN' (requires the cafemood.app"
+echo "     zone, BRAWUKA-238). The WORKER owns this hostname via its Worker Route"
+echo "     (see tiles-service/wrangler.toml) — do NOT attach it as an R2 custom"
+echo "     domain, which would bypass the Worker and 404 every tile."
 echo "  2. Cloudflare dashboard → R2 → bucket '$BUCKET' → Settings → Cache:"
-echo "     enable Tiered Cache / Cache Rules for *.pmtiles range slices."
+echo "     enable Tiered Cache / Cache Rules for tile + asset responses."
 echo "  3. Run the monthly build to fill the bucket:"
 echo "       ./scripts/devops/build-maptiles.sh --env $ENV --version <YYYYMMDD_HHMMSS_pt>"
 echo "     then paste the output of '$0 --env $ENV --print-config' into web/config/app.yaml."

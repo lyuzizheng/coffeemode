@@ -100,10 +100,10 @@ and the KV hot-cache read path are unaffected and verified working.
 - [ ] Enable the Cloudflare "Add visitor location headers" Managed Transform on the zone (sends `CF-IPCity` / `CF-IPCountry`; default-city resolution per DG128)
 - [ ] Create a Better Stack account + alert token for rate-limit/observability alerts (DG129); put the token in `web/.env.local` once the integration lands
 - [ ] Basemap self-host one-time setup (BRAWUKA-313; runbook `docs/devops/maptiles-runbook.md`):
-  - Confirm the tile hostnames (`tiles.cafemood.app` + `staging-tiles.cafemood.app`?) — provision + build scripts default to these.
-  - Cloudflare dashboard → R2 → create buckets `cafemode-maptiles` + `cafemode-maptiles-staging` (or run `scripts/devops/provision-maptiles.sh --env staging|production` with an R2 API token), then attach the custom domains above (requires the cafemood.app zone, BRAWUKA-238).
+  - Confirm the tile hostnames (`tiles.cafemood.app` + `staging-tiles.cafemood.app`?) — provision + build scripts default to these. The WORKER owns each hostname via its Worker Route (never an R2 custom domain, which would bypass the Worker and 404 every tile).
+  - Cloudflare dashboard → R2 → create buckets `cafemode-maptiles` + `cafemode-maptiles-staging` (or run `scripts/devops/provision-maptiles.sh --env staging|production` with an R2 API token).
   - Provide an R2 API token for the monthly build (`R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_ACCOUNT_ID`, PutObject on both buckets; never in chat/docs/repo).
-  - Run the first build + verify (`build-maptiles.sh --env staging --version latest`, `verify-maptiles.sh --env staging`), deploy `tiles-service` (`wrangler secret put PLANET_VERSION --env staging|production`, `npm run deploy -- --env ...` from `tiles-service/`), then switch `web/config/app.yaml` `map:` to the self-hosted URLs.
+  - Run the first build + verify (`build-maptiles.sh --env staging --version latest`, `verify-maptiles.sh --env staging`), pin `PLANET_VERSION` per env in `tiles-service/wrangler.toml`, deploy `tiles-service` (`npm run deploy -- --env ...` from `tiles-service/`), then switch `web/config/app.yaml` `map:` to the self-hosted URLs.
 
 ## 8. Kimi K3 UI design artifacts
 

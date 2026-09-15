@@ -1,7 +1,7 @@
 {
   "name": "tiles-service",
   "version": "1.0.0",
-  "description": "CafeMood self-hosted basemap \u2014 Cloudflare Worker + R2. Redirects tile/style/asset requests to the per-env maptiles bucket; never proxies tile bytes.",
+  "description": "CafeMood self-hosted basemap — Cloudflare Worker + R2. Range-reads tile bytes from the per-env maptiles archive; serves TileJSON/styles/assets as object bytes.",
   "type": "module",
   "private": true,
   "engines": {
@@ -17,8 +17,12 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260804.1",
+    "@types/node": "^26.6.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10",
     "wrangler": "^4.119.0"
+  },
+  "dependencies": {
+    "pmtiles": "^4.5.0"
   }
 }

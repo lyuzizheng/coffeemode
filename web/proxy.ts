@@ -147,6 +147,14 @@ async function handleProxy(request: NextRequest) {
     const gone = NextResponse.rewrite(new URL("/__gone-cafe", req.url), {
       request: { headers },
     });
+    // BRAWUKA-315 P1: the session refresh above wrote rotated cookies onto
+    // `response` — but this branch returns a NEW rewrite response, discarding
+    // it. The server-side refresh token is already consumed, so a dropped
+    // Set-Cookie means the next request refreshes on the spent token and
+    // forces a logout. Forward the refreshed cookies onto the rewrite.
+    for (const c of response.cookies.getAll()) {
+      gone.cookies.set(c);
+    }
     // BRAWUKA-184: a 404 MUST NOT sit in shared cache (a recreated cafe
     // would stay gone for up to s-maxage). The static public header from
     // next.config matches this path, so stamp the bypass here.

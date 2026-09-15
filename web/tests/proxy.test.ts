@@ -182,6 +182,37 @@ describe("proxy gone-cafe 404 (DG19)", () => {
     );
   });
 
+  it("forwards refreshed session cookies on the gone-cafe rewrite (BRAWUKA-315 P1)", async () => {
+    cafeExistsMock.mockResolvedValue(false);
+    let capturedSetAll: ((cookiesToSet: unknown[]) => void) | undefined;
+    const getSession = vi.fn(async () => {
+      capturedSetAll?.([
+        { name: "sb-access-token", value: "fresh-token", options: {} },
+      ]);
+      return { data: { session: { user: { id: "u1" } } }, error: null };
+    });
+    const getUser = vi.fn(async () => ({ data: { user: { id: "u1" } }, error: null }));
+    vi.mocked(createServerClient).mockImplementation(
+      (_url: string, _key: string, options: unknown) => {
+        const opts = options as { cookies: { setAll?: (cookiesToSet: unknown[]) => void } };
+        capturedSetAll = opts.cookies.setAll;
+        return { auth: { getSession, getUser } } as unknown as ReturnType<typeof createServerClient>;
+      },
+    );
+
+    const req = new NextRequest(new URL(`http://localhost/cafes/${CAFE}`));
+    req.cookies.set("sb-access-token", "stale-token");
+
+    const res = await proxy(req);
+    expect(res.headers.get("x-middleware-rewrite")).toBe(
+      "http://localhost/__gone-cafe",
+    );
+    // Rotated token must reach the browser despite the rewrite branch
+    // returning a new response — otherwise the next refresh runs on the
+    // consumed token and forces a logout.
+    expect(res.cookies.get("sb-access-token")?.value).toBe("fresh-token");
+  });
+
   it("lets existing cafes through to the page", async () => {
     cafeExistsMock.mockResolvedValue(true);
     const req = new NextRequest(new URL(`http://localhost/cafes/${CAFE}`));

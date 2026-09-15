@@ -3,7 +3,7 @@
  * All D1 rows round-trip through normalize() so handlers see POI objects.
  */
 
-import { CACHE_TTL_SECONDS, DEFAULT_SEARCH_RADIUS_KM, SEARCH_RESULT_LIMIT } from "./constants";
+import { CACHE_TTL_SECONDS, DEFAULT_SEARCH_RADIUS_KM, SEARCH_QUERY_CACHE_TTL_SECONDS, SEARCH_RESULT_LIMIT } from "./constants";
 import type { D1Like, KVLike, POI, POISearchHit } from "./types";
 import { haversineKm, kmPerDegLat, kmPerDegLng, wrapLng } from "./geo";
 
@@ -19,6 +19,50 @@ export function kvPutRaw(kv: KVLike, placeId: string, raw: unknown): Promise<voi
   return kv.put(`${RAW_PREFIX}${placeId}`, JSON.stringify(raw), {
     expirationTtl: CACHE_TTL_SECONDS,
   });
+}
+
+/**
+ * Drop the KV hot-cache entry for a place id. Called after D1 writes so a
+ * stale raw payload (up to CACHE_TTL_SECONDS old) can never shadow the fresh
+ * D1 row on the next GET /poi/:place_id (BRAWUKA-283 P2-1). Deleting a
+ * missing key is a no-op in both real KV and the test fake.
+ */
+export function kvDeleteRaw(kv: KVLike, placeId: string): Promise<void> {
+  return kv.delete(`${RAW_PREFIX}${placeId}`);
+}
+
+// --- Live Google query-level cache (BRAWUKA-283 P2-2) ---
+
+const QUERY_PREFIX = "q:google:";
+
+/**
+ * Normalize a live-search request into a stable KV key. The text is
+ * lowercased, collapsed, and truncated so "Blue  Bottle" and "blue bottle"
+ * share an entry; coordinates snap to a ~0.01° grid (~1.1km lat) so nearby
+ * map pans reuse the same upstream response instead of billing again.
+ */
+export function searchQueryKey(q: string, lat?: number, lng?: number, radiusKm?: number): string {
+  const normalizedQ = q.trim().toLowerCase().replace(/\s+/g, " ").slice(0, 200);
+  const grid =
+    lat !== undefined && lng !== undefined
+      ? `${Math.floor(lat * 100) / 100},${Math.floor(lng * 100) / 100}`
+      : "nolatlng";
+  return `${QUERY_PREFIX}${normalizedQ}:${grid}:${radiusKm ?? ""}`;
+}
+
+export async function kvGetSearchQuery(kv: KVLike, key: string): Promise<POI[] | null> {
+  const raw = await kv.get(key);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { results?: unknown };
+    return Array.isArray(parsed.results) ? (parsed.results as POI[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function kvPutSearchQuery(kv: KVLike, key: string, results: POI[]): Promise<void> {
+  return kv.put(key, JSON.stringify({ results }), { expirationTtl: SEARCH_QUERY_CACHE_TTL_SECONDS });
 }
 
 // --- D1 durable store ---

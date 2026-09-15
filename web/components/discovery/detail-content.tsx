@@ -102,6 +102,7 @@ export function DetailContent({
   onCheckIn,
   onClose,
   distanceM,
+  initialCafe,
 }: {
   cafeId: string;
   variant: "half" | "full";
@@ -111,6 +112,13 @@ export function DetailContent({
   onClose?: () => void;
   /** Meters from the query point — summaries carry it, the detail row does not. */
   distanceM?: number;
+  /**
+   * SSR-seeded detail (BRAWUKA-283 P2-3): the cafe page already rendered
+   * this payload server-side, so the first client mount must not re-fetch
+   * it. TanStack serves `initialData` without touching the network and
+   * revalidates in the background once it goes stale (5min staleTime).
+   */
+  initialCafe?: PublicCafeDetail;
 }) {
   const t = useTranslations("discovery");
   const locale = useLocale();
@@ -118,6 +126,14 @@ export function DetailContent({
   const query = useQuery({
     queryKey: ["cafe", cafeId],
     queryFn: () => fetchCafe(cafeId),
+    // The 5min app default (`web/lib/query/client.ts`) covers production, but
+    // jsdom-mounted test clients use bare defaults (staleTime 0) — pin the
+    // contract here. initialDataUpdatedAt marks the seed fresh, so mount
+    // serves it with no fetch; without initialCafe the query is unchanged.
+    staleTime: 5 * 60 * 1000,
+    ...(initialCafe
+      ? { initialData: initialCafe, initialDataUpdatedAt: () => Date.now() }
+      : {}),
   });
 
   // DG19/18f: an in-app 404 clears the selection and toasts.

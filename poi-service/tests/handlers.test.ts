@@ -737,6 +737,66 @@ describe("GET /poi/search/external", () => {
     const res = await call("GET", "/poi/search/external", makeEnv());
     expect(res.status).toBe(400);
   });
+
+  it("serves a repeat external search from the query cache without hitting Google (BRAWUKA-283 P2-2)", async () => {
+    const env = makeEnv();
+    const fetchImpl = vi.fn(
+      mockFetch(() =>
+        new Response(
+          JSON.stringify({
+            places: [googleDetailResponse({ id: "ChIJQUERYCACHE", types: ["cafe"] })],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    const first = await call("GET", "/poi/search/external?q=blue%20bottle&r=5", env, { fetchImpl });
+    expect(first.status).toBe(200);
+    const firstBody = (await bodyOf(first)) as { results: POI[] };
+    expect(firstBody.results).toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    // Whitespace/case variants normalize to the same key; the second call
+    // must not touch the upstream fetch at all.
+    const second = await call("GET", "/poi/search/external?q=%20Blue%20%20BOTTLE%20&r=5", env, {
+      fetchImpl,
+    });
+    expect(second.status).toBe(200);
+    const secondBody = (await bodyOf(second)) as { results: POI[] };
+    expect(secondBody.results).toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("scopes the query cache by coordinate grid (BRAWUKA-283 P2-2)", async () => {
+    const env = makeEnv();
+    const fetchImpl = vi.fn(
+      mockFetch(() =>
+        new Response(
+          JSON.stringify({
+            places: [googleDetailResponse({ id: "ChIJQUERYGRID", types: ["cafe"] })],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    const near = await call("GET", "/poi/search/external?q=kopi&lat=1.291&lng=103.851&r=5", env, {
+      fetchImpl,
+    });
+    expect(near.status).toBe(200);
+    // Same 0.01° cell → cache hit; a cell away → fresh upstream call.
+    const sameCell = await call("GET", "/poi/search/external?q=kopi&lat=1.299&lng=103.859&r=5", env, {
+      fetchImpl,
+    });
+    expect(sameCell.status).toBe(200);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const otherCell = await call("GET", "/poi/search/external?q=kopi&lat=1.35&lng=103.92&r=5", env, {
+      fetchImpl,
+    });
+    expect(otherCell.status).toBe(200);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("POST /poi/external", () => {
@@ -836,7 +896,33 @@ describe("POST /poi/external", () => {
     });
     expect(res.status).toBe(200);
     expect(db.batchCalls).toBe(1);
-    expect(db.rows).toHaveLength(2);
+  });
+
+  it("invalidates the KV hot cache so GET serves the fresh D1 row (BRAWUKA-283 P2-1)", async () => {
+    const kv = new FakeKV();
+    await kv.put("raw:google:ChIJSTALECACHE", JSON.stringify(googleDetailResponse()));
+    const env = makeEnv({ POI_KV: kv });
+
+    const storeRes = await call("POST", "/poi/external", env, {
+      body: [
+        {
+          place_id: "ChIJSTALECACHE",
+          source: "google",
+          name: "Renamed Cafe",
+          lat: 37.78,
+          lng: -122.4,
+          types: ["cafe"],
+        },
+      ],
+    });
+    expect(storeRes.status).toBe(200);
+    expect(kv.has("raw:google:ChIJSTALECACHE")).toBe(false);
+
+    const fetchImpl = vi.fn(mockFetch(() => new Response("should not be called", { status: 599 })));
+    const getRes = await call("GET", "/poi/ChIJSTALECACHE", env, { fetchImpl });
+    expect(getRes.status).toBe(200);
+    expect((await bodyOf(getRes)).name).toBe("Renamed Cafe");
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("rejects out-of-range coordinates like lat 1e15", async () => {

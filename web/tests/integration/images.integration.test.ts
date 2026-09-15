@@ -1,6 +1,5 @@
 /**
  * @vitest-environment node
- * Real MinIO/R2 integration — presign → PUT → HEAD → complete round-trip.
  *
  * Requires:
  *   docker compose up -d --wait postgres minio
@@ -218,106 +217,6 @@ describeImages("integration — real MinIO/R2 image round-trip (docker compose u
     expect(thumbHead).not.toBeNull();
     expect(cardHead!.size).toBeGreaterThan(0);
     expect(thumbHead!.size).toBeGreaterThan(0);
-  });
-
-  it("completeImageUpload end-to-end: real storage + DB gallery/intent metadata", async (ctx) => {
-    if (!minioUp) return ctx.skip();
-    // Seed an owned cafe so the ownership pre-check passes.
-    const cafeId = randomUUID();
-    await dbClient.query(
-      `insert into cafes (id, name, location, city, created_by, tz)
-       values ($1, 'Roundtrip Cafe', ST_SetSRID(ST_MakePoint(103.8, 1.35), 4326)::geography,
-               'singapore', $2, 'Asia/Singapore')`,
-      [cafeId, TESTER_ID],
-    );
-
-    const imageUuid = randomUUID();
-    const originalKey = `original/${imageUuid}.webp`;
-    const cardKey = `card/${imageUuid}.webp`;
-    const thumbKey = `thumbnail/${imageUuid}.webp`;
-    for (const k of [originalKey, cardKey, thumbKey]) createdKeys.add(k);
-
-    // Upload the original through a real presigned PUT.
-    const payload = tinyWebP();
-    const { url: putUrl, headers: putHeaders } = await presignedPutUrl(originalKey, "image/webp", payload.length);
-    const putRes = await fetch(putUrl, { method: "PUT", headers: putHeaders, body: payload as unknown as BodyInit });
-    expect(putRes.ok).toBe(true);
-
-    // Bind the intent to the tester (as /api/images/upload would).
-    await recordUploadIntent(TESTER_ID, imageUuid);
-
-    // Drive the REAL completion service with its default deps: they resolve to
-    // the real getProcessUrls (needs IMAGE_SERVICE_* env? no — default deps use
-    // the injected client; here we pass explicit deps wired to local MinIO).
-    const { completeImageUpload, defaultCompleteUploadDeps } = await import("@/lib/images/complete");
-    const result = await completeImageUpload(
-      { id: TESTER_ID },
-      { imageUuid, targetType: "cafe" as const, targetId: cafeId },
-      {
-        ...defaultCompleteUploadDeps(),
-        getProcessUrls: async (req) => ({
-          imageUuid: req.imageUuid,
-          original: await presignedGetUrl(originalKey),
-          originalPut: await presignedPutUrl(originalKey, "image/webp"),
-          card: await presignedPutUrl(cardKey, "image/webp"),
-          thumbnail: await presignedPutUrl(thumbKey, "image/webp"),
-          publicUrls: {
-            original: `http://images.test/${originalKey}`,
-            card: `http://images.test/${cardKey}`,
-            thumbnail: `http://images.test/${thumbKey}`,
-          },
-          keys: { original: originalKey, card: cardKey, thumbnail: thumbKey },
-        }),
-        processImage,
-      },
-    );
-    expect(result.ok).toBe(true);
-    expect(result.storedImage).toMatchObject({
-      id: imageUuid,
-      w: expect.any(Number),
-      h: expect.any(Number),
-      by: TESTER_ID,
-      source: { type: "cafe", id: cafeId },
-    });
-
-    // DB metadata: gallery contains the StoredImage; intent consumed.
-    const { rows } = await dbClient.query("select gallery from cafes where id = $1", [cafeId]);
-    const gallery = rows[0].gallery as Array<Record<string, unknown>>;
-    expect(gallery).toHaveLength(1);
-    expect(gallery[0]).toMatchObject({ id: imageUuid, by: TESTER_ID });
-    const intent = await dbClient.query(
-      "select image_uuid from image_upload_intents where image_uuid = $1",
-      [imageUuid],
-    );
-    expect(intent.rows).toHaveLength(0);
-
-    // Storage: all three variants exist.
-    for (const k of [originalKey, cardKey, thumbKey]) {
-      const head = await headObject(k);
-      expect(head).not.toBeNull();
-    }
-
-    // Replay: second complete for the same intent must NOT attach again.
-    const replay = await completeImageUpload(
-      { id: TESTER_ID },
-      { imageUuid, targetType: "cafe" as const, targetId: cafeId },
-      {
-        ...defaultCompleteUploadDeps(),
-        getProcessUrls: async (req) => ({
-          imageUuid: req.imageUuid,
-          original: await presignedGetUrl(originalKey),
-          originalPut: await presignedPutUrl(originalKey, "image/webp"),
-          card: await presignedPutUrl(cardKey, "image/webp"),
-          thumbnail: await presignedPutUrl(thumbKey, "image/webp"),
-          publicUrls: { original: "", card: "", thumbnail: "" },
-          keys: { original: originalKey, card: cardKey, thumbnail: thumbKey },
-        }),
-        processImage,
-      },
-    );
-    expect(replay.ok).toBe(false);
-    const after = await dbClient.query("select gallery from cafes where id = $1", [cafeId]);
-    expect(after.rows[0].gallery).toHaveLength(1);
   });
 
   it("bad credentials surface as 403 (never silently 404/null)", async (ctx) => {

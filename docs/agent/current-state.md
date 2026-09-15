@@ -27,7 +27,7 @@ The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI 
 - BRAWUKA-146 / spec 0008 real-client HTTP journey matrix (Paths 1–6 through route handlers only): Stage 1 harness (BRAWUKA-147, merged #330), Stage 2 suites (BRAWUKA-156..159, BRAWUKA-149), and Stage 3 (BRAWUKA-150): test suite audited and pruned per spec 0008 §12, `test:integration:http` mounted as canonical gate in CI, database teardown hardened.
 - Issue #118 hardens the real-DB suite against unsafe database targets and order-dependent coverage.
 - Issue #119 preserves image-service storage failures instead of mapping them to `not_found`.
-- Issue #156 adds a real MinIO/R2 image round-trip suite (`web/tests/integration/images.integration.test.ts`, `npm run test:integration:images`): presigned PUT -> HEAD -> processor variant re-upload, `completeImageUpload` end-to-end with real storage + DB gallery/intent metadata + replay rejection, missing-object 404, tampered Content-Type 403, single-use intent consume, and bad-creds 403. Storage failures fail the suite (no silent skip); CI runs it in `integration-gate` (merged DB+MinIO; was `images-integration-gate`).
+- Issue #156 adds a real MinIO/R2 image round-trip suite (`web/tests/integration/images.integration.test.ts`, `npm run test:integration:images`): presigned PUT -> HEAD -> processor variant re-upload, creation/check-in photo provisioning end-to-end with real storage + DB gallery/intent metadata, missing-object 404, tampered Content-Type 403, single-use intent consume, and bad-creds 403. Storage failures fail the suite (no silent skip); CI runs it in `integration-gate` (merged DB+MinIO; was `images-integration-gate`).
 - Issue #130 / PR #128 shipped the `cafe-creation` slice: Google/Apple Maps link import and Google/Apple provider search share one first-check-in flow. PR #128 merged 2026-08-20; the Kimi visual review was completed post-merge on 2026-08-23 (verdict on PR #128); findings #183–#185 were fixed in PR #187. Slice is COMPLETE.
 - PR #138 (docs: cafe-creation spec and map backlog) is merged to `main`.
 - Issue #146 / work-profile slice completes the map-independent work_stats aggregation: `coerceWorkStats` preserves `experience_score`/`composite_score`, create/edit/soft-delete recompute via `recomputeWorkStats` with `FOR UPDATE`, public-safe `CafeSummary`/`CafeDetail` expose both scores, `web/scripts/recompute-work-stats.mjs` provides the idempotent nightly drift correction and `.github/workflows/nightly-recompute.yml` schedules it at 02:00 UTC with observable failure.
@@ -59,8 +59,8 @@ web/lib/stats/           Recency-weighted `work_stats` aggregation with `increme
 web/shared/              Shared primitives: UUID, auth helpers, places types/constants, image constants/validation
 web/app/auth/            signIn/signOut server actions, SignInButton/SignOutButton client components + OAuth callback route
 web/lib/images/          image-service client + sharp processor + 10 MB upload size propagation,
-                         plus the `completeImageUpload` service with atomic DB writes
-web/app/api/images/      upload + complete route handlers with per-user rate limiting
+                         plus `provisionPhotos` photo provisioning with atomic DB writes
+web/app/api/images/      upload route handler with per-user rate limiting
 poi-service/             POI cache microservice (Workers + D1 + KV) — stored search,
                          live Google search, resolve, and external-result persistence;
                          Google field masks, KV hot cache, D1 store, haversine search

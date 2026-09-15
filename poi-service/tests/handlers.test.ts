@@ -1083,4 +1083,24 @@ describe("D1/KV cache expiry and cleanup (BRAWUKA-294)", () => {
     const expiresMs = Date.parse(stored!.expires_at as string);
     expect(expiresMs - fetchedMs).toBe(30 * 24 * 3600 * 1000);
   });
+
+  it("does not serve rows expired earlier today (same-day ISO comparison parity)", async () => {
+    const db = new FakeD1();
+    db.rows.push({
+      place_id: "same-day-expired",
+      source: "apple",
+      name: "Same Day Expired Cafe",
+      lat: 1.0,
+      lng: 103.0,
+      address: null,
+      types: '["cafe"]',
+      business_status: null,
+      hours_json: null,
+      fetched_at: new Date(Date.now() - (30 * 24 * 3600 + 3600) * 1000).toISOString(),
+      expires_at: new Date(Date.now() - 3600 * 1000).toISOString(), // expired 1 hour ago today
+    });
+    const env = makeEnv({ POI_DB: db });
+    const res = await call("GET", "/poi/same-day-expired", env);
+    expect(res.status).toBe(404);
+  });
 });

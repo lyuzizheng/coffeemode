@@ -50,7 +50,8 @@ ON CONFLICT(place_id) DO UPDATE SET
   expires_at = excluded.expires_at
 `;
 
-const PURGE_EXPIRED_SQL = "DELETE FROM pois WHERE expires_at <= datetime('now')";
+const PURGE_EXPIRED_SQL =
+  "DELETE FROM pois WHERE expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 
 interface POIRow {
   place_id: string;
@@ -115,7 +116,9 @@ export async function d1UpsertPOIs(db: D1Like, pois: POI[]): Promise<void> {
 
 export async function d1GetPOI(db: D1Like, placeId: string): Promise<POI | null> {
   const row = await db
-    .prepare("SELECT * FROM pois WHERE place_id = ? AND expires_at > datetime('now')")
+    .prepare(
+      "SELECT * FROM pois WHERE place_id = ? AND expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+    )
     .bind(placeId)
     .first<POIRow>();
   return row ? normalizeRow(row) : null;
@@ -175,7 +178,7 @@ export async function d1SearchPOIs(
     return [];
   }
 
-  where.push("expires_at > datetime('now')");
+  where.push("expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
 
   // Pull more than the final cap because the bounding-box prefilter is loose;
   // the exact haversine filter and sort happen in memory.

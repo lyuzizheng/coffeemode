@@ -89,7 +89,7 @@ class FakePrepared implements D1PreparedLike {
       if (!existing) this.db.rows.push(row);
       return { meta: { changes: 1 } };
     }
-    if (this.sql.trimStart().startsWith("DELETE FROM pois WHERE expires_at <= datetime('now')")) {
+    if (this.sql.trimStart().startsWith("DELETE FROM pois WHERE expires_at <=")) {
       const now = Date.now();
       const before = this.db.rows.length;
       this.db.rows = this.db.rows.filter((r) => {
@@ -131,7 +131,7 @@ class FakePrepared implements D1PreparedLike {
     const lngHi2 = lngWrap ? (this.binds[bi++] as number) : undefined;
     const placeId = where.includes("place_id = ?") ? (this.binds[bi++] as string) : undefined;
     const rows = this.db.rows.filter((row) => {
-      if (where.includes("expires_at > datetime('now')")) {
+      if (where.includes("expires_at >")) {
         if (row.expires_at) {
           const exp = Date.parse(row.expires_at as string);
           if (!Number.isNaN(exp) && exp <= Date.now()) return false;

@@ -222,10 +222,10 @@ describe("handleFetch", () => {
     const store = new Map<string, Response>();
     const cache = {
       async match(key: string) {
-        return store.get(key);
+        return store.get(key)?.clone();
       },
       async put(key: string, res: Response) {
-        store.set(key, res);
+        store.set(key, res.clone());
       },
     };
     const g = globalThis as unknown as { caches?: { default: typeof cache } };
@@ -234,14 +234,21 @@ describe("handleFetch", () => {
     try {
       const env = makeEnv();
       const url = "https://staging-tiles.cafemood.app/planet/0/0/0.pbf";
-      const first = await handleFetch(new Request(url, { headers: { Origin: "https://cafemood.app" } }), env, undefined);
+      const pending: Promise<unknown>[] = [];
+      const ctx = { waitUntil(p: Promise<unknown>) { pending.push(p); } } as unknown as ExecutionContext;
+      const first = await handleFetch(new Request(url, { headers: { Origin: "https://cafemood.app" } }), env, ctx);
       expect(first.headers.get("Access-Control-Allow-Origin")).toBe("https://cafemood.app");
+      await Promise.all(pending);
+      // Guard against a vacuous hit path: the first request must populate the cache.
+      expect(store.size).toBe(1);
       const second = await handleFetch(
         new Request(url, { headers: { Origin: "https://staging.cafemood.app" } }),
         env,
-        undefined,
+        ctx,
       );
       expect(second.headers.get("Access-Control-Allow-Origin")).toBe("https://staging.cafemood.app");
+      const denied = await handleFetch(new Request(url, { headers: { Origin: "https://evil.test" } }), env, ctx);
+      expect(denied.headers.get("Access-Control-Allow-Origin")).toBeNull();
     } finally {
       if (prev === undefined) delete g.caches;
       else g.caches = prev;

@@ -1,0 +1,72 @@
+# Map Components (map-home, BRAWUKA-311)
+
+The live basemap surface for `/` — MapLibre GL v5 + OpenFreeMap. Ported from
+the archived `_archive-coffeemode-frontend` map slice; the provider-switching
+`MapContainer` was deliberately NOT ported (no second provider exists, and
+its load-time geolocation violated DG112).
+
+## Architecture
+
+```
+app/page.tsx
+  └─ OnboardingHome (welcome card + LocateButton → mapOverlay slot)
+       └─ DiscoveryHome ── provides DiscoveryMapContext {controller, cafes, center}
+            ├─ DesktopDiscovery / MobileSheet   (data path — map-independent)
+            └─ children = <MapSurface/>          (components/map/map-surface.tsx)
+                 └─ next/dynamic ssr:false → DiscoveryMap (discovery-map.tsx)
+                      └─ OpenFreeMapProvider     (openfreemap-provider.tsx)
+                           └─ maplibre-gl Map
+```
+
+- **map-surface.tsx** — client-only entry. SSR renders the skeleton in the
+  same slot; an error boundary + `onError` degrade the slot to a retryable
+  error card. The sheet keeps working — the data path never touches the map.
+- **openfreemap-provider.tsx** — mount-once MapLibre wrapper. `initialCenter`/
+  `initialZoom` are constructor-time only; later camera moves go through the
+  `IMapProvider` adapter (`flyTo`/`setCenter`) handed to `onLoad`.
+  `attributionControl` is ON (OpenMapTiles license). Non-tile errors before
+  first paint → `onError`; per-tile errors stay non-fatal.
+- **discovery-map.tsx** — binds discovery state to the map: theme → style
+  switch, cafes → clustered pins, selection → flyTo, pin/cluster taps →
+  controller. `bindMapInteractions` owns the map event listeners.
+- **use-map-bindings.ts** — the one-way sync effects (padding, center sync,
+  selection camera, GeoJSON data + selection ring).
+- **cafe-pins.ts** — baked SVG pin images (open/closed/unknown), GeoJSON
+  shaping, cluster/pin/halo layer registration (`bindCafeLayers` runs on
+  every `style.load` — a theme switch wipes runtime layers).
+- **Style documents** — both themes load full style JSONs from the tile host
+  (`map.tileStyle.light`/`dark` in app.yaml; OFM `liberty`/`dark` today).
+  Self-hosting (BRAWUKA-313) serves rewritten copies from the tiles Worker —
+  the app never owns a local style document.
+- **types.ts** — `IMapProvider` / `BaseMapProviderProps` (`Coordinates` from
+  `lib/cities`, not a parallel LatLng type).
+
+## Camera contract
+
+| Trigger | Effect |
+| --- | --- |
+| Resolved center changes (locate, city pick) | `flyTo` at `map.defaultZoom` (never zooms out) |
+| Cafe selected (card or pin) | `flyTo` at `map.focusZoom` (never zooms out) |
+| Deselect / user pan | nothing — the camera stays where the user left it |
+| Cluster tap | `easeTo` cluster expansion zoom |
+
+Padding follows chrome: mobile keeps pins above the sheet's visible detent
+(PEEK 172px / HALF 50dvh / FULL 85dvh); desktop shifts right only while the
+400px detail column overlays the map (<xl).
+
+## Config
+
+`web/config/app.yaml` → `map:` — `tileStyle.light`/`tileStyle.dark` (full
+style document URLs), `glyphs`, `sprite` (informational — the style documents
+carry their own), `defaultZoom`, `focusZoom`. Style URLs + zooms are mirrored
+to the client via `NEXT_PUBLIC_MAP_*` in `next.config.ts` and read through
+`lib/client-env.ts` getters.
+
+## Failure modes
+
+- Tile host down / WebGL unavailable / chunk load failure → error card with
+  Retry; discovery UI unaffected.
+- Individual tile/glyph failures → logged, non-fatal (holes in the basemap,
+  not a dead map).
+- e2e/visual suites stub `tiles.openfreemap.org` via
+  `scripts/lib/tile-stubs.mjs` — no network needed.

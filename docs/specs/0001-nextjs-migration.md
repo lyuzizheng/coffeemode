@@ -392,28 +392,36 @@ Anonymous sessions (DG76): Supabase anonymous sign-in issues a session on
 No email infra, no magic links.
 ```
 
-### Map — Apple MapKit JS
+### Map — MapLibre GL + OpenFreeMap (revised BRAWUKA-308/311)
 
 ```text
-Library: MapKit JS 5.7+ via CDN (next/script, strategy="afterInteractive")
-React wrapper: mapkit-react v1.16+ (React 19 compatible)
-Token: server-generated JWT (Apple Developer key), served via /api/mapkit-token
-Color scheme: follows app theme (light/dark), runtime toggle
-Requires: Apple Developer Program ($99/yr) — user will purchase
+Library: maplibre-gl v5.x (npm, WebGL1-compatible; v6 requires WebGL2 — revisit separately)
+Basemap: OpenFreeMap public instance; PMTiles+R2 self-hosting landed in
+        BRAWUKA-313 (tiles-service Worker + R2, monthly refresh runbook)
+Config: web/config/app.yaml `map:` section — tileStyle.light/dark (full
+        style document URLs: OFM liberty/dark, or Worker-served rewritten
+        copies when self-hosted), glyphs, sprite, defaultZoom, focusZoom.
+        These URLs are the only tile-host coupling; self-hosting is a
+        config edit, not a code change.
+Color scheme: follows app theme (light/dark) via setStyle
+Attribution: ON (OpenMapTiles license) — never disable
+Requires: nothing external — no Apple Developer Program, no API key
 ```
 
-MapKit JS capabilities used:
+MapLibre capabilities used:
 
 ```text
-- Map rendering (full-screen, dark mode)
-- Custom annotations (coffee-cup marker, status dot)
-- Clustering (clusteringIdentifier)
-- User location tracking
-- Text search (mapkit.Search) — current creation + external-search contract
-- Geocoding (mapkit.Geocoder) — reserved for the deferred map-tap/manual flow (map-creation-entry slice, #136)
+- Map rendering (full-viewport, theme-following light/dark)
+- Cafe pins: clustered GeoJSON source + baked SVG images (espresso circle,
+  white cup, open/closed status dot); cluster tap zooms, pin tap selects
+- Camera: imperative flyTo via the IMapProvider adapter — mount-once, no
+  prop-driven re-init; user pans never write back (DG120)
+- Geolocation: user-triggered only via the onboarding LocateButton (DG112)
+- Text search / geocoding: deferred to map-creation-entry (#136) — provider
+  (Nominatim/Photon) picked at implementation time
 ```
 
-**CafeMood maintains its own POI database.** MapKit renders and assists search; it does not replace the cafes table. Custom marker: existing coffee-cup design (brown circle, white cup), status dot (open/closed); category variants post-MVP.
+**CafeMood maintains its own POI database.** The basemap renders geography; it does not replace the cafes table. Custom marker: existing coffee-cup design (brown circle, white cup), status dot (open/closed); category variants post-MVP.
 
 ### Google Places API (retained)
 

@@ -111,11 +111,16 @@ export interface AppConfig {
   };
   map: {
     tileStyle: {
+      /** Full style document URLs — OFM public or the self-hosted Worker. */
       light: string;
       dark: string;
     };
     glyphs: string;
     sprite: string;
+    /** City-level zoom when the resolved center changes. */
+    defaultZoom: number;
+    /** Street-level zoom when a cafe is selected. */
+    focusZoom: number;
   };
   query: {
     staleTimeMs: number;
@@ -137,9 +142,14 @@ export interface AppConfig {
       maxJsChunkBytes: number;
       maxCssChunkBytes: number;
       maxTotalStaticBytes: number;
+      /** Per-chunk budget exemptions: a chunk containing `marker` may grow
+       * to `maxBytes` (map-home: maplibre-gl's ~1 MB chunk). */
+      chunkExemptions: { marker: string; maxBytes: number }[];
     };
     lighthouse: {
       performance: number;
+      /** `/` floor — the map surface can't hold the static-scaffold 0.8. */
+      performanceHome: number;
       accessibility: number;
       bestPractices: number;
       seo: number;

@@ -79,6 +79,10 @@ map:
   # passed through verbatim — never interpolate here).
   glyphs: https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf
   sprite: https://tiles.openfreemap.org/sprites/ofm_f384/ofm
+  # City-level zoom when the resolved center changes (locate / city pick).
+  defaultZoom: 12
+  # Street-level zoom when a cafe is selected (card or marker).
+  focusZoom: 15
 feed:
   # Check-in feed page size for both Helpful and Newest modes (spec 0001).
   pageSize: 20
@@ -218,12 +222,23 @@ budgets:
     maxJsChunkBytes: 409600 # 400 KB
     maxCssChunkBytes: 512000 # 500 KB
     maxTotalStaticBytes: 5242880 # 5 MB
+    # Per-chunk exemptions (map-home, BRAWUKA-311): a chunk whose content
+    # contains `marker` may grow to `maxBytes` instead of maxJsChunkBytes.
+    # maplibre-gl lands as one ~1.06 MB chunk (gzip ~276 KB); the
+    # `maplibregl-` CSS class names survive minification as string literals.
+    chunkExemptions:
+      - marker: maplibregl-
+        maxBytes: 1310720 # 1.25 MB
   # Lighthouse audit score thresholds (0.0 to 1.0)
   # Rationale: Spec 0001:1182 mandates cafe detail performance >= 80 (0.80). Category thresholds
   # at 85 (0.85) ensure a consistent quality floor across accessibility, best-practices, and SEO.
-  # Expiry: Review when live client-side map rendering replaces SSR placeholder shell.
+  # `performanceHome` is the `/` floor: the map surface (maplibre chunk +
+  # WebGL init, deferred to idle) can't hold the static-scaffold 0.8 —
+  # measured ~0.70 on CI before the idle deferral landed. Debt: revisit when
+  # the map init cost shrinks (self-hosted tiles, lighter style).
   lighthouse:
     performance: 0.8
+    performanceHome: 0.65
     accessibility: 0.85
     bestPractices: 0.85
     seo: 0.85

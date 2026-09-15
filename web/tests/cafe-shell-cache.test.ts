@@ -163,6 +163,16 @@ function minimalValid() {
     cafes: { listLimitMax: 50 },
     feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
     discovery: { defaultCenter: { lat: 1.35, lng: 103.8 } },
+    map: {
+      tileStyle: {
+        light: "https://tiles.openfreemap.org/planet",
+        dark: "https://tiles.openfreemap.org/styles/fiord",
+      },
+      glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
+      sprite: "https://tiles.openfreemap.org/sprites/ofm_f384/ofm",
+      defaultZoom: 12,
+      focusZoom: 15,
+    },
     onboarding: { cityCoverageKm: 50, geolocationTimeoutMs: 10000 },
     seo: {
       shellCache: {
@@ -184,7 +194,7 @@ function minimalValid() {
     validation: { cafeAddressMaxChars: 300, profileCityMaxChars: 50 },
     budgets: {
       bundle: { maxJsChunkBytes: 409600, maxCssChunkBytes: 512000, maxTotalStaticBytes: 5242880 },
-      lighthouse: { performance: 0.8, accessibility: 0.85, bestPractices: 0.85, seo: 0.85 },
+      lighthouse: { performance: 0.8, performanceHome: 0.65, accessibility: 0.85, bestPractices: 0.85, seo: 0.85 },
     },
   };
 }

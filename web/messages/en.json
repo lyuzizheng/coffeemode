@@ -8,31 +8,8 @@
     }
   },
   "home": {
-    "kicker": "For people who work from cafes",
-    "hero_title": "Work from great cafes",
-    "hero_subtitle": "Real wifi, outlet, and seat intel from nomads — not vibes.",
-    "steps": {
-      "find": {
-        "title": "Find",
-        "body": "Cafes near you, scored 0–100 on wifi, outlets, seats, temperature, and coffee — by people who actually worked there."
-      },
-      "checkin": {
-        "title": "Check in",
-        "body": "Thirty seconds of sliders after a visit. That is the whole feedback loop."
-      },
-      "keep": {
-        "title": "Keep",
-        "body": "Your spots and scores stay saved — next city, next week, still yours."
-      }
-    },
-    "ethos": "A quiet tool. No feed, no ads, no noise.",
-    "cta_search": "Search cafes",
-    "search_placeholder": "Search cafes near you",
-    "signin_title": "Sign in",
-    "signin_subtitle": "Check in, score the wifi, build your work profile.",
     "continue_apple": "Continue with Apple",
     "continue_google": "Continue with Google",
-    "auth_not_configured": "Sign-in isn't set up yet. Check back soon, or try again later.",
     "auth_error": "Sign-in didn't go through. Please try again.",
     "auth_error_profile": "You're signed in, but profile setup didn't finish. Sign in again to retry.",
     "auth_err_invalid_provider": "That sign-in method isn't available.",
@@ -40,8 +17,6 @@
     "auth_err_start": "Sign-in couldn't start. Please try again.",
     "auth_err_signout": "Sign-out didn't complete. Please try again.",
     "auth_err_generic": "Something went wrong. Please try again.",
-    "signed_in_as": "Signed in as",
-    "session_ready": "Your session is active.",
     "signing_in": "Signing in...",
     "sign_out": "Sign out",
     "signing_out": "Signing out..."
@@ -545,5 +520,11 @@
   },
   "runtime": {
     "announcement": "Announcement"
+  },
+  "map": {
+    "aria": "Cafe map",
+    "error_title": "Map couldn't load",
+    "error_body": "The list still works — pick a cafe to see details.",
+    "retry": "Retry"
   }
 }

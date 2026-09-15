@@ -21,7 +21,7 @@ const IMG_B = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55";
 function fakeDeps(overrides: Partial<ProvisionPhotosDeps> = {}): ProvisionPhotosDeps {
   return {
     checkUploadIntent: vi.fn().mockResolvedValue(true),
-    checkUploadIntents: vi.fn().mockResolvedValue([IMG_A, IMG_B]),
+    checkUploadIntents: vi.fn().mockImplementation((_: string, ids: string[]) => Promise.resolve(ids)),
     consumeUploadIntent: vi.fn().mockResolvedValue(true),
     consumeUploadIntents: vi.fn().mockResolvedValue(true),
     getProcessUrls: vi.fn().mockImplementation((req: { imageUuid: string }) =>
@@ -81,6 +81,7 @@ describe("provisionPhotos", () => {
 
   it("batch pre-checks all intents before ANY processing (fail-fast gate)", async () => {
     const deps = fakeDeps({
+      checkUploadIntents: undefined,
       checkUploadIntent: vi
         .fn()
         .mockResolvedValueOnce(true) // IMG_A ok

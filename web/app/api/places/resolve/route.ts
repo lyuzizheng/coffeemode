@@ -5,12 +5,20 @@ import { POIServiceError, resolveMapsUrl } from "@/lib/places/poi-client";
 import { isValidMapsUrl } from "@/lib/places/validate-maps-url";
 import { guard, readJsonBody } from "@/lib/api/guard";
 import { requireSameOrigin } from "@/lib/security/origin";
+import { verifyTurnstileToken } from "@/lib/security/turnstile";
 
 /**
- * POST /api/places/resolve  {maps_share_url}
+ * POST /api/places/resolve  {maps_share_url, cf-turnstile-response}
  * Proxy to the POI cache service resolve — turns a pasted Google Maps link
  * into a POI (cafe creation import path). Short links are followed by the
  * worker; this route validates the host before proxying.
+ *
+ * Anonymous but billable (worker-side short-link resolution), so every call
+ * must carry a fresh `cf-turnstile-response` token minted by the
+ * `places-resolve` widget (BRAWUKA-239; BRAWUKA-233 rejected WAF Managed
+ * Challenge here because challenge HTML breaks `fetch()` callers).
+ * Verification is fail-closed: missing/invalid token or siteverify outage
+ * rejects with 403 and never reaches the worker.
  */
 export async function POST(request: Request) {
   const originError = requireSameOrigin(request);
@@ -25,6 +33,13 @@ export async function POST(request: Request) {
   const bodyRes = await readJsonBody<Record<string, unknown>>(request);
   if (!bodyRes.ok) return bodyRes.response;
   const body = bodyRes.data;
+  // Bot gate runs before any other validation so a missing/forged token
+  // always answers 403, never a 400/422 from the input checks below.
+  const turnstile = await verifyTurnstileToken(body["cf-turnstile-response"], request);
+  if (!turnstile.ok) {
+    return apiError("bot_verification_failed", turnstile.message, 403);
+  }
+
   const mapsShareUrl: unknown =
     body && typeof body === "object" && "maps_share_url" in body
       ? body.maps_share_url

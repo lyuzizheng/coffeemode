@@ -198,31 +198,26 @@ export async function checkRateLimit(
  * Build a stable identifier for a request.
  *
  * - Signed-in users are keyed by `user:${id}`.
- * - Anonymous requests use a short SHA-256 hash of User-Agent + IP headers.
- * - Local/dev requests with no identifying headers fall back to `anon:local-dev`.
+ * - Anonymous requests are keyed by a short SHA-256 hash of
+ *   `cf-connecting-ip` only. `User-Agent` is deliberately excluded: it is
+ *   fully client-controlled, so including it would let an anonymous client
+ *   mint a fresh `anon:` bucket per request by rotating UA strings.
+ * - Requests with no `cf-connecting-ip` share a single `anon:unknown`
+ *   bucket (fail-closed). `x-real-ip` / `x-forwarded-for` are never
+ *   consulted — both are client-injectable here (Traefik neither sets nor
+ *   strips them), and any spoofable fallback reopens the same bypass.
  */
 export function getClientIdentifier(request: Request, user?: { id: string } | null): string {
   if (user?.id) return `user:${user.id}`;
 
-  const ua = request.headers.get("user-agent") ?? "";
-  // Trust model (review 2026-08-09): Cloudflare sets CF-Connecting-IP on every
-  // request it proxies, so it is authoritative when present. X-Real-IP and
-  // X-Forwarded-For are client-influenceable (XFF leftmost is trivially
-  // spoofable) and are only fallbacks for non-CF deployments. Never let a
-  // spoofable header win over the authoritative one.
-  const cfIp = request.headers.get("cf-connecting-ip") ?? "";
-  const realIp = request.headers.get("x-real-ip") ?? "";
-  const forwarded = request.headers.get("x-forwarded-for") ?? "";
-  const ip = cfIp || realIp || forwarded.split(",").pop()?.trim() || "unknown";
+  // Trust model (BRAWUKA-282 P1-2): only `cf-connecting-ip` — set by
+  // Cloudflare on every request it proxies — is authoritative. Until the
+  // trusted-edge header story lands (BRAWUKA-238), non-CF deployments
+  // share one coarse bucket rather than a forgeable per-header one.
+  const ip = request.headers.get("cf-connecting-ip");
+  if (!ip) return "anon:unknown";
 
-  if (!ua && ip === "unknown") {
-    return "anon:local-dev";
-  }
-
-  const hash = createHash("sha256")
-    .update(`${ua}|${ip}`)
-    .digest("hex")
-    .slice(0, 32);
+  const hash = createHash("sha256").update(ip).digest("hex").slice(0, 32);
   return `anon:${hash}`;
 }
 

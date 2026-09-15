@@ -267,4 +267,23 @@ describe("proxy request-id (BRAWUKA-168)", () => {
     expect(requestId).not.toBe("attacker-chosen");
     expect((await accessLine(res)).request_id).toBe(requestId);
   });
+
+  it("never logs the OAuth code in access lines (BRAWUKA-282 P1-3 gate)", async () => {
+    const res = await proxy(
+      new NextRequest(new URL("http://localhost/auth/callback?code=pkce-code-abc&next=/cafes")),
+    );
+    const line = await accessLine(res);
+    expect(line.path).toBe("/auth/callback");
+    expect(JSON.stringify(line)).not.toContain("code=");
+    expect(JSON.stringify(line)).not.toContain("pkce-code-abc");
+  });
+
+  it("never logs raw search terms in access lines (BRAWUKA-282 P1-3 gate)", async () => {
+    const res = await proxy(
+      new NextRequest(new URL("http://localhost/api/search?q=night+owl+espresso")),
+    );
+    const line = await accessLine(res);
+    expect(line.path).toBe("/api/search");
+    expect(JSON.stringify(line)).not.toContain("night");
+  });
 });

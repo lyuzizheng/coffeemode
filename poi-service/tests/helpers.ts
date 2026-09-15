@@ -78,16 +78,26 @@ class FakePrepared implements D1PreparedLike {
     if (this.sql.trimStart().startsWith("INSERT INTO pois")) {
       const [
         place_id, source, name, lat, lng, address,
-        types, business_status, hours_json, photo_refs, fetched_at,
+        types, business_status, hours_json, fetched_at, expires_at,
       ] = this.binds;
       const existing = this.db.rows.find((r) => r.place_id === place_id);
       const row = existing ?? {};
       Object.assign(row, {
         place_id, source, name, lat, lng, address,
-        types, business_status, hours_json, photo_refs, fetched_at,
+        types, business_status, hours_json, fetched_at, expires_at,
       });
       if (!existing) this.db.rows.push(row);
       return { meta: { changes: 1 } };
+    }
+    if (this.sql.trimStart().startsWith("DELETE FROM pois WHERE expires_at <= datetime('now')")) {
+      const now = Date.now();
+      const before = this.db.rows.length;
+      this.db.rows = this.db.rows.filter((r) => {
+        if (!r.expires_at) return true;
+        const exp = Date.parse(r.expires_at as string);
+        return Number.isNaN(exp) || exp > now;
+      });
+      return { meta: { changes: before - this.db.rows.length } };
     }
     return { meta: { changes: 0 } };
   }
@@ -121,6 +131,12 @@ class FakePrepared implements D1PreparedLike {
     const lngHi2 = lngWrap ? (this.binds[bi++] as number) : undefined;
     const placeId = where.includes("place_id = ?") ? (this.binds[bi++] as string) : undefined;
     const rows = this.db.rows.filter((row) => {
+      if (where.includes("expires_at > datetime('now')")) {
+        if (row.expires_at) {
+          const exp = Date.parse(row.expires_at as string);
+          if (!Number.isNaN(exp) && exp <= Date.now()) return false;
+        }
+      }
       if (pattern !== undefined && !likeToRegex(pattern).test(String(row.name))) return false;
       if (latLo !== undefined && !(Number(row.lat) >= latLo && Number(row.lat) <= latHi!)) return false;
       if (lngLo !== undefined) {
@@ -157,7 +173,6 @@ export function googleDetailResponse(overrides: Record<string, unknown> = {}): R
     types: ["cafe", "coffee_shop"],
     businessStatus: "OPERATIONAL",
     regularOpeningHours: { periods: [] },
-    photos: [{ name: "places/ChIJTEST123/photos/photo1" }],
     googleMapsUri: "https://maps.google.com/?cid=123",
     ...overrides,
   };

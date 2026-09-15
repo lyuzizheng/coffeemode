@@ -204,7 +204,7 @@ Postgres/PostGIS. Pinned by `web/tests/helpers/mocks.test.ts`.
   `searchExternalPOIs` returns — `place_id: ChIJ…`, `source: "google"`,
   `types` containing `cafe`, `business_status: "OPERATIONAL"`,
   `hours_json` as serialized Google `regularOpeningHours`
-  (`weekdayDescriptions`), non-empty `photo_refs`, ISO `fetched_at`.
+  (`weekdayDescriptions`), ISO `fetched_at`.
   Live Google stays behind the poi-service worker (cached); tests
   `vi.mock("@/lib/places/poi-client")` and never touch the network.
 - Fake Image Buffer spec: minimal valid WebP bytes (`RIFF…WEBP` magic,

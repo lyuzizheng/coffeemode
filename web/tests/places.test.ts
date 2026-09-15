@@ -27,7 +27,6 @@ const SAMPLE_POI: POI = {
   types: ["cafe"],
   business_status: "OPERATIONAL",
   hours_json: null,
-  photo_refs: ["places/ChIJTEST123/photos/p1"],
   fetched_at: "2026-08-06T00:00:00.000Z",
 };
 

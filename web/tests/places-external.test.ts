@@ -27,7 +27,6 @@ const APPLE_POI: POI = {
   types: ["cafe"],
   business_status: null,
   hours_json: null,
-  photo_refs: [],
   fetched_at: new Date(0).toISOString(),
 };
 

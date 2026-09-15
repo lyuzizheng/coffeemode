@@ -35,8 +35,8 @@ GOOGLE_PLACES_API_KEY=...
 
 ## Data store
 
-- **KV** — hot cache of raw Google Places responses, key `raw:google:<place_id>`, TTL ~7d.
-- **D1** — durable normalized POI store (`pois` table). Schema in `migrations/0001_init.sql`.
+- **KV** — hot cache of normalized POI records, key `poi:<place_id>`, TTL ~7d.
+- **D1** — bounded POI cache (expires_at, 30d; `pois` table). Schema in `migrations/`.
 
 ```bash
 # one-time, after the namespaces exist (owner actions — docs/agent/pending-user-actions.md §7)

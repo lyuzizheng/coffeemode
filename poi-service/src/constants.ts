@@ -15,6 +15,9 @@ export const SEARCH_RESULT_LIMIT = 100;
  *  a row younger than this is served without hitting Google. */
 export const CACHE_TTL_SECONDS = 7 * 24 * 3600; // ~7d
 
+/** Bounded D1 cache lifetime: hard boundary after which a POI is purged / invisible. */
+export const POI_EXPIRY_SECONDS = 30 * 24 * 3600; // 30d
+
 /**
  * DG144 / DG52 — Category allowlist for D1/KV persistence.
  * Only food/cafe-category external POIs are persisted.

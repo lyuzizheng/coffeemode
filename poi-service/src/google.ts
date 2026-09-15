@@ -4,12 +4,12 @@
  */
 
 import { DEFAULT_SEARCH_RADIUS_KM } from "./constants";
+import { computeExpiresAt } from "./store";
 import type { Env, POI } from "./types";
-
 export const GOOGLE_API_BASE = "https://places.googleapis.com";
 
-/** Field mask for Place Details (New). Photos are billed as embedded content,
- *  so we only keep the photo reference (name) and fetch lazily. */
+/** Field mask for Place Details (New). Billing stays minimal; googleMapsUri
+ *  is retained for a future external maps link. */
 export const DETAIL_FIELDS = [
   "id",
   "displayName",
@@ -18,7 +18,6 @@ export const DETAIL_FIELDS = [
   "types",
   "businessStatus",
   "regularOpeningHours",
-  "photos",
   "googleMapsUri",
 ].join(",");
 
@@ -34,7 +33,6 @@ export interface GooglePlace {
   types?: string[];
   businessStatus?: string;
   regularOpeningHours?: { periods?: unknown[] } | null;
-  photos?: Array<{ name: string }>;
   googleMapsUri?: string;
 }
 
@@ -109,6 +107,7 @@ export function toPOI(gp: GooglePlace, source: "google" | "apple" = "google"): P
   if (!gp.location) {
     throw new Error(`Google place ${gp.id} has no location; refusing to store at (0,0)`);
   }
+  const fetched_at = new Date().toISOString();
   return {
     place_id: gp.id,
     source,
@@ -119,7 +118,7 @@ export function toPOI(gp: GooglePlace, source: "google" | "apple" = "google"): P
     types: gp.types ?? [],
     business_status: gp.businessStatus ?? null,
     hours_json: gp.regularOpeningHours ? JSON.stringify(gp.regularOpeningHours) : null,
-    photo_refs: (gp.photos ?? []).map((p) => p.name),
-    fetched_at: new Date().toISOString(),
+    fetched_at,
+    expires_at: computeExpiresAt(fetched_at),
   };
 }

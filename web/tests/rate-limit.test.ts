@@ -101,7 +101,7 @@ describe("getClientIdentifier", () => {
     expect(getClientIdentifier(request, { id: "user-123" })).toBe("user:user-123");
   });
 
-  it("hashes User-Agent and CF-Connecting-IP for anonymous requests", () => {
+  it("hashes CF-Connecting-IP and never leaks it for anonymous requests", () => {
     const request = new Request("https://example.com/api/test", {
       headers: {
         "user-agent": "Mozilla/5.0",
@@ -114,35 +114,43 @@ describe("getClientIdentifier", () => {
     expect(id).not.toContain("1.2.3.4");
   });
 
-  it("ignores forged X-Real-IP / X-Forwarded-For: different forgeries share one bucket (BRAWUKA-282 P1-2 gate)", () => {
-    const ua = "Mozilla/5.0";
+  it("ignores forged X-Real-IP / X-Forwarded-For and rotated User-Agents: same bucket (BRAWUKA-282 P1-2 gate)", () => {
     const first = new Request("https://example.com/api/test", {
-      headers: { "user-agent": ua, "x-real-ip": "1.1.1.1", "x-forwarded-for": "1.1.1.1" },
+      headers: {
+        "user-agent": "Mozilla/5.0",
+        "cf-connecting-ip": "9.9.9.9",
+        "x-real-ip": "1.1.1.1",
+        "x-forwarded-for": "1.1.1.1",
+      },
     });
-    const second = new Request("https://example.com/api/test", {
-      headers: { "user-agent": ua, "x-real-ip": "2.2.2.2", "x-forwarded-for": "2.2.2.2, 3.3.3.3" },
+    const rotated = new Request("https://example.com/api/test", {
+      headers: {
+        "user-agent": "curl/8.0",
+        "cf-connecting-ip": "9.9.9.9",
+        "x-real-ip": "2.2.2.2",
+        "x-forwarded-for": "2.2.2.2, 3.3.3.3",
+      },
     });
-    expect(getClientIdentifier(first, null)).toBe(getClientIdentifier(second, null));
+    expect(getClientIdentifier(first, null)).toBe(getClientIdentifier(rotated, null));
   });
 
-  it("still keys on CF-Connecting-IP when present alongside forgeries", () => {
-    const ua = "Mozilla/5.0";
+  it("keys distinct CF-Connecting-IPs into distinct buckets", () => {
     const base = new Request("https://example.com/api/test", {
-      headers: { "user-agent": ua, "cf-connecting-ip": "9.9.9.9", "x-real-ip": "1.1.1.1" },
+      headers: { "user-agent": "Mozilla/5.0", "cf-connecting-ip": "9.9.9.9" },
     });
     const otherIp = new Request("https://example.com/api/test", {
-      headers: { "user-agent": ua, "cf-connecting-ip": "8.8.8.8", "x-real-ip": "1.1.1.1" },
-    });
-    const otherForgery = new Request("https://example.com/api/test", {
-      headers: { "user-agent": ua, "cf-connecting-ip": "9.9.9.9", "x-real-ip": "2.2.2.2" },
+      headers: { "user-agent": "Mozilla/5.0", "cf-connecting-ip": "8.8.8.8" },
     });
     expect(getClientIdentifier(otherIp, null)).not.toBe(getClientIdentifier(base, null));
-    expect(getClientIdentifier(otherForgery, null)).toBe(getClientIdentifier(base, null));
   });
 
-  it("falls back to a local-dev identifier when no headers are present", () => {
+  it("shares one fail-closed bucket when CF-Connecting-IP is absent", () => {
     const request = new Request("https://example.com/api/test");
-    expect(getClientIdentifier(request, null)).toBe("anon:local-dev");
+    expect(getClientIdentifier(request, null)).toBe("anon:unknown");
+    const forged = new Request("https://example.com/api/test", {
+      headers: { "user-agent": "curl/8.0", "x-real-ip": "1.1.1.1" },
+    });
+    expect(getClientIdentifier(forged, null)).toBe("anon:unknown");
   });
 });
 

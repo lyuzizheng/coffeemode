@@ -10,6 +10,10 @@ import type { CafeSummary } from "@/types/cafes";
  * data, selection, and the tap callback. No renderer types (MapLibre, MapKit,
  * Google) cross this boundary — `discovery-map.tsx` and `use-map-bindings.ts`
  * are renderer-agnostic by construction.
+ *
+ * Members marked optional are capability extensions (BRAWUKA-330, design
+ * BRAWUKA-322 §1.1): consumers MUST feature-detect (`provider.onMapTap?.(…)`)
+ * — a provider that cannot offer the capability simply omits it.
  */
 export interface IMapProvider {
   /** Sets the map's center. */
@@ -39,6 +43,31 @@ export interface IMapProvider {
   /** Registers the cafe-tap callback; returns an unsubscribe function. */
   onCafeSelect(handler: (cafeId: string) => void): () => void;
 
+  /**
+   * Registers a map-tap callback for taps that hit no pin or cluster —
+   * the map-creation-entry trigger (tap / long-press → create). Returns an
+   * unsubscribe function. Optional: consumers feature-detect.
+   */
+  onMapTap?(handler: (coordinates: Coordinates) => void): () => void;
+
+  /** Current viewport bounds. Optional: consumers feature-detect. */
+  getBounds?(): MapBounds;
+
+  /**
+   * Registers a viewport-settled callback — fires after camera motion ends
+   * (pan/zoom/flyTo), the "search this area" trigger. Returns an unsubscribe
+   * function. Optional: consumers feature-detect.
+   */
+  onIdle?(handler: () => void): () => void;
+
+  /**
+   * Replaces the external-POI pin set (map-discovery-integration live search
+   * results). A channel separate from `setCafes` — external POIs are not
+   * cafes and must not be forced into `CafeSummary`. Optional: consumers
+   * feature-detect.
+   */
+  setExternalPins?(pins: ExternalPin[]): void;
+
   /** Cleans up map resources. */
   destroy(): void;
 }
@@ -62,4 +91,25 @@ export interface BaseMapProviderProps {
   onLoad: (provider: IMapProvider) => void;
   /** Called when the basemap fails irrecoverably (style/source/WebGL). */
   onError: (error: unknown) => void;
+}
+
+/** Viewport bounds — the `getBounds` return shape. */
+export interface MapBounds {
+  ne: Coordinates;
+  sw: Coordinates;
+}
+
+/**
+ * An external POI rendered as a map pin (map-discovery-integration live
+ * search results) — deliberately minimal: id/coordinates/label/source. Not a
+ * `CafeSummary`; the pin channel is display-only and carries no cafe data.
+ */
+export interface ExternalPin {
+  /** Stable id within the result set (used for feature identity). */
+  id: string;
+  coordinates: Coordinates;
+  /** POI display name; rendered under the pin when present. */
+  label?: string;
+  /** Upstream source tag (e.g. "google", "apple") — provenance only. */
+  source: string;
 }

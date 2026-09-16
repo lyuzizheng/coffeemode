@@ -27,39 +27,58 @@
  *
  * No GeolocateControl: DG112 — geolocation is only ever user-triggered via
  * the onboarding LocateButton, never a map control.
+ *
+ * Optional IMapProvider capabilities (BRAWUKA-330): `onMapTap` (tap or
+ * long-press/contextmenu on empty map → create-entry trigger), `getBounds`,
+ * `onIdle` (MapLibre `moveend` — camera-settled, not the render-idle event,
+ * so a data refresh can't retrigger "search this area"), and
+ * `setExternalPins` (sage teardrop POI pins on a source/layers separate
+ * from the cafe dataset).
  */
 import { GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
 import type { MapMouseEvent, StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
+import type { Coordinates } from "@/lib/cities";
 import type { CafeSummary } from "@/types/cafes";
 import {
   bindCafeLayers,
+  bindExternalPinLayers,
   cafesToGeoJSON,
+  externalPinsToGeoJSON,
   loadPinImages,
   CAFE_SOURCE,
   CLUSTER_LAYER,
+  EXTERNAL_PIN_LAYER,
+  EXTERNAL_SOURCE,
   PIN_LAYER,
 } from "./cafe-pins";
-import type { BaseMapProviderProps, IMapProvider } from "./types";
+import type { BaseMapProviderProps, ExternalPin, IMapProvider } from "./types";
 
 /** Internal mutable state the adapter closes over — latest cafes/selection
  * so a `style.load` rebind can re-apply them (a setStyle wipes both). */
 interface ProviderState {
   cafes: CafeSummary[];
+  externalPins: ExternalPin[];
   selectedCafeId: string | null;
   onCafeSelect: ((cafeId: string) => void) | null;
+  onMapTap: ((coordinates: Coordinates) => void) | null;
 }
 
-/** Re-registers pin images + cafe layers and re-pushes data/selection —
- * called on mount and on every `style.load` (theme switches wipe runtime
- * layers and feature-state). */
-function rebindCafeLayers(map: MapLibreMap, state: ProviderState): void {
+/** Re-registers pin images + cafe/external layers and re-pushes
+ * data/selection — called on mount and on every `style.load` (theme
+ * switches wipe runtime layers and feature-state). */
+function rebindMapLayers(map: MapLibreMap, state: ProviderState): void {
   void loadPinImages(map).then(() => {
     bindCafeLayers(map);
-    const source = map.getSource(CAFE_SOURCE);
-    if (source instanceof GeoJSONSource) {
-      source.setData(cafesToGeoJSON(state.cafes));
+    bindExternalPinLayers(map);
+    const cafeSource = map.getSource(CAFE_SOURCE);
+    if (cafeSource instanceof GeoJSONSource) {
+      cafeSource.setData(cafesToGeoJSON(state.cafes));
+    }
+    const externalSource = map.getSource(EXTERNAL_SOURCE);
+    if (externalSource instanceof GeoJSONSource) {
+      externalSource.setData(externalPinsToGeoJSON(state.externalPins));
     }
     if (state.selectedCafeId) {
       map.setFeatureState(
@@ -72,13 +91,24 @@ function rebindCafeLayers(map: MapLibreMap, state: ProviderState): void {
 
 function bindPointerHandlers(map: MapLibreMap, state: ProviderState): void {
   const interactiveLayers = () =>
-    [PIN_LAYER, CLUSTER_LAYER].filter((id) => map.getLayer(id));
+    [PIN_LAYER, CLUSTER_LAYER, EXTERNAL_PIN_LAYER].filter((id) =>
+      map.getLayer(id),
+    );
+
+  /** First rendered feature under the point across pin/cluster layers. */
+  const hitPin = (e: MapMouseEvent) => {
+    const layers = interactiveLayers();
+    if (layers.length === 0) return undefined;
+    return map.queryRenderedFeatures(e.point, { layers }).at(0);
+  };
 
   map.on("click", (e: MapMouseEvent) => {
-    const layers = interactiveLayers();
-    if (layers.length === 0) return;
-    const hit = map.queryRenderedFeatures(e.point, { layers }).at(0);
-    if (!hit) return;
+    const hit = hitPin(e);
+    if (!hit) {
+      // Empty-map tap → the registered map-tap handler (create entry).
+      state.onMapTap?.({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+      return;
+    }
     if (hit.properties?.cluster) {
       const source = map.getSource(CAFE_SOURCE);
       if (source instanceof GeoJSONSource) {
@@ -90,6 +120,12 @@ function bindPointerHandlers(map: MapLibreMap, state: ProviderState): void {
     }
     const cafeId = hit.properties?.cafeId;
     if (typeof cafeId === "string") state.onCafeSelect?.(cafeId);
+  });
+  // Long-press (mobile) / right-click (desktop) → same create-entry trigger.
+  map.on("contextmenu", (e: MapMouseEvent) => {
+    if (!state.onMapTap || hitPin(e)) return;
+    e.preventDefault();
+    state.onMapTap({ lat: e.lngLat.lat, lng: e.lngLat.lng });
   });
   map.on("mousemove", (e: MapMouseEvent) => {
     const layers = interactiveLayers();
@@ -146,6 +182,35 @@ function providerAdapter(
         if (state.onCafeSelect === handler) state.onCafeSelect = null;
       };
     },
+    onMapTap: (handler) => {
+      state.onMapTap = handler;
+      return () => {
+        if (state.onMapTap === handler) state.onMapTap = null;
+      };
+    },
+    getBounds: () => {
+      const b = map.getBounds();
+      return {
+        ne: { lat: b.getNorthEast().lat, lng: b.getNorthEast().lng },
+        sw: { lat: b.getSouthWest().lat, lng: b.getSouthWest().lng },
+      };
+    },
+    // MapLibre `moveend` — camera-settled only. `idle` also fires after
+    // data/style renders, which would retrigger "search this area" on every
+    // setExternalPins push.
+    onIdle: (handler) => {
+      map.on("moveend", handler);
+      return () => {
+        map.off("moveend", handler);
+      };
+    },
+    setExternalPins: (pins) => {
+      state.externalPins = pins;
+      const source = map.getSource(EXTERNAL_SOURCE);
+      if (source instanceof GeoJSONSource) {
+        source.setData(externalPinsToGeoJSON(pins));
+      }
+    },
     destroy: () => {
       map.remove();
       if (mapRef.current === map) mapRef.current = null;
@@ -183,9 +248,9 @@ function mountMap(opts: {
   let loaded = false;
   map.on("load", () => {
     loaded = true;
-    rebindCafeLayers(map, state);
+    rebindMapLayers(map, state);
     bindPointerHandlers(map, state);
-    map.on("style.load", () => rebindCafeLayers(map, state));
+    map.on("style.load", () => rebindMapLayers(map, state));
     onLoadRef.current?.(providerAdapter(map, mapRef, state));
   });
 
@@ -193,7 +258,7 @@ function mountMap(opts: {
     // Per-tile failures (e.tile set) are routine — a dropped tile leaves a
     // hole, not a dead map. Everything else before first paint (style,
     // source, glyphs, sprite) means the basemap cannot render.
-    const tileBound = Boolean((e as { tile?: unknown }).tile);
+    const tileBound = "tile" in e && Boolean(e.tile);
     if (!loaded && !tileBound) onErrorRef.current?.(e.error ?? e);
     else console.error("[map] non-fatal maplibre error:", e.error ?? e);
   });
@@ -217,8 +282,10 @@ export function MapLibreProvider({
   const mapRef = useRef<MapLibreMap | null>(null);
   const stateRef = useRef<ProviderState>({
     cafes: [],
+    externalPins: [],
     selectedCafeId: null,
     onCafeSelect: null,
+    onMapTap: null,
   });
   // Latest-callback refs: the mount effect runs once, so it must call the
   // current props, not the first render's closures.

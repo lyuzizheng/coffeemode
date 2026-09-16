@@ -1,21 +1,29 @@
 /**
- * Cafe pin artwork + GeoJSON shaping for the discovery map (map-home).
+ * Pin artwork + GeoJSON shaping for the discovery map (map-home).
  *
  * Pins are baked SVGs registered as MapLibre images — the spec 0001 marker
  * (espresso-brown circle, white cup, open/closed status dot) drawn once per
  * status variant instead of per-marker DOM nodes. Colors mirror globals.css
  * tokens (hex literals: style JSON can't read CSS custom properties).
+ *
+ * Also hosts the external-POI pin channel (BRAWUKA-330): a sage teardrop +
+ * optional label on a separate source/layers, so live search results never
+ * enter the cafe dataset.
  */
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { FeatureCollection, Point } from "geojson";
 import { isOpenAt } from "@/lib/hours";
 import type { CafeSummary } from "@/types/cafes";
+import type { ExternalPin } from "./types";
 
 export const CAFE_SOURCE = "cafes";
 export const CLUSTER_LAYER = "cafes-clusters";
 export const CLUSTER_COUNT_LAYER = "cafes-cluster-count";
 export const PIN_HALO_LAYER = "cafes-pin-halo";
 export const PIN_LAYER = "cafes-pins";
+export const EXTERNAL_SOURCE = "external-pois";
+export const EXTERNAL_PIN_LAYER = "external-poi-pins";
+export const EXTERNAL_LABEL_LAYER = "external-poi-labels";
 
 /** Pin variants: open / closed / unknown. */
 const STATUSES = ["open", "closed", "unknown"] as const;
@@ -30,6 +38,20 @@ const PIN_CUP = "#faf7f2";
 const DOT_OPEN = "#3d8a5f";
 const DOT_CLOSED = "#8a8378";
 const DOT_STROKE = "#faf7f2";
+
+/** External-POI pin: sage teardrop (--secondary oklch(45% 0.08 155)), white
+ * core — visually distinct from the espresso cafe cup. */
+const EXTERNAL_PIN_BODY = "#2b6241";
+const EXTERNAL_PIN_IMAGE = "external-poi-pin";
+
+function externalPinSvg(): string {
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36">` +
+    `<path d="M14 2C8.5 2 4 6.5 4 12c0 7.5 10 20 10 20s10-12.5 10-20c0-5.5-4.5-10-10-10z" fill="${EXTERNAL_PIN_BODY}"/>` +
+    `<circle cx="14" cy="12" r="4" fill="${PIN_CUP}"/>` +
+    `</svg>`
+  );
+}
 
 function pinSvg(status: PinStatus): string {
   const dot =
@@ -50,18 +72,28 @@ function pinSvg(status: PinStatus): string {
   );
 }
 
+/** Registers one baked SVG as a MapLibre image; idempotent per style
+ * generation (a setStyle wipes images, so callers re-run on style.load). */
+async function addSvgImage(
+  map: MapLibreMap,
+  name: string,
+  svg: string,
+): Promise<void> {
+  if (map.hasImage(name)) return;
+  const img = new Image();
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  await img.decode();
+  if (!map.hasImage(name)) map.addImage(name, img, { pixelRatio: 2 });
+}
+
 /** Register all pin variants on the map; idempotent per style generation. */
 export async function loadPinImages(map: MapLibreMap): Promise<void> {
-  await Promise.all(
-    STATUSES.map(async (status) => {
-      const name = PIN_IMAGE(status);
-      if (map.hasImage(name)) return;
-      const img = new Image();
-      img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(pinSvg(status))}`;
-      await img.decode();
-      if (!map.hasImage(name)) map.addImage(name, img, { pixelRatio: 2 });
-    }),
-  );
+  await Promise.all([
+    ...STATUSES.map((status) =>
+      addSvgImage(map, PIN_IMAGE(status), pinSvg(status)),
+    ),
+    addSvgImage(map, EXTERNAL_PIN_IMAGE, externalPinSvg()),
+  ]);
 }
 
 /** Cafes → clustered GeoJSON. `open` is evaluated once per data refresh —
@@ -79,6 +111,25 @@ export function cafesToGeoJSON(cafes: CafeSummary[]): FeatureCollection<Point> {
         properties: { cafeId: cafe.id, icon: PIN_IMAGE(status) },
       };
     }),
+  };
+}
+
+/** External POIs → unclustered GeoJSON on their own source — never mixed
+ * into the cafe dataset. */
+export function externalPinsToGeoJSON(
+  pins: ExternalPin[],
+): FeatureCollection<Point> {
+  return {
+    type: "FeatureCollection",
+    features: pins.map((pin) => ({
+      type: "Feature",
+      id: pin.id,
+      geometry: {
+        type: "Point",
+        coordinates: [pin.coordinates.lng, pin.coordinates.lat],
+      },
+      properties: { pinId: pin.id, label: pin.label ?? "" },
+    })),
   };
 }
 
@@ -151,6 +202,51 @@ export function bindCafeLayers(map: MapLibreMap): void {
         "icon-image": ["get", "icon"],
         "icon-size": 1,
         "icon-allow-overlap": true,
+      },
+    });
+  }
+}
+
+/** Add the external-POI source + pin/label layers. Called on every
+ * `style.load` alongside `bindCafeLayers` — a setStyle wipes runtime layers. */
+export function bindExternalPinLayers(map: MapLibreMap): void {
+  if (!map.getSource(EXTERNAL_SOURCE)) {
+    map.addSource(EXTERNAL_SOURCE, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+      promoteId: "pinId",
+    });
+  }
+  if (!map.getLayer(EXTERNAL_PIN_LAYER)) {
+    map.addLayer({
+      id: EXTERNAL_PIN_LAYER,
+      type: "symbol",
+      source: EXTERNAL_SOURCE,
+      layout: {
+        "icon-image": EXTERNAL_PIN_IMAGE,
+        "icon-size": 1,
+        "icon-anchor": "bottom",
+        "icon-allow-overlap": true,
+      },
+    });
+  }
+  if (!map.getLayer(EXTERNAL_LABEL_LAYER)) {
+    map.addLayer({
+      id: EXTERNAL_LABEL_LAYER,
+      type: "symbol",
+      source: EXTERNAL_SOURCE,
+      layout: {
+        "text-field": ["get", "label"],
+        "text-font": ["Noto Sans Regular"],
+        "text-size": 11,
+        "text-anchor": "top",
+        "text-offset": [0, 0.15],
+        "text-optional": true,
+      },
+      paint: {
+        "text-color": PIN_BODY,
+        "text-halo-color": PIN_CUP,
+        "text-halo-width": 1.5,
       },
     });
   }

@@ -19,7 +19,7 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
    clients — cross-check Top UA before tuning.
 2. **Top ASN / UA**: Security → Analytics → top source ASNs and user agents.
    Expected baseline: consumer ISPs (Singtel/StarHub/M1 for SG traffic),
-   browser UAs, `coffeemode-smoke/1.0` (deploy smoke tests, exempted from the
+   browser UAs, `cafemood-smoke/1.0` (deploy smoke tests, exempted from the
    UA rule per BRAWUKA-237). Flag: hosting ASNs (Hetzner/DO/OVH/Alibaba),
    empty UA, `python-requests`/`scrapy`/`curl/` volume beyond smoke tests.
 3. **Rule hit distribution**: which managed/custom rule produces the most

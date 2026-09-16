@@ -526,6 +526,8 @@
     "aria": "Cafe map",
     "error_title": "Map couldn't load",
     "error_body": "The list still works — pick a cafe to see details.",
-    "retry": "Retry"
+    "retry": "Retry",
+    "sign_in": "Sign in",
+    "profile_aria": "Profile"
   }
 }

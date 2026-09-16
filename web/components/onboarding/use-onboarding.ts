@@ -42,6 +42,22 @@ import { postLocate } from "@/lib/onboarding-client";
 
 export type OnboardingPhase = "card" | "denied" | "done";
 
+/** The hook's public surface — named so overlay components can type the
+ * orchestration result without coupling to the hook's internals. */
+export interface OnboardingState {
+  phase: OnboardingPhase;
+  locating: boolean;
+  located: boolean;
+  pulseKey: number;
+  selectedCityId: string;
+  center: Coordinates;
+  handleEnableLocation: () => Promise<void>;
+  handleLocate: () => Promise<void>;
+  handlePickCity: (cityId: string) => void;
+  handleUseCity: () => void;
+  handleSkip: () => void;
+}
+
 /** Best-effort profile merge — localStorage already holds the state, so a
  * failed PATCH just retries on the next authenticated visit. */
 async function persistProfile(patch: {
@@ -249,7 +265,7 @@ export function useOnboarding({
   profileSeed?: { currentCity: string; lastLocation: Coordinates | null };
   /** Deep-link-style arrivals (?cafe=) never see the card (DG124). */
   suppressCard?: boolean;
-}) {
+}): OnboardingState {
 
   // The card must never flash for returning visitors (DG122): the lazy
   // initializer reads localStorage during hydration — phase feeds only

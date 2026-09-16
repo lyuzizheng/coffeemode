@@ -435,7 +435,7 @@ Usage: cafe creation import + POI enrichment + external search results (not rend
 Calls: server-side, ALWAYS via the POI cache service below (API key lives there only)
 Endpoints:
   - Place Search (Nearby/Text) — external search results list
-  - Place Details — enrich imported cafe (photos, hours)
+  - Place Details — enrich imported cafe (hours)
   - Place Autocomplete — search box during import flow
 Session tokens: used for autocomplete billing optimization
 Dedupe: google_place_id unique index; existing cafe → show it + prompt to check-in
@@ -447,10 +447,10 @@ Independent, reusable POI microservice — separate from the Next.js app, so any
 
 ```text
 poi-service.cafemood.app (Cloudflare Worker)
-  KV  — hot cache: raw Google Places responses (TTL ~7d)
-  D1  — normalized POI store (warm cache, durable):
+  KV  — hot cache: normalized POI records (TTL ~7d)
+  D1  — bounded cache (expires_at, 30d):
         place_id, source (google|apple), name, lat, lng, address,
-        types, business_status, hours_json, photo_refs, fetched_at
+        types, business_status, hours_json, fetched_at, expires_at
   Upstream — Google Places API (New), field masks to minimize billing
 
 Endpoints (all require POI_SERVICE_TOKEN header):
@@ -860,7 +860,7 @@ Required on creation:
 Optional: dimension sliders, hours, price range, description
 
 Maps-link import pre-fills the available provider fields: name, address,
-location, and provider reference. Google photos and hours remain in the POI
+location, and provider reference. Google hours remain in the POI
 cache for later enrichment; this creation slice does not copy them into the
 cafe record. The user adds the required photo, review + sliders + policies.
 (The existing Vite flow already does paste→preview→resolve→create; the

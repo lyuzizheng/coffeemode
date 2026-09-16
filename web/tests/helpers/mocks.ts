@@ -38,9 +38,6 @@ function googlePoiDefaults(index: number): POI {
         "Sunday: 9:00 AM – 9:00 PM",
       ],
     }),
-    photo_refs: [
-      `places/${orchard ? "ChIJORCHARDNOMADSG" : "ChIJBUGISOUTLETSG"}/photos/photo-${index}`,
-    ],
     fetched_at: GOOGLE_POI_FIXTURE_BASE.fetched_at,
   };
 }

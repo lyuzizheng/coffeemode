@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { profileFromUser } from "@/lib/auth/profiles";
 import { createSupabaseServerClient, isAuthConfigured } from "@/lib/auth/supabase-server";
 import { appConfig } from "@/lib/config";
 import { detectIpCity, findCity } from "@/lib/cities";
@@ -76,6 +77,11 @@ export default async function HomePage({
       }
       suppressCard={initialCafeId !== undefined}
       addCafe={<CafeCreationTrigger isAuthenticated={Boolean(user)} />}
+      accountInitial={
+        user
+          ? (profile?.displayName ?? profileFromUser(user).displayName)[0]?.toUpperCase()
+          : undefined
+      }
       initialCafeId={initialCafeId}
     >
       <MapSurface />

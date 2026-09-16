@@ -19,6 +19,7 @@ Accepted
 | Unit/component | Vitest + React Testing Library | Pure logic and rendered component behavior |
 | Mocked integration | Vitest with mocked service boundaries | Route/service contracts without live dependencies |
 | Real DB | Vitest + local Postgres/PostGIS | Migrations, SQL, triggers, transactions, and stored state |
+| Staging journey | `scripts/devops/run-staging-journey.sh` against staging Supabase | Real-session user journeys on the shared staging backend, in per-suite scratch databases (spec 0010 §4) |
 | Browser/manual | Playwright or an inspected local build | User-visible route and interaction behavior |
 | Visual comparison | Playwright screenshots with reviewed baselines | Optional visual regression evidence; non-blocking until a baseline policy is accepted |
 
@@ -31,6 +32,15 @@ Accepted
   `web/tests/helpers/db.ts` + `web/scripts/lib/seed-guard.mjs`, cleanup via
   `web/scripts/clean-dev-fixtures.mjs --apply`; override with
   `ALLOW_SEED_DEV_DB=1`).
+- Staging-bound suites never write the shared staging business schema: each
+  provisions a scratch database (`{prefix}{pid}_{uuid}`, template-cloned,
+  dropped in `afterAll`) and the run sweeps orphans via
+  `web/scripts/cleanup-stale-test-dbs.mjs --apply`. Isolation rules and the
+  `ALLOW_REMOTE_INTEGRATION_DB=1` opt-in are canonical in spec 0010 §4.
+- Test sessions: unit/component tests keep `web/tests/helpers/auth.ts:fakeJwt`
+  plus mocked clients; staging journey suites acquire real sessions
+  non-interactively (Admin API test user + password grant). The full auth
+  policy and the `service_role` boundary are canonical in spec 0010 §3.
 - Map and external-service tests use static fixtures or mocked boundaries.
 - Tests encode intended contracts, not the current implementation.
 - A bug fix adds a regression test that fails on the reproduced defect when the
@@ -94,6 +104,17 @@ DB-backed gate:
 - `image-service-gate`: image-service and shared-package changes;
 - `poi-service-gate`: poi-service and shared-package changes;
 - `ci-gate`: always aggregates selected job results.
+
+Post-merge verification lives outside the PR gates: the `staging-journey`
+workflow (`.github/workflows/staging-journey.yml`) runs
+`scripts/devops/run-staging-journey.sh` on `push` to `main`, nightly, and on
+`workflow_dispatch`, serialized by `concurrency: staging-journey`
+(`cancel-in-progress: false`) with secrets scoped to the GitHub Environment
+`staging`. It verifies the shared staging backend; it never gates a merge, and
+a staging outage must never block a PR. Production promotion additionally
+requires a green `staging-journey` run on the promoted commit plus manual
+owner approval — the boundary is canonical in spec 0010 §5, the release
+mechanics in spec 0005.
 
 The component job names remain stable so existing branch protection receives a
 reported success or skipped result on every PR. `ci-gate` is the preferred single
@@ -259,9 +280,12 @@ enforces its own floors — declared in `web/vitest.integration-coverage.config.
 and scoped to `web/lib/db/**`, the layer whose contract is SQL semantics. It runs
 blocking in `integration-gate` (reusing the stack that job already starts) and
 uploads `web/coverage-integration`; `check-ci-workflow.sh` fails preflight if the
-step or its artifact is removed. Every file registered in a `test:integration:*`
-script must be measured by this ratchet — asserted by
-`.agents/scripts/check-ci-classification.sh`.
+step or its artifact is removed. Registration and measurement are the same
+set: every file registered in a `test:integration:*` script must be measured
+by this ratchet, and every file the ratchet measures must be reachable through
+a registered script — `measured ⊆ registered` and `registered ⊆ measured`,
+asserted by `.agents/scripts/check-ci-classification.sh` (BRAWUKA-341 closes
+the two currently unregistered `RUN_INTEGRATION` files).
 
 ### Test maintenance contract
 
@@ -316,6 +340,15 @@ The traceability matrix lives at `docs/agent/test-coverage.md` (S3 testkit-cover
 - `npm run test:coverage:integration` enforces the real-DB `web/lib/db/**` floors in `web/vitest.integration-coverage.config.mts` under `RUN_INTEGRATION=1`; removing that step or its uploaded report from `ci.yml` fails preflight.
 - Each `integration-gate` step is pinned individually by exact `run:` command in `.agents/scripts/check-ci-workflow.sh`: deleting `npm run test:integration`, `test:integration:journey`, `test:integration:http`, `test:integration:images`, or `test:coverage:integration` from `ci.yml` fails preflight, and a shorter command never satisfies a longer one's requirement.
 - A changed path that holds (or feeds) a `RUN_INTEGRATION` suite schedules `integration-gate`; `.agents/scripts/check-ci-classification.sh` asserts this on every PR — non-test files under `web/tests/**` by default however they are consumed, import-reachable paths by closure, failing on a specifier it cannot resolve — and fails on any tracked path with no routing rule.
+- The set of files registered in `test:integration:*` scripts equals the set
+  measured by `test:coverage:integration` (`measured ⊆ registered` and
+  `registered ⊆ measured`); `.agents/scripts/check-ci-classification.sh`
+  asserts both directions on every PR.
+- The `staging-journey` workflow runs `run-staging-journey.sh` on push to
+  `main`, nightly, and on dispatch, serialized by its `concurrency` group with
+  secrets scoped to the `staging` GitHub Environment; it is never a required
+  PR check, and production promotion requires its green run on the promoted
+  commit (spec 0010 §5).
 - All three packages declare the same `engines.node` floor as CI and the container images; `.agents/scripts/check-runtime-pins.sh` fails on any divergence, on a missing declaration, or on a floor it cannot parse.
 - All three packages declare and resolve one TypeScript version; a per-package major bump fails.
 - Both Workers pin a valid, non-future `compatibility_date`; removing it or pushing it into the future fails.

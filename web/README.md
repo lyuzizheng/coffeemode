@@ -9,7 +9,7 @@ Design system: `../docs/specs/0002-design-system.md`.
 - React 19
 - Tailwind CSS v4 + HeroUI v3 (no Provider needed; `@import "@heroui/styles"`)
 - next-intl (en primary, zh secondary), next-themes (class strategy)
-- Supabase auth only (Apple + Google OAuth) · self-hosted Postgres for app data
+- Supabase auth (Apple + Google OAuth) and Supabase-hosted Postgres/PostGIS for app data (spec 0001 §Data layer, spec 0010)
 
 ## Commands
 

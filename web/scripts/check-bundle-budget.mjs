@@ -26,6 +26,10 @@ if (!existsSync(staticDir)) {
 let maxJsChunkBytes = 400 * 1024;
 let maxCssChunkBytes = 500 * 1024;
 let maxTotalStaticBytes = 5 * 1024 * 1024;
+// Per-chunk exemptions (map-home, BRAWUKA-311): a JS chunk whose CONTENT
+// contains `marker` may grow to `maxBytes`. Markers must be string literals
+// that survive minification (e.g. maplibre-gl's `maplibregl-` CSS classes).
+let chunkExemptions = [];
 
 try {
   const yamlContent = readFileSync(appYamlPath, "utf8");
@@ -41,9 +45,27 @@ try {
     if (typeof bundleBudgets.maxTotalStaticBytes === "number") {
       maxTotalStaticBytes = bundleBudgets.maxTotalStaticBytes;
     }
+    if (Array.isArray(bundleBudgets.chunkExemptions)) {
+      chunkExemptions = bundleBudgets.chunkExemptions.filter(
+        (e) => typeof e?.marker === "string" && typeof e?.maxBytes === "number",
+      );
+    }
   }
 } catch (err) {
   console.warn(`[budget-check] Warning: failed to parse config/app.yaml: ${err.message}. Using defaults.`);
+}
+
+/** Effective JS cap for one file: the largest exemption whose marker the
+ * chunk content contains, else the global cap. Content match (not filename)
+ * because chunk names are content hashes. */
+function jsBudgetFor(filePath) {
+  if (chunkExemptions.length === 0) return maxJsChunkBytes;
+  const content = readFileSync(filePath, "utf8");
+  let cap = maxJsChunkBytes;
+  for (const { marker, maxBytes } of chunkExemptions) {
+    if (content.includes(marker)) cap = Math.max(cap, maxBytes);
+  }
+  return cap;
 }
 
 function getAllFiles(dir) {
@@ -69,10 +91,13 @@ for (const filePath of allFiles) {
   const stat = statSync(filePath);
   totalBytes += stat.size;
 
-  if (filePath.endsWith(".js") && stat.size > maxJsChunkBytes) {
-    violations.push(
-      `JS file ${relPath} (${(stat.size / 1024).toFixed(1)} KB) exceeds budget of ${(maxJsChunkBytes / 1024).toFixed(1)} KB`,
-    );
+  if (filePath.endsWith(".js")) {
+    const cap = jsBudgetFor(filePath);
+    if (stat.size > cap) {
+      violations.push(
+        `JS file ${relPath} (${(stat.size / 1024).toFixed(1)} KB) exceeds budget of ${(cap / 1024).toFixed(1)} KB`,
+      );
+    }
   } else if (filePath.endsWith(".css") && stat.size > maxCssChunkBytes) {
     violations.push(
       `CSS file ${relPath} (${(stat.size / 1024).toFixed(1)} KB) exceeds budget of ${(maxCssChunkBytes / 1024).toFixed(1)} KB`,

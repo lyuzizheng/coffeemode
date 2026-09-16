@@ -737,6 +737,90 @@ describe("GET /poi/search/external", () => {
     const res = await call("GET", "/poi/search/external", makeEnv());
     expect(res.status).toBe(400);
   });
+
+  it("serves a repeat external search from the query cache without hitting Google (BRAWUKA-283 P2-2)", async () => {
+    const env = makeEnv();
+    const fetchImpl = vi.fn(
+      mockFetch(() =>
+        new Response(
+          JSON.stringify({
+            places: [googleDetailResponse({ id: "ChIJQUERYCACHE", types: ["cafe"] })],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    const first = await call("GET", "/poi/search/external?q=blue%20bottle&r=5", env, { fetchImpl });
+    expect(first.status).toBe(200);
+    const firstBody = (await bodyOf(first)) as { results: POI[] };
+    expect(firstBody.results).toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    // Whitespace/case variants normalize to the same key; the second call
+    // must not touch the upstream fetch at all.
+    const second = await call("GET", "/poi/search/external?q=%20Blue%20%20BOTTLE%20&r=5", env, {
+      fetchImpl,
+    });
+    expect(second.status).toBe(200);
+    const secondBody = (await bodyOf(second)) as { results: POI[] };
+    expect(secondBody.results).toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("scopes the query cache by coordinate grid (BRAWUKA-283 P2-2)", async () => {
+    const env = makeEnv();
+    const fetchImpl = vi.fn(
+      mockFetch(() =>
+        new Response(
+          JSON.stringify({
+            places: [googleDetailResponse({ id: "ChIJQUERYGRID", types: ["cafe"] })],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    const near = await call("GET", "/poi/search/external?q=kopi&lat=1.291&lng=103.851&r=5", env, {
+      fetchImpl,
+    });
+    expect(near.status).toBe(200);
+    // Same 0.01° cell → cache hit; a cell away → fresh upstream call.
+    const sameCell = await call("GET", "/poi/search/external?q=kopi&lat=1.299&lng=103.859&r=5", env, {
+      fetchImpl,
+    });
+    expect(sameCell.status).toBe(200);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const otherCell = await call("GET", "/poi/search/external?q=kopi&lat=1.35&lng=103.92&r=5", env, {
+      fetchImpl,
+    });
+    expect(otherCell.status).toBe(200);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("caches an all-non-food upstream hit so the repeat skips Google (BRAWUKA-283 P2-2)", async () => {
+    const env = makeEnv();
+    const fetchImpl = vi.fn(
+      mockFetch(() =>
+        new Response(
+          JSON.stringify({
+            places: [googleDetailResponse({ id: "ChIJONLYBANK", types: ["bank", "atm"] })],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    const first = await call("GET", "/poi/search/external?q=atm&r=5", env, { fetchImpl });
+    expect(first.status).toBe(200);
+    expect(((await bodyOf(first)) as { results: POI[] }).results).toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    const second = await call("GET", "/poi/search/external?q=atm&r=5", env, { fetchImpl });
+    expect(second.status).toBe(200);
+    expect(((await bodyOf(second)) as { results: POI[] }).results).toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("POST /poi/external", () => {
@@ -745,23 +829,24 @@ describe("POST /poi/external", () => {
     const res = await call("POST", "/poi/external", env, {
       body: {
         pois: [
-          { place_id: "apple-ref-1", source: "apple", name: "Kaffeelix", lat: 1.28, lng: 103.84 },
-          { place_id: "ChIJEXT2", source: "google", name: "Tiong Bahru Bakery", lat: 1.285, lng: 103.827 },
+          { place_id: "apple-ref-1", source: "apple", name: "Kaffeelix", lat: 1.28, lng: 103.84, types: ["Cafe"] },
+          { place_id: "ChIJEXT2", source: "google", name: "Tiong Bahru Bakery", lat: 1.285, lng: 103.827, types: ["bakery"] },
         ],
       },
     });
 
     expect(res.status).toBe(200);
-    expect(await bodyOf(res)).toEqual({ stored: 2 });
+    expect(await bodyOf(res)).toEqual({ stored: 2, skipped: [] });
     expect((env.POI_DB as FakeD1).rows).toHaveLength(2);
   });
 
   it("accepts a bare array", async () => {
     const env = makeEnv();
     const res = await call("POST", "/poi/external", env, {
-      body: [{ place_id: "apple-1", source: "apple", name: "Coffea", lat: 1.3, lng: 103.9 }],
+      body: [{ place_id: "apple-1", source: "apple", name: "Coffea", lat: 1.3, lng: 103.9, types: ["Cafe"] }],
     });
     expect(res.status).toBe(200);
+    expect(await bodyOf(res)).toEqual({ stored: 1, skipped: [] });
     expect((env.POI_DB as FakeD1).rows).toHaveLength(1);
   });
 
@@ -769,7 +854,7 @@ describe("POST /poi/external", () => {
     const env = makeEnv();
     const placeId = `apple:${"x".repeat(700)}`;
     const res = await call("POST", "/poi/external", env, {
-      body: [{ place_id: placeId, source: "apple", name: "Coffea", lat: 1.3, lng: 103.9 }],
+      body: [{ place_id: placeId, source: "apple", name: "Coffea", lat: 1.3, lng: 103.9, types: ["Cafe"] }],
     });
 
     expect(res.status).toBe(200);
@@ -829,14 +914,40 @@ describe("POST /poi/external", () => {
     const res = await call("POST", "/poi/external", env, {
       body: {
         pois: [
-          { place_id: "b1", source: "apple", name: "One", lat: 1, lng: 103 },
-          { place_id: "b2", source: "apple", name: "Two", lat: 1, lng: 103 },
+          { place_id: "b1", source: "apple", name: "One", lat: 1, lng: 103, types: ["Cafe"] },
+          { place_id: "b2", source: "apple", name: "Two", lat: 1, lng: 103, types: ["Restaurant"] },
         ],
       },
     });
     expect(res.status).toBe(200);
     expect(db.batchCalls).toBe(1);
-    expect(db.rows).toHaveLength(2);
+  });
+
+  it("invalidates the KV hot cache so GET serves the fresh D1 row (BRAWUKA-283 P2-1)", async () => {
+    const kv = new FakeKV();
+    await kv.put("raw:google:ChIJSTALECACHE", JSON.stringify(googleDetailResponse()));
+    const env = makeEnv({ POI_KV: kv });
+
+    const storeRes = await call("POST", "/poi/external", env, {
+      body: [
+        {
+          place_id: "ChIJSTALECACHE",
+          source: "google",
+          name: "Renamed Cafe",
+          lat: 37.78,
+          lng: -122.4,
+          types: ["cafe"],
+        },
+      ],
+    });
+    expect(storeRes.status).toBe(200);
+    expect(kv.has("raw:google:ChIJSTALECACHE")).toBe(false);
+
+    const fetchImpl = vi.fn(mockFetch(() => new Response("should not be called", { status: 599 })));
+    const getRes = await call("GET", "/poi/ChIJSTALECACHE", env, { fetchImpl });
+    expect(getRes.status).toBe(200);
+    expect((await bodyOf(getRes)).name).toBe("Renamed Cafe");
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("rejects out-of-range coordinates like lat 1e15", async () => {
@@ -906,6 +1017,202 @@ describe("POST /poi/external", () => {
       (e) => e.index,
     );
     expect(entries).toEqual([0, 1]);
+  });
+
+  it("skips non-food Apple POIs without persisting, keeps food ones (BRAWUKA-328)", async () => {
+    const env = makeEnv();
+    const res = await call("POST", "/poi/external", env, {
+      body: {
+        pois: [
+          { place_id: "apple-bank", source: "apple", name: "Bank", lat: 1.3, lng: 103.9, types: ["Bank"] },
+          { place_id: "apple-cafe", source: "apple", name: "Cafe", lat: 1.31, lng: 103.91, types: ["Cafe"] },
+        ],
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(await bodyOf(res)).toEqual({ stored: 1, skipped: [{ index: 0, reason: "non_food_category" }] });
+    expect((env.POI_DB as FakeD1).rows.map((row) => row.place_id)).toEqual(["apple-cafe"]);
+  });
+
+  it("skips non-food Google POIs via this path too, keeps behavior consistent", async () => {
+    const env = makeEnv();
+    const res = await call("POST", "/poi/external", env, {
+      body: {
+        pois: [
+          { place_id: "ChIJATM", source: "google", name: "ATM", lat: 1.3, lng: 103.9, types: ["atm", "bank"] },
+          { place_id: "ChIJCAFE", source: "google", name: "Cafe", lat: 1.31, lng: 103.91, types: ["cafe"] },
+        ],
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(await bodyOf(res)).toEqual({ stored: 1, skipped: [{ index: 0, reason: "non_food_category" }] });
+    expect((env.POI_DB as FakeD1).rows.map((row) => row.place_id)).toEqual(["ChIJCAFE"]);
+  });
+
+  it("fails closed on unknown Apple categories and on empty types (BRAWUKA-328)", async () => {
+    const env = makeEnv();
+    const res = await call("POST", "/poi/external", env, {
+      body: {
+        pois: [
+          { place_id: "apple-unknown", source: "apple", name: "Mystery", lat: 1.3, lng: 103.9, types: ["TimeTravelParlor"] },
+          { place_id: "apple-empty", source: "apple", name: "Typeless", lat: 1.31, lng: 103.91 },
+          { place_id: "google-empty", source: "google", name: "Typeless", lat: 1.32, lng: 103.92, types: [] },
+        ],
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(await bodyOf(res)).toEqual({
+      stored: 0,
+      skipped: [
+        { index: 0, reason: "non_food_category" },
+        { index: 1, reason: "non_food_category" },
+        { index: 2, reason: "non_food_category" },
+      ],
+    });
+    expect((env.POI_DB as FakeD1).rows).toHaveLength(0);
+  });
+
+  it("still invalidates the KV hot cache only for persisted ids (BRAWUKA-328)", async () => {
+    const kv = new FakeKV();
+    await kv.put("raw:google:ChIJKEPT", JSON.stringify(googleDetailResponse()));
+    const env = makeEnv({ POI_KV: kv });
+    const res = await call("POST", "/poi/external", env, {
+      body: [
+        { place_id: "ChIJKEPT", source: "google", name: "Kept Cafe", lat: 37.78, lng: -122.4, types: ["cafe"] },
+        { place_id: "apple-skipped", source: "apple", name: "Skipped Bank", lat: 1.3, lng: 103.9, types: ["Bank"] },
+      ],
+    });
+    expect(res.status).toBe(200);
+    expect(kv.has("raw:google:ChIJKEPT")).toBe(false);
+    expect((env.POI_DB as FakeD1).rows.map((row) => row.place_id)).toEqual(["ChIJKEPT"]);
+  });
+});
+
+describe("POST /poi/reverse", () => {
+  it("rejects unauthenticated request with 401", async () => {
+    const res = await call("POST", "/poi/reverse", makeEnv(), {
+      token: undefined,
+      body: { lat: 37.7, lng: -122.4 },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects missing or non-numeric lat/lng with 400", async () => {
+    const env = makeEnv();
+    expect((await call("POST", "/poi/reverse", env, { body: {} })).status).toBe(400);
+    expect((await call("POST", "/poi/reverse", env, { body: { lat: "abc", lng: 10 } })).status).toBe(400);
+    expect((await call("POST", "/poi/reverse", env, { body: { lat: 10 } })).status).toBe(400);
+  });
+
+  it("rejects out-of-range lat/lng with 400", async () => {
+    const env = makeEnv();
+    expect((await call("POST", "/poi/reverse", env, { body: { lat: 95, lng: 0 } })).status).toBe(400);
+    expect((await call("POST", "/poi/reverse", env, { body: { lat: 0, lng: 185 } })).status).toBe(400);
+  });
+
+  it("returns normalized POI and persists to D1 when cafe found", async () => {
+    const env = makeEnv();
+    const fetchImpl = mockFetch((url) => {
+      if (url.includes("/maps/api/geocode/json")) {
+        return new Response(
+          JSON.stringify({
+            status: "OK",
+            results: [
+              {
+                place_id: "ChIJTEST123",
+                formatted_address: "66 Mint St, San Francisco, CA",
+                types: ["cafe", "point_of_interest", "establishment"],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/v1/places/ChIJTEST123")) {
+        return new Response(JSON.stringify(googleDetailResponse()), { status: 200 });
+      }
+      return new Response(null, { status: 404 });
+    });
+
+    const res = await call("POST", "/poi/reverse", env, {
+      body: { lat: 37.7825, lng: -122.4077 },
+      fetchImpl,
+    });
+    expect(res.status).toBe(200);
+    const data = await bodyOf(res);
+    expect(data.poi).toMatchObject({
+      place_id: "ChIJTEST123",
+      name: "Blue Bottle Coffee",
+      source: "google",
+      lat: 37.7825,
+      lng: -122.4077,
+    });
+
+    const d1 = env.POI_DB as FakeD1;
+    expect(d1.rows.map((r) => r.place_id)).toContain("ChIJTEST123");
+  });
+
+  it("returns { poi: null } when no food/cafe found", async () => {
+    const env = makeEnv();
+    const fetchImpl = mockFetch(() =>
+      new Response(JSON.stringify({ status: "ZERO_RESULTS", results: [] }), { status: 200 }),
+    );
+
+    const res = await call("POST", "/poi/reverse", env, {
+      body: { lat: 37.7, lng: -122.4 },
+      fetchImpl,
+    });
+    expect(res.status).toBe(200);
+    const data = await bodyOf(res);
+    expect(data).toEqual({ poi: null });
+  });
+
+  it("supports GET /poi/reverse?lat=...&lng=...", async () => {
+    const env = makeEnv();
+    const fetchImpl = mockFetch((url) => {
+      if (url.includes("/maps/api/geocode/json")) {
+        return new Response(
+          JSON.stringify({
+            status: "OK",
+            results: [
+              {
+                place_id: "ChIJTEST123",
+                formatted_address: "66 Mint St, San Francisco, CA",
+                types: ["cafe", "point_of_interest", "establishment"],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/v1/places/ChIJTEST123")) {
+        return new Response(JSON.stringify(googleDetailResponse()), { status: 200 });
+      }
+      return new Response(null, { status: 404 });
+    });
+
+    const res = await call("GET", "/poi/reverse?lat=37.7825&lng=-122.4077", env, {
+      fetchImpl,
+    });
+    expect(res.status).toBe(200);
+    const data = await bodyOf(res);
+    expect(data.poi).toMatchObject({
+      place_id: "ChIJTEST123",
+      name: "Blue Bottle Coffee",
+    });
+  });
+
+  it("returns 502 upstream_error when upstream fails", async () => {
+    const env = makeEnv();
+    const fetchImpl = mockFetch(() => new Response("Internal Server Error", { status: 500 }));
+
+    const res = await call("POST", "/poi/reverse", env, {
+      body: { lat: 37.7, lng: -122.4 },
+      fetchImpl,
+    });
+    expect(res.status).toBe(502);
+    const data = await bodyOf(res);
+    expect(data).toMatchObject({ error: "upstream_error" });
   });
 });
 

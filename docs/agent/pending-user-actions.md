@@ -96,10 +96,29 @@ and the KV hot-cache read path are unaffected and verified working.
   - `POI_SERVICE_TOKEN` installed on both Workers (self-generated, 2026-09-12).
   - `GOOGLE_PLACES_API_KEY` NOT installed — still blocked on item 5. Until it is, `/poi/:place_id`, `/poi/resolve` (query path) and `/poi/search/external` return 502 `upstream_error`; every other path works.
 - [x] Deploy: `npm run deploy -- --env production` (guarded — refuses while the placeholder ids are still configured) → workers.dev URL; wire `POI_SERVICE_URL` + `POI_SERVICE_TOKEN` into `web/.env.local` (done 2026-09-12, BRAWUKA-222 — both environments deployed and verified: `https://poi-service-staging.lyuzizheng.workers.dev`, `https://poi-service-prod.lyuzizheng.workers.dev`; `npm run deploy -- --env staging|production --check` now passes)
-- [ ] Provide a Cloudflare API token so deploys can run without an interactive login: `CLOUDFLARE_API_TOKEN` (scoped to Workers Scripts:Edit, D1:Edit, Workers KV Storage:Edit on the account) + `CLOUDFLARE_ACCOUNT_ID=bf69da5249b63731ad79545d0095e8db`. `~/.zshrc` has no such token and the local wrangler OAuth session expired 2026-02-01, so `npm run deploy` / `wrangler d1 migrations apply --remote` cannot run on a fresh machine — the 2026-09-12 deploy was executed through the Cloudflare API instead.
+- [ ] Worker route migration (BRAWUKA-236) — the `cafemood.app` zone is live
+  (NS delegated, verified 2026-09-15) but serves zero records for the worker
+  hostnames; the custom-domain `routes` are declared in
+  `poi-service/wrangler.toml` / `image-service/wrangler.toml` and attach on
+  the next deploy:
+  1. Redeploy: `npm run deploy -- --env staging` and `--env production` in
+     `poi-service/` and `image-service/` (needs the `CLOUDFLARE_API_TOKEN`
+     from the item below — the wrangler OAuth session is expired).
+  2. Verify each custom domain answers: `curl
+     https://poi-service.cafemood.app/health`,
+     `https://image-service.cafemood.app/health` (+ staging pair).
+  3. Switch the Dokploy env vars `POI_SERVICE_URL` / `IMAGE_SERVICE_URL`
+     (values in `deploy/dokploy/.env.*.example`) to the custom domains,
+     rolling-restart the web app, verify `/api/places/search` and
+     `/api/images/upload` end-to-end.
+  4. Only after step 3 is green: add `workers_dev = false` to each `[env.*]`
+     block (or disable the workers.dev route in Settings → Domains &
+     Routes) and redeploy — never before, or the web app loses its upstream.
+  5. Shared-secret headers (`x-poi-service-token` /
+     `x-image-service-token`) stay unchanged — the zone route is
+     defense-in-depth, not a token replacement.
 - [ ] Enable the Cloudflare "Add visitor location headers" Managed Transform on the zone (sends `CF-IPCity` / `CF-IPCountry`; default-city resolution per DG128)
 - [ ] Create a Better Stack account + alert token for rate-limit/observability alerts (DG129); put the token in `web/.env.local` once the integration lands
-- [ ] Cloudflare Tunnel (BRAWUKA-238): Dokploy dashboard → staging/prod app → Environment → add `CLOUDFLARED_TUNNEL_TOKEN_STAGING` / `CLOUDFLARED_TUNNEL_TOKEN_PROD` (one token per tunnel, from `cloudflared tunnel token <name>`; value never goes in chat/docs/repo). Compose requires them (`${VAR:?...}` fail-fast) — until set, any prod/staging deploy fails at compose parsing.
 
 ## 8. Kimi K3 UI design artifacts
 

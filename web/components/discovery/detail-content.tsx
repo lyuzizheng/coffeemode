@@ -17,8 +17,9 @@ import { ShareControl } from "@/components/share/share-control";
 import { cafeFacts, formatDistanceKm } from "@/lib/discovery/view-model";
 import { cafeCanonicalPath } from "@/lib/seo";
 import { recordNavigationTap } from "@/lib/navigations";
-import { isOpenAt } from "@/lib/hours";
 import { displayCityName } from "@/lib/cities";
+import { isOpenAt } from "@/lib/hours";
+import { getQueryStaleTimeMs } from "@/lib/client-env";
 import type { DiscoveryController } from "@/lib/discovery/use-discovery-controller";
 import type { PublicCafeDetail } from "@/types/cafes";
 import { CheckinFeed } from "./checkin-feed";
@@ -115,9 +116,14 @@ export function DetailContent({
   const t = useTranslations("discovery");
   const locale = useLocale();
   const { detailHeadingRef, handleMissingCafe } = controller;
+  // SSR-seeded detail (BRAWUKA-283 P2-3): `CafeDetailSeed` on the cafe page
+  // fills ["cafe", id] with a fresh `updatedAt`, so mount serves it with no
+  // fetch. The pin below uses the same env-driven default as the app client
+  // (`getQueryStaleTimeMs`, BRAWUKA-250) so ops tuning stays in one place.
   const query = useQuery({
     queryKey: ["cafe", cafeId],
     queryFn: () => fetchCafe(cafeId),
+    staleTime: getQueryStaleTimeMs(),
   });
 
   // DG19/18f: an in-app 404 clears the selection and toasts.

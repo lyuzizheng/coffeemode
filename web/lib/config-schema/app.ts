@@ -2,6 +2,7 @@ import { coordinate, positiveNumber, record } from "./primitives";
 import { parseBudgetsSection } from "./budgets";
 import { parseCheckinsSection } from "./checkins";
 import { parseImagesSection } from "./images";
+import { parseMapSection } from "./map";
 import { parseProfileSection } from "./profile";
 import { parsePromptQueueSection } from "./prompt-queue";
 import { parseQuerySection } from "./query";
@@ -61,6 +62,7 @@ function parseDiscoverySection(file: string, value: unknown): AppConfig["discove
     },
   };
 }
+
 function parseOnboardingSection(file: string, value: unknown): AppConfig["onboarding"] {
   const onboarding = record(file, "onboarding", value);
   return {
@@ -83,6 +85,7 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
     cafes: parseCafesSection(file, root.cafes),
     feed: parseFeedSection(file, root.feed),
     discovery: parseDiscoverySection(file, root.discovery),
+    map: parseMapSection(file, record(file, "map", root.map)),
     onboarding: parseOnboardingSection(file, record(file, "onboarding", root.onboarding)),
     seo: parseSeoSection(file, record(file, "seo", root.seo)),
     checkins: parseCheckinsSection(file, record(file, "checkins", root.checkins)),

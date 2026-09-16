@@ -22,11 +22,6 @@
       "count": 1
     }
   },
-  "app/page.tsx": {
-    "max-lines-per-function": {
-      "count": 1
-    }
-  },
   "app/theme-preview/sections/motion-section.tsx": {
     "max-lines-per-function": {
       "count": 1
@@ -38,11 +33,6 @@
     }
   },
   "app/theme-preview/theme-preview.tsx": {
-    "max-lines-per-function": {
-      "count": 1
-    }
-  },
-  "components/cafe/apple-place-search.tsx": {
     "max-lines-per-function": {
       "count": 1
     }

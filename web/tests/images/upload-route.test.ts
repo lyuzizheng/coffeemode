@@ -77,7 +77,7 @@ describe("POST /api/images/upload", () => {
     expect(recordUploadIntentMock).toHaveBeenCalledWith("user-1", "uuid");
   });
 
-  it("500s when the intent record fails (an unrecorded UUID would 404 at complete)", async () => {
+  it("500s when the intent record fails (an unrecorded UUID would fail photo provisioning)", async () => {
     recordUploadIntentMock.mockRejectedValueOnce(new Error("db down"));
     const res = await POST(makeRequest({ size: 2048 }));
     expect(res.status).toBe(500);

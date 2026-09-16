@@ -98,17 +98,42 @@ describe("config files", () => {
       persistMaxAgeMs: 604800000,
     });
     expect(appConfig.validation).toEqual({ cafeAddressMaxChars: 300, profileCityMaxChars: 50 });
+    expect(appConfig.map).toEqual({
+      provider: "maplibre",
+      defaultZoom: 12,
+      focusZoom: 15,
+      maplibre: {
+        tileStyle: {
+          light: "https://tiles.openfreemap.org/styles/liberty",
+          dark: "https://tiles.openfreemap.org/styles/dark",
+        },
+      },
+    });
     expect(appConfig.budgets.bundle).toEqual({
       maxJsChunkBytes: 409600,
       maxCssChunkBytes: 512000,
       maxTotalStaticBytes: 5242880,
+      chunkExemptions: [{ marker: "maplibregl-", maxBytes: 1310720 }],
     });
     expect(appConfig.budgets.lighthouse).toEqual({
       performance: 0.8,
+      performanceHome: 0.65,
       accessibility: 0.85,
       bestPractices: 0.85,
       seo: 0.85,
     });
+  });
+
+  it("owns the basemap endpoints (map-home: the only tile-host coupling)", () => {
+    expect(appConfig.map.provider).toBe("maplibre");
+    expect(appConfig.map.maplibre.tileStyle.light).toBe(
+      "https://tiles.openfreemap.org/styles/liberty",
+    );
+    expect(appConfig.map.maplibre.tileStyle.dark).toBe(
+      "https://tiles.openfreemap.org/styles/dark",
+    );
+    expect(appConfig.map.defaultZoom).toBe(12);
+    expect(appConfig.map.focusZoom).toBe(15);
   });
 
   it("owns the feed page size (spec 0001: 20 per page, both modes)", () => {
@@ -260,9 +285,11 @@ describe("parseAppConfig validation", () => {
       maxJsChunkBytes: 409600,
       maxCssChunkBytes: 512000,
       maxTotalStaticBytes: 5242880,
+      chunkExemptions: [],
     },
     lighthouse: {
       performance: 0.8,
+      performanceHome: 0.65,
       accessibility: 0.85,
       bestPractices: 0.85,
       seo: 0.85,
@@ -279,6 +306,17 @@ describe("parseAppConfig validation", () => {
   const validValidation = { cafeAddressMaxChars: 300, profileCityMaxChars: 50 };
   const validRuntimeConfig = { responseCache: { sMaxAgeSeconds: 60, staleWhileRevalidateSeconds: 300 } };
   const validOnboarding = { cityCoverageKm: 50, geolocationTimeoutMs: 10000 };
+  const validMap = {
+    provider: "maplibre",
+    defaultZoom: 12,
+    focusZoom: 15,
+    maplibre: {
+      tileStyle: {
+        light: "https://tiles.openfreemap.org/styles/liberty",
+        dark: "https://tiles.openfreemap.org/styles/dark",
+      },
+    },
+  };
 
   it("accepts a valid config", () => {
     const valid = {
@@ -287,6 +325,7 @@ describe("parseAppConfig validation", () => {
       cafes: { listLimitMax: 50 },
       feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
       discovery: validCenter,
+      map: validMap,
       onboarding: validOnboarding,
       seo: validSeo,
         promptQueue: validPromptQueue,
@@ -313,6 +352,7 @@ describe("parseAppConfig validation", () => {
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
         discovery: validCenter,
+      map: validMap,
       onboarding: validOnboarding,
         seo: validSeo,
         promptQueue: validPromptQueue,
@@ -330,6 +370,7 @@ describe("parseAppConfig validation", () => {
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
         discovery: validCenter,
+      map: validMap,
       onboarding: validOnboarding,
         seo: validSeo,
         promptQueue: validPromptQueue,
@@ -347,6 +388,7 @@ describe("parseAppConfig validation", () => {
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
         discovery: validCenter,
+      map: validMap,
       onboarding: validOnboarding,
         seo: validSeo,
         promptQueue: validPromptQueue,
@@ -368,6 +410,7 @@ describe("parseAppConfig validation", () => {
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
         discovery: validCenter,
+      map: validMap,
       onboarding: validOnboarding,
         seo: validSeo,
         promptQueue: validPromptQueue,
@@ -403,6 +446,7 @@ describe("parseAppConfig validation", () => {
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
         discovery: validCenter,
+      map: validMap,
       onboarding: validOnboarding,
         seo: {
           shellCache: { sMaxAgeSeconds: 60.5, staleWhileRevalidateSeconds: 3600 },
@@ -424,6 +468,7 @@ describe("parseAppConfig validation", () => {
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
         discovery: validCenter,
+      map: validMap,
       onboarding: validOnboarding,
         seo: validSeo,
         promptQueue: validPromptQueue,
@@ -441,6 +486,7 @@ describe("parseAppConfig validation", () => {
       cafes: { listLimitMax: 50 },
       feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
       discovery: validCenter,
+      map: validMap,
       onboarding: validOnboarding,
       seo: validSeo,
         promptQueue: validPromptQueue,
@@ -463,6 +509,7 @@ describe("parseAppConfig validation", () => {
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
         discovery: validCenter,
+      map: validMap,
       onboarding: validOnboarding,
         seo: validSeo,
         promptQueue: validPromptQueue,
@@ -489,6 +536,7 @@ describe("parseAppConfig validation", () => {
       cafes: { listLimitMax: 50 },
       feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
       discovery: validCenter,
+      map: validMap,
       onboarding: validOnboarding,
       seo: validSeo,
         promptQueue: validPromptQueue,
@@ -520,6 +568,7 @@ describe("parseAppConfig validation", () => {
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
         discovery: validCenter,
+      map: validMap,
       onboarding: validOnboarding,
         seo: validSeo,
         promptQueue: validPromptQueue,
@@ -542,6 +591,7 @@ describe("parseAppConfig validation", () => {
         cafes: { listLimitMax: 50 },
         feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
         discovery: validCenter,
+      map: validMap,
       onboarding: validOnboarding,
         seo: validSeo,
         promptQueue: validPromptQueue,
@@ -563,6 +613,7 @@ describe("parseAppConfig validation", () => {
       cafes: { listLimitMax: 50 },
       feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
       discovery: validCenter,
+      map: validMap,
       onboarding: validOnboarding,
       seo: validSeo,
         promptQueue: validPromptQueue,
@@ -590,6 +641,57 @@ describe("parseAppConfig validation", () => {
     ).toThrow(/"profile\.handle\.slugMaxChars" must be a positive integer/);
   });
 
+  it("owns the basemap provider seam (BRAWUKA-329)", () => {
+    expect(appConfig.map.provider).toBe("maplibre");
+    expect(appConfig.map.maplibre.tileStyle.light).toBe(
+      "https://tiles.openfreemap.org/styles/liberty",
+    );
+    expect(appConfig.map.maplibre.tileStyle.dark).toBe(
+      "https://tiles.openfreemap.org/styles/dark",
+    );
+  });
+
+  it("rejects a missing, unknown-provider, or non-https map section", () => {
+    const base = {
+      search: validSearch,
+      stats: validStats,
+      cafes: { listLimitMax: 50 },
+      feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
+      discovery: validCenter,
+      onboarding: validOnboarding,
+      seo: validSeo,
+      promptQueue: validPromptQueue,
+      checkins: validCheckins,
+      profile: validProfile,
+      images: validImages,
+      query: validQuery,
+      validation: validValidation,
+      runtimeConfig: validRuntimeConfig,
+      budgets: validBudgets,
+    };
+    expect(() => parseAppConfig({ ...base })).toThrow(/"map" must be a mapping/);
+    expect(() =>
+      parseAppConfig({ ...base, map: { ...validMap, provider: "google" } }),
+    ).toThrow(/"map\.provider" must be one of: maplibre/);
+    expect(() =>
+      parseAppConfig({ ...base, map: { ...validMap, maplibre: undefined } }),
+    ).toThrow(/"map\.maplibre" must be a mapping/);
+    expect(() =>
+      parseAppConfig({
+        ...base,
+        map: {
+          ...validMap,
+          maplibre: {
+            tileStyle: {
+              light: "http://tiles.example.com/a",
+              dark: validMap.maplibre.tileStyle.dark,
+            },
+          },
+        },
+      }),
+    ).toThrow(/"map\.maplibre\.tileStyle\.light" must be an https: URL/);
+  });
+
   it("rejects mistyped images/query/validation sections (BRAWUKA-250)", () => {
     const base = {
       search: validSearch,
@@ -597,6 +699,7 @@ describe("parseAppConfig validation", () => {
       cafes: { listLimitMax: 50 },
       feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
       discovery: validCenter,
+      map: validMap,
       onboarding: validOnboarding,
       seo: validSeo,
         promptQueue: validPromptQueue,
@@ -606,13 +709,13 @@ describe("parseAppConfig validation", () => {
       budgets: validBudgets,
     };
     expect(() =>
-      parseAppConfig({ ...base, images: { ...validImages, webpQuality: 101 }, query: validQuery, validation: validValidation }),
+      parseAppConfig({ ...base, images: { ...validImages, webpQuality: 101 }, map: validMap, query: validQuery, validation: validValidation }),
     ).toThrow(/"images\.webpQuality" must be a number between 1 and 100/);
     expect(() =>
-      parseAppConfig({ ...base, images: validImages, query: { ...validQuery, gcTimeMs: -1 }, validation: validValidation }),
+      parseAppConfig({ ...base, images: validImages, map: validMap, query: { ...validQuery, gcTimeMs: -1 }, validation: validValidation }),
     ).toThrow(/"query\.gcTimeMs" must be a positive integer/);
     expect(() =>
-      parseAppConfig({ ...base, images: validImages, query: validQuery, validation: { cafeAddressMaxChars: 300 } }),
+      parseAppConfig({ ...base, images: validImages, map: validMap, query: validQuery, validation: { cafeAddressMaxChars: 300 } }),
     ).toThrow(/"validation\.profileCityMaxChars" must be a positive integer/);
   });
 

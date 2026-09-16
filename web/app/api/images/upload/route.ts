@@ -58,8 +58,8 @@ export async function POST(request: Request) {
   try {
     const data = await requestUploadUrl(parsed.size);
     try {
-      // Bind the issued imageUuid to this user (issue #33) — complete
-      // rejects UUIDs that were never issued to the caller.
+      // Bind the issued imageUuid to this user (issue #33) — photo
+      // provisioning rejects UUIDs that were never issued to the caller.
       await recordUploadIntent(user.id, data.imageUuid);
     } catch (intentErr) {
       logError({ route: `${gate.route} intent`, request, error: intentErr, status: 500 });

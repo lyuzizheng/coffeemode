@@ -24,6 +24,7 @@ import {
   cleanupDbFixtures,
   closeDbClient,
 } from "./lib/e2e-fixtures.mjs";
+import { stubOpenFreeMap } from "./lib/tile-stubs.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = join(root, ".visual-smoke");
@@ -172,6 +173,8 @@ async function runVisualSmoke() {
     await context.route("**/*apple-mapkit*", (r) => r.fulfill({ status: 200, body: "" }));
     await context.route("**/*maps.googleapis.com*", (r) => r.fulfill({ status: 200, json: { status: "OK", results: [] } }));
     await context.route("**/api/mapkit-token", (r) => r.fulfill({ status: 200, json: { token: "fake-mapkit-token" } }));
+    // map-home: stub the basemap host so the map surface runs offline.
+    await stubOpenFreeMap(context);
     // Cafe covers live on the R2 CDN (`NEXT_PUBLIC_R2_PUBLIC_URL`). Whether
     // a local seed's cover host resolves is not this gate's business; an
     // unreachable CDN would fail the run on image loads before any status

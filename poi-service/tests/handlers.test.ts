@@ -1152,6 +1152,57 @@ describe("POST /poi/reverse", () => {
     expect(d1.rows.map((r) => r.place_id)).toContain("ChIJTEST123");
   });
 
+  it("invalidates the KV hot cache for the reverse-geocoded POI (BRAWUKA-332)", async () => {
+    const kv = new FakeKV();
+    await kv.put(
+      "raw:google:ChIJTEST123",
+      JSON.stringify(googleDetailResponse({ displayName: { text: "Stale Cafe Name" } })),
+    );
+    const env = makeEnv({ POI_KV: kv });
+    const fetchImpl = mockFetch((url) => {
+      if (url.includes("/maps/api/geocode/json")) {
+        return new Response(
+          JSON.stringify({
+            status: "OK",
+            results: [
+              {
+                place_id: "ChIJTEST123",
+                types: ["cafe", "point_of_interest", "establishment"],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/v1/places/ChIJTEST123")) {
+        return new Response(
+          JSON.stringify(googleDetailResponse({ displayName: { text: "Fresh Cafe Name" } })),
+          { status: 200 },
+        );
+      }
+      return new Response(null, { status: 404 });
+    });
+
+    const res = await call("POST", "/poi/reverse", env, {
+      body: { lat: 37.7825, lng: -122.4077 },
+      fetchImpl,
+    });
+    expect(res.status).toBe(200);
+    const data = await bodyOf(res);
+    expect(data.poi).toMatchObject({
+      place_id: "ChIJTEST123",
+      name: "Fresh Cafe Name",
+    });
+
+    // KV hot cache entry was invalidated
+    expect(kv.has("raw:google:ChIJTEST123")).toBe(false);
+
+    // Subsequent GET serves the fresh D1 row without calling Google API
+    const getRes = await call("GET", "/poi/ChIJTEST123", env);
+    expect(getRes.status).toBe(200);
+    expect((await bodyOf(getRes)).name).toBe("Fresh Cafe Name");
+  });
+
   it("returns { poi: null } when no food/cafe found", async () => {
     const env = makeEnv();
     const fetchImpl = mockFetch(() =>

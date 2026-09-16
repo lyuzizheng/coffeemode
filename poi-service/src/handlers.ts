@@ -522,6 +522,9 @@ async function reverseGeocodePOI(request: Request, env: Env, deps: Deps): Promis
   if (poi) {
     try {
       await d1UpsertPOI(env.POI_DB, poi);
+      // Invalidate KV hot cache (BRAWUKA-332): getPOI serves KV hits without
+      // consulting D1, so a stale raw entry would shadow the fresh D1 row.
+      await kvDeleteRaw(env.POI_KV, poi.place_id);
     } catch (e) {
       console.error("cache write failed in reverseGeocodePOI:", e);
     }

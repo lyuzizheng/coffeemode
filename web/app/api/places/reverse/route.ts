@@ -35,8 +35,10 @@ export async function POST(request: Request) {
   const rawLat = body && typeof body === "object" ? body.lat : undefined;
   const rawLng = body && typeof body === "object" ? body.lng : undefined;
 
-  const lat = typeof rawLat === "number" ? rawLat : Number(rawLat);
-  const lng = typeof rawLng === "number" ? rawLng : Number(rawLng);
+  // Contract is {lat: number, lng: number}. Strictly require numbers so null/""/false
+  // are rejected with 400 instead of coercing to 0/1 (Null Island) via Number(...) (BRAWUKA-332).
+  const lat = typeof rawLat === "number" ? rawLat : NaN;
+  const lng = typeof rawLng === "number" ? rawLng : NaN;
 
   return handleReverse(request, lat, lng, gate.route);
 }

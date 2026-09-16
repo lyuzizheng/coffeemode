@@ -3,7 +3,7 @@
  * The API key lives ONLY in this worker (env), never in Next.js.
  */
 
-import { DEFAULT_SEARCH_RADIUS_KM } from "../constants";
+import { DEFAULT_SEARCH_RADIUS_KM, MAX_REVERSE_GEOCODE_CANDIDATES } from "../constants";
 import type { Env, POI } from "../types";
 import { UpstreamApiError, type Coordinates, type UpstreamPlacesProvider } from "./types";
 
@@ -226,33 +226,59 @@ export async function reverseGeocode(
     return null;
   }
 
-  // Find candidate place:
-  // 1. First preference: result whose geocoding types match food/cafe directly
-  // 2. Second preference: result representing an establishment or point_of_interest
-  const candidate =
-    results.find((r) => isGoogleFoodOrCafePOI(r.types)) ??
-    results.find((r) => r.types?.some((t) => t === "point_of_interest" || t === "establishment"));
+  // Bounded candidate selection (BRAWUKA-332):
+  // 1. First preference: results whose geocoding types match food/cafe directly
+  // 2. Second preference: results representing establishment or point_of_interest
+  // Capped at MAX_REVERSE_GEOCODE_CANDIDATES to limit billed Place Details calls.
+  const candidates: GoogleGeocodeResult[] = [];
+  const seenPlaceIds = new Set<string>();
 
-  if (!candidate || !candidate.place_id) {
-    return null;
-  }
-
-  let raw: GooglePlace;
-  try {
-    raw = await fetchPlaceDetails(candidate.place_id, env, fetchImpl);
-  } catch (e) {
-    if (e instanceof UpstreamApiError && e.status === 404) {
-      return null;
+  for (const r of results) {
+    if (r.place_id && !seenPlaceIds.has(r.place_id) && isGoogleFoodOrCafePOI(r.types)) {
+      seenPlaceIds.add(r.place_id);
+      candidates.push(r);
+      if (candidates.length >= MAX_REVERSE_GEOCODE_CANDIDATES) break;
     }
-    throw e;
   }
 
-  const poi = toPOI(raw, "google");
-  if (!isGoogleFoodOrCafePOI(poi.types)) {
-    return null;
+  if (candidates.length < MAX_REVERSE_GEOCODE_CANDIDATES) {
+    for (const r of results) {
+      if (
+        r.place_id &&
+        !seenPlaceIds.has(r.place_id) &&
+        r.types?.some((t) => t === "point_of_interest" || t === "establishment")
+      ) {
+        seenPlaceIds.add(r.place_id);
+        candidates.push(r);
+        if (candidates.length >= MAX_REVERSE_GEOCODE_CANDIDATES) break;
+      }
+    }
   }
 
-  return poi;
+  for (const candidate of candidates) {
+    let raw: GooglePlace;
+    try {
+      raw = await fetchPlaceDetails(candidate.place_id, env, fetchImpl);
+    } catch (e) {
+      if (e instanceof UpstreamApiError && e.status === 404) {
+        continue;
+      }
+      throw e;
+    }
+
+    let poi: POI;
+    try {
+      poi = toPOI(raw, "google");
+    } catch {
+      continue;
+    }
+
+    if (isGoogleFoodOrCafePOI(poi.types)) {
+      return poi;
+    }
+  }
+
+  return null;
 }
 
 

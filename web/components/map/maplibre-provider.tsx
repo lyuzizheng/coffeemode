@@ -65,12 +65,16 @@ interface ProviderState {
   selectedCafeId: string | null;
   onCafeSelect: ((cafeId: string) => void) | null;
   onMapTap: ((coordinates: Coordinates) => void) | null;
+  /** A setStyle (theme switch) is in flight — an error while set leaves the
+   * map without a working style, so it escalates to onError like a
+   * first-load failure instead of logging to a silently blank map. */
+  stylePending: boolean;
 }
-
 /** Re-registers pin images + cafe/external layers and re-pushes
  * data/selection — called on mount and on every `style.load` (theme
  * switches wipe runtime layers and feature-state). */
 function rebindMapLayers(map: MapLibreMap, state: ProviderState): void {
+  state.stylePending = false;
   void loadPinImages(map).then(() => {
     bindCafeLayers(map);
     bindExternalPinLayers(map);
@@ -260,10 +264,16 @@ function mountMap(opts: {
   map.on("error", (e) => {
     // Per-tile failures (e.tile set) are routine — a dropped tile leaves a
     // hole, not a dead map. Everything else before first paint (style,
-    // source, glyphs, sprite) means the basemap cannot render.
+    // source, glyphs, sprite) means the basemap cannot render; the same is
+    // true for an error while a theme-switch setStyle is in flight — the
+    // style was already swapped out, so the map would sit silently blank.
     const tileBound = "tile" in e && Boolean(e.tile);
-    if (!loaded && !tileBound) onErrorRef.current?.(e.error ?? e);
-    else console.error("[map] non-fatal maplibre error:", e.error ?? e);
+    if ((!loaded || state.stylePending) && !tileBound) {
+      state.stylePending = false;
+      onErrorRef.current?.(e.error ?? e);
+    } else {
+      console.error("[map] non-fatal maplibre error:", e.error ?? e);
+    }
   });
 
   return () => {
@@ -289,7 +299,13 @@ export function MapLibreProvider({
     selectedCafeId: null,
     onCafeSelect: null,
     onMapTap: null,
+    stylePending: false,
   });
+  // The style the map was constructed with / last switched to — lets the
+  // theme effect skip the redundant first-run setStyle (the constructor
+  // already received it; on dark mode that was a second fetch of the same
+  // style document).
+  const appliedStyleRef = useRef(mapLibreStyleForTheme(theme));
   // Latest-callback refs: the mount effect runs once, so it must call the
   // current props, not the first render's closures.
   const onLoadRef = useRef(onLoad);
@@ -317,10 +333,15 @@ export function MapLibreProvider({
 
   // Style switching (theme light/dark): setStyle replaces the style in
   // place; the `style.load` rebind re-adds sources/layers/data/selection.
+  // Skipped when the resolved style is already applied — including the
+  // mount run, where the constructor just received it.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
-    map.setStyle(mapLibreStyleForTheme(theme));
+    const next = mapLibreStyleForTheme(theme);
+    if (!map || appliedStyleRef.current === next) return;
+    stateRef.current.stylePending = true;
+    map.setStyle(next);
+    appliedStyleRef.current = next;
   }, [theme]);
 
   return (

@@ -12,8 +12,9 @@ import { AnimatePresence } from "framer-motion";
 import type { CityInfo, Coordinates } from "@/lib/cities";
 import { useMounted } from "@/hooks/use-mounted";
 import { DiscoveryHome } from "@/components/discovery/discovery-home";
+import { MapAccountChip } from "@/components/map/map-account-chip";
 import { LocateButton } from "./locate-button";
-import { useOnboarding } from "./use-onboarding";
+import { useOnboarding, type OnboardingState } from "./use-onboarding";
 import { WelcomeCard } from "./welcome-card";
 
 export function OnboardingHome({
@@ -25,6 +26,7 @@ export function OnboardingHome({
   suppressCard,
   addCafe,
   initialCafeId,
+  accountInitial,
   children,
 }: {
   /** IP-detected launch city (DG128); null → no detection line. */
@@ -41,6 +43,9 @@ export function OnboardingHome({
   suppressCard?: boolean;
   addCafe: ReactNode;
   initialCafeId?: string;
+  /** Signed-in display-name initial for the map account chip; absent → the
+   * chip shows the sign-in affordance (BRAWUKA-318). */
+  accountInitial?: string;
   children: ReactNode;
 }) {
   const mounted = useMounted();
@@ -53,7 +58,40 @@ export function OnboardingHome({
     suppressCard,
   });
 
-  const overlay = (
+  return (
+    <DiscoveryHome
+      center={onboarding.center}
+      addCafe={addCafe}
+      initialCafeId={initialCafeId}
+      isAuthenticated={isAuthenticated}
+      mapOverlay={
+        mounted ? (
+          <MapOverlay
+            detectedCity={detectedCity}
+            onboarding={onboarding}
+            accountInitial={accountInitial}
+          />
+        ) : null
+      }
+    >
+      {children}
+    </DiscoveryHome>
+  );
+}
+
+/** Welcome card + locate button + account/theme chip — everything that
+ * floats over the map. DiscoveryHome's gateMapOverlay hides the whole slot
+ * whenever the mobile sheet is above PEEK. */
+function MapOverlay({
+  detectedCity,
+  onboarding,
+  accountInitial,
+}: {
+  detectedCity: CityInfo | null;
+  accountInitial?: string;
+  onboarding: OnboardingState;
+}) {
+  return (
     <>
       <AnimatePresence>
         {onboarding.phase !== "done" && (
@@ -77,18 +115,10 @@ export function OnboardingHome({
           onLocate={() => void onboarding.handleLocate()}
         />
       )}
+      {/* Account + theme affordances are visible in every phase — the card
+          is bottom-anchored, the chip top-right; they never overlap. */}
+      <MapAccountChip accountInitial={accountInitial} />
     </>
   );
-
-  return (
-    <DiscoveryHome
-      center={onboarding.center}
-      addCafe={addCafe}
-      initialCafeId={initialCafeId}
-      isAuthenticated={isAuthenticated}
-      mapOverlay={mounted ? overlay : null}
-    >
-      {children}
-    </DiscoveryHome>
-  );
 }
+

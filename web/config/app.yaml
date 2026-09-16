@@ -79,6 +79,9 @@ map:
   # their own glyphs/sprite — no separate config keys.
   maplibre:
     # Fully-qualified style documents (OpenFreeMap releases), per UI theme.
+    # Optional dark replacement: the vendored vintage-dark style at
+    # public/map/openmapstyle_dark.json (BRAWUKA-314) — deploy it to an
+    # https URL and point `dark` at it to opt in.
     tileStyle:
       light: https://tiles.openfreemap.org/styles/liberty
       dark: https://tiles.openfreemap.org/styles/dark

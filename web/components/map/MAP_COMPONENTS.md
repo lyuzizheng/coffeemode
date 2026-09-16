@@ -12,7 +12,7 @@ was deliberately NOT ported (its load-time geolocation violated DG112).
 
 ```
 app/page.tsx
-  └─ OnboardingHome (welcome card + LocateButton → mapOverlay slot)
+  └─ OnboardingHome (welcome card + LocateButton + MapAccountChip → mapOverlay slot)
        └─ DiscoveryHome ── provides DiscoveryMapContext {controller, cafes, center}
             ├─ DesktopDiscovery / MobileSheet   (data path — map-independent)
             └─ children = <MapSurface/>          (components/map/map-surface.tsx)
@@ -46,8 +46,11 @@ app/page.tsx
 - **cafe-pins.ts** — MapLibre-internal pin artwork + layer registration;
   imported only by maplibre-provider.tsx.
 - **Style documents** — both themes load full style JSONs from the tile host
-  (`map.maplibre.tileStyle.light`/`dark` in app.yaml; OFM `liberty`/`dark`);
-  the app never owns a local style document.
+  (`map.maplibre.tileStyle.light`/`dark` in app.yaml; OFM `liberty`/`dark`).
+  One vendored exception: `public/map/openmapstyle_dark.json` (BRAWUKA-314)
+  is a vintage-dark variant of the archived `openmapstyle_light.json`,
+  tuned to the dark tokens — opt in by pointing `tileStyle.dark` at its
+  deployed https URL.
 - **types.ts** — `IMapProvider` / `BaseMapProviderProps` — the swap
   boundary. No renderer types cross it (`Coordinates` from `lib/cities`,
   `CafeSummary` from `types/cafes`). Optional capability members
@@ -56,6 +59,12 @@ app/page.tsx
   `moveend`, the "search this area" trigger), `setExternalPins` (external
   POI pins on a source/layers separate from `setCafes` — never folded into
   `CafeSummary`). Consumers feature-detect (`provider.onMapTap?.(…)`).
+- **map-account-chip.tsx** — the floating account + theme affordance
+  (BRAWUKA-318): avatar initial → `/profile` when signed in, "Sign in" →
+  `/profile` (which renders the sign-in gate) when not, plus a chromeless
+  `ThemeToggle`. Rendered by OnboardingHome inside `mapOverlay`, so
+  `gateMapOverlay` hides it above PEEK; on desktop it sits left of the
+  locate button's top-right corner.
 
 ## Camera contract
 
@@ -84,6 +93,9 @@ read through `lib/client-env.ts`; the MapLibre style URLs go through
 
 - Tile host down / WebGL unavailable / chunk load failure → error card with
   Retry; discovery UI unaffected.
+- A failed theme-switch `setStyle` (style fetch error while `stylePending`)
+  → same error card — the old style is already swapped out, so logging to a
+  blank map is not an option.
 - Individual tile/glyph failures → logged, non-fatal (holes in the basemap,
   not a dead map).
 - e2e/visual suites stub `tiles.openfreemap.org` via

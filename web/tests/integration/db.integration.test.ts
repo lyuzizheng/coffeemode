@@ -729,6 +729,16 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect((await navigationPromptQueue.next(U2))?.id).toBe(otherCafe.id);
       await navigationPromptQueue.answer(U2, otherCafe.id, "wont_go");
 
+      // Stale re-answer on a resolved id is a no-op for the stack: a retry
+      // of the original answer must not consume a fresh navigation the
+      // user was never prompted about (P1 review finding).
+      const fresh = await recordNavigation(U2, CAFE_A);
+      await expect(
+        navigationPromptQueue.answer(U2, second.id, "wont_go"),
+      ).resolves.toEqual({ status: "answered", outcome: "wont_go" });
+      expect(await nav(fresh.id)).toMatchObject({ resolved: false, outcome: null });
+      await navigationPromptQueue.answer(U2, fresh.id, "wont_go");
+
       // 还没去 defers the whole stack: one shared re-ask budget, so the
       // (maxReasks + 1)-th answer auto-resolves every stacked row (DG91) —
       // three prompts total, not two per row.
@@ -747,7 +757,8 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         expect(item).not.toBeNull();
         await navigationPromptQueue.answer(U2, item!.id, "not_yet");
         await dbClient.query(
-          "update navigations set last_asked_at = now() - interval '2 days' where resolved = false",
+          "update navigations set last_asked_at = now() - interval '2 days' where resolved = false and user_id = $1",
+          [U2],
         );
       };
       await reask();

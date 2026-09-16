@@ -109,23 +109,27 @@ limit 1
  * "导航" tap stacks a row, and answering for the cafe once must retire the
  * whole stack or a declined cafe re-prompts in a later session. Siblings
  * take the same outcome, matching the funnel's per-row counting (DG80).
- * The `resolved = false` guard keeps the write idempotent: a second answer
+ * The `resolved = false` guards keep the write idempotent: a second answer
  * never overwrites a stored outcome — including the `auto` outcome a
- * completed check-in wrote.
+ * completed check-in wrote — and the same guard inside the subquery makes
+ * a stale retry on an already-resolved id a no-op (subquery NULL → no rows
+ * matched → stored-outcome path), so it can never consume a fresh
+ * navigation the user was never prompted about.
  */
 const RESOLVE_PROMPT_SQL = `
 update navigations
 set resolved = true, outcome = $3
 where resolved = false
   and user_id = $2
-  and cafe_id = (select cafe_id from navigations where id = $1 and user_id = $2)
+  and cafe_id = (select cafe_id from navigations where id = $1 and user_id = $2 and resolved = false)
 `;
 
 /**
  * "还没去" (not_yet): stamp the re-ask delay and send the item to the back
  * of the queue — again sibling-scoped, so stacked taps to one cafe share a
  * single re-ask budget instead of each starting its own cycle. Past
- * `maxReasks` the stack auto-resolves instead (DG91).
+ * `maxReasks` the stack auto-resolves instead (DG91). The subquery's
+ * `resolved = false` guard is the same stale-retry no-op as above.
  */
 const DEFER_PROMPT_SQL = `
 update navigations
@@ -135,7 +139,7 @@ set ask_count = ask_count + 1,
     outcome = case when ask_count + 1 > $3 then 'auto' else outcome end
 where resolved = false
   and user_id = $2
-  and cafe_id = (select cafe_id from navigations where id = $1 and user_id = $2)
+  and cafe_id = (select cafe_id from navigations where id = $1 and user_id = $2 and resolved = false)
 `;
 
 /** Read the stored outcome for idempotent re-answers; null when the row is gone. */

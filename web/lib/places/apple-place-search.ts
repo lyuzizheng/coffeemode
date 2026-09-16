@@ -1,3 +1,4 @@
+import { throwIfUnauthorized } from "@/lib/http";
 import type { POI } from "@shared/places/types";
 import { stableApplePlaceId } from "@shared/places/apple-place-id";
 import type { CreateTranslator, PlaceSearchProvider } from "./place-search";
@@ -59,6 +60,7 @@ function loadMapKitScript(): Promise<void> {
 
 async function fetchMapKitToken(): Promise<string> {
   const response = await fetch("/api/mapkit-token", { cache: "no-store" });
+  throwIfUnauthorized(response);
   if (!response.ok) throw new Error("MapKit is not configured");
   const { token } = (await response.json()) as { token?: string };
   if (!token) throw new Error("MapKit is not configured");

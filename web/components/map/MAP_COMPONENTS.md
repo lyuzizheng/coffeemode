@@ -44,7 +44,12 @@ app/page.tsx
   never owns a local style document.
 - **types.ts** — `IMapProvider` / `BaseMapProviderProps` — the swap
   boundary. No renderer types cross it (`Coordinates` from `lib/cities`,
-  `CafeSummary` from `types/cafes`).
+  `CafeSummary` from `types/cafes`). Optional capability members
+  (BRAWUKA-330, implemented by the MapLibre provider): `onMapTap` (empty-map
+  tap / long-press → create entry), `getBounds` + `onIdle` (camera-settled
+  `moveend`, the "search this area" trigger), `setExternalPins` (external
+  POI pins on a source/layers separate from `setCafes` — never folded into
+  `CafeSummary`). Consumers feature-detect (`provider.onMapTap?.(…)`).
 
 ## Camera contract
 

@@ -3,8 +3,9 @@
  * The API key lives ONLY in this worker (env), never in Next.js.
  */
 
-import { DEFAULT_SEARCH_RADIUS_KM } from "./constants";
-import type { Env, POI } from "./types";
+import { DEFAULT_SEARCH_RADIUS_KM } from "../constants";
+import type { Env, POI } from "../types";
+import { UpstreamApiError, type UpstreamPlacesProvider } from "./types";
 
 export const GOOGLE_API_BASE = "https://places.googleapis.com";
 
@@ -38,14 +39,56 @@ export interface GooglePlace {
   googleMapsUri?: string;
 }
 
-export class GoogleApiError extends Error {
+export class GoogleApiError extends UpstreamApiError {
   constructor(
     message: string,
-    readonly status: number,
+    status: number,
   ) {
-    super(message);
+    super(message, status);
     this.name = "GoogleApiError";
   }
+}
+
+/**
+ * DG144 / DG52 — Category allowlist for D1/KV persistence.
+ * Google Places category types matching food and cafe venues.
+ */
+export const GOOGLE_FOOD_CAFE_TYPES: Record<string, true> = {
+  cafe: true,
+  coffee_shop: true,
+  bakery: true,
+  restaurant: true,
+  food: true,
+  bar: true,
+  meal_delivery: true,
+  meal_takeaway: true,
+  tea_house: true,
+  bubble_tea_store: true,
+  espresso_bar: true,
+  pastry_shop: true,
+  sandwich_shop: true,
+  ice_cream_shop: true,
+  dessert_shop: true,
+  dessert_restaurant: true,
+  diner: true,
+  bistro: true,
+  fast_food_restaurant: true,
+  cafeteria: true,
+  food_court: true,
+};
+
+export function isGoogleFoodOrCafePOI(types?: string[] | null): boolean {
+  if (!types || types.length === 0) return false;
+  return types.some((t) => Boolean(GOOGLE_FOOD_CAFE_TYPES[t.toLowerCase()]));
+}
+
+/**
+ * Last-resort heuristic for never-seen ids: Google place ids are ChIJ… or
+ * 0x…:0x…; Apple refs are arbitrary. Only used when neither KV nor D1 knows
+ * the id — stored rows' explicit `source` column is authoritative (issue #38).
+ */
+export function isGooglePlaceId(placeId: string): boolean {
+  return /^(ChIJ|0x)/.test(placeId);
 }
 
 function baseUrl(env: Env): string {
@@ -122,4 +165,31 @@ export function toPOI(gp: GooglePlace, source: "google" | "apple" = "google"): P
     photo_refs: (gp.photos ?? []).map((p) => p.name),
     fetched_at: new Date().toISOString(),
   };
+}
+
+/** Upstream places provider implementation for Google Places API (New). */
+export class GooglePlacesProvider implements UpstreamPlacesProvider<GooglePlace> {
+  constructor(
+    private readonly env: Env,
+    private readonly fetchImpl: typeof fetch = fetch,
+  ) {}
+
+  async textSearch(
+    q: string,
+    bias?: { lat?: number; lng?: number; radiusKm?: number },
+  ): Promise<GooglePlace[]> {
+    return textSearch(q, bias ?? {}, this.env, this.fetchImpl);
+  }
+
+  async getDetails(placeId: string): Promise<GooglePlace> {
+    return fetchPlaceDetails(placeId, this.env, this.fetchImpl);
+  }
+
+  toPOI(raw: GooglePlace): POI {
+    return toPOI(raw, "google");
+  }
+
+  matchesCategory(types: string[]): boolean {
+    return isGoogleFoodOrCafePOI(types);
+  }
 }

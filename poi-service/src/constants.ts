@@ -5,10 +5,6 @@ import {
   MAX_EXTERNAL_BATCH_SIZE,
   MAX_SEARCH_RADIUS_KM,
 } from "../../web/shared/places/constants";
-import {
-  GOOGLE_FOOD_CAFE_TYPES,
-  isGoogleFoodOrCafePOI,
-} from "./upstream/google";
 
 export { DEFAULT_SEARCH_RADIUS_KM, MAX_EXTERNAL_BATCH_SIZE, MAX_SEARCH_RADIUS_KM };
 
@@ -26,9 +22,3 @@ export const CACHE_TTL_SECONDS = 7 * 24 * 3600; // ~7d
  */
 export const SEARCH_QUERY_CACHE_TTL_SECONDS = 600;
 
-/**
- * DG144 / DG52 — Category allowlist for D1/KV persistence.
- * Re-exported from upstream/google for backwards compatibility.
- */
-export const FOOD_CAFE_TYPES = GOOGLE_FOOD_CAFE_TYPES;
-export const isFoodOrCafePOI = isGoogleFoodOrCafePOI;

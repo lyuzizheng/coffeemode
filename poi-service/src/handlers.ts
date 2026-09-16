@@ -29,7 +29,6 @@ import {
 } from "./constants";
 import {
   getUpstreamProvider,
-  isGooglePlaceId,
   resolveUpstreamSource,
   UpstreamApiError,
 } from "./upstream";
@@ -53,12 +52,6 @@ import { resolveShareUrl } from "./url";
 // Re-exported for consumers/tests that historically imported from handlers.
 export { authorized } from "./auth";
 
-/**
- * Last-resort heuristic for never-seen ids: Google place ids are ChIJ… or
- * 0x…:0x…; Apple refs are arbitrary. Only used when neither KV nor D1 knows
- * the id — stored rows' explicit `source` column is authoritative (issue #38).
- */
-export { isGooglePlaceId } from "./upstream";
 
 function upstreamError(e: unknown): Response {
   if (e instanceof UpstreamApiError) {

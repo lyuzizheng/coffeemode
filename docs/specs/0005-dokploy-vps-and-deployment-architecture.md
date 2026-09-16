@@ -155,6 +155,9 @@ Dokploy manages multi-service Docker Compose stacks behind an integrated Traefik
 
 ### 3. Cloudflare dual services & edge matrix
 
+The full three-environment matrix — including local development, Supabase
+project refs, Postgres connection modes, and access rules — is canonical in
+spec 0010 §1. The table below covers the deployed staging/production edge only.
 | Dimension | Staging Environment | Production Environment |
 | --- | --- | --- |
 | Primary Web Domain | `staging.cafemood.app` | `cafemood.app` (apex) |
@@ -171,7 +174,7 @@ Dokploy manages multi-service Docker Compose stacks behind an integrated Traefik
 | POI Worker Service | `poi-service-staging` | `poi-service-prod` |
 | Worker D1 Database | `poi-store-staging` | `poi-store` |
 | Worker KV Namespace | `poi-cache-staging` | `poi-cache` |
-| Supabase Auth Instance | Staging project (or preview mock) | Production project |
+| Supabase Auth Instance | Staging project `ojujmjewtbquiddswyrg` (Google OAuth) | Production project `rsdzcegylqgccaneomph` (Apple + Google) |
 | Rate Limiter Backend | `memory` (single container) | `memory` (single container) / `postgres` (multi-replica) |
 
 ## CI/CD & deployment flow specification
@@ -205,7 +208,7 @@ Dokploy manages multi-service Docker Compose stacks behind an integrated Traefik
      4. Executes automated smoke tests (`deploy/dokploy/smoke-test.sh staging`).
 
 2. **Production Promotion Flow**:
-   - **Trigger**: Creation of signed Git release tag `v*` on `main` following staging verification.
+   - **Trigger**: Creation of signed Git release tag `v*` on `main` following staging verification, **plus manual owner approval** (GitHub Environment `production` required reviewer) **plus a green `staging-journey` run on the promoted commit** (spec 0010 §5 owns this boundary).
    - **Execution**: Run `deploy/dokploy/deploy-release.sh prod`:
      1. Creates mandatory production database backup (`backup.sh --env prod --reason pre-migration` against Supabase prod `DATABASE_URL`).
      2. Applies schema migrations over `DIRECT_URL` (Supabase prod session/direct — never the transaction pooler) via repo checkout.
@@ -282,4 +285,6 @@ deploy:
 - Automated smoke test script exists in deploy/dokploy/smoke-test.sh.
 - Comprehensive operational lifecycle runbook exists in docs/devops/LIFECYCLE.md.
 - .agents/scripts/preflight.sh and .agents/scripts/harness-self-test.sh pass with no errors or broken links.
+- Spec 0010 is indexed in docs/specs/README.md and owns the three-environment
+  matrix and secret-ownership rules this spec references.
 ```

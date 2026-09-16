@@ -46,8 +46,10 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn }: CafeP
   const turnstileRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
 
-  // Provider init (script load / token fetch) runs on selection — a failure
-  // surfaces as the provider's unavailable error in the shared alert slot.
+  // Provider init (script load / token fetch) runs on selection — a dead
+  // session on the token fetch routes to the drawer's sign-in gate, every
+  // other failure surfaces as the provider's unavailable error in the shared
+  // alert slot.
   // Readiness is derived per provider id (state-during-render pattern), so
   // the effect only fires the async init, never sets state synchronously.
   const [readyProviderId, setReadyProviderId] = useState<string | null>(null);
@@ -61,14 +63,20 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn }: CafeP
         if (!cancelled) setReadyProviderId(provider.id);
       })
       .catch((cause) => {
-        if (!cancelled) {
-          onError(cause instanceof Error ? cause.message : t("searchFailed"));
+        if (cancelled) return;
+        // A dead session on the token fetch is the same expired session the
+        // Google search and persist paths route to the drawer's gate
+        // (BRAWUKA-212): only signing in can clear it.
+        if (isUnauthorized(cause)) {
+          onRequireSignIn();
+          return;
         }
+        onError(cause instanceof Error ? cause.message : t("searchFailed"));
       });
     return () => {
       cancelled = true;
     };
-  }, [provider, onError, t]);
+  }, [provider, onError, onRequireSignIn, t]);
 
   // Invisible Turnstile widget for the maps-link resolve (BRAWUKA-239):
   // rendered once while the link tab is active, executed per submit so

@@ -40,7 +40,7 @@ TIMEOUT=10
 # BRAWUKA-237: the WAF suspicious-UA rule challenges curl's default UA on
 # /api/*. Every API probe below identifies as the whitelisted smoke UA (the
 # same rule also whitelists the Better Stack monitor UA for /api/heartbeat).
-SMOKE_UA="coffeemode-smoke/1.0"
+SMOKE_UA="cafemood-smoke/1.0"
 
 show_help() {
   sed -n '2,/^# ==/p' "$0" | sed 's/^# \?//'

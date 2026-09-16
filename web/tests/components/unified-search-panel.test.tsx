@@ -49,6 +49,7 @@ describe("UnifiedSearchPanel", () => {
       <NextIntlClientProvider locale="en" messages={en}>
         <UnifiedSearchPanel
           externalSources={{ google: true, apple: false }}
+          mapkitConfigured={false}
           onSelectResult={() => {}}
           onExternalSearch={() => {}}
           fetchSearch={fetchSearch}

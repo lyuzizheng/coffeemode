@@ -1,16 +1,34 @@
 import "server-only";
 
 import { createPrivateKey, createSign } from "node:crypto";
-import type { MapKitConfig } from "./mapkit-config";
-
-// Credential detection lives in `mapkit-config.ts` (edge-safe) so
-// `next.config.ts` derives NEXT_PUBLIC_MAPKIT_CONFIGURED from the same
-// predicate this route's 503 gate uses — one readiness signal (BRAWUKA-326).
-export { getMapKitConfig } from "./mapkit-config";
-export type { MapKitConfig } from "./mapkit-config";
 
 function base64Url(value: string): string {
   return Buffer.from(value).toString("base64url");
+}
+
+export interface MapKitConfig {
+  teamId: string;
+  keyId: string;
+  privateKey: string;
+  origin: string;
+}
+
+/** Read MapKit credentials from environment. Returns null if not configured. */
+export function getMapKitConfig(): MapKitConfig | null {
+  const teamId = process.env.APPLE_MAPKIT_TEAM_ID;
+  const keyId = process.env.APPLE_MAPKIT_KEY_ID;
+  const privateKey = process.env.APPLE_MAPKIT_PRIVATE_KEY;
+  const configuredOrigin = process.env.APPLE_MAPKIT_ORIGIN || process.env.NEXT_PUBLIC_SITE_URL;
+  if (!teamId || !keyId || !privateKey || !configuredOrigin) {
+    return null;
+  }
+  try {
+    const origin = new URL(configuredOrigin).origin;
+    return { teamId, keyId, privateKey, origin };
+  } catch {
+    // Benign: malformed origin URL treats MapKit as unconfigured.
+    return null;
+  }
 }
 
 /** Generate a short-lived ES256 MapKit JS client token (spec 0001). */

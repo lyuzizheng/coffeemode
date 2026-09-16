@@ -44,7 +44,8 @@ function SearchSkeletons() {
 
 interface UnifiedSearchPanelProps {
   externalSources: ExternalSourceFlags;
-  mapkitConfigured?: boolean;
+  /** DG143 gate — request-time MapKit readiness passed by the server page. */
+  mapkitConfigured: boolean;
   /** Effective city scope; omitted → server header/default resolution (DG128). */
   city?: string;
   onSelectResult: (item: SearchResultItem) => void;

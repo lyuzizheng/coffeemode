@@ -4,6 +4,7 @@ import { createSupabaseServerClient, isAuthConfigured } from "@/lib/auth/supabas
 import { appConfig } from "@/lib/config";
 import { detectIpCity, findCity } from "@/lib/cities";
 import { getProfile } from "@/lib/db/profile";
+import { getMapKitConfig } from "@/lib/places/mapkit";
 import { AuthCallbackError } from "@/components/auth/auth-callback-error";
 import { CafeCreationTrigger } from "@/components/cafe/cafe-creation-sheet";
 import { OnboardingHome } from "@/components/onboarding/onboarding-home";
@@ -63,6 +64,10 @@ export default async function HomePage({
     detectedCity?.center ??
     appConfig.discovery.defaultCenter;
   const initialCafeId = typeof params.cafe === "string" ? params.cafe : undefined;
+  // DG143: MapKit readiness is a request-time signal — APPLE_MAPKIT_* are
+  // runtime env in the Dokploy deploy, so a build-time flag would bake false
+  // into the image (BRAWUKA-326 review).
+  const mapkitConfigured = getMapKitConfig() !== null;
 
   return (
     <OnboardingHome
@@ -76,7 +81,7 @@ export default async function HomePage({
           : undefined
       }
       suppressCard={initialCafeId !== undefined}
-      addCafe={<CafeCreationTrigger isAuthenticated={Boolean(user)} />}
+      addCafe={<CafeCreationTrigger isAuthenticated={Boolean(user)} mapkitConfigured={mapkitConfigured} />}
       accountInitial={
         user
           ? (profile?.displayName ?? profileFromUser(user).displayName)[0]?.toUpperCase()

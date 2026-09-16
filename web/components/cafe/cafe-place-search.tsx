@@ -11,6 +11,7 @@ import {
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { isUnauthorized, responseMessage } from "@/lib/http";
+import { getSearchExternalSources } from "@/lib/client-env";
 import { readOnboardingState } from "@/lib/onboarding-store";
 import { getPlaceSearchProviders } from "@/lib/places/providers";
 import type { PlaceSearchProvider } from "@/lib/places/place-search";
@@ -30,11 +31,16 @@ interface CafePlaceSearchProps {
   /** `GET /api/places/search?source=google` is auth-gated; a 401 belongs to the
       drawer's sign-in gate, not to this component's alert slot. */
   onRequireSignIn: () => void;
+  /** DG143 request-time MapKit readiness, drilled from the server page. */
+  mapkitConfigured: boolean;
 }
 
-export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn }: CafePlaceSearchProps) {
+export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn, mapkitConfigured }: CafePlaceSearchProps) {
   const t = useTranslations("create");
-  const providers = useMemo(() => getPlaceSearchProviders(t), [t]);
+  const providers = useMemo(
+    () => getPlaceSearchProviders(t, { externalSources: getSearchExternalSources(), mapkitConfigured }),
+    [t, mapkitConfigured],
+  );
   const [provider, setProvider] = useState<PlaceSearchProvider | null>(providers[0] ?? null);
   const [entryMode, setEntryMode] = useState<EntryMode>("link");
   const [mapsUrl, setMapsUrl] = useState("");

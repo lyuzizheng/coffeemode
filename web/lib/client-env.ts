@@ -124,11 +124,3 @@ export function getSearchExternalSources(): ExternalSourceFlags {
   };
 }
 
-/**
- * Single MapKit readiness signal (BRAWUKA-326): `next.config.ts` derives it
- * from `getMapKitConfig()`, the same predicate `/api/mapkit-token` 503s on —
- * Apple surfaces hide until the token route could actually serve.
- */
-export function isMapKitConfigured(): boolean {
-  return envBoolean(process.env.NEXT_PUBLIC_MAPKIT_CONFIGURED, false);
-}

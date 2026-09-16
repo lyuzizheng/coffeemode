@@ -18,7 +18,6 @@ import {
   getSearchDebounceMs,
   getSearchExternalSources,
   getSearchMinQueryLength,
-  isMapKitConfigured,
 } from "@/lib/client-env";
 
 // Client env channel (BRAWUKA-250): `next.config.ts` mirrors `app.yaml`
@@ -78,10 +77,8 @@ describe("client config fallbacks match app.yaml", () => {
     expect(getMapProvider()).toBe(appConfig.map.provider);
     expect(getMapDefaultZoom()).toBe(appConfig.map.defaultZoom);
     expect(getMapFocusZoom()).toBe(appConfig.map.focusZoom);
-    // DG134/BRAWUKA-326: external-source toggles mirror app.yaml; MapKit
-    // readiness defaults off (no APPLE_MAPKIT_* creds in test env).
+    // DG134/BRAWUKA-326: external-source toggles mirror app.yaml.
     expect(getSearchExternalSources()).toEqual(appConfig.search.externalSources);
-    expect(isMapKitConfigured()).toBe(false);
   });
 
   it("keeps the previously hardcoded client values (no behavior change)", () => {
@@ -115,7 +112,5 @@ describe("client config fallbacks match app.yaml", () => {
     expect(getSearchExternalSources()).toEqual({ google: true, apple: true });
     vi.stubEnv("NEXT_PUBLIC_SEARCH_EXTERNAL_GOOGLE", "false");
     expect(getSearchExternalSources()).toEqual({ google: false, apple: true });
-    vi.stubEnv("NEXT_PUBLIC_MAPKIT_CONFIGURED", "true");
-    expect(isMapKitConfigured()).toBe(true);
   });
 });

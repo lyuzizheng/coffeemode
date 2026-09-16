@@ -42,7 +42,7 @@ function makeResponse(
 function renderList({
   response,
   externalSources = { google: true, apple: true },
-  mapkitConfigured,
+  mapkitConfigured = false,
   locale = "en",
 }: {
   response: SearchResponse;

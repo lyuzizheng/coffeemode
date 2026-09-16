@@ -1,21 +1,14 @@
-import { getSearchExternalSources, isMapKitConfigured } from "@/lib/client-env";
 import type { ExternalSourceFlags } from "@/lib/client-env";
 import type { CreateTranslator, PlaceSearchProvider } from "./place-search";
 import { googlePlaceSearch } from "./google-place-search";
 import { applePlaceSearch } from "./apple-place-search";
 
 export interface PlaceSearchProviderFlags {
-  /** `search.externalSources` toggles (DG134). */
+  /** `search.externalSources` toggles (DG134) — read via `getSearchExternalSources()`. */
   externalSources: ExternalSourceFlags;
-  /** Single MapKit readiness signal (DG143/BRAWUKA-326). */
+  /** DG143 MapKit readiness — a request-time signal drilled from the server
+      page (`APPLE_MAPKIT_*` are runtime env, never build-time). */
   mapkitConfigured: boolean;
-}
-
-function defaultFlags(): PlaceSearchProviderFlags {
-  return {
-    externalSources: getSearchExternalSources(),
-    mapkitConfigured: isMapKitConfigured(),
-  };
 }
 
 /**
@@ -31,7 +24,7 @@ function defaultFlags(): PlaceSearchProviderFlags {
  */
 export function getPlaceSearchProviders(
   t: CreateTranslator,
-  flags: PlaceSearchProviderFlags = defaultFlags(),
+  flags: PlaceSearchProviderFlags,
 ): PlaceSearchProvider[] {
   const providers: PlaceSearchProvider[] = [];
   if (flags.externalSources.google) providers.push(googlePlaceSearch(t));

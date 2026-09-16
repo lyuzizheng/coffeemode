@@ -125,7 +125,7 @@ describe("CafeCreationSheet & Trigger", () => {
   });
 
   it("renders trigger button and opens sheet when clicked", () => {
-    render(<CafeCreationTrigger isAuthenticated={true} />, { wrapper: Wrapper });
+    render(<CafeCreationTrigger isAuthenticated={true} mapkitConfigured={false} />, { wrapper: Wrapper });
 
     const trigger = screen.getByRole("button", { name: /Add a cafe/i });
     expect(trigger).toBeEnabled();
@@ -319,10 +319,9 @@ describe("CafeCreationSheet session expiry (BRAWUKA-124/BRAWUKA-212)", () => {
 
   it("routes an Apple place-persist 401 to the gate", async () => {
     vi.stubEnv("NEXT_PUBLIC_SEARCH_EXTERNAL_APPLE", "true");
-    vi.stubEnv("NEXT_PUBLIC_MAPKIT_CONFIGURED", "true");
     mockRoutes((url) => (url.includes("/api/places/external") ? jsonResponse(401, { error: "unauthorized" }) : jsonResponse(200, {})));
 
-    render(<CafeCreationSheet isOpen onOpenChange={vi.fn()} isAuthenticated />, { wrapper: Wrapper });
+    render(<CafeCreationSheet isOpen onOpenChange={vi.fn()} isAuthenticated mapkitConfigured />, { wrapper: Wrapper });
     fireEvent.click(screen.getByRole("tab", { name: "Search a place" }));
     fireEvent.click(screen.getByRole("button", { name: "Apple Maps" }));
     const searchInput = await screen.findByPlaceholderText("Search for a cafe");
@@ -347,7 +346,7 @@ describe("CafeCreationSheet session expiry (BRAWUKA-124/BRAWUKA-212)", () => {
     vi.stubEnv("NEXT_PUBLIC_SEARCH_EXTERNAL_APPLE", "true");
     mockRoutes(() => jsonResponse(200, {}));
 
-    render(<CafeCreationSheet isOpen onOpenChange={vi.fn()} isAuthenticated />, { wrapper: Wrapper });
+    render(<CafeCreationSheet isOpen onOpenChange={vi.fn()} isAuthenticated mapkitConfigured={false} />, { wrapper: Wrapper });
     fireEvent.click(screen.getByRole("tab", { name: "Search a place" }));
 
     expect(screen.getByRole("button", { name: "Google Maps" })).toBeInTheDocument();

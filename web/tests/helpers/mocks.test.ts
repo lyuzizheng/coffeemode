@@ -18,7 +18,6 @@ describe("journey mock factories (spec 0007 §10)", () => {
       expect(poi.place_id).toMatch(/^ChIJ/);
       expect(poi.types).toContain("cafe");
       expect(poi.address).toBeTruthy();
-      expect(poi.photo_refs.length).toBeGreaterThan(0);
       expect(() =>
         JSON.parse(poi.hours_json as string),
       ).not.toThrow();

@@ -71,7 +71,7 @@ and the KV hot-cache read path are unaffected and verified working.
   - Secrets installed via Cloudflare Worker bindings (`IMAGE_SERVICE_TOKEN`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`)
   - Deployed to `https://image-service-prod.lyuzizheng.workers.dev` (production) and `https://image-service-staging.lyuzizheng.workers.dev` (staging)
   - `IMAGE_SERVICE_URL` and `IMAGE_SERVICE_TOKEN` recorded in local `web/.env.local`
-- [ ] Attach custom domains `images.cafemood.app` and `staging-images.cafemood.app` to `coffeemode-images-prod` and `coffeemode-images-staging` R2 buckets once the `cafemood.app` Cloudflare zone is active (item 7 / issue #142)
+- [ ] Attach custom domains `images.cafemood.app` and `staging-images.cafemood.app` to `coffeemode-images-prod` and `coffeemode-images-staging` R2 buckets (zone `cafemood.app` active; records go in via BRAWUKA-236/238, issue #142)
 - [ ] Configure bucket defenses:
   - Set a maximum upload size (Cloudflare WAF / R2 bucket limits or a `Content-Length`-enforced presigned URL) to mitigate abuse.
   - Orphan cleanup (issue #158): do NOT add a blanket R2 lifecycle expiry on
@@ -86,8 +86,9 @@ and the KV hot-cache read path are unaffected and verified working.
 
 ## 7. Domain + deploy (later phase)
 
-- [ ] Point domain at the VPS; Cloudflare proxy/CDN in front
-- [ ] Cloudflare account for the POI worker (`poi-service.cafemood.app` once the domain lands)
+- [x] Domain registered + Cloudflare zone delegated — `cafemood.app` live with NS on emily/brodie.ns.cloudflare.com (verified 2026-09-14 via BRAWUKA-235 audit); zone currently holds zero DNS records, apex records go in via BRAWUKA-236/238
+- [ ] Create proxied DNS records for `cafemood.app` / `staging.cafemood.app` (BRAWUKA-236/238 scope); Cloudflare proxy/CDN in front
+- [ ] Cloudflare account for the POI worker (`poi-service.cafemood.app` once records land)
 - [x] In a terminal (from `poi-service/`), create the per-environment resources and add a `[env.staging]` / `[env.production]` block to `poi-service/wrangler.toml` (spec 0005 §3 names): (done 2026-09-12, BRAWUKA-222 — created on the `Lyuzizheng@gmail.com` account via Cloudflare MCP; `wrangler.toml` now carries real ids for both environments, the top-level local-dev placeholders untouched)
   - `poi-store-staging` = `d069da6b-07e5-4fc0-b6a9-a685b3bef8b8`, `poi-store` = `7d01d154-03a7-4483-8b54-83f2c310af3b` (`POI_DB`)
   - `poi-cache-staging` = `9f7f807aa68b47e3bbb6ecaf15c5f571`, `poi-cache` = `be0e4111b70f482ca23ed1f833142f88` (`POI_KV`)
@@ -118,7 +119,7 @@ and the KV hot-cache read path are unaffected and verified working.
      `x-image-service-token`) stay unchanged — the zone route is
      defense-in-depth, not a token replacement.
 - [ ] Enable the Cloudflare "Add visitor location headers" Managed Transform on the zone (sends `CF-IPCity` / `CF-IPCountry`; default-city resolution per DG128)
-- [ ] Create a Better Stack account + alert token for rate-limit/observability alerts (DG129); put the token in `web/.env.local` once the integration lands
+- [ ] Create a Better Stack account + alert token for rate-limit/observability alerts (DG129); put the ingest URL in `web/.env.local` / Dokploy env as `BETTER_STACK_INGEST_URL` — the app-side integration is implemented and verified end-to-end against a local sink (BRAWUKA-235); only the account + token remain
 
 ## 8. Kimi K3 UI design artifacts
 

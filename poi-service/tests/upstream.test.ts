@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  APPLE_FOOD_CAFE_CATEGORIES,
   getUpstreamProvider,
   GoogleApiError,
   GooglePlacesProvider,
+  isAppleFoodOrCafePOI,
   isGooglePlaceId,
+  matchesFoodCategory,
   resolveUpstreamSource,
   UpstreamApiError,
   type GooglePlace,
@@ -116,5 +119,56 @@ describe("GooglePlacesProvider", () => {
     expect(err).toBeInstanceOf(Error);
     expect(err.status).toBe(503);
     expect(err.message).toBe("upstream fail");
+  });
+});
+
+describe("Apple category map (BRAWUKA-328)", () => {
+  it("matches the full food/drink subset of MKPointOfInterestCategory", () => {
+    for (const category of [
+      "Cafe",
+      "Restaurant",
+      "Bakery",
+      "FoodMarket",
+      "Brewery",
+      "Distillery",
+      "Winery",
+      "Nightlife",
+    ]) {
+      expect(isAppleFoodOrCafePOI([category])).toBe(true);
+    }
+    // Case-insensitive: the client passes MapKit values verbatim.
+    expect(isAppleFoodOrCafePOI(["cafe"])).toBe(true);
+    expect(isAppleFoodOrCafePOI(["FOODMARKET"])).toBe(true);
+    // The allowlist is exactly these 8 — a taxonomy addition must be a
+    // deliberate test change, not a silent map edit.
+    expect(Object.keys(APPLE_FOOD_CAFE_CATEGORIES).sort()).toEqual([
+      "bakery",
+      "brewery",
+      "cafe",
+      "distillery",
+      "foodmarket",
+      "nightlife",
+      "restaurant",
+      "winery",
+    ]);
+  });
+
+  it("fails closed on non-food, unknown, and empty categories", () => {
+    expect(isAppleFoodOrCafePOI(["Bank"])).toBe(false);
+    expect(isAppleFoodOrCafePOI(["Hotel"])).toBe(false);
+    expect(isAppleFoodOrCafePOI(["TimeTravelParlor"])).toBe(false);
+    expect(isAppleFoodOrCafePOI([])).toBe(false);
+    expect(isAppleFoodOrCafePOI(null)).toBe(false);
+    expect(isAppleFoodOrCafePOI(undefined)).toBe(false);
+  });
+
+  it("matchesFoodCategory dispatches on source and fails closed on unknown sources", () => {
+    expect(matchesFoodCategory("apple", ["Cafe"])).toBe(true);
+    expect(matchesFoodCategory("apple", ["Bank"])).toBe(false);
+    expect(matchesFoodCategory("apple", [])).toBe(false);
+    expect(matchesFoodCategory("google", ["cafe"])).toBe(true);
+    expect(matchesFoodCategory("google", ["bank"])).toBe(false);
+    expect(matchesFoodCategory("google", [])).toBe(false);
+    expect(matchesFoodCategory("yahoo", ["Cafe"])).toBe(false);
   });
 });

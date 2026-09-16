@@ -174,6 +174,49 @@ describe("CafeCreationSheet & Trigger", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
   });
+
+  it("blocks the form with a food-only message when the worker skips the place (BRAWUKA-328)", async () => {
+    const onOpenChange = vi.fn();
+
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("/api/places/resolve")) {
+        return { ok: true, status: 200, json: async () => APPLE_PLACE };
+      }
+      if (url.includes("/api/places/search?")) {
+        return { ok: true, status: 200, json: async () => ({ results: [APPLE_PLACE] }) };
+      }
+      if (url.includes("/api/places/external")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ stored: 0, skipped: [{ index: 0, reason: "non_food_category" }] }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    });
+
+    render(
+      <CafeCreationSheet isOpen={true} onOpenChange={onOpenChange} isAuthenticated={true} />,
+      { wrapper: Wrapper },
+    );
+
+    // Google results are persist-free; flip to the mocked Apple provider
+    // (persist-on-select, no init gate in the mock) and select its row.
+    fireEvent.click(screen.getByRole("tab", { name: "Search a place" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apple Maps" }));
+    fireEvent.change(screen.getByPlaceholderText("Search for a cafe"), {
+      target: { value: "cafe" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+
+    const resultButton = await screen.findByRole("button", { name: /Apple Cafe/ });
+    fireEvent.click(resultButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/not a cafe or food venue/i);
+    });
+    expect(screen.queryByRole("button", { name: "Create cafe" })).not.toBeInTheDocument();
+  });
 });
 
 describe("CafeCreationSheet session expiry (BRAWUKA-124/BRAWUKA-212)", () => {

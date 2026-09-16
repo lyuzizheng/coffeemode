@@ -3,6 +3,7 @@ import { GooglePlacesProvider, isGooglePlaceId } from "./google";
 import type { UpstreamPlacesProvider } from "./types";
 
 export * from "./types";
+export * from "./apple";
 export * from "./google";
 
 /**

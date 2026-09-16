@@ -129,14 +129,17 @@ export async function searchExternalPOIs(params: {
   return data as POISearchResponse;
 }
 
-/** POST /poi/external — persist a client-side Apple MapKit result. */
-export async function storeExternalPOIs(pois: POI[]): Promise<{ stored: number }> {
+/** POST /poi/external — persist a client-side Apple MapKit result. Non-food
+ *  entries are not stored; the worker reports them in `skipped` (BRAWUKA-328). */
+export async function storeExternalPOIs(
+  pois: POI[],
+): Promise<{ stored: number; skipped?: Array<{ index: number; reason: string }> }> {
   const data = await poiFetch("/poi/external", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ pois }),
   });
-  return data as { stored: number };
+  return data as { stored: number; skipped?: Array<{ index: number; reason: string }> };
 }
 
 /** POST /poi/resolve — Google Maps share URL → POI (cafe creation import). */

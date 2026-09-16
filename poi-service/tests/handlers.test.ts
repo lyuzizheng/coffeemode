@@ -829,23 +829,24 @@ describe("POST /poi/external", () => {
     const res = await call("POST", "/poi/external", env, {
       body: {
         pois: [
-          { place_id: "apple-ref-1", source: "apple", name: "Kaffeelix", lat: 1.28, lng: 103.84 },
-          { place_id: "ChIJEXT2", source: "google", name: "Tiong Bahru Bakery", lat: 1.285, lng: 103.827 },
+          { place_id: "apple-ref-1", source: "apple", name: "Kaffeelix", lat: 1.28, lng: 103.84, types: ["Cafe"] },
+          { place_id: "ChIJEXT2", source: "google", name: "Tiong Bahru Bakery", lat: 1.285, lng: 103.827, types: ["bakery"] },
         ],
       },
     });
 
     expect(res.status).toBe(200);
-    expect(await bodyOf(res)).toEqual({ stored: 2 });
+    expect(await bodyOf(res)).toEqual({ stored: 2, skipped: [] });
     expect((env.POI_DB as FakeD1).rows).toHaveLength(2);
   });
 
   it("accepts a bare array", async () => {
     const env = makeEnv();
     const res = await call("POST", "/poi/external", env, {
-      body: [{ place_id: "apple-1", source: "apple", name: "Coffea", lat: 1.3, lng: 103.9 }],
+      body: [{ place_id: "apple-1", source: "apple", name: "Coffea", lat: 1.3, lng: 103.9, types: ["Cafe"] }],
     });
     expect(res.status).toBe(200);
+    expect(await bodyOf(res)).toEqual({ stored: 1, skipped: [] });
     expect((env.POI_DB as FakeD1).rows).toHaveLength(1);
   });
 
@@ -853,7 +854,7 @@ describe("POST /poi/external", () => {
     const env = makeEnv();
     const placeId = `apple:${"x".repeat(700)}`;
     const res = await call("POST", "/poi/external", env, {
-      body: [{ place_id: placeId, source: "apple", name: "Coffea", lat: 1.3, lng: 103.9 }],
+      body: [{ place_id: placeId, source: "apple", name: "Coffea", lat: 1.3, lng: 103.9, types: ["Cafe"] }],
     });
 
     expect(res.status).toBe(200);
@@ -913,8 +914,8 @@ describe("POST /poi/external", () => {
     const res = await call("POST", "/poi/external", env, {
       body: {
         pois: [
-          { place_id: "b1", source: "apple", name: "One", lat: 1, lng: 103 },
-          { place_id: "b2", source: "apple", name: "Two", lat: 1, lng: 103 },
+          { place_id: "b1", source: "apple", name: "One", lat: 1, lng: 103, types: ["Cafe"] },
+          { place_id: "b2", source: "apple", name: "Two", lat: 1, lng: 103, types: ["Restaurant"] },
         ],
       },
     });
@@ -1016,6 +1017,74 @@ describe("POST /poi/external", () => {
       (e) => e.index,
     );
     expect(entries).toEqual([0, 1]);
+  });
+
+  it("skips non-food Apple POIs without persisting, keeps food ones (BRAWUKA-328)", async () => {
+    const env = makeEnv();
+    const res = await call("POST", "/poi/external", env, {
+      body: {
+        pois: [
+          { place_id: "apple-bank", source: "apple", name: "Bank", lat: 1.3, lng: 103.9, types: ["Bank"] },
+          { place_id: "apple-cafe", source: "apple", name: "Cafe", lat: 1.31, lng: 103.91, types: ["Cafe"] },
+        ],
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(await bodyOf(res)).toEqual({ stored: 1, skipped: [{ index: 0, reason: "non_food_category" }] });
+    expect((env.POI_DB as FakeD1).rows.map((row) => row.place_id)).toEqual(["apple-cafe"]);
+  });
+
+  it("skips non-food Google POIs via this path too, keeps behavior consistent", async () => {
+    const env = makeEnv();
+    const res = await call("POST", "/poi/external", env, {
+      body: {
+        pois: [
+          { place_id: "ChIJATM", source: "google", name: "ATM", lat: 1.3, lng: 103.9, types: ["atm", "bank"] },
+          { place_id: "ChIJCAFE", source: "google", name: "Cafe", lat: 1.31, lng: 103.91, types: ["cafe"] },
+        ],
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(await bodyOf(res)).toEqual({ stored: 1, skipped: [{ index: 0, reason: "non_food_category" }] });
+    expect((env.POI_DB as FakeD1).rows.map((row) => row.place_id)).toEqual(["ChIJCAFE"]);
+  });
+
+  it("fails closed on unknown Apple categories and on empty types (BRAWUKA-328)", async () => {
+    const env = makeEnv();
+    const res = await call("POST", "/poi/external", env, {
+      body: {
+        pois: [
+          { place_id: "apple-unknown", source: "apple", name: "Mystery", lat: 1.3, lng: 103.9, types: ["TimeTravelParlor"] },
+          { place_id: "apple-empty", source: "apple", name: "Typeless", lat: 1.31, lng: 103.91 },
+          { place_id: "google-empty", source: "google", name: "Typeless", lat: 1.32, lng: 103.92, types: [] },
+        ],
+      },
+    });
+    expect(res.status).toBe(200);
+    expect(await bodyOf(res)).toEqual({
+      stored: 0,
+      skipped: [
+        { index: 0, reason: "non_food_category" },
+        { index: 1, reason: "non_food_category" },
+        { index: 2, reason: "non_food_category" },
+      ],
+    });
+    expect((env.POI_DB as FakeD1).rows).toHaveLength(0);
+  });
+
+  it("still invalidates the KV hot cache only for persisted ids (BRAWUKA-328)", async () => {
+    const kv = new FakeKV();
+    await kv.put("raw:google:ChIJKEPT", JSON.stringify(googleDetailResponse()));
+    const env = makeEnv({ POI_KV: kv });
+    const res = await call("POST", "/poi/external", env, {
+      body: [
+        { place_id: "ChIJKEPT", source: "google", name: "Kept Cafe", lat: 37.78, lng: -122.4, types: ["cafe"] },
+        { place_id: "apple-skipped", source: "apple", name: "Skipped Bank", lat: 1.3, lng: 103.9, types: ["Bank"] },
+      ],
+    });
+    expect(res.status).toBe(200);
+    expect(kv.has("raw:google:ChIJKEPT")).toBe(false);
+    expect((env.POI_DB as FakeD1).rows.map((row) => row.place_id)).toEqual(["ChIJKEPT"]);
   });
 });
 

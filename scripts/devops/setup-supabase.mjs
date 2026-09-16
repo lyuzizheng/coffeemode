@@ -30,7 +30,7 @@
  * ==============================================================================
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -269,6 +269,44 @@ function maskString(str, visibleChars = 8) {
   if (str.length <= visibleChars) return "***";
   return `${str.slice(0, visibleChars)}...${str.slice(-4)}`;
 }
+const MIGRATIONS_DIR_ABS = path.join(WEB_DIR, "db", "migrations");
+
+// BRAWUKA-337: single source of truth for "which public tables must exist
+// with RLS on". Scans web/db/migrations/*.sql for CREATE TABLE <name> so a
+// new table can never again ship without RLS coverage by forgetting a
+// hand-maintained list (0021 helpful_ranking_runs/entries did exactly that).
+// Tables born from CREATE TABLE AS / SELECT INTO would be missed by this
+// regex; migrations MUST use plain CREATE TABLE (the repo has zero CTAS
+// today — grep SELECT.INTO web/db/migrations to confirm) so the scan stays
+// complete. schema_migrations is runner bookkeeping, also RLS-covered.
+export function listMigrationTables() {
+  const tables = new Set(["schema_migrations"]);
+  let files = [];
+  try {
+    files = readdirSync(MIGRATIONS_DIR_ABS).filter((f) => f.endsWith(".sql"));
+  } catch {
+    throw new Error(
+      `Integrity Error: migrations dir unreadable at ${MIGRATIONS_DIR_ABS}; refusing to verify RLS against an unknown table set.`,
+    );
+  }
+  if (files.length === 0) {
+    throw new Error(
+      `Integrity Error: no *.sql files in ${MIGRATIONS_DIR_ABS}; refusing to verify RLS against an empty table set.`,
+    );
+  }
+  const createTableRe = /create\s+table\s+(?:if\s+not\s+exists\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?\s*\(/gi;
+  for (const file of files) {
+    const sql = readFileSync(path.join(MIGRATIONS_DIR_ABS, file), "utf8");
+    createTableRe.lastIndex = 0;
+    let m;
+    while ((m = createTableRe.exec(sql)) !== null) {
+      const schema = m[1] ? m[1].toLowerCase() : "public";
+      const table = m[2].toLowerCase();
+      if (schema === "public") tables.add(table);
+    }
+  }
+  return [...tables].sort();
+}
 
 // ------------------------------------------------------------------------------
 // Main Orchestration Flow
@@ -401,18 +439,12 @@ async function main() {
       // ------------------------------------------------------------------------
       // Step 4: Core Tables & Spatial Index Integrity Verification
       // ------------------------------------------------------------------------
+      // BRAWUKA-337: expectedTables is DERIVED from web/db/migrations/*.sql
+      // (create-table scan), never a second hand-written inventory. A new
+      // CREATE TABLE without RLS coverage fails closed here instead of
+      // shipping RLS-dark (0021 helpful_ranking_* shipped exactly that way).
       log.step(4, "Verifying Core Tables & Spatial Index Integrity");
-      const expectedTables = [
-        "profiles",
-        "cafes",
-        "checkins",
-        "checkin_likes",
-        "navigations",
-        "rate_limits",
-        "image_upload_intents",
-        "runtime_config",
-        "schema_migrations",
-      ];
+      const expectedTables = listMigrationTables();
 
       const tablesQuery = await client.query(`
         SELECT table_name 
@@ -477,19 +509,34 @@ async function main() {
       if (config.dryRun || config.verifyOnly) {
         log.info("[DRY RUN / VERIFY ONLY] Checking RLS status across public tables...");
         const rlsQuery = await client.query(`
-          SELECT relname as table_name, relrowsecurity as rls_enabled 
-          FROM pg_class 
-          JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace 
+          SELECT relname as table_name, relrowsecurity as rls_enabled
+          FROM pg_class
+          JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
           WHERE pg_namespace.nspname = 'public' AND pg_class.relkind = 'r'
             AND relname = ANY($1);
         `, [expectedTables]);
-
+        const seen = new Set(rlsQuery.rows.map((r) => r.table_name));
+        // BRAWUKA-337 fail-closed: expected-but-absent tables and RLS-off
+        // tables FAIL verify/dry-run (exit 1) instead of warn-and-pass.
+        // Tables below drifted before this check existed; the next STAGING
+        // then PROD provision converges them (verify-only may still fail
+        // until then — that failure IS the drift signal).
+        const failures = expectedTables.filter((t) => !seen.has(t));
         for (const row of rlsQuery.rows) {
           if (row.rls_enabled) {
             log.success(`RLS enabled on '${row.table_name}'.`);
           } else {
-            log.warn(`RLS is disabled on '${row.table_name}'.`);
+            failures.push(row.table_name);
+            log.error(`RLS is DISABLED on '${row.table_name}'.`);
           }
+        }
+        for (const t of expectedTables.filter((t) => !seen.has(t))) {
+          log.error(`Table 'public.${t}' expected by migrations but absent from database.`);
+        }
+        if (failures.length > 0) {
+          throw new Error(
+            `Integrity Error: RLS coverage incomplete (${failures.length}): ${failures.join(", ")}.`,
+          );
         }
       } else {
         log.info("Enabling Row Level Security (RLS) on all application tables...");
@@ -515,11 +562,31 @@ async function main() {
             ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM ${roleList};
             ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM ${roleList};
             ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON ROUTINES FROM ${roleList};
+            ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON TABLES FROM ${roleList};
+            ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON SEQUENCES FROM ${roleList};
+            ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON ROUTINES FROM ${roleList};
           `);
           log.success(`Privileges revoked from ${roleList}.`);
         } else {
           log.info("Note: Neither 'anon' nor 'authenticated' roles exist in this instance (non-Supabase catalog).");
         }
+
+        // BRAWUKA-337: self-verify on the same connection — the provision that
+        // just enabled RLS must also prove it (fail-closed, not log-and-hope).
+        // Catches a mid-list failure (e.g. ALTER on a dropped table) that
+        // would otherwise exit 0 with half the tables RLS-dark.
+        const verifyRes = await client.query(`
+          SELECT relname as table_name
+          FROM pg_class
+          JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
+          WHERE pg_namespace.nspname = 'public' AND pg_class.relkind = 'r'
+            AND relname = ANY($1) AND NOT relrowsecurity;
+        `, [expectedTables]);
+        if (verifyRes.rows.length > 0) {
+          const dark = verifyRes.rows.map((r) => r.table_name).join(", ");
+          throw new Error(`Integrity Error: RLS still disabled after provision on: ${dark}.`);
+        }
+        log.success("Post-provision RLS self-verification passed on all expected tables.");
       }
 
       // Verify that anon role cannot read cafes (if role and table exist)

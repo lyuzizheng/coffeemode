@@ -124,6 +124,12 @@ if [[ "$DRY_RUN" == "1" ]]; then
 fi
 
 if [[ "$SKIP_SETUP" == "0" ]]; then
+  # BRAWUKA-337 drift precheck: fail fast when the staging ledger trails the
+  # repo (setup would apply the delta anyway — this names the drift first so
+  # the log shows promotion was blocked by drift, not by a setup failure).
+  log "Step 0: migration-drift precheck (repo vs staging ledger)"
+  node "$WEB_DIR/scripts/check-migration-drift.mjs" --database-url "$STAGING_DATABASE_URL" || \
+    warn "drift precheck reported a gap — setup below will converge it; promotion stays blocked until this precheck is green"
   log "Step 1: staging setup (migrations + RLS + auth verify)"
   node "$REPO_ROOT/scripts/devops/setup-supabase.mjs" "${SETUP_ARGS[@]}"
 else

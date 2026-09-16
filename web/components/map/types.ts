@@ -82,9 +82,9 @@ export interface BaseMapProviderProps {
   className?: string;
   initialCenter: Coordinates;
   initialZoom: number;
-  /** Opaque style handle — each provider defines what it accepts (the
-   * MapLibre provider takes a style document URL). */
-  style: unknown;
+  /** UI theme — each provider maps it to its own style (the MapLibre
+   * provider resolves a style document URL from `map.maplibre.tileStyle`). */
+  theme?: string;
   /** Accessible name for the map container (localized by the caller). */
   ariaLabel?: string;
   /** Called once the map's first style load completes. */

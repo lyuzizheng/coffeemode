@@ -2,10 +2,11 @@
 
 The live basemap surface for `/` — a replaceable layer (owner directive
 2026-09-16): the surface binds to `IMapProvider`, never to a renderer. The
-MapLibre GL implementation is `maplibre-provider.tsx`; a Google/Apple swap
-is a new provider file + one import change in `discovery-map.tsx`, not a
-rewrite. The archived provider-switching `MapContainer` was deliberately
-NOT ported (its load-time geolocation violated DG112).
+provider component is selected by `map.provider` in app.yaml through the
+`providers.ts` registry (BRAWUKA-329): a Google/Apple swap is a new provider
+file + one registry entry + a `map.<provider>` config block — never a
+`discovery-map.tsx` change. The archived provider-switching `MapContainer`
+was deliberately NOT ported (its load-time geolocation violated DG112).
 
 ## Architecture
 
@@ -16,7 +17,7 @@ app/page.tsx
             ├─ DesktopDiscovery / MobileSheet   (data path — map-independent)
             └─ children = <MapSurface/>          (components/map/map-surface.tsx)
                  └─ next/dynamic ssr:false → DiscoveryMap (discovery-map.tsx)
-                      └─ MapLibreProvider        (maplibre-provider.tsx)
+                      └─ MAP_PROVIDERS[map.provider] → MapLibreProvider
                            └─ maplibre-gl Map
 ```
 
@@ -25,23 +26,28 @@ app/page.tsx
   (LCP/TBT headroom); an error boundary + `onError` degrade the slot to a
   retryable error card. The sheet keeps working — the data path never
   touches the map.
+- **providers.ts** — `MAP_PROVIDERS` registry: `map.provider` (app.yaml) →
+  provider component. Adding a provider = new file + one entry here.
 - **maplibre-provider.tsx** — the renderer implementation. Mount-once
   MapLibre wrapper: `initialCenter`/`initialZoom` are constructor-time only;
   later camera moves go through the `IMapProvider` adapter handed to
   `onLoad`. Owns every MapLibre concern — pin images, cafe source/layers,
   click/hover wiring, `style.load` rebind (re-applies data + selection after
-  a theme switch), `attributionControl` ON (OpenMapTiles license). Non-tile
-  errors before first paint → `onError`; per-tile errors stay non-fatal.
+  a theme switch), and theme→style-URL resolution via `maplibre-config.ts`.
+  `attributionControl` ON (OpenMapTiles license). Non-tile errors before
+  first paint → `onError`; per-tile errors stay non-fatal.
+- **maplibre-config.ts** — the `map.maplibre` client readers (style URLs) +
+  `mapLibreStyleForTheme`. Standalone so tests skip the maplibre-gl chunk.
 - **discovery-map.tsx** — renderer-agnostic: binds discovery state to
-  `IMapProvider` (theme → style URL, cafes → `setCafes`, selection →
-  `setSelectedCafe` + flyTo, taps → `onCafeSelect` → controller).
+  `IMapProvider` (theme → provider `theme` prop, cafes → `setCafes`,
+  selection → `setSelectedCafe` + flyTo, taps → `onCafeSelect` → controller).
 - **use-map-bindings.ts** — the one-way sync effects (padding, center sync,
   selection camera, cafe data + selection) — all through `IMapProvider`.
 - **cafe-pins.ts** — MapLibre-internal pin artwork + layer registration;
   imported only by maplibre-provider.tsx.
 - **Style documents** — both themes load full style JSONs from the tile host
-  (`map.tileStyle.light`/`dark` in app.yaml; OFM `liberty`/`dark`); the app
-  never owns a local style document.
+  (`map.maplibre.tileStyle.light`/`dark` in app.yaml; OFM `liberty`/`dark`);
+  the app never owns a local style document.
 - **types.ts** — `IMapProvider` / `BaseMapProviderProps` — the swap
   boundary. No renderer types cross it (`Coordinates` from `lib/cities`,
   `CafeSummary` from `types/cafes`). Optional capability members
@@ -66,11 +72,13 @@ Padding follows chrome: mobile keeps pins above the sheet's visible detent
 
 ## Config
 
-`web/config/app.yaml` → `map:` — `tileStyle.light`/`tileStyle.dark` (full
-style document URLs), `glyphs`, `sprite` (informational — the style documents
-carry their own), `defaultZoom`, `focusZoom`. Style URLs + zooms are mirrored
-to the client via `NEXT_PUBLIC_MAP_*` in `next.config.ts` and read through
-`lib/client-env.ts` getters.
+`web/config/app.yaml` → `map:` — `provider` (discriminator selecting a
+`map.<provider>` block), `defaultZoom`, `focusZoom` (provider-agnostic
+product parameters), `maplibre.tileStyle.light`/`dark` (full style document
+URLs; the style documents carry their own glyphs/sprite). Provider id + zooms
+are mirrored to the client via `NEXT_PUBLIC_MAP_*` in `next.config.ts` and
+read through `lib/client-env.ts`; the MapLibre style URLs go through
+`NEXT_PUBLIC_MAPLIBRE_*` and `maplibre-config.ts`.
 
 ## Failure modes
 

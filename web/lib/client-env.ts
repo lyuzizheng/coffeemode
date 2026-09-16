@@ -82,20 +82,10 @@ export function getNavPromptCollapseMs(): number {
   return envPositiveInt(process.env.NEXT_PUBLIC_NAV_PROMPT_COLLAPSE_MS, 8_000);
 }
 
-/** `map.tileStyle.light` — full style document URL for the light basemap. */
-export function getMapTileStyleLight(): string {
-  return envNonEmptyString(
-    process.env.NEXT_PUBLIC_MAP_TILE_STYLE_LIGHT,
-    "https://tiles.openfreemap.org/styles/liberty",
-  );
-}
-
-/** `map.tileStyle.dark` — full style document URL for the dark basemap. */
-export function getMapTileStyleDark(): string {
-  return envNonEmptyString(
-    process.env.NEXT_PUBLIC_MAP_TILE_STYLE_DARK,
-    "https://tiles.openfreemap.org/styles/dark",
-  );
+/** `map.provider` — active basemap provider id; selects the provider
+ * component in `components/map/providers.ts`. */
+export function getMapProvider(): string {
+  return envNonEmptyString(process.env.NEXT_PUBLIC_MAP_PROVIDER, "maplibre");
 }
 
 /** `map.defaultZoom` — city-level zoom when the resolved center changes. */

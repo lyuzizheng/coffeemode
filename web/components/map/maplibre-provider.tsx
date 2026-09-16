@@ -19,11 +19,12 @@
  *     `onError` so the surface can degrade to an error UI. Per-tile errors
  *     stay non-fatal — a missing tile must not blank the basemap.
  *  5. All MapLibre internals live here: pin images, cafe source/layers,
- *     click/hover wiring, and the `style.load` rebind that re-applies data +
- *     selection after a theme switch. Nothing outside this file (and
- *     cafe-pins.ts) imports maplibre-gl — the surface binds to
- *     `IMapProvider`, so a Google/Apple swap is a new provider, not a
- *     rewrite (owner directive 2026-09-16).
+ *     click/hover wiring, the `style.load` rebind that re-applies data +
+ *     selection after a theme switch, and the theme→style-URL resolution
+ *     (`map.maplibre.tileStyle` via maplibre-config.ts, BRAWUKA-329).
+ *     Nothing outside this file (and cafe-pins.ts) imports maplibre-gl —
+ *     the surface binds to `IMapProvider`, so a Google/Apple swap is a new
+ *     provider, not a rewrite (owner directive 2026-09-16).
  *
  * No GeolocateControl: DG112 — geolocation is only ever user-triggered via
  * the onboarding LocateButton, never a map control.
@@ -36,7 +37,7 @@
  * from the cafe dataset).
  */
 import { GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
-import type { MapMouseEvent, StyleSpecification } from "maplibre-gl";
+import type { MapMouseEvent } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
 import type { Coordinates } from "@/lib/cities";
@@ -53,6 +54,7 @@ import {
   EXTERNAL_SOURCE,
   PIN_LAYER,
 } from "./cafe-pins";
+import { mapLibreStyleForTheme } from "./maplibre-config";
 import type { BaseMapProviderProps, ExternalPin, IMapProvider } from "./types";
 
 /** Internal mutable state the adapter closes over — latest cafes/selection
@@ -221,18 +223,19 @@ function providerAdapter(
 /** Mount-once map construction + event wiring. Returns the cleanup. */
 function mountMap(opts: {
   container: HTMLDivElement;
-  props: Pick<BaseMapProviderProps, "initialCenter" | "initialZoom" | "style">;
+  props: Pick<BaseMapProviderProps, "initialCenter" | "initialZoom">;
+  style: string;
   mapRef: React.RefObject<MapLibreMap | null>;
   state: ProviderState;
   onLoadRef: React.RefObject<BaseMapProviderProps["onLoad"]>;
   onErrorRef: React.RefObject<BaseMapProviderProps["onError"]>;
 }): () => void {
-  const { container, props, mapRef, state, onLoadRef, onErrorRef } = opts;
+  const { container, props, style, mapRef, state, onLoadRef, onErrorRef } = opts;
   let map: MapLibreMap;
   try {
     map = new MapLibreMap({
       container,
-      style: props.style as StyleSpecification | string,
+      style,
       center: [props.initialCenter.lng, props.initialCenter.lat],
       zoom: props.initialZoom,
       // Compliance: OpenMapTiles attribution must stay visible.
@@ -273,7 +276,7 @@ export function MapLibreProvider({
   className,
   initialCenter,
   initialZoom,
-  style,
+  theme,
   ariaLabel,
   onLoad,
   onError,
@@ -302,7 +305,8 @@ export function MapLibreProvider({
     if (!container || mapRef.current) return;
     return mountMap({
       container,
-      props: { initialCenter, initialZoom, style },
+      props: { initialCenter, initialZoom },
+      style: mapLibreStyleForTheme(theme),
       mapRef,
       state: stateRef.current,
       onLoadRef,
@@ -316,8 +320,8 @@ export function MapLibreProvider({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    map.setStyle(style as StyleSpecification | string);
-  }, [style]);
+    map.setStyle(mapLibreStyleForTheme(theme));
+  }, [theme]);
 
   return (
     <div

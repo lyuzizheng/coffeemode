@@ -99,14 +99,15 @@ describe("config files", () => {
     });
     expect(appConfig.validation).toEqual({ cafeAddressMaxChars: 300, profileCityMaxChars: 50 });
     expect(appConfig.map).toEqual({
-      tileStyle: {
-        light: "https://tiles.openfreemap.org/styles/liberty",
-        dark: "https://tiles.openfreemap.org/styles/dark",
-      },
-      glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
-      sprite: "https://tiles.openfreemap.org/sprites/ofm_f384/ofm",
+      provider: "maplibre",
       defaultZoom: 12,
       focusZoom: 15,
+      maplibre: {
+        tileStyle: {
+          light: "https://tiles.openfreemap.org/styles/liberty",
+          dark: "https://tiles.openfreemap.org/styles/dark",
+        },
+      },
     });
     expect(appConfig.budgets.bundle).toEqual({
       maxJsChunkBytes: 409600,
@@ -124,10 +125,13 @@ describe("config files", () => {
   });
 
   it("owns the basemap endpoints (map-home: the only tile-host coupling)", () => {
-    expect(appConfig.map.tileStyle.light).toBe("https://tiles.openfreemap.org/styles/liberty");
-    expect(appConfig.map.tileStyle.dark).toBe("https://tiles.openfreemap.org/styles/dark");
-    expect(appConfig.map.glyphs).toContain("{fontstack}");
-    expect(appConfig.map.sprite).toContain("openfreemap.org");
+    expect(appConfig.map.provider).toBe("maplibre");
+    expect(appConfig.map.maplibre.tileStyle.light).toBe(
+      "https://tiles.openfreemap.org/styles/liberty",
+    );
+    expect(appConfig.map.maplibre.tileStyle.dark).toBe(
+      "https://tiles.openfreemap.org/styles/dark",
+    );
     expect(appConfig.map.defaultZoom).toBe(12);
     expect(appConfig.map.focusZoom).toBe(15);
   });
@@ -303,14 +307,15 @@ describe("parseAppConfig validation", () => {
   const validRuntimeConfig = { responseCache: { sMaxAgeSeconds: 60, staleWhileRevalidateSeconds: 300 } };
   const validOnboarding = { cityCoverageKm: 50, geolocationTimeoutMs: 10000 };
   const validMap = {
-    tileStyle: {
-      light: "https://tiles.openfreemap.org/styles/liberty",
-      dark: "https://tiles.openfreemap.org/styles/dark",
-    },
-    glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
-    sprite: "https://tiles.openfreemap.org/sprites/ofm_f384/ofm",
+    provider: "maplibre",
     defaultZoom: 12,
     focusZoom: 15,
+    maplibre: {
+      tileStyle: {
+        light: "https://tiles.openfreemap.org/styles/liberty",
+        dark: "https://tiles.openfreemap.org/styles/dark",
+      },
+    },
   };
 
   it("accepts a valid config", () => {
@@ -636,14 +641,17 @@ describe("parseAppConfig validation", () => {
     ).toThrow(/"profile\.handle\.slugMaxChars" must be a positive integer/);
   });
 
-  it("owns the basemap provider seam (four OFM URLs)", () => {
-    expect(appConfig.map.tileStyle.light).toBe("https://tiles.openfreemap.org/styles/liberty");
-    expect(appConfig.map.tileStyle.dark).toBe("https://tiles.openfreemap.org/styles/dark");
-    expect(appConfig.map.glyphs).toBe("https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf");
-    expect(appConfig.map.sprite).toBe("https://tiles.openfreemap.org/sprites/ofm_f384/ofm");
+  it("owns the basemap provider seam (BRAWUKA-329)", () => {
+    expect(appConfig.map.provider).toBe("maplibre");
+    expect(appConfig.map.maplibre.tileStyle.light).toBe(
+      "https://tiles.openfreemap.org/styles/liberty",
+    );
+    expect(appConfig.map.maplibre.tileStyle.dark).toBe(
+      "https://tiles.openfreemap.org/styles/dark",
+    );
   });
 
-  it("rejects a missing or non-https map section", () => {
+  it("rejects a missing, unknown-provider, or non-https map section", () => {
     const base = {
       search: validSearch,
       stats: validStats,
@@ -663,11 +671,25 @@ describe("parseAppConfig validation", () => {
     };
     expect(() => parseAppConfig({ ...base })).toThrow(/"map" must be a mapping/);
     expect(() =>
-      parseAppConfig({ ...base, map: { ...validMap, tileStyle: { light: "http://tiles.example.com/a", dark: validMap.tileStyle.dark } } }),
-    ).toThrow(/"map\.tileStyle\.light" must be an https: URL/);
+      parseAppConfig({ ...base, map: { ...validMap, provider: "google" } }),
+    ).toThrow(/"map\.provider" must be one of: maplibre/);
     expect(() =>
-      parseAppConfig({ ...base, map: { ...validMap, glyphs: "" } }),
-    ).toThrow(/"map\.glyphs" must be a non-empty string/);
+      parseAppConfig({ ...base, map: { ...validMap, maplibre: undefined } }),
+    ).toThrow(/"map\.maplibre" must be a mapping/);
+    expect(() =>
+      parseAppConfig({
+        ...base,
+        map: {
+          ...validMap,
+          maplibre: {
+            tileStyle: {
+              light: "http://tiles.example.com/a",
+              dark: validMap.maplibre.tileStyle.dark,
+            },
+          },
+        },
+      }),
+    ).toThrow(/"map\.maplibre\.tileStyle\.light" must be an https: URL/);
   });
 
   it("rejects mistyped images/query/validation sections (BRAWUKA-250)", () => {

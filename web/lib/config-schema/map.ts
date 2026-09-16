@@ -1,4 +1,4 @@
-import { boundedNumber, fail, record } from "./primitives";
+import { boundedNumber, fail, nonEmptyString, record } from "./primitives";
 import type { AppConfig } from "./types";
 
 type MapConfig = AppConfig["map"];
@@ -19,26 +19,30 @@ function httpsUrl(file: string, keyPath: string, value: unknown): string {
   return value;
 }
 
-function templateUrl(file: string, keyPath: string, value: unknown): string {
-  const url = httpsUrl(file, keyPath, value);
-  if (url.includes(" ")) {
-    fail(file, keyPath, "must not contain spaces");
-  }
-  return url;
-}
+/** Known `map.provider` values — each needs a `map.<provider>` block and a
+ * matching entry in `components/map/providers.ts`. */
+const KNOWN_PROVIDERS: Record<string, true> = { maplibre: true };
 
 /** Validate the `map` subtree of app.yaml (basemap provider seam;
- * zoom levels added by map-home, BRAWUKA-311). */
+ * BRAWUKA-329: `provider` discriminator + per-provider blocks; zooms stay
+ * top-level product parameters consumed by the provider-agnostic camera
+ * bindings). */
 export function parseMapSection(file: string, map: Record<string, unknown>): MapConfig {
-  const tileStyle = record(file, "map.tileStyle", map.tileStyle);
+  const provider = nonEmptyString(file, "map.provider", map.provider);
+  if (!KNOWN_PROVIDERS[provider]) {
+    fail(file, "map.provider", `must be one of: ${Object.keys(KNOWN_PROVIDERS).join(", ")}`);
+  }
+  const maplibre = record(file, "map.maplibre", map.maplibre);
+  const tileStyle = record(file, "map.maplibre.tileStyle", maplibre.tileStyle);
   return {
-    tileStyle: {
-      light: httpsUrl(file, "map.tileStyle.light", tileStyle.light),
-      dark: httpsUrl(file, "map.tileStyle.dark", tileStyle.dark),
-    },
-    glyphs: templateUrl(file, "map.glyphs", map.glyphs),
-    sprite: httpsUrl(file, "map.sprite", map.sprite),
+    provider,
     defaultZoom: boundedNumber(file, "map.defaultZoom", map.defaultZoom, 1, 22),
     focusZoom: boundedNumber(file, "map.focusZoom", map.focusZoom, 1, 22),
+    maplibre: {
+      tileStyle: {
+        light: httpsUrl(file, "map.maplibre.tileStyle.light", tileStyle.light),
+        dark: httpsUrl(file, "map.maplibre.tileStyle.dark", tileStyle.dark),
+      },
+    },
   };
 }

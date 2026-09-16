@@ -164,14 +164,15 @@ function minimalValid() {
     feed: { pageSize: 20, helpful: { halfLifeDays: 14, snapshotRetentionDays: 7 } },
     discovery: { defaultCenter: { lat: 1.35, lng: 103.8 } },
     map: {
-      tileStyle: {
-        light: "https://tiles.openfreemap.org/planet",
-        dark: "https://tiles.openfreemap.org/styles/fiord",
-      },
-      glyphs: "https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf",
-      sprite: "https://tiles.openfreemap.org/sprites/ofm_f384/ofm",
+      provider: "maplibre",
       defaultZoom: 12,
       focusZoom: 15,
+      maplibre: {
+        tileStyle: {
+          light: "https://tiles.openfreemap.org/planet",
+          dark: "https://tiles.openfreemap.org/styles/fiord",
+        },
+      },
     },
     onboarding: { cityCoverageKm: 50, geolocationTimeoutMs: 10000 },
     seo: {

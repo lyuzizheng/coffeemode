@@ -219,8 +219,8 @@ if [ "$DRY_RUN" = false ]; then
     PREV_VERSION="$(echo "$PRE_PROBE" | grep -oE '"version"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
     PREV_BOOT_TIME="$(echo "$PRE_PROBE" | grep -oE '"boot_time"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
   fi
-  if docker ps --filter "name=^/coffeemode-web-staging$" --format '{{.ID}}' &>/dev/null; then
-    PREV_CONTAINER_ID="$(docker ps -q --filter "name=^/coffeemode-web-staging$" 2>/dev/null || echo "")"
+  if docker ps --filter "name=coffeemode-web-staging" --format '{{.ID}}' &>/dev/null; then
+    PREV_CONTAINER_ID="$(docker ps -q --filter "name=coffeemode-web-staging" 2>/dev/null || echo "")"
   fi
 fi
 
@@ -231,7 +231,7 @@ if [[ -n "$DEPLOY_URL" ]]; then
     if [[ -n "$DEPLOY_TOKEN" ]]; then
       AUTH_HEADER=(-H "Authorization: Bearer ${DEPLOY_TOKEN}")
     fi
-    curl -fsS -X POST "${AUTH_HEADER[@]}" "${DEPLOY_URL}"
+    curl -fsS --max-time 30 -X POST "${AUTH_HEADER[@]}" "${DEPLOY_URL}"
     ok "Dokploy deployment webhook triggered successfully."
   else
     ok "[DRY-RUN] Dokploy deployment webhook call simulated."
@@ -274,8 +274,8 @@ if [ "$DRY_RUN" = false ]; then
         CURR_VERSION="$(echo "$HEALTH_BODY" | grep -oE '"version"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
         CURR_BOOT_TIME="$(echo "$HEALTH_BODY" | grep -oE '"boot_time"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
         CURR_CONTAINER_ID=""
-        if docker ps --filter "name=^/coffeemode-web-staging$" --format '{{.ID}}' &>/dev/null; then
-          CURR_CONTAINER_ID="$(docker ps -q --filter "name=^/coffeemode-web-staging$" 2>/dev/null || echo "")"
+        if docker ps --filter "name=coffeemode-web-staging" --format '{{.ID}}' &>/dev/null; then
+          CURR_CONTAINER_ID="$(docker ps -q --filter "name=coffeemode-web-staging" 2>/dev/null || echo "")"
         fi
 
         if [[ -n "$RELEASE_TAG" && "$RELEASE_TAG" != "latest" && "$CURR_VERSION" == "$RELEASE_TAG"* ]]; then

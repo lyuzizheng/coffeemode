@@ -21,7 +21,7 @@ function resolveEnv(): string {
  * project awake. Unauthenticated by design; the body carries no secrets.
  * Better Stack polls this every 5–10 min; 503 on DB failure is the alert
  * signal. The WAF rule (BRAWUKA-237) whitelists the Better Stack UA plus
- * `coffeemode-smoke/1.0` — curl's default UA is challenged at the edge.
+ * `cafemood-smoke/1.0` — curl's default UA is challenged at the edge.
  */
 export async function GET(request: Request) {
   const gate = await guard(request, {

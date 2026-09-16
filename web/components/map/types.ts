@@ -1,12 +1,15 @@
-import type { Map as MapLibreMap } from "maplibre-gl";
 import type { Coordinates } from "@/lib/cities";
+import type { CafeSummary } from "@/types/cafes";
 
 /**
- * Map provider contract (map-home, BRAWUKA-311). Ported from the archived
- * `_archive-coffeemode-frontend` map slice with `LatLngLiteral` replaced by
- * the shared `Coordinates` (same shape) — there is exactly one provider
- * (OpenFreeMap/MapLibre); the interface stays because the surface binds to
- * it, not to MapLibre's API surface.
+ * Map provider contract (map-home, BRAWUKA-311; hardened 2026-09-16 per the
+ * owner directive: the map is a replaceable layer — a Google/Apple swap is a
+ * new implementation of this interface, never a surface rewrite).
+ *
+ * Everything the surface needs lives here: camera, viewport padding, cafe
+ * data, selection, and the tap callback. No renderer types (MapLibre, MapKit,
+ * Google) cross this boundary — `discovery-map.tsx` and `use-map-bindings.ts`
+ * are renderer-agnostic by construction.
  */
 export interface IMapProvider {
   /** Sets the map's center. */
@@ -24,6 +27,18 @@ export interface IMapProvider {
   /** Smoothly transitions the map view to a new center and optional zoom. */
   flyTo(center: Coordinates, zoom?: number): void;
 
+  /** Camera padding in px — keeps pins clear of the sheet/detail chrome. */
+  setPadding(padding: { top: number; right: number; bottom: number; left: number }): void;
+
+  /** Replaces the cafe dataset (pins + clusters). */
+  setCafes(cafes: CafeSummary[]): void;
+
+  /** Marks one cafe selected (halo) or clears it (null). */
+  setSelectedCafe(cafeId: string | null): void;
+
+  /** Registers the cafe-tap callback; returns an unsubscribe function. */
+  onCafeSelect(handler: (cafeId: string) => void): () => void;
+
   /** Cleans up map resources. */
   destroy(): void;
 }
@@ -38,12 +53,13 @@ export interface BaseMapProviderProps {
   className?: string;
   initialCenter: Coordinates;
   initialZoom: number;
-  /** Style JSON object or style URL; switching it re-styles in place. */
+  /** Opaque style handle — each provider defines what it accepts (the
+   * MapLibre provider takes a style document URL). */
   style: unknown;
   /** Accessible name for the map container (localized by the caller). */
   ariaLabel?: string;
   /** Called once the map's first style load completes. */
-  onLoad: (provider: IMapProvider, map: MapLibreMap) => void;
+  onLoad: (provider: IMapProvider) => void;
   /** Called when the basemap fails irrecoverably (style/source/WebGL). */
   onError: (error: unknown) => void;
 }

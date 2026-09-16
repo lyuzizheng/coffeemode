@@ -245,7 +245,6 @@
     "searchAction": "Search",
     "searchResults": "Search results",
     "noAddress": "Address unavailable",
-    "appleLoading": "Connecting to Apple Maps…",
     "appleUnavailable": "Apple Maps search is not configured yet.",
     "searchFailed": "Search is unavailable right now.",
     "previewTitle": "Place preview",
@@ -270,7 +269,8 @@
     "offline": "Creation unavailable offline",
     "signInRequired": "Please sign in to publish — your draft stays here.",
     "close": "Close",
-    "submit": "Create cafe"
+    "submit": "Create cafe",
+    "providerLoading": "Connecting to the place service…"
   },
   "checkIn": {
     "title": "Check in",

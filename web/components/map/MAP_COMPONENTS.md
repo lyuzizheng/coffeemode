@@ -1,9 +1,11 @@
 # Map Components (map-home, BRAWUKA-311)
 
-The live basemap surface for `/` — MapLibre GL v5 + OpenFreeMap. Ported from
-the archived `_archive-coffeemode-frontend` map slice; the provider-switching
-`MapContainer` was deliberately NOT ported (no second provider exists, and
-its load-time geolocation violated DG112).
+The live basemap surface for `/` — a replaceable layer (owner directive
+2026-09-16): the surface binds to `IMapProvider`, never to a renderer. The
+MapLibre GL implementation is `maplibre-provider.tsx`; a Google/Apple swap
+is a new provider file + one import change in `discovery-map.tsx`, not a
+rewrite. The archived provider-switching `MapContainer` was deliberately
+NOT ported (its load-time geolocation violated DG112).
 
 ## Architecture
 
@@ -14,31 +16,35 @@ app/page.tsx
             ├─ DesktopDiscovery / MobileSheet   (data path — map-independent)
             └─ children = <MapSurface/>          (components/map/map-surface.tsx)
                  └─ next/dynamic ssr:false → DiscoveryMap (discovery-map.tsx)
-                      └─ OpenFreeMapProvider     (openfreemap-provider.tsx)
+                      └─ MapLibreProvider        (maplibre-provider.tsx)
                            └─ maplibre-gl Map
 ```
 
 - **map-surface.tsx** — client-only entry. SSR renders the skeleton in the
-  same slot; an error boundary + `onError` degrade the slot to a retryable
-  error card. The sheet keeps working — the data path never touches the map.
-- **openfreemap-provider.tsx** — mount-once MapLibre wrapper. `initialCenter`/
-  `initialZoom` are constructor-time only; later camera moves go through the
-  `IMapProvider` adapter (`flyTo`/`setCenter`) handed to `onLoad`.
-  `attributionControl` is ON (OpenMapTiles license). Non-tile errors before
-  first paint → `onError`; per-tile errors stay non-fatal.
-- **discovery-map.tsx** — binds discovery state to the map: theme → style
-  switch, cafes → clustered pins, selection → flyTo, pin/cluster taps →
-  controller. `bindMapInteractions` owns the map event listeners.
+  same slot; the maplibre chunk + map init defer to `requestIdleCallback`
+  (LCP/TBT headroom); an error boundary + `onError` degrade the slot to a
+  retryable error card. The sheet keeps working — the data path never
+  touches the map.
+- **maplibre-provider.tsx** — the renderer implementation. Mount-once
+  MapLibre wrapper: `initialCenter`/`initialZoom` are constructor-time only;
+  later camera moves go through the `IMapProvider` adapter handed to
+  `onLoad`. Owns every MapLibre concern — pin images, cafe source/layers,
+  click/hover wiring, `style.load` rebind (re-applies data + selection after
+  a theme switch), `attributionControl` ON (OpenMapTiles license). Non-tile
+  errors before first paint → `onError`; per-tile errors stay non-fatal.
+- **discovery-map.tsx** — renderer-agnostic: binds discovery state to
+  `IMapProvider` (theme → style URL, cafes → `setCafes`, selection →
+  `setSelectedCafe` + flyTo, taps → `onCafeSelect` → controller).
 - **use-map-bindings.ts** — the one-way sync effects (padding, center sync,
-  selection camera, GeoJSON data + selection ring).
-- **cafe-pins.ts** — baked SVG pin images (open/closed/unknown), GeoJSON
-  shaping, cluster/pin/halo layer registration (`bindCafeLayers` runs on
-  every `style.load` — a theme switch wipes runtime layers).
+  selection camera, cafe data + selection) — all through `IMapProvider`.
+- **cafe-pins.ts** — MapLibre-internal pin artwork + layer registration;
+  imported only by maplibre-provider.tsx.
 - **Style documents** — both themes load full style JSONs from the tile host
   (`map.tileStyle.light`/`dark` in app.yaml; OFM `liberty`/`dark`); the app
   never owns a local style document.
-- **types.ts** — `IMapProvider` / `BaseMapProviderProps` (`Coordinates` from
-  `lib/cities`, not a parallel LatLng type).
+- **types.ts** — `IMapProvider` / `BaseMapProviderProps` — the swap
+  boundary. No renderer types cross it (`Coordinates` from `lib/cities`,
+  `CafeSummary` from `types/cafes`).
 
 ## Camera contract
 

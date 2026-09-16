@@ -120,6 +120,8 @@ docs/agent/              current state, planned-slice manifest, owner actions
   pivoted the basemap to MapLibre. Tile host = the `map:` section in
   web/config/app.yaml (full style document URLs — public OFM instance;
   self-hosting permanently off the table per BRAWUKA-321 owner decision).
+  The surface binds to `IMapProvider`, not MapLibre — a Google/Apple swap
+  is a provider swap, not a rewrite.
   No MapKit fallback — the old implementation never shipped,
   there is nothing to fall back to.
 - map-discovery-integration — PARTIAL: selection → flyTo, clustered pins,

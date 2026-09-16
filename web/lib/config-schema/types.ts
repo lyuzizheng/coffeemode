@@ -110,17 +110,20 @@ export interface AppConfig {
     downloadSlackBytes: number;
   };
   map: {
-    tileStyle: {
-      /** Full style document URLs — basemap provider seam. */
-      light: string;
-      dark: string;
-    };
-    glyphs: string;
-    sprite: string;
-    /** City-level zoom when the resolved center changes. */
+    /** Active basemap provider — selects which `map.<provider>` block is live. */
+    provider: string;
+    /** City-level zoom when the resolved center changes (provider-agnostic). */
     defaultZoom: number;
-    /** Street-level zoom when a cafe is selected. */
+    /** Street-level zoom when a cafe is selected (provider-agnostic). */
     focusZoom: number;
+    /** MapLibre GL provider block — required when `provider` is "maplibre". */
+    maplibre: {
+      tileStyle: {
+        /** Full style document URLs — basemap provider seam. */
+        light: string;
+        dark: string;
+      };
+    };
   };
   query: {
     staleTimeMs: number;

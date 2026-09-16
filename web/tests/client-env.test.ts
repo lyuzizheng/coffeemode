@@ -8,8 +8,7 @@ import {
   getImageMaxDimension,
   getMapDefaultZoom,
   getMapFocusZoom,
-  getMapTileStyleDark,
-  getMapTileStyleLight,
+  getMapProvider,
   getNavPromptCollapseMs,
   getOnboardingGeolocationTimeoutMs,
   getQueryGcTimeMs,
@@ -58,9 +57,9 @@ describe("client config fallbacks match app.yaml", () => {
     expect(getOnboardingGeolocationTimeoutMs()).toBe(
       appConfig.onboarding.geolocationTimeoutMs,
     );
-    // map-home: basemap style URLs + zooms mirror app.yaml's map section.
-    expect(getMapTileStyleLight()).toBe(appConfig.map.tileStyle.light);
-    expect(getMapTileStyleDark()).toBe(appConfig.map.tileStyle.dark);
+    // map-home: provider id + zooms mirror app.yaml's map section; the
+    // provider's style URLs live in components/map/maplibre-config.ts.
+    expect(getMapProvider()).toBe(appConfig.map.provider);
     expect(getMapDefaultZoom()).toBe(appConfig.map.defaultZoom);
     expect(getMapFocusZoom()).toBe(appConfig.map.focusZoom);
   });
@@ -88,8 +87,8 @@ describe("client config fallbacks match app.yaml", () => {
     expect(getQueryGcTimeMs()).toBe(3_600_000);
     vi.stubEnv("NEXT_PUBLIC_ONBOARDING_GEOLOCATION_TIMEOUT_MS", "8000");
     expect(getOnboardingGeolocationTimeoutMs()).toBe(8_000);
-    vi.stubEnv("NEXT_PUBLIC_MAP_TILE_STYLE_DARK", "https://tiles.example.com/dark.json");
-    expect(getMapTileStyleDark()).toBe("https://tiles.example.com/dark.json");
+    vi.stubEnv("NEXT_PUBLIC_MAP_PROVIDER", "google");
+    expect(getMapProvider()).toBe("google");
     vi.stubEnv("NEXT_PUBLIC_MAP_FOCUS_ZOOM", "16");
     expect(getMapFocusZoom()).toBe(16);
   });

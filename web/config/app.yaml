@@ -62,23 +62,26 @@ cafes:
   # GET /api/cafes limit cap (also the default when no limit is given).
   listLimitMax: 50
 
-# Basemap provider seam (BRAWUKA-308/BRAWUKA-321): the ONLY coupling point
-# between the web map surface (BRAWUKA-311) and tile hosting. OpenFreeMap
-# public instance today; a future provider switch (e.g. Google/Apple Map)
-# is a config edit, never a code change.
+# Basemap provider seam (BRAWUKA-308/BRAWUKA-321/BRAWUKA-329): the ONLY
+# coupling point between the web map surface (BRAWUKA-311) and tile hosting.
+# `provider` selects which `map.<provider>` block is live; a provider switch
+# (e.g. Google/Apple Map) is a config edit, never a code change.
 map:
-  # Fully-qualified style documents (OpenFreeMap releases).
-  tileStyle:
-    light: https://tiles.openfreemap.org/styles/liberty
-    dark: https://tiles.openfreemap.org/styles/dark
-  # Font + sprite templates (`{fontstack}`/`{range}` are MapLibre tokens,
-  # passed through verbatim — never interpolate here).
-  glyphs: https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf
-  sprite: https://tiles.openfreemap.org/sprites/ofm_f384/ofm
+  # Active basemap provider — must match a `map.<provider>` block below.
+  provider: maplibre
   # City-level zoom when the resolved center changes (locate / city pick).
+  # Provider-agnostic product parameter (all providers share the zoom scale);
+  # read by the renderer-agnostic camera bindings.
   defaultZoom: 12
   # Street-level zoom when a cafe is selected (card or marker).
   focusZoom: 15
+  # MapLibre GL + OpenFreeMap public instance. The style documents carry
+  # their own glyphs/sprite — no separate config keys.
+  maplibre:
+    # Fully-qualified style documents (OpenFreeMap releases), per UI theme.
+    tileStyle:
+      light: https://tiles.openfreemap.org/styles/liberty
+      dark: https://tiles.openfreemap.org/styles/dark
 feed:
   # Check-in feed page size for both Helpful and Newest modes (spec 0001).
   pageSize: 20

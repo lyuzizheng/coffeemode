@@ -14,9 +14,10 @@
  *  - basemap failure → error card — the sheet keeps working because the
  *    data path never touches the map
  *
- * Renderer-agnostic: this file binds to `IMapProvider` only — the MapLibre
- * implementation lives in maplibre-provider.tsx (owner directive 2026-09-16:
- * the map is a replaceable layer).
+ * Renderer-agnostic: this file binds to `IMapProvider` only — the provider
+ * component is selected by `map.provider` via providers.ts (BRAWUKA-329) and
+ * owns its own theme→style resolution (owner directive 2026-09-16: the map
+ * is a replaceable layer).
  *
  * Loaded via next/dynamic ssr:false from map-surface.tsx — this module owns
  * the maplibre-gl import graph.
@@ -24,14 +25,10 @@
 import { useTheme } from "next-themes";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  getMapDefaultZoom,
-  getMapTileStyleDark,
-  getMapTileStyleLight,
-} from "@/lib/client-env";
+import { getMapDefaultZoom, getMapProvider } from "@/lib/client-env";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useDiscoveryMap } from "@/lib/discovery/map-context";
-import { MapLibreProvider } from "./maplibre-provider";
+import { MAP_PROVIDERS } from "./providers";
 import {
   useCafeData,
   useCenterSync,
@@ -54,10 +51,11 @@ export function DiscoveryMap({ onError }: { onError: (err: unknown) => void }) {
     selectRef.current = state?.controller.select ?? null;
   });
 
-  const style = useMemo(
-    () => (resolvedTheme === "dark" ? getMapTileStyleDark() : getMapTileStyleLight()),
-    [resolvedTheme],
-  );
+  // `map.provider` selects the renderer; the provider owns theme→style.
+  const Provider = MAP_PROVIDERS[getMapProvider()];
+  useEffect(() => {
+    if (!Provider) onError(new Error(`unknown map provider "${getMapProvider()}"`));
+  }, [Provider, onError]);
 
   const center = state?.center ?? null;
   const cafes = useMemo(() => state?.cafes ?? [], [state?.cafes]);
@@ -76,14 +74,14 @@ export function DiscoveryMap({ onError }: { onError: (err: unknown) => void }) {
   useSelectionCamera(refs, selectedCafeId, cafes, mapReady);
   useCafeData(refs, cafes, selectedCafeId, mapReady);
 
-  if (!state) return null;
+  if (!state || !Provider) return null;
 
   return (
-    <MapLibreProvider
+    <Provider
       className="absolute inset-0"
       initialCenter={state.center}
       initialZoom={getMapDefaultZoom()}
-      style={style}
+      theme={resolvedTheme}
       ariaLabel={t("aria")}
       onLoad={handleLoad}
       onError={onError}

@@ -508,13 +508,6 @@ targetType="provision" pre-target and the real target on attach):
   6. (retired in migration 0025) If `isCover` was true on a `cafe` target,
      `cafes.cover` was set to the `card` key — the column is now dropped.
 
-(Retired since PR #467: the Next.js `/api/images/complete` route no longer
-exists — only `web/app/api/images/upload/route.ts` remains. The authorization
-rules below describe that retired route, kept for history; the live photo
-entry is `POST /api/images/upload` { size } plus `photo_ids` on the
-creation/check-in write paths.)
-Authorization for the retired /api/images/complete:
-
 Photos on the creation/check-in write paths (issue #86):
   - `POST /api/cafes` and `POST /api/checkins` accept `photo_ids` (imageUuids
     from /api/images/upload), never StoredImage payloads.

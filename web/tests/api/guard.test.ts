@@ -273,4 +273,52 @@ describe("readJsonBody helper (BRAWUKA-181)", () => {
       expect(result.data).toBeNull();
     }
   });
+
+  it("returns 413 when Content-Length declares over 64KiB (BRAWUKA-315)", async () => {
+    const req = new Request("http://localhost/api/test", {
+      method: "POST",
+      body: JSON.stringify({ note: "small" }),
+      headers: { "content-length": String(64 * 1024 + 1) },
+    });
+
+    const result = await readJsonBody(req);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(413);
+      const body = await result.response.json();
+      expect(body).toEqual({
+        error: "invalid_request",
+        message: "request body too large",
+      });
+    }
+  });
+
+  it("returns 413 while streaming a chunked body over 64KiB (BRAWUKA-315)", async () => {
+    const encoder = new TextEncoder();
+    const chunk = encoder.encode("x".repeat(32 * 1024));
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(chunk);
+        controller.enqueue(chunk);
+        controller.enqueue(encoder.encode("x"));
+        controller.close();
+      },
+    });
+    const req = new Request("http://localhost/api/test", {
+      method: "POST",
+      body: stream as BodyInit,
+      duplex: "half",
+    } as RequestInit);
+
+    const result = await readJsonBody(req);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(413);
+      const body = await result.response.json();
+      expect(body).toEqual({
+        error: "invalid_request",
+        message: "request body too large",
+      });
+    }
+  });
 });

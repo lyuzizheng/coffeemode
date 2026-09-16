@@ -161,6 +161,14 @@ export async function guard(
   };
 }
 
+/**
+ * Hard cap on JSON request bodies. The largest legitimate payload is a
+ * check-in (note ≤ noteMaxChars=500 plus scores/photos metadata); 64 KiB
+ * leaves generous headroom while stopping unauthenticated unbounded
+ * buffering on routes that parse the body before guard().
+ */
+const MAX_JSON_BODY_BYTES = 64 * 1024;
+
 interface ReadJsonBodyOptions {
   /** If true, returns data: null when request body is empty instead of returning 400 */
   optional?: boolean;
@@ -188,7 +196,16 @@ export async function readJsonBody<T = unknown>(
   options?: ReadJsonBodyOptions,
 ): Promise<ReadJsonBodyResult<T | null>> {
   try {
-    const text = await request.text();
+    // Fast reject on the declared length, then a hard cap while streaming
+    // for chunked bodies that carry no Content-Length.
+    const declared = Number(request.headers.get("content-length") ?? 0);
+    if (declared > MAX_JSON_BODY_BYTES) {
+      return oversizedBody();
+    }
+    const text = await readBoundedBodyText(request);
+    if (text === null) {
+      return oversizedBody();
+    }
     if (!text || text.trim() === "") {
       if (options?.optional) {
         return { ok: true, data: null };
@@ -206,4 +223,41 @@ export async function readJsonBody<T = unknown>(
       response: apiError("invalid_request", "invalid JSON body", 400),
     };
   }
+}
+
+function oversizedBody(): ReadJsonBodyResult<null> {
+  return {
+    ok: false,
+    response: apiError("invalid_request", "request body too large", 413),
+  };
+}
+
+/**
+ * Read the body as text with a hard byte cap. Returns null when the stream
+ * exceeds the cap (caller maps to 413).
+ */
+async function readBoundedBodyText(request: Request): Promise<string | null> {
+  if (!request.body) {
+    return request.text();
+  }
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    received += value.byteLength;
+    if (received > MAX_JSON_BODY_BYTES) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  const buf = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    buf.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(buf);
 }

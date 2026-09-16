@@ -40,7 +40,13 @@ const OPTIONS = [
  * layout animation on the snappy spring (spec 0002 Motion); it collapses to
  * an instant swap under reduced motion.
  */
-export function ThemeToggle() {
+export function ThemeToggle({
+  variant = "default",
+}: {
+  /** "bare" drops the container chrome for embedding inside a parent chip
+   * (map overlay) — the segmented track and sliding thumb stay identical. */
+  variant?: "default" | "bare";
+}) {
   const t = useTranslations("themePreview.theme");
   const { theme, setTheme } = useTheme();
   const reduced = useReducedMotion();
@@ -52,7 +58,9 @@ export function ThemeToggle() {
     <div
       role="group"
       aria-label={t("label")}
-      className="flex items-center gap-0.5 rounded-lg border border-border bg-default p-0.5"
+      className={`flex items-center gap-0.5 bg-default p-0.5 ${
+        variant === "bare" ? "rounded-md" : "rounded-lg border border-border"
+      }`}
     >
       {OPTIONS.map((opt) => {
         const selected = active === opt.value;

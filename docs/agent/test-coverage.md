@@ -87,7 +87,7 @@ None of the gaps affect the READY slices (all have at least one mocked or integr
 | `issue-33-upload-intents` (COMPLETE) | T14/T15 intent single-use consume |
 | `issue-86-server-derived-photos` (COMPLETE) | T8/T15 `photo_ids` → server `StoredImage` |
 | `issue-98-auth-error-feedback` etc. (COMPLETE) | T2/T3 auth error codes |
-| `map-home` (COMPLETE) | e2e T1 (map canvas/error state + sidebar, tile host stubbed) + visual `home` entries both schemes; config schema pins `map:` section (`config.test.ts`, `client-env.test.ts`) |
+| `map-home` (COMPLETE) | e2e T1 (map canvas/error state + sidebar, tile host stubbed) + visual `home` entries both schemes; config schema pins `map:` section (`config.test.ts`, `client-env.test.ts`); `web/tests/components/map-account-chip.test.tsx` + `onboarding-home.test.tsx` cover the account/theme overlay affordance (BRAWUKA-318) |
 | `map-discovery-integration` (READY) | e2e T1 + visual `home` entries (selection/marker binding landed with map-home) |
 | `map-creation-entry` (READY) | e2e T1 + visual `home` entries (map surface exists to bind) |
 | `deeplink-hydration` (READY) | T2 SSR shell + e2e T2 (the map app it hydrates into is live) |

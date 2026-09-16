@@ -100,6 +100,10 @@ VPS                → Next.js app only (no database)
 Local dev/CI       → same postgis/postgis:16-3.4 image (docker-compose locally, pinned service container in CI) — unchanged
 ```
 
+Per-environment backends (local / staging / prod Supabase refs, connection
+modes, storage, Workers, domains) and secret ownership are canonical in spec
+0010; this section owns the data-layer split itself.
+
 - The client never talks to Postgres. All data access goes through Next.js route handlers (server-side), which verify the Supabase session first.
 - Product-table data stays server-mediated: route handlers use the pooled Postgres connection, and the tables must NOT be reachable through Supabase's Data API (PostgREST/GraphQL) with the browser anon key — new projects no longer auto-expose new tables, and default grants to `anon`/`authenticated` are revoked at provisioning as a belt-and-suspenders step (`docs/agent/pending-user-actions.md` §2). The anon key is used only for auth flows.
 - Postgres connection: standard `pg` Pool (server-side only), fail-closed SSL (#41). PostGIS enabled via `create extension postgis` (Supabase catalog). Pick the Supabase region closest to the VPS — route handlers run multi-round-trip transactions, so RTT multiplies.

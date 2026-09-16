@@ -22,3 +22,6 @@ export const CACHE_TTL_SECONDS = 7 * 24 * 3600; // ~7d
  */
 export const SEARCH_QUERY_CACHE_TTL_SECONDS = 600;
 
+/** Maximum number of candidate places reverseGeocode will inspect via Place Details (BRAWUKA-332). */
+export const MAX_REVERSE_GEOCODE_CANDIDATES = 3;
+

@@ -12,6 +12,11 @@ The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI 
   (`poi-service`, `image-service`) are deployed to staging and production, so what
   is left there is the POI Google Places key, a Cloudflare deploy API token, and
   custom domains — see `docs/agent/pending-user-actions.md`.
+- BRAWUKA-335 spec revision (specs 0003/0005 + new 0010): local dev defaults to
+  the staging Supabase project for auth (Google OAuth) while app data stays on
+  the local compose Postgres; `supabase-mock` is retained for offline/unit use;
+  staging journey suites run in per-suite scratch DBs via a serialized
+  `staging-journey` workflow; prod promotion adds manual owner approval.
 - Issue #23 (distributed Postgres token-bucket rate limiter) is merged.
 - Open issues carry tier-0..3 labels mirroring the priority tiers in `docs/specs/0004` §Priority tiers (authority lives there, not in the harness). Fix order: tier-0 correctness/security/docs-truth first, then tier-1 launch gates.
 - Issue #25 (image completion service with atomic DB writes) is merged.

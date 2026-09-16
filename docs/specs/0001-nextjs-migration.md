@@ -487,11 +487,14 @@ Upload flow:
   3. Worker returns presigned R2 PUT URL for original/{uuid}.webp
   4. Client PUTs the WebP original directly to R2
 
-Processing (BRAWUKA-307: this `/api/images/complete` + `isCover` flow is RETIRED —
-photo provisioning now runs through `photo_ids` intents on the creation/check-in
-write paths, and card covers derive from `gallery->0->>'card'`):
+Processing (BRAWUKA-307: the client entry `POST /api/images/complete` with its
+`isCover` flag is RETIRED — photo provisioning now runs through `photo_ids`
+intents on the creation/check-in write paths, and card covers derive from
+`gallery->0->>'card'`. The worker endpoint below stays LIVE: the `photo_ids`
+flow still calls `POST {image-service}/v1/images/complete` per image, with
+targetType="provision" pre-target and the real target on attach):
   1. (retired) Client → Next.js /api/images/complete (Supabase session + target id + optional `isCover` flag)
-  2. (retired) Next.js → image-service Worker /v1/images/complete (service token)
+  2. Next.js → image-service Worker /v1/images/complete (service token)
   3. Worker verifies original exists and returns:
        - presigned GET URL for original/{uuid}.webp
        - presigned PUT URL for original/{uuid}.webp (to overwrite with capped version)
@@ -505,11 +508,12 @@ write paths, and card covers derive from `gallery->0->>'card'`):
   6. (retired in migration 0025) If `isCover` was true on a `cafe` target,
      `cafes.cover` was set to the `card` key — the column is now dropped.
 
-Authorization for /api/images/complete:
-  - `cafe` target: allowed only when the user is the cafe's `created_by`.
-  - `checkin` target: allowed only when the user owns the checkin (`checkins.user_id`).
-    The photo is stored in `checkins.photos` and auto-merged into the parent cafe's
-    `gallery` (attributed via `by`/`at`/`source`) without requiring cafe ownership.
+(Retired since PR #467: the Next.js `/api/images/complete` route no longer
+exists — only `web/app/api/images/upload/route.ts` remains. The authorization
+rules below describe that retired route, kept for history; the live photo
+entry is `POST /api/images/upload` { size } plus `photo_ids` on the
+creation/check-in write paths.)
+Authorization for the retired /api/images/complete:
 
 Photos on the creation/check-in write paths (issue #86):
   - `POST /api/cafes` and `POST /api/checkins` accept `photo_ids` (imageUuids
@@ -575,6 +579,8 @@ renders a 380px cafe-list sidebar plus a second left column — the detail
 panel sits immediately right of the sidebar, and the map fills the remaining
 width (DG42). Smaller viewports use the mobile sheet; PEEK/HALF/FULL snap
 states are mobile-only.
+
+The map-independent discovery controller accepts CafeSummary[] plus selected state.
 A thin home-page adapter loads the existing nearby-cafes API; MapKit bindings and
 unified search stay in their own slices. CafeSummary carries a derived card cover
 (first gallery card, `gallery->0->>'card'`).

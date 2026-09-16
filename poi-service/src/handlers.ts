@@ -23,13 +23,16 @@
 import { authorized, internalError, json, unauthorized } from "./auth";
 import {
   DEFAULT_SEARCH_RADIUS_KM,
-  isFoodOrCafePOI,
   MAX_EXTERNAL_BATCH_SIZE,
   MAX_SEARCH_RADIUS_KM,
   SEARCH_RESULT_LIMIT,
 } from "./constants";
-import { fetchPlaceDetails, textSearch, toPOI, GoogleApiError, type GooglePlace } from "./google";
-import type { Deps, Env, POI, POISearchHit } from "./types";
+import {
+  getUpstreamProvider,
+  resolveUpstreamSource,
+  UpstreamApiError,
+} from "./upstream";
+import type { Deps, Env, POI, POISearchHit, POISource } from "./types";
 import { stableApplePlaceId } from "../../web/shared/places/apple-place-id";
 import {
   d1GetPOI,
@@ -49,17 +52,9 @@ import { resolveShareUrl } from "./url";
 // Re-exported for consumers/tests that historically imported from handlers.
 export { authorized } from "./auth";
 
-/**
- * Last-resort heuristic for never-seen ids: Google place ids are ChIJ… or
- * 0x…:0x…; Apple refs are arbitrary. Only used when neither KV nor D1 knows
- * the id — stored rows' explicit `source` column is authoritative (issue #38).
- */
-export function isGooglePlaceId(placeId: string): boolean {
-  return /^(ChIJ|0x)/.test(placeId);
-}
 
 function upstreamError(e: unknown): Response {
-  if (e instanceof GoogleApiError) {
+  if (e instanceof UpstreamApiError) {
     // Scrubbed: upstream response bodies are never relayed (status only).
     return json({ error: "upstream_error", status: e.status, message: e.message }, 502);
   }
@@ -78,7 +73,10 @@ async function getPOI(placeId: string, env: Env, deps: Deps): Promise<Response> 
   const raw = await kvGetRaw(env.POI_KV, placeId);
   if (raw) {
     try {
-      return json(toPOI(JSON.parse(raw)));
+      const provider = getUpstreamProvider("google", env, deps);
+      if (provider) {
+        return json(provider.toPOI(JSON.parse(raw)));
+      }
     } catch {
       // corrupt cache entry — fall through to D1/Google
     }
@@ -93,16 +91,23 @@ async function getPOI(placeId: string, env: Env, deps: Deps): Promise<Response> 
   if (stored && stored.source === "apple") return json(stored);
   if (stored && isFresh(stored)) return json(stored);
 
-  // 3. Never-seen id: only here fall back to the prefix heuristic
-  // (best-effort) to decide upstream fetch vs 404.
-  if (!stored && !isGooglePlaceId(placeId)) {
+  // 3. Resolve upstream provider: stored row's source is authoritative;
+  // for never-seen ids, fall back to provider heuristic (isGooglePlaceId).
+  const source = resolveUpstreamSource(placeId, stored?.source);
+  if (!source) {
     return json({ error: "not_found" }, 404);
   }
 
-  // 4. Google API → backfill both
-  let gp: GooglePlace;
+  const provider = getUpstreamProvider(source, env, deps);
+  if (!provider) {
+    if (stored) return json(stored);
+    return json({ error: "not_found" }, 404);
+  }
+
+  // 4. Upstream API → backfill both
+  let rawPlace: unknown;
   try {
-    gp = await fetchPlaceDetails(placeId, env, deps.fetchImpl);
+    rawPlace = await provider.getDetails(placeId);
   } catch (e) {
     // Graceful degradation: serve stale D1 row if we have one.
     if (stored) return json(stored);
@@ -111,13 +116,13 @@ async function getPOI(placeId: string, env: Env, deps: Deps): Promise<Response> 
 
   let poi: POI;
   try {
-    poi = toPOI(gp); // rejects places missing `location` instead of storing (0,0)
+    poi = provider.toPOI(rawPlace); // rejects places missing `location` instead of storing (0,0)
   } catch (e) {
     if (stored) return json(stored);
     return json({ error: "invalid_upstream", message: String(e) }, 502);
   }
   try {
-    await Promise.all([kvPutRaw(env.POI_KV, placeId, gp), d1UpsertPOI(env.POI_DB, poi)]);
+    await Promise.all([kvPutRaw(env.POI_KV, placeId, rawPlace), d1UpsertPOI(env.POI_DB, poi)]);
   } catch (e) {
     console.error("cache write failed", e);
   }
@@ -176,14 +181,18 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
   if (target.placeId) return await getPOI(target.placeId, env, deps);
 
   if (target.query) {
-    let results: GooglePlace[];
+    const source: POISource = target.source ?? "google";
+    const provider = getUpstreamProvider(source, env, deps);
+    if (!provider) {
+      return json({ error: "unresolvable", message: `no upstream provider for ${source}` }, 422);
+    }
+
+    let results: unknown[];
     try {
-      results = await textSearch(
-        target.query,
-        { lat: target.coords?.lat, lng: target.coords?.lng },
-        env,
-        deps.fetchImpl,
-      );
+      results = await provider.textSearch(target.query, {
+        lat: target.coords?.lat,
+        lng: target.coords?.lng,
+      });
     } catch (e) {
       return upstreamError(e);
     }
@@ -191,18 +200,17 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
     if (!first) return json({ error: "not_found", message: "no place matched" }, 404);
     let poi: POI;
     try {
-      poi = toPOI(first); // rejects places missing `location`
+      poi = provider.toPOI(first); // rejects places missing `location`
     } catch (e) {
       return json({ error: "invalid_upstream", message: String(e) }, 502);
     }
     try {
-      await Promise.all([kvPutRaw(env.POI_KV, first.id, first), d1UpsertPOI(env.POI_DB, poi)]);
+      await Promise.all([kvPutRaw(env.POI_KV, poi.place_id, first), d1UpsertPOI(env.POI_DB, poi)]);
     } catch (e) {
       console.error("cache write failed", e);
     }
     return json(poi);
   }
-
   return json(
     { error: "unresolvable", message: "no place_id, query, or coordinates in URL" },
     422,
@@ -302,23 +310,26 @@ async function searchExternalPOIs(request: Request, env: Env, deps: Deps): Promi
   const cached = await kvGetSearchQuery(env.POI_KV, queryKey);
   if (cached) return json({ results: cached });
 
-  let googlePlaces: GooglePlace[];
+  const provider = getUpstreamProvider("google", env, deps);
+  if (!provider) {
+    return json({ error: "upstream_error", message: "google provider not available" }, 502);
+  }
+
+  let places: unknown[];
   try {
-    googlePlaces = await textSearch(
+    places = await provider.textSearch(
       q,
       { lat: latProvided ? lat : undefined, lng: lngProvided ? lng : undefined, radiusKm: r },
-      env,
-      deps.fetchImpl,
     );
   } catch (e) {
     return upstreamError(e);
   }
 
-  const results: Array<{ poi: POI; raw: GooglePlace }> = [];
-  for (const place of googlePlaces.slice(0, SEARCH_RESULT_LIMIT)) {
+  const results: Array<{ poi: POI; raw: unknown }> = [];
+  for (const place of places.slice(0, SEARCH_RESULT_LIMIT)) {
     try {
-      const poi = toPOI(place);
-      if (!isFoodOrCafePOI(place.types)) {
+      const poi = provider.toPOI(place);
+      if (!provider.matchesCategory(poi.types)) {
         poi.not_persisted_reason = "non_food_category";
       }
       results.push({ poi, raw: place });

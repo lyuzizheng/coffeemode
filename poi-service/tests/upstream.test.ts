@@ -1,0 +1,120 @@
+import { describe, expect, it, vi } from "vitest";
+import {
+  getUpstreamProvider,
+  GoogleApiError,
+  GooglePlacesProvider,
+  isGooglePlaceId,
+  resolveUpstreamSource,
+  UpstreamApiError,
+  type GooglePlace,
+} from "../src/upstream";
+import type { Env } from "../src/types";
+import { FakeD1, FakeKV, googleDetailResponse, mockFetch } from "./helpers";
+
+function makeEnv(overrides: Partial<Env> = {}): Env {
+  return {
+    POI_SERVICE_TOKEN: "test-token",
+    GOOGLE_PLACES_API_KEY: "test-key",
+    POI_KV: new FakeKV(),
+    POI_DB: new FakeD1(),
+    GOOGLE_PLACES_BASE_URL: "https://places.test",
+    ...overrides,
+  };
+}
+
+describe("upstream provider resolution", () => {
+  it("returns GooglePlacesProvider for google source", () => {
+    const env = makeEnv();
+    const provider = getUpstreamProvider("google", env);
+    expect(provider).toBeInstanceOf(GooglePlacesProvider);
+  });
+
+  it("returns null for apple source (no server-side Places API)", () => {
+    const env = makeEnv();
+    const provider = getUpstreamProvider("apple", env);
+    expect(provider).toBeNull();
+  });
+
+  it("resolves source honoring stored source over prefix heuristic (issue #38)", () => {
+    // Stored apple row with ChIJ prefix -> apple
+    expect(resolveUpstreamSource("ChIJ_APPLE", "apple")).toBe("apple");
+    // Stored google row with non-prefix id -> google
+    expect(resolveUpstreamSource("goog-opaque-id", "google")).toBe("google");
+    // Never-seen ChIJ id -> google
+    expect(resolveUpstreamSource("ChIJ12345", null)).toBe("google");
+    // Never-seen 0x hex id -> google
+    expect(resolveUpstreamSource("0x8085:0x9f2c", null)).toBe("google");
+    // Never-seen arbitrary id -> null
+    expect(resolveUpstreamSource("unknown-id-123", null)).toBeNull();
+  });
+
+  it("isGooglePlaceId recognizes ChIJ and 0x prefixes", () => {
+    expect(isGooglePlaceId("ChIJN1t_tDeuEmsRUsoyG83frY4")).toBe(true);
+    expect(isGooglePlaceId("0x60188b9d2f2a2b79:0x9f2c0f1d2e3a4b5c")).toBe(true);
+    expect(isGooglePlaceId("apple-12345")).toBe(false);
+    expect(isGooglePlaceId("foo-bar")).toBe(false);
+  });
+});
+
+describe("GooglePlacesProvider", () => {
+  it("matchesCategory filters food/cafe types correctly", () => {
+    const env = makeEnv();
+    const provider = new GooglePlacesProvider(env);
+
+    expect(provider.matchesCategory(["cafe"])).toBe(true);
+    expect(provider.matchesCategory(["coffee_shop"])).toBe(true);
+    expect(provider.matchesCategory(["bakery", "store"])).toBe(true);
+    expect(provider.matchesCategory(["book_store", "library"])).toBe(false);
+    expect(provider.matchesCategory([])).toBe(false);
+  });
+
+  it("toPOI normalizes Google place and throws on missing location", () => {
+    const env = makeEnv();
+    const provider = new GooglePlacesProvider(env);
+
+    const raw = googleDetailResponse() as unknown as GooglePlace;
+    const poi = provider.toPOI(raw);
+    expect(poi).toMatchObject({
+      place_id: "ChIJTEST123",
+      source: "google",
+      name: "Blue Bottle Coffee",
+      lat: 37.7825,
+      lng: -122.4077,
+    });
+
+    expect(() => provider.toPOI({ id: "ChIJNOLOC" })).toThrow(
+      /refusing to store at \(0,0\)/,
+    );
+  });
+
+  it("getDetails calls upstream with field mask and handles error", async () => {
+    const env = makeEnv();
+    const fetchImpl = mockFetch(() =>
+      new Response(JSON.stringify(googleDetailResponse()), { status: 200 }),
+    );
+    const provider = new GooglePlacesProvider(env, fetchImpl);
+
+    const details = await provider.getDetails("ChIJTEST123");
+    expect(details.id).toBe("ChIJTEST123");
+  });
+
+  it("textSearch calls upstream and returns places", async () => {
+    const env = makeEnv();
+    const fetchImpl = mockFetch(() =>
+      new Response(JSON.stringify({ places: [googleDetailResponse()] }), { status: 200 }),
+    );
+    const provider = new GooglePlacesProvider(env, fetchImpl);
+
+    const places = await provider.textSearch("coffee", { lat: 37.7, lng: -122.4, radiusKm: 5 });
+    expect(places).toHaveLength(1);
+    expect(places[0].id).toBe("ChIJTEST123");
+  });
+
+  it("GoogleApiError inherits from UpstreamApiError", () => {
+    const err = new GoogleApiError("upstream fail", 503);
+    expect(err).toBeInstanceOf(UpstreamApiError);
+    expect(err).toBeInstanceOf(Error);
+    expect(err.status).toBe(503);
+    expect(err.message).toBe("upstream fail");
+  });
+});

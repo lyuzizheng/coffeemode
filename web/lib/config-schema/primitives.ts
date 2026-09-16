@@ -58,6 +58,14 @@ export function flag(file: string, keyPath: string, value: unknown): boolean {
   }
   return value;
 }
+/** A non-empty string (URLs, endpoints, markers). */
+export function nonEmptyString(file: string, keyPath: string, value: unknown): string {
+  if (typeof value !== "string" || value.length === 0) {
+    fail(file, keyPath, "must be a non-empty string");
+  }
+  return value;
+}
+
 
 export function stringList(file: string, keyPath: string, value: unknown): string[] {
   if (!Array.isArray(value) || value.some((v) => typeof v !== "string" || v.length === 0)) {

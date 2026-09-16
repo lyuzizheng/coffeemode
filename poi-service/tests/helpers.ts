@@ -15,6 +15,10 @@ export class FakeKV implements KVLike {
     this.map.set(key, { value });
   }
 
+  async delete(key: string): Promise<void> {
+    this.map.delete(key);
+  }
+
   has(key: string): boolean {
     return this.map.has(key);
   }

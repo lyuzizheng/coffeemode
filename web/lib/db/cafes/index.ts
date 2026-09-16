@@ -13,7 +13,6 @@ export {
 } from "./reads";
 export { setCafeVisibility, type SetCafeVisibilityResult } from "./visibility";
 export { deleteCafe, type DeleteCafeResult } from "./delete";
-export { attachImageToCafe, ownsCafe } from "./images";
 export {
   getServiceAccountId,
   isServiceMaintained,

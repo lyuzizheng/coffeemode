@@ -9,14 +9,20 @@ import {
   TextField,
 } from "@heroui/react";
 import { useTranslations } from "next-intl";
-import { useState, type FormEvent } from "react";
-import { ApplePlaceSearch } from "@/components/cafe/apple-place-search";
-import { isUnauthorized, responseMessage, throwIfUnauthorized } from "@/lib/http";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { isUnauthorized, responseMessage } from "@/lib/http";
 import { readOnboardingState } from "@/lib/onboarding-store";
-import type { POI, POISearchResponse } from "@shared/places/types";
-
+import { getPlaceSearchProviders } from "@/lib/places/providers";
+import type { PlaceSearchProvider } from "@/lib/places/place-search";
+import {
+  executeWidgetForToken,
+  getTurnstileSiteKey,
+  removeResolveWidget,
+  renderInvisibleResolveWidget,
+  resetResolveWidget,
+} from "@/lib/security/turnstile-client";
+import type { POI } from "@shared/places/types";
 type EntryMode = "link" | "search";
-type SearchProvider = "google" | "apple";
 
 interface CafePlaceSearchProps {
   onSelectPOI: (poi: POI, persist?: boolean) => void;
@@ -28,24 +34,102 @@ interface CafePlaceSearchProps {
 
 export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn }: CafePlaceSearchProps) {
   const t = useTranslations("create");
+  const providers = useMemo(() => getPlaceSearchProviders(t), [t]);
+  const [provider, setProvider] = useState<PlaceSearchProvider>(providers[0]);
   const [entryMode, setEntryMode] = useState<EntryMode>("link");
-  const [provider, setProvider] = useState<SearchProvider>("google");
   const [mapsUrl, setMapsUrl] = useState("");
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<POI[]>([]);
   const [busy, setBusy] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [turnstileReady, setTurnstileReady] = useState(false);
+  const turnstileRef = useRef<HTMLDivElement | null>(null);
+  const widgetIdRef = useRef<string | null>(null);
+
+  // Provider init (script load / token fetch) runs on selection — a failure
+  // surfaces as the provider's unavailable error in the shared alert slot.
+  // Readiness is derived per provider id (state-during-render pattern), so
+  // the effect only fires the async init, never sets state synchronously.
+  const [readyProviderId, setReadyProviderId] = useState<string | null>(null);
+  const providerReady = !provider.init || readyProviderId === provider.id;
+  useEffect(() => {
+    if (!provider.init) return;
+    let cancelled = false;
+    provider
+      .init()
+      .then(() => {
+        if (!cancelled) setReadyProviderId(provider.id);
+      })
+      .catch((cause) => {
+        if (!cancelled) {
+          onError(cause instanceof Error ? cause.message : t("searchFailed"));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [provider, onError, t]);
+
+  // Invisible Turnstile widget for the maps-link resolve (BRAWUKA-239):
+  // rendered once while the link tab is active, executed per submit so
+  // every POST carries a fresh single-use token; reset after each attempt
+  // so retries mint a new one. Skipped when no sitekey is configured.
+  useEffect(() => {
+    if (entryMode !== "link") return;
+    const sitekey = getTurnstileSiteKey();
+    const container = turnstileRef.current;
+    if (!sitekey || !container) return;
+    let cancelled = false;
+    let widgetId: string | null = null;
+    renderInvisibleResolveWidget(container, sitekey)
+      .then((id) => {
+        if (cancelled) {
+          removeResolveWidget(id);
+          return;
+        }
+        widgetId = id;
+        widgetIdRef.current = id;
+        setTurnstileReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) onError(t("resolveFailed"));
+      });
+    return () => {
+      cancelled = true;
+      setTurnstileReady(false);
+      widgetIdRef.current = null;
+      if (widgetId) removeResolveWidget(widgetId);
+    };
+  }, [entryMode, onError, t]);
 
   const resolveLink = async (event: FormEvent) => {
     event.preventDefault();
     if (!mapsUrl.trim()) return;
+    const sitekey = getTurnstileSiteKey();
+    const widgetId = widgetIdRef.current;
+    let turnstileToken: string | null = null;
+    if (sitekey) {
+      if (!turnstileReady || !widgetId) {
+        onError(t("resolveFailed"));
+        return;
+      }
+      try {
+        turnstileToken = await executeWidgetForToken(widgetId);
+      } catch {
+        onError(t("resolveFailed"));
+        return;
+      }
+    }
     setBusy(true);
     onError(null);
     try {
       const response = await fetch("/api/places/resolve", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ maps_share_url: mapsUrl.trim() }),
+        body: JSON.stringify({
+          maps_share_url: mapsUrl.trim(),
+          ...(turnstileToken ? { "cf-turnstile-response": turnstileToken } : {}),
+        }),
       });
       if (!response.ok) throw new Error(await responseMessage(response, t("resolveFailed")));
       const resolvedPoi = (await response.json()) as POI;
@@ -54,28 +138,25 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn }: CafeP
       onError(cause instanceof Error ? cause.message : t("resolveFailed"));
     } finally {
       setBusy(false);
+      if (sitekey && widgetId) {
+        try {
+          await resetResolveWidget(widgetId);
+        } catch {
+          // Benign: reset failure only affects the next retry token freshness.
+        }
+      }
     }
   };
 
-  const searchGoogle = async (event: FormEvent) => {
+  const runSearch = async (event: FormEvent) => {
     event.preventDefault();
-    if (!query.trim()) return;
+    if (!query.trim() || !providerReady) return;
     setSearching(true);
     onError(null);
     try {
-      // Bias live Google results toward the user's known center (BRAWUKA-280):
-      // the worker sorts by distance only when lat/lng arrive.
-      const stored = readOnboardingState()?.lastLocation ?? null;
-      const params = new URLSearchParams({ source: "google", q: query.trim() });
-      if (stored) {
-        params.set("lat", String(stored.lat));
-        params.set("lng", String(stored.lng));
-      }
-      const response = await fetch(`/api/places/search?${params}`);
-      throwIfUnauthorized(response);
-      if (!response.ok) throw new Error(await responseMessage(response, t("searchFailed")));
-      const data = (await response.json()) as POISearchResponse;
-      setSearchResults(data.results);
+      // Bias live results toward the user's known center (BRAWUKA-280).
+      const bias = readOnboardingState()?.lastLocation ?? null;
+      setSearchResults(await provider.search(query.trim(), bias ?? undefined));
     } catch (cause) {
       if (isUnauthorized(cause)) {
         onRequireSignIn();
@@ -126,32 +207,36 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn }: CafeP
               {busy ? <Spinner size="sm" /> : t("resolveLink")}
             </Button>
           </div>
+          {/* Invisible Turnstile challenge host for POST /api/places/resolve. */}
+          <div ref={turnstileRef} aria-hidden="true" />
         </form>
       ) : (
         <div className="space-y-3">
           <div className="flex gap-2" role="group" aria-label={t("provider")}>
-            {(["google", "apple"] as const).map((candidate) => (
+            {providers.map((candidate) => (
               <button
-                key={candidate}
+                key={candidate.id}
                 type="button"
-                aria-pressed={provider === candidate}
+                aria-pressed={provider.id === candidate.id}
                 onClick={() => {
                   setProvider(candidate);
                   setSearchResults([]);
                   onError(null);
                 }}
                 className={`cm-focus rounded-sm border px-3 py-2 text-xs font-medium ${
-                  provider === candidate
+                  provider.id === candidate.id
                     ? "border-secondary bg-secondary text-secondary-foreground"
                     : "border-border bg-surface-secondary text-foreground"
                 }`}
               >
-                {candidate === "google" ? t("google") : t("apple")}
+                {candidate.label}
               </button>
             ))}
           </div>
-          {provider === "google" ? (
-            <form className="flex gap-2" onSubmit={searchGoogle}>
+          {!providerReady ? (
+            <p className="text-sm text-muted">{t("providerLoading")}</p>
+          ) : (
+            <form className="flex gap-2" onSubmit={runSearch}>
               <SearchField className="min-w-0 flex-1" value={query} onChange={setQuery}>
                 <SearchField.Group>
                   <SearchField.SearchIcon />
@@ -163,13 +248,6 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn }: CafeP
                 {searching ? <Spinner size="sm" /> : t("searchAction")}
               </Button>
             </form>
-          ) : (
-            <ApplePlaceSearch
-              onSelect={(selected) => {
-                setSearchResults([]);
-                onSelectPOI(selected, true);
-              }}
-            />
           )}
           {searchResults.length > 0 ? (
             <div className="space-y-2" aria-label={t("searchResults")}>
@@ -180,14 +258,14 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn }: CafeP
                   className="cm-focus flex w-full items-start justify-between gap-3 border border-border bg-surface p-3 text-left hover:bg-surface-secondary"
                   onClick={() => {
                     setSearchResults([]);
-                    onSelectPOI(result);
+                    onSelectPOI(result, provider.persistOnSelect);
                   }}
                 >
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium text-foreground">{result.name}</span>
                     <span className="mt-1 block truncate text-xs text-muted">{result.address ?? t("noAddress")}</span>
                   </span>
-                  <span className="shrink-0 font-mono text-[0.65rem] uppercase text-muted">Google</span>
+                  <span className="shrink-0 font-mono text-[0.65rem] uppercase text-muted">{provider.label}</span>
                 </button>
               ))}
             </div>

@@ -4,7 +4,7 @@
 
 Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisions-and-backlog.md` is in progress. Parts A–C and the remaining Phase 1 backlog (D1, D4, D7, A2) have merged to `main` (PRs #19, #20, #21, #22). Infrastructure slices (`image-pipeline`, `poi-cache-service`, `places-proxy`, `auth-foundation`) are code-complete but still pending owner credential/account actions.
 
-The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI artifacts were delivered and grilled (rounds 8–15, DG21–DG124), including the DG124 redesign that makes `/cafes/[id]` hydrate into the map app and abolishes the DeepLinkBanner. Every map-independent UI slice is design-unblocked; `discovery-sheet`, `seo-sharing`, `profile-page`, `search-filters`, and `checkin-system` are COMPLETE, the rest READY in `docs/agent/implementation-slices.md`; the remaining design debt is the three map-bound artifacts, which wait on Apple credentials (#131) anyway.
+The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI artifacts were delivered and grilled (rounds 8–15, DG21–DG124), including the DG124 redesign that makes `/cafes/[id]` hydrate into the map app and abolishes the DeepLinkBanner. Every map-independent UI slice is design-unblocked; `discovery-sheet`, `seo-sharing`, `profile-page`, `search-filters`, and `checkin-system` are COMPLETE, the rest READY in `docs/agent/implementation-slices.md`; the map-bound artifacts were never delivered, but map-home (BRAWUKA-311) shipped on MapLibre GL + OpenFreeMap without them — the Apple credentials blocker (#131) no longer gates any map slice.
 
 ## Active focus
 
@@ -27,7 +27,7 @@ The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI 
 - BRAWUKA-146 / spec 0008 real-client HTTP journey matrix (Paths 1–6 through route handlers only): Stage 1 harness (BRAWUKA-147, merged #330), Stage 2 suites (BRAWUKA-156..159, BRAWUKA-149), and Stage 3 (BRAWUKA-150): test suite audited and pruned per spec 0008 §12, `test:integration:http` mounted as canonical gate in CI, database teardown hardened.
 - Issue #118 hardens the real-DB suite against unsafe database targets and order-dependent coverage.
 - Issue #119 preserves image-service storage failures instead of mapping them to `not_found`.
-- Issue #156 adds a real MinIO/R2 image round-trip suite (`web/tests/integration/images.integration.test.ts`, `npm run test:integration:images`): presigned PUT -> HEAD -> processor variant re-upload, `completeImageUpload` end-to-end with real storage + DB gallery/intent metadata + replay rejection, missing-object 404, tampered Content-Type 403, single-use intent consume, and bad-creds 403. Storage failures fail the suite (no silent skip); CI runs it in `integration-gate` (merged DB+MinIO; was `images-integration-gate`).
+- Issue #156 adds a real MinIO/R2 image round-trip suite (`web/tests/integration/images.integration.test.ts`, `npm run test:integration:images`): presigned PUT -> HEAD -> processor variant re-upload, creation/check-in photo provisioning end-to-end with real storage + DB gallery/intent metadata, missing-object 404, tampered Content-Type 403, single-use intent consume, and bad-creds 403. Storage failures fail the suite (no silent skip); CI runs it in `integration-gate` (merged DB+MinIO; was `images-integration-gate`).
 - Issue #130 / PR #128 shipped the `cafe-creation` slice: Google/Apple Maps link import and Google/Apple provider search share one first-check-in flow. PR #128 merged 2026-08-20; the Kimi visual review was completed post-merge on 2026-08-23 (verdict on PR #128); findings #183–#185 were fixed in PR #187. Slice is COMPLETE.
 - PR #138 (docs: cafe-creation spec and map backlog) is merged to `main`.
 - Issue #146 / work-profile slice completes the map-independent work_stats aggregation: `coerceWorkStats` preserves `experience_score`/`composite_score`, create/edit/soft-delete recompute via `recomputeWorkStats` with `FOR UPDATE`, public-safe `CafeSummary`/`CafeDetail` expose both scores, `web/scripts/recompute-work-stats.mjs` provides the idempotent nightly drift correction and `.github/workflows/nightly-recompute.yml` schedules it at 02:00 UTC with observable failure.
@@ -59,8 +59,8 @@ web/lib/stats/           Recency-weighted `work_stats` aggregation with `increme
 web/shared/              Shared primitives: UUID, auth helpers, places types/constants, image constants/validation
 web/app/auth/            signIn/signOut server actions, SignInButton/SignOutButton client components + OAuth callback route
 web/lib/images/          image-service client + sharp processor + 10 MB upload size propagation,
-                         plus the `completeImageUpload` service with atomic DB writes
-web/app/api/images/      upload + complete route handlers with per-user rate limiting
+                         plus `provisionPhotos` photo provisioning with atomic DB writes
+web/app/api/images/      upload route handler with per-user rate limiting
 poi-service/             POI cache microservice (Workers + D1 + KV) — stored search,
                          live Google search, resolve, and external-result persistence;
                          Google field masks, KV hot cache, D1 store, haversine search
@@ -112,13 +112,30 @@ docs/agent/              current state, planned-slice manifest, owner actions
    `web/lib/config.ts`, never hardcode. One writer per slice
 ```
 
+### Map slices (map-home landed — BRAWUKA-311)
+
+```text
+- map-home — COMPLETE: MapLibre GL v5 + OpenFreeMap basemap on `/`; the
+  Apple Developer blocker (#131) is eliminated — BRAWUKA-308's review
+  pivoted the basemap to MapLibre. Tile host = the `map:` section in
+  web/config/app.yaml (full style document URLs — public OFM instance;
+  self-hosting permanently off the table per BRAWUKA-321 owner decision).
+  The surface binds to `IMapProvider`, not MapLibre — a Google/Apple swap
+  is a provider swap, not a rewrite.
+  No MapKit fallback — the old implementation never shipped,
+  there is nothing to fall back to.
+- map-discovery-integration — PARTIAL: selection → flyTo, clustered pins,
+  marker tap → URL sync landed with map-home; the map search overlay and
+  external-result pins remain (#134).
+- map-creation-entry — READY: map-tap creation + reverse geocoding
+  (Nominatim/Photon picked at implementation time) (#136).
+- deeplink-hydration — READY: the map app now exists for the /cafes/[id]
+  SSR shell to hydrate into at FULL (DG124) (#150).
+```
+
 ### Blocked context (do not start yet)
 
 ```text
-- map-home — Apple MapKit full-screen map + custom markers [BLOCKED on Apple Developer Program; #131, #132; map-home design artifact still owed]
-- map-discovery-integration — bind discovery/search to MapKit [BLOCKED on map-home; #134]
-- map-creation-entry — map-tap and map-surface creation entry [BLOCKED on map-home; #136]
-- deeplink-hydration — /cafes/[id] SSR shell hydrates into the map app at FULL (DG124) [BLOCKED on Apple MapKit creds #131; the SSR shell it hydrates is seo-sharing (#150), COMPLETE]
 - deploy-vps — Docker + VPS + CDN + CI/CD [BLOCKED on domain + VPS + Cloudflare account]
 - cleanup-legacy — remove old Vite frontend + Java backend [BLOCKED on deploy-vps]
 ```

@@ -15,6 +15,7 @@ export type { POI, POISearchHit, POISource };
 export interface KVLike {
   get(key: string): Promise<string | null>;
   put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+  delete(key: string): Promise<void>;
 }
 
 export interface D1PreparedLike {
@@ -38,6 +39,8 @@ export interface Env {
   POI_DB: D1Like;
   /** Overridable for tests; defaults to https://places.googleapis.com */
   GOOGLE_PLACES_BASE_URL?: string;
+  /** Overridable for tests; defaults to https://maps.googleapis.com */
+  GOOGLE_GEOCODE_BASE_URL?: string;
 }
 
 export interface Deps {

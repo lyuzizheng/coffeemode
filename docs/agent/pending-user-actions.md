@@ -49,6 +49,12 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 - [ ] console.cloud.google.com → enable **Places API (New)** → create API key → restrict to that API + (later) IP/HTTP referrers
 - [ ] The key goes ONLY into the POI Worker (`poi-service/.dev.vars`, never committed). Next.js never sees it.
 
+## 5a. Cloudflare Turnstile widget + keys — for anonymous `POST /api/places/resolve` (BRAWUKA-239)
+
+- [ ] Cloudflare dashboard → Turnstile → Add widget → type Managed (invisible mode is set client-side per surface), domains: `cafemood.app`, `staging.cafemood.app`, `localhost`, `127.0.0.1` (free, unlimited validations; if staging sits behind Cloudflare Access, add the Access login host too or the challenge cannot load there)
+- [ ] Put the secret into the app env as `TURNSTILE_SECRET_KEY` (server-only; VPS env / secrets manager — never `NEXT_PUBLIC_*`, never chat/docs/repo) and the sitekey as `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (rebuild after setting — Next inlines it into the client bundle). Dev/test without keys skip verification; production without `TURNSTILE_SECRET_KEY` fails closed (403 `bot_verification_failed`)
+- [ ] Verify: anonymous `POST /api/places/resolve` without/forged token → 403; real browser link-import flow → 200
+
 **Only remaining owner item for the POI service** (2026-09-12, BRAWUKA-222): the four
 Cloudflare resources, both migrations, both deployments and both `POI_SERVICE_TOKEN`
 secrets are done. Until this key is installed on both Workers
@@ -93,7 +99,6 @@ and the KV hot-cache read path are unaffected and verified working.
 - [ ] Provide a Cloudflare API token so deploys can run without an interactive login: `CLOUDFLARE_API_TOKEN` (scoped to Workers Scripts:Edit, D1:Edit, Workers KV Storage:Edit on the account) + `CLOUDFLARE_ACCOUNT_ID=bf69da5249b63731ad79545d0095e8db`. `~/.zshrc` has no such token and the local wrangler OAuth session expired 2026-02-01, so `npm run deploy` / `wrangler d1 migrations apply --remote` cannot run on a fresh machine — the 2026-09-12 deploy was executed through the Cloudflare API instead.
 - [ ] Enable the Cloudflare "Add visitor location headers" Managed Transform on the zone (sends `CF-IPCity` / `CF-IPCountry`; default-city resolution per DG128)
 - [ ] Create a Better Stack account + alert token for rate-limit/observability alerts (DG129); put the token in `web/.env.local` once the integration lands
-- [ ] Cloudflare Tunnel (BRAWUKA-238): Dokploy dashboard → staging/prod app → Environment → add `CLOUDFLARED_TUNNEL_TOKEN_STAGING` / `CLOUDFLARED_TUNNEL_TOKEN_PROD` (one token per tunnel, from `cloudflared tunnel token <name>`; value never goes in chat/docs/repo). Compose requires them (`${VAR:?...}` fail-fast) — until set, any prod/staging deploy fails at compose parsing.
 
 ## 8. Kimi K3 UI design artifacts
 

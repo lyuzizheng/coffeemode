@@ -129,14 +129,17 @@ export async function searchExternalPOIs(params: {
   return data as POISearchResponse;
 }
 
-/** POST /poi/external — persist a client-side Apple MapKit result. */
-export async function storeExternalPOIs(pois: POI[]): Promise<{ stored: number }> {
+/** POST /poi/external — persist a client-side Apple MapKit result. Non-food
+ *  entries are not stored; the worker reports them in `skipped` (BRAWUKA-328). */
+export async function storeExternalPOIs(
+  pois: POI[],
+): Promise<{ stored: number; skipped?: Array<{ index: number; reason: string }> }> {
   const data = await poiFetch("/poi/external", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ pois }),
   });
-  return data as { stored: number };
+  return data as { stored: number; skipped?: Array<{ index: number; reason: string }> };
 }
 
 /** POST /poi/resolve — Google Maps share URL → POI (cafe creation import). */
@@ -157,4 +160,22 @@ export async function getPOI(placeId: string): Promise<POI> {
     method: "GET",
   });
   return data as POI;
+}
+
+interface ReverseGeocodeResponse {
+  poi?: POI | null;
+}
+
+/** POST /poi/reverse — reverse geocode coordinates to a normalized food/cafe POI. */
+export async function reverseGeocode(params: {
+  lat: number;
+  lng: number;
+}): Promise<POI | null> {
+  const data = await poiFetch("/poi/reverse", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  const response = data as ReverseGeocodeResponse;
+  return response.poi ?? null;
 }

@@ -69,3 +69,45 @@ describe("GET /api/mapkit-token", () => {
     ).toBe(true);
   });
 });
+
+describe("GET /api/mapkit-token memo (BRAWUKA-283 P1)", () => {
+  function stubMapKitEnv() {
+    const { privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+    vi.stubEnv("APPLE_MAPKIT_TEAM_ID", "TEAM123456");
+    vi.stubEnv("APPLE_MAPKIT_KEY_ID", "KEY1234567");
+    vi.stubEnv(
+      "APPLE_MAPKIT_PRIVATE_KEY",
+      privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
+    );
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://coffee.test");
+  }
+
+  async function getToken(): Promise<string> {
+    const response = await GET(new Request("https://coffee.test/api/mapkit-token"));
+    expect(response.status).toBe(200);
+    const { token } = (await response.json()) as { token: string };
+    return token;
+  }
+
+  it("returns the same token for repeat GETs inside the validity window", async () => {
+    stubMapKitEnv();
+    // ES256 signing uses a random nonce, so two fresh signatures would
+    // differ — an identical token proves the second GET skipped re-signing.
+    expect(await getToken()).toBe(await getToken());
+  });
+
+  it("re-signs once the cached token enters the 60s expiry skew window", async () => {
+    stubMapKitEnv();
+    const first = await getToken();
+    const issuedAtMs = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(issuedAtMs + (15 * 60 - 30) * 1000);
+    try {
+      const second = await getToken();
+      expect(second).not.toBe(first);
+      // The replacement is itself memoized for the rest of its window.
+      expect(await getToken()).toBe(second);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+});

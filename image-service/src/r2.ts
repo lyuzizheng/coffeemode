@@ -157,8 +157,10 @@ export async function presignedPutUrl(
   });
   // allHeaders signs Content-Type and the x-amz-meta-* headers, so the uploader
   // cannot swap the MIME type or metadata without breaking the signature.
-  // When contentLength is provided, Content-Length is also signed so R2 can
-  // reject uploads that do not match the declared size.
+  // When contentLength is provided, Content-Length is also part of the SigV4
+  // sign input so R2 still rejects size-mismatched bodies — but it is NEVER
+  // returned here: fetch (undici/browsers) derives Content-Length from the
+  // body and rejects a manually set value (BRAWUKA-338).
   const signed = await r2Client(env).sign(request, {
     aws: { signQuery: true, allHeaders: true },
   });
@@ -166,10 +168,7 @@ export async function presignedPutUrl(
   // Fetch is case-insensitive, but most callers expect the canonical capitalisation.
   delete headers["content-type"];
   headers["Content-Type"] = contentType;
-  if (options?.contentLength !== undefined) {
-    delete headers["content-length"];
-    headers["Content-Length"] = String(options.contentLength);
-  }
+  delete headers["content-length"];
   if (options?.cacheControl) {
     delete headers["cache-control"];
     headers["Cache-Control"] = options.cacheControl;

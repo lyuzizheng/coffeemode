@@ -10,7 +10,7 @@ export interface UpstreamPlacesProvider<RawPlace = unknown> {
   getDetails(placeId: string): Promise<RawPlace>;
   toPOI(raw: RawPlace): POI;                            // vendor → 规范化
   matchesCategory(types: string[]): boolean;            // vendor 类目 → food/cafe 过滤
-  reverseGeocode?(c: Coordinates): Promise<POI | null>; // 预留,实现见 Stage 2 单
+  reverseGeocode?(c: Coordinates): Promise<POI | null>; // Reverse geocode to normalized food/cafe POI (Stage 2)
 }
 
 export class UpstreamApiError extends Error {

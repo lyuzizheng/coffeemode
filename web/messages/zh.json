@@ -526,6 +526,8 @@
     "aria": "咖啡馆地图",
     "error_title": "地图加载失败",
     "error_body": "列表不受影响，仍可查看咖啡馆详情。",
-    "retry": "重试"
+    "retry": "重试",
+    "sign_in": "登录",
+    "profile_aria": "个人主页"
   }
 }

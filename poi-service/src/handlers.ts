@@ -29,6 +29,7 @@ import {
 } from "./constants";
 import {
   getUpstreamProvider,
+  matchesFoodCategory,
   resolveUpstreamSource,
   UpstreamApiError,
 } from "./upstream";
@@ -452,6 +453,20 @@ async function storeExternal(request: Request, env: Env): Promise<Response> {
     return json({ error: "invalid_request", message: "invalid entries", entries: invalid }, 400);
   }
 
+  // BRAWUKA-328 — DG144/DG52 category gate for this path: source-aware
+  // `matchesFoodCategory` (Google `isGoogleFoodOrCafePOI` semantics, Apple
+  // MapKit category map; `getUpstreamProvider("apple")` is null by design so
+  // the Apple arm cannot go through `provider.matchesCategory`). Skipped
+  // entries never touch D1/KV and are reported with a reason instead of
+  // failing the whole batch (creation-sheet selects one POI at a time, and
+  // a 400 would look like a broken search).
+  const pois = validated as POI[];
+  const skipped: InvalidEntry[] = [];
+  const toPersist = pois.filter((poi, i) => {
+    if (matchesFoodCategory(poi.source, poi.types)) return true;
+    skipped.push({ index: i, reason: "non_food_category" });
+    return false;
+  });
   // Atomic batch: one round-trip, all-or-nothing (no partial writes on failure).
   // Then invalidate the KV hot cache for every written id: getPOI serves KV
   // hits without consulting D1, so a stale raw entry (up to CACHE_TTL_SECONDS
@@ -459,10 +474,9 @@ async function storeExternal(request: Request, env: Env): Promise<Response> {
   // delete storm races the cache-write path, not the read path — a lost
   // delete would only resurrect a stale entry, never serve a write that
   // never happened — so a best-effort post-write delete is the safe order.
-  const pois = validated as POI[];
-  await d1UpsertPOIs(env.POI_DB, pois);
-  await Promise.all(pois.map((poi) => kvDeleteRaw(env.POI_KV, poi.place_id)));
-  return json({ stored: validated.length });
+  await d1UpsertPOIs(env.POI_DB, toPersist);
+  await Promise.all(toPersist.map((poi) => kvDeleteRaw(env.POI_KV, poi.place_id)));
+  return json({ stored: toPersist.length, skipped });
 }
 
 // --- router ---

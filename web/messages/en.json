@@ -247,6 +247,7 @@
     "noAddress": "Address unavailable",
     "appleUnavailable": "Apple Maps search is not configured yet.",
     "searchFailed": "Search is unavailable right now.",
+    "notFoodPlace": "This place is not a cafe or food venue, so it cannot be added.",
     "previewTitle": "Place preview",
     "previewHint": "Confirm the place before recording your first check-in.",
     "name": "Cafe name",

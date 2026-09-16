@@ -247,6 +247,7 @@
     "noAddress": "暂无地址",
     "appleUnavailable": "Apple Maps 搜索尚未配置。",
     "searchFailed": "暂时无法搜索。",
+    "notFoodPlace": "这个地点不是咖啡店或餐饮场所，无法添加。",
     "previewTitle": "地点预览",
     "previewHint": "确认地点后，再记录第一次打卡。",
     "name": "店名",

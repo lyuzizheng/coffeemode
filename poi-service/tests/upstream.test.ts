@@ -113,6 +113,161 @@ describe("GooglePlacesProvider", () => {
     expect(places[0].id).toBe("ChIJTEST123");
   });
 
+  it("reverseGeocode returns normalized POI for food/cafe coordinates", async () => {
+    const env = makeEnv();
+    const fetchImpl = mockFetch((url) => {
+      if (url.includes("/maps/api/geocode/json")) {
+        return new Response(
+          JSON.stringify({
+            status: "OK",
+            results: [
+              {
+                place_id: "ChIJTEST123",
+                formatted_address: "66 Mint St, San Francisco, CA",
+                types: ["cafe", "point_of_interest", "establishment"],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/v1/places/ChIJTEST123")) {
+        return new Response(JSON.stringify(googleDetailResponse()), { status: 200 });
+      }
+      return new Response(null, { status: 404 });
+    });
+    const provider = new GooglePlacesProvider(env, fetchImpl);
+
+    const poi = await provider.reverseGeocode({ lat: 37.7825, lng: -122.4077 });
+    expect(poi).not.toBeNull();
+    expect(poi).toMatchObject({
+      place_id: "ChIJTEST123",
+      source: "google",
+      name: "Blue Bottle Coffee",
+      lat: 37.7825,
+      lng: -122.4077,
+    });
+  });
+
+  it("reverseGeocode filters out non-food establishments per BRAWUKA-328", async () => {
+    const env = makeEnv();
+    const fetchImpl = mockFetch((url) => {
+      if (url.includes("/maps/api/geocode/json")) {
+        return new Response(
+          JSON.stringify({
+            status: "OK",
+            results: [
+              {
+                place_id: "ChIJBANK",
+                formatted_address: "100 Market St, San Francisco, CA",
+                types: ["bank", "point_of_interest", "establishment"],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/v1/places/ChIJBANK")) {
+        return new Response(
+          JSON.stringify({
+            id: "ChIJBANK",
+            displayName: { text: "Bank of America" },
+            location: { latitude: 37.79, longitude: -122.4 },
+            types: ["bank", "finance", "establishment"],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(null, { status: 404 });
+    });
+    const provider = new GooglePlacesProvider(env, fetchImpl);
+
+    const poi = await provider.reverseGeocode({ lat: 37.79, lng: -122.4 });
+    expect(poi).toBeNull();
+  });
+
+  it("reverseGeocode returns null when geocoding returns ZERO_RESULTS", async () => {
+    const env = makeEnv();
+    const fetchImpl = mockFetch(() =>
+      new Response(JSON.stringify({ status: "ZERO_RESULTS", results: [] }), { status: 200 }),
+    );
+    const provider = new GooglePlacesProvider(env, fetchImpl);
+
+    const poi = await provider.reverseGeocode({ lat: 0, lng: 0 });
+    expect(poi).toBeNull();
+  });
+
+  it("reverseGeocode returns null when results contain no establishment", async () => {
+    const env = makeEnv();
+    const fetchImpl = mockFetch(() =>
+      new Response(
+        JSON.stringify({
+          status: "OK",
+          results: [
+            {
+              place_id: "ChIJSTREET",
+              formatted_address: "Somewhere St",
+              types: ["street_address", "route"],
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const provider = new GooglePlacesProvider(env, fetchImpl);
+
+    const poi = await provider.reverseGeocode({ lat: 37.7, lng: -122.4 });
+    expect(poi).toBeNull();
+  });
+
+  it("reverseGeocode throws GoogleApiError on geocoding failure", async () => {
+    const env = makeEnv();
+    const quotaFetch = mockFetch(() =>
+      new Response(JSON.stringify({ status: "OVER_QUERY_LIMIT" }), { status: 200 }),
+    );
+    const provider = new GooglePlacesProvider(env, quotaFetch);
+
+    await expect(provider.reverseGeocode({ lat: 37.7, lng: -122.4 })).rejects.toThrow(
+      /Geocoding quota exceeded/,
+    );
+
+    const deniedFetch = mockFetch(() =>
+      new Response(
+        JSON.stringify({ status: "REQUEST_DENIED", error_message: "API key invalid" }),
+        { status: 200 },
+      ),
+    );
+    const deniedProvider = new GooglePlacesProvider(env, deniedFetch);
+    await expect(deniedProvider.reverseGeocode({ lat: 37.7, lng: -122.4 })).rejects.toThrow(
+      /API key invalid/,
+    );
+  });
+
+  it("reverseGeocode returns null when candidate details fetch returns 404", async () => {
+    const env = makeEnv();
+    const fetchImpl = mockFetch((url) => {
+      if (url.includes("/maps/api/geocode/json")) {
+        return new Response(
+          JSON.stringify({
+            status: "OK",
+            results: [
+              {
+                place_id: "ChIJGHOST",
+                types: ["cafe", "point_of_interest"],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(null, { status: 404 });
+    });
+    const provider = new GooglePlacesProvider(env, fetchImpl);
+
+    const poi = await provider.reverseGeocode({ lat: 37.7, lng: -122.4 });
+    expect(poi).toBeNull();
+  });
+
   it("GoogleApiError inherits from UpstreamApiError", () => {
     const err = new GoogleApiError("upstream fail", 503);
     expect(err).toBeInstanceOf(UpstreamApiError);

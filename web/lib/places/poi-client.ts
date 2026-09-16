@@ -161,3 +161,21 @@ export async function getPOI(placeId: string): Promise<POI> {
   });
   return data as POI;
 }
+
+interface ReverseGeocodeResponse {
+  poi?: POI | null;
+}
+
+/** POST /poi/reverse — reverse geocode coordinates to a normalized food/cafe POI. */
+export async function reverseGeocode(params: {
+  lat: number;
+  lng: number;
+}): Promise<POI | null> {
+  const data = await poiFetch("/poi/reverse", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  const response = data as ReverseGeocodeResponse;
+  return response.poi ?? null;
+}

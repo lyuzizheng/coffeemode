@@ -12,6 +12,7 @@
  *     GET  /poi/search       ?q&lat&lng&r — stored POIs, name match + haversine sort
  *     GET  /poi/search/external ?q&lat&lng&r — live Google search + cache backfill
  *     POST /poi/external     store externally-searched POIs (Google live / Apple refs)
+ *     POST /poi/reverse      {lat, lng} → reverse geocode to normalized food/cafe POI
  *
  * Error isolation (W1): handleFetch wraps every handler in try/catch and maps
  * uncaught D1/KV/Google failures to a JSON 500 envelope — workerd's opaque
@@ -479,6 +480,56 @@ async function storeExternal(request: Request, env: Env): Promise<Response> {
   return json({ stored: toPersist.length, skipped });
 }
 
+// --- POST /poi/reverse ---
+
+async function reverseGeocodePOI(request: Request, env: Env, deps: Deps): Promise<Response> {
+  let lat: number;
+  let lng: number;
+
+  if (request.method === "GET") {
+    const url = new URL(request.url);
+    lat = Number.parseFloat(url.searchParams.get("lat") ?? "");
+    lng = Number.parseFloat(url.searchParams.get("lng") ?? "");
+  } else {
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== "object") {
+      return json({ error: "invalid_request", message: "request body must be a JSON object" }, 400);
+    }
+    const record = body as Record<string, unknown>;
+    lat = typeof record.lat === "number" ? record.lat : Number.parseFloat(String(record.lat ?? ""));
+    lng = typeof record.lng === "number" ? record.lng : Number.parseFloat(String(record.lng ?? ""));
+  }
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !inLatRange(lat) || !inLngRange(lng)) {
+    return json(
+      { error: "invalid_request", message: "lat/lng must be finite numbers in [-90,90] / [-180,180]" },
+      400,
+    );
+  }
+
+  const provider = getUpstreamProvider("google", env, deps);
+  if (!provider || !provider.reverseGeocode) {
+    return json({ error: "upstream_error", message: "google provider not available" }, 502);
+  }
+
+  let poi: POI | null;
+  try {
+    poi = await provider.reverseGeocode({ lat, lng });
+  } catch (e) {
+    return upstreamError(e);
+  }
+
+  if (poi) {
+    try {
+      await d1UpsertPOI(env.POI_DB, poi);
+    } catch (e) {
+      console.error("cache write failed in reverseGeocodePOI:", e);
+    }
+  }
+
+  return json({ poi });
+}
+
 // --- router ---
 
 const ROUTE_RE = /^\/poi\/([^/]+)$/;
@@ -506,6 +557,9 @@ export async function handleFetch(
     if (request.method === "GET" && path === "/poi/search") return await searchPOIs(request, env, deps);
     if (request.method === "POST" && path === "/poi/resolve") return await resolvePOI(request, env, deps);
     if (request.method === "POST" && path === "/poi/external") return await storeExternal(request, env);
+    if ((request.method === "POST" || request.method === "GET") && path === "/poi/reverse") {
+      return await reverseGeocodePOI(request, env, deps);
+    }
 
     const m = path.match(ROUTE_RE);
     if (request.method === "GET" && m) {

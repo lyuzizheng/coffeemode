@@ -1088,6 +1088,134 @@ describe("POST /poi/external", () => {
   });
 });
 
+describe("POST /poi/reverse", () => {
+  it("rejects unauthenticated request with 401", async () => {
+    const res = await call("POST", "/poi/reverse", makeEnv(), {
+      token: undefined,
+      body: { lat: 37.7, lng: -122.4 },
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects missing or non-numeric lat/lng with 400", async () => {
+    const env = makeEnv();
+    expect((await call("POST", "/poi/reverse", env, { body: {} })).status).toBe(400);
+    expect((await call("POST", "/poi/reverse", env, { body: { lat: "abc", lng: 10 } })).status).toBe(400);
+    expect((await call("POST", "/poi/reverse", env, { body: { lat: 10 } })).status).toBe(400);
+  });
+
+  it("rejects out-of-range lat/lng with 400", async () => {
+    const env = makeEnv();
+    expect((await call("POST", "/poi/reverse", env, { body: { lat: 95, lng: 0 } })).status).toBe(400);
+    expect((await call("POST", "/poi/reverse", env, { body: { lat: 0, lng: 185 } })).status).toBe(400);
+  });
+
+  it("returns normalized POI and persists to D1 when cafe found", async () => {
+    const env = makeEnv();
+    const fetchImpl = mockFetch((url) => {
+      if (url.includes("/maps/api/geocode/json")) {
+        return new Response(
+          JSON.stringify({
+            status: "OK",
+            results: [
+              {
+                place_id: "ChIJTEST123",
+                formatted_address: "66 Mint St, San Francisco, CA",
+                types: ["cafe", "point_of_interest", "establishment"],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/v1/places/ChIJTEST123")) {
+        return new Response(JSON.stringify(googleDetailResponse()), { status: 200 });
+      }
+      return new Response(null, { status: 404 });
+    });
+
+    const res = await call("POST", "/poi/reverse", env, {
+      body: { lat: 37.7825, lng: -122.4077 },
+      fetchImpl,
+    });
+    expect(res.status).toBe(200);
+    const data = await bodyOf(res);
+    expect(data.poi).toMatchObject({
+      place_id: "ChIJTEST123",
+      name: "Blue Bottle Coffee",
+      source: "google",
+      lat: 37.7825,
+      lng: -122.4077,
+    });
+
+    const d1 = env.POI_DB as FakeD1;
+    expect(d1.rows.map((r) => r.place_id)).toContain("ChIJTEST123");
+  });
+
+  it("returns { poi: null } when no food/cafe found", async () => {
+    const env = makeEnv();
+    const fetchImpl = mockFetch(() =>
+      new Response(JSON.stringify({ status: "ZERO_RESULTS", results: [] }), { status: 200 }),
+    );
+
+    const res = await call("POST", "/poi/reverse", env, {
+      body: { lat: 37.7, lng: -122.4 },
+      fetchImpl,
+    });
+    expect(res.status).toBe(200);
+    const data = await bodyOf(res);
+    expect(data).toEqual({ poi: null });
+  });
+
+  it("supports GET /poi/reverse?lat=...&lng=...", async () => {
+    const env = makeEnv();
+    const fetchImpl = mockFetch((url) => {
+      if (url.includes("/maps/api/geocode/json")) {
+        return new Response(
+          JSON.stringify({
+            status: "OK",
+            results: [
+              {
+                place_id: "ChIJTEST123",
+                formatted_address: "66 Mint St, San Francisco, CA",
+                types: ["cafe", "point_of_interest", "establishment"],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/v1/places/ChIJTEST123")) {
+        return new Response(JSON.stringify(googleDetailResponse()), { status: 200 });
+      }
+      return new Response(null, { status: 404 });
+    });
+
+    const res = await call("GET", "/poi/reverse?lat=37.7825&lng=-122.4077", env, {
+      fetchImpl,
+    });
+    expect(res.status).toBe(200);
+    const data = await bodyOf(res);
+    expect(data.poi).toMatchObject({
+      place_id: "ChIJTEST123",
+      name: "Blue Bottle Coffee",
+    });
+  });
+
+  it("returns 502 upstream_error when upstream fails", async () => {
+    const env = makeEnv();
+    const fetchImpl = mockFetch(() => new Response("Internal Server Error", { status: 500 }));
+
+    const res = await call("POST", "/poi/reverse", env, {
+      body: { lat: 37.7, lng: -122.4 },
+      fetchImpl,
+    });
+    expect(res.status).toBe(502);
+    const data = await bodyOf(res);
+    expect(data).toMatchObject({ error: "upstream_error" });
+  });
+});
+
 describe("router", () => {
   it("404s unknown routes and wrong methods", async () => {
     expect((await call("GET", "/poi", makeEnv())).status).toBe(404);

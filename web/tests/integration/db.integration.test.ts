@@ -680,6 +680,104 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(row).toMatchObject({ resolved: true, outcome: "auto" });
     });
 
+    it("navigation prompt answers resolve the whole same-cafe stack (BRAWUKA-270)", async () => {
+      const nav = async (id: string) =>
+        (
+          await dbClient.query(
+            "select resolved, outcome, ask_count from navigations where id = $1",
+            [id],
+          )
+        ).rows[0];
+
+      // A second cafe proves the update is cafe-scoped, not user-wide.
+      const CAFE_B = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a66";
+      await dbClient.query(
+        `insert into cafes (id, name, location, city, created_by, tz)
+         values ($1, 'Other Cafe', ST_SetSRID(ST_MakePoint(103.81, 1.35), 4326)::geography,
+                 'singapore', $2, 'Asia/Singapore')`,
+        [CAFE_B, U1],
+      );
+
+      // Two stacked taps to CAFE_A, one tap to CAFE_B, one tap by another
+      // user. Distinct ages keep the most-recent-first order deterministic.
+      const first = await recordNavigation(U2, CAFE_A);
+      const otherCafe = await recordNavigation(U2, CAFE_B);
+      const second = await recordNavigation(U2, CAFE_A);
+      const otherUser = await recordNavigation(U1, CAFE_A);
+      await dbClient.query(
+        "update navigations set created_at = now() - interval '3 days' where id = $1",
+        [first.id],
+      );
+      await dbClient.query(
+        "update navigations set created_at = now() - interval '4 days' where id = $1",
+        [otherCafe.id],
+      );
+      await dbClient.query(
+        "update navigations set created_at = now() - interval '2 days' where id = $1",
+        [second.id],
+      );
+
+      // 不去了 on the newest CAFE_A row retires the whole stack for that
+      // cafe — the older row can never re-prompt in a later session.
+      expect((await navigationPromptQueue.next(U2))?.id).toBe(second.id);
+      await navigationPromptQueue.answer(U2, second.id, "wont_go");
+      expect(await nav(first.id)).toMatchObject({ resolved: true, outcome: "wont_go" });
+      expect(await nav(second.id)).toMatchObject({ resolved: true, outcome: "wont_go" });
+      // Other cafes and other users' rows are untouched.
+      expect(await nav(otherCafe.id)).toMatchObject({ resolved: false, outcome: null });
+      expect(await nav(otherUser.id)).toMatchObject({ resolved: false, outcome: null });
+      expect((await navigationPromptQueue.next(U2))?.id).toBe(otherCafe.id);
+      await navigationPromptQueue.answer(U2, otherCafe.id, "wont_go");
+
+      // 还没去 defers the whole stack: one shared re-ask budget, so the
+      // (maxReasks + 1)-th answer auto-resolves every stacked row (DG91) —
+      // three prompts total, not two per row.
+      const d1 = await recordNavigation(U2, CAFE_A);
+      const d2 = await recordNavigation(U2, CAFE_A);
+      await dbClient.query(
+        "update navigations set created_at = now() - interval '3 days' where id = $1",
+        [d1.id],
+      );
+      await dbClient.query(
+        "update navigations set created_at = now() - interval '2 days' where id = $1",
+        [d2.id],
+      );
+      const reask = async () => {
+        const item = await navigationPromptQueue.next(U2);
+        expect(item).not.toBeNull();
+        await navigationPromptQueue.answer(U2, item!.id, "not_yet");
+        await dbClient.query(
+          "update navigations set last_asked_at = now() - interval '2 days' where resolved = false",
+        );
+      };
+      await reask();
+      expect(await nav(d1.id)).toMatchObject({ resolved: false, ask_count: 1 });
+      expect(await nav(d2.id)).toMatchObject({ resolved: false, ask_count: 1 });
+      await reask();
+      await reask();
+      expect(await nav(d1.id)).toMatchObject({ resolved: true, outcome: "auto", ask_count: 3 });
+      expect(await nav(d2.id)).toMatchObject({ resolved: true, outcome: "auto", ask_count: 3 });
+
+      // 有去！ also retires the stack — siblings take the same outcome.
+      const v1 = await recordNavigation(U2, CAFE_A);
+      const v2 = await recordNavigation(U2, CAFE_A);
+      await dbClient.query(
+        "update navigations set created_at = now() - interval '3 days' where id = $1",
+        [v1.id],
+      );
+      await dbClient.query(
+        "update navigations set created_at = now() - interval '2 days' where id = $1",
+        [v2.id],
+      );
+      const shown = await navigationPromptQueue.next(U2);
+      expect(shown?.id).toBe(v2.id);
+      await navigationPromptQueue.answer(U2, v2.id, "visited");
+      expect(await nav(v1.id)).toMatchObject({ resolved: true, outcome: "visited" });
+      expect(await nav(v2.id)).toMatchObject({ resolved: true, outcome: "visited" });
+      expect(await navigationPromptQueue.next(U2)).toBeNull();
+      expect(await nav(otherUser.id)).toMatchObject({ resolved: false });
+    });
+
     it("0004 sync trigger keeps likes_count correct on direct and cascade writes", async () => {
       // Direct insert outside the toggle: the AFTER trigger must sync.
       await dbClient.query(

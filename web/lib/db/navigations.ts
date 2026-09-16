@@ -104,19 +104,28 @@ limit 1
 `;
 
 /**
- * Terminal answers resolve permanently. The `resolved = false` guard keeps
- * the write idempotent: a second answer never overwrites the stored outcome
- * (DG80 funnel) — including the `auto` outcome a completed check-in wrote.
+ * Terminal answers resolve permanently — the shown row AND every other
+ * unresolved navigation the user has to the same cafe (BRAWUKA-270): each
+ * "导航" tap stacks a row, and answering for the cafe once must retire the
+ * whole stack or a declined cafe re-prompts in a later session. Siblings
+ * take the same outcome, matching the funnel's per-row counting (DG80).
+ * The `resolved = false` guard keeps the write idempotent: a second answer
+ * never overwrites a stored outcome — including the `auto` outcome a
+ * completed check-in wrote.
  */
 const RESOLVE_PROMPT_SQL = `
 update navigations
 set resolved = true, outcome = $3
-where id = $1 and user_id = $2 and resolved = false
+where resolved = false
+  and user_id = $2
+  and cafe_id = (select cafe_id from navigations where id = $1 and user_id = $2)
 `;
 
 /**
  * "还没去" (not_yet): stamp the re-ask delay and send the item to the back
- * of the queue. Past `maxReasks` the item auto-resolves instead (DG91).
+ * of the queue — again sibling-scoped, so stacked taps to one cafe share a
+ * single re-ask budget instead of each starting its own cycle. Past
+ * `maxReasks` the stack auto-resolves instead (DG91).
  */
 const DEFER_PROMPT_SQL = `
 update navigations
@@ -124,7 +133,9 @@ set ask_count = ask_count + 1,
     last_asked_at = now(),
     resolved = (ask_count + 1 > $3),
     outcome = case when ask_count + 1 > $3 then 'auto' else outcome end
-where id = $1 and user_id = $2 and resolved = false
+where resolved = false
+  and user_id = $2
+  and cafe_id = (select cafe_id from navigations where id = $1 and user_id = $2)
 `;
 
 /** Read the stored outcome for idempotent re-answers; null when the row is gone. */

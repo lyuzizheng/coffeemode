@@ -14,13 +14,13 @@ import { SearchField } from "@heroui/react";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getSearchDebounceMs, getSearchMinQueryLength } from "@/lib/client-env";
+import type { ExternalSourceFlags } from "@/lib/client-env";
 import { addRecentSearch } from "@/lib/search/recent-searches";
 import { fetchUnifiedSearch, type UnifiedSearchParams } from "@/lib/search/search-client";
 import type { SearchResponse, SearchResultItem } from "@/lib/search/types";
 import {
   SearchResultsList,
   type ExternalSearchProvider,
-  type ExternalSourceFlags,
 } from "./search-results-list";
 
 /** Search-as-you-type trigger (DG44) and debounce (DG47), owned by `app.yaml` `search.client`. */

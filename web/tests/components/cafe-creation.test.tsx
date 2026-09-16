@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { PolicyChips, policyOptions } from "@/components/cafe/policy-chips";
@@ -34,6 +34,12 @@ vi.mock("@/lib/places/apple-place-search", () => ({
     search: async () => [APPLE_PLACE],
   }),
 }));
+
+// Provider gating reads NEXT_PUBLIC_* at render (BRAWUKA-326); every test
+// starts from the app.yaml defaults (google on, apple off, MapKit off).
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   return (
@@ -312,6 +318,8 @@ describe("CafeCreationSheet session expiry (BRAWUKA-124/BRAWUKA-212)", () => {
   });
 
   it("routes an Apple place-persist 401 to the gate", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SEARCH_EXTERNAL_APPLE", "true");
+    vi.stubEnv("NEXT_PUBLIC_MAPKIT_CONFIGURED", "true");
     mockRoutes((url) => (url.includes("/api/places/external") ? jsonResponse(401, { error: "unauthorized" }) : jsonResponse(200, {})));
 
     render(<CafeCreationSheet isOpen onOpenChange={vi.fn()} isAuthenticated />, { wrapper: Wrapper });
@@ -323,6 +331,37 @@ describe("CafeCreationSheet session expiry (BRAWUKA-124/BRAWUKA-212)", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Apple Cafe/ }));
 
     await expectSignInGate();
+  });
+
+  it("hides the Apple provider when externalSources.apple is off (DG134)", async () => {
+    mockRoutes(() => jsonResponse(200, {}));
+
+    render(<CafeCreationSheet isOpen onOpenChange={vi.fn()} isAuthenticated />, { wrapper: Wrapper });
+    fireEvent.click(screen.getByRole("tab", { name: "Search a place" }));
+
+    expect(screen.getByRole("button", { name: "Google Maps" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Apple Maps" })).not.toBeInTheDocument();
+  });
+
+  it("hides the Apple provider until MapKit is configured (DG143)", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SEARCH_EXTERNAL_APPLE", "true");
+    mockRoutes(() => jsonResponse(200, {}));
+
+    render(<CafeCreationSheet isOpen onOpenChange={vi.fn()} isAuthenticated />, { wrapper: Wrapper });
+    fireEvent.click(screen.getByRole("tab", { name: "Search a place" }));
+
+    expect(screen.getByRole("button", { name: "Google Maps" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Apple Maps" })).not.toBeInTheDocument();
+  });
+
+  it("hides the search tab entirely when every external source is off", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SEARCH_EXTERNAL_GOOGLE", "false");
+    mockRoutes(() => jsonResponse(200, {}));
+
+    render(<CafeCreationSheet isOpen onOpenChange={vi.fn()} isAuthenticated />, { wrapper: Wrapper });
+
+    expect(screen.queryByRole("tab", { name: "Search a place" })).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/maps\.apple\.com/i)).toBeInTheDocument();
   });
 
   it("shows generic copy for an unmapped server code and logs the code", async () => {

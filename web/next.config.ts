@@ -8,6 +8,10 @@ import { R2_PUBLIC_HOST, assertR2PublicUrlMatches } from "./lib/images/constants
 // Pure policy helpers (edge-safe, no node: imports) — the single source for
 // the cafe-shell cache header value (BRAWUKA-184).
 import { cafeShellCacheControl } from "./lib/cache-policy";
+// Edge-safe credential detection — the same predicate /api/mapkit-token
+// gates on, mirrored to the client as the single MapKit readiness signal
+// (BRAWUKA-326).
+import { getMapKitConfig } from "./lib/places/mapkit-config";
 
 const appConfig = parseAppConfig(loadYaml("app.yaml"));
 
@@ -46,6 +50,12 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_MAPLIBRE_TILE_STYLE_DARK: appConfig.map.maplibre.tileStyle.dark,
     NEXT_PUBLIC_MAP_DEFAULT_ZOOM: String(appConfig.map.defaultZoom),
     NEXT_PUBLIC_MAP_FOCUS_ZOOM: String(appConfig.map.focusZoom),
+    // DG134: external-source toggles + the single MapKit readiness signal
+    // (BRAWUKA-326) — the creation-sheet provider registry and the search
+    // CTA gate both read these via lib/client-env.ts.
+    NEXT_PUBLIC_SEARCH_EXTERNAL_GOOGLE: String(appConfig.search.externalSources.google),
+    NEXT_PUBLIC_SEARCH_EXTERNAL_APPLE: String(appConfig.search.externalSources.apple),
+    NEXT_PUBLIC_MAPKIT_CONFIGURED: String(getMapKitConfig() !== null),
   },
 
   images: {

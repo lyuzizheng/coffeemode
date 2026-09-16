@@ -18,15 +18,13 @@
 import { useLocale, useTranslations } from "next-intl";
 import { formatDistanceKm } from "@/lib/discovery/view-model";
 import { displayCityName } from "@/lib/cities";
+import { isMapKitConfigured, type ExternalSourceFlags } from "@/lib/client-env";
 import { groupSearchResults } from "@/lib/search/grouped-results";
 import type { SearchResponse, SearchResultItem } from "@/lib/search/types";
 
 export type ExternalSearchProvider = "google" | "apple";
 
-export interface ExternalSourceFlags {
-  google: boolean;
-  apple: boolean;
-}
+export type { ExternalSourceFlags };
 
 interface SearchResultsListProps {
   response: SearchResponse;
@@ -95,7 +93,7 @@ function GroupHeader({ label }: { label: string }) {
 export function SearchResultsList({
   response,
   externalSources,
-  mapkitConfigured = process.env.NEXT_PUBLIC_MAPKIT_CONFIGURED === "true",
+  mapkitConfigured = isMapKitConfigured(),
   onSelect,
   onExternalSearch,
   onRetry,

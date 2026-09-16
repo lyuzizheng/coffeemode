@@ -1,10 +1,8 @@
 import { NextIntlClientProvider } from "next-intl";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import {
-  SearchResultsList,
-  type ExternalSourceFlags,
-} from "@/components/search/search-results-list";
+import { SearchResultsList } from "@/components/search/search-results-list";
+import type { ExternalSourceFlags } from "@/lib/client-env";
 import type { SearchResponse, SearchResultItem } from "@/lib/search/types";
 import en from "@/messages/en.json";
 import zh from "@/messages/zh.json";

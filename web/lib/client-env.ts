@@ -31,6 +31,13 @@ export function envNonEmptyString(raw: string | undefined, fallback: string): st
   return raw !== undefined && raw !== "" ? raw : fallback;
 }
 
+/** Parse an already-resolved env flag; only "true"/"false" override the fallback. */
+export function envBoolean(raw: string | undefined, fallback: boolean): boolean {
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  return fallback;
+}
+
 
 /** `checkins.noteMaxChars` — check-in note input cap. */
 export function getCheckinNoteMaxChars(): number {
@@ -101,4 +108,27 @@ export function getMapFocusZoom(): number {
 /** `onboarding.geolocationTimeoutMs` — browser geolocation timeout (DG112). */
 export function getOnboardingGeolocationTimeoutMs(): number {
   return envPositiveInt(process.env.NEXT_PUBLIC_ONBOARDING_GEOLOCATION_TIMEOUT_MS, 10_000);
+}
+
+/** `search.externalSources` — DG134 provider toggles for external search. */
+export interface ExternalSourceFlags {
+  google: boolean;
+  apple: boolean;
+}
+
+/** `search.externalSources` — which external providers the UI may offer (DG134). */
+export function getSearchExternalSources(): ExternalSourceFlags {
+  return {
+    google: envBoolean(process.env.NEXT_PUBLIC_SEARCH_EXTERNAL_GOOGLE, true),
+    apple: envBoolean(process.env.NEXT_PUBLIC_SEARCH_EXTERNAL_APPLE, false),
+  };
+}
+
+/**
+ * Single MapKit readiness signal (BRAWUKA-326): `next.config.ts` derives it
+ * from `getMapKitConfig()`, the same predicate `/api/mapkit-token` 503s on —
+ * Apple surfaces hide until the token route could actually serve.
+ */
+export function isMapKitConfigured(): boolean {
+  return envBoolean(process.env.NEXT_PUBLIC_MAPKIT_CONFIGURED, false);
 }

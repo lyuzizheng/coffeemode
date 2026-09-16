@@ -1,8 +1,10 @@
 import { createVerify, generateKeyPairSync } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET } from "@/app/api/mapkit-token/route";
+import { getCurrentUser } from "@/lib/auth/get-user";
 import { rateLimiter } from "@/lib/rate-limit";
 
+vi.mock("@/lib/auth/get-user", () => ({ getCurrentUser: vi.fn() }));
 const ENV_KEYS = [
   "APPLE_MAPKIT_TEAM_ID",
   "APPLE_MAPKIT_KEY_ID",
@@ -18,10 +20,22 @@ function decodeBase64Url(value: string): string {
 beforeEach(() => {
   rateLimiter.reset();
   for (const key of ENV_KEYS) vi.stubEnv(key, "");
+  vi.mocked(getCurrentUser).mockReset();
+  vi.mocked(getCurrentUser).mockResolvedValue({ id: "user-1" });
 });
 
 afterEach(() => {
   vi.unstubAllEnvs();
+});
+
+describe("GET /api/mapkit-token auth (BRAWUKA-296)", () => {
+  it("rejects anonymous callers with 401 before touching credentials", async () => {
+    vi.mocked(getCurrentUser).mockResolvedValueOnce(null);
+    const response = await GET(new Request("https://coffee.test/api/mapkit-token"));
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "unauthorized" });
+  });
 });
 
 describe("GET /api/mapkit-token", () => {

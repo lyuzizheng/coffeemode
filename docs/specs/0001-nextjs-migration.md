@@ -108,7 +108,7 @@ modes, storage, Workers, domains) and secret ownership are canonical in spec
 - Product-table data stays server-mediated: route handlers use the pooled Postgres connection, and the tables must NOT be reachable through Supabase's Data API (PostgREST/GraphQL) with the browser anon key — new projects no longer auto-expose new tables, and default grants to `anon`/`authenticated` are revoked at provisioning as a belt-and-suspenders step (`docs/agent/pending-user-actions.md` §2). The anon key is used only for auth flows.
 - Postgres connection: standard `pg` Pool (server-side only), fail-closed SSL (#41). PostGIS enabled via `create extension postgis` (Supabase catalog). Pick the Supabase region closest to the VPS — route handlers run multi-round-trip transactions, so RTT multiplies.
 
-#### Tables (7 total: 5 product + 2 infra — deliberately minimal; applied via migrations 0001–0024)
+#### Tables (7 total: 5 product + 2 infra — deliberately minimal; applied via migrations 0001–0025)
 
 ```sql
 -- 1. profiles: app-side user record, keyed by Supabase auth user id
@@ -138,6 +138,7 @@ create table cafes (
   price_range     smallint,               -- 1-4
   google_place_id text,
   apple_poi_id    text,
+  source          text not null default 'user_confirmed', -- 0025: user_confirmed — 用户确认提交，含 Google 预填 (BRAWUKA-295)
   created_by      uuid references profiles(id),
   work_stats      jsonb default '{}',     -- incremental aggregation cache (see below)
   created_at      timestamptz default now(),

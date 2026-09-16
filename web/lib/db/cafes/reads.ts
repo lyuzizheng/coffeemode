@@ -25,7 +25,8 @@ const LIST_NEARBY_PUBLIC_SQL = `
 select id, name,
        ST_Y(location::geometry) as lat,
        ST_X(location::geometry) as lng,
-       address, city, tz, opening_hours, price_range, work_stats, cover,
+       address, city, tz, opening_hours, price_range, work_stats,
+       gallery->0->>'card' as cover, -- BRAWUKA-307: cover derives from first gallery photo
        created_by, visibility,
        (location <-> ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography) as distance_m
 from cafes
@@ -40,7 +41,8 @@ const LIST_NEARBY_VIEWER_SQL = `
 select id, name,
        ST_Y(location::geometry) as lat,
        ST_X(location::geometry) as lng,
-       address, city, tz, opening_hours, price_range, work_stats, cover,
+       address, city, tz, opening_hours, price_range, work_stats,
+       gallery->0->>'card' as cover, -- BRAWUKA-307: cover derives from first gallery photo
        created_by, visibility,
        (location <-> ST_SetSRID(ST_MakePoint($2, $1), 4326)::geography) as distance_m
 from cafes
@@ -77,7 +79,8 @@ const GET_BY_ID_SQL = `
 select c.id, c.name,
        ST_Y(c.location::geometry) as lat,
        ST_X(c.location::geometry) as lng,
-       c.address, c.city, c.description, c.cover, c.gallery, c.opening_hours, c.tz,
+       c.address, c.city, c.description, c.gallery, c.opening_hours, c.tz,
+       c.gallery->0->>'card' as cover, -- BRAWUKA-307: cover derives from first gallery photo
        c.price_range, c.google_place_id, c.apple_poi_id, c.work_stats,
        c.created_by, c.visibility,
        c.created_at, c.updated_at,

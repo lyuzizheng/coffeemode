@@ -65,10 +65,10 @@ export async function generateMetadata({
   const hook = ogHookParams(cafe.work_stats);
   const description = hook ? t("og_hook", hook) : t("og_hook_empty");
   const title = cityName ? `${cafe.name} · ${cityName}` : cafe.name;
-  // DG108: og:title keeps the app name suffix; the cover is the og:image,
+  // DG108: og:title keeps the app name suffix; the first gallery card is the og:image,
   // with the dynamic fallback card when the cafe has no photo yet.
   const ogTitle = `${title} — ${APP_NAME}`;
-  // Cover is the 400×300 card variant (CARD_SIZE, web/lib/images/processor.ts:43);
+  // Gallery card cover is the 400×300 card variant (CARD_SIZE, web/lib/images/processor.ts:43);
   // the dynamic /og-image fallback is 1200×630. Declare the honest dimensions per source
   // so share cards don't ship mismatched og:image:width/height.
   const coverOgImage = cafeOgImageUrl(cafe);
@@ -168,8 +168,7 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
   const cityName = displayCityName(cafe.city, locale);
   const origin = await getRequestOrigin();
   const canonical = `${origin}${cafeCanonicalPath(cafe.id)}`;
-  const covers = (cafe.gallery ?? []).map((g) => g.card).filter(Boolean);
-  if (covers.length === 0 && cafe.cover) covers.push(cafe.cover);
+  const covers = (cafe.gallery ?? []).map((g) => g.card).filter(Boolean); // BRAWUKA-307: cafe.cover already derives from the first gallery card
   // The public payload contract (DG13): client components receive only the
   // narrow slices, never the full row (see publicCafeShell).
   const publicAttribution = toPublicCafeDetail(cafe);

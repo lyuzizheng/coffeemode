@@ -62,16 +62,12 @@ cafes:
   # GET /api/cafes limit cap (also the default when no limit is given).
   listLimitMax: 50
 
-# Basemap hosting switch (BRAWUKA-308/BRAWUKA-313): the ONLY coupling point
-# between the web map surface (BRAWUKA-311) and tile hosting. Public instance
-# and self-hosted R2 are interchangeable here — switching hosting is a config
-# edit, never a code change. Self-hosted values come from
-# `scripts/devops/provision-maptiles.sh --print-config`.
+# Basemap provider seam (BRAWUKA-308/BRAWUKA-321): the ONLY coupling point
+# between the web map surface (BRAWUKA-311) and tile hosting. OpenFreeMap
+# public instance today; a future provider switch (e.g. Google/Apple Map)
+# is a config edit, never a code change.
 map:
-  # Fully-qualified style documents. Public: OpenFreeMap releases. Self-hosted:
-  # Worker-served copies from R2 (`scripts/devops/build-maptiles.sh` step 6
-  # rewrites the embedded source to this Worker's `/planet` TileJSON URL) —
-  # exact values from `scripts/devops/provision-maptiles.sh --print-config`.
+  # Fully-qualified style documents (OpenFreeMap releases).
   tileStyle:
     light: https://tiles.openfreemap.org/styles/liberty
     dark: https://tiles.openfreemap.org/styles/dark
@@ -235,7 +231,7 @@ budgets:
   # `performanceHome` is the `/` floor: the map surface (maplibre chunk +
   # WebGL init, deferred to idle) can't hold the static-scaffold 0.8 —
   # measured ~0.70 on CI before the idle deferral landed. Debt: revisit when
-  # the map init cost shrinks (self-hosted tiles, lighter style).
+  # the map init cost shrinks (lighter style).
   lighthouse:
     performance: 0.8
     performanceHome: 0.65

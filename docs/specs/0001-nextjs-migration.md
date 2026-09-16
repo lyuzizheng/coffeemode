@@ -396,13 +396,13 @@ No email infra, no magic links.
 
 ```text
 Library: maplibre-gl v5.x (npm, WebGL1-compatible; v6 requires WebGL2 — revisit separately)
-Basemap: OpenFreeMap public instance; PMTiles+R2 self-hosting landed in
-        BRAWUKA-313 (tiles-service Worker + R2, monthly refresh runbook)
+Basemap: OpenFreeMap public instance (owner decision BRAWUKA-321: never
+        self-host — a future provider switch, e.g. Google/Apple Map, replaces
+        the whole basemap, not the tile pipeline)
 Config: web/config/app.yaml `map:` section — tileStyle.light/dark (full
-        style document URLs: OFM liberty/dark, or Worker-served rewritten
-        copies when self-hosted), glyphs, sprite, defaultZoom, focusZoom.
-        These URLs are the only tile-host coupling; self-hosting is a
-        config edit, not a code change.
+        style document URLs: OFM liberty/dark), glyphs, sprite, defaultZoom,
+        focusZoom. These URLs are the only tile-host coupling; a provider
+        switch is a config edit, not a code change.
 Color scheme: follows app theme (light/dark) via setStyle
 Attribution: ON (OpenMapTiles license) — never disable
 Requires: nothing external — no Apple Developer Program, no API key

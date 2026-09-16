@@ -636,14 +636,14 @@ describe("parseAppConfig validation", () => {
     ).toThrow(/"profile\.handle\.slugMaxChars" must be a positive integer/);
   });
 
-  it("owns the basemap hosting switch (BRAWUKA-313: four URLs, public ↔ self-hosted)", () => {
+  it("owns the basemap provider seam (four OFM URLs)", () => {
     expect(appConfig.map.tileStyle.light).toBe("https://tiles.openfreemap.org/styles/liberty");
     expect(appConfig.map.tileStyle.dark).toBe("https://tiles.openfreemap.org/styles/dark");
     expect(appConfig.map.glyphs).toBe("https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf");
     expect(appConfig.map.sprite).toBe("https://tiles.openfreemap.org/sprites/ofm_f384/ofm");
   });
 
-  it("rejects a missing or non-https map section (BRAWUKA-313)", () => {
+  it("rejects a missing or non-https map section", () => {
     const base = {
       search: validSearch,
       stats: validStats,

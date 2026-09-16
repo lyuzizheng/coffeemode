@@ -24,10 +24,10 @@ import {
 import { getRequestOrigin } from "@/lib/site-origin";
 import { APP_NAME } from "@/lib/site";
 import type { CafeDetail, PublicCafeDetail } from "@/types/cafes";
+import { CafeDetailSeed } from "./cafe-detail-seed";
 import { CafePageActions } from "./cafe-page-actions";
 import { CafePageFeed } from "./cafe-page-feed";
 import { CafeOwnerControls } from "./cafe-owner-controls";
-
 // DB-backed SSR page: render per request; the CDN cache header on /cafes/:id
 // (next.config.ts, TTLs from web/config/app.yaml — DG105/DG107) absorbs the
 // viral-link traffic so Postgres does not.
@@ -203,6 +203,8 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
           maintainedByService={publicAttribution.maintained_by_service}
         />
         <ScorePair stats={cafe.work_stats} />
+        {/* SSR → client cache seed (BRAWUKA-283 P2-3): skips the detail re-fetch. */}
+        <CafeDetailSeed cafe={publicAttribution} />
         <CafePageActions cafe={shell.actions} cafeId={cafe.id} shareUrl={canonical} />
         {/* SSR shell: bars at final width, no entry motion (artifact §2). */}
         <WorkProfile stats={cafe.work_stats} animated={false} />

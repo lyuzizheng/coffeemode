@@ -3,12 +3,14 @@ import {
   getPOI,
   getPOIConfig,
   resolveMapsUrl,
+  reverseGeocode,
   searchExternalPOIs,
   searchPOIs,
   storeExternalPOIs,
 } from "@/lib/places/poi-client";
 import { GET as searchGET } from "@/app/api/places/search/route";
 import { POST as resolvePOST } from "@/app/api/places/resolve/route";
+import { GET as reverseGET, POST as reversePOST } from "@/app/api/places/reverse/route";
 import type { POI } from "@shared/places/types";
 
 const { getCurrentUserMock } = vi.hoisted(() => ({ getCurrentUserMock: vi.fn() }));
@@ -43,6 +45,7 @@ let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   process.env.POI_SERVICE_URL = WORKER_URL;
   process.env.POI_SERVICE_TOKEN = TOKEN;
+  process.env.TURNSTILE_SECRET_KEY = "test-turnstile-secret";
   getCurrentUserMock.mockResolvedValue(null);
   fetchMock = vi.fn();
   vi.stubGlobal("fetch", fetchMock);
@@ -52,6 +55,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   delete process.env.POI_SERVICE_URL;
   delete process.env.POI_SERVICE_TOKEN;
+  delete process.env.TURNSTILE_SECRET_KEY;
   vi.unstubAllGlobals();
 });
 
@@ -298,66 +302,98 @@ describe("GET /api/places/search", () => {
 });
 
 describe("POST /api/places/resolve", () => {
-  it("proxies a maps share URL to the worker", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(SAMPLE_POI));
+  const resolveBody = (extra: Record<string, unknown> = {}) =>
+    JSON.stringify({ maps_share_url: "https://maps.app.goo.gl/xyz", ...extra });
 
-    const res = await resolvePOST(
-      new Request(`${WORKER_URL}/api/places/resolve`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ maps_share_url: "https://maps.app.goo.gl/xyz" }),
-      }),
+  const resolveRequest = (body: string) =>
+    new Request(`${WORKER_URL}/api/places/resolve`, {
+      method: "POST",
+      headers: { "content-type": "application/json", host: "localhost:3000" },
+      body,
+    });
+
+  /** Stub a passing siteverify; the worker falls back to a persistent 200 stub. */
+  function mockTurnstilePass(workerBody: unknown = SAMPLE_POI, workerStatus = 200) {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ success: true, action: "places-resolve", hostname: "localhost" }),
     );
+    fetchMock.mockResolvedValue(jsonResponse(workerBody, workerStatus));
+  }
+
+  it("proxies a maps share URL to the worker", async () => {
+    mockTurnstilePass();
+
+    const res = await resolvePOST(resolveRequest(resolveBody({ "cf-turnstile-response": "fresh-token" })));
 
     expect(res.status).toBe(200);
     expect(((await res.json()) as { name: string }).name).toBe("Blue Bottle Coffee");
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+    );
+    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
     expect(url).toBe(`${WORKER_URL}/poi/resolve`);
     expect(JSON.parse(String(init.body))).toEqual({
       maps_share_url: "https://maps.app.goo.gl/xyz",
     });
   });
 
-  it("400s without maps_share_url", async () => {
-    const res = await resolvePOST(
-      new Request(`${WORKER_URL}/api/places/resolve`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({}),
-      }),
-    );
-    expect(res.status).toBe(400);
+  it("403s without a token and never reaches the worker", async () => {
+    const res = await resolvePOST(resolveRequest(resolveBody()));
+    expect(res.status).toBe(403);
+    expect((await res.json()) as { error: string }).toMatchObject({ error: "bot_verification_failed" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("maps worker 422 (unresolvable) through for allowed hosts", async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ error: "unresolvable" }, 422));
+  it("403s for a forged token and never reaches the worker", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ success: false, "error-codes": ["invalid-input-response"] }),
+    );
     const res = await resolvePOST(
-      new Request(`${WORKER_URL}/api/places/resolve`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ maps_share_url: "https://maps.app.goo.gl/nope" }),
-      }),
+      resolveRequest(resolveBody({ "cf-turnstile-response": "forged-token" })),
+    );
+    expect(res.status).toBe(403);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when siteverify is unreachable", async () => {
+    fetchMock.mockRejectedValueOnce(new Error("connection reset"));
+    const res = await resolvePOST(
+      resolveRequest(resolveBody({ "cf-turnstile-response": "fresh-token" })),
+    );
+    expect(res.status).toBe(403);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("400s without maps_share_url", async () => {
+    mockTurnstilePass();
+    const res = await resolvePOST(resolveRequest(JSON.stringify({ "cf-turnstile-response": "fresh-token" })));
+    expect(res.status).toBe(400);
+    // siteverify passes, the worker is never reached.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("maps worker 422 (unresolvable) through for allowed hosts", async () => {
+    mockTurnstilePass({ error: "unresolvable" }, 422);
+    const res = await resolvePOST(
+      resolveRequest(resolveBody({ maps_share_url: "https://maps.app.goo.gl/nope", "cf-turnstile-response": "fresh" })),
     );
     expect(res.status).toBe(422);
   });
 
   it("400s for disallowed maps_share_url domains", async () => {
+    mockTurnstilePass();
     const res = await resolvePOST(
-      new Request(`${WORKER_URL}/api/places/resolve`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ maps_share_url: "https://example.com/nope" }),
-      }),
+      resolveRequest(resolveBody({ maps_share_url: "https://example.com/nope", "cf-turnstile-response": "fresh" })),
     );
     expect(res.status).toBe(400);
     expect((await res.json()) as { error: string }).toEqual({
       error: "invalid_maps_url",
       message: expect.stringContaining("Google Maps and Apple Maps"),
     });
-    expect(fetchMock).not.toHaveBeenCalled();
+    // siteverify passes, the worker is never reached.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
-
   it("400s for http URLs, non-map google subdomains, and lookalikes (issue #37)", async () => {
     for (const maps_share_url of [
       "http://www.google.com/maps/place/foo",
@@ -366,25 +402,23 @@ describe("POST /api/places/resolve", () => {
       "https://google.com.evil.com/maps",
       "https://google.evil.io/maps/place/x/data=!4m6!3m5!1s0x8085:0x9f2c",
     ]) {
+      mockTurnstilePass();
       const res = await resolvePOST(
-        new Request(`${WORKER_URL}/api/places/resolve`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ maps_share_url }),
-        }),
+        resolveRequest(resolveBody({ maps_share_url, "cf-turnstile-response": "fresh" })),
       );
       expect(res.status).toBe(400);
     }
-    expect(fetchMock).not.toHaveBeenCalled();
+    // One siteverify call per attempt, zero worker calls.
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    for (const [url] of fetchMock.mock.calls as [string, RequestInit][]) {
+      expect(url).toBe("https://challenges.cloudflare.com/turnstile/v0/siteverify");
+    }
   });
 
   it("400s for malformed maps_share_url", async () => {
+    mockTurnstilePass();
     const res = await resolvePOST(
-      new Request(`${WORKER_URL}/api/places/resolve`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ maps_share_url: "not-a-url" }),
-      }),
+      resolveRequest(resolveBody({ maps_share_url: "not-a-url", "cf-turnstile-response": "fresh" })),
     );
     expect(res.status).toBe(400);
     expect((await res.json()) as { error: string }).toEqual({
@@ -394,15 +428,180 @@ describe("POST /api/places/resolve", () => {
   });
 
   it("allows Google Maps subdomains", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(SAMPLE_POI));
+    mockTurnstilePass();
     const res = await resolvePOST(
-      new Request(`${WORKER_URL}/api/places/resolve`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ maps_share_url: "https://www.google.com/maps/place/foo" }),
-      }),
+      resolveRequest(
+        resolveBody({ maps_share_url: "https://www.google.com/maps/place/foo", "cf-turnstile-response": "fresh" }),
+      ),
     );
     expect(res.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("reverseGeocode", () => {
+  it("posts coordinates to /poi/reverse and returns the POI", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ poi: SAMPLE_POI }));
+    const result = await reverseGeocode({ lat: 37.7825, lng: -122.4077 });
+    expect(result).toEqual(SAMPLE_POI);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${WORKER_URL}/poi/reverse`,
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ lat: 37.7825, lng: -122.4077 }),
+        headers: expect.objectContaining({
+          "x-poi-service-token": TOKEN,
+          "content-type": "application/json",
+        }),
+      }),
+    );
+  });
+
+  it("returns null when worker returns { poi: null }", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ poi: null }));
+    const result = await reverseGeocode({ lat: 0, lng: 0 });
+    expect(result).toBeNull();
+  });
+
+  it("throws POIServiceError when worker returns 502", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ error: "upstream_error" }, 502));
+    await expect(reverseGeocode({ lat: 37.7, lng: -122.4 })).rejects.toThrow(
+      /POI service unavailable/,
+    );
+  });
+});
+
+describe("POST /api/places/reverse", () => {
+  const reverseRequest = (body: unknown, origin?: string) => {
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (origin) headers.origin = origin;
+    return new Request("https://localhost:3000/api/places/reverse", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+  };
+
+  it("rejects unauthenticated caller with 401", async () => {
+    const res = await reversePOST(reverseRequest({ lat: 37.7825, lng: -122.4077 }));
+    expect(res.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects cross-origin request with 403", async () => {
+    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
+    const res = await reversePOST(
+      reverseRequest({ lat: 37.7825, lng: -122.4077 }, "https://evil.com"),
+    );
+    expect(res.status).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-numeric lat/lng with 400", async () => {
+    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
+    const res1 = await reversePOST(reverseRequest({ lat: "abc", lng: -122.4 }));
+    expect(res1.status).toBe(400);
+
+    const res2 = await reversePOST(reverseRequest({ lat: 37.7 }));
+    expect(res2.status).toBe(400);
+  });
+
+  it("rejects out-of-range coordinates with 400", async () => {
+    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
+    const res1 = await reversePOST(reverseRequest({ lat: 95, lng: 0 }));
+    expect(res1.status).toBe(400);
+
+    const res2 = await reversePOST(reverseRequest({ lat: 0, lng: 185 }));
+    expect(res2.status).toBe(400);
+  });
+
+  it("returns 200 with { poi: SAMPLE_POI } when authenticated", async () => {
+    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
+    fetchMock.mockResolvedValue(jsonResponse({ poi: SAMPLE_POI }));
+
+    const res = await reversePOST(reverseRequest({ lat: 37.7825, lng: -122.4077 }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toEqual({ poi: SAMPLE_POI });
+  });
+
+  it("returns 200 with { poi: null } when worker returns null", async () => {
+    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
+    fetchMock.mockResolvedValue(jsonResponse({ poi: null }));
+
+    const res = await reversePOST(reverseRequest({ lat: 37.7, lng: -122.4 }));
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toEqual({ poi: null });
+  });
+
+  it("maps worker errors to poi_service error envelope", async () => {
+    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
+    fetchMock.mockResolvedValue(jsonResponse({ error: "fail" }, 502));
+
+    const res = await reversePOST(reverseRequest({ lat: 37.7, lng: -122.4 }));
+    expect(res.status).toBe(502);
+    const data = await res.json();
+    expect(data.error).toBe("poi_service");
+  });
+});
+
+describe("GET /api/places/reverse", () => {
+  it("rejects unauthenticated caller with 401", async () => {
+    const res = await reverseGET(
+      new Request("https://localhost:3000/api/places/reverse?lat=37.7825&lng=-122.4077"),
+    );
+    expect(res.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing or invalid query params with 400", async () => {
+    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
+    const res1 = await reverseGET(
+      new Request("https://localhost:3000/api/places/reverse?lat=abc&lng=-122.4"),
+    );
+    expect(res1.status).toBe(400);
+
+    const res2 = await reverseGET(
+      new Request("https://localhost:3000/api/places/reverse?lat=37.7"),
+    );
+    expect(res2.status).toBe(400);
+  });
+
+  it("rejects out-of-range coordinates with 400", async () => {
+    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
+    const res1 = await reverseGET(
+      new Request("https://localhost:3000/api/places/reverse?lat=95&lng=0"),
+    );
+    expect(res1.status).toBe(400);
+
+    const res2 = await reverseGET(
+      new Request("https://localhost:3000/api/places/reverse?lat=0&lng=185"),
+    );
+    expect(res2.status).toBe(400);
+  });
+
+  it("returns 200 with { poi: SAMPLE_POI } when authenticated", async () => {
+    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
+    fetchMock.mockResolvedValue(jsonResponse({ poi: SAMPLE_POI }));
+
+    const res = await reverseGET(
+      new Request("https://localhost:3000/api/places/reverse?lat=37.7825&lng=-122.4077"),
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toEqual({ poi: SAMPLE_POI });
+  });
+
+  it("returns 200 with { poi: null } when worker returns null", async () => {
+    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
+    fetchMock.mockResolvedValue(jsonResponse({ poi: null }));
+
+    const res = await reverseGET(
+      new Request("https://localhost:3000/api/places/reverse?lat=37.7&lng=-122.4"),
+    );
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toEqual({ poi: null });
   });
 });

@@ -109,6 +109,22 @@ export interface AppConfig {
     r2UploadTimeoutMs: number;
     downloadSlackBytes: number;
   };
+  map: {
+    /** Active basemap provider — selects which `map.<provider>` block is live. */
+    provider: string;
+    /** City-level zoom when the resolved center changes (provider-agnostic). */
+    defaultZoom: number;
+    /** Street-level zoom when a cafe is selected (provider-agnostic). */
+    focusZoom: number;
+    /** MapLibre GL provider block — required when `provider` is "maplibre". */
+    maplibre: {
+      tileStyle: {
+        /** Full style document URLs — basemap provider seam. */
+        light: string;
+        dark: string;
+      };
+    };
+  };
   query: {
     staleTimeMs: number;
     gcTimeMs: number;
@@ -129,9 +145,14 @@ export interface AppConfig {
       maxJsChunkBytes: number;
       maxCssChunkBytes: number;
       maxTotalStaticBytes: number;
+      /** Per-chunk budget exemptions: a chunk containing `marker` may grow
+       * to `maxBytes` (map-home: maplibre-gl's ~1 MB chunk). */
+      chunkExemptions: { marker: string; maxBytes: number }[];
     };
     lighthouse: {
       performance: number;
+      /** `/` floor — the map surface can't hold the static-scaffold 0.8. */
+      performanceHome: number;
       accessibility: number;
       bestPractices: number;
       seo: number;

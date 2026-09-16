@@ -47,16 +47,5 @@ export interface CompleteImageRequest {
   imageUuid: string;
   targetType: CompleteStageType;
   targetId: string;
-  isCover?: boolean;
 }
 
-export interface CompleteImageResponse {
-  imageUuid: string;
-  publicUrls: {
-    original: string;
-    card: string;
-    thumbnail: string;
-  };
-  width: number;
-  height: number;
-}

@@ -431,6 +431,16 @@ body {
   display: none;
 }
 
+/* MapLibre attribution (map-home, BRAWUKA-311): the control renders
+   bottom-right, which the mobile sheet's PEEK height (172px) covers. Lift it
+   above the sheet on small screens — attribution must stay visible
+   (OpenMapTiles license). Desktop keeps the default corner. */
+@media (max-width: 1023px) {
+  .maplibregl-ctrl-bottom-right {
+    bottom: 180px;
+  }
+}
+
 /* Edge fade for horizontally scrollable strips whose scrollbar is hidden —
    the dissolve is the only affordance that more content sits off-canvas
    (profile tablist, BRAWUKA-247). Applied only while that edge is clipped. */

@@ -1,8 +1,8 @@
 import { execSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { parseConnectionConfig } from "../../../scripts/devops/setup-supabase.mjs";
+import { listMigrationTables, parseConnectionConfig } from "../../../scripts/devops/setup-supabase.mjs";
 import {
   cleanupIntegrationDatabase,
   integrationAdminUrl,
@@ -51,18 +51,23 @@ describe("Supabase DevOps Provisioning — Unit Contracts", () => {
     }).toThrow();
   });
 
-  it("all 19 migration files in web/db/migrations are ordered and present", () => {
-    const files = readdirSync(MIGRATIONS_DIR)
-      .filter((f) => f.endsWith(".sql"))
-      .sort((a, b) => {
-        const na = parseInt(a.match(/^(\d+)/)?.[1] ?? "0", 10);
-        const nb = parseInt(b.match(/^(\d+)/)?.[1] ?? "0", 10);
-        return na - nb;
-      });
-
-    expect(files.length).toBeGreaterThanOrEqual(19);
-    expect(files[0]).toBe("0001_init.sql");
-    expect(files[18]).toBe("0019_checkin_idempotency.sql");
+  it("provision table inventory derives from web/db/migrations (no hand-kept list)", () => {
+    // BRAWUKA-337: 0021 helpful_ranking_* shipped RLS-dark because the
+    // provision inventory was hand-maintained. The inventory must equal an
+    // independent CREATE TABLE scan of the migrations dir, so the next new
+    // table is covered with zero test edits.
+    const createTableRe = /create\s+table\s+(?:if\s+not\s+exists\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?\s*\(/gi;
+    const scanned = new Set(["schema_migrations"]);
+    for (const f of readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql"))) {
+      const sql = readFileSync(path.join(MIGRATIONS_DIR, f), "utf8");
+      createTableRe.lastIndex = 0;
+      let m;
+      while ((m = createTableRe.exec(sql)) !== null) {
+        if (m[1] && m[1].toLowerCase() !== "public") continue;
+        scanned.add(m[2].toLowerCase());
+      }
+    }
+    expect(new Set(listMigrationTables())).toEqual(scanned);
   });
 
   describe("parseConnectionConfig SSL enforcement", () => {
@@ -137,14 +142,16 @@ describeIntegration("Supabase DevOps Provisioning — Real Postgres Integration"
     }
   }, 60_000);
 
-  it("dry-run mode executes cleanly on fresh empty database", () => {
-    const output = execSync(
-      `node "${SETUP_SCRIPT}" --dry-run --skip-auth --database-url "${testDbUrl}"`,
-      { encoding: "utf8", stdio: "pipe" }
-    );
-    expect(output).toContain("Target Mode: DRY RUN");
-    expect(output).toContain("[DRY RUN]");
-    expect(output).toContain("Supabase Provisioning & Verification Finished Successfully");
+  it("dry-run on a fresh database fails closed on RLS-dark tables (drift signal)", () => {
+    // BRAWUKA-337: dry-run/verify-only must FAIL (exit 1) when migration
+    // tables lack RLS — warn-and-pass is how 0021 helpful_ranking_* shipped
+    // RLS-dark. A fresh DB has RLS off on every table, so this must throw.
+    expect(() => {
+      execSync(
+        `node "${SETUP_SCRIPT}" --dry-run --skip-auth --database-url "${testDbUrl}"`,
+        { encoding: "utf8", stdio: "pipe" },
+      );
+    }).toThrow(/RLS coverage incomplete/);
   });
 
   it("provisions database and verify-only checks tables and spatial GiST index", () => {
@@ -154,6 +161,7 @@ describeIntegration("Supabase DevOps Provisioning — Real Postgres Integration"
       { encoding: "utf8", stdio: "pipe" }
     );
     expect(provisionOutput).toContain("Supabase Provisioning & Verification Finished Successfully");
+    expect(provisionOutput).toContain("Post-provision RLS self-verification passed");
 
     // 2. Verify-only
     const verifyOutput = execSync(
@@ -163,6 +171,8 @@ describeIntegration("Supabase DevOps Provisioning — Real Postgres Integration"
     expect(verifyOutput).toContain("Target Mode: VERIFY ONLY");
     expect(verifyOutput).toContain("Table 'public.cafes' exists.");
     expect(verifyOutput).toContain("Table 'public.profiles' exists.");
+    expect(verifyOutput).toContain("RLS enabled on 'helpful_ranking_runs'.");
+    expect(verifyOutput).toContain("RLS enabled on 'helpful_ranking_entries'.");
     expect(verifyOutput).toContain("Spatial GiST index 'idx_cafes_location_active' exists on cafes.");
     expect(verifyOutput).toContain("Supabase Provisioning & Verification Finished Successfully");
   });

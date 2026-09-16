@@ -156,9 +156,10 @@
   - Token-bucket `RateLimiter` (memory, dev/tests) plus `createRateLimiter()`
     that selects a Postgres backend when `DATABASE_URL` is set (or
     `RATE_LIMIT_BACKEND=postgres`).
-  - `getClientIdentifier` prefers `CF-Connecting-IP`, then `X-Real-IP`, then
-    rightmost `X-Forwarded-For`; hashes `User-Agent` + IP for anonymous clients
-    and falls back to `anon:local-dev` locally.
+  - `getClientIdentifier` keys anonymous requests on `CF-Connecting-IP` only
+    (BRAWUKA-282: `User-Agent`, `X-Real-IP`, and `X-Forwarded-For` are all
+    client-forgeable and excluded); requests without `CF-Connecting-IP`
+    share one fail-closed `anon:unknown` bucket.
   - `rateLimitResponse` returns `429 Too Many Requests` with `error:
     "rate_limited"` and a `Retry-After` header.
   - Applied to `POST /api/images/upload`, `POST /api/images/complete`,

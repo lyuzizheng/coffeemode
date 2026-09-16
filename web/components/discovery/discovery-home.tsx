@@ -21,6 +21,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { useDiscoveryController } from "@/lib/discovery/use-discovery-controller";
+import { DiscoveryMapContext } from "@/lib/discovery/map-context";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useMounted } from "@/hooks/use-mounted";
 import type { CafeSummary } from "@/types/cafes";
@@ -136,17 +137,20 @@ export function DiscoveryHome({
     />
   ) : null;
 
-  // Standalone mode (no surface children — the future map surface) keeps the
-  // JS-gated switch: there is no landing subtree to keep stable.
+  // The map surface (children) reads controller/cafes/center through context
+  // — it mounts inside this tree, so no prop-drilling through the page.
+  const mapState = { controller, cafes: cafesQuery.data ?? [], center };
+
+  // Standalone mode (no surface children) keeps the JS-gated switch.
   if (!children) {
     if (!mounted) return null;
     return (
-      <>
+      <DiscoveryMapContext.Provider value={mapState}>
         {isDesktop ? <DesktopDiscovery {...props} /> : <MobileSheet {...props} />}
         {isDesktop ? navPromptView("surface") : null}
         {overlay}
         {checkinDrawer}
-      </>
+      </DiscoveryMapContext.Provider>
     );
   }
 
@@ -155,7 +159,7 @@ export function DiscoveryHome({
   // DesktopDiscovery; mounting gates only its interactive content and the
   // MobileSheet overlay.
   return (
-    <>
+    <DiscoveryMapContext.Provider value={mapState}>
       <DesktopDiscovery {...props} showColumns={mounted && isDesktop}>
         {children}
       </DesktopDiscovery>
@@ -163,6 +167,6 @@ export function DiscoveryHome({
       {mounted && isDesktop ? navPromptView("surface") : null}
       {mounted ? overlay : null}
       {checkinDrawer}
-    </>
+    </DiscoveryMapContext.Provider>
   );
 }

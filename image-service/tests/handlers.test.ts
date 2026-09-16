@@ -98,7 +98,7 @@ describe("handleUpload", () => {
     expect(data.message).toContain(`at most ${MAX_UPLOAD_BYTES} bytes`);
   });
 
-  it("signs Content-Length when size is provided", async () => {
+  it("signs Content-Length into the URL but never returns it to fetch", async () => {
     const env = baseEnv();
     const request = makeRequest("POST", "/v1/images/upload", { size: 1024 });
     const response = await handleUpload(request, env);
@@ -106,7 +106,11 @@ describe("handleUpload", () => {
 
     expect(response.status).toBe(200);
     expect(data.size).toBe(1024);
-    expect(data.uploadHeaders["Content-Length"]).toBe("1024");
+    // fetch derives Content-Length from the body and rejects a manual value
+    // (BRAWUKA-338); the size cap stays enforced via the signed URL instead.
+    expect(data.uploadHeaders["Content-Length"]).toBeUndefined();
+    expect(data.uploadHeaders["content-length"]).toBeUndefined();
+    expect(new URL(data.uploadUrl).searchParams.get("X-Amz-SignedHeaders")).toContain("content-length");
   });
 
   it("rejects an invalid size type", async () => {

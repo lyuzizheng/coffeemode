@@ -10,7 +10,7 @@ import { useNetworkStatus } from "@/hooks/use-network-status";
 import { isUnauthorized, responseMessage, throwIfUnauthorized } from "@/lib/http";
 import type { POI } from "@shared/places/types";
 
-async function persistExternalPlace(selected: POI, fallback: string): Promise<string | null> {
+async function persistExternalPlace(selected: POI, messages: { failed: string; notFood: string }): Promise<string | null> {
   try {
     const response = await fetch("/api/places/external", {
       method: "POST",
@@ -21,12 +21,21 @@ async function persistExternalPlace(selected: POI, fallback: string): Promise<st
     // drawer's gate as the shared marker rather than this alert slot.
     throwIfUnauthorized(response);
     if (!response.ok) {
-      return await responseMessage(response, fallback);
+      return await responseMessage(response, messages.failed);
+    }
+    // BRAWUKA-328: the worker skips non-food/category POIs instead of storing
+    // them. The form must not accept the place — it can never resolve to a cafe.
+    const result = (await response.json().catch(() => null)) as {
+      stored?: number;
+      skipped?: Array<{ index?: number; reason?: string }>;
+    } | null;
+    if (result && Array.isArray(result.skipped) && result.skipped.length > 0) {
+      return messages.notFood;
     }
     return null;
   } catch (cause) {
     if (isUnauthorized(cause)) throw cause;
-    return cause instanceof Error ? cause.message : fallback;
+    return cause instanceof Error ? cause.message : messages.failed;
   }
 }
 
@@ -96,7 +105,10 @@ function CafeCreationPane({
  * may use it; a dead session on that write goes to the sign-in gate rather than
  * to the alert slot, because only signing in can clear it (BRAWUKA-212).
  */
-function usePlaceSelection(requireSignIn: () => void, persistFailed: string) {
+function usePlaceSelection(
+  requireSignIn: () => void,
+  messages: { failed: string; notFood: string },
+) {
   const [poi, setPoi] = useState<POI | null>(null);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +124,7 @@ function usePlaceSelection(requireSignIn: () => void, persistFailed: string) {
       applyPlace(selected);
       return;
     }
-    void persistExternalPlace(selected, persistFailed)
+    void persistExternalPlace(selected, messages)
       .then((failure) => {
         if (failure) {
           setError(failure);
@@ -151,7 +163,7 @@ export function CafeCreationSheet({
   // One gate for the whole drawer: place search, external-place persist and the
   // creation form all die the same way when the session expires (BRAWUKA-212).
   const requireSignIn = useCallback(() => setShowSignInGate(true), []);
-  const place = usePlaceSelection(requireSignIn, t("searchFailed"));
+  const place = usePlaceSelection(requireSignIn, { failed: t("searchFailed"), notFood: t("notFoodPlace") });
 
   const reset = () => {
     place.reset();

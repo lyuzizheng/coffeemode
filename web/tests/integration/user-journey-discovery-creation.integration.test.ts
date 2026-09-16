@@ -22,10 +22,7 @@ import { getProfile, updateProfile } from "@/lib/db/profile";
 import { searchCafesInDb } from "@/lib/db/search";
 import { listPublicCheckIns } from "@/lib/discovery/feed";
 import { recordUploadIntent } from "@/lib/db/image-uploads";
-import {
-  completeImageUpload,
-  defaultCompleteUploadDeps,
-} from "@/lib/images/complete";
+import { PhotoIntentError } from "@/lib/images/provision-photos";
 import { executeSearch } from "@/lib/search/search-service";
 import { GET as recoveryGET } from "@/app/api/cafes/[id]/recovery/route";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
@@ -36,7 +33,7 @@ import {
   provisionTestDatabase,
   testDatabaseUrl,
 } from "../helpers/db";
-import { cafeWorkStats, fakeProcessUrls } from "../helpers/fixtures";
+import { cafeWorkStats, fakeProvisionPhotosDeps } from "../helpers/fixtures";
 import {
   createFakeImageUpload,
   createMockGooglePlacesResponse,
@@ -69,19 +66,6 @@ const previousDatabaseUrl = process.env.DATABASE_URL;
 // Track per-test created resources for afterEach cleanup
 const createdCafeIds = new Set<string>();
 const createdUserIds = new Set<string>();
-function imageStubDeps() {
-  return {
-    ...defaultCompleteUploadDeps(),
-    getProcessUrls: async (request: { imageUuid: string }) =>
-      fakeProcessUrls(request.imageUuid),
-    processImage: async (imageUuid: string) => ({
-      imageUuid,
-      publicUrls: fakeProcessUrls(imageUuid).publicUrls,
-      width: 800,
-      height: 600,
-    }),
-  };
-}
 
 describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", () => {
   beforeAll(async () => {
@@ -403,28 +387,37 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
     expect(fakeUpload.contentType).toBe("image/webp");
     expect(fakeUpload.size).toBeGreaterThan(0);
 
-    // Unrecorded intent must fail
-    const unrecordedResult = await completeImageUpload(
-      { id: JOURNEY_U1 },
-      { imageUuid: fakeUpload.imageUuid, targetType: "cafe", targetId: journey_cafe_id, isCover: false },
-      imageStubDeps(),
-    );
-    expect(unrecordedResult.ok).toBe(false);
-    if (!unrecordedResult.ok) {
-      expect(unrecordedResult.reason).toBe("intent_not_found");
-    }
+    // Unrecorded intent must fail before any remote work (live creation path).
+    // JOURNEY_U2 has no check-in at this cafe, so only the intent gate can fail.
+    await expect(
+      createCheckIn(
+        JOURNEY_U2,
+        { cafe_id: journey_cafe_id, scores: { overall: 85 }, photo_ids: [fakeUpload.imageUuid] },
+        fakeProvisionPhotosDeps(),
+      ),
+    ).rejects.toBeInstanceOf(PhotoIntentError);
 
-    // Record intent and complete upload
-    await recordUploadIntent(JOURNEY_U1, fakeUpload.imageUuid);
-    const completeResult = await completeImageUpload(
-      { id: JOURNEY_U1 },
-      { imageUuid: fakeUpload.imageUuid, targetType: "cafe", targetId: journey_cafe_id, isCover: false },
-      imageStubDeps(),
+    // Record intent and attach via the live creation path
+    await recordUploadIntent(JOURNEY_U2, fakeUpload.imageUuid);
+    const created = await createCheckIn(
+      JOURNEY_U2,
+      {
+        cafe_id: journey_cafe_id,
+        scores: { overall: 85, wifi: 90, outlets: 85, seats: 80, coffee: 90 },
+        max_stay: "unlimited",
+        note: "Journey photo attach",
+        photo_ids: [fakeUpload.imageUuid],
+      },
+      fakeProvisionPhotosDeps(),
     );
-    expect(completeResult.ok).toBe(true);
-    expect(completeResult.storedImage?.id).toBe(fakeUpload.imageUuid);
+    expect(created.checkin_id).toBeDefined();
 
-    // Verify atomic mount into cafes.gallery in Postgres
+    // Verify atomic mount: checkins.photos carries the StoredImage ...
+    const photosRes = await dbClient.query("select photos from checkins where id = $1", [created.checkin_id]);
+    const photos = photosRes.rows[0]?.photos as Array<{ id: string }>;
+    expect(photos.some((img) => img.id === fakeUpload.imageUuid)).toBe(true);
+
+    // ... and it is merged into cafes.gallery in the same transaction
     const galleryRes = await dbClient.query(
       "select gallery from cafes where id = $1",
       [journey_cafe_id],
@@ -433,29 +426,26 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
     expect(gallery).toBeInstanceOf(Array);
     expect(gallery.some((img) => img.id === fakeUpload.imageUuid)).toBe(true);
 
-    // Single-use intent guarantee: re-completing the same intent must fail
-    const replayResult = await completeImageUpload(
-      { id: JOURNEY_U1 },
-      { imageUuid: fakeUpload.imageUuid, targetType: "cafe", targetId: journey_cafe_id, isCover: false },
-      imageStubDeps(),
-    );
-    expect(replayResult.ok).toBe(false);
-    if (!replayResult.ok) {
-      expect(replayResult.reason).toBe("intent_not_found");
-    }
+    // Single-use intent guarantee: reusing the same photo id must fail
+    // (provisioning fails before the DG64 revisit gate is reached)
+    await expect(
+      createCheckIn(
+        JOURNEY_U2,
+        { cafe_id: journey_cafe_id, scores: { overall: 80 }, photo_ids: [fakeUpload.imageUuid] },
+        fakeProvisionPhotosDeps(),
+      ),
+    ).rejects.toBeInstanceOf(PhotoIntentError);
 
-    // User isolation guarantee: another user cannot complete U1's intent
+    // User isolation guarantee: U1 cannot consume an intent issued to U2
     const foreignUpload = createFakeImageUpload();
-    await recordUploadIntent(JOURNEY_U1, foreignUpload.imageUuid);
-    const foreignResult = await completeImageUpload(
-      { id: JOURNEY_U2 },
-      { imageUuid: foreignUpload.imageUuid, targetType: "cafe", targetId: journey_cafe_id, isCover: false },
-      imageStubDeps(),
-    );
-    expect(foreignResult.ok).toBe(false);
-    if (!foreignResult.ok) {
-      expect(foreignResult.reason).toBe("intent_not_found");
-    }
+    await recordUploadIntent(JOURNEY_U2, foreignUpload.imageUuid);
+    await expect(
+      createCheckIn(
+        JOURNEY_U1,
+        { cafe_id: journey_cafe_id, scores: { overall: 80 }, photo_ids: [foreignUpload.imageUuid] },
+        fakeProvisionPhotosDeps(),
+      ),
+    ).rejects.toBeInstanceOf(PhotoIntentError);
   });
 
   it("Path 2: fused creation transaction produces initial work_stats and guarantees default anonymity", async () => {

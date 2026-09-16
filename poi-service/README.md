@@ -15,7 +15,7 @@ Slice: `poi-cache-service` in `docs/agent/implementation-slices.md`.
 | POST | `/poi/resolve` | `{maps_share_url}` → POI (cafe creation import path; follows short links) |
 | GET | `/poi/search?q&lat&lng&r` | Search **stored** POIs: name match + haversine distance sort (r in km, default 10) |
 | GET | `/poi/search/external?q&lat&lng&r` | Live Google Places search; usable results are written to D1/KV before returning |
-| POST | `/poi/external` | Store externally-searched POIs: array in body or `{pois: [...]}` (Google live / Apple MapKit refs) |
+| POST | `/poi/external` | Store externally-searched POIs: array in body or `{pois: [...]}` (Google live / Apple MapKit refs). Only food/cafe-category entries persist (Google `types` / Apple `PointOfInterestCategory`; BRAWUKA-328) — response is `{ stored, skipped: [{ index, reason }] }`; shape-invalid entries still 400 with `entries` |
 
 ## Local development
 
@@ -69,7 +69,9 @@ namespaces and D1 databases that do not exist. Validate without deploying with
 - Field masks on every Google call keep billing minimal; photos are stored as
   references (`photo.name`) and fetched lazily.
 - Apple POIs have no server-side upstream — they are stored via `POST /poi/external`
-  and served from D1 only.
+  and served from D1 only. Both Google and Apple entries pass a food/cafe
+  category gate before persisting (DG144/DG52; BRAWUKA-328); skipped entries
+  are reported with `non_food_category` and never stored.
 - Graceful degradation: a stale D1 row is served if the Google refresh fails.
 - Auth is a shared-secret constant-time compare; service-to-service only, never
   called from the browser.

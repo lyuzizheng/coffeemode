@@ -10,8 +10,8 @@ import type { POI } from "@shared/places/types";
 
 vi.mock("@/lib/images/client-upload", () => ({ uploadPhoto: vi.fn() }));
 
-// MapKit loads from Apple's CDN in a real browser; the stub is the service
-// boundary that hands a selected Apple place back to the sheet.
+// MapKit loads from Apple's CDN in a real browser; the provider registry is
+// the service boundary that hands a selected Apple place back to the sheet.
 const APPLE_PLACE = vi.hoisted<POI>(() => ({
   place_id: "apple-1",
   source: "apple",
@@ -26,12 +26,13 @@ const APPLE_PLACE = vi.hoisted<POI>(() => ({
   fetched_at: "2026-01-01T00:00:00.000Z",
 }));
 
-vi.mock("@/components/cafe/apple-place-search", () => ({
-  ApplePlaceSearch: ({ onSelect }: { onSelect: (poi: POI) => void }) => (
-    <button type="button" onClick={() => onSelect(APPLE_PLACE)}>
-      Pick an Apple place
-    </button>
-  ),
+vi.mock("@/lib/places/apple-place-search", () => ({
+  applePlaceSearch: (t: (key: string) => string) => ({
+    id: "apple",
+    label: t("apple"),
+    persistOnSelect: true,
+    search: async () => [APPLE_PLACE],
+  }),
 }));
 
 function Wrapper({ children }: { children: React.ReactNode }) {
@@ -173,6 +174,49 @@ describe("CafeCreationSheet & Trigger", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
   });
+
+  it("blocks the form with a food-only message when the worker skips the place (BRAWUKA-328)", async () => {
+    const onOpenChange = vi.fn();
+
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("/api/places/resolve")) {
+        return { ok: true, status: 200, json: async () => APPLE_PLACE };
+      }
+      if (url.includes("/api/places/search?")) {
+        return { ok: true, status: 200, json: async () => ({ results: [APPLE_PLACE] }) };
+      }
+      if (url.includes("/api/places/external")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ stored: 0, skipped: [{ index: 0, reason: "non_food_category" }] }),
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    });
+
+    render(
+      <CafeCreationSheet isOpen={true} onOpenChange={onOpenChange} isAuthenticated={true} />,
+      { wrapper: Wrapper },
+    );
+
+    // Google results are persist-free; flip to the mocked Apple provider
+    // (persist-on-select, no init gate in the mock) and select its row.
+    fireEvent.click(screen.getByRole("tab", { name: "Search a place" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apple Maps" }));
+    fireEvent.change(screen.getByPlaceholderText("Search for a cafe"), {
+      target: { value: "cafe" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+
+    const resultButton = await screen.findByRole("button", { name: /Apple Cafe/ });
+    fireEvent.click(resultButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/not a cafe or food venue/i);
+    });
+    expect(screen.queryByRole("button", { name: "Create cafe" })).not.toBeInTheDocument();
+  });
 });
 
 describe("CafeCreationSheet session expiry (BRAWUKA-124/BRAWUKA-212)", () => {
@@ -273,7 +317,10 @@ describe("CafeCreationSheet session expiry (BRAWUKA-124/BRAWUKA-212)", () => {
     render(<CafeCreationSheet isOpen onOpenChange={vi.fn()} isAuthenticated />, { wrapper: Wrapper });
     fireEvent.click(screen.getByRole("tab", { name: "Search a place" }));
     fireEvent.click(screen.getByRole("button", { name: "Apple Maps" }));
-    fireEvent.click(screen.getByRole("button", { name: "Pick an Apple place" }));
+    const searchInput = await screen.findByPlaceholderText("Search for a cafe");
+    fireEvent.change(searchInput, { target: { value: "cafe" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Apple Cafe/ }));
 
     await expectSignInGate();
   });

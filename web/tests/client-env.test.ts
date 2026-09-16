@@ -6,6 +6,9 @@ import {
   getDisplayNameMaxChars,
   getHandleMaxChars,
   getImageMaxDimension,
+  getMapDefaultZoom,
+  getMapFocusZoom,
+  getMapProvider,
   getNavPromptCollapseMs,
   getOnboardingGeolocationTimeoutMs,
   getQueryGcTimeMs,
@@ -54,6 +57,11 @@ describe("client config fallbacks match app.yaml", () => {
     expect(getOnboardingGeolocationTimeoutMs()).toBe(
       appConfig.onboarding.geolocationTimeoutMs,
     );
+    // map-home: provider id + zooms mirror app.yaml's map section; the
+    // provider's style URLs live in components/map/maplibre-config.ts.
+    expect(getMapProvider()).toBe(appConfig.map.provider);
+    expect(getMapDefaultZoom()).toBe(appConfig.map.defaultZoom);
+    expect(getMapFocusZoom()).toBe(appConfig.map.focusZoom);
   });
 
   it("keeps the previously hardcoded client values (no behavior change)", () => {
@@ -79,5 +87,9 @@ describe("client config fallbacks match app.yaml", () => {
     expect(getQueryGcTimeMs()).toBe(3_600_000);
     vi.stubEnv("NEXT_PUBLIC_ONBOARDING_GEOLOCATION_TIMEOUT_MS", "8000");
     expect(getOnboardingGeolocationTimeoutMs()).toBe(8_000);
+    vi.stubEnv("NEXT_PUBLIC_MAP_PROVIDER", "google");
+    expect(getMapProvider()).toBe("google");
+    vi.stubEnv("NEXT_PUBLIC_MAP_FOCUS_ZOOM", "16");
+    expect(getMapFocusZoom()).toBe(16);
   });
 });

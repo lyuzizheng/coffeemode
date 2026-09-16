@@ -402,7 +402,8 @@ Basemap: OpenFreeMap public instance (owner decision BRAWUKA-321: never
 Config: web/config/app.yaml `map:` section — tileStyle.light/dark (full
         style document URLs: OFM liberty/dark), glyphs, sprite, defaultZoom,
         focusZoom. These URLs are the only tile-host coupling; a provider
-        switch is a config edit, not a code change.
+        switch is a config edit plus a components/map/ provider swap
+        (IMapProvider seam), not a code change.
 Color scheme: follows app theme (light/dark) via setStyle
 Attribution: ON (OpenMapTiles license) — never disable
 Requires: nothing external — no Apple Developer Program, no API key

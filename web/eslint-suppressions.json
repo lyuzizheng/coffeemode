@@ -37,11 +37,6 @@
       "count": 1
     }
   },
-  "components/cafe/apple-place-search.tsx": {
-    "max-lines-per-function": {
-      "count": 1
-    }
-  },
   "components/cafe/cafe-creation-form.tsx": {
     "max-lines-per-function": {
       "count": 1

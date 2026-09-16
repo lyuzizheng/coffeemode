@@ -245,7 +245,6 @@
     "searchAction": "搜索",
     "searchResults": "搜索结果",
     "noAddress": "暂无地址",
-    "appleLoading": "正在连接 Apple Maps……",
     "appleUnavailable": "Apple Maps 搜索尚未配置。",
     "searchFailed": "暂时无法搜索。",
     "previewTitle": "地点预览",
@@ -270,7 +269,8 @@
     "offline": "离线时无法创建",
     "signInRequired": "请先登录再发布，草稿会保留在此处。",
     "close": "关闭",
-    "submit": "创建咖啡店"
+    "submit": "创建咖啡店",
+    "providerLoading": "正在连接地点服务……"
   },
   "checkIn": {
     "title": "打卡",

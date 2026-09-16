@@ -44,12 +44,17 @@ export const runtime = "nodejs";
  * MapKit JS needs a short-lived browser token, while the Apple private key
  * must remain server-side. Returning 503 when the owner credentials are not
  * configured keeps the Apple search tab honest during local development.
+ *
+ * Auth-gated (BRAWUKA-296): the minted token is a signing oracle — anyone
+ * holding one can run MapKit JS attributed to this site — so only the
+ * signed-in creation flow may fetch it. Anonymous callers get 401 before
+ * any credential check.
  */
 export async function GET(request: Request) {
   const gate = await guard(request, {
     bucket: "places",
+    requireAuth: true,
     route: "GET /api/mapkit-token",
-    ipOnly: true,
   });
   if (!gate.ok) return gate.response;
 

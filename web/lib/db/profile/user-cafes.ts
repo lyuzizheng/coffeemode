@@ -12,6 +12,9 @@ type UserCafeRow = {
   city: string;
   cover: string | null;
   last_visited_at: Date;
+  // Microsecond-precision rendering for the keyset cursor — see
+  // user-checkins.ts (same fix as feed.ts CURSOR_TS).
+  cursor_visited_at: string;
   checkins_count: string | number;
   is_creation: boolean;
 };
@@ -66,6 +69,7 @@ export async function getUserCafes(
       c.city,
       c.cover,
       max(ch.visited_at) as last_visited_at,
+      to_char(max(ch.visited_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_visited_at,
       count(ch.id) as checkins_count,
       bool_or(c.created_by = $1 or ch.is_creation = true) as is_creation
     from checkins ch
@@ -85,8 +89,9 @@ export async function getUserCafes(
   const rawItems = hasMore ? result.rows.slice(0, limit) : result.rows;
   const items = toUserCafeItems(rawItems);
 
-  const last = items[items.length - 1];
-  const next_cursor = hasMore && last ? `${last.last_visited_at}_${last.id}` : null;
+  const last = rawItems[rawItems.length - 1];
+  const next_cursor =
+    hasMore && last ? `${last.cursor_visited_at}_${last.id}` : null;
 
   return { items, next_cursor };
 }

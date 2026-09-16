@@ -5,7 +5,7 @@
 
 import { DEFAULT_SEARCH_RADIUS_KM } from "../constants";
 import type { Env, POI } from "../types";
-import { UpstreamApiError, type UpstreamPlacesProvider } from "./types";
+import { UpstreamApiError, type Coordinates, type UpstreamPlacesProvider } from "./types";
 
 export const GOOGLE_API_BASE = "https://places.googleapis.com";
 
@@ -95,6 +95,9 @@ function baseUrl(env: Env): string {
   return env.GOOGLE_PLACES_BASE_URL ?? GOOGLE_API_BASE;
 }
 
+export const GOOGLE_GEOCODE_API_BASE = "https://maps.googleapis.com";
+
+
 function headers(env: Env, fieldMask = DETAIL_FIELDS): HeadersInit {
   return {
     "X-Goog-Api-Key": env.GOOGLE_PLACES_API_KEY,
@@ -166,6 +169,92 @@ export function toPOI(gp: GooglePlace, source: "google" | "apple" = "google"): P
     fetched_at: new Date().toISOString(),
   };
 }
+export interface GoogleGeocodeResult {
+  place_id: string;
+  formatted_address?: string;
+  types?: string[];
+}
+
+export interface GoogleGeocodeResponse {
+  status?: string;
+  results?: GoogleGeocodeResult[];
+  error_message?: string;
+}
+
+/**
+ * Reverse geocode coordinates to a normalized food/cafe POI.
+ * Calls Google Geocoding API, extracts candidate place_id matching food/cafe
+ * or establishment/point_of_interest, enriches via Place Details (New),
+ * and verifies food/cafe category per BRAWUKA-328. Non-food POIs and
+ * coordinates without establishments return null.
+ */
+export async function reverseGeocode(
+  coordinates: Coordinates,
+  env: Env,
+  fetchImpl: typeof fetch = fetch,
+): Promise<POI | null> {
+  const { lat, lng } = coordinates;
+  const baseUrl = env.GOOGLE_GEOCODE_BASE_URL ?? env.GOOGLE_PLACES_BASE_URL ?? GOOGLE_GEOCODE_API_BASE;
+  const url = `${baseUrl}/maps/api/geocode/json?latlng=${lat},${lng}&key=${encodeURIComponent(env.GOOGLE_PLACES_API_KEY)}`;
+  const res = await fetchImpl(url);
+  if (!res.ok) {
+    await res.text().catch(() => undefined); // drain; upstream bodies are never relayed
+    throw new GoogleApiError(`Geocoding failed with upstream status ${res.status}`, res.status);
+  }
+
+  const data = (await res.json()) as GoogleGeocodeResponse;
+
+  if (data.status === "ZERO_RESULTS") {
+    return null;
+  }
+
+  if (data.status && data.status !== "OK") {
+    if (data.status === "OVER_QUERY_LIMIT") {
+      throw new GoogleApiError("Geocoding quota exceeded", 429);
+    }
+    if (data.status === "REQUEST_DENIED") {
+      throw new GoogleApiError(data.error_message ?? "Geocoding request denied", 403);
+    }
+    if (data.status === "INVALID_REQUEST") {
+      return null;
+    }
+    throw new GoogleApiError(data.error_message ?? `Geocoding upstream status ${data.status}`, 502);
+  }
+
+  const results = data.results ?? [];
+  if (results.length === 0) {
+    return null;
+  }
+
+  // Find candidate place:
+  // 1. First preference: result whose geocoding types match food/cafe directly
+  // 2. Second preference: result representing an establishment or point_of_interest
+  const candidate =
+    results.find((r) => isGoogleFoodOrCafePOI(r.types)) ??
+    results.find((r) => r.types?.some((t) => t === "point_of_interest" || t === "establishment"));
+
+  if (!candidate || !candidate.place_id) {
+    return null;
+  }
+
+  let raw: GooglePlace;
+  try {
+    raw = await fetchPlaceDetails(candidate.place_id, env, fetchImpl);
+  } catch (e) {
+    if (e instanceof UpstreamApiError && e.status === 404) {
+      return null;
+    }
+    throw e;
+  }
+
+  const poi = toPOI(raw, "google");
+  if (!isGoogleFoodOrCafePOI(poi.types)) {
+    return null;
+  }
+
+  return poi;
+}
+
 
 /** Upstream places provider implementation for Google Places API (New). */
 export class GooglePlacesProvider implements UpstreamPlacesProvider<GooglePlace> {
@@ -191,5 +280,9 @@ export class GooglePlacesProvider implements UpstreamPlacesProvider<GooglePlace>
 
   matchesCategory(types: string[]): boolean {
     return isGoogleFoodOrCafePOI(types);
+  }
+
+  async reverseGeocode(c: Coordinates): Promise<POI | null> {
+    return reverseGeocode(c, this.env, this.fetchImpl);
   }
 }

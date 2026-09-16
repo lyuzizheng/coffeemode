@@ -81,6 +81,7 @@ describe("Profile DB helpers", () => {
             cafe_city: "singapore",
             cafe_is_deleted: false,
             visited_at: visitedAt,
+            cursor_visited_at: "2026-08-25T12:00:00.123456Z",
             scores: { wifi: 90 },
             likes_count: 5,
             notes: "Note",
@@ -94,6 +95,7 @@ describe("Profile DB helpers", () => {
             cafe_city: "singapore",
             cafe_is_deleted: true,
             visited_at: visitedAt,
+            cursor_visited_at: "2026-08-25T12:00:00.123457Z",
             scores: {},
             likes_count: 0,
             notes: null,
@@ -110,7 +112,43 @@ describe("Profile DB helpers", () => {
       const res = await getUserCheckIns(userId, { limit: 1 });
       expect(res.items.length).toBe(1);
       expect(res.items[0].cafe_name).toBe("Cafe 1");
-      expect(res.next_cursor).toBe(`${visitedAt.toISOString()}_${checkinId1}`);
+      // Microsecond-precision cursor comes from SQL to_char, not the
+      // ms-truncated JS Date (BRAWUKA-315).
+      expect(res.next_cursor).toBe(`2026-08-25T12:00:00.123456Z_${checkinId1}`);
+    });
+
+    it("round-trips a microsecond cursor through the next page (BRAWUKA-315)", async () => {
+      const visitedAt = new Date("2026-08-25T12:00:00.123Z");
+      const checkinId = "00000000-0000-4000-8000-000000000011";
+      poolQueryMock.mockResolvedValueOnce({
+        rows: [
+          {
+            id: checkinId,
+            cafe_id: "00000000-0000-4000-8000-000000000021",
+            cafe_name: "Cafe 1",
+            cafe_city: "singapore",
+            cafe_is_deleted: false,
+            visited_at: visitedAt,
+            cursor_visited_at: "2026-08-25T12:00:00.123456Z",
+            scores: {},
+            likes_count: 0,
+            notes: null,
+            photos: [],
+            is_creation: false,
+          },
+        ],
+        command: "SELECT",
+        rowCount: 1,
+        oid: 0,
+        fields: [],
+      });
+
+      await getUserCheckIns(userId, {
+        limit: 1,
+        cursor: `2026-08-25T12:00:00.123455Z_00000000-0000-4000-8000-000000000010`,
+      });
+      const [, params] = poolQueryMock.mock.calls[0] as [string, unknown[]];
+      expect(params).toContain("2026-08-25T12:00:00.123455Z");
     });
 
     it("throws ProfileCursorError on invalid cursor string", async () => {
@@ -157,6 +195,44 @@ describe("Profile DB helpers", () => {
       expect(res.items[0].checkins_count).toBe(3);
       expect(res.items[0].is_creation).toBe(true);
       expect(res.next_cursor).toBeNull();
+    });
+
+    it("emits a microsecond-precision next_cursor when paginating (BRAWUKA-315)", async () => {
+      const lastVisited = new Date("2026-08-25T14:00:00.000Z");
+      const cafeId1 = "00000000-0000-4000-8000-000000000031";
+      const cafeId2 = "00000000-0000-4000-8000-000000000032";
+      poolQueryMock.mockResolvedValueOnce({
+        rows: [
+          {
+            id: cafeId1,
+            name: "First",
+            city: "singapore",
+            cover: null,
+            last_visited_at: lastVisited,
+            cursor_visited_at: "2026-08-25T14:00:00.654321Z",
+            checkins_count: "2",
+            is_creation: false,
+          },
+          {
+            id: cafeId2,
+            name: "Second",
+            city: "singapore",
+            cover: null,
+            last_visited_at: lastVisited,
+            cursor_visited_at: "2026-08-25T14:00:00.654320Z",
+            checkins_count: "1",
+            is_creation: false,
+          },
+        ],
+        command: "SELECT",
+        rowCount: 2,
+        oid: 0,
+        fields: [],
+      });
+
+      const res = await getUserCafes(userId, { limit: 1 });
+      expect(res.items.length).toBe(1);
+      expect(res.next_cursor).toBe(`2026-08-25T14:00:00.654321Z_${cafeId1}`);
     });
   });
 });

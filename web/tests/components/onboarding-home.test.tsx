@@ -136,6 +136,24 @@ describe("OnboardingHome (DG114–DG123)", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("the account chip rides the mapOverlay slot in every phase (BRAWUKA-318)", async () => {
+    // Signed-out, card visible: sign-in affordance + theme toggle.
+    renderHome();
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
+      "href",
+      "/profile",
+    );
+    expect(screen.getByRole("group", { name: "Theme" })).toBeInTheDocument();
+  });
+
+  it("the account chip shows the profile initial when signed in", async () => {
+    renderHome({ isAuthenticated: true, serverOnboarded: true, accountInitial: "J" });
+    const link = await screen.findByRole("link", { name: "Profile" });
+    expect(link).toHaveAttribute("href", "/profile");
+    expect(link).toHaveTextContent("J");
+  });
+
   it("grant recenters on the user and resolves the city server-side", async () => {
     vi.mocked(requestPosition).mockResolvedValueOnce({ ok: true, lat: 1.29, lng: 103.85 });
     renderHome();

@@ -39,6 +39,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+COMPOSE_DIR="${REPO_ROOT}/deploy/dokploy"
 
 # ------------------------------------------------------------------------------
 # Defaults & CLI Argument Parsing
@@ -152,7 +153,7 @@ scoped_session_url() {
     printf '%s' "${!var}"
     return 0
   fi
-  local env_file="${REPO_ROOT}/deploy/dokploy/.env.${e}"
+  local env_file="${COMPOSE_DIR}/.env.${e}"
   if [[ -f "$env_file" ]]; then
     local url
     url="$(grep -E '^DIRECT_URL=' "$env_file" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"

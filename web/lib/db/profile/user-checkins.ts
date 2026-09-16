@@ -15,6 +15,11 @@ type UserCheckInRow = {
   cafe_city: string;
   cafe_is_deleted: boolean;
   visited_at: Date;
+  // Microsecond-precision rendering for the keyset cursor: `pg` parses
+  // timestamptz into a JS Date (ms precision) but Postgres stores µs, so a
+  // cursor built from the Date could sit BELOW the stored value and skip
+  // rows sharing a millisecond (same fix as feed.ts CURSOR_TS).
+  cursor_visited_at: string;
   scores: CheckInScores | null;
   max_stay: MaxStay | null;
   likes_count: number;
@@ -74,6 +79,7 @@ export async function getUserCheckIns(
       coalesce(c.city, '') as cafe_city,
       (c.id is null or c.deleted_at is not null) as cafe_is_deleted,
       ch.visited_at,
+      to_char(ch.visited_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_visited_at,
       ch.scores,
       ch.max_stay,
       ch.likes_count,
@@ -95,8 +101,9 @@ export async function getUserCheckIns(
   const rawItems = hasMore ? result.rows.slice(0, limit) : result.rows;
   const items = toUserCheckInItems(rawItems);
 
-  const last = items[items.length - 1];
-  const next_cursor = hasMore && last ? `${last.visited_at}_${last.id}` : null;
+  const last = rawItems[rawItems.length - 1];
+  const next_cursor =
+    hasMore && last ? `${last.cursor_visited_at}_${last.id}` : null;
 
   return { items, next_cursor };
 }

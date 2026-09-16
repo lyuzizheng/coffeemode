@@ -4,7 +4,7 @@
 
 Implementation of owner-confirmed decisions from `docs/specs/0004-product-decisions-and-backlog.md` is in progress. Parts A–C and the remaining Phase 1 backlog (D1, D4, D7, A2) have merged to `main` (PRs #19, #20, #21, #22). Infrastructure slices (`image-pipeline`, `poi-cache-service`, `places-proxy`, `auth-foundation`) are code-complete but still pending owner credential/account actions.
 
-The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI artifacts were delivered and grilled (rounds 8–15, DG21–DG124), including the DG124 redesign that makes `/cafes/[id]` hydrate into the map app and abolishes the DeepLinkBanner. Every map-independent UI slice is design-unblocked; `discovery-sheet`, `seo-sharing`, `profile-page`, `search-filters`, and `checkin-system` are COMPLETE, the rest READY in `docs/agent/implementation-slices.md`; the remaining design debt is the three map-bound artifacts, which wait on Apple credentials (#131) anyway.
+The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI artifacts were delivered and grilled (rounds 8–15, DG21–DG124), including the DG124 redesign that makes `/cafes/[id]` hydrate into the map app and abolishes the DeepLinkBanner. Every map-independent UI slice is design-unblocked; `discovery-sheet`, `seo-sharing`, `profile-page`, `search-filters`, and `checkin-system` are COMPLETE, the rest READY in `docs/agent/implementation-slices.md`; the map-bound artifacts were never delivered, but map-home (BRAWUKA-311) shipped on MapLibre GL + OpenFreeMap without them — the Apple credentials blocker (#131) no longer gates any map slice.
 
 ## Active focus
 
@@ -112,13 +112,30 @@ docs/agent/              current state, planned-slice manifest, owner actions
    `web/lib/config.ts`, never hardcode. One writer per slice
 ```
 
+### Map slices (map-home landed — BRAWUKA-311)
+
+```text
+- map-home — COMPLETE: MapLibre GL v5 + OpenFreeMap basemap on `/`; the
+  Apple Developer blocker (#131) is eliminated — BRAWUKA-308's review
+  pivoted the basemap to MapLibre. Tile host = the `map:` section in
+  web/config/app.yaml (full style document URLs — public OFM instance;
+  self-hosting permanently off the table per BRAWUKA-321 owner decision).
+  The surface binds to `IMapProvider`, not MapLibre — a Google/Apple swap
+  is a provider swap, not a rewrite.
+  No MapKit fallback — the old implementation never shipped,
+  there is nothing to fall back to.
+- map-discovery-integration — PARTIAL: selection → flyTo, clustered pins,
+  marker tap → URL sync landed with map-home; the map search overlay and
+  external-result pins remain (#134).
+- map-creation-entry — READY: map-tap creation + reverse geocoding
+  (Nominatim/Photon picked at implementation time) (#136).
+- deeplink-hydration — READY: the map app now exists for the /cafes/[id]
+  SSR shell to hydrate into at FULL (DG124) (#150).
+```
+
 ### Blocked context (do not start yet)
 
 ```text
-- map-home — Apple MapKit full-screen map + custom markers [BLOCKED on Apple Developer Program; #131, #132; map-home design artifact still owed]
-- map-discovery-integration — bind discovery/search to MapKit [BLOCKED on map-home; #134]
-- map-creation-entry — map-tap and map-surface creation entry [BLOCKED on map-home; #136]
-- deeplink-hydration — /cafes/[id] SSR shell hydrates into the map app at FULL (DG124) [BLOCKED on Apple MapKit creds #131; the SSR shell it hydrates is seo-sharing (#150), COMPLETE]
 - deploy-vps — Docker + VPS + CDN + CI/CD [BLOCKED on domain + VPS + Cloudflare account]
 - cleanup-legacy — remove old Vite frontend + Java backend [BLOCKED on deploy-vps]
 ```

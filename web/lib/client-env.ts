@@ -26,6 +26,11 @@ export function envPositiveInt(raw: string | undefined, fallback: number): numbe
   }
   return fallback;
 }
+/** Parse an already-resolved env string; fall back when missing or empty. */
+export function envNonEmptyString(raw: string | undefined, fallback: string): string {
+  return raw !== undefined && raw !== "" ? raw : fallback;
+}
+
 
 /** `checkins.noteMaxChars` — check-in note input cap. */
 export function getCheckinNoteMaxChars(): number {
@@ -75,6 +80,22 @@ export function getQueryPersistMaxAgeMs(): number {
 /** `promptQueue.autoCollapseMs` — nav-prompt card → pill delay (spec-owned 8s). */
 export function getNavPromptCollapseMs(): number {
   return envPositiveInt(process.env.NEXT_PUBLIC_NAV_PROMPT_COLLAPSE_MS, 8_000);
+}
+
+/** `map.provider` — active basemap provider id; selects the provider
+ * component in `components/map/providers.ts`. */
+export function getMapProvider(): string {
+  return envNonEmptyString(process.env.NEXT_PUBLIC_MAP_PROVIDER, "maplibre");
+}
+
+/** `map.defaultZoom` — city-level zoom when the resolved center changes. */
+export function getMapDefaultZoom(): number {
+  return envPositiveInt(process.env.NEXT_PUBLIC_MAP_DEFAULT_ZOOM, 12);
+}
+
+/** `map.focusZoom` — street-level zoom when a cafe is selected. */
+export function getMapFocusZoom(): number {
+  return envPositiveInt(process.env.NEXT_PUBLIC_MAP_FOCUS_ZOOM, 15);
 }
 
 /** `onboarding.geolocationTimeoutMs` — browser geolocation timeout (DG112). */

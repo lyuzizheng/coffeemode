@@ -39,6 +39,8 @@ export interface Env {
   POI_DB: D1Like;
   /** Overridable for tests; defaults to https://places.googleapis.com */
   GOOGLE_PLACES_BASE_URL?: string;
+  /** Overridable for tests; defaults to https://maps.googleapis.com */
+  GOOGLE_GEOCODE_BASE_URL?: string;
 }
 
 export interface Deps {

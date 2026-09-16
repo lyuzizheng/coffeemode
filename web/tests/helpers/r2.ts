@@ -29,6 +29,10 @@ export function r2Client(): AwsClient {
 // Mirrors image-service/src/r2.ts presigning (aws4fetch, signQuery+allHeaders);
 // the worker's copy cannot be imported here without dragging workers-types into
 // web's typecheck. Update the two together.
+// Content-Length (when given) is part of the SigV4 sign input so the store
+// still rejects size-mismatched bodies — but it is NEVER returned here:
+// undici/browsers derive Content-Length from the body and reject a manually
+// set value, so returning it breaks every fetch PUT (BRAWUKA-338).
 export async function presignedPutUrl(
   key: string,
   contentType: string,
@@ -47,7 +51,6 @@ export async function presignedPutUrl(
   delete outHeaders["content-type"];
   delete outHeaders["content-length"];
   outHeaders["Content-Type"] = contentType;
-  if (contentLength !== undefined) outHeaders["Content-Length"] = String(contentLength);
   return { url: signed.url.toString(), headers: outHeaders };
 }
 

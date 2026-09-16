@@ -221,6 +221,15 @@ resolve_prod_migration_url() {
 }
 
 if [[ -d "$MIGRATIONS_DIR" ]]; then
+  # BRAWUKA-337 drift signal: report the repo-vs-ledger gap by name before
+  # the zero-downtime scan, so the log shows drift instead of silently
+  # scanning every file as "pending". Non-blocking (warn): Step 4 below
+  # converges the ledger via migrate.mjs.
+  if [ "$DRY_RUN" = false ] && PROBE_DRIFT_URL="$(resolve_prod_migration_url 2>/dev/null)"; then
+    if ! (cd "${REPO_ROOT}/web" && DATABASE_URL="$PROBE_DRIFT_URL" node scripts/check-migration-drift.mjs); then
+      warn "Prod ledger trails the repo — Step 4 will converge it via migrate.mjs (staging must already be green)."
+    fi
+  fi
   log "Checking pending migrations for zero-downtime rule compliance..."
   # Best-effort applied-migration lookup over the PROD session connection;
   # failures degrade to scanning all files rather than aborting the pipeline.

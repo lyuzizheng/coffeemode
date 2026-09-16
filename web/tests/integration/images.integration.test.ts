@@ -137,7 +137,10 @@ describeImages("integration — real MinIO/R2 image round-trip (docker compose u
     const size = 1024;
     const { url, headers } = await presignedPutUrl(key, "image/webp", size);
     expect(url).toContain(key);
-    expect(headers["Content-Length"]).toBe(String(size));
+    // Content-Length stays signed into the URL but is never handed to fetch:
+    // undici derives it from the body and rejects a manual value (BRAWUKA-338).
+    expect(headers["Content-Length"]).toBeUndefined();
+    expect(headers["content-length"]).toBeUndefined();
     const payload = makePayload(size);
     const putRes = await fetch(url, { method: "PUT", headers, body: payload as unknown as BodyInit });
     expect(putRes.ok).toBe(true);

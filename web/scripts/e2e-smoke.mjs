@@ -38,6 +38,7 @@ import {
 import { runCheckinDrawerGate } from "./lib/checkin-drawer-gate.mjs";
 import { runCheckinSubmitGate } from "./lib/checkin-submit-gate.mjs";
 import { runApiContractGate } from "./lib/api-contract-gate.mjs";
+import { stubOpenFreeMap } from "./lib/tile-stubs.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dbUrl = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
@@ -135,6 +136,9 @@ async function runSmokeSuite() {
       await context.route("**/*apple-mapkit*", (route) => route.fulfill({ status: 200, body: "" }));
       await context.route("**/*maps.googleapis.com*", (route) => route.fulfill({ status: 200, json: { status: "OK", results: [] } }));
       await context.route("**/api/mapkit-token", (route) => route.fulfill({ status: 200, json: { token: "e2e-fake-mapkit-token" } }));
+      // map-home: the basemap host is stubbed offline (empty-but-valid
+      // tiles/glyphs/sprites) — the map surface must never reach the network.
+      await stubOpenFreeMap(context);
 
       return context;
     }
@@ -187,7 +191,7 @@ async function runSmokeSuite() {
     // Test 1: Signed-out Discovery & Home Page
     // -------------------------------------------------------------------------
     {
-      const label = "T1: Home Page & Discovery Shell (Signed-Out)";
+      const label = "T1: Map Surface & Discovery Shell (Signed-Out)";
       console.log(`[E2E] Running ${label}...`);
       const context = await createContext();
       const page = await context.newPage();
@@ -196,20 +200,14 @@ async function runSmokeSuite() {
       const res = await page.goto(`${base}/`, { waitUntil: "domcontentloaded" });
       assert(res?.status() === 200, `Expected 200, got ${res?.status()}`);
 
-      // Verify brand presence and theme toggle
-      const headerText = await page.textContent("header");
-      assert(headerText?.includes("CafeMood"), "Brand header 'CafeMood' not found");
-
-      // Verify profile link exists
-      const profileLink = await page.locator("a[href='/profile']");
-      assert((await profileLink.count()) > 0, "Profile link not found in header");
-
-      // Test theme toggle button interaction
-      const themeToggle = page.locator("button[aria-label*='theme' i], button[aria-label*='Theme' i]");
-      if ((await themeToggle.count()) > 0) {
-        await themeToggle.first().click();
-        await page.waitForTimeout(200);
-      }
+      // map-home: the basemap renders as a MapLibre canvas — or, where
+      // headless WebGL is unavailable, the designed error state. Either way
+      // the discovery sidebar must be live (the data path is map-independent).
+      const mapCanvas = page.locator("canvas.maplibregl-canvas");
+      const mapError = page.getByRole("alert");
+      await mapCanvas.or(mapError).first().waitFor({ state: "visible", timeout: 20000 });
+      const sidebar = page.locator("aside");
+      assert((await sidebar.count()) > 0, "Discovery sidebar not rendered");
 
       checkErrors();
       await context.close();

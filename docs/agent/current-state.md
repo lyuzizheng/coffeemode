@@ -118,9 +118,9 @@ docs/agent/              current state, planned-slice manifest, owner actions
 - map-home — COMPLETE: MapLibre GL v5 + OpenFreeMap basemap on `/`; the
   Apple Developer blocker (#131) is eliminated — BRAWUKA-308's review
   pivoted the basemap to MapLibre. Tile host = the `map:` section in
-  web/config/app.yaml (full style document URLs — public OFM instance now;
-  PMTiles+R2 self-hosting landed in BRAWUKA-313 and switches via the same
-  config). No MapKit fallback — the old implementation never shipped,
+  web/config/app.yaml (full style document URLs — public OFM instance;
+  self-hosting permanently off the table per BRAWUKA-321 owner decision).
+  No MapKit fallback — the old implementation never shipped,
   there is nothing to fall back to.
 - map-discovery-integration — PARTIAL: selection → flyTo, clustered pins,
   marker tap → URL sync landed with map-home; the map search overlay and

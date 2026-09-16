@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runtime pin gate (BRAWUKA-190): one Node major and one TypeScript version
-# across `web/`, `poi-service/`, `image-service/`, `tiles-service/`, and a
+# across `web/`, `poi-service/`, `image-service/`, and a
 # frozen Worker `compatibility_date`.
 #
 # Why this exists: no package declared `engines`, the Workers used a forked
@@ -25,7 +25,7 @@
 #     the pin is enforced by this gate, not by the installer.
 #   - Equality between the Workers' `compatibility_date` values. They carry
 #     different runtime surface (image-service enables `nodejs_compat`,
-#     poi-service and tiles-service do not), so each must be pinned, valid,
+#     poi-service does not), so each must be pinned, valid,
 #     and not in the future — but each service adopting a newer runtime is a
 #     deliberate, separate change by design.
 set -euo pipefail
@@ -33,8 +33,8 @@ set -euo pipefail
 ROOT="${COFFEEMODE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 cd "$ROOT"
 
-PACKAGES=(web poi-service image-service tiles-service)
-WORKERS=(poi-service image-service tiles-service)
+PACKAGES=(web poi-service image-service)
+WORKERS=(poi-service image-service)
 WORKFLOWS_DIR=".github/workflows"
 WEB_DOCKERFILE="web/Dockerfile"
 COMPOSE="docker-compose.yml"

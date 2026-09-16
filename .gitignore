@@ -10,9 +10,6 @@ poi-service/.wrangler/
 image-service/node_modules/
 image-service/.dev.vars
 image-service/.wrangler/
-tiles-service/node_modules/
-tiles-service/.dev.vars
-tiles-service/.wrangler/
 node_modules/
 .DS_Store
 **/.DS_Store

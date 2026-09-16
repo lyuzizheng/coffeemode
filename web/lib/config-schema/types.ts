@@ -111,7 +111,7 @@ export interface AppConfig {
   };
   map: {
     tileStyle: {
-      /** Full style document URLs — OFM public or the self-hosted Worker. */
+      /** Full style document URLs — basemap provider seam. */
       light: string;
       dark: string;
     };

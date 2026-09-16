@@ -27,7 +27,7 @@ function templateUrl(file: string, keyPath: string, value: unknown): string {
   return url;
 }
 
-/** Validate the `map` subtree of app.yaml (basemap hosting switch, BRAWUKA-313;
+/** Validate the `map` subtree of app.yaml (basemap provider seam;
  * zoom levels added by map-home, BRAWUKA-311). */
 export function parseMapSection(file: string, map: Record<string, unknown>): MapConfig {
   const tileStyle = record(file, "map.tileStyle", map.tileStyle);

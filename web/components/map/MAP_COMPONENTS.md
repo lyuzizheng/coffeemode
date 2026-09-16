@@ -35,9 +35,8 @@ app/page.tsx
   shaping, cluster/pin/halo layer registration (`bindCafeLayers` runs on
   every `style.load` — a theme switch wipes runtime layers).
 - **Style documents** — both themes load full style JSONs from the tile host
-  (`map.tileStyle.light`/`dark` in app.yaml; OFM `liberty`/`dark` today).
-  Self-hosting (BRAWUKA-313) serves rewritten copies from the tiles Worker —
-  the app never owns a local style document.
+  (`map.tileStyle.light`/`dark` in app.yaml; OFM `liberty`/`dark`); the app
+  never owns a local style document.
 - **types.ts** — `IMapProvider` / `BaseMapProviderProps` (`Coordinates` from
   `lib/cities`, not a parallel LatLng type).
 

@@ -243,9 +243,6 @@ All operational scripts live canonically under `scripts/devops/` and are fully e
 | `restore.sh` | Restores database archive with PostGIS verification & drill mode | `--env`, `--file`, `--download-r2`, `--drill`, `--yes`, `--dry-run` |
 | `smoke-test.sh` | In-repo post-deployment automated health verification | `staging\|prod`, `--url <override>`, `--timeout <sec>` |
 | `provision-supabase.sh` | Idempotent Supabase Postgres & Auth provisioning, PostGIS check, and RLS defense | `--database-url`, `--supabase-url`, `--verify-only`, `--dry-run` |
-| `provision-maptiles.sh` | Creates the dual-stack maptiles R2 buckets + CORS, prints the `app.yaml` `map:` switch (BRAWUKA-313) | `--env`, `--print-config`, `--dry-run` |
-| `build-maptiles.sh` | Monthly planet build: MBTiles download → PMTiles convert → R2 upload + fonts/sprites/styles (BRAWUKA-313) | `--env`, `--version`, `--work-dir`, `--dry-run` |
-| `verify-maptiles.sh` | Pre-switch basemap verification: TileJSON/style/glyph/equivalence + range p95 (BRAWUKA-313) | `--env`, `--expect-version`, `--samples`, `--p95-budget-ms` |
 ---
 
 ## 5. Disaster Recovery & Recovery Drill Playbook

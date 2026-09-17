@@ -25,8 +25,10 @@ export function OnboardingHome({
   profileSeed,
   suppressCard,
   addCafe,
+  addCafeFab,
   initialCafeId,
   accountInitial,
+  mapkitConfigured = false,
   children,
 }: {
   /** IP-detected launch city (DG128); null → no detection line. */
@@ -42,10 +44,14 @@ export function OnboardingHome({
   /** Deep-link-style arrivals (?cafe=) never see the card (DG124). */
   suppressCard?: boolean;
   addCafe: ReactNode;
+  /** Round add-cafe FAB slot (BRAWUKA-364) — floats over the map. */
+  addCafeFab?: ReactNode;
   initialCafeId?: string;
   /** Signed-in display-name initial for the map account chip; absent → the
    * chip shows the sign-in affordance (BRAWUKA-318). */
   accountInitial?: string;
+  /** DG143 request-time MapKit readiness — forwarded to search + creation. */
+  mapkitConfigured?: boolean;
   children: ReactNode;
 }) {
   const mounted = useMounted();
@@ -62,8 +68,11 @@ export function OnboardingHome({
     <DiscoveryHome
       center={onboarding.center}
       addCafe={addCafe}
+      addCafeFab={addCafeFab}
       initialCafeId={initialCafeId}
       isAuthenticated={isAuthenticated}
+      mapkitConfigured={mapkitConfigured}
+      city={detectedCity?.id}
       mapOverlay={
         mounted ? (
           <MapOverlay

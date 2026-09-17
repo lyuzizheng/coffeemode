@@ -25,7 +25,7 @@ import { DetailContent } from "./detail-content";
 import { InlineError } from "./inline-error";
 
 /** Visible sheet height at PEEK (px) — cover row + padding; safe-area is padded inside. */
-const PEEK_VISIBLE_PX = 172;
+export const PEEK_VISIBLE_PX = 172;
 const SHEET_HEIGHT_VH = 0.85;
 const HALF_VISIBLE_VH = 0.5;
 /** Handle chrome above the content column: pt-2 + 4px bar + pb-3. */
@@ -159,6 +159,7 @@ export function MobileSheet({
   onCheckIn,
   addCafe,
   navPrompt,
+  distanceM,
 }: {
   controller: DiscoveryController;
   cafes: CafeSummary[];
@@ -170,6 +171,9 @@ export function MobileSheet({
   /** Return-visit prompt (DG85): rendered above the sheet at PEEK/HALF so it
    * tracks drags; the host passes null when the queue is empty. */
   navPrompt?: ReactNode;
+  /** Meters from the query point for the selected cafe — resolved by the
+   * adapter (search picks may sit outside the nearby list). */
+  distanceM?: number;
 }) {
   const t = useTranslations("discovery");
   const mounted = useMounted();
@@ -338,7 +342,7 @@ export function MobileSheet({
               variant={snap}
               controller={controller}
               onCheckIn={onCheckIn}
-              distanceM={cafes.find((c) => c.id === selectedCafeId)?.distance_m}
+              distanceM={distanceM}
             />
           </div>
         </div>

@@ -32,7 +32,7 @@ export function LocateButton({
       type="button"
       aria-label={t("locate_aria")}
       onClick={onLocate}
-      className="fixed bottom-[calc(172px+12px+env(safe-area-inset-bottom))] right-4 z-40 flex h-11 w-11 items-center justify-center rounded-md border border-separator bg-overlay shadow-map lg:bottom-auto lg:right-6 lg:top-6"
+      className="fixed bottom-[calc(172px+72px+env(safe-area-inset-bottom))] right-4 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-separator bg-overlay shadow-map lg:bottom-auto lg:right-6 lg:top-6"
     >
       <motion.span
         key={pulseKey}

@@ -111,6 +111,23 @@ function PrimaryAction({
 }
 
 
+/** The card's cover masthead: wordmark + the field-guide mark. */
+function CoverMasthead({ mark }: { mark: string }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-2">
+        <CoffeeIcon size={20} className="text-accent" />
+        <span className="font-display text-lg font-extrabold tracking-tight text-foreground">
+          CafeMood
+        </span>
+      </div>
+      <span aria-hidden className="font-mono text-xs uppercase tracking-[0.14em] text-muted">
+        {mark}
+      </span>
+    </div>
+  );
+}
+
 export function WelcomeCard({
   detectedCity,
   denied,
@@ -156,17 +173,13 @@ export function WelcomeCard({
       transition={
         reduced ? { duration: 0 } : { duration: duration.state, ease: ease.default }
       }
-      className="fixed inset-x-4 bottom-[calc(172px+16px+env(safe-area-inset-bottom))] z-40 mx-auto w-auto max-w-[420px] rounded-lg border border-separator bg-overlay p-4 shadow-lg lg:bottom-6 lg:left-[calc(50%+190px)] lg:right-auto lg:mx-0 lg:w-[calc(100%-2rem)] lg:-translate-x-1/2"
+      className="fixed inset-x-4 bottom-[calc(172px+16px+env(safe-area-inset-bottom))] z-40 mx-auto w-auto max-w-[420px] overflow-hidden rounded-lg border border-separator bg-overlay shadow-lg lg:bottom-6 lg:left-[calc(50%+190px)] lg:right-auto lg:mx-0 lg:w-[calc(100%-2rem)] lg:-translate-x-1/2"
     >
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <CoffeeIcon size={24} className="text-accent" />
-          <span className="font-display text-lg font-bold text-foreground">
-            CafeMood
-          </span>
-        </div>
+      <div aria-hidden className="grain-overlay absolute inset-0" />
+      <div className="relative flex flex-col gap-3 p-5">
+        <CoverMasthead mark={t("field_guide_mark")} />
 
-        <p className="font-display text-md font-bold text-foreground">
+        <p className="font-display text-xl font-bold tracking-tight text-balance text-foreground">
           {t("headline")}
         </p>
 

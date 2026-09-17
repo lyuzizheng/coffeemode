@@ -192,3 +192,8 @@ export function LocateIcon(props: IconProps) {
     </>,
   );
 }
+
+/** Plus — add-cafe FAB glyph (BRAWUKA-364). */
+export function PlusIcon(props: IconProps) {
+  return base(props, <path d="M8 3v10M3 8h10" />);
+}

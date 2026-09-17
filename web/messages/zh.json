@@ -464,7 +464,9 @@
     "peek_aria": "附近咖啡馆",
     "sheet_aria": "咖啡馆发现",
     "sheet_handle_aria": "拖动调整面板高度",
-    "unknown_cafe": "咖啡店"
+    "unknown_cafe": "咖啡店",
+    "tagline": "收录值得久坐办公的咖啡馆",
+    "index_label": "{count, plural, other {附近 # 家咖啡馆}}"
   },
   "navPrompt": {
     "headline": "有去 {cafe} 喝一杯吗？",
@@ -490,7 +492,8 @@
     "first_nomad": "你是 {city} 的第一位 nomad — 打个卡，帮后来的 nomad 种草避雷吧",
     "settings_toast": "定位没开 — 去系统设置里打开吧",
     "locate_aria": "定位我的位置",
-    "dialog_aria": "欢迎"
+    "dialog_aria": "欢迎",
+    "field_guide_mark": "寻店手册"
   },
   "share": {
     "aria": "分享",
@@ -529,6 +532,7 @@
     "error_body": "列表不受影响，仍可查看咖啡馆详情。",
     "retry": "重试",
     "sign_in": "登录",
-    "profile_aria": "个人主页"
+    "profile_aria": "个人主页",
+    "search_aria": "搜索咖啡馆"
   }
 }

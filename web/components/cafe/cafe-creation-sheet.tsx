@@ -1,9 +1,10 @@
 "use client";
 
 import { Button, Drawer } from "@heroui/react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { useCallback, useState } from "react";
 import { SignInGate } from "@/components/auth/sign-in-gate";
+import { PlusIcon } from "@/components/icons";
 import { CafePlaceSearch } from "./cafe-place-search";
 import { CafeCreationForm } from "./cafe-creation-form";
 import { useNetworkStatus } from "@/hooks/use-network-status";
@@ -112,6 +113,10 @@ function CafeCreationPane({
 function usePlaceSelection(
   requireSignIn: () => void,
   messages: { failed: string; notFood: string },
+  /** BRAWUKA-364: a POI picked upstream (unified search) seeds the form
+   * step once per mount — the parent keys the sheet by poi so a new pick
+   * remounts. `persist` mirrors selectPlace's flag for external places. */
+  seed?: { poi: POI | null; persist: boolean },
 ) {
   const [poi, setPoi] = useState<POI | null>(null);
   const [name, setName] = useState("");
@@ -142,6 +147,15 @@ function usePlaceSelection(
       });
   };
 
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seed?.poi && !seededRef.current) {
+      seededRef.current = true;
+      selectPlace(seed.poi, seed.persist);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const reset = () => {
     setPoi(null);
     setName("");
@@ -156,12 +170,19 @@ export function CafeCreationSheet({
   onOpenChange,
   isAuthenticated = true,
   mapkitConfigured = false,
+  initialPoi = null,
+  initialPersist = false,
 }: {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   isAuthenticated?: boolean;
   /** DG143 request-time MapKit readiness; defaults off. */
   mapkitConfigured?: boolean;
+  /** BRAWUKA-364: a POI picked upstream (unified search) opens the sheet
+   * already on the form step; `initialPersist` mirrors selectPlace's
+   * persist flag for external (google/apple) places. */
+  initialPoi?: POI | null;
+  initialPersist?: boolean;
 }) {
   const t = useTranslations("create");
   const [searchKey, setSearchKey] = useState(0);
@@ -170,7 +191,11 @@ export function CafeCreationSheet({
   // One gate for the whole drawer: place search, external-place persist and the
   // creation form all die the same way when the session expires (BRAWUKA-212).
   const requireSignIn = useCallback(() => setShowSignInGate(true), []);
-  const place = usePlaceSelection(requireSignIn, { failed: t("searchFailed"), notFood: t("notFoodPlace") });
+  const place = usePlaceSelection(
+    requireSignIn,
+    { failed: t("searchFailed"), notFood: t("notFoodPlace") },
+    { poi: initialPoi, persist: initialPersist },
+  );
 
   const reset = () => {
     place.reset();
@@ -221,20 +246,45 @@ export function CafeCreationSheet({
 export function CafeCreationTrigger({
   isAuthenticated,
   mapkitConfigured,
+  variant = "primary",
 }: {
   isAuthenticated: boolean;
   /** DG143 request-time MapKit readiness from the server page. */
   mapkitConfigured: boolean;
+  /** BRAWUKA-364: "primary" is the empty-state CTA; "compact" the masthead
+   * action; "fab" the floating round button (positioning is the host's). */
+  variant?: "primary" | "compact" | "fab";
 }) {
   const t = useTranslations("create");
   const [isOpen, setIsOpen] = useState(false);
   const { isOnline } = useNetworkStatus();
 
-  return (
-    <>
-      <Button variant="primary" isDisabled={!isOnline} onPress={() => setIsOpen(true)}>
+  const trigger =
+    variant === "fab" ? (
+      <Button
+        variant="primary"
+        isIconOnly
+        isDisabled={!isOnline}
+        aria-label={isOnline ? t("title") : t("offline")}
+        className="h-12 w-12 min-w-12 rounded-full shadow-lg"
+        onPress={() => setIsOpen(true)}
+      >
+        <PlusIcon size={20} />
+      </Button>
+    ) : (
+      <Button
+        variant="primary"
+        size={variant === "compact" ? "sm" : "md"}
+        isDisabled={!isOnline}
+        onPress={() => setIsOpen(true)}
+      >
         {isOnline ? t("title") : t("offline")}
       </Button>
+    );
+
+  return (
+    <>
+      {trigger}
       <CafeCreationSheet
         isOpen={isOpen}
         onOpenChange={setIsOpen}

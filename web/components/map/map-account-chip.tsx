@@ -24,7 +24,7 @@ export function MapAccountChip({
   const t = useTranslations("map");
 
   return (
-    <div className="fixed right-4 top-4 z-40 flex items-center gap-1.5 rounded-md border border-separator bg-overlay p-1.5 shadow-map lg:right-[76px] lg:top-6">
+    <div className="fixed right-4 top-[76px] z-40 flex items-center gap-1.5 rounded-full border border-separator bg-overlay p-1.5 shadow-map lg:right-[76px] lg:top-6">
       <Link
         href="/profile"
         aria-label={accountInitial ? t("profile_aria") : t("sign_in")}

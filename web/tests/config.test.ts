@@ -105,8 +105,8 @@ describe("config files", () => {
       focusZoom: 15,
       maplibre: {
         tileStyle: {
-          light: "https://tiles.openfreemap.org/styles/liberty",
-          dark: "https://tiles.openfreemap.org/styles/dark",
+          light: "/map/coffeemode_light.json",
+          dark: "/map/coffeemode_dark.json",
         },
       },
     });
@@ -127,11 +127,13 @@ describe("config files", () => {
 
   it("owns the basemap endpoints (map-home: the only tile-host coupling)", () => {
     expect(appConfig.map.provider).toBe("maplibre");
+    // BRAWUKA-362: same-origin style documents under web/public/map/ —
+    // root-relative so dev/staging/prod each serve their own copy.
     expect(appConfig.map.maplibre.tileStyle.light).toBe(
-      "https://tiles.openfreemap.org/styles/liberty",
+      "/map/coffeemode_light.json",
     );
     expect(appConfig.map.maplibre.tileStyle.dark).toBe(
-      "https://tiles.openfreemap.org/styles/dark",
+      "/map/coffeemode_dark.json",
     );
     expect(appConfig.map.defaultZoom).toBe(12);
     expect(appConfig.map.focusZoom).toBe(15);
@@ -659,10 +661,10 @@ describe("parseAppConfig validation", () => {
   it("owns the basemap provider seam (BRAWUKA-329)", () => {
     expect(appConfig.map.provider).toBe("maplibre");
     expect(appConfig.map.maplibre.tileStyle.light).toBe(
-      "https://tiles.openfreemap.org/styles/liberty",
+      "/map/coffeemode_light.json",
     );
     expect(appConfig.map.maplibre.tileStyle.dark).toBe(
-      "https://tiles.openfreemap.org/styles/dark",
+      "/map/coffeemode_dark.json",
     );
   });
 
@@ -705,7 +707,26 @@ describe("parseAppConfig validation", () => {
           },
         },
       }),
-    ).toThrow(/"map\.maplibre\.tileStyle\.light" must be an https: URL/);
+    ).toThrow(
+      /"map\.maplibre\.tileStyle\.light" must be an https: URL or a root-relative path/,
+    );
+    // Protocol-relative would silently leave the origin — rejected too.
+    expect(() =>
+      parseAppConfig({
+        ...base,
+        map: {
+          ...validMap,
+          maplibre: {
+            tileStyle: {
+              light: "//tiles.example.com/a",
+              dark: validMap.maplibre.tileStyle.dark,
+            },
+          },
+        },
+      }),
+    ).toThrow(
+      /"map\.maplibre\.tileStyle\.light" must be an https: URL or a root-relative path/,
+    );
   });
 
   it("rejects mistyped images/query/validation sections (BRAWUKA-250)", () => {

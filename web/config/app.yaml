@@ -76,15 +76,17 @@ map:
   # Street-level zoom when a cafe is selected (card or marker).
   focusZoom: 15
   # MapLibre GL + OpenFreeMap public instance. The style documents carry
-  # their own glyphs/sprite — no separate config keys.
+  # their own glyphs — no separate config keys.
   maplibre:
-    # Fully-qualified style documents (OpenFreeMap releases), per UI theme.
-    # Optional dark replacement: the vendored vintage-dark style at
-    # public/map/openmapstyle_dark.json (BRAWUKA-314) — deploy it to an
-    # https URL and point `dark` at it to opt in.
+    # CoffeeMode's own basemap styles (BRAWUKA-362): two-ink vintage designs
+    # (espresso + sage on paper / deep-espresso substrates), no POI or
+    # institution labels, road + place names only. Root-relative paths are
+    # served same-origin from `web/public/` and resolve against whatever
+    # origin the app is deployed on; absolute https: URLs remain valid for
+    # remote styles.
     tileStyle:
-      light: https://tiles.openfreemap.org/styles/liberty
-      dark: https://tiles.openfreemap.org/styles/dark
+      light: /map/coffeemode_light.json
+      dark: /map/coffeemode_dark.json
 feed:
   # Check-in feed page size for both Helpful and Newest modes (spec 0001).
   pageSize: 20

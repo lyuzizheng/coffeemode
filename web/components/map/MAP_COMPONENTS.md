@@ -45,12 +45,13 @@ app/page.tsx
   selection camera, cafe data + selection) — all through `IMapProvider`.
 - **cafe-pins.ts** — MapLibre-internal pin artwork + layer registration;
   imported only by maplibre-provider.tsx.
-- **Style documents** — both themes load full style JSONs from the tile host
-  (`map.maplibre.tileStyle.light`/`dark` in app.yaml; OFM `liberty`/`dark`).
-  One vendored exception: `public/map/openmapstyle_dark.json` (BRAWUKA-314)
-  is a vintage-dark variant of the archived `openmapstyle_light.json`,
-  tuned to the dark tokens — opt in by pointing `tileStyle.dark` at its
-  deployed https URL.
+- **Style documents** — both themes load CoffeeMode's own basemap styles
+  (BRAWUKA-362): `public/map/coffeemode_light.json` (warm paper, two-ink
+  espresso + sage) and `public/map/coffeemode_dark.json` (deep espresso
+  substrate, same design). Served same-origin via root-relative paths in
+  `map.maplibre.tileStyle.light`/`dark` (app.yaml); vector tiles and glyphs
+  still come from OpenFreeMap. No POI/aerodrome/housenumber labels — road
+  and place names only, so cafe pins stay the protagonists.
 - **types.ts** — `IMapProvider` / `BaseMapProviderProps` — the swap
   boundary. No renderer types cross it (`Coordinates` from `lib/cities`,
   `CafeSummary` from `types/cafes`). Optional capability members
@@ -83,10 +84,11 @@ Padding follows chrome: mobile keeps pins above the sheet's visible detent
 
 `web/config/app.yaml` → `map:` — `provider` (discriminator selecting a
 `map.<provider>` block), `defaultZoom`, `focusZoom` (provider-agnostic
-product parameters), `maplibre.tileStyle.light`/`dark` (full style document
-URLs; the style documents carry their own glyphs/sprite). Provider id + zooms
-are mirrored to the client via `NEXT_PUBLIC_MAP_*` in `next.config.ts` and
-read through `lib/client-env.ts`; the MapLibre style URLs go through
+product parameters), `maplibre.tileStyle.light`/`dark` (style document
+locators: absolute https: URLs or root-relative paths under `web/public/`;
+the style documents carry their own glyphs). Provider id + zooms are
+mirrored to the client via `NEXT_PUBLIC_MAP_*` in `next.config.ts` and
+read through `lib/client-env.ts`; the MapLibre style locators go through
 `NEXT_PUBLIC_MAPLIBRE_*` and `maplibre-config.ts`.
 
 ## Failure modes

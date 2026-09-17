@@ -12,9 +12,6 @@ export function ProfileGate() {
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.04]">
         <CoffeeIcon size={240} />
       </div>
-      <div className="w-20 h-20 rounded-full bg-surface-tertiary flex items-center justify-center mb-6 text-muted border border-border/40">
-        <CoffeeIcon size={36} />
-      </div>
       <h1 className="font-display font-bold text-2xl mb-3 text-foreground">
         {t("gate_title")}
       </h1>

@@ -12,7 +12,7 @@ import { ProfileTabCafes, fetchUserCafes } from "./profile-tab-cafes";
 import { ProfileTabFavorites } from "./profile-tab-favorites";
 import { ProfileTabHistory } from "./profile-tab-history";
 import { RankingPreferenceToggle } from "@/components/search/ranking-preference-toggle";
-import { PublicIdentityToggle } from "./public-identity-toggle";
+import { ProfilePreferences } from "./profile-preferences";
 import type { UserProfileDto, UserProfileStatsDto } from "@/lib/db/profile";
 
 interface ProfileViewProps {
@@ -68,11 +68,6 @@ export function ProfileView({
           <>
             <ProfileHero profile={profile} onProfileChange={setProfile} />
             <ProfileStats stats={stats} />
-            {profile && (
-              <div className="mt-2">
-                <PublicIdentityToggle profile={profile} onProfileChange={setProfile} />
-              </div>
-            )}
             <ProfileTabs activeTab={activeTab} onTabChange={handleTabChange} baseId={baseId} />
 
             <div className="flex-1 flex flex-col py-2">
@@ -89,13 +84,17 @@ export function ProfileView({
                 <ProfileTabHistory baseId={baseId} />
               )}
             </div>
+            <ProfilePreferences profile={profile} onProfileChange={setProfile} />
           </>
         )}
-        {/* DG136: ranking preference lives in localStorage, so it is offered
-            to anonymous sessions too — never behind the auth gate. */}
-        <div className="mt-4 border-t border-separator pt-4">
-          <RankingPreferenceToggle />
-        </div>
+        {/* DG136: ranking preference lives in localStorage, so it stays
+            reachable for anonymous sessions — as a quiet page footer below
+            the gate, never inside the sign-in flow (profile-page-v2 §5). */}
+        {!isAuthenticated && (
+          <footer className="mt-auto border-t border-separator pt-3 pb-1">
+            <RankingPreferenceToggle variant="compact" />
+          </footer>
+        )}
       </main>
     </div>
   );

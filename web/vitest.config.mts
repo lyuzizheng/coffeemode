@@ -45,7 +45,6 @@ export default defineConfig({
         // statement and it is a zero-value indirection layer, so delete it and
         // point callers at the single source instead (spec 0009 §5/§6;
         // `lib/search/distance.ts` was removed this way by BRAWUKA-203).
-        "lib/rate-limit/types.ts",
         "lib/search/types.ts",
         "shared/places/types.ts",
       ],

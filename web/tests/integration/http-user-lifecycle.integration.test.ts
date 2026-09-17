@@ -417,7 +417,7 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
   }, 120_000);
 
   beforeEach(async () => {
-    await resetRateLimits(dbClient);
+    await resetRateLimits();
   });
 
   afterAll(async () => {
@@ -1130,21 +1130,21 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
 
   it("Acts 0–8 (spec 0008 §3, §10, §9): full 4-user composed lifecycle causal timeline", async () => {
     await runAct0();
-    await resetRateLimits(dbClient);
+    await resetRateLimits();
     await runAct1();
-    await resetRateLimits(dbClient);
+    await resetRateLimits();
     await runAct2();
-    await resetRateLimits(dbClient);
+    await resetRateLimits();
     await runAct3();
-    await resetRateLimits(dbClient);
+    await resetRateLimits();
     await runAct4();
-    await resetRateLimits(dbClient);
+    await resetRateLimits();
     await runAct5();
-    await resetRateLimits(dbClient);
+    await resetRateLimits();
     await runAct6();
-    await resetRateLimits(dbClient);
+    await resetRateLimits();
     await runAct7();
-    await resetRateLimits(dbClient);
+    await resetRateLimits();
     await runAct8();
   }, 120_000);
 });

@@ -207,17 +207,8 @@ describe("http multi-user environment", () => {
     expect(queries[4].values?.[0]).toBe(extra.id);
   });
 
-  it("resets rate limits with a plain delete", async () => {
-    const queries: string[] = [];
-    const dbClient = {
-      query: async (text: string) => {
-        queries.push(text);
-        return { rows: [] };
-      },
-    } as never as pg.Client;
-
-    await resetRateLimits(dbClient);
-
-    expect(queries).toEqual(["delete from rate_limits"]);
+  it("resets the in-memory limiter", async () => {
+    await resetRateLimits();
+    await expect(resetRateLimits()).resolves.toBeUndefined();
   });
 });

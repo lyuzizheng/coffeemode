@@ -207,7 +207,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
 
   beforeEach(async () => {
     if (!minioUp || !dbClient) return;
-    await resetRateLimits(dbClient);
+    await resetRateLimits();
   });
   const createdCafeIds = new Set<string>();
   afterEach(async () => {

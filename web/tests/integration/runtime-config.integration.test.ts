@@ -51,7 +51,7 @@ describeIntegration("integration — runtime_config + heartbeat (BRAWUKA-284)", 
 
   beforeEach(async () => {
     await dbClient.query("delete from runtime_config");
-    await resetRateLimits(dbClient);
+    await resetRateLimits();
   });
 
   afterAll(async () => {

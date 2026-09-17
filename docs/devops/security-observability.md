@@ -38,18 +38,16 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
   on the app container, authenticating with `Authorization: Bearer
   BETTER_STACK_INGEST_TOKEN`. Staging posts to `coffeemode-rate-limit-staging`,
   prod to `coffeemode-rate-limit-prod` — separate sources so env filtering is
-  structural. Both vars are server-only (spec 0010). Two event shapes:
+  structural. Both vars are server-only (spec 0010). One event shape
+  (BRAWUKA-378 removed the `fail_open` path with the Postgres backend):
   - `rate_limited` (level `warn`) — a bucket denied a request.
-  - `rate_limiter_fail_open` (level `error`) — the limiter backend failed and
-    the request was allowed unenforced. **Treat any `fail_open` as a P1
-    incident**: rate limiting is silently off.
 - In Better Stack, create an alert on each ingest source:
-  `event:rate_limited` → low-severity notification;
-  `event:rate_limiter_fail_open` → immediate notification.
-  Both events carry `reason` mirroring `event`, plus `bucket`, `client_id`,
-  `window_ms`, `max_requests`, `retry_after`, `route`. Verified 2026-09-17:
-  synthetic `rate_limited` events round-tripped on both sources
-  (ingest 202 → query-visible within ~1 min).
+  `event:rate_limited` → low-severity notification.
+  The event carries `bucket`, `client_id`, `window_ms`, `max_requests`,
+  `retry_after`, `route`. Verified 2026-09-17: synthetic `rate_limited`
+  events round-tripped on both sources (ingest 202 → query-visible within
+  ~1 min). If a legacy `rate_limiter_fail_open` alert still exists from
+  before BRAWUKA-378, delete it — that event can no longer fire.
 - Workers Observability: `poi-service-prod` / `image-service-prod` logs for
   shared-secret rejections (401s on `x-poi-service-token` /
   `x-image-service-token`) — any volume means someone is probing the worker
@@ -74,6 +72,3 @@ exposure gap.
   path (free tier: 5 custom rules total, budget carefully).
 - Sustained flood beyond the edge rule → tighten the edge rule window or add
   an ASN/UA block; do not loosen app buckets.
-- `fail_open` events → check Postgres connectivity from the app container;
-  the limiter fails open by design (BRAWUKA-171) so traffic continues while
-  enforcement is down.

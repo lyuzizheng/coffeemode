@@ -44,7 +44,7 @@
 真实反例（本仓现状，判定练习用）：`web/lib/db/cafes.ts`（826 行）同时承载四类职责——
 
 - 校验：`optString`（L138）、`parseCreateCafeBody`（L153–256，经纬度/价格/营业时间/首条打卡全套规则）；
-- CRUD/事务：`createCafeWithFirstCheckIn`（L306）、`listCafesNearby`（L447）、`getCafe`（L490）、`setCafeVisibility`（L610）、`deleteCafe`（L667）、`attachImageToCafe`（L808）；
+- CRUD/事务：`createCafeWithFirstCheckIn`（L306）、`listCafesNearby`（L447）、`getCafe`（L490）、`setCafeVisibility`（L610）、`deleteCafe`（L667）；（`attachImageToCafe`（L808）已在 PR #467 删除，`cafes.cover` 列在 BRAWUKA-307/迁移 0025 删除——读到此行时以代码为准）；
 - SEO：`CafeSitemapEntry` + `listCafeSitemapEntries`（L537–566，被 `web/app/sitemap.ts` 消费）；
 - 展示投影：`isServiceMaintained`（L104）、`toPublicCafeDetail`（L522–535，strip `created_by`/gallery 作者字段）。
 

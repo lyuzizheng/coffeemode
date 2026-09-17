@@ -46,7 +46,6 @@ function makePoi(overrides?: Partial<POI>): POI {
     types: ["cafe", "food"],
     business_status: "OPERATIONAL",
     hours_json: null,
-    photo_refs: [],
     fetched_at: "2026-08-20T00:00:00Z",
     ...overrides,
   };

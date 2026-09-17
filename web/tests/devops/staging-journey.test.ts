@@ -62,6 +62,46 @@ describe("Staging journey runner — CLI contracts", () => {
     expect(out).toContain("npm run test:integration:journey");
     expect(out).toContain("cleanup-stale-test-dbs.mjs --apply");
   });
+
+  it("dry-run resolves the worker cap from web/config/app.yaml", () => {
+    const out = sh(`bash "${RUNNER}" --suite journey --dry-run`, {
+      STAGING_DATABASE_URL: "postgres://staging.invalid:5432/staging",
+    });
+    // Single source (spec 0010 S4/S6): the value in app.yaml staging.maxWorkers.
+    expect(out).toContain("VITEST_MAX_WORKERS=4 npm run test:integration:journey");
+    expect(out).toContain("concurrency group: staging-journey");
+  });
+
+  it("a STAGING_MAX_WORKERS override wins over app.yaml", () => {
+    const out = sh(`bash "${RUNNER}" --suite journey --dry-run`, {
+      STAGING_DATABASE_URL: "postgres://staging.invalid:5432/staging",
+      STAGING_MAX_WORKERS: "2",
+    });
+    expect(out).toContain("VITEST_MAX_WORKERS=2 npm run test:integration:journey");
+  });
+
+  it("a second instance against the same server exits at the mkdir lock", () => {
+    // LOCK_DIR = ${TMPDIR}/coffeemode-staging-journey-<host>_<port>.lock
+    // for this URL (userinfo stripped). Pre-holding it must make the runner
+    // refuse, not queue (spec 0010 S4). TMPDIR is pinned: the runner honors
+    // the ambient value, so the test must not assume /tmp.
+    // Vitest workers share TMPDIR, so the ambient value is the runner's.
+    const lockDir = `${process.env.TMPDIR ?? "/tmp"}/coffeemode-staging-journey-staging.invalid_5432.lock`;
+    sh(`mkdir -p "${lockDir}"`);
+    try {
+      shFails(`bash "${RUNNER}" --suite journey --skip-setup --skip-cleanup`, {
+        STAGING_DATABASE_URL: "postgres://staging.invalid:5432/staging",
+      });
+    } finally {
+      sh(`rmdir "${lockDir}"`);
+    }
+  });
+
+  it("refuses the :6543 pooler (CREATE DATABASE cannot run through it)", () => {
+    shFails(`bash "${RUNNER}" --suite journey --dry-run`, {
+      STAGING_DATABASE_URL: "postgres://postgres:x@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres",
+    });
+  });
 });
 
 describe("Stale test-DB sweeper — CLI contracts", () => {

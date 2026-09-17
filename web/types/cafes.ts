@@ -18,7 +18,7 @@ export interface CafeSummary {
   opening_hours: WeeklyHours | null;
   price_range: number | null;
   work_stats: WorkStats;
-  /** Card-variant R2 key for list/card covers; null when the cafe has no photo yet. */
+  /** Card-variant R2 key for list/card covers: first gallery card (`gallery->0->>'card'`), null when the cafe has no photo yet. */
   cover: string | null;
   /** Meters from the query point; present on nearby queries. */
   distance_m?: number;

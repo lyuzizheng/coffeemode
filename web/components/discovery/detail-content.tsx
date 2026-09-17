@@ -137,8 +137,7 @@ export function DetailContent({
     return <InlineError message={t("detail_load_failed")} onRetry={() => query.refetch()} />;
   }
   const cafe = query.data;
-  const covers = cafe.gallery.map((g) => g.card).filter(Boolean);
-  if (covers.length === 0 && cafe.cover) covers.push(cafe.cover);
+  const covers = cafe.gallery.map((g) => g.card).filter(Boolean); // BRAWUKA-307: cafe.cover already derives from the first gallery card
 
   const heading = (
     <div className="flex items-start justify-between gap-2">

@@ -1,4 +1,4 @@
-import { throwIfUnauthorized } from "@/lib/http";
+import { isUnauthorized, throwIfUnauthorized, UNAUTHORIZED } from "@/lib/http";
 import type { POI } from "@shared/places/types";
 import { stableApplePlaceId } from "@shared/places/apple-place-id";
 import type { CreateTranslator, PlaceSearchProvider } from "./place-search";
@@ -67,6 +67,38 @@ async function fetchMapKitToken(): Promise<string> {
   return token;
 }
 
+/**
+ * MapKit JS owns its own auth lifecycle: once `mapkit.init` runs, the SDK may
+ * invoke `authorizationCallback` again at any time (expired JWT, 401 from
+ * Apple) with no promise for the app to await. A 401 on that re-auth means
+ * OUR session died — the drawer's sign-in gate (BRAWUKA-212) is the only
+ * surface that can clear it — but the callback cannot throw at MapKit, so the
+ * marker is latched here and replayed through `search()` rejections, which the
+ * drawer already routes to the gate. Module scope mirrors `mapkit.init`'s
+ * once-per-page global state.
+ */
+let mapKitSessionExpired = false;
+
+/** Searches blocked on a MapKit authorization round-trip; drained on a 401. */
+const pendingSearches = new Set<() => void>();
+
+async function fetchMapKitTokenTracked(): Promise<string> {
+  try {
+    const token = await fetchMapKitToken();
+    mapKitSessionExpired = false;
+    return token;
+  } catch (cause) {
+    mapKitSessionExpired = isUnauthorized(cause);
+    if (mapKitSessionExpired) {
+      // Fail in-flight searches now: MapKit may never call their callbacks
+      // after a failed authorization, and a hanging spinner must not be the
+      // session-expired signal.
+      for (const fail of pendingSearches) fail();
+    }
+    throw cause;
+  }
+}
+
 function toPOI(place: MapKitPlace): POI | null {
   const name = place.name?.trim();
   const coordinate = place.coordinate;
@@ -83,7 +115,6 @@ function toPOI(place: MapKitPlace): POI | null {
     types: place.pointOfInterestCategory ? [place.pointOfInterestCategory] : [],
     business_status: null,
     hours_json: null,
-    photo_refs: [],
     fetched_at: new Date().toISOString(),
   };
 }
@@ -95,7 +126,7 @@ export function applePlaceSearch(t: CreateTranslator): PlaceSearchProvider {
     label: t("apple"),
     persistOnSelect: true,
     async init() {
-      await fetchMapKitToken();
+      await fetchMapKitTokenTracked();
       await loadMapKitScript();
       const windowWithMapKit = window as MapKitWindow;
       const mapkit = windowWithMapKit.mapkit;
@@ -103,8 +134,10 @@ export function applePlaceSearch(t: CreateTranslator): PlaceSearchProvider {
       if (!windowWithMapKit.__coffeeModeMapKitInitialized) {
         mapkit.init({
           authorizationCallback: (done) => {
-            void fetchMapKitToken()
+            void fetchMapKitTokenTracked()
               .then(done)
+              // MapKit tolerates only `done("")` on failure; the 401 case is
+              // already latched by the tracked fetch and surfaces via search().
               .catch(() => done(""));
           },
         });
@@ -114,9 +147,18 @@ export function applePlaceSearch(t: CreateTranslator): PlaceSearchProvider {
     },
     async search(query) {
       if (!api) throw new Error(t("appleUnavailable"));
+      // A re-auth 401 latched between init and now is the same dead session the
+      // token fetch reports — route it to the sign-in gate, not the alert slot.
+      if (mapKitSessionExpired) throw new Error(UNAUTHORIZED);
       const request = new api.Search();
       const { promise, resolve, reject } = Promise.withResolvers<POI[]>();
+      const fail = () => {
+        pendingSearches.delete(fail);
+        reject(new Error(UNAUTHORIZED));
+      };
+      pendingSearches.add(fail);
       request.search(query, (searchError, response) => {
+        pendingSearches.delete(fail);
         if (searchError) {
           reject(new Error(t("searchFailed")));
           return;

@@ -46,8 +46,11 @@ app/page.tsx
 - **cafe-pins.ts** — MapLibre-internal pin artwork + layer registration;
   imported only by maplibre-provider.tsx.
 - **Style documents** — both themes load full style JSONs from the tile host
-  (`map.maplibre.tileStyle.light`/`dark` in app.yaml; OFM `liberty`/`dark`);
-  the app never owns a local style document.
+  (`map.maplibre.tileStyle.light`/`dark` in app.yaml; OFM `liberty`/`dark`).
+  One vendored exception: `public/map/openmapstyle_dark.json` (BRAWUKA-314)
+  is a vintage-dark variant of the archived `openmapstyle_light.json`,
+  tuned to the dark tokens — opt in by pointing `tileStyle.dark` at its
+  deployed https URL.
 - **types.ts** — `IMapProvider` / `BaseMapProviderProps` — the swap
   boundary. No renderer types cross it (`Coordinates` from `lib/cities`,
   `CafeSummary` from `types/cafes`). Optional capability members

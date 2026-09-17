@@ -1,0 +1,69 @@
+name: Staging Journey
+
+# Post-merge staging verification (spec 0010 §5, spec 0003 §CI design).
+# NEVER a PR gate: no `pull_request` trigger here, and branch protection
+# requires only `ci-gate`. A staging outage must never block a merge.
+# Serialization (spec 0010 §4: one journey run at a time) is owned HERE:
+# `concurrency: staging-journey` + the runner's own mkdir lock in
+# `scripts/devops/run-staging-journey.sh` (same group name in the log line).
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    # 03:00 UTC nightly — clear of the 02:00 recompute window.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: staging-journey
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  journey:
+    name: staging-journey
+    runs-on: ubuntu-latest
+    # Secrets live ONLY in the GitHub Environment `staging` (spec 0010 §5).
+    # Nothing staging touches `NEXT_PUBLIC_*`; the runner maps secrets to
+    # server-side env (`STAGING_DATABASE_URL`, `SUPABASE_*`) itself.
+    environment: staging
+    # No retries: a staging failure must fail loud (log + artifact), never
+    # flake-green. The run never blocks a merge; triage from the uploaded log.
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Staging user-journey suites (all)
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: bash ../scripts/devops/run-staging-journey.sh --suite all
+
+      - name: Failure notice
+        if: failure()
+        run: |
+          {
+            echo "## staging-journey FAILED"
+            echo ""
+            echo "Post-merge verification only — this never blocks a PR merge."
+            echo "Triage from the job log; a tracking issue is opened manually"
+            echo "so one flaky night cannot spam the tracker (spec 0010 §5)."
+          } >> "$GITHUB_STEP_SUMMARY"

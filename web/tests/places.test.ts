@@ -29,7 +29,6 @@ const SAMPLE_POI: POI = {
   types: ["cafe"],
   business_status: "OPERATIONAL",
   hours_json: null,
-  photo_refs: ["places/ChIJTEST123/photos/p1"],
   fetched_at: "2026-08-06T00:00:00.000Z",
 };
 
@@ -504,6 +503,31 @@ describe("POST /api/places/reverse", () => {
 
     const res2 = await reversePOST(reverseRequest({ lat: 37.7 }));
     expect(res2.status).toBe(400);
+  });
+
+  it("rejects null, empty string, and boolean coordinates with 400 (BRAWUKA-332)", async () => {
+    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
+    const cases = [
+      { lat: null, lng: -122.4 },
+      { lat: 37.7, lng: null },
+      { lat: null, lng: null },
+      { lat: "", lng: -122.4 },
+      { lat: 37.7, lng: "" },
+      { lat: "", lng: "" },
+      { lat: false, lng: -122.4 },
+      { lat: 37.7, lng: true },
+      { lat: "37.7", lng: "-122.4" },
+    ];
+    for (const body of cases) {
+      const res = await reversePOST(reverseRequest(body));
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data).toMatchObject({
+        error: "invalid_request",
+        message: "lat and lng must both be numbers",
+      });
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("rejects out-of-range coordinates with 400", async () => {

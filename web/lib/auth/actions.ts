@@ -13,7 +13,7 @@ import {
 } from "@/lib/security/origin";
 
 /**
- * OAuth entry points (spec 0001: Supabase is AUTH ONLY, Apple + Google).
+ * OAuth entry points (spec 0010 §2: Supabase hosts auth AND app data; Apple + Google).
  * PKCE is handled by @supabase/ssr — the code verifier lives in a cookie,
  * the callback exchanges the code for a session.
  */

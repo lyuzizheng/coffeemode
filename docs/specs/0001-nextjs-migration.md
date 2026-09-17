@@ -131,7 +131,8 @@ create table cafes (
   address         text,
   city            text default 'singapore',
   description     text,
-  cover           text,                   -- R2 key
+  -- 0025 (BRAWUKA-307): `cover` dropped — write-frozen since PR #467 removed
+  -- attachImageToCafe; card covers derive from `gallery->0->>'card'` in reads
   gallery         jsonb default '[]',     -- [{id, original, card, thumbnail, w, h, by, at, source}]
   opening_hours   jsonb,                  -- {mon:{open,close},...} + hours_source
   tz              text,                   -- IANA timezone (e.g. 'Asia/Seoul'); open-now evaluates cafe-local (web/lib/hours.ts)
@@ -435,7 +436,7 @@ Usage: cafe creation import + POI enrichment + external search results (not rend
 Calls: server-side, ALWAYS via the POI cache service below (API key lives there only)
 Endpoints:
   - Place Search (Nearby/Text) — external search results list
-  - Place Details — enrich imported cafe (photos, hours)
+  - Place Details — enrich imported cafe (hours)
   - Place Autocomplete — search box during import flow
 Session tokens: used for autocomplete billing optimization
 Dedupe: google_place_id unique index; existing cafe → show it + prompt to check-in
@@ -447,10 +448,10 @@ Independent, reusable POI microservice — separate from the Next.js app, so any
 
 ```text
 poi-service.cafemood.app (Cloudflare Worker)
-  KV  — hot cache: raw Google Places responses (TTL ~7d)
-  D1  — normalized POI store (warm cache, durable):
+  KV  — hot cache: normalized POI records (TTL ~7d)
+  D1  — bounded cache (expires_at, 30d):
         place_id, source (google|apple), name, lat, lng, address,
-        types, business_status, hours_json, photo_refs, fetched_at
+        types, business_status, hours_json, fetched_at, expires_at
   Upstream — Google Places API (New), field masks to minimize billing
 
 Endpoints (all require POI_SERVICE_TOKEN header):
@@ -490,8 +491,13 @@ Upload flow:
   3. Worker returns presigned R2 PUT URL for original/{uuid}.webp
   4. Client PUTs the WebP original directly to R2
 
-Processing:
-  1. Client → Next.js /api/images/complete (Supabase session + target id + optional `isCover` flag)
+Processing (BRAWUKA-307: the client entry `POST /api/images/complete` with its
+`isCover` flag is RETIRED — photo provisioning now runs through `photo_ids`
+intents on the creation/check-in write paths, and card covers derive from
+`gallery->0->>'card'`. The worker endpoint below stays LIVE: the `photo_ids`
+flow still calls `POST {image-service}/v1/images/complete` per image, with
+targetType="provision" pre-target and the real target on attach):
+  1. (retired) Client → Next.js /api/images/complete (Supabase session + target id + optional `isCover` flag)
   2. Next.js → image-service Worker /v1/images/complete (service token)
   3. Worker verifies original exists and returns:
        - presigned GET URL for original/{uuid}.webp
@@ -503,14 +509,8 @@ Processing:
        - thumbnail: 200x200 cover, WebP q80
   5. Next.js PUTs original (capped), card, and thumbnail back to R2 and updates:
        cafes.gallery / checkins.photos JSONB
-  6. If `isCover` is true on a `cafe` target, `cafes.cover` is set to the `card` key
-     (client opt-in at creation or cover edit; otherwise the field is left unchanged)
-
-Authorization for /api/images/complete:
-  - `cafe` target: allowed only when the user is the cafe's `created_by`.
-  - `checkin` target: allowed only when the user owns the checkin (`checkins.user_id`).
-    The photo is stored in `checkins.photos` and auto-merged into the parent cafe's
-    `gallery` (attributed via `by`/`at`/`source`) without requiring cafe ownership.
+  6. (retired in migration 0025) If `isCover` was true on a `cafe` target,
+     `cafes.cover` was set to the `card` key — the column is now dropped.
 
 Photos on the creation/check-in write paths (issue #86):
   - `POST /api/cafes` and `POST /api/checkins` accept `photo_ids` (imageUuids
@@ -579,7 +579,8 @@ states are mobile-only.
 
 The map-independent discovery controller accepts CafeSummary[] plus selected state.
 A thin home-page adapter loads the existing nearby-cafes API; MapKit bindings and
-unified search stay in their own slices. CafeSummary must expose a card cover.
+unified search stay in their own slices. CafeSummary carries a derived card cover
+(first gallery card, `gallery->0->>'card'`).
 FULL requires a public, unauthenticated, paginated cafe check-in read contract rather than
 permanent fixtures. It offers Newest (default — DG113) and Helpful modes;
 Kimi K3 designs the control.
@@ -860,7 +861,7 @@ Required on creation:
 Optional: dimension sliders, hours, price range, description
 
 Maps-link import pre-fills the available provider fields: name, address,
-location, and provider reference. Google photos and hours remain in the POI
+location, and provider reference. Google hours remain in the POI
 cache for later enrichment; this creation slice does not copy them into the
 cafe record. The user adds the required photo, review + sliders + policies.
 (The existing Vite flow already does paste→preview→resolve→create; the

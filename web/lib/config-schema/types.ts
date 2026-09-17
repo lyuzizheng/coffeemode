@@ -130,6 +130,10 @@ export interface AppConfig {
     gcTimeMs: number;
     persistMaxAgeMs: number;
   };
+  staging: {
+    /** Staging-journey Vitest worker cap (spec 0010 S4). */
+    maxWorkers: number;
+  };
   runtimeConfig: {
     responseCache: {
       sMaxAgeSeconds: number;

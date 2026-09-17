@@ -3,14 +3,15 @@
  * The API key lives ONLY in this worker (env), never in Next.js.
  */
 
-import { DEFAULT_SEARCH_RADIUS_KM } from "../constants";
+import { DEFAULT_SEARCH_RADIUS_KM, MAX_REVERSE_GEOCODE_CANDIDATES } from "../constants";
+import { computeExpiresAt } from "../store";
 import type { Env, POI } from "../types";
 import { UpstreamApiError, type Coordinates, type UpstreamPlacesProvider } from "./types";
 
 export const GOOGLE_API_BASE = "https://places.googleapis.com";
 
-/** Field mask for Place Details (New). Photos are billed as embedded content,
- *  so we only keep the photo reference (name) and fetch lazily. */
+/** Field mask for Place Details (New). Billing stays minimal; googleMapsUri
+ *  is retained for a future external maps link. */
 export const DETAIL_FIELDS = [
   "id",
   "displayName",
@@ -19,7 +20,6 @@ export const DETAIL_FIELDS = [
   "types",
   "businessStatus",
   "regularOpeningHours",
-  "photos",
   "googleMapsUri",
 ].join(",");
 
@@ -35,7 +35,6 @@ export interface GooglePlace {
   types?: string[];
   businessStatus?: string;
   regularOpeningHours?: { periods?: unknown[] } | null;
-  photos?: Array<{ name: string }>;
   googleMapsUri?: string;
 }
 
@@ -155,6 +154,7 @@ export function toPOI(gp: GooglePlace, source: "google" | "apple" = "google"): P
   if (!gp.location) {
     throw new Error(`Google place ${gp.id} has no location; refusing to store at (0,0)`);
   }
+  const fetched_at = new Date().toISOString();
   return {
     place_id: gp.id,
     source,
@@ -165,8 +165,8 @@ export function toPOI(gp: GooglePlace, source: "google" | "apple" = "google"): P
     types: gp.types ?? [],
     business_status: gp.businessStatus ?? null,
     hours_json: gp.regularOpeningHours ? JSON.stringify(gp.regularOpeningHours) : null,
-    photo_refs: (gp.photos ?? []).map((p) => p.name),
-    fetched_at: new Date().toISOString(),
+    fetched_at,
+    expires_at: computeExpiresAt(fetched_at),
   };
 }
 export interface GoogleGeocodeResult {
@@ -226,33 +226,59 @@ export async function reverseGeocode(
     return null;
   }
 
-  // Find candidate place:
-  // 1. First preference: result whose geocoding types match food/cafe directly
-  // 2. Second preference: result representing an establishment or point_of_interest
-  const candidate =
-    results.find((r) => isGoogleFoodOrCafePOI(r.types)) ??
-    results.find((r) => r.types?.some((t) => t === "point_of_interest" || t === "establishment"));
+  // Bounded candidate selection (BRAWUKA-332):
+  // 1. First preference: results whose geocoding types match food/cafe directly
+  // 2. Second preference: results representing establishment or point_of_interest
+  // Capped at MAX_REVERSE_GEOCODE_CANDIDATES to limit billed Place Details calls.
+  const candidates: GoogleGeocodeResult[] = [];
+  const seenPlaceIds = new Set<string>();
 
-  if (!candidate || !candidate.place_id) {
-    return null;
-  }
-
-  let raw: GooglePlace;
-  try {
-    raw = await fetchPlaceDetails(candidate.place_id, env, fetchImpl);
-  } catch (e) {
-    if (e instanceof UpstreamApiError && e.status === 404) {
-      return null;
+  for (const r of results) {
+    if (r.place_id && !seenPlaceIds.has(r.place_id) && isGoogleFoodOrCafePOI(r.types)) {
+      seenPlaceIds.add(r.place_id);
+      candidates.push(r);
+      if (candidates.length >= MAX_REVERSE_GEOCODE_CANDIDATES) break;
     }
-    throw e;
   }
 
-  const poi = toPOI(raw, "google");
-  if (!isGoogleFoodOrCafePOI(poi.types)) {
-    return null;
+  if (candidates.length < MAX_REVERSE_GEOCODE_CANDIDATES) {
+    for (const r of results) {
+      if (
+        r.place_id &&
+        !seenPlaceIds.has(r.place_id) &&
+        r.types?.some((t) => t === "point_of_interest" || t === "establishment")
+      ) {
+        seenPlaceIds.add(r.place_id);
+        candidates.push(r);
+        if (candidates.length >= MAX_REVERSE_GEOCODE_CANDIDATES) break;
+      }
+    }
   }
 
-  return poi;
+  for (const candidate of candidates) {
+    let raw: GooglePlace;
+    try {
+      raw = await fetchPlaceDetails(candidate.place_id, env, fetchImpl);
+    } catch (e) {
+      if (e instanceof UpstreamApiError && e.status === 404) {
+        continue;
+      }
+      throw e;
+    }
+
+    let poi: POI;
+    try {
+      poi = toPOI(raw, "google");
+    } catch {
+      continue;
+    }
+
+    if (isGoogleFoodOrCafePOI(poi.types)) {
+      return poi;
+    }
+  }
+
+  return null;
 }
 
 

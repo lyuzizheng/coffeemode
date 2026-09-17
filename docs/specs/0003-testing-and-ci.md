@@ -20,6 +20,7 @@ Accepted
 | Mocked integration | Vitest with mocked service boundaries | Route/service contracts without live dependencies |
 | Real DB | Vitest + local Postgres/PostGIS | Migrations, SQL, triggers, transactions, and stored state |
 | Staging journey | `scripts/devops/run-staging-journey.sh` against staging Supabase | Real-session user journeys on the shared staging backend, in per-suite scratch databases (spec 0010 §4) |
+| Agent QA | Multica autopilot + ego-browser on staging.cafemood.app | Exploratory real-browser user journeys on staging; report + defect filing, never a merge gate |
 | Browser/manual | Playwright or an inspected local build | User-visible route and interaction behavior |
 | Visual comparison | Playwright screenshots with reviewed baselines | Optional visual regression evidence; non-blocking until a baseline policy is accepted |
 
@@ -37,6 +38,9 @@ Accepted
   dropped in `afterAll`) and the run sweeps orphans via
   `web/scripts/cleanup-stale-test-dbs.mjs --apply`. Isolation rules and the
   `ALLOW_REMOTE_INTEGRATION_DB=1` opt-in are canonical in spec 0010 §4.
+- Agent QA never gates merges; deterministic failures file defects
+  automatically, LLM-semantic failures require two consecutive rounds before
+  filing.
 - Test sessions: unit/component tests keep `web/tests/helpers/auth.ts:fakeJwt`
   plus mocked clients; staging journey suites acquire real sessions
   non-interactively (Admin API test user + password grant). The full auth

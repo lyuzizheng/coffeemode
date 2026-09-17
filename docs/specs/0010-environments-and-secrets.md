@@ -72,9 +72,14 @@ app data is local.
   password grant (`grant_type=password`). The test user is deleted in
   `afterAll`. Interactive Google OAuth is verified manually and by staging smoke
   tests, never in automation.
+- **Agent-QA sessions**: agent-QA sessions bootstrap authentication via the
+  Supabase Admin API `generateLink` magic link (distinct from journey suites'
+  password grant), logging in through the deployed application under
+  `agent-qa-*` identities.
 - **`service_role` boundary**: the key is server-side only — GitHub Actions
-  `staging` environment secrets and Dokploy server env. It MUST NOT appear in
-  any `NEXT_PUBLIC_*` variable, any committed file, or any client bundle.
+  `staging` environment secrets, Dokploy server env, and Multica agent secrets
+  (scaffold server-side only). It MUST NOT appear in any `NEXT_PUBLIC_*`
+  variable, any committed file, any prompt, or any client bundle.
 - **Fake-JWT single source (G4)**: `scripts/supabase-mock.mjs` and
   `web/tests/helpers/auth.ts` MUST NOT maintain two hand-synced JWT builders.
   One shared implementation is the source of truth (extraction tracked under
@@ -92,6 +97,16 @@ app data is local.
   (`profiles`, `cafes`, `checkins`, …). Guards: `assertSafeSeedClient` /
   `assertSafeSeedTarget` fail closed, and any non-local `DATABASE_URL` requires
   `ALLOW_REMOTE_INTEGRATION_DB=1`.
+- **Agent-QA exception**: agent-QA journeys get a narrow, enumerated exception
+  to the hard rule — not a general relaxation:
+  - Agent-QA writes enter the shared staging business schema **only through the
+    deployed application's own API surface** (same code paths a real user's
+    browser uses), under `agent-qa-*` auth identities.
+  - Fixture/script writes to the business schema remain prohibited — the
+    exception does not weaken `assertSafeSeedClient` / `assertSafeSeedTarget` or
+    the scratch-DB rule for staging-bound suites.
+  - Every agent-QA run must produce a written-entity ledger (ids + types) for
+    auditability and cleanup.
 - **Orphan sweep**: `web/scripts/cleanup-stale-test-dbs.mjs --apply` drops
   leftover scratch DBs (name pattern + zero backends). The staging journey
   runner executes it after every run.
@@ -127,7 +142,7 @@ app data is local.
 | Secret | Lives in | Never in |
 | --- | --- | --- |
 | prod `service_role`, prod `DATABASE_URL`/`DIRECT_URL` | Dokploy prod env, GH Environment `production` | local `.env`, client bundle, `NEXT_PUBLIC_*` |
-| staging `service_role`, `STAGING_DATABASE_URL` | GH Environment `staging`, Dokploy staging env | client bundle, `NEXT_PUBLIC_*`; local `.env` discouraged (dev uses anon key + own Google login) |
+| staging `service_role`, `STAGING_DATABASE_URL` | GH Environment `staging`, Dokploy staging env, Multica agent secrets (`service_role` scaffold server-side only) | client bundle, `NEXT_PUBLIC_*`, prompts, committed files; local `.env` discouraged (dev uses anon key + own Google login) |
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `.env.example` templates, Dokploy env | — (public by design; RLS + revoked default grants protect tables) |
 | R2 access keys, Cloudflare tunnel/API tokens | Dokploy env, GH Environment per env | local `.env` unless actively debugging that integration |
 | `BETTER_STACK_INGEST_URL` + `BETTER_STACK_INGEST_TOKEN` | Dokploy env per env (per-env source host + token) | — (ingest-only token; never `NEXT_PUBLIC_*`) |

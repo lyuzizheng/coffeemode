@@ -255,51 +255,57 @@ function CheckinDrawerSurface({
 
   return (
     <Drawer.Root isOpen={isOpen} onOpenChange={handleCloseAttempt}>
-      <Drawer.Backdrop />
-      <Drawer.Content placement="bottom" className="max-h-[92dvh] bg-overlay text-foreground">
-        <Drawer.Dialog
-          aria-label={state.effectiveMode === "edit" ? t("editTitle") : t("title")}
-          className={`flex max-h-[92dvh] flex-col${detents.expanded ? " h-[92dvh]" : ""}`}
-        >
-          {/* DG70 detent handle: drag up expands to 92dvh, drag down collapses
-              to content height then dismisses. stopPropagation inside the hook
-              keeps HeroUI's dismiss-only drag from seeing the gesture. */}
-          <Drawer.Handle
-            className="cursor-grab touch-none select-none pt-2 active:cursor-grabbing"
-            {...detents.handleProps}
-          />
-          {isOpen && (
-            <CheckinForm
-              key={state.formKey}
-              cafeId={props.cafeId}
-              cafeName={props.cafeName}
-              mode={state.effectiveMode}
-              editCheckinId={state.effectiveEditId}
-              initialScores={props.initialScores ?? state.revisit?.scores}
-              initialMaxStay={props.initialMaxStay ?? state.revisit?.max_stay ?? null}
-              initialNote={props.initialNote ?? state.revisit?.note ?? null}
-              initialPhotos={props.initialPhotos}
-              promptCaption={props.promptCaption}
-              isAuthenticated={props.isAuthenticated}
-              lastCheckin={state.lastCheckinQuery.data?.checkin ?? null}
-              authProbeFailed={state.authProbeFailed}
-              lastCheckinLoaded={state.lastCheckinQuery.isSuccess}
-              onClose={() => onOpenChange(false)}
-              onDirtyChange={state.setIsDirty}
-              onStagedPhotosChange={onStagedPhotosChange}
+      {/* BRAWUKA-371: Content MUST nest inside Backdrop. Backdrop renders
+          react-aria's ModalOverlay, whose exit unmount waits on a Modal
+          child attaching modalRef via ModalContext. As siblings the ref
+          stays null, isModalExiting sticks at 'exiting', and the backdrop
+          leaks at opacity 0 over the viewport, swallowing every click. */}
+      <Drawer.Backdrop>
+        <Drawer.Content placement="bottom" className="max-h-[92dvh] bg-overlay text-foreground">
+          <Drawer.Dialog
+            aria-label={state.effectiveMode === "edit" ? t("editTitle") : t("title")}
+            className={`flex max-h-[92dvh] flex-col${detents.expanded ? " h-[92dvh]" : ""}`}
+          >
+            {/* DG70 detent handle: drag up expands to 92dvh, drag down collapses
+                to content height then dismisses. stopPropagation inside the hook
+                keeps HeroUI's dismiss-only drag from seeing the gesture. */}
+            <Drawer.Handle
+              className="cursor-grab touch-none select-none pt-2 active:cursor-grabbing"
+              {...detents.handleProps}
             />
-          )}
+            {isOpen && (
+              <CheckinForm
+                key={state.formKey}
+                cafeId={props.cafeId}
+                cafeName={props.cafeName}
+                mode={state.effectiveMode}
+                editCheckinId={state.effectiveEditId}
+                initialScores={props.initialScores ?? state.revisit?.scores}
+                initialMaxStay={props.initialMaxStay ?? state.revisit?.max_stay ?? null}
+                initialNote={props.initialNote ?? state.revisit?.note ?? null}
+                initialPhotos={props.initialPhotos}
+                promptCaption={props.promptCaption}
+                isAuthenticated={props.isAuthenticated}
+                lastCheckin={state.lastCheckinQuery.data?.checkin ?? null}
+                authProbeFailed={state.authProbeFailed}
+                lastCheckinLoaded={state.lastCheckinQuery.isSuccess}
+                onClose={() => onOpenChange(false)}
+                onDirtyChange={state.setIsDirty}
+                onStagedPhotosChange={onStagedPhotosChange}
+              />
+            )}
 
-          <CheckinDiscardDialog
-            isOpen={state.showDiscardConfirm}
-            onKeepEditing={() => state.setShowDiscardConfirm(false)}
-            onDiscard={() => {
-              state.setShowDiscardConfirm(false);
-              onOpenChange(false);
-            }}
-          />
-        </Drawer.Dialog>
-      </Drawer.Content>
+            <CheckinDiscardDialog
+              isOpen={state.showDiscardConfirm}
+              onKeepEditing={() => state.setShowDiscardConfirm(false)}
+              onDiscard={() => {
+                state.setShowDiscardConfirm(false);
+                onOpenChange(false);
+              }}
+            />
+          </Drawer.Dialog>
+        </Drawer.Content>
+      </Drawer.Backdrop>
     </Drawer.Root>
   );
 }

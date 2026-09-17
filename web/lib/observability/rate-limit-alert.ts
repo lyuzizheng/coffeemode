@@ -6,9 +6,11 @@ import "server-only";
  *
  * Segregated service component per AGENTS.md: feature code composes it,
  * never embeds or duplicates it. Fires a non-blocking alert when a bucket
- * trips. Uses Better Stack (owner action pending — see
- * docs/agent/pending-user-actions.md §7) when `BETTER_STACK_INGEST_URL` is
- * configured; locally it is a no-op besides a throttled console.warn.
+ * trips. Uses Better Stack when `BETTER_STACK_INGEST_URL` (per-environment
+ * source host) is configured, sending `Authorization: Bearer
+ * BETTER_STACK_INGEST_TOKEN` when that is also set — staging and prod use
+ * different sources (see docs/agent/pending-user-actions.md §7). Locally it
+ * is a no-op besides a throttled console.warn.
  */
 
 type RateLimitAlertReason = "rate_limited" | "fail_open";
@@ -50,6 +52,11 @@ function betterStackUrl(): string | null {
   return url && url.length > 0 ? url : null;
 }
 
+function betterStackToken(): string | null {
+  const token = process.env.BETTER_STACK_INGEST_TOKEN?.trim();
+  return token && token.length > 0 ? token : null;
+}
+
 /**
  * Fire-and-forget alert. Never throws, never blocks the caller.
  * Safe to call without awaiting.
@@ -85,9 +92,12 @@ export function emitRateLimitAlert(payload: RateLimitAlertPayload): void {
     });
 
     // Intentionally not awaited — alert must not slow the 429 response.
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    const token = betterStackToken();
+    if (token) headers.authorization = `Bearer ${token}`;
     void fetch(ingestUrl, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers,
       body,
       keepalive: true,
     }).catch((err) => {

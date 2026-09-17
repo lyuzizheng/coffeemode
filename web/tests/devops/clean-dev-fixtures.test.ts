@@ -108,8 +108,8 @@ describeIntegration("Dev fixture cleaner — real Postgres", () => {
     try {
       await client.query(`insert into profiles (id, display_name) values ($1, 'Keeper')`, [KEEPER_USER]);
       await client.query(
-        `insert into cafes (id, name, location, city, created_by, cover)
-         values ($1, 'Keeper Cafe', ST_SetSRID(ST_MakePoint(103.8, 1.35), 4326)::geography, 'singapore', $2, null)`,
+        `insert into cafes (id, name, location, city, created_by)
+         values ($1, 'Keeper Cafe', ST_SetSRID(ST_MakePoint(103.8, 1.35), 4326)::geography, 'singapore', $2)`,
         [KEEPER_CAFE, KEEPER_USER],
       );
       await client.query(`insert into profiles (id, display_name) values ($1, 'Fixture'), ($2, 'Fixture Liker')`, [
@@ -117,9 +117,10 @@ describeIntegration("Dev fixture cleaner — real Postgres", () => {
         FIXTURE_LIKER,
       ]);
       await client.query(
-        `insert into cafes (id, name, location, city, created_by, cover)
-         values ($1, 'Fixture Roastery', ST_SetSRID(ST_MakePoint(103.8, 1.35), 4326)::geography, 'singapore', $2, 'card/d0000000-test.webp')`,
-        [FIXTURE_CAFE, FIXTURE_USER],
+        `insert into cafes (id, name, location, city, created_by, gallery)
+         values ($1, 'Fixture Roastery', ST_SetSRID(ST_MakePoint(103.8, 1.35), 4326)::geography, 'singapore', $2,
+           jsonb_build_array(jsonb_build_object('id', 'd0000000-test', 'original', 'original/d0000000-test.webp', 'card', 'card/d0000000-test.webp', 'thumbnail', 'thumbnail/d0000000-test.webp', 'w', 1600, 'h', 1200, 'by', $3::text, 'at', '2026-09-01T00:00:00Z')))`,
+        [FIXTURE_CAFE, FIXTURE_USER, FIXTURE_USER],
       );
       await client.query(`insert into checkins (id, cafe_id, user_id) values ($1, $2, $3)`, [
         FIXTURE_CHECKIN,

@@ -10,6 +10,28 @@ import { CafeCreationTrigger } from "@/components/cafe/cafe-creation-sheet";
 import { OnboardingHome } from "@/components/onboarding/onboarding-home";
 import { MapSurface } from "@/components/map/map-surface";
 
+/** Session + profile fetch with graceful degradation: Supabase or Postgres
+ * outages degrade to the signed-out/anonymous view instead of a 500. */
+async function loadSessionProfile(configured: boolean) {
+  if (!configured) return { user: null, profile: null };
+  const supabase = await createSupabaseServerClient();
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+  } catch {
+    return { user: null, profile: null };
+  }
+  if (!user) return { user: null, profile: null };
+  try {
+    return { user, profile: await getProfile(user.id) };
+  } catch {
+    // Postgres unavailable: treat as anonymous — localStorage carries the
+    // onboarding state until the next signed-in visit merges it.
+    return { user, profile: null };
+  }
+}
+
 // Home = the map app (map-home, BRAWUKA-311): a full-viewport OpenFreeMap
 // surface with the discovery sheet/sidebar bound to it. The onboarding
 // welcome card and locate button ride the mapOverlay slot; the landing
@@ -27,35 +49,12 @@ export default async function HomePage({
   const authError = params.auth === "error";
   const authErrorReason = typeof params.reason === "string" ? params.reason : undefined;
 
-  let user = null;
-  if (configured) {
-    const supabase = await createSupabaseServerClient();
-    try {
-      const { data } = await supabase.auth.getUser();
-      user = data.user;
-    } catch {
-      // Supabase unreachable: degrade to the signed-out view instead of
-      // turning the whole page into a 500 (availability > session display).
-      user = null;
-    }
-  }
-
   // First-visit onboarding (spec 0001 §Onboarding, DG114–DG123): the IP
   // detection is a header read — it never blocks render. For signed-in
   // users the profile's onboarded flag and stored city/location decide the
   // starting center and whether the card can appear at all (DG122).
-  const requestHeaders = await headers();
-  const detectedCity = detectIpCity(requestHeaders);
-  let profile = null;
-  if (user) {
-    try {
-      profile = await getProfile(user.id);
-    } catch {
-      // Postgres unavailable: treat as anonymous — localStorage carries the
-      // onboarding state until the next signed-in visit merges it.
-      profile = null;
-    }
-  }
+  const detectedCity = detectIpCity(await headers());
+  const { user, profile } = await loadSessionProfile(configured);
   const profileCity = profile ? findCity(profile.currentCity) : null;
   const initialCenter =
     profileCity?.center ??
@@ -82,8 +81,10 @@ export default async function HomePage({
           : undefined
       }
       suppressCard={initialCafeId !== undefined}
-      addCafe={<CafeCreationTrigger isAuthenticated={Boolean(user)} mapkitConfigured={mapkitConfigured} />}
+      addCafe={<CafeCreationTrigger isAuthenticated={Boolean(user)} mapkitConfigured={mapkitConfigured} variant="compact" />}
+      addCafeFab={<CafeCreationTrigger isAuthenticated={Boolean(user)} mapkitConfigured={mapkitConfigured} variant="fab" />}
       accountInitial={accountInitial}
+      mapkitConfigured={mapkitConfigured}
       initialCafeId={initialCafeId}
     >
       <MapSurface />

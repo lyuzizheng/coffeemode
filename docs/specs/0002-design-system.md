@@ -38,6 +38,12 @@ Accepted (corrected 2026-09-06 — BRAWUKA-74 Option 2 superseded by Owner rulin
 - Dual-plate printing discipline: substrate + espresso ink (≥70%) + terracotta spot + sage secondary (≤30%); --grain SVG noise material overlay bound to WCAG AA contrast gate (BRAWUKA-69)
 - Digital garden (manifesto §4) is NOT fulfilled as a product surface —
   CafeMood stays a pure tool (Owner ruling 2026-09-06, BRAWUKA-74)
+- Field-guide direction (BRAWUKA-364, Owner unrestricted redesign): the app
+  reads as a printed field guide to workable cafes — masthead wordmark +
+  tagline, hairline-ruled index rows with monogram plates, mono-plate
+  scores, dossier detail with section labels, floating capsule search on
+  mobile, round add-cafe FAB, cover-style welcome card. All within the
+  existing token system; no new colors, no radius above --radius-lg.
 ```
 
 ## Design personality

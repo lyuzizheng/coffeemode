@@ -1,16 +1,17 @@
 "use client";
 
 /**
- * Cafe detail composition — HALF (artifact §5.2) and FULL (§5.3). The same
- * FULL content renders inside the mobile sheet and the desktop detail
- * column (DG42). Selection focuses the detail heading (DG18).
+ * Cafe dossier — HALF (artifact §5.2) and FULL (§5.3), recomposed for the
+ * field-guide redesign (BRAWUKA-364). The same FULL content renders inside
+ * the mobile sheet and the desktop detail column (DG42): a cover hero (or
+ * monogram plate), display name, verdict plates, labeled data sections,
+ * and the check-in feed. Selection focuses the detail heading (DG18).
  */
 import { Fragment, useEffect, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@heroui/react";
 import { CloseIcon } from "@/components/icons";
-import { CoverCarousel } from "@/components/cafe/cover-carousel";
 import { GalleryStrip } from "@/components/cafe/gallery-strip";
 import { OpenState } from "@/components/cafe/open-state";
 import { ShareControl } from "@/components/share/share-control";
@@ -25,9 +26,11 @@ import type { PublicCafeDetail } from "@/types/cafes";
 import { CheckinFeed } from "./checkin-feed";
 import { FeedNotFoundError } from "./use-checkin-feed";
 import { FactsRow } from "./cafe-card";
+import { PolicyConsensus, ScorePair, WorkProfile } from "./scores";
+import { DossierHero } from "./dossier-hero";
+import { SectionLabel } from "./section-label";
 import { CreatorLine } from "./creator-line";
 import { InlineError } from "./inline-error";
-import { PolicyConsensus, ScorePair, WorkProfile } from "./scores";
 
 async function fetchCafe(id: string): Promise<PublicCafeDetail> {
   const res = await fetch(`/api/cafes/${id}`);
@@ -77,7 +80,7 @@ function FactChips({ cafe }: { cafe: PublicCafeDetail }) {
       {facts.map((fact) => (
         <span
           key={fact.kind}
-          className="rounded-sm bg-surface-secondary px-2.5 py-1.5 text-xs text-foreground"
+          className="rounded-sm border border-separator bg-surface-secondary px-2.5 py-1.5 text-xs text-foreground"
         >
           <FactsRow facts={[fact]} />
         </span>
@@ -89,7 +92,7 @@ function FactChips({ cafe }: { cafe: PublicCafeDetail }) {
 function DetailSkeleton() {
   return (
     <div className="flex flex-col gap-3" aria-hidden>
-      <div className="aspect-video w-full animate-pulse rounded-md bg-surface-tertiary" />
+      <div className="aspect-[21/9] w-full animate-pulse rounded-md bg-surface-tertiary" />
       <div className="h-4 w-40 animate-pulse rounded bg-surface-tertiary" />
       <div className="h-3 w-56 animate-pulse rounded bg-surface-tertiary" />
     </div>
@@ -144,8 +147,8 @@ export function DetailContent({
       <h2
         ref={detailHeadingRef}
         tabIndex={-1}
-        className={`font-display font-bold tracking-tight text-foreground outline-none ${
-          variant === "full" ? "text-xl" : "text-lg"
+        className={`font-display font-bold tracking-tight text-balance text-foreground outline-none ${
+          variant === "full" ? "text-2xl" : "text-xl"
         }`}
       >
         {cafe.name}
@@ -187,7 +190,7 @@ export function DetailContent({
       // pb clears the home indicator: the adaptive HALF detent (BRAWUKA-248)
       // hugs this column, so its bottom edge is the screen edge.
       <div className="flex flex-col gap-3 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-        <CoverCarousel images={covers} alt={cafe.name} />
+        <DossierHero covers={covers} name={cafe.name} />
         <div className="flex flex-col gap-1">
           {heading}
           {meta}
@@ -200,7 +203,8 @@ export function DetailContent({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[640px] flex-col gap-5 px-4 pb-8">
+    <div className="mx-auto flex w-full max-w-[640px] flex-col gap-6 px-4 pb-8">
+      <DossierHero covers={covers} name={cafe.name} />
       <div className="flex flex-col gap-1.5">
         {heading}
         {meta}
@@ -210,7 +214,12 @@ export function DetailContent({
       <ActionRow cafe={cafe} onCheckIn={onCheckIn} />
       <WorkProfile stats={cafe.work_stats} />
       <PolicyConsensus stats={cafe.work_stats} />
-      <GalleryStrip photos={cafe.gallery} ariaLabel={t("gallery_aria")} />
+      {cafe.gallery.length > 0 && (
+        <section aria-label={t("gallery_aria")} className="flex flex-col gap-3">
+          <SectionLabel>{t("gallery_aria")}</SectionLabel>
+          <GalleryStrip photos={cafe.gallery} ariaLabel={t("gallery_aria")} />
+        </section>
+      )}
       <CheckinFeed
         cafeId={cafe.id}
         cafeName={cafe.name}

@@ -20,6 +20,7 @@ import type { CheckInFeedMode } from "@/types/checkins";
 import { FeedCard } from "./feed-card";
 import { InlineError } from "./inline-error";
 import { FeedNotFoundError, useCheckinFeed } from "./use-checkin-feed";
+import { SectionLabel } from "./section-label";
 
 const MODES: CheckInFeedMode[] = ["helpful", "newest"];
 
@@ -78,9 +79,9 @@ function FeedModeTabs({
 
 function FeedSkeleton() {
   return (
-    <div className="flex flex-col gap-2" aria-hidden>
+    <div className="flex flex-col" aria-hidden>
       {[0, 1].map((i) => (
-        <div key={i} className="rounded-md border border-separator bg-surface p-3">
+        <div key={i} className="border-b border-separator py-4 last:border-b-0">
           <div className="mb-2 h-3.5 w-24 animate-pulse rounded bg-surface-tertiary" />
           <div className="h-3 w-40 animate-pulse rounded bg-surface-tertiary" />
         </div>
@@ -138,9 +139,10 @@ export function CheckinFeed({
 
   return (
     <section aria-label={t("feed_title")}>
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-lg font-bold text-foreground">{t("feed_title")}</h3>
-        <FeedModeTabs mode={mode} onChange={setMode} />
+      <div className="mb-3">
+        <SectionLabel action={<FeedModeTabs mode={mode} onChange={setMode} />}>
+          {t("feed_title")}
+        </SectionLabel>
       </div>
 
       {query.isPending ? (
@@ -152,7 +154,7 @@ export function CheckinFeed({
       ) : checkins.length === 0 ? (
         <FeedEmpty onCheckIn={onCheckIn} />
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col">
           {checkins.map((checkin) => (
             <FeedCard
               key={checkin.id}

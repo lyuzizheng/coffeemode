@@ -55,6 +55,14 @@ interface UnifiedSearchPanelProps {
    * `/api/search` client. Production surfaces never pass this.
    */
   fetchSearch?: (params: UnifiedSearchParams) => Promise<SearchResponse>;
+  /** BRAWUKA-364: hosts that swap their list for results need the live
+   * query state — fired on every field change ("" included). */
+  onQueryChange?: (query: string) => void;
+  /** Extra classes on the results region (e.g. bounded scroll in a column). */
+  resultsClassName?: string;
+  /** Drop the idle hint line — hosts that show their own list under the
+   * field don't need the placeholder repeated. */
+  hideIdleHint?: boolean;
 }
 
 export function UnifiedSearchPanel({
@@ -64,6 +72,9 @@ export function UnifiedSearchPanel({
   onSelectResult,
   onExternalSearch,
   fetchSearch,
+  onQueryChange,
+  resultsClassName,
+  hideIdleHint = false,
 }: UnifiedSearchPanelProps) {
   const t = useTranslations("search");
   const [query, setQuery] = useState("");
@@ -71,6 +82,16 @@ export function UnifiedSearchPanel({
   const [response, setResponse] = useState<SearchResponse | null>(null);
   const requestId = useRef(0);
   const fetcher = fetchSearch ?? fetchUnifiedSearch;
+
+  // BRAWUKA-364: the host mirrors the field value so it can swap its own
+  // list for results while a query is active.
+  const handleQueryChange = useCallback(
+    (next: string) => {
+      setQuery(next);
+      onQueryChange?.(next);
+    },
+    [onQueryChange],
+  );
 
   // Below the minimum-query trigger (DG44, `search.client.minQueryLength`) the panel is idle by derivation —
   // no setState in the effect body. Stale in-flight requests are invalidated
@@ -122,7 +143,7 @@ export function UnifiedSearchPanel({
 
   // DG56: Esc clears the query and dismisses suggestions.
   const handleKeyDown = (event: React.KeyboardEvent) => {
-    if (event.key === "Escape") setQuery("");
+    if (event.key === "Escape") handleQueryChange("");
   };
 
   const handleSelect = (item: SearchResultItem) => {
@@ -132,7 +153,7 @@ export function UnifiedSearchPanel({
 
   return (
     <div className="flex flex-col gap-2">
-      <SearchField value={query} onChange={setQuery} aria-label={t("title")}>
+      <SearchField value={query} onChange={handleQueryChange} aria-label={t("title")}>
         <SearchField.Group>
           <SearchField.SearchIcon />
           <SearchField.Input placeholder={t("search_hint")} onKeyDown={handleKeyDown} />
@@ -140,37 +161,39 @@ export function UnifiedSearchPanel({
         </SearchField.Group>
       </SearchField>
 
-      {effectiveStatus === "idle" && (
+      {effectiveStatus === "idle" && !hideIdleHint && (
         <p className="px-3 py-2 text-sm text-muted">{t("search_hint")}</p>
       )}
 
-      {effectiveStatus === "loading" && !response && <SearchSkeletons />}
+      <div className={resultsClassName}>
+        {effectiveStatus === "loading" && !response && <SearchSkeletons />}
 
-      {effectiveStatus === "error" && (
-        <div className="flex items-center justify-between gap-2 px-3 py-2">
-          <p role="alert" className="text-sm text-muted">
-            {t("could_not_search")}
-          </p>
-          <button
-            type="button"
-            onClick={retry}
-            className="cm-focus -my-1.5 inline-flex min-h-11 items-center rounded-md border border-border px-3 text-sm text-accent transition-colors hover:bg-surface-secondary"
-          >
-            {t("retry")}
-          </button>
-        </div>
-      )}
+        {effectiveStatus === "error" && (
+          <div className="flex items-center justify-between gap-2 px-3 py-2">
+            <p role="alert" className="text-sm text-muted">
+              {t("could_not_search")}
+            </p>
+            <button
+              type="button"
+              onClick={retry}
+              className="cm-focus -my-1.5 inline-flex min-h-11 items-center rounded-md border border-border px-3 text-sm text-accent transition-colors hover:bg-surface-secondary"
+            >
+              {t("retry")}
+            </button>
+          </div>
+        )}
 
-      {response && effectiveStatus !== "idle" && (
-        <SearchResultsList
-          response={response}
-          externalSources={externalSources}
-          mapkitConfigured={mapkitConfigured}
-          onSelect={handleSelect}
-          onExternalSearch={onExternalSearch}
-          onRetry={retry}
-        />
-      )}
+        {response && effectiveStatus !== "idle" && (
+          <SearchResultsList
+            response={response}
+            externalSources={externalSources}
+            mapkitConfigured={mapkitConfigured}
+            onSelect={handleSelect}
+            onExternalSearch={onExternalSearch}
+            onRetry={retry}
+          />
+        )}
+      </div>
     </div>
   );
 }

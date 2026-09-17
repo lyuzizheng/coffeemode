@@ -464,7 +464,9 @@
     "peek_aria": "Nearby cafes",
     "sheet_aria": "Cafe discovery",
     "sheet_handle_aria": "Drag to resize the panel",
-    "unknown_cafe": "Cafe"
+    "unknown_cafe": "Cafe",
+    "tagline": "A field guide to cafes worth working in",
+    "index_label": "{count, plural, one {# cafe nearby} other {# cafes nearby}}"
   },
   "navPrompt": {
     "headline": "Grabbed a coffee at {cafe}?",
@@ -490,7 +492,8 @@
     "first_nomad": "You're the first nomad in {city} — check in and help the next one",
     "settings_toast": "Location is off — enable it in system settings",
     "locate_aria": "Locate me",
-    "dialog_aria": "Welcome"
+    "dialog_aria": "Welcome",
+    "field_guide_mark": "Field guide"
   },
   "share": {
     "aria": "Share",
@@ -529,6 +532,7 @@
     "error_body": "The list still works — pick a cafe to see details.",
     "retry": "Retry",
     "sign_in": "Sign in",
-    "profile_aria": "Profile"
+    "profile_aria": "Profile",
+    "search_aria": "Search cafes"
   }
 }

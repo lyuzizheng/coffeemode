@@ -5,7 +5,9 @@ import { cache } from "react";
 import { getLocale, getTranslations } from "next-intl/server";
 import { isValidUUID } from "@shared/uuid";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { CoverCarousel } from "@/components/cafe/cover-carousel";
+import { CoffeeIcon } from "@/components/icons";
+import { DossierHero } from "@/components/discovery/dossier-hero";
+import { SectionLabel } from "@/components/discovery/section-label";
 import { GalleryStrip } from "@/components/cafe/gallery-strip";
 import { OpenState } from "@/components/cafe/open-state";
 import { CreatorLine } from "@/components/discovery/creator-line";
@@ -131,7 +133,7 @@ function CafeHeading({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <h1 className="font-display text-xl font-bold tracking-tight text-foreground">
+        <h1 className="font-display text-2xl font-bold tracking-tight text-balance text-foreground">
           {name}
         </h1>
         {isPrivate && (
@@ -148,6 +150,22 @@ function CafeHeading({
       </p>
       <CreatorLine author={author} maintainedByService={maintainedByService} />
     </div>
+  );
+}
+
+/** The dossier masthead: wordmark back to the map + theme toggle. */
+function CafeMasthead() {
+  return (
+    <header className="flex items-center justify-between border-b border-separator px-4 py-3 sm:px-6">
+      <Link
+        href="/"
+        className="-my-2.5 inline-flex min-h-11 items-center gap-2 font-display text-md font-extrabold tracking-tight text-foreground"
+      >
+        <CoffeeIcon size={18} className="text-accent" />
+        {APP_NAME}
+      </Link>
+      <ThemeToggle />
+    </header>
   );
 }
 
@@ -176,20 +194,12 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="flex items-center justify-between px-4 py-4 sm:px-6">
-        <Link
-          href="/"
-          className="-my-2.5 inline-flex min-h-11 items-center font-display text-md font-extrabold tracking-tight text-foreground"
-        >
-          {APP_NAME}
-        </Link>
-        <ThemeToggle />
-      </header>
+      <CafeMasthead />
 
       {/* Part 1 — the public shell (DG106): aggregate product data only,
           full semantic HTML, no client JS needed for the content. */}
-      <main className="mx-auto flex w-full max-w-[640px] flex-1 flex-col gap-5 px-4 pb-12 sm:px-6">
-        <CoverCarousel images={covers} alt={cafe.name} />
+      <main className="mx-auto flex w-full max-w-[640px] flex-1 flex-col gap-6 px-4 pb-12 pt-5 sm:px-6">
+        <DossierHero covers={covers} name={cafe.name} />
 
         <CafeHeading
           name={cafe.name}
@@ -208,7 +218,12 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
         {/* SSR shell: bars at final width, no entry motion (artifact §2). */}
         <WorkProfile stats={cafe.work_stats} animated={false} />
         <PolicyConsensus stats={cafe.work_stats} />
-        <GalleryStrip photos={shell.gallery} ariaLabel={td("gallery_aria")} />
+        {shell.gallery.length > 0 && (
+          <section aria-label={td("gallery_aria")} className="flex flex-col gap-3">
+            <SectionLabel>{td("gallery_aria")}</SectionLabel>
+            <GalleryStrip photos={shell.gallery} ariaLabel={td("gallery_aria")} />
+          </section>
+        )}
 
         {/* DG105: JSON-LD for crawlers and AI search engines. */}
         <script

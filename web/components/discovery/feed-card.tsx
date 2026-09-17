@@ -183,7 +183,7 @@ export function FeedCard({
   const liked = checkin.liked_by_viewer;
 
   return (
-    <article className="flex flex-col gap-2 rounded-md border border-separator bg-surface p-3">
+    <article className="flex flex-col gap-2 border-b border-separator py-4 first:pt-0 last:border-b-0">
       <div className="flex items-start justify-between gap-2">
         <FeedCardMeta visitedAt={checkin.visited_at} author={checkin.author} />
         {checkin.owned_by_viewer && (

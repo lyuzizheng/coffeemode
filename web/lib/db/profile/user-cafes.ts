@@ -67,7 +67,7 @@ export async function getUserCafes(
       c.id,
       c.name,
       c.city,
-      c.cover,
+      c.gallery->0->>'card' as cover,
       max(ch.visited_at) as last_visited_at,
       to_char(max(ch.visited_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_visited_at,
       count(ch.id) as checkins_count,
@@ -77,7 +77,7 @@ export async function getUserCafes(
     where ch.user_id = $1
       and ch.deleted_at is null
       ${visibilityClause}
-    group by c.id, c.name, c.city, c.cover
+    group by c.id, c.name, c.city, c.gallery->0->>'card'
     ${cursorClause}
     order by last_visited_at desc, c.id desc
     limit $2

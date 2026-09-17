@@ -118,7 +118,7 @@ select id, name,
        address, city, tz, opening_hours, price_range,
        google_place_id, apple_poi_id,
        created_by, visibility,
-       work_stats, cover
+       work_stats, gallery->0->>'card' as cover
 from cafes
 where ${conditions.join("\n  and ")}
 order by name asc, id asc

@@ -88,7 +88,7 @@ export async function recordNavigation(
  * for gets no error UI (design §5).
  */
 const NEXT_PROMPT_SQL = `
-select n.id, n.created_at, c.id as cafe_id, c.name as cafe_name, c.cover as cafe_cover
+select n.id, n.created_at, c.id as cafe_id, c.name as cafe_name, c.gallery->0->>'card' as cafe_cover
 from navigations n
 join cafes c on c.id = n.cafe_id
 where n.user_id = $1

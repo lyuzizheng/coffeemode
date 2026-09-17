@@ -52,18 +52,13 @@ describe("ogHookParams (DG108)", () => {
 });
 
 describe("cafeOgImageUrl", () => {
-  it("prefers the cover key on the public CDN", () => {
-    const url = cafeOgImageUrl({ cover: "card/a.webp", gallery: [photo("b")] });
+  it("uses the first gallery card on the public CDN", () => {
+    const url = cafeOgImageUrl({ gallery: [photo("a"), photo("b")] });
     expect(url).toBe("https://images.cafemood.app/card/a.webp");
   });
 
-  it("falls back to the first gallery card", () => {
-    const url = cafeOgImageUrl({ cover: null, gallery: [photo("b")] });
-    expect(url).toBe("https://images.cafemood.app/card/b.webp");
-  });
-
   it("is null when the cafe has no photo — the dynamic fallback card applies", () => {
-    expect(cafeOgImageUrl({ cover: null, gallery: [] })).toBeNull();
+    expect(cafeOgImageUrl({ gallery: [] })).toBeNull();
   });
 });
 

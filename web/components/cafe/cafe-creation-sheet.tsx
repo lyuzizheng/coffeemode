@@ -223,35 +223,38 @@ export function CafeCreationSheet({
         if (!next) reset();
       }}
     >
-      <Drawer.Backdrop />
-      <Drawer.Content placement="bottom">
-        <Drawer.Dialog className="max-h-[92dvh] !pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
-          <Drawer.Handle />
-          <Drawer.Header>
-            <Drawer.Heading>{t("title")}</Drawer.Heading>
-            <p className="text-sm text-muted">{t("firstCheckinHint")}</p>
-          </Drawer.Header>
-          <CafeCreationPane
-            searchKey={searchKey}
-            poi={place.poi}
-            name={place.name}
-            error={place.error}
-            isAuthenticated={isAuthenticated}
-            mapkitConfigured={mapkitConfigured}
-            initialProvider={initialProvider}
-            showSignInGate={showSignInGate}
-            onSelectPOI={place.selectPlace}
-            onNameChange={place.setName}
-            onError={place.setError}
-            onRequireSignIn={requireSignIn}
-          />
-          <Drawer.Footer>
-            <Drawer.CloseTrigger className="cm-focus rounded-sm border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-surface-secondary">
-              {t("close")}
-            </Drawer.CloseTrigger>
-          </Drawer.Footer>
-        </Drawer.Dialog>
-      </Drawer.Content>
+      {/* BRAWUKA-371: Content MUST nest inside Backdrop — see
+          checkin-drawer.tsx for why sibling placement leaks the backdrop. */}
+      <Drawer.Backdrop>
+        <Drawer.Content placement="bottom">
+          <Drawer.Dialog className="max-h-[92dvh] !pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+            <Drawer.Handle />
+            <Drawer.Header>
+              <Drawer.Heading>{t("title")}</Drawer.Heading>
+              <p className="text-sm text-muted">{t("firstCheckinHint")}</p>
+            </Drawer.Header>
+            <CafeCreationPane
+              searchKey={searchKey}
+              poi={place.poi}
+              name={place.name}
+              error={place.error}
+              isAuthenticated={isAuthenticated}
+              mapkitConfigured={mapkitConfigured}
+              initialProvider={initialProvider}
+              showSignInGate={showSignInGate}
+              onSelectPOI={place.selectPlace}
+              onNameChange={place.setName}
+              onError={place.setError}
+              onRequireSignIn={requireSignIn}
+            />
+            <Drawer.Footer>
+              <Drawer.CloseTrigger className="cm-focus rounded-sm border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-surface-secondary">
+                {t("close")}
+              </Drawer.CloseTrigger>
+            </Drawer.Footer>
+          </Drawer.Dialog>
+        </Drawer.Content>
+      </Drawer.Backdrop>
     </Drawer.Root>
   );
 }

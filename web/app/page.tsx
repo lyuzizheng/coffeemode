@@ -4,6 +4,7 @@ import { createSupabaseServerClient, isAuthConfigured } from "@/lib/auth/supabas
 import { appConfig } from "@/lib/config";
 import { detectIpCity, findCity } from "@/lib/cities";
 import { getProfile } from "@/lib/db/profile";
+import { getMapKitConfig } from "@/lib/places/mapkit";
 import { AuthCallbackError } from "@/components/auth/auth-callback-error";
 import { CafeCreationTrigger } from "@/components/cafe/cafe-creation-sheet";
 import { OnboardingHome } from "@/components/onboarding/onboarding-home";
@@ -24,8 +25,7 @@ export default async function HomePage({
   // it instead of dropping the user back on a silent page (issue #98).
   const params = (await searchParams) ?? {};
   const authError = params.auth === "error";
-  const authErrorReason =
-    typeof params.reason === "string" ? params.reason : undefined;
+  const authErrorReason = typeof params.reason === "string" ? params.reason : undefined;
 
   let user = null;
   if (configured) {
@@ -63,6 +63,12 @@ export default async function HomePage({
     detectedCity?.center ??
     appConfig.discovery.defaultCenter;
   const initialCafeId = typeof params.cafe === "string" ? params.cafe : undefined;
+  // DG143: MapKit readiness is request-time — APPLE_MAPKIT_* are runtime env
+  // in the Dokploy deploy; a build-time flag would bake false into the image.
+  const mapkitConfigured = getMapKitConfig() !== null;
+  const accountInitial = user
+    ? (profile?.displayName ?? profileFromUser(user).displayName)[0]?.toUpperCase()
+    : undefined;
 
   return (
     <OnboardingHome
@@ -76,12 +82,8 @@ export default async function HomePage({
           : undefined
       }
       suppressCard={initialCafeId !== undefined}
-      addCafe={<CafeCreationTrigger isAuthenticated={Boolean(user)} />}
-      accountInitial={
-        user
-          ? (profile?.displayName ?? profileFromUser(user).displayName)[0]?.toUpperCase()
-          : undefined
-      }
+      addCafe={<CafeCreationTrigger isAuthenticated={Boolean(user)} mapkitConfigured={mapkitConfigured} />}
+      accountInitial={accountInitial}
       initialCafeId={initialCafeId}
     >
       <MapSurface />

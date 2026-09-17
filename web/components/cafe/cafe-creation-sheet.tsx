@@ -45,6 +45,8 @@ interface CafeCreationPaneProps {
   name: string;
   error: string | null;
   isAuthenticated: boolean;
+  /** DG143 request-time MapKit readiness, drilled from the server page. */
+  mapkitConfigured: boolean;
   showSignInGate: boolean;
   onSelectPOI: (selected: POI, persist?: boolean) => void;
   onNameChange: (name: string) => void;
@@ -59,6 +61,7 @@ function CafeCreationPane({
   name,
   error,
   isAuthenticated,
+  mapkitConfigured,
   showSignInGate,
   onSelectPOI,
   onNameChange,
@@ -72,6 +75,7 @@ function CafeCreationPane({
       <div className="mx-auto w-full max-w-2xl space-y-5 pb-4">
         <CafePlaceSearch
           key={searchKey}
+          mapkitConfigured={mapkitConfigured}
           onSelectPOI={onSelectPOI}
           onError={onError}
           onRequireSignIn={onRequireSignIn}
@@ -151,10 +155,13 @@ export function CafeCreationSheet({
   isOpen,
   onOpenChange,
   isAuthenticated = true,
+  mapkitConfigured = false,
 }: {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   isAuthenticated?: boolean;
+  /** DG143 request-time MapKit readiness; defaults off. */
+  mapkitConfigured?: boolean;
 }) {
   const t = useTranslations("create");
   const [searchKey, setSearchKey] = useState(0);
@@ -193,6 +200,7 @@ export function CafeCreationSheet({
             name={place.name}
             error={place.error}
             isAuthenticated={isAuthenticated}
+            mapkitConfigured={mapkitConfigured}
             showSignInGate={showSignInGate}
             onSelectPOI={place.selectPlace}
             onNameChange={place.setName}
@@ -210,7 +218,14 @@ export function CafeCreationSheet({
   );
 }
 
-export function CafeCreationTrigger({ isAuthenticated }: { isAuthenticated: boolean }) {
+export function CafeCreationTrigger({
+  isAuthenticated,
+  mapkitConfigured,
+}: {
+  isAuthenticated: boolean;
+  /** DG143 request-time MapKit readiness from the server page. */
+  mapkitConfigured: boolean;
+}) {
   const t = useTranslations("create");
   const [isOpen, setIsOpen] = useState(false);
   const { isOnline } = useNetworkStatus();
@@ -220,7 +235,12 @@ export function CafeCreationTrigger({ isAuthenticated }: { isAuthenticated: bool
       <Button variant="primary" isDisabled={!isOnline} onPress={() => setIsOpen(true)}>
         {isOnline ? t("title") : t("offline")}
       </Button>
-      <CafeCreationSheet isOpen={isOpen} onOpenChange={setIsOpen} isAuthenticated={isAuthenticated} />
+      <CafeCreationSheet
+        isOpen={isOpen}
+        onOpenChange={setIsOpen}
+        isAuthenticated={isAuthenticated}
+        mapkitConfigured={mapkitConfigured}
+      />
     </>
   );
 }

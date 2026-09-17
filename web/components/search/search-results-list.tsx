@@ -18,21 +18,17 @@
 import { useLocale, useTranslations } from "next-intl";
 import { formatDistanceKm } from "@/lib/discovery/view-model";
 import { displayCityName } from "@/lib/cities";
+import type { ExternalSourceFlags } from "@/lib/client-env";
 import { groupSearchResults } from "@/lib/search/grouped-results";
 import type { SearchResponse, SearchResultItem } from "@/lib/search/types";
 
 export type ExternalSearchProvider = "google" | "apple";
 
-export interface ExternalSourceFlags {
-  google: boolean;
-  apple: boolean;
-}
-
 interface SearchResultsListProps {
   response: SearchResponse;
   externalSources: ExternalSourceFlags;
-  /** DG143 gate — defaults to the build-time NEXT_PUBLIC_MAPKIT_CONFIGURED flag. */
-  mapkitConfigured?: boolean;
+  /** DG143 gate — request-time MapKit readiness passed by the server page. */
+  mapkitConfigured: boolean;
   onSelect: (item: SearchResultItem) => void;
   onExternalSearch: (provider: ExternalSearchProvider) => void;
   /** DG133 pairs the external-search notice with a retry action. */
@@ -95,7 +91,7 @@ function GroupHeader({ label }: { label: string }) {
 export function SearchResultsList({
   response,
   externalSources,
-  mapkitConfigured = process.env.NEXT_PUBLIC_MAPKIT_CONFIGURED === "true",
+  mapkitConfigured,
   onSelect,
   onExternalSearch,
   onRetry,

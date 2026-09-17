@@ -46,6 +46,13 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_MAPLIBRE_TILE_STYLE_DARK: appConfig.map.maplibre.tileStyle.dark,
     NEXT_PUBLIC_MAP_DEFAULT_ZOOM: String(appConfig.map.defaultZoom),
     NEXT_PUBLIC_MAP_FOCUS_ZOOM: String(appConfig.map.focusZoom),
+    // DG134: external-source toggles for the creation-sheet provider registry
+    // and the search CTA gate (BRAWUKA-326). app.yaml is COPYed into the
+    // image, so a build-time mirror is identical at runtime — unlike
+    // APPLE_MAPKIT_* credentials, which are runtime env and reach the client
+    // as a request-time prop instead.
+    NEXT_PUBLIC_SEARCH_EXTERNAL_GOOGLE: String(appConfig.search.externalSources.google),
+    NEXT_PUBLIC_SEARCH_EXTERNAL_APPLE: String(appConfig.search.externalSources.apple),
   },
 
   images: {

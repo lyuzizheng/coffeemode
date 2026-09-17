@@ -29,6 +29,7 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
   `STAGING_DATABASE_URL`, `SUPABASE_URL` (= `https://ojujmjewtbquiddswyrg.supabase.co`), `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
 - [ ] Redirect URLs allowlist on the **staging** project (spec 0010 §1): `http://localhost:3000/auth/callback` (local dev against staging auth) + `https://staging.cafemood.app/auth/callback`.
 - [ ] Confirm Google provider is enabled on the **staging** project (item 3's client works for both; the Supabase callback `https://ojujmjewtbquiddswyrg.supabase.co/auth/v1/callback` must be in the Google client's authorized redirect URIs).
+- [ ] Re-enable staging-journey workflow after secrets are provisioned: `gh workflow enable staging-journey.yml` (disabled via `gh workflow disable` until `STAGING_DATABASE_URL` is provisioned per BRAWUKA-380).
 - [ ] `production` environment: owner (`lyuzizheng`) is the required reviewer (already set); prod secrets land there only at promotion time, never before.
 
 ## 2. Postgres (primary database — Supabase, per 0004 decision 34a, owner 2026-08-28)

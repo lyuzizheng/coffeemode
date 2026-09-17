@@ -6,6 +6,10 @@ name: Staging Journey
 # Serialization (spec 0010 §4: one journey run at a time) is owned HERE:
 # `concurrency: staging-journey` + the runner's own mkdir lock in
 # `scripts/devops/run-staging-journey.sh` (same group name in the log line).
+#
+# NOTE: Workflow disabled via `gh workflow disable staging-journey.yml` until
+# `STAGING_DATABASE_URL` is provisioned in the GitHub Environment `staging`
+# (BRAWUKA-380, docs/agent/pending-user-actions.md §1a).
 
 on:
   push:

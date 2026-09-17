@@ -30,6 +30,8 @@ export interface CreationDraft {
   poi: POI | null;
   /** External (google/apple) POIs persist through /api/places/external first. */
   persist: boolean;
+  /** Provider CTA the user tapped — the sheet opens on that provider's tab. */
+  provider: ExternalSearchProvider | null;
 }
 
 export function useDiscoverySearch({
@@ -59,15 +61,15 @@ export function useDiscoverySearch({
       return;
     }
     if (item.poi) {
-      setCreationDraft({ poi: item.poi, persist: item.source !== "stored_poi" });
+      setCreationDraft({ poi: item.poi, persist: item.source !== "stored_poi", provider: null });
       setCreationOpen(true);
     }
   };
 
-  // The creation sheet's own place search already carries the provider
-  // tabs — the CTA opens it directly on the search step.
-  const onExternalSearch = (_provider: ExternalSearchProvider) => {
-    setCreationDraft({ poi: null, persist: false });
+  // The creation sheet's own place search carries the provider tabs — the CTA
+  // opens it directly on the matching provider so the intent survives.
+  const onExternalSearch = (provider: ExternalSearchProvider) => {
+    setCreationDraft({ poi: null, persist: false, provider });
     setCreationOpen(true);
   };
 

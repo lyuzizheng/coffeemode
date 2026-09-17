@@ -69,8 +69,9 @@ function MobileSearchOverlay({
   onQueryChange: (query: string) => void;
   resultsActive: boolean;
 }) {
+  const t = useTranslations("map");
   return (
-    <div className="fixed inset-x-4 top-4 z-40 lg:hidden" role="search">
+    <div className="fixed inset-x-4 top-4 z-40 lg:hidden" role="search" aria-label={t("search_aria")}>
       <div className="rounded-lg border border-separator bg-overlay p-2 shadow-lg">
         <UnifiedSearchPanel
           externalSources={search.externalSources}
@@ -142,13 +143,14 @@ function DiscoveryOverlays({
         />
       ) : null}
       <CafeCreationSheet
-        key={creationDraft?.poi ? `${creationDraft.poi.source}:${creationDraft.poi.place_id}` : "empty"}
+        key={creationDraft?.poi ? `${creationDraft.poi.source}:${creationDraft.poi.place_id}` : (creationDraft?.provider ?? "empty")}
         isOpen={creationOpen}
         onOpenChange={setCreationOpen}
         isAuthenticated={isAuthenticated}
         mapkitConfigured={mapkitConfigured}
         initialPoi={creationDraft?.poi ?? null}
         initialPersist={creationDraft?.persist ?? false}
+        initialProvider={creationDraft?.provider ?? null}
       />
     </>
   );

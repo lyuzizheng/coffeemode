@@ -23,6 +23,7 @@ import {
   resetResolveWidget,
 } from "@/lib/security/turnstile-client";
 import type { POI } from "@shared/places/types";
+import type { ExternalSearchProvider } from "@/components/search/search-results-list";
 type EntryMode = "link" | "search";
 
 interface CafePlaceSearchProps {
@@ -33,16 +34,23 @@ interface CafePlaceSearchProps {
   onRequireSignIn: () => void;
   /** DG143 request-time MapKit readiness, drilled from the server page. */
   mapkitConfigured: boolean;
+  /** BRAWUKA-366: provider CTA tapped upstream — preselects that provider's
+   * chip and the search tab so the intent survives the sheet open. */
+  initialProvider?: ExternalSearchProvider | null;
 }
 
-export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn, mapkitConfigured }: CafePlaceSearchProps) {
+export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn, mapkitConfigured, initialProvider = null }: CafePlaceSearchProps) {
   const t = useTranslations("create");
   const providers = useMemo(
     () => getPlaceSearchProviders(t, { externalSources: getSearchExternalSources(), mapkitConfigured }),
     [t, mapkitConfigured],
   );
-  const [provider, setProvider] = useState<PlaceSearchProvider | null>(providers[0] ?? null);
-  const [entryMode, setEntryMode] = useState<EntryMode>("link");
+  const [provider, setProvider] = useState<PlaceSearchProvider | null>(
+    () => providers.find((candidate) => candidate.id === initialProvider) ?? providers[0] ?? null,
+  );
+  const [entryMode, setEntryMode] = useState<EntryMode>(
+    initialProvider && providers.length > 0 ? "search" : "link",
+  );
   const [mapsUrl, setMapsUrl] = useState("");
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<POI[]>([]);

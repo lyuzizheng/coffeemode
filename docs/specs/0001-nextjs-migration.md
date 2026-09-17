@@ -131,7 +131,8 @@ create table cafes (
   address         text,
   city            text default 'singapore',
   description     text,
-  cover           text,                   -- R2 key
+  -- 0025 (BRAWUKA-307): `cover` dropped — write-frozen since PR #467 removed
+  -- attachImageToCafe; card covers derive from `gallery->0->>'card'` in reads
   gallery         jsonb default '[]',     -- [{id, original, card, thumbnail, w, h, by, at, source}]
   opening_hours   jsonb,                  -- {mon:{open,close},...} + hours_source
   tz              text,                   -- IANA timezone (e.g. 'Asia/Seoul'); open-now evaluates cafe-local (web/lib/hours.ts)
@@ -490,8 +491,13 @@ Upload flow:
   3. Worker returns presigned R2 PUT URL for original/{uuid}.webp
   4. Client PUTs the WebP original directly to R2
 
-Processing:
-  1. Client → Next.js /api/images/complete (Supabase session + target id + optional `isCover` flag)
+Processing (BRAWUKA-307: the client entry `POST /api/images/complete` with its
+`isCover` flag is RETIRED — photo provisioning now runs through `photo_ids`
+intents on the creation/check-in write paths, and card covers derive from
+`gallery->0->>'card'`. The worker endpoint below stays LIVE: the `photo_ids`
+flow still calls `POST {image-service}/v1/images/complete` per image, with
+targetType="provision" pre-target and the real target on attach):
+  1. (retired) Client → Next.js /api/images/complete (Supabase session + target id + optional `isCover` flag)
   2. Next.js → image-service Worker /v1/images/complete (service token)
   3. Worker verifies original exists and returns:
        - presigned GET URL for original/{uuid}.webp
@@ -503,14 +509,8 @@ Processing:
        - thumbnail: 200x200 cover, WebP q80
   5. Next.js PUTs original (capped), card, and thumbnail back to R2 and updates:
        cafes.gallery / checkins.photos JSONB
-  6. If `isCover` is true on a `cafe` target, `cafes.cover` is set to the `card` key
-     (client opt-in at creation or cover edit; otherwise the field is left unchanged)
-
-Authorization for /api/images/complete:
-  - `cafe` target: allowed only when the user is the cafe's `created_by`.
-  - `checkin` target: allowed only when the user owns the checkin (`checkins.user_id`).
-    The photo is stored in `checkins.photos` and auto-merged into the parent cafe's
-    `gallery` (attributed via `by`/`at`/`source`) without requiring cafe ownership.
+  6. (retired in migration 0025) If `isCover` was true on a `cafe` target,
+     `cafes.cover` was set to the `card` key — the column is now dropped.
 
 Photos on the creation/check-in write paths (issue #86):
   - `POST /api/cafes` and `POST /api/checkins` accept `photo_ids` (imageUuids
@@ -579,7 +579,8 @@ states are mobile-only.
 
 The map-independent discovery controller accepts CafeSummary[] plus selected state.
 A thin home-page adapter loads the existing nearby-cafes API; MapKit bindings and
-unified search stay in their own slices. CafeSummary must expose a card cover.
+unified search stay in their own slices. CafeSummary carries a derived card cover
+(first gallery card, `gallery->0->>'card'`).
 FULL requires a public, unauthenticated, paginated cafe check-in read contract rather than
 permanent fixtures. It offers Newest (default — DG113) and Helpful modes;
 Kimi K3 designs the control.

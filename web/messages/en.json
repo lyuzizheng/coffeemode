@@ -224,7 +224,8 @@
     "identity_error_handle_taken": "That handle is already taken",
     "identity_error_handle_too_soon": "You can change your handle once every 7 days",
     "identity_error_invalid_handle": "Handle must be 3–30 chars: lowercase letters, numbers, - and _",
-    "identity_error_generic": "Couldn't save — try again?"
+    "identity_error_generic": "Couldn't save — try again?",
+    "preferences": "Preferences"
   },
   "create": {
     "title": "Add a cafe",

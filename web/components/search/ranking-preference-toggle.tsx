@@ -5,9 +5,10 @@
  * Persisted to localStorage via `ranking-preference.ts` (anonymous-safe,
  * never `profiles`); `fetchUnifiedSearch` appends it as `?ranking=`.
  *
- * Two presentations, one control:
- * - `settings`: compact labelled row (profile preferences).
+ * Three presentations, one control:
+ * - `settings`: labelled block with description (profile preferences row).
  * - `onboarding`: title + body copy first, control below (first-visit ask).
+ * - `compact`: single-line label + control (anonymous gate footer).
  */
 import { useTranslations } from "next-intl";
 import { useSyncExternalStore } from "react";
@@ -24,7 +25,7 @@ const OPTIONS: RankingPreference[] = ["relevance", "good_first"];
 export function RankingPreferenceToggle({
   variant = "settings",
 }: {
-  variant?: "settings" | "onboarding";
+  variant?: "settings" | "onboarding" | "compact";
 }) {
   const t = useTranslations("search.ranking");
   const stored = useSyncExternalStore(
@@ -73,6 +74,15 @@ export function RankingPreferenceToggle({
       <div className="flex flex-col gap-2">
         <h2 className="font-display text-md font-bold text-foreground">{t("onboarding_title")}</h2>
         <p className="text-sm text-muted">{t("onboarding_body")}</p>
+        {control}
+      </div>
+    );
+  }
+
+  if (variant === "compact") {
+    return (
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs text-muted">{t("label")}</span>
         {control}
       </div>
     );

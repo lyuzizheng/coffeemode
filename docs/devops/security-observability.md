@@ -33,15 +33,23 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
 ## Checklist — Application layer
 
 - `rate-limit-alert` hook (DG129, `web/lib/observability/rate-limit-alert.ts`)
-  emits a throttled `console.warn` always, and POSTs to Better Stack when
-  `BETTER_STACK_INGEST_URL` is set on the app container. Two event shapes:
+  emits a throttled `console.warn` always, and POSTs to the per-environment
+  Better Stack HTTP source when `BETTER_STACK_INGEST_URL` (source host) is set
+  on the app container, authenticating with `Authorization: Bearer
+  BETTER_STACK_INGEST_TOKEN`. Staging posts to `coffeemode-rate-limit-staging`,
+  prod to `coffeemode-rate-limit-prod` — separate sources so env filtering is
+  structural. Both vars are server-only (spec 0010). Two event shapes:
   - `rate_limited` (level `warn`) — a bucket denied a request.
   - `rate_limiter_fail_open` (level `error`) — the limiter backend failed and
     the request was allowed unenforced. **Treat any `fail_open` as a P1
     incident**: rate limiting is silently off.
-- In Better Stack, create an alert on the ingest source: `event:rate_limited`
-  → low-severity notification; `event:rate_limiter_fail_open` → immediate
-  notification.
+- In Better Stack, create an alert on each ingest source:
+  `event:rate_limited` → low-severity notification;
+  `event:rate_limiter_fail_open` → immediate notification.
+  Both events carry `reason` mirroring `event`, plus `bucket`, `client_id`,
+  `window_ms`, `max_requests`, `retry_after`, `route`. Verified 2026-09-17:
+  synthetic `rate_limited` events round-tripped on both sources
+  (ingest 202 → query-visible within ~1 min).
 - Workers Observability: `poi-service-prod` / `image-service-prod` logs for
   shared-secret rejections (401s on `x-poi-service-token` /
   `x-image-service-token`) — any volume means someone is probing the worker

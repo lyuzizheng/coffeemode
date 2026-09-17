@@ -183,6 +183,8 @@ describe("CafeCreationSheet & Trigger", () => {
 
   it("blocks the form with a food-only message when the worker skips the place (BRAWUKA-328)", async () => {
     const onOpenChange = vi.fn();
+    // Apple tab needs both gates open: source flag on + request-time MapKit prop.
+    vi.stubEnv("NEXT_PUBLIC_SEARCH_EXTERNAL_APPLE", "true");
 
     globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
       if (url.includes("/api/places/resolve")) {
@@ -202,7 +204,7 @@ describe("CafeCreationSheet & Trigger", () => {
     });
 
     render(
-      <CafeCreationSheet isOpen={true} onOpenChange={onOpenChange} isAuthenticated={true} />,
+      <CafeCreationSheet isOpen={true} onOpenChange={onOpenChange} isAuthenticated={true} mapkitConfigured />,
       { wrapper: Wrapper },
     );
 

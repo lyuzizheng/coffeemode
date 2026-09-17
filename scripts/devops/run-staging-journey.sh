@@ -171,7 +171,7 @@ fi
 # Second instance against the same server exits here (spec 0010 §4); the
 # workflow concurrency group is the outer serializer, this is the inner one.
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  fail "another staging-journey run holds $LOCK_DIR (concurrency group: staging-journey) — refusing to run concurrently"
+  fail "another staging-journey run holds $LOCK_DIR (concurrency group: staging-journey) — refusing to run concurrently (if no run is active, it is a stale lock from a killed process: confirm, then rmdir $LOCK_DIR)"
 fi
 trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
 log "Lock acquired: $LOCK_DIR (concurrency group: staging-journey)"

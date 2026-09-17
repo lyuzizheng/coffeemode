@@ -1,4 +1,4 @@
-import { positiveInteger, record } from "./primitives";
+import { positiveInteger } from "./primitives";
 import type { AppConfig } from "./types";
 
 type StagingConfig = AppConfig["staging"];
@@ -8,8 +8,7 @@ export function parseStagingSection(
   file: string,
   staging: Record<string, unknown>,
 ): StagingConfig {
-  const inner = record(file, "staging", staging);
   return {
-    maxWorkers: positiveInteger(file, "staging.maxWorkers", inner.maxWorkers),
+    maxWorkers: positiveInteger(file, "staging.maxWorkers", staging.maxWorkers),
   };
 }

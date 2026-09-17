@@ -324,7 +324,7 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
   }, 120_000);
 
   beforeEach(async () => {
-    await resetRateLimits(dbClient);
+    await resetRateLimits();
   });
   const createdCafeIds = new Set<string>();
   afterEach(async () => {

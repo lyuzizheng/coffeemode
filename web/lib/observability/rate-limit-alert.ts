@@ -13,40 +13,6 @@ import "server-only";
  * is a no-op besides a throttled console.warn.
  */
 
-type RateLimitAlertReason = "rate_limited" | "fail_open";
-
-interface RateLimitAlertPayload {
-  bucket: string;
-  clientId: string;
-  windowMs: number;
-  maxRequests: number;
-  retryAfter: number;
-  route?: string;
-  /**
-   * Why the alert fired. `rate_limited` (default) = a bucket denied a
-   * request and 429 behavior applied; `fail_open` = the limiter backend
-   * failed and the request was allowed without enforcement (BRAWUKA-171).
-   */
-  reason?: RateLimitAlertReason;
-}
-
-// Throttle alerts to 1 per 10s per process to avoid log spam under burst.
-let lastWarnEmitAt = 0;
-let lastErrorEmitAt = 0;
-const EMIT_THROTTLE_MS = 10_000;
-
-function shouldEmitWarn(now: number): boolean {
-  if (now - lastWarnEmitAt < EMIT_THROTTLE_MS) return false;
-  lastWarnEmitAt = now;
-  return true;
-}
-
-function shouldEmitError(now: number): boolean {
-  if (now - lastErrorEmitAt < EMIT_THROTTLE_MS) return false;
-  lastErrorEmitAt = now;
-  return true;
-}
-
 function betterStackUrl(): string | null {
   const url = process.env.BETTER_STACK_INGEST_URL?.trim();
   return url && url.length > 0 ? url : null;
@@ -57,18 +23,36 @@ function betterStackToken(): string | null {
   return token && token.length > 0 ? token : null;
 }
 
+interface RateLimitAlertPayload {
+  bucket: string;
+  clientId: string;
+  windowMs: number;
+  maxRequests: number;
+  retryAfter: number;
+  route?: string;
+}
+
+// Throttle alerts to 1 per 10s per process to avoid log spam under burst.
+let lastEmitAt = 0;
+const EMIT_THROTTLE_MS = 10_000;
+
+function shouldEmit(now: number): boolean {
+  if (now - lastEmitAt < EMIT_THROTTLE_MS) return false;
+  lastEmitAt = now;
+  return true;
+}
+
 /**
  * Fire-and-forget alert. Never throws, never blocks the caller.
  * Safe to call without awaiting.
  */
 export function emitRateLimitAlert(payload: RateLimitAlertPayload): void {
   const now = Date.now();
-  const reason: RateLimitAlertReason = payload.reason ?? "rate_limited";
 
   // Always log throttled for local observability / Cloudflare logs.
-  if (shouldEmitWarn(now)) {
+  if (shouldEmit(now)) {
     console.warn(
-      `[rate-limit] reason=${reason} bucket=${payload.bucket} client=${payload.clientId} windowMs=${payload.windowMs} max=${payload.maxRequests} retryAfter=${payload.retryAfter}s route=${payload.route ?? "-"}`,
+      `[rate-limit] bucket=${payload.bucket} client=${payload.clientId} windowMs=${payload.windowMs} max=${payload.maxRequests} retryAfter=${payload.retryAfter}s route=${payload.route ?? "-"}`,
     );
   }
 
@@ -80,9 +64,8 @@ export function emitRateLimitAlert(payload: RateLimitAlertPayload): void {
   try {
     const body = JSON.stringify({
       dt: new Date(now).toISOString(),
-      level: reason === "fail_open" ? "error" : "warn",
-      event: reason === "fail_open" ? "rate_limiter_fail_open" : "rate_limited",
-      reason,
+      level: "warn",
+      event: "rate_limited",
       bucket: payload.bucket,
       client_id: payload.clientId,
       window_ms: payload.windowMs,
@@ -101,12 +84,12 @@ export function emitRateLimitAlert(payload: RateLimitAlertPayload): void {
       body,
       keepalive: true,
     }).catch((err) => {
-      if (shouldEmitError(Date.now())) {
+      if (shouldEmit(Date.now())) {
         logError({ route: "rate-limit alert", error: err });
       }
     });
   } catch (err) {
-    if (shouldEmitError(Date.now())) {
+    if (shouldEmit(Date.now())) {
       logError({ route: "rate-limit alert", error: err });
     }
   }
@@ -114,6 +97,5 @@ export function emitRateLimitAlert(payload: RateLimitAlertPayload): void {
 
 /** Reset throttle state — tests only. */
 export function _resetAlertThrottleForTests(): void {
-  lastWarnEmitAt = 0;
-  lastErrorEmitAt = 0;
+  lastEmitAt = 0;
 }

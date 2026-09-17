@@ -131,7 +131,7 @@ describePath3("path 3 — profile & public identity lifecycle over HTTP (spec 00
   // chains live inside a single `it` and tests never depend on order.
   beforeEach(async () => {
     await dbClient.query(
-      "truncate table profiles, cafes, rate_limits, image_upload_intents, navigations restart identity cascade",
+      "truncate table profiles, cafes, image_upload_intents, navigations restart identity cascade",
     );
     await seedProfileSlice(dbClient);
   });

@@ -152,6 +152,7 @@
 
 ### Rate limiting
 
+> BRAWUKA-378 removed the Postgres backend below (`PostgresRateLimiter`, `createRateLimiter`, `RATE_LIMIT_BACKEND`, the fail-open path, `rate-limit-postgres.test.ts`) and dropped `rate_limits` via migration 0026 — in-memory is the sole backend.
 - `web/lib/rate-limit.ts`
   - Token-bucket `RateLimiter` (memory, dev/tests) plus `createRateLimiter()`
     that selects a Postgres backend when `DATABASE_URL` is set (or

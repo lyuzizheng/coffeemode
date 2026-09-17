@@ -56,8 +56,12 @@ describe("Supabase DevOps Provisioning — Unit Contracts", () => {
     // provision inventory was hand-maintained. The inventory must equal an
     // independent CREATE TABLE scan of the migrations dir, so the next new
     // table is covered with zero test edits.
+    // BRAWUKA-378: 0026 is the first DROP TABLE — the scan mirrors the
+    // subtraction in listMigrationTables, and pins rate_limits absent.
     const createTableRe = /create\s+table\s+(?:if\s+not\s+exists\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?\s*\(/gi;
+    const dropTableRe = /drop\s+table\s+(?:if\s+exists\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?/gi;
     const scanned = new Set(["schema_migrations"]);
+    const dropped = new Set<string>();
     for (const f of readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql"))) {
       const sql = readFileSync(path.join(MIGRATIONS_DIR, f), "utf8");
       createTableRe.lastIndex = 0;
@@ -66,8 +70,15 @@ describe("Supabase DevOps Provisioning — Unit Contracts", () => {
         if (m[1] && m[1].toLowerCase() !== "public") continue;
         scanned.add(m[2].toLowerCase());
       }
+      dropTableRe.lastIndex = 0;
+      while ((m = dropTableRe.exec(sql)) !== null) {
+        if (m[1] && m[1].toLowerCase() !== "public") continue;
+        dropped.add(m[2].toLowerCase());
+      }
     }
+    for (const table of dropped) scanned.delete(table);
     expect(new Set(listMigrationTables())).toEqual(scanned);
+    expect(listMigrationTables()).not.toContain("rate_limits");
   });
 
   describe("parseConnectionConfig SSL enforcement", () => {

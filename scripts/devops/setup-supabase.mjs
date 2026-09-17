@@ -275,6 +275,10 @@ const MIGRATIONS_DIR_ABS = path.join(WEB_DIR, "db", "migrations");
 // with RLS on". Scans web/db/migrations/*.sql for CREATE TABLE <name> so a
 // new table can never again ship without RLS coverage by forgetting a
 // hand-maintained list (0021 helpful_ranking_runs/entries did exactly that).
+// BRAWUKA-378: also subtracts DROP TABLE <name> — 0026 is the repo's first
+// table drop, and without the subtraction the verifier expects a table the
+// migrated database correctly no longer has. Drops are collected across all
+// files and subtracted at the end, so a drop wins over an earlier create.
 // Tables born from CREATE TABLE AS / SELECT INTO would be missed by this
 // regex; migrations MUST use plain CREATE TABLE (the repo has zero CTAS
 // today — grep SELECT.INTO web/db/migrations to confirm) so the scan stays
@@ -295,6 +299,8 @@ export function listMigrationTables() {
     );
   }
   const createTableRe = /create\s+table\s+(?:if\s+not\s+exists\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?\s*\(/gi;
+  const dropTableRe = /drop\s+table\s+(?:if\s+exists\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?/gi;
+  const dropped = new Set();
   for (const file of files) {
     const sql = readFileSync(path.join(MIGRATIONS_DIR_ABS, file), "utf8");
     createTableRe.lastIndex = 0;
@@ -304,7 +310,13 @@ export function listMigrationTables() {
       const table = m[2].toLowerCase();
       if (schema === "public") tables.add(table);
     }
+    dropTableRe.lastIndex = 0;
+    while ((m = dropTableRe.exec(sql)) !== null) {
+      const schema = m[1] ? m[1].toLowerCase() : "public";
+      if (schema === "public") dropped.add(m[2].toLowerCase());
+    }
   }
+  for (const table of dropped) tables.delete(table);
   return [...tables].sort();
 }
 

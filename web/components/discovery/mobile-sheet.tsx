@@ -26,6 +26,9 @@ import { InlineError } from "./inline-error";
 
 /** Visible sheet height at PEEK (px) — cover row + padding; safe-area is padded inside. */
 export const PEEK_VISIBLE_PX = 172;
+/** Visible height at the collapsed detent (BRAWUKA-373): drag handle + a slim
+ * "附近 N 家" bar. Pulling down at PEEK lands here; tap/drag up restores. */
+export const COLLAPSED_VISIBLE_PX = 48;
 const SHEET_HEIGHT_VH = 0.85;
 const HALF_VISIBLE_VH = 0.5;
 /** Handle chrome above the content column: pt-2 + 4px bar + pb-3. */
@@ -217,6 +220,7 @@ export function MobileSheet({
     full: 0,
     half: sheetH - halfVisible,
     peek: sheetH - PEEK_VISIBLE_PX,
+    collapsed: sheetH - COLLAPSED_VISIBLE_PX,
   };
   const targetY = offsets[snap];
 
@@ -248,11 +252,20 @@ export function MobileSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetY, reduced]);
 
+  // BRAWUKA-373: expose the snap on <html> so globals.css can drop the map
+  // attribution offset when the sheet collapses to the slim bar.
+  useEffect(() => {
+    document.documentElement.dataset.sheetSnap = snap;
+    return () => {
+      delete document.documentElement.dataset.sheetSnap;
+    };
+  }, [snap]);
+
   if (!mounted || viewportH === 0) return null;
 
   const onDragEnd = (_: unknown, info: { offset: { y: number }; velocity: { y: number } }) => {
     dragging.current = false;
-    const steps: SheetSnap[] = selectedCafeId ? ["peek", "half", "full"] : ["peek"];
+    const steps: SheetSnap[] = selectedCafeId ? ["peek", "half", "full"] : ["collapsed", "peek"];
     const current = steps.indexOf(snap);
     let next = current;
     if (info.velocity.y > STEP_VELOCITY || info.offset.y > STEP_OFFSET_PX) next = current - 1;
@@ -294,7 +307,7 @@ export function MobileSheet({
       drag="y"
       dragListener={false}
       dragControls={dragControls}
-      dragConstraints={{ top: 0, bottom: offsets.peek }}
+      dragConstraints={{ top: 0, bottom: selectedCafeId ? offsets.peek : offsets.collapsed }}
       dragElastic={0.08}
       dragMomentum={false}
       onDragStart={() => {
@@ -307,45 +320,63 @@ export function MobileSheet({
     >
       {/* DG85: the prompt renders only at PEEK/HALF — at FULL the sheet owns
           the viewport and the card waits for the step back down. Anchored
-          bottom-full inside the sheet so the 12px gap tracks drags. */}
-      {snap !== "full" ? navPrompt : null}
-      <div
-        onPointerDown={(e) => dragControls.start(e)}
-        className="flex shrink-0 cursor-grab touch-none justify-center pb-3 pt-2 active:cursor-grabbing"
-        aria-label={t("sheet_handle_aria")}
-      >
-        <span className="h-1 w-9 rounded-full bg-separator" aria-hidden />
-      </div>
-
-      {snap === "peek" || !selectedCafeId ? (
-        <PeekStrip
-          cafes={cafes}
-          isLoading={isLoading}
-          isError={isError}
-          onRetry={onRetry}
-          controller={controller}
-          addCafe={addCafe}
-        />
-      ) : (
-        <div
-          ref={contentRef}
-          onPointerDown={onContentPointerDown}
-          onPointerMove={onContentPointerMove}
-          onPointerUp={clearPendingPull}
-          onPointerCancel={clearPendingPull}
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+          bottom-full inside the sheet so the 12px gap tracks drags.
+          BRAWUKA-373: hidden at collapsed — the bar is too slim to host it. */}
+      {snap !== "full" && snap !== "collapsed" ? navPrompt : null}
+      {snap === "collapsed" ? (
+        /* BRAWUKA-373 collapsed detent: the whole 48px bar is one tap target
+           (44px floor, BRAWUKA-249) — tap restores PEEK, drag still works via
+           dragControls on pointerdown. */
+        <button
+          type="button"
+          onPointerDown={(e) => dragControls.start(e)}
+          onClick={() => controller.snapTo("peek")}
+          className="cm-focus flex h-12 w-full cursor-grab touch-none flex-col items-center justify-center gap-1 text-xs text-muted active:cursor-grabbing"
+          aria-label={t("sheet_expand_aria")}
         >
-          <div ref={setContentEl}>
-            <DetailContent
-              key={selectedCafeId}
-              cafeId={selectedCafeId}
-              variant={snap}
-              controller={controller}
-              onCheckIn={onCheckIn}
-              distanceM={distanceM}
-            />
+          <span className="h-1 w-9 rounded-full bg-separator" aria-hidden />
+          {t("nearby_count", { count: cafes.length })}
+        </button>
+      ) : (
+        <>
+          <div
+            onPointerDown={(e) => dragControls.start(e)}
+            className="flex shrink-0 cursor-grab touch-none justify-center pb-3 pt-2 active:cursor-grabbing"
+            aria-label={t("sheet_handle_aria")}
+          >
+            <span className="h-1 w-9 rounded-full bg-separator" aria-hidden />
           </div>
-        </div>
+          {snap === "peek" || !selectedCafeId ? (
+            <PeekStrip
+              cafes={cafes}
+              isLoading={isLoading}
+              isError={isError}
+              onRetry={onRetry}
+              controller={controller}
+              addCafe={addCafe}
+            />
+          ) : (
+            <div
+              ref={contentRef}
+              onPointerDown={onContentPointerDown}
+              onPointerMove={onContentPointerMove}
+              onPointerUp={clearPendingPull}
+              onPointerCancel={clearPendingPull}
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+            >
+              <div ref={setContentEl}>
+                <DetailContent
+                  key={selectedCafeId}
+                  cafeId={selectedCafeId}
+                  variant={snap}
+                  controller={controller}
+                  onCheckIn={onCheckIn}
+                  distanceM={distanceM}
+                />
+              </div>
+            </div>
+          )}
+        </>
       )}
     </motion.div>
   );

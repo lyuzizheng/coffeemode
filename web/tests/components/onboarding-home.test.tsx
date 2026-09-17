@@ -144,7 +144,7 @@ describe("OnboardingHome (DG114–DG123)", () => {
       "href",
       "/profile",
     );
-    expect(screen.getByRole("group", { name: "Theme" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Theme/ })).toBeInTheDocument();
   });
 
   it("the account chip shows the profile initial when signed in", async () => {

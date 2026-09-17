@@ -225,7 +225,13 @@
     "identity_error_handle_too_soon": "You can change your handle once every 7 days",
     "identity_error_invalid_handle": "Handle must be 3–30 chars: lowercase letters, numbers, - and _",
     "identity_error_generic": "Couldn't save — try again?",
-    "preferences": "Preferences"
+    "preferences": "Preferences",
+    "variant": {
+      "label": "Design",
+      "default": "Default",
+      "retro": "Retro",
+      "modern": "Modern"
+    }
   },
   "create": {
     "title": "Add a cafe",
@@ -466,7 +472,9 @@
     "sheet_handle_aria": "Drag to resize the panel",
     "unknown_cafe": "Cafe",
     "tagline": "A field guide to cafes worth working in",
-    "index_label": "{count, plural, one {# cafe nearby} other {# cafes nearby}}"
+    "index_label": "{count, plural, one {# cafe nearby} other {# cafes nearby}}",
+    "sheet_expand_aria": "Expand nearby cafes",
+    "nearby_count": "{count, plural, one {# cafe nearby} other {# cafes nearby}}"
   },
   "navPrompt": {
     "headline": "Grabbed a coffee at {cafe}?",

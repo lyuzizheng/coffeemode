@@ -15,6 +15,9 @@ import type { IMapProvider } from "./types";
 /** Mobile sheet PEEK height (mobile-sheet.tsx PEEK_VISIBLE_PX) — keeps pins
  * and the attribution control above the collapsed sheet. */
 const SHEET_PEEK_PX = 172;
+/** Mobile sheet collapsed bar height (mobile-sheet.tsx COLLAPSED_VISIBLE_PX)
+ * — the pull-down detent below PEEK (BRAWUKA-373). */
+const SHEET_COLLAPSED_PX = 48;
 /** Desktop detail column width (desktop-discovery.tsx) — overlays the map
  * below xl, so the camera must shift right when a cafe is selected. */
 const DETAIL_COLUMN_PX = 400;
@@ -45,7 +48,9 @@ export function useMapPadding(
         ? Math.round(window.innerHeight * 0.85)
         : snap === "half"
           ? Math.round(window.innerHeight * 0.5)
-          : SHEET_PEEK_PX;
+          : snap === "collapsed"
+            ? SHEET_COLLAPSED_PX
+            : SHEET_PEEK_PX;
     const left = isDesktop && !isXl && selectedCafeId ? DETAIL_COLUMN_PX : 0;
     provider.setPadding({ top: 0, right: 0, bottom, left });
   }, [providerRef, isDesktop, isXl, snap, selectedCafeId, mapReady]);

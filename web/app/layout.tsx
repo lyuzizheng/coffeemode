@@ -8,6 +8,7 @@ import { CheckinResume } from "@/components/checkin/checkin-resume";
 import { appConfig } from "@/lib/config";
 import "./globals.css";
 import { APP_DESCRIPTION, APP_NAME, THEME_COLOR } from "@/lib/site";
+import { VARIANT_BOOTSTRAP } from "@/lib/theme-variant-const";
 
 // Self-hosted fonts (OFL). No runtime Google Fonts — files live in app/fonts
 // and are served by Next.js with zero layout shift (size-adjust fallbacks).
@@ -89,7 +90,12 @@ export default async function RootLayout({
       className={`${inter.variable} ${cabinet.variable} ${jetbrains.variable} ${sourceSerif.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full font-sans">
+      <head>
+        {/* Applies the saved design variant (default/retro/modern) before
+            first paint — no flash of the wrong radius/font voice. */}
+        <script dangerouslySetInnerHTML={{ __html: VARIANT_BOOTSTRAP }} />
+      </head>
+      <body className="min-h-full font-sans text-base">
         <Providers locale={locale} messages={messages}>
           <OfflineBanner />
           <RuntimeBanner />

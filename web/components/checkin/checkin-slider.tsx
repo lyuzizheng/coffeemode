@@ -91,7 +91,7 @@ export function CheckinSlider({
   };
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium text-muted">{label}</span>
         <span

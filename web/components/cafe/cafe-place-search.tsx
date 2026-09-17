@@ -295,7 +295,7 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn, mapkitC
                     <span className="block truncate text-sm font-medium text-foreground">{result.name}</span>
                     <span className="mt-1 block truncate text-xs text-muted">{result.address ?? t("noAddress")}</span>
                   </span>
-                  <span className="shrink-0 font-mono text-[0.65rem] uppercase text-muted">{provider?.label}</span>
+                  <span className="shrink-0 font-mono text-xs uppercase text-muted">{provider?.label}</span>
                 </button>
               ))}
             </div>

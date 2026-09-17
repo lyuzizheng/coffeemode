@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { RankingPreferenceToggle } from "@/components/search/ranking-preference-toggle";
+import { ThemeVariantPicker } from "@/components/theme-variant-picker";
 import { PublicIdentityToggle } from "./public-identity-toggle";
 import type { UserProfileDto } from "@/lib/db/profile";
 
@@ -30,6 +31,14 @@ export function ProfilePreferences({
         )}
         <div className="px-4 py-3">
           <RankingPreferenceToggle variant="settings" />
+        </div>
+        <div className="px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-foreground">{t("variant.label")}</span>
+            <div className="w-56 shrink-0">
+              <ThemeVariantPicker />
+            </div>
+          </div>
         </div>
       </div>
     </section>

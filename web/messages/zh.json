@@ -225,7 +225,13 @@
     "identity_error_handle_too_soon": "Handle 7 天内只能改一次",
     "identity_error_invalid_handle": "Handle 格式不对：3–30 个字符，只能用小写字母、数字、- 和 _",
     "identity_error_generic": "保存失败，再试试？",
-    "preferences": "偏好设置"
+    "preferences": "偏好设置",
+    "variant": {
+      "label": "设计风格",
+      "default": "默认",
+      "retro": "复古",
+      "modern": "现代"
+    }
   },
   "create": {
     "title": "添加咖啡店",
@@ -466,7 +472,9 @@
     "sheet_handle_aria": "拖动调整面板高度",
     "unknown_cafe": "咖啡店",
     "tagline": "收录值得久坐办公的咖啡馆",
-    "index_label": "{count, plural, other {附近 # 家咖啡馆}}"
+    "index_label": "{count, plural, other {附近 # 家咖啡馆}}",
+    "sheet_expand_aria": "展开附近咖啡馆",
+    "nearby_count": "附近 {count} 家咖啡馆"
   },
   "navPrompt": {
     "headline": "有去 {cafe} 喝一杯吗？",

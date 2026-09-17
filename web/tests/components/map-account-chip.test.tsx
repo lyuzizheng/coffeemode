@@ -28,6 +28,7 @@ describe("MapAccountChip (BRAWUKA-318)", () => {
 
   it("always exposes the theme toggle", () => {
     renderChip();
-    expect(screen.getByRole("group", { name: "Theme" })).toBeInTheDocument();
+    // BRAWUKA-372: single cycling icon button, not a segmented group.
+    expect(screen.getByRole("button", { name: /Theme/ })).toBeInTheDocument();
   });
 });

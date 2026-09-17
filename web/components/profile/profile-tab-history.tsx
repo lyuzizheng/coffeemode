@@ -81,7 +81,7 @@ export function ProfileTabHistory({ baseId }: { baseId: string }) {
                 <span className="text-sm font-medium text-foreground truncate">
                   {item.query}
                 </span>
-                <span className="px-2 py-0.5 rounded-full bg-surface-secondary text-[11px] text-muted">
+                <span className="px-2 py-0.5 rounded-full bg-surface-secondary text-xs text-muted">
                   {displayCityName(item.city, locale)}
                 </span>
               </div>

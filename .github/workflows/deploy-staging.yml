@@ -1,9 +1,21 @@
 name: Deploy Staging
 
+# Triggered after CI workflow succeeds on main branch, ensuring only green builds deploy to staging.
+# Manual trigger (workflow_dispatch) is retained for ad-hoc promotions.
+#
+# Staging concurrency & journey coordination note (Review P2-4):
+# - deploy-staging triggers strictly after CI completes with success on main.
+# - Dokploy performs a health-checked container swap (healthcheck on /api/health)
+#   so staging remains available during rollout.
+# - staging-journey runs post-merge against live staging Supabase database;
+#   serializing deploy-staging behind CI prevents broken builds from deploying.
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
     branches:
       - main
+    types:
+      - completed
   workflow_dispatch:
 
 concurrency:
@@ -18,6 +30,7 @@ jobs:
     name: deploy-staging
     runs-on: ubuntu-latest
     environment: staging
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ImageLoader } from "next/image";
-import { R2_PUBLIC_HOST, r2PublicUrl } from "./constants";
+import { R2_ALLOWED_HOSTS, R2_PUBLIC_HOST, r2PublicUrl } from "./constants";
 
 /**
  * Custom Next.js image loader for R2 images.
@@ -35,10 +35,10 @@ export default r2ImageLoader;
  */
 export function isR2Image(src: string): boolean {
   // Path boundary after the host: `images.cafemood.app.evil.com` must not match.
-  if (src.startsWith(`https://${R2_PUBLIC_HOST}/`)) return true;
+  if (R2_ALLOWED_HOSTS.some((host) => src.startsWith(`https://${host}/`))) return true;
   if (src.startsWith("https://")) {
     try {
-      return new URL(src).hostname === R2_PUBLIC_HOST;
+      return (R2_ALLOWED_HOSTS as readonly string[]).includes(new URL(src).hostname);
     } catch {
       // Benign: malformed URL string cannot match the R2 host.
       return false;

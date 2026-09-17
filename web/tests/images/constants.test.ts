@@ -12,6 +12,8 @@ describe("assertR2PublicUrlMatches", () => {
     expect(assertR2PublicUrlMatches("https://images.cafemood.app")).toBe(R2_PUBLIC_HOST);
     expect(assertR2PublicUrlMatches("https://images.cafemood.app/base")).toBe(R2_PUBLIC_HOST);
     expect(assertR2PublicUrlMatches("images.cafemood.app")).toBe(R2_PUBLIC_HOST);
+    expect(assertR2PublicUrlMatches("https://staging-images.cafemood.app")).toBe("staging-images.cafemood.app");
+    expect(assertR2PublicUrlMatches("staging-images.cafemood.app")).toBe("staging-images.cafemood.app");
   });
   it("throws on a drifted host", () => {
     expect(() => assertR2PublicUrlMatches("https://cdn.example.com")).toThrow(/does not match/);
@@ -48,6 +50,7 @@ describe("r2ImageLoader / isR2Image", () => {
   it("isR2Image matches only the CDN host, with a path boundary", () => {
     expect(isR2Image("https://images.cafemood.app/a.webp")).toBe(true);
     expect(isR2Image("https://images.cafemood.app")).toBe(true); // bare host via URL fallback
+    expect(isR2Image("https://staging-images.cafemood.app/a.webp")).toBe(true);
     expect(isR2Image("https://images.cafemood.app.evil.com/a.webp")).toBe(false);
     expect(isR2Image("evil-images.cafemood.app/a.webp")).toBe(false);
     expect(isR2Image("https://example.com/a.webp")).toBe(false);

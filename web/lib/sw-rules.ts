@@ -7,7 +7,7 @@
  * (Review 2026-08-09 F4: dead/phantom rules, no coverage.)
  */
 
-import { R2_PUBLIC_HOST } from "@/lib/images/constants";
+import { R2_ALLOWED_HOSTS } from "@/lib/images/constants";
 
 /** Where the serwist worker lives. Shared by providers.tsx, sw.ts, and
  *  next.config.ts so the four-way duplication can't drift. */
@@ -93,7 +93,7 @@ export const RUNTIME_RULES: SwRule[] = [
   {
     name: "r2-images",
     method: "GET",
-    matcher: ({ url }) => url.hostname === R2_PUBLIC_HOST,
+    matcher: ({ url }) => (R2_ALLOWED_HOSTS as readonly string[]).includes(url.hostname),
     handler: "cache-first",
     cache: { cacheName: "r2-images", maxEntries: R2_IMAGES_MAX_ENTRIES, maxAgeSeconds: R2_IMAGES_MAX_AGE_SECONDS },
   },

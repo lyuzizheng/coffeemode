@@ -22,7 +22,28 @@
  * `web/shared/images/constants.ts`; `web/lib/images/processor.ts`
  * imports it directly.
  */
-export const R2_PUBLIC_HOST = "images.cafemood.app";
+export const R2_PROD_PUBLIC_HOST = "images.cafemood.app";
+export const R2_STAGING_PUBLIC_HOST = "staging-images.cafemood.app";
+export const R2_ALLOWED_HOSTS = [R2_PROD_PUBLIC_HOST, R2_STAGING_PUBLIC_HOST] as const;
+
+/**
+ * Public CDN host for processed image variants.
+ * Defaults to production CDN host; evaluates to staging host when
+ * NEXT_PUBLIC_R2_PUBLIC_URL is injected during staging standalone builds.
+ * Guards `typeof process !== "undefined"` to prevent service worker runtime breaks.
+ */
+export const R2_PUBLIC_HOST =
+  typeof process !== "undefined" && process.env?.NEXT_PUBLIC_R2_PUBLIC_URL
+    ? ((): string => {
+        try {
+          const raw = process.env.NEXT_PUBLIC_R2_PUBLIC_URL;
+          const host = new URL(raw.includes("://") ? raw : `https://${raw}`).hostname;
+          return (R2_ALLOWED_HOSTS as readonly string[]).includes(host) ? host : R2_PROD_PUBLIC_HOST;
+        } catch {
+          return R2_PROD_PUBLIC_HOST;
+        }
+      })()
+    : R2_PROD_PUBLIC_HOST;
 
 /** Absolute public CDN URL for an R2 object key (leading slash tolerated). */
 export function r2PublicUrl(key: string): string {
@@ -42,10 +63,10 @@ export function assertR2PublicUrlMatches(raw: string | undefined): string | unde
   } catch {
     throw new Error(`Invalid NEXT_PUBLIC_R2_PUBLIC_URL: ${JSON.stringify(raw)}`);
   }
-  if (host !== R2_PUBLIC_HOST) {
+  if (!(R2_ALLOWED_HOSTS as readonly string[]).includes(host)) {
     throw new Error(
-      `NEXT_PUBLIC_R2_PUBLIC_URL host "${host}" does not match R2_PUBLIC_HOST ` +
-        `"${R2_PUBLIC_HOST}" (web/lib/images/constants.ts). The constant is the ` +
+      `NEXT_PUBLIC_R2_PUBLIC_URL host "${host}" does not match allowed R2 hosts ` +
+        `[${R2_ALLOWED_HOSTS.join(", ")}] (web/lib/images/constants.ts). The constant is the ` +
         `single source — update it there; the service-worker bundle cannot read env.`,
     );
   }

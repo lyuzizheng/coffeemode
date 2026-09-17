@@ -185,6 +185,7 @@ services:
     working_dir: /workspace
     volumes:
       - ./scripts/supabase-mock.mjs:/workspace/scripts/supabase-mock.mjs:ro
+      - ./scripts/fake-jwt.mjs:/workspace/scripts/fake-jwt.mjs:ro
     environment:
       HOST: 0.0.0.0
     ports:

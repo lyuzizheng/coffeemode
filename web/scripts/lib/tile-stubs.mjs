@@ -7,8 +7,10 @@
  * basemap instead of erroring.
  */
 
-/** Minimal style JSON for the style URLs (liberty/dark) — a bare background
- * layer; both themes fetch full style documents from the tile host. */
+/** Minimal style JSON for remote style URLs — a bare background layer.
+ * (BRAWUKA-362: the app now serves its own style documents same-origin from
+ * `web/public/map/`; this stub still covers the tile/glyph/sprite fetches
+ * those documents make to the tile host.) */
 const EMPTY_STYLE = JSON.stringify({
   version: 8,
   name: "stub-dark",

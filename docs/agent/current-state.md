@@ -124,7 +124,9 @@ docs/agent/              current state, planned-slice manifest, owner actions
 - map-home — COMPLETE: MapLibre GL v5 + OpenFreeMap basemap on `/`; the
   Apple Developer blocker (#131) is eliminated — BRAWUKA-308's review
   pivoted the basemap to MapLibre. Tile host = the `map:` section in
-  web/config/app.yaml (full style document URLs — public OFM instance;
+  web/config/app.yaml; BRAWUKA-362 replaced the OFM liberty/dark styles
+  with CoffeeMode's own two-ink vintage styles served same-origin from
+  web/public/map/ (vector tiles + glyphs still on the public OFM instance;
   self-hosting permanently off the table per BRAWUKA-321 owner decision).
   The surface binds to `IMapProvider`, not MapLibre — a Google/Apple swap
   is a provider swap, not a rewrite.

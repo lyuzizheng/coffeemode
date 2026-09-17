@@ -185,7 +185,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   }, 60_000);
 
-  it("applies migrations 0001→0026 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0027 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -214,6 +214,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0024_service_account_rename.sql",
       "0025_drop_cafes_cover.sql",
       "0026_drop_rate_limits.sql",
+      "0027_navigation_unresolved_dedupe.sql",
     ]);
 
     const serviceProfile = await dbClient.query(
@@ -598,6 +599,47 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       ).rejects.toBeInstanceOf(CafeNotFoundError);
     });
 
+    it("recordNavigation deduplicates unresolved rows: repeat taps refresh created_at and reset ask counters (BRAWUKA-391)", async () => {
+      // 1. Initial navigation
+      const first = await recordNavigation(U1, CAFE_A);
+      expect(first.resolved).toBe(false);
+
+      // Simulate a deferral: ask_count=2, last_asked_at set, created_at in the past
+      await dbClient.query(
+        "update navigations set ask_count = 2, last_asked_at = now() - interval '1 day', created_at = now() - interval '3 days' where id = $1",
+        [first.id],
+      );
+
+      // 2. Repeat navigation for same user and cafe
+      const second = await recordNavigation(U1, CAFE_A);
+      expect(second.id).toBe(first.id);
+      expect(second.resolved).toBe(false);
+      expect(new Date(second.created_at).getTime()).toBeGreaterThan(new Date(first.created_at).getTime());
+
+      // Verify only 1 unresolved row exists in the DB, ask_count reset to 0, last_asked_at is null
+      const rows = (
+        await dbClient.query(
+          "select id, ask_count, last_asked_at, resolved from navigations where user_id = $1 and cafe_id = $2 and resolved = false",
+          [U1, CAFE_A],
+        )
+      ).rows;
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        id: first.id,
+        ask_count: 0,
+        last_asked_at: null,
+        resolved: false,
+      });
+
+      // 3. Resolve it (e.g. visited)
+      await dbClient.query("update navigations set resolved = true, outcome = 'visited' where id = $1", [first.id]);
+
+      // 4. Next navigation after resolve creates a new unresolved row
+      const third = await recordNavigation(U1, CAFE_A);
+      expect(third.id).not.toBe(first.id);
+      expect(third.resolved).toBe(false);
+    });
+
     it("navigation prompt queue: eligibility, answers, and auto-resolve on real SQL", async () => {
       // Fresh navigation — too young to prompt (DG78: earliest next day).
       const fresh = await recordNavigation(U2, CAFE_A);
@@ -756,8 +798,16 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(withPhoto.n_checkins).toBe(2);
       expect(withPhoto.experience_score).toBe(55);
 
+      // Add an external photo without 'source' field to gallery to verify it is preserved (BRAWUKA-391)
+      const noSourcePhoto = { id: "no-source-photo-001", card: "cover_card.webp", thumb: "thumb.webp" };
+      await dbClient.query(
+        `update cafes set gallery = coalesce(gallery, '[]'::jsonb) || $2::jsonb where id = $1`,
+        [CAFE_A, JSON.stringify([noSourcePhoto])],
+      );
+
       const galleryBefore = await dbClient.query("select gallery from cafes where id = $1", [CAFE_A]);
       expect(JSON.stringify(galleryBefore.rows[0].gallery)).toContain(photoId);
+      expect(JSON.stringify(galleryBefore.rows[0].gallery)).toContain("no-source-photo-001");
 
       await softDeleteCheckIn(U2, created.checkin_id);
       const after = await cafeWorkStats(dbClient, CAFE_A);
@@ -766,9 +816,10 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       // Back to seed user's contribution only
       expect(after.experience_score).toBeNull(); // seed has no overall dim, only wifi
       expect(after.dims.overall).toEqual({ sum: 0, n: 0 });
-      // Deleted check-in's photos must not remain in the gallery
+      // Deleted check-in's photos must not remain in the gallery, but photos without source must be preserved (BRAWUKA-391)
       const galleryAfter = await dbClient.query("select gallery from cafes where id = $1", [CAFE_A]);
       expect(JSON.stringify(galleryAfter.rows[0].gallery)).not.toContain(photoId);
+      expect(JSON.stringify(galleryAfter.rows[0].gallery)).toContain("no-source-photo-001");
       // Soft-deleted row still exists but is hidden from recompute
       const deletedRow = await dbClient.query("select deleted_at from checkins where id = $1", [created.checkin_id]);
       expect(deletedRow.rows[0].deleted_at).not.toBeNull();

@@ -9,8 +9,7 @@ jobs:
   recompute:
     runs-on: ubuntu-latest
     # DATABASE_URL is set from secrets at job level (secrets not allowed in jobs.<id>.if).
-    # Steps gate on env.DATABASE_URL so scheduled runs without the secret skip green
-    # with a notice, while a real recompute failure still fails the run.
+    # Missing secret explicitly fails the run to prevent green false-positive idle runs (BRAWUKA-393).
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
     defaults:
@@ -28,14 +27,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Skip notice when DATABASE_URL is not set
+      - name: Verify DATABASE_URL is set
         if: ${{ env.DATABASE_URL == '' }}
-        run: echo "DATABASE_URL not set — skipping recompute (expected outside production)"
+        run: |
+          echo "::error::DATABASE_URL secret is not configured in repository secrets. Nightly recompute requires a valid database connection string to recompute work_stats and snapshot helpful rankings."
+          exit 1
 
       - name: Run work_stats full recompute
-        if: ${{ env.DATABASE_URL != '' }}
         run: npm run recompute:work-stats
 
       - name: Snapshot Helpful ranking (DG148)
-        if: ${{ env.DATABASE_URL != '' }}
         run: npm run snapshot:helpful-ranking

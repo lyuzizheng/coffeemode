@@ -10,6 +10,7 @@ import { CafeCreationForm } from "./cafe-creation-form";
 import { useNetworkStatus } from "@/hooks/use-network-status";
 import { isUnauthorized, responseMessage, throwIfUnauthorized } from "@/lib/http";
 import type { POI } from "@shared/places/types";
+import type { ExternalSearchProvider } from "@/components/search/search-results-list";
 
 async function persistExternalPlace(selected: POI, messages: { failed: string; notFood: string }): Promise<string | null> {
   try {
@@ -48,6 +49,9 @@ interface CafeCreationPaneProps {
   isAuthenticated: boolean;
   /** DG143 request-time MapKit readiness, drilled from the server page. */
   mapkitConfigured: boolean;
+  /** BRAWUKA-366: provider CTA tapped upstream — seeds the search tab's
+   * provider chip instead of the registry default. */
+  initialProvider?: ExternalSearchProvider | null;
   showSignInGate: boolean;
   onSelectPOI: (selected: POI, persist?: boolean) => void;
   onNameChange: (name: string) => void;
@@ -63,6 +67,7 @@ function CafeCreationPane({
   error,
   isAuthenticated,
   mapkitConfigured,
+  initialProvider,
   showSignInGate,
   onSelectPOI,
   onNameChange,
@@ -77,6 +82,7 @@ function CafeCreationPane({
         <CafePlaceSearch
           key={searchKey}
           mapkitConfigured={mapkitConfigured}
+          initialProvider={initialProvider}
           onSelectPOI={onSelectPOI}
           onError={onError}
           onRequireSignIn={onRequireSignIn}
@@ -165,14 +171,7 @@ function usePlaceSelection(
   return { poi, name, setName, error, setError, selectPlace, reset };
 }
 
-export function CafeCreationSheet({
-  isOpen,
-  onOpenChange,
-  isAuthenticated = true,
-  mapkitConfigured = false,
-  initialPoi = null,
-  initialPersist = false,
-}: {
+interface CafeCreationSheetProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   isAuthenticated?: boolean;
@@ -183,7 +182,20 @@ export function CafeCreationSheet({
    * persist flag for external (google/apple) places. */
   initialPoi?: POI | null;
   initialPersist?: boolean;
-}) {
+  /** BRAWUKA-366: a provider CTA tapped upstream (unified search) opens the
+   * sheet's place search on that provider's tab. */
+  initialProvider?: ExternalSearchProvider | null;
+}
+
+export function CafeCreationSheet({
+  isOpen,
+  onOpenChange,
+  isAuthenticated = true,
+  mapkitConfigured = false,
+  initialPoi = null,
+  initialPersist = false,
+  initialProvider = null,
+}: CafeCreationSheetProps) {
   const t = useTranslations("create");
   const [searchKey, setSearchKey] = useState(0);
   const [showSignInGate, setShowSignInGate] = useState(false);
@@ -226,6 +238,7 @@ export function CafeCreationSheet({
             error={place.error}
             isAuthenticated={isAuthenticated}
             mapkitConfigured={mapkitConfigured}
+            initialProvider={initialProvider}
             showSignInGate={showSignInGate}
             onSelectPOI={place.selectPlace}
             onNameChange={place.setName}

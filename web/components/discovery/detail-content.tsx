@@ -92,7 +92,7 @@ function FactChips({ cafe }: { cafe: PublicCafeDetail }) {
 function DetailSkeleton() {
   return (
     <div className="flex flex-col gap-3" aria-hidden>
-      <div className="aspect-[21/9] w-full animate-pulse rounded-md bg-surface-tertiary" />
+      <div className="aspect-video w-full animate-pulse rounded-md bg-surface-tertiary" />
       <div className="h-4 w-40 animate-pulse rounded bg-surface-tertiary" />
       <div className="h-3 w-56 animate-pulse rounded bg-surface-tertiary" />
     </div>

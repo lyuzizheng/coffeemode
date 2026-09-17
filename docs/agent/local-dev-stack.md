@@ -1,9 +1,11 @@
 # Local Dev Stack — Real Postgres + Local Workers (Compose Full Kit, S2)
 
-How to run CafeMood's full chain locally without any Cloudflare/R2/Supabase
-credentials: a real Postgres/PostGIS via Docker, MinIO as an R2 stand-in, both
-Workers under `workerd`/`miniflare` via compose, and a lightweight Supabase Auth
-mock. One `docker compose up -d --wait` brings the whole kit.
+How to run CafeMood's full chain locally without any Cloudflare/R2 credentials:
+a real Postgres/PostGIS via Docker, MinIO as an R2 stand-in, both Workers
+under `workerd`/`miniflare` via compose, and auth against the staging Supabase
+project with real Google OAuth (spec 0010 §3). One `docker compose up -d --wait`
+brings the whole kit; the compose `supabase-mock` stays as the offline-only
+auth stand-in.
 
 Why this exists: migrations 0001–0008 and the `checkin_likes` triggers were
 previously validated by reasoning only (no live Postgres anywhere). The
@@ -35,10 +37,14 @@ if you ever wipe volumes.
 | minio-init | `quay.io/minio/mc` | creates bucket `coffeemode` + anonymous read (mirrors a public R2 bucket) |
 | miniflare-poi | `node:22-bookworm-slim` + `wrangler dev` (workerd/miniflare) | `http://localhost:8787` (host) / `http://miniflare-poi:8787` (compose network); D1 `poi-store` (`11111111-1111-…`) + KV `poi-cache` (`22222222-2222-…`) from `poi-service/wrangler.toml`; secrets via env `POI_SERVICE_TOKEN=local-dev-token`, `GOOGLE_PLACES_API_KEY=dummy` |
 | miniflare-image | `node:22-bookworm-slim` + `wrangler dev` (workerd) | `http://localhost:8788` / `http://miniflare-image:8788`; R2 presigning → MinIO via `R2_ENDPOINT=http://minio:9000` (inside compose) and `R2_PUBLIC_URL=http://localhost:9000/coffeemode`; bucket `coffeemode`; secrets via `IMAGE_SERVICE_TOKEN=local-dev-token`, `R2_ACCESS_KEY_ID/SECRET` |
-| supabase-mock | `node:22-alpine` + `scripts/supabase-mock.mjs` | `http://localhost:54321` (same host port as `supabase start`); `GET /auth/v1/health` is the health probe; issues unsigned fake JWTs (same shape as `web/tests/helpers/auth.ts:fakeJwt`); `POST /auth/v1/token` accepts any email |
+| supabase-mock | `node:22-alpine` + `scripts/supabase-mock.mjs` | `http://localhost:54321` (same host port as `supabase start`); offline-only auth stand-in (spec 0010 §3 — the default is the staging project, see §4); issues unsigned fake JWTs (single source `scripts/fake-jwt.mjs`); `POST /auth/v1/token` accepts any email |
 
-**Supabase local alternatives.** The compose mock is the zero-deps default. To use
-the real Supabase CLI emulator instead:
+**Auth default: staging, not the mock (spec 0010 §3).** Local manual development
+authenticates against the STAGING Supabase project (`ojujmjewtbquiddswyrg`) with
+real Google OAuth — `web/.env.example` already points `NEXT_PUBLIC_SUPABASE_URL`
+there; fill `NEXT_PUBLIC_SUPABASE_ANON_KEY` from the staging dashboard (anon key
+is public by design, never `service_role`). For offline work only, either the
+compose mock or the real Supabase CLI emulator:
 
 ```bash
 docker compose stop supabase-mock
@@ -48,8 +54,10 @@ supabase start   # local stack on :54321 (API), :54322 (DB), see `supabase statu
 #   NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key from supabase status>
 ```
 
-Both the mock and `supabase start` share `:54321` so `web/.env.example` (`NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321`) works for either. Tests never
-need a live Supabase — `web/tests/helpers/auth.ts:fakeJwt` + `web/tests/helpers/auth.ts:createMockSupabaseClient` run fully in-process.
+Both the mock and `supabase start` share `:54321`; only point the `NEXT_PUBLIC_*`
+vars there when working offline. Tests never need a live Supabase —
+`web/tests/helpers/auth.ts:fakeJwt` + `web/tests/helpers/auth.ts:createMockSupabaseClient`
+run fully in-process.
 
 **Local Cloudflare script mocks.** Both workers run under `wrangler dev`
 (which is `workerd` + `miniflare` under the hood) — no Cloudflare account
@@ -138,20 +146,25 @@ reject the placeholder ids; `image-service/wrangler.toml` defaults to the local
 ```bash
 cd web
 cp .env.example .env.local
-# .env.example already points at the compose kit:
+# .env.example already points data + workers at the compose kit:
 #   DATABASE_URL=postgres://coffeemode:coffeemode@localhost:5432/coffeemode
 #   POI_SERVICE_URL=http://localhost:8787
 #   POI_SERVICE_TOKEN=local-dev-token
 #   IMAGE_SERVICE_URL=http://localhost:8788
 #   IMAGE_SERVICE_TOKEN=local-dev-token
-#   NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321
-#   NEXT_PUBLIC_SUPABASE_ANON_KEY=local-mock-anon-key
 #   RATE_LIMIT_BACKEND=postgres   # or memory for single-process dev
+# Auth default is the STAGING Supabase project (spec 0010 §3):
+#   NEXT_PUBLIC_SUPABASE_URL=https://ojujmjewtbquiddswyrg.supabase.co
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY=<staging anon key from Dashboard>
+# Offline-only override (mock or `supabase start` on :54321):
+#   NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321
 # For production, replace those with real Worker URLs + real Supabase project.
+# Staging redirect allowlist: docs/agent/pending-user-actions.md §1a.
 npm run dev
 ```
 
-Auth: the compose `supabase-mock` issues fake JWTs for local manual flows
+Auth: local manual flows use the staging project with real Google OAuth by default
+(spec 0010 §3). Offline only: the compose `supabase-mock` issues fake JWTs
 (`POST http://localhost:54321/auth/v1/token` with any email → `access_token`);
 tests inject auth via `web/tests/helpers/auth.ts:fakeJwt` without hitting the
 mock at all. For a real local Supabase, use `supabase start` as above.

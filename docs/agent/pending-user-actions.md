@@ -22,6 +22,15 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 - [ ] Enable **Google** provider: Dashboard → Authentication → Providers → Google → paste Google OAuth client id/secret (from item 3 below)
 - [ ] Enable **Apple** provider later (needs item 4)
 
+## 1a. Staging journey secrets (GitHub Environment `staging`) — unlocks post-merge staging verification
+
+- [ ] In the **staging** Supabase project (`ojujmjewtbquiddswyrg`) dashboard → Settings → API: copy the `anon public` key and a **session/direct** (`:5432`, never the `:6543` pooler — `CREATE DATABASE` cannot run through it, spec 0010 §4) Postgres connection string.
+- [ ] `gh secret set` into the `staging` environment (never into the repo, never `NEXT_PUBLIC_*`):
+  `STAGING_DATABASE_URL`, `SUPABASE_URL` (= `https://ojujmjewtbquiddswyrg.supabase.co`), `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
+- [ ] Redirect URLs allowlist on the **staging** project (spec 0010 §1): `http://localhost:3000/auth/callback` (local dev against staging auth) + `https://staging.cafemood.app/auth/callback`.
+- [ ] Confirm Google provider is enabled on the **staging** project (item 3's client works for both; the Supabase callback `https://ojujmjewtbquiddswyrg.supabase.co/auth/v1/callback` must be in the Google client's authorized redirect URIs).
+- [ ] `production` environment: owner (`lyuzizheng`) is the required reviewer (already set); prod secrets land there only at promotion time, never before.
+
 ## 2. Postgres (primary database — Supabase, per 0004 decision 34a, owner 2026-08-28)
 
 - [x] Create the Supabase project (free tier) in the region closest to the VPS (CafeMood project `rsdzcegylqgccaneomph` active in `ap-southeast-1`)

@@ -34,11 +34,7 @@ import {
   r2Client,
 } from "../helpers/r2";
 
-// Storage suites never touch the rate limiter; pin the memory backend so
-// tests/setup.ts's rateLimiter.reset() cannot hit Postgres after this file
-// sets DATABASE_URL (sequential execution shares the process env).
-process.env.RATE_LIMIT_BACKEND = "memory";
-
+// Storage suites never touch the rate limiter (in-memory only, BRAWUKA-378).
 const RUN_INTEGRATION = process.env.RUN_INTEGRATION === "1";
 const describeCleanup = RUN_INTEGRATION ? describe : describe.skip;
 

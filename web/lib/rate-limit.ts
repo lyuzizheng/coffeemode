@@ -2,8 +2,16 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import type { RateLimitResult, RateLimiterLike } from "@/lib/rate-limit/types";
 import { emitRateLimitAlert } from "@/lib/observability/rate-limit-alert";
+
+/** Result of consuming one token under a window and cap. */
+export interface RateLimitResult {
+  allowed: boolean;
+  remaining: number;
+  resetAt: number;
+  /** Seconds the client should wait before retrying. */
+  retryAfter: number;
+}
 
 interface TokenBucket {
   tokens: number;
@@ -13,16 +21,20 @@ interface TokenBucket {
   lastAccess: number;
 }
 
+// Limit values live in `web/config/rate-limits.yaml` (DG74/DG107) and are
+// read at call sites via `rateLimitConfig`/`rateLimitBuckets` from
+// `@/lib/config` — no re-exported constants here (BRAWUKA-378 removed the
+// dead IMAGE/PLACES/SEARCH/PROFILE aliases).
+
 /**
- * In-memory token-bucket rate limiter.
+ * In-memory token-bucket rate limiter (BRAWUKA-378: the sole backend —
+ * the Postgres token bucket is deleted; a future multi-instance deploy
+ * needs a new shared-store decision).
  *
- * Intended for per-user/per-IP caps on API routes in single-process or
- * dev setups. For horizontal scale use the Postgres backend — see
- * `createRateLimiter()` and `web/lib/rate-limit/postgres.ts` (issue #23).
  * Buckets are keyed by an arbitrary string (e.g. `images:user:${id}`). A
  * cleanup pass runs every `cleanupEvery` checks to prune stale buckets.
  */
-export class RateLimiter implements RateLimiterLike {
+export class RateLimiter {
   private buckets = new Map<string, TokenBucket>();
   private checksSinceCleanup = 0;
 
@@ -96,47 +108,10 @@ export class RateLimiter implements RateLimiterLike {
 }
 
 /**
- * Select the rate-limiter backend for this process.
- *
- * `RATE_LIMIT_BACKEND=postgres|memory` forces a backend; unset, it uses
- * Postgres when `DATABASE_URL` is configured and memory otherwise (dev,
- * tests, CI). Postgres buckets are shared across instances so limits hold
- * under horizontal scale (issue #23).
- *
- * The Postgres backend is loaded lazily via dynamic import: it pulls in the
- * `pg` driver and the DB pool module, which must not be touched by tests or
- * dev processes that never use it (and which would defeat `vi.mock("pg")`).
+ * Shared singleton used by route handlers (BRAWUKA-378: single backend,
+ * so no factory or lazy proxy — there is nothing left to select).
  */
-export async function createRateLimiter(): Promise<RateLimiterLike> {
-  const backend =
-    process.env.RATE_LIMIT_BACKEND ??
-    (process.env.DATABASE_URL ? "postgres" : "memory");
-  if (backend !== "postgres") return new RateLimiter();
-  const { PostgresRateLimiter } = await import("@/lib/rate-limit/postgres");
-  return new PostgresRateLimiter();
-}
-
-/**
- * Shared singleton used by route handlers.
- *
- * A lazy proxy: the backend is created on first use and memoized, so the
- * memory-only path never loads the pg module graph (see createRateLimiter).
- */
-export const rateLimiter: RateLimiterLike = {
-  async check(key, windowMs, maxRequests) {
-    return (await getRateLimiter()).check(key, windowMs, maxRequests);
-  },
-  async reset() {
-    return (await getRateLimiter()).reset();
-  },
-};
-
-let backendPromise: Promise<RateLimiterLike> | null = null;
-
-function getRateLimiter(): Promise<RateLimiterLike> {
-  backendPromise ??= createRateLimiter();
-  return backendPromise;
-}
+export const rateLimiter = new RateLimiter();
 
 /**
  * Check one or more windows (DG129 multi-window). Each window is checked

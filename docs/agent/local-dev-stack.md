@@ -152,7 +152,6 @@ cp .env.example .env.local
 #   POI_SERVICE_TOKEN=local-dev-token
 #   IMAGE_SERVICE_URL=http://localhost:8788
 #   IMAGE_SERVICE_TOKEN=local-dev-token
-#   RATE_LIMIT_BACKEND=postgres   # or memory for single-process dev
 # Auth default is the STAGING Supabase project (spec 0010 §3):
 #   NEXT_PUBLIC_SUPABASE_URL=https://ojujmjewtbquiddswyrg.supabase.co
 #   NEXT_PUBLIC_SUPABASE_ANON_KEY=<staging anon key from Dashboard>

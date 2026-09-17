@@ -91,7 +91,7 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
     dbClient = new pg.Client(getPoolConfig(testDbUrl));
     await dbClient.connect();
     await dbClient.query(
-      "truncate table profiles, cafes, rate_limits, image_upload_intents, navigations restart identity cascade",
+      "truncate table profiles, cafes, image_upload_intents, navigations restart identity cascade",
     );
     // configUrl stays the pre-overwrite admin URL: DATABASE_URL now names the test DB (BRAWUKA-216).
     await seedMockDataset(dbClient, { configUrl: adminDbUrl });

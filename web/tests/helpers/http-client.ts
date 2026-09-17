@@ -300,13 +300,8 @@ export async function seedHttpTestUsers(
 }
 
 /**
- * Reset rate limit counters (delete all bucket rows and in-memory state).
- * Spec 0008 §1: harness-owned rate-limit bucket reset between Acts.
- * Plain DELETE: rate_limits has no identity column and no dependents.
+ * Reset the in-memory rate limiter between Acts (spec 0008 §1).
  */
-export async function resetRateLimits(dbClient?: pg.Client): Promise<void> {
-  if (dbClient) {
-    await dbClient.query("delete from rate_limits");
-  }
+export async function resetRateLimits(): Promise<void> {
   await rateLimiter.reset();
 }

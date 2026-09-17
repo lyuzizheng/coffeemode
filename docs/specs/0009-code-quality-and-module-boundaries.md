@@ -145,14 +145,14 @@ MUST 在当次提交内完成拆分。不允许"顺手加一行"把超标文件�
 
 1. 一字不差（≥3 行函数体 / ≥5 行或 ≥50 token 块）？→ 直接抽 helper，同名同参，调用点替换。工具：`sonarjs/no-identical-functions` + `jscpd`。
 2. 同"形状"（字段/结构/流程骨架相同，细节不同）？→ 工厂函数或组合函数，差异点做参数。本仓正例见下。
-3. 同"算法族"（同一接口多种实现：内存/Postgres 限流、多窗口桶）？→ Strategy：接口 + 多实现 + 工厂选择。
+3. 同"算法族"（同一接口多种实现：多窗口桶）？→ Strategy：接口 + 多实现 + 工厂选择。
 4. 跨系统适配（Next ↔ POI/D1/KV、Next ↔ image-service/R2、Google/Apple POI 归一化）？→ Adapter：把对方形状转成我方类型，SQL/HTTP 细节封在适配器内。
 5. 第三方边界（Supabase Auth、`pg` Pool、MapKit token）？→ Facade：收敛为最小调用面（`getCurrentUser`、`query`、`apiError`），调用点禁止直达第三方 SDK。
 6. 可测试性替换或可配置依赖（真实 DB 查询器 vs 内存假实现、系统时钟、随机数）？→ DI（依赖注入）：依赖以函数一等参数或带生产默认值的配置对象传入，调用点显式组装。**红线：MUST NOT 引入 InversifyJS / TypeDI 类重型装饰器容器**——本仓的 DI = 参数注入，不是容器。
 
 本仓正例（照着学）：
 
-- Strategy + Facade + 工厂 + 单例：`web/lib/rate-limit/types.ts`（`RateLimiterLike` 接口，L19）→ `web/lib/rate-limit.ts`（内存 `RateLimiter` 实现 + `createRateLimiter` 工厂 + `rateLimiter` 懒单例代理）→ `web/lib/rate-limit/postgres.ts`（原子 UPSERT 后端，fail-open）。路由经 `guard()` 间接调用（`guard` 内聚 `checkRateLimit`；旧直调形态见 PR #359 前）。
+- 内存限流单例：`web/lib/rate-limit.ts`（内存 `RateLimiter` + `rateLimiter` 单例，BRAWUKA-378 删除 Postgres 后端前的多实现形态见 git 历史）。路由经 `guard()` 间接调用（`guard` 内聚 `checkRateLimit`；旧直调形态见 PR #359 前）。
 - Facade：`web/lib/api/response.ts`（`apiError` 统一错误形状 L19、query 解析 `parseQueryPositiveInt` L58）；`web/lib/config.ts`（`rateLimits`/`appConfig` 冻结单例 + `rateLimitConfig` 访问守卫，YAML 数字归 `web/config/*.yaml`，DG107）。
 - 门禁 Facade（已定型，PR #359）：`web/lib/api/guard.ts` 的 `guard(request, { bucket, requireAuth, route })` 是唯一门禁入口——桶名编译期 + 运行时双校验 → 鉴权（401）→ clientId → 多窗口限流（429），`{ ok, user, clientId } | { ok: false, response }` 显式返回；`readJsonBody` 同模块收敛 body 解析。路由 MUST 经它进入，MUST NOT 手抄门禁样板（`scripts/check-route-guards.mjs` 全仓强制）。
 - 形状复用：`web/shared/places/geo.ts`（`haversineKm` 跨服务唯一真相）。

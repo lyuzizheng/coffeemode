@@ -108,7 +108,7 @@ modes, storage, Workers, domains) and secret ownership are canonical in spec
 - Product-table data stays server-mediated: route handlers use the pooled Postgres connection, and the tables must NOT be reachable through Supabase's Data API (PostgREST/GraphQL) with the browser anon key — new projects no longer auto-expose new tables, and default grants to `anon`/`authenticated` are revoked at provisioning as a belt-and-suspenders step (`docs/agent/pending-user-actions.md` §2). The anon key is used only for auth flows.
 - Postgres connection: standard `pg` Pool (server-side only), fail-closed SSL (#41). PostGIS enabled via `create extension postgis` (Supabase catalog). Pick the Supabase region closest to the VPS — route handlers run multi-round-trip transactions, so RTT multiplies.
 
-#### Tables (7 total: 5 product + 2 infra — deliberately minimal; applied via migrations 0001–0024)
+#### Tables (7 total: 6 product + 1 infra — deliberately minimal; applied via migrations 0001–0026)
 
 ```sql
 -- 1. profiles: app-side user record, keyed by Supabase auth user id
@@ -221,11 +221,12 @@ Notes:
   (0004 decision 8a, #254)
 - Soft delete: checkins.deleted_at (is_deleted is not needed — `where deleted_at is null` builds partial indexes directly; `is_deleted boolean` would be a redundant mirror); photos from a deleted check-in are hidden from cafes.gallery via source;
   cafes.deleted_at (0009) tombstones are legacy for old deletes (DG111); new deletes never use it — they delete the caller's checkin and keep the cafe shell (DG146). Visibility is `text+CHECK` not PG enum. Provider unique indexes remain tombstone-aware (0011) so orphan shells still occupy the POI
-- Infra tables (not product domain): rate_limits (0003 — distributed token bucket, one atomic
-  UPSERT per check, web/lib/rate-limit/postgres.ts) and image_upload_intents (0006 — binds a
+- Infra tables (not product domain): image_upload_intents (0006 — binds a
   presigned imageUuid to its issuing user, single-use DELETE ... RETURNING inside the creation
-  transaction, web/lib/db/image-uploads.ts). Both stay in Postgres: KV cannot do an atomic
-  single-use consume, is eventually consistent, and caps at 1k writes/day on the free tier
+  transaction, web/lib/db/image-uploads.ts). Rate limits enforce in memory
+  on the single app container (BRAWUKA-378 deleted the Postgres token bucket
+  and 0026 drops `rate_limits`); KV cannot do an atomic single-use consume,
+  is eventually consistent, and caps at 1k writes/day on the free tier
 ```
 
 #### Cafe lifecycle — delete guard, orphan shell & visibility (DG146 / DG147, 2026-09-02; owner veto on revive)
@@ -1171,13 +1172,9 @@ is a config edit, not a code change.
 
 Implementation: in-memory token bucket keyed through an LRU map inside the
 Next.js process (e.g. a thin wrapper over `lru-cache`), enforced via one
-middleware/helper every route and script calls. In-memory is correct at
-MVP scale (single VPS container); the config schema + enforcement
-interface are the contract, so swapping the store for Redis/Upstash under
-multi-instance scale is a config change, not a redesign. The existing
-Postgres-backed token bucket (issue #23, `RATE_LIMIT_BACKEND`) is a valid
-store behind this same config/interface — this section standardizes the
-config and coverage, it does not mandate replacing that backend; spec 0004
+middleware/helper every route and script calls. In-memory is the sole backend
+(BRAWUKA-378: the Postgres token bucket is deleted — a future multi-instance
+deploy needs a new shared-store decision, not a config flip); spec 0004
 item 33 is satisfied by this mechanism.
 
 Product rules expressed through it: per-user caps on image

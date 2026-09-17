@@ -175,7 +175,7 @@ spec 0010 §1. The table below covers the deployed staging/production edge only.
 | Worker D1 Database | `poi-store-staging` | `poi-store` |
 | Worker KV Namespace | `poi-cache-staging` | `poi-cache` |
 | Supabase Auth Instance | Staging project `ojujmjewtbquiddswyrg` (Google OAuth) | Production project `rsdzcegylqgccaneomph` (Apple + Google) |
-| Rate Limiter Backend | `memory` (single container) | `memory` (single container) / `postgres` (multi-replica) |
+| Rate Limiter Backend | `memory` (single container) | `memory` (single container; a multi-replica deploy needs a new shared-store decision — the Postgres backend was deleted by BRAWUKA-378) |
 
 ## CI/CD & deployment flow specification
 

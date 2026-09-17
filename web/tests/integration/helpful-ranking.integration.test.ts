@@ -108,7 +108,7 @@ describeDb("integration — helpful ranking snapshot (DG148)", () => {
   beforeEach(async () => {
     await dbClient.query("truncate table helpful_ranking_runs restart identity cascade");
     await dbClient.query(
-      "truncate table profiles, cafes, rate_limits, image_upload_intents, navigations restart identity cascade",
+      "truncate table profiles, cafes, image_upload_intents, navigations restart identity cascade",
     );
     await seedBaseData(dbClient);
   });

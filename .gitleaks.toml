@@ -10,6 +10,10 @@ useDefault = true
 
 [allowlist]
 description = "CoffeeMode allowlist: placeholders, examples, and test fixtures only"
+commits = [
+  # 2025 legacy commit on abandoned backend branch with commented placeholder key
+  "8f98c3052e3114b06ff2686e5426653a34c73c37",
+]
 paths = [
   # Example / template files
   '''.*\.example$''',

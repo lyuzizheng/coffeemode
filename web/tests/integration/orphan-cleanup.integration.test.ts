@@ -126,19 +126,19 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
   beforeAll(async () => {
     minioUp = await minioReachable();
     if (!minioUp) {
-      console.warn("MinIO not reachable — cleanup tests will SKIP");
-      return;
+      throw new Error(
+        `MinIO is not reachable at ${R2_ENDPOINT}. Orphan cleanup integration tests require a running MinIO instance (docker compose up -d --wait minio && docker compose run --rm minio-init).`,
+      );
     }
   });
 
   beforeEach(async () => {
-    if (!minioUp) return;
     currentBucket = await createTestBucket();
     createdKeys.clear();
   });
 
   afterEach(async () => {
-    if (!minioUp || !currentBucket) return;
+    if (!currentBucket) return;
     for (const key of [...createdKeys]) {
       await deleteObject(key);
     }
@@ -150,8 +150,7 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     if (cleanupErrors.length) throw new AggregateError(cleanupErrors.map((m) => new Error(m)), "cleanup failures");
   });
 
-  it("dry-run reports abandoned originals without deleting them", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("dry-run reports abandoned originals without deleting them", async () => {
     const abandoned = `original/${randomUUID()}.webp`;
     const provisionStage = `original/${randomUUID()}.webp`;
     const completed = `original/${randomUUID()}.webp`;
@@ -171,8 +170,7 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     expect(await objectExists(completed)).toBe(true);
   });
 
-  it("deletes only metadata-less originals; completed originals survive", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("deletes only metadata-less originals; completed originals survive", async () => {
     const abandoned = `original/${randomUUID()}.webp`;
     const provisionStage = `original/${randomUUID()}.webp`;
     const completed = `original/${randomUUID()}.webp`;
@@ -223,8 +221,7 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     }
   }, 20_000);
 
-  it("is idempotent: a second run deletes nothing more", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("is idempotent: a second run deletes nothing more", async () => {
     const abandoned = `original/${randomUUID()}.webp`;
     await seedOriginal(abandoned);
     const first = runCleanup({ DRY_RUN: "0", RETENTION_DAYS: "0", MAX_OBJECTS: "100", ALLOW_RETENTION_ZERO: "1" });
@@ -238,8 +235,7 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
  }, 20_000);
 
 
-  it("young metadata-less originals inside the retention window are kept", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("young metadata-less originals inside the retention window are kept", async () => {
     const young = `original/${randomUUID()}.webp`;
     await seedOriginal(young);
     const result = runCleanup({ DRY_RUN: "0", RETENTION_DAYS: "30", MAX_OBJECTS: "100" });
@@ -247,8 +243,7 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     expect(await objectExists(young)).toBe(true);
   });
 
-  it("empty-string targetType metadata counts as abandoned (falsy marker)", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("empty-string targetType metadata counts as abandoned (falsy marker)", async () => {
     const malformed = `original/${randomUUID()}.webp`;
     await seedOriginal(malformed, { targettype: "" });
     const result = runCleanup({
@@ -263,8 +258,7 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     createdKeys.delete(malformed);
   });
 
-  it("MAX_OBJECTS bounds a single run (truncated scan reported)", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("MAX_OBJECTS bounds a single run (truncated scan reported)", async () => {
     // Dedicated bucket: only the two objects seeded below exist, so the
     // candidate count is fully determined by this test.
     const keys = [`original/${randomUUID()}.webp`, `original/${randomUUID()}.webp`];
@@ -290,8 +284,7 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
  }, 20_000);
 
 
-  it("rejects missing configuration with non-zero exit", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("rejects missing configuration with non-zero exit", async () => {
     try {
       execFileSync("node", ["scripts/clean-orphan-originals.mjs"], {
         cwd: IMAGE_SERVICE_ROOT,

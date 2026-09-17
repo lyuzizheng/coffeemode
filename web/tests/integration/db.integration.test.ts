@@ -2221,6 +2221,49 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       const cafe = await getCafe(created.cafe_id, U1);
       expect(cafe?.work_stats.n_checkins).toBe(2);
     });
+
+    it("blocks non-owner check-in writes on a private cafe while the owner still writes (BRAWUKA-392)", async () => {
+      const photoId = randomUUID();
+      await recordUploadIntent(U1, photoId);
+
+      const created = await createCafeWithFirstCheckIn(U1, {
+        name: "Private Write Gate Cafe",
+        lat: 1.305,
+        lng: 103.861,
+        city: "singapore",
+        checkin: {
+          scores: { overall: 75, wifi: 70 },
+          max_stay: "unlimited",
+          note: "Owner creation visit",
+          photo_ids: [photoId],
+        },
+      }, fakeProvisionPhotosDeps());
+      await setCafeVisibility(created.cafe_id, U1, "private");
+
+      // Stranger write → CafeNotFoundError (the route maps it to 404), same as the read path.
+      const err = await createCheckIn(U2, {
+        cafe_id: created.cafe_id,
+        scores: { overall: 60 },
+      }).catch((e) => e);
+      expect(err).toBeInstanceOf(CafeNotFoundError);
+
+      // The rejected write leaves no row behind — the owner never sees "other check-ins".
+      const leaked = await dbClient.query(
+        "select count(*)::int as n from checkins where cafe_id = $1 and user_id = $2 and deleted_at is null",
+        [created.cafe_id, U2],
+      );
+      expect(leaked.rows[0].n).toBe(0);
+
+      // Owner write still works (age the creation check-in past the DG64 window first).
+      await dbClient.query("update checkins set visited_at = now() - interval '25 hours' where id = $1", [
+        created.checkin_id,
+      ]);
+      const own = await createCheckIn(U1, {
+        cafe_id: created.cafe_id,
+        scores: { overall: 85 },
+      });
+      expect(own.checkin_id).toMatch(/^[0-9a-f-]{36}$/);
+    });
   });
 
   describeDb("opt-in public author identity consent lifecycle (DG139 / #139 Stage 1)", () => {

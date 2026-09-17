@@ -19,7 +19,10 @@ import { query, txQueryFrom, txRunnerFrom, withTransaction } from "../postgres";
 import { autoResolveNavigationsTx } from "../navigations";
 import { MERGE_GALLERY_SQL, photosWithSource } from "./gallery";
 
-const CAFE_EXISTS_SQL = "select id from cafes where id = $1 and deleted_at is null";
+// Viewer-scoped existence gate (BRAWUKA-392): mirrors EXISTS_VIEWER_SQL in
+// cafes/reads.ts — a private cafe accepts check-ins only from its creator.
+const CAFE_EXISTS_SQL =
+  "select id from cafes where id = $1 and deleted_at is null and (visibility = 'public' or created_by = $2)";
 
 /**
  * BRAWUKA-125: serialize concurrent creates for the same user+cafe.
@@ -118,6 +121,7 @@ export async function createCheckIn(
   // authoritative gate (the cafe could be deleted in between).
   const cafeExists = await query<{ id: string } & Record<string, unknown>>(CAFE_EXISTS_SQL, [
     input.cafe_id,
+    userId,
   ]);
   if (!cafeExists.rows[0]) throw new CafeNotFoundError(input.cafe_id);
 
@@ -127,7 +131,7 @@ export async function createCheckIn(
     return await withTransaction(async (client) => {
       // BRAWUKA-125: must be the first statement — waiters hold no other lock.
       await client.query(ACQUIRE_CREATE_LOCK_SQL, [userId, input.cafe_id]);
-      const cafe = await client.query<{ id: string }>(CAFE_EXISTS_SQL, [input.cafe_id]);
+      const cafe = await client.query<{ id: string }>(CAFE_EXISTS_SQL, [input.cafe_id, userId]);
       if (!cafe.rows[0]) throw new CafeNotFoundError(input.cafe_id);
 
       // DG64: at most 1 check-in per cafe per user per revisit window. A hit

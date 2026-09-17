@@ -163,7 +163,7 @@ journey that conflates them is testing a contract that does not exist.
 - Mock POI seam (mandatory): `vi.mock("@/lib/places/poi-client")` injecting
   the spec-0007 `POISearchResponse` shape (`place_id: ChIJ…`, `source:
   "google"`, `types` containing `cafe`, `business_status: "OPERATIONAL"`,
-  serialized `hours_json`, non-empty `photo_refs`, ISO `fetched_at`). The POI
+  serialized `hours_json`, ISO `fetched_at`). The POI
   client has no mock mode and 503s unconfigured — the suite never touches the
   network.
 - Fake WebP: minimal valid `RIFF…WEBP` bytes. Real round-trip:

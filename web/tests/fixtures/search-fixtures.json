@@ -91,7 +91,6 @@
       "types": ["cafe", "bakery"],
       "business_status": "OPERATIONAL",
       "hours_json": null,
-      "photo_refs": ["places/ChIJ_FIXTURE_STORED_1/photos/photo1"],
       "fetched_at": "2026-08-01T00:00:00.000Z"
     },
     {
@@ -105,7 +104,6 @@
       "types": ["cafe", "restaurant"],
       "business_status": "OPERATIONAL",
       "hours_json": null,
-      "photo_refs": ["places/ChIJ_FIXTURE_STORED_2/photos/photo1"],
       "fetched_at": "2026-08-01T00:00:00.000Z"
     },
     {
@@ -119,7 +117,6 @@
       "types": ["cafe"],
       "business_status": "OPERATIONAL",
       "hours_json": null,
-      "photo_refs": [],
       "fetched_at": "2026-08-01T00:00:00.000Z"
     },
     {
@@ -133,7 +130,6 @@
       "types": ["cafe", "coffee_shop"],
       "business_status": "OPERATIONAL",
       "hours_json": null,
-      "photo_refs": ["places/ChIJ_FIXTURE_LIVE_GOOGLE_1/photos/photo1"],
       "fetched_at": "2026-08-01T00:00:00.000Z"
     }
   ]

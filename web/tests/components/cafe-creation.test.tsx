@@ -22,7 +22,6 @@ const APPLE_PLACE = vi.hoisted<POI>(() => ({
   types: ["cafe"],
   business_status: null,
   hours_json: null,
-  photo_refs: [],
   fetched_at: "2026-01-01T00:00:00.000Z",
 }));
 
@@ -92,7 +91,6 @@ describe("POIPreview", () => {
       types: ["cafe"],
       business_status: "OPERATIONAL",
       hours_json: null,
-      photo_refs: [],
       fetched_at: new Date().toISOString(),
     };
 
@@ -145,7 +143,6 @@ describe("CafeCreationSheet & Trigger", () => {
             types: ["cafe"],
             business_status: null,
             hours_json: null,
-            photo_refs: [],
             fetched_at: new Date().toISOString(),
           }),
         };

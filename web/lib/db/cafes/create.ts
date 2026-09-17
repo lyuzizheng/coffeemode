@@ -7,6 +7,7 @@ import {
   type CreateCafeInput,
 } from "@/lib/validation/cafe";
 import {
+  attachProvisionedPhotos,
   compensateProvisionedPhotos,
   consumeProvisionedIntents,
   defaultProvisionPhotosDeps,
@@ -95,8 +96,9 @@ export async function createCafeWithFirstCheckIn(
   const photoIds = input.checkin.photo_ids;
   const provisioned = await provisionPhotos(userId, photoIds, deps);
 
+  let created: { cafe_id: string; checkin_id: string; tz: string };
   try {
-    return await withTransaction(async (client) => {
+    created = await withTransaction(async (client) => {
       if (externalIds[0] !== null || externalIds[1] !== null) {
         const existing = await client.query<{ id: string }>(
           FIND_BY_EXTERNAL_ID_SQL,
@@ -173,4 +175,14 @@ export async function createCafeWithFirstCheckIn(
     }
     throw err;
   }
+
+  // Post-commit attach (BRAWUKA-400): re-mark live originals from "provision"
+  // to "checkin" AFTER the insert commits. Slow I/O stays off the DB
+  // connection; failures never fail the already-committed creation (logged
+  // inside, reported per photo). The sweeper skips DB-referenced keys as a
+  // second backstop.
+  if (provisioned.length > 0) {
+    await attachProvisionedPhotos(userId, photoIds, created.checkin_id, deps);
+  }
+  return created;
 }

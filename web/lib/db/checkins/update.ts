@@ -98,7 +98,7 @@ export async function softDeleteCheckIn(userId: string, checkinId: string): Prom
     await client.query(
       `update cafes set gallery = coalesce(
          (select jsonb_agg(elem) from jsonb_array_elements(coalesce(gallery, '[]'::jsonb)) elem
-          where not (elem->'source'->>'id' = $2)), '[]'::jsonb),
+          where elem->'source'->>'id' is null or not (elem->'source'->>'id' = $2)), '[]'::jsonb),
          updated_at = now()
        where id = $1`,
       [row.cafe_id, checkinId],

@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 
 /**
  * DG70 dual detents for the check-in drawer (artifact §2: opens at content
- * height, drags up to the 92% full-height detent, drags back down, and keeps
+ * height, drags up to the 85% full-height detent, drags back down, and keeps
  * scrolling at either detent).
  *
  * HeroUI's built-in `useDrawerDrag` is dismiss-only — it clamps the delta to
@@ -12,7 +12,7 @@ import { useRef, useState } from "react";
  * hook owns a `Drawer.Handle` gesture that stopPropagation's away from the
  * library handler and drives the dialog's height itself:
  *
- *   drag up    → height grows toward the 92dvh detent
+ *   drag up    → height grows toward the 85dvh detent
  *   drag down  → height shrinks to the content detent, then the surplus
  *                becomes a downward translate (dismiss gesture)
  *   release    → flick/velocity decides: dismiss, or snap to the nearest
@@ -42,7 +42,7 @@ interface DetentDrag {
   startHeight: number;
   /** Natural content height measured with the max-height cap lifted. */
   naturalHeight: number;
-  /** 92dvh cap in px. */
+  /** 85dvh cap in px. */
   maxHeight: number;
   lastY: number;
   lastTime: number;
@@ -110,7 +110,7 @@ function applyDragMove(dialog: HTMLElement, d: DetentDrag, clientY: number) {
   }
 
   if (dy < 0) {
-    // Grow toward the 92dvh detent; never past it.
+    // Grow toward the 85dvh detent; never past it.
     dialog.style.height = `${Math.min(d.startHeight - dy, d.maxHeight)}px`;
     dialog.style.transform = "";
     return;
@@ -123,7 +123,7 @@ function applyDragMove(dialog: HTMLElement, d: DetentDrag, clientY: number) {
 }
 
 /** Snap to a detent, then hand the resting height back to CSS so the dialog
- *  keeps tracking viewport (92dvh) and content (auto) changes. */
+ *  keeps tracking viewport (85dvh) and content (auto) changes. */
 function snapToDetent(
   dialog: HTMLElement,
   d: DetentDrag,
@@ -132,7 +132,7 @@ function snapToDetent(
 ) {
   const nextExpanded = release === "expand";
   const target = Math.round(nextExpanded ? d.maxHeight : d.naturalHeight);
-  // offsetHeight is clamped by max-h-[92dvh] — compare against the clamped
+  // offsetHeight is clamped by max-h-[85dvh] — compare against the clamped
   // target, or a cap-clamped collapse (naturalHeight > maxHeight) reads as
   // a change that never transitions and leaks the listener.
   const clamped = Math.min(target, d.maxHeight);
@@ -247,7 +247,7 @@ function activateDrag(dialog: HTMLElement, d: DetentDrag) {
   d.naturalHeight = dialog.offsetHeight;
   dialog.style.maxHeight = "";
   dialog.style.height = `${d.startHeight}px`;
-  d.maxHeight = window.innerHeight * 0.92;
+  d.maxHeight = window.innerHeight * 0.85;
   d.active = true;
   dialog.style.transition = "none";
 }

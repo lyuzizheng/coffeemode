@@ -14,7 +14,7 @@ export function DossierHero({ covers, name }: { covers: string[]; name: string }
       aria-hidden
       className="grain-overlay relative flex aspect-[21/9] w-full items-center justify-center overflow-hidden rounded-md border border-separator bg-surface-secondary"
     >
-      <span className="font-display text-3xl font-extrabold tracking-tight text-foreground/20 select-none">
+      <span className="font-display text-2xl font-extrabold tracking-tight text-foreground/20 select-none">
         {name.trim().charAt(0).toUpperCase()}
       </span>
     </div>

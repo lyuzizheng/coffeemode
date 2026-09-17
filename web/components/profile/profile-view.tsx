@@ -12,6 +12,7 @@ import { ProfileTabCafes, fetchUserCafes } from "./profile-tab-cafes";
 import { ProfileTabFavorites } from "./profile-tab-favorites";
 import { ProfileTabHistory } from "./profile-tab-history";
 import { RankingPreferenceToggle } from "@/components/search/ranking-preference-toggle";
+import { ThemeVariantPicker } from "@/components/theme-variant-picker";
 import { ProfilePreferences } from "./profile-preferences";
 import type { UserProfileDto, UserProfileStatsDto } from "@/lib/db/profile";
 
@@ -87,15 +88,24 @@ export function ProfileView({
             <ProfilePreferences profile={profile} onProfileChange={setProfile} />
           </>
         )}
-        {/* DG136: ranking preference lives in localStorage, so it stays
-            reachable for anonymous sessions — as a quiet page footer below
-            the gate, never inside the sign-in flow (profile-page-v2 §5). */}
-        {!isAuthenticated && (
-          <footer className="mt-auto border-t border-separator pt-3 pb-1">
-            <RankingPreferenceToggle variant="compact" />
-          </footer>
-        )}
+        {/* DG136: ranking + design-variant preferences live in localStorage,
+            so they stay reachable for anonymous sessions — a quiet page
+            footer below the gate, never inside the sign-in flow
+            (profile-page-v2 §5). */}
+        {!isAuthenticated && <AnonymousPreferencesFooter />}
       </main>
     </div>
+  );
+}
+
+/** Anonymous-only footer: the two localStorage-backed preferences stay
+ *  reachable without sign-in (DG136 + BRAWUKA-370). Extracted so ProfileView
+ *  stays under the 80-line function budget. */
+function AnonymousPreferencesFooter() {
+  return (
+    <footer className="mt-auto border-t border-separator pt-3 pb-1 flex flex-col gap-3">
+      <RankingPreferenceToggle variant="compact" />
+      <ThemeVariantPicker />
+    </footer>
   );
 }

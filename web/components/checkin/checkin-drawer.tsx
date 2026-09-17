@@ -261,12 +261,12 @@ function CheckinDrawerSurface({
           stays null, isModalExiting sticks at 'exiting', and the backdrop
           leaks at opacity 0 over the viewport, swallowing every click. */}
       <Drawer.Backdrop>
-        <Drawer.Content placement="bottom" className="max-h-[92dvh] bg-overlay text-foreground">
+        <Drawer.Content placement="bottom" className="max-h-[85dvh] bg-overlay text-foreground">
           <Drawer.Dialog
             aria-label={state.effectiveMode === "edit" ? t("editTitle") : t("title")}
-            className={`flex max-h-[92dvh] flex-col${detents.expanded ? " h-[92dvh]" : ""}`}
+            className={`flex max-h-[85dvh] flex-col${detents.expanded ? " h-[85dvh]" : ""}`}
           >
-            {/* DG70 detent handle: drag up expands to 92dvh, drag down collapses
+            {/* DG70 detent handle: drag up expands to 85dvh, drag down collapses
                 to content height then dismisses. stopPropagation inside the hook
                 keeps HeroUI's dismiss-only drag from seeing the gesture. */}
             <Drawer.Handle

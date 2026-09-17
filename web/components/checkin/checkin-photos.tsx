@@ -149,7 +149,7 @@ export function CheckinPhotos({
   const canAdd = photos.length < maxPhotos && !disabled;
 
   return (
-    <div className="flex gap-2 overflow-x-auto px-1 py-5">
+    <div className="flex gap-2 overflow-x-auto px-1 py-4">
       {photos.map((photo) => (
         <div key={photo.id} className="relative h-[72px] w-[72px] shrink-0">
           <div

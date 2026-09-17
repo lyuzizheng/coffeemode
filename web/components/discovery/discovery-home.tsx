@@ -56,7 +56,7 @@ function gateMapOverlay(
   isDesktop: boolean,
   snap: string,
 ): ReactNode {
-  return mapOverlay && (isDesktop || snap === "peek") ? mapOverlay : null;
+  return mapOverlay && (isDesktop || snap === "peek" || snap === "collapsed") ? mapOverlay : null;
 }
 
 /** The floating capsule search over the mobile map (BRAWUKA-364). */
@@ -232,7 +232,7 @@ export function DiscoveryHome({
   // drawer (a modal task surface) is open; it renders once the UI returns
   // to PEEK/HALF with nothing modal above it.
   const navPrompt = useNavPrompt({
-    enabled: mounted && controller.snap !== "full" && !checkinOpen,
+    enabled: mounted && controller.snap !== "full" && controller.snap !== "collapsed" && !checkinOpen,
     onCheckIn: (cafeId, cafeName) => onCheckIn(cafeId, cafeName, true),
   });
   const navPromptView = (placement: "sheet" | "surface") =>
@@ -276,7 +276,7 @@ export function DiscoveryHome({
       fab={fab}
       isDesktop={isDesktop}
       mobileSearch={
-        mounted && !isDesktop && controller.snap === "peek" ? (
+        mounted && !isDesktop && (controller.snap === "peek" || controller.snap === "collapsed") ? (
           <MobileSearchOverlay
             search={search}
             onQueryChange={setMobileQuery}

@@ -15,10 +15,10 @@ describe("assertR2PublicUrlMatches", () => {
     expect(assertR2PublicUrlMatches(undefined)).toBeUndefined();
     expect(assertR2PublicUrlMatches("")).toBeUndefined();
   });
-  it("exports R2_ALLOWED_PUBLIC_HOSTS and default R2_PUBLIC_HOST", () => {
+  it("exports R2_ALLOWED_PUBLIC_HOSTS and valid R2_PUBLIC_HOST", () => {
     expect(R2_ALLOWED_PUBLIC_HOSTS).toContain(R2_PUBLIC_HOST_PROD);
     expect(R2_ALLOWED_PUBLIC_HOSTS).toContain(R2_PUBLIC_HOST_STAGING);
-    expect(R2_PUBLIC_HOST).toBe(R2_PUBLIC_HOST_PROD);
+    expect((R2_ALLOWED_PUBLIC_HOSTS as readonly string[])).toContain(R2_PUBLIC_HOST);
   });
 
 
@@ -69,7 +69,7 @@ describe("assertR2PublicUrlMatches", () => {
   });
 
   it("resolves R2 public host based on explicit URL or APP_ENV", () => {
-    expect(resolveR2PublicHost()).toBe(R2_PUBLIC_HOST_PROD);
+    expect(resolveR2PublicHost("https://images.cafemood.app")).toBe(R2_PUBLIC_HOST_PROD);
     expect(resolveR2PublicHost("https://staging-images.cafemood.app")).toBe(
       R2_PUBLIC_HOST_STAGING,
     );

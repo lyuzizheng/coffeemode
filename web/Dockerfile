@@ -23,6 +23,10 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ARG APP_VERSION
 ENV APP_VERSION=${APP_VERSION}
+ARG NEXT_PUBLIC_R2_PUBLIC_URL
+ENV NEXT_PUBLIC_R2_PUBLIC_URL=${NEXT_PUBLIC_R2_PUBLIC_URL}
+ARG APP_ENV
+ENV APP_ENV=${APP_ENV}
 RUN npm run build
 
 # ---- runtime -------------------------------------------------------------
@@ -33,6 +37,8 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ARG APP_VERSION
 ENV APP_VERSION=${APP_VERSION}
+ARG APP_ENV
+ENV APP_ENV=${APP_ENV}
 
 # Next.js standalone needs the static assets and BUILD_ID copied in by hand.
 COPY --from=build /app/.next/standalone ./

@@ -64,7 +64,7 @@ export function resolveR2PublicHost(rawUrl?: string, appEnv?: string): string {
 export const R2_PUBLIC_HOST = resolveR2PublicHost();
 
 /** Absolute public CDN URL for an R2 object key (leading slash tolerated). */
-export function r2PublicUrl(key: string, host = resolveR2PublicHost()): string {
+export function r2PublicUrl(key: string, host = R2_PUBLIC_HOST): string {
   const clean = key.startsWith("/") ? key.slice(1) : key;
   return `https://${host}/${clean}`;
 }

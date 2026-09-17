@@ -46,6 +46,11 @@ where exists (
   where id = $1 and deleted_at is null
     and (visibility = 'public' or created_by = $2)
 )
+on conflict (user_id, cafe_id) where resolved = false
+do update set
+  created_at = now(),
+  ask_count = 0,
+  last_asked_at = null
 returning id, resolved, created_at
 `;
 
@@ -56,7 +61,9 @@ returning id, resolved, created_at
  * CafeNotFoundError when the cafe does not exist. Single statement
  * (BRAWUKA-279): the visibility gate lives inside the INSERT, so there is
  * one roundtrip and no TOCTOU — a cafe deleted between check and write
- * yields 0 rows (404), never an FK 500.
+ * yields 0 rows (404), never an FK 500. Deduplicates on
+ * (user_id, cafe_id) where resolved = false (BRAWUKA-391): repeated taps
+ * refresh created_at and reset ask counters on the pending row.
  */
 export async function recordNavigation(
   userId: string,

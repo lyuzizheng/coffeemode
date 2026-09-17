@@ -107,22 +107,43 @@ describe("createStagingTestSession (mocked Supabase boundary)", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it("throws when the password grant fails after the user exists", async () => {
+  it("deletes the orphan user when the password grant fails after the user exists", async () => {
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, { id: "user-2" }))
-      .mockResolvedValueOnce(new Response("bad login", { status: 400 }));
+      .mockResolvedValueOnce(new Response("bad login", { status: 400 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
     await expect(createStagingTestSession(ENV, { fetchImpl })).rejects.toThrow(
       /password grant failed \(HTTP 400\)/,
     );
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    const [cleanupUrl, cleanupInit] = fetchImpl.mock.calls[2] as [string, RequestInit];
+    expect(cleanupUrl).toBe("https://staging.supabase.co/auth/v1/admin/users/user-2");
+    expect(cleanupInit.method).toBe("DELETE");
   });
 
-  it("throws when the password grant returns no access token", async () => {
+  it("still surfaces the grant error when orphan cleanup also fails", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, { id: "user-2b" }))
+      .mockResolvedValueOnce(new Response("bad login", { status: 400 }))
+      .mockResolvedValueOnce(new Response("boom", { status: 500 }));
+    await expect(createStagingTestSession(ENV, { fetchImpl })).rejects.toThrow(
+      /password grant failed \(HTTP 400\)/,
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it("deletes the orphan user when the password grant returns no access token", async () => {
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse(200, { id: "user-3" }))
-      .mockResolvedValueOnce(jsonResponse(200, { refresh_token: "only-refresh" }));
+      .mockResolvedValueOnce(jsonResponse(200, { refresh_token: "only-refresh" }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
     await expect(createStagingTestSession(ENV, { fetchImpl })).rejects.toThrow(/no access token/);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    const [cleanupUrl] = fetchImpl.mock.calls[2] as [string, RequestInit];
+    expect(cleanupUrl).toBe("https://staging.supabase.co/auth/v1/admin/users/user-3");
   });
 
   it("honors an explicit email prefix and password", async () => {

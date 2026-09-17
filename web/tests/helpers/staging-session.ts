@@ -102,12 +102,18 @@ async function createAdminUser(
   return userId;
 }
 
+interface PasswordGrantSession {
+  accessToken: string;
+  refreshToken: string | null;
+  expiresIn: number;
+}
+
 async function signInWithPassword(
   env: StagingSessionEnv,
   email: string,
   password: string,
   fetchImpl: typeof fetch,
-): Promise<{ accessToken: string; refreshToken: string | null; expiresIn: number }> {
+): Promise<PasswordGrantSession> {
   const res = await fetchImpl(`${env.supabaseUrl}/auth/v1/token?grant_type=password`, {
     method: "POST",
     headers: { apikey: env.anonKey, "content-type": "application/json" },
@@ -161,7 +167,16 @@ export async function createStagingTestSession(
   const email = `${options.emailPrefix ?? "staging-journey"}+${randomUUID().replaceAll("-", "")}@coffeemode.test`;
   const password = options.password ?? `${randomUUID().replaceAll("-", "")}-${randomUUID().replaceAll("-", "")}`;
   const userId = await createAdminUser(resolved, email, password, fetchImpl);
-  const session = await signInWithPassword(resolved, email, password, fetchImpl);
+  let session: PasswordGrantSession;
+  try {
+    session = await signInWithPassword(resolved, email, password, fetchImpl);
+  } catch (grantError) {
+    // The user now exists but has no session — best-effort delete so a
+    // failed grant does not leave an orphan test user on staging. Cleanup
+    // failure must not mask the original grant error.
+    await deleteStagingTestUser(resolved, userId, fetchImpl).catch(() => {});
+    throw grantError;
+  }
   return {
     userId,
     email,

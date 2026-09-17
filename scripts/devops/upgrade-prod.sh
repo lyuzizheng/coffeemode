@@ -316,7 +316,7 @@ if [[ -n "$DEPLOY_URL" ]]; then
   if [ "$DRY_RUN" = false ]; then
     AUTH_HEADER=()
     if [[ -n "$DEPLOY_TOKEN" ]]; then
-      AUTH_HEADER=(-H "Authorization: Bearer ${DEPLOY_TOKEN}")
+      AUTH_HEADER=(-H "Authorization: Bearer ${DEPLOY_TOKEN}" -H "x-api-key: ${DEPLOY_TOKEN}")
     fi
     curl -fsS --max-time 30 -X POST "${AUTH_HEADER[@]}" "${DEPLOY_URL}"
     ok "Dokploy deployment webhook triggered."

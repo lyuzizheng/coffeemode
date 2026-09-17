@@ -32,7 +32,10 @@ services:
     container_name: coffeemode-web-staging
     restart: unless-stopped
     env_file:
-      - .env.staging
+      - path: .env.staging
+        required: false
+      - path: .env
+        required: false
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -77,7 +80,7 @@ services:
     restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:
-      TUNNEL_TOKEN: ${CLOUDFLARED_TUNNEL_TOKEN_STAGING:?CLOUDFLARED_TUNNEL_TOKEN_STAGING must be set in Dokploy environment}
+      TUNNEL_TOKEN: ${CLOUDFLARED_TUNNEL_TOKEN_STAGING:-}
     networks:
       - coffeemode-staging-network
       - traefik-net

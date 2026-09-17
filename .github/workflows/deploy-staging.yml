@@ -1,0 +1,51 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-staging:
+    name: deploy-staging
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Trigger Dokploy Staging Deployment
+        env:
+          DOKPLOY_URL: ${{ secrets.DOKPLOY_URL || 'https://dokploy.brabalawuka.cc' }}
+          DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
+          DOKPLOY_STAGING_DEPLOY_URL: ${{ secrets.DOKPLOY_STAGING_DEPLOY_URL }}
+          APPLICATION_ID: ${{ secrets.DOKPLOY_STAGING_APP_ID || 'x_lcLYsqkp9Em0uPGwrOd' }}
+        run: |
+          echo "[INFO] Evaluating Dokploy Staging deployment triggers..."
+          if [[ -n "$DOKPLOY_STAGING_DEPLOY_URL" ]]; then
+            echo "[INFO] Triggering Dokploy via custom webhook URL..."
+            AUTH_HEADER=()
+            if [[ -n "$DOKPLOY_API_KEY" ]]; then
+              AUTH_HEADER=(-H "Authorization: Bearer ${DOKPLOY_API_KEY}" -H "x-api-key: ${DOKPLOY_API_KEY}")
+            fi
+            curl -fsS --max-time 30 -X POST "${AUTH_HEADER[@]}" "${DOKPLOY_STAGING_DEPLOY_URL}"
+            echo "[OK] Deployment webhook triggered."
+          elif [[ -n "$DOKPLOY_API_KEY" ]]; then
+            echo "[INFO] Triggering Dokploy deployment for application: ${APPLICATION_ID} via Dokploy API..."
+            curl -fsS --max-time 30 -X POST "${DOKPLOY_URL}/api/trpc/application.deploy" \
+              -H "x-api-key: ${DOKPLOY_API_KEY}" \
+              -H "Content-Type: application/json" \
+              -d "{\"applicationId\": \"${APPLICATION_ID}\", \"title\": \"GitHub Actions Auto-Deploy (${GITHUB_SHA::7})\"}"
+            echo "[OK] Dokploy application deployment triggered successfully."
+          else
+            echo "[WARN] Neither DOKPLOY_STAGING_DEPLOY_URL nor DOKPLOY_API_KEY configured in environment secrets."
+            echo "[INFO] Skipping automated trigger. Dokploy Git push auto-deploy or manual trigger remains available."
+          fi

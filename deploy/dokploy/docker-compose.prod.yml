@@ -35,7 +35,10 @@ services:
     container_name: coffeemode-web-prod
     restart: unless-stopped
     env_file:
-      - .env.prod
+      - path: .env.prod
+        required: false
+      - path: .env
+        required: false
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -92,7 +95,7 @@ services:
     restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:
-      TUNNEL_TOKEN: ${CLOUDFLARED_TUNNEL_TOKEN_PROD:?CLOUDFLARED_TUNNEL_TOKEN_PROD must be set in Dokploy environment}
+      TUNNEL_TOKEN: ${CLOUDFLARED_TUNNEL_TOKEN_PROD:-}
     networks:
       - coffeemode-prod-network
       - traefik-net

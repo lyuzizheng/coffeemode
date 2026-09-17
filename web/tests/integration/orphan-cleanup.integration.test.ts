@@ -1,6 +1,7 @@
 /**
  * @vitest-environment node
- * Real MinIO integration — orphan-original cleanup script (issue #158).
+ * Real MinIO integration — orphan-original cleanup script (issue #158,
+ * hardened BRAWUKA-400).
  *
  * Stacked on the #156 storage suite: same local MinIO stack and TEST_R2_* env
  * isolation. Runs image-service/scripts/clean-orphan-originals.mjs as a child
@@ -10,6 +11,9 @@
  *   - completed: original/ WITH x-amz-meta-targettype (live gallery original) → kept
  *   - young abandoned: no metadata but inside the retention window → kept
  *   - dry-run (default): reports would-delete without deleting
+ *   - reference-aware (BRAWUKA-400): a stale-marker original whose key IS in
+ *     LIVE_KEYS_FILE reports would-keep reason:"referenced", never deleted —
+ *     even with DRY_RUN=0
  *   - idempotent: second run deletes nothing
  *
  * Requires:
@@ -185,6 +189,37 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     createdKeys.delete(provisionStage);
   }, 20_000);
 
+  it("keeps a stale-marker original listed in LIVE_KEYS_FILE: reported, never deleted (BRAWUKA-400)", async (ctx) => {
+    if (!minioUp) return ctx.skip();
+    const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const referenced = `original/${randomUUID()}.webp`;
+    const orphan = `original/${randomUUID()}.webp`;
+    await seedOriginal(referenced, { targettype: "provision", targetid: referenced.split("/")[1].replace(".webp", ""), userid: "u1" });
+    await seedOriginal(orphan);
+    const dir = mkdtempSync(`${tmpdir()}/live-keys-`);
+    const file = `${dir}/live-keys.txt`;
+    try {
+      writeFileSync(file, `${referenced}\n`);
+      const dry = runCleanup({ DRY_RUN: "1", RETENTION_DAYS: "0", MAX_OBJECTS: "100", LIVE_KEYS_FILE: file });
+      expect(dry.status).toBe(0);
+      // True orphan vs. missing-attach original stay distinguishable.
+      expect(dry.stdout).toContain(`"key":"${orphan}"`);
+      expect(dry.stdout).toContain('"op":"would-delete"');
+      expect(dry.stdout).toContain(`"key":"${referenced}"`);
+      expect(dry.stdout).toContain('"op":"would-keep"');
+      expect(dry.stdout).toContain('"reason":"referenced"');
+      expect(dry.stdout).not.toContain(`"would-delete","key":"${referenced}"`);
+
+      const live = runCleanup({ DRY_RUN: "0", RETENTION_DAYS: "0", MAX_OBJECTS: "100", ALLOW_RETENTION_ZERO: "1", LIVE_KEYS_FILE: file });
+      expect(live.status).toBe(0);
+      expect(await objectExists(referenced)).toBe(true);
+      expect(await objectExists(orphan)).toBe(false);
+      createdKeys.delete(orphan);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
 
   it("is idempotent: a second run deletes nothing more", async () => {
     const abandoned = `original/${randomUUID()}.webp`;

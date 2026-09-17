@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { TxQueryFn } from "@/lib/db/postgres";
-import type { StoredImage } from "@/types/images";
+import type { ImageTargetType, StoredImage } from "@/types/images";
 import type { ProcessUrls } from "./image-service-client";
 import type { ProcessedImage } from "./processor";
 
@@ -64,11 +64,23 @@ export interface ProvisionPhotosDeps {
   getProcessUrls: (request: {
     imageUuid: string;
     userId?: string;
-    /** Pre-target stage marker (issue #158): "provision" + targetId=imageUuid. */
-    targetType?: "provision";
+    /**
+     * Stage marker (issue #158 / BRAWUKA-400): the creation flow sends
+     * `"provision"` (pre-target); the post-commit attach leg re-sends
+     * `"checkin"` + the real check-in id so the sweeper never matches it.
+     */
+    targetType?: "provision" | ImageTargetType;
     targetId?: string;
   }) => Promise<ProcessUrls>;
   processImage: (imageUuid: string, processUrls: ProcessUrls) => Promise<ProcessedImage>;
+  /**
+   * Post-commit attach re-mark (BRAWUKA-400): download the live original and
+   * re-PUT it with the final targetType/targetId metadata. Never throws past
+   * the caller — failures are logged, and the key stays DB-referenced so the
+   * reference-aware sweeper keeps it. Defaults to `getProcessUrls` (final
+   * stage) + `restampOriginal` from the sharp processor.
+   */
+  restampOriginal?: (attachUrls: ProcessUrls) => Promise<void>;
   /**
    * Best-effort R2 compensation (BRAWUKA-279): delete the variants
    * `processImage` already wrote when the caller's transaction rolls back.
@@ -93,6 +105,14 @@ export function defaultProvisionPhotosDeps(): ProvisionPhotosDeps {
       const { checkUploadIntents } = await import("@/lib/db/image-uploads");
       return checkUploadIntents(userId, imageUuids);
     },
+    processImage: async (imageUuid, processUrls) => {
+      const { processImage } = await import("@/lib/images/processor");
+      return processImage(imageUuid, processUrls);
+    },
+    restampOriginal: async (attachUrls) => {
+      const { restampOriginal } = await import("@/lib/images/processor");
+      return restampOriginal(attachUrls);
+    },
     consumeUploadIntent: async (userId, imageUuid, q) => {
       const { consumeUploadIntent } = await import("@/lib/db/image-uploads");
       return consumeUploadIntent(userId, imageUuid, q);
@@ -104,10 +124,6 @@ export function defaultProvisionPhotosDeps(): ProvisionPhotosDeps {
     getProcessUrls: async (request) => {
       const { getProcessUrls } = await import("@/lib/images/image-service-client");
       return getProcessUrls(request);
-    },
-    processImage: async (imageUuid, processUrls) => {
-      const { processImage } = await import("@/lib/images/processor");
-      return processImage(imageUuid, processUrls);
     },
     deleteProvisionedVariants: async (imageUuid) => {
       const { deleteImageVariants } = await import("@/lib/images/image-service-client");
@@ -251,4 +267,52 @@ export async function compensateProvisionedPhotos(
 ): Promise<void> {
   if (!deps.deleteProvisionedVariants) return;
   await Promise.allSettled(photoIds.map((id) => deps.deleteProvisionedVariants!(id)));
+}
+
+/** One photo's attach outcome: the key stays DB-referenced either way. */
+export interface AttachPhotoResult {
+  imageUuid: string;
+  attached: boolean;
+}
+
+/**
+ * Post-commit attach re-mark (BRAWUKA-400, fix option A): after the creation
+ * transaction commits, re-mark every live original from `provision` to the
+ * real target (`checkin` + the new check-in id) so the #158 sweeper never
+ * matches it. Runs OUTSIDE the transaction — slow I/O must not hold a DB
+ * connection — and NEVER throws: a per-photo presign/process failure is
+ * logged and reported as `attached: false`, because the DB row already
+ * committed and the reference-aware sweeper keeps DB-referenced keys. Calls
+ * with an empty list return `[]` without touching deps. Legacy fakes without
+ * `restampOriginal` still mark intent via presign: the download/re-PUT is
+ * skipped and the photo counts as attached when the final-stage presign
+ * succeeds.
+ */
+export async function attachProvisionedPhotos(
+  userId: string,
+  photoIds: string[],
+  checkinId: string,
+  deps: ProvisionPhotosDeps,
+): Promise<AttachPhotoResult[]> {
+  if (photoIds.length === 0) return [];
+  const restamp = deps.restampOriginal;
+  const results = await Promise.all(
+    photoIds.map(async (imageUuid): Promise<AttachPhotoResult> => {
+      try {
+        const attachUrls = await deps.getProcessUrls({
+          imageUuid,
+          userId,
+          targetType: "checkin",
+          targetId: checkinId,
+        });
+        if (restamp) await restamp(attachUrls);
+        return { imageUuid, attached: true };
+      } catch (err) {
+        const { logError } = await import("@/lib/observability/server-log");
+        logError({ route: "provision-photos attach", error: err });
+        return { imageUuid, attached: false };
+      }
+    }),
+  );
+  return results;
 }

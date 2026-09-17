@@ -82,15 +82,21 @@ and the KV hot-cache read path are unaffected and verified working.
 - [ ] Attach custom domains `images.cafemood.app` and `staging-images.cafemood.app` to `coffeemode-images-prod` and `coffeemode-images-staging` R2 buckets (zone `cafemood.app` active; records go in via BRAWUKA-236/238, issue #142)
 - [ ] Configure bucket defenses:
   - Set a maximum upload size (Cloudflare WAF / R2 bucket limits or a `Content-Length`-enforced presigned URL) to mitigate abuse.
-  - Orphan cleanup (issue #158): do NOT add a blanket R2 lifecycle expiry on
-    `original/` — completed gallery originals share that prefix. Instead schedule
-    `image-service/scripts/clean-orphan-originals.mjs` (e.g. daily cron or GitHub
-    scheduled workflow via #154) with least-privilege R2 credentials that allow
-    List/Head/Delete on `original/` only: first run with `DRY_RUN=1
-    RETENTION_DAYS=7`, review the JSON output, then set `DRY_RUN=0`. The script
-    deletes marker-less originals and provision-stage uploads that were never
-    attached; live gallery originals carry `x-amz-meta-targettype` of
-    cafe|checkin and are never matched.
+- Orphan cleanup (issue #158, hardened BRAWUKA-400): do NOT add a blanket R2 lifecycle expiry on
+  `original/` — completed gallery originals share that prefix. Instead schedule
+  `image-service/scripts/clean-orphan-originals.mjs` (e.g. daily cron or GitHub
+  scheduled workflow via #154) with least-privilege R2 credentials that allow
+  List/Head/Delete on `original/` only. Each run is two steps:
+  1. `DATABASE_URL=... node web/scripts/export-live-image-keys.mjs > /tmp/live-keys.txt`
+     (read-only; exports every `original/` key still referenced by live
+     `cafes.gallery` / `checkins.photos`).
+  2. First run with `LIVE_KEYS_FILE=/tmp/live-keys.txt DRY_RUN=1
+  RETENTION_DAYS=7`, review the JSON output, then set `DRY_RUN=0`. The script
+  deletes marker-less originals and provision-stage uploads that were never
+  attached AND are absent from the live-keys export; post-commit attach
+  (BRAWUKA-400) re-marks live originals to `checkin`, and any stale-marker
+  key that IS referenced is reported as `would-keep … reason:"referenced"`
+  and never deleted.
 
 ## 7. Domain + deploy (later phase)
 

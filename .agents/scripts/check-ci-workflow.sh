@@ -101,6 +101,36 @@ else
   fi
 fi
 
+echo "Checking staging-journey workflow boundary (spec 0010 S5)..."
+journey=".github/workflows/staging-journey.yml"
+if [[ ! -f "$journey" ]]; then
+  echo "Missing $journey (post-merge staging verification)"
+  fail=1
+else
+  # Never a PR gate: no pull_request trigger, never a required check.
+  if grep -qE 'pull_request:' "$journey"; then
+    echo "staging-journey.yml must never trigger on pull_request (post-merge only)"
+    fail=1
+  fi
+  for requirement in \
+    "concurrency:" \
+    "staging-journey" \
+    "cancel-in-progress: false" \
+    "environment: staging" \
+    "run-staging-journey.sh" \
+    "timeout-minutes:"; do
+    if ! grep -qF "$requirement" "$journey"; then
+      echo "$journey is missing: $requirement"
+      fail=1
+    fi
+  done
+  # Secrets come only from the staging Environment — no repo/baked values.
+  if grep -qE 'postgres://[^ $"'\'']+|supabase\.co.*key|eyJ[A-Za-z0-9_-]{10,}' "$journey"; then
+    echo "$journey appears to bake in a connection string, key, or JWT — secrets come only from the staging environment"
+    fail=1
+  fi
+ fi
+
 echo "Checking removed split workflows stay removed..."
 for removed in application docs-harness image-service integration poi-service visual; do
   if [[ -e ".github/workflows/$removed.yml" ]]; then

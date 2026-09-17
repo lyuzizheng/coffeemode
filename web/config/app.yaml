@@ -245,6 +245,14 @@ budgets:
     bestPractices: 0.85
     seo: 0.85
 
+staging:
+  # Staging-journey concurrency cap (spec 0010 S4): Vitest workers inside one
+  # staging run. Each worker holds its own scratch DB, so this bounds
+  # parallel CREATE/DROP DATABASE pressure on shared staging. Local and CI
+  # integration runs are hermetic and uncapped; the runner
+  # (scripts/devops/run-staging-journey.sh) reads this as STAGING_MAX_WORKERS
+  # (VITEST_MAX_WORKERS for the suite) - per-invocation override only.
+  maxWorkers: 4
 
 runtimeConfig:
   # Edge cache for GET /api/config (BRAWUKA-284): operator edits land ≤60s

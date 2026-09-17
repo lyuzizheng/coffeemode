@@ -9,6 +9,7 @@ import { parseQuerySection } from "./query";
 import { parseRuntimeConfigSection } from "./runtime";
 import { parseSearchSection } from "./search";
 import { parseSeoSection } from "./seo";
+import { parseStagingSection } from "./staging";
 import { parseValidationSection } from "./validation";
 import type { AppConfig } from "./types";
 
@@ -95,6 +96,7 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
     ),
     profile: parseProfileSection(file, record(file, "profile", root.profile)),
     query: parseQuerySection(file, record(file, "query", root.query)),
+    staging: parseStagingSection(file, record(file, "staging", root.staging)),
     runtimeConfig: parseRuntimeConfigSection(file, record(file, "runtimeConfig", root.runtimeConfig)),
     images: parseImagesSection(file, record(file, "images", root.images)),
     validation: parseValidationSection(file, record(file, "validation", root.validation)),

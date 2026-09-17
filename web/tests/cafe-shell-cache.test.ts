@@ -191,6 +191,7 @@ function minimalValid() {
     profile: { listLimitMax: 50, listPageSize: 20, displayNameMaxChars: 24, recentSearchesMax: 20, handle: { minChars: 3, maxChars: 30, changeCooldownDays: 7, slugMaxChars: 25, generateMaxAttempts: 10 } },
     images: { maxOriginalDimension: 4096, webpQuality: 80, r2DownloadTimeoutMs: 30000, r2UploadTimeoutMs: 30000, downloadSlackBytes: 524288 },
     query: { staleTimeMs: 300000, gcTimeMs: 86400000, persistMaxAgeMs: 604800000 },
+    staging: { maxWorkers: 4 },
     runtimeConfig: { responseCache: { sMaxAgeSeconds: 60, staleWhileRevalidateSeconds: 300 } },
     validation: { cafeAddressMaxChars: 300, profileCityMaxChars: 50 },
     budgets: {

@@ -97,6 +97,7 @@ describe("config files", () => {
       gcTimeMs: 86400000,
       persistMaxAgeMs: 604800000,
     });
+    expect(appConfig.staging).toEqual({ maxWorkers: 4 });
     expect(appConfig.validation).toEqual({ cafeAddressMaxChars: 300, profileCityMaxChars: 50 });
     expect(appConfig.map).toEqual({
       provider: "maplibre",
@@ -303,6 +304,7 @@ describe("parseAppConfig validation", () => {
     downloadSlackBytes: 524288,
   };
   const validQuery = { staleTimeMs: 300000, gcTimeMs: 86400000, persistMaxAgeMs: 604800000 };
+  const validStaging = { maxWorkers: 4 };
   const validValidation = { cafeAddressMaxChars: 300, profileCityMaxChars: 50 };
   const validRuntimeConfig = { responseCache: { sMaxAgeSeconds: 60, staleWhileRevalidateSeconds: 300 } };
   const validOnboarding = { cityCoverageKm: 50, geolocationTimeoutMs: 10000 };
@@ -333,6 +335,7 @@ describe("parseAppConfig validation", () => {
       profile: validProfile,
       images: validImages,
       query: validQuery,
+      staging: validStaging,
       validation: validValidation,
       runtimeConfig: validRuntimeConfig,
       budgets: validBudgets,
@@ -357,6 +360,7 @@ describe("parseAppConfig validation", () => {
         seo: validSeo,
         promptQueue: validPromptQueue,
         profile: validProfile,
+        staging: validStaging,
         budgets: validBudgets,
       }),
     ).toThrow(/"checkins" must be a mapping/);
@@ -396,6 +400,7 @@ describe("parseAppConfig validation", () => {
         profile: validProfile,
         images: validImages,
         query: validQuery,
+      staging: validStaging,
         validation: validValidation,
       runtimeConfig: validRuntimeConfig,
       }),
@@ -416,6 +421,7 @@ describe("parseAppConfig validation", () => {
         promptQueue: validPromptQueue,
         checkins: validCheckins,
         profile: validProfile,
+        staging: validStaging,
         budgets: validBudgets,
       }),
     ).toThrow(/"search\.maxRadiusKm" must be a positive number/);
@@ -433,6 +439,7 @@ describe("parseAppConfig validation", () => {
         promptQueue: validPromptQueue,
         checkins: validCheckins,
         profile: validProfile,
+        staging: validStaging,
         budgets: validBudgets,
       }),
     ).toThrow(/"discovery\.defaultCenter\.lat" must be a number within \[-90,90\]/);
@@ -455,6 +462,7 @@ describe("parseAppConfig validation", () => {
         checkins: validCheckins,
         promptQueue: validPromptQueue,
         profile: validProfile,
+        staging: validStaging,
         budgets: validBudgets,
       }),
     ).toThrow(/"seo\.shellCache\.sMaxAgeSeconds" must be a positive integer/);
@@ -474,6 +482,7 @@ describe("parseAppConfig validation", () => {
         promptQueue: validPromptQueue,
         checkins: { photoCap: 6.5, noteMaxChars: 500, pendingDraftTtlHours: 72 },
         profile: validProfile,
+        staging: validStaging,
         budgets: validBudgets,
       }),
     ).toThrow(/"checkins\.photoCap" must be a positive integer/);
@@ -491,6 +500,7 @@ describe("parseAppConfig validation", () => {
       seo: validSeo,
         promptQueue: validPromptQueue,
       profile: validProfile,
+      staging: validStaging,
       budgets: validBudgets,
     };
     expect(() =>
@@ -517,6 +527,7 @@ describe("parseAppConfig validation", () => {
         profile: validProfile,
         images: validImages,
         query: validQuery,
+      staging: validStaging,
         validation: validValidation,
       runtimeConfig: validRuntimeConfig,
         budgets: {
@@ -544,6 +555,7 @@ describe("parseAppConfig validation", () => {
       profile: validProfile,
       images: validImages,
       query: validQuery,
+      staging: validStaging,
       validation: validValidation,
       runtimeConfig: validRuntimeConfig,
       budgets: validBudgets,
@@ -576,6 +588,7 @@ describe("parseAppConfig validation", () => {
         profile: validProfile,
         images: validImages,
         query: validQuery,
+      staging: validStaging,
         validation: validValidation,
       runtimeConfig: validRuntimeConfig,
         budgets: validBudgets,
@@ -599,6 +612,7 @@ describe("parseAppConfig validation", () => {
         profile: validProfile,
         images: validImages,
         query: validQuery,
+      staging: validStaging,
         validation: validValidation,
       runtimeConfig: validRuntimeConfig,
         budgets: validBudgets,
@@ -620,6 +634,7 @@ describe("parseAppConfig validation", () => {
       checkins: validCheckins,
       images: validImages,
       query: validQuery,
+      staging: validStaging,
       validation: validValidation,
       runtimeConfig: validRuntimeConfig,
       budgets: validBudgets,
@@ -665,6 +680,7 @@ describe("parseAppConfig validation", () => {
       profile: validProfile,
       images: validImages,
       query: validQuery,
+      staging: validStaging,
       validation: validValidation,
       runtimeConfig: validRuntimeConfig,
       budgets: validBudgets,
@@ -705,6 +721,7 @@ describe("parseAppConfig validation", () => {
         promptQueue: validPromptQueue,
       checkins: validCheckins,
       profile: validProfile,
+      staging: validStaging,
       runtimeConfig: validRuntimeConfig,
       budgets: validBudgets,
     };

@@ -30,20 +30,20 @@ export const R2_ALLOWED_HOSTS = [R2_PROD_PUBLIC_HOST, R2_STAGING_PUBLIC_HOST] as
  * Public CDN host for processed image variants.
  * Defaults to production CDN host; evaluates to staging host when
  * NEXT_PUBLIC_R2_PUBLIC_URL is injected during staging standalone builds.
- * Guards `typeof process !== "undefined"` to prevent service worker runtime breaks.
+ * Uses direct member access `process.env.NEXT_PUBLIC_R2_PUBLIC_URL` so Next.js
+ * bundler statically inlines the value into client and SSR bundles.
  */
-export const R2_PUBLIC_HOST =
-  typeof process !== "undefined" && process.env?.NEXT_PUBLIC_R2_PUBLIC_URL
-    ? ((): string => {
-        try {
-          const raw = process.env.NEXT_PUBLIC_R2_PUBLIC_URL;
-          const host = new URL(raw.includes("://") ? raw : `https://${raw}`).hostname;
-          return (R2_ALLOWED_HOSTS as readonly string[]).includes(host) ? host : R2_PROD_PUBLIC_HOST;
-        } catch {
-          return R2_PROD_PUBLIC_HOST;
-        }
-      })()
-    : R2_PROD_PUBLIC_HOST;
+export const R2_PUBLIC_HOST = process.env.NEXT_PUBLIC_R2_PUBLIC_URL
+  ? ((): string => {
+      try {
+        const raw = process.env.NEXT_PUBLIC_R2_PUBLIC_URL;
+        const host = new URL(raw.includes("://") ? raw : `https://${raw}`).hostname;
+        return (R2_ALLOWED_HOSTS as readonly string[]).includes(host) ? host : R2_PROD_PUBLIC_HOST;
+      } catch {
+        return R2_PROD_PUBLIC_HOST;
+      }
+    })()
+  : R2_PROD_PUBLIC_HOST;
 
 /** Absolute public CDN URL for an R2 object key (leading slash tolerated). */
 export function r2PublicUrl(key: string): string {

@@ -32,9 +32,6 @@ jobs:
     environment: staging
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       - name: Trigger Dokploy Staging Deployment
         env:
           DOKPLOY_URL: ${{ secrets.DOKPLOY_URL || 'https://dokploy.brabalawuka.cc' }}

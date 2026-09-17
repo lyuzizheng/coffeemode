@@ -29,6 +29,7 @@ services:
       dockerfile: Dockerfile
       args:
         APP_VERSION: ${IMAGE_TAG:-latest}
+        NEXT_PUBLIC_R2_PUBLIC_URL: ${NEXT_PUBLIC_R2_PUBLIC_URL:-https://staging-images.cafemood.app}
     container_name: coffeemode-web-staging
     restart: unless-stopped
     # Environment file precedence: .env base defaults first, .env.staging overrides second.

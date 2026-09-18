@@ -5,7 +5,7 @@
  * callers. Failures are normal states, never thrown errors.
  */
 
-export type GeoFailure = "denied" | "unavailable" | "unsupported";
+type GeoFailure = "denied" | "unavailable" | "unsupported";
 
 export type GeoResult =
   | { ok: true; lat: number; lng: number }

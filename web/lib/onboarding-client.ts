@@ -5,7 +5,7 @@
  * callers treat null as "resolve later", never as an error surface.
  */
 
-export interface ResolvedLocateCity {
+interface ResolvedLocateCity {
   id: string;
   name: string;
   nameZh: string;

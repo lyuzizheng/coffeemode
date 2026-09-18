@@ -80,9 +80,10 @@ export function useCheckinFeed(cafeId: string, mode: CheckInFeedMode) {
   const likeMutation = useLikeMutation(queryClient, cafeId, t("like_signin"), t("load_failed"));
   const mutateLike = likeMutation.mutate;
 
-  // Stable identity so a memoized FeedCard does not re-render on every
-  // parent render (BRAWUKA-281 P2). `mutate` is stable across renders;
-  // depending on the whole mutation object would defeat the memo.
+  // Stable identity so FeedCard re-renders only when its own props change
+  // (BRAWUKA-281 P2; memo itself tracked under BRAWUKA-397). `mutate` is
+  // stable across renders; depending on the whole mutation object would
+  // defeat that.
   const like = useCallback(
     (checkin: PublicCheckIn) => mutateLike(checkin),
     [mutateLike],

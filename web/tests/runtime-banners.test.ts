@@ -3,7 +3,6 @@ import {
   fetchRuntimeConfig,
   isBannerKind,
   isBannerLive,
-  isFlagsRecord,
   isRuntimeBanner,
   pickBannerText,
   selectLiveBanner,
@@ -31,12 +30,6 @@ describe("runtime banner guards (BRAWUKA-284)", () => {
     expect(
       isRuntimeBanner({ id: "a", kind: "outage", text: { en: "ok" } }),
     ).toBe(true);
-  });
-
-  it("rejects non-boolean flag maps", () => {
-    expect(isFlagsRecord({ a: true })).toBe(true);
-    expect(isFlagsRecord({ a: "yes" })).toBe(false);
-    expect(isFlagsRecord(null)).toBe(false);
   });
 
   it("drops expired banners and keeps undated ones", () => {

@@ -1,16 +1,16 @@
 /**
  * Agent-QA test personas (BRAWUKA-408).
  *
- * Two identities, deliberately distinct from the scripted staging-journey
- * users (`staging-journey+…` in `web/tests/helpers/staging-session.ts`):
+ * Two identities on the non-routable `coffeemode.test` domain (these
+ * addresses can never reach a real inbox):
  *
  *   - `agent-qa-fresh-<runId>@coffeemode.test` — per-run, deleted after the run.
  *   - `agent-qa-regular@coffeemode.test` — persistent, seeded history, NEVER
  *     deleted by cleanup (this corrects the design's email-pattern sweep,
  *     which would have matched and deleted it).
  *
- * The `coffeemode.test` domain is non-routable, matching the existing
- * staging-session convention — these addresses can never reach a real inbox.
+ * The `coffeemode.test` domain is non-routable — these addresses can never
+ * reach a real inbox.
  */
 
 export const AGENT_QA_TEST_DOMAIN = "coffeemode.test";

@@ -12,7 +12,7 @@ import { resolveCafeTimezone } from "@/lib/db/cafes/meta";
  * honest name source). `runtime: true` marks the DG121 first-nomad case.
  */
 
-export interface ResolvedCity {
+interface ResolvedCity {
   id: string;
   name: string;
   nameZh: string;
@@ -21,7 +21,7 @@ export interface ResolvedCity {
   runtime: boolean;
 }
 
-export interface LocateResolution {
+interface LocateResolution {
   city: ResolvedCity | null;
   inCoverage: boolean;
 }

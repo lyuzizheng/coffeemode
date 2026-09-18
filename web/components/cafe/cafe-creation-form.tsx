@@ -28,7 +28,7 @@ interface CafeCreationFormProps {
 }
 
 /** Copy `submitFailureMessage` may need, resolved from the `create` namespace. */
-type CreateFailureCopy = (key: "photoTooLarge" | "photoUploadFailed" | "createFailed") => string;
+type CreateFailureCopy = (key: "photoTooLarge" | "photoUploadFailed" | "photoInvalid" | "createFailed") => string;
 
 /**
  * Map a submit failure to the message shown under the form (BRAWUKA-124:
@@ -36,6 +36,7 @@ type CreateFailureCopy = (key: "photoTooLarge" | "photoUploadFailed" | "createFa
  */
 function submitFailureMessage(message: string, t: CreateFailureCopy): string {
   if (message === "photo_too_large") return t("photoTooLarge");
+  if (message === "photo_invalid") return t("photoInvalid");
   if (message === "photo_upload_failed" || message === "photo_conversion_failed") {
     return t("photoUploadFailed");
   }

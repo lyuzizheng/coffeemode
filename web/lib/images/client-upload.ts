@@ -14,6 +14,14 @@ export function toWebP(file: File): Promise<Blob> {
   const image = new Image();
   const objectUrl = URL.createObjectURL(file);
   image.onload = () => {
+    // A decoded image with no intrinsic size (e.g. an SVG without width/height)
+    // reports 0×0 — the canvas would emit a 1×1 blank WebP, so reject it as an
+    // unusable file rather than uploading an empty photo (BRAWUKA-453).
+    if (image.naturalWidth === 0 || image.naturalHeight === 0) {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("photo_invalid"));
+      return;
+    }
     const scale = Math.min(1, getImageMaxDimension() / Math.max(image.naturalWidth, image.naturalHeight));
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));

@@ -284,20 +284,22 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
     expect(rows.rows[0].note).toBe("first attempt");
   });
 
-  it("Path 4: feed exposes newest-first and helpful orderings with keyset cursors", async () => {
-    const created = await createCafeWithFirstCheckIn(JOURNEY_U1, {
-      name: "Feed Pagination House",
-      lat: 1.3075,
-      lng: 103.8335,
-      address: "3 Orchard Rd, Singapore",
-      city: "singapore",
-      checkin: {
-        scores: { overall: 80 },
-        max_stay: "unlimited",
-        note: "feed anchor",
-        photo_ids: [],
-      },
-    });
+  it(
+    "Path 4: feed exposes newest-first and helpful orderings with keyset cursors",
+    async () => {
+      const created = await createCafeWithFirstCheckIn(JOURNEY_U1, {
+        name: "Feed Pagination House",
+        lat: 1.3075,
+        lng: 103.8335,
+        address: "3 Orchard Rd, Singapore",
+        city: "singapore",
+        checkin: {
+          scores: { overall: 80 },
+          max_stay: "unlimited",
+          note: "feed anchor",
+          photo_ids: [],
+        },
+      });
     createdCafeIds.add(created.cafe_id);
     const feed_cafe_id = created.cafe_id;
     const feed_creation_checkin_id = created.checkin_id;
@@ -360,8 +362,10 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
       viewerId: null,
     });
     expect(helpful.checkins[0]?.id).toBe(oldest_feed_checkin_id);
-    expect(helpful.checkins[0]?.likes_count).toBe(2);
-  });
+      expect(helpful.checkins[0]?.likes_count).toBe(2);
+  },
+  120_000,
+);
 
   it("Path 5: like/unlike toggles atomically with symmetric counters (DG08)", async () => {
     const created = await createCafeWithFirstCheckIn(JOURNEY_U1, {

@@ -2492,14 +2492,23 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     });
   });
   describeDb("BRAWUKA-180 split-module backfill on real SQL", () => {
-    // Wall-clock pause (not a fake-timer case): the lost-race tests below coordinate
-    // TWO live Postgres connections (an uncommitted holder + the victim insert blocked
-    // on its unique index). Fake timers cannot advance real DB I/O, so a short real
-    // delay lets the victim reach its blocked INSERT before the holder commits.
-    function sleepForRace(): Promise<void> {
-      const { promise, resolve } = Promise.withResolvers<void>();
-      setTimeout(resolve, 500);
-      return promise;
+    // Deterministic synchronization: poll pg_locks for the ungranted transactionid
+    // lock where the concurrent victim blocks on the unique index. This eliminates
+    // arbitrary sleep timeouts that fail over high-latency or tunneled connections.
+    async function waitForBlockedVictim(holder: pg.Client, timeoutMs = 15_000): Promise<void> {
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        const res = await holder.query<{ count: string }>(
+          "select count(*) from pg_locks where not granted and locktype = 'transactionid'",
+        );
+        if (parseInt(res.rows[0]?.count ?? "0", 10) > 0) {
+          return;
+        }
+        const { promise, resolve } = Promise.withResolvers<void>();
+        setTimeout(resolve, 50);
+        await promise;
+      }
+      throw new Error(`waitForBlockedVictim timed out after ${timeoutMs}ms waiting for victim to block`);
     }
 
     it("parseNavigationBody validates bodies; recordNavigation writes and 404s", async () => {
@@ -2597,7 +2606,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
           },
           fakeProvisionPhotosDeps(),
         );
-        await sleepForRace();
+        await waitForBlockedVictim(holder);
         await holder.query("commit");
         const err = await pending.then(
           () => null,
@@ -2626,7 +2635,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
           [CAFE_A, U2, key],
         );
         const pending = createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 60 }, idempotency_key: key });
-        await sleepForRace();
+        await waitForBlockedVictim(holder);
         await holder.query("commit");
         const result = await pending;
         expect(result.deduped).toBe(true);

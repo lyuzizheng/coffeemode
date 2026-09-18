@@ -54,7 +54,13 @@ export interface DiscoveryController {
   detailHeadingRef: (el: HTMLElement | null) => void;
 }
 
-export function useDiscoveryController(options?: { initialCafeId?: string }): DiscoveryController {
+export function useDiscoveryController(options?: {
+  initialCafeId?: string;
+  /** Detent the sheet opens at when `initialCafeId` is set — "half" for
+   * in-app-style arrivals, "full" for the /cafes/[id] SSR shell that
+   * hydrates into the map app (DG124). */
+  initialSnap?: SheetSnap;
+}): DiscoveryController {
   const t = useTranslations("discovery");
   const initialValidId =
     options?.initialCafeId && isValidUUID(options.initialCafeId)
@@ -62,7 +68,9 @@ export function useDiscoveryController(options?: { initialCafeId?: string }): Di
       : null;
 
   const [selectedCafeId, setSelectedCafeId] = useState<string | null>(initialValidId);
-  const [snap, setSnap] = useState<SheetSnap>(() => (initialValidId ? "half" : "peek"));
+  const [snap, setSnap] = useState<SheetSnap>(() =>
+    initialValidId ? (options?.initialSnap ?? "half") : "peek",
+  );
   const cardRefs = useRef(new Map<string, HTMLElement>());
   const headingEl = useRef<HTMLElement | null>(null);
   const focusPending = useRef(Boolean(initialValidId));

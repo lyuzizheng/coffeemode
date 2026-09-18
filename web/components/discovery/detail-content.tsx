@@ -102,6 +102,13 @@ function DetailSkeleton() {
     </div>
   );
 }
+/** Slot appended to the FULL dossier for one specific cafe (DG124): the
+ * SSR shell's owner-only controls ride hydration into the sheet — gated on
+ * the fetched cafe's id so a later selection never inherits them. */
+export interface DetailFooter {
+  cafeId: string;
+  node: ReactNode;
+}
 
 export function DetailContent({
   cafeId,
@@ -110,6 +117,7 @@ export function DetailContent({
   onCheckIn,
   onClose,
   distanceM,
+  footer,
 }: {
   cafeId: string;
   variant: "half" | "full";
@@ -119,8 +127,10 @@ export function DetailContent({
   onClose?: () => void;
   /** Meters from the query point — summaries carry it, the detail row does not. */
   distanceM?: number;
+  footer?: DetailFooter;
 }) {
   const t = useTranslations("discovery");
+  const tc = useTranslations("cafeDetail");
   const locale = useLocale();
   const { detailHeadingRef, handleMissingCafe } = controller;
   // SSR-seeded detail (BRAWUKA-283 P2-3): `CafeDetailSeed` on the cafe page
@@ -148,15 +158,25 @@ export function DetailContent({
 
   const heading = (
     <div className="flex items-start justify-between gap-2">
-      <h2
-        ref={detailHeadingRef}
-        tabIndex={-1}
-        className={`font-display font-bold tracking-tight text-balance text-foreground outline-none ${
-          variant === "full" ? "text-2xl" : "text-xl"
-        }`}
-      >
-        {cafe.name}
-      </h2>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <h2
+          ref={detailHeadingRef}
+          tabIndex={-1}
+          className={`font-display font-bold tracking-tight text-balance text-foreground outline-none ${
+            variant === "full" ? "text-2xl" : "text-xl"
+          }`}
+        >
+          {cafe.name}
+        </h2>
+        {/* Owner-only marker (DG147): the API serves private cafes to their
+            creator — the badge keeps the hydrated dossier honest like the
+            SSR shell's. */}
+        {cafe.visibility === "private" && (
+          <span className="rounded-sm bg-surface-secondary px-2.5 py-1 text-xs text-muted">
+            {tc("private_badge")}
+          </span>
+        )}
+      </div>
       {onClose && (
         <Button
           variant="ghost"
@@ -230,6 +250,7 @@ export function DetailContent({
         onMissingCafe={handleMissingCafe}
         onCheckIn={onCheckIn}
       />
+      {footer && footer.cafeId === cafe.id ? footer.node : null}
     </div>
   );
 }

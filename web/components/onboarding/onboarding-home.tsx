@@ -11,11 +11,47 @@ import type { ReactNode } from "react";
 import { AnimatePresence } from "framer-motion";
 import type { CityInfo, Coordinates } from "@/lib/cities";
 import { useMounted } from "@/hooks/use-mounted";
+import type { SheetSnap } from "@/lib/discovery/use-discovery-controller";
 import { DiscoveryHome } from "@/components/discovery/discovery-home";
+import type { DetailFooter } from "@/components/discovery/detail-content";
 import { MapAccountChip } from "@/components/map/map-account-chip";
 import { LocateButton } from "./locate-button";
 import { useOnboarding, type OnboardingState } from "./use-onboarding";
 import { WelcomeCard } from "./welcome-card";
+
+interface OnboardingHomeProps {
+  /** IP-detected launch city (DG128); null → no detection line. */
+  detectedCity: CityInfo | null;
+  /** Server-computed starting center: profile city → last location →
+   * detected city → configured default. */
+  initialCenter: Coordinates;
+  isAuthenticated: boolean;
+  /** profiles.onboarded — authoritative for signed-in users (DG122). */
+  serverOnboarded: boolean;
+  /** Signed-in profile fields mirrored into localStorage on merge (DG122). */
+  profileSeed?: { currentCity: string; lastLocation: Coordinates | null };
+  /** Deep-link-style arrivals never see the card (DG124). */
+  suppressCard?: boolean;
+  addCafe: ReactNode;
+  /** Round add-cafe FAB slot (BRAWUKA-364) — floats over the map. */
+  addCafeFab?: ReactNode;
+  initialCafeId?: string;
+  /** Detent the mobile sheet opens at for `initialCafeId` — "full" on the
+   * /cafes/[id] deep link (DG124), default "half" elsewhere. */
+  initialSnap?: SheetSnap;
+  /** Slot appended to the FULL dossier for `cafeId` only (DG124: the SSR
+   * shell's owner controls survive hydration inside the sheet). */
+  detailFooter?: DetailFooter;
+  /** Search city scope override (DG124: the linked cafe's launch city);
+   * falls back to the IP-detected city like the home entry. */
+  city?: string;
+  /** Signed-in display-name initial for the map account chip; absent → the
+   * chip shows the sign-in affordance (BRAWUKA-318). */
+  accountInitial?: string;
+  /** DG143 request-time MapKit readiness — forwarded to search + creation. */
+  mapkitConfigured?: boolean;
+  children: ReactNode;
+}
 
 export function OnboardingHome({
   detectedCity,
@@ -27,33 +63,13 @@ export function OnboardingHome({
   addCafe,
   addCafeFab,
   initialCafeId,
+  initialSnap,
+  detailFooter,
+  city,
   accountInitial,
   mapkitConfigured = false,
   children,
-}: {
-  /** IP-detected launch city (DG128); null → no detection line. */
-  detectedCity: CityInfo | null;
-  /** Server-computed starting center: profile city → last location →
-   * detected city → configured default. */
-  initialCenter: Coordinates;
-  isAuthenticated: boolean;
-  /** profiles.onboarded — authoritative for signed-in users (DG122). */
-  serverOnboarded: boolean;
-  /** Signed-in profile fields mirrored into localStorage on merge (DG122). */
-  profileSeed?: { currentCity: string; lastLocation: Coordinates | null };
-  /** Deep-link-style arrivals (?cafe=) never see the card (DG124). */
-  suppressCard?: boolean;
-  addCafe: ReactNode;
-  /** Round add-cafe FAB slot (BRAWUKA-364) — floats over the map. */
-  addCafeFab?: ReactNode;
-  initialCafeId?: string;
-  /** Signed-in display-name initial for the map account chip; absent → the
-   * chip shows the sign-in affordance (BRAWUKA-318). */
-  accountInitial?: string;
-  /** DG143 request-time MapKit readiness — forwarded to search + creation. */
-  mapkitConfigured?: boolean;
-  children: ReactNode;
-}) {
+}: OnboardingHomeProps) {
   const mounted = useMounted();
   const onboarding = useOnboarding({
     detectedCity,
@@ -64,24 +80,26 @@ export function OnboardingHome({
     suppressCard,
   });
 
+  const overlay = mounted ? (
+    <MapOverlay
+      detectedCity={detectedCity}
+      onboarding={onboarding}
+      accountInitial={accountInitial}
+    />
+  ) : null;
+
   return (
     <DiscoveryHome
       center={onboarding.center}
       addCafe={addCafe}
       addCafeFab={addCafeFab}
       initialCafeId={initialCafeId}
+      initialSnap={initialSnap}
+      detailFooter={detailFooter}
       isAuthenticated={isAuthenticated}
       mapkitConfigured={mapkitConfigured}
-      city={detectedCity?.id}
-      mapOverlay={
-        mounted ? (
-          <MapOverlay
-            detectedCity={detectedCity}
-            onboarding={onboarding}
-            accountInitial={accountInitial}
-          />
-        ) : null
-      }
+      city={city ?? detectedCity?.id}
+      mapOverlay={overlay}
     >
       {children}
     </DiscoveryHome>

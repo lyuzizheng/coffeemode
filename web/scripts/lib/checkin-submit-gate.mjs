@@ -1,13 +1,19 @@
 /**
  * Check-in submit flow gate (BRAWUKA-121, artifact §8 e2e coverage).
  *
- * The drawer's own contract sends signed-out sessions to the sign-in gate —
- * a real POST can never leave this browser. So the auth boundary is mocked:
- * `/api/checkins/last` answers "no prior check-in" (which also confirms auth
- * for the drawer) and `POST /api/checkins` returns 201. Everything else —
- * drawer open, overall slider, submit, success card, auto-close, toast, and
- * the feed's `cafe-checkins` refetch — runs against the real standalone
- * build and the seeded cafe page.
+ * Signs in for real against the supabase-mock (compose service, :54321):
+ * `/auth/v1/token` accepts any credentials and returns a fake JWT the app's
+ * server session check validates via `/auth/v1/user`. The session cookie is
+ * the @supabase/ssr `base64-`-prefixed JSON shape (`sb-<host>-auth-token`).
+ * Everything else — drawer open, overall slider, submit, success card,
+ * auto-close, toast, and the feed's `cafe-checkins` refetch — runs against
+ * the real standalone build and the seeded cafe page. The POST hits the real
+ * API and writes to the test database (fixture cleanup removes it).
+ *
+ * DG124 note: the cafe page now hydrates into the map app, where
+ * `isAuthenticated` comes from the server session — the old probe-mock trick
+ * (a 200 on /api/checkins/last standing in for auth) can no longer simulate
+ * a signed-in user, so the session must be real.
  */
 
 const DRAWER_DIALOG_SELECTOR = "section.drawer__dialog--bottom";
@@ -19,6 +25,66 @@ function assert(condition, message) {
 }
 
 /**
+ * Mint a session at the supabase-mock and return the @supabase/ssr cookie
+ * pair. Returns null when the mock is unreachable — the caller degrades to
+ * a skip instead of failing the whole suite.
+ */
+async function mintSession(supabaseUrl, userId) {
+  try {
+    const res = await fetch(`${supabaseUrl}/auth/v1/token`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "e2e@coffeemode.test", userId }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const session = {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      token_type: "bearer",
+      expires_in: 3600,
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      user: data.user,
+    };
+    // @supabase/ssr storage key: sb-<first host label>-auth-token.
+    const host = new URL(supabaseUrl).hostname.split(".")[0];
+    return {
+      name: `sb-${host}-auth-token`,
+      value: `base64-${Buffer.from(JSON.stringify(session)).toString("base64url")}`,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Wait out the SSR shell overlay, open the check-in drawer from the app's
+ * CTA, set the required overall slider (End = 100), and submit.
+ */
+async function openDrawerAndSubmit(page) {
+  // DG124: the SSR shell is a hydration overlay — its own Check-in CTA is
+  // live before the app mounts, and the overlay unmounts once hydration
+  // lands. A drawer opened from the shell dies with it, so wait for the
+  // masthead to detach before touching any CTA.
+  await page.waitForSelector("header", { state: "detached", timeout: 15000 });
+
+  const trigger = page.getByRole("button", { name: /Check in|Check-in|打卡/i }).first();
+  await trigger.waitFor({ state: "visible", timeout: 15000 });
+  const dialog = page.locator(DRAWER_DIALOG_SELECTOR);
+  for (let attempt = 0; attempt < 20 && !(await dialog.isVisible()); attempt++) {
+    await trigger.click();
+    await dialog.waitFor({ state: "visible", timeout: 1000 }).catch(() => {});
+  }
+  assert(await dialog.isVisible(), "check-in drawer did not open");
+
+  const overall = dialog.getByRole("slider", { name: /Overall experience|整体体验/i });
+  await overall.focus();
+  await overall.press("End");
+  await dialog.getByRole("button", { name: /^Check in$|^打卡$/i }).click();
+  return dialog;
+}
+
+/**
  * Open the drawer, set Overall experience, submit, and assert the success
  * moment, auto-close, toast, and feed invalidation.
  *
@@ -26,29 +92,43 @@ function assert(condition, message) {
  * @param {string} options.label    log/error label for the trace.
  * @param {string} options.base     served origin of the standalone build.
  * @param {string} options.cafeId   DB-seeded cafe whose page carries the CTA.
+ * @param {string} options.userId   DB-seeded profile id the session maps to.
+ * @param {import("pg").Client} options.dbClient live fixture client — the
+ *   seeded check-in for (userId, cafeId) is deleted so the drawer opens in
+ *   create mode; fixture cleanup removes the row this gate creates.
  * @param {Function} options.createContext        smoke-suite context factory.
  * @param {Function} options.attachErrorCollector smoke-suite console/pageerror collector.
  */
-export async function runCheckinSubmitGate({ label, base, cafeId, createContext, attachErrorCollector }) {
+export async function runCheckinSubmitGate({
+  label,
+  base,
+  cafeId,
+  userId,
+  dbClient,
+  createContext,
+  attachErrorCollector,
+}) {
+  const supabaseUrl = process.env.E2E_SUPABASE_URL ?? "http://127.0.0.1:54321";
+  const sessionCookie = await mintSession(supabaseUrl, userId);
+  if (!sessionCookie) {
+    console.warn(
+      `[E2E] SKIP ${label}: supabase-mock unreachable at ${supabaseUrl} — start it with \`docker compose up -d supabase-mock\``,
+    );
+    return;
+  }
+
+  // The fixture seeds a check-in by this user at this cafe, which would open
+  // the drawer in edit mode. Remove it so the create-mode contract is what
+  // gets exercised; cleanup deletes whatever this gate writes.
+  await dbClient.query(`delete from checkins where user_id = $1 and cafe_id = $2`, [userId, cafeId]);
+
   const context = await createContext({
     viewport: { width: 390, height: 844 },
     isMobile: true,
     hasTouch: true,
   });
   try {
-    // Mock the auth boundary only: the last-check-in probe answers "no prior
-    // check-in" (a 200 also confirms auth to the drawer, so submit posts
-    // instead of opening the sign-in gate) and the POST accepts.
-    await context.route("**/api/checkins/last**", (route) =>
-      route.fulfill({ status: 200, json: { checkin: null, revisitWindowHours: 24 } }),
-    );
-    await context.route("**/api/checkins", (route) => {
-      if (route.request().method() !== "POST") return route.fallback();
-      return route.fulfill({
-        status: 201,
-        json: { checkinId: "e2e00000-0000-4000-a000-000000000099" },
-      });
-    });
+    await context.addCookies([{ ...sessionCookie, url: base }]);
 
     const page = await context.newPage();
     const checkErrors = attachErrorCollector(page, label, {
@@ -64,23 +144,7 @@ export async function runCheckinSubmitGate({ label, base, cafeId, createContext,
     });
 
     await page.goto(`${base}/cafes/${cafeId}`, { waitUntil: "domcontentloaded" });
-
-    const trigger = page.getByRole("button", { name: /Check in|Check-in|打卡/i }).first();
-    await trigger.waitFor({ state: "visible", timeout: 15000 });
-    const dialog = page.locator(DRAWER_DIALOG_SELECTOR);
-    for (let attempt = 0; attempt < 20 && !(await dialog.isVisible()); attempt++) {
-      await trigger.click();
-      await dialog.waitFor({ state: "visible", timeout: 1000 }).catch(() => {});
-    }
-    assert(await dialog.isVisible(), "check-in drawer did not open");
-
-    // Set the required overall slider via its keyboard contract (End = 100),
-    // then submit from the drawer footer.
-    const overall = dialog.getByRole("slider", { name: /Overall experience|整体体验/i });
-    await overall.focus();
-    await overall.press("End");
-    const submit = dialog.getByRole("button", { name: /^Check in$|^打卡$/i });
-    await submit.click();
+    const dialog = await openDrawerAndSubmit(page);
 
     // Success moment: the card shows, then the drawer auto-closes (900ms
     // dwell) and the toast confirms.
@@ -88,7 +152,10 @@ export async function runCheckinSubmitGate({ label, base, cafeId, createContext,
     await dialog.waitFor({ state: "hidden", timeout: 5000 });
     await page.getByText(/Check-in saved|打卡成功/i).waitFor({ state: "visible", timeout: 5000 });
 
-    assert(feedFetches >= 2, `expected the check-in feed to refetch after submit, saw ${feedFetches} fetch(es)`);
+    assert(
+      feedFetches >= 2,
+      `expected the check-in feed to refetch after submit, saw ${feedFetches} fetch(es)`,
+    );
 
     checkErrors();
   } finally {

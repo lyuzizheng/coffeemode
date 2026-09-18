@@ -27,7 +27,7 @@ import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { useDiscoveryController } from "@/lib/discovery/use-discovery-controller";
+import { useDiscoveryController, type SheetSnap } from "@/lib/discovery/use-discovery-controller";
 import { DiscoveryMapContext } from "@/lib/discovery/map-context";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useMounted } from "@/hooks/use-mounted";
@@ -42,6 +42,7 @@ import type { DiscoverySearch } from "./use-discovery-search";
 import type { CreationDraft } from "./use-discovery-search";
 import { DesktopDiscovery } from "./desktop-discovery";
 import { MobileSheet } from "./mobile-sheet";
+import type { DetailFooter } from "./detail-content";
 import { SHEET_PEEK_PX } from "@/lib/layout";
 
 async function fetchNearbyCafes(lat: number, lng: number): Promise<CafeSummary[]> {
@@ -162,6 +163,8 @@ export function DiscoveryHome({
   addCafe,
   addCafeFab,
   initialCafeId,
+  initialSnap,
+  detailFooter,
   isAuthenticated,
   mapkitConfigured = false,
   city,
@@ -178,6 +181,11 @@ export function DiscoveryHome({
   addCafeFab?: ReactNode;
   /** Optional initial selected cafe ID (e.g. from ?cafe= query param) */
   initialCafeId?: string;
+  /** Detent the mobile sheet opens at for `initialCafeId` — "full" on the
+   * /cafes/[id] deep link (DG124), default "half" elsewhere. */
+  initialSnap?: SheetSnap;
+  /** FULL dossier slot for the deep-linked cafe (DG124). */
+  detailFooter?: DetailFooter;
   /** Server-known auth state — forwarded to the check-in drawer's sign-in gate. */
   isAuthenticated?: boolean;
   /** DG143 request-time MapKit readiness — gates the Apple search CTA and
@@ -195,7 +203,7 @@ export function DiscoveryHome({
   const t = useTranslations("discovery");
   const mounted = useMounted();
   const isDesktop = useMediaQuery("(min-width: 1024px)");
-  const controller = useDiscoveryController({ initialCafeId });
+  const controller = useDiscoveryController({ initialCafeId, initialSnap });
 
   const cafesQuery = useQuery({
     queryKey: ["cafes-list", center.lat, center.lng],
@@ -259,6 +267,7 @@ export function DiscoveryHome({
     navPrompt: navPromptView("sheet"),
     distanceM,
     search,
+    detailFooter,
   };
 
   // The map surface (children) reads controller/cafes/center through context

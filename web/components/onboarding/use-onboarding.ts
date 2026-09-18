@@ -81,10 +81,16 @@ async function persistProfile(patch: {
  * hydration; center only feeds the query key, never markup. For signed-in
  * users the server-computed `initialCenter` (profile city → last location →
  * detected city → default) is authoritative (DG122): a stale anonymous
- * `currentCity` on this device must never override it. */
-function useOnboardingCenter(initialCenter: Coordinates, isAuthenticated: boolean) {
+ * `currentCity` on this device must never override it. Deep-link arrivals
+ * (`suppressStored`) also keep the server center — the linked cafe's
+ * coordinates outrank any stored resumption point (DG124). */
+function useOnboardingCenter(
+  initialCenter: Coordinates,
+  isAuthenticated: boolean,
+  suppressStored: boolean,
+) {
   return useState<Coordinates>(() => {
-    if (isAuthenticated) return initialCenter;
+    if (isAuthenticated || suppressStored) return initialCenter;
     const stored = readOnboardingState();
     if (!stored) return initialCenter;
     const storedCity = stored.currentCity ? findCity(stored.currentCity) : null;
@@ -245,6 +251,33 @@ function useDeniedToasts(setPhase: (phase: OnboardingPhase) => void) {
 }
 
 
+/** Card city picker (DG116/DG117): the Select stages a pick; in the normal
+ * phase the pick IS the choice, in denied mode "Use {city}" commits it. */
+function useCityPicker({
+  detectedCity,
+  phase,
+  commitCity,
+}: {
+  detectedCity: CityInfo | null;
+  phase: OnboardingPhase;
+  commitCity: (city: CityInfo) => void;
+}) {
+  const [selectedCityId, setSelectedCityId] = useState(
+    detectedCity?.id ?? DEFAULT_CITY.id,
+  );
+  const handlePickCity = (cityId: string) => {
+    setSelectedCityId(cityId);
+    if (phase !== "denied") {
+      const city = findCity(cityId);
+      if (city) commitCity(city);
+    }
+  };
+  const handleUseCity = () => {
+    const city = findCity(selectedCityId);
+    if (city) commitCity(city);
+  };
+  return { selectedCityId, handlePickCity, handleUseCity };
+}
 export function useOnboarding({
   detectedCity,
   initialCenter,
@@ -276,10 +309,13 @@ export function useOnboarding({
       : "card",
   );
   const [located, setLocated] = useState(false);
-  const [selectedCityId, setSelectedCityId] = useState(
-    detectedCity?.id ?? DEFAULT_CITY.id,
+  const [center, setCenter] = useOnboardingCenter(
+    initialCenter,
+    isAuthenticated,
+    // Deep-link arrivals (DG124): the linked cafe's coordinates are the
+    // center — a stored city/location must never pull the map away from it.
+    suppressCard ?? false,
   );
-  const [center, setCenter] = useOnboardingCenter(initialCenter, isAuthenticated);
 
   useOnboardingMerge(serverOnboarded, isAuthenticated, profileSeed);
 
@@ -296,20 +332,11 @@ export function useOnboarding({
     ...deniedToasts,
   });
 
-  const handlePickCity = (cityId: string) => {
-    setSelectedCityId(cityId);
-    // Denied mode only stages the pick — "Use {city}" commits it. In the
-    // normal state the pick IS the choice (artifact §2: two choices, one card).
-    if (phase !== "denied") {
-      const city = findCity(cityId);
-      if (city) commitCity(city);
-    }
-  };
-
-  const handleUseCity = () => {
-    const city = findCity(selectedCityId);
-    if (city) commitCity(city);
-  };
+  const { selectedCityId, handlePickCity, handleUseCity } = useCityPicker({
+    detectedCity,
+    phase,
+    commitCity,
+  });
 
   return {
     phase,

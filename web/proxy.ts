@@ -55,6 +55,21 @@ function sanitizedRequest(request: NextRequest): NextRequest {
   headers.delete(GONE_HEADER);
   return new NextRequest(request, { headers });
 }
+
+// DG124: the /?cafe=[id] app entry is retired — stale shared links 308 to
+// the canonical cafe URL, which hydrates into the map app itself. Lives in
+// the proxy rather than next.config `redirects()` because config redirects
+// forward the request query string, landing on /cafes/<id>?cafe=<id> — a
+// non-canonical URL that would re-fire the redirect contract on every hit.
+const LEGACY_CAFE_PARAM = /^[0-9a-fA-F-]{36}$/;
+
+function legacyCafeRedirect(request: NextRequest): NextResponse | null {
+  if (request.nextUrl.pathname !== "/") return null;
+  const cafe = request.nextUrl.searchParams.get("cafe");
+  if (!cafe || !LEGACY_CAFE_PARAM.test(cafe)) return null;
+  return NextResponse.redirect(new URL(`/cafes/${cafe}`, request.url), 308);
+}
+
 async function handleProxy(request: NextRequest) {
   const req = sanitizedRequest(request);
 
@@ -188,7 +203,7 @@ export async function proxy(request: NextRequest) {
   const requestId = getRequestId(request);
   const headers = new Headers(request.headers);
   headers.set(REQUEST_ID_HEADER, requestId);
-  const response = await handleProxy(new NextRequest(request, { headers }));
+  const response = legacyCafeRedirect(request) ?? (await handleProxy(new NextRequest(request, { headers })));
   response.headers.set(REQUEST_ID_HEADER, requestId);
   console.log(
     JSON.stringify({

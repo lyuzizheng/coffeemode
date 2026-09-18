@@ -22,7 +22,7 @@ import { useMounted } from "@/hooks/use-mounted";
 import type { DiscoveryController, SheetSnap } from "@/lib/discovery/use-discovery-controller";
 import type { CafeSummary } from "@/types/cafes";
 import { CafeCardBody } from "./cafe-card";
-import { DetailContent } from "./detail-content";
+import { DetailContent, type DetailFooter } from "./detail-content";
 import { InlineError } from "./inline-error";
 
 /** Handle chrome above the content column: pt-2 + 4px bar + pb-3. */
@@ -160,6 +160,7 @@ export function MobileSheet({
   addCafe,
   navPrompt,
   distanceM,
+  detailFooter,
 }: {
   controller: DiscoveryController;
   cafes: CafeSummary[];
@@ -174,6 +175,8 @@ export function MobileSheet({
   /** Meters from the query point for the selected cafe — resolved by the
    * adapter (search picks may sit outside the nearby list). */
   distanceM?: number;
+  /** FULL dossier slot for the deep-linked cafe (DG124). */
+  detailFooter?: DetailFooter;
 }) {
   const t = useTranslations("discovery");
   const mounted = useMounted();
@@ -369,6 +372,7 @@ export function MobileSheet({
                   controller={controller}
                   onCheckIn={onCheckIn}
                   distanceM={distanceM}
+                  footer={detailFooter}
                 />
               </div>
             </div>

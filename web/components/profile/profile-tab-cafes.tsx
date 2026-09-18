@@ -54,7 +54,7 @@ export function ProfileTabCafes({ baseId, query: cafesQuery }: ProfileTabCafesPr
         <Link
           key={cafe.id}
           href={`/?cafe=${cafe.id}`}
-          className="p-3 bg-surface border border-border rounded-xl flex items-center gap-3 hover:border-border/80 active:scale-[0.99] transition-all"
+          className="p-3 bg-surface border border-border rounded-md flex items-center gap-3 hover:border-border/80 active:scale-[0.99] transition-all"
         >
           <div className="relative w-[var(--layout-thumb)] h-[54px] rounded-sm bg-surface-secondary border border-border/40 flex-shrink-0 flex items-center justify-center overflow-hidden">
             {cafe.cover ? (
@@ -74,7 +74,7 @@ export function ProfileTabCafes({ baseId, query: cafesQuery }: ProfileTabCafesPr
 
           <div className="flex-1 min-w-0 flex flex-col">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="font-display font-semibold text-foreground text-base truncate">
+              <span className="font-display font-bold text-foreground text-md truncate">
                 {cafe.name || t("unknown_cafe")}
               </span>
               {cafe.is_creation && (

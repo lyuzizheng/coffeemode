@@ -72,14 +72,14 @@ else
         poi_service=true
         ;;
       # Integration-gated web paths: real Postgres/PostGIS or real MinIO/R2.
-      # `web/db/*`, `web/lib/*`, and `web/app/api/*` are the layers the gated
+      # `web/db/*`, `web/lib/*`, and `web/app/api/*`, `web/app/auth/*` are the layers the gated
       # suites exercise; `web/shared/*` and `web/types/*` are the runtime modules
       # they import (same policy as `packages/common/*`); `web/config/*` is the
       # product configuration `web/lib/config.ts` loads at import time (rate
       # limits and budgets the HTTP suites assert on); `web/scripts/*` is gate and
       # migration machinery the suites invoke by path (`migrate.mjs`,
       # `cleanup-stale-test-dbs.mjs`), the same policy as repo-level `scripts/*`.
-      web/db/*|web/lib/*|web/app/api/*|web/shared/*|web/types/*|web/config/*|web/scripts/*|web/package*.json)
+      web/db/*|web/lib/*|web/app/api/*|web/app/auth/*|web/shared/*|web/types/*|web/config/*|web/scripts/*|web/package*.json)
         application=true
         integration=true
         ;;

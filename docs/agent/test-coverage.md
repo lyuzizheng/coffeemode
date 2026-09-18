@@ -1,6 +1,6 @@
 # Test Coverage — Traceability Matrix (S3)
 
-Source: `docs/agent/test-kit-plan.md` S3 testkit-coverage-doc · Spec authority: `docs/specs/0003-testing-and-ci.md` layers · Slice manifest: `docs/agent/implementation-slices.md`.
+Spec authority: `docs/specs/0003-testing-and-ci.md` layers · Slice manifest: `docs/agent/implementation-slices.md`.
 
 ## 1. Matrix
 
@@ -9,7 +9,7 @@ Every user trace from the product specs (0001 + 0004 + 0002) maps to a proving f
 | # | Trace (user intent) | Spec ref | Layer(s) | Proving file(s) | Gate that enforces it |
 |---|---|---|---|---|---|
 | T1 | Login Apple / Google — `signIn(provider)` → redirect | 0001 §Auth, 0004 D18a | `unit` + `mocked` | `web/tests/auth/actions.test.ts` (signIn invalid_provider/not_configured/provider_start_failed, OAuth redirect allowlist), `web/tests/auth/supabase-server.test.ts` | `unit` (`npm test`) · `typecheck` |
-| T2 | Login callback — code exchange + profile upsert, error → `/?auth=error` | 0001 §Auth | `mocked` | `web/tests/auth/callback.test.ts` (exchange success/failure, upsert failure signs out), `web/tests/profiles.test.ts`, `web/tests/auth/get-user.test.ts` | `unit` · `visual` (banner on home) |
+| T2 | Login callback — code exchange + profile upsert, error → `/?auth=error` | 0001 §Auth | `mocked` + `integration` | `web/tests/auth/callback.test.ts` (exchange success/failure, upsert failure signs out), `web/tests/integration/http-auth-exchange.integration.test.ts` (real PKCE exchange via `supabase-mock` + Postgres `profiles` upsert + real JWT verification), `web/tests/profiles.test.ts`, `web/tests/auth/get-user.test.ts` | `unit` + `integration:http` · `visual` (banner on home) |
 | T3 | Sign out — session clear, cache bust | 0001 §Auth | `mocked` | `web/tests/auth/actions.test.ts` (signOut success/signout_failed) | `unit` |
 | T4 | Session refresh — `web/proxy.ts` refreshes only when a Supabase cookie is present (`getSession` not `getUser`) | 0001 §Auth A1, 0004 S22 | `mocked` | `web/tests/proxy.test.ts` (refresh + forward cookies, skip when no cookie, gone-cafe 404 commit) | `unit` |
 | T5 | Cafe create (= first check-in) — `POST /api/cafes` fused `cafes`+`checkins(is_creation)`+`work_stats`+gallery, 409 dedupe on `google_place_id`/`apple_poi_id`, tz derive | 0001 §Cafe creation, §Data layer, 0004 API1 | `mocked` + `integration` | mocked: `web/tests/cafes.test.ts` (`createCafeWithFirstCheckIn`, `POST /api/cafes` 201/409/400/401/429, `provisionPhotos` intent check) · real: `web/tests/integration/db.integration.test.ts` (§write paths, §work-profile) | `unit` + `integration` (`npm run test:integration`) |
@@ -65,7 +65,7 @@ Infra helpers never import domain logic; service helpers compose infra primitive
 
 | Gap | Current coverage | What's missing | Unblocks when |
 |---|---|---|---|
-| Auth E2E (real Supabase exchange) | Mocked: `auth/callback.test.ts`, `auth/actions.test.ts`, `proxy.test.ts`; JWT is an unsigned `fakeJwt` (`helpers/auth.ts`) | End-to-end login with a real Supabase Auth emulator (PKCE code → session cookie → `getUser()` → `profiles` upsert) | S2 `supabase-mock` / `supabase/cli` local Auth emulator, or a JWT helper with a real HS256 signature verified by `supabase/auth` |
+| Auth E2E (real Supabase exchange) | Proven: `tests/integration/http-auth-exchange.integration.test.ts` (BRAWUKA-417) covers PKCE OAuth code exchange via `supabase-mock`, Postgres profile upsert via `/auth/callback`, and real JWT verification via `getCurrentUser()`; unit mocked: `auth/callback.test.ts`, `auth/actions.test.ts`, `proxy.test.ts` | Local exchange & token verification proven against compose `supabase-mock`; full third-party OAuth provider round-trip (Apple/Google external dialog) remains E2E manual/staging only | Landed via S2 compose `supabase-mock` (BRAWUKA-417) |
 | POI live search (Google Places API + D1/KV) | Mocked Worker: `places.test.ts` fakes `fetch` to `POI_SERVICE_URL`; `validate-maps-url.test.ts` only checks the Next.js allowlist | Live Worker → D1 → KV → Google API cache path, food-only D1 filter, D1 antimeridian bbox (issue #38), KV TTL | S2 compose: `miniflare-poi` (D1 `poi-store`, KV `poi-cache`) with local bindings + `wrangler.toml` ids |
 | Image service Worker local | Storage proven via real MinIO (`images.integration.test.ts`); Worker itself still mocked (`image-service-client.test.ts`) | `image-service` presign + metadata path through a local workerd/miniflare instance | S2 `miniflare-image` / workerd for `image-service` with `R2_*` → MinIO |
 | Browser / Playwright e2e | Automated `npm run test:e2e` Playwright smoke covers Discovery, SSR Shell with DB fixture, 404 Recovery, Static/Offline, Signed-out Profile, Core APIs (Issue #155), check-in drawer geometry (BRAWUKA-217), and the check-in submit flow with a mocked auth boundary (BRAWUKA-121); `npm run check:visual` adds the open drawer to the rendered matrix (needs the seeded fixture: `ALLOW_SEED_DEV_DB=1` locally) | Full interactive drag/gesture visual baselines | Map-bound and gesture interaction slices |
@@ -97,7 +97,6 @@ Deterministic gate `.agents/scripts/check-coverage-matrix.sh` enforces: (a) `doc
 ## 6. References
 
 - `docs/specs/0003-testing-and-ci.md` §Test layers, §Relevant local gates, §Commands, Appendix Coverage traceability — this file.
-- `docs/agent/test-kit-plan.md` S1 (helpers) → this doc (S3) → S2 (compose/mocks) can parallel after S1.
 - `web/tests/helpers/*` — shared helpers (S1) that removed duplication (direct `../helpers/*` subpath imports; `index.ts` barrel is convenience).
 - `web/tests/integration/*` — real-DB / real-MinIO suites (opt-in `RUN_INTEGRATION=1`; CI `integration-gate` runs them when web DB/storage boundaries change — merged from `integration-gate` + `images-integration-gate`).
 

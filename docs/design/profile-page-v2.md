@@ -33,7 +33,7 @@ Centered column, 640px max width, 16px side padding (mobile) / 24px
 3. **Tabs** — unchanged from v1 §2.3.
 4. **Preferences** — the last element on the page. A `text-sm font-medium
    muted` heading (`Preferences` / `偏好设置`) over one grouped card
-   (`rounded-xl border bg-surface`) whose rows are separated by `divide-y
+   (`rounded-md border bg-surface`) whose rows are separated by `divide-y
    divide-separator`:
    - **Public identity** switch row (moved here from between stats and
      tabs — spec 0006 Q1/Q7 control, unchanged behavior).

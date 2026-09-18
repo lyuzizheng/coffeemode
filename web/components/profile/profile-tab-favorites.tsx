@@ -11,7 +11,7 @@ export function ProfileTabFavorites({ baseId }: { baseId: string }) {
       role="tabpanel"
       id={`${baseId}-panel-favorites`}
       aria-labelledby={`${baseId}-tab-favorites`}
-      className="py-16 flex flex-col items-center justify-center text-center px-4"
+      className="py-12 flex flex-col items-center justify-center text-center px-4"
     >
       <div className="w-12 h-12 rounded-full bg-surface-secondary flex items-center justify-center mb-3 text-muted">
         <HeartIcon size={20} />

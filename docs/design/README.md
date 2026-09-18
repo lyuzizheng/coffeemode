@@ -21,6 +21,15 @@ versioned, slice-specific design artifacts that gate UI implementation
   versions stay in place. Drafts may be revised in place; versions bump once
   Approved.
 
+## Harmonization notes
+
+- 2026-09-18 (BRAWUKA-473): artifact token references harmonized to shipped
+  code and the spec's new density invariants (spec 0002 §Spacing and
+  radius): segmented-control track `radius-md` (concentric rule), fact
+  chips `4px/10px` padding, PEEK cover `--layout-card-cover-w` (96px),
+  preferences card `rounded-md`, gone-cafe title `text-2xl`, drawer close
+  44px. Where an artifact and the spec disagree, the spec wins.
+
 ## Artifacts
 
 | Slice | Artifact | Status | Issue |

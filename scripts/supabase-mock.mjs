@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import http from "node:http";
+import crypto from "node:crypto";
 import { decodeFakeJwt as decodeOrThrow, fakeJwt } from "./fake-jwt.mjs";
 /**
  * CafeMood local Supabase Auth mock (S2 testkit-compose-mocks).
@@ -102,11 +103,16 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+function deriveUserId(email) {
+  const hash = crypto.createHash("sha256").update(email).digest("hex");
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+}
+
   if (req.method === "POST" && path === "/auth/v1/token") {
     const body = await parseBody(req);
     // Accept any email/password; derive a stable user id from email or use provided userId.
     const email = typeof body.email === "string" && body.email ? body.email : "local@coffeemode.test";
-    const userId = typeof body.userId === "string" && body.userId ? body.userId : `mock-${Buffer.from(email).toString("hex").slice(0, 8)}`;
+    const userId = typeof body.userId === "string" && body.userId ? body.userId : deriveUserId(email);
     const token = fakeJwt(userId, { email });
     json(res, 200, {
       access_token: token,

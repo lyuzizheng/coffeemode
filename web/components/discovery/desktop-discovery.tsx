@@ -43,7 +43,9 @@ function SidebarSkeletons() {
           <div className="flex flex-1 flex-col justify-center gap-2">
             <div className="h-4 w-2/3 animate-pulse rounded bg-surface-tertiary" />
             <div className="h-3 w-1/3 animate-pulse rounded bg-surface-tertiary" />
+            <div className="h-3 w-1/2 animate-pulse rounded bg-surface-tertiary" />
           </div>
+          <div className="h-10 w-11 shrink-0 self-center animate-pulse rounded bg-surface-tertiary" />
         </div>
       ))}
     </div>
@@ -220,7 +222,7 @@ export function DesktopDiscovery({
       <aside className="flex h-full w-[var(--layout-aside-column)] shrink-0 flex-col border-r border-separator bg-surface">
         <Masthead addCafe={addCafe} />
         {search && contentVisible && (
-          <div className="border-b border-separator px-3 py-3">
+          <div className="border-b border-separator px-4 py-3">
             <UnifiedSearchPanel
               externalSources={search.externalSources}
               mapkitConfigured={search.mapkitConfigured}

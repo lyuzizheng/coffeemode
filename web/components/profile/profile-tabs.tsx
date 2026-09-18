@@ -96,7 +96,7 @@ export function ProfileTabs({ activeTab, onTabChange, baseId }: ProfileTabsProps
       role="tablist"
       aria-label={t("title")}
       onScroll={updateFade}
-      className={`flex items-center gap-1 p-1 bg-surface-secondary rounded-xl my-4 overflow-x-auto no-scrollbar ${fadeClass}`}
+      className={`flex items-center gap-0.5 p-0.5 bg-surface-secondary rounded-md my-4 overflow-x-auto no-scrollbar ${fadeClass}`}
     >
       {TAB_ORDER.map((tabKey) => {
         const isSelected = activeTab === tabKey;
@@ -117,7 +117,7 @@ export function ProfileTabs({ activeTab, onTabChange, baseId }: ProfileTabsProps
             className="group -my-1.5 flex min-h-11 flex-1 items-center justify-center"
           >
             <span
-              className={`min-w-[90px] rounded-lg px-3 py-2 text-center text-xs font-medium whitespace-nowrap transition-all ${
+              className={`min-w-[90px] rounded-sm px-3 py-2 text-center text-xs font-medium whitespace-nowrap transition-all ${
                 isSelected
                   ? "bg-surface text-foreground shadow-sm font-semibold"
                   : "text-muted group-hover:text-foreground"

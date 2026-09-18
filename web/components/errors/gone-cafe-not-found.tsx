@@ -19,7 +19,7 @@ export function GoneCafeNotFound({ cafeId }: { cafeId?: string }) {
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-6 px-6 text-center">
       <div>
-        <h1 className="font-display text-xl font-bold tracking-tight text-foreground">
+        <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
           {t("gone_title")}
         </h1>
         <p className="mt-2 text-sm text-muted">{t("gone_body")}</p>

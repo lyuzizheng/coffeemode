@@ -113,7 +113,7 @@ export function ProfileHero({ profile, onProfileChange }: ProfileHeroProps) {
                 }
               }}
               autoFocus
-              className="min-h-11 px-2 py-1 text-lg font-display font-bold bg-surface-secondary border border-accent rounded-md outline-none text-foreground text-center"
+              className="min-h-11 px-2 py-1 text-2xl font-display font-bold bg-surface-secondary border border-accent rounded-md outline-none text-foreground text-center"
               placeholder={t("edit_name_placeholder")}
             />
             <Button

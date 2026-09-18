@@ -19,7 +19,7 @@ ceiling, first-class skeleton/empty/error states — and every design decision
 must pass the manifesto's Interaction gate (怎么交互) before shipping.
 ## Status
 
-Accepted (corrected 2026-09-06 — BRAWUKA-74 Option 2 superseded by Owner ruling: digital garden NOT applicable as a product surface; CafeMood remains a pure tool; profile notes-collection slice removed; reading-surface gate tightened to explicit-Owner-ruling; revised 2026-09-06 — Founder final settlement on BRAWUKA-69: Product positioning affirmed as artisan information tool (文艺范的信息工具), strictly rejecting reading/podcast/publishing platform creep; anti-AI vibe coding craftsmanship locked; revised 2026-09-06 — BRAWUKA-69 human craftsmanship & editorial reset: typography dual ramp & variable serif (--font-serif), spring-first motion tokens & settle budgets, dual-plate printing discipline (plate roles) & --grain material overlay, editorial surfaces & check-in prose, anti-pattern harmonization; 2026-09-06 — digital-garden editorial scope settled (BRAWUKA-74): lightweight fulfillment via notes ecosystem; standalone Stories surface rejected; post-map profile notes-collection slice registered; revised 2026-09-01 — references 0000-founder-manifesto as the higher-precedence aesthetic authority (#288); 2026-08-22 — copy tone principle 热情真诚: warm, sincere, cute, never commercial (DG87); 2026-08-21 — viewport & safe-area contract: dvh/svh units…
+Accepted (corrected 2026-09-06 — BRAWUKA-74 Option 2 superseded by Owner ruling: digital garden NOT applicable as a product surface; CafeMood remains a pure tool; profile notes-collection slice removed; reading-surface gate tightened to explicit-Owner-ruling; revised 2026-09-06 — Founder final settlement on BRAWUKA-69: Product positioning affirmed as artisan information tool (文艺范的信息工具), strictly rejecting reading/podcast/publishing platform creep; anti-AI vibe coding craftsmanship locked; revised 2026-09-06 — BRAWUKA-69 human craftsmanship & editorial reset: typography dual ramp & variable serif (--font-serif), spring-first motion tokens & settle budgets, dual-plate printing discipline (plate roles) & --grain material overlay, editorial surfaces & check-in prose, anti-pattern harmonization; 2026-09-06 — digital-garden editorial scope settled (BRAWUKA-74): lightweight fulfillment via notes ecosystem; standalone Stories surface rejected; post-map profile notes-collection slice registered; revised 2026-09-01 — references 0000-founder-manifesto as the higher-precedence aesthetic authority (#288); 2026-08-22 — copy tone principle 热情真诚: warm, sincere, cute, never commercial (DG87); 2026-08-21 — viewport & safe-area contract: dvh/svh units…; revised 2026-09-18 — BRAWUKA-473 density-consistency pass: concentric radius rule, chip density standards, 44px hit-area floor, list-title/label/error-title type pairing, skeleton-geometry fidelity, and layout constants single-sourced in lib/layout.ts codified in §Spacing and radius
 
 ## Stable decisions
 
@@ -279,14 +279,59 @@ Rules:
 
 ```text
 spacing unit:  4px base grid
-radius-sm:     2px    tags, small buttons, chips
-radius-md:     4px    cards, inputs
-radius-lg:     6px    modals, drawers, sheets
+radius-sm:     2px    tags, small buttons, chips, segmented-control segments
+radius-md:     4px    cards, inputs, list rows, grouped settings cards,
+                      segmented-control tracks
+radius-lg:     6px    modals, drawers, sheets, floating map overlays
 radius-xl:     8px    hero cards, map overlays (sparingly)
 radius-full:   only for true pill/avatar controls
 ```
 
 Dense, mobile-first radius. Cards breathe through padding, not roundness. `web/app/globals.css` must codify `--radius-sm/md/lg/xl` and pin `.card` to `--radius-md`.
+
+Concentric radius rule (BRAWUKA-473 — the "Apple" rule: nested rounded
+corners share a center, so the inner radius is the outer radius minus the
+gap between them):
+
+```text
+inner_radius = max(0, outer_radius - padding)
+
+- Segmented control: track `rounded-md` + `p-0.5` (2px) + segment
+  `rounded-sm` (2px) → inner 4-2=2px. Canonical: profile-tabs,
+  FeedModeTabs, ranking-preference-toggle, theme-variant-picker.
+- Cards: `rounded-md` (4px) outer; inner media/chips `rounded-sm` (2px)
+  with ≥2px gap. `rounded-xl` is reserved for hero cards and floating
+  map overlays — never for plain list/setting cards.
+- A bordered element must always carry an explicit radius class —
+  `border` without `rounded-*` is a defect (square corners read as a bug).
+```
+
+Density invariants (BRAWUKA-473 — font size, padding, and control size must
+match the surrounding component density):
+
+```text
+- Non-interactive chip (read-only fact/badge): `rounded-sm`,
+  `px-2.5 py-1`, `text-xs` — canonical: FactChips, PolicyConsensus chips,
+  private badge, history city chip, dim-score chips.
+- Interactive chip (selectable option): `h-9` + `px-3` + `text-xs`
+  `font-medium`, `rounded-sm` — canonical: PolicyChips, provider chips.
+- Hit area: every tappable element ≥44px painted or effective height.
+  Inline text links reach it via `min-h-11` + negative margin
+  (`-my-2.5`/`-my-1.5`) so the visual row stays dense — canonical:
+  profile list links, search-results rows, segmented-control segments.
+- List-item titles: `font-display text-md font-bold` (16px/700) —
+  canonical: cafe-card h3, search-results, profile tab rows.
+- Form field labels: `text-sm font-medium` (sliders, required inputs);
+  optional-field captions: `text-xs muted` (note, photos).
+- Error/empty page titles: `text-2xl` (gone-cafe, generic 404, error).
+- Skeletons mirror the real layout's geometry: same radius, padding,
+  element count, and approximate heights — a skeleton that does not match
+  its surface is a defect (BRAWUKA-420 class).
+- Layout geometry lives only in `web/lib/layout.ts` constants
+  (SHEET_PEEK_PX, ASIDE_COLUMN_PX, THUMB_PX, CARD_COVER_W_PX,
+  ROW_COVER_W_PX/H_PX, CONTENT_MAX_W_PX, MAP_CHROME_OFFSET_PX) exposed as
+  `--layout-*` CSS vars — never re-hardcode these numbers in components.
+```
 
 ### Elevation
 

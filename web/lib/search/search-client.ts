@@ -51,3 +51,6 @@ export async function fetchUnifiedSearch({
   }
   return (await response.json()) as SearchResponse;
 }
+
+// `buildSearchHref` lives in `search-url.ts` — the neutral module that owns
+// the canonical `?q&city&filter_*` serialization for both server and client.

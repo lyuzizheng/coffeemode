@@ -403,6 +403,10 @@
     "could_not_search": "没搜成功，再试试？",
     "retry": "重试",
     "external_unavailable": "外部搜索暂时不可用",
+    "result_count": "{count} 个地点",
+    "unknown_city": "我们还没有覆盖这座城市——从列表里选一个吧。",
+    "view_all_results": "查看全部结果",
+    "external_fallback_query": "{city}的咖啡馆",
     "ranking": {
       "label": "搜索排序偏好",
       "desc": "只保存在这台设备上，无需登录即可生效。",

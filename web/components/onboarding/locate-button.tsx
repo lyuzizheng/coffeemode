@@ -3,9 +3,10 @@
 /**
  * Persistent locate control (onboarding-v1 §4, DG116/DG117/DG120): the only
  * geolocation surface after the welcome card — and the only re-entry after
- * an OS-level denial. Bottom-right above the sheet on mobile; top-right
- * map corner on desktop (DG42). The glyph pulses once per tap while
- * locating; `located` keeps the accent until the user picks a city.
+ * an OS-level denial. Bottom-right on every breakpoint, stacked directly
+ * above the add-cafe FAB (BRAWUKA-504: the top-right corner now belongs to
+ * the account/menu cluster). The glyph pulses once per tap while locating;
+ * `located` keeps the accent until the user picks a city.
  */
 import { motion, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
@@ -32,7 +33,7 @@ export function LocateButton({
       type="button"
       aria-label={t("locate_aria")}
       onClick={onLocate}
-      className="fixed bottom-[calc(var(--layout-sheet-peek)+72px+env(safe-area-inset-bottom))] right-4 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-separator bg-overlay shadow-map lg:bottom-auto lg:right-6 lg:top-6"
+      className="fixed bottom-[calc(var(--layout-sheet-peek)+72px+env(safe-area-inset-bottom))] right-4 z-40 flex h-11 w-11 items-center justify-center rounded-full border border-separator bg-overlay shadow-map lg:bottom-20 lg:right-6"
     >
       <motion.span
         key={pulseKey}

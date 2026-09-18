@@ -24,7 +24,7 @@
  */
 import { useTheme } from "next-themes";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getMapDefaultZoom, getMapProvider } from "@/lib/client-env";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useDiscoveryMap } from "@/lib/discovery/map-context";
@@ -55,8 +55,10 @@ export function DiscoveryMap({
   const providerRef = useRef<IMapProvider | null>(null);
   // Latest select callback for the provider's tap handler.
   const selectRef = useRef<((id: string) => void) | null>(null);
+  const gestureRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     selectRef.current = state?.controller.select ?? null;
+    gestureRef.current = state?.onCameraGesture ?? null;
   });
 
   // `map.provider` selects the renderer; the provider owns theme→style.
@@ -66,14 +68,16 @@ export function DiscoveryMap({
   }, [Provider, onError]);
 
   const center = state?.center ?? null;
-  const cafes = useMemo(() => state?.cafes ?? [], [state?.cafes]);
+  const userLocation = state?.userLocation ?? null;
   const selectedCafeId = state?.controller.selectedCafeId ?? null;
+  const cafes = state?.cafes ?? [];
   const snap = state?.controller.snap ?? "peek";
   const [mapReady, setMapReady] = useState(false);
   const handleLoad = useCallback(
     (provider: IMapProvider) => {
       providerRef.current = provider;
       provider.onCafeSelect((cafeId) => selectRef.current?.(cafeId));
+      provider.onCameraGesture?.(() => gestureRef.current?.());
       setMapReady(true);
       onReady?.();
     },
@@ -85,6 +89,12 @@ export function DiscoveryMap({
   useCenterSync(refs, center, mapReady);
   useSelectionCamera(refs, selectedCafeId, cafes, mapReady);
   useCafeData(refs, cafes, selectedCafeId, mapReady);
+
+  // Granted position → the brand dot (DG120); the provider keeps it on its
+  // own source/layers so a cafe refresh never touches it.
+  useEffect(() => {
+    providerRef.current?.setUserLocation?.(userLocation);
+  }, [userLocation, mapReady]);
 
   if (!state || !Provider) return null;
 

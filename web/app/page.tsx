@@ -62,6 +62,10 @@ export default async function HomePage({
     detectedCity?.center ??
     appConfig.discovery.defaultCenter;
   const initialCafeId = typeof params.cafe === "string" ? params.cafe : undefined;
+  // Profile-guide deep links (BRAWUKA-504): ?locate=1 primes the locate
+  // button's pulse, ?create=1 opens the creation sheet on arrival.
+  const locateHint = params.locate === "1";
+  const createHint = params.create === "1";
   // DG143: MapKit readiness is request-time — APPLE_MAPKIT_* are runtime env
   // in the Dokploy deploy; a build-time flag would bake false into the image.
   const mapkitConfigured = getMapKitConfig() !== null;
@@ -86,6 +90,8 @@ export default async function HomePage({
       accountInitial={accountInitial}
       mapkitConfigured={mapkitConfigured}
       initialCafeId={initialCafeId}
+      locateHint={locateHint}
+      createHint={createHint}
     >
       <MapSurface />
       {authError && (

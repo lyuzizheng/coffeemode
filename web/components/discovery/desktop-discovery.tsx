@@ -23,7 +23,7 @@
 import { useEffect, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
-import { spring } from "@/lib/motion";
+import { useSprings } from "@/lib/motion";
 import type { DiscoveryController } from "@/lib/discovery/use-discovery-controller";
 import type { CafeSummary } from "@/types/cafes";
 import type { SearchResultItem } from "@/lib/search/types";
@@ -74,6 +74,7 @@ export function DesktopDiscovery({
 }) {
   const t = useTranslations("discovery");
   const reduced = useReducedMotion();
+  const springs = useSprings();
   const { selectedCafeId, close } = controller;
 
   // Esc closes the detail column (§7).
@@ -119,7 +120,7 @@ export function DesktopDiscovery({
               initial={reduced ? false : { x: -24, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               exit={reduced ? undefined : { x: -24, opacity: 0 }}
-              transition={reduced ? { duration: 0 } : spring.snappy}
+              transition={reduced ? { duration: 0 } : springs.snappy}
               className="absolute inset-y-0 left-[var(--layout-aside-column)] h-full w-[var(--layout-detail-column)] shrink-0 overflow-y-auto border-l border-separator bg-overlay py-4 shadow-lg xl:static xl:shadow-none"
             >
               <DetailContent

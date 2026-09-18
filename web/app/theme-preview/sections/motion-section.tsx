@@ -3,7 +3,7 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
-import { cardInteraction, duration, ease, spring, useEnterMotion } from "@/lib/motion";
+import { cardInteraction, duration, ease, useEnterMotion, useSprings } from "@/lib/motion";
 import { Section, WorkBar } from "../shared";
 
 const MOTION_TOKENS = [
@@ -22,6 +22,7 @@ export function MotionSection() {
   const reduced = useReducedMotion() ?? false;
   const enter = useEnterMotion();
   const [order, setOrder] = useState<DimKey[]>([...DIM_KEYS]);
+  const springs = useSprings();
 
   return (
     <Section index="07" title={t("title")} desc={t("desc")}>
@@ -64,7 +65,7 @@ export function MotionSection() {
               <motion.li
                 key={key}
                 layout
-                transition={reduced ? { duration: 0 } : spring.gentle}
+                transition={reduced ? { duration: 0 } : springs.gentle}
               >
                 <button
                   type="button"

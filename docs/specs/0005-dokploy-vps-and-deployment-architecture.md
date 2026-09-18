@@ -268,8 +268,9 @@ Per BRAWUKA-475, the nightly work_stats recompute and Helpful ranking snapshot e
 - **Deployment Reconfigurability**:
   - *Dokploy Scheduled Job*: Created as an `application` schedule on `coffeemode-web-prod` (`0 2 * * *`, command: `if [ -d web ]; then cd web; fi; npm run recompute:work-stats && npm run snapshot:helpful-ranking`).
   - *VPS Host Crontab Alternative*: `0 2 * * * /path/to/coffeemode/deploy/dokploy/nightly-recompute.sh >> /var/log/nightly-recompute.log 2>&1`.
-- **Failure Alerting & Self-Healing Webhook**: If the script exits with non-zero status, it outputs structured JSON error lines and triggers the Multica autopilot webhook (`MULTICA_AUTOPILOT_WEBHOOK_URL`, BRAWUKA-476) to automatically generate an incident response issue.
-
+- **Failure Alerting & Self-Healing Webhook (BRAWUKA-476)**:
+  - *Dual-Layer Defense*: Script-level failure trap in `deploy/dokploy/nightly-recompute.sh` catches application-level non-zero exits, formatting structured JSON error lines and POSTing `{"job":"nightly-recompute","error":"<summary>","run":"<log_pointer>"}` to `MULTICA_AUTOPILOT_WEBHOOK_URL`. In addition, Dokploy native custom webhook notification is configured with the same endpoint to capture platform-level/container failures.
+  - *Autopilot Self-Healing*: The webhook triggers Multica Autopilot `CoffeeMode 运维告警自愈` (`4b90855b-46b2-481f-aeb5-0d739b8dc394`), which automatically provisions an incident ticket (`[AUTO-OPS] Dokploy 定时任务失败告警 <date>`) assigned to DevOps for immediate triage and remediation.
 ### 5. Automated smoke test verification checklist
 - [ ] Healthcheck endpoint `GET /api/health` returns `{"ok":true}` and version/boot_time markers with HTTP 200.
 - [ ] Root page `GET /` returns HTTP 200 with HTML shell and title CafeMood.

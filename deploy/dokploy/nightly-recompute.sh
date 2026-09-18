@@ -23,7 +23,8 @@ TARGET_ENV="prod"
 CONTAINER_OVERRIDE=""
 DRY_RUN=false
 VERBOSE=false
-
+WEBHOOK_OVERRIDE=""
+ALERT_SENT=false
 show_help() {
   cat <<EOF
 Usage: $(basename "$0") [options]
@@ -33,6 +34,7 @@ Options:
   -c, --container <id>     Explicit container name or ID override
   -d, --dry-run            Simulate without executing recompute/snapshot
   -v, --verbose            Enable verbose output
+  -w, --webhook-url <url>  Explicit Multica autopilot webhook URL override
   -h, --help               Show this help message and exit
 
 Environment Variables:
@@ -60,6 +62,10 @@ while [[ $# -gt 0 ]]; do
       VERBOSE=true
       shift
       ;;
+    -w|--webhook-url)
+      WEBHOOK_OVERRIDE="${2:-}"
+      shift 2
+      ;;
     -h|--help)
       show_help
       exit 0
@@ -76,10 +82,10 @@ done
 # Failure Hook & Notification Helper
 # ------------------------------------------------------------------------------
 send_failure_alert() {
+  ALERT_SENT=true
   local error_msg="$1"
   local run_pointer="${2:-dokploy:cron:nightly-recompute}"
-  local webhook_url="${MULTICA_AUTOPILOT_WEBHOOK_URL:-}"
-
+  local webhook_url="${WEBHOOK_OVERRIDE:-${MULTICA_AUTOPILOT_WEBHOOK_URL:-}}"
   # Output structured error line (JSON) for monitoring sinks
   local json_log
   json_log=$(printf '{"job":"nightly-recompute","status":"failed","error":"%s","run":"%s","timestamp":"%s"}' \
@@ -101,6 +107,17 @@ send_failure_alert() {
     }
   fi
 }
+
+# ------------------------------------------------------------------------------
+# Exit Trap (Safety Net for Non-Zero Exits)
+# ------------------------------------------------------------------------------
+handle_exit() {
+  local exit_code=$?
+  if [[ $exit_code -ne 0 && "$ALERT_SENT" != true ]]; then
+    send_failure_alert "Script exited with non-zero status code $exit_code" "exit:$exit_code"
+  fi
+}
+trap handle_exit EXIT
 
 # ------------------------------------------------------------------------------
 # Environment Detection (Host vs. Container Internal)

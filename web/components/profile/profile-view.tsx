@@ -62,7 +62,7 @@ export function ProfileView({
     <div className="min-h-screen bg-background text-foreground flex flex-col items-center">
       <ProfileHeader isAuthenticated={isAuthenticated} />
 
-      <main className="w-full max-w-[640px] px-4 md:px-6 py-4 flex-1 flex flex-col">
+      <main className="w-full max-w-[var(--layout-content-max)] px-4 md:px-6 py-4 flex-1 flex flex-col">
         {!isAuthenticated ? (
           <ProfileGate />
         ) : (

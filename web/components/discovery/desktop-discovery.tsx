@@ -4,7 +4,7 @@
  * Desktop discovery (≥1024px, artifact §7, DG42/18g; BRAWUKA-364 field-guide
  * redesign): the sidebar is the guide's index — a masthead (wordmark +
  * tagline + add-cafe), the live unified search field, and the nearby list
- * printed as hairline rows. A second left column (400px) carries the FULL
+ * printed as hairline rows. A second left column (--layout-detail-column) carries the FULL
  * dossier; the map keeps the remaining width. The mobile snap states never
  * appear here. The detail column slides in on the snappy spring (state
  * settle budget ≤300ms, spec 0002 Motion) and closes with Esc or the ×.
@@ -13,7 +13,7 @@
  * groups; selecting a result selects the cafe (or opens creation for a
  * POI). SSR contract (#275): when surface children are present, the
  * sidebar shell renders on every pass — CSS-gated (`hidden lg:flex`) — so
- * SSR already reserves the 380px column and neither mounting nor crossing
+ * SSR already reserves the --layout-aside-column width and neither mounting nor crossing
  * the 1024px breakpoint ever re-parents or shifts the surface subtree.
  * `showColumns` gates only the interactive content (list/detail), never
  * the tree shape. Below 1280px the detail column overlays the surface
@@ -217,7 +217,7 @@ export function DesktopDiscovery({
       role="region"
       aria-label={t("sheet_aria")}
     >
-      <aside className="flex h-full w-[380px] shrink-0 flex-col border-r border-separator bg-surface">
+      <aside className="flex h-full w-[var(--layout-aside-column)] shrink-0 flex-col border-r border-separator bg-surface">
         <Masthead addCafe={addCafe} />
         {search && contentVisible && (
           <div className="border-b border-separator px-3 py-3">
@@ -254,7 +254,7 @@ export function DesktopDiscovery({
               animate={{ x: 0, opacity: 1 }}
               exit={reduced ? undefined : { x: -24, opacity: 0 }}
               transition={reduced ? { duration: 0 } : spring.snappy}
-              className="absolute inset-y-0 left-[380px] h-full w-[400px] shrink-0 overflow-y-auto border-l border-separator bg-overlay py-4 shadow-lg xl:static xl:shadow-none"
+              className="absolute inset-y-0 left-[var(--layout-aside-column)] h-full w-[var(--layout-detail-column)] shrink-0 overflow-y-auto border-l border-separator bg-overlay py-4 shadow-lg xl:static xl:shadow-none"
             >
               <DetailContent
                 cafeId={selectedCafeId}

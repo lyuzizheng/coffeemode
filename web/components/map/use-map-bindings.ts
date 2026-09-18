@@ -11,16 +11,7 @@ import type { Coordinates } from "@/lib/cities";
 import { getMapDefaultZoom, getMapFocusZoom } from "@/lib/client-env";
 import type { CafeSummary } from "@/types/cafes";
 import type { IMapProvider } from "./types";
-
-/** Mobile sheet PEEK height (mobile-sheet.tsx PEEK_VISIBLE_PX) — keeps pins
- * and the attribution control above the collapsed sheet. */
-const SHEET_PEEK_PX = 172;
-/** Mobile sheet collapsed bar height (mobile-sheet.tsx COLLAPSED_VISIBLE_PX)
- * — the pull-down detent below PEEK (BRAWUKA-373). */
-const SHEET_COLLAPSED_PX = 48;
-/** Desktop detail column width (desktop-discovery.tsx) — overlays the map
- * below xl, so the camera must shift right when a cafe is selected. */
-const DETAIL_COLUMN_PX = 400;
+import { DETAIL_COLUMN_PX, SHEET_COLLAPSED_PX, SHEET_PEEK_PX } from "@/lib/layout";
 
 export interface MapBindingRefs {
   providerRef: RefObject<IMapProvider | null>;

@@ -86,7 +86,9 @@ numerals and filled-button elevation consume `--tnum-family`,
 `--tnum-variant`, `--tnum-features`, and `--button-shadow`, which each
 variant block pins (default included). Variant-scoped descendant selectors
 would pierce nested swatch scopes — the page variant would restyle every
-swatch's tells. `font-mono` always wins over `--tnum-family`, so explicit
+swatch's tells. The button rule is scoped to `[data-variant]` subtrees so
+the default page keeps explicit `shadow-*` utilities (the create FAB's
+`shadow-lg`); `font-mono` always wins over `--tnum-family`, so explicit
 mono call sites keep JetBrains under every variant.
 
 `/theme-preview` mounts the same picker in its header — the acceptance

@@ -35,7 +35,7 @@ function asMaxStay(value: string | null): MaxStay {
 function RespondentCount({ stats }: { stats: WorkStats }) {
   const t = useTranslations("discovery");
   return (
-    <span className="tnum text-xs text-muted">
+    <span className="tnum font-mono text-xs text-muted">
       {t("checkins_count", { count: stats.n_checkins })}
     </span>
   );

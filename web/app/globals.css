@@ -446,9 +446,11 @@ body {
   font-family: var(--tnum-family, inherit);
 }
 
-/* Filled-button elevation — per-variant token, same nested-scope reasoning
-   as .tnum. Default/modern pin --button-shadow: none; retro pins shadow-sm. */
-.button:not(.button--ghost):not(.button--outline) {
+/* Filled-button elevation — per-variant token, scoped to variant subtrees
+   only: the default page (no data-variant) never matches, so explicit
+   shadow-* utilities (the create FAB's shadow-lg) keep their elevation.
+   Retro pins --button-shadow: var(--shadow-sm); modern pins none. */
+[data-variant] .button:not(.button--ghost):not(.button--outline) {
   box-shadow: var(--button-shadow, none);
 }
 

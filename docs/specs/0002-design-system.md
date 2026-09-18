@@ -365,11 +365,14 @@ no server round-trip.
 
 Element-level personality (`.tnum` numerals, filled-button elevation) is
 expressed as per-variant tokens (`--tnum-family`, `--tnum-variant`,
-`--tnum-features`, `--button-shadow`) consumed by single global rules —
-never variant-scoped descendant selectors, which would pierce nested
-`data-variant` subtrees (picker swatches). Each variant block pins the
-full token set, and `[data-variant="default"]` re-pins it, so nested
-scopes are self-contained.
+`--tnum-features`, `--button-shadow`) consumed by single rules — never
+per-variant descendant selectors, which would pierce nested
+`data-variant` subtrees (picker swatches). The button rule is scoped to
+`[data-variant]` subtrees so the default page (no attribute) keeps
+explicit `shadow-*` utilities like the create FAB's `shadow-lg`; the
+`.tnum` rules stay global with `font-mono` always winning the family.
+Each variant block pins the full token set, and `[data-variant="default"]`
+re-pins it, so nested scopes are self-contained.
 
 ```text
 default — this spec, unchanged: dense radius scale (2/4/6/8px),

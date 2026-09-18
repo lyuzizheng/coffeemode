@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 import type { UseInfiniteQueryResult, InfiniteData } from "@tanstack/react-query";
 import { Button } from "@heroui/react";
 import { CoffeeIcon } from "@/components/icons";
+import { PrivateBadge } from "@/components/cafe/private-badge";
 import { THUMB_PX } from "@/lib/layout";
 import { ErrorRow } from "./profile-error-row";
 import type { UserCafeItemDto } from "@/lib/db/profile";
@@ -83,6 +84,9 @@ export function ProfileTabCafes({ baseId, query: cafesQuery }: ProfileTabCafesPr
                   <span>{t("created_by_me")}</span>
                 </span>
               )}
+              {/* DG147: private rows only ever reach the owner (read-path
+                  filter) — composes with "created by me" when both apply. */}
+              {cafe.visibility === "private" && <PrivateBadge />}
             </div>
 
             <span className="text-xs text-muted font-mono tabular-nums mt-1">

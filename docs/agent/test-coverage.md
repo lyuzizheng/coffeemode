@@ -32,6 +32,7 @@ Every user trace from the product specs (0001 + 0004 + 0002) maps to a proving f
 | T22 | Hours/timezone — `isOpenAt` evaluates weekly hours in cafe-local IANA tz (incl. DST), `cafes.tz` on create | 0001 §Data layer `cafes.tz`, 0004 issue-77 | `unit` | `web/tests/hours.test.ts` (isOpenAt KST, DST America/New_York, overnight) | `unit` |
 | T23 | SW cache — `/api/*` + `/` network-only, no user-specific cache; `RUNTIME_RULES` table-tested | ADR-0003, 0001 §PWA | `unit` | `web/tests/sw.test.ts` (RUNTIME_RULES) | `unit` |
 | T24 | Config — product params from `web/config/*.yaml` via `web/lib/config.ts` (no hardcode DG107) | 0001 §Image/POI caps, `docs/specs/app-config` | `unit` | `web/tests/config.test.ts` (appConfig/rateLimits schema, value preservation) | `unit` · `typecheck` |
+| T25 | Cafe owner controls + private badge in-app — `owned_by_viewer` bit on `PublicCafeDetail` (no `created_by` leak), visibility Switch + checkin-scoped delete/handoff in the in-app detail, `仅你可见` badge on detail heading + index/PEEK rows + search results + profile 我的咖啡地图 (DG146/DG147, BRAWUKA-515) | 0004 DG146/DG147 | `unit` + `integration` | `web/tests/cafes.test.ts` (`toPublicCafeDetail` ownership bit) · `web/tests/components/owner-controls-in-app.test.tsx` (detail controls gating, badge on card/profile/search rows, zh copy) · `web/tests/components/cafe-owner-controls.test.tsx` (toggle/delete/handoff flows) · `web/tests/integration/db.integration.test.ts` (`getUserCafes` visibility field + owner-only read filter) | `unit` + `integration` |
 
 Notes:
 

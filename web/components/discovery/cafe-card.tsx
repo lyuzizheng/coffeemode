@@ -22,6 +22,7 @@ import {
 import { cafeFacts, formatDistanceKm, type Fact, type FactKind } from "@/lib/discovery/view-model";
 import { displayCityName } from "@/lib/cities";
 import { CARD_COVER_W_PX } from "@/lib/layout";
+import { PrivateBadge } from "@/components/cafe/private-badge";
 import type { CafeSummary } from "@/types/cafes";
 
 const FACT_ICONS: Record<FactKind, (props: IconProps) => React.ReactNode> = {
@@ -156,9 +157,13 @@ export function CafeCardBody({
         }
       />
       <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
-        <h3 className="truncate font-display text-md font-bold tracking-tight text-foreground">
-          {cafe.name}
-        </h3>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <h3 className="truncate font-display text-md font-bold tracking-tight text-foreground">
+            {cafe.name}
+          </h3>
+          {/* DG147: private rows only ever reach the owner (read-path filter). */}
+          {cafe.visibility === "private" && <PrivateBadge />}
+        </div>
         <CardMeta cafe={cafe} />
         <FactsRow facts={cafeFacts(cafe)} />
       </div>

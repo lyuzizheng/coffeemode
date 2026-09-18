@@ -66,6 +66,7 @@ const SEEDED_CAFE: PublicCafeDetail = {
   updated_at: "2026-09-01T00:00:00.000Z",
   author: null,
   maintained_by_service: false,
+  owned_by_viewer: false,
 };
 
 function stubController(): DiscoveryController {

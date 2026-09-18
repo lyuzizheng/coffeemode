@@ -133,7 +133,7 @@ export function useDiscoveryController(options?: {
     close();
   }, [close, t]);
 
-  // Normalize initial ?cafe= deep link to canonical /cafes/[id], and attach Back/Forward popstate listener.
+  // Normalize the initial /cafes/[id] deep link into the canonical URL, and attach Back/Forward popstate listener.
   useEffect(() => {
     if (initialValidId) {
       window.history.replaceState(null, "", cafeUrl(initialValidId));

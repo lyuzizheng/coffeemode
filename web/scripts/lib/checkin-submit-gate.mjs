@@ -111,6 +111,11 @@ export async function runCheckinSubmitGate({
   const supabaseUrl = process.env.E2E_SUPABASE_URL ?? "http://127.0.0.1:54321";
   const sessionCookie = await mintSession(supabaseUrl, userId);
   if (!sessionCookie) {
+    // CI must never mask a red gate behind a warn — the compose step makes
+    // the mock reachable, so a miss there is a real failure.
+    if (process.env.CI) {
+      throw new Error(`${label}: supabase-mock unreachable at ${supabaseUrl}`);
+    }
     console.warn(
       `[E2E] SKIP ${label}: supabase-mock unreachable at ${supabaseUrl} — start it with \`docker compose up -d supabase-mock\``,
     );

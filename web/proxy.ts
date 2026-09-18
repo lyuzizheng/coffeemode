@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 import { CAFE_SHELL_BYPASS_CACHE_CONTROL } from "@/lib/cache-policy";
 import { cafeExists } from "@/lib/db/cafes";
+import { isValidUUID } from "@shared/uuid";
 import {
   REQUEST_ID_HEADER,
   getRequestId,
@@ -61,12 +62,12 @@ function sanitizedRequest(request: NextRequest): NextRequest {
 // the proxy rather than next.config `redirects()` because config redirects
 // forward the request query string, landing on /cafes/<id>?cafe=<id> — a
 // non-canonical URL that would re-fire the redirect contract on every hit.
-const LEGACY_CAFE_PARAM = /^[0-9a-fA-F-]{36}$/;
-
 function legacyCafeRedirect(request: NextRequest): NextResponse | null {
   if (request.nextUrl.pathname !== "/") return null;
   const cafe = request.nextUrl.searchParams.get("cafe");
-  if (!cafe || !LEGACY_CAFE_PARAM.test(cafe)) return null;
+  // isValidUUID (not a loose 36-char regex): a malformed id would 308 to a
+  // guaranteed 404 — pointless redirect traffic.
+  if (!cafe || !isValidUUID(cafe)) return null;
   return NextResponse.redirect(new URL(`/cafes/${cafe}`, request.url), 308);
 }
 

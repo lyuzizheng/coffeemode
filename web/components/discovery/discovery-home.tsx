@@ -179,7 +179,7 @@ export function DiscoveryHome({
   /** Round add-cafe FAB slot (BRAWUKA-364): floats above the sheet at PEEK
    * on mobile, bottom-right on desktop. */
   addCafeFab?: ReactNode;
-  /** Optional initial selected cafe ID (e.g. from ?cafe= query param) */
+  /** Optional initial selected cafe ID (the /cafes/[id] deep link, DG124) */
   initialCafeId?: string;
   /** Detent the mobile sheet opens at for `initialCafeId` — "full" on the
    * /cafes/[id] deep link (DG124), default "half" elsewhere. */

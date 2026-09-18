@@ -296,7 +296,7 @@ export function useOnboarding({
   serverOnboarded: boolean;
   /** Signed-in profile fields mirrored into localStorage on merge (DG122). */
   profileSeed?: { currentCity: string; lastLocation: Coordinates | null };
-  /** Deep-link-style arrivals (?cafe=) never see the card (DG124). */
+  /** Deep-link arrivals (/cafes/[id]) never see the card (DG124). */
   suppressCard?: boolean;
 }): OnboardingState {
 

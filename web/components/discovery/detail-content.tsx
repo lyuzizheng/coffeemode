@@ -14,6 +14,8 @@ import { Button } from "@heroui/react";
 import { CloseIcon } from "@/components/icons";
 import { GalleryStrip } from "@/components/cafe/gallery-strip";
 import { OpenState } from "@/components/cafe/open-state";
+import { CafeOwnerControls } from "@/components/cafe/cafe-owner-controls";
+import { PrivateBadge } from "@/components/cafe/private-badge";
 import { ShareControl } from "@/components/share/share-control";
 import { cafeFacts, formatDistanceKm } from "@/lib/discovery/view-model";
 import { cafeCanonicalPath } from "@/lib/seo";
@@ -102,13 +104,6 @@ function DetailSkeleton() {
     </div>
   );
 }
-/** Slot appended to the FULL dossier for one specific cafe (DG124): the
- * SSR shell's owner-only controls ride hydration into the sheet — gated on
- * the fetched cafe's id so a later selection never inherits them. */
-export interface DetailFooter {
-  cafeId: string;
-  node: ReactNode;
-}
 
 export function DetailContent({
   cafeId,
@@ -117,7 +112,6 @@ export function DetailContent({
   onCheckIn,
   onClose,
   distanceM,
-  footer,
 }: {
   cafeId: string;
   variant: "half" | "full";
@@ -127,10 +121,8 @@ export function DetailContent({
   onClose?: () => void;
   /** Meters from the query point — summaries carry it, the detail row does not. */
   distanceM?: number;
-  footer?: DetailFooter;
 }) {
   const t = useTranslations("discovery");
-  const tc = useTranslations("cafeDetail");
   const locale = useLocale();
   const { detailHeadingRef, handleMissingCafe } = controller;
   // SSR-seeded detail (BRAWUKA-283 P2-3): `CafeDetailSeed` on the cafe page
@@ -155,10 +147,9 @@ export function DetailContent({
   }
   const cafe = query.data;
   const covers = cafe.gallery.map((g) => g.card).filter(Boolean); // BRAWUKA-307: cafe.cover already derives from the first gallery card
-
   const heading = (
     <div className="flex items-start justify-between gap-2">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
         <h2
           ref={detailHeadingRef}
           tabIndex={-1}
@@ -168,14 +159,9 @@ export function DetailContent({
         >
           {cafe.name}
         </h2>
-        {/* Owner-only marker (DG147): the API serves private cafes to their
-            creator — the badge keeps the hydrated dossier honest like the
-            SSR shell's. */}
-        {cafe.visibility === "private" && (
-          <span className="rounded-sm bg-surface-secondary px-2.5 py-1 text-xs text-muted">
-            {tc("private_badge")}
-          </span>
-        )}
+        {/* DG147: a private detail can only be the owner's — the read path
+            404s it for everyone else. */}
+        {cafe.visibility === "private" && <PrivateBadge />}
       </div>
       {onClose && (
         <Button
@@ -250,7 +236,15 @@ export function DetailContent({
         onMissingCafe={handleMissingCafe}
         onCheckIn={onCheckIn}
       />
-      {footer && footer.cafeId === cafe.id ? footer.node : null}
+      {/* DG146/DG147: quiet "Manage" section at the bottom of the scroll —
+          same controls as the SSR page, gated on the server ownership bit. */}
+      {cafe.owned_by_viewer && (
+        <CafeOwnerControls
+          cafeId={cafe.id}
+          initialVisibility={cafe.visibility ?? "public"}
+          hasCheckins={(cafe.work_stats?.n_checkins ?? 0) > 0}
+        />
+      )}
     </div>
   );
 }

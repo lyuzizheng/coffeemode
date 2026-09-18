@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { ReactNode } from "react";
 import { DetailContent } from "@/components/discovery/detail-content";
 import type { DiscoveryController } from "@/lib/discovery/use-discovery-controller";
 import type { PublicCafeDetail } from "@/types/cafes";
@@ -20,7 +19,6 @@ vi.mock("@/hooks/use-network-status", () => ({
 }));
 
 const CAFE_ID = "550e8400-e29b-41d4-a716-446655440000";
-const OTHER_ID = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44";
 const FEED_URL = `/api/cafes/${CAFE_ID}/checkins?mode=newest`;
 
 const CAFE: PublicCafeDetail = {
@@ -43,6 +41,7 @@ const CAFE: PublicCafeDetail = {
   updated_at: "2026-09-01T00:00:00.000Z",
   author: null,
   maintained_by_service: false,
+  owned_by_viewer: false,
 };
 
 function stubFetch() {
@@ -71,7 +70,7 @@ function stubController(): DiscoveryController {
   };
 }
 
-function renderDetail(cafe: PublicCafeDetail, footer?: { cafeId: string; node: ReactNode }) {
+function renderDetail(cafe: PublicCafeDetail) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   queryClient.setQueryData(["cafe", CAFE_ID], cafe, { updatedAt: Date.now() });
   return render(
@@ -82,7 +81,6 @@ function renderDetail(cafe: PublicCafeDetail, footer?: { cafeId: string; node: R
           variant="full"
           controller={stubController()}
           onCheckIn={vi.fn()}
-          footer={footer}
         />
       </QueryClientProvider>
     </NextIntlClientProvider>,
@@ -90,27 +88,6 @@ function renderDetail(cafe: PublicCafeDetail, footer?: { cafeId: string; node: R
 }
 
 describe("DetailContent DG124 dossier additions", () => {
-  it("renders the footer slot only for its own cafe (owner controls ride hydration)", async () => {
-    vi.stubGlobal("fetch", stubFetch());
-    try {
-      renderDetail(CAFE, { cafeId: CAFE_ID, node: <div>owner controls</div> });
-      expect(await screen.findByText("owner controls")).toBeInTheDocument();
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it("never renders the footer slot for a different cafe id", async () => {
-    vi.stubGlobal("fetch", stubFetch());
-    try {
-      renderDetail(CAFE, { cafeId: OTHER_ID, node: <div>owner controls</div> });
-      expect(await screen.findByRole("heading", { name: "Seeded Roastery" })).toBeInTheDocument();
-      expect(screen.queryByText("owner controls")).not.toBeInTheDocument();
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
   it("shows the private badge on a private cafe (DG147 — owner-only payload)", async () => {
     vi.stubGlobal("fetch", stubFetch());
     try {

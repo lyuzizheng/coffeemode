@@ -13,7 +13,6 @@ import type { CityInfo, Coordinates } from "@/lib/cities";
 import { useMounted } from "@/hooks/use-mounted";
 import type { SheetSnap } from "@/lib/discovery/use-discovery-controller";
 import { DiscoveryHome } from "@/components/discovery/discovery-home";
-import type { DetailFooter } from "@/components/discovery/detail-content";
 import { AppMenu } from "@/components/layout/app-menu";
 import { LocateButton } from "./locate-button";
 import { useOnboarding, type OnboardingState } from "./use-onboarding";
@@ -39,9 +38,6 @@ interface OnboardingHomeProps {
   /** Detent the mobile sheet opens at for `initialCafeId` — "full" on the
    * /cafes/[id] deep link (DG124), default "half" elsewhere. */
   initialSnap?: SheetSnap;
-  /** Slot appended to the FULL dossier for `cafeId` only (DG124: the SSR
-   * shell's owner controls survive hydration inside the sheet). */
-  detailFooter?: DetailFooter;
   /** Search city scope override (DG124: the linked cafe's launch city);
    * falls back to the IP-detected city like the home entry. */
   city?: string;
@@ -68,7 +64,6 @@ export function OnboardingHome({
   addCafeFab,
   initialCafeId,
   initialSnap,
-  detailFooter,
   city,
   accountInitial,
   mapkitConfigured = false,
@@ -94,7 +89,6 @@ export function OnboardingHome({
       addCafeFab={addCafeFab}
       initialCafeId={initialCafeId}
       initialSnap={initialSnap}
-      detailFooter={detailFooter}
       isAuthenticated={isAuthenticated}
       mapkitConfigured={mapkitConfigured}
       city={city ?? detectedCity?.id}

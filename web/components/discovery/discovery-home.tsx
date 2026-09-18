@@ -42,7 +42,6 @@ import type { DiscoverySearch } from "./use-discovery-search";
 import type { CreationDraft } from "./use-discovery-search";
 import { DesktopDiscovery } from "./desktop-discovery";
 import { MobileSheet } from "./mobile-sheet";
-import type { DetailFooter } from "./detail-content";
 import { SHEET_PEEK_PX } from "@/lib/layout";
 
 async function fetchNearbyCafes(lat: number, lng: number): Promise<CafeSummary[]> {
@@ -160,7 +159,6 @@ export function DiscoveryHome({
   addCafeFab,
   initialCafeId,
   initialSnap,
-  detailFooter,
   isAuthenticated,
   mapkitConfigured = false,
   city,
@@ -183,8 +181,6 @@ export function DiscoveryHome({
   /** Detent the mobile sheet opens at for `initialCafeId` — "full" on the
    * /cafes/[id] deep link (DG124), default "half" elsewhere. */
   initialSnap?: SheetSnap;
-  /** FULL dossier slot for the deep-linked cafe (DG124). */
-  detailFooter?: DetailFooter;
   /** Server-known auth state — forwarded to the check-in drawer's sign-in gate. */
   isAuthenticated?: boolean;
   /** DG143 request-time MapKit readiness — gates the Apple search CTA and
@@ -266,7 +262,6 @@ export function DiscoveryHome({
     navPrompt: navPromptView("sheet"),
     distanceM,
     search,
-    detailFooter,
   };
 
   // The map surface (children) reads controller/cafes/center through context

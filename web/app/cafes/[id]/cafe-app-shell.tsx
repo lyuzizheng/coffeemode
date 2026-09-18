@@ -22,7 +22,6 @@ import { useMounted } from "@/hooks/use-mounted";
 import { OnboardingHome } from "@/components/onboarding/onboarding-home";
 import { MapSurface } from "@/components/map/map-surface";
 import { CafeCreationTrigger } from "@/components/cafe/cafe-creation-sheet";
-import type { DetailFooter } from "@/components/discovery/detail-content";
 
 /** Shell fade length — inside the spec 0002 settle budget; the global
  * reduced-motion kill switch collapses it to ~0ms. */
@@ -32,7 +31,6 @@ export function CafeAppShell({
   cafeId,
   cafeCenter,
   city,
-  detailFooter,
   detectedCity,
   isAuthenticated,
   serverOnboarded,
@@ -47,8 +45,6 @@ export function CafeAppShell({
   cafeCenter: Coordinates;
   /** Launch-city id for the search scope; undefined outside launch cities. */
   city?: string;
-  /** Owner controls slot for the FULL dossier (server-gated, owner only). */
-  detailFooter?: DetailFooter;
   detectedCity: CityInfo | null;
   isAuthenticated: boolean;
   serverOnboarded: boolean;
@@ -93,7 +89,6 @@ export function CafeAppShell({
         mapkitConfigured={mapkitConfigured}
         initialCafeId={cafeId}
         initialSnap="full"
-        detailFooter={detailFooter}
         city={city}
       >
         <MapSurface />

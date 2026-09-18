@@ -27,7 +27,7 @@ import { useSprings } from "@/lib/motion";
 import type { DiscoveryController } from "@/lib/discovery/use-discovery-controller";
 import type { CafeSummary } from "@/types/cafes";
 import type { DiscoverySearch } from "./use-discovery-search";
-import { DetailContent, type DetailFooter } from "./detail-content";
+import { DetailContent } from "./detail-content";
 import { DesktopSidebar } from "./desktop-sidebar";
 
 export function DesktopDiscovery({
@@ -42,7 +42,6 @@ export function DesktopDiscovery({
   showColumns = true,
   search,
   distanceM,
-  detailFooter,
 }: {
   controller: DiscoveryController;
   cafes: CafeSummary[];
@@ -62,8 +61,6 @@ export function DesktopDiscovery({
   /** Meters from the query point for the selected cafe — resolved by the
    * adapter (search picks may sit outside the nearby list). */
   distanceM?: number;
-  /** FULL dossier slot for the deep-linked cafe (DG124). */
-  detailFooter?: DetailFooter;
 }) {
   const t = useTranslations("discovery");
   const reduced = useReducedMotion();
@@ -123,7 +120,6 @@ export function DesktopDiscovery({
                 onCheckIn={onCheckIn}
                 onClose={close}
                 distanceM={distanceM}
-                footer={detailFooter}
               />
             </motion.div>
           )}

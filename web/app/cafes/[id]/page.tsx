@@ -31,7 +31,7 @@ import { CafeAppShell } from "./cafe-app-shell";
 import { CafeDetailSeed } from "./cafe-detail-seed";
 import { CafePageActions } from "./cafe-page-actions";
 import { CafePageFeed } from "./cafe-page-feed";
-import { CafeOwnerControls } from "./cafe-owner-controls";
+import { CafeOwnerControls } from "@/components/cafe/cafe-owner-controls";
 // DB-backed SSR page: render per request; the CDN cache header on /cafes/:id
 // (next.config.ts, TTLs from web/config/app.yaml — DG105/DG107) absorbs the
 // viral-link traffic so Postgres does not.
@@ -197,7 +197,7 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
   const covers = (cafe.gallery ?? []).map((g: StoredImage) => g.card).filter(Boolean); // BRAWUKA-307: cafe.cover already derives from the first gallery card
   // The public payload contract (DG13): client components receive only the
   // narrow slices, never the full row (see publicCafeShell).
-  const publicAttribution = toPublicCafeDetail(cafe);
+  const publicAttribution = toPublicCafeDetail(cafe, viewer?.id);
   const shell = publicCafeShell(cafe);
   const ownerControls = isOwner ? (
     <CafeOwnerControls
@@ -215,7 +215,6 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
       cafeId={cafe.id}
       cafeCenter={{ lat: cafe.lat, lng: cafe.lng }}
       city={findCity(cafe.city)?.id}
-      detailFooter={isOwner ? { cafeId: cafe.id, node: ownerControls } : undefined}
       detectedCity={entry.detectedCity}
       isAuthenticated={entry.isAuthenticated}
       serverOnboarded={entry.serverOnboarded}

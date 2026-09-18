@@ -22,6 +22,7 @@ import { useNetworkStatus } from "@/hooks/use-network-status";
 import { formatDistanceKm } from "@/lib/discovery/view-model";
 import { displayCityName } from "@/lib/cities";
 import type { ExternalSourceFlags } from "@/lib/client-env";
+import { PrivateBadge } from "@/components/cafe/private-badge";
 import { groupSearchResults } from "@/lib/search/grouped-results";
 import type { SearchResponse, SearchResultItem } from "@/lib/search/types";
 
@@ -72,8 +73,12 @@ function ResultRow({
         className="cm-focus flex w-full flex-col gap-0.5 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-surface-secondary"
       >
         <span className="flex items-baseline justify-between gap-2">
-          <span className="truncate font-display text-md font-bold text-foreground">
-            {item.name}
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate font-display text-md font-bold text-foreground">
+              {item.name}
+            </span>
+            {/* DG147: private results only ever reach the owner (read-path filter). */}
+            {item.cafe?.visibility === "private" && <PrivateBadge />}
           </span>
           {item.type === "poi" && (
             <span className="shrink-0 text-xs text-muted">

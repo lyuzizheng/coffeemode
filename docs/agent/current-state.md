@@ -12,6 +12,12 @@ The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI 
   (`poi-service`, `image-service`) are deployed to staging and production, so what
   is left there is the POI Google Places key, a Cloudflare deploy API token, and
   custom domains — see `docs/agent/pending-user-actions.md`.
+- BRAWUKA-370/473 UI density program: the BRAWUKA-370 audit's four sub-issues
+  (418/419/420/421) merged via #514/#516/#517; the follow-up density pass
+  (BRAWUKA-473, PR #518) unified concentric radii, chip sizing, type pairing,
+  44px hit areas, and skeleton geometry, and codified the rules in spec 0002
+  §Spacing and radius. Design artifacts in `docs/design/` were harmonized to
+  shipped code (see `docs/design/README.md` §Harmonization notes).
 - BRAWUKA-335 spec revision (specs 0003/0005 + new 0010): local dev defaults to
   the staging Supabase project for auth (Google OAuth) while app data stays on
   the local compose Postgres; `supabase-mock` is retained for offline/unit use;

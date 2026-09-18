@@ -1,6 +1,26 @@
 # CoffeeMode Web — File Notes
 
 
+## 2026-09-18 (BRAWUKA-473 — UI density consistency pass)
+
+- `docs/specs/0002-design-system.md` §Spacing and radius now codifies the
+  concentric radius rule (inner = outer − padding), chip density standards
+  (non-interactive `px-2.5 py-1 text-xs rounded-sm`; interactive `h-9 px-3`),
+  the 44px effective hit-area floor (`min-h-11` + negative margin for inline
+  links), list-title/label/error-title type pairing, skeleton-geometry
+  fidelity, and `lib/layout.ts` as the single source for layout numbers.
+- Components: profile cards/tabs and FeedModeTabs moved to the canonical
+  `rounded-md`/`rounded-sm` concentric pair; bordered elements missing a
+  radius got `rounded-md`; chip paddings unified; form labels, list titles,
+  and error-page titles aligned to the type pairing; CloseTrigger and
+  SignOutButton hit areas raised to 44px.
+- Loading surfaces: `app/loading.tsx` is now a map-shell skeleton (search
+  capsule + account chip + collapsed bar + PEEK cards);
+  `app/profile/loading.tsx`, `detail-content`, `desktop-discovery`,
+  `mobile-sheet`, and `checkin-feed` skeletons mirror real layout geometry.
+- `scores.tsx` duplicated `w-[88px]` label column extracted to
+  `DIM_LABEL_CLASS`.
+
 ## 2026-09-13 (BRAWUKA-209 — dark sage hover residual)
 
 - `app/globals.css`

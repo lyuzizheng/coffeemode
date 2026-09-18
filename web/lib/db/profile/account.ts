@@ -26,6 +26,7 @@ export interface ProfileExportBundle {
   checkins: unknown[];
   cafes_created: unknown[];
   navigations: unknown[];
+  checkin_likes: unknown[];
 }
 
 /** Everything the account owns, in one JSON bundle. Check-ins include
@@ -41,21 +42,28 @@ export async function getProfileExport(userId: string): Promise<ProfileExportBun
   );
 
   const checkins = await query(
-    `select id, cafe_id, visited_at, scores, max_stay, notes, photos,
+    `select id, cafe_id, visited_at, scores, max_stay, note, photos,
             is_creation, likes_count, created_at, updated_at, deleted_at
      from checkins where user_id = $1 order by visited_at desc`,
     [userId],
   );
 
   const cafesCreated = await query(
-    `select id, name, city, address, lat, lng, visibility, created_at
+    `select id, name, city, address,
+            ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng,
+            visibility, created_at
      from cafes where created_by = $1 order by created_at desc`,
     [userId],
   );
-
   const navigations = await query(
-    `select id, cafe_id, resolved, created_at, resolved_at
+    `select id, cafe_id, resolved, outcome, ask_count, last_asked_at, created_at
      from navigations where user_id = $1 order by created_at desc`,
+    [userId],
+  );
+
+  const checkinLikes = await query(
+    `select id, checkin_id, created_at
+     from checkin_likes where user_id = $1 order by created_at desc`,
     [userId],
   );
 
@@ -65,6 +73,7 @@ export async function getProfileExport(userId: string): Promise<ProfileExportBun
     checkins: checkins.rows,
     cafes_created: cafesCreated.rows,
     navigations: navigations.rows,
+    checkin_likes: checkinLikes.rows,
   };
 }
 
@@ -133,6 +142,10 @@ export async function deleteAccount(userId: string): Promise<DeleteAccountResult
     await client.query(`delete from checkin_likes where user_id = $1`, [userId]);
     await client.query(`delete from navigations where user_id = $1`, [userId]);
     await client.query(`delete from image_upload_intents where user_id = $1`, [userId]);
+    // checkins.user_id has no ON DELETE clause — detach the tombstones so
+    // the FK doesn't block the profile delete. Rows stay (DG146 audit
+    // trail); only the author link goes.
+    await client.query(`update checkins set user_id = null where user_id = $1`, [userId]);
     await client.query(`delete from profiles where id = $1`, [userId]);
 
     return {

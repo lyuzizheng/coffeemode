@@ -11,7 +11,7 @@ export default function PrivacyPage() {
   return (
     <LegalPage
       page="privacy"
-      sections={["collect", "use", "location", "share", "retention", "rights"]}
+      sections={["collect", "use", "location", "share", "retention", "contact"]}
     />
   );
 }

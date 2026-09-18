@@ -37,14 +37,13 @@ export function LocateButton({
     >
       <motion.span
         key={pulseKey}
-        initial={false}
+        initial={{ scale: 1, opacity: 1 }}
         animate={
-          locating && !reduced
+          !reduced && (locating || pulseKey > 0)
             ? { scale: [1, 1.15, 1], opacity: [1, 0.55, 1] }
             : { scale: 1, opacity: 1 }
         }
         transition={{ duration: 1.2, ease: "easeInOut" }}
-        className="flex"
       >
         <LocateIcon
           size={20}

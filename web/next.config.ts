@@ -21,6 +21,11 @@ const nextConfig: NextConfig = {
   // future alternative, not the primary target.
   output: "standalone",
 
+  typescript: {
+    // Type checking is strictly enforced by CI gate (`npm run typecheck`).
+    // Skips tsc during Docker image build to prevent external test imports failing.
+    ignoreBuildErrors: true,
+  },
   env: {
     NEXT_PUBLIC_RECENT_SEARCHES_MAX: String(appConfig.profile.recentSearchesMax),
     // BRAWUKA-250: app.yaml-owned values mirrored to the browser. The client

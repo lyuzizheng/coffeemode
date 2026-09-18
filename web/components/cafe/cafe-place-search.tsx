@@ -85,7 +85,7 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn, mapkitC
           onRequireSignIn();
           return;
         }
-        onError(cause instanceof Error ? cause.message : t("searchFailed"));
+        onError(t("searchFailed"));
       });
     return () => {
       cancelled = true;

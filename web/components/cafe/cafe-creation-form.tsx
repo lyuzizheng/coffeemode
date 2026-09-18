@@ -8,6 +8,7 @@ import {
   TextArea,
   TextField,
 } from "@heroui/react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useState, type ChangeEvent, type FormEvent } from "react";
 import { PolicyChips, policyOptions } from "./policy-chips";
@@ -61,6 +62,7 @@ export function CafeCreationForm({
   const [note, setNote] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
+  const [isDuplicate, setIsDuplicate] = useState(false);
   const [duplicateCafeId, setDuplicateCafeId] = useState<string | null>(null);
   const [createdCafeId, setCreatedCafeId] = useState<string | null>(null);
 
@@ -89,6 +91,7 @@ export function CafeCreationForm({
     }
     setBusy(true);
     onError(null);
+    setIsDuplicate(false);
     setDuplicateCafeId(null);
     try {
       const imageUuid = await uploadPhoto(photo);
@@ -114,7 +117,11 @@ export function CafeCreationForm({
       // unrecoverable by retrying, so the drawer's gate is the only way out.
       throwIfUnauthorized(response);
       if (response.status === 409) {
+        // The 409 body may omit `cafe_id` (raced insert, BRAWUKA-467): the
+        // "already exists" hint never depends on it, but the jump link does
+        // (BRAWUKA-465).
         const duplicate = (await response.json()) as { cafe_id?: string };
+        setIsDuplicate(true);
         setDuplicateCafeId(duplicate.cafe_id ?? null);
         return;
       }
@@ -183,9 +190,20 @@ export function CafeCreationForm({
             <p className="text-xs text-muted">{t("photoHint")}</p>
           </div>
         </div>
-        {duplicateCafeId ? (
+        {isDuplicate ? (
           <p className="text-sm text-warning" role="status">
             {t("alreadyExists")}
+            {duplicateCafeId ? (
+              <>
+                {" "}
+                <Link
+                  href={`/cafes/${duplicateCafeId}`}
+                  className="cm-focus underline underline-offset-2"
+                >
+                  {t("viewExisting")}
+                </Link>
+              </>
+            ) : null}
           </p>
         ) : null}
         {createdCafeId ? (

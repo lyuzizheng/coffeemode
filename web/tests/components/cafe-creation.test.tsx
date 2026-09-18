@@ -324,7 +324,7 @@ describe("CafeCreationSheet & Trigger", () => {
   });
 });
 
-describe("CafeCreationSheet submit failures (BRAWUKA-124/BRAWUKA-212/BRAWUKA-490)", () => {
+describe("CafeCreationSheet submit failures (BRAWUKA-124/BRAWUKA-212/BRAWUKA-490/BRAWUKA-465)", () => {
   function jsonResponse(status: number, body: unknown) {
     return { ok: status >= 200 && status < 300, status, json: async () => body };
   }
@@ -505,6 +505,26 @@ describe("CafeCreationSheet submit failures (BRAWUKA-124/BRAWUKA-212/BRAWUKA-490
     expect(warn).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({ code: "image_processing_error" }),
+    );
+  });
+
+  it("links to the existing cafe when the POST dedupes with 409 (BRAWUKA-465)", async () => {
+    vi.mocked(uploadPhoto).mockResolvedValue("img-uuid-1");
+    mockRoutes((url) =>
+      url.includes("/api/cafes")
+        ? jsonResponse(409, { error: "cafe_exists", cafe_id: "cafe-dup-1" })
+        : jsonResponse(200, {}),
+    );
+
+    await openSheetWithPoi();
+    fillAndSubmit();
+
+    await waitFor(() => {
+      expect(screen.getByText(/already in CafeMood/)).toBeInTheDocument();
+    });
+    expect(screen.getByRole("link", { name: "View existing cafe" })).toHaveAttribute(
+      "href",
+      "/cafes/cafe-dup-1",
     );
   });
 });

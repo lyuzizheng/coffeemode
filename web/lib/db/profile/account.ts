@@ -134,10 +134,6 @@ export async function deleteAccount(userId: string): Promise<DeleteAccountResult
        where created_by = $1`,
       [userId, serviceAccountId],
     );
-    await client.query(
-      `update cafes set owner_id = null where owner_id = $1`,
-      [userId],
-    );
 
     await client.query(`delete from checkin_likes where user_id = $1`, [userId]);
     await client.query(`delete from navigations where user_id = $1`, [userId]);

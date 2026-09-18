@@ -274,6 +274,9 @@ function CheckinDrawerSurface({
               {...detents.handleProps}
             />
             {isOpen && (
+              /* Edit-mode PATCH cannot save photos — seeding restored draft
+                 photos into an edit would hide them behind the absent picker
+                 and drop them silently on save (BRAWUKA-395 P2-2). */
               <CheckinForm
                 key={state.formKey}
                 cafeId={props.cafeId}
@@ -283,7 +286,7 @@ function CheckinDrawerSurface({
                 initialScores={props.initialScores ?? state.revisit?.scores}
                 initialMaxStay={props.initialMaxStay ?? state.revisit?.max_stay ?? null}
                 initialNote={props.initialNote ?? state.revisit?.note ?? null}
-                initialPhotos={props.initialPhotos}
+                initialPhotos={state.effectiveMode === "edit" ? undefined : props.initialPhotos}
                 promptCaption={props.promptCaption}
                 isAuthenticated={props.isAuthenticated}
                 lastCheckin={state.lastCheckinQuery.data?.checkin ?? null}

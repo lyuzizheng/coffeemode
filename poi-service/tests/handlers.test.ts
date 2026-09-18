@@ -712,6 +712,47 @@ describe("GET /poi/search", () => {
     const results = (await bodyOf(res)).results as unknown[];
     expect(results).toHaveLength(100);
   });
+
+  it("keeps the nearest POI when name matches exceed the prefetch cap (BRAWUKA-395)", async () => {
+    // >1000 name matches inside the bbox: an alphabetical prefetch truncates
+    // before the distance sort and drops the POI sitting on the search point.
+    const db = new FakeD1();
+    const now = new Date().toISOString();
+    for (let i = 0; i < 1100; i++) {
+      db.rows.push({
+        place_id: `bulk-${String(i).padStart(4, "0")}`,
+        source: "google",
+        name: `Cafe ${String(i).padStart(4, "0")}`,
+        lat: 1.305 + (i % 10) * 0.01,
+        lng: 103.805 + (i % 10) * 0.01,
+        types: '["cafe"]',
+        business_status: null,
+        hours_json: null,
+        fetched_at: now,
+        expires_at: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+      });
+    }
+    db.rows.push({
+      place_id: "nearest",
+      source: "google",
+      name: "Zebra Cafe", // sorts last alphabetically — dropped by a name-ordered prefetch
+      lat: 1.3,
+      lng: 103.8,
+      address: null,
+      types: '["cafe"]',
+      business_status: null,
+      hours_json: null,
+      fetched_at: now,
+      expires_at: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+    });
+    const env = makeEnv({ POI_DB: db });
+
+    const res = await call("GET", "/poi/search?q=cafe&lat=1.3&lng=103.8&r=50", env);
+
+    expect(res.status).toBe(200);
+    const results = (await bodyOf(res)).results as Array<Record<string, unknown>>;
+    expect(results[0]).toMatchObject({ place_id: "nearest", distance_km: 0 });
+  });
 });
 
 describe("GET /poi/search/external", () => {

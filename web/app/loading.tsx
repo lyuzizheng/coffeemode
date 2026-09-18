@@ -3,40 +3,67 @@
 import { Skeleton } from "@heroui/react";
 
 /**
- * Instant-loading fallback for `/` (the only dynamic route today): a skeleton
- * of the home layout — header, hero, three steps, sign-in card. Skeleton
- * shimmer, never a spinner (spec 0002).
+ * Instant-loading fallback for `/` (the map home): a skeleton of the real
+ * shell — full-viewport map canvas, floating search capsule, account chip,
+ * and the collapsed sheet bar at the bottom. Skeleton shimmer, never a
+ * spinner (spec 0002).
  */
 export default function Loading() {
   return (
-    <div aria-busy="true" className="flex min-h-dvh flex-col">
-      <header className="flex items-center justify-between px-5 py-4 sm:px-8">
-        <Skeleton className="h-6 w-28" />
-        <Skeleton className="h-10 w-36" />
-      </header>
+    <div aria-busy="true" className="relative min-h-dvh bg-surface-secondary">
+      {/* Mobile: floating search capsule + account chip */}
+      <div className="fixed inset-x-4 top-4 z-10 lg:hidden">
+        <Skeleton className="h-14 w-full rounded-lg" />
+      </div>
+      <Skeleton className="fixed right-4 top-[var(--layout-chrome-offset)] z-10 h-14 w-28 rounded-full lg:right-[var(--layout-chrome-offset)] lg:top-6" />
 
-      <main className="flex flex-1 flex-col items-center justify-center px-6 py-10">
-        <div className="w-full max-w-md">
-          <Skeleton className="h-4 w-48" />
-          <Skeleton className="mt-3 h-9 w-3/4" />
-          <Skeleton className="mt-3 h-4 w-full" />
-          <Skeleton className="mt-2 h-4 w-2/3" />
-
-          <div className="mt-10 space-y-5 border-t border-separator pt-6">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="flex gap-4">
-                <Skeleton className="mt-0.5 h-4 w-6 shrink-0" />
-                <div className="min-w-0 flex-1 space-y-2">
-                  <Skeleton className="h-4 w-20" />
-                  <Skeleton className="h-3 w-full" />
-                </div>
-              </div>
-            ))}
+      {/* Desktop: sidebar column */}
+      <div className="fixed inset-y-0 left-0 z-10 hidden w-[var(--layout-aside-column)] flex-col border-r border-separator bg-surface lg:flex">
+        <div className="flex items-start justify-between gap-3 border-b border-separator px-4 pb-3 pt-4">
+          <div className="flex flex-col gap-1.5">
+            <Skeleton className="h-6 w-28" />
+            <Skeleton className="h-3 w-40" />
           </div>
-
-          <Skeleton className="mt-10 h-44 w-full rounded-md" />
+          <Skeleton className="h-9 w-24 rounded-md" />
         </div>
-      </main>
+        <div className="border-b border-separator px-4 py-3">
+          <Skeleton className="h-11 w-full rounded-md" />
+        </div>
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="flex gap-3 border-b border-separator p-3">
+            <Skeleton className="h-[var(--layout-row-cover-h)] w-[var(--layout-row-cover-w)] rounded-sm" />
+            <div className="flex flex-1 flex-col justify-center gap-2">
+              <Skeleton className="h-4 w-2/3" />
+              <Skeleton className="h-3 w-1/3" />
+              <Skeleton className="h-3 w-1/2" />
+            </div>
+            <Skeleton className="h-10 w-11 self-center" />
+          </div>
+        ))}
+      </div>
+
+      {/* Mobile: collapsed sheet bar (PEEK strip) */}
+      <div className="fixed inset-x-0 bottom-0 z-10 rounded-t-lg border-t border-separator bg-overlay pb-[env(safe-area-inset-bottom)] lg:hidden">
+        <div className="flex justify-center pb-3 pt-2">
+          <div className="h-1 w-9 rounded-full bg-separator" />
+        </div>
+        <div className="flex gap-3 px-4 pb-2">
+          {[0, 1].map((i) => (
+            <div
+              key={i}
+              className="flex w-[85%] shrink-0 gap-3 rounded-md border border-separator bg-surface p-3"
+            >
+              <Skeleton className="h-[var(--layout-thumb)] w-[var(--layout-card-cover-w)] rounded-sm" />
+              <div className="flex flex-1 flex-col justify-center gap-2">
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-3 w-1/3" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+              <Skeleton className="h-10 w-11 self-center" />
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

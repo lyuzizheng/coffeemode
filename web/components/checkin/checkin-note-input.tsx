@@ -15,7 +15,7 @@ export function CheckinNoteInput({ value, onChange }: CheckinNoteInputProps) {
 
   return (
     <div className="space-y-1">
-      <label className="text-xs text-muted">{t("noteOptional")}</label>
+      <label className="text-sm font-medium text-muted">{t("noteOptional")}</label>
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value.slice(0, noteMaxChars))}

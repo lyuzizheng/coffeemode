@@ -22,14 +22,14 @@ export function ThemeVariantPicker() {
   // SSR/CSR parity: the stored variant is unknown until mount — render an
   // inert track of the same size so the footer doesn't shift or mismatch.
   if (!mounted) {
-    return <div className="h-12 rounded-md bg-default" aria-hidden />;
+    return <div className="h-12 rounded-md bg-surface-secondary" aria-hidden />;
   }
 
   return (
     <div
       role="group"
       aria-label={t("label")}
-      className="flex items-center gap-0.5 rounded-md bg-default p-0.5"
+      className="flex items-center gap-0.5 rounded-md bg-surface-secondary p-0.5"
     >
       {VARIANTS.map((v: ThemeVariant) => {
         const selected = variant === v;

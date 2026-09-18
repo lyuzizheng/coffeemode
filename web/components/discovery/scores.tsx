@@ -22,7 +22,10 @@ import { MAX_STAY_VALUES, type MaxStay } from "@/types/checkins";
 import { dimMean, policyConsensus } from "@/lib/discovery/view-model";
 import { SectionLabel } from "./section-label";
 
-/** Narrow a raw consensus string to the policy's enum, else "unknown". */
+/** Dimension label column — shared by WorkProfile rows and PolicyConsensus
+ *  so the two tables align on the same 88px gutter. */
+const DIM_LABEL_CLASS = "w-[88px] shrink-0 text-sm text-foreground";
+
 function asMaxStay(value: string | null): MaxStay {
   return (MAX_STAY_VALUES as readonly string[]).includes(value ?? "")
     ? (value as MaxStay)
@@ -125,7 +128,7 @@ export function WorkProfile({ stats, animated = true }: { stats: WorkStats; anim
           const n = stats.dims[dim]?.n ?? 0;
           return (
             <div key={dim} className="flex items-center gap-3">
-              <span className="w-[88px] shrink-0 text-sm text-foreground">
+              <span className={DIM_LABEL_CLASS}>
                 {t(`dims.${dim}`)}
               </span>
               {mean === null ? (
@@ -172,8 +175,8 @@ export function PolicyConsensus({ stats }: { stats: WorkStats }) {
     <section className="flex flex-col gap-3" aria-label={t("policy_aria")}>
       <SectionLabel>{t("policy_aria")}</SectionLabel>
       <div className="flex items-center gap-3">
-        <span className="w-[88px] shrink-0 text-sm text-foreground">{t("max_stay")}</span>
-        <span className="rounded-sm border border-separator bg-surface-secondary px-2.5 py-1.5 text-xs text-foreground">
+        <span className={DIM_LABEL_CLASS}>{t("max_stay")}</span>
+        <span className="rounded-sm border border-separator bg-surface-secondary px-2.5 py-1 text-xs text-foreground">
           {t(`policy.max_stay.${maxStay}`)}
         </span>
       </div>

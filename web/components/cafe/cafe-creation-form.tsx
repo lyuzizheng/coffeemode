@@ -174,7 +174,7 @@ export function CafeCreationForm({
           </TextField>
           <div className="space-y-2">
             <Label>{t("photo")}</Label>
-            <label className="cm-focus flex cursor-pointer items-center justify-between gap-3 border border-dashed border-border bg-surface-secondary p-4 text-sm text-foreground hover:bg-surface-tertiary">
+            <label className="cm-focus flex cursor-pointer items-center justify-between gap-3 rounded-md border border-dashed border-border bg-surface-secondary p-4 text-sm text-foreground hover:bg-surface-tertiary">
               <span className="min-w-0 truncate">{photo?.name ?? t("photoPlaceholder")}</span>
               <span className="shrink-0 text-xs text-accent">{t("choosePhoto")}</span>
               <input className="sr-only" type="file" accept="image/*" onChange={handlePhoto} />

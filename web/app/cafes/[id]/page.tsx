@@ -137,7 +137,7 @@ function CafeHeading({
           {name}
         </h1>
         {isPrivate && (
-          <span className="rounded-sm bg-surface-secondary px-2 py-0.5 text-xs text-muted">
+          <span className="rounded-sm bg-surface-secondary px-2.5 py-1 text-xs text-muted">
             {privateBadge}
           </span>
         )}

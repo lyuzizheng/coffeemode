@@ -113,7 +113,7 @@ export function CheckinForm(props: CheckinFormProps) {
 
             {!state.isEdit && (
               <div className="space-y-1">
-                <div className="text-xs text-muted">{t("photos")}</div>
+                <div className="text-sm font-medium text-muted">{t("photos")}</div>
                 <CheckinPhotos
                   photos={state.photos}
                   onChange={state.setPhotos}

@@ -248,7 +248,7 @@ export function CafeCreationSheet({
               onRequireSignIn={requireSignIn}
             />
             <Drawer.Footer>
-              <Drawer.CloseTrigger className="cm-focus rounded-sm border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-surface-secondary">
+              <Drawer.CloseTrigger className="cm-focus min-h-11 rounded-sm border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-surface-secondary">
                 {t("close")}
               </Drawer.CloseTrigger>
             </Drawer.Footer>

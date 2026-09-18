@@ -77,6 +77,7 @@ function PeekSkeletons() {
             <div className="h-3 w-1/3 animate-pulse rounded bg-surface-tertiary" />
             <div className="h-3 w-1/2 animate-pulse rounded bg-surface-tertiary" />
           </div>
+          <div className="h-10 w-11 shrink-0 self-center animate-pulse rounded bg-surface-tertiary" />
         </div>
       ))}
     </div>

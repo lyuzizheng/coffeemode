@@ -253,7 +253,7 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn, mapkitC
                   setSearchResults([]);
                   onError(null);
                 }}
-                className={`cm-focus rounded-sm border px-3 py-2 text-xs font-medium ${
+                className={`cm-focus flex h-9 items-center rounded-sm border px-3 text-xs font-medium ${
                   provider?.id === candidate.id
                     ? "border-secondary bg-secondary text-secondary-foreground"
                     : "border-border bg-surface-secondary text-foreground"
@@ -285,7 +285,7 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn, mapkitC
                 <button
                   key={result.place_id}
                   type="button"
-                  className="cm-focus flex w-full items-start justify-between gap-3 border border-border bg-surface p-3 text-left hover:bg-surface-secondary"
+                  className="cm-focus flex w-full items-start justify-between gap-3 rounded-md border border-border bg-surface p-3 text-left hover:bg-surface-secondary"
                   onClick={() => {
                     setSearchResults([]);
                     onSelectPOI(result, provider?.persistOnSelect);

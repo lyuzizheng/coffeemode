@@ -55,27 +55,40 @@ jobs:
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
           if [[ -z "${CF_ACCESS_CLIENT_ID:-}" || -z "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
-            echo "Cloudflare Access service token not configured; skipping TCP tunnel."
-            exit 0
+            echo "Error: CF_ACCESS_CLIENT_ID or CF_ACCESS_CLIENT_SECRET secret is unset in Environment staging."
+            exit 1
           fi
+          CLOUDFLARED_VERSION="2026.9.1"
+          CLOUDFLARED_SHA256="03f1f25d1cc93b9ad6c60569d44060bc4f17ed97075760ed8cfca4b12dcd68cc"
           if ! command -v cloudflared >/dev/null 2>&1; then
-            echo "Installing cloudflared..."
-            curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /tmp/cloudflared
+            echo "Installing cloudflared ${CLOUDFLARED_VERSION}..."
+            curl -fsSL "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-amd64" -o /tmp/cloudflared
+            echo "${CLOUDFLARED_SHA256}  /tmp/cloudflared" | sha256sum -c -
             sudo install -m 755 /tmp/cloudflared /usr/local/bin/cloudflared
             rm -f /tmp/cloudflared
           fi
           echo "Starting Cloudflare Access TCP tunnel for ci-db.cafemood.app:5432..."
-          cloudflared access tcp --hostname ci-db.cafemood.app --url localhost:5432 \
+          cloudflared access tcp --hostname ci-db.cafemood.app --url 127.0.0.1:5432 \
             --service-token-id "$CF_ACCESS_CLIENT_ID" \
             --service-token-secret "$CF_ACCESS_CLIENT_SECRET" >/tmp/cloudflared.log 2>&1 &
           echo $! > /tmp/cloudflared.pid
+          READY=0
           for i in $(seq 1 30); do
             if timeout 1 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/5432' 2>/dev/null; then
-              echo "Cloudflare Access TCP tunnel ready on localhost:5432."
+              echo "Cloudflare Access TCP tunnel ready on 127.0.0.1:5432."
+              READY=1
               break
             fi
             sleep 1
           done
+          if [[ "$READY" != "1" ]]; then
+            echo "Error: Cloudflare Access TCP tunnel failed to become ready on 127.0.0.1:5432 within 30s."
+            if [[ -f /tmp/cloudflared.log ]]; then
+              echo "--- /tmp/cloudflared.log ---"
+              cat /tmp/cloudflared.log
+            fi
+            exit 1
+          fi
 
       - name: Staging user-journey suites (all)
         env:

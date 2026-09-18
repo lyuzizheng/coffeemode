@@ -28,6 +28,7 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 - [x] Cloudflare Access application and Service Token created (`CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`) allowing runner TCP proxy to `ci-db.cafemood.app`.
 - [x] `gh secret set` into the `staging` environment:
   `STAGING_DATABASE_URL` (points to `postgresql://coffeemode:****@localhost:5432/coffeemode_ci`), `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`, `SUPABASE_URL` (= `https://ojujmjewtbquiddswyrg.supabase.co`), `SUPABASE_ANON_KEY`. Supabase staging project retains only Auth smoke checks; test scratch databases live on the VPS CI Postgres.
+- [ ] (Optional, for real-session journey suites) Staging Supabase project dashboard → Settings → API: copy `service_role` key into GitHub Environment `staging` as `SUPABASE_SERVICE_ROLE_KEY`. (Staging CI verification currently passes using `SUPABASE_ANON_KEY` for auth smoke verification.)
 - [ ] Redirect URLs allowlist on the **staging** project (spec 0010 §1): `http://localhost:3000/auth/callback` (local dev against staging auth) + `https://staging.cafemood.app/auth/callback`.
 - [ ] Confirm Google provider is enabled on the **staging** project (item 3's client works for both; the Supabase callback `https://ojujmjewtbquiddswyrg.supabase.co/auth/v1/callback` must be in the Google client's authorized redirect URIs).
 - [ ] `production` environment: owner (`lyuzizheng`) is the required reviewer (already set); prod secrets land there only at promotion time, never before.

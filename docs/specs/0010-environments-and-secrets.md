@@ -148,7 +148,7 @@ app data is local.
 | Secret | Lives in | Never in |
 | --- | --- | --- |
 | prod `service_role`, prod `DATABASE_URL`/`DIRECT_URL` | Dokploy prod env, GH Environment `production` | local `.env`, client bundle, `NEXT_PUBLIC_*` |
-| staging `service_role`, `STAGING_DATABASE_URL`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | GH Environment `staging`, Dokploy staging env, Multica agent secrets (`service_role` scaffold server-side only) | client bundle, `NEXT_PUBLIC_*`, prompts, committed files; local `.env` discouraged (dev uses anon key + own Google login) |
+| staging `service_role` (optional, pending owner item 1a), `STAGING_DATABASE_URL`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | GH Environment `staging`, Dokploy staging env, Multica agent secrets (`service_role` scaffold server-side only) | client bundle, `NEXT_PUBLIC_*`, prompts, committed files; local `.env` discouraged (dev uses anon key + own Google login) |
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `.env.example` templates, Dokploy env | — (public by design; RLS + revoked default grants protect tables) |
 | R2 access keys, Cloudflare tunnel/API tokens | Dokploy env, GH Environment per env | local `.env` unless actively debugging that integration |
 | `BETTER_STACK_INGEST_URL` + `BETTER_STACK_INGEST_TOKEN` | Dokploy env per env (per-env source host + token) | — (ingest-only token; never `NEXT_PUBLIC_*`) |

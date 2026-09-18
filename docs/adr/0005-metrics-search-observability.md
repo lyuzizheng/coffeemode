@@ -31,7 +31,7 @@ owner action (`docs/agent/pending-user-actions.md` §7).
 | `search.duration_ms` | int ms | Wall time of `executeSearch` (DB + POI fanout + ranking), `performance.now()` delta, rounded. |
 | `search.truncated` | bool | `total_count > results.length` — the response hit the top-10 cap (DG46) after relevance truncation (DG131). |
 | `search.open_now.batches` | int ≥ 0 | Iterative-fetch batches consumed; `0` when `open_now` is inactive (SQL pushdown path). `>0` identifies `open_now` requests. |
-| `open_now_truncated` | bool, present only when true | `open_now` filter still under-matched after `maxIterativeFetchBatches` (10) — the DG145-B trigger condition. |
+| `open_now_truncated` | bool, present only when true | `open_now` filter still under-matched after `maxIterativeFetchBatches` (10) with unexamined rows remaining (LIMIT+1 probe) — the DG145-B trigger condition. Exact DB exhaustion is not truncation (BRAWUKA-448). |
 | `search.poi_degraded` | bool | Stored-POI or live-POI upstream failed; response carried `warnings: ["poi_unavailable" \| "live_poi_unavailable"]` (DG133). |
 
 Derived ratios (all over a rolling 7-day window unless stated):

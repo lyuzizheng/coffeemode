@@ -143,10 +143,10 @@ export function CafeCreationForm({
 
   return (
     <>
-      <form className="space-y-5 border-t border-border pt-5" onSubmit={createCafe}>
+      <form className="space-y-5 border-t border-separator pt-5" onSubmit={createCafe}>
         <POIPreview poi={poi} name={name} onNameChange={onNameChange} />
         <div className="space-y-4">
-          <div className="rounded-md border border-border bg-surface p-4">
+          <div className="rounded-md border border-separator bg-surface p-4">
             <Slider
               value={overall ?? 50}
               onChange={(value) => setOverall(Array.isArray(value) ? value[0] : value)}

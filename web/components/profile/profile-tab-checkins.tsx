@@ -69,7 +69,7 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
         return (
           <div
             key={item.id}
-            className={`p-3 bg-surface border border-border rounded-md flex flex-col gap-2 transition-all ${
+            className={`p-3 bg-surface border border-separator rounded-md flex flex-col gap-2 transition-all ${
               item.cafe_is_deleted ? "opacity-60" : "hover:border-border/80"
             }`}
           >

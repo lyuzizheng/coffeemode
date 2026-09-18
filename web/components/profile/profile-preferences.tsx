@@ -25,7 +25,7 @@ export function ProfilePreferences({
   return (
     <section aria-label={t("preferences")} className="mt-6 flex flex-col gap-2">
       <h2 className="text-sm font-medium text-muted">{t("preferences")}</h2>
-      <div className="divide-y divide-separator rounded-md border border-border bg-surface">
+      <div className="divide-y divide-separator rounded-md border border-separator bg-surface">
         {profile && (
           <PublicIdentityToggle profile={profile} onProfileChange={onProfileChange} />
         )}

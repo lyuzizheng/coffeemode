@@ -238,12 +238,35 @@ Same selection/URL state, different chrome. The mobile snap states never
 appear here.
 
 - **Left sidebar, 380px**, full height, `surface` background, 1px right
-  `border`:
-  - Sticky top: search field + filter button (search/filter internals belong
-    to the `search-filters` artifact; this artifact reserves a 48px row).
+  `border` — a two-state narrative column (BRAWUKA-506):
+  - **Expanded state (scroll-top / first arrival)**: a centered brand
+    frontispiece fills the upper column — mono eyebrow (`Field guide`),
+    `text-2xl` display wordmark, and a ≤2-line manifesto intro (real
+    check-ins, no ads, no noise; `discovery.brand_intro`, en/zh). Height
+    `min(46dvh, 400px)`, `--grain` overlay, text centered — a magazine
+    frontispiece, not a hero banner. The cafe index peeks below it.
+  - **Compact state (scrolled)**: the frontispiece slides up under a
+    sticky 72px masthead (`--layout-masthead-h`) whose wordmark, tagline,
+    and add-cafe action fade in over the first ~56px of scroll —
+    scroll-linked, interruptible, reversible; scrolling back to top
+    re-reveals the panel in flow. The search row docks sticky beneath the
+    masthead; index rows scroll under both.
+  - **Coexistence rule**: an active search query or a selected cafe forces
+    the frontispiece to yield — `maxHeight` collapses to 0 on
+    `spring.gentle` and the masthead turns opaque. The collapse latches
+    until the detail closes AND the column returns to scroll-top (≤8px),
+    so closing the dossier mid-list never yanks the panel open under the
+    user's scroll position. No three-way fight for the same focal point.
+  - `prefers-reduced-motion`: static compact masthead + brand row only —
+    no frontispiece, no fades.
+  - **Spacing scale** (BRAWUKA-506 §2): one horizontal gutter `px-4`
+    (16px) for masthead, search, section label, rows, skeletons, and
+    empty/error states; vertical rhythm on the 4px grid (masthead 72px,
+    search `py-3`, label `pt-3`, rows `py-3`). Left/right edges align
+    exactly; skeletons mirror real row geometry.
   - Scrollable cafe list below. List rows carry the same content as PEEK
-    cards (cover, name, meta, ≤4 facts) at full sidebar width, 8px vertical
-    gaps.
+    cards (cover, name, meta, ≤4 facts) at full sidebar width, hairline
+    `separator` dividers.
   - Selected row: `surface-secondary` background + 2px `accent` left edge.
 - **Detail panel — second left column** (DG42): 400px, full height, sitting
   immediately right of the sidebar; the map fills the remaining width. It

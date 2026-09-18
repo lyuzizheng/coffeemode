@@ -15,7 +15,7 @@ export function POIPreview({
 }) {
   const t = useTranslations("create");
   return (
-    <Card className="border-border bg-surface-secondary">
+    <Card className="border-separator bg-surface-secondary">
       <Card.Header>
         <div className="flex items-center justify-between gap-3">
           <Card.Title>{t("previewTitle")}</Card.Title>

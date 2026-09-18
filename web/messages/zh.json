@@ -476,6 +476,7 @@
     "sheet_handle_aria": "拖动调整面板高度",
     "unknown_cafe": "咖啡店",
     "tagline": "收录值得久坐办公的咖啡馆",
+    "brand_intro": "来自真实办公者的打卡记录——没有广告，没有打扰，只有值得久坐的咖啡馆。",
     "index_label": "{count, plural, other {附近 # 家咖啡馆}}",
     "sheet_expand_aria": "展开附近咖啡馆",
     "nearby_count": "附近 {count} 家咖啡馆"

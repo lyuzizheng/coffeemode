@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { prefersReducedMotion } from "motion-dom";
 import type { ReactNode } from "react";
 import { DesktopDiscovery } from "@/components/discovery/desktop-discovery";
 import type { DiscoveryController } from "@/lib/discovery/use-discovery-controller";
@@ -8,13 +10,18 @@ import { emptyWorkStats } from "@/lib/stats/work-stats";
 import type { CafeSummary } from "@/types/cafes";
 import messages from "../../messages/en.json";
 
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+});
+
 function Wrapper({ children }: { children: ReactNode }) {
   return (
     <NextIntlClientProvider locale="en" messages={messages}>
-      {children}
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </NextIntlClientProvider>
   );
 }
+
 
 const mockCafe: CafeSummary = {
   id: "550e8400-e29b-41d4-a716-446655440000",
@@ -206,5 +213,81 @@ describe("DesktopDiscovery sidebar error branch (BRAWUKA-231)", () => {
 
     expect(screen.getByText("Common Man Coffee Roasters")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+describe("DesktopDiscovery dual-state sidebar (BRAWUKA-506)", () => {
+  const searchProp = {
+    externalSources: { google: true, apple: false },
+    mapkitConfigured: false,
+    onSelectResult: vi.fn(),
+    onExternalSearch: vi.fn(),
+  };
+
+  function renderSidebar(controllerOverrides?: Partial<DiscoveryController>) {
+    return render(
+      <DesktopDiscovery
+        controller={createMockController(controllerOverrides)}
+        cafes={[mockCafe]}
+        isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
+        onCheckIn={vi.fn()}
+        addCafe={<span>Add Cafe</span>}
+        search={searchProp}
+      />,
+      { wrapper: Wrapper },
+    );
+  }
+
+  it("renders the brand frontispiece expanded at scroll-top", () => {
+    renderSidebar();
+    // Frontispiece: eyebrow + wordmark + manifesto intro, centered.
+    expect(screen.getByText(messages.onboarding.field_guide_mark)).toBeInTheDocument();
+    expect(screen.getByText(messages.discovery.brand_intro)).toBeInTheDocument();
+    // The index still renders below the panel.
+    expect(screen.getByText("Common Man Coffee Roasters")).toBeInTheDocument();
+  });
+
+  it("collapses the frontispiece when a cafe is selected", async () => {
+    renderSidebar({ selectedCafeId: mockCafe.id });
+    const intro = screen.getByText(messages.discovery.brand_intro);
+    // The panel's visibility:hidden settles on the spring — the intro
+    // becomes invisible once the collapse lands.
+    await waitFor(() => expect(intro).not.toBeVisible());
+  });
+
+  it("collapses the frontispiece while a search query is active", async () => {
+    renderSidebar();
+    const field = screen.getByRole("searchbox");
+    fireEvent.change(field, { target: { value: "latte" } });
+    const intro = screen.getByText(messages.discovery.brand_intro);
+    await waitFor(() => expect(intro).not.toBeVisible());
+  });
+
+  it("renders only the compact masthead under prefers-reduced-motion", () => {
+    // framer-motion latches the media query once into motion-dom's
+    // prefersReducedMotion ref — flip the ref directly (matchMedia mocks
+    // installed later never reach it).
+    const previous = prefersReducedMotion.current;
+    prefersReducedMotion.current = true;
+    try {
+      renderSidebar();
+      expect(screen.queryByText(messages.discovery.brand_intro)).not.toBeInTheDocument();
+      // Compact masthead + index remain.
+      expect(screen.getByText(messages.discovery.tagline)).toBeInTheDocument();
+      expect(screen.getByText("Common Man Coffee Roasters")).toBeInTheDocument();
+    } finally {
+      prefersReducedMotion.current = previous;
+    }
+  });
+
+  it("aligns the sidebar on the shared 16px gutter", () => {
+    renderSidebar();
+    // Row content shares the px-4 gutter (BRAWUKA-506 §2).
+    const rowButton = screen.getByRole("button", { name: /Common Man Coffee Roasters/ });
+    const rowBody = rowButton.firstElementChild as HTMLElement;
+    expect(rowBody.className).toContain("px-4");
+    expect(rowBody.className).toContain("py-3");
   });
 });

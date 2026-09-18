@@ -64,8 +64,14 @@ async function createTestBucket(): Promise<string> {
 
 async function deleteTestBucket(bucket: string): Promise<void> {
   const url = `${R2_ENDPOINT.replace(/\/+$/, "")}/${bucket}`;
-  // Benign: teardown deletion of ephemeral test bucket; bucket may already be deleted.
-  await r2Client().fetch(url, { method: "DELETE" }).catch(() => {});
+  try {
+    const res = await r2Client().fetch(url, { method: "DELETE" });
+    if (!res.ok && res.status !== 404 && res.status !== 204) {
+      cleanupErrors.push(`DELETE bucket ${bucket} failed with HTTP ${res.status}`);
+    }
+  } catch (e) {
+    cleanupErrors.push(`DELETE bucket ${bucket} threw ${(e as Error).message}`);
+  }
 }
 
 async function putObject(key: string, body: Uint8Array, metadata?: Record<string, string>): Promise<void> {

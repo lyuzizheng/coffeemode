@@ -25,6 +25,19 @@ const APPLE_PLACE = vi.hoisted<POI>(() => ({
   fetched_at: "2026-01-01T00:00:00.000Z",
 }));
 
+const GOOGLE_PLACE = vi.hoisted<POI>(() => ({
+  place_id: "google-1",
+  source: "google",
+  name: "Google Cafe",
+  lat: 1.3,
+  lng: 103.8,
+  address: "Google Address",
+  types: ["cafe"],
+  business_status: "OPERATIONAL",
+  hours_json: null,
+  fetched_at: "2026-01-01T00:00:00.000Z",
+}));
+
 vi.mock("@/lib/places/apple-place-search", () => ({
   applePlaceSearch: (t: (key: string) => string) => ({
     id: "apple",
@@ -221,6 +234,93 @@ describe("CafeCreationSheet & Trigger", () => {
       expect(screen.getByRole("alert")).toHaveTextContent(/not a cafe or food venue/i);
     });
     expect(screen.queryByRole("button", { name: "Create cafe" })).not.toBeInTheDocument();
+  });
+
+  it("opens creation form directly for seeded Google POI without calling external persist (BRAWUKA-402)", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    globalThis.fetch = fetchSpy;
+
+    render(
+      <CafeCreationSheet
+        isOpen={true}
+        onOpenChange={vi.fn()}
+        isAuthenticated={true}
+        initialPoi={GOOGLE_PLACE}
+        initialPersist={false}
+      />,
+      { wrapper: Wrapper },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Create cafe" })).toBeInTheDocument();
+    });
+    expect(fetchSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/places/external"),
+      expect.anything(),
+    );
+  });
+
+  it("persists seeded Apple POI through /api/places/external before showing creation form (BRAWUKA-402)", async () => {
+    const fetchSpy = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("/api/places/external")) {
+        return { ok: true, status: 200, json: async () => ({ stored: 1 }) };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    });
+    globalThis.fetch = fetchSpy;
+
+    render(
+      <CafeCreationSheet
+        isOpen={true}
+        onOpenChange={vi.fn()}
+        isAuthenticated={true}
+        initialPoi={APPLE_PLACE}
+        initialPersist={true}
+      />,
+      { wrapper: Wrapper },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Create cafe" })).toBeInTheDocument();
+    });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/places/external",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ pois: [APPLE_PLACE] }),
+      }),
+    );
+  });
+
+  it("renders localized fallback when seeded Apple POI persist fails with 400 (BRAWUKA-402)", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchSpy = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("/api/places/external")) {
+        return { ok: false, status: 400, json: async () => ({ error: "invalid_request" }) };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    });
+    globalThis.fetch = fetchSpy;
+
+    render(
+      <CafeCreationSheet
+        isOpen={true}
+        onOpenChange={vi.fn()}
+        isAuthenticated={true}
+        initialPoi={APPLE_PLACE}
+        initialPersist={true}
+      />,
+      { wrapper: Wrapper },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("Search is unavailable right now.");
+    });
+    expect(screen.queryByRole("button", { name: "Create cafe" })).not.toBeInTheDocument();
+    expect(warn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ code: "invalid_request" }),
+    );
   });
 });
 

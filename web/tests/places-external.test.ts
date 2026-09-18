@@ -51,6 +51,9 @@ describe("POST /api/places/external", () => {
     const response = await POST(request([GOOGLE_POI]));
 
     expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toBe("invalid_request");
+    expect(body.message).toBeUndefined();
     expect(storeExternalPOIsMock).not.toHaveBeenCalled();
   });
 

@@ -97,7 +97,8 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
   // marker would be deletable. Two stages are accepted:
   //   - provision: targetType="provision", targetId=<imageUuid> — the creation
   //     flow processes images BEFORE their cafe/check-in target exists
-  //     (issue #86); the attach flow re-PUTs with the real target later.
+  //     (issue #86); attachProvisionedPhotos restamps via restampOriginal
+  //     with the real target once it exists.
   //   - final: targetType="cafe"|"checkin" + target id — live gallery original.
   // The cleanup script treats "provision"-stage objects older than retention
   // as abandoned (an upload that never attached) and keeps cafe/checkin ones.

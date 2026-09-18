@@ -50,7 +50,6 @@ vi.mock("@/lib/places/poi-client", () => ({
   searchExternalPOIs: vi.fn(async () => ({ results: [] })),
   searchPOIs: vi.fn(async () => ({ results: [] })),
   resolveMapsUrl: vi.fn(),
-  getPOI: vi.fn(),
 }));
 
 const RUN_INTEGRATION = process.env.RUN_INTEGRATION === "1";

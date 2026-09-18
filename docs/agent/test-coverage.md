@@ -45,7 +45,7 @@ S1 extracted the pre-S1 duplication (`web/tests/integration/db.integration.test.
 
 - One writer per production change still holds (`AGENTS.md`). Feature code composes shared helpers, never embeds or duplicates them (DG91).
 - Product parameters remain in `web/config/*.yaml` read through `web/lib/config.ts` (DG107); tests in `web/tests/config.test.ts` pin the migration kept values unchanged.
-- `vitest.config.mts` `include` collects only `tests/**/*.test.*`, so `web/tests/helpers/**` contributes no test files; `web/tests/setup.ts` resets the in-memory rate limiter and cleans up React trees once.
+- `vitest.config.mts` `include` collects only `tests/**/*.test.*`, so `web/tests/helpers/**` contributes no test files (helpers are reached by direct `../helpers/*` subpath imports); `web/tests/setup.ts` resets the in-memory rate limiter and cleans up React trees once.
 - `npm test` (unit/mocked) stays green without Docker; `RUN_INTEGRATION=1` suites are `describe.skip` by default.
 
 ## 3. Infra vs service helpers split
@@ -54,9 +54,8 @@ S1 extracted the pre-S1 duplication (`web/tests/integration/db.integration.test.
 |---|---|---|---|
 | `web/tests/helpers/db.ts` | **infra** (Postgres) | `integrationAdminUrl` host-guard, `makeTestDbName`, `ensureTemplateDatabase`, `provisionTestDatabase` (template cloning), `cleanupIntegrationDatabase`, `runMigrations`, `quotedIdentifier`, `DEFAULT_DB_URL`, `DEFAULT_TEMPLATE_DB_NAME` | `db.integration.test.ts`, `images.integration.test.ts`, `orphan-cleanup.integration.test.ts`, `db-helpers.test.ts`, `http-*.integration.test.ts` (direct `../helpers/db` imports) |
 | `web/tests/helpers/r2.ts` | **infra** (R2/MinIO) | `R2_*` env isolation (`TEST_R2_*`), `r2Client`/`r2Endpoint`, `presignedPutUrl`/`presignedGetUrl`, `headObject`/`putObject`/`deleteObject`/`objectExists`, `makePayload`/`tinyWebP`, `minioReachable` | `images.integration.test.ts`, `orphan-cleanup.integration.test.ts` (direct `../helpers/r2` imports) |
-| `web/tests/helpers/auth.ts` | **service** (domain) | `fakeJwt`/`decodeFakeJwt`, `createMockSupabaseClient`/`mockSupabaseServerClient`/`stubGetCurrentUser` | available for auth mocking; existing suites still use inline `vi.mock` — next trace that needs JWT mocking should import via `../helpers/auth` (see `scripts/supabase-mock.mjs` sync) |
+| `web/tests/helpers/auth.ts` | **service** (domain) | `fakeJwt`/`decodeFakeJwt` | unit suites via direct `../helpers/auth` or `../helpers/mocks` imports (`mocks.ts` mints session JWTs; `http-client.test.ts` + `mocks.test.ts` decode them); route suites use inline `vi.mock` + `../helpers/mocks` session users (see `scripts/supabase-mock.mjs` sync) |
 | `web/tests/helpers/fixtures.ts` | **service** (domain) | fixed UUIDs `U1/U2/CAFE_A/CHECKIN_A1`, `seedBaseData`, `fakeProcessUrls`, `fakeProvisionPhotosDeps`, `cafeWorkStats` | `db.integration.test.ts` and any domain integration test (direct `../helpers/fixtures` imports) |
-| `web/tests/helpers/index.ts` | barrel | re-exports `db`/`r2`/`auth`/`fixtures` (convenience; tests currently import direct subpaths) | direct `../helpers/*` imports; barrel kept for future `import { foo } from "@/tests/helpers"` |
 | `web/tests/setup.ts` | harness | `beforeEach rateLimiter.reset()`, `afterEach cleanup()` | all Vitest suites |
 
 Infra helpers never import domain logic; service helpers compose infra primitives (e.g., `fixtures.ts` imports `checkUploadIntent` from production but `db.ts` does not).
@@ -97,6 +96,6 @@ Deterministic gate `.agents/scripts/check-coverage-matrix.sh` enforces: (a) `doc
 ## 6. References
 
 - `docs/specs/0003-testing-and-ci.md` §Test layers, §Relevant local gates, §Commands, Appendix Coverage traceability — this file.
-- `web/tests/helpers/*` — shared helpers (S1) that removed duplication (direct `../helpers/*` subpath imports; `index.ts` barrel is convenience).
+- `web/tests/helpers/*` — shared helpers (S1) that removed duplication (direct `../helpers/*` subpath imports; no barrel — import the helper file you need).
 - `web/tests/integration/*` — real-DB / real-MinIO suites (opt-in `RUN_INTEGRATION=1`; CI `integration-gate` runs them when web DB/storage boundaries change — merged from `integration-gate` + `images-integration-gate`).
 

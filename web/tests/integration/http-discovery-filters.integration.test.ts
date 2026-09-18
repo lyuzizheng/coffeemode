@@ -36,7 +36,6 @@ vi.mock("@/lib/places/poi-client", () => ({
   searchExternalPOIs: vi.fn(async () => ({ results: [] })),
   searchPOIs: vi.fn(async () => ({ results: [] })),
   resolveMapsUrl: vi.fn(),
-  getPOI: vi.fn(),
 }));
 
 // Image-client seam mock (spec 0008 §5 preference order): the upload and

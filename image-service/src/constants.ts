@@ -32,9 +32,10 @@ export const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 /**
  * Stage marker for pre-target processing (issue #86 creation flow): complete()
  * is called before the cafe/check-in exists, so the original is stamped
- * targetType="provision" + targetId=<imageUuid>. The attach flow re-PUTs with
- * the real target later. The #158 cleanup treats provision-stage objects past
- * retention as abandoned (an upload that never attached).
+ * targetType="provision" + targetId=<imageUuid>. attachProvisionedPhotos
+ * restamps via restampOriginal with the real target once it exists. The #158
+ * cleanup treats provision-stage objects past retention as abandoned (an
+ * upload that never attached).
  */
 export const PROVISION_TARGET_TYPE = "provision";
 

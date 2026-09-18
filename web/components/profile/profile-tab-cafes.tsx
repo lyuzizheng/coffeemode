@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 import type { UseInfiniteQueryResult, InfiniteData } from "@tanstack/react-query";
 import { Button } from "@heroui/react";
 import { CoffeeIcon } from "@/components/icons";
+import { THUMB_PX } from "@/lib/layout";
 import { ErrorRow } from "./profile-error-row";
 import type { UserCafeItemDto } from "@/lib/db/profile";
 
@@ -55,13 +56,13 @@ export function ProfileTabCafes({ baseId, query: cafesQuery }: ProfileTabCafesPr
           href={`/?cafe=${cafe.id}`}
           className="p-3 bg-surface border border-border rounded-xl flex items-center gap-3 hover:border-border/80 active:scale-[0.99] transition-all"
         >
-          <div className="relative w-[72px] h-[54px] rounded-lg bg-surface-secondary border border-border/40 flex-shrink-0 flex items-center justify-center overflow-hidden">
+          <div className="relative w-[var(--layout-thumb)] h-[54px] rounded-lg bg-surface-secondary border border-border/40 flex-shrink-0 flex items-center justify-center overflow-hidden">
             {cafe.cover ? (
               <Image
                 src={cafe.cover}
                 alt={cafe.name}
                 fill
-                sizes="72px"
+                sizes={`${THUMB_PX}px`}
                 className="object-cover"
               />
             ) : (

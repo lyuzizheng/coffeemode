@@ -203,7 +203,7 @@ export function DetailContent({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[640px] flex-col gap-6 px-4 pb-8">
+    <div className="mx-auto flex w-full max-w-[var(--layout-content-max)] flex-col gap-6 px-4 pb-8">
       <DossierHero covers={covers} name={cafe.name} />
       <div className="flex flex-col gap-1.5">
         {heading}

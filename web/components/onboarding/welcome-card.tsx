@@ -173,7 +173,7 @@ export function WelcomeCard({
       transition={
         reduced ? { duration: 0 } : { duration: duration.state, ease: ease.default }
       }
-      className="fixed inset-x-4 bottom-[calc(172px+16px+env(safe-area-inset-bottom))] z-40 mx-auto w-auto max-w-[420px] overflow-hidden rounded-lg border border-separator bg-overlay shadow-lg lg:bottom-6 lg:left-[calc(50%+190px)] lg:right-auto lg:mx-0 lg:w-[calc(100%-2rem)] lg:-translate-x-1/2"
+      className="fixed inset-x-4 bottom-[calc(var(--layout-sheet-peek)+16px+env(safe-area-inset-bottom))] z-40 mx-auto w-auto max-w-[420px] overflow-hidden rounded-lg border border-separator bg-overlay shadow-lg lg:bottom-6 lg:left-[calc(50%+var(--layout-aside-column)/2)] lg:right-auto lg:mx-0 lg:w-[calc(100%-2rem)] lg:-translate-x-1/2"
     >
       <div aria-hidden className="grain-overlay absolute inset-0" />
       <div className="relative flex flex-col gap-3 p-5">

@@ -146,7 +146,7 @@ export function CafeCardBody({
           : "relative flex gap-3 p-3"
       }
     >
-      <CoverTile cafe={cafe} className={variant === "card" ? "h-[72px] w-[96px]" : "h-[64px] w-[84px]"} />
+      <CoverTile cafe={cafe} className={variant === "card" ? "h-[var(--layout-thumb)] w-[96px]" : "h-[64px] w-[84px]"} />
       <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
         <h3 className="truncate font-display text-md font-bold tracking-tight text-foreground">
           {cafe.name}

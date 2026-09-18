@@ -55,20 +55,28 @@ describeIntegration("integration — runtime_config + heartbeat (BRAWUKA-284)", 
   });
 
   afterAll(async () => {
+    const errors: unknown[] = [];
     try {
       await closePool();
-    } catch {
-      // ignore teardown errors
+    } catch (err) {
+      errors.push(err);
     }
     try {
       await dbClient?.end();
-    } catch {
-      // ignore teardown errors
+    } catch (err) {
+      errors.push(err);
     }
     if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = previousDatabaseUrl;
     if (RUN_INTEGRATION && testDbUrl) {
-      await cleanupIntegrationDatabase(adminDbUrl, TEST_DB);
+      try {
+        await cleanupIntegrationDatabase(adminDbUrl, TEST_DB);
+      } catch (err) {
+        errors.push(err);
+      }
+    }
+    if (errors.length > 0) {
+      throw new AggregateError(errors, "runtime-config integration cleanup failed");
     }
   }, 60_000);
 

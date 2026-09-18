@@ -2563,7 +2563,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         expect(err).toBeInstanceOf(CafeExistsError);
         expect((err as CafeExistsError).existingCafeId).toBe(holderCafe);
       } finally {
-        await holder.end().catch(() => undefined);
+        await holder.end();
       }
     });
 
@@ -2594,7 +2594,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         expect(stored.rows).toHaveLength(1);
         expect(result.checkin_id).toBe(stored.rows[0].id);
       } finally {
-        await holder.end().catch(() => undefined);
+        await holder.end();
       }
     });
 

@@ -6,12 +6,13 @@
  * this cafe's feed, rolls back from snapshots on error, and revalidates on
  * settle. Render stays in `checkin-feed.tsx`; cards stay in `feed-card.tsx`.
  */
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslations } from "next-intl";
 import {
   keepPreviousData,
   useInfiniteQuery,
   useMutation,
+  useMutationState,
   useQueryClient,
   type InfiniteData,
   type QueryClient,
@@ -86,15 +87,20 @@ export function useCheckinFeed(cafeId: string, mode: CheckInFeedMode) {
     (checkin: PublicCheckIn) => mutateLike(checkin),
     [mutateLike],
   );
-  // Per-card pending: a like in flight disables only its own card's button.
-  // `variables` is the check-in passed to `mutate`; null when idle.
-  const likePendingId = likeMutation.isPending ? (likeMutation.variables?.id ?? null) : null;
+  // Per-card pending: every in-flight like disables only its own card's
+  // button. `mutation.variables` only names the latest mutation, so pending
+  // ids come from the mutation cache keyed by check-in id (BRAWUKA-460).
+  const pendingLikes = useMutationState({
+    filters: { mutationKey: ["like-checkin", cafeId], status: "pending" },
+    select: (mutation) => (mutation.state.variables as PublicCheckIn).id,
+  });
+  const likePendingIds = useMemo(() => new Set(pendingLikes), [pendingLikes]);
 
   return {
     query,
     checkins,
     like,
-    likePendingId,
+    likePendingIds,
     /**
      * Retry that never re-sends a dead cursor: clears cached pages (and
      * their page params) then refetches from page one. Plain `refetch()` or
@@ -132,7 +138,12 @@ function useFeedQuery(
   return query;
 }
 function useLikeMutation(queryClient: QueryClient, cafeId: string, signInCopy: string, failedCopy: string) {
+  // In-flight like count. `onSettled` runs before the mutation's status
+  // dispatch, so `isMutating` cannot tell the last settle from an earlier
+  // one — count manually and refetch only once every like has settled.
+  const inFlight = useRef(0);
   return useMutation({
+    mutationKey: ["like-checkin", cafeId],
     mutationFn: async (checkin: PublicCheckIn) => {
       const res = await fetch(`/api/checkins/${checkin.id}/like`, { method: "POST" });
       if (res.status === 401) throw new LikeAuthError();
@@ -140,12 +151,10 @@ function useLikeMutation(queryClient: QueryClient, cafeId: string, signInCopy: s
       return (await res.json()) as { liked: boolean; likes_count: number };
     },
     onMutate: async (checkin) => {
+      inFlight.current += 1;
       // Optimistic toggle across every cached mode of this cafe's feed.
       const key = ["cafe-checkins", cafeId];
       await queryClient.cancelQueries({ queryKey: key });
-      const snapshots = queryClient.getQueriesData<InfiniteData<CheckInFeedPage>>({
-        queryKey: key,
-      });
       const delta = checkin.liked_by_viewer ? -1 : 1;
       queryClient.setQueriesData<InfiniteData<CheckInFeedPage>>({ queryKey: key }, (data) => {
         if (!data) return data;
@@ -165,12 +174,31 @@ function useLikeMutation(queryClient: QueryClient, cafeId: string, signInCopy: s
           })),
         };
       });
-      return { snapshots };
     },
-    onError: (err, _checkin, context) => {
-      for (const [key, data] of context?.snapshots ?? []) {
-        queryClient.setQueryData(key, data);
-      }
+    onError: (err, checkin) => {
+      // Roll back only this check-in's optimistic fields. Restoring whole
+      // snapshots would also revert a sibling card's still-pending
+      // optimistic like (BRAWUKA-460).
+      const key = ["cafe-checkins", cafeId];
+      const delta = checkin.liked_by_viewer ? -1 : 1;
+      queryClient.setQueriesData<InfiniteData<CheckInFeedPage>>({ queryKey: key }, (data) => {
+        if (!data) return data;
+        return {
+          ...data,
+          pages: data.pages.map((page) => ({
+            ...page,
+            checkins: page.checkins.map((c) =>
+              c.id === checkin.id
+                ? {
+                    ...c,
+                    liked_by_viewer: !c.liked_by_viewer,
+                    likes_count: Math.max(0, c.likes_count - delta),
+                  }
+                : c,
+            ),
+          })),
+        };
+      });
       if (err instanceof LikeAuthError) {
         toast(signInCopy, { timeout: 4000 });
       } else {
@@ -178,7 +206,13 @@ function useLikeMutation(queryClient: QueryClient, cafeId: string, signInCopy: s
       }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["cafe-checkins", cafeId] });
+      // A refetch landing while a sibling like is still in flight would
+      // overwrite its optimistic state with pre-like server data — wait
+      // for the last settle, then invalidate once.
+      inFlight.current -= 1;
+      if (inFlight.current === 0) {
+        queryClient.invalidateQueries({ queryKey: ["cafe-checkins", cafeId] });
+      }
     },
   });
 }

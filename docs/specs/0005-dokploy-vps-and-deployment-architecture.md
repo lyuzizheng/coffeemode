@@ -241,6 +241,8 @@ spec 0010 §1. The table below covers the deployed staging/production edge only.
      2. Applies schema migrations over `DIRECT_URL` (Supabase prod session/direct — never the transaction pooler) via repo checkout.
      3. Triggers Dokploy production deployment and polls `/api/health` for release convergence.
      4. Executes automated smoke tests (`deploy/dokploy/smoke-test.sh prod`).
+### 2. Zero-downtime container rolling swap strategy
+
 When the VPS runs in Docker Swarm mode, Dokploy stack deployments honor:
 
 ```yaml
@@ -283,6 +285,20 @@ deploy:
      ```bash
      scripts/devops/restore.sh --env staging --file <backup>.dump.gz --drill
      ```
+
+### 4. Scheduled jobs & nightly recompute architecture (Dokploy Cron)
+
+Per BRAWUKA-475, the nightly work_stats recompute and Helpful ranking snapshot execution migrated from GitHub Actions to Dokploy VPS cron:
+- **Zero GitHub Secrets Leakage**: `DATABASE_URL` (production pooled connection string) does not enter GitHub secrets or CI environments; it remains strictly confined to the Dokploy environment on the VPS host.
+- **Execution Window**: Scheduled daily at 02:00 UTC (`0 2 * * *`), comfortably clear of the 03:00 UTC staging-journey verification window.
+- **Canonical Orchestrator**: `deploy/dokploy/nightly-recompute.sh` invokes `npm run recompute:work-stats && npm run snapshot:helpful-ranking` within the production web container via `docker exec`.
+- **Deployment Reconfigurability**:
+  - *Dokploy Scheduled Job*: Created as an `application` schedule on `coffeemode-web-prod` (`0 2 * * *`, command: `[ -f /app/.env ] && set -a && . /app/.env && set +a; if [ -d web ]; then cd web; fi; if ! (npm run recompute:work-stats && npm run snapshot:helpful-ranking); then if [ -n "$MULTICA_AUTOPILOT_WEBHOOK_URL" ]; then node -e 'const url=process.env.MULTICA_AUTOPILOT_WEBHOOK_URL; if(url){await fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({job:"nightly-recompute",error:"Nightly recompute execution failed in container",run:"dokploy:schedule:nightly-recompute"}),signal:AbortSignal.timeout(10000)}).catch(()=>{});}'; fi; exit 1; fi`).
+  - *VPS Host Crontab Alternative*: `0 2 * * * /path/to/coffeemode/deploy/dokploy/nightly-recompute.sh >> /var/log/nightly-recompute.log 2>&1`.
+- **Failure Alerting & Self-Healing Webhook (BRAWUKA-476)**:
+  - *Dual-Layer Defense*: Script-level failure trap in `deploy/dokploy/nightly-recompute.sh` catches application-level non-zero exits, formatting structured JSON error lines and POSTing `{"job":"nightly-recompute","error":"<summary>","run":"<log_pointer>"}` to `MULTICA_AUTOPILOT_WEBHOOK_URL`. In addition, Dokploy native custom webhook notification is configured with the same endpoint to capture platform-level/container failures.
+  - *Autopilot Self-Healing*: The webhook triggers Multica Autopilot `CoffeeMode 运维告警自愈` (`4b90855b-46b2-481f-aeb5-0d739b8dc394`), which automatically provisions an incident ticket (`[AUTO-OPS] Dokploy 定时任务失败告警 <date>`) assigned to DevOps for immediate triage and remediation.
+### 5. Automated smoke test verification checklist
 - [ ] Healthcheck endpoint `GET /api/health` returns `{"ok":true}` and version/boot_time markers with HTTP 200.
 - [ ] Root page `GET /` returns HTTP 200 with HTML shell and title CafeMood.
 - [ ] PostGIS spatial query `GET /api/cafes?lat=1.3521&lng=103.8198&radius_km=5` returns HTTP 200 with `{"cafes":[...]}`.

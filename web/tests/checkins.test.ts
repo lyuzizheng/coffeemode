@@ -403,20 +403,45 @@ describe("createCheckIn", () => {
     expect(clientQueryMock).not.toHaveBeenCalled();
   });
 
-  it("aborts the check-in when the intent consume loses a replay race inside the tx", async () => {
+  it("attaches live originals post-commit with the real check-in id (BRAWUKA-400)", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
-    provisionDeps.consumeUploadIntents.mockResolvedValue(false);
-    clientQueryMock
-      .mockResolvedValueOnce({ rows: [{ lock: 1 }] }) // BRAWUKA-125 advisory xact lock
-      .mockResolvedValueOnce({ rows: [{ id: CAFE }] }) // in-tx cafe gate
-      .mockResolvedValueOnce({ rows: [] }) // revisit window: no live check-in
-      .mockResolvedValueOnce({ rows: [{ id: CHECKIN }] }); // insert
+    mockCheckInHappyPath(CHECKIN);
 
-    const err = await createCheckIn(USER.id, validInput()).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(PhotoIntentError);
-    // Nothing past the insert: no photo write, no gallery merge, no stats.
-    expect(clientQueryMock).toHaveBeenCalledTimes(4);
+    const result = await createCheckIn(USER.id, validInput());
+
+    expect(result).toEqual({ checkin_id: CHECKIN, deduped: false });
+    // Provision leg (pre-target) + post-commit attach leg (final target).
+    const calls = provisionDeps.getProcessUrls.mock.calls.map((call) => call[0]);
+    expect(calls.filter((req) => req.targetType === "provision")).toHaveLength(1);
+    const attach = calls.filter((req) => req.targetType === "checkin");
+    expect(attach).toHaveLength(1);
+    expect(attach[0]).toMatchObject({ imageUuid: IMG, targetType: "checkin", targetId: CHECKIN });
   });
+
+  it("skips the attach re-mark on a raced idempotency dedupe (BRAWUKA-400)", async () => {
+    const key = IDEMPOTENCY_KEY;
+    poolQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("idempotency_key")) return { rows: [], rowCount: 0 }; // fast-path miss
+      return { rows: [{ id: CAFE }], rowCount: 1 }; // pre-provision cafe gate
+    });
+    clientQueryMock.mockImplementation(async (sql: string) => {
+      const s = sql.toLowerCase();
+      if (s.includes("insert into checkins")) return { rows: [], rowCount: 0 }; // ON CONFLICT DO NOTHING
+      if (s.includes("idempotency_key")) return { rows: [{ id: CHECKIN }], rowCount: 1 };
+      if (s.includes("select id from cafes")) return { rows: [{ id: CAFE }], rowCount: 1 };
+      if (s.includes("visited_at > now()")) return { rows: [], rowCount: 0 };
+      return { rows: [], rowCount: 0 };
+    });
+
+    const result = await createCheckIn(USER.id, validInput({ idempotency_key: key }));
+
+    expect(result).toEqual({ checkin_id: CHECKIN, deduped: true });
+    const calls = provisionDeps.getProcessUrls.mock.calls.map((call) => call[0]);
+    expect(calls.filter((req) => req.targetType === "provision")).toHaveLength(1);
+    expect(calls.filter((req) => req.targetType === "checkin")).toHaveLength(0);
+  });
+
+
 
   it("rejects a second create inside the revisit window without inserting (DG64)", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check

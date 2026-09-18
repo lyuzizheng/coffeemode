@@ -33,6 +33,10 @@ export async function POST(request: Request) {
   const bodyRes = await readJsonBody<Record<string, unknown>>(request);
   if (!bodyRes.ok) return bodyRes.response;
   const body = bodyRes.data;
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return apiError("invalid_request", "invalid JSON body", 400);
+  }
+
   // Bot gate runs before any other validation so a missing/forged token
   // always answers 403, never a 400/422 from the input checks below.
   const turnstile = await verifyTurnstileToken(body["cf-turnstile-response"], request);
@@ -41,9 +45,7 @@ export async function POST(request: Request) {
   }
 
   const mapsShareUrl: unknown =
-    body && typeof body === "object" && "maps_share_url" in body
-      ? body.maps_share_url
-      : undefined;
+    "maps_share_url" in body ? body.maps_share_url : undefined;
   if (typeof mapsShareUrl !== "string" || mapsShareUrl.trim() === "") {
     return apiError("invalid_request", "maps_share_url (string) required", 400);
   }

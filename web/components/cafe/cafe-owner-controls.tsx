@@ -1,11 +1,13 @@
 "use client";
 
 /**
- * Owner-only cafe lifecycle controls (DG146/DG147, BRAWUKA-31).
+ * Owner-only cafe lifecycle controls (DG146/DG147, BRAWUKA-31/515).
  *
- * Rendered only when the server has already verified `created_by === viewer`
- * — the SSR page is force-dynamic and signed-in requests bypass the CDN shell
- * cache (DG107), so per-user props here never leak into the shared cache.
+ * Two render sites, both behind a server-computed ownership check:
+ * - the SSR `/cafes/[id]` page (`created_by === viewer`, force-dynamic so
+ *   per-user props never leak into the shared CDN shell cache, DG107);
+ * - the in-app detail (`PublicCafeDetail.owned_by_viewer` — the API computes
+ *   the bit before stripping `created_by`, DG13).
  *
  * - Visibility: reversible hide via PATCH /api/cafes/[id]/visibility. No
  *   confirm — the copy says it is reversible ("隐藏后仅你可见，可随时公开").

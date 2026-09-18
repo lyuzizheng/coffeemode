@@ -278,6 +278,7 @@ describe("Profile API routes", () => {
             last_visited_at: "2026-08-25T12:00:00.000Z",
             checkins_count: 2,
             is_creation: true,
+            visibility: "public",
           },
         ],
         next_cursor: null,

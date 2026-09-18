@@ -2254,9 +2254,10 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       // Toggle to private
       await setCafeVisibility(created.cafe_id, U1, "private");
 
-      // U1 views own profile: cafe is present
+      // U1 views own profile: cafe is present and marked private (DG147 badge DTO)
       const ownProfileCafes = await getUserCafes(U1, { viewerId: U1 });
-      expect(ownProfileCafes.items.some((c) => c.id === created.cafe_id)).toBe(true);
+      const ownItem = ownProfileCafes.items.find((c) => c.id === created.cafe_id);
+      expect(ownItem?.visibility).toBe("private");
 
       // U2 views U1's profile: private cafe is hidden
       const strangerViewingU1 = await getUserCafes(U1, { viewerId: U2 });

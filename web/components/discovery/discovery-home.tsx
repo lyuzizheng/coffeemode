@@ -17,7 +17,7 @@
  *
  * SSR/hydration contract (#275): in landing mode (children present) the
  * partitioned shell renders on the very first pass — the desktop sidebar
- * shell is CSS-gated (`hidden lg:flex`), so SSR already reserves the 380px
+ * shell is CSS-gated (`hidden lg:flex`), so SSR already reserves the --layout-aside-column
  * column and neither mounting nor crossing the 1024px breakpoint ever
  * re-parents, remounts, or shifts the landing subtree. Mounting gates only
  * the interactive content (list, detail column, MobileSheet), never the
@@ -41,7 +41,8 @@ import { useDiscoverySearch } from "./use-discovery-search";
 import type { DiscoverySearch } from "./use-discovery-search";
 import type { CreationDraft } from "./use-discovery-search";
 import { DesktopDiscovery } from "./desktop-discovery";
-import { MobileSheet, PEEK_VISIBLE_PX } from "./mobile-sheet";
+import { MobileSheet } from "./mobile-sheet";
+import { SHEET_PEEK_PX } from "@/lib/layout";
 
 async function fetchNearbyCafes(lat: number, lng: number): Promise<CafeSummary[]> {
   const res = await fetch(`/api/cafes?lat=${lat}&lng=${lng}`);
@@ -126,7 +127,7 @@ function DiscoveryOverlays({
           style={{
             bottom: isDesktop
               ? "1.5rem"
-              : `calc(${PEEK_VISIBLE_PX}px + 16px + env(safe-area-inset-bottom))`,
+              : `calc(${SHEET_PEEK_PX}px + 16px + env(safe-area-inset-bottom))`,
           }}
         >
           {fab}

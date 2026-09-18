@@ -173,7 +173,7 @@ export function ProfileHero({ profile, onProfileChange }: ProfileHeroProps) {
                   className="group -my-2.5 inline-flex min-h-11 items-center"
                 >
                   <span
-                    className={`rounded-lg px-2.5 py-1 text-xs transition-colors ${
+                    className={`rounded-sm px-2.5 py-1 text-xs transition-colors ${
                       isSelected
                         ? "bg-accent text-accent-foreground font-medium"
                         : "bg-surface-secondary text-muted group-hover:text-foreground"

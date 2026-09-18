@@ -103,6 +103,13 @@ describe("sw runtime rules", () => {
         notMatches: ["next-static", "static-assets"],
       },
       {
+        name: "r2 staging images (by host)",
+        pathname: "/variants/abc.webp",
+        host: "staging-images.cafemood.app",
+        matches: ["r2-images"],
+        notMatches: ["next-static", "static-assets"],
+      },
+      {
         name: "next static",
         pathname: "/_next/static/chunks/x.js",
         matches: ["next-static"],

@@ -2,6 +2,7 @@ import "server-only";
 
 import { isValidUUID } from "@shared/uuid";
 import {
+  attachProvisionedPhotos,
   compensateProvisionedPhotos,
   consumeProvisionedIntents,
   defaultProvisionPhotosDeps,
@@ -126,9 +127,9 @@ export async function createCheckIn(
   if (!cafeExists.rows[0]) throw new CafeNotFoundError(input.cafe_id);
 
   const provisioned = await provisionPhotos(userId, photoIds, deps);
-
+  let created: { checkin_id: string; deduped: boolean };
   try {
-    return await withTransaction(async (client) => {
+    created = await withTransaction(async (client) => {
       // BRAWUKA-125: must be the first statement — waiters hold no other lock.
       await client.query(ACQUIRE_CREATE_LOCK_SQL, [userId, input.cafe_id]);
       const cafe = await client.query<{ id: string }>(CAFE_EXISTS_SQL, [input.cafe_id, userId]);
@@ -201,4 +202,15 @@ export async function createCheckIn(
     if (provisioned.length > 0) await compensateProvisionedPhotos(photoIds, deps);
     throw err;
   }
+
+  // Post-commit attach (BRAWUKA-400): re-mark live originals from "provision"
+  // to "checkin" AFTER the insert commits. A raced idempotency dedupe returns
+  // the winner's id: the loser's R2 re-mark is skipped (the winner attached
+  // its own photos) and compensation already ran in the catch above. Slow I/O
+  // stays off the DB connection; attach failures never fail the committed
+  // row (logged inside, reported per photo).
+  if (provisioned.length > 0 && !created.deduped) {
+    await attachProvisionedPhotos(userId, photoIds, created.checkin_id, deps);
+  }
+  return created;
 }

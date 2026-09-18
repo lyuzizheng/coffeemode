@@ -364,6 +364,28 @@ describe("POST /api/places/resolve", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("400s on JSON null body (BRAWUKA-403)", async () => {
+    const res = await resolvePOST(resolveRequest("null"));
+    expect(res.status).toBe(400);
+    expect((await res.json()) as { error: string }).toEqual({
+      error: "invalid_request",
+      message: "invalid JSON body",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("400s on non-object JSON bodies (string, array, number)", async () => {
+    for (const raw of ['"string"', "123", "[]"]) {
+      const res = await resolvePOST(resolveRequest(raw));
+      expect(res.status).toBe(400);
+      expect((await res.json()) as { error: string }).toEqual({
+        error: "invalid_request",
+        message: "invalid JSON body",
+      });
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("400s without maps_share_url", async () => {
     mockTurnstilePass();
     const res = await resolvePOST(resolveRequest(JSON.stringify({ "cf-turnstile-response": "fresh-token" })));

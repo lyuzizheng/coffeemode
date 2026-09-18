@@ -28,7 +28,7 @@ const DEFAULT_CONFIG_FILE = "wrangler.toml";
 
 /**
  * Canonical per-environment deploy targets (spec 0005 §3, plus the
- * `R2_PUBLIC_HOST` invariant in `web/lib/images/constants.ts`).
+ * `R2_ALLOWED_PUBLIC_HOSTS` invariant in `web/lib/images/constants.ts`).
  *
  * Pinned on purpose: a renamed Worker, bucket, or CDN host must be a deliberate
  * edit here rather than a silent drift that only shows up as broken image URLs.
@@ -131,7 +131,7 @@ export function evaluateDeployConfig({ env, config, hasEnvSection, configFile = 
   } else if (stripTrailingSlash(publicUrl) !== target.publicUrl) {
     violations.push(
       `R2_PUBLIC_URL is ${JSON.stringify(publicUrl)} — expected ${JSON.stringify(target.publicUrl)}; ` +
-        `it must match R2_PUBLIC_HOST in web/lib/images/constants.ts.`,
+        `it must match the corresponding R2 public host in web/lib/images/constants.ts.`,
     );
   }
 

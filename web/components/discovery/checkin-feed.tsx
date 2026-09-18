@@ -118,7 +118,7 @@ export function CheckinFeed({
   const [mode, setMode] = useState<CheckInFeedMode>("newest"); // DG113
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const { query, checkins, like, likePendingId, retryFromFirstPage } = useCheckinFeed(cafeId, mode);
+  const { query, checkins, like, likePendingIds, retryFromFirstPage } = useCheckinFeed(cafeId, mode);
 
   // A 404 from the feed means the cafe is gone — route to the DG19 flow.
   useEffect(() => {
@@ -163,7 +163,7 @@ export function CheckinFeed({
               cafeId={cafeId}
               cafeName={cafeName}
               onLike={like}
-              likePending={likePendingId === checkin.id}
+              likePending={likePendingIds.has(checkin.id)}
             />
           ))}
           {query.isFetchingNextPage && (

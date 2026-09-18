@@ -42,6 +42,23 @@ if (typeof NodeBlob !== "undefined") {
 if (typeof window !== "undefined" && !window.HTMLElement.prototype.scrollIntoView) {
   window.HTMLElement.prototype.scrollIntoView = () => {};
 }
+
+// jsdom does not implement window.matchMedia; components that branch on
+// breakpoints (useMediaQuery — search filter surface, discovery sheet) need
+// a callable stub. Defaults to `matches: false` (mobile); tests that need
+// desktop override `window.matchMedia` locally.
+if (typeof window !== "undefined" && !window.matchMedia) {
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+}
 import "fake-indexeddb/auto";
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach } from "vitest";

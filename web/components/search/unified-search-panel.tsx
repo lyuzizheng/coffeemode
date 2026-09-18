@@ -315,8 +315,10 @@ export function UnifiedSearchPanel({
         {effectiveStatus === "loading" && !response && <SearchSkeletons />}
 
         {/* DG141/§4: in-flight refetches keep the last good list — a thin
-            shimmer at the list head, never skeletons over real content. */}
-        {refetching && response && (
+            shimmer at the list head, never skeletons over real content.
+            Gated on effectiveStatus so a stale flag can't paint in idle
+            (BRAWUKA-517). */}
+        {refetching && response && effectiveStatus !== "idle" && (
           <div className="mx-3 h-0.5 w-16 animate-pulse rounded bg-surface-tertiary" aria-hidden />
         )}
 

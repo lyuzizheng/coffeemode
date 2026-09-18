@@ -49,6 +49,34 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Start Cloudflare Access TCP tunnel
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          if [[ -z "${CF_ACCESS_CLIENT_ID:-}" || -z "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+            echo "Cloudflare Access service token not configured; skipping TCP tunnel."
+            exit 0
+          fi
+          if ! command -v cloudflared >/dev/null 2>&1; then
+            echo "Installing cloudflared..."
+            curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /tmp/cloudflared
+            sudo install -m 755 /tmp/cloudflared /usr/local/bin/cloudflared
+            rm -f /tmp/cloudflared
+          fi
+          echo "Starting Cloudflare Access TCP tunnel for ci-db.cafemood.app:5432..."
+          cloudflared access tcp --hostname ci-db.cafemood.app --url localhost:5432 \
+            --service-token-id "$CF_ACCESS_CLIENT_ID" \
+            --service-token-secret "$CF_ACCESS_CLIENT_SECRET" >/tmp/cloudflared.log 2>&1 &
+          echo $! > /tmp/cloudflared.pid
+          for i in $(seq 1 30); do
+            if timeout 1 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/5432' 2>/dev/null; then
+              echo "Cloudflare Access TCP tunnel ready on localhost:5432."
+              break
+            fi
+            sleep 1
+          done
+
       - name: Staging user-journey suites (all)
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
@@ -56,6 +84,14 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: bash ../scripts/devops/run-staging-journey.sh --suite all
+
+      - name: Stop Cloudflare Access TCP tunnel
+        if: always()
+        run: |
+          if [[ -f /tmp/cloudflared.pid ]]; then
+            kill "$(cat /tmp/cloudflared.pid)" 2>/dev/null || true
+            rm -f /tmp/cloudflared.pid
+          fi
 
       - name: Failure notice
         if: failure()

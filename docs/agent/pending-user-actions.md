@@ -24,9 +24,10 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
 ## 1a. Staging journey secrets (GitHub Environment `staging`) — unlocks post-merge staging verification
 
-- [ ] In the **staging** Supabase project (`ojujmjewtbquiddswyrg`) dashboard → Settings → API: copy the `anon public` key and a **session/direct** (`:5432`, never the `:6543` pooler — `CREATE DATABASE` cannot run through it, spec 0010 §4) Postgres connection string.
-- [ ] `gh secret set` into the `staging` environment (never into the repo, never `NEXT_PUBLIC_*`):
-  `STAGING_DATABASE_URL`, `SUPABASE_URL` (= `https://ojujmjewtbquiddswyrg.supabase.co`), `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
+- [x] Dedicated CI Postgres (`coffeemode-ci-postgres`, PostGIS 16) created on Dokploy VPS, routed privately over Cloudflare Tunnel (`ci-db.cafemood.app:5432`) with zero public port exposure (BRAWUKA-474).
+- [x] Cloudflare Access application and Service Token created (`CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`) allowing runner TCP proxy to `ci-db.cafemood.app`.
+- [x] `gh secret set` into the `staging` environment:
+  `STAGING_DATABASE_URL` (points to `postgresql://coffeemode:****@localhost:5432/coffeemode_ci`), `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`, `SUPABASE_URL` (= `https://ojujmjewtbquiddswyrg.supabase.co`), `SUPABASE_ANON_KEY`. Supabase staging project retains only Auth smoke checks; test scratch databases live on the VPS CI Postgres.
 - [ ] Redirect URLs allowlist on the **staging** project (spec 0010 §1): `http://localhost:3000/auth/callback` (local dev against staging auth) + `https://staging.cafemood.app/auth/callback`.
 - [ ] Confirm Google provider is enabled on the **staging** project (item 3's client works for both; the Supabase callback `https://ojujmjewtbquiddswyrg.supabase.co/auth/v1/callback` must be in the Google client's authorized redirect URIs).
 - [ ] `production` environment: owner (`lyuzizheng`) is the required reviewer (already set); prod secrets land there only at promotion time, never before.

@@ -29,8 +29,8 @@ here does not exist for that environment.
 | --- | --- | --- | --- |
 | Supabase project ref | none — `supabase-mock` (compose, `:54321`) or `supabase start` only when offline | `ojujmjewtbquiddswyrg` (ap-southeast-1) | `rsdzcegylqgccaneomph` (ap-southeast-1) |
 | Auth providers | fake JWT (mock) — deterministic, unsigned | Google OAuth (enabled); email | Apple + Google OAuth |
-| Postgres instance | `postgis/postgis:16-3.4` container (docker-compose) | Supabase staging Postgres + PostGIS 16 | Supabase prod Postgres + PostGIS 16 |
-| Postgres connection | `localhost:5432` direct | runtime: Supavisor pooler `:6543`; migrations/DDL/scratch-DB admin: `DIRECT_URL` session `:5432` — never the transaction pooler | same split as staging |
+| Postgres instance | `postgis/postgis:16-3.4` container (docker-compose) | Supabase staging Postgres + PostGIS 16 (app data); Dokploy VPS CI Postgres (staging-journey) | Supabase prod Postgres + PostGIS 16 |
+| Postgres connection | `localhost:5432` direct | runtime: Supavisor pooler `:6543`, `DIRECT_URL` session `:5432`; CI journey: `localhost:5432` via Cloudflare Access TCP tunnel to Dokploy VPS CI Postgres | same split as staging (pooler `:6543`, direct `:5432`) |
 | Object storage | MinIO container (compose) | R2 `coffeemode-images-staging` | R2 `coffeemode-images-prod` |
 | Backup storage | none | R2 `coffeemode-backups/staging/` (7-day local retention) | R2 `coffeemode-backups/prod/` (14-day local, 30-day R2) |
 | Workers | miniflare-poi / miniflare-image (compose, `wrangler dev --local`) | `poi-service-staging`, `image-service-staging` (D1 `poi-store-staging`, KV `poi-cache-staging`) | `poi-service-prod`, `image-service-prod` (D1 `poi-store`, KV `poi-cache`) |
@@ -46,8 +46,14 @@ already record this; `deploy/dokploy/.env.staging.example` (`DATABASE_URL` →
 Supavisor `:6543`, `DIRECT_URL` → `:5432`) is the correct shape. The stale side
 is the wording "Supabase is AUTH ONLY / data lives in the self-hosted Postgres"
 in `web/.env.example` and `web/README.md` — corrected by this change. No
-self-hosted Postgres exists on the VPS (BRAWUKA-241).
+self-hosted Postgres exists on the VPS for application data (BRAWUKA-241).
 
+For CI testing, post-merge verification (`staging-journey`) uses a dedicated
+Dokploy VPS CI Postgres instance (`coffeemode-ci-postgres`, PostGIS 16 image
+`postgis/postgis:16-3.4`, BRAWUKA-474) accessed via Cloudflare Access TCP
+(`ci-db.cafemood.app:5432` tunneled to runner `localhost:5432`). This completely
+isolates scratch database creation and teardown from the Supabase staging project.
+Supabase staging retains staging application data and staging Auth.
 Local development keeps a **local** `postgis/postgis:16-3.4` container as the
 default `DATABASE_URL` for app data, while auth defaults to the **staging**
 Supabase project (§3). Rationale: local writes must never pollute shared staging
@@ -89,10 +95,11 @@ app data is local.
 ### 4. Shared-staging data isolation
 
 - **Scratch databases per suite**: every staging-bound suite provisions its own
-  database `{prefix}{pid}_{uuid}` via `provisionTestDatabase`
-  (`web/tests/helpers/db.ts`), cloned from a migrated template database, and
-  drops it in `afterAll`. This mechanism already exists and is the canonical
-  one — it gives strong isolation and is parallel-safe.
+  database `{prefix}_{pid}_{uuid}` via `provisionTestDatabase`
+  (`web/tests/helpers/db.ts`) on the dedicated Dokploy CI Postgres instance,
+  cloned from a migrated template database, and drops it in `afterAll`. This
+  mechanism gives strong isolation and is parallel-safe while keeping the
+  Supabase staging project pristine.
 - **Hard rule**: no test may write the shared staging business schema
   (`profiles`, `cafes`, `checkins`, …). Guards: `assertSafeSeedClient` /
   `assertSafeSeedTarget` fail closed, and any non-local `DATABASE_URL` requires
@@ -113,10 +120,9 @@ app data is local.
 - **Serialization**: staging runs are serialized — one journey run at a time,
   enforced by the workflow `concurrency` group (§5) and the runner's own guard.
   Within a run, Vitest workers each get their own scratch DB.
-- **Required privilege**: the role behind `STAGING_DATABASE_URL` needs
-  `CREATEDB` on the staging cluster and MUST connect over the session/direct
-  endpoint (`:5432`) — `CREATE DATABASE` cannot run through the transaction
-  pooler.
+- **Required privilege**: the role behind `STAGING_DATABASE_URL` has
+  `CREATEDB` and superuser privileges on the Dokploy CI Postgres instance and
+  connects directly over the Cloudflare Access TCP tunnel (`localhost:5432`).
 - **Rejected alternatives**: shared-schema + truncate (races, pollutes business
   data); transaction rollback (cannot span HTTP requests); a separate Supabase
   project per run (cost, config drift, provision latency).
@@ -142,7 +148,7 @@ app data is local.
 | Secret | Lives in | Never in |
 | --- | --- | --- |
 | prod `service_role`, prod `DATABASE_URL`/`DIRECT_URL` | Dokploy prod env, GH Environment `production` | local `.env`, client bundle, `NEXT_PUBLIC_*` |
-| staging `service_role`, `STAGING_DATABASE_URL` | GH Environment `staging`, Dokploy staging env, Multica agent secrets (`service_role` scaffold server-side only) | client bundle, `NEXT_PUBLIC_*`, prompts, committed files; local `.env` discouraged (dev uses anon key + own Google login) |
+| staging `service_role`, `STAGING_DATABASE_URL`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | GH Environment `staging`, Dokploy staging env, Multica agent secrets (`service_role` scaffold server-side only) | client bundle, `NEXT_PUBLIC_*`, prompts, committed files; local `.env` discouraged (dev uses anon key + own Google login) |
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `.env.example` templates, Dokploy env | — (public by design; RLS + revoked default grants protect tables) |
 | R2 access keys, Cloudflare tunnel/API tokens | Dokploy env, GH Environment per env | local `.env` unless actively debugging that integration |
 | `BETTER_STACK_INGEST_URL` + `BETTER_STACK_INGEST_TOKEN` | Dokploy env per env (per-env source host + token) | — (ingest-only token; never `NEXT_PUBLIC_*`) |

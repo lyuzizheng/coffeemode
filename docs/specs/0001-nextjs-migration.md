@@ -731,7 +731,7 @@ R2_ACCESS_KEY_ID                -> image-service Worker (R2 S3 token secret)
 R2_SECRET_ACCESS_KEY            -> image-service Worker (R2 S3 token secret)
 R2_BUCKET_NAME                  -> image-service Worker ("cafemode")
 R2_PUBLIC_URL                   -> image-service Worker (CDN base, no trailing slash)
-NEXT_PUBLIC_R2_PUBLIC_URL       -> Next.js, optional drift guard; host must match R2_PUBLIC_HOST in web/lib/images/constants.ts (single source, issue #40)
+NEXT_PUBLIC_R2_PUBLIC_URL       -> Next.js, optional drift guard; host must match R2_ALLOWED_PUBLIC_HOSTS in web/lib/images/constants.ts (images.cafemood.app or staging-images.cafemood.app, BRAWUKA-394)
 APPLE_MAPKIT_TEAM_ID            -> Apple Developer team
 APPLE_MAPKIT_KEY_ID             -> MapKit JS key
 APPLE_MAPKIT_PRIVATE_KEY        -> .p8 private key (server-side)

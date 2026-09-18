@@ -4,7 +4,7 @@ import { withSerwist } from "@serwist/turbopack";
 // Config schema (not the server-only runtime module) — Next's config
 // transpiler rejects the `server-only` guard (DG107 values, one source).
 import { loadYaml, parseAppConfig } from "./lib/config-schema";
-import { R2_PUBLIC_HOST, assertR2PublicUrlMatches } from "./lib/images/constants";
+import { R2_ALLOWED_PUBLIC_HOSTS, assertR2PublicUrlMatches } from "./lib/images/constants";
 // Pure policy helpers (edge-safe, no node: imports) — the single source for
 // the cafe-shell cache header value (BRAWUKA-184).
 import { cafeShellCacheControl } from "./lib/cache-policy";
@@ -13,7 +13,7 @@ const appConfig = parseAppConfig(loadYaml("app.yaml"));
 
 const withNextIntl = createNextIntlPlugin("./i18n/request.ts");
 
-// Fail the build when the env drifted from the single-source constant (issue #40).
+// Fail the build when the env drifted from the allowed constants (issue #40 / BRAWUKA-394).
 assertR2PublicUrlMatches(process.env.NEXT_PUBLIC_R2_PUBLIC_URL);
 
 const nextConfig: NextConfig = {
@@ -61,7 +61,7 @@ const nextConfig: NextConfig = {
     // <Image> (presigned URLs are upload-only), so no wildcard (issue #40).
     loader: "custom",
     loaderFile: "./lib/images/loader.ts",
-    remotePatterns: [{ protocol: "https", hostname: R2_PUBLIC_HOST }],
+    remotePatterns: R2_ALLOWED_PUBLIC_HOSTS.map((hostname) => ({ protocol: "https", hostname })),
   },
 
   async headers() {

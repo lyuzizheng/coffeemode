@@ -161,8 +161,8 @@ check — no dependencies, so it never self-skips) enforces:
   manager named after it, and tool
   runners that never fetch dependencies (`npx`, `pnpm dlx`, `yarn run`, `bunx`)
   do not count as installs.
-  So `nightly-recompute.yml`, which installs in `web/` and recomputes against the
-  production database every night, cannot silently keep a stale Node major. A
+  So workflows such as `staging-journey.yml` (and historically `nightly-recompute.yml`),
+  which install in `web/` on schedule, cannot silently keep a stale Node major. A
   `node-version` the gate cannot attribute to a package, a job that installs into
   a package and pins no `node-version` at all, and a range the gate cannot read
   as a floor (a caret, a disjunction, `*`) each fail rather than passing as

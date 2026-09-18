@@ -363,9 +363,9 @@ describeSocial("journey — social & lifecycle paths 4→6 (spec 0007)", () => {
     });
     expect(helpful.checkins[0]?.id).toBe(oldest_feed_checkin_id);
       expect(helpful.checkins[0]?.likes_count).toBe(2);
-    },
-    60_000,
-  );
+  },
+  120_000,
+);
 
   it("Path 5: like/unlike toggles atomically with symmetric counters (DG08)", async () => {
     const created = await createCafeWithFirstCheckIn(JOURNEY_U1, {

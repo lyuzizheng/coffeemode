@@ -117,6 +117,22 @@ export function FilterButton({
   );
 }
 
+
+/** Roving-tabindex arrow-key navigation for the spec §9 radiogroups —
+ * ←/→ (and ↑/↓) move focus and select, matching ARIA radio semantics. */
+function handleRadioGroupKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+  if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+  const group = event.currentTarget;
+  const radios = Array.from(group.querySelectorAll<HTMLElement>('[role="radio"]'));
+  const index = radios.indexOf(document.activeElement as HTMLElement);
+  if (index === -1) return;
+  event.preventDefault();
+  const delta = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1;
+  const next = radios[(index + delta + radios.length) % radios.length];
+  next.focus();
+  next.click();
+}
+
 /** One `Any/60+/80+` tri-state segment row — radiogroup semantics (spec §9). */
 function DimSegmentRow({
   dim,
@@ -148,6 +164,7 @@ function DimSegmentRow({
       <div
         role="radiogroup"
         aria-label={label}
+        onKeyDown={handleRadioGroupKeyDown}
         className="flex gap-0.5 rounded-md bg-surface-secondary p-0.5"
       >
         {options.map((option) => {
@@ -157,6 +174,7 @@ function DimSegmentRow({
               key={option.key}
               type="button"
               role="radio"
+              tabIndex={activeOption ? 0 : -1}
               aria-checked={activeOption}
               onClick={() => onChange(option.threshold)}
               className="group cm-focus -my-1 flex min-h-11 items-center"
@@ -265,7 +283,7 @@ function MaxStayChips({
   return (
     <div className="flex flex-col gap-2 pt-1">
       <span className="text-sm text-foreground">{t("maxStay")}</span>
-      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t("maxStay")}>
+      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t("maxStay")} onKeyDown={handleRadioGroupKeyDown}>
         {[{ key: "any", value: null }, ...MAX_STAY_FILTER_VALUES.map((v) => ({ key: v, value: v }))].map(
           (option) => {
             const activeOption = filters.maxStay === option.value;
@@ -274,6 +292,7 @@ function MaxStayChips({
                 key={option.key}
                 type="button"
                 role="radio"
+                tabIndex={activeOption ? 0 : -1}
                 aria-checked={activeOption}
                 onClick={() => onFiltersChange({ ...filters, maxStay: option.value as MaxStayFilter | null })}
                 className="group cm-focus -my-1 flex min-h-11 items-center"

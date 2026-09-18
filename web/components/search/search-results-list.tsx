@@ -16,6 +16,8 @@
  * hidden until MapKit is configured (DG143).
  */
 import { useLocale, useTranslations } from "next-intl";
+import { motion, useReducedMotion } from "framer-motion";
+import { spring } from "@/lib/motion";
 import { useNetworkStatus } from "@/hooks/use-network-status";
 import { formatDistanceKm } from "@/lib/discovery/view-model";
 import { displayCityName } from "@/lib/cities";
@@ -61,8 +63,9 @@ function ResultRow({
     .filter(Boolean)
     .join(" · ");
 
+  const reduced = useReducedMotion();
   return (
-    <li>
+    <motion.li layout transition={reduced ? { duration: 0 } : spring.gentle}>
       <button
         type="button"
         onClick={() => onSelect(item)}
@@ -81,7 +84,7 @@ function ResultRow({
         </span>
         {meta && <span className="tnum truncate text-xs text-muted">{meta}</span>}
       </button>
-    </li>
+    </motion.li>
   );
 }
 
@@ -114,12 +117,13 @@ export function SearchResultsList({
   const showGoogleCta = externalSources.google;
   const showAppleCta = externalSources.apple && mapkitConfigured;
   const showExternalPrompt =
-    !hasActiveFilters && (isEmpty || response.is_weak_results) && (showGoogleCta || showAppleCta);
+    (isEmpty || response.is_weak_results) && (showGoogleCta || showAppleCta);
 
   return (
     <div className="flex flex-col">
       {/* Spec §7: empty under active filters gets its own copy + Reset CTA —
-          never the generic empty state, and external CTAs stay off. */}
+          never the generic empty state; the §6 external footer still
+          follows as the designed overflow path. */}
       {isEmpty && hasActiveFilters && (
         <div className="flex flex-col items-start gap-1 px-3 py-3">
           <p className="font-display text-md font-bold text-foreground">

@@ -18,7 +18,7 @@
  * It holds no map object and talks only to `GET /api/search`; plotting
  * results onto the map stays with map-discovery-integration.
  */
-import { Button, Drawer, SearchField } from "@heroui/react";
+import { Drawer, SearchField } from "@heroui/react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -154,20 +154,9 @@ function FilterSurface({
             className="flex max-h-[85dvh] flex-col"
           >
             <Drawer.Handle />
-            <Drawer.Body className="overflow-y-auto px-4 pb-2">
+            <Drawer.Body className="overflow-y-auto px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
               {controls}
             </Drawer.Body>
-            {/* Sticky apply — live-apply already refetches; this is the
-                explicit "see results" dismissal mobile users expect. */}
-            <div className="border-t border-separator px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3">
-              <Button
-                fullWidth
-                color="primary"
-                onPress={() => onOpenChange(false)}
-              >
-                {t("apply")}
-              </Button>
-            </div>
           </Drawer.Dialog>
         </Drawer.Content>
       </Drawer.Backdrop>
@@ -197,6 +186,7 @@ export function UnifiedSearchPanel({
   const [status, setStatus] = useState<SearchStatus>("idle");
   const [response, setResponse] = useState<SearchResponse | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [refetching, setRefetching] = useState(false);
   const requestId = useRef(0);
   const fetcher = fetchSearch ?? fetchUnifiedSearch;
   const filterUi = filters !== undefined && onFiltersChange !== undefined;
@@ -226,6 +216,9 @@ export function UnifiedSearchPanel({
     (trimmed: string, signal?: AbortSignal) => {
       const id = ++requestId.current;
       setStatus((prev) => (prev === "success" ? prev : "loading"));
+      // Refetches keep "success" so the last good list stays painted — the
+      // refetching flag carries the thin head shimmer instead (§4).
+      setRefetching(true);
       fetcher({ q: trimmed, city, filters, signal })
         .then((data) => {
           if (requestId.current !== id) return;
@@ -236,6 +229,11 @@ export function UnifiedSearchPanel({
           if (requestId.current !== id || signal?.aborted) return;
           console.error("unified search failed", cause);
           setStatus("error");
+        })
+        .finally(() => {
+          // Clear only when this request is still the latest — a superseded
+          // request must not hide the newer one's shimmer.
+          if (requestId.current === id) setRefetching(false);
         });
     },
     [city, fetcher, filters],
@@ -316,9 +314,9 @@ export function UnifiedSearchPanel({
       <div className={resultsClassName}>
         {effectiveStatus === "loading" && !response && <SearchSkeletons />}
 
-        {/* DG141: in-flight refetches keep the last good list — a thin
+        {/* DG141/§4: in-flight refetches keep the last good list — a thin
             shimmer at the list head, never skeletons over real content. */}
-        {effectiveStatus === "loading" && response && (
+        {refetching && response && (
           <div className="mx-3 h-0.5 w-16 animate-pulse rounded bg-surface-tertiary" aria-hidden />
         )}
 

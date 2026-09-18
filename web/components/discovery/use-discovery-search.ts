@@ -20,7 +20,7 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import { getSearchExternalSources } from "@/lib/client-env";
 import type { ExternalSourceFlags } from "@/lib/client-env";
 import { findCity } from "@/lib/cities";
-import { readOnboardingState, writeOnboardingState } from "@/lib/onboarding-store";
+import { readOnboardingState, subscribeOnboardingStore, writeOnboardingState } from "@/lib/onboarding-store";
 import { persistProfile } from "@/lib/profile-merge";
 import {
   EMPTY_FILTERS,
@@ -79,7 +79,6 @@ function readUrlSearchState(): { query: string; city: string | null; filters: Se
   };
 }
 
-const noopSubscribe = () => () => {};
 const readStoredCity = () => readOnboardingState()?.currentCity ?? null;
 const readStoredCityServer = () => null;
 
@@ -93,8 +92,10 @@ function useSearchState(cityProp: string | undefined, isAuthenticated: boolean) 
   const [cityOverride, setCityOverride] = useState<string | null>(urlState.city);
   // The stored current city (anonymous localStorage / mirrored profile) only
   // applies after mount — the server snapshot is null so hydration matches.
+  // Subscribing keeps the scope live: onboarding's post-mount profile merge
+  // and the locate flow both write through the store (P2, BRAWUKA-512).
   const storedCity = useSyncExternalStore(
-    noopSubscribe,
+    subscribeOnboardingStore,
     readStoredCity,
     readStoredCityServer,
   );

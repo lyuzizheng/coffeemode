@@ -127,8 +127,11 @@ describe("UnifiedSearchPanel", () => {
 
     type(input, "abcd");
     await advance(400);
-    // Refetch: old list stays, no skeleton flash.
-    expect(document.querySelectorAll(".animate-pulse")).toHaveLength(0);
+    // Refetch: old list stays, no skeleton flash — only the spec §4 thin
+    // head shimmer (a single h-0.5 bar, not skeleton rows).
+    const pulses = document.querySelectorAll(".animate-pulse");
+    expect(pulses.length).toBeLessThanOrEqual(1);
+    expect(pulses[0]?.className).toContain("h-0.5");
     expect(screen.getByText("Alpha")).toBeInTheDocument();
 
     await act(async () => {

@@ -64,9 +64,24 @@ export function writeOnboardingState(patch: Partial<OnboardingState>): void {
       lastLocation: null,
     };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...patch }));
+    notifyOnboardingStore();
   } catch {
     // Quota/private-mode failures degrade to "card shows again" — harmless.
   }
+}
+
+/** Subscribers notified after every successful write — lets consumers
+ * (e.g. the search city scope) re-read the store instead of snapshotting
+ * it once at mount. */
+const listeners = new Set<() => void>();
+
+export function subscribeOnboardingStore(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function notifyOnboardingStore(): void {
+  for (const listener of listeners) listener();
 }
 
 export function hasShownLocateSettingsToast(): boolean {

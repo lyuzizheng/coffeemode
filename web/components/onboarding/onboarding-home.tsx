@@ -12,7 +12,7 @@ import { AnimatePresence } from "framer-motion";
 import type { CityInfo, Coordinates } from "@/lib/cities";
 import { useMounted } from "@/hooks/use-mounted";
 import { DiscoveryHome } from "@/components/discovery/discovery-home";
-import { MapAccountChip } from "@/components/map/map-account-chip";
+import { AppMenu } from "@/components/layout/app-menu";
 import { LocateButton } from "./locate-button";
 import { useOnboarding, type OnboardingState } from "./use-onboarding";
 import { WelcomeCard } from "./welcome-card";
@@ -29,6 +29,8 @@ export function OnboardingHome({
   initialCafeId,
   accountInitial,
   mapkitConfigured = false,
+  locateHint = false,
+  createHint = false,
   children,
 }: {
   /** IP-detected launch city (DG128); null → no detection line. */
@@ -52,7 +54,12 @@ export function OnboardingHome({
   accountInitial?: string;
   /** DG143 request-time MapKit readiness — forwarded to search + creation. */
   mapkitConfigured?: boolean;
-  children: ReactNode;
+  /** ?locate=1 deep link — the locate button arrives already pulsing. */
+  locateHint?: boolean;
+  /** ?create=1 deep link — the creation sheet opens on arrival. */
+  createHint?: boolean;
+  /** The map surface — rendered below every overlay. */
+  children?: ReactNode;
 }) {
   const mounted = useMounted();
   const onboarding = useOnboarding({
@@ -62,8 +69,8 @@ export function OnboardingHome({
     serverOnboarded,
     profileSeed,
     suppressCard,
+    locateHint,
   });
-
   return (
     <DiscoveryHome
       center={onboarding.center}
@@ -82,11 +89,19 @@ export function OnboardingHome({
           />
         ) : null
       }
+      userLocation={onboarding.userLocation}
+      onCameraGesture={onboarding.handleCameraGesture}
+      initialCreationOpen={createHint}
     >
       {children}
     </DiscoveryHome>
   );
 }
+
+/** The props type extracted so OnboardingHome stays under the 80-line
+ * function budget — every field is a pass-through to useOnboarding or
+ * DiscoveryHome. */
+export type OnboardingHomeProps = Parameters<typeof OnboardingHome>[0];
 
 /** Welcome card + locate button + account/theme chip — everything that
  * floats over the map. DiscoveryHome's gateMapOverlay hides the whole slot
@@ -124,9 +139,9 @@ function MapOverlay({
           onLocate={() => void onboarding.handleLocate()}
         />
       )}
-      {/* Account + theme affordances are visible in every phase — the card
-          is bottom-anchored, the chip top-right; they never overlap. */}
-      <MapAccountChip accountInitial={accountInitial} />
+      {/* Account + menu cluster rides every phase — the card is
+          bottom-anchored, the cluster top-right; they never overlap. */}
+      <AppMenu accountInitial={accountInitial} />
     </>
   );
 }

@@ -56,7 +56,9 @@ import {
   type CafeDetailWithAuthor,
 } from "@/lib/db/cafes";
 import {
+  deleteAccount,
   getProfile,
+  getProfileExport,
   getUserStats,
   updateProfile,
   getUserCheckIns,
@@ -2740,6 +2742,47 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(await cafeExists(CAFE_A, U1)).toBe(true);
       expect(await cafeExists(CAFE_A, U2)).toBe(true);
       expect(await isLiveCafe(randomUUID())).toBe(false);
+    });
+  });
+
+  describeDb("account lifecycle (BRAWUKA-504, DG149)", () => {
+    it("deleteAccount removes a user who has check-ins — FK detach keeps tombstones", async () => {
+      // U1 owns CAFE_A + CHECKIN_A1 (the creation check-in). The FK that
+      // blocked the original implementation is checkins.user_id → profiles.
+      const result = await deleteAccount(U1);
+      expect(result.ok).toBe(true);
+      expect(result.checkins_removed).toBe(1);
+      expect(result.cafes_transferred).toBe(1);
+
+      const profile = await dbClient.query("select id from profiles where id = $1", [U1]);
+      expect(profile.rows).toHaveLength(0);
+
+      // Tombstone preserved, author detached.
+      const checkin = await dbClient.query(
+        "select user_id, deleted_at from checkins where id = $1",
+        [CHECKIN_A1],
+      );
+      expect(checkin.rows[0].user_id).toBeNull();
+      expect(checkin.rows[0].deleted_at).not.toBeNull();
+
+      // Created cafe survives as a service-account orphan shell.
+      const cafe = await dbClient.query("select created_by from cafes where id = $1", [CAFE_A]);
+      expect(cafe.rows[0].created_by).toBe(SERVICE_ACCOUNT_ID);
+    });
+
+    it("getProfileExport returns the full bundle against the real schema", async () => {
+      const bundle = await getProfileExport(U1);
+      expect(bundle.profile?.id).toBe(U1);
+      expect(bundle.checkins).toHaveLength(1);
+      expect(bundle.checkins[0]).toMatchObject({ id: CHECKIN_A1, cafe_id: CAFE_A });
+      expect(bundle.cafes_created).toHaveLength(1);
+      const exportedCafe = bundle.cafes_created[0] as { id: string; name: string; lat: number; lng: number };
+      expect(exportedCafe).toMatchObject({ id: CAFE_A, name: "Seed Cafe" });
+      // geography → lat/lng projection actually resolves (was a 500 on
+      // non-existent cafes.lat/lng columns).
+      expect(exportedCafe.lat).toBeCloseTo(1.35, 3);
+      expect(exportedCafe.lng).toBeCloseTo(103.8, 3);
+      expect(bundle.navigations).toEqual([]);
     });
   });
 });

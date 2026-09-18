@@ -11,13 +11,17 @@
  *   the anonymous state merges into the profile via PATCH /api/profile.
  * - Skip lands on the IP-detected city (else Singapore) (DG116); the OS
  *   prompt fires only behind an explicit tap (DG112/DG118).
- * - Grant recenters on the user; out-of-coverage grants resolve to the
- *   runtime city and raise the first-nomad toast (DG121). Denial keeps the
- *   card with the picker-focused recovery state (DG117).
+ * - Grant renders the user-location dot and recenters ONLY when the user
+ *   has not panned since the card appeared (DG119/DG120); a pan latches
+ *   via `handleCameraGesture` and the grant then just drops the dot.
+ *   Re-tapping locate always recenters on the dot (DG120).
+ * - Out-of-coverage grants resolve to the runtime city and raise the
+ *   first-nomad toast (DG121). Denial keeps the card with the
+ *   picker-focused recovery state (DG117).
  * - Offline grants still dismiss and recenter (DG123) — the locate POST is
  *   best-effort.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "@heroui/react";
 import { useTranslations } from "next-intl";
 import {
@@ -39,42 +43,16 @@ import {
   writeOnboardingState,
 } from "@/lib/onboarding-store";
 import { postLocate } from "@/lib/onboarding-client";
+import type { UserLocation } from "@/lib/discovery/map-context";
+import {
+  buildOnboardingState,
+  type OnboardingPhase,
+  type OnboardingState,
+} from "./onboarding-state";
+import { persistProfile } from "@/lib/profile-merge";
 
-export type OnboardingPhase = "card" | "denied" | "done";
+export type { OnboardingPhase, OnboardingState };
 
-/** The hook's public surface — named so overlay components can type the
- * orchestration result without coupling to the hook's internals. */
-export interface OnboardingState {
-  phase: OnboardingPhase;
-  locating: boolean;
-  located: boolean;
-  pulseKey: number;
-  selectedCityId: string;
-  center: Coordinates;
-  handleEnableLocation: () => Promise<void>;
-  handleLocate: () => Promise<void>;
-  handlePickCity: (cityId: string) => void;
-  handleUseCity: () => void;
-  handleSkip: () => void;
-}
-
-/** Best-effort profile merge — localStorage already holds the state, so a
- * failed PATCH just retries on the next authenticated visit. */
-async function persistProfile(patch: {
-  onboarded?: boolean;
-  currentCity?: string;
-  lastLocation?: Coordinates;
-}): Promise<void> {
-  try {
-    await fetch("/api/profile", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    });
-  } catch {
-    // Offline or unauthenticated race — local state is the fallback.
-  }
-}
 
 /** Anonymous returning visitors resume at their stored city/location before
  * the first nearby fetch — the lazy initializer reads localStorage during
@@ -128,20 +106,28 @@ function useOnboardingMerge(
 
 /** The two explicit-tap geolocation entries (DG112): the card's enable
  * button and the persistent locate button. Both check the Permissions API
- * first — an OS-level denial can't re-prompt (DG117). */
+ * first — an OS-level denial can't re-prompt (DG117). Grants route to
+ * separate callbacks: the enable grant respects the pan latch (DG119),
+ * the locate grant always recenters (DG120). */
 function useLocateFlow({
-  onGranted,
+  onEnableGranted,
+  onLocateGranted,
   onCardDenied,
   onLocateDenied,
   onLocateFailed,
+  initialPulseKey = 0,
 }: {
-  onGranted: (lat: number, lng: number) => void;
+  onEnableGranted: (result: Extract<GeoResult, { ok: true }>) => void;
+  onLocateGranted: (result: Extract<GeoResult, { ok: true }>) => void;
   onCardDenied: (reason: "denied" | "unavailable" | "unsupported") => void;
   onLocateDenied: () => void;
   onLocateFailed: () => void;
+  /** ?locate=1 deep link: the button arrives already pulsing (DG112 — a
+   * hint, never an auto-prompt). */
+  initialPulseKey?: number;
 }) {
   const [locating, setLocating] = useState(false);
-  const [pulseKey, setPulseKey] = useState(0);
+  const [pulseKey, setPulseKey] = useState(initialPulseKey);
 
   const request = async (): Promise<GeoResult> => {
     if (await isGeolocationDenied()) return { ok: false, reason: "denied" };
@@ -156,7 +142,7 @@ function useLocateFlow({
       onCardDenied(result.reason);
       return;
     }
-    onGranted(result.lat, result.lng);
+    onEnableGranted(result);
   };
 
   const locate = async () => {
@@ -169,10 +155,32 @@ function useLocateFlow({
       else onLocateFailed();
       return;
     }
-    onGranted(result.lat, result.lng);
+    onLocateGranted(result);
   };
 
   return { locating, pulseKey, enable, locate };
+}
+
+/** DG123: an explicit city pick persists locally first; the profile merge is
+ * best-effort — a failed PATCH retries on the next authenticated visit. */
+function commitCityChoice(
+  city: CityInfo,
+  isAuthenticated: boolean,
+  setCenter: (center: Coordinates) => void,
+  setLocated: (located: boolean) => void,
+  setPhase: (phase: OnboardingPhase) => void,
+) {
+  writeOnboardingState({
+    onboarded: true,
+    currentCity: city.id,
+    currentCityName: null,
+  });
+  setCenter(city.center);
+  setLocated(false);
+  setPhase("done");
+  if (isAuthenticated) {
+    void persistProfile({ onboarded: true, currentCity: city.id });
+  }
 }
 
 /** Commit paths: explicit city choice (skip/pick/use-city) and the granted
@@ -180,33 +188,34 @@ function useLocateFlow({
  * merge and the server-side city resolution are best-effort. */
 function useOnboardingCommit({
   isAuthenticated,
+  locateHint = false,
   setCenter,
   setLocated,
   setPhase,
+  setUserLocation,
 }: {
   isAuthenticated: boolean;
   setCenter: (center: Coordinates) => void;
   setLocated: (located: boolean) => void;
   setPhase: (phase: OnboardingPhase) => void;
+  setUserLocation: (location: UserLocation) => void;
+  locateHint?: boolean;
 }) {
   const t = useTranslations("onboarding");
 
-  const commitCity = (city: CityInfo) => {
-    writeOnboardingState({
-      onboarded: true,
-      currentCity: city.id,
-      currentCityName: null,
-    });
-    setCenter(city.center);
-    setLocated(false);
-    setPhase("done");
-    if (isAuthenticated) {
-      void persistProfile({ onboarded: true, currentCity: city.id });
-    }
-  };
+  const commitCity = (city: CityInfo) =>
+    commitCityChoice(city, isAuthenticated, setCenter, setLocated, setPhase);
 
-  const applyGrantedLocation = async (lat: number, lng: number) => {
-    setCenter({ lat, lng });
+  /** DG119/DG120: the grant always drops the dot; the camera only follows
+   * when `recenter` is true — the locate tap always recenters, the card's
+   * enable button only while the user has not panned. */
+  const applyGrantedLocation = async (
+    result: Extract<GeoResult, { ok: true }>,
+    recenter: boolean,
+  ) => {
+    const { lat, lng } = result;
+    setUserLocation({ lat, lng, accuracyM: result.accuracyM });
+    if (recenter) setCenter({ lat, lng });
     setLocated(true);
     setPhase("done");
     writeOnboardingState({ onboarded: true, lastLocation: { lat, lng } });
@@ -221,7 +230,37 @@ function useOnboardingCommit({
     }
   };
 
-  return { commitCity, applyGrantedLocation };
+  // DG119: the first user camera gesture latches — a grant after that must
+  // not steal the viewport the user already chose. Programmatic flyTo never
+  // reaches this latch (the provider only fires it on real input).
+  const userPanned = useRef(false);
+  const handleCameraGesture = () => {
+    userPanned.current = true;
+  };
+
+  // The card's enable honors "no recenter after user pan" (DG119); the
+  // locate button is the explicit recenter affordance (DG120).
+  const handleEnableGranted = (result: Extract<GeoResult, { ok: true }>) =>
+    void applyGrantedLocation(result, !userPanned.current);
+  const handleLocateGranted = (result: Extract<GeoResult, { ok: true }>) =>
+    void applyGrantedLocation(result, true);
+
+  const deniedToasts = useDeniedToasts(setPhase);
+  const { locating, pulseKey, enable, locate } = useLocateFlow({
+    onEnableGranted: handleEnableGranted,
+    onLocateGranted: handleLocateGranted,
+    initialPulseKey: locateHint ? 1 : 0,
+    ...deniedToasts,
+  });
+
+  return {
+    commitCity,
+    handleCameraGesture,
+    locating,
+    pulseKey,
+    enable,
+    locate,
+  };
 }
 /** Denied/failure toasts (DG117): the card's recovery state and the locate
  * button's one-time settings hint. */
@@ -244,7 +283,6 @@ function useDeniedToasts(setPhase: (phase: OnboardingPhase) => void) {
   };
 }
 
-
 export function useOnboarding({
   detectedCity,
   initialCenter,
@@ -252,6 +290,7 @@ export function useOnboarding({
   serverOnboarded,
   profileSeed,
   suppressCard,
+  locateHint = false,
 }: {
   /** IP-detected launch city (DG128); null → no detection line. */
   detectedCity: CityInfo | null;
@@ -265,17 +304,23 @@ export function useOnboarding({
   profileSeed?: { currentCity: string; lastLocation: Coordinates | null };
   /** Deep-link-style arrivals (?cafe=) never see the card (DG124). */
   suppressCard?: boolean;
+  /** ?locate=1 deep link (BRAWUKA-504): the locate button arrives already
+   * pulsing — a hint, never an auto-prompt (DG112 still requires a tap). */
+  locateHint?: boolean;
 }): OnboardingState {
-
-  // The card must never flash for returning visitors (DG122): the lazy
-  // initializer reads localStorage during hydration — phase feeds only
-  // client-gated overlay markup, never SSR output.
   const [phase, setPhase] = useState<OnboardingPhase>(() =>
     serverOnboarded || suppressCard || readOnboardingState()?.onboarded
       ? "done"
       : "card",
   );
-  const [located, setLocated] = useState(false);
+  // The dot restores from the last granted fix (DG120 session persistence):
+  // signed-in users take the profile's lastLocation, anonymous visitors the
+  // localStorage copy — same precedence as the center fallback.
+  const [userLocation, setUserLocation] = useState<UserLocation | null>(() => {
+    if (isAuthenticated) return profileSeed?.lastLocation ?? null;
+    return readOnboardingState()?.lastLocation ?? null;
+  });
+  const [located, setLocated] = useState(() => userLocation !== null);
   const [selectedCityId, setSelectedCityId] = useState(
     detectedCity?.id ?? DEFAULT_CITY.id,
   );
@@ -283,45 +328,37 @@ export function useOnboarding({
 
   useOnboardingMerge(serverOnboarded, isAuthenticated, profileSeed);
 
-  const { commitCity, applyGrantedLocation } = useOnboardingCommit({
+  const {
+    commitCity,
+    handleCameraGesture,
+    locating,
+    pulseKey,
+    enable,
+    locate,
+  } = useOnboardingCommit({
     isAuthenticated,
+    locateHint,
     setCenter,
     setLocated,
     setPhase,
+    setUserLocation,
   });
 
-  const deniedToasts = useDeniedToasts(setPhase);
-  const { locating, pulseKey, enable, locate } = useLocateFlow({
-    onGranted: (lat, lng) => void applyGrantedLocation(lat, lng),
-    ...deniedToasts,
-  });
-
-  const handlePickCity = (cityId: string) => {
-    setSelectedCityId(cityId);
-    // Denied mode only stages the pick — "Use {city}" commits it. In the
-    // normal state the pick IS the choice (artifact §2: two choices, one card).
-    if (phase !== "denied") {
-      const city = findCity(cityId);
-      if (city) commitCity(city);
-    }
-  };
-
-  const handleUseCity = () => {
-    const city = findCity(selectedCityId);
-    if (city) commitCity(city);
-  };
-
-  return {
+  return buildOnboardingState({
     phase,
     locating,
     located,
     pulseKey,
     selectedCityId,
     center,
-    handleEnableLocation: enable,
-    handleLocate: locate,
-    handlePickCity,
-    handleUseCity,
-    handleSkip: () => commitCity(detectedCity ?? DEFAULT_CITY),
-  };
+    userLocation,
+    handleCameraGesture,
+    enable,
+    locate,
+    commitCity,
+    detectedCity,
+    setCenter,
+    setSelectedCityId,
+  });
 }
+

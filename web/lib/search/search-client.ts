@@ -1,5 +1,6 @@
 import { responseMessage } from "@/lib/http";
 import { getRankingPreference } from "./ranking-preference";
+import { filtersToSearchParams, type SearchFilterState } from "./search-filters";
 import type { SearchResponse } from "./types";
 
 export interface UnifiedSearchParams {
@@ -8,6 +9,8 @@ export interface UnifiedSearchParams {
   lat?: number;
   lng?: number;
   limit?: number;
+  /** Nomad filters (DG44–DG58): open_now + filter_* thresholds + max_stay. */
+  filters?: SearchFilterState;
   signal?: AbortSignal;
 }
 
@@ -26,6 +29,7 @@ export async function fetchUnifiedSearch({
   lat,
   lng,
   limit,
+  filters,
   signal,
 }: UnifiedSearchParams): Promise<SearchResponse> {
   const params = new URLSearchParams({ q });
@@ -33,6 +37,7 @@ export async function fetchUnifiedSearch({
   if (typeof lat === "number") params.set("lat", String(lat));
   if (typeof lng === "number") params.set("lng", String(lng));
   if (typeof limit === "number") params.set("limit", String(limit));
+  if (filters) filtersToSearchParams(filters, params);
 
   const ranking = getRankingPreference();
   if (ranking) params.set("ranking", ranking);

@@ -324,7 +324,7 @@ describe("CafeCreationSheet & Trigger", () => {
   });
 });
 
-describe("CafeCreationSheet session expiry (BRAWUKA-124/BRAWUKA-212)", () => {
+describe("CafeCreationSheet submit failures (BRAWUKA-124/BRAWUKA-212/BRAWUKA-490)", () => {
   function jsonResponse(status: number, body: unknown) {
     return { ok: status >= 200 && status < 300, status, json: async () => body };
   }
@@ -387,6 +387,17 @@ describe("CafeCreationSheet session expiry (BRAWUKA-124/BRAWUKA-212)", () => {
     fillAndSubmit();
 
     await expectSignInGate();
+  });
+
+  it("shows the already-exists hint when a 409 body omits cafe_id (BRAWUKA-490)", async () => {
+    vi.mocked(uploadPhoto).mockResolvedValue("img-uuid-1");
+    // Raced insert: the worker can 409 without a resolvable cafe_id.
+    mockRoutes((url) => (url.includes("/api/cafes") ? jsonResponse(409, { error: "conflict" }) : jsonResponse(200, {})));
+
+    await openSheetWithPoi();
+    fillAndSubmit();
+
+    await screen.findByText("This place is already in CafeMood.");
   });
 
   it("routes a publish-time photo upload 401 to the gate without posting", async () => {

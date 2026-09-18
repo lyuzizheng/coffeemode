@@ -45,8 +45,13 @@ export function CheckinPhotos({
   // Revoke every outstanding object URL on unmount — removal revokes eagerly,
   // but a drawer close mid-draft would otherwise leak them until navigation.
   const photosRef = useRef(photos);
+  // Committed count, reserved synchronously in handleFiles: `photos.length`
+  // is a render snapshot, so two picks landing before the commit would each
+  // see the same headroom and overshoot maxPhotos (BRAWUKA-461).
+  const committedCountRef = useRef(photos.length);
   useEffect(() => {
     photosRef.current = photos;
+    committedCountRef.current = photos.length;
   }, [photos]);
   useEffect(() => {
     return () => {
@@ -92,9 +97,12 @@ export function CheckinPhotos({
   const handleFiles = useCallback(
     async (files: FileList | null) => {
       if (!files || disabled) return;
-      const remaining = maxPhotos - photos.length;
-      const toUpload = Array.from(files).slice(0, remaining);
-      if (toUpload.length === 0) return;
+      const room = Math.max(0, maxPhotos - committedCountRef.current);
+      const toUpload = Array.from(files).slice(0, room);
+      if (toUpload.length === 0) {
+        if (inputRef.current) inputRef.current.value = "";
+        return;
+      }
 
       const mappedEntries: PhotoUpload[] = toUpload.map((file) => ({
         id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -103,10 +111,24 @@ export function CheckinPhotos({
         file,
       }));
 
+      // Reserve the slots before the commit so a second pick racing this one
+      // sees zero headroom instead of re-reading the stale render snapshot.
+      committedCountRef.current += mappedEntries.length;
+
       // Functional updates throughout: uploads resolve asynchronously, and a
       // stale `photos` snapshot would clobber entries added mid-flight or
-      // resurrect removed ones.
-      onChange((prev) => [...prev, ...mappedEntries]);
+      // resurrect removed ones. The clamp re-checks capacity against the
+      // committed array — the hard bound when a pick still slipped past the
+      // reservation. Dropped entries' object URLs are revoked (idempotent,
+      // safe under StrictMode's double-invoked updater).
+      onChange((prev) => {
+        const kept = mappedEntries.slice(0, Math.max(0, maxPhotos - prev.length));
+        for (const dropped of mappedEntries.slice(kept.length)) {
+          URL.revokeObjectURL(dropped.previewUrl);
+        }
+        if (kept.length === 0) return prev;
+        return [...prev, ...kept];
+      });
 
       // Staged photos (logged-out composer) upload later, at publish time.
       if (deferUpload) {
@@ -127,7 +149,7 @@ export function CheckinPhotos({
       );
       if (inputRef.current) inputRef.current.value = "";
     },
-    [photos.length, maxPhotos, disabled, deferUpload, onChange, updateEntry, markUploadFailure],
+    [maxPhotos, disabled, deferUpload, onChange, updateEntry, markUploadFailure],
   );
 
   const removePhoto = (id: string) => {

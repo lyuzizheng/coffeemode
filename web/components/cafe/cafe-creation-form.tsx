@@ -61,7 +61,7 @@ export function CafeCreationForm({
   const [note, setNote] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
-  const [duplicateCafeId, setDuplicateCafeId] = useState<string | null>(null);
+  const [isDuplicate, setIsDuplicate] = useState(false);
   const [createdCafeId, setCreatedCafeId] = useState<string | null>(null);
 
   const handlePhoto = (event: ChangeEvent<HTMLInputElement>) => {
@@ -89,7 +89,7 @@ export function CafeCreationForm({
     }
     setBusy(true);
     onError(null);
-    setDuplicateCafeId(null);
+    setIsDuplicate(false);
     try {
       const imageUuid = await uploadPhoto(photo);
       const body = {
@@ -114,8 +114,9 @@ export function CafeCreationForm({
       // unrecoverable by retrying, so the drawer's gate is the only way out.
       throwIfUnauthorized(response);
       if (response.status === 409) {
-        const duplicate = (await response.json()) as { cafe_id?: string };
-        setDuplicateCafeId(duplicate.cafe_id ?? null);
+        // The 409 body may omit `cafe_id` (raced insert, BRAWUKA-467); the
+        // "already exists" hint must not depend on it.
+        setIsDuplicate(true);
         return;
       }
       if (!response.ok) throw new Error(await responseMessage(response, t("createFailed")));
@@ -183,7 +184,7 @@ export function CafeCreationForm({
             <p className="text-xs text-muted">{t("photoHint")}</p>
           </div>
         </div>
-        {duplicateCafeId ? (
+        {isDuplicate ? (
           <p className="text-sm text-warning" role="status">
             {t("alreadyExists")}
           </p>

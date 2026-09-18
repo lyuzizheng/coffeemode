@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { cache, type ReactNode } from "react";
 import { getLocale, getTranslations } from "next-intl/server";
 import { isValidUUID } from "@shared/uuid";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { AppMenu } from "@/components/layout/app-menu";
 import { CoffeeIcon } from "@/components/icons";
 import { DossierHero } from "@/components/discovery/dossier-hero";
 import { SectionLabel } from "@/components/discovery/section-label";
@@ -26,6 +26,7 @@ import {
 import { getRequestOrigin } from "@/lib/site-origin";
 import { APP_NAME } from "@/lib/site";
 import type { CafeDetail, PublicCafeDetail } from "@/types/cafes";
+import type { StoredImage } from "@/types/images";
 import { CafeAppShell } from "./cafe-app-shell";
 import { CafeDetailSeed } from "./cafe-detail-seed";
 import { CafePageActions } from "./cafe-page-actions";
@@ -154,8 +155,10 @@ function CafeHeading({
   );
 }
 
-/** The dossier masthead: wordmark back to the map + theme toggle. */
-function CafeMasthead() {
+/** The dossier masthead: wordmark back to the map + the global
+ * account/menu cluster (BRAWUKA-504 — same chrome as the map and
+ * /profile, not a page-local ThemeToggle). */
+function CafeMasthead({ accountInitial }: { accountInitial?: string }) {
   return (
     <header className="flex items-center justify-between border-b border-separator px-4 py-3 sm:px-6">
       <Link
@@ -165,7 +168,7 @@ function CafeMasthead() {
         <CoffeeIcon size={18} className="text-accent" />
         {APP_NAME}
       </Link>
-      <ThemeToggle />
+      <AppMenu variant="page" accountInitial={accountInitial} />
     </header>
   );
 }
@@ -191,7 +194,7 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
   const cityName = displayCityName(cafe.city, locale);
   const origin = await getRequestOrigin();
   const canonical = `${origin}${cafeCanonicalPath(cafe.id)}`;
-  const covers = (cafe.gallery ?? []).map((g) => g.card).filter(Boolean); // BRAWUKA-307: cafe.cover already derives from the first gallery card
+  const covers = (cafe.gallery ?? []).map((g: StoredImage) => g.card).filter(Boolean); // BRAWUKA-307: cafe.cover already derives from the first gallery card
   // The public payload contract (DG13): client components receive only the
   // narrow slices, never the full row (see publicCafeShell).
   const publicAttribution = toPublicCafeDetail(cafe);
@@ -231,6 +234,7 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
         galleryLabel={td("gallery_aria")}
         publicAttribution={publicAttribution}
         ownerControls={ownerControls}
+        accountInitial={entry.accountInitial}
       />
     </CafeAppShell>
   );
@@ -250,6 +254,7 @@ function CafeShellDocument({
   galleryLabel,
   publicAttribution,
   ownerControls,
+  accountInitial,
 }: {
   cafe: CafeDetail;
   shell: ReturnType<typeof publicCafeShell>;
@@ -261,10 +266,11 @@ function CafeShellDocument({
   galleryLabel: string;
   publicAttribution: PublicCafeDetail;
   ownerControls: ReactNode;
+  accountInitial?: string;
 }) {
   return (
     <div className="flex min-h-dvh flex-col">
-      <CafeMasthead />
+      <CafeMasthead accountInitial={accountInitial} />
 
       {/* Part 1 — the public shell (DG106): aggregate product data only,
           full semantic HTML, no client JS needed for the content. */}

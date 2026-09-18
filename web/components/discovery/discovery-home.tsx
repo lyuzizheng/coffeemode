@@ -28,7 +28,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { useDiscoveryController, type SheetSnap } from "@/lib/discovery/use-discovery-controller";
-import { DiscoveryMapContext } from "@/lib/discovery/map-context";
+import { DiscoveryMapContext, type DiscoveryMapState } from "@/lib/discovery/map-context";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useMounted } from "@/hooks/use-mounted";
 import type { CafeSummary } from "@/types/cafes";
@@ -169,6 +169,9 @@ export function DiscoveryHome({
   mapkitConfigured = false,
   city,
   mapOverlay,
+  userLocation,
+  onCameraGesture,
+  initialCreationOpen = false,
   children,
 }: {
   /** Nearby-query center — the onboarding slice's resolved city/location,
@@ -197,7 +200,12 @@ export function DiscoveryHome({
    * render only while the sheet sits at PEEK so they never cover the
    * half/full detail content; on desktop they are always visible. */
   mapOverlay?: ReactNode;
-  /** Surface children (e.g. landing scaffold / map) coordinated with discovery */
+  /** Granted position for the user-location dot (DG120). */
+  userLocation?: DiscoveryMapState["userLocation"];
+  /** First user camera gesture latch (DG119) — onboarding's pan detector. */
+  onCameraGesture?: () => void;
+  /** ?create=1 deep link — opens the creation sheet on arrival. */
+  initialCreationOpen?: boolean;
   children?: ReactNode;
 }) {
   const t = useTranslations("discovery");
@@ -222,7 +230,7 @@ export function DiscoveryHome({
 
   const nearbyCafes = useMemo(() => cafesQuery.data ?? [], [cafesQuery.data]);
   const { search, mapCafes, creationDraft, creationOpen, setCreationOpen } =
-    useDiscoverySearch({ controller, nearbyCafes, mapkitConfigured, city });
+    useDiscoverySearch({ controller, nearbyCafes, mapkitConfigured, city, initialCreationOpen });
 
   const onCheckIn = (cafeId?: string, cafeName?: string, promptCaption = false) => {
     const id = cafeId ?? controller.selectedCafeId;
@@ -272,7 +280,7 @@ export function DiscoveryHome({
 
   // The map surface (children) reads controller/cafes/center through context
   // — it mounts inside this tree, so no prop-drilling through the page.
-  const mapState = { controller, cafes: mapCafes, center };
+  const mapState = { controller, cafes: mapCafes, center, userLocation, onCameraGesture };
   const overlays = (
     <DiscoveryOverlays
       checkinCafe={checkinCafe}

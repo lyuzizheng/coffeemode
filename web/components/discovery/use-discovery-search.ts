@@ -39,14 +39,18 @@ export function useDiscoverySearch({
   nearbyCafes,
   mapkitConfigured,
   city,
+  initialCreationOpen = false,
 }: {
   controller: DiscoveryController;
   nearbyCafes: CafeSummary[];
   mapkitConfigured: boolean;
   city?: string;
+  /** ?create=1 deep link (BRAWUKA-504): the profile guide's "add a cafe"
+   * step lands on the map with the creation sheet already open. */
+  initialCreationOpen?: boolean;
 }) {
   const [creationDraft, setCreationDraft] = useState<CreationDraft | null>(null);
-  const [creationOpen, setCreationOpen] = useState(false);
+  const [creationOpen, setCreationOpen] = useState(initialCreationOpen);
   const [extraCafe, setExtraCafe] = useState<CafeSummary | null>(null);
 
   const mapCafes = useMemo(() => {

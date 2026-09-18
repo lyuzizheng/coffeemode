@@ -29,6 +29,10 @@ export default async function HomePage({
   // loader resolves session + profile + detected city + starting center
   // (profile city → last location → detected city → configured default).
   const entry = await loadMapEntry();
+  // Profile-guide deep links (BRAWUKA-504): ?locate=1 primes the locate
+  // button's pulse, ?create=1 opens the creation sheet on arrival.
+  const locateHint = params.locate === "1";
+  const createHint = params.create === "1";
 
   return (
     <OnboardingHome
@@ -53,6 +57,8 @@ export default async function HomePage({
       }
       accountInitial={entry.accountInitial}
       mapkitConfigured={entry.mapkitConfigured}
+      locateHint={locateHint}
+      createHint={createHint}
     >
       <MapSurface />
       {authError && (

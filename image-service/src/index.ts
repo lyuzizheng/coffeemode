@@ -107,6 +107,9 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
   if (!safeTargetType || !safeTargetId) {
     return error("invalid_request", "targetType and targetId are required");
   }
+  // Keys are always lowercase (normalizedUuid); the provision marker must
+  // match the key case so metadata and key stay consistent (BRAWUKA-455).
+  const normalizedUuid = imageUuid.toLowerCase();
   let metadataTargetId: string = safeTargetId;
   if (
     safeTargetType !== PROVISION_TARGET_TYPE &&
@@ -118,10 +121,9 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
   if (safeTargetType === PROVISION_TARGET_TYPE) {
     // Provision-stage marker pairs the object with itself: unique per upload,
     // never collides with a real cafe/checkin UUID.
-    metadataTargetId = imageUuid;
+    metadataTargetId = normalizedUuid;
   }
 
-  const normalizedUuid = imageUuid.toLowerCase();
   const keys = makeKeys(normalizedUuid);
   const exists = await headObject(env, keys.original);
   if (!exists) {

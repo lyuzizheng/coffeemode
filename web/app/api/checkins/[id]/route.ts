@@ -27,14 +27,14 @@ export async function PATCH(
 
   const { id } = await params;
   if (!isValidUUID(id)) {
-    return apiError("invalid_request", "id must be a UUID", 400);
+    return apiError("invalid_request", "id must be a UUID", { status: 400 });
   }
 
   const bodyRes = await readJsonBody(request);
   if (!bodyRes.ok) return bodyRes.response;
   const parsed = parseUpdateCheckInBody(bodyRes.data);
   if (!parsed.ok) {
-    return apiError("invalid_request", parsed.message, 400);
+    return apiError("invalid_request", parsed.message, { status: 400 });
   }
 
   const gate = await guard(request, {
@@ -50,10 +50,10 @@ export async function PATCH(
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof CheckInNotFoundError) {
-      return apiError("not_found", "check-in not found", 404);
+      return apiError("not_found", "check-in not found", { status: 404 });
     }
     if (err instanceof CheckInForbiddenError) {
-      return apiError("forbidden", "not your check-in", 403);
+      return apiError("forbidden", "not your check-in", { status: 403 });
     }
     logError({ route: gate.route, request, error: err, status: 500 });
     return apiError("internal_error", 500);
@@ -75,7 +75,7 @@ export async function DELETE(
 
   const { id } = await params;
   if (!isValidUUID(id)) {
-    return apiError("invalid_request", "id must be a UUID", 400);
+    return apiError("invalid_request", "id must be a UUID", { status: 400 });
   }
 
   const gate = await guard(request, {
@@ -91,10 +91,10 @@ export async function DELETE(
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof CheckInNotFoundError) {
-      return apiError("not_found", "check-in not found", 404);
+      return apiError("not_found", "check-in not found", { status: 404 });
     }
     if (err instanceof CheckInForbiddenError) {
-      return apiError("forbidden", "not your check-in", 403);
+      return apiError("forbidden", "not your check-in", { status: 403 });
     }
     logError({ route: gate.route, request, error: err, status: 500 });
     return apiError("internal_error", 500);

@@ -50,10 +50,10 @@ async function handleReverse(
   route: string,
 ): Promise<Response> {
   if (Number.isNaN(lat) || Number.isNaN(lng)) {
-    return apiError("invalid_request", "lat and lng must both be numbers", 400);
+    return apiError("invalid_request", "lat and lng must both be numbers", { status: 400 });
   }
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-    return apiError("invalid_request", "lat must be [-90, 90] and lng [-180, 180]", 400);
+    return apiError("invalid_request", "lat must be [-90, 90] and lng [-180, 180]", { status: 400 });
   }
 
   try {
@@ -61,7 +61,7 @@ async function handleReverse(
     return NextResponse.json({ poi });
   } catch (err) {
     if (err instanceof POIServiceError) {
-      return apiError("poi_service", err.message, err.status);
+      return apiError("poi_service", err.message, { status: err.status });
     }
     logError({ route, request, error: err, status: 502 });
     return apiError("upstream_error", 502);

@@ -24,14 +24,14 @@ export async function POST(
 
   const { id } = await params;
   if (!isValidUUID(id)) {
-    return apiError("invalid_request", "navigation id must be a UUID", 400);
+    return apiError("invalid_request", "navigation id must be a UUID", { status: 400 });
   }
 
   const bodyRes = await readJsonBody(request);
   if (!bodyRes.ok) return bodyRes.response;
   const parsed = parsePromptAnswerBody(bodyRes.data);
   if (!parsed.ok) {
-    return apiError("invalid_request", parsed.message, 400);
+    return apiError("invalid_request", parsed.message, { status: 400 });
   }
 
   const gate = await guard(request, {
@@ -45,7 +45,7 @@ export async function POST(
   try {
     const result = await navigationPromptQueue.answer(user.id, id, parsed.value.outcome);
     if (result.status === "gone") {
-      return apiError("not_found", "navigation not found", 404);
+      return apiError("not_found", "navigation not found", { status: 404 });
     }
     return NextResponse.json({ outcome: result.outcome });
   } catch (err) {

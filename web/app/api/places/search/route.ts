@@ -27,22 +27,22 @@ export async function GET(request: Request) {
   const lngProvided = searchParams.has("lng");
   const hasCoords = !Number.isNaN(lat) && !Number.isNaN(lng);
   if ((latProvided || lngProvided) && !hasCoords) {
-    return apiError("invalid_request", "lat/lng must both be numbers", 400);
+    return apiError("invalid_request", "lat/lng must both be numbers", { status: 400 });
   }
   if (hasCoords && (lat < -90 || lat > 90 || lng < -180 || lng > 180)) {
-    return apiError("invalid_request", "lat must be [-90, 90] and lng [-180, 180]", 400);
+    return apiError("invalid_request", "lat must be [-90, 90] and lng [-180, 180]", { status: 400 });
   }
   if (q === "" && !hasCoords) {
-    return apiError("invalid_request", "q or lat+lng required", 400);
+    return apiError("invalid_request", "q or lat+lng required", { status: 400 });
   }
   if (Number.isNaN(r) || r <= 0) {
-    return apiError("invalid_request", "r must be a positive number (km)", 400);
+    return apiError("invalid_request", "r must be a positive number (km)", { status: 400 });
   }
   if (source !== "stored" && source !== "google") {
-    return apiError("invalid_request", "source must be stored or google", 400);
+    return apiError("invalid_request", "source must be stored or google", { status: 400 });
   }
   if (source === "google" && q === "") {
-    return apiError("invalid_request", "q is required for Google search", 400);
+    return apiError("invalid_request", "q is required for Google search", { status: 400 });
   }
 
   const clampedR = Math.min(r, MAX_SEARCH_RADIUS_KM);
@@ -75,7 +75,7 @@ export async function GET(request: Request) {
     return NextResponse.json(data);
   } catch (err) {
     if (err instanceof POIServiceError) {
-      return apiError("poi_service", err.message, err.status);
+      return apiError("poi_service", err.message, { status: err.status });
     }
     logError({ route: gate.route, request, error: err, status: 502 });
     return apiError("upstream_error", 502);

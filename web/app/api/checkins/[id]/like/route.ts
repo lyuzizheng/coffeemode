@@ -26,7 +26,7 @@ export async function POST(
 
   const { id } = await params;
   if (!isValidUUID(id)) {
-    return apiError("invalid_request", "id must be a UUID", 400);
+    return apiError("invalid_request", "id must be a UUID", { status: 400 });
   }
 
   const gate = await guard(request, {
@@ -42,10 +42,10 @@ export async function POST(
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof CheckInNotFoundError) {
-      return apiError("not_found", "check-in not found", 404);
+      return apiError("not_found", "check-in not found", { status: 404 });
     }
     if (err instanceof SelfLikeError) {
-      return apiError("self_like_forbidden", "you cannot like your own check-in", 403);
+      return apiError("self_like_forbidden", "you cannot like your own check-in", { status: 403 });
     }
     logError({ route: gate.route, request, error: err, status: 500 });
     return apiError("internal_error", 500);

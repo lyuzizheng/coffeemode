@@ -83,23 +83,23 @@ export async function GET(request: Request) {
     }
   }
   if (lat !== undefined && (lat < -90 || lat > 90)) {
-    return apiError("invalid_request", "lat must be within [-90, 90]", 400);
+    return apiError("invalid_request", "lat must be within [-90, 90]", { status: 400 });
   }
   if (lng !== undefined && (lng < -180 || lng > 180)) {
-    return apiError("invalid_request", "lng must be within [-180, 180]", 400);
+    return apiError("invalid_request", "lng must be within [-180, 180]", { status: 400 });
   }
 
   // Validate limit if provided: non-numeric or non-positive integer -> 400
   if (rawLimit !== null && rawLimit.trim() !== "" && limitParam === undefined) {
-    return apiError("invalid_request", "limit must be a positive integer", 400);
+    return apiError("invalid_request", "limit must be a positive integer", { status: 400 });
   }
   if (limitParam !== undefined && (!Number.isInteger(limitParam) || limitParam <= 0)) {
-    return apiError("invalid_request", "limit must be a positive integer", 400);
+    return apiError("invalid_request", "limit must be a positive integer", { status: 400 });
   }
 
   // DG128: explicit city must be known; reject unknown explicit cities without silent re-anchoring
   if (city !== undefined && !findCity(city)) {
-    return apiError("invalid_request", "unknown city", 400);
+    return apiError("invalid_request", "unknown city", { status: 400 });
   }
 
   // Resolve effective canonical city ID (DG128 fallback chain when omitted)

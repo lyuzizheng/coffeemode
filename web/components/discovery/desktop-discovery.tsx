@@ -26,9 +26,7 @@ import { useTranslations } from "next-intl";
 import { useSprings } from "@/lib/motion";
 import type { DiscoveryController } from "@/lib/discovery/use-discovery-controller";
 import type { CafeSummary } from "@/types/cafes";
-import type { SearchResultItem } from "@/lib/search/types";
-import type { ExternalSourceFlags } from "@/lib/client-env";
-import type { ExternalSearchProvider } from "@/components/search/search-results-list";
+import type { DiscoverySearch } from "./use-discovery-search";
 import { DetailContent, type DetailFooter } from "./detail-content";
 import { DesktopSidebar } from "./desktop-sidebar";
 
@@ -57,15 +55,10 @@ export function DesktopDiscovery({
   /** Landing mode only: gates the interactive column content so the shell
    * itself can render before mount (SSR contract #275). Unused standalone. */
   showColumns?: boolean;
-  /** Live unified search wiring (BRAWUKA-364): flags + selection handlers
-   * owned by the discovery adapter. Absent → the field is not rendered. */
-  search?: {
-    externalSources: ExternalSourceFlags;
-    mapkitConfigured: boolean;
-    city?: string;
-    onSelectResult: (item: SearchResultItem) => void;
-    onExternalSearch: (provider: ExternalSearchProvider) => void;
-  };
+  /** Live unified search wiring (BRAWUKA-364 + BRAWUKA-512 filters): flags,
+   * state, and selection handlers owned by the discovery adapter. Absent →
+   * the field is not rendered. */
+  search?: DiscoverySearch;
   /** Meters from the query point for the selected cafe — resolved by the
    * adapter (search picks may sit outside the nearby list). */
   distanceM?: number;

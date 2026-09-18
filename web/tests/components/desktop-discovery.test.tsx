@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
+import { useState } from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { prefersReducedMotion } from "motion-dom";
 import type { ReactNode } from "react";
 import { DesktopDiscovery } from "@/components/discovery/desktop-discovery";
+import type { DiscoverySearch } from "@/components/discovery/use-discovery-search";
 import type { DiscoveryController } from "@/lib/discovery/use-discovery-controller";
+import { EMPTY_FILTERS } from "@/lib/search/search-filters";
 import { emptyWorkStats } from "@/lib/stats/work-stats";
 import type { CafeSummary } from "@/types/cafes";
 import messages from "../../messages/en.json";
@@ -217,12 +220,40 @@ describe("DesktopDiscovery sidebar error branch (BRAWUKA-231)", () => {
 });
 
 describe("DesktopDiscovery dual-state sidebar (BRAWUKA-506)", () => {
-  const searchProp = {
-    externalSources: { google: true, apple: false },
-    mapkitConfigured: false,
-    onSelectResult: vi.fn(),
-    onExternalSearch: vi.fn(),
-  };
+  /** Stateful stand-in for `useDiscoverySearch` — the sidebar only needs
+   * the contract's shape; query changes flip `searchActive` like the hook. */
+  function makeSearch(query: string, setQuery: (q: string) => void): DiscoverySearch {
+    return {
+      externalSources: { google: true, apple: false },
+      mapkitConfigured: false,
+      query,
+      onQueryChange: setQuery,
+      filters: EMPTY_FILTERS,
+      onFiltersChange: () => {},
+      onCityChange: () => {},
+      searchActive: query.trim().length > 0,
+      onSelectResult: vi.fn(),
+      onExternalSearch: vi.fn(),
+    };
+  }
+
+  function SearchHarness({ controller }: { controller: DiscoveryController }) {
+    const [query, setQuery] = useState("");
+    return (
+      <DesktopDiscovery
+        controller={controller}
+        cafes={[mockCafe]}
+        isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
+        onCheckIn={vi.fn()}
+        addCafe={<span>Add Cafe</span>}
+        search={makeSearch(query, setQuery)}
+      />
+    );
+  }
+
+  const searchProp = makeSearch("", () => {});
 
   function renderSidebar(controllerOverrides?: Partial<DiscoveryController>) {
     return render(
@@ -256,9 +287,8 @@ describe("DesktopDiscovery dual-state sidebar (BRAWUKA-506)", () => {
     // becomes invisible once the collapse lands.
     await waitFor(() => expect(intro).not.toBeVisible());
   });
-
   it("collapses the frontispiece while a search query is active", async () => {
-    renderSidebar();
+    render(<SearchHarness controller={createMockController()} />, { wrapper: Wrapper });
     const field = screen.getByRole("searchbox");
     fireEvent.change(field, { target: { value: "latte" } });
     const intro = screen.getByText(messages.discovery.brand_intro);

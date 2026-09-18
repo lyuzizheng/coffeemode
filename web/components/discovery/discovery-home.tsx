@@ -61,16 +61,8 @@ function gateMapOverlay(
   return mapOverlay && (isDesktop || snap === "peek" || snap === "collapsed") ? mapOverlay : null;
 }
 
-/** The floating capsule search over the mobile map (BRAWUKA-364). */
-function MobileSearchOverlay({
-  search,
-  onQueryChange,
-  resultsActive,
-}: {
-  search: DiscoverySearch;
-  onQueryChange: (query: string) => void;
-  resultsActive: boolean;
-}) {
+/** The floating capsule search over the mobile map (BRAWUKA-364 + BRAWUKA-512). */
+function MobileSearchOverlay({ search }: { search: DiscoverySearch }) {
   const t = useTranslations("map");
   return (
     <div className="fixed inset-x-4 top-4 z-40 lg:hidden" role="search" aria-label={t("search_aria")}>
@@ -79,12 +71,16 @@ function MobileSearchOverlay({
           externalSources={search.externalSources}
           mapkitConfigured={search.mapkitConfigured}
           city={search.city}
+          query={search.query}
           onSelectResult={search.onSelectResult}
           onExternalSearch={search.onExternalSearch}
-          onQueryChange={onQueryChange}
+          onQueryChange={search.onQueryChange}
+          filters={search.filters}
+          onFiltersChange={search.onFiltersChange}
+          onCityChange={search.onCityChange}
           hideIdleHint
           resultsClassName={
-            resultsActive ? "max-h-[55dvh] overflow-y-auto overscroll-contain" : undefined
+            search.searchActive ? "max-h-[55dvh] overflow-y-auto overscroll-contain" : undefined
           }
         />
       </div>
@@ -230,7 +226,7 @@ export function DiscoveryHome({
 
   const nearbyCafes = useMemo(() => cafesQuery.data ?? [], [cafesQuery.data]);
   const { search, mapCafes, creationDraft, creationOpen, setCreationOpen } =
-    useDiscoverySearch({ controller, nearbyCafes, mapkitConfigured, city, initialCreationOpen });
+    useDiscoverySearch({ controller, nearbyCafes, mapkitConfigured, city, isAuthenticated, initialCreationOpen });
 
   const onCheckIn = (cafeId?: string, cafeName?: string, promptCaption = false) => {
     const id = cafeId ?? controller.selectedCafeId;
@@ -239,11 +235,6 @@ export function DiscoveryHome({
     setCheckinCafe({ id, name: cafeName ?? cafe?.name ?? t("unknown_cafe"), promptCaption });
     setCheckinOpen(true);
   };
-
-  // Mobile search: the floating capsule mirrors the field's query so the
-  // results card only floats while a query is active.
-  const [mobileQuery, setMobileQuery] = useState("");
-  const mobileSearchActive = mobileQuery.trim().length > 0;
 
   // DG85/DG90: the prompt defers while the sheet is at FULL or the check-in
   // drawer (a modal task surface) is open; it renders once the UI returns
@@ -295,11 +286,7 @@ export function DiscoveryHome({
       isDesktop={isDesktop}
       mobileSearch={
         mounted && !isDesktop && (controller.snap === "peek" || controller.snap === "collapsed") ? (
-          <MobileSearchOverlay
-            search={search}
-            onQueryChange={setMobileQuery}
-            resultsActive={mobileSearchActive}
-          />
+          <MobileSearchOverlay search={search} />
         ) : null
       }
     />

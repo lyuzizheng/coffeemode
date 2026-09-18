@@ -49,26 +49,10 @@ import {
   type OnboardingPhase,
   type OnboardingState,
 } from "./onboarding-state";
+import { persistProfile } from "@/lib/profile-merge";
 
 export type { OnboardingPhase, OnboardingState };
 
-/** Best-effort profile merge — localStorage already holds the state, so a
- * failed PATCH just retries on the next authenticated visit. */
-async function persistProfile(patch: {
-  onboarded?: boolean;
-  currentCity?: string;
-  lastLocation?: Coordinates;
-}): Promise<void> {
-  try {
-    await fetch("/api/profile", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    });
-  } catch {
-    // Offline or unauthenticated race — local state is the fallback.
-  }
-}
 
 /** Anonymous returning visitors resume at their stored city/location before
  * the first nearby fetch — the lazy initializer reads localStorage during

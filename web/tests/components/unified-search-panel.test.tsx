@@ -1,8 +1,13 @@
 import { NextIntlClientProvider } from "next-intl";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useState } from "react";
 import { UnifiedSearchPanel } from "@/components/search/unified-search-panel";
 import type { UnifiedSearchParams } from "@/lib/search/search-client";
+import {
+  EMPTY_FILTERS,
+  type SearchFilterState,
+} from "@/lib/search/search-filters";
 import type { SearchResponse, SearchResultItem } from "@/lib/search/types";
 import en from "@/messages/en.json";
 
@@ -122,8 +127,11 @@ describe("UnifiedSearchPanel", () => {
 
     type(input, "abcd");
     await advance(400);
-    // Refetch: old list stays, no skeleton flash.
-    expect(document.querySelectorAll(".animate-pulse")).toHaveLength(0);
+    // Refetch: old list stays, no skeleton flash — only the spec §4 thin
+    // head shimmer (a single h-0.5 bar, not skeleton rows).
+    const pulses = document.querySelectorAll(".animate-pulse");
+    expect(pulses.length).toBeLessThanOrEqual(1);
+    expect(pulses[0]?.className).toContain("h-0.5");
     expect(screen.getByText("Alpha")).toBeInTheDocument();
 
     await act(async () => {
@@ -205,5 +213,109 @@ describe("UnifiedSearchPanel", () => {
     });
     expect(screen.getByText("Fresh")).toBeInTheDocument();
     expect(screen.queryByText("Stale")).not.toBeInTheDocument();
+  });
+});
+
+describe("UnifiedSearchPanel filters (BRAWUKA-512, DG44–DG58)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    // Desktop breakpoint → the inline collapsible panel (deterministic in
+    // jsdom; the mobile Drawer path is covered by the same control set).
+    window.matchMedia = ((query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    })) as typeof window.matchMedia;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  /** Stateful host — mirrors `useDiscoverySearch`: the panel is a controlled
+   * view over one filter object. */
+  function FilteredPanel({ fetchSearch }: { fetchSearch: FetchSearch }) {
+    const [filters, setFilters] = useState<SearchFilterState>(EMPTY_FILTERS);
+    return (
+      <NextIntlClientProvider locale="en" messages={en}>
+        <UnifiedSearchPanel
+          externalSources={{ google: true, apple: false }}
+          mapkitConfigured={false}
+          onSelectResult={() => {}}
+          onExternalSearch={() => {}}
+          fetchSearch={fetchSearch}
+          filters={filters}
+          onFiltersChange={setFilters}
+        />
+      </NextIntlClientProvider>
+    );
+  }
+
+  const advance = async (ms: number) => {
+    await act(async () => {
+      vi.advanceTimersByTime(ms);
+    });
+  };
+
+  it("badge counts active filters and chips remove them (DG54)", async () => {
+    const fetchSearch = vi.fn<FetchSearch>(() => Promise.resolve(makeResponse(["Cafe A"])));
+    render(<FilteredPanel fetchSearch={fetchSearch} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+
+    // Desktop inline panel (matchMedia stubbed to matches:true above).
+    const wifiGroup = screen.getByRole("radiogroup", { name: "Wifi" });
+    fireEvent.click(within(wifiGroup).getByRole("radio", { name: "60+" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Open now" }));
+
+    // Badge: two active filters, text not a bare dot (spec §9).
+    expect(screen.getByRole("button", { name: "Filters, 2 active" })).toBeInTheDocument();
+    // Chips row above results — one per active filter.
+    expect(screen.getByRole("button", { name: "Remove Open now" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove Wifi 60+" })).toBeInTheDocument();
+
+    // Removing the chip clears that filter and the badge drops.
+    fireEvent.click(screen.getByRole("button", { name: "Remove Wifi 60+" }));
+    expect(screen.getByRole("button", { name: "Filters, 1 active" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove Wifi 60+" })).not.toBeInTheDocument();
+  });
+
+  it("emits filter params and fetches in browse mode with an empty query", async () => {
+    const fetchSearch = vi.fn<FetchSearch>(() => Promise.resolve(makeResponse(["Cafe A"])));
+    render(<FilteredPanel fetchSearch={fetchSearch} />);
+
+    // No query typed — filters alone must trigger the fetch (browse mode).
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    const wifiGroup = screen.getByRole("radiogroup", { name: "Wifi" });
+    fireEvent.click(within(wifiGroup).getByRole("radio", { name: "60+" }));
+    await advance(400);
+
+    expect(fetchSearch).toHaveBeenCalled();
+    const params = fetchSearch.mock.calls.at(-1)?.[0];
+    expect(params?.q).toBe("");
+    expect(params?.filters?.thresholds.wifi).toBe(60);
+  });
+
+  it("filter-empty state offers a Reset CTA that clears everything", async () => {
+    const fetchSearch = vi.fn<FetchSearch>(() => Promise.resolve(makeResponse([])));
+    render(<FilteredPanel fetchSearch={fetchSearch} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Open now" }));
+    await advance(400);
+
+    expect(screen.getByText("No places match these filters")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Reset filters" }));
+
+    // Badge and chips disappear — the state object is the single truth.
+    expect(screen.getByRole("button", { name: "Filters" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove Open now" })).not.toBeInTheDocument();
   });
 });

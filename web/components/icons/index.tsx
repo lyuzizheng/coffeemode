@@ -309,3 +309,10 @@ export function SignOutIcon(props: IconProps) {
 export function ChevronRightIcon(props: IconProps) {
   return base(props, <path d="M6 3.5L10.5 8L6 12.5" />);
 }
+/** Filter — funnel glyph for the search filter button (search-filters-v1 §3). */
+export function FilterIcon(props: IconProps) {
+  return base(
+    props,
+    <path d="M2.5 3.5h11l-4.25 5v4l-2.5 1.25v-5.25l-4.25-5z" />,
+  );
+}

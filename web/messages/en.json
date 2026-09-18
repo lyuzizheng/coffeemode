@@ -370,6 +370,13 @@
     "dimensionMinima": "Dimension minima",
     "apply": "Apply",
     "reset": "Reset",
+    "any": "Any",
+    "results_count": "{count, plural, =1 {1 place} other {# places}}",
+    "filters_active": "{count, plural, =1 {Filters, 1 active} other {Filters, # active}}",
+    "remove_filter": "Remove {label}",
+    "no_match_filters": "No places match these filters",
+    "loosen_filters": "Try loosening one",
+    "reset_filters": "Reset filters",
     "maxStayOptions": {
       "unlimited": "No limit",
       "3h": "3h",
@@ -403,6 +410,14 @@
       "good_first": "Great cafes first",
       "onboarding_title": "What should search show first?",
       "onboarding_body": "Pick once, change anytime. Great cafes first surfaces top-rated spots; closest match first keeps it strictly relevant."
+    },
+    "dims": {
+      "wifi": "Wifi",
+      "outlets": "Outlets",
+      "seats": "Seats",
+      "coffee": "Coffee",
+      "overall": "Overall",
+      "temp": "Temperature"
     }
   },
   "notFound": {

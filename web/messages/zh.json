@@ -370,6 +370,13 @@
     "dimensionMinima": "维度最低分",
     "apply": "应用",
     "reset": "重置",
+    "any": "不限",
+    "results_count": "{count, plural, other {# 家咖啡馆}}",
+    "filters_active": "{count, plural, other {筛选，已启用 # 项}}",
+    "remove_filter": "移除{label}",
+    "no_match_filters": "没有符合这些条件的咖啡馆",
+    "loosen_filters": "试试放宽一个条件",
+    "reset_filters": "重置筛选",
     "maxStayOptions": {
       "unlimited": "不限",
       "3h": "3小时",
@@ -403,6 +410,14 @@
       "good_first": "更想探索好店",
       "onboarding_title": "搜索结果想先看什么？",
       "onboarding_body": "选一次就好，随时可以改。探索好店优先展示高分咖啡馆；找最近的店严格按相关度排序。"
+    },
+    "dims": {
+      "wifi": "Wifi",
+      "outlets": "插座",
+      "seats": "座位",
+      "coffee": "咖啡",
+      "overall": "综合",
+      "temp": "温度"
     }
   },
   "notFound": {

@@ -22,6 +22,7 @@ export const RATE_LIMIT_BUCKET_NAMES = [
   "search",
   "profile-read",
   "profile-write",
+  "profile-export",
   "identity-write",
   "onboarding",
   "heartbeat",

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type * as HeroUI from "@heroui/react";
@@ -18,6 +18,7 @@ vi.mock("next/navigation", () => ({
     back: backMock,
     refresh: vi.fn(),
   }),
+  usePathname: () => "/profile",
 }));
 
 // Toasts are asserted via spy — HeroUI renders them into a portal outside
@@ -67,26 +68,6 @@ describe("ProfileView", () => {
     expect(screen.getByRole("button", { name: /Continue with Google/i })).toBeInTheDocument();
   });
 
-  it("keeps the ranking preference reachable but outside the anonymous gate", () => {
-    render(
-      <ProfileView
-        initialProfile={null}
-        initialStats={null}
-        isAuthenticated={false}
-      />,
-      { wrapper: Wrapper },
-    );
-
-    // DG136: anonymous users can still set the localStorage preference…
-    const ranking = screen.getByRole("radiogroup", { name: "Search ranking" });
-    // …but it lives in the page footer, not inside the gate flow.
-    expect(ranking.closest("footer")).not.toBeNull();
-    const gate = screen.getByRole("heading", { name: "Your cafes live here" });
-    expect(gate.compareDocumentPosition(ranking)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
-  });
-
   it("renders authenticated profile with stats and tabs", () => {
     const mockProfile = {
       id: "user-1",
@@ -125,46 +106,6 @@ describe("ProfileView", () => {
     expect(screen.getByRole("tab", { name: "Search History" })).toBeInTheDocument();
   });
 
-  it("collects identity and ranking controls in a Preferences section", () => {
-    const mockProfile = {
-      id: "user-1",
-      displayName: "Coffee Lover",
-      currentCity: "singapore",
-      lastLocation: null,
-      onboarded: false,
-      avatarUrl: null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      showPublicIdentity: false,
-      publicHandle: null,
-      identityConsentedAt: null,
-      publicHandleChangedAt: null,
-    };
-
-    render(
-      <ProfileView
-        initialProfile={mockProfile}
-        initialStats={{ cafesCount: 12, checkinsCount: 34 }}
-        isAuthenticated={true}
-      />,
-      { wrapper: Wrapper },
-    );
-
-    const preferences = screen.getByRole("region", { name: "Preferences" });
-    // Identity switch, handle row, and ranking control all live inside it…
-    expect(
-      within(preferences).getByText(/Show my name on cafes/i),
-    ).toBeInTheDocument();
-    expect(within(preferences).getByText("Public handle")).toBeInTheDocument();
-    expect(
-      within(preferences).getByRole("radiogroup", { name: "Search ranking" }),
-    ).toBeInTheDocument();
-    // …and the section sits after the tab content, at the end of the page.
-    const tablist = screen.getByRole("tablist");
-    expect(tablist.compareDocumentPosition(preferences)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
-  });
 
   it("defers the cafes query until the map tab is first visited", async () => {
     const mockProfile = {

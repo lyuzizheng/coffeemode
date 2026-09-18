@@ -59,18 +59,27 @@ app/page.tsx
   `moveend`, the "search this area" trigger), `setExternalPins` (external
   POI pins on a source/layers separate from `setCafes` — never folded into
   `CafeSummary`). Consumers feature-detect (`provider.getBounds?.(…)`).
-- **map-account-chip.tsx** — the floating account + theme affordance
-  (BRAWUKA-318): avatar initial → `/profile` when signed in, "Sign in" →
-  `/profile` (which renders the sign-in gate) when not, plus a chromeless
-  `ThemeToggle`. Rendered by OnboardingHome inside `mapOverlay`, so
-  `gateMapOverlay` hides it above PEEK; on desktop it sits left of the
-  locate button's top-right corner.
+- **layout/app-menu.tsx** — the floating account + menu cluster
+  (BRAWUKA-504): a round trigger that opens a spring-animated panel
+  (scale from the trigger's corner, `spring.gentle`) with theme
+  (light/dark/system + variant), language (en/zh), a `/settings` entry,
+  and sign-in/out. `variant="map"` floats top-right inside the
+  `mapOverlay` slot (so `gateMapOverlay` hides it above PEEK);
+  `variant="page"` is the shared chrome on `/profile`, `/settings`,
+  `/cafes/[id]`, and the legal pages.
+- **onboarding/locate-button.tsx** — the persistent locate control
+  (DG116/DG117/DG120): bottom-right on every breakpoint, stacked
+  directly above the add-cafe FAB (BRAWUKA-504 — moved from the
+  sheet-peek slot and the desktop top-right corner). The granted fix
+  renders as the user-location dot layer on the map (`userLocation` →
+  `setUserLocation` on `IMapProvider`); a re-tap recenters on the dot.
 
 ## Camera contract
 
 | Trigger | Effect |
 | --- | --- |
 | Resolved center changes (locate, city pick) | `flyTo` at `map.defaultZoom` (never zooms out) |
+| User camera gesture (first pan/zoom) | `onCameraGesture` latch — a late locate grant never steals the viewport (DG119) |
 | Cafe selected (card or pin) | `flyTo` at `map.focusZoom` (never zooms out) |
 | Deselect / user pan | nothing — the camera stays where the user left it |
 | Cluster tap | `easeTo` cluster expansion zoom |

@@ -69,3 +69,24 @@ Centered column, 640px max width, 16px side padding (mobile) / 24px
       section at the bottom of the page; nothing sits between stats and
       tabs or after tabs except that section.
 - [ ] The stats strip matches its loading skeleton (hairline `border-y`).
+
+## Amendment 2 — BRAWUKA-504 (owner 2026-09-19)
+
+The owner directive moves all preferences off `/profile` into a dedicated
+`/settings` screen (DG152) and adds a zero-data onboarding state (DG153).
+This supersedes §2 item 4 (Preferences section) and the anonymous-footer
+bullet in §5.
+
+- **Preferences leave `/profile` entirely.** Theme (light/dark/system),
+  theme variant, language, ranking, public identity, and public handle
+  live on `/settings`; the profile page keeps only identity → data.
+  Anonymous visitors see a quiet `Settings` link in the page footer
+  instead of the ranking control.
+- **Zero-data state (DG153).** When the signed-in check-ins query returns
+  an empty first page, the tabs are replaced by a three-step starter card
+  (locate → add a cafe → check in) deep-linking to `/?locate=1` and
+  `/?create=1`. A `Skip` writes a localStorage dismissal; the card never
+  returns once dismissed or once data exists (DG39).
+- **Header chrome.** The page header's ThemeToggle/SignOutButton pair is
+  replaced by the global `AppMenu` (page variant) — the same droplet menu
+  the map carries (DG150).

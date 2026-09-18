@@ -707,7 +707,7 @@ Primary: VPS (user's own server, public IP)
   - Docker container (next build --output standalone)
   - PM2 or container restart policy
   - Cloudflare CDN proxy (SSL, DDoS, caching)
-  - Nightly work_stats recompute via GitHub Actions cron (#146; doubles as the Supabase free-tier keep-alive, 34a)
+  - Nightly work_stats recompute via Dokploy VPS cron (#146, BRAWUKA-475; doubles as the Supabase free-tier keep-alive, 34a)
 Fallback: @opennextjs/cloudflare (Workers, Node.js runtime) — post-MVP
 Images: Cloudflare R2 + CDN custom domain
 Domain: cafemood.app (or TBD)

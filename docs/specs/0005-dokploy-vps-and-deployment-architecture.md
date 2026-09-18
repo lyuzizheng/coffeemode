@@ -214,6 +214,8 @@ spec 0010 §1. The table below covers the deployed staging/production edge only.
      2. Applies schema migrations over `DIRECT_URL` (Supabase prod session/direct — never the transaction pooler) via repo checkout.
      3. Triggers Dokploy production deployment and polls `/api/health` for release convergence.
      4. Executes automated smoke tests (`deploy/dokploy/smoke-test.sh prod`).
+### 2. Zero-downtime container rolling swap strategy
+
 When the VPS runs in Docker Swarm mode, Dokploy stack deployments honor:
 
 ```yaml
@@ -256,6 +258,19 @@ deploy:
      ```bash
      scripts/devops/restore.sh --env staging --file <backup>.dump.gz --drill
      ```
+
+### 4. Scheduled jobs & nightly recompute architecture (Dokploy Cron)
+
+Per BRAWUKA-475, the nightly work_stats recompute and Helpful ranking snapshot execution migrated from GitHub Actions to Dokploy VPS cron:
+- **Zero GitHub Secrets Leakage**: `DATABASE_URL` (production pooled connection string) does not enter GitHub secrets or CI environments; it remains strictly confined to the Dokploy environment on the VPS host.
+- **Execution Window**: Scheduled daily at 02:00 UTC (`0 2 * * *`), comfortably clear of the 03:00 UTC staging-journey verification window.
+- **Canonical Orchestrator**: `deploy/dokploy/nightly-recompute.sh` invokes `npm run recompute:work-stats && npm run snapshot:helpful-ranking` within the production web container via `docker exec`.
+- **Deployment Reconfigurability**:
+  - *Dokploy Scheduled Job*: Created as an `application` schedule on `coffeemode-web-prod` (`0 2 * * *`, command: `if [ -d web ]; then cd web; fi; npm run recompute:work-stats && npm run snapshot:helpful-ranking`).
+  - *VPS Host Crontab Alternative*: `0 2 * * * /path/to/coffeemode/deploy/dokploy/nightly-recompute.sh >> /var/log/nightly-recompute.log 2>&1`.
+- **Failure Alerting & Self-Healing Webhook**: If the script exits with non-zero status, it outputs structured JSON error lines and triggers the Multica autopilot webhook (`MULTICA_AUTOPILOT_WEBHOOK_URL`, BRAWUKA-476) to automatically generate an incident response issue.
+
+### 5. Automated smoke test verification checklist
 - [ ] Healthcheck endpoint `GET /api/health` returns `{"ok":true}` and version/boot_time markers with HTTP 200.
 - [ ] Root page `GET /` returns HTTP 200 with HTML shell and title CafeMood.
 - [ ] PostGIS spatial query `GET /api/cafes?lat=1.3521&lng=103.8198&radius_km=5` returns HTTP 200 with `{"cafes":[...]}`.

@@ -226,8 +226,18 @@ export async function d1SearchPOIs(
   where.push("expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
 
   // Pull more than the final cap because the bounding-box prefilter is loose;
-  // the exact haversine filter and sort happen in memory.
-  const sql = `SELECT * FROM pois WHERE ${where.join(" AND ")} ORDER BY name ASC LIMIT ${SEARCH_RESULT_LIMIT * 10}`;
+  // the exact haversine filter and sort happen in memory. When coordinates
+  // are present the prefetch MUST order by a distance proxy — ordering by
+  // name truncates the candidate set alphabetically and drops nearby POIs
+  // once a dense area exceeds the prefetch cap (BRAWUKA-395 P2-3). The proxy
+  // is an equirectangular approximation; MIN(|dlng|, 360-|dlng|) keeps the
+  // antimeridian wrap correct, and the haversine pass stays authoritative.
+  const orderBy =
+    lat !== undefined && lng !== undefined
+      ? `ORDER BY ABS(lat - ?) * ${kmPerDegLat()} + MIN(ABS(lng - ?), 360 - ABS(lng - ?)) * ${kmPerDegLng(lat)} ASC`
+      : "ORDER BY name ASC";
+  const sql = `SELECT * FROM pois WHERE ${where.join(" AND ")} ${orderBy} LIMIT ${SEARCH_RESULT_LIMIT * 10}`;
+  if (lat !== undefined && lng !== undefined) binds.push(lat, lng, lng);
   const { results } = await db.prepare(sql).bind(...binds).all<POIRow>();
 
   let hits: POISearchHit[] = results.map((r) => normalizeRow(r));

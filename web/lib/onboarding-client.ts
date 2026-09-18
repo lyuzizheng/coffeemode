@@ -5,6 +5,12 @@
  * callers treat null as "resolve later", never as an error surface.
  */
 
+/**
+ * Client view of the located city (BRAWUKA-503: merge with server
+ * `ResolvedCity` evaluated and rejected — the server shape carries `tz` for
+ * runtime-city creation while this client shape never needs it, and sharing
+ * the server type would pull `server-only` across the client boundary).
+ */
 interface ResolvedLocateCity {
   id: string;
   name: string;

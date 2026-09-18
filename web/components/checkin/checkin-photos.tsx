@@ -151,7 +151,7 @@ export function CheckinPhotos({
   return (
     <div className="flex gap-2 overflow-x-auto px-1 py-4">
       {photos.map((photo) => (
-        <div key={photo.id} className="relative h-[72px] w-[72px] shrink-0">
+        <div key={photo.id} className="relative h-[var(--layout-thumb)] w-[var(--layout-thumb)] shrink-0">
           <div
             className={`h-full w-full overflow-hidden rounded-md border bg-surface-secondary ${
               photo.status === "error" ? "border-danger" : "border-border"
@@ -198,7 +198,7 @@ export function CheckinPhotos({
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="flex h-[72px] w-[72px] shrink-0 flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border bg-surface-secondary text-muted hover:bg-surface-tertiary"
+          className="flex h-[var(--layout-thumb)] w-[var(--layout-thumb)] shrink-0 flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border bg-surface-secondary text-muted hover:bg-surface-tertiary"
           aria-label={t("addPhotos")}
         >
           <span className="text-lg leading-none">+</span>

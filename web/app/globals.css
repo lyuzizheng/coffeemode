@@ -448,17 +448,17 @@ body {
 }
 
 /* MapLibre attribution (map-home, BRAWUKA-311): the control renders
-   bottom-right, which the mobile sheet's PEEK height (172px) covers. Lift it
+   bottom-right, which the mobile sheet's PEEK height covers. Lift it
    above the sheet on small screens — attribution must stay visible
    (OpenMapTiles license). Desktop keeps the default corner. */
 @media (max-width: 1023px) {
   .maplibregl-ctrl-bottom-right {
-    bottom: 180px;
+    bottom: calc(var(--layout-sheet-peek) + 8px);
   }
-  /* BRAWUKA-373: the collapsed sheet is a 48px bar — drop the attribution
+  /* BRAWUKA-373: the collapsed sheet is a slim bar — drop the attribution
      offset so it doesn't float mid-map. */
   [data-sheet-snap="collapsed"] .maplibregl-ctrl-bottom-right {
-    bottom: 56px;
+    bottom: calc(var(--layout-sheet-collapsed) + 8px);
   }
 }
 

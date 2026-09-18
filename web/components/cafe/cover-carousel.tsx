@@ -6,6 +6,7 @@
  */
 import { useRef, useState } from "react";
 import Image from "next/image";
+import { DETAIL_COLUMN_PX } from "@/lib/layout";
 
 export function CoverCarousel({ images, alt }: { images: string[]; alt: string }) {
   const [active, setActive] = useState(0);
@@ -32,7 +33,7 @@ export function CoverCarousel({ images, alt }: { images: string[]; alt: string }
               src={src}
               alt={i === 0 ? alt : ""}
               fill
-              sizes="(min-width: 1024px) 400px, 100vw"
+              sizes={`(min-width: 1024px) ${DETAIL_COLUMN_PX}px, 100vw`}
               className="object-cover"
               priority={i === 0}
             />

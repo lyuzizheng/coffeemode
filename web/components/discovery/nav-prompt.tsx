@@ -196,7 +196,7 @@ export function NavPromptView({
       <div
         className={
           placement === "sheet"
-            ? "absolute bottom-[calc(100%+12px)] left-3 right-[76px] z-10 flex flex-col"
+            ? "absolute bottom-[calc(100%+12px)] left-3 right-[var(--layout-chrome-offset)] z-10 flex flex-col"
             : "pointer-events-none fixed inset-x-6 bottom-6 z-30 flex flex-col"
         }
       >

@@ -71,7 +71,7 @@ function PeekSkeletons() {
           key={i}
           className="flex w-[85%] shrink-0 gap-3 rounded-md border border-separator bg-surface p-3 md:w-[clamp(280px,55%,420px)]"
         >
-          <div className="h-[66px] w-[88px] animate-pulse rounded-md bg-surface-tertiary" />
+          <div className="h-[var(--layout-thumb)] w-[96px] animate-pulse rounded-md bg-surface-tertiary" />
           <div className="flex flex-1 flex-col justify-center gap-2">
             <div className="h-4 w-2/3 animate-pulse rounded bg-surface-tertiary" />
             <div className="h-3 w-1/3 animate-pulse rounded bg-surface-tertiary" />

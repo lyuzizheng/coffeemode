@@ -16,6 +16,7 @@
  * hidden until MapKit is configured (DG143).
  */
 import { useLocale, useTranslations } from "next-intl";
+import { useNetworkStatus } from "@/hooks/use-network-status";
 import { formatDistanceKm } from "@/lib/discovery/view-model";
 import { displayCityName } from "@/lib/cities";
 import type { ExternalSourceFlags } from "@/lib/client-env";
@@ -31,8 +32,12 @@ interface SearchResultsListProps {
   mapkitConfigured: boolean;
   onSelect: (item: SearchResultItem) => void;
   onExternalSearch: (provider: ExternalSearchProvider) => void;
-  /** DG133 pairs the external-search notice with a retry action. */
+  /** DG133: `poi_unavailable` pairs the external-search notice with a retry action. */
   onRetry?: () => void;
+  /** ≥1 nomad filter is on — the empty state becomes the filter-empty copy
+   * with a Reset CTA (spec §7), not the generic empty state. */
+  hasActiveFilters?: boolean;
+  onResetFilters?: () => void;
 }
 
 function ResultRow({
@@ -95,20 +100,44 @@ export function SearchResultsList({
   onSelect,
   onExternalSearch,
   onRetry,
+  hasActiveFilters = false,
+  onResetFilters,
 }: SearchResultsListProps) {
   const t = useTranslations("search");
+  const { isOffline } = useNetworkStatus();
   const { coffeemode, external } = groupSearchResults(response.results);
   const isEmpty = response.results.length === 0;
+
 
   // DG134 + DG143: CTA visibility honors server config; Apple additionally
   // requires the MapKit gate.
   const showGoogleCta = externalSources.google;
   const showAppleCta = externalSources.apple && mapkitConfigured;
   const showExternalPrompt =
-    (isEmpty || response.is_weak_results) && (showGoogleCta || showAppleCta);
+    !hasActiveFilters && (isEmpty || response.is_weak_results) && (showGoogleCta || showAppleCta);
 
   return (
     <div className="flex flex-col">
+      {/* Spec §7: empty under active filters gets its own copy + Reset CTA —
+          never the generic empty state, and external CTAs stay off. */}
+      {isEmpty && hasActiveFilters && (
+        <div className="flex flex-col items-start gap-1 px-3 py-3">
+          <p className="font-display text-md font-bold text-foreground">
+            {t("no_match_filters")}
+          </p>
+          <p className="text-sm text-muted">{t("loosen_filters")}</p>
+          {onResetFilters && (
+            <button
+              type="button"
+              onClick={onResetFilters}
+              className="cm-focus -my-1 inline-flex min-h-11 items-center text-sm text-accent transition-colors hover:underline"
+            >
+              {t("reset_filters")}
+            </button>
+          )}
+        </div>
+      )}
+
       {!isEmpty && (
         <div>
           {coffeemode.length > 0 && (
@@ -150,7 +179,6 @@ export function SearchResultsList({
           )}
         </div>
       )}
-
       {showExternalPrompt && (
         <div className="mt-2 flex flex-col gap-2 border-t border-separator px-3 pt-3">
           <p className="font-display text-md font-bold text-foreground">{t("not_finding")}</p>
@@ -159,7 +187,8 @@ export function SearchResultsList({
               <button
                 type="button"
                 onClick={() => onExternalSearch("google")}
-                className="cm-focus -my-1 inline-flex min-h-11 items-center rounded-md border border-border px-3 text-sm text-foreground transition-colors hover:bg-surface-secondary"
+                disabled={isOffline}
+                className="cm-focus -my-1 inline-flex min-h-11 items-center rounded-md border border-border px-3 text-sm text-foreground transition-colors hover:bg-surface-secondary disabled:opacity-50 disabled:hover:bg-transparent"
               >
                 {t("search_google_maps")}
               </button>
@@ -168,7 +197,8 @@ export function SearchResultsList({
               <button
                 type="button"
                 onClick={() => onExternalSearch("apple")}
-                className="cm-focus -my-1 inline-flex min-h-11 items-center rounded-md border border-border px-3 text-sm text-foreground transition-colors hover:bg-surface-secondary"
+                disabled={isOffline}
+                className="cm-focus -my-1 inline-flex min-h-11 items-center rounded-md border border-border px-3 text-sm text-foreground transition-colors hover:bg-surface-secondary disabled:opacity-50 disabled:hover:bg-transparent"
               >
                 {t("search_apple_maps")}
               </button>

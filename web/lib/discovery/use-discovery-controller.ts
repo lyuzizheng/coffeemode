@@ -21,6 +21,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "@heroui/react";
 import { isValidUUID } from "@shared/uuid";
+import { getSearchUrlState } from "@/lib/search/search-url-state";
 
 /** Missing-cafe notice duration — interaction-design timing, not a product knob (BRAWUKA-250). */
 const MISSING_CAFE_TOAST_TIMEOUT_MS = 4000;
@@ -92,7 +93,10 @@ export function useDiscoveryController(options?: { initialCafeId?: string }): Di
   const close = useCallback(() => {
     if (selectedCafeId !== null) {
       restoreFocusTo.current = selectedCafeId;
-      window.history.replaceState(null, "", "/");
+      // Re-attach the live search params — the pushed `/cafes/[id]` entry
+      // deliberately dropped them, but chips/URL must never disagree
+      // (BRAWUKA-512: single source of truth in the search state).
+      window.history.replaceState(null, "", `/${getSearchUrlState()}`);
     }
     setSelectedCafeId(null);
     setSnap("peek");

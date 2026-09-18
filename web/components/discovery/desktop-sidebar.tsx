@@ -28,7 +28,7 @@
  * state — the panel renders open (unless a cafe is already selected via
  * deep link), so SSR→hydration never shifts layout.
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, type ReactNode, type RefObject } from "react";
 import {
   AnimatePresence,
   animate,
@@ -43,10 +43,8 @@ import { useTranslations } from "next-intl";
 import { duration, ease, spring } from "@/lib/motion";
 import type { DiscoveryController } from "@/lib/discovery/use-discovery-controller";
 import type { CafeSummary } from "@/types/cafes";
-import type { SearchResultItem } from "@/lib/search/types";
-import type { ExternalSourceFlags } from "@/lib/client-env";
 import { UnifiedSearchPanel } from "@/components/search/unified-search-panel";
-import type { ExternalSearchProvider } from "@/components/search/search-results-list";
+import type { DiscoverySearch } from "./use-discovery-search";
 import { CafeCardBody } from "./cafe-card";
 import { InlineError } from "./inline-error";
 import { SectionLabel } from "./section-label";
@@ -301,23 +299,13 @@ function SidebarContent(props: {
   );
 }
 
-/** Live unified search wiring (BRAWUKA-364). Absent → no search field. */
-interface SidebarSearchProps {
-  externalSources: ExternalSourceFlags;
-  mapkitConfigured: boolean;
-  city?: string;
-  onSelectResult: (item: SearchResultItem) => void;
-  onExternalSearch: (provider: ExternalSearchProvider) => void;
-}
+/** Live unified search wiring (BRAWUKA-364 + BRAWUKA-512 filters). Absent →
+ * no search field. The shape is the shared `DiscoverySearch` contract —
+ * query/filters/city are owned by `useDiscoverySearch`. */
+type SidebarSearchProps = DiscoverySearch;
 
 /** Sticky search row — docks directly under the compact masthead. */
-function SidebarSearch({
-  search,
-  onQueryChange,
-}: {
-  search: SidebarSearchProps;
-  onQueryChange: (query: string) => void;
-}) {
+function SidebarSearch({ search }: { search: SidebarSearchProps }) {
   return (
     <div
       className={`sticky top-[var(--layout-masthead-h)] z-10 border-b border-separator bg-surface ${GUTTER} py-3`}
@@ -326,9 +314,13 @@ function SidebarSearch({
         externalSources={search.externalSources}
         mapkitConfigured={search.mapkitConfigured}
         city={search.city}
+        query={search.query}
         onSelectResult={search.onSelectResult}
         onExternalSearch={search.onExternalSearch}
-        onQueryChange={onQueryChange}
+        onQueryChange={search.onQueryChange}
+        filters={search.filters}
+        onFiltersChange={search.onFiltersChange}
+        onCityChange={search.onCityChange}
         hideIdleHint
         resultsClassName="max-h-[50dvh] overflow-y-auto overscroll-contain"
       />
@@ -358,8 +350,9 @@ export function DesktopSidebar({
   controller: DiscoveryController;
 }) {
   const reduced = useReducedMotion() ?? false;
-  const [searchQuery, setSearchQuery] = useState("");
-  const searchActive = searchQuery.trim().length > 0;
+  // The hook owns the query/filters — active filters also yield the index
+  // to the results surface (browse mode, BRAWUKA-512).
+  const searchActive = search?.searchActive ?? false;
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const { scrollY } = useScroll({ container: scrollRef });
@@ -383,9 +376,7 @@ export function DesktopSidebar({
         reduced={reduced}
       />
       {!reduced && <BrandPanel collapse={collapse} />}
-      {search && contentVisible && (
-        <SidebarSearch search={search} onQueryChange={setSearchQuery} />
-      )}
+      {search && contentVisible && <SidebarSearch search={search} />}
       <SidebarContent
         state={state}
         reduced={reduced}

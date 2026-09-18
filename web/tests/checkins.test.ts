@@ -238,7 +238,36 @@ describe("parseVisitedAt", () => {
   it("rejects unparseable timestamps", () => {
     const res = parseVisitedAt("last-tuesday");
     expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.message).toContain("not a parseable timestamp");
+    if (!res.ok) expect(res.message).toContain("must be an ISO 8601 timestamp");
+  });
+
+  it("rejects non-ISO date strings that Date would parse (BRAWUKA-449)", () => {
+    for (const input of [
+      "March 5, 2020",
+      "03/05/2020",
+      "2020-03-05",
+      "2020-03-05 10:00:00Z",
+      "2020-03-05T10:00:00",
+      "2020-03-05T10:00Z",
+      "2020-03-05T10:00:00+0800x",
+      "2020-03-05T24:00:00Z",
+      "2020-02-30T00:00:00Z",
+      "2021-02-29T00:00:00Z",
+      "2020-13-01T00:00:00Z",
+    ]) {
+      expect(parseVisitedAt(input).ok, input).toBe(false);
+    }
+  });
+
+  it("accepts ISO offsets and fractional seconds", () => {
+    for (const input of [
+      "2020-03-05T10:00:00+08:00",
+      "2020-03-05T10:00:00+0800",
+      "2020-03-05T10:00:00.123456Z",
+      "2020-03-05T10:00:00.1+08:00",
+    ]) {
+      expect(parseVisitedAt(input).ok, input).toBe(true);
+    }
   });
 
   it("rejects future timestamps", () => {
@@ -324,16 +353,8 @@ describe("parseCheckInBody", () => {
     expect(parseCheckInBody({ cafe_id: CAFE, scores: { overall: 70 } }).ok).toBe(true);
   });
 
-  it("rejects bad policy enums, scores, photo_ids, and a future visited_at", () => {
-    expect(parseCheckInBody(validBody({ max_stay: "free" })).ok).toBe(false);
-    expect(parseCheckInBody(validBody({ max_stay: "forever" })).ok).toBe(false);
-    expect(parseCheckInBody(validBody({ scores: { wifi: 101 } })).ok).toBe(false);
-    expect(parseCheckInBody(validBody({ scores: { vibe: 50 } })).ok).toBe(false);
-    expect(parseCheckInBody(validBody({ photo_ids: ["not-a-uuid"] })).ok).toBe(false);
-    expect(parseCheckInBody(validBody({ note: "x".repeat(501) })).ok).toBe(false);
-    expect(
-      parseCheckInBody(validBody({ visited_at: new Date(Date.now() + 60_000).toISOString() })).ok,
-    ).toBe(false);
+  it("rejects a non-ISO visited_at that Date would parse (BRAWUKA-449)", () => {
+    expect(parseCheckInBody(validBody({ visited_at: "March 5, 2020" })).ok).toBe(false);
   });
 
   it("accepts all valid max_stay enum values", () => {

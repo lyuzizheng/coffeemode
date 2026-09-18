@@ -120,9 +120,13 @@ function useFeedQuery(
     queryFn: ({ pageParam }) => fetchFeedPage(cafeId, mode, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
-    // A 410 means the stored cursor is dead — never auto-retry it.
+    // A 410 means the stored cursor is dead — never auto-retry it. A 404
+    // means the cafe is gone: retrying can never succeed, so surface the
+    // error immediately and let the DG19 gone-cafe flow run (BRAWUKA-450).
     retry: (failureCount, error) =>
-      error instanceof FeedCursorExpiredError ? false : failureCount < 2,
+      error instanceof FeedCursorExpiredError || error instanceof FeedNotFoundError
+        ? false
+        : failureCount < 2,
     // DG17: previous mode's content stays until the new page arrives.
     placeholderData: keepPreviousData,
   });

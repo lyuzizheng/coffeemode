@@ -17,6 +17,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { animate, motion, useDragControls, useMotionValue, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { cardInteraction, spring } from "@/lib/motion";
+import { SHEET_COLLAPSED_PX, SHEET_PEEK_PX } from "@/lib/layout";
 import { useMounted } from "@/hooks/use-mounted";
 import type { DiscoveryController, SheetSnap } from "@/lib/discovery/use-discovery-controller";
 import type { CafeSummary } from "@/types/cafes";
@@ -24,18 +25,13 @@ import { CafeCardBody } from "./cafe-card";
 import { DetailContent } from "./detail-content";
 import { InlineError } from "./inline-error";
 
-/** Visible sheet height at PEEK (px) — cover row + padding; safe-area is padded inside. */
-export const PEEK_VISIBLE_PX = 172;
-/** Visible height at the collapsed detent (BRAWUKA-373): drag handle + a slim
- * "附近 N 家" bar. Pulling down at PEEK lands here; tap/drag up restores. */
-export const COLLAPSED_VISIBLE_PX = 48;
-const SHEET_HEIGHT_VH = 0.85;
-const HALF_VISIBLE_VH = 0.5;
 /** Handle chrome above the content column: pt-2 + 4px bar + pb-3. */
 const HANDLE_VISIBLE_PX = 24;
 /** Drag distance/velocity that commits a detent step. */
 const STEP_OFFSET_PX = 60;
 const STEP_VELOCITY = 300;
+const SHEET_HEIGHT_VH = 0.85;
+const HALF_VISIBLE_VH = 0.5;
 
 function PeekCard({
   cafe,
@@ -75,7 +71,7 @@ function PeekSkeletons() {
           key={i}
           className="flex w-[85%] shrink-0 gap-3 rounded-md border border-separator bg-surface p-3 md:w-[clamp(280px,55%,420px)]"
         >
-          <div className="h-[66px] w-[88px] animate-pulse rounded-md bg-surface-tertiary" />
+          <div className="h-[var(--layout-thumb)] w-[var(--layout-card-cover-w)] animate-pulse rounded-sm bg-surface-tertiary" />
           <div className="flex flex-1 flex-col justify-center gap-2">
             <div className="h-4 w-2/3 animate-pulse rounded bg-surface-tertiary" />
             <div className="h-3 w-1/3 animate-pulse rounded bg-surface-tertiary" />
@@ -213,14 +209,14 @@ export function MobileSheet({
       ? viewportH * HALF_VISIBLE_VH
       : Math.min(
           viewportH * HALF_VISIBLE_VH,
-          Math.max(PEEK_VISIBLE_PX + HANDLE_VISIBLE_PX, contentH + HANDLE_VISIBLE_PX),
+          Math.max(SHEET_PEEK_PX + HANDLE_VISIBLE_PX, contentH + HANDLE_VISIBLE_PX),
         );
   const sheetH = viewportH * SHEET_HEIGHT_VH;
   const offsets: Record<SheetSnap, number> = {
     full: 0,
     half: sheetH - halfVisible,
-    peek: sheetH - PEEK_VISIBLE_PX,
-    collapsed: sheetH - COLLAPSED_VISIBLE_PX,
+    peek: sheetH - SHEET_PEEK_PX,
+    collapsed: sheetH - SHEET_COLLAPSED_PX,
   };
   const targetY = offsets[snap];
 

@@ -304,24 +304,28 @@ describe("createCafeWithFirstCheckIn", () => {
     expect(clientQueryMock).not.toHaveBeenCalled();
   });
 
-  it("aborts the creation when the intent consume loses a replay race inside the tx", async () => {
+  it("attaches live originals post-commit with the real check-in id (BRAWUKA-400)", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [] }); // pre-provision dedupe check
-    provisionDeps.consumeUploadIntents.mockResolvedValue(false);
-    clientQueryMock
-      .mockResolvedValueOnce({ rows: [] }) // dedupe pre-check
-      .mockResolvedValueOnce({ rows: [{ id: "cafe-1" }] }) // insert cafe
-      .mockResolvedValueOnce({ rows: [{ id: "checkin-1" }] }); // insert first check-in
+    mockCreateHappyPath("cafe-1", "checkin-1");
 
-    const err = await createCafeWithFirstCheckIn(USER.id, {
+    const result = await createCafeWithFirstCheckIn(USER.id, {
       name: "x",
       ...SG,
       google_place_id: "ChIJx",
       checkin: validCheckinInput(),
-    }).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(PhotoIntentError);
-    // Nothing past the inserts: no photo write, no gallery merge, no stats.
-    expect(clientQueryMock).toHaveBeenCalledTimes(3);
+    });
+
+    expect(result).toEqual({ cafe_id: "cafe-1", checkin_id: "checkin-1", tz: expect.any(String) });
+    // Post-commit attach re-marks the live original from provision → checkin:
+    // same imageUuid, final-stage target (the DB row already committed).
+    const attachCalls = provisionDeps.getProcessUrls.mock.calls.filter(
+      (call) => (call[0] as { targetType?: string }).targetType === "checkin",
+    );
+    expect(attachCalls).toHaveLength(1);
+    expect(attachCalls[0][0]).toMatchObject({ imageUuid: IMG, targetType: "checkin", targetId: "checkin-1" });
   });
+
+
 
   it("dedupes on the pool pre-check without provisioning or opening a transaction", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: "existing-7" }] }); // pre-provision dedupe hit

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach, type Mock } from "vitest";
 import sharp from "sharp";
-import { processImage } from "@/lib/images/processor";
+import { processImage, restampOriginal } from "@/lib/images/processor";
 import type { ProcessUrls } from "@/lib/images/image-service-client";
 
 function makeProcessUrls(imageUuid: string): ProcessUrls {
@@ -147,5 +147,55 @@ describe("processImage", () => {
     });
 
     await expect(processImage(imageUuid, makeProcessUrls(imageUuid))).rejects.toThrow("failed to upload image variant");
+  });
+});
+
+describe("restampOriginal (BRAWUKA-400)", () => {
+  let fetchSpy: Mock;
+
+  beforeEach(() => {
+    fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("downloads the live bytes and re-PUTs them to the attach URL, preserving content", async () => {
+    const imageUuid = "12345678-1234-4123-9234-123456789abc";
+    const liveBytes = await sharp({
+      create: { width: 12, height: 8, channels: 3, background: { r: 9, g: 9, b: 9 } },
+    })
+      .webp({ quality: 80 })
+      .toBuffer();
+    const putBodies: Buffer[] = [];
+    fetchSpy.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (url.includes("?sig=get")) {
+        return new Response(liveBytes, { status: 200, headers: { "Content-Type": "image/webp" } });
+      }
+      if (init?.method === "PUT") {
+        const bytes = Buffer.from(await (new Request(url, init).arrayBuffer()));
+        putBodies.push(bytes);
+        return new Response(null, { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    await restampOriginal(makeProcessUrls(imageUuid));
+
+    const puts = fetchSpy.mock.calls.filter(([, init]) => init?.method === "PUT");
+    expect(puts).toHaveLength(1);
+    expect(puts[0][0].toString()).toContain("original");
+    expect(Buffer.compare(putBodies[0], liveBytes)).toBe(0);
+  });
+
+  it("throws when the attach download is missing so the caller can log it", async () => {
+    const imageUuid = "12345678-1234-4123-9234-123456789abc";
+    fetchSpy.mockResolvedValue(new Response("not found", { status: 404 }));
+    await expect(restampOriginal(makeProcessUrls(imageUuid))).rejects.toThrow(
+      "failed to download original image",
+    );
   });
 });

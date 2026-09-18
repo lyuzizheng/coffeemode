@@ -124,7 +124,7 @@ export async function putObject(
 export async function minioReachable(endpoint: string = R2_ENDPOINT): Promise<boolean> {
   try {
     const res = await fetch(`${endpoint}/minio/health/live`, { signal: AbortSignal.timeout(2000) });
-    return res.ok || res.status === 404;
+    return res.status === 200;
   } catch {
     return false;
   }

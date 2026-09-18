@@ -19,7 +19,7 @@ export function ProfileHeader({ isAuthenticated }: { isAuthenticated: boolean })
   };
 
   return (
-    <header className="w-full max-w-[640px] px-4 md:px-6 pt-4 pb-2 flex items-center justify-between">
+    <header className="w-full max-w-[var(--layout-content-max)] px-4 md:px-6 pt-4 pb-2 flex items-center justify-between">
       <button
         onClick={handleBack}
         aria-label={t("back")}

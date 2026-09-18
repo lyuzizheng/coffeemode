@@ -21,6 +21,7 @@ import {
 } from "@/components/icons";
 import { cafeFacts, formatDistanceKm, type Fact, type FactKind } from "@/lib/discovery/view-model";
 import { displayCityName } from "@/lib/cities";
+import { CARD_COVER_W_PX } from "@/lib/layout";
 import type { CafeSummary } from "@/types/cafes";
 
 const FACT_ICONS: Record<FactKind, (props: IconProps) => React.ReactNode> = {
@@ -78,10 +79,10 @@ function CardMeta({ cafe }: { cafe: CafeSummary }) {
 function CoverTile({ cafe, className }: { cafe: CafeSummary; className: string }) {
   return (
     <div
-      className={`relative shrink-0 overflow-hidden rounded-md border border-separator bg-surface-secondary ${className}`}
+      className={`relative shrink-0 overflow-hidden rounded-sm border border-separator bg-surface-secondary ${className}`}
     >
       {cafe.cover ? (
-        <Image src={cafe.cover} alt="" fill sizes="96px" className="object-cover" />
+        <Image src={cafe.cover} alt="" fill sizes={`${CARD_COVER_W_PX}px`} className="object-cover" />
       ) : (
         <span
           aria-hidden
@@ -146,7 +147,14 @@ export function CafeCardBody({
           : "relative flex gap-3 p-3"
       }
     >
-      <CoverTile cafe={cafe} className={variant === "card" ? "h-[72px] w-[96px]" : "h-[64px] w-[84px]"} />
+      <CoverTile
+        cafe={cafe}
+        className={
+          variant === "card"
+            ? "h-[var(--layout-thumb)] w-[var(--layout-card-cover-w)]"
+            : "h-[var(--layout-row-cover-h)] w-[var(--layout-row-cover-w)]"
+        }
+      />
       <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
         <h3 className="truncate font-display text-md font-bold tracking-tight text-foreground">
           {cafe.name}

@@ -45,7 +45,7 @@ S1 extracted the pre-S1 duplication (`web/tests/integration/db.integration.test.
 
 - One writer per production change still holds (`AGENTS.md`). Feature code composes shared helpers, never embeds or duplicates them (DG91).
 - Product parameters remain in `web/config/*.yaml` read through `web/lib/config.ts` (DG107); tests in `web/tests/config.test.ts` pin the migration kept values unchanged.
-- `vitest.config.mts` excludes `web/tests/helpers/**` from test collection; `web/tests/setup.ts` resets the in-memory rate limiter and cleans up React trees once.
+- `vitest.config.mts` `include` collects only `tests/**/*.test.*`, so `web/tests/helpers/**` contributes no test files; `web/tests/setup.ts` resets the in-memory rate limiter and cleans up React trees once.
 - `npm test` (unit/mocked) stays green without Docker; `RUN_INTEGRATION=1` suites are `describe.skip` by default.
 
 ## 3. Infra vs service helpers split

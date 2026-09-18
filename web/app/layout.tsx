@@ -9,6 +9,7 @@ import { appConfig } from "@/lib/config";
 import "./globals.css";
 import { APP_DESCRIPTION, APP_NAME, THEME_COLOR } from "@/lib/site";
 import { VARIANT_BOOTSTRAP } from "@/lib/theme-variant-const";
+import { LAYOUT_CSS_VARS } from "@/lib/layout";
 
 // Self-hosted fonts (OFL). No runtime Google Fonts — files live in app/fonts
 // and are served by Next.js with zero layout shift (size-adjust fallbacks).
@@ -88,6 +89,9 @@ export default async function RootLayout({
     <html
       lang={locale}
       className={`${inter.variable} ${cabinet.variable} ${jetbrains.variable} ${sourceSerif.variable} h-full antialiased`}
+      // --layout-* custom properties (lib/layout.ts) — Tailwind arbitrary
+      // values and globals.css resolve the same numbers TS uses.
+      style={LAYOUT_CSS_VARS as React.CSSProperties}
       suppressHydrationWarning
     >
       <head>

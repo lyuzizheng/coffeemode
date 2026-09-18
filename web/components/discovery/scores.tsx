@@ -61,8 +61,7 @@ export function ScorePair({ stats }: { stats: WorkStats }) {
           </div>
           <div
             aria-hidden
-            className="mt-1.5 h-0.5 rounded-full bg-surface-tertiary"
-            style={{ width: "3.5rem" }}
+            className="mt-1.5 h-0.5 w-14 rounded-full bg-surface-tertiary"
           >
             <div
               className="h-full rounded-full bg-accent"

@@ -142,8 +142,8 @@ three snap states), and the header zone gets no competing horizontal chrome.
 └─────────────────────────────────┘
 ```
 
-- Card: horizontal layout. Left: 88px 4:3 cover image, `radius-md`, 1px
-  `border`. Right column, 12px padding: cafe name (`font-display`, `text-md`,
+- Card: horizontal layout. Left: 96px-wide 4:3 cover image (`--layout-card-cover-w`,
+  `radius-md`, 1px `border`). Right column, 12px padding: cafe name (`font-display`, `text-md`,
   single-line truncate), then `area · 1.2 km` (`text-xs`, `muted`), then the
   characteristic icon row (14px icons + `text-xs` values, 12px gaps).
 - **Work-score watermark** (DG43): the composite score as a large numeral
@@ -175,7 +175,7 @@ Top to bottom, 16px side padding, 12px section rhythm:
 3. **Score row** — Work | Experience pair from §3.
 4. **Action row** — from §4.
 5. **Top facts** — up to 3 characteristic chips (icon + value, `surface-secondary`
-   background, `radius-sm`, 6px/10px padding), same priority order as PEEK.
+   background, `radius-sm`, 4px/10px padding), same priority order as PEEK.
 
 HALF answers "worth a closer look?" in one glance: name, open now, Work Score,
 Check in.
@@ -220,7 +220,7 @@ A two-option segmented control placed directly above the feed list, left
 aligned, inline with the `Check-ins` heading row (heading left, control
 right).
 
-- Track: `surface-secondary`, `radius-sm`, 2px padding, height 32px.
+- Track: `surface-secondary`, `radius-md`, 2px padding, height 32px.
 - Segment: `text-sm`, 10px horizontal padding. Active segment gets `surface`
   background + 1px `border` + `foreground` text; inactive is `muted`.
 - Labels: `Helpful`, `Newest` (i18n keys, zh: `最有用` / `最新`).

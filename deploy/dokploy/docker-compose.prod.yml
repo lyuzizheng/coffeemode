@@ -31,7 +31,7 @@
 #   reusing the container's DATABASE_URL (zero credential leakage to GitHub secrets):
 #   - Option A (Dokploy Scheduled Job on web-prod, recommended):
 #       Schedule: 0 2 * * *
-#       Command: if [ -d web ]; then cd web; fi; npm run recompute:work-stats && npm run snapshot:helpful-ranking
+#       Command: [ -f /app/.env ] && set -a && . /app/.env && set +a; if [ -d web ]; then cd web; fi; if ! (npm run recompute:work-stats && npm run snapshot:helpful-ranking); then if [ -n "$MULTICA_AUTOPILOT_WEBHOOK_URL" ]; then node -e 'const url=process.env.MULTICA_AUTOPILOT_WEBHOOK_URL; if(url){await fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({job:"nightly-recompute",error:"Nightly recompute execution failed in container",run:"dokploy:schedule:nightly-recompute"}),signal:AbortSignal.timeout(10000)}).catch(()=>{});}'; fi; exit 1; fi
 #   - Option B (VPS host crontab):
 #       0 2 * * * /path/to/coffeemode/deploy/dokploy/nightly-recompute.sh >> /var/log/nightly-recompute.log 2>&1
 #   Failure alerting is wired to Multica autopilot webhook (MULTICA_AUTOPILOT_WEBHOOK_URL).

@@ -78,6 +78,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ "$VERBOSE" == true ]]; then
+  set -x
+fi
+
 # ------------------------------------------------------------------------------
 # Failure Hook & Notification Helper
 # ------------------------------------------------------------------------------
@@ -87,24 +91,56 @@ send_failure_alert() {
   local run_pointer="${2:-dokploy:cron:nightly-recompute}"
   local webhook_url="${WEBHOOK_OVERRIDE:-${MULTICA_AUTOPILOT_WEBHOOK_URL:-}}"
   # Output structured error line (JSON) for monitoring sinks
-  local json_log
-  json_log=$(printf '{"job":"nightly-recompute","status":"failed","error":"%s","run":"%s","timestamp":"%s"}' \
-    "$(echo "$error_msg" | tr '"\n\r\t' '    ' | sed 's/  */ /g')" \
-    "$run_pointer" \
-    "$TIMESTAMP")
-  echo "$json_log" >&2
+  if command -v node >/dev/null 2>&1; then
+    node -e '
+      const [msg, run, ts] = process.argv.slice(1);
+      console.error(JSON.stringify({
+        job: "nightly-recompute",
+        status: "failed",
+        error: msg,
+        run: run,
+        timestamp: ts
+      }));
+    ' "$error_msg" "$run_pointer" "$TIMESTAMP"
+  else
+    local json_log
+    json_log=$(printf '{"job":"nightly-recompute","status":"failed","error":"%s","run":"%s","timestamp":"%s"}' \
+      "$(echo "$error_msg" | tr '"\n\r\t\\' '    /' | sed 's/  */ /g')" \
+      "$run_pointer" \
+      "$TIMESTAMP")
+    echo "$json_log" >&2
+  fi
 
   if [[ -n "$webhook_url" ]]; then
     echo "[INFO] Sending failure notification to Multica autopilot webhook..." >&2
-    local payload
-    payload=$(printf '{"job":"nightly-recompute","error":"%s","run":"%s"}' \
-      "$(echo "$error_msg" | tr '"\n\r\t' '    ' | sed 's/  */ /g')" \
-      "$run_pointer")
-    curl -sS -m 10 -X POST "$webhook_url" \
-      -H "content-type: application/json" \
-      -d "$payload" >/dev/null 2>&1 || {
-      echo "[WARN] Failed to deliver webhook notification to autopilot." >&2
-    }
+    if command -v node >/dev/null 2>&1; then
+      node -e '
+        const [url, err, run] = process.argv.slice(1);
+        try {
+          await fetch(url, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ job: "nightly-recompute", error: err, run: run }),
+            signal: AbortSignal.timeout(10000)
+          });
+        } catch (_) {}
+      ' "$webhook_url" "$error_msg" "$run_pointer" || true
+    elif command -v curl >/dev/null 2>&1; then
+      local payload
+      payload=$(printf '{"job":"nightly-recompute","error":"%s","run":"%s"}' \
+        "$(echo "$error_msg" | tr '"\n\r\t\\' '    /' | sed 's/  */ /g')" \
+        "$run_pointer")
+      curl -sS -m 10 -X POST "$webhook_url" \
+        -H "content-type: application/json" \
+        -d "$payload" >/dev/null 2>&1 || true
+    elif command -v wget >/dev/null 2>&1; then
+      local payload
+      payload=$(printf '{"job":"nightly-recompute","error":"%s","run":"%s"}' \
+        "$(echo "$error_msg" | tr '"\n\r\t\\' '    /' | sed 's/  */ /g')" \
+        "$run_pointer")
+      wget -q -O /dev/null -T 10 --post-data "$payload" \
+        --header 'content-type: application/json' "$webhook_url" >/dev/null 2>&1 || true
+    fi
   fi
 }
 

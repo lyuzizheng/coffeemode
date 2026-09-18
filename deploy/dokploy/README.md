@@ -19,10 +19,17 @@ The nightly recompute job runs daily at **02:00 UTC** (`0 2 * * *`), executing d
 
 ### 1. Dual-Layer Failure Notification Architecture
 
-1. **Script-Level Execution Hook (`nightly-recompute.sh`)**:
+1. **Dokploy Scheduled Job Inline Callback (Container Safe)**:
+   - Production image `node:22-alpine` does not contain `curl`. Dokploy application schedule `nightly-recompute` executes natively with `node -e fetch` for zero external dependencies and safe JSON escaping.
+   - Exact configured command in Dokploy Scheduled Jobs:
+     ```sh
+     [ -f /app/.env ] && set -a && . /app/.env && set +a; if [ -d web ]; then cd web; fi; if ! (npm run recompute:work-stats && npm run snapshot:helpful-ranking); then if [ -n "$MULTICA_AUTOPILOT_WEBHOOK_URL" ]; then node -e 'const url=process.env.MULTICA_AUTOPILOT_WEBHOOK_URL; if(url){await fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({job:"nightly-recompute",error:"Nightly recompute execution failed in container",run:"dokploy:schedule:nightly-recompute"}),signal:AbortSignal.timeout(10000)}).catch(()=>{});}'; fi; exit 1; fi
+     ```
+2. **Script-Level Execution Hook (`nightly-recompute.sh`)**:
+   - Canonical orchestrator for host VPS crontab (`Option B`) or manual maintenance runs.
    - Catches recompute failures, database connection errors, or unexpected non-zero process exits via an internal `EXIT` trap.
-   - Formats structured JSON error lines to stderr for log sinks.
-   - When `MULTICA_AUTOPILOT_WEBHOOK_URL` is set, issues a POST request with payload:
+   - Uses `node -e fetch` as primary alerting mechanism, with automatic fallback to `curl` or `wget` if Node is unavailable.
+   - Structured error log lines to stderr and POST payload:
      ```json
      {
        "job": "nightly-recompute",
@@ -30,10 +37,9 @@ The nightly recompute job runs daily at **02:00 UTC** (`0 2 * * *`), executing d
        "run": "<run pointer>"
      }
      ```
-2. **Dokploy Platform Notification Fallback**:
+3. **Dokploy Platform Notification Fallback**:
    - Configured in Dokploy Settings → Notifications as a **Custom Webhook** notification pointing to the same autopilot webhook endpoint.
    - Captures scheduling-layer, container-level, or build errors as defense-in-depth.
-
 ### 2. Environment Variables
 
 - `MULTICA_AUTOPILOT_WEBHOOK_URL`: Webhook URL for failure alerting. Configured in Dokploy Environment Variables (never committed to git or exposed in CI logs).

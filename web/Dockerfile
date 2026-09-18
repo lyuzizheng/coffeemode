@@ -47,6 +47,5 @@ COPY --from=build /app/.next/BUILD_ID ./.next/BUILD_ID
 COPY --from=build /app/public ./public
 COPY --from=build /app/scripts ./scripts
 COPY --from=deps /app/node_modules/yaml ./node_modules/yaml
-RUN ln -s /app /app/web
 EXPOSE 3000
 CMD ["node", "server.js"]

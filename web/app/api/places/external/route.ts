@@ -50,11 +50,7 @@ export async function POST(request: Request) {
         (poi as Record<string, unknown>).source === "apple",
     )
   ) {
-    return apiError(
-      "invalid_request",
-      "only Apple MapKit POIs may be stored from the browser",
-      400,
-    );
+    return apiError("invalid_request", 400);
   }
 
 

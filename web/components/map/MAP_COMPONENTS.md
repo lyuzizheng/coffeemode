@@ -55,11 +55,10 @@ app/page.tsx
 - **types.ts** — `IMapProvider` / `BaseMapProviderProps` — the swap
   boundary. No renderer types cross it (`Coordinates` from `lib/cities`,
   `CafeSummary` from `types/cafes`). Optional capability members
-  (BRAWUKA-330, implemented by the MapLibre provider): `onMapTap` (empty-map
-  tap / long-press → create entry), `getBounds` + `onIdle` (camera-settled
+  (BRAWUKA-330, implemented by the MapLibre provider): `getBounds` + `onIdle` (camera-settled
   `moveend`, the "search this area" trigger), `setExternalPins` (external
   POI pins on a source/layers separate from `setCafes` — never folded into
-  `CafeSummary`). Consumers feature-detect (`provider.onMapTap?.(…)`).
+  `CafeSummary`). Consumers feature-detect (`provider.getBounds?.(…)`).
 - **map-account-chip.tsx** — the floating account + theme affordance
   (BRAWUKA-318): avatar initial → `/profile` when signed in, "Sign in" →
   `/profile` (which renders the sign-in gate) when not, plus a chromeless

@@ -56,8 +56,7 @@ supabase start   # local stack on :54321 (API), :54322 (DB), see `supabase statu
 
 Both the mock and `supabase start` share `:54321`; only point the `NEXT_PUBLIC_*`
 vars there when working offline. Tests never need a live Supabase —
-`web/tests/helpers/auth.ts:fakeJwt` + `web/tests/helpers/auth.ts:createMockSupabaseClient`
-run fully in-process.
+`web/tests/helpers/auth.ts:fakeJwt` (+ `decodeFakeJwt`) runs fully in-process.
 
 **Local Cloudflare script mocks.** Both workers run under `wrangler dev`
 (which is `workerd` + `miniflare` under the hood) — no Cloudflare account

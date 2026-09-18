@@ -43,7 +43,20 @@ web/db/migrations/       0001_init.sql — core schema (spec 0001);
                          0010_drop_min_spend.sql (DG125), 0011_cafe_tombstone_lifecycle.sql,
                          0012_drop_redundant_cafe_indexes.sql,
                          0013_search_city_index.sql,
-                         0014_fk_indexes_and_partial_gist.sql
+                         0014_fk_indexes_and_partial_gist.sql,
+                         0015_drop_dead_cafe_columns.sql (#253),
+                         0016_seed_service_account.sql (DG125/#229),
+                         0017_cafe_visibility.sql (DG147/#229),
+                         0018_public_identity.sql (#139),
+                         0019_checkin_idempotency.sql (DG61),
+                         0020_navigation_prompt_queue.sql (#149),
+                         0021_helpful_ranking.sql (DG148),
+                         0022_profiles_onboarded.sql (DG122),
+                         0023_runtime_config.sql (BRAWUKA-284),
+                         0024_service_account_rename.sql (BRAWUKA-278),
+                         0025_drop_cafes_cover.sql (BRAWUKA-307),
+                         0026_drop_rate_limits.sql (BRAWUKA-378),
+                         0027_navigation_unresolved_dedupe.sql (BRAWUKA-391)
 web/lib/auth/            Supabase server client (PKCE), profile upsert logic
 web/lib/db/              Postgres pool (server-side only), withTransaction, atomic like toggle,
                          cafes domain lib (fused create + first check-in + stats, nearby list, getCafe),

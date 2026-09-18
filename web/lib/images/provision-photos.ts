@@ -205,10 +205,10 @@ export async function provisionPhotos(
       imageUuid,
       userId,
       // Pre-target stage (issue #86): the cafe/check-in does not exist yet.
-      // The worker stamps targetType="provision" + targetId=<imageUuid>; the
-      // attach flow re-PUTs with the real target later. Required since #158:
-      // the worker rejects marker-less completes so cleanup can distinguish
-      // live originals from abandoned uploads.
+      // The worker stamps targetType="provision" + targetId=<imageUuid>;
+      // attachProvisionedPhotos re-marks via restampOriginal once the
+      // check-in exists. Required since #158: the worker rejects marker-less
+      // completes so cleanup can distinguish live originals from abandoned uploads.
       targetType: "provision",
       targetId: imageUuid,
     });

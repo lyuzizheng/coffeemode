@@ -9,12 +9,10 @@
  * `@supabase/ssr` cookie internals.
  *
  * `service_role` boundary: read ONLY from the server-side
- * `SUPABASE_SERVICE_ROLE_KEY` env var (via the shared
- * `supabase-env.mjs` core, same contract as
- * `web/tests/helpers/staging-session.ts`). It travels in Admin-API request
- * headers only and must never reach a prompt, browser page, or client
- * bundle — the returned session carries the user id, the email, and the
- * magic-link URL, never the key.
+ * `SUPABASE_SERVICE_ROLE_KEY` env var (via the shared `supabase-env.mjs`
+ * core). It travels in Admin-API request headers only and must never reach
+ * a prompt, browser page, or client bundle — the returned session carries
+ * the user id, the email, and the magic-link URL, never the key.
  */
 
 import { assertAllowedUrl } from "./allowlist.mjs";

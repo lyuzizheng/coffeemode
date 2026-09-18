@@ -29,8 +29,7 @@
  * No GeolocateControl: DG112 — geolocation is only ever user-triggered via
  * the onboarding LocateButton, never a map control.
  *
- * Optional IMapProvider capabilities (BRAWUKA-330): `onMapTap` (tap or
- * long-press/contextmenu on empty map → create-entry trigger), `getBounds`,
+ * Optional IMapProvider capabilities (BRAWUKA-330): `getBounds`,
  * `onIdle` (MapLibre `moveend` — camera-settled, not the render-idle event,
  * so a data refresh can't retrigger "search this area"), and
  * `setExternalPins` (sage teardrop POI pins on a source/layers separate
@@ -40,7 +39,6 @@ import { GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
 import type { MapMouseEvent } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef } from "react";
-import type { Coordinates } from "@/lib/cities";
 import type { CafeSummary } from "@/types/cafes";
 import {
   bindCafeLayers,
@@ -64,7 +62,6 @@ interface ProviderState {
   externalPins: ExternalPin[];
   selectedCafeId: string | null;
   onCafeSelect: ((cafeId: string) => void) | null;
-  onMapTap: ((coordinates: Coordinates) => void) | null;
   /** A setStyle (theme switch) is in flight — an error while set leaves the
    * map without a working style, so it escalates to onError like a
    * first-load failure instead of logging to a silently blank map. */
@@ -110,11 +107,7 @@ function bindPointerHandlers(map: MapLibreMap, state: ProviderState): void {
 
   map.on("click", (e: MapMouseEvent) => {
     const hit = hitPin(e);
-    if (!hit) {
-      // Empty-map tap → the registered map-tap handler (create entry).
-      state.onMapTap?.({ lat: e.lngLat.lat, lng: e.lngLat.lng });
-      return;
-    }
+    if (!hit) return;
     if (hit.properties?.cluster) {
       const source = map.getSource(CAFE_SOURCE);
       if (source instanceof GeoJSONSource) {
@@ -126,12 +119,6 @@ function bindPointerHandlers(map: MapLibreMap, state: ProviderState): void {
     }
     const cafeId = hit.properties?.cafeId;
     if (typeof cafeId === "string") state.onCafeSelect?.(cafeId);
-  });
-  // Long-press (mobile) / right-click (desktop) → same create-entry trigger.
-  map.on("contextmenu", (e: MapMouseEvent) => {
-    if (!state.onMapTap || hitPin(e)) return;
-    e.preventDefault();
-    state.onMapTap({ lat: e.lngLat.lat, lng: e.lngLat.lng });
   });
   map.on("mousemove", (e: MapMouseEvent) => {
     const layers = interactiveLayers();
@@ -186,12 +173,6 @@ function providerAdapter(
       state.onCafeSelect = handler;
       return () => {
         if (state.onCafeSelect === handler) state.onCafeSelect = null;
-      };
-    },
-    onMapTap: (handler) => {
-      state.onMapTap = handler;
-      return () => {
-        if (state.onMapTap === handler) state.onMapTap = null;
       };
     },
     getBounds: () => {
@@ -298,7 +279,6 @@ export function MapLibreProvider({
     externalPins: [],
     selectedCafeId: null,
     onCafeSelect: null,
-    onMapTap: null,
     stylePending: false,
   });
   // The style the map was constructed with / last switched to — lets the

@@ -138,11 +138,11 @@ else
       # ledger, allowlist guard, quotas, cleanup) plus its unit tests — the
       # same convention as the deploy/devops helpers below: harness-side, so
       # it rides `integration=true` rather than the `application` gate.
-      # The shared Supabase env core reaches the password-grant journey helper
-      # (`web/tests/helpers/staging-session.ts`) by static import, so the
-      # closure check in `check-ci-classification.sh` §4b needs it routed to
-      # `integration-gate` too — an `integration=false` here would fail that
-      # gate even though the core itself holds no gate input.
+      # (BRAWUKA-503: the password-grant journey helper it once reached was
+      # deleted; nothing under web/ statically imports this core anymore, so
+      # the closure check in `check-ci-classification.sh` §4b no longer sees
+      # it — the `integration=true` routing stays as harness convention, the
+      # same as the deploy/devops helpers below.)
       scripts/agent-qa/*)
         integration=true
         ;;

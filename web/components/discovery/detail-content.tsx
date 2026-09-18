@@ -80,7 +80,7 @@ function FactChips({ cafe }: { cafe: PublicCafeDetail }) {
       {facts.map((fact) => (
         <span
           key={fact.kind}
-          className="rounded-sm border border-separator bg-surface-secondary px-2.5 py-1.5 text-xs text-foreground"
+          className="rounded-sm border border-separator bg-surface-secondary px-2.5 py-1 text-xs text-foreground"
         >
           <FactsRow facts={[fact]} />
         </span>
@@ -93,8 +93,12 @@ function DetailSkeleton() {
   return (
     <div className="flex flex-col gap-3" aria-hidden>
       <div className="aspect-video w-full animate-pulse rounded-md bg-surface-tertiary" />
-      <div className="h-4 w-40 animate-pulse rounded bg-surface-tertiary" />
-      <div className="h-3 w-56 animate-pulse rounded bg-surface-tertiary" />
+      <div className="flex flex-col gap-1.5">
+        <div className="h-7 w-40 animate-pulse rounded bg-surface-tertiary" />
+        <div className="h-3 w-56 animate-pulse rounded bg-surface-tertiary" />
+      </div>
+      <div className="h-8 w-28 animate-pulse rounded bg-surface-tertiary" />
+      <div className="h-11 w-full animate-pulse rounded-sm bg-surface-tertiary" />
     </div>
   );
 }

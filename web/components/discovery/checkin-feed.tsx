@@ -46,7 +46,7 @@ function FeedModeTabs({
       role="tablist"
       aria-label={t("feed_mode_aria")}
       onKeyDown={onKeyDown}
-      className="flex h-8 items-center rounded-sm bg-surface-secondary p-0.5"
+      className="flex h-8 items-center rounded-md bg-surface-secondary p-0.5"
     >
       {MODES.map((m) => {
         const active = m === mode;
@@ -83,7 +83,8 @@ function FeedSkeleton() {
       {[0, 1].map((i) => (
         <div key={i} className="border-b border-separator py-4 last:border-b-0">
           <div className="mb-2 h-3.5 w-24 animate-pulse rounded bg-surface-tertiary" />
-          <div className="h-3 w-40 animate-pulse rounded bg-surface-tertiary" />
+          <div className="mb-2 h-3 w-40 animate-pulse rounded bg-surface-tertiary" />
+          <div className="h-4 w-full animate-pulse rounded bg-surface-tertiary" />
         </div>
       ))}
     </div>

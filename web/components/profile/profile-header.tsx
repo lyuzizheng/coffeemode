@@ -35,7 +35,7 @@ export function ProfileHeader({ isAuthenticated }: { isAuthenticated: boolean })
         {isAuthenticated && (
           <SignOutButton
             variant="ghost"
-            className="inline-flex min-h-12 min-w-12 items-center"
+            className="inline-flex min-h-11 min-w-11 items-center"
           />
         )}
       </div>

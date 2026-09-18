@@ -12,7 +12,7 @@ export function ErrorRow({
   onRetry: () => void;
 }) {
   return (
-    <div className="p-4 bg-surface border border-border rounded-xl flex items-center justify-between text-sm text-muted">
+    <div className="p-3 bg-surface border border-border rounded-md flex items-center justify-between text-sm text-muted">
       <div className="flex items-center gap-2 text-warning">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M8 1.5L14.5 13.5H1.5L8 1.5Z" />

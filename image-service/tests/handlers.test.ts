@@ -266,6 +266,28 @@ describe("handleComplete", () => {
     expect(data.originalPut.headers["x-amz-meta-targettype"]).toBe("provision");
     expect(data.originalPut.headers["x-amz-meta-targetid"]).toBe(imageUuid);
   });
+
+  it("stamps lowercase targetId for uppercase provision imageUuid (BRAWUKA-455)", async () => {
+    const env = baseEnv();
+    const lower = validUuid();
+    await env.R2_BUCKET.put(`original/${lower}.webp`, new Uint8Array([0xde]), {
+      httpMetadata: { contentType: "image/webp" },
+    });
+
+    const response = await handleComplete(
+      makeRequest("POST", "/v1/images/complete", {
+        imageUuid: lower.toUpperCase(),
+        userId: "u1",
+        targetType: "provision",
+        targetId: "ignored-by-worker",
+      }),
+      env,
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as { originalPut: { headers: Record<string, string> } };
+    // Keys are lowercase; the provision marker must match the key case.
+    expect(data.originalPut.headers["x-amz-meta-targetid"]).toBe(lower);
+  });
 });
 
 describe("handleDelete", () => {

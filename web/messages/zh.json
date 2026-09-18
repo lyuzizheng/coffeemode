@@ -200,6 +200,7 @@
     "last_visit": "最近打卡 {date}",
     "checkins_count": "{count} 次打卡",
     "save": "保存",
+    "save_failed": "保存失败，再试试？",
     "cancel": "取消",
     "select_city": "选择城市",
     "back": "返回",

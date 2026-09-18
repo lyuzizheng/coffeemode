@@ -200,6 +200,7 @@
     "last_visit": "Last visit {date}",
     "checkins_count": "{count, plural, =1 {1 check-in} other {# check-ins}}",
     "save": "Save",
+    "save_failed": "Couldn't save — try again?",
     "cancel": "Cancel",
     "select_city": "Select city",
     "back": "Back",

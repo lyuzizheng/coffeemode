@@ -151,7 +151,7 @@ export function CheckinPhotos({
   return (
     <div className="flex gap-2 overflow-x-auto px-1 py-4">
       {photos.map((photo) => (
-        <div key={photo.id} className="relative h-[72px] w-[72px] shrink-0">
+        <div key={photo.id} className="relative h-[var(--layout-thumb)] w-[var(--layout-thumb)] shrink-0">
           <div
             className={`h-full w-full overflow-hidden rounded-md border bg-surface-secondary ${
               photo.status === "error" ? "border-danger" : "border-border"
@@ -159,8 +159,11 @@ export function CheckinPhotos({
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- Local blob URL (URL.createObjectURL) for unuploaded draft preview; Next.js Image loader does not process in-memory client blob URLs */}
             <img src={photo.previewUrl} alt="" className="h-full w-full object-cover" draggable={false} />
+            {/* Photo scrims use the warm-espresso scrim token (never pure
+                black, spec 0002) — bg-overlay is the elevated-surface token
+                and would paint a light veil in light mode. */}
             {photo.status === "uploading" && (
-              <div className="absolute inset-0 bg-black/40">
+              <div className="absolute inset-0 bg-scrim/40">
                 <div className="absolute bottom-0 left-0 h-0.5 w-full bg-accent/30">
                   <div className="h-full w-2/3 animate-pulse bg-accent" />
                 </div>
@@ -170,7 +173,7 @@ export function CheckinPhotos({
               <button
                 type="button"
                 onClick={() => retryPhoto(photo.id)}
-                className="absolute inset-0 flex items-center justify-center bg-black/40 text-xs font-medium text-white"
+                className="absolute inset-0 flex items-center justify-center bg-scrim/40 text-xs font-medium text-white"
               >
                 {t("retry")}
               </button>
@@ -185,7 +188,7 @@ export function CheckinPhotos({
             onClick={() => removePhoto(photo.id)}
             className="absolute -right-1 -top-5 h-11 w-11"
           >
-            <span className="absolute right-2 top-6 flex h-5 w-5 items-center justify-center rounded-full bg-overlay text-white hover:bg-black/60">
+            <span className="absolute right-2 top-6 flex h-5 w-5 items-center justify-center rounded-full bg-scrim/60 text-white hover:bg-scrim/80">
               <svg width={10} height={10} viewBox="0 0 10 10" aria-hidden>
                 <path d="M1 1l8 8M9 1L1 9" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" />
               </svg>
@@ -198,7 +201,7 @@ export function CheckinPhotos({
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="flex h-[72px] w-[72px] shrink-0 flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border bg-surface-secondary text-muted hover:bg-surface-tertiary"
+          className="flex h-[var(--layout-thumb)] w-[var(--layout-thumb)] shrink-0 flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border bg-surface-secondary text-muted hover:bg-surface-tertiary"
           aria-label={t("addPhotos")}
         >
           <span className="text-lg leading-none">+</span>

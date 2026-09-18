@@ -120,7 +120,7 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
                 {dims.map((dim) => (
                   <span
                     key={dim}
-                    className="px-2 py-0.5 rounded-md bg-surface-secondary border border-border/40 tabular-nums"
+                    className="px-2 py-0.5 rounded-sm bg-surface-secondary border border-border/40 tabular-nums"
                   >
                     {tDims(`dims.${dim}`)} {Math.round(item.scores[dim] ?? 0)}
                   </span>

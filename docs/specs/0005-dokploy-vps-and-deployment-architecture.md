@@ -169,7 +169,7 @@ spec 0010 §1. The table below covers the deployed staging/production edge only.
 | Edge Cache Vary Header | N/A | Vary: `Accept-Language` (prevents locale cross-pollution, Spec 0001) |
 | Cloudflare Managed Transforms | Add visitor location headers (`CF-IPCity`, `CF-IPCountry`) | Add visitor location headers (`CF-IPCity`, `CF-IPCountry`) |
 | Image Storage (R2 Bucket) | `coffeemode-images-staging` | `coffeemode-images-prod` |
-| Public Image CDN Domain | `staging-images.cafemood.app` | `images.cafemood.app` (`R2_PUBLIC_HOST` in `web/lib/images/constants.ts`) |
+| Public Image CDN Domain | `staging-images.cafemood.app` | `images.cafemood.app` (`R2_ALLOWED_PUBLIC_HOSTS` in `web/lib/images/constants.ts`) |
 | Image Worker Service | `image-service-staging` | `image-service-prod` |
 | POI Worker Service | `poi-service-staging` | `poi-service-prod` |
 | Worker D1 Database | `poi-store-staging` | `poi-store` |

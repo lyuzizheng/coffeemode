@@ -179,7 +179,7 @@ async function runVisualSmoke() {
     // a local seed's cover host resolves is not this gate's business; an
     // unreachable CDN would fail the run on image loads before any status
     // or contrast assertion is read.
-    await context.route("**/images.cafemood.app/**", (r) =>
+    await context.route(/https:\/\/(staging-)?images\.cafemood\.app\/.*/, (r) =>
       r.fulfill({ status: 200, contentType: "image/svg+xml", body: PLACEHOLDER_COVER }),
     );
     return context;

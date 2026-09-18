@@ -179,7 +179,7 @@ interface CafeCreationSheetProps {
   mapkitConfigured?: boolean;
   /** BRAWUKA-364: a POI picked upstream (unified search) opens the sheet
    * already on the form step; `initialPersist` mirrors selectPlace's
-   * persist flag for external (google/apple) places. */
+   * persist flag for client-side external (Apple MapKit) places. */
   initialPoi?: POI | null;
   initialPersist?: boolean;
   /** BRAWUKA-366: a provider CTA tapped upstream (unified search) opens the

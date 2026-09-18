@@ -28,7 +28,7 @@ export interface DiscoverySearch {
 /** Draft handed to the creation sheet: a picked POI, or an empty open. */
 export interface CreationDraft {
   poi: POI | null;
-  /** External (google/apple) POIs persist through /api/places/external first. */
+  /** Apple POIs persist through /api/places/external first; Google POIs are stored server-side. */
   persist: boolean;
   /** Provider CTA the user tapped — the sheet opens on that provider's tab. */
   provider: ExternalSearchProvider | null;
@@ -61,7 +61,7 @@ export function useDiscoverySearch({
       return;
     }
     if (item.poi) {
-      setCreationDraft({ poi: item.poi, persist: item.source !== "stored_poi", provider: null });
+      setCreationDraft({ poi: item.poi, persist: item.source === "apple", provider: null });
       setCreationOpen(true);
     }
   };

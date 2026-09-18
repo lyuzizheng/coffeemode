@@ -230,7 +230,10 @@
       "label": "Design",
       "default": "Default",
       "retro": "Retro",
-      "modern": "Modern"
+      "modern": "Modern",
+      "default_hint": "Dense",
+      "retro_hint": "Editorial",
+      "modern_hint": "Industrial"
     }
   },
   "create": {

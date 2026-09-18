@@ -230,7 +230,10 @@
       "label": "设计风格",
       "default": "默认",
       "retro": "复古",
-      "modern": "现代"
+      "modern": "现代",
+      "default_hint": "紧凑",
+      "retro_hint": "编辑",
+      "modern_hint": "工业"
     }
   },
   "create": {

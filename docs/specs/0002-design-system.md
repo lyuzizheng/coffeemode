@@ -354,6 +354,99 @@ shadow-lg:   0 2px 4px 0 oklch(25% 0.03 50 / 0.04),
 shadow-map:  0 1px 3px 0 oklch(25% 0.03 50 / 0.06)
 ```
 
+## Design variants
+
+A second theme axis orthogonal to light/dark (BRAWUKA-370 mechanism,
+BRAWUKA-505 full personalities). `data-variant` on `<html>` selects a
+complete design direction; the espresso + sage brand plate and the status
+tokens stay shared across all variants. Persistence is localStorage-only,
+applied pre-paint by the inline bootstrap in `app/layout.tsx` — no flash,
+no server round-trip.
+
+```text
+default — this spec, unchanged: dense radius scale (2/4/6/8px),
+          Inter chrome, Cabinet display, warm paper plate
+retro   — editorial print voice (复古编辑风)
+modern  — industrial instrument panel (现代工业 geek 风)
+```
+
+### Variant: retro (editorial print)
+
+Personality: a paper-bound city guide. "Nothing" means zero radius, no
+pills, no gradients, no glassmorphism — hairline rules and paper-lift
+shadows do all the separation work.
+
+```text
+Radius:     every --radius-* token = 0 (incl. --radius-full and
+            --field-radius); HeroUI internals are token-driven so the
+            whole library squares with the scale
+Type:       --font-sans/--font-display/--font-serif all resolve to
+            Source Serif 4 var → Noto Serif SC var (self-hosted GB2312
+            level-1 subset + app copy, ~1.4MB woff2, loaded only for
+            retro users rendering CJK) → Songti SC → "Noto Serif SC"
+Numerals:   .tnum uses oldstyle-nums + tabular-nums (editorial figure set);
+            font-mono stays JetBrains as the deliberate typewriter accent
+Shadows:    paper-lift — low spread, low alpha, warm espresso offset
+            (sm 0.08 / md 0.07+0.09 / lg 0.07+0.14); filled buttons carry
+            shadow-sm; ghost/outline stay flat
+Hairlines:  --border/--separator one step lighter than the base plate
+Texture:    monochrome feTurbulence grain on the body canvas, baked into
+            a data-URI (4% light / 5% dark, inside the --grain budget)
+Glass:      backdrop-filter killed variant-wide; translucent overlay
+            chrome re-opacifies to --background/--overlay
+Dark:       same warm espresso plate; lift shadows out (dark separates
+            with hairlines), hairlines soften a step further
+Motion:     printing-press springs — stiffer attack, heavier damping,
+            shorter travel (gentle 300/36, snappy 500/40, soft 220/32)
+```
+
+### Variant: modern (industrial instrument)
+
+Personality: a precision collection dashboard — rounded but systematic,
+geek through mono data annotations and blueprint hairlines, not through
+candy gloss.
+
+```text
+Radius:     concentric scale — inner = outer − gap, so a 2px gap steps
+            each level down exactly: xs 6 / sm 10 / md 12 / lg 16 /
+            xl 20 / 2xl 16 / 3xl 20 / 4xl 24 / full pill
+            (segmented track md 12 + p-0.5 → segment sm 10; card md 12 +
+            2px gap → chip sm 10; sheet lg 16 + 4px pad → inner md 12)
+Type:       UI stays Inter/Cabinet; the geek voice is systematic mono —
+            every .tnum data annotation (scores, distances, counts,
+            timestamps) resolves to JetBrains Mono
+Neutrals:   cooler plate — light hue 250 (background 97.8%, foreground
+            22%), dark graphite hue 250–260 (background 16%, foreground
+            92%); accent/sage/status stay shared so brand contrast math
+            is unchanged
+Shadows:    cooler, tighter — same geometry, hue-260 ink
+Texture:    blueprint grid on the body canvas — 44px hairline grid,
+            5% light / 7% dark foreground mix, pure CSS (no image request)
+Motion:     instrument springs — softer damping lets motion breathe a
+            hair more (gentle 260/26, snappy 400/28, soft 180/22)
+```
+
+### Variant rules
+
+```text
+- Variant blocks are self-contained quadrants: each pins its full neutral
+  plate so a scoped subtree (the picker's mini previews) renders that
+  variant's light personality even while the page sits in dark
+- Dark-scoped variant tokens use :is(.dark, [data-theme="dark"]) so they
+  outrank both the base plate and the unscoped variant block
+- Springs: components take transitions from useSprings() (lib/motion.ts),
+  which returns the active variant's table; the static `spring` export is
+  the default-variant table and SSR fallback
+- The picker (ThemeVariantPicker) renders each option's mini preview with
+  real variant tokens — data-variant scoped to the swatch subtree
+- WCAG AA: all four quadrants (2 variants × light/dark) are gated —
+  tests/design-tokens-contrast.test.ts merges each variant block onto its
+  theme plate and asserts every text pair ≥4.5:1; check:visual renders
+  /theme-preview under all three variants × both schemes × both viewports
+- Cost: the CJK serif subset downloads only for retro users rendering CJK
+  glyphs; grain/grid are data-URI/CSS, zero image requests
+```
+
 ## Motion
 
 Framer Motion powers all animation (via HeroUI built-in + direct usage).

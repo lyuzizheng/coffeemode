@@ -84,6 +84,11 @@ export function CheckinPhotos({
       if (cause instanceof Error && cause.message === "photo_too_large") {
         toast(t("photoTooLarge"), { timeout: 4000 });
       }
+      // A file with no intrinsic size (e.g. a dimensionless SVG) can never
+      // upload — same named-reason toast as the size cap (BRAWUKA-453).
+      if (cause instanceof Error && cause.message === "photo_invalid") {
+        toast(t("photoInvalid"), { timeout: 4000 });
+      }
       updateEntry(id, { status: "error" });
     },
     [updateEntry, onRequireSignIn, t],

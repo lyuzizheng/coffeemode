@@ -22,6 +22,7 @@ export function useStagedPhotos(initialPhotos?: PhotoUpload[]) {
       const failedIds = new Set<string>();
       let unauthorized = false;
       let oversized = 0;
+      let invalid = 0;
       await Promise.all(
         pendingUploads.map(async (p) => {
           try {
@@ -36,6 +37,7 @@ export function useStagedPhotos(initialPhotos?: PhotoUpload[]) {
             }
             failedIds.add(p.id);
             if (err instanceof Error && err.message === "photo_too_large") oversized += 1;
+            if (err instanceof Error && err.message === "photo_invalid") invalid += 1;
           }
         }),
       );
@@ -56,9 +58,11 @@ export function useStagedPhotos(initialPhotos?: PhotoUpload[]) {
       // onRequireSignIn, which stages the draft and opens the gate.
       if (unauthorized) throw new Error(UNAUTHORIZED);
       if (failedIds.size > 0) {
-        // Every failure being the 10 MB cap keeps the precise reason so the
+        // Every failure sharing one named cause keeps the precise reason so the
         // submit error names it (artifact §3.5); a mixed batch stays generic.
-        throw new Error(oversized === failedIds.size ? "photo_too_large" : "photo_upload_failed");
+        if (oversized === failedIds.size) throw new Error("photo_too_large");
+        if (invalid === failedIds.size) throw new Error("photo_invalid");
+        throw new Error("photo_upload_failed");
       }
     }
 

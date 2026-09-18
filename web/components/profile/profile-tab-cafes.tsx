@@ -54,9 +54,9 @@ export function ProfileTabCafes({ baseId, query: cafesQuery }: ProfileTabCafesPr
         <Link
           key={cafe.id}
           href={`/?cafe=${cafe.id}`}
-          className="p-3 bg-surface border border-border rounded-md flex items-center gap-3 hover:border-border/80 active:scale-[0.99] transition-all"
+          className="p-3 bg-surface border border-separator rounded-md flex items-center gap-3 hover:border-border/80 active:scale-[0.99] transition-all"
         >
-          <div className="relative w-[var(--layout-thumb)] h-[54px] rounded-sm bg-surface-secondary border border-border/40 flex-shrink-0 flex items-center justify-center overflow-hidden">
+          <div className="relative w-[var(--layout-thumb)] h-[54px] rounded-sm bg-surface-secondary border border-separator flex-shrink-0 flex items-center justify-center overflow-hidden">
             {cafe.cover ? (
               <Image
                 src={cafe.cover}

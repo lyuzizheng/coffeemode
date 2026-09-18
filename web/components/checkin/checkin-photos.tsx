@@ -181,7 +181,7 @@ export function CheckinPhotos({
         <div key={photo.id} className="relative h-[var(--layout-thumb)] w-[var(--layout-thumb)] shrink-0">
           <div
             className={`h-full w-full overflow-hidden rounded-md border bg-surface-secondary ${
-              photo.status === "error" ? "border-danger" : "border-border"
+              photo.status === "error" ? "border-danger" : "border-separator"
             }`}
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- Local blob URL (URL.createObjectURL) for unuploaded draft preview; Next.js Image loader does not process in-memory client blob URLs */}

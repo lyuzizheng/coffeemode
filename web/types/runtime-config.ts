@@ -20,6 +20,5 @@ export interface RuntimeBanner {
 }
 
 export interface RuntimeConfig {
-  flags: Record<string, boolean>;
   banners: RuntimeBanner[];
 }

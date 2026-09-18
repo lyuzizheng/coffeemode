@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Image from "next/image";
 import { useTranslations, useLocale } from "next-intl";
-import { Button } from "@heroui/react";
+import { Button, toast } from "@heroui/react";
 import { CoffeeIcon } from "@/components/icons";
 import { LAUNCH_CITIES, displayCityName, type CityInfo } from "@/lib/cities";
 import type { UserProfileDto } from "@/lib/db/profile";
@@ -40,10 +40,14 @@ export function ProfileHero({ profile, onProfileChange }: ProfileHeroProps) {
           const data = (await res.json()) as { profile: UserProfileDto };
           onProfileChange(data.profile);
           setIsEditingName(false);
+          return;
         }
       } catch (err) {
         console.error("Failed to save name:", err);
       }
+      // Failure keeps the edit open so the draft survives; the toast is the
+      // only signal that the save did not land.
+      toast(t("save_failed"), { timeout: 4000 });
     });
   };
 
@@ -59,10 +63,12 @@ export function ProfileHero({ profile, onProfileChange }: ProfileHeroProps) {
           const data = (await res.json()) as { profile: UserProfileDto };
           onProfileChange(data.profile);
           setIsSelectingCity(false);
+          return;
         }
       } catch (err) {
         console.error("Failed to save city:", err);
       }
+      toast(t("save_failed"), { timeout: 4000 });
     });
   };
 
@@ -80,7 +86,7 @@ export function ProfileHero({ profile, onProfileChange }: ProfileHeroProps) {
       </div>
 
       {/* Avatar circle (80px) */}
-      <div className="w-20 h-20 rounded-full bg-surface-tertiary border border-border flex items-center justify-center mb-4 overflow-hidden shadow-sm relative z-10">
+      <div className="w-20 h-20 rounded-full bg-surface-tertiary border border-separator flex items-center justify-center mb-4 overflow-hidden shadow-sm relative z-10">
         {profile?.avatarUrl ? (
           <Image
             src={profile.avatarUrl}

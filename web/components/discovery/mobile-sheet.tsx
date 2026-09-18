@@ -66,7 +66,7 @@ function PeekCard({
 
 function PeekSkeletons() {
   return (
-    <div className="flex gap-3 px-4" aria-hidden>
+    <div className="flex gap-3 px-4 pb-2" aria-hidden>
       {[0, 1].map((i) => (
         <div
           key={i}
@@ -135,7 +135,7 @@ function PeekStrip({
     <div
       ref={stripRef}
       onScroll={onScroll}
-      className="flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1"
+      className="flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2"
       aria-label={t("peek_aria")}
     >
       {cafes.map((cafe, i) => (

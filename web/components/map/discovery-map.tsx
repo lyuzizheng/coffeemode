@@ -37,7 +37,15 @@ import {
 } from "./use-map-bindings";
 import type { IMapProvider } from "./types";
 
-export function DiscoveryMap({ onError }: { onError: (err: unknown) => void }) {
+export function DiscoveryMap({
+  onError,
+  onReady,
+}: {
+  onError: (err: unknown) => void;
+  /** First style load completed — the basemap is on screen; the surface
+   * lifts the mosaic mask on this signal (BRAWUKA-506). */
+  onReady?: () => void;
+}) {
   const t = useTranslations("map");
   const state = useDiscoveryMap();
   const { resolvedTheme } = useTheme();
@@ -62,11 +70,15 @@ export function DiscoveryMap({ onError }: { onError: (err: unknown) => void }) {
   const selectedCafeId = state?.controller.selectedCafeId ?? null;
   const snap = state?.controller.snap ?? "peek";
   const [mapReady, setMapReady] = useState(false);
-  const handleLoad = useCallback((provider: IMapProvider) => {
-    providerRef.current = provider;
-    provider.onCafeSelect((cafeId) => selectRef.current?.(cafeId));
-    setMapReady(true);
-  }, []);
+  const handleLoad = useCallback(
+    (provider: IMapProvider) => {
+      providerRef.current = provider;
+      provider.onCafeSelect((cafeId) => selectRef.current?.(cafeId));
+      setMapReady(true);
+      onReady?.();
+    },
+    [onReady],
+  );
 
   const refs = { providerRef };
   useMapPadding(refs, { isDesktop, isXl, snap, selectedCafeId, mapReady });

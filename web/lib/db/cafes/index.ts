@@ -2,17 +2,15 @@ export { createCafeWithFirstCheckIn } from "./create";
 export {
   cafeExists,
   type CafeDetailWithAuthor,
-  type CafeSitemapEntry,
   getCafe,
   getCafeLocation,
   isLiveCafe,
   listCafeSitemapEntries,
   listCafesNearby,
-  type NearbyCafesQuery,
   toPublicCafeDetail,
 } from "./reads";
-export { setCafeVisibility, type SetCafeVisibilityResult } from "./visibility";
-export { deleteCafe, type DeleteCafeResult } from "./delete";
+export { setCafeVisibility } from "./visibility";
+export { deleteCafe } from "./delete";
 export {
   getServiceAccountId,
   isServiceMaintained,

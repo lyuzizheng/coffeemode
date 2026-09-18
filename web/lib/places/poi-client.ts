@@ -152,30 +152,3 @@ export async function resolveMapsUrl(mapsShareUrl: string): Promise<POI> {
   return data as POI;
 }
 
-/** GET /poi/:place_id — fetch/enrich one POI. */
-export async function getPOI(placeId: string): Promise<POI> {
-  // Send the place id raw: Google `0x...:0x...` ids are valid path
-  // segments, and the worker decodes `:place_id` at the edge (W2).
-  const data = await poiFetch(`/poi/${placeId}`, {
-    method: "GET",
-  });
-  return data as POI;
-}
-
-interface ReverseGeocodeResponse {
-  poi?: POI | null;
-}
-
-/** POST /poi/reverse — reverse geocode coordinates to a normalized food/cafe POI. */
-export async function reverseGeocode(params: {
-  lat: number;
-  lng: number;
-}): Promise<POI | null> {
-  const data = await poiFetch("/poi/reverse", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(params),
-  });
-  const response = data as ReverseGeocodeResponse;
-  return response.poi ?? null;
-}

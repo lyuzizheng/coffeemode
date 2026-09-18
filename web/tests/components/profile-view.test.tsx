@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type * as HeroUI from "@heroui/react";
 import { ProfileView } from "@/components/profile/profile-view";
 import { WORK_DIMS } from "@/lib/stats/work-stats";
 import messages from "../../messages/en.json";
@@ -9,6 +10,7 @@ import zhMessages from "../../messages/zh.json";
 
 const pushMock = vi.fn();
 const backMock = vi.fn();
+const toastSpy = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -17,6 +19,13 @@ vi.mock("next/navigation", () => ({
     refresh: vi.fn(),
   }),
 }));
+
+// Toasts are asserted via spy — HeroUI renders them into a portal outside
+// the tree under test.
+vi.mock("@heroui/react", async (importOriginal) => {
+  const actual = await importOriginal<typeof HeroUI>();
+  return { ...actual, toast: (...args: unknown[]) => toastSpy(...args) };
+});
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   const queryClient = new QueryClient({
@@ -257,6 +266,92 @@ describe("ProfileView", () => {
     fireEvent.click(checkinsTab);
     expect(checkinsTab).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("Artisan Cafe")).toBeInTheDocument();
+  });
+
+  it("keeps the name editor open and toasts when the save fails", async () => {
+    const mockProfile = {
+      id: "user-1",
+      displayName: "Coffee Lover",
+      currentCity: "singapore",
+      lastLocation: null,
+      onboarded: false,
+      avatarUrl: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      showPublicIdentity: false,
+      publicHandle: null,
+      identityConsentedAt: null,
+      publicHandleChangedAt: null,
+    };
+
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url === "/api/profile") {
+        return { ok: false, status: 500, json: async () => ({}) };
+      }
+      return { ok: true, json: async () => ({ items: [], next_cursor: null }) };
+    }) as unknown as typeof fetch;
+
+    render(
+      <ProfileView
+        initialProfile={mockProfile}
+        initialStats={{ cafesCount: 1, checkinsCount: 1 }}
+        isAuthenticated={true}
+      />,
+      { wrapper: Wrapper },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Your name" }));
+    const input = screen.getByPlaceholderText("Your name");
+    fireEvent.change(input, { target: { value: "New Name" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(toastSpy).toHaveBeenCalledWith("Couldn't save — try again?", { timeout: 4000 });
+    });
+    // The draft survives so the user can retry instead of retyping.
+    expect(screen.getByPlaceholderText("Your name")).toHaveValue("New Name");
+  });
+
+  it("keeps the city selector open and toasts when the save fails", async () => {
+    const mockProfile = {
+      id: "user-1",
+      displayName: "Coffee Lover",
+      currentCity: "singapore",
+      lastLocation: null,
+      onboarded: false,
+      avatarUrl: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      showPublicIdentity: false,
+      publicHandle: null,
+      identityConsentedAt: null,
+      publicHandleChangedAt: null,
+    };
+
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url === "/api/profile") {
+        return { ok: false, status: 500, json: async () => ({}) };
+      }
+      return { ok: true, json: async () => ({ items: [], next_cursor: null }) };
+    }) as unknown as typeof fetch;
+
+    render(
+      <ProfileView
+        initialProfile={mockProfile}
+        initialStats={{ cafesCount: 1, checkinsCount: 1 }}
+        isAuthenticated={true}
+      />,
+      { wrapper: Wrapper },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Singapore/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Tokyo" }));
+
+    await waitFor(() => {
+      expect(toastSpy).toHaveBeenCalledWith("Couldn't save — try again?", { timeout: 4000 });
+    });
+    // Selector stays open so a retry is one tap.
+    expect(screen.getByRole("button", { name: "Tokyo" })).toBeInTheDocument();
   });
 });
 

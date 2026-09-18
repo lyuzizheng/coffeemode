@@ -61,7 +61,7 @@ export function ProfileTabHistory({ baseId }: { baseId: string }) {
             <Link
               key={item.id}
               href="/"
-              className="p-3 bg-surface border border-border rounded-md flex items-center justify-between hover:border-border/80 active:scale-[0.99] transition-all"
+              className="p-3 bg-surface border border-separator rounded-md flex items-center justify-between hover:border-border/80 active:scale-[0.99] transition-all"
             >
               <div className="flex items-center gap-2.5 min-w-0">
                 <svg

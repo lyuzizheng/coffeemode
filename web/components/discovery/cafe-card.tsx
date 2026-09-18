@@ -144,7 +144,7 @@ export function CafeCardBody({
       className={
         variant === "card"
           ? "relative flex gap-3 overflow-hidden rounded-md border border-separator bg-surface p-3 shadow-sm transition-shadow duration-150 hover:shadow-md"
-          : "relative flex gap-3 p-3"
+          : "relative flex gap-3 px-4 py-3"
       }
     >
       <CoverTile

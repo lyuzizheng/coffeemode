@@ -476,6 +476,7 @@
     "sheet_handle_aria": "Drag to resize the panel",
     "unknown_cafe": "Cafe",
     "tagline": "A field guide to cafes worth working in",
+    "brand_intro": "Real check-ins from working nomads — no ads, no noise, just cafes worth sitting in.",
     "index_label": "{count, plural, one {# cafe nearby} other {# cafes nearby}}",
     "sheet_expand_aria": "Expand nearby cafes",
     "nearby_count": "{count, plural, one {# cafe nearby} other {# cafes nearby}}"

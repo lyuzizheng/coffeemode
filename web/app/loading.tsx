@@ -18,19 +18,21 @@ export default function Loading() {
       <Skeleton className="fixed right-4 top-[var(--layout-chrome-offset)] z-10 h-14 w-28 rounded-full lg:right-[var(--layout-chrome-offset)] lg:top-6" />
 
       {/* Desktop: sidebar column */}
+      {/* Desktop: sidebar column — mirrors the scroll-top expanded state
+          (BRAWUKA-506): invisible masthead slot, brand frontispiece,
+          search row, then index skeletons. */}
       <div className="fixed inset-y-0 left-0 z-10 hidden w-[var(--layout-aside-column)] flex-col border-r border-separator bg-surface lg:flex">
-        <div className="flex items-start justify-between gap-3 border-b border-separator px-4 pb-3 pt-4">
-          <div className="flex flex-col gap-1.5">
-            <Skeleton className="h-6 w-28" />
-            <Skeleton className="h-3 w-40" />
-          </div>
-          <Skeleton className="h-9 w-24 rounded-md" />
+        <div className="h-[var(--layout-masthead-h)]" />
+        <div className="flex h-[min(46dvh,400px)] flex-col items-center justify-center gap-3 px-6">
+          <Skeleton className="h-3 w-20" />
+          <Skeleton className="h-8 w-36" />
+          <Skeleton className="h-4 w-56" />
         </div>
         <div className="border-b border-separator px-4 py-3">
           <Skeleton className="h-11 w-full rounded-md" />
         </div>
         {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="flex gap-3 border-b border-separator p-3">
+          <div key={i} className="flex gap-3 border-b border-separator px-4 py-3">
             <Skeleton className="h-[var(--layout-row-cover-h)] w-[var(--layout-row-cover-w)] rounded-sm" />
             <div className="flex flex-1 flex-col justify-center gap-2">
               <Skeleton className="h-4 w-2/3" />

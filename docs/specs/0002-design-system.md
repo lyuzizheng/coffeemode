@@ -328,9 +328,16 @@ match the surrounding component density):
   element count, and approximate heights — a skeleton that does not match
   its surface is a defect (BRAWUKA-420 class).
 - Layout geometry lives only in `web/lib/layout.ts` constants
-  (SHEET_PEEK_PX, ASIDE_COLUMN_PX, THUMB_PX, CARD_COVER_W_PX,
-  ROW_COVER_W_PX/H_PX, CONTENT_MAX_W_PX, MAP_CHROME_OFFSET_PX) exposed as
-  `--layout-*` CSS vars — never re-hardcode these numbers in components.
+  (SHEET_PEEK_PX, ASIDE_COLUMN_PX, DETAIL_COLUMN_PX, MASTHEAD_H_PX,
+  THUMB_PX, CARD_COVER_W_PX, ROW_COVER_W_PX/H_PX, CONTENT_MAX_W_PX,
+  MAP_CHROME_OFFSET_PX) exposed as `--layout-*` CSS vars — never
+  re-hardcode these numbers in components.
+- Sidebar spacing scale (BRAWUKA-506): the desktop discovery column uses
+  one horizontal gutter `px-4` (16px) for every element — masthead,
+  search row, section label, cafe rows, skeletons, empty/error states —
+  and a 4px-grid vertical rhythm (masthead 72px `--layout-masthead-h`,
+  search `py-3`, label `pt-3`, rows `py-3`). Left/right edges align
+  exactly; the mobile sheet's PEEK strip shares the same `px-4` gutter.
 ```
 
 ### Elevation
@@ -338,7 +345,11 @@ match the surrounding component density):
 ```text
 Prefer borders + tonal separation over shadows.
 Map overlays: backdrop-blur(12px) + subtle warm shadow
-Cards: 1px border (--border) + shadow-surface on default, shadow-md on hover
+Cards/rows: 1px hairline (--separator) + shadow-surface on default, shadow-md on hover
+            (BRAWUKA-506: card and row chrome unified to the lighter
+            separator token; --border stays on interactive affordances —
+            fields, buttons, chips, dashed upload zones — and on hover
+            emphasis like hover:border-border/80)
 Drawers/modals: shadow-lg, warm-tinted
 Avoid: broad decorative shadows, Material elevation stacks
 ```
@@ -449,6 +460,17 @@ Component transitions:
 - Loading: skeleton shimmer, not spinners — HeroUI Skeleton where the component
   fits; hand-rolled animate-pulse shells (discovery, search) are element-level
   CSS animation covered by the reduced-motion kill switch.
+- Loading → content transitions are animated, never hard cuts: skeletons
+  and masks crossfade or resolve into real content (BRAWUKA-506). The
+  canonical reveal is the **mosaic resolve**: a coarse pixel grid in the
+  surface palette covers the loading surface, then cells fade out in a
+  deterministic shuffled order — the content "resolves" out of mosaic
+  blocks. Total settle ≤450ms (settle.slow ceiling); pure CSS opacity
+  transitions, no WebGL/timers; reduced-motion → instant via the global
+  kill switch. First consumer: the basemap mask (`map-mosaic.tsx`, covers
+  maplibre chunk + first style load). The same motive is reserved for
+  image lazy-load placeholders and upload progress — one loading language,
+  not per-page spinners.
 - Feed refresh/pagination: preserve the last successful content and put an inline
   error + Retry at the failed section; never replace real cards with placeholders
 - Third-party exception (HeroUI toast, BRAWUKA-207): enter/exit slide is the

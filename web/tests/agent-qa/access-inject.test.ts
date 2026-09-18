@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  ACCESS_FETCH_RESOURCE_TYPES,
   buildAccessFetchPatterns,
   createAccessRequestPump,
   handlePausedAccessRequest,
@@ -20,15 +21,22 @@ function pausedEvent(url: string, headers: Record<string, string> = {}) {
 }
 
 describe("buildAccessFetchPatterns", () => {
-  it("emits one Request-stage pattern per allowlist host, never a catch-all", () => {
+  it("emits one Request-stage subresource pattern per allowlist host, never Document or catch-all", () => {
     const patterns = buildAccessFetchPatterns();
-    expect(patterns).toHaveLength(AGENT_QA_ALLOWED_HOSTS.length);
+    expect(patterns).toHaveLength(
+      AGENT_QA_ALLOWED_HOSTS.length * ACCESS_FETCH_RESOURCE_TYPES.length,
+    );
+    expect(ACCESS_FETCH_RESOURCE_TYPES).not.toContain("Document");
+    expect(new Set(ACCESS_FETCH_RESOURCE_TYPES).size).toBe(ACCESS_FETCH_RESOURCE_TYPES.length);
     for (const pattern of patterns) {
       expect(pattern.requestStage).toBe("Request");
       expect(pattern.urlPattern.startsWith("*://")).toBe(true);
       expect(pattern.urlPattern.endsWith("/*")).toBe(true);
+      expect(pattern.resourceType).not.toBe("Document");
+      expect(ACCESS_FETCH_RESOURCE_TYPES).toContain(pattern.resourceType);
     }
     expect(patterns.map((p) => p.urlPattern)).toContain("*://staging.cafemood.app/*");
+    expect(patterns.some((p) => p.resourceType === "XHR")).toBe(true);
     expect(patterns.some((p) => p.urlPattern.includes("*") && !p.urlPattern.startsWith("*://"))).toBe(
       false,
     );

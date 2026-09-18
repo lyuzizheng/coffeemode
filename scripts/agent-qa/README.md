@@ -16,20 +16,36 @@ carried the token). That API is global by design and MUST NOT be used for
 scaffold-side direct HTTP calls to already-allowlisted staging URLs.
 
 The browser path is `access-inject.mjs`: `Fetch.enable` with urlPatterns
-scoped to the allowlist (`buildAccessFetchPatterns`) plus a `page.events()`
+scoped to the allowlist AND to subresource `resourceType`s
+(`buildAccessFetchPatterns`: no `Document`, only types this ego-browser build
+accepts — `TextTrack`/`Prefetch`/`WebSocket`/`Manifest`/`SignedExchange`/
+`Preflight`/`FedCM` are rejected at enable time), plus a `page.events()`
 drain pump (`createAccessRequestPump`) that merges the token pair into paused
 subresource requests (`Fetch.continueRequest`) and passes everything else
-through untouched. Verified against ego-browser: `page.cdp()` supports the
-Fetch domain, subresource pauses continue fine — but a paused top-frame
-Document navigation never resolves its `goto()` commit waiter (an ego-browser
-CDP-session limitation, not our headers), so the Document navigation is
-deliberately NOT intercepted.
+through untouched.
 
-Consequence: the first `page.goto()` to staging carries no Access headers and
-lands on the Access handshake page; the agent completes it once (or reuses a
-session cookie), and every subsequent same-origin subresource fetch carries
-the token pair. Fail-closed throughout: unparsable/off-allowlist URLs never
-receive headers, and a paused request is always continued (never left hanging).
+Status (ego-browser 0.5.0.32, verified on this machine 2026-09-19): the scope
+is correct but NOT YET USABLE. `Fetch.enable` with subresource-only patterns
+is proven — `page.goto()` resolves in ~100ms with zero Document pauses
+buffered — but every `Fetch.continue*` through `page.cdp()` returns
+`Invalid InterceptionId` for paused subresources (XHR, Image incl. `new
+Image()` tags; same for `fulfillRequest`/`failRequest`/`continueWithAuth`),
+and the request hangs until its own timeout. `Fetch.disable` does not release
+paused requests. The interception belongs to an internal CDP session the
+command channel cannot continue.
+
+Safe operating point today: do NOT `Fetch.enable` on a journey page.
+Per-origin injection stays open, blocked on the ego-browser interception fix;
+the global `setExtraHTTPHeaders` path stays retired regardless (F6). First
+staging `page.goto()` is unauthenticated and lands on the Access handshake;
+the agent completes it once and reuses the session cookie. Fail-closed
+throughout: unparsable/off-allowlist URLs never receive headers, and a paused
+request is always continued (never left hanging) once continuation works.
+
+Caution: never use `page.fetch` for an allowlisted URL while `Fetch.enable`
+is active — it hangs on the same interception (`Invalid InterceptionId` on
+continue). Scaffold HTTP calls use direct Node fetch, so they are off this
+path.
 
 ## Secret-bridge contract (F8)
 

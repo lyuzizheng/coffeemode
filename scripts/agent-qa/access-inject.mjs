@@ -7,29 +7,41 @@
  * CORS preflight rejects the header and breaks analytics) and map tiles
  * (`openfreemap`, which accepted the request, so the secret left our domain).
  *
- * Design (verified against ego-browser on this machine, 2026-09-19):
+ * Status (ego-browser 0.5.0.32, Chromium 152, verified on this machine
+ * 2026-09-19): the scope below is CORRECT but NOT YET USABLE — `Fetch.enable`
+ * itself is proven (patterns accepted, Documents excluded so `page.goto()`
+ * resolves in ~100ms, zero Document pauses buffered), but `Fetch.continue*`
+ * issued through `page.cdp()` returns `Invalid InterceptionId` for every
+ * paused subresource (XHR, Image incl. `new Image()` tags) and the request
+ * hangs until its own timeout. Same failure for `fulfillRequest`,
+ * `failRequest`, `continueWithAuth`; `task.cdp()` accepts only
+ * Target/Browser commands; `Fetch.disable` does not release paused requests.
+ * The interception belongs to an internal CDP session the command channel
+ * cannot continue. Until that ownership is fixed: do NOT `Fetch.enable` on a
+ * journey page. Per-origin injection stays open, blocked on ego-browser;
+ * the global `Network.setExtraHTTPHeaders` path stays retired regardless.
  *
  * - `Network.setExtraHTTPHeaders` is global by design — no origin scoping
- *   exists. It MUST NOT be used for `CF-Access-*`.
- * - CDP `Fetch.enable` with urlPatterns scoped to `AGENT_QA_ALLOWED_HOSTS`
- *   plus a `page.events()` drain pump feeding `Fetch.continueRequest` works
- *   for SUBRESOURCE requests only (images, XHR/fetch, beacons). Verified: the
- *   top-frame Document navigation pauses and its `goto()` commit waiter never
- *   resolves (`continueRequest` succeeds but the frame stalls — an ego-browser
- *   CDP-session limitation, not our headers). Subresource pauses continue
- *   fine and navigation commits while their pump runs.
- * - Therefore: the top-level Document navigation carries NO Access headers.
- *   It lands on the Cloudflare Access login/warp page, exactly as an
- *   unauthenticated first visit would. After the agent completes the Access
- *   handshake once (or the session cookie exists), every subresource fetch is
- *   same-origin to an allowlisted host and carries the token pair via
- *   `continueRequest` header merge. Direct `page.goto()` to staging therefore
- *   requires the interactive Access login on first visit; subsequent
- *   same-session navigations reuse the Access cookie and behave normally.
- *   This is the documented tradeoff of the only leak-free mechanism
- *   ego-browser supports — global injection is not an option.
+ *   exists. It MUST NOT be used for `CF-Access-*` (F6: token reached
+ *   `cloudflareinsights.com` beacons and `openfreemap` tiles).
+ * - `buildAccessFetchPatterns` scopes `Fetch.enable` to
+ *   `AGENT_QA_ALLOWED_HOSTS` AND to subresource `resourceType`s
+ *   (`ACCESS_FETCH_RESOURCE_TYPES` — no `Document`, only types this build
+ *   accepts). A paused Document stalls the `goto()` commit waiter even after
+ *   a successful continue, so Documents are excluded at the PATTERN level —
+ *   skipping headers in the handler would not unstall it.
+ * - `createAccessRequestPump` + `handlePausedAccessRequest` is the correct
+ *   attach-or-passthrough contract for when continuation works. Pure
+ *   functions (`shouldAttachAccessHeaders`, `mergeAccessHeaders`,
+ *   `parseAccessEnvText`) are live and unit-pinned; the CDP round-trip is
+ *   the blocked part.
+ * - Safe operating point today: no `Fetch.enable` during the journey, so the
+ *   first staging `page.goto()` is unauthenticated and lands on the Access
+ *   handshake; the agent completes it once and reuses the session cookie.
+ *   Scaffold HTTP calls use direct Node fetch (never `page.fetch` against an
+ *   intercepted URL — it hangs the same way), so they are off this path.
  *
- * Usage (ego-browser script):
+ * Usage (enable ONLY after the ego-browser interception fix lands):
  *
  * ```js
  * import {
@@ -70,23 +82,57 @@ import {
 } from "./access-headers.mjs";
 import { AGENT_QA_ALLOWED_HOSTS, isAllowedHost } from "./allowlist.mjs";
 
-export { resolveAccessHeaders };
+/**
+ * Subresource `Network.ResourceType` values stamped by
+ * `buildAccessFetchPatterns` — a subset of the CDP enum that EXCLUDES
+ * `Document` and that this ego-browser build accepts in
+ * `Fetch.RequestPattern.resourceType` (enumerated live: `TextTrack`,
+ * `Prefetch`, `WebSocket`, `Manifest`, `SignedExchange`, `Preflight`, and
+ * `FedCM` are rejected as "Unknown resource type in fetch filter" and are
+ * therefore omitted — requests of those types simply never pause:
+ * fail-closed on both leak and stall).
+ *
+ * `Fetch.RequestPattern.resourceType` takes a single enum, so each allowlist
+ * host is emitted once per type below. `Document` is deliberately ABSENT: a
+ * paused top-frame Document stalls the navigation commit waiter on this
+ * ego-browser build (`Fetch.continueRequest` succeeds and the page renders,
+ * but `page.goto()` never resolves — verified). Skipping headers for
+ * Documents in the handler would NOT fix that; only never pausing them does.
+ */
+export const ACCESS_FETCH_RESOURCE_TYPES = Object.freeze([
+  "Stylesheet",
+  "Image",
+  "Media",
+  "Font",
+  "Script",
+  "XHR",
+  "Fetch",
+  "EventSource",
+  "Ping",
+  "CSPViolationReport",
+  "Other",
+]);
 
 /**
- * Build `Fetch.enable` request patterns scoped to the staging allowlist.
- * Each allowlisted host gets one `*://host/*` pattern; the bare
+ * Build `Fetch.enable` request patterns scoped to the staging allowlist AND
+ * to subresource types. Each allowlisted host gets one `*://host/*` pattern
+ * per `ACCESS_FETCH_RESOURCE_TYPES` entry; the bare
  * `*.cloudflareaccess.com` rule becomes `*://*.cloudflareaccess.com/*`, which
  * the Fetch domain matches per-request URL. No catch-all pattern is ever
- * emitted — a request the patterns don't match is never paused and therefore
- * can never receive the token pair.
+ * emitted, and no pattern can match a Document navigation — a request the
+ * patterns don't match is never paused and therefore can never receive the
+ * token pair or stall navigation.
  *
- * @returns {Array<{ urlPattern: string, requestStage: string }>}
+ * @returns {Array<{ urlPattern: string, requestStage: string, resourceType: string }>}
  */
 export function buildAccessFetchPatterns() {
-  return AGENT_QA_ALLOWED_HOSTS.map((rule) => ({
-    urlPattern: `*://${rule}/*`,
-    requestStage: "Request",
-  }));
+  return AGENT_QA_ALLOWED_HOSTS.flatMap((rule) =>
+    ACCESS_FETCH_RESOURCE_TYPES.map((resourceType) => ({
+      urlPattern: `*://${rule}/*`,
+      requestStage: "Request",
+      resourceType,
+    })),
+  );
 }
 
 /**
@@ -143,6 +189,14 @@ export function mergeAccessHeaders(original, { clientId, clientSecret }) {
  * Never throws — a paused request MUST always be continued, otherwise the
  * page hangs; on unexpected shapes it continues the request unmodified.
  *
+ * LIMITATION (ego-browser 0.5.0.32, verified 2026-09-19): `continueRequest`
+ * through `page.cdp()` returns `Invalid InterceptionId` for paused
+ * subresources — the interception belongs to an internal CDP session the
+ * command channel cannot continue (same for `fulfillRequest`, `failRequest`,
+ * `continueWithAuth`). The handler stays the correct attach-or-passthrough
+ * contract for when the ownership is fixed; today a matched subresource
+ * hangs until its own timeout, so do NOT `Fetch.enable` on a journey page.
+ *
  * @param {{ cdp: (method: string, params?: unknown) => Promise<unknown> }} page ego-browser Page (or any `{ cdp }` handle)
  * @param {{ method?: string, params?: { requestId?: string, request?: { url?: string, headers?: Record<string, string> } } }} event one buffered CDP event
  * @param {{ clientId: string, clientSecret: string }} pair resolved token pair
@@ -170,9 +224,16 @@ export async function handlePausedAccessRequest(page, event, pair) {
 /**
  * Create a drain pump for the ego-browser `page.events()` buffer. The pump
  * polls the buffer and routes each `Fetch.requestPaused` event through
- * `handlePausedAccessRequest`. Covers subresources (images, XHR/fetch,
- * beacons) — the top-frame Document navigation is deliberately NOT Fetch
- * intercepted (see module header) and needs no pump handling.
+ * `handlePausedAccessRequest`.
+ *
+ * While the `handlePausedAccessRequest` LIMITATION above holds, enabling
+ * Fetch interception on a journey page breaks subresource loading (a matched
+ * subresource never loads; `Fetch.disable` does not release paused
+ * requests). Safe operating point today: NO `Fetch.enable` during the
+ * journey — Documents and subresources alike load normally — and the global
+ * `Network.setExtraHTTPHeaders` path stays retired regardless (F6).
+ * `page.fetch` against an intercepted URL hangs for the same reason; scaffold
+ * HTTP calls use direct Node fetch, so this is off the hot path.
  *
  * @param {{ clientId: string, clientSecret: string }} pair resolved token pair
  * @param {{ intervalMs?: number }} [opts] poll interval (default 25ms)

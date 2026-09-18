@@ -133,6 +133,19 @@ else
       poi-service/*)
         poi_service=true
         ;;
+      # Agent-QA harness (BRAWUKA-408): deterministic, non-LLM scaffold an
+      # agent-QA run uses (Access injection, session bootstrap, personas,
+      # ledger, allowlist guard, quotas, cleanup) plus its unit tests — the
+      # same convention as the deploy/devops helpers below: harness-side, so
+      # it rides `integration=true` rather than the `application` gate.
+      # The shared Supabase env core reaches the password-grant journey helper
+      # (`web/tests/helpers/staging-session.ts`) by static import, so the
+      # closure check in `check-ci-classification.sh` §4b needs it routed to
+      # `integration-gate` too — an `integration=false` here would fail that
+      # gate even though the core itself holds no gate input.
+      scripts/agent-qa/*)
+        integration=true
+        ;;
       # Dokploy deployment definitions and the devops forwarders they ship with
       # delegate to `scripts/devops/*` (already integration-gated); the compose
       # stacks define the environments the DB-backed suites run against.

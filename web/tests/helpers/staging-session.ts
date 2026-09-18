@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { resolveSupabaseEnvCore } from "../../../scripts/agent-qa/supabase-env.mjs";
 
 /**
  * Staging-journey real-session helper (spec 0010 §3, spec 0003 §Test policy).
@@ -26,31 +27,17 @@ export interface StagingSessionEnv {
 }
 
 /**
- * Resolve the staging-session env contract. Throws listing every missing
- * variable — never defaults, never guesses a target (same vocabulary as
- * `run-staging-journey.sh`: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
- * `SUPABASE_ANON_KEY`, with the public `NEXT_PUBLIC_*` mirrors accepted for
- * the non-secret URL/anon pair only).
+ * Resolve the staging-session env contract. Thin wrapper over the shared
+ * agent-QA Supabase core (`scripts/agent-qa/supabase-env.mjs`) — same
+ * vocabulary as `run-staging-journey.sh`, no duplicated logic (BRAWUKA-408).
+ * Throws listing every missing variable — never defaults, never guesses a
+ * target. The `service_role` key is read ONLY from `SUPABASE_SERVICE_ROLE_KEY`;
+ * a `NEXT_PUBLIC_*` mirror is never honored.
  */
 export function resolveStagingSessionEnv(
   env: Record<string, string | undefined> = process.env,
 ): StagingSessionEnv {
-  const supabaseUrl = env.SUPABASE_URL ?? env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = env.SUPABASE_ANON_KEY ?? env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
-  const missing = [
-    !supabaseUrl ? "SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL)" : null,
-    !anonKey ? "SUPABASE_ANON_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY)" : null,
-    !serviceRoleKey ? "SUPABASE_SERVICE_ROLE_KEY (server-side only, never NEXT_PUBLIC_*)" : null,
-  ].filter((entry): entry is string => entry !== null);
-  if (missing.length > 0) {
-    throw new Error(`Staging test session is not configured. Missing: ${missing.join(", ")}.`);
-  }
-  return {
-    supabaseUrl: (supabaseUrl as string).replace(/\/+$/, ""),
-    anonKey: anonKey as string,
-    serviceRoleKey: serviceRoleKey as string,
-  };
+  return resolveSupabaseEnvCore(env, "Staging test session");
 }
 
 export interface StagingTestSession {

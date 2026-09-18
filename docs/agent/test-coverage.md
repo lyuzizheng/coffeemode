@@ -1,6 +1,6 @@
 # Test Coverage — Traceability Matrix (S3)
 
-Source: `docs/agent/test-kit-plan.md` S3 testkit-coverage-doc · Spec authority: `docs/specs/0003-testing-and-ci.md` layers · Slice manifest: `docs/agent/implementation-slices.md`.
+Spec authority: `docs/specs/0003-testing-and-ci.md` layers · Slice manifest: `docs/agent/implementation-slices.md`.
 
 ## 1. Matrix
 
@@ -97,7 +97,6 @@ Deterministic gate `.agents/scripts/check-coverage-matrix.sh` enforces: (a) `doc
 ## 6. References
 
 - `docs/specs/0003-testing-and-ci.md` §Test layers, §Relevant local gates, §Commands, Appendix Coverage traceability — this file.
-- `docs/agent/test-kit-plan.md` S1 (helpers) → this doc (S3) → S2 (compose/mocks) can parallel after S1.
 - `web/tests/helpers/*` — shared helpers (S1) that removed duplication (direct `../helpers/*` subpath imports; `index.ts` barrel is convenience).
 - `web/tests/integration/*` — real-DB / real-MinIO suites (opt-in `RUN_INTEGRATION=1`; CI `integration-gate` runs them when web DB/storage boundaries change — merged from `integration-gate` + `images-integration-gate`).
 

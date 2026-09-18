@@ -14,7 +14,7 @@ The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI 
   custom domains — see `docs/agent/pending-user-actions.md`.
 - BRAWUKA-370/473 UI density program: the BRAWUKA-370 audit's four sub-issues
   (418/419/420/421) merged via #514/#516/#517; the follow-up density pass
-  (BRAWUKA-473, PR #518) unified concentric radii, chip sizing, type pairing,
+  (BRAWUKA-473, PRs #518/#519) unified concentric radii, chip sizing, type pairing,
   44px hit areas, and skeleton geometry, and codified the rules in spec 0002
   §Spacing and radius. Design artifacts in `docs/design/` were harmonized to
   shipped code (see `docs/design/README.md` §Harmonization notes).
@@ -23,30 +23,12 @@ The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI 
   the local compose Postgres; `supabase-mock` is retained for offline/unit use;
   staging journey suites run in per-suite scratch DBs via a serialized
   `staging-journey` workflow; prod promotion adds manual owner approval.
-- Issue #23 (distributed Postgres token-bucket rate limiter) is merged.
 - Open issues carry tier-0..3 labels mirroring the priority tiers in `docs/specs/0004` §Priority tiers (authority lives there, not in the harness). Fix order: tier-0 correctness/security/docs-truth first, then tier-1 launch gates.
-- Issue #25 (image completion service with atomic DB writes) is merged.
 - Issue #24's likes_count trigger (#57) and work_stats row locking (#56) are merged; #24 stays open (tier-0) until the gallery-merge convergence in #234 lands. JSONB normalization is deferred with a revisit trigger (0004 Post-MVP).
-- Issue #26 (shared packages/common single-source) is merged.
-- Issue #27 (work_stats row locking) is merged (#56).
-- Issue #74 merges the post-review P1 fixes for PRs #66–#73 (OAuth redirect allowlist, proxy session refresh, profile upsert failure, sign-out cache clearing, and upstream POI/image error logging).
 - Issue #114 established that Apple credentials do not block map-independent
   work. Design gates for those slices are now all cleared — every
   map-independent UI artifact is delivered and grilled (DG21–DG124); only the
   map-bound artifacts remain, waiting on Apple credentials (#131).
-- Issue #117 adds CI enforcement for the real-DB integration suite; the local suite is green.
-- BRAWUKA-146 / spec 0008 real-client HTTP journey matrix (Paths 1–6 through route handlers only): Stage 1 harness (BRAWUKA-147, merged #330), Stage 2 suites (BRAWUKA-156..159, BRAWUKA-149), and Stage 3 (BRAWUKA-150): test suite audited and pruned per spec 0008 §12, `test:integration:http` mounted as canonical gate in CI, database teardown hardened.
-- Issue #118 hardens the real-DB suite against unsafe database targets and order-dependent coverage.
-- Issue #119 preserves image-service storage failures instead of mapping them to `not_found`.
-- Issue #156 adds a real MinIO/R2 image round-trip suite (`web/tests/integration/images.integration.test.ts`, `npm run test:integration:images`): presigned PUT -> HEAD -> processor variant re-upload, creation/check-in photo provisioning end-to-end with real storage + DB gallery/intent metadata, missing-object 404, tampered Content-Type 403, single-use intent consume, and bad-creds 403. Storage failures fail the suite (no silent skip); CI runs it in `integration-gate` (merged DB+MinIO; was `images-integration-gate`).
-- BRAWUKA-307 drops the write-frozen `cafes.cover` column (migration 0025; last writer `attachImageToCafe` removed in PR #467): card covers now derive live from `gallery->0->>'card'` in every read query (nearby/search/detail/nav-prompt/profile), `cafeOgImageUrl` uses the first gallery card, spec 0001 schema + image-pipeline sections updated.
-- Issue #130 / PR #128 shipped the `cafe-creation` slice: Google/Apple Maps link import and Google/Apple provider search share one first-check-in flow. PR #128 merged 2026-08-20; the Kimi visual review was completed post-merge on 2026-08-23 (verdict on PR #128); findings #183–#185 were fixed in PR #187. Slice is COMPLETE.
-- PR #138 (docs: cafe-creation spec and map backlog) is merged to `main`.
-- Issue #146 / work-profile slice completes the map-independent work_stats aggregation: `coerceWorkStats` preserves `experience_score`/`composite_score`, create/edit/soft-delete recompute via `recomputeWorkStats` with `FOR UPDATE`, public-safe `CafeSummary`/`CafeDetail` expose both scores, `web/scripts/recompute-work-stats.mjs` provides the idempotent nightly drift correction and `.github/workflows/nightly-recompute.yml` schedules it at 02:00 UTC with observable failure.
-- Issue #189 / app-config slice adds the universal typed config: `web/config/rate-limits.yaml` owns the 4 API rate-limit buckets, `web/config/app.yaml` owns product parameters (`search.maxRadiusKm`, `cafes.listLimitMax`), and `web/lib/config.ts` loads + schema-validates both at startup (fail-fast on bad shape). Existing call sites migrated with values unchanged; feature slices must consume config, never hardcode.
-- Issue #133 / discovery-sheet slice (PR #195): the map-independent discovery core is live — bespoke Framer Motion PEEK/HALF/FULL sheet on mobile, 380px sidebar + 400px detail column ≥1024px, one-push/then-replace `/cafes/[id]` URL sync with Back-collapse, public `GET /api/cafes/[id]/checkins` feed (Newest default DG113, mode-bound keyset cursors, 20/page), anonymous "A nomad" DTOs, DG17 inline Retry, DG19 missing-cafe toast flow. `app.yaml` gains `feed.pageSize` and `discovery.defaultCenter` (no geolocation prompt, DG112). Issue #148 / PR #287 delivered the check-in drawer (integrated across discovery, cafe page actions/feed, and profile); `/cafes/[id]` SSR remains `seo-sharing`'s (#150).
-- Issue #150 / seo-sharing slice ships the public SSR `/cafes/[id]` surface: two-part page (Part 1 aggregate shell — ScorePair/WorkProfile/PolicyConsensus/gallery/hours plus JSON-LD CafeOrCoffeeShop with aggregateRating from experience_score and `serializeJsonLd` XSS escaping; Part 2 the discovery feed component client-loaded, Newest default, never in initial HTML — DG106/DG113), locale-independent canonical + hreflang x-default (DG110), OG hook copy + dynamic no-cover fallback card with honest dimensions (DG108 — 400×300 for cover card, 1200×630 fallback), sitemap/robots/llms.txt (DG105, sitemap with s-maxage), CDN shell cache from `app.yaml` `seo.shellCache` (DG107), WeChat-aware share control with focus management swept into discovery (DG109), and a real 404 committed by the proxy before the root loading boundary can stream a soft-404, with the DG111 recovery block scaffolding (never user geolocation, DG112 — endpoint + block wired but empty until cafe tombstone retains id+lat/lng; quiet 404 is the interim contract). Public-safe: the SSR payload carries no `StoredImage.by`/author ids (DG13). DG124 map hydration stays the blocked `deeplink-hydration` slice.
-- Apple live search is configuration-gated and does not block link import or Google search. New user-visible UI implementation is separately design-gated on a slice-specific Kimi K3 artifact.
 
 ## What exists
 
@@ -150,7 +132,6 @@ docs/agent/              current state, planned-slice manifest, owner actions
 
 ```text
 - deploy-vps — Docker + VPS + CDN + CI/CD [BLOCKED on domain + VPS + Cloudflare account]
-- cleanup-legacy — remove old Vite frontend + Java backend [BLOCKED on deploy-vps]
 ```
 
 ## Known issues
@@ -175,9 +156,3 @@ docs/agent/              current state, planned-slice manifest, owner actions
   bindings remain the local-dev compose kit — image-service custom domains are
   likewise still owner actions (§6).
 ```
-
-## Latest review
-
-D1, D4, D7, and A2 were implemented together on `feat/impl-phase1-remainder`. An independent review surfaced four blockers: the like CTE could insert orphaned rows for soft-deleted check-ins, the pool shutdown hook auto-registered at import and force-exited the process, Worker `compatibility_date` values were in the future, and the image completion route wrote `StoredImage` records without a `source` attribution. All four were fixed and verified; the branch merged to `main` as PR #22.
-
-An independent critical review of merged PRs #66–#73 surfaced P1 findings in OAuth `redirectTo` allowlist handling (#29), proxy session refresh (#30), OAuth callback profile upsert failure (#42), sign-out cache clearing (#47), and upstream POI/image error body logging (#50). The fixes were applied on `fix/post-review-p1-issues`, verified by `npm run verify` and `preflight`, and merged to `main` as PR #74.

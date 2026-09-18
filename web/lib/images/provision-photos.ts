@@ -68,9 +68,10 @@ export interface ProvisionPhotosDeps {
      * Stage marker (issue #158 / BRAWUKA-400): the creation flow sends
      * `"provision"` (pre-target); the post-commit attach leg re-sends
      * `"checkin"` + the real check-in id so the sweeper never matches it.
+     * Required since #158 — the worker rejects marker-less completes.
      */
-    targetType?: "provision" | ImageTargetType;
-    targetId?: string;
+    targetType: "provision" | ImageTargetType;
+    targetId: string;
   }) => Promise<ProcessUrls>;
   processImage: (imageUuid: string, processUrls: ProcessUrls) => Promise<ProcessedImage>;
   /**

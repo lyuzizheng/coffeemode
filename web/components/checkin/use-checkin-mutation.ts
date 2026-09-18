@@ -42,12 +42,13 @@ interface UseCheckinMutationOptions {
 
 function resolveSubmitError(
   err: unknown,
-  t: (key: "photosUploading" | "photosFailed" | "photoTooLarge" | "couldntSave") => string,
+  t: (key: "photosUploading" | "photosFailed" | "photoTooLarge" | "photoInvalid" | "couldntSave") => string,
 ): string {
   if (!(err instanceof Error)) return t("couldntSave");
   if (err.message === "photos_uploading") return t("photosUploading");
   if (err.message === "photo_upload_failed") return t("photosFailed");
   if (err.message === "photo_too_large") return t("photoTooLarge");
+  if (err.message === "photo_invalid") return t("photoInvalid");
   return userFacingMessage(err.message, t("couldntSave"));
 }
 

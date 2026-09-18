@@ -17,6 +17,11 @@ vi.mock("@/lib/checkin/pending-checkin", () => ({
   loadPendingCheckin: vi.fn().mockResolvedValue(null),
   clearPendingCheckin: vi.fn().mockResolvedValue(undefined),
 }));
+// The like-failure toast needs a HeroUI provider the tests do not mount.
+vi.mock("@heroui/react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@heroui/react")>();
+  return { ...actual, toast: vi.fn() };
+});
 
 const CAFE = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22";
 
@@ -196,8 +201,8 @@ describe("CheckinFeed gone-cafe 404", () => {
 
 
 // BRAWUKA-281 P2: a like in flight must disable only its own card's button.
-// The hook exposes `likePendingId` (the in-flight check-in id, null idle);
-// rendering passes `likePending={likePendingId === checkin.id}`.
+// The hook exposes `likePendingIds` (the in-flight check-in ids);
+// rendering passes `likePending={likePendingIds.has(checkin.id)}`.
 describe("CheckinFeed per-card like pending", () => {
   beforeEach(() => {
     vi.stubGlobal(
@@ -251,6 +256,125 @@ describe("CheckinFeed per-card like pending", () => {
     await waitFor(() => {
       expect((likeButtons[0] as HTMLButtonElement).disabled).toBe(false);
     });
+  });
+});
+
+// BRAWUKA-460: optimistic like state is keyed per check-in. Concurrent
+// likes on different cards must not overwrite each other — pending flags
+// track every in-flight like, a failed like rolls back only its own card,
+// and a refetch waits for the last like to settle before invalidating.
+describe("CheckinFeed concurrent likes", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+  });
+
+  function mockLikes(handlers: Record<string, () => unknown>) {
+    // The refetch after a settled like must reflect what the server would
+    // have persisted — track which ids were liked successfully.
+    const liked = new Set<string>();
+    globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+      if (typeof url === "string" && url.startsWith(`/api/cafes/${CAFE}/checkins`)) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            checkins: [card(OWN_ID, true, "Corner seat"), card(OTHER_ID, false, "Great espresso")].map(
+              (c) => (liked.has(c.id) ? { ...c, liked_by_viewer: true, likes_count: 1 } : c),
+            ),
+            next_cursor: null,
+          }),
+        });
+      }
+      for (const [id, handler] of Object.entries(handlers)) {
+        if (typeof url === "string" && url === `/api/checkins/${id}/like`) {
+          return Promise.resolve(handler()).then((res) => {
+            if (typeof res === "object" && res !== null && "ok" in res && res.ok) liked.add(id);
+            return res;
+          });
+        }
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+    });
+  }
+
+  it("keeps both cards pending until each like settles", async () => {
+    let releaseA!: () => void;
+    let releaseB!: () => void;
+    const gateA = new Promise<void>((resolve) => {
+      releaseA = resolve;
+    });
+    const gateB = new Promise<void>((resolve) => {
+      releaseB = resolve;
+    });
+    const ok = () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ liked: true, likes_count: 1 }),
+    });
+    mockLikes({
+      [OWN_ID]: () => gateA.then(ok),
+      [OTHER_ID]: () => gateB.then(ok),
+    });
+
+    renderFeed();
+    const buttons = await screen.findAllByRole("button", { name: "Like this check-in" });
+    const btnA = buttons[0] as HTMLButtonElement;
+    const btnB = buttons[1] as HTMLButtonElement;
+
+    fireEvent.click(btnA);
+    fireEvent.click(btnB);
+    await waitFor(() => {
+      expect(btnA.disabled).toBe(true);
+      expect(btnB.disabled).toBe(true);
+    });
+
+    // A settling must not re-enable B while B's like is still in flight.
+    releaseA();
+    await waitFor(() => expect(btnA.disabled).toBe(false));
+    expect(btnB.disabled).toBe(true);
+
+    releaseB();
+    await waitFor(() => expect(btnB.disabled).toBe(false));
+  });
+
+  it("a failed like rolls back only its own card", async () => {
+    let releaseB!: () => void;
+    const gateB = new Promise<void>((resolve) => {
+      releaseB = resolve;
+    });
+    mockLikes({
+      [OWN_ID]: () => Promise.resolve({ ok: false, status: 500, json: async () => ({}) }),
+      [OTHER_ID]: () =>
+        gateB.then(() => ({
+          ok: true,
+          status: 200,
+          json: async () => ({ liked: true, likes_count: 1 }),
+        })),
+    });
+
+    renderFeed();
+    const buttons = await screen.findAllByRole("button", { name: "Like this check-in" });
+    const btnA = buttons[0] as HTMLButtonElement;
+    const btnB = buttons[1] as HTMLButtonElement;
+
+    // A fails fast; B is still in flight with its optimistic like applied.
+    fireEvent.click(btnA);
+    fireEvent.click(btnB);
+    await waitFor(() => {
+      expect(btnB.getAttribute("aria-pressed")).toBe("true");
+      expect(btnA.getAttribute("aria-pressed")).toBe("false");
+    });
+
+    releaseB();
+    await waitFor(() => expect(btnB.disabled).toBe(false));
+    expect(btnB.getAttribute("aria-pressed")).toBe("true");
   });
 });
 // DG72 feed-card edit entry (owner verdict BRAWUKA-120): only the viewer's

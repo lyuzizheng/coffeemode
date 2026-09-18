@@ -132,12 +132,12 @@ export function CheckinSlider({
           {/* Thumb */}
           <div
             key={pulse}
-            className={`absolute top-1/2 h-7 w-7 -translate-y-1/2 rounded-full border-2 bg-surface shadow-sm transition-[left,transform,opacity] duration-75 ${
+            className={`absolute top-1/2 h-7 w-7 -translate-y-1/2 rounded-full border-2 bg-surface shadow-sm transition-[left,translate,transform,opacity] duration-75 ${
               isSet
-                ? "border-accent opacity-100"
+                ? "-translate-x-1/2 border-accent opacity-100"
                 : "border-border opacity-50"
             } ${pulse > 0 ? "checkin-thumb-pulse" : ""}`}
-            style={{ left: isSet ? `calc(${value}% - 14px)` : "0px" }}
+            style={{ left: isSet ? `${value}%` : "0px" }}
           />
         </div>
 

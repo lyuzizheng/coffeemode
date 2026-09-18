@@ -41,7 +41,13 @@ export function resolveAccessHeaders(env = process.env) {
 }
 
 /**
- * Header shape for CDP `Network.setExtraHTTPHeaders` (ego-browser).
+ * DEPRECATED (BRAWUKA-508): `Network.setExtraHTTPHeaders` attaches headers to
+ * EVERY request the page makes, leaking the `CF-Access-*` service token to
+ * third-party origins (F6). Use `scripts/agent-qa/access-inject.mjs`
+ * (`buildAccessFetchPatterns` + `createAccessRequestPump`, Fetch domain with
+ * allowlist-scoped patterns) instead — per-origin injection only. These two
+ * shape helpers remain for scaffold-side direct HTTP calls (curl/fetch to
+ * staging URLs the caller already allowlisted), never for browser injection.
  *
  * @param {{ clientId: string, clientSecret: string }} pair
  */
@@ -55,7 +61,8 @@ export function toCdpExtraHeaders({ clientId, clientSecret }) {
 }
 
 /**
- * Header shape for Playwright `extraHTTPHeaders` (browser/context launch).
+ * Header shape for scaffold-side direct HTTP calls to staging
+ * (see `toCdpExtraHeaders` deprecation note above).
  *
  * @param {{ clientId: string, clientSecret: string }} pair
  */

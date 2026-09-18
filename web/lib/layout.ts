@@ -30,6 +30,13 @@ export const DETAIL_COLUMN_PX = 400;
 /** Square thumbnail edge for check-in/gallery photo strips and card covers
  * (feed-card, gallery-strip, checkin-photos, profile-tab-cafes, cafe-card). */
 export const THUMB_PX = 72;
+/** Cafe-card cover tile, card variant (PEEK carousel) — the skeleton in
+ * mobile-sheet mirrors these so loading never shifts layout (BRAWUKA-420). */
+export const CARD_COVER_W_PX = 96;
+/** Cafe-card cover tile, row variant (desktop index) — the sidebar skeleton
+ * mirrors these. */
+export const ROW_COVER_W_PX = 84;
+export const ROW_COVER_H_PX = 64;
 /** Max width of the single-column reading surface (cafe detail, profile). */
 export const CONTENT_MAX_W_PX = 640;
 /** Clearance that keeps floating chrome off other floating chrome: the
@@ -46,6 +53,9 @@ export const LAYOUT_CSS_VARS = {
   "--layout-aside-column": `${ASIDE_COLUMN_PX}px`,
   "--layout-detail-column": `${DETAIL_COLUMN_PX}px`,
   "--layout-thumb": `${THUMB_PX}px`,
+  "--layout-card-cover-w": `${CARD_COVER_W_PX}px`,
+  "--layout-row-cover-w": `${ROW_COVER_W_PX}px`,
+  "--layout-row-cover-h": `${ROW_COVER_H_PX}px`,
   "--layout-content-max": `${CONTENT_MAX_W_PX}px`,
   "--layout-chrome-offset": `${MAP_CHROME_OFFSET_PX}px`,
 } as const;

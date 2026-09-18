@@ -139,7 +139,7 @@ function PromptCard({
       }
     >
       <div className="flex items-center gap-3">
-        <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-md border border-separator bg-surface-tertiary">
+        <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-sm border border-separator bg-surface-tertiary">
           {item.cafe.cover ? (
             <Image
               src={item.cafe.cover}

@@ -39,7 +39,7 @@ function SidebarSkeletons() {
     <div className="flex flex-col" aria-hidden>
       {[0, 1, 2, 3].map((i) => (
         <div key={i} className="flex gap-3 border-b border-separator p-3">
-          <div className="h-[64px] w-[84px] animate-pulse rounded-md bg-surface-tertiary" />
+          <div className="h-[var(--layout-row-cover-h)] w-[var(--layout-row-cover-w)] animate-pulse rounded-sm bg-surface-tertiary" />
           <div className="flex flex-1 flex-col justify-center gap-2">
             <div className="h-4 w-2/3 animate-pulse rounded bg-surface-tertiary" />
             <div className="h-3 w-1/3 animate-pulse rounded bg-surface-tertiary" />

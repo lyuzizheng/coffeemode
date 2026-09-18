@@ -173,7 +173,7 @@ describe("CheckinFeed per-card like pending", () => {
     const likeGate = new Promise<void>((resolve) => {
       releaseLike = resolve;
     });
-    globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+    globalThis.fetch = vi.fn().mockImplementation((url: string) => {
       if (typeof url === "string" && url.startsWith(`/api/cafes/${CAFE}/checkins`)) {
         return Promise.resolve({
           ok: true,

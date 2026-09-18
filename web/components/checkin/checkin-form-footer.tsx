@@ -17,7 +17,7 @@ interface CheckinFormFooterProps {
 
 /**
  * Artifact §4 step 1: on successful save the confirm button's label
- * crossfades (120ms) to a ✓ that draws itself in on spring.gentle, and the
+ * crossfades (120ms) to a ✓ that draws itself in on springs.gentle, and the
  * background eases accent → secondary (sage) over 200ms. Reduced motion
  * renders the settled ✓ directly — the toast carries the confirmation.
  */

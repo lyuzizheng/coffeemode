@@ -433,10 +433,23 @@ body {
   }
 }
 
-/* Scores, distances, counts — always tabular. */
+/* Scores, distances, counts — always tabular. The personality tokens
+   (--tnum-*) are set per design variant below; element-level rules consume
+   them here so a nested data-variant subtree (picker swatches) resolves its
+   own variant instead of the page's. font-mono always wins the family —
+   explicit mono call sites keep JetBrains under every variant. */
 .tnum {
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
+  font-variant-numeric: var(--tnum-variant, tabular-nums);
+  font-feature-settings: var(--tnum-features, "tnum");
+}
+.tnum:not(.font-mono) {
+  font-family: var(--tnum-family, inherit);
+}
+
+/* Filled-button elevation — per-variant token, same nested-scope reasoning
+   as .tnum. Default/modern pin --button-shadow: none; retro pins shadow-sm. */
+.button:not(.button--ghost):not(.button--outline) {
+  box-shadow: var(--button-shadow, none);
 }
 
 /* Hide scrollbars on horizontal tab/scroll strips while keeping scroll.
@@ -662,6 +675,7 @@ body {
    the same tokens the variant blocks override; values mirror the base
    plates above (RADIUS COPY convention applies — keep in sync). */
 [data-variant="default"] {
+  --radius-xs: 0.125rem;
   --radius-sm: 0.125rem;
   --radius-md: 0.25rem;
   --radius-lg: 0.375rem;
@@ -672,6 +686,7 @@ body {
   --radius-full: 9999px;
   --radius: var(--radius-md);
   --field-radius: var(--radius-md);
+  --field-border-width: 1px;
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
     "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
@@ -679,6 +694,8 @@ body {
     system-ui, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-serif: var(--font-source-serif), Georgia, "Times New Roman",
     "Songti SC", "Noto Serif SC", serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
 
   --shadow-sm: 0 1px 2px 0 oklch(25% 0.03 50 / 0.05);
   --shadow-md:
@@ -688,15 +705,31 @@ body {
     0 2px 4px 0 oklch(25% 0.03 50 / 0.04),
     0 12px 28px -6px oklch(25% 0.03 50 / 0.12);
   --shadow-map: 0 1px 3px 0 oklch(25% 0.03 50 / 0.06);
+  --surface-shadow:
+    0 1px 2px 0 oklch(25% 0.03 50 / 0.05),
+    0 0 1px 0 oklch(25% 0.03 50 / 0.04);
+  --overlay-shadow:
+    0 2px 6px 0 oklch(25% 0.03 50 / 0.05),
+    0 12px 32px -8px oklch(25% 0.03 50 / 0.14);
 
   --background: oklch(98.1% 0.004 82);
   --foreground: oklch(23% 0.022 48);
   --surface: oklch(99.4% 0.002 82);
   --surface-secondary: oklch(96.4% 0.006 76);
   --surface-tertiary: oklch(93.2% 0.009 72);
+  --overlay: oklch(99.6% 0.002 82);
   --muted: oklch(44% 0.02 55);
+  --default: oklch(94% 0.007 72);
+  --segment: oklch(99.4% 0.002 82);
   --border: oklch(89.5% 0.008 70);
   --separator: oklch(92.5% 0.006 74);
+
+  /* Element-level personality tokens (consumed by the .tnum/.button rules
+     above): default is tabular numerals in the UI font, flat buttons. */
+  --tnum-family: var(--font-sans);
+  --tnum-variant: tabular-nums;
+  --tnum-features: "tnum";
+  --button-shadow: none;
 }
 
 /* ==== RETRO — 复古编辑风 ==================================================
@@ -760,6 +793,13 @@ body {
   --muted: oklch(44% 0.02 55);
   --default: oklch(94% 0.007 72);
   --segment: oklch(99.4% 0.002 82);
+
+  /* Element-level personality tokens: oldstyle editorial numerals in the
+     serif UI voice, paper-lift on filled buttons. */
+  --tnum-family: var(--font-sans);
+  --tnum-variant: oldstyle-nums tabular-nums;
+  --tnum-features: "onum", "tnum";
+  --button-shadow: var(--shadow-sm);
 }
 
 /* Retro dark — same warm espresso plate; the lift shadows stay out (dark
@@ -793,16 +833,6 @@ body {
 }
 [data-variant="retro"]:is(.dark, [data-theme="dark"]) body {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
-}
-
-/* Retro controls: filled buttons carry the paper-lift shadow; ghost/outline
-   stay flat. Numerals go oldstyle — the editorial figure set. */
-[data-variant="retro"] .button:not(.button--ghost):not(.button--outline) {
-  box-shadow: var(--shadow-sm);
-}
-[data-variant="retro"] .tnum {
-  font-variant-numeric: oldstyle-nums tabular-nums;
-  font-feature-settings: "onum", "tnum";
 }
 
 /* Retro forbids glassmorphism: kill every backdrop blur and re-opacify the
@@ -839,6 +869,17 @@ body {
   --radius: var(--radius-md);
   --field-radius: var(--radius-md);
 
+  /* UI voice stays the base stacks — pinned so a scoped subtree (the
+     picker's swatch) shows modern's sans even under a retro page. */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-display: var(--font-cabinet), var(--font-inter), ui-sans-serif,
+    system-ui, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-serif: var(--font-source-serif), Georgia, "Times New Roman",
+    "Songti SC", "Noto Serif SC", serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+
   /* Cooler neutral plate — higher contrast, grayer surfaces. Brand accent,
      sage, and status tokens stay shared. */
   --background: oklch(97.8% 0.003 250);
@@ -868,6 +909,14 @@ body {
   --overlay-shadow:
     0 2px 6px 0 oklch(25% 0.02 260 / 0.06),
     0 12px 32px -8px oklch(25% 0.02 260 / 0.15);
+
+  /* Element-level personality tokens: data-is-mono — every .tnum annotation
+     resolves to JetBrains; buttons stay flat (crispness comes from radius
+     and hairlines, not elevation). */
+  --tnum-family: var(--font-mono);
+  --tnum-variant: tabular-nums;
+  --tnum-features: "tnum";
+  --button-shadow: none;
 }
 
 /* Modern dark — cold graphite plate (hue 250–260, low chroma). Neutrals only;
@@ -901,13 +950,6 @@ body {
   background-image:
     linear-gradient(to right, color-mix(in oklch, var(--foreground) 7%, transparent) 1px, transparent 1px),
     linear-gradient(to bottom, color-mix(in oklch, var(--foreground) 7%, transparent) 1px, transparent 1px);
-}
-
-/* Modern data rule — every tabular-numeric annotation (scores, distances,
-   counts, timestamps) speaks JetBrains Mono. `.tnum` is the site-wide data
-   marker; mono stays the annotation voice, never body copy. */
-[data-variant="modern"] .tnum {
-  font-family: var(--font-mono);
 }
 
 /* The bespoke sheet and HeroUI drawers share the top-corner radius via

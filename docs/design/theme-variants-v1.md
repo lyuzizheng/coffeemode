@@ -81,6 +81,14 @@ swatches show the light plate. Entry points: /profile Preferences
 (authenticated) and the anonymous gate footer — both localStorage-backed,
 no server round-trip.
 
+Element-level personality is tokenized for the same reason: `.tnum`
+numerals and filled-button elevation consume `--tnum-family`,
+`--tnum-variant`, `--tnum-features`, and `--button-shadow`, which each
+variant block pins (default included). Variant-scoped descendant selectors
+would pierce nested swatch scopes — the page variant would restyle every
+swatch's tells. `font-mono` always wins over `--tnum-family`, so explicit
+mono call sites keep JetBrains under every variant.
+
 `/theme-preview` mounts the same picker in its header — the acceptance
 surface: every section walkthrough runs per variant × light/dark.
 

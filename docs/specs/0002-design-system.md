@@ -363,6 +363,14 @@ tokens stay shared across all variants. Persistence is localStorage-only,
 applied pre-paint by the inline bootstrap in `app/layout.tsx` — no flash,
 no server round-trip.
 
+Element-level personality (`.tnum` numerals, filled-button elevation) is
+expressed as per-variant tokens (`--tnum-family`, `--tnum-variant`,
+`--tnum-features`, `--button-shadow`) consumed by single global rules —
+never variant-scoped descendant selectors, which would pierce nested
+`data-variant` subtrees (picker swatches). Each variant block pins the
+full token set, and `[data-variant="default"]` re-pins it, so nested
+scopes are self-contained.
+
 ```text
 default — this spec, unchanged: dense radius scale (2/4/6/8px),
           Inter chrome, Cabinet display, warm paper plate

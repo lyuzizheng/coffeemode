@@ -12,7 +12,7 @@ import type { CafeSummary } from "@/types/cafes";
  * are renderer-agnostic by construction.
  *
  * Members marked optional are capability extensions (BRAWUKA-330, design
- * BRAWUKA-322 §1.1): consumers MUST feature-detect (`provider.onMapTap?.(…)`)
+ * BRAWUKA-322 §1.1): consumers MUST feature-detect (`provider.getBounds?.()`)
  * — a provider that cannot offer the capability simply omits it.
  */
 export interface IMapProvider {
@@ -42,13 +42,6 @@ export interface IMapProvider {
 
   /** Registers the cafe-tap callback; returns an unsubscribe function. */
   onCafeSelect(handler: (cafeId: string) => void): () => void;
-
-  /**
-   * Registers a map-tap callback for taps that hit no pin or cluster —
-   * the map-creation-entry trigger (tap / long-press → create). Returns an
-   * unsubscribe function. Optional: consumers feature-detect.
-   */
-  onMapTap?(handler: (coordinates: Coordinates) => void): () => void;
 
   /** Current viewport bounds. Optional: consumers feature-detect. */
   getBounds?(): MapBounds;

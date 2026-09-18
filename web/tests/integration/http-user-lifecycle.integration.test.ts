@@ -91,11 +91,6 @@ vi.mock("@/lib/places/poi-client", () => {
         lng: 103.8322,
       }).results[0]!;
     }),
-    getPOI: vi.fn(async (placeId: string) => {
-      return createMockGooglePlacesResponse({
-        place_id: placeId,
-      }).results[0]!;
-    }),
     storeExternalPOIs: vi.fn(async (pois) => ({ stored: pois.length })),
   };
 });

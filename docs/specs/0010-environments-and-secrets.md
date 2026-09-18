@@ -68,8 +68,8 @@ app data is local.
   and for tests that must not touch the network; it is never the staging or CI
   backend.
 - **Unit / component tests**: unchanged — `web/tests/helpers/auth.ts:fakeJwt`
-  (unsigned deterministic JWT) plus `mockSupabaseServerClient`. Unit tests never
-  perform real auth.
+  (unsigned deterministic JWT) plus inline `vi.mock` of the auth boundary.
+  Unit tests never perform real auth.
 - **Integration tests against local Postgres (CI `integration-gate`)**:
   unchanged — hermetic, no Supabase dependency.
 - **Staging journey suites** (real sessions, non-interactive): a per-run test

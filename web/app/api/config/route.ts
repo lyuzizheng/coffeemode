@@ -14,8 +14,8 @@ function configCacheControl(): string {
 /**
  * GET /api/config
  *
- * Operator-editable runtime content (BRAWUKA-284): announcement banners +
- * feature flags. No redeploy needed; edge cache applies the TTL above.
+ * Operator-editable runtime content (BRAWUKA-284): announcement banners.
+ * No redeploy needed; edge cache applies the TTL above.
  * Unauthenticated by design; values are public-safe only. Security /
  * rate-limit / auth parameters MUST NEVER be served here.
  *

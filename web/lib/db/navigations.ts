@@ -23,9 +23,6 @@ interface RecordedNavigation {
   created_at: string;
 }
 
-/** The promptable projection of a navigation row, joined to its cafe. */
-export type NavigationPromptItem = NavPromptItemDto;
-
 /** Validate the POST /api/navigations body. */
 export function parseNavigationBody(body: unknown): ParseResult<{ cafe_id: string }> {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
@@ -139,7 +136,7 @@ const PROMPT_OUTCOME_SQL = `
 select outcome from navigations where id = $1 and user_id = $2
 `;
 
-const navigationPromptStore: PromptQueueStore<NavigationPromptItem> = {
+const navigationPromptStore: PromptQueueStore<NavPromptItemDto> = {
   async nextEligible(userId, params) {
     const { rows } = await query<
       {
@@ -196,7 +193,7 @@ const navigationPromptStore: PromptQueueStore<NavigationPromptItem> = {
  * earliest the next day, 3-month expiry, ≥1-day back-of-queue re-ask,
  * max 2 re-asks — all from `app.yaml` `promptQueue`.
  */
-export const navigationPromptQueue = new PromptQueue<NavigationPromptItem>(
+export const navigationPromptQueue = new PromptQueue<NavPromptItemDto>(
   navigationPromptStore,
   appConfig.promptQueue,
 );

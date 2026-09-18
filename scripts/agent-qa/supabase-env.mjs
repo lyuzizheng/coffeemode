@@ -4,9 +4,8 @@
  * Single source of truth for the server-side staging Supabase env triple
  * (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, with the
  * public `NEXT_PUBLIC_*` mirrors accepted for the non-secret URL/anon pair
- * only). Consumed by:
- *   - `web/tests/helpers/staging-session.ts` (password-grant journey sessions);
- *   - `scripts/agent-qa/session.mjs` (magic-link agent-QA sessions).
+ * only). Consumed by `scripts/agent-qa/session.mjs` (magic-link agent-QA
+ * sessions).
  *
  * The `service_role` key is read ONLY from `SUPABASE_SERVICE_ROLE_KEY` — a
  * `NEXT_PUBLIC_*` mirror is never honored, so the key cannot leak into a

@@ -9,7 +9,7 @@ import type { BannerKind, RuntimeBanner, RuntimeConfig } from "@/types/runtime-c
  * "no banner" instead of a crash.
  */
 
-export const BANNER_KINDS = [
+const BANNER_KINDS = [
   "maintenance",
   "outage",
   "feature",
@@ -39,11 +39,6 @@ export function isRuntimeBanner(value: unknown): value is RuntimeBanner {
     (row.href === undefined || typeof row.href === "string") &&
     (row.expiresAt === undefined || typeof row.expiresAt === "string")
   );
-}
-
-export function isFlagsRecord(value: unknown): value is Record<string, boolean> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  return Object.values(value).every((v) => typeof v === "boolean");
 }
 
 /** True when a banner is visible right now (shape + expiry only). */
@@ -79,7 +74,6 @@ export async function fetchRuntimeConfig(): Promise<RuntimeConfig | null> {
     if (typeof data !== "object" || data === null) return null;
     const row = data as Record<string, unknown>;
     return {
-      flags: isFlagsRecord(row.flags) ? { ...row.flags } : {},
       banners: Array.isArray(row.banners) ? row.banners.filter(isRuntimeBanner) : [],
     };
   } catch {

@@ -7,19 +7,23 @@
  * CORS preflight rejects the header and breaks analytics) and map tiles
  * (`openfreemap`, which accepted the request, so the secret left our domain).
  *
- * Status (ego-browser 0.5.0.32, Chromium 152, verified on this machine
- * 2026-09-19): the scope below is CORRECT but NOT YET USABLE — `Fetch.enable`
- * itself is proven (patterns accepted, Documents excluded so `page.goto()`
- * resolves in ~100ms, zero Document pauses buffered), but `Fetch.continue*`
- * issued through `page.cdp()` returns `Invalid InterceptionId` for every
- * paused subresource (XHR, Image incl. `new Image()` tags) and the request
- * hangs until its own timeout. Same failure for `fulfillRequest`,
- * `failRequest`, `continueWithAuth`; `task.cdp()` accepts only
- * Target/Browser commands; `Fetch.disable` does not release paused requests.
- * The interception belongs to an internal CDP session the command channel
- * cannot continue. Until that ownership is fixed: do NOT `Fetch.enable` on a
- * journey page. Per-origin injection stays open, blocked on ego-browser;
- * the global `Network.setExtraHTTPHeaders` path stays retired regardless.
+ * Status (ego-browser 0.5.0.32, Chromium 152, verified end-to-end on this
+ * machine 2026-09-19 against a local echo server): subresource injection
+ * WORKS. A paused XHR continued via `page.cdp("Fetch.continueRequest", …)`
+ * with merged headers arrives at the server carrying `CF-Access-Client-Id`
+ * / `CF-Access-Client-Secret` — reproduced with the full 55-pattern set
+ * (5 hosts × 11 `ACCESS_FETCH_RESOURCE_TYPES`). Documents never pause under
+ * the patterns below, so `page.goto()` resolves in ~100ms. Two real caveats
+ * (both verified):
+ * (a) `page.fetch` must never target an intercepted URL — its paused event
+ * carries a requestId `page.cdp()` cannot continue (`Invalid
+ * InterceptionId`, request hangs). Scaffold HTTP calls use direct Node
+ * fetch, so they stay off this path; in-page reads use fire-and-poll
+ * (`window.__x`) rather than an awaited `page.evaluate(() => fetch(…))`,
+ * which times out even when the fetch completes.
+ * (b) the top-frame Document navigation carries NO Access headers — first
+ * staging `page.goto()` lands on the Access handshake; the agent completes
+ * it once and reuses the session cookie thereafter.
  *
  * - `Network.setExtraHTTPHeaders` is global by design — no origin scoping
  *   exists. It MUST NOT be used for `CF-Access-*` (F6: token reached
@@ -30,18 +34,14 @@
  *   accepts). A paused Document stalls the `goto()` commit waiter even after
  *   a successful continue, so Documents are excluded at the PATTERN level —
  *   skipping headers in the handler would not unstall it.
- * - `createAccessRequestPump` + `handlePausedAccessRequest` is the correct
- *   attach-or-passthrough contract for when continuation works. Pure
- *   functions (`shouldAttachAccessHeaders`, `mergeAccessHeaders`,
- *   `parseAccessEnvText`) are live and unit-pinned; the CDP round-trip is
- *   the blocked part.
- * - Safe operating point today: no `Fetch.enable` during the journey, so the
- *   first staging `page.goto()` is unauthenticated and lands on the Access
- *   handshake; the agent completes it once and reuses the session cookie.
- *   Scaffold HTTP calls use direct Node fetch (never `page.fetch` against an
- *   intercepted URL — it hangs the same way), so they are off this path.
+ * - `createAccessRequestPump` + `handlePausedAccessRequest` is the live
+ *   attach-or-passthrough contract: allowlisted subresources get the token
+ *   pair merged in, everything else passes through untouched, and a paused
+ *   request is always continued (never left hanging). Pure helpers
+ *   (`shouldAttachAccessHeaders`, `mergeAccessHeaders`, `parseAccessEnvText`)
+ *   are unit-pinned alongside.
  *
- * Usage (enable ONLY after the ego-browser interception fix lands):
+ * Usage:
  *
  * ```js
  * import {
@@ -189,13 +189,12 @@ export function mergeAccessHeaders(original, { clientId, clientSecret }) {
  * Never throws — a paused request MUST always be continued, otherwise the
  * page hangs; on unexpected shapes it continues the request unmodified.
  *
- * LIMITATION (ego-browser 0.5.0.32, verified 2026-09-19): `continueRequest`
- * through `page.cdp()` returns `Invalid InterceptionId` for paused
- * subresources — the interception belongs to an internal CDP session the
- * command channel cannot continue (same for `fulfillRequest`, `failRequest`,
- * `continueWithAuth`). The handler stays the correct attach-or-passthrough
- * contract for when the ownership is fixed; today a matched subresource
- * hangs until its own timeout, so do NOT `Fetch.enable` on a journey page.
+ * Caveat (ego-browser 0.5.0.32, verified 2026-09-19): a paused event from
+ * `page.fetch` against an intercepted URL carries a requestId `page.cdp()`
+ * cannot continue (`Invalid InterceptionId`, request hangs) — never use
+ * `page.fetch` for allowlisted URLs while `Fetch.enable` is active; in-page
+ * reads use fire-and-poll instead. Pauses from real page subresources
+ * (XHR/fetch from page JS, images, favicon) continue normally.
  *
  * @param {{ cdp: (method: string, params?: unknown) => Promise<unknown> }} page ego-browser Page (or any `{ cdp }` handle)
  * @param {{ method?: string, params?: { requestId?: string, request?: { url?: string, headers?: Record<string, string> } } }} event one buffered CDP event
@@ -226,15 +225,9 @@ export async function handlePausedAccessRequest(page, event, pair) {
  * polls the buffer and routes each `Fetch.requestPaused` event through
  * `handlePausedAccessRequest`.
  *
- * While the `handlePausedAccessRequest` LIMITATION above holds, enabling
- * Fetch interception on a journey page breaks subresource loading (a matched
- * subresource never loads; `Fetch.disable` does not release paused
- * requests). Safe operating point today: NO `Fetch.enable` during the
- * journey — Documents and subresources alike load normally — and the global
- * `Network.setExtraHTTPHeaders` path stays retired regardless (F6).
- * `page.fetch` against an intercepted URL hangs for the same reason; scaffold
- * HTTP calls use direct Node fetch, so this is off the hot path.
- *
+ * `page.fetch` must never target an intercepted URL (see
+ * `handlePausedAccessRequest` caveat — it hangs the same way); scaffold HTTP
+ * calls use direct Node fetch, so they stay off this path.
  * @param {{ clientId: string, clientSecret: string }} pair resolved token pair
  * @param {{ intervalMs?: number }} [opts] poll interval (default 25ms)
  * @returns {{ start: (page: { events: () => Promise<Array<unknown>>, cdp: (method: string, params?: unknown) => Promise<unknown> }) => () => void }}

@@ -24,28 +24,22 @@ drain pump (`createAccessRequestPump`) that merges the token pair into paused
 subresource requests (`Fetch.continueRequest`) and passes everything else
 through untouched.
 
-Status (ego-browser 0.5.0.32, verified on this machine 2026-09-19): the scope
-is correct but NOT YET USABLE. `Fetch.enable` with subresource-only patterns
-is proven — `page.goto()` resolves in ~100ms with zero Document pauses
-buffered — but every `Fetch.continue*` through `page.cdp()` returns
-`Invalid InterceptionId` for paused subresources (XHR, Image incl. `new
-Image()` tags; same for `fulfillRequest`/`failRequest`/`continueWithAuth`),
-and the request hangs until its own timeout. `Fetch.disable` does not release
-paused requests. The interception belongs to an internal CDP session the
-command channel cannot continue.
+Status (ego-browser 0.5.0.32, verified end-to-end on this machine 2026-09-19
+against a local echo server): subresource injection WORKS. A paused XHR
+continued via `page.cdp("Fetch.continueRequest", …)` with merged headers
+arrives at the server carrying the token pair — reproduced with the full
+55-pattern set (5 hosts × 11 types). Documents never pause under the
+patterns, so `page.goto()` resolves in ~100ms.
 
-Safe operating point today: do NOT `Fetch.enable` on a journey page.
-Per-origin injection stays open, blocked on the ego-browser interception fix;
-the global `setExtraHTTPHeaders` path stays retired regardless (F6). First
-staging `page.goto()` is unauthenticated and lands on the Access handshake;
-the agent completes it once and reuses the session cookie. Fail-closed
-throughout: unparsable/off-allowlist URLs never receive headers, and a paused
-request is always continued (never left hanging) once continuation works.
-
-Caution: never use `page.fetch` for an allowlisted URL while `Fetch.enable`
-is active — it hangs on the same interception (`Invalid InterceptionId` on
-continue). Scaffold HTTP calls use direct Node fetch, so they are off this
-path.
+Two real caveats: (a) `page.fetch` must never target an intercepted URL —
+its paused event carries a requestId `page.cdp()` cannot continue (`Invalid
+InterceptionId`, request hangs); scaffold HTTP calls use direct Node fetch
+and in-page reads use fire-and-poll (`window.__x`), so both stay off this
+path. (b) The top-frame Document navigation carries no Access headers, so
+the first staging `page.goto()` lands on the Access handshake; the agent
+completes it once and reuses the session cookie thereafter. Fail-closed
+throughout: unparsable/off-allowlist URLs never receive headers, and a
+paused request is always continued (never left hanging).
 
 ## Secret-bridge contract (F8)
 

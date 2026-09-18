@@ -152,6 +152,48 @@ describe("CheckinFeed expired-cursor recovery", () => {
     expect(seen[seen.length - 1]).not.toContain("dead-cursor");
   });
 });
+// BRAWUKA-450: a 404 means the cafe is gone — the feed must not burn two
+// doomed retries before routing to the DG19 gone-cafe flow. The hook's
+// retry predicate exempts FeedNotFoundError, so onMissingCafe fires after
+// exactly one request.
+describe("CheckinFeed gone-cafe 404", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+  });
+
+  it("does not retry a 404 and calls onMissingCafe after one request", async () => {
+    globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+      if (typeof url === "string" && url.startsWith(`/api/cafes/${CAFE}/checkins`)) {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          json: async () => ({ error: "cafe_not_found" }),
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+    });
+    const onMissingCafe = vi.fn();
+
+    render(
+      <CheckinFeed cafeId={CAFE} cafeName="Kiosk" onMissingCafe={onMissingCafe} onCheckIn={() => {}} />,
+      { wrapper: Wrapper },
+    );
+
+    await waitFor(() => expect(onMissingCafe).toHaveBeenCalled(), { timeout: 3000 });
+    const feedCalls = vi
+      .mocked(globalThis.fetch)
+      .mock.calls.filter(([url]) => String(url).startsWith(`/api/cafes/${CAFE}/checkins`));
+    expect(feedCalls).toHaveLength(1);
+  });
+});
+
 
 // BRAWUKA-281 P2: a like in flight must disable only its own card's button.
 // The hook exposes `likePendingId` (the in-flight check-in id, null idle);

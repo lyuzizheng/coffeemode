@@ -55,7 +55,9 @@ const ENTRIES = [
     async prepare(page) {
       const trigger = page.getByRole("button", { name: /Check in|Check-in|打卡/i }).first();
       await trigger.waitFor({ state: "visible", timeout: 15000 });
-      const dialog = page.locator("section.drawer__dialog--bottom");
+      // Placement flips at ≥1024px (BRAWUKA-516): bottom sheet on mobile,
+      // right-side panel on desktop — select the slot, not the modifier.
+      const dialog = page.locator("[data-slot='drawer-dialog']");
       for (let attempt = 0; attempt < 20 && !(await dialog.isVisible()); attempt++) {
         await trigger.click();
         await dialog.waitFor({ state: "visible", timeout: 1000 }).catch(() => {});

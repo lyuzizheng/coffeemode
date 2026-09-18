@@ -346,7 +346,7 @@ export function DesktopSidebar({
   cafes: CafeSummary[];
   onRetry: () => void;
   addCafe: ReactNode;
-  search?: SidebarSearchProps;
+  search?: DiscoverySearch;
   controller: DiscoveryController;
 }) {
   const reduced = useReducedMotion() ?? false;

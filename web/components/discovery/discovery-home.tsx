@@ -232,6 +232,7 @@ export function DiscoveryHome({
     setCheckinOpen(true);
   };
 
+
   // DG85/DG90: the prompt defers while the sheet is at FULL or the check-in
   // drawer (a modal task surface) is open; it renders once the UI returns
   // to PEEK/HALF with nothing modal above it.

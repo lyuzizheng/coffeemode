@@ -9,6 +9,7 @@ import type { PhotoUpload } from "./checkin-photos";
 import { fetchLastCheckin, type LastCheckin } from "@/lib/checkin/last-checkin";
 import { isUnauthorized } from "@/lib/http";
 import { useDrawerDetents, type DrawerDetents } from "./use-drawer-detents";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import type { CheckInScores, MaxStay } from "@/types/checkins";
 
 export { CHECKIN_RESUME_PARAM };
@@ -233,7 +234,81 @@ function useCheckinDrawerState({
   };
 }
 
-/** The drawer's rendered surface: detent handle, form, and discard dialog. */
+/** Props shared by the surface and its dialog panel. */
+interface DrawerSurfaceProps {
+  props: CheckinDrawerProps;
+  state: CheckinDrawerState;
+  detents: DrawerDetents;
+  isOpen: boolean;
+  onOpenChange: (isOpen: boolean) => void;
+  onStagedPhotosChange: (count: number) => void;
+}
+
+/** The dialog panel: detent handle (mobile only), form, and discard dialog. */
+function CheckinDrawerDialog({
+  props,
+  state,
+  detents,
+  isOpen,
+  isDesktop,
+  onOpenChange,
+  onStagedPhotosChange,
+}: DrawerSurfaceProps & { isDesktop: boolean }) {
+  const t = useTranslations("checkIn");
+
+  return (
+    <Drawer.Dialog
+      aria-label={state.effectiveMode === "edit" ? t("editTitle") : t("title")}
+      className={`flex flex-col${isDesktop ? " w-[420px]" : ` max-h-[85dvh]${detents.expanded ? " h-[85dvh]" : ""}`}`}
+    >
+      {/* DG70 detent handle: drag up expands to 85dvh, drag down collapses
+          to content height then dismisses. stopPropagation inside the hook
+          keeps HeroUI's dismiss-only drag from seeing the gesture. A side
+          drawer has no up/down detents — the handle stays mobile-only. */}
+      {!isDesktop && (
+        <Drawer.Handle
+          className="cursor-grab touch-none select-none pt-2 active:cursor-grabbing"
+          {...detents.handleProps}
+        />
+      )}
+      {isOpen && (
+        /* Edit-mode PATCH cannot save photos — seeding restored draft
+           photos into an edit would hide them behind the absent picker
+           and drop them silently on save (BRAWUKA-395 P2-2). */
+        <CheckinForm
+          key={state.formKey}
+          cafeId={props.cafeId}
+          cafeName={props.cafeName}
+          mode={state.effectiveMode}
+          editCheckinId={state.effectiveEditId}
+          initialScores={props.initialScores ?? state.revisit?.scores}
+          initialMaxStay={props.initialMaxStay ?? state.revisit?.max_stay ?? null}
+          initialNote={props.initialNote ?? state.revisit?.note ?? null}
+          initialPhotos={state.effectiveMode === "edit" ? undefined : props.initialPhotos}
+          promptCaption={props.promptCaption}
+          isAuthenticated={props.isAuthenticated}
+          lastCheckin={state.lastCheckinQuery.data?.checkin ?? null}
+          authProbeFailed={state.authProbeFailed}
+          lastCheckinLoaded={state.lastCheckinQuery.isSuccess}
+          onClose={() => onOpenChange(false)}
+          onDirtyChange={state.setIsDirty}
+          onStagedPhotosChange={onStagedPhotosChange}
+        />
+      )}
+
+      <CheckinDiscardDialog
+        isOpen={state.showDiscardConfirm}
+        onKeepEditing={() => state.setShowDiscardConfirm(false)}
+        onDiscard={() => {
+          state.setShowDiscardConfirm(false);
+          onOpenChange(false);
+        }}
+      />
+    </Drawer.Dialog>
+  );
+}
+
+/** The drawer's rendered surface: backdrop + placement-branched content. */
 function CheckinDrawerSurface({
   props,
   state,
@@ -242,16 +317,10 @@ function CheckinDrawerSurface({
   onOpenChange,
   handleCloseAttempt,
   onStagedPhotosChange,
-}: {
-  props: CheckinDrawerProps;
-  state: CheckinDrawerState;
-  detents: DrawerDetents;
-  isOpen: boolean;
-  onOpenChange: (isOpen: boolean) => void;
-  handleCloseAttempt: (nextOpen: boolean) => void;
-  onStagedPhotosChange: (count: number) => void;
-}) {
-  const t = useTranslations("checkIn");
+}: DrawerSurfaceProps & { handleCloseAttempt: (nextOpen: boolean) => void }) {
+  // checkin-system-v1 §2: bottom sheet on mobile, a 420px right-side panel
+  // at ≥1024px — same content, single column.
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
 
   return (
     <Drawer.Root isOpen={isOpen} onOpenChange={handleCloseAttempt}>
@@ -261,52 +330,19 @@ function CheckinDrawerSurface({
           stays null, isModalExiting sticks at 'exiting', and the backdrop
           leaks at opacity 0 over the viewport, swallowing every click. */}
       <Drawer.Backdrop>
-        <Drawer.Content placement="bottom" className="max-h-[85dvh] bg-overlay text-foreground">
-          <Drawer.Dialog
-            aria-label={state.effectiveMode === "edit" ? t("editTitle") : t("title")}
-            className={`flex max-h-[85dvh] flex-col${detents.expanded ? " h-[85dvh]" : ""}`}
-          >
-            {/* DG70 detent handle: drag up expands to 85dvh, drag down collapses
-                to content height then dismisses. stopPropagation inside the hook
-                keeps HeroUI's dismiss-only drag from seeing the gesture. */}
-            <Drawer.Handle
-              className="cursor-grab touch-none select-none pt-2 active:cursor-grabbing"
-              {...detents.handleProps}
-            />
-            {isOpen && (
-              /* Edit-mode PATCH cannot save photos — seeding restored draft
-                 photos into an edit would hide them behind the absent picker
-                 and drop them silently on save (BRAWUKA-395 P2-2). */
-              <CheckinForm
-                key={state.formKey}
-                cafeId={props.cafeId}
-                cafeName={props.cafeName}
-                mode={state.effectiveMode}
-                editCheckinId={state.effectiveEditId}
-                initialScores={props.initialScores ?? state.revisit?.scores}
-                initialMaxStay={props.initialMaxStay ?? state.revisit?.max_stay ?? null}
-                initialNote={props.initialNote ?? state.revisit?.note ?? null}
-                initialPhotos={state.effectiveMode === "edit" ? undefined : props.initialPhotos}
-                promptCaption={props.promptCaption}
-                isAuthenticated={props.isAuthenticated}
-                lastCheckin={state.lastCheckinQuery.data?.checkin ?? null}
-                authProbeFailed={state.authProbeFailed}
-                lastCheckinLoaded={state.lastCheckinQuery.isSuccess}
-                onClose={() => onOpenChange(false)}
-                onDirtyChange={state.setIsDirty}
-                onStagedPhotosChange={onStagedPhotosChange}
-              />
-            )}
-
-            <CheckinDiscardDialog
-              isOpen={state.showDiscardConfirm}
-              onKeepEditing={() => state.setShowDiscardConfirm(false)}
-              onDiscard={() => {
-                state.setShowDiscardConfirm(false);
-                onOpenChange(false);
-              }}
-            />
-          </Drawer.Dialog>
+        <Drawer.Content
+          placement={isDesktop ? "right" : "bottom"}
+          className={`${isDesktop ? "" : "max-h-[85dvh] "}bg-overlay text-foreground`}
+        >
+          <CheckinDrawerDialog
+            props={props}
+            state={state}
+            detents={detents}
+            isOpen={isOpen}
+            isDesktop={isDesktop}
+            onOpenChange={onOpenChange}
+            onStagedPhotosChange={onStagedPhotosChange}
+          />
         </Drawer.Content>
       </Drawer.Backdrop>
     </Drawer.Root>

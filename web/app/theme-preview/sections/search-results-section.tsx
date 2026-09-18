@@ -63,9 +63,6 @@ export function SearchResultsSection() {
           <RankingPreferenceToggle variant="settings" />
         </div>
 
-        <div className="rounded-lg border border-separator bg-surface p-4">
-          <RankingPreferenceToggle variant="onboarding" />
-        </div>
         {/* The live panel, mounted here through the demo fetcher until
             map-discovery-integration (#134) mounts it for real. */}
         <div className="rounded-lg border border-separator bg-surface p-3">

@@ -111,6 +111,7 @@ export function OnboardingHome({
 }
 
 
+
 /** Welcome card + locate button + account/theme chip — everything that
  * floats over the map. DiscoveryHome's gateMapOverlay hides the whole slot
  * whenever the mobile sheet is above PEEK. */

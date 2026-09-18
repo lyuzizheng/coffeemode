@@ -503,3 +503,21 @@ describe("CheckinFeed own-card edit entry", () => {
     });
   });
 });
+
+// BRAWUKA-516: the loading skeleton must mirror FeedCard geometry (spec
+// 0002 skeleton rule + seo-sharing-v1 §2: 4 cards — meta, chips, note,
+// photo strip, action row), not two thin bars.
+describe("CheckinFeed skeleton", () => {
+  it("renders 4 skeleton cards mirroring real card geometry while pending", () => {
+    globalThis.fetch = vi.fn().mockImplementation(() => Promise.withResolvers<Response>().promise);
+    renderFeed();
+
+    const cards = document.querySelectorAll('[data-slot="feed-skeleton-card"]');
+    expect(cards).toHaveLength(4);
+    for (const card of cards) {
+      // A real card is meta + chips + note + photos + like row (~150–250px),
+      // never the old three-bar stub.
+      expect(card.querySelectorAll(".animate-pulse").length).toBeGreaterThanOrEqual(5);
+    }
+  });
+});

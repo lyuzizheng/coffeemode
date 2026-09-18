@@ -815,6 +815,32 @@ describe("CheckinDrawer", () => {
     // release resolves to a detent snap, not a dismiss).
     expect(dialog.style.transform).toBe("");
   });
+
+  it("renders the bottom sheet with the detent handle below 1024px (checkin-system-v1 §2)", () => {
+    renderDrawer({ isAuthenticated: true });
+    const dialog = screen.getByRole("dialog", { name: "Check in" });
+    expect(dialog).toHaveAttribute("data-placement", "bottom");
+    expect(dialog.querySelector('[data-slot="drawer-handle"]')).not.toBeNull();
+  });
+
+  it("becomes a 420px right-side panel at ≥1024px (checkin-system-v1 §2)", () => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes("1024"),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    renderDrawer({ isAuthenticated: true });
+    const dialog = screen.getByRole("dialog", { name: "Check in" });
+    expect(dialog).toHaveAttribute("data-placement", "right");
+    expect(dialog.className).toContain("w-[420px]");
+    // A side drawer has no up/down detents — the drag handle stays mobile-only.
+    expect(dialog.querySelector('[data-slot="drawer-handle"]')).toBeNull();
+  });
 });
 
 describe("resolveDetentRelease (DG70)", () => {

@@ -26,7 +26,7 @@ export async function GET(
 ) {
   const { id } = await params;
   if (!isValidUUID(id)) {
-    return apiError("invalid_request", "id must be a UUID", 400);
+    return apiError("invalid_request", "id must be a UUID", { status: 400 });
   }
 
   const gate = await guard(request, {
@@ -39,7 +39,7 @@ export async function GET(
   try {
     const cafe = await getCafe(id, user?.id);
     if (!cafe) {
-      return apiError("not_found", "cafe not found", 404);
+      return apiError("not_found", "cafe not found", { status: 404 });
     }
     return NextResponse.json(toPublicCafeDetail(cafe));
   } catch (err) {
@@ -61,7 +61,7 @@ export async function DELETE(
 
   const { id } = await params;
   if (!isValidUUID(id)) {
-    return apiError("invalid_request", "id must be a UUID", 400);
+    return apiError("invalid_request", "id must be a UUID", { status: 400 });
   }
 
   const gate = await guard(request, {
@@ -75,7 +75,7 @@ export async function DELETE(
   try {
     const exists = await cafeExists(id, user.id);
     if (!exists) {
-      return apiError("not_found", "cafe not found", 404);
+      return apiError("not_found", "cafe not found", { status: 404 });
     }
 
     const bodyRes = await readJsonBody<{ confirm?: unknown }>(request, {
@@ -90,13 +90,13 @@ export async function DELETE(
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof CafeNotFoundError) {
-      return apiError("not_found", "cafe not found", 404);
+      return apiError("not_found", "cafe not found", { status: 404 });
     }
     if (err instanceof CafeForbiddenError) {
-      return apiError("forbidden", "only creator can delete cafe", 403);
+      return apiError("forbidden", "only creator can delete cafe", { status: 403 });
     }
     if (err instanceof CafeHasOtherCheckinsError) {
-      return apiError("cafe_has_other_checkins", 403, { n: err.n });
+      return apiError("cafe_has_other_checkins", 403, { extra: { n: err.n } });
     }
     logError({ route: gate.route, request, error: err, status: 500 });
     return apiError("internal_error", 500);

@@ -27,13 +27,13 @@ export async function GET(
 ) {
   const { id } = await params;
   if (!isValidUUID(id)) {
-    return apiError("invalid_request", "id must be a UUID", 400);
+    return apiError("invalid_request", "id must be a UUID", { status: 400 });
   }
 
   const url = new URL(request.url);
   const modeParam = url.searchParams.get("mode") ?? "newest";
   if (!FEED_MODES.includes(modeParam as CheckInFeedMode)) {
-    return apiError("invalid_request", `mode must be one of: ${FEED_MODES.join(", ")}`, 400);
+    return apiError("invalid_request", `mode must be one of: ${FEED_MODES.join(", ")}`, { status: 400 });
   }
   const mode = modeParam as CheckInFeedMode;
   const cursor = url.searchParams.get("cursor") ?? undefined;
@@ -48,7 +48,7 @@ export async function GET(
   try {
     const exists = await cafeExists(id, user?.id);
     if (!exists) {
-      return apiError("not_found", "cafe not found", 404);
+      return apiError("not_found", "cafe not found", { status: 404 });
     }
     const page = await listPublicCheckIns({
       cafeId: id,
@@ -59,10 +59,10 @@ export async function GET(
     return NextResponse.json(page);
   } catch (err) {
     if (err instanceof FeedCursorExpiredError) {
-      return apiError("cursor_version_expired", "snapshot version expired; restart from page one", 410);
+      return apiError("cursor_version_expired", "snapshot version expired; restart from page one", { status: 410 });
     }
     if (err instanceof FeedCursorError) {
-      return apiError("invalid_request", "cursor is invalid or was issued for another mode", 400);
+      return apiError("invalid_request", "cursor is invalid or was issued for another mode", { status: 400 });
     }
     logError({ route: gate.route, request, error: err, status: 500 });
     return apiError("internal_error", 500);

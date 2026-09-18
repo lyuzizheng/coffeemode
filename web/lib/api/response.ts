@@ -9,43 +9,59 @@ interface ApiErrorBody {
 }
 
 /**
+ * Extra fields merged into the error body beside `error`/`message`.
+ * Envelope keys win: `error` and `message` in `extra` are ignored.
+ */
+interface ApiErrorExtra {
+  extra?: Record<string, unknown>;
+}
+
+/** Options for the message form: HTTP status plus extra body fields. */
+interface ApiErrorOptions extends ApiErrorExtra {
+  status?: number;
+}
+
+/**
  * Standardized API error response helper (Fixes #235).
  * Supports:
  * - apiError("unauthorized", 401)
- * - apiError("invalid_request", "id must be a UUID", 400)
- * - apiError("cafe_exists", 409, { cafe_id: "..." })
- * - apiError("cafe_exists", "Cafe already exists", 409, { cafe_id: "..." })
+ * - apiError("invalid_request", "id must be a UUID", { status: 400 })
+ * - apiError("cafe_exists", 409, { extra: { cafe_id: "..." } })
+ * - apiError("cafe_exists", "Cafe already exists", { status: 409, extra: { cafe_id: "..." } })
+ *
+ * Status and extra fields are named options, never positional: a bare object
+ * third argument (`apiError(code, msg, { cafe_id })`) is a compile error, not
+ * silently dropped.
  */
 export function apiError(
   error: string,
+  status?: number,
+  options?: ApiErrorExtra,
+): NextResponse<ApiErrorBody>;
+export function apiError(
+  error: string,
+  message: string,
+  options?: ApiErrorOptions,
+): NextResponse<ApiErrorBody>;
+export function apiError(
+  error: string,
   messageOrStatus?: string | number,
-  statusOrExtra?: number | Record<string, unknown>,
-  extra?: Record<string, unknown>,
+  options?: ApiErrorOptions,
 ): NextResponse<ApiErrorBody> {
   let message: string | undefined;
   let statusCode = 400;
-  let additionalFields: Record<string, unknown> | undefined;
 
   if (typeof messageOrStatus === "number") {
     statusCode = messageOrStatus;
-    if (typeof statusOrExtra === "object" && statusOrExtra !== null) {
-      additionalFields = statusOrExtra;
-    }
   } else if (typeof messageOrStatus === "string") {
     message = messageOrStatus;
-    if (typeof statusOrExtra === "number") {
-      statusCode = statusOrExtra;
-    }
-    additionalFields = extra;
-  } else if (typeof statusOrExtra === "number") {
-    statusCode = statusOrExtra;
-    additionalFields = extra;
+    statusCode = options?.status ?? 400;
   }
 
   const body: ApiErrorBody = {
+    ...(options?.extra ?? {}),
     error,
     ...(message !== undefined ? { message } : {}),
-    ...(additionalFields ?? {}),
   };
 
   return NextResponse.json(body, { status: statusCode });

@@ -52,7 +52,7 @@ export async function POST(request: Request) {
   if (!bodyRes.ok) return bodyRes.response;
   const parsed = parseSize(bodyRes.data);
   if ("error" in parsed) {
-    return apiError(parsed.code, parsed.error, 400);
+    return apiError(parsed.code, parsed.error, { status: 400 });
   }
 
   try {
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
   } catch (err) {
     logError({ route: gate.route, request, error: err, status: err instanceof ImageServiceError ? err.status : 502 });
     if (err instanceof ImageServiceError) {
-      return apiError("image_service_error", err.message, err.status);
+      return apiError("image_service_error", err.message, { status: err.status });
     }
     return apiError("image_service_error", 502);
   }

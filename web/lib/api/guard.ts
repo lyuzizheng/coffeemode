@@ -212,7 +212,7 @@ export async function readJsonBody<T = unknown>(
       }
       return {
         ok: false,
-        response: apiError("invalid_request", "invalid JSON body", 400),
+        response: apiError("invalid_request", "invalid JSON body", { status: 400 }),
       };
     }
     const data = JSON.parse(text) as T;
@@ -220,7 +220,7 @@ export async function readJsonBody<T = unknown>(
   } catch {
     return {
       ok: false,
-      response: apiError("invalid_request", "invalid JSON body", 400),
+      response: apiError("invalid_request", "invalid JSON body", { status: 400 }),
     };
   }
 }
@@ -228,7 +228,7 @@ export async function readJsonBody<T = unknown>(
 function oversizedBody(): ReadJsonBodyResult<null> {
   return {
     ok: false,
-    response: apiError("invalid_request", "request body too large", 413),
+    response: apiError("invalid_request", "request body too large", { status: 413 }),
   };
 }
 

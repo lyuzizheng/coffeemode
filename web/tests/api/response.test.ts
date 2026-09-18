@@ -22,20 +22,51 @@ describe("apiError", () => {
   });
 
   it("creates error response with message and status code", async () => {
-    const res = apiError("invalid_request", "id must be a UUID", 400);
+    const res = apiError("invalid_request", "id must be a UUID", { status: 400 });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "invalid_request", message: "id must be a UUID" });
   });
 
   it("creates error response with extra fields", async () => {
-    const res = apiError("cafe_exists", 409, { cafe_id: "abc-123" });
+    const res = apiError("cafe_exists", 409, { extra: { cafe_id: "abc-123" } });
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "cafe_exists", cafe_id: "abc-123" });
   });
 
   it("creates error response with message, status, and extra fields", async () => {
-    const res = apiError("cafe_exists", "Cafe already exists", 409, { cafe_id: "abc-123" });
+    const res = apiError("cafe_exists", "Cafe already exists", {
+      status: 409,
+      extra: { cafe_id: "abc-123" },
+    });
     expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: "cafe_exists",
+      message: "Cafe already exists",
+      cafe_id: "abc-123",
+    });
+  });
+
+  it("merges extra fields through the message form", async () => {
+    const res = apiError("cafe_exists", "Cafe already exists", {
+      extra: { cafe_id: "abc-123" },
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "cafe_exists",
+      message: "Cafe already exists",
+      cafe_id: "abc-123",
+    });
+  });
+
+  it("rejects a bare extra object as the third argument", () => {
+    // @ts-expect-error extra fields must be named — a bare object is not a valid options bag
+    apiError("cafe_exists", "Cafe already exists", { cafe_id: "abc-123" });
+  });
+
+  it("keeps envelope fields when extra carries error or message keys", async () => {
+    const res = apiError("cafe_exists", "Cafe already exists", {
+      extra: { error: "spoofed", message: "spoofed", cafe_id: "abc-123" },
+    });
     expect(await res.json()).toEqual({
       error: "cafe_exists",
       message: "Cafe already exists",

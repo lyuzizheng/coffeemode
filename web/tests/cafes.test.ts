@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import {
   createCafeWithFirstCheckIn,
   getCafe,
@@ -40,11 +40,15 @@ vi.mock("@/lib/db/postgres", async (importOriginal) => ({
 
 // Real provisionPhotos/consumeProvisionedIntents run against these fake deps;
 // only the default-deps factory is swapped (issue #86 seam).
-const provisionDeps = {
+const provisionDeps: Record<string, Mock> = {
   checkUploadIntents: vi.fn(),
   consumeUploadIntents: vi.fn(),
   getProcessUrls: vi.fn(),
   processImage: vi.fn(),
+  // Unreferenced by default: unit compensation deletes every id (the
+  // BRAWUKA-401 race tests override this to simulate a winner's row).
+  selectPhotoReferences: vi.fn().mockResolvedValue([]),
+  deleteProvisionedVariants: vi.fn(),
 };
 
 vi.mock("@/lib/images/provision-photos", async (importOriginal) => ({
@@ -361,6 +365,32 @@ describe("createCafeWithFirstCheckIn", () => {
     expect(err).toBeInstanceOf(CafeExistsError);
     expect((err as CafeExistsError).existingCafeId).toBe("existing-9");
     expect(poolQueryMock).toHaveBeenCalledTimes(2); // pre-provision check + post-rollback lookup
+  });
+
+  it("keeps the winner's R2 objects when a loser rolls back on a unique-index race (BRAWUKA-401)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [] }); // pre-provision dedupe misses (race window)
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [] }) // in-tx pre-check misses too
+      .mockRejectedValueOnce({ code: "23505" }); // insert hits the unique index
+    // After rollback the lookup runs on the pool, not the aborted connection.
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: "existing-9" }] });
+    // The reference gate runs before the winner lookup: the winner's gallery
+    // row already references the id, so the loser's rollback deletes nothing.
+    provisionDeps.selectPhotoReferences.mockResolvedValueOnce([IMG]);
+    const deleted: string[] = [];
+    provisionDeps.deleteProvisionedVariants.mockImplementation(async (id: string) => {
+      deleted.push(id);
+    });
+    const err = await createCafeWithFirstCheckIn(USER.id, {
+      name: "Dupe",
+      ...SG,
+      google_place_id: "ChIJx",
+      checkin: validCheckinInput(),
+    }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(CafeExistsError);
+    expect(provisionDeps.selectPhotoReferences).toHaveBeenCalledWith([IMG]);
+    expect(deleted).toEqual([]);
   });
 
   it("rejects an invalid user id before touching the database", async () => {

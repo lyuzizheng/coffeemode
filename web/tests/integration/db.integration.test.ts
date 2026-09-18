@@ -81,6 +81,7 @@ import {
   listPublicCheckIns,
 } from "@/lib/discovery/feed";
 import { recordUploadIntent } from "@/lib/db/image-uploads";
+import { selectPhotoReferences } from "@/lib/db/photo-references";
 import { PhotoIntentError } from "@/lib/images/provision-photos";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import { recomputeAllWorkStats } from "@/lib/stats/aggregate";
@@ -576,6 +577,39 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
 
       const nearby = await listCafesNearby({ lat: 1.35, lng: 103.8, radiusKm: 10, limit: 10 });
       expect(nearby.map((c) => c.name)).toEqual(expect.arrayContaining(["Seed Cafe", "New Cafe"]));
+    });
+
+    it("selectPhotoReferences gates compensation on live rows (BRAWUKA-401)", async () => {
+      const photoId = randomUUID();
+      const orphanId = randomUUID();
+      await recordUploadIntent(U1, photoId);
+      const created = await createCafeWithFirstCheckIn(
+        U1,
+        {
+          name: "Reference Gate Cafe",
+          lat: 1.35,
+          lng: 103.8,
+          city: "singapore",
+          checkin: {
+            scores: { overall: 80 },
+            max_stay: "unlimited",
+            note: "gated",
+            photo_ids: [photoId],
+          },
+        },
+        fakeProvisionPhotosDeps(),
+      );
+
+      // Winner committed: gallery + check-in rows reference the id, so the
+      // loser's compensation must keep it while deleting true orphans.
+      await expect(selectPhotoReferences([photoId, orphanId])).resolves.toEqual([photoId]);
+
+      // A soft-deleted check-in still references its photos until the row is
+      // gone: the gate keeps protecting the R2 objects after delete.
+      await dbClient.query("update checkins set deleted_at = now() where id = $1", [
+        created.checkin_id,
+      ]);
+      await expect(selectPhotoReferences([photoId])).resolves.toEqual([photoId]);
     });
 
     it("recordNavigation inserts and 404s on a missing cafe", async () => {

@@ -22,6 +22,15 @@ vi.mock("@heroui/react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@heroui/react")>();
   return { ...actual, toast: vi.fn() };
 });
+// BRAWUKA-462: a 410 cursor expiry must go straight to the reset state —
+// InlineError must never render for it, not even for one frame.
+const { inlineErrorSpy } = vi.hoisted(() => ({ inlineErrorSpy: vi.fn() }));
+vi.mock("@/components/discovery/inline-error", () => ({
+  InlineError: (props: { message: string; onRetry: () => void }) => {
+    inlineErrorSpy(props);
+    return null;
+  },
+}));
 
 const CAFE = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22";
 
@@ -155,6 +164,65 @@ describe("CheckinFeed expired-cursor recovery", () => {
     await waitFor(() => expect(seen.length).toBeGreaterThanOrEqual(2), { timeout: 3000 });
     expect(seen[seen.length - 1]).not.toContain("cursor=");
     expect(seen[seen.length - 1]).not.toContain("dead-cursor");
+  });
+
+  it("never renders InlineError while the 410 auto-reset runs (BRAWUKA-462)", async () => {
+    // Sentinel fires once: the first observe triggers fetchNextPage, which
+    // replays the dead cursor into a 410. The hook then auto-resets and
+    // refetches page one.
+    let fired = false;
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(private cb: IntersectionObserverCallback) {}
+        observe() {
+          if (fired) return;
+          fired = true;
+          queueMicrotask(() =>
+            this.cb(
+              [{ isIntersecting: true } as IntersectionObserverEntry],
+              this as unknown as IntersectionObserver,
+            ),
+          );
+        }
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+
+    let expired = false;
+    const feedCalls: string[] = [];
+    globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+      const u = String(url);
+      if (u.startsWith(`/api/cafes/${CAFE}/checkins`)) {
+        feedCalls.push(u);
+        if (u.includes("cursor=")) {
+          expired = true;
+          return Promise.resolve({
+            ok: false,
+            status: 410,
+            json: async () => ({ error: "cursor_version_expired" }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            checkins: [card(OWN_ID, true, "Corner seat")],
+            next_cursor: expired ? null : "dead-cursor",
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+    });
+
+    inlineErrorSpy.mockClear();
+    renderFeed();
+
+    // Settle: page one, the 410 next-page hit, then the reset refetch.
+    await waitFor(() => expect(feedCalls.length).toBeGreaterThanOrEqual(3), { timeout: 3000 });
+    await screen.findByText("Corner seat");
+    expect(inlineErrorSpy).not.toHaveBeenCalled();
   });
 });
 // BRAWUKA-450: a 404 means the cafe is gone — the feed must not burn two

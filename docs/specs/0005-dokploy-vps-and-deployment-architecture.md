@@ -264,11 +264,12 @@ deploy:
 Per BRAWUKA-475, the nightly work_stats recompute and Helpful ranking snapshot execution migrated from GitHub Actions to Dokploy VPS cron:
 - **Zero GitHub Secrets Leakage**: `DATABASE_URL` (production pooled connection string) does not enter GitHub secrets or CI environments; it remains strictly confined to the Dokploy environment on the VPS host.
 - **Execution Window**: Scheduled daily at 02:00 UTC (`0 2 * * *`), comfortably clear of the 03:00 UTC staging-journey verification window.
-- **Canonical Orchestrator**: `deploy/dokploy/nightly-recompute.sh` invokes `npm run recompute:work-stats && npm run snapshot:helpful-ranking` within the production web container via `docker exec`.
+- **Canonical Execution Runner**: `web/scripts/nightly-recompute.mjs` orchestrates `scripts/recompute-work-stats.mjs` and `scripts/snapshot-helpful-ranking.mjs`, outputting structured JSON error lines and directly POSTing to `MULTICA_AUTOPILOT_WEBHOOK_URL` (BRAWUKA-476) on any failure.
+- **Host VPS Wrapper**: `deploy/dokploy/nightly-recompute.sh` locates the production web container (via container name, ancestor image, swarm service label, or container list matching) and executes `docker exec <container> sh -c "cd /app && node scripts/nightly-recompute.mjs"`. If host-side container lookup or execution fails, it also emits structured JSON and alerts the autopilot webhook.
 - **Deployment Reconfigurability**:
-  - *Dokploy Scheduled Job*: Created as an `application` schedule on `coffeemode-web-prod` (`0 2 * * *`, command: `if [ -d web ]; then cd web; fi; npm run recompute:work-stats && npm run snapshot:helpful-ranking`).
+  - *Dokploy Scheduled Job*: Created as an `application` schedule on `coffeemode-web-prod` (`0 2 * * *`, command: `cd /app && node scripts/nightly-recompute.mjs`).
   - *VPS Host Crontab Alternative*: `0 2 * * * /path/to/coffeemode/deploy/dokploy/nightly-recompute.sh >> /var/log/nightly-recompute.log 2>&1`.
-- **Failure Alerting & Self-Healing Webhook**: If the script exits with non-zero status, it outputs structured JSON error lines and triggers the Multica autopilot webhook (`MULTICA_AUTOPILOT_WEBHOOK_URL`, BRAWUKA-476) to automatically generate an incident response issue.
+- **Failure Alerting & Self-Healing Webhook**: If either step fails, structured JSON error lines are logged to stderr and an alert payload is dispatched to the Multica autopilot webhook (`MULTICA_AUTOPILOT_WEBHOOK_URL`, BRAWUKA-476) to automatically generate an incident response issue.
 
 ### 5. Automated smoke test verification checklist
 - [ ] Healthcheck endpoint `GET /api/health` returns `{"ok":true}` and version/boot_time markers with HTTP 200.

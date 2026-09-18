@@ -8,6 +8,10 @@
 # decayed Helpful ranking snapshot. Runs on the Dokploy VPS (via Dokploy scheduled
 # job or VPS crontab at 02:00 UTC) reusing the container's DATABASE_URL.
 #
+# Primary container runner: web/scripts/nightly-recompute.mjs
+# This script is the host wrapper (cron / manual CLI) that delegates to the
+# container's node runner via `docker exec`.
+#
 # If execution fails, exits non-zero, outputs structured JSON error lines, and
 # triggers the Multica autopilot webhook (MULTICA_AUTOPILOT_WEBHOOK_URL) if set.
 # ==============================================================================
@@ -73,27 +77,47 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ------------------------------------------------------------------------------
-# Failure Hook & Notification Helper
+# Failure Hook & Notification Helper (Host fallback)
 # ------------------------------------------------------------------------------
 send_failure_alert() {
   local error_msg="$1"
-  local run_pointer="${2:-dokploy:cron:nightly-recompute}"
+  local run_pointer="${2:-dokploy:host:nightly-recompute}"
   local webhook_url="${MULTICA_AUTOPILOT_WEBHOOK_URL:-}"
 
-  # Output structured error line (JSON) for monitoring sinks
+  # Output structured error line (JSON) for monitoring sinks using node/jq for robust escaping
   local json_log
-  json_log=$(printf '{"job":"nightly-recompute","status":"failed","error":"%s","run":"%s","timestamp":"%s"}' \
-    "$(echo "$error_msg" | tr '"\n\r\t' '    ' | sed 's/  */ /g')" \
-    "$run_pointer" \
-    "$TIMESTAMP")
+  if command -v node >/dev/null 2>&1; then
+    json_log=$(node -e '
+      const [msg, run, ts] = process.argv.slice(1);
+      console.log(JSON.stringify({job: "nightly-recompute", status: "failed", error: msg, run, timestamp: ts}));
+    ' "$error_msg" "$run_pointer" "$TIMESTAMP")
+  elif command -v jq >/dev/null 2>&1; then
+    json_log=$(jq -nc --arg error "$error_msg" --arg run "$run_pointer" --arg timestamp "$TIMESTAMP" \
+      '{job: "nightly-recompute", status: "failed", error: $error, run: $run, timestamp: $timestamp}')
+  else
+    local escaped_msg
+    escaped_msg=$(printf '%s' "$error_msg" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n\r\t' '   ')
+    json_log="{\"job\":\"nightly-recompute\",\"status\":\"failed\",\"error\":\"$escaped_msg\",\"run\":\"$run_pointer\",\"timestamp\":\"$TIMESTAMP\"}"
+  fi
   echo "$json_log" >&2
 
   if [[ -n "$webhook_url" ]]; then
     echo "[INFO] Sending failure notification to Multica autopilot webhook..." >&2
     local payload
-    payload=$(printf '{"job":"nightly-recompute","error":"%s","run":"%s"}' \
-      "$(echo "$error_msg" | tr '"\n\r\t' '    ' | sed 's/  */ /g')" \
-      "$run_pointer")
+    if command -v node >/dev/null 2>&1; then
+      payload=$(node -e '
+        const [msg, run] = process.argv.slice(1);
+        console.log(JSON.stringify({job: "nightly-recompute", error: msg, run}));
+      ' "$error_msg" "$run_pointer")
+    elif command -v jq >/dev/null 2>&1; then
+      payload=$(jq -nc --arg error "$error_msg" --arg run "$run_pointer" \
+        '{job: "nightly-recompute", error: $error, run: $run}')
+    else
+      local escaped_msg
+      escaped_msg=$(printf '%s' "$error_msg" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n\r\t' '   ')
+      payload="{\"job\":\"nightly-recompute\",\"error\":\"$escaped_msg\",\"run\":\"$run_pointer\"}"
+    fi
+
     curl -sS -m 10 -X POST "$webhook_url" \
       -H "content-type: application/json" \
       -d "$payload" >/dev/null 2>&1 || {
@@ -106,7 +130,6 @@ send_failure_alert() {
 # Environment Detection (Host vs. Container Internal)
 # ------------------------------------------------------------------------------
 is_inside_container() {
-  # If docker binary is missing or /app/server.js exists in working dir
   if ! command -v docker >/dev/null 2>&1; then
     return 0
   fi
@@ -121,30 +144,19 @@ is_inside_container() {
 # ------------------------------------------------------------------------------
 run_internal() {
   echo "[INFO] Running nightly recompute directly inside container environment..."
-  if [[ -d "web" ]]; then
-    cd web
-  elif [[ -d "/app" ]]; then
+  local target_dir="/app"
+  if [[ -d "/app" ]]; then
     cd /app
+  elif [[ -d "web" ]]; then
+    cd web
   fi
 
   if [[ "$DRY_RUN" == true ]]; then
-    echo "[DRY-RUN] Would run: npm run recompute:work-stats && npm run snapshot:helpful-ranking"
+    echo "[DRY-RUN] Would run: node scripts/nightly-recompute.mjs"
     exit 0
   fi
 
-  local output
-  if output=$(npm run recompute:work-stats 2>&1 && npm run snapshot:helpful-ranking 2>&1); then
-    echo "$output"
-    echo "[OK] Nightly recompute and helpful ranking snapshot finished successfully."
-    exit 0
-  else
-    local status=$?
-    echo "$output" >&2
-    local err_summary
-    err_summary=$(echo "$output" | tail -n 5 | tr '\n' ' ')
-    send_failure_alert "Recompute execution failed inside container: $err_summary" "container:internal"
-    exit "$status"
-  fi
+  exec node scripts/nightly-recompute.mjs
 }
 
 # ------------------------------------------------------------------------------
@@ -158,19 +170,23 @@ run_on_host() {
   elif [[ -n "${CONTAINER_NAME:-}" ]]; then
     container_id="$CONTAINER_NAME"
   else
-    # Auto-detect container by environment
-    if [[ "$TARGET_ENV" == "staging" ]]; then
-      # Check standard staging container names (compose or dokploy swarm appName)
-      container_id="$(docker ps -q -f "name=coffeemode-web-staging" | head -n 1 || true)"
-      if [[ -z "$container_id" ]]; then
-        container_id="$(docker ps -q -f "name=app-copy-virtual-microchip-idd1w9" | head -n 1 || true)"
-      fi
-    else
-      # Check standard production container names (compose or dokploy swarm appName)
-      container_id="$(docker ps -q -f "name=coffeemode-web-prod" | head -n 1 || true)"
-      if [[ -z "$container_id" ]]; then
-        container_id="$(docker ps -q -f "name=app-bypass-solid-state-pixel-pyvr1z" | head -n 1 || true)"
-      fi
+    # 1. Check standard compose container name
+    container_id="$(docker ps -q -f "name=coffeemode-web-${TARGET_ENV}" | head -n 1 || true)"
+
+    # 2. Check standard compose image/ancestor
+    if [[ -z "$container_id" ]]; then
+      container_id="$(docker ps -q --filter "ancestor=coffeemode-web-${TARGET_ENV}" | head -n 1 || true)"
+    fi
+
+    # 3. Check swarm service label
+    if [[ -z "$container_id" ]]; then
+      container_id="$(docker ps -q --filter "label=com.docker.swarm.service.name=coffeemode-web-${TARGET_ENV}" | head -n 1 || true)"
+    fi
+
+    # 4. Search running containers for image or name containing web-${TARGET_ENV}
+    if [[ -z "$container_id" ]]; then
+      container_id="$(docker ps --format '{{.ID}}\t{{.Names}}\t{{.Image}}' | \
+        awk -v env="$TARGET_ENV" '$2 ~ ("web-" env) || $3 ~ ("web-" env) {print $1; exit}' || true)"
     fi
   fi
 
@@ -183,7 +199,7 @@ run_on_host() {
 
   echo "[INFO] Found target container: $container_id ($TARGET_ENV)"
 
-  local exec_cmd="if [ -d web ]; then cd web; elif [ -d /app ]; then cd /app; fi; npm run recompute:work-stats && npm run snapshot:helpful-ranking"
+  local exec_cmd="cd /app && node scripts/nightly-recompute.mjs"
 
   if [[ "$DRY_RUN" == true ]]; then
     echo "[DRY-RUN] Would execute: docker exec $container_id sh -c '$exec_cmd'"

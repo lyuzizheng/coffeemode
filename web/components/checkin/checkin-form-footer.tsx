@@ -3,7 +3,7 @@
 import { Button, Drawer } from "@heroui/react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
-import { duration, spring } from "@/lib/motion";
+import { duration, useSprings } from "@/lib/motion";
 import type { ViewState } from "./use-checkin-mutation";
 
 interface CheckinFormFooterProps {
@@ -17,12 +17,13 @@ interface CheckinFormFooterProps {
 
 /**
  * Artifact §4 step 1: on successful save the confirm button's label
- * crossfades (120ms) to a ✓ that draws itself in on spring.gentle, and the
+ * crossfades (120ms) to a ✓ that draws itself in on springs.gentle, and the
  * background eases accent → secondary (sage) over 200ms. Reduced motion
  * renders the settled ✓ directly — the toast carries the confirmation.
  */
 function SuccessButton({ outgoingLabel }: { outgoingLabel: string }) {
   const reduced = useReducedMotion();
+  const springs = useSprings();
   const check = (
     <svg width={20} height={20} viewBox="0 0 20 20" aria-hidden>
       {reduced ? (
@@ -44,7 +45,7 @@ function SuccessButton({ outgoingLabel }: { outgoingLabel: string }) {
           strokeLinejoin="round"
           initial={{ pathLength: 0, opacity: 0 }}
           animate={{ pathLength: 1, opacity: 1 }}
-          transition={{ pathLength: { ...spring.gentle }, opacity: { duration: duration.feedback } }}
+          transition={{ pathLength: { ...springs.gentle }, opacity: { duration: duration.feedback } }}
         />
       )}
     </svg>

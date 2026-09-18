@@ -88,3 +88,82 @@ describe("design token contrast (spec 0002 AA gate)", () => {
     expect({ chroma: dangerSolid.chroma, hue: dangerSolid.hue }).toEqual({ chroma: 0.19, hue: 27 });
   });
 });
+
+/* --------------------------------------------------------------------------
+   Design-variant quadrants (BRAWUKA-505): retro and modern each override a
+   subset of the neutral plate per theme. The effective token for a quadrant
+   is the base theme value unless the matching variant block re-pins it —
+   same merge the cascade performs (variant block wins over base; the
+   `:is(.dark)` variant block wins over both for dark).
+   ------------------------------------------------------------------------- */
+
+/** Every `--name: value;` declaration in a block, last write wins. */
+function tokensOf(block: string): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const match of block.matchAll(/\n\s*(--[\w-]+)\s*:\s*([^;]+);/g)) {
+    map.set(match[1], match[2].trim());
+  }
+  return map;
+}
+
+/** Merge a variant's overrides onto a theme plate; var() references in the
+   variant resolve against the merged map one level deep (e.g. --muted). */
+function mergeBlocks(base: string, variant: string): Map<string, string> {
+  const merged = tokensOf(base);
+  for (const [name, value] of tokensOf(variant)) merged.set(name, value);
+  return merged;
+}
+
+/** Resolve a token to an oklch literal through one level of var() indirection. */
+function resolvedToken(map: Map<string, string>, name: string): string {
+  const raw = map.get(name);
+  if (!raw) throw new Error(`token ${name} not found — the AA gate cannot check it`);
+  const ref = /^var\((--[\w-]+)\)$/.exec(raw);
+  const value = ref ? map.get(ref[1]) : raw;
+  if (!value || !value.startsWith("oklch(")) {
+    throw new Error(`token ${name} does not resolve to an oklch() literal: ${raw}`);
+  }
+  return value;
+}
+
+function quadrantRatio(map: Map<string, string>, pair: string): number {
+  const [foreground, background] = pair.split("/");
+  const fg = foreground === "white" ? WHITE : resolvedToken(map, `--${foreground}`);
+  return oklchPairRatio(fg, resolvedToken(map, `--${background}`));
+}
+
+/* Neutral-role pairs every quadrant must clear: body text on the canvas and
+   each surface step, muted metadata on the same, accent as text on the
+   canvas (links/focus), and the filled-button brand pairs. */
+const QUADRANT_PAIRS = [
+  ...PAIRS,
+  "foreground/background",
+  "foreground/surface",
+  "foreground/surface-secondary",
+  "muted/background",
+  "muted/surface",
+  "muted/surface-secondary",
+  "muted/overlay",
+  "accent/background",
+];
+
+const VARIANT_QUADRANTS = {
+  "retro light": mergeBlocks(LIGHT, themeBlock('[data-variant="retro"]')),
+  "retro dark": mergeBlocks(
+    DARK + "\n" + themeBlock('[data-variant="retro"]'),
+    themeBlock('[data-variant="retro"]:is(.dark, [data-theme="dark"])'),
+  ),
+  "modern light": mergeBlocks(LIGHT, themeBlock('[data-variant="modern"]')),
+  "modern dark": mergeBlocks(
+    DARK + "\n" + themeBlock('[data-variant="modern"]'),
+    themeBlock('[data-variant="modern"]:is(.dark, [data-theme="dark"])'),
+  ),
+} as const;
+
+describe("design-variant token contrast (BRAWUKA-505 AA gate)", () => {
+  it.each(Object.entries(VARIANT_QUADRANTS).flatMap(([name, map]) =>
+    QUADRANT_PAIRS.map((pair) => [name, pair, map] as const),
+  ))("%s %s clears 4.5:1", (_name, pair, map) => {
+    expect(quadrantRatio(map, pair)).toBeGreaterThanOrEqual(AA_BODY_TEXT);
+  });
+});

@@ -114,27 +114,15 @@ and the KV hot-cache read path are unaffected and verified working.
   - `POI_SERVICE_TOKEN` installed on both Workers (self-generated, 2026-09-12).
   - `GOOGLE_PLACES_API_KEY` NOT installed — still blocked on item 5. Until it is, `/poi/:place_id`, `/poi/resolve` (query path) and `/poi/search/external` return 502 `upstream_error`; every other path works.
 - [x] Deploy: `npm run deploy -- --env production` (guarded — refuses while the placeholder ids are still configured) → workers.dev URL; wire `POI_SERVICE_URL` + `POI_SERVICE_TOKEN` into `web/.env.local` (done 2026-09-12, BRAWUKA-222 — both environments deployed and verified: `https://poi-service-staging.lyuzizheng.workers.dev`, `https://poi-service-prod.lyuzizheng.workers.dev`; `npm run deploy -- --env staging|production --check` now passes)
-- [ ] Worker route migration (BRAWUKA-236) — the `cafemood.app` zone is live
-  (NS delegated, verified 2026-09-15) but serves zero records for the worker
-  hostnames; the custom-domain `routes` are declared in
-  `poi-service/wrangler.toml` / `image-service/wrangler.toml` and attach on
-  the next deploy:
-  1. Redeploy: `npm run deploy -- --env staging` and `--env production` in
-     `poi-service/` and `image-service/` (needs the `CLOUDFLARE_API_TOKEN`
-     from the item below — the wrangler OAuth session is expired).
-  2. Verify each custom domain answers: `curl
-     https://poi-service.cafemood.app/health`,
-     `https://image-service.cafemood.app/health` (+ staging pair).
-  3. Switch the Dokploy env vars `POI_SERVICE_URL` / `IMAGE_SERVICE_URL`
-     (values in `deploy/dokploy/.env.*.example`) to the custom domains,
-     rolling-restart the web app, verify `/api/places/search` and
-     `/api/images/upload` end-to-end.
-  4. Only after step 3 is green: add `workers_dev = false` to each `[env.*]`
-     block (or disable the workers.dev route in Settings → Domains &
-     Routes) and redeploy — never before, or the web app loses its upstream.
-  5. Shared-secret headers (`x-poi-service-token` /
-     `x-image-service-token`) stay unchanged — the zone route is
-     defense-in-depth, not a token replacement.
+- [x] Worker route migration (BRAWUKA-236) — custom domains attached via Cloudflare MCP and verified:
+  - `poi-service.cafemood.app` → `poi-service-prod` (/health 200)
+  - `image-service.cafemood.app` → `image-service-prod` (/health 200)
+  - `poi-service-staging.cafemood.app` → `poi-service-staging` (/health 200)
+  - `image-service-staging.cafemood.app` → `image-service-staging` (/health 200)
+  - Dokploy staging app (`coffeemode-web-staging`) updated with custom domain `POI_SERVICE_URL` / `IMAGE_SERVICE_URL` and restarted; Dokploy prod app env prepared.
+  - `workers.dev` disabled across all 4 workers via Cloudflare API (`subdomain` endpoint returns enabled: false; all 4 return 404).
+  - `workers_dev = false` pinned in `poi-service/wrangler.toml` and `image-service/wrangler.toml`.
+  - Token auth (`x-poi-service-token` / `x-image-service-token`) verified end-to-end (401/403 without token; 200 with token).
 - [ ] Enable the Cloudflare "Add visitor location headers" Managed Transform on the zone (sends `CF-IPCity` / `CF-IPCountry`; default-city resolution per DG128)
 - [x] Better Stack account + per-environment sources for rate-limit/observability alerts (DG129, BRAWUKA-235): sources `coffeemode-rate-limit-staging` and `coffeemode-rate-limit-prod` (HTTP platform, team `Your team`, created 2026-09-17 via MCP). Live wiring verified same day: one synthetic `rate_limited` event per source, each confirmed back through the Better Stack query API within ~1 min. What remains is owner-side paste (values never go in chat/docs/repo): in the **Dokploy staging app env** set `BETTER_STACK_INGEST_URL` to the staging source host and `BETTER_STACK_INGEST_TOKEN` to the staging source token, same for **prod** with the prod source's own pair (Better Stack dashboard → Logs → each source → ingestion details). App code sends `Authorization: Bearer BETTER_STACK_INGEST_TOKEN` (see `web/lib/observability/rate-limit-alert.ts`); both vars are server-only (spec 0010 — never `NEXT_PUBLIC_*`). Never reuse one env's pair in the other — per-env filtering depends on it. Optional follow-up (not blocking): per-source alert rules (`rate_limited` → low-severity, `rate_limiter_fail_open` → immediate P1).
 

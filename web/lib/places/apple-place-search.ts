@@ -35,27 +35,73 @@ interface MapKitWindow extends Window {
   __coffeeModeMapKitInitialized?: boolean;
 }
 
-function loadMapKitScript(): Promise<void> {
+const MAPKIT_SCRIPT_TIMEOUT_MS = 10_000;
+const MAPKIT_SEARCH_TIMEOUT_MS = 10_000;
+let scriptLoadingPromise: Promise<void> | null = null;
+
+export function loadMapKitScript(timeoutMs = MAPKIT_SCRIPT_TIMEOUT_MS): Promise<void> {
   const existing = document.querySelector<HTMLScriptElement>(`script[src="${MAPKIT_SCRIPT}"]`);
-  if (existing) {
-    if (existing.dataset.loaded === "true") return Promise.resolve();
-    return new Promise((resolve, reject) => {
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("MapKit script failed to load")), { once: true });
-    });
+  if (existing?.dataset.loaded === "true") return Promise.resolve();
+
+  if (scriptLoadingPromise) return scriptLoadingPromise;
+
+  if (existing && existing.dataset.failed === "true") {
+    existing.remove();
   }
 
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = MAPKIT_SCRIPT;
-    script.async = true;
-    script.onload = () => {
+  const current = document.querySelector<HTMLScriptElement>(`script[src="${MAPKIT_SCRIPT}"]`);
+  const isNew = !current;
+  const script = current ?? document.createElement("script");
+
+  scriptLoadingPromise = new Promise<void>((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const cleanup = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      script.removeEventListener("load", onLoad);
+      script.removeEventListener("error", onError);
+      script.onload = null;
+      script.onerror = null;
+      scriptLoadingPromise = null;
+    };
+
+    const onLoad = () => {
+      cleanup();
       script.dataset.loaded = "true";
+      delete script.dataset.failed;
       resolve();
     };
-    script.onerror = () => reject(new Error("MapKit script failed to load"));
-    document.head.appendChild(script);
+
+    const onError = () => {
+      cleanup();
+      script.dataset.failed = "true";
+      script.remove();
+      reject(new Error("MapKit script failed to load"));
+    };
+
+    const onTimeout = () => {
+      cleanup();
+      script.dataset.failed = "true";
+      script.remove();
+      reject(new Error("MapKit script load timed out"));
+    };
+
+    timer = setTimeout(onTimeout, timeoutMs);
+    script.addEventListener("load", onLoad, { once: true });
+    script.addEventListener("error", onError, { once: true });
+    script.onload = onLoad;
+    script.onerror = onError;
+
+    if (isNew) {
+      script.src = MAPKIT_SCRIPT;
+      script.async = true;
+      document.head.appendChild(script);
+    }
   });
+
+  return scriptLoadingPromise;
 }
 
 async function fetchMapKitToken(): Promise<string> {
@@ -79,8 +125,9 @@ async function fetchMapKitToken(): Promise<string> {
  */
 let mapKitSessionExpired = false;
 
-/** Searches blocked on a MapKit authorization round-trip; drained on a 401. */
-const pendingSearches = new Set<() => void>();
+/** Searches blocked on a MapKit authorization round-trip; drained on any auth failure. */
+type PendingSearchFail = (reason?: { unauthorized?: boolean }) => void;
+const pendingSearches = new Set<PendingSearchFail>();
 
 async function fetchMapKitTokenTracked(): Promise<string> {
   try {
@@ -88,12 +135,15 @@ async function fetchMapKitTokenTracked(): Promise<string> {
     mapKitSessionExpired = false;
     return token;
   } catch (cause) {
-    mapKitSessionExpired = isUnauthorized(cause);
-    if (mapKitSessionExpired) {
-      // Fail in-flight searches now: MapKit may never call their callbacks
-      // after a failed authorization, and a hanging spinner must not be the
-      // session-expired signal.
-      for (const fail of pendingSearches) fail();
+    const unauthorized = isUnauthorized(cause);
+    if (unauthorized) {
+      mapKitSessionExpired = true;
+    }
+    // Fail in-flight searches now: MapKit may never call their callbacks
+    // after a failed authorization (whether 401 or non-401), and a hanging
+    // spinner must not be the failure signal.
+    for (const fail of [...pendingSearches]) {
+      fail({ unauthorized });
     }
     throw cause;
   }
@@ -117,6 +167,12 @@ function toPOI(place: MapKitPlace): POI | null {
     hours_json: null,
     fetched_at: new Date().toISOString(),
   };
+}
+
+export function _resetMapKitStateForTests(): void {
+  mapKitSessionExpired = false;
+  pendingSearches.clear();
+  scriptLoadingPromise = null;
 }
 
 export function applePlaceSearch(t: CreateTranslator): PlaceSearchProvider {
@@ -152,13 +208,33 @@ export function applePlaceSearch(t: CreateTranslator): PlaceSearchProvider {
       if (mapKitSessionExpired) throw new Error(UNAUTHORIZED);
       const request = new api.Search();
       const { promise, resolve, reject } = Promise.withResolvers<POI[]>();
-      const fail = () => {
+
+      let searchTimer: ReturnType<typeof setTimeout> | null = null;
+      const cleanup = () => {
+        if (searchTimer) {
+          clearTimeout(searchTimer);
+          searchTimer = null;
+        }
         pendingSearches.delete(fail);
-        reject(new Error(UNAUTHORIZED));
+      };
+
+      const fail: PendingSearchFail = (reason) => {
+        cleanup();
+        if (reason?.unauthorized || mapKitSessionExpired) {
+          reject(new Error(UNAUTHORIZED));
+        } else {
+          reject(new Error(t("searchFailed")));
+        }
       };
       pendingSearches.add(fail);
+
+      searchTimer = setTimeout(() => {
+        cleanup();
+        reject(new Error(t("searchFailed")));
+      }, MAPKIT_SEARCH_TIMEOUT_MS);
+
       request.search(query, (searchError, response) => {
-        pendingSearches.delete(fail);
+        cleanup();
         if (searchError) {
           reject(new Error(t("searchFailed")));
           return;

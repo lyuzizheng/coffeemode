@@ -83,6 +83,29 @@ describe("closingTimeToday — the 'Open until 22:00' source (cafe-local)", () =
     ).toBe("02:00");
   });
 
+  it("returns today's close when today's window is already open inside yesterday's spillover", () => {
+    // Yesterday 18:00→03:00 spills into today; today 00:00→22:00 is already
+    // open at 01:00 — the close that matters is today's, not the spillover's
+    // (BRAWUKA-395 P2-1).
+    const overnightThenDay: WeeklyHours = {
+      mon: { open: "18:00", close: "03:00" },
+      tue: { open: "00:00", close: "22:00" },
+    };
+    // Tuesday 01:00 KST (Monday 16:00 UTC).
+    expect(
+      closingTimeToday(overnightThenDay, "Asia/Seoul", new Date("2026-08-17T16:00:00Z")),
+    ).toBe("22:00");
+    // Same overlap with a later open: Tuesday 09:00 KST sits inside Monday's
+    // 18:00→12:00 spillover, but Tuesday's 08:00→22:00 window already opened.
+    const lateSpillover: WeeklyHours = {
+      mon: { open: "18:00", close: "12:00" },
+      tue: { open: "08:00", close: "22:00" },
+    };
+    expect(
+      closingTimeToday(lateSpillover, "Asia/Seoul", new Date("2026-08-18T00:00:00Z")),
+    ).toBe("22:00");
+  });
+
   it("returns null when closed, around the clock, or in tonight's overnight portion", () => {
     // Closed Tuesday.
     expect(

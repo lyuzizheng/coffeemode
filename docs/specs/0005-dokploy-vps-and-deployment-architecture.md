@@ -34,7 +34,11 @@ Accepted (2026-09-04 — BRAWUKA-50 architecture and deployment specification; r
      - Production Database: Supabase PROD project (Postgres + PostGIS 16, region ap-southeast-1)
      - App runtime connects over `DATABASE_URL` (Supavisor pooled `:6543`, `sslmode=require`);
        migrations/backups/restores run over `DIRECT_URL` (session/direct `:5432`, `sslmode=require`).
-     - No self-hosted postgres service exists in either compose stack (removed BRAWUKA-241).
+    - No self-hosted postgres service exists in either application compose stack (removed BRAWUKA-241).
+      However, Dokploy VPS hosts a dedicated, isolated CI Postgres service
+      (`coffeemode-ci-postgres`, PostGIS 16 image `postgis/postgis:16-3.4`, BRAWUKA-474)
+      for GitHub Actions `staging-journey` verification, completely decoupling ephemeral
+      CI scratch database load from the staging Supabase project.
      - Independent local backup dirs (`backups/staging/`, `backups/prod/`).
    - Web Ingress Network: The web containers attach to their respective backend
      bridge network plus the shared external `traefik-net` bridge for Traefik ingress.
@@ -95,6 +99,8 @@ Accepted (2026-09-04 — BRAWUKA-50 architecture and deployment specification; r
 
 Dokploy manages multi-service Docker Compose stacks behind an integrated Traefik reverse proxy. Incoming traffic arrives at the VPS on ports 80 and 443, where Traefik handles TLS termination (Let's Encrypt automated ACME HTTP/DNS challenge) and routes to target application containers via Docker network labels. With BRAWUKA-238 the Cloudflare-proxied path terminates at `cloudflared` (token-mode tunnel, `restart: unless-stopped`), which forwards to Traefik over `traefik-net` — no inbound ports need to stay open for tunneled hostnames.
 
+In addition to the application stacks, Dokploy manages an isolated CI Postgres service (`coffeemode-ci-postgres`) dedicated to GitHub Actions `staging-journey` runs (BRAWUKA-474). This service does not route through Traefik and exposes zero inbound ports to the public internet; external connectivity from GitHub Actions runners is provided over Cloudflare Tunnel (`ci-db.cafemood.app`) protected by a Cloudflare Access Service Token.
+
 ```text
                                   Internet
                                      │
@@ -129,6 +135,21 @@ Dokploy manages multi-service Docker Compose stacks behind an integrated Traefik
                     │ Postgres + PostGIS 16 │   │ Postgres + PostGIS 16 │
                     │ ap-southeast-1        │   │ ap-southeast-1        │
                     └───────────────────────┘   └───────────────────────┘
+
+               GitHub Actions CI Runner (staging-journey)
+                                    │
+                                    ▼ (cloudflared access tcp + Access Service Token)
+                    ┌───────────────────────────────┐
+                    │ Cloudflare Tunnel Private Net │
+                    │ (ci-db.cafemood.app:5432)     │
+                    └───────────────┬───────────────┘
+                                    ▼ (localhost:5432 / internal bridge)
+                    ┌───────────────────────────────┐
+                    │ coffeemode-ci-postgres        │
+                    │ Dokploy VPS Service           │
+                    │ (postgis/postgis:16-3.4)      │
+                    │ Ephemeral scratch test DBs    │
+                    └───────────────────────────────┘
 ```
 
 ### 2. Network & storage isolation guarantees
@@ -137,20 +158,26 @@ Dokploy manages multi-service Docker Compose stacks behind an integrated Traefik
    - `coffeemode-staging-network`: Isolated bridge connecting `coffeemode-web-staging` and `cloudflared-staging`.
    - `coffeemode-prod-network`: Isolated bridge connecting `coffeemode-web-prod` and `cloudflared-prod`.
    - `traefik-net`: External bridge shared by the web tier (`web-staging`, `web-prod`), the tunnel tier (`cloudflared-staging`, `cloudflared-prod`), and Traefik for HTTP ingress routing.
-   - Databases live in Supabase (separate staging/prod projects) — no database
-     containers attach to any VPS network. Cross-env isolation is enforced at
+   - Application databases live in Supabase (separate staging/prod projects) — no application
+     database containers attach to any VPS network. Cross-env isolation is enforced at
      the Supabase project + credential level.
-   - No database port is exposed on the VPS. Supabase connectivity is outbound
+   - Dokploy CI Postgres (`coffeemode-ci-postgres`) runs in an isolated Docker network.
+     Port 5432 is bound to localhost (127.0.0.1) on the VPS and forwarded privately over
+     Cloudflare Tunnel (`ci-db.cafemood.app`). Traefik does not route to it, and zero public
+     inbound ports are open.
+   - No database port is exposed to the public internet on the VPS. Supabase connectivity is outbound
      TLS (`sslmode=require`) over `DATABASE_URL` / `DIRECT_URL`.
-
 2. **Persistent storage mounts**:
    - Local backup dirs: `backups/staging/` (retention: 7 days), `backups/prod/` (retention: 14 days local, 30 days R2).
-   - No postgres data volumes exist (Supabase primary, BRAWUKA-241).
+   - No application postgres data volumes exist (Supabase primary, BRAWUKA-241).
+   - CI Postgres data volume is local and ephemeral (BRAWUKA-474); scratch databases are
+     created and dropped per test suite and are excluded from backups and `backup-postgres.sh`.
 
 3. **Resource allocation & limits**:
    - `coffeemode-web-prod`: CPU limit: 2.0 cores, Memory limit: 2 GB (Reservation: 1.0 core, 1 GB).
    - `coffeemode-web-staging`: CPU limit: 1.0 core, Memory limit: 1 GB.
-   - Database compute is Supabase-managed (not VPS-reserved).
+   - Application database compute is Supabase-managed (not VPS-reserved).
+   - `coffeemode-ci-postgres`: CPU limit: 2.0 cores (Reservation: 0.5 cores), Memory limit: 2048 MB (Reservation: 512 MB).
    - `cloudflared-staging` / `cloudflared-prod`: CPU limit: 0.5 core, Memory limit: 256 MB (Reservation: 0.1 core, 64 MB).
 
 ### 3. Cloudflare dual services & edge matrix
@@ -214,6 +241,8 @@ spec 0010 §1. The table below covers the deployed staging/production edge only.
      2. Applies schema migrations over `DIRECT_URL` (Supabase prod session/direct — never the transaction pooler) via repo checkout.
      3. Triggers Dokploy production deployment and polls `/api/health` for release convergence.
      4. Executes automated smoke tests (`deploy/dokploy/smoke-test.sh prod`).
+### 2. Zero-downtime container rolling swap strategy
+
 When the VPS runs in Docker Swarm mode, Dokploy stack deployments honor:
 
 ```yaml
@@ -256,6 +285,20 @@ deploy:
      ```bash
      scripts/devops/restore.sh --env staging --file <backup>.dump.gz --drill
      ```
+
+### 4. Scheduled jobs & nightly recompute architecture (Dokploy Cron)
+
+Per BRAWUKA-475, the nightly work_stats recompute and Helpful ranking snapshot execution migrated from GitHub Actions to Dokploy VPS cron:
+- **Zero GitHub Secrets Leakage**: `DATABASE_URL` (production pooled connection string) does not enter GitHub secrets or CI environments; it remains strictly confined to the Dokploy environment on the VPS host.
+- **Execution Window**: Scheduled daily at 02:00 UTC (`0 2 * * *`), comfortably clear of the 03:00 UTC staging-journey verification window.
+- **Canonical Orchestrator**: `deploy/dokploy/nightly-recompute.sh` invokes `npm run recompute:work-stats && npm run snapshot:helpful-ranking` within the production web container via `docker exec`.
+- **Deployment Reconfigurability**:
+  - *Dokploy Scheduled Job*: Created as an `application` schedule on `coffeemode-web-prod` (`0 2 * * *`, command: `[ -f /app/.env ] && set -a && . /app/.env && set +a; if [ -d web ]; then cd web; fi; if ! (npm run recompute:work-stats && npm run snapshot:helpful-ranking); then if [ -n "$MULTICA_AUTOPILOT_WEBHOOK_URL" ]; then node -e 'const url=process.env.MULTICA_AUTOPILOT_WEBHOOK_URL; if(url){await fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({job:"nightly-recompute",error:"Nightly recompute execution failed in container",run:"dokploy:schedule:nightly-recompute"}),signal:AbortSignal.timeout(10000)}).catch(()=>{});}'; fi; exit 1; fi`).
+  - *VPS Host Crontab Alternative*: `0 2 * * * /path/to/coffeemode/deploy/dokploy/nightly-recompute.sh >> /var/log/nightly-recompute.log 2>&1`.
+- **Failure Alerting & Self-Healing Webhook (BRAWUKA-476)**:
+  - *Dual-Layer Defense*: Script-level failure trap in `deploy/dokploy/nightly-recompute.sh` catches application-level non-zero exits, formatting structured JSON error lines and POSTing `{"job":"nightly-recompute","error":"<summary>","run":"<log_pointer>"}` to `MULTICA_AUTOPILOT_WEBHOOK_URL`. In addition, Dokploy native custom webhook notification is configured with the same endpoint to capture platform-level/container failures.
+  - *Autopilot Self-Healing*: The webhook triggers Multica Autopilot `CoffeeMode 运维告警自愈` (`4b90855b-46b2-481f-aeb5-0d739b8dc394`), which automatically provisions an incident ticket (`[AUTO-OPS] Dokploy 定时任务失败告警 <date>`) assigned to DevOps for immediate triage and remediation.
+### 5. Automated smoke test verification checklist
 - [ ] Healthcheck endpoint `GET /api/health` returns `{"ok":true}` and version/boot_time markers with HTTP 200.
 - [ ] Root page `GET /` returns HTTP 200 with HTML shell and title CafeMood.
 - [ ] PostGIS spatial query `GET /api/cafes?lat=1.3521&lng=103.8198&radius_km=5` returns HTTP 200 with `{"cafes":[...]}`.

@@ -27,17 +27,17 @@ export async function PATCH(request: NextRequest) {
   if (!bodyRes.ok) return bodyRes.response;
   const body = bodyRes.data;
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    return apiError("invalid_request", "invalid JSON body", 400);
+    return apiError("invalid_request", "invalid JSON body", { status: 400 });
   }
 
   const raw = body as { showPublicIdentity?: unknown; publicHandle?: unknown };
 
   if (typeof raw.showPublicIdentity !== "boolean") {
-    return apiError("invalid_request", "showPublicIdentity (boolean) required", 400);
+    return apiError("invalid_request", "showPublicIdentity (boolean) required", { status: 400 });
   }
 
   if (raw.publicHandle !== undefined && typeof raw.publicHandle !== "string") {
-    return apiError("invalid_request", "publicHandle must be a string", 400);
+    return apiError("invalid_request", "publicHandle must be a string", { status: 400 });
   }
 
   try {

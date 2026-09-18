@@ -28,6 +28,7 @@ function executeSubmit({
   scores,
   maxStay,
   note,
+  photoCount,
   offlineMessage,
 }: {
   isOffline: boolean;
@@ -35,10 +36,11 @@ function executeSubmit({
   effectivelyAuthenticated: boolean;
   setError: (err: string) => void;
   setShowSignInGate: (show: boolean) => void;
-  submit: (p: { scores: CheckInScores; maxStay: MaxStay | null; note: string }) => void;
+  submit: (p: { scores: CheckInScores; maxStay: MaxStay | null; note: string; photoCount: number }) => void;
   scores: CheckInScores;
   maxStay: MaxStay | null;
   note: string;
+  photoCount: number;
   offlineMessage: string;
 }) {
   if (isOffline) {
@@ -47,7 +49,7 @@ function executeSubmit({
     if (!effectivelyAuthenticated) {
       setShowSignInGate(true);
     } else {
-      submit({ scores, maxStay, note });
+      submit({ scores, maxStay, note, photoCount });
     }
   }
 }
@@ -113,6 +115,7 @@ export function useCheckinSubmit({
       submit: mutation.submit,
       scores: scoresState.scores,
       maxStay,
+      photoCount: photos.length,
       note,
       offlineMessage: t("offline"),
     });

@@ -275,6 +275,7 @@
     "requiredFields": "Choose a place, score it, add a note, and attach a photo.",
     "createFailed": "The cafe could not be created.",
     "alreadyExists": "This place is already in CafeMood.",
+    "viewExisting": "View existing cafe",
     "created": "Cafe created.",
     "offline": "Creation unavailable offline",
     "signInRequired": "Please sign in to publish — your draft stays here.",

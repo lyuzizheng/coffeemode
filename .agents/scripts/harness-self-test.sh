@@ -542,16 +542,15 @@ if assert_mutated "compatibility_date removed" "$PIN_WRANGLER.bak" "$PIN_WRANGLE
 fi
 mv "$PIN_WRANGLER.bak" "$PIN_WRANGLER"
 
-# The pin lives in every workflow that provisions Node, not only in ci.yml: a
-# nightly job that installs in web/ and recomputes against the production
-# database shows the same drift (BRAWUKA-202).
-PIN_NIGHTLY="$TEST_ROOT/.github/workflows/nightly-recompute.yml"
-cp "$PIN_NIGHTLY" "$PIN_NIGHTLY.bak"
-sed 's/^          node-version: 22$/          node-version: 24/' "$PIN_NIGHTLY.bak" > "$PIN_NIGHTLY"
-if assert_mutated "nightly workflow pins a different Node major" "$PIN_NIGHTLY.bak" "$PIN_NIGHTLY"; then
-  expect_failure "nightly workflow node-version drift" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-runtime-pins.sh"
+# The pin lives in every workflow that provisions Node, not only in ci.yml:
+# staging-journey installs in web/ and runs against staging database (BRAWUKA-202).
+PIN_STAGING_JOURNEY="$TEST_ROOT/.github/workflows/staging-journey.yml"
+cp "$PIN_STAGING_JOURNEY" "$PIN_STAGING_JOURNEY.bak"
+sed 's/^          node-version: 22$/          node-version: 24/' "$PIN_STAGING_JOURNEY.bak" > "$PIN_STAGING_JOURNEY"
+if assert_mutated "staging-journey workflow pins a different Node major" "$PIN_STAGING_JOURNEY.bak" "$PIN_STAGING_JOURNEY"; then
+  expect_failure "staging-journey workflow node-version drift" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-runtime-pins.sh"
 fi
-mv "$PIN_NIGHTLY.bak" "$PIN_NIGHTLY"
+mv "$PIN_STAGING_JOURNEY.bak" "$PIN_STAGING_JOURNEY"
 
 # A workflow the gate has never seen is checked the same way, or "one more
 # workflow" becomes the blind spot again.

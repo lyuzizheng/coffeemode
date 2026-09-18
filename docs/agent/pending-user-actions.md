@@ -24,9 +24,11 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
 ## 1a. Staging journey secrets (GitHub Environment `staging`) — unlocks post-merge staging verification
 
-- [ ] In the **staging** Supabase project (`ojujmjewtbquiddswyrg`) dashboard → Settings → API: copy the `anon public` key and a **session/direct** (`:5432`, never the `:6543` pooler — `CREATE DATABASE` cannot run through it, spec 0010 §4) Postgres connection string.
-- [ ] `gh secret set` into the `staging` environment (never into the repo, never `NEXT_PUBLIC_*`):
-  `STAGING_DATABASE_URL`, `SUPABASE_URL` (= `https://ojujmjewtbquiddswyrg.supabase.co`), `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
+- [x] Dedicated CI Postgres (`coffeemode-ci-postgres`, PostGIS 16) created on Dokploy VPS, routed privately over Cloudflare Tunnel (`ci-db.cafemood.app:5432`) with zero public port exposure (BRAWUKA-474).
+- [x] Cloudflare Access application and Service Token created (`CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`) allowing runner TCP proxy to `ci-db.cafemood.app`.
+- [x] `gh secret set` into the `staging` environment:
+  `STAGING_DATABASE_URL` (points to `postgresql://coffeemode:****@localhost:5432/coffeemode_ci`), `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`, `SUPABASE_URL` (= `https://ojujmjewtbquiddswyrg.supabase.co`), `SUPABASE_ANON_KEY`. Supabase staging project retains only Auth smoke checks; test scratch databases live on the VPS CI Postgres.
+- [ ] (Optional, for real-session journey suites) Staging Supabase project dashboard → Settings → API: copy `service_role` key into GitHub Environment `staging` as `SUPABASE_SERVICE_ROLE_KEY`. (Staging CI verification currently passes using `SUPABASE_ANON_KEY` for auth smoke verification.)
 - [ ] Redirect URLs allowlist on the **staging** project (spec 0010 §1): `http://localhost:3000/auth/callback` (local dev against staging auth) + `https://staging.cafemood.app/auth/callback`.
 - [ ] Confirm Google provider is enabled on the **staging** project (item 3's client works for both; the Supabase callback `https://ojujmjewtbquiddswyrg.supabase.co/auth/v1/callback` must be in the Google client's authorized redirect URIs).
 - [ ] `production` environment: owner (`lyuzizheng`) is the required reviewer (already set); prod secrets land there only at promotion time, never before.
@@ -37,7 +39,8 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 - [x] Enable PostGIS in the SQL editor: `CREATE EXTENSION postgis;` (automated & verified via `scripts/devops/provision-supabase.sh`)
 - [x] Apply the schema with the session/direct connection (not the transaction pooler): `DATABASE_URL=<session-conn> npm run db:migrate` (all 19 migrations 0001–0019 applied; automated via `scripts/devops/provision-supabase.sh`)
 - [ ] Put the pooled connection string into the VPS env as `DATABASE_URL` with `?sslmode=require` (fail-closed per #41); keep the session connection string for migrations/CI
-- [ ] Add `DATABASE_URL` as a GitHub Actions secret so the nightly recompute doubles as the free-tier keep-alive (defeats the 7-day inactivity pause)
+- [x] 已迁 VPS cron: nightly recompute 与 Helpful ranking 快照已迁至 Dokploy 定时任务（02:00 UTC，BRAWUKA-475），DATABASE_URL 仅在 VPS env 保留，无需进 GitHub secrets
+- [x] 定时任务失败告警自愈接线（BRAWUKA-476）：Dokploy env 配置 `MULTICA_AUTOPILOT_WEBHOOK_URL`，并在 Dokploy Notifications 挂载 Custom Webhook（兜底平台与构建异常）；非零退出时 POST 触发 CoffeeMode 运维告警自愈 autopilot 自动建单
 - [x] Verify product tables are NOT reachable via the Supabase Data API (PostgREST) with the browser anon key — all application tables have RLS enabled and grants revoked from `anon` & `authenticated` (verified via `scripts/devops/provision-supabase.sh`)
 - [ ] Free-tier cliffs: 500MB DB then read-only (seed negligible today — 14 cafes; re-measure before any bulk import), 5GB egress (images stay on R2), no backups — schedule `pg_dump` to R2 as the cheap mitigation
 
@@ -111,27 +114,15 @@ and the KV hot-cache read path are unaffected and verified working.
   - `POI_SERVICE_TOKEN` installed on both Workers (self-generated, 2026-09-12).
   - `GOOGLE_PLACES_API_KEY` NOT installed — still blocked on item 5. Until it is, `/poi/:place_id`, `/poi/resolve` (query path) and `/poi/search/external` return 502 `upstream_error`; every other path works.
 - [x] Deploy: `npm run deploy -- --env production` (guarded — refuses while the placeholder ids are still configured) → workers.dev URL; wire `POI_SERVICE_URL` + `POI_SERVICE_TOKEN` into `web/.env.local` (done 2026-09-12, BRAWUKA-222 — both environments deployed and verified: `https://poi-service-staging.lyuzizheng.workers.dev`, `https://poi-service-prod.lyuzizheng.workers.dev`; `npm run deploy -- --env staging|production --check` now passes)
-- [ ] Worker route migration (BRAWUKA-236) — the `cafemood.app` zone is live
-  (NS delegated, verified 2026-09-15) but serves zero records for the worker
-  hostnames; the custom-domain `routes` are declared in
-  `poi-service/wrangler.toml` / `image-service/wrangler.toml` and attach on
-  the next deploy:
-  1. Redeploy: `npm run deploy -- --env staging` and `--env production` in
-     `poi-service/` and `image-service/` (needs the `CLOUDFLARE_API_TOKEN`
-     from the item below — the wrangler OAuth session is expired).
-  2. Verify each custom domain answers: `curl
-     https://poi-service.cafemood.app/health`,
-     `https://image-service.cafemood.app/health` (+ staging pair).
-  3. Switch the Dokploy env vars `POI_SERVICE_URL` / `IMAGE_SERVICE_URL`
-     (values in `deploy/dokploy/.env.*.example`) to the custom domains,
-     rolling-restart the web app, verify `/api/places/search` and
-     `/api/images/upload` end-to-end.
-  4. Only after step 3 is green: add `workers_dev = false` to each `[env.*]`
-     block (or disable the workers.dev route in Settings → Domains &
-     Routes) and redeploy — never before, or the web app loses its upstream.
-  5. Shared-secret headers (`x-poi-service-token` /
-     `x-image-service-token`) stay unchanged — the zone route is
-     defense-in-depth, not a token replacement.
+- [x] Worker route migration (BRAWUKA-236) — custom domains attached via Cloudflare MCP and verified:
+  - `poi-service.cafemood.app` → `poi-service-prod` (/health 200)
+  - `image-service.cafemood.app` → `image-service-prod` (/health 200)
+  - `poi-service-staging.cafemood.app` → `poi-service-staging` (/health 200)
+  - `image-service-staging.cafemood.app` → `image-service-staging` (/health 200)
+  - Dokploy staging app (`coffeemode-web-staging`) updated with custom domain `POI_SERVICE_URL` / `IMAGE_SERVICE_URL` and restarted; Dokploy prod app env prepared.
+  - `workers.dev` disabled across all 4 workers via Cloudflare API (`subdomain` endpoint returns enabled: false; all 4 return 404).
+  - `workers_dev = false` pinned in `poi-service/wrangler.toml` and `image-service/wrangler.toml`.
+  - Token auth (`x-poi-service-token` / `x-image-service-token`) verified end-to-end (401/403 without token; 200 with token).
 - [ ] Enable the Cloudflare "Add visitor location headers" Managed Transform on the zone (sends `CF-IPCity` / `CF-IPCountry`; default-city resolution per DG128)
 - [x] Better Stack account + per-environment sources for rate-limit/observability alerts (DG129, BRAWUKA-235): sources `coffeemode-rate-limit-staging` and `coffeemode-rate-limit-prod` (HTTP platform, team `Your team`, created 2026-09-17 via MCP). Live wiring verified same day: one synthetic `rate_limited` event per source, each confirmed back through the Better Stack query API within ~1 min. What remains is owner-side paste (values never go in chat/docs/repo): in the **Dokploy staging app env** set `BETTER_STACK_INGEST_URL` to the staging source host and `BETTER_STACK_INGEST_TOKEN` to the staging source token, same for **prod** with the prod source's own pair (Better Stack dashboard → Logs → each source → ingestion details). App code sends `Authorization: Bearer BETTER_STACK_INGEST_TOKEN` (see `web/lib/observability/rate-limit-alert.ts`); both vars are server-only (spec 0010 — never `NEXT_PUBLIC_*`). Never reuse one env's pair in the other — per-env filtering depends on it. Optional follow-up (not blocking): per-source alert rules (`rate_limited` → low-severity, `rate_limiter_fail_open` → immediate P1).
 

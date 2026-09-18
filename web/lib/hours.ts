@@ -89,12 +89,24 @@ function cafeLocalTime(tz: string, instant: Date): CafeLocalTime | null {
 }
 
 /**
+ * Whether a parsed day window covers `minutes` since midnight. Windows are
+ * [open, close); close <= open spans midnight, and close === open reads as
+ * open around the clock. Shared by isOpenAt and closingTimeToday so the two
+ * can never disagree about what "open now" means.
+ */
+function windowCovers(open: number, close: number, minutes: number): boolean {
+  if (close > open) return minutes >= open && minutes < close;
+  return minutes >= open; // overnight portion or around the clock
+}
+
+/**
  * Whether the cafe is open at `instant`, evaluated in the cafe's timezone.
  * Returns null when tz or hours are missing/invalid — callers must render
  * "unknown", not a guess. Windows are [open, close); close <= open spans
  * midnight (yesterday's window still applies early the next day);
  * close === open reads as open around the clock.
- */export function isOpenAt(
+ */
+export function isOpenAt(
   hours: WeeklyHours | null | undefined,
   tz: string | null | undefined,
   instant: Date = new Date(),
@@ -114,11 +126,7 @@ function cafeLocalTime(tz: string, instant: Date): CafeLocalTime | null {
     const open = parseWallClock(today.open);
     const close = parseWallClock(today.close);
     if (open === null || close === null) return null; // corrupt row → unknown
-    if (close > open) {
-      if (local.minutes >= open && local.minutes < close) return true;
-    } else if (local.minutes >= open) {
-      return true; // today's overnight portion
-    }
+    if (windowCovers(open, close, local.minutes)) return true;
   }
 
   if (previous != null) {
@@ -152,6 +160,16 @@ export function closingTimeToday(
   const yesterday = DAY_KEYS[(dayIndex + 6) % 7];
   const today = hours[local.day];
   const previous = hours[yesterday];
+  // Today's window owns the close quote once it is open — yesterday's
+  // spillover only applies while today has not opened yet (BRAWUKA-395 P2-1).
+  if (today != null) {
+    const open = parseWallClock(today.open);
+    const close = parseWallClock(today.close);
+    if (open === null || close === null) return null;
+    if (windowCovers(open, close, local.minutes)) {
+      return close > open ? today.close : null; // overnight/24h: no same-day close
+    }
+  }
   // Yesterday's overnight spillover owns the window early in the day.
   if (previous != null) {
     const open = parseWallClock(previous.open);
@@ -159,13 +177,6 @@ export function closingTimeToday(
     if (open !== null && close !== null && close <= open && close !== open && local.minutes < close) {
       return previous.close;
     }
-  }
-  if (today != null) {
-    const open = parseWallClock(today.open);
-    const close = parseWallClock(today.close);
-    if (open === null || close === null) return null;
-    if (close <= open) return null; // overnight or 24h — no same-day close
-    return today.close;
   }
   return null;
 }

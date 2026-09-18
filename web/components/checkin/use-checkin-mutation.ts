@@ -28,6 +28,10 @@ interface SubmitCheckinParams {
   scores: CheckInScores;
   maxStay: MaxStay | null;
   note: string;
+  /** Photos staged in state at submit time — the PATCH contract cannot save
+   *  them, so an edit save must report the drop instead of staying silent
+   *  (BRAWUKA-395 P2-2). */
+  photoCount: number;
 }
 
 interface UseCheckinMutationOptions {
@@ -80,7 +84,8 @@ function useSubmitMutation({
 
   return useMutation({
     mutationFn: async (params: SubmitCheckinParams) => {
-      // Edit PATCHes carry no photo_ids — uploading staged photos would only orphan them in R2 (BRAWUKA-269).
+      // Edit PATCHes carry no photo_ids — staged photos drop here, so the save
+      // must say so (BRAWUKA-395 P2-2); uploading would only orphan R2 objects (BRAWUKA-269).
       if (isEdit && editCheckinId) {
         await updateCheckin({
           editCheckinId,
@@ -89,7 +94,7 @@ function useSubmitMutation({
           note: params.note,
           fallbackErrorMessage: t("couldntSave"),
         });
-        return { photosDropped: false };
+        return { photosDropped: params.photoCount > 0 };
       }
       const uploadedIds = await uploadPendingPhotos();
       const { convertedToEdit } = await createCheckin({

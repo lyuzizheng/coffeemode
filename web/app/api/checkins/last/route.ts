@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 
   const cafeId = request.nextUrl.searchParams.get("cafe_id");
   if (!cafeId || !isValidUUID(cafeId)) {
-    return apiError("invalid_request", "cafe_id (UUID) required", 400);
+    return apiError("invalid_request", "cafe_id (UUID) required", { status: 400 });
   }
 
 

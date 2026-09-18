@@ -150,11 +150,6 @@
       "count": 1
     }
   },
-  "lib/hours.ts": {
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
   "lib/search/search-service.ts": {
     "max-lines-per-function": {
       "count": 1

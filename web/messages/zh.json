@@ -275,6 +275,7 @@
     "requiredFields": "请选择地点、评分，填写备注并添加照片。",
     "createFailed": "无法创建咖啡店。",
     "alreadyExists": "这个地点已经在 CafeMood 中。",
+    "viewExisting": "查看已有咖啡店",
     "created": "咖啡店已创建。",
     "offline": "离线时无法创建",
     "signInRequired": "请先登录再发布，草稿会保留在此处。",

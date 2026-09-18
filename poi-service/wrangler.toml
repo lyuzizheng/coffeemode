@@ -69,13 +69,11 @@ enabled = true
 # `d1_databases` are not inherited by environments, so both are repeated here.
 # Production's KV and D1 ids are distinct namespaces/databases — never shared.
 # Deploy with `npm run deploy -- --env staging` (guard: scripts/deploy.mjs).
-# Custom-domain route (BRAWUKA-236): attaches on the next deploy once the
-# `cafemood.app` zone serves this hostname. Until then the worker stays
-# reachable via workers.dev. After the web app switches POI_SERVICE_URL to
-# the custom domain and the cutover is verified, add `workers_dev = false`
-# here to retire the workers.dev route.
+# Custom-domain route (BRAWUKA-236): verified on cafemood.app zone;
+# workers.dev disabled on Cloudflare API and pinned false here.
 [env.staging]
 name = "poi-service-staging"
+workers_dev = false
 routes = [
   { pattern = "poi-service-staging.cafemood.app", custom_domain = true },
 ]
@@ -91,11 +89,11 @@ database_id = "d069da6b-07e5-4fc0-b6a9-a685b3bef8b8"
 
 # Production env: isolated production stack (spec 0005 §3).
 # Deploy with `npm run deploy -- --env production` (guard: scripts/deploy.mjs).
-# Custom-domain route (BRAWUKA-236): same zone precondition as staging —
-# activates on the next deploy. Add `workers_dev = false` only after the
-# web app is verified on `poi-service.cafemood.app`.
+# Custom-domain route (BRAWUKA-236): verified on cafemood.app zone;
+# workers.dev disabled on Cloudflare API and pinned false here.
 [env.production]
 name = "poi-service-prod"
+workers_dev = false
 routes = [
   { pattern = "poi-service.cafemood.app", custom_domain = true },
 ]

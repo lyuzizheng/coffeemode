@@ -494,6 +494,47 @@ describe("CheckinDrawer", () => {
     expect(vi.mocked(uploadPhoto)).not.toHaveBeenCalled();
   });
 
+  it("closes a preempted edit without the discard confirm even when draft photos were restored (BRAWUKA-395)", async () => {
+    // Restored draft photos must not seed the edit form — the PATCH contract
+    // cannot save them, and a hidden staged count would mark the edit dirty
+    // forever, forcing the discard dialog on every close attempt.
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData(["last-checkin", CAFE], {
+      checkin: {
+        id: CHECKIN,
+        scores: { overall: 90 },
+        max_stay: null,
+        note: null,
+        visited_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+      },
+      revisit_window_hours: 24,
+    });
+    const onOpenChange = renderDrawer(
+      {
+        isAuthenticated: true,
+        initialPhotos: [
+          {
+            id: "p1",
+            previewUrl: "blob:fake",
+            status: "staged",
+            file: new File(["x"], "p.jpg", { type: "image/jpeg" }),
+          },
+        ],
+      },
+      queryClient,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Edit check-in" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    await waitFor(() => {
+      expect(onOpenChange).toHaveBeenCalledWith(false);
+    });
+    expect(screen.queryByText("Discard this check-in?")).not.toBeInTheDocument();
+  });
+
   it("does not toast the photo notice when a preempted create had no staged photos", async () => {
     toastSpy.mockClear();
     const visited_at = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();

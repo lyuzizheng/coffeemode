@@ -19,7 +19,7 @@ import { spring } from "@/lib/motion";
 import type { CheckInFeedMode } from "@/types/checkins";
 import { FeedCard } from "./feed-card";
 import { InlineError } from "./inline-error";
-import { FeedNotFoundError, useCheckinFeed } from "./use-checkin-feed";
+import { FeedCursorExpiredError, FeedNotFoundError, useCheckinFeed } from "./use-checkin-feed";
 import { SectionLabel } from "./section-label";
 
 const MODES: CheckInFeedMode[] = ["helpful", "newest"];
@@ -120,6 +120,9 @@ export function CheckinFeed({
 
   const { query, checkins, like, likePendingIds, retryFromFirstPage } = useCheckinFeed(cafeId, mode);
 
+  // 410 → the hook is already resetting; render the reset state, never an error frame (BRAWUKA-462).
+  const cursorExpired = query.error instanceof FeedCursorExpiredError;
+
   // A 404 from the feed means the cafe is gone — route to the DG19 flow.
   useEffect(() => {
     if (query.error instanceof FeedNotFoundError) onMissingCafe();
@@ -146,7 +149,7 @@ export function CheckinFeed({
         </SectionLabel>
       </div>
 
-      {query.isPending ? (
+      {query.isPending || cursorExpired ? (
         <FeedSkeleton />
       ) : query.isError && checkins.length === 0 ? (
         query.error instanceof FeedNotFoundError ? null : (

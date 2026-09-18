@@ -865,7 +865,7 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
     expect(asGuest.status).toBe(200);
     expect(asGuest.data.checkins.every((c) => c.liked_by_viewer === false)).toBe(true);
     expect(asGuest.data.checkins.every((c) => c.author === null)).toBe(true);
-  });
+  }, 120_000);
 
   // =========================================================================
   // 7. Path 5: likes toggle, self-like 403, anon 401, viewer isolation

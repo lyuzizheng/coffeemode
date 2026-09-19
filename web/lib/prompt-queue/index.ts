@@ -27,9 +27,7 @@ export type PromptOutcome = "visited" | "wont_go" | "not_yet" | "auto";
 /** Answers the prompt UI can send; "auto" is never user-answerable. */
 export type PromptAnswer = Exclude<PromptOutcome, "auto">;
 
-export const PROMPT_ANSWERS: readonly PromptAnswer[] = ["visited", "wont_go", "not_yet"];
-
-export interface PromptQueueParams {
+interface PromptQueueParams {
   /** A navigation never prompts before this age (DG78: earliest next day). */
   minAgeHours: number;
   /** Items older than this never prompt (DG83: 3 months). */
@@ -40,12 +38,12 @@ export interface PromptQueueParams {
   maxReasks: number;
 }
 
-export interface PromptQueueItem {
+interface PromptQueueItem {
   id: string;
   created_at: string;
 }
 
-export type PromptAnswerResult =
+type PromptAnswerResult =
   | { status: "answered"; outcome: PromptOutcome }
   | { status: "gone" };
 

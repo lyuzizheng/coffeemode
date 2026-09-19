@@ -44,11 +44,7 @@ import {
   tinyWebP,
 } from "../helpers/r2";
 
-// Storage suites never touch the rate limiter; pin the memory backend so
-// tests/setup.ts's rateLimiter.reset() cannot hit Postgres after this file
-// sets DATABASE_URL (sequential execution shares the process env).
-process.env.RATE_LIMIT_BACKEND = "memory";
-
+// Storage suites never touch the rate limiter (in-memory only, BRAWUKA-378).
 const RUN_INTEGRATION = process.env.RUN_INTEGRATION === "1";
 const describeImages = RUN_INTEGRATION ? describe : describe.skip;
 
@@ -77,8 +73,9 @@ describeImages("integration — real MinIO/R2 image round-trip (docker compose u
   beforeAll(async () => {
     minioUp = await minioReachable();
     if (!minioUp) {
-      console.warn("MinIO not reachable at", R2_ENDPOINT, "— tests will SKIP");
-      return;
+      throw new Error(
+        `MinIO is not reachable at ${R2_ENDPOINT}. The image integration suite requires a running MinIO instance (docker compose up -d --wait minio && docker compose run --rm minio-init).`,
+      );
     }
     adminDbUrl = integrationAdminUrl();
     testDbUrl = testDatabaseUrl(adminDbUrl, TEST_DB);
@@ -93,7 +90,7 @@ describeImages("integration — real MinIO/R2 image round-trip (docker compose u
   }, 120_000);
 
   beforeEach(async () => {
-    if (!minioUp || !dbClient) return; // beforeAll skipped provisioning
+    if (!dbClient) return;
     // No silent catch: truncate failure means polluted state → fail visibly.
     await dbClient.query("truncate table image_upload_intents restart identity cascade");
     await dbClient.query(
@@ -130,8 +127,7 @@ describeImages("integration — real MinIO/R2 image round-trip (docker compose u
     if (errors.length) throw new AggregateError(errors as Error[], "image integration cleanup failed");
   }, 60_000);
 
-  it("presign → PUT → HEAD happy path stores the exact bytes", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("presign → PUT → HEAD happy path stores the exact bytes", async () => {
     const key = `original/${randomUUID()}.webp`;
     createdKeys.add(key);
     const size = 1024;
@@ -149,14 +145,12 @@ describeImages("integration — real MinIO/R2 image round-trip (docker compose u
     expect(head!.size).toBe(size);
   });
 
-  it("missing object HEAD returns null (404, never another status)", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("missing object HEAD returns null (404, never another status)", async () => {
     const missing = await headObject(`original/${randomUUID()}.webp`);
     expect(missing).toBeNull();
   });
 
-  it("tampered Content-Type breaks the signature → 403, object absent", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("tampered Content-Type breaks the signature → 403, object absent", async () => {
     const key = `original/${randomUUID()}.webp`;
     createdKeys.add(key);
     const size = 1024;
@@ -173,8 +167,7 @@ describeImages("integration — real MinIO/R2 image round-trip (docker compose u
     expect(await headObject(key)).toBeNull();
   });
 
-  it("reused intent is consumed once before remote work", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("reused intent is consumed once before remote work", async () => {
     await recordUploadIntent(TESTER_ID, randomUUID());
     const imageUuid = randomUUID();
     await recordUploadIntent(TESTER_ID, imageUuid);
@@ -186,8 +179,7 @@ describeImages("integration — real MinIO/R2 image round-trip (docker compose u
     expect(await checkUploadIntent(TESTER_ID, imageUuid)).toBe(false);
   });
 
-  it("processor downloads via presigned GET and re-uploads variants to MinIO", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("processor downloads via presigned GET and re-uploads variants to MinIO", async () => {
     const imageUuid = randomUUID();
     const originalKey = `original/${imageUuid}.webp`;
     const cardKey = `card/${imageUuid}.webp`;
@@ -222,8 +214,7 @@ describeImages("integration — real MinIO/R2 image round-trip (docker compose u
     expect(thumbHead!.size).toBeGreaterThan(0);
   });
 
-  it("bad credentials surface as 403 (never silently 404/null)", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("bad credentials surface as 403 (never silently 404/null)", async () => {
     const badClient = new AwsClient({
       accessKeyId: R2_ACCESS_KEY_ID,
       secretAccessKey: "wrong-secret",

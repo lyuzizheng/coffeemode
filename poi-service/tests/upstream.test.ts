@@ -268,6 +268,153 @@ describe("GooglePlacesProvider", () => {
     expect(poi).toBeNull();
   });
 
+  it("reverseGeocode iterates past non-food establishment to hit next candidate food POI (BRAWUKA-332)", async () => {
+    const env = makeEnv();
+    const fetchCalls: string[] = [];
+    const fetchImpl = mockFetch((url) => {
+      fetchCalls.push(url);
+      if (url.includes("/maps/api/geocode/json")) {
+        return new Response(
+          JSON.stringify({
+            status: "OK",
+            results: [
+              {
+                place_id: "ChIJBANK",
+                types: ["bank", "point_of_interest", "establishment"],
+              },
+              {
+                place_id: "ChIJCAFE",
+                types: ["point_of_interest", "establishment"],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/v1/places/ChIJBANK")) {
+        return new Response(
+          JSON.stringify({
+            id: "ChIJBANK",
+            displayName: { text: "Bank of America" },
+            location: { latitude: 37.79, longitude: -122.4 },
+            types: ["bank", "finance", "establishment"],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/v1/places/ChIJCAFE")) {
+        return new Response(
+          JSON.stringify({
+            id: "ChIJCAFE",
+            displayName: { text: "Sightglass Coffee" },
+            location: { latitude: 37.78, longitude: -122.41 },
+            types: ["cafe", "food", "establishment"],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(null, { status: 404 });
+    });
+    const provider = new GooglePlacesProvider(env, fetchImpl);
+
+    const poi = await provider.reverseGeocode({ lat: 37.79, lng: -122.4 });
+    expect(poi).not.toBeNull();
+    expect(poi?.place_id).toBe("ChIJCAFE");
+    expect(poi?.name).toBe("Sightglass Coffee");
+
+    // Verified both places were fetched in order
+    expect(fetchCalls.some((u) => u.includes("/v1/places/ChIJBANK"))).toBe(true);
+    expect(fetchCalls.some((u) => u.includes("/v1/places/ChIJCAFE"))).toBe(true);
+  });
+
+  it("reverseGeocode iterates past 404 details to hit next candidate food POI (BRAWUKA-332)", async () => {
+    const env = makeEnv();
+    const fetchCalls: string[] = [];
+    const fetchImpl = mockFetch((url) => {
+      fetchCalls.push(url);
+      if (url.includes("/maps/api/geocode/json")) {
+        return new Response(
+          JSON.stringify({
+            status: "OK",
+            results: [
+              {
+                place_id: "ChIJ404",
+                types: ["point_of_interest", "establishment"],
+              },
+              {
+                place_id: "ChIJCAFE",
+                types: ["point_of_interest", "establishment"],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/v1/places/ChIJ404")) {
+        return new Response(null, { status: 404 });
+      }
+      if (url.includes("/v1/places/ChIJCAFE")) {
+        return new Response(
+          JSON.stringify({
+            id: "ChIJCAFE",
+            displayName: { text: "Ritual Coffee Roasters" },
+            location: { latitude: 37.78, longitude: -122.41 },
+            types: ["cafe", "establishment"],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(null, { status: 404 });
+    });
+    const provider = new GooglePlacesProvider(env, fetchImpl);
+
+    const poi = await provider.reverseGeocode({ lat: 37.79, lng: -122.4 });
+    expect(poi).not.toBeNull();
+    expect(poi?.place_id).toBe("ChIJCAFE");
+    expect(poi?.name).toBe("Ritual Coffee Roasters");
+  });
+
+  it("reverseGeocode bounds candidate inspections to MAX_REVERSE_GEOCODE_CANDIDATES (BRAWUKA-332)", async () => {
+    const env = makeEnv();
+    let detailCalls = 0;
+    const fetchImpl = mockFetch((url) => {
+      if (url.includes("/maps/api/geocode/json")) {
+        return new Response(
+          JSON.stringify({
+            status: "OK",
+            results: [
+              { place_id: "ChIJ1", types: ["point_of_interest", "establishment"] },
+              { place_id: "ChIJ2", types: ["point_of_interest", "establishment"] },
+              { place_id: "ChIJ3", types: ["point_of_interest", "establishment"] },
+              { place_id: "ChIJ4", types: ["point_of_interest", "establishment"] },
+              { place_id: "ChIJ5", types: ["point_of_interest", "establishment"] },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/v1/places/")) {
+        detailCalls++;
+        return new Response(
+          JSON.stringify({
+            id: "non-food",
+            displayName: { text: "Some Shop" },
+            location: { latitude: 37.79, longitude: -122.4 },
+            types: ["clothing_store", "establishment"],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(null, { status: 404 });
+    });
+    const provider = new GooglePlacesProvider(env, fetchImpl);
+
+    const poi = await provider.reverseGeocode({ lat: 37.79, lng: -122.4 });
+    expect(poi).toBeNull();
+    // Strictly bounded to 3 Place Details calls
+    expect(detailCalls).toBe(3);
+  });
+
   it("GoogleApiError inherits from UpstreamApiError", () => {
     const err = new GoogleApiError("upstream fail", 503);
     expect(err).toBeInstanceOf(UpstreamApiError);

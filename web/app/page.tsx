@@ -1,9 +1,4 @@
-import { headers } from "next/headers";
-import { profileFromUser } from "@/lib/auth/profiles";
-import { createSupabaseServerClient, isAuthConfigured } from "@/lib/auth/supabase-server";
-import { appConfig } from "@/lib/config";
-import { detectIpCity, findCity } from "@/lib/cities";
-import { getProfile } from "@/lib/db/profile";
+import { loadMapEntry } from "@/lib/discovery/map-entry";
 import { AuthCallbackError } from "@/components/auth/auth-callback-error";
 import { CafeCreationTrigger } from "@/components/cafe/cafe-creation-sheet";
 import { OnboardingHome } from "@/components/onboarding/onboarding-home";
@@ -14,75 +9,56 @@ import { MapSurface } from "@/components/map/map-surface";
 // welcome card and locate button ride the mapOverlay slot; the landing
 // scaffold this page used to render is gone — the map IS the first
 // impression now.
+//
+// DG124: the retired /?cafe=[id] entry 308-redirects to /cafes/[id]
+// (proxy.ts) — no params.cafe handling lives here anymore. Session,
+// center resolution, and MapKit readiness come from the shared map-entry
+// loader so this entry and the cafe deep link can never drift.
 export default async function HomePage({
   searchParams,
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const configured = isAuthConfigured();
   // The OAuth callback redirects here with ?auth=error on failure — surface
   // it instead of dropping the user back on a silent page (issue #98).
   const params = (await searchParams) ?? {};
   const authError = params.auth === "error";
-  const authErrorReason =
-    typeof params.reason === "string" ? params.reason : undefined;
+  const authErrorReason = typeof params.reason === "string" ? params.reason : undefined;
 
-  let user = null;
-  if (configured) {
-    const supabase = await createSupabaseServerClient();
-    try {
-      const { data } = await supabase.auth.getUser();
-      user = data.user;
-    } catch {
-      // Supabase unreachable: degrade to the signed-out view instead of
-      // turning the whole page into a 500 (availability > session display).
-      user = null;
-    }
-  }
-
-  // First-visit onboarding (spec 0001 §Onboarding, DG114–DG123): the IP
-  // detection is a header read — it never blocks render. For signed-in
-  // users the profile's onboarded flag and stored city/location decide the
-  // starting center and whether the card can appear at all (DG122).
-  const requestHeaders = await headers();
-  const detectedCity = detectIpCity(requestHeaders);
-  let profile = null;
-  if (user) {
-    try {
-      profile = await getProfile(user.id);
-    } catch {
-      // Postgres unavailable: treat as anonymous — localStorage carries the
-      // onboarding state until the next signed-in visit merges it.
-      profile = null;
-    }
-  }
-  const profileCity = profile ? findCity(profile.currentCity) : null;
-  const initialCenter =
-    profileCity?.center ??
-    profile?.lastLocation ??
-    detectedCity?.center ??
-    appConfig.discovery.defaultCenter;
-  const initialCafeId = typeof params.cafe === "string" ? params.cafe : undefined;
+  // First-visit onboarding (spec 0001 §Onboarding, DG114–DG123): the shared
+  // loader resolves session + profile + detected city + starting center
+  // (profile city → last location → detected city → configured default).
+  const entry = await loadMapEntry();
+  // Profile-guide deep links (BRAWUKA-504): ?locate=1 primes the locate
+  // button's pulse, ?create=1 opens the creation sheet on arrival.
+  const locateHint = params.locate === "1";
+  const createHint = params.create === "1";
 
   return (
     <OnboardingHome
-      detectedCity={detectedCity}
-      initialCenter={initialCenter}
-      isAuthenticated={Boolean(user)}
-      serverOnboarded={profile?.onboarded ?? false}
-      profileSeed={
-        profile
-          ? { currentCity: profile.currentCity, lastLocation: profile.lastLocation }
-          : undefined
+      detectedCity={entry.detectedCity}
+      initialCenter={entry.initialCenter}
+      isAuthenticated={entry.isAuthenticated}
+      serverOnboarded={entry.serverOnboarded}
+      profileSeed={entry.profileSeed}
+      addCafe={
+        <CafeCreationTrigger
+          isAuthenticated={entry.isAuthenticated}
+          mapkitConfigured={entry.mapkitConfigured}
+          variant="compact"
+        />
       }
-      suppressCard={initialCafeId !== undefined}
-      addCafe={<CafeCreationTrigger isAuthenticated={Boolean(user)} />}
-      accountInitial={
-        user
-          ? (profile?.displayName ?? profileFromUser(user).displayName)[0]?.toUpperCase()
-          : undefined
+      addCafeFab={
+        <CafeCreationTrigger
+          isAuthenticated={entry.isAuthenticated}
+          mapkitConfigured={entry.mapkitConfigured}
+          variant="fab"
+        />
       }
-      initialCafeId={initialCafeId}
+      accountInitial={entry.accountInitial}
+      mapkitConfigured={entry.mapkitConfigured}
+      locateHint={locateHint}
+      createHint={createHint}
     >
       <MapSurface />
       {authError && (

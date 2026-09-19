@@ -7,7 +7,7 @@ import { cookies } from "next/headers";
 /**
  * Server-side Supabase client for route handlers and Server Components.
  *
- * Supabase is AUTH ONLY (spec 0001): sessions and OAuth, nothing else.
+ * Supabase hosts auth and app data (spec 0010 §2): sessions and OAuth here.
  * All data access goes through Postgres via route handlers that verify the
  * Supabase session first.
  *

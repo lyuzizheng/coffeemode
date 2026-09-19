@@ -1,5 +1,6 @@
 /** In-memory fakes for KV + D1 + fetch, matching the minimal structural types. */
 
+import { kmPerDegLat, kmPerDegLng } from "../src/geo";
 import type { D1Like, D1PreparedLike, KVLike } from "../src/types";
 
 export class FakeKV implements KVLike {
@@ -82,16 +83,26 @@ class FakePrepared implements D1PreparedLike {
     if (this.sql.trimStart().startsWith("INSERT INTO pois")) {
       const [
         place_id, source, name, lat, lng, address,
-        types, business_status, hours_json, photo_refs, fetched_at,
+        types, business_status, hours_json, fetched_at, expires_at,
       ] = this.binds;
       const existing = this.db.rows.find((r) => r.place_id === place_id);
       const row = existing ?? {};
       Object.assign(row, {
         place_id, source, name, lat, lng, address,
-        types, business_status, hours_json, photo_refs, fetched_at,
+        types, business_status, hours_json, fetched_at, expires_at,
       });
       if (!existing) this.db.rows.push(row);
       return { meta: { changes: 1 } };
+    }
+    if (this.sql.trimStart().startsWith("DELETE FROM pois WHERE expires_at <=")) {
+      const now = Date.now();
+      const before = this.db.rows.length;
+      this.db.rows = this.db.rows.filter((r) => {
+        if (!r.expires_at) return true;
+        const exp = Date.parse(r.expires_at as string);
+        return Number.isNaN(exp) || exp > now;
+      });
+      return { meta: { changes: before - this.db.rows.length } };
     }
     return { meta: { changes: 0 } };
   }
@@ -123,8 +134,14 @@ class FakePrepared implements D1PreparedLike {
     const lngHi = where.includes("lng BETWEEN ? AND ?") ? (this.binds[bi++] as number) : undefined;
     const lngLo2 = lngWrap ? (this.binds[bi++] as number) : undefined;
     const lngHi2 = lngWrap ? (this.binds[bi++] as number) : undefined;
-    const placeId = where.includes("place_id = ?") ? (this.binds[bi++] as string) : undefined;
+    const placeId = where.includes("place_id = ?") ? (this.binds[bi++] as number) : undefined;
     const rows = this.db.rows.filter((row) => {
+      if (where.includes("expires_at >")) {
+        if (row.expires_at) {
+          const exp = Date.parse(row.expires_at as string);
+          if (!Number.isNaN(exp) && exp <= Date.now()) return false;
+        }
+      }
       if (pattern !== undefined && !likeToRegex(pattern).test(String(row.name))) return false;
       if (latLo !== undefined && !(Number(row.lat) >= latLo && Number(row.lat) <= latHi!)) return false;
       if (lngLo !== undefined) {
@@ -136,6 +153,30 @@ class FakePrepared implements D1PreparedLike {
       if (placeId !== undefined && row.place_id !== placeId) return false;
       return true;
     });
+    // ORDER BY binds trail the WHERE binds. The distance proxy mirrors
+    // store.ts: |dlat|*kmPerDegLat + min(|dlng|, 360-|dlng|)*kmPerDegLng —
+    // without it the fake silently ignored ordering and the prefetch-cap
+    // truncation was untestable (BRAWUKA-395 P2-3).
+    const orderMatch = this.sql.match(/ORDER BY (.+?)(?: LIMIT|$)/);
+    if (orderMatch) {
+      const orderBy = orderMatch[1];
+      if (orderBy.includes("MIN(ABS(lng")) {
+        const cLat = this.binds[bi++] as number;
+        const cLng = this.binds[bi++] as number;
+        this.binds[bi++]; // lng bound twice in the SQL expression
+        const latFactor = kmPerDegLat();
+        const lngFactor = kmPerDegLng(cLat);
+        const proxy = (row: Record<string, unknown>) => {
+          const dLng = Math.abs(Number(row.lng) - cLng);
+          return (
+            Math.abs(Number(row.lat) - cLat) * latFactor + Math.min(dLng, 360 - dLng) * lngFactor
+          );
+        };
+        rows.sort((a, b) => proxy(a) - proxy(b));
+      } else if (orderBy.startsWith("name")) {
+        rows.sort((a, b) => (String(a.name) < String(b.name) ? -1 : String(a.name) > String(b.name) ? 1 : 0));
+      }
+    }
     // Honor the generated LIMIT clause so result caps are testable.
     const limitMatch = this.sql.match(/LIMIT (\d+)/);
     return limitMatch ? rows.slice(0, Number(limitMatch[1])) : rows;
@@ -161,7 +202,6 @@ export function googleDetailResponse(overrides: Record<string, unknown> = {}): R
     types: ["cafe", "coffee_shop"],
     businessStatus: "OPERATIONAL",
     regularOpeningHours: { periods: [] },
-    photos: [{ name: "places/ChIJTEST123/photos/photo1" }],
     googleMapsUri: "https://maps.google.com/?cid=123",
     ...overrides,
   };

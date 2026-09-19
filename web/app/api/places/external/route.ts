@@ -33,14 +33,10 @@ export async function POST(request: Request) {
       ? (body as Record<string, unknown>).pois
       : undefined;
   if (!Array.isArray(pois) || pois.length === 0) {
-    return apiError("invalid_request", "pois array required", 400);
+    return apiError("invalid_request", "pois array required", { status: 400 });
   }
   if (pois.length > MAX_EXTERNAL_BATCH_SIZE) {
-    return apiError(
-      "invalid_request",
-      `pois array must contain at most ${MAX_EXTERNAL_BATCH_SIZE} items`,
-      400,
-    );
+    return apiError("invalid_request", `pois array must contain at most ${MAX_EXTERNAL_BATCH_SIZE} items`, { status: 400 });
   }
   if (
     !pois.every(
@@ -50,11 +46,7 @@ export async function POST(request: Request) {
         (poi as Record<string, unknown>).source === "apple",
     )
   ) {
-    return apiError(
-      "invalid_request",
-      "only Apple MapKit POIs may be stored from the browser",
-      400,
-    );
+    return apiError("invalid_request", 400);
   }
 
 
@@ -63,7 +55,7 @@ export async function POST(request: Request) {
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof POIServiceError) {
-      return apiError("poi_service", err.message, err.status);
+      return apiError("poi_service", err.message, { status: err.status });
     }
     logError({ route: gate.route, request, error: err, status: 502 });
     return apiError("upstream_error", 502);

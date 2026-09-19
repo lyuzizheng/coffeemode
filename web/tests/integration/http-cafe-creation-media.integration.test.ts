@@ -76,11 +76,6 @@ vi.mock("@/lib/places/poi-client", () => {
         lng: 103.8322,
       }).results[0]!;
     }),
-    getPOI: vi.fn(async (placeId: string) => {
-      return createMockGooglePlacesResponse({
-        place_id: placeId,
-      }).results[0]!;
-    }),
     storeExternalPOIs: vi.fn(async (pois) => ({ stored: pois.length })),
   };
 });
@@ -189,8 +184,9 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
   beforeAll(async () => {
     minioUp = await minioReachable();
     if (!minioUp) {
-      console.warn("MinIO not reachable at", R2_ENDPOINT, "— tests will SKIP");
-      return;
+      throw new Error(
+        `MinIO is not reachable at ${R2_ENDPOINT}. Media integration tests require a running MinIO instance (docker compose up -d --wait minio && docker compose run --rm minio-init).`,
+      );
     }
 
     adminDbUrl = integrationAdminUrl();
@@ -206,8 +202,8 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
   }, 120_000);
 
   beforeEach(async () => {
-    if (!minioUp || !dbClient) return;
-    await resetRateLimits(dbClient);
+    if (!dbClient) return;
+    await resetRateLimits();
   });
   const createdCafeIds = new Set<string>();
   afterEach(async () => {
@@ -266,8 +262,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
   // 1. Mock POI & Media Pipeline Seam Verification
   // =========================================================================
 
-  it("Path 2: mock POI client injects standard Google POI and verifies zero external network calls", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("Path 2: mock POI client injects standard Google POI and verifies zero external network calls", async () => {
     // 1. Authenticated Google Places search via POI proxy
     const searchRes = await clientA.get<{ results: Array<{ place_id: string; name: string; source: string; types: string[]; business_status: string }> }>(
       placesSearchGET,
@@ -305,8 +300,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     expect(resolveRes.data.lng).toBeCloseTo(103.8322, 4);
   });
 
-  it("Path 2: image upload pipeline acquires presigned MinIO URL, uploads WebP bytes, and records upload intent", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("Path 2: image upload pipeline acquires presigned MinIO URL, uploads WebP bytes, and records upload intent", async () => {
     // 1. Anonymous upload is rejected with 401 unauthorized
     const anonUpload = await guestClient.post(uploadPOST, "/api/images/upload", { size: 1024 });
     expect(anonUpload.status).toBe(401);
@@ -353,8 +347,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
   // 2. POST /api/cafes Authorization & Origin Checks
   // =========================================================================
 
-  it("Path 2: POST /api/cafes rejects unauthenticated anonymous requests with 401 unauthorized", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("Path 2: POST /api/cafes rejects unauthenticated anonymous requests with 401 unauthorized", async () => {
     const res = await guestClient.post(cafesPOST, "/api/cafes", {
       name: "Anonymous Nomad Cafe",
       lat: 1.3048,
@@ -370,8 +363,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     expect(res.data).toMatchObject({ error: "unauthorized" });
   });
 
-  it("Path 2: POST /api/cafes rejects cross-origin requests with 403 forbidden_origin", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("Path 2: POST /api/cafes rejects cross-origin requests with 403 forbidden_origin", async () => {
     const res = await clientA.post(
       cafesPOST,
       "/api/cafes",
@@ -396,8 +388,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
   // 3. POST /api/cafes Parameter Validation Negative Matrix (400 invalid_request)
   // =========================================================================
 
-  it("Path 2: POST /api/cafes rejects invalid bodies with 400 invalid_request (negative matrix)", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("Path 2: POST /api/cafes rejects invalid bodies with 400 invalid_request (negative matrix)", async () => {
     const validPhoto = randomUUID();
 
     const cases: Array<{ name: string; body: unknown }> = [
@@ -551,8 +542,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
   // 4. Photo Intent Misuse & Abuse (400 invalid_photos)
   // =========================================================================
 
-  it("Path 2: POST /api/cafes rejects unissued and foreign photo IDs with 400 invalid_photos", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("Path 2: POST /api/cafes rejects unissued and foreign photo IDs with 400 invalid_photos", async () => {
     // 1. Unissued photo UUID (never went through /api/images/upload)
     const unissuedUuid = randomUUID();
     const unissuedRes = await clientA.post(cafesPOST, "/api/cafes", {
@@ -590,8 +580,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
   // 5. Successful 201 Creation, Fused Checkin, TZ, Gallery & Initial Aggregate
   // =========================================================================
 
-  it("Path 2: POST /api/cafes creates cafe with fused checkin, derives tz, binds gallery, and maps initial aggregate", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("Path 2: POST /api/cafes creates cafe with fused checkin, derives tz, binds gallery, and maps initial aggregate", async () => {
     // User A uploads valid WebP
     const uploadA = await uploadTestWebP(clientA);
     const createdPhotoId = uploadA.imageUuid;
@@ -729,8 +718,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
   // 6. Photo Re-use Protection (Edge Case 5 / 400 invalid_photos)
   // =========================================================================
 
-  it("Path 2: POST /api/cafes rejects reused already-consumed photo ID on subsequent creation (Edge Case 5)", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("Path 2: POST /api/cafes rejects reused already-consumed photo ID on subsequent creation (Edge Case 5)", async () => {
     // User A uploads valid WebP and creates initial cafe to consume it
     const uploadA = await uploadTestWebP(clientA);
     const initialRes = await clientA.post<{ cafe_id: string }>(cafesPOST, "/api/cafes", {
@@ -767,8 +755,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
   // 7. Deduplication & Collision (409 cafe_exists)
   // =========================================================================
 
-  it("Path 2: POST /api/cafes returns 409 cafe_exists when google_place_id is already registered", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("Path 2: POST /api/cafes returns 409 cafe_exists when google_place_id is already registered", async () => {
     const dupePlaceId = `ChIJORCHARD_DUPE_${randomUUID().replace(/-/g, "").slice(0, 10)}`;
     const uploadA = await uploadTestWebP(clientA);
     const originalRes = await clientA.post<{ cafe_id: string }>(cafesPOST, "/api/cafes", {
@@ -814,8 +801,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
   // 8. International Timezone Derivations (Tokyo & London)
   // =========================================================================
 
-  it("Path 2: timezone accurately derives from coordinates across international locations (Tokyo & London)", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("Path 2: timezone accurately derives from coordinates across international locations (Tokyo & London)", async () => {
     // User B creates Tokyo cafe (35.6580, 139.7016)
     const uploadTokyo = await uploadTestWebP(clientB);
     const tokyoRes = await clientB.post<{ cafe_id: string; tz: string }>(

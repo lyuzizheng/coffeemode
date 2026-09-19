@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { CheckInScores, MaxStay } from "@/types/checkins";
+import type { CafeVisibility } from "@/types/cafes";
 import type { StoredImage } from "@/types/images";
 
 export interface UserProfileDto {
@@ -49,4 +50,6 @@ export interface UserCafeItemDto {
   last_visited_at: string;
   checkins_count: number;
   is_creation: boolean;
+  /** DG147: private rows only ever reach the owner — drives the 仅你可见 badge. */
+  visibility: CafeVisibility;
 }

@@ -5,7 +5,7 @@
 
 export type POISource = "google" | "apple";
 
-/** Normalized POI record — the D1 durable store shape. */
+/** Normalized POI record — the D1 bounded cache shape. */
 export interface POI {
   place_id: string;
   source: POISource;
@@ -17,10 +17,10 @@ export interface POI {
   business_status: string | null;
   /** Raw JSON of Google regularOpeningHours (or null). */
   hours_json: string | null;
-  /** Photo references (Google photo.name values / Apple refs). */
-  photo_refs: string[];
   /** ISO 8601 timestamp of when this record was fetched. */
   fetched_at: string;
+  /** ISO 8601 timestamp of when this cached record expires (fetched_at + 30d). */
+  expires_at?: string;
   /** Observability field for live external POIs that were not persisted (DG144). */
   not_persisted_reason?: "non_food_category";
 }

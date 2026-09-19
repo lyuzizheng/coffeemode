@@ -15,6 +15,7 @@ import { DotsIcon, HeartIcon, PencilIcon } from "@/components/icons";
 import { CheckinDrawer } from "@/components/checkin/checkin-drawer";
 import { CheckinNote } from "@/components/checkin/checkin-note";
 import { WORK_DIMS, type WorkDim } from "@/lib/stats/work-stats";
+import { THUMB_PX } from "@/lib/layout";
 import type { PublicCheckIn } from "@/types/checkins";
 import type { PublicAuthor } from "@/types/identity";
 
@@ -183,7 +184,7 @@ export function FeedCard({
   const liked = checkin.liked_by_viewer;
 
   return (
-    <article className="flex flex-col gap-2 rounded-md border border-separator bg-surface p-3">
+    <article className="flex flex-col gap-2 border-b border-separator py-4 first:pt-0 last:border-b-0">
       <div className="flex items-start justify-between gap-2">
         <FeedCardMeta visitedAt={checkin.visited_at} author={checkin.author} />
         {checkin.owned_by_viewer && (
@@ -197,13 +198,13 @@ export function FeedCard({
           {checkin.photos.map((photo) => (
             <span
               key={photo.id}
-              className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-md border border-separator bg-surface-tertiary"
+              className="relative h-[var(--layout-thumb)] w-[var(--layout-thumb)] shrink-0 overflow-hidden rounded-md border border-separator bg-surface-tertiary"
             >
               <Image
                 src={photo.thumbnail}
                 alt=""
                 fill
-                sizes="72px"
+                sizes={`${THUMB_PX}px`}
                 className="object-cover"
               />
             </span>

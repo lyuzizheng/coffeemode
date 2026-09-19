@@ -13,6 +13,12 @@ export default defineConfig({
     exclude: ["node_modules/**", "**/.next/**", "**/coverage/**"],
     hookTimeout: 60_000,
     testTimeout: 30_000,
+    // Staging-journey worker cap (spec 0010 S4): local and CI integration runs
+    // stay uncapped (unset = Vitest default); only run-staging-journey.sh sets
+    // VITEST_MAX_WORKERS from web/config/app.yaml staging.maxWorkers.
+    ...(process.env.VITEST_MAX_WORKERS !== undefined
+      ? { maxWorkers: Number(process.env.VITEST_MAX_WORKERS) }
+      : {}),
     coverage: {
       // Opt-in via `npm run test:coverage` (`vitest run --coverage`); plain
       // `npm test` collects no coverage and stays fast.
@@ -39,7 +45,6 @@ export default defineConfig({
         // statement and it is a zero-value indirection layer, so delete it and
         // point callers at the single source instead (spec 0009 §5/§6;
         // `lib/search/distance.ts` was removed this way by BRAWUKA-203).
-        "lib/rate-limit/types.ts",
         "lib/search/types.ts",
         "shared/places/types.ts",
       ],

@@ -22,14 +22,25 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 - [ ] Enable **Google** provider: Dashboard → Authentication → Providers → Google → paste Google OAuth client id/secret (from item 3 below)
 - [ ] Enable **Apple** provider later (needs item 4)
 
+## 1a. Staging journey secrets (GitHub Environment `staging`) — unlocks post-merge staging verification
+
+- [x] Dedicated CI Postgres (`coffeemode-ci-postgres`, PostGIS 16) created on Dokploy VPS, routed privately over Cloudflare Tunnel (`ci-db.cafemood.app:5432`) with zero public port exposure (BRAWUKA-474).
+- [x] Cloudflare Access application and Service Token created (`CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`) allowing runner TCP proxy to `ci-db.cafemood.app`.
+- [x] `gh secret set` into the `staging` environment:
+  `STAGING_DATABASE_URL` (points to `postgresql://coffeemode:****@localhost:5432/coffeemode_ci`), `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`, `SUPABASE_URL` (= `https://ojujmjewtbquiddswyrg.supabase.co`), `SUPABASE_ANON_KEY`. Supabase staging project retains only Auth smoke checks; test scratch databases live on the VPS CI Postgres.
+- [ ] (Optional, for real-session journey suites) Staging Supabase project dashboard → Settings → API: copy `service_role` key into GitHub Environment `staging` as `SUPABASE_SERVICE_ROLE_KEY`. (Staging CI verification currently passes using `SUPABASE_ANON_KEY` for auth smoke verification.)
+- [ ] Redirect URLs allowlist on the **staging** project (spec 0010 §1): `http://localhost:3000/auth/callback` (local dev against staging auth) + `https://staging.cafemood.app/auth/callback`.
+- [ ] Confirm Google provider is enabled on the **staging** project (item 3's client works for both; the Supabase callback `https://ojujmjewtbquiddswyrg.supabase.co/auth/v1/callback` must be in the Google client's authorized redirect URIs).
+- [ ] `production` environment: owner (`lyuzizheng`) is the required reviewer (already set); prod secrets land there only at promotion time, never before.
+
 ## 2. Postgres (primary database — Supabase, per 0004 decision 34a, owner 2026-08-28)
 
 - [x] Create the Supabase project (free tier) in the region closest to the VPS (CafeMood project `rsdzcegylqgccaneomph` active in `ap-southeast-1`)
 - [x] Enable PostGIS in the SQL editor: `CREATE EXTENSION postgis;` (automated & verified via `scripts/devops/provision-supabase.sh`)
 - [x] Apply the schema with the session/direct connection (not the transaction pooler): `DATABASE_URL=<session-conn> npm run db:migrate` (all 19 migrations 0001–0019 applied; automated via `scripts/devops/provision-supabase.sh`)
 - [ ] Put the pooled connection string into the VPS env as `DATABASE_URL` with `?sslmode=require` (fail-closed per #41); keep the session connection string for migrations/CI
-- [ ] Set `RATE_LIMIT_BACKEND=memory` on the app container (decision 34a — single container; Postgres backend retained for a future multi-instance deploy)
-- [ ] Add `DATABASE_URL` as a GitHub Actions secret so the nightly recompute doubles as the free-tier keep-alive (defeats the 7-day inactivity pause)
+- [x] 已迁 VPS cron: nightly recompute 与 Helpful ranking 快照已迁至 Dokploy 定时任务（02:00 UTC，BRAWUKA-475），DATABASE_URL 仅在 VPS env 保留，无需进 GitHub secrets
+- [x] 定时任务失败告警自愈接线（BRAWUKA-476）：Dokploy env 配置 `MULTICA_AUTOPILOT_WEBHOOK_URL`，并在 Dokploy Notifications 挂载 Custom Webhook（兜底平台与构建异常）；非零退出时 POST 触发 CoffeeMode 运维告警自愈 autopilot 自动建单
 - [x] Verify product tables are NOT reachable via the Supabase Data API (PostgREST) with the browser anon key — all application tables have RLS enabled and grants revoked from `anon` & `authenticated` (verified via `scripts/devops/provision-supabase.sh`)
 - [ ] Free-tier cliffs: 500MB DB then read-only (seed negligible today — 14 cafes; re-measure before any bulk import), 5GB egress (images stay on R2), no backups — schedule `pg_dump` to R2 as the cheap mitigation
 
@@ -71,23 +82,30 @@ and the KV hot-cache read path are unaffected and verified working.
   - Secrets installed via Cloudflare Worker bindings (`IMAGE_SERVICE_TOKEN`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`)
   - Deployed to `https://image-service-prod.lyuzizheng.workers.dev` (production) and `https://image-service-staging.lyuzizheng.workers.dev` (staging)
   - `IMAGE_SERVICE_URL` and `IMAGE_SERVICE_TOKEN` recorded in local `web/.env.local`
-- [ ] Attach custom domains `images.cafemood.app` and `staging-images.cafemood.app` to `coffeemode-images-prod` and `coffeemode-images-staging` R2 buckets once the `cafemood.app` Cloudflare zone is active (item 7 / issue #142)
+- [ ] Attach custom domains `images.cafemood.app` and `staging-images.cafemood.app` to `coffeemode-images-prod` and `coffeemode-images-staging` R2 buckets (zone `cafemood.app` active; records go in via BRAWUKA-236/238, issue #142)
 - [ ] Configure bucket defenses:
   - Set a maximum upload size (Cloudflare WAF / R2 bucket limits or a `Content-Length`-enforced presigned URL) to mitigate abuse.
-  - Orphan cleanup (issue #158): do NOT add a blanket R2 lifecycle expiry on
-    `original/` — completed gallery originals share that prefix. Instead schedule
-    `image-service/scripts/clean-orphan-originals.mjs` (e.g. daily cron or GitHub
-    scheduled workflow via #154) with least-privilege R2 credentials that allow
-    List/Head/Delete on `original/` only: first run with `DRY_RUN=1
-    RETENTION_DAYS=7`, review the JSON output, then set `DRY_RUN=0`. The script
-    deletes marker-less originals and provision-stage uploads that were never
-    attached; live gallery originals carry `x-amz-meta-targettype` of
-    cafe|checkin and are never matched.
+- Orphan cleanup (issue #158, hardened BRAWUKA-400): do NOT add a blanket R2 lifecycle expiry on
+  `original/` — completed gallery originals share that prefix. Instead schedule
+  `image-service/scripts/clean-orphan-originals.mjs` (e.g. daily cron or GitHub
+  scheduled workflow via #154) with least-privilege R2 credentials that allow
+  List/Head/Delete on `original/` only. Each run is two steps:
+  1. `DATABASE_URL=... node web/scripts/export-live-image-keys.mjs > /tmp/live-keys.txt`
+     (read-only; exports every `original/` key still referenced by live
+     `cafes.gallery` / `checkins.photos`).
+  2. First run with `LIVE_KEYS_FILE=/tmp/live-keys.txt DRY_RUN=1
+  RETENTION_DAYS=7`, review the JSON output, then set `DRY_RUN=0`. The script
+  deletes marker-less originals and provision-stage uploads that were never
+  attached AND are absent from the live-keys export; post-commit attach
+  (BRAWUKA-400) re-marks live originals to `checkin`, and any stale-marker
+  key that IS referenced is reported as `would-keep … reason:"referenced"`
+  and never deleted.
 
 ## 7. Domain + deploy (later phase)
 
-- [ ] Point domain at the VPS; Cloudflare proxy/CDN in front
-- [ ] Cloudflare account for the POI worker (`poi-service.cafemood.app` once the domain lands)
+- [x] Domain registered + Cloudflare zone delegated — `cafemood.app` live with NS on emily/brodie.ns.cloudflare.com (verified 2026-09-14 via BRAWUKA-235 audit); zone currently holds zero DNS records, apex records go in via BRAWUKA-236/238
+- [ ] Create proxied DNS records for `cafemood.app` / `staging.cafemood.app` (BRAWUKA-236/238 scope); Cloudflare proxy/CDN in front
+- [ ] Cloudflare account for the POI worker (`poi-service.cafemood.app` once records land)
 - [x] In a terminal (from `poi-service/`), create the per-environment resources and add a `[env.staging]` / `[env.production]` block to `poi-service/wrangler.toml` (spec 0005 §3 names): (done 2026-09-12, BRAWUKA-222 — created on the `Lyuzizheng@gmail.com` account via Cloudflare MCP; `wrangler.toml` now carries real ids for both environments, the top-level local-dev placeholders untouched)
   - `poi-store-staging` = `d069da6b-07e5-4fc0-b6a9-a685b3bef8b8`, `poi-store` = `7d01d154-03a7-4483-8b54-83f2c310af3b` (`POI_DB`)
   - `poi-cache-staging` = `9f7f807aa68b47e3bbb6ecaf15c5f571`, `poi-cache` = `be0e4111b70f482ca23ed1f833142f88` (`POI_KV`)
@@ -96,29 +114,17 @@ and the KV hot-cache read path are unaffected and verified working.
   - `POI_SERVICE_TOKEN` installed on both Workers (self-generated, 2026-09-12).
   - `GOOGLE_PLACES_API_KEY` NOT installed — still blocked on item 5. Until it is, `/poi/:place_id`, `/poi/resolve` (query path) and `/poi/search/external` return 502 `upstream_error`; every other path works.
 - [x] Deploy: `npm run deploy -- --env production` (guarded — refuses while the placeholder ids are still configured) → workers.dev URL; wire `POI_SERVICE_URL` + `POI_SERVICE_TOKEN` into `web/.env.local` (done 2026-09-12, BRAWUKA-222 — both environments deployed and verified: `https://poi-service-staging.lyuzizheng.workers.dev`, `https://poi-service-prod.lyuzizheng.workers.dev`; `npm run deploy -- --env staging|production --check` now passes)
-- [ ] Worker route migration (BRAWUKA-236) — the `cafemood.app` zone is live
-  (NS delegated, verified 2026-09-15) but serves zero records for the worker
-  hostnames; the custom-domain `routes` are declared in
-  `poi-service/wrangler.toml` / `image-service/wrangler.toml` and attach on
-  the next deploy:
-  1. Redeploy: `npm run deploy -- --env staging` and `--env production` in
-     `poi-service/` and `image-service/` (needs the `CLOUDFLARE_API_TOKEN`
-     from the item below — the wrangler OAuth session is expired).
-  2. Verify each custom domain answers: `curl
-     https://poi-service.cafemood.app/health`,
-     `https://image-service.cafemood.app/health` (+ staging pair).
-  3. Switch the Dokploy env vars `POI_SERVICE_URL` / `IMAGE_SERVICE_URL`
-     (values in `deploy/dokploy/.env.*.example`) to the custom domains,
-     rolling-restart the web app, verify `/api/places/search` and
-     `/api/images/upload` end-to-end.
-  4. Only after step 3 is green: add `workers_dev = false` to each `[env.*]`
-     block (or disable the workers.dev route in Settings → Domains &
-     Routes) and redeploy — never before, or the web app loses its upstream.
-  5. Shared-secret headers (`x-poi-service-token` /
-     `x-image-service-token`) stay unchanged — the zone route is
-     defense-in-depth, not a token replacement.
+- [x] Worker route migration (BRAWUKA-236) — custom domains attached via Cloudflare MCP and verified:
+  - `poi-service.cafemood.app` → `poi-service-prod` (/health 200)
+  - `image-service.cafemood.app` → `image-service-prod` (/health 200)
+  - `poi-service-staging.cafemood.app` → `poi-service-staging` (/health 200)
+  - `image-service-staging.cafemood.app` → `image-service-staging` (/health 200)
+  - Dokploy staging app (`coffeemode-web-staging`) updated with custom domain `POI_SERVICE_URL` / `IMAGE_SERVICE_URL` and restarted; Dokploy prod app env prepared.
+  - `workers.dev` disabled across all 4 workers via Cloudflare API (`subdomain` endpoint returns enabled: false; all 4 return 404).
+  - `workers_dev = false` pinned in `poi-service/wrangler.toml` and `image-service/wrangler.toml`.
+  - Token auth (`x-poi-service-token` / `x-image-service-token`) verified end-to-end (401/403 without token; 200 with token).
 - [ ] Enable the Cloudflare "Add visitor location headers" Managed Transform on the zone (sends `CF-IPCity` / `CF-IPCountry`; default-city resolution per DG128)
-- [ ] Create a Better Stack account + alert token for rate-limit/observability alerts (DG129); put the token in `web/.env.local` once the integration lands
+- [x] Better Stack account + per-environment sources for rate-limit/observability alerts (DG129, BRAWUKA-235): sources `coffeemode-rate-limit-staging` and `coffeemode-rate-limit-prod` (HTTP platform, team `Your team`, created 2026-09-17 via MCP). Live wiring verified same day: one synthetic `rate_limited` event per source, each confirmed back through the Better Stack query API within ~1 min. What remains is owner-side paste (values never go in chat/docs/repo): in the **Dokploy staging app env** set `BETTER_STACK_INGEST_URL` to the staging source host and `BETTER_STACK_INGEST_TOKEN` to the staging source token, same for **prod** with the prod source's own pair (Better Stack dashboard → Logs → each source → ingestion details). App code sends `Authorization: Bearer BETTER_STACK_INGEST_TOKEN` (see `web/lib/observability/rate-limit-alert.ts`); both vars are server-only (spec 0010 — never `NEXT_PUBLIC_*`). Never reuse one env's pair in the other — per-env filtering depends on it. Optional follow-up (not blocking): per-source alert rules (`rate_limited` → low-severity, `rate_limiter_fail_open` → immediate P1).
 
 ## 8. Kimi K3 UI design artifacts
 

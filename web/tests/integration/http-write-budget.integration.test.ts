@@ -198,7 +198,7 @@ describeBudget("http write budget + delete race (BRAWUKA-165)", () => {
   }, 120_000);
 
   beforeEach(async () => {
-    await resetRateLimits(dbClient);
+    await resetRateLimits();
   });
 
   afterAll(async () => {
@@ -272,7 +272,7 @@ describeBudget("http write budget + delete race (BRAWUKA-165)", () => {
   it("serializes concurrent owner deletes: one shell, one 404, no double removal", async () => {
     const cafeId = await createSoleOwnerCafe(clientA, randomUUID().replaceAll("-", "").slice(0, 12));
     // Isolate the race from the bootstrap's own write token.
-    await resetRateLimits(dbClient);
+    await resetRateLimits();
 
     const [first, second] = await Promise.all([
       clientA.delete(cafeDELETE, `/api/cafes/${cafeId}`, undefined, {}, routeParams({ id: cafeId })),

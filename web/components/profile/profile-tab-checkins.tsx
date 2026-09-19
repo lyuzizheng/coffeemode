@@ -69,20 +69,20 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
         return (
           <div
             key={item.id}
-            className={`p-3 bg-surface border border-border rounded-xl flex flex-col gap-2 transition-all ${
+            className={`p-3 bg-surface border border-separator rounded-md flex flex-col gap-2 transition-all ${
               item.cafe_is_deleted ? "opacity-60" : "hover:border-border/80"
             }`}
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex flex-col">
                 {item.cafe_is_deleted ? (
-                  <span className="font-display font-semibold text-muted text-base">
+                  <span className="font-display font-bold text-muted text-md">
                     {item.cafe_name || t("unknown_cafe")}
                   </span>
                 ) : (
                   <Link
-                    href={`/?cafe=${item.cafe_id}`}
-                    className="-my-2.5 inline-flex min-h-11 items-center font-display font-semibold text-foreground text-base hover:text-accent transition-colors"
+                    href={`/cafes/${item.cafe_id}`}
+                    className="-my-2.5 inline-flex min-h-11 items-center font-display font-bold text-foreground text-md hover:text-accent transition-colors"
                   >
                     {item.cafe_name || t("unknown_cafe")}
                   </Link>
@@ -101,7 +101,7 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
               <div className="flex items-center gap-2">
                 {item.likes_count > 0 && (
                   <span className="inline-flex items-center gap-1 text-xs text-muted font-mono tabular-nums">
-                    <HeartIcon size={13} filled={false} />
+                    <HeartIcon size={14} filled={false} />
                     {item.likes_count}
                   </span>
                 )}
@@ -120,7 +120,7 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
                 {dims.map((dim) => (
                   <span
                     key={dim}
-                    className="px-2 py-0.5 rounded-md bg-surface-secondary border border-border/40 tabular-nums"
+                    className="px-2.5 py-1 rounded-sm bg-surface-secondary border border-border/40 tabular-nums"
                   >
                     {tDims(`dims.${dim}`)} {Math.round(item.scores[dim] ?? 0)}
                   </span>

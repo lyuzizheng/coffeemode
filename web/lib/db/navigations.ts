@@ -23,9 +23,6 @@ interface RecordedNavigation {
   created_at: string;
 }
 
-/** The promptable projection of a navigation row, joined to its cafe. */
-export type NavigationPromptItem = NavPromptItemDto;
-
 /** Validate the POST /api/navigations body. */
 export function parseNavigationBody(body: unknown): ParseResult<{ cafe_id: string }> {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
@@ -46,6 +43,11 @@ where exists (
   where id = $1 and deleted_at is null
     and (visibility = 'public' or created_by = $2)
 )
+on conflict (user_id, cafe_id) where resolved = false
+do update set
+  created_at = now(),
+  ask_count = 0,
+  last_asked_at = null
 returning id, resolved, created_at
 `;
 
@@ -56,7 +58,9 @@ returning id, resolved, created_at
  * CafeNotFoundError when the cafe does not exist. Single statement
  * (BRAWUKA-279): the visibility gate lives inside the INSERT, so there is
  * one roundtrip and no TOCTOU — a cafe deleted between check and write
- * yields 0 rows (404), never an FK 500.
+ * yields 0 rows (404), never an FK 500. Deduplicates on
+ * (user_id, cafe_id) where resolved = false (BRAWUKA-391): repeated taps
+ * refresh created_at and reset ask counters on the pending row.
  */
 export async function recordNavigation(
   userId: string,
@@ -88,7 +92,7 @@ export async function recordNavigation(
  * for gets no error UI (design §5).
  */
 const NEXT_PROMPT_SQL = `
-select n.id, n.created_at, c.id as cafe_id, c.name as cafe_name, c.cover as cafe_cover
+select n.id, n.created_at, c.id as cafe_id, c.name as cafe_name, c.gallery->0->>'card' as cafe_cover
 from navigations n
 join cafes c on c.id = n.cafe_id
 where n.user_id = $1
@@ -132,7 +136,7 @@ const PROMPT_OUTCOME_SQL = `
 select outcome from navigations where id = $1 and user_id = $2
 `;
 
-const navigationPromptStore: PromptQueueStore<NavigationPromptItem> = {
+const navigationPromptStore: PromptQueueStore<NavPromptItemDto> = {
   async nextEligible(userId, params) {
     const { rows } = await query<
       {
@@ -189,7 +193,7 @@ const navigationPromptStore: PromptQueueStore<NavigationPromptItem> = {
  * earliest the next day, 3-month expiry, ≥1-day back-of-queue re-ask,
  * max 2 re-asks — all from `app.yaml` `promptQueue`.
  */
-export const navigationPromptQueue = new PromptQueue<NavigationPromptItem>(
+export const navigationPromptQueue = new PromptQueue<NavPromptItemDto>(
   navigationPromptStore,
   appConfig.promptQueue,
 );

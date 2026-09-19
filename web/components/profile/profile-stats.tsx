@@ -10,14 +10,14 @@ export function ProfileStats({ stats }: { stats: UserProfileStatsDto | null }) {
   const animatedCheckinsCount = useCountUp(stats?.checkinsCount ?? 0);
 
   return (
-    <div className="w-full bg-surface border border-border rounded-xl p-4 my-4 flex items-center justify-around">
+    <div className="mx-auto my-4 flex w-full max-w-xs items-center justify-center gap-8 border-y border-separator py-4">
       <div className="flex flex-col items-center">
         <span className="font-mono font-bold text-2xl text-foreground tabular-nums">
           {animatedCafesCount}
         </span>
         <span className="text-xs text-muted font-medium mt-0.5">{t("stats_cafes")}</span>
       </div>
-      <div className="w-px h-8 bg-border" />
+      <div className="w-px h-8 bg-separator" />
       <div className="flex flex-col items-center">
         <span className="font-mono font-bold text-2xl text-foreground tabular-nums">
           {animatedCheckinsCount}

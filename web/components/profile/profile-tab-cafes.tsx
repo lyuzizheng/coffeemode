@@ -6,6 +6,8 @@ import { useLocale, useTranslations } from "next-intl";
 import type { UseInfiniteQueryResult, InfiniteData } from "@tanstack/react-query";
 import { Button } from "@heroui/react";
 import { CoffeeIcon } from "@/components/icons";
+import { PrivateBadge } from "@/components/cafe/private-badge";
+import { THUMB_PX } from "@/lib/layout";
 import { ErrorRow } from "./profile-error-row";
 import type { UserCafeItemDto } from "@/lib/db/profile";
 
@@ -52,16 +54,16 @@ export function ProfileTabCafes({ baseId, query: cafesQuery }: ProfileTabCafesPr
       {cafes.map((cafe) => (
         <Link
           key={cafe.id}
-          href={`/?cafe=${cafe.id}`}
-          className="p-3 bg-surface border border-border rounded-xl flex items-center gap-3 hover:border-border/80 active:scale-[0.99] transition-all"
+          href={`/cafes/${cafe.id}`}
+          className="p-3 bg-surface border border-separator rounded-md flex items-center gap-3 hover:border-border/80 active:scale-[0.99] transition-all"
         >
-          <div className="relative w-[72px] h-[54px] rounded-lg bg-surface-secondary border border-border/40 flex-shrink-0 flex items-center justify-center overflow-hidden">
+          <div className="relative w-[var(--layout-thumb)] h-[54px] rounded-sm bg-surface-secondary border border-separator flex-shrink-0 flex items-center justify-center overflow-hidden">
             {cafe.cover ? (
               <Image
                 src={cafe.cover}
                 alt={cafe.name}
                 fill
-                sizes="72px"
+                sizes={`${THUMB_PX}px`}
                 className="object-cover"
               />
             ) : (
@@ -73,7 +75,7 @@ export function ProfileTabCafes({ baseId, query: cafesQuery }: ProfileTabCafesPr
 
           <div className="flex-1 min-w-0 flex flex-col">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="font-display font-semibold text-foreground text-base truncate">
+              <span className="font-display font-bold text-foreground text-md truncate">
                 {cafe.name || t("unknown_cafe")}
               </span>
               {cafe.is_creation && (
@@ -82,6 +84,9 @@ export function ProfileTabCafes({ baseId, query: cafesQuery }: ProfileTabCafesPr
                   <span>{t("created_by_me")}</span>
                 </span>
               )}
+              {/* DG147: private rows only ever reach the owner (read-path
+                  filter) — composes with "created by me" when both apply. */}
+              {cafe.visibility === "private" && <PrivateBadge />}
             </div>
 
             <span className="text-xs text-muted font-mono tabular-nums mt-1">

@@ -23,7 +23,7 @@ export async function GET(
 ) {
   const { id } = await params;
   if (!isValidUUID(id)) {
-    return apiError("invalid_request", "id must be a UUID", 400);
+    return apiError("invalid_request", "id must be a UUID", { status: 400 });
   }
 
   const gate = await guard(request, {

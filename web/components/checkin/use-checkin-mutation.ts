@@ -28,6 +28,10 @@ interface SubmitCheckinParams {
   scores: CheckInScores;
   maxStay: MaxStay | null;
   note: string;
+  /** Photos staged in state at submit time — the PATCH contract cannot save
+   *  them, so an edit save must report the drop instead of staying silent
+   *  (BRAWUKA-395 P2-2). */
+  photoCount: number;
 }
 
 interface UseCheckinMutationOptions {
@@ -42,12 +46,13 @@ interface UseCheckinMutationOptions {
 
 function resolveSubmitError(
   err: unknown,
-  t: (key: "photosUploading" | "photosFailed" | "photoTooLarge" | "couldntSave") => string,
+  t: (key: "photosUploading" | "photosFailed" | "photoTooLarge" | "photoInvalid" | "couldntSave") => string,
 ): string {
   if (!(err instanceof Error)) return t("couldntSave");
   if (err.message === "photos_uploading") return t("photosUploading");
   if (err.message === "photo_upload_failed") return t("photosFailed");
   if (err.message === "photo_too_large") return t("photoTooLarge");
+  if (err.message === "photo_invalid") return t("photoInvalid");
   return userFacingMessage(err.message, t("couldntSave"));
 }
 
@@ -79,7 +84,8 @@ function useSubmitMutation({
 
   return useMutation({
     mutationFn: async (params: SubmitCheckinParams) => {
-      // Edit PATCHes carry no photo_ids — uploading staged photos would only orphan them in R2 (BRAWUKA-269).
+      // Edit PATCHes carry no photo_ids — staged photos drop here, so the save
+      // must say so (BRAWUKA-395 P2-2); uploading would only orphan R2 objects (BRAWUKA-269).
       if (isEdit && editCheckinId) {
         await updateCheckin({
           editCheckinId,
@@ -88,7 +94,7 @@ function useSubmitMutation({
           note: params.note,
           fallbackErrorMessage: t("couldntSave"),
         });
-        return { photosDropped: false };
+        return { photosDropped: params.photoCount > 0 };
       }
       const uploadedIds = await uploadPendingPhotos();
       const { convertedToEdit } = await createCheckin({

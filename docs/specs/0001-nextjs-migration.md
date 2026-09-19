@@ -108,7 +108,7 @@ modes, storage, Workers, domains) and secret ownership are canonical in spec
 - Product-table data stays server-mediated: route handlers use the pooled Postgres connection, and the tables must NOT be reachable through Supabase's Data API (PostgREST/GraphQL) with the browser anon key — new projects no longer auto-expose new tables, and default grants to `anon`/`authenticated` are revoked at provisioning as a belt-and-suspenders step (`docs/agent/pending-user-actions.md` §2). The anon key is used only for auth flows.
 - Postgres connection: standard `pg` Pool (server-side only), fail-closed SSL (#41). PostGIS enabled via `create extension postgis` (Supabase catalog). Pick the Supabase region closest to the VPS — route handlers run multi-round-trip transactions, so RTT multiplies.
 
-#### Tables (7 total: 5 product + 2 infra — deliberately minimal; applied via migrations 0001–0024)
+#### Tables (7 total: 6 product + 1 infra — deliberately minimal; applied via migrations 0001–0026)
 
 ```sql
 -- 1. profiles: app-side user record, keyed by Supabase auth user id
@@ -131,7 +131,8 @@ create table cafes (
   address         text,
   city            text default 'singapore',
   description     text,
-  cover           text,                   -- R2 key
+  -- 0025 (BRAWUKA-307): `cover` dropped — write-frozen since PR #467 removed
+  -- attachImageToCafe; card covers derive from `gallery->0->>'card'` in reads
   gallery         jsonb default '[]',     -- [{id, original, card, thumbnail, w, h, by, at, source}]
   opening_hours   jsonb,                  -- {mon:{open,close},...} + hours_source
   tz              text,                   -- IANA timezone (e.g. 'Asia/Seoul'); open-now evaluates cafe-local (web/lib/hours.ts)
@@ -220,11 +221,12 @@ Notes:
   (0004 decision 8a, #254)
 - Soft delete: checkins.deleted_at (is_deleted is not needed — `where deleted_at is null` builds partial indexes directly; `is_deleted boolean` would be a redundant mirror); photos from a deleted check-in are hidden from cafes.gallery via source;
   cafes.deleted_at (0009) tombstones are legacy for old deletes (DG111); new deletes never use it — they delete the caller's checkin and keep the cafe shell (DG146). Visibility is `text+CHECK` not PG enum. Provider unique indexes remain tombstone-aware (0011) so orphan shells still occupy the POI
-- Infra tables (not product domain): rate_limits (0003 — distributed token bucket, one atomic
-  UPSERT per check, web/lib/rate-limit/postgres.ts) and image_upload_intents (0006 — binds a
+- Infra tables (not product domain): image_upload_intents (0006 — binds a
   presigned imageUuid to its issuing user, single-use DELETE ... RETURNING inside the creation
-  transaction, web/lib/db/image-uploads.ts). Both stay in Postgres: KV cannot do an atomic
-  single-use consume, is eventually consistent, and caps at 1k writes/day on the free tier
+  transaction, web/lib/db/image-uploads.ts). Rate limits enforce in memory
+  on the single app container (BRAWUKA-378 deleted the Postgres token bucket
+  and 0026 drops `rate_limits`); KV cannot do an atomic single-use consume,
+  is eventually consistent, and caps at 1k writes/day on the free tier
 ```
 
 #### Cafe lifecycle — delete guard, orphan shell & visibility (DG146 / DG147, 2026-09-02; owner veto on revive)
@@ -435,7 +437,7 @@ Usage: cafe creation import + POI enrichment + external search results (not rend
 Calls: server-side, ALWAYS via the POI cache service below (API key lives there only)
 Endpoints:
   - Place Search (Nearby/Text) — external search results list
-  - Place Details — enrich imported cafe (photos, hours)
+  - Place Details — enrich imported cafe (hours)
   - Place Autocomplete — search box during import flow
 Session tokens: used for autocomplete billing optimization
 Dedupe: google_place_id unique index; existing cafe → show it + prompt to check-in
@@ -447,10 +449,10 @@ Independent, reusable POI microservice — separate from the Next.js app, so any
 
 ```text
 poi-service.cafemood.app (Cloudflare Worker)
-  KV  — hot cache: raw Google Places responses (TTL ~7d)
-  D1  — normalized POI store (warm cache, durable):
+  KV  — hot cache: normalized POI records (TTL ~7d)
+  D1  — bounded cache (expires_at, 30d):
         place_id, source (google|apple), name, lat, lng, address,
-        types, business_status, hours_json, photo_refs, fetched_at
+        types, business_status, hours_json, fetched_at, expires_at
   Upstream — Google Places API (New), field masks to minimize billing
 
 Endpoints (all require POI_SERVICE_TOKEN header):
@@ -490,8 +492,13 @@ Upload flow:
   3. Worker returns presigned R2 PUT URL for original/{uuid}.webp
   4. Client PUTs the WebP original directly to R2
 
-Processing:
-  1. Client → Next.js /api/images/complete (Supabase session + target id + optional `isCover` flag)
+Processing (BRAWUKA-307: the client entry `POST /api/images/complete` with its
+`isCover` flag is RETIRED — photo provisioning now runs through `photo_ids`
+intents on the creation/check-in write paths, and card covers derive from
+`gallery->0->>'card'`. The worker endpoint below stays LIVE: the `photo_ids`
+flow still calls `POST {image-service}/v1/images/complete` per image, with
+targetType="provision" pre-target and the real target on attach):
+  1. (retired) Client → Next.js /api/images/complete (Supabase session + target id + optional `isCover` flag)
   2. Next.js → image-service Worker /v1/images/complete (service token)
   3. Worker verifies original exists and returns:
        - presigned GET URL for original/{uuid}.webp
@@ -503,14 +510,8 @@ Processing:
        - thumbnail: 200x200 cover, WebP q80
   5. Next.js PUTs original (capped), card, and thumbnail back to R2 and updates:
        cafes.gallery / checkins.photos JSONB
-  6. If `isCover` is true on a `cafe` target, `cafes.cover` is set to the `card` key
-     (client opt-in at creation or cover edit; otherwise the field is left unchanged)
-
-Authorization for /api/images/complete:
-  - `cafe` target: allowed only when the user is the cafe's `created_by`.
-  - `checkin` target: allowed only when the user owns the checkin (`checkins.user_id`).
-    The photo is stored in `checkins.photos` and auto-merged into the parent cafe's
-    `gallery` (attributed via `by`/`at`/`source`) without requiring cafe ownership.
+  6. (retired in migration 0025) If `isCover` was true on a `cafe` target,
+     `cafes.cover` was set to the `card` key — the column is now dropped.
 
 Photos on the creation/check-in write paths (issue #86):
   - `POST /api/cafes` and `POST /api/checkins` accept `photo_ids` (imageUuids
@@ -579,7 +580,8 @@ states are mobile-only.
 
 The map-independent discovery controller accepts CafeSummary[] plus selected state.
 A thin home-page adapter loads the existing nearby-cafes API; MapKit bindings and
-unified search stay in their own slices. CafeSummary must expose a card cover.
+unified search stay in their own slices. CafeSummary carries a derived card cover
+(first gallery card, `gallery->0->>'card'`).
 FULL requires a public, unauthenticated, paginated cafe check-in read contract rather than
 permanent fixtures. It offers Newest (default — DG113) and Helpful modes;
 Kimi K3 designs the control.
@@ -705,7 +707,7 @@ Primary: VPS (user's own server, public IP)
   - Docker container (next build --output standalone)
   - PM2 or container restart policy
   - Cloudflare CDN proxy (SSL, DDoS, caching)
-  - Nightly work_stats recompute via GitHub Actions cron (#146; doubles as the Supabase free-tier keep-alive, 34a)
+  - Nightly work_stats recompute via Dokploy VPS cron (#146, BRAWUKA-475; doubles as the Supabase free-tier keep-alive, 34a)
 Fallback: @opennextjs/cloudflare (Workers, Node.js runtime) — post-MVP
 Images: Cloudflare R2 + CDN custom domain
 Domain: cafemood.app (or TBD)
@@ -729,7 +731,7 @@ R2_ACCESS_KEY_ID                -> image-service Worker (R2 S3 token secret)
 R2_SECRET_ACCESS_KEY            -> image-service Worker (R2 S3 token secret)
 R2_BUCKET_NAME                  -> image-service Worker ("cafemode")
 R2_PUBLIC_URL                   -> image-service Worker (CDN base, no trailing slash)
-NEXT_PUBLIC_R2_PUBLIC_URL       -> Next.js, optional drift guard; host must match R2_PUBLIC_HOST in web/lib/images/constants.ts (single source, issue #40)
+NEXT_PUBLIC_R2_PUBLIC_URL       -> Next.js, optional drift guard; host must match R2_ALLOWED_PUBLIC_HOSTS in web/lib/images/constants.ts (images.cafemood.app or staging-images.cafemood.app, BRAWUKA-394)
 APPLE_MAPKIT_TEAM_ID            -> Apple Developer team
 APPLE_MAPKIT_KEY_ID             -> MapKit JS key
 APPLE_MAPKIT_PRIVATE_KEY        -> .p8 private key (server-side)
@@ -860,7 +862,7 @@ Required on creation:
 Optional: dimension sliders, hours, price range, description
 
 Maps-link import pre-fills the available provider fields: name, address,
-location, and provider reference. Google photos and hours remain in the POI
+location, and provider reference. Google hours remain in the POI
 cache for later enrichment; this creation slice does not copy them into the
 cafe record. The user adds the required photo, review + sliders + policies.
 (The existing Vite flow already does paste→preview→resolve→create; the
@@ -1170,13 +1172,9 @@ is a config edit, not a code change.
 
 Implementation: in-memory token bucket keyed through an LRU map inside the
 Next.js process (e.g. a thin wrapper over `lru-cache`), enforced via one
-middleware/helper every route and script calls. In-memory is correct at
-MVP scale (single VPS container); the config schema + enforcement
-interface are the contract, so swapping the store for Redis/Upstash under
-multi-instance scale is a config change, not a redesign. The existing
-Postgres-backed token bucket (issue #23, `RATE_LIMIT_BACKEND`) is a valid
-store behind this same config/interface — this section standardizes the
-config and coverage, it does not mandate replacing that backend; spec 0004
+middleware/helper every route and script calls. In-memory is the sole backend
+(BRAWUKA-378: the Postgres token bucket is deleted — a future multi-instance
+deploy needs a new shared-store decision, not a config flip); spec 0004
 item 33 is satisfied by this mechanism.
 
 Product rules expressed through it: per-user caps on image

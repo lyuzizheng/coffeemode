@@ -174,8 +174,8 @@ services:
 
   # Lightweight Supabase Auth (GoTrue) mock. A tiny Node http server that
   # issues unsigned fake JWTs for local tests — no real Supabase project
-  # needed. Mirrors the helper in web/tests/helpers/auth.ts (fakeJwt) so
-  # integration tests and manual flows can inject a user without credentials.
+  # needed. Same shape as the helper in web/tests/helpers/auth.ts (fakeJwt),
+  # so integration tests and manual flows can inject a user without credentials.
   # Uses the same host port as `supabase start` (54321) so web/.env.example
   # works for either the mock or the real Supabase CLI emulator.
   # To use the real emulator instead: `supabase start` and stop this service
@@ -185,6 +185,7 @@ services:
     working_dir: /workspace
     volumes:
       - ./scripts/supabase-mock.mjs:/workspace/scripts/supabase-mock.mjs:ro
+      - ./scripts/fake-jwt.mjs:/workspace/scripts/fake-jwt.mjs:ro
     environment:
       HOST: 0.0.0.0
     ports:

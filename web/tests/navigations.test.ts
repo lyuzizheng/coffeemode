@@ -49,8 +49,8 @@ describe("parseNavigationBody", () => {
 });
 
 describe("recordNavigation", () => {
-  it("inserts the row in ONE statement with the visibility gate inside", async () => {
-    poolQueryMock.mockResolvedValueOnce({ rows: [NAV_ROW] }); // insert…select…where exists
+  it("inserts the row in ONE statement with the visibility gate inside and deduplicates unresolved navigations", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [NAV_ROW] }); // insert…select…where exists…on conflict
 
     const result = await recordNavigation(USER.id, CAFE);
 
@@ -59,6 +59,8 @@ describe("recordNavigation", () => {
     const [sql, params] = poolQueryMock.mock.calls[0];
     expect(sql).toContain("where exists");
     expect(sql).toContain("visibility");
+    expect(sql).toContain("on conflict (user_id, cafe_id) where resolved = false");
+    expect(sql).toContain("created_at = now()");
     expect(params).toEqual([CAFE, USER.id]);
   });
 

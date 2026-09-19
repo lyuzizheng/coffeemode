@@ -18,7 +18,7 @@ export interface CafeSummary {
   opening_hours: WeeklyHours | null;
   price_range: number | null;
   work_stats: WorkStats;
-  /** Card-variant R2 key for list/card covers; null when the cafe has no photo yet. */
+  /** Card-variant R2 key for list/card covers: first gallery card (`gallery->0->>'card'`), null when the cafe has no photo yet. */
   cover: string | null;
   /** Meters from the query point; present on nearby queries. */
   distance_m?: number;
@@ -47,6 +47,13 @@ export interface CafeDetail extends Omit<CafeSummary, "distance_m"> {
 export type PublicCafeDetail = Omit<CafeDetail, "gallery" | "created_by"> & {
   gallery: PublicStoredImage[];
   visibility?: CafeVisibility;
+  /**
+   * Server-computed ownership bit (DG146/DG147): true only when the viewer is
+   * the cafe's creator. A boolean comparison result — `created_by` itself
+   * never reaches the client (same contract as feed `owned_by_viewer`, DG13).
+   * Gates the in-app owner controls and the private badge.
+   */
+  owned_by_viewer: boolean;
   /**
    * Consented public author of the cafe creator (spec 0006). Null means the
    * client renders the existing anonymous copy; always null for null /

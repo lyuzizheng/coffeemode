@@ -12,7 +12,7 @@ CafeMood MonoRepo (repo name `lyuzizheng/coffeemode` keeps its pre-rename name)
 
 - Next.js 16 (App Router) + React + TypeScript
 - TailwindCSS v4 + HeroUI v3
-- Self-hosted Postgres + Supabase Auth
+- Supabase-hosted Postgres/PostGIS for app data + Supabase Auth (Apple + Google OAuth)
 - Cloudflare Workers (Wrangler) for the POI cache and image services
 
 Coding rules: `.agents/rules/coding.md`.

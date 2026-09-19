@@ -2,10 +2,21 @@
 
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { SignOutButton } from "@/components/auth/sign-out-button";
+import { AppMenu } from "@/components/layout/app-menu";
 
-export function ProfileHeader({ isAuthenticated }: { isAuthenticated: boolean }) {
+/**
+ * /profile header (BRAWUKA-504): back chevron + title + the global
+ * account/menu cluster — the same chrome the map carries, so theme,
+ * language, settings, and sign-out all live in the menu now (the old
+ * inline ThemeToggle/SignOutButton pair is gone).
+ */
+export function ProfileHeader({
+  isAuthenticated,
+  accountInitial,
+}: {
+  isAuthenticated: boolean;
+  accountInitial?: string;
+}) {
   const t = useTranslations("profile");
   const router = useRouter();
 
@@ -19,7 +30,7 @@ export function ProfileHeader({ isAuthenticated }: { isAuthenticated: boolean })
   };
 
   return (
-    <header className="w-full max-w-[640px] px-4 md:px-6 pt-4 pb-2 flex items-center justify-between">
+    <header className="w-full max-w-[var(--layout-content-max)] px-4 md:px-6 pt-4 pb-2 flex items-center justify-between">
       <button
         onClick={handleBack}
         aria-label={t("back")}
@@ -30,15 +41,10 @@ export function ProfileHeader({ isAuthenticated }: { isAuthenticated: boolean })
         </svg>
       </button>
       <span className="font-display font-semibold text-lg">{t("title")}</span>
-      <div className="flex items-center gap-2">
-        <ThemeToggle />
-        {isAuthenticated && (
-          <SignOutButton
-            variant="ghost"
-            className="inline-flex min-h-12 min-w-12 items-center"
-          />
-        )}
-      </div>
+      <AppMenu
+        variant="page"
+        accountInitial={isAuthenticated ? accountInitial : undefined}
+      />
     </header>
   );
 }

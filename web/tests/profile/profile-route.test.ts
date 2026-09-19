@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { GET, PATCH } from "@/app/api/profile/route";
+import { DELETE, GET, PATCH } from "@/app/api/profile/route";
+import { GET as getExport } from "@/app/api/profile/export/route";
 import { GET as getCheckins } from "@/app/api/profile/checkins/route";
 import { GET as getCafes } from "@/app/api/profile/cafes/route";
 import { getCurrentUser } from "@/lib/auth/get-user";
 import {
+  deleteAccount,
   getProfile,
+  getProfileExport,
   getUserStats,
   updateProfile,
   getUserCheckIns,
@@ -16,18 +19,25 @@ import type { NextRequest } from "next/server";
 vi.mock("@/lib/auth/get-user", () => ({
   getCurrentUser: vi.fn(),
 }));
-
 vi.mock("@/lib/db/profile", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/db/profile")>();
   return {
     ...actual,
+    deleteAccount: vi.fn(),
     getProfile: vi.fn(),
+    getProfileExport: vi.fn(),
     getUserStats: vi.fn(),
     updateProfile: vi.fn(),
     getUserCheckIns: vi.fn(),
     getUserCafes: vi.fn(),
   };
 });
+
+vi.mock("@/lib/auth/supabase-server", () => ({
+  createSupabaseServerClient: vi.fn().mockResolvedValue({
+    auth: { signOut: vi.fn().mockResolvedValue({ error: null }) },
+  }),
+}));
 
 vi.mock("@/lib/rate-limit", async () => {
   const actual = await vi.importActual<typeof import("@/lib/rate-limit")>("@/lib/rate-limit");
@@ -278,6 +288,7 @@ describe("Profile API routes", () => {
             last_visited_at: "2026-08-25T12:00:00.000Z",
             checkins_count: 2,
             is_creation: true,
+            visibility: "public",
           },
         ],
         next_cursor: null,
@@ -330,6 +341,92 @@ describe("Profile API routes", () => {
       const req = new Request("http://localhost/api/profile/cafes") as NextRequest;
       const res = await getCafes(req);
       expect(res.status).toBe(429);
+    });
+  });
+  describe("DELETE /api/profile (DG149)", () => {
+    it("returns 401 when unauthenticated", async () => {
+      vi.mocked(getCurrentUser).mockResolvedValueOnce(null);
+      const req = new Request("http://localhost/api/profile", {
+        method: "DELETE",
+      }) as NextRequest;
+      const res = await DELETE(req);
+      expect(res.status).toBe(401);
+      expect(deleteAccount).not.toHaveBeenCalled();
+    });
+
+    it("rejects cross-origin deletes", async () => {
+      vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
+      const req = new Request("http://localhost/api/profile", {
+        method: "DELETE",
+        headers: { Origin: "https://evil.com", Host: "localhost" },
+      }) as NextRequest;
+      const res = await DELETE(req);
+      expect(res.status).toBe(403);
+      expect(deleteAccount).not.toHaveBeenCalled();
+    });
+
+    it("runs the teardown and signs out", async () => {
+      vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
+      vi.mocked(deleteAccount).mockResolvedValueOnce({
+        ok: true,
+        checkins_removed: 3,
+        cafes_transferred: 1,
+      });
+      const req = new Request("http://localhost/api/profile", {
+        method: "DELETE",
+      }) as NextRequest;
+      const res = await DELETE(req);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body).toEqual({ ok: true, checkins_removed: 3, cafes_transferred: 1 });
+      expect(deleteAccount).toHaveBeenCalledWith(userId);
+    });
+
+    it("returns 500 when the teardown throws", async () => {
+      vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
+      vi.mocked(deleteAccount).mockRejectedValueOnce(new Error("fk violation"));
+      const req = new Request("http://localhost/api/profile", {
+        method: "DELETE",
+      }) as NextRequest;
+      const res = await DELETE(req);
+      expect(res.status).toBe(500);
+    });
+  });
+
+  describe("GET /api/profile/export (DG149)", () => {
+    it("returns 401 when unauthenticated", async () => {
+      vi.mocked(getCurrentUser).mockResolvedValueOnce(null);
+      const req = new Request("http://localhost/api/profile/export") as NextRequest;
+      const res = await getExport(req);
+      expect(res.status).toBe(401);
+      expect(getProfileExport).not.toHaveBeenCalled();
+    });
+
+    it("streams the bundle as an attachment with no-store", async () => {
+      vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
+      vi.mocked(getProfileExport).mockResolvedValueOnce({
+        exported_at: "2026-09-19T00:00:00.000Z",
+        profile: { id: userId },
+        checkins: [],
+        cafes_created: [],
+        navigations: [],
+      } as never);
+      const req = new Request("http://localhost/api/profile/export") as NextRequest;
+      const res = await getExport(req);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Content-Disposition")).toContain("attachment");
+      expect(res.headers.get("Cache-Control")).toBe("no-store");
+      const body = await res.json();
+      expect(body.profile.id).toBe(userId);
+      expect(getProfileExport).toHaveBeenCalledWith(userId);
+    });
+
+    it("returns 500 when the export query throws", async () => {
+      vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
+      vi.mocked(getProfileExport).mockRejectedValueOnce(new Error("column does not exist"));
+      const req = new Request("http://localhost/api/profile/export") as NextRequest;
+      const res = await getExport(req);
+      expect(res.status).toBe(500);
     });
   });
 });

@@ -32,24 +32,24 @@ export async function GET(request: Request) {
   const lat = latParam === null ? NaN : Number(latParam);
   const lng = lngParam === null ? NaN : Number(lngParam);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return apiError("invalid_request", "lat and lng query params (numbers) required", 400);
+    return apiError("invalid_request", "lat and lng query params (numbers) required", { status: 400 });
   }
   // Out-of-range coordinates would make PostGIS throw — reject as a 400 instead.
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-    return apiError("invalid_request", "lat must be within [-90,90], lng within [-180,180]", 400);
+    return apiError("invalid_request", "lat must be within [-90,90], lng within [-180,180]", { status: 400 });
   }
 
   const radiusParam = url.searchParams.get("radius_km");
   const radius = radiusParam === null ? DEFAULT_SEARCH_RADIUS_KM : Number(radiusParam);
   if (!Number.isFinite(radius) || radius <= 0) {
-    return apiError("invalid_request", "radius_km must be a positive number", 400);
+    return apiError("invalid_request", "radius_km must be a positive number", { status: 400 });
   }
   const radiusKm = Math.min(radius, MAX_SEARCH_RADIUS_KM);
 
   const limitParam = url.searchParams.get("limit");
   const limit = parseQueryPositiveInt(limitParam, MAX_LIST_LIMIT, MAX_LIST_LIMIT);
   if (limit === null) {
-    return apiError("invalid_request", "limit must be a positive integer", 400);
+    return apiError("invalid_request", "limit must be a positive integer", { status: 400 });
   }
 
   const gate = await guard(request, {
@@ -85,7 +85,7 @@ export async function POST(request: Request) {
   if (!bodyRes.ok) return bodyRes.response;
   const parsed = parseCreateCafeBody(bodyRes.data);
   if (!parsed.ok) {
-    return apiError("invalid_request", parsed.message, 400);
+    return apiError("invalid_request", parsed.message, { status: 400 });
   }
 
   const gate = await guard(request, {
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
     if (err instanceof CafeExistsError) {
-      return apiError("cafe_exists", 409, { cafe_id: err.existingCafeId });
+      return apiError("cafe_exists", 409, { extra: { cafe_id: err.existingCafeId } });
     }
     if (
       err instanceof PhotoIntentError ||
@@ -109,7 +109,7 @@ export async function POST(request: Request) {
       // user-facing class as a bad photo id, not a server fault.
       (err instanceof ImageServiceError && err.status === 404)
     ) {
-      return apiError("invalid_photos", "one or more photos are invalid", 400);
+      return apiError("invalid_photos", "one or more photos are invalid", { status: 400 });
     }
     logError({ route: gate.route, request, error: err, status: 500 });
     return apiError("internal_error", 500);

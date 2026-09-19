@@ -51,24 +51,32 @@ describeIntegration("integration — runtime_config + heartbeat (BRAWUKA-284)", 
 
   beforeEach(async () => {
     await dbClient.query("delete from runtime_config");
-    await resetRateLimits(dbClient);
+    await resetRateLimits();
   });
 
   afterAll(async () => {
+    const errors: unknown[] = [];
     try {
       await closePool();
-    } catch {
-      // ignore teardown errors
+    } catch (err) {
+      errors.push(err);
     }
     try {
       await dbClient?.end();
-    } catch {
-      // ignore teardown errors
+    } catch (err) {
+      errors.push(err);
     }
     if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = previousDatabaseUrl;
     if (RUN_INTEGRATION && testDbUrl) {
-      await cleanupIntegrationDatabase(adminDbUrl, TEST_DB);
+      try {
+        await cleanupIntegrationDatabase(adminDbUrl, TEST_DB);
+      } catch (err) {
+        errors.push(err);
+      }
+    }
+    if (errors.length > 0) {
+      throw new AggregateError(errors, "runtime-config integration cleanup failed");
     }
   }, 60_000);
 
@@ -88,20 +96,20 @@ describeIntegration("integration — runtime_config + heartbeat (BRAWUKA-284)", 
     expect(triggers.rows.map((r) => r.tgname)).toEqual(["trg_runtime_config_touch"]);
 
     await dbClient.query(
-      `insert into runtime_config (key, value) values ('flags', '{"a": true}')`,
+      `insert into runtime_config (key, value) values ('banners', '[]')`,
     );
     const before = await dbClient.query<{ updated_at: string }>(
-      `select updated_at from runtime_config where key = 'flags'`,
+      `select updated_at from runtime_config where key = 'banners'`,
     );
     // Real-timer exception: Postgres `now()` has ~1s granularity next to the
     // trigger write, so the touch is only observable after a real delay.
     // Fake timers cannot advance the server clock.
     await new Promise((resolve) => setTimeout(resolve, 1100));
     await dbClient.query(
-      `update runtime_config set value = '{"a": false}' where key = 'flags'`,
+      `update runtime_config set value = '[{"id": "m1"}]' where key = 'banners'`,
     );
     const after = await dbClient.query<{ updated_at: string }>(
-      `select updated_at from runtime_config where key = 'flags'`,
+      `select updated_at from runtime_config where key = 'banners'`,
     );
     expect(new Date(after.rows[0].updated_at).getTime()).toBeGreaterThan(
       new Date(before.rows[0].updated_at).getTime(),
@@ -142,11 +150,10 @@ describeIntegration("integration — runtime_config + heartbeat (BRAWUKA-284)", 
   it("config serves seeded rows with the 60s edge-cache header", async () => {
     await dbClient.query(
       `insert into runtime_config (key, value) values
-       ('flags', '{"new_search": true}'),
        ('banners', '[{"id": "m1", "kind": "maintenance", "text": {"en": "Down Sunday", "zh": "周日维护"}}, {"id": "old", "kind": "outage", "text": {"en": "old"}, "expiresAt": "2000-01-01T00:00:00Z"}, {"id": "bad", "kind": "promo", "text": {"en": "buy now"}}]')`,
     );
     const config = await getRuntimeConfig();
-    expect(config.flags).toEqual({ new_search: true });
+    expect(config.banners.map((b: { id: string }) => b.id)).toEqual(["m1"]);
 
     const res = await configGET(new Request("http://localhost/api/config"));
     expect(res.status).toBe(200);
@@ -161,6 +168,6 @@ describeIntegration("integration — runtime_config + heartbeat (BRAWUKA-284)", 
   it("config degrades to empty (never 500) on an empty table", async () => {
     const res = await configGET(new Request("http://localhost/api/config"));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ flags: {}, banners: [] });
+    expect(await res.json()).toEqual({ banners: [] });
   });
 });

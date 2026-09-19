@@ -45,29 +45,41 @@ app/page.tsx
   selection camera, cafe data + selection) — all through `IMapProvider`.
 - **cafe-pins.ts** — MapLibre-internal pin artwork + layer registration;
   imported only by maplibre-provider.tsx.
-- **Style documents** — both themes load full style JSONs from the tile host
-  (`map.maplibre.tileStyle.light`/`dark` in app.yaml; OFM `liberty`/`dark`);
-  the app never owns a local style document.
+- **Style documents** — both themes load CoffeeMode's own basemap styles
+  (BRAWUKA-362): `public/map/coffeemode_light.json` (warm paper, two-ink
+  espresso + sage) and `public/map/coffeemode_dark.json` (deep espresso
+  substrate, same design). Served same-origin via root-relative paths in
+  `map.maplibre.tileStyle.light`/`dark` (app.yaml); vector tiles and glyphs
+  still come from OpenFreeMap. No POI/aerodrome/housenumber labels — road
+  and place names only, so cafe pins stay the protagonists.
 - **types.ts** — `IMapProvider` / `BaseMapProviderProps` — the swap
   boundary. No renderer types cross it (`Coordinates` from `lib/cities`,
   `CafeSummary` from `types/cafes`). Optional capability members
-  (BRAWUKA-330, implemented by the MapLibre provider): `onMapTap` (empty-map
-  tap / long-press → create entry), `getBounds` + `onIdle` (camera-settled
+  (BRAWUKA-330, implemented by the MapLibre provider): `getBounds` + `onIdle` (camera-settled
   `moveend`, the "search this area" trigger), `setExternalPins` (external
   POI pins on a source/layers separate from `setCafes` — never folded into
-  `CafeSummary`). Consumers feature-detect (`provider.onMapTap?.(…)`).
-- **map-account-chip.tsx** — the floating account + theme affordance
-  (BRAWUKA-318): avatar initial → `/profile` when signed in, "Sign in" →
-  `/profile` (which renders the sign-in gate) when not, plus a chromeless
-  `ThemeToggle`. Rendered by OnboardingHome inside `mapOverlay`, so
-  `gateMapOverlay` hides it above PEEK; on desktop it sits left of the
-  locate button's top-right corner.
+  `CafeSummary`). Consumers feature-detect (`provider.getBounds?.(…)`).
+- **layout/app-menu.tsx** — the floating account + menu cluster
+  (BRAWUKA-504): a round trigger that opens a spring-animated panel
+  (scale from the trigger's corner, `spring.gentle`) with theme
+  (light/dark/system + variant), language (en/zh), a `/settings` entry,
+  and sign-in/out. `variant="map"` floats top-right inside the
+  `mapOverlay` slot (so `gateMapOverlay` hides it above PEEK);
+  `variant="page"` is the shared chrome on `/profile`, `/settings`,
+  `/cafes/[id]`, and the legal pages.
+- **onboarding/locate-button.tsx** — the persistent locate control
+  (DG116/DG117/DG120): bottom-right on every breakpoint, stacked
+  directly above the add-cafe FAB (BRAWUKA-504 — moved from the
+  sheet-peek slot and the desktop top-right corner). The granted fix
+  renders as the user-location dot layer on the map (`userLocation` →
+  `setUserLocation` on `IMapProvider`); a re-tap recenters on the dot.
 
 ## Camera contract
 
 | Trigger | Effect |
 | --- | --- |
 | Resolved center changes (locate, city pick) | `flyTo` at `map.defaultZoom` (never zooms out) |
+| User camera gesture (first pan/zoom) | `onCameraGesture` latch — a late locate grant never steals the viewport (DG119) |
 | Cafe selected (card or pin) | `flyTo` at `map.focusZoom` (never zooms out) |
 | Deselect / user pan | nothing — the camera stays where the user left it |
 | Cluster tap | `easeTo` cluster expansion zoom |
@@ -80,10 +92,11 @@ Padding follows chrome: mobile keeps pins above the sheet's visible detent
 
 `web/config/app.yaml` → `map:` — `provider` (discriminator selecting a
 `map.<provider>` block), `defaultZoom`, `focusZoom` (provider-agnostic
-product parameters), `maplibre.tileStyle.light`/`dark` (full style document
-URLs; the style documents carry their own glyphs/sprite). Provider id + zooms
-are mirrored to the client via `NEXT_PUBLIC_MAP_*` in `next.config.ts` and
-read through `lib/client-env.ts`; the MapLibre style URLs go through
+product parameters), `maplibre.tileStyle.light`/`dark` (style document
+locators: absolute https: URLs or root-relative paths under `web/public/`;
+the style documents carry their own glyphs). Provider id + zooms are
+mirrored to the client via `NEXT_PUBLIC_MAP_*` in `next.config.ts` and
+read through `lib/client-env.ts`; the MapLibre style locators go through
 `NEXT_PUBLIC_MAPLIBRE_*` and `maplibre-config.ts`.
 
 ## Failure modes

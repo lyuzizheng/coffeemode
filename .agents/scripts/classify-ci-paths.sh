@@ -72,14 +72,14 @@ else
         poi_service=true
         ;;
       # Integration-gated web paths: real Postgres/PostGIS or real MinIO/R2.
-      # `web/db/*`, `web/lib/*`, and `web/app/api/*` are the layers the gated
+      # `web/db/*`, `web/lib/*`, and `web/app/api/*`, `web/app/auth/*` are the layers the gated
       # suites exercise; `web/shared/*` and `web/types/*` are the runtime modules
       # they import (same policy as `packages/common/*`); `web/config/*` is the
       # product configuration `web/lib/config.ts` loads at import time (rate
       # limits and budgets the HTTP suites assert on); `web/scripts/*` is gate and
       # migration machinery the suites invoke by path (`migrate.mjs`,
       # `cleanup-stale-test-dbs.mjs`), the same policy as repo-level `scripts/*`.
-      web/db/*|web/lib/*|web/app/api/*|web/shared/*|web/types/*|web/config/*|web/scripts/*|web/package*.json)
+      web/db/*|web/lib/*|web/app/api/*|web/app/auth/*|web/shared/*|web/types/*|web/config/*|web/scripts/*|web/package*.json)
         application=true
         integration=true
         ;;
@@ -132,6 +132,19 @@ else
         ;;
       poi-service/*)
         poi_service=true
+        ;;
+      # Agent-QA harness (BRAWUKA-408): deterministic, non-LLM scaffold an
+      # agent-QA run uses (Access injection, session bootstrap, personas,
+      # ledger, allowlist guard, quotas, cleanup) plus its unit tests — the
+      # same convention as the deploy/devops helpers below: harness-side, so
+      # it rides `integration=true` rather than the `application` gate.
+      # (BRAWUKA-503: the password-grant journey helper it once reached was
+      # deleted; nothing under web/ statically imports this core anymore, so
+      # the closure check in `check-ci-classification.sh` §4b no longer sees
+      # it — the `integration=true` routing stays as harness convention, the
+      # same as the deploy/devops helpers below.)
+      scripts/agent-qa/*)
+        integration=true
         ;;
       # Dokploy deployment definitions and the devops forwarders they ship with
       # delegate to `scripts/devops/*` (already integration-gated); the compose

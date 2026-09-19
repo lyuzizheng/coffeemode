@@ -27,7 +27,6 @@ const APPLE_POI: POI = {
   types: ["cafe"],
   business_status: null,
   hours_json: null,
-  photo_refs: [],
   fetched_at: new Date(0).toISOString(),
 };
 
@@ -52,6 +51,9 @@ describe("POST /api/places/external", () => {
     const response = await POST(request([GOOGLE_POI]));
 
     expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toBe("invalid_request");
+    expect(body.message).toBeUndefined();
     expect(storeExternalPOIsMock).not.toHaveBeenCalled();
   });
 

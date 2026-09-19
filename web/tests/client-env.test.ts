@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { appConfig } from "@/lib/config";
 import {
+  envBoolean,
   envPositiveInt,
   getCheckinNoteMaxChars,
   getDisplayNameMaxChars,
@@ -15,6 +16,7 @@ import {
   getQueryPersistMaxAgeMs,
   getQueryStaleTimeMs,
   getSearchDebounceMs,
+  getSearchExternalSources,
   getSearchMinQueryLength,
 } from "@/lib/client-env";
 
@@ -42,6 +44,19 @@ describe("envPositiveInt", () => {
   });
 });
 
+describe("envBoolean", () => {
+  it("returns the fallback unless the value is exactly true/false", () => {
+    vi.stubEnv("NEXT_PUBLIC_CLIENT_ENV_FLAG", "");
+    expect(envBoolean(process.env.NEXT_PUBLIC_CLIENT_ENV_FLAG, true)).toBe(true);
+    vi.stubEnv("NEXT_PUBLIC_CLIENT_ENV_FLAG", "yes");
+    expect(envBoolean(process.env.NEXT_PUBLIC_CLIENT_ENV_FLAG, false)).toBe(false);
+    vi.stubEnv("NEXT_PUBLIC_CLIENT_ENV_FLAG", "true");
+    expect(envBoolean(process.env.NEXT_PUBLIC_CLIENT_ENV_FLAG, false)).toBe(true);
+    vi.stubEnv("NEXT_PUBLIC_CLIENT_ENV_FLAG", "false");
+    expect(envBoolean(process.env.NEXT_PUBLIC_CLIENT_ENV_FLAG, true)).toBe(false);
+  });
+});
+
 describe("client config fallbacks match app.yaml", () => {
   it("falls back to the YAML-owned values without env", () => {
     expect(getCheckinNoteMaxChars()).toBe(appConfig.checkins.noteMaxChars);
@@ -62,6 +77,8 @@ describe("client config fallbacks match app.yaml", () => {
     expect(getMapProvider()).toBe(appConfig.map.provider);
     expect(getMapDefaultZoom()).toBe(appConfig.map.defaultZoom);
     expect(getMapFocusZoom()).toBe(appConfig.map.focusZoom);
+    // DG134/BRAWUKA-326: external-source toggles mirror app.yaml.
+    expect(getSearchExternalSources()).toEqual(appConfig.search.externalSources);
   });
 
   it("keeps the previously hardcoded client values (no behavior change)", () => {
@@ -91,5 +108,9 @@ describe("client config fallbacks match app.yaml", () => {
     expect(getMapProvider()).toBe("google");
     vi.stubEnv("NEXT_PUBLIC_MAP_FOCUS_ZOOM", "16");
     expect(getMapFocusZoom()).toBe(16);
+    vi.stubEnv("NEXT_PUBLIC_SEARCH_EXTERNAL_APPLE", "true");
+    expect(getSearchExternalSources()).toEqual({ google: true, apple: true });
+    vi.stubEnv("NEXT_PUBLIC_SEARCH_EXTERNAL_GOOGLE", "false");
+    expect(getSearchExternalSources()).toEqual({ google: false, apple: true });
   });
 });

@@ -11,10 +11,10 @@
  * enter the cafe dataset.
  */
 import type { Map as MapLibreMap } from "maplibre-gl";
-import type { FeatureCollection, Point } from "geojson";
+import type { Feature, FeatureCollection, Point, Polygon } from "geojson";
 import { isOpenAt } from "@/lib/hours";
 import type { CafeSummary } from "@/types/cafes";
-import type { ExternalPin } from "./types";
+import type { ExternalPin, UserLocation } from "./types";
 
 export const CAFE_SOURCE = "cafes";
 export const CLUSTER_LAYER = "cafes-clusters";
@@ -24,6 +24,9 @@ export const PIN_LAYER = "cafes-pins";
 export const EXTERNAL_SOURCE = "external-pois";
 export const EXTERNAL_PIN_LAYER = "external-poi-pins";
 export const EXTERNAL_LABEL_LAYER = "external-poi-labels";
+export const USER_LOCATION_SOURCE = "user-location";
+export const USER_ACCURACY_LAYER = "user-location-accuracy";
+export const USER_DOT_LAYER = "user-location-dot";
 
 /** Pin variants: open / closed / unknown. */
 const STATUSES = ["open", "closed", "unknown"] as const;
@@ -32,7 +35,9 @@ type PinStatus = (typeof STATUSES)[number];
 const PIN_IMAGE = (status: PinStatus) => `cafe-pin-${status}`;
 
 // Token-matched palette (globals.css light): espresso brown pin, terracotta
-// accent ring, sage open dot, muted closed dot.
+// accent ring, sage open dot, muted closed dot. BRAWUKA-362: the pin carries
+// a paper ring (PIN_CUP stroke) so it keeps its silhouette on the espresso
+// dark basemap — body-on-bg contrast there is only ~1.5:1 without it.
 const PIN_BODY = "#5b4232";
 const PIN_CUP = "#faf7f2";
 const DOT_OPEN = "#3d8a5f";
@@ -40,14 +45,23 @@ const DOT_CLOSED = "#8a8378";
 const DOT_STROKE = "#faf7f2";
 
 /** External-POI pin: sage teardrop (--secondary oklch(45% 0.08 155)), white
- * core — visually distinct from the espresso cafe cup. */
-const EXTERNAL_PIN_BODY = "#2b6241";
+ * core — visually distinct from the espresso cafe cup. Same paper ring so it
+ * survives the dark basemap. */
 const EXTERNAL_PIN_IMAGE = "external-poi-pin";
+const EXTERNAL_PIN_BODY = "#4a7a5e";
+
+/** User-location dot (DG120): the brand accent disc with the same paper
+ * ring the pins carry, so it survives both basemaps. Hex mirrors the
+ * --accent token (oklch 54% 0.15 42 ≈ #b34917, THEME_COLOR in lib/site.ts)
+ * — style JSON can't read CSS custom properties. */
+const USER_DOT = "#b34917";
+/** Accuracy halo: a whisper of the accent — presence, not a second pin. */
+const USER_ACCURACY_FILL = "#b34917";
 
 function externalPinSvg(): string {
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36">` +
-    `<path d="M14 2C8.5 2 4 6.5 4 12c0 7.5 10 20 10 20s10-12.5 10-20c0-5.5-4.5-10-10-10z" fill="${EXTERNAL_PIN_BODY}"/>` +
+    `<path d="M14 2C8.5 2 4 6.5 4 12c0 7.5 10 20 10 20s10-12.5 10-20c0-5.5-4.5-10-10-10z" fill="${EXTERNAL_PIN_BODY}" stroke="${PIN_CUP}" stroke-width="1.5"/>` +
     `<circle cx="14" cy="12" r="4" fill="${PIN_CUP}"/>` +
     `</svg>`
   );
@@ -60,7 +74,7 @@ function pinSvg(status: PinStatus): string {
       : `<circle cx="30" cy="10" r="5" fill="${status === "open" ? DOT_OPEN : DOT_CLOSED}" stroke="${DOT_STROKE}" stroke-width="2"/>`;
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">` +
-    `<circle cx="18" cy="18" r="13" fill="${PIN_BODY}"/>` +
+    `<circle cx="18" cy="18" r="13" fill="${PIN_BODY}" stroke="${PIN_CUP}" stroke-width="2"/>` +
     // Cup: bowl + handle + saucer, white on espresso.
     `<g fill="none" stroke="${PIN_CUP}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">` +
     `<path d="M12.5 14.5h9v4.2a4.5 4.5 0 0 1-9 0z" fill="${PIN_CUP}" stroke="none"/>` +
@@ -71,6 +85,7 @@ function pinSvg(status: PinStatus): string {
     `</svg>`
   );
 }
+
 
 /** Registers one baked SVG as a MapLibre image; idempotent per style
  * generation (a setStyle wipes images, so callers re-run on style.load). */
@@ -133,6 +148,49 @@ export function externalPinsToGeoJSON(
   };
 }
 
+/** Meters → degrees latitude/longitude at a given latitude (equirectangular
+ * approximation — the halo is a hint, not a survey). */
+function accuracyPolygon(
+  center: UserLocation,
+  radiusM: number,
+  vertices = 48,
+): Feature<Polygon> {
+  const latRad = (center.lat * Math.PI) / 180;
+  const dLat = radiusM / 111_320;
+  const dLng = radiusM / (111_320 * Math.max(Math.cos(latRad), 0.01));
+  const ring: [number, number][] = [];
+  for (let i = 0; i <= vertices; i += 1) {
+    const angle = (i / vertices) * Math.PI * 2;
+    ring.push([
+      center.lng + dLng * Math.cos(angle),
+      center.lat + dLat * Math.sin(angle),
+    ]);
+  }
+  return {
+    type: "Feature",
+    geometry: { type: "Polygon", coordinates: [ring] },
+    properties: { kind: "accuracy" },
+  };
+}
+
+/** User position → one source dataset: the accuracy polygon (when the fix
+ * reports a radius) plus the dot point. */
+export function userLocationToGeoJSON(
+  location: UserLocation | null,
+): FeatureCollection<Point | Polygon> {
+  if (!location) return { type: "FeatureCollection", features: [] };
+  const features: Feature<Point | Polygon>[] = [];
+  if (typeof location.accuracyM === "number" && location.accuracyM > 0) {
+    features.push(accuracyPolygon(location, location.accuracyM));
+  }
+  features.push({
+    type: "Feature",
+    geometry: { type: "Point", coordinates: [location.lng, location.lat] },
+    properties: { kind: "dot" },
+  });
+  return { type: "FeatureCollection", features };
+}
+
 /** Add the cafe source + cluster/pin layers. Called on every `style.load`
  * (initial load and each theme switch) — a setStyle wipes runtime layers. */
 export function bindCafeLayers(map: MapLibreMap): void {
@@ -156,6 +214,10 @@ export function bindCafeLayers(map: MapLibreMap): void {
         "circle-color": PIN_BODY,
         "circle-opacity": 0.9,
         "circle-radius": ["step", ["get", "point_count"], 16, 10, 20, 50, 26],
+        // Paper ring (BRAWUKA-362): same silhouette guarantee as the pin —
+        // espresso-on-espresso is ~1.5:1 on the dark basemap without it.
+        "circle-stroke-color": PIN_CUP,
+        "circle-stroke-width": 2,
       },
     });
   }
@@ -247,6 +309,45 @@ export function bindExternalPinLayers(map: MapLibreMap): void {
         "text-color": PIN_BODY,
         "text-halo-color": PIN_CUP,
         "text-halo-width": 1.5,
+      },
+    });
+  }
+}
+
+/** Add the user-location source + accuracy/dot layers. Called on every
+ * `style.load` alongside the pin binds — a setStyle wipes runtime layers.
+ * Registered last so the dot always draws above cafe pins and clusters. */
+export function bindUserLocationLayers(map: MapLibreMap): void {
+  if (!map.getSource(USER_LOCATION_SOURCE)) {
+    map.addSource(USER_LOCATION_SOURCE, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+    });
+  }
+  if (!map.getLayer(USER_ACCURACY_LAYER)) {
+    map.addLayer({
+      id: USER_ACCURACY_LAYER,
+      type: "fill",
+      source: USER_LOCATION_SOURCE,
+      filter: ["==", ["get", "kind"], "accuracy"],
+      paint: {
+        "fill-color": USER_ACCURACY_FILL,
+        "fill-opacity": 0.12,
+      },
+    });
+  }
+  if (!map.getLayer(USER_DOT_LAYER)) {
+    map.addLayer({
+      id: USER_DOT_LAYER,
+      type: "circle",
+      source: USER_LOCATION_SOURCE,
+      filter: ["==", ["get", "kind"], "dot"],
+      paint: {
+        "circle-radius": 8,
+        "circle-color": USER_DOT,
+        // Same paper-ring guarantee as the pins (BRAWUKA-362).
+        "circle-stroke-color": PIN_CUP,
+        "circle-stroke-width": 2.5,
       },
     });
   }

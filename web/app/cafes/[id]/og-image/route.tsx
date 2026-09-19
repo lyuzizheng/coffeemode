@@ -6,10 +6,10 @@ import { BACKGROUND_COLOR } from "@/lib/site";
 import { guard } from "@/lib/api/guard";
 
 /**
- * Dynamic og:image fallback (artifact §4): for cafes without a cover, the
- * social card is a flat background-colored card with the cup glyph and the
+ * Dynamic og:image fallback (artifact §4): for cafes without a gallery photo,
+ * the social card is a flat background-colored card with the cup glyph and the
  * cafe name — designed, not broken. generateMetadata points here only when
- * no cover exists; cafes with photos use the cover directly.
+ * no gallery card exists; cafes with photos use the first gallery card directly.
  *
  * Colors mirror the light design tokens in hex (oklch is not portable to
  * every link-preview renderer). Self-hosted display fonts are woff2, which

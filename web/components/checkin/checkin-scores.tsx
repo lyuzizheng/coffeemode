@@ -13,7 +13,7 @@ export function CheckinScores({ state, isEdit }: CheckinScoresProps) {
   const t = useTranslations("checkIn");
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2">
       <CheckinSlider
         label={t("wifi")}
         value={state.wifi}

@@ -33,24 +33,26 @@ export async function POST(request: Request) {
   const bodyRes = await readJsonBody<Record<string, unknown>>(request);
   if (!bodyRes.ok) return bodyRes.response;
   const body = bodyRes.data;
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return apiError("invalid_request", "invalid JSON body", { status: 400 });
+  }
+
   // Bot gate runs before any other validation so a missing/forged token
   // always answers 403, never a 400/422 from the input checks below.
   const turnstile = await verifyTurnstileToken(body["cf-turnstile-response"], request);
   if (!turnstile.ok) {
-    return apiError("bot_verification_failed", turnstile.message, 403);
+    return apiError("bot_verification_failed", turnstile.message, { status: 403 });
   }
 
   const mapsShareUrl: unknown =
-    body && typeof body === "object" && "maps_share_url" in body
-      ? body.maps_share_url
-      : undefined;
+    "maps_share_url" in body ? body.maps_share_url : undefined;
   if (typeof mapsShareUrl !== "string" || mapsShareUrl.trim() === "") {
-    return apiError("invalid_request", "maps_share_url (string) required", 400);
+    return apiError("invalid_request", "maps_share_url (string) required", { status: 400 });
   }
 
   const trimmedUrl = mapsShareUrl.trim();
   if (!isValidMapsUrl(trimmedUrl)) {
-    return apiError("invalid_maps_url", "only Google Maps and Apple Maps URLs are allowed", 400);
+    return apiError("invalid_maps_url", "only Google Maps and Apple Maps URLs are allowed", { status: 400 });
   }
 
   try {
@@ -58,7 +60,7 @@ export async function POST(request: Request) {
     return NextResponse.json(poi);
   } catch (err) {
     if (err instanceof POIServiceError) {
-      return apiError("poi_service", err.message, err.status);
+      return apiError("poi_service", err.message, { status: err.status });
     }
     logError({ route: gate.route, request, error: err, status: 502 });
     return apiError("upstream_error", 502);

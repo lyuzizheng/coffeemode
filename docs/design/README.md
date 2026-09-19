@@ -21,6 +21,19 @@ versioned, slice-specific design artifacts that gate UI implementation
   versions stay in place. Drafts may be revised in place; versions bump once
   Approved.
 
+## Harmonization notes
+
+- 2026-09-18 (BRAWUKA-473): artifact token references harmonized to shipped
+  code and the spec's new density invariants (spec 0002 §Spacing and
+  radius): segmented-control track `radius-md` (concentric rule), fact
+  chips `4px/10px` padding, PEEK cover `--layout-card-cover-w` (96px),
+  preferences card `rounded-md`, gone-cafe title `text-2xl`, drawer close
+  44px. Where an artifact and the spec disagree, the spec wins.
+- 2026-09-19 (BRAWUKA-505): `theme-variants-v1.md` added — the two
+  design-variant personalities (retro editorial / modern industrial)
+  per the owner directive; spec 0002 gained a §Design variants section
+  with the full token tables.
+
 ## Artifacts
 
 | Slice | Artifact | Status | Issue |
@@ -32,3 +45,4 @@ versioned, slice-specific design artifacts that gate UI implementation
 | profile-page | `profile-page-v1.md` | Approved — owner, 2026-08-23 (DG94–DG103) | #152 |
 | seo-sharing | `seo-sharing-v1.md` | Approved — owner, 2026-08-23 (DG104–DG113) | #150 |
 | onboarding | `onboarding-v1.md` | Approved — owner, 2026-08-23 (DG114–DG123) | #153 |
+| theme-variants | `theme-variants-v1.md` | Approved — owner directive, 2026-09-19 | BRAWUKA-505 |

@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { TxQueryFn } from "@/lib/db/postgres";
-import type { StoredImage } from "@/types/images";
+import type { ImageTargetType, StoredImage } from "@/types/images";
 import type { ProcessUrls } from "./image-service-client";
 import type { ProcessedImage } from "./processor";
 
@@ -64,11 +64,24 @@ export interface ProvisionPhotosDeps {
   getProcessUrls: (request: {
     imageUuid: string;
     userId?: string;
-    /** Pre-target stage marker (issue #158): "provision" + targetId=imageUuid. */
-    targetType?: "provision";
-    targetId?: string;
+    /**
+     * Stage marker (issue #158 / BRAWUKA-400): the creation flow sends
+     * `"provision"` (pre-target); the post-commit attach leg re-sends
+     * `"checkin"` + the real check-in id so the sweeper never matches it.
+     * Required since #158 — the worker rejects marker-less completes.
+     */
+    targetType: "provision" | ImageTargetType;
+    targetId: string;
   }) => Promise<ProcessUrls>;
   processImage: (imageUuid: string, processUrls: ProcessUrls) => Promise<ProcessedImage>;
+  /**
+   * Post-commit attach re-mark (BRAWUKA-400): download the live original and
+   * re-PUT it with the final targetType/targetId metadata. Never throws past
+   * the caller — failures are logged, and the key stays DB-referenced so the
+   * reference-aware sweeper keeps it. Defaults to `getProcessUrls` (final
+   * stage) + `restampOriginal` from the sharp processor.
+   */
+  restampOriginal?: (attachUrls: ProcessUrls) => Promise<void>;
   /**
    * Best-effort R2 compensation (BRAWUKA-279): delete the variants
    * `processImage` already wrote when the caller's transaction rolls back.
@@ -76,6 +89,14 @@ export interface ProvisionPhotosDeps {
    * caller (compensation failure is logged, not rethrown).
    */
   deleteProvisionedVariants?: (imageUuid: string) => Promise<void>;
+  /**
+   * Reference gate for R2 compensation (BRAWUKA-401): ids still referenced
+   * by `cafes.gallery` / `checkins.photos`. `compensateProvisionedPhotos`
+   * deletes only the unreferenced ids, so a loser's rollback never removes
+   * a concurrent winner's committed objects (shared deterministic keys).
+   * Absent in legacy fakes — compensation then deletes every id as before.
+   */
+  selectPhotoReferences?: (imageUuids: string[]) => Promise<string[]>;
 }
 
 /**
@@ -93,6 +114,14 @@ export function defaultProvisionPhotosDeps(): ProvisionPhotosDeps {
       const { checkUploadIntents } = await import("@/lib/db/image-uploads");
       return checkUploadIntents(userId, imageUuids);
     },
+    processImage: async (imageUuid, processUrls) => {
+      const { processImage } = await import("@/lib/images/processor");
+      return processImage(imageUuid, processUrls);
+    },
+    restampOriginal: async (attachUrls) => {
+      const { restampOriginal } = await import("@/lib/images/processor");
+      return restampOriginal(attachUrls);
+    },
     consumeUploadIntent: async (userId, imageUuid, q) => {
       const { consumeUploadIntent } = await import("@/lib/db/image-uploads");
       return consumeUploadIntent(userId, imageUuid, q);
@@ -105,10 +134,6 @@ export function defaultProvisionPhotosDeps(): ProvisionPhotosDeps {
       const { getProcessUrls } = await import("@/lib/images/image-service-client");
       return getProcessUrls(request);
     },
-    processImage: async (imageUuid, processUrls) => {
-      const { processImage } = await import("@/lib/images/processor");
-      return processImage(imageUuid, processUrls);
-    },
     deleteProvisionedVariants: async (imageUuid) => {
       const { deleteImageVariants } = await import("@/lib/images/image-service-client");
       const { logError } = await import("@/lib/observability/server-log");
@@ -117,6 +142,10 @@ export function defaultProvisionPhotosDeps(): ProvisionPhotosDeps {
       } catch (err) {
         logError({ route: "provision-photos compensate", error: err });
       }
+    },
+    selectPhotoReferences: async (imageUuids) => {
+      const { selectPhotoReferences } = await import("@/lib/db/photo-references");
+      return selectPhotoReferences(imageUuids);
     },
   };
 }
@@ -165,16 +194,21 @@ export async function provisionPhotos(
 
   const CONCURRENCY = 2;
   const results = new Array<ProvisionedPhoto>(photoIds.length);
+  // Every claimed index (BRAWUKA-432): a failed index may hold partial R2
+  // writes (`processImage` uploads 3 variants concurrently), and a sibling
+  // that finishes after `Promise.all` rejects must still be compensated.
+  const started = new Set<number>();
+  let failed = false;
   let next = 0;
   const processOne = async (imageUuid: string): Promise<ProvisionedPhoto> => {
     const processUrls = await deps.getProcessUrls({
       imageUuid,
       userId,
       // Pre-target stage (issue #86): the cafe/check-in does not exist yet.
-      // The worker stamps targetType="provision" + targetId=<imageUuid>; the
-      // attach flow re-PUTs with the real target later. Required since #158:
-      // the worker rejects marker-less completes so cleanup can distinguish
-      // live originals from abandoned uploads.
+      // The worker stamps targetType="provision" + targetId=<imageUuid>;
+      // attachProvisionedPhotos re-marks via restampOriginal once the
+      // check-in exists. Required since #158: the worker rejects marker-less
+      // completes so cleanup can distinguish live originals from abandoned uploads.
       targetType: "provision",
       targetId: imageUuid,
     });
@@ -194,9 +228,10 @@ export async function provisionPhotos(
   const workers = Array.from(
     { length: Math.min(CONCURRENCY, photoIds.length) },
     async () => {
-      while (next < photoIds.length) {
+      while (!failed && next < photoIds.length) {
         const index = next;
         next += 1;
+        started.add(index);
         results[index] = await processOne(photoIds[index] as string);
       }
     },
@@ -204,7 +239,12 @@ export async function provisionPhotos(
   try {
     await Promise.all(workers);
   } catch (err) {
-    const doneIds = results.filter((r): r is ProvisionedPhoto => r !== undefined).map((r) => r.id);
+    // Stop unclaimed work, wait out the in-flight sibling, then compensate
+    // every started id. The reference gate inside compensation keeps a
+    // concurrent creation's committed objects alive.
+    failed = true;
+    await Promise.allSettled(workers);
+    const doneIds = photoIds.filter((_, index) => started.has(index));
     await compensateProvisionedPhotos(doneIds, deps);
     throw err;
   }
@@ -244,11 +284,76 @@ export async function consumeProvisionedIntents(
  * transaction, hence this explicit cleanup. Failures are swallowed (logged
  * inside the dep) — the caller must rethrow its original error, and the
  * #158 sweeper remains the backstop for anything this misses.
+ *
+ * Reference gate (BRAWUKA-401): concurrent creates share deterministic R2
+ * keys, so a loser's rollback must not delete a concurrent winner's
+ * committed objects. Ids still referenced by `cafes.gallery` /
+ * `checkins.photos` are kept (the winner's rows prove them live); only true
+ * orphans are deleted. A failed gate check fails closed — keep the id and
+ * let the sweeper decide — so a DB blip can leak (swept later) but never
+ * corrupt a committed photo.
  */
 export async function compensateProvisionedPhotos(
   photoIds: string[],
   deps: ProvisionPhotosDeps,
 ): Promise<void> {
   if (!deps.deleteProvisionedVariants) return;
-  await Promise.allSettled(photoIds.map((id) => deps.deleteProvisionedVariants!(id)));
+  let orphans = photoIds;
+  if (deps.selectPhotoReferences && photoIds.length > 0) {
+    try {
+      const referenced = new Set(await deps.selectPhotoReferences(photoIds));
+      orphans = photoIds.filter((id) => !referenced.has(id));
+    } catch {
+      return;
+    }
+  }
+  await Promise.allSettled(orphans.map((id) => deps.deleteProvisionedVariants!(id)));
+}
+
+/** One photo's attach outcome: the key stays DB-referenced either way. */
+export interface AttachPhotoResult {
+  imageUuid: string;
+  attached: boolean;
+}
+
+/**
+ * Post-commit attach re-mark (BRAWUKA-400, fix option A): after the creation
+ * transaction commits, re-mark every live original from `provision` to the
+ * real target (`checkin` + the new check-in id) so the #158 sweeper never
+ * matches it. Runs OUTSIDE the transaction — slow I/O must not hold a DB
+ * connection — and NEVER throws: a per-photo presign/process failure is
+ * logged and reported as `attached: false`, because the DB row already
+ * committed and the reference-aware sweeper keeps DB-referenced keys. Calls
+ * with an empty list return `[]` without touching deps. Legacy fakes without
+ * `restampOriginal` still mark intent via presign: the download/re-PUT is
+ * skipped and the photo counts as attached when the final-stage presign
+ * succeeds.
+ */
+export async function attachProvisionedPhotos(
+  userId: string,
+  photoIds: string[],
+  checkinId: string,
+  deps: ProvisionPhotosDeps,
+): Promise<AttachPhotoResult[]> {
+  if (photoIds.length === 0) return [];
+  const restamp = deps.restampOriginal;
+  const results = await Promise.all(
+    photoIds.map(async (imageUuid): Promise<AttachPhotoResult> => {
+      try {
+        const attachUrls = await deps.getProcessUrls({
+          imageUuid,
+          userId,
+          targetType: "checkin",
+          targetId: checkinId,
+        });
+        if (restamp) await restamp(attachUrls);
+        return { imageUuid, attached: true };
+      } catch (err) {
+        const { logError } = await import("@/lib/observability/server-log");
+        logError({ route: "provision-photos attach", error: err });
+        return { imageUuid, attached: false };
+      }
+    }),
+  );
+  return results;
 }

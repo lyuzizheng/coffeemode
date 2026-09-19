@@ -142,8 +142,8 @@ three snap states), and the header zone gets no competing horizontal chrome.
 └─────────────────────────────────┘
 ```
 
-- Card: horizontal layout. Left: 88px 4:3 cover image, `radius-md`, 1px
-  `border`. Right column, 12px padding: cafe name (`font-display`, `text-md`,
+- Card: horizontal layout. Left: 96px-wide 4:3 cover image (`--layout-card-cover-w`,
+  `radius-md`, 1px `border`). Right column, 12px padding: cafe name (`font-display`, `text-md`,
   single-line truncate), then `area · 1.2 km` (`text-xs`, `muted`), then the
   characteristic icon row (14px icons + `text-xs` values, 12px gaps).
 - **Work-score watermark** (DG43): the composite score as a large numeral
@@ -175,7 +175,7 @@ Top to bottom, 16px side padding, 12px section rhythm:
 3. **Score row** — Work | Experience pair from §3.
 4. **Action row** — from §4.
 5. **Top facts** — up to 3 characteristic chips (icon + value, `surface-secondary`
-   background, `radius-sm`, 6px/10px padding), same priority order as PEEK.
+   background, `radius-sm`, 4px/10px padding), same priority order as PEEK.
 
 HALF answers "worth a closer look?" in one glance: name, open now, Work Score,
 Check in.
@@ -220,7 +220,7 @@ A two-option segmented control placed directly above the feed list, left
 aligned, inline with the `Check-ins` heading row (heading left, control
 right).
 
-- Track: `surface-secondary`, `radius-sm`, 2px padding, height 32px.
+- Track: `surface-secondary`, `radius-md`, 2px padding, height 32px.
 - Segment: `text-sm`, 10px horizontal padding. Active segment gets `surface`
   background + 1px `border` + `foreground` text; inactive is `muted`.
 - Labels: `Helpful`, `Newest` (i18n keys, zh: `最有用` / `最新`).
@@ -238,12 +238,35 @@ Same selection/URL state, different chrome. The mobile snap states never
 appear here.
 
 - **Left sidebar, 380px**, full height, `surface` background, 1px right
-  `border`:
-  - Sticky top: search field + filter button (search/filter internals belong
-    to the `search-filters` artifact; this artifact reserves a 48px row).
+  `border` — a two-state narrative column (BRAWUKA-506):
+  - **Expanded state (scroll-top / first arrival)**: a centered brand
+    frontispiece fills the upper column — mono eyebrow (`Field guide`),
+    `text-2xl` display wordmark, and a ≤2-line manifesto intro (real
+    check-ins, no ads, no noise; `discovery.brand_intro`, en/zh). Height
+    `min(46dvh, 400px)`, `--grain` overlay, text centered — a magazine
+    frontispiece, not a hero banner. The cafe index peeks below it.
+  - **Compact state (scrolled)**: the frontispiece slides up under a
+    sticky 72px masthead (`--layout-masthead-h`) whose wordmark, tagline,
+    and add-cafe action fade in over the first ~56px of scroll —
+    scroll-linked, interruptible, reversible; scrolling back to top
+    re-reveals the panel in flow. The search row docks sticky beneath the
+    masthead; index rows scroll under both.
+  - **Coexistence rule**: an active search query or a selected cafe forces
+    the frontispiece to yield — `maxHeight` collapses to 0 on
+    `spring.gentle` and the masthead turns opaque. The collapse latches
+    until the detail closes AND the column returns to scroll-top (≤8px),
+    so closing the dossier mid-list never yanks the panel open under the
+    user's scroll position. No three-way fight for the same focal point.
+  - `prefers-reduced-motion`: static compact masthead + brand row only —
+    no frontispiece, no fades.
+  - **Spacing scale** (BRAWUKA-506 §2): one horizontal gutter `px-4`
+    (16px) for masthead, search, section label, rows, skeletons, and
+    empty/error states; vertical rhythm on the 4px grid (masthead 72px,
+    search `py-3`, label `pt-3`, rows `py-3`). Left/right edges align
+    exactly; skeletons mirror real row geometry.
   - Scrollable cafe list below. List rows carry the same content as PEEK
-    cards (cover, name, meta, ≤4 facts) at full sidebar width, 8px vertical
-    gaps.
+    cards (cover, name, meta, ≤4 facts) at full sidebar width, hairline
+    `separator` dividers.
   - Selected row: `surface-secondary` background + 2px `accent` left edge.
 - **Detail panel — second left column** (DG42): 400px, full height, sitting
   immediately right of the sidebar; the map fills the remaining width. It

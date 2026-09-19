@@ -37,15 +37,16 @@ import {
 import type { Deps, Env, POI, POISearchHit, POISource } from "./types";
 import { stableApplePlaceId } from "../../web/shared/places/apple-place-id";
 import {
+  computeExpiresAt,
   d1GetPOI,
   d1SearchPOIs,
   d1UpsertPOI,
   d1UpsertPOIs,
   isFresh,
-  kvDeleteRaw,
-  kvGetRaw,
+  kvDeletePOI,
+  kvGetPOI,
   kvGetSearchQuery,
-  kvPutRaw,
+  kvPutPOI,
   kvPutSearchQuery,
   searchQueryKey,
 } from "./store";
@@ -69,22 +70,18 @@ function upstreamError(e: unknown): Response {
 // --- GET /poi/:place_id ---
 
 async function getPOI(placeId: string, env: Env, deps: Deps): Promise<Response> {
-  // 1. KV hot cache (raw Google response, ~7d TTL). KV only ever holds Google
-  // payloads, so a hit proves the id is Google's regardless of its shape;
-  // probing for Apple refs is safe — they are simply never cached there.
-  const raw = await kvGetRaw(env.POI_KV, placeId);
-  if (raw) {
+  // 1. KV hot cache (normalized POI record, ~7d TTL). Probing for Apple refs is
+  // safe — they are simply never cached in KV.
+  const cached = await kvGetPOI(env.POI_KV, placeId);
+  if (cached) {
     try {
-      const provider = getUpstreamProvider("google", env, deps);
-      if (provider) {
-        return json(provider.toPOI(JSON.parse(raw)));
-      }
+      return json(JSON.parse(cached) as POI);
     } catch {
       // corrupt cache entry — fall through to D1/Google
     }
   }
 
-  // 2. D1 durable store. The stored row's explicit `source` is authoritative
+  // 2. D1 bounded cache. The stored row's explicit `source` is authoritative
   // (issue #38): an Apple ref that happens to start with ChIJ/0x must not be
   // fanned out to Google, and a non-prefix Google id must still refresh.
   const stored = await d1GetPOI(env.POI_DB, placeId);
@@ -111,7 +108,7 @@ async function getPOI(placeId: string, env: Env, deps: Deps): Promise<Response> 
   try {
     rawPlace = await provider.getDetails(placeId);
   } catch (e) {
-    // Graceful degradation: serve stale D1 row if we have one.
+    // Graceful degradation: serve stale D1 row if we have one (d1GetPOI guarantees unexpired).
     if (stored) return json(stored);
     return upstreamError(e);
   }
@@ -124,7 +121,7 @@ async function getPOI(placeId: string, env: Env, deps: Deps): Promise<Response> 
     return json({ error: "invalid_upstream", message: String(e) }, 502);
   }
   try {
-    await Promise.all([kvPutRaw(env.POI_KV, placeId, rawPlace), d1UpsertPOI(env.POI_DB, poi)]);
+    await Promise.all([kvPutPOI(env.POI_KV, poi), d1UpsertPOI(env.POI_DB, poi)]);
   } catch (e) {
     console.error("cache write failed", e);
   }
@@ -164,6 +161,7 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
     const placeId =
       target.placeId ??
       stableApplePlaceId(`${target.coords.lat},${target.coords.lng}:${target.query ?? "place"}`);
+    const now = new Date().toISOString();
     const poi: POI = {
       place_id: placeId,
       source: "apple",
@@ -174,8 +172,8 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
       types: [],
       business_status: null,
       hours_json: null,
-      photo_refs: [],
-      fetched_at: new Date().toISOString(),
+      fetched_at: now,
+      expires_at: computeExpiresAt(now),
     };
     await d1UpsertPOI(env.POI_DB, poi);
     return json(poi);
@@ -207,7 +205,7 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
       return json({ error: "invalid_upstream", message: String(e) }, 502);
     }
     try {
-      await Promise.all([kvPutRaw(env.POI_KV, poi.place_id, first), d1UpsertPOI(env.POI_DB, poi)]);
+      await Promise.all([kvPutPOI(env.POI_KV, poi), d1UpsertPOI(env.POI_DB, poi)]);
     } catch (e) {
       console.error("cache write failed", e);
     }
@@ -327,33 +325,32 @@ async function searchExternalPOIs(request: Request, env: Env, deps: Deps): Promi
     return upstreamError(e);
   }
 
-  const results: Array<{ poi: POI; raw: unknown }> = [];
+  const results: POI[] = [];
   for (const place of places.slice(0, SEARCH_RESULT_LIMIT)) {
     try {
       const poi = provider.toPOI(place);
       if (!provider.matchesCategory(poi.types)) {
         poi.not_persisted_reason = "non_food_category";
       }
-      results.push({ poi, raw: place });
+      results.push(poi);
     } catch {
       // A result without coordinates cannot be created as a cafe.
     }
   }
-  const toPersist = results.filter(({ poi }) => !poi.not_persisted_reason);
-  const pois = results.map(({ poi }) => poi);
+  const toPersist = results.filter((poi) => !poi.not_persisted_reason);
   try {
     if (toPersist.length > 0) {
-      await d1UpsertPOIs(env.POI_DB, toPersist.map(({ poi }) => poi));
-      await Promise.all(toPersist.map(({ poi, raw }) => kvPutRaw(env.POI_KV, poi.place_id, raw)));
+      await d1UpsertPOIs(env.POI_DB, toPersist);
+      await Promise.all(toPersist.map((poi) => kvPutPOI(env.POI_KV, poi)));
     }
     // Cache what was served (BRAWUKA-283 P2-2), not what was persisted: an
     // all-non-food (or empty) upstream hit is still billable, and repeating
     // it must not call Google again.
-    await kvPutSearchQuery(env.POI_KV, queryKey, pois);
+    await kvPutSearchQuery(env.POI_KV, queryKey, results);
   } catch (e) {
     console.error("external search cache write failed", e);
   }
-  return json({ results: pois });
+  return json({ results });
 }
 
 // --- POST /poi/external ---
@@ -414,8 +411,7 @@ function validateExternalEntry(value: unknown, index: number): POI | InvalidEntr
       return bad("hours_json must be valid JSON");
     }
   }
-  const photoRefs = stringArray(v.photo_refs);
-  if (photoRefs === null) return bad("photo_refs must be an array of strings");
+  const now = new Date().toISOString();
   return {
     place_id: v.place_id,
     source: v.source,
@@ -426,8 +422,8 @@ function validateExternalEntry(value: unknown, index: number): POI | InvalidEntr
     types,
     business_status: typeof v.business_status === "string" ? v.business_status : null,
     hours_json: typeof v.hours_json === "string" ? v.hours_json : null,
-    photo_refs: photoRefs,
-    fetched_at: new Date().toISOString(),
+    fetched_at: now,
+    expires_at: computeExpiresAt(now),
   };
 }
 
@@ -476,7 +472,7 @@ async function storeExternal(request: Request, env: Env): Promise<Response> {
   // delete would only resurrect a stale entry, never serve a write that
   // never happened — so a best-effort post-write delete is the safe order.
   await d1UpsertPOIs(env.POI_DB, toPersist);
-  await Promise.all(toPersist.map((poi) => kvDeleteRaw(env.POI_KV, poi.place_id)));
+  await Promise.all(toPersist.map((poi) => kvDeletePOI(env.POI_KV, poi.place_id)));
   return json({ stored: toPersist.length, skipped });
 }
 
@@ -522,6 +518,9 @@ async function reverseGeocodePOI(request: Request, env: Env, deps: Deps): Promis
   if (poi) {
     try {
       await d1UpsertPOI(env.POI_DB, poi);
+      // Invalidate KV hot cache (BRAWUKA-332): getPOI serves KV hits without
+      // consulting D1, so a stale entry would shadow the fresh D1 row.
+      await kvDeletePOI(env.POI_KV, poi.place_id);
     } catch (e) {
       console.error("cache write failed in reverseGeocodePOI:", e);
     }

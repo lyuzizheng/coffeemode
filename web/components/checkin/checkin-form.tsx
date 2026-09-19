@@ -33,7 +33,7 @@ function CheckinFormHeader({
 }) {
   const t = useTranslations("checkIn");
   return (
-    <Drawer.Header className="shrink-0 border-b border-separator px-4 py-3">
+    <Drawer.Header className="shrink-0 border-b border-separator px-4 py-2.5">
       <Drawer.Heading className="truncate font-display text-lg">{cafeName}</Drawer.Heading>
       <Drawer.CloseTrigger className="flex h-11 w-11 -m-1 items-center justify-center rounded-full text-muted hover:bg-surface-secondary">
         <span aria-hidden className="text-xl leading-none">×</span>
@@ -94,11 +94,11 @@ export function CheckinForm(props: CheckinFormProps) {
         promptCaption={props.promptCaption ?? false}
       />
 
-      <Drawer.Body className="flex-1 overflow-y-auto px-4 py-4">
+      <Drawer.Body className="flex-1 overflow-y-auto px-4 py-3">
         {state.mutation.view === "success" ? (
           <CheckinSuccess cafeName={props.cafeName} scores={state.scoresState.scores} />
         ) : (
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3">
             {state.repeat.showRepeatBanner && props.lastCheckin && (
               <CheckinRepeatBanner
                 lastCheckin={props.lastCheckin}

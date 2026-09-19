@@ -20,7 +20,7 @@ export async function POST(request: Request) {
   if (!bodyRes.ok) return bodyRes.response;
   const parsed = parseNavigationBody(bodyRes.data);
   if (!parsed.ok) {
-    return apiError("invalid_request", parsed.message, 400);
+    return apiError("invalid_request", parsed.message, { status: 400 });
   }
 
   const gate = await guard(request, {
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     return NextResponse.json(navigation, { status: 201 });
   } catch (err) {
     if (err instanceof CafeNotFoundError) {
-      return apiError("not_found", "cafe not found", 404);
+      return apiError("not_found", "cafe not found", { status: 404 });
     }
     logError({ route: gate.route, request, error: err, status: 500 });
     return apiError("internal_error", 500);

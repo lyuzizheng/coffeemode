@@ -90,6 +90,32 @@ describe("client-upload", () => {
 
       globalThis.Image = OriginalImage;
     });
+    it("rejects a decoded image with no intrinsic size (dimensionless SVG)", async () => {
+      globalThis.URL.createObjectURL = vi.fn().mockReturnValue("blob:mock-url");
+      globalThis.URL.revokeObjectURL = vi.fn();
+      const createElementSpy = vi.spyOn(document, "createElement");
+
+      class MockImage {
+        naturalWidth = 0;
+        naturalHeight = 0;
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        set src(_val: string) {
+          queueMicrotask(() => {
+            this.onload?.();
+          });
+        }
+      }
+      globalThis.Image = MockImage as unknown as typeof Image;
+
+      const file = new File(["<svg xmlns='http://www.w3.org/2000/svg'/>"], "icon.svg", {
+        type: "image/svg+xml",
+      });
+      await expect(toWebP(file)).rejects.toThrow("photo_invalid");
+      // Rejected before any canvas work — no 1×1 blank WebP can be produced.
+      expect(createElementSpy).not.toHaveBeenCalledWith("canvas");
+    });
+
   });
 
   describe("uploadPhoto", () => {

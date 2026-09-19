@@ -39,11 +39,14 @@ export async function POST(request: Request) {
 
   if (user) {
     try {
-      await updateProfile(user.id, {
+      const updated = await updateProfile(user.id, {
         onboarded: true,
         lastLocation: { lat: parsed.lat, lng: parsed.lng },
         ...(city ? { currentCity: city.id } : {}),
       });
+      if (!updated) {
+        return apiError("profile_not_found", 404);
+      }
     } catch (error) {
       logError({ route: gate.route, request, error, status: 500 });
       return apiError("internal_error", 500);

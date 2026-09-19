@@ -53,15 +53,13 @@ bug — assertions are never weakened to fit the code.
      `createHttpTestUsers()` A/B/C/D identities (`HTTP_USER_IDS` fixed
      UUIDs) plus slice-local extras; no product assertion may run
      through it;
-  2. rate-limit bucket reset between Acts — harness-owned
-     `resetRateLimits(dbClient?)` deleting the `rate_limits` rows (when a
-     `dbClient` is passed) AND resetting the in-memory limiter, because
-     the `cafes-write` bucket is 10/min shared across cafe writes,
-     check-ins, likes, and navigations and a fast full-matrix run would
-     otherwise 429. `web/tests/setup.ts` additionally resets the
-     in-memory limiter before every test (unit-run safety); it is
-     complementary, not a substitute — integration suites call the
-     harness export explicitly;
+  2. rate-limit bucket reset between Acts — harness-owned `resetRateLimits()`
+     resetting the in-memory limiter, because the `cafes-write` bucket is
+     10/min shared across cafe writes, check-ins, likes, and navigations and
+     a fast full-matrix run would otherwise 429. `web/tests/setup.ts`
+     additionally resets the in-memory limiter before every test (unit-run
+     safety); it is complementary, not a substitute — integration suites call
+     the harness export explicitly;
   3. upload-intent DB verification read (Slice 2B / Path 2) — a read-only query
      on `image_upload_intents` (`select user_id from image_upload_intents where image_uuid = $1`)
      to verify that `POST /api/images/upload` recorded intent ownership before consumption.
@@ -163,7 +161,7 @@ journey that conflates them is testing a contract that does not exist.
 - Mock POI seam (mandatory): `vi.mock("@/lib/places/poi-client")` injecting
   the spec-0007 `POISearchResponse` shape (`place_id: ChIJ…`, `source:
   "google"`, `types` containing `cafe`, `business_status: "OPERATIONAL"`,
-  serialized `hours_json`, non-empty `photo_refs`, ISO `fetched_at`). The POI
+  serialized `hours_json`, ISO `fetched_at`). The POI
   client has no mock mode and 503s unconfigured — the suite never touches the
   network.
 - Fake WebP: minimal valid `RIFF…WEBP` bytes. Real round-trip:

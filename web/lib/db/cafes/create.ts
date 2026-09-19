@@ -167,10 +167,13 @@ export async function createCafeWithFirstCheckIn(
     if (isUniqueViolation(err)) {
       // Concurrent create won the race; the transaction has rolled back
       // here, so the pool is safe to query for the winner's id.
-      const { rows } = await query<{ id: string } & Record<string, unknown>>(
-        FIND_BY_EXTERNAL_ID_SQL,
-        externalIds,
-      );
+      const lookupWinner = () =>
+        query<{ id: string } & Record<string, unknown>>(FIND_BY_EXTERNAL_ID_SQL, externalIds);
+      let { rows } = await lookupWinner();
+      // The winner's commit can land just after the first lookup
+      // (READ COMMITTED visibility / tombstone timing, BRAWUKA-467):
+      // retry once before giving up the id.
+      if (!rows[0]?.id) ({ rows } = await lookupWinner());
       throw new CafeExistsError(rows[0]?.id ?? null);
     }
     throw err;

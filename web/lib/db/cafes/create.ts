@@ -157,12 +157,11 @@ export async function createCafeWithFirstCheckIn(
     });
   } catch (err) {
     // P1 (BRAWUKA-279): the transaction rolled back but the R2 variants
-    // `provisionPhotos` wrote survive — compensate best-effort (all three
-    // variants: the creation flow has no retry gate, so the audit's
-    // zero-objects gate holds). The intents stay unconsumed (the consume
-    // rolled back too), so the caller must re-upload before retrying with
-    // the same photo ids; the #158 sweeper is the backstop.
-    if (provisioned.length > 0) await compensateProvisionedPhotos(photoIds, deps);
+    // `provisionPhotos` wrote survive — compensate best-effort (the
+    // reference + live-intent gates skip ids a concurrent creation still
+    // references or may still claim; the #158 sweeper is the backstop for
+    // those). The intents stay unconsumed (the consume rolled back too).
+    if (provisioned.length > 0) await compensateProvisionedPhotos(userId, photoIds, deps);
     if (err instanceof CafeExistsError) throw err;
     if (isUniqueViolation(err)) {
       // Concurrent create won the race; the transaction has rolled back

@@ -47,6 +47,7 @@ const provisionDeps: Record<string, Mock> = {
   // Unreferenced by default: unit compensation deletes every id, and the
   // BRAWUKA-401 race test below overrides this to simulate a winner's row.
   selectPhotoReferences: vi.fn().mockResolvedValue([]),
+  selectLiveUploadIntents: vi.fn().mockResolvedValue([]),
   deleteProvisionedVariants: vi.fn(),
 };
 
@@ -503,6 +504,27 @@ describe("createCheckIn", () => {
     expect(err).toBeInstanceOf(DuplicateCheckInError);
     expect(provisionDeps.selectPhotoReferences).toHaveBeenCalledWith([IMG]);
     expect(deleted).toEqual([]); // referenced: the loser's rollback deletes nothing
+  });
+
+  it("keeps a concurrent winner's R2 objects when its commit is still in flight (BRAWUKA-502)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
+    // The winner has not committed yet: independent failure (DuplicateCheckInError
+    // on cafe B) with a live intent for the shared photo id. The loser's
+    // rollback deletes nothing; the #158 sweeper is the backstop.
+    provisionDeps.selectLiveUploadIntents.mockResolvedValueOnce([IMG]);
+    const deleted: string[] = [];
+    provisionDeps.deleteProvisionedVariants.mockImplementation(async (id: string) => {
+      deleted.push(id);
+    });
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ lock: 1 }] }) // BRAWUKA-125 advisory xact lock
+      .mockResolvedValueOnce({ rows: [{ id: CAFE }] }) // in-tx cafe gate
+      .mockResolvedValueOnce({ rows: [{ id: CHECKIN }] }); // window hit: live check-in
+
+    const err = await createCheckIn(USER.id, validInput()).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DuplicateCheckInError);
+    expect(provisionDeps.selectLiveUploadIntents).toHaveBeenCalledWith(USER.id, [IMG]);
+    expect(deleted).toEqual([]);
   });
 
   it("throws CafeNotFoundError without provisioning or inserting when the cafe is missing", async () => {

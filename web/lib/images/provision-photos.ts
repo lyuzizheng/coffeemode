@@ -4,6 +4,7 @@ import type { TxQueryFn } from "@/lib/db/postgres";
 import type { ImageTargetType, StoredImage } from "@/types/images";
 import type { ProcessUrls } from "./image-service-client";
 import type { ProcessedImage } from "./processor";
+import { logError } from "@/lib/observability/server-log";
 
 /**
  * Server-side photo provisioning for the creation/check-in write paths
@@ -97,6 +98,16 @@ export interface ProvisionPhotosDeps {
    * Absent in legacy fakes — compensation then deletes every id as before.
    */
   selectPhotoReferences?: (imageUuids: string[]) => Promise<string[]>;
+  /**
+   * Live-intent gate for R2 compensation (BRAWUKA-502): ids whose upload
+   * intent is still live (unexpired `image_upload_intents` row for the
+   * caller). A concurrent winner that has not committed yet still holds
+   * its intent row — its in-transaction consume is uncommitted and
+   * invisible — so a live intent proves the objects may still be claimed
+   * and the id must be kept. Absent in legacy fakes — compensation then
+   * deletes every unreferenced id as before.
+   */
+  selectLiveUploadIntents?: (userId: string, imageUuids: string[]) => Promise<string[]>;
 }
 
 /**
@@ -146,6 +157,10 @@ export function defaultProvisionPhotosDeps(): ProvisionPhotosDeps {
     selectPhotoReferences: async (imageUuids) => {
       const { selectPhotoReferences } = await import("@/lib/db/photo-references");
       return selectPhotoReferences(imageUuids);
+    },
+    selectLiveUploadIntents: async (userId, imageUuids) => {
+      const { checkUploadIntents } = await import("@/lib/db/image-uploads");
+      return checkUploadIntents(userId, imageUuids);
     },
   };
 }
@@ -240,12 +255,13 @@ export async function provisionPhotos(
     await Promise.all(workers);
   } catch (err) {
     // Stop unclaimed work, wait out the in-flight sibling, then compensate
-    // every started id. The reference gate inside compensation keeps a
-    // concurrent creation's committed objects alive.
+    // every started id. The reference + live-intent gates inside
+    // compensation keep a concurrent creation's committed (or still
+    // in-flight) objects alive.
     failed = true;
     await Promise.allSettled(workers);
     const doneIds = photoIds.filter((_, index) => started.has(index));
-    await compensateProvisionedPhotos(doneIds, deps);
+    await compensateProvisionedPhotos(userId, doneIds, deps);
     throw err;
   }
   return results;
@@ -289,11 +305,19 @@ export async function consumeProvisionedIntents(
  * keys, so a loser's rollback must not delete a concurrent winner's
  * committed objects. Ids still referenced by `cafes.gallery` /
  * `checkins.photos` are kept (the winner's rows prove them live); only true
- * orphans are deleted. A failed gate check fails closed — keep the id and
- * let the sweeper decide — so a DB blip can leak (swept later) but never
- * corrupt a committed photo.
+ * orphans are deleted.
+ *
+ * Live-intent gate (BRAWUKA-502): the reference check is blind to a winner
+ * whose transaction has not committed yet. Ids whose upload intent is still
+ * live (the winner's in-transaction consume is uncommitted, hence invisible)
+ * are kept too — a live intent proves the objects may still be claimed. The
+ * #158 sweeper is the backstop for the ids this keeps.
+ *
+ * A failed gate check fails closed — keep the id and let the sweeper decide
+ * — so a DB blip can leak (swept later) but never corrupt a live photo.
  */
 export async function compensateProvisionedPhotos(
+  userId: string,
   photoIds: string[],
   deps: ProvisionPhotosDeps,
 ): Promise<void> {
@@ -303,7 +327,17 @@ export async function compensateProvisionedPhotos(
     try {
       const referenced = new Set(await deps.selectPhotoReferences(photoIds));
       orphans = photoIds.filter((id) => !referenced.has(id));
-    } catch {
+    } catch (err) {
+      logError({ route: "provision-photos compensate gate", error: err });
+      return;
+    }
+  }
+  if (deps.selectLiveUploadIntents && orphans.length > 0) {
+    try {
+      const live = new Set(await deps.selectLiveUploadIntents(userId, orphans));
+      orphans = orphans.filter((id) => !live.has(id));
+    } catch (err) {
+      logError({ route: "provision-photos compensate gate", error: err });
       return;
     }
   }

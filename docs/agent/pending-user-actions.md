@@ -24,10 +24,8 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
 ## 1a. Staging journey secrets (GitHub Environment `staging`) — unlocks post-merge staging verification
 
-- [x] Dedicated CI Postgres (`coffeemode-ci-postgres`, PostGIS 16) created on Dokploy VPS, routed privately over Cloudflare Tunnel (`ci-db.cafemood.app:5432`) with zero public port exposure (BRAWUKA-474).
-- [x] Cloudflare Access application and Service Token created (`CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`) allowing runner TCP proxy to `ci-db.cafemood.app`.
-- [x] `gh secret set` into the `staging` environment:
-  `STAGING_DATABASE_URL` (points to `postgresql://coffeemode:****@localhost:5432/coffeemode_ci`), `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`, `SUPABASE_URL` (= `https://ojujmjewtbquiddswyrg.supabase.co`), `SUPABASE_ANON_KEY`. Supabase staging project retains only Auth smoke checks; test scratch databases live on the VPS CI Postgres.
+- [x] Ephemeral runner-local Postgres (`postgis/postgis:16-3.4`) started via `docker compose -f ../docker-compose.yml up -d --wait postgres`, with `STAGING_DATABASE_URL` hardcoded to `postgresql://coffeemode:coffeemode@localhost:5432/coffeemode` in `.github/workflows/staging-journey.yml` (BRAWUKA-525). Dokploy CI Postgres (`coffeemode-ci-postgres`) and Cloudflare Tunnel (`ci-db.cafemood.app`) path superseded and scheduled for decommission.
+- [x] GitHub Environment `staging` secrets cleanup: remove `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`, and `STAGING_DATABASE_URL` (no longer needed by staging-journey). Retain `SUPABASE_URL` (= `https://ojujmjewtbquiddswyrg.supabase.co`) and `SUPABASE_ANON_KEY` for auth smoke checks.
 - [ ] (Optional, for real-session journey suites) Staging Supabase project dashboard → Settings → API: copy `service_role` key into GitHub Environment `staging` as `SUPABASE_SERVICE_ROLE_KEY`. (Staging CI verification currently passes using `SUPABASE_ANON_KEY` for auth smoke verification.)
 - [ ] Redirect URLs allowlist on the **staging** project (spec 0010 §1): `http://localhost:3000/auth/callback` (local dev against staging auth) + `https://staging.cafemood.app/auth/callback`.
 - [ ] Confirm Google provider is enabled on the **staging** project (item 3's client works for both; the Supabase callback `https://ojujmjewtbquiddswyrg.supabase.co/auth/v1/callback` must be in the Google client's authorized redirect URIs).

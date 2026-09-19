@@ -48,12 +48,14 @@ is the wording "Supabase is AUTH ONLY / data lives in the self-hosted Postgres"
 in `web/.env.example` and `web/README.md` — corrected by this change. No
 self-hosted Postgres exists on the VPS for application data (BRAWUKA-241).
 
-For CI testing, post-merge verification (`staging-journey`) uses a dedicated
-Dokploy VPS CI Postgres instance (`coffeemode-ci-postgres`, PostGIS 16 image
-`postgis/postgis:16-3.4`, BRAWUKA-474) accessed via Cloudflare Access TCP
-(`ci-db.cafemood.app:5432` tunneled to runner `localhost:5432`). This completely
-isolates scratch database creation and teardown from the Supabase staging project.
-Supabase staging retains staging application data and staging Auth.
+For CI testing, post-merge verification (`staging-journey`) runs against an ephemeral
+runner-local Postgres container (`postgis/postgis:16-3.4`, started via
+`docker compose up -d --wait postgres`, BRAWUKA-525). This replaces the earlier
+external Dokploy CI Postgres / Cloudflare Access tunnel path (BRAWUKA-474), eliminating
+tunnel latency, Access token secrets, Dokploy dependency, and network ECONNRESET
+jitter while completely isolating scratch database creation and teardown from the
+Supabase staging project. Supabase staging retains staging application data and
+staging Auth smoke checks.
 Local development keeps a **local** `postgis/postgis:16-3.4` container as the
 default `DATABASE_URL` for app data, while auth defaults to the **staging**
 Supabase project (§3). Rationale: local writes must never pollute shared staging
@@ -96,7 +98,7 @@ app data is local.
 
 - **Scratch databases per suite**: every staging-bound suite provisions its own
   database `{prefix}_{pid}_{uuid}` via `provisionTestDatabase`
-  (`web/tests/helpers/db.ts`) on the dedicated Dokploy CI Postgres instance,
+  (`web/tests/helpers/db.ts`) on the runner-local postgres container (BRAWUKA-525),
   cloned from a migrated template database, and drops it in `afterAll`. This
   mechanism gives strong isolation and is parallel-safe while keeping the
   Supabase staging project pristine.
@@ -119,10 +121,14 @@ app data is local.
   runner executes it after every run.
 - **Serialization**: staging runs are serialized — one journey run at a time,
   enforced by the workflow `concurrency` group (§5) and the runner's own guard.
-  Within a run, Vitest workers each get their own scratch DB.
+  With the runner-local postgres container (BRAWUKA-525), there is no shared
+  cross-runner database state to protect; the workflow concurrency group serializes
+  runs to avoid concurrent auth-smoke load against the shared staging Supabase
+  project. Within a run, Vitest workers each get their own scratch DB.
 - **Required privilege**: the role behind `STAGING_DATABASE_URL` has
-  `CREATEDB` and superuser privileges on the Dokploy CI Postgres instance and
-  connects directly over the Cloudflare Access TCP tunnel (`localhost:5432`).
+  `CREATEDB` and superuser privileges on the runner-local postgres container
+  (`postgresql://coffeemode:coffeemode@localhost:5432/coffeemode`, hardcoded in
+  workflow).
 - **Rejected alternatives**: shared-schema + truncate (races, pollutes business
   data); transaction rollback (cannot span HTTP requests); a separate Supabase
   project per run (cost, config drift, provision latency).
@@ -148,7 +154,7 @@ app data is local.
 | Secret | Lives in | Never in |
 | --- | --- | --- |
 | prod `service_role`, prod `DATABASE_URL`/`DIRECT_URL` | Dokploy prod env, GH Environment `production` | local `.env`, client bundle, `NEXT_PUBLIC_*` |
-| staging `service_role` (optional, pending owner item 1a), `STAGING_DATABASE_URL`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | GH Environment `staging`, Dokploy staging env, Multica agent secrets (`service_role` scaffold server-side only) | client bundle, `NEXT_PUBLIC_*`, prompts, committed files; local `.env` discouraged (dev uses anon key + own Google login) |
+| staging `service_role` (optional, pending owner item 1a) | GH Environment `staging`, Dokploy staging env, Multica agent secrets (`service_role` scaffold server-side only) | client bundle, `NEXT_PUBLIC_*`, prompts, committed files; local `.env` discouraged (dev uses anon key + own Google login) |
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `.env.example` templates, Dokploy env | — (public by design; RLS + revoked default grants protect tables) |
 | R2 access keys, Cloudflare tunnel/API tokens | Dokploy env, GH Environment per env | local `.env` unless actively debugging that integration |
 | `BETTER_STACK_INGEST_URL` + `BETTER_STACK_INGEST_TOKEN` | Dokploy env per env (per-env source host + token) | — (ingest-only token; never `NEXT_PUBLIC_*`) |

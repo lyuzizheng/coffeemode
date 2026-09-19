@@ -101,7 +101,10 @@ Framer `layoutId` shared-element transition on `spring.gentle`:
   sends the item to the **back of the queue**, stamps `last_asked_at`, and
   it becomes eligible again only after ≥ 1 day; an item dequeued at an
   ineligible moment is re-queued, never dropped. Max 2 re-asks
-  (`ask_count ≤ 2`), then it auto-resolves.
+  (`ask_count ≤ 2`), then it auto-resolves. Answers are **cafe-scoped**
+  (BRAWUKA-270): repeat 导航 taps stack rows per cafe, so one answer
+  resolves or defers the user's whole unresolved stack for that cafe —
+  a declined cafe never re-prompts and the stack shares one re-ask budget.
 - **Expiry**: navigations older than 3 months never prompt (DG83).
 - **Anonymous users**: the prompt works for anonymous sessions (Supabase
   anonymous sign-in, DG76); upgrading to Apple/Google keeps the history.

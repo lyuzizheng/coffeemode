@@ -80,6 +80,11 @@ async function fetchIterativeCafes(
   const batchSize = appConfig.search.dbFetchCap;
   const maxBatches = appConfig.search.maxIterativeFetchBatches;
 
+  // BRAWUKA-448: LIMIT+1 probe. A full batch is ambiguous — more rows may
+  // remain, or the DB may be exactly exhausted. The extra row disambiguates
+  // without a second query, so exact exhaustion neither wastes a trailing
+  // fetch nor falsely reports truncation.
+  let dbExhausted = false;
   for (let batch = 0; batch < maxBatches; batch++) {
     openNowBatches = batch + 1;
     const offset = batch * batchSize;
@@ -95,21 +100,26 @@ async function fetchIterativeCafes(
       filter_max_stay: filters.filter_max_stay,
       offset,
       viewerId: filters.viewer_id,
-      limit: batchSize,
+      limit: batchSize + 1,
     });
 
-    rawCafes.push(...cafesBatch);
+    const hasMore = cafesBatch.length > batchSize;
+    // The probe row only signals remainder — never surface it as a cafe.
+    const page = hasMore ? cafesBatch.slice(0, batchSize) : cafesBatch;
 
-    const matchingInBatch = cafesBatch.filter((cafe) =>
+    rawCafes.push(...page);
+
+    const matchingInBatch = page.filter((cafe) =>
       matchesAllFilters(cafe, filters, instant),
     );
     filteredCafes.push(...matchingInBatch);
 
-    if (filteredCafes.length >= targetLimit || cafesBatch.length < batchSize) {
+    if (filteredCafes.length >= targetLimit || !hasMore) {
+      dbExhausted = !hasMore;
       break;
     }
   }
-  if (filteredCafes.length < targetLimit && openNowBatches >= maxBatches) {
+  if (filteredCafes.length < targetLimit && !dbExhausted) {
     openNowTruncated = true;
   }
 

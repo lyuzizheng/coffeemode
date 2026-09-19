@@ -118,9 +118,11 @@ export function PublicIdentityToggle({
     );
   };
 
+  // Rows, not cards: the parent Preferences section owns the grouped card
+  // chrome (`divide-y` separators), so each control renders as a plain row.
   return (
-    <section aria-label={t("public_identity_label")} className="flex flex-col gap-2">
-      <div className="rounded-xl border border-border bg-surface p-4">
+    <>
+      <div className="px-4 py-3">
         <Switch
           isSelected={profile.showPublicIdentity}
           onChange={handleToggle}
@@ -135,7 +137,7 @@ export function PublicIdentityToggle({
         </Switch>
       </div>
 
-      <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3">
+      <div className="flex items-center justify-between gap-3 px-4 py-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="text-sm font-medium text-foreground">{t("public_handle_label")}</span>
           {handleDraft !== null ? (
@@ -189,10 +191,10 @@ export function PublicIdentityToggle({
       </div>
 
       {errorKey && (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="px-4 py-3 text-sm text-danger">
           {t(errorKey)}
         </p>
       )}
-    </section>
+    </>
   );
 }

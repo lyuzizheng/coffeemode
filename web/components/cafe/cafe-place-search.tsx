@@ -11,6 +11,7 @@ import {
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { isUnauthorized, responseMessage } from "@/lib/http";
+import { getSearchExternalSources } from "@/lib/client-env";
 import { readOnboardingState } from "@/lib/onboarding-store";
 import { getPlaceSearchProviders } from "@/lib/places/providers";
 import type { PlaceSearchProvider } from "@/lib/places/place-search";
@@ -22,6 +23,7 @@ import {
   resetResolveWidget,
 } from "@/lib/security/turnstile-client";
 import type { POI } from "@shared/places/types";
+import type { ExternalSearchProvider } from "@/components/search/search-results-list";
 type EntryMode = "link" | "search";
 
 interface CafePlaceSearchProps {
@@ -30,13 +32,25 @@ interface CafePlaceSearchProps {
   /** `GET /api/places/search?source=google` is auth-gated; a 401 belongs to the
       drawer's sign-in gate, not to this component's alert slot. */
   onRequireSignIn: () => void;
+  /** DG143 request-time MapKit readiness, drilled from the server page. */
+  mapkitConfigured: boolean;
+  /** BRAWUKA-366: provider CTA tapped upstream — preselects that provider's
+   * chip and the search tab so the intent survives the sheet open. */
+  initialProvider?: ExternalSearchProvider | null;
 }
 
-export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn }: CafePlaceSearchProps) {
+export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn, mapkitConfigured, initialProvider = null }: CafePlaceSearchProps) {
   const t = useTranslations("create");
-  const providers = useMemo(() => getPlaceSearchProviders(t), [t]);
-  const [provider, setProvider] = useState<PlaceSearchProvider>(providers[0]);
-  const [entryMode, setEntryMode] = useState<EntryMode>("link");
+  const providers = useMemo(
+    () => getPlaceSearchProviders(t, { externalSources: getSearchExternalSources(), mapkitConfigured }),
+    [t, mapkitConfigured],
+  );
+  const [provider, setProvider] = useState<PlaceSearchProvider | null>(
+    () => providers.find((candidate) => candidate.id === initialProvider) ?? providers[0] ?? null,
+  );
+  const [entryMode, setEntryMode] = useState<EntryMode>(
+    initialProvider && providers.length > 0 ? "search" : "link",
+  );
   const [mapsUrl, setMapsUrl] = useState("");
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<POI[]>([]);
@@ -53,9 +67,9 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn }: CafeP
   // Readiness is derived per provider id (state-during-render pattern), so
   // the effect only fires the async init, never sets state synchronously.
   const [readyProviderId, setReadyProviderId] = useState<string | null>(null);
-  const providerReady = !provider.init || readyProviderId === provider.id;
+  const providerReady = provider !== null && (!provider.init || readyProviderId === provider.id);
   useEffect(() => {
-    if (!provider.init) return;
+    if (!provider?.init) return;
     let cancelled = false;
     provider
       .init()
@@ -71,7 +85,7 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn }: CafeP
           onRequireSignIn();
           return;
         }
-        onError(cause instanceof Error ? cause.message : t("searchFailed"));
+        onError(t("searchFailed"));
       });
     return () => {
       cancelled = true;
@@ -158,7 +172,7 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn }: CafeP
 
   const runSearch = async (event: FormEvent) => {
     event.preventDefault();
-    if (!query.trim() || !providerReady) return;
+    if (!query.trim() || !provider || !providerReady) return;
     setSearching(true);
     onError(null);
     try {
@@ -176,10 +190,18 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn }: CafeP
     }
   };
 
+  // DG134: with every external source off the registry is empty — the search
+  // tab would have no provider to offer, so only link import remains.
+  const entryModes = providers.length > 0 ? (["link", "search"] as const) : (["link"] as const);
+
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-1 border-b border-border" role="tablist" aria-label={t("entryMethods")}>
-        {(["link", "search"] as const).map((mode) => (
+      <div
+        className={`grid gap-1 border-b border-separator ${entryModes.length === 2 ? "grid-cols-2" : "grid-cols-1"}`}
+        role="tablist"
+        aria-label={t("entryMethods")}
+      >
+        {entryModes.map((mode) => (
           <button
             key={mode}
             type="button"
@@ -225,14 +247,14 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn }: CafeP
               <button
                 key={candidate.id}
                 type="button"
-                aria-pressed={provider.id === candidate.id}
+                aria-pressed={provider?.id === candidate.id}
                 onClick={() => {
                   setProvider(candidate);
                   setSearchResults([]);
                   onError(null);
                 }}
-                className={`cm-focus rounded-sm border px-3 py-2 text-xs font-medium ${
-                  provider.id === candidate.id
+                className={`cm-focus flex h-9 items-center rounded-sm border px-3 text-xs font-medium ${
+                  provider?.id === candidate.id
                     ? "border-secondary bg-secondary text-secondary-foreground"
                     : "border-border bg-surface-secondary text-foreground"
                 }`}
@@ -263,17 +285,17 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn }: CafeP
                 <button
                   key={result.place_id}
                   type="button"
-                  className="cm-focus flex w-full items-start justify-between gap-3 border border-border bg-surface p-3 text-left hover:bg-surface-secondary"
+                  className="cm-focus flex w-full items-start justify-between gap-3 rounded-md border border-border bg-surface p-3 text-left hover:bg-surface-secondary"
                   onClick={() => {
                     setSearchResults([]);
-                    onSelectPOI(result, provider.persistOnSelect);
+                    onSelectPOI(result, provider?.persistOnSelect);
                   }}
                 >
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium text-foreground">{result.name}</span>
                     <span className="mt-1 block truncate text-xs text-muted">{result.address ?? t("noAddress")}</span>
                   </span>
-                  <span className="shrink-0 font-mono text-[0.65rem] uppercase text-muted">{provider.label}</span>
+                  <span className="shrink-0 font-mono text-xs uppercase text-muted">{provider?.label}</span>
                 </button>
               ))}
             </div>

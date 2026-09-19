@@ -4,7 +4,7 @@ import { Chip, Label, Slider } from "@heroui/react";
 import { motion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
-import { cardInteraction, spring, useEnterMotion } from "@/lib/motion";
+import { cardInteraction, useEnterMotion, useSprings } from "@/lib/motion";
 
 export { Swatch, useResolvedColor, toDisplayHex } from "./color";
 
@@ -92,6 +92,7 @@ export function WorkBar({
   value: number;
 }) {
   const enter = useEnterMotion();
+  const springs = useSprings();
   return (
     <div className="flex items-center gap-3">
       <span className="w-20 shrink-0 truncate text-xs text-muted">{label}</span>
@@ -104,7 +105,7 @@ export function WorkBar({
                 initial: { width: 0 },
                 whileInView: { width: `${value}%` },
                 viewport: { once: true, margin: "-40px" },
-                transition: spring.soft,
+                transition: springs.soft,
               }
             : { initial: false, animate: { width: `${value}%` }, transition: { duration: 0 } })}
         />

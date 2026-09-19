@@ -90,14 +90,22 @@
     0 12px 28px -6px oklch(25% 0.03 50 / 0.12);
   --shadow-map: 0 1px 3px 0 oklch(25% 0.03 50 / 0.06);
 
-  /* Small radius scale — dense, mobile-first. Spec 0002.
+  /* Radius scale — dense, mobile-first. Spec 0002.
      RADIUS COPY 1 of 3 (Tailwind utilities): the identical block repeats on
      :root and .dark below so HeroUI's unlayered component CSS sees the same
-     values. Keep all three in sync — see "RADIUS COPY 2/3" markers. */
+     values. Keep all three in sync — see "RADIUS COPY 2/3" markers.
+     BRAWUKA-374: HeroUI derives 2xl/3xl/4xl from --radius (2x/3x/4x) — pin
+     them explicitly or overlays render at 8/12/16px, off the spec scale.
+     --radius-full is ours: components use it for true pills/avatars so the
+     retro variant can square them. */
   --radius-sm: 0.125rem;
   --radius-md: 0.25rem;
   --radius-lg: 0.375rem;
   --radius-xl: 0.5rem;
+  --radius-2xl: 0.375rem;
+  --radius-3xl: 0.5rem;
+  --radius-4xl: 0.5rem;
+  --radius-full: 9999px;
   --radius: var(--radius-md);
 
   /* Brand secondary — real sage. */
@@ -120,13 +128,17 @@
 :root,
 .light,
 [data-theme="light"] {
-  /* Small radius scale — dense, mobile-first. Spec 0002.
+  /* Radius scale — dense, mobile-first. Spec 0002.
      RADIUS COPY 2 of 3 (light theme): mirrors the @theme block above and the
      .dark block below — keep all three identical (see "RADIUS COPY 1/3"). */
   --radius-sm: 0.125rem;
   --radius-md: 0.25rem;
   --radius-lg: 0.375rem;
   --radius-xl: 0.5rem;
+  --radius-2xl: 0.375rem;
+  --radius-3xl: 0.5rem;
+  --radius-4xl: 0.5rem;
+  --radius-full: 9999px;
   --radius: var(--radius-md);
   --field-radius: var(--radius-md);
   --field-border-width: 1px;
@@ -214,13 +226,17 @@
   --background: oklch(15.5% 0.012 50);
   --foreground: oklch(92.5% 0.009 72);
 
-  /* Small radius scale — dense, mobile-first. Spec 0002.
+  /* Radius scale — dense, mobile-first. Spec 0002.
      RADIUS COPY 3 of 3 (dark theme): mirrors the @theme and :root blocks
      above — keep all three identical (see "RADIUS COPY 1/3"). */
   --radius-sm: 0.125rem;
   --radius-md: 0.25rem;
   --radius-lg: 0.375rem;
   --radius-xl: 0.5rem;
+  --radius-2xl: 0.375rem;
+  --radius-3xl: 0.5rem;
+  --radius-4xl: 0.5rem;
+  --radius-full: 9999px;
   --radius: var(--radius-md);
   --field-radius: var(--radius-md);
 
@@ -333,18 +349,20 @@ body {
 
 /* DG69 signature moment (spec 0002): the check-in slider thumb pulses to
    1.15 scale on first touch, 120ms, paired with navigator.vibrate(10).
-   The translateY(-50%) centering must live inside the keyframes — a
-   keyframed `transform` overrides the utility for the animation's
-   duration. The global prefers-reduced-motion kill switch neutralizes it. */
+   Keyframes animate `transform` only — Tailwind v4 translate utilities set
+   the native `translate` property, which composes with `transform` instead
+   of being overridden by it, so the thumb's -translate-y-1/2 centering
+   stays put through the pulse. The global prefers-reduced-motion kill
+   switch neutralizes it. */
 @keyframes checkin-thumb-pulse {
   0% {
-    transform: translateY(-50%) scale(1);
+    transform: scale(1);
   }
   50% {
-    transform: translateY(-50%) scale(1.15);
+    transform: scale(1.15);
   }
   100% {
-    transform: translateY(-50%) scale(1);
+    transform: scale(1);
   }
 }
 
@@ -415,10 +433,25 @@ body {
   }
 }
 
-/* Scores, distances, counts — always tabular. */
+/* Scores, distances, counts — always tabular. The personality tokens
+   (--tnum-*) are set per design variant below; element-level rules consume
+   them here so a nested data-variant subtree (picker swatches) resolves its
+   own variant instead of the page's. font-mono always wins the family —
+   explicit mono call sites keep JetBrains under every variant. */
 .tnum {
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
+  font-variant-numeric: var(--tnum-variant, tabular-nums);
+  font-feature-settings: var(--tnum-features, "tnum");
+}
+.tnum:not(.font-mono) {
+  font-family: var(--tnum-family, inherit);
+}
+
+/* Filled-button elevation — per-variant token, scoped to variant subtrees
+   only: the default page (no data-variant) never matches, so explicit
+   shadow-* utilities (the create FAB's shadow-lg) keep their elevation.
+   Retro pins --button-shadow: var(--shadow-sm); modern pins none. */
+[data-variant] .button:not(.button--ghost):not(.button--outline) {
+  box-shadow: var(--button-shadow, none);
 }
 
 /* Hide scrollbars on horizontal tab/scroll strips while keeping scroll.
@@ -432,12 +465,17 @@ body {
 }
 
 /* MapLibre attribution (map-home, BRAWUKA-311): the control renders
-   bottom-right, which the mobile sheet's PEEK height (172px) covers. Lift it
+   bottom-right, which the mobile sheet's PEEK height covers. Lift it
    above the sheet on small screens — attribution must stay visible
    (OpenMapTiles license). Desktop keeps the default corner. */
 @media (max-width: 1023px) {
   .maplibregl-ctrl-bottom-right {
-    bottom: 180px;
+    bottom: calc(var(--layout-sheet-peek) + 8px);
+  }
+  /* BRAWUKA-373: the collapsed sheet is a slim bar — drop the attribution
+     offset so it doesn't float mid-map. */
+  [data-sheet-snap="collapsed"] .maplibregl-ctrl-bottom-right {
+    bottom: calc(var(--layout-sheet-collapsed) + 8px);
   }
 }
 
@@ -504,12 +542,25 @@ body {
    ------------------------------------------------------------------------- */
 
 /* HeroUI buttons: base is h-10/md:h-9 (40/36px) — under the 44px floor.
-   Pin the box; compact rows keep their footprint with -my-* on the instance. */
+   Pin the box; compact rows keep their footprint with -my-* on the instance.
+   BRAWUKA-374: HeroUI sets border-radius: calc(var(--radius) * 3) = 12px —
+   off the spec scale; pin to --radius-md so buttons match fields/cards.
+   BRAWUKA-377: .button--sm keeps its 32px painted height; the 44px hit area
+   comes from an ::after extension instead of inflating the painted box. */
 .button {
   min-height: 44px;
+  border-radius: var(--radius-md);
 }
 .button--icon-only {
   min-width: 44px;
+}
+.button--sm {
+  min-height: 32px;
+}
+.button--sm::after {
+  content: "";
+  position: absolute;
+  inset: -6px 0;
 }
 
 /* Close buttons (drawer, search-field clear): box reaches 44px. Inside the
@@ -598,3 +649,311 @@ body {
   margin: 0;
   appearance: none;
 }
+
+/* ----------------------------------------------------------------------------
+   Design variants (BRAWUKA-370 mechanism, BRAWUKA-505 full personalities) —
+   orthogonal to light/dark. `data-variant` on <html> selects a complete
+   design direction; the espresso + sage brand plate stays shared.
+     default — spec 0002 dense scale (2/4/6/8px), Inter chrome
+     retro   — editorial print voice: zero radius, serif UI (Source Serif 4 +
+               Noto Serif SC), warm paper-lift shadows, faint grain
+     modern  — industrial instrument panel: concentric radius scale, mono
+               data annotations, blueprint grid, cooler neutrals
+
+   Dark-scoped variant tokens use `:is(.dark, [data-theme="dark"])` — :is()
+   contributes its argument's specificity, so these blocks outrank both the
+   base `.dark` plate and the unscoped variant block regardless of order.
+   ------------------------------------------------------------------------- */
+
+/* Tailwind v4's `rounded-full` compiles to calc(infinity * 1px) — a constant,
+   not a token. Re-route it through --radius-full so variants can square pills
+   (retro) without touching every call site. */
+.rounded-full {
+  border-radius: var(--radius-full);
+}
+
+/* Default-variant reset — lets a subtree (the picker's mini previews) render
+   the default personality even while <html> carries another variant. Pins
+   the same tokens the variant blocks override; values mirror the base
+   plates above (RADIUS COPY convention applies — keep in sync). */
+[data-variant="default"] {
+  --radius-xs: 0.125rem;
+  --radius-sm: 0.125rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.375rem;
+  --radius-xl: 0.5rem;
+  --radius-2xl: 0.375rem;
+  --radius-3xl: 0.5rem;
+  --radius-4xl: 0.5rem;
+  --radius-full: 9999px;
+  --radius: var(--radius-md);
+  --field-radius: var(--radius-md);
+  --field-border-width: 1px;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-display: var(--font-cabinet), var(--font-inter), ui-sans-serif,
+    system-ui, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-serif: var(--font-source-serif), Georgia, "Times New Roman",
+    "Songti SC", "Noto Serif SC", serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+
+  --shadow-sm: 0 1px 2px 0 oklch(25% 0.03 50 / 0.05);
+  --shadow-md:
+    0 1px 2px 0 oklch(25% 0.03 50 / 0.04),
+    0 4px 12px -2px oklch(25% 0.03 50 / 0.07);
+  --shadow-lg:
+    0 2px 4px 0 oklch(25% 0.03 50 / 0.04),
+    0 12px 28px -6px oklch(25% 0.03 50 / 0.12);
+  --shadow-map: 0 1px 3px 0 oklch(25% 0.03 50 / 0.06);
+  --surface-shadow:
+    0 1px 2px 0 oklch(25% 0.03 50 / 0.05),
+    0 0 1px 0 oklch(25% 0.03 50 / 0.04);
+  --overlay-shadow:
+    0 2px 6px 0 oklch(25% 0.03 50 / 0.05),
+    0 12px 32px -8px oklch(25% 0.03 50 / 0.14);
+
+  --background: oklch(98.1% 0.004 82);
+  --foreground: oklch(23% 0.022 48);
+  --surface: oklch(99.4% 0.002 82);
+  --surface-secondary: oklch(96.4% 0.006 76);
+  --surface-tertiary: oklch(93.2% 0.009 72);
+  --overlay: oklch(99.6% 0.002 82);
+  --muted: oklch(44% 0.02 55);
+  --default: oklch(94% 0.007 72);
+  --segment: oklch(99.4% 0.002 82);
+  --border: oklch(89.5% 0.008 70);
+  --separator: oklch(92.5% 0.006 74);
+
+  /* Element-level personality tokens (consumed by the .tnum/.button rules
+     above): default is tabular numerals in the UI font, flat buttons. */
+  --tnum-family: var(--font-sans);
+  --tnum-variant: tabular-nums;
+  --tnum-features: "tnum";
+  --button-shadow: none;
+}
+
+/* ==== RETRO — 复古编辑风 ==================================================
+   Paper-bound city guide: no radius anywhere, serif voice end to end, hairline
+   rules doing the separation work, and a whisper of warm lift under cards.
+   The neutral plate mirrors the base light values so a scoped subtree (the
+   picker's mini previews) renders retro's light quadrant even when the page
+   sits in dark. */
+[data-variant="retro"] {
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-4xl: 0px;
+  --radius-full: 0px;
+  --radius: 0px;
+  --field-radius: 0px;
+
+  /* Serif voice: every `font-sans` surface (body, buttons, fields) resolves
+     to Source Serif 4; CJK resolves to the self-hosted Noto Serif SC subset
+     (GB2312 level-1 + app copy), then on-platform Songti. Display and serif
+     ramps share the same stack so the wordmark and prose stay one voice. */
+  --font-sans: var(--font-source-serif), var(--font-noto-serif-sc), Georgia,
+    "Times New Roman", "Songti SC", "Noto Serif SC", serif;
+  --font-display: var(--font-source-serif), var(--font-noto-serif-sc),
+    Georgia, "Times New Roman", "Songti SC", "Noto Serif SC", serif;
+  --font-serif: var(--font-source-serif), var(--font-noto-serif-sc), Georgia,
+    "Times New Roman", "Songti SC", "Noto Serif SC", serif;
+
+  /* Paper-lift shadows — low spread, low alpha, warm espresso offset. Cards
+     read as paper stacked on paper; no glow, no color. */
+  --shadow-sm: 0 1px 2px 0 oklch(25% 0.03 50 / 0.08);
+  --shadow-md:
+    0 1px 2px 0 oklch(25% 0.03 50 / 0.07),
+    0 3px 10px -2px oklch(25% 0.03 50 / 0.09);
+  --shadow-lg:
+    0 2px 4px 0 oklch(25% 0.03 50 / 0.07),
+    0 10px 24px -6px oklch(25% 0.03 50 / 0.14);
+  --shadow-map: 0 1px 3px 0 oklch(25% 0.03 50 / 0.09);
+  --surface-shadow:
+    0 1px 2px 0 oklch(25% 0.03 50 / 0.08),
+    0 0 1px 0 oklch(25% 0.03 50 / 0.05);
+  --overlay-shadow:
+    0 2px 6px 0 oklch(25% 0.03 50 / 0.08),
+    0 12px 32px -8px oklch(25% 0.03 50 / 0.16);
+
+  /* Hairlines stay but drop contrast — print rules, not UI chrome. */
+  --border: oklch(91.5% 0.008 70);
+  --separator: oklch(94% 0.006 74);
+
+  /* Light neutral plate — identical to the base light values. */
+  --background: oklch(98.1% 0.004 82);
+  --foreground: oklch(23% 0.022 48);
+  --surface: oklch(99.4% 0.002 82);
+  --surface-secondary: oklch(96.4% 0.006 76);
+  --surface-tertiary: oklch(93.2% 0.009 72);
+  --overlay: oklch(99.6% 0.002 82);
+  --muted: oklch(44% 0.02 55);
+  --default: oklch(94% 0.007 72);
+  --segment: oklch(99.4% 0.002 82);
+
+  /* Element-level personality tokens: oldstyle editorial numerals in the
+     serif UI voice, paper-lift on filled buttons. */
+  --tnum-family: var(--font-sans);
+  --tnum-variant: oldstyle-nums tabular-nums;
+  --tnum-features: "onum", "tnum";
+  --button-shadow: var(--shadow-sm);
+}
+
+/* Retro dark — same warm espresso plate; the lift shadows stay out (dark
+   separates with hairlines, per the base plate) but the hairlines soften a
+   step further and the grain lifts a touch. The neutral set mirrors the
+   base dark values so the quadrant is self-contained. */
+[data-variant="retro"]:is(.dark, [data-theme="dark"]) {
+  --background: oklch(15.5% 0.012 50);
+  --foreground: oklch(92.5% 0.009 72);
+  --surface: oklch(19.5% 0.013 52);
+  --surface-secondary: oklch(23% 0.013 52);
+  --surface-tertiary: oklch(27.5% 0.013 52);
+  --overlay: oklch(22% 0.014 52);
+  --muted: oklch(72% 0.015 60);
+  --default: oklch(26.5% 0.013 52);
+  --segment: oklch(30% 0.012 52);
+
+  --surface-shadow: 0 0 0 0 transparent;
+  --overlay-shadow:
+    0 0 1px 0 oklch(60% 0.02 55 / 0.22) inset,
+    0 12px 32px -8px oklch(8% 0.01 50 / 0.5);
+  --border: oklch(31.5% 0.012 52);
+  --separator: oklch(27% 0.012 52);
+}
+
+/* Paper grain — monochrome feTurbulence baked into a data-URI (no request,
+   no extra element). Opacity lives inside the SVG rect: 4% light / 5% dark,
+   inside spec 0002's 0.03–0.05 / 0.04–0.06 grain budget. */
+[data-variant="retro"] body {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+}
+[data-variant="retro"]:is(.dark, [data-theme="dark"]) body {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+}
+
+/* Retro forbids glassmorphism: kill every backdrop blur and re-opacify the
+   translucent overlay chrome that relied on it (preview header, map cards).
+   Paper is opaque — a translucent sheet over content is the glass tell. */
+[data-variant="retro"] [class*="backdrop-blur"] {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+[data-variant="retro"] .bg-background\/80,
+[data-variant="retro"] .bg-overlay\/85 {
+  background-color: var(--background);
+}
+[data-variant="retro"] .bg-overlay\/85 {
+  background-color: var(--overlay);
+}
+
+/* ==== MODERN — 现代工业 geek 风 ===========================================
+   Precision panel: one concentric radius system (inner = outer − gap), mono
+   for every data annotation, blueprint hairline grid, cooler neutrals. */
+[data-variant="modern"] {
+  /* Concentric scale: a 2px gap steps each level down exactly — segmented
+     track md(12) + p-0.5 → segment sm(10); card md(12) + 2px gap → chip
+     sm(10); sheet lg(16) + 4px padding → inner card md(12). */
+  --radius-xs: 0.375rem;
+  --radius-sm: 0.625rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.25rem;
+  --radius-4xl: 1.5rem;
+  --radius-full: 9999px;
+  --radius: var(--radius-md);
+  --field-radius: var(--radius-md);
+
+  /* UI voice stays the base stacks — pinned so a scoped subtree (the
+     picker's swatch) shows modern's sans even under a retro page. */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-display: var(--font-cabinet), var(--font-inter), ui-sans-serif,
+    system-ui, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-serif: var(--font-source-serif), Georgia, "Times New Roman",
+    "Songti SC", "Noto Serif SC", serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+
+  /* Cooler neutral plate — higher contrast, grayer surfaces. Brand accent,
+     sage, and status tokens stay shared. */
+  --background: oklch(97.8% 0.003 250);
+  --foreground: oklch(22% 0.015 260);
+  --surface: oklch(99.2% 0.002 250);
+  --surface-secondary: oklch(96% 0.004 250);
+  --surface-tertiary: oklch(92.8% 0.005 250);
+  --overlay: oklch(99.4% 0.002 250);
+  --muted: oklch(42% 0.015 260);
+  --default: oklch(93.6% 0.004 250);
+  --segment: oklch(99.2% 0.002 250);
+  --border: oklch(88.5% 0.005 250);
+  --separator: oklch(92% 0.004 250);
+
+  /* Cooler, tighter shadows — instrument-panel crispness. */
+  --shadow-sm: 0 1px 2px 0 oklch(25% 0.02 260 / 0.06);
+  --shadow-md:
+    0 1px 2px 0 oklch(25% 0.02 260 / 0.05),
+    0 4px 12px -2px oklch(25% 0.02 260 / 0.08);
+  --shadow-lg:
+    0 2px 4px 0 oklch(25% 0.02 260 / 0.05),
+    0 12px 28px -6px oklch(25% 0.02 260 / 0.13);
+  --shadow-map: 0 1px 3px 0 oklch(25% 0.02 260 / 0.07);
+  --surface-shadow:
+    0 1px 2px 0 oklch(25% 0.02 260 / 0.06),
+    0 0 1px 0 oklch(25% 0.02 260 / 0.05);
+  --overlay-shadow:
+    0 2px 6px 0 oklch(25% 0.02 260 / 0.06),
+    0 12px 32px -8px oklch(25% 0.02 260 / 0.15);
+
+  /* Element-level personality tokens: data-is-mono — every .tnum annotation
+     resolves to JetBrains; buttons stay flat (crispness comes from radius
+     and hairlines, not elevation). */
+  --tnum-family: var(--font-mono);
+  --tnum-variant: tabular-nums;
+  --tnum-features: "tnum";
+  --button-shadow: none;
+}
+
+/* Modern dark — cold graphite plate (hue 250–260, low chroma). Neutrals only;
+   accent/sage/status stay shared so brand contrast math is unchanged. */
+[data-variant="modern"]:is(.dark, [data-theme="dark"]) {
+  --background: oklch(16% 0.006 260);
+  --foreground: oklch(92% 0.005 250);
+  --surface: oklch(20% 0.007 260);
+  --surface-secondary: oklch(23.5% 0.007 260);
+  --surface-tertiary: oklch(27.5% 0.007 260);
+  --overlay: oklch(22.5% 0.007 260);
+  --muted: oklch(72% 0.01 250);
+  --default: oklch(26.5% 0.007 260);
+  --segment: oklch(29.5% 0.007 260);
+  --border: oklch(30% 0.008 260);
+  --separator: oklch(25.5% 0.007 260);
+  --overlay-shadow:
+    0 0 1px 0 oklch(60% 0.02 260 / 0.25) inset,
+    0 12px 32px -8px oklch(8% 0.01 260 / 0.5);
+}
+
+/* Blueprint grid — hairline engineering grid on the canvas, 5%/7% foreground
+   mix, CSS-generated (no image request). */
+[data-variant="modern"] body {
+  background-image:
+    linear-gradient(to right, color-mix(in oklch, var(--foreground) 5%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklch, var(--foreground) 5%, transparent) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+[data-variant="modern"]:is(.dark, [data-theme="dark"]) body {
+  background-image:
+    linear-gradient(to right, color-mix(in oklch, var(--foreground) 7%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklch, var(--foreground) 7%, transparent) 1px, transparent 1px);
+}
+
+/* The bespoke sheet and HeroUI drawers share the top-corner radius via
+   --radius-lg (spec) / --radius-2xl (HeroUI) — both pinned to the same value
+   per variant above, so the two sheet families stay visually identical. */

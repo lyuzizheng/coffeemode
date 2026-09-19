@@ -48,7 +48,7 @@ follow:
   (confirm button) by `env(safe-area-inset-bottom)` and sizes detents in
   `dvh` per the spec 0002 viewport contract (DG75).
 - **Desktop**: Drawer placement right, 420px, same content, single column.
-- Header: cafe name only (`font-display`, `text-lg`, truncated) plus a 36px
+- Header: cafe name only (`font-display`, `text-lg`, truncated) plus a 44px
   ghost close (×) top-right. No `Check in` title — the confirm button at the
   foot already says it. When the drawer is opened from the navigation
   prompt, a warm caption sits under the cafe name: `来打个卡，帮其他 nomad

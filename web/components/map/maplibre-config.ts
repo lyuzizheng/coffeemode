@@ -6,19 +6,20 @@
  */
 import { envNonEmptyString } from "@/lib/client-env";
 
-/** `map.maplibre.tileStyle.light` — full style document URL for the light basemap. */
+/** `map.maplibre.tileStyle.light` — style document URL/path for the light
+ * basemap. Root-relative paths are served same-origin from `web/public/`. */
 export function getMapLibreTileStyleLight(): string {
   return envNonEmptyString(
     process.env.NEXT_PUBLIC_MAPLIBRE_TILE_STYLE_LIGHT,
-    "https://tiles.openfreemap.org/styles/liberty",
+    "/map/coffeemode_light.json",
   );
 }
 
-/** `map.maplibre.tileStyle.dark` — full style document URL for the dark basemap. */
+/** `map.maplibre.tileStyle.dark` — style document URL/path for the dark basemap. */
 export function getMapLibreTileStyleDark(): string {
   return envNonEmptyString(
     process.env.NEXT_PUBLIC_MAPLIBRE_TILE_STYLE_DARK,
-    "https://tiles.openfreemap.org/styles/dark",
+    "/map/coffeemode_dark.json",
   );
 }
 

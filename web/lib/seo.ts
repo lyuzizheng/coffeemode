@@ -25,12 +25,13 @@ export function ogHookParams(stats: WorkStats): { score: number; count: number }
 }
 
 /**
- * og:image source (absolute URL) per the artifact §4: the cafe cover when
- * one exists, otherwise the first gallery card; null means the dynamic
- * fallback card route must be used instead.
+ * og:image source (absolute URL) per the artifact §4: the first gallery card
+ * (BRAWUKA-307 — the card cover derives from `gallery->0->>'card'` in the
+ * read queries; the write-frozen `cafes.cover` column is dropped in v25).
+ * Null means the dynamic fallback card route must be used instead.
  */
-export function cafeOgImageUrl(cafe: Pick<CafeDetail, "cover" | "gallery">): string | null {
-  const key = cafe.cover ?? cafe.gallery[0]?.card ?? null;
+export function cafeOgImageUrl(cafe: Pick<CafeDetail, "gallery">): string | null {
+  const key = cafe.gallery[0]?.card ?? null;
   return key ? r2PublicUrl(key) : null;
 }
 

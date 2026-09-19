@@ -172,3 +172,19 @@ export async function processImage(
     height: cappedOriginal.info.height,
   };
 }
+
+/**
+ * Re-stamp a live original with its final attach target (BRAWUKA-400).
+ *
+ * The creation flow processes images before the cafe/check-in exists, so the
+ * stored original carries targetType="provision". After the creation
+ * transaction commits, the caller re-marks it with targetType="cafe"|"checkin"
+ * + targetId=<real id> so the #158 sweeper never matches it. Bytes are
+ * preserved exactly: download via the attach GET URL, re-PUT to the attach
+ * PUT URL (whose signed headers carry the new metadata). Only `original/` is
+ * touched — card/thumbnail metadata is irrelevant to cleanup.
+ */
+export async function restampOriginal(attachUrls: ProcessUrls): Promise<void> {
+  const originalBuffer = await fetchOriginal(attachUrls.original);
+  await uploadVariant(attachUrls.originalPut, originalBuffer);
+}

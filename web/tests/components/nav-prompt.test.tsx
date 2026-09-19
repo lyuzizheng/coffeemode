@@ -48,11 +48,11 @@ describe("NavPromptView", () => {
 
   it("renders the headline, context line, and three honest options — no ×", () => {
     renderView();
-    expect(screen.getByText("Grabbed a coffee at Seed Cafe?")).toBeTruthy();
-    expect(screen.getByText("You navigated here 2 days ago")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "I did!" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Not yet" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Won't go" })).toBeTruthy();
+    expect(screen.getByText("Grabbed a coffee at Seed Cafe?")).toBeInTheDocument();
+    expect(screen.getByText("You navigated here 2 days ago")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "I did!" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Not yet" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Won't go" })).toBeInTheDocument();
     // DG81: no close button anywhere — the three options are the only exits.
     expect(screen.queryByRole("button", { name: /close/i })).toBeNull();
     expect(screen.getAllByRole("button")).toHaveLength(3);
@@ -73,7 +73,7 @@ describe("NavPromptView", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(60_000);
     });
-    expect(pill).toBeTruthy();
+    expect(pill).toBeInTheDocument();
   });
 
   it("re-expands from the pill back to the card", () => {
@@ -82,7 +82,7 @@ describe("NavPromptView", () => {
       vi.advanceTimersByTime(8_100);
     });
     fireEvent.click(screen.getByRole("button", { name: /Grab that coffee\?/ }));
-    expect(screen.getByText("Grabbed a coffee at Seed Cafe?")).toBeTruthy();
+    expect(screen.getByText("Grabbed a coffee at Seed Cafe?")).toBeInTheDocument();
   });
 
   it("pauses the collapse timer while the user interacts (DG28)", () => {
@@ -92,12 +92,12 @@ describe("NavPromptView", () => {
     act(() => {
       vi.advanceTimersByTime(30_000);
     });
-    expect(screen.getByText("Grabbed a coffee at Seed Cafe?")).toBeTruthy();
+    expect(screen.getByText("Grabbed a coffee at Seed Cafe?")).toBeInTheDocument();
     fireEvent.mouseLeave(card);
     act(() => {
       vi.advanceTimersByTime(8_100);
     });
-    expect(screen.getByRole("button", { name: /Grab that coffee\?/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Grab that coffee\?/ })).toBeInTheDocument();
   });
 
   it("routes each option to its outcome", () => {
@@ -114,7 +114,7 @@ describe("NavPromptView", () => {
     renderView({
       item: { ...ITEM, created_at: new Date(Date.now() - 30 * 3_600_000).toISOString() },
     });
-    expect(screen.getByText("You navigated here yesterday")).toBeTruthy();
+    expect(screen.getByText("You navigated here yesterday")).toBeInTheDocument();
   });
 });
 

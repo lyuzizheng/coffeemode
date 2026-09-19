@@ -186,6 +186,10 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install chromium
 
+      - name: Start Supabase mock (T8 real-session sign-in)
+        working-directory: .
+        run: docker compose up -d --wait supabase-mock
+
       - name: E2E MVP smoke suite
         env:
           DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode
@@ -242,10 +246,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Start MinIO (for image round-trip)
+      - name: Start MinIO and Supabase mock
         working-directory: .
         run: |
-          docker compose up -d --wait minio
+          docker compose up -d --wait minio supabase-mock
           docker compose run --rm minio-init
 
       - name: Install image-service dependencies (for image round-trip)

@@ -8,8 +8,11 @@
  */
 import { createContext, useContext } from "react";
 import type { Coordinates } from "@/lib/cities";
+import type { UserLocation } from "@/components/map/types";
 import type { CafeSummary } from "@/types/cafes";
 import type { DiscoveryController } from "./use-discovery-controller";
+
+export type { UserLocation };
 
 export interface DiscoveryMapState {
   controller: DiscoveryController;
@@ -17,7 +20,14 @@ export interface DiscoveryMapState {
   /** Resolved discovery center (onboarding city/location or configured
    * fallback) — the map flies here when it changes. */
   center: Coordinates;
+  /** Granted geolocation rendered as the user-location dot (DG120).
+   * Session-persistent via the onboarding store; null until granted. */
+  userLocation?: UserLocation | null;
+  /** First user camera gesture (pan/zoom) — onboarding uses it to keep the
+   * grant from stealing a viewport the user already chose (DG119). */
+  onCameraGesture?: () => void;
 }
+
 
 export const DiscoveryMapContext = createContext<DiscoveryMapState | null>(null);
 

@@ -38,9 +38,6 @@ function googlePoiDefaults(index: number): POI {
         "Sunday: 9:00 AM – 9:00 PM",
       ],
     }),
-    photo_refs: [
-      `places/${orchard ? "ChIJORCHARDNOMADSG" : "ChIJBUGISOUTLETSG"}/photos/photo-${index}`,
-    ],
     fetched_at: GOOGLE_POI_FIXTURE_BASE.fetched_at,
   };
 }
@@ -98,9 +95,9 @@ export interface TestSessionUser {
 
 /**
  * Build a test session user with deterministic defaults. The id is a fresh
- * v4 UUID unless overridden. Pair with `stubGetCurrentUser({ id })` for
- * route tests; profile-row insertion stays with the caller's seeder
- * (`seedMockDataset` / `seedBaseData` own their profiles).
+ * v4 UUID unless overridden. Route suites program `getCurrentUser` to the id
+ * via inline `vi.mock("@/lib/auth/get-user", …)`; profile-row insertion stays
+ * with the caller's seeder (`seedMockDataset` / `seedBaseData` own their profiles).
  */
 export function createTestSessionUser(
   userConfig: Partial<Omit<TestSessionUser, "jwt">> = {},

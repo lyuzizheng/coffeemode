@@ -1,16 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  getPOI,
   getPOIConfig,
   resolveMapsUrl,
-  reverseGeocode,
   searchExternalPOIs,
   searchPOIs,
   storeExternalPOIs,
 } from "@/lib/places/poi-client";
 import { GET as searchGET } from "@/app/api/places/search/route";
 import { POST as resolvePOST } from "@/app/api/places/resolve/route";
-import { GET as reverseGET, POST as reversePOST } from "@/app/api/places/reverse/route";
 import type { POI } from "@shared/places/types";
 
 const { getCurrentUserMock } = vi.hoisted(() => ({ getCurrentUserMock: vi.fn() }));
@@ -29,7 +26,6 @@ const SAMPLE_POI: POI = {
   types: ["cafe"],
   business_status: "OPERATIONAL",
   hours_json: null,
-  photo_refs: ["places/ChIJTEST123/photos/p1"],
   fetched_at: "2026-08-06T00:00:00.000Z",
 };
 
@@ -117,18 +113,6 @@ describe("poi-client", () => {
     expect(JSON.parse(String(init.body))).toEqual({
       maps_share_url: "https://maps.app.goo.gl/abc",
     });
-    expect(init.headers).toMatchObject({ "x-poi-service-token": TOKEN });
-    expect(init.signal).toBeInstanceOf(AbortSignal);
-    expect(poi.name).toBe("Blue Bottle Coffee");
-  });
-
-  it("getPOI fetches /poi/:place_id and preserves colons", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(SAMPLE_POI));
-    const poi = await getPOI("0x8085abc:0x1234def");
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(`${WORKER_URL}/poi/0x8085abc:0x1234def`);
     expect(init.headers).toMatchObject({ "x-poi-service-token": TOKEN });
     expect(init.signal).toBeInstanceOf(AbortSignal);
     expect(poi.name).toBe("Blue Bottle Coffee");
@@ -365,6 +349,28 @@ describe("POST /api/places/resolve", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("400s on JSON null body (BRAWUKA-403)", async () => {
+    const res = await resolvePOST(resolveRequest("null"));
+    expect(res.status).toBe(400);
+    expect((await res.json()) as { error: string }).toEqual({
+      error: "invalid_request",
+      message: "invalid JSON body",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("400s on non-object JSON bodies (string, array, number)", async () => {
+    for (const raw of ['"string"', "123", "[]"]) {
+      const res = await resolvePOST(resolveRequest(raw));
+      expect(res.status).toBe(400);
+      expect((await res.json()) as { error: string }).toEqual({
+        error: "invalid_request",
+        message: "invalid JSON body",
+      });
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("400s without maps_share_url", async () => {
     mockTurnstilePass();
     const res = await resolvePOST(resolveRequest(JSON.stringify({ "cf-turnstile-response": "fresh-token" })));
@@ -436,172 +442,5 @@ describe("POST /api/places/resolve", () => {
     );
     expect(res.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe("reverseGeocode", () => {
-  it("posts coordinates to /poi/reverse and returns the POI", async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ poi: SAMPLE_POI }));
-    const result = await reverseGeocode({ lat: 37.7825, lng: -122.4077 });
-    expect(result).toEqual(SAMPLE_POI);
-    expect(fetchMock).toHaveBeenCalledWith(
-      `${WORKER_URL}/poi/reverse`,
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ lat: 37.7825, lng: -122.4077 }),
-        headers: expect.objectContaining({
-          "x-poi-service-token": TOKEN,
-          "content-type": "application/json",
-        }),
-      }),
-    );
-  });
-
-  it("returns null when worker returns { poi: null }", async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ poi: null }));
-    const result = await reverseGeocode({ lat: 0, lng: 0 });
-    expect(result).toBeNull();
-  });
-
-  it("throws POIServiceError when worker returns 502", async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ error: "upstream_error" }, 502));
-    await expect(reverseGeocode({ lat: 37.7, lng: -122.4 })).rejects.toThrow(
-      /POI service unavailable/,
-    );
-  });
-});
-
-describe("POST /api/places/reverse", () => {
-  const reverseRequest = (body: unknown, origin?: string) => {
-    const headers: Record<string, string> = { "content-type": "application/json" };
-    if (origin) headers.origin = origin;
-    return new Request("https://localhost:3000/api/places/reverse", {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-    });
-  };
-
-  it("rejects unauthenticated caller with 401", async () => {
-    const res = await reversePOST(reverseRequest({ lat: 37.7825, lng: -122.4077 }));
-    expect(res.status).toBe(401);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("rejects cross-origin request with 403", async () => {
-    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
-    const res = await reversePOST(
-      reverseRequest({ lat: 37.7825, lng: -122.4077 }, "https://evil.com"),
-    );
-    expect(res.status).toBe(403);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("rejects non-numeric lat/lng with 400", async () => {
-    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
-    const res1 = await reversePOST(reverseRequest({ lat: "abc", lng: -122.4 }));
-    expect(res1.status).toBe(400);
-
-    const res2 = await reversePOST(reverseRequest({ lat: 37.7 }));
-    expect(res2.status).toBe(400);
-  });
-
-  it("rejects out-of-range coordinates with 400", async () => {
-    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
-    const res1 = await reversePOST(reverseRequest({ lat: 95, lng: 0 }));
-    expect(res1.status).toBe(400);
-
-    const res2 = await reversePOST(reverseRequest({ lat: 0, lng: 185 }));
-    expect(res2.status).toBe(400);
-  });
-
-  it("returns 200 with { poi: SAMPLE_POI } when authenticated", async () => {
-    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
-    fetchMock.mockResolvedValue(jsonResponse({ poi: SAMPLE_POI }));
-
-    const res = await reversePOST(reverseRequest({ lat: 37.7825, lng: -122.4077 }));
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data).toEqual({ poi: SAMPLE_POI });
-  });
-
-  it("returns 200 with { poi: null } when worker returns null", async () => {
-    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
-    fetchMock.mockResolvedValue(jsonResponse({ poi: null }));
-
-    const res = await reversePOST(reverseRequest({ lat: 37.7, lng: -122.4 }));
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data).toEqual({ poi: null });
-  });
-
-  it("maps worker errors to poi_service error envelope", async () => {
-    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
-    fetchMock.mockResolvedValue(jsonResponse({ error: "fail" }, 502));
-
-    const res = await reversePOST(reverseRequest({ lat: 37.7, lng: -122.4 }));
-    expect(res.status).toBe(502);
-    const data = await res.json();
-    expect(data.error).toBe("poi_service");
-  });
-});
-
-describe("GET /api/places/reverse", () => {
-  it("rejects unauthenticated caller with 401", async () => {
-    const res = await reverseGET(
-      new Request("https://localhost:3000/api/places/reverse?lat=37.7825&lng=-122.4077"),
-    );
-    expect(res.status).toBe(401);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("rejects missing or invalid query params with 400", async () => {
-    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
-    const res1 = await reverseGET(
-      new Request("https://localhost:3000/api/places/reverse?lat=abc&lng=-122.4"),
-    );
-    expect(res1.status).toBe(400);
-
-    const res2 = await reverseGET(
-      new Request("https://localhost:3000/api/places/reverse?lat=37.7"),
-    );
-    expect(res2.status).toBe(400);
-  });
-
-  it("rejects out-of-range coordinates with 400", async () => {
-    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
-    const res1 = await reverseGET(
-      new Request("https://localhost:3000/api/places/reverse?lat=95&lng=0"),
-    );
-    expect(res1.status).toBe(400);
-
-    const res2 = await reverseGET(
-      new Request("https://localhost:3000/api/places/reverse?lat=0&lng=185"),
-    );
-    expect(res2.status).toBe(400);
-  });
-
-  it("returns 200 with { poi: SAMPLE_POI } when authenticated", async () => {
-    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
-    fetchMock.mockResolvedValue(jsonResponse({ poi: SAMPLE_POI }));
-
-    const res = await reverseGET(
-      new Request("https://localhost:3000/api/places/reverse?lat=37.7825&lng=-122.4077"),
-    );
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data).toEqual({ poi: SAMPLE_POI });
-  });
-
-  it("returns 200 with { poi: null } when worker returns null", async () => {
-    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
-    fetchMock.mockResolvedValue(jsonResponse({ poi: null }));
-
-    const res = await reverseGET(
-      new Request("https://localhost:3000/api/places/reverse?lat=37.7&lng=-122.4"),
-    );
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data).toEqual({ poi: null });
   });
 });

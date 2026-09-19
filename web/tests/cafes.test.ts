@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import {
   createCafeWithFirstCheckIn,
   getCafe,
@@ -40,11 +40,15 @@ vi.mock("@/lib/db/postgres", async (importOriginal) => ({
 
 // Real provisionPhotos/consumeProvisionedIntents run against these fake deps;
 // only the default-deps factory is swapped (issue #86 seam).
-const provisionDeps = {
+const provisionDeps: Record<string, Mock> = {
   checkUploadIntents: vi.fn(),
   consumeUploadIntents: vi.fn(),
   getProcessUrls: vi.fn(),
   processImage: vi.fn(),
+  // Unreferenced by default: unit compensation deletes every id (the
+  // BRAWUKA-401 race tests override this to simulate a winner's row).
+  selectPhotoReferences: vi.fn().mockResolvedValue([]),
+  deleteProvisionedVariants: vi.fn(),
 };
 
 vi.mock("@/lib/images/provision-photos", async (importOriginal) => ({
@@ -304,24 +308,28 @@ describe("createCafeWithFirstCheckIn", () => {
     expect(clientQueryMock).not.toHaveBeenCalled();
   });
 
-  it("aborts the creation when the intent consume loses a replay race inside the tx", async () => {
+  it("attaches live originals post-commit with the real check-in id (BRAWUKA-400)", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [] }); // pre-provision dedupe check
-    provisionDeps.consumeUploadIntents.mockResolvedValue(false);
-    clientQueryMock
-      .mockResolvedValueOnce({ rows: [] }) // dedupe pre-check
-      .mockResolvedValueOnce({ rows: [{ id: "cafe-1" }] }) // insert cafe
-      .mockResolvedValueOnce({ rows: [{ id: "checkin-1" }] }); // insert first check-in
+    mockCreateHappyPath("cafe-1", "checkin-1");
 
-    const err = await createCafeWithFirstCheckIn(USER.id, {
+    const result = await createCafeWithFirstCheckIn(USER.id, {
       name: "x",
       ...SG,
       google_place_id: "ChIJx",
       checkin: validCheckinInput(),
-    }).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(PhotoIntentError);
-    // Nothing past the inserts: no photo write, no gallery merge, no stats.
-    expect(clientQueryMock).toHaveBeenCalledTimes(3);
+    });
+
+    expect(result).toEqual({ cafe_id: "cafe-1", checkin_id: "checkin-1", tz: expect.any(String) });
+    // Post-commit attach re-marks the live original from provision → checkin:
+    // same imageUuid, final-stage target (the DB row already committed).
+    const attachCalls = provisionDeps.getProcessUrls.mock.calls.filter(
+      (call) => (call[0] as { targetType?: string }).targetType === "checkin",
+    );
+    expect(attachCalls).toHaveLength(1);
+    expect(attachCalls[0][0]).toMatchObject({ imageUuid: IMG, targetType: "checkin", targetId: "checkin-1" });
   });
+
+
 
   it("dedupes on the pool pre-check without provisioning or opening a transaction", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: "existing-7" }] }); // pre-provision dedupe hit
@@ -357,6 +365,32 @@ describe("createCafeWithFirstCheckIn", () => {
     expect(err).toBeInstanceOf(CafeExistsError);
     expect((err as CafeExistsError).existingCafeId).toBe("existing-9");
     expect(poolQueryMock).toHaveBeenCalledTimes(2); // pre-provision check + post-rollback lookup
+  });
+
+  it("keeps the winner's R2 objects when a loser rolls back on a unique-index race (BRAWUKA-401)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [] }); // pre-provision dedupe misses (race window)
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [] }) // in-tx pre-check misses too
+      .mockRejectedValueOnce({ code: "23505" }); // insert hits the unique index
+    // After rollback the lookup runs on the pool, not the aborted connection.
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: "existing-9" }] });
+    // The reference gate runs before the winner lookup: the winner's gallery
+    // row already references the id, so the loser's rollback deletes nothing.
+    provisionDeps.selectPhotoReferences.mockResolvedValueOnce([IMG]);
+    const deleted: string[] = [];
+    provisionDeps.deleteProvisionedVariants.mockImplementation(async (id: string) => {
+      deleted.push(id);
+    });
+    const err = await createCafeWithFirstCheckIn(USER.id, {
+      name: "Dupe",
+      ...SG,
+      google_place_id: "ChIJx",
+      checkin: validCheckinInput(),
+    }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(CafeExistsError);
+    expect(provisionDeps.selectPhotoReferences).toHaveBeenCalledWith([IMG]);
+    expect(deleted).toEqual([]);
   });
 
   it("rejects an invalid user id before touching the database", async () => {
@@ -682,6 +716,22 @@ describe("toPublicCafeDetail", () => {
     const pub = toPublicCafeDetail(cafe);
     expect(pub.author).toBeNull();
     expect(pub.maintained_by_service).toBe(true);
+  });
+
+  it("computes owned_by_viewer from the viewer id without shipping created_by (DG146/DG147)", () => {
+    const owner = "550e8400-e29b-41d4-a716-446655440000";
+    const cafe = {
+      id: "c1",
+      name: "Test",
+      created_by: owner,
+      gallery: [],
+    } as unknown as CafeDetail;
+    const own = toPublicCafeDetail(cafe, owner);
+    expect(own.owned_by_viewer).toBe(true);
+    expect(own).not.toHaveProperty("created_by");
+    expect(toPublicCafeDetail(cafe, "other-user").owned_by_viewer).toBe(false);
+    expect(toPublicCafeDetail(cafe).owned_by_viewer).toBe(false);
+    expect(toPublicCafeDetail(cafe, null).owned_by_viewer).toBe(false);
   });
 });
 

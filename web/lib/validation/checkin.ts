@@ -73,14 +73,47 @@ export function parsePhotoIds(value: unknown, field = "photo_ids"): ParseResult<
   return { ok: true, value: [...seen] };
 }
 
-/** Optional ISO timestamp; must not be in the future. */
+/**
+ * Optional ISO 8601 timestamp; must not be in the future.
+ * Strict shape gate: full `YYYY-MM-DDTHH:mm:ss` with optional fraction
+ * and an explicit zone (`Z` or `±hh:mm`/`±hhmm`). Bare `new Date(s)`
+ * additionally parses "March 5, 2020", "03/05/2020", date-only, and
+ * zone-less strings — the zone-less forms resolve against the server TZ,
+ * so they are rejected here as nondeterministic.
+ */
+const ISO_8601_TS =
+  /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):?[0-5]\d)$/;
+
 export function parseVisitedAt(value: unknown, field = "visited_at"): ParseResult<Date | undefined> {
   if (value === undefined || value === null) return { ok: true, value: undefined };
   if (typeof value !== "string") return fail(`${field} must be an ISO timestamp string`);
+  const shape = ISO_8601_TS.exec(value);
+  if (!shape) return fail(`${field} must be an ISO 8601 timestamp`);
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return fail(`${field} is not a parseable timestamp`);
+  if (Number.isNaN(parsed.getTime())) return fail(`${field} must be an ISO 8601 timestamp`);
+  // Reject nonexistent calendar dates (e.g. Feb 30), which Date rolls over.
+  // The offset shifts wall-clock, but applying it back recovers the input
+  // wall date iff it exists. Compare against the input digits directly —
+  // constructing a Date from them would roll over identically and match.
+  const shifted = new Date(parsed.getTime() + offsetMinutes(value) * 60_000);
+  if (
+    shifted.getUTCFullYear() !== Number(shape[1]) ||
+    shifted.getUTCMonth() !== Number(shape[2]) - 1 ||
+    shifted.getUTCDate() !== Number(shape[3])
+  ) {
+    return fail(`${field} must be an ISO 8601 timestamp`);
+  }
   if (parsed.getTime() > Date.now()) return fail(`${field} cannot be in the future`);
   return { ok: true, value: parsed };
+}
+
+/** Signed offset of an ISO_8601_TS-shaped string, in minutes. */
+function offsetMinutes(s: string): number {
+  if (s.endsWith("Z")) return 0;
+  const tail = /([+-])(\d{2}):?(\d{2})$/.exec(s);
+  if (!tail) return 0;
+  const minutes = Number(tail[2]) * 60 + Number(tail[3]);
+  return tail[1] === "+" ? minutes : -minutes;
 }
 
 /** Thrown when a write references a cafe that does not exist. */

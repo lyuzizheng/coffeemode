@@ -15,7 +15,7 @@ export function POIPreview({
 }) {
   const t = useTranslations("create");
   return (
-    <Card className="border-border bg-surface-secondary">
+    <Card className="border-separator bg-surface-secondary">
       <Card.Header>
         <div className="flex items-center justify-between gap-3">
           <Card.Title>{t("previewTitle")}</Card.Title>
@@ -31,7 +31,7 @@ export function POIPreview({
         <div>
           <div className="text-xs font-medium uppercase tracking-wide text-muted">{t("location")}</div>
           <p className="mt-1 text-sm text-foreground">{poi.address ?? t("noAddress")}</p>
-          <p className="mt-1 font-mono text-[0.65rem] text-muted">
+          <p className="mt-1 font-mono text-xs text-muted">
             {poi.lat.toFixed(5)}, {poi.lng.toFixed(5)}
           </p>
         </div>

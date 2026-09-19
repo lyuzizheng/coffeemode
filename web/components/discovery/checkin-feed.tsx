@@ -15,11 +15,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { motion, useReducedMotion } from "framer-motion";
-import { spring } from "@/lib/motion";
+import { useSprings } from "@/lib/motion";
 import type { CheckInFeedMode } from "@/types/checkins";
 import { FeedCard } from "./feed-card";
 import { InlineError } from "./inline-error";
-import { FeedNotFoundError, useCheckinFeed } from "./use-checkin-feed";
+import { FeedCursorExpiredError, FeedNotFoundError, useCheckinFeed } from "./use-checkin-feed";
+import { SectionLabel } from "./section-label";
 
 const MODES: CheckInFeedMode[] = ["helpful", "newest"];
 
@@ -34,6 +35,7 @@ function FeedModeTabs({
 }) {
   const t = useTranslations("discovery");
   const reduced = useReducedMotion();
+  const springs = useSprings();
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     e.preventDefault();
@@ -45,7 +47,7 @@ function FeedModeTabs({
       role="tablist"
       aria-label={t("feed_mode_aria")}
       onKeyDown={onKeyDown}
-      className="flex h-8 items-center rounded-sm bg-surface-secondary p-0.5"
+      className="flex h-8 items-center rounded-md bg-surface-secondary p-0.5"
     >
       {MODES.map((m) => {
         const active = m === mode;
@@ -63,7 +65,7 @@ function FeedModeTabs({
             {active && (
               <motion.span
                 layoutId="feed-mode-pill"
-                transition={reduced ? { duration: 0 } : spring.snappy}
+                transition={reduced ? { duration: 0 } : springs.snappy}
                 className="absolute inset-x-0 inset-y-2 rounded-sm border border-separator bg-surface"
                 aria-hidden
               />
@@ -78,11 +80,12 @@ function FeedModeTabs({
 
 function FeedSkeleton() {
   return (
-    <div className="flex flex-col gap-2" aria-hidden>
+    <div className="flex flex-col" aria-hidden>
       {[0, 1].map((i) => (
-        <div key={i} className="rounded-md border border-separator bg-surface p-3">
+        <div key={i} className="border-b border-separator py-4 last:border-b-0">
           <div className="mb-2 h-3.5 w-24 animate-pulse rounded bg-surface-tertiary" />
-          <div className="h-3 w-40 animate-pulse rounded bg-surface-tertiary" />
+          <div className="mb-2 h-3 w-40 animate-pulse rounded bg-surface-tertiary" />
+          <div className="h-4 w-full animate-pulse rounded bg-surface-tertiary" />
         </div>
       ))}
     </div>
@@ -116,7 +119,10 @@ export function CheckinFeed({
   const [mode, setMode] = useState<CheckInFeedMode>("newest"); // DG113
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const { query, checkins, like, likePendingId, retryFromFirstPage } = useCheckinFeed(cafeId, mode);
+  const { query, checkins, like, likePendingIds, retryFromFirstPage } = useCheckinFeed(cafeId, mode);
+
+  // 410 → the hook is already resetting; render the reset state, never an error frame (BRAWUKA-462).
+  const cursorExpired = query.error instanceof FeedCursorExpiredError;
 
   // A 404 from the feed means the cafe is gone — route to the DG19 flow.
   useEffect(() => {
@@ -138,12 +144,13 @@ export function CheckinFeed({
 
   return (
     <section aria-label={t("feed_title")}>
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-lg font-bold text-foreground">{t("feed_title")}</h3>
-        <FeedModeTabs mode={mode} onChange={setMode} />
+      <div className="mb-3">
+        <SectionLabel action={<FeedModeTabs mode={mode} onChange={setMode} />}>
+          {t("feed_title")}
+        </SectionLabel>
       </div>
 
-      {query.isPending ? (
+      {query.isPending || cursorExpired ? (
         <FeedSkeleton />
       ) : query.isError && checkins.length === 0 ? (
         query.error instanceof FeedNotFoundError ? null : (
@@ -152,7 +159,7 @@ export function CheckinFeed({
       ) : checkins.length === 0 ? (
         <FeedEmpty onCheckIn={onCheckIn} />
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col">
           {checkins.map((checkin) => (
             <FeedCard
               key={checkin.id}
@@ -160,7 +167,7 @@ export function CheckinFeed({
               cafeId={cafeId}
               cafeName={cafeName}
               onLike={like}
-              likePending={likePendingId === checkin.id}
+              likePending={likePendingIds.has(checkin.id)}
             />
           ))}
           {query.isFetchingNextPage && (

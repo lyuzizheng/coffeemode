@@ -130,6 +130,10 @@ export interface AppConfig {
     gcTimeMs: number;
     persistMaxAgeMs: number;
   };
+  staging: {
+    /** Staging-journey Vitest worker cap (spec 0010 S4). */
+    maxWorkers: number;
+  };
   runtimeConfig: {
     responseCache: {
       sMaxAgeSeconds: number;
@@ -153,6 +157,9 @@ export interface AppConfig {
       performance: number;
       /** `/` floor — the map surface can't hold the static-scaffold 0.8. */
       performanceHome: number;
+      /** `/cafes/[id]` floor — DG124 hydrates the same map app under the
+       * SSR shell, so the cafe page carries the map bundle too. */
+      performanceCafe: number;
       accessibility: number;
       bestPractices: number;
       seo: number;

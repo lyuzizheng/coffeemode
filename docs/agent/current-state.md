@@ -12,34 +12,24 @@ The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI 
   (`poi-service`, `image-service`) are deployed to staging and production, so what
   is left there is the POI Google Places key, a Cloudflare deploy API token, and
   custom domains — see `docs/agent/pending-user-actions.md`.
+- BRAWUKA-370/473 UI density program: the BRAWUKA-370 audit's four sub-issues
+  (418/419/420/421) merged via #514/#516/#517; the follow-up density pass
+  (BRAWUKA-473, PRs #518/#519) unified concentric radii, chip sizing, type pairing,
+  44px hit areas, and skeleton geometry, and codified the rules in spec 0002
+  §Spacing and radius. Design artifacts in `docs/design/` were harmonized to
+  shipped code (see `docs/design/README.md` §Harmonization notes).
 - BRAWUKA-335 spec revision (specs 0003/0005 + new 0010): local dev defaults to
   the staging Supabase project for auth (Google OAuth) while app data stays on
   the local compose Postgres; `supabase-mock` is retained for offline/unit use;
   staging journey suites run in per-suite scratch DBs via a serialized
   `staging-journey` workflow; prod promotion adds manual owner approval.
-- Issue #23 (distributed Postgres token-bucket rate limiter) is merged.
+- BRAWUKA-475/476 nightly recompute migration: nightly work_stats recompute and Helpful ranking snapshot migrated from GitHub Actions (.github/workflows/nightly-recompute.yml deleted) to Dokploy VPS scheduled jobs (02:00 UTC daily) via deploy/dokploy/nightly-recompute.sh. Production DATABASE_URL stays confined to Dokploy environment variables without entering GitHub secrets. Failure alerting triggers Multica autopilot webhook (MULTICA_AUTOPILOT_WEBHOOK_URL).
 - Open issues carry tier-0..3 labels mirroring the priority tiers in `docs/specs/0004` §Priority tiers (authority lives there, not in the harness). Fix order: tier-0 correctness/security/docs-truth first, then tier-1 launch gates.
-- Issue #25 (image completion service with atomic DB writes) is merged.
 - Issue #24's likes_count trigger (#57) and work_stats row locking (#56) are merged; #24 stays open (tier-0) until the gallery-merge convergence in #234 lands. JSONB normalization is deferred with a revisit trigger (0004 Post-MVP).
-- Issue #26 (shared packages/common single-source) is merged.
-- Issue #27 (work_stats row locking) is merged (#56).
-- Issue #74 merges the post-review P1 fixes for PRs #66–#73 (OAuth redirect allowlist, proxy session refresh, profile upsert failure, sign-out cache clearing, and upstream POI/image error logging).
 - Issue #114 established that Apple credentials do not block map-independent
   work. Design gates for those slices are now all cleared — every
   map-independent UI artifact is delivered and grilled (DG21–DG124); only the
   map-bound artifacts remain, waiting on Apple credentials (#131).
-- Issue #117 adds CI enforcement for the real-DB integration suite; the local suite is green.
-- BRAWUKA-146 / spec 0008 real-client HTTP journey matrix (Paths 1–6 through route handlers only): Stage 1 harness (BRAWUKA-147, merged #330), Stage 2 suites (BRAWUKA-156..159, BRAWUKA-149), and Stage 3 (BRAWUKA-150): test suite audited and pruned per spec 0008 §12, `test:integration:http` mounted as canonical gate in CI, database teardown hardened.
-- Issue #118 hardens the real-DB suite against unsafe database targets and order-dependent coverage.
-- Issue #119 preserves image-service storage failures instead of mapping them to `not_found`.
-- Issue #156 adds a real MinIO/R2 image round-trip suite (`web/tests/integration/images.integration.test.ts`, `npm run test:integration:images`): presigned PUT -> HEAD -> processor variant re-upload, creation/check-in photo provisioning end-to-end with real storage + DB gallery/intent metadata, missing-object 404, tampered Content-Type 403, single-use intent consume, and bad-creds 403. Storage failures fail the suite (no silent skip); CI runs it in `integration-gate` (merged DB+MinIO; was `images-integration-gate`).
-- Issue #130 / PR #128 shipped the `cafe-creation` slice: Google/Apple Maps link import and Google/Apple provider search share one first-check-in flow. PR #128 merged 2026-08-20; the Kimi visual review was completed post-merge on 2026-08-23 (verdict on PR #128); findings #183–#185 were fixed in PR #187. Slice is COMPLETE.
-- PR #138 (docs: cafe-creation spec and map backlog) is merged to `main`.
-- Issue #146 / work-profile slice completes the map-independent work_stats aggregation: `coerceWorkStats` preserves `experience_score`/`composite_score`, create/edit/soft-delete recompute via `recomputeWorkStats` with `FOR UPDATE`, public-safe `CafeSummary`/`CafeDetail` expose both scores, `web/scripts/recompute-work-stats.mjs` provides the idempotent nightly drift correction and `.github/workflows/nightly-recompute.yml` schedules it at 02:00 UTC with observable failure.
-- Issue #189 / app-config slice adds the universal typed config: `web/config/rate-limits.yaml` owns the 4 API rate-limit buckets, `web/config/app.yaml` owns product parameters (`search.maxRadiusKm`, `cafes.listLimitMax`), and `web/lib/config.ts` loads + schema-validates both at startup (fail-fast on bad shape). Existing call sites migrated with values unchanged; feature slices must consume config, never hardcode.
-- Issue #133 / discovery-sheet slice (PR #195): the map-independent discovery core is live — bespoke Framer Motion PEEK/HALF/FULL sheet on mobile, 380px sidebar + 400px detail column ≥1024px, one-push/then-replace `/cafes/[id]` URL sync with Back-collapse, public `GET /api/cafes/[id]/checkins` feed (Newest default DG113, mode-bound keyset cursors, 20/page), anonymous "A nomad" DTOs, DG17 inline Retry, DG19 missing-cafe toast flow. `app.yaml` gains `feed.pageSize` and `discovery.defaultCenter` (no geolocation prompt, DG112). Issue #148 / PR #287 delivered the check-in drawer (integrated across discovery, cafe page actions/feed, and profile); `/cafes/[id]` SSR remains `seo-sharing`'s (#150).
-- Issue #150 / seo-sharing slice ships the public SSR `/cafes/[id]` surface: two-part page (Part 1 aggregate shell — ScorePair/WorkProfile/PolicyConsensus/gallery/hours plus JSON-LD CafeOrCoffeeShop with aggregateRating from experience_score and `serializeJsonLd` XSS escaping; Part 2 the discovery feed component client-loaded, Newest default, never in initial HTML — DG106/DG113), locale-independent canonical + hreflang x-default (DG110), OG hook copy + dynamic no-cover fallback card with honest dimensions (DG108 — 400×300 for cover card, 1200×630 fallback), sitemap/robots/llms.txt (DG105, sitemap with s-maxage), CDN shell cache from `app.yaml` `seo.shellCache` (DG107), WeChat-aware share control with focus management swept into discovery (DG109), and a real 404 committed by the proxy before the root loading boundary can stream a soft-404, with the DG111 recovery block scaffolding (never user geolocation, DG112 — endpoint + block wired but empty until cafe tombstone retains id+lat/lng; quiet 404 is the interim contract). Public-safe: the SSR payload carries no `StoredImage.by`/author ids (DG13). DG124 map hydration stays the blocked `deeplink-hydration` slice.
-- Apple live search is configuration-gated and does not block link import or Google search. New user-visible UI implementation is separately design-gated on a slice-specific Kimi K3 artifact.
 
 ## What exists
 
@@ -53,7 +43,20 @@ web/db/migrations/       0001_init.sql — core schema (spec 0001);
                          0010_drop_min_spend.sql (DG125), 0011_cafe_tombstone_lifecycle.sql,
                          0012_drop_redundant_cafe_indexes.sql,
                          0013_search_city_index.sql,
-                         0014_fk_indexes_and_partial_gist.sql
+                         0014_fk_indexes_and_partial_gist.sql,
+                         0015_drop_dead_cafe_columns.sql (#253),
+                         0016_seed_service_account.sql (DG125/#229),
+                         0017_cafe_visibility.sql (DG147/#229),
+                         0018_public_identity.sql (#139),
+                         0019_checkin_idempotency.sql (DG61),
+                         0020_navigation_prompt_queue.sql (#149),
+                         0021_helpful_ranking.sql (DG148),
+                         0022_profiles_onboarded.sql (DG122),
+                         0023_runtime_config.sql (BRAWUKA-284),
+                         0024_service_account_rename.sql (BRAWUKA-278),
+                         0025_drop_cafes_cover.sql (BRAWUKA-307),
+                         0026_drop_rate_limits.sql (BRAWUKA-378),
+                         0027_navigation_unresolved_dedupe.sql (BRAWUKA-391)
 web/lib/auth/            Supabase server client (PKCE), profile upsert logic
 web/lib/db/              Postgres pool (server-side only), withTransaction, atomic like toggle,
                          cafes domain lib (fused create + first check-in + stats, nearby list, getCafe),
@@ -83,8 +86,7 @@ web/app/cafes/[id]/      SSR public cafe shell + client-loaded feed (seo-sharing
                          JSON-LD, canonical/hreflang, OG + dynamic fallback card,
                          gone-cafe 404; app/sitemap.ts + app/robots.ts + public/llms.txt
 web/components/checkin/  Check-in drawer, sliders, photo uploader, and success feedback (PR #287)
-web/lib/rate-limit.ts    Token-bucket rate limiter: in-memory (dev/tests) or Postgres-backed
-                         (production/horizontal scale) with a shared client identifier helper
+web/lib/rate-limit.ts    In-memory token-bucket rate limiter with a shared client identifier helper
 web/next.config.ts       Long immutable Cache-Control headers for static/PWA assets
 web/app/sw.ts            Serwist runtime cache (CacheFirst for immutable assets, NetworkOnly for
                          dynamic pages and API routes)
@@ -123,7 +125,9 @@ docs/agent/              current state, planned-slice manifest, owner actions
 - map-home — COMPLETE: MapLibre GL v5 + OpenFreeMap basemap on `/`; the
   Apple Developer blocker (#131) is eliminated — BRAWUKA-308's review
   pivoted the basemap to MapLibre. Tile host = the `map:` section in
-  web/config/app.yaml (full style document URLs — public OFM instance;
+  web/config/app.yaml; BRAWUKA-362 replaced the OFM liberty/dark styles
+  with CoffeeMode's own two-ink vintage styles served same-origin from
+  web/public/map/ (vector tiles + glyphs still on the public OFM instance;
   self-hosting permanently off the table per BRAWUKA-321 owner decision).
   The surface binds to `IMapProvider`, not MapLibre — a Google/Apple swap
   is a provider swap, not a rewrite.
@@ -134,15 +138,14 @@ docs/agent/              current state, planned-slice manifest, owner actions
   external-result pins remain (#134).
 - map-creation-entry — READY: map-tap creation + reverse geocoding
   (Nominatim/Photon picked at implementation time) (#136).
-- deeplink-hydration — READY: the map app now exists for the /cafes/[id]
-  SSR shell to hydrate into at FULL (DG124) (#150).
+- deeplink-hydration — COMPLETE: /cafes/[id] SSR shell hydrates into the
+  map app at FULL (DG124); /?cafe= 308s to the canonical URL (BRAWUKA-514).
 ```
 
 ### Blocked context (do not start yet)
 
 ```text
 - deploy-vps — Docker + VPS + CDN + CI/CD [BLOCKED on domain + VPS + Cloudflare account]
-- cleanup-legacy — remove old Vite frontend + Java backend [BLOCKED on deploy-vps]
 ```
 
 ## Known issues
@@ -154,11 +157,11 @@ docs/agent/              current state, planned-slice manifest, owner actions
 - Supabase dashboard still needs Apple/Google OAuth provider config
 - Session-refresh proxy (`web/proxy.ts`) refreshes only when a Supabase session cookie is present; route handlers verify the session via `getUser()` before any Postgres write
 - Postgres pool tuned with configurable `max`, idle/connection timeouts, error handling, and a graceful shutdown hook registered via Next.js `instrumentation.ts`
-- Postgres-backed rate limiter available for multi-instance; per decision 34a the single app container runs `RATE_LIMIT_BACKEND=memory` (a Supabase round trip per check is not worth it at MVP scale)
+- Rate limiting enforces in memory on the single app container (BRAWUKA-378 deleted the Postgres backend outright — a future multi-instance deploy needs a new shared-store decision)
 - `next build` warns about custom Cache-Control for `/_next/static/:path*` — intentional for production hashed chunks
 - `/cafes/[id]` shell carries `s-maxage` (DG105); the bypass side is executable since BRAWUKA-184, not a comment: `seo.shellCache` in `web/config/app.yaml` owns TTLs + bypass values, `web/lib/cache-policy.ts` owns the predicates + edge-rule derivation, `web/proxy.ts` stamps `private, no-store` on session-refresh (Set-Cookie) responses and the gone-cafe 404 rewrite, and `deploy/dokploy/cache-rules.json` (drift-pinned by `tests/cafe-shell-cache.test.ts`) owns the edge rule — the future Cloudflare CDN (deploy-vps) must enforce it (vary on Accept-Language since Next strips origin Vary on App Router HTML; bypass on `sb-*` request cookies and Set-Cookie responses; only 200 cacheable). `sitemap.xml` is cached with the same `s-maxage` (DG105/DG107).
 - `maps_share_url` host validation, 10 km nearby-search cap, and 10 MB image-upload cap are active
-- Issue #158 adds the safe orphan-original cleanup: `image-service/scripts/clean-orphan-originals.mjs` (npm run clean:orphan-originals) deletes `original/` objects older than RETENTION_DAYS that lack completion metadata OR are still in the "provision" stage (uploaded but never attached). complete() now REQUIRES stage metadata: the attach flow sends cafe|checkin + target id; the creation flow sends provision + imageUuid (issue #86 pre-target processing). DRY_RUN=1 default, cursor-paginated, batch-bounded, idempotent, structured JSON output; covered by the images integration suite. Production schedule/least-privilege creds remain owner actions (#147, #154).
+- Issue #158 adds the safe orphan-original cleanup: `image-service/scripts/clean-orphan-originals.mjs` (npm run clean:orphan-originals) deletes `original/` objects older than RETENTION_DAYS that lack completion metadata OR are still in the "provision" stage (uploaded but never attached) AND are absent from the `web/scripts/export-live-image-keys.mjs` DB export (BRAWUKA-400 reference-aware: referenced stale-marker keys report `would-keep reason:"referenced"`, never deleted). complete() now REQUIRES stage metadata: the creation flow sends provision + imageUuid (issue #86 pre-target processing); the post-commit attach leg (BRAWUKA-400) re-marks live originals to `checkin` via a metadata-preserving re-PUT, never blocking the committed creation. DRY_RUN=1 default, cursor-paginated, batch-bounded, idempotent, structured JSON output; covered by the images integration suite. Production schedule (export + sweep)/least-privilege creds remain owner actions (#147, #154).
 - Apple Developer Program purchase pending (needed for MapKit JS and Apple live search only; #131)
 - poi-service is deployed to both environments (its `poi-store`/`poi-cache` D1 + KV
   resources applied 2026-09-12) but still runs without `GOOGLE_PLACES_API_KEY`, so
@@ -167,9 +170,3 @@ docs/agent/              current state, planned-slice manifest, owner actions
   bindings remain the local-dev compose kit — image-service custom domains are
   likewise still owner actions (§6).
 ```
-
-## Latest review
-
-D1, D4, D7, and A2 were implemented together on `feat/impl-phase1-remainder`. An independent review surfaced four blockers: the like CTE could insert orphaned rows for soft-deleted check-ins, the pool shutdown hook auto-registered at import and force-exited the process, Worker `compatibility_date` values were in the future, and the image completion route wrote `StoredImage` records without a `source` attribution. All four were fixed and verified; the branch merged to `main` as PR #22.
-
-An independent critical review of merged PRs #66–#73 surfaced P1 findings in OAuth `redirectTo` allowlist handling (#29), proxy session refresh (#30), OAuth callback profile upsert failure (#42), sign-out cache clearing (#47), and upstream POI/image error body logging (#50). The fixes were applied on `fix/post-review-p1-issues`, verified by `npm run verify` and `preflight`, and merged to `main` as PR #74.

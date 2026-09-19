@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { PolicyChips, policyOptions } from "@/components/cafe/policy-chips";
@@ -22,7 +22,19 @@ const APPLE_PLACE = vi.hoisted<POI>(() => ({
   types: ["cafe"],
   business_status: null,
   hours_json: null,
-  photo_refs: [],
+  fetched_at: "2026-01-01T00:00:00.000Z",
+}));
+
+const GOOGLE_PLACE = vi.hoisted<POI>(() => ({
+  place_id: "google-1",
+  source: "google",
+  name: "Google Cafe",
+  lat: 1.3,
+  lng: 103.8,
+  address: "Google Address",
+  types: ["cafe"],
+  business_status: "OPERATIONAL",
+  hours_json: null,
   fetched_at: "2026-01-01T00:00:00.000Z",
 }));
 
@@ -34,6 +46,12 @@ vi.mock("@/lib/places/apple-place-search", () => ({
     search: async () => [APPLE_PLACE],
   }),
 }));
+
+// Provider gating reads NEXT_PUBLIC_* at render (BRAWUKA-326); every test
+// starts from the app.yaml defaults (google on, apple off, MapKit off).
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   return (
@@ -92,7 +110,6 @@ describe("POIPreview", () => {
       types: ["cafe"],
       business_status: "OPERATIONAL",
       hours_json: null,
-      photo_refs: [],
       fetched_at: new Date().toISOString(),
     };
 
@@ -119,7 +136,7 @@ describe("CafeCreationSheet & Trigger", () => {
   });
 
   it("renders trigger button and opens sheet when clicked", () => {
-    render(<CafeCreationTrigger isAuthenticated={true} />, { wrapper: Wrapper });
+    render(<CafeCreationTrigger isAuthenticated={true} mapkitConfigured={false} />, { wrapper: Wrapper });
 
     const trigger = screen.getByRole("button", { name: /Add a cafe/i });
     expect(trigger).toBeEnabled();
@@ -145,7 +162,6 @@ describe("CafeCreationSheet & Trigger", () => {
             types: ["cafe"],
             business_status: null,
             hours_json: null,
-            photo_refs: [],
             fetched_at: new Date().toISOString(),
           }),
         };
@@ -177,6 +193,8 @@ describe("CafeCreationSheet & Trigger", () => {
 
   it("blocks the form with a food-only message when the worker skips the place (BRAWUKA-328)", async () => {
     const onOpenChange = vi.fn();
+    // Apple tab needs both gates open: source flag on + request-time MapKit prop.
+    vi.stubEnv("NEXT_PUBLIC_SEARCH_EXTERNAL_APPLE", "true");
 
     globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
       if (url.includes("/api/places/resolve")) {
@@ -196,7 +214,7 @@ describe("CafeCreationSheet & Trigger", () => {
     });
 
     render(
-      <CafeCreationSheet isOpen={true} onOpenChange={onOpenChange} isAuthenticated={true} />,
+      <CafeCreationSheet isOpen={true} onOpenChange={onOpenChange} isAuthenticated={true} mapkitConfigured />,
       { wrapper: Wrapper },
     );
 
@@ -217,9 +235,96 @@ describe("CafeCreationSheet & Trigger", () => {
     });
     expect(screen.queryByRole("button", { name: "Create cafe" })).not.toBeInTheDocument();
   });
+
+  it("opens creation form directly for seeded Google POI without calling external persist (BRAWUKA-402)", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    globalThis.fetch = fetchSpy;
+
+    render(
+      <CafeCreationSheet
+        isOpen={true}
+        onOpenChange={vi.fn()}
+        isAuthenticated={true}
+        initialPoi={GOOGLE_PLACE}
+        initialPersist={false}
+      />,
+      { wrapper: Wrapper },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Create cafe" })).toBeInTheDocument();
+    });
+    expect(fetchSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/places/external"),
+      expect.anything(),
+    );
+  });
+
+  it("persists seeded Apple POI through /api/places/external before showing creation form (BRAWUKA-402)", async () => {
+    const fetchSpy = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("/api/places/external")) {
+        return { ok: true, status: 200, json: async () => ({ stored: 1 }) };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    });
+    globalThis.fetch = fetchSpy;
+
+    render(
+      <CafeCreationSheet
+        isOpen={true}
+        onOpenChange={vi.fn()}
+        isAuthenticated={true}
+        initialPoi={APPLE_PLACE}
+        initialPersist={true}
+      />,
+      { wrapper: Wrapper },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Create cafe" })).toBeInTheDocument();
+    });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/places/external",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ pois: [APPLE_PLACE] }),
+      }),
+    );
+  });
+
+  it("renders localized fallback when seeded Apple POI persist fails with 400 (BRAWUKA-402)", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchSpy = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("/api/places/external")) {
+        return { ok: false, status: 400, json: async () => ({ error: "invalid_request" }) };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    });
+    globalThis.fetch = fetchSpy;
+
+    render(
+      <CafeCreationSheet
+        isOpen={true}
+        onOpenChange={vi.fn()}
+        isAuthenticated={true}
+        initialPoi={APPLE_PLACE}
+        initialPersist={true}
+      />,
+      { wrapper: Wrapper },
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("Search is unavailable right now.");
+    });
+    expect(screen.queryByRole("button", { name: "Create cafe" })).not.toBeInTheDocument();
+    expect(warn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ code: "invalid_request" }),
+    );
+  });
 });
 
-describe("CafeCreationSheet session expiry (BRAWUKA-124/BRAWUKA-212)", () => {
+describe("CafeCreationSheet submit failures (BRAWUKA-124/BRAWUKA-212/BRAWUKA-490/BRAWUKA-465)", () => {
   function jsonResponse(status: number, body: unknown) {
     return { ok: status >= 200 && status < 300, status, json: async () => body };
   }
@@ -284,6 +389,17 @@ describe("CafeCreationSheet session expiry (BRAWUKA-124/BRAWUKA-212)", () => {
     await expectSignInGate();
   });
 
+  it("shows the already-exists hint when a 409 body omits cafe_id (BRAWUKA-490)", async () => {
+    vi.mocked(uploadPhoto).mockResolvedValue("img-uuid-1");
+    // Raced insert: the worker can 409 without a resolvable cafe_id.
+    mockRoutes((url) => (url.includes("/api/cafes") ? jsonResponse(409, { error: "conflict" }) : jsonResponse(200, {})));
+
+    await openSheetWithPoi();
+    fillAndSubmit();
+
+    await screen.findByText("This place is already in CafeMood.");
+  });
+
   it("routes a publish-time photo upload 401 to the gate without posting", async () => {
     vi.mocked(uploadPhoto).mockRejectedValue(new Error("unauthorized"));
     mockRoutes(() => jsonResponse(200, {}));
@@ -312,9 +428,10 @@ describe("CafeCreationSheet session expiry (BRAWUKA-124/BRAWUKA-212)", () => {
   });
 
   it("routes an Apple place-persist 401 to the gate", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SEARCH_EXTERNAL_APPLE", "true");
     mockRoutes((url) => (url.includes("/api/places/external") ? jsonResponse(401, { error: "unauthorized" }) : jsonResponse(200, {})));
 
-    render(<CafeCreationSheet isOpen onOpenChange={vi.fn()} isAuthenticated />, { wrapper: Wrapper });
+    render(<CafeCreationSheet isOpen onOpenChange={vi.fn()} isAuthenticated mapkitConfigured />, { wrapper: Wrapper });
     fireEvent.click(screen.getByRole("tab", { name: "Search a place" }));
     fireEvent.click(screen.getByRole("button", { name: "Apple Maps" }));
     const searchInput = await screen.findByPlaceholderText("Search for a cafe");
@@ -323,6 +440,37 @@ describe("CafeCreationSheet session expiry (BRAWUKA-124/BRAWUKA-212)", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Apple Cafe/ }));
 
     await expectSignInGate();
+  });
+
+  it("hides the Apple provider when externalSources.apple is off (DG134)", async () => {
+    mockRoutes(() => jsonResponse(200, {}));
+
+    render(<CafeCreationSheet isOpen onOpenChange={vi.fn()} isAuthenticated />, { wrapper: Wrapper });
+    fireEvent.click(screen.getByRole("tab", { name: "Search a place" }));
+
+    expect(screen.getByRole("button", { name: "Google Maps" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Apple Maps" })).not.toBeInTheDocument();
+  });
+
+  it("hides the Apple provider until MapKit is configured (DG143)", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SEARCH_EXTERNAL_APPLE", "true");
+    mockRoutes(() => jsonResponse(200, {}));
+
+    render(<CafeCreationSheet isOpen onOpenChange={vi.fn()} isAuthenticated mapkitConfigured={false} />, { wrapper: Wrapper });
+    fireEvent.click(screen.getByRole("tab", { name: "Search a place" }));
+
+    expect(screen.getByRole("button", { name: "Google Maps" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Apple Maps" })).not.toBeInTheDocument();
+  });
+
+  it("hides the search tab entirely when every external source is off", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SEARCH_EXTERNAL_GOOGLE", "false");
+    mockRoutes(() => jsonResponse(200, {}));
+
+    render(<CafeCreationSheet isOpen onOpenChange={vi.fn()} isAuthenticated />, { wrapper: Wrapper });
+
+    expect(screen.queryByRole("tab", { name: "Search a place" })).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/maps\.apple\.com/i)).toBeInTheDocument();
   });
 
   it("shows generic copy for an unmapped server code and logs the code", async () => {
@@ -357,6 +505,26 @@ describe("CafeCreationSheet session expiry (BRAWUKA-124/BRAWUKA-212)", () => {
     expect(warn).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({ code: "image_processing_error" }),
+    );
+  });
+
+  it("links to the existing cafe when the POST dedupes with 409 (BRAWUKA-465)", async () => {
+    vi.mocked(uploadPhoto).mockResolvedValue("img-uuid-1");
+    mockRoutes((url) =>
+      url.includes("/api/cafes")
+        ? jsonResponse(409, { error: "cafe_exists", cafe_id: "cafe-dup-1" })
+        : jsonResponse(200, {}),
+    );
+
+    await openSheetWithPoi();
+    fillAndSubmit();
+
+    await waitFor(() => {
+      expect(screen.getByText(/already in CafeMood/)).toBeInTheDocument();
+    });
+    expect(screen.getByRole("link", { name: "View existing cafe" })).toHaveAttribute(
+      "href",
+      "/cafes/cafe-dup-1",
     );
   });
 });

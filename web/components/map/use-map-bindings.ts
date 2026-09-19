@@ -11,13 +11,7 @@ import type { Coordinates } from "@/lib/cities";
 import { getMapDefaultZoom, getMapFocusZoom } from "@/lib/client-env";
 import type { CafeSummary } from "@/types/cafes";
 import type { IMapProvider } from "./types";
-
-/** Mobile sheet PEEK height (mobile-sheet.tsx PEEK_VISIBLE_PX) — keeps pins
- * and the attribution control above the collapsed sheet. */
-const SHEET_PEEK_PX = 172;
-/** Desktop detail column width (desktop-discovery.tsx) — overlays the map
- * below xl, so the camera must shift right when a cafe is selected. */
-const DETAIL_COLUMN_PX = 400;
+import { DETAIL_COLUMN_PX, SHEET_COLLAPSED_PX, SHEET_PEEK_PX } from "@/lib/layout";
 
 export interface MapBindingRefs {
   providerRef: RefObject<IMapProvider | null>;
@@ -45,7 +39,9 @@ export function useMapPadding(
         ? Math.round(window.innerHeight * 0.85)
         : snap === "half"
           ? Math.round(window.innerHeight * 0.5)
-          : SHEET_PEEK_PX;
+          : snap === "collapsed"
+            ? SHEET_COLLAPSED_PX
+            : SHEET_PEEK_PX;
     const left = isDesktop && !isXl && selectedCafeId ? DETAIL_COLUMN_PX : 0;
     provider.setPadding({ top: 0, right: 0, bottom, left });
   }, [providerRef, isDesktop, isXl, snap, selectedCafeId, mapReady]);
@@ -60,14 +56,30 @@ export function useCenterSync(
   // commit the provider mounts in. Comparing against it (not "last flown")
   // covers centers that changed while the map was still loading.
   const appliedCenterRef = useRef<Coordinates | null>(center);
+  const evaluatedRef = useRef(false);
   useEffect(() => {
     if (!center || !mapReady) return;
-    const prev = appliedCenterRef.current;
-    if (prev && prev.lat === center.lat && prev.lng === center.lng) return;
-    appliedCenterRef.current = center;
     const provider = providerRef.current;
     if (!provider) return;
-    provider.flyTo(center, Math.max(provider.getZoom(), getMapDefaultZoom()));
+    const prev = appliedCenterRef.current;
+    const firstEval = !evaluatedRef.current;
+    evaluatedRef.current = true;
+    appliedCenterRef.current = center;
+    if (prev && prev.lat === center.lat && prev.lng === center.lng) {
+      // First evaluation at the constructor center: skip — a pan during map
+      // load must never be yanked back. Later same-target re-applications
+      // (locate re-tap) recenter only when the camera actually moved away —
+      // DG120's "re-tap recenters on the dot" would otherwise dead-end on
+      // the unchanged center value.
+      if (firstEval) return;
+      const current = provider.getCenter();
+      const atTarget =
+        Math.abs(current.lat - center.lat) < 1e-5 &&
+        Math.abs(current.lng - center.lng) < 1e-5;
+      if (atTarget) return;
+    }
+    // settle.slow ceiling (spec 0002 ≤450ms) for every center-driven beat.
+    provider.flyTo(center, Math.max(provider.getZoom(), getMapDefaultZoom()), 450);
   }, [providerRef, center, mapReady]);
 }
 

@@ -1,6 +1,7 @@
 /**
  * @vitest-environment node
- * Real MinIO integration — orphan-original cleanup script (issue #158).
+ * Real MinIO integration — orphan-original cleanup script (issue #158,
+ * hardened BRAWUKA-400).
  *
  * Stacked on the #156 storage suite: same local MinIO stack and TEST_R2_* env
  * isolation. Runs image-service/scripts/clean-orphan-originals.mjs as a child
@@ -10,6 +11,9 @@
  *   - completed: original/ WITH x-amz-meta-targettype (live gallery original) → kept
  *   - young abandoned: no metadata but inside the retention window → kept
  *   - dry-run (default): reports would-delete without deleting
+ *   - reference-aware (BRAWUKA-400): a stale-marker original whose key IS in
+ *     LIVE_KEYS_FILE reports would-keep reason:"referenced", never deleted —
+ *     even with DRY_RUN=0
  *   - idempotent: second run deletes nothing
  *
  * Requires:
@@ -34,11 +38,7 @@ import {
   r2Client,
 } from "../helpers/r2";
 
-// Storage suites never touch the rate limiter; pin the memory backend so
-// tests/setup.ts's rateLimiter.reset() cannot hit Postgres after this file
-// sets DATABASE_URL (sequential execution shares the process env).
-process.env.RATE_LIMIT_BACKEND = "memory";
-
+// Storage suites never touch the rate limiter (in-memory only, BRAWUKA-378).
 const RUN_INTEGRATION = process.env.RUN_INTEGRATION === "1";
 const describeCleanup = RUN_INTEGRATION ? describe : describe.skip;
 
@@ -64,8 +64,14 @@ async function createTestBucket(): Promise<string> {
 
 async function deleteTestBucket(bucket: string): Promise<void> {
   const url = `${R2_ENDPOINT.replace(/\/+$/, "")}/${bucket}`;
-  // Benign: teardown deletion of ephemeral test bucket; bucket may already be deleted.
-  await r2Client().fetch(url, { method: "DELETE" }).catch(() => {});
+  try {
+    const res = await r2Client().fetch(url, { method: "DELETE" });
+    if (!res.ok && res.status !== 404 && res.status !== 204) {
+      cleanupErrors.push(`DELETE bucket ${bucket} failed with HTTP ${res.status}`);
+    }
+  } catch (e) {
+    cleanupErrors.push(`DELETE bucket ${bucket} threw ${(e as Error).message}`);
+  }
 }
 
 async function putObject(key: string, body: Uint8Array, metadata?: Record<string, string>): Promise<void> {
@@ -126,19 +132,19 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
   beforeAll(async () => {
     minioUp = await minioReachable();
     if (!minioUp) {
-      console.warn("MinIO not reachable — cleanup tests will SKIP");
-      return;
+      throw new Error(
+        `MinIO is not reachable at ${R2_ENDPOINT}. Orphan cleanup integration tests require a running MinIO instance (docker compose up -d --wait minio && docker compose run --rm minio-init).`,
+      );
     }
   });
 
   beforeEach(async () => {
-    if (!minioUp) return;
     currentBucket = await createTestBucket();
     createdKeys.clear();
   });
 
   afterEach(async () => {
-    if (!minioUp || !currentBucket) return;
+    if (!currentBucket) return;
     for (const key of [...createdKeys]) {
       await deleteObject(key);
     }
@@ -150,8 +156,7 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     if (cleanupErrors.length) throw new AggregateError(cleanupErrors.map((m) => new Error(m)), "cleanup failures");
   });
 
-  it("dry-run reports abandoned originals without deleting them", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("dry-run reports abandoned originals without deleting them", async () => {
     const abandoned = `original/${randomUUID()}.webp`;
     const provisionStage = `original/${randomUUID()}.webp`;
     const completed = `original/${randomUUID()}.webp`;
@@ -171,8 +176,7 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     expect(await objectExists(completed)).toBe(true);
   });
 
-  it("deletes only metadata-less originals; completed originals survive", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("deletes only metadata-less originals; completed originals survive", async () => {
     const abandoned = `original/${randomUUID()}.webp`;
     const provisionStage = `original/${randomUUID()}.webp`;
     const completed = `original/${randomUUID()}.webp`;
@@ -191,9 +195,39 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     createdKeys.delete(provisionStage);
   }, 20_000);
 
-
-  it("is idempotent: a second run deletes nothing more", async (ctx) => {
+  it("keeps a stale-marker original listed in LIVE_KEYS_FILE: reported, never deleted (BRAWUKA-400)", async (ctx) => {
     if (!minioUp) return ctx.skip();
+    const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const referenced = `original/${randomUUID()}.webp`;
+    const orphan = `original/${randomUUID()}.webp`;
+    await seedOriginal(referenced, { targettype: "provision", targetid: referenced.split("/")[1].replace(".webp", ""), userid: "u1" });
+    await seedOriginal(orphan);
+    const dir = mkdtempSync(`${tmpdir()}/live-keys-`);
+    const file = `${dir}/live-keys.txt`;
+    try {
+      writeFileSync(file, `${referenced}\n`);
+      const dry = runCleanup({ DRY_RUN: "1", RETENTION_DAYS: "0", MAX_OBJECTS: "100", LIVE_KEYS_FILE: file });
+      expect(dry.status).toBe(0);
+      // True orphan vs. missing-attach original stay distinguishable.
+      expect(dry.stdout).toContain(`"key":"${orphan}"`);
+      expect(dry.stdout).toContain('"op":"would-delete"');
+      expect(dry.stdout).toContain(`"key":"${referenced}"`);
+      expect(dry.stdout).toContain('"op":"would-keep"');
+      expect(dry.stdout).toContain('"reason":"referenced"');
+      expect(dry.stdout).not.toContain(`"would-delete","key":"${referenced}"`);
+
+      const live = runCleanup({ DRY_RUN: "0", RETENTION_DAYS: "0", MAX_OBJECTS: "100", ALLOW_RETENTION_ZERO: "1", LIVE_KEYS_FILE: file });
+      expect(live.status).toBe(0);
+      expect(await objectExists(referenced)).toBe(true);
+      expect(await objectExists(orphan)).toBe(false);
+      createdKeys.delete(orphan);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("is idempotent: a second run deletes nothing more", async () => {
     const abandoned = `original/${randomUUID()}.webp`;
     await seedOriginal(abandoned);
     const first = runCleanup({ DRY_RUN: "0", RETENTION_DAYS: "0", MAX_OBJECTS: "100", ALLOW_RETENTION_ZERO: "1" });
@@ -207,8 +241,7 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
  }, 20_000);
 
 
-  it("young metadata-less originals inside the retention window are kept", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("young metadata-less originals inside the retention window are kept", async () => {
     const young = `original/${randomUUID()}.webp`;
     await seedOriginal(young);
     const result = runCleanup({ DRY_RUN: "0", RETENTION_DAYS: "30", MAX_OBJECTS: "100" });
@@ -216,8 +249,7 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     expect(await objectExists(young)).toBe(true);
   });
 
-  it("empty-string targetType metadata counts as abandoned (falsy marker)", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("empty-string targetType metadata counts as abandoned (falsy marker)", async () => {
     const malformed = `original/${randomUUID()}.webp`;
     await seedOriginal(malformed, { targettype: "" });
     const result = runCleanup({
@@ -232,8 +264,7 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     createdKeys.delete(malformed);
   });
 
-  it("MAX_OBJECTS bounds a single run (truncated scan reported)", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("MAX_OBJECTS bounds a single run (truncated scan reported)", async () => {
     // Dedicated bucket: only the two objects seeded below exist, so the
     // candidate count is fully determined by this test.
     const keys = [`original/${randomUUID()}.webp`, `original/${randomUUID()}.webp`];
@@ -259,8 +290,7 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
  }, 20_000);
 
 
-  it("rejects missing configuration with non-zero exit", async (ctx) => {
-    if (!minioUp) return ctx.skip();
+  it("rejects missing configuration with non-zero exit", async () => {
     try {
       execFileSync("node", ["scripts/clean-orphan-originals.mjs"], {
         cwd: IMAGE_SERVICE_ROOT,

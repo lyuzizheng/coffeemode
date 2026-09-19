@@ -49,10 +49,10 @@ export function ProfileTabHistory({ baseId }: { baseId: string }) {
       role="tabpanel"
       id={`${baseId}-panel-history`}
       aria-labelledby={`${baseId}-tab-history`}
-      className="flex flex-col gap-2"
+      className="flex flex-col gap-3"
     >
       {recentSearches.length === 0 ? (
-        <div className="py-16 flex flex-col items-center justify-center text-center">
+        <div className="py-12 flex flex-col items-center justify-center text-center">
           <p className="text-sm text-muted">{t("empty_history_title")}</p>
         </div>
       ) : (
@@ -61,7 +61,7 @@ export function ProfileTabHistory({ baseId }: { baseId: string }) {
             <Link
               key={item.id}
               href="/"
-              className="p-3 bg-surface border border-border rounded-xl flex items-center justify-between hover:border-border/80 active:scale-[0.99] transition-all"
+              className="p-3 bg-surface border border-separator rounded-md flex items-center justify-between hover:border-border/80 active:scale-[0.99] transition-all"
             >
               <div className="flex items-center gap-2.5 min-w-0">
                 <svg
@@ -81,7 +81,7 @@ export function ProfileTabHistory({ baseId }: { baseId: string }) {
                 <span className="text-sm font-medium text-foreground truncate">
                   {item.query}
                 </span>
-                <span className="px-2 py-0.5 rounded-full bg-surface-secondary text-[11px] text-muted">
+                <span className="px-2.5 py-1 rounded-sm bg-surface-secondary text-xs text-muted">
                   {displayCityName(item.city, locale)}
                 </span>
               </div>

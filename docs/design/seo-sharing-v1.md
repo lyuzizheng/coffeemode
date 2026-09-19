@@ -109,7 +109,7 @@ curiosity hook — the full fact line stays on the page itself (Part 1 shell):
 ## 5. Missing cafe — 404
 
 A real 404 (spec DG19), composed: centered column, display font line
-`This cafe is gone` (`text-xl`), body `It may have been removed`
+`This cafe is gone` (`text-2xl`), body `It may have been removed`
 (`text-sm`, `muted`), solid `accent` button `Back to discover` → `/`. Quiet
 and final — no cute illustration, no coffee-pun copy.
 

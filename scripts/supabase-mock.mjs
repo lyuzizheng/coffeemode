@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import http from "node:http";
+import crypto from "node:crypto";
+import { decodeFakeJwt as decodeOrThrow, fakeJwt } from "./fake-jwt.mjs";
 /**
  * CafeMood local Supabase Auth mock (S2 testkit-compose-mocks).
  *
@@ -23,39 +26,21 @@
  *   #   NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321
  *   #   NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key from supabase status>
  *
- * The fake JWT shape matches web/tests/helpers/auth.ts:fakeJwt — header HS256,
- * payload { sub, role: "authenticated", exp } with a dummy signature. Nothing
- * verifies the signature; the web app's Supabase client is pointed at this
- * mock only in local compose, and tests stub auth via helpers/auth.ts directly.
+ * The fake JWT shape is the single source in scripts/fake-jwt.mjs — header
+ * HS256, payload { sub, role: "authenticated", exp } with a dummy signature.
+ * Nothing verifies the signature; the web app's Supabase client is pointed at
+ * this mock only in local compose, and tests stub auth via helpers/auth.ts
+ * directly.
  */
 
 const PORT = Number(process.env.SUPABASE_MOCK_PORT ?? 54321);
 const HOST = process.env.HOST ?? "127.0.0.1";
 
-// Keep in sync with web/tests/helpers/auth.ts:fakeJwt (identical HS256 + dummy signature).
-function base64UrlEncode(str) {
-  return Buffer.from(str, "utf8").toString("base64url");
-}
-
-function fakeJwt(userId, extra = {}, expiresInSec = 3600) {
-  const header = base64UrlEncode(JSON.stringify({ alg: "HS256", typ: "JWT" }));
-  const payload = base64UrlEncode(
-    JSON.stringify({
-      sub: userId,
-      role: "authenticated",
-      exp: Math.floor(Date.now() / 1000) + expiresInSec,
-      ...extra,
-    }),
-  );
-  const signature = base64UrlEncode("fake-signature");
-  return `${header}.${payload}.${signature}`;
-}
-
+// Map the shared throwing decoder to the mock's nullable contract: a
+// malformed token is a 401, not a crash.
 function decodeFakeJwt(token) {
   try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    return JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    return decodeOrThrow(token);
   } catch {
     return null;
   }
@@ -88,8 +73,6 @@ function parseBody(req) {
   });
 }
 
-import http from "node:http";
-
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   const path = url.pathname;
@@ -120,11 +103,16 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+function deriveUserId(email) {
+  const hash = crypto.createHash("sha256").update(email).digest("hex");
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+}
+
   if (req.method === "POST" && path === "/auth/v1/token") {
     const body = await parseBody(req);
     // Accept any email/password; derive a stable user id from email or use provided userId.
     const email = typeof body.email === "string" && body.email ? body.email : "local@coffeemode.test";
-    const userId = typeof body.userId === "string" && body.userId ? body.userId : `mock-${Buffer.from(email).toString("hex").slice(0, 8)}`;
+    const userId = typeof body.userId === "string" && body.userId ? body.userId : deriveUserId(email);
     const token = fakeJwt(userId, { email });
     json(res, 200, {
       access_token: token,

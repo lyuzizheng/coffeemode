@@ -98,7 +98,19 @@ describe("POST /api/onboarding/locate (DG121/DG122)", () => {
 
   it("persists onboarded + lastLocation + currentCity for signed-in users", async () => {
     vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
-    vi.mocked(updateProfile).mockResolvedValueOnce(null);
+    vi.mocked(updateProfile).mockResolvedValueOnce({
+      id: userId,
+      displayName: "Test User",
+      avatarUrl: null,
+      currentCity: "singapore",
+      lastLocation: { lat: 1.29, lng: 103.85 },
+      onboarded: true,
+      createdAt: new Date().toISOString(),
+      showPublicIdentity: false,
+      publicHandle: null,
+      identityConsentedAt: null,
+      publicHandleChangedAt: null,
+    });
     const res = await POST(locateRequest({ lat: 1.29, lng: 103.85 }));
     expect(res.status).toBe(200);
     expect(updateProfile).toHaveBeenCalledWith(userId, {
@@ -106,6 +118,15 @@ describe("POST /api/onboarding/locate (DG121/DG122)", () => {
       lastLocation: { lat: 1.29, lng: 103.85 },
       currentCity: "singapore",
     });
+  });
+
+  it("returns 404 when the profile row is missing instead of 200", async () => {
+    vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
+    vi.mocked(updateProfile).mockResolvedValueOnce(null);
+    const res = await POST(locateRequest({ lat: 1.29, lng: 103.85 }));
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error).toBe("profile_not_found");
   });
 
   it("returns 429 when the onboarding bucket trips", async () => {

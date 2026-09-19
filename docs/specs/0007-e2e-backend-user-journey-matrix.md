@@ -195,7 +195,7 @@ Postgres/PostGIS. Pinned by `web/tests/helpers/mocks.test.ts`.
 | --- | --- | --- | --- | --- |
 | 1 discovery | `{ lat, lng, radiusKm: 10, limit }` / `{ city, q, filter_* }` | closest-first cafe rows; city/keyword/dimension narrowing | Tokyo rows excluded from SG radius; unknown `filter_max_stay` ignored | none (real PostGIS rows) |
 | 2 creation | fused `createCafeWithFirstCheckIn` + `createCheckIn` photo attach | cafe row + creation check-in + gallery image + recomputed `work_stats` | geography point + `city`/`tz` persisted; `author: null` pre-opt-in | `createMockGooglePlacesResponse` (POI inject), `createFakeImageUpload` (WebP bytes) + real provision seam |
-| 3 identity | `updateProfile` / `updateProfileIdentity({ showPublicIdentity })` | profile row; `author` flips `null` ↔ public handle | opt-out restores `null` with rows intact; handle stays reserved | `createTestSessionUser` (+ `stubGetCurrentUser`) |
+| 3 identity | `updateProfile` / `updateProfileIdentity({ showPublicIdentity })` | profile row; `author` flips `null` ↔ public handle | opt-out restores `null` with rows intact; handle stays reserved | `createTestSessionUser` (session factory; suites program `getCurrentUser` via inline `vi.mock`) |
 | 4 check-ins | `createCheckIn` / `updateCheckIn` w/ `idempotency_key` | weighted `work_stats` recompute; feed ordering | DG64 same-window → `DuplicateCheckInError`; DG61 replay → same id + `deduped: true`, one row | `MOCK_CHECKINS` payloads (service path, recompute intact) |
 | 5 likes | `toggleCheckInLike(visitor, checkin)` | `{ liked, likesCount }` toggle symmetry | self-like → `SelfLikeError` (trigger backstop) | none (real trigger) |
 | 6 lifecycle | `deleteCafe(id, user[, { confirm }])` | tombstone vs ownership transfer to service account | solo → shell + sitemap drop; community bare delete → `CafeHasOtherCheckinsError` | none (real lifecycle) |
@@ -204,7 +204,7 @@ Postgres/PostGIS. Pinned by `web/tests/helpers/mocks.test.ts`.
   `searchExternalPOIs` returns — `place_id: ChIJ…`, `source: "google"`,
   `types` containing `cafe`, `business_status: "OPERATIONAL"`,
   `hours_json` as serialized Google `regularOpeningHours`
-  (`weekdayDescriptions`), non-empty `photo_refs`, ISO `fetched_at`.
+  (`weekdayDescriptions`), ISO `fetched_at`.
   Live Google stays behind the poi-service worker (cached); tests
   `vi.mock("@/lib/places/poi-client")` and never touch the network.
 - Fake Image Buffer spec: minimal valid WebP bytes (`RIFF…WEBP` magic,
@@ -214,8 +214,9 @@ Postgres/PostGIS. Pinned by `web/tests/helpers/mocks.test.ts`.
   round-trips stay in `test:integration:images`.
 - Session user spec: `{ id (v4), displayName, currentCity, jwt }` where
   `jwt` is the `fakeJwt` HS256 shape decoding to `sub === id`. Profile
-  rows stay with the caller's seeder; route tests pair the factory with
-  `stubGetCurrentUser({ id })`. Real Supabase Auth is never contacted.
+  rows stay with the caller's seeder; suites program `getCurrentUser` to the
+  id via inline `vi.mock("@/lib/auth/get-user", …)`.
+  Real Supabase Auth is never contacted.
 
 ## Data/API/UI behavior when relevant
 

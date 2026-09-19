@@ -7,8 +7,10 @@
  */
 "use client";
 
+import { useMemo } from "react";
 import type { Transition } from "framer-motion";
 import { useEnterMotion } from "@/hooks/use-enter-motion";
+import { useThemeVariant } from "@/lib/theme-variant";
 
 /** Settle budgets (spec 0002): feedback ≤150ms button/toggle/chip settle;
  * state ≤300ms card-expand/drawer settle; transition/slow ≤450ms page/map
@@ -49,6 +51,35 @@ export const spring = {
      reveals. */
   soft: { type: "spring", stiffness: 180, damping: 26 },
 } as const satisfies Record<string, Transition>;
+
+/**
+ * Variant-level spring personalities (BRAWUKA-505): the same three roles,
+ * retuned per design variant. Retro is a printing press — stiffer attack,
+ * heavier damping, shorter travel, zero bounce. Modern is the instrument
+ * panel — slightly softer damping lets motion breathe a hair more.
+ * `spring` above stays the default-variant table and the SSR-safe fallback.
+ */
+const VARIANT_SPRINGS = {
+  default: null,
+  retro: {
+    gentle: { type: "spring", stiffness: 300, damping: 36 },
+    snappy: { type: "spring", stiffness: 500, damping: 40 },
+    soft: { type: "spring", stiffness: 220, damping: 32 },
+  },
+  modern: {
+    gentle: { type: "spring", stiffness: 260, damping: 26 },
+    snappy: { type: "spring", stiffness: 400, damping: 28 },
+    soft: { type: "spring", stiffness: 180, damping: 22 },
+  },
+} as const satisfies Record<string, Record<keyof typeof spring, Transition> | null>;
+
+/** Springs for the active design variant. Components that animate should
+ * take their transitions from this hook so retro/modern keep their motion
+ * personality; static `spring` remains for non-hook contexts. */
+export function useSprings(): Record<keyof typeof spring, Transition> {
+  const { variant } = useThemeVariant();
+  return useMemo(() => VARIANT_SPRINGS[variant] ?? spring, [variant]);
+}
 
 /** Named choreography delays — absolute offsets and per-index steps for
  * multi-element sequences. Keep per-site delay literals out of components. */

@@ -3,18 +3,27 @@ import type { AppConfig } from "./types";
 
 type MapConfig = AppConfig["map"];
 
-function httpsUrl(file: string, keyPath: string, value: unknown): string {
+/** Style document locator (BRAWUKA-362): either an absolute https: URL (a
+ * remote tile host) or a root-relative path (`/map/…`) served same-origin
+ * from `web/public/` — MapLibre resolves it against the page origin, so the
+ * same value works in dev, staging, and production without a hardcoded
+ * host. Protocol-relative `//host/…` is rejected: it would silently leave
+ * the origin. */
+function styleUrl(file: string, keyPath: string, value: unknown): string {
   if (typeof value !== "string" || value.length === 0) {
     fail(file, keyPath, "must be a non-empty string");
+  }
+  if (value.startsWith("/") && !value.startsWith("//")) {
+    return value;
   }
   let parsed: URL;
   try {
     parsed = new URL(value);
   } catch {
-    fail(file, keyPath, "must be an absolute URL");
+    fail(file, keyPath, "must be an https: URL or a root-relative path");
   }
   if (parsed.protocol !== "https:") {
-    fail(file, keyPath, "must be an https: URL");
+    fail(file, keyPath, "must be an https: URL or a root-relative path");
   }
   return value;
 }
@@ -40,8 +49,8 @@ export function parseMapSection(file: string, map: Record<string, unknown>): Map
     focusZoom: boundedNumber(file, "map.focusZoom", map.focusZoom, 1, 22),
     maplibre: {
       tileStyle: {
-        light: httpsUrl(file, "map.maplibre.tileStyle.light", tileStyle.light),
-        dark: httpsUrl(file, "map.maplibre.tileStyle.dark", tileStyle.dark),
+        light: styleUrl(file, "map.maplibre.tileStyle.light", tileStyle.light),
+        dark: styleUrl(file, "map.maplibre.tileStyle.dark", tileStyle.dark),
       },
     },
   };

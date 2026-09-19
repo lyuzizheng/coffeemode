@@ -97,6 +97,7 @@ describe("config files", () => {
       gcTimeMs: 86400000,
       persistMaxAgeMs: 604800000,
     });
+    expect(appConfig.staging).toEqual({ maxWorkers: 4 });
     expect(appConfig.validation).toEqual({ cafeAddressMaxChars: 300, profileCityMaxChars: 50 });
     expect(appConfig.map).toEqual({
       provider: "maplibre",
@@ -104,8 +105,8 @@ describe("config files", () => {
       focusZoom: 15,
       maplibre: {
         tileStyle: {
-          light: "https://tiles.openfreemap.org/styles/liberty",
-          dark: "https://tiles.openfreemap.org/styles/dark",
+          light: "/map/coffeemode_light.json",
+          dark: "/map/coffeemode_dark.json",
         },
       },
     });
@@ -118,6 +119,7 @@ describe("config files", () => {
     expect(appConfig.budgets.lighthouse).toEqual({
       performance: 0.8,
       performanceHome: 0.65,
+      performanceCafe: 0.65,
       accessibility: 0.85,
       bestPractices: 0.85,
       seo: 0.85,
@@ -126,11 +128,13 @@ describe("config files", () => {
 
   it("owns the basemap endpoints (map-home: the only tile-host coupling)", () => {
     expect(appConfig.map.provider).toBe("maplibre");
+    // BRAWUKA-362: same-origin style documents under web/public/map/ —
+    // root-relative so dev/staging/prod each serve their own copy.
     expect(appConfig.map.maplibre.tileStyle.light).toBe(
-      "https://tiles.openfreemap.org/styles/liberty",
+      "/map/coffeemode_light.json",
     );
     expect(appConfig.map.maplibre.tileStyle.dark).toBe(
-      "https://tiles.openfreemap.org/styles/dark",
+      "/map/coffeemode_dark.json",
     );
     expect(appConfig.map.defaultZoom).toBe(12);
     expect(appConfig.map.focusZoom).toBe(15);
@@ -290,6 +294,7 @@ describe("parseAppConfig validation", () => {
     lighthouse: {
       performance: 0.8,
       performanceHome: 0.65,
+      performanceCafe: 0.65,
       accessibility: 0.85,
       bestPractices: 0.85,
       seo: 0.85,
@@ -303,6 +308,7 @@ describe("parseAppConfig validation", () => {
     downloadSlackBytes: 524288,
   };
   const validQuery = { staleTimeMs: 300000, gcTimeMs: 86400000, persistMaxAgeMs: 604800000 };
+  const validStaging = { maxWorkers: 4 };
   const validValidation = { cafeAddressMaxChars: 300, profileCityMaxChars: 50 };
   const validRuntimeConfig = { responseCache: { sMaxAgeSeconds: 60, staleWhileRevalidateSeconds: 300 } };
   const validOnboarding = { cityCoverageKm: 50, geolocationTimeoutMs: 10000 };
@@ -333,6 +339,7 @@ describe("parseAppConfig validation", () => {
       profile: validProfile,
       images: validImages,
       query: validQuery,
+      staging: validStaging,
       validation: validValidation,
       runtimeConfig: validRuntimeConfig,
       budgets: validBudgets,
@@ -357,6 +364,7 @@ describe("parseAppConfig validation", () => {
         seo: validSeo,
         promptQueue: validPromptQueue,
         profile: validProfile,
+        staging: validStaging,
         budgets: validBudgets,
       }),
     ).toThrow(/"checkins" must be a mapping/);
@@ -396,6 +404,7 @@ describe("parseAppConfig validation", () => {
         profile: validProfile,
         images: validImages,
         query: validQuery,
+      staging: validStaging,
         validation: validValidation,
       runtimeConfig: validRuntimeConfig,
       }),
@@ -416,6 +425,7 @@ describe("parseAppConfig validation", () => {
         promptQueue: validPromptQueue,
         checkins: validCheckins,
         profile: validProfile,
+        staging: validStaging,
         budgets: validBudgets,
       }),
     ).toThrow(/"search\.maxRadiusKm" must be a positive number/);
@@ -433,6 +443,7 @@ describe("parseAppConfig validation", () => {
         promptQueue: validPromptQueue,
         checkins: validCheckins,
         profile: validProfile,
+        staging: validStaging,
         budgets: validBudgets,
       }),
     ).toThrow(/"discovery\.defaultCenter\.lat" must be a number within \[-90,90\]/);
@@ -455,6 +466,7 @@ describe("parseAppConfig validation", () => {
         checkins: validCheckins,
         promptQueue: validPromptQueue,
         profile: validProfile,
+        staging: validStaging,
         budgets: validBudgets,
       }),
     ).toThrow(/"seo\.shellCache\.sMaxAgeSeconds" must be a positive integer/);
@@ -474,6 +486,7 @@ describe("parseAppConfig validation", () => {
         promptQueue: validPromptQueue,
         checkins: { photoCap: 6.5, noteMaxChars: 500, pendingDraftTtlHours: 72 },
         profile: validProfile,
+        staging: validStaging,
         budgets: validBudgets,
       }),
     ).toThrow(/"checkins\.photoCap" must be a positive integer/);
@@ -491,6 +504,7 @@ describe("parseAppConfig validation", () => {
       seo: validSeo,
         promptQueue: validPromptQueue,
       profile: validProfile,
+      staging: validStaging,
       budgets: validBudgets,
     };
     expect(() =>
@@ -517,6 +531,7 @@ describe("parseAppConfig validation", () => {
         profile: validProfile,
         images: validImages,
         query: validQuery,
+      staging: validStaging,
         validation: validValidation,
       runtimeConfig: validRuntimeConfig,
         budgets: {
@@ -544,6 +559,7 @@ describe("parseAppConfig validation", () => {
       profile: validProfile,
       images: validImages,
       query: validQuery,
+      staging: validStaging,
       validation: validValidation,
       runtimeConfig: validRuntimeConfig,
       budgets: validBudgets,
@@ -576,6 +592,7 @@ describe("parseAppConfig validation", () => {
         profile: validProfile,
         images: validImages,
         query: validQuery,
+      staging: validStaging,
         validation: validValidation,
       runtimeConfig: validRuntimeConfig,
         budgets: validBudgets,
@@ -599,6 +616,7 @@ describe("parseAppConfig validation", () => {
         profile: validProfile,
         images: validImages,
         query: validQuery,
+      staging: validStaging,
         validation: validValidation,
       runtimeConfig: validRuntimeConfig,
         budgets: validBudgets,
@@ -620,6 +638,7 @@ describe("parseAppConfig validation", () => {
       checkins: validCheckins,
       images: validImages,
       query: validQuery,
+      staging: validStaging,
       validation: validValidation,
       runtimeConfig: validRuntimeConfig,
       budgets: validBudgets,
@@ -644,10 +663,10 @@ describe("parseAppConfig validation", () => {
   it("owns the basemap provider seam (BRAWUKA-329)", () => {
     expect(appConfig.map.provider).toBe("maplibre");
     expect(appConfig.map.maplibre.tileStyle.light).toBe(
-      "https://tiles.openfreemap.org/styles/liberty",
+      "/map/coffeemode_light.json",
     );
     expect(appConfig.map.maplibre.tileStyle.dark).toBe(
-      "https://tiles.openfreemap.org/styles/dark",
+      "/map/coffeemode_dark.json",
     );
   });
 
@@ -665,6 +684,7 @@ describe("parseAppConfig validation", () => {
       profile: validProfile,
       images: validImages,
       query: validQuery,
+      staging: validStaging,
       validation: validValidation,
       runtimeConfig: validRuntimeConfig,
       budgets: validBudgets,
@@ -689,7 +709,26 @@ describe("parseAppConfig validation", () => {
           },
         },
       }),
-    ).toThrow(/"map\.maplibre\.tileStyle\.light" must be an https: URL/);
+    ).toThrow(
+      /"map\.maplibre\.tileStyle\.light" must be an https: URL or a root-relative path/,
+    );
+    // Protocol-relative would silently leave the origin — rejected too.
+    expect(() =>
+      parseAppConfig({
+        ...base,
+        map: {
+          ...validMap,
+          maplibre: {
+            tileStyle: {
+              light: "//tiles.example.com/a",
+              dark: validMap.maplibre.tileStyle.dark,
+            },
+          },
+        },
+      }),
+    ).toThrow(
+      /"map\.maplibre\.tileStyle\.light" must be an https: URL or a root-relative path/,
+    );
   });
 
   it("rejects mistyped images/query/validation sections (BRAWUKA-250)", () => {
@@ -705,6 +744,7 @@ describe("parseAppConfig validation", () => {
         promptQueue: validPromptQueue,
       checkins: validCheckins,
       profile: validProfile,
+      staging: validStaging,
       runtimeConfig: validRuntimeConfig,
       budgets: validBudgets,
     };

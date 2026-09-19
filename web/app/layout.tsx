@@ -8,6 +8,8 @@ import { CheckinResume } from "@/components/checkin/checkin-resume";
 import { appConfig } from "@/lib/config";
 import "./globals.css";
 import { APP_DESCRIPTION, APP_NAME, THEME_COLOR } from "@/lib/site";
+import { VARIANT_BOOTSTRAP } from "@/lib/theme-variant-const";
+import { LAYOUT_CSS_VARS } from "@/lib/layout";
 
 // Self-hosted fonts (OFL). No runtime Google Fonts — files live in app/fonts
 // and are served by Next.js with zero layout shift (size-adjust fallbacks).
@@ -45,6 +47,21 @@ const sourceSerif = localFont({
   variable: "--font-source-serif",
   weight: "200 900",
   display: "swap",
+});
+
+// Retro-variant CJK serif — Noto Serif SC Variable (OFL), wght 200–900,
+// subset to GB2312 level-1 (3755 frequency-ordered hanzi) + the app's zh.json
+// copy + CJK punctuation (~1.4MB woff2). Referenced ONLY inside
+// [data-variant="retro"] font stacks, so the file downloads solely for retro
+// users rendering CJK glyphs; default/modern never fetch it. preload:false —
+// a variant-only font must not preload for every visitor. Rare hanzi outside
+// the subset fall back to Songti SC per the stack.
+const notoSerifSC = localFont({
+  src: "./fonts/noto-serif-sc-var.woff2",
+  variable: "--font-noto-serif-sc",
+  weight: "200 900",
+  display: "swap",
+  preload: false,
 });
 
 export const metadata: Metadata = {
@@ -86,10 +103,18 @@ export default async function RootLayout({
   return (
     <html
       lang={locale}
-      className={`${inter.variable} ${cabinet.variable} ${jetbrains.variable} ${sourceSerif.variable} h-full antialiased`}
+      className={`${inter.variable} ${cabinet.variable} ${jetbrains.variable} ${sourceSerif.variable} ${notoSerifSC.variable} h-full antialiased`}
+      // --layout-* custom properties (lib/layout.ts) — Tailwind arbitrary
+      // values and globals.css resolve the same numbers TS uses.
+      style={LAYOUT_CSS_VARS as React.CSSProperties}
       suppressHydrationWarning
     >
-      <body className="min-h-full font-sans">
+      <head>
+        {/* Applies the saved design variant (default/retro/modern) before
+            first paint — no flash of the wrong radius/font voice. */}
+        <script dangerouslySetInnerHTML={{ __html: VARIANT_BOOTSTRAP }} />
+      </head>
+      <body className="min-h-full font-sans text-base">
         <Providers locale={locale} messages={messages}>
           <OfflineBanner />
           <RuntimeBanner />

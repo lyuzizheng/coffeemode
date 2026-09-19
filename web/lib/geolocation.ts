@@ -5,10 +5,10 @@
  * callers. Failures are normal states, never thrown errors.
  */
 
-export type GeoFailure = "denied" | "unavailable" | "unsupported";
+type GeoFailure = "denied" | "unavailable" | "unsupported";
 
 export type GeoResult =
-  | { ok: true; lat: number; lng: number }
+  | { ok: true; lat: number; lng: number; accuracyM?: number }
   | { ok: false; reason: GeoFailure };
 
 /** True when the Permissions API already reports a geolocation denial —
@@ -39,6 +39,10 @@ export function requestPosition(timeoutMs: number): Promise<GeoResult> {
         ok: true,
         lat: position.coords.latitude,
         lng: position.coords.longitude,
+        // Horizontal accuracy in meters — feeds the map dot's halo (DG120).
+        accuracyM: Number.isFinite(position.coords.accuracy)
+          ? position.coords.accuracy
+          : undefined,
       }),
     (error) =>
       resolve({

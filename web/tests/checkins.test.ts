@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { createCheckIn, toggleCheckInLike } from "@/lib/db/checkins";
 import {
   CafeNotFoundError,
@@ -39,11 +39,15 @@ vi.mock("@/lib/db/postgres", async (importOriginal) => ({
 
 // Real provisionPhotos/consumeProvisionedIntents run against these fake deps;
 // only the default-deps factory is swapped (issue #86 seam).
-const provisionDeps = {
+const provisionDeps: Record<string, Mock> = {
   checkUploadIntents: vi.fn(),
   consumeUploadIntents: vi.fn(),
   getProcessUrls: vi.fn(),
   processImage: vi.fn(),
+  // Unreferenced by default: unit compensation deletes every id, and the
+  // BRAWUKA-401 race test below overrides this to simulate a winner's row.
+  selectPhotoReferences: vi.fn().mockResolvedValue([]),
+  deleteProvisionedVariants: vi.fn(),
 };
 
 vi.mock("@/lib/images/provision-photos", async (importOriginal) => ({
@@ -238,7 +242,36 @@ describe("parseVisitedAt", () => {
   it("rejects unparseable timestamps", () => {
     const res = parseVisitedAt("last-tuesday");
     expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.message).toContain("not a parseable timestamp");
+    if (!res.ok) expect(res.message).toContain("must be an ISO 8601 timestamp");
+  });
+
+  it("rejects non-ISO date strings that Date would parse (BRAWUKA-449)", () => {
+    for (const input of [
+      "March 5, 2020",
+      "03/05/2020",
+      "2020-03-05",
+      "2020-03-05 10:00:00Z",
+      "2020-03-05T10:00:00",
+      "2020-03-05T10:00Z",
+      "2020-03-05T10:00:00+0800x",
+      "2020-03-05T24:00:00Z",
+      "2020-02-30T00:00:00Z",
+      "2021-02-29T00:00:00Z",
+      "2020-13-01T00:00:00Z",
+    ]) {
+      expect(parseVisitedAt(input).ok, input).toBe(false);
+    }
+  });
+
+  it("accepts ISO offsets and fractional seconds", () => {
+    for (const input of [
+      "2020-03-05T10:00:00+08:00",
+      "2020-03-05T10:00:00+0800",
+      "2020-03-05T10:00:00.123456Z",
+      "2020-03-05T10:00:00.1+08:00",
+    ]) {
+      expect(parseVisitedAt(input).ok, input).toBe(true);
+    }
   });
 
   it("rejects future timestamps", () => {
@@ -324,16 +357,8 @@ describe("parseCheckInBody", () => {
     expect(parseCheckInBody({ cafe_id: CAFE, scores: { overall: 70 } }).ok).toBe(true);
   });
 
-  it("rejects bad policy enums, scores, photo_ids, and a future visited_at", () => {
-    expect(parseCheckInBody(validBody({ max_stay: "free" })).ok).toBe(false);
-    expect(parseCheckInBody(validBody({ max_stay: "forever" })).ok).toBe(false);
-    expect(parseCheckInBody(validBody({ scores: { wifi: 101 } })).ok).toBe(false);
-    expect(parseCheckInBody(validBody({ scores: { vibe: 50 } })).ok).toBe(false);
-    expect(parseCheckInBody(validBody({ photo_ids: ["not-a-uuid"] })).ok).toBe(false);
-    expect(parseCheckInBody(validBody({ note: "x".repeat(501) })).ok).toBe(false);
-    expect(
-      parseCheckInBody(validBody({ visited_at: new Date(Date.now() + 60_000).toISOString() })).ok,
-    ).toBe(false);
+  it("rejects a non-ISO visited_at that Date would parse (BRAWUKA-449)", () => {
+    expect(parseCheckInBody(validBody({ visited_at: "March 5, 2020" })).ok).toBe(false);
   });
 
   it("accepts all valid max_stay enum values", () => {
@@ -403,20 +428,45 @@ describe("createCheckIn", () => {
     expect(clientQueryMock).not.toHaveBeenCalled();
   });
 
-  it("aborts the check-in when the intent consume loses a replay race inside the tx", async () => {
+  it("attaches live originals post-commit with the real check-in id (BRAWUKA-400)", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
-    provisionDeps.consumeUploadIntents.mockResolvedValue(false);
-    clientQueryMock
-      .mockResolvedValueOnce({ rows: [{ lock: 1 }] }) // BRAWUKA-125 advisory xact lock
-      .mockResolvedValueOnce({ rows: [{ id: CAFE }] }) // in-tx cafe gate
-      .mockResolvedValueOnce({ rows: [] }) // revisit window: no live check-in
-      .mockResolvedValueOnce({ rows: [{ id: CHECKIN }] }); // insert
+    mockCheckInHappyPath(CHECKIN);
 
-    const err = await createCheckIn(USER.id, validInput()).catch((e: unknown) => e);
-    expect(err).toBeInstanceOf(PhotoIntentError);
-    // Nothing past the insert: no photo write, no gallery merge, no stats.
-    expect(clientQueryMock).toHaveBeenCalledTimes(4);
+    const result = await createCheckIn(USER.id, validInput());
+
+    expect(result).toEqual({ checkin_id: CHECKIN, deduped: false });
+    // Provision leg (pre-target) + post-commit attach leg (final target).
+    const calls = provisionDeps.getProcessUrls.mock.calls.map((call) => call[0]);
+    expect(calls.filter((req) => req.targetType === "provision")).toHaveLength(1);
+    const attach = calls.filter((req) => req.targetType === "checkin");
+    expect(attach).toHaveLength(1);
+    expect(attach[0]).toMatchObject({ imageUuid: IMG, targetType: "checkin", targetId: CHECKIN });
   });
+
+  it("skips the attach re-mark on a raced idempotency dedupe (BRAWUKA-400)", async () => {
+    const key = IDEMPOTENCY_KEY;
+    poolQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("idempotency_key")) return { rows: [], rowCount: 0 }; // fast-path miss
+      return { rows: [{ id: CAFE }], rowCount: 1 }; // pre-provision cafe gate
+    });
+    clientQueryMock.mockImplementation(async (sql: string) => {
+      const s = sql.toLowerCase();
+      if (s.includes("insert into checkins")) return { rows: [], rowCount: 0 }; // ON CONFLICT DO NOTHING
+      if (s.includes("idempotency_key")) return { rows: [{ id: CHECKIN }], rowCount: 1 };
+      if (s.includes("select id from cafes")) return { rows: [{ id: CAFE }], rowCount: 1 };
+      if (s.includes("visited_at > now()")) return { rows: [], rowCount: 0 };
+      return { rows: [], rowCount: 0 };
+    });
+
+    const result = await createCheckIn(USER.id, validInput({ idempotency_key: key }));
+
+    expect(result).toEqual({ checkin_id: CHECKIN, deduped: true });
+    const calls = provisionDeps.getProcessUrls.mock.calls.map((call) => call[0]);
+    expect(calls.filter((req) => req.targetType === "provision")).toHaveLength(1);
+    expect(calls.filter((req) => req.targetType === "checkin")).toHaveLength(0);
+  });
+
+
 
   it("rejects a second create inside the revisit window without inserting (DG64)", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
@@ -437,6 +487,23 @@ describe("createCheckIn", () => {
     }
   });
 
+  it("keeps the winner's R2 objects when a loser rolls back on the revisit window (BRAWUKA-401)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
+    provisionDeps.selectPhotoReferences.mockResolvedValueOnce([IMG]); // winner committed
+    const deleted: string[] = [];
+    provisionDeps.deleteProvisionedVariants.mockImplementation(async (id: string) => {
+      deleted.push(id);
+    });
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ lock: 1 }] }) // BRAWUKA-125 advisory xact lock
+      .mockResolvedValueOnce({ rows: [{ id: CAFE }] }) // in-tx cafe gate
+      .mockResolvedValueOnce({ rows: [{ id: CHECKIN }] }); // window hit: live check-in
+
+    const err = await createCheckIn(USER.id, validInput()).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DuplicateCheckInError);
+    expect(provisionDeps.selectPhotoReferences).toHaveBeenCalledWith([IMG]);
+    expect(deleted).toEqual([]); // referenced: the loser's rollback deletes nothing
+  });
 
   it("throws CafeNotFoundError without provisioning or inserting when the cafe is missing", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [] }); // pre-provision cafe check

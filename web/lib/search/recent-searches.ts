@@ -39,7 +39,9 @@ export function getRecentSearches(): RecentSearchItem[] {
         typeof (item as RecentSearchItem).city === "string" &&
         typeof (item as RecentSearchItem).timestamp === "number",
     );
-    return filtered.length === 0 ? EMPTY_SEARCHES : filtered;
+    if (filtered.length === 0) return EMPTY_SEARCHES;
+    const max = getMaxRecentSearches();
+    return filtered.length > max ? filtered.slice(0, max) : filtered;
   } catch {
     // Benign: corrupted JSON or blocked localStorage access degrades to empty searches list.
     return EMPTY_SEARCHES;

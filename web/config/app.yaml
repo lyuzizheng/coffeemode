@@ -76,15 +76,17 @@ map:
   # Street-level zoom when a cafe is selected (card or marker).
   focusZoom: 15
   # MapLibre GL + OpenFreeMap public instance. The style documents carry
-  # their own glyphs/sprite — no separate config keys.
+  # their own glyphs — no separate config keys.
   maplibre:
-    # Fully-qualified style documents (OpenFreeMap releases), per UI theme.
-    # Optional dark replacement: the vendored vintage-dark style at
-    # public/map/openmapstyle_dark.json (BRAWUKA-314) — deploy it to an
-    # https URL and point `dark` at it to opt in.
+    # CoffeeMode's own basemap styles (BRAWUKA-362): two-ink vintage designs
+    # (espresso + sage on paper / deep-espresso substrates), no POI or
+    # institution labels, road + place names only. Root-relative paths are
+    # served same-origin from `web/public/` and resolve against whatever
+    # origin the app is deployed on; absolute https: URLs remain valid for
+    # remote styles.
     tileStyle:
-      light: https://tiles.openfreemap.org/styles/liberty
-      dark: https://tiles.openfreemap.org/styles/dark
+      light: /map/coffeemode_light.json
+      dark: /map/coffeemode_dark.json
 feed:
   # Check-in feed page size for both Helpful and Newest modes (spec 0001).
   pageSize: 20
@@ -238,13 +240,25 @@ budgets:
   # WebGL init, deferred to idle) can't hold the static-scaffold 0.8 —
   # measured ~0.70 on CI before the idle deferral landed. Debt: revisit when
   # the map init cost shrinks (lighter style).
+  # `performanceCafe` is the `/cafes/[id]` floor: DG124 hydrates the same
+  # map app under the SSR shell, so the share-link entry carries the map
+  # bundle too — measured 0.71 on CI (3/3 runs). Debt: same as home.
   lighthouse:
     performance: 0.8
     performanceHome: 0.65
+    performanceCafe: 0.65
     accessibility: 0.85
     bestPractices: 0.85
     seo: 0.85
 
+staging:
+  # Staging-journey concurrency cap (spec 0010 S4): Vitest workers inside one
+  # staging run. Each worker holds its own scratch DB, so this bounds
+  # parallel CREATE/DROP DATABASE pressure on shared staging. Local and CI
+  # integration runs are hermetic and uncapped; the runner
+  # (scripts/devops/run-staging-journey.sh) reads this as STAGING_MAX_WORKERS
+  # (VITEST_MAX_WORKERS for the suite) - per-invocation override only.
+  maxWorkers: 4
 
 runtimeConfig:
   # Edge cache for GET /api/config (BRAWUKA-284): operator edits land ≤60s

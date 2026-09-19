@@ -65,6 +65,9 @@ export function fakeProvisionPhotosDeps(): ProvisionPhotosDeps {
       width: 800,
       height: 600,
     }),
+    // No-op R2 deletes: integration tests use real Postgres (reference gate)
+    // with fake R2 legs, so compensation inspects the DB but deletes nothing.
+    deleteProvisionedVariants: async () => {},
   };
 }
 

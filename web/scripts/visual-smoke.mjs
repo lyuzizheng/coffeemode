@@ -38,7 +38,10 @@ const dbUrl = process.env.DATABASE_URL ?? "postgres://coffeemode:coffeemode@loca
 // still applies: ALLOW_SEED_DEV_DB=1 to run locally).
 const ENTRIES = [
   { name: "home", path: "/", status: 200 },
-  { name: "theme-preview", path: "/theme-preview", status: 200 },
+  // BRAWUKA-505: the preview is the variant acceptance surface — render it
+  // under every design variant (localStorage seed before the bootstrap
+  // script applies data-variant) so the AA audit covers all quadrants.
+  { name: "theme-preview", path: "/theme-preview", status: 200, variants: ["default", "retro", "modern"] },
   { name: "offline", path: "/~offline", status: 200 },
   { name: "definitely-not-a-route", path: "/definitely-not-a-route", status: 404 },
   // seo-sharing (#150): a gone/invalid cafe id renders the designed cafe 404
@@ -179,7 +182,7 @@ async function runVisualSmoke() {
     // a local seed's cover host resolves is not this gate's business; an
     // unreachable CDN would fail the run on image loads before any status
     // or contrast assertion is read.
-    await context.route("**/images.cafemood.app/**", (r) =>
+    await context.route(/https:\/\/(staging-)?images\.cafemood\.app\/.*/, (r) =>
       r.fulfill({ status: 200, contentType: "image/svg+xml", body: PLACEHOLDER_COVER }),
     );
     return context;
@@ -243,11 +246,19 @@ async function runVisualSmoke() {
     }
   }
 
-  /** One rendering of one entry at one scheme/viewport: load, optional
-   *  interactive prepare, screenshot, contrast audit. */
-  async function renderEntry({ entry, scheme, vpName, vp }) {
-    const label = `${entry.name} ${scheme} ${vpName}`;
+  /** One rendering of one entry at one scheme/viewport/variant: seed the
+   *  variant into localStorage (the inline bootstrap reads it before first
+   *  paint), load, optional interactive prepare, screenshot, contrast
+   *  audit. */
+  async function renderEntry({ entry, scheme, vpName, vp, variant }) {
+    const label = `${entry.name} ${scheme} ${vpName}${variant ? ` ${variant}` : ""}`;
     const context = await newStubbedContext(vp, scheme);
+    if (variant) {
+      await context.addInitScript(
+        (v) => window.localStorage.setItem("cm-theme-variant", v),
+        variant,
+      );
+    }
     const page = await context.newPage();
     const errors = [];
     attachErrorListeners(page, errors, entry);
@@ -271,7 +282,7 @@ async function runVisualSmoke() {
       context,
       label,
       errors,
-      shotName: `${entry.name}-${scheme}-${vpName}`,
+      shotName: `${entry.name}-${scheme}-${vpName}${variant ? `-${variant}` : ""}`,
     });
   }
   try {
@@ -284,12 +295,17 @@ async function runVisualSmoke() {
         console.log(`skip ${entry.name} (no DB fixture)`);
         continue;
       }
-      for (const scheme of COLOR_SCHEMES) {
-        for (const [vpName, vp] of Object.entries(VIEWPORTS)) {
-          await renderEntry({ entry, scheme, vpName, vp });
-        }
+      // Flat job list keeps the loop at one level: scheme × viewport ×
+      // variant (variant defaults to a single null pass for plain entries).
+      const jobs = COLOR_SCHEMES.flatMap((scheme) =>
+        Object.entries(VIEWPORTS).flatMap(([vpName, vp]) =>
+          (entry.variants ?? [null]).map((variant) => ({ scheme, vpName, vp, variant })),
+        ),
+      );
+      for (const job of jobs) {
+        await renderEntry({ entry, ...job });
       }
-      rendered += COLOR_SCHEMES.length * Object.keys(VIEWPORTS).length;
+      rendered += jobs.length;
     }
   } finally {
     await cleanup();

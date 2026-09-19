@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import {
+  attachProvisionedPhotos,
   compensateProvisionedPhotos,
   consumeProvisionedIntents,
   PhotoIntentError,
@@ -13,13 +14,21 @@ import {
  * these pin the module's own contract: fail-fast ordering, server-derived
  * fields, and single-use consume semantics.
  */
+/** Typed mock-handle access for fake deps: the seam is mocked, never real. */
+function mockOf(deps: ProvisionPhotosDeps, name: string): Mock {
+  const handle = (deps as unknown as Record<string, unknown>)[name];
+  if (typeof handle !== "function" || !("mock" in handle)) {
+    throw new Error(`expected a mocked dep: ${name}`);
+  }
+  return handle as Mock;
+}
 
 const USER = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
 const IMG_A = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44";
 const IMG_B = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55";
 
 function fakeDeps(overrides: Partial<ProvisionPhotosDeps> = {}): ProvisionPhotosDeps {
-  return {
+  const deps = {
     checkUploadIntent: vi.fn().mockResolvedValue(true),
     checkUploadIntents: vi.fn().mockImplementation((_: string, ids: string[]) => Promise.resolve(ids)),
     consumeUploadIntent: vi.fn().mockResolvedValue(true),
@@ -34,9 +43,13 @@ function fakeDeps(overrides: Partial<ProvisionPhotosDeps> = {}): ProvisionPhotos
       }),
     ),
     processImage: vi.fn().mockResolvedValue({ width: 1600, height: 1200 }),
+    restampOriginal: vi.fn().mockResolvedValue(undefined),
     deleteProvisionedVariants: vi.fn().mockResolvedValue(undefined),
+    // Unreferenced by default: legacy unit behavior deletes every id.
+    selectPhotoReferences: vi.fn().mockResolvedValue([]),
     ...overrides,
   };
+  return deps as unknown as ProvisionPhotosDeps;
 }
 
 beforeEach(() => {
@@ -156,16 +169,27 @@ describe("provisionPhotos", () => {
     expect(deps.checkUploadIntents).not.toHaveBeenCalled();
   });
 
-  it("compensates already-provisioned photos when a later photo fails mid-loop", async () => {
-    const deps = fakeDeps({
-      processImage: vi
-        .fn()
-        .mockResolvedValueOnce({ width: 1600, height: 1200 })
-        .mockRejectedValueOnce(new Error("sharp blew up")),
+  it("compensates every started photo when a sibling fails mid-loop (BRAWUKA-432)", async () => {
+    let releaseSlow!: () => void;
+    const slowGate = new Promise<void>((resolve) => {
+      releaseSlow = resolve;
     });
-    await expect(provisionPhotos(USER, [IMG_A, IMG_B], deps)).rejects.toThrow("sharp blew up");
-    expect(deps.deleteProvisionedVariants).toHaveBeenCalledTimes(1);
-    expect(deps.deleteProvisionedVariants).toHaveBeenCalledWith(IMG_A);
+    const deps = fakeDeps({
+      processImage: vi.fn().mockImplementation(async (id: string) => {
+        if (id === IMG_B) await slowGate;
+        if (id === IMG_A) throw new Error("sharp blew up");
+        return { width: 1600, height: 1200 };
+      }),
+    });
+    const pending = provisionPhotos(USER, [IMG_A, IMG_B], deps);
+    releaseSlow();
+    await expect(pending).rejects.toThrow("sharp blew up");
+    // IMG_A failed (partial R2 writes possible) and IMG_B was already
+    // claimed: both ids compensate, never just the resolved one.
+    const deletes = mockOf(deps, "deleteProvisionedVariants");
+    expect(deletes).toHaveBeenCalledWith(IMG_A);
+    expect(deletes).toHaveBeenCalledWith(IMG_B);
+    expect(deletes).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -209,9 +233,10 @@ describe("compensateProvisionedPhotos", () => {
   it("best-effort deletes every provisioned variant after a rollback", async () => {
     const deps = fakeDeps();
     await compensateProvisionedPhotos([IMG_A, IMG_B], deps);
-    expect(deps.deleteProvisionedVariants).toHaveBeenCalledTimes(2);
-    expect(deps.deleteProvisionedVariants).toHaveBeenCalledWith(IMG_A);
-    expect(deps.deleteProvisionedVariants).toHaveBeenCalledWith(IMG_B);
+    const deletes = mockOf(deps, "deleteProvisionedVariants");
+    expect(deletes).toHaveBeenCalledTimes(2);
+    expect(deletes).toHaveBeenCalledWith(IMG_A);
+    expect(deletes).toHaveBeenCalledWith(IMG_B);
   });
 
   it("is a no-op without a delete dep (sweeper backstop)", async () => {
@@ -219,5 +244,83 @@ describe("compensateProvisionedPhotos", () => {
     await expect(
       compensateProvisionedPhotos([IMG_A], { checkUploadIntent, checkUploadIntents, consumeUploadIntent, consumeUploadIntents, getProcessUrls, processImage }),
     ).resolves.toBeUndefined();
+  });
+  it("keeps DB-referenced ids and deletes only true orphans (BRAWUKA-401)", async () => {
+    const selectPhotoReferences = vi.fn().mockResolvedValue([IMG_A]);
+    const deps = fakeDeps({ selectPhotoReferences });
+    await compensateProvisionedPhotos([IMG_A, IMG_B], deps);
+    expect(selectPhotoReferences).toHaveBeenCalledWith([IMG_A, IMG_B]);
+    const deletes = mockOf(deps, "deleteProvisionedVariants");
+    expect(deletes).toHaveBeenCalledTimes(1);
+    expect(deletes).toHaveBeenCalledWith(IMG_B);
+  });
+
+  it("fails closed when the reference check throws: deletes nothing (BRAWUKA-401)", async () => {
+    const deps = fakeDeps({
+      selectPhotoReferences: () => Promise.reject(new Error("db blip")),
+    });
+    await compensateProvisionedPhotos([IMG_A], deps);
+    expect(mockOf(deps, "deleteProvisionedVariants")).not.toHaveBeenCalled();
+  });
+});
+
+describe("attachProvisionedPhotos (BRAWUKA-400)", () => {
+  const CHECKIN = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a66";
+
+  it("re-marks every photo with the final checkin target and restamps the original", async () => {
+    const deps = fakeDeps();
+    const results = await attachProvisionedPhotos(USER, [IMG_A, IMG_B], CHECKIN, deps);
+
+    expect(results).toEqual([
+      { imageUuid: IMG_A, attached: true },
+      { imageUuid: IMG_B, attached: true },
+    ]);
+    expect(deps.getProcessUrls).toHaveBeenCalledTimes(2);
+    expect(deps.getProcessUrls).toHaveBeenCalledWith({
+      imageUuid: IMG_A,
+      userId: USER,
+      targetType: "checkin",
+      targetId: CHECKIN,
+    });
+    expect(deps.restampOriginal).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns [] without touching deps for no photo ids", async () => {
+    const deps = fakeDeps();
+    await expect(attachProvisionedPhotos(USER, [], CHECKIN, deps)).resolves.toEqual([]);
+    expect(deps.getProcessUrls).not.toHaveBeenCalled();
+    expect(deps.restampOriginal).not.toHaveBeenCalled();
+  });
+
+  it("never throws on a per-photo failure: reports attached:false, rest succeed", async () => {
+    const deps = fakeDeps({
+      getProcessUrls: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("presign down"))
+        .mockImplementation((req: { imageUuid: string }) =>
+          Promise.resolve({ keys: { original: `original/${req.imageUuid}.webp` } }),
+        ),
+    });
+    const results = await attachProvisionedPhotos(USER, [IMG_A, IMG_B], CHECKIN, deps);
+
+    expect(results).toEqual([
+      { imageUuid: IMG_A, attached: false },
+      { imageUuid: IMG_B, attached: true },
+    ]);
+    // The surviving photo still restamps exactly once.
+    expect(deps.restampOriginal).toHaveBeenCalledTimes(1);
+  });
+
+  it("counts a legacy fake without restampOriginal as attached when the final presign succeeds", async () => {
+    const deps = fakeDeps({ restampOriginal: undefined });
+    const results = await attachProvisionedPhotos(USER, [IMG_A], CHECKIN, deps);
+
+    expect(results).toEqual([{ imageUuid: IMG_A, attached: true }]);
+    expect(deps.getProcessUrls).toHaveBeenCalledWith({
+      imageUuid: IMG_A,
+      userId: USER,
+      targetType: "checkin",
+      targetId: CHECKIN,
+    });
   });
 });

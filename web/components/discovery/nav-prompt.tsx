@@ -24,7 +24,7 @@ import Image from "next/image";
 import { Button } from "@heroui/react";
 import { CoffeeIcon, NavigationIcon } from "@/components/icons";
 import { getNavPromptCollapseMs } from "@/lib/client-env";
-import { spring } from "@/lib/motion";
+import { useSprings } from "@/lib/motion";
 import type { NavPromptAnswer, NavPromptItem } from "./use-nav-prompt";
 
 export type { NavPromptAnswer, NavPromptItem } from "./use-nav-prompt";
@@ -83,6 +83,7 @@ function PromptOptions({
 function PromptPill({ onExpand }: { onExpand: () => void }) {
   const t = useTranslations("navPrompt");
   const reduced = useReducedMotion();
+  const springs = useSprings();
   return (
     <motion.button
       layoutId="nav-prompt"
@@ -90,7 +91,7 @@ function PromptPill({ onExpand }: { onExpand: () => void }) {
       onClick={onExpand}
       initial={reduced ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={spring.gentle}
+      transition={springs.gentle}
       className="pointer-events-auto flex h-9 w-fit items-center gap-1.5 self-end rounded-full border border-separator bg-overlay px-3 text-xs text-foreground shadow-map"
     >
       <NavigationIcon size={14} />
@@ -116,6 +117,7 @@ function PromptCard({
 }) {
   const t = useTranslations("navPrompt");
   const reduced = useReducedMotion();
+  const springs = useSprings();
   const day = useDayLabel(item.created_at);
   const pause = () => onPauseChange(true);
   const resume = () => onPauseChange(false);
@@ -125,7 +127,7 @@ function PromptCard({
       role="status"
       initial={reduced ? false : { y: 8, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      transition={spring.snappy}
+      transition={springs.snappy}
       onMouseEnter={pause}
       onMouseLeave={resume}
       onFocus={pause}
@@ -139,7 +141,7 @@ function PromptCard({
       }
     >
       <div className="flex items-center gap-3">
-        <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-md border border-separator bg-surface-tertiary">
+        <div className="relative h-12 w-16 shrink-0 overflow-hidden rounded-sm border border-separator bg-surface-tertiary">
           {item.cafe.cover ? (
             <Image
               src={item.cafe.cover}
@@ -196,7 +198,7 @@ export function NavPromptView({
       <div
         className={
           placement === "sheet"
-            ? "absolute inset-x-3 bottom-[calc(100%+12px)] z-10 flex flex-col"
+            ? "absolute bottom-[calc(100%+12px)] left-3 right-[var(--layout-chrome-offset)] z-10 flex flex-col"
             : "pointer-events-none fixed inset-x-6 bottom-6 z-30 flex flex-col"
         }
       >

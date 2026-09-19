@@ -78,14 +78,49 @@ function FeedModeTabs({
   );
 }
 
+/** Skeleton cards mirror FeedCard geometry (spec 0002 skeleton rule,
+ *  seo-sharing-v1 §2: 4 cards) — meta line, chip row, note lines, an
+ *  optional photo strip, and the 44px action row. `photos`/`noteWidth`
+ *  vary per card so the placeholder reads like a mixed feed, not a
+ *  stamped-out grid. */
+const SKELETON_CARDS: { photos: number; noteWidth: string }[] = [
+  { photos: 3, noteWidth: "w-full" },
+  { photos: 0, noteWidth: "w-2/3" },
+  { photos: 2, noteWidth: "w-5/6" },
+  { photos: 0, noteWidth: "w-1/2" },
+];
+
 function FeedSkeleton() {
   return (
     <div className="flex flex-col" aria-hidden>
-      {[0, 1].map((i) => (
-        <div key={i} className="border-b border-separator py-4 last:border-b-0">
-          <div className="mb-2 h-3.5 w-24 animate-pulse rounded bg-surface-tertiary" />
-          <div className="mb-2 h-3 w-40 animate-pulse rounded bg-surface-tertiary" />
-          <div className="h-4 w-full animate-pulse rounded bg-surface-tertiary" />
+      {SKELETON_CARDS.map((shape, i) => (
+        <div
+          key={i}
+          data-slot="feed-skeleton-card"
+          className="flex flex-col gap-2 border-b border-separator py-4 first:pt-0 last:border-b-0"
+        >
+          <div className="flex items-center gap-1.5">
+            <div className="h-5 w-5 animate-pulse rounded-full bg-surface-tertiary" />
+            <div className="h-3.5 w-32 animate-pulse rounded bg-surface-tertiary" />
+          </div>
+          <div className="flex gap-2">
+            <div className="h-3 w-14 animate-pulse rounded bg-surface-tertiary" />
+            <div className="h-3 w-14 animate-pulse rounded bg-surface-tertiary" />
+          </div>
+          <div className={`h-4 animate-pulse rounded bg-surface-tertiary ${shape.noteWidth}`} />
+          {shape.photos > 0 && (
+            <div className="flex gap-2">
+              {Array.from({ length: shape.photos }, (_, p) => (
+                <div
+                  key={p}
+                  className="h-[var(--layout-thumb)] w-[var(--layout-thumb)] animate-pulse rounded-md bg-surface-tertiary"
+                />
+              ))}
+            </div>
+          )}
+          <div className="flex min-h-11 items-center">
+            <div className="h-3 w-10 animate-pulse rounded bg-surface-tertiary" />
+          </div>
         </div>
       ))}
     </div>

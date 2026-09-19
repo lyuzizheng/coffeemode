@@ -5,10 +5,13 @@
  * Persisted to localStorage via `ranking-preference.ts` (anonymous-safe,
  * never `profiles`); `fetchUnifiedSearch` appends it as `?ranking=`.
  *
- * Three presentations, one control:
+ * Two presentations, one control:
  * - `settings`: labelled block with description (profile preferences row).
- * - `onboarding`: title + body copy first, control below (first-visit ask).
  * - `compact`: single-line label + control (anonymous gate footer).
+ *
+ * BRAWUKA-516: the DG136 `onboarding` variant was removed — the welcome
+ * card stays two actions (locate / city pick); ranking lives in settings
+ * only.
  */
 import { useTranslations } from "next-intl";
 import { useSyncExternalStore } from "react";
@@ -25,7 +28,7 @@ const OPTIONS: RankingPreference[] = ["relevance", "good_first"];
 export function RankingPreferenceToggle({
   variant = "settings",
 }: {
-  variant?: "settings" | "onboarding" | "compact";
+  variant?: "settings" | "compact";
 }) {
   const t = useTranslations("search.ranking");
   const stored = useSyncExternalStore(
@@ -68,16 +71,6 @@ export function RankingPreferenceToggle({
       })}
     </div>
   );
-
-  if (variant === "onboarding") {
-    return (
-      <div className="flex flex-col gap-2">
-        <h2 className="font-display text-md font-bold text-foreground">{t("onboarding_title")}</h2>
-        <p className="text-sm text-muted">{t("onboarding_body")}</p>
-        {control}
-      </div>
-    );
-  }
 
   if (variant === "compact") {
     return (

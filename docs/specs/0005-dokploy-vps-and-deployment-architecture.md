@@ -35,10 +35,11 @@ Accepted (2026-09-04 — BRAWUKA-50 architecture and deployment specification; r
      - App runtime connects over `DATABASE_URL` (Supavisor pooled `:6543`, `sslmode=require`);
        migrations/backups/restores run over `DIRECT_URL` (session/direct `:5432`, `sslmode=require`).
     - No self-hosted postgres service exists in either application compose stack (removed BRAWUKA-241).
-      However, Dokploy VPS hosts a dedicated, isolated CI Postgres service
-      (`coffeemode-ci-postgres`, PostGIS 16 image `postgis/postgis:16-3.4`, BRAWUKA-474)
-      for GitHub Actions `staging-journey` verification, completely decoupling ephemeral
-      CI scratch database load from the staging Supabase project.
+      GitHub Actions `staging-journey` verification runs against an ephemeral runner-local Postgres
+      container (`docker compose up -d --wait postgres`, `postgis/postgis:16-3.4`, BRAWUKA-525),
+      completely decoupling ephemeral CI scratch database load from the staging Supabase project.
+      The previous Dokploy VPS CI Postgres service (`coffeemode-ci-postgres`, BRAWUKA-474) and
+      tunnel route are deprecated and scheduled for decommission.
      - Independent local backup dirs (`backups/staging/`, `backups/prod/`).
    - Web Ingress Network: The web containers attach to their respective backend
      bridge network plus the shared external `traefik-net` bridge for Traefik ingress.
@@ -99,7 +100,7 @@ Accepted (2026-09-04 — BRAWUKA-50 architecture and deployment specification; r
 
 Dokploy manages multi-service Docker Compose stacks behind an integrated Traefik reverse proxy. Incoming traffic arrives at the VPS on ports 80 and 443, where Traefik handles TLS termination (Let's Encrypt automated ACME HTTP/DNS challenge) and routes to target application containers via Docker network labels. With BRAWUKA-238 the Cloudflare-proxied path terminates at `cloudflared` (token-mode tunnel, `restart: unless-stopped`), which forwards to Traefik over `traefik-net` — no inbound ports need to stay open for tunneled hostnames.
 
-In addition to the application stacks, Dokploy manages an isolated CI Postgres service (`coffeemode-ci-postgres`) dedicated to GitHub Actions `staging-journey` runs (BRAWUKA-474). This service does not route through Traefik and exposes zero inbound ports to the public internet; external connectivity from GitHub Actions runners is provided over Cloudflare Tunnel (`ci-db.cafemood.app`) protected by a Cloudflare Access Service Token.
+In addition to the application stacks, Dokploy historically managed an isolated CI Postgres service (`coffeemode-ci-postgres`, BRAWUKA-474). Per Owner decision (2026-09-18, BRAWUKA-525), GitHub Actions `staging-journey` has migrated to an ephemeral runner-local Postgres container (`docker compose up -d --wait postgres`), eliminating Cloudflare Tunnel, Access Service Token, and VPS external dependencies. The Dokploy `coffeemode-ci-postgres` service and `ci-db.cafemood.app` tunnel route are deprecated and scheduled for decommission after verification.
 
 ```text
                                   Internet
@@ -138,15 +139,10 @@ In addition to the application stacks, Dokploy manages an isolated CI Postgres s
 
                GitHub Actions CI Runner (staging-journey)
                                     │
-                                    ▼ (cloudflared access tcp + Access Service Token)
+                                    ▼ (runner-local container)
                     ┌───────────────────────────────┐
-                    │ Cloudflare Tunnel Private Net │
-                    │ (ci-db.cafemood.app:5432)     │
-                    └───────────────┬───────────────┘
-                                    ▼ (localhost:5432 / internal bridge)
-                    ┌───────────────────────────────┐
-                    │ coffeemode-ci-postgres        │
-                    │ Dokploy VPS Service           │
+                    │ runner-local postgres         │
+                    │ (docker compose postgres)     │
                     │ (postgis/postgis:16-3.4)      │
                     │ Ephemeral scratch test DBs    │
                     └───────────────────────────────┘
@@ -161,10 +157,10 @@ In addition to the application stacks, Dokploy manages an isolated CI Postgres s
    - Application databases live in Supabase (separate staging/prod projects) — no application
      database containers attach to any VPS network. Cross-env isolation is enforced at
      the Supabase project + credential level.
-   - Dokploy CI Postgres (`coffeemode-ci-postgres`) runs in an isolated Docker network.
-     Port 5432 is bound to localhost (127.0.0.1) on the VPS and forwarded privately over
-     Cloudflare Tunnel (`ci-db.cafemood.app`). Traefik does not route to it, and zero public
-     inbound ports are open.
+   - Dokploy CI Postgres (`coffeemode-ci-postgres`) is deprecated (BRAWUKA-525; staging-journey
+     runs on runner-local postgres). When deployed, it ran in an isolated Docker network with
+     port 5432 bound to localhost (127.0.0.1) on the VPS, forwarded privately over Cloudflare Tunnel
+     (`ci-db.cafemood.app`), with zero public inbound ports open.
    - No database port is exposed to the public internet on the VPS. Supabase connectivity is outbound
      TLS (`sslmode=require`) over `DATABASE_URL` / `DIRECT_URL`.
 2. **Persistent storage mounts**:
@@ -177,7 +173,7 @@ In addition to the application stacks, Dokploy manages an isolated CI Postgres s
    - `coffeemode-web-prod`: CPU limit: 2.0 cores, Memory limit: 2 GB (Reservation: 1.0 core, 1 GB).
    - `coffeemode-web-staging`: CPU limit: 1.0 core, Memory limit: 1 GB.
    - Application database compute is Supabase-managed (not VPS-reserved).
-   - `coffeemode-ci-postgres`: CPU limit: 2.0 cores (Reservation: 0.5 cores), Memory limit: 2048 MB (Reservation: 512 MB).
+   - `coffeemode-ci-postgres` (deprecated, pending decommission): CPU limit: 2.0 cores (Reservation: 0.5 cores), Memory limit: 2048 MB (Reservation: 512 MB).
    - `cloudflared-staging` / `cloudflared-prod`: CPU limit: 0.5 core, Memory limit: 256 MB (Reservation: 0.1 core, 64 MB).
 
 ### 3. Cloudflare dual services & edge matrix

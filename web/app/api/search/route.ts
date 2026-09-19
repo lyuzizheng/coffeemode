@@ -1,19 +1,12 @@
 import { logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
-import {
-  apiError,
-  parseQueryBoolean,
-  parseQueryNumber,
-  parseQueryScore,
-} from "@/lib/api/response";
+import { apiError } from "@/lib/api/response";
 import { guard } from "@/lib/api/guard";
 import { findCity, resolveEffectiveCity } from "@/lib/cities";
 import { executeSearch } from "@/lib/search/search-service";
-import { getSearchFixtures, isFixturesEnabled } from "@/lib/search/fixtures";
-import { WORK_DIM_FILTER_MAP } from "@/lib/search/filter";
-import type { SearchFilters, SearchResultItem, SearchResultSource } from "@/lib/search/types";
+import { fixtureSearchResponse, getSearchFixtures, isFixturesEnabled } from "@/lib/search/fixtures";
+import { parseSearchQuery } from "@/lib/search/search-params";
 import { appConfig } from "@/lib/config";
-import { parseMaxStayFilter } from "@/lib/validation/checkin";
 
 /** Private Cache-Control for success responses (DG137-B, values in app.yaml `search.responseCache`). */
 const SEARCH_RESPONSE_CACHE_CONTROL = `private, max-age=${appConfig.search.responseCache.maxAgeSeconds}, stale-while-revalidate=${appConfig.search.responseCache.staleWhileRevalidateSeconds}`;
@@ -23,60 +16,14 @@ const SEARCH_RESPONSE_CACHE_CONTROL = `private, max-age=${appConfig.search.respo
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const q = url.searchParams.get("q")?.trim() || undefined;
-  const city = url.searchParams.get("city")?.trim() || undefined;
-  const lat = parseQueryNumber(url.searchParams.get("lat"));
-  const lng = parseQueryNumber(url.searchParams.get("lng"));
-  const openNow = parseQueryBoolean(url.searchParams.get("open_now"));
-  const includeLive = parseQueryBoolean(url.searchParams.get("include_live"));
-  const filterMaxStay = parseMaxStayFilter(url.searchParams.get("filter_max_stay"));
-  const rawLimit = url.searchParams.get("limit");
-  const limitParam = parseQueryNumber(rawLimit);
-  const rawRanking = url.searchParams.get("ranking")?.trim();
-  const ranking = rawRanking === "good_first" || rawRanking === "relevance" ? rawRanking : undefined;
+  const { filters, rawLimit } = parseSearchQuery((name) => url.searchParams.get(name));
+  const { city, lat, lng, limit: limitParam } = filters;
 
   // DG140: fixtures short-circuit when double-gate is satisfied and ?fixtures=1 requested
   if (isFixturesEnabled() && url.searchParams.get("fixtures") === "1") {
     const fixtures = getSearchFixtures();
     if (fixtures) {
-      const results: SearchResultItem[] = [
-        ...fixtures.cafes.map((cafe) => ({
-          id: cafe.id,
-          type: "cafe" as const,
-          source: "coffeemode" as const,
-          name: cafe.name,
-          address: cafe.address,
-          lat: cafe.lat,
-          lng: cafe.lng,
-          distance_m: null,
-          is_from_city_center: false,
-          cafe,
-        })),
-        ...fixtures.pois.map((poi) => ({
-          id: poi.place_id,
-          type: "poi" as const,
-          source: (poi.search_source ?? (poi.source === "apple" ? "apple" : "stored_poi")) as SearchResultSource,
-          name: poi.name,
-          address: poi.address,
-          lat: poi.lat,
-          lng: poi.lng,
-          distance_m: null,
-          is_from_city_center: false,
-          poi,
-        })),
-      ];
-      const response = NextResponse.json({
-        results,
-        total_count: results.length,
-        is_weak_results: results.length < 3,
-        reference_point: {
-          lat: 1.285,
-          lng: 103.85,
-          is_from_city_center: false,
-          city_id: "singapore",
-          city_name: "Singapore",
-        },
-      });
+      const response = NextResponse.json(fixtureSearchResponse(fixtures));
       response.headers.set("Cache-Control", SEARCH_RESPONSE_CACHE_CONTROL);
       response.headers.set("X-Search-Mode", "stored_only");
       return response;
@@ -115,29 +62,14 @@ export async function GET(request: Request) {
   const { user } = gate;
 
 
-  const filters: SearchFilters = {
-    q,
+  const searchFilters = {
+    ...filters,
     city: effectiveCity,
-    lat,
-    lng,
-    open_now: openNow,
-    include_live: includeLive,
-    filter_max_stay: filterMaxStay,
-    limit: limitParam,
-    ranking,
     viewer_id: user?.id,
   };
 
-  // Populate work dimension score filters using shared mapping table
-  for (const { key } of WORK_DIM_FILTER_MAP) {
-    const val = parseQueryScore(url.searchParams.get(key));
-    if (val !== undefined) {
-      filters[key] = val;
-    }
-  }
-
   try {
-    const { search_mode, ...searchResponse } = await executeSearch(filters);
+    const { search_mode, ...searchResponse } = await executeSearch(searchFilters);
     const response = NextResponse.json(searchResponse);
     // DG137-B: Cache-Control on success path only
     response.headers.set("Cache-Control", SEARCH_RESPONSE_CACHE_CONTROL);

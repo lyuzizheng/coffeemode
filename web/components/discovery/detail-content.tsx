@@ -27,7 +27,7 @@ import type { DiscoveryController } from "@/lib/discovery/use-discovery-controll
 import type { PublicCafeDetail } from "@/types/cafes";
 import { CheckinFeed } from "./checkin-feed";
 import { FeedNotFoundError } from "./use-checkin-feed";
-import { FactsRow } from "./cafe-card";
+import { FactsRow } from "./card-parts";
 import { PolicyConsensus, ScorePair, WorkProfile } from "./scores";
 import { DossierHero } from "./dossier-hero";
 import { SectionLabel } from "./section-label";

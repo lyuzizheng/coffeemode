@@ -25,8 +25,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getSearchDebounceMs, getSearchMinQueryLength } from "@/lib/client-env";
 import type { ExternalSourceFlags } from "@/lib/client-env";
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { useNetworkStatus } from "@/hooks/use-network-status";
 import { addRecentSearch } from "@/lib/search/recent-searches";
+import { getRankingPreference } from "@/lib/search/ranking-preference";
 import { fetchUnifiedSearch, type UnifiedSearchParams } from "@/lib/search/search-client";
+import { buildSearchHref } from "@/lib/search/search-url";
 import {
   EMPTY_FILTERS,
   hasActiveFilters,
@@ -181,22 +184,31 @@ export function UnifiedSearchPanel({
 }: UnifiedSearchPanelProps) {
   const t = useTranslations("search");
   const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const { isOffline } = useNetworkStatus();
   const [internalQuery, setInternalQuery] = useState("");
   const query = queryProp ?? internalQuery;
   const [status, setStatus] = useState<SearchStatus>("idle");
   const [response, setResponse] = useState<SearchResponse | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [refetching, setRefetching] = useState(false);
+  // DG46: Enter submits — the panel swaps compact suggestion rows for the
+  // rich results view until the query is edited or Esc clears it.
+  const [submitted, setSubmitted] = useState(false);
   const requestId = useRef(0);
+  // Last query a fetch was actually fired for — lets Enter short-circuit a
+  // pending debounce without a duplicate request.
+  const fetchedQueryRef = useRef<string | null>(null);
   const fetcher = fetchSearch ?? fetchUnifiedSearch;
   const filterUi = filters !== undefined && onFiltersChange !== undefined;
   const filtersActive = filterUi && hasActiveFilters(filters);
+
 
   // BRAWUKA-364: the host mirrors the field value so it can swap its own
   // list for results while a query is active.
   const handleQueryChange = useCallback(
     (next: string) => {
       if (queryProp === undefined) setInternalQuery(next);
+      setSubmitted(false);
       onQueryChange?.(next);
     },
     [onQueryChange, queryProp],
@@ -215,6 +227,7 @@ export function UnifiedSearchPanel({
   const runSearch = useCallback(
     (trimmed: string, signal?: AbortSignal) => {
       const id = ++requestId.current;
+      fetchedQueryRef.current = trimmed;
       setStatus((prev) => (prev === "success" ? prev : "loading"));
       // Refetches keep "success" so the last good list stays painted — the
       // refetching flag carries the thin head shimmer instead (§4).
@@ -238,30 +251,54 @@ export function UnifiedSearchPanel({
     },
     [city, fetcher, filters],
   );
-
   useEffect(() => {
     const trimmed = query.trim();
     if (!wantsResults) {
       requestId.current += 1;
+      fetchedQueryRef.current = null;
       return;
     }
+    // Enter already fired this exact query — don't double-fetch on the
+    // `submitted` flip.
+    if (fetchedQueryRef.current === trimmed) return;
     const controller = new AbortController();
     const timer = setTimeout(() => runSearch(trimmed, controller.signal), DEBOUNCE_MS);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, city, filters, wantsResults, runSearch]);
+  }, [query, city, filters, wantsResults, submitted, runSearch]);
 
   const retry = () => {
     // Re-run the request immediately instead of waiting on the debounce.
     if (wantsResults) runSearch(query.trim());
   };
-
-  // DG56: Esc clears the query and dismisses suggestions.
+  // DG56: Enter submits the results view; Esc clears the query and
+  // dismisses suggestions/results.
   const handleKeyDown = (event: React.KeyboardEvent) => {
-    if (event.key === "Escape") handleQueryChange("");
+    if (event.key === "Escape") {
+      handleQueryChange("");
+      return;
+    }
+    if (event.key === "Enter") {
+      const trimmed = query.trim();
+      // Same trigger as the debounce path (DG44): sub-min-length Enter is a
+      // no-op, not a wasted request.
+      if (trimmed.length < MIN_QUERY_LENGTH) return;
+      setSubmitted(true);
+      if (fetchedQueryRef.current !== trimmed) runSearch(trimmed);
+    }
   };
+
+  const showResultsView = submitted && wantsResults;
+  const viewAllHref = showResultsView
+    ? buildSearchHref({
+        q: query.trim(),
+        city: city ?? response?.reference_point.city_id,
+        ranking: getRankingPreference(),
+        filters: filterUi ? filters : undefined,
+      })
+    : undefined;
 
   const handleSelect = (item: SearchResultItem) => {
     addRecentSearch(item.name, city ?? response?.reference_point.city_id ?? "");
@@ -342,11 +379,14 @@ export function UnifiedSearchPanel({
             response={response}
             externalSources={externalSources}
             mapkitConfigured={mapkitConfigured}
+            variant={showResultsView ? "results" : "suggestions"}
+            viewAllHref={viewAllHref}
             onSelect={handleSelect}
             onExternalSearch={onExternalSearch}
             onRetry={retry}
             hasActiveFilters={filtersActive}
             onResetFilters={filterUi ? () => onFiltersChange(EMPTY_FILTERS) : undefined}
+            isOffline={isOffline}
           />
         )}
       </div>

@@ -214,6 +214,56 @@ describe("UnifiedSearchPanel", () => {
     expect(screen.getByText("Fresh")).toBeInTheDocument();
     expect(screen.queryByText("Stale")).not.toBeInTheDocument();
   });
+
+  it("Enter submits immediately and swaps to the rich results view (DG46)", async () => {
+    const d = deferred<SearchResponse>();
+    const fetchSearch = vi.fn(() => d.promise);
+    const input = renderPanel(fetchSearch);
+
+    type(input, "abc");
+    // Enter inside the debounce window: fires now, not at +400ms.
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(fetchSearch).toHaveBeenCalledTimes(1);
+    expect(fetchSearch).toHaveBeenCalledWith(expect.objectContaining({ q: "abc" }));
+
+    await act(async () => {
+      d.resolve(makeResponse(["Alpha"]));
+    });
+    // Results view carries the "view all" deep link to the SSR page.
+    const viewAll = screen.getByRole("link", { name: "View all results" });
+    expect(viewAll).toHaveAttribute("href", "/search?q=abc");
+
+    // The pending debounce must not double-fetch on the submitted flip.
+    await advance(1000);
+    expect(fetchSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it("editing after submit returns to suggestion rows (DG46)", async () => {
+    const first = deferred<SearchResponse>();
+    const second = deferred<SearchResponse>();
+    const fetchSearch = vi
+      .fn()
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise);
+    const input = renderPanel(fetchSearch);
+
+    type(input, "abc");
+    fireEvent.keyDown(input, { key: "Enter" });
+    await act(async () => {
+      first.resolve(makeResponse(["Alpha"]));
+    });
+    expect(screen.getByRole("link", { name: "View all results" })).toBeInTheDocument();
+
+    type(input, "abcd");
+    expect(screen.queryByRole("link", { name: "View all results" })).not.toBeInTheDocument();
+    await advance(400);
+    await act(async () => {
+      second.resolve(makeResponse(["Beta"]));
+    });
+    // Back in suggestion mode: results render, but no view-all affordance.
+    expect(screen.getByText("Beta")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "View all results" })).not.toBeInTheDocument();
+  });
 });
 
 describe("UnifiedSearchPanel filters (BRAWUKA-512, DG44–DG58)", () => {

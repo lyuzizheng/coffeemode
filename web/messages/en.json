@@ -403,6 +403,10 @@
     "could_not_search": "Couldn't search. Try again?",
     "retry": "Retry",
     "external_unavailable": "External search is unavailable right now",
+    "result_count": "{count, plural, one {# place} other {# places}}",
+    "unknown_city": "We don't cover this city yet — pick one from the list.",
+    "view_all_results": "View all results",
+    "external_fallback_query": "cafes in {city}",
     "ranking": {
       "label": "Search ranking",
       "desc": "Applied to every search on this device — no account needed.",

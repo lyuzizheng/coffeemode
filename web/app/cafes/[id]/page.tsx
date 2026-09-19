@@ -1,11 +1,9 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache, type ReactNode } from "react";
 import { getLocale, getTranslations } from "next-intl/server";
 import { isValidUUID } from "@shared/uuid";
-import { AppMenu } from "@/components/layout/app-menu";
-import { CoffeeIcon } from "@/components/icons";
+import { SiteMasthead } from "@/components/site-masthead";
 import { DossierHero } from "@/components/discovery/dossier-hero";
 import { SectionLabel } from "@/components/discovery/section-label";
 import { GalleryStrip } from "@/components/cafe/gallery-strip";
@@ -155,23 +153,7 @@ function CafeHeading({
   );
 }
 
-/** The dossier masthead: wordmark back to the map + the global
- * account/menu cluster (BRAWUKA-504 — same chrome as the map and
- * /profile, not a page-local ThemeToggle). */
-function CafeMasthead({ accountInitial }: { accountInitial?: string }) {
-  return (
-    <header className="flex items-center justify-between border-b border-separator px-4 py-3 sm:px-6">
-      <Link
-        href="/"
-        className="-my-2.5 inline-flex min-h-11 items-center gap-2 font-display text-md font-extrabold tracking-tight text-foreground"
-      >
-        <CoffeeIcon size={18} className="text-accent" />
-        {APP_NAME}
-      </Link>
-      <AppMenu variant="page" accountInitial={accountInitial} />
-    </header>
-  );
-}
+
 
 export default async function CafePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -269,7 +251,7 @@ function CafeShellDocument({
 }) {
   return (
     <div className="flex min-h-dvh flex-col">
-      <CafeMasthead accountInitial={accountInitial} />
+      <SiteMasthead accountInitial={accountInitial} />
 
       {/* Part 1 — the public shell (DG106): aggregate product data only,
           full semantic HTML, no client JS needed for the content. */}

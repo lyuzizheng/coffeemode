@@ -48,9 +48,11 @@ describe("Dev fixture cleaner — CLI contracts", () => {
   });
 
   it("refuses a non-local host without the remote opt-in (no connection attempted)", () => {
-    expect(() => sh(`node "${CLEANER}" --database-url "postgres://db.example.com:5432/coffeemode"`)).toThrow(
-      /non-local host/,
-    );
+    expect(() =>
+      sh(`node "${CLEANER}" --database-url "postgres://db.example.com:5432/coffeemode"`, {
+        ALLOW_REMOTE_INTEGRATION_DB: undefined,
+      }),
+    ).toThrow(/non-local host/);
   });
 
   it("matches only deterministic fixture id families", () => {

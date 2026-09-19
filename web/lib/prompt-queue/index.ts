@@ -62,6 +62,9 @@ export interface PromptQueueStore<T extends PromptQueueItem> {
    * Record a user answer. "not_yet" stamps the re-ask delay and increments
    * the ask counter, auto-resolving past `maxReasks`; terminal answers
    * resolve permanently. Must be idempotent for already-resolved items.
+   * A store MAY widen the answer's scope to the item's logical siblings
+   * (e.g. the navigations store resolves the whole same-cafe stack) when
+   * one prompt stands in for several queued rows.
    */
   answer(userId: string, itemId: string, answer: PromptAnswer, params: PromptQueueParams): Promise<PromptAnswerResult>;
 }

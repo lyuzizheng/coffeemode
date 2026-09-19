@@ -10,9 +10,11 @@ import { isValidUUID } from "@shared/uuid";
  * POST /api/navigations/[id]/resolve  {outcome: "visited" | "wont_go" | "not_yet"}
  * Records the user's answer to the return-visit prompt (DG80/DG91):
  * "visited"/"wont_go" resolve permanently; "not_yet" stamps the ≥1-day
- * re-ask delay and auto-resolves past the re-ask cap. Idempotent — a repeat
- * answer on an already-resolved row returns the stored outcome, and a
- * completed check-in's `auto` resolution is never overwritten.
+ * re-ask delay and auto-resolves past the re-ask cap. Answers apply to the
+ * whole stack of that user's unresolved navigations to the same cafe, not
+ * just the shown row (BRAWUKA-270). Idempotent — a repeat answer on an
+ * already-resolved row returns the stored outcome, and a completed
+ * check-in's `auto` resolution is never overwritten.
  * Requires auth; 404 when the navigation does not belong to the caller.
  */
 export async function POST(

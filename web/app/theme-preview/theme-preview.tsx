@@ -3,7 +3,8 @@
 import { motion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { duration, ease, spring, stagger, useEnterMotion } from "@/lib/motion";
+import { ThemeVariantPicker } from "@/components/theme-variant-picker";
+import { duration, ease, stagger, useEnterMotion, useSprings } from "@/lib/motion";
 import { DEMO_SCORE } from "./shared";
 import {
   ButtonsSection,
@@ -34,6 +35,7 @@ function HeroPoster() {
   const ta = useTranslations("app");
   // Hydration-safe: static on server + first client render, animates post-mount.
   const enter = useEnterMotion();
+  const springs = useSprings();
 
   return (
     <motion.div
@@ -98,7 +100,7 @@ function HeroPoster() {
                 ? {
                     initial: { width: 0 },
                     animate: { width: "87%" },
-                    transition: { ...spring.soft, delay: stagger.heroPoster.scoreBar },
+                    transition: { ...springs.soft, delay: stagger.heroPoster.scoreBar },
                   }
                 : { initial: false, animate: { width: "87%" }, transition: { duration: 0 } })}
             />
@@ -123,7 +125,12 @@ export function ThemePreview() {
           <span className="font-display text-md font-extrabold tracking-tight">
             CafeMood
           </span>
-          <ThemeToggle />
+          <div className="flex items-center gap-3">
+            <div className="w-56 sm:w-64">
+              <ThemeVariantPicker />
+            </div>
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 

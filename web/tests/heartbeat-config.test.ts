@@ -76,19 +76,17 @@ describe("GET /api/config (BRAWUKA-284)", () => {
     vi.clearAllMocks();
     vi.mocked(checkRateLimit).mockResolvedValue({ allowed: true, remaining: 10, resetAt: Date.now(), retryAfter: 0 });
     vi.mocked(getRuntimeConfig).mockResolvedValue({
-      flags: { new_search: true },
       banners: [
         { id: "m1", kind: "maintenance", text: { en: "Down Sunday", zh: "周日维护" } },
       ],
     });
   });
 
-  it("returns flags + banners with the 60s edge-cache header", async () => {
+  it("returns banners with the 60s edge-cache header", async () => {
     const res = await configGET(new Request("http://localhost/api/config"));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({
-      flags: { new_search: true },
       banners: [{ id: "m1", kind: "maintenance", text: { en: "Down Sunday", zh: "周日维护" } }],
     });
     expect(res.headers.get("Cache-Control")).toBe(

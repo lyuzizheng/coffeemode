@@ -13,9 +13,9 @@
 # surfacing later as a machine-specific difference.
 #
 # The Node pin is checked wherever it lives, not only in `ci.yml`:
-# `nightly-recompute.yml` runs `npm ci` in `web/` against the production database
-# every night, so the gate walks every workflow and attributes each
-# `node-version` to the package that job installs into (BRAWUKA-202).
+# every workflow that provisions Node (e.g. `staging-journey.yml`) is checked,
+# walking each job to attribute its `node-version` to the package that job installs
+# into (BRAWUKA-202). Nightly recompute runs on Dokploy VPS cron (BRAWUKA-475).
 #
 # What it deliberately does NOT check:
 #   - `engine-strict`. Measured on npm 11: without it, an unsatisfiable
@@ -165,9 +165,9 @@ fi
 # into the package inside the install step (`cd web && pnpm install`), or a
 # manager dir flag (`npm --prefix <pkg>`, `pnpm --dir <pkg>`,
 # `yarn --cwd <pkg>`) — and compared with that package's own floor.
-# `nightly-recompute.yml` (02:00 UTC, `web/`, production database) is why the
-# single-file check was not enough: with `engine-strict` off, a floor bump that
-# left it behind installs with an `EBADENGINE` warning and still exits 0.
+# Multi-workflow checks ensure that any scheduled or maintenance workflows
+# (like `staging-journey.yml`) cannot silently keep a stale Node major when
+# `engine-strict` is off and an older Node would install with an `EBADENGINE` warning.
 #
 # An install is recognised by what it does (fetch a package's dependencies),
 # never by one command name: `npm`, `pnpm`, `yarn` and `bun` install verbs

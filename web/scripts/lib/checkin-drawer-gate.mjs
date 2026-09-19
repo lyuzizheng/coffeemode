@@ -128,6 +128,10 @@ export async function runCheckinDrawerGate({ label, base, cafeId, createContext,
       });
 
       await page.goto(`${base}/cafes/${cafeId}`, { waitUntil: "domcontentloaded" });
+      // DG124: the SSR shell is a hydration overlay with its own live CTA —
+      // a drawer opened from it dies when the overlay unmounts. Wait for the
+      // masthead to detach so the click lands on the app's trigger.
+      await page.waitForSelector("header", { state: "detached", timeout: 15000 });
       const dialog = await openCheckinDrawer(page);
       assertCtaInsideViewport(viewport, await measureDrawer(dialog));
 

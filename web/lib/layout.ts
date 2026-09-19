@@ -27,6 +27,10 @@ export const ASIDE_COLUMN_PX = 380;
 /** Desktop cafe-detail column width — overlays the map below xl, so the
  * camera padding and the detail overlay both key off this. */
 export const DETAIL_COLUMN_PX = 400;
+/** Compact masthead height in the desktop sidebar (BRAWUKA-506): the
+ * sticky bar the brand frontispiece collapses into; the sticky search row
+ * docks directly beneath it (`top: var(--layout-masthead-h)`). */
+export const MASTHEAD_H_PX = 72;
 /** Square thumbnail edge for check-in/gallery photo strips and card covers
  * (feed-card, gallery-strip, checkin-photos, profile-tab-cafes, cafe-card). */
 export const THUMB_PX = 72;
@@ -52,6 +56,7 @@ export const LAYOUT_CSS_VARS = {
   "--layout-sheet-collapsed": `${SHEET_COLLAPSED_PX}px`,
   "--layout-aside-column": `${ASIDE_COLUMN_PX}px`,
   "--layout-detail-column": `${DETAIL_COLUMN_PX}px`,
+  "--layout-masthead-h": `${MASTHEAD_H_PX}px`,
   "--layout-thumb": `${THUMB_PX}px`,
   "--layout-card-cover-w": `${CARD_COVER_W_PX}px`,
   "--layout-row-cover-w": `${ROW_COVER_W_PX}px`,

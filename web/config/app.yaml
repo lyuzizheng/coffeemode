@@ -240,9 +240,13 @@ budgets:
   # WebGL init, deferred to idle) can't hold the static-scaffold 0.8 —
   # measured ~0.70 on CI before the idle deferral landed. Debt: revisit when
   # the map init cost shrinks (lighter style).
+  # `performanceCafe` is the `/cafes/[id]` floor: DG124 hydrates the same
+  # map app under the SSR shell, so the share-link entry carries the map
+  # bundle too — measured 0.71 on CI (3/3 runs). Debt: same as home.
   lighthouse:
     performance: 0.8
     performanceHome: 0.65
+    performanceCafe: 0.65
     accessibility: 0.85
     bestPractices: 0.85
     seo: 0.85

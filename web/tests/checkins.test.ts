@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { createCheckIn, toggleCheckInLike } from "@/lib/db/checkins";
 import {
   CafeNotFoundError,
@@ -39,11 +39,15 @@ vi.mock("@/lib/db/postgres", async (importOriginal) => ({
 
 // Real provisionPhotos/consumeProvisionedIntents run against these fake deps;
 // only the default-deps factory is swapped (issue #86 seam).
-const provisionDeps = {
+const provisionDeps: Record<string, Mock> = {
   checkUploadIntents: vi.fn(),
   consumeUploadIntents: vi.fn(),
   getProcessUrls: vi.fn(),
   processImage: vi.fn(),
+  // Unreferenced by default: unit compensation deletes every id, and the
+  // BRAWUKA-401 race test below overrides this to simulate a winner's row.
+  selectPhotoReferences: vi.fn().mockResolvedValue([]),
+  deleteProvisionedVariants: vi.fn(),
 };
 
 vi.mock("@/lib/images/provision-photos", async (importOriginal) => ({
@@ -483,6 +487,23 @@ describe("createCheckIn", () => {
     }
   });
 
+  it("keeps the winner's R2 objects when a loser rolls back on the revisit window (BRAWUKA-401)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] }); // pre-provision cafe check
+    provisionDeps.selectPhotoReferences.mockResolvedValueOnce([IMG]); // winner committed
+    const deleted: string[] = [];
+    provisionDeps.deleteProvisionedVariants.mockImplementation(async (id: string) => {
+      deleted.push(id);
+    });
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [{ lock: 1 }] }) // BRAWUKA-125 advisory xact lock
+      .mockResolvedValueOnce({ rows: [{ id: CAFE }] }) // in-tx cafe gate
+      .mockResolvedValueOnce({ rows: [{ id: CHECKIN }] }); // window hit: live check-in
+
+    const err = await createCheckIn(USER.id, validInput()).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DuplicateCheckInError);
+    expect(provisionDeps.selectPhotoReferences).toHaveBeenCalledWith([IMG]);
+    expect(deleted).toEqual([]); // referenced: the loser's rollback deletes nothing
+  });
 
   it("throws CafeNotFoundError without provisioning or inserting when the cafe is missing", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [] }); // pre-provision cafe check

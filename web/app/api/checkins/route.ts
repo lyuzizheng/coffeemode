@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   if (!bodyRes.ok) return bodyRes.response;
   const parsed = parseCheckInBody(bodyRes.data);
   if (!parsed.ok) {
-    return apiError("invalid_request", parsed.message, 400);
+    return apiError("invalid_request", parsed.message, { status: 400 });
   }
 
   const gate = await guard(request, {
@@ -49,14 +49,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ checkin_id: result.checkin_id }, { status: result.deduped ? 200 : 201 });
   } catch (err) {
     if (err instanceof CafeNotFoundError) {
-      return apiError("not_found", "cafe not found", 404);
+      return apiError("not_found", "cafe not found", { status: 404 });
     }
     if (err instanceof DuplicateCheckInError) {
       // DG64: same-day revisit — never a user-facing error. The drawer
       // preempts this via GET /api/checkins/last; raced clients (multi-tab)
       // convert to PATCH on the returned id without surfacing it.
-      return apiError("duplicate_checkin", "check-in already exists for this visit", 409, {
-        existing_checkin_id: err.existingCheckinId,
+      return apiError("duplicate_checkin", "check-in already exists for this visit", {
+        status: 409,
+        extra: { existing_checkin_id: err.existingCheckinId },
       });
     }
     if (
@@ -65,7 +66,7 @@ export async function POST(request: Request) {
       // user-facing class as a bad photo id, not a server fault.
       (err instanceof ImageServiceError && err.status === 404)
     ) {
-      return apiError("invalid_photos", "one or more photos are invalid", 400);
+      return apiError("invalid_photos", "one or more photos are invalid", { status: 400 });
     }
     logError({ route: gate.route, request, error: err, status: 500 });
     return apiError("internal_error", 500);

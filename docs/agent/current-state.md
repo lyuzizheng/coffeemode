@@ -23,6 +23,7 @@ The design-grill program is COMPLETE (2026-08-23): all seven map-independent UI 
   the local compose Postgres; `supabase-mock` is retained for offline/unit use;
   staging journey suites run in per-suite scratch DBs via a serialized
   `staging-journey` workflow; prod promotion adds manual owner approval.
+- BRAWUKA-475/476 nightly recompute migration: nightly work_stats recompute and Helpful ranking snapshot migrated from GitHub Actions (.github/workflows/nightly-recompute.yml deleted) to Dokploy VPS scheduled jobs (02:00 UTC daily) via deploy/dokploy/nightly-recompute.sh. Production DATABASE_URL stays confined to Dokploy environment variables without entering GitHub secrets. Failure alerting triggers Multica autopilot webhook (MULTICA_AUTOPILOT_WEBHOOK_URL).
 - Open issues carry tier-0..3 labels mirroring the priority tiers in `docs/specs/0004` §Priority tiers (authority lives there, not in the harness). Fix order: tier-0 correctness/security/docs-truth first, then tier-1 launch gates.
 - Issue #24's likes_count trigger (#57) and work_stats row locking (#56) are merged; #24 stays open (tier-0) until the gallery-merge convergence in #234 lands. JSONB normalization is deferred with a revisit trigger (0004 Post-MVP).
 - Issue #114 established that Apple credentials do not block map-independent
@@ -42,7 +43,20 @@ web/db/migrations/       0001_init.sql — core schema (spec 0001);
                          0010_drop_min_spend.sql (DG125), 0011_cafe_tombstone_lifecycle.sql,
                          0012_drop_redundant_cafe_indexes.sql,
                          0013_search_city_index.sql,
-                         0014_fk_indexes_and_partial_gist.sql
+                         0014_fk_indexes_and_partial_gist.sql,
+                         0015_drop_dead_cafe_columns.sql (#253),
+                         0016_seed_service_account.sql (DG125/#229),
+                         0017_cafe_visibility.sql (DG147/#229),
+                         0018_public_identity.sql (#139),
+                         0019_checkin_idempotency.sql (DG61),
+                         0020_navigation_prompt_queue.sql (#149),
+                         0021_helpful_ranking.sql (DG148),
+                         0022_profiles_onboarded.sql (DG122),
+                         0023_runtime_config.sql (BRAWUKA-284),
+                         0024_service_account_rename.sql (BRAWUKA-278),
+                         0025_drop_cafes_cover.sql (BRAWUKA-307),
+                         0026_drop_rate_limits.sql (BRAWUKA-378),
+                         0027_navigation_unresolved_dedupe.sql (BRAWUKA-391)
 web/lib/auth/            Supabase server client (PKCE), profile upsert logic
 web/lib/db/              Postgres pool (server-side only), withTransaction, atomic like toggle,
                          cafes domain lib (fused create + first check-in + stats, nearby list, getCafe),
@@ -124,8 +138,8 @@ docs/agent/              current state, planned-slice manifest, owner actions
   external-result pins remain (#134).
 - map-creation-entry — READY: map-tap creation + reverse geocoding
   (Nominatim/Photon picked at implementation time) (#136).
-- deeplink-hydration — READY: the map app now exists for the /cafes/[id]
-  SSR shell to hydrate into at FULL (DG124) (#150).
+- deeplink-hydration — COMPLETE: /cafes/[id] SSR shell hydrates into the
+  map app at FULL (DG124); /?cafe= 308s to the canonical URL (BRAWUKA-514).
 ```
 
 ### Blocked context (do not start yet)

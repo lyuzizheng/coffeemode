@@ -2,8 +2,10 @@
 
 /**
  * Map surface entry (map-home, BRAWUKA-311). Client-only: the maplibre chunk
- * loads via next/dynamic ssr:false — SSR renders the skeleton in the same
- * flex-1 slot so the landing tree never re-parents (#275 contract).
+ * loads via next/dynamic ssr:false — the mosaic mask (map-mosaic.tsx,
+ * BRAWUKA-506) covers the slot from SSR through chunk load until the
+ * basemap's first style load, so the landing tree never re-parents and the
+ * map resolves out of pixels instead of hard-cutting (#275 contract).
  *
  * Failure containment: a basemap outage (tile host down, WebGL missing,
  * chunk load failure) degrades this slot to an error card; the discovery
@@ -14,39 +16,14 @@ import { Component, useCallback, useEffect, useState, type ReactNode } from "rea
 import { useTranslations } from "next-intl";
 import { Button } from "@heroui/react";
 import { WarningIcon } from "@/components/icons";
+import { MapMosaic } from "./map-mosaic";
 
 const DiscoveryMap = dynamic(
   () => import("./discovery-map").then((m) => m.DiscoveryMap),
-  { ssr: false, loading: () => <MapSkeleton /> },
+  // The mosaic mask below covers the whole chunk-load window — the dynamic
+  // fallback stays empty so the mask is a single instance (BRAWUKA-506).
+  { ssr: false, loading: () => null },
 );
-
-/** Reserved map area while the maplibre chunk loads — quiet paper tint with
- * a single pulsing pin, no spinner chrome. */
-function MapSkeleton() {
-  return (
-    <div
-      className="absolute inset-0 flex items-center justify-center bg-surface-secondary"
-      aria-hidden
-    >
-      <svg
-        width="40"
-        height="40"
-        viewBox="0 0 40 40"
-        className="animate-pulse text-muted/50"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <circle cx="18" cy="18" r="12" />
-        <path d="M13 15h8v3.5a4 4 0 0 1-8 0z" fill="currentColor" stroke="none" />
-        <path d="M21 15.8h1.4a2.2 2.2 0 0 1 0 4.4H21" />
-        <path d="M12.5 24h11" />
-      </svg>
-    </div>
-  );
-}
 
 /** Basemap failure card — the sheet stays fully usable (DG: data path is
  * map-independent), so this is a calm inline state, not a blocking screen. */
@@ -94,10 +71,13 @@ class MapErrorBoundary extends Component<
 export function MapSurface() {
   const [failed, setFailed] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
+  /** First style load completed — lifts the mosaic mask (BRAWUKA-506). */
+  const [ready, setReady] = useState(false);
   // Defer the ~1MB maplibre chunk + map init until the main thread is idle:
-  // the skeleton paints immediately (it is the LCP candidate), and the heavy
-  // module evaluation stays out of the TBT window (Lighthouse gate, BRAWUKA-311
-  // review P0). requestIdleCallback with a timeout fallback — Safari lacks rIC.
+  // the mosaic mask paints immediately (it is the LCP candidate), and the
+  // heavy module evaluation stays out of the TBT window (Lighthouse gate,
+  // BRAWUKA-311 review P0). requestIdleCallback with a timeout fallback —
+  // Safari lacks rIC.
   const [idle, setIdle] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -118,19 +98,27 @@ export function MapSurface() {
   }, []);
   const handleRetry = useCallback(() => {
     setFailed(false);
+    setReady(false);
     setRetryKey((k) => k + 1);
   }, []);
+  const handleReady = useCallback(() => setReady(true), []);
 
   return (
     <div className="relative min-h-0 flex-1">
       {failed ? (
         <MapErrorState onRetry={handleRetry} />
-      ) : idle ? (
-        <MapErrorBoundary key={retryKey} onFailure={handleFailure}>
-          <DiscoveryMap onError={handleFailure} />
-        </MapErrorBoundary>
       ) : (
-        <MapSkeleton />
+        <>
+          {idle && (
+            <MapErrorBoundary key={retryKey} onFailure={handleFailure}>
+              <DiscoveryMap onError={handleFailure} onReady={handleReady} />
+            </MapErrorBoundary>
+          )}
+          {/* Mosaic reveal (BRAWUKA-506): opaque pixel mask until the
+              basemap's first style load, then cells resolve away in a
+              deterministic shuffle (≤450ms; reduced-motion → instant). */}
+          <MapMosaic revealed={ready} />
+        </>
       )}
     </div>
   );

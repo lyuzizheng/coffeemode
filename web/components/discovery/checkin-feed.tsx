@@ -15,11 +15,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { motion, useReducedMotion } from "framer-motion";
-import { spring } from "@/lib/motion";
+import { useSprings } from "@/lib/motion";
 import type { CheckInFeedMode } from "@/types/checkins";
 import { FeedCard } from "./feed-card";
 import { InlineError } from "./inline-error";
-import { FeedNotFoundError, useCheckinFeed } from "./use-checkin-feed";
+import { FeedCursorExpiredError, FeedNotFoundError, useCheckinFeed } from "./use-checkin-feed";
 import { SectionLabel } from "./section-label";
 
 const MODES: CheckInFeedMode[] = ["helpful", "newest"];
@@ -35,6 +35,7 @@ function FeedModeTabs({
 }) {
   const t = useTranslations("discovery");
   const reduced = useReducedMotion();
+  const springs = useSprings();
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     e.preventDefault();
@@ -64,7 +65,7 @@ function FeedModeTabs({
             {active && (
               <motion.span
                 layoutId="feed-mode-pill"
-                transition={reduced ? { duration: 0 } : spring.snappy}
+                transition={reduced ? { duration: 0 } : springs.snappy}
                 className="absolute inset-x-0 inset-y-2 rounded-sm border border-separator bg-surface"
                 aria-hidden
               />
@@ -118,7 +119,10 @@ export function CheckinFeed({
   const [mode, setMode] = useState<CheckInFeedMode>("newest"); // DG113
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const { query, checkins, like, likePendingId, retryFromFirstPage } = useCheckinFeed(cafeId, mode);
+  const { query, checkins, like, likePendingIds, retryFromFirstPage } = useCheckinFeed(cafeId, mode);
+
+  // 410 → the hook is already resetting; render the reset state, never an error frame (BRAWUKA-462).
+  const cursorExpired = query.error instanceof FeedCursorExpiredError;
 
   // A 404 from the feed means the cafe is gone — route to the DG19 flow.
   useEffect(() => {
@@ -146,7 +150,7 @@ export function CheckinFeed({
         </SectionLabel>
       </div>
 
-      {query.isPending ? (
+      {query.isPending || cursorExpired ? (
         <FeedSkeleton />
       ) : query.isError && checkins.length === 0 ? (
         query.error instanceof FeedNotFoundError ? null : (
@@ -163,7 +167,7 @@ export function CheckinFeed({
               cafeId={cafeId}
               cafeName={cafeName}
               onLike={like}
-              likePending={likePendingId === checkin.id}
+              likePending={likePendingIds.has(checkin.id)}
             />
           ))}
           {query.isFetchingNextPage && (

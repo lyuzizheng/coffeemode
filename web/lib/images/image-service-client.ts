@@ -112,8 +112,7 @@ export async function requestUploadUrl(size: number): Promise<UploadUrlResponse>
  * targetType="provision" + targetId=<imageUuid> (PROVISION_TARGET_TYPE).
  */
 export async function getProcessUrls(
-  request: Omit<CompleteImageRequest, "targetType" | "targetId"> &
-    Partial<Pick<CompleteImageRequest, "targetType" | "targetId">> & { userId?: string },
+  request: CompleteImageRequest & { userId?: string },
 ): Promise<ProcessUrls> {
   const { url, token } = getEnv();
   const response = await fetch(`${url}/v1/images/complete`, {

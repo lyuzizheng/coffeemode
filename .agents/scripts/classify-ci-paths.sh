@@ -133,6 +133,19 @@ else
       poi-service/*)
         poi_service=true
         ;;
+      # Agent-QA harness (BRAWUKA-408): deterministic, non-LLM scaffold an
+      # agent-QA run uses (Access injection, session bootstrap, personas,
+      # ledger, allowlist guard, quotas, cleanup) plus its unit tests — the
+      # same convention as the deploy/devops helpers below: harness-side, so
+      # it rides `integration=true` rather than the `application` gate.
+      # (BRAWUKA-503: the password-grant journey helper it once reached was
+      # deleted; nothing under web/ statically imports this core anymore, so
+      # the closure check in `check-ci-classification.sh` §4b no longer sees
+      # it — the `integration=true` routing stays as harness convention, the
+      # same as the deploy/devops helpers below.)
+      scripts/agent-qa/*)
+        integration=true
+        ;;
       # Dokploy deployment definitions and the devops forwarders they ship with
       # delegate to `scripts/devops/*` (already integration-gated); the compose
       # stacks define the environments the DB-backed suites run against.

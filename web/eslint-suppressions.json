@@ -10,9 +10,6 @@
     }
   },
   "app/api/search/route.ts": {
-    "max-lines-per-function": {
-      "count": 1
-    },
     "sonarjs/cognitive-complexity": {
       "count": 1
     }
@@ -147,11 +144,6 @@
   },
   "lib/discovery/use-discovery-controller.ts": {
     "max-lines-per-function": {
-      "count": 1
-    }
-  },
-  "lib/hours.ts": {
-    "sonarjs/cognitive-complexity": {
       "count": 1
     }
   },

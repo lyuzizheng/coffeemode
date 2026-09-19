@@ -4,6 +4,7 @@ import { isValidUUID } from "@shared/uuid";
 import { query } from "../postgres";
 import { appConfig } from "@/lib/config";
 import { parseProfileCursor } from "./cursor";
+import type { CafeVisibility } from "@/types/cafes";
 import type { UserCafeItemDto } from "./types";
 
 type UserCafeRow = {
@@ -17,8 +18,8 @@ type UserCafeRow = {
   cursor_visited_at: string;
   checkins_count: string | number;
   is_creation: boolean;
+  visibility: CafeVisibility;
 };
-
 function toUserCafeItems(rows: UserCafeRow[]): UserCafeItemDto[] {
   return rows.map((r) => ({
     id: r.id,
@@ -28,6 +29,7 @@ function toUserCafeItems(rows: UserCafeRow[]): UserCafeItemDto[] {
     last_visited_at: r.last_visited_at.toISOString(),
     checkins_count: Number(r.checkins_count ?? 0),
     is_creation: Boolean(r.is_creation),
+    visibility: r.visibility,
   }));
 }
 
@@ -71,13 +73,14 @@ export async function getUserCafes(
       max(ch.visited_at) as last_visited_at,
       to_char(max(ch.visited_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_visited_at,
       count(ch.id) as checkins_count,
-      bool_or(c.created_by = $1 or ch.is_creation = true) as is_creation
+      bool_or(c.created_by = $1 or ch.is_creation = true) as is_creation,
+      c.visibility
     from checkins ch
     join cafes c on c.id = ch.cafe_id and c.deleted_at is null
     where ch.user_id = $1
       and ch.deleted_at is null
       ${visibilityClause}
-    group by c.id, c.name, c.city, c.gallery->0->>'card'
+    group by c.id, c.name, c.city, c.gallery->0->>'card', c.visibility
     ${cursorClause}
     order by last_visited_at desc, c.id desc
     limit $2

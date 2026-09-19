@@ -35,7 +35,7 @@ export async function GET(request: Request) {
     await pingDatabase();
   } catch (err) {
     logError({ route: gate.route, request, error: err, status: 503 });
-    return apiError("db_unavailable", "database unavailable", 503);
+    return apiError("db_unavailable", "database unavailable", { status: 503 });
   }
   return NextResponse.json(
     {

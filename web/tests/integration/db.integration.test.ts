@@ -56,7 +56,9 @@ import {
   type CafeDetailWithAuthor,
 } from "@/lib/db/cafes";
 import {
+  deleteAccount,
   getProfile,
+  getProfileExport,
   getUserStats,
   updateProfile,
   getUserCheckIns,
@@ -81,6 +83,7 @@ import {
   listPublicCheckIns,
 } from "@/lib/discovery/feed";
 import { recordUploadIntent } from "@/lib/db/image-uploads";
+import { selectPhotoReferences } from "@/lib/db/photo-references";
 import { PhotoIntentError } from "@/lib/images/provision-photos";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import { recomputeAllWorkStats } from "@/lib/stats/aggregate";
@@ -576,6 +579,39 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
 
       const nearby = await listCafesNearby({ lat: 1.35, lng: 103.8, radiusKm: 10, limit: 10 });
       expect(nearby.map((c) => c.name)).toEqual(expect.arrayContaining(["Seed Cafe", "New Cafe"]));
+    });
+
+    it("selectPhotoReferences gates compensation on live rows (BRAWUKA-401)", async () => {
+      const photoId = randomUUID();
+      const orphanId = randomUUID();
+      await recordUploadIntent(U1, photoId);
+      const created = await createCafeWithFirstCheckIn(
+        U1,
+        {
+          name: "Reference Gate Cafe",
+          lat: 1.35,
+          lng: 103.8,
+          city: "singapore",
+          checkin: {
+            scores: { overall: 80 },
+            max_stay: "unlimited",
+            note: "gated",
+            photo_ids: [photoId],
+          },
+        },
+        fakeProvisionPhotosDeps(),
+      );
+
+      // Winner committed: gallery + check-in rows reference the id, so the
+      // loser's compensation must keep it while deleting true orphans.
+      await expect(selectPhotoReferences([photoId, orphanId])).resolves.toEqual([photoId]);
+
+      // A soft-deleted check-in still references its photos until the row is
+      // gone: the gate keeps protecting the R2 objects after delete.
+      await dbClient.query("update checkins set deleted_at = now() where id = $1", [
+        created.checkin_id,
+      ]);
+      await expect(selectPhotoReferences([photoId])).resolves.toEqual([photoId]);
     });
 
     it("recordNavigation inserts and 404s on a missing cafe", async () => {
@@ -2220,9 +2256,10 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       // Toggle to private
       await setCafeVisibility(created.cafe_id, U1, "private");
 
-      // U1 views own profile: cafe is present
+      // U1 views own profile: cafe is present and marked private (DG147 badge DTO)
       const ownProfileCafes = await getUserCafes(U1, { viewerId: U1 });
-      expect(ownProfileCafes.items.some((c) => c.id === created.cafe_id)).toBe(true);
+      const ownItem = ownProfileCafes.items.find((c) => c.id === created.cafe_id);
+      expect(ownItem?.visibility).toBe("private");
 
       // U2 views U1's profile: private cafe is hidden
       const strangerViewingU1 = await getUserCafes(U1, { viewerId: U2 });
@@ -2492,14 +2529,23 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     });
   });
   describeDb("BRAWUKA-180 split-module backfill on real SQL", () => {
-    // Wall-clock pause (not a fake-timer case): the lost-race tests below coordinate
-    // TWO live Postgres connections (an uncommitted holder + the victim insert blocked
-    // on its unique index). Fake timers cannot advance real DB I/O, so a short real
-    // delay lets the victim reach its blocked INSERT before the holder commits.
-    function sleepForRace(): Promise<void> {
-      const { promise, resolve } = Promise.withResolvers<void>();
-      setTimeout(resolve, 500);
-      return promise;
+    // Deterministic synchronization: poll pg_locks for the ungranted transactionid
+    // lock where the concurrent victim blocks on the unique index. This eliminates
+    // arbitrary sleep timeouts that fail over high-latency or tunneled connections.
+    async function waitForBlockedVictim(holder: pg.Client, timeoutMs = 15_000): Promise<void> {
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        const res = await holder.query<{ count: string }>(
+          "select count(*) from pg_locks where not granted and locktype = 'transactionid'",
+        );
+        if (parseInt(res.rows[0]?.count ?? "0", 10) > 0) {
+          return;
+        }
+        const { promise, resolve } = Promise.withResolvers<void>();
+        setTimeout(resolve, 50);
+        await promise;
+      }
+      throw new Error(`waitForBlockedVictim timed out after ${timeoutMs}ms waiting for victim to block`);
     }
 
     it("parseNavigationBody validates bodies; recordNavigation writes and 404s", async () => {
@@ -2597,7 +2643,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
           },
           fakeProvisionPhotosDeps(),
         );
-        await sleepForRace();
+        await waitForBlockedVictim(holder);
         await holder.query("commit");
         const err = await pending.then(
           () => null,
@@ -2626,7 +2672,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
           [CAFE_A, U2, key],
         );
         const pending = createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 60 }, idempotency_key: key });
-        await sleepForRace();
+        await waitForBlockedVictim(holder);
         await holder.query("commit");
         const result = await pending;
         expect(result.deduped).toBe(true);
@@ -2696,6 +2742,47 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(await cafeExists(CAFE_A, U1)).toBe(true);
       expect(await cafeExists(CAFE_A, U2)).toBe(true);
       expect(await isLiveCafe(randomUUID())).toBe(false);
+    });
+  });
+
+  describeDb("account lifecycle (BRAWUKA-504, DG149)", () => {
+    it("deleteAccount removes a user who has check-ins — FK detach keeps tombstones", async () => {
+      // U1 owns CAFE_A + CHECKIN_A1 (the creation check-in). The FK that
+      // blocked the original implementation is checkins.user_id → profiles.
+      const result = await deleteAccount(U1);
+      expect(result.ok).toBe(true);
+      expect(result.checkins_removed).toBe(1);
+      expect(result.cafes_transferred).toBe(1);
+
+      const profile = await dbClient.query("select id from profiles where id = $1", [U1]);
+      expect(profile.rows).toHaveLength(0);
+
+      // Tombstone preserved, author detached.
+      const checkin = await dbClient.query(
+        "select user_id, deleted_at from checkins where id = $1",
+        [CHECKIN_A1],
+      );
+      expect(checkin.rows[0].user_id).toBeNull();
+      expect(checkin.rows[0].deleted_at).not.toBeNull();
+
+      // Created cafe survives as a service-account orphan shell.
+      const cafe = await dbClient.query("select created_by from cafes where id = $1", [CAFE_A]);
+      expect(cafe.rows[0].created_by).toBe(SERVICE_ACCOUNT_ID);
+    });
+
+    it("getProfileExport returns the full bundle against the real schema", async () => {
+      const bundle = await getProfileExport(U1);
+      expect(bundle.profile?.id).toBe(U1);
+      expect(bundle.checkins).toHaveLength(1);
+      expect(bundle.checkins[0]).toMatchObject({ id: CHECKIN_A1, cafe_id: CAFE_A });
+      expect(bundle.cafes_created).toHaveLength(1);
+      const exportedCafe = bundle.cafes_created[0] as { id: string; name: string; lat: number; lng: number };
+      expect(exportedCafe).toMatchObject({ id: CAFE_A, name: "Seed Cafe" });
+      // geography → lat/lng projection actually resolves (was a 500 on
+      // non-existent cafes.lat/lng columns).
+      expect(exportedCafe.lat).toBeCloseTo(1.35, 3);
+      expect(exportedCafe.lng).toBeCloseTo(103.8, 3);
+      expect(bundle.navigations).toEqual([]);
     });
   });
 });

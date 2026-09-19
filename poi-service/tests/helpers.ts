@@ -1,5 +1,6 @@
 /** In-memory fakes for KV + D1 + fetch, matching the minimal structural types. */
 
+import { kmPerDegLat, kmPerDegLng } from "../src/geo";
 import type { D1Like, D1PreparedLike, KVLike } from "../src/types";
 
 export class FakeKV implements KVLike {
@@ -133,7 +134,7 @@ class FakePrepared implements D1PreparedLike {
     const lngHi = where.includes("lng BETWEEN ? AND ?") ? (this.binds[bi++] as number) : undefined;
     const lngLo2 = lngWrap ? (this.binds[bi++] as number) : undefined;
     const lngHi2 = lngWrap ? (this.binds[bi++] as number) : undefined;
-    const placeId = where.includes("place_id = ?") ? (this.binds[bi++] as string) : undefined;
+    const placeId = where.includes("place_id = ?") ? (this.binds[bi++] as number) : undefined;
     const rows = this.db.rows.filter((row) => {
       if (where.includes("expires_at >")) {
         if (row.expires_at) {
@@ -152,6 +153,30 @@ class FakePrepared implements D1PreparedLike {
       if (placeId !== undefined && row.place_id !== placeId) return false;
       return true;
     });
+    // ORDER BY binds trail the WHERE binds. The distance proxy mirrors
+    // store.ts: |dlat|*kmPerDegLat + min(|dlng|, 360-|dlng|)*kmPerDegLng —
+    // without it the fake silently ignored ordering and the prefetch-cap
+    // truncation was untestable (BRAWUKA-395 P2-3).
+    const orderMatch = this.sql.match(/ORDER BY (.+?)(?: LIMIT|$)/);
+    if (orderMatch) {
+      const orderBy = orderMatch[1];
+      if (orderBy.includes("MIN(ABS(lng")) {
+        const cLat = this.binds[bi++] as number;
+        const cLng = this.binds[bi++] as number;
+        this.binds[bi++]; // lng bound twice in the SQL expression
+        const latFactor = kmPerDegLat();
+        const lngFactor = kmPerDegLng(cLat);
+        const proxy = (row: Record<string, unknown>) => {
+          const dLng = Math.abs(Number(row.lng) - cLng);
+          return (
+            Math.abs(Number(row.lat) - cLat) * latFactor + Math.min(dLng, 360 - dLng) * lngFactor
+          );
+        };
+        rows.sort((a, b) => proxy(a) - proxy(b));
+      } else if (orderBy.startsWith("name")) {
+        rows.sort((a, b) => (String(a.name) < String(b.name) ? -1 : String(a.name) > String(b.name) ? 1 : 0));
+      }
+    }
     // Honor the generated LIMIT clause so result caps are testable.
     const limitMatch = this.sql.match(/LIMIT (\d+)/);
     return limitMatch ? rows.slice(0, Number(limitMatch[1])) : rows;

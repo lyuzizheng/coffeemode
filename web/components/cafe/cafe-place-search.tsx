@@ -85,7 +85,7 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn, mapkitC
           onRequireSignIn();
           return;
         }
-        onError(cause instanceof Error ? cause.message : t("searchFailed"));
+        onError(t("searchFailed"));
       });
     return () => {
       cancelled = true;
@@ -197,7 +197,7 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn, mapkitC
   return (
     <div className="space-y-5">
       <div
-        className={`grid gap-1 border-b border-border ${entryModes.length === 2 ? "grid-cols-2" : "grid-cols-1"}`}
+        className={`grid gap-1 border-b border-separator ${entryModes.length === 2 ? "grid-cols-2" : "grid-cols-1"}`}
         role="tablist"
         aria-label={t("entryMethods")}
       >

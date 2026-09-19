@@ -1,12 +1,20 @@
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useDiscoverySearch } from "@/components/discovery/use-discovery-search";
 import type { DiscoveryController } from "@/lib/discovery/use-discovery-controller";
+import * as onboardingStore from "@/lib/onboarding-store";
 import type { SearchResultItem } from "@/lib/search/types";
 import type { POI } from "@shared/places/types";
 import type { CafeSummary } from "@/types/cafes";
 
 import { emptyWorkStats } from "@/lib/stats/work-stats";
+
+// The onboarding store is the DG51 persistence seam — jsdom has no
+// localStorage, so the write is asserted at the module boundary.
+vi.mock("@/lib/onboarding-store", async (importOriginal) => {
+  const actual = await importOriginal<typeof onboardingStore>();
+  return { ...actual, writeOnboardingState: vi.fn() };
+});
 
 describe("useDiscoverySearch (BRAWUKA-402)", () => {
   const mockController: DiscoveryController = {
@@ -215,5 +223,94 @@ describe("useDiscoverySearch (BRAWUKA-402)", () => {
       persist: false,
       provider: "google",
     });
+  });
+});
+
+describe("useDiscoverySearch filter/city state (BRAWUKA-512)", () => {
+  const mockController: DiscoveryController = {
+    selectedCafeId: null,
+    snap: "peek",
+    select: vi.fn(),
+    snapTo: vi.fn(),
+    close: vi.fn(),
+    handleMissingCafe: vi.fn(),
+    registerCardRef: vi.fn(),
+    detailHeadingRef: vi.fn(),
+  };
+
+  const renderSearch = (props?: { isAuthenticated?: boolean }) =>
+    renderHook(() =>
+      useDiscoverySearch({
+        controller: mockController,
+        nearbyCafes: [],
+        mapkitConfigured: true,
+        city: "singapore",
+        isAuthenticated: props?.isAuthenticated,
+      }),
+    );
+
+  beforeEach(() => {
+    vi.mocked(onboardingStore.writeOnboardingState).mockClear();
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("restores q/city/filters from the deep-link URL (DG48)", () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/?q=latte&city=tokyo&open_now=true&filter_wifi=60&filter_max_stay=2h",
+    );
+    const { result } = renderSearch();
+    expect(result.current.search.query).toBe("latte");
+    expect(result.current.search.city).toBe("tokyo");
+    expect(result.current.search.filters).toEqual({
+      openNow: true,
+      thresholds: { wifi: 60 },
+      maxStay: "2h",
+    });
+    expect(result.current.search.searchActive).toBe(true);
+  });
+
+  it("writes filter state to the URL via replace, never push (DG48)", () => {
+    const { result } = renderSearch();
+    act(() => {
+      result.current.search.onFiltersChange({
+        openNow: false,
+        thresholds: { wifi: 80 },
+        maxStay: null,
+      });
+    });
+    expect(window.location.search).toBe("?filter_wifi=80");
+    // Session-scoped (DG51): filters never touch the onboarding store.
+    expect(onboardingStore.writeOnboardingState).not.toHaveBeenCalled();
+  });
+
+  it("city change clears the query, refetches scope, and persists (DG50/DG51)", () => {
+    const { result } = renderSearch();
+    act(() => {
+      result.current.search.onQueryChange("latte");
+    });
+    act(() => {
+      result.current.search.onCityChange("tokyo");
+    });
+    // Anonymous persistence lands in the onboarding store (DG51).
+    expect(onboardingStore.writeOnboardingState).toHaveBeenCalledWith({
+      currentCity: "tokyo",
+      currentCityName: null,
+    });
+    expect(window.location.search).toBe("?city=tokyo");
+  });
+
+  it("searchActive is true with filters on and an empty query (browse mode)", () => {
+    const { result } = renderSearch();
+    expect(result.current.search.searchActive).toBe(false);
+    act(() => {
+      result.current.search.onFiltersChange({
+        openNow: true,
+        thresholds: {},
+        maxStay: null,
+      });
+    });
+    expect(result.current.search.searchActive).toBe(true);
   });
 });

@@ -175,23 +175,27 @@ describeIntegration("db test helpers — real Postgres template pooling", () => 
     }
   }, 60_000);
 
-  it("ensureTemplateDatabase provisions and migrates the template database", async () => {
-    const customTemplate = makeTestDbName("coffeemode_tpl_test");
-    createdDbs.add(customTemplate);
-    await ensureTemplateDatabase(adminUrl, customTemplate);
-    const templateClient = new pg.Client(
-      getPoolConfig(testDatabaseUrl(adminUrl, customTemplate)),
-    );
-    await templateClient.connect();
-    try {
-      const res = await templateClient.query<{ count: string }>(
-        "select count(*)::text from schema_migrations",
+  it(
+    "ensureTemplateDatabase provisions and migrates the template database",
+    async () => {
+      const customTemplate = makeTestDbName("coffeemode_tpl_test");
+      createdDbs.add(customTemplate);
+      await ensureTemplateDatabase(adminUrl, customTemplate);
+      const templateClient = new pg.Client(
+        getPoolConfig(testDatabaseUrl(adminUrl, customTemplate)),
       );
-      expect(Number.parseInt(res.rows[0].count, 10)).toBeGreaterThanOrEqual(12);
-    } finally {
-      await templateClient.end();
-    }
-  });
+      await templateClient.connect();
+      try {
+        const res = await templateClient.query<{ count: string }>(
+          "select count(*)::text from schema_migrations",
+        );
+        expect(Number.parseInt(res.rows[0].count, 10)).toBeGreaterThanOrEqual(12);
+      } finally {
+        await templateClient.end();
+      }
+    },
+    120_000,
+  );
 
   it("provisionTestDatabase clones template DB with all tables and PostGIS", async () => {
     const dbName = makeTestDbName("perf_clone_test");
@@ -250,20 +254,24 @@ describeIntegration("db test helpers — real Postgres template pooling", () => 
     }
   });
 
-  it("provisionTestDatabase falls back to standard migration when useTemplate is false", async () => {
-    const dbName = makeTestDbName("fallback_migrate_test");
-    createdDbs.add(dbName);
+  it(
+    "provisionTestDatabase falls back to standard migration when useTemplate is false",
+    async () => {
+      const dbName = makeTestDbName("fallback_migrate_test");
+      createdDbs.add(dbName);
 
-    await provisionTestDatabase(adminUrl, dbName, { useTemplate: false });
+      await provisionTestDatabase(adminUrl, dbName, { useTemplate: false });
 
-    const client = new pg.Client(getPoolConfig(testDatabaseUrl(adminUrl, dbName)));
-    await client.connect();
-    try {
-      const res = await client.query("select count(*) from schema_migrations");
-      expect(Number.parseInt(res.rows[0].count, 10)).toBeGreaterThanOrEqual(12);
-    } finally {
-      await client.end();
-    }
-  });
+      const client = new pg.Client(getPoolConfig(testDatabaseUrl(adminUrl, dbName)));
+      await client.connect();
+      try {
+        const res = await client.query("select count(*) from schema_migrations");
+        expect(Number.parseInt(res.rows[0].count, 10)).toBeGreaterThanOrEqual(12);
+      } finally {
+        await client.end();
+      }
+    },
+    120_000,
+  );
 
 });

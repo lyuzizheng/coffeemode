@@ -328,9 +328,16 @@ match the surrounding component density):
   element count, and approximate heights — a skeleton that does not match
   its surface is a defect (BRAWUKA-420 class).
 - Layout geometry lives only in `web/lib/layout.ts` constants
-  (SHEET_PEEK_PX, ASIDE_COLUMN_PX, THUMB_PX, CARD_COVER_W_PX,
-  ROW_COVER_W_PX/H_PX, CONTENT_MAX_W_PX, MAP_CHROME_OFFSET_PX) exposed as
-  `--layout-*` CSS vars — never re-hardcode these numbers in components.
+  (SHEET_PEEK_PX, ASIDE_COLUMN_PX, DETAIL_COLUMN_PX, MASTHEAD_H_PX,
+  THUMB_PX, CARD_COVER_W_PX, ROW_COVER_W_PX/H_PX, CONTENT_MAX_W_PX,
+  MAP_CHROME_OFFSET_PX) exposed as `--layout-*` CSS vars — never
+  re-hardcode these numbers in components.
+- Sidebar spacing scale (BRAWUKA-506): the desktop discovery column uses
+  one horizontal gutter `px-4` (16px) for every element — masthead,
+  search row, section label, cafe rows, skeletons, empty/error states —
+  and a 4px-grid vertical rhythm (masthead 72px `--layout-masthead-h`,
+  search `py-3`, label `pt-3`, rows `py-3`). Left/right edges align
+  exactly; the mobile sheet's PEEK strip shares the same `px-4` gutter.
 ```
 
 ### Elevation
@@ -338,7 +345,11 @@ match the surrounding component density):
 ```text
 Prefer borders + tonal separation over shadows.
 Map overlays: backdrop-blur(12px) + subtle warm shadow
-Cards: 1px border (--border) + shadow-surface on default, shadow-md on hover
+Cards/rows: 1px hairline (--separator) + shadow-surface on default, shadow-md on hover
+            (BRAWUKA-506: card and row chrome unified to the lighter
+            separator token; --border stays on interactive affordances —
+            fields, buttons, chips, dashed upload zones — and on hover
+            emphasis like hover:border-border/80)
 Drawers/modals: shadow-lg, warm-tinted
 Avoid: broad decorative shadows, Material elevation stacks
 ```
@@ -352,6 +363,110 @@ shadow-md:   0 1px 2px 0 oklch(25% 0.03 50 / 0.04),
 shadow-lg:   0 2px 4px 0 oklch(25% 0.03 50 / 0.04),
              0 12px 28px -6px oklch(25% 0.03 50 / 0.12)
 shadow-map:  0 1px 3px 0 oklch(25% 0.03 50 / 0.06)
+```
+
+## Design variants
+
+A second theme axis orthogonal to light/dark (BRAWUKA-370 mechanism,
+BRAWUKA-505 full personalities). `data-variant` on `<html>` selects a
+complete design direction; the espresso + sage brand plate and the status
+tokens stay shared across all variants. Persistence is localStorage-only,
+applied pre-paint by the inline bootstrap in `app/layout.tsx` — no flash,
+no server round-trip.
+
+Element-level personality (`.tnum` numerals, filled-button elevation) is
+expressed as per-variant tokens (`--tnum-family`, `--tnum-variant`,
+`--tnum-features`, `--button-shadow`) consumed by single rules — never
+per-variant descendant selectors, which would pierce nested
+`data-variant` subtrees (picker swatches). The button rule is scoped to
+`[data-variant]` subtrees so the default page (no attribute) keeps
+explicit `shadow-*` utilities like the create FAB's `shadow-lg`; the
+`.tnum` rules stay global with `font-mono` always winning the family.
+Each variant block pins the full token set, and `[data-variant="default"]`
+re-pins it, so nested scopes are self-contained.
+
+```text
+default — this spec, unchanged: dense radius scale (2/4/6/8px),
+          Inter chrome, Cabinet display, warm paper plate
+retro   — editorial print voice (复古编辑风)
+modern  — industrial instrument panel (现代工业 geek 风)
+```
+
+### Variant: retro (editorial print)
+
+Personality: a paper-bound city guide. "Nothing" means zero radius, no
+pills, no gradients, no glassmorphism — hairline rules and paper-lift
+shadows do all the separation work.
+
+```text
+Radius:     every --radius-* token = 0 (incl. --radius-full and
+            --field-radius); HeroUI internals are token-driven so the
+            whole library squares with the scale
+Type:       --font-sans/--font-display/--font-serif all resolve to
+            Source Serif 4 var → Noto Serif SC var (self-hosted GB2312
+            level-1 subset + app copy, ~1.4MB woff2, loaded only for
+            retro users rendering CJK) → Songti SC → "Noto Serif SC"
+Numerals:   .tnum uses oldstyle-nums + tabular-nums (editorial figure set);
+            font-mono stays JetBrains as the deliberate typewriter accent
+Shadows:    paper-lift — low spread, low alpha, warm espresso offset
+            (sm 0.08 / md 0.07+0.09 / lg 0.07+0.14); filled buttons carry
+            shadow-sm; ghost/outline stay flat
+Hairlines:  --border/--separator one step lighter than the base plate
+Texture:    monochrome feTurbulence grain on the body canvas, baked into
+            a data-URI (4% light / 5% dark, inside the --grain budget)
+Glass:      backdrop-filter killed variant-wide; translucent overlay
+            chrome re-opacifies to --background/--overlay
+Dark:       same warm espresso plate; lift shadows out (dark separates
+            with hairlines), hairlines soften a step further
+Motion:     printing-press springs — stiffer attack, heavier damping,
+            shorter travel (gentle 300/36, snappy 500/40, soft 220/32)
+```
+
+### Variant: modern (industrial instrument)
+
+Personality: a precision collection dashboard — rounded but systematic,
+geek through mono data annotations and blueprint hairlines, not through
+candy gloss.
+
+```text
+Radius:     concentric scale — inner = outer − gap, so a 2px gap steps
+            each level down exactly: xs 6 / sm 10 / md 12 / lg 16 /
+            xl 20 / 2xl 16 / 3xl 20 / 4xl 24 / full pill
+            (segmented track md 12 + p-0.5 → segment sm 10; card md 12 +
+            2px gap → chip sm 10; sheet lg 16 + 4px pad → inner md 12)
+Type:       UI stays Inter/Cabinet; the geek voice is systematic mono —
+            every .tnum data annotation (scores, distances, counts,
+            timestamps) resolves to JetBrains Mono
+Neutrals:   cooler plate — light hue 250 (background 97.8%, foreground
+            22%), dark graphite hue 250–260 (background 16%, foreground
+            92%); accent/sage/status stay shared so brand contrast math
+            is unchanged
+Shadows:    cooler, tighter — same geometry, hue-260 ink
+Texture:    blueprint grid on the body canvas — 44px hairline grid,
+            5% light / 7% dark foreground mix, pure CSS (no image request)
+Motion:     instrument springs — softer damping lets motion breathe a
+            hair more (gentle 260/26, snappy 400/28, soft 180/22)
+```
+
+### Variant rules
+
+```text
+- Variant blocks are self-contained quadrants: each pins its full neutral
+  plate so a scoped subtree (the picker's mini previews) renders that
+  variant's light personality even while the page sits in dark
+- Dark-scoped variant tokens use :is(.dark, [data-theme="dark"]) so they
+  outrank both the base plate and the unscoped variant block
+- Springs: components take transitions from useSprings() (lib/motion.ts),
+  which returns the active variant's table; the static `spring` export is
+  the default-variant table and SSR fallback
+- The picker (ThemeVariantPicker) renders each option's mini preview with
+  real variant tokens — data-variant scoped to the swatch subtree
+- WCAG AA: all four quadrants (2 variants × light/dark) are gated —
+  tests/design-tokens-contrast.test.ts merges each variant block onto its
+  theme plate and asserts every text pair ≥4.5:1; check:visual renders
+  /theme-preview under all three variants × both schemes × both viewports
+- Cost: the CJK serif subset downloads only for retro users rendering CJK
+  glyphs; grain/grid are data-URI/CSS, zero image requests
 ```
 
 ## Motion
@@ -449,6 +564,17 @@ Component transitions:
 - Loading: skeleton shimmer, not spinners — HeroUI Skeleton where the component
   fits; hand-rolled animate-pulse shells (discovery, search) are element-level
   CSS animation covered by the reduced-motion kill switch.
+- Loading → content transitions are animated, never hard cuts: skeletons
+  and masks crossfade or resolve into real content (BRAWUKA-506). The
+  canonical reveal is the **mosaic resolve**: a coarse pixel grid in the
+  surface palette covers the loading surface, then cells fade out in a
+  deterministic shuffled order — the content "resolves" out of mosaic
+  blocks. Total settle ≤450ms (settle.slow ceiling); pure CSS opacity
+  transitions, no WebGL/timers; reduced-motion → instant via the global
+  kill switch. First consumer: the basemap mask (`map-mosaic.tsx`, covers
+  maplibre chunk + first style load). The same motive is reserved for
+  image lazy-load placeholders and upload progress — one loading language,
+  not per-page spinners.
 - Feed refresh/pagination: preserve the last successful content and put an inline
   error + Retry at the failed section; never replace real cards with placeholders
 - Third-party exception (HeroUI toast, BRAWUKA-207): enter/exit slide is the

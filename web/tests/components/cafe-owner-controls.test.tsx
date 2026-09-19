@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type * as HeroUI from "@heroui/react";
-import { CafeOwnerControls } from "@/app/cafes/[id]/cafe-owner-controls";
+import { CafeOwnerControls } from "@/components/cafe/cafe-owner-controls";
 import messages from "../../messages/en.json";
 
 const CAFE = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22";

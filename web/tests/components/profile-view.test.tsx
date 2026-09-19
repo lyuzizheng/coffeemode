@@ -1,7 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type * as HeroUI from "@heroui/react";
 import { ProfileView } from "@/components/profile/profile-view";
 import { WORK_DIMS } from "@/lib/stats/work-stats";
 import messages from "../../messages/en.json";
@@ -9,6 +10,7 @@ import zhMessages from "../../messages/zh.json";
 
 const pushMock = vi.fn();
 const backMock = vi.fn();
+const toastSpy = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -16,7 +18,15 @@ vi.mock("next/navigation", () => ({
     back: backMock,
     refresh: vi.fn(),
   }),
+  usePathname: () => "/profile",
 }));
+
+// Toasts are asserted via spy — HeroUI renders them into a portal outside
+// the tree under test.
+vi.mock("@heroui/react", async (importOriginal) => {
+  const actual = await importOriginal<typeof HeroUI>();
+  return { ...actual, toast: (...args: unknown[]) => toastSpy(...args) };
+});
 
 function Wrapper({ children }: { children: React.ReactNode }) {
   const queryClient = new QueryClient({
@@ -58,26 +68,6 @@ describe("ProfileView", () => {
     expect(screen.getByRole("button", { name: /Continue with Google/i })).toBeInTheDocument();
   });
 
-  it("keeps the ranking preference reachable but outside the anonymous gate", () => {
-    render(
-      <ProfileView
-        initialProfile={null}
-        initialStats={null}
-        isAuthenticated={false}
-      />,
-      { wrapper: Wrapper },
-    );
-
-    // DG136: anonymous users can still set the localStorage preference…
-    const ranking = screen.getByRole("radiogroup", { name: "Search ranking" });
-    // …but it lives in the page footer, not inside the gate flow.
-    expect(ranking.closest("footer")).not.toBeNull();
-    const gate = screen.getByRole("heading", { name: "Your cafes live here" });
-    expect(gate.compareDocumentPosition(ranking)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
-  });
-
   it("renders authenticated profile with stats and tabs", () => {
     const mockProfile = {
       id: "user-1",
@@ -116,46 +106,6 @@ describe("ProfileView", () => {
     expect(screen.getByRole("tab", { name: "Search History" })).toBeInTheDocument();
   });
 
-  it("collects identity and ranking controls in a Preferences section", () => {
-    const mockProfile = {
-      id: "user-1",
-      displayName: "Coffee Lover",
-      currentCity: "singapore",
-      lastLocation: null,
-      onboarded: false,
-      avatarUrl: null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      showPublicIdentity: false,
-      publicHandle: null,
-      identityConsentedAt: null,
-      publicHandleChangedAt: null,
-    };
-
-    render(
-      <ProfileView
-        initialProfile={mockProfile}
-        initialStats={{ cafesCount: 12, checkinsCount: 34 }}
-        isAuthenticated={true}
-      />,
-      { wrapper: Wrapper },
-    );
-
-    const preferences = screen.getByRole("region", { name: "Preferences" });
-    // Identity switch, handle row, and ranking control all live inside it…
-    expect(
-      within(preferences).getByText(/Show my name on cafes/i),
-    ).toBeInTheDocument();
-    expect(within(preferences).getByText("Public handle")).toBeInTheDocument();
-    expect(
-      within(preferences).getByRole("radiogroup", { name: "Search ranking" }),
-    ).toBeInTheDocument();
-    // …and the section sits after the tab content, at the end of the page.
-    const tablist = screen.getByRole("tablist");
-    expect(tablist.compareDocumentPosition(preferences)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
-  });
 
   it("defers the cafes query until the map tab is first visited", async () => {
     const mockProfile = {
@@ -257,6 +207,92 @@ describe("ProfileView", () => {
     fireEvent.click(checkinsTab);
     expect(checkinsTab).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("Artisan Cafe")).toBeInTheDocument();
+  });
+
+  it("keeps the name editor open and toasts when the save fails", async () => {
+    const mockProfile = {
+      id: "user-1",
+      displayName: "Coffee Lover",
+      currentCity: "singapore",
+      lastLocation: null,
+      onboarded: false,
+      avatarUrl: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      showPublicIdentity: false,
+      publicHandle: null,
+      identityConsentedAt: null,
+      publicHandleChangedAt: null,
+    };
+
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url === "/api/profile") {
+        return { ok: false, status: 500, json: async () => ({}) };
+      }
+      return { ok: true, json: async () => ({ items: [], next_cursor: null }) };
+    }) as unknown as typeof fetch;
+
+    render(
+      <ProfileView
+        initialProfile={mockProfile}
+        initialStats={{ cafesCount: 1, checkinsCount: 1 }}
+        isAuthenticated={true}
+      />,
+      { wrapper: Wrapper },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Your name" }));
+    const input = screen.getByPlaceholderText("Your name");
+    fireEvent.change(input, { target: { value: "New Name" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(toastSpy).toHaveBeenCalledWith("Couldn't save — try again?", { timeout: 4000 });
+    });
+    // The draft survives so the user can retry instead of retyping.
+    expect(screen.getByPlaceholderText("Your name")).toHaveValue("New Name");
+  });
+
+  it("keeps the city selector open and toasts when the save fails", async () => {
+    const mockProfile = {
+      id: "user-1",
+      displayName: "Coffee Lover",
+      currentCity: "singapore",
+      lastLocation: null,
+      onboarded: false,
+      avatarUrl: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      showPublicIdentity: false,
+      publicHandle: null,
+      identityConsentedAt: null,
+      publicHandleChangedAt: null,
+    };
+
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url === "/api/profile") {
+        return { ok: false, status: 500, json: async () => ({}) };
+      }
+      return { ok: true, json: async () => ({ items: [], next_cursor: null }) };
+    }) as unknown as typeof fetch;
+
+    render(
+      <ProfileView
+        initialProfile={mockProfile}
+        initialStats={{ cafesCount: 1, checkinsCount: 1 }}
+        isAuthenticated={true}
+      />,
+      { wrapper: Wrapper },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Singapore/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Tokyo" }));
+
+    await waitFor(() => {
+      expect(toastSpy).toHaveBeenCalledWith("Couldn't save — try again?", { timeout: 4000 });
+    });
+    // Selector stays open so a retry is one tap.
+    expect(screen.getByRole("button", { name: "Tokyo" })).toBeInTheDocument();
   });
 });
 

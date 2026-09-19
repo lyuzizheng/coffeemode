@@ -9,6 +9,10 @@ import { LAUNCH_CITIES } from "@/lib/cities";
 import messages from "../../messages/en.json";
 
 const toastMock = vi.fn();
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => "/",
+}));
 vi.mock("@heroui/react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@heroui/react")>();
   return { ...actual, toast: (...args: unknown[]) => toastMock(...args) };
@@ -136,15 +140,37 @@ describe("OnboardingHome (DG114–DG123)", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("the account chip rides the mapOverlay slot in every phase (BRAWUKA-318)", async () => {
-    // Signed-out, card visible: sign-in affordance + theme toggle.
+  it("deep-link arrivals keep the server center over a stored city (DG124)", async () => {
+    // A returning anonymous visitor has a stored city — the linked cafe's
+    // coordinates must still win so the map focuses the linked cafe.
+    store["coffeemode:onboarding:v1"] = JSON.stringify({
+      onboarded: true,
+      currentCity: "seoul",
+    });
+    renderHome({ suppressCard: true, initialCafeId: "550e8400-e29b-41d4-a716-446655440000" });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Locate me" })).toBeInTheDocument(),
+    );
+    expect(lastCenter.current).toEqual(singapore.center);
+  });
+
+  it("the account cluster rides the mapOverlay slot in every phase (BRAWUKA-318)", async () => {
+    // Signed-out, card visible: sign-in affordance + the droplet menu.
     renderHome();
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
       "href",
       "/profile",
     );
-    expect(screen.getByRole("button", { name: /Theme/ })).toBeInTheDocument();
+    // Theme, language, and settings live inside the droplet (BRAWUKA-504).
+    fireEvent.click(screen.getByRole("button", { name: "Menu" }));
+    expect(
+      await screen.findByRole("button", { name: /Theme/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute(
+      "href",
+      "/settings",
+    );
   });
 
   it("the account chip shows the profile initial when signed in", async () => {

@@ -1,20 +1,18 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { cache } from "react";
+import { cache, type ReactNode } from "react";
 import { getLocale, getTranslations } from "next-intl/server";
 import { isValidUUID } from "@shared/uuid";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { CoffeeIcon } from "@/components/icons";
+import { SiteMasthead } from "@/components/site-masthead";
 import { DossierHero } from "@/components/discovery/dossier-hero";
 import { SectionLabel } from "@/components/discovery/section-label";
 import { GalleryStrip } from "@/components/cafe/gallery-strip";
 import { OpenState } from "@/components/cafe/open-state";
 import { CreatorLine } from "@/components/discovery/creator-line";
 import { PolicyConsensus, ScorePair, WorkProfile } from "@/components/discovery/scores";
-import { getCurrentUser } from "@/lib/auth/get-user";
-import { displayCityName } from "@/lib/cities";
+import { displayCityName, findCity } from "@/lib/cities";
 import { getCafe, toPublicCafeDetail } from "@/lib/db/cafes";
+import { loadMapEntry, loadMapSession } from "@/lib/discovery/map-entry";
 import {
   cafeCanonicalPath,
   cafeJsonLd,
@@ -26,10 +24,12 @@ import {
 import { getRequestOrigin } from "@/lib/site-origin";
 import { APP_NAME } from "@/lib/site";
 import type { CafeDetail, PublicCafeDetail } from "@/types/cafes";
+import type { StoredImage } from "@/types/images";
+import { CafeAppShell } from "./cafe-app-shell";
 import { CafeDetailSeed } from "./cafe-detail-seed";
 import { CafePageActions } from "./cafe-page-actions";
 import { CafePageFeed } from "./cafe-page-feed";
-import { CafeOwnerControls } from "./cafe-owner-controls";
+import { CafeOwnerControls } from "@/components/cafe/cafe-owner-controls";
 // DB-backed SSR page: render per request; the CDN cache header on /cafes/:id
 // (next.config.ts, TTLs from web/config/app.yaml — DG105/DG107) absorbs the
 // viral-link traffic so Postgres does not.
@@ -41,12 +41,12 @@ export const dynamic = "force-dynamic";
 // 404 status (DG19). A notFound() thrown only from the page body would be
 // streamed with a 200 status.
 // React `cache` dedupes the viewer lookup across loadCafe + the page body —
-// one Supabase getUser() per request, not two.
-const loadViewer = cache(async () => getCurrentUser());
-
+// one Supabase getUser() per request, not two. The session is shared with
+// the map-entry loader (DG124): the SSR shell and the app it hydrates into
+// resolve auth identically.
 const loadCafe = cache(async (id: string) => {
   if (!isValidUUID(id)) return null;
-  const user = await loadViewer();
+  const { user } = await loadMapSession();
   return getCafe(id, user?.id);
 });
 
@@ -153,27 +153,17 @@ function CafeHeading({
   );
 }
 
-/** The dossier masthead: wordmark back to the map + theme toggle. */
-function CafeMasthead() {
-  return (
-    <header className="flex items-center justify-between border-b border-separator px-4 py-3 sm:px-6">
-      <Link
-        href="/"
-        className="-my-2.5 inline-flex min-h-11 items-center gap-2 font-display text-md font-extrabold tracking-tight text-foreground"
-      >
-        <CoffeeIcon size={18} className="text-accent" />
-        {APP_NAME}
-      </Link>
-      <ThemeToggle />
-    </header>
-  );
-}
+
 
 export default async function CafePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const cafe = await loadCafe(id);
   if (!cafe) notFound();
-  const viewer = await loadViewer();
+  const [session, entry] = await Promise.all([
+    loadMapSession(),
+    loadMapEntry({ lat: cafe.lat, lng: cafe.lng }),
+  ]);
+  const viewer = session.user;
   // Owner view (DG146/DG147): delete + hide controls and the private badge
   // render only for the creator. Signed-in requests bypass the CDN shell
   // cache (sb-* cookie rule), so this never leaks into the shared shell.
@@ -186,15 +176,82 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
   const cityName = displayCityName(cafe.city, locale);
   const origin = await getRequestOrigin();
   const canonical = `${origin}${cafeCanonicalPath(cafe.id)}`;
-  const covers = (cafe.gallery ?? []).map((g) => g.card).filter(Boolean); // BRAWUKA-307: cafe.cover already derives from the first gallery card
+  const covers = (cafe.gallery ?? []).map((g: StoredImage) => g.card).filter(Boolean); // BRAWUKA-307: cafe.cover already derives from the first gallery card
   // The public payload contract (DG13): client components receive only the
   // narrow slices, never the full row (see publicCafeShell).
-  const publicAttribution = toPublicCafeDetail(cafe);
+  const publicAttribution = toPublicCafeDetail(cafe, viewer?.id);
   const shell = publicCafeShell(cafe);
+  const ownerControls = isOwner ? (
+    <CafeOwnerControls
+      cafeId={cafe.id}
+      initialVisibility={cafe.visibility ?? "public"}
+      hasCheckins={(cafe.work_stats?.n_checkins ?? 0) > 0}
+    />
+  ) : null;
 
   return (
+    // DG124: the SSR shell is the first paint AND the hydration overlay —
+    // CafeAppShell mounts the map app beneath it (cafe at FULL), then the
+    // shell fades out and the discovery-sheet gesture contract takes over.
+    <CafeAppShell
+      cafeId={cafe.id}
+      cafeCenter={{ lat: cafe.lat, lng: cafe.lng }}
+      city={findCity(cafe.city)?.id}
+      detectedCity={entry.detectedCity}
+      isAuthenticated={entry.isAuthenticated}
+      serverOnboarded={entry.serverOnboarded}
+      profileSeed={entry.profileSeed}
+      accountInitial={entry.accountInitial}
+      mapkitConfigured={entry.mapkitConfigured}
+    >
+      <CafeShellDocument
+        cafe={cafe}
+        shell={shell}
+        covers={covers}
+        cityName={cityName}
+        canonical={canonical}
+        isPrivate={isPrivate}
+        privateBadge={tc("private_badge")}
+        galleryLabel={td("gallery_aria")}
+        publicAttribution={publicAttribution}
+        ownerControls={ownerControls}
+        accountInitial={entry.accountInitial}
+      />
+    </CafeAppShell>
+  );
+}
+
+/** The SSR document — Part 1 (public shell, DG106) + Part 2 (client feed).
+ * First paint AND the hydration overlay content: CafeAppShell fades it out
+ * once the map app beneath is live. */
+function CafeShellDocument({
+  cafe,
+  shell,
+  covers,
+  cityName,
+  canonical,
+  isPrivate,
+  privateBadge,
+  galleryLabel,
+  publicAttribution,
+  ownerControls,
+  accountInitial,
+}: {
+  cafe: CafeDetail;
+  shell: ReturnType<typeof publicCafeShell>;
+  covers: string[];
+  cityName: string | null;
+  canonical: string;
+  isPrivate: boolean;
+  privateBadge: string;
+  galleryLabel: string;
+  publicAttribution: PublicCafeDetail;
+  ownerControls: ReactNode;
+  accountInitial?: string;
+}) {
+  return (
     <div className="flex min-h-dvh flex-col">
-      <CafeMasthead />
+      <SiteMasthead accountInitial={accountInitial} />
 
       {/* Part 1 — the public shell (DG106): aggregate product data only,
           full semantic HTML, no client JS needed for the content. */}
@@ -207,7 +264,7 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
           cityName={cityName}
           openState={shell.openState}
           isPrivate={isPrivate}
-          privateBadge={tc("private_badge")}
+          privateBadge={privateBadge}
           author={publicAttribution.author}
           maintainedByService={publicAttribution.maintained_by_service}
         />
@@ -219,9 +276,9 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
         <WorkProfile stats={cafe.work_stats} animated={false} />
         <PolicyConsensus stats={cafe.work_stats} />
         {shell.gallery.length > 0 && (
-          <section aria-label={td("gallery_aria")} className="flex flex-col gap-3">
-            <SectionLabel>{td("gallery_aria")}</SectionLabel>
-            <GalleryStrip photos={shell.gallery} ariaLabel={td("gallery_aria")} />
+          <section aria-label={galleryLabel} className="flex flex-col gap-3">
+            <SectionLabel>{galleryLabel}</SectionLabel>
+            <GalleryStrip photos={shell.gallery} ariaLabel={galleryLabel} />
           </section>
         )}
 
@@ -234,13 +291,7 @@ export default async function CafePage({ params }: { params: Promise<{ id: strin
         {/* Part 2 — the check-in feed (DG106): user content loads from the
             public API after paint, never embedded in the initial HTML. */}
         <CafePageFeed cafeId={cafe.id} cafeName={cafe.name} />
-        {isOwner && (
-          <CafeOwnerControls
-            cafeId={cafe.id}
-            initialVisibility={cafe.visibility ?? "public"}
-            hasCheckins={(cafe.work_stats?.n_checkins ?? 0) > 0}
-          />
-        )}
+        {ownerControls}
       </main>
     </div>
   );

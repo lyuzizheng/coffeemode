@@ -138,8 +138,8 @@ docs/agent/              current state, planned-slice manifest, owner actions
   external-result pins remain (#134).
 - map-creation-entry — READY: map-tap creation + reverse geocoding
   (Nominatim/Photon picked at implementation time) (#136).
-- deeplink-hydration — READY: the map app now exists for the /cafes/[id]
-  SSR shell to hydrate into at FULL (DG124) (#150).
+- deeplink-hydration — COMPLETE: /cafes/[id] SSR shell hydrates into the
+  map app at FULL (DG124); /?cafe= 308s to the canonical URL (BRAWUKA-514).
 ```
 
 ### Blocked context (do not start yet)

@@ -16,7 +16,7 @@
 import { motion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { SparkleIcon } from "@/components/icons";
-import { spring, stagger, useEnterMotion } from "@/lib/motion";
+import { stagger, useEnterMotion, useSprings } from "@/lib/motion";
 import { COMPOSITE_DIMS, type WorkStats } from "@/lib/stats/work-stats";
 import { MAX_STAY_VALUES, type MaxStay } from "@/types/checkins";
 import { dimMean, policyConsensus } from "@/lib/discovery/view-model";
@@ -35,7 +35,7 @@ function asMaxStay(value: string | null): MaxStay {
 function RespondentCount({ stats }: { stats: WorkStats }) {
   const t = useTranslations("discovery");
   return (
-    <span className="tnum text-xs text-muted">
+    <span className="tnum font-mono text-xs text-muted">
       {t("checkins_count", { count: stats.n_checkins })}
     </span>
   );
@@ -115,6 +115,7 @@ export function ScorePair({ stats }: { stats: WorkStats }) {
 export function WorkProfile({ stats, animated = true }: { stats: WorkStats; animated?: boolean }) {
   const t = useTranslations("discovery");
   const enter = useEnterMotion() && animated;
+  const springs = useSprings();
   const means = COMPOSITE_DIMS.map((dim) => dimMean(stats, dim));
 
   if (means.every((mean) => mean === null)) return null;
@@ -144,7 +145,7 @@ export function WorkProfile({ stats, animated = true }: { stats: WorkStats; anim
                             initial: { width: 0 },
                             animate: { width: `${mean}%` },
                             transition: {
-                              ...spring.gentle,
+                              ...springs.gentle,
                               delay: i * stagger.workProfile.step,
                             },
                           }

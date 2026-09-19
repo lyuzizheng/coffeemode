@@ -48,6 +48,13 @@ export type PublicCafeDetail = Omit<CafeDetail, "gallery" | "created_by"> & {
   gallery: PublicStoredImage[];
   visibility?: CafeVisibility;
   /**
+   * Server-computed ownership bit (DG146/DG147): true only when the viewer is
+   * the cafe's creator. A boolean comparison result — `created_by` itself
+   * never reaches the client (same contract as feed `owned_by_viewer`, DG13).
+   * Gates the in-app owner controls and the private badge.
+   */
+  owned_by_viewer: boolean;
+  /**
    * Consented public author of the cafe creator (spec 0006). Null means the
    * client renders the existing anonymous copy; always null for null /
    * service-account `created_by`.

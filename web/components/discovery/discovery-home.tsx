@@ -27,8 +27,8 @@ import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { useDiscoveryController } from "@/lib/discovery/use-discovery-controller";
-import { DiscoveryMapContext } from "@/lib/discovery/map-context";
+import { useDiscoveryController, type SheetSnap } from "@/lib/discovery/use-discovery-controller";
+import { DiscoveryMapContext, type DiscoveryMapState } from "@/lib/discovery/map-context";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useMounted } from "@/hooks/use-mounted";
 import type { CafeSummary } from "@/types/cafes";
@@ -60,16 +60,8 @@ function gateMapOverlay(
   return mapOverlay && (isDesktop || snap === "peek" || snap === "collapsed") ? mapOverlay : null;
 }
 
-/** The floating capsule search over the mobile map (BRAWUKA-364). */
-function MobileSearchOverlay({
-  search,
-  onQueryChange,
-  resultsActive,
-}: {
-  search: DiscoverySearch;
-  onQueryChange: (query: string) => void;
-  resultsActive: boolean;
-}) {
+/** The floating capsule search over the mobile map (BRAWUKA-364 + BRAWUKA-512). */
+function MobileSearchOverlay({ search }: { search: DiscoverySearch }) {
   const t = useTranslations("map");
   return (
     <div className="fixed inset-x-4 top-4 z-40 lg:hidden" role="search" aria-label={t("search_aria")}>
@@ -78,12 +70,16 @@ function MobileSearchOverlay({
           externalSources={search.externalSources}
           mapkitConfigured={search.mapkitConfigured}
           city={search.city}
+          query={search.query}
           onSelectResult={search.onSelectResult}
           onExternalSearch={search.onExternalSearch}
-          onQueryChange={onQueryChange}
+          onQueryChange={search.onQueryChange}
+          filters={search.filters}
+          onFiltersChange={search.onFiltersChange}
+          onCityChange={search.onCityChange}
           hideIdleHint
           resultsClassName={
-            resultsActive ? "max-h-[55dvh] overflow-y-auto overscroll-contain" : undefined
+            search.searchActive ? "max-h-[55dvh] overflow-y-auto overscroll-contain" : undefined
           }
         />
       </div>
@@ -162,10 +158,14 @@ export function DiscoveryHome({
   addCafe,
   addCafeFab,
   initialCafeId,
+  initialSnap,
   isAuthenticated,
   mapkitConfigured = false,
   city,
   mapOverlay,
+  userLocation,
+  onCameraGesture,
+  initialCreationOpen = false,
   children,
 }: {
   /** Nearby-query center — the onboarding slice's resolved city/location,
@@ -176,8 +176,11 @@ export function DiscoveryHome({
   /** Round add-cafe FAB slot (BRAWUKA-364): floats above the sheet at PEEK
    * on mobile, bottom-right on desktop. */
   addCafeFab?: ReactNode;
-  /** Optional initial selected cafe ID (e.g. from ?cafe= query param) */
+  /** Optional initial selected cafe ID (the /cafes/[id] deep link, DG124) */
   initialCafeId?: string;
+  /** Detent the mobile sheet opens at for `initialCafeId` — "full" on the
+   * /cafes/[id] deep link (DG124), default "half" elsewhere. */
+  initialSnap?: SheetSnap;
   /** Server-known auth state — forwarded to the check-in drawer's sign-in gate. */
   isAuthenticated?: boolean;
   /** DG143 request-time MapKit readiness — gates the Apple search CTA and
@@ -189,13 +192,18 @@ export function DiscoveryHome({
    * render only while the sheet sits at PEEK so they never cover the
    * half/full detail content; on desktop they are always visible. */
   mapOverlay?: ReactNode;
-  /** Surface children (e.g. landing scaffold / map) coordinated with discovery */
+  /** Granted position for the user-location dot (DG120). */
+  userLocation?: DiscoveryMapState["userLocation"];
+  /** First user camera gesture latch (DG119) — onboarding's pan detector. */
+  onCameraGesture?: () => void;
+  /** ?create=1 deep link — opens the creation sheet on arrival. */
+  initialCreationOpen?: boolean;
   children?: ReactNode;
 }) {
   const t = useTranslations("discovery");
   const mounted = useMounted();
   const isDesktop = useMediaQuery("(min-width: 1024px)");
-  const controller = useDiscoveryController({ initialCafeId });
+  const controller = useDiscoveryController({ initialCafeId, initialSnap });
 
   const cafesQuery = useQuery({
     queryKey: ["cafes-list", center.lat, center.lng],
@@ -214,7 +222,7 @@ export function DiscoveryHome({
 
   const nearbyCafes = useMemo(() => cafesQuery.data ?? [], [cafesQuery.data]);
   const { search, mapCafes, creationDraft, creationOpen, setCreationOpen } =
-    useDiscoverySearch({ controller, nearbyCafes, mapkitConfigured, city });
+    useDiscoverySearch({ controller, nearbyCafes, mapkitConfigured, city, isAuthenticated, initialCreationOpen });
 
   const onCheckIn = (cafeId?: string, cafeName?: string, promptCaption = false) => {
     const id = cafeId ?? controller.selectedCafeId;
@@ -223,11 +231,6 @@ export function DiscoveryHome({
     setCheckinCafe({ id, name: cafeName ?? cafe?.name ?? t("unknown_cafe"), promptCaption });
     setCheckinOpen(true);
   };
-
-  // Mobile search: the floating capsule mirrors the field's query so the
-  // results card only floats while a query is active.
-  const [mobileQuery, setMobileQuery] = useState("");
-  const mobileSearchActive = mobileQuery.trim().length > 0;
 
   // DG85/DG90: the prompt defers while the sheet is at FULL or the check-in
   // drawer (a modal task surface) is open; it renders once the UI returns
@@ -263,7 +266,7 @@ export function DiscoveryHome({
 
   // The map surface (children) reads controller/cafes/center through context
   // — it mounts inside this tree, so no prop-drilling through the page.
-  const mapState = { controller, cafes: mapCafes, center };
+  const mapState = { controller, cafes: mapCafes, center, userLocation, onCameraGesture };
   const overlays = (
     <DiscoveryOverlays
       checkinCafe={checkinCafe}
@@ -278,11 +281,7 @@ export function DiscoveryHome({
       isDesktop={isDesktop}
       mobileSearch={
         mounted && !isDesktop && (controller.snap === "peek" || controller.snap === "collapsed") ? (
-          <MobileSearchOverlay
-            search={search}
-            onQueryChange={setMobileQuery}
-            resultsActive={mobileSearchActive}
-          />
+          <MobileSearchOverlay search={search} />
         ) : null
       }
     />

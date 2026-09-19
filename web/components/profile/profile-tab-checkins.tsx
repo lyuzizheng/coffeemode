@@ -69,7 +69,7 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
         return (
           <div
             key={item.id}
-            className={`p-3 bg-surface border border-border rounded-md flex flex-col gap-2 transition-all ${
+            className={`p-3 bg-surface border border-separator rounded-md flex flex-col gap-2 transition-all ${
               item.cafe_is_deleted ? "opacity-60" : "hover:border-border/80"
             }`}
           >
@@ -81,7 +81,7 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
                   </span>
                 ) : (
                   <Link
-                    href={`/?cafe=${item.cafe_id}`}
+                    href={`/cafes/${item.cafe_id}`}
                     className="-my-2.5 inline-flex min-h-11 items-center font-display font-bold text-foreground text-md hover:text-accent transition-colors"
                   >
                     {item.cafe_name || t("unknown_cafe")}

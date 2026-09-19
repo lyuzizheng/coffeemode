@@ -14,6 +14,8 @@ import { Button } from "@heroui/react";
 import { CloseIcon } from "@/components/icons";
 import { GalleryStrip } from "@/components/cafe/gallery-strip";
 import { OpenState } from "@/components/cafe/open-state";
+import { CafeOwnerControls } from "@/components/cafe/cafe-owner-controls";
+import { PrivateBadge } from "@/components/cafe/private-badge";
 import { ShareControl } from "@/components/share/share-control";
 import { cafeFacts, formatDistanceKm } from "@/lib/discovery/view-model";
 import { cafeCanonicalPath } from "@/lib/seo";
@@ -25,7 +27,7 @@ import type { DiscoveryController } from "@/lib/discovery/use-discovery-controll
 import type { PublicCafeDetail } from "@/types/cafes";
 import { CheckinFeed } from "./checkin-feed";
 import { FeedNotFoundError } from "./use-checkin-feed";
-import { FactsRow } from "./cafe-card";
+import { FactsRow } from "./card-parts";
 import { PolicyConsensus, ScorePair, WorkProfile } from "./scores";
 import { DossierHero } from "./dossier-hero";
 import { SectionLabel } from "./section-label";
@@ -145,18 +147,22 @@ export function DetailContent({
   }
   const cafe = query.data;
   const covers = cafe.gallery.map((g) => g.card).filter(Boolean); // BRAWUKA-307: cafe.cover already derives from the first gallery card
-
   const heading = (
     <div className="flex items-start justify-between gap-2">
-      <h2
-        ref={detailHeadingRef}
-        tabIndex={-1}
-        className={`font-display font-bold tracking-tight text-balance text-foreground outline-none ${
-          variant === "full" ? "text-2xl" : "text-xl"
-        }`}
-      >
-        {cafe.name}
-      </h2>
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <h2
+          ref={detailHeadingRef}
+          tabIndex={-1}
+          className={`font-display font-bold tracking-tight text-balance text-foreground outline-none ${
+            variant === "full" ? "text-2xl" : "text-xl"
+          }`}
+        >
+          {cafe.name}
+        </h2>
+        {/* DG147: a private detail can only be the owner's — the read path
+            404s it for everyone else. */}
+        {cafe.visibility === "private" && <PrivateBadge />}
+      </div>
       {onClose && (
         <Button
           variant="ghost"
@@ -230,6 +236,15 @@ export function DetailContent({
         onMissingCafe={handleMissingCafe}
         onCheckIn={onCheckIn}
       />
+      {/* DG146/DG147: quiet "Manage" section at the bottom of the scroll —
+          same controls as the SSR page, gated on the server ownership bit. */}
+      {cafe.owned_by_viewer && (
+        <CafeOwnerControls
+          cafeId={cafe.id}
+          initialVisibility={cafe.visibility ?? "public"}
+          hasCheckins={(cafe.work_stats?.n_checkins ?? 0) > 0}
+        />
+      )}
     </div>
   );
 }

@@ -41,7 +41,7 @@ export async function GET(
     if (!cafe) {
       return apiError("not_found", "cafe not found", { status: 404 });
     }
-    return NextResponse.json(toPublicCafeDetail(cafe));
+    return NextResponse.json(toPublicCafeDetail(cafe, user?.id));
   } catch (err) {
     logError({ route: gate.route, request, error: err, status: 500 });
     return apiError("internal_error", 500);

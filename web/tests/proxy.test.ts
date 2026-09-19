@@ -164,6 +164,62 @@ describe("proxy", () => {
   });
 });
 
+describe("proxy legacy /?cafe= redirect (DG124)", () => {
+  const CAFE = "550e8400-e29b-41d4-a716-446655440001";
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = SUPABASE_URL;
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = ANON_KEY;
+  });
+
+  it("308-redirects /?cafe=<uuid> to the canonical cafe URL without the query", async () => {
+    const req = new NextRequest(new URL(`http://localhost/?cafe=${CAFE}`));
+    const res = await proxy(req);
+
+    expect(res.status).toBe(308);
+    expect(res.headers.get("location")).toBe(`http://localhost/cafes/${CAFE}`);
+    // The retired param must not ride along — the canonical URL is bare.
+    expect(res.headers.get("location")).not.toContain("cafe=");
+  });
+
+  it("strips every other query param from the redirect target", async () => {
+    const req = new NextRequest(new URL(`http://localhost/?cafe=${CAFE}&utm_source=share&lang=zh`));
+    const res = await proxy(req);
+
+    expect(res.status).toBe(308);
+    expect(res.headers.get("location")).toBe(`http://localhost/cafes/${CAFE}`);
+  });
+
+  it("lets / without a valid cafe param through to the home page", async () => {
+    for (const path of ["/", "/?cafe=not-a-uuid", "/?cafe=", "/?q=1"]) {
+      const res = await proxy(new NextRequest(new URL(`http://localhost${path}`)));
+      expect(res.status).toBe(200);
+      expect(res.headers.get("location")).toBeNull();
+    }
+  });
+
+  it("never redirects a cafe param on non-root paths", async () => {
+    const res = await proxy(new NextRequest(new URL(`http://localhost/profile?cafe=${CAFE}`)));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("skips session refresh for redirected requests", async () => {
+    const getSession = vi.fn(async () => ({ data: { session: null }, error: null }));
+    vi.mocked(createServerClient).mockImplementation(
+      () => ({ auth: { getSession, getUser: vi.fn() } }) as never,
+    );
+    const req = new NextRequest(new URL(`http://localhost/?cafe=${CAFE}`));
+    req.cookies.set("sb-access-token", "stale-token");
+
+    const res = await proxy(req);
+
+    expect(res.status).toBe(308);
+    expect(getSession).not.toHaveBeenCalled();
+  });
+});
+
 describe("proxy gone-cafe 404 (DG19)", () => {
   const CAFE = "550e8400-e29b-41d4-a716-446655440001";
 

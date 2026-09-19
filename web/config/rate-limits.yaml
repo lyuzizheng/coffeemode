@@ -31,6 +31,11 @@ profile-read:
 profile-write:
   windowMs: 60000
   maxRequests: 10
+# Full-account data export — a whole-table read per call; tighter than
+# profile-read so scraping can't ride the read bucket.
+profile-export:
+  windowMs: 60000
+  maxRequests: 5
 identity-write:
   windowMs: 60000
   maxRequests: 10

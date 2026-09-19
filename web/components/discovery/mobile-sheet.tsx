@@ -16,7 +16,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { animate, motion, useDragControls, useMotionValue, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
-import { cardInteraction, spring } from "@/lib/motion";
+import { cardInteraction, useSprings } from "@/lib/motion";
 import { SHEET_COLLAPSED_PX, SHEET_PEEK_PX } from "@/lib/layout";
 import { useMounted } from "@/hooks/use-mounted";
 import type { DiscoveryController, SheetSnap } from "@/lib/discovery/use-discovery-controller";
@@ -45,6 +45,7 @@ function PeekCard({
   cardRef: (el: HTMLElement | null) => void;
 }) {
   const reduced = useReducedMotion();
+  const springs = useSprings();
   return (
     <motion.button
       ref={(el) => cardRef(el)}
@@ -56,7 +57,7 @@ function PeekCard({
       // tween; instant under reduced motion.
       initial={false}
       animate={active ? cardInteraction.active : cardInteraction.inactive}
-      transition={reduced ? { duration: 0 } : spring.gentle}
+      transition={reduced ? { duration: 0 } : springs.gentle}
     >
       <CafeCardBody cafe={cafe} />
     </motion.button>
@@ -65,7 +66,7 @@ function PeekCard({
 
 function PeekSkeletons() {
   return (
-    <div className="flex gap-3 px-4" aria-hidden>
+    <div className="flex gap-3 px-4 pb-2" aria-hidden>
       {[0, 1].map((i) => (
         <div
           key={i}
@@ -134,7 +135,7 @@ function PeekStrip({
     <div
       ref={stripRef}
       onScroll={onScroll}
-      className="flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1"
+      className="flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2"
       aria-label={t("peek_aria")}
     >
       {cafes.map((cafe, i) => (
@@ -178,6 +179,7 @@ export function MobileSheet({
   const t = useTranslations("discovery");
   const mounted = useMounted();
   const reduced = useReducedMotion();
+  const springs = useSprings();
   const [viewportH, setViewportH] = useState(0);
   const y = useMotionValue(0);
   const dragControls = useDragControls();
@@ -243,7 +245,7 @@ export function MobileSheet({
     const controls = animate(
       y,
       targetY,
-      reduced ? { duration: 0 } : { ...spring.snappy, velocity },
+      reduced ? { duration: 0 } : { ...springs.snappy, velocity },
     );
     return () => controls.stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -276,7 +278,7 @@ export function MobileSheet({
       // Stepping into PEEK clears the selection (18b) — controller.snapTo handles it.
       controller.snapTo(target);
     } else {
-      animate(y, offsets[snap], reduced ? { duration: 0 } : spring.snappy);
+      animate(y, offsets[snap], reduced ? { duration: 0 } : springs.snappy);
     }
   };
 

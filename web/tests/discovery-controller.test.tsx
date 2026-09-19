@@ -59,6 +59,30 @@ describe("useDiscoveryController URL sync (DG14)", () => {
     expect(result.current.snap).toBe("peek");
   });
 
+  it("opens at FULL for a /cafes/[id] deep-link hydration (DG124)", () => {
+    const { result } = renderHook(
+      () => useDiscoveryController({ initialCafeId: CAFE_1, initialSnap: "full" }),
+      { wrapper },
+    );
+    expect(result.current.selectedCafeId).toBe(CAFE_1);
+    expect(result.current.snap).toBe("full");
+    // Drag-down steps FULL → HALF → PEEK (DG14/DG15), PEEK clears selection.
+    act(() => result.current.snapTo("half"));
+    expect(result.current.snap).toBe("half");
+    act(() => result.current.snapTo("peek"));
+    expect(result.current.selectedCafeId).toBeNull();
+    expect(result.current.snap).toBe("peek");
+  });
+
+  it("ignores initialSnap without a valid initialCafeId", () => {
+    const { result } = renderHook(
+      () => useDiscoveryController({ initialCafeId: "not-a-uuid", initialSnap: "full" }),
+      { wrapper },
+    );
+    expect(result.current.selectedCafeId).toBeNull();
+    expect(result.current.snap).toBe("peek");
+  });
+
   it("first selection pushes one entry; a second selection replaces it", () => {
     const { result } = setup();
     const before = window.history.length;

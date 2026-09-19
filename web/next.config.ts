@@ -68,6 +68,9 @@ const nextConfig: NextConfig = {
     loaderFile: "./lib/images/loader.ts",
     remotePatterns: R2_ALLOWED_PUBLIC_HOSTS.map((hostname) => ({ protocol: "https", hostname })),
   },
+  // DG124: the /?cafe=[id] app entry is retired — stale shared links 308 to
+  // the canonical cafe URL in proxy.ts (config redirects can't strip the
+  // forwarded query string, so the redirect lives where the URL is built).
 
   async headers() {
     return [

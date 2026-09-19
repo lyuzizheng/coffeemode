@@ -28,8 +28,10 @@ export interface IMapProvider {
   /** Gets the map's current zoom level. */
   getZoom(): number;
 
-  /** Smoothly transitions the map view to a new center and optional zoom. */
-  flyTo(center: Coordinates, zoom?: number): void;
+  /** Smoothly transitions the map view to a new center and optional zoom.
+   * `durationMs` bounds the camera beat — the locate recenter uses the
+   * `settle.slow` budget (≤450ms, DG119); omit for the renderer default. */
+  flyTo(center: Coordinates, zoom?: number, durationMs?: number): void;
 
   /** Camera padding in px — keeps pins clear of the sheet/detail chrome. */
   setPadding(padding: { top: number; right: number; bottom: number; left: number }): void;
@@ -61,6 +63,22 @@ export interface IMapProvider {
    */
   setExternalPins?(pins: ExternalPin[]): void;
 
+  /**
+   * Renders the granted user position as the brand location dot (accent
+   * disc + paper ring + accuracy halo, DG120) on its own source/layers —
+   * above cafe pins, never folded into the cafe dataset. `null` clears it.
+   * Optional: consumers feature-detect.
+   */
+  setUserLocation?(location: UserLocation | null): void;
+
+  /**
+   * Registers a callback for the FIRST user-initiated camera gesture
+   * (drag/scroll/pinch — programmatic flyTo/setCenter never fire it).
+   * Onboarding uses it to honor "no recenter after user pan" (DG119).
+   * Returns an unsubscribe function. Optional: consumers feature-detect.
+   */
+  onCameraGesture?(handler: () => void): () => void;
+
   /** Cleans up map resources. */
   destroy(): void;
 }
@@ -90,6 +108,12 @@ export interface BaseMapProviderProps {
 export interface MapBounds {
   ne: Coordinates;
   sw: Coordinates;
+}
+
+/** The rendered user position (DG120): coordinates plus the fix's accuracy
+ * radius in meters — drives the optional halo ring. */
+export interface UserLocation extends Coordinates {
+  accuracyM?: number;
 }
 
 /**

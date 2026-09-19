@@ -717,6 +717,22 @@ describe("toPublicCafeDetail", () => {
     expect(pub.author).toBeNull();
     expect(pub.maintained_by_service).toBe(true);
   });
+
+  it("computes owned_by_viewer from the viewer id without shipping created_by (DG146/DG147)", () => {
+    const owner = "550e8400-e29b-41d4-a716-446655440000";
+    const cafe = {
+      id: "c1",
+      name: "Test",
+      created_by: owner,
+      gallery: [],
+    } as unknown as CafeDetail;
+    const own = toPublicCafeDetail(cafe, owner);
+    expect(own.owned_by_viewer).toBe(true);
+    expect(own).not.toHaveProperty("created_by");
+    expect(toPublicCafeDetail(cafe, "other-user").owned_by_viewer).toBe(false);
+    expect(toPublicCafeDetail(cafe).owned_by_viewer).toBe(false);
+    expect(toPublicCafeDetail(cafe, null).owned_by_viewer).toBe(false);
+  });
 });
 
 describe("DELETE /api/cafes/[id]", () => {

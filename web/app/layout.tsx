@@ -49,6 +49,21 @@ const sourceSerif = localFont({
   display: "swap",
 });
 
+// Retro-variant CJK serif — Noto Serif SC Variable (OFL), wght 200–900,
+// subset to GB2312 level-1 (3755 frequency-ordered hanzi) + the app's zh.json
+// copy + CJK punctuation (~1.4MB woff2). Referenced ONLY inside
+// [data-variant="retro"] font stacks, so the file downloads solely for retro
+// users rendering CJK glyphs; default/modern never fetch it. preload:false —
+// a variant-only font must not preload for every visitor. Rare hanzi outside
+// the subset fall back to Songti SC per the stack.
+const notoSerifSC = localFont({
+  src: "./fonts/noto-serif-sc-var.woff2",
+  variable: "--font-noto-serif-sc",
+  weight: "200 900",
+  display: "swap",
+  preload: false,
+});
+
 export const metadata: Metadata = {
   title: {
     default: APP_NAME,
@@ -88,7 +103,7 @@ export default async function RootLayout({
   return (
     <html
       lang={locale}
-      className={`${inter.variable} ${cabinet.variable} ${jetbrains.variable} ${sourceSerif.variable} h-full antialiased`}
+      className={`${inter.variable} ${cabinet.variable} ${jetbrains.variable} ${sourceSerif.variable} ${notoSerifSC.variable} h-full antialiased`}
       // --layout-* custom properties (lib/layout.ts) — Tailwind arbitrary
       // values and globals.css resolve the same numbers TS uses.
       style={LAYOUT_CSS_VARS as React.CSSProperties}

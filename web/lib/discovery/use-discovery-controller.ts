@@ -21,6 +21,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "@heroui/react";
 import { isValidUUID } from "@shared/uuid";
+import { getSearchUrlState } from "@/lib/search/search-url-state";
 
 /** Missing-cafe notice duration — interaction-design timing, not a product knob (BRAWUKA-250). */
 const MISSING_CAFE_TOAST_TIMEOUT_MS = 4000;
@@ -54,7 +55,13 @@ export interface DiscoveryController {
   detailHeadingRef: (el: HTMLElement | null) => void;
 }
 
-export function useDiscoveryController(options?: { initialCafeId?: string }): DiscoveryController {
+export function useDiscoveryController(options?: {
+  initialCafeId?: string;
+  /** Detent the sheet opens at when `initialCafeId` is set — "half" for
+   * in-app-style arrivals, "full" for the /cafes/[id] SSR shell that
+   * hydrates into the map app (DG124). */
+  initialSnap?: SheetSnap;
+}): DiscoveryController {
   const t = useTranslations("discovery");
   const initialValidId =
     options?.initialCafeId && isValidUUID(options.initialCafeId)
@@ -62,7 +69,9 @@ export function useDiscoveryController(options?: { initialCafeId?: string }): Di
       : null;
 
   const [selectedCafeId, setSelectedCafeId] = useState<string | null>(initialValidId);
-  const [snap, setSnap] = useState<SheetSnap>(() => (initialValidId ? "half" : "peek"));
+  const [snap, setSnap] = useState<SheetSnap>(() =>
+    initialValidId ? (options?.initialSnap ?? "half") : "peek",
+  );
   const cardRefs = useRef(new Map<string, HTMLElement>());
   const headingEl = useRef<HTMLElement | null>(null);
   const focusPending = useRef(Boolean(initialValidId));
@@ -92,7 +101,10 @@ export function useDiscoveryController(options?: { initialCafeId?: string }): Di
   const close = useCallback(() => {
     if (selectedCafeId !== null) {
       restoreFocusTo.current = selectedCafeId;
-      window.history.replaceState(null, "", "/");
+      // Re-attach the live search params — the pushed `/cafes/[id]` entry
+      // deliberately dropped them, but chips/URL must never disagree
+      // (BRAWUKA-512: single source of truth in the search state).
+      window.history.replaceState(null, "", `/${getSearchUrlState()}`);
     }
     setSelectedCafeId(null);
     setSnap("peek");
@@ -125,7 +137,7 @@ export function useDiscoveryController(options?: { initialCafeId?: string }): Di
     close();
   }, [close, t]);
 
-  // Normalize initial ?cafe= deep link to canonical /cafes/[id], and attach Back/Forward popstate listener.
+  // Normalize the initial /cafes/[id] deep link into the canonical URL, and attach Back/Forward popstate listener.
   useEffect(() => {
     if (initialValidId) {
       window.history.replaceState(null, "", cafeUrl(initialValidId));

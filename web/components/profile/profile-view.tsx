@@ -1,66 +1,53 @@
 "use client";
 
 import { useId, useState } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import Link from "next/link";
+import { useTranslations } from "next-intl";
+import { useMounted } from "@/hooks/use-mounted";
 import { ProfileHeader } from "./profile-header";
 import { ProfileGate } from "./profile-gate";
 import { ProfileHero } from "./profile-hero";
+import { ProfileOnboardingCard } from "./profile-onboarding-card";
 import { ProfileStats } from "./profile-stats";
-import { ProfileTabs, type TabType } from "./profile-tabs";
-import { ProfileTabCheckins, fetchUserCheckIns } from "./profile-tab-checkins";
-import { ProfileTabCafes, fetchUserCafes } from "./profile-tab-cafes";
+import { ProfileTabs } from "./profile-tabs";
+import { ProfileTabCheckins } from "./profile-tab-checkins";
+import { ProfileTabCafes } from "./profile-tab-cafes";
 import { ProfileTabFavorites } from "./profile-tab-favorites";
 import { ProfileTabHistory } from "./profile-tab-history";
-import { RankingPreferenceToggle } from "@/components/search/ranking-preference-toggle";
-import { ThemeVariantPicker } from "@/components/theme-variant-picker";
-import { ProfilePreferences } from "./profile-preferences";
+import { useProfileContent } from "./profile-hooks";
 import type { UserProfileDto, UserProfileStatsDto } from "@/lib/db/profile";
 
 interface ProfileViewProps {
   initialProfile: UserProfileDto | null;
   initialStats: UserProfileStatsDto | null;
   isAuthenticated: boolean;
+  /** Signed-in display-name initial for the header's account button. */
+  accountInitial?: string;
 }
 
 export function ProfileView({
   initialProfile,
   initialStats,
   isAuthenticated,
+  accountInitial,
 }: ProfileViewProps) {
   const [profile, setProfile] = useState<UserProfileDto | null>(initialProfile);
+  const t = useTranslations("profile");
   const [stats] = useState<UserProfileStatsDto | null>(initialStats);
-  const [activeTab, setActiveTab] = useState<TabType>("checkins");
   const baseId = useId();
-
-  // The map tab is the only consumer of the cafes query: keep it disabled
-  // until first visited so a plain profile load skips one paginated DB
-  // query per visit (BRAWUKA-281 P2). The comment above stays true in the
-  // other direction — once fetched, the cache persists across tab switches.
-  const [mapTabVisited, setMapTabVisited] = useState(activeTab === "map");
-  const handleTabChange = (tab: TabType) => {
-    if (tab === "map") setMapTabVisited(true);
-    setActiveTab(tab);
-  };
-  // Queries mounted unconditionally at view level to preserve prefetch & cache across tab switches
-  const checkinsQuery = useInfiniteQuery({
-    queryKey: ["profile", "checkins"],
-    queryFn: ({ pageParam }) => fetchUserCheckIns(pageParam),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
-    enabled: isAuthenticated,
-  });
-
-  const cafesQuery = useInfiniteQuery({
-    queryKey: ["profile", "cafes"],
-    queryFn: ({ pageParam }) => fetchUserCafes(pageParam),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
-    enabled: isAuthenticated && mapTabVisited,
-  });
+  const mounted = useMounted();
+  const {
+    activeTab,
+    handleTabChange,
+    checkinsQuery,
+    cafesQuery,
+    showGuide,
+    dismissGuide,
+  } = useProfileContent(isAuthenticated, mounted);
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col items-center">
-      <ProfileHeader isAuthenticated={isAuthenticated} />
+      <ProfileHeader isAuthenticated={isAuthenticated} accountInitial={accountInitial} />
 
       <main className="w-full max-w-[var(--layout-content-max)] px-4 md:px-6 py-4 flex-1 flex flex-col">
         {!isAuthenticated ? (
@@ -69,43 +56,43 @@ export function ProfileView({
           <>
             <ProfileHero profile={profile} onProfileChange={setProfile} />
             <ProfileStats stats={stats} />
-            <ProfileTabs activeTab={activeTab} onTabChange={handleTabChange} baseId={baseId} />
-
-            <div className="flex-1 flex flex-col py-2">
-              {activeTab === "checkins" && (
-                <ProfileTabCheckins baseId={baseId} query={checkinsQuery} isAuthenticated={isAuthenticated} />
-              )}
-              {activeTab === "map" && (
-                <ProfileTabCafes baseId={baseId} query={cafesQuery} />
-              )}
-              {activeTab === "favorites" && (
-                <ProfileTabFavorites baseId={baseId} />
-              )}
-              {activeTab === "history" && (
-                <ProfileTabHistory baseId={baseId} />
-              )}
-            </div>
-            <ProfilePreferences profile={profile} onProfileChange={setProfile} />
+            {showGuide ? (
+              <ProfileOnboardingCard onSkip={dismissGuide} />
+            ) : (
+              <>
+                <ProfileTabs activeTab={activeTab} onTabChange={handleTabChange} baseId={baseId} />
+                <div className="flex-1 flex flex-col py-2">
+                  {activeTab === "checkins" && (
+                    <ProfileTabCheckins baseId={baseId} query={checkinsQuery} isAuthenticated={isAuthenticated} />
+                  )}
+                  {activeTab === "map" && (
+                    <ProfileTabCafes baseId={baseId} query={cafesQuery} />
+                  )}
+                  {activeTab === "favorites" && (
+                    <ProfileTabFavorites baseId={baseId} />
+                  )}
+                  {activeTab === "history" && (
+                    <ProfileTabHistory baseId={baseId} />
+                  )}
+                </div>
+              </>
+            )}
           </>
         )}
-        {/* DG136: ranking + design-variant preferences live in localStorage,
-            so they stay reachable for anonymous sessions — a quiet page
-            footer below the gate, never inside the sign-in flow
-            (profile-page-v2 §5). */}
-        {!isAuthenticated && <AnonymousPreferencesFooter />}
+        {/* Settings live on /settings now (BRAWUKA-504) — the anonymous
+            footer only carries a quiet pointer there. */}
+        {!isAuthenticated && (
+          <footer className="mt-auto border-t border-separator pt-3 pb-1">
+            <Link
+              href="/settings"
+              className="cm-focus inline-flex min-h-11 items-center text-sm text-muted transition-colors hover:text-foreground"
+            >
+              {t("settings_link")}
+            </Link>
+          </footer>
+        )}
       </main>
     </div>
   );
 }
 
-/** Anonymous-only footer: the two localStorage-backed preferences stay
- *  reachable without sign-in (DG136 + BRAWUKA-370). Extracted so ProfileView
- *  stays under the 80-line function budget. */
-function AnonymousPreferencesFooter() {
-  return (
-    <footer className="mt-auto border-t border-separator pt-3 pb-1 flex flex-col gap-3">
-      <RankingPreferenceToggle variant="compact" />
-      <ThemeVariantPicker />
-    </footer>
-  );
-}

@@ -15,7 +15,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { motion, useReducedMotion } from "framer-motion";
-import { spring } from "@/lib/motion";
+import { useSprings } from "@/lib/motion";
 import type { CheckInFeedMode } from "@/types/checkins";
 import { FeedCard } from "./feed-card";
 import { InlineError } from "./inline-error";
@@ -35,6 +35,7 @@ function FeedModeTabs({
 }) {
   const t = useTranslations("discovery");
   const reduced = useReducedMotion();
+  const springs = useSprings();
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     e.preventDefault();
@@ -64,7 +65,7 @@ function FeedModeTabs({
             {active && (
               <motion.span
                 layoutId="feed-mode-pill"
-                transition={reduced ? { duration: 0 } : spring.snappy}
+                transition={reduced ? { duration: 0 } : springs.snappy}
                 className="absolute inset-x-0 inset-y-2 rounded-sm border border-separator bg-surface"
                 aria-hidden
               />

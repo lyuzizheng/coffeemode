@@ -26,7 +26,9 @@ const VIEWPORTS = [
   { name: "1440x900", width: 1440, height: 900, isMobile: false },
 ];
 
-const DRAWER_DIALOG_SELECTOR = "section.drawer__dialog--bottom";
+// Placement flips at ≥1024px (BRAWUKA-516): bottom sheet on mobile,
+// right-side panel on desktop — select the slot, not the modifier.
+const DRAWER_DIALOG_SELECTOR = "[data-slot='drawer-dialog']";
 
 function assert(condition, message) {
   if (!condition) {
@@ -35,22 +37,23 @@ function assert(condition, message) {
 }
 
 /**
- * Wait for the bottom drawer's slide-in to settle. The panel animates in from
- * below the fold, so a geometry read taken while it is still moving reports a
- * position that never exists at rest. Polls until two consecutive frames agree.
+ * Wait for the drawer's slide-in to settle. The panel animates in from off-screen
+ * (from below for bottom placement, from the right edge on desktop), so a
+ * geometry read taken while it is still moving reports a position that never
+ * exists at rest. Polls until two consecutive frames agree on all sides.
  */
 async function waitForSettled(page) {
   await page.waitForFunction(
-    () => {
-      const el = document.querySelector("section.drawer__dialog--bottom");
+    (selector) => {
+      const el = document.querySelector(selector);
       if (!el) return false;
       const rect = el.getBoundingClientRect();
-      const sample = `${rect.top}|${rect.bottom}`;
+      const sample = `${rect.top}|${rect.bottom}|${rect.left}|${rect.right}`;
       const previous = el.dataset.settleProbe;
       el.dataset.settleProbe = sample;
       return previous === sample;
     },
-    null,
+    DRAWER_DIALOG_SELECTOR,
     { timeout: 5000 },
   );
 }
@@ -83,6 +86,10 @@ async function measureDrawer(dialog) {
     const rect = cta?.getBoundingClientRect();
     return {
       viewportHeight: window.innerHeight,
+      placement: el.getAttribute("data-placement"),
+      dialogWidth: Math.round(el.getBoundingClientRect().width),
+      dialogClientHeight: el.clientHeight,
+      dialogScrollHeight: el.scrollHeight,
       ctaBottom: rect ? Math.round(rect.bottom) : null,
       bodyClientHeight: body?.clientHeight ?? null,
       bodyScrollHeight: body?.scrollHeight ?? null,
@@ -91,15 +98,31 @@ async function measureDrawer(dialog) {
 }
 
 function assertCtaInsideViewport(viewport, metrics) {
+  const expectedPlacement = viewport.width >= 1024 ? "right" : "bottom";
+  assert(
+    metrics.placement === expectedPlacement,
+    `${viewport.name}: drawer placement is "${metrics.placement}", expected "${expectedPlacement}"`,
+  );
+  if (expectedPlacement === "right") {
+    // checkin-system-v1 §2: the desktop side panel is exactly 420px wide.
+    assert(
+      metrics.dialogWidth === 420,
+      `${viewport.name}: desktop drawer width ${metrics.dialogWidth}px, expected 420px`,
+    );
+  }
   assert(metrics.ctaBottom !== null, `${viewport.name}: primary CTA not found in the drawer footer`);
   assert(
     metrics.ctaBottom <= metrics.viewportHeight + 1,
     `${viewport.name}: drawer CTA bottom ${metrics.ctaBottom} falls outside the ${metrics.viewportHeight}px viewport`,
   );
-  assert(
-    metrics.bodyClientHeight !== null && metrics.bodyClientHeight < metrics.bodyScrollHeight,
-    `${viewport.name}: drawer body is not a scroll container (${metrics.bodyClientHeight}/${metrics.bodyScrollHeight})`,
-  );
+  // The body must be a real scroll container only when the form actually
+  // overflows the dialog; content that fits needs no scroll path.
+  if (metrics.dialogScrollHeight > metrics.dialogClientHeight) {
+    assert(
+      metrics.bodyClientHeight !== null && metrics.bodyClientHeight < metrics.bodyScrollHeight,
+      `${viewport.name}: drawer body is not a scroll container (${metrics.bodyClientHeight}/${metrics.bodyScrollHeight})`,
+    );
+  }
 }
 
 /**

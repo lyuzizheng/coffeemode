@@ -24,10 +24,10 @@ describe("RankingPreferenceToggle (DG136)", () => {
     });
   });
 
-  function renderToggle(variant: "settings" | "onboarding" = "settings") {
+  function renderToggle() {
     return render(
       <NextIntlClientProvider locale="en" messages={en}>
-        <RankingPreferenceToggle variant={variant} />
+        <RankingPreferenceToggle variant="settings" />
       </NextIntlClientProvider>,
     );
   }
@@ -59,11 +59,4 @@ describe("RankingPreferenceToggle (DG136)", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("onboarding variant leads with the onboarding copy", () => {
-    renderToggle("onboarding");
-    expect(
-      screen.getByRole("heading", { name: "What should search show first?" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("radiogroup")).toBeInTheDocument();
-  });
 });

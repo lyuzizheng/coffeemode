@@ -165,7 +165,7 @@
     },
     "searchResults": {
       "title": "Unified search results",
-      "desc": "Grouped CafeMood-first results, city-center distance labels, source-gated external CTAs, and the ranking preference toggle (settings + onboarding).",
+      "desc": "Grouped CafeMood-first results, city-center distance labels, source-gated external CTAs, and the ranking preference toggle.",
       "last_action": "Last action"
     },
     "footer": "CafeMood — warm paper, espresso ink, one terracotta voice · en/zh via next-intl"
@@ -411,9 +411,7 @@
       "label": "Search ranking",
       "desc": "Applied to every search on this device — no account needed.",
       "relevance": "Closest match first",
-      "good_first": "Great cafes first",
-      "onboarding_title": "What should search show first?",
-      "onboarding_body": "Pick once, change anytime. Great cafes first surfaces top-rated spots; closest match first keeps it strictly relevant."
+      "good_first": "Great cafes first"
     },
     "dims": {
       "wifi": "Wifi",

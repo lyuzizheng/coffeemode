@@ -33,6 +33,10 @@ export default async function HomePage({
   // button's pulse, ?create=1 opens the creation sheet on arrival.
   const locateHint = params.locate === "1";
   const createHint = params.create === "1";
+  // ?q= deep link (BRAWUKA-516): profile Search History rows land on the
+  // map with the query pre-filled (useSearchState reads it from the URL) —
+  // a deep-link arrival, so the welcome card stays suppressed like ?cafe=.
+  const searchDeepLink = typeof params.q === "string" && params.q.trim() !== "";
 
   return (
     <OnboardingHome
@@ -55,6 +59,7 @@ export default async function HomePage({
           variant="fab"
         />
       }
+      suppressCard={searchDeepLink}
       accountInitial={entry.accountInitial}
       mapkitConfigured={entry.mapkitConfigured}
       locateHint={locateHint}

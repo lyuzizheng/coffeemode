@@ -101,7 +101,12 @@ export async function POST(request: Request) {
     return NextResponse.json(result, { status: 201 });
   } catch (err) {
     if (err instanceof CafeExistsError) {
-      return apiError("cafe_exists", 409, { extra: { cafe_id: err.existingCafeId } });
+      // BRAWUKA-467: the raced-23505 winner lookup can still return 0 rows
+      // (commit landing just after the retry). Never emit `cafe_id: null` —
+      // fall back to a generic 409 the client already handles.
+      return err.existingCafeId
+        ? apiError("cafe_exists", 409, { extra: { cafe_id: err.existingCafeId } })
+        : apiError("cafe_exists", 409);
     }
     if (
       err instanceof PhotoIntentError ||

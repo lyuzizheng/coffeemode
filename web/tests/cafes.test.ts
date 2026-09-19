@@ -393,6 +393,45 @@ describe("createCafeWithFirstCheckIn", () => {
     expect(deleted).toEqual([]);
   });
 
+  it("retries the post-rollback winner lookup once when the first read sees 0 rows", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [] }); // pre-provision dedupe misses (race window)
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [] }) // in-tx pre-check misses too
+      .mockRejectedValueOnce({ code: "23505" }); // insert hits the unique index
+    // Winner's commit lands just after the first lookup: retry finds it.
+    poolQueryMock.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [{ id: "existing-9" }] });
+
+    const err = await createCafeWithFirstCheckIn(USER.id, {
+      name: "Dupe",
+      ...SG,
+      google_place_id: "ChIJx",
+      checkin: validCheckinInput(),
+    }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(CafeExistsError);
+    expect((err as CafeExistsError).existingCafeId).toBe("existing-9");
+    expect(poolQueryMock).toHaveBeenCalledTimes(3); // pre-provision check + lookup + retry
+  });
+
+  it("keeps a null winner id when both post-rollback lookups see 0 rows", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [] }); // pre-provision dedupe misses (race window)
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [] }) // in-tx pre-check misses too
+      .mockRejectedValueOnce({ code: "23505" }); // insert hits the unique index
+    poolQueryMock.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [] });
+
+    const err = await createCafeWithFirstCheckIn(USER.id, {
+      name: "Dupe",
+      ...SG,
+      google_place_id: "ChIJx",
+      checkin: validCheckinInput(),
+    }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(CafeExistsError);
+    expect((err as CafeExistsError).existingCafeId).toBeNull();
+    expect(poolQueryMock).toHaveBeenCalledTimes(3); // pre-provision check + lookup + retry
+  });
+
   it("rejects an invalid user id before touching the database", async () => {
     await expect(
       createCafeWithFirstCheckIn("not-a-uuid", {
@@ -471,6 +510,19 @@ describe("POST /api/cafes", () => {
       error: "cafe_exists",
       cafe_id: "existing-9",
     });
+  });
+
+  it("409s without cafe_id when the raced winner lookup still sees 0 rows", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [] }); // pre-provision dedupe misses
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [] }) // in-tx pre-check misses
+      .mockRejectedValueOnce({ code: "23505" }); // insert hits the unique index
+    poolQueryMock.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [] }); // retry still 0 rows
+    const res = await createPOST(postRequest(validBody()));
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.error).toBe("cafe_exists");
+    expect(body).not.toHaveProperty("cafe_id");
   });
 
   it("429s after the per-user write budget is exhausted", async () => {

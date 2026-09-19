@@ -11,11 +11,47 @@ import type { ReactNode } from "react";
 import { AnimatePresence } from "framer-motion";
 import type { CityInfo, Coordinates } from "@/lib/cities";
 import { useMounted } from "@/hooks/use-mounted";
+import type { SheetSnap } from "@/lib/discovery/use-discovery-controller";
 import { DiscoveryHome } from "@/components/discovery/discovery-home";
 import { AppMenu } from "@/components/layout/app-menu";
 import { LocateButton } from "./locate-button";
 import { useOnboarding, type OnboardingState } from "./use-onboarding";
 import { WelcomeCard } from "./welcome-card";
+
+interface OnboardingHomeProps {
+  /** IP-detected launch city (DG128); null → no detection line. */
+  detectedCity: CityInfo | null;
+  /** Server-computed starting center: profile city → last location →
+   * detected city → configured default. */
+  initialCenter: Coordinates;
+  isAuthenticated: boolean;
+  /** profiles.onboarded — authoritative for signed-in users (DG122). */
+  serverOnboarded: boolean;
+  /** Signed-in profile fields mirrored into localStorage on merge (DG122). */
+  profileSeed?: { currentCity: string; lastLocation: Coordinates | null };
+  /** Deep-link-style arrivals never see the card (DG124). */
+  suppressCard?: boolean;
+  addCafe: ReactNode;
+  /** Round add-cafe FAB slot (BRAWUKA-364) — floats over the map. */
+  addCafeFab?: ReactNode;
+  initialCafeId?: string;
+  /** Detent the mobile sheet opens at for `initialCafeId` — "full" on the
+   * /cafes/[id] deep link (DG124), default "half" elsewhere. */
+  initialSnap?: SheetSnap;
+  /** Search city scope override (DG124: the linked cafe's launch city);
+   * falls back to the IP-detected city like the home entry. */
+  city?: string;
+  /** Signed-in display-name initial for the map account chip; absent → the
+   * chip shows the sign-in affordance (BRAWUKA-318). */
+  accountInitial?: string;
+  /** DG143 request-time MapKit readiness — forwarded to search + creation. */
+  mapkitConfigured?: boolean;
+  /** ?locate=1 deep link — the locate button arrives already pulsing. */
+  locateHint?: boolean;
+  /** ?create=1 deep link — the creation sheet opens on arrival. */
+  createHint?: boolean;
+  children: ReactNode;
+}
 
 export function OnboardingHome({
   detectedCity,
@@ -27,40 +63,14 @@ export function OnboardingHome({
   addCafe,
   addCafeFab,
   initialCafeId,
+  initialSnap,
+  city,
   accountInitial,
   mapkitConfigured = false,
   locateHint = false,
   createHint = false,
   children,
-}: {
-  /** IP-detected launch city (DG128); null → no detection line. */
-  detectedCity: CityInfo | null;
-  /** Server-computed starting center: profile city → last location →
-   * detected city → configured default. */
-  initialCenter: Coordinates;
-  isAuthenticated: boolean;
-  /** profiles.onboarded — authoritative for signed-in users (DG122). */
-  serverOnboarded: boolean;
-  /** Signed-in profile fields mirrored into localStorage on merge (DG122). */
-  profileSeed?: { currentCity: string; lastLocation: Coordinates | null };
-  /** Deep-link-style arrivals (?cafe=) never see the card (DG124). */
-  suppressCard?: boolean;
-  addCafe: ReactNode;
-  /** Round add-cafe FAB slot (BRAWUKA-364) — floats over the map. */
-  addCafeFab?: ReactNode;
-  initialCafeId?: string;
-  /** Signed-in display-name initial for the map account chip; absent → the
-   * chip shows the sign-in affordance (BRAWUKA-318). */
-  accountInitial?: string;
-  /** DG143 request-time MapKit readiness — forwarded to search + creation. */
-  mapkitConfigured?: boolean;
-  /** ?locate=1 deep link — the locate button arrives already pulsing. */
-  locateHint?: boolean;
-  /** ?create=1 deep link — the creation sheet opens on arrival. */
-  createHint?: boolean;
-  /** The map surface — rendered below every overlay. */
-  children?: ReactNode;
-}) {
+}: OnboardingHomeProps) {
   const mounted = useMounted();
   const onboarding = useOnboarding({
     detectedCity,
@@ -71,15 +81,17 @@ export function OnboardingHome({
     suppressCard,
     locateHint,
   });
+
   return (
     <DiscoveryHome
       center={onboarding.center}
       addCafe={addCafe}
       addCafeFab={addCafeFab}
       initialCafeId={initialCafeId}
+      initialSnap={initialSnap}
       isAuthenticated={isAuthenticated}
       mapkitConfigured={mapkitConfigured}
-      city={detectedCity?.id}
+      city={city ?? detectedCity?.id}
       mapOverlay={
         mounted ? (
           <MapOverlay
@@ -98,10 +110,6 @@ export function OnboardingHome({
   );
 }
 
-/** The props type extracted so OnboardingHome stays under the 80-line
- * function budget — every field is a pass-through to useOnboarding or
- * DiscoveryHome. */
-export type OnboardingHomeProps = Parameters<typeof OnboardingHome>[0];
 
 /** Welcome card + locate button + account/theme chip — everything that
  * floats over the map. DiscoveryHome's gateMapOverlay hides the whole slot

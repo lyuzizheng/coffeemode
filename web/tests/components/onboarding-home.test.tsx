@@ -140,6 +140,20 @@ describe("OnboardingHome (DG114–DG123)", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("deep-link arrivals keep the server center over a stored city (DG124)", async () => {
+    // A returning anonymous visitor has a stored city — the linked cafe's
+    // coordinates must still win so the map focuses the linked cafe.
+    store["coffeemode:onboarding:v1"] = JSON.stringify({
+      onboarded: true,
+      currentCity: "seoul",
+    });
+    renderHome({ suppressCard: true, initialCafeId: "550e8400-e29b-41d4-a716-446655440000" });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Locate me" })).toBeInTheDocument(),
+    );
+    expect(lastCenter.current).toEqual(singapore.center);
+  });
+
   it("the account cluster rides the mapOverlay slot in every phase (BRAWUKA-318)", async () => {
     // Signed-out, card visible: sign-in affordance + the droplet menu.
     renderHome();

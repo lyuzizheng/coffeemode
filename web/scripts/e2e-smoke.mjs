@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import {
   E2E_CAFE_ID,
+  E2E_USER_ID,
   setupDbFixtures,
   cleanupDbFixtures,
   closeDbClient,
@@ -38,6 +39,7 @@ import {
 import { runCheckinDrawerGate } from "./lib/checkin-drawer-gate.mjs";
 import { runCheckinSubmitGate } from "./lib/checkin-submit-gate.mjs";
 import { runApiContractGate } from "./lib/api-contract-gate.mjs";
+import { runDeeplinkHydrationGate } from "./lib/deeplink-hydration-gate.mjs";
 import { stubOpenFreeMap } from "./lib/tile-stubs.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -105,6 +107,10 @@ async function runSmokeSuite() {
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         DATABASE_URL: dbUrl,
+        // T8 signs in for real: the standalone server must reach the
+        // supabase-mock (compose service, :54321) for session validation.
+        NEXT_PUBLIC_SUPABASE_URL: process.env.E2E_SUPABASE_URL ?? "http://127.0.0.1:54321",
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.E2E_SUPABASE_ANON_KEY ?? "e2e-anon-key",
       },
     });
 
@@ -243,9 +249,24 @@ async function runSmokeSuite() {
         await shareButton.first().click();
         await page.waitForTimeout(200);
       }
-
       checkErrors();
       await context.close();
+      console.log(`[E2E] ok ${label}`);
+    }
+
+    // Test 2b: DG124 hydration — shell → map app at FULL, mobile detents,
+    // and the retired /?cafe= redirect — see lib/deeplink-hydration-gate.mjs.
+    if (hasDb) {
+      const label = "T2b: Deep-Link Hydration (DG124)";
+      console.log(`[E2E] Running ${label}...`);
+      await runDeeplinkHydrationGate({
+        label,
+        base,
+        cafeId: E2E_CAFE_ID,
+        cafeName: "E2E Smoke Cafe",
+        createContext,
+        attachErrorCollector,
+      });
       console.log(`[E2E] ok ${label}`);
     }
 
@@ -347,9 +368,8 @@ async function runSmokeSuite() {
 
     // Test 8: check-in submit flow (BRAWUKA-121) — see lib/checkin-submit-gate.mjs.
     if (hasDb) {
-      const label = "T8: Check-in Submit Flow (Mocked Auth Boundary)";
-      console.log(`[E2E] Running ${label}...`);
-      await runCheckinSubmitGate({ label, base, cafeId: E2E_CAFE_ID, createContext, attachErrorCollector });
+      const label = "T8: Check-in Submit Flow (Real Session via supabase-mock)";
+      await runCheckinSubmitGate({ label, base, cafeId: E2E_CAFE_ID, userId: E2E_USER_ID, dbClient, createContext, attachErrorCollector });
       console.log(`[E2E] ok ${label}`);
     }
 

@@ -81,7 +81,7 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
                   </span>
                 ) : (
                   <Link
-                    href={`/?cafe=${item.cafe_id}`}
+                    href={`/cafes/${item.cafe_id}`}
                     className="-my-2.5 inline-flex min-h-11 items-center font-display font-bold text-foreground text-md hover:text-accent transition-colors"
                   >
                     {item.cafe_name || t("unknown_cafe")}

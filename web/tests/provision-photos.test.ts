@@ -45,8 +45,10 @@ function fakeDeps(overrides: Partial<ProvisionPhotosDeps> = {}): ProvisionPhotos
     processImage: vi.fn().mockResolvedValue({ width: 1600, height: 1200 }),
     restampOriginal: vi.fn().mockResolvedValue(undefined),
     deleteProvisionedVariants: vi.fn().mockResolvedValue(undefined),
-    // Unreferenced by default: legacy unit behavior deletes every id.
+    // Unreferenced (BRAWUKA-401) and live-intent-free (BRAWUKA-502) by
+    // default: legacy unit behavior deletes every id.
     selectPhotoReferences: vi.fn().mockResolvedValue([]),
+    selectLiveUploadIntents: vi.fn().mockResolvedValue([]),
     ...overrides,
   };
   return deps as unknown as ProvisionPhotosDeps;
@@ -218,7 +220,6 @@ describe("consumeProvisionedIntents", () => {
     await expect(consumeProvisionedIntents(USER, [], vi.fn(), deps)).resolves.toBeUndefined();
     expect(deps.consumeUploadIntents).not.toHaveBeenCalled();
   });
-
   it("falls back to per-id consume when the batch seam is absent (legacy fakes)", async () => {
     const q = vi.fn();
     const consumeUploadIntent = vi.fn().mockResolvedValue(true);
@@ -232,7 +233,7 @@ describe("consumeProvisionedIntents", () => {
 describe("compensateProvisionedPhotos", () => {
   it("best-effort deletes every provisioned variant after a rollback", async () => {
     const deps = fakeDeps();
-    await compensateProvisionedPhotos([IMG_A, IMG_B], deps);
+    await compensateProvisionedPhotos(USER, [IMG_A, IMG_B], deps);
     const deletes = mockOf(deps, "deleteProvisionedVariants");
     expect(deletes).toHaveBeenCalledTimes(2);
     expect(deletes).toHaveBeenCalledWith(IMG_A);
@@ -242,24 +243,71 @@ describe("compensateProvisionedPhotos", () => {
   it("is a no-op without a delete dep (sweeper backstop)", async () => {
     const { checkUploadIntent, checkUploadIntents, consumeUploadIntent, consumeUploadIntents, getProcessUrls, processImage } = fakeDeps();
     await expect(
-      compensateProvisionedPhotos([IMG_A], { checkUploadIntent, checkUploadIntents, consumeUploadIntent, consumeUploadIntents, getProcessUrls, processImage }),
+      compensateProvisionedPhotos(USER, [IMG_A], { checkUploadIntent, checkUploadIntents, consumeUploadIntent, consumeUploadIntents, getProcessUrls, processImage }),
     ).resolves.toBeUndefined();
   });
   it("keeps DB-referenced ids and deletes only true orphans (BRAWUKA-401)", async () => {
     const selectPhotoReferences = vi.fn().mockResolvedValue([IMG_A]);
     const deps = fakeDeps({ selectPhotoReferences });
-    await compensateProvisionedPhotos([IMG_A, IMG_B], deps);
+    await compensateProvisionedPhotos(USER, [IMG_A, IMG_B], deps);
     expect(selectPhotoReferences).toHaveBeenCalledWith([IMG_A, IMG_B]);
     const deletes = mockOf(deps, "deleteProvisionedVariants");
     expect(deletes).toHaveBeenCalledTimes(1);
     expect(deletes).toHaveBeenCalledWith(IMG_B);
   });
 
+  it("keeps uncommitted-winner ids whose intent is still live (BRAWUKA-502)", async () => {
+    const selectLiveUploadIntents = vi.fn().mockResolvedValue([IMG_A]);
+    const deps = fakeDeps({ selectLiveUploadIntents });
+    await compensateProvisionedPhotos(USER, [IMG_A, IMG_B], deps);
+    expect(selectLiveUploadIntents).toHaveBeenCalledWith(USER, [IMG_A, IMG_B]);
+    const deletes = mockOf(deps, "deleteProvisionedVariants");
+    expect(deletes).toHaveBeenCalledTimes(1);
+    expect(deletes).toHaveBeenCalledWith(IMG_B);
+  });
+
+  it("catches a winner that commits between the two gates: intent gate must run first (BRAWUKA-502)", async () => {
+    // Models the T1/commit/T2 interleaving: the winner is uncommitted when
+    // the first gate runs and committed when the second runs. Intent-first
+    // keeps the id (live intent at T1, so the later commit is irrelevant);
+    // reference-first would delete it (no row at T1, intent consumed by T2).
+    let committed = false;
+    const selectLiveUploadIntents = vi
+      .fn()
+      .mockImplementation(async (_user: string, ids: string[]) => {
+        if (committed) return [];
+        return ids.filter((id) => id === IMG_A);
+      });
+    const selectPhotoReferences = vi.fn().mockImplementation(async (ids: string[]) => {
+      const seen = committed ? ids.filter((id) => id === IMG_A) : [];
+      committed = true; // winner commits right after the reference read
+      return seen;
+    });
+    const deps = fakeDeps({ selectLiveUploadIntents, selectPhotoReferences });
+    await compensateProvisionedPhotos(USER, [IMG_A, IMG_B], deps);
+    expect(selectLiveUploadIntents).toHaveBeenCalledWith(USER, [IMG_A, IMG_B]);
+    const deletes = mockOf(deps, "deleteProvisionedVariants");
+    expect(deletes).toHaveBeenCalledTimes(1);
+    expect(deletes).toHaveBeenCalledWith(IMG_B);
+    // Order pin: a future refactor must not silently swap the gates back.
+    const intentOrder = selectLiveUploadIntents.mock.invocationCallOrder[0];
+    const refOrder = selectPhotoReferences.mock.invocationCallOrder[0];
+    expect(intentOrder).toBeLessThan(refOrder);
+  });
+
+  it("fails closed when the intent check throws: deletes nothing (BRAWUKA-502)", async () => {
+    const deps = fakeDeps({
+      selectLiveUploadIntents: () => Promise.reject(new Error("db blip")),
+    });
+    await compensateProvisionedPhotos(USER, [IMG_A], deps);
+    expect(mockOf(deps, "deleteProvisionedVariants")).not.toHaveBeenCalled();
+  });
+
   it("fails closed when the reference check throws: deletes nothing (BRAWUKA-401)", async () => {
     const deps = fakeDeps({
       selectPhotoReferences: () => Promise.reject(new Error("db blip")),
     });
-    await compensateProvisionedPhotos([IMG_A], deps);
+    await compensateProvisionedPhotos(USER, [IMG_A], deps);
     expect(mockOf(deps, "deleteProvisionedVariants")).not.toHaveBeenCalled();
   });
 });

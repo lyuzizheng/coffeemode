@@ -48,6 +48,7 @@ const provisionDeps: Record<string, Mock> = {
   // Unreferenced by default: unit compensation deletes every id (the
   // BRAWUKA-401 race tests override this to simulate a winner's row).
   selectPhotoReferences: vi.fn().mockResolvedValue([]),
+  selectLiveUploadIntents: vi.fn().mockResolvedValue([]),
   deleteProvisionedVariants: vi.fn(),
 };
 
@@ -390,6 +391,33 @@ describe("createCafeWithFirstCheckIn", () => {
 
     expect(err).toBeInstanceOf(CafeExistsError);
     expect(provisionDeps.selectPhotoReferences).toHaveBeenCalledWith([IMG]);
+    expect(deleted).toEqual([]);
+  });
+
+  it("keeps a concurrent winner's R2 objects when its commit is still in flight (BRAWUKA-502)", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [] }); // pre-provision dedupe misses (race window)
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [] }) // in-tx pre-check misses too
+      .mockRejectedValueOnce({ code: "23505" }); // insert hits the unique index
+    // After rollback the lookup runs on the pool, not the aborted connection.
+    poolQueryMock.mockResolvedValueOnce({ rows: [{ id: "existing-9" }] });
+    // The winner has not committed yet: no gallery row references the id,
+    // but the winner's upload intent is still live, so the loser's rollback
+    // deletes nothing. The #158 sweeper is the backstop.
+    provisionDeps.selectLiveUploadIntents.mockResolvedValueOnce([IMG]);
+    const deleted: string[] = [];
+    provisionDeps.deleteProvisionedVariants.mockImplementation(async (id: string) => {
+      deleted.push(id);
+    });
+    const err = await createCafeWithFirstCheckIn(USER.id, {
+      name: "Dupe",
+      ...SG,
+      google_place_id: "ChIJx",
+      checkin: validCheckinInput(),
+    }).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(CafeExistsError);
+    expect(provisionDeps.selectLiveUploadIntents).toHaveBeenCalledWith(USER.id, [IMG]);
     expect(deleted).toEqual([]);
   });
 

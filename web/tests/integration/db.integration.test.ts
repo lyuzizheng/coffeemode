@@ -84,7 +84,7 @@ import {
 } from "@/lib/discovery/feed";
 import { recordUploadIntent } from "@/lib/db/image-uploads";
 import { selectPhotoReferences } from "@/lib/db/photo-references";
-import { PhotoIntentError } from "@/lib/images/provision-photos";
+import { compensateProvisionedPhotos, PhotoIntentError } from "@/lib/images/provision-photos";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import { recomputeAllWorkStats } from "@/lib/stats/aggregate";
 import { coerceWorkStats } from "@/lib/stats/work-stats";
@@ -605,6 +605,25 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       // Winner committed: gallery + check-in rows reference the id, so the
       // loser's compensation must keep it while deleting true orphans.
       await expect(selectPhotoReferences([photoId, orphanId])).resolves.toEqual([photoId]);
+
+      // Live-intent gate (BRAWUKA-502): an uncommitted winner holds no DB
+      // row yet, but its intent row is still live — full compensation for
+      // the same user+id pair deletes nothing. `U1`'s intent was consumed
+      // by the winner's commit, so simulate the in-flight state with a
+      // fresh intent issued to the same user.
+      const inFlightId = randomUUID();
+      await recordUploadIntent(U1, inFlightId);
+      const deps = fakeProvisionPhotosDeps();
+      const deleted: string[] = [];
+      const realDelete = deps.deleteProvisionedVariants;
+      if (!realDelete) throw new Error("expected a delete dep in the fixture");
+      deps.deleteProvisionedVariants = async (id) => {
+        deleted.push(id);
+        await realDelete(id);
+      };
+      await compensateProvisionedPhotos(U1, [inFlightId, orphanId], deps);
+      expect(deleted).toEqual([orphanId]);
+      expect(selectPhotoReferences([photoId, orphanId])).resolves.toEqual([photoId]);
 
       // A soft-deleted check-in still references its photos until the row is
       // gone: the gate keeps protecting the R2 objects after delete.

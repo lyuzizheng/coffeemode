@@ -209,8 +209,9 @@ describe("search-service", () => {
   });
 
   it("performs bounded iterative fetching across batches when open_now filter is active", async () => {
-    // Batch 1 (offset 0): 100 cafes, all closed
-    const batch1 = Array.from({ length: 100 }, (_, i) =>
+    // Batch 1 (offset 0): 101 closed cafes — overflows the 100-row page so
+    // the LIMIT+1 probe signals more rows remain (BRAWUKA-448).
+    const batch1 = Array.from({ length: 101 }, (_, i) =>
       makeDbCafe({
         id: `closed-${i}`,
         name: `Alpha Closed ${i.toString().padStart(3, "0")}`,
@@ -248,13 +249,14 @@ describe("search-service", () => {
     );
 
     expect(searchCafesInDb).toHaveBeenCalledTimes(2);
+    // LIMIT+1 probe: each batch requests dbFetchCap + 1 rows (BRAWUKA-448).
     expect(searchCafesInDb).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ offset: 0, limit: 100 }),
+      expect.objectContaining({ offset: 0, limit: 101 }),
     );
     expect(searchCafesInDb).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ offset: 100, limit: 100 }),
+      expect.objectContaining({ offset: 100, limit: 101 }),
     );
     expect(response.results).toHaveLength(10);
     expect(response.results.every((r) => r.id.startsWith("open-"))).toBe(true);
@@ -287,6 +289,89 @@ describe("search-service", () => {
 
     expect(searchCafesInDb).toHaveBeenCalledTimes(1);
     expect(response.results).toHaveLength(5);
+  });
+
+  it("BRAWUKA-448: single batch with exactly dbFetchCap rows does not report open_now_truncated", async () => {
+    // The DB holds exactly 100 rows, all closed. The LIMIT+1 probe returns
+    // 100 <= 100, proving exhaustion: one fetch, no truncation warning.
+    // Pre-fix this burned all 10 batches and falsely warned.
+    const exactBatch = Array.from({ length: 100 }, (_, i) =>
+      makeDbCafe({
+        id: `closed-${i}`,
+        name: `Alpha Closed ${i.toString().padStart(3, "0")}`,
+        opening_hours: null,
+      }),
+    );
+    vi.mocked(searchCafesInDb).mockResolvedValue(exactBatch);
+
+    const response = await executeSearch(
+      { city: "singapore", open_now: true },
+      new Date("2026-08-29T10:00:00Z"),
+    );
+
+    expect(searchCafesInDb).toHaveBeenCalledTimes(1);
+    expect(response.results).toHaveLength(0);
+    expect(response.warnings ?? []).not.toContain("open_now_truncated");
+  });
+
+  it("BRAWUKA-448: exact DB exhaustion on the final batch does not report open_now_truncated", async () => {
+    // Batches 0..8 overflow the 100-row page (101 rows → more rows remain);
+    // the final batch holds exactly 100 rows, i.e. the DB is exactly
+    // exhausted. Nothing matches (all closed), so the old boundary check
+    // falsely reported truncation here.
+    const fullRows = Array.from({ length: 9 * 101 }, (_, i) =>
+      makeDbCafe({
+        id: `closed-${i}`,
+        name: `Alpha Closed ${i.toString().padStart(4, "0")}`,
+        opening_hours: null,
+      }),
+    );
+    const exactFinal = Array.from({ length: 100 }, (_, i) =>
+      makeDbCafe({
+        id: `final-${i}`,
+        name: `Alpha Final ${i.toString().padStart(3, "0")}`,
+        opening_hours: null,
+      }),
+    );
+    vi.mocked(searchCafesInDb).mockImplementation(async (params) => {
+      const offset = params.offset ?? 0;
+      if (offset < 900) return fullRows.slice(offset, offset + 101);
+      if (offset === 900) return exactFinal;
+      return [];
+    });
+
+    const response = await executeSearch(
+      { city: "singapore", open_now: true },
+      new Date("2026-08-29T10:00:00Z"),
+    );
+
+    expect(searchCafesInDb).toHaveBeenCalledTimes(10);
+    expect(response.results).toHaveLength(0);
+    expect(response.warnings ?? []).not.toContain("open_now_truncated");
+  });
+
+  it("BRAWUKA-448: still reports open_now_truncated when rows remain past the final batch", async () => {
+    // Every batch overflows the 100-row page, so unexamined rows remain
+    // after the batch cap — truncation must still be reported.
+    const fullRows = Array.from({ length: 10 * 101 }, (_, i) =>
+      makeDbCafe({
+        id: `closed-${i}`,
+        name: `Alpha Closed ${i.toString().padStart(4, "0")}`,
+        opening_hours: null,
+      }),
+    );
+    vi.mocked(searchCafesInDb).mockImplementation(async (params) => {
+      const offset = params.offset ?? 0;
+      return fullRows.slice(offset, offset + 101);
+    });
+
+    const response = await executeSearch(
+      { city: "singapore", open_now: true },
+      new Date("2026-08-29T10:00:00Z"),
+    );
+
+    expect(searchCafesInDb).toHaveBeenCalledTimes(10);
+    expect(response.warnings ?? []).toContain("open_now_truncated");
   });
 
   it("DG131: empty q does not truncate secondary hits", async () => {

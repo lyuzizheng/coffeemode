@@ -839,6 +839,10 @@ Navigation → check-in prompt (ClassPass-style; revised DG76–DG92):
        the BACK of the queue — it becomes eligible again after ≥ 1 day;
        an item dequeued at an ineligible moment is simply re-queued.
      - Max 2 re-asks (ask_count ≤ 2), then auto-resolves.
+     - Answers are cafe-scoped (BRAWUKA-270): repeat 导航 taps stack rows
+       per cafe, so one answer resolves/defers the user's whole unresolved
+       stack for that cafe — a declined cafe can never re-prompt, and the
+       stack shares one re-ask budget.
   4. Any check-in at that cafe auto-resolves the pending navigation (DG79).
      Outcomes (visited / wont_go / not_yet / auto) are stored on the row for
      the navigate→visit funnel (DG80).

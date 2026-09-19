@@ -47,12 +47,13 @@ module.exports = {
       },
     },
     assert: {
-      // Per-URL performance floor (map-home, BRAWUKA-311 review): `/` is a
-      // WebGL map surface now — the static-scaffold 0.8 can't hold it, so it
-      // gets its own calibrated floor (budgets.lighthouse.performanceHome).
-      // assertMatrix can't mix with top-level `assertions`, so every rule
-      // lives in the matrix; the non-home row matches any URL with a path
-      // beyond `/` (and would also cover future asserted routes).
+      // Per-URL performance floors (map-home BRAWUKA-311, deeplink BRAWUKA-514):
+      // `/` is a WebGL map surface and `/cafes/[id]` hydrates into the same
+      // app under its SSR shell — neither can hold the static-scaffold 0.8,
+      // so each gets a calibrated floor (budgets.lighthouse.performanceHome /
+      // .performanceCafe). assertMatrix can't mix with top-level `assertions`,
+      // so every rule lives in the matrix; the generic non-home row excludes
+      // /cafes/ so only the calibrated row applies there.
       assertMatrix: [
         {
           matchingUrlPattern: ".*",
@@ -69,7 +70,13 @@ module.exports = {
           },
         },
         {
-          matchingUrlPattern: "^https?://[^/]+/.+",
+          matchingUrlPattern: "^https?://[^/]+/cafes/",
+          assertions: {
+            "categories:performance": ["error", { minScore: lighthouseThresholds.performanceCafe }],
+          },
+        },
+        {
+          matchingUrlPattern: "^https?://[^/]+/(?!cafes/).+",
           assertions: {
             "categories:performance": ["error", { minScore: lighthouseThresholds.performance }],
           },

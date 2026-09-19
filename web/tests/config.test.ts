@@ -119,6 +119,7 @@ describe("config files", () => {
     expect(appConfig.budgets.lighthouse).toEqual({
       performance: 0.8,
       performanceHome: 0.65,
+      performanceCafe: 0.65,
       accessibility: 0.85,
       bestPractices: 0.85,
       seo: 0.85,
@@ -293,6 +294,7 @@ describe("parseAppConfig validation", () => {
     lighthouse: {
       performance: 0.8,
       performanceHome: 0.65,
+      performanceCafe: 0.65,
       accessibility: 0.85,
       bestPractices: 0.85,
       seo: 0.85,

@@ -27,7 +27,7 @@ import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { useDiscoveryController } from "@/lib/discovery/use-discovery-controller";
+import { useDiscoveryController, type SheetSnap } from "@/lib/discovery/use-discovery-controller";
 import { DiscoveryMapContext, type DiscoveryMapState } from "@/lib/discovery/map-context";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useMounted } from "@/hooks/use-mounted";
@@ -158,6 +158,7 @@ export function DiscoveryHome({
   addCafe,
   addCafeFab,
   initialCafeId,
+  initialSnap,
   isAuthenticated,
   mapkitConfigured = false,
   city,
@@ -175,8 +176,11 @@ export function DiscoveryHome({
   /** Round add-cafe FAB slot (BRAWUKA-364): floats above the sheet at PEEK
    * on mobile, bottom-right on desktop. */
   addCafeFab?: ReactNode;
-  /** Optional initial selected cafe ID (e.g. from ?cafe= query param) */
+  /** Optional initial selected cafe ID (the /cafes/[id] deep link, DG124) */
   initialCafeId?: string;
+  /** Detent the mobile sheet opens at for `initialCafeId` — "full" on the
+   * /cafes/[id] deep link (DG124), default "half" elsewhere. */
+  initialSnap?: SheetSnap;
   /** Server-known auth state — forwarded to the check-in drawer's sign-in gate. */
   isAuthenticated?: boolean;
   /** DG143 request-time MapKit readiness — gates the Apple search CTA and
@@ -199,7 +203,7 @@ export function DiscoveryHome({
   const t = useTranslations("discovery");
   const mounted = useMounted();
   const isDesktop = useMediaQuery("(min-width: 1024px)");
-  const controller = useDiscoveryController({ initialCafeId });
+  const controller = useDiscoveryController({ initialCafeId, initialSnap });
 
   const cafesQuery = useQuery({
     queryKey: ["cafes-list", center.lat, center.lng],

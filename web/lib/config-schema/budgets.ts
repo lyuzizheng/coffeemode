@@ -62,6 +62,13 @@ function parseLighthouseScores(file: string, value: unknown): BudgetsConfig["lig
       0,
       1,
     ),
+    performanceCafe: boundedNumber(
+      file,
+      "budgets.lighthouse.performanceCafe",
+      lighthouse.performanceCafe,
+      0,
+      1,
+    ),
     accessibility: boundedNumber(
       file,
       "budgets.lighthouse.accessibility",

@@ -57,12 +57,16 @@ export type { OnboardingPhase, OnboardingState };
 /** Anonymous returning visitors resume at their stored city/location before
  * the first nearby fetch — the lazy initializer reads localStorage during
  * hydration; center only feeds the query key, never markup. For signed-in
- * users the server-computed `initialCenter` (profile city → last location →
- * detected city → default) is authoritative (DG122): a stale anonymous
- * `currentCity` on this device must never override it. */
-function useOnboardingCenter(initialCenter: Coordinates, isAuthenticated: boolean) {
+ * users the server-computed `initialCenter` is authoritative (DG122).
+ * Deep-link arrivals (`suppressStored`) also keep the server center — the
+ * linked cafe's coordinates outrank any stored resumption point (DG124). */
+function useOnboardingCenter(
+  initialCenter: Coordinates,
+  isAuthenticated: boolean,
+  suppressStored: boolean,
+) {
   return useState<Coordinates>(() => {
-    if (isAuthenticated) return initialCenter;
+    if (isAuthenticated || suppressStored) return initialCenter;
     const stored = readOnboardingState();
     if (!stored) return initialCenter;
     const storedCity = stored.currentCity ? findCity(stored.currentCity) : null;
@@ -72,9 +76,7 @@ function useOnboardingCenter(initialCenter: Coordinates, isAuthenticated: boolea
 
 /** Mount reconciliation (DG122): anonymous onboarded state merges into the
  * profile; a server-onboarded profile seeds localStorage for later
- * signed-out visits on this device. The profile's city/location are also
- * mirrored down so the anonymous fallback can never go stale against the
- * authoritative row. */
+ * signed-out visits on this device. */
 function useOnboardingMerge(
   serverOnboarded: boolean,
   isAuthenticated: boolean,
@@ -104,11 +106,24 @@ function useOnboardingMerge(
   }, []);
 }
 
+/** The dot restores from the last granted fix (DG120 session persistence):
+ * signed-in users take the profile's lastLocation, anonymous visitors the
+ * localStorage copy — same precedence as the center fallback. */
+function useUserLocationSeed(
+  isAuthenticated: boolean,
+  profileSeed?: { currentCity: string; lastLocation: Coordinates | null },
+) {
+  return useState<UserLocation | null>(() =>
+    isAuthenticated
+      ? (profileSeed?.lastLocation ?? null)
+      : (readOnboardingState()?.lastLocation ?? null),
+  );
+}
+
 /** The two explicit-tap geolocation entries (DG112): the card's enable
- * button and the persistent locate button. Both check the Permissions API
- * first — an OS-level denial can't re-prompt (DG117). Grants route to
- * separate callbacks: the enable grant respects the pan latch (DG119),
- * the locate grant always recenters (DG120). */
+ * button and the persistent locate button. Grants route to separate
+ * callbacks: enable respects the pan latch (DG119), locate always
+ * recenters (DG120). */
 function useLocateFlow({
   onEnableGranted,
   onLocateGranted,
@@ -184,8 +199,7 @@ function commitCityChoice(
 }
 
 /** Commit paths: explicit city choice (skip/pick/use-city) and the granted
- * geolocation (DG119/DG120/DG123). Both persist locally first; the profile
- * merge and the server-side city resolution are best-effort. */
+ * geolocation (DG119/DG120/DG123). Both persist locally first. */
 function useOnboardingCommit({
   isAuthenticated,
   locateHint = false,
@@ -262,6 +276,7 @@ function useOnboardingCommit({
     locate,
   };
 }
+
 /** Denied/failure toasts (DG117): the card's recovery state and the locate
  * button's one-time settings hint. */
 function useDeniedToasts(setPhase: (phase: OnboardingPhase) => void) {
@@ -283,15 +298,7 @@ function useDeniedToasts(setPhase: (phase: OnboardingPhase) => void) {
   };
 }
 
-export function useOnboarding({
-  detectedCity,
-  initialCenter,
-  isAuthenticated,
-  serverOnboarded,
-  profileSeed,
-  suppressCard,
-  locateHint = false,
-}: {
+interface UseOnboardingOptions {
   /** IP-detected launch city (DG128); null → no detection line. */
   detectedCity: CityInfo | null;
   /** Server-computed starting center: profile city → last location →
@@ -302,29 +309,42 @@ export function useOnboarding({
   serverOnboarded: boolean;
   /** Signed-in profile fields mirrored into localStorage on merge (DG122). */
   profileSeed?: { currentCity: string; lastLocation: Coordinates | null };
-  /** Deep-link-style arrivals (?cafe=) never see the card (DG124). */
+  /** Deep-link arrivals (/cafes/[id]) never see the card (DG124). */
   suppressCard?: boolean;
   /** ?locate=1 deep link (BRAWUKA-504): the locate button arrives already
    * pulsing — a hint, never an auto-prompt (DG112 still requires a tap). */
   locateHint?: boolean;
-}): OnboardingState {
+}
+
+export function useOnboarding({
+  detectedCity,
+  initialCenter,
+  isAuthenticated,
+  serverOnboarded,
+  profileSeed,
+  suppressCard,
+  locateHint = false,
+}: UseOnboardingOptions): OnboardingState {
   const [phase, setPhase] = useState<OnboardingPhase>(() =>
     serverOnboarded || suppressCard || readOnboardingState()?.onboarded
       ? "done"
       : "card",
   );
-  // The dot restores from the last granted fix (DG120 session persistence):
-  // signed-in users take the profile's lastLocation, anonymous visitors the
-  // localStorage copy — same precedence as the center fallback.
-  const [userLocation, setUserLocation] = useState<UserLocation | null>(() => {
-    if (isAuthenticated) return profileSeed?.lastLocation ?? null;
-    return readOnboardingState()?.lastLocation ?? null;
-  });
+  const [userLocation, setUserLocation] = useUserLocationSeed(
+    isAuthenticated,
+    profileSeed,
+  );
   const [located, setLocated] = useState(() => userLocation !== null);
   const [selectedCityId, setSelectedCityId] = useState(
     detectedCity?.id ?? DEFAULT_CITY.id,
   );
-  const [center, setCenter] = useOnboardingCenter(initialCenter, isAuthenticated);
+  const [center, setCenter] = useOnboardingCenter(
+    initialCenter,
+    isAuthenticated,
+    // Deep-link arrivals (DG124): the linked cafe's coordinates are the
+    // center — a stored city/location must never pull the map away from it.
+    suppressCard ?? false,
+  );
 
   useOnboardingMerge(serverOnboarded, isAuthenticated, profileSeed);
 

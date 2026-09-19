@@ -301,20 +301,16 @@ export async function consumeProvisionedIntents(
  * inside the dep) — the caller must rethrow its original error, and the
  * #158 sweeper remains the backstop for anything this misses.
  *
- * Reference gate (BRAWUKA-401): concurrent creates share deterministic R2
- * keys, so a loser's rollback must not delete a concurrent winner's
- * committed objects. Ids still referenced by `cafes.gallery` /
- * `checkins.photos` are kept (the winner's rows prove them live); only true
- * orphans are deleted.
- *
- * Live-intent gate (BRAWUKA-502): the reference check is blind to a winner
- * whose transaction has not committed yet. Ids whose upload intent is still
- * live (the winner's in-transaction consume is uncommitted, hence invisible)
- * are kept too — a live intent proves the objects may still be claimed. The
- * #158 sweeper is the backstop for the ids this keeps.
- *
- * A failed gate check fails closed — keep the id and let the sweeper decide
- * — so a DB blip can leak (swept later) but never corrupt a live photo.
+ * Keep gates: live intent (BRAWUKA-502) — a live `image_upload_intents` row
+ * proves the objects may still be claimed (the winner's in-tx consume is
+ * uncommitted, hence invisible); then DB reference (BRAWUKA-401) — a
+ * `cafes.gallery` / `checkins.photos` row proves them live. A solo
+ * failure's own intents stay live after rollback, so its ids defer to the
+ * sweeper (post-expiry); synchronous delete only fires with no live intent
+ * and no reference. Order is load-bearing: intent MUST run first — a winner
+ * committing between the two SELECTs is invisible to a reference-first
+ * order (no row at T1, intent consumed by T2) but always caught
+ * intent-first. Failed gates fail closed (keep; sweeper decides).
  */
 export async function compensateProvisionedPhotos(
   userId: string,
@@ -323,19 +319,19 @@ export async function compensateProvisionedPhotos(
 ): Promise<void> {
   if (!deps.deleteProvisionedVariants) return;
   let orphans = photoIds;
-  if (deps.selectPhotoReferences && photoIds.length > 0) {
+  if (deps.selectLiveUploadIntents && photoIds.length > 0) {
     try {
-      const referenced = new Set(await deps.selectPhotoReferences(photoIds));
-      orphans = photoIds.filter((id) => !referenced.has(id));
+      const live = new Set(await deps.selectLiveUploadIntents(userId, photoIds));
+      orphans = photoIds.filter((id) => !live.has(id));
     } catch (err) {
       logError({ route: "provision-photos compensate gate", error: err });
       return;
     }
   }
-  if (deps.selectLiveUploadIntents && orphans.length > 0) {
+  if (deps.selectPhotoReferences && orphans.length > 0) {
     try {
-      const live = new Set(await deps.selectLiveUploadIntents(userId, orphans));
-      orphans = orphans.filter((id) => !live.has(id));
+      const referenced = new Set(await deps.selectPhotoReferences(orphans));
+      orphans = orphans.filter((id) => !referenced.has(id));
     } catch (err) {
       logError({ route: "provision-photos compensate gate", error: err });
       return;

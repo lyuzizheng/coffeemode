@@ -19,8 +19,14 @@ import type { ReadableSpan, SpanProcessor } from "@opentelemetry/sdk-trace-base"
  * - `OTEL_EXPORTER_OTLP_HEADERS` — `Authorization=Basic <base64(instanceID:token)>`.
  * - `OTEL_RESOURCE_ATTRIBUTES` — `service.name` + `deployment.environment`
  *   (the attribute Grafana Cloud Application Observability filters on).
- * - `OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG` — `parentbased_traceidratio`
- *   at 0.1 in prod, 1 in staging (adoption doc §6 decision 3).
+ *
+ * No sampler is configured, on purpose (BRAWUKA-605 §6 decision 4). Head
+ * sampling drops whole traces at the root span, and `traces_spanmetrics_*` is
+ * derived from the spans that actually arrive — so any ratio below 1 would make
+ * every RED count a fraction of reality and quietly break the alerting that
+ * reads them. Volume is orders of magnitude below the 50 GB free tier. If
+ * volume ever grows, the fix is tail sampling (keep all errors + slow traces),
+ * not a head ratio.
  */
 
 /** Service identity — invariant across deployments, so it lives in code. */

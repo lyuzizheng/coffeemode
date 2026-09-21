@@ -167,9 +167,21 @@ Agents are wired to the official Grafana Cloud MCP; it needs a stack to talk to.
 
 ### Alerting notification path (BRAWUKA-611) — blocked on write scope
 
-The six CoffeeMode alert rules exist and evaluate, but **nothing can notify yet**: the stack has no contact point at all, and the default notification policy's receiver is the built-in no-op `empty`. The MCP connection can write alert *rules* but not *notification* config — `POST /api/v1/provisioning/contact-points` and `PUT /api/v1/provisioning/policies` both answer `403 Access denied` (`alert.notifications.provisioning:write` missing), and the Grafana Assistant confirms it has no tool for either.
+The six CoffeeMode alert rules exist and evaluate, but **nothing can notify yet**: the stack has no contact point at all, and the default notification policy's receiver is the built-in no-op `empty`.
 
 **This is already costing visibility**: at 2026-09-21 13:24 UTC the uptime rule (`CoffeeMode — Uptime probe failing`, BRAWUKA-608) had been firing for ~1.5 h on a real outage — `cafemood.app` answers 502 (BRAWUKA-500) — with no notification sent.
+
+**The cause is not a missing permission, so don't go looking for one to grant.** `GET /api/access-control/user/permissions` (identity `brabalawuka`, org 1, not a Grafana admin) lists *every* alternative the 403 names: `alert.notifications.provisioning:write`, `alert.notifications:write`, `alert.notifications.receivers:create`, `alert.notifications.routes:write`, `alert.provisioning.provenance:write`. All five write paths are still refused:
+
+| Attempt | Result |
+| --- | --- |
+| `POST /api/v1/provisioning/contact-points` | 403 `Access denied` |
+| `PUT /api/v1/provisioning/policies` | 403 `Access denied` |
+| `POST /api/alert-notifications` (legacy) | 404 |
+| `POST /api/alertmanager/grafana/config/api/v1/receivers` | 404 |
+| `POST /apis/notifications.alerting.grafana.app/…/receivers` | 403 `invalid namespace` (tried `default`, `stacks-1795570`, `lyuzizheng`) |
+
+The effective grant is narrower than the reported RBAC role — most likely the hosted MCP server's OAuth token carries a scope set that Grafana intersects with the role. So the fix is at the **MCP grant level** (the `Assistant Admin` role / re-authorizing the MCP client with write scope), not a permission to add to the user.
 
 - [ ] Either grant the MCP connection write scope (the `Assistant Admin` role — the same grant item above asks for), or apply the two changes by hand in **Alerting → Contact points** and **Alerting → Notification policies**. The intended end state:
   - Contact point `coffeemode-email`, type `email`, address `lvzizhengde@gmail.com`, `singleEmail: false`, `disableResolveMessage: false`. Swap in a Slack webhook later if you prefer — the rules carry `env` / `severity` / `team` labels, so only the receiver changes.

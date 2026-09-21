@@ -199,7 +199,7 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 
 **交付结果**：`CoffeeMode` folder 下 6 条 Grafana-managed 规则（5xx / worker `upstream_error` / rate-limit flood × staging / prod），全部 LogQL 走 Loki 的 `service_name` + `deployment_environment_name` 两个 label，`for:` 窗口 5m / 5m / 10m，标签带 `env` / `severity` / `team`，不设 per-rule receiver。Better Stack 侧 4 个 source、2 个 dashboard、4 条 chart alert、1 个 uptime monitor 全部删除，两个 ingest 环境变量也从代码和 Dokploy 里移除。
 
-**未完成的一环**：通知路径。Stack 上没有任何 contact point，默认 policy 的 receiver 是内置 no-op `empty`，所以规则会 firing 但不会通知任何人 —— MCP 连接只有规则写权限，没有 notification 写权限（`POST /api/v1/provisioning/contact-points` 返回 403）。需要 Owner 授权或手工在 UI 里建 contact point + `env` 分流 policy，JSON 见 `docs/agent/pending-user-actions.md` §10。
+**未完成的一环**：通知路径。Stack 上没有任何 contact point，默认 policy 的 receiver 是内置 no-op `empty`，所以规则会 firing 但不会通知任何人。**原因不是缺权限** —— `/api/access-control/user/permissions` 列出了 403 报错里点名的每一个权限（`alert.notifications.provisioning:write` / `alert.notifications:write` / `alert.notifications.receivers:create` / `alert.notifications.routes:write` / `alert.provisioning.provenance:write`），但五条写入路径全部被拒（两个 provisioning 端点 403，legacy 与 alertmanager 端点 404，k8s 风格端点 403 `invalid namespace`）。实际授权比 RBAC 角色报告的更窄，多半是 MCP 的 OAuth token scope 与角色取交集所致 —— 修法在 MCP 授权层，不是补一个权限。需要 Owner 授权或手工在 UI 里建 contact point + `env` 分流 policy，JSON 见 `docs/agent/pending-user-actions.md` §10。
 
 #### P1-3 Dashboards 替代 2 个 Better Stack dashboard
 

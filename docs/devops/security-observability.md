@@ -83,10 +83,23 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
   no-op `empty`, so a firing rule notifies nobody. As of 2026-09-21 13:24 UTC
   the sibling uptime rule (`CoffeeMode — Uptime probe failing`, BRAWUKA-608)
   had been in `firing` for ~1.5 h on a genuine production outage —
-  `cafemood.app` returns 502 (BRAWUKA-500) — and no one was paged. Creating the
-  contact point and the `env`-split policy needs alerting write scope the MCP
-  connection does not have — see `docs/agent/pending-user-actions.md` §10 for
-  the exact JSON to apply.
+  `cafemood.app` returns 502 (BRAWUKA-500) — and no one was paged.
+  **The cause is not a missing permission.** `GET
+  /api/access-control/user/permissions` lists every alternative the 403 names —
+  `alert.notifications.provisioning:write`, `alert.notifications:write`,
+  `alert.notifications.receivers:create`, `alert.notifications.routes:write`,
+  `alert.provisioning.provenance:write` — yet all five write paths are refused:
+  `POST /api/v1/provisioning/contact-points` and `PUT
+  /api/v1/provisioning/policies` answer 403, the legacy
+  `/api/alert-notifications` and `/api/alertmanager/grafana/config/api/v1/receivers`
+  answer 404, and the k8s-style
+  `/apis/notifications.alerting.grafana.app/.../receivers` answers 403
+  `invalid namespace` for every namespace tried. The effective grant is
+  narrower than the reported RBAC role — most likely the hosted MCP server's
+  OAuth token carries a scope set that Grafana intersects with the role. So the
+  fix is at the MCP grant level, not a permission to add. See
+  `docs/agent/pending-user-actions.md` §10 for the exact JSON to apply by hand
+  in the meantime.
 - **Known coverage gap**: the rules count 5xx that emitted an error/warn line.
   A handler that *returns* a 5xx envelope without logging — today only
   `GET /api/mapkit-token` (`mapkit_token_error`) — is not counted. The

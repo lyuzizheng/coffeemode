@@ -22,12 +22,18 @@ describe("getCurrentUser", () => {
     expect(createSupabaseServerClient).not.toHaveBeenCalled();
   });
 
-  it("returns the user id when the session is valid", async () => {
+  it("returns the full user (metadata included) when the session is valid", async () => {
     vi.mocked(isAuthConfigured).mockReturnValue(true);
     vi.mocked(createSupabaseServerClient).mockResolvedValue({
       auth: {
         getUser: vi.fn().mockResolvedValue({
-          data: { user: { id: "user-123" } },
+          data: {
+            user: {
+              id: "user-123",
+              email: "nomad@example.com",
+              user_metadata: { full_name: "Kopi Nomad" },
+            },
+          },
           error: null,
         }),
       },
@@ -35,7 +41,10 @@ describe("getCurrentUser", () => {
 
     const user = await getCurrentUser();
 
-    expect(user).toEqual({ id: "user-123" });
+    // BRAWUKA-578: user_metadata must survive — profileFromUser derives the
+    // masthead initial from it; a stripped {id} collapses to "A nomad".
+    expect(user?.id).toBe("user-123");
+    expect(user?.user_metadata?.full_name).toBe("Kopi Nomad");
   });
 
   it("returns null when there is no active session", async () => {

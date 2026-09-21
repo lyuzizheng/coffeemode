@@ -467,6 +467,35 @@ describe("createCheckIn", () => {
     expect(calls.filter((req) => req.targetType === "checkin")).toHaveLength(0);
   });
 
+  it("skips intent consume and photo writes on a raced idempotency dedupe with photos (BRAWUKA-565)", async () => {
+    const key = IDEMPOTENCY_KEY;
+    poolQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("idempotency_key")) return { rows: [], rowCount: 0 }; // fast-path miss
+      return { rows: [{ id: CAFE }], rowCount: 1 }; // pre-provision cafe gate
+    });
+    clientQueryMock.mockImplementation(async (sql: string) => {
+      const s = sql.toLowerCase();
+      if (s.includes("insert into checkins")) return { rows: [], rowCount: 0 }; // ON CONFLICT DO NOTHING
+      if (s.includes("idempotency_key")) return { rows: [{ id: CHECKIN }], rowCount: 1 }; // winner's id
+      if (s.includes("select id from cafes")) return { rows: [{ id: CAFE }], rowCount: 1 };
+      if (s.includes("visited_at > now()")) return { rows: [], rowCount: 0 };
+      return { rows: [], rowCount: 0 };
+    });
+    // The winner already consumed the single-use intents: a consume attempt
+    // here would abort the loser's tx (pre-fix 400 on same photo_ids).
+    provisionDeps.consumeUploadIntents.mockResolvedValue(false);
+
+    const result = await createCheckIn(USER.id, validInput({ idempotency_key: key }));
+
+    expect(result).toEqual({ checkin_id: CHECKIN, deduped: true });
+    expect(provisionDeps.consumeUploadIntents).not.toHaveBeenCalled();
+    for (const call of clientQueryMock.mock.calls) {
+      const sql = call[0] as string;
+      expect(sql).not.toContain("set photos");
+      expect(sql.toLowerCase()).not.toContain("gallery");
+    }
+  });
+
 
 
   it("rejects a second create inside the revisit window without inserting (DG64)", async () => {

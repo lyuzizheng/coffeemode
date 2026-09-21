@@ -172,7 +172,11 @@ export async function createCheckIn(
       }
       if (!checkin_id) throw new Error("check-in insert returned no id");
 
-      if (provisioned.length > 0) {
+      if (!deduped && provisioned.length > 0) {
+        // Raced idempotency dedupe (DG61): the winner already consumed its
+        // intents and wrote its photos — consuming here would 400 on the
+        // same photo_ids (intents are single-use) or overwrite the winner's
+        // photos/gallery on different ones. Return the winner's id untouched.
         // Single-use consume inside the tx: a replay/foreign id aborts the
         // whole check-in (issue #86).
         const q = txQueryFrom(client);

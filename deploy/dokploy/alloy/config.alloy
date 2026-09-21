@@ -1,0 +1,124 @@
+// CoffeeMode web-container logs → Grafana Cloud Loki (BRAWUKA-607).
+//
+// One Alloy container per Dokploy stack (staging / prod). Each stack ships its
+// own web container's stdout with its own credentials — the two environments
+// share nothing (spec 0005 §2). This file is the single pipeline both stacks
+// run; only the environment variables below differ.
+//
+//   discovery.docker → discovery.relabel → loki.source.docker
+//     → loki.process → loki.write
+//
+// Zero application changes: `web/shared/log.ts` and `web/proxy.ts` already
+// write one JSON object per line to stdout (ADR-0004); nothing was collecting
+// it. Runbook: docs/devops/grafana-cloud-logs.md.
+//
+// Label discipline — Grafana Cloud free tier allows 5,000 active streams:
+//   labels              env, service, container, level
+//   structured metadata request_id, route, client_id
+// Per-request values MUST stay out of the label set: a `request_id` label
+// would mint one stream per request.
+//
+// Required environment (Dokploy env per stack, never committed):
+//   ALLOY_ENV            staging | prod
+//   ALLOY_WEB_CONTAINER  coffeemode-web-staging | coffeemode-web-prod
+//   GRAFANA_LOKI_URL     https://logs-prod-020.grafana.net/loki/api/v1/push
+//   GRAFANA_LOKI_USER    Grafana Cloud Loki instance ID (1795570)
+//   GRAFANA_LOKI_TOKEN   Grafana Cloud API token with logs:write
+
+// --- Discovery -------------------------------------------------------------
+// Both stacks' Alloy containers mount the same Docker socket and therefore see
+// every container on the host. This name filter is what keeps staging out of
+// prod's stream and vice versa — without it each stack would ship the other's
+// logs under its own `env` label.
+discovery.docker "web" {
+	host = "unix:///var/run/docker.sock"
+
+	filter {
+		name   = "name"
+		values = [sys.env("ALLOY_WEB_CONTAINER")]
+	}
+}
+
+// Promote the discovered container name to a `container` label. The `__meta_*`
+// labels discovery attaches are dropped by loki.source.docker before an entry
+// is written, so `__meta_docker_container_id` — unique per container instance,
+// and therefore per redeploy — can never become a stream.
+discovery.relabel "web" {
+	targets = discovery.docker.web.targets
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/(.*)"
+		target_label  = "container"
+	}
+}
+
+// --- Collection ------------------------------------------------------------
+loki.source.docker "web" {
+	host    = "unix:///var/run/docker.sock"
+	targets = discovery.relabel.web.output
+
+	labels = {
+		env     = sys.env("ALLOY_ENV"),
+		service = "web",
+	}
+
+	forward_to = [loki.process.web.receiver]
+}
+
+// --- Processing ------------------------------------------------------------
+loki.process "web" {
+	// The app writes one JSON object per line (web/shared/log.ts, web/proxy.ts):
+	//   {"type":"error","request_id":"…","route":"GET /api/cafes","error":"…"}
+	//   {"type":"access","request_id":"…","method":"GET","path":"/","status":200,…}
+	// Next.js's own stdout lines are not JSON. `drop_malformed` stays at its
+	// default (false) so those pass through untouched rather than being lost.
+	stage.json {
+		expressions = {
+			type       = "type",
+			request_id = "request_id",
+			route      = "route",
+			client_id  = "client_id",
+		}
+	}
+
+	// Volume guard for the week-one quota watch: `debug` never ships. No emitter
+	// produces it today — the app's `type` is only error | warn | access — so
+	// this is a forward guard, not a live filter.
+	stage.drop {
+		source              = "type"
+		value               = "debug"
+		drop_counter_reason = "debug_level"
+	}
+
+	// `type` is the app's severity; `level` is Loki's conventional name for it —
+	// what Logs Drilldown and the level filters key on. Bounded set:
+	// error | warn | access.
+	stage.labels {
+		values = {level = "type"}
+	}
+
+	// Per-request fields ride as structured metadata: queryable, but they do not
+	// multiply streams.
+	stage.structured_metadata {
+		values = {
+			request_id = "",
+			route      = "",
+			client_id  = "",
+		}
+	}
+
+	forward_to = [loki.write.grafana_cloud.receiver]
+}
+
+// --- Shipping --------------------------------------------------------------
+loki.write "grafana_cloud" {
+	endpoint {
+		url = sys.env("GRAFANA_LOKI_URL")
+
+		basic_auth {
+			username = sys.env("GRAFANA_LOKI_USER")
+			password = sys.env("GRAFANA_LOKI_TOKEN")
+		}
+	}
+}

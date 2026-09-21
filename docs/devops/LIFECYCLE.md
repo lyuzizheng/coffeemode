@@ -242,6 +242,7 @@ All operational scripts live canonically under `scripts/devops/` and are fully e
 | `backup.sh` | Atomic `pg_dump -Fc` compressed backup + volume + R2 GFS upload | `--env`, `--type [db\|vol\|full]`, `--reason`, `--retention-days`, `--dry-run` |
 | `restore.sh` | Restores database archive with PostGIS verification & drill mode | `--env`, `--file`, `--download-r2`, `--drill`, `--yes`, `--dry-run` |
 | `smoke-test.sh` | In-repo post-deployment automated health verification | `staging\|prod`, `--url <override>`, `--timeout <sec>`, `--cf-client-id <id>`, `--cf-client-secret <sec>` |
+| `verify-loki-logs.sh` | Asserts the Alloy → Grafana Cloud Loki pipeline: streams present, error/warn/access levels, bounded label set, `request_id` as structured metadata | `--env [prod\|staging]`, `--window <dur>`, `--loki-url <url>` |
 | `provision-supabase.sh` | Idempotent Supabase Postgres & Auth provisioning, PostGIS check, and RLS defense | `--database-url`, `--supabase-url`, `--verify-only`, `--dry-run` |
 ---
 
@@ -308,6 +309,14 @@ In drill mode (`--drill`), the script always targets the STAGING Supabase projec
 - **Inspect web application logs**:
   ```bash
   docker logs --tail 100 -f coffeemode-web-prod
+  ```
+- **Check the log collector** (BRAWUKA-607; runbook: `docs/devops/grafana-cloud-logs.md`).
+  A rejected push is invisible in `docker logs` — only these metrics move:
+  ```bash
+  curl -s http://127.0.0.1:12345/-/healthy    # prod Alloy UI (loopback only)
+  curl -s http://127.0.0.1:12346/-/healthy    # staging Alloy UI
+  curl -s http://127.0.0.1:12345/metrics | grep -E \
+    '^loki_(source_docker_target_entries|write_sent_entries|write_dropped_entries|write_batch_retries)_total'
   ```
 - **Verify Supabase connectivity** (no local postgres container; per-env scoped vars only):
   ```bash

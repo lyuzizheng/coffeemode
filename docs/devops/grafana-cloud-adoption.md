@@ -108,6 +108,11 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 
 #### P0-1 Logs：VPS 上跑 Alloy → Loki
 
+**状态：已实现（BRAWUKA-607）。** 采集器、标签纪律、过滤规则都落在
+`deploy/dokploy/alloy/config.alloy`，两个 stack 各一个容器；运行手册见
+`docs/devops/grafana-cloud-logs.md`，验证脚本 `scripts/devops/verify-loki-logs.sh`。
+唯一待办是 Owner 在 Dokploy 里粘 `GRAFANA_LOKI_TOKEN`（`docs/agent/pending-user-actions.md` #11）。
+
 **为什么**：应用已经在打 JSON 行，只差一个采集器。这是投入产出比最高的一步。
 
 **怎么做**：Dokploy 加一个 Alloy 容器（compose，`grafana/alloy` 镜像），配置：

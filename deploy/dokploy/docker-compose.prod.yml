@@ -7,6 +7,8 @@
 #     reached over DATABASE_URL (pooled, sslmode=require). No self-hosted
 #     postgres service exists in this stack.
 #   - Ingress: Web container connects to external traefik-net for Traefik routing
+#   - Logs: alloy-prod ships web-prod stdout to Grafana Cloud Loki (BRAWUKA-607);
+#     no ingress, host-loopback UI only. See docs/devops/grafana-cloud-logs.md
 #   - Isolation: Staging uses its own Supabase project; stacks share nothing
 # Deployment Mode & Zero-Downtime Guarantee:
 #   - Docker Swarm Stack Mode (RECOMMENDED for zero-downtime): With Swarm enabled
@@ -120,6 +122,52 @@ services:
         reservations:
           cpus: "0.10"
           memory: 64M
+  # Log collection: web-prod stdout → Grafana Cloud Loki (BRAWUKA-607).
+  # Pipeline + label discipline: deploy/dokploy/alloy/config.alloy.
+  # Runbook: docs/devops/grafana-cloud-logs.md.
+  #
+  # No ingress: this service is not on traefik-net and publishes nothing
+  # publicly. The Alloy UI/metrics port is bound to host loopback only, because
+  # a rejected push (bad token, wrong URL) is otherwise invisible — Alloy keeps
+  # the component "healthy" and retries silently.
+  alloy-prod:
+    image: grafana/alloy:v1.19.2
+    container_name: coffeemode-alloy-prod
+    restart: unless-stopped
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    environment:
+      ALLOY_ENV: prod
+      ALLOY_WEB_CONTAINER: coffeemode-web-prod
+      GRAFANA_LOKI_URL: ${GRAFANA_LOKI_URL:?GRAFANA_LOKI_URL must be set in shell environment, via docker compose --env-file .env.prod, or Dokploy environment}
+      GRAFANA_LOKI_USER: ${GRAFANA_LOKI_USER:?GRAFANA_LOKI_USER must be set in shell environment, via docker compose --env-file .env.prod, or Dokploy environment}
+      GRAFANA_LOKI_TOKEN: ${GRAFANA_LOKI_TOKEN:?GRAFANA_LOKI_TOKEN must be set in shell environment, via docker compose --env-file .env.prod, or Dokploy environment}
+    volumes:
+      # Read-only: the pipeline is the only thing this container owns.
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      # Docker socket is root-equivalent on the host — required by
+      # discovery.docker / loki.source.docker, and the reason this container
+      # gets no ingress and no extra capabilities.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # loki.source.docker read offsets, so a restart resumes instead of
+      # re-shipping the container's whole log.
+      - alloy-prod-data:/var/lib/alloy/data
+    ports:
+      # Loopback only — never expose the Alloy UI to the internet.
+      - "127.0.0.1:12345:12345"
+    networks:
+      - coffeemode-prod-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+        reservations:
+          cpus: "0.10"
+          memory: 64M
 
 networks:
   coffeemode-prod-network:
@@ -127,4 +175,8 @@ networks:
     driver: bridge
   traefik-net:
     external: true
+
+volumes:
+  alloy-prod-data:
+    name: coffeemode-alloy-prod-data
 

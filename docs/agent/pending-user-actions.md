@@ -161,6 +161,22 @@ Agents are wired to the official Grafana Cloud MCP; it needs a stack to talk to.
 - [ ] Authorize the MCP client: omp opens a browser on first connect; Hermes needs `hermes mcp login grafana`. Both ask for the stack URL (`https://<stack>.grafana.net`) and show read / query / write as three separate checkboxes. Restart the agent session afterwards so the tools load.
 - [ ] (Optional) Decide whether the rate-limit alert sink (`web/lib/observability/rate-limit-alert.ts`, DG129) moves from Better Stack to Grafana Cloud. Nothing changes until that call is made; the Better Stack sources stay live meanwhile.
 
+## 11. Grafana Cloud Loki token (BRAWUKA-607) — unlocks log shipping
+
+The Alloy collector is deployed in both Dokploy stacks and fails fast without
+credentials. Only the token is missing.
+
+- [ ] Mint a Grafana Cloud API token with `logs:write` (and `logs:read`, so
+  `scripts/devops/verify-loki-logs.sh` can check the pipeline): grafana.com →
+  your stack → Administration → Cloud access policies → Access policies →
+  `logs:write`. Mint **one per stack** so either can be revoked alone.
+- [ ] Paste `GRAFANA_LOKI_TOKEN` into the Dokploy environment for the production
+  stack and for the staging stack (the URL and instance ID `1795570` are already
+  in `deploy/dokploy/.env.prod.example` / `.env.staging.example`), then redeploy
+  `alloy-prod` / `alloy-staging`.
+- [ ] Confirm the pipeline: `scripts/devops/verify-loki-logs.sh --env prod`
+  (and `--env staging`). Runbook: `docs/devops/grafana-cloud-logs.md`.
+
 ## What the agent continues meanwhile
 
 All non-blocked Phase 1 backlog items have merged to `main` (PRs #19–#22), and the P1 post-review fixes from `fix/post-review-p1-issues` have merged as PR #74. MapKit-specific slices remain blocked on item 4. Cafe creation shipped in PR #128 (merged 2026-08-20) and its item 8 Kimi review completed post-merge on 2026-08-23 (follow-ups #183–#185); Apple live search stays configuration-gated. Backend work such as work-profile aggregation may continue; new user-visible UI stays blocked on its item 8 artifact. The POI and image services are ready to deploy once you complete items 5–7.

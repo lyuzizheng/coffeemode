@@ -37,6 +37,8 @@ export interface CafeDetail extends Omit<CafeSummary, "distance_m"> {
   gallery: StoredImage[];
   google_place_id: string | null;
   apple_poi_id: string | null;
+  /** Write path (BRAWUKA-295): 'user_confirmed' — user-confirmed submission, incl. Google-prefilled. */
+  source: string;
   /** Internal creator id; stripped on public projections (spec 0001 DG13). */
   created_by?: string | null;
   created_at: string;

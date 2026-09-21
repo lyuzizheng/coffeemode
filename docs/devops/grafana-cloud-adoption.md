@@ -210,7 +210,7 @@ CoffeeMode 的量级离 50 GB/月差着几个数量级（粗估 10 万请求/月
 - Postgres 连接池（活跃 / 空闲 / 等待）。
 - Cloudflare Worker 调用延迟与错误（从 Worker 侧推，或从 web 侧观测）。
 
-**rate-limit 不做 counter。** 429 命中是低频安全相关事件，`client_id` / `bucket` / `retry_after` 有排查价值，量也吃不垮 50 GB。做法：`emitRateLimitAlert` 每个事件走 `logWarn` 打一条**不节流**的 JSON（`client_id` 进 structured metadata，不做 label），现有 10s 节流的 `console.warn` 保留只用于本地降噪。要计数时用 LogQL metric query 从日志派生，不需要应用侧埋点。
+**rate-limit 不做 counter，保留逐条日志并带关键 IP / 用户信息。** 429 命中是低频安全相关事件，`client_id` / `bucket` / `retry_after` 有排查价值，量也吃不垮 50 GB。做法：`emitRateLimitAlert` 每个事件走 `logWarn` 打一条**不节流**的 JSON，带 `client_id`（登录用户 `user:<id>`，匿名 `cf-connecting-ip` 的 SHA-256 前 32 位）、`bucket` / `retry_after` / `route`，**外加原始 `cf-connecting-ip`** —— 哈希值能看出「同一来源打了 500 次」但反查不回 IP，封不掉，排查滥用需要原始值。原始 IP 只进 structured metadata，不做 label。现有 10s 节流的 `console.warn` 保留只用于本地降噪。要计数时用 LogQL metric query 从日志派生，不需要应用侧埋点。
 
 ### P1 — 替代 Better Stack
 
@@ -315,4 +315,4 @@ graph TD
 2. **能交给 Cloudflare 的交给 Cloudflare。** 页面分析用 Cloudflare Web Analytics（已开，免费，含 Core Web Vitals）；uptime 用 Cloudflare 免费通知 + 一个 cron Worker 探针。Cloudflare 免费档没有 Health Checks，不为它升级 Pro。
 3. **日志不装 Alloy。** traces 和 logs 都从应用侧走 OTel → Grafana Cloud OTLP 网关，一个组件。代价是只收应用 emit 的行，框架输出留在 `docker logs`。
 4. **OTel 不采样（100%）。** 采样只作用于 trace；head sampling 会让 spanmetrics 的 RED 计数失真，而我们的量级离配额差几个数量级。将来量大了用 tail sampling，不用 head sampling。原决定（prod 10% `parentbased_traceidratio`）保留备查：head sampling 在根 span 上丢整条 trace，而 `traces_spanmetrics_*` 是从实际到达的 span 派生的 —— 0.1 的比率会让每个 RED 计数只有真实值的十分之一，静默破坏 P0-3 依赖的告警。
-5. **rate-limit 保留逐条日志，不做 counter。** 每个事件一条不节流的 JSON，带 `client_id` / `bucket` / `retry_after`；`client_id` 进 structured metadata 不做 label。要计数时用 LogQL metric query 派生。
+5. **rate-limit 保留逐条日志，不做 counter，日志里带关键 IP / 用户信息。** 每个事件一条不节流的 JSON，带 `client_id`（登录用户是 `user:<id>`，匿名是 `cf-connecting-ip` 的 SHA-256 前 32 位）、`bucket` / `retry_after` / `route`，**外加原始 `cf-connecting-ip`**。理由：哈希过的 `client_id` 能看出「同一个来源打了 500 次」，但反查不回 IP，也就封不掉 —— 排查滥用需要原始值。原始 IP 只进 structured metadata，不做 label，随 14 天保留期过期。要计数时用 LogQL metric query 从日志派生。

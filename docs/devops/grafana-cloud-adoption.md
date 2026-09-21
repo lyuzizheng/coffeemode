@@ -1,0 +1,225 @@
+# Grafana Cloud 采用与迁移评审
+
+Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份文档盘点现状、列出 Grafana Cloud 的能力清单，并给出从 Better Stack 迁移的优先级建议。
+
+## 0. 结论先行
+
+1. **最高杠杆的一步是在 VPS 上跑 Alloy。** 应用已经在往 stdout 打单行 JSON（`web/lib/observability/server-log.ts`），但没有任何东西收它 —— 日志只活在容器里，`docker logs` 之后就没了。零代码改动就能接进 Loki。
+2. **第二高杠杆是给 Next.js 加 OpenTelemetry。** 一次埋点同时换来 traces、service map、RED 指标（`traces_spanmetrics_*` 由 metrics-generator 自动生成）和 exemplar。不用手写 Prometheus 客户端。
+3. **Better Stack 不要一次性切掉。** 现在 4 条 chart alert + 1 个 uptime monitor 是唯一的告警面，先双写、验证、再拆。
+4. **免费档够用，但有两个硬约束**：14 天保留期，以及 10k active series。Alloy 全量收 Docker stdout 会吃掉 logs 配额，要先做过滤。
+
+## 1. 现状盘点
+
+### 1.1 Grafana Cloud 侧
+
+| 项 | 值 |
+|---|---|
+| Stack | `lyuzizheng`，区域 `ap-southeast-1`（新加坡） |
+| Grafana 版本 | v13.3.0 |
+| 版本档位 | **Cloud Free** |
+| MCP 身份 | `brabalawuka` / lvzizhengde@gmail.com，Main Org. Admin |
+| 数据源 | 12 个，全部就绪 |
+| **应用数据** | **无** |
+| 告警规则 | 0 |
+| CoffeeMode dashboard | 0 |
+
+数据源清单：`grafanacloud-prom`（默认）、`-logs`、`-traces`、`-profiles`、`-k6`、`-infinity`、`-graphite`、`-alert-state-history`、`-cardinality-management`、`-knowledgegraph`、`-usage-insights`、`-usage`。
+
+空栈的证据：Loki `label names` 返回 `[]`；Tempo 只有 intrinsic scope，没有任何 resource/span 属性；Prometheus 查不到任何非 `grafanacloud_*` 的 series；`/api/v1/provisioning/alert-rules` 返回 `[]`。
+
+### 1.2 Better Stack 侧（当前唯一的可观测性）
+
+| 类型 | 内容 |
+|---|---|
+| 日志 source | `coffeemode-rate-limit-staging` (2766431)、`coffeemode-rate-limit-prod` (2766432) |
+| Dashboard | `CoffeeMode API Errors (staging)` (1131239)、`CoffeeMode API Errors (prod)` (1131240) |
+| Chart alert | 4 条 enabled：`5xx sustained on a route`、`Worker upstream_error spike`（staging / prod 各一套） |
+| Uptime monitor | `coffeemood.com`（status 类型） |
+| Heartbeat | 无 |
+| Status page | 无 |
+
+### 1.3 应用侧
+
+| 组件 | 现状 |
+|---|---|
+| `web/lib/observability/server-log.ts` | 输出单行 JSON（`{"type":"error","request_id":…}`）到 stdout。**没人收。** |
+| `web/lib/observability/rate-limit-alert.ts` | 限流命中时 `console.warn`（10s 节流）+ fire-and-forget POST 到 Better Stack（**不**节流） |
+| `/api/health` | `{ok, version, boot_time}` |
+| `/api/heartbeat` | 真实 DB round-trip，Better Stack 轮询它 |
+| `poi-service` / `image-service` | `console.error` + wrangler `[observability]`（数据留在 Cloudflare 侧） |
+| `scripts/devops/smoke-test.sh` | 10 条部署后契约，bash + curl，手动跑 |
+| OTel / Sentry / prom-client / Faro | **都没有** |
+
+## 2. Grafana Cloud 能力清单
+
+按账单维度整理（数据来自 stack 的 Billing/Usage dashboard 与 grafana.com/pricing）。
+
+| 能力 | 计费维度 | 免费档额度 | 对 CoffeeMode 的价值 | 建议 |
+|---|---|---|---|---|
+| **Metrics** (Mimir) | billable series | 10k series / 14d | 高 —— RED、业务计数 | 做 |
+| **Logs** (Loki) | GB ingested | 50 GB / 14d | 高 —— 应用已有 JSON 日志 | 做 |
+| **Traces** (Tempo) | GB ingested | 50 GB / 14d | 高 —— 顺带产出 RED + service map | 做 |
+| **Synthetic Monitoring** | test executions | 100k API + 10k browser / 月 | 高 —— 替代 uptime monitor | 做 |
+| **Frontend Observability** (Faro) | sessions | 50k sessions / 月 | 高 —— CWV、JS 错误、session replay | 做 |
+| **Application Observability** | host hours | 2,232 host hours | 高 —— 随 traces 自动生效 | 做（被动） |
+| **Grafana Alerting** | 免费 | — | 高 —— 替代 chart alerts | 做 |
+| **Dashboards** | 免费（1,000 上限） | — | 高 —— 替代 Better Stack dashboard | 做 |
+| **k6** | VUh | 500 VUh | 中 —— 发布前压测 | 做（小规模） |
+| **IRM / OnCall** | active users | 3 users | 中 —— 现在只有一个人 | 缓 |
+| **Database Observability** | host hours | 2,232 host hours | 中 —— PostGIS 慢查询 | 缓 |
+| **Profiles** (Pyroscope) | GB ingested | 50 GB / 14d | 低 —— 没有明确的 CPU/内存问题 | 缓 |
+| **Grafana Assistant** | tokens | 40M/用户 + 25M 系统池 | 中 —— MCP 已经在用 | 已可用 |
+| **Kubernetes Monitoring** | host/container hours | 2,232 + 37,944 | 无 —— Dokploy 是单机 Docker | 不做 |
+| **Adaptive Metrics / Traces** | 省成本 | — | 低 —— 量太小，省不出钱 | 不做 |
+| **Knowledge Graph / Sift** | — | — | 低 —— 需要更多数据才有意义 | 不做 |
+
+### 免费档硬约束
+
+- **14 天保留期**（metrics / logs / traces / profiles / k6）。Better Stack 现在是 3 天（logs），所以是改善，但别指望季度对比。
+- **10k active series**。`traces_spanmetrics_*` 会按 route × status × service 展开，路由多的话要盯着。
+- **3 个 Grafana 活跃用户**、**3 个 IRM 活跃用户**。
+- **MCP 连接算 Assistant 活跃用户**，会消耗 40M token 配额。
+
+### 接入端点（区域 ap-southeast-1）
+
+| 信号 | 端点 | instance ID |
+|---|---|---|
+| Metrics (remote_write) | `https://prometheus-prod-37-prod-ap-southeast-1.grafana.net/api/prom/push` | 3599798 |
+| Logs (Loki push) | `https://logs-prod-020.grafana.net/loki/api/v1/push` | 1795570 |
+| Traces (Tempo) | `https://tempo-prod-14-prod-ap-southeast-1.grafana.net/tempo` | 1789871 |
+| OTLP (all signals) | `https://otlp-gateway-prod-ap-southeast-1.grafana.net/otlp` | — |
+
+四个端点都已探测：未认证请求返回 401，说明在线且只等凭据。
+
+## 3. 迁移建议
+
+### P0 — 让数据进来
+
+#### P0-1 Logs：VPS 上跑 Alloy → Loki
+
+**为什么**：应用已经在打 JSON 行，只差一个采集器。这是投入产出比最高的一步。
+
+**怎么做**：Dokploy 加一个 Alloy 容器（compose，`grafana/alloy` 镜像），配置：
+
+- `discovery.docker` 发现容器，`loki.source.docker` 读 stdout。
+- `loki.process` 解析 JSON，把 `level`、`route`、`request_id`、`type` 提出来。
+- `loki.write` 推到 `https://logs-prod-020.grafana.net/loki/api/v1/push`，Basic auth = instance ID + API token。
+
+**标签纪律**（免费档 5,000 active streams 上限）：
+
+- label 只留 `env`、`service`、`container`、`level`。
+- `request_id`、`route`、`client_id` 一律进 structured metadata，**不能**做 label —— 否则 stream 数爆炸。
+
+**先过滤再发**：Next.js 的请求日志量最大，先只收 `web` 容器 + `level != "debug"`，观察一周配额再放开。
+
+**收益**：`server-log.ts` 的 error/warn 行、rate-limit 行、Next.js 请求日志全部可查，并且能和 traces 通过 `request_id` / `trace_id` 关联。
+
+#### P0-2 Traces：Next.js 加 OpenTelemetry → Tempo
+
+**为什么**：一次埋点换来四样东西 —— traces、service map、RED 指标、exemplar。不用手写 Prometheus 客户端。
+
+**怎么做**：
+
+- Next.js 用 `@vercel/otel`（官方推荐，和 App Router 兼容）或 `@opentelemetry/sdk-node` + `instrumentation.ts`。
+- `OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp-gateway-prod-ap-southeast-1.grafana.net/otlp`，Basic auth = instance ID + token。
+- `OTEL_RESOURCE_ATTRIBUTES=service.name=coffeemode-web,deployment.environment=staging|prod`。
+
+**采样**：免费档 50 GB。先用 `parentbased_traceidratio` 10% 起步，看一周实际用量再调。
+
+**收益**：Grafana Cloud 的 metrics-generator 会自动从 span 生成 `traces_spanmetrics_*`，RED 指标不用自己写。Tempo 数据源已经配好 `tracesToLogs` / `tracesToMetrics` / `serviceMap`，开箱即用。
+
+#### P0-3 Metrics：先靠 spanmetrics，再补业务指标
+
+不要急着上 `prom-client`。spanmetrics 已经给出每个 route 的 rate / error / duration。
+
+需要额外补的（用 OTLP metrics 或 Alloy 的 `prometheus.exporter`）：
+
+- rate-limit 命中计数（counter，按 `bucket` 分）。
+- Postgres 连接池（活跃 / 空闲 / 等待）。
+- Cloudflare Worker 调用延迟与错误（从 Worker 侧推，或从 web 侧观测）。
+
+### P1 — 替代 Better Stack
+
+#### P1-1 Synthetic Monitoring 替代 uptime monitor
+
+现在只有 Better Stack 一个 `coffeemood.com` status monitor。
+
+目标：
+
+- HTTP check 覆盖 `/api/health`、`/api/heartbeat`、`/`，从多个 probe region 跑（新加坡 + 就近区域）。
+- 一个 scripted check 覆盖搜索主流程 —— 把 `scripts/devops/smoke-test.sh` 的 10 条契约里挑核心几条改写成 k6。
+- 断言必须让 `probe_success` **真的失败**：用 `expect()` / `fail()`，不是裸 `check()`。裸 `check()` 只记结果不改 `probe_success`，告警永远不响。
+- 附带收益：TLS 证书到期告警。
+
+配额估算：3 个 HTTP check × 3 region × 1 分钟间隔 ≈ 3 × 3 × 43,200 = 388,800 次/月，**超免费档 100k**。降到 5 分钟间隔 ≈ 77,760 次/月，留出余量。
+
+#### P1-2 Grafana Alerting 替代 4 条 chart alert
+
+现在 Better Stack 有 `5xx sustained on a route` 和 `Worker upstream_error spike`，staging / prod 各一套。
+
+目标：Grafana-managed alert rules，数据源用 Loki（日志派生）或 spanmetrics（trace 派生）。
+
+- 通知先接 Slack / 邮件 contact point。
+- notification policy 按 `env` label 分流，staging 低优先级。
+- 保留 `for:` 窗口避免抖动。
+
+#### P1-3 Dashboards 替代 2 个 Better Stack dashboard
+
+现在有 `CoffeeMode API Errors (staging/prod)` 两个。
+
+目标：
+
+- `CoffeeMode — API RED`：一个 dashboard，`env` 变量切换 staging/prod。
+- `CoffeeMode — Rate limits`：命中分布、top bucket、top client。
+- `CoffeeMode — Edge & Workers`：Cloudflare 侧的错误与延迟。
+
+### P2 — 新增能力
+
+| 项 | 理由 | 备注 |
+|---|---|---|
+| **Frontend Observability (Faro)** | 地图页 LCP 是真实风险点；现在对真实用户的前端体验零可见性 | 50k sessions/月，够早期 |
+| **k6** | 发布前压测 `/api/search` | 500 VUh 够 smoke + 小规模 load |
+| **Database Observability** | PostGIS 空间查询慢的时候需要 `pg_stat_statements` | 需要 Supabase 侧开扩展 + 建监控用户 |
+| **IRM / OnCall** | 3 个免费用户 | 现在一个人，Alerting + Slack 就够，等有轮值再上 |
+
+### 不建议现在做
+
+- **Kubernetes Monitoring** —— 没有 K8s，Dokploy 是单机 Docker。硬套只会产生噪音。
+- **Adaptive Metrics / Adaptive Traces** —— 量太小，省不出钱，反而多一层配置。
+- **Profiles** —— 没有明确的 CPU / 内存问题要查。等有具体性能问题再开。
+- **Knowledge Graph / Sift** —— 需要更多数据才有意义。
+
+## 4. 迁移顺序
+
+```mermaid
+graph TD
+  A["Alloy on VPS<br/>(P0-1)"] --> B["Loki 有日志"]
+  B --> C["Grafana Alerting<br/>(P1-2)"]
+  B --> D["Dashboards<br/>(P1-3)"]
+  E["OTel in Next.js<br/>(P0-2)"] --> F["Tempo 有 traces"]
+  F --> G["spanmetrics → RED<br/>(P0-3)"]
+  G --> D
+  G --> C
+  H["Synthetic Monitoring<br/>(P1-1)"] --> I["替代 uptime monitor"]
+  B --> J["Faro<br/>(P2)"]
+  F --> J
+```
+
+依赖关系：P1-2 和 P1-3 都要等 P0 有数据；P1-1 独立，可以并行。
+
+## 5. 风险与注意
+
+1. **免费档配额**：50 GB logs / 50 GB traces / 10k series / 14 天保留。Alloy 全量收 Docker stdout 会吃掉 logs 配额 —— 先只收 `web` 容器并丢 debug。
+2. **双写期**：Better Stack 保留到 Grafana 侧验证通过再拆。不要一次性切换，否则告警面出现空窗。
+3. **rate-limit 事件会丢**：`emitRateLimitAlert` 的 `console.warn` 是 10s 节流的，而 Better Stack POST 不节流。如果改成「靠 Alloy 收 stdout」，节流会让事件数明显变少。迁移时要同时去掉节流，或者改成计数指标（counter）而不是逐条日志。
+4. **标签基数**：Loki 只留低基数 label；Prometheus 不要用 `client_id`、`request_id`、`route` 做 label（`route` 在 spanmetrics 里是受控集合，可以）。
+5. **MCP 计费**：Grafana 把每个通过 MCP 连接的用户算作 Assistant 活跃用户，消耗 40M token 配额。
+6. **Synthetic 配额**：3 个 check × 3 region × 1 分钟 = 388k 次/月，超免费档。间隔要放宽到 5 分钟。
+
+## 6. 需要拍板的决定
+
+1. **日志是双写还是直接切？** 双写更安全，但 Alloy 配置要维护两份输出；直接切省事，但 Better Stack 的历史查询会断。
+2. **Better Stack 是全退还是只留 uptime？** 全退能省一份订阅，但 status page / heartbeat 这些 Grafana 侧要重建。
+3. **OTel 采样率起步定多少？** 10% 保守，100% 能看清全貌但可能吃配额。
+4. **rate-limit 事件改成 counter 还是保留逐条日志？** counter 省配额但丢细节，日志保留细节但吃 50 GB。

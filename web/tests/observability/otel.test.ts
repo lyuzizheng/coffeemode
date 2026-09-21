@@ -1,3 +1,4 @@
+import { trace } from "@opentelemetry/api";
 import type { ReadableSpan, SpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -226,5 +227,55 @@ describe("route template on the request span", () => {
     end(processor, request);
 
     expect(request.name).toBe("RSC GET /cafes/[id]");
+  });
+});
+
+describe("trace provider shutdown flush", () => {
+  const REGISTRY_KEY = "__coffeemodeShutdownProviders";
+
+  function reset(): void {
+    delete (globalThis as Record<string, unknown>)[REGISTRY_KEY];
+    process.removeAllListeners("SIGTERM");
+    process.removeAllListeners("SIGINT");
+    delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+    // `registerGlobal` accepts one registration per API name, so without this
+    // the second test's provider would be silently ignored.
+    trace.disable();
+  }
+
+  beforeEach(reset);
+  afterEach(reset);
+
+  it("flushes the SDK's tracer provider on SIGTERM", async () => {
+    // `registerOTel` returns void and keeps its provider to itself, but it
+    // installs it globally — and `setGlobalTracerProvider` parks it behind the
+    // API's own proxy. This is the shape `registerOtel` actually meets in
+    // production, so the flush has to reach through `getDelegate()`; the proxy
+    // itself has no `forceFlush`.
+    const forceFlush = vi.fn().mockResolvedValue(undefined);
+    trace.setGlobalTracerProvider({ forceFlush } as never);
+
+    const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
+    process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "https://otlp.example/otlp";
+    registerOtel();
+    process.emit("SIGTERM", "SIGTERM");
+
+    // Wait for the re-raise, not just the flush: the coordinator calls
+    // `process.kill` on a later microtask, and restoring the spy before it
+    // lands would let the real signal kill the test worker.
+    await vi.waitFor(() => expect(killSpy).toHaveBeenCalledWith(process.pid, "SIGTERM"));
+    expect(forceFlush).toHaveBeenCalledTimes(1);
+    killSpy.mockRestore();
+  });
+
+  it("registers nothing when the global provider is not flushable", () => {
+    // A provider with no `forceFlush` — registering it would put an object in
+    // the coordinator that throws on the way out.
+    trace.setGlobalTracerProvider({} as never);
+
+    process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "https://otlp.example/otlp";
+    registerOtel();
+
+    expect((globalThis as Record<string, unknown>)[REGISTRY_KEY]).toBeUndefined();
   });
 });

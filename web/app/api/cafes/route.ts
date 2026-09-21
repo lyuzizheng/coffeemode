@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { apiError, parseQueryPositiveInt } from "@/lib/api/response";
 import { apiRoute } from "@/lib/api/route";
 import { createCafeWithFirstCheckIn, listCafesNearby } from "@/lib/db/cafes";
-import { parseCreateCafeBody } from "@/lib/validation/cafe";
+import { recordCafeCreated, type CafeCreationSource } from "@/lib/observability/metrics";
+import { parseCreateCafeBody, type CreateCafeInput } from "@/lib/validation/cafe";
 import {
   DEFAULT_SEARCH_RADIUS_KM,
   MAX_SEARCH_RADIUS_KM,
@@ -54,6 +55,17 @@ export const GET = apiRoute(
 );
 
 /**
+ * Which external POI the creation started from — the business counter's only
+ * dimension (BRAWUKA-609). Three values, read straight off the request body, so
+ * the series count stays bounded by 3 × environments.
+ */
+function cafeCreationSource(input: CreateCafeInput): CafeCreationSource {
+  if (input.google_place_id) return "google";
+  if (input.apple_poi_id) return "apple";
+  return "manual";
+}
+
+/**
  * POST /api/cafes  {name, lat, lng, ..., checkin: {scores, photo_ids, ...}}
  * Create a cafe fused with the creator's first check-in (spec 0001) plus
  * the work_stats fold — one transaction. Requires auth. 409 when the
@@ -73,6 +85,10 @@ export const POST = apiRoute(
     }
 
     const result = await createCafeWithFirstCheckIn(ctx.user.id, parsed.value);
+    // After the commit, never before: a 409 or a rejected photo is not a
+    // creation, and counting attempts would make the series track traffic
+    // instead of the business.
+    recordCafeCreated(cafeCreationSource(parsed.value));
     return NextResponse.json(result, { status: 201 });
   },
 );

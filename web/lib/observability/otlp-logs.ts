@@ -5,6 +5,7 @@ import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { detectResources, envDetector, resourceFromAttributes } from "@opentelemetry/resources";
 import { BatchLogRecordProcessor, LoggerProvider } from "@opentelemetry/sdk-logs";
 import { registerLineSink } from "@shared/log";
+import { installShutdownFlush } from "./shutdown";
 
 /**
  * OTLP log shipping for the web app (BRAWUKA-607).
@@ -126,36 +127,13 @@ function createLogger(): Logger {
 }
 
 /**
- * Flush the batch on the way out.
- *
- * `BatchLogRecordProcessor` holds up to 5s of lines, so a container that takes
- * SIGTERM on redeploy would drop everything still buffered — the errors that
- * explain why it was being redeployed, most likely.
- *
- * The signal is re-raised once the flush settles. Registering a listener
- * suppresses Node's default terminate, so without the re-raise the container
- * would hang until SIGKILL instead of shutting down.
+ * Flush the batch on the way out — `BatchLogRecordProcessor` holds up to 5s of
+ * lines, so a container that takes SIGTERM on redeploy would drop everything
+ * still buffered, the errors that explain why it was being redeployed most
+ * likely. The signal handling itself is shared with the metrics provider
+ * (`shutdown.ts`), because one handler per provider would let the first one to
+ * finish re-raise the signal while the others are still flushing.
  */
-const SHUTDOWN_FLUSH_TIMEOUT_MS = 2_000;
-
-export function installShutdownFlush(provider: LoggerProvider): void {
-  const onSignal = (signal: NodeJS.Signals): void => {
-    // Bounded: a collector that is itself down must not hold the container
-    // open past its stop grace period.
-    const timeout = new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, SHUTDOWN_FLUSH_TIMEOUT_MS);
-      if (typeof timer === "object" && "unref" in timer) timer.unref();
-    });
-
-    void Promise.race([provider.forceFlush().catch(() => {}), timeout]).finally(() => {
-      process.removeListener(signal, onSignal);
-      process.kill(process.pid, signal);
-    });
-  };
-
-  process.once("SIGTERM", onSignal);
-  process.once("SIGINT", onSignal);
-}
 
 function logger(): Logger | null {
   if (logEndpoint() === null) return null;

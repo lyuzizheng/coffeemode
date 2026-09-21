@@ -15,9 +15,10 @@ Access or a firewall rule.
 
 ## grafana — Grafana Cloud MCP (official)
 
-Gives agents read/write access to the Grafana Cloud stack: dashboards, alert
-rules, datasources, PromQL/LogQL queries, incidents. Hosted by Grafana at
-`https://mcp.grafana.com/mcp`; nothing to deploy or patch.
+Gives agents access to the Grafana Cloud stack: dashboards, alert rules,
+datasources, PromQL/LogQL queries, incidents. Hosted by Grafana at
+`https://mcp.grafana.com/mcp`; nothing to deploy or patch. Read is always
+available; query and write depend on the connecting user's role (below).
 
 ### Why not self-hosted
 
@@ -34,10 +35,15 @@ tunnel ingress rule, Access app and service token were all torn down on
 
 - A hosted Grafana Cloud stack (`https://<stack>.grafana.net`). The free tier
   is enough. Self-hosted Grafana is **not** supported by this endpoint.
-- The `Assistant Cloud MCP User` role on that stack — Editor or higher has it
-  by default.
+- Grafana Assistant available on that stack, with its terms accepted. Terms are
+  accepted automatically on first Assistant use, or by an admin in plugin
+  settings.
+- The `Assistant Cloud MCP User` role — the **Editor** organization role or
+  higher has it by default. That role covers read and query scope only; **write
+  scope needs `Assistant Admin`**.
 - Billing: Grafana counts each user who connects over MCP as an active Grafana
-  Assistant user.
+  Assistant user. Read-only tool calls do not consume Assistant tokens — tokens
+  are spent only when a tool invokes an Assistant model (`ask_assistant`).
 
 ### OAuth shape
 
@@ -52,8 +58,20 @@ themselves dynamically, so no client ID or secret is provisioned by hand.
 | Authorize / token | `https://mcp.grafana.com/mcp/oauth/authorize` · `/oauth/token` |
 | PKCE | `S256` |
 | Scopes | `grafana:read`, `grafana:query`, `grafana:write` |
+| Transport | Streamable HTTP only — SSE is not supported |
 
-During consent you enter the stack URL and pick read or read+write access.
+During consent you enter the stack URL, then tick each scope you want. The three
+scopes are **separate checkboxes**, and one you lack the role for shows as
+unavailable:
+
+| Scope | Grants | Role needed |
+|---|---|---|
+| `grafana:read` | View dashboards, alerts, incidents, metrics, logs, traces | `Assistant Cloud MCP User` |
+| `grafana:query` | Also run raw SQL against SQL datasources — **runs as written, so it can modify data** | `Assistant Cloud MCP User` |
+| `grafana:write` | Also create and modify dashboards, alerts, incidents, investigations | `Assistant Admin` |
+
+Read-only means clearing **both** Query and Write. Clearing only Write still
+leaves raw SQL available whenever Query is ticked.
 
 ### Client wiring
 
@@ -63,6 +81,10 @@ the metadata above and runs the browser flow on first connect:
 ```json
 "grafana": { "type": "http", "url": "https://mcp.grafana.com/mcp", "timeout": 120000 }
 ```
+
+Adding a `headers` block with `X-Grafana-URL: https://<stack>.grafana.net` is
+optional but recommended — it skips the stack-URL prompt and goes straight to
+the consent page. Same header works for Hermes.
 
 **Hermes** — installed from the catalog (`hermes mcp install grafana`), which
 writes `mcp_servers.grafana` in `~/.hermes/config.yaml` with `auth: oauth` and
@@ -87,6 +109,13 @@ authorized, `tools/list` in an agent session is the real check.
 
 - **`401` after authorizing** — the token is bound to one stack. Re-run the
   consent flow and enter the stack URL again.
-- **`403` / role error** — the Grafana user lacks `Assistant Cloud MCP User`.
+- **`403` / role error on read or query** — the Grafana user lacks
+  `Assistant Cloud MCP User`.
+- **Write checkbox unavailable on the consent page** — write scope needs
+  `Assistant Admin`; an org admin has to assign it.
 - **Tools missing in a session** — omp and Hermes both load MCP servers at
   session start; restart the session after authorizing.
+- **Prompted to log in again after ~30 days** — the OAuth token lives 1 hour
+  and auto-refreshes for 30 days, then the client asks for a fresh login.
+- **Revoking a connection** — Grafana Assistant **Settings → Connectors → MCP
+  clients** lists and revokes connections.

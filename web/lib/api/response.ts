@@ -28,6 +28,8 @@ interface ApiErrorExtra {
   details?: Record<string, unknown>;
   /** Request in scope: its `x-request-id` is echoed as `request_id`. */
   request?: { headers: Headers };
+  /** Already-resolved request id (e.g. from `apiRoute`); wins over `request`. */
+  requestId?: string;
 }
 
 /** Options for the message form: HTTP status plus extra body fields. */
@@ -91,8 +93,8 @@ export function apiError(
     error: code,
     ...(message !== undefined ? { message } : {}),
     ...(details !== undefined ? { details } : {}),
-    ...(statusCode >= 500 || options?.request !== undefined
-      ? { request_id: getRequestId(options?.request) }
+    ...(statusCode >= 500 || options?.request !== undefined || options?.requestId !== undefined
+      ? { request_id: options?.requestId ?? getRequestId(options?.request) }
       : {}),
   };
 

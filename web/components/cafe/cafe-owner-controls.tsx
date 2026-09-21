@@ -12,9 +12,10 @@
  * - Visibility: reversible hide via PATCH /api/cafes/[id]/visibility. No
  *   confirm — the copy says it is reversible ("隐藏后仅你可见，可随时公开").
  * - Delete: checkin-scoped, never deletes the cafe row. The owner always
- *   confirms first (shell copy); a 403 `cafe_has_other_checkins` upgrades the
- *   same confirm surface to the handoff copy and retries with
- *   `{ confirm: true }`. Machine codes never reach the UI (BRAWUKA-212).
+ *   confirms first (shell copy); a `cafe_has_other_checkins` envelope (409
+ *   since spec 0011) upgrades the same confirm surface to the handoff copy
+ *   and retries with `{ confirm: true }`. Machine codes never reach the UI
+ *   (BRAWUKA-212).
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -109,7 +110,7 @@ function DeleteSection({ cafeId }: { cafeId: string }) {
     setPending(true);
     try {
       // DG146 contract: the first DELETE goes out UNCONFIRMED — only a bare
-      // request can surface 403 cafe_has_other_checkins (the API never throws
+      // request can surface 409 cafe_has_other_checkins (the API never throws
       // it once confirm:true is set). The handoff retry below is the only
       // call that carries { confirm: true }.
       const res = await fetch(`/api/cafes/${cafeId}`, {
@@ -132,7 +133,9 @@ function DeleteSection({ cafeId }: { cafeId: string }) {
         return;
       }
       const body = (await res.json().catch(() => null)) as DeleteErrorBody | null;
-      if (res.status === 403 && body?.error === "cafe_has_other_checkins") {
+      // Match the machine code, not the status (spec 0011: the code moved
+      // 403→409 in the reclassification).
+      if (body?.error === "cafe_has_other_checkins") {
         setOtherCheckins(typeof body.n === "number" ? body.n : 0);
         setStep("handoff");
         return;

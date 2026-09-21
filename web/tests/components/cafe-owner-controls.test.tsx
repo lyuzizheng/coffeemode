@@ -123,20 +123,20 @@ describe("CafeOwnerControls", () => {
       );
     });
     // DG146: the first DELETE is unconfirmed — only a bare request can
-    // surface 403 cafe_has_other_checkins; confirm:true would silently
+    // surface 409 cafe_has_other_checkins; confirm:true would silently
     // hand the cafe off under the wrong copy.
     expect(fetchMock.mock.calls[0][1]?.body).toBeUndefined();
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
   });
 
-  it("maps 403 cafe_has_other_checkins to the handoff copy and retries confirmed", async () => {
+  it("maps 409 cafe_has_other_checkins to the handoff copy and retries confirmed", async () => {
     let deleteCalls = 0;
     const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
       if (init?.method === "DELETE") {
         deleteCalls += 1;
-        // The real API only returns this 403 for an UNCONFIRMED delete.
+        // The real API only returns this 409 for an UNCONFIRMED delete.
         if (deleteCalls === 1) {
-          return jsonResponse(403, {
+          return jsonResponse(409, {
             error: "cafe_has_other_checkins",
             n: 3,
           });

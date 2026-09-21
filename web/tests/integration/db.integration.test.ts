@@ -1626,7 +1626,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       await expect(deleteCafe(created.cafe_id, U1)).rejects.toBeInstanceOf(CafeNotFoundError);
     });
 
-    it("community cafe without confirm rejects with 403 (cafe_has_other_checkins) and 0 mutations", async () => {
+    it("community cafe without confirm rejects with 409 (cafe_has_other_checkins) and 0 mutations", async () => {
       const photoId = randomUUID();
       await recordUploadIntent(U1, photoId);
       const created = await createCafeWithFirstCheckIn(

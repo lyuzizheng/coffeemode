@@ -1,7 +1,7 @@
 import "server-only";
 
 import { appConfig } from "@/lib/config";
-import type { ErrorCode } from "@shared/errors";
+import { defaultErrorStatus, type ErrorCode } from "@shared/errors";
 
 /**
  * Profile PATCH payload validation (spec 0009 §1: request validation lives in
@@ -90,7 +90,7 @@ export function parseProfilePatch(body: unknown): ProfilePatchResult {
     const raw = payload[key];
     if (raw === undefined) continue;
     const result = parse(raw);
-    if (!result.ok) return { ok: false, error: result.error, status: 400 };
+    if (!result.ok) return { ok: false, error: result.error, status: defaultErrorStatus(result.error) };
     Object.assign(patch, { [key]: result.value });
   }
 

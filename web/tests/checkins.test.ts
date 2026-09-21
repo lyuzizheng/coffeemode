@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
-import { createCheckIn, toggleCheckInLike } from "@/lib/db/checkins";
+import { createCheckIn, softDeleteCheckIn, toggleCheckInLike, updateCheckIn } from "@/lib/db/checkins";
 import {
   CafeNotFoundError,
   CheckInNotFoundError,
@@ -631,6 +631,70 @@ describe("createCheckIn", () => {
       null,
       IDEMPOTENCY_KEY,
     ]);
+  });
+});
+
+describe("check-in edit/delete lock order (BRAWUKA-574)", () => {
+  const checkinRow = {
+    id: CHECKIN,
+    cafe_id: CAFE,
+    user_id: USER.id,
+    deleted_at: null,
+  };
+
+  beforeEach(() => {
+    clientQueryMock.mockReset();
+    clientQueryMock.mockImplementation(async (sql: string) => {
+      const s = sql.toLowerCase();
+      if (s.includes("select cafe_id from checkins")) {
+        return { rows: [{ cafe_id: CAFE }], rowCount: 1 };
+      }
+      if (s.includes("from cafes") && s.includes("for update")) {
+        return { rows: [{ "?column?": 1 }], rowCount: 1 };
+      }
+      if (s.includes("from checkins where id")) {
+        return { rows: [checkinRow], rowCount: 1 };
+      }
+      // recomputeWorkStats runs on the same fake client here; its cafe
+      // lock + checkin scan + stats write need no real rows for an
+      // order assertion (real-DB behavior is covered by integration).
+      if (s.includes("for update")) {
+        return { rows: [{ id: CAFE }], rowCount: 1 };
+      }
+      if (s.includes("from checkins")) {
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+  });
+
+  it("updateCheckIn locks the cafe row before the check-in row", async () => {
+    await updateCheckIn(USER.id, CHECKIN, { note: "revisited" });
+    const statements = clientQueryMock.mock.calls.map(([sql]) => sql as string);
+    const cafeLockIdx = statements.findIndex(
+      (s) => s.includes("from cafes") && s.includes("for update"),
+    );
+    const checkinLockIdx = statements.findIndex(
+      (s) => s.includes("from checkins where id") && s.includes("for update"),
+    );
+    expect(cafeLockIdx).toBeGreaterThan(-1);
+    expect(checkinLockIdx).toBeGreaterThan(-1);
+    expect(cafeLockIdx).toBeLessThan(checkinLockIdx);
+  });
+
+  it("softDeleteCheckIn locks the cafe row before the check-in row", async () => {
+    const result = await softDeleteCheckIn(USER.id, CHECKIN);
+    expect(result).toEqual({ cafeId: CAFE });
+    const statements = clientQueryMock.mock.calls.map(([sql]) => sql as string);
+    const cafeLockIdx = statements.findIndex(
+      (s) => s.includes("from cafes") && s.includes("for update"),
+    );
+    const checkinLockIdx = statements.findIndex(
+      (s) => s.includes("from checkins where id") && s.includes("for update"),
+    );
+    expect(cafeLockIdx).toBeGreaterThan(-1);
+    expect(checkinLockIdx).toBeGreaterThan(-1);
+    expect(cafeLockIdx).toBeLessThan(checkinLockIdx);
   });
 });
 

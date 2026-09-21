@@ -121,7 +121,40 @@ function createLogger(): Logger {
     ),
     processors: [new BatchLogRecordProcessor(new OTLPLogExporter())],
   });
+  installShutdownFlush(provider);
   return provider.getLogger(SERVICE_NAME);
+}
+
+/**
+ * Flush the batch on the way out.
+ *
+ * `BatchLogRecordProcessor` holds up to 5s of lines, so a container that takes
+ * SIGTERM on redeploy would drop everything still buffered — the errors that
+ * explain why it was being redeployed, most likely.
+ *
+ * The signal is re-raised once the flush settles. Registering a listener
+ * suppresses Node's default terminate, so without the re-raise the container
+ * would hang until SIGKILL instead of shutting down.
+ */
+const SHUTDOWN_FLUSH_TIMEOUT_MS = 2_000;
+
+export function installShutdownFlush(provider: LoggerProvider): void {
+  const onSignal = (signal: NodeJS.Signals): void => {
+    // Bounded: a collector that is itself down must not hold the container
+    // open past its stop grace period.
+    const timeout = new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, SHUTDOWN_FLUSH_TIMEOUT_MS);
+      if (typeof timer === "object" && "unref" in timer) timer.unref();
+    });
+
+    void Promise.race([provider.forceFlush().catch(() => {}), timeout]).finally(() => {
+      process.removeListener(signal, onSignal);
+      process.kill(process.pid, signal);
+    });
+  };
+
+  process.once("SIGTERM", onSignal);
+  process.once("SIGINT", onSignal);
 }
 
 function logger(): Logger | null {

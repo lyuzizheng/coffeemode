@@ -80,7 +80,13 @@ async function poiFetch(
     // Transport failure (DNS, refused, timeout): same typed error as an
     // upstream response so the route boundary emits 502 `poi_service`,
     // never a bare 500 (spec 0011 D5/BRAWUKA-537).
-    logError({ route: "poi-service", error, requestId: resolvedId });
+    logError({
+      route: "poi-service",
+      error,
+      requestId: resolvedId,
+      status: 502,
+      code: "upstream_error",
+    });
     throw new POIServiceError("POI service unavailable", 502);
   }
   if (!res.ok) {
@@ -95,12 +101,19 @@ async function poiFetch(
     else if (upstreamStatus === 422) message = "POI could not be resolved";
     else if (upstreamStatus >= 500) message = "POI service unavailable";
     else if (upstreamStatus >= 400) message = "Invalid POI request";
-    logError({ route: "poi-service", error: { status: upstreamStatus, message }, requestId: resolvedId });
-    throw new POIServiceError(
-      message,
-      upstreamStatus === 401 ? 502 : upstreamStatus,
-      upstreamStatus,
-    );
+    const effectiveStatus = upstreamStatus === 401 ? 502 : upstreamStatus;
+    // Log the status the caller will actually see, and tag only real outages
+    // (spec 0011 D8, BRAWUKA-541): a worker 404/422 is a normal negative
+    // answer, not a dependency failure, so it must not feed the
+    // `upstream_error` chart or its alert.
+    logError({
+      route: "poi-service",
+      error: { status: upstreamStatus, message },
+      requestId: resolvedId,
+      status: effectiveStatus,
+      ...(effectiveStatus >= 500 ? { code: "upstream_error" as const } : {}),
+    });
+    throw new POIServiceError(message, effectiveStatus, upstreamStatus);
   }
   return res.json();
 }

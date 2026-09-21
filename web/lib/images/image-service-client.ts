@@ -70,7 +70,6 @@ function upstreamError(endpoint: "upload" | "complete" | "delete", response: Res
   const upstreamStatus = response.status;
   // Benign: best-effort cancel of unread upstream response stream.
   void response.body?.cancel().catch(() => {});
-  logError({ route: `image-service ${endpoint}`, error: { status: upstreamStatus }, requestId });
 
   let message = "Image service returned an error";
   let status = upstreamStatus;
@@ -87,6 +86,17 @@ function upstreamError(endpoint: "upload" | "complete" | "delete", response: Res
   } else if (upstreamStatus >= 400) {
     message = "Invalid image request";
   }
+  // Log the status the caller will actually see, and tag only real outages
+  // (spec 0011 D8, BRAWUKA-541): a worker 404/413/422 is a normal negative
+  // answer, not a dependency failure, so it must not feed the
+  // `upstream_error` chart or its alert.
+  logError({
+    route: `image-service ${endpoint}`,
+    error: { status: upstreamStatus },
+    requestId,
+    status,
+    ...(status >= 500 ? { code: "upstream_error" as const } : {}),
+  });
   return new ImageServiceError(message, status, upstreamStatus);
 }
 
@@ -97,7 +107,13 @@ function upstreamError(endpoint: "upload" | "complete" | "delete", response: Res
  * (spec 0011 D5/BRAWUKA-537).
  */
 function transportError(endpoint: "upload" | "complete" | "delete", error: unknown, requestId: string): ImageServiceError {
-  logError({ route: `image-service ${endpoint}`, error, requestId });
+  logError({
+    route: `image-service ${endpoint}`,
+    error,
+    requestId,
+    status: 502,
+    code: "upstream_error",
+  });
   return new ImageServiceError("Image service unavailable", 502);
 }
 

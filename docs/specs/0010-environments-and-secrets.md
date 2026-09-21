@@ -29,8 +29,8 @@ here does not exist for that environment.
 | --- | --- | --- | --- |
 | Supabase project ref | none — `supabase-mock` (compose, `:54321`) or `supabase start` only when offline | `ojujmjewtbquiddswyrg` (ap-southeast-1) | `rsdzcegylqgccaneomph` (ap-southeast-1) |
 | Auth providers | fake JWT (mock) — deterministic, unsigned | Google OAuth (enabled); email | Apple + Google OAuth |
-| Postgres instance | `postgis/postgis:16-3.4` container (docker-compose) | Supabase staging Postgres + PostGIS 16 (app data); Dokploy VPS CI Postgres (staging-journey) | Supabase prod Postgres + PostGIS 16 |
-| Postgres connection | `localhost:5432` direct | runtime: Supavisor pooler `:6543`, `DIRECT_URL` session `:5432`; CI journey: `localhost:5432` via Cloudflare Access TCP tunnel to Dokploy VPS CI Postgres | same split as staging (pooler `:6543`, direct `:5432`) |
+| Postgres instance | `postgis/postgis:16-3.4` container (docker-compose) | Dokploy VPS Postgres `coffeemode-staging-db` (`postgis/postgis:16-3.4`, app data, BRAWUKA-507); Dokploy VPS CI Postgres (staging-journey) | Supabase prod Postgres + PostGIS 16 |
+| Postgres connection | `localhost:5432` direct | runtime: `dokploy-network` internal `:5432` (`sslmode=disable`, same-host overlay); CI journey: `localhost:5432` via Cloudflare Access TCP tunnel to Dokploy VPS CI Postgres | pooler `:6543` + direct `:5432` split |
 | Object storage | MinIO container (compose) | R2 `coffeemode-images-staging` | R2 `coffeemode-images-prod` |
 | Backup storage | none | R2 `coffeemode-backups/staging/` (7-day local retention) | R2 `coffeemode-backups/prod/` (14-day local, 30-day R2) |
 | Workers | miniflare-poi / miniflare-image (compose, `wrangler dev --local`) | `poi-service-staging`, `image-service-staging` (D1 `poi-store-staging`, KV `poi-cache-staging`) | `poi-service-prod`, `image-service-prod` (D1 `poi-store`, KV `poi-cache`) |
@@ -40,13 +40,14 @@ here does not exist for that environment.
 
 ### 2. Data-store ruling (resolves the spec 0001 / `.env.example` contradiction)
 
-**Application data lives in Supabase Postgres in every deployed environment.**
+**Production application data lives in Supabase Postgres; staging app data moved to a Dokploy VPS Postgres (BRAWUKA-507, owner decision 2026-09-20).**
 Spec 0001 §Data layer and ADR-0002 (revised 2026-08-28, 0004 decision 34a)
-already record this; `deploy/dokploy/.env.staging.example` (`DATABASE_URL` →
-Supavisor `:6543`, `DIRECT_URL` → `:5432`) is the correct shape. The stale side
-is the wording "Supabase is AUTH ONLY / data lives in the self-hosted Postgres"
-in `web/.env.example` and `web/README.md` — corrected by this change. No
-self-hosted Postgres exists on the VPS for application data (BRAWUKA-241).
+record the original all-Supabase ruling; the staging exception keeps Supabase
+for auth only and moves app data to `coffeemode-staging-db` (Dokploy
+`postgres` service, `postgis/postgis:16-3.4`, reachable over `dokploy-network`
+at `:5432`, `sslmode=disable`). `deploy/dokploy/.env.staging.example` reflects
+the internal connection shape. Production still uses Supabase Postgres
+(`DATABASE_URL` → Supavisor `:6543`, `DIRECT_URL` → `:5432`).
 
 For CI testing, post-merge verification (`staging-journey`) runs against an ephemeral
 runner-local Postgres container (`postgis/postgis:16-3.4`, started via
@@ -54,8 +55,8 @@ runner-local Postgres container (`postgis/postgis:16-3.4`, started via
 external Dokploy CI Postgres / Cloudflare Access tunnel path (BRAWUKA-474), eliminating
 tunnel latency, Access token secrets, Dokploy dependency, and network ECONNRESET
 jitter while completely isolating scratch database creation and teardown from the
-Supabase staging project. Supabase staging retains staging application data and
-staging Auth smoke checks.
+Supabase staging project. Supabase staging retains staging Auth smoke checks
+only — staging application data now lives in `coffeemode-staging-db` (§2).
 Local development keeps a **local** `postgis/postgis:16-3.4` container as the
 default `DATABASE_URL` for app data, while auth defaults to the **staging**
 Supabase project (§3). Rationale: local writes must never pollute shared staging

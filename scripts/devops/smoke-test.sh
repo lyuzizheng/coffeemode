@@ -208,7 +208,9 @@ assert_test "Image upload API contract (/api/images/upload)" \
   "STATUS=\$(curl -s -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" -o /dev/null -w '%{http_code}' -X POST '${BASE_URL}/api/images/upload'); \
    [[ \"\$STATUS\" =~ ^(200|400|401|403)$ ]]"
 
-# 9. Keepalive probe (BRAWUKA-284): real DB round-trip, Better Stack polls this.
+# 9. Keepalive probe (BRAWUKA-284): real DB round-trip. Nothing polls this on a
+# schedule since the uptime monitor was deleted (BRAWUKA-611); this smoke test is
+# the only caller until the P1-1 cron Worker probe lands.
 # Asserts {"db":"up"} when database is connected. On staging where DATABASE_URL is pending
 # (docs/agent/pending-user-actions.md #41), accepts fail-closed {"error":"db_unavailable"}.
 assert_test "Heartbeat probe (/api/heartbeat)" \

@@ -53,7 +53,7 @@ onboarding:
   maxRequests: 10
 
 # Keepalive + runtime-config reads (BRAWUKA-284): public, unauthenticated, and
-# hit every 5-10 min by Better Stack + every page view. Sized like cafes-read;
+# hit by the smoke test + every page view. Sized like cafes-read;
 # abuse is bounded by the edge 300/min flood rule (BRAWUKA-237), not this bucket.
 heartbeat:
   windowMs: 60000

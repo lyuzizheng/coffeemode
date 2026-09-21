@@ -28,7 +28,9 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 
 空栈的证据：Loki `label names` 返回 `[]`；Tempo 只有 intrinsic scope，没有任何 resource/span 属性；Prometheus 查不到任何非 `grafanacloud_*` 的 series；`/api/v1/provisioning/alert-rules` 返回 `[]`。
 
-### 1.2 Better Stack 侧（当前唯一的可观测性）
+### 1.2 Better Stack 侧（评审时的唯一可观测性 —— **已全部删除，BRAWUKA-611**）
+
+> 下表是 2026-09-21 评审时的快照，保留作为迁移前的基线记录。**这些资源现在都不存在了**：4 个 source、2 个 dashboard、4 条 chart alert、1 个 uptime monitor 全部删除，账号下已无 CoffeeMode 资源。
 
 | 类型 | 内容 |
 |---|---|
@@ -39,10 +41,10 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 | Heartbeat | 无 |
 | Status page | 无 |
 
-**两条独立的写入路径**，不是一条：
+**两条独立的写入路径**，不是一条 —— **两条都已退役（BRAWUKA-607 / BRAWUKA-611）**：
 
-- `rate-limit-alert.ts` → `BETTER_STACK_INGEST_URL` / `_TOKEN` → `coffeemode-rate-limit-*`（限流命中）
-- ~~`api-error-sink.ts` → `BETTER_STACK_ERRORS_INGEST_URL` / `_TOKEN` → `coffeemode-api-errors-*`（error / warn 行，spec 0011 D8 / BRAWUKA-541）~~ **已删除（BRAWUKA-607）**：error / warn / access 行改走 OTLP 进 Grafana Cloud Loki，`BETTER_STACK_ERRORS_INGEST_*` 两个变量一并移除。
+- ~~`rate-limit-alert.ts` → Better Stack ingest → `coffeemode-rate-limit-*`（限流命中）~~ **已删除（BRAWUKA-611）**：限流命中改走 `logWarn` 结构化日志，经 OTLP 进 Grafana Cloud Loki，由 `CoffeeMode — Rate-limit flood` 规则告警。
+- ~~`api-error-sink.ts` → Better Stack ingest → `coffeemode-api-errors-*`（error / warn 行，spec 0011 D8 / BRAWUKA-541）~~ **已删除（BRAWUKA-607）**：error / warn / access 行改走 OTLP 进 Grafana Cloud Loki。
 
 **实际数据量**（2026-09-21 经 Better Stack query API 查，含冷存）：rate-limit staging 7 行（02:47–07:20）、rate-limit prod 0 行；api-errors staging 27 行（07:20–07:36）、api-errors prod 0 行。api-errors 那 27 行**全部是合成事件**（`route: "GET /api/__synthetic_alert"`），没有一条真实应用错误。
 
@@ -203,17 +205,21 @@ resource 只有 `service.name` + `deployment.environment.name`（刻意不用 `d
 - **必须继续打 `/api/heartbeat`**，不能只打 `/api/health` —— 它的 DB round-trip 是 Supabase 免费档 staging 项目的 keepalive（BRAWUKA-284）。5 分钟间隔正好。
 - **probe 的 UA / IP 段要先加进 WAF 白名单**（BRAWUKA-237），否则 curl 默认 UA 在边缘就被 challenge，uptime 全是假阴性。
 
-#### P1-2 Grafana Alerting 替代 4 条 chart alert
+#### P1-2 Grafana Alerting 替代 4 条 chart alert — **已交付（BRAWUKA-611，2026-09-21）**
 
 现在 Better Stack 有 `5xx sustained on a route` 和 `Worker upstream_error spike`，staging / prod 各一套。
 
-**注意这 4 条 alert 依赖 `api-error-sink.ts` → `coffeemode-api-errors-*` 这条写入路径**（见 §1.2），和限流那条是分开的。~~所以「替代 chart alert」不只是重写 4 条规则，还要把这条 ingest 一起迁走 —— 否则拆掉 Better Stack 时，`api-error-sink.ts` 会变成往一个已停用 source 发数据的死代码。~~ **写入路径已迁走（BRAWUKA-607）**：`api-error-sink.ts` 删除，error / warn 行改走 OTLP 进 Loki，所以这 4 条 alert 现在没有数据源了 —— 替代它们的是 Grafana-managed alert rules（P0-4）。另外它们至今只被合成事件验证过，迁移前应该先在真实流量上确认一次。
+**注意这 4 条 alert 依赖 `api-error-sink.ts` → `coffeemode-api-errors-*` 这条写入路径**（见 §1.2），和限流那条是分开的。~~所以「替代 chart alert」不只是重写 4 条规则，还要把这条 ingest 一起迁走 —— 否则拆掉 Better Stack 时，`api-error-sink.ts` 会变成往一个已停用 source 发数据的死代码。~~ **写入路径已迁走（BRAWUKA-607）**：`api-error-sink.ts` 删除，error / warn 行改走 OTLP 进 Loki，所以这 4 条 alert 现在没有数据源了 —— 替代它们的是 Grafana-managed alert rules（P1-2）。另外它们至今只被合成事件验证过，迁移前应该先在真实流量上确认一次。
 
 目标：Grafana-managed alert rules，数据源用 Loki（日志派生）或 spanmetrics（trace 派生）。
 
 - 通知先接 Slack / 邮件 contact point。
 - notification policy 按 `env` label 分流，staging 低优先级。
 - 保留 `for:` 窗口避免抖动。
+
+**交付结果**：`CoffeeMode` folder 下 6 条 Grafana-managed 规则（5xx / worker `upstream_error` / rate-limit flood × staging / prod），全部 LogQL 走 Loki 的 `service_name` + `deployment_environment_name` 两个 label，`for:` 窗口 5m / 5m / 10m，标签带 `env` / `severity` / `team`，不设 per-rule receiver。Better Stack 侧 4 个 source、2 个 dashboard、4 条 chart alert、1 个 uptime monitor 全部删除，两个 ingest 环境变量也从代码和 Dokploy 里移除。
+
+**未完成的一环**：通知路径。Stack 上没有任何 contact point，默认 policy 的 receiver 是内置 no-op `empty`，所以规则会 firing 但不会通知任何人。**原因不是缺权限** —— `/api/access-control/user/permissions` 列出了 403 报错里点名的每一个权限（`alert.notifications.provisioning:write` / `alert.notifications:write` / `alert.notifications.receivers:create` / `alert.notifications.routes:write` / `alert.provisioning.provenance:write`），但五条写入路径全部被拒（两个 provisioning 端点 403，legacy 与 alertmanager 端点 404，k8s 风格端点 403 `invalid namespace`）。实际授权比 RBAC 角色报告的更窄，多半是 MCP 的 OAuth token scope 与角色取交集所致 —— 修法在 MCP 授权层，不是补一个权限。需要 Owner 授权或手工在 UI 里建 contact point + `env` 分流 policy，JSON 见 `docs/agent/pending-user-actions.md` §10。
 
 #### P1-3 Dashboards 替代 2 个 Better Stack dashboard
 
@@ -272,7 +278,7 @@ graph TD
 
 ## 6. 已拍板的决定（Reviewer & Architect，2026-09-21）
 
-1. **日志：不切，双跑到 P1 验证完。** stdout 是唯一完整记录（ADR-0004），Alloy 收它不影响 Better Stack sink。~~`api-error-sink.ts` 和 rate-limit POST 保持开启；Grafana Alerting 验证通过后删 sink + env vars（`BETTER_STACK_*_INGEST_*`），不是改 Alloy 配置。~~ **部分已执行（BRAWUKA-607）**：`api-error-sink.ts` 与 `BETTER_STACK_ERRORS_INGEST_*` 已删除 —— 日志改走 OTLP 进 Loki，不再需要 Alloy 收 stdout。rate-limit POST 与 `BETTER_STACK_INGEST_*` 保持开启，等 Grafana Alerting 验证通过后再删。
+1. **日志：不切，双跑到 P1 验证完。** stdout 是唯一完整记录（ADR-0004）。~~`api-error-sink.ts` 和 rate-limit POST 保持开启；Grafana Alerting 验证通过后删 sink + env vars，不是改 Alloy 配置。~~ **已全部执行（BRAWUKA-607 + BRAWUKA-611）**：`api-error-sink.ts` 与 rate-limit POST 都已删除，两个 sink 的 env vars 一并移除 —— 日志改走 OTLP 进 Loki，不再需要 Alloy 收 stdout，也不再需要任何第三方 ingest 凭据。**双写期被 Owner 取消**（§6 决定 1 修订版）：现有告警面从未在真实流量上生效，没有空窗风险。
 2. **Better Stack：全退，但分两步。** P1-1 synthetic 验证通过前保留 uptime monitor，之后全退。没有要重建的 status page / heartbeat（Better Stack 侧本来就没有）。
 3. ~~**OTel 采样：prod 10% `parentbased_traceidratio` 起步，staging 100%。**~~ **已由 Owner 于 2026-09-21 推翻：不采样，100% 全采。** 理由：head sampling 在根 span 上丢整条 trace，而 `traces_spanmetrics_*` 是从实际到达的 span 派生的 —— 0.1 的比率会让每个 RED 计数只有真实值的十分之一，静默破坏 P0-3 依赖的告警。量级远低于 50 GB 免费档，采样省不下什么却牺牲正确性；真涨上来时解法是 tail sampling（保留全部错误 + 慢 trace），不是 head ratio。原决定保留备查：staging 量小，全采方便调试；prod 一周后看用量再调。接受的代价：head sampling 下 90% 的错误 trace 会丢，靠日志补 —— 这正是 P0-1 先做的理由。
 4. **rate-limit：保留逐条事件，但改成结构化日志，不是 counter。** 429 命中是低频安全相关事件，`client_id` / `bucket` / `retry_after` 有排查价值，量也吃不垮 50 GB。做法：`emitRateLimitAlert` 里每个事件走 `logWarn` 打一条 JSON（`client_id` 进 structured metadata，不做 label），现有 10s 节流的 `console.warn` 保留只用于本地降噪。counter 可以之后用 spanmetrics 或 LogQL metric query 派生，不需要应用侧埋点。

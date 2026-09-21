@@ -1206,8 +1206,10 @@ registered in the same YAML so all limits live in one place); auth
 attempts.
 
 Search endpoints get a per-IP `search` bucket: 30/min, 100/hour, 200/day
-(multi-window); hitting any limit fires an alert via Better Stack (owner
-action pending) alongside Cloudflare observability (DG129). Values'
+(multi-window); hitting any limit fires an alert — originally a third-party
+ingest (owner action, since retired), now the Grafana-managed
+`CoffeeMode — Rate-limit flood` rule (BRAWUKA-611) — alongside Cloudflare
+observability (DG129). Values'
 canonical home is `web/config/rate-limits.yaml`.
 ```
 

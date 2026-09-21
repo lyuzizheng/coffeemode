@@ -126,8 +126,8 @@ so a key restricted to the legacy Places API would 403 every live search.
   - `workers_dev = false` pinned in `poi-service/wrangler.toml` and `image-service/wrangler.toml`.
   - Token auth (`x-poi-service-token` / `x-image-service-token`) verified end-to-end (401/403 without token; 200 with token).
 - [ ] Enable the Cloudflare "Add visitor location headers" Managed Transform on the zone (sends `CF-IPCity` / `CF-IPCountry`; default-city resolution per DG128)
-- [x] Better Stack account + per-environment sources for rate-limit/observability alerts (DG129, BRAWUKA-235): sources `coffeemode-rate-limit-staging` and `coffeemode-rate-limit-prod` (HTTP platform, team `Your team`, created 2026-09-17 via MCP). Live wiring verified same day: one synthetic `rate_limited` event per source, each confirmed back through the Better Stack query API within ~1 min. What remains is owner-side paste (values never go in chat/docs/repo): in the **Dokploy staging app env** set `BETTER_STACK_INGEST_URL` to the staging source host and `BETTER_STACK_INGEST_TOKEN` to the staging source token, same for **prod** with the prod source's own pair (Better Stack dashboard → Logs → each source → ingestion details). App code sends `Authorization: Bearer BETTER_STACK_INGEST_TOKEN` (see `web/lib/observability/rate-limit-alert.ts`); both vars are server-only (spec 0010 — never `NEXT_PUBLIC_*`). Never reuse one env's pair in the other — per-env filtering depends on it. Optional follow-up (not blocking): per-source alert rules (`rate_limited` → low-severity, `rate_limiter_fail_open` → immediate P1).
-- [x] ~~Better Stack `coffeemode-api-errors` source pair for the API error/warn JSON lines (spec 0011 D8, BRAWUKA-541)~~ **Superseded by BRAWUKA-607** — the `api-error-sink.ts` hook and the `BETTER_STACK_ERRORS_INGEST_*` pair are deleted; error / warn / access lines now go to Grafana Cloud Loki over OTLP (`web/lib/observability/otlp-logs.ts`). The Better Stack sources, dashboards, and chart alerts still exist but no longer receive data — retiring them is P0-4 in `docs/devops/grafana-cloud-adoption.md`. No owner action remains here.
+- [x] ~~Better Stack account + per-environment sources for rate-limit/observability alerts (DG129, BRAWUKA-235)~~ **Retired by BRAWUKA-611 (2026-09-21)** — the four CoffeeMode sources, both dashboards, all four chart alerts and the `coffeemood.com` uptime monitor are deleted, and the two ingest env vars are removed from both Dokploy apps (staging and prod verified clean). The rate-limit event now reaches Grafana Cloud Loki as a structured `logWarn` line (`code: "rate_limited"`) and is alerted on by `CoffeeMode — Rate-limit flood`. **No owner action remains here — do not paste ingest credentials.**
+- [x] ~~Better Stack `coffeemode-api-errors` source pair for the API error/warn JSON lines (spec 0011 D8, BRAWUKA-541)~~ **Superseded by BRAWUKA-607, closed out by BRAWUKA-611** — the `api-error-sink.ts` hook and its ingest-credential pair are deleted; error / warn / access lines go to Grafana Cloud Loki over OTLP (`web/lib/observability/otlp-logs.ts`). The Better Stack sources, dashboards and chart alerts that used to receive them are now deleted too, and the replacement Grafana alert rules live in the `CoffeeMode` folder. No owner action remains here.
 
 ## 8. Kimi K3 UI design artifacts
 
@@ -163,7 +163,30 @@ Agents are wired to the official Grafana Cloud MCP; it needs a stack to talk to.
 - [x] Point agents at the hosted endpoint `https://mcp.grafana.com/mcp` with OAuth 2.1 + dynamic client registration — `grafana` entry in `~/.omp/agent/mcp.json`, and `hermes mcp install grafana` in `~/.hermes/config.yaml`. See `docs/devops/mcp-servers.md`.
 - [ ] Create the Grafana Cloud stack (grafana.com — the free tier is enough) and grant the connecting user the `Assistant Cloud MCP User` role (Editor or higher has it by default; that covers read + query scope only — write scope needs `Assistant Admin`). Assistant must be available on the stack with its terms accepted.
 - [ ] Authorize the MCP client: omp opens a browser on first connect; Hermes needs `hermes mcp login grafana`. Both ask for the stack URL (`https://<stack>.grafana.net`) and show read / query / write as three separate checkboxes. Restart the agent session afterwards so the tools load.
-- [ ] (Optional) Decide whether the rate-limit alert sink (`web/lib/observability/rate-limit-alert.ts`, DG129) moves from Better Stack to Grafana Cloud. Nothing changes until that call is made; the Better Stack sources stay live meanwhile.
+- [x] ~~(Optional) Decide whether the rate-limit alert sink (`web/lib/observability/rate-limit-alert.ts`, DG129) moves from Better Stack to Grafana Cloud.~~ **Decided and done (BRAWUKA-611, 2026-09-21)** — the sink is Grafana-only now; the Better Stack POST is deleted from the hook.
+
+### Alerting notification path (BRAWUKA-611) — blocked on write scope
+
+The six CoffeeMode alert rules exist and evaluate, but **nothing can notify yet**: the stack has no contact point at all, and the default notification policy's receiver is the built-in no-op `empty`.
+
+**This is already costing visibility**: at 2026-09-21 13:24 UTC the uptime rule (`CoffeeMode — Uptime probe failing`, BRAWUKA-608) had been firing for ~1.5 h on a real outage — `cafemood.app` answers 502 (BRAWUKA-500) — with no notification sent.
+
+**The cause is not a missing permission, so don't go looking for one to grant.** `GET /api/access-control/user/permissions` (identity `brabalawuka`, org 1, not a Grafana admin) lists *every* alternative the 403 names: `alert.notifications.provisioning:write`, `alert.notifications:write`, `alert.notifications.receivers:create`, `alert.notifications.routes:write`, `alert.provisioning.provenance:write`. All five write paths are still refused:
+
+| Attempt | Result |
+| --- | --- |
+| `POST /api/v1/provisioning/contact-points` | 403 `Access denied` |
+| `PUT /api/v1/provisioning/policies` | 403 `Access denied` |
+| `POST /api/alert-notifications` (legacy) | 404 |
+| `POST /api/alertmanager/grafana/config/api/v1/receivers` | 404 |
+| `POST /apis/notifications.alerting.grafana.app/…/receivers` | 403 `invalid namespace` (tried `default`, `stacks-1795570`, `lyuzizheng`) |
+
+The effective grant is narrower than the reported RBAC role — most likely the hosted MCP server's OAuth token carries a scope set that Grafana intersects with the role. So the fix is at the **MCP grant level** (the `Assistant Admin` role / re-authorizing the MCP client with write scope), not a permission to add to the user.
+
+- [ ] Either grant the MCP connection write scope (the `Assistant Admin` role — the same grant item above asks for), or apply the two changes by hand in **Alerting → Contact points** and **Alerting → Notification policies**. The intended end state:
+  - Contact point `coffeemode-email`, type `email`, address `lvzizhengde@gmail.com`, `singleEmail: false`, `disableResolveMessage: false`. Swap in a Slack webhook later if you prefer — the rules carry `env` / `severity` / `team` labels, so only the receiver changes.
+  - Notification policy: root route → receiver `coffeemode-email`, `group_by: ["alertname","env","route"]`, `group_wait: 30s`, `group_interval: 5m`, `repeat_interval: 4h`; one child route with matcher `env="staging"` → same receiver, `repeat_interval: 24h` (staging is low priority). The rules deliberately set no per-rule receiver, so this tree is the single place routing is decided.
+  - Verify: Alerting → Contact points → `coffeemode-email` → **Test**, then confirm a real notification arrives.
 
 ### Application telemetry — OTLP gateway credential (BRAWUKA-606)
 

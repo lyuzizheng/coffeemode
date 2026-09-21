@@ -33,55 +33,75 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
 ## Checklist — Application layer
 
 - `rate-limit-alert` hook (DG129, `web/lib/observability/rate-limit-alert.ts`)
-  emits a throttled `console.warn` always, and POSTs to the per-environment
-  Better Stack HTTP source when `BETTER_STACK_INGEST_URL` (source host) is set
-  on the app container, authenticating with `Authorization: Bearer
-  BETTER_STACK_INGEST_TOKEN`. Staging posts to `coffeemode-rate-limit-staging`,
-  prod to `coffeemode-rate-limit-prod` — separate sources so env filtering is
-  structural. Both vars are server-only (spec 0010). One event shape
-  (BRAWUKA-378 removed the `fail_open` path with the Postgres backend):
-  - `rate_limited` (level `warn`) — a bucket denied a request.
-- In Better Stack, create an alert on each ingest source:
-  `event:rate_limited` → low-severity notification.
-  The event carries `bucket`, `client_id`, `window_ms`, `max_requests`,
-  `retry_after`, `route`. Verified 2026-09-17: synthetic `rate_limited`
-  events round-tripped on both sources (ingest 202 → query-visible within
-  ~1 min). If a legacy `rate_limiter_fail_open` alert still exists from
-  before BRAWUKA-378, delete it — that event can no longer fire.
-- `api-error-sink` hook (spec 0011 D8, `web/lib/observability/api-error-sink.ts`)
-  ships every `logError`/`logWarn` JSON line to the per-environment
-  `coffeemode-api-errors` source when `BETTER_STACK_ERRORS_INGEST_URL` (source
-  host) is set on the app container, authenticating with `Authorization: Bearer
-  BETTER_STACK_ERRORS_INGEST_TOKEN`. Staging posts to
-  `coffeemode-api-errors-staging`, prod to `coffeemode-api-errors-prod` — same
-  structural env split as the rate-limit pair, both vars server-only (spec
-  0010). The proxy's `type:"access"` lines are deliberately NOT shipped: the
-  proxy runs before routing, so its response is always the 200
-  `NextResponse.next()` and it never sees the route's status or envelope
-  `code` (verified against a running dev server — a 404 page logs
-  `"status":200`). The error lines carry the real `status` and `code`, so they
-  are the metric source. Verified 2026-09-21: synthetic `internal_error` lines
-  round-tripped on both sources (ingest 202 → query-visible within ~1 min).
-- Better Stack `CoffeeMode API Errors (staging)` / `(prod)` dashboards (team
-  `Your team`, group `CoffeeMode API Errors`): 5xx by `route`, error-`code`
-  histogram, worker `upstream_error` count, plus 429 by `bucket` from the
-  matching rate-limit source. Two chart alerts per dashboard: *5xx sustained on
-  a route* and *Worker `upstream_error` spike* — both "any breach in a 60 s
-  bucket, sustained 5 min, auto-resolve after 5 min", one incident per series.
-  Verified 2026-09-21: a synthetic `internal_error` stream on staging produced
-  an incident on the staging 5xx alert.
-- **One source per dashboard — a chart alert cannot resolve a source
-  variable.** `create_chart_alert` binds the alert to the chart's source at
-  creation. If the dashboard's `source` variable was written with
-  `set_dashboard_variable`, the alert silently binds to the team's *default*
-  source instead (observed: `source:onboarding_real_time_flights:logs`) and
-  never fires on this data. Set the dashboard's source only through
-  `create_dashboard(source_id: …)` and let the chart save auto-create the
-  variable; extra *custom-named* source variables (`rate_limit_source`) and
-  sections are fine. If an alert's `Source Variable` line does not name the
-  expected `coffeemode-*` source, delete and recreate it.
-- **Known coverage gap**: the dashboards count 5xx that emitted an error/warn
-  line. A handler that *returns* a 5xx envelope without logging — today only
+  emits one unthrottled structured `logWarn` line per denial, plus a throttled
+  (10 s) `console.warn` for local noise reduction. The line carries `bucket`,
+  `client_id`, `client_ip`, `retry_after`, `route`, `status: 429` and
+  `code: "rate_limited"`. One event shape (BRAWUKA-378 removed the `fail_open`
+  path with the Postgres backend): `rate_limited` — a bucket denied a request.
+  There is no second sink: the Better Stack POST that used to sit beside the
+  log line was removed with Better Stack itself (BRAWUKA-611), so the log line
+  is the only record and the only thing the alert rule reads.
+- `otlp-logs` hook (BRAWUKA-607, `web/lib/observability/otlp-logs.ts`) ships
+  every `logError`/`logWarn` JSON line — and the proxy's `type:"access"` line —
+  to Grafana Cloud Loki over OTLP, on the same SDK and endpoint as traces
+  (`OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS`, BRAWUKA-606).
+  It replaced the retired `api-error-sink` hook (spec 0011 D8, BRAWUKA-541) and
+  its ingest-credential pair, both of which are gone. Unset endpoint means
+  no SDK and no export attempts, so local dev and CI stay stdout-only.
+  Because the line is emitted inside the request's span, it carries `trace_id` /
+  `span_id` and clicks through to its Tempo trace — the reason the Alloy stdout
+  collector was dropped (docs/devops/grafana-cloud-adoption.md §3 P0-1).
+  The proxy's access line records the request, not an outcome: the proxy runs
+  before routing, so its response is always the 200 `NextResponse.next()` and it
+  never sees the route's status or envelope `code` (verified against a running
+  dev server — a 404 page logs `"status":200`). The error lines carry the real
+  `status` and `code`, so they remain the metric source.
+- **Loki label vocabulary** — Grafana Cloud promotes a fixed list of OTLP
+  resource attributes to Loki index labels and puts everything else in
+  structured metadata. The app's lines therefore index on exactly two labels,
+  `service_name="coffeemode-web"` and `deployment_environment_name`
+  (`staging` / `production`, from `OTEL_RESOURCE_ATTRIBUTES`), and every
+  queryable field — `log_type`, `route`, `status`, `code`, `bucket`,
+  `client_id`, `client_ip`, `request_id`, `retry_after` — is structured
+  metadata, filtered with `| field="value"` and no `| json` parse. There is no
+  `service` or `env` label; a query using them silently matches nothing.
+- **Alert rules** (BRAWUKA-611, folder `CoffeeMode`) — six Grafana-managed
+  rules, one per signal per environment, all LogQL over the two labels above:
+  - `CoffeeMode — 5xx sustained on a route (prod|staging)` —
+    `sum by (route) (count_over_time({…} | log_type="error" | status=~"5.." [1m])) > 5`, `for: 5m`.
+  - `CoffeeMode — Worker upstream_error spike (prod|staging)` —
+    `sum by (route) (count_over_time({…} | log_type="error" | code="upstream_error" [1m])) > 3`, `for: 5m`.
+    Counts the web app's view of a failing Cloudflare Worker call; the Workers
+    themselves log to Cloudflare, not to Loki.
+  - `CoffeeMode — Rate-limit flood (prod|staging)` —
+    `sum by (bucket) (count_over_time({…} | code="rate_limited" [1m])) > 50`, `for: 10m`.
+  Each rule carries `env=prod|staging`, `severity` and `team=coffeemode`, and
+  sets no per-rule receiver, so routing is decided in one place — the
+  notification policy.
+- **The notification path is not wired yet — and this is not hypothetical.** The
+  stack has no contact point and the default policy receiver is the built-in
+  no-op `empty`, so a firing rule notifies nobody. As of 2026-09-21 13:24 UTC
+  the sibling uptime rule (`CoffeeMode — Uptime probe failing`, BRAWUKA-608)
+  had been in `firing` for ~1.5 h on a genuine production outage —
+  `cafemood.app` returns 502 (BRAWUKA-500) — and no one was paged.
+  **The cause is not a missing permission.** `GET
+  /api/access-control/user/permissions` lists every alternative the 403 names —
+  `alert.notifications.provisioning:write`, `alert.notifications:write`,
+  `alert.notifications.receivers:create`, `alert.notifications.routes:write`,
+  `alert.provisioning.provenance:write` — yet all five write paths are refused:
+  `POST /api/v1/provisioning/contact-points` and `PUT
+  /api/v1/provisioning/policies` answer 403, the legacy
+  `/api/alert-notifications` and `/api/alertmanager/grafana/config/api/v1/receivers`
+  answer 404, and the k8s-style
+  `/apis/notifications.alerting.grafana.app/.../receivers` answers 403
+  `invalid namespace` for every namespace tried. The effective grant is
+  narrower than the reported RBAC role — most likely the hosted MCP server's
+  OAuth token carries a scope set that Grafana intersects with the role. So the
+  fix is at the MCP grant level, not a permission to add. See
+  `docs/agent/pending-user-actions.md` §10 for the exact JSON to apply by hand
+  in the meantime.
+- **Known coverage gap**: the rules count 5xx that emitted an error/warn line.
+  A handler that *returns* a 5xx envelope without logging — today only
   `GET /api/mapkit-token` (`mapkit_token_error`) — is not counted. The
   `apiRoute` catch-all path always logs, so unexpected throws are covered.
 - Workers Observability: `poi-service-prod` / `image-service-prod` logs for

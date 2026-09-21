@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { handleFetch } from "../src/handlers";
-import type { Env, POI } from "../src/types";
-import { FakeD1, FakeKV, googleDetailResponse, mockFetch } from "./helpers";
+import type { Env, POI, PlacePrediction } from "../src/types";
+import { FakeD1, FakeKV, autocompleteSuggestion, googleDetailResponse, mockFetch } from "./helpers";
 
 const TOKEN = "test-token";
 
@@ -34,8 +34,10 @@ async function call(
   return handleFetch(req, env, { fetchImpl: opts.fetchImpl ?? fetch });
 }
 
-async function bodyOf(res: Response): Promise<Record<string, unknown>> {
-  return (await res.json()) as Record<string, unknown>;
+/** Decode a JSON response body. The cast is the boundary decode — the
+ *  assertion that follows is what proves the shape. */
+async function bodyOf<T = Record<string, unknown>>(res: Response): Promise<T> {
+  return (await res.json()) as T;
 }
 
 describe("health and info", () => {
@@ -499,15 +501,29 @@ describe("POST /poi/resolve", () => {
     expect((await bodyOf(res)).place_id).toBe("ChIJTEST123");
   });
 
-  it("falls back to text search when the URL has a query but no place id", async () => {
+  it("resolves a query-only URL through autocomplete then details", async () => {
     const env = makeEnv();
     const fetchImpl = vi.fn(
       mockFetch((url, init) => {
-        if (String(url).includes("searchText")) {
-          const reqHeaders = init?.headers as Record<string, string> | undefined;
-          expect(reqHeaders?.["X-Goog-FieldMask"]).toMatch(/^places\./);
-          expect(JSON.parse(String(init?.body))).toMatchObject({ textQuery: "blue bottle" });
-          return new Response(JSON.stringify({ places: [googleDetailResponse()] }), { status: 200 });
+        if (String(url).includes("places:autocomplete")) {
+          const body = JSON.parse(String(init?.body)) as { input?: string; sessionToken?: string };
+          expect(body.input).toBe("blue bottle");
+          // The session must be a real UUID: Google ignores anything else and
+          // the lookup would silently bill per request.
+          expect(body.sessionToken).toMatch(/^[0-9a-f-]{36}$/);
+          return new Response(
+            JSON.stringify({ suggestions: [autocompleteSuggestion({ placeId: "ChIJTEST123" })] }),
+            { status: 200 },
+          );
+        }
+        if (String(url).includes("/v1/places/ChIJTEST123")) {
+          // The Details call must carry the SAME token, or the session never
+          // terminates and the Autocomplete calls are billed.
+          const autocompleteToken = (
+            JSON.parse(String(fetchImpl.mock.calls[0][1]?.body)) as { sessionToken: string }
+          ).sessionToken;
+          expect(String(url)).toContain(`sessionToken=${autocompleteToken}`);
+          return new Response(JSON.stringify(googleDetailResponse()), { status: 200 });
         }
         return new Response("unexpected", { status: 500 });
       }),
@@ -863,128 +879,88 @@ describe("GET /poi/search", () => {
   });
 });
 
-describe("GET /poi/search/external", () => {
-  it("searches Google, stores food/cafe results, attaches not_persisted_reason for non-food, and omits location-less", async () => {
+describe("GET /poi/autocomplete", () => {
+  const SESSION = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
+
+  it("returns predictions and persists nothing", async () => {
     const env = makeEnv();
     const fetchImpl = mockFetch((url) => {
-      expect(String(url)).toContain("places.test/v1/places:searchText");
+      expect(String(url)).toContain("places.test/v1/places:autocomplete");
       return new Response(
         JSON.stringify({
-          places: [
-            googleDetailResponse({ id: "ChIJLIVE", types: ["cafe", "coffee_shop"] }),
-            googleDetailResponse({ id: "ChIJNONFOOD", types: ["bank", "atm"] }),
-            googleDetailResponse({ id: "ChIJNOLOCATION", location: undefined }),
+          suggestions: [
+            autocompleteSuggestion({ placeId: "ChIJLIVE" }),
+            autocompleteSuggestion({ placeId: "ChIJNOLOCATION" }),
           ],
         }),
         { status: 200 },
       );
     });
 
-    const res = await call("GET", "/poi/search/external?q=blue%20bottle&r=5", env, { fetchImpl });
-
-    expect(res.status).toBe(200);
-    const body = (await bodyOf(res)) as { results: POI[] };
-    // ChIJNOLOCATION is omitted (no coordinates)
-    expect(body.results).toHaveLength(2);
-    expect(body.results[0]).toMatchObject({ place_id: "ChIJLIVE", source: "google" });
-    expect(body.results[0].not_persisted_reason).toBeUndefined();
-    expect(body.results[1]).toMatchObject({
-      place_id: "ChIJNONFOOD",
-      source: "google",
-      not_persisted_reason: "non_food_category",
+    const res = await call("GET", `/poi/autocomplete?q=blue%20bottle&r=5&session=${SESSION}`, env, {
+      fetchImpl,
     });
 
-    // DG144/DG52: Only food/cafe result is persisted to D1
-    expect((env.POI_DB as FakeD1).rows.map((row) => row.place_id)).toEqual(["ChIJLIVE"]);
+    expect(res.status).toBe(200);
+    const body = await bodyOf<{ predictions: PlacePrediction[] }>(res);
+    expect(body.predictions).toHaveLength(2);
+    expect(body.predictions[0]).toMatchObject({
+      place_id: "ChIJLIVE",
+      name: "Blue Bottle Coffee",
+      address: "Mint St, San Francisco",
+    });
+    // A prediction has no coordinates, so there is no POI to store — the
+    // billed Place Details call on selection is what persists.
+    expect((env.POI_DB as FakeD1).rows).toHaveLength(0);
+  });
+
+  it("forwards the session token and location bias upstream", async () => {
+    const env = makeEnv();
+    let sent: Record<string, unknown> = {};
+    const fetchImpl = mockFetch((_url, init) => {
+      sent = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(JSON.stringify({ suggestions: [] }), { status: 200 });
+    });
+
+    await call("GET", `/poi/autocomplete?q=kopi&lat=1.29&lng=103.85&r=5&session=${SESSION}`, env, {
+      fetchImpl,
+    });
+
+    expect(sent).toMatchObject({
+      input: "kopi",
+      sessionToken: SESSION,
+      locationBias: { circle: { center: { latitude: 1.29, longitude: 103.85 }, radius: 5000 } },
+    });
   });
 
   it("requires a text query", async () => {
-    const res = await call("GET", "/poi/search/external", makeEnv());
+    const res = await call("GET", `/poi/autocomplete?session=${SESSION}`, makeEnv());
     expect(res.status).toBe(400);
   });
 
-  it("serves a repeat external search from the query cache without hitting Google (BRAWUKA-283 P2-2)", async () => {
-    const env = makeEnv();
-    const fetchImpl = vi.fn(
-      mockFetch(() =>
-        new Response(
-          JSON.stringify({
-            places: [googleDetailResponse({ id: "ChIJQUERYCACHE", types: ["cafe"] })],
-          }),
-          { status: 200 },
-        ),
-      ),
-    );
-
-    const first = await call("GET", "/poi/search/external?q=blue%20bottle&r=5", env, { fetchImpl });
-    expect(first.status).toBe(200);
-    const firstBody = (await bodyOf(first)) as { results: POI[] };
-    expect(firstBody.results).toHaveLength(1);
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-
-    // Whitespace/case variants normalize to the same key; the second call
-    // must not touch the upstream fetch at all.
-    const second = await call("GET", "/poi/search/external?q=%20Blue%20%20BOTTLE%20&r=5", env, {
-      fetchImpl,
-    });
-    expect(second.status).toBe(200);
-    const secondBody = (await bodyOf(second)) as { results: POI[] };
-    expect(secondBody.results).toHaveLength(1);
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  it("rejects a session token that is not a UUID", async () => {
+    // Google silently drops a malformed token, which reverts the whole
+    // session to per-request billing — so this is a cost guard.
+    const res = await call("GET", "/poi/autocomplete?q=kopi&session=not-a-uuid", makeEnv());
+    expect(res.status).toBe(400);
   });
 
-  it("scopes the query cache by coordinate grid (BRAWUKA-283 P2-2)", async () => {
+  it("caps the number of predictions", async () => {
     const env = makeEnv();
-    const fetchImpl = vi.fn(
-      mockFetch(() =>
-        new Response(
-          JSON.stringify({
-            places: [googleDetailResponse({ id: "ChIJQUERYGRID", types: ["cafe"] })],
-          }),
-          { status: 200 },
-        ),
+    const fetchImpl = mockFetch(() =>
+      new Response(
+        JSON.stringify({
+          suggestions: Array.from({ length: 150 }, (_, i) =>
+            autocompleteSuggestion({ placeId: `ChIJ${i}` }),
+          ),
+        }),
+        { status: 200 },
       ),
     );
 
-    const near = await call("GET", "/poi/search/external?q=kopi&lat=1.291&lng=103.851&r=5", env, {
-      fetchImpl,
-    });
-    expect(near.status).toBe(200);
-    // Same 0.01° cell → cache hit; a cell away → fresh upstream call.
-    const sameCell = await call("GET", "/poi/search/external?q=kopi&lat=1.299&lng=103.859&r=5", env, {
-      fetchImpl,
-    });
-    expect(sameCell.status).toBe(200);
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    const otherCell = await call("GET", "/poi/search/external?q=kopi&lat=1.35&lng=103.92&r=5", env, {
-      fetchImpl,
-    });
-    expect(otherCell.status).toBe(200);
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-  });
-
-  it("caches an all-non-food upstream hit so the repeat skips Google (BRAWUKA-283 P2-2)", async () => {
-    const env = makeEnv();
-    const fetchImpl = vi.fn(
-      mockFetch(() =>
-        new Response(
-          JSON.stringify({
-            places: [googleDetailResponse({ id: "ChIJONLYBANK", types: ["bank", "atm"] })],
-          }),
-          { status: 200 },
-        ),
-      ),
-    );
-
-    const first = await call("GET", "/poi/search/external?q=atm&r=5", env, { fetchImpl });
-    expect(first.status).toBe(200);
-    expect(((await bodyOf(first)) as { results: POI[] }).results).toHaveLength(1);
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-
-    const second = await call("GET", "/poi/search/external?q=atm&r=5", env, { fetchImpl });
-    expect(second.status).toBe(200);
-    expect(((await bodyOf(second)) as { results: POI[] }).results).toHaveLength(1);
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const res = await call("GET", `/poi/autocomplete?q=cafe&session=${SESSION}`, env, { fetchImpl });
+    expect(res.status).toBe(200);
+    expect((await bodyOf<{ predictions: unknown[] }>(res)).predictions).toHaveLength(100);
   });
 });
 
@@ -1573,7 +1549,7 @@ describe("D1/KV cache expiry and cleanup (BRAWUKA-294)", () => {
     const env = makeEnv({ POI_DB: db });
     const res = await call("GET", "/poi/search?lat=1.3&lng=103.8", env);
     expect(res.status).toBe(200);
-    const { results } = (await bodyOf(res)) as { results: Array<{ place_id: string }> };
+    const { results } = await bodyOf<{ results: Array<{ place_id: string }> }>(res);
     expect(results).toHaveLength(1);
     expect(results[0].place_id).toBe("active-1");
   });

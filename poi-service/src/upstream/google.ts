@@ -5,8 +5,8 @@
 
 import { DEFAULT_SEARCH_RADIUS_KM, MAX_REVERSE_GEOCODE_CANDIDATES } from "../constants";
 import { computeExpiresAt } from "../store";
-import type { Env, POI } from "../types";
-import { UpstreamApiError, type Coordinates, type UpstreamPlacesProvider } from "./types";
+import type { Env, POI, PlacePrediction } from "../types";
+import { UpstreamApiError, type Coordinates, type SearchBias, type UpstreamPlacesProvider } from "./types";
 
 export const GOOGLE_API_BASE = "https://places.googleapis.com";
 
@@ -23,9 +23,37 @@ export const DETAIL_FIELDS = [
   "googleMapsUri",
 ].join(",");
 
-/** Field mask for Text Search (New). The response is an array under the
- *  top-level `places` field, so every selected field must be prefixed. */
-export const SEARCH_FIELDS = DETAIL_FIELDS.split(",").map((f) => `places.${f}`).join(",");
+/**
+ * Field mask for Autocomplete (New). Autocomplete is billed per request
+ * (Essentials) regardless of the mask, so this list is about payload size,
+ * not SKU tier — but it stays minimal for the same reason.
+ *
+ * `distanceMeters` is only returned when the request carries an `origin`;
+ * it is what lets the discovery list show a distance without coordinates.
+ */
+export const AUTOCOMPLETE_FIELDS = [
+  "suggestions.placePrediction.placeId",
+  "suggestions.placePrediction.text.text",
+  "suggestions.placePrediction.structuredFormat.mainText.text",
+  "suggestions.placePrediction.structuredFormat.secondaryText.text",
+  "suggestions.placePrediction.types",
+  "suggestions.placePrediction.distanceMeters",
+].join(",");
+
+export interface GooglePlacePrediction {
+  placeId?: string;
+  text?: { text?: string };
+  structuredFormat?: {
+    mainText?: { text?: string };
+    secondaryText?: { text?: string };
+  };
+  types?: string[];
+  distanceMeters?: number;
+}
+
+export interface GoogleAutocompleteSuggestion {
+  placePrediction?: GooglePlacePrediction;
+}
 
 export interface GooglePlace {
   id: string;
@@ -105,13 +133,25 @@ function headers(env: Env, fieldMask = DETAIL_FIELDS): HeadersInit {
   };
 }
 
-/** GET /v1/places/:id — one POI, enriched. */
+/**
+ * GET /v1/places/:id — one POI, enriched.
+ *
+ * `sessionToken` terminates the Autocomplete (New) session that produced the
+ * id: with it, every Autocomplete request in that session is billed at
+ * `Autocomplete Session Usage` ($0); without it they fall back to per-request
+ * pricing. A stale/unknown token is not an error — Google bills the call as a
+ * plain Place Details request.
+ */
 export async function fetchPlaceDetails(
   placeId: string,
   env: Env,
   fetchImpl: typeof fetch = fetch,
+  sessionToken?: string,
 ): Promise<GooglePlace> {
-  const url = `${baseUrl(env)}/v1/places/${encodeURIComponent(placeId)}`;
+  const params = new URLSearchParams();
+  if (sessionToken) params.set("sessionToken", sessionToken);
+  const query = params.toString();
+  const url = `${baseUrl(env)}/v1/places/${encodeURIComponent(placeId)}${query ? `?${query}` : ""}`;
   const res = await fetchImpl(url, { headers: headers(env, DETAIL_FIELDS) });
   if (!res.ok) {
     await res.text().catch(() => undefined); // drain; upstream bodies are never relayed
@@ -120,31 +160,69 @@ export async function fetchPlaceDetails(
   return (await res.json()) as GooglePlace;
 }
 
-/** POST /v1/places:searchText — text search with optional location bias. */
-export async function textSearch(
+/**
+ * POST /v1/places:autocomplete — the typing phase.
+ *
+ * `sessionToken` is REQUIRED by this module: an Autocomplete request without
+ * one is billed per request, which is exactly the cost this path exists to
+ * avoid. The caller (handler) rejects requests that carry no session.
+ * Requests that share a token bill at $0 once a Place Details call with that
+ * token terminates the session; an unterminated session bills per request.
+ *
+ * `origin` is what makes Google return `distanceMeters`; `locationBias`
+ * separately steers ranking. Both are sent when the caller knows where the
+ * user is.
+ */
+export async function autocomplete(
   query: string,
-  opts: { lat?: number; lng?: number; radiusKm?: number },
+  opts: { lat?: number; lng?: number; radiusKm?: number; sessionToken: string },
   env: Env,
   fetchImpl: typeof fetch = fetch,
-): Promise<GooglePlace[]> {
-  const body: Record<string, unknown> = { textQuery: query };
+): Promise<GoogleAutocompleteSuggestion[]> {
+  const body: Record<string, unknown> = {
+    input: query,
+    sessionToken: opts.sessionToken,
+  };
   if (opts.lat !== undefined && opts.lng !== undefined) {
-    const radiusMeters = (opts.radiusKm ?? DEFAULT_SEARCH_RADIUS_KM) * 1000;
+    const center = { latitude: opts.lat, longitude: opts.lng };
+    body.origin = center;
     body.locationBias = {
-      circle: { center: { latitude: opts.lat, longitude: opts.lng }, radius: radiusMeters },
+      circle: { center, radius: (opts.radiusKm ?? DEFAULT_SEARCH_RADIUS_KM) * 1000 },
     };
   }
-  const res = await fetchImpl(`${baseUrl(env)}/v1/places:searchText`, {
+  const res = await fetchImpl(`${baseUrl(env)}/v1/places:autocomplete`, {
     method: "POST",
-    headers: headers(env, SEARCH_FIELDS),
+    headers: headers(env, AUTOCOMPLETE_FIELDS),
     body: JSON.stringify(body),
   });
   if (!res.ok) {
     await res.text().catch(() => undefined); // drain; upstream bodies are never relayed
-    throw new GoogleApiError(`Places search failed with upstream status ${res.status}`, res.status);
+    throw new GoogleApiError(`Places autocomplete failed with upstream status ${res.status}`, res.status);
   }
-  const data = (await res.json()) as { places?: GooglePlace[] };
-  return data.places ?? [];
+  const data = (await res.json()) as { suggestions?: GoogleAutocompleteSuggestion[] };
+  return data.suggestions ?? [];
+}
+
+/**
+ * Map one Autocomplete suggestion to the normalized prediction shape.
+ * Returns null for query predictions (no `placePrediction`) and for entries
+ * Google returned without an id — neither can be resolved to a place.
+ */
+export function toPrediction(
+  suggestion: GoogleAutocompleteSuggestion,
+): PlacePrediction | null {
+  const p = suggestion.placePrediction;
+  if (!p?.placeId) return null;
+  const name = p.structuredFormat?.mainText?.text ?? p.text?.text;
+  if (!name) return null;
+  return {
+    place_id: p.placeId,
+    source: "google",
+    name,
+    address: p.structuredFormat?.secondaryText?.text ?? null,
+    types: p.types ?? [],
+    ...(p.distanceMeters !== undefined ? { distance_meters: p.distanceMeters } : {}),
+  };
 }
 
 /** Map a Google place to the normalized POI shape.
@@ -296,15 +374,31 @@ export class GooglePlacesProvider implements UpstreamPlacesProvider<GooglePlace>
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
-  async textSearch(
+  async autocomplete(
     q: string,
-    bias?: { lat?: number; lng?: number; radiusKm?: number },
-  ): Promise<GooglePlace[]> {
-    return textSearch(q, bias ?? {}, this.env, this.fetchImpl);
+    opts: SearchBias & { sessionToken: string },
+  ): Promise<PlacePrediction[]> {
+    const suggestions = await autocomplete(
+      q,
+      {
+        lat: opts.lat,
+        lng: opts.lng,
+        radiusKm: opts.radiusKm,
+        sessionToken: opts.sessionToken,
+      },
+      this.env,
+      this.fetchImpl,
+    );
+    const predictions: PlacePrediction[] = [];
+    for (const suggestion of suggestions) {
+      const prediction = toPrediction(suggestion);
+      if (prediction) predictions.push(prediction);
+    }
+    return predictions;
   }
 
-  async getDetails(placeId: string): Promise<GooglePlace> {
-    return fetchPlaceDetails(placeId, this.env, this.fetchImpl);
+  async getDetails(placeId: string, sessionToken?: string): Promise<GooglePlace> {
+    return fetchPlaceDetails(placeId, this.env, this.fetchImpl, sessionToken);
   }
 
   toPOI(raw: GooglePlace): POI {

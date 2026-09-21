@@ -27,7 +27,8 @@ import { GET as checkinsLastGET } from "@/app/api/checkins/last/route";
 import { PATCH as checkinPATCH } from "@/app/api/checkins/[id]/route";
 import { POST as likePOST } from "@/app/api/checkins/[id]/like/route";
 import { POST as uploadPOST } from "@/app/api/images/upload/route";
-import { GET as placesSearchGET } from "@/app/api/places/search/route";
+import { GET as placesAutocompleteGET } from "@/app/api/places/autocomplete/route";
+import { GET as placesDetailsGET } from "@/app/api/places/details/route";
 import { GET as searchGET } from "@/app/api/search/route";
 import { GET as profileGET, PATCH as profilePATCH } from "@/app/api/profile/route";
 import { PATCH as identityPATCH } from "@/app/api/profile/identity/route";
@@ -71,17 +72,40 @@ vi.mock("@/lib/auth/get-user", () => ({
   getCurrentUser: vi.fn(),
 }));
 
+// Records what the route handed the POI seam, so the suite can assert the
+// Autocomplete session token is forwarded end to end (BRAWUKA-602) — that
+// pairing is the whole billing contract.
+const poiSeamCalls: {
+  autocomplete?: { q: string; session: string };
+  details?: { placeId: string; session?: string };
+} = {};
+
 // Mock POI client seam (mandatory): spec 0008 §5 — standard Google POI shape, zero external network requests
 vi.mock("@/lib/places/poi-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/places/poi-client")>();
   return {
     ...actual,
-    searchExternalPOIs: vi.fn(async ({ q }: { q?: string }) => {
-      return createMockGooglePlacesResponse({
-        name: q ? `${q} Seed Roasters` : "Google POI Seed Roasters",
-      });
-    }),
     searchPOIs: vi.fn(async () => ({ results: [] })),
+    // Two-phase live search (BRAWUKA-602): predictions while typing, Place
+    // Details on selection. Both are mocked so the suite makes zero external
+    // network calls (spec 0008 §5).
+    autocompletePOIs: vi.fn(async (params: { q: string; session: string }) => {
+      poiSeamCalls.autocomplete = params;
+      return {
+        predictions: createMockGooglePlacesResponse().results.map((poi) => ({
+          place_id: poi.place_id,
+          source: poi.source,
+          name: poi.name,
+          address: poi.address,
+          types: poi.types,
+        })),
+      };
+    }),
+    getPOI: vi.fn(async (placeId: string, session?: string) => {
+      poiSeamCalls.details = { placeId, session };
+      const results = createMockGooglePlacesResponse().results;
+      return results.find((poi) => poi.place_id === placeId) ?? results[0]!;
+    }),
     resolveMapsUrl: vi.fn(async (mapsShareUrl: string) => {
       const match = mapsShareUrl.match(/place\/([^/?]+)/);
       const name = match ? decodeURIComponent(match[1].replace(/\+/g, " ")) : "Resolved Maps Cafe";
@@ -472,18 +496,39 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
       expect(res.data.profile.id).toBe(user.id);
     }
 
+    // Live POI search is two-phase (BRAWUKA-602): Autocomplete while typing,
+    // Place Details on selection, one session token across both.
+    const session = randomUUID();
+    const autocomplete = await clientA.get<{
+      predictions: Array<{ place_id: string; source: string; types: string[] }>;
+    }>(placesAutocompleteGET, "/api/places/autocomplete", {
+      query: { q: "Lifecycle", session },
+    });
+    expect(autocomplete.status).toBe(200);
+    expect(autocomplete.data.predictions.length).toBeGreaterThan(0);
+    const prediction = autocomplete.data.predictions[0]!;
+    expect(prediction.source).toBe("google");
+    expect(prediction.place_id).toMatch(/^ChIJ/);
+    expect(prediction.types).toContain("cafe");
+    expect(poiSeamCalls.autocomplete?.q).toBe("Lifecycle");
+    expect(poiSeamCalls.autocomplete?.session).toBe(session);
+
     const poi = await clientA.get<{
-      results: Array<{ place_id: string; source: string; types: string[]; business_status: string }>;
-    }>(placesSearchGET, "/api/places/search", {
-      query: { source: "google", q: "Lifecycle" },
+      place_id: string;
+      source: string;
+      types: string[];
+      business_status: string;
+    }>(placesDetailsGET, "/api/places/details", {
+      query: { place_id: prediction.place_id, session },
     });
     expect(poi.status).toBe(200);
-    expect(poi.data.results.length).toBeGreaterThan(0);
-    const hit = poi.data.results[0]!;
-    expect(hit.source).toBe("google");
-    expect(hit.place_id).toMatch(/^ChIJ/);
-    expect(hit.types).toContain("cafe");
-    expect(hit.business_status).toBe("OPERATIONAL");
+    expect(poi.data.place_id).toBe(prediction.place_id);
+    expect(poi.data.source).toBe("google");
+    expect(poi.data.types).toContain("cafe");
+    expect(poi.data.business_status).toBe("OPERATIONAL");
+    // Same token on the Details call closes the session opened above.
+    expect(poiSeamCalls.details?.placeId).toBe(prediction.place_id);
+    expect(poiSeamCalls.details?.session).toBe(session);
   }
 
   async function runAct1() {

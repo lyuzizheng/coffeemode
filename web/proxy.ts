@@ -6,6 +6,7 @@ import { isValidUUID } from "@shared/uuid";
 import { isErrorCode } from "@shared/errors";
 import {
   REQUEST_ID_HEADER,
+  emitAccessLine,
   getRequestId,
   logError,
 } from "@/lib/observability/server-log";
@@ -227,21 +228,19 @@ export async function proxy(request: NextRequest) {
   const response = legacyCafeRedirect(request) ?? (await handleProxy(new NextRequest(request, { headers })));
   response.headers.set(REQUEST_ID_HEADER, requestId);
   const code = await errorCodeOf(response);
-  console.log(
-    JSON.stringify({
-      type: "access",
-      request_id: requestId,
-      method: request.method,
-      // BRAWUKA-282 P1-3: pathname only, never `search`. The matcher covers
-      // `/auth/callback`, so logging `pathname + search` wrote the one-time
-      // OAuth `code=` into stdout on every login (pre-exchange, still valid),
-      // plus raw user query terms on `/api/search?q=…`.
-      path: request.nextUrl.pathname,
-      status: response.status,
-      ...(code !== undefined ? { code } : {}),
-      duration_ms: Date.now() - start,
-    }),
-  );
+  emitAccessLine({
+    type: "access",
+    request_id: requestId,
+    method: request.method,
+    // BRAWUKA-282 P1-3: pathname only, never `search`. The matcher covers
+    // `/auth/callback`, so logging `pathname + search` wrote the one-time
+    // OAuth `code=` into stdout on every login (pre-exchange, still valid),
+    // plus raw user query terms on `/api/search?q=…`.
+    path: request.nextUrl.pathname,
+    status: response.status,
+    ...(code !== undefined ? { code } : {}),
+    duration_ms: Date.now() - start,
+  });
   return response;
 }
 

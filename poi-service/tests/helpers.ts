@@ -206,3 +206,21 @@ export function googleDetailResponse(overrides: Record<string, unknown> = {}): R
     ...overrides,
   };
 }
+
+/** One Autocomplete (New) suggestion, as the upstream returns it. */
+export function autocompleteSuggestion(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    placePrediction: {
+      placeId: "ChIJTEST123",
+      text: { text: "Blue Bottle Coffee" },
+      structuredFormat: {
+        mainText: { text: "Blue Bottle Coffee" },
+        secondaryText: { text: "Mint St, San Francisco" },
+      },
+      types: ["cafe", "coffee_shop"],
+      ...overrides,
+    },
+  };
+}

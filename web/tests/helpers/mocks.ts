@@ -44,9 +44,9 @@ function googlePoiDefaults(index: number): POI {
 
 /**
  * Build a Google Places intercept payload in the exact `POISearchResponse`
- * shape `searchExternalPOIs` returns. `overrides` merges into every default
- * hit (e.g. `{ name: "X" }`); pass distinct `place_id`s when a test needs
- * non-colliding hits.
+ * shape the POI client returns (`resolveMapsUrl` / `storeExternalPOIs`).
+ * `overrides` merges into every default hit (e.g. `{ name: "X" }`); pass
+ * distinct `place_id`s when a test needs non-colliding hits.
  */
 export function createMockGooglePlacesResponse(
   overrides: Partial<POI> = {},

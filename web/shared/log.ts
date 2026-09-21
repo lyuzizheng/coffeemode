@@ -99,11 +99,11 @@ function extractError(error: unknown): { message: string; stack?: string } {
 /**
  * Optional second sink for emitted lines (spec 0011 D8, BRAWUKA-541).
  *
- * The web app registers the Better Stack shipper here so its lines reach the
- * `coffeemode-api-errors` source; the workers never register, so their lines
- * stay stdout-only. Kept as a hook rather than an import because this module
- * is bundled by both workers — it must stay dependency-free, with no
- * `server-only` and no RSC export condition.
+ * The web app registers the OTLP shipper here so its lines reach Grafana Cloud
+ * Loki; the workers never register, so their lines stay stdout-only. Kept as a
+ * hook rather than an import because this module is bundled by both workers —
+ * it must stay dependency-free, with no `server-only` and no RSC export
+ * condition.
  */
 type LineSink = (line: Record<string, unknown>) => void;
 

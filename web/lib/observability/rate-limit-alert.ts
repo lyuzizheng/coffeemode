@@ -1,4 +1,4 @@
-import { logError, logWarn } from "./server-log";
+import { logWarn } from "./server-log";
 import "server-only";
 
 /**
@@ -8,28 +8,15 @@ import "server-only";
  * never embeds or duplicates it. Fires a non-blocking alert when a bucket
  * trips.
  *
- * Two sinks, and they are not equivalent:
- * - A structured `logWarn` line per event, unthrottled — this is the one that
- *   reaches Grafana Cloud Loki (BRAWUKA-607) and the one that carries
- *   `client_ip` for abuse investigation.
- * - A Better Stack POST when `BETTER_STACK_INGEST_URL` (per-environment source
- *   host) is configured, sending `Authorization: Bearer
- *   BETTER_STACK_INGEST_TOKEN` when that is also set — staging and prod use
- *   different sources (see docs/agent/pending-user-actions.md §7). This path
- *   is retired in P0-4.
+ * One sink: a structured `logWarn` line per event, unthrottled. It reaches
+ * Grafana Cloud Loki over OTLP (`otlp-logs.ts`, BRAWUKA-607) carrying
+ * `client_ip` for abuse investigation, and its `code: "rate_limited"` is what
+ * the `CoffeeMode — Rate-limit flood` alert rule counts (BRAWUKA-611). The
+ * third-party POST that used to sit beside it was deleted with the rest of
+ * that stack — there is no second sink to keep in sync.
  *
  * The 10s throttle covers the local `console.warn` only.
  */
-
-function betterStackUrl(): string | null {
-  const url = process.env.BETTER_STACK_INGEST_URL?.trim();
-  return url && url.length > 0 ? url : null;
-}
-
-function betterStackToken(): string | null {
-  const token = process.env.BETTER_STACK_INGEST_TOKEN?.trim();
-  return token && token.length > 0 ? token : null;
-}
 
 interface RateLimitAlertPayload {
   bucket: string;
@@ -57,8 +44,6 @@ function shouldEmit(now: number): boolean {
  * Safe to call without awaiting.
  */
 export function emitRateLimitAlert(payload: RateLimitAlertPayload): void {
-  const now = Date.now();
-
   // One structured warn line per event, deliberately NOT throttled: a 429 is a
   // low-frequency security-relevant event, and the whole point of the line is
   // to show how often one source was denied (BRAWUKA-607 §6 decision 5). The
@@ -75,49 +60,10 @@ export function emitRateLimitAlert(payload: RateLimitAlertPayload): void {
   });
 
   // Throttled console line for local observability / Cloudflare logs.
-  if (shouldEmit(now)) {
+  if (shouldEmit(Date.now())) {
     console.warn(
       `[rate-limit] bucket=${payload.bucket} client=${payload.clientId} windowMs=${payload.windowMs} max=${payload.maxRequests} retryAfter=${payload.retryAfter}s route=${payload.route ?? "-"}`,
     );
-  }
-
-  const ingestUrl = betterStackUrl();
-  if (!ingestUrl) return;
-
-  // Fire-and-forget POST to Better Stack ingest. Do not await.
-  // Use keepalive so it survives response finish.
-  try {
-    const body = JSON.stringify({
-      dt: new Date(now).toISOString(),
-      level: "warn",
-      event: "rate_limited",
-      bucket: payload.bucket,
-      client_id: payload.clientId,
-      client_ip: payload.clientIp,
-      window_ms: payload.windowMs,
-      max_requests: payload.maxRequests,
-      retry_after: payload.retryAfter,
-      route: payload.route ?? null,
-    });
-
-    // Intentionally not awaited — alert must not slow the 429 response.
-    const headers: Record<string, string> = { "content-type": "application/json" };
-    const token = betterStackToken();
-    if (token) headers.authorization = `Bearer ${token}`;
-    void fetch(ingestUrl, {
-      method: "POST",
-      headers,
-      body,
-      keepalive: true,
-    }).catch((err) => {
-      if (shouldEmit(Date.now())) {
-        logError({ route: "rate-limit alert", error: err });
-      }
-    });
-  } catch (err) {
-    if (shouldEmit(Date.now())) {
-      logError({ route: "rate-limit alert", error: err });
-    }
   }
 }
 

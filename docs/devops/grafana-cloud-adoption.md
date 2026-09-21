@@ -115,6 +115,8 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 | **DEX Synthetic Tests** | Zero Trust 付费 | — | 不做 |
 | **Logpush** | 付费 / 企业 | — | 不做 |
 
+**Notifications 在 Free 档只有邮件**：webhook 要 Pro，PagerDuty 要 Business，且只对 proxied 域名生效。所以主动探针的告警**不走** Cloudflare Notifications —— 探针直接把结果推给 Grafana，由 Grafana Alerting 统一报警，告警大脑只有一个。
+
 **结论**：Cloudflare 免费档能覆盖**页面分析**（已开）和**被动可用性信号**，但**没有主动 uptime 产品**。要主动探测只有三条路：cron Worker 探针（免费）、Grafana Synthetic Monitoring（免费）、Cloudflare Health Checks（Pro，$20/月）。
 
 ### 2.3 免费档硬约束

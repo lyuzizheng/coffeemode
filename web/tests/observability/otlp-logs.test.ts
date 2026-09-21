@@ -1,4 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { logEndpoint, registerOtlpLogSink } from "@/lib/observability/otlp-logs";
+import { logError, logWarn, emitAccessLine, registerLineSink } from "@shared/log";
 
 /**
  * The emitter's mapping logic, driven through the module's own provider seam.
@@ -17,9 +19,6 @@ type Emitted = {
 };
 
 const PROVIDER_KEY = "__coffeemodeOtlpLogs";
-
-const { registerOtlpLogSink, installShutdownFlush } = await import("@/lib/observability/otlp-logs");
-const { logError, logWarn, emitAccessLine, registerLineSink } = await import("@shared/log");
 
 /** Seed the provider slot with a recorder and return what it receives. */
 function capture(): Emitted[] {
@@ -203,27 +202,9 @@ describe("provider wiring", () => {
     expect((globalThis as Record<string, unknown>)[PROVIDER_KEY]).toBeUndefined();
   });
 
-  it("prefers the logs-specific endpoint over the signal-agnostic one", async () => {
-    const { logEndpoint } = await import("@/lib/observability/otlp-logs");
+  it("prefers the logs-specific endpoint over the signal-agnostic one", () => {
     process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT = "https://logs.example/v1/logs";
 
     expect(logEndpoint()).toBe("https://logs.example/v1/logs");
-  });
-});
-
-describe("shutdown flush", () => {
-  it("flushes the batch and re-raises the signal so the container still exits", async () => {
-    const forceFlush = vi.fn().mockResolvedValue(undefined);
-    // Re-raising is the point: a listener suppresses Node's default terminate,
-    // so a handler that only flushed would hang the container until SIGKILL.
-    const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
-
-    installShutdownFlush({ forceFlush } as unknown as Parameters<typeof installShutdownFlush>[0]);
-    process.emit("SIGTERM", "SIGTERM");
-
-    await vi.waitFor(() => expect(killSpy).toHaveBeenCalledWith(process.pid, "SIGTERM"));
-    expect(forceFlush).toHaveBeenCalled();
-
-    killSpy.mockRestore();
   });
 });

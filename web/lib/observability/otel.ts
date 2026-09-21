@@ -1,7 +1,9 @@
 import "server-only";
 
+import { ProxyTracerProvider, trace } from "@opentelemetry/api";
 import { registerOTel } from "@vercel/otel";
 import type { ReadableSpan, SpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { installShutdownFlush, type Flushable } from "./shutdown";
 
 /**
  * OpenTelemetry registration for the Next.js server (BRAWUKA-606).
@@ -150,6 +152,25 @@ class RouteTemplateSpanProcessor implements SpanProcessor {
 }
 
 /**
+ * The SDK's `TracerProvider`, reached through the API's proxy, or null when
+ * there is nothing flushable to register.
+ *
+ * `registerOTel` returns void and keeps its provider to itself, but it does
+ * install it globally — so `trace.getTracerProvider()` is the way in. What
+ * comes back is a `ProxyTracerProvider`, which has no `forceFlush`; the real
+ * provider is one `getDelegate()` away. `forceFlush` is not on the
+ * `TracerProvider` interface either (it belongs to the SDK class), so the
+ * method is checked rather than cast blind: a shape change should register
+ * nothing, not register something that throws on the way out.
+ */
+function traceProvider(): Flushable | null {
+  const provider = trace.getTracerProvider();
+  const delegate = provider instanceof ProxyTracerProvider ? provider.getDelegate() : provider;
+  const candidate = delegate as Partial<Flushable>;
+  return typeof candidate.forceFlush === "function" ? (candidate as Flushable) : null;
+}
+
+/**
  * Start the OTel SDK. No-op when no OTLP endpoint is configured — the same
  * "unconfigured means silent" contract as `otlp-logs.ts`.
  */
@@ -161,4 +182,10 @@ export function registerOtel(): void {
     // whatever the span looks like when they run.
     spanProcessors: [new RouteTemplateSpanProcessor(), "auto"],
   });
+
+  // `BatchSpanProcessor` buffers up to 5s of spans, so without this a redeploy
+  // drops the tail — the same loss the log and metric providers are registered
+  // to avoid.
+  const provider = traceProvider();
+  if (provider !== null) installShutdownFlush(provider);
 }

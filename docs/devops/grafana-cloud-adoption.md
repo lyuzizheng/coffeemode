@@ -5,7 +5,7 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 ## 0. 结论先行
 
 1. ~~**最高杠杆的一步是在 VPS 上跑 Alloy。**~~ **已落地，但换了实现（BRAWUKA-606 / BRAWUKA-607）**：应用已经在往 stdout 打单行 JSON（`web/lib/observability/server-log.ts`），但没有任何东西收它 —— 日志只活在容器里，`docker logs` 之后就没了。原计划是 Alloy 收 Docker stdout；实际做法是应用侧 `otlp-logs.ts` 直接走 OTLP 进 Loki，和 trace 共用同一个 SDK 与 endpoint。代价是几行代码，换来的是每条日志自带 `trace_id` / `span_id`（Alloy 从 stdout 读不到），并且省掉一个挂 Docker socket 的容器。
-2. **第二高杠杆是给 Next.js 加 OpenTelemetry。** 一次埋点同时换来 traces、service map、RED 指标（`traces_spanmetrics_*` 由 metrics-generator 自动生成）和 exemplar。不用手写 Prometheus 客户端。
+2. **第二高杠杆是给 Next.js 加 OpenTelemetry。** 一次埋点同时换来 traces、service map、RED 指标（`traces_spanmetrics_*` 由 metrics-generator 派生 —— 但该 generator **默认关闭**，要先在 stack 上打开，见 §3 P0-3）和 exemplar。不用手写 Prometheus 客户端。
 3. **Better Stack 不要一次性切掉。** 现在 4 条 chart alert + 1 个 uptime monitor 是唯一的告警面，先双写、验证、再拆。但只有 uptime monitor 是真在跑的 —— 4 条 chart alert 至今只被合成事件喂过，两条 ingest 路径的环境变量仍待粘贴（§1.2）。
 4. **免费档够用，但有两个硬约束**：14 天保留期，以及 10k active series。~~Alloy 全量收 Docker stdout 会吃掉 logs 配额，要先做过滤。~~ 走 OTLP 后这条约束自然消失：只有应用自己 `logError` / `logWarn` / access 行进 Loki，Next.js 的请求日志不进。
 
@@ -157,13 +157,33 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 
 #### P0-3 Metrics：先靠 spanmetrics，再补业务指标
 
-不要急着上 `prom-client`。spanmetrics 已经给出每个 route 的 rate / error / duration。
+不要急着上 `prom-client`。spanmetrics 给出每个 route 的 rate / error / duration，业务指标用 OTLP metrics 补。
 
-需要额外补的（用 OTLP metrics 或 Alloy 的 `prometheus.exporter`）：
+**spanmetrics 不是被动的 —— 必须先在 stack 上打开（2026-09-21 实测修正）。** 本节初稿写的是「随 traces 被动生效，不需要额外配置」，这是错的。Grafana Cloud 的 metrics-generator 是 per-tenant Tempo override，官方文档原文 "Metrics-generation is disabled by default"：
 
-- rate-limit 命中计数（counter，按 `bucket` 分）。
-- Postgres 连接池（活跃 / 空闲 / 等待）。
-- Cloudflare Worker 调用延迟与错误（从 Worker 侧推，或从 web 侧观测）。
+- 打开路径：Application Observability → Configuration → System → **Metrics generation**。
+- 另一条路径（Knowledge Graph → Observability → Configuration → Traces metrics generation）**当前不可用** —— 它要求 stack 先启用 knowledge graph，而本 stack 没有：`GET /api/datasources/uid/grafanacloud-knowledgegraph/resources` → `503 {"error":"knowledge graph not enabled"}`。
+- 免费档不设门槛（文档原文 "There's no additional cost for Grafana Cloud Free accounts"），生成的 series 计入 10k 额度。
+- **决定性验证**：`grafanacloud_traces_instance_metrics_generator_active_series`（datasource `grafanacloud-usage`）非空且 > 0。这条空着就说明 generator 没开，与 traces 有没有到无关 —— 2026-09-21 实测为空，且该 datasource 的 116 个 metric 里没有任何 `grafanacloud_traces_instance_metrics_generator_*`。
+
+**默认 label 集**：`service` / `job`、`span_name`、`span_kind`、`status_code`。**`http.route` 不在其中** —— 路由模板是烘进 `span_name` 的（OTel HTTP semconv：HTTP server span 名 SHOULD 是 `{method} {http.route}`）。所以按 route 拆分看 `span_name`，不要找 `http.route` label；要它当独立维度得在 Knowledge Graph 里显式加 dimension。
+
+**span-kind 过滤器默认只放 SERVER + CONSUMER。** 本应用的请求 span 是 SERVER（`next/dist/server/base-server.js:500`，`kind: SpanKind.SERVER`），所以不需要为 INTERNAL 提 Support 单。
+
+**30s slack**：span 结束时间早于入库时间 30s 以上会被丢弃。generator 默认 60s 采集间隔，第一条数据要等 1–2 分钟。
+
+**业务指标（BRAWUKA-609 已落地）**：`web/lib/observability/metrics.ts`，走 OTLP，和 traces / logs 共用同一个 gateway 与同一份凭据 —— 不需要暴露 scrape 端点，也不需要第二个采集器。
+
+| 指标 | 类型 | 维度 | 埋点 |
+|---|---|---|---|
+| `coffeemode.cafe.created` | counter | `source` = `google` / `apple` / `manual` | `POST /api/cafes` 返回 201 之后 |
+| `coffeemode.auth.login` | counter | — | `GET /auth/callback` 换码与 profile upsert 都成功之后 |
+
+resource 只有 `service.name` + `deployment.environment.name`（刻意不用 `defaultResource()`：`service.instance.id` 会被 Prometheus 提升成 series label，等于每次容器启动多一套 series）。
+
+**不做 rate-limit counter**（§6 决定 5）：429 是低频安全事件，逐条日志里的 `client_id` / `bucket` / `retry_after` 才是价值所在；要计数用 LogQL metric query 从日志派生。
+
+还没做的（等有需求再加）：Postgres 连接池、Cloudflare Worker 调用延迟与错误。
 
 ### P1 — 替代 Better Stack
 
@@ -250,7 +270,7 @@ graph TD
 1. **免费档配额**：50 GB logs / 50 GB traces / 10k series / 14 天保留。Alloy 全量收 Docker stdout 会吃掉 logs 配额 —— 先只收 `web` 容器并丢 debug。
 2. **双写期**：Better Stack 保留到 Grafana 侧验证通过再拆。不要一次性切换，否则告警面出现空窗。但「现成的告警面」比看上去薄：4 条 chart alert 只被合成事件喂过，两条 ingest 路径的 Dokploy 环境变量仍待粘贴（§1.2），真正在跑的只有 uptime monitor。双写期的对照基线应该是 uptime monitor，不是那 4 条 alert。
 3. **rate-limit 事件会丢**：`emitRateLimitAlert` 的 `console.warn` 是 10s 节流的，而 Better Stack POST 不节流。如果改成「靠 Alloy 收 stdout」，节流会让事件数明显变少。**已按 §6 决定 4 处理**：每个事件走 `logWarn` 打一条不节流的 JSON，10s 节流只留给本地降噪。
-4. **标签基数**：Loki 只留低基数 label；Prometheus 不要用 `client_id`、`request_id`、`route` 做 label。spanmetrics 的 `http.route` 是例外，但**必须用路由模板**（`/api/cafes/[id]`）而不是原始 path，否则 10k series 会爆 —— `@vercel/otel` 默认用模板，Next.js 16 + `instrumentation.ts` 的边界情况（edge runtime、Turbopack）要在实现 issue 里验证。
+4. **标签基数**：Loki 只留低基数 label；Prometheus 不要用 `client_id`、`request_id`、`route` 做 label。spanmetrics 的基数风险落在 **`span_name`**（不是 `http.route` —— 它压根不是默认 label，见 §3 P0-3），所以**必须用路由模板**（`GET /api/cafes/[id]`）而不是原始 path，否则每个 UUID 一条 series。Next.js 默认配置下自己就把模板写进 span name（`base-server.js` 读 `next.route` 后 `updateName`）；`otel.ts` 的 `RouteTemplateSpanProcessor` 是 `NEXT_OTEL_VERBOSE=1` 等非默认配置下的兜底。**量级实测**：单服务 ~20 route × 1 span_kind × 2 status_code × 11 个 histogram bucket ≈ 560 series，对 10k 免费额度是安全的；真正会爆的是无界 `span_name` 和高基数 dimension。
 5. **MCP 计费**：Grafana 把每个通过 MCP 连接的用户算作 Assistant 活跃用户，消耗 40M token 配额。
 6. **Synthetic 配额**：3 个 check × 3 region × 1 分钟 = 388k 次/月，超免费档。间隔要放宽到 5 分钟。
 7. **`/api/heartbeat` 有双重职责**：除了 uptime 信号，它的真实 DB round-trip 是 Supabase 免费档 staging 项目的 keepalive（BRAWUKA-284）。Synthetic check 必须继续打 `/api/heartbeat`（5 分钟间隔正好），不能只打 `/api/health`，否则 staging 项目会睡死。

@@ -36,7 +36,7 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 - [x] Create the Supabase project (free tier) in the region closest to the VPS (CafeMood project `rsdzcegylqgccaneomph` active in `ap-southeast-1`)
 - [x] Enable PostGIS in the SQL editor: `CREATE EXTENSION postgis;` (automated & verified via `scripts/devops/provision-supabase.sh`)
 - [x] Apply the schema with the session/direct connection (not the transaction pooler): `DATABASE_URL=<session-conn> npm run db:migrate` (all 19 migrations 0001–0019 applied; automated via `scripts/devops/provision-supabase.sh`)
-- [ ] Put the pooled connection string into the VPS env as `DATABASE_URL` with `?sslmode=require` (fail-closed per #41); keep the session connection string for migrations/CI
+- [x] ~~Put the pooled connection string into the VPS env as `DATABASE_URL`~~ Superseded 2026-09-20 (BRAWUKA-507): staging app data moved off Supabase to Dokploy VPS Postgres `coffeemode-staging-db`; `DATABASE_URL` now points at the `dokploy-network` internal `:5432` (`sslmode=disable`). Prod still needs the Supabase pooled string when it deploys (BRAWUKA-500).
 - [x] 已迁 VPS cron: nightly recompute 与 Helpful ranking 快照已迁至 Dokploy 定时任务（02:00 UTC，BRAWUKA-475），DATABASE_URL 仅在 VPS env 保留，无需进 GitHub secrets
 - [x] 定时任务失败告警自愈接线（BRAWUKA-476）：Dokploy env 配置 `MULTICA_AUTOPILOT_WEBHOOK_URL`，并在 Dokploy Notifications 挂载 Custom Webhook（兜底平台与构建异常）；非零退出时 POST 触发 CoffeeMode 运维告警自愈 autopilot 自动建单
 - [x] Verify product tables are NOT reachable via the Supabase Data API (PostgREST) with the browser anon key — all application tables have RLS enabled and grants revoked from `anon` & `authenticated` (verified via `scripts/devops/provision-supabase.sh`)

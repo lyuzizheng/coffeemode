@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
 import {
   checkRateLimit,
-  getClientIdentifier,
+  getClientIdentity,
   rateLimitResponse,
 } from "@/lib/rate-limit";
 import { rateLimitBuckets, rateLimits } from "@/lib/config";
@@ -138,14 +138,14 @@ export async function guard(
     };
   }
 
-  // 3. Client identifier calculation
-  const clientId = getClientIdentifier(request, ipOnly ? null : user);
+  // 3. Client identity calculation
+  const client = getClientIdentity(request, ipOnly ? null : user);
 
   // 4. Rate limit check (using normalized buckets from config)
   const resolvedRoute = resolveRouteString(request, route);
   const rate = await checkRateLimit(
     bucket,
-    clientId,
+    client,
     rateLimitBuckets(bucket),
     resolvedRoute,
   );
@@ -160,7 +160,7 @@ export async function guard(
   return {
     ok: true,
     user,
-    clientId,
+    clientId: client.id,
     route: resolvedRoute,
   };
 }

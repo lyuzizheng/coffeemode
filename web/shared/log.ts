@@ -38,6 +38,17 @@ export interface LogFields {
   status?: number;
   /** Registered error code being returned (emitted when status ≥ 400). */
   code?: ErrorCode;
+  /**
+   * Rate-limit identity of the caller (BRAWUKA-607 §6 decision 5). `clientId`
+   * is the bucket key — a hash for anonymous callers — and `clientIp` is the
+   * raw `cf-connecting-ip` behind it, carried so an abuse alert can name the
+   * source. Both are structured metadata, never labels.
+   */
+  clientId?: string;
+  clientIp?: string | null;
+  /** Rate-limit bucket name and the wait it imposed. */
+  bucket?: string;
+  retryAfter?: number;
 }
 
 function truncate(value: string): string {
@@ -115,6 +126,10 @@ function emitLine(type: "error" | "warn", fields: LogFields): void {
     ...(fields.code !== undefined && (fields.status === undefined || fields.status >= 400)
       ? { code: fields.code }
       : {}),
+    ...(fields.clientId !== undefined ? { client_id: fields.clientId } : {}),
+    ...(fields.clientIp ? { client_ip: fields.clientIp } : {}),
+    ...(fields.bucket !== undefined ? { bucket: fields.bucket } : {}),
+    ...(fields.retryAfter !== undefined ? { retry_after: fields.retryAfter } : {}),
     error: message,
     ...(stack ? { stack } : {}),
   };

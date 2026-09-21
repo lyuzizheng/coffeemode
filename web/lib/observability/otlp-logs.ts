@@ -26,16 +26,22 @@ import { registerLineSink } from "@shared/log";
  *   `error`                                 → body
  *   `route` `request_id` `code` `status`    → log-record attributes
  *   `method` `path` `duration_ms` `stack`   → log-record attributes
+ *   `client_id` `client_ip` `bucket`        → log-record attributes
+ *   `retry_after`                           → log-record attribute
+ *
+ * `client_ip` is the raw `cf-connecting-ip` behind a rate-limit denial. It
+ * rides a log-record attribute, so it lands in structured metadata and never
+ * becomes a label — the cardinality rule the issue sets out.
  *
  * Grafana Cloud converts OTLP logs to the Loki 3 model: a fixed list of
  * resource attributes becomes index labels, and everything else — the rest of
  * the resource, the scope, and every log-record attribute — becomes structured
- * metadata. So the index stays at `service_name` (plus `deployment_environment`
- * once the container declares `deployment.environment.name`, which is on the
- * promoted list; `deployment.environment` is not), and the 5,000-active-stream
- * free-tier ceiling is never in play. `detected_level` is derived from
- * `severity_text` and is a label too. `| severity_text="ERROR"` and
- * `| route="…"` filter directly, with no `| json` parse.
+ * metadata. So the index stays at `service_name` + `deployment_environment_name`
+ * — the container declares `deployment.environment.name`, which is on the
+ * promoted list, so staging and prod are separate stream sets — and the
+ * 5,000-active-stream free-tier ceiling is never in play. `detected_level` is
+ * derived from `severity_text` and is a label too. `| severity_text="ERROR"`
+ * and `| route="…"` filter directly, with no `| json` parse.
  */
 
 /** Service identity — invariant across deployments, so it lives in code. */
@@ -65,6 +71,10 @@ const ATTRIBUTE_FIELDS = [
   "path",
   "duration_ms",
   "stack",
+  "client_id",
+  "client_ip",
+  "bucket",
+  "retry_after",
 ] as const;
 
 /**
@@ -98,8 +108,8 @@ function createLogger(): Logger {
   const provider = new LoggerProvider({
     // `service.name` is invariant, so it lives in code; everything else comes
     // from `OTEL_RESOURCE_ATTRIBUTES` on the container — which is where
-    // `deployment.environment` is declared, and the only thing that tells a
-    // staging line from a prod one in Loki.
+    // `deployment.environment.name` is declared, and the only thing that tells
+    // a staging line from a prod one in Loki.
     //
     // Deliberately NOT `defaultResource()`: it adds `host.name`, `process.pid`
     // and `service.instance.id`, and Grafana Cloud promotes a fixed list of

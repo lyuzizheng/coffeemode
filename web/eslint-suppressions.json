@@ -1,9 +1,4 @@
 {
-  "app/api/places/search/route.ts": {
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
   "app/global-error.tsx": {
     "max-lines-per-function": {
       "count": 1

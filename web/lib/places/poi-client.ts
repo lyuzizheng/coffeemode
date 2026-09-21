@@ -15,7 +15,7 @@ import { REQUEST_ID_HEADER } from "@shared/request-id";
  *   POI_SERVICE_TOKEN  shared secret the worker authenticates with
  */
 
-import type { POI, POISearchResponse } from "@shared/places/types";
+import type { AutocompleteResponse, POI, POISearchResponse } from "@shared/places/types";
 
 export class POIServiceError extends Error {
   constructor(
@@ -155,19 +155,29 @@ export async function searchPOIs(
   return data as POISearchResponse;
 }
 
-/** GET /poi/search/external — live Google Places search, cached by the worker. */
-export async function searchExternalPOIs(
+/** GET /poi/autocomplete — live Google predictions (the typing phase).
+ *  `session` is the Autocomplete session token; it must be the same one the
+ *  selection's `getPOI` call carries, or the session never terminates and
+ *  every keystroke bills per request instead of at $0. */
+export async function autocompletePOIs(
   params: {
     q: string;
+    session: string;
     lat?: number;
     lng?: number;
     r?: number;
   },
   requestId?: string,
-): Promise<POISearchResponse> {
-  const query = searchParams(params);
-  const data = await poiFetch(`/poi/search/external?${query}`, { method: "GET" }, undefined, requestId);
-  return data as POISearchResponse;
+): Promise<AutocompleteResponse> {
+  const query = new URLSearchParams(searchParams(params));
+  query.set("session", params.session);
+  const data = await poiFetch(
+    `/poi/autocomplete?${query.toString()}`,
+    { method: "GET" },
+    undefined,
+    requestId,
+  );
+  return data as AutocompleteResponse;
 }
 
 /** POST /poi/external — persist a client-side Apple MapKit result. Non-food
@@ -197,6 +207,27 @@ export async function resolveMapsUrl(mapsShareUrl: string, requestId?: string): 
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ maps_share_url: mapsShareUrl }),
+    },
+    undefined,
+    requestId,
+  );
+  return data as POI;
+}
+
+/** GET /poi/:place_id — fetch/enrich one POI. `session` terminates the
+ *  Autocomplete session that produced the id (see `autocompletePOIs`). */
+export async function getPOI(
+  placeId: string,
+  session?: string,
+  requestId?: string,
+): Promise<POI> {
+  // Send the place id raw: Google `0x...:0x...` ids are valid path
+  // segments, and the worker decodes `:place_id` at the edge (W2).
+  const query = session ? `?session=${encodeURIComponent(session)}` : "";
+  const data = await poiFetch(
+    `/poi/${placeId}${query}`,
+    {
+      method: "GET",
     },
     undefined,
     requestId,

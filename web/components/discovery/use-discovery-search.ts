@@ -32,7 +32,7 @@ import {
 import { setSearchUrlState } from "@/lib/search/search-url-state";
 import type { SearchResultItem } from "@/lib/search/types";
 import type { ExternalSearchProvider } from "@/components/search/search-results-list";
-import type { POI } from "@shared/places/types";
+import type { POI, PlacePrediction } from "@shared/places/types";
 import type { CafeSummary } from "@/types/cafes";
 import type { DiscoveryController } from "@/lib/discovery/use-discovery-controller";
 
@@ -55,13 +55,18 @@ export interface DiscoverySearch {
   onExternalSearch: (provider: ExternalSearchProvider) => void;
 }
 
-/** Draft handed to the creation sheet: a picked POI, or an empty open. */
+/** Draft handed to the creation sheet: a picked POI, a live prediction still
+ *  awaiting its Place Details call, or an empty open. */
 export interface CreationDraft {
   poi: POI | null;
   /** Apple POIs persist through /api/places/external first; Google POIs are stored server-side. */
   persist: boolean;
   /** Provider CTA the user tapped — the sheet opens on that provider's tab. */
   provider: ExternalSearchProvider | null;
+  /** Live search result: the sheet resolves it into a POI on open (BRAWUKA-602). */
+  prediction?: PlacePrediction;
+  /** Autocomplete session the prediction was produced under. */
+  session?: string;
 }
 
 /** `?q=&city=&filter_*=` deep-link state (DG48 restore). */
@@ -221,6 +226,20 @@ export function useDiscoverySearch({
     }
     if (item.poi) {
       setCreationDraft({ poi: item.poi, persist: item.source === "apple", provider: null });
+      setCreationOpen(true);
+      return;
+    }
+    // A live Autocomplete prediction has no POI yet. The Place Details call
+    // that produces one is the billed half of the search (BRAWUKA-602), so it
+    // runs inside the sheet — on this explicit selection, never while typing.
+    if (item.prediction) {
+      setCreationDraft({
+        poi: null,
+        persist: false,
+        provider: null,
+        prediction: item.prediction,
+        session: item.prediction_session,
+      });
       setCreationOpen(true);
     }
   };

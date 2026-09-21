@@ -1,7 +1,7 @@
 import { apiFetch, isUnauthorized, UNAUTHORIZED } from "@/lib/http";
 import type { POI } from "@shared/places/types";
 import { stableApplePlaceId } from "@shared/places/apple-place-id";
-import type { CreateTranslator, PlaceSearchProvider } from "./place-search";
+import type { CreateTranslator, PlaceCandidate, PlaceSearchProvider } from "./place-search";
 
 /**
  * Apple place search via MapKit JS (client-side SDK — Apple's web search API
@@ -180,6 +180,64 @@ export function _resetMapKitStateForTests(): void {
   scriptLoadingPromise = null;
 }
 
+/** One MapKit search, with the SDK's callback + timeout folded into a promise.
+ *  Results are full records, so each becomes a candidate that already carries
+ *  its POI (MapKit has no separate details call). */
+function runMapKitSearch(
+  api: MapKitApi,
+  query: string,
+  messages: { failed: string },
+): Promise<PlaceCandidate[]> {
+  const request = new api.Search();
+  const { promise, resolve, reject } = Promise.withResolvers<PlaceCandidate[]>();
+
+  let searchTimer: ReturnType<typeof setTimeout> | null = null;
+  const cleanup = () => {
+    if (searchTimer) {
+      clearTimeout(searchTimer);
+      searchTimer = null;
+    }
+    pendingSearches.delete(fail);
+  };
+
+  const fail: PendingSearchFail = (reason) => {
+    cleanup();
+    if (reason?.unauthorized || mapKitSessionExpired) {
+      reject(new Error(UNAUTHORIZED));
+    } else {
+      reject(new Error(messages.failed));
+    }
+  };
+  pendingSearches.add(fail);
+
+  searchTimer = setTimeout(() => {
+    cleanup();
+    reject(new Error(messages.failed));
+  }, MAPKIT_SEARCH_TIMEOUT_MS);
+
+  request.search(query, (searchError, response) => {
+    cleanup();
+    if (searchError) {
+      reject(new Error(messages.failed));
+      return;
+    }
+    const pois = (response?.places ?? []).map(toPOI).filter((poi): poi is POI => poi !== null);
+    resolve(
+      pois.map((poi) => ({
+        poi,
+        prediction: {
+          place_id: poi.place_id,
+          source: "apple",
+          name: poi.name,
+          address: poi.address,
+          types: poi.types,
+        },
+      })),
+    );
+  });
+  return promise;
+}
+
 export function applePlaceSearch(t: CreateTranslator): PlaceSearchProvider {
   let api: MapKitApi | null = null;
   return {
@@ -211,44 +269,14 @@ export function applePlaceSearch(t: CreateTranslator): PlaceSearchProvider {
       // A re-auth 401 latched between init and now is the same dead session the
       // token fetch reports — route it to the sign-in gate, not the alert slot.
       if (mapKitSessionExpired) throw new Error(UNAUTHORIZED);
-      const request = new api.Search();
-      const { promise, resolve, reject } = Promise.withResolvers<POI[]>();
-
-      let searchTimer: ReturnType<typeof setTimeout> | null = null;
-      const cleanup = () => {
-        if (searchTimer) {
-          clearTimeout(searchTimer);
-          searchTimer = null;
-        }
-        pendingSearches.delete(fail);
-      };
-
-      const fail: PendingSearchFail = (reason) => {
-        cleanup();
-        if (reason?.unauthorized || mapKitSessionExpired) {
-          reject(new Error(UNAUTHORIZED));
-        } else {
-          reject(new Error(t("searchFailed")));
-        }
-      };
-      pendingSearches.add(fail);
-
-      searchTimer = setTimeout(() => {
-        cleanup();
-        reject(new Error(t("searchFailed")));
-      }, MAPKIT_SEARCH_TIMEOUT_MS);
-
-      request.search(query, (searchError, response) => {
-        cleanup();
-        if (searchError) {
-          reject(new Error(t("searchFailed")));
-          return;
-        }
-        resolve(
-          (response?.places ?? []).map(toPOI).filter((poi): poi is POI => poi !== null),
-        );
-      });
-      return promise;
+      return runMapKitSearch(api, query, { failed: t("searchFailed") });
+    },
+    // MapKit's `Search` is not a two-phase API: it returns full records with
+    // coordinates in one call, so the candidate already carries its POI and
+    // there is nothing left to resolve (and nothing to bill).
+    async resolve(candidate) {
+      if (!candidate.poi) throw new Error(t("searchFailed"));
+      return candidate.poi;
     },
   };
 }

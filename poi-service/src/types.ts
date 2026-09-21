@@ -6,9 +6,9 @@
  * This file keeps only environment-specific structural interfaces.
  */
 
-import type { POI, POISearchHit, POISource } from "../../web/shared/places/types";
+import type { POI, POISearchHit, POISource, PlacePrediction } from "../../web/shared/places/types";
 
-export type { POI, POISearchHit, POISource };
+export type { POI, POISearchHit, POISource, PlacePrediction };
 
 /** Minimal structural interfaces so tests can inject fakes
  *  while real Cloudflare bindings satisfy them at runtime. */

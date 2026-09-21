@@ -1,6 +1,6 @@
 import type { CafeSummary } from "@/types/cafes";
 import type { MaxStay } from "@/types/checkins";
-import type { POI } from "@shared/places/types";
+import type { POI, PlacePrediction } from "@shared/places/types";
 
 type SearchResultType = "cafe" | "poi";
 export type SearchResultSource = "coffeemode" | "stored_poi" | "google" | "apple";
@@ -30,12 +30,22 @@ export interface SearchResultItem {
   source: SearchResultSource;
   name: string;
   address: string | null;
-  lat: number;
-  lng: number;
+  /** Null for a live Autocomplete prediction: it carries no coordinates until
+   *  the user selects it and the Place Details call resolves it (BRAWUKA-602). */
+  lat: number | null;
+  lng: number | null;
+  /** Google's `distanceMeters` for a prediction (measured from the reference
+   *  point), or the haversine distance for a stored POI / cafe. */
   distance_m: number | null;
   is_from_city_center: boolean;
   cafe?: CafeSummary;
   poi?: POI;
+  /** Set on live results: the typing-phase hit, resolved on selection. */
+  prediction?: PlacePrediction;
+  /** Autocomplete session that produced `prediction`. The selection's Place
+   *  Details call must carry it, or the typing phase is billed per request
+   *  (BRAWUKA-602). */
+  prediction_session?: string;
 }
 
 export interface SearchReferencePoint {

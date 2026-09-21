@@ -69,8 +69,12 @@ Cloudflare resources, both migrations, both deployments and both `POI_SERVICE_TO
 secrets are done. Until this key is installed on both Workers
 (`wrangler secret put GOOGLE_PLACES_API_KEY --env staging|production`, or the equivalent
 Cloudflare API call), `/poi/:place_id`, the query path of `/poi/resolve`, and
-`/poi/search/external` answer 502 `upstream_error`; `POST /poi/external` → `GET /poi/search`
+`/poi/autocomplete` answer 502 `upstream_error`; `POST /poi/external` → `GET /poi/search`
 and the KV hot-cache read path are unaffected and verified working.
+
+The key must be authorized for **Places API (New)** only — the live search path is
+Autocomplete (New) + Place Details (New) (BRAWUKA-602) and no longer calls Text Search,
+so a key restricted to the legacy Places API would 403 every live search.
 
 ## 6. image-service deploy
 
@@ -110,7 +114,7 @@ and the KV hot-cache read path are unaffected and verified working.
 - [x] Apply the schema: `wrangler d1 migrations apply poi-store --remote` (done 2026-09-12, BRAWUKA-222 — `0001_init.sql` applied to both remote databases; `pois` + both indexes verified by remote query, and the `0001_init.sql` row recorded in `d1_migrations` so a later `wrangler d1 migrations apply` is a no-op)
 - [~] Set the two worker secrets (values never go in chat/docs): `wrangler secret put POI_SERVICE_TOKEN --env production`, `wrangler secret put GOOGLE_PLACES_API_KEY --env production`
   - `POI_SERVICE_TOKEN` installed on both Workers (self-generated, 2026-09-12).
-  - `GOOGLE_PLACES_API_KEY` NOT installed — still blocked on item 5. Until it is, `/poi/:place_id`, `/poi/resolve` (query path) and `/poi/search/external` return 502 `upstream_error`; every other path works.
+  - `GOOGLE_PLACES_API_KEY` NOT installed — still blocked on item 5. Until it is, `/poi/:place_id`, `/poi/resolve` (query path) and `/poi/autocomplete` return 502 `upstream_error`; every other path works.
 - [x] Deploy: `npm run deploy -- --env production` (guarded — refuses while the placeholder ids are still configured) → workers.dev URL; wire `POI_SERVICE_URL` + `POI_SERVICE_TOKEN` into `web/.env.local` (done 2026-09-12, BRAWUKA-222 — both environments deployed and verified: `https://poi-service-staging.lyuzizheng.workers.dev`, `https://poi-service-prod.lyuzizheng.workers.dev`; `npm run deploy -- --env staging|production --check` now passes)
 - [x] Worker route migration (BRAWUKA-236) — custom domains attached via Cloudflare MCP and verified:
   - `poi-service.cafemood.app` → `poi-service-prod` (/health 200)

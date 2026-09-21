@@ -295,7 +295,8 @@
     "signInRequired": "Please sign in to publish — your draft stays here.",
     "close": "Close",
     "submit": "Create cafe",
-    "providerLoading": "Connecting to the place service…"
+    "providerLoading": "Connecting to the place service…",
+    "resolvingPlace": "Loading this place…"
   },
   "checkIn": {
     "title": "Check in",

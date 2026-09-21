@@ -2194,6 +2194,19 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(ids.has(parityIds.singleDay24)).toBe(true);
     });
 
+    it("gives a single-day 24h window no overnight tail the next morning (BRAWUKA-571)", async () => {
+      const rows = await searchCafesInDb({
+        city: PARITY_CITY,
+        open_now: true,
+        instant: new Date("2026-09-07T19:30:00Z"), // Tue 03:30 SGT — spillover hour
+        limit: 500,
+      });
+      const ids = new Set(rows.map((r) => r.id));
+      expect(ids.has(parityIds.singleDay24)).toBe(false);
+      expect(ids.has(parityIds.always24Offset)).toBe(true);
+      expect(ids.has(parityIds.overnight)).toBe(true);
+    });
+
     it("cafesDataVersion moves when a cafe row is written", async () => {
       const before = await cafesDataVersion();
       await dbClient.query(

@@ -134,7 +134,7 @@ export function isOpenAt(
     const open = parseWallClock(previous.open);
     const close = parseWallClock(previous.close);
     if (open === null || close === null) return null;
-    if (close <= open && local.minutes < close) return true; // yesterday's spillover
+    if (close < open && local.minutes < close) return true; // yesterday's spillover
   }
 
   return false;
@@ -175,7 +175,7 @@ export function closingTimeToday(
   if (previous != null) {
     const open = parseWallClock(previous.open);
     const close = parseWallClock(previous.close);
-    if (open !== null && close !== null && close <= open && close !== open && local.minutes < close) {
+    if (open !== null && close !== null && close < open && local.minutes < close) {
       return previous.close;
     }
   }

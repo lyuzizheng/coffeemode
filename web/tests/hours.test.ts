@@ -68,6 +68,9 @@ describe("isOpenAt — cafe-local timezone evaluation", () => {
     expect(isOpenAt(allDay, "Asia/Seoul", new Date("2026-08-17T00:00:00Z"))).toBe(true); // Mon 09:00 KST, at anchor
     expect(isOpenAt(allDay, "Asia/Seoul", new Date("2026-08-17T01:00:00Z"))).toBe(true); // Mon 10:00 KST, after anchor
     expect(isOpenAt(allDay, "Asia/Seoul", new Date("2026-08-17T14:59:00Z"))).toBe(true); // Mon 23:59 KST
+    // A 24h day has no overnight tail: Tuesday is closed all morning.
+    expect(isOpenAt(allDay, "Asia/Seoul", new Date("2026-08-17T15:30:00Z"))).toBe(false); // Tue 00:30 KST
+    expect(isOpenAt(allDay, "Asia/Seoul", new Date("2026-08-17T23:30:00Z"))).toBe(false); // Tue 08:30 KST
   });
 
   it("returns null for a non-object hours payload from malformed jsonb", () => {

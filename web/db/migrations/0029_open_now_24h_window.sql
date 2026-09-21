@@ -1,10 +1,12 @@
 -- CoffeeMode schema v29 (BRAWUKA-571: close === open 24h window fix).
 --
--- Supersedes migration 0028's cafe_is_open_at today-branch: `close === open`
--- (e.g. 09:00-09:00) reads as open around the clock, so it is a standalone
--- branch returning true instead of falling into the overnight
+-- Supersedes migration 0028's cafe_is_open_at: `close === open`
+-- (e.g. 09:00-09:00) reads as open around the clock, so the today-branch is
+-- a standalone branch returning true instead of falling into the overnight
 -- `t_c <= t_o and mins >= t_o` check, which wrongly read closed before the
--- anchor wall-clock time. Exact parity with web/lib/hours.ts:windowCovers.
+-- anchor wall-clock time — and the yesterday-spillover branch uses strict
+-- `p_c < p_o`, since a 24h day has no overnight tail into the next morning.
+-- Exact parity with web/lib/hours.ts:windowCovers.
 -- cafe_hhmm_minutes is unchanged and untouched here.
 
 create or replace function cafe_is_open_at(
@@ -71,7 +73,7 @@ begin
     if p_o is null or p_c is null then
       return null;
     end if;
-    if p_c <= p_o and mins < p_c then
+    if p_c < p_o and mins < p_c then
       return true; -- yesterday's overnight spillover
     end if;
   end if;

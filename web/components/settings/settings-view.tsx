@@ -135,15 +135,16 @@ function VariantPreference() {
   );
 }
 
-/** Download-my-data: a plain link to the export route — the response's
- * Content-Disposition does the download, no client fetch needed. */
+/** Download-my-data: a plain `<a download>` to the export route — never
+ * `next/link`, whose viewport prefetch would fire the full-table export
+ * before the user taps (BRAWUKA-577). Content-Disposition does the rest. */
 function ExportRow() {
   const t = useTranslations("settings");
   return (
     <SettingsRow
       label={t("export")}
       description={t("export_desc")}
-      href="/api/profile/export"
+      downloadHref="/api/profile/export"
     />
   );
 }
@@ -192,7 +193,8 @@ function DeleteConfirmForm({
         message={t("delete_confirm_title")}
         confirmLabel={pending ? t("delete_pending") : t("delete_confirm_label")}
         cancelLabel={t("cancel")}
-        pending={pending || !armed}
+        pending={pending}
+        confirmDisabled={!armed}
         onCancel={onCancel}
         onConfirm={onConfirm}
       />

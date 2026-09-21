@@ -201,8 +201,9 @@ function DeleteConfirmForm({
 }
 
 /** Permanent account deletion: type-to-confirm inside the danger zone.
- * The API does the data teardown; the client then signs out locally. */
-function DeleteAccountSection() {
+ * The API does the data teardown; the client then signs out locally.
+ * Exported for direct component tests (BRAWUKA-573). */
+export function DeleteAccountSection() {
   const t = useTranslations("settings");
   const router = useRouter();
   const queryClient = useQueryClient();

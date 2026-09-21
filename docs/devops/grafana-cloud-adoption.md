@@ -164,6 +164,11 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 
 配额估算：3 个 HTTP check × 3 region × 1 分钟间隔 ≈ 3 × 3 × 43,200 = 388,800 次/月，**超免费档 100k**。降到 5 分钟间隔 ≈ 77,760 次/月，留出余量。
 
+两个上线前必须处理的约束（见 §5 风险 7、8）：
+
+- **必须继续打 `/api/heartbeat`**，不能只打 `/api/health` —— 它的 DB round-trip 是 Supabase 免费档 staging 项目的 keepalive（BRAWUKA-284）。5 分钟间隔正好。
+- **probe 的 UA / IP 段要先加进 WAF 白名单**（BRAWUKA-237），否则 curl 默认 UA 在边缘就被 challenge，uptime 全是假阴性。
+
 #### P1-2 Grafana Alerting 替代 4 条 chart alert
 
 现在 Better Stack 有 `5xx sustained on a route` 和 `Worker upstream_error spike`，staging / prod 各一套。
@@ -224,14 +229,16 @@ graph TD
 
 1. **免费档配额**：50 GB logs / 50 GB traces / 10k series / 14 天保留。Alloy 全量收 Docker stdout 会吃掉 logs 配额 —— 先只收 `web` 容器并丢 debug。
 2. **双写期**：Better Stack 保留到 Grafana 侧验证通过再拆。不要一次性切换，否则告警面出现空窗。但「现成的告警面」比看上去薄：4 条 chart alert 只被合成事件喂过，两条 ingest 路径的 Dokploy 环境变量仍待粘贴（§1.2），真正在跑的只有 uptime monitor。双写期的对照基线应该是 uptime monitor，不是那 4 条 alert。
-3. **rate-limit 事件会丢**：`emitRateLimitAlert` 的 `console.warn` 是 10s 节流的，而 Better Stack POST 不节流。如果改成「靠 Alloy 收 stdout」，节流会让事件数明显变少。迁移时要同时去掉节流，或者改成计数指标（counter）而不是逐条日志。
-4. **标签基数**：Loki 只留低基数 label；Prometheus 不要用 `client_id`、`request_id`、`route` 做 label（`route` 在 spanmetrics 里是受控集合，可以）。
+3. **rate-limit 事件会丢**：`emitRateLimitAlert` 的 `console.warn` 是 10s 节流的，而 Better Stack POST 不节流。如果改成「靠 Alloy 收 stdout」，节流会让事件数明显变少。**已按 §6 决定 4 处理**：每个事件走 `logWarn` 打一条不节流的 JSON，10s 节流只留给本地降噪。
+4. **标签基数**：Loki 只留低基数 label；Prometheus 不要用 `client_id`、`request_id`、`route` 做 label。spanmetrics 的 `http.route` 是例外，但**必须用路由模板**（`/api/cafes/[id]`）而不是原始 path，否则 10k series 会爆 —— `@vercel/otel` 默认用模板，Next.js 16 + `instrumentation.ts` 的边界情况（edge runtime、Turbopack）要在实现 issue 里验证。
 5. **MCP 计费**：Grafana 把每个通过 MCP 连接的用户算作 Assistant 活跃用户，消耗 40M token 配额。
 6. **Synthetic 配额**：3 个 check × 3 region × 1 分钟 = 388k 次/月，超免费档。间隔要放宽到 5 分钟。
+7. **`/api/heartbeat` 有双重职责**：除了 uptime 信号，它的真实 DB round-trip 是 Supabase 免费档 staging 项目的 keepalive（BRAWUKA-284）。Synthetic check 必须继续打 `/api/heartbeat`（5 分钟间隔正好），不能只打 `/api/health`，否则 staging 项目会睡死。
+8. **WAF 白名单**：BRAWUKA-237 的规则只放行 Better Stack UA + `cafemood-smoke/1.0`，curl 默认 UA 在边缘就被 challenge。Grafana SM probes 上线前必须把 probe UA / IP 段加进白名单，否则 uptime 全是假阴性。
 
-## 6. 需要拍板的决定
+## 6. 已拍板的决定（Reviewer & Architect，2026-09-21）
 
-1. **日志是双写还是直接切？** 双写更安全，但 Alloy 配置要维护两份输出；直接切省事，但 Better Stack 的历史查询会断。
-2. **Better Stack 是全退还是只留 uptime？** 全退能省一份订阅，但 status page / heartbeat 这些 Grafana 侧要重建。
-3. **OTel 采样率起步定多少？** 10% 保守，100% 能看清全貌但可能吃配额。
-4. **rate-limit 事件改成 counter 还是保留逐条日志？** counter 省配额但丢细节，日志保留细节但吃 50 GB。
+1. **日志：不切，双跑到 P1 验证完。** stdout 是唯一完整记录（ADR-0004），Alloy 收它不影响 Better Stack sink。`api-error-sink.ts` 和 rate-limit POST 保持开启；Grafana Alerting 验证通过后删 sink + env vars（`BETTER_STACK_*_INGEST_*`），不是改 Alloy 配置。
+2. **Better Stack：全退，但分两步。** P1-1 synthetic 验证通过前保留 uptime monitor，之后全退。没有要重建的 status page / heartbeat（Better Stack 侧本来就没有）。
+3. **OTel 采样：prod 10% `parentbased_traceidratio` 起步，staging 100%。** staging 量小，全采方便调试；prod 一周后看用量再调。接受的代价：head sampling 下 90% 的错误 trace 会丢，靠日志补 —— 这正是 P0-1 先做的理由。
+4. **rate-limit：保留逐条事件，但改成结构化日志，不是 counter。** 429 命中是低频安全相关事件，`client_id` / `bucket` / `retry_after` 有排查价值，量也吃不垮 50 GB。做法：`emitRateLimitAlert` 里每个事件走 `logWarn` 打一条 JSON（`client_id` 进 structured metadata，不做 label），现有 10s 节流的 `console.warn` 保留只用于本地降噪。counter 可以之后用 spanmetrics 或 LogQL metric query 派生，不需要应用侧埋点。

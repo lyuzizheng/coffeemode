@@ -40,6 +40,20 @@ services:
       PORT: 3000
       HOSTNAME: 0.0.0.0
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set in shell environment, via docker compose --env-file .env.staging, or Dokploy environment}
+      # OpenTelemetry → Grafana Cloud Tempo (BRAWUKA-606). Non-secret, so it is
+      # pinned here instead of left to a Dokploy env paste. The credential
+      # (`OTEL_EXPORTER_OTLP_HEADERS`) stays in .env.staging.
+      # `deployment.environment` matches APP_ENV — the repo's environment
+      # discriminator — and is the attribute Grafana Application Observability
+      # filters on.
+      # No sampler on purpose (BRAWUKA-605 §6 decision 3, superseded 2026-09-21). Head sampling drops
+      # whole traces at the root span, and `traces_spanmetrics_*` is derived
+      # from the spans that actually arrive — so any ratio below 1 would make
+      # every RED count a fraction of reality and quietly break the alerting
+      # that reads them. Volume is orders of magnitude below the 50 GB free
+      # tier, so 100% is both correct and cheap.
+      OTEL_EXPORTER_OTLP_ENDPOINT: https://otlp-gateway-prod-ap-southeast-1.grafana.net/otlp
+      OTEL_RESOURCE_ATTRIBUTES: service.name=coffeemode-web,deployment.environment=staging
     networks:
       - coffeemode-staging-network
       - traefik-net

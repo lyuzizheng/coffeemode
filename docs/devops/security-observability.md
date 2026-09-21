@@ -62,13 +62,25 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
   `"status":200`). The error lines carry the real `status` and `code`, so they
   are the metric source. Verified 2026-09-21: synthetic `internal_error` lines
   round-tripped on both sources (ingest 202 → query-visible within ~1 min).
-- Better Stack `CoffeeMode API Errors` dashboard (team `Your team`): 5xx by
-  `route`, error-`code` histogram, 429 by `bucket` (from the rate-limit
-  sources), worker `upstream_error` count. Two chart alerts: *5xx sustained on
+- Better Stack `CoffeeMode API Errors (staging)` / `(prod)` dashboards (team
+  `Your team`, group `CoffeeMode API Errors`): 5xx by `route`, error-`code`
+  histogram, worker `upstream_error` count, plus 429 by `bucket` from the
+  matching rate-limit source. Two chart alerts per dashboard: *5xx sustained on
   a route* and *Worker `upstream_error` spike* — both "any breach in a 60 s
   bucket, sustained 5 min, auto-resolve after 5 min", one incident per series.
-  The existing `rate_limited` alert is unchanged.
-- **Known coverage gap**: the dashboard counts 5xx that emitted an error/warn
+  Verified 2026-09-21: a synthetic `internal_error` stream on staging produced
+  an incident on the staging 5xx alert.
+- **One source per dashboard — a chart alert cannot resolve a source
+  variable.** `create_chart_alert` binds the alert to the chart's source at
+  creation. If the dashboard's `source` variable was written with
+  `set_dashboard_variable`, the alert silently binds to the team's *default*
+  source instead (observed: `source:onboarding_real_time_flights:logs`) and
+  never fires on this data. Set the dashboard's source only through
+  `create_dashboard(source_id: …)` and let the chart save auto-create the
+  variable; extra *custom-named* source variables (`rate_limit_source`) and
+  sections are fine. If an alert's `Source Variable` line does not name the
+  expected `coffeemode-*` source, delete and recreate it.
+- **Known coverage gap**: the dashboards count 5xx that emitted an error/warn
   line. A handler that *returns* a 5xx envelope without logging — today only
   `GET /api/mapkit-token` (`mapkit_token_error`) — is not counted. The
   `apiRoute` catch-all path always logs, so unexpected throws are covered.

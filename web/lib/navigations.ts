@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/http";
+
 /**
  * Client-side navigation recording (spec 0001 §Check-in system, DG76).
  * The "导航" tap fires this alongside the maps deep link; the row it writes
@@ -10,7 +12,7 @@
  * Supabase anonymous sign-in lands; that is the DG76 contract, not a bug.
  */
 export function recordNavigationTap(cafeId: string): void {
-  void fetch("/api/navigations", {
+  void apiFetch("/api/navigations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ cafe_id: cafeId }),

@@ -7,7 +7,6 @@ import {
   apiFetch,
   isUnauthorized,
   parseRetryAfterMs,
-  throwIfUnauthorized,
 } from "@/lib/http";
 import zhMessages from "../messages/zh.json";
 
@@ -19,14 +18,6 @@ function jsonResponse(body: unknown, status: number, headers?: HeadersInit): Res
 }
 
 describe("session expiry marker", () => {
-  it("raises the shared marker on 401 and nothing else", () => {
-    expect(() => throwIfUnauthorized(jsonResponse({ error: "unauthorized" }, 401))).toThrow(
-      UNAUTHORIZED,
-    );
-    expect(() => throwIfUnauthorized(jsonResponse({ error: "internal_error" }, 500))).not.toThrow();
-    expect(() => throwIfUnauthorized(jsonResponse({ error: "rate_limited" }, 429))).not.toThrow();
-  });
-
   it("recognizes the marker wherever it crosses a module boundary", () => {
     expect(isUnauthorized(new Error(UNAUTHORIZED))).toBe(true);
     // A transport helper may hand over the bare string; unknown values are not the marker.

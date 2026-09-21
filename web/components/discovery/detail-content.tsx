@@ -23,6 +23,7 @@ import { recordNavigationTap } from "@/lib/navigations";
 import { displayCityName } from "@/lib/cities";
 import { isOpenAt } from "@/lib/hours";
 import { getQueryStaleTimeMs } from "@/lib/client-env";
+import { apiFetch, ApiError } from "@/lib/http";
 import type { DiscoveryController } from "@/lib/discovery/use-discovery-controller";
 import type { PublicCafeDetail } from "@/types/cafes";
 import { CheckinFeed } from "./checkin-feed";
@@ -35,10 +36,14 @@ import { CreatorLine } from "./creator-line";
 import { InlineError } from "./inline-error";
 
 async function fetchCafe(id: string): Promise<PublicCafeDetail> {
-  const res = await fetch(`/api/cafes/${id}`);
-  if (res.status === 404) throw new FeedNotFoundError();
-  if (!res.ok) throw new Error(`cafe failed: ${res.status}`);
-  return (await res.json()) as PublicCafeDetail;
+  try {
+    const cafe = await apiFetch<PublicCafeDetail>(`/api/cafes/${id}`);
+    if (!cafe) throw new ApiError({ status: 500, code: "internal_error" });
+    return cafe;
+  } catch (cause) {
+    if (cause instanceof ApiError && cause.status === 404) throw new FeedNotFoundError();
+    throw cause;
+  }
 }
 
 /** §4 action row: Check in (primary), Navigate (outline), Share (ghost icon). */

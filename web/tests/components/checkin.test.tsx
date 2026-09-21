@@ -313,7 +313,8 @@ describe("CheckinDrawer", () => {
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/checkins/last"),
-      );
+          undefined,
+        );
     });
     const overall = screen.getByRole("slider", { name: "Overall experience" });
     fireEvent.keyDown(overall, { key: "ArrowRight" });
@@ -344,7 +345,8 @@ describe("CheckinDrawer", () => {
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/checkins/last"),
-      );
+          undefined,
+        );
     });
 
     // Stage a photo, then submit: the POST 409s and silently converts to a

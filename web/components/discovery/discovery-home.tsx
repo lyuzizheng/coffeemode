@@ -32,6 +32,7 @@ import { DiscoveryMapContext, type DiscoveryMapState } from "@/lib/discovery/map
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useMounted } from "@/hooks/use-mounted";
 import type { CafeSummary } from "@/types/cafes";
+import { apiFetch } from "@/lib/http";
 import { CheckinDrawer } from "@/components/checkin/checkin-drawer";
 import { CafeCreationSheet } from "@/components/cafe/cafe-creation-sheet";
 import { UnifiedSearchPanel } from "@/components/search/unified-search-panel";
@@ -45,10 +46,8 @@ import { MobileSheet } from "./mobile-sheet";
 import { SHEET_PEEK_PX } from "@/lib/layout";
 
 async function fetchNearbyCafes(lat: number, lng: number): Promise<CafeSummary[]> {
-  const res = await fetch(`/api/cafes?lat=${lat}&lng=${lng}`);
-  if (!res.ok) throw new Error(`nearby cafes failed: ${res.status}`);
-  const data = (await res.json()) as { cafes: CafeSummary[] };
-  return data.cafes;
+  const data = await apiFetch<{ cafes: CafeSummary[] }>(`/api/cafes?lat=${lat}&lng=${lng}`);
+  return data?.cafes ?? [];
 }
 
 /** Map overlays never cover the mobile sheet's half/full detail content. */

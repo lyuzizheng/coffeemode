@@ -17,8 +17,6 @@ import { getHandleMaxChars } from "@/lib/client-env";
 import { apiErrorMessage, apiFetch } from "@/lib/http";
 
 interface IdentityPatchBody {
-  ok?: boolean;
-  error?: string;
   showPublicIdentity?: boolean;
   publicHandle?: string | null;
   identityConsentedAt?: string | null;
@@ -66,9 +64,11 @@ export function PublicIdentityToggle({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!data || data.ok === false) {
+      // The envelope guarantees no error-in-2xx (spec 0011): a missing body
+      // is the only residual failure shape here.
+      if (!data) {
         onProfileChange(previous);
-        setErrorMessage(apiErrorMessage(data, tApi("profile.identity_error_generic"), tApi));
+        setErrorMessage(tApi("profile.identity_error_generic"));
         return;
       }
       onProfileChange(mergeIdentity(optimistic, data));

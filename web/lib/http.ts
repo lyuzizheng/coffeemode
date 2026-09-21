@@ -44,15 +44,6 @@ function stripQuery(url: string): string {
 }
 
 /**
- * Raise the shared session-expired marker. Only for the raw-`fetch` call sites
- * that have not migrated to `apiFetch` yet (stage 3) — `apiFetch` already
- * throws an `ApiError` whose `message` is this marker on 401.
- */
-export function throwIfUnauthorized(response: Response): void {
-  if (response.status === 401) throw new Error(UNAUTHORIZED);
-}
-
-/**
  * Cap on a server-supplied `Retry-After`: a buggy upstream must not park a
  * query for minutes. Matches the order of TanStack's default backoff cap.
  */
@@ -212,6 +203,7 @@ const API_ERROR_I18N_KEYS: Partial<Record<ErrorCode, Parameters<ApiErrorTranslat
   handle_taken: "profile.identity_error_handle_taken",
   handle_change_too_soon: "profile.identity_error_handle_too_soon",
   invalid_handle: "profile.identity_error_invalid_handle",
+  self_like_forbidden: "discovery.like_self",
 };
 
 /**

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { appConfig } from "@/lib/config";
+import type { ErrorCode } from "@shared/errors";
 
 /**
  * Profile PATCH payload validation (spec 0009 §1: request validation lives in
@@ -20,9 +21,9 @@ export interface ProfilePatch {
 
 type ProfilePatchResult =
   | { ok: true; patch: ProfilePatch }
-  | { ok: false; error: string; status: number };
+  | { ok: false; error: ErrorCode; status: number };
 
-type FieldResult<T> = { ok: true; value: T } | { ok: false; error: string };
+type FieldResult<T> = { ok: true; value: T } | { ok: false; error: ErrorCode };
 
 function parseDisplayName(value: unknown): FieldResult<string> {
   if (typeof value !== "string") return { ok: false, error: "invalid_display_name" };

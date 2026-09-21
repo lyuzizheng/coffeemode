@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { CAFE_SHELL_BYPASS_CACHE_CONTROL } from "@/lib/cache-policy";
 import { cafeExists } from "@/lib/db/cafes";
 import { isValidUUID } from "@shared/uuid";
+import { isErrorCode } from "@shared/errors";
 import {
   REQUEST_ID_HEADER,
   getRequestId,
@@ -191,6 +192,25 @@ async function handleProxy(request: NextRequest) {
 }
 
 /**
+ * Error code for the access line (spec 0011 D7): read the envelope's `error`
+ * field on ≥400 JSON responses so per-code metrics don't need error-line
+ * parsing. Clones the response — the body still reaches the client. Only
+ * registered codes are logged; anything else is not our envelope.
+ */
+async function errorCodeOf(response: NextResponse): Promise<string | undefined> {
+  if (response.status < 400) return undefined;
+  if (!response.headers.get("content-type")?.includes("application/json")) {
+    return undefined;
+  }
+  const body: unknown = await response.clone().json().catch(() => null);
+  const code =
+    typeof body === "object" && body !== null
+      ? (body as Record<string, unknown>).error
+      : undefined;
+  return isErrorCode(code) ? code : undefined;
+}
+
+/**
  * Proxy entry (BRAWUKA-167): access log wrapper around the session/gone-cafe
  * proxy. Observability only — one JSON line per request
  * (method/path/status/duration_ms). Never blocks or rewrites.
@@ -206,6 +226,7 @@ export async function proxy(request: NextRequest) {
   headers.set(REQUEST_ID_HEADER, requestId);
   const response = legacyCafeRedirect(request) ?? (await handleProxy(new NextRequest(request, { headers })));
   response.headers.set(REQUEST_ID_HEADER, requestId);
+  const code = await errorCodeOf(response);
   console.log(
     JSON.stringify({
       type: "access",
@@ -217,6 +238,7 @@ export async function proxy(request: NextRequest) {
       // plus raw user query terms on `/api/search?q=…`.
       path: request.nextUrl.pathname,
       status: response.status,
+      ...(code !== undefined ? { code } : {}),
       duration_ms: Date.now() - start,
     }),
   );

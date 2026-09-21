@@ -1,5 +1,8 @@
 import "server-only";
 
+import type { ErrorCode } from "@shared/errors";
+import { getRequestId } from "@shared/request-id";
+
 /**
  * Minimal server-side structured logger + request-id (BRAWUKA-168, ADR-0004).
  *
@@ -18,29 +21,12 @@ import "server-only";
  *   (`request_id: null`).
  */
 
-export const REQUEST_ID_HEADER = "x-request-id";
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Request-id primitives live in `web/shared/request-id.ts` so the workers
+// share them; re-exported here to keep this module's public API stable.
+export { getRequestId, isValidRequestId, REQUEST_ID_HEADER } from "@shared/request-id";
 
 /** Cap on serialized non-Error payloads — they stay one line. */
 const MAX_ERROR_CHARS = 1000;
-
-export function isValidRequestId(value: unknown): value is string {
-  return typeof value === "string" && UUID_RE.test(value);
-}
-
-/**
- * Request-id for a server handler. Reuses a valid inbound `x-request-id`
- * (set by the proxy, which generates one per request) so access and error
- * lines correlate; generates a fresh id when missing/invalid — e.g. the
- * `/api/health` route the proxy matcher skips, or direct handler calls.
- */
-export function getRequestId(request: { headers: Headers }): string {
-  const inbound = request.headers.get(REQUEST_ID_HEADER);
-  return isValidRequestId(inbound) ? inbound : crypto.randomUUID();
-}
-
 interface ServerErrorFields {
   /** Handler literal, e.g. `"GET /api/cafes"`. Prefer `gate.route` — one literal per handler. */
   route: string;
@@ -52,6 +38,12 @@ interface ServerErrorFields {
   requestId?: string | null;
   /** HTTP status about to be returned, when known. */
   status?: number;
+  /**
+   * Registered error code being returned. Emitted on the line when the
+   * status is ≥ 400 (or unknown) — enables per-code metrics without
+   * parsing error text (spec 0011 D7).
+   */
+  code?: ErrorCode;
 }
 
 function truncate(value: string): string {
@@ -87,18 +79,36 @@ function extractError(error: unknown): { message: string; stack?: string } {
   }
 }
 
-/** Emit one JSON error line. Never throws. */
-export function logError(fields: ServerErrorFields): void {
+function emitLine(type: "error" | "warn", fields: ServerErrorFields): void {
   const { message, stack } = extractError(fields.error);
   const requestId = fields.requestId ?? (fields.request ? getRequestId(fields.request) : null);
-  console.error(
+  const sink = type === "warn" ? console.warn : console.error;
+  sink(
     JSON.stringify({
-      type: "error",
+      type,
       request_id: requestId,
       route: fields.route,
       ...(fields.status !== undefined ? { status: fields.status } : {}),
+      ...(fields.code !== undefined && (fields.status === undefined || fields.status >= 400)
+        ? { code: fields.code }
+        : {}),
       error: message,
       ...(stack ? { stack } : {}),
     }),
   );
+}
+
+/** Emit one JSON error line. Never throws. */
+export function logError(fields: ServerErrorFields): void {
+  emitLine("error", fields);
+}
+
+/**
+ * Emit one JSON warn line (spec 0011 D7). Same shape as `logError` with
+ * `type: "warn"` — for security-relevant 4xx (`forbidden_origin`,
+ * `bot_verification_failed`, repeated `unauthorized`) that should be
+ * greppable without paging on them. Never throws.
+ */
+export function logWarn(fields: ServerErrorFields): void {
+  emitLine("warn", fields);
 }

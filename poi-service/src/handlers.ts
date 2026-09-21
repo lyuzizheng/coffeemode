@@ -56,12 +56,12 @@ import { resolveShareUrl } from "./url";
 export { authorized } from "./auth";
 
 
-function upstreamError(e: unknown): Response {
+function upstreamError(request: Request, e: unknown): Response {
   if (e instanceof UpstreamApiError) {
     // Scrubbed: upstream response bodies are never relayed (status only).
-    return json({ error: "upstream_error", status: e.status, message: e.message }, 502);
+    return json({ error: "upstream_error", status: e.status, message: e.message }, 502, request);
   }
-  return json({ error: "upstream_error", message: "upstream request failed" }, 502);
+  return json({ error: "upstream_error", message: "upstream request failed" }, 502, request);
 }
 
 // Apple Maps has no server-side Places API: a share URL with coordinates but
@@ -69,13 +69,13 @@ function upstreamError(e: unknown): Response {
 
 // --- GET /poi/:place_id ---
 
-async function getPOI(placeId: string, env: Env, deps: Deps): Promise<Response> {
+async function getPOI(placeId: string, env: Env, deps: Deps, request: Request): Promise<Response> {
   // 1. KV hot cache (normalized POI record, ~7d TTL). Probing for Apple refs is
   // safe — they are simply never cached in KV.
   const cached = await kvGetPOI(env.POI_KV, placeId);
   if (cached) {
     try {
-      return json(JSON.parse(cached) as POI);
+      return json(JSON.parse(cached) as POI, request);
     } catch {
       // corrupt cache entry — fall through to D1/Google
     }
@@ -87,20 +87,20 @@ async function getPOI(placeId: string, env: Env, deps: Deps): Promise<Response> 
   const stored = await d1GetPOI(env.POI_DB, placeId);
 
   // Apple POIs have no server-side upstream — serve what's stored.
-  if (stored && stored.source === "apple") return json(stored);
-  if (stored && isFresh(stored)) return json(stored);
+  if (stored && stored.source === "apple") return json(stored, request);
+  if (stored && isFresh(stored)) return json(stored, request);
 
   // 3. Resolve upstream provider: stored row's source is authoritative;
   // for never-seen ids, fall back to provider heuristic (isGooglePlaceId).
   const source = resolveUpstreamSource(placeId, stored?.source);
   if (!source) {
-    return json({ error: "not_found" }, 404);
+    return json({ error: "not_found" }, 404, request);
   }
 
   const provider = getUpstreamProvider(source, env, deps);
   if (!provider) {
-    if (stored) return json(stored);
-    return json({ error: "not_found" }, 404);
+    if (stored) return json(stored, request);
+    return json({ error: "not_found" }, 404, request);
   }
 
   // 4. Upstream API → backfill both
@@ -109,23 +109,23 @@ async function getPOI(placeId: string, env: Env, deps: Deps): Promise<Response> 
     rawPlace = await provider.getDetails(placeId);
   } catch (e) {
     // Graceful degradation: serve stale D1 row if we have one (d1GetPOI guarantees unexpired).
-    if (stored) return json(stored);
-    return upstreamError(e);
+    if (stored) return json(stored, request);
+    return upstreamError(request, e);
   }
 
   let poi: POI;
   try {
     poi = provider.toPOI(rawPlace); // rejects places missing `location` instead of storing (0,0)
   } catch (e) {
-    if (stored) return json(stored);
-    return json({ error: "invalid_upstream", message: String(e) }, 502);
+    if (stored) return json(stored, request);
+    return json({ error: "invalid_upstream", message: String(e) }, 502, request);
   }
   try {
     await Promise.all([kvPutPOI(env.POI_KV, poi), d1UpsertPOI(env.POI_DB, poi)]);
   } catch (e) {
     console.error("cache write failed", e);
   }
-  return json(poi);
+  return json(poi, request);
 }
 
 // --- POST /poi/resolve ---
@@ -140,7 +140,7 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
       ? (body as Record<string, unknown>).url
       : undefined);
   if (typeof mapsUrl !== "string" || mapsUrl.trim() === "") {
-    return json({ error: "invalid_request", message: "maps_share_url (string) required" }, 400);
+    return json({ error: "invalid_request", message: "maps_share_url (string) required" }, 400, request);
   }
 
   const target = await resolveShareUrl(mapsUrl.trim(), deps.fetchImpl);
@@ -150,12 +150,13 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
     // already stored Apple reference remains authoritative.
     if (target.placeId) {
       const stored = await d1GetPOI(env.POI_DB, target.placeId);
-      if (stored) return json(stored);
+      if (stored) return json(stored, request);
     }
     if (!target.coords) {
       return json(
         { error: "unresolvable", message: "Apple Maps URL needs a place id and coordinates" },
         422,
+        request,
       );
     }
     const placeId =
@@ -176,15 +177,15 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
       expires_at: computeExpiresAt(now),
     };
     await d1UpsertPOI(env.POI_DB, poi);
-    return json(poi);
+    return json(poi, request);
   }
-  if (target.placeId) return await getPOI(target.placeId, env, deps);
+  if (target.placeId) return await getPOI(target.placeId, env, deps, request);
 
   if (target.query) {
     const source: POISource = target.source ?? "google";
     const provider = getUpstreamProvider(source, env, deps);
     if (!provider) {
-      return json({ error: "unresolvable", message: `no upstream provider for ${source}` }, 422);
+      return json({ error: "unresolvable", message: `no upstream provider for ${source}` }, 422, request);
     }
 
     let results: unknown[];
@@ -194,26 +195,27 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
         lng: target.coords?.lng,
       });
     } catch (e) {
-      return upstreamError(e);
+      return upstreamError(request, e);
     }
     const first = results[0];
-    if (!first) return json({ error: "not_found", message: "no place matched" }, 404);
+    if (!first) return json({ error: "not_found", message: "no place matched" }, 404, request);
     let poi: POI;
     try {
       poi = provider.toPOI(first); // rejects places missing `location`
     } catch (e) {
-      return json({ error: "invalid_upstream", message: String(e) }, 502);
+      return json({ error: "invalid_upstream", message: String(e) }, 502, request);
     }
     try {
       await Promise.all([kvPutPOI(env.POI_KV, poi), d1UpsertPOI(env.POI_DB, poi)]);
     } catch (e) {
       console.error("cache write failed", e);
     }
-    return json(poi);
+    return json(poi, request);
   }
   return json(
     { error: "unresolvable", message: "no place_id, query, or coordinates in URL" },
     422,
+    request,
   );
 }
 
@@ -247,20 +249,22 @@ async function searchPOIs(request: Request, env: Env, _deps: Deps): Promise<Resp
       return json(
         { error: "invalid_request", message: "lat/lng must be finite numbers in [-90,90] / [-180,180]" },
         400,
+        request,
       );
     }
   }
   const hasCoords = latProvided && lngProvided;
   if (q === "" && !hasCoords) {
-    return json({ error: "invalid_request", message: "q or lat+lng required" }, 400);
+    return json({ error: "invalid_request", message: "q or lat+lng required" }, 400, request);
   }
   if (!Number.isFinite(r) || r <= 0) {
-    return json({ error: "invalid_request", message: "r must be a positive number (km)" }, 400);
+    return json({ error: "invalid_request", message: "r must be a positive number (km)" }, 400, request);
   }
   if (r > MAX_SEARCH_RADIUS_KM) {
     return json(
       { error: "invalid_request", message: `r must be ≤ ${MAX_SEARCH_RADIUS_KM} km` },
       400,
+      request,
     );
   }
 
@@ -270,7 +274,7 @@ async function searchPOIs(request: Request, env: Env, _deps: Deps): Promise<Resp
     lng: hasCoords ? lng : undefined,
     radiusKm: r,
   });
-  return json({ results: hits });
+  return json({ results: hits }, request);
 }
 
 // --- GET /poi/search/external ---
@@ -293,14 +297,16 @@ async function searchExternalPOIs(request: Request, env: Env, deps: Deps): Promi
       return json(
         { error: "invalid_request", message: "lat/lng must be finite numbers in [-90,90] / [-180,180]" },
         400,
+        request,
       );
     }
   }
-  if (q === "") return json({ error: "invalid_request", message: "q is required" }, 400);
+  if (q === "") return json({ error: "invalid_request", message: "q is required" }, 400, request);
   if (!Number.isFinite(r) || r <= 0 || r > MAX_SEARCH_RADIUS_KM) {
     return json(
       { error: "invalid_request", message: `r must be between 0 and ${MAX_SEARCH_RADIUS_KM} km` },
       400,
+      request,
     );
   }
 
@@ -308,11 +314,11 @@ async function searchExternalPOIs(request: Request, env: Env, deps: Deps): Promi
   // list already persisted during the first search — no billed upstream call.
   const queryKey = searchQueryKey(q, latProvided ? lat : undefined, lngProvided ? lng : undefined, r);
   const cached = await kvGetSearchQuery(env.POI_KV, queryKey);
-  if (cached) return json({ results: cached });
+  if (cached) return json({ results: cached }, request);
 
   const provider = getUpstreamProvider("google", env, deps);
   if (!provider) {
-    return json({ error: "upstream_error", message: "google provider not available" }, 502);
+    return json({ error: "upstream_error", message: "google provider not available" }, 502, request);
   }
 
   let places: unknown[];
@@ -322,7 +328,7 @@ async function searchExternalPOIs(request: Request, env: Env, deps: Deps): Promi
       { lat: latProvided ? lat : undefined, lng: lngProvided ? lng : undefined, radiusKm: r },
     );
   } catch (e) {
-    return upstreamError(e);
+    return upstreamError(request, e);
   }
 
   const results: POI[] = [];
@@ -350,7 +356,7 @@ async function searchExternalPOIs(request: Request, env: Env, deps: Deps): Promi
   } catch (e) {
     console.error("external search cache write failed", e);
   }
-  return json({ results });
+  return json({ results }, request);
 }
 
 // --- POST /poi/external ---
@@ -435,19 +441,20 @@ async function storeExternal(request: Request, env: Env): Promise<Response> {
       ? (body as Record<string, unknown>).pois
       : undefined;
   if (!Array.isArray(entries) || entries.length === 0) {
-    return json({ error: "invalid_request", message: "pois array required" }, 400);
+    return json({ error: "invalid_request", message: "pois array required" }, 400, request);
   }
   if (entries.length > MAX_EXTERNAL_BATCH_SIZE) {
     return json(
       { error: "invalid_request", message: `at most ${MAX_EXTERNAL_BATCH_SIZE} entries per request` },
       400,
+      request,
     );
   }
 
   const validated = entries.map(validateExternalEntry);
   const invalid = validated.filter((v): v is InvalidEntry => "reason" in v);
   if (invalid.length > 0) {
-    return json({ error: "invalid_request", message: "invalid entries", entries: invalid }, 400);
+    return json({ error: "invalid_request", message: "invalid entries", entries: invalid }, 400, request);
   }
 
   // BRAWUKA-328 — DG144/DG52 category gate for this path: source-aware
@@ -473,7 +480,7 @@ async function storeExternal(request: Request, env: Env): Promise<Response> {
   // never happened — so a best-effort post-write delete is the safe order.
   await d1UpsertPOIs(env.POI_DB, toPersist);
   await Promise.all(toPersist.map((poi) => kvDeletePOI(env.POI_KV, poi.place_id)));
-  return json({ stored: toPersist.length, skipped });
+  return json({ stored: toPersist.length, skipped }, request);
 }
 
 // --- POST /poi/reverse ---
@@ -489,7 +496,7 @@ async function reverseGeocodePOI(request: Request, env: Env, deps: Deps): Promis
   } else {
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== "object") {
-      return json({ error: "invalid_request", message: "request body must be a JSON object" }, 400);
+      return json({ error: "invalid_request", message: "request body must be a JSON object" }, 400, request);
     }
     const record = body as Record<string, unknown>;
     lat = typeof record.lat === "number" ? record.lat : Number.parseFloat(String(record.lat ?? ""));
@@ -500,19 +507,20 @@ async function reverseGeocodePOI(request: Request, env: Env, deps: Deps): Promis
     return json(
       { error: "invalid_request", message: "lat/lng must be finite numbers in [-90,90] / [-180,180]" },
       400,
+      request,
     );
   }
 
   const provider = getUpstreamProvider("google", env, deps);
   if (!provider || !provider.reverseGeocode) {
-    return json({ error: "upstream_error", message: "google provider not available" }, 502);
+    return json({ error: "upstream_error", message: "google provider not available" }, 502, request);
   }
 
   let poi: POI | null;
   try {
     poi = await provider.reverseGeocode({ lat, lng });
   } catch (e) {
-    return upstreamError(e);
+    return upstreamError(request, e);
   }
 
   if (poi) {
@@ -526,7 +534,7 @@ async function reverseGeocodePOI(request: Request, env: Env, deps: Deps): Promis
     }
   }
 
-  return json({ poi });
+  return json({ poi }, request);
 }
 
 // --- router ---
@@ -543,11 +551,11 @@ export async function handleFetch(
     const path = url.pathname;
 
     if (request.method === "GET" && (path === "/" || path === "/health")) {
-      return json({ ok: true, service: "poi-service" });
+      return json({ ok: true, service: "poi-service" }, request);
     }
 
     if (!(await authorized(request, env))) {
-      return unauthorized();
+      return unauthorized(request);
     }
 
     if (request.method === "GET" && path === "/poi/search/external") {
@@ -568,15 +576,15 @@ export async function handleFetch(
       try {
         placeId = decodeURIComponent(m[1]);
       } catch {
-        return json({ error: "invalid_request", message: "malformed place_id encoding" }, 400);
+        return json({ error: "invalid_request", message: "malformed place_id encoding" }, 400, request);
       }
-      if (placeId === "") return json({ error: "not_found" }, 404);
-      return await getPOI(placeId, env, deps);
+      if (placeId === "") return json({ error: "not_found" }, 404, request);
+      return await getPOI(placeId, env, deps, request);
     }
 
-    return json({ error: "not_found" }, 404);
+    return json({ error: "not_found" }, 404, request);
   } catch (e) {
     console.error("poi-service error:", e);
-    return internalError();
+    return internalError(request);
   }
 }

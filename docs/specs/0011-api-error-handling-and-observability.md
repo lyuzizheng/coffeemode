@@ -258,8 +258,8 @@ does not replace:
 | `invalid_display_name` | **422** | profile | was 400 |
 | `display_name_length` | **422** | profile | was 400 |
 | `invalid_current_city` | **422** | profile | was 400 |
-| `invalid_last_location` | **422** | profile | was 400 |
 | `invalid_onboarded` | **422** | profile | was 400 |
+| `invalid_location` | 400 | profile | onboarding geolocation malformed — missed by the audit table; emitted by `parseLocateBody` |
 | `empty_patch` | 400 | request | PATCH with no fields |
 | `cafe_exists` | 409 | cafe | + `details.cafe_id` |
 | `cafe_has_other_checkins` | **409** | cafe | was 403 — state conflict, not authz; + `details.n` |
@@ -269,6 +269,7 @@ does not replace:
 | `invalid_maps_url` | 400 | places | URL host not allowlisted |
 | `poi_service` | passthrough | places | upstream worker status mirrored (502/404/413/422 only — client sanitizes) |
 | `image_service_error` | passthrough | images | same sanitization contract |
+| `size_exceeded` | 413 | images | photo bytes over the upload cap — missed by the audit table; emitted by upload route + image-service |
 | `mapkit_not_configured` | 503 | mapkit | |
 | `mapkit_token_error` | 500 | mapkit | |
 | `unresolvable` | 422 | poi-worker | no upstream provider for source |

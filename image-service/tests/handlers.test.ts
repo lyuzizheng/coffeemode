@@ -499,7 +499,7 @@ describe("router", () => {
     const response = await handler.fetch(request, env, {} as ExecutionContext);
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       error: "internal_error",
       message: "internal server error",
     });
@@ -522,7 +522,7 @@ describe("router", () => {
     const response = await handler.fetch(request, env, {} as ExecutionContext);
 
     expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       error: "internal_error",
       message: "internal server error",
     });
@@ -544,10 +544,24 @@ describe("handleComplete auth", () => {
     });
     const response = await handleComplete(request, env);
     expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({
+    expect(await response.json()).toMatchObject({
       error: "unauthorized",
       message: "missing or invalid service token",
     });
+  });
+
+  it("echoes inbound x-request-id on the error body and header", async () => {
+    const env = baseEnv();
+    const requestId = "123e4567-e89b-42d3-a456-426614174000";
+    const request = new Request("https://image-service.example.com/v1/images/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-request-id": requestId },
+      body: JSON.stringify({ imageUuid: validUuid() }),
+    });
+    const response = await handleComplete(request, env);
+    expect(response.status).toBe(401);
+    expect(response.headers.get("x-request-id")).toBe(requestId);
+    expect(await response.json()).toMatchObject({ request_id: requestId });
   });
 });
 

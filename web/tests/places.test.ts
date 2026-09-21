@@ -275,7 +275,7 @@ describe("GET /api/places/search", () => {
     fetchMock.mockResolvedValue(jsonResponse({ error: "boom" }, 502));
     const res = await searchGET(new Request(`${WORKER_URL}/api/places/search?q=x`));
     expect(res.status).toBe(502);
-    expect((await res.json()) as { error: string }).toEqual({ error: "poi_service", message: expect.stringContaining("unavailable") });
+    expect((await res.json()) as { error: string }).toMatchObject({ error: "poi_service", message: expect.stringContaining("unavailable") });
   });
 
   it("503s when the worker env is missing", async () => {

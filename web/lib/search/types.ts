@@ -24,6 +24,13 @@ export interface SearchFilters {
   viewer_id?: string | null;
 }
 
+/**
+ * Which parsed deep-link parameter failed `validateSearchQuery`
+ * (`search-params.ts`), in the API's check order. The SSR page maps these
+ * to error-state copy; the API maps them to 400 `invalid_request`.
+ */
+export type SearchParamError = "lat" | "lng" | "limit" | "city";
+
 export interface SearchResultItem {
   id: string;
   type: SearchResultType;

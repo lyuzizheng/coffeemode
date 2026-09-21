@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSearchQuery, serializeSearchParams } from "@/lib/search/search-params";
+import { parseSearchQuery, serializeSearchParams, validateSearchQuery } from "@/lib/search/search-params";
 
 /**
  * The deep-link contract (DG48): `/api/search` and the SSR `/search` page
@@ -65,6 +65,53 @@ describe("parseSearchQuery", () => {
     expect(parseSearchQuery(params({ limit: "-3" })).rawLimit).toBe("-3");
     expect(parseSearchQuery(params({})).rawLimit).toBeNull();
     expect(parseSearchQuery(params({ limit: "5" })).filters.limit).toBe(5);
+  });
+});
+
+describe("validateSearchQuery", () => {
+  const validate = (entries: Record<string, string>) =>
+    validateSearchQuery(parseSearchQuery(params(entries)));
+
+  it("accepts absent, blank, and in-range params", () => {
+    expect(validate({})).toEqual({ ok: true });
+    expect(validate({ lat: "1.3", lng: "103.8", limit: "10", city: "tokyo" })).toEqual({
+      ok: true,
+    });
+    expect(validate({ limit: "" })).toEqual({ ok: true });
+    expect(validate({ limit: "  " })).toEqual({ ok: true });
+  });
+
+  it("rejects out-of-range lat/lng", () => {
+    expect(validate({ lat: "999" })).toMatchObject({ ok: false, error: "lat" });
+    expect(validate({ lat: "-91" })).toMatchObject({ ok: false, error: "lat" });
+    expect(validate({ lng: "181" })).toMatchObject({ ok: false, error: "lng" });
+    expect(validate({ lng: "-180.5" })).toMatchObject({ ok: false, error: "lng" });
+    // Boundary values stay valid.
+    expect(validate({ lat: "90", lng: "-180" })).toEqual({ ok: true });
+  });
+
+  it("rejects non-numeric, non-integer, and non-positive limit", () => {
+    for (const limit of ["abc", "3.5", "0", "-5"]) {
+      expect(validate({ limit })).toMatchObject({ ok: false, error: "limit" });
+    }
+  });
+
+  it("rejects unknown explicit city (DG128)", () => {
+    expect(validate({ city: "atlantis" })).toMatchObject({ ok: false, error: "city" });
+  });
+
+  it("checks in API order: lat before lng before limit before city", () => {
+    expect(
+      validate({ lat: "999", lng: "999", limit: "abc", city: "atlantis" }),
+    ).toMatchObject({ ok: false, error: "lat" });
+    expect(validate({ lng: "999", limit: "abc", city: "atlantis" })).toMatchObject({
+      ok: false,
+      error: "lng",
+    });
+    expect(validate({ limit: "abc", city: "atlantis" })).toMatchObject({
+      ok: false,
+      error: "limit",
+    });
   });
 });
 

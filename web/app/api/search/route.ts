@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
 import { apiRoute } from "@/lib/api/route";
-import { findCity, resolveEffectiveCity } from "@/lib/cities";
+import { resolveEffectiveCity } from "@/lib/cities";
 import { executeSearchCached } from "@/lib/search/search-cache";
 import { fixtureSearchResponse, getSearchFixtures, isFixturesEnabled } from "@/lib/search/fixtures";
-import { parseSearchQuery } from "@/lib/search/search-params";
+import { parseSearchQuery, validateSearchQuery } from "@/lib/search/search-params";
 import { appConfig } from "@/lib/config";
 
 /** Private Cache-Control for success responses (DG137-B, values in app.yaml `search.responseCache`). */
@@ -18,8 +18,9 @@ export const GET = apiRoute(
   { bucket: "search", route: "GET /api/search", ipOnly: true },
   async (request, ctx) => {
     const url = new URL(request.url);
-    const { filters, rawLimit } = parseSearchQuery((name) => url.searchParams.get(name));
-    const { city, lat, lng, limit: limitParam } = filters;
+    const parsed = parseSearchQuery((name) => url.searchParams.get(name));
+    const { filters } = parsed;
+    const { city } = filters;
 
     // DG140: fixtures short-circuit when double-gate is satisfied and ?fixtures=1 requested
     if (isFixturesEnabled() && url.searchParams.get("fixtures") === "1") {
@@ -31,24 +32,11 @@ export const GET = apiRoute(
         return response;
       }
     }
-    if (lat !== undefined && (lat < -90 || lat > 90)) {
-      return apiError("invalid_request", "lat must be within [-90, 90]", { status: 400, requestId: ctx.requestId });
-    }
-    if (lng !== undefined && (lng < -180 || lng > 180)) {
-      return apiError("invalid_request", "lng must be within [-180, 180]", { status: 400, requestId: ctx.requestId });
-    }
-
-    // Validate limit if provided: non-numeric or non-positive integer -> 400
-    if (rawLimit !== null && rawLimit.trim() !== "" && limitParam === undefined) {
-      return apiError("invalid_request", "limit must be a positive integer", { status: 400, requestId: ctx.requestId });
-    }
-    if (limitParam !== undefined && (!Number.isInteger(limitParam) || limitParam <= 0)) {
-      return apiError("invalid_request", "limit must be a positive integer", { status: 400, requestId: ctx.requestId });
-    }
-
-    // DG128: explicit city must be known; reject unknown explicit cities without silent re-anchoring
-    if (city !== undefined && !findCity(city)) {
-      return apiError("invalid_request", "unknown city", { status: 400, requestId: ctx.requestId });
+    // Shared rejection contract (search-params.ts): the SSR /search page maps
+    // the same result to an error state, so the two surfaces never drift.
+    const valid = validateSearchQuery(parsed);
+    if (!valid.ok) {
+      return apiError("invalid_request", valid.message, { status: 400, requestId: ctx.requestId });
     }
 
     // Resolve effective canonical city ID (DG128 fallback chain when omitted)

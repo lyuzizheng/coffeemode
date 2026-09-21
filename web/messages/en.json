@@ -406,6 +406,7 @@
     "external_unavailable": "External search is unavailable right now",
     "result_count": "{count, plural, one {# place} other {# places}}",
     "unknown_city": "We don't cover this city yet — pick one from the list.",
+    "invalid_params": "This search link has invalid parameters — check the URL and try again.",
     "view_all_results": "View all results",
     "external_fallback_query": "cafes in {city}",
     "ranking": {

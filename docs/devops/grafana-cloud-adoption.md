@@ -6,7 +6,7 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 
 1. **最高杠杆的一步是在 VPS 上跑 Alloy。** 应用已经在往 stdout 打单行 JSON（`web/lib/observability/server-log.ts`），但没有任何东西收它 —— 日志只活在容器里，`docker logs` 之后就没了。零代码改动就能接进 Loki。
 2. **第二高杠杆是给 Next.js 加 OpenTelemetry。** 一次埋点同时换来 traces、service map、RED 指标（`traces_spanmetrics_*` 由 metrics-generator 自动生成）和 exemplar。不用手写 Prometheus 客户端。
-3. **Better Stack 不要一次性切掉。** 现在 4 条 chart alert + 1 个 uptime monitor 是唯一的告警面，先双写、验证、再拆。
+3. **Better Stack 不要一次性切掉。** 现在 4 条 chart alert + 1 个 uptime monitor 是唯一的告警面，先双写、验证、再拆。但只有 uptime monitor 是真在跑的 —— 4 条 chart alert 至今只被合成事件喂过，两条 ingest 路径的环境变量仍待粘贴（§1.2）。
 4. **免费档够用，但有两个硬约束**：14 天保留期，以及 10k active series。Alloy 全量收 Docker stdout 会吃掉 logs 配额，要先做过滤。
 
 ## 1. 现状盘点
@@ -32,12 +32,21 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 
 | 类型 | 内容 |
 |---|---|
-| 日志 source | `coffeemode-rate-limit-staging` (2766431)、`coffeemode-rate-limit-prod` (2766432) |
+| 日志 source | 4 个 CoffeeMode source：`coffeemode-rate-limit-staging` (2766431)、`coffeemode-rate-limit-prod` (2766432)、`coffeemode-api-errors-staging` (2769809)、`coffeemode-api-errors-prod` (2769810) |
 | Dashboard | `CoffeeMode API Errors (staging)` (1131239)、`CoffeeMode API Errors (prod)` (1131240) |
 | Chart alert | 4 条 enabled：`5xx sustained on a route`、`Worker upstream_error spike`（staging / prod 各一套） |
 | Uptime monitor | `coffeemood.com`（status 类型） |
 | Heartbeat | 无 |
 | Status page | 无 |
+
+**两条独立的写入路径**，不是一条：
+
+- `rate-limit-alert.ts` → `BETTER_STACK_INGEST_URL` / `_TOKEN` → `coffeemode-rate-limit-*`（限流命中）
+- `api-error-sink.ts` → `BETTER_STACK_ERRORS_INGEST_URL` / `_TOKEN` → `coffeemode-api-errors-*`（error / warn 行，spec 0011 D8 / BRAWUKA-541）
+
+**实际数据量**（2026-09-21 经 Better Stack query API 查，含冷存）：rate-limit staging 7 行（02:47–07:20）、rate-limit prod 0 行；api-errors staging 27 行（07:20–07:36）、api-errors prod 0 行。api-errors 那 27 行**全部是合成事件**（`route: "GET /api/__synthetic_alert"`），没有一条真实应用错误。
+
+**告警面的真实状态**：4 条 chart alert 挂在 `coffeemode-api-errors-*` 上，而这两个 source 只被合成事件喂过；`docs/agent/pending-user-actions.md` §7 记录两条 ingest 路径的 Dokploy 环境变量仍待 Owner 粘贴。所以**目前唯一被证明可用的告警是 uptime monitor**，4 条 chart alert 尚未在真实流量上验证过 —— 迁移时不能把它们当成现成的安全网。
 
 ### 1.3 应用侧
 
@@ -45,6 +54,7 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 |---|---|
 | `web/lib/observability/server-log.ts` | 输出单行 JSON（`{"type":"error","request_id":…}`）到 stdout。**没人收。** |
 | `web/lib/observability/rate-limit-alert.ts` | 限流命中时 `console.warn`（10s 节流）+ fire-and-forget POST 到 Better Stack（**不**节流） |
+| `web/lib/observability/api-error-sink.ts` | error / warn 行 fire-and-forget POST 到 `coffeemode-api-errors-*`（`keepalive`，不阻塞、不抛错，未配置时 no-op）。**第二条 Better Stack 出口**，喂 4 条 chart alert。 |
 | `/api/health` | `{ok, version, boot_time}` |
 | `/api/heartbeat` | 真实 DB round-trip，Better Stack 轮询它 |
 | `poi-service` / `image-service` | `console.error` + wrangler `[observability]`（数据留在 Cloudflare 侧） |
@@ -158,6 +168,8 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 
 现在 Better Stack 有 `5xx sustained on a route` 和 `Worker upstream_error spike`，staging / prod 各一套。
 
+**注意这 4 条 alert 依赖 `api-error-sink.ts` → `coffeemode-api-errors-*` 这条写入路径**（见 §1.2），和限流那条是分开的。所以「替代 chart alert」不只是重写 4 条规则，还要把这条 ingest 一起迁走 —— 否则拆掉 Better Stack 时，`api-error-sink.ts` 会变成往一个已停用 source 发数据的死代码。另外它们至今只被合成事件验证过，迁移前应该先在真实流量上确认一次。
+
 目标：Grafana-managed alert rules，数据源用 Loki（日志派生）或 spanmetrics（trace 派生）。
 
 - 通知先接 Slack / 邮件 contact point。
@@ -211,7 +223,7 @@ graph TD
 ## 5. 风险与注意
 
 1. **免费档配额**：50 GB logs / 50 GB traces / 10k series / 14 天保留。Alloy 全量收 Docker stdout 会吃掉 logs 配额 —— 先只收 `web` 容器并丢 debug。
-2. **双写期**：Better Stack 保留到 Grafana 侧验证通过再拆。不要一次性切换，否则告警面出现空窗。
+2. **双写期**：Better Stack 保留到 Grafana 侧验证通过再拆。不要一次性切换，否则告警面出现空窗。但「现成的告警面」比看上去薄：4 条 chart alert 只被合成事件喂过，两条 ingest 路径的 Dokploy 环境变量仍待粘贴（§1.2），真正在跑的只有 uptime monitor。双写期的对照基线应该是 uptime monitor，不是那 4 条 alert。
 3. **rate-limit 事件会丢**：`emitRateLimitAlert` 的 `console.warn` 是 10s 节流的，而 Better Stack POST 不节流。如果改成「靠 Alloy 收 stdout」，节流会让事件数明显变少。迁移时要同时去掉节流，或者改成计数指标（counter）而不是逐条日志。
 4. **标签基数**：Loki 只留低基数 label；Prometheus 不要用 `client_id`、`request_id`、`route` 做 label（`route` 在 spanmetrics 里是受控集合，可以）。
 5. **MCP 计费**：Grafana 把每个通过 MCP 连接的用户算作 Assistant 活跃用户，消耗 40M token 配额。

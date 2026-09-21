@@ -532,6 +532,10 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     ];
 
     for (const testCase of cases) {
+      // guard() (auth + rate limit) runs before body validation, so every
+      // malformed POST still spends cafes-write budget (10/min). Reset per
+      // case so the matrix can't trip 429 (spec 0011 ordering, BRAWUKA-537).
+      await resetRateLimits();
       const res = await clientA.post(cafesPOST, "/api/cafes", testCase.body);
       expect(res.status, `Expected 400 for ${testCase.name}`).toBe(400);
       expect(res.data, `Expected invalid_request for ${testCase.name}`).toMatchObject({

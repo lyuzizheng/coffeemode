@@ -83,21 +83,43 @@ export interface DeleteAccountResult {
   cafes_transferred: number;
 }
 
-/** Permanent account teardown. One transaction: soft-delete the user's
- * live check-ins (per-cafe gallery purge + work_stats recompute, same
- * semantics as DG146 cafe delete), hand created cafes to the service
- * account, then hard-delete likes, navigations, upload intents, and the
- * profile row itself. */
+/**
+ * Lock-order contract (BRAWUKA-574): every multi-row writer takes cafe-row
+ * locks before check-in-row locks — cafe id ascending, then check-in id
+ * ascending. deleteCafe locks cafe → caller check-ins, softDeleteCheckIn /
+ * updateCheckIn lock the check-in's cafe → the check-in; this function does
+ * the same (cafes first, then check-ins), so concurrent deleteAccount +
+ * deleteCafe / softDeleteCheckIn on the same cafe serialize on the cafe
+ * lock instead of deadlocking in opposite order. The two locking SELECTs
+ * name ORDER BY so concurrent deleteAccount transactions acquire in the
+ * same sequence; the follow-up UPDATEs target only rows already held by
+ * those SELECTs, so they acquire no new contended locks.
+ */
 export async function deleteAccount(userId: string): Promise<DeleteAccountResult> {
   if (!isValidUUID(userId)) {
     throw new Error("invalid user id");
   }
 
   return withTransaction(async (client) => {
+    // Lock every affected cafe row (created cafes + cafes holding live
+    // check-ins) before any check-in row: deleteCafe / softDeleteCheckIn /
+    // updateCheckIn take the same cafe → checkin order, so a concurrent
+    // deleteAccount + deleteCafe (or check-in edit/delete) on the same cafe
+    // serializes on the cafe lock instead of deadlocking in opposite order.
+    // ORDER BY keeps acquisition deterministic across statements.
+    await client.query(
+      `select c.id from cafes c
+       where c.created_by = $1
+          or exists (select 1 from checkins ci
+                     where ci.cafe_id = c.id and ci.user_id = $1 and ci.deleted_at is null)
+       order by c.id for update`,
+      [userId],
+    );
     // Live check-ins grouped by cafe — the gallery purge and stats
     // recompute run once per affected cafe, not once per row.
     const checkinsRes = await client.query<{ id: string; cafe_id: string }>(
-      `select id, cafe_id from checkins where user_id = $1 and deleted_at is null for update`,
+      `select id, cafe_id from checkins where user_id = $1 and deleted_at is null
+       order by cafe_id, id for update`,
       [userId],
     );
     const byCafe = new Map<string, string[]>();

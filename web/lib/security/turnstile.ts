@@ -44,26 +44,19 @@ interface SiteverifyResult {
 /**
  * Hostnames a siteverify `hostname` may match: the deployment allowlist
  * (`NEXT_PUBLIC_SITE_URL` + `NEXT_PUBLIC_ALLOWED_HOSTS`, via `getAllowedHosts`)
- * plus the request's own `host` (the frontend the caller is on). Never
- * consults `x-forwarded-host`: client-injectable on every deployment here
- * (BRAWUKA-282 P1-1 — Cloudflare never sets it, no edge strips it).
+ * only. Never merges the request's `Host` header or `x-forwarded-host`:
+ * both are client-injectable on every deployment here (BRAWUKA-282 P1-1 —
+ * Cloudflare never sets `x-forwarded-host`, no edge strips it; BRAWUKA-572 —
+ * a forged `Host` matching a foreign-minted token's hostname would pass).
  * Falls back to loopback when nothing is configured, mirroring `isSameOrigin`
  * dev behavior. Production allowlists never include loopback — configure
  * `NEXT_PUBLIC_SITE_URL`.
  */
-function expectedHostnames(request: Request): Set<string> {
+function expectedHostnames(): Set<string> {
   const names = new Set<string>();
   for (const host of getAllowedHosts()) {
     const hostname = host.split(":")[0]?.trim().toLowerCase();
     if (hostname) names.add(hostname);
-  }
-  const effective = request.headers.get("host")?.trim();
-  if (effective) {
-    try {
-      names.add(new URL(`http://${effective}`).hostname.toLowerCase());
-    } catch {
-      // Benign: malformed Host header contributes nothing to the allowlist.
-    }
   }
   if (names.size === 0) {
     names.add("localhost");
@@ -125,7 +118,7 @@ export async function verifyTurnstileToken(
   }
 
   const hostname = typeof result?.hostname === "string" ? result.hostname.toLowerCase() : "";
-  if (result?.success !== true || result?.action !== action || !expectedHostnames(request).has(hostname)) {
+  if (result?.success !== true || result?.action !== action || !expectedHostnames().has(hostname)) {
     return {
       ok: false,
       code: "turnstile_rejected",

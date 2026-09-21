@@ -553,6 +553,67 @@ describe("POST /poi/resolve", () => {
       lng: 103.85,
     });
   });
+
+  it("422s an Apple URL whose auid is a Google id (BRAWUKA-566)", async () => {
+    const db = new FakeD1();
+    const now = new Date().toISOString();
+    const fresh = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+    db.rows.push({
+      place_id: "ChIJREALCAFE9",
+      source: "google",
+      name: "Real Cafe",
+      lat: 1.285,
+      lng: 103.85,
+      address: null,
+      types: '["cafe"]',
+      business_status: null,
+      hours_json: null,
+      fetched_at: now,
+      expires_at: fresh,
+    });
+    const env = makeEnv({ POI_DB: db });
+    const res = await call("POST", "/poi/resolve", env, {
+      body: { maps_share_url: "https://maps.apple.com/?auid=ChIJREALCAFE9&ll=1.285,103.85&q=Forged%20Cafe" },
+    });
+
+    expect(res.status).toBe(422);
+    // The real Google row is untouched.
+    expect(db.rows).toHaveLength(1);
+    expect(db.rows[0].name).toBe("Real Cafe");
+  });
+
+  it("409s when an Apple URL key belongs to a stored google row (BRAWUKA-566)", async () => {
+    const db = new FakeD1();
+    const now = new Date().toISOString();
+    const fresh = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+    db.rows.push({
+      place_id: "shared-key-1",
+      source: "google",
+      name: "Real Cafe",
+      lat: 1.285,
+      lng: 103.85,
+      address: null,
+      types: '["cafe"]',
+      business_status: null,
+      hours_json: null,
+      fetched_at: now,
+      expires_at: fresh,
+    });
+    const env = makeEnv({ POI_DB: db });
+    const res = await call("POST", "/poi/resolve", env, {
+      body: { maps_share_url: "https://maps.apple/place?place-id=shared-key-1&ll=1.285,103.85&q=Forged%20Cafe" },
+    });
+
+    expect(res.status).toBe(409);
+    expect(db.rows).toHaveLength(1);
+    expect(db.rows[0].name).toBe("Real Cafe");
+    // getPOI still serves the real row.
+    const getRes = await call("GET", "/poi/shared-key-1", env, {
+      fetchImpl: vi.fn(mockFetch(() => new Response("should not be called", { status: 599 }))),
+    });
+    expect(getRes.status).toBe(200);
+    expect((await bodyOf(getRes)).name).toBe("Real Cafe");
+  });
 });
 
 describe("GET /poi/search", () => {
@@ -1161,6 +1222,77 @@ describe("POST /poi/external", () => {
     expect(res.status).toBe(200);
     expect(kv.has("poi:ChIJKEPT")).toBe(false);
     expect((env.POI_DB as FakeD1).rows.map((row) => row.place_id)).toEqual(["ChIJKEPT"]);
+  });
+
+  it("rejects apple entries carrying Google-shaped ids (BRAWUKA-566)", async () => {
+    const db = new FakeD1();
+    const env = makeEnv({ POI_DB: db });
+    const res = await call("POST", "/poi/external", env, {
+      body: [
+        { place_id: "ChIJFORGED1", source: "apple", name: "Forged", lat: 1.3, lng: 103.9, types: ["Cafe"] },
+        { place_id: "0x8085:0x9f2c", source: "apple", name: "Forged Hex", lat: 1.3, lng: 103.9, types: ["Cafe"] },
+      ],
+    });
+    expect(res.status).toBe(400);
+    const entries = (await bodyOf(res)).entries as Array<{ index: number; reason: string }>;
+    expect(entries.map((e) => e.index)).toEqual([0, 1]);
+    // Validation happens before any batch call: nothing was written.
+    expect(db.batchCalls).toBe(0);
+    expect(db.rows).toHaveLength(0);
+  });
+
+  it("refuses cross-source overwrites but allows same-source upserts (BRAWUKA-566)", async () => {
+    const db = new FakeD1();
+    const now = new Date().toISOString();
+    const fresh = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+    db.rows.push({
+      place_id: "shared-google-1",
+      source: "google",
+      name: "Real Cafe",
+      lat: 1.285,
+      lng: 103.85,
+      address: null,
+      types: '["cafe"]',
+      business_status: null,
+      hours_json: null,
+      fetched_at: now,
+      expires_at: fresh,
+    });
+    db.rows.push({
+      place_id: "apple-real-1",
+      source: "apple",
+      name: "Real Apple Cafe",
+      lat: 1.3,
+      lng: 103.9,
+      address: null,
+      types: '["Cafe"]',
+      business_status: null,
+      hours_json: null,
+      fetched_at: now,
+      expires_at: fresh,
+    });
+    const kv = new FakeKV();
+    await kv.put("poi:shared-google-1", JSON.stringify(googleDetailResponse()));
+    const env = makeEnv({ POI_DB: db, POI_KV: kv });
+    const res = await call("POST", "/poi/external", env, {
+      body: [
+        { place_id: "shared-google-1", source: "apple", name: "Forged", lat: 1.3, lng: 103.9, types: ["Cafe"] },
+        { place_id: "apple-real-1", source: "google", name: "Forged", lat: 1.3, lng: 103.9, types: ["cafe"] },
+        { place_id: "apple-real-1", source: "apple", name: "Renamed Apple Cafe", lat: 1.3, lng: 103.9, types: ["Cafe"] },
+      ],
+    });
+    expect(res.status).toBe(200);
+    expect(await bodyOf(res)).toEqual({
+      stored: 1,
+      skipped: [
+        { index: 0, reason: "source_conflict" },
+        { index: 1, reason: "source_conflict" },
+      ],
+    });
+    expect(db.rows.find((r) => r.place_id === "shared-google-1")?.name).toBe("Real Cafe");
+    expect(db.rows.find((r) => r.place_id === "apple-real-1")?.name).toBe("Renamed Apple Cafe");
+    // The conflicting apple write never touched D1 or evicted the legit KV entry.
+    expect(kv.has("poi:shared-google-1")).toBe(true);
   });
 });
 

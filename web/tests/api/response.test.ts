@@ -9,10 +9,15 @@ import {
 } from "@/lib/api/response";
 
 describe("apiError", () => {
-  it("creates error response with default 400 and no message", async () => {
+  it("uses the registry status when none is given", async () => {
     const res = apiError("invalid_request");
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "invalid_request" });
+  });
+
+  it("rejects unregistered codes at typecheck", () => {
+    // @ts-expect-error unregistered codes are not in ERROR_CODES
+    expect(() => apiError("unregistered_code")).toThrow();
   });
 
   it("creates error response with status code number", async () => {
@@ -27,10 +32,16 @@ describe("apiError", () => {
     expect(await res.json()).toEqual({ error: "invalid_request", message: "id must be a UUID" });
   });
 
-  it("creates error response with extra fields", async () => {
+  it("creates error response with extra fields mirrored into details", async () => {
     const res = apiError("cafe_exists", 409, { extra: { cafe_id: "abc-123" } });
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "cafe_exists", cafe_id: "abc-123" });
+    // Legacy top-level extras stay for one release; details carries the same
+    // keys for new clients (spec 0011 D2).
+    expect(await res.json()).toEqual({
+      error: "cafe_exists",
+      cafe_id: "abc-123",
+      details: { cafe_id: "abc-123" },
+    });
   });
 
   it("creates error response with message, status, and extra fields", async () => {
@@ -43,19 +54,57 @@ describe("apiError", () => {
       error: "cafe_exists",
       message: "Cafe already exists",
       cafe_id: "abc-123",
+      details: { cafe_id: "abc-123" },
     });
   });
 
-  it("merges extra fields through the message form", async () => {
+  it("merges extra fields through the message form and defaults to the registry status", async () => {
     const res = apiError("cafe_exists", "Cafe already exists", {
       extra: { cafe_id: "abc-123" },
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
     expect(await res.json()).toEqual({
       error: "cafe_exists",
       message: "Cafe already exists",
       cafe_id: "abc-123",
+      details: { cafe_id: "abc-123" },
     });
+  });
+
+  it("lets explicit details win over mirrored extras", async () => {
+    const res = apiError("duplicate_checkin", 409, {
+      extra: { existing_checkin_id: "chk-1" },
+      details: { fields: [{ field: "photos", reason: "unconsumed" }] },
+    });
+    expect(await res.json()).toEqual({
+      error: "duplicate_checkin",
+      existing_checkin_id: "chk-1",
+      details: {
+        existing_checkin_id: "chk-1",
+        fields: [{ field: "photos", reason: "unconsumed" }],
+      },
+    });
+  });
+
+  it("emits request_id on 5xx even without a request in scope", async () => {
+    const res = apiError("internal_error", 500);
+    const body = await res.json();
+    expect(body).toMatchObject({ error: "internal_error" });
+    expect(typeof body.request_id).toBe("string");
+  });
+
+  it("echoes the inbound x-request-id when a request is in scope", async () => {
+    const requestId = "123e4567-e89b-42d3-a456-426614174000";
+    const request = new Request("http://localhost/api/test", {
+      headers: { "x-request-id": requestId },
+    });
+    const res = apiError("forbidden", 403, { request });
+    expect(await res.json()).toEqual({ error: "forbidden", request_id: requestId });
+  });
+
+  it("omits request_id on 4xx without a request in scope", async () => {
+    const res = apiError("not_found", 404);
+    expect(await res.json()).toEqual({ error: "not_found" });
   });
 
   it("rejects a bare extra object as the third argument", () => {
@@ -71,6 +120,7 @@ describe("apiError", () => {
       error: "cafe_exists",
       message: "Cafe already exists",
       cafe_id: "abc-123",
+      details: { error: "spoofed", message: "spoofed", cafe_id: "abc-123" },
     });
   });
 });

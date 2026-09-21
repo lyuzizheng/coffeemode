@@ -179,54 +179,54 @@ describe("mutating API routes reject cross-site requests at the boundary", () =>
   it("POST /api/cafes rejects cross-origin", async () => {
     const res = await postCafe(crossSiteReq("https://cafemood.app/api/cafes", "POST"));
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
+    expect(await res.json()).toMatchObject({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
 
   it("DELETE /api/cafes/[id] rejects cross-origin", async () => {
     const res = await deleteCafe(crossSiteReq("https://cafemood.app/api/cafes/1", "DELETE"), dummyParams);
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
+    expect(await res.json()).toMatchObject({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
 
   it("POST /api/checkins rejects cross-origin", async () => {
     const res = await postCheckin(crossSiteReq("https://cafemood.app/api/checkins", "POST"));
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
+    expect(await res.json()).toMatchObject({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
 
   it("PATCH /api/checkins/[id] rejects cross-origin", async () => {
     const res = await patchCheckin(crossSiteReq("https://cafemood.app/api/checkins/1", "PATCH"), dummyParams);
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
+    expect(await res.json()).toMatchObject({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
 
   it("DELETE /api/checkins/[id] rejects cross-origin", async () => {
     const res = await deleteCheckin(crossSiteReq("https://cafemood.app/api/checkins/1", "DELETE"), dummyParams);
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
+    expect(await res.json()).toMatchObject({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
 
   it("POST /api/checkins/[id]/like rejects cross-origin", async () => {
     const res = await postCheckinLike(crossSiteReq("https://cafemood.app/api/checkins/1/like", "POST"), dummyParams);
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
+    expect(await res.json()).toMatchObject({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
 
   it("POST /api/images/upload rejects cross-origin", async () => {
     const res = await postImageUpload(crossSiteReq("https://cafemood.app/api/images/upload", "POST"));
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
+    expect(await res.json()).toMatchObject({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
 
   it("POST /api/navigations rejects cross-origin", async () => {
     const res = await postNavigation(crossSiteReq("https://cafemood.app/api/navigations", "POST"));
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
+    expect(await res.json()).toMatchObject({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
   it("PATCH /api/profile rejects cross-origin", async () => {
     const res = await patchProfile(crossSiteReq("https://cafemood.app/api/profile", "PATCH") as unknown as import("next/server").NextRequest);
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
+    expect(await res.json()).toMatchObject({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
 
   it("POST /api/checkins rejects forged Origin + X-Forwarded-Host pair (BRAWUKA-282 P1-1 gate)", async () => {
@@ -241,18 +241,18 @@ describe("mutating API routes reject cross-site requests at the boundary", () =>
       }),
     );
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
+    expect(await res.json()).toMatchObject({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
 
   it("POST /api/places/external rejects cross-origin", async () => {
     const res = await postPlacesExternal(crossSiteReq("https://cafemood.app/api/places/external", "POST"));
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
+    expect(await res.json()).toMatchObject({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
 
   it("POST /api/places/resolve rejects cross-origin", async () => {
     const res = await postPlacesResolve(crossSiteReq("https://cafemood.app/api/places/resolve", "POST"));
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: "forbidden_origin", message: "cross-origin request forbidden" });
+    expect(await res.json()).toMatchObject({ error: "forbidden_origin", message: "cross-origin request forbidden" });
   });
 });

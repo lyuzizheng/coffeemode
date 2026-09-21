@@ -3,6 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { emitRateLimitAlert } from "@/lib/observability/rate-limit-alert";
+import { getRequestId } from "@shared/request-id";
 
 /** Result of consuming one token under a window and cap. */
 export interface RateLimitResult {
@@ -197,12 +198,13 @@ export function getClientIdentifier(request: Request, user?: { id: string } | nu
 }
 
 /** Build a 429 response from a rate-limit result. */
-export function rateLimitResponse(result: RateLimitResult): NextResponse {
+export function rateLimitResponse(result: RateLimitResult, request?: Request): NextResponse {
   // Machine code only — never a `message`: `responseMessage` renders 429s
   // with the caller's localized fallback, so any English prose here would
-  // leak into localized UI (BRAWUKA-280).
+  // leak into localized UI (BRAWUKA-280). `request_id` rides along so the
+  // envelope matches spec 0011 D2.
   return NextResponse.json(
-    { error: "rate_limited" },
+    { error: "rate_limited", request_id: getRequestId(request) },
     {
       status: 429,
       headers: { "Retry-After": String(result.retryAfter) },

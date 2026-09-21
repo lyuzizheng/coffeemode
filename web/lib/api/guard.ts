@@ -131,7 +131,7 @@ export async function guard(
   if (requireAuth && !user) {
     return {
       ok: false,
-      response: apiError("unauthorized", 401),
+      response: apiError("unauthorized", 401, { request }),
     };
   }
 
@@ -150,7 +150,7 @@ export async function guard(
   if (!rate.allowed) {
     return {
       ok: false,
-      response: rateLimitResponse(rate),
+      response: rateLimitResponse(rate, request),
     };
   }
 
@@ -201,11 +201,11 @@ export async function readJsonBody<T = unknown>(
     // for chunked bodies that carry no Content-Length.
     const declared = Number(request.headers.get("content-length") ?? 0);
     if (declared > MAX_JSON_BODY_BYTES) {
-      return oversizedBody();
+      return oversizedBody(request);
     }
     const text = await readBoundedBodyText(request);
     if (text === null) {
-      return oversizedBody();
+      return oversizedBody(request);
     }
     if (!text || text.trim() === "") {
       if (options?.optional) {
@@ -213,7 +213,7 @@ export async function readJsonBody<T = unknown>(
       }
       return {
         ok: false,
-        response: apiError("invalid_request", "invalid JSON body", { status: 400 }),
+        response: apiError("invalid_request", "invalid JSON body", { status: 400, request }),
       };
     }
     const data = JSON.parse(text) as T;
@@ -221,15 +221,18 @@ export async function readJsonBody<T = unknown>(
   } catch {
     return {
       ok: false,
-      response: apiError("invalid_request", "invalid JSON body", { status: 400 }),
+      response: apiError("invalid_request", "invalid JSON body", { status: 400, request }),
     };
   }
 }
 
-function oversizedBody(): ReadJsonBodyResult<null> {
+function oversizedBody(request: Request): ReadJsonBodyResult<null> {
   return {
     ok: false,
-    response: apiError("invalid_request", "request body too large", { status: 413 }),
+    // Deliberate divergence from the registry's canonical 400 for
+    // `invalid_request`: 413 is the correct HTTP signal for an oversized
+    // body, and `size_exceeded` is reserved for image uploads (spec 0011).
+    response: apiError("invalid_request", "request body too large", { status: 413, request }),
   };
 }
 

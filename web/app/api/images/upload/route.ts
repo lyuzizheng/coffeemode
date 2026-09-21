@@ -4,12 +4,13 @@ import { apiError } from "@/lib/api/response";
 import { recordUploadIntent } from "@/lib/db/image-uploads";
 import { ImageServiceError, requestUploadUrl } from "@/lib/images/image-service-client";
 import { validateUploadSize } from "@shared/images/validation";
+import type { ErrorCode } from "@shared/errors";
 import { guard, readJsonBody } from "@/lib/api/guard";
 import { requireSameOrigin } from "@/lib/security/origin";
 
 function parseSize(
   body: unknown,
-): { size: number } | { error: string; code: string } {
+): { size: number } | { error: string; code: ErrorCode } {
   if (!body || typeof body !== "object") {
     return { error: "size (number, bytes) is required", code: "invalid_request" };
   }
@@ -52,7 +53,8 @@ export async function POST(request: Request) {
   if (!bodyRes.ok) return bodyRes.response;
   const parsed = parseSize(bodyRes.data);
   if ("error" in parsed) {
-    return apiError(parsed.code, parsed.error, { status: 400 });
+    // Registry status: 400 invalid_request / 413 size_exceeded (spec 0011).
+    return apiError(parsed.code, parsed.error, { request });
   }
 
   try {

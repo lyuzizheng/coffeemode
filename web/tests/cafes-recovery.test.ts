@@ -87,6 +87,6 @@ describe("GET /api/cafes/[id]/recovery (DG111)", () => {
       params: Promise.resolve({ id: CAFE }),
     });
     expect(res.status).toBe(500);
-    await expect(res.json()).resolves.toEqual({ error: "internal_error" });
+    await expect(res.json()).resolves.toMatchObject({ error: "internal_error" });
   });
 });

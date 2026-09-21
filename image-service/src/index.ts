@@ -1,5 +1,7 @@
 import type { CompleteRequest, CompleteResponse, DeleteRequest, DeleteResponse, Env, UploadResponse } from "./types";
 import { authorized, internalError, json, unauthorized } from "./auth";
+import type { ErrorCode } from "../../web/shared/errors";
+import { defaultErrorStatus } from "../../web/shared/errors";
 import { isValidUUID } from "../../web/shared/uuid";
 import { validateUploadSize } from "../../web/shared/images/validation";
 import { sanitizeMetadata } from "./validate";
@@ -7,9 +9,10 @@ import { deleteObjects, headObject, presignedGetUrl, presignedPutUrl, publicUrl,
 import { IMMUTABLE_CACHE_CONTROL, MAX_UPLOAD_BYTES, PROVISION_TARGET_TYPE } from "./constants";
 
 /** Validation failure envelope — same shape as poi-service
- *  ({ error: code, message? }). */
-function error(code: string, message: string, status = 400): Response {
-  return json({ error: code, message }, status);
+ * ({ error: code, message?, request_id }). `code` is registry-typed and the
+ * status defaults to the registry's canonical status for it. */
+function error(request: Request, code: ErrorCode, message: string, status?: number): Response {
+  return json({ error: code, message }, status ?? defaultErrorStatus(code), request);
 }
 
 function expirationDate(ttlSeconds: number): string {
@@ -26,17 +29,17 @@ function makeKeys(imageUuid: string) {
 
 export async function handleUpload(request: Request, env: Env): Promise<Response> {
   if (!(await authorized(request, env))) {
-    return unauthorized();
+    return unauthorized(request);
   }
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return error("invalid_request", "invalid JSON body");
+    return error(request, "invalid_request", "invalid JSON body");
   }
   if (!body || typeof body !== "object") {
-    return error("invalid_request", "invalid JSON body");
+    return error(request, "invalid_request", "invalid JSON body");
   }
 
   // `size` is REQUIRED: an omitted size produced an uncapped presigned PUT,
@@ -46,7 +49,7 @@ export async function handleUpload(request: Request, env: Env): Promise<Response
   const sizeCheck = validateUploadSize((body as Record<string, unknown>).size);
   if (!sizeCheck.ok) {
     const code = sizeCheck.code === "size_exceeded" ? "size_exceeded" : "invalid_request";
-    return error(code, sizeCheck.error);
+    return error(request, code, sizeCheck.error);
   }
   const size = sizeCheck.size;
 
@@ -67,29 +70,29 @@ export async function handleUpload(request: Request, env: Env): Promise<Response
     size,
   };
 
-  return json(response);
+  return json(response, 200, request);
 }
 
 export async function handleComplete(request: Request, env: Env): Promise<Response> {
   if (!(await authorized(request, env))) {
-    return unauthorized();
+    return unauthorized(request);
   }
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return error("invalid_request", "invalid JSON body");
+    return error(request, "invalid_request", "invalid JSON body");
   }
 
   if (!body || typeof body !== "object") {
-    return error("invalid_request", "invalid JSON body");
+    return error(request, "invalid_request", "invalid JSON body");
   }
 
   const { imageUuid, userId, targetType, targetId } = body as CompleteRequest;
 
   if (!isValidUUID(imageUuid)) {
-    return error("invalid_request", "imageUuid must be a valid UUID");
+    return error(request, "invalid_request", "imageUuid must be a valid UUID");
   }
 
   // Stage metadata is REQUIRED (issue #158 cleanup contract): complete()
@@ -106,7 +109,7 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
   const safeTargetType = sanitizeMetadata(targetType);
   const safeTargetId = sanitizeMetadata(targetId);
   if (!safeTargetType || !safeTargetId) {
-    return error("invalid_request", "targetType and targetId are required");
+    return error(request, "invalid_request", "targetType and targetId are required");
   }
   // Keys are always lowercase (normalizedUuid); the provision marker must
   // match the key case so metadata and key stay consistent (BRAWUKA-455).
@@ -117,7 +120,7 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
     safeTargetType !== "cafe" &&
     safeTargetType !== "checkin"
   ) {
-    return error("invalid_request", "targetType must be provision, cafe, or checkin");
+    return error(request, "invalid_request", "targetType must be provision, cafe, or checkin");
   }
   if (safeTargetType === PROVISION_TARGET_TYPE) {
     // Provision-stage marker pairs the object with itself: unique per upload,
@@ -128,16 +131,16 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
   const keys = makeKeys(normalizedUuid);
   const exists = await headObject(env, keys.original);
   if (!exists) {
-    return error("not_found", "original image not found", 404);
+    return error(request, "not_found", "original image not found");
   }
   // Enforce the cap on the ACTUAL uploaded bytes, not the caller's claim
   // (review 2026-08-09): refuse to hand out process URLs for oversized
   // objects.
   if (exists.size > MAX_UPLOAD_BYTES) {
     return error(
+      request,
       "size_exceeded",
       `uploaded object is ${exists.size} bytes, exceeding the ${MAX_UPLOAD_BYTES} byte cap`,
-      422,
     );
   }
 
@@ -178,7 +181,7 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
     keys,
   };
 
-  return json(response);
+  return json(response, 200, request);
 }
 
 /**
@@ -193,23 +196,23 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
  */
 export async function handleDelete(request: Request, env: Env): Promise<Response> {
   if (!(await authorized(request, env))) {
-    return unauthorized();
+    return unauthorized(request);
   }
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return error("invalid_request", "invalid JSON body");
+    return error(request, "invalid_request", "invalid JSON body");
   }
   if (!body || typeof body !== "object") {
-    return error("invalid_request", "invalid JSON body");
+    return error(request, "invalid_request", "invalid JSON body");
   }
 
   const record = body as DeleteRequest & Record<string, unknown>;
   const imageUuid = record.imageUuid;
   if (typeof imageUuid !== "string" || !isValidUUID(imageUuid)) {
-    return error("invalid_request", "imageUuid must be a valid UUID");
+    return error(request, "invalid_request", "imageUuid must be a valid UUID");
   }
   const keepOriginal = record.keepOriginal === true;
 
@@ -218,7 +221,7 @@ export async function handleDelete(request: Request, env: Env): Promise<Response
   const targets = keepOriginal ? [keys.card, keys.thumbnail] : [keys.original, keys.card, keys.thumbnail];
   const { deleted, missing } = await deleteObjects(env, targets);
   const response: DeleteResponse = { imageUuid: normalizedUuid, deleted, missing };
-  return json(response);
+  return json(response, 200, request);
 }
 
 export default {
@@ -229,7 +232,7 @@ export default {
       const method = request.method;
 
       if (method === "GET" && (path === "/" || path === "/health")) {
-        return json({ ok: true, service: "image-service" });
+        return json({ ok: true, service: "image-service" }, 200, request);
       }
 
       if (method === "POST" && path === "/v1/images/upload") {
@@ -243,11 +246,10 @@ export default {
       if (method === "POST" && path === "/v1/images/delete") {
         return await handleDelete(request, env);
       }
-
-      return error("not_found", "route not found", 404);
+      return error(request, "not_found", "route not found");
     } catch (e) {
       console.error("image-service error:", e);
-      return internalError();
+      return internalError(request);
     }
   },
 } satisfies ExportedHandler<Env>;

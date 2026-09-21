@@ -4,6 +4,7 @@ import {
   getRequestId,
   isValidRequestId,
   logError,
+  logWarn,
 } from "@/lib/observability/server-log";
 
 function loggedLine(): Record<string, unknown> {
@@ -123,5 +124,47 @@ describe("logError", () => {
 
     const line = loggedLine();
     expect((line.error as string).length).toBeLessThanOrEqual(1001);
+  });
+});
+
+describe("code field (spec 0011 D7)", () => {
+  beforeEach(() => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.mocked(console.error).mockClear();
+    vi.mocked(console.warn).mockClear();
+  });
+
+  it("emits code on error lines when status is >= 400", () => {
+    logError({ route: "POST /api/checkins", error: "conflict", status: 409, code: "duplicate_checkin" });
+    expect(loggedLine()).toMatchObject({ code: "duplicate_checkin", status: 409 });
+  });
+
+  it("suppresses code when the status is below 400", () => {
+    logError({ route: "GET /api/cafes", error: "odd", status: 200, code: "not_found" });
+    expect(loggedLine()).not.toHaveProperty("code");
+  });
+
+  it("logWarn writes a warn line with the same shape via console.warn", () => {
+    logWarn({
+      route: "POST /api/cafes",
+      requestId: "req-9",
+      error: "cross-origin request forbidden",
+      status: 403,
+      code: "forbidden_origin",
+    });
+
+    expect(console.error).not.toHaveBeenCalled();
+    const spy = vi.mocked(console.warn);
+    expect(spy).toHaveBeenCalledTimes(1);
+    const line = JSON.parse(spy.mock.calls[0][0] as string) as Record<string, unknown>;
+    expect(line).toMatchObject({
+      type: "warn",
+      request_id: "req-9",
+      route: "POST /api/cafes",
+      status: 403,
+      code: "forbidden_origin",
+      error: "cross-origin request forbidden",
+    });
   });
 });

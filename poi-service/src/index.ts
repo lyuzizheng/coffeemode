@@ -13,7 +13,7 @@ export default {
       return await handleFetch(request, env);
     } catch (e) {
       console.error("poi-service fatal:", e);
-      return internalError();
+      return internalError(request);
     }
   },
 };

@@ -20,10 +20,10 @@ async function call(
   method: string,
   path: string,
   env: Env,
-  opts: { token?: string; body?: unknown; fetchImpl?: typeof fetch } = {},
+  opts: { token?: string; body?: unknown; fetchImpl?: typeof fetch; headers?: Record<string, string> } = {},
 ): Promise<Response> {
   const token = "token" in opts ? opts.token : TOKEN;
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...opts.headers };
   if (token !== undefined) headers["x-poi-service-token"] = token;
   if (opts.body !== undefined) headers["content-type"] = "application/json";
   const req = new Request(`https://poi.test${path}`, {
@@ -56,10 +56,30 @@ describe("auth", () => {
   it("rejects requests without a token", async () => {
     const res = await call("GET", "/poi/search?q=coffee", makeEnv(), { token: undefined });
     expect(res.status).toBe(401);
-    expect((await res.json()) as { error: string }).toEqual({
+    expect((await res.json()) as { error: string }).toMatchObject({
       error: "unauthorized",
       message: "missing or invalid service token",
     });
+  });
+
+  it("echoes inbound x-request-id on the error body and header", async () => {
+    const requestId = "123e4567-e89b-42d3-a456-426614174000";
+    const res = await call("GET", "/poi/search?q=coffee", makeEnv(), {
+      token: undefined,
+      headers: { "x-request-id": requestId },
+    });
+    expect(res.status).toBe(401);
+    expect(res.headers.get("x-request-id")).toBe(requestId);
+    expect((await res.json()) as { request_id?: string }).toMatchObject({
+      request_id: requestId,
+    });
+  });
+
+  it("generates request_id when x-request-id is absent", async () => {
+    const res = await call("GET", "/poi/search?q=coffee", makeEnv(), { token: undefined });
+    const body = (await res.json()) as { request_id?: string };
+    expect(body.request_id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(res.headers.get("x-request-id")).toBe(body.request_id);
   });
 
   it("rejects requests with a wrong token", async () => {
@@ -397,7 +417,7 @@ describe("GET /poi/:place_id", () => {
     const res = await call("GET", "/poi/ChIJTEST123", env);
 
     expect(res.status).toBe(500);
-    expect(await bodyOf(res)).toEqual({
+    expect(await bodyOf(res)).toMatchObject({
       error: "internal_error",
       message: "internal server error",
     });

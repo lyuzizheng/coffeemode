@@ -326,7 +326,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     expect(negativeSizeUpload.data).toMatchObject({ error: "invalid_request" });
 
     const oversizedUpload = await clientA.post(uploadPOST, "/api/images/upload", { size: 15 * 1024 * 1024 });
-    expect(oversizedUpload.status).toBe(400);
+    expect(oversizedUpload.status).toBe(413);
     expect(oversizedUpload.data).toMatchObject({ error: "size_exceeded" });
 
     // 4. Successful upload round-trip

@@ -1,4 +1,4 @@
-import { UNAUTHORIZED } from "@/lib/http";
+import { apiFetch } from "@/lib/http";
 import type { CheckInScores, MaxStay } from "@/types/checkins";
 
 /** The caller's most recent check-in for a cafe, as returned by /api/checkins/last. */
@@ -13,16 +13,12 @@ export interface LastCheckin {
 /**
  * Shared probe for the caller's last check-in at a cafe — the DG64 revisit
  * switch in the drawer keys off it (one query key, one network call).
- * 401 throws Error("unauthorized"): anonymous on a CDN-cached shell is an
- * expected answer, never a retried failure.
+ * A 401 surfaces as `ApiError` carrying the UNAUTHORIZED marker: anonymous
+ * on a CDN-cached shell is an expected answer, never a retried failure.
  */
 export async function fetchLastCheckin(cafeId: string) {
-  const res = await fetch(`/api/checkins/last?cafe_id=${encodeURIComponent(cafeId)}`);
-  if (res.status === 401) throw new Error(UNAUTHORIZED);
-  if (!res.ok) throw new Error("failed");
-  const body = (await res.json()) as {
+  return apiFetch<{
     checkin: LastCheckin | null;
     revisit_window_hours?: number;
-  };
-  return body;
+  }>(`/api/checkins/last?cafe_id=${encodeURIComponent(cafeId)}`);
 }

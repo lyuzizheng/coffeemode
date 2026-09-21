@@ -45,11 +45,12 @@ function renderControls(props?: Partial<Parameters<typeof CafeOwnerControls>[0]>
 }
 
 function jsonResponse(status: number, body: unknown) {
-  return Promise.resolve({
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as Response);
+  return Promise.resolve(
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    }),
+  );
 }
 
 describe("CafeOwnerControls", () => {

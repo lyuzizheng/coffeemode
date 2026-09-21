@@ -14,11 +14,10 @@ import { useTranslations } from "next-intl";
 import { Button, Label, Switch } from "@heroui/react";
 import type { UserProfileDto } from "@/lib/db/profile";
 import { getHandleMaxChars } from "@/lib/client-env";
-import { apiErrorMessage, apiFetch } from "@/lib/http";
+import { apiErrorMessage, apiFetch, isUnauthorized } from "@/lib/http";
+import { SignInGate } from "@/components/auth/sign-in-gate";
 
 interface IdentityPatchBody {
-  ok?: boolean;
-  error?: string;
   showPublicIdentity?: boolean;
   publicHandle?: string | null;
   identityConsentedAt?: string | null;
@@ -50,6 +49,9 @@ export function PublicIdentityToggle({
   const tApi = useTranslations();
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // A 401 mid-edit means the session died under a mounted settings page —
+  // swap the control for the shared gate (BRAWUKA-540 review P1).
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [handleDraft, setHandleDraft] = useState<string | null>(null);
 
   async function patchIdentity(
@@ -66,15 +68,21 @@ export function PublicIdentityToggle({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!data || data.ok === false) {
+      // The envelope guarantees no error-in-2xx (spec 0011): a missing body
+      // is the only residual failure shape here.
+      if (!data) {
         onProfileChange(previous);
-        setErrorMessage(apiErrorMessage(data, tApi("profile.identity_error_generic"), tApi));
+        setErrorMessage(tApi("profile.identity_error_generic"));
         return;
       }
       onProfileChange(mergeIdentity(optimistic, data));
       setHandleDraft(null);
     } catch (cause) {
       onProfileChange(previous);
+      if (isUnauthorized(cause)) {
+        setSessionExpired(true);
+        return;
+      }
       setErrorMessage(apiErrorMessage(cause, tApi("profile.identity_error_generic"), tApi));
     } finally {
       setPending(false);
@@ -102,6 +110,14 @@ export function PublicIdentityToggle({
 
   // Rows, not cards: the parent Preferences section owns the grouped card
   // chrome (`divide-y` separators), so each control renders as a plain row.
+  if (sessionExpired) {
+    return (
+      <div className="px-4 py-3">
+        <SignInGate message={t("sign_in_to_save")} next="/settings" />
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="px-4 py-3">

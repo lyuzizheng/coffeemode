@@ -18,6 +18,8 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import { toast } from "@heroui/react";
+import { apiErrorMessage, apiFetch, ApiError, isUnauthorized } from "@/lib/http";
+import { shouldRetryQuery } from "@/lib/query/retry";
 import { dedupeCheckins } from "@/lib/discovery/view-model";
 import type { CheckInFeedMode, CheckInFeedPage, PublicCheckIn } from "@/types/checkins";
 
@@ -28,11 +30,15 @@ async function fetchFeedPage(
 ): Promise<CheckInFeedPage> {
   const params = new URLSearchParams({ mode });
   if (cursor) params.set("cursor", cursor);
-  const res = await fetch(`/api/cafes/${cafeId}/checkins?${params}`);
-  if (res.status === 404) throw new FeedNotFoundError();
-  if (res.status === 410) throw new FeedCursorExpiredError();
-  if (!res.ok) throw new Error(`feed failed: ${res.status}`);
-  return (await res.json()) as CheckInFeedPage;
+  try {
+    const page = await apiFetch<CheckInFeedPage>(`/api/cafes/${cafeId}/checkins?${params}`);
+    if (!page) throw new ApiError({ status: 500, code: "internal_error" });
+    return page;
+  } catch (cause) {
+    if (cause instanceof ApiError && cause.status === 404) throw new FeedNotFoundError();
+    if (cause instanceof ApiError && cause.status === 410) throw new FeedCursorExpiredError();
+    throw cause;
+  }
 }
 
 export class FeedNotFoundError extends Error {
@@ -54,13 +60,6 @@ export class FeedCursorExpiredError extends Error {
   }
 }
 
-class LikeAuthError extends Error {
-  constructor() {
-    super("like requires sign-in");
-    this.name = "LikeAuthError";
-  }
-}
-
 /**
  * Paginated feed state for one cafe + mode, with optimistic like toggling.
  * Mode switching keeps the previous mode's content until the new page
@@ -77,9 +76,8 @@ export function useCheckinFeed(cafeId: string, mode: CheckInFeedMode) {
     [query.data],
   );
 
-  const likeMutation = useLikeMutation(queryClient, cafeId, t("like_signin"), t("load_failed"));
+  const likeMutation = useLikeMutation(queryClient, cafeId, t("like_signin"), t("like_failed"));
   const mutateLike = likeMutation.mutate;
-
   // Stable identity so FeedCard re-renders only when its own props change
   // (BRAWUKA-281 P2; memo itself tracked under BRAWUKA-397). `mutate` is
   // stable across renders; depending on the whole mutation object would
@@ -124,10 +122,16 @@ function useFeedQuery(
     // A 410 means the stored cursor is dead — never auto-retry it. A 404
     // means the cafe is gone: retrying can never succeed, so surface the
     // error immediately and let the DG19 gone-cafe flow run (BRAWUKA-450).
+    // Everything else defers to the shared policy (offline gate + 4xx
+    // discrimination, spec 0011 D9).
     retry: (failureCount, error) =>
       error instanceof FeedCursorExpiredError || error instanceof FeedNotFoundError
         ? false
-        : failureCount < 2,
+        : shouldRetryQuery(
+            failureCount,
+            error,
+            typeof navigator === "undefined" ? true : navigator.onLine,
+          ),
     // DG17: previous mode's content stays until the new page arrives.
     placeholderData: keepPreviousData,
   });
@@ -142,7 +146,41 @@ function useFeedQuery(
   }, [expired, queryClient, cafeId, mode]);
   return query;
 }
+
+/** Apply `delta` to one check-in's optimistic like fields across every
+ * cached mode of this cafe's feed (BRAWUKA-460: keyed per check-in so a
+ * sibling card's pending like is untouched). */
+function shiftOptimisticLike(
+  queryClient: QueryClient,
+  cafeId: string,
+  checkin: PublicCheckIn,
+  delta: 1 | -1,
+) {
+  queryClient.setQueriesData<InfiniteData<CheckInFeedPage>>(
+    { queryKey: ["cafe-checkins", cafeId] },
+    (data) => {
+      if (!data) return data;
+      return {
+        ...data,
+        pages: data.pages.map((page) => ({
+          ...page,
+          checkins: page.checkins.map((c) =>
+            c.id === checkin.id
+              ? {
+                  ...c,
+                  liked_by_viewer: !c.liked_by_viewer,
+                  likes_count: Math.max(0, c.likes_count + delta),
+                }
+              : c,
+          ),
+        })),
+      };
+    },
+  );
+}
+
 function useLikeMutation(queryClient: QueryClient, cafeId: string, signInCopy: string, failedCopy: string) {
+  const tApi = useTranslations();
   // In-flight like count. `onSettled` runs before the mutation's status
   // dispatch, so `isMutating` cannot tell the last settle from an earlier
   // one — count manually and refetch only once every like has settled.
@@ -150,64 +188,29 @@ function useLikeMutation(queryClient: QueryClient, cafeId: string, signInCopy: s
   return useMutation({
     mutationKey: ["like-checkin", cafeId],
     mutationFn: async (checkin: PublicCheckIn) => {
-      const res = await fetch(`/api/checkins/${checkin.id}/like`, { method: "POST" });
-      if (res.status === 401) throw new LikeAuthError();
-      if (!res.ok) throw new Error(`like failed: ${res.status}`);
-      return (await res.json()) as { liked: boolean; likes_count: number };
+      return apiFetch<{ liked: boolean; likes_count: number }>(
+        `/api/checkins/${checkin.id}/like`,
+        { method: "POST" },
+      );
     },
     onMutate: async (checkin) => {
       inFlight.current += 1;
       // Optimistic toggle across every cached mode of this cafe's feed.
-      const key = ["cafe-checkins", cafeId];
-      await queryClient.cancelQueries({ queryKey: key });
-      const delta = checkin.liked_by_viewer ? -1 : 1;
-      queryClient.setQueriesData<InfiniteData<CheckInFeedPage>>({ queryKey: key }, (data) => {
-        if (!data) return data;
-        return {
-          ...data,
-          pages: data.pages.map((page) => ({
-            ...page,
-            checkins: page.checkins.map((c) =>
-              c.id === checkin.id
-                ? {
-                    ...c,
-                    liked_by_viewer: !c.liked_by_viewer,
-                    likes_count: Math.max(0, c.likes_count + delta),
-                  }
-                : c,
-            ),
-          })),
-        };
-      });
+      await queryClient.cancelQueries({ queryKey: ["cafe-checkins", cafeId] });
+      shiftOptimisticLike(queryClient, cafeId, checkin, checkin.liked_by_viewer ? -1 : 1);
     },
     onError: (err, checkin) => {
       // Roll back only this check-in's optimistic fields. Restoring whole
       // snapshots would also revert a sibling card's still-pending
       // optimistic like (BRAWUKA-460).
-      const key = ["cafe-checkins", cafeId];
-      const delta = checkin.liked_by_viewer ? -1 : 1;
-      queryClient.setQueriesData<InfiniteData<CheckInFeedPage>>({ queryKey: key }, (data) => {
-        if (!data) return data;
-        return {
-          ...data,
-          pages: data.pages.map((page) => ({
-            ...page,
-            checkins: page.checkins.map((c) =>
-              c.id === checkin.id
-                ? {
-                    ...c,
-                    liked_by_viewer: !c.liked_by_viewer,
-                    likes_count: Math.max(0, c.likes_count - delta),
-                  }
-                : c,
-            ),
-          })),
-        };
-      });
-      if (err instanceof LikeAuthError) {
+      shiftOptimisticLike(queryClient, cafeId, checkin, checkin.liked_by_viewer ? 1 : -1);
+      if (isUnauthorized(err)) {
         toast(signInCopy, { timeout: 4000 });
       } else {
-        toast(failedCopy, { timeout: 4000 });
+        // Code-driven copy: `self_like_forbidden` resolves to its own
+        // message via the apiFetch mapper; anything else is the like
+        // fallback (never the feed's load_failed).
+        toast(apiErrorMessage(err, failedCopy, tApi), { timeout: 4000 });
       }
     },
     onSettled: () => {

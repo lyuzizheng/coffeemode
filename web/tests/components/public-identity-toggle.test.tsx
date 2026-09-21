@@ -51,16 +51,18 @@ describe("PublicIdentityToggle", () => {
   });
 
   it("opts in with an optimistic update and PATCHes showPublicIdentity", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
-        ok: true,
-        showPublicIdentity: true,
-        publicHandle: "coffee-lover-ab12",
-        identityConsentedAt: "2026-09-07T00:00:00.000Z",
-        publicHandleChangedAt: null,
-      }),
-    } as Response);
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          showPublicIdentity: true,
+          publicHandle: "coffee-lover-ab12",
+          identityConsentedAt: "2026-09-07T00:00:00.000Z",
+          publicHandleChangedAt: null,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
     const onProfileChange = vi.fn();
 
     renderToggle(baseProfile, onProfileChange);
@@ -89,11 +91,12 @@ describe("PublicIdentityToggle", () => {
   });
 
   it("reverts and maps handle_taken to copy when the handle save fails", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: false,
-      status: 409,
-      json: async () => ({ error: "handle_taken", message: "taken" }),
-    } as Response);
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "handle_taken", message: "taken" }), {
+        status: 409,
+        headers: { "content-type": "application/json" },
+      }),
+    );
     const onProfileChange = vi.fn();
 
     renderToggle({ ...baseProfile, showPublicIdentity: true }, onProfileChange);

@@ -14,25 +14,7 @@ import { useTranslations } from "next-intl";
 import { Button, Label, Switch } from "@heroui/react";
 import type { UserProfileDto } from "@/lib/db/profile";
 import { getHandleMaxChars } from "@/lib/client-env";
-
-type IdentityErrorKey =
-  | "identity_error_handle_taken"
-  | "identity_error_handle_too_soon"
-  | "identity_error_invalid_handle"
-  | "identity_error_generic";
-
-function errorKeyFor(code: string | undefined): IdentityErrorKey {
-  switch (code) {
-    case "handle_taken":
-      return "identity_error_handle_taken";
-    case "handle_change_too_soon":
-      return "identity_error_handle_too_soon";
-    case "invalid_handle":
-      return "identity_error_invalid_handle";
-    default:
-      return "identity_error_generic";
-  }
-}
+import { apiErrorMessage, apiFetch } from "@/lib/http";
 
 interface IdentityPatchBody {
   ok?: boolean;
@@ -65,8 +47,9 @@ export function PublicIdentityToggle({
   onProfileChange: (updated: UserProfileDto) => void;
 }) {
   const t = useTranslations("profile");
+  const tApi = useTranslations();
   const [pending, setPending] = useState(false);
-  const [errorKey, setErrorKey] = useState<IdentityErrorKey | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [handleDraft, setHandleDraft] = useState<string | null>(null);
 
   async function patchIdentity(
@@ -75,25 +58,24 @@ export function PublicIdentityToggle({
     previous: UserProfileDto,
   ) {
     setPending(true);
-    setErrorKey(null);
+    setErrorMessage(null);
     onProfileChange(optimistic);
     try {
-      const res = await fetch("/api/profile/identity", {
+      const data = await apiFetch<IdentityPatchBody>("/api/profile/identity", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = (await res.json().catch(() => null)) as IdentityPatchBody | null;
-      if (!res.ok || !data || data.ok === false) {
+      if (!data || data.ok === false) {
         onProfileChange(previous);
-        setErrorKey(errorKeyFor(data?.error));
+        setErrorMessage(apiErrorMessage(data, tApi("profile.identity_error_generic"), tApi));
         return;
       }
       onProfileChange(mergeIdentity(optimistic, data));
       setHandleDraft(null);
-    } catch {
+    } catch (cause) {
       onProfileChange(previous);
-      setErrorKey(errorKeyFor(undefined));
+      setErrorMessage(apiErrorMessage(cause, tApi("profile.identity_error_generic"), tApi));
     } finally {
       setPending(false);
     }
@@ -190,9 +172,9 @@ export function PublicIdentityToggle({
         )}
       </div>
 
-      {errorKey && (
+      {errorMessage && (
         <p role="alert" className="px-4 py-3 text-sm text-danger">
-          {t(errorKey)}
+          {errorMessage}
         </p>
       )}
     </>

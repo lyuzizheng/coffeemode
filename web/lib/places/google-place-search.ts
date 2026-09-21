@@ -1,5 +1,5 @@
 import type { POISearchResponse } from "@shared/places/types";
-import { throwIfUnauthorized, responseMessage } from "@/lib/http";
+import { apiFetch } from "@/lib/http";
 import type { CreateTranslator, PlaceSearchProvider } from "./place-search";
 
 /**
@@ -17,10 +17,7 @@ export function googlePlaceSearch(t: CreateTranslator): PlaceSearchProvider {
         params.set("lat", String(bias.lat));
         params.set("lng", String(bias.lng));
       }
-      const response = await fetch(`/api/places/search?${params}`);
-      throwIfUnauthorized(response);
-      if (!response.ok) throw new Error(await responseMessage(response, t("searchFailed")));
-      const data = (await response.json()) as POISearchResponse;
+      const data = await apiFetch<POISearchResponse>(`/api/places/search?${params}`);
       return data.results;
     },
   };

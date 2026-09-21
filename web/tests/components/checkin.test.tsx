@@ -33,6 +33,14 @@ vi.mock("@/lib/images/client-upload", () => ({
 const CAFE = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22";
 const CHECKIN = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33";
 
+/** Real Response — `apiFetch` reads `text()`/`headers`, so literal `{ok,json}` stubs no longer work. */
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 function makeWrapper(queryClient?: QueryClient) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
     // A fresh client per render keeps last-checkin cache from leaking
@@ -153,11 +161,9 @@ describe("CheckinSlider", () => {
 
 describe("CheckinDrawer", () => {
   beforeEach(() => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ checkin: null, revisit_window_hours: 24 }),
-    });
+    globalThis.fetch = vi
+      .fn()
+      .mockImplementation(async () => jsonResponse(200, { checkin: null, revisit_window_hours: 24 }));
   });
 
   it("shows the overall hint exactly once when overall is unset", () => {
@@ -200,7 +206,7 @@ describe("CheckinDrawer", () => {
   });
 
   it("drops to the sign-in gate when the last-visit probe 401s", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => ({}) });
+    globalThis.fetch = vi.fn().mockImplementation(async () => jsonResponse(401, {}));
     renderDrawer(); // isAuthenticated unknown — the CDN-cached cafe shell case
 
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
@@ -243,10 +249,7 @@ describe("CheckinDrawer", () => {
   });
   it("opens a same-day revisit directly in edit mode with the last values prefilled (DG64)", async () => {
     const visited_at = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({
+    globalThis.fetch = vi.fn().mockImplementation(async () => jsonResponse(200, {
         checkin: {
           id: CHECKIN,
           scores: { wifi: 80, overall: 90 },
@@ -255,8 +258,7 @@ describe("CheckinDrawer", () => {
           visited_at,
         },
         revisit_window_hours: 24,
-      }),
-    });
+      }));
     renderDrawer({ isAuthenticated: true });
 
     await waitFor(() => {
@@ -276,10 +278,7 @@ describe("CheckinDrawer", () => {
 
   it("stays in create mode with the same-as-last banner when the last visit is past the window (DG63/DG64)", async () => {
     const visited_at = new Date(Date.now() - 30 * 60 * 60 * 1000).toISOString();
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({
+    globalThis.fetch = vi.fn().mockImplementation(async () => jsonResponse(200, {
         checkin: {
           id: CHECKIN,
           scores: { wifi: 80, overall: 90 },
@@ -288,8 +287,7 @@ describe("CheckinDrawer", () => {
           visited_at,
         },
         revisit_window_hours: 24,
-      }),
-    });
+      }));
     renderDrawer({ isAuthenticated: true });
 
     // Wait for the probe so the create dialog below is the settled state.
@@ -303,20 +301,13 @@ describe("CheckinDrawer", () => {
   it("converts a raced POST 409 into a silent PATCH without surfacing an error (DG64)", async () => {
     globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
       if (url.startsWith("/api/checkins/last")) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => ({ checkin: null, revisit_window_hours: 24 }),
-        });
+        return Promise.resolve(jsonResponse(200, { checkin: null, revisit_window_hours: 24 }));
       }
       if (init?.method === "PATCH") {
-        return Promise.resolve({ ok: true, status: 200, json: async () => ({ cafeId: CAFE }) });
+        return Promise.resolve(jsonResponse(200, { cafeId: CAFE }));
       }
-      return Promise.resolve({
-        ok: false,
-        status: 409,
-        json: async () => ({ error: "duplicate_checkin", existing_checkin_id: CHECKIN }),
-      });
+      return Promise.resolve(
+        jsonResponse(409, { error: "duplicate_checkin", existing_checkin_id: CHECKIN }));
     });
     renderDrawer({ isAuthenticated: true });
     await waitFor(() => {
@@ -341,20 +332,13 @@ describe("CheckinDrawer", () => {
     toastSpy.mockClear();
     globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
       if (url.startsWith("/api/checkins/last")) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => ({ checkin: null, revisit_window_hours: 24 }),
-        });
+        return Promise.resolve(jsonResponse(200, { checkin: null, revisit_window_hours: 24 }));
       }
       if (init?.method === "PATCH") {
-        return Promise.resolve({ ok: true, status: 200, json: async () => ({ cafeId: CAFE }) });
+        return Promise.resolve(jsonResponse(200, { cafeId: CAFE }));
       }
-      return Promise.resolve({
-        ok: false,
-        status: 409,
-        json: async () => ({ error: "duplicate_checkin", existing_checkin_id: CHECKIN }),
-      });
+      return Promise.resolve(
+        jsonResponse(409, { error: "duplicate_checkin", existing_checkin_id: CHECKIN }));
     });
     renderDrawer({ isAuthenticated: true });
     await waitFor(() => {
@@ -459,9 +443,9 @@ describe("CheckinDrawer", () => {
     });
     globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
       if (init?.method === "PATCH") {
-        return Promise.resolve({ ok: true, status: 200, json: async () => ({ cafeId: CAFE }) });
+        return Promise.resolve(jsonResponse(200, { cafeId: CAFE }));
       }
-      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+      return Promise.resolve(jsonResponse(200, {}));
     });
     renderDrawer(
       {
@@ -538,14 +522,10 @@ describe("CheckinDrawer", () => {
   it("does not toast the photo notice when a preempted create had no staged photos", async () => {
     toastSpy.mockClear();
     const visited_at = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({
+    globalThis.fetch = vi.fn().mockImplementation(async () => jsonResponse(200, {
         checkin: { id: CHECKIN, scores: { overall: 90 }, visited_at },
         revisit_window_hours: 24,
-      }),
-    });
+      }));
     renderDrawer({ isAuthenticated: true });
 
     await waitFor(() => {
@@ -562,25 +542,17 @@ describe("CheckinDrawer", () => {
     let attempts = 0;
     globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
       if (url.startsWith("/api/checkins/last")) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => ({ checkin: null, revisit_window_hours: 24 }),
-        });
+        return Promise.resolve(jsonResponse(200, { checkin: null, revisit_window_hours: 24 }));
       }
       if (init?.method === "POST") {
         attempts += 1;
         posts.push(JSON.parse(init.body as string));
         if (attempts === 1) {
-          return Promise.resolve({ ok: false, status: 500, json: async () => ({}) });
+          return Promise.resolve(jsonResponse(500, {}));
         }
-        return Promise.resolve({
-          ok: true,
-          status: 201,
-          json: async () => ({ checkin_id: CHECKIN }),
-        });
+        return Promise.resolve(jsonResponse(201, { checkin_id: CHECKIN }));
       }
-      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+      return Promise.resolve(jsonResponse(200, {}));
     });
     renderDrawer({ isAuthenticated: true });
     const overall = screen.getByRole("slider", { name: "Overall experience" });
@@ -607,21 +579,13 @@ describe("CheckinDrawer", () => {
     const posts: Array<Record<string, unknown>> = [];
     globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
       if (url.startsWith("/api/checkins/last")) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => ({ checkin: null, revisit_window_hours: 24 }),
-        });
+        return Promise.resolve(jsonResponse(200, { checkin: null, revisit_window_hours: 24 }));
       }
       if (init?.method === "POST") {
         posts.push(JSON.parse(init.body as string));
-        return Promise.resolve({
-          ok: true,
-          status: 201,
-          json: async () => ({ checkin_id: CHECKIN }),
-        });
+        return Promise.resolve(jsonResponse(201, { checkin_id: CHECKIN }));
       }
-      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+      return Promise.resolve(jsonResponse(200, {}));
     });
     const submit = async () => {
       renderDrawer({ isAuthenticated: true });
@@ -692,13 +656,9 @@ describe("CheckinDrawer", () => {
     );
     globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
       if (init?.method === "POST") {
-        return Promise.resolve({ ok: true, status: 201, json: async () => ({ checkin_id: CHECKIN }) });
+        return Promise.resolve(jsonResponse(201, { checkin_id: CHECKIN }));
       }
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: async () => ({ checkin: null, revisit_window_hours: 24 }),
-      });
+      return Promise.resolve(jsonResponse(200, { checkin: null, revisit_window_hours: 24 }));
     });
 
     render(
@@ -728,13 +688,9 @@ describe("CheckinDrawer", () => {
     try {
       globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
         if (init?.method === "POST") {
-          return Promise.resolve({ ok: true, status: 201, json: async () => ({ checkin_id: CHECKIN }) });
+          return Promise.resolve(jsonResponse(201, { checkin_id: CHECKIN }));
         }
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => ({ checkin: null, revisit_window_hours: 24 }),
-        });
+        return Promise.resolve(jsonResponse(200, { checkin: null, revisit_window_hours: 24 }));
       });
       const onOpenChange = renderDrawer({ isAuthenticated: true });
 
@@ -760,13 +716,9 @@ describe("CheckinDrawer", () => {
   it("echoes submitted dimensions as mini WorkBars in the success card (artifact §4)", async () => {
     globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
       if (init?.method === "POST") {
-        return Promise.resolve({ ok: true, status: 201, json: async () => ({ checkin_id: CHECKIN }) });
+        return Promise.resolve(jsonResponse(201, { checkin_id: CHECKIN }));
       }
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: async () => ({ checkin: null, revisit_window_hours: 24 }),
-      });
+      return Promise.resolve(jsonResponse(200, { checkin: null, revisit_window_hours: 24 }));
     });
     renderDrawer({ isAuthenticated: true });
 

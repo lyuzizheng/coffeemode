@@ -6,6 +6,7 @@
  * lookup and the resolve POST; the view owns the card↔pill presentation.
  */
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch, ApiError } from "@/lib/http";
 import type { NavPromptItemDto } from "@shared/navigations/prompt";
 
 /** The promptable navigation DTO served by GET /api/navigations/prompt. */
@@ -92,25 +93,19 @@ export function useNavPrompt({
     if (!enabled || gone || sessionFlagRead()) return;
     let cancelled = false;
     const load = () => {
-      fetch("/api/navigations/prompt")
-        .then(async (res) => {
+      apiFetch<{ prompt: NavPromptItem | null }>("/api/navigations/prompt")
+        .then((body) => {
           if (cancelled) return;
           // The queue was consulted — one prompt per session regardless of
           // the answer (including "nothing eligible").
           sessionFlagWrite();
-          // 401 (guest — anonymous sign-in pending, DG76), 429, 5xx: a
-          if (!res.ok) {
-            // Consume the body: an unread SW-proxied response stream keeps
-            // the request "pending" in the network stack forever (breaks
-            // networkidle, BRAWUKA-5 visual-smoke hang).
-            await res.body?.cancel().catch(() => {});
-            return;
-          }
-          const body = (await res.json()) as { prompt: NavPromptItem | null };
-          if (body.prompt) setItem(body.prompt);
+          if (body?.prompt) setItem(body.prompt);
         })
-        .catch(() => {
-          // Offline: stay silent; the next session retries.
+        .catch((cause: unknown) => {
+          // 401 (guest — anonymous sign-in pending, DG76), 429, 5xx: the
+          // server answered, so the one-per-session flag still applies.
+          if (cause instanceof ApiError && !cancelled) sessionFlagWrite();
+          // Offline (non-ApiError): stay silent; the next session retries.
         });
     };
     const unschedule = schedulePromptLoad(load, () => cancelled);
@@ -125,7 +120,7 @@ export function useNavPrompt({
       if (!item || pending) return;
       setPending(outcome);
       try {
-        await fetch(`/api/navigations/${item.id}/resolve`, {
+        await apiFetch(`/api/navigations/${item.id}/resolve`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ outcome }),

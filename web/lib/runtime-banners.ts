@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/http";
 import type { BannerKind, RuntimeBanner, RuntimeConfig } from "@/types/runtime-config";
 
 /**
@@ -68,9 +69,9 @@ export function pickBannerText(banner: RuntimeBanner, locale: string): string {
  */
 export async function fetchRuntimeConfig(): Promise<RuntimeConfig | null> {
   try {
-    const res = await fetch("/api/config", { headers: { accept: "application/json" } });
-    if (!res.ok) return null;
-    const data: unknown = await res.json();
+    const data = await apiFetch<unknown>("/api/config", {
+      headers: { accept: "application/json" },
+    });
     if (typeof data !== "object" || data === null) return null;
     const row = data as Record<string, unknown>;
     return {

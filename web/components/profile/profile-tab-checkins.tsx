@@ -8,16 +8,19 @@ import { Button } from "@heroui/react";
 import { HeartIcon, PencilIcon } from "@/components/icons";
 import { CheckinDrawer } from "@/components/checkin/checkin-drawer";
 import { CheckinNote } from "@/components/checkin/checkin-note";
+import { apiFetch, isUnauthorized } from "@/lib/http";
+import { SignInGate } from "@/components/auth/sign-in-gate";
 import { ErrorRow } from "./profile-error-row";
 import { WORK_DIMS, type WorkDim } from "@/lib/stats/work-stats";
 import type { UserCheckInItemDto } from "@/lib/db/profile";
 
 export async function fetchUserCheckIns(cursor?: string) {
-  const url = new URL("/api/profile/checkins", window.location.origin);
-  if (cursor) url.searchParams.set("cursor", cursor);
-  const res = await fetch(url.toString());
-  if (!res.ok) throw new Error("Failed to load check-ins");
-  return (await res.json()) as { items: UserCheckInItemDto[]; next_cursor: string | null };
+  const params = new URLSearchParams();
+  if (cursor) params.set("cursor", cursor);
+  const qs = params.toString();
+  return apiFetch<{ items: UserCheckInItemDto[]; next_cursor: string | null }>(
+    `/api/profile/checkins${qs ? `?${qs}` : ""}`,
+  );
 }
 
 interface ProfileTabCheckinsProps {
@@ -44,13 +47,18 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
       aria-labelledby={`${baseId}-tab-checkins`}
       className="flex flex-col gap-3"
     >
-      {checkinsQuery.isError && (
-        <ErrorRow
-          errorText={t("load_error")}
-          retryText={t("retry")}
-          onRetry={() => void checkinsQuery.refetch()}
-        />
-      )}
+      {checkinsQuery.isError &&
+        (isUnauthorized(checkinsQuery.error) ? (
+          // Session died under a mounted tab — the gate, not a retry that
+          // can only 401 again (BRAWUKA-540).
+          <SignInGate message={t("gate_body")} next="/profile" />
+        ) : (
+          <ErrorRow
+            errorText={t("load_error")}
+            retryText={t("retry")}
+            onRetry={() => void checkinsQuery.refetch()}
+          />
+        ))}
 
       {!checkinsQuery.isError && checkins.length === 0 && !checkinsQuery.isLoading && (
         <div className="py-12 flex flex-col items-center justify-center text-center gap-3">

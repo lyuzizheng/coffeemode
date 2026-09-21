@@ -24,6 +24,14 @@ const CAFE_ID = "550e8400-e29b-41d4-a716-446655440000";
 const DETAIL_URL = `/api/cafes/${CAFE_ID}`;
 const FEED_URL = `/api/cafes/${CAFE_ID}/checkins?mode=newest`;
 
+
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 /**
  * The FULL variant embeds the check-in feed, which fetches independently —
  * the seed only promises no re-fetch of the cafe detail URL itself.
@@ -31,11 +39,7 @@ const FEED_URL = `/api/cafes/${CAFE_ID}/checkins?mode=newest`;
 function stubFetch() {
   return vi.fn().mockImplementation((url: string) => {
     if (String(url).startsWith(FEED_URL)) {
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: async () => ({ checkins: [], next_cursor: null }),
-      });
+      return Promise.resolve(jsonResponse(200, { checkins: [], next_cursor: null }));
     }
     return Promise.reject(new Error(`unexpected fetch: ${String(url)}`));
   });

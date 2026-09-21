@@ -203,7 +203,7 @@ export function rateLimitResponse(
   request?: Request,
   options?: { requestId?: string },
 ): NextResponse {
-  // Machine code only — never a `message`: `responseMessage` renders 429s
+  // Machine code only — never a `message`: `apiErrorMessage` renders 429s
   // with the caller's localized fallback, so any English prose here would
   // leak into localized UI (BRAWUKA-280). `request_id` rides along so the
   // envelope matches spec 0011 D2.

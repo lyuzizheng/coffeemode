@@ -8,36 +8,31 @@ import { PlusIcon } from "@/components/icons";
 import { CafePlaceSearch } from "./cafe-place-search";
 import { CafeCreationForm } from "./cafe-creation-form";
 import { useNetworkStatus } from "@/hooks/use-network-status";
-import { isUnauthorized, responseMessage, throwIfUnauthorized } from "@/lib/http";
+import { apiErrorMessage, apiFetch, isUnauthorized } from "@/lib/http";
 import type { POI } from "@shared/places/types";
 import type { ExternalSearchProvider } from "@/components/search/search-results-list";
 
 async function persistExternalPlace(selected: POI, messages: { failed: string; notFood: string }): Promise<string | null> {
   try {
-    const response = await fetch("/api/places/external", {
+    // `POST /api/places/external` requires auth; a dead session reaches the
+    // drawer's gate as the shared marker rather than this alert slot.
+    const result = await apiFetch<{
+      stored?: number;
+      skipped?: Array<{ index?: number; reason?: string }>;
+    }>("/api/places/external", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ pois: [selected] }),
     });
-    // `POST /api/places/external` requires auth; a dead session reaches the
-    // drawer's gate as the shared marker rather than this alert slot.
-    throwIfUnauthorized(response);
-    if (!response.ok) {
-      return await responseMessage(response, messages.failed);
-    }
     // BRAWUKA-328: the worker skips non-food/category POIs instead of storing
     // them. The form must not accept the place — it can never resolve to a cafe.
-    const result = (await response.json().catch(() => null)) as {
-      stored?: number;
-      skipped?: Array<{ index?: number; reason?: string }>;
-    } | null;
     if (result && Array.isArray(result.skipped) && result.skipped.length > 0) {
       return messages.notFood;
     }
     return null;
   } catch (cause) {
     if (isUnauthorized(cause)) throw cause;
-    return cause instanceof Error ? cause.message : messages.failed;
+    return apiErrorMessage(cause, messages.failed);
   }
 }
 

@@ -85,8 +85,9 @@ describe("CafePageActions (no edit entry per owner verdict)", () => {
     // Flush any mount-time async work, then assert the probe never fired.
     await act(async () => {});
     expect(globalThis.fetch).not.toHaveBeenCalledWith(
-      expect.stringContaining("/api/checkins/last"),
-    );
+        expect.stringContaining("/api/checkins/last"),
+          undefined,
+        );
   });
 
   it("probes /api/checkins/last when the drawer opens — the positive half of the DG64 gate", async () => {
@@ -96,7 +97,8 @@ describe("CafePageActions (no edit entry per owner verdict)", () => {
     await waitFor(() =>
       expect(globalThis.fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/checkins/last"),
-      ),
+          undefined,
+        ),
     );
   });
 

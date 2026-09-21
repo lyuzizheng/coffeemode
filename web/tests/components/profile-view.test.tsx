@@ -42,6 +42,14 @@ function Wrapper({ children }: { children: React.ReactNode }) {
   );
 }
 
+
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 describe("ProfileView", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -125,9 +133,7 @@ describe("ProfileView", () => {
 
     const fetchMock = vi.fn().mockImplementation(async (url: string) => {
       if (url.includes("/api/profile/checkins")) {
-        return {
-          ok: true,
-          json: async () => ({
+        return jsonResponse(200, {
             items: [
               {
                 id: "c-1",
@@ -141,13 +147,10 @@ describe("ProfileView", () => {
               },
             ],
             next_cursor: null,
-          }),
-        };
+          });
       }
       if (url.includes("/api/profile/cafes")) {
-        return {
-          ok: true,
-          json: async () => ({
+        return jsonResponse(200, {
             items: [
               {
                 id: "cafe-1",
@@ -159,10 +162,9 @@ describe("ProfileView", () => {
               },
             ],
             next_cursor: null,
-          }),
-        };
+          });
       }
-      return { ok: true, json: async () => ({}) };
+      return jsonResponse(200, {});
     });
     globalThis.fetch = fetchMock;
 
@@ -182,15 +184,15 @@ describe("ProfileView", () => {
 
     // BRAWUKA-281 P2: the cafes query stays disabled until the map tab is
     // first visited — a plain profile load skips one paginated DB query.
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/profile/checkins"));
-    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/profile/cafes"));
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/profile/checkins"), undefined);
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/profile/cafes"), undefined);
 
     // Switch to My Coffee Map — the cafes query fires exactly once.
     const mapTab = screen.getByRole("tab", { name: "My Coffee Map" });
     fireEvent.click(mapTab);
     expect(mapTab).toHaveAttribute("aria-selected", "true");
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/profile/cafes"));
+      expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/profile/cafes"), undefined);
     });
     await waitFor(() => {
       expect(screen.getByText("Created by me")).toBeInTheDocument();
@@ -227,9 +229,9 @@ describe("ProfileView", () => {
 
     globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
       if (url === "/api/profile") {
-        return { ok: false, status: 500, json: async () => ({}) };
+        return jsonResponse(500, {});
       }
-      return { ok: true, json: async () => ({ items: [], next_cursor: null }) };
+      return jsonResponse(200, { items: [], next_cursor: null });
     }) as unknown as typeof fetch;
 
     render(
@@ -271,9 +273,9 @@ describe("ProfileView", () => {
 
     globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
       if (url === "/api/profile") {
-        return { ok: false, status: 500, json: async () => ({}) };
+        return jsonResponse(500, {});
       }
-      return { ok: true, json: async () => ({ items: [], next_cursor: null }) };
+      return jsonResponse(200, { items: [], next_cursor: null });
     }) as unknown as typeof fetch;
 
     render(
@@ -307,9 +309,7 @@ describe("ProfileView check-in score chips", () => {
   beforeEach(() => {
     globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
       if (url.includes("/api/profile/checkins")) {
-        return {
-          ok: true,
-          json: async () => ({
+        return jsonResponse(200, {
             items: [
               {
                 id: "chk-1",
@@ -327,10 +327,9 @@ describe("ProfileView check-in score chips", () => {
               },
             ],
             next_cursor: null,
-          }),
-        };
+          });
       }
-      return { ok: true, json: async () => ({ items: [], next_cursor: null }) };
+      return jsonResponse(200, { items: [], next_cursor: null });
     }) as unknown as typeof fetch;
   });
 

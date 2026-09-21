@@ -245,7 +245,8 @@
       "default_hint": "紧凑",
       "retro_hint": "编辑",
       "modern_hint": "工业"
-    }
+    },
+    "sign_in_to_save": "登录后才能保存修改"
   },
   "create": {
     "title": "添加咖啡店",
@@ -509,7 +510,9 @@
     "brand_intro": "来自真实办公者的打卡记录——没有广告，没有打扰，只有值得久坐的咖啡馆。",
     "index_label": "{count, plural, other {附近 # 家咖啡馆}}",
     "sheet_expand_aria": "展开附近咖啡馆",
-    "nearby_count": "附近 {count} 家咖啡馆"
+    "nearby_count": "附近 {count} 家咖啡馆",
+    "like_failed": "点赞失败，再试试？",
+    "like_self": "不能给自己的打卡点赞"
   },
   "navPrompt": {
     "headline": "有去 {cafe} 喝一杯吗？",
@@ -564,7 +567,8 @@
     "cancel": "取消",
     "delete": "删除",
     "delete_done": "已删除",
-    "delete_failed": "删除失败，再试试？"
+    "delete_failed": "删除失败，再试试？",
+    "sign_in_gate": "登录以管理你的咖啡馆"
   },
   "runtime": {
     "announcement": "公告"

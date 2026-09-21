@@ -86,7 +86,15 @@ describe("OnboardingHome (DG114–DG123)", () => {
     vi.clearAllMocks();
     lastCenter.current = null;
     vi.mocked(isGeolocationDenied).mockResolvedValue(false);
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ city: null }) }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ city: null }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
   });
 
   it("shows the card on a first visit with the detected-city line", async () => {

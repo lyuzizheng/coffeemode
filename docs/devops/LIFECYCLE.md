@@ -337,3 +337,11 @@ docker compose --env-file deploy/dokploy/.env.staging -f deploy/dokploy/docker-c
 # Production manual compose run
 docker compose --env-file deploy/dokploy/.env.prod -f deploy/dokploy/docker-compose.prod.yml up -d
 ```
+
+### Dokploy Resource Limits Need a Unit Suffix
+Dokploy hands `memoryLimit` / `memoryReservation` straight to the Docker API, which parses a bare number as **bytes**. `512` therefore means 512 bytes, not 512 MB, and the service is rejected before any container is created:
+```text
+(HTTP code 400) unexpected - rpc error: code = InvalidArgument
+desc = invalid memory value 512: Must be at least 4MiB
+```
+Always carry the unit — `512M`, `1G`. This surfaced on 2026-09-21 as a build failure for the (since retired) `coffeemode-mcp-grafana` app (BRAWUKA-599). Neither `coffeemode-web-prod` nor `coffeemode-web-staging` sets a memory limit today, so no current service carries the misconfiguration.

@@ -150,4 +150,24 @@ describe("image-service-client", () => {
     const [, init] = fetchSpy.mock.calls[0];
     expect(JSON.parse((init?.body as string) ?? "{}")).toEqual({ imageUuid: "u", keepOriginal: true });
   });
+
+  it("forwards ctx.requestId on upstream calls (D7 correlation)", async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          imageUuid: "uuid",
+          uploadUrl: "https://r2.example.com/upload",
+          uploadHeaders: { "Content-Type": "image/webp" },
+          publicUrl: "https://images.example.com/original/uuid.webp",
+          expiresAt: new Date().toISOString(),
+          maxUploadBytes: 10 * 1024 * 1024,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    const inboundId = "123e4567-e89b-42d3-a456-426614174000";
+    await requestUploadUrl(1024, inboundId);
+    const [, init] = fetchSpy.mock.calls[0];
+    expect((init?.headers as Record<string, string>)?.["x-request-id"]).toBe(inboundId);
+  });
 });

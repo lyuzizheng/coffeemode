@@ -150,16 +150,18 @@ describe("handleUpload", () => {
     expect(((await response.json()) as { error: string }).error).toBe("invalid_request");
   });
 
-  it("rejects requests without a token", async () => {
+  it("rejects requests without a token at the global gate", async () => {
     const env = baseEnv();
     const request = new Request("https://image-service.example.com/v1/images/upload", {
       method: "POST",
     });
-    const response = await handleUpload(request, env);
+    // Per-handler checks moved to the router gate (spec 0011 D6): direct
+    // handler calls are validation-only, so exercise fetch() instead.
+    const response = await handler.fetch(request, env, {} as ExecutionContext);
     expect(response.status).toBe(401);
   });
 
-  it("rejects a correct-length wrong-value token", async () => {
+  it("rejects a correct-length wrong-value token at the global gate", async () => {
     const env = baseEnv();
     // Same length as the real token, wrong value — exercises the
     // equal-length constant-time compare path.
@@ -167,7 +169,7 @@ describe("handleUpload", () => {
     const request = makeRequest("POST", "/v1/images/upload", { size: 1 }, {
       "x-image-service-token": wrongValue,
     });
-    const response = await handleUpload(request, env);
+    const response = await handler.fetch(request, env, {} as ExecutionContext);
     expect(response.status).toBe(401);
   });
 
@@ -358,7 +360,7 @@ describe("handleDelete", () => {
     expect(await env.R2_BUCKET.head(`card/${imageUuid}.webp`)).toBeNull();
   });
 
-  it("rejects invalid UUIDs and unauthenticated callers", async () => {
+  it("rejects invalid UUIDs at the handler and unauthenticated callers at the gate", async () => {
     const env = baseEnv();
     expect(
       (await handleDelete(makeRequest("POST", "/v1/images/delete", { imageUuid: "nope" }), env)).status,
@@ -368,7 +370,7 @@ describe("handleDelete", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ imageUuid: validUuid() }),
     });
-    expect((await handleDelete(anon, env)).status).toBe(401);
+    expect((await handler.fetch(anon, env, {} as ExecutionContext)).status).toBe(401);
   });
 });
 
@@ -529,20 +531,15 @@ describe("router", () => {
   });
 });
 
-describe("handleComplete auth", () => {
+describe("global auth gate", () => {
   it("rejects requests with a missing token", async () => {
     const env = baseEnv();
-    const imageUuid = validUuid();
-    await env.R2_BUCKET.put(`original/${imageUuid}.webp`, new Uint8Array([0xde, 0xad, 0xbe, 0xef]), {
-      httpMetadata: { contentType: "image/webp" },
-    });
-
     const request = new Request("https://image-service.example.com/v1/images/complete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ imageUuid }),
+      body: JSON.stringify({ imageUuid: validUuid() }),
     });
-    const response = await handleComplete(request, env);
+    const response = await handler.fetch(request, env, {} as ExecutionContext);
     expect(response.status).toBe(401);
     expect(await response.json()).toMatchObject({
       error: "unauthorized",
@@ -558,7 +555,8 @@ describe("handleComplete auth", () => {
       headers: { "Content-Type": "application/json", "x-request-id": requestId },
       body: JSON.stringify({ imageUuid: validUuid() }),
     });
-    const response = await handleComplete(request, env);
+    // Auth now happens at the router gate, not in handleComplete.
+    const response = await handler.fetch(request, env, {} as ExecutionContext);
     expect(response.status).toBe(401);
     expect(response.headers.get("x-request-id")).toBe(requestId);
     expect(await response.json()).toMatchObject({ request_id: requestId });

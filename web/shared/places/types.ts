@@ -33,3 +33,29 @@ export interface POISearchHit extends POI {
 export interface POISearchResponse {
   results: POISearchHit[];
 }
+
+/**
+ * One Autocomplete (New) prediction — the typing-phase hit.
+ *
+ * Deliberately NOT a `POI`: Google Autocomplete returns no coordinates, no
+ * hours and no business status. That is the whole point of the split — the
+ * typing phase is free (Autocomplete Session Usage, $0) and only the
+ * `Place Details` call that terminates the session is billed. A prediction
+ * becomes a `POI` through `GET /poi/:place_id?session=<token>`.
+ */
+export interface PlacePrediction {
+  place_id: string;
+  source: POISource;
+  /** `structuredFormat.mainText` — the venue name. */
+  name: string;
+  /** `structuredFormat.secondaryText` — street / locality line. */
+  address: string | null;
+  types: string[];
+  /** Straight-line metres from the request origin, when one was supplied. */
+  distance_meters?: number;
+}
+
+/** Web /api/places/autocomplete response shape. */
+export interface AutocompleteResponse {
+  predictions: PlacePrediction[];
+}

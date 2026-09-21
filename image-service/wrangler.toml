@@ -17,6 +17,12 @@ main = "src/index.ts"
 compatibility_date = "2025-08-01"
 compatibility_flags = ["nodejs_compat"]
 
+# --- Observability (spec 0011 D6) ---
+# Same block poi-service already has: Workers logs + traces for the
+# structured JSON lines the service emits (`logError`/`logWarn`).
+[observability]
+enabled = true
+
 [vars]
 # Local kit defaults (S2): so `docker compose up -d --wait` works without editing.
 # These values are for local dev only (host `wrangler dev` + the compose MinIO

@@ -11,10 +11,10 @@ Slice: `poi-cache-service` in `docs/agent/implementation-slices.md`.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/poi/:place_id` | Fetch/enrich one POI: KV hot → D1 fresh → Google API → backfill both |
-| POST | `/poi/resolve` | `{maps_share_url}` → POI (cafe creation import path; follows short links) |
+| GET | `/poi/:place_id` | Fetch/enrich one POI: KV hot → D1 fresh → Google API → backfill both. `?session=<token>` is passed through as the Place Details `sessionToken`, terminating an Autocomplete session (BRAWUKA-602) |
+| POST | `/poi/resolve` | `{maps_share_url}` → POI (cafe creation import path; follows short links). The query branch runs autocomplete → details inside one session |
+| GET | `/poi/autocomplete?q&lat&lng&session` | Live Google Autocomplete (New) predictions — `{ predictions: PlacePrediction[] }`. **Nothing is persisted**: predictions carry no coordinates, and caching them across sessions would break session pairing |
 | GET | `/poi/search?q&lat&lng&r` | Search **stored** POIs: name match + haversine distance sort (r in km, default 10) |
-| GET | `/poi/search/external?q&lat&lng&r` | Live Google Places search; usable results are written to D1/KV before returning |
 | POST | `/poi/external` | Store externally-searched POIs: array in body or `{pois: [...]}` (Google live / Apple MapKit refs). Only food/cafe-category entries persist (Google `types` / Apple `PointOfInterestCategory`; BRAWUKA-328) — response is `{ stored, skipped: [{ index, reason }] }`; shape-invalid entries still 400 with `entries` |
 
 ## Local development
@@ -66,7 +66,15 @@ namespaces and D1 databases that do not exist. Validate without deploying with
 
 ## Design notes
 
-- Field masks on every Google call keep billing minimal; Google photos are not
+- Billing shape (BRAWUKA-602): live search is **Autocomplete (New) + Place
+  Details (New)**, never Text Search. Every keystroke request carries a
+  `sessionToken`, and the whole session moves into *Autocomplete Session Usage*
+  ($0) once a Place Details call terminates it — so a typing→select pair costs
+  exactly one Place Details call, billed at the field tier its mask demands
+  (`regularOpeningHours` puts it in Enterprise). A session the user abandons is
+  never terminated, so Google bills its Autocomplete requests individually at
+  the *Autocomplete Request* SKU: no Place Details billing, but not zero. Field
+  masks on every Google call keep that tier minimal; Google photos are not
   persisted (cafes store user-uploaded check-in photos).
 - Apple POIs have no server-side upstream — they are stored via `POST /poi/external`
   and served from D1 only. Both Google and Apple entries pass a food/cafe

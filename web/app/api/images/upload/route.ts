@@ -47,7 +47,7 @@ export const POST = apiRoute(
       return apiError(parsed.code, parsed.error, { requestId: ctx.requestId });
     }
 
-    const data = await requestUploadUrl(parsed.size);
+    const data = await requestUploadUrl(parsed.size, ctx.requestId);
     // Bind the issued imageUuid to this user (issue #33) — photo
     // provisioning rejects UUIDs that were never issued to the caller.
     await recordUploadIntent(ctx.user.id, data.imageUuid);

@@ -1,11 +1,11 @@
 {
   "$comment": "Structure-guard registries (spec 0009 \u00a77). Two registries with different jobs live here; web/eslint.config.mjs reads neither and switches no rule off by path. (1) `files` = the FILE-SIZE baseline: files above the hard line budget, read by scripts/check-file-size.mjs, only-shrink (a listed file may get smaller, never bigger; each entry carries an `owner` key and a `reviewBy` date, see spec 0009 \u00a77.1/\u00a77.3). (2) `eslintSuppressions` = the BUDGET for the RULE-level registry in web/eslint-suppressions.json \u2014 that registry is what actually exempts code (ESLint bulk suppressions) and scripts/check-suppressions.mjs enforces it: any growth (file count, entry count, per-rule violation count) fails, entries whose rule no longer fires must be pruned, the set of files carrying suppressions may not expand, and overdue entries fail the gate.",
   "eslintSuppressions": {
-    "files": 40,
-    "entries": 43,
+    "files": 36,
+    "entries": 39,
     "perRule": {
-      "max-lines-per-function": 33,
-      "sonarjs/cognitive-complexity": 13
+      "max-lines-per-function": 32,
+      "sonarjs/cognitive-complexity": 8
     },
     "reviewBy": "2026-12-31"
   },

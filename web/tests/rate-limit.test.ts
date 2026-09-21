@@ -3,11 +3,12 @@ import { GET as searchGET } from "@/app/api/places/search/route";
 import {
   checkRateLimit,
   RateLimiter,
-  getClientIdentifier,
+  getClientIdentity,
   rateLimitResponse,
   rateLimiter,
 } from "@/lib/rate-limit";
 import { rateLimitBuckets, rateLimitConfig } from "@/lib/config";
+import { registerLineSink } from "@shared/log";
 
 const WORKER_URL = "https://poi-service.test.workers.dev";
 const TOKEN = "s3cret-token";
@@ -95,10 +96,10 @@ describe("RateLimiter", () => {
   });
 });
 
-describe("getClientIdentifier", () => {
+describe("getClientIdentity", () => {
   it("uses the user id when signed in", () => {
     const request = new Request("https://example.com/api/test");
-    expect(getClientIdentifier(request, { id: "user-123" })).toBe("user:user-123");
+    expect(getClientIdentity(request, { id: "user-123" })).toEqual({ id: "user:user-123", ip: null });
   });
 
   it("hashes CF-Connecting-IP and never leaks it for anonymous requests", () => {
@@ -108,10 +109,12 @@ describe("getClientIdentifier", () => {
         "cf-connecting-ip": "1.2.3.4",
       },
     });
-    const id = getClientIdentifier(request, null);
+    const { id, ip } = getClientIdentity(request, null);
     expect(id.startsWith("anon:")).toBe(true);
     expect(id).not.toContain("Mozilla");
     expect(id).not.toContain("1.2.3.4");
+    // The raw address rides alongside the key so an abuse alert can name the source.
+    expect(ip).toBe("1.2.3.4");
   });
 
   it("ignores forged X-Real-IP / X-Forwarded-For and rotated User-Agents: same bucket (BRAWUKA-282 P1-2 gate)", () => {
@@ -131,7 +134,7 @@ describe("getClientIdentifier", () => {
         "x-forwarded-for": "2.2.2.2, 3.3.3.3",
       },
     });
-    expect(getClientIdentifier(first, null)).toBe(getClientIdentifier(rotated, null));
+    expect(getClientIdentity(first, null).id).toBe(getClientIdentity(rotated, null).id);
   });
 
   it("keys distinct CF-Connecting-IPs into distinct buckets", () => {
@@ -141,16 +144,16 @@ describe("getClientIdentifier", () => {
     const otherIp = new Request("https://example.com/api/test", {
       headers: { "user-agent": "Mozilla/5.0", "cf-connecting-ip": "8.8.8.8" },
     });
-    expect(getClientIdentifier(otherIp, null)).not.toBe(getClientIdentifier(base, null));
+    expect(getClientIdentity(otherIp, null).id).not.toBe(getClientIdentity(base, null).id);
   });
 
   it("shares one fail-closed bucket when CF-Connecting-IP is absent", () => {
     const request = new Request("https://example.com/api/test");
-    expect(getClientIdentifier(request, null)).toBe("anon:unknown");
+    expect(getClientIdentity(request, null)).toEqual({ id: "anon:unknown", ip: null });
     const forged = new Request("https://example.com/api/test", {
       headers: { "user-agent": "curl/8.0", "x-real-ip": "1.1.1.1" },
     });
-    expect(getClientIdentifier(forged, null)).toBe("anon:unknown");
+    expect(getClientIdentity(forged, null)).toEqual({ id: "anon:unknown", ip: null });
   });
 });
 
@@ -179,7 +182,7 @@ describe("Route rate limiting", () => {
     const placesLimit = rateLimitConfig("places");
     for (let i = 0; i < placesLimit.maxRequests; i++) {
       await rateLimiter.check(
-        `places:${getClientIdentifier(new Request("https://localhost/api/places/search?q=x"), null)}`,
+        `places:${getClientIdentity(new Request("https://localhost/api/places/search?q=x"), null).id}`,
         placesLimit.windowMs,
         placesLimit.maxRequests,
       );
@@ -208,11 +211,11 @@ describe("checkRateLimit multi-window", () => {
     const clientId = `test-client-multi-${Date.now()}`;
 
     // 2 allowed (small window at limit, large still has room)
-    expect((await checkRateLimit("search", clientId, buckets)).allowed).toBe(true);
-    expect((await checkRateLimit("search", clientId, buckets)).allowed).toBe(true);
+    expect((await checkRateLimit("search", { id: clientId, ip: null }, buckets)).allowed).toBe(true);
+    expect((await checkRateLimit("search", { id: clientId, ip: null }, buckets)).allowed).toBe(true);
 
     // 3rd trips the 60s window (2/2) even though 120s still has room → 429
-    const denied = await checkRateLimit("search", clientId, buckets);
+    const denied = await checkRateLimit("search", { id: clientId, ip: null }, buckets);
     expect(denied.allowed).toBe(false);
     expect(denied.retryAfter).toBeGreaterThan(0);
   });
@@ -220,21 +223,50 @@ describe("checkRateLimit multi-window", () => {
   it("emits an alert via the observability hook on deny (DG129)", async () => {
     const buckets = [{ windowMs: 60_000, maxRequests: 1 }];
     const clientId = `user:test-alert-${Date.now()}`;
-    await checkRateLimit("profile-read", clientId, buckets, "GET /api/profile"); // consume
+    await checkRateLimit("profile-read", { id: clientId, ip: null }, buckets, "GET /api/profile"); // consume
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     // Reset throttle so the alert fires
     const { _resetAlertThrottleForTests } = await import("@/lib/observability/rate-limit-alert");
     _resetAlertThrottleForTests();
 
-    const denied = await checkRateLimit("profile-read", clientId, buckets, "GET /api/profile");
+    const denied = await checkRateLimit("profile-read", { id: clientId, ip: null }, buckets, "GET /api/profile");
     expect(denied.allowed).toBe(false);
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
   });
+
+  it("emits one unthrottled structured line per denial, carrying the raw client_ip (BRAWUKA-607)", async () => {
+    const buckets = [{ windowMs: 60_000, maxRequests: 1 }];
+    const client = { id: `anon:test-ip-${Date.now()}`, ip: "203.0.113.7" };
+    const lines: Record<string, unknown>[] = [];
+    registerLineSink((line) => lines.push(line));
+    const { _resetAlertThrottleForTests } = await import("@/lib/observability/rate-limit-alert");
+    _resetAlertThrottleForTests();
+
+    await checkRateLimit("places", client, buckets, "GET /api/places/search"); // consume
+    // Two denials inside the 10s console throttle: the console line is
+    // suppressed, the structured line must not be — the count is the signal.
+    await checkRateLimit("places", client, buckets, "GET /api/places/search");
+    await checkRateLimit("places", client, buckets, "GET /api/places/search");
+
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({
+      type: "warn",
+      route: "GET /api/places/search",
+      status: 429,
+      code: "rate_limited",
+      client_id: client.id,
+      client_ip: "203.0.113.7",
+      bucket: "places",
+    });
+    expect(lines[0].retry_after).toBeGreaterThan(0);
+
+    registerLineSink(null);
+  });
 });
 
   it("throws an unreachable error on an empty buckets array (caller bug, BRAWUKA-189)", async () => {
-    await expect(checkRateLimit("search", "test-client-empty", [])).rejects.toThrow("unreachable");
+    await expect(checkRateLimit("search", { id: "test-client-empty", ip: null }, [])).rejects.toThrow("unreachable");
   });
 
 it("reads search + profile rate-limit defaults from rate-limits.yaml (DG129, #216)", () => {

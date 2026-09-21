@@ -352,9 +352,10 @@ describe("POST /api/places/resolve", () => {
   it("400s on JSON null body (BRAWUKA-403)", async () => {
     const res = await resolvePOST(resolveRequest("null"));
     expect(res.status).toBe(400);
-    expect((await res.json()) as { error: string }).toEqual({
+    expect((await res.json()) as { error: string }).toMatchObject({
       error: "invalid_request",
       message: "invalid JSON body",
+      request_id: expect.any(String),
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -363,9 +364,10 @@ describe("POST /api/places/resolve", () => {
     for (const raw of ['"string"', "123", "[]"]) {
       const res = await resolvePOST(resolveRequest(raw));
       expect(res.status).toBe(400);
-      expect((await res.json()) as { error: string }).toEqual({
+      expect((await res.json()) as { error: string }).toMatchObject({
         error: "invalid_request",
         message: "invalid JSON body",
+        request_id: expect.any(String),
       });
     }
     expect(fetchMock).not.toHaveBeenCalled();
@@ -393,9 +395,10 @@ describe("POST /api/places/resolve", () => {
       resolveRequest(resolveBody({ maps_share_url: "https://example.com/nope", "cf-turnstile-response": "fresh" })),
     );
     expect(res.status).toBe(400);
-    expect((await res.json()) as { error: string }).toEqual({
+    expect((await res.json()) as { error: string }).toMatchObject({
       error: "invalid_maps_url",
       message: expect.stringContaining("Google Maps and Apple Maps"),
+      request_id: expect.any(String),
     });
     // siteverify passes, the worker is never reached.
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -427,9 +430,10 @@ describe("POST /api/places/resolve", () => {
       resolveRequest(resolveBody({ maps_share_url: "not-a-url", "cf-turnstile-response": "fresh" })),
     );
     expect(res.status).toBe(400);
-    expect((await res.json()) as { error: string }).toEqual({
+    expect((await res.json()) as { error: string }).toMatchObject({
       error: "invalid_maps_url",
       message: expect.stringContaining("Google Maps and Apple Maps"),
+      request_id: expect.any(String),
     });
   });
 

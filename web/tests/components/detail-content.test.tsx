@@ -45,13 +45,16 @@ const CAFE: PublicCafeDetail = {
 };
 
 function stubFetch() {
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
   return vi.fn().mockImplementation((url: string) => {
     if (String(url).startsWith(FEED_URL)) {
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: async () => ({ checkins: [], next_cursor: null }),
-      });
+      return Promise.resolve(jsonResponse(200, { checkins: [], next_cursor: null }));
     }
     return Promise.reject(new Error(`unexpected fetch: ${String(url)}`));
   });

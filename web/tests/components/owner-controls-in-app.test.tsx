@@ -93,17 +93,20 @@ function stubController(): DiscoveryController {
 }
 
 function stubDetailFetch(cafe: PublicCafeDetail) {
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
   return vi.fn().mockImplementation((url: string) => {
     const u = String(url);
     if (u === `/api/cafes/${CAFE_ID}`) {
-      return Promise.resolve({ ok: true, status: 200, json: async () => cafe });
+      return Promise.resolve(jsonResponse(200, cafe));
     }
     if (u.startsWith(`/api/cafes/${CAFE_ID}/checkins`)) {
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: async () => ({ checkins: [], next_cursor: null }),
-      });
+      return Promise.resolve(jsonResponse(200, { checkins: [], next_cursor: null }));
     }
     return Promise.reject(new Error(`unexpected fetch: ${u}`));
   });

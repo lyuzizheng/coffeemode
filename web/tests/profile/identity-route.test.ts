@@ -184,7 +184,7 @@ describe("PATCH /api/profile/identity", () => {
     expect(body.error).toBe("handle_taken");
   });
 
-  it("returns 400 with handle_change_too_soon when handle was changed within 7 days", async () => {
+  it("returns 422 with handle_change_too_soon when handle was changed within 7 days", async () => {
     vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
     vi.mocked(updateProfileIdentity).mockRejectedValueOnce(new HandleChangeTooSoonError());
 
@@ -195,7 +195,7 @@ describe("PATCH /api/profile/identity", () => {
     }) as NextRequest;
 
     const res = await PATCH(req);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     const body = await res.json();
     expect(body.error).toBe("handle_change_too_soon");
   });
@@ -279,7 +279,7 @@ describe("PATCH /api/profile/identity", () => {
     expect(body.error).toBe("invalid_handle");
   });
 
-  it("returns 400 with handle_change_too_soon when opt-out carries a handle inside the cooldown", async () => {
+  it("returns 422 with handle_change_too_soon when opt-out carries a handle inside the cooldown", async () => {
     vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
     vi.mocked(updateProfileIdentity).mockRejectedValueOnce(new HandleChangeTooSoonError());
 
@@ -290,7 +290,7 @@ describe("PATCH /api/profile/identity", () => {
     }) as NextRequest;
 
     const res = await PATCH(req);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     const body = await res.json();
     expect(body.error).toBe("handle_change_too_soon");
   });

@@ -1,14 +1,8 @@
-import { logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
+import { apiRoute } from "@/lib/api/route";
 import { toggleCheckInLike } from "@/lib/db/checkins";
-import {
-  CheckInNotFoundError,
-  SelfLikeError,
-} from "@/lib/validation/checkin";
-import { guard } from "@/lib/api/guard";
 import { isValidUUID } from "@shared/uuid";
-import { requireSameOrigin } from "@/lib/security/origin";
 
 /**
  * POST /api/checkins/[id]/like
@@ -17,37 +11,15 @@ import { requireSameOrigin } from "@/lib/security/origin";
  * Requires auth; 404 when the check-in is missing or soft-deleted;
  * 403 self_like_forbidden when the caller tries to like their own check-in.
  */
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const originError = requireSameOrigin(request);
-  if (originError) return originError;
+export const POST = apiRoute<{ id: string }>(
+  { bucket: "cafes-write", auth: "required", origin: true, route: "POST /api/checkins/[id]/like" },
+  async (_request, ctx) => {
+    const { id } = ctx.params;
+    if (!isValidUUID(id)) {
+      return apiError("invalid_request", "id must be a UUID", { status: 400, requestId: ctx.requestId });
+    }
 
-  const { id } = await params;
-  if (!isValidUUID(id)) {
-    return apiError("invalid_request", "id must be a UUID", { status: 400 });
-  }
-
-  const gate = await guard(request, {
-    bucket: "cafes-write",
-    requireAuth: true,
-    route: "POST /api/checkins/[id]/like",
-  });
-  if (!gate.ok) return gate.response;
-  const { user } = gate;
-
-  try {
-    const result = await toggleCheckInLike(user.id, id);
+    const result = await toggleCheckInLike(ctx.user.id, id);
     return NextResponse.json(result);
-  } catch (err) {
-    if (err instanceof CheckInNotFoundError) {
-      return apiError("not_found", "check-in not found", { status: 404 });
-    }
-    if (err instanceof SelfLikeError) {
-      return apiError("self_like_forbidden", "you cannot like your own check-in", { status: 403 });
-    }
-    logError({ route: gate.route, request, error: err, status: 500 });
-    return apiError("internal_error", 500);
-  }
-}
+  },
+);

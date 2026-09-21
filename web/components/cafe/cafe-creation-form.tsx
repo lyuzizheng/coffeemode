@@ -14,7 +14,7 @@ import { useState, type ChangeEvent, type FormEvent } from "react";
 import { PolicyChips, policyOptions } from "./policy-chips";
 import { POIPreview } from "./poi-preview";
 import { uploadPhoto } from "@/lib/images/client-upload";
-import { isUnauthorized, responseMessage, throwIfUnauthorized, userFacingMessage } from "@/lib/http";
+import { ApiError, apiErrorMessage, apiFetch, isUnauthorized } from "@/lib/http";
 import { MAX_STAY_VALUES, type MaxStay } from "@/types/checkins";
 import type { POI } from "@shared/places/types";
 
@@ -35,15 +35,17 @@ type CreateFailureCopy = (key: "photoTooLarge" | "photoUploadFailed" | "photoInv
  * Map a submit failure to the message shown under the form (BRAWUKA-124:
  * session expiry is handled by the caller, before this runs).
  */
-function submitFailureMessage(message: string, t: CreateFailureCopy): string {
+function submitFailureMessage(cause: unknown, t: CreateFailureCopy): string {
+  const message = cause instanceof Error ? cause.message : "";
   if (message === "photo_too_large") return t("photoTooLarge");
   if (message === "photo_invalid") return t("photoInvalid");
   if (message === "photo_upload_failed" || message === "photo_conversion_failed") {
     return t("photoUploadFailed");
   }
-  // Authored prose (e.g. `invalid_photos`) passes through; a machine code that
-  // slipped past the transport mapping is logged, never rendered (BRAWUKA-212).
-  return userFacingMessage(message, t("createFailed"));
+  // ApiError codes map to catalog copy; everything else renders the
+  // localized fallback — server `message` prose is never rendered
+  // (spec 0011 D9, BRAWUKA-212).
+  return apiErrorMessage(cause, t("createFailed"));
 }
 
 export function CafeCreationForm({
@@ -108,26 +110,25 @@ export function CafeCreationForm({
           photo_ids: [imageUuid],
         },
       };
-      const response = await fetch("/api/cafes", {
+      const result = await apiFetch<{ cafe_id?: string } | undefined>("/api/cafes", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
+      }).catch((cause: unknown) => {
+        if (cause instanceof ApiError && cause.status === 409) {
+          // The 409 body may omit `cafe_id` (raced insert, BRAWUKA-467): the
+          // "already exists" hint never depends on it, but the jump link does
+          // (BRAWUKA-465).
+          setIsDuplicate(true);
+          setDuplicateCafeId(
+            typeof cause.details?.cafe_id === "string" ? cause.details.cafe_id : null,
+          );
+          return null;
+        }
+        throw cause;
       });
-      // Session expiry, from the photo upload above or from this POST: both are
-      // unrecoverable by retrying, so the drawer's gate is the only way out.
-      throwIfUnauthorized(response);
-      if (response.status === 409) {
-        // The 409 body may omit `cafe_id` (raced insert, BRAWUKA-467): the
-        // "already exists" hint never depends on it, but the jump link does
-        // (BRAWUKA-465).
-        const duplicate = (await response.json()) as { cafe_id?: string };
-        setIsDuplicate(true);
-        setDuplicateCafeId(duplicate.cafe_id ?? null);
-        return;
-      }
-      if (!response.ok) throw new Error(await responseMessage(response, t("createFailed")));
-      const result = (await response.json()) as { cafe_id?: string };
-      setCreatedCafeId(result.cafe_id ?? null);
+      if (result === null) return;
+      setCreatedCafeId(result?.cafe_id ?? null);
     } catch (cause) {
       // A 401 is a session problem, not a photo problem: blaming the photo
       // would leave the user retrying a request that can never succeed.
@@ -135,7 +136,7 @@ export function CafeCreationForm({
         onRequireSignIn();
         return;
       }
-      onError(submitFailureMessage(cause instanceof Error ? cause.message : t("createFailed"), t));
+      onError(submitFailureMessage(cause, t));
     } finally {
       setBusy(false);
     }

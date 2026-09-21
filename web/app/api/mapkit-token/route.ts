@@ -1,8 +1,8 @@
-import { logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
+import { apiRoute } from "@/lib/api/route";
 import { generateMapKitToken, getMapKitConfig, type MapKitConfig } from "@/lib/places/mapkit";
-import { guard } from "@/lib/api/guard";
+import { logError } from "@/lib/observability/server-log";
 
 /**
  * Module-level token memo: MapKit JS tokens are valid for 15 minutes
@@ -50,24 +50,22 @@ export const runtime = "nodejs";
  * signed-in creation flow may fetch it. Anonymous callers get 401 before
  * any credential check.
  */
-export async function GET(request: Request) {
-  const gate = await guard(request, {
-    bucket: "places",
-    requireAuth: true,
-    route: "GET /api/mapkit-token",
-  });
-  if (!gate.ok) return gate.response;
+export const GET = apiRoute(
+  { bucket: "places", auth: "required", route: "GET /api/mapkit-token" },
+  async (_request, ctx) => {
+    const config = getMapKitConfig();
+    if (!config) {
+      return apiError("mapkit_not_configured", 503, { requestId: ctx.requestId });
+    }
 
-  const config = getMapKitConfig();
-  if (!config) {
-    return apiError("mapkit_not_configured", 503);
-  }
-
-  try {
-    const token = memoizedToken(config);
-    return NextResponse.json({ token });
-  } catch (err) {
-    logError({ route: gate.route, request, error: err, status: 500 });
-    return apiError("mapkit_token_error", 500);
-  }
-}
+    try {
+      const token = memoizedToken(config);
+      return NextResponse.json({ token });
+    } catch (err) {
+      // `mapkit_token_error` (not `internal_error`) is the emitted code —
+      // keep the explicit logError so the error line carries it.
+      logError({ route: ctx.route, requestId: ctx.requestId, error: err, status: 500, code: "mapkit_token_error" });
+      return apiError("mapkit_token_error", 500, { requestId: ctx.requestId });
+    }
+  },
+);

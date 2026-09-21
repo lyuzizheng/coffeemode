@@ -1,8 +1,6 @@
-import { logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
-import { apiError } from "@/lib/api/response";
+import { apiRoute } from "@/lib/api/route";
 import { navigationPromptQueue } from "@/lib/db/navigations";
-import { guard } from "@/lib/api/guard";
 
 /**
  * GET /api/navigations/prompt
@@ -12,20 +10,10 @@ import { guard } from "@/lib/api/guard";
  * Requires auth; the client fetches lazily after the surface reaches idle
  * (DG77) and shows at most one prompt per session.
  */
-export async function GET(request: Request) {
-  const gate = await guard(request, {
-    bucket: "cafes-read",
-    requireAuth: true,
-    route: "GET /api/navigations/prompt",
-  });
-  if (!gate.ok) return gate.response;
-  const { user } = gate;
-
-  try {
-    const prompt = await navigationPromptQueue.next(user.id);
+export const GET = apiRoute(
+  { bucket: "cafes-read", auth: "required", route: "GET /api/navigations/prompt" },
+  async (_request, ctx) => {
+    const prompt = await navigationPromptQueue.next(ctx.user.id);
     return NextResponse.json({ prompt });
-  } catch (err) {
-    logError({ route: gate.route, request, error: err, status: 500 });
-    return apiError("internal_error", 500);
-  }
-}
+  },
+);

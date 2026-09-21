@@ -27,7 +27,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { useNetworkStatus } from "@/hooks/use-network-status";
 import { addRecentSearch } from "@/lib/search/recent-searches";
 import { getRankingPreference } from "@/lib/search/ranking-preference";
-import { fetchUnifiedSearch, type UnifiedSearchParams } from "@/lib/search/search-client";
+import { fetchUnifiedSearch, resolveSearchScope, type UnifiedSearchParams } from "@/lib/search/search-client";
 import { buildSearchHref } from "@/lib/search/search-url";
 import {
   EMPTY_FILTERS,
@@ -101,16 +101,22 @@ interface UnifiedSearchPanelProps {
 
 
 /** Canonical signature of the request the panel would fire — the same
- * serialization `fetchUnifiedSearch` applies (`q` + `city` + `filter_*`).
- * Dedupe MUST compare this, not the query text alone: a filter/city change
- * with an unchanged query is a different request (BRAWUKA-567). */
+ * serialization `fetchUnifiedSearch` applies (`q` + resolved scope +
+ * `filter_*`). Dedupe MUST compare this, not the query text alone: a
+ * filter/city change with an unchanged query is a different request
+ * (BRAWUKA-567). The scope goes through `resolveSearchScope` so the
+ * signature matches the wire — a runtime city id signs as its `?lat&lng`
+ * resolution, never `?city=` (BRAWUKA-568). */
 function requestSignature(
   q: string,
   city: string | undefined,
   filters: SearchFilterState | undefined,
 ): string {
   const params = new URLSearchParams({ q });
-  if (city) params.set("city", city);
+  const scope = resolveSearchScope(city);
+  if (scope.city) params.set("city", scope.city);
+  if (typeof scope.lat === "number") params.set("lat", String(scope.lat));
+  if (typeof scope.lng === "number") params.set("lng", String(scope.lng));
   if (filters) filtersToSearchParams(filters, params);
   return params.toString();
 }
@@ -244,7 +250,10 @@ export function UnifiedSearchPanel({
   const viewAllHref = showResultsView
     ? buildSearchHref({
         q: query.trim(),
-        city: city ?? response?.reference_point.city_id,
+        // Same contract as the API (BRAWUKA-568): a runtime city id deep-links
+        // by coordinates, never `?city=` — the SSR page would render
+        // `unknown_city` for it.
+        ...resolveSearchScope(city ?? response?.reference_point.city_id),
         ranking: getRankingPreference(),
         filters: filterUi ? filters : undefined,
       })

@@ -62,6 +62,17 @@ describe("isOpenAt — cafe-local timezone evaluation", () => {
     expect(isOpenAt(always, "Asia/Seoul", new Date("2026-08-17T12:34:00Z"))).toBe(true); // Mon 21:34 KST
   });
 
+  it("reads a non-midnight close === open window as open all day (BRAWUKA-571)", () => {
+    const allDay: WeeklyHours = { mon: { open: "09:00", close: "09:00" } };
+    expect(isOpenAt(allDay, "Asia/Seoul", new Date("2026-08-16T23:00:00Z"))).toBe(true); // Mon 08:00 KST, before anchor
+    expect(isOpenAt(allDay, "Asia/Seoul", new Date("2026-08-17T00:00:00Z"))).toBe(true); // Mon 09:00 KST, at anchor
+    expect(isOpenAt(allDay, "Asia/Seoul", new Date("2026-08-17T01:00:00Z"))).toBe(true); // Mon 10:00 KST, after anchor
+    expect(isOpenAt(allDay, "Asia/Seoul", new Date("2026-08-17T14:59:00Z"))).toBe(true); // Mon 23:59 KST
+    // A 24h day has no overnight tail: Tuesday is closed all morning.
+    expect(isOpenAt(allDay, "Asia/Seoul", new Date("2026-08-17T15:30:00Z"))).toBe(false); // Tue 00:30 KST
+    expect(isOpenAt(allDay, "Asia/Seoul", new Date("2026-08-17T23:30:00Z"))).toBe(false); // Tue 08:30 KST
+  });
+
   it("returns null for a non-object hours payload from malformed jsonb", () => {
     expect(isOpenAt("not-an-object" as unknown as WeeklyHours, "Asia/Seoul", new Date("2026-08-17T00:00:00Z"))).toBeNull();
   });

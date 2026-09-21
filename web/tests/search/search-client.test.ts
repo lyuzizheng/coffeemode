@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { writeOnboardingState } from "@/lib/onboarding-store";
 import { setRankingPreference } from "@/lib/search/ranking-preference";
 import { fetchUnifiedSearch } from "@/lib/search/search-client";
 import type { SearchResponse } from "@/lib/search/types";
@@ -61,6 +62,43 @@ describe("fetchUnifiedSearch", () => {
     setRankingPreference("relevance");
     await fetchUnifiedSearch({ q: "coffee" });
     expect(requestedUrl()).toContain("ranking=relevance");
+  });
+
+  it("drops a runtime city id and scopes by the stored location fix (BRAWUKA-568)", async () => {
+    writeOnboardingState({
+      currentCity: "kuala-lumpur",
+      currentCityName: "Kuala Lumpur",
+      lastLocation: { lat: 3.139, lng: 101.6869 },
+    });
+    await fetchUnifiedSearch({ q: "coffee", city: "kuala-lumpur" });
+    const url = requestedUrl();
+    expect(url).not.toContain("city=");
+    expect(url).toContain("lat=3.139");
+    expect(url).toContain("lng=101.6869");
+  });
+
+  it("omits the scope entirely for a runtime city id with no stored fix", async () => {
+    await fetchUnifiedSearch({ q: "coffee", city: "kuala-lumpur" });
+    const url = requestedUrl();
+    expect(url).not.toContain("city=");
+    expect(url).not.toContain("lat=");
+    expect(url).not.toContain("lng=");
+  });
+
+  it("prefers caller coordinates over the stored fix for a runtime city id", async () => {
+    writeOnboardingState({ lastLocation: { lat: 3.139, lng: 101.6869 } });
+    await fetchUnifiedSearch({ q: "coffee", city: "kuala-lumpur", lat: 4.2, lng: 102.5 });
+    const url = requestedUrl();
+    expect(url).not.toContain("city=");
+    expect(url).toContain("lat=4.2");
+    expect(url).toContain("lng=102.5");
+  });
+
+  it("keeps ?city= for launch cities and canonicalizes aliases", async () => {
+    await fetchUnifiedSearch({ q: "coffee", city: "Tokyo" });
+    const url = requestedUrl();
+    expect(url).toContain("city=tokyo");
+    expect(url).not.toContain("lat=");
   });
 
   it("throws with the server message on non-OK responses", async () => {

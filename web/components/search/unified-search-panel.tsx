@@ -27,7 +27,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { useNetworkStatus } from "@/hooks/use-network-status";
 import { addRecentSearch } from "@/lib/search/recent-searches";
 import { getRankingPreference } from "@/lib/search/ranking-preference";
-import { fetchUnifiedSearch, type UnifiedSearchParams } from "@/lib/search/search-client";
+import { fetchUnifiedSearch, resolveSearchScope, type UnifiedSearchParams } from "@/lib/search/search-client";
 import { buildSearchHref } from "@/lib/search/search-url";
 import {
   EMPTY_FILTERS,
@@ -244,7 +244,10 @@ export function UnifiedSearchPanel({
   const viewAllHref = showResultsView
     ? buildSearchHref({
         q: query.trim(),
-        city: city ?? response?.reference_point.city_id,
+        // Same contract as the API (BRAWUKA-568): a runtime city id deep-links
+        // by coordinates, never `?city=` — the SSR page would render
+        // `unknown_city` for it.
+        ...resolveSearchScope(city ?? response?.reference_point.city_id),
         ranking: getRankingPreference(),
         filters: filterUi ? filters : undefined,
       })

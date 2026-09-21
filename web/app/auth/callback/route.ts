@@ -1,4 +1,5 @@
 import { logError } from "@/lib/observability/server-log";
+import { recordLogin } from "@/lib/observability/metrics";
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/auth/supabase-server";
 import { query } from "@/lib/db/postgres";
@@ -46,6 +47,11 @@ export async function GET(request: Request) {
       new URL("/?auth=error&reason=profile_upsert", origin),
     );
   }
+
+  // Only now is it a login: the code exchanged *and* the profile row landed.
+  // A callback that fails either step signs the user back out above, so
+  // counting there would report sessions that never existed (BRAWUKA-609).
+  recordLogin();
 
   const next = searchParams.get("next");
   const returnPath = isSafeReturnPath(next) ? next : "/";

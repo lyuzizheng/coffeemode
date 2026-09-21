@@ -91,8 +91,10 @@ web/components/checkin/  Check-in drawer, sliders, photo uploader, and success f
 web/lib/rate-limit.ts    In-memory token-bucket rate limiter with a shared client identifier helper
 web/lib/observability/   Server-side observability: single-line JSON request/error logs
                          (server-log.ts), OTLP log shipping to Grafana Cloud Loki
-                         (otlp-logs.ts, BRAWUKA-607), and OpenTelemetry trace
-                         registration (otel.ts, BRAWUKA-606)
+                         (otlp-logs.ts, BRAWUKA-607), OpenTelemetry trace
+                         registration (otel.ts, BRAWUKA-606), business counters over
+                         OTLP (metrics.ts, BRAWUKA-609), and the shared SIGTERM/SIGINT
+                         flush for every OTLP provider (shutdown.ts)
 web/next.config.ts       Long immutable Cache-Control headers for static/PWA assets
 web/app/sw.ts            Serwist runtime cache (CacheFirst for immutable assets, NetworkOnly for
                          dynamic pages and API routes)

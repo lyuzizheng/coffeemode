@@ -30,17 +30,17 @@ owner action (`docs/agent/pending-user-actions.md` §7).
 | `search.requests` | `{ mode: "stored_only" \| "live" }` | One event per `/api/search` execution. `mode=live` iff the billed Google live fanout ran (`include_live=true` and `q` ≥ `minPoiQueryLength`); `stored_only` otherwise. Mirrors `X-Search-Mode`. |
 | `search.duration_ms` | int ms | Wall time of `executeSearch` (DB + POI fanout + ranking), `performance.now()` delta, rounded. |
 | `search.truncated` | bool | `total_count > results.length` — the response hit the top-10 cap (DG46) after relevance truncation (DG131). |
-| `search.open_now.batches` | int ≥ 0 | Iterative-fetch batches consumed; `0` when `open_now` is inactive (SQL pushdown path). `>0` identifies `open_now` requests. |
-| `open_now_truncated` | bool, present only when true | `open_now` filter still under-matched after `maxIterativeFetchBatches` (10) with unexamined rows remaining (LIMIT+1 probe) — the DG145-B trigger condition. Exact DB exhaustion is not truncation (BRAWUKA-448). |
+| `search.open_now.batches` | int ≥ 0 | **Always 0** since DG145-C shipped (BRAWUKA-25): `open_now` is a SQL predicate (`cafe_is_open_at`, migration 0028), so the iterative-fetch counter it measured no longer exists. Kept in the event so the field contract stays stable; the `open_now_share` derivation below is dead. |
 | `search.poi_degraded` | bool | Stored-POI or live-POI upstream failed; response carried `warnings: ["poi_unavailable" \| "live_poi_unavailable"]` (DG133). |
+| `search.cache` | `"hit" \| "miss" \| "bypass"` | Edge-cache outcome for the request (DG137-C, added with the cache itself per this ADR's pre-authorization). `hit` = served from the in-process cache; `miss` = executed and stored; `bypass` = cache not consulted (SSR page, or the cafes data-version read failed). |
 
 Derived ratios (all over a rolling 7-day window unless stated):
 
 - `truncation_rate` = count(`search.truncated=true`) / count(`search.requests`).
-- `open_now_share` = count(`search.open_now.batches > 0`) / count(`search.requests`).
-- `open_now_p95` = p95(`search.duration_ms`) over `open_now.batches > 0`.
+- `open_now_share` / `open_now_p95` — **dead** (BRAWUKA-25): `search.open_now.batches` is always 0 post-pushdown, so no request is identifiable as open_now-filtered from telemetry.
 - `poi_degraded_rate` = count(`search.poi_degraded=true`) / count(`search.requests`).
 - `live_share` = count(`mode=live`) / count(`search.requests`) — billed-fanout watch.
+- `cache_hit_rate` = count(`search.cache=hit`) / count(`search.cache` ∈ {hit, miss}) — DG137-C effectiveness watch.
 
 ### Collection path
 
@@ -52,8 +52,10 @@ Gate: no second consumer exists). No client-side analytics in MVP.
 
 Bounds: fields are frozen — adding, renaming, or re-typing a field requires
 amending this ADR. Telemetry MUST NOT carry `q`, coordinates, `viewer_id`, or
-any user content; the five fields plus `open_now_truncated` are the complete
-set. Volume ≈ 1 line/request ≈ 200 B; at 1 rps sustained ≈ 17 MB/day — inside
+any user content; the fields above are the complete set (`open_now_truncated`
+was retired with the iterative fetch in BRAWUKA-25; `search.cache` was added
+with the edge cache per the pre-authorization below). Volume ≈ 1 line/request
+≈ 200 B; at 1 rps sustained ≈ 17 MB/day — inside
 the Better Stack free tier (3 GB/mo, 3-day retention). The 7-day rolling
 windows above are evaluated from whatever retention the plan provides; if
 retention < 7 days, evaluate on the largest available window and note it in
@@ -63,36 +65,44 @@ the promotion evidence.
 
 | Alert | Condition | Window |
 | --- | --- | --- |
-| `open_now` truncation fired | any `open_now_truncated=true` event | per event |
 | POI degradation | `poi_degraded_rate` > 5% with ≥ 20 requests | 24 h |
 | Search latency regression | p95(`search.duration_ms`) > 400 ms | 24 h, ≥ 50 requests |
+| Edge-cache dead | `cache_hit_rate` = 0 with ≥ 50 misses | 24 h |
 
 ### Dashboard
 
 One "Search" dashboard, four panels: request volume by `mode`;
-`duration_ms` p50/p95 overall and `open_now`-only; `truncation_rate` +
-`open_now.batches` histogram + `open_now_truncated` count;
+`duration_ms` p50/p95; `truncation_rate` + `search.cache` hit/miss split;
 `poi_degraded_rate` + `live_share`.
 
-### Stage 3 promotion criteria (verbatim contract for #293)
+### Stage 3 acceptance (superseded by owner ruling, 2026-09-13)
 
-- **DG145-C** (`open_now` SQL pushdown, migration 0016): promote when
+The telemetry-based promotion criteria below were written when production
+traffic was assumed. The app never deployed to production, so the owner
+ruled that **staging end-to-end verification is the acceptance gate** for
+#293 (BRAWUKA-25): real-Postgres parity between `cafe_is_open_at` and
+`isOpenAt`, HTTP-level cache hit/invalidation proof, and a green
+`run-staging-journey.sh --suite all`. The criteria are kept here as the
+historical record of the original contract.
+
+- **DG145-C** (`open_now` SQL pushdown): originally gated on
   `open_now_share > 15%` AND `open_now_p95 > 400 ms` over a rolling 7-day
-  window, OR any `open_now_truncated=true` event is observed (the latter also
-  authorizes the DG145-B interim: 300 ms budget + `open_now_truncated`
-  warning).
-- **DG137-C** (edge cache `city:q:filtersHash` 60 s): promote when
-  `search.requests` sustains ≥ 0.5 rps over a rolling 7-day window — the
-  point where a 60 s cache eliminates meaningful Postgres QPS. A true
-  server-side hit-ratio field (`search.cache`) is added with the edge-cache
-  change itself, not before.
-- **DG135-C** (result view widened to 50): promote when `truncation_rate`
-  > 20% over a rolling 7-day window.
+  window, OR any `open_now_truncated=true` event. Shipped as a STABLE
+  plpgsql function (`cafe_is_open_at`, migration 0028) — the grill's
+  `tsrange[]`+GIST sketch was dropped because a `now()`-dependent predicate
+  cannot be indexed.
+- **DG137-C** (edge cache `city:q:filtersHash` 60 s): originally gated on
+  `search.requests` ≥ 0.5 rps over 7 days. Shipped as an in-process Map
+  (single VPS) with `cafes.updated_at` version invalidation; `search.cache`
+  hit/miss/bypass is emitted per request.
+- **DG135-C** (result view widened to 50): unchanged — promote when
+  `truncation_rate` > 20% over a rolling 7-day window.
 
 ## Consequences
 
-- Stage 3 (#293) can quote the three promotion criteria verbatim; the
-  evidence source is the Better Stack "Search" dashboard.
+- Stage 3 (#293) shipped under the owner-ruled staging-E2E gate above; the
+  Better Stack "Search" dashboard remains the evidence source once traffic
+  exists.
 - ADR-0004's "no SaaS log service" is superseded only for this bounded scope;
   access/error log correlation stays on `request_id` and stdout.
 - The frozen-field contract makes telemetry a tested surface

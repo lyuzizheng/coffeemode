@@ -70,7 +70,8 @@ import {
   HandleTakenError,
   HandleChangeTooSoonError,
 } from "@/lib/db/identity";
-import { searchCafesInDb } from "@/lib/db/search";
+import { cafesDataVersion, searchCafesInDb } from "@/lib/db/search";
+import { isOpenAt } from "@/lib/hours";
 import { executeSearch } from "@/lib/search/search-service";
 import {
   navigationPromptQueue,
@@ -188,7 +189,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   }, 60_000);
 
-  it("applies migrations 0001→0027 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0028 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -218,6 +219,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0025_drop_cafes_cover.sql",
       "0026_drop_rate_limits.sql",
       "0027_navigation_unresolved_dedupe.sql",
+      "0028_open_now_sql_function.sql",
     ]);
 
     const serviceProfile = await dbClient.query(
@@ -1998,9 +2000,9 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         params,
       );
 
-      // executeSearch with open_now: true
-      // With bounded iterative fetch, batch 1 (0..100) fetches Alpha closed cafes (0 matches),
-      // batch 2 (100..120) fetches Zulu open cafes (15 matches), reaching the suggestion limit.
+      // executeSearch with open_now: true — DG145-C pushdown: the SQL
+      // predicate filters the 105 closed Alpha rows inside the query, so the
+      // 15 Zulu matches are no longer truncated by the 100-row fetch cap.
       const searchRes = await executeSearch(
         { city, open_now: true },
         new Date("2026-08-29T10:00:00Z"),
@@ -2010,6 +2012,188 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(searchRes.results.every((r) => r.name.startsWith("Zulu Open"))).toBe(true);
       expect(searchRes.is_weak_results).toBe(false);
       expect(searchRes.total_count).toBe(15);
+    });
+  });
+
+  describeDb("open_now SQL pushdown — cafe_is_open_at parity with isOpenAt (DG145-C / BRAWUKA-25)", () => {
+    // Every edge-case hours shape the contract names, seeded once. The
+    // parity check runs the real SQL predicate (via searchCafesInDb) against
+    // the JS isOpenAt oracle across a matrix of instants — including DST
+    // boundaries, overnight spillover, close === open (24h), explicit-null
+    // days, missing/invalid hours, and invalid tz.
+    const PARITY_CITY = "parity-city";
+    const parityIds: Record<string, string> = {};
+
+    const PARITY_FIXTURES: Array<{ key: string; tz: string | null; hours: unknown }> = [
+      // close === open on every day → around the clock.
+      { key: "always24", tz: "Asia/Singapore", hours: {
+        mon: { open: "00:00", close: "00:00" }, tue: { open: "00:00", close: "00:00" },
+        wed: { open: "00:00", close: "00:00" }, thu: { open: "00:00", close: "00:00" },
+        fri: { open: "00:00", close: "00:00" }, sat: { open: "00:00", close: "00:00" },
+        sun: { open: "00:00", close: "00:00" } } },
+      // close === open at a non-midnight anchor — still 24h.
+      { key: "always24Offset", tz: "Asia/Singapore", hours: {
+        mon: { open: "09:00", close: "09:00" }, tue: { open: "09:00", close: "09:00" },
+        wed: { open: "09:00", close: "09:00" }, thu: { open: "09:00", close: "09:00" },
+        fri: { open: "09:00", close: "09:00" }, sat: { open: "09:00", close: "09:00" },
+        sun: { open: "09:00", close: "09:00" } } },
+      // Overnight window 22:00–04:00 every day.
+      { key: "overnight", tz: "Asia/Singapore", hours: {
+        mon: { open: "22:00", close: "04:00" }, tue: { open: "22:00", close: "04:00" },
+        wed: { open: "22:00", close: "04:00" }, thu: { open: "22:00", close: "04:00" },
+        fri: { open: "22:00", close: "04:00" }, sat: { open: "22:00", close: "04:00" },
+        sun: { open: "22:00", close: "04:00" } } },
+      // Overnight only on Sunday — Monday spillover is the only open window.
+      { key: "sunOvernight", tz: "Asia/Singapore", hours: {
+        sun: { open: "22:00", close: "04:00" },
+        mon: null, tue: null, wed: null, thu: null, fri: null, sat: null } },
+      // Plain daytime window.
+      { key: "daytime", tz: "Asia/Singapore", hours: {
+        mon: { open: "09:00", close: "18:00" }, tue: { open: "09:00", close: "18:00" },
+        wed: { open: "09:00", close: "18:00" }, thu: { open: "09:00", close: "18:00" },
+        fri: { open: "09:00", close: "18:00" }, sat: { open: "09:00", close: "18:00" },
+        sun: { open: "09:00", close: "18:00" } } },
+      // Explicit-null days mixed with real windows.
+      { key: "nullDays", tz: "Asia/Singapore", hours: {
+        mon: { open: "09:00", close: "18:00" }, tue: null, wed: null,
+        thu: { open: "09:00", close: "18:00" }, fri: null, sat: null, sun: null } },
+      // Missing hours entirely.
+      { key: "noHours", tz: "Asia/Singapore", hours: null },
+      // Corrupt day entry (unparseable close) — must exclude, never error.
+      { key: "corruptClose", tz: "Asia/Singapore", hours: {
+        mon: { open: "09:00", close: "25:99" }, tue: { open: "09:00", close: "18:00" },
+        wed: { open: "09:00", close: "18:00" }, thu: { open: "09:00", close: "18:00" },
+        fri: { open: "09:00", close: "18:00" }, sat: { open: "09:00", close: "18:00" },
+        sun: { open: "09:00", close: "18:00" } } },
+      // Corrupt shape: day entry is a string, not an object.
+      { key: "corruptShape", tz: "Asia/Singapore", hours: { mon: "09:00-18:00" } },
+      // Invalid IANA tz — must exclude, never error the query.
+      { key: "badTz", tz: "Not/A_Real_Zone", hours: {
+        mon: { open: "00:00", close: "00:00" }, tue: { open: "00:00", close: "00:00" },
+        wed: { open: "00:00", close: "00:00" }, thu: { open: "00:00", close: "00:00" },
+        fri: { open: "00:00", close: "00:00" }, sat: { open: "00:00", close: "00:00" },
+        sun: { open: "00:00", close: "00:00" } } },
+      // Missing tz.
+      { key: "noTz", tz: null, hours: {
+        mon: { open: "00:00", close: "00:00" }, tue: { open: "00:00", close: "00:00" },
+        wed: { open: "00:00", close: "00:00" }, thu: { open: "00:00", close: "00:00" },
+        fri: { open: "00:00", close: "00:00" }, sat: { open: "00:00", close: "00:00" },
+        sun: { open: "00:00", close: "00:00" } } },
+      // DST-boundary cafe: Berlin 09:00–18:00. The same UTC instant lands on
+      // different local times across the 2026-03-29 spring-forward.
+      { key: "berlinDst", tz: "Europe/Berlin", hours: {
+        mon: { open: "09:00", close: "18:00" }, tue: { open: "09:00", close: "18:00" },
+        wed: { open: "09:00", close: "18:00" }, thu: { open: "09:00", close: "18:00" },
+        fri: { open: "09:00", close: "18:00" }, sat: { open: "09:00", close: "18:00" },
+        sun: { open: "09:00", close: "18:00" } } },
+      // Sunday-only daytime window — boundary of the weekly wraparound.
+      { key: "sunOnly", tz: "Asia/Singapore", hours: {
+        sun: { open: "10:00", close: "14:00" },
+        mon: null, tue: null, wed: null, thu: null, fri: null, sat: null } },
+    ];
+
+    // Instants spanning: weekday/weekend, inside/outside windows, overnight
+    // spillover minutes, and the Berlin spring-forward/fall-back edges.
+    const PARITY_INSTANTS = [
+      "2026-09-07T00:30:00Z", // Mon 08:30 SGT
+      "2026-09-07T01:00:00Z", // Mon 09:00 SGT — window open edge
+      "2026-09-07T10:00:00Z", // Mon 18:00 SGT — window close edge
+      "2026-09-07T14:00:00Z", // Mon 22:00 SGT — overnight open edge
+      "2026-09-07T19:30:00Z", // Tue 03:30 SGT — overnight spillover
+      "2026-09-07T20:00:00Z", // Tue 04:00 SGT — spillover close edge
+      "2026-09-13T16:30:00Z", // Sun 00:30 SGT
+      "2026-09-13T02:00:00Z", // Sun 10:00 SGT — sunOnly open edge
+      "2026-09-13T06:00:00Z", // Sun 14:00 SGT — sunOnly close edge
+      "2026-03-29T00:30:00Z", // Sun 01:30 CET (pre-spring-forward)
+      "2026-03-29T01:30:00Z", // Sun 03:30 CEST (post-spring-forward)
+      "2026-03-30T06:30:00Z", // Mon 08:30 CEST — closed
+      "2026-03-30T07:30:00Z", // Mon 09:30 CEST — open
+      "2026-10-25T00:30:00Z", // Sun 02:30 CEST (ambiguous fall-back hour)
+      "2026-10-25T01:30:00Z", // Sun 02:30 CET (second occurrence)
+      "2026-10-26T07:30:00Z", // Mon 08:30 CET — closed
+      "2026-10-26T08:30:00Z", // Mon 09:30 CET — open
+    ];
+
+    // The outer beforeEach truncates cafes, so fixtures must be re-seeded
+    // per test (beforeEach, not beforeAll).
+    beforeEach(async () => {
+      const insertValues: string[] = [];
+      const params: unknown[] = [];
+      let paramIdx = 1;
+      for (const f of PARITY_FIXTURES) {
+        const id = randomUUID();
+        parityIds[f.key] = id;
+        insertValues.push(
+          `($${paramIdx++}, $${paramIdx++}, ST_SetSRID(ST_MakePoint(103.8, 1.35), 4326)::geography, $${paramIdx++}, $${paramIdx++}, $${paramIdx++}, $${paramIdx++}::jsonb)`,
+        );
+        params.push(
+          id,
+          `Parity ${f.key}`,
+          PARITY_CITY,
+          U1,
+          f.tz,
+          f.hours === null ? null : JSON.stringify(f.hours),
+        );
+      }
+      await dbClient.query(
+        `insert into cafes (id, name, location, city, created_by, tz, opening_hours) values ${insertValues.join(", ")}`,
+        params,
+      );
+    });
+
+    it("matches isOpenAt for every fixture x instant", async () => {
+      for (const iso of PARITY_INSTANTS) {
+        const instant = new Date(iso);
+        const rows = await searchCafesInDb({
+          city: PARITY_CITY,
+          open_now: true,
+          instant,
+          limit: 500,
+        });
+        const sqlOpen = new Set(rows.map((r) => r.id));
+
+        for (const f of PARITY_FIXTURES) {
+          const expected =
+            isOpenAt(
+              f.hours as Parameters<typeof isOpenAt>[0],
+              f.tz,
+              instant,
+            ) === true;
+          const actual = sqlOpen.has(parityIds[f.key]);
+          expect(
+            actual,
+            `${f.key} @ ${iso}: SQL=${actual} JS=${expected}`,
+          ).toBe(expected);
+        }
+      }
+    });
+
+    it("excludes invalid tz and corrupt hours without erroring the query", async () => {
+      const rows = await searchCafesInDb({
+        city: PARITY_CITY,
+        open_now: true,
+        instant: new Date("2026-09-07T01:00:00Z"), // Mon 09:00 SGT — daytime open
+        limit: 500,
+      });
+      const ids = new Set(rows.map((r) => r.id));
+      expect(ids.has(parityIds.badTz)).toBe(false);
+      expect(ids.has(parityIds.noTz)).toBe(false);
+      expect(ids.has(parityIds.corruptClose)).toBe(false);
+      expect(ids.has(parityIds.corruptShape)).toBe(false);
+      expect(ids.has(parityIds.noHours)).toBe(false);
+      expect(ids.has(parityIds.daytime)).toBe(true);
+      expect(ids.has(parityIds.always24)).toBe(true);
+    });
+
+    it("cafesDataVersion moves when a cafe row is written", async () => {
+      const before = await cafesDataVersion();
+      await dbClient.query(
+        `update cafes set updated_at = now() where id = $1`,
+        [parityIds.daytime],
+      );
+      const after = await cafesDataVersion();
+      expect(before).not.toBeNull();
+      expect(after).not.toBe(before);
     });
   });
 

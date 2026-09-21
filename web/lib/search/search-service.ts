@@ -77,9 +77,36 @@ function scoreRelevance(name: string, q?: string): number {
   return secondaryMatch;
 }
 
+export type SearchCacheField = "hit" | "miss" | "bypass";
+
+/**
+ * The single `search.telemetry` JSON line (ADR-0005 frozen fields).
+ * `executeSearch` emits it for every real execution; the /api/search route
+ * re-emits it for edge-cache hits so hit/miss ratios stay measurable.
+ */
+export function emitSearchTelemetry(fields: {
+  mode: "stored_only" | "live";
+  durationMs: number;
+  truncated: boolean;
+  poiDegraded: boolean;
+  cache: SearchCacheField;
+}): void {
+  console.info("search.telemetry", {
+    "search.requests": { mode: fields.mode },
+    "search.duration_ms": fields.durationMs,
+    "search.truncated": fields.truncated,
+    // Always 0 post-pushdown (DG145-C): the open_now_share derivation is
+    // dead — kept so the field contract stays stable (ADR-0005 amendment).
+    "search.open_now.batches": 0,
+    "search.poi_degraded": fields.poiDegraded,
+    "search.cache": fields.cache,
+  });
+}
+
 export async function executeSearch(
   filters: SearchFilters,
   instant?: Date,
+  cacheStatus: SearchCacheField = "bypass",
 ): Promise<SearchServiceResponse> {
   const startTime = performance.now();
   const refPoint = resolveReferencePoint(filters.lat, filters.lng, filters.city);
@@ -99,15 +126,11 @@ export async function executeSearch(
       ? fetchLivePois(poiQuery, refPoint)
       : Promise.resolve({ results: [] as POI[], failed: false }),
   ]);
-
-  const { rawCafes, filteredCafes, openNowBatches, openNowTruncated } = cafeRes;
+  const { rawCafes, filteredCafes } = cafeRes;
 
   const warnings: string[] = [];
   let actualSearchMode: "stored_only" | "live" = "stored_only";
 
-  if (openNowTruncated) {
-    warnings.push("open_now_truncated");
-  }
   if (storedRes.failed) warnings.push("poi_unavailable");
   if (wantLive) {
     actualSearchMode = "live";
@@ -239,17 +262,15 @@ export async function executeSearch(
   );
 
   const results = filteredItems.slice(0, Math.max(0, limit));
-
   const durationMs = Math.round(performance.now() - startTime);
   const truncated = total_count > results.length;
   const poiDegraded = warnings.includes("poi_unavailable") || warnings.includes("live_poi_unavailable");
-  console.info("search.telemetry", {
-    "search.requests": { mode: actualSearchMode },
-    "search.duration_ms": durationMs,
-    "search.truncated": truncated,
-    "search.open_now.batches": openNowBatches,
-    ...(openNowTruncated ? { open_now_truncated: true } : {}),
-    "search.poi_degraded": poiDegraded,
+  emitSearchTelemetry({
+    mode: actualSearchMode,
+    durationMs,
+    truncated,
+    poiDegraded,
+    cache: cacheStatus,
   });
 
   return {

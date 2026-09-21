@@ -222,6 +222,40 @@ describeHttp("HTTP Discovery & Filters (Path 1)", () => {
       },
     });
 
+    // Corrupt/invalid variants (BRAWUKA-25): HTTP validation rejects these
+    // shapes, so they are seeded via SQL after a normal create — the open_now
+    // SQL predicate must exclude them without erroring the query.
+    cafeIds.corruptHours = await createCafe(userA, {
+      name: "Corrupt Hours Corner",
+      lat: 1.309,
+      lng: 103.836,
+      city: "singapore",
+      checkin: {
+        scores: { overall: 70, wifi: 50 },
+        max_stay: "unlimited",
+        note: "corrupt hours",
+      },
+    });
+    await dbClient.query(
+      `update cafes set opening_hours = $2::jsonb where id = $1`,
+      [cafeIds.corruptHours, JSON.stringify({ mon: { open: "09:00", close: "25:99" } })],
+    );
+    cafeIds.badTz = await createCafe(userB, {
+      name: "Bad Tz Corner",
+      lat: 1.310,
+      lng: 103.837,
+      city: "singapore",
+      checkin: {
+        scores: { overall: 70, wifi: 50 },
+        max_stay: "unlimited",
+        note: "invalid timezone",
+      },
+    });
+    await dbClient.query(
+      `update cafes set tz = 'Not/A_Real_Zone' where id = $1`,
+      [cafeIds.badTz],
+    );
+
     // Radius boundary pair (spec edge case 1): ~9.5km in, ~12km out.
     cafeIds.nearProbe = await createCafe(userA, {
       name: "Near Probe 9km",
@@ -565,6 +599,9 @@ describeHttp("HTTP Discovery & Filters (Path 1)", () => {
     expect(ids).toContain(cafeIds.alwaysOpen);
     expect(ids).not.toContain(cafeIds.closedDays);
     expect(ids).not.toContain(cafeIds.noHours);
+    // Corrupt hours and invalid tz are excluded, never error the query.
+    expect(ids).not.toContain(cafeIds.corruptHours);
+    expect(ids).not.toContain(cafeIds.badTz);
   });
 
   // ——— Weak-result fallback + recovery (DG111/DG112, DG146 shell) ———
@@ -600,6 +637,76 @@ describeHttp("HTTP Discovery & Filters (Path 1)", () => {
     );
     expect(missing.status).toBe(200);
     expect(missing.data.cafes).toEqual([]);
+  });
+
+  // ——— DG137-C edge cache (BRAWUKA-25) ———
+
+  it("Path 1 (DG137-C): second identical request is served from the edge cache", async () => {
+    const query = { city: "singapore", q: "cache-probe", limit: 20 };
+    const first = await guest.get<SearchResponse>(searchGET, "/api/search", { query });
+    expect(first.status).toBe(200);
+    expect(first.headers.get("X-Search-Cache")).toBe("miss");
+
+    const second = await guest.get<SearchResponse>(searchGET, "/api/search", { query });
+    expect(second.status).toBe(200);
+    expect(second.headers.get("X-Search-Cache")).toBe("hit");
+    expect(second.data).toEqual(first.data);
+  });
+
+  it("Path 1 (DG137-C): a check-in's work_stats write invalidates the cache immediately", async () => {
+    // Dedicated fixture: a check-in mid-test mutates work_stats, so this
+    // cafe must not be shared with other tests.
+    const probeId = await createCafe(userA, {
+      name: "Cache Invalidation Probe",
+      lat: 1.313,
+      lng: 103.839,
+      city: "singapore",
+      checkin: {
+        scores: { wifi: 95, overall: 80 },
+        max_stay: "unlimited",
+        note: "starts above the threshold",
+      },
+    });
+
+    // wifi 95 → visible under filter_wifi=90.
+    const query = { city: "singapore", filter_wifi: 90, limit: 20 };
+    const first = await guest.get<SearchResponse>(searchGET, "/api/search", { query });
+    expect(first.status).toBe(200);
+    expect(first.headers.get("X-Search-Cache")).toBe("miss");
+    expect(first.data.results.map((r) => r.id)).toContain(probeId);
+
+    // A low-wifi check-in drags the consensus below the threshold. The write
+    // bumps cafes.updated_at in the same transaction, so the very next
+    // request must miss the cache — no waiting out the 60s TTL.
+    await postCheckin(userB, {
+      cafe_id: probeId,
+      scores: { wifi: 10, overall: 50 },
+      max_stay: "unlimited",
+      note: "wifi collapsed",
+    });
+
+    const second = await guest.get<SearchResponse>(searchGET, "/api/search", { query });
+    expect(second.status).toBe(200);
+    expect(second.headers.get("X-Search-Cache")).toBe("miss");
+    expect(second.data.results.map((r) => r.id)).not.toContain(probeId);
+
+    // And the refreshed entry is cached again.
+    const third = await guest.get<SearchResponse>(searchGET, "/api/search", { query });
+    expect(third.status).toBe(200);
+    expect(third.headers.get("X-Search-Cache")).toBe("hit");
+  });
+
+  it("Path 1 (DG137-C): cache entries are viewer-scoped — private cafes never leak", async () => {
+    const query = { city: "london", limit: 20 };
+    const asCreator = await userB.get<SearchResponse>(searchGET, "/api/search", { query });
+    expect(asCreator.status).toBe(200);
+    expect(asCreator.data.results.map((r) => r.id)).toContain(cafeIds.privateLondon);
+
+    // Same key shape as a guest must not reuse the creator's entry.
+    const asGuest = await guest.get<SearchResponse>(searchGET, "/api/search", { query });
+    expect(asGuest.status).toBe(200);
+    expect(asGuest.headers.get("X-Search-Cache")).toBe("miss");
+    expect(asGuest.data.results.map((r) => r.id)).not.toContain(cafeIds.privateLondon);
   });
 
   it("Path 1: authenticated search carries viewer identity without breaking filters", async () => {

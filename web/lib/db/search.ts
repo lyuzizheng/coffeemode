@@ -20,6 +20,10 @@ interface SearchCafesDbParams {
   filter_coffee?: number;
   filter_overall?: number;
   filter_max_stay?: MaxStay;
+  /** DG145-C: push the open-now predicate into SQL (cafe_is_open_at). */
+  open_now?: boolean;
+  /** Evaluation instant for open_now; defaults to now() in SQL. */
+  instant?: Date;
   offset?: number;
   limit?: number;
 }
@@ -100,7 +104,13 @@ export async function searchCafesInDb(
       );
     }
   }
-
+  if (params.open_now) {
+    values.push(params.instant ?? new Date());
+    const idx = values.length;
+    // DG145-C: cafe-local open-now predicate (migration 0028). NULL-safe:
+    // invalid tz/hours exclude the row instead of erroring the query.
+    conditions.push(`cafe_is_open_at(opening_hours, tz, $${idx}::timestamptz)`);
+  }
   values.push(limit);
   const limitIdx = values.length;
 
@@ -138,4 +148,17 @@ limit $${limitIdx}${offsetClause}
       work_stats: coerceWorkStats(row.work_stats, appConfig.stats.dimWeights),
     };
   });
+}
+
+/**
+ * Data version for the /api/search edge cache (DG137-C): any cafe write —
+ * including the work_stats recompute a check-in commits in the same
+ * transaction — bumps cafes.updated_at. count(*) also catches inserts whose
+ * now() predates the current max. NULL on an empty table.
+ */
+export async function cafesDataVersion(): Promise<string | null> {
+  const { rows } = await query<{ v: string | null } & Record<string, unknown>>(
+    `select (count(*)::text || ':' || coalesce(max(updated_at)::text, '0')) as v from cafes`,
+  );
+  return rows[0]?.v ?? null;
 }

@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  autocompletePOIs,
+  getPOI,
   getPOIConfig,
   resolveMapsUrl,
-  searchExternalPOIs,
   searchPOIs,
   storeExternalPOIs,
 } from "@/lib/places/poi-client";
 import { GET as searchGET } from "@/app/api/places/search/route";
+import { GET as autocompleteGET } from "@/app/api/places/autocomplete/route";
+import { GET as detailsGET } from "@/app/api/places/details/route";
 import { POST as resolvePOST } from "@/app/api/places/resolve/route";
 import type { POI } from "@shared/places/types";
 
@@ -15,6 +18,7 @@ vi.mock("@/lib/auth/get-user", () => ({ getCurrentUser: getCurrentUserMock }));
 
 const WORKER_URL = "https://poi-service.test.workers.dev";
 const TOKEN = "s3cret-token";
+const SESSION = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
 
 const SAMPLE_POI: POI = {
   place_id: "ChIJTEST123",
@@ -81,6 +85,14 @@ describe("poi-client", () => {
     expect(data.results[0].place_id).toBe("ChIJTEST123");
   });
 
+  it("forwards ctx.requestId on upstream calls (D7 correlation)", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ results: [] }));
+    const inboundId = "123e4567-e89b-42d3-a456-426614174000";
+    await searchPOIs({ q: "blue" }, inboundId);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.headers).toMatchObject({ "x-request-id": inboundId });
+  });
+
   it("searchPOIs omits empty params", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ results: [] }));
     await searchPOIs({});
@@ -88,11 +100,21 @@ describe("poi-client", () => {
     expect(url).toBe(`${WORKER_URL}/poi/search`);
   });
 
-  it("searchExternalPOIs uses the live Google search endpoint", async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ results: [SAMPLE_POI] }));
-    await searchExternalPOIs({ q: "blue bottle", r: 5 });
+  it("autocompletePOIs carries the session token to the live endpoint", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ predictions: [] }));
+    await autocompletePOIs({ q: "blue bottle", r: 5, session: SESSION });
     const [url] = fetchMock.mock.calls[0] as [string];
-    expect(url).toBe(`${WORKER_URL}/poi/search/external?q=blue+bottle&r=5`);
+    expect(url).toBe(`${WORKER_URL}/poi/autocomplete?q=blue+bottle&r=5&session=${SESSION}`);
+  });
+
+  it("getPOI forwards the session token that terminates the Autocomplete session", async () => {
+    fetchMock.mockImplementation(async () => jsonResponse(SAMPLE_POI));
+    await getPOI("ChIJTEST123", SESSION);
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe(`${WORKER_URL}/poi/ChIJTEST123?session=${SESSION}`);
+
+    await getPOI("ChIJTEST123");
+    expect(fetchMock.mock.calls[1][0]).toBe(`${WORKER_URL}/poi/ChIJTEST123`);
   });
 
   it("storeExternalPOIs posts browser-provider results", async () => {
@@ -200,31 +222,14 @@ describe("GET /api/places/search", () => {
     expect(url).toBe(`${WORKER_URL}/poi/search?lat=1.3&lng=103.8&r=10`);
   });
 
-  it("routes source=google to live external search", async () => {
-    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
+  it("ignores a source param — live search is its own route now", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ results: [] }));
     const res = await searchGET(
       new Request(`${WORKER_URL}/api/places/search?source=google&q=blue%20bottle`),
     );
     expect(res.status).toBe(200);
     const [url] = fetchMock.mock.calls[0] as [string];
-    expect(url).toBe(`${WORKER_URL}/poi/search/external?q=blue+bottle&r=10`);
-  });
-
-  it("rejects anonymous live Google search before touching the worker", async () => {
-    const res = await searchGET(
-      new Request(`${WORKER_URL}/api/places/search?source=google&q=blue%20bottle`),
-    );
-    expect(res.status).toBe(401);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("rejects unsupported provider sources", async () => {
-    const res = await searchGET(
-      new Request(`${WORKER_URL}/api/places/search?source=apple&q=coffee`),
-    );
-    expect(res.status).toBe(400);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(url).toBe(`${WORKER_URL}/poi/search?q=blue+bottle&r=10`);
   });
 
   it("clamps radius to 10 km", async () => {
@@ -275,13 +280,109 @@ describe("GET /api/places/search", () => {
     fetchMock.mockResolvedValue(jsonResponse({ error: "boom" }, 502));
     const res = await searchGET(new Request(`${WORKER_URL}/api/places/search?q=x`));
     expect(res.status).toBe(502);
-    expect((await res.json()) as { error: string }).toEqual({ error: "poi_service", message: expect.stringContaining("unavailable") });
+    expect((await res.json()) as { error: string }).toMatchObject({ error: "poi_service", message: expect.stringContaining("unavailable") });
   });
 
   it("503s when the worker env is missing", async () => {
     delete process.env.POI_SERVICE_URL;
     const res = await searchGET(new Request(`${WORKER_URL}/api/places/search?q=x`));
     expect(res.status).toBe(503);
+  });
+});
+
+describe("GET /api/places/autocomplete", () => {
+  it("proxies the typing phase with the session token", async () => {
+    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
+    fetchMock.mockResolvedValue(jsonResponse({ predictions: [] }));
+
+    const res = await autocompleteGET(
+      new Request(
+        `${WORKER_URL}/api/places/autocomplete?q=blue%20bottle&lat=37.7&lng=-122.4&r=5&session=${SESSION}`,
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe(
+      `${WORKER_URL}/poi/autocomplete?q=blue+bottle&lat=37.7&lng=-122.4&r=5&session=${SESSION}`,
+    );
+  });
+
+  it("rejects anonymous callers before touching the worker", async () => {
+    const res = await autocompleteGET(
+      new Request(`${WORKER_URL}/api/places/autocomplete?q=blue&session=${SESSION}`),
+    );
+    expect(res.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a session token that is not a UUID", async () => {
+    // Google ignores a malformed token, which silently reverts the session to
+    // per-request billing — so the route refuses it up front.
+    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
+    const res = await autocompleteGET(
+      new Request(`${WORKER_URL}/api/places/autocomplete?q=blue&session=nope`),
+    );
+    expect(res.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("400s without a query", async () => {
+    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
+    const res = await autocompleteGET(
+      new Request(`${WORKER_URL}/api/places/autocomplete?session=${SESSION}`),
+    );
+    expect(res.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/places/details", () => {
+  it("resolves a prediction through the worker with the session token", async () => {
+    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
+    fetchMock.mockResolvedValue(jsonResponse(SAMPLE_POI));
+
+    const res = await detailsGET(
+      new Request(`${WORKER_URL}/api/places/details?place_id=ChIJTEST123&session=${SESSION}`),
+    );
+
+    expect(res.status).toBe(200);
+    expect((await res.json()) as POI).toMatchObject({ place_id: "ChIJTEST123" });
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe(`${WORKER_URL}/poi/ChIJTEST123?session=${SESSION}`);
+  });
+
+  it("rejects anonymous callers before touching the worker", async () => {
+    const res = await detailsGET(
+      new Request(`${WORKER_URL}/api/places/details?place_id=ChIJTEST123&session=${SESSION}`),
+    );
+    expect(res.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("400s without a place id", async () => {
+    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
+    const noId = await detailsGET(
+      new Request(`${WORKER_URL}/api/places/details?session=${SESSION}`),
+    );
+    expect(noId.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("drops a malformed session instead of failing the lookup", async () => {
+    // The Details call is billed either way — the token only carries the
+    // session discount — so a bad one must not become a functional 400.
+    // Matches the worker, which ignores it and calls upstream regardless.
+    getCurrentUserMock.mockResolvedValue({ id: "user-1" });
+    fetchMock.mockResolvedValue(jsonResponse(SAMPLE_POI));
+
+    const res = await detailsGET(
+      new Request(`${WORKER_URL}/api/places/details?place_id=ChIJTEST123&session=nope`),
+    );
+
+    expect(res.status).toBe(200);
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe(`${WORKER_URL}/poi/ChIJTEST123`);
   });
 });
 
@@ -352,9 +453,10 @@ describe("POST /api/places/resolve", () => {
   it("400s on JSON null body (BRAWUKA-403)", async () => {
     const res = await resolvePOST(resolveRequest("null"));
     expect(res.status).toBe(400);
-    expect((await res.json()) as { error: string }).toEqual({
+    expect((await res.json()) as { error: string }).toMatchObject({
       error: "invalid_request",
       message: "invalid JSON body",
+      request_id: expect.any(String),
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -363,9 +465,10 @@ describe("POST /api/places/resolve", () => {
     for (const raw of ['"string"', "123", "[]"]) {
       const res = await resolvePOST(resolveRequest(raw));
       expect(res.status).toBe(400);
-      expect((await res.json()) as { error: string }).toEqual({
+      expect((await res.json()) as { error: string }).toMatchObject({
         error: "invalid_request",
         message: "invalid JSON body",
+        request_id: expect.any(String),
       });
     }
     expect(fetchMock).not.toHaveBeenCalled();
@@ -393,9 +496,10 @@ describe("POST /api/places/resolve", () => {
       resolveRequest(resolveBody({ maps_share_url: "https://example.com/nope", "cf-turnstile-response": "fresh" })),
     );
     expect(res.status).toBe(400);
-    expect((await res.json()) as { error: string }).toEqual({
+    expect((await res.json()) as { error: string }).toMatchObject({
       error: "invalid_maps_url",
       message: expect.stringContaining("Google Maps and Apple Maps"),
+      request_id: expect.any(String),
     });
     // siteverify passes, the worker is never reached.
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -427,9 +531,10 @@ describe("POST /api/places/resolve", () => {
       resolveRequest(resolveBody({ maps_share_url: "not-a-url", "cf-turnstile-response": "fresh" })),
     );
     expect(res.status).toBe(400);
-    expect((await res.json()) as { error: string }).toEqual({
+    expect((await res.json()) as { error: string }).toMatchObject({
       error: "invalid_maps_url",
       message: expect.stringContaining("Google Maps and Apple Maps"),
+      request_id: expect.any(String),
     });
   });
 

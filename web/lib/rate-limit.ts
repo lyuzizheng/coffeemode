@@ -3,6 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { emitRateLimitAlert } from "@/lib/observability/rate-limit-alert";
+import { getRequestId } from "@shared/request-id";
 
 /** Result of consuming one token under a window and cap. */
 export interface RateLimitResult {
@@ -11,6 +12,19 @@ export interface RateLimitResult {
   resetAt: number;
   /** Seconds the client should wait before retrying. */
   retryAfter: number;
+}
+
+/**
+ * Who a request is rate-limited as, plus the raw source behind it.
+ *
+ * `id` is the bucket key — a hash for anonymous callers, so it can show that
+ * one source tripped 500 times but cannot be turned back into an address.
+ * `ip` is the unhashed `cf-connecting-ip`, carried only so an abuse alert can
+ * name the source (BRAWUKA-607 §6 decision 5); it never becomes a bucket key.
+ */
+export interface ClientIdentity {
+  id: string;
+  ip: string | null;
 }
 
 interface TokenBucket {
@@ -125,11 +139,11 @@ export const rateLimiter = new RateLimiter();
  */
 export async function checkRateLimit(
   bucketName: string,
-  clientId: string,
+  client: ClientIdentity,
   buckets: { windowMs: number; maxRequests: number }[],
   route?: string,
 ): Promise<RateLimitResult> {
-  const baseKey = `${bucketName}:${clientId}`;
+  const baseKey = `${bucketName}:${client.id}`;
   let mostConstrainedAllowed: RateLimitResult | null = null;
   let denied: RateLimitResult | null = null;
   let deniedBucket: { windowMs: number; maxRequests: number } | null = null;
@@ -150,7 +164,8 @@ export async function checkRateLimit(
   if (denied && deniedBucket) {
     emitRateLimitAlert({
       bucket: bucketName,
-      clientId,
+      clientId: client.id,
+      clientIp: client.ip,
       windowMs: deniedBucket.windowMs,
       maxRequests: deniedBucket.maxRequests,
       retryAfter: denied.retryAfter,
@@ -170,7 +185,7 @@ export async function checkRateLimit(
 }
 
 /**
- * Build a stable identifier for a request.
+ * Build the rate-limit identity for a request.
  *
  * - Signed-in users are keyed by `user:${id}`.
  * - Anonymous requests are keyed by a short SHA-256 hash of
@@ -181,28 +196,39 @@ export async function checkRateLimit(
  *   bucket (fail-closed). `x-real-ip` / `x-forwarded-for` are never
  *   consulted — both are client-injectable here (Traefik neither sets nor
  *   strips them), and any spoofable fallback reopens the same bypass.
+ *
+ * The header is read exactly once and returned alongside the key, so an abuse
+ * alert can name the source without a second, independently-trusted read.
  */
-export function getClientIdentifier(request: Request, user?: { id: string } | null): string {
-  if (user?.id) return `user:${user.id}`;
+export function getClientIdentity(
+  request: Request,
+  user?: { id: string } | null,
+): ClientIdentity {
+  if (user?.id) return { id: `user:${user.id}`, ip: null };
 
   // Trust model (BRAWUKA-282 P1-2): only `cf-connecting-ip` — set by
   // Cloudflare on every request it proxies — is authoritative. Until the
   // trusted-edge header story lands (BRAWUKA-238), non-CF deployments
   // share one coarse bucket rather than a forgeable per-header one.
   const ip = request.headers.get("cf-connecting-ip");
-  if (!ip) return "anon:unknown";
+  if (!ip) return { id: "anon:unknown", ip: null };
 
   const hash = createHash("sha256").update(ip).digest("hex").slice(0, 32);
-  return `anon:${hash}`;
+  return { id: `anon:${hash}`, ip };
 }
 
 /** Build a 429 response from a rate-limit result. */
-export function rateLimitResponse(result: RateLimitResult): NextResponse {
-  // Machine code only — never a `message`: `responseMessage` renders 429s
+export function rateLimitResponse(
+  result: RateLimitResult,
+  request?: Request,
+  options?: { requestId?: string },
+): NextResponse {
+  // Machine code only — never a `message`: `apiErrorMessage` renders 429s
   // with the caller's localized fallback, so any English prose here would
-  // leak into localized UI (BRAWUKA-280).
+  // leak into localized UI (BRAWUKA-280). `request_id` rides along so the
+  // envelope matches spec 0011 D2.
   return NextResponse.json(
-    { error: "rate_limited" },
+    { error: "rate_limited", request_id: options?.requestId ?? getRequestId(request) },
     {
       status: 429,
       headers: { "Retry-After": String(result.retryAfter) },

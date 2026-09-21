@@ -2,6 +2,14 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { toWebP, uploadPhoto } from "@/lib/images/client-upload";
 import { MAX_UPLOAD_BYTES } from "@shared/images/constants";
 
+
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 describe("client-upload", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -131,17 +139,14 @@ describe("client-upload", () => {
       const file = new File(["valid image"], "photo.webp", { type: "image/webp" });
 
       const fetchMock = vi.fn();
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(200, {
           imageUuid: "img-12345",
           uploadUrl: "https://r2.example.com/upload",
           uploadHeaders: { "content-type": "image/webp" },
         }),
-      });
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-      });
+      );
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }));
       globalThis.fetch = fetchMock;
 
       const imageUuid = await uploadPhoto(file);
@@ -168,11 +173,9 @@ describe("client-upload", () => {
     it("throws unauthorized when presigned URL fetch returns 401", async () => {
       const file = new File(["valid image"], "photo.webp", { type: "image/webp" });
 
-      globalThis.fetch = vi.fn().mockResolvedValueOnce({
-        ok: false,
-        status: 401,
-        json: async () => ({ error: "unauthorized" }),
-      });
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(401, { error: "unauthorized" }));
 
       await expect(uploadPhoto(file)).rejects.toThrow("unauthorized");
     });
@@ -180,10 +183,9 @@ describe("client-upload", () => {
     it("throws photo_upload_failed when presigned URL fetch fails", async () => {
       const file = new File(["valid image"], "photo.webp", { type: "image/webp" });
 
-      globalThis.fetch = vi.fn().mockResolvedValueOnce({
-        ok: false,
-        json: async () => ({ error: "Server error" }),
-      });
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(500, { error: "internal_error" }));
 
       await expect(uploadPhoto(file)).rejects.toThrow("photo_upload_failed");
     });
@@ -192,17 +194,14 @@ describe("client-upload", () => {
       const file = new File(["valid image"], "photo.webp", { type: "image/webp" });
 
       const fetchMock = vi.fn();
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(200, {
           imageUuid: "img-12345",
           uploadUrl: "https://r2.example.com/upload",
           uploadHeaders: {},
         }),
-      });
-      fetchMock.mockResolvedValueOnce({
-        ok: false,
-      });
+      );
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 502 }));
       globalThis.fetch = fetchMock;
 
       await expect(uploadPhoto(file)).rejects.toThrow("photo_upload_failed");

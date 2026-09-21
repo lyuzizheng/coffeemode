@@ -1,5 +1,8 @@
 import "server-only";
 
+import { type LogFields } from "@shared/log";
+import { registerOtlpLogSink } from "./otlp-logs";
+
 /**
  * Minimal server-side structured logger + request-id (BRAWUKA-168, ADR-0004).
  *
@@ -16,89 +19,29 @@ import "server-only";
  * - No AsyncLocalStorage: the ~30 callsites pass `requestId` explicitly
  *   (boring, greppable). Lib code without request context omits it
  *   (`request_id: null`).
+ *
+ * Implementation lives in `web/shared/log.ts` (spec 0011 D6, BRAWUKA-539)
+ * so both Cloudflare Workers share it; this module keeps the `server-only`
+ * boundary and the stable import path.
+ * - Every line goes to two sinks: stdout (the complete record, ADR-0004) and
+ *   Grafana Cloud Loki over OTLP (`otlp-logs.ts`, BRAWUKA-607) — registered at
+ *   the bottom of this module.
  */
 
-export const REQUEST_ID_HEADER = "x-request-id";
+// Request-id primitives live in `web/shared/request-id.ts` so the workers
+// share them; re-exported here to keep this module's public API stable.
+export { getRequestId, isValidRequestId, REQUEST_ID_HEADER } from "@shared/request-id";
+export { logError, logWarn, emitAccessLine } from "@shared/log";
+export type { LogFields };
+/** Pre-0011 name for the shared log fields — kept for existing imports. */
+export type ServerErrorFields = LogFields;
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** Cap on serialized non-Error payloads — they stay one line. */
-const MAX_ERROR_CHARS = 1000;
-
-export function isValidRequestId(value: unknown): value is string {
-  return typeof value === "string" && UUID_RE.test(value);
-}
-
-/**
- * Request-id for a server handler. Reuses a valid inbound `x-request-id`
- * (set by the proxy, which generates one per request) so access and error
- * lines correlate; generates a fresh id when missing/invalid — e.g. the
- * `/api/health` route the proxy matcher skips, or direct handler calls.
- */
-export function getRequestId(request: { headers: Headers }): string {
-  const inbound = request.headers.get(REQUEST_ID_HEADER);
-  return isValidRequestId(inbound) ? inbound : crypto.randomUUID();
-}
-
-interface ServerErrorFields {
-  /** Handler literal, e.g. `"GET /api/cafes"`. Prefer `gate.route` — one literal per handler. */
-  route: string;
-  /** The caught value — Error, message string, or small internal object. */
-  error: unknown;
-  /** Request to resolve the id from. Preferred over `requestId` when in scope. */
-  request?: { headers: Headers };
-  /** Explicit id; wins over `request`. Kept for lib code without request context. */
-  requestId?: string | null;
-  /** HTTP status about to be returned, when known. */
-  status?: number;
-}
-
-function truncate(value: string): string {
-  return value.length > MAX_ERROR_CHARS
-    ? value.slice(0, MAX_ERROR_CHARS) + "…"
-    : value;
-}
-
-function extractError(error: unknown): { message: string; stack?: string } {
-  if (error instanceof Error) {
-    const lines = error.stack?.split("\n") ?? [];
-    // lines[0] is "Error: <message>" (redundant); first frame carries signal.
-    const frame = lines.length > 1 ? lines[1].trim() : undefined;
-    return {
-      message: truncate(error.message || error.name),
-      ...(frame ? { stack: truncate(frame) } : {}),
-    };
-  }
-  if (typeof error === "string") return { message: truncate(error) };
-  if (
-    typeof error === "number" ||
-    typeof error === "boolean" ||
-    typeof error === "bigint"
-  ) {
-    return { message: String(error) };
-  }
-  try {
-    const json = JSON.stringify(error);
-    return { message: truncate(json ?? String(error)) };
-  } catch {
-    // Benign: fallback for non-serializable objects (e.g. circular references).
-    return { message: String(error) };
-  }
-}
-
-/** Emit one JSON error line. Never throws. */
-export function logError(fields: ServerErrorFields): void {
-  const { message, stack } = extractError(fields.error);
-  const requestId = fields.requestId ?? (fields.request ? getRequestId(fields.request) : null);
-  console.error(
-    JSON.stringify({
-      type: "error",
-      request_id: requestId,
-      route: fields.route,
-      ...(fields.status !== undefined ? { status: fields.status } : {}),
-      error: message,
-      ...(stack ? { stack } : {}),
-    }),
-  );
-}
+// BRAWUKA-607: every line this app emits also goes to Grafana Cloud Loki over
+// OTLP, on the same SDK and endpoint as traces. Registered here — not inside
+// `web/shared/log.ts` — because that module is bundled by both Cloudflare
+// Workers, which have no `server-only` dependency and no RSC export condition;
+// the sink stays a web-only concern. Workers never call this, so their lines
+// stay stdout-only. The proxy registers it separately: Next.js compiles
+// `proxy.ts` into its own bundle, so its copy of `@shared/log` has its own
+// sink slot (see `otlp-logs.ts`).
+registerOtlpLogSink();

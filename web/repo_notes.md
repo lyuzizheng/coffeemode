@@ -1,5 +1,28 @@
 # CoffeeMode Web — File Notes
 
+## 2026-09-21 (BRAWUKA-573 — IndexedDB query cache cross-account leak)
+
+- `web/lib/auth/viewer-id.ts` (new)
+  - `getViewerIdFromCookies()` decodes the @supabase/ssr `sb-<ref>-auth-token`
+    cookie (base64- JSON, raw JSON, `.N` chunks, legacy bare-JWT
+    `sb-access-token`) into the current viewer's user id. Cache-ownership tag
+    only — no token validation; data reads stay server-verified.
+- `web/lib/query/persister.ts`
+  - Stored payload is now `{ owner, client }`: `persistClient` stamps the
+    current viewer id, `restoreClient` refuses and deletes entries whose owner
+    differs (or pre-owner legacy entries). A shared device can no longer
+    hydrate account A's viewer-scoped cache (private cafes, profile) into
+    account B's session.
+- `web/components/settings/settings-view.tsx`
+  - `DeleteAccountSection` exported for direct component tests. The
+    delete-account cache wipe itself landed on main via BRAWUKA-540
+    (`apiFetch` + `isUnauthorized` → `sessionExpired` gate +
+    `idbPersister.removeClient()`/`queryClient.clear()`); this change adds
+    no behavior there.
+- Tests: `tests/query/persister.test.ts` (owner scoping on fake-indexeddb),
+  `tests/auth/viewer-id.test.ts` (cookie decode matrix),
+  `tests/components/settings-delete-account.test.tsx` (wipe + navigate +
+  sessionExpired gate, `apiFetch` mocked).
 
 ## 2026-09-18 (BRAWUKA-473 — UI density consistency pass)
 

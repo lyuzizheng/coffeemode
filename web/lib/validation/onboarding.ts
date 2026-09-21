@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { ErrorCode } from "@shared/errors";
 /**
  * POST /api/onboarding/locate payload validation (spec 0009 §1: request
  * validation lives in `lib/validation/**`). The body is the granted
@@ -8,7 +9,7 @@ import "server-only";
 
 type LocateBodyResult =
   | { ok: true; lat: number; lng: number }
-  | { ok: false; error: string; status: number };
+  | { ok: false; error: ErrorCode; status: number };
 
 export function parseLocateBody(body: unknown): LocateBodyResult {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {

@@ -18,8 +18,7 @@
  * It holds no map object and talks only to `GET /api/search`; plotting
  * results onto the map stays with map-discovery-integration.
  */
-import { Drawer, SearchField } from "@heroui/react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { SearchField } from "@heroui/react";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getSearchDebounceMs, getSearchMinQueryLength } from "@/lib/client-env";
@@ -28,10 +27,11 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { useNetworkStatus } from "@/hooks/use-network-status";
 import { addRecentSearch } from "@/lib/search/recent-searches";
 import { getRankingPreference } from "@/lib/search/ranking-preference";
-import { fetchUnifiedSearch, type UnifiedSearchParams } from "@/lib/search/search-client";
+import { fetchUnifiedSearch, resolveSearchScope, type UnifiedSearchParams } from "@/lib/search/search-client";
 import { buildSearchHref } from "@/lib/search/search-url";
 import {
   EMPTY_FILTERS,
+  filtersToSearchParams,
   hasActiveFilters,
   type SearchFilterState,
 } from "@/lib/search/search-filters";
@@ -40,8 +40,8 @@ import {
   ActiveFilterChips,
   CityScopeSelect,
   FilterButton,
-  SearchFilterControls,
 } from "./search-filter-ui";
+import { FilterSurface } from "./search-filter-surface";
 import {
   SearchResultsList,
   type ExternalSearchProvider,
@@ -99,72 +99,26 @@ interface UnifiedSearchPanelProps {
   hideIdleHint?: boolean;
 }
 
-/** The filter surface — one control set, two presentations (spec §3):
- * mobile gets the HeroUI bottom sheet, desktop the inline section. */
-function FilterSurface({
-  isDesktop,
-  open,
-  onOpenChange,
-  filters,
-  resultCount,
-  onFiltersChange,
-}: {
-  isDesktop: boolean;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  filters: SearchFilterState;
-  resultCount: number | null;
-  onFiltersChange: (next: SearchFilterState) => void;
-}) {
-  const t = useTranslations("search");
-  const reduced = useReducedMotion() ?? false;
-  const controls = (
-    <SearchFilterControls
-      filters={filters}
-      resultCount={resultCount}
-      onFiltersChange={onFiltersChange}
-      onReset={() => onFiltersChange(EMPTY_FILTERS)}
-    />
-  );
 
-  if (isDesktop) {
-    return (
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            key="filters"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={reduced ? { duration: 0 } : { duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-            className="overflow-hidden"
-          >
-            <div className="border-t border-separator px-1 pt-2">{controls}</div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    );
-  }
-
-  return (
-    <Drawer.Root isOpen={open} onOpenChange={onOpenChange}>
-      {/* Content MUST nest inside Backdrop — sibling placement leaks the
-          backdrop (BRAWUKA-371, see checkin-drawer.tsx). */}
-      <Drawer.Backdrop>
-        <Drawer.Content placement="bottom" className="max-h-[85dvh] bg-overlay text-foreground">
-          <Drawer.Dialog
-            aria-label={t("filters")}
-            className="flex max-h-[85dvh] flex-col"
-          >
-            <Drawer.Handle />
-            <Drawer.Body className="overflow-y-auto px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-              {controls}
-            </Drawer.Body>
-          </Drawer.Dialog>
-        </Drawer.Content>
-      </Drawer.Backdrop>
-    </Drawer.Root>
-  );
+/** Canonical signature of the request the panel would fire — the same
+ * serialization `fetchUnifiedSearch` applies (`q` + resolved scope +
+ * `filter_*`). Dedupe MUST compare this, not the query text alone: a
+ * filter/city change with an unchanged query is a different request
+ * (BRAWUKA-567). The scope goes through `resolveSearchScope` so the
+ * signature matches the wire — a runtime city id signs as its `?lat&lng`
+ * resolution, never `?city=` (BRAWUKA-568). */
+function requestSignature(
+  q: string,
+  city: string | undefined,
+  filters: SearchFilterState | undefined,
+): string {
+  const params = new URLSearchParams({ q });
+  const scope = resolveSearchScope(city);
+  if (scope.city) params.set("city", scope.city);
+  if (typeof scope.lat === "number") params.set("lat", String(scope.lat));
+  if (typeof scope.lng === "number") params.set("lng", String(scope.lng));
+  if (filters) filtersToSearchParams(filters, params);
+  return params.toString();
 }
 
 export function UnifiedSearchPanel({
@@ -195,9 +149,9 @@ export function UnifiedSearchPanel({
   // rich results view until the query is edited or Esc clears it.
   const [submitted, setSubmitted] = useState(false);
   const requestId = useRef(0);
-  // Last query a fetch was actually fired for — lets Enter short-circuit a
+  // Signature of the last request actually fired — lets Enter short-circuit a
   // pending debounce without a duplicate request.
-  const fetchedQueryRef = useRef<string | null>(null);
+  const fetchedSignatureRef = useRef<string | null>(null);
   const fetcher = fetchSearch ?? fetchUnifiedSearch;
   const filterUi = filters !== undefined && onFiltersChange !== undefined;
   const filtersActive = filterUi && hasActiveFilters(filters);
@@ -227,7 +181,7 @@ export function UnifiedSearchPanel({
   const runSearch = useCallback(
     (trimmed: string, signal?: AbortSignal) => {
       const id = ++requestId.current;
-      fetchedQueryRef.current = trimmed;
+      fetchedSignatureRef.current = requestSignature(trimmed, city, filters);
       setStatus((prev) => (prev === "success" ? prev : "loading"));
       // Refetches keep "success" so the last good list stays painted — the
       // refetching flag carries the thin head shimmer instead (§4).
@@ -255,12 +209,12 @@ export function UnifiedSearchPanel({
     const trimmed = query.trim();
     if (!wantsResults) {
       requestId.current += 1;
-      fetchedQueryRef.current = null;
+      fetchedSignatureRef.current = null;
       return;
     }
-    // Enter already fired this exact query — don't double-fetch on the
+    // Enter already fired this exact request — don't double-fetch on the
     // `submitted` flip.
-    if (fetchedQueryRef.current === trimmed) return;
+    if (fetchedSignatureRef.current === requestSignature(trimmed, city, filters)) return;
     const controller = new AbortController();
     const timer = setTimeout(() => runSearch(trimmed, controller.signal), DEBOUNCE_MS);
     return () => {
@@ -286,7 +240,9 @@ export function UnifiedSearchPanel({
       // no-op, not a wasted request.
       if (trimmed.length < MIN_QUERY_LENGTH) return;
       setSubmitted(true);
-      if (fetchedQueryRef.current !== trimmed) runSearch(trimmed);
+      if (fetchedSignatureRef.current !== requestSignature(trimmed, city, filters)) {
+        runSearch(trimmed);
+      }
     }
   };
 
@@ -294,7 +250,10 @@ export function UnifiedSearchPanel({
   const viewAllHref = showResultsView
     ? buildSearchHref({
         q: query.trim(),
-        city: city ?? response?.reference_point.city_id,
+        // Same contract as the API (BRAWUKA-568): a runtime city id deep-links
+        // by coordinates, never `?city=` — the SSR page would render
+        // `unknown_city` for it.
+        ...resolveSearchScope(city ?? response?.reference_point.city_id),
         ranking: getRankingPreference(),
         filters: filterUi ? filters : undefined,
       })

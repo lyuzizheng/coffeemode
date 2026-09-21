@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, render, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useDiscoverySearch } from "@/components/discovery/use-discovery-search";
 import type { DiscoveryController } from "@/lib/discovery/use-discovery-controller";
@@ -313,4 +313,42 @@ describe("useDiscoverySearch filter/city state (BRAWUKA-512)", () => {
     });
     expect(result.current.search.searchActive).toBe(true);
   });
+
+  it("first render matches the SSR frame before restoring the deep link (BRAWUKA-575)", () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/?q=latte&city=tokyo&filter_wifi=60",
+    );
+    // Capture render-phase values — frame[0] is what hydration compares
+    // against the server-rendered HTML, so it must carry the empty
+    // snapshot, not the `?q=` deep link.
+    const frames: Array<{ query: string; city?: string; active: boolean }> = [];
+    function Probe() {
+      const { search } = useDiscoverySearch({
+        controller: mockController,
+        nearbyCafes: [],
+        mapkitConfigured: true,
+        city: "singapore",
+      });
+      frames.push({
+        query: search.query,
+        city: search.city,
+        active: search.searchActive,
+      });
+      return null;
+    }
+    render(<Probe />);
+    expect(frames[0]).toEqual({ query: "", city: "singapore", active: false });
+    expect(frames[frames.length - 1]).toEqual({
+      query: "latte",
+      city: "tokyo",
+      active: true,
+    });
+    // The URL writer must not wipe the deep link before the restore reads it.
+    expect(window.location.search).toContain("q=latte");
+    expect(window.location.search).toContain("city=tokyo");
+    expect(window.location.search).toContain("filter_wifi=60");
+  });
 });
+

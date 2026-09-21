@@ -1,14 +1,11 @@
-import { logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
+import { apiRoute } from "@/lib/api/route";
 import { cafeExists } from "@/lib/db/cafes";
 import {
   FEED_MODES,
-  FeedCursorError,
-  FeedCursorExpiredError,
   listPublicCheckIns,
 } from "@/lib/discovery/feed";
-import { guard } from "@/lib/api/guard";
 import { isValidUUID } from "@shared/uuid";
 import type { CheckInFeedMode } from "@/types/checkins";
 
@@ -21,50 +18,32 @@ import type { CheckInFeedMode } from "@/types/checkins";
  * recovery flow). Existence uses the narrow `cafeExists` probe (BRAWUKA-279:
  * `select 1`, same visibility semantics) — never the wide `getCafe` row.
  */
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const { id } = await params;
-  if (!isValidUUID(id)) {
-    return apiError("invalid_request", "id must be a UUID", { status: 400 });
-  }
+export const GET = apiRoute<{ id: string }>(
+  { bucket: "cafes-read", route: "GET /api/cafes/[id]/checkins" },
+  async (request, ctx) => {
+    const { id } = ctx.params;
+    if (!isValidUUID(id)) {
+      return apiError("invalid_request", "id must be a UUID", { status: 400, requestId: ctx.requestId });
+    }
 
-  const url = new URL(request.url);
-  const modeParam = url.searchParams.get("mode") ?? "newest";
-  if (!FEED_MODES.includes(modeParam as CheckInFeedMode)) {
-    return apiError("invalid_request", `mode must be one of: ${FEED_MODES.join(", ")}`, { status: 400 });
-  }
-  const mode = modeParam as CheckInFeedMode;
-  const cursor = url.searchParams.get("cursor") ?? undefined;
+    const url = new URL(request.url);
+    const modeParam = url.searchParams.get("mode") ?? "newest";
+    if (!FEED_MODES.includes(modeParam as CheckInFeedMode)) {
+      return apiError("invalid_request", `mode must be one of: ${FEED_MODES.join(", ")}`, { status: 400, requestId: ctx.requestId });
+    }
+    const mode = modeParam as CheckInFeedMode;
+    const cursor = url.searchParams.get("cursor") ?? undefined;
 
-  const gate = await guard(request, {
-    bucket: "cafes-read",
-    route: "GET /api/cafes/[id]/checkins",
-  });
-  if (!gate.ok) return gate.response;
-  const { user } = gate;
-
-  try {
-    const exists = await cafeExists(id, user?.id);
+    const exists = await cafeExists(id, ctx.user?.id);
     if (!exists) {
-      return apiError("not_found", "cafe not found", { status: 404 });
+      return apiError("not_found", "cafe not found", { status: 404, requestId: ctx.requestId });
     }
     const page = await listPublicCheckIns({
       cafeId: id,
       mode,
       cursor,
-      viewerId: user?.id ?? null,
+      viewerId: ctx.user?.id ?? null,
     });
     return NextResponse.json(page);
-  } catch (err) {
-    if (err instanceof FeedCursorExpiredError) {
-      return apiError("cursor_version_expired", "snapshot version expired; restart from page one", { status: 410 });
-    }
-    if (err instanceof FeedCursorError) {
-      return apiError("invalid_request", "cursor is invalid or was issued for another mode", { status: 400 });
-    }
-    logError({ route: gate.route, request, error: err, status: 500 });
-    return apiError("internal_error", 500);
-  }
-}
+  },
+);

@@ -46,11 +46,14 @@ import {
 } from "../fixtures/mock-dataset";
 
 // Stub POI worker so search operations never hit external services.
-vi.mock("@/lib/places/poi-client", () => ({
-  searchExternalPOIs: vi.fn(async () => ({ results: [] })),
-  searchPOIs: vi.fn(async () => ({ results: [] })),
-  resolveMapsUrl: vi.fn(),
-}));
+vi.mock("@/lib/places/poi-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/places/poi-client")>();
+  return {
+    ...actual,
+    searchPOIs: vi.fn(async () => ({ results: [] })),
+    resolveMapsUrl: vi.fn(),
+  };
+});
 
 const RUN_INTEGRATION = process.env.RUN_INTEGRATION === "1";
 const describeJourney = RUN_INTEGRATION ? describe : describe.skip;

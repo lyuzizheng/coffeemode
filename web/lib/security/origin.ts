@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/api/response";
 
 /**
  * Origin and CSRF validation for mutating HTTP requests (Issues #208, #218).
@@ -185,13 +186,16 @@ export function isSameOrigin(request: Request): boolean {
 
 /**
  * Helper that returns a 403 Response if the request is cross-origin, or null if allowed.
+ * `requestId` (resolved by the route wrapper) keeps the envelope on the
+ * request's single correlation id.
  */
-export function requireSameOrigin(request: Request): NextResponse | null {
+export function requireSameOrigin(request: Request, requestId?: string): NextResponse | null {
   if (!isSameOrigin(request)) {
-    return NextResponse.json(
-      { error: "forbidden_origin", message: "cross-origin request forbidden" },
-      { status: 403 },
-    );
+    return apiError("forbidden_origin", "cross-origin request forbidden", {
+      status: 403,
+      request,
+      requestId,
+    });
   }
   return null;
 }

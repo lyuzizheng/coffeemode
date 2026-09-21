@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/get-user";
 import {
   checkRateLimit,
-  getClientIdentifier,
+  getClientIdentity,
   rateLimitResponse,
 } from "@/lib/rate-limit";
 import { rateLimitBuckets, rateLimits } from "@/lib/config";
@@ -19,6 +19,7 @@ export const RATE_LIMIT_BUCKET_NAMES = [
   "cafes-write",
   "images",
   "places",
+  "places-autocomplete",
   "search",
   "profile-read",
   "profile-write",
@@ -44,6 +45,8 @@ interface GuardOptions<Auth extends boolean = boolean> {
   user?: AuthenticatedUser | null;
   /** If true, scopes rate limit solely by client IP instead of user ID */
   ipOnly?: boolean;
+  /** Request id resolved by the route wrapper; echoed on error envelopes. */
+  requestId?: string;
 }
 
 type GuardOkResult<Auth extends boolean> = {
@@ -119,7 +122,7 @@ export async function guard(
   request: Request,
   options: GuardOptions,
 ): Promise<GuardResult> {
-  const { bucket, requireAuth = false, route, user: preResolvedUser, ipOnly = false } = options;
+  const { bucket, requireAuth = false, route, user: preResolvedUser, ipOnly = false, requestId } = options;
 
   // 1. Runtime bucket check
   validateBucket(bucket);
@@ -131,18 +134,18 @@ export async function guard(
   if (requireAuth && !user) {
     return {
       ok: false,
-      response: apiError("unauthorized", 401),
+      response: apiError("unauthorized", 401, { request, requestId }),
     };
   }
 
-  // 3. Client identifier calculation
-  const clientId = getClientIdentifier(request, ipOnly ? null : user);
+  // 3. Client identity calculation
+  const client = getClientIdentity(request, ipOnly ? null : user);
 
   // 4. Rate limit check (using normalized buckets from config)
   const resolvedRoute = resolveRouteString(request, route);
   const rate = await checkRateLimit(
     bucket,
-    clientId,
+    client,
     rateLimitBuckets(bucket),
     resolvedRoute,
   );
@@ -150,14 +153,14 @@ export async function guard(
   if (!rate.allowed) {
     return {
       ok: false,
-      response: rateLimitResponse(rate),
+      response: rateLimitResponse(rate, request, { requestId }),
     };
   }
 
   return {
     ok: true,
     user,
-    clientId,
+    clientId: client.id,
     route: resolvedRoute,
   };
 }
@@ -173,6 +176,8 @@ const MAX_JSON_BODY_BYTES = 64 * 1024;
 interface ReadJsonBodyOptions {
   /** If true, returns data: null when request body is empty instead of returning 400 */
   optional?: boolean;
+  /** Request id resolved by the route wrapper; echoed on error envelopes. */
+  requestId?: string;
 }
 
 type ReadJsonBodyResult<T = unknown> =
@@ -201,11 +206,11 @@ export async function readJsonBody<T = unknown>(
     // for chunked bodies that carry no Content-Length.
     const declared = Number(request.headers.get("content-length") ?? 0);
     if (declared > MAX_JSON_BODY_BYTES) {
-      return oversizedBody();
+      return oversizedBody(request, options?.requestId);
     }
     const text = await readBoundedBodyText(request);
     if (text === null) {
-      return oversizedBody();
+      return oversizedBody(request, options?.requestId);
     }
     if (!text || text.trim() === "") {
       if (options?.optional) {
@@ -213,7 +218,7 @@ export async function readJsonBody<T = unknown>(
       }
       return {
         ok: false,
-        response: apiError("invalid_request", "invalid JSON body", { status: 400 }),
+        response: apiError("invalid_request", "invalid JSON body", { status: 400, request, requestId: options?.requestId }),
       };
     }
     const data = JSON.parse(text) as T;
@@ -221,15 +226,18 @@ export async function readJsonBody<T = unknown>(
   } catch {
     return {
       ok: false,
-      response: apiError("invalid_request", "invalid JSON body", { status: 400 }),
+      response: apiError("invalid_request", "invalid JSON body", { status: 400, request, requestId: options?.requestId }),
     };
   }
 }
 
-function oversizedBody(): ReadJsonBodyResult<null> {
+function oversizedBody(request: Request, requestId?: string): ReadJsonBodyResult<null> {
   return {
     ok: false,
-    response: apiError("invalid_request", "request body too large", { status: 413 }),
+    // Deliberate divergence from the registry's canonical 400 for
+    // `invalid_request`: 413 is the correct HTTP signal for an oversized
+    // body, and `size_exceeded` is reserved for image uploads (spec 0011).
+    response: apiError("invalid_request", "request body too large", { status: 413, request, requestId }),
   };
 }
 

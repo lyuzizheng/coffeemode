@@ -245,7 +245,8 @@
       "default_hint": "Dense",
       "retro_hint": "Editorial",
       "modern_hint": "Industrial"
-    }
+    },
+    "sign_in_to_save": "Sign in to save your changes"
   },
   "create": {
     "title": "Add a cafe",
@@ -294,7 +295,8 @@
     "signInRequired": "Please sign in to publish — your draft stays here.",
     "close": "Close",
     "submit": "Create cafe",
-    "providerLoading": "Connecting to the place service…"
+    "providerLoading": "Connecting to the place service…",
+    "resolvingPlace": "Loading this place…"
   },
   "checkIn": {
     "title": "Check in",
@@ -509,7 +511,9 @@
     "brand_intro": "Real check-ins from working nomads — no ads, no noise, just cafes worth sitting in.",
     "index_label": "{count, plural, one {# cafe nearby} other {# cafes nearby}}",
     "sheet_expand_aria": "Expand nearby cafes",
-    "nearby_count": "{count, plural, one {# cafe nearby} other {# cafes nearby}}"
+    "nearby_count": "{count, plural, one {# cafe nearby} other {# cafes nearby}}",
+    "like_failed": "Couldn't like — try again?",
+    "like_self": "You can't like your own check-in"
   },
   "navPrompt": {
     "headline": "Grabbed a coffee at {cafe}?",
@@ -564,7 +568,8 @@
     "cancel": "Cancel",
     "delete": "Delete",
     "delete_done": "Deleted",
-    "delete_failed": "Couldn't delete — try again?"
+    "delete_failed": "Couldn't delete — try again?",
+    "sign_in_gate": "Sign in to manage your cafe"
   },
   "runtime": {
     "announcement": "Announcement"

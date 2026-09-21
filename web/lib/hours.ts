@@ -95,8 +95,9 @@ function cafeLocalTime(tz: string, instant: Date): CafeLocalTime | null {
  * can never disagree about what "open now" means.
  */
 function windowCovers(open: number, close: number, minutes: number): boolean {
+  if (close === open) return true; // around the clock
   if (close > open) return minutes >= open && minutes < close;
-  return minutes >= open; // overnight portion or around the clock
+  return minutes >= open; // overnight portion
 }
 
 /**
@@ -133,7 +134,7 @@ export function isOpenAt(
     const open = parseWallClock(previous.open);
     const close = parseWallClock(previous.close);
     if (open === null || close === null) return null;
-    if (close <= open && local.minutes < close) return true; // yesterday's spillover
+    if (close < open && local.minutes < close) return true; // yesterday's spillover
   }
 
   return false;
@@ -174,7 +175,7 @@ export function closingTimeToday(
   if (previous != null) {
     const open = parseWallClock(previous.open);
     const close = parseWallClock(previous.close);
-    if (open !== null && close !== null && close <= open && close !== open && local.minutes < close) {
+    if (open !== null && close !== null && close < open && local.minutes < close) {
       return previous.close;
     }
   }

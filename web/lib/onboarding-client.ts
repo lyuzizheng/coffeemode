@@ -4,6 +4,7 @@
  * null on any failure — offline grants still dismiss the card (DG123), so
  * callers treat null as "resolve later", never as an error surface.
  */
+import { apiFetch } from "@/lib/http";
 
 /**
  * Client view of the located city (BRAWUKA-503: merge with server
@@ -24,14 +25,15 @@ export async function postLocate(
   lng: number,
 ): Promise<ResolvedLocateCity | null> {
   try {
-    const res = await fetch("/api/onboarding/locate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lat, lng }),
-    });
-    if (!res.ok) return null;
-    const body = (await res.json()) as { city: ResolvedLocateCity | null };
-    return body.city;
+    const body = await apiFetch<{ city: ResolvedLocateCity | null }>(
+      "/api/onboarding/locate",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat, lng }),
+      },
+    );
+    return body?.city ?? null;
   } catch {
     return null;
   }

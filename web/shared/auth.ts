@@ -5,6 +5,9 @@
  * dependencies so it runs on Cloudflare Workers and under vitest/Node.
  */
 
+import type { ErrorCode } from "./errors";
+import { getRequestId, REQUEST_ID_HEADER } from "./request-id";
+
 /**
  * Constant-time token compare. Both inputs are hashed with SHA-256 and the
  * fixed-length digests are compared, so the work done never depends on the
@@ -53,20 +56,75 @@ export function extractBearer(request: Request, headerName: string): string | nu
   return null;
 }
 
-/** Shared JSON response helper — identical envelope on both services. */
-export function json(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), {
+/**
+ * Error envelope shape (spec 0011 D2): `error` is a registered machine code,
+ * `request_id` correlates the response with the request's `x-request-id`.
+ * Extra fields (`entries`, …) are allowed beside the envelope keys.
+ */
+interface ErrorEnvelope {
+  error: ErrorCode;
+  message?: string;
+  request_id?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Shared JSON response helper — identical envelope on both services.
+ *
+ * Error bodies (`{error: <code>, ...}`) are typed to the registry: an
+ * unregistered code fails typecheck. Every response carries the
+ * `x-request-id` header — the inbound value when `request` is passed, else
+ * a fresh UUID — and error bodies also embed it as `request_id`.
+ *
+ * Second argument is the HTTP status or the request (`json(data, request)`
+ * for a 200 that still echoes the id).
+ */
+export function json(
+  data: ErrorEnvelope,
+  statusOrRequest?: number | { headers: Headers },
+  request?: { headers: Headers },
+): Response;
+export function json<T>(
+  data: T extends { error: unknown } ? never : T,
+  statusOrRequest?: number | { headers: Headers },
+  request?: { headers: Headers },
+): Response;
+export function json(
+  data: unknown,
+  statusOrRequest?: number | { headers: Headers },
+  request?: { headers: Headers },
+): Response {
+  const status = typeof statusOrRequest === "number" ? statusOrRequest : 200;
+  const req = typeof statusOrRequest === "number" ? request : statusOrRequest;
+  const requestId = getRequestId(req);
+  const isError =
+    typeof data === "object" && data !== null && "error" in data;
+  const body = isError
+    ? { ...(data as Record<string, unknown>), request_id: requestId }
+    : data;
+  return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json; charset=utf-8" },
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      [REQUEST_ID_HEADER]: requestId,
+    },
   });
 }
 
 /** Standard auth-failure envelope, shared by both services. */
-export function unauthorized(): Response {
-  return json({ error: "unauthorized", message: "missing or invalid service token" }, 401);
+export function unauthorized(request?: { headers: Headers }): Response {
+  return json(
+    { error: "unauthorized", message: "missing or invalid service token" },
+    401,
+    request,
+  );
 }
 
 /** Standard catch-all failure envelope, shared by both services. */
-export function internalError(): Response {
-  return json({ error: "internal_error", message: "internal server error" }, 500);
+export function internalError(request?: { headers: Headers }): Response {
+  return json(
+    { error: "internal_error", message: "internal server error" },
+    500,
+    request,
+  );
 }

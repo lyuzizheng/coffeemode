@@ -34,6 +34,13 @@ vi.mock("@/components/discovery/inline-error", () => ({
 
 const CAFE = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22";
 
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 function card(id: string, owned: boolean, note: string): PublicCheckIn {
   return {
     id,
@@ -55,19 +62,15 @@ const OTHER_ID = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a32";
 function mockFeed() {
   globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
     if (typeof url === "string" && url.startsWith(`/api/cafes/${CAFE}/checkins`)) {
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: async () => ({
+      return Promise.resolve(jsonResponse(200, {
           checkins: [card(OWN_ID, true, "Corner seat"), card(OTHER_ID, false, "Great espresso")],
           next_cursor: null,
-        }),
-      });
+        }));
     }
     if (init?.method === "PATCH" || init?.method === "DELETE") {
-      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+      return Promise.resolve(jsonResponse(200, {}));
     }
-    return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+    return Promise.resolve(jsonResponse(200, {}));
   });
 }
 
@@ -111,24 +114,12 @@ describe("CheckinFeed expired-cursor recovery", () => {
       // Page one issues a live cursor; the snapshot rotates before the next
       // page fetch, so that cursor arrives dead.
       if (seen.length === 1) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => ({ checkins: [card(OWN_ID, true, "Corner seat")], next_cursor: "dead-cursor" }),
-        });
+        return Promise.resolve(jsonResponse(200, { checkins: [card(OWN_ID, true, "Corner seat")], next_cursor: "dead-cursor" }));
       }
       if (seen.length === 2) {
-        return Promise.resolve({
-          ok: false,
-          status: 410,
-          json: async () => ({ error: "cursor_version_expired" }),
-        });
+        return Promise.resolve(jsonResponse(410, { error: "cursor_version_expired" }));
       }
-      return Promise.resolve({
-        ok: true,
-        status: 200,
-        json: async () => ({ checkins: [card(OWN_ID, true, "Corner seat")], next_cursor: null }),
-      });
+      return Promise.resolve(jsonResponse(200, { checkins: [card(OWN_ID, true, "Corner seat")], next_cursor: null }));
     });
 
     function Probe() {
@@ -198,22 +189,14 @@ describe("CheckinFeed expired-cursor recovery", () => {
         feedCalls.push(u);
         if (u.includes("cursor=")) {
           expired = true;
-          return Promise.resolve({
-            ok: false,
-            status: 410,
-            json: async () => ({ error: "cursor_version_expired" }),
-          });
+          return Promise.resolve(jsonResponse(410, { error: "cursor_version_expired" }));
         }
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => ({
+        return Promise.resolve(jsonResponse(200, {
             checkins: [card(OWN_ID, true, "Corner seat")],
             next_cursor: expired ? null : "dead-cursor",
-          }),
-        });
+          }));
       }
-      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+      return Promise.resolve(jsonResponse(200, {}));
     });
 
     inlineErrorSpy.mockClear();
@@ -244,13 +227,9 @@ describe("CheckinFeed gone-cafe 404", () => {
   it("does not retry a 404 and calls onMissingCafe after one request", async () => {
     globalThis.fetch = vi.fn().mockImplementation((url: string) => {
       if (typeof url === "string" && url.startsWith(`/api/cafes/${CAFE}/checkins`)) {
-        return Promise.resolve({
-          ok: false,
-          status: 404,
-          json: async () => ({ error: "cafe_not_found" }),
-        });
+        return Promise.resolve(jsonResponse(404, { error: "cafe_not_found" }));
       }
-      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+      return Promise.resolve(jsonResponse(200, {}));
     });
     const onMissingCafe = vi.fn();
 
@@ -290,23 +269,15 @@ describe("CheckinFeed per-card like pending", () => {
     });
     globalThis.fetch = vi.fn().mockImplementation((url: string) => {
       if (typeof url === "string" && url.startsWith(`/api/cafes/${CAFE}/checkins`)) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => ({
+        return Promise.resolve(jsonResponse(200, {
             checkins: [card(OWN_ID, true, "Corner seat"), card(OTHER_ID, false, "Great espresso")],
             next_cursor: null,
-          }),
-        });
+          }));
       }
       if (typeof url === "string" && url.includes("/api/checkins/") && url.endsWith("/like")) {
-        return likeGate.then(() => ({
-          ok: true,
-          status: 200,
-          json: async () => ({ liked: true, likes_count: 1 }),
-        }));
+        return likeGate.then(() => (jsonResponse(200, { liked: true, likes_count: 1 })));
       }
-      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+      return Promise.resolve(jsonResponse(200, {}));
     });
 
     renderFeed();
@@ -349,16 +320,12 @@ describe("CheckinFeed concurrent likes", () => {
     const liked = new Set<string>();
     globalThis.fetch = vi.fn().mockImplementation((url: string) => {
       if (typeof url === "string" && url.startsWith(`/api/cafes/${CAFE}/checkins`)) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: async () => ({
+        return Promise.resolve(jsonResponse(200, {
             checkins: [card(OWN_ID, true, "Corner seat"), card(OTHER_ID, false, "Great espresso")].map(
               (c) => (liked.has(c.id) ? { ...c, liked_by_viewer: true, likes_count: 1 } : c),
             ),
             next_cursor: null,
-          }),
-        });
+          }));
       }
       for (const [id, handler] of Object.entries(handlers)) {
         if (typeof url === "string" && url === `/api/checkins/${id}/like`) {
@@ -368,7 +335,7 @@ describe("CheckinFeed concurrent likes", () => {
           });
         }
       }
-      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+      return Promise.resolve(jsonResponse(200, {}));
     });
   }
 
@@ -381,11 +348,7 @@ describe("CheckinFeed concurrent likes", () => {
     const gateB = new Promise<void>((resolve) => {
       releaseB = resolve;
     });
-    const ok = () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({ liked: true, likes_count: 1 }),
-    });
+    const ok = () => (jsonResponse(200, { liked: true, likes_count: 1 }));
     mockLikes({
       [OWN_ID]: () => gateA.then(ok),
       [OTHER_ID]: () => gateB.then(ok),
@@ -418,13 +381,9 @@ describe("CheckinFeed concurrent likes", () => {
       releaseB = resolve;
     });
     mockLikes({
-      [OWN_ID]: () => Promise.resolve({ ok: false, status: 500, json: async () => ({}) }),
+      [OWN_ID]: () => Promise.resolve(jsonResponse(500, {})),
       [OTHER_ID]: () =>
-        gateB.then(() => ({
-          ok: true,
-          status: 200,
-          json: async () => ({ liked: true, likes_count: 1 }),
-        })),
+        gateB.then(() => (jsonResponse(200, { liked: true, likes_count: 1 }))),
     });
 
     renderFeed();

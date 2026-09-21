@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "@heroui/react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { isUnauthorized, userFacingMessage } from "@/lib/http";
+import { apiErrorMessage, isUnauthorized } from "@/lib/http";
 import { clearPendingCheckin } from "@/lib/checkin/pending-checkin";
 import type { CheckInScores, MaxStay } from "@/types/checkins";
 import {
@@ -53,7 +53,9 @@ function resolveSubmitError(
   if (err.message === "photo_upload_failed") return t("photosFailed");
   if (err.message === "photo_too_large") return t("photoTooLarge");
   if (err.message === "photo_invalid") return t("photoInvalid");
-  return userFacingMessage(err.message, t("couldntSave"));
+  // ApiError and anything else: mapped catalog copy or the localized
+  // fallback — never server prose (spec 0011 D9).
+  return apiErrorMessage(err, t("couldntSave"));
 }
 
 function useSubmitMutation({
@@ -92,7 +94,6 @@ function useSubmitMutation({
           scores: params.scores,
           maxStay: params.maxStay,
           note: params.note,
-          fallbackErrorMessage: t("couldntSave"),
         });
         return { photosDropped: params.photoCount > 0 };
       }
@@ -104,7 +105,6 @@ function useSubmitMutation({
         maxStay: params.maxStay,
         note: params.note,
         uploadedIds,
-        fallbackErrorMessage: t("couldntSave"),
       });
       // A raced 409 silently converts to PATCH, which carries no photos — the uploaded ids are orphaned and the user must be told (BRAWUKA-126).
       return { photosDropped: convertedToEdit && uploadedIds.length > 0 };
@@ -158,10 +158,7 @@ function useDeleteMutation({
   return useMutation({
     mutationFn: async () => {
       if (!editCheckinId) throw new Error("missing id");
-      return deleteCheckin({
-        editCheckinId,
-        fallbackErrorMessage: t("couldntSave"),
-      });
+      return deleteCheckin({ editCheckinId });
     },
     onSuccess: () => {
       invalidateCheckinQueries(queryClient, cafeId);
@@ -174,9 +171,7 @@ function useDeleteMutation({
         return;
       }
       setFailedAction("delete");
-      setError(
-        err instanceof Error ? userFacingMessage(err.message, t("couldntSave")) : t("couldntSave"),
-      );
+      setError(apiErrorMessage(err, t("couldntSave")));
     },
   });
 }

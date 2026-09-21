@@ -43,7 +43,21 @@ vi.mock("@/lib/places/apple-place-search", () => ({
     id: "apple",
     label: t("apple"),
     persistOnSelect: true,
-    search: async () => [APPLE_PLACE],
+    // MapKit returns full records in one call, so the candidate carries its
+    // POI and `resolve` is the identity (BRAWUKA-602).
+    search: async () => [
+      {
+        poi: APPLE_PLACE,
+        prediction: {
+          place_id: APPLE_PLACE.place_id,
+          source: "apple",
+          name: APPLE_PLACE.name,
+          address: APPLE_PLACE.address,
+          types: APPLE_PLACE.types,
+        },
+      },
+    ],
+    resolve: async (candidate: { poi?: POI }) => candidate.poi,
   }),
 }));
 
@@ -59,6 +73,14 @@ function Wrapper({ children }: { children: React.ReactNode }) {
       {children}
     </NextIntlClientProvider>
   );
+}
+
+/** Real Response — `apiFetch` reads `text()`/`headers`, so literal `{ok,json}` stubs no longer work. */
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
 }
 
 describe("PolicyChips", () => {
@@ -150,29 +172,23 @@ describe("CafeCreationSheet & Trigger", () => {
 
     globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
       if (url.includes("/api/places/resolve")) {
-        return {
-          ok: true,
-          json: async () => ({
-            place_id: "apple-1",
-            source: "apple",
-            name: "Apple Cafe",
-            lat: 1.3,
-            lng: 103.8,
-            address: "Sample Address",
-            types: ["cafe"],
-            business_status: null,
-            hours_json: null,
-            fetched_at: new Date().toISOString(),
-          }),
-        };
+        return jsonResponse(200, {
+          place_id: "apple-1",
+          source: "apple",
+          name: "Apple Cafe",
+          lat: 1.3,
+          lng: 103.8,
+          address: "Sample Address",
+          types: ["cafe"],
+          business_status: null,
+          hours_json: null,
+          fetched_at: new Date().toISOString(),
+        });
       }
       if (url.includes("/api/places/external")) {
-        return {
-          ok: false,
-          json: async () => ({ error: "External place persist rejected" }),
-        };
+        return jsonResponse(502, { error: "upstream_error", message: "External place persist rejected" });
       }
-      return { ok: true, json: async () => ({}) };
+      return jsonResponse(200, {});
     });
 
     render(
@@ -198,19 +214,15 @@ describe("CafeCreationSheet & Trigger", () => {
 
     globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
       if (url.includes("/api/places/resolve")) {
-        return { ok: true, status: 200, json: async () => APPLE_PLACE };
+        return jsonResponse(200, APPLE_PLACE);
       }
       if (url.includes("/api/places/search?")) {
-        return { ok: true, status: 200, json: async () => ({ results: [APPLE_PLACE] }) };
+        return jsonResponse(200, { results: [APPLE_PLACE] });
       }
       if (url.includes("/api/places/external")) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({ stored: 0, skipped: [{ index: 0, reason: "non_food_category" }] }),
-        };
+        return jsonResponse(200, { stored: 0, skipped: [{ index: 0, reason: "non_food_category" }] });
       }
-      return { ok: true, status: 200, json: async () => ({}) };
+      return jsonResponse(200, {});
     });
 
     render(
@@ -237,7 +249,7 @@ describe("CafeCreationSheet & Trigger", () => {
   });
 
   it("opens creation form directly for seeded Google POI without calling external persist (BRAWUKA-402)", async () => {
-    const fetchSpy = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) });
+    const fetchSpy = vi.fn().mockImplementation(async () => jsonResponse(200, {}));
     globalThis.fetch = fetchSpy;
 
     render(
@@ -263,9 +275,9 @@ describe("CafeCreationSheet & Trigger", () => {
   it("persists seeded Apple POI through /api/places/external before showing creation form (BRAWUKA-402)", async () => {
     const fetchSpy = vi.fn().mockImplementation(async (url: string) => {
       if (url.includes("/api/places/external")) {
-        return { ok: true, status: 200, json: async () => ({ stored: 1 }) };
+        return jsonResponse(200, { stored: 1 });
       }
-      return { ok: true, status: 200, json: async () => ({}) };
+      return jsonResponse(200, {});
     });
     globalThis.fetch = fetchSpy;
 
@@ -296,9 +308,9 @@ describe("CafeCreationSheet & Trigger", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const fetchSpy = vi.fn().mockImplementation(async (url: string) => {
       if (url.includes("/api/places/external")) {
-        return { ok: false, status: 400, json: async () => ({ error: "invalid_request" }) };
+        return jsonResponse(400, { error: "invalid_request" });
       }
-      return { ok: true, status: 200, json: async () => ({}) };
+      return jsonResponse(200, {});
     });
     globalThis.fetch = fetchSpy;
 
@@ -325,12 +337,8 @@ describe("CafeCreationSheet & Trigger", () => {
 });
 
 describe("CafeCreationSheet submit failures (BRAWUKA-124/BRAWUKA-212/BRAWUKA-490/BRAWUKA-465)", () => {
-  function jsonResponse(status: number, body: unknown) {
-    return { ok: status >= 200 && status < 300, status, json: async () => body };
-  }
-
   /** Resolve-link succeeds; every other route defers to the test's handler. */
-  function mockRoutes(handler: (url: string) => { ok: boolean; status: number; json: () => Promise<unknown> }) {
+  function mockRoutes(handler: (url: string) => Response) {
     globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
       const target = String(url);
       if (target.includes("/api/places/resolve")) return jsonResponse(200, APPLE_PLACE);
@@ -415,7 +423,7 @@ describe("CafeCreationSheet submit failures (BRAWUKA-124/BRAWUKA-212/BRAWUKA-490
   });
 
   it("routes a Google place-search 401 to the gate instead of the alert slot", async () => {
-    mockRoutes((url) => (url.includes("/api/places/search") ? jsonResponse(401, { error: "unauthorized" }) : jsonResponse(200, {})));
+    mockRoutes((url) => (url.includes("/api/places/autocomplete") ? jsonResponse(401, { error: "unauthorized" }) : jsonResponse(200, {})));
 
     render(<CafeCreationSheet isOpen onOpenChange={vi.fn()} isAuthenticated />, { wrapper: Wrapper });
     fireEvent.click(screen.getByRole("tab", { name: "Search a place" }));
@@ -513,8 +521,7 @@ describe("CafeCreationSheet submit failures (BRAWUKA-124/BRAWUKA-212/BRAWUKA-490
     mockRoutes((url) =>
       url.includes("/api/cafes")
         ? jsonResponse(409, { error: "cafe_exists", cafe_id: "cafe-dup-1" })
-        : jsonResponse(200, {}),
-    );
+        : jsonResponse(200, {}));
 
     await openSheetWithPoi();
     fillAndSubmit();

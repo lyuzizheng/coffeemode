@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { executeSearch, resolveReferencePoint } from "@/lib/search/search-service";
 import { searchCafesInDb } from "@/lib/db/search";
-import { searchExternalPOIs, searchPOIs } from "@/lib/places/poi-client";
+import { autocompletePOIs, searchPOIs } from "@/lib/places/poi-client";
 import { emptyWorkStats } from "@/lib/stats/work-stats";
 import type { CafeWithExternalIds } from "@/lib/db/search";
-import type { POI } from "@shared/places/types";
+import type { POI, PlacePrediction } from "@shared/places/types";
 
 vi.mock("@/lib/db/search", () => ({
   searchCafesInDb: vi.fn(),
@@ -12,7 +12,7 @@ vi.mock("@/lib/db/search", () => ({
 
 vi.mock("@/lib/places/poi-client", () => ({
   searchPOIs: vi.fn(),
-  searchExternalPOIs: vi.fn(),
+  autocompletePOIs: vi.fn(),
 }));
 
 function makeDbCafe(overrides?: Partial<CafeWithExternalIds>): CafeWithExternalIds {
@@ -51,6 +51,20 @@ function makePoi(overrides?: Partial<POI>): POI {
   };
 }
 
+/** The session the live branch opens; the service must hand it back. */
+const SESSION_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+function makePrediction(overrides?: Partial<PlacePrediction>): PlacePrediction {
+  return {
+    place_id: "gplace_789",
+    source: "google",
+    name: "Autocomplete Hit",
+    address: "Somewhere",
+    types: ["cafe"],
+    ...overrides,
+  };
+}
+
 describe("search-service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -76,24 +90,34 @@ describe("search-service", () => {
     expect(response.results[1].source).toBe("google");
   });
 
-  it("fetches live external POIs when include_live=true and merges them", async () => {
+  it("fetches live predictions when include_live=true and merges them", async () => {
     const cafe1 = makeDbCafe({ id: "c1", name: "Local Cafe" });
     const storedPoi = makePoi({ place_id: "stored_pid", name: "Stored POI" });
-    const livePoi = makePoi({ place_id: "live_pid", name: "Live Google POI", source: "google" });
 
     vi.mocked(searchCafesInDb).mockResolvedValue([cafe1]);
     vi.mocked(searchPOIs).mockResolvedValue({ results: [storedPoi] });
-    vi.mocked(searchExternalPOIs).mockResolvedValue({ results: [livePoi] });
+    vi.mocked(autocompletePOIs).mockResolvedValue({
+      predictions: [
+        makePrediction({ place_id: "live_pid", name: "Live Google POI", distance_meters: 420 }),
+      ],
+    });
 
     const response = await executeSearch({ q: "coffee", include_live: true });
 
-    expect(searchExternalPOIs).toHaveBeenCalledWith(
+    expect(autocompletePOIs).toHaveBeenCalledWith(
       expect.objectContaining({ q: "coffee" }),
+      undefined,
     );
     expect(response.results).toHaveLength(3);
     const liveResult = response.results.find((r) => r.id === "live_pid");
     expect(liveResult).toBeDefined();
     expect(liveResult?.source).toBe("google");
+    // A prediction has no coordinates; the distance is Google's own.
+    expect(liveResult?.lat).toBeNull();
+    expect(liveResult?.lng).toBeNull();
+    expect(liveResult?.distance_m).toBe(420);
+    // The session travels with the item so the selection can terminate it.
+    expect(liveResult?.prediction_session).toMatch(SESSION_RE);
   });
 
   it("handles unknown city without silently re-anchoring to Singapore (DG58)", async () => {
@@ -358,18 +382,18 @@ describe("search-service", () => {
     vi.mocked(searchCafesInDb).mockResolvedValue([]);
     const res = await executeSearch({ q: "ab", city: "singapore", include_live: true });
     expect(res.search_mode).toBe("stored_only");
-    expect(searchExternalPOIs).not.toHaveBeenCalled();
+    expect(autocompletePOIs).not.toHaveBeenCalled();
   });
 
   it("DG132: returns search_mode=live when live POI search is executed", async () => {
     vi.mocked(searchCafesInDb).mockResolvedValue([]);
     vi.mocked(searchPOIs).mockResolvedValue({ results: [] });
-    vi.mocked(searchExternalPOIs).mockResolvedValue({
-      results: [makePoi({ place_id: "live-1", name: "Live Cafe", lat: 1.3, lng: 103.8 })],
+    vi.mocked(autocompletePOIs).mockResolvedValue({
+      predictions: [makePrediction({ place_id: "live-1", name: "Live Cafe" })],
     });
     const res = await executeSearch({ q: "Live", city: "singapore", include_live: true });
     expect(res.search_mode).toBe("live");
-    expect(searchExternalPOIs).toHaveBeenCalled();
+    expect(autocompletePOIs).toHaveBeenCalled();
     expect(res.results[0].source).toBe("google");
   });
 
@@ -385,10 +409,10 @@ describe("search-service", () => {
       await new Promise<void>((resolve) => setTimeout(resolve, 40));
       return { results: [makePoi({ place_id: "poi-1", name: "Parallel Stored" })] };
     });
-    vi.mocked(searchExternalPOIs).mockImplementation(async () => {
+    vi.mocked(autocompletePOIs).mockImplementation(async () => {
       started.push("live");
       await new Promise<void>((resolve) => setTimeout(resolve, 40));
-      return { results: [makePoi({ place_id: "poi-live", name: "Parallel Live", source: "google" })] };
+      return { predictions: [makePrediction({ place_id: "poi-live", name: "Parallel Live" })] };
     });
 
     const t0 = performance.now();
@@ -405,8 +429,8 @@ describe("search-service", () => {
   it("BRAWUKA-281 P1: partial POI failure keeps warnings and the surviving branches", async () => {
     vi.mocked(searchCafesInDb).mockResolvedValue([makeDbCafe({ id: "c1", name: "Survivor Cafe" })]);
     vi.mocked(searchPOIs).mockRejectedValue(new Error("stored down"));
-    vi.mocked(searchExternalPOIs).mockResolvedValue({
-      results: [makePoi({ place_id: "live-1", name: "Live Survivor", source: "google" })],
+    vi.mocked(autocompletePOIs).mockResolvedValue({
+      predictions: [makePrediction({ place_id: "live-1", name: "Live Survivor" })],
     });
 
     const res = await executeSearch({ q: "Survivor", city: "singapore", include_live: true });
@@ -422,7 +446,7 @@ describe("search-service", () => {
     vi.mocked(searchPOIs).mockResolvedValue({
       results: [makePoi({ place_id: "stored-1", name: "Stored Survivor" })],
     });
-    vi.mocked(searchExternalPOIs).mockRejectedValue(new Error("live down"));
+    vi.mocked(autocompletePOIs).mockRejectedValue(new Error("live down"));
 
     const res = await executeSearch({ q: "Stored", city: "singapore", include_live: true });
     expect(res.warnings).toContain("live_poi_unavailable");

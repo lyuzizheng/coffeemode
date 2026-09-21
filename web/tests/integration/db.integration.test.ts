@@ -189,7 +189,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   }, 60_000);
 
-  it("applies migrations 0001→0028 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0029 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -220,6 +220,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0026_drop_rate_limits.sql",
       "0027_navigation_unresolved_dedupe.sql",
       "0028_open_now_sql_function.sql",
+      "0029_open_now_24h_window.sql",
     ]);
 
     const serviceProfile = await dbClient.query(
@@ -1626,7 +1627,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       await expect(deleteCafe(created.cafe_id, U1)).rejects.toBeInstanceOf(CafeNotFoundError);
     });
 
-    it("community cafe without confirm rejects with 403 (cafe_has_other_checkins) and 0 mutations", async () => {
+    it("community cafe without confirm rejects with 409 (cafe_has_other_checkins) and 0 mutations", async () => {
       const photoId = randomUUID();
       await recordUploadIntent(U1, photoId);
       const created = await createCafeWithFirstCheckIn(
@@ -2037,6 +2038,12 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         wed: { open: "09:00", close: "09:00" }, thu: { open: "09:00", close: "09:00" },
         fri: { open: "09:00", close: "09:00" }, sat: { open: "09:00", close: "09:00" },
         sun: { open: "09:00", close: "09:00" } } },
+      // Single-day 24h window (BRAWUKA-571): Monday 09:00-09:00 reads open
+      // around the clock all Monday, including before the 09:00 anchor.
+      // Sunday has no entry, so yesterday's spillover cannot mask a miss.
+      { key: "singleDay24", tz: "Asia/Singapore", hours: {
+        mon: { open: "09:00", close: "09:00" },
+        tue: null, wed: null, thu: null, fri: null, sat: null, sun: null } },
       // Overnight window 22:00–04:00 every day.
       { key: "overnight", tz: "Asia/Singapore", hours: {
         mon: { open: "22:00", close: "04:00" }, tue: { open: "22:00", close: "04:00" },
@@ -2183,6 +2190,21 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(ids.has(parityIds.noHours)).toBe(false);
       expect(ids.has(parityIds.daytime)).toBe(true);
       expect(ids.has(parityIds.always24)).toBe(true);
+      expect(ids.has(parityIds.always24Offset)).toBe(true);
+      expect(ids.has(parityIds.singleDay24)).toBe(true);
+    });
+
+    it("gives a single-day 24h window no overnight tail the next morning (BRAWUKA-571)", async () => {
+      const rows = await searchCafesInDb({
+        city: PARITY_CITY,
+        open_now: true,
+        instant: new Date("2026-09-07T19:30:00Z"), // Tue 03:30 SGT — spillover hour
+        limit: 500,
+      });
+      const ids = new Set(rows.map((r) => r.id));
+      expect(ids.has(parityIds.singleDay24)).toBe(false);
+      expect(ids.has(parityIds.always24Offset)).toBe(true);
+      expect(ids.has(parityIds.overnight)).toBe(true);
     });
 
     it("cafesDataVersion moves when a cafe row is written", async () => {
@@ -3080,6 +3102,31 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       // Created cafe survives as a service-account orphan shell.
       const cafe = await dbClient.query("select created_by from cafes where id = $1", [CAFE_A]);
       expect(cafe.rows[0].created_by).toBe(SERVICE_ACCOUNT_ID);
+    });
+
+    it("concurrent deleteAccount + deleteCafe on the same cafe never deadlocks (BRAWUKA-574)", async () => {
+      // Regression: deleteAccount locked check-ins first while deleteCafe
+      // locked cafe first — overlapping the two hit 40P01 on round 0.
+      // Both now take cafe → checkin order, so the loser waits instead of
+      // cycling. Every round reseeds (one side always wins and deletes the
+      // cafe's rows), then asserts neither side saw deadlock_detected.
+      for (let round = 0; round < 5; round++) {
+        await dbClient.query("alter table checkin_likes enable trigger all");
+        await dbClient.query(
+          "truncate table profiles, cafes, image_upload_intents, navigations restart identity cascade",
+        );
+        await seedBaseData(dbClient);
+        const results = await Promise.allSettled([
+          deleteAccount(U1),
+          deleteCafe(CAFE_A, U1, { confirm: true }),
+        ]);
+        for (const result of results) {
+          if (result.status === "rejected") {
+            const code = (result.reason as { code?: string } | null)?.code;
+            expect(code, `round ${round}: deadlock: ${String(result.reason)}`).not.toBe("40P01");
+          }
+        }
+      }
     });
 
     it("getProfileExport returns the full bundle against the real schema", async () => {

@@ -8,11 +8,20 @@
  *     GET  /health           health check
  *   Token-gated (require POI_SERVICE_TOKEN):
  *     GET  /poi/:place_id    KV hot → D1 fresh → Google API → backfill both
+ *                            (?session=<uuid> terminates an Autocomplete session)
  *     POST /poi/resolve      {maps_share_url} → POI (creation import path)
  *     GET  /poi/search       ?q&lat&lng&r — stored POIs, name match + haversine sort
- *     GET  /poi/search/external ?q&lat&lng&r — live Google search + cache backfill
- *     POST /poi/external     store externally-searched POIs (Google live / Apple refs)
+ *     GET  /poi/autocomplete ?q&lat&lng&r&session — live Google predictions
+ *                            (typing phase; nothing is persisted)
+ *     POST /poi/external     store externally-searched POIs (Apple MapKit refs)
  *     POST /poi/reverse      {lat, lng} → reverse geocode to normalized food/cafe POI
+ *
+ * Google billing model (BRAWUKA-602): the typing phase is Autocomplete (New)
+ * and the selection phase is Place Details (New). Both carry the same session
+ * token, so every Autocomplete request in the session bills at
+ * `Autocomplete Session Usage` ($0) and only the Place Details call is
+ * charged. Text Search (New) is deliberately absent — its field-mask pricing
+ * billed every keystroke at the Enterprise tier.
  *
  * Error isolation (W1): handleFetch wraps every handler in try/catch and maps
  * uncaught D1/KV/Google failures to a JSON 500 envelope — workerd's opaque
@@ -22,6 +31,7 @@
  */
 
 import { authorized, internalError, json, unauthorized } from "./auth";
+import { logError, logWarn } from "../../web/shared/log";
 import {
   DEFAULT_SEARCH_RADIUS_KM,
   MAX_EXTERNAL_BATCH_SIZE,
@@ -30,11 +40,12 @@ import {
 } from "./constants";
 import {
   getUpstreamProvider,
+  isGooglePlaceId,
   matchesFoodCategory,
   resolveUpstreamSource,
   UpstreamApiError,
 } from "./upstream";
-import type { Deps, Env, POI, POISearchHit, POISource } from "./types";
+import type { Deps, Env, POI, POISearchHit, POISource, PlacePrediction } from "./types";
 import { stableApplePlaceId } from "../../web/shared/places/apple-place-id";
 import {
   computeExpiresAt,
@@ -45,10 +56,7 @@ import {
   isFresh,
   kvDeletePOI,
   kvGetPOI,
-  kvGetSearchQuery,
   kvPutPOI,
-  kvPutSearchQuery,
-  searchQueryKey,
 } from "./store";
 import { resolveShareUrl } from "./url";
 
@@ -56,12 +64,20 @@ import { resolveShareUrl } from "./url";
 export { authorized } from "./auth";
 
 
-function upstreamError(e: unknown): Response {
+function upstreamError(request: Request, e: unknown): Response {
   if (e instanceof UpstreamApiError) {
-    // Scrubbed: upstream response bodies are never relayed (status only).
-    return json({ error: "upstream_error", status: e.status, message: e.message }, 502);
+    // P0 scrub: the upstream `message` can carry the request URL (embeds
+    // `key=`) or echoed body text — never relay it. True parse/validation
+    // failures (bad input shape, unparseable candidate) are
+    // `invalid_upstream`; quota exhaustion (429), key denial (403), and
+    // other dependency failures stay `upstream_error` so the D8
+    // `upstream_error` spike alert sees them.
+    if (e.status === 400 || e.status === 404) {
+      return json({ error: "invalid_upstream" }, 502, request);
+    }
+    return json({ error: "upstream_error" }, 502, request);
   }
-  return json({ error: "upstream_error", message: "upstream request failed" }, 502);
+  return json({ error: "upstream_error" }, 502, request);
 }
 
 // Apple Maps has no server-side Places API: a share URL with coordinates but
@@ -69,13 +85,19 @@ function upstreamError(e: unknown): Response {
 
 // --- GET /poi/:place_id ---
 
-async function getPOI(placeId: string, env: Env, deps: Deps): Promise<Response> {
+async function getPOI(
+  placeId: string,
+  env: Env,
+  deps: Deps,
+  request: Request,
+  sessionToken?: string,
+): Promise<Response> {
   // 1. KV hot cache (normalized POI record, ~7d TTL). Probing for Apple refs is
   // safe — they are simply never cached in KV.
   const cached = await kvGetPOI(env.POI_KV, placeId);
   if (cached) {
     try {
-      return json(JSON.parse(cached) as POI);
+      return json(JSON.parse(cached) as POI, request);
     } catch {
       // corrupt cache entry — fall through to D1/Google
     }
@@ -87,45 +109,49 @@ async function getPOI(placeId: string, env: Env, deps: Deps): Promise<Response> 
   const stored = await d1GetPOI(env.POI_DB, placeId);
 
   // Apple POIs have no server-side upstream — serve what's stored.
-  if (stored && stored.source === "apple") return json(stored);
-  if (stored && isFresh(stored)) return json(stored);
+  if (stored && stored.source === "apple") return json(stored, request);
+  if (stored && isFresh(stored)) return json(stored, request);
 
   // 3. Resolve upstream provider: stored row's source is authoritative;
   // for never-seen ids, fall back to provider heuristic (isGooglePlaceId).
   const source = resolveUpstreamSource(placeId, stored?.source);
   if (!source) {
-    return json({ error: "not_found" }, 404);
+    return json({ error: "not_found" }, 404, request);
   }
 
   const provider = getUpstreamProvider(source, env, deps);
   if (!provider) {
-    if (stored) return json(stored);
-    return json({ error: "not_found" }, 404);
+    if (stored) return json(stored, request);
+    return json({ error: "not_found" }, 404, request);
   }
 
-  // 4. Upstream API → backfill both
+  // 4. Upstream API → backfill both. The session token (when the caller
+  // carries one) terminates the Autocomplete session that produced this id,
+  // which is what makes the typing phase free.
   let rawPlace: unknown;
   try {
-    rawPlace = await provider.getDetails(placeId);
+    rawPlace = await provider.getDetails(placeId, sessionToken);
   } catch (e) {
     // Graceful degradation: serve stale D1 row if we have one (d1GetPOI guarantees unexpired).
-    if (stored) return json(stored);
-    return upstreamError(e);
+    if (stored) return json(stored, request);
+    return upstreamError(request, e);
   }
 
   let poi: POI;
   try {
     poi = provider.toPOI(rawPlace); // rejects places missing `location` instead of storing (0,0)
-  } catch (e) {
-    if (stored) return json(stored);
-    return json({ error: "invalid_upstream", message: String(e) }, 502);
+  } catch {
+    // P0 scrub: the validator message carries the upstream place id —
+    // details, not a body field. Canned code only.
+    if (stored) return json(stored, request);
+    return json({ error: "invalid_upstream" }, 502, request);
   }
   try {
     await Promise.all([kvPutPOI(env.POI_KV, poi), d1UpsertPOI(env.POI_DB, poi)]);
   } catch (e) {
-    console.error("cache write failed", e);
+    logError({ route: "GET /poi/:place_id", request, error: e, status: 200 });
   }
-  return json(poi);
+  return json(poi, request);
 }
 
 // --- POST /poi/resolve ---
@@ -140,7 +166,7 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
       ? (body as Record<string, unknown>).url
       : undefined);
   if (typeof mapsUrl !== "string" || mapsUrl.trim() === "") {
-    return json({ error: "invalid_request", message: "maps_share_url (string) required" }, 400);
+    return json({ error: "invalid_request", message: "maps_share_url (string) required" }, 400, request);
   }
 
   const target = await resolveShareUrl(mapsUrl.trim(), deps.fetchImpl);
@@ -148,14 +174,36 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
     // Apple Maps has no server-side Places API. A share URL still gives us
     // enough data to create a durable POI when it contains coordinates; an
     // already stored Apple reference remains authoritative.
+    //
+    // BRAWUKA-566: never let an attacker-controlled auid become the D1 row
+    // key for someone else's POI. A Google-shaped auid
+    // (maps.apple.com/?auid=<google-id>) would replace the canonical Google
+    // row and getPOI would serve the forgery forever, so those URLs are
+    // unresolvable; and when a stored row of the other source already owns
+    // the key, an apple write must not overwrite it.
+    if (target.placeId && isGooglePlaceId(target.placeId)) {
+      return json(
+        { error: "unresolvable", message: "Apple Maps URL carries a non-Apple place id" },
+        422,
+        request,
+      );
+    }
     if (target.placeId) {
       const stored = await d1GetPOI(env.POI_DB, target.placeId);
-      if (stored) return json(stored);
+      if (stored && stored.source !== "apple") {
+        return json(
+          { error: "unresolvable", message: "place id belongs to another source" },
+          409,
+          request,
+        );
+      }
+      if (stored) return json(stored, request);
     }
     if (!target.coords) {
       return json(
         { error: "unresolvable", message: "Apple Maps URL needs a place id and coordinates" },
         422,
+        request,
       );
     }
     const placeId =
@@ -175,45 +223,67 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
       fetched_at: now,
       expires_at: computeExpiresAt(now),
     };
+    // Same source-conflict guard as storeExternal: re-check the key right
+    // before writing so a concurrent Google row for this id is not replaced.
+    const conflict = await d1GetPOI(env.POI_DB, placeId);
+    if (conflict && conflict.source !== "apple") {
+      return json({ error: "unresolvable", message: "place id belongs to another source" }, 409, request);
+    }
     await d1UpsertPOI(env.POI_DB, poi);
-    return json(poi);
+    return json(poi, request);
   }
-  if (target.placeId) return await getPOI(target.placeId, env, deps);
+  if (target.placeId) return await getPOI(target.placeId, env, deps, request);
 
   if (target.query) {
     const source: POISource = target.source ?? "google";
     const provider = getUpstreamProvider(source, env, deps);
     if (!provider) {
-      return json({ error: "unresolvable", message: `no upstream provider for ${source}` }, 422);
+      return json({ error: "unresolvable", message: `no upstream provider for ${source}` }, 422, request);
     }
 
-    let results: unknown[];
+    // A share URL that carries only a query string has no place id, so the
+    // query has to be turned into one. Autocomplete is the free way to do
+    // that; the single Place Details call below is the only billed step, and
+    // it terminates the session so the lookup itself stays free.
+    const sessionToken = crypto.randomUUID();
+    let predictions: PlacePrediction[];
     try {
-      results = await provider.textSearch(target.query, {
+      predictions = await provider.autocomplete(target.query, {
         lat: target.coords?.lat,
         lng: target.coords?.lng,
+        sessionToken,
       });
     } catch (e) {
-      return upstreamError(e);
+      return upstreamError(request, e);
     }
-    const first = results[0];
-    if (!first) return json({ error: "not_found", message: "no place matched" }, 404);
+    const first = predictions[0];
+    if (!first) return json({ error: "not_found", message: "no place matched" }, 404, request);
+
+    let raw: unknown;
+    try {
+      raw = await provider.getDetails(first.place_id, sessionToken);
+    } catch (e) {
+      return upstreamError(request, e);
+    }
     let poi: POI;
     try {
-      poi = provider.toPOI(first); // rejects places missing `location`
-    } catch (e) {
-      return json({ error: "invalid_upstream", message: String(e) }, 502);
+      poi = provider.toPOI(raw); // rejects places missing `location`
+    } catch {
+      // P0 scrub: the validator message carries the upstream place id —
+      // details, not a body field. Canned code only.
+      return json({ error: "invalid_upstream" }, 502, request);
     }
     try {
       await Promise.all([kvPutPOI(env.POI_KV, poi), d1UpsertPOI(env.POI_DB, poi)]);
     } catch (e) {
-      console.error("cache write failed", e);
+      logError({ route: "POST /poi/resolve", request, error: e, status: 200 });
     }
-    return json(poi);
+    return json(poi, request);
   }
   return json(
     { error: "unresolvable", message: "no place_id, query, or coordinates in URL" },
     422,
+    request,
   );
 }
 
@@ -247,20 +317,22 @@ async function searchPOIs(request: Request, env: Env, _deps: Deps): Promise<Resp
       return json(
         { error: "invalid_request", message: "lat/lng must be finite numbers in [-90,90] / [-180,180]" },
         400,
+        request,
       );
     }
   }
   const hasCoords = latProvided && lngProvided;
   if (q === "" && !hasCoords) {
-    return json({ error: "invalid_request", message: "q or lat+lng required" }, 400);
+    return json({ error: "invalid_request", message: "q or lat+lng required" }, 400, request);
   }
   if (!Number.isFinite(r) || r <= 0) {
-    return json({ error: "invalid_request", message: "r must be a positive number (km)" }, 400);
+    return json({ error: "invalid_request", message: "r must be a positive number (km)" }, 400, request);
   }
   if (r > MAX_SEARCH_RADIUS_KM) {
     return json(
       { error: "invalid_request", message: `r must be ≤ ${MAX_SEARCH_RADIUS_KM} km` },
       400,
+      request,
     );
   }
 
@@ -270,16 +342,30 @@ async function searchPOIs(request: Request, env: Env, _deps: Deps): Promise<Resp
     lng: hasCoords ? lng : undefined,
     radiusKm: r,
   });
-  return json({ results: hits });
+  return json({ results: hits }, request);
 }
 
-// --- GET /poi/search/external ---
+// --- GET /poi/autocomplete ---
 
-/** Live Google search for the creation/search entry point. Results are saved
- * before returning so the next local search can reuse them. */
-async function searchExternalPOIs(request: Request, env: Env, deps: Deps): Promise<Response> {
+/**
+ * Session token shape. Google requires a UUID and treats anything else as
+ * "no session" — which silently reverts every Autocomplete request in the
+ * session to per-request billing. Rejecting a malformed token here is
+ * therefore a cost guard, not a formality.
+ */
+const SESSION_TOKEN_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Typing-phase suggestions for the creation/search entry point.
+ *
+ * Nothing is persisted: a prediction carries no coordinates, so there is no
+ * POI to store. The billed Place Details call happens on selection
+ * (`GET /poi/:place_id?session=…`), which is the whole point of this split.
+ */
+async function autocompletePOIs(request: Request, env: Env, deps: Deps): Promise<Response> {
   const url = new URL(request.url);
   const q = url.searchParams.get("q")?.trim() ?? "";
+  const session = url.searchParams.get("session")?.trim() ?? "";
   const lat = Number.parseFloat(url.searchParams.get("lat") ?? "");
   const lng = Number.parseFloat(url.searchParams.get("lng") ?? "");
   const r = url.searchParams.has("r")
@@ -293,64 +379,44 @@ async function searchExternalPOIs(request: Request, env: Env, deps: Deps): Promi
       return json(
         { error: "invalid_request", message: "lat/lng must be finite numbers in [-90,90] / [-180,180]" },
         400,
+        request,
       );
     }
   }
-  if (q === "") return json({ error: "invalid_request", message: "q is required" }, 400);
+  if (q === "") return json({ error: "invalid_request", message: "q is required" }, 400, request);
+  if (!SESSION_TOKEN_RE.test(session)) {
+    return json(
+      { error: "invalid_request", message: "session must be a UUID (Autocomplete session token)" },
+      400,
+      request,
+    );
+  }
   if (!Number.isFinite(r) || r <= 0 || r > MAX_SEARCH_RADIUS_KM) {
     return json(
       { error: "invalid_request", message: `r must be between 0 and ${MAX_SEARCH_RADIUS_KM} km` },
       400,
+      request,
     );
   }
-
-  // Live-search query cache (BRAWUKA-283 P2-2): a TTL hit returns the POI
-  // list already persisted during the first search — no billed upstream call.
-  const queryKey = searchQueryKey(q, latProvided ? lat : undefined, lngProvided ? lng : undefined, r);
-  const cached = await kvGetSearchQuery(env.POI_KV, queryKey);
-  if (cached) return json({ results: cached });
 
   const provider = getUpstreamProvider("google", env, deps);
   if (!provider) {
-    return json({ error: "upstream_error", message: "google provider not available" }, 502);
+    return json({ error: "upstream_error", message: "google provider not available" }, 502, request);
   }
 
-  let places: unknown[];
+  let predictions: PlacePrediction[];
   try {
-    places = await provider.textSearch(
-      q,
-      { lat: latProvided ? lat : undefined, lng: lngProvided ? lng : undefined, radiusKm: r },
-    );
+    predictions = await provider.autocomplete(q, {
+      lat: latProvided ? lat : undefined,
+      lng: lngProvided ? lng : undefined,
+      radiusKm: r,
+      sessionToken: session,
+    });
   } catch (e) {
-    return upstreamError(e);
+    return upstreamError(request, e);
   }
 
-  const results: POI[] = [];
-  for (const place of places.slice(0, SEARCH_RESULT_LIMIT)) {
-    try {
-      const poi = provider.toPOI(place);
-      if (!provider.matchesCategory(poi.types)) {
-        poi.not_persisted_reason = "non_food_category";
-      }
-      results.push(poi);
-    } catch {
-      // A result without coordinates cannot be created as a cafe.
-    }
-  }
-  const toPersist = results.filter((poi) => !poi.not_persisted_reason);
-  try {
-    if (toPersist.length > 0) {
-      await d1UpsertPOIs(env.POI_DB, toPersist);
-      await Promise.all(toPersist.map((poi) => kvPutPOI(env.POI_KV, poi)));
-    }
-    // Cache what was served (BRAWUKA-283 P2-2), not what was persisted: an
-    // all-non-food (or empty) upstream hit is still billable, and repeating
-    // it must not call Google again.
-    await kvPutSearchQuery(env.POI_KV, queryKey, results);
-  } catch (e) {
-    console.error("external search cache write failed", e);
-  }
-  return json({ results });
+  return json({ predictions: predictions.slice(0, SEARCH_RESULT_LIMIT) }, request);
 }
 
 // --- POST /poi/external ---
@@ -377,6 +443,13 @@ function validateExternalEntry(value: unknown, index: number): POI | InvalidEntr
   // without truncating legitimate references.
   if (v.place_id.length > 1024) return bad("place_id too long (max 1024)");
   if (v.source !== "google" && v.source !== "apple") return bad("source must be google|apple");
+  // BRAWUKA-566: an apple entry must never carry a Google-shaped id. place_id
+  // is the D1 primary key and getPOI serves apple rows verbatim, so accepting
+  // one here would poison the canonical Google row for that id (apple rows
+  // never refresh upstream — the forgery would be permanent).
+  if (v.source === "apple" && isGooglePlaceId(v.place_id)) {
+    return bad("apple place_id must not use a Google id format");
+  }
   if (typeof v.name !== "string" || v.name === "") return bad("name required");
   if (v.name.length > 200) return bad("name too long (max 200)");
   if (typeof v.lat !== "number" || !Number.isFinite(v.lat) || !inLatRange(v.lat)) {
@@ -435,19 +508,20 @@ async function storeExternal(request: Request, env: Env): Promise<Response> {
       ? (body as Record<string, unknown>).pois
       : undefined;
   if (!Array.isArray(entries) || entries.length === 0) {
-    return json({ error: "invalid_request", message: "pois array required" }, 400);
+    return json({ error: "invalid_request", message: "pois array required" }, 400, request);
   }
   if (entries.length > MAX_EXTERNAL_BATCH_SIZE) {
     return json(
       { error: "invalid_request", message: `at most ${MAX_EXTERNAL_BATCH_SIZE} entries per request` },
       400,
+      request,
     );
   }
 
   const validated = entries.map(validateExternalEntry);
   const invalid = validated.filter((v): v is InvalidEntry => "reason" in v);
   if (invalid.length > 0) {
-    return json({ error: "invalid_request", message: "invalid entries", entries: invalid }, 400);
+    return json({ error: "invalid_request", message: "invalid entries", entries: invalid }, 400, request);
   }
 
   // BRAWUKA-328 — DG144/DG52 category gate for this path: source-aware
@@ -459,10 +533,30 @@ async function storeExternal(request: Request, env: Env): Promise<Response> {
   // a 400 would look like a broken search).
   const pois = validated as POI[];
   const skipped: InvalidEntry[] = [];
-  const toPersist = pois.filter((poi, i) => {
-    if (matchesFoodCategory(poi.source, poi.types)) return true;
-    skipped.push({ index: i, reason: "non_food_category" });
-    return false;
+  const candidates: Array<{ poi: POI; index: number }> = [];
+  for (const [i, poi] of pois.entries()) {
+    if (matchesFoodCategory(poi.source, poi.types)) {
+      candidates.push({ poi, index: i });
+    } else {
+      skipped.push({ index: i, reason: "non_food_category" });
+    }
+  }
+  // BRAWUKA-566: never let one source overwrite the other's row. place_id is
+  // the D1 primary key, so an apple entry reusing a google id would replace
+  // the real row and getPOI would serve the forgery forever (apple rows never
+  // refresh upstream). Conflicts skip per-entry like the category gate above;
+  // same-source upserts still replace normally.
+  const storedRows = await Promise.all(
+    candidates.map(({ poi }) => d1GetPOI(env.POI_DB, poi.place_id)),
+  );
+  const toPersist: POI[] = [];
+  candidates.forEach(({ poi, index }, j) => {
+    const stored = storedRows[j];
+    if (stored && stored.source !== poi.source) {
+      skipped.push({ index, reason: "source_conflict" });
+      return;
+    }
+    toPersist.push(poi);
   });
   // Atomic batch: one round-trip, all-or-nothing (no partial writes on failure).
   // Then invalidate the KV hot cache for every written id: getPOI serves KV
@@ -473,7 +567,7 @@ async function storeExternal(request: Request, env: Env): Promise<Response> {
   // never happened — so a best-effort post-write delete is the safe order.
   await d1UpsertPOIs(env.POI_DB, toPersist);
   await Promise.all(toPersist.map((poi) => kvDeletePOI(env.POI_KV, poi.place_id)));
-  return json({ stored: toPersist.length, skipped });
+  return json({ stored: toPersist.length, skipped }, request);
 }
 
 // --- POST /poi/reverse ---
@@ -489,7 +583,7 @@ async function reverseGeocodePOI(request: Request, env: Env, deps: Deps): Promis
   } else {
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== "object") {
-      return json({ error: "invalid_request", message: "request body must be a JSON object" }, 400);
+      return json({ error: "invalid_request", message: "request body must be a JSON object" }, 400, request);
     }
     const record = body as Record<string, unknown>;
     lat = typeof record.lat === "number" ? record.lat : Number.parseFloat(String(record.lat ?? ""));
@@ -500,19 +594,20 @@ async function reverseGeocodePOI(request: Request, env: Env, deps: Deps): Promis
     return json(
       { error: "invalid_request", message: "lat/lng must be finite numbers in [-90,90] / [-180,180]" },
       400,
+      request,
     );
   }
 
   const provider = getUpstreamProvider("google", env, deps);
   if (!provider || !provider.reverseGeocode) {
-    return json({ error: "upstream_error", message: "google provider not available" }, 502);
+    return json({ error: "upstream_error", message: "google provider not available" }, 502, request);
   }
 
   let poi: POI | null;
   try {
     poi = await provider.reverseGeocode({ lat, lng });
   } catch (e) {
-    return upstreamError(e);
+    return upstreamError(request, e);
   }
 
   if (poi) {
@@ -522,11 +617,11 @@ async function reverseGeocodePOI(request: Request, env: Env, deps: Deps): Promis
       // consulting D1, so a stale entry would shadow the fresh D1 row.
       await kvDeletePOI(env.POI_KV, poi.place_id);
     } catch (e) {
-      console.error("cache write failed in reverseGeocodePOI:", e);
+      logError({ route: "GET /poi/reverse", request, error: e, status: 200 });
     }
   }
 
-  return json({ poi });
+  return json({ poi }, request);
 }
 
 // --- router ---
@@ -543,15 +638,16 @@ export async function handleFetch(
     const path = url.pathname;
 
     if (request.method === "GET" && (path === "/" || path === "/health")) {
-      return json({ ok: true, service: "poi-service" });
+      return json({ ok: true, service: "poi-service" }, request);
     }
 
     if (!(await authorized(request, env))) {
-      return unauthorized();
+      logWarn({ route: "auth", request, error: "unauthorized", status: 401, code: "unauthorized" });
+      return unauthorized(request);
     }
 
-    if (request.method === "GET" && path === "/poi/search/external") {
-      return await searchExternalPOIs(request, env, deps);
+    if (request.method === "GET" && path === "/poi/autocomplete") {
+      return await autocompletePOIs(request, env, deps);
     }
     if (request.method === "GET" && path === "/poi/search") return await searchPOIs(request, env, deps);
     if (request.method === "POST" && path === "/poi/resolve") return await resolvePOI(request, env, deps);
@@ -568,15 +664,25 @@ export async function handleFetch(
       try {
         placeId = decodeURIComponent(m[1]);
       } catch {
-        return json({ error: "invalid_request", message: "malformed place_id encoding" }, 400);
+        return json({ error: "invalid_request", message: "malformed place_id encoding" }, 400, request);
       }
-      if (placeId === "") return json({ error: "not_found" }, 404);
-      return await getPOI(placeId, env, deps);
+      if (placeId === "") return json({ error: "not_found" }, 404, request);
+      // `session` terminates the Autocomplete session that produced this id.
+      // A malformed token is ignored rather than rejected: the lookup itself
+      // is still valid, it just loses the session discount.
+      const session = url.searchParams.get("session")?.trim() ?? "";
+      return await getPOI(
+        placeId,
+        env,
+        deps,
+        request,
+        SESSION_TOKEN_RE.test(session) ? session : undefined,
+      );
     }
 
-    return json({ error: "not_found" }, 404);
+    return json({ error: "not_found" }, 404, request);
   } catch (e) {
-    console.error("poi-service error:", e);
-    return internalError();
+    logError({ route: "poi-service", request, error: e, status: 500, code: "internal_error" });
+    return internalError(request);
   }
 }

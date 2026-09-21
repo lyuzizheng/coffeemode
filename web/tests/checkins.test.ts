@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
-import { createCheckIn, toggleCheckInLike } from "@/lib/db/checkins";
+import { createCheckIn, softDeleteCheckIn, toggleCheckInLike, updateCheckIn } from "@/lib/db/checkins";
 import {
   CafeNotFoundError,
   CheckInNotFoundError,
@@ -467,6 +467,35 @@ describe("createCheckIn", () => {
     expect(calls.filter((req) => req.targetType === "checkin")).toHaveLength(0);
   });
 
+  it("skips intent consume and photo writes on a raced idempotency dedupe with photos (BRAWUKA-565)", async () => {
+    const key = IDEMPOTENCY_KEY;
+    poolQueryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("idempotency_key")) return { rows: [], rowCount: 0 }; // fast-path miss
+      return { rows: [{ id: CAFE }], rowCount: 1 }; // pre-provision cafe gate
+    });
+    clientQueryMock.mockImplementation(async (sql: string) => {
+      const s = sql.toLowerCase();
+      if (s.includes("insert into checkins")) return { rows: [], rowCount: 0 }; // ON CONFLICT DO NOTHING
+      if (s.includes("idempotency_key")) return { rows: [{ id: CHECKIN }], rowCount: 1 }; // winner's id
+      if (s.includes("select id from cafes")) return { rows: [{ id: CAFE }], rowCount: 1 };
+      if (s.includes("visited_at > now()")) return { rows: [], rowCount: 0 };
+      return { rows: [], rowCount: 0 };
+    });
+    // The winner already consumed the single-use intents: a consume attempt
+    // here would abort the loser's tx (pre-fix 400 on same photo_ids).
+    provisionDeps.consumeUploadIntents.mockResolvedValue(false);
+
+    const result = await createCheckIn(USER.id, validInput({ idempotency_key: key }));
+
+    expect(result).toEqual({ checkin_id: CHECKIN, deduped: true });
+    expect(provisionDeps.consumeUploadIntents).not.toHaveBeenCalled();
+    for (const call of clientQueryMock.mock.calls) {
+      const sql = call[0] as string;
+      expect(sql).not.toContain("set photos");
+      expect(sql.toLowerCase()).not.toContain("gallery");
+    }
+  });
+
 
 
   it("rejects a second create inside the revisit window without inserting (DG64)", async () => {
@@ -605,6 +634,70 @@ describe("createCheckIn", () => {
   });
 });
 
+describe("check-in edit/delete lock order (BRAWUKA-574)", () => {
+  const checkinRow = {
+    id: CHECKIN,
+    cafe_id: CAFE,
+    user_id: USER.id,
+    deleted_at: null,
+  };
+
+  beforeEach(() => {
+    clientQueryMock.mockReset();
+    clientQueryMock.mockImplementation(async (sql: string) => {
+      const s = sql.toLowerCase();
+      if (s.includes("select cafe_id from checkins")) {
+        return { rows: [{ cafe_id: CAFE }], rowCount: 1 };
+      }
+      if (s.includes("from cafes") && s.includes("for update")) {
+        return { rows: [{ "?column?": 1 }], rowCount: 1 };
+      }
+      if (s.includes("from checkins where id")) {
+        return { rows: [checkinRow], rowCount: 1 };
+      }
+      // recomputeWorkStats runs on the same fake client here; its cafe
+      // lock + checkin scan + stats write need no real rows for an
+      // order assertion (real-DB behavior is covered by integration).
+      if (s.includes("for update")) {
+        return { rows: [{ id: CAFE }], rowCount: 1 };
+      }
+      if (s.includes("from checkins")) {
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+  });
+
+  it("updateCheckIn locks the cafe row before the check-in row", async () => {
+    await updateCheckIn(USER.id, CHECKIN, { note: "revisited" });
+    const statements = clientQueryMock.mock.calls.map(([sql]) => sql as string);
+    const cafeLockIdx = statements.findIndex(
+      (s) => s.includes("from cafes") && s.includes("for update"),
+    );
+    const checkinLockIdx = statements.findIndex(
+      (s) => s.includes("from checkins where id") && s.includes("for update"),
+    );
+    expect(cafeLockIdx).toBeGreaterThan(-1);
+    expect(checkinLockIdx).toBeGreaterThan(-1);
+    expect(cafeLockIdx).toBeLessThan(checkinLockIdx);
+  });
+
+  it("softDeleteCheckIn locks the cafe row before the check-in row", async () => {
+    const result = await softDeleteCheckIn(USER.id, CHECKIN);
+    expect(result).toEqual({ cafeId: CAFE });
+    const statements = clientQueryMock.mock.calls.map(([sql]) => sql as string);
+    const cafeLockIdx = statements.findIndex(
+      (s) => s.includes("from cafes") && s.includes("for update"),
+    );
+    const checkinLockIdx = statements.findIndex(
+      (s) => s.includes("from checkins where id") && s.includes("for update"),
+    );
+    expect(cafeLockIdx).toBeGreaterThan(-1);
+    expect(checkinLockIdx).toBeGreaterThan(-1);
+    expect(cafeLockIdx).toBeLessThan(checkinLockIdx);
+  });
+});
+
 describe("toggleCheckInLike", () => {
   it("throws for an invalid user id", async () => {
     await expect(toggleCheckInLike("not-a-uuid", CHECKIN)).rejects.toThrow(
@@ -657,7 +750,7 @@ describe("toggleCheckInLike", () => {
 describe("POST /api/checkins", () => {
   const url = "https://localhost/api/checkins";
 
-  it("400s with invalid_request error envelope on invalid payloads before checking auth", async () => {
+  it("400s with invalid_request error envelope on invalid payloads", async () => {
     getUserMock.mockClear();
     const invalidBodies = [
       INVALID_CHECKIN_PAYLOADS.empty,
@@ -672,7 +765,6 @@ describe("POST /api/checkins", () => {
         message: expect.any(String),
       });
     }
-    expect(getUserMock).not.toHaveBeenCalled();
   });
   it("401s without a session", async () => {
     getUserMock.mockResolvedValue({ data: { user: null }, error: null });
@@ -687,22 +779,22 @@ describe("POST /api/checkins", () => {
     await expect(res.json()).resolves.toMatchObject({ error: "not_found" });
   });
 
-  it("400s invalid_photos when a photo id was not issued to the caller", async () => {
+  it("422s invalid_photos when a photo id was not issued to the caller", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] });
     provisionDeps.checkUploadIntents.mockResolvedValue([]);
     const res = await checkinPOST(postRequest(url, validBody()));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     await expect(res.json()).resolves.toMatchObject({ error: "invalid_photos" });
     expect(clientQueryMock).not.toHaveBeenCalled();
   });
 
-  it("400s invalid_photos when the caller's upload never landed in R2 (worker 404)", async () => {
+  it("422s invalid_photos when the caller's upload never landed in R2 (worker 404)", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] });
     provisionDeps.getProcessUrls.mockRejectedValue(
       new ImageServiceError("Image not found", 404, 404),
     );
     const res = await checkinPOST(postRequest(url, validBody()));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     await expect(res.json()).resolves.toMatchObject({ error: "invalid_photos" });
     expect(clientQueryMock).not.toHaveBeenCalled();
   });

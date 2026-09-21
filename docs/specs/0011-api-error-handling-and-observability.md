@@ -11,7 +11,7 @@ One error contract across the Next.js app and both Cloudflare Workers
 (`poi-service`, `image-service`), one client-side consumption pattern, and
 enough structured logging to trace any production failure to a single request
 without a SaaS APM. This spec consolidates what already exists (`apiError()`,
-`guard()`, `logError()`, `x-request-id`, Better Stack rate-limit alerts) into a
+`guard()`, `logError()`, `x-request-id`, rate-limit alerts) into a
 contract, fixes the gaps the BRAWUKA-535 audit found, and freezes the error-code
 vocabulary in a registry.
 
@@ -189,7 +189,16 @@ export const POST = apiRoute(
   request bodies, or full URLs with query strings. `clientId` is
   `user:<uuid>` or `anon:<sha256(ip)>` — never raw IP.
 
-### D8 — Metrics & alerts stay on Better Stack
+### D8 — Metrics & alerts stay on Better Stack — **superseded by BRAWUKA-611 (2026-09-21)**
+
+> **Superseded.** The whole Better Stack surface — the `coffeemode-api-errors`
+> source pair, both dashboards, all four chart alerts and the uptime monitor —
+> is deleted. Error / warn / access lines go to Grafana Cloud Loki over OTLP
+> (`web/lib/observability/otlp-logs.ts`, BRAWUKA-607), and the alerts are six
+> Grafana-managed rules in the `CoffeeMode` folder (BRAWUKA-611). The decision
+> below is kept as the record of what was built and why; the ingest-credential
+> owner action it names is void. See `docs/devops/security-observability.md`
+> for the current design.
 
 ADR-0005 already adopted Better Stack for a bounded scope; this spec extends,
 does not replace:
@@ -260,6 +269,7 @@ does not replace:
 | `invalid_current_city` | **422** | profile | was 400 |
 | `invalid_last_location` | **422** | profile | was 400 |
 | `invalid_onboarded` | **422** | profile | was 400 |
+| `invalid_location` | 400 | profile | onboarding geolocation malformed — missed by the audit table; emitted by `parseLocateBody` |
 | `empty_patch` | 400 | request | PATCH with no fields |
 | `cafe_exists` | 409 | cafe | + `details.cafe_id` |
 | `cafe_has_other_checkins` | **409** | cafe | was 403 — state conflict, not authz; + `details.n` |
@@ -269,6 +279,7 @@ does not replace:
 | `invalid_maps_url` | 400 | places | URL host not allowlisted |
 | `poi_service` | passthrough | places | upstream worker status mirrored (502/404/413/422 only — client sanitizes) |
 | `image_service_error` | passthrough | images | same sanitization contract |
+| `size_exceeded` | 413 | images | photo bytes over the upload cap — missed by the audit table; emitted by upload route + image-service |
 | `mapkit_not_configured` | 503 | mapkit | |
 | `mapkit_token_error` | 500 | mapkit | |
 | `unresolvable` | 422 | poi-worker | no upstream provider for source |
@@ -328,9 +339,12 @@ complete; growth happens only with new routes.
 - Query retry: 404/401/403 are not retried (unit test on `shouldRetryQuery`
   with an `ApiError`-typed failure input).
 - Account deletion clears TanStack cache + IndexedDB persistors.
-- Better Stack `coffeemode-api-errors` source receives staging traffic; 5xx
+- ~~Better Stack `coffeemode-api-errors` source receives staging traffic; 5xx
   alert fires on a synthetic `internal_error` (same verification pattern as
-  the rate-limit alert).
+  the rate-limit alert).~~ **Superseded (BRAWUKA-611)**: the equivalent check is
+  now "a Grafana-managed rule in the `CoffeeMode` folder fires on a synthetic
+  event" — verified 2026-09-21 with a temporary Prometheus-backed probe rule
+  that reached `firing` with its `route` label templated.
 - No new runtime dependencies.
 
 ## Implementation slices
@@ -345,4 +359,5 @@ Sub-issues under BRAWUKA-535, staged (stage N+1 parks until N closes):
   (c) worker alignment (request-id, logging, secret scrub, auth order,
   wrangler observability). (a)(b)(c) are independent given Stage 1.
 - **Stage 3** — call-site migration to `apiFetch` (~30 sites) + 401/UX gap
-  fixes; Better Stack sources/dashboard/alerts (DevOps, owner-token dependent).
+  fixes; ~~Better Stack sources/dashboard/alerts (DevOps, owner-token
+  dependent)~~ **delivered on Grafana instead (BRAWUKA-607 / BRAWUKA-611)**.

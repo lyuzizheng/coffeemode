@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Deterministic gate: validate docs/agent/test-coverage.md traceability matrix
 # - matrix exists and mentions required traces
-# - table has rows for T1..T24
+# - table has rows for T1..T26
 # - every READY slice in docs/agent/implementation-slices.md has ≥1 row in §5
 # Exit non-zero on any failure (preflight-style).
 set -euo pipefail
@@ -54,9 +54,9 @@ else
   fail "matrix header missing expected columns (Trace/Spec/Layer/Proving file/Gate)"
 fi
 
-# T1..T24 rows present — every required trace must have a table row `| T<n> |`
+# T1..T26 rows present — every required trace must have a table row `| T<n> |`
 MISSING_T=0
-for i in $(seq 1 24); do
+for i in $(seq 1 26); do
   if grep -qE "^\| T${i} \|" "$MATRIX"; then
     ok "trace T${i} row present"
   else
@@ -65,7 +65,7 @@ for i in $(seq 1 24); do
   fi
 done
 if [[ $MISSING_T -eq 0 ]]; then
-  ok "all 24 traces T1..T24 have rows"
+  ok "all 26 traces T1..T26 have rows"
 fi
 
 # Every READY slice has ≥1 row in §5

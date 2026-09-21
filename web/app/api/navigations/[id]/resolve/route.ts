@@ -1,9 +1,8 @@
-import { logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
+import { apiRoute } from "@/lib/api/route";
 import { navigationPromptQueue, parsePromptAnswerBody } from "@/lib/db/navigations";
-import { guard, readJsonBody } from "@/lib/api/guard";
-import { requireSameOrigin } from "@/lib/security/origin";
+import { readJsonBody } from "@/lib/api/guard";
 import { isValidUUID } from "@shared/uuid";
 
 /**
@@ -17,41 +16,25 @@ import { isValidUUID } from "@shared/uuid";
  * check-in's `auto` resolution is never overwritten.
  * Requires auth; 404 when the navigation does not belong to the caller.
  */
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const originError = requireSameOrigin(request);
-  if (originError) return originError;
+export const POST = apiRoute<{ id: string }>(
+  { bucket: "cafes-write", auth: "required", origin: true, route: "POST /api/navigations/[id]/resolve" },
+  async (request, ctx) => {
+    const { id } = ctx.params;
+    if (!isValidUUID(id)) {
+      return apiError("invalid_request", "navigation id must be a UUID", { status: 400, requestId: ctx.requestId });
+    }
 
-  const { id } = await params;
-  if (!isValidUUID(id)) {
-    return apiError("invalid_request", "navigation id must be a UUID", { status: 400 });
-  }
+    const bodyRes = await readJsonBody(request, { requestId: ctx.requestId });
+    if (!bodyRes.ok) return bodyRes.response;
+    const parsed = parsePromptAnswerBody(bodyRes.data);
+    if (!parsed.ok) {
+      return apiError("invalid_request", parsed.message, { status: 400, requestId: ctx.requestId });
+    }
 
-  const bodyRes = await readJsonBody(request);
-  if (!bodyRes.ok) return bodyRes.response;
-  const parsed = parsePromptAnswerBody(bodyRes.data);
-  if (!parsed.ok) {
-    return apiError("invalid_request", parsed.message, { status: 400 });
-  }
-
-  const gate = await guard(request, {
-    bucket: "cafes-write",
-    requireAuth: true,
-    route: "POST /api/navigations/[id]/resolve",
-  });
-  if (!gate.ok) return gate.response;
-  const { user } = gate;
-
-  try {
-    const result = await navigationPromptQueue.answer(user.id, id, parsed.value.outcome);
+    const result = await navigationPromptQueue.answer(ctx.user.id, id, parsed.value.outcome);
     if (result.status === "gone") {
-      return apiError("not_found", "navigation not found", { status: 404 });
+      return apiError("not_found", "navigation not found", { status: 404, requestId: ctx.requestId });
     }
     return NextResponse.json({ outcome: result.outcome });
-  } catch (err) {
-    logError({ route: gate.route, request, error: err, status: 500 });
-    return apiError("internal_error", 500);
-  }
-}
+  },
+);

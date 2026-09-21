@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { guard } from "@/lib/api/guard";
+import { apiRoute } from "@/lib/api/route";
 import { apiError } from "@/lib/api/response";
 import { pingDatabase } from "@/lib/db/heartbeat";
 import { logError } from "@/lib/observability/server-log";
@@ -19,32 +19,33 @@ function resolveEnv(): string {
  * Supabase free-tier staging project sees genuine database activity — a
  * static JSON response would not count as activity and would not keep the
  * project awake. Unauthenticated by design; the body carries no secrets.
- * Better Stack polls this every 5–10 min; 503 on DB failure is the alert
- * signal. The WAF rule (BRAWUKA-237) whitelists the Better Stack UA plus
- * `cafemood-smoke/1.0` — curl's default UA is challenged at the edge.
+ * Nothing polls this on a schedule right now: the Better Stack uptime monitor
+ * that used to (every 5–10 min) was deleted with Better Stack itself
+ * (BRAWUKA-611), and its replacement — a Cloudflare cron Worker probe — is
+ * still P1-1. Until that lands, the only caller is the smoke test. 503 on DB
+ * failure is the alert signal. The WAF rule (BRAWUKA-237) whitelists
+ * `cafemood-smoke/1.0`; curl's default UA is challenged at the edge.
  */
-export async function GET(request: Request) {
-  const gate = await guard(request, {
-    bucket: "heartbeat",
-    route: "GET /api/heartbeat",
-    ipOnly: true,
-    user: null,
-  });
-  if (!gate.ok) return gate.response;
-  try {
-    await pingDatabase();
-  } catch (err) {
-    logError({ route: gate.route, request, error: err, status: 503 });
-    return apiError("db_unavailable", "database unavailable", { status: 503 });
-  }
-  return NextResponse.json(
-    {
-      ok: true,
-      env: resolveEnv(),
-      version: resolveAppVersion(),
-      db: "up",
-      ts: new Date().toISOString(),
-    },
-    { status: 200 },
-  );
-}
+export const GET = apiRoute(
+  { bucket: "heartbeat", route: "GET /api/heartbeat", ipOnly: true, user: null },
+  async (_request, ctx) => {
+    try {
+      await pingDatabase();
+    } catch (err) {
+      // 503 db_unavailable is the alert signal — keep the explicit logError
+      // so the error line carries the code.
+      logError({ route: ctx.route, requestId: ctx.requestId, error: err, status: 503, code: "db_unavailable" });
+      return apiError("db_unavailable", "database unavailable", { status: 503, requestId: ctx.requestId });
+    }
+    return NextResponse.json(
+      {
+        ok: true,
+        env: resolveEnv(),
+        version: resolveAppVersion(),
+        db: "up",
+        ts: new Date().toISOString(),
+      },
+      { status: 200 },
+    );
+  },
+);

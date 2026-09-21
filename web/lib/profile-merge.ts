@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/http";
 import type { Coordinates } from "@/lib/cities";
 
 /**
@@ -12,7 +13,7 @@ export async function persistProfile(patch: {
   lastLocation?: Coordinates;
 }): Promise<void> {
   try {
-    await fetch("/api/profile", {
+    await apiFetch("/api/profile", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),

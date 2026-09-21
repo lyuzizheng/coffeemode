@@ -6,6 +6,11 @@
  *
  * Column layout: the message sits above the action row so longer localized
  * copy (zh handoff text) never crams against the buttons.
+ *
+ * Disabled gates are split on purpose (BRAWUKA-577): `pending` means a
+ * request is in flight and freezes BOTH buttons; `confirmDisabled` gates
+ * only Confirm (e.g. type-to-confirm arming) — Cancel must stay live so the
+ * user can always back out before the request starts.
  */
 import type { ReactNode } from "react";
 import { Button } from "@heroui/react";
@@ -15,13 +20,17 @@ export function DangerConfirm({
   confirmLabel,
   cancelLabel,
   pending = false,
+  confirmDisabled = false,
   onCancel,
   onConfirm,
 }: {
   message: ReactNode;
   confirmLabel: string;
   cancelLabel: string;
+  /** Request in flight — freezes both buttons. */
   pending?: boolean;
+  /** Confirm-only gate (arming condition not met); Cancel stays live. */
+  confirmDisabled?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -42,7 +51,7 @@ export function DangerConfirm({
           variant="primary"
           size="sm"
           onPress={onConfirm}
-          isDisabled={pending}
+          isDisabled={pending || confirmDisabled}
           className="-my-1 bg-danger-solid text-xs text-white hover:bg-danger-solid/90"
         >
           {confirmLabel}

@@ -32,6 +32,7 @@ import { DiscoveryMapContext, type DiscoveryMapState } from "@/lib/discovery/map
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useMounted } from "@/hooks/use-mounted";
 import type { CafeSummary } from "@/types/cafes";
+import { apiFetch, ApiError } from "@/lib/http";
 import { CheckinDrawer } from "@/components/checkin/checkin-drawer";
 import { CafeCreationSheet } from "@/components/cafe/cafe-creation-sheet";
 import { UnifiedSearchPanel } from "@/components/search/unified-search-panel";
@@ -43,11 +44,13 @@ import type { CreationDraft } from "./use-discovery-search";
 import { DesktopDiscovery } from "./desktop-discovery";
 import { MobileSheet } from "./mobile-sheet";
 import { SHEET_PEEK_PX } from "@/lib/layout";
-
 async function fetchNearbyCafes(lat: number, lng: number): Promise<CafeSummary[]> {
-  const res = await fetch(`/api/cafes?lat=${lat}&lng=${lng}`);
-  if (!res.ok) throw new Error(`nearby cafes failed: ${res.status}`);
-  const data = (await res.json()) as { cafes: CafeSummary[] };
+  const data = await apiFetch<{ cafes: CafeSummary[] }>(`/api/cafes?lat=${lat}&lng=${lng}`);
+  // An empty/malformed 2xx is a contract violation, not an empty map —
+  // same treatment as fetchCafe/fetchFeedPage (BRAWUKA-540 review P2).
+  if (!data || !Array.isArray(data.cafes)) {
+    throw new ApiError({ status: 500, code: "internal_error" });
+  }
   return data.cafes;
 }
 
@@ -85,6 +88,17 @@ function MobileSearchOverlay({ search }: { search: DiscoverySearch }) {
       </div>
     </div>
   );
+}
+
+/**
+ * Remount key for the creation sheet: a new pick must remount it so the seed
+ * effect runs again (BRAWUKA-364). A live search pick carries a prediction
+ * instead of a POI, so it keys on the prediction's place id.
+ */
+function creationDraftKey(draft: CreationDraft | null): string {
+  if (draft?.poi) return `${draft.poi.source}:${draft.poi.place_id}`;
+  if (draft?.prediction) return `prediction:${draft.prediction.place_id}`;
+  return draft?.provider ?? "empty";
 }
 
 /** Everything floating above the map + columns: check-in drawer, creation
@@ -140,13 +154,15 @@ function DiscoveryOverlays({
         />
       ) : null}
       <CafeCreationSheet
-        key={creationDraft?.poi ? `${creationDraft.poi.source}:${creationDraft.poi.place_id}` : (creationDraft?.provider ?? "empty")}
+        key={creationDraftKey(creationDraft)}
         isOpen={creationOpen}
         onOpenChange={setCreationOpen}
         isAuthenticated={isAuthenticated}
         mapkitConfigured={mapkitConfigured}
         initialPoi={creationDraft?.poi ?? null}
         initialPersist={creationDraft?.persist ?? false}
+        initialPrediction={creationDraft?.prediction ?? null}
+        initialSession={creationDraft?.session}
         initialProvider={creationDraft?.provider ?? null}
       />
     </>

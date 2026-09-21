@@ -34,7 +34,7 @@ describe("GET /api/mapkit-token auth (BRAWUKA-296)", () => {
     const response = await GET(new Request("https://coffee.test/api/mapkit-token"));
 
     expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ error: "unauthorized" });
+    expect(await response.json()).toMatchObject({ error: "unauthorized" });
   });
 });
 
@@ -43,7 +43,7 @@ describe("GET /api/mapkit-token", () => {
     const response = await GET(new Request("https://coffee.test/api/mapkit-token"));
 
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ error: "mapkit_not_configured" });
+    expect(await response.json()).toMatchObject({ error: "mapkit_not_configured" });
   });
 
   it("creates a MapKit JS token with the required claims and P1363 signature", async () => {

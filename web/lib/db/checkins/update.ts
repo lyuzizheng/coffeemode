@@ -2,6 +2,7 @@ import "server-only";
 
 import { isValidUUID } from "@shared/uuid";
 import { recomputeWorkStats } from "@/lib/stats/aggregate";
+import type { PoolClient } from "pg";
 import {
   CheckInForbiddenError,
   CheckInNotFoundError,
@@ -16,10 +17,43 @@ import { txRunnerFrom, withTransaction } from "../postgres";
  * user, but visited_at can be backdated.
  * ------------------------------------------------------------------ */
 
+/**
+ * Check-in edit and soft-delete take the parent cafe-row lock before the
+ * check-in-row lock — the same cafe → checkin order deleteCafe and
+ * deleteAccount use. A bare SELECT on the check-in row first would lock
+ * checkin → cafe while deleteAccount locks cafe → checkin; on the same pair
+ * that is the classic opposite-order deadlock. The cafe id comes from the
+ * check-in's own row, so the lookup reads it lock-free (READ COMMITTED
+ * latest committed) and then acquires both locks in order; the subsequent
+ * SELECT ... FOR UPDATE re-validates the row after the locks are held.
+ */
+const SELECT_CHECKIN_CAFE_ID_SQL = `select cafe_id from checkins where id = $1`;
+const LOCK_CAFE_ROW_SQL = `select 1 from cafes where id = $1 for update`;
 const SELECT_CHECKIN_FOR_UPDATE_SQL = `
  select id, cafe_id, user_id, is_creation, scores, max_stay, note, photos, visited_at, deleted_at
  from checkins where id = $1 for update
 `;
+
+interface LockedCheckInRow {
+  id: string;
+  cafe_id: string;
+  user_id: string;
+  deleted_at: string | null;
+}
+
+async function lockCheckInCafeFirst(
+  client: PoolClient,
+  checkinId: string,
+): Promise<LockedCheckInRow | undefined> {
+  const cafeLookup = await client.query<{ cafe_id: string }>(SELECT_CHECKIN_CAFE_ID_SQL, [checkinId]);
+  const cafeId = cafeLookup.rows[0]?.cafe_id;
+  // Missing row: nothing to lock — the caller maps it to 404 below.
+  if (cafeId !== undefined) {
+    await client.query(LOCK_CAFE_ROW_SQL, [cafeId]);
+  }
+  const existing = await client.query<LockedCheckInRow>(SELECT_CHECKIN_FOR_UPDATE_SQL, [checkinId]);
+  return existing.rows[0];
+}
 
 export async function updateCheckIn(
   userId: string,
@@ -29,14 +63,7 @@ export async function updateCheckIn(
   if (!isValidUUID(userId) || !isValidUUID(checkinId)) throw new Error("Invalid user or check-in ID");
 
   return withTransaction(async (client) => {
-    const existing = await client.query<{
-      id: string;
-      cafe_id: string;
-      user_id: string;
-      deleted_at: string | null;
-    }>(SELECT_CHECKIN_FOR_UPDATE_SQL, [checkinId]);
-
-    const row = existing.rows[0];
+    const row = await lockCheckInCafeFirst(client, checkinId);
     if (!row || row.deleted_at !== null) throw new CheckInNotFoundError();
     if (row.user_id !== userId) throw new CheckInForbiddenError();
 
@@ -78,14 +105,7 @@ export async function softDeleteCheckIn(userId: string, checkinId: string): Prom
   if (!isValidUUID(userId) || !isValidUUID(checkinId)) throw new Error("Invalid user or check-in ID");
 
   return withTransaction(async (client) => {
-    const existing = await client.query<{
-      id: string;
-      cafe_id: string;
-      user_id: string;
-      deleted_at: string | null;
-    }>(SELECT_CHECKIN_FOR_UPDATE_SQL, [checkinId]);
-
-    const row = existing.rows[0];
+    const row = await lockCheckInCafeFirst(client, checkinId);
     if (!row || row.deleted_at !== null) throw new CheckInNotFoundError();
     if (row.user_id !== userId) throw new CheckInForbiddenError();
 

@@ -60,7 +60,7 @@ describe("POST /api/images/upload", () => {
 
   it("rejects size above MAX_UPLOAD_BYTES", async () => {
     const res = await POST(makeRequest({ size: MAX_UPLOAD_BYTES + 1 }));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(413);
     await expect(res.json()).resolves.toMatchObject({ error: "size_exceeded" });
     expect(requestUploadUrlMock).not.toHaveBeenCalled();
   });
@@ -68,7 +68,7 @@ describe("POST /api/images/upload", () => {
   it("forwards a valid size to the image service", async () => {
     const res = await POST(makeRequest({ size: 2048 }));
     expect(res.status).toBe(200);
-    expect(requestUploadUrlMock).toHaveBeenCalledWith(2048);
+    expect(requestUploadUrlMock).toHaveBeenCalledWith(2048, expect.any(String));
   });
 
   it("binds the issued imageUuid to the session user (issue #33)", async () => {

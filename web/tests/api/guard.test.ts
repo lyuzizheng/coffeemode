@@ -48,7 +48,7 @@ describe("guard helper (BRAWUKA-181)", () => {
       if (!result.ok) {
         expect(result.response.status).toBe(401);
         const body = await result.response.json();
-        expect(body).toEqual({ error: "unauthorized" });
+        expect(body).toMatchObject({ error: "unauthorized" });
       }
       expect(checkRateLimit).not.toHaveBeenCalled();
     });
@@ -70,7 +70,7 @@ describe("guard helper (BRAWUKA-181)", () => {
       }
       expect(checkRateLimit).toHaveBeenCalledWith(
         "cafes-read",
-        expect.stringMatching(/^anon:/),
+        expect.objectContaining({ id: expect.stringMatching(/^anon:/) }),
         expect.any(Array),
         "GET /api/cafes",
       );
@@ -93,7 +93,7 @@ describe("guard helper (BRAWUKA-181)", () => {
       }
       expect(checkRateLimit).toHaveBeenCalledWith(
         "cafes-write",
-        `user:${mockUser.id}`,
+        expect.objectContaining({ id: `user:${mockUser.id}` }),
         expect.any(Array),
         "POST /api/cafes",
       );
@@ -143,7 +143,7 @@ describe("guard helper (BRAWUKA-181)", () => {
         const body = await result.response.json();
         // Machine code only (BRAWUKA-280): the client renders its own
         // localized fallback, never hardcoded English from the envelope.
-        expect(body).toEqual({ error: "rate_limited" });
+        expect(body).toMatchObject({ error: "rate_limited" });
       }
     });
 
@@ -164,7 +164,7 @@ describe("guard helper (BRAWUKA-181)", () => {
       }
       expect(checkRateLimit).toHaveBeenCalledWith(
         "search",
-        expect.stringMatching(/^anon:/),
+        expect.objectContaining({ id: expect.stringMatching(/^anon:/) }),
         expect.any(Array),
         "GET /api/search",
       );
@@ -203,7 +203,7 @@ describe("guard helper (BRAWUKA-181)", () => {
       }
       expect(checkRateLimit).toHaveBeenCalledWith(
         "cafes-read",
-        expect.any(String),
+        expect.objectContaining({ id: expect.any(String) }),
         expect.any(Array),
         "GET /api/cafes",
       );
@@ -236,7 +236,7 @@ describe("readJsonBody helper (BRAWUKA-181)", () => {
     if (!result.ok) {
       expect(result.response.status).toBe(400);
       const body = await result.response.json();
-      expect(body).toEqual({
+      expect(body).toMatchObject({
         error: "invalid_request",
         message: "invalid JSON body",
       });
@@ -254,7 +254,7 @@ describe("readJsonBody helper (BRAWUKA-181)", () => {
     if (!result.ok) {
       expect(result.response.status).toBe(400);
       const body = await result.response.json();
-      expect(body).toEqual({
+      expect(body).toMatchObject({
         error: "invalid_request",
         message: "invalid JSON body",
       });
@@ -286,7 +286,7 @@ describe("readJsonBody helper (BRAWUKA-181)", () => {
     if (!result.ok) {
       expect(result.response.status).toBe(413);
       const body = await result.response.json();
-      expect(body).toEqual({
+      expect(body).toMatchObject({
         error: "invalid_request",
         message: "request body too large",
       });
@@ -315,7 +315,7 @@ describe("readJsonBody helper (BRAWUKA-181)", () => {
     if (!result.ok) {
       expect(result.response.status).toBe(413);
       const body = await result.response.json();
-      expect(body).toEqual({
+      expect(body).toMatchObject({
         error: "invalid_request",
         message: "request body too large",
       });

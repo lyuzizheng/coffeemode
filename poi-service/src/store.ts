@@ -7,7 +7,6 @@ import {
   CACHE_TTL_SECONDS,
   DEFAULT_SEARCH_RADIUS_KM,
   POI_EXPIRY_SECONDS,
-  SEARCH_QUERY_CACHE_TTL_SECONDS,
   SEARCH_RESULT_LIMIT,
 } from "./constants";
 import type { D1Like, KVLike, POI, POISearchHit } from "./types";
@@ -35,40 +34,6 @@ export async function kvPutPOI(kv: KVLike, poi: POI): Promise<void> {
  */
 export function kvDeletePOI(kv: KVLike, placeId: string): Promise<void> {
   return kv.delete(`${POI_PREFIX}${placeId}`);
-}
-
-// --- Live Google query-level cache (BRAWUKA-283 P2-2) ---
-
-const QUERY_PREFIX = "q:google:";
-
-/**
- * Normalize a live-search request into a stable KV key. The text is
- * lowercased, collapsed, and truncated so "Blue  Bottle" and "blue bottle"
- * share an entry; coordinates snap to a ~0.01° grid (~1.1km lat) so nearby
- * map pans reuse the same upstream response instead of billing again.
- */
-export function searchQueryKey(q: string, lat?: number, lng?: number, radiusKm?: number): string {
-  const normalizedQ = q.trim().toLowerCase().replace(/\s+/g, " ").slice(0, 200);
-  const grid =
-    lat !== undefined && lng !== undefined
-      ? `${Math.floor(lat * 100) / 100},${Math.floor(lng * 100) / 100}`
-      : "nolatlng";
-  return `${QUERY_PREFIX}${normalizedQ}:${grid}:${radiusKm ?? ""}`;
-}
-
-export async function kvGetSearchQuery(kv: KVLike, key: string): Promise<POI[] | null> {
-  const raw = await kv.get(key);
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as { results?: unknown };
-    return Array.isArray(parsed.results) ? (parsed.results as POI[]) : null;
-  } catch {
-    return null;
-  }
-}
-
-export function kvPutSearchQuery(kv: KVLike, key: string, results: POI[]): Promise<void> {
-  return kv.put(key, JSON.stringify({ results }), { expirationTtl: SEARCH_QUERY_CACHE_TTL_SECONDS });
 }
 
 // --- D1 bounded cache ---

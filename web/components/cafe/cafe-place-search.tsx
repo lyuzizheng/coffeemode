@@ -10,11 +10,11 @@ import {
 } from "@heroui/react";
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { isUnauthorized, responseMessage } from "@/lib/http";
+import { apiErrorMessage, apiFetch, isUnauthorized } from "@/lib/http";
 import { getSearchExternalSources } from "@/lib/client-env";
 import { readOnboardingState } from "@/lib/onboarding-store";
 import { getPlaceSearchProviders } from "@/lib/places/providers";
-import type { PlaceSearchProvider } from "@/lib/places/place-search";
+import type { PlaceCandidate, PlaceSearchProvider } from "@/lib/places/place-search";
 import {
   executeWidgetForToken,
   getTurnstileSiteKey,
@@ -29,8 +29,9 @@ type EntryMode = "link" | "search";
 interface CafePlaceSearchProps {
   onSelectPOI: (poi: POI, persist?: boolean) => void;
   onError: (error: string | null) => void;
-  /** `GET /api/places/search?source=google` is auth-gated; a 401 belongs to the
-      drawer's sign-in gate, not to this component's alert slot. */
+  /** `GET /api/places/autocomplete` and `GET /api/places/details` are
+      auth-gated; a 401 belongs to the drawer's sign-in gate, not to this
+      component's alert slot. */
   onRequireSignIn: () => void;
   /** DG143 request-time MapKit readiness, drilled from the server page. */
   mapkitConfigured: boolean;
@@ -53,9 +54,10 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn, mapkitC
   );
   const [mapsUrl, setMapsUrl] = useState("");
   const [query, setQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<POI[]>([]);
+  const [candidates, setCandidates] = useState<PlaceCandidate[]>([]);
   const [busy, setBusy] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [turnstileReady, setTurnstileReady] = useState(false);
   const turnstileRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
@@ -145,7 +147,7 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn, mapkitC
     setBusy(true);
     onError(null);
     try {
-      const response = await fetch("/api/places/resolve", {
+      const resolvedPoi = await apiFetch<POI>("/api/places/resolve", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -153,11 +155,9 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn, mapkitC
           ...(turnstileToken ? { "cf-turnstile-response": turnstileToken } : {}),
         }),
       });
-      if (!response.ok) throw new Error(await responseMessage(response, t("resolveFailed")));
-      const resolvedPoi = (await response.json()) as POI;
       onSelectPOI(resolvedPoi);
     } catch (cause) {
-      onError(cause instanceof Error ? cause.message : t("resolveFailed"));
+      onError(apiErrorMessage(cause, t("resolveFailed")));
     } finally {
       setBusy(false);
       if (sitekey && widgetId) {
@@ -178,15 +178,37 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn, mapkitC
     try {
       // Bias live results toward the user's known center (BRAWUKA-280).
       const bias = readOnboardingState()?.lastLocation ?? null;
-      setSearchResults(await provider.search(query.trim(), bias ?? undefined));
+      setCandidates(await provider.search(query.trim(), bias ?? undefined));
     } catch (cause) {
       if (isUnauthorized(cause)) {
         onRequireSignIn();
         return;
       }
-      onError(cause instanceof Error ? cause.message : t("searchFailed"));
+      onError(apiErrorMessage(cause, t("searchFailed")));
     } finally {
       setSearching(false);
+    }
+  };
+
+  // Selection is the billed half of the two-phase search (BRAWUKA-602): the
+  // provider turns the prediction into a full POI here, and only then does the
+  // sheet move on to the form.
+  const selectCandidate = async (candidate: PlaceCandidate) => {
+    if (!provider || resolvingId !== null) return;
+    setResolvingId(candidate.prediction.place_id);
+    onError(null);
+    try {
+      const poi = await provider.resolve(candidate);
+      setCandidates([]);
+      onSelectPOI(poi, provider.persistOnSelect);
+    } catch (cause) {
+      if (isUnauthorized(cause)) {
+        onRequireSignIn();
+        return;
+      }
+      onError(apiErrorMessage(cause, t("searchFailed")));
+    } finally {
+      setResolvingId(null);
     }
   };
 
@@ -250,7 +272,7 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn, mapkitC
                 aria-pressed={provider?.id === candidate.id}
                 onClick={() => {
                   setProvider(candidate);
-                  setSearchResults([]);
+                  setCandidates([]);
                   onError(null);
                 }}
                 className={`cm-focus flex h-9 items-center rounded-sm border px-3 text-xs font-medium ${
@@ -279,23 +301,31 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn, mapkitC
               </Button>
             </form>
           )}
-          {searchResults.length > 0 ? (
+          {candidates.length > 0 ? (
             <div className="space-y-2" aria-label={t("searchResults")}>
-              {searchResults.map((result) => (
+              {candidates.map((candidate) => (
                 <button
-                  key={result.place_id}
+                  key={candidate.prediction.place_id}
                   type="button"
-                  className="cm-focus flex w-full items-start justify-between gap-3 rounded-md border border-border bg-surface p-3 text-left hover:bg-surface-secondary"
-                  onClick={() => {
-                    setSearchResults([]);
-                    onSelectPOI(result, provider?.persistOnSelect);
-                  }}
+                  disabled={resolvingId !== null}
+                  className="cm-focus flex w-full items-start justify-between gap-3 rounded-md border border-border bg-surface p-3 text-left hover:bg-surface-secondary disabled:opacity-60"
+                  onClick={() => void selectCandidate(candidate)}
                 >
                   <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium text-foreground">{result.name}</span>
-                    <span className="mt-1 block truncate text-xs text-muted">{result.address ?? t("noAddress")}</span>
+                    <span className="block truncate text-sm font-medium text-foreground">
+                      {candidate.prediction.name}
+                    </span>
+                    <span className="mt-1 block truncate text-xs text-muted">
+                      {candidate.prediction.address ?? t("noAddress")}
+                    </span>
                   </span>
-                  <span className="shrink-0 font-mono text-xs uppercase text-muted">{provider?.label}</span>
+                  <span className="shrink-0 font-mono text-xs uppercase text-muted">
+                    {resolvingId === candidate.prediction.place_id ? (
+                      <Spinner size="sm" />
+                    ) : (
+                      provider?.label
+                    )}
+                  </span>
                 </button>
               ))}
             </div>

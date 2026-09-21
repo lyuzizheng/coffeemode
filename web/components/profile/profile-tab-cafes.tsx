@@ -8,15 +8,18 @@ import { Button } from "@heroui/react";
 import { CoffeeIcon } from "@/components/icons";
 import { PrivateBadge } from "@/components/cafe/private-badge";
 import { THUMB_PX } from "@/lib/layout";
+import { apiFetch, isUnauthorized } from "@/lib/http";
+import { SignInGate } from "@/components/auth/sign-in-gate";
 import { ErrorRow } from "./profile-error-row";
 import type { UserCafeItemDto } from "@/lib/db/profile";
 
 export async function fetchUserCafes(cursor?: string) {
-  const url = new URL("/api/profile/cafes", window.location.origin);
-  if (cursor) url.searchParams.set("cursor", cursor);
-  const res = await fetch(url.toString());
-  if (!res.ok) throw new Error("Failed to load cafes");
-  return (await res.json()) as { items: UserCafeItemDto[]; next_cursor: string | null };
+  const params = new URLSearchParams();
+  if (cursor) params.set("cursor", cursor);
+  const qs = params.toString();
+  return apiFetch<{ items: UserCafeItemDto[]; next_cursor: string | null }>(
+    `/api/profile/cafes${qs ? `?${qs}` : ""}`,
+  );
 }
 
 interface ProfileTabCafesProps {
@@ -37,13 +40,18 @@ export function ProfileTabCafes({ baseId, query: cafesQuery }: ProfileTabCafesPr
       aria-labelledby={`${baseId}-tab-map`}
       className="flex flex-col gap-3"
     >
-      {cafesQuery.isError && (
-        <ErrorRow
-          errorText={t("load_error")}
-          retryText={t("retry")}
-          onRetry={() => void cafesQuery.refetch()}
-        />
-      )}
+      {cafesQuery.isError &&
+        (isUnauthorized(cafesQuery.error) ? (
+          // Session died under a mounted tab — the gate, not a retry that
+          // can only 401 again (BRAWUKA-540).
+          <SignInGate message={t("gate_body")} next="/profile" />
+        ) : (
+          <ErrorRow
+            errorText={t("load_error")}
+            retryText={t("retry")}
+            onRetry={() => void cafesQuery.refetch()}
+          />
+        ))}
 
       {!cafesQuery.isError && cafes.length === 0 && !cafesQuery.isLoading && (
         <div className="py-12 flex flex-col items-center justify-center text-center gap-3">

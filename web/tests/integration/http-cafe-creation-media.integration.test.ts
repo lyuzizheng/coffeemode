@@ -15,7 +15,8 @@ import { POST as cafesPOST, GET as cafesGET } from "@/app/api/cafes/route";
 import { GET as cafeDetailGET } from "@/app/api/cafes/[id]/route";
 import { GET as checkinsGET } from "@/app/api/cafes/[id]/checkins/route";
 import { POST as uploadPOST } from "@/app/api/images/upload/route";
-import { GET as placesSearchGET } from "@/app/api/places/search/route";
+import { GET as placesAutocompleteGET } from "@/app/api/places/autocomplete/route";
+import { GET as placesDetailsGET } from "@/app/api/places/details/route";
 import { POST as placesResolvePOST } from "@/app/api/places/resolve/route";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import type * as ImageServiceClient from "@/lib/images/image-service-client";
@@ -56,15 +57,40 @@ vi.mock("@/lib/auth/get-user", () => ({
   getCurrentUser: vi.fn(),
 }));
 
+// Records what the route handed the POI seam, so the suite can assert the
+// Autocomplete session token is forwarded end to end (BRAWUKA-602) — that
+// pairing is the whole billing contract.
+const poiSeamCalls: {
+  autocomplete?: { q: string; session: string };
+  details?: { placeId: string; session?: string };
+} = {};
+
 // Mock POI client seam (mandatory): spec 0008 §5 — standard Google POI shape, zero external network requests
-vi.mock("@/lib/places/poi-client", () => {
+vi.mock("@/lib/places/poi-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/places/poi-client")>();
   return {
-    searchExternalPOIs: vi.fn(async ({ q }: { q?: string }) => {
-      return createMockGooglePlacesResponse({
-        name: q ? `${q} Seed Roasters` : "Google POI Seed Roasters",
-      });
-    }),
+    ...actual,
     searchPOIs: vi.fn(async () => ({ results: [] })),
+    // Two-phase live search (BRAWUKA-602): predictions while typing, Place
+    // Details on selection. Both are mocked so the suite makes zero external
+    // network calls (spec 0008 §5).
+    autocompletePOIs: vi.fn(async (params: { q: string; session: string }) => {
+      poiSeamCalls.autocomplete = params;
+      return {
+        predictions: createMockGooglePlacesResponse().results.map((poi) => ({
+          place_id: poi.place_id,
+          source: poi.source,
+          name: poi.name,
+          address: poi.address,
+          types: poi.types,
+        })),
+      };
+    }),
+    getPOI: vi.fn(async (placeId: string, session?: string) => {
+      poiSeamCalls.details = { placeId, session };
+      const results = createMockGooglePlacesResponse().results;
+      return results.find((poi) => poi.place_id === placeId) ?? results[0]!;
+    }),
     resolveMapsUrl: vi.fn(async (mapsShareUrl: string) => {
       const match = mapsShareUrl.match(/place\/([^/?]+)/);
       const name = match ? decodeURIComponent(match[1].replace(/\+/g, " ")) : "Resolved Maps Cafe";
@@ -263,27 +289,55 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
   // =========================================================================
 
   it("Path 2: mock POI client injects standard Google POI and verifies zero external network calls", async () => {
-    // 1. Authenticated Google Places search via POI proxy
-    const searchRes = await clientA.get<{ results: Array<{ place_id: string; name: string; source: string; types: string[]; business_status: string }> }>(
-      placesSearchGET,
-      "/api/places/search",
-      { query: { source: "google", q: "Orchard Nomad" } },
-    );
-    expect(searchRes.status).toBe(200);
-    expect(searchRes.data.results).toBeInstanceOf(Array);
-    expect(searchRes.data.results.length).toBeGreaterThan(0);
+    // 1. Typing phase: Autocomplete (New) predictions through the POI proxy.
+    //    One session token spans both phases — that pairing is what moves the
+    //    typing phase into the $0 Autocomplete Session Usage SKU.
+    const session = randomUUID();
+    const autocompleteRes = await clientA.get<{
+      predictions: Array<{ place_id: string; name: string; source: string; types: string[] }>;
+    }>(placesAutocompleteGET, "/api/places/autocomplete", {
+      query: { q: "Orchard Nomad", session },
+    });
+    expect(autocompleteRes.status).toBe(200);
+    expect(autocompleteRes.data.predictions).toBeInstanceOf(Array);
+    expect(autocompleteRes.data.predictions.length).toBeGreaterThan(0);
 
-    const hit = searchRes.data.results[0]!;
-    expect(hit.source).toBe("google");
-    expect(hit.place_id).toMatch(/^ChIJ/);
-    expect(hit.types).toContain("cafe");
-    expect(hit.business_status).toBe("OPERATIONAL");
+    const prediction = autocompleteRes.data.predictions[0]!;
+    expect(prediction.source).toBe("google");
+    expect(prediction.place_id).toMatch(/^ChIJ/);
+    expect(prediction.types).toContain("cafe");
 
-    // Anonymous Google POI search is rejected with 401 (cost protection)
+    // The route forwarded the caller's session token to the POI client — the
+    // typing phase only bills at $0 if this token reaches Google.
+    expect(poiSeamCalls.autocomplete?.q).toBe("Orchard Nomad");
+    expect(poiSeamCalls.autocomplete?.session).toBe(session);
+
+    // 2. Selection phase: Place Details terminates the session and returns the
+    //    full POI — the only billed call in the flow.
+    const detailsRes = await clientA.get<{
+      place_id: string;
+      source: string;
+      types: string[];
+      business_status: string;
+    }>(placesDetailsGET, "/api/places/details", {
+      query: { place_id: prediction.place_id, session },
+    });
+    expect(detailsRes.status).toBe(200);
+    expect(detailsRes.data.place_id).toBe(prediction.place_id);
+    expect(detailsRes.data.source).toBe("google");
+    expect(detailsRes.data.types).toContain("cafe");
+    expect(detailsRes.data.business_status).toBe("OPERATIONAL");
+
+    // Same token on the Details call: that is what closes the session and
+    // moves the Autocomplete requests above into the $0 SKU.
+    expect(poiSeamCalls.details?.placeId).toBe(prediction.place_id);
+    expect(poiSeamCalls.details?.session).toBe(session);
+
+    // Anonymous live search is rejected with 401 (cost protection)
     const anonSearch = await guestClient.get(
-      placesSearchGET,
-      "/api/places/search",
-      { query: { source: "google", q: "Orchard Nomad" } },
+      placesAutocompleteGET,
+      "/api/places/autocomplete",
+      { query: { q: "Orchard Nomad", session: randomUUID() } },
     );
     expect(anonSearch.status).toBe(401);
     expect(anonSearch.data).toMatchObject({ error: "unauthorized" });
@@ -326,7 +380,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     expect(negativeSizeUpload.data).toMatchObject({ error: "invalid_request" });
 
     const oversizedUpload = await clientA.post(uploadPOST, "/api/images/upload", { size: 15 * 1024 * 1024 });
-    expect(oversizedUpload.status).toBe(400);
+    expect(oversizedUpload.status).toBe(413);
     expect(oversizedUpload.data).toMatchObject({ error: "size_exceeded" });
 
     // 4. Successful upload round-trip
@@ -530,6 +584,10 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     ];
 
     for (const testCase of cases) {
+      // guard() (auth + rate limit) runs before body validation, so every
+      // malformed POST still spends cafes-write budget (10/min). Reset per
+      // case so the matrix can't trip 429 (spec 0011 ordering, BRAWUKA-537).
+      await resetRateLimits();
       const res = await clientA.post(cafesPOST, "/api/cafes", testCase.body);
       expect(res.status, `Expected 400 for ${testCase.name}`).toBe(400);
       expect(res.data, `Expected invalid_request for ${testCase.name}`).toMatchObject({
@@ -539,10 +597,10 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
   });
 
   // =========================================================================
-  // 4. Photo Intent Misuse & Abuse (400 invalid_photos)
+  // 4. Photo Intent Misuse & Abuse (422 invalid_photos)
   // =========================================================================
 
-  it("Path 2: POST /api/cafes rejects unissued and foreign photo IDs with 400 invalid_photos", async () => {
+  it("Path 2: POST /api/cafes rejects unissued and foreign photo IDs with 422 invalid_photos", async () => {
     // 1. Unissued photo UUID (never went through /api/images/upload)
     const unissuedUuid = randomUUID();
     const unissuedRes = await clientA.post(cafesPOST, "/api/cafes", {
@@ -556,7 +614,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
         photo_ids: [unissuedUuid],
       },
     });
-    expect(unissuedRes.status).toBe(400);
+    expect(unissuedRes.status).toBe(422);
     expect(unissuedRes.data).toMatchObject({ error: "invalid_photos" });
 
     // 2. Foreign photo UUID: User B uploads an image, User A attempts to consume it
@@ -572,7 +630,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
         photo_ids: [uploadB.imageUuid],
       },
     });
-    expect(foreignRes.status).toBe(400);
+    expect(foreignRes.status).toBe(422);
     expect(foreignRes.data).toMatchObject({ error: "invalid_photos" });
   });
 
@@ -715,7 +773,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
   });
 
   // =========================================================================
-  // 6. Photo Re-use Protection (Edge Case 5 / 400 invalid_photos)
+  // 6. Photo Re-use Protection (Edge Case 5 / 422 invalid_photos)
   // =========================================================================
 
   it("Path 2: POST /api/cafes rejects reused already-consumed photo ID on subsequent creation (Edge Case 5)", async () => {
@@ -747,7 +805,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
         photo_ids: [uploadA.imageUuid],
       },
     });
-    expect(reusedRes.status).toBe(400);
+    expect(reusedRes.status).toBe(422);
     expect(reusedRes.data).toMatchObject({ error: "invalid_photos" });
   });
 

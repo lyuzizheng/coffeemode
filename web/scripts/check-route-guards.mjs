@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 /**
- * Automated Route Guard Verification Script (BRAWUKA-181 / B-STD-2)
+ * Automated Route Guard Verification Script (BRAWUKA-181 / B-STD-2,
+ * BRAWUKA-537 / spec 0011 D5)
  *
- * Enforces that every API route handler under web/app/api (except lightweight health check)
- * properly invokes `guard(...)` from `@/lib/api/guard` and does not leak unguarded
- * HTTP endpoints or use redundant local rate-limiting boilerplate.
+ * Enforces that every API route handler under web/app/api (except the
+ * exemption list) is exported through `apiRoute(...)` — the wrapper owns
+ * request-id, origin check, guard() (auth + rate limit), and the error
+ * catch-all. Bare `export function METHOD`, direct `guard()` /
+ * `requireSameOrigin()` calls in route files, and mutating exports without
+ * `origin: true` are violations.
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -13,9 +17,10 @@ import { fileURLToPath } from "node:url";
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH"];
 const MUTATING_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);
-// Explicitly exempted routes with documented architectural reasons
+// Explicitly exempted routes with documented architectural reasons (spec 0011 D5)
 const EXEMPT_ROUTES = new Set([
   "app/api/health/route.ts", // Lightweight probe for Docker / Dokploy / Traefik
+  "app/cafes/[id]/og-image/route.tsx", // Image bytes, not the JSON envelope
 ]);
 
 function findRouteFiles(dir, fileList = []) {
@@ -51,48 +56,68 @@ export function checkRouteGuards(webRootDir) {
     if (EXEMPT_ROUTES.has(relPath)) {
       continue;
     }
+    violations.push(...checkRouteFile(relPath, readFileSync(filePath, "utf-8")));
+  }
 
-    const content = readFileSync(filePath, "utf-8");
+  return violations;
+}
 
-    // Check for deprecated raw rate limit primitives
-    if (content.includes("checkRateLimit(")) {
+function checkRouteFile(relPath, content) {
+  const violations = [];
+
+  // Check for deprecated raw rate limit primitives
+  if (content.includes("checkRateLimit(")) {
+    violations.push({
+      file: relPath,
+      reason: "Direct call to checkRateLimit() found; must use apiRoute() wrapper",
+    });
+  }
+  if (content.includes("rateLimitResponse(")) {
+    violations.push({
+      file: relPath,
+      reason: "Direct call to rateLimitResponse() found; must use apiRoute() wrapper",
+    });
+  }
+
+  // Strip comments to check actual calls, not imports or comments
+  const strippedContent = content.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "");
+  // The wrapper owns guard() and requireSameOrigin() — route files must
+  // not call them directly.
+  if (/\bguard\s*\(/.test(strippedContent)) {
+    violations.push({
+      file: relPath,
+      reason: "Direct call to guard() found; must use apiRoute() wrapper",
+    });
+  }
+  if (/\brequireSameOrigin\s*\(/.test(strippedContent)) {
+    violations.push({
+      file: relPath,
+      reason: "Direct call to requireSameOrigin() found; pass origin: true to apiRoute()",
+    });
+  }
+
+  // Check exported HTTP methods
+  for (const method of HTTP_METHODS) {
+    const bareFn = new RegExp(`export\\s+(async\\s+)?function\\s+${method}\\b`);
+    if (bareFn.test(content)) {
       violations.push({
         file: relPath,
-        reason: "Direct call to checkRateLimit() found; must use guard() helper",
+        method,
+        reason: `Exported handler ${method} is a bare function; must be export const ${method} = apiRoute(...)`,
       });
+      continue;
     }
-    if (content.includes("rateLimitResponse(")) {
+    const wrapped = new RegExp(
+      `export\\s+const\\s+${method}\\s*=\\s*apiRoute(?:<[^>]*>)?\\s*\\(\\s*\\{([^}]*)\\}`,
+    );
+    const match = content.match(wrapped);
+    if (!match) continue; // method not exported
+    if (MUTATING_METHODS.has(method) && !/\borigin\s*:\s*true\b/.test(match[1])) {
       violations.push({
         file: relPath,
-        reason: "Direct call to rateLimitResponse() found; must use guard() helper",
+        method,
+        reason: `Mutating handler ${method} missing origin: true in apiRoute() options`,
       });
-    }
-
-    // Check exported HTTP methods
-    // Strip comments to check actual calls, not imports or comments
-    const strippedContent = content.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "");
-    const hasGuardCall = /\bguard\s*\(/.test(strippedContent);
-    const hasRequireSameOriginCall = /\brequireSameOrigin\s*\(/.test(strippedContent);
-
-    // Check exported HTTP methods
-    for (const method of HTTP_METHODS) {
-      const exportRegex = new RegExp(`export\\s+(async\\s+)?function\\s+${method}\\b`);
-      if (exportRegex.test(content)) {
-        if (!hasGuardCall) {
-          violations.push({
-            file: relPath,
-            method,
-            reason: `Exported handler ${method} missing call to guard()`,
-          });
-        }
-        if (MUTATING_METHODS.has(method) && !hasRequireSameOriginCall) {
-          violations.push({
-            file: relPath,
-            method,
-            reason: `Mutating handler ${method} missing call to requireSameOrigin()`,
-          });
-        }
-      }
     }
   }
 

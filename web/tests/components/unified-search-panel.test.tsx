@@ -308,6 +308,27 @@ describe("UnifiedSearchPanel filters (BRAWUKA-512, DG44–DG58)", () => {
     );
   }
 
+  /** Stateful host with a city scope — mirrors `useDiscoverySearch`. */
+  function CityPanel({ fetchSearch }: { fetchSearch: FetchSearch }) {
+    const [city, setCity] = useState("singapore");
+    return (
+      <NextIntlClientProvider locale="en" messages={en}>
+        <UnifiedSearchPanel
+          externalSources={{ google: true, apple: false }}
+          mapkitConfigured={false}
+          city={city}
+          onCityChange={setCity}
+          onSelectResult={() => {}}
+          onExternalSearch={() => {}}
+          fetchSearch={fetchSearch}
+        />
+        <button type="button" onClick={() => setCity("tokyo")}>
+          Switch city
+        </button>
+      </NextIntlClientProvider>
+    );
+  }
+
   const advance = async (ms: number) => {
     await act(async () => {
       vi.advanceTimersByTime(ms);
@@ -368,4 +389,44 @@ describe("UnifiedSearchPanel filters (BRAWUKA-512, DG44–DG58)", () => {
     expect(screen.getByRole("button", { name: "Filters" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Remove Open now" })).not.toBeInTheDocument();
   });
+
+  it("refetches when filters change while the query is unchanged (BRAWUKA-567)", async () => {
+    const fetchSearch = vi.fn<FetchSearch>(() => Promise.resolve(makeResponse(["Cafe A"])));
+    render(<FilteredPanel fetchSearch={fetchSearch} />);
+    const input = screen.getByPlaceholderText("Search cafes, neighborhoods, or addresses");
+
+    fireEvent.change(input, { target: { value: "cafe" } });
+    await advance(400);
+    expect(fetchSearch).toHaveBeenCalledTimes(1);
+
+    // Same query, new filter — the dedupe key covers the whole request.
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Open now" }));
+    await advance(400);
+
+    expect(fetchSearch).toHaveBeenCalledTimes(2);
+    const params = fetchSearch.mock.calls.at(-1)?.[0];
+    expect(params?.q).toBe("cafe");
+    expect(params?.filters?.openNow).toBe(true);
+  });
+
+  it("refetches when the city scope changes while the query is unchanged (BRAWUKA-567)", async () => {
+    const fetchSearch = vi.fn<FetchSearch>(() => Promise.resolve(makeResponse(["Cafe A"])));
+    render(<CityPanel fetchSearch={fetchSearch} />);
+    const input = screen.getByPlaceholderText("Search cafes, neighborhoods, or addresses");
+
+    fireEvent.change(input, { target: { value: "cafe" } });
+    await advance(400);
+    expect(fetchSearch).toHaveBeenCalledTimes(1);
+    expect(fetchSearch.mock.calls.at(-1)?.[0].city).toBe("singapore");
+
+    fireEvent.click(screen.getByRole("button", { name: "Switch city" }));
+    await advance(400);
+
+    expect(fetchSearch).toHaveBeenCalledTimes(2);
+    const params = fetchSearch.mock.calls.at(-1)?.[0];
+    expect(params?.q).toBe("cafe");
+    expect(params?.city).toBe("tokyo");
+  });
 });
+

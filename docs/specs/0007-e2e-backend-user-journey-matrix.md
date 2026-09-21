@@ -201,7 +201,7 @@ Postgres/PostGIS. Pinned by `web/tests/helpers/mocks.test.ts`.
 | 6 lifecycle | `deleteCafe(id, user[, { confirm }])` | tombstone vs ownership transfer to service account | solo → shell + sitemap drop; community bare delete → `CafeHasOtherCheckinsError` | none (real lifecycle) |
 
 - Google POI intercept format: the exact `POISearchResponse` shape
-  `searchExternalPOIs` returns — `place_id: ChIJ…`, `source: "google"`,
+  the POI client returns — `place_id: ChIJ…`, `source: "google"`,
   `types` containing `cafe`, `business_status: "OPERATIONAL"`,
   `hours_json` as serialized Google `regularOpeningHours`
   (`weekdayDescriptions`), ISO `fetched_at`.

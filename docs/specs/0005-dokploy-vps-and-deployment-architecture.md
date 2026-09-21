@@ -68,10 +68,12 @@ Accepted (2026-09-04 — BRAWUKA-50 architecture and deployment specification; r
    In strict accordance with the Founder Manifesto (Spec 0000, Principle 5: Extreme
    Cost-Efficiency), no commercial APM or third-party monitoring platforms (e.g. Datadog,
    New Relic, or third-party Lighthouse SaaS) are permitted.
-   - Exception: Lightweight HTTP log sink webhooks for application-level alerts (such
-     as Better Stack HTTP ingest for 429 rate-limit alerts per Spec 0001 §DG129) are
-     permitted, but core container health checks, CI gates, and deployment verification
-     remain 100% self-hosted.
+   - Exception: Lightweight HTTP log sink webhooks for application-level alerts were
+     permitted (the retired 429 rate-limit ingest per Spec 0001 §DG129). **No such
+     sink exists any more** — application logs go to Grafana Cloud over OTLP, which
+     the stack already pays for, so this exception is currently unused. Core
+     container health checks, CI gates, and deployment verification remain 100%
+     self-hosted.
 
 6. Database Safety & Migration Invariants:
    - Automated database snapshot/backup is MANDATORY prior to executing any schema

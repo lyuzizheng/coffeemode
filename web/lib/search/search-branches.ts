@@ -4,10 +4,10 @@ import "server-only";
 import { appConfig } from "@/lib/config";
 import { searchCafesInDb } from "@/lib/db/search";
 import type { CafeWithExternalIds } from "@/lib/db/search";
-import { searchExternalPOIs, searchPOIs } from "@/lib/places/poi-client";
+import { autocompletePOIs, searchPOIs } from "@/lib/places/poi-client";
 import { hasWorkFiltersActive, matchesAllFilters } from "./filter";
 import type { SearchFilters, SearchReferencePoint } from "./types";
-import type { POI } from "@shared/places/types";
+import type { POI, PlacePrediction } from "@shared/places/types";
 
 /**
  * DB branch of the search fan-out. All nomad filters — including open_now,
@@ -76,28 +76,39 @@ export async function fetchStoredPois(
 }
 
 /**
- * Live-POI branch of the fan-out. Never rejects: failure degrades to a
- * `live_poi_unavailable` warning (DG133).
+ * Live-POI branch of the fan-out: Autocomplete predictions, not POIs
+ * (BRAWUKA-602).
+ *
+ * No Place Details call happens here — that is the only billed step, and it
+ * runs when the user taps a result. The session token is returned alongside
+ * the predictions so the client can terminate it with that call. A search
+ * nobody selects still bills its Autocomplete requests individually (Google
+ * only folds them into the $0 `Autocomplete Session Usage` SKU once a Place
+ * Details call closes the session).
+ *
+ * Never rejects: failure degrades to a `live_poi_unavailable` warning (DG133).
  */
-export async function fetchLivePois(
+export async function fetchLivePredictions(
   q: string,
   refPoint: SearchReferencePoint,
   requestId?: string,
-): Promise<{ results: POI[]; failed: boolean }> {
+): Promise<{ predictions: PlacePrediction[]; session: string; failed: boolean }> {
+  const session = crypto.randomUUID();
   try {
-    const liveRes = await searchExternalPOIs(
+    const liveRes = await autocompletePOIs(
       {
         q,
+        session,
         lat: refPoint.lat ?? undefined,
         lng: refPoint.lng ?? undefined,
         r: appConfig.search.maxRadiusKm,
       },
       requestId,
     );
-    return { results: liveRes?.results ?? [], failed: false };
+    return { predictions: liveRes.predictions ?? [], session, failed: false };
   } catch (err) {
     logError({ route: "search-service live POI search", error: err });
-    return { results: [], failed: true };
+    return { predictions: [], session, failed: true };
   }
 }
 

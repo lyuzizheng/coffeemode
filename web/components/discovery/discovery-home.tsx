@@ -90,6 +90,17 @@ function MobileSearchOverlay({ search }: { search: DiscoverySearch }) {
   );
 }
 
+/**
+ * Remount key for the creation sheet: a new pick must remount it so the seed
+ * effect runs again (BRAWUKA-364). A live search pick carries a prediction
+ * instead of a POI, so it keys on the prediction's place id.
+ */
+function creationDraftKey(draft: CreationDraft | null): string {
+  if (draft?.poi) return `${draft.poi.source}:${draft.poi.place_id}`;
+  if (draft?.prediction) return `prediction:${draft.prediction.place_id}`;
+  return draft?.provider ?? "empty";
+}
+
 /** Everything floating above the map + columns: check-in drawer, creation
  * sheet, add-cafe FAB, and the mobile search capsule. */
 function DiscoveryOverlays({
@@ -143,13 +154,15 @@ function DiscoveryOverlays({
         />
       ) : null}
       <CafeCreationSheet
-        key={creationDraft?.poi ? `${creationDraft.poi.source}:${creationDraft.poi.place_id}` : (creationDraft?.provider ?? "empty")}
+        key={creationDraftKey(creationDraft)}
         isOpen={creationOpen}
         onOpenChange={setCreationOpen}
         isAuthenticated={isAuthenticated}
         mapkitConfigured={mapkitConfigured}
         initialPoi={creationDraft?.poi ?? null}
         initialPersist={creationDraft?.persist ?? false}
+        initialPrediction={creationDraft?.prediction ?? null}
+        initialSession={creationDraft?.session}
         initialProvider={creationDraft?.provider ?? null}
       />
     </>

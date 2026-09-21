@@ -436,10 +436,11 @@ MapLibre capabilities used:
 Usage: cafe creation import + POI enrichment + external search results (not rendering)
 Calls: server-side, ALWAYS via the POI cache service below (API key lives there only)
 Endpoints:
-  - Place Search (Nearby/Text) — external search results list
-  - Place Details — enrich imported cafe (hours)
-  - Place Autocomplete — search box during import flow
-Session tokens: used for autocomplete billing optimization
+  - Place Autocomplete (New) — external search results list (typing phase)
+  - Place Details (New) — enrich imported cafe (hours); also the selection phase
+    that terminates an Autocomplete session
+Session tokens: REQUIRED on the autocomplete → details pair; that pairing is
+  what makes the typing phase free (BRAWUKA-602)
 Dedupe: google_place_id unique index; existing cafe → show it + prompt to check-in
 ```
 
@@ -458,10 +459,15 @@ poi-service.cafemood.app (Cloudflare Worker)
 Endpoints (all require POI_SERVICE_TOKEN header):
   GET  /poi/:place_id            fetch/enrich one POI
                                  (KV hot → D1 fresh → Google API → backfill both)
-  POST /poi/resolve              {maps_share_url} → POI (creation import path)
+                                 ?session=<token> terminates an Autocomplete session
+  POST /poi/resolve              {maps_share_url} → POI (creation import path);
+                                 the query branch runs autocomplete → details
+  GET  /poi/autocomplete?q&lat&lng&session
+                                 live Google Autocomplete (New) predictions;
+                                 nothing is persisted (no coordinates to store,
+                                 and cross-session caching breaks session pairing)
   GET  /poi/search?q&lat&lng&r   search STORED POIs: name match + Worker-side
                                  haversine distance sort (powers default search)
-  GET  /poi/search/external?q... live Google text search; cache usable results
   POST /poi/external             persist browser-selected Apple MapKit refs
 
 Hosting: Cloudflare workers.dev subdomain first; custom domain
@@ -470,14 +476,26 @@ Hosting: Cloudflare workers.dev subdomain first; custom domain
 Auth: shared secret header (POI_SERVICE_TOKEN). Service-to-service only;
       never called from the browser.
 
-Apple POI: MapKit has no server-side Places API for this app. apple_poi_id
-      references from MapKit JS client searches are POSTed here for storage;
-      the Next.js browser boundary accepts Apple results only. Google live
-      search results are cached by GET /poi/search/external.
+Billing (BRAWUKA-602): live search is Autocomplete (New) + Place Details (New),
+      never Text Search. Google bills a request at the tier of the highest field
+      in its mask, so a Text Search carrying `regularOpeningHours` billed every
+      keystroke at Enterprise ($35/1k). Autocomplete requests carrying a
+      `sessionToken` move into the $0 `Autocomplete Session Usage` SKU once a
+      Place Details call with the same token terminates the session, so a
+      typing→select pair costs exactly one Place Details call. A session that
+      is never terminated — the user types and leaves — is billed per request
+      at the Autocomplete Request SKU instead: no Place Details billing, but
+      not zero either.
+
+Apple POI: MapKit has no server-side Places API for this app. MapKit JS returns
+      full records in one call, so browser-selected Apple refs are POSTed here
+      for storage and served from D1 only; the Next.js browser boundary accepts
+      Apple results only.
 
 Next.js integration: /api/places/* route handlers call the POI service
       instead of Google directly. Google/Apple Maps link import →
-      POST /poi/resolve; Google provider search → GET /poi/search/external;
+      POST /poi/resolve; Google provider search → GET /poi/autocomplete then
+      GET /api/places/details (→ /poi/:place_id?session=…);
       Apple provider search → browser MapKit JS → POST /poi/external.
 ```
 
@@ -1188,8 +1206,10 @@ registered in the same YAML so all limits live in one place); auth
 attempts.
 
 Search endpoints get a per-IP `search` bucket: 30/min, 100/hour, 200/day
-(multi-window); hitting any limit fires an alert via Better Stack (owner
-action pending) alongside Cloudflare observability (DG129). Values'
+(multi-window); hitting any limit fires an alert — originally a third-party
+ingest (owner action, since retired), now the Grafana-managed
+`CoffeeMode — Rate-limit flood` rule (BRAWUKA-611) — alongside Cloudflare
+observability (DG129). Values'
 canonical home is `web/config/rate-limits.yaml`.
 ```
 

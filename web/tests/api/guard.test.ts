@@ -70,7 +70,7 @@ describe("guard helper (BRAWUKA-181)", () => {
       }
       expect(checkRateLimit).toHaveBeenCalledWith(
         "cafes-read",
-        expect.stringMatching(/^anon:/),
+        expect.objectContaining({ id: expect.stringMatching(/^anon:/) }),
         expect.any(Array),
         "GET /api/cafes",
       );
@@ -93,7 +93,7 @@ describe("guard helper (BRAWUKA-181)", () => {
       }
       expect(checkRateLimit).toHaveBeenCalledWith(
         "cafes-write",
-        `user:${mockUser.id}`,
+        expect.objectContaining({ id: `user:${mockUser.id}` }),
         expect.any(Array),
         "POST /api/cafes",
       );
@@ -164,7 +164,7 @@ describe("guard helper (BRAWUKA-181)", () => {
       }
       expect(checkRateLimit).toHaveBeenCalledWith(
         "search",
-        expect.stringMatching(/^anon:/),
+        expect.objectContaining({ id: expect.stringMatching(/^anon:/) }),
         expect.any(Array),
         "GET /api/search",
       );
@@ -203,7 +203,7 @@ describe("guard helper (BRAWUKA-181)", () => {
       }
       expect(checkRateLimit).toHaveBeenCalledWith(
         "cafes-read",
-        expect.any(String),
+        expect.objectContaining({ id: expect.any(String) }),
         expect.any(Array),
         "GET /api/cafes",
       );

@@ -43,7 +43,21 @@ vi.mock("@/lib/places/apple-place-search", () => ({
     id: "apple",
     label: t("apple"),
     persistOnSelect: true,
-    search: async () => [APPLE_PLACE],
+    // MapKit returns full records in one call, so the candidate carries its
+    // POI and `resolve` is the identity (BRAWUKA-602).
+    search: async () => [
+      {
+        poi: APPLE_PLACE,
+        prediction: {
+          place_id: APPLE_PLACE.place_id,
+          source: "apple",
+          name: APPLE_PLACE.name,
+          address: APPLE_PLACE.address,
+          types: APPLE_PLACE.types,
+        },
+      },
+    ],
+    resolve: async (candidate: { poi?: POI }) => candidate.poi,
   }),
 }));
 
@@ -409,7 +423,7 @@ describe("CafeCreationSheet submit failures (BRAWUKA-124/BRAWUKA-212/BRAWUKA-490
   });
 
   it("routes a Google place-search 401 to the gate instead of the alert slot", async () => {
-    mockRoutes((url) => (url.includes("/api/places/search") ? jsonResponse(401, { error: "unauthorized" }) : jsonResponse(200, {})));
+    mockRoutes((url) => (url.includes("/api/places/autocomplete") ? jsonResponse(401, { error: "unauthorized" }) : jsonResponse(200, {})));
 
     render(<CafeCreationSheet isOpen onOpenChange={vi.fn()} isAuthenticated />, { wrapper: Wrapper });
     fireEvent.click(screen.getByRole("tab", { name: "Search a place" }));

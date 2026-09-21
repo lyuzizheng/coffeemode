@@ -17,6 +17,12 @@ images:
 places:
   windowMs: 60000
   maxRequests: 30
+# Autocomplete fires per typing pause (client-debounced), so it needs a wider
+# window than `places`. Google bills these at $0 while the session is open
+# (BRAWUKA-602) — the cap bounds worker traffic, not spend.
+places-autocomplete:
+  windowMs: 60000
+  maxRequests: 120
 # Search is expensive (FTS + optional POI fanout) — multi-window per IP (DG129).
 search:
   - windowMs: 60000
@@ -47,7 +53,7 @@ onboarding:
   maxRequests: 10
 
 # Keepalive + runtime-config reads (BRAWUKA-284): public, unauthenticated, and
-# hit every 5-10 min by Better Stack + every page view. Sized like cafes-read;
+# hit by the smoke test + every page view. Sized like cafes-read;
 # abuse is bounded by the edge 300/min flood rule (BRAWUKA-237), not this bucket.
 heartbeat:
   windowMs: 60000

@@ -69,8 +69,12 @@ Cloudflare resources, both migrations, both deployments and both `POI_SERVICE_TO
 secrets are done. Until this key is installed on both Workers
 (`wrangler secret put GOOGLE_PLACES_API_KEY --env staging|production`, or the equivalent
 Cloudflare API call), `/poi/:place_id`, the query path of `/poi/resolve`, and
-`/poi/search/external` answer 502 `upstream_error`; `POST /poi/external` → `GET /poi/search`
+`/poi/autocomplete` answer 502 `upstream_error`; `POST /poi/external` → `GET /poi/search`
 and the KV hot-cache read path are unaffected and verified working.
+
+The key must be authorized for **Places API (New)** only — the live search path is
+Autocomplete (New) + Place Details (New) (BRAWUKA-602) and no longer calls Text Search,
+so a key restricted to the legacy Places API would 403 every live search.
 
 ## 6. image-service deploy
 
@@ -110,7 +114,7 @@ and the KV hot-cache read path are unaffected and verified working.
 - [x] Apply the schema: `wrangler d1 migrations apply poi-store --remote` (done 2026-09-12, BRAWUKA-222 — `0001_init.sql` applied to both remote databases; `pois` + both indexes verified by remote query, and the `0001_init.sql` row recorded in `d1_migrations` so a later `wrangler d1 migrations apply` is a no-op)
 - [~] Set the two worker secrets (values never go in chat/docs): `wrangler secret put POI_SERVICE_TOKEN --env production`, `wrangler secret put GOOGLE_PLACES_API_KEY --env production`
   - `POI_SERVICE_TOKEN` installed on both Workers (self-generated, 2026-09-12).
-  - `GOOGLE_PLACES_API_KEY` NOT installed — still blocked on item 5. Until it is, `/poi/:place_id`, `/poi/resolve` (query path) and `/poi/search/external` return 502 `upstream_error`; every other path works.
+  - `GOOGLE_PLACES_API_KEY` NOT installed — still blocked on item 5. Until it is, `/poi/:place_id`, `/poi/resolve` (query path) and `/poi/autocomplete` return 502 `upstream_error`; every other path works.
 - [x] Deploy: `npm run deploy -- --env production` (guarded — refuses while the placeholder ids are still configured) → workers.dev URL; wire `POI_SERVICE_URL` + `POI_SERVICE_TOKEN` into `web/.env.local` (done 2026-09-12, BRAWUKA-222 — both environments deployed and verified: `https://poi-service-staging.lyuzizheng.workers.dev`, `https://poi-service-prod.lyuzizheng.workers.dev`; `npm run deploy -- --env staging|production --check` now passes)
 - [x] Worker route migration (BRAWUKA-236) — custom domains attached via Cloudflare MCP and verified:
   - `poi-service.cafemood.app` → `poi-service-prod` (/health 200)
@@ -122,8 +126,8 @@ and the KV hot-cache read path are unaffected and verified working.
   - `workers_dev = false` pinned in `poi-service/wrangler.toml` and `image-service/wrangler.toml`.
   - Token auth (`x-poi-service-token` / `x-image-service-token`) verified end-to-end (401/403 without token; 200 with token).
 - [ ] Enable the Cloudflare "Add visitor location headers" Managed Transform on the zone (sends `CF-IPCity` / `CF-IPCountry`; default-city resolution per DG128)
-- [x] Better Stack account + per-environment sources for rate-limit/observability alerts (DG129, BRAWUKA-235): sources `coffeemode-rate-limit-staging` and `coffeemode-rate-limit-prod` (HTTP platform, team `Your team`, created 2026-09-17 via MCP). Live wiring verified same day: one synthetic `rate_limited` event per source, each confirmed back through the Better Stack query API within ~1 min. What remains is owner-side paste (values never go in chat/docs/repo): in the **Dokploy staging app env** set `BETTER_STACK_INGEST_URL` to the staging source host and `BETTER_STACK_INGEST_TOKEN` to the staging source token, same for **prod** with the prod source's own pair (Better Stack dashboard → Logs → each source → ingestion details). App code sends `Authorization: Bearer BETTER_STACK_INGEST_TOKEN` (see `web/lib/observability/rate-limit-alert.ts`); both vars are server-only (spec 0010 — never `NEXT_PUBLIC_*`). Never reuse one env's pair in the other — per-env filtering depends on it. Optional follow-up (not blocking): per-source alert rules (`rate_limited` → low-severity, `rate_limiter_fail_open` → immediate P1).
-- [~] Better Stack `coffeemode-api-errors` source pair for the API error/warn JSON lines (spec 0011 D8, BRAWUKA-541): sources `coffeemode-api-errors-staging` and `coffeemode-api-errors-prod` (HTTP platform, team `Your team`, created 2026-09-21 via MCP), the `CoffeeMode API Errors (staging)` / `(prod)` dashboards (5xx by `route`, error-`code` histogram, 429 by `bucket`, worker `upstream_error`), and two chart alerts each (5xx sustained on a route; worker `upstream_error` spike). Ingest verified 2026-09-21: synthetic `internal_error` lines round-tripped through the query API on both sources. **Owner action**: in the **Dokploy staging app env** set `BETTER_STACK_ERRORS_INGEST_URL` to the staging errors source host and `BETTER_STACK_ERRORS_INGEST_TOKEN` to its token, same for **prod** with the prod source's own pair (Better Stack dashboard → Logs → each source → ingestion details). App code sends `Authorization: Bearer BETTER_STACK_ERRORS_INGEST_TOKEN` (see `web/lib/observability/api-error-sink.ts`); both vars are server-only (spec 0010 — never `NEXT_PUBLIC_*`). Never reuse one env's pair in the other. Until pasted, error lines stay stdout-only and the dashboard/alerts see no app traffic.
+- [x] ~~Better Stack account + per-environment sources for rate-limit/observability alerts (DG129, BRAWUKA-235)~~ **Retired by BRAWUKA-611 (2026-09-21)** — the four CoffeeMode sources, both dashboards, all four chart alerts and the `coffeemood.com` uptime monitor are deleted, and the two ingest env vars are removed from both Dokploy apps (staging and prod verified clean). The rate-limit event now reaches Grafana Cloud Loki as a structured `logWarn` line (`code: "rate_limited"`) and is alerted on by `CoffeeMode — Rate-limit flood`. **No owner action remains here — do not paste ingest credentials.**
+- [x] ~~Better Stack `coffeemode-api-errors` source pair for the API error/warn JSON lines (spec 0011 D8, BRAWUKA-541)~~ **Superseded by BRAWUKA-607, closed out by BRAWUKA-611** — the `api-error-sink.ts` hook and its ingest-credential pair are deleted; error / warn / access lines go to Grafana Cloud Loki over OTLP (`web/lib/observability/otlp-logs.ts`). The Better Stack sources, dashboards and chart alerts that used to receive them are now deleted too, and the replacement Grafana alert rules live in the `CoffeeMode` folder. No owner action remains here.
 
 ## 8. Kimi K3 UI design artifacts
 
@@ -159,7 +163,37 @@ Agents are wired to the official Grafana Cloud MCP; it needs a stack to talk to.
 - [x] Point agents at the hosted endpoint `https://mcp.grafana.com/mcp` with OAuth 2.1 + dynamic client registration — `grafana` entry in `~/.omp/agent/mcp.json`, and `hermes mcp install grafana` in `~/.hermes/config.yaml`. See `docs/devops/mcp-servers.md`.
 - [ ] Create the Grafana Cloud stack (grafana.com — the free tier is enough) and grant the connecting user the `Assistant Cloud MCP User` role (Editor or higher has it by default; that covers read + query scope only — write scope needs `Assistant Admin`). Assistant must be available on the stack with its terms accepted.
 - [ ] Authorize the MCP client: omp opens a browser on first connect; Hermes needs `hermes mcp login grafana`. Both ask for the stack URL (`https://<stack>.grafana.net`) and show read / query / write as three separate checkboxes. Restart the agent session afterwards so the tools load.
-- [ ] (Optional) Decide whether the rate-limit alert sink (`web/lib/observability/rate-limit-alert.ts`, DG129) moves from Better Stack to Grafana Cloud. Nothing changes until that call is made; the Better Stack sources stay live meanwhile.
+- [x] ~~(Optional) Decide whether the rate-limit alert sink (`web/lib/observability/rate-limit-alert.ts`, DG129) moves from Better Stack to Grafana Cloud.~~ **Decided and done (BRAWUKA-611, 2026-09-21)** — the sink is Grafana-only now; the Better Stack POST is deleted from the hook.
+
+### Alerting notification path (BRAWUKA-611) — blocked on write scope
+
+The six CoffeeMode alert rules exist and evaluate, but **nothing can notify yet**: the stack has no contact point at all, and the default notification policy's receiver is the built-in no-op `empty`.
+
+**This is already costing visibility**: at 2026-09-21 13:24 UTC the uptime rule (`CoffeeMode — Uptime probe failing`, BRAWUKA-608) had been firing for ~1.5 h on a real outage — `cafemood.app` answers 502 (BRAWUKA-500) — with no notification sent.
+
+**The cause is not a missing permission, so don't go looking for one to grant.** `GET /api/access-control/user/permissions` (identity `brabalawuka`, org 1, not a Grafana admin) lists *every* alternative the 403 names: `alert.notifications.provisioning:write`, `alert.notifications:write`, `alert.notifications.receivers:create`, `alert.notifications.routes:write`, `alert.provisioning.provenance:write`. All five write paths are still refused:
+
+| Attempt | Result |
+| --- | --- |
+| `POST /api/v1/provisioning/contact-points` | 403 `Access denied` |
+| `PUT /api/v1/provisioning/policies` | 403 `Access denied` |
+| `POST /api/alert-notifications` (legacy) | 404 |
+| `POST /api/alertmanager/grafana/config/api/v1/receivers` | 404 |
+| `POST /apis/notifications.alerting.grafana.app/…/receivers` | 403 `invalid namespace` (tried `default`, `stacks-1795570`, `lyuzizheng`) |
+
+The effective grant is narrower than the reported RBAC role — most likely the hosted MCP server's OAuth token carries a scope set that Grafana intersects with the role. So the fix is at the **MCP grant level** (the `Assistant Admin` role / re-authorizing the MCP client with write scope), not a permission to add to the user.
+
+- [ ] Either grant the MCP connection write scope (the `Assistant Admin` role — the same grant item above asks for), or apply the two changes by hand in **Alerting → Contact points** and **Alerting → Notification policies**. The intended end state:
+  - Contact point `coffeemode-email`, type `email`, address `lvzizhengde@gmail.com`, `singleEmail: false`, `disableResolveMessage: false`. Swap in a Slack webhook later if you prefer — the rules carry `env` / `severity` / `team` labels, so only the receiver changes.
+  - Notification policy: root route → receiver `coffeemode-email`, `group_by: ["alertname","env","route"]`, `group_wait: 30s`, `group_interval: 5m`, `repeat_interval: 4h`; one child route with matcher `env="staging"` → same receiver, `repeat_interval: 24h` (staging is low priority). The rules deliberately set no per-rule receiver, so this tree is the single place routing is decided.
+  - Verify: Alerting → Contact points → `coffeemode-email` → **Test**, then confirm a real notification arrives.
+
+### Application telemetry — OTLP gateway credential (BRAWUKA-606)
+
+- [ ] Paste the OTLP gateway credential into **both** Dokploy app envs. Grafana → Connections → OpenTelemetry → Configure shows the instance ID and an API token; the header value is `Authorization=Basic base64("<instance ID>:<token>")`. Set `OTEL_EXPORTER_OTLP_HEADERS` to that value in the **staging** app env and the **prod** app env (values never go in chat/docs/repo). The endpoint and `OTEL_RESOURCE_ATTRIBUTES` are already pinned in `deploy/dokploy/docker-compose.staging.yml` / `docker-compose.prod.yml` (no sampler — BRAWUKA-605 §6 decision 3, superseded 2026-09-21), so this paste is the only owner step. Until it lands the SDK is registered and every export answers 401; the moment it lands, traces flow with no rebuild.
+- [ ] **Enable traces metrics generation** (BRAWUKA-609). It is **off by default** — the metrics-generator is a per-tenant Tempo override, so `traces_spanmetrics_*` never appears however many spans arrive. Grafana → Application Observability → Configuration → System → **Metrics generation**. The other documented path (Knowledge Graph → Observability → Configuration → Traces metrics generation) is unavailable on this stack: it requires the knowledge graph, which is not enabled (`GET /api/datasources/uid/grafanacloud-knowledgegraph/resources` → `503 knowledge graph not enabled`). No cost on Free — the generated series just count against the 10k allowance. **Decisive check, independent of trace flow:** `grafanacloud_traces_instance_metrics_generator_active_series` on the `grafanacloud-usage` datasource must be non-empty and > 0; as of 2026-09-21 it is empty and none of that datasource's 116 metrics match `grafanacloud_traces_instance_metrics_generator_*`.
+- [ ] Verify after both: Tempo returns `coffeemode-web` traces and the service map shows edges; `traces_spanmetrics_*` appears in Prometheus with `span_name` as a route template (`GET /api/cafes/[id]`), not a raw path. Note `http_route` is **not** a spanmetrics default label — the default set is `service` / `span_name` / `span_kind` / `status_code`, and the template rides on `span_name`. Adding `http.route` as an extra dimension is optional Grafana-side config, not required for per-route RED. Allow 1–2 minutes after the first spans land: the generator has a 30s slack period and a 60s collection interval.
+- [x] Business metrics need no owner action (BRAWUKA-609): `web/lib/observability/metrics.ts` ships `coffeemode.cafe.created` and `coffeemode.auth.login` over the same OTLP gateway and the same credential as traces and logs.
 
 ## What the agent continues meanwhile
 

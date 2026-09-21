@@ -2,7 +2,13 @@
 
 ## Status
 
-Accepted — **collection path and alerting platform amended 2026-09-21 (BRAWUKA-607 / BRAWUKA-611)**. The metric 口径, frozen fields, and promotion thresholds below stand unchanged; the "stdout → Better Stack Logs via the VPS log shipper" collection path and the Better Stack alert table do not. See *Collection path* and *Alerts* for the current state.
+Accepted
+
+**Amended 2026-09-21 (BRAWUKA-607 / BRAWUKA-611)** — the collection path and the
+alerting platform changed; the decision itself did not. The metric 口径, frozen
+fields, and promotion thresholds below stand unchanged. The "stdout → Better
+Stack Logs via the VPS log shipper" collection path and the Better Stack alert
+table do not. See *Collection path* and *Alerts* for the current state.
 
 ## Context
 

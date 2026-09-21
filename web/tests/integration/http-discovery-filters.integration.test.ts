@@ -36,7 +36,6 @@ vi.mock("@/lib/places/poi-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/places/poi-client")>();
   return {
     ...actual,
-    searchExternalPOIs: vi.fn(async () => ({ results: [] })),
     searchPOIs: vi.fn(async () => ({ results: [] })),
     resolveMapsUrl: vi.fn(),
   };

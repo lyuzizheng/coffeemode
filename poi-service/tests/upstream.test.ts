@@ -12,7 +12,7 @@ import {
   type GooglePlace,
 } from "../src/upstream";
 import type { Env } from "../src/types";
-import { FakeD1, FakeKV, googleDetailResponse, mockFetch } from "./helpers";
+import { FakeD1, FakeKV, autocompleteSuggestion, googleDetailResponse, mockFetch } from "./helpers";
 
 function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
@@ -101,16 +101,66 @@ describe("GooglePlacesProvider", () => {
     expect(details.id).toBe("ChIJTEST123");
   });
 
-  it("textSearch calls upstream and returns places", async () => {
+  it("getDetails forwards the session token that terminates an Autocomplete session", async () => {
+    const env = makeEnv();
+    let url = "";
+    const fetchImpl = mockFetch((u) => {
+      url = u;
+      return new Response(JSON.stringify(googleDetailResponse()), { status: 200 });
+    });
+    const provider = new GooglePlacesProvider(env, fetchImpl);
+
+    await provider.getDetails("ChIJTEST123", "3f2504e0-4f89-41d3-9a0c-0305e82c3301");
+    expect(url).toContain("sessionToken=3f2504e0-4f89-41d3-9a0c-0305e82c3301");
+
+    // No token → no query string at all (plain Place Details request).
+    await provider.getDetails("ChIJTEST123");
+    expect(url).not.toContain("sessionToken");
+  });
+
+  it("autocomplete calls upstream with the session token and maps predictions", async () => {
+    const env = makeEnv();
+    let sent: Record<string, unknown> = {};
+    const fetchImpl = mockFetch((_url, init) => {
+      sent = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(
+        JSON.stringify({ suggestions: [autocompleteSuggestion({ placeId: "ChIJTEST123" })] }),
+        { status: 200 },
+      );
+    });
+    const provider = new GooglePlacesProvider(env, fetchImpl);
+
+    const predictions = await provider.autocomplete("coffee", {
+      lat: 37.7,
+      lng: -122.4,
+      radiusKm: 5,
+      sessionToken: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+    });
+
+    expect(predictions).toHaveLength(1);
+    expect(predictions[0]).toMatchObject({ place_id: "ChIJTEST123", name: "Blue Bottle Coffee" });
+    expect(sent.sessionToken).toBe("3f2504e0-4f89-41d3-9a0c-0305e82c3301");
+  });
+
+  it("autocomplete drops suggestions without a place id", async () => {
     const env = makeEnv();
     const fetchImpl = mockFetch(() =>
-      new Response(JSON.stringify({ places: [googleDetailResponse()] }), { status: 200 }),
+      new Response(
+        JSON.stringify({
+          suggestions: [
+            { placePrediction: { text: { text: "no id here" } } },
+            autocompleteSuggestion({ placeId: "ChIJKEEP" }),
+          ],
+        }),
+        { status: 200 },
+      ),
     );
     const provider = new GooglePlacesProvider(env, fetchImpl);
 
-    const places = await provider.textSearch("coffee", { lat: 37.7, lng: -122.4, radiusKm: 5 });
-    expect(places).toHaveLength(1);
-    expect(places[0].id).toBe("ChIJTEST123");
+    const predictions = await provider.autocomplete("coffee", {
+      sessionToken: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+    });
+    expect(predictions.map((p) => p.place_id)).toEqual(["ChIJKEEP"]);
   });
 
   it("reverseGeocode returns normalized POI for food/cafe coordinates", async () => {
@@ -238,8 +288,10 @@ describe("GooglePlacesProvider", () => {
       ),
     );
     const deniedProvider = new GooglePlacesProvider(env, deniedFetch);
+    // P0 scrub (BRAWUKA-539): the upstream `error_message` can echo the key
+    // back, so the denial throws canned text — never the upstream message.
     await expect(deniedProvider.reverseGeocode({ lat: 37.7, lng: -122.4 })).rejects.toThrow(
-      /API key invalid/,
+      /Geocoding request denied/,
     );
   });
 

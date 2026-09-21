@@ -32,7 +32,7 @@ import {
 import { setSearchUrlState } from "@/lib/search/search-url-state";
 import type { SearchResultItem } from "@/lib/search/types";
 import type { ExternalSearchProvider } from "@/components/search/search-results-list";
-import type { POI } from "@shared/places/types";
+import type { POI, PlacePrediction } from "@shared/places/types";
 import type { CafeSummary } from "@/types/cafes";
 import type { DiscoveryController } from "@/lib/discovery/use-discovery-controller";
 
@@ -55,29 +55,55 @@ export interface DiscoverySearch {
   onExternalSearch: (provider: ExternalSearchProvider) => void;
 }
 
-/** Draft handed to the creation sheet: a picked POI, or an empty open. */
+/** Draft handed to the creation sheet: a picked POI, a live prediction still
+ *  awaiting its Place Details call, or an empty open. */
 export interface CreationDraft {
   poi: POI | null;
   /** Apple POIs persist through /api/places/external first; Google POIs are stored server-side. */
   persist: boolean;
   /** Provider CTA the user tapped — the sheet opens on that provider's tab. */
   provider: ExternalSearchProvider | null;
+  /** Live search result: the sheet resolves it into a POI on open (BRAWUKA-602). */
+  prediction?: PlacePrediction;
+  /** Autocomplete session the prediction was produced under. */
+  session?: string;
 }
 
-/** Read the `?q=&city=&filter_*=` deep-link state once (DG48 restore). */
-function readUrlSearchState(): { query: string; city: string | null; filters: SearchFilterState } {
-  if (typeof window === "undefined") {
-    return { query: "", city: null, filters: EMPTY_FILTERS };
-  }
-  const params = new URLSearchParams(window.location.search);
-  const urlCity = params.get("city");
-  return {
-    query: params.get("q") ?? "",
-    // Unknown cities drop — the API would 400 on them anyway (DG128).
-    city: urlCity ? (findCity(urlCity)?.id ?? null) : null,
-    filters: filtersFromSearchParams(params),
-  };
+/** `?q=&city=&filter_*=` deep-link state (DG48 restore). */
+interface UrlSearchState {
+  query: string;
+  city: string | null;
+  filters: SearchFilterState;
 }
+
+/** SSR/hydration snapshot — the server never sees the query string. */
+const EMPTY_URL_STATE: UrlSearchState = { query: "", city: null, filters: EMPTY_FILTERS };
+// Cached by the raw search string so getSnapshot returns a stable reference
+// while the URL is unchanged — the deep link is read once, then the writer
+// below keeps the history entry synced.
+let urlSearchCacheKey: string | null = null;
+let urlSearchStateCache: UrlSearchState = EMPTY_URL_STATE;
+
+function readUrlSearchState(): UrlSearchState {
+  if (typeof window === "undefined") return EMPTY_URL_STATE;
+  const search = window.location.search;
+  if (search !== urlSearchCacheKey) {
+    const params = new URLSearchParams(search);
+    const urlCity = params.get("city");
+    urlSearchStateCache = {
+      query: params.get("q") ?? "",
+      // Unknown cities drop — the API would 400 on them anyway (DG128).
+      city: urlCity ? (findCity(urlCity)?.id ?? null) : null,
+      filters: filtersFromSearchParams(params),
+    };
+    urlSearchCacheKey = search;
+  }
+  return urlSearchStateCache;
+}
+
+const readUrlSearchStateServer = () => EMPTY_URL_STATE;
+// Nothing outside this hook mutates `location.search` — no subscription.
+const subscribeUrlSearchState = () => () => {};
 
 const readStoredCity = () => readOnboardingState()?.currentCity ?? null;
 const readStoredCityServer = () => null;
@@ -85,11 +111,28 @@ const readStoredCityServer = () => null;
 /** `{query, city, filters}` — the single source of truth behind the badge,
  * chips, panel, emitted params, and the `?`-synced URL (DG48/DG51). */
 function useSearchState(cityProp: string | undefined, isAuthenticated: boolean) {
-  // Lazy init reads the deep link once; the URL is the session store.
-  const [urlState] = useState(readUrlSearchState);
-  const [query, setQuery] = useState(urlState.query);
-  const [filters, setFilters] = useState<SearchFilterState>(urlState.filters);
-  const [cityOverride, setCityOverride] = useState<string | null>(urlState.city);
+  // The deep link arrives through useSyncExternalStore (BRAWUKA-575): the
+  // hydration render uses the server snapshot (EMPTY_URL_STATE) so the
+  // first client frame matches SSR, then React's post-commit consistency
+  // check re-reads the real URL state and re-renders synchronously.
+  const urlState = useSyncExternalStore(
+    subscribeUrlSearchState,
+    readUrlSearchState,
+    readUrlSearchStateServer,
+  );
+  const [query, setQuery] = useState("");
+  const [filters, setFilters] = useState<SearchFilterState>(EMPTY_FILTERS);
+  const [cityOverride, setCityOverride] = useState<string | null>(null);
+  // Apply the deep link once, during render, the moment the client snapshot
+  // replaces the server one — render-phase adjustment commits ahead of the
+  // URL writer below, which stays gated until the restore lands.
+  const [urlApplied, setUrlApplied] = useState(false);
+  if (!urlApplied && urlState !== EMPTY_URL_STATE) {
+    setUrlApplied(true);
+    setQuery(urlState.query);
+    setFilters(urlState.filters);
+    setCityOverride(urlState.city);
+  }
   // The stored current city (anonymous localStorage / mirrored profile) only
   // applies after mount — the server snapshot is null so hydration matches.
   // Subscribing keeps the scope live: onboarding's post-mount profile merge
@@ -100,11 +143,13 @@ function useSearchState(cityProp: string | undefined, isAuthenticated: boolean) 
     readStoredCityServer,
   );
 
+
   const effectiveCity = cityOverride ?? storedCity ?? cityProp;
 
   // DG48: live changes replace the URL — shareable, no history spam. Writes
   // only happen on `/`; canonical `/cafes/[id]` URLs never carry params.
   useEffect(() => {
+    if (!urlApplied) return;
     const params = new URLSearchParams();
     if (query.trim()) params.set("q", query.trim());
     if (cityOverride) params.set("city", cityOverride);
@@ -117,7 +162,7 @@ function useSearchState(cityProp: string | undefined, isAuthenticated: boolean) 
         window.history.replaceState(null, "", next);
       }
     }
-  }, [query, cityOverride, filters]);
+  }, [urlApplied, query, cityOverride, filters]);
 
   /** City is scope, not a filter (DG50): picking a city clears the query,
    * refetches, and persists per the storage rules (DG51). */
@@ -181,6 +226,20 @@ export function useDiscoverySearch({
     }
     if (item.poi) {
       setCreationDraft({ poi: item.poi, persist: item.source === "apple", provider: null });
+      setCreationOpen(true);
+      return;
+    }
+    // A live Autocomplete prediction has no POI yet. The Place Details call
+    // that produces one is the billed half of the search (BRAWUKA-602), so it
+    // runs inside the sheet — on this explicit selection, never while typing.
+    if (item.prediction) {
+      setCreationDraft({
+        poi: null,
+        persist: false,
+        provider: null,
+        prediction: item.prediction,
+        session: item.prediction_session,
+      });
       setCreationOpen(true);
     }
   };

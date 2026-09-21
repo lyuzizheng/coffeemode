@@ -2,6 +2,7 @@ import { logError } from "@/lib/observability/server-log";
 import "server-only";
 
 import { WORKER_TIMEOUT_MS } from "@/lib/http";
+import { REQUEST_ID_HEADER } from "@shared/request-id";
 
 /**
  * Server-only client for the POI cache service (Cloudflare Worker).
@@ -14,7 +15,7 @@ import { WORKER_TIMEOUT_MS } from "@/lib/http";
  *   POI_SERVICE_TOKEN  shared secret the worker authenticates with
  */
 
-import type { POI, POISearchResponse } from "@shared/places/types";
+import type { AutocompleteResponse, POI, POISearchResponse } from "@shared/places/types";
 
 export class POIServiceError extends Error {
   constructor(
@@ -45,6 +46,7 @@ async function poiFetch(
   path: string,
   init: RequestInit,
   config: POIConfig | null = getPOIConfig(),
+  requestId?: string,
 ): Promise<unknown> {
   if (!config) {
     throw new POIServiceError(
@@ -53,10 +55,16 @@ async function poiFetch(
     );
   }
 
-  // Build a plain-object header map so callers can pass either a plain object
-  // or a Headers instance without losing the auth token.
+  // D7 correlation: apiRoute resolves ctx.requestId at the boundary — pass
+  // it straight through so the worker's access/error lines join ours.
+  // Non-route callers omit it and get a fresh id (log pair shares it,
+  // worker-only correlation still works). Takes the id string, never the
+  // Request: a second getRequestId(inbound) here would mint a different
+  // UUID when the header is absent and silently break the D7 join.
+  const resolvedId = requestId ?? crypto.randomUUID();
   const requestHeaders = new Headers(init.headers);
   requestHeaders.set("x-poi-service-token", config.token);
+  requestHeaders.set(REQUEST_ID_HEADER, resolvedId);
   const headers = Object.fromEntries(requestHeaders.entries());
 
   let res: Response;
@@ -72,7 +80,13 @@ async function poiFetch(
     // Transport failure (DNS, refused, timeout): same typed error as an
     // upstream response so the route boundary emits 502 `poi_service`,
     // never a bare 500 (spec 0011 D5/BRAWUKA-537).
-    logError({ route: "poi-service", error });
+    logError({
+      route: "poi-service",
+      error,
+      requestId: resolvedId,
+      status: 502,
+      code: "upstream_error",
+    });
     throw new POIServiceError("POI service unavailable", 502);
   }
   if (!res.ok) {
@@ -87,12 +101,19 @@ async function poiFetch(
     else if (upstreamStatus === 422) message = "POI could not be resolved";
     else if (upstreamStatus >= 500) message = "POI service unavailable";
     else if (upstreamStatus >= 400) message = "Invalid POI request";
-    logError({ route: "poi-service", error: { status: upstreamStatus, message } });
-    throw new POIServiceError(
-      message,
-      upstreamStatus === 401 ? 502 : upstreamStatus,
-      upstreamStatus,
-    );
+    const effectiveStatus = upstreamStatus === 401 ? 502 : upstreamStatus;
+    // Log the status the caller will actually see, and tag only real outages
+    // (spec 0011 D8, BRAWUKA-541): a worker 404/422 is a normal negative
+    // answer, not a dependency failure, so it must not feed the
+    // `upstream_error` chart or its alert.
+    logError({
+      route: "poi-service",
+      error: { status: upstreamStatus, message },
+      requestId: resolvedId,
+      status: effectiveStatus,
+      ...(effectiveStatus >= 500 ? { code: "upstream_error" as const } : {}),
+    });
+    throw new POIServiceError(message, effectiveStatus, upstreamStatus);
   }
   return res.json();
 }
@@ -112,52 +133,104 @@ function searchParams(params: {
 }
 
 /** GET /poi/search — stored-POI name match + haversine distance sort. */
-export async function searchPOIs(params: {
-  q?: string;
-  lat?: number;
-  lng?: number;
-  r?: number;
-}): Promise<POISearchResponse> {
+export async function searchPOIs(
+  params: {
+    q?: string;
+    lat?: number;
+    lng?: number;
+    r?: number;
+  },
+  requestId?: string,
+): Promise<POISearchResponse> {
   const query = searchParams(params);
 
-  const data = await poiFetch(`/poi/search${query ? `?${query}` : ""}`, {
-    method: "GET",
-  });
+  const data = await poiFetch(
+    `/poi/search${query ? `?${query}` : ""}`,
+    {
+      method: "GET",
+    },
+    undefined,
+    requestId,
+  );
   return data as POISearchResponse;
 }
 
-/** GET /poi/search/external — live Google Places search, cached by the worker. */
-export async function searchExternalPOIs(params: {
-  q: string;
-  lat?: number;
-  lng?: number;
-  r?: number;
-}): Promise<POISearchResponse> {
-  const query = searchParams(params);
-  const data = await poiFetch(`/poi/search/external?${query}`, { method: "GET" });
-  return data as POISearchResponse;
+/** GET /poi/autocomplete — live Google predictions (the typing phase).
+ *  `session` is the Autocomplete session token; it must be the same one the
+ *  selection's `getPOI` call carries, or the session never terminates and
+ *  every keystroke bills per request instead of at $0. */
+export async function autocompletePOIs(
+  params: {
+    q: string;
+    session: string;
+    lat?: number;
+    lng?: number;
+    r?: number;
+  },
+  requestId?: string,
+): Promise<AutocompleteResponse> {
+  const query = new URLSearchParams(searchParams(params));
+  query.set("session", params.session);
+  const data = await poiFetch(
+    `/poi/autocomplete?${query.toString()}`,
+    { method: "GET" },
+    undefined,
+    requestId,
+  );
+  return data as AutocompleteResponse;
 }
 
 /** POST /poi/external — persist a client-side Apple MapKit result. Non-food
  *  entries are not stored; the worker reports them in `skipped` (BRAWUKA-328). */
 export async function storeExternalPOIs(
   pois: POI[],
+  requestId?: string,
 ): Promise<{ stored: number; skipped?: Array<{ index: number; reason: string }> }> {
-  const data = await poiFetch("/poi/external", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ pois }),
-  });
+  const data = await poiFetch(
+    "/poi/external",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pois }),
+    },
+    undefined,
+    requestId,
+  );
   return data as { stored: number; skipped?: Array<{ index: number; reason: string }> };
 }
 
 /** POST /poi/resolve — Google Maps share URL → POI (cafe creation import). */
-export async function resolveMapsUrl(mapsShareUrl: string): Promise<POI> {
-  const data = await poiFetch("/poi/resolve", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ maps_share_url: mapsShareUrl }),
-  });
+export async function resolveMapsUrl(mapsShareUrl: string, requestId?: string): Promise<POI> {
+  const data = await poiFetch(
+    "/poi/resolve",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ maps_share_url: mapsShareUrl }),
+    },
+    undefined,
+    requestId,
+  );
   return data as POI;
 }
 
+/** GET /poi/:place_id — fetch/enrich one POI. `session` terminates the
+ *  Autocomplete session that produced the id (see `autocompletePOIs`). */
+export async function getPOI(
+  placeId: string,
+  session?: string,
+  requestId?: string,
+): Promise<POI> {
+  // Send the place id raw: Google `0x...:0x...` ids are valid path
+  // segments, and the worker decodes `:place_id` at the edge (W2).
+  const query = session ? `?session=${encodeURIComponent(session)}` : "";
+  const data = await poiFetch(
+    `/poi/${placeId}${query}`,
+    {
+      method: "GET",
+    },
+    undefined,
+    requestId,
+  );
+  return data as POI;
+}

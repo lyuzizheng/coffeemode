@@ -5,7 +5,7 @@ import { DEFAULT_CITY, findCity } from "@/lib/cities";
 import { haversineDistanceM } from "@shared/places/geo";
 import {
   fetchCafesForSearch,
-  fetchLivePois,
+  fetchLivePredictions,
   fetchStoredPois,
   resolvePoiQuery,
 } from "./search-branches";
@@ -16,7 +16,7 @@ import type {
   SearchResultSource,
   SearchServiceResponse,
 } from "./types";
-import type { POI } from "@shared/places/types";
+import type { POI, PlacePrediction } from "@shared/places/types";
 
 export function resolveReferencePoint(
   lat?: number,
@@ -107,6 +107,7 @@ export async function executeSearch(
   filters: SearchFilters,
   instant?: Date,
   cacheStatus: SearchCacheField = "bypass",
+  requestId?: string,
 ): Promise<SearchServiceResponse> {
   const startTime = performance.now();
   const refPoint = resolveReferencePoint(filters.lat, filters.lng, filters.city);
@@ -120,11 +121,11 @@ export async function executeSearch(
   const [cafeRes, storedRes, liveRes] = await Promise.all([
     fetchCafesForSearch(filters, instant),
     poiQuery !== null
-      ? fetchStoredPois(poiQuery, refPoint)
+      ? fetchStoredPois(poiQuery, refPoint, requestId)
       : Promise.resolve({ results: [] as POI[], failed: false }),
     wantLive && poiQuery !== null
-      ? fetchLivePois(poiQuery, refPoint)
-      : Promise.resolve({ results: [] as POI[], failed: false }),
+      ? fetchLivePredictions(poiQuery, refPoint, requestId)
+      : Promise.resolve({ predictions: [] as PlacePrediction[], session: "", failed: false }),
   ]);
   const { rawCafes, filteredCafes } = cafeRes;
 
@@ -137,16 +138,7 @@ export async function executeSearch(
     if (liveRes.failed) warnings.push("live_poi_unavailable");
   }
 
-  let rawPois: POI[] = [...storedRes.results];
-  if (wantLive && !liveRes.failed) {
-    const storedIds = new Set(rawPois.map((p) => p.place_id));
-    for (const livePoi of liveRes.results) {
-      if (!storedIds.has(livePoi.place_id)) {
-        rawPois.push(livePoi);
-        storedIds.add(livePoi.place_id);
-      }
-    }
-  }
+  const rawPois: POI[] = [...storedRes.results];
 
   const existingPlaceIds = new Set<string>();
   for (const cafe of rawCafes) {
@@ -156,17 +148,16 @@ export async function executeSearch(
 
   // DG134: external source toggle (Apple gated until MapKit ready)
   const externalSources = appConfig.search.externalSources;
-  if (externalSources) {
-    rawPois = rawPois.filter((poi) => {
-      if (poi.source === "google" && !externalSources.google) return false;
-      if (poi.source === "apple" && !externalSources.apple) return false;
-      return true;
-    });
-  }
+  const sourceEnabled = (source: string): boolean => {
+    if (!externalSources) return true;
+    if (source === "google") return externalSources.google;
+    if (source === "apple") return externalSources.apple;
+    return true;
+  };
 
   // Deduplicate POIs: own cafes always win (DG45)
   const dedupedPois = rawPois.filter(
-    (poi) => !existingPlaceIds.has(poi.place_id),
+    (poi) => sourceEnabled(poi.source) && !existingPlaceIds.has(poi.place_id),
   );
 
   // 3. Assemble SearchResultItem array
@@ -215,6 +206,34 @@ export async function executeSearch(
       distance_m,
       is_from_city_center: refPoint.is_from_city_center,
       poi,
+    });
+  }
+
+  // Live Autocomplete predictions (BRAWUKA-602). They carry no coordinates,
+  // so `lat`/`lng` stay null and the distance comes from Google's own
+  // `distanceMeters` (measured from the reference point we biased with).
+  // Deduped against own cafes and stored POIs, which are the richer records.
+  const livePredictions =
+    wantLive && !liveRes.failed && sourceEnabled("google") ? liveRes.predictions : [];
+  const seenIds = new Set<string>([
+    ...existingPlaceIds,
+    ...dedupedPois.map((poi) => poi.place_id),
+  ]);
+  for (const prediction of livePredictions) {
+    if (seenIds.has(prediction.place_id)) continue;
+    seenIds.add(prediction.place_id);
+    items.push({
+      id: prediction.place_id,
+      type: "poi",
+      source: "google",
+      name: prediction.name,
+      address: prediction.address,
+      lat: null,
+      lng: null,
+      distance_m: prediction.distance_meters ?? null,
+      is_from_city_center: refPoint.is_from_city_center,
+      prediction,
+      prediction_session: liveRes.session,
     });
   }
 

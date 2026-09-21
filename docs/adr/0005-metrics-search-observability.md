@@ -4,6 +4,12 @@
 
 Accepted
 
+**Amended 2026-09-21 (BRAWUKA-607 / BRAWUKA-611)** — the collection path and the
+alerting platform changed; the decision itself did not. The metric 口径, frozen
+fields, and promotion thresholds below stand unchanged. The "stdout → Better
+Stack Logs via the VPS log shipper" collection path and the Better Stack alert
+table do not. See *Collection path* and *Alerts* for the current state.
+
 ## Context
 
 The unified search surface (#135, grill `docs/agent/BRAWUKA-7-search-grill.md`
@@ -16,10 +22,12 @@ Stage 3 promotion gates (#293: DG145-C `open_now` SQL pushdown, DG137-C edge
 cache, DG135-C result-view widening) cannot be evaluated.
 
 ADR-0004 recorded "no SaaS log service is wanted." DG129 (owner-approved)
-supersedes that for a bounded scope: Better Stack is adopted for search
-telemetry and rate-limit alerting only; the rest of the log surface stays
-stdout + `request_id` correlation per ADR-0004. Account + source token are an
-owner action (`docs/agent/pending-user-actions.md` §7).
+superseded that for a bounded scope: a third-party log service was adopted for
+search telemetry and rate-limit alerting only; the rest of the log surface
+stays stdout + `request_id` correlation per ADR-0004. That vendor has since
+been fully retired (BRAWUKA-611) in favour of Grafana Cloud, which the stack
+already pays for — so the bounded-scope carve-out now points at Grafana, and
+the "no *additional* SaaS" spirit of ADR-0004 is intact.
 
 ## Decision
 
@@ -42,26 +50,50 @@ Derived ratios (all over a rolling 7-day window unless stated):
 - `live_share` = count(`mode=live`) / count(`search.requests`) — billed-fanout watch.
 - `cache_hit_rate` = count(`search.cache=hit`) / count(`search.cache` ∈ {hit, miss}) — DG137-C effectiveness watch.
 
-### Collection path
+### Collection path — **amended 2026-09-21**
 
-`search.telemetry` lines go to container stdout → Better Stack Logs via the
-VPS log shipper (Vector or the Better Stack Docker collector; choice is an
-implementation detail). Metrics are extracted in Better Stack from the JSON
-fields — **no separate metrics pipeline is introduced** (Critical Cleanup
-Gate: no second consumer exists). No client-side analytics in MVP.
+`search.telemetry` lines go to container stdout, and **that is currently the
+only place they go.** The original plan — a VPS log shipper (Vector or the
+vendor's Docker collector) forwarding stdout to the vendor's Logs product —
+was never deployed, and the vendor is now deleted (BRAWUKA-611), so no
+collection path exists at all. The lines are greppable with `docker logs` on
+the VPS and nowhere else.
+
+The obvious replacement is the OTLP path the rest of the app already uses
+(`web/lib/observability/otlp-logs.ts`, BRAWUKA-607), but it does not pick
+these lines up: that sink is registered on `logError` / `logWarn` only, and
+`search-service.ts` emits telemetry with `console.info`. Wiring it is a
+one-line change plus a decision about whether `search.telemetry` should be a
+Loki stream at all — at ≈ 1 line/request it is cheap, and Loki's 14-day
+retention comfortably covers the 7-day rolling windows below. **Until that
+lands, every promotion gate in this ADR that reads a derived ratio is
+evaluated by hand from `docker logs`** — which is what the "greppable from
+container stdout" fallback below always assumed anyway.
+
+No separate metrics pipeline is introduced (Critical Cleanup Gate: no second
+consumer exists). No client-side analytics in MVP.
 
 Bounds: fields are frozen — adding, renaming, or re-typing a field requires
 amending this ADR. Telemetry MUST NOT carry `q`, coordinates, `viewer_id`, or
 any user content; the fields above are the complete set (`open_now_truncated`
 was retired with the iterative fetch in BRAWUKA-25; `search.cache` was added
 with the edge cache per the pre-authorization below). Volume ≈ 1 line/request
-≈ 200 B; at 1 rps sustained ≈ 17 MB/day — inside
-the Better Stack free tier (3 GB/mo, 3-day retention). The 7-day rolling
-windows above are evaluated from whatever retention the plan provides; if
-retention < 7 days, evaluate on the largest available window and note it in
-the promotion evidence.
+≈ 200 B; at 1 rps sustained ≈ 17 MB/day — well inside the Grafana Cloud free
+tier's 50 GB logs allowance. The 7-day rolling windows above are evaluated
+from whatever retention the destination provides; if retention < 7 days,
+evaluate on the largest available window and note it in the promotion
+evidence.
 
-### Alerts (Better Stack)
+### Alerts — **never created; platform retired 2026-09-21**
+
+The table below was the design. None of the three alerts was ever created —
+they depended on the collection path above, which never existed. The
+Grafana-managed rules that now exist (BRAWUKA-611, `CoffeeMode` folder) cover
+the **API error surface** — 5xx, worker `upstream_error`, rate-limit flood —
+and deliberately do **not** cover search telemetry, because those lines are
+not in Loki yet. When the collection path is wired, these three conditions are
+the natural next rules; the thresholds and windows below are still the
+intended ones.
 
 | Alert | Condition | Window |
 | --- | --- | --- |
@@ -100,16 +132,22 @@ historical record of the original contract.
 
 ## Consequences
 
-- Stage 3 (#293) shipped under the owner-ruled staging-E2E gate above; the
-  Better Stack "Search" dashboard remains the evidence source once traffic
-  exists.
+- Scope extended 2026-09-21 (spec 0011 D8, BRAWUKA-541): the same vendor
+  account also carried the API error/warn JSON lines in a separate source
+  pair, with a dashboard and its 5xx / `upstream_error` alerts. **That whole
+  surface was retired the same day (BRAWUKA-611)** — the lines now go to
+  Grafana Cloud Loki over OTLP and the alerts are Grafana-managed rules. No
+  new vendor was added: Grafana Cloud was already in the stack.
+- Stage 3 (#293) shipped under the owner-ruled staging-E2E gate above. The
+  "Search" dashboard that was to be the ongoing evidence source was never
+  built and its platform is gone; search evidence now comes from `docker logs`
+  until the collection path above is wired.
 - ADR-0004's "no SaaS log service" is superseded only for this bounded scope;
   access/error log correlation stays on `request_id` and stdout.
 - The frozen-field contract makes telemetry a tested surface
   (`web/tests/search/search-service.test.ts` asserts the shape); a field
   change without an ADR amendment is a contract break.
-- Better Stack account + token remain owner actions
-  (`docs/agent/pending-user-actions.md` §7); until provisioned, the same
+- The vendor account + token owner action is void (BRAWUKA-611); the same
   fields are greppable from container stdout, so Stage 3 evidence can be
   collected manually at current volume.
 - If search volume outgrows the free tier, the fix is sampling or a paid

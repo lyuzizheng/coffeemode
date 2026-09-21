@@ -204,105 +204,45 @@ describe("search-service", () => {
       filter_coffee: 80,
       filter_overall: 75,
       filter_max_stay: "2h",
+      open_now: undefined,
+      instant: expect.any(Date),
+      viewerId: undefined,
       limit: expect.any(Number),
     });
   });
 
-  it("performs bounded iterative fetching across batches when open_now filter is active", async () => {
-    // Batch 1 (offset 0): 101 closed cafes — overflows the 100-row page so
-    // the LIMIT+1 probe signals more rows remain (BRAWUKA-448).
-    const batch1 = Array.from({ length: 101 }, (_, i) =>
-      makeDbCafe({
-        id: `closed-${i}`,
-        name: `Alpha Closed ${i.toString().padStart(3, "0")}`,
-        opening_hours: null,
-      }),
-    );
+  it("pushes open_now down to SQL with the resolved instant (DG145-C)", async () => {
+    vi.mocked(searchCafesInDb).mockResolvedValue([]);
+    const instant = new Date("2026-08-29T10:00:00Z");
 
-    // Batch 2 (offset 100): 20 cafes, all open
-    const alwaysOpenHours = {
-      mon: { open: "00:00", close: "23:59" },
-      tue: { open: "00:00", close: "23:59" },
-      wed: { open: "00:00", close: "23:59" },
-      thu: { open: "00:00", close: "23:59" },
-      fri: { open: "00:00", close: "23:59" },
-      sat: { open: "00:00", close: "23:59" },
-      sun: { open: "00:00", close: "23:59" },
-    };
-    const batch2 = Array.from({ length: 20 }, (_, i) =>
-      makeDbCafe({
-        id: `open-${i}`,
-        name: `Zulu Open ${i.toString().padStart(3, "0")}`,
-        opening_hours: alwaysOpenHours,
-      }),
-    );
+    await executeSearch({ city: "singapore", open_now: true }, instant);
 
-    vi.mocked(searchCafesInDb).mockImplementation(async (params) => {
-      if ((params.offset ?? 0) === 0) return batch1;
-      if (params.offset === 100) return batch2;
-      return [];
-    });
-
-    const response = await executeSearch(
-      { city: "singapore", open_now: true },
-      new Date("2026-08-29T10:00:00Z"),
-    );
-
-    expect(searchCafesInDb).toHaveBeenCalledTimes(2);
-    // LIMIT+1 probe: each batch requests dbFetchCap + 1 rows (BRAWUKA-448).
-    expect(searchCafesInDb).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ offset: 0, limit: 101 }),
-    );
-    expect(searchCafesInDb).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ offset: 100, limit: 101 }),
-    );
-    expect(response.results).toHaveLength(10);
-    expect(response.results.every((r) => r.id.startsWith("open-"))).toBe(true);
-  });
-
-  it("stops iterative fetching early once enough open results are collected", async () => {
-    const alwaysOpenHours = {
-      mon: { open: "00:00", close: "23:59" },
-      tue: { open: "00:00", close: "23:59" },
-      wed: { open: "00:00", close: "23:59" },
-      thu: { open: "00:00", close: "23:59" },
-      fri: { open: "00:00", close: "23:59" },
-      sat: { open: "00:00", close: "23:59" },
-      sun: { open: "00:00", close: "23:59" },
-    };
-    const batch1 = Array.from({ length: 100 }, (_, i) =>
-      makeDbCafe({
-        id: `open-batch1-${i}`,
-        name: `Alpha Open ${i.toString().padStart(3, "0")}`,
-        opening_hours: alwaysOpenHours,
-      }),
-    );
-
-    vi.mocked(searchCafesInDb).mockResolvedValue(batch1);
-
-    const response = await executeSearch(
-      { city: "singapore", open_now: true, limit: 5 },
-      new Date("2026-08-29T10:00:00Z"),
-    );
-
+    // Single fetch — the iterative multi-batch path is gone (BRAWUKA-25).
     expect(searchCafesInDb).toHaveBeenCalledTimes(1);
-    expect(response.results).toHaveLength(5);
-  });
-
-  it("BRAWUKA-448: single batch with exactly dbFetchCap rows does not report open_now_truncated", async () => {
-    // The DB holds exactly 100 rows, all closed. The LIMIT+1 probe returns
-    // 100 <= 100, proving exhaustion: one fetch, no truncation warning.
-    // Pre-fix this burned all 10 batches and falsely warned.
-    const exactBatch = Array.from({ length: 100 }, (_, i) =>
-      makeDbCafe({
-        id: `closed-${i}`,
-        name: `Alpha Closed ${i.toString().padStart(3, "0")}`,
-        opening_hours: null,
+    expect(searchCafesInDb).toHaveBeenCalledWith(
+      expect.objectContaining({
+        open_now: true,
+        instant,
       }),
     );
-    vi.mocked(searchCafesInDb).mockResolvedValue(exactBatch);
+  });
+
+  it("open_now results are still post-checked in memory and never warn open_now_truncated", async () => {
+    const openCafe = makeDbCafe({
+      id: "open-1",
+      name: "Open Cafe",
+      opening_hours: {
+        mon: { open: "00:00", close: "00:00" },
+        tue: { open: "00:00", close: "00:00" },
+        wed: { open: "00:00", close: "00:00" },
+        thu: { open: "00:00", close: "00:00" },
+        fri: { open: "00:00", close: "00:00" },
+        sat: { open: "00:00", close: "00:00" },
+        sun: { open: "00:00", close: "00:00" },
+      },
+    });
+    const closedCafe = makeDbCafe({ id: "closed-1", name: "Closed Cafe", opening_hours: null });
+    vi.mocked(searchCafesInDb).mockResolvedValue([openCafe, closedCafe]);
 
     const response = await executeSearch(
       { city: "singapore", open_now: true },
@@ -310,68 +250,8 @@ describe("search-service", () => {
     );
 
     expect(searchCafesInDb).toHaveBeenCalledTimes(1);
-    expect(response.results).toHaveLength(0);
+    expect(response.results.map((r) => r.id)).toEqual(["open-1"]);
     expect(response.warnings ?? []).not.toContain("open_now_truncated");
-  });
-
-  it("BRAWUKA-448: exact DB exhaustion on the final batch does not report open_now_truncated", async () => {
-    // Batches 0..8 overflow the 100-row page (101 rows → more rows remain);
-    // the final batch holds exactly 100 rows, i.e. the DB is exactly
-    // exhausted. Nothing matches (all closed), so the old boundary check
-    // falsely reported truncation here.
-    const fullRows = Array.from({ length: 9 * 101 }, (_, i) =>
-      makeDbCafe({
-        id: `closed-${i}`,
-        name: `Alpha Closed ${i.toString().padStart(4, "0")}`,
-        opening_hours: null,
-      }),
-    );
-    const exactFinal = Array.from({ length: 100 }, (_, i) =>
-      makeDbCafe({
-        id: `final-${i}`,
-        name: `Alpha Final ${i.toString().padStart(3, "0")}`,
-        opening_hours: null,
-      }),
-    );
-    vi.mocked(searchCafesInDb).mockImplementation(async (params) => {
-      const offset = params.offset ?? 0;
-      if (offset < 900) return fullRows.slice(offset, offset + 101);
-      if (offset === 900) return exactFinal;
-      return [];
-    });
-
-    const response = await executeSearch(
-      { city: "singapore", open_now: true },
-      new Date("2026-08-29T10:00:00Z"),
-    );
-
-    expect(searchCafesInDb).toHaveBeenCalledTimes(10);
-    expect(response.results).toHaveLength(0);
-    expect(response.warnings ?? []).not.toContain("open_now_truncated");
-  });
-
-  it("BRAWUKA-448: still reports open_now_truncated when rows remain past the final batch", async () => {
-    // Every batch overflows the 100-row page, so unexamined rows remain
-    // after the batch cap — truncation must still be reported.
-    const fullRows = Array.from({ length: 10 * 101 }, (_, i) =>
-      makeDbCafe({
-        id: `closed-${i}`,
-        name: `Alpha Closed ${i.toString().padStart(4, "0")}`,
-        opening_hours: null,
-      }),
-    );
-    vi.mocked(searchCafesInDb).mockImplementation(async (params) => {
-      const offset = params.offset ?? 0;
-      return fullRows.slice(offset, offset + 101);
-    });
-
-    const response = await executeSearch(
-      { city: "singapore", open_now: true },
-      new Date("2026-08-29T10:00:00Z"),
-    );
-
-    expect(searchCafesInDb).toHaveBeenCalledTimes(10);
-    expect(response.warnings ?? []).toContain("open_now_truncated");
   });
 
   it("DG131: empty q does not truncate secondary hits", async () => {
@@ -451,7 +331,7 @@ describe("search-service", () => {
     expect(targetItem?.poi?.lng).toBe(103.85);
   });
 
-  it("emits structured search.telemetry with 5 frozen fields", async () => {
+  it("emits structured search.telemetry with the frozen fields", async () => {
     const consoleInfoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
     vi.mocked(searchCafesInDb).mockResolvedValue([
       makeDbCafe({ id: "cafe-1", name: "Alpha Cafe" }),
@@ -468,6 +348,7 @@ describe("search-service", () => {
         "search.truncated": false,
         "search.open_now.batches": 0,
         "search.poi_degraded": false,
+        "search.cache": "bypass",
       }),
     );
     consoleInfoSpy.mockRestore();

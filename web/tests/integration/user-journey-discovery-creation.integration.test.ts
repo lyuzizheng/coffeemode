@@ -248,6 +248,90 @@ describeJourney("User Journey: Discovery, Creation & Identity (Paths 1→3)", ()
     expect(lateNightSearch.results).toHaveLength(0);
   });
 
+  it("Path 1 (DG145-C): open_now pushdown handles overnight spillover and DST boundaries", async () => {
+    // Overnight cafe: Tokyo 22:00–04:00 daily — open only via the
+    // close <= open spillover path.
+    const overnightId = randomUUID();
+    await dbClient.query(
+      `insert into cafes (id, name, location, city, created_by, tz, opening_hours)
+       values ($1, 'Kabukicho Midnight Desk', ST_SetSRID(ST_MakePoint(139.70, 35.69), 4326)::geography,
+               'tokyo', $2, 'Asia/Tokyo', $3::jsonb)`,
+      [
+        overnightId,
+        JOURNEY_U1,
+        JSON.stringify({
+          mon: { open: "22:00", close: "04:00" },
+          tue: { open: "22:00", close: "04:00" },
+          wed: { open: "22:00", close: "04:00" },
+          thu: { open: "22:00", close: "04:00" },
+          fri: { open: "22:00", close: "04:00" },
+          sat: { open: "22:00", close: "04:00" },
+          sun: { open: "22:00", close: "04:00" },
+        }),
+      ],
+    );
+    createdCafeIds.add(overnightId);
+
+    // Monday 23:30 Tokyo — inside today's overnight window.
+    const mondayNight = await executeSearch(
+      { city: "tokyo", open_now: true, limit: 10 },
+      new Date("2026-09-07T14:30:00.000Z"),
+    );
+    expect(mondayNight.results.map((r) => r.id)).toContain(overnightId);
+    expect(mondayNight.results.map((r) => r.name)).not.toContain("Shibuya Deep Work Coffee");
+
+    // Tuesday 03:30 Tokyo — only reachable via Monday's spillover.
+    const spillover = await executeSearch(
+      { city: "tokyo", open_now: true, limit: 10 },
+      new Date("2026-09-07T18:30:00.000Z"),
+    );
+    expect(spillover.results.map((r) => r.id)).toContain(overnightId);
+
+    // Tuesday 05:00 Tokyo — past the spillover close, nothing open.
+    const afterClose = await executeSearch(
+      { city: "tokyo", open_now: true, limit: 10 },
+      new Date("2026-09-07T20:00:00.000Z"),
+    );
+    expect(afterClose.results.map((r) => r.id)).not.toContain(overnightId);
+
+    // DST boundary: Berlin cafe open 09:00–18:00. The same 07:30 UTC instant
+    // is 08:30 CET (closed) before the 2026-03-29 spring-forward and 09:30
+    // CEST (open) after it — the SQL predicate must follow the cafe-local
+    // clock across the transition exactly like isOpenAt.
+    const berlinId = randomUUID();
+    await dbClient.query(
+      `insert into cafes (id, name, location, city, created_by, tz, opening_hours)
+       values ($1, 'Kreuzberg Daylight Cafe', ST_SetSRID(ST_MakePoint(13.41, 52.49), 4326)::geography,
+               'berlin', $2, 'Europe/Berlin', $3::jsonb)`,
+      [
+        berlinId,
+        JOURNEY_U1,
+        JSON.stringify({
+          mon: { open: "09:00", close: "18:00" },
+          tue: { open: "09:00", close: "18:00" },
+          wed: { open: "09:00", close: "18:00" },
+          thu: { open: "09:00", close: "18:00" },
+          fri: { open: "09:00", close: "18:00" },
+          sat: { open: "09:00", close: "18:00" },
+          sun: { open: "09:00", close: "18:00" },
+        }),
+      ],
+    );
+    createdCafeIds.add(berlinId);
+
+    const beforeDst = await executeSearch(
+      { city: "berlin", open_now: true, limit: 10 },
+      new Date("2026-03-29T06:30:00.000Z"), // Sun 07:30 UTC = 08:30 CET — closed
+    );
+    expect(beforeDst.results.map((r) => r.id)).not.toContain(berlinId);
+
+    const afterDst = await executeSearch(
+      { city: "berlin", open_now: true, limit: 10 },
+      new Date("2026-03-30T07:30:00.000Z"), // Mon 07:30 UTC = 09:30 CEST — open
+    );
+    expect(afterDst.results.map((r) => r.id)).toContain(berlinId);
+  });
+
   it("Path 1: empty result recovery fallback provides nearby alternatives for gone cafes (DG111/DG112)", async () => {
     // Create a temporary cafe to simulate a soft-deleted tombstone
     const temp = await createCafeWithFirstCheckIn(JOURNEY_U1, {

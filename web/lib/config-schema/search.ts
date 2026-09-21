@@ -74,6 +74,14 @@ function parseResponseCache(file: string, value: unknown): SearchConfig["respons
   };
 }
 
+function parseEdgeCache(file: string, value: unknown): SearchConfig["edgeCache"] {
+  const edgeCache = record(file, "search.edgeCache", value);
+  return {
+    ttlSeconds: positiveInteger(file, "search.edgeCache.ttlSeconds", edgeCache.ttlSeconds),
+    maxEntries: positiveInteger(file, "search.edgeCache.maxEntries", edgeCache.maxEntries),
+  };
+}
+
 function parseSearchClient(file: string, value: unknown): SearchConfig["client"] {
   const client = record(file, "search.client", value);
   return {
@@ -102,11 +110,7 @@ export function parseSearchSection(file: string, search: Record<string, unknown>
       search.weakResultsThreshold,
     ),
     dbFetchCap: positiveInteger(file, "search.dbFetchCap", search.dbFetchCap),
-    maxIterativeFetchBatches: positiveInteger(
-      file,
-      "search.maxIterativeFetchBatches",
-      search.maxIterativeFetchBatches,
-    ),
+    edgeCache: parseEdgeCache(file, search.edgeCache),
     minPoiQueryLength: positiveInteger(
       file,
       "search.minPoiQueryLength",

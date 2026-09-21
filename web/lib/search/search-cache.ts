@@ -126,6 +126,7 @@ export function clearSearchCache(): void {
 export async function executeSearchCached(
   filters: SearchFilters,
   now: number = Date.now(),
+  requestId?: string,
 ): Promise<{ response: SearchServiceResponse; cache: "hit" | "miss" | "bypass" }> {
   const version = await cafesDataVersion().catch(() => null);
   const key = searchCacheKey(filters, now);
@@ -153,6 +154,7 @@ export async function executeSearchCached(
     filters,
     instant,
     version !== null ? "miss" : "bypass",
+    requestId,
   );
   if (version !== null) {
     writeSearchCache(key, version, response, now);

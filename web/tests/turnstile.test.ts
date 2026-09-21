@@ -108,6 +108,14 @@ describe("verifyTurnstileToken", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe("turnstile_rejected");
   });
+  it("rejects a forged Host matching a foreign-minted token (BRAWUKA-572)", async () => {
+    fetchMock.mockResolvedValue(
+      siteverifyResponse({ ...SITEVERIFY_SUCCESS, hostname: "evil.com" }),
+    );
+    const result = await verifyTurnstileToken("token", resolveRequest("evil.com"));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("turnstile_rejected");
+  });
   it("forwards the client IP to siteverify when present", async () => {
     fetchMock.mockResolvedValue(siteverifyResponse(SITEVERIFY_SUCCESS));
     await verifyTurnstileToken("token", resolveRequest("localhost:3000", "203.0.113.7"));

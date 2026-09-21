@@ -482,7 +482,7 @@ describe("getCafe", () => {
 });
 
 describe("POST /api/cafes", () => {
-  it("400s with invalid_request error envelope on invalid payloads before checking auth", async () => {
+  it("400s with invalid_request error envelope on invalid payloads", async () => {
     getUserMock.mockClear();
     const invalidBodies = [
       INVALID_CAFE_PAYLOADS.empty,
@@ -496,7 +496,6 @@ describe("POST /api/cafes", () => {
         message: expect.any(String),
       });
     }
-    expect(getUserMock).not.toHaveBeenCalled();
   });
 
   it("401s without a session", async () => {
@@ -506,22 +505,22 @@ describe("POST /api/cafes", () => {
   });
 
 
-  it("400s invalid_photos when a photo id was not issued to the caller", async () => {
+  it("422s invalid_photos when a photo id was not issued to the caller", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [] }); // pre-provision dedupe check
     provisionDeps.checkUploadIntents.mockResolvedValue([]);
     const res = await createPOST(postRequest(validBody()));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     await expect(res.json()).resolves.toMatchObject({ error: "invalid_photos" });
     expect(clientQueryMock).not.toHaveBeenCalled();
   });
 
-  it("400s invalid_photos when the caller's upload never landed in R2 (worker 404)", async () => {
+  it("422s invalid_photos when the caller's upload never landed in R2 (worker 404)", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [] }); // pre-provision dedupe check
     provisionDeps.getProcessUrls.mockRejectedValue(
       new ImageServiceError("Image not found", 404, 404),
     );
     const res = await createPOST(postRequest(validBody()));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     await expect(res.json()).resolves.toMatchObject({ error: "invalid_photos" });
     expect(clientQueryMock).not.toHaveBeenCalled();
   });
@@ -899,7 +898,7 @@ describe("DELETE /api/cafes/[id]", () => {
     });
   });
 
-  it("403s with error code and count when other checkins exist and confirm is not true (zero mutations)", async () => {
+  it("409s with error code and count when other checkins exist and confirm is not true (zero mutations)", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // cafeExists probe
     clientQueryMock
       .mockResolvedValueOnce({ rows: [{ id: CAFE_ID, created_by: USER.id, deleted_at: null }] }) // select cafe for update
@@ -914,7 +913,7 @@ describe("DELETE /api/cafes/[id]", () => {
       }),
       { params: Promise.resolve({ id: CAFE_ID }) },
     );
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(409);
     const body = await res.json();
     expect(body).toMatchObject({
       error: "cafe_has_other_checkins",
@@ -926,7 +925,7 @@ describe("DELETE /api/cafes/[id]", () => {
   });
 
 
-  it("403s when caller has 0 live checkins, others have checkins, and confirm is not true (zero mutations)", async () => {
+  it("409s when caller has 0 live checkins, others have checkins, and confirm is not true (zero mutations)", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE_ID }] }); // cafeExists probe
     clientQueryMock
       .mockResolvedValueOnce({ rows: [{ id: CAFE_ID, created_by: USER.id, deleted_at: null }] }) // select cafe for update
@@ -941,7 +940,7 @@ describe("DELETE /api/cafes/[id]", () => {
       }),
       { params: Promise.resolve({ id: CAFE_ID }) },
     );
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(409);
     const body = await res.json();
     expect(body).toMatchObject({
       error: "cafe_has_other_checkins",

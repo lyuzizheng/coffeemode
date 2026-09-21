@@ -1,9 +1,8 @@
-import { logError } from "@/lib/observability/server-log";
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
+import { apiRoute } from "@/lib/api/route";
 import { getLastCheckinForCafe } from "@/lib/db/checkins";
 import { REVISIT_WINDOW_HOURS } from "@/lib/validation/checkin";
-import { guard } from "@/lib/api/guard";
 import { isValidUUID } from "@shared/uuid";
 
 /**
@@ -14,26 +13,15 @@ import { isValidUUID } from "@shared/uuid";
  * Requires auth; 401 when unauthenticated, 400 for invalid cafe_id.
  * Returns { checkin: {...} | null, revisit_window_hours: number }.
  */
-export async function GET(request: NextRequest) {
-  const gate = await guard(request, {
-    bucket: "cafes-read",
-    requireAuth: true,
-    route: "GET /api/checkins/last",
-  });
-  if (!gate.ok) return gate.response;
-  const { user } = gate;
+export const GET = apiRoute(
+  { bucket: "cafes-read", auth: "required", route: "GET /api/checkins/last" },
+  async (request, ctx) => {
+    const cafeId = new URL(request.url).searchParams.get("cafe_id");
+    if (!cafeId || !isValidUUID(cafeId)) {
+      return apiError("invalid_request", "cafe_id (UUID) required", { status: 400, requestId: ctx.requestId });
+    }
 
-  const cafeId = request.nextUrl.searchParams.get("cafe_id");
-  if (!cafeId || !isValidUUID(cafeId)) {
-    return apiError("invalid_request", "cafe_id (UUID) required", { status: 400 });
-  }
-
-
-  try {
-    const checkin = await getLastCheckinForCafe(user.id, cafeId);
+    const checkin = await getLastCheckinForCafe(ctx.user.id, cafeId);
     return NextResponse.json({ checkin, revisit_window_hours: REVISIT_WINDOW_HOURS });
-  } catch (err) {
-    logError({ route: gate.route, request, error: err, status: 500 });
-    return apiError("internal_error", 500);
-  }
-}
+  },
+);

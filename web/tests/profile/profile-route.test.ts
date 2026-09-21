@@ -133,7 +133,7 @@ describe("Profile API routes", () => {
         body: JSON.stringify({ displayName: "A".repeat(25) }),
       }) as NextRequest;
       const res = await PATCH(req);
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(422);
       const body = await res.json();
       expect(body.error).toBe("display_name_length");
     });
@@ -152,7 +152,7 @@ describe("Profile API routes", () => {
           body: JSON.stringify(body),
         }) as NextRequest;
         const res = await PATCH(req);
-        expect(res.status).toBe(400);
+        expect(res.status).toBe(422);
         expect((await res.json()).error).toBe("invalid_current_city");
       }
     });

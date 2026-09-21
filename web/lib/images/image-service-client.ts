@@ -88,14 +88,30 @@ function upstreamError(endpoint: "upload" | "complete" | "delete", response: Res
   return new ImageServiceError(message, status, upstreamStatus);
 }
 
+/**
+ * Wrap a transport failure (DNS, refused, AbortSignal timeout) in
+ * ImageServiceError so the route boundary sees the same typed error as an
+ * upstream response — 502 `image_service_error`, never a bare 500
+ * (spec 0011 D5/BRAWUKA-537).
+ */
+function transportError(endpoint: "upload" | "complete" | "delete", error: unknown): ImageServiceError {
+  logError({ route: `image-service ${endpoint}`, error });
+  return new ImageServiceError("Image service unavailable", 502);
+}
+
 export async function requestUploadUrl(size: number): Promise<UploadUrlResponse> {
   const { url, token } = getEnv();
-  const response = await fetch(`${url}/v1/images/upload`, {
-    method: "POST",
-    headers: headers(token),
-    body: JSON.stringify({ size }),
-    signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${url}/v1/images/upload`, {
+      method: "POST",
+      headers: headers(token),
+      body: JSON.stringify({ size }),
+      signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
+    });
+  } catch (error) {
+    throw transportError("upload", error);
+  }
 
   if (!response.ok) {
     throw upstreamError("upload", response);
@@ -115,17 +131,22 @@ export async function getProcessUrls(
   request: CompleteImageRequest & { userId?: string },
 ): Promise<ProcessUrls> {
   const { url, token } = getEnv();
-  const response = await fetch(`${url}/v1/images/complete`, {
-    method: "POST",
-    headers: headers(token),
-    body: JSON.stringify({
-      imageUuid: request.imageUuid,
-      userId: request.userId,
-      targetType: request.targetType,
-      targetId: request.targetId,
-    }),
-    signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${url}/v1/images/complete`, {
+      method: "POST",
+      headers: headers(token),
+      body: JSON.stringify({
+        imageUuid: request.imageUuid,
+        userId: request.userId,
+        targetType: request.targetType,
+        targetId: request.targetId,
+      }),
+      signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
+    });
+  } catch (error) {
+    throw transportError("complete", error);
+  }
 
   if (!response.ok) {
     throw upstreamError("complete", response);
@@ -149,12 +170,17 @@ export async function deleteImageVariants(
   options?: { keepOriginal?: boolean },
 ): Promise<void> {
   const { url, token } = getEnv();
-  const response = await fetch(`${url}/v1/images/delete`, {
-    method: "POST",
-    headers: headers(token),
-    body: JSON.stringify({ imageUuid, ...(options?.keepOriginal ? { keepOriginal: true } : {}) }),
-    signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${url}/v1/images/delete`, {
+      method: "POST",
+      headers: headers(token),
+      body: JSON.stringify({ imageUuid, ...(options?.keepOriginal ? { keepOriginal: true } : {}) }),
+      signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
+    });
+  } catch (error) {
+    throw transportError("delete", error);
+  }
 
   if (!response.ok) {
     throw upstreamError("delete", response);

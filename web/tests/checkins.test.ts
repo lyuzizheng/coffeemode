@@ -657,7 +657,7 @@ describe("toggleCheckInLike", () => {
 describe("POST /api/checkins", () => {
   const url = "https://localhost/api/checkins";
 
-  it("400s with invalid_request error envelope on invalid payloads before checking auth", async () => {
+  it("400s with invalid_request error envelope on invalid payloads", async () => {
     getUserMock.mockClear();
     const invalidBodies = [
       INVALID_CHECKIN_PAYLOADS.empty,
@@ -672,7 +672,6 @@ describe("POST /api/checkins", () => {
         message: expect.any(String),
       });
     }
-    expect(getUserMock).not.toHaveBeenCalled();
   });
   it("401s without a session", async () => {
     getUserMock.mockResolvedValue({ data: { user: null }, error: null });
@@ -687,22 +686,22 @@ describe("POST /api/checkins", () => {
     await expect(res.json()).resolves.toMatchObject({ error: "not_found" });
   });
 
-  it("400s invalid_photos when a photo id was not issued to the caller", async () => {
+  it("422s invalid_photos when a photo id was not issued to the caller", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] });
     provisionDeps.checkUploadIntents.mockResolvedValue([]);
     const res = await checkinPOST(postRequest(url, validBody()));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     await expect(res.json()).resolves.toMatchObject({ error: "invalid_photos" });
     expect(clientQueryMock).not.toHaveBeenCalled();
   });
 
-  it("400s invalid_photos when the caller's upload never landed in R2 (worker 404)", async () => {
+  it("422s invalid_photos when the caller's upload never landed in R2 (worker 404)", async () => {
     poolQueryMock.mockResolvedValueOnce({ rows: [{ id: CAFE }] });
     provisionDeps.getProcessUrls.mockRejectedValue(
       new ImageServiceError("Image not found", 404, 404),
     );
     const res = await checkinPOST(postRequest(url, validBody()));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     await expect(res.json()).resolves.toMatchObject({ error: "invalid_photos" });
     expect(clientQueryMock).not.toHaveBeenCalled();
   });

@@ -4,16 +4,6 @@
       "count": 1
     }
   },
-  "app/api/profile/identity/route.ts": {
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
-  "app/api/search/route.ts": {
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
   "app/global-error.tsx": {
     "max-lines-per-function": {
       "count": 1
@@ -185,11 +175,6 @@
   },
   "proxy.ts": {
     "max-lines-per-function": {
-      "count": 1
-    }
-  },
-  "scripts/check-route-guards.mjs": {
-    "sonarjs/cognitive-complexity": {
       "count": 1
     }
   },

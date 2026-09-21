@@ -1,73 +1,50 @@
-import { logError } from "@/lib/observability/server-log";
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { apiError } from "@/lib/api/response";
+import { apiRoute } from "@/lib/api/route";
 import { deleteAccount, getProfile, getUserStats, updateProfile } from "@/lib/db/profile";
 import { parseProfilePatch } from "@/lib/validation/profile";
-import { requireSameOrigin } from "@/lib/security/origin";
 import { createSupabaseServerClient } from "@/lib/auth/supabase-server";
-import { guard, readJsonBody } from "@/lib/api/guard";
+import { readJsonBody } from "@/lib/api/guard";
+import { logError } from "@/lib/observability/server-log";
 
-export async function GET(request: NextRequest) {
-  const gate = await guard(request, {
-    bucket: "profile-read",
-    requireAuth: true,
-    route: "GET /api/profile",
-  });
-  if (!gate.ok) return gate.response;
-  const { user } = gate;
-
-  try {
+export const GET = apiRoute(
+  { bucket: "profile-read", auth: "required", route: "GET /api/profile" },
+  async (_request, ctx) => {
     const [profile, stats] = await Promise.all([
-      getProfile(user.id),
-      getUserStats(user.id),
+      getProfile(ctx.user.id),
+      getUserStats(ctx.user.id),
     ]);
 
     if (!profile) {
-      return apiError("profile_not_found", 404);
+      return apiError("profile_not_found", 404, { requestId: ctx.requestId });
     }
 
     return NextResponse.json({
       profile,
       stats,
     });
-  } catch (error) {
-    logError({ route: gate.route, request, error, status: 500 });
-    return apiError("internal_error", 500);
-  }
-}
+  },
+);
 
-export async function PATCH(request: NextRequest) {
-  const originError = requireSameOrigin(request);
-  if (originError) return originError;
+export const PATCH = apiRoute(
+  { bucket: "profile-write", auth: "required", origin: true, route: "PATCH /api/profile" },
+  async (request, ctx) => {
+    const bodyRes = await readJsonBody(request, { requestId: ctx.requestId });
+    if (!bodyRes.ok) return bodyRes.response;
+    const parsed = parseProfilePatch(bodyRes.data);
+    if (!parsed.ok) {
+      return apiError(parsed.error, parsed.status, { requestId: ctx.requestId });
+    }
 
-  const gate = await guard(request, {
-    bucket: "profile-write",
-    requireAuth: true,
-    route: "PATCH /api/profile",
-  });
-  if (!gate.ok) return gate.response;
-  const { user } = gate;
-
-  const bodyRes = await readJsonBody(request);
-  if (!bodyRes.ok) return bodyRes.response;
-  const parsed = parseProfilePatch(bodyRes.data);
-  if (!parsed.ok) {
-    return apiError(parsed.error, parsed.status);
-  }
-
-  try {
-    const updated = await updateProfile(user.id, parsed.patch);
+    const updated = await updateProfile(ctx.user.id, parsed.patch);
     if (!updated) {
-      return apiError("profile_not_found", 404);
+      return apiError("profile_not_found", 404, { requestId: ctx.requestId });
     }
 
     return NextResponse.json({ profile: updated });
-  } catch (error) {
-    logError({ route: gate.route, request, error, status: 500 });
-    return apiError("internal_error", 500);
-  }
-}
+  },
+);
 
 /**
  * DELETE /api/profile (BRAWUKA-504, DG149): permanent account teardown.
@@ -79,20 +56,10 @@ export async function PATCH(request: NextRequest) {
  * gone (a re-login would start a fresh profile — acceptable degradation,
  * flagged in spec 0004 DG149).
  */
-export async function DELETE(request: NextRequest) {
-  const originError = requireSameOrigin(request);
-  if (originError) return originError;
-
-  const gate = await guard(request, {
-    bucket: "profile-write",
-    requireAuth: true,
-    route: "DELETE /api/profile",
-  });
-  if (!gate.ok) return gate.response;
-  const { user } = gate;
-
-  try {
-    const result = await deleteAccount(user.id);
+export const DELETE = apiRoute(
+  { bucket: "profile-write", auth: "required", origin: true, route: "DELETE /api/profile" },
+  async (_request, ctx) => {
+    const result = await deleteAccount(ctx.user.id);
 
     // Auth-side teardown, best-effort after the data commit: the admin
     // delete needs the service-role key; sign-out clears the session
@@ -104,12 +71,12 @@ export async function DELETE(request: NextRequest) {
         const admin = createClient(supabaseUrl, serviceKey, {
           auth: { autoRefreshToken: false, persistSession: false },
         });
-        const { error } = await admin.auth.admin.deleteUser(user.id);
+        const { error } = await admin.auth.admin.deleteUser(ctx.user.id);
         if (error) {
-          logError({ route: gate.route, request, error, status: 502 });
+          logError({ route: ctx.route, requestId: ctx.requestId, error, status: 502 });
         }
       } catch (error) {
-        logError({ route: gate.route, request, error, status: 502 });
+        logError({ route: ctx.route, requestId: ctx.requestId, error, status: 502 });
       }
     }
 
@@ -117,12 +84,9 @@ export async function DELETE(request: NextRequest) {
       const supabase = await createSupabaseServerClient();
       await supabase.auth.signOut();
     } catch (error) {
-      logError({ route: gate.route, request, error, status: 500 });
+      logError({ route: ctx.route, requestId: ctx.requestId, error, status: 500 });
     }
 
     return NextResponse.json(result);
-  } catch (error) {
-    logError({ route: gate.route, request, error, status: 500 });
-    return apiError("internal_error", 500);
-  }
-}
+  },
+);

@@ -81,6 +81,14 @@ describe("poi-client", () => {
     expect(data.results[0].place_id).toBe("ChIJTEST123");
   });
 
+  it("forwards ctx.requestId on upstream calls (D7 correlation)", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ results: [] }));
+    const inboundId = "123e4567-e89b-42d3-a456-426614174000";
+    await searchPOIs({ q: "blue" }, inboundId);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.headers).toMatchObject({ "x-request-id": inboundId });
+  });
+
   it("searchPOIs omits empty params", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ results: [] }));
     await searchPOIs({});

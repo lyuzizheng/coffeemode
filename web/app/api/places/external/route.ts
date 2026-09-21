@@ -40,7 +40,7 @@ export const POST = apiRoute(
       return apiError("invalid_request", 400, { requestId: ctx.requestId });
     }
 
-    const result = await storeExternalPOIs(pois as POI[]);
+    const result = await storeExternalPOIs(pois as POI[], ctx.requestId);
     return NextResponse.json(result);
   },
 );

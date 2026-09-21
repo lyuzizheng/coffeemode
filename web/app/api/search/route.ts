@@ -62,7 +62,7 @@ export const GET = apiRoute(
 
     // DG137-C: in-process edge cache (city:q:filtersHash; open_now adds a UTC-minute bucket), TTL-bounded
     // and invalidated early when the cafes data version moves.
-    const { response: searchResponse, cache } = await executeSearchCached(searchFilters);
+    const { response: searchResponse, cache } = await executeSearchCached(searchFilters, undefined, ctx.requestId);
     const { search_mode, ...body } = searchResponse;
     const response = NextResponse.json(body);
     // DG137-B: Cache-Control on success path only

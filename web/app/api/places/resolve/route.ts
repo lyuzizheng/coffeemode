@@ -50,7 +50,7 @@ export const POST = apiRoute(
       return apiError("invalid_maps_url", "only Google Maps and Apple Maps URLs are allowed", { status: 400, requestId: ctx.requestId });
     }
 
-    const poi = await resolveMapsUrl(trimmedUrl);
+    const poi = await resolveMapsUrl(trimmedUrl, ctx.requestId);
     return NextResponse.json(poi);
   },
 );

@@ -107,6 +107,7 @@ export async function executeSearch(
   filters: SearchFilters,
   instant?: Date,
   cacheStatus: SearchCacheField = "bypass",
+  requestId?: string,
 ): Promise<SearchServiceResponse> {
   const startTime = performance.now();
   const refPoint = resolveReferencePoint(filters.lat, filters.lng, filters.city);
@@ -120,10 +121,10 @@ export async function executeSearch(
   const [cafeRes, storedRes, liveRes] = await Promise.all([
     fetchCafesForSearch(filters, instant),
     poiQuery !== null
-      ? fetchStoredPois(poiQuery, refPoint)
+      ? fetchStoredPois(poiQuery, refPoint, requestId)
       : Promise.resolve({ results: [] as POI[], failed: false }),
     wantLive && poiQuery !== null
-      ? fetchLivePois(poiQuery, refPoint)
+      ? fetchLivePois(poiQuery, refPoint, requestId)
       : Promise.resolve({ results: [] as POI[], failed: false }),
   ]);
   const { rawCafes, filteredCafes } = cafeRes;

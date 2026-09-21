@@ -1,6 +1,7 @@
 import { logError } from "@/lib/observability/server-log";
 import "server-only";
 
+import { REQUEST_ID_HEADER } from "@shared/request-id";
 import { WORKER_TIMEOUT_MS } from "@/lib/http";
 import type { CompleteImageRequest, UploadUrlResponse } from "@/types/images";
 
@@ -50,10 +51,11 @@ function getEnv(): { url: string; token: string } {
   return { url, token };
 }
 
-function headers(token: string): Record<string, string> {
+function headers(token: string, requestId: string): Record<string, string> {
   return {
     "Content-Type": "application/json",
     "x-image-service-token": token,
+    [REQUEST_ID_HEADER]: requestId,
   };
 }
 
@@ -64,11 +66,10 @@ function headers(token: string): Record<string, string> {
  * 401 (bad service token) must not surface as a user-facing 401. Mirrors
  * the poi-client pattern.
  */
-function upstreamError(endpoint: "upload" | "complete" | "delete", response: Response): ImageServiceError {
+function upstreamError(endpoint: "upload" | "complete" | "delete", response: Response, requestId: string): ImageServiceError {
   const upstreamStatus = response.status;
   // Benign: best-effort cancel of unread upstream response stream.
   void response.body?.cancel().catch(() => {});
-  logError({ route: `image-service ${endpoint}`, error: { status: upstreamStatus } });
 
   let message = "Image service returned an error";
   let status = upstreamStatus;
@@ -85,6 +86,17 @@ function upstreamError(endpoint: "upload" | "complete" | "delete", response: Res
   } else if (upstreamStatus >= 400) {
     message = "Invalid image request";
   }
+  // Log the status the caller will actually see, and tag only real outages
+  // (spec 0011 D8, BRAWUKA-541): a worker 404/413/422 is a normal negative
+  // answer, not a dependency failure, so it must not feed the
+  // `upstream_error` chart or its alert.
+  logError({
+    route: `image-service ${endpoint}`,
+    error: { status: upstreamStatus },
+    requestId,
+    status,
+    ...(status >= 500 ? { code: "upstream_error" as const } : {}),
+  });
   return new ImageServiceError(message, status, upstreamStatus);
 }
 
@@ -94,27 +106,43 @@ function upstreamError(endpoint: "upload" | "complete" | "delete", response: Res
  * upstream response — 502 `image_service_error`, never a bare 500
  * (spec 0011 D5/BRAWUKA-537).
  */
-function transportError(endpoint: "upload" | "complete" | "delete", error: unknown): ImageServiceError {
-  logError({ route: `image-service ${endpoint}`, error });
+function transportError(endpoint: "upload" | "complete" | "delete", error: unknown, requestId: string): ImageServiceError {
+  logError({
+    route: `image-service ${endpoint}`,
+    error,
+    requestId,
+    status: 502,
+    code: "upstream_error",
+  });
   return new ImageServiceError("Image service unavailable", 502);
 }
 
-export async function requestUploadUrl(size: number): Promise<UploadUrlResponse> {
+// D7 correlation: callers pass apiRoute's ctx.requestId straight through so
+// the worker's access/error lines join the web lines. Non-route callers
+// omit it and get a fresh id. Takes the id string, never the Request — a
+// second getRequestId(inbound) here would mint a different UUID when the
+// header is absent and silently break the D7 join (BRAWUKA-539 review).
+function resolveId(requestId?: string): string {
+  return requestId ?? crypto.randomUUID();
+}
+
+export async function requestUploadUrl(size: number, requestId?: string): Promise<UploadUrlResponse> {
   const { url, token } = getEnv();
+  const resolvedId = resolveId(requestId);
   let response: Response;
   try {
     response = await fetch(`${url}/v1/images/upload`, {
       method: "POST",
-      headers: headers(token),
+      headers: headers(token, resolvedId),
       body: JSON.stringify({ size }),
       signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
     });
   } catch (error) {
-    throw transportError("upload", error);
+    throw transportError("upload", error, resolvedId);
   }
 
   if (!response.ok) {
-    throw upstreamError("upload", response);
+    throw upstreamError("upload", response, resolvedId);
   }
 
   return response.json();
@@ -129,13 +157,15 @@ export async function requestUploadUrl(size: number): Promise<UploadUrlResponse>
  */
 export async function getProcessUrls(
   request: CompleteImageRequest & { userId?: string },
+  requestId?: string,
 ): Promise<ProcessUrls> {
   const { url, token } = getEnv();
+  const resolvedId = resolveId(requestId);
   let response: Response;
   try {
     response = await fetch(`${url}/v1/images/complete`, {
       method: "POST",
-      headers: headers(token),
+      headers: headers(token, resolvedId),
       body: JSON.stringify({
         imageUuid: request.imageUuid,
         userId: request.userId,
@@ -145,11 +175,11 @@ export async function getProcessUrls(
       signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
     });
   } catch (error) {
-    throw transportError("complete", error);
+    throw transportError("complete", error, resolvedId);
   }
 
   if (!response.ok) {
-    throw upstreamError("complete", response);
+    throw upstreamError("complete", response, resolvedId);
   }
 
   return response.json();
@@ -168,22 +198,24 @@ export async function getProcessUrls(
 export async function deleteImageVariants(
   imageUuid: string,
   options?: { keepOriginal?: boolean },
+  requestId?: string,
 ): Promise<void> {
   const { url, token } = getEnv();
+  const resolvedId = resolveId(requestId);
   let response: Response;
   try {
     response = await fetch(`${url}/v1/images/delete`, {
       method: "POST",
-      headers: headers(token),
+      headers: headers(token, resolvedId),
       body: JSON.stringify({ imageUuid, ...(options?.keepOriginal ? { keepOriginal: true } : {}) }),
       signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
     });
   } catch (error) {
-    throw transportError("delete", error);
+    throw transportError("delete", error, resolvedId);
   }
 
   if (!response.ok) {
-    throw upstreamError("delete", response);
+    throw upstreamError("delete", response, resolvedId);
   }
   // Benign: drain the small JSON body; the deleted/missing split is only
   // telemetry for the compensation log, not control flow.

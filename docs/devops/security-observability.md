@@ -48,6 +48,42 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
   events round-tripped on both sources (ingest 202 → query-visible within
   ~1 min). If a legacy `rate_limiter_fail_open` alert still exists from
   before BRAWUKA-378, delete it — that event can no longer fire.
+- `api-error-sink` hook (spec 0011 D8, `web/lib/observability/api-error-sink.ts`)
+  ships every `logError`/`logWarn` JSON line to the per-environment
+  `coffeemode-api-errors` source when `BETTER_STACK_ERRORS_INGEST_URL` (source
+  host) is set on the app container, authenticating with `Authorization: Bearer
+  BETTER_STACK_ERRORS_INGEST_TOKEN`. Staging posts to
+  `coffeemode-api-errors-staging`, prod to `coffeemode-api-errors-prod` — same
+  structural env split as the rate-limit pair, both vars server-only (spec
+  0010). The proxy's `type:"access"` lines are deliberately NOT shipped: the
+  proxy runs before routing, so its response is always the 200
+  `NextResponse.next()` and it never sees the route's status or envelope
+  `code` (verified against a running dev server — a 404 page logs
+  `"status":200`). The error lines carry the real `status` and `code`, so they
+  are the metric source. Verified 2026-09-21: synthetic `internal_error` lines
+  round-tripped on both sources (ingest 202 → query-visible within ~1 min).
+- Better Stack `CoffeeMode API Errors (staging)` / `(prod)` dashboards (team
+  `Your team`, group `CoffeeMode API Errors`): 5xx by `route`, error-`code`
+  histogram, worker `upstream_error` count, plus 429 by `bucket` from the
+  matching rate-limit source. Two chart alerts per dashboard: *5xx sustained on
+  a route* and *Worker `upstream_error` spike* — both "any breach in a 60 s
+  bucket, sustained 5 min, auto-resolve after 5 min", one incident per series.
+  Verified 2026-09-21: a synthetic `internal_error` stream on staging produced
+  an incident on the staging 5xx alert.
+- **One source per dashboard — a chart alert cannot resolve a source
+  variable.** `create_chart_alert` binds the alert to the chart's source at
+  creation. If the dashboard's `source` variable was written with
+  `set_dashboard_variable`, the alert silently binds to the team's *default*
+  source instead (observed: `source:onboarding_real_time_flights:logs`) and
+  never fires on this data. Set the dashboard's source only through
+  `create_dashboard(source_id: …)` and let the chart save auto-create the
+  variable; extra *custom-named* source variables (`rate_limit_source`) and
+  sections are fine. If an alert's `Source Variable` line does not name the
+  expected `coffeemode-*` source, delete and recreate it.
+- **Known coverage gap**: the dashboards count 5xx that emitted an error/warn
+  line. A handler that *returns* a 5xx envelope without logging — today only
+  `GET /api/mapkit-token` (`mapkit_token_error`) — is not counted. The
+  `apiRoute` catch-all path always logs, so unexpected throws are covered.
 - Workers Observability: `poi-service-prod` / `image-service-prod` logs for
   shared-secret rejections (401s on `x-poi-service-token` /
   `x-image-service-token`) — any volume means someone is probing the worker

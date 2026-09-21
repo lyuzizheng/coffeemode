@@ -89,6 +89,7 @@ describe("search-service", () => {
 
     expect(searchExternalPOIs).toHaveBeenCalledWith(
       expect.objectContaining({ q: "coffee" }),
+      undefined,
     );
     expect(response.results).toHaveLength(3);
     const liveResult = response.results.find((r) => r.id === "live_pid");

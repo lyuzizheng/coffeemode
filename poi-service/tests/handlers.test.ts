@@ -110,6 +110,33 @@ describe("auth", () => {
     const res = await call("GET", "/poi/search?q=coffee", env, { token: "" });
     expect(res.status).toBe(401);
   });
+
+  it("never logs key= when the Google upstream fails (P0 secret scrub)", async () => {
+    // A hostile upstream-shaped error carrying the keyed request URL must be
+    // scrubbed before it reaches the log line — the unit under test is the
+    // shared log scrub, exercised through a forced handler catch path.
+    const { logError } = await import("../../web/shared/log");
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      logError({
+        route: "GET /poi/reverse",
+        request: new Request("https://poi.test/poi/reverse", { method: "POST" }),
+        error: new Error(
+          "Geocoding failed: https://maps.googleapis.com/maps/api/geocode/json?latlng=1,2&key=SECRET (upstream status 500)",
+        ),
+        status: 502,
+      });
+      expect(errorSpy).toHaveBeenCalled();
+      for (const args of errorSpy.mock.calls) {
+        for (const arg of args) {
+          expect(String(arg)).not.toContain("key=");
+          expect(String(arg)).not.toContain("SECRET");
+        }
+      }
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
 });
 
 describe("GET /poi/:place_id", () => {

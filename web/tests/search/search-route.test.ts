@@ -174,7 +174,7 @@ describe("GET /api/search route", () => {
     await GET(req);
     expect(checkRateLimit).toHaveBeenCalledWith(
       "search",
-      expect.stringMatching(/^anon:/),
+      expect.objectContaining({ id: expect.stringMatching(/^anon:/) }),
       expect.arrayContaining([
         expect.objectContaining({ windowMs: 60_000, maxRequests: 30 }),
         expect.objectContaining({ windowMs: 3_600_000, maxRequests: 100 }),

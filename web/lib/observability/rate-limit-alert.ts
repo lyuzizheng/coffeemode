@@ -1,4 +1,4 @@
-import { logError } from "./server-log";
+import { logError, logWarn } from "./server-log";
 import "server-only";
 
 /**
@@ -6,11 +6,19 @@ import "server-only";
  *
  * Segregated service component per AGENTS.md: feature code composes it,
  * never embeds or duplicates it. Fires a non-blocking alert when a bucket
- * trips. Uses Better Stack when `BETTER_STACK_INGEST_URL` (per-environment
- * source host) is configured, sending `Authorization: Bearer
- * BETTER_STACK_INGEST_TOKEN` when that is also set — staging and prod use
- * different sources (see docs/agent/pending-user-actions.md §7). Locally it
- * is a no-op besides a throttled console.warn.
+ * trips.
+ *
+ * Two sinks, and they are not equivalent:
+ * - A structured `logWarn` line per event, unthrottled — this is the one that
+ *   reaches Grafana Cloud Loki (BRAWUKA-607) and the one that carries
+ *   `client_ip` for abuse investigation.
+ * - A Better Stack POST when `BETTER_STACK_INGEST_URL` (per-environment source
+ *   host) is configured, sending `Authorization: Bearer
+ *   BETTER_STACK_INGEST_TOKEN` when that is also set — staging and prod use
+ *   different sources (see docs/agent/pending-user-actions.md §7). This path
+ *   is retired in P0-4.
+ *
+ * The 10s throttle covers the local `console.warn` only.
  */
 
 function betterStackUrl(): string | null {
@@ -26,6 +34,8 @@ function betterStackToken(): string | null {
 interface RateLimitAlertPayload {
   bucket: string;
   clientId: string;
+  /** Raw `cf-connecting-ip` behind `clientId` — see `ClientIdentity`. */
+  clientIp: string | null;
   windowMs: number;
   maxRequests: number;
   retryAfter: number;
@@ -49,7 +59,22 @@ function shouldEmit(now: number): boolean {
 export function emitRateLimitAlert(payload: RateLimitAlertPayload): void {
   const now = Date.now();
 
-  // Always log throttled for local observability / Cloudflare logs.
+  // One structured warn line per event, deliberately NOT throttled: a 429 is a
+  // low-frequency security-relevant event, and the whole point of the line is
+  // to show how often one source was denied (BRAWUKA-607 §6 decision 5). The
+  // throttle below is local noise reduction only.
+  logWarn({
+    route: payload.route ?? "rate-limit",
+    error: "rate_limited",
+    status: 429,
+    code: "rate_limited",
+    clientId: payload.clientId,
+    clientIp: payload.clientIp,
+    bucket: payload.bucket,
+    retryAfter: payload.retryAfter,
+  });
+
+  // Throttled console line for local observability / Cloudflare logs.
   if (shouldEmit(now)) {
     console.warn(
       `[rate-limit] bucket=${payload.bucket} client=${payload.clientId} windowMs=${payload.windowMs} max=${payload.maxRequests} retryAfter=${payload.retryAfter}s route=${payload.route ?? "-"}`,
@@ -68,6 +93,7 @@ export function emitRateLimitAlert(payload: RateLimitAlertPayload): void {
       event: "rate_limited",
       bucket: payload.bucket,
       client_id: payload.clientId,
+      client_ip: payload.clientIp,
       window_ms: payload.windowMs,
       max_requests: payload.maxRequests,
       retry_after: payload.retryAfter,

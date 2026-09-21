@@ -17,7 +17,7 @@ import type { ReadableSpan, SpanProcessor } from "@opentelemetry/sdk-trace-base"
  *   presence is the on/off switch: unset (local dev, unit tests, CI) means no
  *   SDK and no export attempts against the OTLP default `localhost:4318`.
  * - `OTEL_EXPORTER_OTLP_HEADERS` — `Authorization=Basic <base64(instanceID:token)>`.
- * - `OTEL_RESOURCE_ATTRIBUTES` — `service.name` + `deployment.environment`
+ * - `OTEL_RESOURCE_ATTRIBUTES` — `service.name` + `deployment.environment.name`
  *   (the attribute Grafana Cloud Application Observability filters on).
  *
  * No sampler is configured, on purpose (BRAWUKA-605 §6 decision 3, superseded
@@ -151,7 +151,7 @@ class RouteTemplateSpanProcessor implements SpanProcessor {
 
 /**
  * Start the OTel SDK. No-op when no OTLP endpoint is configured — the same
- * "unconfigured means silent" contract as `api-error-sink.ts`.
+ * "unconfigured means silent" contract as `otlp-logs.ts`.
  */
 export function registerOtel(): void {
   if (otlpEndpoint() === null) return;

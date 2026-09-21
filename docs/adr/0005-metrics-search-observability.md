@@ -100,6 +100,11 @@ historical record of the original contract.
 
 ## Consequences
 
+- Scope extended 2026-09-21 (spec 0011 D8, BRAWUKA-541): the same Better Stack
+  account also carries the API error/warn JSON lines in a separate
+  `coffeemode-api-errors` source pair, with the `CoffeeMode API Errors`
+  dashboard and its 5xx / `upstream_error` alerts. Still no new vendor and no
+  second consumer — the bounded-scope ruling above is unchanged in kind.
 - Stage 3 (#293) shipped under the owner-ruled staging-E2E gate above; the
   Better Stack "Search" dashboard remains the evidence source once traffic
   exists.

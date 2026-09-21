@@ -85,23 +85,43 @@ function extractError(error: unknown): { message: string; stack?: string } {
   }
 }
 
+/**
+ * Optional second sink for emitted lines (spec 0011 D8, BRAWUKA-541).
+ *
+ * The web app registers the Better Stack shipper here so its lines reach the
+ * `coffeemode-api-errors` source; the workers never register, so their lines
+ * stay stdout-only. Kept as a hook rather than an import because this module
+ * is bundled by both workers — it must stay dependency-free, with no
+ * `server-only` and no RSC export condition.
+ */
+type LineSink = (line: Record<string, unknown>) => void;
+
+let lineSink: LineSink | null = null;
+
+/** Register the second sink. Last registration wins; pass nothing to clear. */
+export function registerLineSink(fn: LineSink | null): void {
+  lineSink = fn;
+}
+
 function emitLine(type: "error" | "warn", fields: LogFields): void {
   const { message, stack } = extractError(fields.error);
   const requestId = fields.requestId ?? (fields.request ? getRequestId(fields.request) : null);
   const sink = type === "warn" ? console.warn : console.error;
-  sink(
-    JSON.stringify({
-      type,
-      request_id: requestId,
-      route: fields.route,
-      ...(fields.status !== undefined ? { status: fields.status } : {}),
-      ...(fields.code !== undefined && (fields.status === undefined || fields.status >= 400)
-        ? { code: fields.code }
-        : {}),
-      error: message,
-      ...(stack ? { stack } : {}),
-    }),
-  );
+  const line = {
+    type,
+    request_id: requestId,
+    route: fields.route,
+    ...(fields.status !== undefined ? { status: fields.status } : {}),
+    ...(fields.code !== undefined && (fields.status === undefined || fields.status >= 400)
+      ? { code: fields.code }
+      : {}),
+    error: message,
+    ...(stack ? { stack } : {}),
+  };
+  sink(JSON.stringify(line));
+  // Same line, second sink. Never throws — the shipper swallows its own
+  // failures, and a throwing sink must not break the caller's catch block.
+  lineSink?.(line);
 }
 
 /** Emit one JSON error line. Never throws. */

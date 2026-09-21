@@ -1,6 +1,7 @@
 import "server-only";
 
-import type { LogFields } from "@shared/log";
+import { registerLineSink, type LogFields } from "@shared/log";
+import { shipApiErrorLine } from "./api-error-sink";
 
 /**
  * Minimal server-side structured logger + request-id (BRAWUKA-168, ADR-0004).
@@ -22,6 +23,10 @@ import type { LogFields } from "@shared/log";
  * Implementation lives in `web/shared/log.ts` (spec 0011 D6, BRAWUKA-539)
  * so both Cloudflare Workers share it; this module keeps the `server-only`
  * boundary and the stable import path.
+ * - Every line goes to two sinks: stdout (the complete record, ADR-0004) and
+ *   the `coffeemode-api-errors` Better Stack source when configured
+ *   (`api-error-sink.ts`, spec 0011 D8) — registered at the bottom of this
+ *   module.
  */
 
 // Request-id primitives live in `web/shared/request-id.ts` so the workers
@@ -31,3 +36,11 @@ export { logError, logWarn } from "@shared/log";
 export type { LogFields };
 /** Pre-0011 name for the shared log fields — kept for existing imports. */
 export type ServerErrorFields = LogFields;
+
+// Spec 0011 D8 (BRAWUKA-541): every line this app emits also goes to the
+// per-environment `coffeemode-api-errors` Better Stack source. Registered
+// here — not inside `web/shared/log.ts` — because that module is bundled by
+// both Cloudflare Workers, which have no `server-only` dependency and no RSC
+// export condition; the sink stays a web-only concern. Workers never call
+// this, so their lines stay stdout-only.
+registerLineSink(shipApiErrorLine);

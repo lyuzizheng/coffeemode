@@ -48,6 +48,30 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
   events round-tripped on both sources (ingest 202 → query-visible within
   ~1 min). If a legacy `rate_limiter_fail_open` alert still exists from
   before BRAWUKA-378, delete it — that event can no longer fire.
+- `api-error-sink` hook (spec 0011 D8, `web/lib/observability/api-error-sink.ts`)
+  ships every `logError`/`logWarn` JSON line to the per-environment
+  `coffeemode-api-errors` source when `BETTER_STACK_ERRORS_INGEST_URL` (source
+  host) is set on the app container, authenticating with `Authorization: Bearer
+  BETTER_STACK_ERRORS_INGEST_TOKEN`. Staging posts to
+  `coffeemode-api-errors-staging`, prod to `coffeemode-api-errors-prod` — same
+  structural env split as the rate-limit pair, both vars server-only (spec
+  0010). The proxy's `type:"access"` lines are deliberately NOT shipped: the
+  proxy runs before routing, so its response is always the 200
+  `NextResponse.next()` and it never sees the route's status or envelope
+  `code` (verified against a running dev server — a 404 page logs
+  `"status":200`). The error lines carry the real `status` and `code`, so they
+  are the metric source. Verified 2026-09-21: synthetic `internal_error` lines
+  round-tripped on both sources (ingest 202 → query-visible within ~1 min).
+- Better Stack `CoffeeMode API Errors` dashboard (team `Your team`): 5xx by
+  `route`, error-`code` histogram, 429 by `bucket` (from the rate-limit
+  sources), worker `upstream_error` count. Two chart alerts: *5xx sustained on
+  a route* and *Worker `upstream_error` spike* — both "any breach in a 60 s
+  bucket, sustained 5 min, auto-resolve after 5 min", one incident per series.
+  The existing `rate_limited` alert is unchanged.
+- **Known coverage gap**: the dashboard counts 5xx that emitted an error/warn
+  line. A handler that *returns* a 5xx envelope without logging — today only
+  `GET /api/mapkit-token` (`mapkit_token_error`) — is not counted. The
+  `apiRoute` catch-all path always logs, so unexpected throws are covered.
 - Workers Observability: `poi-service-prod` / `image-service-prod` logs for
   shared-secret rejections (401s on `x-poi-service-token` /
   `x-image-service-token`) — any volume means someone is probing the worker

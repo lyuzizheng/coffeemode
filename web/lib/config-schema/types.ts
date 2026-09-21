@@ -6,7 +6,10 @@ export interface AppConfig {
     maxSuggestionLimit: number;
     weakResultsThreshold: number;
     dbFetchCap: number;
-    maxIterativeFetchBatches: number;
+    edgeCache: {
+      ttlSeconds: number;
+      maxEntries: number;
+    };
     minPoiQueryLength: number;
     relevanceWeights: {
       exactNameMatch: number;

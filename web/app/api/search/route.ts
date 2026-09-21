@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
 import { guard } from "@/lib/api/guard";
 import { findCity, resolveEffectiveCity } from "@/lib/cities";
-import { executeSearch } from "@/lib/search/search-service";
+import { executeSearchCached } from "@/lib/search/search-cache";
 import { fixtureSearchResponse, getSearchFixtures, isFixturesEnabled } from "@/lib/search/fixtures";
 import { parseSearchQuery } from "@/lib/search/search-params";
 import { appConfig } from "@/lib/config";
@@ -61,7 +61,6 @@ export async function GET(request: Request) {
   if (!gate.ok) return gate.response;
   const { user } = gate;
 
-
   const searchFilters = {
     ...filters,
     city: effectiveCity,
@@ -69,12 +68,16 @@ export async function GET(request: Request) {
   };
 
   try {
-    const { search_mode, ...searchResponse } = await executeSearch(searchFilters);
-    const response = NextResponse.json(searchResponse);
+    // DG137-C: in-process edge cache keyed by city:q:filtersHash, TTL-bounded
+    // and invalidated early when the cafes data version moves.
+    const { response: searchResponse, cache } = await executeSearchCached(searchFilters);
+    const { search_mode, ...body } = searchResponse;
+    const response = NextResponse.json(body);
     // DG137-B: Cache-Control on success path only
     response.headers.set("Cache-Control", SEARCH_RESPONSE_CACHE_CONTROL);
     // DG132: observability header for actual stored vs live fanout mode
     response.headers.set("X-Search-Mode", search_mode ?? "stored_only");
+    response.headers.set("X-Search-Cache", cache);
     return response;
   } catch (err) {
     logError({ route: gate.route, request, error: err, status: 500 });

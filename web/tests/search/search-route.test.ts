@@ -1,11 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GET } from "@/app/api/search/route";
-import { executeSearch } from "@/lib/search/search-service";
+import { executeSearchCached } from "@/lib/search/search-cache";
 import { checkRateLimit } from "@/lib/rate-limit";
 import type { SearchResponse } from "@/lib/search/types";
 
 vi.mock("@/lib/search/search-service", () => ({
   executeSearch: vi.fn(),
+  emitSearchTelemetry: vi.fn(),
+}));
+
+// The edge cache is exercised end-to-end in the HTTP integration suite;
+// here the orchestrator is stubbed to a permanent miss so route behavior
+// stays isolated.
+vi.mock("@/lib/search/search-cache", () => ({
+  executeSearchCached: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/get-user", () => ({
@@ -31,7 +39,7 @@ describe("GET /api/search route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(checkRateLimit).mockResolvedValue({ allowed: true, remaining: 10, resetAt: Date.now(), retryAfter: 0 });
-    vi.mocked(executeSearch).mockResolvedValue(mockResponse);
+    vi.mocked(executeSearchCached).mockResolvedValue({ response: mockResponse, cache: "miss" });
   });
 
   it("rejects out-of-range latitude with 400", async () => {
@@ -82,7 +90,7 @@ describe("GET /api/search route", () => {
     const body = await res.json();
     expect(body.error).toBe("invalid_request");
     expect(body.message).toBe("unknown city");
-    expect(executeSearch).not.toHaveBeenCalled();
+    expect(executeSearchCached).not.toHaveBeenCalled();
   });
 
   it("resolves omitted city via cf-ipcity header (DG128)", async () => {
@@ -91,7 +99,7 @@ describe("GET /api/search route", () => {
     });
     const res = await GET(req);
     expect(res.status).toBe(200);
-    expect(executeSearch).toHaveBeenCalledWith(expect.objectContaining({ city: "tokyo" }));
+    expect(executeSearchCached).toHaveBeenCalledWith(expect.objectContaining({ city: "tokyo" }));
   });
 
   it("resolves omitted city via cf-ipcountry fallback when cf-ipcity misses", async () => {
@@ -100,14 +108,14 @@ describe("GET /api/search route", () => {
     });
     const res = await GET(req);
     expect(res.status).toBe(200);
-    expect(executeSearch).toHaveBeenCalledWith(expect.objectContaining({ city: "singapore" }));
+    expect(executeSearchCached).toHaveBeenCalledWith(expect.objectContaining({ city: "singapore" }));
   });
 
   it("falls back to default city when no headers present", async () => {
     const req = new Request("http://localhost/api/search?q=coffee");
     const res = await GET(req);
     expect(res.status).toBe(200);
-    expect(executeSearch).toHaveBeenCalledWith(expect.objectContaining({ city: "singapore" }));
+    expect(executeSearchCached).toHaveBeenCalledWith(expect.objectContaining({ city: "singapore" }));
   });
 
   it("parses query params and calls executeSearch", async () => {
@@ -118,7 +126,7 @@ describe("GET /api/search route", () => {
     const res = await GET(req);
 
     expect(res.status).toBe(200);
-    expect(executeSearch).toHaveBeenCalledWith({
+    expect(executeSearchCached).toHaveBeenCalledWith({
       q: "coffee",
       city: "tokyo",
       lat: undefined,
@@ -128,6 +136,8 @@ describe("GET /api/search route", () => {
       filter_wifi: 80,
       filter_max_stay: "unlimited",
       limit: undefined,
+      ranking: undefined,
+      viewer_id: undefined,
     });
   });
 
@@ -147,11 +157,14 @@ describe("GET /api/search route", () => {
   });
 
   it("calls checkRateLimit with the multi-window search buckets", async () => {
-    vi.mocked(executeSearch).mockResolvedValue({
-      results: [],
-      total_count: 0,
-      is_weak_results: true,
-      reference_point: { lat: 1.35, lng: 103.8, is_from_city_center: true },
+    vi.mocked(executeSearchCached).mockResolvedValue({
+      response: {
+        results: [],
+        total_count: 0,
+        is_weak_results: true,
+        reference_point: { lat: 1.35, lng: 103.8, is_from_city_center: true },
+      },
+      cache: "miss",
     });
     const req = new Request("http://localhost/api/search?q=coffee");
     await GET(req);
@@ -168,7 +181,7 @@ describe("GET /api/search route", () => {
   });
 
   it("returns 500 internal_error when executeSearch throws", async () => {
-    vi.mocked(executeSearch).mockRejectedValueOnce(new Error("DB connection crash"));
+    vi.mocked(executeSearchCached).mockRejectedValueOnce(new Error("DB connection crash"));
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const req = new Request("http://localhost/api/search?q=crash");
@@ -193,9 +206,9 @@ describe("GET /api/search route", () => {
   });
 
   it("DG132: sets X-Search-Mode header based on executeSearch mode", async () => {
-    vi.mocked(executeSearch).mockResolvedValueOnce({
-      ...mockResponse,
-      search_mode: "live",
+    vi.mocked(executeSearchCached).mockResolvedValueOnce({
+      response: { ...mockResponse, search_mode: "live" },
+      cache: "miss",
     });
 
     const req = new Request("http://localhost/api/search?q=coffee&include_live=true");
@@ -213,7 +226,7 @@ describe("GET /api/search route", () => {
       const req = new Request("http://localhost/api/search?fixtures=1&q=coffee");
       const res = await GET(req);
       expect(res.status).toBe(200);
-      expect(executeSearch).toHaveBeenCalled();
+      expect(executeSearchCached).toHaveBeenCalled();
     } finally {
       vi.unstubAllEnvs();
     }
@@ -224,13 +237,13 @@ describe("GET /api/search route", () => {
     vi.stubEnv("NODE_ENV", "development");
 
     try {
-      vi.mocked(executeSearch).mockClear();
+      vi.mocked(executeSearchCached).mockClear();
       const req = new Request("http://localhost/api/search?fixtures=1");
       const res = await GET(req);
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.results.length).toBeGreaterThan(0);
-      expect(executeSearch).not.toHaveBeenCalled();
+      expect(executeSearchCached).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllEnvs();
     }

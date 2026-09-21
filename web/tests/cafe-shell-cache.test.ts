@@ -149,7 +149,7 @@ function minimalValid() {
       maxSuggestionLimit: 10,
       weakResultsThreshold: 3,
       dbFetchCap: 100,
-      maxIterativeFetchBatches: 10,
+      edgeCache: { ttlSeconds: 60, maxEntries: 500 },
       minPoiQueryLength: 3,
       relevanceWeights: { exactNameMatch: 100, prefixMatch: 80, fuzzyMatch: 50, secondaryMatch: 10 },
       goodFirst: { experienceMin: 80, compositeMin: 75, boost: 10 },

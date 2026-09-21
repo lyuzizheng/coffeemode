@@ -48,20 +48,21 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
   events round-tripped on both sources (ingest 202 → query-visible within
   ~1 min). If a legacy `rate_limiter_fail_open` alert still exists from
   before BRAWUKA-378, delete it — that event can no longer fire.
-- `api-error-sink` hook (spec 0011 D8, `web/lib/observability/api-error-sink.ts`)
-  ships every `logError`/`logWarn` JSON line to the per-environment
-  `coffeemode-api-errors` source when `BETTER_STACK_ERRORS_INGEST_URL` (source
-  host) is set on the app container, authenticating with `Authorization: Bearer
-  BETTER_STACK_ERRORS_INGEST_TOKEN`. Staging posts to
-  `coffeemode-api-errors-staging`, prod to `coffeemode-api-errors-prod` — same
-  structural env split as the rate-limit pair, both vars server-only (spec
-  0010). The proxy's `type:"access"` lines are deliberately NOT shipped: the
-  proxy runs before routing, so its response is always the 200
-  `NextResponse.next()` and it never sees the route's status or envelope
-  `code` (verified against a running dev server — a 404 page logs
-  `"status":200`). The error lines carry the real `status` and `code`, so they
-  are the metric source. Verified 2026-09-21: synthetic `internal_error` lines
-  round-tripped on both sources (ingest 202 → query-visible within ~1 min).
+- `otlp-logs` hook (BRAWUKA-607, `web/lib/observability/otlp-logs.ts`) ships
+  every `logError`/`logWarn` JSON line — and the proxy's `type:"access"` line —
+  to Grafana Cloud Loki over OTLP, on the same SDK and endpoint as traces
+  (`OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS`, BRAWUKA-606).
+  It replaced the Better Stack `api-error-sink` (spec 0011 D8, BRAWUKA-541) and
+  the `BETTER_STACK_ERRORS_INGEST_*` pair, which are gone. Unset endpoint means
+  no SDK and no export attempts, so local dev and CI stay stdout-only.
+  Because the line is emitted inside the request's span, it carries `trace_id` /
+  `span_id` and clicks through to its Tempo trace — the reason the Alloy stdout
+  collector was dropped (docs/devops/grafana-cloud-adoption.md §3 P0-1).
+  The proxy's access line records the request, not an outcome: the proxy runs
+  before routing, so its response is always the 200 `NextResponse.next()` and it
+  never sees the route's status or envelope `code` (verified against a running
+  dev server — a 404 page logs `"status":200`). The error lines carry the real
+  `status` and `code`, so they remain the metric source.
 - Better Stack `CoffeeMode API Errors (staging)` / `(prod)` dashboards (team
   `Your team`, group `CoffeeMode API Errors`): 5xx by `route`, error-`code`
   histogram, worker `upstream_error` count, plus 429 by `bucket` from the

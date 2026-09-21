@@ -151,7 +151,7 @@ class RouteTemplateSpanProcessor implements SpanProcessor {
 
 /**
  * Start the OTel SDK. No-op when no OTLP endpoint is configured — the same
- * "unconfigured means silent" contract as `api-error-sink.ts`.
+ * "unconfigured means silent" contract as `otlp-logs.ts`.
  */
 export function registerOtel(): void {
   if (otlpEndpoint() === null) return;

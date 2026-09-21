@@ -4,10 +4,10 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 
 ## 0. 结论先行
 
-1. **最高杠杆的一步是在 VPS 上跑 Alloy。** 应用已经在往 stdout 打单行 JSON（`web/lib/observability/server-log.ts`），但没有任何东西收它 —— 日志只活在容器里，`docker logs` 之后就没了。零代码改动就能接进 Loki。
+1. ~~**最高杠杆的一步是在 VPS 上跑 Alloy。**~~ **已落地，但换了实现（BRAWUKA-606 / BRAWUKA-607）**：应用已经在往 stdout 打单行 JSON（`web/lib/observability/server-log.ts`），但没有任何东西收它 —— 日志只活在容器里，`docker logs` 之后就没了。原计划是 Alloy 收 Docker stdout；实际做法是应用侧 `otlp-logs.ts` 直接走 OTLP 进 Loki，和 trace 共用同一个 SDK 与 endpoint。代价是几行代码，换来的是每条日志自带 `trace_id` / `span_id`（Alloy 从 stdout 读不到），并且省掉一个挂 Docker socket 的容器。
 2. **第二高杠杆是给 Next.js 加 OpenTelemetry。** 一次埋点同时换来 traces、service map、RED 指标（`traces_spanmetrics_*` 由 metrics-generator 自动生成）和 exemplar。不用手写 Prometheus 客户端。
 3. **Better Stack 不要一次性切掉。** 现在 4 条 chart alert + 1 个 uptime monitor 是唯一的告警面，先双写、验证、再拆。但只有 uptime monitor 是真在跑的 —— 4 条 chart alert 至今只被合成事件喂过，两条 ingest 路径的环境变量仍待粘贴（§1.2）。
-4. **免费档够用，但有两个硬约束**：14 天保留期，以及 10k active series。Alloy 全量收 Docker stdout 会吃掉 logs 配额，要先做过滤。
+4. **免费档够用，但有两个硬约束**：14 天保留期，以及 10k active series。~~Alloy 全量收 Docker stdout 会吃掉 logs 配额，要先做过滤。~~ 走 OTLP 后这条约束自然消失：只有应用自己 `logError` / `logWarn` / access 行进 Loki，Next.js 的请求日志不进。
 
 ## 1. 现状盘点
 
@@ -42,7 +42,7 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 **两条独立的写入路径**，不是一条：
 
 - `rate-limit-alert.ts` → `BETTER_STACK_INGEST_URL` / `_TOKEN` → `coffeemode-rate-limit-*`（限流命中）
-- `api-error-sink.ts` → `BETTER_STACK_ERRORS_INGEST_URL` / `_TOKEN` → `coffeemode-api-errors-*`（error / warn 行，spec 0011 D8 / BRAWUKA-541）
+- ~~`api-error-sink.ts` → `BETTER_STACK_ERRORS_INGEST_URL` / `_TOKEN` → `coffeemode-api-errors-*`（error / warn 行，spec 0011 D8 / BRAWUKA-541）~~ **已删除（BRAWUKA-607）**：error / warn / access 行改走 OTLP 进 Grafana Cloud Loki，`BETTER_STACK_ERRORS_INGEST_*` 两个变量一并移除。
 
 **实际数据量**（2026-09-21 经 Better Stack query API 查，含冷存）：rate-limit staging 7 行（02:47–07:20）、rate-limit prod 0 行；api-errors staging 27 行（07:20–07:36）、api-errors prod 0 行。api-errors 那 27 行**全部是合成事件**（`route: "GET /api/__synthetic_alert"`），没有一条真实应用错误。
 
@@ -54,7 +54,7 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 |---|---|
 | `web/lib/observability/server-log.ts` | 输出单行 JSON（`{"type":"error","request_id":…}`）到 stdout。**没人收。** |
 | `web/lib/observability/rate-limit-alert.ts` | 限流命中时 `console.warn`（10s 节流）+ fire-and-forget POST 到 Better Stack（**不**节流） |
-| `web/lib/observability/api-error-sink.ts` | error / warn 行 fire-and-forget POST 到 `coffeemode-api-errors-*`（`keepalive`，不阻塞、不抛错，未配置时 no-op）。**第二条 Better Stack 出口**，喂 4 条 chart alert。 |
+| ~~`web/lib/observability/api-error-sink.ts`~~ | **已删除（BRAWUKA-607）**。error / warn / access 行现在由 `web/lib/observability/otlp-logs.ts` 走 OTLP 进 Grafana Cloud Loki，和 trace 同一个 SDK 与 endpoint。 |
 | `/api/health` | `{ok, version, boot_time}` |
 | `/api/heartbeat` | 真实 DB round-trip，Better Stack 轮询它 |
 | `poi-service` / `image-service` | `console.error` + wrangler `[observability]`（数据留在 Cloudflare 侧） |
@@ -107,6 +107,8 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 ### P0 — 让数据进来
 
 #### P0-1 Logs：VPS 上跑 Alloy → Loki
+
+> **已实现（BRAWUKA-607），但没走 Alloy。** 应用侧 `otlp-logs.ts` 直接 OTLP 进 Loki，理由见 §0 第 1 条。下面保留原 Alloy 方案备查；如果之后要收 Next.js 自身的请求日志（OTLP 覆盖不到），Alloy 仍然是那条路。
 
 **为什么**：应用已经在打 JSON 行，只差一个采集器。这是投入产出比最高的一步。
 
@@ -185,7 +187,7 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 
 现在 Better Stack 有 `5xx sustained on a route` 和 `Worker upstream_error spike`，staging / prod 各一套。
 
-**注意这 4 条 alert 依赖 `api-error-sink.ts` → `coffeemode-api-errors-*` 这条写入路径**（见 §1.2），和限流那条是分开的。所以「替代 chart alert」不只是重写 4 条规则，还要把这条 ingest 一起迁走 —— 否则拆掉 Better Stack 时，`api-error-sink.ts` 会变成往一个已停用 source 发数据的死代码。另外它们至今只被合成事件验证过，迁移前应该先在真实流量上确认一次。
+**注意这 4 条 alert 依赖 `api-error-sink.ts` → `coffeemode-api-errors-*` 这条写入路径**（见 §1.2），和限流那条是分开的。~~所以「替代 chart alert」不只是重写 4 条规则，还要把这条 ingest 一起迁走 —— 否则拆掉 Better Stack 时，`api-error-sink.ts` 会变成往一个已停用 source 发数据的死代码。~~ **写入路径已迁走（BRAWUKA-607）**：`api-error-sink.ts` 删除，error / warn 行改走 OTLP 进 Loki，所以这 4 条 alert 现在没有数据源了 —— 替代它们的是 Grafana-managed alert rules（P0-4）。另外它们至今只被合成事件验证过，迁移前应该先在真实流量上确认一次。
 
 目标：Grafana-managed alert rules，数据源用 Loki（日志派生）或 spanmetrics（trace 派生）。
 
@@ -250,7 +252,7 @@ graph TD
 
 ## 6. 已拍板的决定（Reviewer & Architect，2026-09-21）
 
-1. **日志：不切，双跑到 P1 验证完。** stdout 是唯一完整记录（ADR-0004），Alloy 收它不影响 Better Stack sink。`api-error-sink.ts` 和 rate-limit POST 保持开启；Grafana Alerting 验证通过后删 sink + env vars（`BETTER_STACK_*_INGEST_*`），不是改 Alloy 配置。
+1. **日志：不切，双跑到 P1 验证完。** stdout 是唯一完整记录（ADR-0004），Alloy 收它不影响 Better Stack sink。~~`api-error-sink.ts` 和 rate-limit POST 保持开启；Grafana Alerting 验证通过后删 sink + env vars（`BETTER_STACK_*_INGEST_*`），不是改 Alloy 配置。~~ **部分已执行（BRAWUKA-607）**：`api-error-sink.ts` 与 `BETTER_STACK_ERRORS_INGEST_*` 已删除 —— 日志改走 OTLP 进 Loki，不再需要 Alloy 收 stdout。rate-limit POST 与 `BETTER_STACK_INGEST_*` 保持开启，等 Grafana Alerting 验证通过后再删。
 2. **Better Stack：全退，但分两步。** P1-1 synthetic 验证通过前保留 uptime monitor，之后全退。没有要重建的 status page / heartbeat（Better Stack 侧本来就没有）。
 3. ~~**OTel 采样：prod 10% `parentbased_traceidratio` 起步，staging 100%。**~~ **已由 Owner 于 2026-09-21 推翻：不采样，100% 全采。** 理由：head sampling 在根 span 上丢整条 trace，而 `traces_spanmetrics_*` 是从实际到达的 span 派生的 —— 0.1 的比率会让每个 RED 计数只有真实值的十分之一，静默破坏 P0-3 依赖的告警。量级远低于 50 GB 免费档，采样省不下什么却牺牲正确性；真涨上来时解法是 tail sampling（保留全部错误 + 慢 trace），不是 head ratio。原决定保留备查：staging 量小，全采方便调试；prod 一周后看用量再调。接受的代价：head sampling 下 90% 的错误 trace 会丢，靠日志补 —— 这正是 P0-1 先做的理由。
 4. **rate-limit：保留逐条事件，但改成结构化日志，不是 counter。** 429 命中是低频安全相关事件，`client_id` / `bucket` / `retry_after` 有排查价值，量也吃不垮 50 GB。做法：`emitRateLimitAlert` 里每个事件走 `logWarn` 打一条 JSON（`client_id` 进 structured metadata，不做 label），现有 10s 节流的 `console.warn` 保留只用于本地降噪。counter 可以之后用 spanmetrics 或 LogQL metric query 派生，不需要应用侧埋点。

@@ -137,3 +137,17 @@ export function logError(fields: LogFields): void {
 export function logWarn(fields: LogFields): void {
   emitLine("warn", fields);
 }
+
+/**
+ * Emit one already-shaped line — stdout (the complete record, ADR-0004) plus
+ * the registered sink.
+ *
+ * The proxy's access line is neither error nor warn, so it has no `LogFields`
+ * to hand `logError`/`logWarn`: it builds its own line and passes it here.
+ * Kept in this module rather than in the proxy so the stdout-then-sink order
+ * stays in one place.
+ */
+export function emitAccessLine(line: Record<string, unknown>): void {
+  console.log(JSON.stringify(line));
+  lineSink?.(line);
+}

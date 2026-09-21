@@ -1,7 +1,7 @@
 import "server-only";
 
-import { registerLineSink, type LogFields } from "@shared/log";
-import { shipApiErrorLine } from "./api-error-sink";
+import { type LogFields } from "@shared/log";
+import { registerOtlpLogSink } from "./otlp-logs";
 
 /**
  * Minimal server-side structured logger + request-id (BRAWUKA-168, ADR-0004).
@@ -24,23 +24,24 @@ import { shipApiErrorLine } from "./api-error-sink";
  * so both Cloudflare Workers share it; this module keeps the `server-only`
  * boundary and the stable import path.
  * - Every line goes to two sinks: stdout (the complete record, ADR-0004) and
- *   the `coffeemode-api-errors` Better Stack source when configured
- *   (`api-error-sink.ts`, spec 0011 D8) — registered at the bottom of this
- *   module.
+ *   Grafana Cloud Loki over OTLP (`otlp-logs.ts`, BRAWUKA-607) — registered at
+ *   the bottom of this module.
  */
 
 // Request-id primitives live in `web/shared/request-id.ts` so the workers
 // share them; re-exported here to keep this module's public API stable.
 export { getRequestId, isValidRequestId, REQUEST_ID_HEADER } from "@shared/request-id";
-export { logError, logWarn } from "@shared/log";
+export { logError, logWarn, emitAccessLine } from "@shared/log";
 export type { LogFields };
 /** Pre-0011 name for the shared log fields — kept for existing imports. */
 export type ServerErrorFields = LogFields;
 
-// Spec 0011 D8 (BRAWUKA-541): every line this app emits also goes to the
-// per-environment `coffeemode-api-errors` Better Stack source. Registered
-// here — not inside `web/shared/log.ts` — because that module is bundled by
-// both Cloudflare Workers, which have no `server-only` dependency and no RSC
-// export condition; the sink stays a web-only concern. Workers never call
-// this, so their lines stay stdout-only.
-registerLineSink(shipApiErrorLine);
+// BRAWUKA-607: every line this app emits also goes to Grafana Cloud Loki over
+// OTLP, on the same SDK and endpoint as traces. Registered here — not inside
+// `web/shared/log.ts` — because that module is bundled by both Cloudflare
+// Workers, which have no `server-only` dependency and no RSC export condition;
+// the sink stays a web-only concern. Workers never call this, so their lines
+// stay stdout-only. The proxy registers it separately: Next.js compiles
+// `proxy.ts` into its own bundle, so its copy of `@shared/log` has its own
+// sink slot (see `otlp-logs.ts`).
+registerOtlpLogSink();

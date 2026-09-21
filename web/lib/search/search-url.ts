@@ -39,15 +39,27 @@ export function serializeSearchParams(filters: SearchFilters): URLSearchParams {
 export function buildSearchHref({
   q,
   city,
+  lat,
+  lng,
   ranking,
   filters,
 }: {
   q?: string;
   city?: string;
+  /** Coordinate scope for runtime cities (BRAWUKA-568): `?city=` only accepts
+   * launch ids, so out-of-coverage scopes deep-link by `?lat&lng` instead. */
+  lat?: number;
+  lng?: number;
   ranking?: string | null;
   filters?: SearchFilterState;
 }): string {
-  const params = serializeSearchParams({ q: q?.trim() || undefined, city, ranking: ranking ?? undefined });
+  const params = serializeSearchParams({
+    q: q?.trim() || undefined,
+    city,
+    lat,
+    lng,
+    ranking: ranking ?? undefined,
+  });
   if (filters) filtersToSearchParams(filters, params);
   const qs = params.toString();
   return qs ? `/search?${qs}` : "/search";

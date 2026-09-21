@@ -157,7 +157,7 @@ describe("useNavPrompt", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_000);
     });
-    expect(fetchMock).toHaveBeenCalledWith("/api/navigations/prompt");
+    expect(fetchMock).toHaveBeenCalledWith("/api/navigations/prompt", undefined);
     expect(screen.getByTestId("item").textContent).toBe("Seed Cafe");
   });
 
@@ -251,7 +251,7 @@ describe("useNavPrompt", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(8_000);
     });
-    expect(fetchMock).toHaveBeenCalledWith("/api/navigations/prompt");
+    expect(fetchMock).toHaveBeenCalledWith("/api/navigations/prompt", undefined);
     expect(screen.getByTestId("item").textContent).toBe("Seed Cafe");
     // No unbounded tail: nothing more fires after another 30s.
     fetchMock.mockClear();

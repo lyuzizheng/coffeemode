@@ -101,10 +101,12 @@ describe("fetchUnifiedSearch", () => {
     expect(url).not.toContain("lat=");
   });
 
-  it("throws with the server message on non-OK responses", async () => {
+  it("throws an ApiError on non-OK responses — server message stays off err.message", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ message: "boom" }), { status: 500 }),
+      new Response(JSON.stringify({ error: "internal_error", message: "boom" }), { status: 500 }),
     );
-    await expect(fetchUnifiedSearch({ q: "coffee" })).rejects.toThrow("boom");
+    const failure = await fetchUnifiedSearch({ q: "coffee" }).catch((e: unknown) => e);
+    expect(failure).toMatchObject({ name: "ApiError", status: 500, code: "internal_error" });
+    expect((failure as Error).message).toBe("internal_error");
   });
 });

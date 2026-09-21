@@ -53,8 +53,19 @@ function filtersHash(filters: SearchFilters): string {
   return createHash("sha256").update(JSON.stringify(canonical)).digest("hex").slice(0, 24);
 }
 
-export function searchCacheKey(filters: SearchFilters): string {
-  return `${filters.city ?? ""}:${filters.q ?? ""}:${filtersHash(filters)}`;
+/**
+ * UTC-minute bucket scoping open_now entries. Open/closed status moves with
+ * wall-clock time, not with cafes writes, so an open_now entry must never
+ * survive a minute boundary — a cafe opening/closing mid-TTL is re-evaluated
+ * on the next minute's first request (stale ≤ ~60s). Non-open_now keys are
+ * byte-identical to before (no bucket segment).
+ */
+const OPEN_NOW_BUCKET_MS = 60_000;
+
+export function searchCacheKey(filters: SearchFilters, now: number = Date.now()): string {
+  const base = `${filters.city ?? ""}:${filters.q ?? ""}:${filtersHash(filters)}`;
+  if (filters.open_now !== true) return base;
+  return `${base}:m${Math.floor(now / OPEN_NOW_BUCKET_MS)}`;
 }
 
 /**
@@ -114,12 +125,13 @@ export function clearSearchCache(): void {
  */
 export async function executeSearchCached(
   filters: SearchFilters,
+  now: number = Date.now(),
 ): Promise<{ response: SearchServiceResponse; cache: "hit" | "miss" | "bypass" }> {
   const version = await cafesDataVersion().catch(() => null);
-  const key = searchCacheKey(filters);
+  const key = searchCacheKey(filters, now);
 
   if (version !== null) {
-    const cached = readSearchCache(key, version);
+    const cached = readSearchCache(key, version, now);
     if (cached) {
       emitSearchTelemetry({
         mode: cached.search_mode ?? "stored_only",
@@ -134,13 +146,16 @@ export async function executeSearchCached(
     }
   }
 
+  // One instant for the whole fill so the cache bucket, the SQL open_now
+  // predicate, and the in-memory post-check can never disagree about "now".
+  const instant = new Date(now);
   const response = await executeSearch(
     filters,
-    undefined,
+    instant,
     version !== null ? "miss" : "bypass",
   );
   if (version !== null) {
-    writeSearchCache(key, version, response);
+    writeSearchCache(key, version, response, now);
   }
   return { response, cache: version !== null ? "miss" : "bypass" };
 }

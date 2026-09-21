@@ -5,9 +5,11 @@ import Image from "next/image";
 import { useTranslations, useLocale } from "next-intl";
 import { Button, toast } from "@heroui/react";
 import { CoffeeIcon } from "@/components/icons";
+import { SignInGate } from "@/components/auth/sign-in-gate";
 import { LAUNCH_CITIES, displayCityName, type CityInfo } from "@/lib/cities";
 import type { UserProfileDto } from "@/lib/db/profile";
 import { getDisplayNameMaxChars } from "@/lib/client-env";
+import { apiFetch, isUnauthorized } from "@/lib/http";
 
 interface ProfileHeroProps {
   profile: UserProfileDto | null;
@@ -25,24 +27,33 @@ export function ProfileHero({ profile, onProfileChange }: ProfileHeroProps) {
   const [isSelectingCity, setIsSelectingCity] = useState(false);
   const [isSavingCity, startSavingCity] = useTransition();
 
+  // A 401 mid-edit means the session died under a mounted page — swap the
+  // hero for the shared gate rather than a retryable toast (BRAWUKA-540).
+  const [sessionExpired, setSessionExpired] = useState(false);
+
   const handleSaveName = () => {
     const trimmed = nameInput.trim();
     // Server enforces `profile.displayNameMaxChars`; this only avoids a doomed request.
     if (!trimmed || trimmed.length > getDisplayNameMaxChars()) return;
     startSavingName(async () => {
       try {
-        const res = await fetch("/api/profile", {
+        const data = await apiFetch<{ profile: UserProfileDto }>("/api/profile", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ displayName: trimmed }),
         });
-        if (res.ok) {
-          const data = (await res.json()) as { profile: UserProfileDto };
+        if (data?.profile) {
           onProfileChange(data.profile);
           setIsEditingName(false);
           return;
         }
       } catch (err) {
+        // A dead session mid-edit is not a save failure — the gate is the
+        // only surface that can recover it (BRAWUKA-540).
+        if (isUnauthorized(err)) {
+          setSessionExpired(true);
+          return;
+        }
         console.error("Failed to save name:", err);
       }
       // Failure keeps the edit open so the draft survives; the toast is the
@@ -54,18 +65,21 @@ export function ProfileHero({ profile, onProfileChange }: ProfileHeroProps) {
   const handleSelectCity = (cityId: string) => {
     startSavingCity(async () => {
       try {
-        const res = await fetch("/api/profile", {
+        const data = await apiFetch<{ profile: UserProfileDto }>("/api/profile", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ currentCity: cityId }),
         });
-        if (res.ok) {
-          const data = (await res.json()) as { profile: UserProfileDto };
+        if (data?.profile) {
           onProfileChange(data.profile);
           setIsSelectingCity(false);
           return;
         }
       } catch (err) {
+        if (isUnauthorized(err)) {
+          setSessionExpired(true);
+          return;
+        }
         console.error("Failed to save city:", err);
       }
       toast(t("save_failed"), { timeout: 4000 });
@@ -77,6 +91,14 @@ export function ProfileHero({ profile, onProfileChange }: ProfileHeroProps) {
 
   const avatarFallback =
     profile?.displayName?.[0]?.toUpperCase() ?? t("default_avatar");
+
+  if (sessionExpired) {
+    return (
+      <div className="pt-2 pb-6">
+        <SignInGate message={t("sign_in_to_save")} next="/profile" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center text-center relative pt-2 pb-6">

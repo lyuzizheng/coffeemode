@@ -15,6 +15,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { isValidUUID } from "@shared/uuid";
+import { apiFetch } from "@/lib/http";
 import { formatDistanceKm } from "@/lib/discovery/view-model";
 import type { CafeSummary } from "@/types/cafes";
 
@@ -29,9 +30,10 @@ export function CafeRecoveryBlock({ cafeId }: { cafeId?: string }) {
   useEffect(() => {
     if (!id || !isValidUUID(id)) return;
     const controller = new AbortController();
-    fetch(`/api/cafes/${id}/recovery`, { signal: controller.signal })
-      .then((res) => (res.ok ? res.json() : { cafes: [] }))
-      .then((body: { cafes?: CafeSummary[] }) => setCafes(body.cafes ?? []))
+    apiFetch<{ cafes?: CafeSummary[] }>(`/api/cafes/${id}/recovery`, {
+      signal: controller.signal,
+    })
+      .then((body) => setCafes(body?.cafes ?? []))
       .catch(() => {
         if (!controller.signal.aborted) setCafes([]);
       });

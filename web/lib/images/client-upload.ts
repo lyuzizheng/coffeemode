@@ -1,6 +1,6 @@
 import { MAX_UPLOAD_BYTES } from "@shared/images/constants";
 import { getImageMaxDimension } from "@/lib/client-env";
-import { UNAUTHORIZED } from "@/lib/http";
+import { apiFetch, isUnauthorized } from "@/lib/http";
 import type { UploadUrlResponse } from "@/types/images";
 
 /**
@@ -50,20 +50,24 @@ export async function uploadPhoto(file: File): Promise<string> {
   const webp = await toWebP(file);
   if (webp.size > MAX_UPLOAD_BYTES) throw new Error("photo_too_large");
 
-  const uploadResponse = await fetch("/api/images/upload", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ size: webp.size }),
-  });
-  // Benign: non-JSON error responses (e.g. gateway 502) safely parse as null before failing on line 50.
-  const uploadData = (await uploadResponse.json().catch(() => null)) as UploadUrlResponse | null;
-  // Session expiry between the last-check-in probe and publish surfaces here
-  // as 401 (presigned URLs are issued to authenticated sessions only). Throw
-  // the shared "unauthorized" marker — same convention as the check-in POST /
-  // PATCH / DELETE paths — so the drawer opens the sign-in gate instead of
-  // trapping the user in a photo-retry loop that can never succeed.
-  if (uploadResponse.status === 401) throw new Error(UNAUTHORIZED);
-  if (!uploadResponse.ok || !uploadData?.uploadUrl || !uploadData.imageUuid) {
+  let uploadData: UploadUrlResponse;
+  try {
+    const data = await apiFetch<UploadUrlResponse>("/api/images/upload", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ size: webp.size }),
+    });
+    if (!data?.uploadUrl || !data.imageUuid) throw new Error("photo_upload_failed");
+    uploadData = data;
+  } catch (cause) {
+    // Session expiry between the last-check-in probe and publish surfaces
+    // here as 401 (presigned URLs are issued to authenticated sessions
+    // only). `apiFetch` already threw the shared "unauthorized" marker —
+    // same convention as the check-in POST / PATCH / DELETE paths — so the
+    // drawer opens the sign-in gate instead of trapping the user in a
+    // photo-retry loop that can never succeed. Every other failure keeps
+    // the photo vocabulary the form renders.
+    if (isUnauthorized(cause)) throw cause;
     throw new Error("photo_upload_failed");
   }
 

@@ -65,13 +65,16 @@ class NetworkStatusStore {
     this.pendingControllers.add(controller);
 
     try {
-      const response = await fetch(PING_URL, {
+      // Any HTTP response — including a 5xx — proves connectivity: server-down
+      // is not "you are offline" (spec 0011 D9, audit P2). Only a fetch
+      // rejection or the abort timeout below means the network is gone.
+      await fetch(PING_URL, {
         method: "HEAD",
         cache: "no-store",
         signal: controller.signal,
       });
       clearTimeout(timeout);
-      this.setState(response.ok ? "online" : "offline");
+      this.setState("online");
     } catch {
       clearTimeout(timeout);
       this.setState("offline");

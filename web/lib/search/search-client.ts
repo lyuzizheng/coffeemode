@@ -1,5 +1,5 @@
 import { findCity } from "@/lib/cities";
-import { responseMessage } from "@/lib/http";
+import { apiFetch } from "@/lib/http";
 import { readOnboardingState } from "@/lib/onboarding-store";
 import { getRankingPreference } from "./ranking-preference";
 import { filtersToSearchParams, type SearchFilterState } from "./search-filters";
@@ -74,14 +74,10 @@ export async function fetchUnifiedSearch({
   const ranking = getRankingPreference();
   if (ranking) params.set("ranking", ranking);
 
-  const response = await fetch(`/api/search?${params.toString()}`, {
+  return apiFetch<SearchResponse>(`/api/search?${params.toString()}`, {
     method: "GET",
     signal,
   });
-  if (!response.ok) {
-    throw new Error(await responseMessage(response, "search_failed"));
-  }
-  return (await response.json()) as SearchResponse;
 }
 
 // `buildSearchHref` lives in `search-url.ts` — the neutral module that owns

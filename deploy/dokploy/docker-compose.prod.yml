@@ -54,6 +54,17 @@ services:
       PORT: 3000
       HOSTNAME: 0.0.0.0
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set in shell environment, via docker compose --env-file .env.prod, or Dokploy environment}
+      # OpenTelemetry → Grafana Cloud Tempo (BRAWUKA-606). Non-secret, so it is
+      # pinned here instead of left to a Dokploy env paste: a forgotten sampler
+      # arg would silently fall back to 100% sampling and eat the 50 GB trace
+      # quota. The credential (`OTEL_EXPORTER_OTLP_HEADERS`) stays in .env.prod.
+      # `deployment.environment` matches APP_ENV — the repo's environment
+      # discriminator — and is the attribute Grafana Application Observability
+      # filters on. Prod starts at 10% head sampling (adoption doc §6 decision 3).
+      OTEL_EXPORTER_OTLP_ENDPOINT: https://otlp-gateway-prod-ap-southeast-1.grafana.net/otlp
+      OTEL_RESOURCE_ATTRIBUTES: service.name=coffeemode-web,deployment.environment=production
+      OTEL_TRACES_SAMPLER: parentbased_traceidratio
+      OTEL_TRACES_SAMPLER_ARG: "0.1"
     networks:
       - coffeemode-prod-network
       - traefik-net

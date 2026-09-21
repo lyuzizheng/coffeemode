@@ -88,6 +88,9 @@ web/app/cafes/[id]/      SSR public cafe shell + client-loaded feed (seo-sharing
                          gone-cafe 404; app/sitemap.ts + app/robots.ts + public/llms.txt
 web/components/checkin/  Check-in drawer, sliders, photo uploader, and success feedback (PR #287)
 web/lib/rate-limit.ts    In-memory token-bucket rate limiter with a shared client identifier helper
+web/lib/observability/   Server-side observability: single-line JSON request/error logs
+                         (server-log.ts), the Better Stack error sink (api-error-sink.ts),
+                         and OpenTelemetry trace registration (otel.ts, BRAWUKA-606)
 web/next.config.ts       Long immutable Cache-Control headers for static/PWA assets
 web/app/sw.ts            Serwist runtime cache (CacheFirst for immutable assets, NetworkOnly for
                          dynamic pages and API routes)

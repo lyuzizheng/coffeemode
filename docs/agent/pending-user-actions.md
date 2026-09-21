@@ -150,6 +150,15 @@ gate itself (spec 0004 decision 6a) still stands.
   - Update branch protection on `main` to require 1 approving review from that bot.
   (Until provisioned, branch protection relies on strict `ci-gate` and admin enforcement, while independent code review is verified via Multica issue verdicts per spec 0003 and closed-loop workflow).
 
+## 10. Grafana Cloud stack (agent observability via MCP)
+
+The Grafana MCP server is deployed and reachable; it needs a stack to talk to.
+
+- [x] Deploy `mcp-grafana` (streamable HTTP) in Dokploy — app `coffeemode-mcp-grafana`, project CoffeeMode / environment `infrastructure`, image `grafana/mcp-grafana:1.5.1` (BRAWUKA-600). Public endpoint `https://mcp.cafemood.app/mcp`, behind Cloudflare Access (service token `cafemood-mcp-grafana-token`) plus the server's own caller bearer token. Wired into the local omp config as the `grafana` MCP server; `initialize` + `tools/list` (81 tools) verified through the public URL.
+- [ ] Create the Grafana Cloud stack (grafana.com — the free tier is enough) and mint a service account token with scopes covering `dashboards:*`, `datasources:read`, `datasources:query`, `folders:*`, `alert.rules:*`, `alert.notifications:*`, `annotations:*`.
+- [ ] Paste the two values into the Dokploy app `coffeemode-mcp-grafana` env (values never go in chat/docs/repo): `GRAFANA_URL` = stack URL, `GRAFANA_SERVICE_ACCOUNT_TOKEN` = the token. Then redeploy the app.
+- [ ] (Optional) Decide whether the rate-limit alert sink (`web/lib/observability/rate-limit-alert.ts`, DG129) moves from Better Stack to Grafana Cloud. Nothing changes until that call is made; the Better Stack sources stay live meanwhile.
+
 ## What the agent continues meanwhile
 
 All non-blocked Phase 1 backlog items have merged to `main` (PRs #19–#22), and the P1 post-review fixes from `fix/post-review-p1-issues` have merged as PR #74. MapKit-specific slices remain blocked on item 4. Cafe creation shipped in PR #128 (merged 2026-08-20) and its item 8 Kimi review completed post-merge on 2026-08-23 (follow-ups #183–#185); Apple live search stays configuration-gated. Backend work such as work-profile aggregation may continue; new user-visible UI stays blocked on its item 8 artifact. The POI and image services are ready to deploy once you complete items 5–7.

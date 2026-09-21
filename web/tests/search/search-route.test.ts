@@ -99,7 +99,7 @@ describe("GET /api/search route", () => {
     });
     const res = await GET(req);
     expect(res.status).toBe(200);
-    expect(executeSearchCached).toHaveBeenCalledWith(expect.objectContaining({ city: "tokyo" }));
+    expect(executeSearchCached).toHaveBeenCalledWith(expect.objectContaining({ city: "tokyo" }), undefined, expect.any(String));
   });
 
   it("resolves omitted city via cf-ipcountry fallback when cf-ipcity misses", async () => {
@@ -108,14 +108,14 @@ describe("GET /api/search route", () => {
     });
     const res = await GET(req);
     expect(res.status).toBe(200);
-    expect(executeSearchCached).toHaveBeenCalledWith(expect.objectContaining({ city: "singapore" }));
+    expect(executeSearchCached).toHaveBeenCalledWith(expect.objectContaining({ city: "singapore" }), undefined, expect.any(String));
   });
 
   it("falls back to default city when no headers present", async () => {
     const req = new Request("http://localhost/api/search?q=coffee");
     const res = await GET(req);
     expect(res.status).toBe(200);
-    expect(executeSearchCached).toHaveBeenCalledWith(expect.objectContaining({ city: "singapore" }));
+    expect(executeSearchCached).toHaveBeenCalledWith(expect.objectContaining({ city: "singapore" }), undefined, expect.any(String));
   });
 
   it("parses query params and calls executeSearch", async () => {
@@ -126,19 +126,23 @@ describe("GET /api/search route", () => {
     const res = await GET(req);
 
     expect(res.status).toBe(200);
-    expect(executeSearchCached).toHaveBeenCalledWith({
-      q: "coffee",
-      city: "tokyo",
-      lat: undefined,
-      lng: undefined,
-      open_now: true,
-      include_live: true,
-      filter_wifi: 80,
-      filter_max_stay: "unlimited",
-      limit: undefined,
-      ranking: undefined,
-      viewer_id: undefined,
-    });
+    expect(executeSearchCached).toHaveBeenCalledWith(
+      {
+        q: "coffee",
+        city: "tokyo",
+        lat: undefined,
+        lng: undefined,
+        open_now: true,
+        include_live: true,
+        filter_wifi: 80,
+        filter_max_stay: "unlimited",
+        limit: undefined,
+        ranking: undefined,
+        viewer_id: undefined,
+      },
+      undefined,
+      expect.any(String),
+    );
   });
 
   it("handles rate limiting with 429", async () => {

@@ -238,8 +238,10 @@ describe("GooglePlacesProvider", () => {
       ),
     );
     const deniedProvider = new GooglePlacesProvider(env, deniedFetch);
+    // P0 scrub (BRAWUKA-539): the upstream `error_message` can echo the key
+    // back, so the denial throws canned text — never the upstream message.
     await expect(deniedProvider.reverseGeocode({ lat: 37.7, lng: -122.4 })).rejects.toThrow(
-      /API key invalid/,
+      /Geocoding request denied/,
     );
   });
 

@@ -2,6 +2,7 @@ import type { CompleteRequest, CompleteResponse, DeleteRequest, DeleteResponse, 
 import { authorized, internalError, json, unauthorized } from "./auth";
 import type { ErrorCode } from "../../web/shared/errors";
 import { defaultErrorStatus } from "../../web/shared/errors";
+import { logError, logWarn } from "../../web/shared/log";
 import { isValidUUID } from "../../web/shared/uuid";
 import { validateUploadSize } from "../../web/shared/images/validation";
 import { sanitizeMetadata } from "./validate";
@@ -28,10 +29,6 @@ function makeKeys(imageUuid: string) {
 }
 
 export async function handleUpload(request: Request, env: Env): Promise<Response> {
-  if (!(await authorized(request, env))) {
-    return unauthorized(request);
-  }
-
   let body: unknown;
   try {
     body = await request.json();
@@ -74,10 +71,6 @@ export async function handleUpload(request: Request, env: Env): Promise<Response
 }
 
 export async function handleComplete(request: Request, env: Env): Promise<Response> {
-  if (!(await authorized(request, env))) {
-    return unauthorized(request);
-  }
-
   let body: unknown;
   try {
     body = await request.json();
@@ -195,10 +188,6 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
  * deleted — the original survives so a retry can re-derive them.
  */
 export async function handleDelete(request: Request, env: Env): Promise<Response> {
-  if (!(await authorized(request, env))) {
-    return unauthorized(request);
-  }
-
   let body: unknown;
   try {
     body = await request.json();
@@ -235,6 +224,16 @@ export default {
         return json({ ok: true, service: "image-service" }, 200, request);
       }
 
+      // Global auth gate (spec 0011 D6): every non-health route requires the
+      // service token, in the same position as poi-service's gate — the
+      // per-handler `authorized()` checks are gone, so the order can never
+      // drift again. A missing env token is a misconfig: fail closed but log
+      // one warn line so the silence is diagnosable.
+      if (!(await authorized(request, env))) {
+        logWarn({ route: "auth", request, error: "unauthorized", status: 401, code: "unauthorized" });
+        return unauthorized(request);
+      }
+
       if (method === "POST" && path === "/v1/images/upload") {
         return await handleUpload(request, env);
       }
@@ -248,7 +247,7 @@ export default {
       }
       return error(request, "not_found", "route not found");
     } catch (e) {
-      console.error("image-service error:", e);
+      logError({ route: "image-service", request, error: e, status: 500, code: "internal_error" });
       return internalError(request);
     }
   },

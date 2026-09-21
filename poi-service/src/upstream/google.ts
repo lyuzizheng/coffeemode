@@ -198,7 +198,10 @@ export async function reverseGeocode(
   const url = `${baseUrl}/maps/api/geocode/json?latlng=${lat},${lng}&key=${encodeURIComponent(env.GOOGLE_PLACES_API_KEY)}`;
   const res = await fetchImpl(url);
   if (!res.ok) {
-    await res.text().catch(() => undefined); // drain; upstream bodies are never relayed
+    // P0 scrub: upstream bodies are never relayed (drained only, so the
+    // socket can be reused) and the thrown message carries the HTTP status
+    // only — never body text, never the request URL (it embeds `key=`).
+    await res.text().catch(() => undefined);
     throw new GoogleApiError(`Geocoding failed with upstream status ${res.status}`, res.status);
   }
 
@@ -213,12 +216,16 @@ export async function reverseGeocode(
       throw new GoogleApiError("Geocoding quota exceeded", 429);
     }
     if (data.status === "REQUEST_DENIED") {
-      throw new GoogleApiError(data.error_message ?? "Geocoding request denied", 403);
+      // P0 scrub: the upstream `error_message` can echo the key back (Google
+      // does this on auth failures) — never relay it, throw canned text.
+      throw new GoogleApiError("Geocoding request denied", 403);
     }
     if (data.status === "INVALID_REQUEST") {
       return null;
     }
-    throw new GoogleApiError(data.error_message ?? `Geocoding upstream status ${data.status}`, 502);
+    // P0 scrub: the upstream `error_message` can echo the key — never relay
+    // it, throw canned text with the upstream status label only.
+    throw new GoogleApiError(`Geocoding upstream status ${data.status}`, 502);
   }
 
   const results = data.results ?? [];

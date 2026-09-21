@@ -22,6 +22,7 @@
  */
 
 import { authorized, internalError, json, unauthorized } from "./auth";
+import { logError, logWarn } from "../../web/shared/log";
 import {
   DEFAULT_SEARCH_RADIUS_KM,
   MAX_EXTERNAL_BATCH_SIZE,
@@ -59,10 +60,18 @@ export { authorized } from "./auth";
 
 function upstreamError(request: Request, e: unknown): Response {
   if (e instanceof UpstreamApiError) {
-    // Scrubbed: upstream response bodies are never relayed (status only).
-    return json({ error: "upstream_error", status: e.status, message: e.message }, 502, request);
+    // P0 scrub: the upstream `message` can carry the request URL (embeds
+    // `key=`) or echoed body text — never relay it. True parse/validation
+    // failures (bad input shape, unparseable candidate) are
+    // `invalid_upstream`; quota exhaustion (429), key denial (403), and
+    // other dependency failures stay `upstream_error` so the D8
+    // `upstream_error` spike alert sees them.
+    if (e.status === 400 || e.status === 404) {
+      return json({ error: "invalid_upstream" }, 502, request);
+    }
+    return json({ error: "upstream_error" }, 502, request);
   }
-  return json({ error: "upstream_error", message: "upstream request failed" }, 502, request);
+  return json({ error: "upstream_error" }, 502, request);
 }
 
 // Apple Maps has no server-side Places API: a share URL with coordinates but
@@ -117,14 +126,16 @@ async function getPOI(placeId: string, env: Env, deps: Deps, request: Request): 
   let poi: POI;
   try {
     poi = provider.toPOI(rawPlace); // rejects places missing `location` instead of storing (0,0)
-  } catch (e) {
+  } catch {
+    // P0 scrub: the validator message carries the upstream place id —
+    // details, not a body field. Canned code only.
     if (stored) return json(stored, request);
-    return json({ error: "invalid_upstream", message: String(e) }, 502, request);
+    return json({ error: "invalid_upstream" }, 502, request);
   }
   try {
     await Promise.all([kvPutPOI(env.POI_KV, poi), d1UpsertPOI(env.POI_DB, poi)]);
   } catch (e) {
-    console.error("cache write failed", e);
+    logError({ route: "GET /poi/:place_id", request, error: e, status: 200 });
   }
   return json(poi, request);
 }
@@ -230,13 +241,14 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
     let poi: POI;
     try {
       poi = provider.toPOI(first); // rejects places missing `location`
-    } catch (e) {
-      return json({ error: "invalid_upstream", message: String(e) }, 502, request);
+    } catch {
+      // P0 scrub: same as above — canned code only.
+      return json({ error: "invalid_upstream" }, 502, request);
     }
     try {
       await Promise.all([kvPutPOI(env.POI_KV, poi), d1UpsertPOI(env.POI_DB, poi)]);
     } catch (e) {
-      console.error("cache write failed", e);
+      logError({ route: "POST /poi/resolve", request, error: e, status: 200 });
     }
     return json(poi, request);
   }
@@ -382,7 +394,7 @@ async function searchExternalPOIs(request: Request, env: Env, deps: Deps): Promi
     // it must not call Google again.
     await kvPutSearchQuery(env.POI_KV, queryKey, results);
   } catch (e) {
-    console.error("external search cache write failed", e);
+    logError({ route: "GET /poi/search/external", request, error: e, status: 200 });
   }
   return json({ results }, request);
 }
@@ -585,7 +597,7 @@ async function reverseGeocodePOI(request: Request, env: Env, deps: Deps): Promis
       // consulting D1, so a stale entry would shadow the fresh D1 row.
       await kvDeletePOI(env.POI_KV, poi.place_id);
     } catch (e) {
-      console.error("cache write failed in reverseGeocodePOI:", e);
+      logError({ route: "GET /poi/reverse", request, error: e, status: 200 });
     }
   }
 
@@ -610,6 +622,7 @@ export async function handleFetch(
     }
 
     if (!(await authorized(request, env))) {
+      logWarn({ route: "auth", request, error: "unauthorized", status: 401, code: "unauthorized" });
       return unauthorized(request);
     }
 
@@ -639,7 +652,7 @@ export async function handleFetch(
 
     return json({ error: "not_found" }, 404, request);
   } catch (e) {
-    console.error("poi-service error:", e);
+    logError({ route: "poi-service", request, error: e, status: 500, code: "internal_error" });
     return internalError(request);
   }
 }

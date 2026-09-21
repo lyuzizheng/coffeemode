@@ -61,7 +61,7 @@ describe("POST /api/places/external", () => {
     const response = await POST(request([APPLE_POI]));
 
     expect(response.status).toBe(200);
-    expect(storeExternalPOIsMock).toHaveBeenCalledWith([APPLE_POI]);
+    expect(storeExternalPOIsMock).toHaveBeenCalledWith([APPLE_POI], expect.any(String));
   });
 
   it("accepts a batch of exactly MAX_EXTERNAL_BATCH_SIZE (50) items", async () => {
@@ -72,7 +72,7 @@ describe("POST /api/places/external", () => {
     const response = await POST(request(exactly50));
 
     expect(response.status).toBe(200);
-    expect(storeExternalPOIsMock).toHaveBeenCalledWith(exactly50);
+    expect(storeExternalPOIsMock).toHaveBeenCalledWith(exactly50, expect.any(String));
   });
 
   it("rejects batch sizes exceeding MAX_EXTERNAL_BATCH_SIZE (50)", async () => {

@@ -56,18 +56,24 @@ export const GET = apiRoute(
 
     const data =
       source === "google"
-        ? await searchExternalPOIs({
-            q,
-            lat: hasCoords ? lat : undefined,
-            lng: hasCoords ? lng : undefined,
-            r: clampedR,
-          })
-        : await searchPOIs({
-            q: q || undefined,
-            lat: hasCoords ? lat : undefined,
-            lng: hasCoords ? lng : undefined,
-            r: clampedR,
-          });
+        ? await searchExternalPOIs(
+            {
+              q,
+              lat: hasCoords ? lat : undefined,
+              lng: hasCoords ? lng : undefined,
+              r: clampedR,
+            },
+            ctx.requestId,
+          )
+        : await searchPOIs(
+            {
+              q: q || undefined,
+              lat: hasCoords ? lat : undefined,
+              lng: hasCoords ? lng : undefined,
+              r: clampedR,
+            },
+            ctx.requestId,
+          );
 
     return NextResponse.json(data);
   },

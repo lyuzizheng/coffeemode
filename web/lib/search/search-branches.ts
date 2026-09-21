@@ -56,14 +56,18 @@ export async function fetchCafesForSearch(
 export async function fetchStoredPois(
   q: string,
   refPoint: SearchReferencePoint,
+  requestId?: string,
 ): Promise<{ results: POI[]; failed: boolean }> {
   try {
-    const poiRes = await searchPOIs({
-      q,
-      lat: refPoint.lat ?? undefined,
-      lng: refPoint.lng ?? undefined,
-      r: appConfig.search.maxRadiusKm,
-    });
+    const poiRes = await searchPOIs(
+      {
+        q,
+        lat: refPoint.lat ?? undefined,
+        lng: refPoint.lng ?? undefined,
+        r: appConfig.search.maxRadiusKm,
+      },
+      requestId,
+    );
     return { results: poiRes.results ?? [], failed: false };
   } catch (err) {
     logError({ route: "search-service stored POI search", error: err });
@@ -78,14 +82,18 @@ export async function fetchStoredPois(
 export async function fetchLivePois(
   q: string,
   refPoint: SearchReferencePoint,
+  requestId?: string,
 ): Promise<{ results: POI[]; failed: boolean }> {
   try {
-    const liveRes = await searchExternalPOIs({
-      q,
-      lat: refPoint.lat ?? undefined,
-      lng: refPoint.lng ?? undefined,
-      r: appConfig.search.maxRadiusKm,
-    });
+    const liveRes = await searchExternalPOIs(
+      {
+        q,
+        lat: refPoint.lat ?? undefined,
+        lng: refPoint.lng ?? undefined,
+        r: appConfig.search.maxRadiusKm,
+      },
+      requestId,
+    );
     return { results: liveRes?.results ?? [], failed: false };
   } catch (err) {
     logError({ route: "search-service live POI search", error: err });

@@ -57,6 +57,14 @@ vi.mock("@/lib/auth/get-user", () => ({
   getCurrentUser: vi.fn(),
 }));
 
+// Records what the route handed the POI seam, so the suite can assert the
+// Autocomplete session token is forwarded end to end (BRAWUKA-602) — that
+// pairing is the whole billing contract.
+const poiSeamCalls: {
+  autocomplete?: { q: string; session: string };
+  details?: { placeId: string; session?: string };
+} = {};
+
 // Mock POI client seam (mandatory): spec 0008 §5 — standard Google POI shape, zero external network requests
 vi.mock("@/lib/places/poi-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/places/poi-client")>();
@@ -66,16 +74,20 @@ vi.mock("@/lib/places/poi-client", async (importOriginal) => {
     // Two-phase live search (BRAWUKA-602): predictions while typing, Place
     // Details on selection. Both are mocked so the suite makes zero external
     // network calls (spec 0008 §5).
-    autocompletePOIs: vi.fn(async () => ({
-      predictions: createMockGooglePlacesResponse().results.map((poi) => ({
-        place_id: poi.place_id,
-        source: poi.source,
-        name: poi.name,
-        address: poi.address,
-        types: poi.types,
-      })),
-    })),
-    getPOI: vi.fn(async (placeId: string) => {
+    autocompletePOIs: vi.fn(async (params: { q: string; session: string }) => {
+      poiSeamCalls.autocomplete = params;
+      return {
+        predictions: createMockGooglePlacesResponse().results.map((poi) => ({
+          place_id: poi.place_id,
+          source: poi.source,
+          name: poi.name,
+          address: poi.address,
+          types: poi.types,
+        })),
+      };
+    }),
+    getPOI: vi.fn(async (placeId: string, session?: string) => {
+      poiSeamCalls.details = { placeId, session };
       const results = createMockGooglePlacesResponse().results;
       return results.find((poi) => poi.place_id === placeId) ?? results[0]!;
     }),
@@ -295,6 +307,11 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     expect(prediction.place_id).toMatch(/^ChIJ/);
     expect(prediction.types).toContain("cafe");
 
+    // The route forwarded the caller's session token to the POI client — the
+    // typing phase only bills at $0 if this token reaches Google.
+    expect(poiSeamCalls.autocomplete?.q).toBe("Orchard Nomad");
+    expect(poiSeamCalls.autocomplete?.session).toBe(session);
+
     // 2. Selection phase: Place Details terminates the session and returns the
     //    full POI — the only billed call in the flow.
     const detailsRes = await clientA.get<{
@@ -310,6 +327,11 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     expect(detailsRes.data.source).toBe("google");
     expect(detailsRes.data.types).toContain("cafe");
     expect(detailsRes.data.business_status).toBe("OPERATIONAL");
+
+    // Same token on the Details call: that is what closes the session and
+    // moves the Autocomplete requests above into the $0 SKU.
+    expect(poiSeamCalls.details?.placeId).toBe(prediction.place_id);
+    expect(poiSeamCalls.details?.session).toBe(session);
 
     // Anonymous live search is rejected with 401 (cost protection)
     const anonSearch = await guestClient.get(

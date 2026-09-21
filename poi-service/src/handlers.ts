@@ -30,6 +30,7 @@ import {
 } from "./constants";
 import {
   getUpstreamProvider,
+  isGooglePlaceId,
   matchesFoodCategory,
   resolveUpstreamSource,
   UpstreamApiError,
@@ -148,8 +149,29 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
     // Apple Maps has no server-side Places API. A share URL still gives us
     // enough data to create a durable POI when it contains coordinates; an
     // already stored Apple reference remains authoritative.
+    //
+    // BRAWUKA-566: never let an attacker-controlled auid become the D1 row
+    // key for someone else's POI. A Google-shaped auid
+    // (maps.apple.com/?auid=<google-id>) would replace the canonical Google
+    // row and getPOI would serve the forgery forever, so those URLs are
+    // unresolvable; and when a stored row of the other source already owns
+    // the key, an apple write must not overwrite it.
+    if (target.placeId && isGooglePlaceId(target.placeId)) {
+      return json(
+        { error: "unresolvable", message: "Apple Maps URL carries a non-Apple place id" },
+        422,
+        request,
+      );
+    }
     if (target.placeId) {
       const stored = await d1GetPOI(env.POI_DB, target.placeId);
+      if (stored && stored.source !== "apple") {
+        return json(
+          { error: "unresolvable", message: "place id belongs to another source" },
+          409,
+          request,
+        );
+      }
       if (stored) return json(stored, request);
     }
     if (!target.coords) {
@@ -176,6 +198,12 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
       fetched_at: now,
       expires_at: computeExpiresAt(now),
     };
+    // Same source-conflict guard as storeExternal: re-check the key right
+    // before writing so a concurrent Google row for this id is not replaced.
+    const conflict = await d1GetPOI(env.POI_DB, placeId);
+    if (conflict && conflict.source !== "apple") {
+      return json({ error: "unresolvable", message: "place id belongs to another source" }, 409, request);
+    }
     await d1UpsertPOI(env.POI_DB, poi);
     return json(poi, request);
   }
@@ -383,6 +411,13 @@ function validateExternalEntry(value: unknown, index: number): POI | InvalidEntr
   // without truncating legitimate references.
   if (v.place_id.length > 1024) return bad("place_id too long (max 1024)");
   if (v.source !== "google" && v.source !== "apple") return bad("source must be google|apple");
+  // BRAWUKA-566: an apple entry must never carry a Google-shaped id. place_id
+  // is the D1 primary key and getPOI serves apple rows verbatim, so accepting
+  // one here would poison the canonical Google row for that id (apple rows
+  // never refresh upstream — the forgery would be permanent).
+  if (v.source === "apple" && isGooglePlaceId(v.place_id)) {
+    return bad("apple place_id must not use a Google id format");
+  }
   if (typeof v.name !== "string" || v.name === "") return bad("name required");
   if (v.name.length > 200) return bad("name too long (max 200)");
   if (typeof v.lat !== "number" || !Number.isFinite(v.lat) || !inLatRange(v.lat)) {
@@ -466,10 +501,30 @@ async function storeExternal(request: Request, env: Env): Promise<Response> {
   // a 400 would look like a broken search).
   const pois = validated as POI[];
   const skipped: InvalidEntry[] = [];
-  const toPersist = pois.filter((poi, i) => {
-    if (matchesFoodCategory(poi.source, poi.types)) return true;
-    skipped.push({ index: i, reason: "non_food_category" });
-    return false;
+  const candidates: Array<{ poi: POI; index: number }> = [];
+  for (const [i, poi] of pois.entries()) {
+    if (matchesFoodCategory(poi.source, poi.types)) {
+      candidates.push({ poi, index: i });
+    } else {
+      skipped.push({ index: i, reason: "non_food_category" });
+    }
+  }
+  // BRAWUKA-566: never let one source overwrite the other's row. place_id is
+  // the D1 primary key, so an apple entry reusing a google id would replace
+  // the real row and getPOI would serve the forgery forever (apple rows never
+  // refresh upstream). Conflicts skip per-entry like the category gate above;
+  // same-source upserts still replace normally.
+  const storedRows = await Promise.all(
+    candidates.map(({ poi }) => d1GetPOI(env.POI_DB, poi.place_id)),
+  );
+  const toPersist: POI[] = [];
+  candidates.forEach(({ poi, index }, j) => {
+    const stored = storedRows[j];
+    if (stored && stored.source !== poi.source) {
+      skipped.push({ index, reason: "source_conflict" });
+      return;
+    }
+    toPersist.push(poi);
   });
   // Atomic batch: one round-trip, all-or-nothing (no partial writes on failure).
   // Then invalidate the KV hot cache for every written id: getPOI serves KV

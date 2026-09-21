@@ -1,42 +1,28 @@
-import { logError } from "@/lib/observability/server-log";
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { apiError, parseQueryPositiveInt } from "@/lib/api/response";
-import { getUserCafes, ProfileCursorError } from "@/lib/db/profile";
+import { apiRoute } from "@/lib/api/route";
+import { getUserCafes } from "@/lib/db/profile";
 import { appConfig } from "@/lib/config";
-import { guard } from "@/lib/api/guard";
 
-export async function GET(request: NextRequest) {
-  const gate = await guard(request, {
-    bucket: "profile-read",
-    requireAuth: true,
-    route: "GET /api/profile/cafes",
-  });
-  if (!gate.ok) return gate.response;
-  const { user } = gate;
+export const GET = apiRoute(
+  { bucket: "profile-read", auth: "required", route: "GET /api/profile/cafes" },
+  async (request, ctx) => {
+    const { searchParams } = new URL(request.url);
+    const rawLimit = searchParams.get("limit");
+    const limit = parseQueryPositiveInt(
+      rawLimit,
+      appConfig.profile.listPageSize,
+      appConfig.profile.listLimitMax,
+    );
+    if (limit === null) {
+      return apiError("invalid_limit", 400, { requestId: ctx.requestId });
+    }
+    const cursor = searchParams.get("cursor") ?? undefined;
 
-  const { searchParams } = new URL(request.url);
-  const rawLimit = searchParams.get("limit");
-  const limit = parseQueryPositiveInt(
-    rawLimit,
-    appConfig.profile.listPageSize,
-    appConfig.profile.listLimitMax,
-  );
-  if (limit === null) {
-    return apiError("invalid_limit", 400);
-  }
-  const cursor = searchParams.get("cursor") ?? undefined;
-
-  try {
-    const result = await getUserCafes(user.id, { limit, cursor, viewerId: user.id });
+    const result = await getUserCafes(ctx.user.id, { limit, cursor, viewerId: ctx.user.id });
     return NextResponse.json({
       items: result.items,
       next_cursor: result.next_cursor,
     });
-  } catch (error) {
-    if (error instanceof ProfileCursorError) {
-      return apiError("invalid_cursor", 400);
-    }
-    logError({ route: gate.route, request, error, status: 500 });
-    return apiError("internal_error", 500);
-  }
-}
+  },
+);

@@ -1,9 +1,8 @@
-import { logError } from "@/lib/observability/server-log";
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
+import { apiRoute } from "@/lib/api/route";
 import { getCafeLocation, listCafesNearby } from "@/lib/db/cafes";
 import { appConfig } from "@/lib/config";
-import { guard } from "@/lib/api/guard";
 import { isValidUUID } from "@shared/uuid";
 
 /**
@@ -17,23 +16,14 @@ import { isValidUUID } from "@shared/uuid";
  * NOTE: Soft-deleted cafes retain location tombstones (deleted_at is not null)
  * so recovery suggestions find nearby active alternatives (issue #207).
  */
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const { id } = await params;
-  if (!isValidUUID(id)) {
-    return apiError("invalid_request", "id must be a UUID", { status: 400 });
-  }
+export const GET = apiRoute<{ id: string }>(
+  { bucket: "cafes-read", route: "GET /api/cafes/[id]/recovery" },
+  async (_request, ctx) => {
+    const { id } = ctx.params;
+    if (!isValidUUID(id)) {
+      return apiError("invalid_request", "id must be a UUID", { status: 400, requestId: ctx.requestId });
+    }
 
-  const gate = await guard(request, {
-    bucket: "cafes-read",
-    route: "GET /api/cafes/[id]/recovery",
-  });
-  if (!gate.ok) return gate.response;
-  const { user } = gate;
-
-  try {
     const location = await getCafeLocation(id);
     if (!location) {
       return NextResponse.json({ cafes: [] });
@@ -44,12 +34,9 @@ export async function GET(
       lng: location.lng,
       radiusKm: appConfig.search.maxRadiusKm,
       limit: appConfig.seo.recoveryLimit + 1,
-      viewerId: user?.id,
+      viewerId: ctx.user?.id,
     });
     const cafes = nearby.filter((cafe) => cafe.id !== id).slice(0, appConfig.seo.recoveryLimit);
     return NextResponse.json({ cafes });
-  } catch (err) {
-    logError({ route: gate.route, request, error: err, status: 500 });
-    return apiError("internal_error", 500);
-  }
-}
+  },
+);

@@ -59,13 +59,22 @@ async function poiFetch(
   requestHeaders.set("x-poi-service-token", config.token);
   const headers = Object.fromEntries(requestHeaders.entries());
 
-  const res = await fetch(`${config.baseUrl}${path}`, {
-    ...init,
-    // Never let Next.js cache proxy responses — the worker owns caching.
-    cache: "no-store",
-    signal: init.signal ?? AbortSignal.timeout(WORKER_TIMEOUT_MS),
-    headers,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${config.baseUrl}${path}`, {
+      ...init,
+      // Never let Next.js cache proxy responses — the worker owns caching.
+      cache: "no-store",
+      signal: init.signal ?? AbortSignal.timeout(WORKER_TIMEOUT_MS),
+      headers,
+    });
+  } catch (error) {
+    // Transport failure (DNS, refused, timeout): same typed error as an
+    // upstream response so the route boundary emits 502 `poi_service`,
+    // never a bare 500 (spec 0011 D5/BRAWUKA-537).
+    logError({ route: "poi-service", error });
+    throw new POIServiceError("POI service unavailable", 502);
+  }
   if (!res.ok) {
     const upstreamStatus = res.status;
     // Cancel the body stream without buffering it. Upstream error bodies may

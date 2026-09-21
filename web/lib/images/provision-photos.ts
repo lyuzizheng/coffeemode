@@ -2,32 +2,22 @@ import "server-only";
 
 import type { TxQueryFn } from "@/lib/db/postgres";
 import type { ImageTargetType, StoredImage } from "@/types/images";
-import type { ProcessUrls } from "./image-service-client";
+import { ImageServiceError, type ProcessUrls } from "./image-service-client";
 import type { ProcessedImage } from "./processor";
 import { logError } from "@/lib/observability/server-log";
 
 /**
  * Server-side photo provisioning for the creation/check-in write paths
- * (issue #86).
- *
- * Clients send only `photo_ids` (imageUuids from /api/images/upload); the
- * server derives everything else. For each id we:
- *
- *   1. Fail-fast pre-check ALL upload intents in ONE batched query (issue
- *      #33 binding, BRAWUKA-279) BEFORE any remote work, so a caller holding
- *      someone else's (leaked) imageUuid cannot burn image-service presign
- *      or sharp CPU.
- *   2. Process the image (presign + sharp resize + R2 writes) OUTSIDE any
- *      transaction — slow I/O must not hold a DB connection.
- *   3. Build the StoredImage server-side: deterministic R2 keys from the
- *      process URLs, real dimensions from sharp, `by` = the caller.
- *
- * The single-use intent consume happens later, INSIDE the creation
- * transaction (`consumeProvisionedIntents`, one batched DELETE), so the
- * consume commits or rolls back together with the cafe/check-in insert and
- * gallery merge. When that transaction rolls back, the caller runs
- * `compensateProvisionedPhotos` (best-effort R2 deletes via the
- * image-service delete endpoint); the #158 sweeper stays the backstop.
+ * (issue #86). Clients send only `photo_ids` (imageUuids from
+ * /api/images/upload); the server derives everything else. For each id:
+ * fail-fast pre-check ALL upload intents in ONE batched query (issue #33
+ * binding, BRAWUKA-279) BEFORE any remote work; process the image (presign
+ * + sharp resize + R2 writes) OUTSIDE any transaction; build the
+ * StoredImage server-side (deterministic R2 keys, real dimensions, `by` =
+ * the caller). The single-use intent consume happens later, INSIDE the
+ * creation transaction (`consumeProvisionedIntents`), so it commits or
+ * rolls back with the insert; on rollback `compensateProvisionedPhotos`
+ * best-effort deletes the R2 variants (the #158 sweeper is the backstop).
  */
 
 /**
@@ -167,8 +157,9 @@ export function defaultProvisionPhotosDeps(): ProvisionPhotosDeps {
 
 /**
  * A photo whose upload intent check failed: not issued to this user,
- * expired, or already consumed. Thrown before any remote work; routes map
- * this to 400 with a generic message (no oracle on which id or why).
+ * expired, already consumed, or the upload never landed in R2 (worker 404
+ * converts in `provisionProcessUrls`). Thrown before any remote work; the
+ * route boundary maps this to 422 `invalid_photos` (spec 0011).
  */
 export class PhotoIntentError extends Error {
   constructor() {
@@ -216,17 +207,7 @@ export async function provisionPhotos(
   let failed = false;
   let next = 0;
   const processOne = async (imageUuid: string): Promise<ProvisionedPhoto> => {
-    const processUrls = await deps.getProcessUrls({
-      imageUuid,
-      userId,
-      // Pre-target stage (issue #86): the cafe/check-in does not exist yet.
-      // The worker stamps targetType="provision" + targetId=<imageUuid>;
-      // attachProvisionedPhotos re-marks via restampOriginal once the
-      // check-in exists. Required since #158: the worker rejects marker-less
-      // completes so cleanup can distinguish live originals from abandoned uploads.
-      targetType: "provision",
-      targetId: imageUuid,
-    });
+    const processUrls = await provisionProcessUrls(deps, imageUuid, userId);
     const processed = await deps.processImage(imageUuid, processUrls);
 
     return {
@@ -267,6 +248,27 @@ export async function provisionPhotos(
   return results;
 }
 
+/**
+ * Presign the process URLs for one image (pre-target stage, issue #86: the
+ * worker stamps targetType="provision" + targetId=<imageUuid> since the
+ * cafe/check-in does not exist yet; attachProvisionedPhotos re-marks later).
+ * A worker 404 means the caller's upload never landed in R2 — same
+ * user-facing class as a bad photo id, so it converts to PhotoIntentError.
+ */
+async function provisionProcessUrls(
+  deps: ProvisionPhotosDeps,
+  imageUuid: string,
+  userId: string,
+): Promise<ProcessUrls> {
+  try {
+    return await deps.getProcessUrls({ imageUuid, userId, targetType: "provision", targetId: imageUuid });
+  } catch (err) {
+    if (err instanceof ImageServiceError && err.status === 404) {
+      throw new PhotoIntentError();
+    }
+    throw err;
+  }
+}
 
 /**
  * Consume every photo's upload intent inside the caller's transaction. Any

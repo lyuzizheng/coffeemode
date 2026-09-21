@@ -32,17 +32,24 @@ import {
 vi.mock("@/lib/auth/get-user", () => ({ getCurrentUser: vi.fn() }));
 
 // Stub POI worker so search operations never hit external services.
-vi.mock("@/lib/places/poi-client", () => ({
-  searchExternalPOIs: vi.fn(async () => ({ results: [] })),
-  searchPOIs: vi.fn(async () => ({ results: [] })),
-  resolveMapsUrl: vi.fn(),
-}));
+vi.mock("@/lib/places/poi-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/places/poi-client")>();
+  return {
+    ...actual,
+    searchExternalPOIs: vi.fn(async () => ({ results: [] })),
+    searchPOIs: vi.fn(async () => ({ results: [] })),
+    resolveMapsUrl: vi.fn(),
+  };
+});
 
 // Image-client seam mock (spec 0008 §5 preference order): the upload and
 // create route handlers stay real; only the worker round-trip is faked.
 // Intents are still recorded in the real table through POST /api/images/upload.
-vi.mock("@/lib/images/image-service-client", () => ({
-  requestUploadUrl: vi.fn(async (size: number) => ({
+vi.mock("@/lib/images/image-service-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/images/image-service-client")>();
+  return {
+    ...actual,
+    requestUploadUrl: vi.fn(async (size: number) => ({
     imageUuid: randomUUID(),
     uploadUrl: "http://images.test/upload",
     uploadHeaders: {},
@@ -68,7 +75,8 @@ vi.mock("@/lib/images/image-service-client", () => ({
       thumbnail: `thumbnail/${imageUuid}.webp`,
     },
   })),
-}));
+  };
+});
 
 vi.mock("@/lib/images/processor", () => ({
   processImage: vi.fn(async (imageUuid: string) => ({

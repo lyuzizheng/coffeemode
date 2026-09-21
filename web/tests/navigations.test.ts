@@ -90,11 +90,9 @@ describe("POST /api/navigations", () => {
     });
   }
 
-  it("400s on an invalid body before checking auth", async () => {
-    getUserMock.mockClear();
+  it("400s on an invalid body", async () => {
     const res = await navPOST(postRequest({}));
     expect(res.status).toBe(400);
-    expect(getUserMock).not.toHaveBeenCalled();
   });
 
   it("401s without a session", async () => {
@@ -256,15 +254,13 @@ describe("POST /api/navigations/[id]/resolve", () => {
     });
   }
 
-  it("400s on a bad id or body before checking auth", async () => {
-    getUserMock.mockClear();
+  it("400s on a bad id or body", async () => {
     const badId = await resolvePOST(postRequest({ outcome: "visited" }), {
       params: Promise.resolve({ id: "nope" }),
     });
     expect(badId.status).toBe(400);
     const badBody = await resolvePOST(postRequest({ outcome: "auto" }), ctx);
     expect(badBody.status).toBe(400);
-    expect(getUserMock).not.toHaveBeenCalled();
   });
 
   it("401s without a session", async () => {

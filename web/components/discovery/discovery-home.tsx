@@ -32,7 +32,7 @@ import { DiscoveryMapContext, type DiscoveryMapState } from "@/lib/discovery/map
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useMounted } from "@/hooks/use-mounted";
 import type { CafeSummary } from "@/types/cafes";
-import { apiFetch } from "@/lib/http";
+import { apiFetch, ApiError } from "@/lib/http";
 import { CheckinDrawer } from "@/components/checkin/checkin-drawer";
 import { CafeCreationSheet } from "@/components/cafe/cafe-creation-sheet";
 import { UnifiedSearchPanel } from "@/components/search/unified-search-panel";
@@ -44,10 +44,14 @@ import type { CreationDraft } from "./use-discovery-search";
 import { DesktopDiscovery } from "./desktop-discovery";
 import { MobileSheet } from "./mobile-sheet";
 import { SHEET_PEEK_PX } from "@/lib/layout";
-
 async function fetchNearbyCafes(lat: number, lng: number): Promise<CafeSummary[]> {
   const data = await apiFetch<{ cafes: CafeSummary[] }>(`/api/cafes?lat=${lat}&lng=${lng}`);
-  return data?.cafes ?? [];
+  // An empty/malformed 2xx is a contract violation, not an empty map —
+  // same treatment as fetchCafe/fetchFeedPage (BRAWUKA-540 review P2).
+  if (!data || !Array.isArray(data.cafes)) {
+    throw new ApiError({ status: 500, code: "internal_error" });
+  }
+  return data.cafes;
 }
 
 /** Map overlays never cover the mobile sheet's half/full detail content. */

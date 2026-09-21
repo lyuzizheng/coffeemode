@@ -12,9 +12,10 @@
  * - Visibility: reversible hide via PATCH /api/cafes/[id]/visibility. No
  *   confirm — the copy says it is reversible ("隐藏后仅你可见，可随时公开").
  * - Delete: checkin-scoped, never deletes the cafe row. The owner always
- *   confirms first (shell copy); a 403 `cafe_has_other_checkins` upgrades the
- *   same confirm surface to the handoff copy and retries with
- *   `{ confirm: true }`. Machine codes never reach the UI (BRAWUKA-212).
+ *   confirms first (shell copy); a `cafe_has_other_checkins` envelope (409
+ *   since spec 0011) upgrades the same confirm surface to the handoff copy
+ *   and retries with `{ confirm: true }`. Machine codes never reach the UI
+ *   (BRAWUKA-212).
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";

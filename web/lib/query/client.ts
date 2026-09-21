@@ -1,6 +1,6 @@
 import { QueryClient, isServer } from "@tanstack/react-query";
 import { getQueryGcTimeMs, getQueryStaleTimeMs } from "@/lib/client-env";
-import { shouldRetryQuery } from "./retry";
+import { queryRetryDelay, shouldRetryQuery } from "./retry";
 
 /** TanStack defaults owned by `app.yaml` `query.*`, via NEXT_PUBLIC_QUERY_* env (BRAWUKA-250). */
 const STALE_TIME_MS = getQueryStaleTimeMs(); // 5 minutes
@@ -13,11 +13,13 @@ function makeQueryClient(): QueryClient {
         staleTime: STALE_TIME_MS,
         gcTime: GC_TIME_MS,
         networkMode: "offlineFirst",
-        retry: (failureCount) =>
+        retry: (failureCount, error) =>
           shouldRetryQuery(
             failureCount,
+            error,
             typeof navigator === "undefined" ? true : navigator.onLine,
           ),
+        retryDelay: queryRetryDelay,
       },
       mutations: {
         networkMode: "offlineFirst",

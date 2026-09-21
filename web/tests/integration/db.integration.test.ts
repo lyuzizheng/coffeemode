@@ -189,7 +189,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   }, 60_000);
 
-  it("applies migrations 0001→0028 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0029 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -220,6 +220,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0026_drop_rate_limits.sql",
       "0027_navigation_unresolved_dedupe.sql",
       "0028_open_now_sql_function.sql",
+      "0029_open_now_24h_window.sql",
     ]);
 
     const serviceProfile = await dbClient.query(
@@ -2037,6 +2038,12 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         wed: { open: "09:00", close: "09:00" }, thu: { open: "09:00", close: "09:00" },
         fri: { open: "09:00", close: "09:00" }, sat: { open: "09:00", close: "09:00" },
         sun: { open: "09:00", close: "09:00" } } },
+      // Single-day 24h window (BRAWUKA-571): Monday 09:00-09:00 reads open
+      // around the clock all Monday, including before the 09:00 anchor.
+      // Sunday has no entry, so yesterday's spillover cannot mask a miss.
+      { key: "singleDay24", tz: "Asia/Singapore", hours: {
+        mon: { open: "09:00", close: "09:00" },
+        tue: null, wed: null, thu: null, fri: null, sat: null, sun: null } },
       // Overnight window 22:00–04:00 every day.
       { key: "overnight", tz: "Asia/Singapore", hours: {
         mon: { open: "22:00", close: "04:00" }, tue: { open: "22:00", close: "04:00" },
@@ -2183,6 +2190,21 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(ids.has(parityIds.noHours)).toBe(false);
       expect(ids.has(parityIds.daytime)).toBe(true);
       expect(ids.has(parityIds.always24)).toBe(true);
+      expect(ids.has(parityIds.always24Offset)).toBe(true);
+      expect(ids.has(parityIds.singleDay24)).toBe(true);
+    });
+
+    it("gives a single-day 24h window no overnight tail the next morning (BRAWUKA-571)", async () => {
+      const rows = await searchCafesInDb({
+        city: PARITY_CITY,
+        open_now: true,
+        instant: new Date("2026-09-07T19:30:00Z"), // Tue 03:30 SGT — spillover hour
+        limit: 500,
+      });
+      const ids = new Set(rows.map((r) => r.id));
+      expect(ids.has(parityIds.singleDay24)).toBe(false);
+      expect(ids.has(parityIds.always24Offset)).toBe(true);
+      expect(ids.has(parityIds.overnight)).toBe(true);
     });
 
     it("cafesDataVersion moves when a cafe row is written", async () => {

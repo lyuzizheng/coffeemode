@@ -40,6 +40,13 @@ vi.mock("next/navigation", () => ({
 
 const CAFE = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22";
 
+/** Real Response — `apiFetch` reads `text()`/`headers`, so literal `{ok,json}` stubs no longer work. */
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
 function Wrapper({ children }: { children: React.ReactNode }) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -80,11 +87,7 @@ describe("check-in sign-in gate draft (DG66/DG59)", () => {
     vi.restoreAllMocks();
     mockSearch = "";
     await clearPendingCheckin();
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ checkin: null }),
-    });
+    globalThis.fetch = vi.fn().mockImplementation(async () => jsonResponse(200, { checkin: null }));
     URL.createObjectURL = vi.fn(() => `blob:mock-${Math.random().toString(36).slice(2)}`);
     URL.revokeObjectURL = vi.fn();
   });
@@ -220,9 +223,9 @@ describe("check-in sign-in gate draft (DG66/DG59)", () => {
     const saveSpy = vi.spyOn(pendingCheckin, "savePendingCheckin");
     globalThis.fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/checkins" && init?.method === "POST") {
-        return { ok: false, status: 401, json: async () => ({}) };
+        return jsonResponse(401, {});
       }
-      return { ok: true, status: 200, json: async () => ({ checkin: null }) };
+      return jsonResponse(200, { checkin: null });
     });
     renderDrawer({ isAuthenticated: true });
 
@@ -349,10 +352,10 @@ describe("check-in sign-in gate draft (DG66/DG59)", () => {
         const posts = vi
           .mocked(globalThis.fetch)
           .mock.calls.filter(([u, i]) => u === "/api/checkins" && (i as RequestInit)?.method === "POST").length;
-        if (posts === 1) return { ok: false, status: 500, json: async () => ({ message: "boom" }) };
-        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+        if (posts === 1) return jsonResponse(500, { message: "boom" });
+        return jsonResponse(200, { ok: true });
       }
-      return { ok: true, status: 200, json: async () => ({ checkin: null }) };
+      return jsonResponse(200, { checkin: null });
     });
     const file = new File(["x"], "photo.jpg", { type: "image/jpeg" });
     renderDrawer({

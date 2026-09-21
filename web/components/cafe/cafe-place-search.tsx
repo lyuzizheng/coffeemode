@@ -10,7 +10,7 @@ import {
 } from "@heroui/react";
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { isUnauthorized, responseMessage } from "@/lib/http";
+import { apiErrorMessage, apiFetch, isUnauthorized } from "@/lib/http";
 import { getSearchExternalSources } from "@/lib/client-env";
 import { readOnboardingState } from "@/lib/onboarding-store";
 import { getPlaceSearchProviders } from "@/lib/places/providers";
@@ -145,7 +145,7 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn, mapkitC
     setBusy(true);
     onError(null);
     try {
-      const response = await fetch("/api/places/resolve", {
+      const resolvedPoi = await apiFetch<POI>("/api/places/resolve", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -153,11 +153,9 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn, mapkitC
           ...(turnstileToken ? { "cf-turnstile-response": turnstileToken } : {}),
         }),
       });
-      if (!response.ok) throw new Error(await responseMessage(response, t("resolveFailed")));
-      const resolvedPoi = (await response.json()) as POI;
       onSelectPOI(resolvedPoi);
     } catch (cause) {
-      onError(cause instanceof Error ? cause.message : t("resolveFailed"));
+      onError(apiErrorMessage(cause, t("resolveFailed")));
     } finally {
       setBusy(false);
       if (sitekey && widgetId) {
@@ -184,7 +182,7 @@ export function CafePlaceSearch({ onSelectPOI, onError, onRequireSignIn, mapkitC
         onRequireSignIn();
         return;
       }
-      onError(cause instanceof Error ? cause.message : t("searchFailed"));
+      onError(apiErrorMessage(cause, t("searchFailed")));
     } finally {
       setSearching(false);
     }

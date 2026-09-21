@@ -1,4 +1,4 @@
-import { isUnauthorized, throwIfUnauthorized, UNAUTHORIZED } from "@/lib/http";
+import { apiFetch, isUnauthorized, UNAUTHORIZED } from "@/lib/http";
 import type { POI } from "@shared/places/types";
 import { stableApplePlaceId } from "@shared/places/apple-place-id";
 import type { CreateTranslator, PlaceSearchProvider } from "./place-search";
@@ -105,12 +105,17 @@ export function loadMapKitScript(timeoutMs = MAPKIT_SCRIPT_TIMEOUT_MS): Promise<
 }
 
 async function fetchMapKitToken(): Promise<string> {
-  const response = await fetch("/api/mapkit-token", { cache: "no-store" });
-  throwIfUnauthorized(response);
-  if (!response.ok) throw new Error("MapKit is not configured");
-  const { token } = (await response.json()) as { token?: string };
-  if (!token) throw new Error("MapKit is not configured");
-  return token;
+  let data: { token?: string } | undefined;
+  try {
+    data = await apiFetch<{ token?: string }>("/api/mapkit-token", { cache: "no-store" });
+  } catch (cause) {
+    // 401 keeps the shared marker so the drawer's sign-in gate can claim it;
+    // every other failure reads as "MapKit is not configured" to callers.
+    if (isUnauthorized(cause)) throw cause;
+    throw new Error("MapKit is not configured");
+  }
+  if (!data?.token) throw new Error("MapKit is not configured");
+  return data.token;
 }
 
 /**

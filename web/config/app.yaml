@@ -14,7 +14,8 @@ search:
   # Server-side DB fetch cap to bound in-memory filtering.
   dbFetchCap: 100
   # DG137-C in-process edge cache for GET /api/search (BRAWUKA-25): keyed by
-  # city:q:filtersHash, invalidated early on any cafes write (check-in
+  # city:q:filtersHash (open_now queries add a UTC-minute bucket — the
+  # open/close boundary moves with time, not writes), invalidated early on
   # work_stats recompute bumps cafes.updated_at in the same transaction).
   edgeCache:
     ttlSeconds: 60

@@ -15,6 +15,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useMounted } from "@/hooks/use-mounted";
 import { useThemeVariant, VARIANTS, type ThemeVariant } from "@/lib/theme-variant";
 import { RankingPreferenceToggle } from "@/components/search/ranking-preference-toggle";
@@ -24,6 +25,8 @@ import { SignOutButton } from "@/components/auth/sign-out-button";
 import { DangerConfirm } from "@/components/danger-confirm";
 import { AppMenu } from "@/components/layout/app-menu";
 import { SettingsGroup, SettingsRow } from "./settings-row";
+import { apiFetch, isUnauthorized } from "@/lib/http";
+import { idbPersister } from "@/lib/query/persister";
 import type { UserProfileDto } from "@/lib/db/profile";
 
 const THEME_OPTIONS = ["light", "dark", "system"] as const;
@@ -145,15 +148,69 @@ function ExportRow() {
   );
 }
 
+/** The expanded type-to-confirm form for account deletion. */
+function DeleteConfirmForm({
+  confirmText,
+  pending,
+  armed,
+  error,
+  onTextChange,
+  onCancel,
+  onConfirm,
+}: {
+  confirmText: string;
+  pending: boolean;
+  armed: boolean;
+  error: boolean;
+  onTextChange: (value: string) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const t = useTranslations("settings");
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm leading-relaxed text-foreground">
+        {t("delete_confirm_body")}
+      </p>
+      <label className="flex flex-col gap-1.5 text-xs text-muted">
+        {t("delete_confirm_label")}
+        <input
+          type="text"
+          value={confirmText}
+          onChange={(e) => onTextChange(e.target.value)}
+          placeholder="DELETE"
+          autoComplete="off"
+          className="cm-focus w-40 rounded-sm border border-border bg-surface px-2.5 py-2 font-mono text-sm text-foreground"
+        />
+      </label>
+      {error ? (
+        <p role="alert" className="text-xs text-danger">
+          {t("delete_error")}
+        </p>
+      ) : null}
+      <DangerConfirm
+        message={t("delete_confirm_title")}
+        confirmLabel={pending ? t("delete_pending") : t("delete_confirm_label")}
+        cancelLabel={t("cancel")}
+        pending={pending || !armed}
+        onCancel={onCancel}
+        onConfirm={onConfirm}
+      />
+    </div>
+  );
+}
+
 /** Permanent account deletion: type-to-confirm inside the danger zone.
  * The API does the data teardown; the client then signs out locally. */
 function DeleteAccountSection() {
   const t = useTranslations("settings");
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   const armed = confirmText.trim().toUpperCase() === "DELETE";
 
@@ -161,19 +218,36 @@ function DeleteAccountSection() {
     setPending(true);
     setError(false);
     try {
-      const res = await fetch("/api/profile", { method: "DELETE" });
-      if (!res.ok) {
-        setError(true);
-        return;
+      await apiFetch("/api/profile", { method: "DELETE" });
+      // The account is gone — its profile/cafe data must not survive in the
+      // browser store. Same teardown as SignOutButton: drop the IndexedDB
+      // persistor first, then the live TanStack client (BRAWUKA-540).
+      try {
+        await idbPersister.removeClient();
+      } catch (e) {
+        console.error("settings-view: failed to clear persisted cache", e);
       }
+      queryClient.clear();
       router.push("/");
       router.refresh();
-    } catch {
+    } catch (cause) {
+      if (isUnauthorized(cause)) {
+        setSessionExpired(true);
+        return;
+      }
       setError(true);
     } finally {
       setPending(false);
     }
   };
+
+  if (sessionExpired) {
+    return (
+      <div className="px-4 py-3">
+        <SignInGate message={t("sign_in_gate")} next="/settings" />
+      </div>
+    );
+  }
 
   return (
     <div className="px-4 py-3">
@@ -186,39 +260,19 @@ function DeleteAccountSection() {
           {t("delete")}
         </button>
       ) : (
-        <div className="flex flex-col gap-3">
-          <p className="text-sm leading-relaxed text-foreground">
-            {t("delete_confirm_body")}
-          </p>
-          <label className="flex flex-col gap-1.5 text-xs text-muted">
-            {t("delete_confirm_label")}
-            <input
-              type="text"
-              value={confirmText}
-              onChange={(e) => setConfirmText(e.target.value)}
-              placeholder="DELETE"
-              autoComplete="off"
-              className="cm-focus w-40 rounded-sm border border-border bg-surface px-2.5 py-2 font-mono text-sm text-foreground"
-            />
-          </label>
-          {error ? (
-            <p role="alert" className="text-xs text-danger">
-              {t("delete_error")}
-            </p>
-          ) : null}
-          <DangerConfirm
-            message={t("delete_confirm_title")}
-            confirmLabel={pending ? t("delete_pending") : t("delete_confirm_label")}
-            cancelLabel={t("cancel")}
-            pending={pending || !armed}
-            onCancel={() => {
-              setExpanded(false);
-              setConfirmText("");
-              setError(false);
-            }}
-            onConfirm={() => void run()}
-          />
-        </div>
+        <DeleteConfirmForm
+          confirmText={confirmText}
+          pending={pending}
+          armed={armed}
+          error={error}
+          onTextChange={setConfirmText}
+          onCancel={() => {
+            setExpanded(false);
+            setConfirmText("");
+            setError(false);
+          }}
+          onConfirm={() => void run()}
+        />
       )}
     </div>
   );

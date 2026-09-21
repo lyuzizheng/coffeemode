@@ -9,6 +9,11 @@ staging/prod app stacks.
 | `mcp-grafana` | `coffeemode-mcp-grafana` | `https://mcp.cafemood.app/mcp` | Cloudflare Access service token + caller bearer token |
 | `dokploy-mcp` | `dokploy-mcp` (compose) | `http://192.168.5.103:3005/mcp` | none — LAN only |
 
+`dokploy-mcp` has no auth of its own: any device on the LAN can drive the
+Dokploy API through it. Accepted for now (the VPS LAN is trusted), but it is a
+known exposure — if that assumption stops holding, front it with Cloudflare
+Access or a firewall rule the same way as `mcp-grafana`.
+
 ## mcp-grafana (BRAWUKA-600)
 
 Gives agents read/write access to the Grafana Cloud stack: dashboards, alert
@@ -73,12 +78,18 @@ Tokens expire after 12 months (`cafemood-mcp-grafana-token` expires
 
 ### Verifying
 
-```bash
-# edge reachable, no auth needed
-curl -s -o /dev/null -w '%{http_code}\n' https://mcp.cafemood.app/healthz   # 200
+The Access app covers the whole hostname — `/healthz` has no bypass — so both
+checks below need the same URL and differ only in headers.
 
-# Access blocks unauthenticated callers
-curl -s -o /dev/null -w '%{http_code}\n' https://mcp.cafemood.app/healthz   # 403 without the two CF-Access headers
+```bash
+# edge + tunnel + container up (200 only with the two CF-Access headers)
+curl -s -o /dev/null -w '%{http_code}\n' \
+  -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+  -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+  https://mcp.cafemood.app/healthz   # 200
+
+# same URL without them: 403 is Access working, not an outage
+curl -s -o /dev/null -w '%{http_code}\n' https://mcp.cafemood.app/healthz   # 403
 
 # full MCP handshake (expect a JSON-RPC result with serverInfo mcp-grafana)
 curl -s -X POST https://mcp.cafemood.app/mcp \

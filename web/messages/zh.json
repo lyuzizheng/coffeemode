@@ -295,7 +295,8 @@
     "signInRequired": "请先登录再发布，草稿会保留在此处。",
     "close": "关闭",
     "submit": "创建咖啡店",
-    "providerLoading": "正在连接地点服务……"
+    "providerLoading": "正在连接地点服务……",
+    "resolvingPlace": "正在载入该地点……"
   },
   "checkIn": {
     "title": "打卡",

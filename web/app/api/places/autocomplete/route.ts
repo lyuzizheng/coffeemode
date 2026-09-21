@@ -2,29 +2,37 @@ import { NextResponse } from "next/server";
 import { apiError, parseQueryNumberOrNaN } from "@/lib/api/response";
 import { apiRoute } from "@/lib/api/route";
 import { DEFAULT_SEARCH_RADIUS_KM, MAX_SEARCH_RADIUS_KM } from "@/lib/places/constants";
-import { searchPOIs } from "@/lib/places/poi-client";
+import { autocompletePOIs } from "@/lib/places/poi-client";
 
 /**
- * GET /api/places/search?q&lat&lng&r
- * Proxy to the POI cache service search: name match + haversine distance sort
- * over the reusable stored-POI cache.
+ * GET /api/places/autocomplete?q&lat&lng&r&session
  *
- * Live Google search is NOT here (BRAWUKA-602). It is a two-phase flow —
- * `GET /api/places/autocomplete` while typing, `GET /api/places/details` on
- * selection — because Text Search billed every keystroke at the Enterprise
- * tier. Apple MapKit search still runs in the browser and stores its selected
- * result through POST /api/places/external.
+ * The typing phase of the two-phase POI search (BRAWUKA-602). Proxies to the
+ * worker's Autocomplete (New) call, which Google folds into the $0
+ * `Autocomplete Session Usage` SKU as long as the session is terminated by a
+ * Place Details request carrying the same token — that is what
+ * `GET /api/places/details` does on selection.
  *
- * The radius parameter is clamped to MAX_SEARCH_RADIUS_KM to prevent abuse.
+ * `session` is required and must be a UUID: Google silently ignores a
+ * malformed token, which would quietly revert the whole session to
+ * per-request billing. Rejecting it here keeps that failure loud.
+ *
+ * Signed-in only. Autocomplete is not billed per session, but it is still a
+ * live upstream call per keystroke, so it stays behind the same auth gate the
+ * previous live search had.
  */
+const SESSION_TOKEN_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const GET = apiRoute(
   {
-    bucket: "places",
-    route: "GET /api/places/search",
+    bucket: "places-autocomplete",
+    auth: "required",
+    route: "GET /api/places/autocomplete",
   },
   async (request, ctx) => {
     const { searchParams } = new URL(request.url);
     const q = searchParams.get("q")?.trim() ?? "";
+    const session = searchParams.get("session")?.trim() ?? "";
     const lat = parseQueryNumberOrNaN(searchParams.get("lat"));
     const lng = parseQueryNumberOrNaN(searchParams.get("lng"));
     const rRaw = searchParams.get("r");
@@ -45,8 +53,14 @@ export const GET = apiRoute(
         requestId: ctx.requestId,
       });
     }
-    if (q === "" && !hasCoords) {
-      return apiError("invalid_request", "q or lat+lng required", {
+    if (q === "") {
+      return apiError("invalid_request", "q is required", {
+        status: 400,
+        requestId: ctx.requestId,
+      });
+    }
+    if (!SESSION_TOKEN_RE.test(session)) {
+      return apiError("invalid_request", "session must be a UUID (Autocomplete session token)", {
         status: 400,
         requestId: ctx.requestId,
       });
@@ -60,16 +74,16 @@ export const GET = apiRoute(
 
     const clampedR = Math.min(r, MAX_SEARCH_RADIUS_KM);
 
-    const data = await searchPOIs(
+    const data = await autocompletePOIs(
       {
-        q: q || undefined,
+        q,
+        session,
         lat: hasCoords ? lat : undefined,
         lng: hasCoords ? lng : undefined,
         r: clampedR,
       },
       ctx.requestId,
     );
-
     return NextResponse.json(data);
   },
 );

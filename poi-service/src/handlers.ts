@@ -8,11 +8,20 @@
  *     GET  /health           health check
  *   Token-gated (require POI_SERVICE_TOKEN):
  *     GET  /poi/:place_id    KV hot → D1 fresh → Google API → backfill both
+ *                            (?session=<uuid> terminates an Autocomplete session)
  *     POST /poi/resolve      {maps_share_url} → POI (creation import path)
  *     GET  /poi/search       ?q&lat&lng&r — stored POIs, name match + haversine sort
- *     GET  /poi/search/external ?q&lat&lng&r — live Google search + cache backfill
- *     POST /poi/external     store externally-searched POIs (Google live / Apple refs)
+ *     GET  /poi/autocomplete ?q&lat&lng&r&session — live Google predictions
+ *                            (typing phase; nothing is persisted)
+ *     POST /poi/external     store externally-searched POIs (Apple MapKit refs)
  *     POST /poi/reverse      {lat, lng} → reverse geocode to normalized food/cafe POI
+ *
+ * Google billing model (BRAWUKA-602): the typing phase is Autocomplete (New)
+ * and the selection phase is Place Details (New). Both carry the same session
+ * token, so every Autocomplete request in the session bills at
+ * `Autocomplete Session Usage` ($0) and only the Place Details call is
+ * charged. Text Search (New) is deliberately absent — its field-mask pricing
+ * billed every keystroke at the Enterprise tier.
  *
  * Error isolation (W1): handleFetch wraps every handler in try/catch and maps
  * uncaught D1/KV/Google failures to a JSON 500 envelope — workerd's opaque
@@ -36,7 +45,7 @@ import {
   resolveUpstreamSource,
   UpstreamApiError,
 } from "./upstream";
-import type { Deps, Env, POI, POISearchHit, POISource } from "./types";
+import type { Deps, Env, POI, POISearchHit, POISource, PlacePrediction } from "./types";
 import { stableApplePlaceId } from "../../web/shared/places/apple-place-id";
 import {
   computeExpiresAt,
@@ -47,10 +56,7 @@ import {
   isFresh,
   kvDeletePOI,
   kvGetPOI,
-  kvGetSearchQuery,
   kvPutPOI,
-  kvPutSearchQuery,
-  searchQueryKey,
 } from "./store";
 import { resolveShareUrl } from "./url";
 
@@ -79,7 +85,13 @@ function upstreamError(request: Request, e: unknown): Response {
 
 // --- GET /poi/:place_id ---
 
-async function getPOI(placeId: string, env: Env, deps: Deps, request: Request): Promise<Response> {
+async function getPOI(
+  placeId: string,
+  env: Env,
+  deps: Deps,
+  request: Request,
+  sessionToken?: string,
+): Promise<Response> {
   // 1. KV hot cache (normalized POI record, ~7d TTL). Probing for Apple refs is
   // safe — they are simply never cached in KV.
   const cached = await kvGetPOI(env.POI_KV, placeId);
@@ -113,10 +125,12 @@ async function getPOI(placeId: string, env: Env, deps: Deps, request: Request): 
     return json({ error: "not_found" }, 404, request);
   }
 
-  // 4. Upstream API → backfill both
+  // 4. Upstream API → backfill both. The session token (when the caller
+  // carries one) terminates the Autocomplete session that produced this id,
+  // which is what makes the typing phase free.
   let rawPlace: unknown;
   try {
-    rawPlace = await provider.getDetails(placeId);
+    rawPlace = await provider.getDetails(placeId, sessionToken);
   } catch (e) {
     // Graceful degradation: serve stale D1 row if we have one (d1GetPOI guarantees unexpired).
     if (stored) return json(stored, request);
@@ -227,22 +241,36 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
       return json({ error: "unresolvable", message: `no upstream provider for ${source}` }, 422, request);
     }
 
-    let results: unknown[];
+    // A share URL that carries only a query string has no place id, so the
+    // query has to be turned into one. Autocomplete is the free way to do
+    // that; the single Place Details call below is the only billed step, and
+    // it terminates the session so the lookup itself stays free.
+    const sessionToken = crypto.randomUUID();
+    let predictions: PlacePrediction[];
     try {
-      results = await provider.textSearch(target.query, {
+      predictions = await provider.autocomplete(target.query, {
         lat: target.coords?.lat,
         lng: target.coords?.lng,
+        sessionToken,
       });
     } catch (e) {
       return upstreamError(request, e);
     }
-    const first = results[0];
+    const first = predictions[0];
     if (!first) return json({ error: "not_found", message: "no place matched" }, 404, request);
+
+    let raw: unknown;
+    try {
+      raw = await provider.getDetails(first.place_id, sessionToken);
+    } catch (e) {
+      return upstreamError(request, e);
+    }
     let poi: POI;
     try {
-      poi = provider.toPOI(first); // rejects places missing `location`
+      poi = provider.toPOI(raw); // rejects places missing `location`
     } catch {
-      // P0 scrub: same as above — canned code only.
+      // P0 scrub: the validator message carries the upstream place id —
+      // details, not a body field. Canned code only.
       return json({ error: "invalid_upstream" }, 502, request);
     }
     try {
@@ -317,13 +345,27 @@ async function searchPOIs(request: Request, env: Env, _deps: Deps): Promise<Resp
   return json({ results: hits }, request);
 }
 
-// --- GET /poi/search/external ---
+// --- GET /poi/autocomplete ---
 
-/** Live Google search for the creation/search entry point. Results are saved
- * before returning so the next local search can reuse them. */
-async function searchExternalPOIs(request: Request, env: Env, deps: Deps): Promise<Response> {
+/**
+ * Session token shape. Google requires a UUID and treats anything else as
+ * "no session" — which silently reverts every Autocomplete request in the
+ * session to per-request billing. Rejecting a malformed token here is
+ * therefore a cost guard, not a formality.
+ */
+const SESSION_TOKEN_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Typing-phase suggestions for the creation/search entry point.
+ *
+ * Nothing is persisted: a prediction carries no coordinates, so there is no
+ * POI to store. The billed Place Details call happens on selection
+ * (`GET /poi/:place_id?session=…`), which is the whole point of this split.
+ */
+async function autocompletePOIs(request: Request, env: Env, deps: Deps): Promise<Response> {
   const url = new URL(request.url);
   const q = url.searchParams.get("q")?.trim() ?? "";
+  const session = url.searchParams.get("session")?.trim() ?? "";
   const lat = Number.parseFloat(url.searchParams.get("lat") ?? "");
   const lng = Number.parseFloat(url.searchParams.get("lng") ?? "");
   const r = url.searchParams.has("r")
@@ -342,6 +384,13 @@ async function searchExternalPOIs(request: Request, env: Env, deps: Deps): Promi
     }
   }
   if (q === "") return json({ error: "invalid_request", message: "q is required" }, 400, request);
+  if (!SESSION_TOKEN_RE.test(session)) {
+    return json(
+      { error: "invalid_request", message: "session must be a UUID (Autocomplete session token)" },
+      400,
+      request,
+    );
+  }
   if (!Number.isFinite(r) || r <= 0 || r > MAX_SEARCH_RADIUS_KM) {
     return json(
       { error: "invalid_request", message: `r must be between 0 and ${MAX_SEARCH_RADIUS_KM} km` },
@@ -350,53 +399,24 @@ async function searchExternalPOIs(request: Request, env: Env, deps: Deps): Promi
     );
   }
 
-  // Live-search query cache (BRAWUKA-283 P2-2): a TTL hit returns the POI
-  // list already persisted during the first search — no billed upstream call.
-  const queryKey = searchQueryKey(q, latProvided ? lat : undefined, lngProvided ? lng : undefined, r);
-  const cached = await kvGetSearchQuery(env.POI_KV, queryKey);
-  if (cached) return json({ results: cached }, request);
-
   const provider = getUpstreamProvider("google", env, deps);
   if (!provider) {
     return json({ error: "upstream_error", message: "google provider not available" }, 502, request);
   }
 
-  let places: unknown[];
+  let predictions: PlacePrediction[];
   try {
-    places = await provider.textSearch(
-      q,
-      { lat: latProvided ? lat : undefined, lng: lngProvided ? lng : undefined, radiusKm: r },
-    );
+    predictions = await provider.autocomplete(q, {
+      lat: latProvided ? lat : undefined,
+      lng: lngProvided ? lng : undefined,
+      radiusKm: r,
+      sessionToken: session,
+    });
   } catch (e) {
     return upstreamError(request, e);
   }
 
-  const results: POI[] = [];
-  for (const place of places.slice(0, SEARCH_RESULT_LIMIT)) {
-    try {
-      const poi = provider.toPOI(place);
-      if (!provider.matchesCategory(poi.types)) {
-        poi.not_persisted_reason = "non_food_category";
-      }
-      results.push(poi);
-    } catch {
-      // A result without coordinates cannot be created as a cafe.
-    }
-  }
-  const toPersist = results.filter((poi) => !poi.not_persisted_reason);
-  try {
-    if (toPersist.length > 0) {
-      await d1UpsertPOIs(env.POI_DB, toPersist);
-      await Promise.all(toPersist.map((poi) => kvPutPOI(env.POI_KV, poi)));
-    }
-    // Cache what was served (BRAWUKA-283 P2-2), not what was persisted: an
-    // all-non-food (or empty) upstream hit is still billable, and repeating
-    // it must not call Google again.
-    await kvPutSearchQuery(env.POI_KV, queryKey, results);
-  } catch (e) {
-    logError({ route: "GET /poi/search/external", request, error: e, status: 200 });
-  }
-  return json({ results }, request);
+  return json({ predictions: predictions.slice(0, SEARCH_RESULT_LIMIT) }, request);
 }
 
 // --- POST /poi/external ---
@@ -626,8 +646,8 @@ export async function handleFetch(
       return unauthorized(request);
     }
 
-    if (request.method === "GET" && path === "/poi/search/external") {
-      return await searchExternalPOIs(request, env, deps);
+    if (request.method === "GET" && path === "/poi/autocomplete") {
+      return await autocompletePOIs(request, env, deps);
     }
     if (request.method === "GET" && path === "/poi/search") return await searchPOIs(request, env, deps);
     if (request.method === "POST" && path === "/poi/resolve") return await resolvePOI(request, env, deps);
@@ -647,7 +667,17 @@ export async function handleFetch(
         return json({ error: "invalid_request", message: "malformed place_id encoding" }, 400, request);
       }
       if (placeId === "") return json({ error: "not_found" }, 404, request);
-      return await getPOI(placeId, env, deps, request);
+      // `session` terminates the Autocomplete session that produced this id.
+      // A malformed token is ignored rather than rejected: the lookup itself
+      // is still valid, it just loses the session discount.
+      const session = url.searchParams.get("session")?.trim() ?? "";
+      return await getPOI(
+        placeId,
+        env,
+        deps,
+        request,
+        SESSION_TOKEN_RE.test(session) ? session : undefined,
+      );
     }
 
     return json({ error: "not_found" }, 404, request);

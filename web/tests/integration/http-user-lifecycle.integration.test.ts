@@ -76,11 +76,6 @@ vi.mock("@/lib/places/poi-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/places/poi-client")>();
   return {
     ...actual,
-    searchExternalPOIs: vi.fn(async ({ q }: { q?: string }) => {
-      return createMockGooglePlacesResponse({
-        name: q ? `${q} Seed Roasters` : "Google POI Seed Roasters",
-      });
-    }),
     searchPOIs: vi.fn(async () => ({ results: [] })),
     resolveMapsUrl: vi.fn(async (mapsShareUrl: string) => {
       const match = mapsShareUrl.match(/place\/([^/?]+)/);

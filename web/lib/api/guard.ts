@@ -19,6 +19,7 @@ export const RATE_LIMIT_BUCKET_NAMES = [
   "cafes-write",
   "images",
   "places",
+  "places-autocomplete",
   "search",
   "profile-read",
   "profile-write",

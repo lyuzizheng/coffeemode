@@ -71,13 +71,14 @@ web/lib/images/          image-service client + sharp processor + 10 MB upload s
                          plus `provisionPhotos` photo provisioning with atomic DB writes
 web/app/api/images/      upload route handler with per-user rate limiting
 poi-service/             POI cache microservice (Workers + D1 + KV) — stored search,
-                         live Google search, resolve, and external-result persistence;
-                         Google field masks, KV hot cache, D1 store, haversine search
+                         live Google Autocomplete → Details search, resolve, and
+                         external-result persistence; Google field masks, KV hot
+                         cache, D1 store, haversine search
 image-service/           Image upload microservice (Cloudflare Worker + R2 presigned URLs,
                          10 MB cap, lifecycle guidance)
-web/lib/places/          Server-only POI service client (stored/live search, resolve,
-                         external persistence, get) + maps URL validator
-web/app/api/places/      search + resolve + external-result route handlers with rate limiting,
+web/lib/places/          Server-only POI service client (stored search, autocomplete,
+                         details, resolve, external persistence, get) + maps URL validator
+web/app/api/places/      search + autocomplete + details + resolve + external-result route handlers with rate limiting,
                          10 km radius cap, and maps URL domain validation
 web/app/api/cafes/       POST (fused create + first check-in, 409 dedupe), GET nearby list
                          (10 km cap), GET [id] detail, DELETE [id] (creator-only soft

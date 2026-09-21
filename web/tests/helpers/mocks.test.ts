@@ -10,7 +10,7 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 describe("journey mock factories (spec 0007 §10)", () => {
-  it("POI mock matches the searchExternalPOIs response shape with Google hits", () => {
+  it("POI mock matches the POISearchResponse shape with Google hits", () => {
     const res = createMockGooglePlacesResponse();
     expect(res.results).toHaveLength(2);
     for (const poi of res.results) {

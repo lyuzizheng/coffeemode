@@ -1,113 +1,92 @@
 # MCP Servers Runbook
 
-Agent-facing MCP servers that live on the Dokploy VPS. Both are deployed from
-the CoffeeMode project's `infrastructure` environment so they stay out of the
-staging/prod app stacks.
+Agent-facing MCP servers for CoffeeMode. Grafana is consumed as a hosted
+service; only `dokploy-mcp` still runs on the Dokploy VPS.
 
-| Server | Dokploy app | Endpoint | Auth |
+| Server | Where it runs | Endpoint | Auth |
 |---|---|---|---|
-| `mcp-grafana` | `coffeemode-mcp-grafana` | `https://mcp.cafemood.app/mcp` | Cloudflare Access service token + caller bearer token |
-| `dokploy-mcp` | `dokploy-mcp` (compose) | `http://192.168.5.103:3005/mcp` | none — LAN only |
+| `grafana` | Grafana Cloud (hosted) | `https://mcp.grafana.com/mcp` | OAuth 2.1 (dynamic client registration) |
+| `dokploy-mcp` | Dokploy VPS (compose) | `http://192.168.5.103:3005/mcp` | none — LAN only |
 
 `dokploy-mcp` has no auth of its own: any device on the LAN can drive the
 Dokploy API through it. Accepted for now (the VPS LAN is trusted), but it is a
 known exposure — if that assumption stops holding, front it with Cloudflare
-Access or a firewall rule the same way as `mcp-grafana`.
+Access or a firewall rule.
 
-## mcp-grafana (BRAWUKA-600)
+## grafana — Grafana Cloud MCP (official)
 
 Gives agents read/write access to the Grafana Cloud stack: dashboards, alert
-rules, datasources, PromQL/LogQL queries. Image `grafana/mcp-grafana:1.5.1`,
-streamable HTTP on container port 8000.
+rules, datasources, PromQL/LogQL queries, incidents. Hosted by Grafana at
+`https://mcp.grafana.com/mcp`; nothing to deploy or patch.
 
-### Deployment shape
+### Why not self-hosted
 
-- **Dokploy app** `coffeemode-mcp-grafana` (`applicationId jqpe5DMzNn2Ij8BncSizq`),
-  source type `docker`, image `grafana/mcp-grafana:1.5.1`.
-- **Command override** — Dokploy's `command` field *replaces* the image
-  entrypoint, so the binary path must be included:
+BRAWUKA-600 deployed `grafana/mcp-grafana:1.5.1` in Dokploy behind Cloudflare
+Access at `https://mcp.cafemood.app/mcp`. It worked, but it needed three
+credentials to be minted and rotated by hand (Access service token, caller
+bearer token, Grafana service account token) and it still could not talk to
+anything until a Grafana Cloud stack existed. The official endpoint replaces
+all of that with one OAuth consent, so the self-hosted app, its DNS record,
+tunnel ingress rule, Access app and service token were all torn down on
+2026-09-21.
 
-  ```
-  /app/mcp-grafana -t streamable-http --address 0.0.0.0:8000 --allowed-hosts mcp.cafemood.app --usage-stats disabled
-  ```
+### Prerequisites
 
-  `--allowed-hosts` is required: the default allowlist is loopback-only, and
-  Traefik forwards the public `Host` header. `--usage-stats disabled` keeps the
-  server from phoning home to Grafana.
-- **Resources** — `memoryLimit 536870912` / `memoryReservation 134217728`.
-  Dokploy's memory fields take **bytes**, not `512M`. Leave `cpuLimit` /
-  `cpuReservation` unset: any value trips a swarm validation error
-  (`invalid cpu value 1e-09`).
-- **Ingress** — Cloudflare DNS `CNAME mcp.cafemood.app` → tunnel `n150`
-  (`b3753c85-7266-43fe-ac2b-c48c2c0aa25e`), tunnel ingress rule
-  `mcp.cafemood.app → http://localhost:80`, then Traefik → container 8000.
-  TLS terminates at Cloudflare, so the Dokploy domain is `https: false` /
-  `certificateType: none` — same as the web apps.
+- A hosted Grafana Cloud stack (`https://<stack>.grafana.net`). The free tier
+  is enough. Self-hosted Grafana is **not** supported by this endpoint.
+- The `Assistant Cloud MCP User` role on that stack — Editor or higher has it
+  by default.
+- Billing: Grafana counts each user who connects over MCP as an active Grafana
+  Assistant user.
 
-### Auth
+### OAuth shape
 
-Two independent layers, both required:
+The server advertises its own authorization server; clients register
+themselves dynamically, so no client ID or secret is provisioned by hand.
 
-1. **Cloudflare Access** — app `CafeMood Grafana MCP`, single policy
-   `Allow MCP Service Token` (`non_identity`) bound to service token
-   `cafemood-mcp-grafana-token`. Callers send `CF-Access-Client-Id` and
-   `CF-Access-Client-Secret`. Without them the edge returns 403.
-2. **Caller bearer token** — `MCP_GRAFANA_SERVER_TOKEN` in the app env.
-   Without it the server returns 401.
+| | |
+|---|---|
+| Protected resource metadata | `https://mcp.grafana.com/.well-known/oauth-protected-resource/mcp` |
+| Authorization server metadata | `https://mcp.grafana.com/.well-known/oauth-authorization-server/mcp` |
+| Registration | `https://mcp.grafana.com/mcp/oauth/register` |
+| Authorize / token | `https://mcp.grafana.com/mcp/oauth/authorize` · `/oauth/token` |
+| PKCE | `S256` |
+| Scopes | `grafana:read`, `grafana:query`, `grafana:write` |
 
-The Grafana service account token (`GRAFANA_SERVICE_ACCOUNT_TOKEN`) is a third
-credential, held only by the container.
-
-### Rotating the caller bearer token
-
-```bash
-TOKEN=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')
-```
-
-Set `MCP_GRAFANA_SERVER_TOKEN` to `$TOKEN` in the Dokploy app env, redeploy,
-then update the `grafana` entry's `Authorization` header in
-`~/.omp/agent/mcp.json`.
-
-### Rotating the Access service token
-
-Create a replacement in Cloudflare Zero Trust → Access → Service Auth, point
-the `Allow MCP Service Token` policy at it, then update
-`CF-Access-Client-Id` / `CF-Access-Client-Secret` in `~/.omp/agent/mcp.json`.
-Tokens expire after 12 months (`cafemood-mcp-grafana-token` expires
-2027-09-21).
-
-### Verifying
-
-The Access app covers the whole hostname — `/healthz` has no bypass — so both
-checks below need the same URL and differ only in headers.
-
-```bash
-# edge + tunnel + container up (200 only with the two CF-Access headers)
-curl -s -o /dev/null -w '%{http_code}\n' \
-  -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
-  -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
-  https://mcp.cafemood.app/healthz   # 200
-
-# same URL without them: 403 is Access working, not an outage
-curl -s -o /dev/null -w '%{http_code}\n' https://mcp.cafemood.app/healthz   # 403
-
-# full MCP handshake (expect a JSON-RPC result with serverInfo mcp-grafana)
-curl -s -X POST https://mcp.cafemood.app/mcp \
-  -H 'content-type: application/json' \
-  -H 'accept: application/json, text/event-stream' \
-  -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
-  -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
-  -H "authorization: Bearer $MCP_GRAFANA_SERVER_TOKEN" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'
-```
-
-A `tools/call` that returns `dial tcp ... connection refused` on
-`localhost:3000` means the MCP transport is fine but `GRAFANA_URL` is still
-empty — see `docs/agent/pending-user-actions.md` §10.
+During consent you enter the stack URL and pick read or read+write access.
 
 ### Client wiring
 
-`~/.omp/agent/mcp.json` carries a `grafana` server entry with the endpoint and
-all three headers inline (the file is mode 600). Values are literal rather than
-`${VAR}` references so the server connects regardless of which shell launched
-omp.
+**omp** — `~/.omp/agent/mcp.json` carries a bare `grafana` entry; omp discovers
+the metadata above and runs the browser flow on first connect:
+
+```json
+"grafana": { "type": "http", "url": "https://mcp.grafana.com/mcp", "timeout": 120000 }
+```
+
+**Hermes** — installed from the catalog (`hermes mcp install grafana`), which
+writes `mcp_servers.grafana` in `~/.hermes/config.yaml` with `auth: oauth` and
+excludes `ask_assistant` / `agento11y_*`. Authorize with
+`hermes mcp login grafana`.
+
+### Verifying
+
+```bash
+# unauthenticated POST must be 401 with a resource_metadata pointer
+curl -s -D - -o /dev/null -X POST https://mcp.grafana.com/mcp \
+  -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}' \
+  | grep -i '^www-authenticate'
+```
+
+A `401` means the endpoint is up and waiting for OAuth — not an outage. Once
+authorized, `tools/list` in an agent session is the real check.
+
+### Troubleshooting
+
+- **`401` after authorizing** — the token is bound to one stack. Re-run the
+  consent flow and enter the stack URL again.
+- **`403` / role error** — the Grafana user lacks `Assistant Cloud MCP User`.
+- **Tools missing in a session** — omp and Hermes both load MCP servers at
+  session start; restart the session after authorizing.

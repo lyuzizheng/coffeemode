@@ -152,11 +152,12 @@ gate itself (spec 0004 decision 6a) still stands.
 
 ## 10. Grafana Cloud stack (agent observability via MCP)
 
-The Grafana MCP server is deployed and reachable; it needs a stack to talk to.
+Agents are wired to the official Grafana Cloud MCP; it needs a stack to talk to.
 
-- [x] Deploy `mcp-grafana` (streamable HTTP) in Dokploy — app `coffeemode-mcp-grafana`, project CoffeeMode / environment `infrastructure`, image `grafana/mcp-grafana:1.5.1` (BRAWUKA-600). Public endpoint `https://mcp.cafemood.app/mcp`, behind Cloudflare Access (service token `cafemood-mcp-grafana-token`) plus the server's own caller bearer token. Wired into the local omp config as the `grafana` MCP server; `initialize` + `tools/list` (81 tools) verified through the public URL.
-- [ ] Create the Grafana Cloud stack (grafana.com — the free tier is enough) and mint a service account token with scopes covering `dashboards:*`, `datasources:read`, `datasources:query`, `folders:*`, `alert.rules:*`, `alert.notifications:*`, `annotations:*`.
-- [ ] Paste the two values into the Dokploy app `coffeemode-mcp-grafana` env (values never go in chat/docs/repo): `GRAFANA_URL` = stack URL, `GRAFANA_SERVICE_ACCOUNT_TOKEN` = the token. Then redeploy the app.
+- [x] ~~Deploy `mcp-grafana` (streamable HTTP) in Dokploy~~ — retired 2026-09-21. The self-hosted app `coffeemode-mcp-grafana`, its `mcp.cafemood.app` DNS record, tunnel ingress rule, Cloudflare Access app and service token were all deleted; the three local secrets were removed from `~/.config/zsh/secrets.zsh`.
+- [x] Point agents at the hosted endpoint `https://mcp.grafana.com/mcp` with OAuth 2.1 + dynamic client registration — `grafana` entry in `~/.omp/agent/mcp.json`, and `hermes mcp install grafana` in `~/.hermes/config.yaml`. See `docs/devops/mcp-servers.md`.
+- [ ] Create the Grafana Cloud stack (grafana.com — the free tier is enough) and grant the connecting user the `Assistant Cloud MCP User` role (Editor or higher has it by default).
+- [ ] Authorize the MCP client: omp opens a browser on first connect; Hermes needs `hermes mcp login grafana`. Both ask for the stack URL (`https://<stack>.grafana.net`) and read vs read+write scope. Restart the agent session afterwards so the tools load.
 - [ ] (Optional) Decide whether the rate-limit alert sink (`web/lib/observability/rate-limit-alert.ts`, DG129) moves from Better Stack to Grafana Cloud. Nothing changes until that call is made; the Better Stack sources stay live meanwhile.
 
 ## What the agent continues meanwhile

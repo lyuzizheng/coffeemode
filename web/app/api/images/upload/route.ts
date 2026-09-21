@@ -53,7 +53,8 @@ export async function POST(request: Request) {
   if (!bodyRes.ok) return bodyRes.response;
   const parsed = parseSize(bodyRes.data);
   if ("error" in parsed) {
-    return apiError(parsed.code, parsed.error, { status: 400, request });
+    // Registry status: 400 invalid_request / 413 size_exceeded (spec 0011).
+    return apiError(parsed.code, parsed.error, { request });
   }
 
   try {

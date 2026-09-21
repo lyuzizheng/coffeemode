@@ -229,6 +229,9 @@ export async function readJsonBody<T = unknown>(
 function oversizedBody(request: Request): ReadJsonBodyResult<null> {
   return {
     ok: false,
+    // Deliberate divergence from the registry's canonical 400 for
+    // `invalid_request`: 413 is the correct HTTP signal for an oversized
+    // body, and `size_exceeded` is reserved for image uploads (spec 0011).
     response: apiError("invalid_request", "request body too large", { status: 413, request }),
   };
 }

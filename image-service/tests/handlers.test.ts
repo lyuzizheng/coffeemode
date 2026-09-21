@@ -91,7 +91,7 @@ describe("handleUpload", () => {
     });
     const response = await handleUpload(request, env);
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(413);
     const data = (await response.json()) as { error: string; message: string };
     expect(data.error).toBe("size_exceeded");
     // Unified message shared with the web route via web/shared (issue #26).
@@ -451,7 +451,7 @@ describe("handleDelete", () => {
     });
     const response = await handleComplete(request, env);
 
-    expect(response.status).toBe(422);
+    expect(response.status).toBe(413);
     const data = (await response.json()) as { error: string; message: string };
     expect(data.error).toBe("size_exceeded");
     expect(data.message).toContain(String(MAX_UPLOAD_BYTES));

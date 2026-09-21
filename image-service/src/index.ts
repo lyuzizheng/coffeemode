@@ -1,6 +1,7 @@
 import type { CompleteRequest, CompleteResponse, DeleteRequest, DeleteResponse, Env, UploadResponse } from "./types";
 import { authorized, internalError, json, unauthorized } from "./auth";
 import type { ErrorCode } from "../../web/shared/errors";
+import { defaultErrorStatus } from "../../web/shared/errors";
 import { isValidUUID } from "../../web/shared/uuid";
 import { validateUploadSize } from "../../web/shared/images/validation";
 import { sanitizeMetadata } from "./validate";
@@ -8,9 +9,10 @@ import { deleteObjects, headObject, presignedGetUrl, presignedPutUrl, publicUrl,
 import { IMMUTABLE_CACHE_CONTROL, MAX_UPLOAD_BYTES, PROVISION_TARGET_TYPE } from "./constants";
 
 /** Validation failure envelope — same shape as poi-service
- * ({ error: code, message?, request_id }). `code` is registry-typed. */
-function error(request: Request, code: ErrorCode, message: string, status = 400): Response {
-  return json({ error: code, message }, status, request);
+ * ({ error: code, message?, request_id }). `code` is registry-typed and the
+ * status defaults to the registry's canonical status for it. */
+function error(request: Request, code: ErrorCode, message: string, status?: number): Response {
+  return json({ error: code, message }, status ?? defaultErrorStatus(code), request);
 }
 
 function expirationDate(ttlSeconds: number): string {
@@ -129,7 +131,7 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
   const keys = makeKeys(normalizedUuid);
   const exists = await headObject(env, keys.original);
   if (!exists) {
-    return error(request, "not_found", "original image not found", 404);
+    return error(request, "not_found", "original image not found");
   }
   // Enforce the cap on the ACTUAL uploaded bytes, not the caller's claim
   // (review 2026-08-09): refuse to hand out process URLs for oversized
@@ -139,7 +141,6 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
       request,
       "size_exceeded",
       `uploaded object is ${exists.size} bytes, exceeding the ${MAX_UPLOAD_BYTES} byte cap`,
-      422,
     );
   }
 
@@ -245,8 +246,7 @@ export default {
       if (method === "POST" && path === "/v1/images/delete") {
         return await handleDelete(request, env);
       }
-
-      return error(request, "not_found", "route not found", 404);
+      return error(request, "not_found", "route not found");
     } catch (e) {
       console.error("image-service error:", e);
       return internalError(request);

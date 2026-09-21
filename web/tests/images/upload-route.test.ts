@@ -60,7 +60,7 @@ describe("POST /api/images/upload", () => {
 
   it("rejects size above MAX_UPLOAD_BYTES", async () => {
     const res = await POST(makeRequest({ size: MAX_UPLOAD_BYTES + 1 }));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(413);
     await expect(res.json()).resolves.toMatchObject({ error: "size_exceeded" });
     expect(requestUploadUrlMock).not.toHaveBeenCalled();
   });

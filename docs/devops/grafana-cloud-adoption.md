@@ -139,7 +139,7 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 
 **收益**：Grafana Cloud 的 metrics-generator 会自动从 span 生成 `traces_spanmetrics_*`，RED 指标不用自己写。Tempo 数据源已经配好 `tracesToLogs` / `tracesToMetrics` / `serviceMap`，开箱即用。
 
-**实现状态（BRAWUKA-606，2026-09-21）**：代码已落地 —— `web/lib/observability/otel.ts` 在 `instrumentation.ts` 里调 `registerOTel`，端点 / 采样 / resource attributes 全部由 `deploy/dokploy/docker-compose.{staging,prod}.yml` 的 `environment:` 块钉死（非密钥，避免漏粘贴导致采样率回落到 100%），只有 `OTEL_EXPORTER_OTLP_HEADERS` 需要 Owner 粘贴（`docs/agent/pending-user-actions.md` §10）。`deployment.environment` 取 `staging` / `production`，与 `APP_ENV` 同一套词汇。
+**实现状态（BRAWUKA-606，2026-09-21）**：代码已落地 —— `web/lib/observability/otel.ts` 在 `instrumentation.ts` 里调 `registerOTel`，端点与 resource attributes 由 `deploy/dokploy/docker-compose.{staging,prod}.yml` 的 `environment:` 块钉死（非密钥），只有 `OTEL_EXPORTER_OTLP_HEADERS` 需要 Owner 粘贴（`docs/agent/pending-user-actions.md` §10）。`deployment.environment` 取 `staging` / `production`，与 `APP_ENV` 同一套词汇。**不设采样器**（§6 决定 4）。
 
 **`http.route` 需要自己补，Next.js 16.3.4 不会写。** `base-server.js` 把 `next.route` 拷到 `http.route` 的前提是 `BaseServer.handleRequest` 是整条 trace 的根 span（它读 `tracer.getRootSpanAttributes()`，拿不到就 return null 并打一条 warn），而实际根 span 是 `NextServer.getRequestHandler` —— 所以拷贝从不发生，导出的 span 只有 `http.target`（原始 path）。本地 OTLP sink 实测确认。
 

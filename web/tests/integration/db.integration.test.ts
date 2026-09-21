@@ -3082,6 +3082,31 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(cafe.rows[0].created_by).toBe(SERVICE_ACCOUNT_ID);
     });
 
+    it("concurrent deleteAccount + deleteCafe on the same cafe never deadlocks (BRAWUKA-574)", async () => {
+      // Regression: deleteAccount locked check-ins first while deleteCafe
+      // locked cafe first — overlapping the two hit 40P01 on round 0.
+      // Both now take cafe → checkin order, so the loser waits instead of
+      // cycling. Every round reseeds (one side always wins and deletes the
+      // cafe's rows), then asserts neither side saw deadlock_detected.
+      for (let round = 0; round < 5; round++) {
+        await dbClient.query("alter table checkin_likes enable trigger all");
+        await dbClient.query(
+          "truncate table profiles, cafes, image_upload_intents, navigations restart identity cascade",
+        );
+        await seedBaseData(dbClient);
+        const results = await Promise.allSettled([
+          deleteAccount(U1),
+          deleteCafe(CAFE_A, U1, { confirm: true }),
+        ]);
+        for (const result of results) {
+          if (result.status === "rejected") {
+            const code = (result.reason as { code?: string } | null)?.code;
+            expect(code, `round ${round}: deadlock: ${String(result.reason)}`).not.toBe("40P01");
+          }
+        }
+      }
+    });
+
     it("getProfileExport returns the full bundle against the real schema", async () => {
       const bundle = await getProfileExport(U1);
       expect(bundle.profile?.id).toBe(U1);

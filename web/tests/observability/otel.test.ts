@@ -193,4 +193,38 @@ describe("route template on the request span", () => {
 
     expect(request.attributes["http.route"]).toBeUndefined();
   });
+
+  it("retires the route entry once the request span ends, even with a remote parent", () => {
+    const processor = registeredProcessor();
+    end(
+      processor,
+      fakeSpan("t1", "AppRouteRouteHandlers.runHandler", { "next.route": "/api/cafes/[id]" }, "p1"),
+    );
+    // An inbound `traceparent` is adopted as a remote parent, so no span in
+    // this trace is parentless and the root-span cleanup can never fire.
+    end(processor, fakeSpan("t1", "BaseServer.handleRequest", { "http.method": "GET" }, "remote"));
+
+    const late = fakeSpan("t1", "BaseServer.handleRequest", { "http.method": "GET" }, "remote");
+    end(processor, late);
+
+    expect(late.attributes["http.route"]).toBeUndefined();
+  });
+
+  it("keeps the RSC prefix Next.js puts on the span name", () => {
+    const processor = registeredProcessor();
+    end(
+      processor,
+      fakeSpan("t1", "AppRouteRouteHandlers.runHandler", { "next.route": "/cafes/[id]" }, "p1"),
+    );
+
+    const request = fakeSpan(
+      "t1",
+      "BaseServer.handleRequest",
+      { "http.method": "GET", "next.rsc": true },
+      "p1",
+    );
+    end(processor, request);
+
+    expect(request.name).toBe("RSC GET /cafes/[id]");
+  });
 });

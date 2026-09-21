@@ -20,13 +20,13 @@ import type { ReadableSpan, SpanProcessor } from "@opentelemetry/sdk-trace-base"
  * - `OTEL_RESOURCE_ATTRIBUTES` — `service.name` + `deployment.environment`
  *   (the attribute Grafana Cloud Application Observability filters on).
  *
- * No sampler is configured, on purpose (BRAWUKA-605 §6 decision 4). Head
- * sampling drops whole traces at the root span, and `traces_spanmetrics_*` is
- * derived from the spans that actually arrive — so any ratio below 1 would make
- * every RED count a fraction of reality and quietly break the alerting that
- * reads them. Volume is orders of magnitude below the 50 GB free tier. If
- * volume ever grows, the fix is tail sampling (keep all errors + slow traces),
- * not a head ratio.
+ * No sampler is configured, on purpose (BRAWUKA-605 §6 decision 3, superseded
+ * 2026-09-21). Head sampling drops whole traces at the root span, and
+ * `traces_spanmetrics_*` is derived from the spans that actually arrive — so
+ * any ratio below 1 would make every RED count a fraction of reality and
+ * quietly break the alerting that reads them. Volume is orders of magnitude
+ * below the 50 GB free tier. If volume ever grows, the fix is tail sampling
+ * (keep all errors + slow traces), not a head ratio.
  */
 
 /** Service identity — invariant across deployments, so it lives in code. */
@@ -67,17 +67,23 @@ export function otlpEndpoint(): string | null {
 }
 
 /**
- * Stamp the route *template* onto the request span.
+ * Stamp the route *template* onto the request span — a fallback for the
+ * configurations where Next.js skips its own copy.
  *
- * Next.js already resolves the template (`/api/cafes/[id]`, never the raw
- * path) and copies it to `http.route` — but in 16.3.4 only when
- * `BaseServer.handleRequest` is the trace's root span: `base-server.js` reads
- * `tracer.getRootSpanAttributes()` and bails when the map is missing, and
- * `NextServer.getRequestHandler` is the actual root. The copy therefore never
- * happens, and the exported span keeps `http.target` (the raw path) with no
- * `http.route` at all — verified against a local OTLP sink.
+ * In the default configuration Next.js does this itself: `base-server.js` reads
+ * `tracer.getRootSpanAttributes()`, and because `NextServer.getRequestHandler`
+ * is not in `NextVanillaSpanAllowlist` it produces no span, leaving
+ * `BaseServer.handleRequest` as the trace root — so the copy runs and the span
+ * is renamed to `GET /api/cafes/[id]`. This processor is then a no-op, which
+ * the `http.route === undefined` guard guarantees.
  *
- * That matters twice over. `http.route` is the attribute the adoption doc
+ * The copy is skipped whenever something else becomes the root: with
+ * `NEXT_OTEL_VERBOSE=1`, or in dev with `experimental.requestInsights`, the
+ * request-handler spans are traced too, the root check fails, and the exported
+ * span keeps `http.target` (the raw path) with no `http.route` at all —
+ * verified against a local OTLP sink. That is the gap this fills.
+ *
+ * It matters twice over. `http.route` is the attribute the adoption doc
  * requires to be a template, and `span_name` is one of spanmetrics' four
  * default labels: left as `GET`, every route collapses into a single series,
  * so there is no per-route RED to read.
@@ -111,18 +117,25 @@ class RouteTemplateSpanProcessor implements SpanProcessor {
       this.routes.set(traceId, route);
     }
 
-    if (spanType === REQUEST_SPAN_TYPE && attributes["http.route"] === undefined) {
+    if (spanType === REQUEST_SPAN_TYPE) {
       const template = this.routes.get(traceId);
-      if (template !== undefined) {
+      if (template !== undefined && attributes["http.route"] === undefined) {
+        const method = String(attributes["http.method"]);
         attributes["http.route"] = template;
         // `name` is readonly on the `ReadableSpan` interface but a plain field
         // on the SDK's `Span` — the same object the batch processor exports.
-        (span as { name: string }).name = `${attributes["http.method"] ?? "GET"} ${template}`;
+        // Mirrors `base-server.js`, including its RSC prefix.
+        (span as { name: string }).name =
+          attributes["next.rsc"] === true ? `RSC ${method} ${template}` : `${method} ${template}`;
       }
-    }
-
-    // The root span ends last, so this is where the per-trace entry retires.
-    if (!span.parentSpanContext?.spanId) {
+      // Retire the entry here rather than keying off a parentless span: the
+      // request span is the last one that needs the template, and
+      // `withPropagatedContext` adopts a remote parent from an inbound
+      // `traceparent`, leaving such a trace with no parentless span at all —
+      // which would leak one entry per propagated request, forever.
+      this.routes.delete(traceId);
+    } else if (!span.parentSpanContext?.spanId) {
+      // Fallback for traces that never produce a request span.
       this.routes.delete(traceId);
     }
   }

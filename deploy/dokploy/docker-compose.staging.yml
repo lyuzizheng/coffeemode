@@ -46,7 +46,7 @@ services:
       # `deployment.environment` matches APP_ENV — the repo's environment
       # discriminator — and is the attribute Grafana Application Observability
       # filters on.
-      # No sampler on purpose (BRAWUKA-605 §6 decision 4). Head sampling drops
+      # No sampler on purpose (BRAWUKA-605 §6 decision 3, superseded 2026-09-21). Head sampling drops
       # whole traces at the root span, and `traces_spanmetrics_*` is derived
       # from the spans that actually arrive — so any ratio below 1 would make
       # every RED count a fraction of reality and quietly break the alerting

@@ -101,16 +101,22 @@ interface UnifiedSearchPanelProps {
 
 
 /** Canonical signature of the request the panel would fire — the same
- * serialization `fetchUnifiedSearch` applies (`q` + `city` + `filter_*`).
- * Dedupe MUST compare this, not the query text alone: a filter/city change
- * with an unchanged query is a different request (BRAWUKA-567). */
+ * serialization `fetchUnifiedSearch` applies (`q` + resolved scope +
+ * `filter_*`). Dedupe MUST compare this, not the query text alone: a
+ * filter/city change with an unchanged query is a different request
+ * (BRAWUKA-567). The scope goes through `resolveSearchScope` so the
+ * signature matches the wire — a runtime city id signs as its `?lat&lng`
+ * resolution, never `?city=` (BRAWUKA-568). */
 function requestSignature(
   q: string,
   city: string | undefined,
   filters: SearchFilterState | undefined,
 ): string {
   const params = new URLSearchParams({ q });
-  if (city) params.set("city", city);
+  const scope = resolveSearchScope(city);
+  if (scope.city) params.set("city", scope.city);
+  if (typeof scope.lat === "number") params.set("lat", String(scope.lat));
+  if (typeof scope.lng === "number") params.set("lng", String(scope.lng));
   if (filters) filtersToSearchParams(filters, params);
   return params.toString();
 }

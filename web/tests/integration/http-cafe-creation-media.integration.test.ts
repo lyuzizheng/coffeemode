@@ -57,8 +57,10 @@ vi.mock("@/lib/auth/get-user", () => ({
 }));
 
 // Mock POI client seam (mandatory): spec 0008 §5 — standard Google POI shape, zero external network requests
-vi.mock("@/lib/places/poi-client", () => {
+vi.mock("@/lib/places/poi-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/places/poi-client")>();
   return {
+    ...actual,
     searchExternalPOIs: vi.fn(async ({ q }: { q?: string }) => {
       return createMockGooglePlacesResponse({
         name: q ? `${q} Seed Roasters` : "Google POI Seed Roasters",
@@ -530,6 +532,10 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     ];
 
     for (const testCase of cases) {
+      // guard() (auth + rate limit) runs before body validation, so every
+      // malformed POST still spends cafes-write budget (10/min). Reset per
+      // case so the matrix can't trip 429 (spec 0011 ordering, BRAWUKA-537).
+      await resetRateLimits();
       const res = await clientA.post(cafesPOST, "/api/cafes", testCase.body);
       expect(res.status, `Expected 400 for ${testCase.name}`).toBe(400);
       expect(res.data, `Expected invalid_request for ${testCase.name}`).toMatchObject({
@@ -539,10 +545,10 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
   });
 
   // =========================================================================
-  // 4. Photo Intent Misuse & Abuse (400 invalid_photos)
+  // 4. Photo Intent Misuse & Abuse (422 invalid_photos)
   // =========================================================================
 
-  it("Path 2: POST /api/cafes rejects unissued and foreign photo IDs with 400 invalid_photos", async () => {
+  it("Path 2: POST /api/cafes rejects unissued and foreign photo IDs with 422 invalid_photos", async () => {
     // 1. Unissued photo UUID (never went through /api/images/upload)
     const unissuedUuid = randomUUID();
     const unissuedRes = await clientA.post(cafesPOST, "/api/cafes", {
@@ -556,7 +562,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
         photo_ids: [unissuedUuid],
       },
     });
-    expect(unissuedRes.status).toBe(400);
+    expect(unissuedRes.status).toBe(422);
     expect(unissuedRes.data).toMatchObject({ error: "invalid_photos" });
 
     // 2. Foreign photo UUID: User B uploads an image, User A attempts to consume it
@@ -572,7 +578,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
         photo_ids: [uploadB.imageUuid],
       },
     });
-    expect(foreignRes.status).toBe(400);
+    expect(foreignRes.status).toBe(422);
     expect(foreignRes.data).toMatchObject({ error: "invalid_photos" });
   });
 
@@ -715,7 +721,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
   });
 
   // =========================================================================
-  // 6. Photo Re-use Protection (Edge Case 5 / 400 invalid_photos)
+  // 6. Photo Re-use Protection (Edge Case 5 / 422 invalid_photos)
   // =========================================================================
 
   it("Path 2: POST /api/cafes rejects reused already-consumed photo ID on subsequent creation (Edge Case 5)", async () => {
@@ -747,7 +753,7 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
         photo_ids: [uploadA.imageUuid],
       },
     });
-    expect(reusedRes.status).toBe(400);
+    expect(reusedRes.status).toBe(422);
     expect(reusedRes.data).toMatchObject({ error: "invalid_photos" });
   });
 

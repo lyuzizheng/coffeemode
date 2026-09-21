@@ -211,7 +211,7 @@ describePath3("path 3 — profile & public identity lifecycle over HTTP (spec 00
         "/api/profile",
         { displayName },
       );
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(422);
       expect(res.data.error).toBe("display_name_length");
     }
     const ok = await client.patch<{ profile: UserProfileDto }, NoCtx, NextRequest>(
@@ -231,7 +231,7 @@ describePath3("path 3 — profile & public identity lifecycle over HTTP (spec 00
         "/api/profile",
         { currentCity },
       );
-      expect(bad.status).toBe(400);
+      expect(bad.status).toBe(422);
       expect(bad.data.error).toBe("invalid_current_city");
     }
     const ok = await client.patch<{ profile: UserProfileDto }, NoCtx, NextRequest>(
@@ -271,7 +271,7 @@ describePath3("path 3 — profile & public identity lifecycle over HTTP (spec 00
       "/api/profile",
       { lastLocation: { lat: 91, lng: 0 } },
     );
-    expect(bad.status).toBe(400);
+    expect(bad.status).toBe(422);
     expect(bad.data.error).toBe("invalid_last_location");
   });
 
@@ -454,7 +454,7 @@ describePath3("path 3 — profile & public identity lifecycle over HTTP (spec 00
     expect(stolen.data.error).toBe("handle_taken");
   });
 
-  it("path 3 (spec 0008 §6): user-chosen handle change inside the 7-day cooldown → 400 handle_change_too_soon", async () => {
+  it("path 3 (spec 0008 §6): user-chosen handle change inside the 7-day cooldown → 422 handle_change_too_soon", async () => {
     const client = apiClient(users.userA);
     expect(
       (
@@ -480,7 +480,7 @@ describePath3("path 3 — profile & public identity lifecycle over HTTP (spec 00
       "/api/profile/identity",
       { showPublicIdentity: true, publicHandle: "pioneer-b" },
     );
-    expect(tooSoon.status).toBe(400);
+    expect(tooSoon.status).toBe(422);
     expect(tooSoon.data.error).toBe("handle_change_too_soon");
   });
 });

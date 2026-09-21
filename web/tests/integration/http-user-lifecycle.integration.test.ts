@@ -72,8 +72,10 @@ vi.mock("@/lib/auth/get-user", () => ({
 }));
 
 // Mock POI client seam (mandatory): spec 0008 §5 — standard Google POI shape, zero external network requests
-vi.mock("@/lib/places/poi-client", () => {
+vi.mock("@/lib/places/poi-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/places/poi-client")>();
   return {
+    ...actual,
     searchExternalPOIs: vi.fn(async ({ q }: { q?: string }) => {
       return createMockGooglePlacesResponse({
         name: q ? `${q} Seed Roasters` : "Google POI Seed Roasters",
@@ -1046,11 +1048,11 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
     expect(cCheckins.status).toBe(200);
     expect(JSON.stringify(cCheckins.data.items)).not.toContain(cafe3_id);
 
-    // Community cafe: A's bare DELETE → 403 cafe_has_other_checkins with n=2.
+    // Community cafe: A's bare DELETE → 409 cafe_has_other_checkins with n=2.
     const bare = await clientA.delete(cafeDELETE, `/api/cafes/${cafe1_id}`, undefined, {}, routeParams({
       id: cafe1_id,
     }));
-    expect(bare.status).toBe(403);
+    expect(bare.status).toBe(409);
     expect(bare.data).toMatchObject({ error: "cafe_has_other_checkins", n: 2 });
 
     // With confirm: handoff to the service account, A's row removed.

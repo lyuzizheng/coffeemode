@@ -252,7 +252,7 @@ graph TD
 
 ## 6. 已拍板的决定（Reviewer & Architect，2026-09-21）
 
-1. **日志：不切，双跑到 P1 验证完。** stdout 是唯一完整记录（ADR-0004），Alloy 收它不影响 Better Stack sink。~~`api-error-sink.ts` 和 rate-limit POST 保持开启；Grafana Alerting 验证通过后删 sink + env vars（`BETTER_STACK_*_INGEST_*`），不是改 Alloy 配置。~~ **部分已执行（BRAWUKA-607）**：`api-error-sink.ts` 与 `BETTER_STACK_ERRORS_INGEST_*` 已删除 —— 日志改走 OTLP 进 Loki，不再需要 Alloy 收 stdout。rate-limit POST 与 `BETTER_STACK_INGEST_*` 保持开启，等 Grafana Alerting 验证通过后再删。
+1. **日志：直接切，不双跑。** stdout 是唯一完整记录（ADR-0004），`otlp-logs.ts` 把它按 OTLP 送进 Loki —— 不需要 Alloy 收 stdout。**已执行（BRAWUKA-607 + BRAWUKA-605）**：`api-error-sink.ts` 与 `BETTER_STACK_ERRORS_INGEST_*` 已删除；rate-limit POST 与 `BETTER_STACK_INGEST_*` 也已删除。Better Stack 侧不再收到任何应用数据。
 2. **Better Stack：全退，但分两步。** P1-1 synthetic 验证通过前保留 uptime monitor，之后全退。没有要重建的 status page / heartbeat（Better Stack 侧本来就没有）。
 3. ~~**OTel 采样：prod 10% `parentbased_traceidratio` 起步，staging 100%。**~~ **已由 Owner 于 2026-09-21 推翻：不采样，100% 全采。** 理由：head sampling 在根 span 上丢整条 trace，而 `traces_spanmetrics_*` 是从实际到达的 span 派生的 —— 0.1 的比率会让每个 RED 计数只有真实值的十分之一，静默破坏 P0-3 依赖的告警。量级远低于 50 GB 免费档，采样省不下什么却牺牲正确性；真涨上来时解法是 tail sampling（保留全部错误 + 慢 trace），不是 head ratio。原决定保留备查：staging 量小，全采方便调试；prod 一周后看用量再调。接受的代价：head sampling 下 90% 的错误 trace 会丢，靠日志补 —— 这正是 P0-1 先做的理由。
 4. **rate-limit：保留逐条事件，但改成结构化日志，不是 counter。** 429 命中是低频安全相关事件，`client_id` / `bucket` / `retry_after` 有排查价值，量也吃不垮 50 GB。做法：`emitRateLimitAlert` 里每个事件走 `logWarn` 打一条 JSON（`client_id` 进 structured metadata，不做 label），现有 10s 节流的 `console.warn` 保留只用于本地降噪。counter 可以之后用 spanmetrics 或 LogQL metric query 派生，不需要应用侧埋点。

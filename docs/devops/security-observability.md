@@ -33,21 +33,22 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
 ## Checklist — Application layer
 
 - `rate-limit-alert` hook (DG129, `web/lib/observability/rate-limit-alert.ts`)
-  emits a throttled `console.warn` always, and POSTs to the per-environment
-  Better Stack HTTP source when `BETTER_STACK_INGEST_URL` (source host) is set
-  on the app container, authenticating with `Authorization: Bearer
-  BETTER_STACK_INGEST_TOKEN`. Staging posts to `coffeemode-rate-limit-staging`,
-  prod to `coffeemode-rate-limit-prod` — separate sources so env filtering is
-  structural. Both vars are server-only (spec 0010). One event shape
-  (BRAWUKA-378 removed the `fail_open` path with the Postgres backend):
+  emits one structured `logWarn` line per bucket denial, unthrottled, plus a
+  throttled `console.warn` for local noise reduction. The line is the complete
+  record (ADR-0004) and `otlp-logs.ts` ships it to Grafana Cloud Loki over
+  OTLP. The Better Stack POST and its `BETTER_STACK_INGEST_*` pair were retired
+  2026-09-21 (BRAWUKA-605 §6 decision 1: direct cutover, no dual-run). One event
+  shape (BRAWUKA-378 removed the `fail_open` path with the Postgres backend):
   - `rate_limited` (level `warn`) — a bucket denied a request.
-- In Better Stack, create an alert on each ingest source:
-  `event:rate_limited` → low-severity notification.
-  The event carries `bucket`, `client_id`, `window_ms`, `max_requests`,
-  `retry_after`, `route`. Verified 2026-09-17: synthetic `rate_limited`
-  events round-tripped on both sources (ingest 202 → query-visible within
-  ~1 min). If a legacy `rate_limiter_fail_open` alert still exists from
-  before BRAWUKA-378, delete it — that event can no longer fire.
+- Alert on it in Grafana Cloud, not Better Stack:
+  `{service_name="coffeemode-web"} | severity_text="WARN" | code="rate_limited"`
+  → low-severity notification. The line carries `bucket`, `client_id`,
+  `client_ip`, `retry_after`, `route`, `status`, `code`. `client_ip` is the raw
+  `cf-connecting-ip` behind the denial, kept for abuse investigation (BRAWUKA-605
+  §6 decision 5); it rides a log-record attribute, so it lands in structured
+  metadata and never becomes a label. If a legacy `rate_limiter_fail_open` alert
+  still exists from before BRAWUKA-378, delete it — that event can no longer
+  fire.
 - `otlp-logs` hook (BRAWUKA-607, `web/lib/observability/otlp-logs.ts`) ships
   every `logError`/`logWarn` JSON line — and the proxy's `type:"access"` line —
   to Grafana Cloud Loki over OTLP, on the same SDK and endpoint as traces

@@ -21,6 +21,7 @@ paths = [
   '''.*\.env\..*\.example$''',
   # Test fixtures with known fake values
   '''web/tests/.*''',
+  '''poi-service/tests/.*''',
   '''web_landing/src/test/.*''',
   '''server_our_village/service/.*/.*_test\.go$''',
   # Documentation that legitimately shows placeholder shapes

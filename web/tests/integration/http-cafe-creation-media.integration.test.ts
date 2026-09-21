@@ -15,7 +15,8 @@ import { POST as cafesPOST, GET as cafesGET } from "@/app/api/cafes/route";
 import { GET as cafeDetailGET } from "@/app/api/cafes/[id]/route";
 import { GET as checkinsGET } from "@/app/api/cafes/[id]/checkins/route";
 import { POST as uploadPOST } from "@/app/api/images/upload/route";
-import { GET as placesSearchGET } from "@/app/api/places/search/route";
+import { GET as placesAutocompleteGET } from "@/app/api/places/autocomplete/route";
+import { GET as placesDetailsGET } from "@/app/api/places/details/route";
 import { POST as placesResolvePOST } from "@/app/api/places/resolve/route";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import type * as ImageServiceClient from "@/lib/images/image-service-client";
@@ -62,6 +63,22 @@ vi.mock("@/lib/places/poi-client", async (importOriginal) => {
   return {
     ...actual,
     searchPOIs: vi.fn(async () => ({ results: [] })),
+    // Two-phase live search (BRAWUKA-602): predictions while typing, Place
+    // Details on selection. Both are mocked so the suite makes zero external
+    // network calls (spec 0008 §5).
+    autocompletePOIs: vi.fn(async () => ({
+      predictions: createMockGooglePlacesResponse().results.map((poi) => ({
+        place_id: poi.place_id,
+        source: poi.source,
+        name: poi.name,
+        address: poi.address,
+        types: poi.types,
+      })),
+    })),
+    getPOI: vi.fn(async (placeId: string) => {
+      const results = createMockGooglePlacesResponse().results;
+      return results.find((poi) => poi.place_id === placeId) ?? results[0]!;
+    }),
     resolveMapsUrl: vi.fn(async (mapsShareUrl: string) => {
       const match = mapsShareUrl.match(/place\/([^/?]+)/);
       const name = match ? decodeURIComponent(match[1].replace(/\+/g, " ")) : "Resolved Maps Cafe";
@@ -260,27 +277,45 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
   // =========================================================================
 
   it("Path 2: mock POI client injects standard Google POI and verifies zero external network calls", async () => {
-    // 1. Authenticated Google Places search via POI proxy
-    const searchRes = await clientA.get<{ results: Array<{ place_id: string; name: string; source: string; types: string[]; business_status: string }> }>(
-      placesSearchGET,
-      "/api/places/search",
-      { query: { source: "google", q: "Orchard Nomad" } },
-    );
-    expect(searchRes.status).toBe(200);
-    expect(searchRes.data.results).toBeInstanceOf(Array);
-    expect(searchRes.data.results.length).toBeGreaterThan(0);
+    // 1. Typing phase: Autocomplete (New) predictions through the POI proxy.
+    //    One session token spans both phases — that pairing is what moves the
+    //    typing phase into the $0 Autocomplete Session Usage SKU.
+    const session = randomUUID();
+    const autocompleteRes = await clientA.get<{
+      predictions: Array<{ place_id: string; name: string; source: string; types: string[] }>;
+    }>(placesAutocompleteGET, "/api/places/autocomplete", {
+      query: { q: "Orchard Nomad", session },
+    });
+    expect(autocompleteRes.status).toBe(200);
+    expect(autocompleteRes.data.predictions).toBeInstanceOf(Array);
+    expect(autocompleteRes.data.predictions.length).toBeGreaterThan(0);
 
-    const hit = searchRes.data.results[0]!;
-    expect(hit.source).toBe("google");
-    expect(hit.place_id).toMatch(/^ChIJ/);
-    expect(hit.types).toContain("cafe");
-    expect(hit.business_status).toBe("OPERATIONAL");
+    const prediction = autocompleteRes.data.predictions[0]!;
+    expect(prediction.source).toBe("google");
+    expect(prediction.place_id).toMatch(/^ChIJ/);
+    expect(prediction.types).toContain("cafe");
 
-    // Anonymous Google POI search is rejected with 401 (cost protection)
+    // 2. Selection phase: Place Details terminates the session and returns the
+    //    full POI — the only billed call in the flow.
+    const detailsRes = await clientA.get<{
+      place_id: string;
+      source: string;
+      types: string[];
+      business_status: string;
+    }>(placesDetailsGET, "/api/places/details", {
+      query: { place_id: prediction.place_id, session },
+    });
+    expect(detailsRes.status).toBe(200);
+    expect(detailsRes.data.place_id).toBe(prediction.place_id);
+    expect(detailsRes.data.source).toBe("google");
+    expect(detailsRes.data.types).toContain("cafe");
+    expect(detailsRes.data.business_status).toBe("OPERATIONAL");
+
+    // Anonymous live search is rejected with 401 (cost protection)
     const anonSearch = await guestClient.get(
-      placesSearchGET,
-      "/api/places/search",
-      { query: { source: "google", q: "Orchard Nomad" } },
+      placesAutocompleteGET,
+      "/api/places/autocomplete",
+      { query: { q: "Orchard Nomad", session: randomUUID() } },
     );
     expect(anonSearch.status).toBe(401);
     expect(anonSearch.data).toMatchObject({ error: "unauthorized" });

@@ -5,7 +5,8 @@ import type { CreateTranslator, PlaceSearchProvider } from "./place-search";
 /**
  * Google place search via the server proxy, in two phases (BRAWUKA-602):
  *
- *   typing    → `GET /api/places/autocomplete` (Autocomplete (New), free)
+ *   typing    → `GET /api/places/autocomplete` (Autocomplete (New), $0 once
+ *               the session is terminated)
  *   selection → `GET /api/places/details`      (Place Details (New), billed)
  *
  * Both calls carry the same `sessionToken`, which is what moves the

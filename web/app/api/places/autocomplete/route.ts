@@ -17,9 +17,9 @@ import { autocompletePOIs } from "@/lib/places/poi-client";
  * malformed token, which would quietly revert the whole session to
  * per-request billing. Rejecting it here keeps that failure loud.
  *
- * Signed-in only. Autocomplete is not billed per session, but it is still a
- * live upstream call per keystroke, so it stays behind the same auth gate the
- * previous live search had.
+ * Signed-in only. Autocomplete requests bill at $0 once their session is
+ * terminated, but they are still a live upstream call per keystroke, so this
+ * stays behind the same auth gate the previous live search had.
  */
 const SESSION_TOKEN_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

@@ -23,6 +23,7 @@ Do not load every spec by default unless the task spans the whole system.
 | `0008-http-user-journey-matrix.md` | Real-client HTTP API journey matrix (Paths 1–6), 4-persona lifecycle, reconciliation ledger, Stage 2 slicing |
 | `0009-code-quality-and-module-boundaries.md` | Code quality and module boundaries: thresholds, split/extract rules, pattern selection, exemptions |
 | `0010-environments-and-secrets.md` | Local/staging/prod environment matrix, data-store ruling, auth & test-session policy, staging data isolation, secret ownership |
+| `0011-api-error-handling-and-observability.md` | API error contract: HTTP status semantics, flat error envelope, error-code registry, structured logging, client fetch layer |
 
 ## Adding a new spec
 

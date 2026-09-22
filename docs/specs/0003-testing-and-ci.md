@@ -19,7 +19,7 @@ Accepted
 | Unit/component | Vitest + React Testing Library | Pure logic and rendered component behavior |
 | Mocked integration | Vitest with mocked service boundaries | Route/service contracts without live dependencies |
 | Real DB | Vitest + local Postgres/PostGIS | Migrations, SQL, triggers, transactions, and stored state |
-| Staging journey | `scripts/devops/run-staging-journey.sh` against staging Supabase | Real-session user journeys on the shared staging backend, in per-suite scratch databases (spec 0010 §4) |
+| Staging journey | `scripts/devops/run-staging-journey.sh` against a runner-local PostGIS Postgres (staging Supabase auth smoke) | User journeys against a real Postgres, in per-suite scratch databases (spec 0010 §4) |
 | Agent QA | Multica autopilot + ego-browser on staging.cafemood.app | Exploratory real-browser user journeys on staging; report + defect filing, never a merge gate |
 | Browser/manual | Playwright or an inspected local build | User-visible route and interaction behavior |
 | Visual comparison | Playwright screenshots with reviewed baselines | Optional visual regression evidence; non-blocking until a baseline policy is accepted |
@@ -76,7 +76,7 @@ web: npm run typecheck, lint, check:structure, check:duplication, check:file-siz
 web real DB: npm run db:migrate, npm run test:integration, npm run test:integration:journey, npm run test:integration:http, npm run test:integration:images, npm run test:integration:all, npm run test:coverage:integration
 web browser smoke: npm run test:e2e (Playwright MVP smoke suite), npm run lhci (Lighthouse CI performance budgets), npm run check:visual (local visual render evidence)
 services: npm run typecheck, npm test
-staging journey: STAGING_DATABASE_URL=<staging postgres> scripts/devops/run-staging-journey.sh --suite <journey|http|db|all> (setup via setup-supabase.mjs, cleanup via web/scripts/cleanup-stale-test-dbs.mjs --apply)
+staging journey: STAGING_DATABASE_URL=<postgres with CREATEDB> scripts/devops/run-staging-journey.sh --suite <journey|http|db|all> (setup via setup-supabase.mjs, cleanup via web/scripts/cleanup-stale-test-dbs.mjs --apply)
 agent harness: .agents/scripts/preflight.sh, .agents/scripts/harness-self-test.sh, .agents/scripts/check-runtime-pins.sh
 ```
 
@@ -114,11 +114,14 @@ workflow (`.github/workflows/staging-journey.yml`) runs
 `scripts/devops/run-staging-journey.sh` on `push` to `main`, nightly, and on
 `workflow_dispatch`, serialized by `concurrency: staging-journey`
 (`cancel-in-progress: false`) with secrets scoped to the GitHub Environment
-`staging`. It verifies the shared staging backend; it never gates a merge, and
-a staging outage must never block a PR. Production promotion additionally
-requires a green `staging-journey` run on the promoted commit plus manual
-owner approval — the boundary is canonical in spec 0010 §5, the release
-mechanics in spec 0005.
+`staging`. It verifies the merge commit against a runner-local PostGIS
+Postgres (`postgis/postgis:16-3.4`, BRAWUKA-525) plus a staging Supabase auth
+smoke check — not the deployed staging stack: the deployed app and the staging
+app database are verified by the deploy path's `smoke-test.sh` (spec 0005
+§CI/CD), never by this workflow. It never gates a merge, and a staging outage
+must never block a PR. Production promotion additionally requires a green
+`staging-journey` run on the promoted commit plus manual owner approval — the
+boundary is canonical in spec 0010 §5, the release mechanics in spec 0005.
 
 The component job names remain stable so existing branch protection receives a
 reported success or skipped result on every PR. `ci-gate` is the preferred single

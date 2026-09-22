@@ -54,7 +54,6 @@ every browser `fetch` call site. Findings that drive this spec:
   to console — user input in logs.
 - `apiError(code, msg)` without `options.status` silently yields 400 —
   positional footgun (45 `invalid_request` call sites).
-- `GET /poi/reverse` mutates state (D1 upsert + KV delete) — side-effecting GET.
 - `use-checkin-feed` like failures toast `load_failed` (wrong copy for a write).
 - No client-side error reporting at all — `console.*` is the only sink.
 
@@ -306,9 +305,6 @@ complete; growth happens only with new routes.
 - **Upstream 4xx from workers** (`poi_service`, `image_service_error`
   passthrough): the web client sanitizes to 502/404/413/422 before the route
   sees it — a worker 4xx never leaks as our 4xx to the browser.
-- **`GET /poi/reverse` mutates** (D1 upsert + KV delete): documented as a
-  known deviation; a future spec decides whether it becomes POST. Not changed
-  here — out of scope.
 - **429 during a mutation**: mutations never retry; the user retries manually —
   `Retry-After` informs the disabled-state duration, not auto-replay.
 - **Legacy top-level extras** (`cafe_id`, `existing_checkin_id`, `n`): emitted

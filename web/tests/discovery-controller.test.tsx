@@ -144,3 +144,20 @@ describe("useDiscoveryController URL sync (DG14)", () => {
     expect(window.location.pathname).toBe("/");
   });
 });
+
+describe("useDiscoveryController referential stability (BRAWUKA-651)", () => {
+  it("returns the same object across renders with no state change", () => {
+    const { result, rerender } = setup();
+    const first = result.current;
+    rerender();
+    expect(result.current).toBe(first);
+  });
+
+  it("returns a new object only when state actually changes", () => {
+    const { result } = setup();
+    const first = result.current;
+    act(() => result.current.select(CAFE_1));
+    expect(result.current).not.toBe(first);
+    expect(result.current.selectedCafeId).toBe(CAFE_1);
+  });
+});

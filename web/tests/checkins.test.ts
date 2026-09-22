@@ -405,12 +405,13 @@ describe("createCheckIn", () => {
       .mockResolvedValueOnce({ rows: [] }) // revisit window: no live check-in
       .mockResolvedValueOnce({ rows: [{ id: CHECKIN }] }) // insert
       .mockResolvedValueOnce({ rows: [] }) // DG79 navigation auto-resolve
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [] }) // stats: cafe row lock
+      .mockResolvedValueOnce({ rows: [] }) // stats: user check-ins
+      .mockResolvedValueOnce({ rows: [] }) // stats: live count
+      .mockResolvedValueOnce({ rows: [] }); // stats: work_stats write
 
     await createCheckIn(USER.id, validInput({ photo_ids: undefined }));
-    expect(clientQueryMock).toHaveBeenCalledTimes(8);
+    expect(clientQueryMock).toHaveBeenCalledTimes(9);
     expect(provisionDeps.checkUploadIntents).not.toHaveBeenCalled();
     expect(provisionDeps.consumeUploadIntents).not.toHaveBeenCalled();
     for (const call of clientQueryMock.mock.calls) {

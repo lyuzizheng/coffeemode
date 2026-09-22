@@ -155,9 +155,11 @@ export const POST = apiRoute(
   error log again. Per-route try/catch becomes unnecessary and is removed.
 - `requireAuth` ordering stays auth-before-validation: anonymous callers get
   401, never a 400/404 that leaks resource existence.
-- Exempt from the wrapper: `/api/health` (must not touch slow deps),
-  `auth/callback` (redirect contract), `og-image` (image bytes), `serwist`
-  (library-generated). Exemptions are listed here, not invented per-route.
+- Exempt from the wrapper: `auth/callback` (redirect contract), `og-image`
+  (image bytes), `serwist` (library-generated). Exemptions are listed here,
+  not invented per-route. `/api/health` is NOT exempt: it runs through the
+  wrapper on the `health` bucket with `user: null` + `ipOnly`, so no slow
+  auth lookup runs (BRAWUKA-639).
 
 ### D6 — Workers adopt the same contract
 

@@ -482,8 +482,11 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
   }, 60_000);
 
   async function runAct0() {
-    // Liveness smoke (spec §11): the sync GET takes no request — parse directly.
-    const health = await parseRouteResponse<{ ok: boolean }>(healthGET());
+    // Liveness smoke (spec §11): async wrapper takes a Request — rate limiter
+    // is reset with the rest in beforeEach.
+    const health = await parseRouteResponse<{ ok: boolean }>(
+      await healthGET(new Request("http://localhost/api/health")),
+    );
     expect(health.status).toBe(200);
     expect(health.data.ok).toBe(true);
 

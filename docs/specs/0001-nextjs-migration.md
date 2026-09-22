@@ -1230,9 +1230,10 @@ GET /api/cafes, GET /api/cafes/[id], GET /api/cafes/[id]/checkins,
   GET /api/cafes/[id]/recovery → cafes-read; GET /api/search → search;
   GET /api/places/search → places (仅source=google分支要求登录);
   POST /api/places/resolve → places (user仅作限流key, 无401路径).
-NONE (3): GET /api/mapkit-token → places (不调getCurrentUser);
-  GET+HEAD /api/health (无鉴权无限流, 活性探针刻意).
-约定: 无checkins专用桶, 读→cafes-read、写→cafes-write; 8桶见
+NONE (2): GET /api/mapkit-token → places (不调getCurrentUser).
+PUBLIC + 限流 (3): GET+HEAD /api/health → health (无鉴权, 活性探针刻意,
+  BRAWUKA-639); /api/heartbeat → heartbeat; /api/config → runtime-config.
+约定: 无checkins专用桶, 读→cafes-read、写→cafes-write; 14桶见
   web/config/rate-limits.yaml; 不建共享requireUser助手 (行为已统一, gate
   顺序各路由刻意不同, 见BRAWUKA-163裁决).
 ```

@@ -75,7 +75,9 @@ type RouteExport<Segments> = (
  * with `request_id`. Nothing thrown escapes the envelope — including a
  * `guard()` internal failure, which previously produced a bare Next.js 500.
  *
- * Exempt routes (spec D5): /api/health, /auth/callback, og-image, serwist.
+ * Exempt routes (spec D5): /auth/callback, og-image, serwist. /api/health is
+ * NOT exempt: it runs through this wrapper on the `health` bucket (BRAWUKA-639)
+ * with `user: null` + `ipOnly`, so no slow auth lookup runs.
  */
 export function apiRoute<Segments = Record<string, never>>(
   options: ApiRouteOptions<true> & { auth: "required" },

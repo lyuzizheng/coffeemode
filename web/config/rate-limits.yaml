@@ -61,3 +61,14 @@ heartbeat:
 runtime-config:
   windowMs: 60000
   maxRequests: 30
+
+# Liveness probe (BRAWUKA-639): public by design — Traefik LB checks (12/min),
+# Docker healthchecks (12/min), and deploy convergence polls (~20/min burst)
+# carry no credentials, so auth would break them. Sized at 120/min so the
+# shared `anon:unknown` bucket (internal probes without cf-connecting-ip) never
+# trips on infra traffic alone (worst case ≈44/min); per-IP flood is still
+# bounded and every denial emits a `rate_limited` line for the Grafana flood
+# alert. Coarse backstop remains the edge 300/min rule (BRAWUKA-237).
+health:
+  windowMs: 60000
+  maxRequests: 120

@@ -112,7 +112,8 @@ discovery:
     lng: 103.8
 onboarding:
   # A granted geolocation resolves to the nearest launch city within this
-  # radius; beyond it the IP-detected city becomes a runtime city (DG121).
+  # radius; beyond it the granted coordinates name a runtime city (DG121,
+  # BRAWUKA-640) — never the client-forgeable cf-ipcity header.
   cityCoverageKm: 50
   # Browser geolocation timeout for the welcome card and locate button.
   # Mirrored to the client via NEXT_PUBLIC_ONBOARDING_GEOLOCATION_TIMEOUT_MS

@@ -1,5 +1,6 @@
 import pg from "pg";
 import { checkUploadIntent, checkUploadIntents, consumeUploadIntent, consumeUploadIntents } from "@/lib/db/image-uploads";
+import { recomputeWorkStats } from "@/lib/stats/aggregate";
 import type { ProcessUrls } from "@/lib/images/image-service-client";
 import type { ProcessedImage } from "@/lib/images/processor";
 import type { ProvisionPhotosDeps } from "@/lib/images/provision-photos";
@@ -27,6 +28,13 @@ export async function seedBaseData(dbClient: pg.Client): Promise<void> {
     `insert into checkins (id, cafe_id, user_id, is_creation, scores)
      values ($1, $2, $3, true, '{"wifi": 80}'::jsonb)`,
     [CHECKIN_A1, CAFE_A, U1],
+  );
+  // work_stats must mirror what the fused create path writes: the check-in
+  // create path folds incrementally onto the stored aggregate (BRAWUKA-655),
+  // so a '{}' seed would silently drop the seed user's contribution. Seed it
+  // through the real recompute — each statement autocommits on this client.
+  await recomputeWorkStats(CAFE_A, 0, async (fn) =>
+    fn(dbClient.query.bind(dbClient)),
   );
 }
 

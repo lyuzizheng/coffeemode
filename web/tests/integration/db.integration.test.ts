@@ -381,7 +381,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
   });
 
   describeDb("write paths on real SQL", () => {
-    it("createCheckIn folds the new check-in into work_stats (recompute)", async () => {
+    it("createCheckIn folds the new check-in into work_stats (incremental)", async () => {
       const result = await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 60 } });
       expect(result.checkin_id).toMatch(/^[0-9a-f-]{36}$/);
 
@@ -1486,7 +1486,10 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
 
   describeDb("seo-sharing queries — sitemap lastmod + gone-cafe location (#150)", () => {
     it("sitemap lastmod prefers work_stats.updated_at, falls back to cafes.updated_at", async () => {
-      // Seed cafe has no work_stats.updated_at — the row's updated_at applies.
+      // '{}' work_stats = legacy/seeded row with no aggregate timestamp —
+      // the row's updated_at applies (the seed now writes real stats, so
+      // clear it to keep exercising the fallback branch).
+      await dbClient.query("update cafes set work_stats = '{}'::jsonb where id = $1", [CAFE_A]);
       const fallback = await listCafeSitemapEntries();
       expect(fallback).toHaveLength(1);
       expect(fallback[0]?.id).toBe(CAFE_A);

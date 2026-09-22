@@ -9,7 +9,7 @@ import {
   provisionPhotos,
   type ProvisionPhotosDeps,
 } from "@/lib/images/provision-photos";
-import { recomputeWorkStats } from "@/lib/stats/aggregate";
+import { incrementalUpdateWorkStats } from "@/lib/stats/aggregate";
 import {
   CafeNotFoundError,
   DuplicateCheckInError,
@@ -83,12 +83,14 @@ const SET_CHECKIN_PHOTOS_SQL = `update checkins set photos = $2::jsonb where id 
  * DB connection); the single-use intent consume runs INSIDE it, so a replay
  * or foreign id rolls the whole check-in back.
  *
- * The stats refresh is a full `recomputeWorkStats`, not the incremental
- * fold: `incrementalUpdateWorkStats` assumes the just-written check-in is
- * the user's LATEST, but `visited_at` accepts any past timestamp — a
- * backdated visit would subtract the wrong "before" contribution and
- * corrupt the stats (independent review, PR B). A full recompute is
- * always correct and cheap at MVP scale (one cafe's check-ins).
+ * The stats refresh is the incremental fold (`incrementalUpdateWorkStats`
+ * with `{ insertedId }`), not a full `recomputeWorkStats`: the just-inserted
+ * row is already in the DB snapshot, so the "before" set is the user's other
+ * live check-ins and the contribution math re-sorts by `visited_at` — a
+ * backdated visit takes its true recency rank instead of corrupting the
+ * "before" contribution (independent review, PR B; BRAWUKA-655). A raced
+ * idempotency dedupe skips the fold entirely: the winner's transaction
+ * already counted the row, and re-folding it would double-count.
  */
 
 export async function createCheckIn(
@@ -191,8 +193,17 @@ export async function createCheckIn(
       // navigations to it (outcome `auto`) — same transaction, so the prompt
       // can never fire for a visit the check-in already proves.
       await autoResolveNavigationsTx(txQueryFrom(client), userId, input.cafe_id);
-
-      await recomputeWorkStats(input.cafe_id, 0, txRunnerFrom(client));
+      // Skip on a raced dedupe: the winner's transaction already folded this
+      // check-in into work_stats — folding again would double-count it.
+      if (!deduped) {
+        await incrementalUpdateWorkStats(
+          input.cafe_id,
+          userId,
+          { insertedId: checkin_id },
+          0,
+          txRunnerFrom(client),
+        );
+      }
 
       return { checkin_id, deduped };
     });

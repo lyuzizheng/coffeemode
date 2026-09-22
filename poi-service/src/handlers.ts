@@ -14,7 +14,6 @@
  *     GET  /poi/autocomplete ?q&lat&lng&r&session — live Google predictions
  *                            (typing phase; nothing is persisted)
  *     POST /poi/external     store externally-searched POIs (Apple MapKit refs)
- *     POST /poi/reverse      {lat, lng} → reverse geocode to normalized food/cafe POI
  *
  * Google billing model (BRAWUKA-602): the typing phase is Autocomplete (New)
  * and the selection phase is Place Details (New). Both carry the same session
@@ -570,60 +569,6 @@ async function storeExternal(request: Request, env: Env): Promise<Response> {
   return json({ stored: toPersist.length, skipped }, request);
 }
 
-// --- POST /poi/reverse ---
-
-async function reverseGeocodePOI(request: Request, env: Env, deps: Deps): Promise<Response> {
-  let lat: number;
-  let lng: number;
-
-  if (request.method === "GET") {
-    const url = new URL(request.url);
-    lat = Number.parseFloat(url.searchParams.get("lat") ?? "");
-    lng = Number.parseFloat(url.searchParams.get("lng") ?? "");
-  } else {
-    const body = await request.json().catch(() => null);
-    if (!body || typeof body !== "object") {
-      return json({ error: "invalid_request", message: "request body must be a JSON object" }, 400, request);
-    }
-    const record = body as Record<string, unknown>;
-    lat = typeof record.lat === "number" ? record.lat : Number.parseFloat(String(record.lat ?? ""));
-    lng = typeof record.lng === "number" ? record.lng : Number.parseFloat(String(record.lng ?? ""));
-  }
-
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !inLatRange(lat) || !inLngRange(lng)) {
-    return json(
-      { error: "invalid_request", message: "lat/lng must be finite numbers in [-90,90] / [-180,180]" },
-      400,
-      request,
-    );
-  }
-
-  const provider = getUpstreamProvider("google", env, deps);
-  if (!provider || !provider.reverseGeocode) {
-    return json({ error: "upstream_error", message: "google provider not available" }, 502, request);
-  }
-
-  let poi: POI | null;
-  try {
-    poi = await provider.reverseGeocode({ lat, lng });
-  } catch (e) {
-    return upstreamError(request, e);
-  }
-
-  if (poi) {
-    try {
-      await d1UpsertPOI(env.POI_DB, poi);
-      // Invalidate KV hot cache (BRAWUKA-332): getPOI serves KV hits without
-      // consulting D1, so a stale entry would shadow the fresh D1 row.
-      await kvDeletePOI(env.POI_KV, poi.place_id);
-    } catch (e) {
-      logError({ route: "GET /poi/reverse", request, error: e, status: 200 });
-    }
-  }
-
-  return json({ poi }, request);
-}
-
 // --- router ---
 
 const ROUTE_RE = /^\/poi\/([^/]+)$/;
@@ -652,9 +597,6 @@ export async function handleFetch(
     if (request.method === "GET" && path === "/poi/search") return await searchPOIs(request, env, deps);
     if (request.method === "POST" && path === "/poi/resolve") return await resolvePOI(request, env, deps);
     if (request.method === "POST" && path === "/poi/external") return await storeExternal(request, env);
-    if ((request.method === "POST" || request.method === "GET") && path === "/poi/reverse") {
-      return await reverseGeocodePOI(request, env, deps);
-    }
 
     const m = path.match(ROUTE_RE);
     if (request.method === "GET" && m) {

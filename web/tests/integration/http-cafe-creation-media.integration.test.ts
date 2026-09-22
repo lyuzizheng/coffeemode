@@ -91,6 +91,15 @@ vi.mock("@/lib/places/poi-client", async (importOriginal) => {
       const results = createMockGooglePlacesResponse().results;
       return results.find((poi) => poi.place_id === placeId) ?? results[0]!;
     }),
+    // BRAWUKA-636: POST /api/cafes verifies provider refs via
+    // verifyPlaceReference before any DB/R2 work — echo the requested id as
+    // verified so creation paths stay hermetic (spec 0008 §5).
+    verifyPlaceReference: vi.fn(async (source: "google" | "apple", placeId: string) => {
+      poiSeamCalls.details = { placeId, session: undefined };
+      const results = createMockGooglePlacesResponse().results;
+      const found = results.find((poi) => poi.place_id === placeId);
+      return { ...(found ?? results[0]!), place_id: placeId, source };
+    }),
     resolveMapsUrl: vi.fn(async (mapsShareUrl: string) => {
       const match = mapsShareUrl.match(/place\/([^/?]+)/);
       const name = match ? decodeURIComponent(match[1].replace(/\+/g, " ")) : "Resolved Maps Cafe";

@@ -46,13 +46,25 @@ interface TokenBucket {
  * needs a new shared-store decision).
  *
  * Buckets are keyed by an arbitrary string (e.g. `images:user:${id}`). A
- * cleanup pass runs every `cleanupEvery` checks to prune stale buckets.
+ * cleanup pass runs every `cleanupEvery` checks to prune stale buckets,
+ * and new keys beyond `maxBuckets` evict the least-recently-used bucket
+ * first — so the Map stays bounded even under a burst of unique client
+ * ids between cleanups (BRAWUKA-654).
  */
 export class RateLimiter {
   private buckets = new Map<string, TokenBucket>();
   private checksSinceCleanup = 0;
 
-  constructor(private readonly cleanupEvery = 1000) {}
+  /**
+   * @param cleanupEvery run the expired-bucket sweep every N checks.
+   * @param maxBuckets hard cap on live entries: inserting a new key while
+   *   full evicts the least-recently-used bucket first, so the Map cannot
+   *   grow without bound when flooded with unique client ids.
+   */
+  constructor(
+    private readonly cleanupEvery = 1000,
+    private readonly maxBuckets = 10_000,
+  ) {}
 
   /**
    * Consume one token for `key` under the given window and cap.
@@ -64,40 +76,51 @@ export class RateLimiter {
 
     const existing = this.buckets.get(key);
     if (
-      !existing ||
-      now >= existing.resetAt ||
-      existing.windowMs !== windowMs ||
-      existing.maxRequests !== maxRequests
+      existing &&
+      now < existing.resetAt &&
+      existing.windowMs === windowMs &&
+      existing.maxRequests === maxRequests
     ) {
-      const bucket: TokenBucket = {
-        tokens: maxRequests - 1,
-        resetAt: now + windowMs,
-        windowMs,
-        maxRequests,
-        lastAccess: now,
-      };
-      this.buckets.set(key, bucket);
-      return { allowed: true, remaining: bucket.tokens, resetAt: bucket.resetAt, retryAfter: 0 };
-    }
+      // Live-bucket hit: refresh recency (Map is insertion-ordered, so
+      // delete + set moves the key to the tail = most-recently-used).
+      this.buckets.delete(key);
+      existing.lastAccess = now;
+      this.buckets.set(key, existing);
 
-    existing.lastAccess = now;
+      if (existing.tokens <= 0) {
+        return {
+          allowed: false,
+          remaining: 0,
+          resetAt: existing.resetAt,
+          retryAfter: Math.max(0, Math.ceil((existing.resetAt - now) / 1000)),
+        };
+      }
 
-    if (existing.tokens <= 0) {
+      existing.tokens -= 1;
       return {
-        allowed: false,
-        remaining: 0,
+        allowed: true,
+        remaining: existing.tokens,
         resetAt: existing.resetAt,
-        retryAfter: Math.max(0, Math.ceil((existing.resetAt - now) / 1000)),
+        retryAfter: 0,
       };
     }
 
-    existing.tokens -= 1;
-    return {
-      allowed: true,
-      remaining: existing.tokens,
-      resetAt: existing.resetAt,
-      retryAfter: 0,
+    // New key, expired bucket, or changed window/cap: (re)create.
+    if (!this.buckets.has(key)) {
+      this.evictOldestIfFull();
+    } else {
+      // Expired/stale entry re-created as most-recently-used.
+      this.buckets.delete(key);
+    }
+    const bucket: TokenBucket = {
+      tokens: maxRequests - 1,
+      resetAt: now + windowMs,
+      windowMs,
+      maxRequests,
+      lastAccess: now,
     };
+    this.buckets.set(key, bucket);
+    return { allowed: true, remaining: bucket.tokens, resetAt: bucket.resetAt, retryAfter: 0 };
   }
 
   /** Remove all buckets. Useful in tests and on graceful shutdown. */
@@ -118,6 +141,17 @@ export class RateLimiter {
         this.buckets.delete(key);
       }
     }
+  }
+
+  /**
+   * Make room for one new key. The Map is insertion-ordered with hits
+   * re-inserted at the tail, so the head is the least-recently-used
+   * bucket — evicting it bounds memory under unique-key floods.
+   */
+  private evictOldestIfFull() {
+    if (this.buckets.size < this.maxBuckets) return;
+    const oldest = this.buckets.keys().next().value;
+    if (oldest !== undefined) this.buckets.delete(oldest);
   }
 }
 

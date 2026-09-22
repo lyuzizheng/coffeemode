@@ -19,12 +19,13 @@ export interface UnifiedSearchParams {
 /**
  * Translate the caller's city scope into `?city=`/`?lat&lng` params that stay
  * inside the `/api/search` contract (BRAWUKA-568): `?city=` only accepts
- * launch-city ids — a runtime city id (DG121, e.g. `kuala-lumpur` minted from
- * `cf-ipcity`) would 400 every search. Launch cities send their canonical id;
- * runtime/unknown cities drop `city` and scope by coordinates instead —
- * caller-provided lat/lng first, then the stored `lastLocation` fix that the
- * locate flow persists alongside the runtime id. With neither, both params
- * are omitted and the server resolves scope from request headers (DG128).
+ * launch-city ids — a runtime city id (DG121, named from granted
+ * coordinates, never a client header — BRAWUKA-640) would 400 every search.
+ * Launch cities send their canonical id; runtime/unknown cities drop `city`
+ * and scope by coordinates instead — caller-provided lat/lng first, then the
+ * stored `lastLocation` fix that the locate flow persists alongside the
+ * runtime id. With neither, both params are omitted and the server resolves
+ * scope from request headers (DG128).
  */
 export function resolveSearchScope(
   city?: string,

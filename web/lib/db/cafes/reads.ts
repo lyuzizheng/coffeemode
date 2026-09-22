@@ -168,6 +168,13 @@ order by lastmod desc
  * All live cafes for sitemap.xml. lastmod prefers work_stats.updated_at per
  * DG105 (the aggregate is what actually changes when check-ins land) and
  * falls back to the row's updated_at for cafes whose stats predate the field.
+ *
+ * The unbounded SELECT + full-table sort is a documented accepted risk
+ * (ADR-0007, BRAWUKA-648): /sitemap.xml is edge-cached (s-maxage 600s +
+ * swr 3600s), so origin executions are cache-window-bound, and the filtered
+ * set is small. Revisit with a lastmod index + sharded sitemap when the
+ * triggers in ADR-0007 fire — a LIMIT here would silently drop canonical
+ * URLs from crawlers.
  */
 export async function listCafeSitemapEntries(): Promise<CafeSitemapEntry[]> {
   const { rows } = await query<{ id: string; lastmod: Date } & Record<string, unknown>>(

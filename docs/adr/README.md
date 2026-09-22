@@ -17,3 +17,4 @@ Every ADR must have a `## Status` heading with one of: `Proposed`, `Accepted`, `
 | [0003-pwa-service-worker.md](./0003-pwa-service-worker.md) | PWA service worker architecture | Accepted |
 | [0004-server-log-request-id.md](./0004-server-log-request-id.md) | Server structured errors + request-id | Accepted |
 | [0005-metrics-search-observability.md](./0005-metrics-search-observability.md) | Search observability — metrics, collection, promotion thresholds | Accepted |
+| [0007-sitemap-full-scan-accepted.md](./0007-sitemap-full-scan-accepted.md) | Sitemap query — full scan accepted until sharding threshold | Accepted |

@@ -3,10 +3,10 @@
  * The API key lives ONLY in this worker (env), never in Next.js.
  */
 
-import { DEFAULT_SEARCH_RADIUS_KM, MAX_REVERSE_GEOCODE_CANDIDATES } from "../constants";
+import { DEFAULT_SEARCH_RADIUS_KM } from "../constants";
 import { computeExpiresAt } from "../store";
 import type { Env, POI, PlacePrediction } from "../types";
-import { UpstreamApiError, type Coordinates, type SearchBias, type UpstreamPlacesProvider } from "./types";
+import { UpstreamApiError, type SearchBias, type UpstreamPlacesProvider } from "./types";
 
 export const GOOGLE_API_BASE = "https://places.googleapis.com";
 
@@ -121,9 +121,6 @@ export function isGooglePlaceId(placeId: string): boolean {
 function baseUrl(env: Env): string {
   return env.GOOGLE_PLACES_BASE_URL ?? GOOGLE_API_BASE;
 }
-
-export const GOOGLE_GEOCODE_API_BASE = "https://maps.googleapis.com";
-
 
 function headers(env: Env, fieldMask = DETAIL_FIELDS): HeadersInit {
   return {
@@ -247,125 +244,6 @@ export function toPOI(gp: GooglePlace, source: "google" | "apple" = "google"): P
     expires_at: computeExpiresAt(fetched_at),
   };
 }
-export interface GoogleGeocodeResult {
-  place_id: string;
-  formatted_address?: string;
-  types?: string[];
-}
-
-export interface GoogleGeocodeResponse {
-  status?: string;
-  results?: GoogleGeocodeResult[];
-  error_message?: string;
-}
-
-/**
- * Reverse geocode coordinates to a normalized food/cafe POI.
- * Calls Google Geocoding API, extracts candidate place_id matching food/cafe
- * or establishment/point_of_interest, enriches via Place Details (New),
- * and verifies food/cafe category per BRAWUKA-328. Non-food POIs and
- * coordinates without establishments return null.
- */
-export async function reverseGeocode(
-  coordinates: Coordinates,
-  env: Env,
-  fetchImpl: typeof fetch = fetch,
-): Promise<POI | null> {
-  const { lat, lng } = coordinates;
-  const baseUrl = env.GOOGLE_GEOCODE_BASE_URL ?? env.GOOGLE_PLACES_BASE_URL ?? GOOGLE_GEOCODE_API_BASE;
-  const url = `${baseUrl}/maps/api/geocode/json?latlng=${lat},${lng}&key=${encodeURIComponent(env.GOOGLE_PLACES_API_KEY)}`;
-  const res = await fetchImpl(url);
-  if (!res.ok) {
-    // P0 scrub: upstream bodies are never relayed (drained only, so the
-    // socket can be reused) and the thrown message carries the HTTP status
-    // only — never body text, never the request URL (it embeds `key=`).
-    await res.text().catch(() => undefined);
-    throw new GoogleApiError(`Geocoding failed with upstream status ${res.status}`, res.status);
-  }
-
-  const data = (await res.json()) as GoogleGeocodeResponse;
-
-  if (data.status === "ZERO_RESULTS") {
-    return null;
-  }
-
-  if (data.status && data.status !== "OK") {
-    if (data.status === "OVER_QUERY_LIMIT") {
-      throw new GoogleApiError("Geocoding quota exceeded", 429);
-    }
-    if (data.status === "REQUEST_DENIED") {
-      // P0 scrub: the upstream `error_message` can echo the key back (Google
-      // does this on auth failures) — never relay it, throw canned text.
-      throw new GoogleApiError("Geocoding request denied", 403);
-    }
-    if (data.status === "INVALID_REQUEST") {
-      return null;
-    }
-    // P0 scrub: the upstream `error_message` can echo the key — never relay
-    // it, throw canned text with the upstream status label only.
-    throw new GoogleApiError(`Geocoding upstream status ${data.status}`, 502);
-  }
-
-  const results = data.results ?? [];
-  if (results.length === 0) {
-    return null;
-  }
-
-  // Bounded candidate selection (BRAWUKA-332):
-  // 1. First preference: results whose geocoding types match food/cafe directly
-  // 2. Second preference: results representing establishment or point_of_interest
-  // Capped at MAX_REVERSE_GEOCODE_CANDIDATES to limit billed Place Details calls.
-  const candidates: GoogleGeocodeResult[] = [];
-  const seenPlaceIds = new Set<string>();
-
-  for (const r of results) {
-    if (r.place_id && !seenPlaceIds.has(r.place_id) && isGoogleFoodOrCafePOI(r.types)) {
-      seenPlaceIds.add(r.place_id);
-      candidates.push(r);
-      if (candidates.length >= MAX_REVERSE_GEOCODE_CANDIDATES) break;
-    }
-  }
-
-  if (candidates.length < MAX_REVERSE_GEOCODE_CANDIDATES) {
-    for (const r of results) {
-      if (
-        r.place_id &&
-        !seenPlaceIds.has(r.place_id) &&
-        r.types?.some((t) => t === "point_of_interest" || t === "establishment")
-      ) {
-        seenPlaceIds.add(r.place_id);
-        candidates.push(r);
-        if (candidates.length >= MAX_REVERSE_GEOCODE_CANDIDATES) break;
-      }
-    }
-  }
-
-  for (const candidate of candidates) {
-    let raw: GooglePlace;
-    try {
-      raw = await fetchPlaceDetails(candidate.place_id, env, fetchImpl);
-    } catch (e) {
-      if (e instanceof UpstreamApiError && e.status === 404) {
-        continue;
-      }
-      throw e;
-    }
-
-    let poi: POI;
-    try {
-      poi = toPOI(raw, "google");
-    } catch {
-      continue;
-    }
-
-    if (isGoogleFoodOrCafePOI(poi.types)) {
-      return poi;
-    }
-  }
-
-  return null;
-}
-
 
 /** Upstream places provider implementation for Google Places API (New). */
 export class GooglePlacesProvider implements UpstreamPlacesProvider<GooglePlace> {
@@ -407,9 +285,5 @@ export class GooglePlacesProvider implements UpstreamPlacesProvider<GooglePlace>
 
   matchesCategory(types: string[]): boolean {
     return isGoogleFoodOrCafePOI(types);
-  }
-
-  async reverseGeocode(c: Coordinates): Promise<POI | null> {
-    return reverseGeocode(c, this.env, this.fetchImpl);
   }
 }

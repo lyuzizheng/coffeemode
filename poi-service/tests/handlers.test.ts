@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import worker from "../src/index";
 import { handleFetch } from "../src/handlers";
+import { purgeExpiredPOIs } from "../src/store";
 import type { Env, POI, PlacePrediction } from "../src/types";
 import { FakeD1, FakeKV, autocompleteSuggestion, googleDetailResponse, mockFetch } from "./helpers";
 
@@ -1380,7 +1382,7 @@ describe("D1/KV cache expiry and cleanup (BRAWUKA-294)", () => {
     expect(results[0].place_id).toBe("active-1");
   });
 
-  it("purges expired rows during upsert and sets expires_at to fetched_at + 30d", async () => {
+  it("writes without purging expired rows and sets expires_at to fetched_at + 30d (BRAWUKA-645)", async () => {
     const db = new FakeD1();
     const kv = new FakeKV();
     db.rows.push({
@@ -1402,8 +1404,8 @@ describe("D1/KV cache expiry and cleanup (BRAWUKA-294)", () => {
     );
     const res = await call("GET", "/poi/ChIJNEW123", env, { fetchImpl });
     expect(res.status).toBe(200);
-    // Expired row should be purged
-    expect(db.rows.find((r) => r.place_id === "to-be-purged")).toBeUndefined();
+    // Writes never purge: the expired row survives for the scheduled cron.
+    expect(db.rows.find((r) => r.place_id === "to-be-purged")).toBeDefined();
     // Newly inserted row should have expires_at = fetched_at + 30d
     const inserted = db.rows.find((r) => r.place_id === "ChIJNEW123");
     expect(inserted).toBeDefined();
@@ -1425,7 +1427,7 @@ describe("D1/KV cache expiry and cleanup (BRAWUKA-294)", () => {
     expect(cached).not.toHaveProperty("photo_refs");
   });
 
-  it("POST /poi/external writes expires_at = fetched_at + 30d and purges expired rows", async () => {
+  it("POST /poi/external writes expires_at = fetched_at + 30d without purging expired rows (BRAWUKA-645)", async () => {
     const db = new FakeD1();
     db.rows.push({
       place_id: "expired-external",
@@ -1456,7 +1458,7 @@ describe("D1/KV cache expiry and cleanup (BRAWUKA-294)", () => {
       },
     });
     expect(res.status).toBe(200);
-    expect(db.rows.find((r) => r.place_id === "expired-external")).toBeUndefined();
+    expect(db.rows.find((r) => r.place_id === "expired-external")).toBeDefined();
     const stored = db.rows.find((r) => r.place_id === "fresh-external-1");
     expect(stored).toBeDefined();
     const fetchedMs = Date.parse(stored!.fetched_at as string);
@@ -1482,5 +1484,58 @@ describe("D1/KV cache expiry and cleanup (BRAWUKA-294)", () => {
     const env = makeEnv({ POI_DB: db });
     const res = await call("GET", "/poi/same-day-expired", env);
     expect(res.status).toBe(404);
+  });
+});
+
+describe("expired-row purge (BRAWUKA-645)", () => {
+  it("purgeExpiredPOIs deletes only expired rows and reports the count", async () => {
+    const db = new FakeD1();
+    const fresh = {
+      place_id: "fresh-1",
+      source: "apple",
+      name: "Fresh Cafe",
+      lat: 1.0,
+      lng: 103.0,
+      address: null,
+      types: '["cafe"]',
+      business_status: null,
+      hours_json: null,
+      fetched_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+    };
+    const expired = {
+      ...fresh,
+      place_id: "expired-1",
+      name: "Expired Cafe",
+      fetched_at: new Date(Date.now() - 40 * 24 * 3600 * 1000).toISOString(),
+      expires_at: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString(),
+    };
+    db.rows.push(fresh, expired);
+    expect(await purgeExpiredPOIs(db)).toBe(1);
+    expect(db.rows.map((r) => r.place_id)).toEqual(["fresh-1"]);
+  });
+
+  it("scheduled cron purges expired rows and swallows D1 failures", async () => {
+    const db = new FakeD1();
+    db.rows.push({
+      place_id: "cron-expired-1",
+      source: "google",
+      name: "Cron Expired",
+      lat: 1.0,
+      lng: 103.0,
+      address: null,
+      types: '["cafe"]',
+      business_status: null,
+      hours_json: null,
+      fetched_at: new Date(Date.now() - 40 * 24 * 3600 * 1000).toISOString(),
+      expires_at: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString(),
+    });
+    const env = makeEnv({ POI_DB: db });
+    const event = { scheduledTime: Date.now(), cron: "0 3 * * *", noRetry: () => {} } as ScheduledController;
+    await worker.scheduled(event, env);
+    expect(db.rows).toHaveLength(0);
+    const failing = makeEnv({ POI_DB: new FakeD1() });
+    (failing.POI_DB as FakeD1).failWrites = true;
+    await expect(worker.scheduled(event, failing)).resolves.toBeUndefined();
   });
 });

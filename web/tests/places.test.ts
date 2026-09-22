@@ -117,6 +117,13 @@ describe("poi-client", () => {
     expect(fetchMock.mock.calls[1][0]).toBe(`${WORKER_URL}/poi/ChIJTEST123`);
   });
 
+  it("getPOI percent-encodes reserved characters in placeId", async () => {
+    fetchMock.mockImplementation(async () => jsonResponse(SAMPLE_POI));
+    await getPOI("0x111:0x222/a b");
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe(`${WORKER_URL}/poi/0x111%3A0x222%2Fa%20b`);
+  });
+
   it("storeExternalPOIs posts browser-provider results", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ stored: 1 }));
     await storeExternalPOIs([SAMPLE_POI]);

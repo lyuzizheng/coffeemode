@@ -1,4 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import {
+  bucketNamesFromYamlText,
+  renderBucketModule,
+} from "../../scripts/generate-rate-limit-buckets.mjs";
 import {
   guard,
   readJsonBody,
@@ -188,6 +194,21 @@ describe("guard helper (BRAWUKA-181)", () => {
         const res = await guard(req, { bucket });
         expect(res.ok).toBe(true);
       }
+    });
+
+    it("derives RATE_LIMIT_BUCKET_NAMES from rate-limits.yaml alone (BRAWUKA-625)", () => {
+      const webRoot = resolve(process.cwd());
+      const text = readFileSync(join(webRoot, "config", "rate-limits.yaml"), "utf8");
+      // Tuple mirrors the YAML keys in file order — a new bucket needs no
+      // second edit here.
+      expect([...RATE_LIMIT_BUCKET_NAMES]).toEqual(bucketNamesFromYamlText(text));
+      // Committed generated module matches a fresh render — a stale file
+      // fails here, so regenerating is enforced by `npm test` itself.
+      const actual = readFileSync(
+        join(webRoot, "lib", "api", "rate-limit-buckets.generated.ts"),
+        "utf8",
+      );
+      expect(actual).toBe(renderBucketModule(bucketNamesFromYamlText(text)));
     });
   });
 

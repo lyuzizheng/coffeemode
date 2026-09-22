@@ -81,7 +81,7 @@ select c.id, c.name,
        ST_X(c.location::geometry) as lng,
        c.address, c.city, c.description, c.gallery, c.opening_hours, c.tz,
        c.gallery->0->>'card' as cover, -- BRAWUKA-307: cover derives from first gallery photo
-       c.price_range, c.google_place_id, c.apple_poi_id, c.work_stats,
+       c.price_range, c.google_place_id, c.apple_poi_id, c.source, c.work_stats,
        c.created_by, c.visibility,
        c.created_at, c.updated_at,
        case when p.show_public_identity then p.public_handle end as author_handle,

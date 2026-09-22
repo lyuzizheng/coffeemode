@@ -35,6 +35,9 @@
 #   - Option B (VPS host crontab):
 #       0 2 * * * /path/to/coffeemode/deploy/dokploy/nightly-recompute.sh >> /var/log/nightly-recompute.log 2>&1
 #   Failure alerting is wired to Multica autopilot webhook (MULTICA_AUTOPILOT_WEBHOOK_URL).
+#   Status 2026-09-21 (BRAWUKA-598): the Dokploy schedule is disabled — web-prod has
+#   never been deployed (BRAWUKA-500, owner-deferred), so every run aborted at container
+#   lookup before the command executed. Re-enable with BRAWUKA-500. See README.md.
 services:
   web-prod:
     image: coffeemode-web-prod:${IMAGE_TAG:-latest}

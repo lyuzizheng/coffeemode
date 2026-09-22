@@ -139,6 +139,7 @@ describe("publicCafeShell (DG13 public-safe payload)", () => {
     gallery: [photo("b")],
     google_place_id: "ChIJ-provider-ref",
     apple_poi_id: null,
+    source: "user_confirmed",
     created_at: "2026-08-01T00:00:00.000Z",
     updated_at: "2026-08-01T00:00:00.000Z",
   } satisfies CafeDetail;

@@ -13,7 +13,9 @@ import { updateProfile } from "@/lib/db/profile";
  * §Onboarding, DG121) and, for signed-in users, persists `current_city` +
  * `last_location` + `onboarded` in one write — the grant dismisses the
  * welcome card, so the profile flag flips here (DG122). Anonymous callers
- * get resolution only; their state stays in localStorage.
+ * get resolution only; their state stays in localStorage. The granted
+ * coordinates alone name the city (BRAWUKA-640) — `cf-ipcity` is
+ * client-forgeable and never touches `current_city`.
  */
 export const POST = apiRoute(
   { bucket: "onboarding", origin: true, route: "POST /api/onboarding/locate" },
@@ -25,7 +27,7 @@ export const POST = apiRoute(
       return apiError(parsed.error, parsed.status, { requestId: ctx.requestId });
     }
 
-    const { city, inCoverage } = resolveLocatedCity(parsed.lat, parsed.lng, request.headers);
+    const { city, inCoverage } = resolveLocatedCity(parsed.lat, parsed.lng);
 
     if (ctx.user) {
       const updated = await updateProfile(ctx.user.id, {

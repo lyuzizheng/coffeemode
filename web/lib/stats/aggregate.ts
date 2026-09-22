@@ -92,19 +92,47 @@ export async function recomputeWorkStats(
 
 /**
  * Recompute every cafe's work_stats. Intended for the nightly cron job.
+ *
+ * Cafes are recomputed through a small worker pool (RECOMPUTE_CONCURRENCY)
+ * instead of one serial pass: each cafe still gets its own transaction and
+ * FOR UPDATE lock via `recomputeWorkStats`, so per-cafe semantics are
+ * unchanged — only the throughput changes (BRAWUKA-652). On the first
+ * failure the pool stops taking new work, lets in-flight recomputes settle,
+ * then rethrows that error.
  */
 export async function recomputeAllWorkStats(
   query: QueryFn,
   socialWeight = 0,
+  runInTransaction: RunInTransaction = defaultRunInTransaction(),
 ): Promise<void> {
   const { rows } = await query<{ id: string }>(
     "select id from cafes where deleted_at is null",
     [],
   );
-  for (const { id } of rows) {
-    await recomputeWorkStats(id, socialWeight);
-  }
+
+  let next = 0;
+  let stopped = false;
+  let firstError: unknown;
+  const worker = async () => {
+    while (!stopped) {
+      const i = next++;
+      if (i >= rows.length) return;
+      try {
+        await recomputeWorkStats(rows[i].id, socialWeight, runInTransaction);
+      } catch (err) {
+        stopped = true;
+        firstError ??= err;
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(RECOMPUTE_CONCURRENCY, rows.length) }, worker),
+  );
+  if (firstError !== undefined) throw firstError;
 }
+
+/** Max cafes recomputed concurrently by `recomputeAllWorkStats`. */
+const RECOMPUTE_CONCURRENCY = 4;
 
 /**
  * Incrementally update a cafe's work_stats after a single check-in write.

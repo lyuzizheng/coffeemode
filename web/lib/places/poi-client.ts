@@ -30,6 +30,39 @@ export class POIServiceError extends Error {
   }
 }
 
+/**
+ * Verify one provider reference against the POI worker before a cafe write
+ * consumes it (BRAWUKA-636: `POST /api/cafes` no longer trusts an unvalidated
+ * `place_id` — any signed-in caller could otherwise claim an unverified id
+ * and squat the dedupe slot).
+ *
+ * One `GET /poi/:place_id` covers both sources: Google ids resolve live
+ * through the worker (it fans out to Google when nothing stored matches),
+ * while Apple has no server-side upstream so only a row persisted through
+ * the `POST /poi/external` / resolve boundary verifies. A worker 404 is a
+ * genuine invalid id (not an outage) and yields `null`; transport, config,
+ * and 5xx failures throw `POIServiceError` so the route's `poi_service`
+ * envelope still owns outages (fail-closed: creation never consumes an
+ * unverified id). A worker 502 for a forged Google id also rejects the
+ * creation — through `poi_service` rather than `invalid_request`, because the
+ * worker collapses Google 404s into `invalid_upstream` and the web side
+ * cannot tell those apart from real outages.
+ */
+export async function verifyPlaceReference(
+  source: "google" | "apple",
+  placeId: string,
+  requestId?: string,
+): Promise<POI | null> {
+  try {
+    const poi = await getPOI(placeId, undefined, requestId);
+    if (poi.place_id !== placeId || poi.source !== source) return null;
+    return poi;
+  } catch (err) {
+    if (err instanceof POIServiceError && (err.upstreamStatus === 404 || err.status === 404)) return null;
+    throw err;
+  }
+}
+
 interface POIConfig {
   baseUrl: string;
   token: string;

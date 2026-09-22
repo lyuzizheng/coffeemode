@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { apiError, parseQueryPositiveInt } from "@/lib/api/response";
 import { apiRoute } from "@/lib/api/route";
 import { createCafeWithFirstCheckIn, listCafesNearby } from "@/lib/db/cafes";
+import { logWarn } from "@/lib/observability/server-log";
 import { recordCafeCreated, type CafeCreationSource } from "@/lib/observability/metrics";
+import { verifyPlaceReference } from "@/lib/places/poi-client";
 import { parseCreateCafeBody, type CreateCafeInput } from "@/lib/validation/cafe";
 import {
   DEFAULT_SEARCH_RADIUS_KM,
@@ -83,11 +85,25 @@ export const POST = apiRoute(
     if (!parsed.ok) {
       return apiError("invalid_request", parsed.message, { status: 400, requestId: ctx.requestId });
     }
-
-    const result = await createCafeWithFirstCheckIn(ctx.user.id, parsed.value);
+    // BRAWUKA-636: `POST /api/cafes` no longer trusts an unvalidated `place_id`
+    // — any signed-in caller could otherwise claim an unverified id and squat
+    // the dedupe slot. Verification runs before any photo provisioning so an
+    // unverified id never wastes R2 work (nor burns the caller's upload intents
+    // through the 201-only consume path).
+    const refs: Array<{ source: "google" | "apple"; placeId: string }> = [];
+    if (parsed.value.google_place_id) refs.push({ source: "google", placeId: parsed.value.google_place_id });
+    if (parsed.value.apple_poi_id) refs.push({ source: "apple", placeId: parsed.value.apple_poi_id });
+    for (const ref of refs) {
+      const verified = await verifyPlaceReference(ref.source, ref.placeId, ctx.requestId);
+      if (!verified) {
+        logWarn({ route: ctx.route, requestId: ctx.requestId, error: `unverified ${ref.source} place id`, status: 400, code: "invalid_request" });
+        return apiError("invalid_request", `${ref.source === "google" ? "google_place_id" : "apple_poi_id"} could not be verified against the POI service`, { status: 400, requestId: ctx.requestId });
+      }
+    }
     // After the commit, never before: a 409 or a rejected photo is not a
     // creation, and counting attempts would make the series track traffic
     // instead of the business.
+    const result = await createCafeWithFirstCheckIn(ctx.user.id, parsed.value);
     recordCafeCreated(cafeCreationSource(parsed.value));
     return NextResponse.json(result, { status: 201 });
   },

@@ -14,6 +14,8 @@ import {
 import type { CafeDetail } from "@/types/cafes";
 import { PhotoIntentError } from "@/lib/images/provision-photos";
 import { ImageServiceError } from "@/lib/images/image-service-client";
+import { POIServiceError } from "@/lib/places/poi-client";
+import type { POI } from "@shared/places/types";
 import { GET as listGET, POST as createPOST } from "@/app/api/cafes/route";
 import { DELETE as detailDELETE, GET as detailGET } from "@/app/api/cafes/[id]/route";
 import { PATCH as visibilityPATCH } from "@/app/api/cafes/[id]/visibility/route";
@@ -55,6 +57,17 @@ const provisionDeps: Record<string, Mock> = {
 vi.mock("@/lib/images/provision-photos", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/images/provision-photos")>()),
   defaultProvisionPhotosDeps: () => provisionDeps,
+}));
+
+// BRAWUKA-636: POST /api/cafes verifies provider refs against the POI worker
+// before any DB/R2 work. Default seam echoes the requested id as verified.
+const verifyPlaceMock = vi.fn(
+  async (source: "google" | "apple", placeId: string): Promise<POI | null> =>
+    ({ place_id: placeId, source }) as POI,
+);
+vi.mock("@/lib/places/poi-client", async (importOriginal) => ({
+  ...(await importOriginal()),
+  verifyPlaceReference: (...args: Parameters<typeof verifyPlaceMock>) => verifyPlaceMock(...args),
 }));
 
 const USER = { id: "550e8400-e29b-41d4-a716-446655440000" };
@@ -131,6 +144,10 @@ beforeEach(() => {
   provisionDeps.consumeUploadIntents.mockResolvedValue(true);
   provisionDeps.getProcessUrls.mockResolvedValue({ keys: FAKE_KEYS });
   provisionDeps.processImage.mockResolvedValue({ imageUuid: IMG, width: 800, height: 600 });
+  verifyPlaceMock.mockImplementation(
+    async (source: "google" | "apple", placeId: string): Promise<POI | null> =>
+      ({ place_id: placeId, source }) as POI,
+  );
 });
 
 describe("parseCreateCafeBody", () => {
@@ -560,6 +577,47 @@ describe("POST /api/cafes", () => {
     }
     const eleventh = await createPOST(postRequest(validBody()));
     expect(eleventh.status).toBe(429);
+  });
+
+  it("400s invalid_request when the google place id fails POI verification (BRAWUKA-636)", async () => {
+    verifyPlaceMock.mockResolvedValueOnce(null);
+    const res = await createPOST(postRequest(validBody()));
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ error: "invalid_request" });
+    expect(verifyPlaceMock).toHaveBeenCalledWith("google", "ChIJx", expect.any(String));
+    expect(poolQueryMock).not.toHaveBeenCalled();
+    expect(clientQueryMock).not.toHaveBeenCalled();
+  });
+
+  it("400s invalid_request when the apple poi id fails POI verification (BRAWUKA-636)", async () => {
+    const body = validBody();
+    delete (body as Record<string, unknown>).google_place_id;
+    (body as Record<string, unknown>).apple_poi_id = "apple:123";
+    verifyPlaceMock.mockResolvedValueOnce(null);
+    const res = await createPOST(postRequest(body));
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ error: "invalid_request" });
+    expect(verifyPlaceMock).toHaveBeenCalledWith("apple", "apple:123", expect.any(String));
+    expect(poolQueryMock).not.toHaveBeenCalled();
+    expect(clientQueryMock).not.toHaveBeenCalled();
+  });
+
+  it("502s poi_service when the POI worker is down during verification (BRAWUKA-636)", async () => {
+    verifyPlaceMock.mockRejectedValueOnce(new POIServiceError("POI service unavailable", 502));
+    const res = await createPOST(postRequest(validBody()));
+    expect(res.status).toBe(502);
+    await expect(res.json()).resolves.toMatchObject({ error: "poi_service" });
+    expect(poolQueryMock).not.toHaveBeenCalled();
+    expect(clientQueryMock).not.toHaveBeenCalled();
+  });
+
+  it("201s a manual creation without calling the POI worker (BRAWUKA-636)", async () => {
+    mockCreateHappyPath();
+    const body = validBody();
+    delete (body as Record<string, unknown>).google_place_id;
+    const res = await createPOST(postRequest(body));
+    expect(res.status).toBe(201);
+    expect(verifyPlaceMock).not.toHaveBeenCalled();
   });
 });
 

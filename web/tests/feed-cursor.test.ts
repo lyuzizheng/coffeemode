@@ -1,10 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   FeedCursorError,
+  FeedCursorExpiredError,
   decodeFeedCursor,
   encodeFeedCursor,
   listPublicCheckIns,
 } from "@/lib/discovery/feed";
+
+const poolQueryMock = vi.fn();
+
+vi.mock("@/lib/db/postgres", () => ({
+  query: (...args: unknown[]) => poolQueryMock(...args),
+}));
 
 const ID = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55";
 const VISITED = "2026-08-20T10:00:00.000Z";
@@ -131,5 +138,67 @@ describe("feed cursor encode/decode", () => {
       });
       expect(result).toEqual({ checkins: [], next_cursor: null });
     });
+  });
+});
+
+describe("listPublicCheckIns helpful snapshot read (BRAWUKA-653)", () => {
+  const RUN = "b1eebc99-9c0b-4ef8-bb6d-6bb9bd380a55";
+
+  const feedRow = (id: string) => ({
+    run_id: RUN,
+    id,
+    scores: { overall: 80 },
+    max_stay: null,
+    note: null,
+    photos: [],
+    likes_count: 2,
+    visited_at: VISITED,
+    snapshot_score: 1.5,
+    liked_by_viewer: null,
+    owned_by_viewer: null,
+    cursor_visited_at: "2026-08-20T10:00:00.000000Z",
+    author_handle: null,
+    author_display_name: null,
+    author_avatar_url: null,
+  });
+
+  beforeEach(() => {
+    poolQueryMock.mockReset();
+  });
+
+  it("serves a snapshot page with exactly one query", async () => {
+    poolQueryMock.mockResolvedValueOnce({ rows: [feedRow(ID)] });
+    const page = await listPublicCheckIns({ cafeId: ID, mode: "helpful", viewerId: null });
+    expect(poolQueryMock).toHaveBeenCalledTimes(1);
+    expect(page.checkins.map((c) => c.id)).toEqual([ID]);
+    expect(page.next_cursor).toBeNull();
+  });
+
+  it("keeps the run id for cursor validation when the page is empty", async () => {
+    // Empty page: the lateral join still returns one all-null sentinel row.
+    poolQueryMock.mockResolvedValueOnce({
+      rows: [{ ...feedRow(ID), id: null }],
+    });
+    const stale = encodeFeedCursor({
+      v: 2,
+      mode: "helpful",
+      run: "c2eebc99-9c0b-4ef8-bb6d-6bb9bd380a55",
+      score: 1,
+      visited_at: VISITED,
+      id: ID,
+    });
+    await expect(
+      listPublicCheckIns({ cafeId: ID, mode: "helpful", cursor: stale, viewerId: null }),
+    ).rejects.toBeInstanceOf(FeedCursorExpiredError);
+    expect(poolQueryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to live ordering only when no run is active", async () => {
+    poolQueryMock
+      .mockResolvedValueOnce({ rows: [] }) // snapshot probe: no active run
+      .mockResolvedValueOnce({ rows: [feedRow(ID)] });
+    const page = await listPublicCheckIns({ cafeId: ID, mode: "helpful", viewerId: null });
+    expect(poolQueryMock).toHaveBeenCalledTimes(2);
+    expect(page.checkins.map((c) => c.id)).toEqual([ID]);
   });
 });

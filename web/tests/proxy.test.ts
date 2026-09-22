@@ -10,20 +10,12 @@ vi.mock("@supabase/ssr", () => ({
   createServerClient: vi.fn(),
 }));
 
-// Default: every cafe exists, so existing pass-through cases stay intact.
-// Two-param signature mirrors cafeExists(id, viewerId): the second arg is
-// the VERIFIED user id (via getUser), or null for anonymous/unverifiable.
-const cafeExistsMock = vi.fn<(id: string, viewerId?: string | null) => Promise<boolean>>(async () => true);
-vi.mock("@/lib/db/cafes", () => ({
-  cafeExists: (id: string, viewerId?: string | null) => cafeExistsMock(id, viewerId),
-}));
-
 import { createServerClient } from "@supabase/ssr";
+
 
 describe("proxy", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    cafeExistsMock.mockResolvedValue(true);
     process.env.NEXT_PUBLIC_SUPABASE_URL = SUPABASE_URL;
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = ANON_KEY;
   });
@@ -221,7 +213,7 @@ describe("proxy legacy /?cafe= redirect (DG124)", () => {
   });
 });
 
-describe("proxy gone-cafe 404 (DG19)", () => {
+describe("proxy cafe page pass-through (DG19, BRAWUKA-658)", () => {
   const CAFE = "550e8400-e29b-41d4-a716-446655440001";
 
   beforeEach(() => {
@@ -230,17 +222,33 @@ describe("proxy gone-cafe 404 (DG19)", () => {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = ANON_KEY;
   });
 
-  it("rewrites a missing cafe page to the sync 404 target", async () => {
-    cafeExistsMock.mockResolvedValue(false);
+  // The proxy no longer probes cafe existence: the page's generateMetadata()
+  // commits the real 404 via notFound() (no loading boundary wraps the
+  // route), so a proxy-side probe would only duplicate the page's getCafe
+  // query. These tests pin the pass-through so the probe cannot creep back.
+  it("passes cafe page GETs through untouched — no rewrite, no probe", async () => {
     const req = new NextRequest(new URL(`http://localhost/cafes/${CAFE}`));
     const res = await proxy(req);
-    expect(res.headers.get("x-middleware-rewrite")).toBe(
-      "http://localhost/__gone-cafe",
-    );
+    expect(res.headers.get("x-middleware-rewrite")).toBeNull();
+    expect(res.headers.get("x-middleware-request-x-gone-cafe-id")).toBeNull();
+    expect(res.status).toBe(200);
   });
 
-  it("forwards refreshed session cookies on the gone-cafe rewrite (BRAWUKA-315 P1)", async () => {
-    cafeExistsMock.mockResolvedValue(false);
+  it("passes invalid cafe ids through — the page 404s them itself", async () => {
+    const req = new NextRequest(new URL("http://localhost/cafes/definitely-not-a-cafe"));
+    const res = await proxy(req);
+    expect(res.headers.get("x-middleware-rewrite")).toBeNull();
+    expect(res.status).toBe(200);
+  });
+
+  it("never rewrites cafe subpaths or non-GET methods", async () => {
+    const og = new NextRequest(new URL(`http://localhost/cafes/${CAFE}/og-image`));
+    expect((await proxy(og)).headers.get("x-middleware-rewrite")).toBeNull();
+    const post = new NextRequest(new URL(`http://localhost/cafes/${CAFE}`), { method: "POST" });
+    expect((await proxy(post)).headers.get("x-middleware-rewrite")).toBeNull();
+  });
+
+  it("still forwards rotated session cookies on cafe pages (BRAWUKA-315 P1)", async () => {
     let capturedSetAll: ((cookiesToSet: unknown[]) => void) | undefined;
     const getSession = vi.fn(async () => {
       capturedSetAll?.([
@@ -253,7 +261,7 @@ describe("proxy gone-cafe 404 (DG19)", () => {
       (_url: string, _key: string, options: unknown) => {
         const opts = options as { cookies: { setAll?: (cookiesToSet: unknown[]) => void } };
         capturedSetAll = opts.cookies.setAll;
-        return { auth: { getSession, getUser } } as unknown as ReturnType<typeof createServerClient>;
+        return { auth: { getSession, getUser } } as never;
       },
     );
 
@@ -261,114 +269,9 @@ describe("proxy gone-cafe 404 (DG19)", () => {
     req.cookies.set("sb-access-token", "stale-token");
 
     const res = await proxy(req);
-    expect(res.headers.get("x-middleware-rewrite")).toBe(
-      "http://localhost/__gone-cafe",
-    );
-    // Rotated token must reach the browser despite the rewrite branch
-    // returning a new response — otherwise the next refresh runs on the
-    // consumed token and forces a logout.
+    // Rotated token must reach the browser on the pass-through response —
+    // a dropped Set-Cookie forces a logout on the next refresh.
     expect(res.cookies.get("sb-access-token")?.value).toBe("fresh-token");
-  });
-
-  it("lets existing cafes through to the page", async () => {
-    cafeExistsMock.mockResolvedValue(true);
-    const req = new NextRequest(new URL(`http://localhost/cafes/${CAFE}`));
-    const res = await proxy(req);
-    expect(res.headers.get("x-middleware-rewrite")).toBeNull();
-    expect(res.status).toBe(200);
-  });
-
-  it("checks subpath requests and non-GET methods never", async () => {
-    cafeExistsMock.mockResolvedValue(false);
-    const og = new NextRequest(new URL(`http://localhost/cafes/${CAFE}/og-image`));
-    expect((await proxy(og)).headers.get("x-middleware-rewrite")).toBeNull();
-    const post = new NextRequest(new URL(`http://localhost/cafes/${CAFE}`), { method: "POST" });
-    expect((await proxy(post)).headers.get("x-middleware-rewrite")).toBeNull();
-    expect(cafeExistsMock).not.toHaveBeenCalled();
-  });
-
-  it("fails open when the existence check cannot reach the DB", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    cafeExistsMock.mockRejectedValue(new Error("connection refused"));
-    const req = new NextRequest(new URL(`http://localhost/cafes/${CAFE}`));
-    const res = await proxy(req);
-    expect(res.headers.get("x-middleware-rewrite")).toBeNull();
-    expect(res.status).toBe(200);
-    errorSpy.mockRestore();
-  });
-  it("strips an inbound x-gone-cafe-id so clients cannot inject the marker", async () => {
-    const req = new NextRequest(new URL("http://localhost/"), {
-      headers: { "x-gone-cafe-id": "spoofed" },
-    });
-    const res = await proxy(req);
-    // The sanitized request replaces the header set: the spoofed value must
-    // not be forwarded to rendering.
-    expect(res.headers.get("x-middleware-request-x-gone-cafe-id")).toBeNull();
-    expect(res.status).toBe(200);
-  });
-
-  it("passes the verified user id to the visibility check (BRAWUKA-315)", async () => {
-    cafeExistsMock.mockResolvedValue(true);
-    const getSession = vi.fn(async () => ({
-      data: { session: { user: { id: "spoofable-id" } } },
-      error: null,
-    }));
-    const getUser = vi.fn(async () => ({
-      data: { user: { id: "verified-user" } },
-      error: null,
-    }));
-    vi.mocked(createServerClient).mockImplementation(
-      () => ({ auth: { getSession, getUser } }) as unknown as ReturnType<typeof createServerClient>,
-    );
-
-    const req = new NextRequest(new URL(`http://localhost/cafes/${CAFE}`));
-    req.cookies.set("sb-access-token", "stale-token");
-
-    const res = await proxy(req);
-    expect(res.status).toBe(200);
-    expect(getUser).toHaveBeenCalledTimes(1);
-    expect(cafeExistsMock).toHaveBeenCalledWith(CAFE, "verified-user");
-  });
-
-  it("passes null when the session cannot be verified (BRAWUKA-315)", async () => {
-    cafeExistsMock.mockResolvedValue(true);
-    const getSession = vi.fn(async () => ({
-      data: { session: { user: { id: "spoofable-id" } } },
-      error: null,
-    }));
-    const getUser = vi.fn(async () => ({ data: { user: null }, error: null }));
-    vi.mocked(createServerClient).mockImplementation(
-      () => ({ auth: { getSession, getUser } }) as unknown as ReturnType<typeof createServerClient>,
-    );
-
-    const req = new NextRequest(new URL(`http://localhost/cafes/${CAFE}`));
-    req.cookies.set("sb-access-token", "forged-token");
-
-    await proxy(req);
-    expect(cafeExistsMock).toHaveBeenCalledWith(CAFE, null);
-  });
-
-  it("passes null with no session cookies and skips verification (BRAWUKA-315)", async () => {
-    cafeExistsMock.mockResolvedValue(true);
-    const getUser = vi.fn(async () => ({
-      data: { user: { id: "must-not-be-used" } },
-      error: null,
-    }));
-    vi.mocked(createServerClient).mockImplementation(
-      () =>
-        ({
-          auth: {
-            getSession: vi.fn(async () => ({ data: { session: null }, error: null })),
-            getUser,
-          },
-        }) as unknown as ReturnType<typeof createServerClient>,
-    );
-
-    const req = new NextRequest(new URL(`http://localhost/cafes/${CAFE}`));
-    await proxy(req);
-    expect(createServerClient).not.toHaveBeenCalled();
-    expect(getUser).not.toHaveBeenCalled();
-    expect(cafeExistsMock).toHaveBeenCalledWith(CAFE, null);
   });
 });
 
@@ -378,7 +281,6 @@ describe("proxy verified-user handoff (BRAWUKA-644)", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
-    cafeExistsMock.mockResolvedValue(true);
     process.env.NEXT_PUBLIC_SUPABASE_URL = SUPABASE_URL;
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = ANON_KEY;
   });
@@ -488,7 +390,6 @@ describe("proxy verified-user handoff (BRAWUKA-644)", () => {
 
     // No session cookie → no verification → the spoofed value must be gone.
     expect(res.headers.get(FORWARDED)).toBeNull();
-    expect(cafeExistsMock).toHaveBeenCalledWith(CAFE, null);
   });
 
   it("overwrites a spoofed header with the verified identity", async () => {
@@ -551,7 +452,6 @@ describe("proxy matcher", () => {
 describe("proxy request-id (BRAWUKA-168)", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    cafeExistsMock.mockResolvedValue(true);
     process.env.NEXT_PUBLIC_SUPABASE_URL = SUPABASE_URL;
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = ANON_KEY;
     vi.spyOn(console, "log").mockImplementation(() => {});

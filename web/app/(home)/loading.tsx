@@ -7,6 +7,11 @@ import { Skeleton } from "@heroui/react";
  * shell — full-viewport map canvas, floating search capsule, account chip,
  * and the collapsed sheet bar at the bottom. Skeleton shimmer, never a
  * spinner (spec 0002).
+ *
+ * Scoped to `/` via the `(home)` route group (BRAWUKA-658): a ROOT-level
+ * loading boundary streams a 200 shell before `generateMetadata` resolves,
+ * which would demote every `/cafes/[id]` notFound() to a soft-404 (DG19).
+ * Keep this file inside `(home)` — never move it back to `app/`.
  */
 export default function Loading() {
   return (

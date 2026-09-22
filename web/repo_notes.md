@@ -37,7 +37,7 @@
   radius got `rounded-md`; chip paddings unified; form labels, list titles,
   and error-page titles aligned to the type pairing; CloseTrigger and
   SignOutButton hit areas raised to 44px.
-- Loading surfaces: `app/loading.tsx` is now a map-shell skeleton (search
+- Loading surfaces: `app/(home)/loading.tsx` is now a map-shell skeleton (search
   capsule + account chip + collapsed bar + PEEK cards);
   `app/profile/loading.tsx`, `detail-content`, `desktop-discovery`,
   `mobile-sheet`, and `checkin-feed` skeletons mirror real layout geometry.
@@ -248,7 +248,7 @@
 - `web/app/auth/sign-in-button.tsx` / `web/app/auth/sign-out-button.tsx`
   - New client buttons using `useActionState` with `isPending` and inline error display.
 
-- `web/app/page.tsx`
+- `web/app/(home)/page.tsx`
   - Wired `SignInButton` (Apple + Google) and `SignOutButton`; shows signed-in display name and session text.
 
 - `image-service/wrangler.toml`
@@ -347,7 +347,7 @@ _Applies the P1 findings from an independent critical review. Original issues: #
   - Hardened `getRedirectTo` allowlist parsing and matching; see `docs/specs/0001-nextjs-migration.md` §Auth for the full redirectTo contract.
 - `web/app/auth/callback/route.ts`
   - On profile upsert failure, the user is now signed out and redirected to `/?auth=error&reason=profile_upsert`.
-- `web/app/page.tsx` / `messages/en.json` / `messages/zh.json`
+- `web/app/(home)/page.tsx` / `messages/en.json` / `messages/zh.json`
   - The home page reads `auth`/`reason` query params and displays localized error banners.
 - `web/app/auth/sign-out-button.tsx`
   - `idbPersister.removeClient()` failures are caught and logged; the user is always redirected.

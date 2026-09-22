@@ -215,6 +215,24 @@ if assert_mutated "integration classifier condition missing" "$WF.bak" "$WF"; th
 fi
 mv "$WF.bak" "$WF"
 
+# The post-merge trigger set is the contract (BRAWUKA-628): a workflow that no
+# longer runs on `push` to `main`, or no longer runs nightly, silently stops
+# verifying merges while every other check stays green.
+JOURNEY="$TEST_ROOT/.github/workflows/staging-journey.yml"
+cp "$JOURNEY" "$JOURNEY.bak"
+grep -vE '^  push:$|^    branches:$|^      - main$' "$JOURNEY.bak" > "$JOURNEY"
+if assert_mutated "staging-journey push trigger removed" "$JOURNEY.bak" "$JOURNEY"; then
+  expect_failure "staging-journey missing push trigger" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-workflow.sh"
+fi
+mv "$JOURNEY.bak" "$JOURNEY"
+
+cp "$JOURNEY" "$JOURNEY.bak"
+grep -vE '^  schedule:$|^    - cron:' "$JOURNEY.bak" > "$JOURNEY"
+if assert_mutated "staging-journey nightly schedule removed" "$JOURNEY.bak" "$JOURNEY"; then
+  expect_failure "staging-journey missing nightly schedule" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-workflow.sh"
+fi
+mv "$JOURNEY.bak" "$JOURNEY"
+
 echo ""
 echo "=== CI path classifier ==="
 

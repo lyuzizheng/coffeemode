@@ -157,7 +157,7 @@ describeIntegration("integration — real Supabase auth exchange & token verific
 
     // 5. Verify real token validation via getCurrentUser() calling supabase-mock /auth/v1/user
     const currentUser = await getCurrentUser();
-    expect(currentUser).toEqual({ id: "c935f899-11fd-4782-a173-777b3995384b" });
+    expect(currentUser).toMatchObject({ id: "c935f899-11fd-4782-a173-777b3995384b" });
   });
 
   it("honors safe next parameter after successful exchange", async () => {

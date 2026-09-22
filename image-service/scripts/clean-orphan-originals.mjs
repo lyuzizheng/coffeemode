@@ -128,8 +128,8 @@ function client() {
  * (stale marker + not DB-referenced), `protectedRefs` are stale-marker
  * objects that ARE DB-referenced (missing/failed attach leg) — reported,
  * never deleted. Each entry carries key, size, lastModified, stage, and
- * verification (`referenced` when LIVE_KEYS_FILE was checked, `unverified`
- * when it was absent).
+ * verification (`not-referenced` when LIVE_KEYS_FILE was checked and the key
+ * is absent from it, `unverified` when it was absent).
  */
 async function listOrphanCandidates({ maxKeys, cutoffMs, liveKeys }) {
   const aws = client();
@@ -180,7 +180,7 @@ async function listOrphanCandidates({ maxKeys, cutoffMs, liveKeys }) {
           size: Number(head.headers.get("content-length") ?? 0),
           lastModified,
           stage: targetType === "provision" ? "provision" : "markerless",
-          verification: liveKeys ? "referenced" : "unverified",
+          verification: liveKeys ? "not-referenced" : "unverified",
         };
         if (liveKeys?.has(key)) protectedRefs.push(entry);
         else orphans.push(entry);

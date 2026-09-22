@@ -212,6 +212,10 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
       // True orphan vs. missing-attach original stay distinguishable.
       expect(dry.stdout).toContain(`"key":"${orphan}"`);
       expect(dry.stdout).toContain('"op":"would-delete"');
+      // Orphans checked against the live set are labeled not-referenced
+      // (BRAWUKA-630): never "referenced", which is reserved for would-keep.
+      expect(dry.stdout).toContain('"verification":"not-referenced"');
+      expect(dry.stdout).not.toContain('"verification":"referenced"');
       expect(dry.stdout).toContain(`"key":"${referenced}"`);
       expect(dry.stdout).toContain('"op":"would-keep"');
       expect(dry.stdout).toContain('"reason":"referenced"');

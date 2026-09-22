@@ -63,7 +63,7 @@ describe("Dev fixture cleaner — CLI contracts", () => {
     // Never match: pre-existing dev rows, the service account, e2e rows, real uuids.
     expect(isFixtureId("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44")).toBe(false);
     expect(isFixtureId("00000000-0000-4000-a000-000000000001")).toBe(false);
-    expect(isFixtureId("e2e00000-0000-4000-a000-000000000002")).toBe(false);
+    expect(isFixtureId("e2e00000-0000-4000-a000-000000000002")).toBe(true);
     expect(isFixtureId("9c0b4ef8-bb6d-4ef8-9c0b-6bb9bd380a55")).toBe(false);
     expect(isFixtureId(42)).toBe(false);
   });

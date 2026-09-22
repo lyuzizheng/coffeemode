@@ -479,6 +479,25 @@ body {
   }
 }
 
+/* MapLibre attribution colors (BRAWUKA-626): the library default is a
+   50%-white pill with 75%-black text — over the dark basemap that paints
+   ~2.9:1, under spec 0002's 4.5:1 AA floor. Pin the control to the theme's
+   opaque overlay + foreground tokens so the painted bytes pass in both
+   schemes. The audit needs an opaque ancestor background: keep this solid,
+   no alpha.
+   Specificity: maplibre-gl.css bundles after globals.css and its winning
+   selector is `.maplibregl-ctrl.maplibregl-ctrl-attrib` (0,2,0), so the
+   tripled class (0,3,0 / 0,3,1) beats it regardless of stylesheet order.
+   The `.maplibregl-compact` variant is unreachable here
+   (`attributionControl: { compact: false }`) and already AA-compliant. */
+.maplibregl-ctrl-attrib.maplibregl-ctrl-attrib.maplibregl-ctrl-attrib {
+  background-color: var(--overlay);
+  color: var(--overlay-foreground);
+}
+.maplibregl-ctrl-attrib.maplibregl-ctrl-attrib.maplibregl-ctrl-attrib a {
+  color: var(--overlay-foreground);
+}
+
 /* Edge fade for horizontally scrollable strips whose scrollbar is hidden —
    the dissolve is the only affordance that more content sits off-canvas
    (profile tablist, BRAWUKA-247). Applied only while that edge is clipped. */

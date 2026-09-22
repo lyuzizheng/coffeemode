@@ -25,8 +25,7 @@ import {
   E2E_CAFE_ID,
   E2E_USER_ID,
   setupDbFixtures,
-  cleanupDbFixtures,
-  closeDbClient,
+  teardownDbFixtures,
   DEFAULT_DATABASE_URL,
 } from "./lib/e2e-fixtures.mjs";
 import {
@@ -71,11 +70,11 @@ const cleanup = async () => {
     }
     serverProcess = null;
   }
-  await cleanupDbFixtures(dbClient);
-  if (dbClient) {
-    await closeDbClient(dbClient);
-    dbClient = null;
-  }
+  // Fixture cleanup failures are real failures (BRAWUKA-629): a leftover row
+  // pollutes the next run, so it lands in `failures` like any gate error.
+  const cleanupErr = await teardownDbFixtures(dbClient);
+  dbClient = null;
+  if (cleanupErr) failures.push(cleanupErr.message ?? String(cleanupErr));
 };
 
 registerProcessCleanup(cleanup);

@@ -60,6 +60,8 @@ ON CONFLICT(place_id) DO UPDATE SET
   expires_at = excluded.expires_at
 `;
 
+/** Bounded-cache cleanup. Runs on the scheduled cron only — never on the
+ * write path, so D1 writes stay single-statement (BRAWUKA-645). */
 const PURGE_EXPIRED_SQL =
   "DELETE FROM pois WHERE expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 
@@ -110,18 +112,23 @@ export function denormalize(poi: POI): unknown[] {
 }
 
 export async function d1UpsertPOI(db: D1Like, poi: POI): Promise<void> {
-  await db.batch([
-    db.prepare(UPSERT_SQL).bind(...denormalize(poi)),
-    db.prepare(PURGE_EXPIRED_SQL),
-  ]);
+  await db.prepare(UPSERT_SQL).bind(...denormalize(poi)).run();
 }
 
 /** Atomic multi-row upsert in one round-trip via D1 batch(). */
 export async function d1UpsertPOIs(db: D1Like, pois: POI[]): Promise<void> {
   if (pois.length === 0) return;
-  const stmts = pois.map((poi) => db.prepare(UPSERT_SQL).bind(...denormalize(poi)));
-  stmts.push(db.prepare(PURGE_EXPIRED_SQL));
-  await db.batch(stmts);
+  await db.batch(pois.map((poi) => db.prepare(UPSERT_SQL).bind(...denormalize(poi))));
+}
+
+/**
+ * Delete rows past their 30d TTL. Called only from the scheduled handler —
+ * never from the write path — and backed by idx_pois_expires_at (BRAWUKA-645).
+ * Returns the number of deleted rows.
+ */
+export async function purgeExpiredPOIs(db: D1Like): Promise<number> {
+  const { meta } = await db.prepare(PURGE_EXPIRED_SQL).run();
+  return meta.changes;
 }
 
 export async function d1GetPOI(db: D1Like, placeId: string): Promise<POI | null> {

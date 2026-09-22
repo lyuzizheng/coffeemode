@@ -23,6 +23,8 @@
 
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -197,8 +199,6 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
 
   it("keeps a stale-marker original listed in LIVE_KEYS_FILE: reported, never deleted (BRAWUKA-400)", async (ctx) => {
     if (!minioUp) return ctx.skip();
-    const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs");
-    const { tmpdir } = await import("node:os");
     const referenced = `original/${randomUUID()}.webp`;
     const orphan = `original/${randomUUID()}.webp`;
     await seedOriginal(referenced, { targettype: "provision", targetid: referenced.split("/")[1].replace(".webp", ""), userid: "u1" });
@@ -231,6 +231,27 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     }
   }, 20_000);
 
+  it("refuses DRY_RUN=0 with a set-but-empty LIVE_KEYS_FILE unless ALLOW_EMPTY_LIVE_KEYS=1 (BRAWUKA-632)", async (ctx) => {
+    if (!minioUp) return ctx.skip();
+    const dir = mkdtempSync(`${tmpdir()}/live-keys-empty-`);
+    const file = `${dir}/live-keys.txt`;
+    try {
+      writeFileSync(file, "");
+      // Empty export + production deletes: refused before any listing.
+      const refused = runCleanup({ DRY_RUN: "0", RETENTION_DAYS: "30", MAX_OBJECTS: "100", LIVE_KEYS_FILE: file });
+      expect(refused.status).not.toBe(0);
+      // Explicit opt-in passes the guard (nothing seeded, so nothing deleted).
+      const optedIn = runCleanup({ DRY_RUN: "0", RETENTION_DAYS: "30", MAX_OBJECTS: "100", LIVE_KEYS_FILE: file, ALLOW_EMPTY_LIVE_KEYS: "1" });
+      expect(optedIn.status).toBe(0);
+      // Dry-run is unaffected either way.
+      const dry = runCleanup({ DRY_RUN: "1", RETENTION_DAYS: "30", MAX_OBJECTS: "100", LIVE_KEYS_FILE: file });
+      expect(dry.status).toBe(0);
+      expect(dry.stdout).toContain('"liveKeys":0');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
   it("is idempotent: a second run deletes nothing more", async () => {
     const abandoned = `original/${randomUUID()}.webp`;
     await seedOriginal(abandoned);
@@ -242,8 +263,7 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     const second = runCleanup({ DRY_RUN: "0", RETENTION_DAYS: "0", MAX_OBJECTS: "100", ALLOW_RETENTION_ZERO: "1" });
     expect(second.status).toBe(0);
     expect(second.stdout).toContain('"orphanCandidates":0');
- }, 20_000);
-
+  }, 20_000);
 
   it("young metadata-less originals inside the retention window are kept", async () => {
     const young = `original/${randomUUID()}.webp`;

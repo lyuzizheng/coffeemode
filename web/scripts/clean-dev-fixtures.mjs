@@ -13,9 +13,11 @@ import pg from "pg";
  * `web/tests/helpers/db.ts`) prevents new pollution; this script removes
  * existing rows idempotently.
  *
- * Never touched: the pre-existing `a0eebc99-*` dev rows (e.g. the Repro cafe),
- * the `00000000-*` service account seeded by migration 0016, and `e2e00000-*`
- * rows owned (and self-cleaned) by `scripts/e2e-smoke.mjs`.
+ * Never touched: the pre-existing `a0eebc99-*` dev rows (e.g. the Repro cafe)
+ * and the `00000000-*` service account seeded by migration 0016. `e2e00000-*`
+ * rows are owned (and self-cleaned) by `scripts/e2e-smoke.mjs`, but the
+ * sweeper covers them too so residuals from crashed runs can be removed
+ * (BRAWUKA-629).
  *
  * Safety: default mode is dry-run (counts only, deletes nothing). Non-local
  * hosts require `ALLOW_REMOTE_INTEGRATION_DB=1`, mirroring
@@ -32,9 +34,10 @@ const DEFAULT_DATABASE_URL = "postgres://coffeemode:coffeemode@localhost:5432/co
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]", ""]);
 
 // Deterministic fixture id families (uuid text prefix + "-"). Keep in sync
-// with web/tests/fixtures/mock-dataset.ts (b0000000-*) and
-// web/tests/helpers/http-client.ts HTTP_USER_IDS (c0000000-*).
-const FIXTURE_PREFIXES = ["b0000000-", "c0000000-", "a0000000-", "d0000000-"];
+// with web/tests/fixtures/mock-dataset.ts (b0000000-*),
+// web/tests/helpers/http-client.ts HTTP_USER_IDS (c0000000-*), and
+// web/scripts/lib/e2e-fixtures.mjs (e2e00000-*).
+const FIXTURE_PREFIXES = ["b0000000-", "c0000000-", "a0000000-", "d0000000-", "e2e00000-"];
 
 export function isFixtureId(id) {
   if (typeof id !== "string") return false;
@@ -61,8 +64,8 @@ Options:
 Safety:
   Default is dry-run: counts fixture rows, deletes nothing. Non-local hosts
   require ALLOW_REMOTE_INTEGRATION_DB=1. Only b0000000-/c0000000-/a0000000-/
-  d0000000- ids are ever candidates; a0eebc99-* dev rows, the service account,
-  and e2e00000-* rows are never matched. --apply deletes in one transaction.
+  d0000000-/e2e00000- ids are ever candidates; a0eebc99-* dev rows and the
+  service account are never matched. --apply deletes in one transaction.
 `.trim());
 }
 

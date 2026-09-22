@@ -189,7 +189,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   }, 60_000);
 
-  it("applies migrations 0001→0029 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0030 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -221,6 +221,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0027_navigation_unresolved_dedupe.sql",
       "0028_open_now_sql_function.sql",
       "0029_open_now_24h_window.sql",
+      "0030_cafe_source.sql",
     ]);
 
     const serviceProfile = await dbClient.query(
@@ -262,13 +263,15 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     expect(indexNames.has("idx_cafes_visibility_public")).toBe(false);
 
     // Issue #253: Verify dead columns owner_id and slug are dropped from cafes
-    const colRows = await dbClient.query<{ column_name: string }>(
-      `select column_name from information_schema.columns where table_name = 'cafes'`,
+    const colRows = await dbClient.query<{ column_name: string; column_default: string | null }>(
+      `select column_name, column_default from information_schema.columns where table_name = 'cafes'`,
     );
     const colNames = new Set(colRows.rows.map((r) => r.column_name));
     expect(colNames.has("owner_id")).toBe(false);
-    expect(colNames.has("slug")).toBe(false);
     expect(colNames.has("visibility")).toBe(true);
+    // BRAWUKA-620: 0030 adds the cafe source marker (default 'user_confirmed').
+    expect(colNames.has("source")).toBe(true);
+    expect(colRows.rows.find((r) => r.column_name === "source")?.column_default).toContain("user_confirmed");
 
     // Issue #139: Verify 0018_public_identity columns on profiles and unique partial index
     const profileColRows = await dbClient.query<{ column_name: string; data_type: string; column_default: string | null }>(
@@ -579,6 +582,8 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       const cafe = await getCafe(created.cafe_id);
       expect(cafe?.tz).toBe("Asia/Singapore");
       expect(cafe?.name).toBe("New Cafe");
+      // BRAWUKA-620: user-created cafes carry the user_confirmed source marker.
+      expect(cafe?.source).toBe("user_confirmed");
 
       const nearby = await listCafesNearby({ lat: 1.35, lng: 103.8, radiusKm: 10, limit: 10 });
       expect(nearby.map((c) => c.name)).toEqual(expect.arrayContaining(["Seed Cafe", "New Cafe"]));

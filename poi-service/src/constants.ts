@@ -17,7 +17,3 @@ export const CACHE_TTL_SECONDS = 7 * 24 * 3600; // ~7d
 
 /** Bounded D1 cache lifetime: hard boundary after which a POI is purged / invisible. */
 export const POI_EXPIRY_SECONDS = 30 * 24 * 3600; // 30d
-
-/** Maximum number of candidate places reverseGeocode will inspect via Place Details (BRAWUKA-332). */
-export const MAX_REVERSE_GEOCODE_CANDIDATES = 3;
-

@@ -11,11 +11,21 @@
  *
  * External-host inventory (what the browser actually loads):
  * - `cdn.apple-mapkit.com` — MapKit JS SDK script (place search).
+ * - `api.apple-mapkit.com` — MapKit JS bootstrap-driven search/geocode API
+ *   base; `gsp10.apple-mapkit.com` — SDK analytics endpoint (keeps consoles
+ *   clean); `maps-api.apple.com` — server-side Apple Maps REST host.
  * - `challenges.cloudflare.com` — Cloudflare Turnstile widget/frame.
  * - `tiles.openfreemap.org` — MapLibre vector tiles + glyph PBFs
  *   (style docs are same-origin `/map/*.json`; glyphs/tiles remote).
  * - R2 image CDN hosts (`*.cafemood.app` public hosts, Google OAuth avatar
  *   URLs pass through the R2 loader untouched when absolute).
+ * - `*.r2.cloudflarestorage.com` — presigned photo PUTs: prod/staging sign
+ *   against `https://<account>.r2.cloudflarestorage.com` (image-service
+ *   `R2_ENDPOINT=""`), so the browser PUTs cross-origin (client-upload.ts).
+ * - `blob:` — draft photo previews + canvas-resize source via
+ *   `URL.createObjectURL` (checkin-photos, checkin-resume, toWebP).
+ * - `http://localhost:9000` (non-production only) — local MinIO presign
+ *   target and image host.
  * - Supabase Auth: client only calls same-origin `/api/*` routes; the
  *   realtime/WebSocket path is unused, so no `wss:` exception is granted.
  *
@@ -27,10 +37,10 @@
  * - `style-src 'self' 'unsafe-inline'` — Tailwind + next-intl emit inline
  *   `<style>` blocks; no remote stylesheets are used (fonts are self-hosted
  *   via `next/font/local`).
- * - `img-src` includes `data:` (MapLibre pin canvas `data:image/svg+xml`)
- *   plus the R2/Turnstile/MapKit hosts; Google OAuth avatar URLs pass
- *   through when absolute (`lh3.googleusercontent.com` covers the
- *   Google-sign-in avatar case).
+ * - `img-src` includes `data:` (MapLibre pin canvas `data:image/svg+xml`),
+ *   `blob:` (draft photo previews), plus the R2/Turnstile/MapKit hosts;
+ *   Google OAuth avatar URLs pass through when absolute
+ *   (`lh3.googleusercontent.com` covers the Google-sign-in avatar case).
  * - `frame-src` is Turnstile-only (challenge iframe) — no YouTube/Vimeo
  *   embeds exist. `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`
  *   close plugin/form exfiltration. `frame-ancestors 'self'`
@@ -40,25 +50,31 @@
 /** Hosts the browser may load scripts from (MapKit SDK + Turnstile widget). */
 const SCRIPT_SRC_EXTRA = "https://cdn.apple-mapkit.com https://challenges.cloudflare.com";
 
-/** Hosts `connect-src` allows: same-origin API routes + map tiles + MapKit + Turnstile. */
+/** Hosts `connect-src` allows: map tiles + MapKit API + Turnstile + R2 PUTs. */
 const CONNECT_SRC_EXTRA =
-  "https://tiles.openfreemap.org https://cdn.apple-mapkit.com https://maps-api.apple.com https://challenges.cloudflare.com";
+  "https://tiles.openfreemap.org https://cdn.apple-mapkit.com https://api.apple-mapkit.com " +
+  "https://gsp10.apple-mapkit.com https://maps-api.apple.com https://challenges.cloudflare.com " +
+  "https://*.r2.cloudflarestorage.com";
 
-/** Hosts `img-src` allows beyond `'self' data:` (R2 CDN + avatars + tiles). */
+/** Hosts `img-src` allows beyond `'self' data: blob:` (R2 CDN + avatars + tiles). */
 const IMG_SRC_EXTRA =
   "https://images.cafemood.app https://staging-images.cafemood.app " +
   "https://tiles.openfreemap.org https://lh3.googleusercontent.com " +
   "https://cdn.apple-mapkit.com https://challenges.cloudflare.com";
 
-/** Build the Content-Security-Policy value. `isProduction` gates upgrade-insecure-requests. */
+/** Local MinIO origin — dev-only exception for presign PUTs and image serving. */
+const DEV_EXTRA = "http://localhost:9000";
+
+/** Build the Content-Security-Policy value. `isProduction` gates upgrade-insecure-requests + the MinIO exception. */
 export function contentSecurityPolicy(isProduction: boolean): string {
+  const dev = isProduction ? "" : ` ${DEV_EXTRA}`;
   const directives = [
     "default-src 'self'",
     `script-src 'self' 'unsafe-inline' ${SCRIPT_SRC_EXTRA}`,
     "style-src 'self' 'unsafe-inline'",
-    `img-src 'self' data: ${IMG_SRC_EXTRA}`,
+    `img-src 'self' data: blob: ${IMG_SRC_EXTRA}${dev}`,
     "font-src 'self' data:",
-    `connect-src 'self' ${CONNECT_SRC_EXTRA}`,
+    `connect-src 'self' ${CONNECT_SRC_EXTRA}${dev}`,
     "frame-src 'self' https://challenges.cloudflare.com",
     "worker-src 'self' blob:",
     "object-src 'none'",

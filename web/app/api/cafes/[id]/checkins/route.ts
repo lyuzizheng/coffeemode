@@ -34,16 +34,21 @@ export const GET = apiRoute<{ id: string }>(
     const mode = modeParam as CheckInFeedMode;
     const cursor = url.searchParams.get("cursor") ?? undefined;
 
-    const exists = await cafeExists(id, ctx.user?.id);
+    // Probe and page run in parallel (BRAWUKA-649): the feed query is
+    // existence-agnostic, so the 404 check reads the probe result after both
+    // settle instead of serializing a second DB RTT behind it.
+    const [exists, page] = await Promise.all([
+      cafeExists(id, ctx.user?.id),
+      listPublicCheckIns({
+        cafeId: id,
+        mode,
+        cursor,
+        viewerId: ctx.user?.id ?? null,
+      }),
+    ]);
     if (!exists) {
       return apiError("not_found", "cafe not found", { status: 404, requestId: ctx.requestId });
     }
-    const page = await listPublicCheckIns({
-      cafeId: id,
-      mode,
-      cursor,
-      viewerId: ctx.user?.id ?? null,
-    });
     return NextResponse.json(page);
   },
 );

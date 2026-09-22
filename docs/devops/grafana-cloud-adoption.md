@@ -2,12 +2,15 @@
 
 Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份文档盘点现状、列出 Grafana Cloud 的能力清单，并给出从 Better Stack 迁移的优先级建议。
 
+> **2026-09-21 修订（Owner 拍板，见 §6）**：不双跑、直接切、Better Stack 全退；能交给 Cloudflare 的交给 Cloudflare；日志不装 Alloy，走应用侧 OTLP；OTel 不采样。
+
 ## 0. 结论先行
 
-1. ~~**最高杠杆的一步是在 VPS 上跑 Alloy。**~~ **已落地，但换了实现（BRAWUKA-606 / BRAWUKA-607）**：应用已经在往 stdout 打单行 JSON（`web/lib/observability/server-log.ts`），但没有任何东西收它 —— 日志只活在容器里，`docker logs` 之后就没了。原计划是 Alloy 收 Docker stdout；实际做法是应用侧 `otlp-logs.ts` 直接走 OTLP 进 Loki，和 trace 共用同一个 SDK 与 endpoint。代价是几行代码，换来的是每条日志自带 `trace_id` / `span_id`（Alloy 从 stdout 读不到），并且省掉一个挂 Docker socket 的容器。
-2. **第二高杠杆是给 Next.js 加 OpenTelemetry。** 一次埋点同时换来 traces、service map、RED 指标（`traces_spanmetrics_*` 由 metrics-generator 派生 —— 但该 generator **默认关闭**，要先在 stack 上打开，见 §3 P0-3）和 exemplar。不用手写 Prometheus 客户端。
-3. **Better Stack 不要一次性切掉。** 现在 4 条 chart alert + 1 个 uptime monitor 是唯一的告警面，先双写、验证、再拆。但只有 uptime monitor 是真在跑的 —— 4 条 chart alert 至今只被合成事件喂过，两条 ingest 路径的环境变量仍待粘贴（§1.2）。
-4. **免费档够用，但有两个硬约束**：14 天保留期，以及 10k active series。~~Alloy 全量收 Docker stdout 会吃掉 logs 配额，要先做过滤。~~ 走 OTLP 后这条约束自然消失：只有应用自己 `logError` / `logWarn` / access 行进 Loki，Next.js 的请求日志不进。
+1. **直接切，Better Stack 全退 —— 没有安全网可保。** 现在唯一的 uptime monitor 打的是 `coffeemood.com`：那是 GoDaddy 的停放页（NS `ns11.domaincontrol.com`，A `15.197.225.128`，永远 200），不是 CoffeeMode。真正的生产域名 `cafemood.app` 从 2026-09-18 起就是 502（BRAWUKA-500，prod web 零容器），这个 monitor 一次都没报过。4 条 chart alert 至今只被合成事件喂过。所谓「双写验证期」保护的是一个从未生效的告警面。
+2. **一个组件，不是两个。** traces 和 logs 都从应用侧走 OTel → Grafana Cloud OTLP 网关。不装 Alloy：省一个容器、一次 Docker socket 挂载、一套独立凭据；而且 OTLP 原生带 `trace_id`，日志与 trace 自动关联，不需要在采集器里正则解析 JSON。**已落地（BRAWUKA-606 / BRAWUKA-607）**：`otlp-logs.ts` 直接走 OTLP 进 Loki，和 trace 共用同一个 SDK 与 endpoint。
+3. **Cloudflare 优先。** 页面分析用 Cloudflare Web Analytics（**已经开着**）；uptime 用 Cloudflare 免费能力 + 一个 cron Worker 探针。Cloudflare 的主动 uptime 产品（Health Checks）免费档不支持，需要 Pro（§2.2）。
+4. **不采样。** 量太小，head sampling 只会让 RED 计数失真（§3 P0-2）。
+5. **免费档够用，但有两个硬约束**：14 天保留期，以及 10k active series。走 OTLP 后「Alloy 全量收 Docker stdout 会吃掉 logs 配额」这条约束自然消失：只有应用自己 `logError` / `logWarn` / access 行进 Loki，Next.js 的请求日志不进。
 
 ## 1. 现状盘点
 
@@ -28,42 +31,49 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 
 空栈的证据：Loki `label names` 返回 `[]`；Tempo 只有 intrinsic scope，没有任何 resource/span 属性；Prometheus 查不到任何非 `grafanacloud_*` 的 series；`/api/v1/provisioning/alert-rules` 返回 `[]`。
 
-### 1.2 Better Stack 侧（评审时的唯一可观测性 —— **已全部删除，BRAWUKA-611**）
-
-> 下表是 2026-09-21 评审时的快照，保留作为迁移前的基线记录。**这些资源现在都不存在了**：4 个 source、2 个 dashboard、4 条 chart alert、1 个 uptime monitor 全部删除，账号下已无 CoffeeMode 资源。
+### 1.2 Better Stack 侧（当前唯一的可观测性）
 
 | 类型 | 内容 |
 |---|---|
 | 日志 source | 4 个 CoffeeMode source：`coffeemode-rate-limit-staging` (2766431)、`coffeemode-rate-limit-prod` (2766432)、`coffeemode-api-errors-staging` (2769809)、`coffeemode-api-errors-prod` (2769810) |
 | Dashboard | `CoffeeMode API Errors (staging)` (1131239)、`CoffeeMode API Errors (prod)` (1131240) |
-| Chart alert | 4 条 enabled：`5xx sustained on a route`、`Worker upstream_error spike`（staging / prod 各一套） |
-| Uptime monitor | `coffeemood.com`（status 类型） |
+| Chart alert | 4 条 enabled：`5xx sustained on a route` (2988583722/2988583724)、`Worker upstream_error spike` (2988583723/2988583725) |
+| Uptime monitor | `coffeemood.com` (4941625) —— **打的是停放页，不是生产域名** |
 | Heartbeat | 无 |
 | Status page | 无 |
 
-**两条独立的写入路径**，不是一条 —— **两条都已退役（BRAWUKA-607 / BRAWUKA-611）**：
+**两条独立的写入路径**，不是一条：
 
-- ~~`rate-limit-alert.ts` → Better Stack ingest → `coffeemode-rate-limit-*`（限流命中）~~ **已删除（BRAWUKA-611）**：限流命中改走 `logWarn` 结构化日志，经 OTLP 进 Grafana Cloud Loki，由 `CoffeeMode — Rate-limit flood` 规则告警。
-- ~~`api-error-sink.ts` → Better Stack ingest → `coffeemode-api-errors-*`（error / warn 行，spec 0011 D8 / BRAWUKA-541）~~ **已删除（BRAWUKA-607）**：error / warn / access 行改走 OTLP 进 Grafana Cloud Loki。
+- `rate-limit-alert.ts` → `BETTER_STACK_INGEST_URL` / `_TOKEN` → `coffeemode-rate-limit-*`（限流命中）
+- ~~`api-error-sink.ts` → `BETTER_STACK_ERRORS_INGEST_URL` / `_TOKEN` → `coffeemode-api-errors-*`（error / warn 行，spec 0011 D8 / BRAWUKA-541）~~ **已删除（BRAWUKA-607）**：error / warn / access 行改走 OTLP 进 Grafana Cloud Loki，`BETTER_STACK_ERRORS_INGEST_*` 两个变量一并移除。
 
 **实际数据量**（2026-09-21 经 Better Stack query API 查，含冷存）：rate-limit staging 7 行（02:47–07:20）、rate-limit prod 0 行；api-errors staging 27 行（07:20–07:36）、api-errors prod 0 行。api-errors 那 27 行**全部是合成事件**（`route: "GET /api/__synthetic_alert"`），没有一条真实应用错误。
 
-**告警面的真实状态**：4 条 chart alert 挂在 `coffeemode-api-errors-*` 上，而这两个 source 只被合成事件喂过；`docs/agent/pending-user-actions.md` §7 记录两条 ingest 路径的 Dokploy 环境变量仍待 Owner 粘贴。所以**目前唯一被证明可用的告警是 uptime monitor**，4 条 chart alert 尚未在真实流量上验证过 —— 迁移时不能把它们当成现成的安全网。
+**告警面的真实状态**（2026-09-21 实测）：
+
+- **uptime monitor 是假的。** `coffeemood.com` 解析到 GoDaddy 停放页（`15.197.225.128` / `3.33.251.168`，NS `ns11.domaincontrol.com`），返回 200 `CoffeeMood Cloud Space`。它监控的不是 CoffeeMode。同期 `https://cafemood.app`（含 `/`、`/api/health`、`/cafes`、`www`）**全部 502**，monitor 显示 🟢 Up。
+- **4 条 chart alert 从未在真实流量上验证过。** 它们挂在 `coffeemode-api-errors-*` 上，而这两个 source 只被合成事件喂过；`docs/agent/pending-user-actions.md` §7 记录两条 ingest 路径的 Dokploy 环境变量仍待 Owner 粘贴。
+
+结论：**当前不存在可用的告警面**，所以「先双写再拆」保护不了任何东西，直接切是正确做法。
 
 ### 1.3 应用侧
 
 | 组件 | 现状 |
 |---|---|
 | `web/lib/observability/server-log.ts` | 输出单行 JSON（`{"type":"error","request_id":…}`）到 stdout。**没人收。** |
+| `web/shared/log.ts` | 真正的实现（spec 0011 D6），带 `registerLineSink` 第二出口钩子；两个 Worker 也复用它 |
 | `web/lib/observability/rate-limit-alert.ts` | 限流命中时 `console.warn`（10s 节流）+ fire-and-forget POST 到 Better Stack（**不**节流） |
 | ~~`web/lib/observability/api-error-sink.ts`~~ | **已删除（BRAWUKA-607）**。error / warn / access 行现在由 `web/lib/observability/otlp-logs.ts` 走 OTLP 进 Grafana Cloud Loki，和 trace 同一个 SDK 与 endpoint。 |
+| `web/proxy.ts` | Next.js 16 的 proxy（原 middleware）。**Next 16 里 proxy 默认跑 Node.js runtime**，所以它能用 Node 版 OTel SDK —— 这是「日志走 OTLP」可行的前提。 |
 | `/api/health` | `{ok, version, boot_time}` |
-| `/api/heartbeat` | 真实 DB round-trip，Better Stack 轮询它 |
+| `/api/heartbeat` | 真实 DB round-trip（`select 1`），Better Stack 轮询它；同时是 Supabase 免费档项目的 keepalive（BRAWUKA-284） |
 | `poi-service` / `image-service` | `console.error` + wrangler `[observability]`（数据留在 Cloudflare 侧） |
 | `scripts/devops/smoke-test.sh` | 10 条部署后契约，bash + curl，手动跑 |
-| OTel / Sentry / prom-client / Faro | **都没有** |
+| OTel / Sentry / prom-client / Faro | **都没有**（OTel 在 PR #590 里，未合） |
 
-## 2. Grafana Cloud 能力清单
+## 2. 能力清单
+
+### 2.1 Grafana Cloud
 
 按账单维度整理（数据来自 stack 的 Billing/Usage dashboard 与 grafana.com/pricing）。
 
@@ -72,11 +82,11 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 | **Metrics** (Mimir) | billable series | 10k series / 14d | 高 —— RED、业务计数 | 做 |
 | **Logs** (Loki) | GB ingested | 50 GB / 14d | 高 —— 应用已有 JSON 日志 | 做 |
 | **Traces** (Tempo) | GB ingested | 50 GB / 14d | 高 —— 顺带产出 RED + service map | 做 |
-| **Synthetic Monitoring** | test executions | 100k API + 10k browser / 月 | 高 —— 替代 uptime monitor | 做 |
-| **Frontend Observability** (Faro) | sessions | 50k sessions / 月 | 高 —— CWV、JS 错误、session replay | 做 |
-| **Application Observability** | host hours | 2,232 host hours | 高 —— 随 traces 自动生效 | 做（被动） |
-| **Grafana Alerting** | 免费 | — | 高 —— 替代 chart alerts | 做 |
+| **Grafana Alerting** | 免费 | — | 高 —— 唯一的告警大脑 | 做 |
 | **Dashboards** | 免费（1,000 上限） | — | 高 —— 替代 Better Stack dashboard | 做 |
+| **Synthetic Monitoring** | test executions | 100k API + 10k browser / 月 | 中 —— uptime 的备选（§3 P1-1） | 备选 |
+| **Frontend Observability** (Faro) | sessions | 50k sessions / 月 | 低 —— 页面分析已由 Cloudflare Web Analytics 覆盖 | 缓 |
+| **Application Observability** | host hours | 2,232 host hours | 高 —— 随 traces 自动生效 | 做（被动） |
 | **k6** | VUh | 500 VUh | 中 —— 发布前压测 | 做（小规模） |
 | **IRM / OnCall** | active users | 3 users | 中 —— 现在只有一个人 | 缓 |
 | **Database Observability** | host hours | 2,232 host hours | 中 —— PostGIS 慢查询 | 缓 |
@@ -86,14 +96,37 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 | **Adaptive Metrics / Traces** | 省成本 | — | 低 —— 量太小，省不出钱 | 不做 |
 | **Knowledge Graph / Sift** | — | — | 低 —— 需要更多数据才有意义 | 不做 |
 
-### 免费档硬约束
+### 2.2 Cloudflare（2026-09-21 实测账号状态）
+
+账号 `Lyuzizheng@gmail.com`，4 个 zone（`brabalawuka.cc`、`cafemood.app`、`cancan.money`、`gen-growth.com`）**全部是 Free Website**。
+
+| 能力 | 免费档 | 现状 | 用途 |
+|---|---|---|---|
+| **Web Analytics (RUM)** | 免费，无站点数上限 | **已开**：`cafemood.app`，site_tag `0e7d27e20a594e80b00a7e4b0adea367`，`auto_install: true` | 页面分析 + Core Web Vitals（LCP/INP/CLS） |
+| **Notifications → Passive Origin Monitoring** | 免费 | 未开 | 源站不可达（被动，靠真实流量触发） |
+| **Notifications → Universal SSL** | 免费 | 未开 | 证书签发 / 续期 / 到期 |
+| **Notifications → HTTP DDoS Attack** | 免费 | 未开 | L7 DDoS |
+| **Notifications → Workers Observability** | 免费档有额度 | 未开 | 两个 Worker 的错误 |
+| **Workers Cron Triggers** | 免费：5 个/账号，单点执行，15 min 上限 | 未用 | 主动 uptime 探针（§3 P1-1） |
+| **Workers** | 免费：100k 请求/天 | `poi-service-*`、`image-service-*` 已部署 | — |
+| **Cloudflare Access** | 免费 50 用户 | 已用于 `staging.cafemood.app` | — |
+| **Turnstile** | 免费 | 待接（BRAWUKA-239） | — |
+| **Health Checks** | **不支持**（0 个；Pro 10 个，$20/月） | 未开 | 主动 uptime —— 需要升级 |
+| **DEX Synthetic Tests** | Zero Trust 付费 | — | 不做 |
+| **Logpush** | 付费 / 企业 | — | 不做 |
+
+**Notifications 在 Free 档只有邮件**：webhook 要 Pro，PagerDuty 要 Business，且只对 proxied 域名生效。所以主动探针的告警**不走** Cloudflare Notifications —— 探针直接把结果推给 Grafana，由 Grafana Alerting 统一报警，告警大脑只有一个。
+
+**结论**：Cloudflare 免费档能覆盖**页面分析**（已开）和**被动可用性信号**，但**没有主动 uptime 产品**。要主动探测只有三条路：cron Worker 探针（免费）、Grafana Synthetic Monitoring（免费）、Cloudflare Health Checks（Pro，$20/月）。
+
+### 2.3 免费档硬约束
 
 - **14 天保留期**（metrics / logs / traces / profiles / k6）。Better Stack 现在是 3 天（logs），所以是改善，但别指望季度对比。
 - **10k active series**。`traces_spanmetrics_*` 会按 route × status × service 展开，路由多的话要盯着。
 - **3 个 Grafana 活跃用户**、**3 个 IRM 活跃用户**。
 - **MCP 连接算 Assistant 活跃用户**，会消耗 40M token 配额。
 
-### 接入端点（区域 ap-southeast-1）
+### 2.4 接入端点（区域 ap-southeast-1）
 
 | 信号 | 端点 | instance ID |
 |---|---|---|
@@ -104,46 +137,59 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 
 四个端点都已探测：未认证请求返回 401，说明在线且只等凭据。
 
+**OTLP 是唯一需要的端点。** SDK 会自己拼 `/v1/traces`、`/v1/logs`、`/v1/metrics`。
+
 ## 3. 迁移建议
 
 ### P0 — 让数据进来
 
-#### P0-1 Logs：VPS 上跑 Alloy → Loki
+#### P0-1 Logs：应用侧 OTLP → Loki（不装 Alloy）
 
-> **已实现（BRAWUKA-607），但没走 Alloy。** 应用侧 `otlp-logs.ts` 直接 OTLP 进 Loki，理由见 §0 第 1 条。下面保留原 Alloy 方案备查；如果之后要收 Next.js 自身的请求日志（OTLP 覆盖不到），Alloy 仍然是那条路。
+> **已实现（BRAWUKA-607），但没走 Alloy。** 应用侧 `otlp-logs.ts` 直接 OTLP 进 Loki，理由见 §0 第 2 条。下面保留原 Alloy 方案备查；如果之后要收 Next.js 自身的请求日志（OTLP 覆盖不到），Alloy 仍然是那条路。
 
-**为什么**：应用已经在打 JSON 行，只差一个采集器。这是投入产出比最高的一步。
+**为什么不用 Alloy**：Alloy 的唯一职责是「读 Docker stdout 再推走」。但应用已经有一个 OTel SDK（P0-2），把日志出口接在同一个 SDK 上，就少一个容器、少一次 Docker socket 挂载、少一套独立凭据，而且日志天然带 `trace_id` / `span_id`，在 Grafana 里能直接跳 trace —— 这是 stdout 采集做不到的。
 
-**怎么做**：Dokploy 加一个 Alloy 容器（compose，`grafana/alloy` 镜像），配置：
+**怎么做**：
 
-- `discovery.docker` 发现容器，`loki.source.docker` 读 stdout。
-- `loki.process` 解析 JSON，把 `level`、`route`、`request_id`、`type` 提出来。
-- `loki.write` 推到 `https://logs-prod-020.grafana.net/loki/api/v1/push`，Basic auth = instance ID + API token。
+- 在 `web/shared/log.ts` 已有的 `registerLineSink` 钩子上，把 `shipApiErrorLine`（Better Stack POST）换成 OTLP log emitter。注册点保持在 `web/lib/observability/server-log.ts`（web-only），两个 Worker 不受影响。
+- `@opentelemetry/api-logs` + `@opentelemetry/sdk-logs` 的 `LoggerProvider` + `BatchLogRecordProcessor` + `OTLPExporter`，复用 P0-2 的 `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS`。
+- 字段映射：`type` → `severity_text`（error/warn），`route` / `request_id` / `code` / `status` → log record attributes，`error` → body。
+- `web/proxy.ts` 的 access 行同样走这条路 —— Next.js 16 的 proxy 默认是 Node.js runtime，SDK 可用。
 
-**标签纪律**（免费档 5,000 active streams 上限）：
+**Loki 侧的落法**（Loki 原生 OTLP 端点，不是 LokiExporter）：
 
-- label 只留 `env`、`service`、`container`、`level`。
-- `request_id`、`route`、`client_id` 一律进 structured metadata，**不能**做 label —— 否则 stream 数爆炸。
+- index label 只有预置的 resource attributes（默认 `service_name`、`service_namespace`）—— 天然低基数。
+- `severity_text`、`route`、`request_id`、`code` 全部进 **structured metadata**，查询时 `| severity_text="ERROR"` 直接过滤，不需要 `| json` 解析。
+- 免费档 5,000 active streams 上限因此不会成为问题。
 
-**先过滤再发**：Next.js 的请求日志量最大，先只收 `web` 容器 + `level != "debug"`，观察一周配额再放开。
+**代价（明确接受）**：只收应用自己 emit 的行。Next.js 框架输出、启动日志、崩溃时的 stderr 留在 `docker logs` 里 —— ADR-0004 已经规定 stdout 是完整记录，`docker logs` 就是兜底。
 
-**收益**：`server-log.ts` 的 error/warn 行、rate-limit 行、Next.js 请求日志全部可查，并且能和 traces 通过 `request_id` / `trace_id` 关联。
+**收益**：`server-log.ts` 的 error/warn 行、rate-limit 行、access 行全部可查，并且能和 traces 通过 `trace_id` / `request_id` 关联。
 
 #### P0-2 Traces：Next.js 加 OpenTelemetry → Tempo
 
 **为什么**：一次埋点换来四样东西 —— traces、service map、RED 指标、exemplar。不用手写 Prometheus 客户端。
 
-**怎么做**：
+**怎么做**（PR #590 已合；采样器已按 §6 决定 4 从两个 compose 文件移除）：
 
-- Next.js 用 `@vercel/otel`（官方推荐，和 App Router 兼容）或 `@opentelemetry/sdk-node` + `instrumentation.ts`。
+- `@vercel/otel` 的 `registerOTel` 挂在 `instrumentation.ts`，以 `OTEL_EXPORTER_OTLP_ENDPOINT` 是否存在为开关，本地与 CI 静默。
 - `OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp-gateway-prod-ap-southeast-1.grafana.net/otlp`，Basic auth = instance ID + token。
 - `OTEL_RESOURCE_ATTRIBUTES=service.name=coffeemode-web,deployment.environment.name=staging|prod`。
+- `http.route` 必须用**路由模板**（`/api/cafes/[id]`），否则 10k series 会爆；span name 也要带上模板，否则 spanmetrics 默认 label 里所有路由会塌成一条 `span_name="GET"` 序列。
 
-**采样**：~~先用 `parentbased_traceidratio` 10% 起步，看一周实际用量再调~~ —— **已推翻，不采样、100% 全采**（§6 决定 3）。免费档 50 GB，CoffeeMode 的量级远低于它。
+**采样：不采样（100%）。**
+
+「采样率」采的是 **trace（span）**，不是日志也不是指标。`parentbased_traceidratio` 是 head sampler：在根 span 上就决定整条 trace 记不记录，10% 意味着 10 条里 9 条在进程内就被丢掉。三个后果：
+
+1. Tempo 里只有 10% 的 trace。
+2. `traces_spanmetrics_*` 由 Tempo 的 metrics-generator 从**收到的** span 生成 —— 请求数和错误数都只有真实值的 ~10%，拿它做「5xx 率 > 1%」这类告警会直接算错（延迟分位数大致还准）。
+3. 90% 的错误 trace 被丢掉，而那正是最想看的。
+
+CoffeeMode 的量级离 50 GB/月差着几个数量级（粗估 10 万请求/月 × ~10 span × ~1 KB ≈ 1 GB/月），采样省不出任何东西，只会让 RED 计数失真。**所以起步就是 100%，不设采样器。** 将来量真的大了，正确做法是 tail sampling（保留全部错误 + 慢请求），而不是 head sampling —— 那需要采集器，届时再引入。
 
 **收益**：Grafana Cloud 的 metrics-generator 会自动从 span 生成 `traces_spanmetrics_*`，RED 指标不用自己写。Tempo 数据源已经配好 `tracesToLogs` / `tracesToMetrics` / `serviceMap`，开箱即用。
 
-**实现状态（BRAWUKA-606，2026-09-21）**：代码已落地 —— `web/lib/observability/otel.ts` 在 `instrumentation.ts` 里调 `registerOTel`，端点与 resource attributes 由 `deploy/dokploy/docker-compose.{staging,prod}.yml` 的 `environment:` 块钉死（非密钥），只有 `OTEL_EXPORTER_OTLP_HEADERS` 需要 Owner 粘贴（`docs/agent/pending-user-actions.md` §10）。`deployment.environment.name` 取 `staging` / `production`，与 `APP_ENV` 同一套词汇（BRAWUKA-607 从 `deployment.environment` 改名 —— 前者在 Grafana Cloud 的 Loki index-label 提升列表里，后者不在，改名后 env 成为流选择器）。**不设采样器**（§6 决定 3，2026-09-21 由 Owner 推翻原决定）。
+**实现状态（BRAWUKA-606，2026-09-21）**：代码已落地 —— `web/lib/observability/otel.ts` 在 `instrumentation.ts` 里调 `registerOTel`，端点与 resource attributes 由 `deploy/dokploy/docker-compose.{staging,prod}.yml` 的 `environment:` 块钉死（非密钥），只有 `OTEL_EXPORTER_OTLP_HEADERS` 需要 Owner 粘贴（`docs/agent/pending-user-actions.md` §10）。`deployment.environment.name` 取 `staging` / `production`，与 `APP_ENV` 同一套词汇（BRAWUKA-607 从 `deployment.environment` 改名 —— 前者在 Grafana Cloud 的 Loki index-label 提升列表里，后者不在，改名后 env 成为流选择器）。**不设采样器**（§6 决定 4，2026-09-21 由 Owner 推翻原决定）。
 
 **`http.route`：默认配置下 Next.js 自己会写，processor 只是兜底。** `base-server.js` 把 `next.route` 拷到 `http.route` 的前提是 `BaseServer.handleRequest` 是整条 trace 的根 span（它读 `tracer.getRootSpanAttributes()`，拿不到就 `return null` 并打一条 `Unexpected root span type` warn）。而 `NextServer.getRequestHandler` / `getServerRequestHandler` **不在** `NextVanillaSpanAllowlist`（`server/lib/trace/constants.js`），`tracer.trace()` 在 `!shouldTraceSpan` 时提前 return —— 默认配置下它根本不产生 span，于是 `BaseServer.handleRequest` 就是根 span，拷贝正常执行，span name 也会被改成 `GET /api/cafes/[id]`（RSC 请求带 `RSC ` 前缀）。本地 OTLP sink 实测确认：默认配置下 `GET /api/cafes/[id]` 是 ROOT span 且 `http.route` 已就位。
 
@@ -157,73 +203,56 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 
 #### P0-3 Metrics：先靠 spanmetrics，再补业务指标
 
-不要急着上 `prom-client`。spanmetrics 给出每个 route 的 rate / error / duration，业务指标用 OTLP metrics 补。
+不要急着上 `prom-client`。spanmetrics 已经给出每个 route 的 rate / error / duration。
 
-**spanmetrics 不是被动的 —— 必须先在 stack 上打开（2026-09-21 实测修正）。** 本节初稿写的是「随 traces 被动生效，不需要额外配置」，这是错的。Grafana Cloud 的 metrics-generator 是 per-tenant Tempo override，官方文档原文 "Metrics-generation is disabled by default"：
+需要额外补的（用 OTLP metrics 或 Alloy 的 `prometheus.exporter`）：
 
-- 打开路径：Application Observability → Configuration → System → **Metrics generation**。
-- 另一条路径（Knowledge Graph → Observability → Configuration → Traces metrics generation）**当前不可用** —— 它要求 stack 先启用 knowledge graph，而本 stack 没有：`GET /api/datasources/uid/grafanacloud-knowledgegraph/resources` → `503 {"error":"knowledge graph not enabled"}`。
-- 免费档不设门槛（文档原文 "There's no additional cost for Grafana Cloud Free accounts"），生成的 series 计入 10k 额度。
-- **决定性验证**：`grafanacloud_traces_instance_metrics_generator_active_series`（datasource `grafanacloud-usage`）非空且 > 0。这条空着就说明 generator 没开，与 traces 有没有到无关 —— 2026-09-21 实测为空，且该 datasource 的 116 个 metric 里没有任何 `grafanacloud_traces_instance_metrics_generator_*`。
+- Postgres 连接池（活跃 / 空闲 / 等待）。
+- Cloudflare Worker 调用延迟与错误（从 Worker 侧推，或从 web 侧观测）。
 
-**默认 label 集**：`service` / `job`、`span_name`、`span_kind`、`status_code`。**`http.route` 不在其中** —— 路由模板是烘进 `span_name` 的（OTel HTTP semconv：HTTP server span 名 SHOULD 是 `{method} {http.route}`）。所以按 route 拆分看 `span_name`，不要找 `http.route` label；要它当独立维度得在 Knowledge Graph 里显式加 dimension。
-
-**span-kind 过滤器默认只放 SERVER + CONSUMER。** 本应用的请求 span 是 SERVER（`next/dist/server/base-server.js:500`，`kind: SpanKind.SERVER`），所以不需要为 INTERNAL 提 Support 单。
-
-**30s slack**：span 结束时间早于入库时间 30s 以上会被丢弃。generator 默认 60s 采集间隔，第一条数据要等 1–2 分钟。
-
-**业务指标（BRAWUKA-609 已落地）**：`web/lib/observability/metrics.ts`，走 OTLP，和 traces / logs 共用同一个 gateway 与同一份凭据 —— 不需要暴露 scrape 端点，也不需要第二个采集器。
-
-| 指标 | 类型 | 维度 | 埋点 |
-|---|---|---|---|
-| `coffeemode.cafe.created` | counter | `source` = `google` / `apple` / `manual` | `POST /api/cafes` 返回 201 之后 |
-| `coffeemode.auth.login` | counter | — | `GET /auth/callback` 换码与 profile upsert 都成功之后 |
-
-resource 只有 `service.name` + `deployment.environment.name`（刻意不用 `defaultResource()`：`service.instance.id` 会被 Prometheus 提升成 series label，等于每次容器启动多一套 series）。
-
-**不做 rate-limit counter**（§6 决定 5）：429 是低频安全事件，逐条日志里的 `client_id` / `bucket` / `retry_after` 才是价值所在；要计数用 LogQL metric query 从日志派生。
-
-还没做的（等有需求再加）：Postgres 连接池、Cloudflare Worker 调用延迟与错误。
+**rate-limit 不做 counter，保留逐条日志并带关键 IP / 用户信息。** 429 命中是低频安全相关事件，`client_id` / `bucket` / `retry_after` 有排查价值，量也吃不垮 50 GB。做法：`emitRateLimitAlert` 每个事件走 `logWarn` 打一条**不节流**的 JSON，带 `client_id`（登录用户 `user:<id>`，匿名 `cf-connecting-ip` 的 SHA-256 前 32 位）、`bucket` / `retry_after` / `route`，**外加原始 `cf-connecting-ip`** —— 哈希值能看出「同一来源打了 500 次」但反查不回 IP，封不掉，排查滥用需要原始值。原始 IP 只进 structured metadata，不做 label。现有 10s 节流的 `console.warn` 保留只用于本地降噪。要计数时用 LogQL metric query 从日志派生，不需要应用侧埋点。
 
 ### P1 — 替代 Better Stack
 
-#### P1-1 Synthetic Monitoring 替代 uptime monitor
+#### P1-1 Uptime：Cloudflare 免费能力 + cron Worker 探针
 
-现在只有 Better Stack 一个 `coffeemood.com` status monitor。
+**Cloudflare 免费档没有主动 uptime 产品**（Health Checks 是 Pro 专属，10 个 check，$20/月）。所以分两层：
 
-目标：
+**第一层（免费，立刻开）—— 被动信号**，在 Cloudflare Notifications 里打开：
 
-- HTTP check 覆盖 `/api/health`、`/api/heartbeat`、`/`，从多个 probe region 跑（新加坡 + 就近区域）。
-- 一个 scripted check 覆盖搜索主流程 —— 把 `scripts/devops/smoke-test.sh` 的 10 条契约里挑核心几条改写成 k6。
-- 断言必须让 `probe_success` **真的失败**：用 `expect()` / `fail()`，不是裸 `check()`。裸 `check()` 只记结果不改 `probe_success`，告警永远不响。
-- 附带收益：TLS 证书到期告警。
+- **Traffic Monitoring → Passive Origin Monitoring**：源站不可达时告警。
+- **SSL/TLS → Universal SSL Alert**：证书签发 / 续期 / 到期。
+- **DoS Protection → HTTP DDoS Attack Alert**。
 
-配额估算：3 个 HTTP check × 3 region × 1 分钟间隔 ≈ 3 × 3 × 43,200 = 388,800 次/月，**超免费档 100k**。降到 5 分钟间隔 ≈ 77,760 次/月，留出余量。
+**第二层（免费）—— 主动探针**：一个 cron Worker（`uptime-probe`），每 5 分钟：
 
-两个上线前必须处理的约束（见 §5 风险 7、8）：
+- `GET https://cafemood.app/api/heartbeat`（真实 DB round-trip，同时是 Supabase 免费档项目的 keepalive，BRAWUKA-284）和 `GET /api/health`。
+- 结果推给 Grafana Cloud（OTLP logs 或 Loki push），由 **Grafana Alerting** 报警 —— 告警大脑只有一个。
+- 探针 UA 必须先加进 WAF 白名单（BRAWUKA-237 的规则现在只放行 Better Stack UA + `cafemood-smoke/1.0`，curl 默认 UA 在边缘就被 challenge）。
 
-- **必须继续打 `/api/heartbeat`**，不能只打 `/api/health` —— 它的 DB round-trip 是 Supabase 免费档 staging 项目的 keepalive（BRAWUKA-284）。5 分钟间隔正好。
-- **probe 的 UA / IP 段要先加进 WAF 白名单**（BRAWUKA-237），否则 curl 默认 UA 在边缘就被 challenge，uptime 全是假阴性。
+**已知限制（明确接受）**：cron trigger 在 Cloudflare 选定的**单个**机房执行，是单点视角 —— 它测的是「Cloudflare 边缘 → 源站」这条路径，不是「全球用户 → 站点」。够用来回答「站挂了吗」，不足以回答「某个地区是不是特别慢」。
 
-#### P1-2 Grafana Alerting 替代 4 条 chart alert — **已交付（BRAWUKA-611，2026-09-21）**
+**备选**：Grafana Synthetic Monitoring（免费 100k 次/月，多 region probe，自带 `probe_success` 和 TLS 到期检查，零代码）。如果之后需要多地域视角，再切过去；届时断言必须用 `expect()` / `fail()` 而不是裸 `check()`，否则 `probe_success` 不会失败，告警永远不响。
 
-现在 Better Stack 有 `5xx sustained on a route` 和 `Worker upstream_error spike`，staging / prod 各一套。
+**不做**：升级 Cloudflare Pro 只为 Health Checks（$20/月买 10 个 check，而 Grafana SM 免费给多 region）。
 
-**注意这 4 条 alert 依赖 `api-error-sink.ts` → `coffeemode-api-errors-*` 这条写入路径**（见 §1.2），和限流那条是分开的。~~所以「替代 chart alert」不只是重写 4 条规则，还要把这条 ingest 一起迁走 —— 否则拆掉 Better Stack 时，`api-error-sink.ts` 会变成往一个已停用 source 发数据的死代码。~~ **写入路径已迁走（BRAWUKA-607）**：`api-error-sink.ts` 删除，error / warn 行改走 OTLP 进 Loki，所以这 4 条 alert 现在没有数据源了 —— 替代它们的是 Grafana-managed alert rules（P1-2）。另外它们至今只被合成事件验证过，迁移前应该先在真实流量上确认一次。
+#### P1-2 Grafana Alerting 替代 4 条 chart alert，并删除 Better Stack
 
-目标：Grafana-managed alert rules，数据源用 Loki（日志派生）或 spanmetrics（trace 派生）。
+**注意这 4 条 alert 依赖 `api-error-sink.ts` → `coffeemode-api-errors-*` 这条写入路径**（见 §1.2），和限流那条是分开的。~~所以「替代 chart alert」不只是重写 4 条规则，还要把这条 ingest 一起迁走 —— 否则拆掉 Better Stack 时，`api-error-sink.ts` 会变成往一个已停用 source 发数据的死代码。~~ **写入路径已迁走（BRAWUKA-607）**：`api-error-sink.ts` 删除，error / warn 行改走 OTLP 进 Loki，所以这 4 条 alert 现在没有数据源了 —— 替代它们的是 Grafana-managed alert rules（P0-4）。另外它们至今只被合成事件验证过，迁移前应该先在真实流量上确认一次。
 
-- 通知先接 Slack / 邮件 contact point。
-- notification policy 按 `env` label 分流，staging 低优先级。
-- 保留 `for:` 窗口避免抖动。
+**直接切，不双跑。** 顺序：
 
-**交付结果**：`CoffeeMode` folder 下 6 条 Grafana-managed 规则（5xx / worker `upstream_error` / rate-limit flood × staging / prod），全部 LogQL 走 Loki 的 `service_name` + `deployment_environment_name` 两个 label，`for:` 窗口 5m / 5m / 10m，标签带 `env` / `severity` / `team`，不设 per-rule receiver。Better Stack 侧 4 个 source、2 个 dashboard、4 条 chart alert、1 个 uptime monitor 全部删除，两个 ingest 环境变量也从代码和 Dokploy 里移除。
+1. **先建 Grafana 告警规则**（数据源 Loki / spanmetrics），通知接 Slack 或邮件，notification policy 按 `env` label 分流，保留 `for:` 窗口避免抖动。规则可以先建好，等数据进来自然生效。
+2. **再切应用**：删掉 `api-error-sink.ts` 和 `rate-limit-alert.ts` 里的 Better Stack POST，日志改走 OTLP（P0-1）。
+3. **再删 Better Stack**：
+   - 代码：`web/lib/observability/api-error-sink.ts` 整个删除；`rate-limit-alert.ts` 只留结构化日志。
+   - Dokploy 两个 app 的 env：`BETTER_STACK_INGEST_URL` / `_TOKEN`、`BETTER_STACK_ERRORS_INGEST_URL` / `_TOKEN` 全部移除。
+   - Better Stack 侧：4 个 source（2766431 / 2766432 / 2769809 / 2769810）、2 个 dashboard（1131239 / 1131240）、4 条 chart alert（2988583722–2988583725）、1 个 monitor（4941625）全部删除。
+   - `docs/agent/pending-user-actions.md` §7 里那两条「待 Owner 粘贴 ingest 环境变量」的条目一并作废 —— 不用粘了。
 
-**未完成的一环**：通知路径。Stack 上没有任何 contact point，默认 policy 的 receiver 是内置 no-op `empty`，所以规则会 firing 但不会通知任何人。**原因不是缺权限** —— `/api/access-control/user/permissions` 列出了 403 报错里点名的每一个权限（`alert.notifications.provisioning:write` / `alert.notifications:write` / `alert.notifications.receivers:create` / `alert.notifications.routes:write` / `alert.provisioning.provenance:write`），但五条写入路径全部被拒（两个 provisioning 端点 403，legacy 与 alertmanager 端点 404，k8s 风格端点 403 `invalid namespace`）。实际授权比 RBAC 角色报告的更窄，多半是 MCP 的 OAuth token scope 与角色取交集所致 —— 修法在 MCP 授权层，不是补一个权限。需要 Owner 授权或手工在 UI 里建 contact point + `env` 分流 policy，JSON 见 `docs/agent/pending-user-actions.md` §10。
+**为什么可以直接切**：见 §1.2 —— 4 条 chart alert 从未在真实流量上验证过，uptime monitor 监控的是停放页。没有正在生效的告警面，就没有空窗风险。
 
 #### P1-3 Dashboards 替代 2 个 Better Stack dashboard
-
-现在有 `CoffeeMode API Errors (staging/prod)` 两个。
 
 目标：
 
@@ -235,10 +264,10 @@ resource 只有 `service.name` + `deployment.environment.name`（刻意不用 `d
 
 | 项 | 理由 | 备注 |
 |---|---|---|
-| **Frontend Observability (Faro)** | 地图页 LCP 是真实风险点；现在对真实用户的前端体验零可见性 | 50k sessions/月，够早期 |
 | **k6** | 发布前压测 `/api/search` | 500 VUh 够 smoke + 小规模 load |
 | **Database Observability** | PostGIS 空间查询慢的时候需要 `pg_stat_statements` | 需要 Supabase 侧开扩展 + 建监控用户 |
 | **IRM / OnCall** | 3 个免费用户 | 现在一个人，Alerting + Slack 就够，等有轮值再上 |
+| **Frontend Observability (Faro)** | 前端 JS 错误追踪 + session replay | 页面分析和 CWV 已由 Cloudflare Web Analytics 覆盖，只有需要错误追踪时才上 |
 
 ### 不建议现在做
 
@@ -246,39 +275,44 @@ resource 只有 `service.name` + `deployment.environment.name`（刻意不用 `d
 - **Adaptive Metrics / Adaptive Traces** —— 量太小，省不出钱，反而多一层配置。
 - **Profiles** —— 没有明确的 CPU / 内存问题要查。等有具体性能问题再开。
 - **Knowledge Graph / Sift** —— 需要更多数据才有意义。
+- **Cloudflare Health Checks** —— 需要 Pro（$20/月），免费档 0 个。
 
 ## 4. 迁移顺序
 
 ```mermaid
 graph TD
-  A["Alloy on VPS<br/>(P0-1)"] --> B["Loki 有日志"]
-  B --> C["Grafana Alerting<br/>(P1-2)"]
-  B --> D["Dashboards<br/>(P1-3)"]
-  E["OTel in Next.js<br/>(P0-2)"] --> F["Tempo 有 traces"]
-  F --> G["spanmetrics → RED<br/>(P0-3)"]
-  G --> D
-  G --> C
-  H["Synthetic Monitoring<br/>(P1-1)"] --> I["替代 uptime monitor"]
-  B --> J["Faro<br/>(P2)"]
-  F --> J
+  A["OTel in Next.js<br/>(P0-2, PR #590)"] --> B["Tempo 有 traces"]
+  A --> C["日志走 OTLP<br/>(P0-1)"]
+  B --> D["spanmetrics → RED<br/>(P0-3)"]
+  C --> E["Loki 有日志"]
+  D --> F["Grafana Alerting<br/>(P1-2)"]
+  E --> F
+  F --> G["删除 Better Stack<br/>(代码 + env + 4 source + 2 dashboard + 4 alert + 1 monitor)"]
+  E --> H["Dashboards<br/>(P1-3)"]
+  D --> H
+  I["Cloudflare Notifications<br/>(被动, P1-1)"] --> J["替代 uptime"]
+  K["cron Worker 探针<br/>(P1-1)"] --> J
+  J --> G
 ```
 
-依赖关系：P1-2 和 P1-3 都要等 P0 有数据；P1-1 独立，可以并行。
+依赖关系：P0-1 和 P0-2 共用同一个 OTel SDK，可以一起做；P1-2 要等 P0 有数据；P1-1 独立，可以并行。
 
 ## 5. 风险与注意
 
-1. **免费档配额**：50 GB logs / 50 GB traces / 10k series / 14 天保留。Alloy 全量收 Docker stdout 会吃掉 logs 配额 —— 先只收 `web` 容器并丢 debug。
-2. **双写期**：Better Stack 保留到 Grafana 侧验证通过再拆。不要一次性切换，否则告警面出现空窗。但「现成的告警面」比看上去薄：4 条 chart alert 只被合成事件喂过，两条 ingest 路径的 Dokploy 环境变量仍待粘贴（§1.2），真正在跑的只有 uptime monitor。双写期的对照基线应该是 uptime monitor，不是那 4 条 alert。
-3. **rate-limit 事件会丢**：`emitRateLimitAlert` 的 `console.warn` 是 10s 节流的，而 Better Stack POST 不节流。如果改成「靠 Alloy 收 stdout」，节流会让事件数明显变少。**已按 §6 决定 4 处理**：每个事件走 `logWarn` 打一条不节流的 JSON，10s 节流只留给本地降噪。
-4. **标签基数**：Loki 只留低基数 label；Prometheus 不要用 `client_id`、`request_id`、`route` 做 label。spanmetrics 的基数风险落在 **`span_name`**（不是 `http.route` —— 它压根不是默认 label，见 §3 P0-3），所以**必须用路由模板**（`GET /api/cafes/[id]`）而不是原始 path，否则每个 UUID 一条 series。Next.js 默认配置下自己就把模板写进 span name（`base-server.js` 读 `next.route` 后 `updateName`）；`otel.ts` 的 `RouteTemplateSpanProcessor` 是 `NEXT_OTEL_VERBOSE=1` 等非默认配置下的兜底。**量级实测**：单服务 ~20 route × 1 span_kind × 2 status_code × 11 个 histogram bucket ≈ 560 series，对 10k 免费额度是安全的；真正会爆的是无界 `span_name` 和高基数 dimension。
+1. **免费档配额**：50 GB logs / 50 GB traces / 10k series / 14 天保留。日志走 OTLP 后，量由应用 emit 决定（不含框架输出），比全量收 Docker stdout 更省。
+2. **切到一半的窗口**：直接切的前提是 Grafana 告警规则**先**建好。顺序错了会出现「Better Stack 已删、Grafana 还没规则」的空窗。
+3. **rate-limit 事件会丢**：`emitRateLimitAlert` 的 `console.warn` 是 10s 节流的，而 Better Stack POST 不节流。**已按 §6 决定 5 处理**：每个事件走 `logWarn` 打一条不节流的 JSON，10s 节流只留给本地降噪。
+4. **标签基数**：Loki 只留低基数 label（OTLP 原生端点默认只把 `service_name` / `service_namespace` 做 index label，其余进 structured metadata）；Prometheus 不要用 `client_id`、`request_id`、`route` 做 label。spanmetrics 的 `http.route` 是例外，但**必须用路由模板**（`/api/cafes/[id]`）而不是原始 path。
 5. **MCP 计费**：Grafana 把每个通过 MCP 连接的用户算作 Assistant 活跃用户，消耗 40M token 配额。
-6. **Synthetic 配额**：3 个 check × 3 region × 1 分钟 = 388k 次/月，超免费档。间隔要放宽到 5 分钟。
-7. **`/api/heartbeat` 有双重职责**：除了 uptime 信号，它的真实 DB round-trip 是 Supabase 免费档 staging 项目的 keepalive（BRAWUKA-284）。Synthetic check 必须继续打 `/api/heartbeat`（5 分钟间隔正好），不能只打 `/api/health`，否则 staging 项目会睡死。
-8. **WAF 白名单**：BRAWUKA-237 的规则只放行 Better Stack UA + `cafemood-smoke/1.0`，curl 默认 UA 在边缘就被 challenge。Grafana SM probes 上线前必须把 probe UA / IP 段加进白名单，否则 uptime 全是假阴性。
+6. **cron Worker 是单点视角**：见 §3 P1-1。它不能替代多地域探测。
+7. **`/api/heartbeat` 有双重职责**：除了 uptime 信号，它的真实 DB round-trip 是 Supabase 免费档项目的 keepalive（BRAWUKA-284）。探针必须继续打 `/api/heartbeat`（5 分钟间隔正好），不能只打 `/api/health`，否则项目会睡死。
+8. **WAF 白名单**：BRAWUKA-237 的规则只放行 Better Stack UA + `cafemood-smoke/1.0`，curl 默认 UA 在边缘就被 challenge。cron Worker 探针上线前必须把它的 UA 加进白名单，否则 uptime 全是假阴性。
+9. **`cafemood.app` 现在就是 502**（BRAWUKA-500，prod web 零容器）。uptime 探针上线后会立刻报警 —— 这是正确行为，不是误报。要么先修 BRAWUKA-500，要么接受探针一上线就红。
 
-## 6. 已拍板的决定（Reviewer & Architect，2026-09-21）
+## 6. 已拍板的决定（Owner，2026-09-21）
 
-1. **日志：不切，双跑到 P1 验证完。** stdout 是唯一完整记录（ADR-0004）。~~`api-error-sink.ts` 和 rate-limit POST 保持开启；Grafana Alerting 验证通过后删 sink + env vars，不是改 Alloy 配置。~~ **已全部执行（BRAWUKA-607 + BRAWUKA-611）**：`api-error-sink.ts` 与 rate-limit POST 都已删除，两个 sink 的 env vars 一并移除 —— 日志改走 OTLP 进 Loki，不再需要 Alloy 收 stdout，也不再需要任何第三方 ingest 凭据。**双写期被 Owner 取消**（§6 决定 1 修订版）：现有告警面从未在真实流量上生效，没有空窗风险。
-2. **Better Stack：全退，但分两步。** P1-1 synthetic 验证通过前保留 uptime monitor，之后全退。没有要重建的 status page / heartbeat（Better Stack 侧本来就没有）。
-3. ~~**OTel 采样：prod 10% `parentbased_traceidratio` 起步，staging 100%。**~~ **已由 Owner 于 2026-09-21 推翻：不采样，100% 全采。** 理由：head sampling 在根 span 上丢整条 trace，而 `traces_spanmetrics_*` 是从实际到达的 span 派生的 —— 0.1 的比率会让每个 RED 计数只有真实值的十分之一，静默破坏 P0-3 依赖的告警。量级远低于 50 GB 免费档，采样省不下什么却牺牲正确性；真涨上来时解法是 tail sampling（保留全部错误 + 慢 trace），不是 head ratio。原决定保留备查：staging 量小，全采方便调试；prod 一周后看用量再调。接受的代价：head sampling 下 90% 的错误 trace 会丢，靠日志补 —— 这正是 P0-1 先做的理由。
-4. **rate-limit：保留逐条事件，但改成结构化日志，不是 counter。** 429 命中是低频安全相关事件，`client_id` / `bucket` / `retry_after` 有排查价值，量也吃不垮 50 GB。做法：`emitRateLimitAlert` 里每个事件走 `logWarn` 打一条 JSON（`client_id` 进 structured metadata，不做 label），现有 10s 节流的 `console.warn` 保留只用于本地降噪。counter 可以之后用 spanmetrics 或 LogQL metric query 派生，不需要应用侧埋点。
+1. **不双跑，直接切，Better Stack 全退。** 没有「双写验证期」。顺序是：Grafana 告警规则先建 → 应用切到 OTLP → 删 Better Stack 的代码、env、source、dashboard、alert、monitor。理由见 §1.2：现有告警面从未生效，没有安全网可保。**已执行（BRAWUKA-607 + BRAWUKA-605）**：`api-error-sink.ts` 与 `BETTER_STACK_ERRORS_INGEST_*` 已删除；rate-limit POST 与 `BETTER_STACK_INGEST_*` 也已删除。Better Stack 侧不再收到任何应用数据。
+2. **能交给 Cloudflare 的交给 Cloudflare。** 页面分析用 Cloudflare Web Analytics（已开，免费，含 Core Web Vitals）；uptime 用 Cloudflare 免费通知 + 一个 cron Worker 探针。Cloudflare 免费档没有 Health Checks，不为它升级 Pro。
+3. **日志不装 Alloy。** traces 和 logs 都从应用侧走 OTel → Grafana Cloud OTLP 网关，一个组件。代价是只收应用 emit 的行，框架输出留在 `docker logs`。
+4. **OTel 不采样（100%）。** 采样只作用于 trace；head sampling 会让 spanmetrics 的 RED 计数失真，而我们的量级离配额差几个数量级。将来量大了用 tail sampling，不用 head sampling。原决定（prod 10% `parentbased_traceidratio`）保留备查：head sampling 在根 span 上丢整条 trace，而 `traces_spanmetrics_*` 是从实际到达的 span 派生的 —— 0.1 的比率会让每个 RED 计数只有真实值的十分之一，静默破坏 P0-3 依赖的告警。
+5. **rate-limit 保留逐条日志，不做 counter，日志里带关键 IP / 用户信息。** 每个事件一条不节流的 JSON，带 `client_id`（登录用户是 `user:<id>`，匿名是 `cf-connecting-ip` 的 SHA-256 前 32 位）、`bucket` / `retry_after` / `route`，**外加原始 `cf-connecting-ip`**。理由：哈希过的 `client_id` 能看出「同一个来源打了 500 次」，但反查不回 IP，也就封不掉 —— 排查滥用需要原始值。原始 IP 只进 structured metadata，不做 label，随 14 天保留期过期。要计数时用 LogQL metric query 从日志派生。

@@ -1232,7 +1232,9 @@ GET /api/cafes, GET /api/cafes/[id], GET /api/cafes/[id]/checkins,
   POST /api/places/resolve → places (user仅作限流key, 无401路径).
 NONE (2): GET /api/mapkit-token → places (不调getCurrentUser).
 PUBLIC + 限流 (3): GET+HEAD /api/health → health (无鉴权, 活性探针刻意,
-  BRAWUKA-639); /api/heartbeat → heartbeat; /api/config → runtime-config.
+  BRAWUKA-639: 仅 CF 路径按 IP 限流, Traefik/Docker 内网探针 ~24/min 走
+  `bypassUnknownClients` 直通, 否则共享桶会被直连 origin 流量打满摘出 LB);
+  /api/heartbeat → heartbeat; /api/config → runtime-config.
 约定: 无checkins专用桶, 读→cafes-read、写→cafes-write; 14桶见
   web/config/rate-limits.yaml; 不建共享requireUser助手 (行为已统一, gate
   顺序各路由刻意不同, 见BRAWUKA-163裁决).

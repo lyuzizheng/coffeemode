@@ -158,8 +158,9 @@ export const POST = apiRoute(
 - Exempt from the wrapper: `auth/callback` (redirect contract), `og-image`
   (image bytes), `serwist` (library-generated). Exemptions are listed here,
   not invented per-route. `/api/health` is NOT exempt: it runs through the
-  wrapper on the `health` bucket with `user: null` + `ipOnly`, so no slow
-  auth lookup runs (BRAWUKA-639).
+  wrapper on the `health` bucket with `user: null` + `bypassUnknownClients`
+  (BRAWUKA-639): CF 路径按 IP 限流, edge-less 内网探针直通 (origin 直连可达,
+  共享桶会被打满摘出 LB), 无慢 auth 查询.
 
 ### D6 — Workers adopt the same contract
 

@@ -32,6 +32,11 @@ interface ApiRouteOptionsBase {
   route: string;
   /** Scope the rate limit to client IP instead of user id. */
   ipOnly?: boolean;
+  /**
+   * Skip the rate-limit check for edge-less callers (`anon:unknown`), passed
+   * through to `guard()`. See `GuardOptions.bypassUnknownClients`.
+   */
+  bypassUnknownClients?: boolean;
   /** Pre-resolved user forwarded to `guard()` — `null` skips the session lookup. */
   user?: AuthenticatedUser | null;
 }
@@ -77,7 +82,8 @@ type RouteExport<Segments> = (
  *
  * Exempt routes (spec D5): /auth/callback, og-image, serwist. /api/health is
  * NOT exempt: it runs through this wrapper on the `health` bucket (BRAWUKA-639)
- * with `user: null` + `ipOnly`, so no slow auth lookup runs.
+ * with `user: null` + `bypassUnknownClients`, so no slow auth lookup runs,
+ * edge-less infra probes bypass, and only Cloudflare-pathed callers consume.
  */
 export function apiRoute<Segments = Record<string, never>>(
   options: ApiRouteOptions<true> & { auth: "required" },
@@ -91,7 +97,7 @@ export function apiRoute<Segments>(
   options: ApiRouteOptionsBase & { auth?: ApiRouteAuth },
   handler: ApiRouteHandler<boolean, Segments>,
 ): RouteExport<Segments> {
-  const { bucket, auth, origin = false, route, ipOnly, user } = options;
+  const { bucket, auth, origin = false, route, ipOnly, bypassUnknownClients, user } = options;
 
   return async (request, segment) => {
     const requestId = getRequestId(request);
@@ -106,6 +112,7 @@ export function apiRoute<Segments>(
         requireAuth,
         route,
         ...(ipOnly !== undefined ? { ipOnly } : {}),
+        ...(bypassUnknownClients !== undefined ? { bypassUnknownClients } : {}),
         ...(user !== undefined ? { user } : {}),
         requestId,
       });

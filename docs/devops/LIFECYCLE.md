@@ -160,14 +160,18 @@ Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enfor
   3. Executes database migrations over `DIRECT_URL` (Supabase staging session/direct connection).
   4. Triggers Dokploy staging deploy webhook (or Docker compose rolling rebuild) and waits for release convergence on `/api/health`.
   5. Runs post-deployment automated smoke tests (`scripts/devops/smoke-test.sh staging`).
-  6. Runs full user-journey verification against staging Supabase Postgres
+  6. Runs full user-journey verification against a real PostGIS Postgres
      (setup → journey suites → cleanup), per Spec 0003 §Commands:
      ```bash
-     STAGING_DATABASE_URL=postgres://<staging-host>/coffeemode_staging \
+     STAGING_DATABASE_URL=postgres://<host-with-CREATEDB>/coffeemode \
        SUPABASE_URL=https://<ref>.supabase.co \
        SUPABASE_SERVICE_ROLE_KEY=<key> \
        scripts/devops/run-staging-journey.sh --suite all
      ```
+     In CI the `staging-journey` workflow starts a runner-local
+     `postgis/postgis:16-3.4` container and points `STAGING_DATABASE_URL` at it
+     (BRAWUKA-525); the staging Supabase project is touched for auth smoke
+     checks only.
      Each suite provisions isolated `{prefix}_{pid}_{uuid}` databases and
      drops them in `afterAll`; orphans from crashed runs are swept by
      `web/scripts/cleanup-stale-test-dbs.mjs --apply` (dry-run by default).

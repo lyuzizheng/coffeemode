@@ -103,6 +103,8 @@ export function isAllowedOrigin(origin: string): boolean {
 
 /** Reconstructs proto + host origin for OAuth redirects. */
 export function getProtoHost(requestHeaders: Headers): string | null {
+  // `x-forwarded-proto` is trusted (ADR-0009: Cloudflare's edge overwrites it and
+  // Traefik deletes then re-sets it), and it can only influence the scheme.
   const rawProto = requestHeaders.get("x-forwarded-proto");
   const proto = rawProto === "http" ? "http" : "https";
   // BRAWUKA-282 P1-1: `host` only — `x-forwarded-host` is client-injectable

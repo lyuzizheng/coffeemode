@@ -31,9 +31,11 @@ Redis/Upstash/D1/KV is introduced:
   caps at 1k writes/day on the free tier (spec 0001 §Tables).
 - D1 lives in the Workers plane (`poi-service`), not on the VPS container
   request path — wrong plane for per-request enforcement.
-- Rolling updates (`deploy.update_config: start-first`) briefly run two
-  containers; each enforces its own buckets in that window, so limits are
-  momentarily more permissive. Accepted: a deploy window, not steady state.
+- Prod rolling updates (`deploy/dokploy/docker-compose.prod.yml`
+  `deploy.update_config: start-first`) briefly run two containers; each
+  enforces its own buckets in that window, so limits are momentarily more
+  permissive. Staging has no `update_config` block and recreates in place
+  (brief gap, no overlap). Accepted: a deploy window, not steady state.
 
 ## Consequences
 
@@ -43,5 +45,5 @@ Redis/Upstash/D1/KV is introduced:
   Redis/Upstash, evaluated against the per-request latency budget then.
 - No code changes: `web/lib/rate-limit.ts`, `web/config/rate-limits.yaml`,
   and the Grafana-managed `CoffeeMode — Rate-limit flood` rule are untouched.
-- Specs 0001 (§Rate limiting), 0004 (decision 34a), and 0005 (§Rate Limiter
+- Specs 0001 (§Rate limiting), 0004 (decision 34b), and 0005 (§Rate Limiter
   Backend) point here as the canonical owner of this constraint.

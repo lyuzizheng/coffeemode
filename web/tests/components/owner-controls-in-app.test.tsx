@@ -71,6 +71,7 @@ function makeDetail(overrides: Partial<PublicCafeDetail> = {}): PublicCafeDetail
     gallery: [],
     google_place_id: null,
     apple_poi_id: null,
+    source: "user_confirmed",
     created_at: "2026-09-01T00:00:00.000Z",
     updated_at: "2026-09-01T00:00:00.000Z",
     author: null,

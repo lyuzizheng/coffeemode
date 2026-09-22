@@ -282,8 +282,13 @@ export function DiscoveryHome({
   };
 
   // The map surface (children) reads controller/cafes/center through context
-  // — it mounts inside this tree, so no prop-drilling through the page.
-  const mapState = { controller, cafes: mapCafes, center, userLocation, onCameraGesture };
+  // — it mounts inside this tree, so no prop-drilling through the page. The
+  // value is memoized so unrelated renders don't re-render useDiscoveryMap()
+  // consumers (BRAWUKA-651).
+  const mapState = useMemo<DiscoveryMapState>(
+    () => ({ controller, cafes: mapCafes, center, userLocation, onCameraGesture }),
+    [controller, mapCafes, center, userLocation, onCameraGesture],
+  );
   const overlays = (
     <DiscoveryOverlays
       checkinCafe={checkinCafe}

@@ -67,6 +67,15 @@ vi.mock("@/lib/auth/get-user", () => ({
   getCurrentUser: vi.fn(),
 }));
 
+// BRAWUKA-636: POST /api/cafes verifies provider refs via verifyPlaceReference
+// (not the raw getPOI seam), so stub it to echo the requested id as verified.
+vi.mock("@/lib/places/poi-client", async (importOriginal) => ({
+  ...(await importOriginal()),
+  verifyPlaceReference: vi.fn(
+    async (source: "google" | "apple", placeId: string) => ({ place_id: placeId, source }),
+  ),
+}));
+
 // Mock Image Service Client seam: generate real MinIO presigned URLs so cafe
 // creation (which requires 1–6 provisioned photos) runs without the worker.
 vi.mock("@/lib/images/image-service-client", async (importOriginal) => {

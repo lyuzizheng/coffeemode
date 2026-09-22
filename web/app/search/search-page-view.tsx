@@ -16,7 +16,7 @@ import { SiteMasthead } from "@/components/site-masthead";
 import { LAUNCH_CITIES, displayCityName } from "@/lib/cities";
 import type { ExternalSourceFlags } from "@/lib/client-env";
 import { WORK_DIM_FILTER_MAP } from "@/lib/search/filter";
-import type { SearchFilters, SearchServiceResponse } from "@/lib/search/types";
+import type { SearchFilters, SearchParamError, SearchServiceResponse } from "@/lib/search/types";
 import type { WorkDim } from "@/lib/stats/work-stats";
 import type { MaxStay } from "@/types/checkins";
 
@@ -119,9 +119,9 @@ function SearchForm({
   );
 }
 
-/** Body states: unknown city, fetch failure, idle hint, or the results list. */
+/** Body states: invalid params, fetch failure, idle hint, or the results list. */
 function ResultsSection({
-  cityKnown,
+  invalidParam,
   failed,
   hasInput,
   response,
@@ -131,7 +131,7 @@ function ResultsSection({
   externalSources,
   mapkitConfigured,
 }: {
-  cityKnown: boolean;
+  invalidParam: SearchParamError | null;
   failed: boolean;
   hasInput: boolean;
   response: SearchServiceResponse | null;
@@ -142,11 +142,12 @@ function ResultsSection({
   mapkitConfigured: boolean;
 }) {
   const t = useTranslations("search");
-
-  if (!cityKnown) {
+  // Mirrors the API's 400: a rejected deep link gets an error state, never a
+  // silently re-anchored or mis-sorted result list.
+  if (invalidParam !== null) {
     return (
       <p role="alert" className="text-sm text-muted">
-        {t("unknown_city")}
+        {invalidParam === "city" ? t("unknown_city") : t("invalid_params")}
       </p>
     );
   }
@@ -226,7 +227,7 @@ export function SearchPageView({
   params,
   response,
   failed,
-  cityKnown,
+  invalidParam,
   externalSources,
   mapkitConfigured,
   accountInitial,
@@ -238,7 +239,7 @@ export function SearchPageView({
   params: URLSearchParams;
   response: SearchServiceResponse | null;
   failed: boolean;
-  cityKnown: boolean;
+  invalidParam: SearchParamError | null;
   externalSources: ExternalSourceFlags;
   mapkitConfigured: boolean;
   accountInitial?: string;
@@ -271,8 +272,8 @@ export function SearchPageView({
         <FilterChipRow chips={chips} />
 
         <ResultsSection
-          cityKnown={cityKnown}
           failed={failed}
+          invalidParam={invalidParam}
           hasInput={hasInput}
           response={response}
           hasActiveFilters={chips.length > 0}

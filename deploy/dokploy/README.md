@@ -15,7 +15,14 @@ This directory contains Dokploy VPS deployment configurations, operational scrip
 
 ## Nightly Recompute & Autopilot Failure Alerting (BRAWUKA-475 / BRAWUKA-476)
 
-The nightly recompute job runs daily at **02:00 UTC** (`0 2 * * *`), executing drift-correcting `work_stats` recomputation and time-decayed Helpful ranking snapshots (`DG148`).
+The nightly recompute job is scheduled daily at **02:00 UTC** (`0 2 * * *`), executing drift-correcting `work_stats` recomputation and time-decayed Helpful ranking snapshots (`DG148`).
+
+> **Status 2026-09-21 (BRAWUKA-598): the schedule is disabled.** It is bound to
+> `coffeemode-web-prod`, which has never been deployed (BRAWUKA-500, owner-deferred),
+> so Dokploy aborts each run at container lookup — `Container not found for
+> application 'app-bypass-solid-state-pixel-pyvr1z'` — before the command runs.
+> Re-enable it as part of BRAWUKA-500 once the prod container is up. The command
+> below is byte-identical to the live schedule.
 
 ### 1. Dual-Layer Failure Notification Architecture
 

@@ -38,6 +38,12 @@ vi.mock("@/lib/places/poi-client", async (importOriginal) => {
     ...actual,
     searchPOIs: vi.fn(async () => ({ results: [] })),
     resolveMapsUrl: vi.fn(),
+    // BRAWUKA-636: POST /api/cafes verifies provider refs via
+    // verifyPlaceReference before any DB/R2 work — echo as verified.
+    verifyPlaceReference: vi.fn(async (source: "google" | "apple", placeId: string) => ({
+      place_id: placeId,
+      source,
+    })),
   };
 });
 

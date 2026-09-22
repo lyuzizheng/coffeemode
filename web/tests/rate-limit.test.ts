@@ -84,6 +84,32 @@ describe("RateLimiter", () => {
     expect(result.allowed).toBe(true);
   });
 
+  it("caps live buckets: inserting past maxBuckets evicts the oldest key", async () => {
+    const capped = new RateLimiter(1_000_000, 2);
+    await capped.check("a", 60_000, 1);
+    await capped.check("b", 60_000, 1);
+    await capped.check("c", 60_000, 1);
+
+    // "a" was evicted to make room — a fresh bucket allows again.
+    expect((await capped.check("a", 60_000, 1)).allowed).toBe(true);
+    // Re-creating "a" evicted "b" in turn — also fresh.
+    expect((await capped.check("b", 60_000, 1)).allowed).toBe(true);
+  });
+
+  it("evicts the least-recently-used key under pressure", async () => {
+    const capped = new RateLimiter(1_000_000, 3);
+    await capped.check("a", 60_000, 1);
+    await capped.check("b", 60_000, 1);
+    await capped.check("c", 60_000, 1);
+    // Touch "a" (denied: bucket exhausted) to mark it most-recently-used.
+    expect((await capped.check("a", 60_000, 1)).allowed).toBe(false);
+    await capped.check("d", 60_000, 1);
+
+    // Untouched "b" was evicted; recently-used "a" survived.
+    expect((await capped.check("b", 60_000, 1)).allowed).toBe(true);
+    expect((await capped.check("a", 60_000, 1)).allowed).toBe(false);
+  });
+
   it("produces a 429 response with Retry-After", async () => {
     await limiter.check("key", 60_000, 1);
     await limiter.check("key", 60_000, 1); // exhaust

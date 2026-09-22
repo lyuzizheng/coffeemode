@@ -6,6 +6,7 @@ import {
   resolveMapsUrl,
   searchPOIs,
   storeExternalPOIs,
+  verifyPlaceReference,
 } from "@/lib/places/poi-client";
 import { GET as searchGET } from "@/app/api/places/search/route";
 import { GET as autocompleteGET } from "@/app/api/places/autocomplete/route";
@@ -196,6 +197,33 @@ describe("poi-client", () => {
     });
 
     expect(cancelSpy).toHaveBeenCalledOnce();
+  });
+});
+
+describe("verifyPlaceReference", () => {
+  it("returns the POI when the worker echoes the id and source", async () => {
+    fetchMock.mockResolvedValue(jsonResponse(SAMPLE_POI));
+    const poi = await verifyPlaceReference("google", "ChIJTEST123");
+    expect(poi?.place_id).toBe("ChIJTEST123");
+    expect(fetchMock.mock.calls[0][0]).toBe(`${WORKER_URL}/poi/ChIJTEST123`);
+  });
+
+  it("returns null when the worker echoes a different source", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ ...SAMPLE_POI, source: "apple" }));
+    await expect(verifyPlaceReference("google", "ChIJTEST123")).resolves.toBeNull();
+  });
+
+  it("returns null on a worker 404 (invalid id, not an outage)", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ error: "not_found" }, 404));
+    await expect(verifyPlaceReference("google", "ChIJNOPE")).resolves.toBeNull();
+  });
+
+  it("rethrows transport and 5xx failures as poi_service (fail-closed creation)", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ error: "upstream_error" }, 502));
+    await expect(verifyPlaceReference("google", "ChIJTEST123")).rejects.toMatchObject({
+      name: "POIServiceError",
+      status: 502,
+    });
   });
 });
 

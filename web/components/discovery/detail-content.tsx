@@ -110,6 +110,31 @@ function DetailSkeleton() {
   );
 }
 
+/** FULL-variant column shell (§5.3): centered, content-max width. Shared by
+ * the pending/error/loaded returns so the feed keeps one JSX position and
+ * never remounts across detail states (BRAWUKA-646). */
+function FullShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="mx-auto flex w-full max-w-[var(--layout-content-max)] flex-col gap-6 px-4 pb-8">
+      {children}
+    </div>
+  );
+}
+
+/** FULL-variant guard states (skeleton/error) render inside the column shell
+ * with the feed below them; HALF renders the node bare — it has no feed.
+ * Keeping the feed mounted in one JSX position across detail states is what
+ * lets its query run in parallel without a remount refetch (BRAWUKA-646). */
+function withFeed(variant: "half" | "full", feed: ReactNode, node: ReactNode): ReactNode {
+  if (variant !== "full") return node;
+  return (
+    <FullShell>
+      {node}
+      {feed}
+    </FullShell>
+  );
+}
+
 export function DetailContent({
   cafeId,
   variant,
@@ -145,10 +170,29 @@ export function DetailContent({
     if (query.error instanceof FeedNotFoundError) handleMissingCafe();
   }, [query.error, handleMissingCafe]);
 
-  if (query.isPending) return <DetailSkeleton />;
+  // BRAWUKA-646: the feed mounts alongside the detail query — parallel
+  // requests, not a waterfall behind `query.data`. It stays mounted across
+  // pending/error/loaded states (same JSX position) so the observer never
+  // re-subscribes. `cafeName` only reaches the owned-check-in edit form;
+  // the unknown_cafe fallback matches the discovery-home convention.
+  const feed =
+    variant === "full" ? (
+      <CheckinFeed
+        cafeId={cafeId}
+        cafeName={query.data?.name ?? t("unknown_cafe")}
+        onMissingCafe={handleMissingCafe}
+        onCheckIn={onCheckIn}
+      />
+    ) : null;
+
+  if (query.isPending) return withFeed(variant, feed, <DetailSkeleton />);
   if (query.isError || !query.data) {
     if (query.error instanceof FeedNotFoundError) return null;
-    return <InlineError message={t("detail_load_failed")} onRetry={() => query.refetch()} />;
+    return withFeed(
+      variant,
+      feed,
+      <InlineError message={t("detail_load_failed")} onRetry={() => query.refetch()} />,
+    );
   }
   const cafe = query.data;
   const covers = cafe.gallery.map((g) => g.card).filter(Boolean); // BRAWUKA-307: cafe.cover already derives from the first gallery card
@@ -218,7 +262,7 @@ export function DetailContent({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[var(--layout-content-max)] flex-col gap-6 px-4 pb-8">
+    <FullShell>
       <DossierHero covers={covers} name={cafe.name} />
       <div className="flex flex-col gap-1.5">
         {heading}
@@ -235,12 +279,7 @@ export function DetailContent({
           <GalleryStrip photos={cafe.gallery} ariaLabel={t("gallery_aria")} />
         </section>
       )}
-      <CheckinFeed
-        cafeId={cafe.id}
-        cafeName={cafe.name}
-        onMissingCafe={handleMissingCafe}
-        onCheckIn={onCheckIn}
-      />
+      {feed}
       {/* DG146/DG147: quiet "Manage" section at the bottom of the scroll —
           same controls as the SSR page, gated on the server ownership bit. */}
       {cafe.owned_by_viewer && (
@@ -250,6 +289,6 @@ export function DetailContent({
           hasCheckins={(cafe.work_stats?.n_checkins ?? 0) > 0}
         />
       )}
-    </div>
+    </FullShell>
   );
 }

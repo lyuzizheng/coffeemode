@@ -14,8 +14,12 @@ import "server-only";
  */
 import { cache } from "react";
 import { headers } from "next/headers";
-import type { User } from "@supabase/supabase-js";
 import { profileFromUser } from "@/lib/auth/profiles";
+import type { SessionUser } from "@/lib/auth/get-user";
+import {
+  VERIFIED_USER_HEADER,
+  decodeVerifiedUser,
+} from "@/lib/auth/verified-user";
 import { createSupabaseServerClient, isAuthConfigured } from "@/lib/auth/supabase-server";
 import { appConfig } from "@/lib/config";
 import { detectIpCity, findCity, type CityInfo, type Coordinates } from "@/lib/cities";
@@ -44,18 +48,26 @@ export interface MapEntryProps {
  * Session + profile fetch with graceful degradation: Supabase or Postgres
  * outages degrade to the signed-out/anonymous view instead of a 500.
  * `cache()` dedupes it across the cafe lookup, generateMetadata, and
- * loadMapEntry within one request — one getUser() per request, not three.
+ * loadMapEntry within one request.
+ *
+ * BRAWUKA-644: on /cafes/[id] the proxy already ran getUser() for the
+ * gone-cafe visibility probe and forwards the verified identity on
+ * x-verified-user — reuse it so a signed-in page view costs ONE getUser()
+ * network call, not two. Absent/malformed header (every other route, or a
+ * proxy-side getUser failure) falls back to a local getUser().
  */
 export const loadMapSession = cache(
-  async (): Promise<{ user: User | null; profile: UserProfileDto | null }> => {
+  async (): Promise<{ user: SessionUser | null; profile: UserProfileDto | null }> => {
     if (!isAuthConfigured()) return { user: null, profile: null };
-    const supabase = await createSupabaseServerClient();
-    let user = null;
-    try {
-      const { data } = await supabase.auth.getUser();
-      user = data.user;
-    } catch {
-      return { user: null, profile: null };
+    let user = decodeVerifiedUser((await headers()).get(VERIFIED_USER_HEADER));
+    if (user === undefined) {
+      const supabase = await createSupabaseServerClient();
+      try {
+        const { data } = await supabase.auth.getUser();
+        user = data.user;
+      } catch {
+        return { user: null, profile: null };
+      }
     }
     if (!user) return { user: null, profile: null };
     try {

@@ -1197,7 +1197,8 @@ Implementation: in-memory token bucket keyed through an LRU map inside the
 Next.js process (e.g. a thin wrapper over `lru-cache`), enforced via one
 middleware/helper every route and script calls. In-memory is the sole backend
 (BRAWUKA-378: the Postgres token bucket is deleted — a future multi-instance
-deploy needs a new shared-store decision, not a config flip); spec 0004
+deploy needs a new shared-store decision, not a config flip — see ADR-0006
+for the written single-instance acceptance); spec 0004
 item 33 is satisfied by this mechanism.
 
 Product rules expressed through it: per-user caps on image

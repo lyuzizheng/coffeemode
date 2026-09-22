@@ -168,11 +168,6 @@
       "count": 1
     }
   },
-  "proxy.ts": {
-    "max-lines-per-function": {
-      "count": 1
-    }
-  },
   "scripts/e2e-smoke.mjs": {
     "max-lines-per-function": {
       "count": 1

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { DetailContent } from "@/components/discovery/detail-content";
@@ -45,7 +45,6 @@ const CAFE: PublicCafeDetail = {
   owned_by_viewer: false,
 };
 
-function stubFetch() {
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -53,6 +52,7 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
+function stubFetch() {
   return vi.fn().mockImplementation((url: string) => {
     if (String(url).startsWith(FEED_URL)) {
       return Promise.resolve(jsonResponse(200, { checkins: [], next_cursor: null }));
@@ -108,6 +108,62 @@ describe("DetailContent DG124 dossier additions", () => {
       renderDetail(CAFE);
       expect(await screen.findByRole("heading", { name: "Seeded Roastery" })).toBeInTheDocument();
       expect(screen.queryByText("Only you can see this")).not.toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe("DetailContent feed parallelization (BRAWUKA-646)", () => {
+  it("issues the feed request in parallel and never refetches it on pending→loaded", async () => {
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    let resolveDetail!: (r: Response) => void;
+    const fetchSpy = vi.fn().mockImplementation((url: string) => {
+      const u = String(url);
+      if (u.startsWith(FEED_URL)) {
+        return Promise.resolve(jsonResponse(200, { checkins: [], next_cursor: null }));
+      }
+      if (u === `/api/cafes/${CAFE_ID}`) {
+        return new Promise<Response>((resolve) => {
+          resolveDetail = resolve;
+        });
+      }
+      return Promise.reject(new Error(`unexpected fetch: ${u}`));
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    try {
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      render(
+        <NextIntlClientProvider locale="en" messages={messages}>
+          <QueryClientProvider client={queryClient}>
+            <DetailContent
+              cafeId={CAFE_ID}
+              variant="full"
+              controller={stubController()}
+              onCheckIn={vi.fn()}
+            />
+          </QueryClientProvider>
+        </NextIntlClientProvider>,
+      );
+      // The feed request must be issued before the detail request resolves —
+      // a waterfall would leave it unfired until `resolveDetail` runs.
+      await waitFor(() => {
+        expect(fetchSpy.mock.calls.some(([u]) => String(u).startsWith(FEED_URL))).toBe(true);
+      });
+      resolveDetail(jsonResponse(200, CAFE));
+      expect(await screen.findByRole("heading", { name: "Seeded Roastery" })).toBeInTheDocument();
+      // The feed keeps child index 1 inside FullShell across pending→loaded,
+      // so it never remounts: exactly one page-1 fetch, no refetch.
+      await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+      const feedCalls = fetchSpy.mock.calls.filter(([u]) => String(u).startsWith(FEED_URL));
+      expect(feedCalls).toHaveLength(1);
     } finally {
       vi.unstubAllGlobals();
     }

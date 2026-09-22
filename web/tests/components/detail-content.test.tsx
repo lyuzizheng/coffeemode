@@ -115,7 +115,7 @@ describe("DetailContent DG124 dossier additions", () => {
 });
 
 describe("DetailContent feed parallelization (BRAWUKA-646)", () => {
-  it("issues the feed request while the detail request is still in flight", async () => {
+  it("issues the feed request in parallel and never refetches it on pending→loaded", async () => {
     vi.stubGlobal(
       "IntersectionObserver",
       class {
@@ -159,6 +159,11 @@ describe("DetailContent feed parallelization (BRAWUKA-646)", () => {
       });
       resolveDetail(jsonResponse(200, CAFE));
       expect(await screen.findByRole("heading", { name: "Seeded Roastery" })).toBeInTheDocument();
+      // The feed keeps child index 1 inside FullShell across pending→loaded,
+      // so it never remounts: exactly one page-1 fetch, no refetch.
+      await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+      const feedCalls = fetchSpy.mock.calls.filter(([u]) => String(u).startsWith(FEED_URL));
+      expect(feedCalls).toHaveLength(1);
     } finally {
       vi.unstubAllGlobals();
     }

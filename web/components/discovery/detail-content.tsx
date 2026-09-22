@@ -121,10 +121,50 @@ function FullShell({ children }: { children: ReactNode }) {
   );
 }
 
+/** Loaded FULL dossier body — everything above the feed. Extracted so
+ * `FullShell` always renders `{body}{feed}`: the feed keeps child index 1
+ * across pending/error/loaded states and never remounts (BRAWUKA-646). */
+function DossierBody({
+  cafe,
+  covers,
+  heading,
+  meta,
+  onCheckIn,
+}: {
+  cafe: PublicCafeDetail;
+  covers: string[];
+  heading: ReactNode;
+  meta: ReactNode;
+  onCheckIn: (cafeId?: string, cafeName?: string) => void;
+}) {
+  const t = useTranslations("discovery");
+  return (
+    <>
+      <DossierHero covers={covers} name={cafe.name} />
+      <div className="flex flex-col gap-1.5">
+        {heading}
+        {meta}
+        <CreatorLine author={cafe.author} maintainedByService={cafe.maintained_by_service} />
+      </div>
+      <ScorePair stats={cafe.work_stats} />
+      <ActionRow cafe={cafe} onCheckIn={onCheckIn} />
+      <WorkProfile stats={cafe.work_stats} />
+      <PolicyConsensus stats={cafe.work_stats} />
+      {cafe.gallery.length > 0 && (
+        <section aria-label={t("gallery_aria")} className="flex flex-col gap-3">
+          <SectionLabel>{t("gallery_aria")}</SectionLabel>
+          <GalleryStrip photos={cafe.gallery} ariaLabel={t("gallery_aria")} />
+        </section>
+      )}
+    </>
+  );
+}
+
 /** FULL-variant guard states (skeleton/error) render inside the column shell
  * with the feed below them; HALF renders the node bare — it has no feed.
- * Keeping the feed mounted in one JSX position across detail states is what
- * lets its query run in parallel without a remount refetch (BRAWUKA-646). */
+ * The feed is always `FullShell`'s second child (index 1) across
+ * pending/error/loaded, so React never remounts it and the feed query never
+ * re-subscribes (BRAWUKA-646). */
 function withFeed(variant: "half" | "full", feed: ReactNode, node: ReactNode): ReactNode {
   if (variant !== "full") return node;
   return (
@@ -171,10 +211,11 @@ export function DetailContent({
   }, [query.error, handleMissingCafe]);
 
   // BRAWUKA-646: the feed mounts alongside the detail query — parallel
-  // requests, not a waterfall behind `query.data`. It stays mounted across
-  // pending/error/loaded states (same JSX position) so the observer never
-  // re-subscribes. `cafeName` only reaches the owned-check-in edit form;
-  // the unknown_cafe fallback matches the discovery-home convention.
+  // requests, not a waterfall behind `query.data`. It is always `FullShell`'s
+  // second child (index 1) across pending/error/loaded states, so it never
+  // remounts and the observer never re-subscribes. `cafeName` only reaches
+  // the owned-check-in edit form; the unknown_cafe fallback matches the
+  // discovery-home convention.
   const feed =
     variant === "full" ? (
       <CheckinFeed
@@ -263,22 +304,7 @@ export function DetailContent({
 
   return (
     <FullShell>
-      <DossierHero covers={covers} name={cafe.name} />
-      <div className="flex flex-col gap-1.5">
-        {heading}
-        {meta}
-        <CreatorLine author={cafe.author} maintainedByService={cafe.maintained_by_service} />
-      </div>
-      <ScorePair stats={cafe.work_stats} />
-      <ActionRow cafe={cafe} onCheckIn={onCheckIn} />
-      <WorkProfile stats={cafe.work_stats} />
-      <PolicyConsensus stats={cafe.work_stats} />
-      {cafe.gallery.length > 0 && (
-        <section aria-label={t("gallery_aria")} className="flex flex-col gap-3">
-          <SectionLabel>{t("gallery_aria")}</SectionLabel>
-          <GalleryStrip photos={cafe.gallery} ariaLabel={t("gallery_aria")} />
-        </section>
-      )}
+      <DossierBody cafe={cafe} covers={covers} heading={heading} meta={meta} onCheckIn={onCheckIn} />
       {feed}
       {/* DG146/DG147: quiet "Manage" section at the bottom of the scroll —
           same controls as the SSR page, gated on the server ownership bit. */}

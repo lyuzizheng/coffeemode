@@ -55,3 +55,17 @@ The ego-browser Node process does NOT inherit the agent's env, so
 3. Secrets never enter the transcript, a prompt, page content, or the client
    bundle. The Supabase `service_role` key stays server-side
    (`web/tests/agent-qa/session.ts`) under the same rule.
+
+## Journey registry (BRAWUKA-411)
+
+`journeys.mjs` (`AGENT_QA_JOURNEYS` + `planRound` + `getJourney` +
+`quotaKeysFor`) is the journey list's single source of truth: the autopilot
+prompt states only orchestration rules and reads the registry per round, so
+the matrix expands journey-by-journey without prompt rewrites. Each journey
+declares persona, write family, steps, deterministic + semantic verdict
+assertions, and preconditions up front. `planRound(satisfied)` splits
+runnable from blocked — blocked reports missing precondition names and is
+never filed as a defect. Live-grounded notes: P2 search narrows on
+`wifi`/`coffee` (seed dim avg 51; `outlets` has no rated rows, skipped);
+`POST /api/places/resolve` without a widget-minted token answers 403
+(`Turnstile blocked` is the verdict, never a bypass).

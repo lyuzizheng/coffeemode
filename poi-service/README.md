@@ -37,6 +37,10 @@ GOOGLE_PLACES_API_KEY=...
 
 - **KV** — hot cache of normalized POI records, key `poi:<place_id>`, TTL ~7d.
 - **D1** — bounded POI cache (expires_at, 30d; `pois` table). Schema in `migrations/`.
+  Writes never purge: reads hide expired rows through the `expires_at` filter,
+  and a nightly cron (`[triggers]` in `wrangler.toml`, 03:00 UTC) deletes them
+  via `idx_pois_expires_at` (`purgeExpiredPOIs` in `src/store.ts`, entry in
+  `src/index.ts`).
 
 ```bash
 # one-time, after the namespaces exist (owner actions — docs/agent/pending-user-actions.md §7)

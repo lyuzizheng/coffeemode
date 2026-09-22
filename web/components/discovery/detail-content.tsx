@@ -110,6 +110,71 @@ function DetailSkeleton() {
   );
 }
 
+/** FULL-variant column shell (§5.3): centered, content-max width. Shared by
+ * the pending/error/loaded returns so the feed keeps one JSX position and
+ * never remounts across detail states (BRAWUKA-646). */
+function FullShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="mx-auto flex w-full max-w-[var(--layout-content-max)] flex-col gap-6 px-4 pb-8">
+      {children}
+    </div>
+  );
+}
+
+/** Loaded FULL dossier body — everything above the feed. Extracted so
+ * `FullShell` always renders `{body}{feed}`: the feed keeps child index 1
+ * across pending/error/loaded states and never remounts (BRAWUKA-646). */
+function DossierBody({
+  cafe,
+  covers,
+  heading,
+  meta,
+  onCheckIn,
+}: {
+  cafe: PublicCafeDetail;
+  covers: string[];
+  heading: ReactNode;
+  meta: ReactNode;
+  onCheckIn: (cafeId?: string, cafeName?: string) => void;
+}) {
+  const t = useTranslations("discovery");
+  return (
+    <>
+      <DossierHero covers={covers} name={cafe.name} />
+      <div className="flex flex-col gap-1.5">
+        {heading}
+        {meta}
+        <CreatorLine author={cafe.author} maintainedByService={cafe.maintained_by_service} />
+      </div>
+      <ScorePair stats={cafe.work_stats} />
+      <ActionRow cafe={cafe} onCheckIn={onCheckIn} />
+      <WorkProfile stats={cafe.work_stats} />
+      <PolicyConsensus stats={cafe.work_stats} />
+      {cafe.gallery.length > 0 && (
+        <section aria-label={t("gallery_aria")} className="flex flex-col gap-3">
+          <SectionLabel>{t("gallery_aria")}</SectionLabel>
+          <GalleryStrip photos={cafe.gallery} ariaLabel={t("gallery_aria")} />
+        </section>
+      )}
+    </>
+  );
+}
+
+/** FULL-variant guard states (skeleton/error) render inside the column shell
+ * with the feed below them; HALF renders the node bare — it has no feed.
+ * The feed is always `FullShell`'s second child (index 1) across
+ * pending/error/loaded, so React never remounts it and the feed query never
+ * re-subscribes (BRAWUKA-646). */
+function withFeed(variant: "half" | "full", feed: ReactNode, node: ReactNode): ReactNode {
+  if (variant !== "full") return node;
+  return (
+    <FullShell>
+      {node}
+      {feed}
+    </FullShell>
+  );
+}
+
 export function DetailContent({
   cafeId,
   variant,
@@ -145,10 +210,30 @@ export function DetailContent({
     if (query.error instanceof FeedNotFoundError) handleMissingCafe();
   }, [query.error, handleMissingCafe]);
 
-  if (query.isPending) return <DetailSkeleton />;
+  // BRAWUKA-646: the feed mounts alongside the detail query — parallel
+  // requests, not a waterfall behind `query.data`. It is always `FullShell`'s
+  // second child (index 1) across pending/error/loaded states, so it never
+  // remounts and the observer never re-subscribes. `cafeName` only reaches
+  // the owned-check-in edit form; the unknown_cafe fallback matches the
+  // discovery-home convention.
+  const feed =
+    variant === "full" ? (
+      <CheckinFeed
+        cafeId={cafeId}
+        cafeName={query.data?.name ?? t("unknown_cafe")}
+        onMissingCafe={handleMissingCafe}
+        onCheckIn={onCheckIn}
+      />
+    ) : null;
+
+  if (query.isPending) return withFeed(variant, feed, <DetailSkeleton />);
   if (query.isError || !query.data) {
     if (query.error instanceof FeedNotFoundError) return null;
-    return <InlineError message={t("detail_load_failed")} onRetry={() => query.refetch()} />;
+    return withFeed(
+      variant,
+      feed,
+      <InlineError message={t("detail_load_failed")} onRetry={() => query.refetch()} />,
+    );
   }
   const cafe = query.data;
   const covers = cafe.gallery.map((g) => g.card).filter(Boolean); // BRAWUKA-307: cafe.cover already derives from the first gallery card
@@ -218,29 +303,9 @@ export function DetailContent({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[var(--layout-content-max)] flex-col gap-6 px-4 pb-8">
-      <DossierHero covers={covers} name={cafe.name} />
-      <div className="flex flex-col gap-1.5">
-        {heading}
-        {meta}
-        <CreatorLine author={cafe.author} maintainedByService={cafe.maintained_by_service} />
-      </div>
-      <ScorePair stats={cafe.work_stats} />
-      <ActionRow cafe={cafe} onCheckIn={onCheckIn} />
-      <WorkProfile stats={cafe.work_stats} />
-      <PolicyConsensus stats={cafe.work_stats} />
-      {cafe.gallery.length > 0 && (
-        <section aria-label={t("gallery_aria")} className="flex flex-col gap-3">
-          <SectionLabel>{t("gallery_aria")}</SectionLabel>
-          <GalleryStrip photos={cafe.gallery} ariaLabel={t("gallery_aria")} />
-        </section>
-      )}
-      <CheckinFeed
-        cafeId={cafe.id}
-        cafeName={cafe.name}
-        onMissingCafe={handleMissingCafe}
-        onCheckIn={onCheckIn}
-      />
+    <FullShell>
+      <DossierBody cafe={cafe} covers={covers} heading={heading} meta={meta} onCheckIn={onCheckIn} />
+      {feed}
       {/* DG146/DG147: quiet "Manage" section at the bottom of the scroll —
           same controls as the SSR page, gated on the server ownership bit. */}
       {cafe.owned_by_viewer && (
@@ -250,6 +315,6 @@ export function DetailContent({
           hasCheckins={(cafe.work_stats?.n_checkins ?? 0) > 0}
         />
       )}
-    </div>
+    </FullShell>
   );
 }

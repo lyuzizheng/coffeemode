@@ -65,6 +65,15 @@ database_id = "11111111-1111-1111-1111-111111111111"
 [observability]
 enabled = true
 
+# --- Scheduled cleanup ---
+# Nightly purge of rows past their 30d TTL (src/store.ts purgeExpiredPOIs,
+# via idx_pois_expires_at). Writes never purge — reads already hide expired
+# rows through the expires_at filter, so cleanup lagging up to a day is
+# invisible. Top-level triggers are inherited by [env.staging]/[env.production]
+# (BRAWUKA-645).
+[triggers]
+crons = ["0 3 * * *"]
+
 # Staging env: isolated staging stack (spec 0005 §3). `kv_namespaces` and
 # `d1_databases` are not inherited by environments, so both are repeated here.
 # Production's KV and D1 ids are distinct namespaces/databases — never shared.

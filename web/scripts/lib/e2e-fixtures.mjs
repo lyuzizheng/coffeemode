@@ -108,6 +108,10 @@ export async function setupDbFixtures({
       console.error(`${tag} DB fixture initialization failed in CI:`, err);
       throw err;
     }
+    // Local fallback stays non-fatal (no-DB mode), but the reason must be
+    // visible — a cleanup failure here means residual fixture rows, and a
+    // silent skip is how they accumulated unnoticed (BRAWUKA-629).
+    console.warn(`${tag} DB fixture initialization failed; running without DB:`, err?.message ?? err);
     if (dbClient) {
       try {
         await dbClient.end();
@@ -122,13 +126,49 @@ export async function setupDbFixtures({
 
 export async function cleanupDbFixtures(dbClient) {
   if (!dbClient) return;
+  // FK-safe order inside one transaction (BRAWUKA-629): profiles is referenced
+  // without cascade by cafes.created_by, checkins.user_id and
+  // navigations.user_id, so the profile row must go last — and cafes are
+  // deleted by creator, not just E2E_CAFE_ID, so residual fixture cafes from
+  // earlier crashed runs cannot block the profile delete. checkin_likes and
+  // image_upload_intents follow via `on delete cascade`.
+  // A failure here leaves fixture rows behind, so it throws: callers surface
+  // it as a run failure instead of the old warn-and-accumulate behavior.
   try {
-    await dbClient.query(`delete from checkins where cafe_id = $1 or id = $2`, [E2E_CAFE_ID, E2E_CHECKIN_ID]);
-    await dbClient.query(`delete from cafes where id = $1`, [E2E_CAFE_ID]);
+    await dbClient.query("BEGIN");
+    await dbClient.query(`delete from cafes where id = $1 or created_by = $2`, [
+      E2E_CAFE_ID,
+      E2E_USER_ID,
+    ]);
+    await dbClient.query(`delete from checkins where user_id = $1`, [E2E_USER_ID]);
+    await dbClient.query(`delete from navigations where user_id = $1`, [E2E_USER_ID]);
     await dbClient.query(`delete from profiles where id = $1`, [E2E_USER_ID]);
+    await dbClient.query("COMMIT");
   } catch (err) {
-    console.warn("[e2e-fixtures] cleanupDbFixtures failed to delete rows:", err?.message ?? err);
+    try {
+      await dbClient.query("ROLLBACK");
+    } catch {
+      // Benign: rollback failure means the connection is already broken.
+    }
+    throw new Error(`[e2e-fixtures] cleanupDbFixtures failed to delete rows: ${err?.message ?? err}`);
   }
+}
+
+/**
+ * Teardown for runner exits: cleanup + close, returning the cleanup error (or
+ * null) so the caller decides how to surface it — `failures` list, exit code.
+ * The client is always closed; a cleanup failure never leaks the connection.
+ */
+export async function teardownDbFixtures(dbClient) {
+  if (!dbClient) return null;
+  let err = null;
+  try {
+    await cleanupDbFixtures(dbClient);
+  } catch (e) {
+    err = e;
+  }
+  await closeDbClient(dbClient);
+  return err;
 }
 export async function closeDbClient(dbClient) {
   if (!dbClient) return;

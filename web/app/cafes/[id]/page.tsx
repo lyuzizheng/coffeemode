@@ -40,9 +40,11 @@ export const dynamic = "force-dynamic";
 // resolves before the HTML shell flushes, which is what commits the real
 // 404 status (DG19). A notFound() thrown only from the page body would be
 // streamed with a 200 status.
-// React `cache` dedupes the viewer lookup across loadCafe + the page body —
-// one Supabase getUser() per request, not two. The session is shared with
-// the map-entry loader (DG124): the SSR shell and the app it hydrates into
+// React `cache` dedupes the viewer lookup across loadCafe + the page body.
+// The proxy already verified the session for the gone-cafe probe and hands
+// it over on x-verified-user (BRAWUKA-644), so loadMapSession costs no
+// getUser() network call on this route. The session is shared with the
+// map-entry loader (DG124): the SSR shell and the app it hydrates into
 // resolve auth identically.
 const loadCafe = cache(async (id: string) => {
   if (!isValidUUID(id)) return null;

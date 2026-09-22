@@ -14,8 +14,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   setupDbFixtures,
-  cleanupDbFixtures,
-  closeDbClient,
+  teardownDbFixtures,
   DEFAULT_DATABASE_URL,
 } from "./lib/e2e-fixtures.mjs";
 import {
@@ -45,10 +44,13 @@ const cleanup = async () => {
     }
     serverProcess = null;
   }
-  await cleanupDbFixtures(dbClient);
-  if (dbClient) {
-    await closeDbClient(dbClient);
-    dbClient = null;
+  // Fixture cleanup failures are real failures (BRAWUKA-629): a leftover row
+  // pollutes the next run, so the process exits non-zero.
+  const cleanupErr = await teardownDbFixtures(dbClient);
+  dbClient = null;
+  if (cleanupErr) {
+    console.error(cleanupErr.message ?? cleanupErr);
+    process.exitCode = 1;
   }
 };
 

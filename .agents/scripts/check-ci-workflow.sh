@@ -112,14 +112,23 @@ else
     echo "staging-journey.yml must never trigger on pull_request (post-merge only)"
     fail=1
   fi
+  # The trigger set is the post-merge contract (spec 0010 §5): a workflow that
+  # stops running on `push` to `main`, or stops running nightly, silently stops
+  # verifying merges while every other check stays green (BRAWUKA-628).
   for requirement in \
+    "push:" \
+    "branches:" \
+    "- main" \
+    "schedule:" \
+    "cron:" \
+    "workflow_dispatch:" \
     "concurrency:" \
     "staging-journey" \
     "cancel-in-progress: false" \
     "environment: staging" \
     "run-staging-journey.sh" \
     "timeout-minutes:"; do
-    if ! grep -qF "$requirement" "$journey"; then
+    if ! grep -qF -- "$requirement" "$journey"; then
       echo "$journey is missing: $requirement"
       fail=1
     fi

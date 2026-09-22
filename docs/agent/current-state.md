@@ -57,7 +57,9 @@ web/db/migrations/       0001_init.sql — core schema (spec 0001);
                          0025_drop_cafes_cover.sql (BRAWUKA-307),
                          0026_drop_rate_limits.sql (BRAWUKA-378),
                          0027_navigation_unresolved_dedupe.sql (BRAWUKA-391),
-                         0028_open_now_sql_function.sql (DG145-C/BRAWUKA-25)
+                         0028_open_now_sql_function.sql (DG145-C/BRAWUKA-25),
+                         0029_open_now_24h_window.sql (BRAWUKA-571),
+                         0030_cafe_source.sql (BRAWUKA-620)
 web/lib/auth/            Supabase server client (PKCE), profile upsert logic
 web/lib/db/              Postgres pool (server-side only), withTransaction, atomic like toggle,
                          cafes domain lib (fused create + first check-in + stats, nearby list, getCafe),
@@ -166,7 +168,7 @@ docs/agent/              current state, planned-slice manifest, owner actions
 - Supabase dashboard still needs Apple/Google OAuth provider config
 - Session-refresh proxy (`web/proxy.ts`) refreshes only when a Supabase session cookie is present; route handlers verify the session via `getUser()` before any Postgres write
 - Postgres pool tuned with configurable `max`, idle/connection timeouts, error handling, and a graceful shutdown hook registered via Next.js `instrumentation.ts`
-- Rate limiting enforces in memory on the single app container (BRAWUKA-378 deleted the Postgres backend outright — a future multi-instance deploy needs a new shared-store decision)
+- Rate limiting enforces in memory on the single app container (BRAWUKA-378 deleted the Postgres backend outright — a future multi-instance deploy needs a new shared-store decision, see ADR-0006)
 - `next build` warns about custom Cache-Control for `/_next/static/:path*` — intentional for production hashed chunks
 - `/cafes/[id]` shell carries `s-maxage` (DG105); the bypass side is executable since BRAWUKA-184, not a comment: `seo.shellCache` in `web/config/app.yaml` owns TTLs + bypass values, `web/lib/cache-policy.ts` owns the predicates + edge-rule derivation, `web/proxy.ts` stamps `private, no-store` on session-refresh (Set-Cookie) responses and the gone-cafe 404 rewrite, and `deploy/dokploy/cache-rules.json` (drift-pinned by `tests/cafe-shell-cache.test.ts`) owns the edge rule — the future Cloudflare CDN (deploy-vps) must enforce it (vary on Accept-Language since Next strips origin Vary on App Router HTML; bypass on `sb-*` request cookies and Set-Cookie responses; only 200 cacheable). `sitemap.xml` is cached with the same `s-maxage` (DG105/DG107).
 - `maps_share_url` host validation, 10 km nearby-search cap, and 10 MB image-upload cap are active

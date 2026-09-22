@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GET } from "@/app/api/search/route";
+import { getCurrentUser } from "@/lib/auth/get-user";
 import { executeSearchCached } from "@/lib/search/search-cache";
 import { checkRateLimit } from "@/lib/rate-limit";
 import type { SearchResponse } from "@/lib/search/types";
@@ -38,6 +39,7 @@ describe("GET /api/search route", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getCurrentUser).mockResolvedValue(null);
     vi.mocked(checkRateLimit).mockResolvedValue({ allowed: true, remaining: 10, resetAt: Date.now(), retryAfter: 0 });
     vi.mocked(executeSearchCached).mockResolvedValue({ response: mockResponse, cache: "miss" });
   });
@@ -118,8 +120,8 @@ describe("GET /api/search route", () => {
     expect(executeSearchCached).toHaveBeenCalledWith(expect.objectContaining({ city: "singapore" }), undefined, expect.any(String));
   });
 
-  it("parses query params and calls executeSearch", async () => {
-
+  it("passes include_live through for signed-in callers", async () => {
+    vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: "user-1" });
     const req = new Request(
       "http://localhost/api/search?q=coffee&city=tokyo&filter_wifi=80&open_now=true&filter_max_stay=unlimited&include_live=true",
     );
@@ -138,8 +140,20 @@ describe("GET /api/search route", () => {
         filter_max_stay: "unlimited",
         limit: undefined,
         ranking: undefined,
-        viewer_id: undefined,
+        viewer_id: "user-1",
       },
+      undefined,
+      expect.any(String),
+    );
+  });
+
+  it("BRAWUKA-621: coerces anonymous include_live to stored-only so no billed call runs", async () => {
+    const req = new Request("http://localhost/api/search?q=coffee&city=tokyo&include_live=true");
+    const res = await GET(req);
+
+    expect(res.status).toBe(200);
+    expect(executeSearchCached).toHaveBeenCalledWith(
+      expect.objectContaining({ include_live: false, viewer_id: undefined }),
       undefined,
       expect.any(String),
     );
@@ -210,6 +224,7 @@ describe("GET /api/search route", () => {
   });
 
   it("DG132: sets X-Search-Mode header based on executeSearch mode", async () => {
+    vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: "user-1" });
     vi.mocked(executeSearchCached).mockResolvedValueOnce({
       response: { ...mockResponse, search_mode: "live" },
       cache: "miss",

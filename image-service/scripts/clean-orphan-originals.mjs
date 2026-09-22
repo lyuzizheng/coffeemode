@@ -21,6 +21,9 @@
  *     Without the file the script keeps marker-based behavior and treats
  *     every candidate as unverified (reason:"unverified") — schedule the
  *     export in production (see docs/agent/pending-user-actions.md §6).
+ *     A set-but-empty export with DRY_RUN=0 is refused unless
+ *     ALLOW_EMPTY_LIVE_KEYS=1: an empty file means the export failed or was
+ *     truncated, not "zero live keys" (BRAWUKA-632).
  *   - Cursor-paginated listing (bounded by MAX_OBJECTS per run) and batched
  *     deletes (BATCH_SIZE); idempotent — re-running skips already-deleted keys.
  *   - Structured JSON summary per batch + final counts; non-zero exit only on
@@ -51,8 +54,14 @@ const BATCH_SIZE = Math.min(Number.parseInt(process.env.BATCH_SIZE ?? "100", 10)
 
 /**
  * DB-referenced live keys (BRAWUKA-400): one `original/...` key per line from
- * `web/scripts/export-live-image-keys.mjs`. Absent/empty file keeps the
+ * `web/scripts/export-live-image-keys.mjs`. Absent file keeps the
  * marker-based behavior and marks every candidate unverified.
+ *
+ * An existing-but-empty export (BRAWUKA-632) is NOT "zero live keys": a failed
+ * or truncated `export-live-image-keys.mjs` run (disk full, killed mid-write,
+ * `> file` truncating before the query runs) produces exactly such a file,
+ * and every stale-marker key would then look deletable. Production deletes
+ * with an empty export are refused unless ALLOW_EMPTY_LIVE_KEYS=1.
  */
 function loadLiveKeys() {
   if (!LIVE_KEYS_FILE) return null;
@@ -119,8 +128,8 @@ function client() {
  * (stale marker + not DB-referenced), `protectedRefs` are stale-marker
  * objects that ARE DB-referenced (missing/failed attach leg) — reported,
  * never deleted. Each entry carries key, size, lastModified, stage, and
- * verification (`referenced` when LIVE_KEYS_FILE was checked, `unverified`
- * when it was absent).
+ * verification (`not-referenced` when LIVE_KEYS_FILE was checked and the key
+ * is absent from it, `unverified` when it was absent).
  */
 async function listOrphanCandidates({ maxKeys, cutoffMs, liveKeys }) {
   const aws = client();
@@ -171,7 +180,7 @@ async function listOrphanCandidates({ maxKeys, cutoffMs, liveKeys }) {
           size: Number(head.headers.get("content-length") ?? 0),
           lastModified,
           stage: targetType === "provision" ? "provision" : "markerless",
-          verification: liveKeys ? "referenced" : "unverified",
+          verification: liveKeys ? "not-referenced" : "unverified",
         };
         if (liveKeys?.has(key)) protectedRefs.push(entry);
         else orphans.push(entry);
@@ -213,6 +222,15 @@ async function deleteKeys(keys) {
 async function main() {
   const cutoffMs = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
   const liveKeys = loadLiveKeys();
+  // A set-but-empty export (BRAWUKA-632) is a failed/truncated export, not
+  // "zero live keys": every stale-marker key would look deletable. Refuse
+  // production deletes behind an explicit opt-in; dry-run is unaffected.
+  if (LIVE_KEYS_FILE && liveKeys.size === 0 && !DRY_RUN && process.env.ALLOW_EMPTY_LIVE_KEYS !== "1") {
+    console.error(
+      `clean-orphan-originals: LIVE_KEYS_FILE ${LIVE_KEYS_FILE} loaded 0 keys with DRY_RUN=0; refusing to delete (export may have failed or been truncated); set ALLOW_EMPTY_LIVE_KEYS=1 to confirm the bucket is truly unreferenced`,
+    );
+    process.exit(1);
+  }
   console.log(
     JSON.stringify({
       op: "start",

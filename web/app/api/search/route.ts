@@ -42,9 +42,16 @@ export const GET = apiRoute(
     // Resolve effective canonical city ID (DG128 fallback chain when omitted)
     const effectiveCity = resolveEffectiveCity(request.headers, city);
 
+    // BRAWUKA-621: live Google fanout bills per call and the only anonymous
+    // brake was forgeable-IP rate limiting — anonymous callers always get
+    // stored-only results, so an unauthenticated ?include_live=true can never
+    // reach the billed upstream.
+    const includeLive = ctx.user ? filters.include_live : false;
+
     const searchFilters = {
       ...filters,
       city: effectiveCity,
+      include_live: includeLive,
       viewer_id: ctx.user?.id,
     };
 

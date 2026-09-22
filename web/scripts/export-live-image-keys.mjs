@@ -6,10 +6,12 @@
  * skips every key listed here, even when the object still carries a stale
  * `provision` marker (attach retry outstanding) or no marker at all (pre-#158
  * residue / direct-write drift). Live gallery originals must never be deleted:
- * `cafes.gallery[].original` + `checkins.photos[].original` for rows the app
- * still serves (cafes: `deleted_at is null`; checkins: own row + parent cafe
- * live — a soft-deleted check-in's photos are hidden from the gallery but the
- * DB row still references them, so they stay protected until the row is gone).
+ * `cafes.gallery[].original` + `checkins.photos[].original` for live cafes and
+ * for every check-in row still in the DB — a soft-deleted check-in's photos are
+ * hidden from the gallery but the DB row still references them, and a
+ * soft-deleted (`deleted_at is not null`, legacy pre-DG146 tombstone) cafe's
+ * live check-ins still reference theirs, so both stay protected until the row
+ * itself is gone. `cafes.deleted_at` never unprotects a check-in photo.
  *
  * Usage (VPS cron / GitHub schedule, least-privilege DATABASE_URL reader):
  *   DATABASE_URL=postgres://... node scripts/export-live-image-keys.mjs > /tmp/live-keys.txt
@@ -49,8 +51,16 @@ function parseConnectionConfig(urlString) {
 
 /**
  * Every still-referenced `original/` key: live cafe galleries plus photos on
- * live check-ins of live cafes (a soft-deleted check-in row still references
- * its photos, so checkins keep their keys until the row itself is gone).
+ * every check-in row still in the DB (live or soft-deleted, whatever the
+ * parent cafe's `deleted_at` is — a soft-deleted cafe's live check-ins still
+ * reference their photos, so their keys stay protected until the row itself
+ * is gone; hard-deleted cafes cascade their check-ins away, so nothing
+ * dangling needs protecting).
+ *
+ * NOTE: `cafes.deleted_at` is legacy-only (pre-DG146 tombstones; current
+ * deletes are check-in-scoped and never write it) — but the export must not
+ * depend on that assumption. If a future path soft-deletes a cafe again, its
+ * check-ins' keys stay protected here.
  */
 const LIVE_KEYS_SQL = `
 select distinct elem->>'original' as key
@@ -59,8 +69,7 @@ from (
   union all
   select c.photos as arr
   from checkins c
-  join cafes k on k.id = c.cafe_id
-  where c.deleted_at is null and k.deleted_at is null
+  where c.deleted_at is null
   union all
   select c.photos as arr
   from checkins c

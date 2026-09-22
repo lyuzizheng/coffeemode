@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { config, proxy } from "@/proxy";
+import { CAFE_SHELL_BYPASS_CACHE_CONTROL } from "@/lib/cache-policy";
 
 const SUPABASE_URL = "https://test.supabase.co";
 const ANON_KEY = "test-anon-key";
@@ -368,6 +369,148 @@ describe("proxy gone-cafe 404 (DG19)", () => {
     expect(createServerClient).not.toHaveBeenCalled();
     expect(getUser).not.toHaveBeenCalled();
     expect(cafeExistsMock).toHaveBeenCalledWith(CAFE, null);
+  });
+});
+
+describe("proxy verified-user handoff (BRAWUKA-644)", () => {
+  const CAFE = "550e8400-e29b-41d4-a716-446655440001";
+  const FORWARDED = "x-middleware-request-x-verified-user";
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    cafeExistsMock.mockResolvedValue(true);
+    process.env.NEXT_PUBLIC_SUPABASE_URL = SUPABASE_URL;
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = ANON_KEY;
+  });
+
+  function stubAuth({
+    user,
+    refresh = false,
+  }: {
+    user: Record<string, unknown> | null;
+    refresh?: boolean;
+  }) {
+    let capturedSetAll: ((cookiesToSet: unknown[]) => void) | undefined;
+    const getSession = vi.fn(async () => {
+      if (refresh) {
+        capturedSetAll?.([
+          { name: "sb-access-token", value: "fresh-token", options: {} },
+        ]);
+      }
+      return { data: { session: user ? { user } : null }, error: null };
+    });
+    const getUser = vi.fn(async () => ({ data: { user }, error: null }));
+    vi.mocked(createServerClient).mockImplementation(
+      (_url: string, _key: string, options: unknown) => {
+        const opts = options as { cookies: { setAll?: (c: unknown[]) => void } };
+        capturedSetAll = opts.cookies.setAll;
+        return { auth: { getSession, getUser } } as never;
+      },
+    );
+    return { getSession, getUser };
+  }
+
+  function cafeRequest() {
+    const req = new NextRequest(new URL(`http://localhost/cafes/${CAFE}`));
+    req.cookies.set("sb-access-token", "stale-token");
+    return req;
+  }
+
+  it("forwards the verified user subset so the page skips a second getUser", async () => {
+    stubAuth({
+      user: {
+        id: "verified-user",
+        email: "v@example.com",
+        user_metadata: { full_name: "Vera" },
+        phone: "must-not-leak",
+        app_metadata: { provider: "google" },
+      },
+    });
+
+    const res = await proxy(cafeRequest());
+
+    const forwarded = res.headers.get(FORWARDED);
+    expect(forwarded).not.toBeNull();
+    expect(JSON.parse(forwarded as string)).toEqual({
+      id: "verified-user",
+      email: "v@example.com",
+      user_metadata: { full_name: "Vera" },
+    });
+  });
+
+  it("forwards verified-anonymous so the page does not re-verify", async () => {
+    stubAuth({ user: null });
+
+    const res = await proxy(cafeRequest());
+
+    expect(res.headers.get(FORWARDED)).toBe("null");
+  });
+
+  it("keeps the header and rotated cookies when the session refreshes", async () => {
+    stubAuth({ user: { id: "verified-user" }, refresh: true });
+
+    const res = await proxy(cafeRequest());
+
+    // The refresh rebuilds the response inside setAll; the header forward
+    // must rebuild again without dropping the rotated cookie (BRAWUKA-315).
+    expect(JSON.parse(res.headers.get(FORWARDED) as string)).toEqual({
+      id: "verified-user",
+    });
+    expect(res.cookies.get("sb-access-token")?.value).toBe("fresh-token");
+    expect(res.headers.get("cache-control")).toBe(
+      CAFE_SHELL_BYPASS_CACHE_CONTROL,
+    );
+  });
+
+  it("writes no header when verification throws — the page retries", async () => {
+    const getSession = vi.fn(async () => ({ data: { session: null }, error: null }));
+    const getUser = vi.fn(async () => {
+      throw new Error("Supabase unreachable");
+    });
+    vi.mocked(createServerClient).mockImplementation(
+      () => ({ auth: { getSession, getUser } }) as never,
+    );
+
+    const res = await proxy(cafeRequest());
+
+    expect(res.headers.get(FORWARDED)).toBeNull();
+    expect(res.status).toBe(200);
+  });
+
+  it("strips an inbound x-verified-user so clients cannot inject identity", async () => {
+    const req = new NextRequest(new URL(`http://localhost/cafes/${CAFE}`), {
+      headers: {
+        "x-verified-user": JSON.stringify({ id: "attacker-id" }),
+      },
+    });
+
+    const res = await proxy(req);
+
+    // No session cookie → no verification → the spoofed value must be gone.
+    expect(res.headers.get(FORWARDED)).toBeNull();
+    expect(cafeExistsMock).toHaveBeenCalledWith(CAFE, null);
+  });
+
+  it("overwrites a spoofed header with the verified identity", async () => {
+    stubAuth({ user: { id: "verified-user" } });
+    const req = cafeRequest();
+    req.headers.set("x-verified-user", JSON.stringify({ id: "attacker-id" }));
+
+    const res = await proxy(req);
+
+    expect(JSON.parse(res.headers.get(FORWARDED) as string)).toEqual({
+      id: "verified-user",
+    });
+  });
+
+  it("writes no header on non-cafe routes", async () => {
+    stubAuth({ user: { id: "verified-user" } });
+    const req = new NextRequest(new URL("http://localhost/api/cafes"));
+    req.cookies.set("sb-access-token", "stale-token");
+
+    const res = await proxy(req);
+
+    expect(res.headers.get(FORWARDED)).toBeNull();
   });
 });
 

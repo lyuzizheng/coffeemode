@@ -10,7 +10,9 @@ import {
   computeUserContribution,
   emptyWorkStats,
   incrementalUpdateWorkStats,
+  recomputeAllWorkStats,
   recomputeWorkStats,
+  type WorkStats,
 } from "@/lib/stats/aggregate";
 
 function makeCheckIn(overrides: Partial<CheckIn> & { visited_at: string }): CheckIn {
@@ -299,6 +301,110 @@ describe("incrementalUpdateWorkStats", () => {
     expect(written.dims.overall.n).toBe(1);
   });
 
+  it("folds a just-inserted row via { insertedId }: snapshot is the after state", async () => {
+    const otherUser = makeCheckIn({
+      id: "chk-0",
+      user_id: "user-2",
+      scores: { overall: 50 },
+      visited_at: "2026-08-01T09:00:00Z",
+    });
+    const inserted = makeCheckIn({
+      id: "chk-2",
+      scores: repeatScores,
+      max_stay: "unlimited",
+      visited_at: "2026-08-02T10:00:00Z",
+    });
+
+    const calls: { sql: string; params: unknown[] }[] = [];
+    const query = vi.fn(async (sql: string, params?: unknown[]) => {
+      calls.push({ sql, params: params ?? [] });
+      if (sql.includes("count(*)")) {
+        return { rows: [{ n: 2 }], rowCount: 1 } as unknown as QueryResult<{ n: number }>;
+      }
+      if (sql.includes("from checkins")) {
+        // Post-insert snapshot: the new row is already visible.
+        return { rows: [inserted], rowCount: 1 } as unknown as QueryResult<CheckIn>;
+      }
+      if (sql.includes("select work_stats")) {
+        return {
+          rows: [{ work_stats: computeCafeStats([otherUser], 0, DECAY, WEIGHTS) }],
+          rowCount: 1,
+        } as unknown as QueryResult<{ work_stats: unknown }>;
+      }
+      return { rows: [], rowCount: 0 } as unknown as QueryResult<Record<string, unknown>>;
+    }) as unknown as <T extends Record<string, unknown>>(
+      text: string,
+      params?: unknown[],
+    ) => Promise<QueryResult<T>>;
+
+    const runInTransaction: RunInTransaction = async (fn) => fn(query);
+
+    await incrementalUpdateWorkStats("cafe-1", "user-1", { insertedId: "chk-2" }, 0, runInTransaction);
+
+    const updateCall = calls.find((c) => c.sql.includes("update cafes"));
+    expect(updateCall).toBeDefined();
+    const written = JSON.parse(updateCall!.params[0] as string) as WorkStats;
+    // Identical result to a full recompute of both users' rows.
+    const expected = computeCafeStats([otherUser, inserted], 0, DECAY, WEIGHTS);
+    written.updated_at = "";
+    expected.updated_at = "";
+    expect(written).toEqual(expected);
+  });
+
+  it("folds a backdated insert at its true recency rank (BRAWUKA-655)", async () => {
+    // The inserted row is OLDER than the user's existing check-in: it must
+    // take decay rank 1, not be treated as the latest visit.
+    const existing = makeCheckIn({
+      id: "chk-1",
+      scores: fullScores, // overall 80
+      max_stay: "3h",
+      visited_at: "2026-08-02T10:00:00Z",
+    });
+    const backdated = makeCheckIn({
+      id: "chk-2",
+      scores: { overall: 60 },
+      visited_at: "2026-08-01T10:00:00Z",
+    });
+
+    const calls: { sql: string; params: unknown[] }[] = [];
+    const query = vi.fn(async (sql: string, params?: unknown[]) => {
+      calls.push({ sql, params: params ?? [] });
+      if (sql.includes("count(*)")) {
+        return { rows: [{ n: 2 }], rowCount: 1 } as unknown as QueryResult<{ n: number }>;
+      }
+      if (sql.includes("from checkins")) {
+        // Post-insert snapshot ordered by visited_at desc.
+        return { rows: [existing, backdated], rowCount: 2 } as unknown as QueryResult<CheckIn>;
+      }
+      if (sql.includes("select work_stats")) {
+        return {
+          rows: [{ work_stats: computeCafeStats([existing], 0, DECAY, WEIGHTS) }],
+          rowCount: 1,
+        } as unknown as QueryResult<{ work_stats: unknown }>;
+      }
+      return { rows: [], rowCount: 0 } as unknown as QueryResult<Record<string, unknown>>;
+    }) as unknown as <T extends Record<string, unknown>>(
+      text: string,
+      params?: unknown[],
+    ) => Promise<QueryResult<T>>;
+
+    const runInTransaction: RunInTransaction = async (fn) => fn(query);
+
+    await incrementalUpdateWorkStats("cafe-1", "user-1", { insertedId: "chk-2" }, 0, runInTransaction);
+
+    const updateCall = calls.find((c) => c.sql.includes("update cafes"));
+    expect(updateCall).toBeDefined();
+    const written = JSON.parse(updateCall!.params[0] as string) as WorkStats;
+    const expected = computeCafeStats([existing, backdated], 0, DECAY, WEIGHTS);
+    written.updated_at = "";
+    expected.updated_at = "";
+    expect(written).toEqual(expected);
+    // The backdated row decays the existing visit: (80×1 + 60×0.6)/1.6 = 72.5.
+    expect(written.dims.overall.sum).toBeCloseTo(72.5, 10);
+    expect(written.n_checkins).toBe(2);
+    expect(written.n_users).toBe(1);
+  });
+
 });
 
 describe("recomputeWorkStats", () => {
@@ -526,5 +632,70 @@ describe("recomputeWorkStats", () => {
       typeof computeCafeStats
     >;
     expect(written.n_checkins).toBe(1);
+  });
+});
+
+describe("recomputeAllWorkStats", () => {
+  const cafeListQuery = (ids: string[]) =>
+    (async () => ({
+      rows: ids.map((id) => ({ id })),
+      rowCount: ids.length,
+    })) as unknown as <T extends Record<string, unknown>>(
+      text: string,
+      params?: unknown[],
+    ) => Promise<QueryResult<T>>;
+
+  const emptyTxQuery = (impl?: (sql: string, params?: unknown[]) => void) =>
+    (async (sql: string, params?: unknown[]) => {
+      impl?.(sql, params);
+      return { rows: [], rowCount: 0 };
+    }) as unknown as <T extends Record<string, unknown>>(
+      text: string,
+      params?: unknown[],
+    ) => Promise<QueryResult<T>>;
+
+  it("recomputes cafes through a bounded pool instead of serially", async () => {
+    const ids = Array.from({ length: 10 }, (_, i) => `cafe-${i}`);
+    let active = 0;
+    let maxActive = 0;
+    const runInTransaction: RunInTransaction = async (fn) => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      try {
+        // Microtask yield: lets sibling workers start before this recompute
+        // finishes, so maxActive reflects real overlap deterministically.
+        await Promise.resolve();
+        return await fn(emptyTxQuery());
+      } finally {
+        active--;
+      }
+    };
+
+    await recomputeAllWorkStats(cafeListQuery(ids), 0, runInTransaction);
+
+    expect(maxActive).toBeGreaterThan(1);
+    expect(maxActive).toBeLessThanOrEqual(4);
+  });
+
+  it("rethrows the first failure after in-flight recomputes settle", async () => {
+    const ids = Array.from({ length: 6 }, (_, i) => `cafe-${i}`);
+    const attempted: string[] = [];
+    const boom = new Error("boom");
+    const runInTransaction: RunInTransaction = async (fn) =>
+      fn(
+        emptyTxQuery((sql, params) => {
+          if (sql.includes("for update")) {
+            const cafeId = params?.[0] as string;
+            attempted.push(cafeId);
+            if (cafeId === "cafe-2") throw boom;
+          }
+        }),
+      );
+
+    await expect(
+      recomputeAllWorkStats(cafeListQuery(ids), 0, runInTransaction),
+    ).rejects.toBe(boom);
+    // The pool stopped pulling new work after the failure.
+    expect(attempted.length).toBeLessThan(ids.length);
   });
 });

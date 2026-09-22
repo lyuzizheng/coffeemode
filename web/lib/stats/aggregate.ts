@@ -137,9 +137,18 @@ const RECOMPUTE_CONCURRENCY = 4;
 /**
  * Incrementally update a cafe's work_stats after a single check-in write.
  *
- * `changedCheckIn` is the row just inserted/updated. If omitted, the user's
- * most recent non-deleted check-in at the cafe is treated as the changed one.
- * For edits or soft-deletes, use `recomputeWorkStats` instead.
+ * `changedCheckIn` selects the before/after semantics:
+ * - omitted: the user's most recent non-deleted check-in is treated as the
+ *   changed one (it is already in the DB snapshot).
+ * - `{ insertedId }`: the row with that id was just INSERTed in this
+ *   transaction, so the DB snapshot is the "after" state — the "before" set
+ *   is the snapshot minus that row. This is the check-in create path; it is
+ *   correct for any `visited_at` (including backdated) because the
+ *   contribution math re-sorts by `visited_at` internally.
+ * - a full `CheckIn` row: an edit whose new values are not yet persisted;
+ *   the DB snapshot is the "before" state and the supplied row replaces the
+ *   old one. For edits/soft-deletes where the old snapshot is not
+ *   available, use `recomputeWorkStats` instead.
  *
  * The whole read-modify-write runs in a transaction with a `FOR UPDATE` lock
  * on the cafe row: two concurrent check-ins for the same cafe serialize on
@@ -149,7 +158,7 @@ const RECOMPUTE_CONCURRENCY = 4;
 export async function incrementalUpdateWorkStats(
   cafeId: string,
   userId: string,
-  changedCheckIn?: CheckIn,
+  changedCheckIn?: CheckIn | { insertedId: string },
   socialWeight = 0,
   runInTransaction: RunInTransaction = defaultRunInTransaction(),
 ): Promise<void> {
@@ -172,29 +181,7 @@ export async function incrementalUpdateWorkStats(
       [cafeId, userId],
     );
 
-    const changedId = changedCheckIn?.id;
-    const changedInDb = changedId ? userRows.some((r) => r.id === changedId) : false;
-
-    // Determine the "before" and "after" row sets for this user.
-    // - If changedCheckIn is omitted, the most recent non-deleted check-in is
-    //   treated as the one that changed (it is already in userRows).
-    // - If changedCheckIn is provided, userRows is assumed to be the old DB
-    //   snapshot for this user; the supplied row replaces the old one.
-    // - For edits/soft-deletes where the old snapshot is not available, use
-    //   `recomputeWorkStats` instead.
-    let priorRows: CheckIn[];
-    let newRows: CheckIn[];
-    if (!changedCheckIn) {
-      priorRows = userRows.length > 0 ? userRows.slice(1) : userRows;
-      newRows = userRows;
-    } else if (changedInDb) {
-      const otherRows = userRows.filter((r) => r.id !== changedId);
-      priorRows = userRows;
-      newRows = [changedCheckIn, ...otherRows];
-    } else {
-      priorRows = userRows;
-      newRows = [changedCheckIn, ...userRows];
-    }
+    const { priorRows, newRows, changedInDb } = resolveChangedRowSets(userRows, changedCheckIn);
 
     const oldContribution = computeUserContribution(
       priorRows,
@@ -222,6 +209,51 @@ export async function incrementalUpdateWorkStats(
     );
     await writeWorkStats(cafeId, nextStats, q);
   });
+}
+
+/**
+ * Resolve the "before" and "after" row sets for one user from the DB
+ * snapshot (`userRows`, live check-ins ordered by visited_at desc) and the
+ * caller's `changedCheckIn` marker:
+ * - omitted: the most recent row is treated as the one that changed.
+ * - `{ insertedId }`: the row was just INSERTed in this transaction, so
+ *   userRows is the post-insert snapshot; the "before" set excludes it.
+ *   Correct for backdated `visited_at` — `computeUserContribution` re-sorts
+ *   by `visited_at`, so the new row takes its true recency rank instead of
+ *   assuming it is the latest.
+ * - a full `CheckIn` row: userRows is the old snapshot; the supplied row
+ *   replaces the old one (edit) or is prepended (not yet persisted).
+ */
+function resolveChangedRowSets(
+  userRows: CheckIn[],
+  changedCheckIn: CheckIn | { insertedId: string } | undefined,
+): { priorRows: CheckIn[]; newRows: CheckIn[]; changedInDb: boolean } {
+  const changedRow: CheckIn | undefined =
+    changedCheckIn && !("insertedId" in changedCheckIn) ? changedCheckIn : undefined;
+  const insertedId =
+    changedCheckIn && "insertedId" in changedCheckIn ? changedCheckIn.insertedId : undefined;
+  const changedId = insertedId ?? changedRow?.id;
+  const changedInDb = changedId ? userRows.some((r) => r.id === changedId) : false;
+
+  if (insertedId !== undefined) {
+    return {
+      priorRows: userRows.filter((r) => r.id !== insertedId),
+      newRows: userRows,
+      changedInDb,
+    };
+  }
+  if (!changedRow) {
+    return {
+      priorRows: userRows.length > 0 ? userRows.slice(1) : userRows,
+      newRows: userRows,
+      changedInDb,
+    };
+  }
+  if (changedInDb) {
+    const otherRows = userRows.filter((r) => r.id !== changedId);
+    return { priorRows: userRows, newRows: [changedRow, ...otherRows], changedInDb };
+  }
+  return { priorRows: userRows, newRows: [changedRow, ...userRows], changedInDb };
 }
 
 async function writeWorkStats(

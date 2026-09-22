@@ -17,7 +17,7 @@
  * PEEK is the no-selection state: stepping down from HALF clears the
  * selection (spec 0004 18b), so `snap` derives from selection + height.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "@heroui/react";
 import { isValidUUID } from "@shared/uuid";
@@ -184,14 +184,26 @@ export function useDiscoveryController(options?: {
     }
   }, [selectedCafeId]);
 
-  return {
-    selectedCafeId,
-    snap,
-    select,
-    snapTo,
-    close,
-    handleMissingCafe,
-    registerCardRef,
-    detailHeadingRef,
-  };
+  return useMemo(
+    () => ({
+      selectedCafeId,
+      snap,
+      select,
+      snapTo,
+      close,
+      handleMissingCafe,
+      registerCardRef,
+      detailHeadingRef,
+    }),
+    [
+      selectedCafeId,
+      snap,
+      select,
+      snapTo,
+      close,
+      handleMissingCafe,
+      registerCardRef,
+      detailHeadingRef,
+    ],
+  );
 }

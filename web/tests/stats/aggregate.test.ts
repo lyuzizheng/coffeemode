@@ -10,6 +10,7 @@ import {
   computeUserContribution,
   emptyWorkStats,
   incrementalUpdateWorkStats,
+  recomputeAllWorkStats,
   recomputeWorkStats,
   type WorkStats,
 } from "@/lib/stats/aggregate";
@@ -631,5 +632,70 @@ describe("recomputeWorkStats", () => {
       typeof computeCafeStats
     >;
     expect(written.n_checkins).toBe(1);
+  });
+});
+
+describe("recomputeAllWorkStats", () => {
+  const cafeListQuery = (ids: string[]) =>
+    (async () => ({
+      rows: ids.map((id) => ({ id })),
+      rowCount: ids.length,
+    })) as unknown as <T extends Record<string, unknown>>(
+      text: string,
+      params?: unknown[],
+    ) => Promise<QueryResult<T>>;
+
+  const emptyTxQuery = (impl?: (sql: string, params?: unknown[]) => void) =>
+    (async (sql: string, params?: unknown[]) => {
+      impl?.(sql, params);
+      return { rows: [], rowCount: 0 };
+    }) as unknown as <T extends Record<string, unknown>>(
+      text: string,
+      params?: unknown[],
+    ) => Promise<QueryResult<T>>;
+
+  it("recomputes cafes through a bounded pool instead of serially", async () => {
+    const ids = Array.from({ length: 10 }, (_, i) => `cafe-${i}`);
+    let active = 0;
+    let maxActive = 0;
+    const runInTransaction: RunInTransaction = async (fn) => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      try {
+        // Microtask yield: lets sibling workers start before this recompute
+        // finishes, so maxActive reflects real overlap deterministically.
+        await Promise.resolve();
+        return await fn(emptyTxQuery());
+      } finally {
+        active--;
+      }
+    };
+
+    await recomputeAllWorkStats(cafeListQuery(ids), 0, runInTransaction);
+
+    expect(maxActive).toBeGreaterThan(1);
+    expect(maxActive).toBeLessThanOrEqual(4);
+  });
+
+  it("rethrows the first failure after in-flight recomputes settle", async () => {
+    const ids = Array.from({ length: 6 }, (_, i) => `cafe-${i}`);
+    const attempted: string[] = [];
+    const boom = new Error("boom");
+    const runInTransaction: RunInTransaction = async (fn) =>
+      fn(
+        emptyTxQuery((sql, params) => {
+          if (sql.includes("for update")) {
+            const cafeId = params?.[0] as string;
+            attempted.push(cafeId);
+            if (cafeId === "cafe-2") throw boom;
+          }
+        }),
+      );
+
+    await expect(
+      recomputeAllWorkStats(cafeListQuery(ids), 0, runInTransaction),
+    ).rejects.toBe(boom);
+    // The pool stopped pulling new work after the failure.
+    expect(attempted.length).toBeLessThan(ids.length);
   });
 });

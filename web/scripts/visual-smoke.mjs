@@ -21,8 +21,7 @@ import {
 import {
   E2E_CAFE_ID,
   setupDbFixtures,
-  cleanupDbFixtures,
-  closeDbClient,
+  teardownDbFixtures,
 } from "./lib/e2e-fixtures.mjs";
 import { stubOpenFreeMap } from "./lib/tile-stubs.mjs";
 
@@ -117,14 +116,13 @@ async function cleanup() {
     }
     serverProcess = null;
   }
-  if (dbClient) {
-    try {
-      await cleanupDbFixtures(dbClient);
-      await closeDbClient(dbClient);
-    } catch {
-      // Benign: best-effort fixture teardown.
-    }
-    dbClient = null;
+  // Fixture cleanup failures are real failures (BRAWUKA-629): a leftover row
+  // pollutes the next run, so the process exits non-zero.
+  const cleanupErr = await teardownDbFixtures(dbClient);
+  dbClient = null;
+  if (cleanupErr) {
+    console.error(cleanupErr.message ?? cleanupErr);
+    process.exitCode = 1;
   }
 }
 

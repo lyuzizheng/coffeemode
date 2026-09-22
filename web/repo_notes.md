@@ -355,3 +355,17 @@ _Applies the P1 findings from an independent critical review. Original issues: #
   - Replaced `getUser()` with `getSession()` and now skips refresh entirely when no Supabase session cookie is present.
 - `web/lib/places/poi-client.ts` / `web/lib/images/image-service-client.ts` / `web/lib/images/processor.ts`
   - Upstream error response bodies are canceled instead of buffered or logged.
+
+## 2026-09-22 (BRAWUKA-655 — check-in create incremental stats fold)
+
+- `web/lib/stats/aggregate.ts`
+  - `incrementalUpdateWorkStats`'s `changedCheckIn` now also accepts
+    `{ insertedId }`: the row was just INSERTed in the same transaction, so
+    the DB snapshot is the "after" state and the "before" set excludes that
+    row. Correct for backdated `visited_at` because the contribution math
+    re-sorts by `visited_at` internally.
+- `web/lib/db/checkins/create.ts`
+  - The create path now folds via `incrementalUpdateWorkStats` instead of a
+    full `recomputeWorkStats` (O(user's check-ins) instead of O(cafe's)).
+    A raced idempotency dedupe skips the fold — the winner's transaction
+    already counted the row.

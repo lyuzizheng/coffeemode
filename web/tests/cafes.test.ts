@@ -1172,11 +1172,33 @@ describe("GET /api/cafes/[id]/checkins", () => {
   it("404s when stranger requests checkins feed for a private cafe", async () => {
     getUserMock.mockResolvedValue({ data: { user: OTHER_USER }, error: null });
     poolQueryMock.mockResolvedValueOnce({ rows: [] }); // cafeExists probe: invisible
+    poolQueryMock.mockResolvedValueOnce({ rows: [] }); // feed query runs in parallel (BRAWUKA-649)
 
     const res = await checkinsGET(
       new Request(`https://localhost/api/cafes/${CAFE_ID}/checkins?mode=newest`),
       { params: Promise.resolve({ id: CAFE_ID }) },
     );
+    expect(res.status).toBe(404);
+  });
+
+  it("issues the existence probe and the feed query concurrently (BRAWUKA-649)", async () => {
+    getUserMock.mockResolvedValue({ data: { user: null }, error: null });
+    // Both queries stay pending until released — if the feed query were
+    // serialized behind the probe it would never be issued.
+    const releases: Array<() => void> = [];
+    poolQueryMock.mockImplementation(
+      () => new Promise<{ rows: unknown[] }>((resolve) => {
+        releases.push(() => resolve({ rows: [] }));
+      }),
+    );
+
+    const pending = checkinsGET(
+      new Request(`https://localhost/api/cafes/${CAFE_ID}/checkins?mode=newest`),
+      { params: Promise.resolve({ id: CAFE_ID }) },
+    );
+    await vi.waitFor(() => expect(poolQueryMock).toHaveBeenCalledTimes(2));
+    releases.forEach((release) => release());
+    const res = await pending;
     expect(res.status).toBe(404);
   });
 });

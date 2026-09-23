@@ -2,6 +2,7 @@ import type { SessionUser } from "@/lib/auth/get-user";
 import { refreshSessionAndVerify } from "@/lib/auth/proxy-session";
 import { VERIFIED_USER_HEADER } from "@/lib/auth/verified-user";
 import { NextRequest, NextResponse } from "next/server";
+import { redirectToPath } from "@/lib/security/origin";
 import { CAFE_SHELL_BYPASS_CACHE_CONTROL } from "@/lib/cache-policy";
 import { cafeExists } from "@/lib/db/cafes";
 import { isValidUUID } from "@shared/uuid";
@@ -75,7 +76,9 @@ function legacyCafeRedirect(request: NextRequest): NextResponse | null {
   // isValidUUID (not a loose 36-char regex): a malformed id would 308 to a
   // guaranteed 404 — pointless redirect traffic.
   if (!cafe || !isValidUUID(cafe)) return null;
-  return NextResponse.redirect(new URL(`/cafes/${cafe}`, request.url), 308);
+  // redirectToPath, not request.url: behind the staging proxy request.url's
+  // origin is the internal listener (BRAWUKA-558).
+  return redirectToPath(request, `/cafes/${cafe}`, 308);
 }
 
 async function handleProxy(request: NextRequest) {

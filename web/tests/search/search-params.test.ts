@@ -96,6 +96,22 @@ describe("validateSearchQuery", () => {
     expect(validate({ lat: "90", lng: "-180" })).toMatchObject({ ok: true });
   });
 
+  it("rejects a lone coordinate — lat/lng must arrive as a pair (BRAWUKA-597)", () => {
+    const lone: Record<string, string>[] = [{ lat: "1.3" }, { lng: "103.8" }, { lat: "abc", lng: "103.8" }];
+    for (const entries of lone) {
+      expect(validate(entries)).toMatchObject({
+        ok: false,
+        error: "lat_lng",
+        status: 400,
+        code: "invalid_request",
+        message: "lat and lng must be provided together",
+      });
+    }
+    // Both present or both absent stay valid.
+    expect(validate({ lat: "1.3", lng: "103.8" })).toMatchObject({ ok: true });
+    expect(validate({})).toMatchObject({ ok: true });
+  });
+
   it("rejects non-numeric, non-integer, and non-positive limit", () => {
     for (const limit of ["abc", "3.5", "0", "-5"]) {
       expect(validate({ limit })).toMatchObject({
@@ -116,13 +132,20 @@ describe("validateSearchQuery", () => {
     });
   });
 
-  it("checks in API order: lat before lng before limit before city", () => {
+  it("checks in API order: lat range, lng range, pairing, limit, then city", () => {
     expect(
       validate({ lat: "999", lng: "999", limit: "abc", city: "atlantis" }),
     ).toMatchObject({ ok: false, error: "lat" });
     expect(validate({ lng: "999", limit: "abc", city: "atlantis" })).toMatchObject({
       ok: false,
       error: "lng",
+    });
+    // Pairing runs after the range checks but before limit/city: a lone
+    // out-of-range lat still reports "lat", a lone in-range one "lat_lng".
+    expect(validate({ lat: "999" })).toMatchObject({ ok: false, error: "lat" });
+    expect(validate({ lat: "1.3", limit: "abc", city: "atlantis" })).toMatchObject({
+      ok: false,
+      error: "lat_lng",
     });
     expect(validate({ limit: "abc", city: "atlantis" })).toMatchObject({
       ok: false,

@@ -140,7 +140,7 @@ describeIntegration("integration — real Supabase auth exchange & token verific
     expect(Array.from(cookieJar.keys()).some((k) => k.includes("code-verifier"))).toBe(true);
 
     // 2. Simulate browser redirect back with authorization code
-    const res = await callbackGET(new Request("http://localhost:3000/auth/callback?code=mock-exchange-code-123"));
+    const res = await callbackGET(new Request("http://localhost:3000/auth/callback?code=mock-exchange-code-123", { headers: { host: "localhost:3000" } }));
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toBe("http://localhost:3000/");
 
@@ -168,7 +168,7 @@ describeIntegration("integration — real Supabase auth exchange & token verific
     });
 
     const res = await callbackGET(
-      new Request("http://localhost:3000/auth/callback?code=mock-exchange-code-123&next=%2Fcafes%2Fexplore"),
+      new Request("http://localhost:3000/auth/callback?code=mock-exchange-code-123&next=%2Fcafes%2Fexplore", { headers: { host: "localhost:3000" } }),
     );
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toBe("http://localhost:3000/cafes/explore");
@@ -190,7 +190,7 @@ describeIntegration("integration — real Supabase auth exchange & token verific
   });
 
   it("negative path: GET /auth/callback redirects to /?auth=error when code is missing", async () => {
-    const res = await callbackGET(new Request("http://localhost:3000/auth/callback"));
+    const res = await callbackGET(new Request("http://localhost:3000/auth/callback", { headers: { host: "localhost:3000" } }));
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toBe("http://localhost:3000/?auth=error");
   });
@@ -198,7 +198,7 @@ describeIntegration("integration — real Supabase auth exchange & token verific
   it("negative path: GET /auth/callback redirects to /?auth=error when PKCE code verifier is missing", async () => {
     // No verifier cookie in jar
     cookieJar.clear();
-    const res = await callbackGET(new Request("http://localhost:3000/auth/callback?code=unverified-code"));
+    const res = await callbackGET(new Request("http://localhost:3000/auth/callback?code=unverified-code", { headers: { host: "localhost:3000" } }));
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toBe("http://localhost:3000/?auth=error");
   });

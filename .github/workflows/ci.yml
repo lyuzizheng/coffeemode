@@ -2,6 +2,9 @@ name: CI
 
 on:
   pull_request:
+  # Merge queue: GitHub dispatches merge_group (no pull_request payload) when an
+  # armed PR enters the queue; ci-gate must run on the group's merged head.
+  merge_group:
   push:
     branches:
       - main
@@ -31,7 +34,7 @@ jobs:
       - name: Classify changed paths
         id: classify
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.event.merge_group.base_sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
@@ -73,7 +76,7 @@ jobs:
 
       - name: Scan incremental changes
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || github.event.merge_group.base_sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then

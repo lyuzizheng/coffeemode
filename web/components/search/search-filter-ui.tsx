@@ -142,7 +142,7 @@ function DimSegmentRow({
 }: {
   dim: WorkDim;
   label: string;
-  value: DimThreshold | undefined;
+  value: number | undefined;
   onChange: (threshold: DimThreshold | undefined) => void;
 }) {
   const Icon = DIM_ICONS[dim];

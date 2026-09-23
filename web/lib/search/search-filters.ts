@@ -7,10 +7,10 @@
  * derives from `SearchFilterState`.
  *
  * URL contract (DG48): `Any` means "no threshold" — the parameter is omitted
- * entirely, so a clean state produces a clean query string. Only the two
- * tri-state values the UI can express (60/80) round-trip; other scores are
- * valid API input but not representable by the segments, so they decode to
- * "not set" rather than lying about the control position.
+ * entirely, so a clean state produces a clean query string. Tri-state segment
+ * values (60/80) represent the UI controls, but any valid 0-100 score
+ * round-trips to preserve deep-link filter state across SSR and client
+ * surfaces (BRAWUKA-589).
  */
 import type { WorkDim } from "@/lib/stats/work-stats";
 import { WORK_DIMS } from "@/lib/stats/work-stats";
@@ -28,8 +28,8 @@ export type MaxStayFilter = (typeof MAX_STAY_FILTER_VALUES)[number];
 export interface SearchFilterState {
   /** `open_now` — default OFF (DG53). */
   openNow: boolean;
-  /** Per-dimension minimum score; absent = `Any`. */
-  thresholds: Partial<Record<WorkDim, DimThreshold>>;
+  /** Per-dimension minimum score; absent = `Any`. Accepts tri-state (60/80) or custom 0-100 scores. */
+  thresholds: Partial<Record<WorkDim, number>>;
   /** `filter_max_stay`; absent = `Any`. */
   maxStay: MaxStayFilter | null;
 }
@@ -49,15 +49,22 @@ const DIM_PARAM: Record<WorkDim, string> = {
   overall: "filter_overall",
 };
 
-function isDimThreshold(value: number): value is DimThreshold {
+export function isDimThreshold(value: number): value is DimThreshold {
   return (DIM_THRESHOLDS as readonly number[]).includes(value);
+}
+
+function parseScore(raw: string | null): number | undefined {
+  if (raw === null || raw.trim() === "") return undefined;
+  const num = Number(raw);
+  if (!Number.isFinite(num) || num < 0 || num > 100) return undefined;
+  return num;
 }
 
 function isMaxStayFilter(value: string): value is MaxStayFilter {
   return (MAX_STAY_FILTER_VALUES as readonly string[]).includes(value);
 }
 
-/** Decode `?open_now=&filter_*=` into state; unrepresentable values drop. */
+/** Decode `?open_now=&filter_*=` into state; out-of-range scores drop. */
 export function filtersFromSearchParams(params: URLSearchParams): SearchFilterState {
   const state: SearchFilterState = {
     openNow: params.get("open_now") === "true",
@@ -65,10 +72,8 @@ export function filtersFromSearchParams(params: URLSearchParams): SearchFilterSt
     maxStay: null,
   };
   for (const dim of WORK_DIMS) {
-    const raw = params.get(DIM_PARAM[dim]);
-    if (raw === null) continue;
-    const score = Number(raw);
-    if (isDimThreshold(score)) state.thresholds[dim] = score;
+    const score = parseScore(params.get(DIM_PARAM[dim]));
+    if (score !== undefined) state.thresholds[dim] = score;
   }
   const maxStay = params.get("filter_max_stay");
   if (maxStay !== null && isMaxStayFilter(maxStay)) state.maxStay = maxStay;

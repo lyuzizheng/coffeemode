@@ -11,8 +11,8 @@
  * machine 2026-09-19 against a local echo server): subresource injection
  * WORKS. A paused XHR continued via `page.cdp("Fetch.continueRequest", …)`
  * with merged headers arrives at the server carrying `CF-Access-Client-Id`
- * / `CF-Access-Client-Secret` — reproduced with the full 55-pattern set
- * (5 hosts × 11 `ACCESS_FETCH_RESOURCE_TYPES`). Documents never pause under
+ * / `CF-Access-Client-Secret` — reproduced with the full 33-pattern set
+ * (3 Access hosts × 11 `ACCESS_FETCH_RESOURCE_TYPES`). Documents never pause under
  * the patterns below, so `page.goto()` resolves in ~100ms. Two real caveats
  * (both verified):
  * (a) `page.fetch` must never target an intercepted URL — its paused event
@@ -80,7 +80,8 @@ import {
   ACCESS_CLIENT_SECRET_HEADER,
   resolveAccessHeaders,
 } from "./access-headers.mjs";
-import { AGENT_QA_ALLOWED_HOSTS, isAllowedHost } from "./allowlist.mjs";
+
+import { AGENT_QA_ACCESS_HOSTS, isAccessHost } from "./allowlist.mjs";
 
 /**
  * Subresource `Network.ResourceType` values stamped by
@@ -114,19 +115,21 @@ export const ACCESS_FETCH_RESOURCE_TYPES = Object.freeze([
 ]);
 
 /**
- * Build `Fetch.enable` request patterns scoped to the staging allowlist AND
- * to subresource types. Each allowlisted host gets one `*://host/*` pattern
+ * Build `Fetch.enable` request patterns scoped to the Access-protected hosts
+ * AND to subresource types. Each Access host gets one `*://host/*` pattern
  * per `ACCESS_FETCH_RESOURCE_TYPES` entry; the bare
  * `*.cloudflareaccess.com` rule becomes `*://*.cloudflareaccess.com/*`, which
- * the Fetch domain matches per-request URL. No catch-all pattern is ever
- * emitted, and no pattern can match a Document navigation — a request the
- * patterns don't match is never paused and therefore can never receive the
- * token pair or stall navigation.
+ * the Fetch domain matches per-request URL. The staging Supabase host stays
+ * OUT of this set (BRAWUKA-593): it is a third-party API, not behind our
+ * Access application, so its requests are never paused for injection. No
+ * catch-all pattern is ever emitted, and no pattern can match a Document
+ * navigation — a request the patterns don't match is never paused and
+ * therefore can never receive the token pair or stall navigation.
  *
  * @returns {Array<{ urlPattern: string, requestStage: string, resourceType: string }>}
  */
 export function buildAccessFetchPatterns() {
-  return AGENT_QA_ALLOWED_HOSTS.flatMap((rule) =>
+  return AGENT_QA_ACCESS_HOSTS.flatMap((rule) =>
     ACCESS_FETCH_RESOURCE_TYPES.map((resourceType) => ({
       urlPattern: `*://${rule}/*`,
       requestStage: "Request",
@@ -137,9 +140,11 @@ export function buildAccessFetchPatterns() {
 
 /**
  * Decide whether a paused request URL may receive the Access token pair:
- * http(s) only, and its hostname must match `isAllowedHost` (the same
- * predicate that gates navigation). Fail-closed: unparsable URLs,
- * non-http(s) schemes, and off-allowlist hosts all return false.
+ * http(s) only, and its hostname must match `isAccessHost` — the
+ * Access-protected subset, NOT the full navigation allowlist (BRAWUKA-593:
+ * the staging Supabase host is navigable but must never receive the token
+ * pair). Fail-closed: unparsable URLs, non-http(s) schemes, and off-scope
+ * hosts all return false.
  *
  * @param {unknown} requestUrl absolute request URL from `Fetch.requestPaused`
  * @returns {boolean} true only when the headers may be attached
@@ -152,7 +157,7 @@ export function shouldAttachAccessHeaders(requestUrl) {
     return false;
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") return false;
-  return isAllowedHost(url.hostname);
+  return isAccessHost(url.hostname);
 }
 
 /**

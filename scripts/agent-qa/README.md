@@ -7,7 +7,10 @@ ledger, allowlist guard, quotas, cleanup.
 ## Cloudflare Access: per-origin injection (BRAWUKA-508)
 
 `CF-Access-*` is a network-layer identity: it MUST reach only
-`AGENT_QA_ALLOWED_HOSTS` (`allowlist.mjs`). The old path —
+`AGENT_QA_ACCESS_HOSTS` (`allowlist.mjs`) — the Access-protected subset
+(staging app, image CDN, Access handshake hosts). The staging Supabase host
+stays in the navigation allowlist (`AGENT_QA_ALLOWED_HOSTS`) but is NOT an
+Access host, so it never receives the token pair (BRAWUKA-593). The old path —
 `Network.setExtraHTTPHeaders` via `toCdpExtraHeaders` — attaches headers to
 _every_ request the page makes, leaking the service token to third parties
 (`cloudflareinsights.com` beacons failed CORS preflight; `openfreemap` tiles
@@ -16,7 +19,7 @@ carried the token). That API is global by design and MUST NOT be used for
 scaffold-side direct HTTP calls to already-allowlisted staging URLs.
 
 The browser path is `access-inject.mjs`: `Fetch.enable` with urlPatterns
-scoped to the allowlist AND to subresource `resourceType`s
+scoped to the Access hosts AND to subresource `resourceType`s
 (`buildAccessFetchPatterns`: no `Document`, only types this ego-browser build
 accepts — `TextTrack`/`Prefetch`/`WebSocket`/`Manifest`/`SignedExchange`/
 `Preflight`/`FedCM` are rejected at enable time), plus a `page.events()`
@@ -28,7 +31,7 @@ Status (ego-browser 0.5.0.32, verified end-to-end on this machine 2026-09-19
 against a local echo server): subresource injection WORKS. A paused XHR
 continued via `page.cdp("Fetch.continueRequest", …)` with merged headers
 arrives at the server carrying the token pair — reproduced with the full
-55-pattern set (5 hosts × 11 types). Documents never pause under the
+33-pattern set (3 Access hosts × 11 types). Documents never pause under the
 patterns, so `page.goto()` resolves in ~100ms.
 
 Two real caveats: (a) `page.fetch` must never target an intercepted URL —
@@ -38,7 +41,7 @@ and in-page reads use fire-and-poll (`window.__x`), so both stay off this
 path. (b) The top-frame Document navigation carries no Access headers, so
 the first staging `page.goto()` lands on the Access handshake; the agent
 completes it once and reuses the session cookie thereafter. Fail-closed
-throughout: unparsable/off-allowlist URLs never receive headers, and a
+throughout: unparsable/off-Access-scope URLs never receive headers, and a
 paused request is always continued (never left hanging).
 
 ## Secret-bridge contract (F8)

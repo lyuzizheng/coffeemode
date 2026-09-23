@@ -55,13 +55,19 @@ function MenuRow({
     "cm-focus flex min-h-11 w-full items-center gap-3 px-4 transition-colors duration-120 hover:bg-surface-secondary";
   if (href) {
     return (
-      <Link href={href} data-menu-item className={className}>
+      <Link href={href} role="menuitem" data-menu-item className={className}>
         {inner}
       </Link>
     );
   }
   return (
-    <button type="button" data-menu-item onClick={onSelect} className={className}>
+    <button
+      type="button"
+      role="menuitem"
+      data-menu-item
+      onClick={onSelect}
+      className={className}
+    >
       {inner}
     </button>
   );
@@ -121,6 +127,7 @@ function MenuRows({
       {rows.map((row) => (
         <motion.div
           key={row.key}
+          role="none"
           variants={{
             open: { opacity: 1, y: 0 },
             closed: { opacity: 0, y: -6 },
@@ -180,6 +187,7 @@ export function MenuPanel({
       className="absolute right-0 top-[calc(100%+10px)] w-60 overflow-hidden rounded-lg border border-separator bg-overlay shadow-map"
     >
       <motion.div
+        role="none"
         className="divide-y divide-separator"
         initial="closed"
         animate="open"

@@ -74,6 +74,14 @@ function useOnboardingCenter(
   });
 }
 
+function resolveMergedCityName(
+  city: string,
+  stored: ReturnType<typeof readOnboardingState>,
+): string | null {
+  if (findCity(city)) return null;
+  return stored?.currentCity === city ? (stored.currentCityName ?? null) : null;
+}
+
 /** Mount reconciliation (DG122): anonymous onboarded state merges into the
  * profile; a server-onboarded profile seeds localStorage for later
  * signed-out visits on this device. */
@@ -85,10 +93,14 @@ function useOnboardingMerge(
   useEffect(() => {
     const stored = readOnboardingState();
     if (serverOnboarded) {
+      const city = profileSeed?.currentCity;
       writeOnboardingState({
         onboarded: true,
-        ...(profileSeed?.currentCity
-          ? { currentCity: profileSeed.currentCity }
+        ...(city
+          ? {
+              currentCity: city,
+              currentCityName: resolveMergedCityName(city, stored),
+            }
           : {}),
         ...(profileSeed?.lastLocation
           ? { lastLocation: profileSeed.lastLocation }

@@ -44,11 +44,15 @@ function renderList({
   externalSources = { google: true, apple: true },
   mapkitConfigured = false,
   locale = "en",
+  hasActiveFilters = false,
+  onResetFilters,
 }: {
   response: SearchResponse;
   externalSources?: ExternalSourceFlags;
   mapkitConfigured?: boolean;
   locale?: "en" | "zh";
+  hasActiveFilters?: boolean;
+  onResetFilters?: () => void;
 }) {
   const onSelect = vi.fn();
   const onExternalSearch = vi.fn();
@@ -60,6 +64,8 @@ function renderList({
         mapkitConfigured={mapkitConfigured}
         onSelect={onSelect}
         onExternalSearch={onExternalSearch}
+        hasActiveFilters={hasActiveFilters}
+        onResetFilters={onResetFilters}
       />
     </NextIntlClientProvider>,
   );
@@ -157,3 +163,64 @@ describe("SearchResultsList — DG138 city-center distance label", () => {
     expect(screen.queryByText(/from city center/)).not.toBeInTheDocument();
   });
 });
+
+describe("SearchResultsList — empty states", () => {
+  it("renders generic empty state when results are empty and no active filters", () => {
+    renderList({
+      response: makeResponse([]),
+      hasActiveFilters: false,
+    });
+    expect(screen.getByText(en.search.no_results)).toBeInTheDocument();
+    expect(screen.getByText(en.search.no_results_hint)).toBeInTheDocument();
+    expect(screen.queryByText(en.search.no_match_filters)).not.toBeInTheDocument();
+  });
+
+  it("renders generic empty state in Chinese when locale is zh", () => {
+    renderList({
+      response: makeResponse([]),
+      hasActiveFilters: false,
+      locale: "zh",
+    });
+    expect(screen.getByText(zh.search.no_results)).toBeInTheDocument();
+    expect(screen.getByText(zh.search.no_results_hint)).toBeInTheDocument();
+    expect(screen.queryByText(zh.search.no_match_filters)).not.toBeInTheDocument();
+  });
+
+  it("renders generic empty state without blank screen when external sources are disabled", () => {
+    renderList({
+      response: makeResponse([]),
+      externalSources: { google: false, apple: false },
+      hasActiveFilters: false,
+    });
+    expect(screen.getByText(en.search.no_results)).toBeInTheDocument();
+    expect(screen.getByText(en.search.no_results_hint)).toBeInTheDocument();
+    expect(screen.queryByText(en.search.not_finding)).not.toBeInTheDocument();
+  });
+
+  it("renders filter empty state with reset button when filters are active", () => {
+    const onResetFilters = vi.fn();
+    renderList({
+      response: makeResponse([]),
+      hasActiveFilters: true,
+      onResetFilters,
+    });
+    expect(screen.getByText(en.search.no_match_filters)).toBeInTheDocument();
+    expect(screen.getByText(en.search.loosen_filters)).toBeInTheDocument();
+    expect(screen.queryByText(en.search.no_results)).not.toBeInTheDocument();
+
+    const resetButton = screen.getByRole("button", { name: en.search.reset_filters });
+    expect(resetButton).toBeInTheDocument();
+    resetButton.click();
+    expect(onResetFilters).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not render any empty state when results are present", () => {
+    renderList({
+      response: makeResponse([makeItem("c1", "coffeemode")]),
+      hasActiveFilters: false,
+    });
+    expect(screen.queryByText(en.search.no_results)).not.toBeInTheDocument();
+    expect(screen.queryByText(en.search.no_match_filters)).not.toBeInTheDocument();
+  });
+});
+

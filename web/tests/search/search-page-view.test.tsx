@@ -38,3 +38,47 @@ describe("SearchPageView invalid params", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(en.search.unknown_city);
   });
 });
+
+describe("SearchPageView empty states", () => {
+  const emptyResponse = {
+    results: [],
+    total_count: 0,
+    is_weak_results: false,
+    reference_point: { lat: 1.3, lng: 103.8, is_from_city_center: false },
+  };
+
+  it("renders generic empty state when results are empty without active filters", () => {
+    render(
+      <NextIntlClientProvider locale="en" messages={en}>
+        <SearchPageView
+          {...baseProps}
+          q="nonexistent"
+          response={emptyResponse}
+          invalidParam={null}
+        />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByText(en.search.no_results)).toBeInTheDocument();
+    expect(screen.getByText(en.search.no_results_hint)).toBeInTheDocument();
+    expect(screen.queryByText(en.search.no_match_filters)).not.toBeInTheDocument();
+  });
+
+  it("renders filter empty state when results are empty with active filters", () => {
+    render(
+      <NextIntlClientProvider locale="en" messages={en}>
+        <SearchPageView
+          {...baseProps}
+          q="test"
+          filters={{ open_now: true }}
+          params={new URLSearchParams("open_now=true")}
+          response={emptyResponse}
+          invalidParam={null}
+        />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByText(en.search.no_match_filters)).toBeInTheDocument();
+    expect(screen.getByText(en.search.loosen_filters)).toBeInTheDocument();
+    expect(screen.queryByText(en.search.no_results)).not.toBeInTheDocument();
+  });
+});
+

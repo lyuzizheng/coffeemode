@@ -8,6 +8,9 @@ import { R2_ALLOWED_PUBLIC_HOSTS, assertR2PublicUrlMatches } from "./lib/images/
 // Pure policy helpers (edge-safe, no node: imports) — the single source for
 // the cafe-shell cache header value (BRAWUKA-184).
 import { cafeShellCacheControl } from "./lib/cache-policy";
+// Baseline CSP + Permissions-Policy builder (BRAWUKA-633). Import-free like
+// cache-policy, so the config transpiler resolves it the same way.
+import { securityHeaders } from "./lib/security/headers";
 
 const appConfig = parseAppConfig(loadYaml("app.yaml"));
 
@@ -150,14 +153,16 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        // Baseline security headers on every response (BRAWUKA-167).
+        // Baseline security headers on every response (BRAWUKA-167, BRAWUKA-633).
         // HSTS only in production: Traefik terminates TLS there; local dev
-        // and non-TLS staging must never receive it.
+        // and non-TLS staging must never receive it. CSP upgrade-insecure-requests
+        // follows the same gate; the directive values live in lib/security/headers.ts.
         source: "/:path*",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          ...securityHeaders(process.env.NODE_ENV === "production"),
           ...(process.env.NODE_ENV === "production"
             ? [
                 {

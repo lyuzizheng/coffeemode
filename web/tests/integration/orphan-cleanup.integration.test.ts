@@ -213,9 +213,17 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
       expect(dry.stdout).toContain(`"key":"${orphan}"`);
       expect(dry.stdout).toContain('"op":"would-delete"');
       // Orphans checked against the live set are labeled not-referenced
-      // (BRAWUKA-630): never "referenced", which is reserved for would-keep.
-      expect(dry.stdout).toContain('"verification":"not-referenced"');
-      expect(dry.stdout).not.toContain('"verification":"referenced"');
+      // (BRAWUKA-630); the referenced key itself carries
+      // verification:"referenced" on its would-keep line (BRAWUKA-592) —
+      // "referenced" is reserved for would-keep, never for would-delete.
+      const dryLines = dry.stdout.split("\n").filter((l) => l.includes('"key":"'));
+      const orphanLine = dryLines.find((l) => l.includes(`"key":"${orphan}"`));
+      const referencedLine = dryLines.find((l) => l.includes(`"key":"${referenced}"`));
+      expect(orphanLine).toContain('"op":"would-delete"');
+      expect(orphanLine).toContain('"verification":"not-referenced"');
+      expect(orphanLine).not.toContain('"verification":"referenced"');
+      expect(referencedLine).toContain('"op":"would-keep"');
+      expect(referencedLine).toContain('"verification":"referenced"');
       expect(dry.stdout).toContain(`"key":"${referenced}"`);
       expect(dry.stdout).toContain('"op":"would-keep"');
       expect(dry.stdout).toContain('"reason":"referenced"');
@@ -311,8 +319,28 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     for (const k of keys) {
       if (!survivors.includes(k)) createdKeys.delete(k);
     }
- }, 20_000);
+  }, 20_000);
 
+  it("MAX_OBJECTS still reports truncation when the budget lands on a young entry (BRAWUKA-592 re-review P2)", async () => {
+    // Dedicated bucket: one young entry consumes the MAX_OBJECTS=1 scan
+    // budget via a `continue` path, so the in-loop truncation check is
+    // skipped. S3 still reports IsTruncated:true (a second page remains) —
+    // the exit-path re-evaluation must set truncated:true.
+    const young = `original/${randomUUID()}.webp`;
+    const stale = `original/${randomUUID()}.webp`;
+    await seedOriginal(young);
+    await seedOriginal(stale);
+    const result = runCleanup({
+      DRY_RUN: "1",
+      RETENTION_DAYS: "30",
+      MAX_OBJECTS: "1",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('"truncated":true');
+    // The young entry consumed the only scan slot: nothing classified.
+    expect(result.stdout).toContain('"orphanCandidates":0');
+    expect(await objectExists(stale)).toBe(true);
+  }, 20_000);
 
   it("rejects missing configuration with non-zero exit", async () => {
     try {

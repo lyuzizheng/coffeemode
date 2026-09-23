@@ -35,10 +35,10 @@ describe("deleteAccount", () => {
   it("detaches checkins.user_id before deleting the profile row", async () => {
     // One live check-in on one cafe — the FK-blocked path from review.
     txQueryMock.mockImplementation((sql: string) => {
-      if (sql.includes("from checkins where user_id")) {
+      if (sql.includes("for update of c")) {
         return Promise.resolve({
           ...emptyResult,
-          rows: [{ id: "c1", cafe_id: "k1" }],
+          rows: [{ cafe_id: "k1", checkin_id: "c1" }],
           rowCount: 1,
         });
       }
@@ -49,8 +49,8 @@ describe("deleteAccount", () => {
     expect(result.ok).toBe(true);
 
     const statements = txQueryMock.mock.calls.map(([sql]) => sql as string);
-    const detachIdx = statements.findIndex((s) =>
-      s.includes("update checkins set user_id = null"),
+    const detachIdx = statements.findIndex(
+      (s) => s.includes("update checkins") && s.includes("user_id = null"),
     );
     const profileDeleteIdx = statements.findIndex((s) =>
       s.includes("delete from profiles"),
@@ -62,14 +62,15 @@ describe("deleteAccount", () => {
     expect(detachIdx).toBeLessThan(profileDeleteIdx);
   });
 
-  it("locks cafe rows before check-in rows (BRAWUKA-574)", async () => {
-    // deleteCafe locks cafe → caller check-ins; a deleteAccount that locked
-    // check-ins first would deadlock when the two overlap on one cafe.
+  it("locks cafes and reads check-ins in one statement — one snapshot (BRAWUKA-601)", async () => {
+    // Two separate locking SELECTs took two snapshots: a check-in committed
+    // between them was locked while its cafe was not, and the gallery purge
+    // then took the cafe lock after the check-in lock — inverse order.
     txQueryMock.mockImplementation((sql: string) => {
-      if (sql.includes("from checkins where user_id")) {
+      if (sql.includes("for update of c")) {
         return Promise.resolve({
           ...emptyResult,
-          rows: [{ id: "c1", cafe_id: "k1" }],
+          rows: [{ cafe_id: "k1", checkin_id: "c1" }],
           rowCount: 1,
         });
       }
@@ -78,25 +79,25 @@ describe("deleteAccount", () => {
 
     await deleteAccount(USER);
     const statements = txQueryMock.mock.calls.map(([sql]) => sql as string);
-    const cafeLockIdx = statements.findIndex((s) =>
-      s.includes("from cafes") && s.includes("for update"),
-    );
-    const checkinLockIdx = statements.findIndex((s) =>
-      s.includes("from checkins where user_id") && s.includes("for update"),
-    );
-    expect(cafeLockIdx).toBeGreaterThan(-1);
-    expect(checkinLockIdx).toBeGreaterThan(-1);
-    expect(cafeLockIdx).toBeLessThan(checkinLockIdx);
+    const lockStatements = statements.filter((s) => s.includes("for update"));
+    expect(lockStatements).toHaveLength(1);
+    expect(lockStatements[0]).toContain("from cafes");
+    expect(lockStatements[0]).toContain("join checkins");
+    // No statement locks check-in rows directly: the blanket UPDATE is the
+    // first check-in write, so every check-in lock follows every cafe lock.
+    expect(
+      statements.some((s) => s.includes("from checkins") && s.includes("for update")),
+    ).toBe(false);
   });
 
   it("locks cafes in id order so concurrent teardowns cannot cycle (BRAWUKA-574)", async () => {
     txQueryMock.mockImplementation((sql: string) => {
-      if (sql.includes("from checkins where user_id")) {
+      if (sql.includes("for update of c")) {
         return Promise.resolve({
           ...emptyResult,
           rows: [
-            { id: "c2", cafe_id: "k2" },
-            { id: "c1", cafe_id: "k1" },
+            { cafe_id: "k2", checkin_id: "c2" },
+            { cafe_id: "k1", checkin_id: "c1" },
           ],
           rowCount: 2,
         });
@@ -106,10 +107,8 @@ describe("deleteAccount", () => {
 
     await deleteAccount(USER);
     const statements = txQueryMock.mock.calls.map(([sql]) => sql as string);
-    const checkinLock = statements.find((s) =>
-      s.includes("from checkins where user_id") && s.includes("for update"),
-    );
-    expect(checkinLock).toContain("order by cafe_id, id");
+    const lockStatement = statements.find((s) => s.includes("for update of c"));
+    expect(lockStatement).toContain("order by c.id, ci.id");
   });
 
   it("rejects an invalid user id without touching the database", async () => {

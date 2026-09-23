@@ -3137,6 +3137,136 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       }
     });
 
+    it("check-in committed inside the lock window cannot invert lock order (BRAWUKA-601)", async () => {
+      // Regression: the two locking SELECTs took separate snapshots. A
+      // check-in committed between them was locked while its cafe was not;
+      // the gallery purge then took the cafe lock after the check-in lock —
+      // checkin → cafe, deadlocking against a concurrent cafe → checkin
+      // writer (40P01). The single-statement lock reads both sets under one
+      // snapshot, so the new check-in's cafe is simply outside the lock set.
+      //
+      // Deterministic interleave: a barrier tx holds CAFE_A so the lock
+      // statement blocks mid-scan with its snapshot already taken; the new
+      // check-in commits inside that window. A contender then takes
+      // CAFE_B → NEW_CI (softDeleteCheckIn's order) and waits for the
+      // check-in lock — on the old code that request completes the cycle
+      // with the purge's blocked `update cafes` on CAFE_B.
+      const CAFE_B = randomUUID();
+      const NEW_CI = randomUUID();
+      await dbClient.query(
+        `insert into cafes (id, name, location, city, created_by, tz)
+         values ($1, 'Gap Cafe', ST_SetSRID(ST_MakePoint(103.9, 1.36), 4326)::geography,
+                 'singapore', $2, 'Asia/Singapore')`,
+        [CAFE_B, U2],
+      );
+
+      const barrier = new pg.Client(getPoolConfig(testDbUrl));
+      const contender = new pg.Client(getPoolConfig(testDbUrl));
+      await Promise.all([barrier.connect(), contender.connect()]);
+      try {
+        await barrier.query("begin");
+        await barrier.query("select 1 from cafes where id = $1 for update", [CAFE_A]);
+
+        const deletePromise = deleteAccount(U1);
+        let deleteSettled = false;
+        void deletePromise.then(
+          () => { deleteSettled = true; },
+          () => { deleteSettled = true; },
+        );
+
+        // Poll pg_stat_activity until the lock statement is blocked on
+        // CAFE_A — its snapshot is already taken, so the insert below
+        // commits inside the window. Real polling is required: the awaited
+        // condition is lock state in a live Postgres backend, not a timer
+        // under test (same pattern as waitForBlockedVictim above).
+        const lockDeadline = Date.now() + 10_000;
+        for (;;) {
+          const { rows } = await dbClient.query(
+            `select 1 from pg_stat_activity
+             where datname = current_database()
+               and wait_event_type = 'Lock'
+               and query like '%for update%'`,
+          );
+          if (rows.length > 0) break;
+          if (Date.now() > lockDeadline) {
+            throw new Error("deleteAccount lock statement never blocked on CAFE_A");
+          }
+          const { promise, resolve } = Promise.withResolvers<void>();
+          setTimeout(resolve, 25);
+          await promise;
+        }
+
+        await dbClient.query(
+          `insert into checkins (id, cafe_id, user_id, scores)
+           values ($1, $2, $3, '{"wifi": 70}'::jsonb)`,
+          [NEW_CI, CAFE_B, U1],
+        );
+
+        // softDeleteCheckIn's order on the new pair: cafe first, then the
+        // check-in. Taken before the barrier releases so the purge can
+        // never reach CAFE_B first on the old code.
+        await contender.query("begin");
+        await contender.query("select 1 from cafes where id = $1 for update", [CAFE_B]);
+
+        await barrier.query("commit");
+
+        // Old code only: wait for the purge to block on CAFE_B (proof that
+        // deleteAccount holds NEW_CI), then the contender's check-in lock
+        // request completes the cycle. New code never reaches that state —
+        // deleteAccount settles, the poll exits, and the contender's lock
+        // request is uncontended.
+        const purgeDeadline = Date.now() + 10_000;
+        while (!deleteSettled && Date.now() < purgeDeadline) {
+          const { rows } = await dbClient.query(
+            `select 1 from pg_stat_activity
+             where datname = current_database()
+               and wait_event_type = 'Lock'
+               and query like '%set gallery%'`,
+          );
+          if (rows.length > 0) break;
+          const { promise, resolve } = Promise.withResolvers<void>();
+          setTimeout(resolve, 25);
+          await promise;
+        }
+
+        const [deleteResult, contenderResult] = await Promise.allSettled([
+          deletePromise,
+          contender.query("select 1 from checkins where id = $1 for update", [NEW_CI]),
+        ]);
+        for (const [label, result] of [
+          ["deleteAccount", deleteResult],
+          ["contender", contenderResult],
+        ] as const) {
+          if (result.status === "rejected") {
+            const code = (result.reason as { code?: string } | null)?.code;
+            expect(code, `${label}: ${String(result.reason)}`).not.toBe("40P01");
+          }
+        }
+        await contender.query("commit");
+
+        const result = await deletePromise;
+        // NEW_CI committed after the lock snapshot: not counted, but still
+        // tombstoned + detached by the blanket UPDATE — no live orphan.
+        expect(result.checkins_removed).toBe(1);
+        const checkin = await dbClient.query(
+          "select user_id, deleted_at from checkins where id = $1",
+          [NEW_CI],
+        );
+        expect(checkin.rows[0].deleted_at).not.toBeNull();
+        expect(checkin.rows[0].user_id).toBeNull();
+
+        const live = await dbClient.query(
+          "select id from checkins where user_id = $1 and deleted_at is null",
+          [U1],
+        );
+        expect(live.rows).toHaveLength(0);
+        const profile = await dbClient.query("select id from profiles where id = $1", [U1]);
+        expect(profile.rows).toHaveLength(0);
+      } finally {
+        await Promise.allSettled([barrier.end(), contender.end()]);
+      }
+    });
+
     it("getProfileExport returns the full bundle against the real schema", async () => {
       const bundle = await getProfileExport(U1);
       expect(bundle.profile?.id).toBe(U1);

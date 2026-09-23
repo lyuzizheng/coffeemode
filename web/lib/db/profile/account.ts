@@ -27,6 +27,7 @@ export interface ProfileExportBundle {
   cafes_created: unknown[];
   navigations: unknown[];
   checkin_likes: unknown[];
+  image_upload_intents: unknown[];
 }
 
 /** Everything the account owns, in one JSON bundle. Check-ins include
@@ -67,6 +68,15 @@ export async function getProfileExport(userId: string): Promise<ProfileExportBun
     [userId],
   );
 
+  // Pending upload intents (single-use rows from POST /api/images/upload
+  // not yet consumed by /api/images/complete): deleteAccount wipes them,
+  // so the export must carry them or the user loses data they own.
+  const imageUploadIntents = await query(
+    `select image_uuid, created_at
+     from image_upload_intents where user_id = $1 order by created_at desc`,
+    [userId],
+  );
+
   return {
     exported_at: new Date().toISOString(),
     profile: profileRes.rows[0] ? toProfileDto(profileRes.rows[0]) : null,
@@ -74,6 +84,7 @@ export async function getProfileExport(userId: string): Promise<ProfileExportBun
     cafes_created: cafesCreated.rows,
     navigations: navigations.rows,
     checkin_likes: checkinLikes.rows,
+    image_upload_intents: imageUploadIntents.rows,
   };
 }
 

@@ -213,9 +213,17 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
       expect(dry.stdout).toContain(`"key":"${orphan}"`);
       expect(dry.stdout).toContain('"op":"would-delete"');
       // Orphans checked against the live set are labeled not-referenced
-      // (BRAWUKA-630): never "referenced", which is reserved for would-keep.
-      expect(dry.stdout).toContain('"verification":"not-referenced"');
-      expect(dry.stdout).not.toContain('"verification":"referenced"');
+      // (BRAWUKA-630); the referenced key itself carries
+      // verification:"referenced" on its would-keep line (BRAWUKA-592) —
+      // "referenced" is reserved for would-keep, never for would-delete.
+      const dryLines = dry.stdout.split("\n").filter((l) => l.includes('"key":"'));
+      const orphanLine = dryLines.find((l) => l.includes(`"key":"${orphan}"`));
+      const referencedLine = dryLines.find((l) => l.includes(`"key":"${referenced}"`));
+      expect(orphanLine).toContain('"op":"would-delete"');
+      expect(orphanLine).toContain('"verification":"not-referenced"');
+      expect(orphanLine).not.toContain('"verification":"referenced"');
+      expect(referencedLine).toContain('"op":"would-keep"');
+      expect(referencedLine).toContain('"verification":"referenced"');
       expect(dry.stdout).toContain(`"key":"${referenced}"`);
       expect(dry.stdout).toContain('"op":"would-keep"');
       expect(dry.stdout).toContain('"reason":"referenced"');

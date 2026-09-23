@@ -28,10 +28,6 @@ interface SubmitCheckinParams {
   scores: CheckInScores;
   maxStay: MaxStay | null;
   note: string;
-  /** Photos staged in state at submit time — the PATCH contract cannot save
-   *  them, so an edit save must report the drop instead of staying silent
-   *  (BRAWUKA-395 P2-2). */
-  photoCount: number;
 }
 
 interface UseCheckinMutationOptions {
@@ -40,6 +36,10 @@ interface UseCheckinMutationOptions {
   editCheckinId?: string;
   idempotencyKey: string;
   uploadPendingPhotos: () => Promise<string[]>;
+  /** Image ids already attached to the check-in being edited — the submit
+   *  diffs them against the surviving tiles to build remove_photo_ids
+   *  (BRAWUKA-563). */
+  existingPhotoIds?: string[];
   onClose: () => void;
   onRequireSignIn: () => void;
 }
@@ -58,17 +58,53 @@ function resolveSubmitError(
   return apiErrorMessage(err, t("couldntSave"));
 }
 
+/**
+ * The save call itself (BRAWUKA-563): uploads run first so a failed save
+ * keeps the ids in state for retry instead of orphaning a second batch
+ * (BRAWUKA-269). Edit PATCHes add/remove deltas; create POSTs photo_ids —
+ * a raced 409 converts to PATCH and appends via add_photo_ids, so nothing
+ * is dropped (BRAWUKA-126).
+ */
+async function submitCheckin(
+  params: SubmitCheckinParams,
+  options: Pick<
+    UseCheckinMutationOptions,
+    "cafeId" | "isEdit" | "editCheckinId" | "idempotencyKey" | "uploadPendingPhotos" | "existingPhotoIds"
+  >,
+): Promise<void> {
+  const uploadedIds = await options.uploadPendingPhotos();
+  if (options.isEdit && options.editCheckinId) {
+    const surviving = new Set(uploadedIds);
+    const existing = options.existingPhotoIds ?? [];
+    await updateCheckin({
+      editCheckinId: options.editCheckinId,
+      scores: params.scores,
+      maxStay: params.maxStay,
+      note: params.note,
+      // Delta contract: adds are ids not already attached; removes are
+      // attached ids whose tile is gone.
+      addPhotoIds: uploadedIds.filter((id) => !existing.includes(id)),
+      removePhotoIds: existing.filter((id) => !surviving.has(id)),
+    });
+    return;
+  }
+  await createCheckin({
+    cafeId: options.cafeId,
+    idempotencyKey: options.idempotencyKey,
+    scores: params.scores,
+    maxStay: params.maxStay,
+    note: params.note,
+    uploadedIds,
+  });
+}
+
 function useSubmitMutation({
-  cafeId,
-  isEdit,
-  editCheckinId,
-  idempotencyKey,
-  uploadPendingPhotos,
   onClose,
   onRequireSignIn,
   setView,
   setError,
   setFailedAction,
+  ...options
 }: UseCheckinMutationOptions & {
   setView: (v: ViewState) => void;
   setError: (e: string | null) => void;
@@ -85,44 +121,21 @@ function useSubmitMutation({
   }, []);
 
   return useMutation({
-    mutationFn: async (params: SubmitCheckinParams) => {
-      // Edit PATCHes carry no photo_ids — staged photos drop here, so the save
-      // must say so (BRAWUKA-395 P2-2); uploading would only orphan R2 objects (BRAWUKA-269).
-      if (isEdit && editCheckinId) {
-        await updateCheckin({
-          editCheckinId,
-          scores: params.scores,
-          maxStay: params.maxStay,
-          note: params.note,
-        });
-        return { photosDropped: params.photoCount > 0 };
-      }
-      const uploadedIds = await uploadPendingPhotos();
-      const { convertedToEdit } = await createCheckin({
-        cafeId,
-        idempotencyKey,
-        scores: params.scores,
-        maxStay: params.maxStay,
-        note: params.note,
-        uploadedIds,
-      });
-      // A raced 409 silently converts to PATCH, which carries no photos — the uploaded ids are orphaned and the user must be told (BRAWUKA-126).
-      return { photosDropped: convertedToEdit && uploadedIds.length > 0 };
-    },
+    mutationFn: (params: SubmitCheckinParams) => submitCheckin(params, options),
     onMutate: () => {
       setView("submitting");
       setError(null);
       setFailedAction(null);
     },
-    onSuccess: ({ photosDropped }) => {
+    onSuccess: () => {
       setView("success");
       // Benign: clearing consumed draft from IndexedDB is best-effort; failures in private mode are ignored.
       void clearPendingCheckin().catch(() => {});
-      invalidateCheckinQueries(queryClient, cafeId);
+      invalidateCheckinQueries(queryClient, options.cafeId);
       // Artifact §4 step 3: the success card holds 900ms, then the drawer closes and the toast confirms.
       closeTimerRef.current = window.setTimeout(() => {
         onClose();
-        toast(photosDropped ? t("savedWithoutPhotos") : t("saved"), { timeout: SUCCESS_TOAST_TIMEOUT_MS });
+        toast(t("saved"), { timeout: SUCCESS_TOAST_TIMEOUT_MS });
       }, SUCCESS_CLOSE_DELAY_MS);
     },
     onError: (err) => {

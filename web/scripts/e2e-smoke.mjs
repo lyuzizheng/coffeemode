@@ -281,15 +281,12 @@ async function runSmokeSuite() {
 
       const res = await page.goto(`${base}/cafes/definitely-not-a-cafe`, { waitUntil: "domcontentloaded" });
       assert(res?.status() === 404, `Expected HTTP 404 status for invalid cafe, got ${res?.status()}`);
-      // BRAWUKA-184: the gone-cafe 404 is the bypass class — the proxy
-      // stamps no-store on the rewrite so a recreated cafe never stays gone
-      // in shared cache. (Session-refresh bypass is pinned at unit level in
-      // tests/cafe-shell-cache.test.ts; e2e has no live Supabase session.)
-      const cc3 = res?.headers()["cache-control"] ?? "";
-      assert(
-        cc3.includes("no-store"),
-        `Expected no-store Cache-Control on gone-cafe 404, got "${cc3}"`,
-      );
+      // BRAWUKA-658: the proxy no longer probes or rewrites gone cafes —
+      // the page's generateMetadata() commits the 404 via notFound(), so the
+      // response carries the static /cafes/:id* s-maxage header. Shared-cache
+      // exclusion of the 404 is owned by the edge rule
+      // (deploy/dokploy/cache-rules.json onStatusesOtherThan: [200]),
+      // drift-pinned by tests/cafe-shell-cache.test.ts.
 
       const pageText = await page.textContent("body");
       assert(

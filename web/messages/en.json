@@ -379,6 +379,8 @@
     "no_match_filters": "No places match these filters",
     "loosen_filters": "Try loosening one",
     "reset_filters": "Reset filters",
+    "no_results": "No results found",
+    "no_results_hint": "Try searching for a different cafe or address",
     "maxStayOptions": {
       "unlimited": "No limit",
       "3h": "3h",

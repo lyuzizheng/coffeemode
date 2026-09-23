@@ -40,7 +40,8 @@ import type { DiscoveryController } from "@/lib/discovery/use-discovery-controll
 export interface DiscoverySearch {
   externalSources: ExternalSourceFlags;
   mapkitConfigured: boolean;
-  /** Effective city scope — user pick > stored current city > prop (DG50). */
+  /** Effective city scope — user pick / `?city=` deep link (both land in
+   * `cityOverride`) > stored current city > prop (DG50, BRAWUKA-561). */
   city?: string;
   /** Controlled query — the host mirrors it for list-swapping. */
   query: string;

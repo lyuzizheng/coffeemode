@@ -11,7 +11,7 @@ was deliberately NOT ported (its load-time geolocation violated DG112).
 ## Architecture
 
 ```
-app/page.tsx
+app/(home)/page.tsx
   └─ OnboardingHome (welcome card + LocateButton + MapAccountChip → mapOverlay slot)
        └─ DiscoveryHome ── provides DiscoveryMapContext {controller, cafes, center}
             ├─ DesktopDiscovery / MobileSheet   (data path — map-independent)

@@ -21,7 +21,7 @@
  *   --database-url <url>      Direct / pooled PostgreSQL connection string
  *   --supabase-url <url>      Supabase Project API URL (https://<ref>.supabase.co)
  *   --service-role-key <key>  Supabase service_role secret key
- *   --anon-key <key>          Supabase anon public key
+ *   --anon-key <key>          Supabase publishable public key (sb_publishable_…; flag keeps legacy name)
  *   --env-file <path>         Path to custom .env file to load
  *   --dry-run                 Log planned actions without modifying state
  *   --verify-only             Skip DDL/mutations and only verify current state
@@ -87,7 +87,7 @@ Options:
   --database-url <url>      PostgreSQL connection string (supports direct & pooler URLs)
   --supabase-url <url>      Supabase API URL (https://<project-ref>.supabase.co)
   --service-role-key <key>  Supabase service_role secret key
-  --anon-key <key>          Supabase anon public key
+  --anon-key <key>          Supabase publishable public key (sb_publishable_…; flag keeps legacy name)
   --env-file <path>         Path to custom env file to load (default checks .env, web/.env.local)
   --dry-run                 Log planned actions without modifying system state
   --verify-only             Run verification checks only (no DDL migrations or revocations)
@@ -369,9 +369,9 @@ async function main() {
   }
 
   if (config.anonKey) {
-    log.success(`Anon Public Key: present (${maskString(config.anonKey)})`);
+    log.success(`Publishable Public Key (anon): present (${maskString(config.anonKey)})`);
   } else {
-    log.dim("Anon Public Key: not provided (optional for auth smoke check)");
+    log.dim("Publishable Public Key (anon): not provided (optional for auth smoke check)");
   }
 
   // ----------------------------------------------------------------------------

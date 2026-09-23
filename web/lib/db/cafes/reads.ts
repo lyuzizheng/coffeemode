@@ -204,9 +204,11 @@ export async function isLiveCafe(id: string): Promise<boolean> {
 }
 
 /**
- * Existence probe for the gone-cafe 404 path: the proxy checks this BEFORE
- * the page streams so a missing cafe gets a real 404 status (DG19) instead
- * of a streamed soft-404. Private cafes are 404 for non-owners.
+ * Narrow existence probe (`select 1`, no row payload) for API routes that
+ * must 404 without paying for the wide getCafe row — cafe DELETE and the
+ * check-ins feed (BRAWUKA-279). Private cafes are 404 for non-owners.
+ * The SSR /cafes/[id] page does NOT use this: its getCafe call doubles as
+ * the existence check via notFound() (BRAWUKA-658).
  */
 export async function cafeExists(id: string, viewerId?: string | null): Promise<boolean> {
   if (!isValidUUID(id)) return false;

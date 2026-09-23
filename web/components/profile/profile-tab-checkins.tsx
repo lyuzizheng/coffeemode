@@ -154,6 +154,7 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
           initialScores={editing.scores}
           initialMaxStay={editing.max_stay}
           initialNote={editing.notes}
+          existingPhotos={editing.photos}
           isAuthenticated={isAuthenticated}
         />
       )}

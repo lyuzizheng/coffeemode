@@ -71,6 +71,26 @@ describe("GET /api/search route", () => {
     expect(executeSearchCached).not.toHaveBeenCalled();
   });
 
+  it("rejects a malformed coordinate with 400 — never silently dropped (BRAWUKA-670)", async () => {
+    for (const qs of ["lat=abc", "lat=abc&lng=def", "lat=abc&lng=103.8", "lat=1.3&lng=def"]) {
+      const res = await GET(new Request(`http://localhost/api/search?${qs}`));
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe("invalid_request");
+    }
+    expect(executeSearchCached).not.toHaveBeenCalled();
+  });
+
+  it("resolves a repeated coordinate param to its first value (BRAWUKA-670)", async () => {
+    const res = await GET(new Request("http://localhost/api/search?lat=1.3&lat=4.5&lng=103.8"));
+    expect(res.status).toBe(200);
+    expect(executeSearchCached).toHaveBeenCalledWith(
+      expect.objectContaining({ lat: 1.3, lng: 103.8 }),
+      undefined,
+      expect.any(String),
+    );
+  });
+
   it("rejects negative or non-integer limit with 400", async () => {
     const req1 = new Request("http://localhost/api/search?limit=-5");
     const res1 = await GET(req1);

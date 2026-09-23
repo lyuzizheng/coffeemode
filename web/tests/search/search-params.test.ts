@@ -6,7 +6,9 @@ import { parseSearchQuery, serializeSearchParams, validateSearchQuery } from "@/
  * share one parser + serializer, so parameter names and value semantics can
  * never drift between the map panel, the API, and the shareable URL.
  */
-function params(entries: Record<string, string>): (name: string) => string | null {
+function params(
+  entries: Record<string, string | string[]>,
+): (name: string) => string | string[] | null {
   return (name) => entries[name] ?? null;
 }
 
@@ -43,7 +45,7 @@ describe("parseSearchQuery", () => {
   });
 
   it("drops malformed values instead of throwing", () => {
-    const { filters } = parseSearchQuery(
+    const { filters, rawLat } = parseSearchQuery(
       params({
         lat: "abc",
         open_now: "maybe",
@@ -54,6 +56,7 @@ describe("parseSearchQuery", () => {
       }),
     );
     expect(filters.lat).toBeUndefined();
+    expect(rawLat).toBe("abc"); // raw stays so validation can 400 (BRAWUKA-670)
     expect(filters.open_now).toBe(false); // present-but-not-true parses false
     expect(filters.filter_wifi).toBeUndefined(); // out of 0-100 range
     expect(filters.filter_seats).toBeUndefined();
@@ -61,10 +64,26 @@ describe("parseSearchQuery", () => {
     expect(filters.ranking).toBeUndefined();
   });
 
-  it("keeps the raw limit so the API can 400 on invalid input", () => {
+  it("resolves a repeated param to its first value on both surfaces (BRAWUKA-670)", () => {
+    // SSR `searchParams` yields arrays; the API's URLSearchParams.get takes
+    // the first value — the shared parser normalizes so they cannot drift.
+    const { filters } = parseSearchQuery(
+      params({ lat: ["1.3", "4.5"], lng: "103.8", q: ["kopi", "toast"] }),
+    );
+    expect(filters.lat).toBe(1.3);
+    expect(filters.lng).toBe(103.8);
+    expect(filters.q).toBe("kopi");
+  });
+
+  it("keeps the raw coordinate/limit strings so validation can 400 on invalid input", () => {
     expect(parseSearchQuery(params({ limit: "-3" })).rawLimit).toBe("-3");
     expect(parseSearchQuery(params({})).rawLimit).toBeNull();
     expect(parseSearchQuery(params({ limit: "5" })).filters.limit).toBe(5);
+    expect(parseSearchQuery(params({ lat: "abc", lng: "103.8" }))).toMatchObject({
+      rawLat: "abc",
+      rawLng: "103.8",
+    });
+    expect(parseSearchQuery(params({}))).toMatchObject({ rawLat: null, rawLng: null });
   });
 });
 
@@ -79,25 +98,53 @@ describe("validateSearchQuery", () => {
     });
     expect(validate({ limit: "" })).toMatchObject({ ok: true });
     expect(validate({ limit: "  " })).toMatchObject({ ok: true });
+    // Blank coordinates count as absent, same convention as limit.
+    expect(validate({ lat: "", lng: "" })).toMatchObject({ ok: true });
   });
 
   it("rejects out-of-range lat/lng with the API's 400 contract", () => {
-    expect(validate({ lat: "999" })).toEqual({
+    expect(validate({ lat: "999", lng: "103.8" })).toEqual({
       ok: false,
       error: "lat",
       status: 400,
       code: "invalid_request",
-      message: "lat must be within [-90, 90]",
+      message: "lat must be a number within [-90, 90]",
     });
-    expect(validate({ lat: "-91" })).toMatchObject({ ok: false, error: "lat" });
-    expect(validate({ lng: "181" })).toMatchObject({ ok: false, error: "lng" });
-    expect(validate({ lng: "-180.5" })).toMatchObject({ ok: false, error: "lng" });
+    expect(validate({ lat: "-91", lng: "103.8" })).toMatchObject({ ok: false, error: "lat" });
+    expect(validate({ lat: "1.3", lng: "181" })).toMatchObject({ ok: false, error: "lng" });
+    expect(validate({ lat: "1.3", lng: "-180.5" })).toMatchObject({ ok: false, error: "lng" });
     // Boundary values stay valid.
     expect(validate({ lat: "90", lng: "-180" })).toMatchObject({ ok: true });
   });
 
+  it("rejects a present-but-unparseable coordinate — never silently dropped (BRAWUKA-670)", () => {
+    // Malformed lat reports "lat" whether or not lng is present.
+    const malformed: Record<string, string>[] = [
+      { lat: "abc" },
+      { lat: "abc", lng: "103.8" },
+      { lat: "abc", lng: "def" },
+      { lat: "Infinity", lng: "103.8" },
+    ];
+    for (const entries of malformed) {
+      expect(validate(entries)).toMatchObject({ ok: false, error: "lat", status: 400 });
+    }
+    expect(validate({ lat: "1.3", lng: "def" })).toMatchObject({
+      ok: false,
+      error: "lng",
+      status: 400,
+      code: "invalid_request",
+      message: "lng must be a number within [-180, 180]",
+    });
+  });
+
   it("rejects a lone coordinate — lat/lng must arrive as a pair (BRAWUKA-597)", () => {
-    const lone: Record<string, string>[] = [{ lat: "1.3" }, { lng: "103.8" }, { lat: "abc", lng: "103.8" }];
+    // Pairing is checked on raw presence: a blank half counts as absent, so
+    // `?lat=&lng=103.8` is still a lone coordinate (BRAWUKA-670).
+    const lone: Record<string, string>[] = [
+      { lat: "1.3" },
+      { lng: "103.8" },
+      { lat: "", lng: "103.8" },
+    ];
     for (const entries of lone) {
       expect(validate(entries)).toMatchObject({
         ok: false,
@@ -132,7 +179,7 @@ describe("validateSearchQuery", () => {
     });
   });
 
-  it("checks in API order: lat range, lng range, pairing, limit, then city", () => {
+  it("checks in API order: lat, lng, pairing, limit, then city", () => {
     expect(
       validate({ lat: "999", lng: "999", limit: "abc", city: "atlantis" }),
     ).toMatchObject({ ok: false, error: "lat" });
@@ -140,8 +187,9 @@ describe("validateSearchQuery", () => {
       ok: false,
       error: "lng",
     });
-    // Pairing runs after the range checks but before limit/city: a lone
-    // out-of-range lat still reports "lat", a lone in-range one "lat_lng".
+    // Malformed and out-of-range values report their own error before
+    // pairing: `lat=abc` alone is "lat", not "lat_lng" (BRAWUKA-670).
+    expect(validate({ lat: "abc" })).toMatchObject({ ok: false, error: "lat" });
     expect(validate({ lat: "999" })).toMatchObject({ ok: false, error: "lat" });
     expect(validate({ lat: "1.3", limit: "abc", city: "atlantis" })).toMatchObject({
       ok: false,

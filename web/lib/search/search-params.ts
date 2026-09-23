@@ -13,7 +13,9 @@ import type { SearchFilters, SearchParamError } from "./types";
  * or value semantics.
  *
  * Parsing is permissive by design: malformed values drop to `undefined`
- * (absent) rather than throwing. Rejection policy lives in
+ * (absent) rather than throwing, and a repeated parameter resolves to its
+ * first value (`URLSearchParams.get` semantics) so the SSR array form can
+ * never diverge from the API (BRAWUKA-670). Rejection policy lives in
  * `validateSearchQuery` below — the API maps it to 400s and the SSR page
  * maps it to an error state, so the two surfaces can never drift on what
  * counts as an invalid deep link.
@@ -21,23 +23,35 @@ import type { SearchFilters, SearchParamError } from "./types";
 export interface ParsedSearchQuery {
   /** Parsed filters; `city`/`lat`/`lng`/`limit` are the raw (unvalidated) values. */
   filters: SearchFilters;
+  /** Raw coordinate strings so validation can distinguish absent / blank / invalid. */
+  rawLat: string | null;
+  rawLng: string | null;
   /** Raw `limit` string so the API can distinguish absent / blank / invalid. */
   rawLimit: string | null;
 }
 
 export function parseSearchQuery(
-  get: (name: string) => string | null,
+  get: (name: string) => string | string[] | null | undefined,
 ): ParsedSearchQuery {
-  const q = get("q")?.trim() || undefined;
-  const city = get("city")?.trim() || undefined;
-  const lat = parseQueryNumber(get("lat"));
-  const lng = parseQueryNumber(get("lng"));
-  const openNow = parseQueryBoolean(get("open_now"));
-  const includeLive = parseQueryBoolean(get("include_live"));
-  const filterMaxStay = parseMaxStayFilter(get("filter_max_stay"));
-  const rawLimit = get("limit");
+  // Repeated params resolve to their first value on every surface — the
+  // API's `URLSearchParams.get` semantics — so an SSR `searchParams` array
+  // can never diverge from the API's first-value read (BRAWUKA-670).
+  const first = (name: string): string | null => {
+    const value = get(name);
+    return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+  };
+  const q = first("q")?.trim() || undefined;
+  const city = first("city")?.trim() || undefined;
+  const rawLat = first("lat");
+  const lat = parseQueryNumber(rawLat);
+  const rawLng = first("lng");
+  const lng = parseQueryNumber(rawLng);
+  const openNow = parseQueryBoolean(first("open_now"));
+  const includeLive = parseQueryBoolean(first("include_live"));
+  const filterMaxStay = parseMaxStayFilter(first("filter_max_stay"));
+  const rawLimit = first("limit");
   const limit = parseQueryNumber(rawLimit);
-  const rawRanking = get("ranking")?.trim();
+  const rawRanking = first("ranking")?.trim();
   const ranking =
     rawRanking === "good_first" || rawRanking === "relevance" ? rawRanking : undefined;
 
@@ -55,18 +69,18 @@ export function parseSearchQuery(
 
   // Work-dimension score thresholds share the route's mapping table.
   for (const { key } of WORK_DIM_FILTER_MAP) {
-    const val = parseQueryScore(get(key));
+    const val = parseQueryScore(first(key));
     if (val !== undefined) {
       filters[key] = val;
     }
   }
 
-  return { filters, rawLimit };
+  return { filters, rawLat, rawLng, rawLimit };
 }
 
 const SEARCH_PARAM_ERROR_MESSAGES: Record<SearchParamError, string> = {
-  lat: "lat must be within [-90, 90]",
-  lng: "lng must be within [-180, 180]",
+  lat: "lat must be a number within [-90, 90]",
+  lng: "lng must be a number within [-180, 180]",
   lat_lng: "lat and lng must be provided together",
   limit: "limit must be a positive integer",
   city: "unknown city",
@@ -75,8 +89,8 @@ const SEARCH_PARAM_ERROR_MESSAGES: Record<SearchParamError, string> = {
 /**
  * The rejection half of the deep-link contract, shared by `GET /api/search`
  * (400 `invalid_request`) and the SSR `/search` page (error state). Check
- * order matches the API: lat range, lng range, lat/lng pairing, limit, then
- * known city — callers must not reorder or subset it.
+ * order matches the API: lat, lng, lat/lng pairing, limit, then known
+ * city — callers must not reorder or subset it.
  */
 export function validateSearchQuery(
   parsed: ParsedSearchQuery,
@@ -90,6 +104,11 @@ export function validateSearchQuery(
       message: string;
     } {
   const { lat, lng, city, limit } = parsed.filters;
+  // Raw presence follows the `limit` convention: a blank value counts as
+  // absent, a non-blank one as present — parseable or not (BRAWUKA-670).
+  const present = (raw: string | null) => raw !== null && raw.trim() !== "";
+  const latPresent = present(parsed.rawLat);
+  const lngPresent = present(parsed.rawLng);
   const reject = (error: SearchParamError) => ({
     ok: false as const,
     error,
@@ -98,24 +117,26 @@ export function validateSearchQuery(
     message: SEARCH_PARAM_ERROR_MESSAGES[error],
   });
 
-  if (lat !== undefined && (lat < -90 || lat > 90)) {
+  // BRAWUKA-670: a present-but-unparseable coordinate is a 400, same as
+  // `limit` — malformed input is never silently dropped and re-anchored.
+  if ((latPresent && lat === undefined) || (lat !== undefined && (lat < -90 || lat > 90))) {
     return reject("lat");
   }
-  if (lng !== undefined && (lng < -180 || lng > 180)) {
+  if ((lngPresent && lng === undefined) || (lng !== undefined && (lng < -180 || lng > 180))) {
     return reject("lng");
   }
 
   // BRAWUKA-597: a lone coordinate is a meaningless anchor — lat/lng must
-  // arrive as a pair or not at all. Runs after the range checks so an
-  // out-of-range value still reports its own error first.
-  if ((lat === undefined) !== (lng === undefined)) {
+  // arrive as a pair or not at all. Pairing is checked on raw presence so a
+  // malformed half still counts as "present" (BRAWUKA-670); it runs after
+  // the malformed/range checks so a bad value reports its own error first.
+  if (latPresent !== lngPresent) {
     return reject("lat_lng");
   }
-
   // limit: a present-but-unparseable or non-positive-integer value is a 400;
   // absent and blank stay valid (treated as "use the default").
   if (
-    (parsed.rawLimit !== null && parsed.rawLimit.trim() !== "" && limit === undefined) ||
+    (present(parsed.rawLimit) && limit === undefined) ||
     (limit !== undefined && (!Number.isInteger(limit) || limit <= 0))
   ) {
     return reject("limit");

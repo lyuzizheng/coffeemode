@@ -13,18 +13,18 @@ function urlFor(pathname: string, host = "localhost"): URL {
 
 describe("sw runtime rules", () => {
   it("has exactly one rule per route family and all are GET", () => {
-    expect(RUNTIME_RULES.length).toBe(7);
+    expect(RUNTIME_RULES.length).toBe(10);
     for (const rule of RUNTIME_RULES) {
       expect(rule.method).toBe("GET");
       expect(rule.name).toBeTruthy();
     }
   });
 
-  it("never caches the home page, the worker, the manifest, auth, or any API route", () => {
+  it("never caches the home page, the worker, the manifest, auth, any API route, or user-specific pages", () => {
     const networkOnly = RUNTIME_RULES.filter((r) => r.handler === "network-only").map(
       (r) => r.name,
     );
-    expect(networkOnly).toEqual(["home", "sw-manifest", "auth", "api"]);
+    expect(networkOnly).toEqual(["home", "sw-manifest", "auth", "api", "profile", "settings", "search"]);
   });
 
   it("matches each route family to the intended handler", () => {
@@ -96,6 +96,24 @@ describe("sw runtime rules", () => {
         notMatches: ["auth"],
       },
       {
+        name: "profile (BRAWUKA-662: must be network-only, never defaultCache)",
+        pathname: "/profile",
+        matches: ["profile"],
+        notMatches: ["api", "auth"],
+      },
+      {
+        name: "settings (BRAWUKA-662: must be network-only, never defaultCache)",
+        pathname: "/settings",
+        matches: ["settings"],
+        notMatches: ["api", "auth"],
+      },
+      {
+        name: "search (BRAWUKA-662: must be network-only, never defaultCache)",
+        pathname: "/search",
+        matches: ["search"],
+        notMatches: ["api", "auth"],
+      },
+      {
         name: "r2 images (by host)",
         pathname: "/variants/abc.webp",
         host: "images.cafemood.app",
@@ -162,9 +180,27 @@ describe("sw runtime rules", () => {
       expect(matched, `${path} must match only the api rule`).toEqual(["api"]);
     }
   });
+  it("guards user-specific pages with network-only (BRAWUKA-662: defaultCache has 24h NetworkFirst pages/pages-rsc/others catch-alls)", () => {
+    const pages: Array<{ path: string; rule: string }> = [
+      { path: "/profile", rule: "profile" },
+      { path: "/settings", rule: "settings" },
+      { path: "/search", rule: "search" },
+      { path: "/search?q=latte&city=taipei", rule: "search" },
+    ];
+    for (const { path, rule } of pages) {
+      const found = RUNTIME_RULES.find((r) => r.name === rule);
+      expect(found?.handler, rule).toBe("network-only");
+      const url = urlFor(path);
+      const request = new Request(url);
+      const matched = RUNTIME_RULES.filter((r) => r.matcher({ url, request })).map(
+        (r) => r.name,
+      );
+      expect(matched, `${path} must match only the ${rule} rule`).toEqual([rule]);
+    }
+  });
 
   it("does not reference routes that do not exist yet", () => {
-    const dead = ["/cafes/", "/profile"];
+    const dead = ["/cafes/"];
     for (const path of dead) {
       const url = urlFor(path);
       const request = new Request(url);

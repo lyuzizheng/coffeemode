@@ -174,7 +174,8 @@ export function detectIpCity(
 /**
  * Nearest launch city to a coordinate pair within `coverageKm` (DG121).
  * Returns null when the user is outside every known city — the caller then
- * treats the IP-detected city name (or nothing) as a runtime-created city.
+ * names the granted coordinates as a runtime city (never a client header —
+ * BRAWUKA-640), or resolves nothing.
  */
 export function nearestLaunchCity(
   lat: number,

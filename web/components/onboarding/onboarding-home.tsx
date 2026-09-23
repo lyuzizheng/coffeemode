@@ -38,8 +38,9 @@ interface OnboardingHomeProps {
   /** Detent the mobile sheet opens at for `initialCafeId` — "full" on the
    * /cafes/[id] deep link (DG124), default "half" elsewhere. */
   initialSnap?: SheetSnap;
-  /** Search city scope override (DG124: the linked cafe's launch city);
-   * falls back to the IP-detected city like the home entry. */
+  /** Search city scope override — the `?city=` deep link (BRAWUKA-561) or
+   * the linked cafe's launch city (DG124); falls back to the IP-detected
+   * city like the home entry. */
   city?: string;
   /** Signed-in display-name initial for the map account chip; absent → the
    * chip shows the sign-in affordance (BRAWUKA-318). */

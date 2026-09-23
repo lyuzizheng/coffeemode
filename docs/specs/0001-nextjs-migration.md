@@ -945,6 +945,9 @@ Two search modes:
      fallback chain header-city → country match → global default. An explicit
      `city=` that matches no known city returns 400, never a silent
      re-anchor (DG128).
+     `lat`/`lng` deep-link params are all-or-nothing: exactly one present →
+     400 `invalid_request` on the API and the error state on SSR `/search`
+     (BRAWUKA-597) — a lone coordinate is never silently re-anchored.
    - Text query: name FTS on own cafes and saved POIs.
      - Search-as-you-type starts at 3 characters, 400ms debounce (DG44/DG47).
      - Suggestion rows: top 10 only, rendered under the search bar; no

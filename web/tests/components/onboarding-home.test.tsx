@@ -234,12 +234,12 @@ describe("OnboardingHome (DG114–DG123)", () => {
       "href",
       "/profile",
     );
-    // Theme, language, and settings live inside the droplet (BRAWUKA-504).
+    // Theme, language, and settings live inside the droplet (BRAWUKA-504, BRAWUKA-585).
     fireEvent.click(screen.getByRole("button", { name: "Menu" }));
     expect(
-      await screen.findByRole("button", { name: /Theme/ }),
+      await screen.findByRole("menuitem", { name: /Theme/ }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute(
+    expect(screen.getByRole("menuitem", { name: "Settings" })).toHaveAttribute(
       "href",
       "/settings",
     );

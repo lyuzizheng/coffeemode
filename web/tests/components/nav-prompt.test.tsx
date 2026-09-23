@@ -142,6 +142,10 @@ describe("useNavPrompt", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: undefined,
+    });
   });
 
   it("fetches lazily once enabled and shows the returned prompt", async () => {
@@ -259,9 +263,86 @@ describe("useNavPrompt", () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("BRAWUKA-580: skips ready wait when no SW is registered and loads the prompt", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ prompt: ITEM }), { status: 200 }),
+    );
     Object.defineProperty(navigator, "serviceWorker", {
       configurable: true,
-      value: undefined,
+      value: {
+        ready: new Promise(() => {}),
+        controller: null,
+        getRegistration: vi.fn().mockResolvedValue(undefined),
+      },
     });
+    render(
+      <Wrapper>
+        <Hook />
+      </Wrapper>,
+    );
+    // Skips ready wait immediately; fallback setTimeout is 1500ms.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/api/navigations/prompt", undefined);
+    expect(screen.getByTestId("item").textContent).toBe("Seed Cafe");
+  });
+
+  it("BRAWUKA-580: times out when sw.ready never resolves and still loads the prompt", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ prompt: ITEM }), { status: 200 }),
+    );
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: {
+        ready: new Promise(() => {}),
+        controller: null,
+        getRegistration: vi.fn().mockResolvedValue({ active: null }),
+      },
+    });
+    render(
+      <Wrapper>
+        <Hook />
+      </Wrapper>,
+    );
+    // Under 3s timeout: fetch has not fired yet.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    // Past 3s timeout + 1500ms fallback (4.5s total): prompt must load.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000);
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/api/navigations/prompt", undefined);
+    expect(screen.getByTestId("item").textContent).toBe("Seed Cafe");
+  });
+
+  it("BRAWUKA-580: cancels cleanly when unmounted while waiting for sw.ready timeout", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ prompt: ITEM }), { status: 200 }),
+    );
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: {
+        ready: new Promise(() => {}),
+        controller: null,
+      },
+    });
+    const { unmount } = render(
+      <Wrapper>
+        <Hook />
+      </Wrapper>,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

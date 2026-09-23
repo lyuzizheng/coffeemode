@@ -126,6 +126,65 @@ export function getProtoHost(requestHeaders: Headers): string | null {
 }
 
 /**
+ * Resolves the public origin to redirect the browser to (BRAWUKA-558).
+ *
+ * `new URL(request.url).origin` is NOT usable: behind the staging proxy the
+ * standalone server sees an internal URL (`http://0.0.0.0:3000`), so every
+ * redirect built on it lands on a dead address. Resolution order mirrors
+ * `getRedirectTo` in `lib/auth/actions.ts`:
+ *
+ * 1. `x-forwarded-proto` + `host` when the host is allowlisted — preserves
+ *    the host the user actually landed on (e.g. an allowlisted preview).
+ * 2. `NEXT_PUBLIC_SITE_URL` (always allowlisted) — the canonical fallback.
+ * 3. null — callers emit a relative `Location` instead of trusting
+ *    `request.url`'s origin.
+ *
+ * `x-forwarded-host` is never consulted (BRAWUKA-282 P1-1: client-injectable,
+ * no edge strips it). Proto defaults to the request's own scheme for loopback
+ * (local dev has no TLS) and https otherwise (production edges terminate TLS).
+ */
+export function getRedirectOrigin(request: Request): string | null {
+  const rawHost = request.headers.get("host");
+  if (rawHost) {
+    try {
+      const hostUrl = new URL(`http://${rawHost.replace(/^https?:\/\//, "")}`);
+      if (isAllowedHost(hostUrl.host, hostUrl.hostname)) {
+        const forwardedProto = request.headers.get("x-forwarded-proto");
+        const proto = forwardedProto === "http" || forwardedProto === "https"
+          ? forwardedProto
+          : LOCALHOST_HOSTNAMES.has(hostUrl.hostname) &&
+              new URL(request.url).protocol === "http:"
+            ? "http"
+            : "https";
+        return `${proto}://${hostUrl.host}`;
+      }
+    } catch {
+      // Benign: malformed Host header falls through to the configured origin.
+    }
+  }
+  return getConfiguredOrigin();
+}
+
+/**
+ * Redirects to an internal `path` on the resolved public origin. When no
+ * origin can be resolved (no `host` header, nothing configured) the response
+ * carries a relative `Location` — always better than `request.url`'s origin,
+ * which may be a dead internal address. `path` must be a safe internal path
+ * (see `isSafeReturnPath`); callers pass literals or gated values.
+ */
+export function redirectToPath(
+  request: Request,
+  path: string,
+  status: 307 | 308 = 307,
+): NextResponse {
+  const origin = getRedirectOrigin(request);
+  if (origin) {
+    return NextResponse.redirect(new URL(path, origin), status);
+  }
+  return new NextResponse(null, { status, headers: { location: path } });
+}
+
+/**
  * Checks whether an incoming request matches the expected origin.
  *
  * 1. Rejects if modern browser `Sec-Fetch-Site` is `cross-site`.

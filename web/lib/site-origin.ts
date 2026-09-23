@@ -27,7 +27,10 @@ export async function getRequestOrigin(): Promise<string> {
   // could in principle mint canonical/OG URLs for an arbitrary host. We still prefer
   // `host` over `x-forwarded-host` (the latter is always injection-prone and never
   // set by Cloudflare), and production MUST pin `NEXT_PUBLIC_SITE_URL` (DG110) so
-  // shared links never depend on which host served them; the fallback is dev-only.
+  // shared links never depend on which host served them; wherever it is unset —
+  // local dev, and any deploy that has not pinned it yet — this fallback is live.
+  // `x-forwarded-proto` is trusted (ADR-0009): Cloudflare's edge overwrites it and
+  // Traefik deletes then re-sets it, so a client-supplied value never survives.
   const proto = (h.get("x-forwarded-proto") ?? "https").split(",")[0]?.trim() || "https";
   const host = h.get("host");
   if (host) return `${proto === "http" ? "http" : "https"}://${host}`;

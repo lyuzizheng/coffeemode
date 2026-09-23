@@ -159,6 +159,7 @@ app data is local.
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `.env.example` templates, Dokploy env | — (public by design; RLS + revoked default grants protect tables) |
 | R2 access keys, Cloudflare tunnel/API tokens | Dokploy env, GH Environment per env | local `.env` unless actively debugging that integration |
 | `OTEL_EXPORTER_OTLP_HEADERS` (Grafana Cloud OTLP gateway Basic auth) | Dokploy env per env | — (ingest-only token; never `NEXT_PUBLIC_*`) |
+| `TURNSTILE_SECRET_KEY` (Cloudflare siteverify) | Dokploy env per env | client bundle, `NEXT_PUBLIC_*` — the paired `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is public by design and reaches the bundle only via the Dockerfile build arg (BRAWUKA-564) |
 
 - **Client bundle rule**: only `NEXT_PUBLIC_*` values may reach the browser.
   Anything that can write (service_role, R2 keys, DB URLs) is server-side.

@@ -25,6 +25,10 @@ ARG APP_VERSION
 ENV APP_VERSION=${APP_VERSION}
 ARG NEXT_PUBLIC_R2_PUBLIC_URL
 ENV NEXT_PUBLIC_R2_PUBLIC_URL=${NEXT_PUBLIC_R2_PUBLIC_URL}
+# Turnstile sitekey is public-by-design but inlined into the client bundle at
+# build time (BRAWUKA-564): without this ARG the widget can never mint tokens.
+ARG NEXT_PUBLIC_TURNSTILE_SITE_KEY
+ENV NEXT_PUBLIC_TURNSTILE_SITE_KEY=${NEXT_PUBLIC_TURNSTILE_SITE_KEY}
 ARG APP_ENV
 ENV APP_ENV=${APP_ENV}
 RUN npm run build

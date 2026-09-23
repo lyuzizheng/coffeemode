@@ -47,6 +47,9 @@ services:
       args:
         APP_VERSION: ${IMAGE_TAG:-latest}
         NEXT_PUBLIC_R2_PUBLIC_URL: ${NEXT_PUBLIC_R2_PUBLIC_URL:?NEXT_PUBLIC_R2_PUBLIC_URL must be set in shell environment, via docker compose --env-file .env.prod, or Dokploy environment}
+        # Turnstile sitekey reaches the client bundle only via this build arg
+        # (BRAWUKA-564); the secret stays server-side in .env.prod.
+        NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
         APP_ENV: ${APP_ENV:?APP_ENV must be set in shell environment, via docker compose --env-file .env.prod, or Dokploy environment}
     container_name: coffeemode-web-prod
     restart: unless-stopped

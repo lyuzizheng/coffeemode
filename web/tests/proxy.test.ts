@@ -175,7 +175,10 @@ describe("proxy legacy /?cafe= redirect (DG124)", () => {
   });
 
   it("308-redirects /?cafe=<uuid> to the canonical cafe URL without the query", async () => {
-    const req = new NextRequest(new URL(`http://localhost/?cafe=${CAFE}`));
+    // Host header mirrors real traffic — undici does not synthesize it.
+    const req = new NextRequest(new URL(`http://localhost/?cafe=${CAFE}`), {
+      headers: { host: "localhost" },
+    });
     const res = await proxy(req);
 
     expect(res.status).toBe(308);
@@ -185,7 +188,9 @@ describe("proxy legacy /?cafe= redirect (DG124)", () => {
   });
 
   it("strips every other query param from the redirect target", async () => {
-    const req = new NextRequest(new URL(`http://localhost/?cafe=${CAFE}&utm_source=share&lang=zh`));
+    const req = new NextRequest(new URL(`http://localhost/?cafe=${CAFE}&utm_source=share&lang=zh`), {
+      headers: { host: "localhost" },
+    });
     const res = await proxy(req);
 
     expect(res.status).toBe(308);

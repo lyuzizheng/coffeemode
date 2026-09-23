@@ -121,4 +121,60 @@ describe("CheckinPhotos maxPhotos bound (BRAWUKA-461)", () => {
     expect(next).toBe(full);
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(4);
   });
+
+  it("does not upload entries dropped by the capacity clamp (BRAWUKA-579)", async () => {
+    const existing: PhotoUpload[] = Array.from({ length: 5 }, (_, i) => ({
+      id: `existing-${i}`,
+      previewUrl: `blob:existing-${i}`,
+      status: "done" as const,
+    }));
+
+    const onChange = vi.fn((action: React.SetStateAction<PhotoUpload[]>) => {
+      if (typeof action === "function") {
+        return (action as (prev: PhotoUpload[]) => PhotoUpload[])(existing);
+      }
+      return action;
+    });
+
+    render(
+      <CheckinPhotos photos={[]} onChange={onChange} maxPhotos={MAX} />,
+      { wrapper: Wrapper },
+    );
+
+    pick(4);
+
+    await waitFor(() => {
+      // Out of 4 picked, only 1 slot was available (MAX 6 - existing 5).
+      // The other 3 must be dropped without calling uploadPhoto.
+      expect(uploadPhoto).toHaveBeenCalledTimes(1);
+    });
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not upload any entries when the capacity clamp drops all picked items (BRAWUKA-579)", async () => {
+    const full: PhotoUpload[] = Array.from({ length: MAX }, (_, i) => ({
+      id: `existing-${i}`,
+      previewUrl: `blob:existing-${i}`,
+      status: "done" as const,
+    }));
+
+    const onChange = vi.fn((action: React.SetStateAction<PhotoUpload[]>) => {
+      if (typeof action === "function") {
+        return (action as (prev: PhotoUpload[]) => PhotoUpload[])(full);
+      }
+      return action;
+    });
+
+    render(
+      <CheckinPhotos photos={[]} onChange={onChange} maxPhotos={MAX} />,
+      { wrapper: Wrapper },
+    );
+
+    pick(3);
+
+    await waitFor(() => {
+      expect(uploadPhoto).not.toHaveBeenCalled();
+    });
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(3);
+  });
 });

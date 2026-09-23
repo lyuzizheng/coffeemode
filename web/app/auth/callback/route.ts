@@ -1,10 +1,10 @@
 import { logError } from "@/lib/observability/server-log";
 import { recordLogin } from "@/lib/observability/metrics";
-import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/auth/supabase-server";
 import { query } from "@/lib/db/postgres";
 import { upsertProfile } from "@/lib/auth/profiles";
 import { isSafeReturnPath } from "@/lib/auth/safe-path";
+import { redirectToPath } from "@/lib/security/origin";
 
 export const runtime = "nodejs";
 
@@ -14,18 +14,21 @@ export const runtime = "nodejs";
  * Postgres profile row before returning the user to the app.
  */
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
 
+  // Redirects go through redirectToPath: `request.url`'s origin is the
+  // internal listener (`http://0.0.0.0:3000`) behind the staging proxy, not
+  // the public site (BRAWUKA-558).
   if (!code) {
-    return NextResponse.redirect(new URL("/?auth=error", origin));
+    return redirectToPath(request, "/?auth=error");
   }
 
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error || !data.user) {
-    return NextResponse.redirect(new URL("/?auth=error", origin));
+    return redirectToPath(request, "/?auth=error");
   }
 
   // First-touch profile row. The user id is Supabase's; Postgres never sees
@@ -43,9 +46,7 @@ export async function GET(request: Request) {
     } catch (signOutError) {
       logError({ route: "GET /auth/callback sign-out", request, error: signOutError });
     }
-    return NextResponse.redirect(
-      new URL("/?auth=error&reason=profile_upsert", origin),
-    );
+    return redirectToPath(request, "/?auth=error&reason=profile_upsert");
   }
 
   // Only now is it a login: the code exchanged *and* the profile row landed.
@@ -56,5 +57,5 @@ export async function GET(request: Request) {
   const next = searchParams.get("next");
   const returnPath = isSafeReturnPath(next) ? next : "/";
 
-  return NextResponse.redirect(new URL(returnPath, origin));
+  return redirectToPath(request, returnPath);
 }

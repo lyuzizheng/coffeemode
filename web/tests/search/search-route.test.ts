@@ -60,6 +60,17 @@ describe("GET /api/search route", () => {
     expect(body.error).toBe("invalid_request");
   });
 
+  it("rejects a lone coordinate with 400 — lat/lng must pair (BRAWUKA-597)", async () => {
+    for (const qs of ["lat=1.3", "lng=103.8"]) {
+      const res = await GET(new Request(`http://localhost/api/search?${qs}`));
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toBe("invalid_request");
+      expect(body.message).toBe("lat and lng must be provided together");
+    }
+    expect(executeSearchCached).not.toHaveBeenCalled();
+  });
+
   it("rejects negative or non-integer limit with 400", async () => {
     const req1 = new Request("http://localhost/api/search?limit=-5");
     const res1 = await GET(req1);

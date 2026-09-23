@@ -67,6 +67,7 @@ export function parseSearchQuery(
 const SEARCH_PARAM_ERROR_MESSAGES: Record<SearchParamError, string> = {
   lat: "lat must be within [-90, 90]",
   lng: "lng must be within [-180, 180]",
+  lat_lng: "lat and lng must be provided together",
   limit: "limit must be a positive integer",
   city: "unknown city",
 };
@@ -74,8 +75,8 @@ const SEARCH_PARAM_ERROR_MESSAGES: Record<SearchParamError, string> = {
 /**
  * The rejection half of the deep-link contract, shared by `GET /api/search`
  * (400 `invalid_request`) and the SSR `/search` page (error state). Check
- * order matches the API: lat range, lng range, limit, then known city —
- * callers must not reorder or subset it.
+ * order matches the API: lat range, lng range, lat/lng pairing, limit, then
+ * known city — callers must not reorder or subset it.
  */
 export function validateSearchQuery(
   parsed: ParsedSearchQuery,
@@ -102,6 +103,13 @@ export function validateSearchQuery(
   }
   if (lng !== undefined && (lng < -180 || lng > 180)) {
     return reject("lng");
+  }
+
+  // BRAWUKA-597: a lone coordinate is a meaningless anchor — lat/lng must
+  // arrive as a pair or not at all. Runs after the range checks so an
+  // out-of-range value still reports its own error first.
+  if ((lat === undefined) !== (lng === undefined)) {
+    return reject("lat_lng");
   }
 
   // limit: a present-but-unparseable or non-positive-integer value is a 400;

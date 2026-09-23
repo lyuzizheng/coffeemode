@@ -42,8 +42,8 @@ if you ever wipe volumes.
 **Auth default: staging, not the mock (spec 0010 §3).** Local manual development
 authenticates against the STAGING Supabase project (`ojujmjewtbquiddswyrg`) with
 real Google OAuth — `web/.env.example` already points `NEXT_PUBLIC_SUPABASE_URL`
-there; fill `NEXT_PUBLIC_SUPABASE_ANON_KEY` from the staging dashboard (anon key
-is public by design, never `service_role`). For offline work only, either the
+there; fill `NEXT_PUBLIC_SUPABASE_ANON_KEY` from the staging dashboard (publishable
+key `sb_publishable_…`, public by design, never `service_role`). For offline work only, either the
 compose mock or the real Supabase CLI emulator:
 
 ```bash
@@ -51,7 +51,7 @@ docker compose stop supabase-mock
 supabase start   # local stack on :54321 (API), :54322 (DB), see `supabase status`)
 # then set in web/.env.local:
 #   NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321
-#   NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key from supabase status>
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY=<publishable key from supabase status>
 ```
 
 Both the mock and `supabase start` share `:54321`; only point the `NEXT_PUBLIC_*`
@@ -153,7 +153,7 @@ cp .env.example .env.local
 #   IMAGE_SERVICE_TOKEN=local-dev-token
 # Auth default is the STAGING Supabase project (spec 0010 §3):
 #   NEXT_PUBLIC_SUPABASE_URL=https://ojujmjewtbquiddswyrg.supabase.co
-#   NEXT_PUBLIC_SUPABASE_ANON_KEY=<staging anon key from Dashboard>
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY=<staging publishable key (sb_publishable_…) from Dashboard → Settings → API>
 # Offline-only override (mock or `supabase start` on :54321):
 #   NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321
 # For production, replace those with real Worker URLs + real Supabase project.

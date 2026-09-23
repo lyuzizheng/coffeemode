@@ -19,7 +19,16 @@ export interface ToggleLikeResult {
 
 const TOGGLE_LIKE_SQL = `
 WITH checkin AS (
-  SELECT id, user_id FROM checkins WHERE id = $2 AND deleted_at IS NULL FOR UPDATE
+  -- BRAWUKA-634: viewer-scoped visibility gate (mirrors CAFE_EXISTS_SQL in
+  -- create.ts) — a private cafe's check-ins are invisible to non-creators,
+  -- so the toggle 404s instead of leaking existence via a like.
+  SELECT id, user_id FROM checkins WHERE id = $2 AND deleted_at IS NULL
+    AND EXISTS (
+      SELECT 1 FROM cafes
+      WHERE cafes.id = checkins.cafe_id
+        AND cafes.deleted_at IS NULL
+        AND (cafes.visibility = 'public' OR cafes.created_by = $1)
+    ) FOR UPDATE
 ),
 deleted AS (
   DELETE FROM checkin_likes
@@ -54,7 +63,8 @@ function validateIds(userId: string, checkinId: string) {
  *
  * Returns `{ liked: true, likes_count }` when the like was added and
  * `{ liked: false, likes_count }` when it was removed. Throws
- * `CheckInNotFoundError` if the check-in does not exist or is soft-deleted.
+ * `CheckInNotFoundError` if the check-in does not exist, is soft-deleted, or
+ * belongs to a private cafe the caller cannot see (non-creator, BRAWUKA-634).
  *
  * Self-likes are not allowed (issue #107): the insert is gated on
  * `caller <> checkins.user_id`, so liking your own check-in throws

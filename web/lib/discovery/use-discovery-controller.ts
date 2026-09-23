@@ -99,6 +99,7 @@ export function useDiscoveryController(options?: {
   );
 
   const close = useCallback(() => {
+    focusPending.current = false;
     if (selectedCafeId !== null) {
       restoreFocusTo.current = selectedCafeId;
       // Re-attach the live search params — the pushed `/cafes/[id]` entry
@@ -152,6 +153,7 @@ export function useDiscoveryController(options?: {
       } else {
         setSelectedCafeId(null);
         setSnap("peek");
+        focusPending.current = false;
       }
     };
     window.addEventListener("popstate", onPopState);
@@ -166,6 +168,10 @@ export function useDiscoveryController(options?: {
 
   const detailHeadingRef = useCallback((el: HTMLElement | null) => {
     headingEl.current = el;
+    if (el && focusPending.current) {
+      focusPending.current = false;
+      el.focus();
+    }
   }, []);
 
   useEffect(() => {

@@ -161,3 +161,92 @@ describe("useDiscoveryController referential stability (BRAWUKA-651)", () => {
     expect(result.current.selectedCafeId).toBe(CAFE_1);
   });
 });
+
+describe("useDiscoveryController focus handoff (DG18)", () => {
+  it("consumes focusPending and focuses heading when mounted after deep-link hydration", () => {
+    const { result } = renderHook(
+      () => useDiscoveryController({ initialCafeId: CAFE_1, initialSnap: "full" }),
+      { wrapper },
+    );
+    const heading = document.createElement("h2");
+    heading.tabIndex = -1;
+    const focusSpy = vi.spyOn(heading, "focus");
+
+    act(() => result.current.detailHeadingRef(heading));
+    expect(focusSpy).toHaveBeenCalledTimes(1);
+
+    // Subsequent attach/render does not refocus (focusPending was consumed)
+    act(() => result.current.detailHeadingRef(heading));
+    expect(focusSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("consumes focusPending and focuses heading when mounted after card selection", () => {
+    const { result } = setup();
+    act(() => result.current.select(CAFE_1));
+
+    const heading = document.createElement("h2");
+    heading.tabIndex = -1;
+    const focusSpy = vi.spyOn(heading, "focus");
+
+    act(() => result.current.detailHeadingRef(heading));
+    expect(focusSpy).toHaveBeenCalledTimes(1);
+
+    act(() => result.current.detailHeadingRef(heading));
+    expect(focusSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("focuses new heading when switching cafes", () => {
+    const { result } = setup();
+    act(() => result.current.select(CAFE_1));
+
+    const heading1 = document.createElement("h2");
+    heading1.tabIndex = -1;
+    const focusSpy1 = vi.spyOn(heading1, "focus");
+    act(() => result.current.detailHeadingRef(heading1));
+    expect(focusSpy1).toHaveBeenCalledTimes(1);
+
+    act(() => result.current.detailHeadingRef(null));
+    act(() => result.current.select(CAFE_2));
+
+    const heading2 = document.createElement("h2");
+    heading2.tabIndex = -1;
+    const focusSpy2 = vi.spyOn(heading2, "focus");
+    act(() => result.current.detailHeadingRef(heading2));
+    expect(focusSpy2).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores focus to the registered card element on close", () => {
+    const { result } = setup();
+    const card = document.createElement("article");
+    card.tabIndex = 0;
+    const cardFocusSpy = vi.spyOn(card, "focus");
+
+    act(() => {
+      result.current.registerCardRef(CAFE_1, card);
+      result.current.select(CAFE_1);
+    });
+
+    const heading = document.createElement("h2");
+    heading.tabIndex = -1;
+    act(() => result.current.detailHeadingRef(heading));
+
+    act(() => result.current.close());
+    expect(cardFocusSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears focusPending on close so late heading mount does not focus", () => {
+    const { result } = renderHook(
+      () => useDiscoveryController({ initialCafeId: CAFE_1, initialSnap: "full" }),
+      { wrapper },
+    );
+    act(() => result.current.close());
+
+    const heading = document.createElement("h2");
+    heading.tabIndex = -1;
+    const focusSpy = vi.spyOn(heading, "focus");
+
+    act(() => result.current.detailHeadingRef(heading));
+    expect(focusSpy).not.toHaveBeenCalled();
+  });
+});
+

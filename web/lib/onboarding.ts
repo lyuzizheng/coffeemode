@@ -1,15 +1,16 @@
 import "server-only";
 
 import { appConfig } from "@/lib/config";
-import { detectIpCity, nearestLaunchCity } from "@/lib/cities";
+import { nearestLaunchCity } from "@/lib/cities";
 import { resolveCafeTimezone } from "@/lib/db/cafes/meta";
 
 /**
  * Located-city resolution (spec 0001 §Onboarding, DG121): a granted
  * geolocation maps to the nearest launch city inside
- * `onboarding.cityCoverageKm`; beyond it the `cf-ipcity` header names the
- * runtime-created city (no geocoder exists yet — the header is the only
- * honest name source). `runtime: true` marks the DG121 first-nomad case.
+ * `onboarding.cityCoverageKm`; beyond it the coordinates become a
+ * tz-lookup-named runtime city (BRAWUKA-640: `cf-ipcity` is
+ * client-forgeable and never names or writes `current_city`).
+ * `runtime: true` marks the DG121 first-nomad case.
  */
 
 interface ResolvedCity {
@@ -26,11 +27,7 @@ interface LocateResolution {
   inCoverage: boolean;
 }
 
-export function resolveLocatedCity(
-  lat: number,
-  lng: number,
-  headers: { get(name: string): string | null },
-): LocateResolution {
+export function resolveLocatedCity(lat: number, lng: number): LocateResolution {
   const nearest = nearestLaunchCity(lat, lng, appConfig.onboarding.cityCoverageKm);
   if (nearest) {
     return {
@@ -46,33 +43,27 @@ export function resolveLocatedCity(
     };
   }
 
-  // Out of coverage: a launch-city IP hit needs no runtime row; a non-launch
-  // cf-ipcity name becomes the runtime city (DG121).
-  const ipCity = detectIpCity(headers);
-  if (ipCity) {
-    return {
-      inCoverage: false,
-      city: {
-        id: ipCity.id,
-        name: ipCity.name,
-        nameZh: ipCity.nameZh,
-        tz: ipCity.tz,
-        center: ipCity.center,
-        runtime: false,
-      },
-    };
-  }
-
-  const rawIpCity = headers.get("cf-ipcity")?.trim();
-  if (!rawIpCity) return { inCoverage: false, city: null };
-
+  // Out of coverage: the granted coordinates name the runtime city — never
+  // a client-controlled header (BRAWUKA-640). The id derives from the
+  // tz-lookup zone (`Europe/Lisbon` → `lisbon`,
+  // `America/Argentina/Buenos_Aires` → `argentina-buenos-aires`); Etc/GMT*
+  // zones carry no city, so `{city}` stays null instead of minting a bogus id.
+  const tz = resolveCafeTimezone(lat, lng);
+  const zoneCity = tz.split("/").slice(1).join("-").toLowerCase();
+  const id = zoneCity.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  if (!zoneCity || !id || tz.startsWith("Etc/")) return { inCoverage: false, city: null };
+  const displayName = zoneCity
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part) => part[0]!.toUpperCase() + part.slice(1))
+    .join(" ");
   return {
     inCoverage: false,
     city: {
-      id: rawIpCity.toLowerCase().replace(/[\s\-_/]+/g, "-"),
-      name: rawIpCity,
-      nameZh: rawIpCity,
-      tz: resolveCafeTimezone(lat, lng),
+      id,
+      name: displayName,
+      nameZh: displayName,
+      tz,
       center: { lat, lng },
       runtime: true,
     },

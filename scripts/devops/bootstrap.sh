@@ -212,26 +212,62 @@ provision_r2_bucket() {
       warn "Cloudflare API returned status ${status} for bucket '${bucket_name}'."
     fi
 
-    # Configure CORS policy for web client direct uploads
-    log "Configuring CORS policy for '${bucket_name}'..."
-    curl -s -X PUT \
-      "https://api.cloudflare.com/client/v4/accounts/${cf_account_id}/r2/buckets/${bucket_name}/cors" \
-      -H "Authorization: Bearer ${cf_token}" \
-      -H "Content-Type: application/json" \
-      -d '{
-        "rules": [
-          {
-            "allowed": {
-              "origins": ["https://cafemood.app", "https://staging.cafemood.app", "http://localhost:3000"],
-              "methods": ["GET", "PUT", "HEAD"],
-              "headers": ["*"]
-            },
-            "maxAgeSeconds": 3600
-          }
-        ]
-      }' >/dev/null 2>&1 || true
   else
-    ok "[DRY-RUN] Provisioning R2 bucket '${bucket_name}' and CORS simulated."
+    ok "[DRY-RUN] Provisioning R2 bucket '${bucket_name}' simulated."
+  fi
+}
+
+# Browser uploads go straight to R2 with a presigned PUT, so the image buckets
+# need a CORS policy whose origins are the canonical web hosts (spec 0005 §3,
+# spec 0010 §1). NOT applied to coffeemode-backups: backups are server-side
+# only and must not accept browser origins.
+#
+# The response is verified and a rejection is fatal. The previous version piped
+# the call to /dev/null with `|| true`, so the 2026-09-14 CoffeeMode -> CafeMood
+# rename left both buckets allowing the retired coffeemode.app origin and every
+# browser upload failed with "CORS not configured for this bucket" (BRAWUKA-560).
+R2_CORS_ORIGINS='["https://cafemood.app", "https://www.cafemood.app", "https://staging.cafemood.app", "http://localhost:3000"]'
+
+provision_r2_cors() {
+  local bucket_name="$1"
+  local cf_account_id="${CLOUDFLARE_ACCOUNT_ID:-}"
+  local cf_token="${CLOUDFLARE_API_TOKEN:-}"
+
+  if [[ -z "$cf_account_id" || -z "$cf_token" ]]; then
+    warn "CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN not set. Skipping CORS for bucket '${bucket_name}'."
+    return 0
+  fi
+
+  log "Configuring CORS policy for '${bucket_name}'..."
+  if [ "$DRY_RUN" = true ]; then
+    ok "[DRY-RUN] CORS policy for '${bucket_name}' simulated."
+    return 0
+  fi
+
+  local response
+  response="$(curl -s -X PUT \
+    "https://api.cloudflare.com/client/v4/accounts/${cf_account_id}/r2/buckets/${bucket_name}/cors" \
+    -H "Authorization: Bearer ${cf_token}" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"rules\": [
+        {
+          \"allowed\": {
+            \"origins\": ${R2_CORS_ORIGINS},
+            \"methods\": [\"GET\", \"PUT\", \"HEAD\"],
+            \"headers\": [\"*\"]
+          },
+          \"maxAgeSeconds\": 3600
+        }
+      ]
+    }")"
+
+  if [[ "$(jq -r '.success // false' <<<"$response" 2>/dev/null)" == "true" ]]; then
+    ok "CORS policy applied to '${bucket_name}' (origins: ${R2_CORS_ORIGINS})."
+  else
+    error "CORS policy for '${bucket_name}' was rejected: $(jq -c '.errors // .' <<<"$response" 2>/dev/null || printf '%s' "$response")"
+    error "Browser uploads to this bucket would fail with 'CORS not configured for this bucket'. Aborting."
+    exit 1
   fi
 }
 
@@ -293,6 +329,10 @@ if [ "$SKIP_CLOUDFLARE" = false ]; then
   provision_r2_bucket "coffeemode-images-staging"
   provision_r2_bucket "coffeemode-images-prod"
   provision_r2_bucket "coffeemode-backups"
+
+  # Only the image buckets serve browser presigned PUTs.
+  provision_r2_cors "coffeemode-images-staging"
+  provision_r2_cors "coffeemode-images-prod"
 
   # Note: images.cafemood.app and staging-images.cafemood.app are Cloudflare R2
   # custom domains connected directly to R2 buckets, NOT origin VPS A records.

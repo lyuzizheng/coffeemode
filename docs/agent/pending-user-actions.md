@@ -79,6 +79,7 @@ so a key restricted to the legacy Places API would 403 every live search.
 ## 6. image-service deploy
 
 - [x] Create R2 bucket and S3 API token for image uploads (`coffeemode-images-prod` and `coffeemode-images-staging` provisioned in APAC with CORS configured)
+  - The CORS origins were provisioned pre-rename as `coffeemode.app` / `staging.coffeemode.app`, so the 2026-09-14 rename to `cafemood.app` silently broke every browser presigned PUT (`403 CORS not configured for this bucket`) — BRAWUKA-560. Corrected 2026-09-23 on both buckets to `cafemood.app`, `www.cafemood.app`, `staging.cafemood.app`, `localhost:3000`. `scripts/devops/bootstrap.sh` now verifies the CORS API response and aborts on rejection instead of discarding it with `|| true`.
 - [x] Set the per-environment values in `image-service/wrangler.toml` `[env.production]` / `[env.staging]` (the top-level `[vars]` stay as the local-dev defaults and are never deployed)
 - [x] Deployed image-service (workers `image-service-prod` / `image-service-staging`; redeploys go through the guarded `npm run deploy -- --env staging|production`):
   - Secrets installed via Cloudflare Worker bindings (`IMAGE_SERVICE_TOKEN`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`)

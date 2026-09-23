@@ -955,7 +955,10 @@ Two search modes:
      re-anchor (DG128).
      `lat`/`lng` deep-link params are all-or-nothing: exactly one present →
      400 `invalid_request` on the API and the error state on SSR `/search`
-     (BRAWUKA-597) — a lone coordinate is never silently re-anchored.
+     (BRAWUKA-597) — a lone coordinate is never silently re-anchored. A
+     present-but-unparseable coordinate is likewise a 400, same convention
+     as `limit` (BRAWUKA-670); a repeated param resolves to its first value
+     on both surfaces.
    - Text query: name FTS on own cafes and saved POIs.
      - Search-as-you-type starts at 3 characters, 400ms debounce (DG44/DG47).
      - Suggestion rows: top 10 only, rendered under the search bar; no

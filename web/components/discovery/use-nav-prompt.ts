@@ -39,6 +39,10 @@ function sessionFlagWrite(): void {
  * fetch handler and never settles (visual-smoke networkidle hang,
  * BRAWUKA-5). `controller`/`controllerchange` fires during `activating`,
  * so the reliable gate is `sw.ready` + `active.state === "activated"`.
+ *
+ * When no SW is registered or when `ready` never resolves, skip waiting or
+ * time out after ~3s so the fetch degrades to network rather than hanging
+ * the prompt indefinitely (BRAWUKA-580).
  */
 function schedulePromptLoad(load: () => void, isCancelled: () => boolean): () => void {
   const schedule = () => {
@@ -53,8 +57,38 @@ function schedulePromptLoad(load: () => void, isCancelled: () => boolean): () =>
   if (!sw || sw.controller) return schedule();
   let unschedule: (() => void) | null = null;
   let stopped = false;
+  let readyTimer: ReturnType<typeof setTimeout> | null = null;
+
   void (async () => {
-    const reg = await sw.ready;
+    // If no service worker is registered for this scope, skip ready wait (BRAWUKA-580).
+    if (typeof sw.getRegistration === "function") {
+      try {
+        const reg = await sw.getRegistration();
+        if (stopped || isCancelled()) return;
+        if (!reg) {
+          unschedule = schedule();
+          return;
+        }
+      } catch {
+        // Ignored; fall through to ready wait with timeout
+      }
+    }
+
+    // Await ready with timeout: ready never resolves if no SW activates (BRAWUKA-580).
+    const SW_READY_TIMEOUT_MS = 3000;
+    const timeoutPromise = new Promise<null>((resolve) => {
+      readyTimer = setTimeout(() => resolve(null), SW_READY_TIMEOUT_MS);
+    });
+    const reg = await Promise.race([
+      sw.ready.catch(() => null),
+      timeoutPromise,
+    ]);
+    if (readyTimer !== null) {
+      clearTimeout(readyTimer);
+      readyTimer = null;
+    }
+    if (stopped || isCancelled()) return;
+
     // Poll until the active worker reports `activated` — `ready` can
     // resolve while it is still `activating`. Capped at ~5s (BRAWUKA-281
     // P2): a worker wedged in `activating`/`installed` must not spin a
@@ -62,7 +96,7 @@ function schedulePromptLoad(load: () => void, isCancelled: () => boolean): () =>
     // anyway — the fetch degrades to network rather than hanging forever.
     const MAX_ATTEMPTS = 100;
     let attempts = 0;
-    while (reg.active && reg.active.state !== "activated" && attempts < MAX_ATTEMPTS) {
+    while (reg?.active && reg.active.state !== "activated" && attempts < MAX_ATTEMPTS) {
       attempts += 1;
       await new Promise<void>((resolve) => setTimeout(resolve, 50));
       if (stopped || isCancelled()) return;
@@ -71,6 +105,10 @@ function schedulePromptLoad(load: () => void, isCancelled: () => boolean): () =>
   })();
   return () => {
     stopped = true;
+    if (readyTimer !== null) {
+      clearTimeout(readyTimer);
+      readyTimer = null;
+    }
     unschedule?.();
   };
 }

@@ -9,7 +9,7 @@ import {
   parseAccessEnvText,
   shouldAttachAccessHeaders,
 } from "../../../scripts/agent-qa/access-inject.mjs";
-import { AGENT_QA_ALLOWED_HOSTS } from "../../../scripts/agent-qa/allowlist.mjs";
+import { AGENT_QA_ACCESS_HOSTS } from "../../../scripts/agent-qa/allowlist.mjs";
 
 const PAIR = { clientId: "id-1", clientSecret: "secret-1" };
 
@@ -21,10 +21,10 @@ function pausedEvent(url: string, headers: Record<string, string> = {}) {
 }
 
 describe("buildAccessFetchPatterns", () => {
-  it("emits one Request-stage subresource pattern per allowlist host, never Document or catch-all", () => {
+  it("emits one Request-stage subresource pattern per Access host, never Document or catch-all", () => {
     const patterns = buildAccessFetchPatterns();
     expect(patterns).toHaveLength(
-      AGENT_QA_ALLOWED_HOSTS.length * ACCESS_FETCH_RESOURCE_TYPES.length,
+      AGENT_QA_ACCESS_HOSTS.length * ACCESS_FETCH_RESOURCE_TYPES.length,
     );
     expect(ACCESS_FETCH_RESOURCE_TYPES).not.toContain("Document");
     expect(new Set(ACCESS_FETCH_RESOURCE_TYPES).size).toBe(ACCESS_FETCH_RESOURCE_TYPES.length);
@@ -36,17 +36,26 @@ describe("buildAccessFetchPatterns", () => {
       expect(ACCESS_FETCH_RESOURCE_TYPES).toContain(pattern.resourceType);
     }
     expect(patterns.map((p) => p.urlPattern)).toContain("*://staging.cafemood.app/*");
+    expect(patterns.some((p) => p.urlPattern.includes("supabase.co"))).toBe(false);
     expect(patterns.some((p) => p.resourceType === "XHR")).toBe(true);
     expect(patterns.some((p) => p.urlPattern.includes("*") && !p.urlPattern.startsWith("*://"))).toBe(
       false,
     );
   });
+
+  it("never emits a pattern for the staging Supabase host (BRAWUKA-593)", () => {
+    const patterns = buildAccessFetchPatterns();
+    expect(
+      patterns.some((p) => p.urlPattern.includes("ojujmjewtbquiddswyrg.supabase.co")),
+    ).toBe(false);
+  });
 });
 
 describe("shouldAttachAccessHeaders", () => {
-  it("attaches only to http(s) URLs on allowlisted hosts", () => {
+  it("attaches only to http(s) URLs on Access-protected hosts", () => {
     expect(shouldAttachAccessHeaders("https://staging.cafemood.app/discover")).toBe(true);
     expect(shouldAttachAccessHeaders("https://foo.cloudflareaccess.com/x")).toBe(true);
+    expect(shouldAttachAccessHeaders("https://ojujmjewtbquiddswyrg.supabase.co/auth/v1/token")).toBe(false);
   });
 
   it("refuses third-party, non-http, and malformed URLs (fail-closed)", () => {
@@ -82,7 +91,7 @@ describe("mergeAccessHeaders", () => {
 });
 
 describe("handlePausedAccessRequest", () => {
-  it("attaches headers to allowlisted requests, passes third-party through untouched", async () => {
+  it("attaches headers to Access-protected requests, passes third-party through untouched", async () => {
     const cdp = vi.fn().mockResolvedValue({});
     const page = { cdp };
     expect(await handlePausedAccessRequest(page, pausedEvent("https://staging.cafemood.app/x", { "x-a": "1" }), PAIR)).toBe(
@@ -98,6 +107,15 @@ describe("handlePausedAccessRequest", () => {
         ]),
       }),
     );
+    cdp.mockClear();
+    expect(
+      await handlePausedAccessRequest(
+        page,
+        pausedEvent("https://ojujmjewtbquiddswyrg.supabase.co/auth/v1/token"),
+        PAIR,
+      ),
+    ).toBe("passthrough");
+    expect(cdp).toHaveBeenCalledWith("Fetch.continueRequest", { requestId: "req-1" });
     cdp.mockClear();
     expect(
       await handlePausedAccessRequest(page, pausedEvent("https://cloudflareinsights.com/beacon"), PAIR),

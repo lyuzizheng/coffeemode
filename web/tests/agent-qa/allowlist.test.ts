@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { assertAllowedUrl, isAllowedHost, isAllowedUrl } from "../../../scripts/agent-qa/allowlist.mjs";
+import {
+  assertAllowedUrl,
+  isAccessHost,
+  isAllowedHost,
+  isAllowedUrl,
+} from "../../../scripts/agent-qa/allowlist.mjs";
 
 describe("isAllowedHost", () => {
   it("allows the app, image CDN, staging Supabase, and Access handshake hosts", () => {
@@ -20,6 +25,22 @@ describe("isAllowedHost", () => {
   it("is case-insensitive and tolerates a trailing dot", () => {
     expect(isAllowedHost("Staging.CafeMood.App")).toBe(true);
     expect(isAllowedHost("staging.cafemood.app.")).toBe(true);
+  });
+});
+
+describe("isAccessHost (BRAWUKA-593)", () => {
+  it("covers only the Access-protected hosts, never the staging Supabase host", () => {
+    expect(isAccessHost("staging.cafemood.app")).toBe(true);
+    expect(isAccessHost("staging-images.cafemood.app")).toBe(true);
+    expect(isAccessHost("foo.cloudflareaccess.com")).toBe(true);
+    expect(isAccessHost("ojujmjewtbquiddswyrg.supabase.co")).toBe(false);
+    expect(isAccessHost("cafemood.app")).toBe(false);
+    expect(isAccessHost("")).toBe(false);
+  });
+
+  it("is case-insensitive and tolerates a trailing dot", () => {
+    expect(isAccessHost("Staging.CafeMood.App")).toBe(true);
+    expect(isAccessHost("staging.cafemood.app.")).toBe(true);
   });
 });
 

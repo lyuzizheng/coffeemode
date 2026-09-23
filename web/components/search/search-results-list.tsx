@@ -306,6 +306,15 @@ export function SearchResultsList({
         </div>
       )}
 
+      {isEmpty && !hasActiveFilters && (
+        <div className="flex flex-col items-start gap-1 px-3 py-3">
+          <p className="font-display text-md font-bold text-foreground">
+            {t("no_results")}
+          </p>
+          <p className="text-sm text-muted">{t("no_results_hint")}</p>
+        </div>
+      )}
+
       {!isEmpty && (
         <div>
           {coffeemode.length > 0 && (

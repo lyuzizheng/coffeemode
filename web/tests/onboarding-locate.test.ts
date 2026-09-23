@@ -72,10 +72,12 @@ describe("POST /api/onboarding/locate (DG121/DG122)", () => {
     expect(updateProfile).not.toHaveBeenCalled();
   });
 
-  it("creates a runtime city from cf-ipcity when out of coverage (DG121)", async () => {
+  it("names the runtime city from coordinates, never cf-ipcity (BRAWUKA-640)", async () => {
     vi.mocked(getCurrentUser).mockResolvedValueOnce(null);
+    // Lisbon coords → tz-lookup names Europe/Lisbon even though the header
+    // forges a bogus city: the header must not influence the resolution.
     const res = await POST(
-      locateRequest({ lat: 38.72, lng: -9.14 }, { "cf-ipcity": "Lisbon" }),
+      locateRequest({ lat: 38.72, lng: -9.14 }, { "cf-ipcity": "<script>alert(1)</script>" }),
     );
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -87,9 +89,35 @@ describe("POST /api/onboarding/locate (DG121/DG122)", () => {
     expect(body.city.center).toEqual({ lat: 38.72, lng: -9.14 });
   });
 
-  it("returns null city when out of coverage and IP detection has no name", async () => {
+  it("persists the coordinate-named runtime city for signed-in users, ignoring cf-ipcity (BRAWUKA-640)", async () => {
+    vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: userId });
+    vi.mocked(updateProfile).mockResolvedValueOnce({
+      id: userId,
+      displayName: "Test User",
+      avatarUrl: null,
+      currentCity: "lisbon",
+      lastLocation: { lat: 38.72, lng: -9.14 },
+      onboarded: true,
+      createdAt: new Date().toISOString(),
+      showPublicIdentity: false,
+      publicHandle: null,
+      identityConsentedAt: null,
+      publicHandleChangedAt: null,
+    });
+    const res = await POST(
+      locateRequest({ lat: 38.72, lng: -9.14 }, { "cf-ipcity": "tokyo" }),
+    );
+    expect(res.status).toBe(200);
+    expect(updateProfile).toHaveBeenCalledWith(userId, {
+      onboarded: true,
+      lastLocation: { lat: 38.72, lng: -9.14 },
+      currentCity: "lisbon",
+    });
+  });
+
+  it("returns null city when out of coverage and the zone carries no city name", async () => {
     vi.mocked(getCurrentUser).mockResolvedValueOnce(null);
-    const res = await POST(locateRequest({ lat: 38.72, lng: -9.14 }));
+    const res = await POST(locateRequest({ lat: 0, lng: -140 }));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.inCoverage).toBe(false);

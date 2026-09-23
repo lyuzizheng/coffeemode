@@ -1,17 +1,14 @@
-import type { SessionUser } from "@/lib/auth/get-user";
 import { refreshSessionAndVerify } from "@/lib/auth/proxy-session";
 import { VERIFIED_USER_HEADER } from "@/lib/auth/verified-user";
 import { NextRequest, NextResponse } from "next/server";
 import { redirectToPath } from "@/lib/security/origin";
 import { CAFE_SHELL_BYPASS_CACHE_CONTROL } from "@/lib/cache-policy";
-import { cafeExists } from "@/lib/db/cafes";
 import { isValidUUID } from "@shared/uuid";
 import { isErrorCode } from "@shared/errors";
 import {
   REQUEST_ID_HEADER,
   emitAccessLine,
   getRequestId,
-  logError,
 } from "@/lib/observability/server-log";
 
 /**
@@ -23,36 +20,18 @@ import {
  * request and the response. It never blocks public routes; route handlers
  * call `getUser()` for their own auth decisions.
  *
- * It also commits the gone-cafe 404 status (DG19): the cafe page is async,
- * so the root loading boundary streams its shell with a 200 before a
- * page-level notFound() can run. Existence is probed here — PK lookup only,
- * never content — and missing ids are rewritten to a sync page that throws
- * notFound(), which flushes unstreamed and keeps the real 404 status.
+ * The gone-cafe 404 (DG19) is NOT decided here (BRAWUKA-658): the page's
+ * generateMetadata() calls notFound(), which commits the real 404 status
+ * because no loading boundary wraps /cafes/[id] — the map-home skeleton
+ * lives in app/(home)/loading.tsx, scoped to `/` by the route group. A
+ * proxy-side existence probe would duplicate the page's getCafe query on
+ * every GET.
  */
 
 const CAFE_PAGE_PATH = /^\/cafes\/([^/]+)$/;
 
-/** Header the proxy uses to hand the attempted id to the global 404. */
-const GONE_HEADER = "x-gone-cafe-id";
-
 /** Internal request headers only this proxy may set (spoof strip). */
-const INTERNAL_HEADERS = [GONE_HEADER, VERIFIED_USER_HEADER];
-
-async function isGoneCafePage(
-  request: NextRequest,
-  userId: string | null,
-): Promise<boolean> {
-  const match = CAFE_PAGE_PATH.exec(request.nextUrl.pathname);
-  if (!match) return false;
-  try {
-    return !(await cafeExists(match[1], userId));
-  } catch (err) {
-    // DB unreachable: fail open. The page handles the error surface; a
-    // degraded soft-404 beats turning every deep link into a 500.
-    logError({ route: "proxy gone-cafe check", request, error: err });
-    return false;
-  }
-}
+const INTERNAL_HEADERS = [VERIFIED_USER_HEADER];
 
 /**
  * Clients must not be able to inject internal markers: strip inbound copies
@@ -88,51 +67,26 @@ async function handleProxy(request: NextRequest) {
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   let response = NextResponse.next({ request: req });
-  let verifiedUser: SessionUser | null | undefined;
   let sessionRefreshed = false;
 
   if (url && anonKey && hasSupabaseSessionCookie(req)) {
     const isCafePage =
       (req.method === "GET" || req.method === "HEAD") &&
       CAFE_PAGE_PATH.test(req.nextUrl.pathname);
-    ({ response, verifiedUser, sessionRefreshed } =
+    ({ response, sessionRefreshed } =
       await refreshSessionAndVerify(req, response, url, anonKey, isCafePage));
   }
 
-  // Gone-cafe deep links get a real 404 (DG19). The cafe page is async, and
-  // the root loading boundary streams a matched route's shell with a 200
-  // before any page-level notFound() can run — so the 404 must be decided
-  // here, before routing. The rewrite target matches NO route: the global
-  // not-found surface commits the 404 status at routing time, and reads the
-  // attempted id from x-gone-cafe-id to render the designed gone-cafe page
-  // (with the DG111 recovery block). GET/HEAD only — no other method
-  // targets the SSR page.
-  if (
-    (req.method === "GET" || req.method === "HEAD") &&
-    (await isGoneCafePage(req, verifiedUser?.id ?? null))
-  ) {
-    const id = CAFE_PAGE_PATH.exec(req.nextUrl.pathname)?.[1] ?? "";
-    // req.headers already carries any refreshed session cookies (setAll
-    // mutated req.cookies above), so the rewrite forwards them upstream.
-    const headers = new Headers(req.headers);
-    headers.set(GONE_HEADER, id);
-    const gone = NextResponse.rewrite(new URL("/__gone-cafe", req.url), {
-      request: { headers },
-    });
-    // BRAWUKA-315 P1: the session refresh above wrote rotated cookies onto
-    // `response` — but this branch returns a NEW rewrite response, discarding
-    // it. The server-side refresh token is already consumed, so a dropped
-    // Set-Cookie means the next request refreshes on the spent token and
-    // forces a logout. Forward the refreshed cookies onto the rewrite.
-    for (const c of response.cookies.getAll()) {
-      gone.cookies.set(c);
-    }
-    // BRAWUKA-184: a 404 MUST NOT sit in shared cache (a recreated cafe
-    // would stay gone for up to s-maxage). The static public header from
-    // next.config matches this path, so stamp the bypass here.
-    gone.headers.set("Cache-Control", CAFE_SHELL_BYPASS_CACHE_CONTROL);
-    return gone;
-  }
+  // DG19 note: gone-cafe deep links are NOT rewritten here anymore
+  // (BRAWUKA-658). The page's generateMetadata() commits the real 404 via
+  // notFound() — possible because no loading boundary wraps /cafes/[id]
+  // (the map skeleton moved into app/(home)/). The segment not-found.tsx
+  // renders the designed gone-cafe surface and the DG111 recovery block
+  // reads the attempted id from route params.
+  //
+  // A 404 from that path carries the static s-maxage header from
+  // next.config — inert because the edge rule bypasses every non-200
+  // (deploy/dokploy/cache-rules.json onStatusesOtherThan: [200]).
 
   // BRAWUKA-184: a response carrying a refreshed session (Set-Cookie) MUST
   // NOT sit in shared cache — otherwise one user's session cookie is served

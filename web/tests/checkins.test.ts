@@ -3,12 +3,14 @@ import { createCheckIn, softDeleteCheckIn, toggleCheckInLike, updateCheckIn } fr
 import {
   CafeNotFoundError,
   CheckInNotFoundError,
+  CheckInPhotoLimitError,
   DuplicateCheckInError,
   SelfLikeError,
   parseCheckInBody,
   parseMaxStayFilter,
   parsePhotoIds,
   parseScores,
+  parseUpdateCheckInBody,
   parseVisitedAt,
   type CreateCheckInInput,
 } from "@/lib/validation/checkin";
@@ -696,6 +698,109 @@ describe("check-in edit/delete lock order (BRAWUKA-574)", () => {
     expect(cafeLockIdx).toBeGreaterThan(-1);
     expect(checkinLockIdx).toBeGreaterThan(-1);
     expect(cafeLockIdx).toBeLessThan(checkinLockIdx);
+  });
+});
+
+describe("check-in edit photo deltas (BRAWUKA-563)", () => {
+  const EXISTING = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a66";
+  const checkinRow = {
+    id: CHECKIN,
+    cafe_id: CAFE,
+    user_id: USER.id,
+    deleted_at: null,
+    photos: [{ id: EXISTING, original: `original/${EXISTING}.webp` }],
+  };
+
+  beforeEach(() => {
+    clientQueryMock.mockReset();
+    clientQueryMock.mockImplementation(async (sql: string) => {
+      const s = sql.toLowerCase();
+      if (s.includes("select cafe_id from checkins")) {
+        return { rows: [{ cafe_id: CAFE }], rowCount: 1 };
+      }
+      if (s.includes("from cafes") && s.includes("for update")) {
+        return { rows: [{ "?column?": 1 }], rowCount: 1 };
+      }
+      if (s.includes("from checkins where id")) {
+        return { rows: [checkinRow], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+  });
+
+  it("parses add/remove photo ids and rejects overlap", () => {
+    const ok = parseUpdateCheckInBody({ add_photo_ids: [IMG], remove_photo_ids: [EXISTING] });
+    expect(ok).toEqual({
+      ok: true,
+      value: expect.objectContaining({ add_photo_ids: [IMG], remove_photo_ids: [EXISTING] }),
+    });
+    expect(parseUpdateCheckInBody({ add_photo_ids: [IMG], remove_photo_ids: [IMG] }).ok).toBe(false);
+    expect(parseUpdateCheckInBody({ add_photo_ids: ["nope"] }).ok).toBe(false);
+    expect(parseUpdateCheckInBody({ remove_photo_ids: [] }).ok).toBe(true); // present-but-empty counts as a field
+    expect(parseUpdateCheckInBody({}).ok).toBe(false);
+  });
+
+  it("attaches added photos to the check-in and the cafe gallery", async () => {
+    await updateCheckIn(USER.id, CHECKIN, { add_photo_ids: [IMG] });
+    const statements = clientQueryMock.mock.calls.map(([sql, params]) => [sql as string, params] as const);
+    const photoUpdate = statements.find(([s]) => s.includes("update checkins set") && s.includes("photos"));
+    expect(photoUpdate).toBeDefined();
+    const photosJson = JSON.parse(photoUpdate![1]![0] as string) as { id: string; source?: { id: string } }[];
+    expect(photosJson.map((p) => p.id)).toEqual([EXISTING, IMG]);
+    expect(photosJson[1]!.source).toEqual({ type: "checkin", id: CHECKIN });
+    expect(provisionDeps.consumeUploadIntents).toHaveBeenCalledWith(USER.id, [IMG], expect.anything());
+    const galleryMerge = statements.find(([s]) => s.includes("update cafes") && s.includes("jsonb_array_elements($2::jsonb)"));
+    expect(galleryMerge).toBeDefined();
+    // Post-commit attach re-mark (BRAWUKA-400): provision → checkin target.
+    expect(provisionDeps.getProcessUrls).toHaveBeenCalledWith(
+      expect.objectContaining({ imageUuid: IMG, targetType: "checkin", targetId: CHECKIN }),
+    );
+  });
+
+  it("detaches removed photos from the check-in and the cafe gallery", async () => {
+    await updateCheckIn(USER.id, CHECKIN, { remove_photo_ids: [EXISTING] });
+    const statements = clientQueryMock.mock.calls.map(([sql, params]) => [sql as string, params] as const);
+    const photoUpdate = statements.find(([s]) => s.includes("update checkins set") && s.includes("photos"));
+    expect(JSON.parse(photoUpdate![1]![0] as string)).toEqual([]);
+    const galleryRemove = statements.find(([s]) => s.includes("elem->'source'->>'id' = $2"));
+    expect(galleryRemove).toBeDefined();
+    expect(galleryRemove![1]).toEqual([CAFE, CHECKIN, [EXISTING]]);
+    // Post-commit: the removed id is unreferenced → best-effort R2 cleanup.
+    expect(provisionDeps.deleteProvisionedVariants).toHaveBeenCalledWith(EXISTING);
+  });
+
+  it("ignores remove ids that are not attached (idempotent retry)", async () => {
+    await updateCheckIn(USER.id, CHECKIN, { remove_photo_ids: [IMG] });
+    const statements = clientQueryMock.mock.calls.map(([sql]) => sql as string);
+    expect(statements.some((s) => s.includes("update checkins set"))).toBe(false);
+  });
+
+  it("rejects deltas that would exceed the photo cap", async () => {
+    const full = Array.from({ length: 6 }, (_, i) => ({ id: `a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a7${i}` }));
+    clientQueryMock.mockImplementation(async (sql: string) => {
+      const s = sql.toLowerCase();
+      if (s.includes("select cafe_id from checkins")) return { rows: [{ cafe_id: CAFE }], rowCount: 1 };
+      if (s.includes("from checkins where id")) return { rows: [{ ...checkinRow, photos: full }], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    });
+    await expect(updateCheckIn(USER.id, CHECKIN, { add_photo_ids: [IMG] })).rejects.toBeInstanceOf(
+      CheckInPhotoLimitError,
+    );
+    // Rolled back: the provisioned variants are compensated, nothing consumed.
+    expect(provisionDeps.deleteProvisionedVariants).toHaveBeenCalledWith(IMG);
+    expect(provisionDeps.consumeUploadIntents).not.toHaveBeenCalled();
+  });
+
+  it("compensates provisioned photos when the edit transaction fails", async () => {
+    clientQueryMock.mockImplementation(async (sql: string) => {
+      const s = sql.toLowerCase();
+      if (s.includes("select cafe_id from checkins")) return { rows: [{ cafe_id: CAFE }], rowCount: 1 };
+      if (s.includes("from checkins where id")) return { rows: [checkinRow], rowCount: 1 };
+      if (s.includes("update checkins set")) throw new Error("db write failed");
+      return { rows: [], rowCount: 0 };
+    });
+    await expect(updateCheckIn(USER.id, CHECKIN, { add_photo_ids: [IMG] })).rejects.toThrow("db write failed");
+    expect(provisionDeps.deleteProvisionedVariants).toHaveBeenCalledWith(IMG);
   });
 });
 

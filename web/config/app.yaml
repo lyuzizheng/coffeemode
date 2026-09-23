@@ -135,7 +135,7 @@ seo:
     sMaxAgeSeconds: 600
     staleWhileRevalidateSeconds: 3600
     # Only these statuses may sit in shared cache. Every other status — the
-    # proxy-rewritten gone-cafe 404, 500s, redirects — MUST bypass.
+    # gone-cafe 404, 500s, redirects — MUST bypass.
     cacheableStatuses: [200]
     # A response carrying Set-Cookie (Supabase session refresh via the proxy)
     # MUST bypass, otherwise a refreshed session cookie is cached cross-user.

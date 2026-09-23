@@ -3172,6 +3172,14 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(exportedCafe.lat).toBeCloseTo(1.35, 3);
       expect(exportedCafe.lng).toBeCloseTo(103.8, 3);
       expect(bundle.navigations).toEqual([]);
+      // BRAWUKA-583: every table deleteAccount touches is exported —
+      // pending upload intents included.
+      await dbClient.query(
+        "insert into image_upload_intents (image_uuid, user_id) values (gen_random_uuid(), $1)",
+        [U1],
+      );
+      const withIntent = await getProfileExport(U1);
+      expect(withIntent.image_upload_intents).toHaveLength(1);
     });
   });
 });

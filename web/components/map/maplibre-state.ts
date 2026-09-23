@@ -42,34 +42,48 @@ export interface ProviderState {
   stylePending: boolean;
 }
 
+/** True when the map has been removed or destroyed (BRAWUKA-581). */
+export function isMapDestroyed(map: MapLibreMap): boolean {
+  const candidate = map as unknown as { _removed?: boolean; style?: unknown };
+  return Boolean(candidate._removed || !candidate.style);
+}
+
 /** Re-registers pin images + cafe/external layers and re-pushes
  * data/selection — called on mount and on every `style.load` (theme
  * switches wipe runtime layers and feature-state). */
 export function rebindMapLayers(map: MapLibreMap, state: ProviderState): void {
   state.stylePending = false;
-  void loadPinImages(map).then(() => {
-    bindCafeLayers(map);
-    bindExternalPinLayers(map);
-    bindUserLocationLayers(map);
-    const cafeSource = map.getSource(CAFE_SOURCE);
-    if (cafeSource instanceof GeoJSONSource) {
-      cafeSource.setData(cafesToGeoJSON(state.cafes));
-    }
-    const externalSource = map.getSource(EXTERNAL_SOURCE);
-    if (externalSource instanceof GeoJSONSource) {
-      externalSource.setData(externalPinsToGeoJSON(state.externalPins));
-    }
-    const userSource = map.getSource(USER_LOCATION_SOURCE);
-    if (userSource instanceof GeoJSONSource) {
-      userSource.setData(userLocationToGeoJSON(state.userLocation));
-    }
-    if (state.selectedCafeId) {
-      map.setFeatureState(
-        { source: CAFE_SOURCE, id: state.selectedCafeId },
-        { selected: true },
-      );
-    }
-  });
+  if (isMapDestroyed(map)) return;
+  void loadPinImages(map)
+    .then(() => {
+      if (isMapDestroyed(map)) return;
+      bindCafeLayers(map);
+      bindExternalPinLayers(map);
+      bindUserLocationLayers(map);
+      const cafeSource = map.getSource(CAFE_SOURCE);
+      if (cafeSource instanceof GeoJSONSource) {
+        cafeSource.setData(cafesToGeoJSON(state.cafes));
+      }
+      const externalSource = map.getSource(EXTERNAL_SOURCE);
+      if (externalSource instanceof GeoJSONSource) {
+        externalSource.setData(externalPinsToGeoJSON(state.externalPins));
+      }
+      const userSource = map.getSource(USER_LOCATION_SOURCE);
+      if (userSource instanceof GeoJSONSource) {
+        userSource.setData(userLocationToGeoJSON(state.userLocation));
+      }
+      if (state.selectedCafeId) {
+        map.setFeatureState(
+          { source: CAFE_SOURCE, id: state.selectedCafeId },
+          { selected: true },
+        );
+      }
+    })
+    .catch((err: unknown) => {
+      // Catch and ignore rejections caused by map teardown (BRAWUKA-581).
+      if (isMapDestroyed(map)) return;
+      console.error("[map] failed to rebind map layers:", err);
+    });
 }
 
 export function bindPointerHandlers(map: MapLibreMap, state: ProviderState): void {

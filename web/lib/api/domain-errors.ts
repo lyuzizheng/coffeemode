@@ -24,6 +24,7 @@ import {
   CafeNotFoundError,
   CheckInForbiddenError,
   CheckInNotFoundError,
+  CheckInPhotoLimitError,
   DuplicateCheckInError,
   SelfLikeError,
 } from "@/lib/validation/checkin";
@@ -88,6 +89,10 @@ const DOMAIN_ERROR_MAPPERS: ReadonlyArray<DomainErrorMapper> = [
   entry(SelfLikeError, () => ({
     code: "self_like_forbidden",
     message: "you cannot like your own check-in",
+  })),
+  entry(CheckInPhotoLimitError, (err) => ({
+    code: "invalid_photos",
+    message: err.message,
   })),
   // feeds & profile lists
   entry(FeedCursorExpiredError, () => ({

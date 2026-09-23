@@ -18,19 +18,14 @@ vi.mock("@supabase/ssr", () => ({
   createServerClient: vi.fn(),
 }));
 
-const cafeExistsMock = vi.fn<(id: string, userId?: string | null) => Promise<boolean>>(
-  async () => true,
-);
-vi.mock("@/lib/db/cafes", () => ({
-  cafeExists: (id: string, userId?: string | null) => cafeExistsMock(id, userId),
-}));
-
 import { createServerClient } from "@supabase/ssr";
 
+
 // BRAWUKA-184: the /cafes/:id* cache contract is executable config, not a
-// comment. These tests pin the three response classes: a plain shell stays
-// cacheable, a session-refresh (Set-Cookie) response bypasses, and the
-// gone-cafe 404 bypasses.
+// comment. These tests pin the two proxy-stamped response classes: a plain
+// shell stays cacheable, a session-refresh (Set-Cookie) response bypasses.
+// The gone-cafe 404 is no longer proxied (BRAWUKA-658) — its shared-cache
+// bypass is enforced by the edge rule (onStatusesOtherThan: [200]).
 
 describe("cafe shell cache policy (single source)", () => {
   it("emits the static public header from app.yaml TTLs", () => {
@@ -87,7 +82,6 @@ describe("proxy cafe-shell cache classes", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
-    cafeExistsMock.mockResolvedValue(true);
     process.env.NEXT_PUBLIC_SUPABASE_URL = SUPABASE_URL;
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = ANON_KEY;
   });
@@ -128,14 +122,17 @@ describe("proxy cafe-shell cache classes", () => {
     expect(res.headers.get("cache-control")).toBe(CAFE_SHELL_BYPASS_CACHE_CONTROL);
   });
 
-  it("stamps no-store on the gone-cafe 404 rewrite", async () => {
-    cafeExistsMock.mockResolvedValue(false);
+  it("does not stamp no-store on a gone-cafe GET — the edge rule owns non-200 bypass", async () => {
+    // BRAWUKA-658: the proxy no longer probes or rewrites gone cafes, so it
+    // cannot stamp the 404. Shared-cache exclusion of the 404 is enforced
+    // by deploy/dokploy/cache-rules.json (onStatusesOtherThan: [200]),
+    // drift-pinned by the test above.
     const req = new NextRequest(new URL("http://localhost/cafes/definitely-not-a-cafe"), {
       headers: new Headers(),
     });
     const res = await proxy(req);
-    expect(res.headers.get("x-middleware-rewrite")).toBe("http://localhost/__gone-cafe");
-    expect(res.headers.get("cache-control")).toBe(CAFE_SHELL_BYPASS_CACHE_CONTROL);
+    expect(res.headers.get("x-middleware-rewrite")).toBeNull();
+    expect(res.headers.get("cache-control")).toBeNull();
   });
 });
 

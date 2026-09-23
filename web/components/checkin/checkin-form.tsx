@@ -111,18 +111,19 @@ export function CheckinForm(props: CheckinFormProps) {
             <CheckinMaxStay value={state.maxStay} onChange={state.setMaxStay} />
             <CheckinNoteInput value={state.note} onChange={state.setNote} />
 
-            {!state.isEdit && (
-              <div className="space-y-1">
-                <div className="text-xs text-muted">{t("photos")}</div>
-                <CheckinPhotos
-                  photos={state.photos}
-                  onChange={state.setPhotos}
-                  maxPhotos={6}
-                  deferUpload={state.deferUpload}
-                  onRequireSignIn={state.requireSignIn}
-                />
-              </div>
-            )}
+            {/* Photos manage in both modes (BRAWUKA-563): edit seeds the
+                check-in's attached photos as done tiles and PATCHes
+                add/remove deltas on save. */}
+            <div className="space-y-1">
+              <div className="text-xs text-muted">{t("photos")}</div>
+              <CheckinPhotos
+                photos={state.photos}
+                onChange={state.setPhotos}
+                maxPhotos={6}
+                deferUpload={state.deferUpload}
+                onRequireSignIn={state.requireSignIn}
+              />
+            </div>
 
             {state.mutation.error && (
               <CheckinErrorBanner error={state.mutation.error} onRetry={state.handleRetry} />

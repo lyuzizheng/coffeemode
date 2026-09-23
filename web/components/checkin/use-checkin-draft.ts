@@ -56,7 +56,7 @@ function computeDirtyState({
   scoresState,
   maxStay,
   note,
-  photosLength,
+  photosDirty,
   initialScores,
   initialMaxStay,
   initialNote,
@@ -65,7 +65,9 @@ function computeDirtyState({
   scoresState: CheckinScoresState;
   maxStay: MaxStay | null;
   note: string;
-  photosLength: number;
+  /** Caller-computed: create = any staged photo; edit = the photo set
+   *  differs from the check-in's attached photos (BRAWUKA-563). */
+  photosDirty: boolean;
   initialScores?: CheckInScores;
   initialMaxStay?: MaxStay | null;
   initialNote?: string | null;
@@ -81,7 +83,7 @@ function computeDirtyState({
       scoresState.overall !== (base.overall ?? null) ||
       maxStay !== (initialMaxStay ?? null) ||
       note !== (initialNote ?? "") ||
-      photosLength > 0
+      photosDirty
     );
   }
   return (
@@ -93,7 +95,7 @@ function computeDirtyState({
     scoresState.overall !== null ||
     maxStay !== null ||
     note.trim() !== "" ||
-    photosLength > 0
+    photosDirty
   );
 }
 
@@ -102,7 +104,7 @@ export function useCheckinDirty({
   scoresState,
   maxStay,
   note,
-  photosLength,
+  photosDirty,
   initialScores,
   initialMaxStay,
   initialNote,
@@ -112,7 +114,7 @@ export function useCheckinDirty({
   scoresState: CheckinScoresState;
   maxStay: MaxStay | null;
   note: string;
-  photosLength: number;
+  photosDirty: boolean;
   initialScores?: CheckInScores;
   initialMaxStay?: MaxStay | null;
   initialNote?: string | null;
@@ -125,12 +127,12 @@ export function useCheckinDirty({
         scoresState,
         maxStay,
         note,
-        photosLength,
+        photosDirty,
         initialScores,
         initialMaxStay,
         initialNote,
       }),
-    [isEdit, scoresState, maxStay, note, photosLength, initialScores, initialMaxStay, initialNote],
+    [isEdit, scoresState, maxStay, note, photosDirty, initialScores, initialMaxStay, initialNote],
   );
 
   useEffect(() => {

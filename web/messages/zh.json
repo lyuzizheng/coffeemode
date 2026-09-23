@@ -380,7 +380,7 @@
     "loosen_filters": "试试放宽一个条件",
     "reset_filters": "重置筛选",
     "maxStayOptions": {
-      "unlimited": "不限",
+      "unlimited": "不限时长",
       "3h": "3小时",
       "2h": "2小时",
       "1h": "1小时",

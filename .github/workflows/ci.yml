@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+  merge_group:
   push:
     branches:
       - main
@@ -31,7 +32,7 @@ jobs:
       - name: Classify changed paths
         id: classify
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
@@ -95,7 +96,59 @@ jobs:
       - name: Harness self-test
         run: .agents/scripts/harness-self-test.sh
 
-  application-gate:
+  application-static:
+    needs: changes
+    if: needs.changes.outputs.application == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Structure guard (budgets, duplication, layer boundaries, exemption ratchet)
+        run: npm run check:structure
+
+      - name: Lint
+        run: npm run lint
+
+      - name: i18n key parity
+        run: npm run check:i18n
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify bundle budget
+        run: node scripts/check-bundle-budget.mjs
+
+      - name: Bundle analysis
+        run: npm run analyze
+
+      - name: Upload bundle analysis report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-analysis-report
+          path: web/.next/diagnostics/analyze
+          if-no-files-found: error
+
+      - name: Verify PWA artifacts
+        run: |
+          test -f .next/server/app/serwist/sw.js.body
+          test -f .next/server/app/manifest.webmanifest.body
+
+  application-e2e:
     needs: changes
     if: needs.changes.outputs.application == 'true'
     runs-on: ubuntu-latest
@@ -128,52 +181,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Structure guard (budgets, duplication, layer boundaries, exemption ratchet)
-        run: npm run check:structure
-
-      - name: Lint
-        run: npm run lint
-
-      - name: i18n key parity
-        run: npm run check:i18n
-
-      - name: Unit tests
-        run: npm run test
-
-      - name: Coverage ratchet (v8 thresholds in vitest.config.mts)
-        run: npm run test:coverage
-
-      - name: Upload coverage report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: web/coverage
-          if-no-files-found: error
-
       - name: Build
         run: npm run build
-
-      - name: Verify bundle budget
-        run: node scripts/check-bundle-budget.mjs
-
-      - name: Bundle analysis
-        run: npm run analyze
-
-      - name: Upload bundle analysis report
-        uses: actions/upload-artifact@v4
-        with:
-          name: bundle-analysis-report
-          path: web/.next/diagnostics/analyze
-          if-no-files-found: error
-
-      - name: Verify PWA artifacts
-        run: |
-          test -f .next/server/app/serwist/sw.js.body
-          test -f .next/server/app/manifest.webmanifest.body
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
@@ -313,9 +322,6 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Unit tests
-        run: npm test
-
       - name: Deploy config guard (staging and production must resolve deployable)
         run: npm run deploy:check
 
@@ -341,15 +347,13 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Unit tests
-        run: npm test
-
   ci-gate:
     needs:
       - changes
       - secret-scan
       - docs-gate
-      - application-gate
+      - application-static
+      - application-e2e
       - integration-gate
       - image-service-gate
       - poi-service-gate

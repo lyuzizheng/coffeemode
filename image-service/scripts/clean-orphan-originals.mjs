@@ -37,8 +37,9 @@
  *   DRY_RUN=1 RETENTION_DAYS=7 MAX_OBJECTS=1000 node clean-orphan-originals.mjs
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { AwsClient } from "aws4fetch";
+import { pathToFileURL } from "node:url";
 
 const R2_ENDPOINT = process.env.R2_ENDPOINT?.replace(/\/+$/, "");
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID;
@@ -393,7 +394,7 @@ export async function __testList(args) {
   return listOrphanCandidates(args);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   main().catch((err) => {
     console.error("clean-orphan-originals failed:", err instanceof Error ? err.message : err);
     process.exit(1);

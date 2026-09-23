@@ -140,6 +140,70 @@ describe("OnboardingHome (DG114–DG123)", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("clears stale runtime currentCityName when serverOnboarded merges a launch city (BRAWUKA-586)", async () => {
+    store["coffeemode:onboarding:v1"] = JSON.stringify({
+      onboarded: true,
+      currentCity: "lisbon",
+      currentCityName: "Lisbon",
+      lastLocation: { lat: 38.72, lng: -9.14 },
+    });
+    renderHome({
+      serverOnboarded: true,
+      isAuthenticated: true,
+      profileSeed: { currentCity: "tokyo", lastLocation: null },
+    });
+    await waitFor(() =>
+      expect(readOnboardingState()).toMatchObject({
+        onboarded: true,
+        currentCity: "tokyo",
+        currentCityName: null,
+      }),
+    );
+  });
+
+  it("preserves runtime currentCityName when serverOnboarded city matches stored runtime city (BRAWUKA-586)", async () => {
+    store["coffeemode:onboarding:v1"] = JSON.stringify({
+      onboarded: true,
+      currentCity: "lisbon",
+      currentCityName: "Lisbon",
+      lastLocation: { lat: 38.72, lng: -9.14 },
+    });
+    renderHome({
+      serverOnboarded: true,
+      isAuthenticated: true,
+      profileSeed: { currentCity: "lisbon", lastLocation: null },
+    });
+    await waitFor(() =>
+      expect(readOnboardingState()).toMatchObject({
+        onboarded: true,
+        currentCity: "lisbon",
+        currentCityName: "Lisbon",
+      }),
+    );
+  });
+
+  it("clears stale runtime currentCityName when serverOnboarded has a different runtime city (BRAWUKA-586)", async () => {
+    store["coffeemode:onboarding:v1"] = JSON.stringify({
+      onboarded: true,
+      currentCity: "lisbon",
+      currentCityName: "Lisbon",
+      lastLocation: { lat: 38.72, lng: -9.14 },
+    });
+    renderHome({
+      serverOnboarded: true,
+      isAuthenticated: true,
+      profileSeed: { currentCity: "porto", lastLocation: null },
+    });
+    await waitFor(() =>
+      expect(readOnboardingState()).toMatchObject({
+        onboarded: true,
+        currentCity: "porto",
+        currentCityName: null,
+      }),
+    );
+  });
+
+
   it("suppresses the card on deep-link arrivals (DG124)", async () => {
     renderHome({ suppressCard: true, initialCafeId: "550e8400-e29b-41d4-a716-446655440000" });
     await waitFor(() =>
@@ -170,12 +234,12 @@ describe("OnboardingHome (DG114–DG123)", () => {
       "href",
       "/profile",
     );
-    // Theme, language, and settings live inside the droplet (BRAWUKA-504).
+    // Theme, language, and settings live inside the droplet (BRAWUKA-504, BRAWUKA-585).
     fireEvent.click(screen.getByRole("button", { name: "Menu" }));
     expect(
-      await screen.findByRole("button", { name: /Theme/ }),
+      await screen.findByRole("menuitem", { name: /Theme/ }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute(
+    expect(screen.getByRole("menuitem", { name: "Settings" })).toHaveAttribute(
       "href",
       "/settings",
     );

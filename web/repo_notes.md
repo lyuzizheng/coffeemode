@@ -1,5 +1,22 @@
 # CoffeeMode Web — File Notes
 
+## 2026-09-23 (BRAWUKA-558 — server redirects off `request.url` origin)
+
+- `web/lib/security/origin.ts`
+  - New `getRedirectOrigin(request)` resolves the public redirect origin:
+    `x-forwarded-proto` + `host` when allowlisted, else `NEXT_PUBLIC_SITE_URL`,
+    else null. `x-forwarded-host` stays untrusted (BRAWUKA-282 P1-1).
+  - New `redirectToPath(request, path, status)` builds the redirect on that
+    origin, falling back to a relative `Location` when nothing resolves.
+- `web/app/auth/callback/route.ts` / `web/proxy.ts` (legacy `/?cafe=` 308)
+  - Both stopped deriving redirect targets from `new URL(request.url).origin`,
+    which resolves to the internal listener (`http://0.0.0.0:3000`) behind the
+    staging proxy and stranded OAuth logins on a dead address.
+- Tests: `tests/auth/callback.test.ts` (staging listener regression, forged
+  `x-forwarded-host`, relative fallback), `tests/proxy.test.ts` and
+  `tests/integration/http-auth-exchange.integration.test.ts` now set `host`
+  headers — undici does not synthesize one from the URL.
+
 ## 2026-09-21 (BRAWUKA-573 — IndexedDB query cache cross-account leak)
 
 - `web/lib/auth/viewer-id.ts` (new)

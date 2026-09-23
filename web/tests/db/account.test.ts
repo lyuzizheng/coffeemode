@@ -135,6 +135,9 @@ describe("getProfileExport", () => {
     expect(sql).toContain("ST_X(location::geometry) as lng");
     expect(sql).not.toContain("resolved_at");
     expect(sql).toContain("outcome, ask_count, last_asked_at");
+    // BRAWUKA-583: deleteAccount wipes image_upload_intents, so the
+    // export must carry them.
+    expect(sql).toContain("from image_upload_intents where user_id");
   });
 
   it("returns a null profile for an unknown user", async () => {
@@ -143,6 +146,8 @@ describe("getProfileExport", () => {
     expect(bundle.checkins).toEqual([]);
     expect(bundle.cafes_created).toEqual([]);
     expect(bundle.navigations).toEqual([]);
+    expect(bundle.checkin_likes).toEqual([]);
+    expect(bundle.image_upload_intents).toEqual([]);
     expect(typeof bundle.exported_at).toBe("string");
   });
 });

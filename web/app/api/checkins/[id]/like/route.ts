@@ -8,7 +8,8 @@ import { isValidUUID } from "@shared/uuid";
  * POST /api/checkins/[id]/like
  * Toggle the current user's like on a check-in; the CTE keeps
  * checkins.likes_count in sync atomically. Returns {liked, likes_count}.
- * Requires auth; 404 when the check-in is missing or soft-deleted;
+ * Requires auth; 404 when the check-in is missing, soft-deleted, or on a
+ * private cafe the caller cannot see (BRAWUKA-634);
  * 403 self_like_forbidden when the caller tries to like their own check-in.
  */
 export const POST = apiRoute<{ id: string }>(

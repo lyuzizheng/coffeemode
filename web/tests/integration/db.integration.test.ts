@@ -337,14 +337,36 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(counter.rows[0].likes_count).toBe(0);
     });
 
-    it("throws CheckInNotFoundError for a missing or soft-deleted check-in", async () => {
-      await expect(
-        toggleCheckInLike(U2, "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a00"),
-      ).rejects.toBeInstanceOf(CheckInNotFoundError);
+    it("404s a non-owner like on a private cafe's check-in (BRAWUKA-634)", async () => {
+      await setCafeVisibility(CAFE_A, U1, "private");
 
-      await dbClient.query("update checkins set deleted_at = now() where id = $1", [CHECKIN_A1]);
+      // U2 is neither the check-in author nor the cafe creator: the
+      // viewer-scoped gate filters the CTE, so the toggle 404s and writes
+      // nothing instead of leaking the check-in's existence via a like.
       await expect(toggleCheckInLike(U2, CHECKIN_A1)).rejects.toBeInstanceOf(CheckInNotFoundError);
+      const { rows } = await dbClient.query(
+        "select count(*)::int as n from checkin_likes where checkin_id = $1",
+        [CHECKIN_A1],
+      );
+      expect(rows[0].n).toBe(0);
+
+      // Owner still passes the gate: the self-like rule (not 404) fires.
+      await expect(toggleCheckInLike(U1, CHECKIN_A1)).rejects.toBeInstanceOf(SelfLikeError);
+
+      // Back to public: the stranger can like again.
+      await setCafeVisibility(CAFE_A, U1, "public");
+      const liked = await toggleCheckInLike(U2, CHECKIN_A1);
+      expect(liked).toEqual({ liked: true, likes_count: 1 });
     });
+
+     it("throws CheckInNotFoundError for a missing or soft-deleted check-in", async () => {
+       await expect(
+         toggleCheckInLike(U2, "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a00"),
+       ).rejects.toBeInstanceOf(CheckInNotFoundError);
+ 
+       await dbClient.query("update checkins set deleted_at = now() where id = $1", [CHECKIN_A1]);
+       await expect(toggleCheckInLike(U2, CHECKIN_A1)).rejects.toBeInstanceOf(CheckInNotFoundError);
+     });
   });
 
   describeDb("checkin_likes DB invariants", () => {
@@ -956,6 +978,77 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(after.dims.overall.sum).toBe(90);
       const detail = await getCafe(CAFE_A);
       expect(detail?.work_stats.experience_score).toBe(after.experience_score);
+    });
+
+    it("edit photo deltas: add attaches + merges gallery, remove detaches from both (BRAWUKA-563)", async () => {
+      const firstPhoto = randomUUID();
+      const secondPhoto = randomUUID();
+      await recordUploadIntent(U2, firstPhoto);
+      const created = await createCheckIn(
+        U2,
+        { cafe_id: CAFE_A, scores: { overall: 60 }, photo_ids: [firstPhoto] },
+        fakeProvisionPhotosDeps(),
+      );
+
+      // Add: the new id provisions like a create-time photo_id — StoredImage
+      // derived server-side, intent consumed inside the tx, gallery merged.
+      await recordUploadIntent(U2, secondPhoto);
+      await updateCheckIn(
+        U2,
+        created.checkin_id,
+        { add_photo_ids: [secondPhoto] },
+        fakeProvisionPhotosDeps(),
+      );
+      const afterAdd = await dbClient.query("select photos from checkins where id = $1", [
+        created.checkin_id,
+      ]);
+      expect((afterAdd.rows[0].photos as { id: string }[]).map((p) => p.id)).toEqual([
+        firstPhoto,
+        secondPhoto,
+      ]);
+      expect(afterAdd.rows[0].photos[1].source).toEqual({
+        type: "checkin",
+        id: created.checkin_id,
+      });
+      const galleryAfterAdd = await dbClient.query("select gallery from cafes where id = $1", [
+        CAFE_A,
+      ]);
+      const galleryIds = (galleryAfterAdd.rows[0].gallery as { id: string }[]).map((p) => p.id);
+      expect(galleryIds).toEqual(expect.arrayContaining([firstPhoto, secondPhoto]));
+      const liveIntents = await dbClient.query(
+        "select image_uuid from image_upload_intents where image_uuid = any($1::uuid[])",
+        [[firstPhoto, secondPhoto]],
+      );
+      expect(liveIntents.rows).toHaveLength(0);
+
+      // Remove: the photo leaves the check-in AND the gallery entry scoped
+      // to this check-in's source; a foreign-source same-id entry survives.
+      await updateCheckIn(U2, created.checkin_id, { remove_photo_ids: [firstPhoto] });
+      const afterRemove = await dbClient.query("select photos from checkins where id = $1", [
+        created.checkin_id,
+      ]);
+      expect((afterRemove.rows[0].photos as { id: string }[]).map((p) => p.id)).toEqual([
+        secondPhoto,
+      ]);
+      const galleryAfterRemove = await dbClient.query("select gallery from cafes where id = $1", [
+        CAFE_A,
+      ]);
+      const remainingIds = (galleryAfterRemove.rows[0].gallery as { id: string }[]).map(
+        (p) => p.id,
+      );
+      expect(remainingIds).toContain(secondPhoto);
+      expect(remainingIds).not.toContain(firstPhoto);
+
+      // Idempotent retry: removing an id that is not attached is a no-op —
+      // no photos SET, no gallery write.
+      const before = await dbClient.query("select updated_at from checkins where id = $1", [
+        created.checkin_id,
+      ]);
+      await updateCheckIn(U2, created.checkin_id, { remove_photo_ids: [firstPhoto] });
+      const after = await dbClient.query("select updated_at from checkins where id = $1", [
+        created.checkin_id,
+      ]);
+      expect(after.rows[0].updated_at).toEqual(before.rows[0].updated_at);
     });
 
     it("soft-delete hides the check-in from work_stats and from cafes.gallery", async () => {

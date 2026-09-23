@@ -1,5 +1,6 @@
 import { apiFetch } from "@/lib/http";
 import type { CheckInScores, MaxStay } from "@/types/checkins";
+import type { PublicStoredImage } from "@/types/images";
 
 /** The caller's most recent check-in for a cafe, as returned by /api/checkins/last. */
 export interface LastCheckin {
@@ -7,6 +8,9 @@ export interface LastCheckin {
   scores: CheckInScores;
   max_stay: MaxStay | null;
   note: string | null;
+  /** Attached photos — the preempted edit seeds them into the picker
+   *  (BRAWUKA-563). */
+  photos: PublicStoredImage[];
   visited_at: string;
 }
 

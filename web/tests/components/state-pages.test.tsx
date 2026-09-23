@@ -6,10 +6,11 @@ import { GenericNotFound } from "@/components/errors/generic-not-found";
 import { GoneCafeNotFound } from "@/components/errors/gone-cafe-not-found";
 import messages from "../../messages/en.json";
 
-// Recovery block reads route params only when no id prop is passed; keep the
-// hook resolvable outside the App Router.
+// The recovery block reads the attempted id from route params; the mock is
+// per-test so each case controls the id the segment boundary would expose.
+const paramsMock = vi.fn<() => { id?: string }>(() => ({}));
 vi.mock("next/navigation", () => ({
-  useParams: () => ({}),
+  useParams: () => paramsMock(),
   useRouter: () => ({ refresh: vi.fn() }),
 }));
 
@@ -39,8 +40,9 @@ describe("GoneCafeNotFound (DG19/DG111)", () => {
   const GONE = "550e8400-e29b-41d4-a716-446655440099";
 
   it("renders the quiet gone-cafe surface with Back to discover", () => {
+    paramsMock.mockReturnValue({ id: GONE });
     vi.stubGlobal("fetch", vi.fn(async () => new Response('{"cafes":[]}', { status: 200 })));
-    render(<GoneCafeNotFound cafeId={GONE} />, { wrapper: Wrapper });
+    render(<GoneCafeNotFound />, { wrapper: Wrapper });
     expect(
       screen.getByRole("heading", { name: "This cafe is gone" }),
     ).toBeInTheDocument();
@@ -53,6 +55,7 @@ describe("GoneCafeNotFound (DG19/DG111)", () => {
   });
 
   it("lists recovery cafes from the gone cafe's last known location", async () => {
+    paramsMock.mockReturnValue({ id: GONE });
     const fetchMock = vi.fn(async () =>
       Response.json({
         cafes: [
@@ -61,7 +64,7 @@ describe("GoneCafeNotFound (DG19/DG111)", () => {
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    render(<GoneCafeNotFound cafeId={GONE} />, { wrapper: Wrapper });
+    render(<GoneCafeNotFound />, { wrapper: Wrapper });
     await waitFor(() => {
       expect(screen.getByRole("link", { name: /Neighbor/ })).toHaveAttribute(
         "href",
@@ -77,9 +80,10 @@ describe("GoneCafeNotFound (DG19/DG111)", () => {
   });
 
   it("skips the recovery fetch for a malformed id", () => {
+    paramsMock.mockReturnValue({ id: "not-a-uuid" });
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    render(<GoneCafeNotFound cafeId="not-a-uuid" />, { wrapper: Wrapper });
+    render(<GoneCafeNotFound />, { wrapper: Wrapper });
     expect(fetchMock).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });

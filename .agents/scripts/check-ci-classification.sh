@@ -446,8 +446,7 @@ fi
 # 5. The inverse invariant (spec 0003 acceptance: "a UI-only web change does not
 #    start Postgres"): unit-only paths must stay out of the DB-backed gate.
 expect_flag "unit-only route shell" "web/app/(home)/page.tsx" "integration=false"
-expect_flag "unit-only component test" "web/tests/components/checkin.test.tsx" "integration=false"
-expect_flag "unit-only mocked route test" "web/tests/profile/profile-route.test.ts" "integration=false"
+expect_flag "integration helper" "web/tests/helpers/auth.ts" "integration=true"
 
 # 6. Explicit policy for the ungated families (BRAWUKA-173 requirement 2): no
 #    product code, script, or gate input reads them, so they must select nothing.

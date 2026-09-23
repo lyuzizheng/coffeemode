@@ -1,3 +1,5 @@
+> **Note (BRAWUKA-682, 2026-09-23):** the `unit`/`mocked` layer was retired — all mocked `*.test.*` suites were deleted and `npm test`/`test:coverage` no longer exist. Rows below referencing `unit`/`mocked` are historical; proving layers are now `integration` (real Postgres/HTTP) and `browser` (`test:e2e`/`check:visual`).
+
 # Implementation Slices
 
 Machine-checked implementation plan derived from `docs/specs/0001-nextjs-migration.md` phases. Each slice maps to required specs, dependencies, blockers, and test gates. Coding agents load one slice's context with `.agents/scripts/context-for-slice.sh <slice-id>` instead of reading every spec.

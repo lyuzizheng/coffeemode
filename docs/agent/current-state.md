@@ -112,9 +112,9 @@ docs/agent/              current state, planned-slice manifest, owner actions
 ### Next unblocked work
 
 ```text
-1. Owner actions (docs/agent/pending-user-actions.md §1–4): Supabase anon key +
-   redirect URLs, Apple/Google provider config, Supabase Postgres provisioning +
-   schema (DATABASE_URL, §2 / #142), Google OAuth, Apple Developer Program.
+1. Owner actions (docs/agent/pending-user-actions.md §1–4): Supabase publishable key +
+   redirect URLs + Google provider (done 2026-09-23, BRAWUKA-680), Apple provider config,
+   Supabase Postgres provisioning + schema (DATABASE_URL, §2 / #142), Apple Developer Program.
 2. image-service residual (§6): both Workers are deployed; what remains is the
    `images.` / `staging-images.cafemood.app` custom domains once the zone is
    live, plus bucket defenses and orphan-cleanup scheduling.
@@ -165,7 +165,7 @@ docs/agent/              current state, planned-slice manifest, owner actions
 - NEXT_PUBLIC_SUPABASE_ANON_KEY not set (only URL + service-role present locally)
 - NEXT_PUBLIC_SITE_URL not set; NEXT_PUBLIC_ALLOWED_HOSTS not configured
 - DATABASE_URL (Supabase main Postgres per 0004 decision 34a) not configured for production yet (#142; local dev uses `docker compose up -d --wait postgres` + `npm run db:migrate`, see `docs/agent/local-dev-stack.md`)
-- Supabase dashboard still needs Apple/Google OAuth provider config
+- Supabase dashboard still needs Apple OAuth provider config (Google done 2026-09-23, BRAWUKA-680)
 - Session-refresh proxy (`web/proxy.ts`) refreshes only when a Supabase session cookie is present; route handlers verify the session via `getUser()` before any Postgres write
 - Postgres pool tuned with configurable `max`, idle/connection timeouts, error handling, and a graceful shutdown hook registered via Next.js `instrumentation.ts`
 - Rate limiting enforces in memory on the single app container (BRAWUKA-378 deleted the Postgres backend outright — a future multi-instance deploy needs a new shared-store decision, see ADR-0006)

@@ -842,6 +842,24 @@ describe("toggleCheckInLike", () => {
     expect(result).toEqual({ liked: false, likes_count: 2 });
   });
 
+  it("sends the viewer-scoped cafe visibility gate inside the toggle CTE (BRAWUKA-634)", async () => {
+    clientQueryMock
+      .mockResolvedValueOnce({
+        rows: [{ checkin_count: 1, inserted_count: 1, deleted_count: 0, is_author: false }],
+      })
+      .mockResolvedValueOnce({ rows: [{ likes_count: 1 }] });
+
+    const result = await toggleCheckInLike(USER.id, CHECKIN);
+
+    expect(result).toEqual({ liked: true, likes_count: 1 });
+    expect(clientQueryMock).toHaveBeenCalledTimes(2);
+    const [sql, params] = clientQueryMock.mock.calls[0];
+    expect(sql).toContain("cafes.visibility = 'public'");
+    expect(sql).toContain("cafes.created_by = $1");
+    expect(sql).toContain("cafes.deleted_at IS NULL");
+    expect(params).toEqual([USER.id, CHECKIN]);
+  });
+
   it("throws CheckInNotFoundError when the check-in does not exist or is soft-deleted", async () => {
     clientQueryMock.mockResolvedValueOnce({
       rows: [{ checkin_count: 0, inserted_count: 0, deleted_count: 0, is_author: null }],
@@ -850,6 +868,20 @@ describe("toggleCheckInLike", () => {
     const err = await toggleCheckInLike(USER.id, CHECKIN).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(CheckInNotFoundError);
     expect((err as Error).message).toMatch(/Check-in not found or deleted/);
+  });
+
+  it("404s on the route for a private-cafe check-in the caller cannot see (BRAWUKA-634)", async () => {
+    // Same empty row as a missing check-in: the viewer-scoped cafe EXISTS
+    // gate filtered the CTE, so the toggle 404s instead of leaking existence.
+    clientQueryMock.mockResolvedValueOnce({
+      rows: [{ checkin_count: 0, inserted_count: 0, deleted_count: 0, is_author: null }],
+    });
+
+    const res = await likePOST(new Request(`https://localhost/api/checkins/${CHECKIN}/like`, {
+      method: "POST",
+    }), { params: Promise.resolve({ id: CHECKIN }) });
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toMatchObject({ error: "not_found" });
   });
 });
 

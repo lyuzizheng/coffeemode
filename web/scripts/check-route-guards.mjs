@@ -19,7 +19,6 @@ const HTTP_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH"];
 const MUTATING_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);
 // Explicitly exempted routes with documented architectural reasons (spec 0011 D5)
 const EXEMPT_ROUTES = new Set([
-  "app/api/health/route.ts", // Lightweight probe for Docker / Dokploy / Traefik
   "app/cafes/[id]/og-image/route.tsx", // Image bytes, not the JSON envelope
 ]);
 

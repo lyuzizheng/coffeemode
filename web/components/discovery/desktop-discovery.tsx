@@ -67,10 +67,14 @@ export function DesktopDiscovery({
   const springs = useSprings();
   const { selectedCafeId, close } = controller;
 
-  // Esc closes the detail column (§7).
+  // Esc closes the detail column (§7) — but only when no layer above it
+  // consumed the key. Menus/popovers/drawers attach at document-or-deeper
+  // and preventDefault on Esc; this window listener is the last handler in
+  // the bubble path, so defaultPrevented here means a higher layer already
+  // took the key (BRAWUKA-576).
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      if (e.key === "Escape" && !e.defaultPrevented) close();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);

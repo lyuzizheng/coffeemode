@@ -166,6 +166,18 @@ describe("apiRoute (spec 0011 D5, BRAWUKA-537)", () => {
     });
   });
 
+  it("forwards bypassUnknownClients to guard() (BRAWUKA-639 P1)", async () => {
+    const GET = apiRoute(
+      { bucket: "health", route: "GET /api/health", ipOnly: true, user: null, bypassUnknownClients: true },
+      async () => NextResponse.json({ ok: true }),
+    );
+
+    const res = await GET(new Request("http://localhost/api/health"));
+    expect(res.status).toBe(200);
+    expect(guard).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(guard).mock.calls[0][1]).toMatchObject({ bypassUnknownClients: true, user: null });
+  });
+
   it("resolves dynamic auth via the request (401 only when required)", async () => {
     const GET = apiRoute(
       {

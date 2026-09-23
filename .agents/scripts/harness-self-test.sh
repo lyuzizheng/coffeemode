@@ -238,7 +238,7 @@ echo "=== CI path classifier ==="
 
 FALSES=$'application=false\nintegration=false\nimage_service=false\npoi_service=false'
 expect_classifier "docs-only change" "$FALSES"$'\ndocs=true' "docs/STRUCTURE.md"
-expect_classifier "web UI change" $'application=true\nintegration=false\nimage_service=false\npoi_service=false\ndocs=false' "web/app/page.tsx"
+expect_classifier "web UI change" $'application=true\nintegration=false\nimage_service=false\npoi_service=false\ndocs=false' "web/app/(home)/page.tsx"
 expect_classifier "web DB change" $'application=true\nintegration=true\nimage_service=false\npoi_service=false\ndocs=false' "web/lib/db/checkins.ts"
 expect_classifier "shared package change" $'application=true\nintegration=true\nimage_service=true\npoi_service=true\ndocs=false' "packages/common/src/auth.ts"
 expect_classifier "CI authority change" $'application=true\nintegration=true\nimage_service=true\npoi_service=true\ndocs=true' ".github/workflows/ci.yml"

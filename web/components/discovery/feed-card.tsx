@@ -8,7 +8,7 @@
  */
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useLocale, useTranslations } from "next-intl";
 import { DotsIcon, HeartIcon, PencilIcon } from "@/components/icons";
@@ -75,6 +75,9 @@ function OwnCardMenu({ onEdit }: { onEdit: () => void }) {
   const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   // Menu dismiss: outside pointer-down or Escape; focus returns to trigger.
+  // The keydown lives on document (not window) and preventDefaults so it
+  // runs before — and consumes the key ahead of — the detail column's
+  // window-level Esc handler (BRAWUKA-576).
   useEffect(() => {
     if (!menuOpen) return;
     const onPointerDown = (event: PointerEvent) => {
@@ -84,15 +87,16 @@ function OwnCardMenu({ onEdit }: { onEdit: () => void }) {
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.preventDefault();
         setMenuOpen(false);
         triggerRef.current?.focus();
       }
     };
     window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
+    document.addEventListener("keydown", onKeyDown);
     return () => {
       window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("keydown", onKeyDown);
     };
   }, [menuOpen]);
 
@@ -161,13 +165,17 @@ function OwnCardEditEntry({
           initialScores={checkin.scores}
           initialMaxStay={checkin.max_stay}
           initialNote={checkin.note}
+          existingPhotos={checkin.photos}
         />
       )}
     </>
   );
 }
 
-export function FeedCard({
+// memo (BRAWUKA-647): the feed re-renders on mode switches, pagination, and
+// like mutations; cards must re-render only when their own props change.
+// `onLike` is a stable useCallback in use-checkin-feed (BRAWUKA-281 P2).
+export const FeedCard = memo(function FeedCard({
   checkin,
   cafeId,
   cafeName,
@@ -228,4 +236,4 @@ export function FeedCard({
       </div>
     </article>
   );
-}
+});

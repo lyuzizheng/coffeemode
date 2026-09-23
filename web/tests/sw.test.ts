@@ -13,7 +13,7 @@ function urlFor(pathname: string, host = "localhost"): URL {
 
 describe("sw runtime rules", () => {
   it("has exactly one rule per route family and all are GET", () => {
-    expect(RUNTIME_RULES.length).toBe(10);
+    expect(RUNTIME_RULES.length).toBe(11);
     for (const rule of RUNTIME_RULES) {
       expect(rule.method).toBe("GET");
       expect(rule.name).toBeTruthy();
@@ -24,7 +24,7 @@ describe("sw runtime rules", () => {
     const networkOnly = RUNTIME_RULES.filter((r) => r.handler === "network-only").map(
       (r) => r.name,
     );
-    expect(networkOnly).toEqual(["home", "sw-manifest", "auth", "api", "profile", "settings", "search"]);
+    expect(networkOnly).toEqual(["home", "sw-manifest", "auth", "cafes", "api", "profile", "settings", "search"]);
   });
 
   it("matches each route family to the intended handler", () => {
@@ -88,6 +88,18 @@ describe("sw runtime rules", () => {
         pathname: "/api/cafes/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
         matches: ["api"],
         notMatches: ["auth"],
+      },
+      {
+        name: "cafe page (BRAWUKA-638: must be network-only, never defaultCache)",
+        pathname: "/cafes/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+        matches: ["cafes"],
+        notMatches: ["api", "auth"],
+      },
+      {
+        name: "cafe og-image (BRAWUKA-638: nested page asset)",
+        pathname: "/cafes/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22/og-image",
+        matches: ["cafes"],
+        notMatches: ["api", "auth"],
       },
       {
         name: "navigations (issue #45 route)",
@@ -196,6 +208,23 @@ describe("sw runtime rules", () => {
         (r) => r.name,
       );
       expect(matched, `${path} must match only the ${rule} rule`).toEqual([rule]);
+    }
+  });
+
+  it("guards every /cafes/:id page with network-only (BRAWUKA-638: defaultCache has 24h NetworkFirst pages/pages-rsc/others catch-alls)", () => {
+    const pages = [
+      "/cafes/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+      "/cafes/a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22/og-image",
+    ];
+    const cafesRule = RUNTIME_RULES.find((r) => r.name === "cafes");
+    expect(cafesRule?.handler).toBe("network-only");
+    for (const path of pages) {
+      const url = urlFor(path);
+      const request = new Request(url);
+      const matched = RUNTIME_RULES.filter((rule) => rule.matcher({ url, request })).map(
+        (rule) => rule.name,
+      );
+      expect(matched, `${path} must match only the cafes rule`).toEqual(["cafes"]);
     }
   });
 

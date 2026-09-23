@@ -183,7 +183,10 @@ the check-in history list on the profile page. (Owner verdict BRAWUKA-120,
 conversion surface. The feed card menu keys off a server-computed
 `owned_by_viewer` boolean on the public DTO; no `user_id` ever reaches the
 client, so DG13 anonymity holds.) Editing updates
-values only — recency weighting always keys off the original `visited_at`,
+values and photos (BRAWUKA-563: the §3.4 picker mounts in edit mode too —
+attached photos render as done tiles, removal PATCHes `remove_photo_ids`,
+new picks upload then PATCH `add_photo_ids`; the 6-photo cap is enforced
+server-side) — recency weighting always keys off the original `visited_at`,
 so editing can never launder freshness (DG62). Delete lives behind a
 `Delete check-in`
 `danger` text-button at the drawer's foot (edit mode only), guarded by a

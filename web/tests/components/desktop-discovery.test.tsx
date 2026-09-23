@@ -321,3 +321,44 @@ describe("DesktopDiscovery dual-state sidebar (BRAWUKA-506)", () => {
     expect(rowBody.className).toContain("py-3");
   });
 });
+
+describe("DesktopDiscovery Escape layering (BRAWUKA-576)", () => {
+  function renderWithSelection() {
+    const controller = createMockController({ selectedCafeId: mockCafe.id });
+    render(
+      <DesktopDiscovery
+        controller={controller}
+        cafes={[mockCafe]}
+        isLoading={false}
+        isError={false}
+        onRetry={vi.fn()}
+        onCheckIn={vi.fn()}
+        addCafe={<span>Add Cafe</span>}
+      />,
+      { wrapper: Wrapper },
+    );
+    return controller;
+  }
+
+  it("closes the detail column on a bare Escape", () => {
+    const controller = renderWithSelection();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(controller.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves the detail column open when a higher layer consumed Escape", () => {
+    const controller = renderWithSelection();
+    // The contract menus/popovers follow: a document-level handler that
+    // preventDefaults runs before the column's window listener.
+    const consume = (event: KeyboardEvent) => {
+      if (event.key === "Escape") event.preventDefault();
+    };
+    document.addEventListener("keydown", consume);
+    try {
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(controller.close).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener("keydown", consume);
+    }
+  });
+});

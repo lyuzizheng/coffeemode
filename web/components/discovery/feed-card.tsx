@@ -8,7 +8,7 @@
  */
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useLocale, useTranslations } from "next-intl";
 import { DotsIcon, HeartIcon, PencilIcon } from "@/components/icons";
@@ -172,7 +172,10 @@ function OwnCardEditEntry({
   );
 }
 
-export function FeedCard({
+// memo (BRAWUKA-647): the feed re-renders on mode switches, pagination, and
+// like mutations; cards must re-render only when their own props change.
+// `onLike` is a stable useCallback in use-checkin-feed (BRAWUKA-281 P2).
+export const FeedCard = memo(function FeedCard({
   checkin,
   cafeId,
   cafeName,
@@ -233,4 +236,4 @@ export function FeedCard({
       </div>
     </article>
   );
-}
+});

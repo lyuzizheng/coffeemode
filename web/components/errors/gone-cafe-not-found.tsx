@@ -14,7 +14,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { CafeRecoveryBlock } from "@/components/cafe/cafe-recovery-block";
 
-export function GoneCafeNotFound({ cafeId }: { cafeId?: string }) {
+export function GoneCafeNotFound() {
   const t = useTranslations("cafeDetail");
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-6 px-6 text-center">
@@ -30,7 +30,7 @@ export function GoneCafeNotFound({ cafeId }: { cafeId?: string }) {
       >
         {t("back_to_discover")}
       </Link>
-      <CafeRecoveryBlock cafeId={cafeId} />
+      <CafeRecoveryBlock />
     </main>
   );
 }

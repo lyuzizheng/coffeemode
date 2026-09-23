@@ -5,10 +5,33 @@ import { useTranslations } from "next-intl";
 import { AppMenu } from "@/components/layout/app-menu";
 
 /**
+ * Returns true if document.referrer exists and shares the same origin as window.location.
+ * Used to ensure back navigation doesn't pop the user out to an external site (BRAWUKA-584).
+ */
+export function isSameOriginReferrer(): boolean {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return false;
+  }
+  const referrer = document.referrer;
+  if (!referrer) {
+    return false;
+  }
+  try {
+    const referrerOrigin = new URL(referrer, window.location.origin).origin;
+    return referrerOrigin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * /profile header (BRAWUKA-504): back chevron + title + the global
  * account/menu cluster — the same chrome the map carries, so theme,
  * language, settings, and sign-out all live in the menu now (the old
  * inline ThemeToggle/SignOutButton pair is gone).
+ *
+ * BRAWUKA-584: back navigation validates same-origin referrer before
+ * calling router.back(), falling back to "/" to prevent leaving the site.
  */
 export function ProfileHeader({
   isAuthenticated,
@@ -22,7 +45,7 @@ export function ProfileHeader({
 
   const handleBack = (e: React.MouseEvent) => {
     e.preventDefault();
-    if (window.history.length > 1) {
+    if (typeof window !== "undefined" && window.history.length > 1 && isSameOriginReferrer()) {
       router.back();
     } else {
       router.push("/");

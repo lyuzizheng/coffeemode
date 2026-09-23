@@ -158,7 +158,9 @@ limit $${limitIdx}${offsetClause}
  */
 export async function cafesDataVersion(): Promise<string | null> {
   const { rows } = await query<{ v: string | null } & Record<string, unknown>>(
-    `select (count(*)::text || ':' || coalesce(max(updated_at)::text, '0')) as v from cafes`,
+    // extract(epoch) renders the max timestamptz as a TZ-independent number;
+    // plain max(updated_at)::text varies with the session TimeZone.
+    `select (count(*)::text || ':' || coalesce(extract(epoch from max(updated_at))::text, '0')) as v from cafes`,
   );
   return rows[0]?.v ?? null;
 }

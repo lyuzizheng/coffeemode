@@ -119,6 +119,28 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        // DG137-B exception (BRAWUKA-588): GET /api/search success responses
+        // are privately cacheable (`private, max-age=10,
+        // stale-while-revalidate=30`, values in app.yaml
+        // `search.responseCache`). headers() entries merge onto the
+        // response and a duplicate Cache-Control from the /api/:path*
+        // entry above would override the route handler's per-response
+        // value — so this entry repeats the same value AFTER the
+        // catch-all (last matching key wins per Next.js header override
+        // behavior). Values interpolate appConfig, the same single
+        // source the route handler reads, so the two can never drift.
+        // headers() cannot key on response status, so /api/search error
+        // responses inherit this value too — a bounded 10s private cache
+        // (shared caches stay excluded by `private`).
+        source: "/api/search",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: `private, max-age=${appConfig.search.responseCache.maxAgeSeconds}, stale-while-revalidate=${appConfig.search.responseCache.staleWhileRevalidateSeconds}`,
+          },
+        ],
+      },
+      {
         // The SSR cafe shell is public content (DG105): a viral shared link
         // must not hit Postgres per open. TTLs live in web/config/app.yaml
         // (DG107) — s-maxage for the CDN, stale-while-revalidate so a stale

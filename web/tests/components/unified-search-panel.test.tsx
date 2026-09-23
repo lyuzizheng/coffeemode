@@ -410,6 +410,25 @@ describe("UnifiedSearchPanel filters (BRAWUKA-512, DG44–DG58)", () => {
     expect(params?.filters?.openNow).toBe(true);
   });
 
+  it("refetches when a dimension segment changes while the query is unchanged (BRAWUKA-615)", async () => {
+    const fetchSearch = vi.fn<FetchSearch>(() => Promise.resolve(makeResponse(["Cafe A"])));
+    render(<FilteredPanel fetchSearch={fetchSearch} />);
+    const input = screen.getByPlaceholderText("Search cafes, neighborhoods, or addresses");
+    fireEvent.change(input, { target: { value: "cafe" } });
+    await advance(400);
+    expect(fetchSearch).toHaveBeenCalledTimes(1);
+    // Same query, new dimension threshold — the BRAWUKA-567 signature key
+    // covers filter_* so this must fire a second request, not serve stale.
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    const overallGroup = screen.getByRole("radiogroup", { name: "Overall" });
+    fireEvent.click(within(overallGroup).getByRole("radio", { name: "60+" }));
+    await advance(400);
+    expect(fetchSearch).toHaveBeenCalledTimes(2);
+    const params = fetchSearch.mock.calls.at(-1)?.[0];
+    expect(params?.q).toBe("cafe");
+    expect(params?.filters?.thresholds.overall).toBe(60);
+  });
+
   it("refetches when the city scope changes while the query is unchanged (BRAWUKA-567)", async () => {
     const fetchSearch = vi.fn<FetchSearch>(() => Promise.resolve(makeResponse(["Cafe A"])));
     render(<CityPanel fetchSearch={fetchSearch} />);

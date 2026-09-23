@@ -101,6 +101,40 @@ export const RUNTIME_RULES: SwRule[] = [
     matcher: ({ url }) => url.pathname.startsWith("/api/"),
     handler: "network-only",
   },
+  // /profile renders the signed-in user's data (force-dynamic +
+  // getCurrentUser). Without this it falls into defaultCache's 24h
+  // NetworkFirst "pages" / "pages-rsc" / "others" caches — and the Cache API
+  // ignores the server's `Cache-Control: no-store` header, so a shared
+  // browser could serve one user's profile to the next user offline or on
+  // network failure (BRAWUKA-662; same class as BRAWUKA-638, issue #46).
+  // The pathname matcher covers document, RSC, and prefetch requests alike;
+  // the prefix form also covers future nested routes.
+  {
+    name: "profile",
+    method: "GET",
+    matcher: ({ url }) => url.pathname === "/profile" || url.pathname.startsWith("/profile/"),
+    handler: "network-only",
+  },
+  // /settings renders the signed-in user's data when present (force-dynamic +
+  // getCurrentUser), same leak class as /profile above (BRAWUKA-662).
+  {
+    name: "settings",
+    method: "GET",
+    matcher: ({ url }) => url.pathname === "/settings" || url.pathname.startsWith("/settings/"),
+    handler: "network-only",
+  },
+  // /search is viewer-personalized when signed in (force-dynamic +
+  // getCurrentUser) though anonymously reachable as an SEO deep link. The
+  // matcher cannot reliably tell authed requests apart, so all of /search
+  // goes network-only: offline search degrades to the /~offline fallback
+  // page instead of risking one user's results shown to another (BRAWUKA-662;
+  // same class as BRAWUKA-638, issue #46).
+  {
+    name: "search",
+    method: "GET",
+    matcher: ({ url }) => url.pathname === "/search" || url.pathname.startsWith("/search/"),
+    handler: "network-only",
+  },
   // R2 image variants are immutable once processed — cache first, no
   // revalidation round-trip. (Review 2026-08-09 F4: was NetworkFirst.)
   {

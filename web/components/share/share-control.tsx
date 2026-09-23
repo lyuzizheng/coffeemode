@@ -52,14 +52,19 @@ export function ShareControl({
       }
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setPopoverOpen(false);
+      if (event.key === "Escape") {
+        // Consumed: document-level + preventDefault so the detail column's
+        // window-level Esc handler leaves the key alone (BRAWUKA-576).
+        event.preventDefault();
+        setPopoverOpen(false);
+      }
     };
     const triggerEl = triggerRef.current;
     window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
+    document.addEventListener("keydown", onKeyDown);
     return () => {
       window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("keydown", onKeyDown);
       // Return focus to the trigger when the dialog closes via Escape/outside-click.
       triggerEl?.focus();
     };

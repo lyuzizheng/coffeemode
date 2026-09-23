@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { closingTimeToday, isOpenAt, type WeeklyHours } from "@/lib/hours";
 
 // 2026-08-16 is a Sunday, 2026-08-17 a Monday.
@@ -138,5 +138,28 @@ describe("closingTimeToday — the 'Open until 22:00' source (cafe-local)", () =
     expect(
       closingTimeToday(nineToSixMonday, "Mars/Olympus", new Date("2026-08-17T00:00:00Z")),
     ).toBeNull();
+  });
+});
+
+describe("isOpenAt — Intl.DateTimeFormat reuse (BRAWUKA-643)", () => {
+  it("constructs one formatter per timezone, not per call", async () => {
+    // Dynamic import is required here: a static import shares the module
+    // instance whose formatter cache is already warm from the tests above.
+    // resetModules + import gives a fresh instance with an empty cache.
+    vi.resetModules();
+    const { isOpenAt: freshIsOpenAt } = await import("@/lib/hours");
+    const spy = vi.spyOn(Intl, "DateTimeFormat");
+    try {
+      const instant = new Date("2026-08-17T00:00:00Z");
+      // An open_now search pass calls isOpenAt once per cafe — ~1000 calls
+      // across a handful of timezones must not mean ~1000 constructions.
+      for (let i = 0; i < 1000; i++) {
+        freshIsOpenAt(nineToSixMonday, "Asia/Seoul", instant);
+        freshIsOpenAt(nineToSixMonday, "America/New_York", instant);
+      }
+      expect(spy).toHaveBeenCalledTimes(2);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

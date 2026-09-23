@@ -13,7 +13,7 @@
  * gestures step FULL → HALF → PEEK one detent per gesture (18b); stepping
  * into PEEK clears the selection. Reduced-motion users get instant snaps.
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { animate, motion, useDragControls, useMotionValue, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { cardInteraction, useSprings } from "@/lib/motion";
@@ -33,24 +33,29 @@ const STEP_VELOCITY = 300;
 const SHEET_HEIGHT_VH = 0.85;
 const HALF_VISIBLE_VH = 0.5;
 
-function PeekCard({
+// memo (BRAWUKA-647): the sheet re-renders on snap/selection/measurement and
+// the strip re-renders on scroll (activeIndex); cards must re-render only
+// when their own props change. `select`/`registerCardRef` are the stable
+// controller useCallbacks — while the strip is mounted selectedCafeId is
+// null (selection swaps to the detail view), so `select` never re-identifies.
+const PeekCard = memo(function PeekCard({
   cafe,
   active,
-  onSelect,
-  cardRef,
+  select,
+  registerCardRef,
 }: {
   cafe: CafeSummary;
   active: boolean;
-  onSelect: () => void;
-  cardRef: (el: HTMLElement | null) => void;
+  select: (cafeId: string) => void;
+  registerCardRef: (cafeId: string, el: HTMLElement | null) => void;
 }) {
   const reduced = useReducedMotion();
   const springs = useSprings();
   return (
     <motion.button
-      ref={(el) => cardRef(el)}
+      ref={(el) => registerCardRef(cafe.id, el)}
       type="button"
-      onClick={onSelect}
+      onClick={() => select(cafe.id)}
       // ~85% width on phones; clamp(280px,55%,420px) on tablet (§8).
       className="w-[85%] shrink-0 snap-center text-left md:w-[clamp(280px,55%,420px)]"
       // Active card scales ~1.02, neighbors dim (§8) — gentle spring, no CSS
@@ -62,7 +67,7 @@ function PeekCard({
       <CafeCardBody cafe={cafe} />
     </motion.button>
   );
-}
+});
 
 function PeekSkeletons() {
   return (
@@ -143,8 +148,8 @@ function PeekStrip({
           key={cafe.id}
           cafe={cafe}
           active={i === activeIndex}
-          onSelect={() => controller.select(cafe.id)}
-          cardRef={(el) => controller.registerCardRef(cafe.id, el)}
+          select={controller.select}
+          registerCardRef={controller.registerCardRef}
         />
       ))}
     </div>

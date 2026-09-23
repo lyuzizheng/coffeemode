@@ -1,12 +1,11 @@
 import { GoneCafeNotFound } from "@/components/errors/gone-cafe-not-found";
 
 /**
- * Segment 404 for /cafes/[id]. Defensive surface only: the proxy commits
- * the real 404 for gone/invalid ids before routing (see web/proxy.ts and
- * app/not-found.tsx); this boundary catches the narrow race where a cafe
- * disappears between the proxy check and the page render. In that streamed
- * case the status degrades to a soft-404 but the designed surface still
- * renders. The recovery block reads the attempted id from the route params.
+ * Segment 404 for /cafes/[id] — the DG19 gone-cafe surface. The page's
+ * generateMetadata() calls notFound() before the shell flushes, which
+ * commits the real 404 status (BRAWUKA-658: no loading boundary wraps this
+ * route — the map-home skeleton lives in app/(home)/loading.tsx). The
+ * recovery block reads the attempted id from route params (DG111).
  */
 export default function CafeNotFound() {
   return <GoneCafeNotFound />;

@@ -175,6 +175,60 @@ describe("guard helper (BRAWUKA-181)", () => {
         "GET /api/search",
       );
     });
+
+    it("bypasses edge-less callers when bypassUnknownClients is set (BRAWUKA-639 P1)", async () => {
+      vi.mocked(getCurrentUser).mockResolvedValueOnce(null);
+      // No cf-connecting-ip: the Traefik/Docker healthcheck path.
+      const req = new Request("http://localhost/api/health", { method: "GET" });
+
+      const result = await guard(req, {
+        bucket: "health",
+        route: "GET /api/health",
+        ipOnly: true,
+        user: null,
+        bypassUnknownClients: true,
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.clientId).toBe("anon:unknown");
+      }
+      expect(checkRateLimit).not.toHaveBeenCalled();
+    });
+
+    it("still limits Cloudflare-pathed callers with bypassUnknownClients set (BRAWUKA-639 P1)", async () => {
+      vi.mocked(getCurrentUser).mockResolvedValueOnce(null);
+      const req = new Request("http://localhost/api/health", {
+        method: "GET",
+        headers: { "cf-connecting-ip": "203.0.113.9" },
+      });
+
+      const result = await guard(req, {
+        bucket: "health",
+        route: "GET /api/health",
+        ipOnly: true,
+        user: null,
+        bypassUnknownClients: true,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(checkRateLimit).toHaveBeenCalledWith(
+        "health",
+        expect.objectContaining({ id: expect.stringMatching(/^anon:/) }),
+        expect.any(Array),
+        "GET /api/health",
+      );
+    });
+
+    it("still limits edge-less callers without the bypass flag (BRAWUKA-639 P1)", async () => {
+      vi.mocked(getCurrentUser).mockResolvedValueOnce(null);
+      const req = new Request("http://localhost/api/health", { method: "GET" });
+
+      const result = await guard(req, { bucket: "health", route: "GET /api/health" });
+
+      expect(result.ok).toBe(true);
+      expect(checkRateLimit).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("bucket validation (compile-time & runtime double check)", () => {

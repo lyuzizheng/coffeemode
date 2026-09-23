@@ -48,6 +48,19 @@ priorities or decisions.
   ready to merge. Do not merge without explicit authority.
 - If no GitHub PR template exists, the PR body must include `## Context`.
 
+## Testing
+
+- NEVER write unit tests after you write code.
+- Highly prefer E2E tests as the sole testing mechanism. Use them to verify
+  complex features work. At the end of E2E tests, produce a verifiable and
+  repeatable artifact.
+- If you must test a system in isolation, FIRST write all the ways it could
+  fail, THEN write the code.
+- Backend verification lives in the real-Postgres / real-HTTP integration
+  suites (`web/tests/integration/**`, `web/tests/devops/**`,
+  `web/tests/db-helpers.test.ts`) — these are server-side E2E, not unit tests.
+  Browser E2E lives in `web/scripts/e2e-smoke.mjs` (`npm run test:e2e`).
+
 ## Secret scanning
 
 - Pre-commit hook: `.pre-commit-config.yaml` runs `gitleaks protect --staged` on

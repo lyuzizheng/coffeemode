@@ -1,3 +1,5 @@
+> **Note (BRAWUKA-682, 2026-09-23):** the `unit`/`mocked` layer was retired — all mocked `*.test.*` suites were deleted and `npm test`/`test:coverage` no longer exist. Rows below referencing `unit`/`mocked` are historical; proving layers are now `integration` (real Postgres/HTTP) and `browser` (`test:e2e`/`check:visual`).
+
 # Test Coverage — Traceability Matrix (S3)
 
 Spec authority: `docs/specs/0003-testing-and-ci.md` layers · Slice manifest: `docs/agent/implementation-slices.md`.

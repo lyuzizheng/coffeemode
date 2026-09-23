@@ -42,6 +42,9 @@ function useMenuDismissal(
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        // Consumed: preventDefault marks the key so the detail column's
+        // window-level Esc handler leaves it alone (BRAWUKA-576).
+        event.preventDefault();
         setOpen(false);
         triggerRef.current?.focus();
         return;

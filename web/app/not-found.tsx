@@ -1,17 +1,15 @@
-import { headers } from "next/headers";
 import { GenericNotFound } from "@/components/errors/generic-not-found";
-import { GoneCafeNotFound } from "@/components/errors/gone-cafe-not-found";
 
 /**
  * Global 404 dispatcher (spec 0002: error states are designed). Unmatched
- * routes commit the 404 status at routing time, so this surface is also
- * where the proxy sends gone-cafe deep links (DG19): a matched route would
- * stream its shell with a 200 before any page-level notFound() could run.
- * The proxy marks those requests with x-gone-cafe-id; the attempted id
- * feeds the DG111 recovery block.
+ * routes commit the 404 status at routing time.
+ *
+ * Gone-cafe deep links do NOT come through here (BRAWUKA-658): /cafes/[id]
+ * is a matched route whose generateMetadata() calls notFound(), so the
+ * segment boundary at app/cafes/[id]/not-found.tsx renders the designed
+ * gone-cafe surface (DG19) with the DG111 recovery block reading the
+ * attempted id from route params.
  */
-export default async function NotFound() {
-  const goneCafeId = (await headers()).get("x-gone-cafe-id");
-  if (goneCafeId) return <GoneCafeNotFound cafeId={goneCafeId} />;
+export default function NotFound() {
   return <GenericNotFound />;
 }

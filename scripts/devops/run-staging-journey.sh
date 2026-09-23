@@ -73,7 +73,7 @@ Environment:
                               default from web/config/app.yaml §staging.
   SUPABASE_URL                Optional. Enables Supabase Auth endpoint checks.
   SUPABASE_SERVICE_ROLE_KEY   Optional. Enables privileged setup verification.
-  SUPABASE_ANON_KEY           Optional. Enables anon auth checks.
+  SUPABASE_ANON_KEY           Optional. Enables publishable-key auth checks.
 
 Without Supabase keys the setup step runs with --skip-auth (DB provisioning
 and verification only). Production databases are never targeted: there is no

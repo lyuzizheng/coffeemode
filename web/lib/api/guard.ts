@@ -35,6 +35,16 @@ interface GuardOptions<Auth extends boolean = boolean> {
   user?: AuthenticatedUser | null;
   /** If true, scopes rate limit solely by client IP instead of user ID */
   ipOnly?: boolean;
+  /**
+   * Skip the rate-limit check for edge-less callers (no `cf-connecting-ip`,
+   * i.e. `anon:unknown`). Only for routes whose sole edge-less consumers are
+   * internal infra probes (`GET`/`HEAD /api/health`, BRAWUKA-639 P1):
+   * limiting them buys nothing (they must never trip) and couples LB health
+   * to a bucket any direct-origin flooder can fill. Cloudflare-pathed
+   * callers still consume the bucket. Do NOT use on any other route without
+   * a new review: on a normal route it would exempt direct-origin attackers.
+   */
+  bypassUnknownClients?: boolean;
   /** Request id resolved by the route wrapper; echoed on error envelopes. */
   requestId?: string;
 }
@@ -112,7 +122,7 @@ export async function guard(
   request: Request,
   options: GuardOptions,
 ): Promise<GuardResult> {
-  const { bucket, requireAuth = false, route, user: preResolvedUser, ipOnly = false, requestId } = options;
+  const { bucket, requireAuth = false, route, user: preResolvedUser, ipOnly = false, bypassUnknownClients = false, requestId } = options;
 
   // 1. Runtime bucket check
   validateBucket(bucket);
@@ -133,6 +143,9 @@ export async function guard(
 
   // 4. Rate limit check (using normalized buckets from config)
   const resolvedRoute = resolveRouteString(request, route);
+  if (bypassUnknownClients && client.id === "anon:unknown") {
+    return { ok: true, user, clientId: client.id, route: resolvedRoute };
+  }
   const rate = await checkRateLimit(
     bucket,
     client,

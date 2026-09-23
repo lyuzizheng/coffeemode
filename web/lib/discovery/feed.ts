@@ -202,37 +202,42 @@ const CURSOR_TS_ENTRY = `to_char(e.visited_at at time zone 'UTC', 'YYYY-MM-DD"T"
  * visibility, so check-ins deleted after publication vanish from pages.
  * `likes_count` is the frozen snapshot value, so likes granted after
  * publication affect only the next snapshot.
+ *
+ * The active run rides along as `run_id` on every row (BRAWUKA-653): one
+ * statement per page, no separate `helpful_ranking_runs` probe. An empty
+ * page still returns one all-null sentinel row so the serving run id is
+ * known for cursor validation; zero rows means no run is active.
  */
 const HELPFUL_SNAPSHOT_SQL = `
-select c.id, c.scores, c.max_stay, c.note, c.photos, e.likes_count, c.visited_at,
-       e.score as snapshot_score,
-       (cl.user_id is not null) as liked_by_viewer,
-       (c.user_id = $2) as owned_by_viewer,
-       ${CURSOR_TS_ENTRY} as cursor_visited_at,
-       case when p.show_public_identity then p.public_handle end as author_handle,
-       case when p.show_public_identity then p.display_name end as author_display_name,
-       case when p.show_public_identity then p.avatar_url end as author_avatar_url
-from helpful_ranking_entries e
-join checkins c on c.id = e.checkin_id
-left join checkin_likes cl
-  on cl.checkin_id = c.id and cl.user_id = $2
-left join profiles p on p.id = c.user_id
-where e.run_id = $1 and e.cafe_id = $3 and c.deleted_at is null
-  and (
-    $4::double precision is null
-    or (e.score, e.visited_at, e.checkin_id) < ($4::double precision, $5::timestamptz, $6::uuid)
-  )
-order by e.score desc, e.visited_at desc, e.checkin_id desc
-limit $7
+with active_run as (
+  select id from helpful_ranking_runs where status = 'active' limit 1
+)
+select r.id as run_id, page.*
+from active_run r
+left join lateral (
+  select c.id, c.scores, c.max_stay, c.note, c.photos, e.likes_count, c.visited_at,
+         e.score as snapshot_score,
+         (cl.user_id is not null) as liked_by_viewer,
+         (c.user_id = $1) as owned_by_viewer,
+         ${CURSOR_TS_ENTRY} as cursor_visited_at,
+         case when p.show_public_identity then p.public_handle end as author_handle,
+         case when p.show_public_identity then p.display_name end as author_display_name,
+         case when p.show_public_identity then p.avatar_url end as author_avatar_url
+  from helpful_ranking_entries e
+  join checkins c on c.id = e.checkin_id
+  left join checkin_likes cl
+    on cl.checkin_id = c.id and cl.user_id = $1
+  left join profiles p on p.id = c.user_id
+  where e.run_id = r.id and e.cafe_id = $2 and c.deleted_at is null
+    and (
+      $3::double precision is null
+      or (e.score, e.visited_at, e.checkin_id) < ($3::double precision, $4::timestamptz, $5::uuid)
+    )
+  order by e.score desc, e.visited_at desc, e.checkin_id desc
+  limit $6
+) page on true
+order by page.snapshot_score desc, page.cursor_visited_at desc, page.id desc
 `;
-
-/** The currently served snapshot run, or null before the first publish. */
-async function getActiveHelpfulRunId(): Promise<string | null> {
-  const { rows } = await query<{ id: string }>(
-    "select id from helpful_ranking_runs where status = 'active' limit 1",
-  );
-  return rows[0]?.id ?? null;
-}
 
 type FeedRowResult = FeedRow & Record<string, unknown>;
 
@@ -240,6 +245,10 @@ type FeedRowResult = FeedRow & Record<string, unknown>;
  * One over-fetched Helpful page plus the run that served it (null while no
  * snapshot is published — the live-tuple SQL stays the fallback ordering).
  * Stale-version cursors throw FeedCursorExpiredError (DG148).
+ *
+ * The snapshot statement answers the page and the active run id in one
+ * round trip; only the pre-first-publish window pays a second query for
+ * the live-ordering fallback.
  */
 async function queryHelpfulPage(
   cafeId: string,
@@ -247,9 +256,17 @@ async function queryHelpfulPage(
   cursor: FeedCursorPayload | null,
   pageSize: number,
 ): Promise<{ rows: FeedRowResult[]; runId: string | null }> {
-  const runId = await getActiveHelpfulRunId();
-  if (runId === null) {
-    // A v2 cursor names a run that no longer exists (or never did).
+  const { rows: snapshotRows } = await query<FeedRowResult>(HELPFUL_SNAPSHOT_SQL, [
+    viewerId,
+    cafeId,
+    cursor?.v === 2 ? cursor.score : null,
+    cursor?.visited_at ?? null,
+    cursor?.id ?? null,
+    pageSize + 1,
+  ]);
+  if (snapshotRows.length === 0) {
+    // No active run. A v2 cursor names a run that no longer exists (or
+    // never did); anything else falls back to live ordering.
     if (cursor?.v === 2) throw new FeedCursorExpiredError();
     const { rows } = await query<FeedRowResult>(HELPFUL_SQL, [
       cafeId,
@@ -261,21 +278,14 @@ async function queryHelpfulPage(
     ]);
     return { rows, runId: null };
   }
+  const runId = snapshotRows[0].run_id as string;
   // v1 cursors predate snapshots and are valid only while no active run
   // exists; a v2 cursor for any other run is a stale version.
   if (cursor && (cursor.v === 1 || cursor.run !== runId)) {
     throw new FeedCursorExpiredError();
   }
-  const { rows } = await query<FeedRowResult>(HELPFUL_SNAPSHOT_SQL, [
-    runId,
-    viewerId,
-    cafeId,
-    cursor?.v === 2 ? cursor.score : null,
-    cursor?.visited_at ?? null,
-    cursor?.id ?? null,
-    pageSize + 1,
-  ]);
-  return { rows, runId };
+  // Drop the all-null sentinel row an empty page produces.
+  return { rows: snapshotRows.filter((r) => r.id != null), runId };
 }
 
 /** Next-page cursor for the row a page ended on (v2 while a snapshot serves). */

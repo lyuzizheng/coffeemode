@@ -55,10 +55,9 @@ export default async function SearchPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const parsed = parseSearchQuery((name) => {
-    const value = params[name];
-    return typeof value === "string" ? value : null;
-  });
+  // `parseSearchQuery` resolves a repeated param to its first value, matching
+  // the API's `URLSearchParams.get` — pass the raw record through.
+  const parsed = parseSearchQuery((name) => params[name]);
   const { filters } = parsed;
 
   // Shared rejection contract with `/api/search` (search-params.ts): invalid

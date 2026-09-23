@@ -955,7 +955,10 @@ Two search modes:
      re-anchor (DG128).
      `lat`/`lng` deep-link params are all-or-nothing: exactly one present →
      400 `invalid_request` on the API and the error state on SSR `/search`
-     (BRAWUKA-597) — a lone coordinate is never silently re-anchored.
+     (BRAWUKA-597) — a lone coordinate is never silently re-anchored. A
+     present-but-unparseable coordinate is likewise a 400, same convention
+     as `limit` (BRAWUKA-670); a repeated param resolves to its first value
+     on both surfaces.
    - Text query: name FTS on own cafes and saved POIs.
      - Search-as-you-type starts at 3 characters, 400ms debounce (DG44/DG47).
      - Suggestion rows: top 10 only, rendered under the search bar; no
@@ -1242,9 +1245,12 @@ GET /api/cafes, GET /api/cafes/[id], GET /api/cafes/[id]/checkins,
   GET /api/cafes/[id]/recovery → cafes-read; GET /api/search → search;
   GET /api/places/search → places (仅source=google分支要求登录);
   POST /api/places/resolve → places (user仅作限流key, 无401路径).
-NONE (3): GET /api/mapkit-token → places (不调getCurrentUser);
-  GET+HEAD /api/health (无鉴权无限流, 活性探针刻意).
-约定: 无checkins专用桶, 读→cafes-read、写→cafes-write; 8桶见
+NONE (2): GET /api/mapkit-token → places (不调getCurrentUser).
+PUBLIC + 限流 (3): GET+HEAD /api/health → health (无鉴权, 活性探针刻意,
+  BRAWUKA-639: 仅 CF 路径按 IP 限流, Traefik/Docker 内网探针 ~24/min 走
+  `bypassUnknownClients` 直通, 否则共享桶会被直连 origin 流量打满摘出 LB);
+  /api/heartbeat → heartbeat; /api/config → runtime-config.
+约定: 无checkins专用桶, 读→cafes-read、写→cafes-write; 14桶见
   web/config/rate-limits.yaml; 不建共享requireUser助手 (行为已统一, gate
   顺序各路由刻意不同, 见BRAWUKA-163裁决).
 ```

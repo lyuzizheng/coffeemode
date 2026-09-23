@@ -24,7 +24,7 @@ import { decodeFakeJwt as decodeOrThrow, fakeJwt } from "./fake-jwt.mjs";
  *   docker compose stop supabase-mock
  *   # then set in web/.env.local:
  *   #   NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321
- *   #   NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key from supabase status>
+ *   #   NEXT_PUBLIC_SUPABASE_ANON_KEY=<publishable key from supabase status>
  *
  * The fake JWT shape is the single source in scripts/fake-jwt.mjs — header
  * HS256, payload { sub, role: "authenticated", exp } with a dummy signature.

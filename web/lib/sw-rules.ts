@@ -80,6 +80,19 @@ export const RUNTIME_RULES: SwRule[] = [
     matcher: ({ url }) => url.pathname.startsWith("/auth/"),
     handler: "network-only",
   },
+  // Cafe pages may be private (owner-only visibility, DG147). Without this,
+  // /cafes/:id navigations fall into defaultCache's 24h NetworkFirst "pages"
+  // / "pages-rsc" / "others" caches — and the Cache API ignores the server's
+  // `Cache-Control: no-store` header, so a private cafe would be served
+  // stale (BRAWUKA-638; same class as issue #46 for /api/*). The pathname
+  // matcher covers document, RSC, prefetch, and og-image requests alike;
+  // visibility is not in the URL, so all cafe pages go network-only.
+  {
+    name: "cafes",
+    method: "GET",
+    matcher: ({ url }) => url.pathname.length > 7 && url.pathname.startsWith("/cafes/"),
+    handler: "network-only",
+  },
   // Every API route is user-specific or volatile. Without this, unmatched
   // /api/* GETs fall into defaultCache's 24h NetworkFirst "apis" cache.
   {

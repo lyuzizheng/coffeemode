@@ -105,7 +105,7 @@ export async function deleteCafe(
     if (ownerTransferred) {
       const serviceAccountId = getServiceAccountId();
       await client.query(
-        `update cafes set created_by = $2 where id = $1 and created_by = $3`,
+        `update cafes set created_by = $2, updated_at = now() where id = $1 and created_by = $3`,
         [cafeId, serviceAccountId, userId],
       );
     }

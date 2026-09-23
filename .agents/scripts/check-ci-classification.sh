@@ -142,8 +142,8 @@ if [[ ${#registered_files[@]} -gt 0 && ${#measured_files[@]} -gt 0 ]]; then
   fi
 fi
 
-# 4. Gated sources: any test file that branches on `RUN_INTEGRATION` is skipped
-#    by `npm test`, so it is only proven when `integration-gate` runs.
+# 4. Gated sources: any test file that branches on `RUN_INTEGRATION` self-skips
+#    without the gate, so it is only proven when `integration-gate` runs.
 gated="$(grep -rlE 'RUN_INTEGRATION' --include='*.test.ts' --include='*.test.tsx' web/tests 2>/dev/null | sort || true)"
 if [[ -z "$gated" ]]; then
   fail "no RUN_INTEGRATION test sources found — the detector is broken"

@@ -462,9 +462,8 @@ Motion:     instrument springs — softer damping lets motion breathe a
 - The picker (ThemeVariantPicker) renders each option's mini preview with
   real variant tokens — data-variant scoped to the swatch subtree
 - WCAG AA: all four quadrants (2 variants × light/dark) are gated —
-  tests/design-tokens-contrast.test.ts merges each variant block onto its
-  theme plate and asserts every text pair ≥4.5:1; check:visual renders
-  /theme-preview under all three variants × both schemes × both viewports
+  `npm run check:visual` renders /theme-preview under all three variants ×
+  both schemes × both viewports and scores every painted text pair ≥4.5:1
 - Cost: the CJK serif subset downloads only for retro users rendering CJK
   glyphs; grain/grid are data-URI/CSS, zero image requests
 ```
@@ -747,11 +746,11 @@ this principle governs them and any new copy.
   colour and `--danger-solid` the filled-button plate — because a single
   mid-luminance value cannot clear the gate in both (BRAWUKA-211).
 
-  The gate is enforced in two places: `web/tests/design-tokens-contrast.test.ts`
-  asserts these token pairs (and that hue/chroma are held) in `npm test`, and
-  `npm run check:visual` scores the browser's painted bytes for every text
-  sample across the route matrix in both themes, which is what catches
-  page-level token misuse (BRAWUKA-219).
+  The gate is enforced by `npm run check:visual`, which scores the browser's
+  painted bytes for every text sample across the route matrix in both themes —
+  including these token pairs and the hue/chroma holds — catching page-level
+  token misuse (BRAWUKA-219). The unit-level token-pair spec was deleted with
+  the unit suite (BRAWUKA-682); painted evidence is the remaining gate.
 ```
 
 ## Acceptance criteria

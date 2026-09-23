@@ -1,11 +1,19 @@
 import { defineConfig } from "vitest/config";
-import react from "@vitejs/plugin-react";
 import path from "node:path";
 
+/**
+ * Vitest configuration — real-Postgres integration suites only.
+ *
+ * Testing philosophy (AGENTS.md): E2E is the sole test mechanism; there are no
+ * unit tests. Every spec under `tests/` is gated on `RUN_INTEGRATION=1` and
+ * self-skips without it, so a bare `vitest run` collects the files and exits
+ * green without Docker. The suites are invoked through the `test:integration:*`
+ * scripts in `package.json`; `test:coverage:integration` measures them via
+ * `vitest.integration-coverage.config.mts`.
+ */
 export default defineConfig({
-  plugins: [react()],
   test: {
-    environment: "jsdom",
+    environment: "node",
     setupFiles: ["./tests/setup.ts"],
     include: ["tests/**/*.test.{ts,tsx}"],
     // `include` already limits collection to `*.test.*`; `tests/helpers/**` is
@@ -19,43 +27,6 @@ export default defineConfig({
     ...(process.env.VITEST_MAX_WORKERS !== undefined
       ? { maxWorkers: Number(process.env.VITEST_MAX_WORKERS) }
       : {}),
-    coverage: {
-      // Opt-in via `npm run test:coverage` (`vitest run --coverage`); plain
-      // `npm test` collects no coverage and stays fast.
-      provider: "v8",
-      reporter: ["text", "json-summary", "html"],
-      reportsDirectory: "./coverage",
-      // Production code under test. Route shells (`app/**`) are thin
-      // server-component wrappers proven by mocked route tests + real-DB
-      // HTTP journey suites, not by line coverage — excluded so the ratchet
-      // below measures `lib/`/`db/` logic instead of file count.
-      include: ["lib/**/*.ts", "shared/**/*.ts", "proxy.ts"],
-      exclude: [
-        "tests/**",
-        "scripts/**",
-        "config/**",
-        "**/*.d.ts",
-        // Type-only modules emit no statements, so v8 reports them as
-        // 0/0 = 100% — an entry that reads as fully covered while proving
-        // nothing. They contribute nothing to the aggregate ratio either;
-        // they are excluded so the report lists only measured code
-        // (BRAWUKA-173). Add a path here ONLY when it compiles to no
-        // executable statement — verified by transpiling it, not by reading
-        // the filename. A re-export module is NOT eligible: it emits a
-        // statement and it is a zero-value indirection layer, so delete it and
-        // point callers at the single source instead (spec 0009 §5/§6;
-        // `lib/search/distance.ts` was removed this way by BRAWUKA-203).
-        "lib/search/types.ts",
-        "shared/places/types.ts",
-      ],
-      // Ratchet floors (BRAWUKA-166): measured unit-suite coverage minus a
-      thresholds: {
-        lines: 80,
-        functions: 80,
-        branches: 70,
-        statements: 78,
-      },
-    },
   },
   resolve: {
     alias: {

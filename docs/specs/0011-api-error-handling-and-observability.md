@@ -331,11 +331,11 @@ complete; growth happens only with new routes.
   `cafe_has_other_checkins`/`duplicate_checkin` still work (they match `code`,
   not status).
 - Workers: `x-request-id` echoed, JSON error lines, no `key=` substring in any
-  logged string (unit test with a fake upstream throw), `image-service`
+  logged string, `image-service`
   wrangler `[observability]` enabled.
 - `apiFetch`: 401 → `UNAUTHORIZED` marker; 429 → waits `Retry-After` once;
   zh-locale render of a validation failure contains no English server prose.
-- Query retry: 404/401/403 are not retried (unit test on `shouldRetryQuery`
+- Query retry: 404/401/403 are not retried (`shouldRetryQuery`
   with an `ApiError`-typed failure input).
 - Account deletion clears TanStack cache + IndexedDB persistors.
 - ~~Better Stack `coffeemode-api-errors` source receives staging traffic; 5xx

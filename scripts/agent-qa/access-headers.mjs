@@ -10,7 +10,7 @@
  * instead of probing it unauthenticated. The pair returned here is a
  * network-layer identity only; it grants no in-app privilege and never
  * includes the Supabase `service_role` key (that key stays server-side in
- * `web/tests/agent-qa/session.ts` and must never reach a prompt, page, or
+ * `scripts/agent-qa/session.mjs` and must never reach a prompt, page, or
  * client bundle).
  */
 

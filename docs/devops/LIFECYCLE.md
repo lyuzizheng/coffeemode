@@ -148,7 +148,7 @@ Local Dev (Docker / MinIO) ──> PR CI Gates (ci.yml) ──> Merge to main
 ### Phase 2: Pull Request & Automated CI Gates
 Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enforcing canonical gates per Spec 0003:
 1. `docs-gate`: Validates documentation consistency, implementation slices, and test coverage matrix.
-2. `application-gate`: Runs TypeScript typecheck, ESLint, i18n key parity, Vitest unit tests, v8 coverage ratchet, standalone build, bundle budget audit, and Playwright E2E smoke tests.
+2. `application-static-gate` + `application-e2e-gate` (parallel, BRAWUKA-682): TypeScript typecheck, ESLint, i18n key parity, and structure guard on the static lane; standalone build, bundle budget audit, and Playwright E2E smoke tests on the e2e lane. Unit tests were deleted — E2E is the sole test mechanism. Lighthouse CI budgets run post-merge in `staging-journey.yml`.
 3. `integration-gate`: Tests real PostGIS migrations, spatial queries, concurrent checkins, and MinIO/R2 image round-trip.
 
 ### Phase 3: Staging Continuous Deployment

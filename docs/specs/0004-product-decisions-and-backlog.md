@@ -261,14 +261,14 @@ None for the discovery implementation contract DG1-DG20.
 
 - [ ] `preflight.sh` passes after any docs/spec changes.
 - [ ] Design-token reconciliation has a visual diff review (browser screenshot of `theme-preview`).
-- [ ] `web/proxy.ts` unit test: expired token refreshes before reaching a protected route.
-- [ ] `work_stats` aggregation has unit tests for first check-in, repeat check-in edit, soft delete, and social-weight hook.
+- [ ] `web/proxy.ts` integration proof: expired token refreshes before reaching a protected route.
+- [ ] `work_stats` aggregation has real-DB integration tests for first check-in, repeat check-in edit, soft delete, and social-weight hook.
 - [ ] `/api/cafes` POST returns `409` for duplicate `google_place_id` and creates cafe + check-in for new POI.
 - [ ] `/api/checkins` POST handles repeat-visit recency weighting and `social_weight = 0` by default.
 - [ ] `/api/checkins/[id]/like` toggles like and updates `likes_count` without race conditions.
 - [ ] `/api/checkins/[id]/like` rejects self-likes with `403 self_like_forbidden` and still toggles other users' check-ins.
 - [ ] Helpful/Newest feeds use their accepted deterministic tuples and mode-bound opaque cursors.
-- [ ] Discovery recovery, non-modal focus, reduced-motion, missing-cafe, and 1024px breakpoint behaviors have unit/E2E coverage.
+- [ ] Discovery recovery, non-modal focus, reduced-motion, missing-cafe, and 1024px breakpoint behaviors have E2E coverage.
 - [ ] Soft-deleted check-in hides its photos from `/cafes/[id]` gallery.
 - [ ] `/api/search` city + filters returns results and respects filter thresholds.
 - [ ] Lighthouse performance score ≥ 80 on `/` and `/cafes/[id]` before public beta.

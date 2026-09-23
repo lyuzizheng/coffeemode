@@ -285,8 +285,7 @@ async function runSmokeSuite() {
       // the page's generateMetadata() commits the 404 via notFound(), so the
       // response carries the static /cafes/:id* s-maxage header. Shared-cache
       // exclusion of the 404 is owned by the edge rule
-      // (deploy/dokploy/cache-rules.json onStatusesOtherThan: [200]),
-      // drift-pinned by tests/cafe-shell-cache.test.ts.
+      // (deploy/dokploy/cache-rules.json onStatusesOtherThan: [200]).
 
       const pageText = await page.textContent("body");
       assert(

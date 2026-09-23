@@ -16,13 +16,19 @@ Accepted
 | Layer | Tool | Proves |
 | --- | --- | --- |
 | Type | `tsc --noEmit` | Type contracts compile |
-| Unit/component | Vitest + React Testing Library | Pure logic and rendered component behavior |
-| Mocked integration | Vitest with mocked service boundaries | Route/service contracts without live dependencies |
 | Real DB | Vitest + local Postgres/PostGIS | Migrations, SQL, triggers, transactions, and stored state |
+| Real storage | Vitest + local MinIO (R2 stand-in) | Presign → PUT → HEAD image round-trips and object lifecycle |
+| HTTP lifecycle | Vitest + real Postgres, route handlers invoked over `NextRequest` | API contract, auth, and error mapping across the full request lifecycle |
+| Browser E2E | `npm run test:e2e` (Playwright against a seeded production build) | User-visible route and interaction behavior end to end |
 | Staging journey | `scripts/devops/run-staging-journey.sh` against a runner-local PostGIS Postgres (staging Supabase auth smoke) | User journeys against a real Postgres, in per-suite scratch databases (spec 0010 §4) |
 | Agent QA | Multica autopilot + ego-browser on staging.cafemood.app | Exploratory real-browser user journeys on staging; report + defect filing, never a merge gate |
-| Browser/manual | Playwright or an inspected local build | User-visible route and interaction behavior |
+| Browser/manual | Playwright or an inspected local build (`npm run check:visual`) | User-visible route and interaction behavior |
 | Visual comparison | Playwright screenshots with reviewed baselines | Optional visual regression evidence; non-blocking until a baseline policy is accepted |
+
+There is no unit-test layer (BRAWUKA-682): E2E is the sole test mechanism —
+real-stack suites against real Postgres/PostGIS, real MinIO, a seeded
+production build, and staging — never mocks of the system under test. The
+philosophy is canonical in `AGENTS.md` §Testing philosophy.
 
 ### Test policy
 
@@ -41,17 +47,19 @@ Accepted
 - Agent QA never gates merges; deterministic failures file defects
   automatically, LLM-semantic failures require two consecutive rounds before
   filing.
-- Test sessions: unit/component tests keep `web/tests/helpers/auth.ts:fakeJwt`
-  plus mocked clients; staging journey suites acquire real sessions
-  non-interactively (Admin API test user + password grant). The full auth
-  policy and the `service_role` boundary are canonical in spec 0010 §3.
-- Map and external-service tests use static fixtures or mocked boundaries.
+- Test sessions: integration and journey suites mint sessions through
+  `web/tests/helpers/auth.ts:fakeJwt` (unsigned, verified by the compose
+  `supabase-mock`) or acquire real sessions non-interactively (Admin API test
+  user + password grant). The full auth policy and the `service_role` boundary
+  are canonical in spec 0010 §3.
+- Map and external-service tests use static fixtures or the local compose
+  stand-ins (MinIO, `supabase-mock`, miniflare workers).
 - Tests encode intended contracts, not the current implementation.
 - A bug fix adds a regression test that fails on the reproduced defect when the
   affected boundary is testable.
-- Unit mocks cannot prove SQL semantics. Changes to migrations, embedded SQL,
-  triggers, transactions, or DB-backed flows require `npm run test:integration`
-  against real Postgres/PostGIS and assertions on returned and stored state.
+- Migrations, embedded SQL, triggers, transactions, or DB-backed flows require
+  `npm run test:integration` against real Postgres/PostGIS and assertions on
+  returned and stored state.
 - User-visible behavior requires browser/manual evidence. Automated pixel
   comparison is optional and non-blocking until canonical baselines exist.
 
@@ -59,11 +67,11 @@ Accepted
 
 | Changed area | Required local gate |
 | --- | --- |
-| `web/` logic/UI | focused test, then `cd web && npm run verify` |
+| `web/` logic/UI | `cd web && npm run verify` |
 | `web/db/`, `web/lib/`, DB-backed routes or integration suite | web gate plus `cd web && npm run test:integration` |
-| `image-service/` | `npm run typecheck && npm test` in `image-service/`; storage-boundary changes also `cd web && npm run test:integration:images` (real MinIO via docker compose) |
+| `image-service/` | `npm run typecheck` in `image-service/`; storage-boundary changes also `cd web && npm run test:integration:images` (real MinIO via docker compose) |
 | `web/lib/images/` | web gate plus `cd web && npm run test:integration:images` |
-| `poi-service/` | `npm run typecheck && npm test` in `poi-service/` |
+| `poi-service/` | `npm run typecheck` in `poi-service/` |
 | docs, `.agents/`, `.codex/`, CI authority | preflight + harness self-test + required independent semantic review |
 
 Risk and independent-review requirements are defined only in
@@ -72,10 +80,10 @@ Risk and independent-review requirements are defined only in
 ### Commands
 
 ```text
-web: npm run typecheck, lint, check:structure, check:duplication, check:file-size, check:i18n, test, test:coverage, build, check:bundle, verify, lhci
+web: npm run typecheck, lint, check:structure, check:duplication, check:file-size, check:i18n, build, check:bundle, verify, lhci
 web real DB: npm run db:migrate, npm run test:integration, npm run test:integration:journey, npm run test:integration:http, npm run test:integration:images, npm run test:integration:all, npm run test:coverage:integration
 web browser smoke: npm run test:e2e (Playwright MVP smoke suite), npm run lhci (Lighthouse CI performance budgets), npm run check:visual (local visual render evidence)
-services: npm run typecheck, npm test
+services: npm run typecheck
 staging journey: STAGING_DATABASE_URL=<postgres with CREATEDB> scripts/devops/run-staging-journey.sh --suite <journey|http|db|all> (setup via setup-supabase.mjs, cleanup via web/scripts/cleanup-stale-test-dbs.mjs --apply)
 agent harness: .agents/scripts/preflight.sh, .agents/scripts/harness-self-test.sh, .agents/scripts/check-runtime-pins.sh
 ```
@@ -103,7 +111,8 @@ ungated harness file, or a registered suite the coverage ratchet does not measur
 appears without a routing decision, or when a unit-only path starts scheduling the
 DB-backed gate:
 
-- `application-gate`: `web/` changes (typecheck, structure guard — file/function budget, duplication budget, layer boundaries, exemption ratchet — lint, i18n key parity, unit tests, v8 coverage ratchet, build, bundle budget check, bundle analysis, PWA validation, E2E smoke suite, and Lighthouse CI performance budgets against seeded fixtures);
+- `application-static-gate`: `web/` changes — typecheck, structure guard (file/function budget, duplication budget, layer boundaries, exemption ratchet), lint, i18n key parity. Runs in parallel with `application-e2e-gate` (BRAWUKA-682: the old serial `application-gate` was split so static failures surface fast while the build/E2E lane drains);
+- `application-e2e-gate`: `web/` changes — build, bundle budget check, bundle analysis, PWA validation, and the Playwright E2E smoke suite against seeded fixtures;
 - `integration-gate`: DB/SQL-capable web boundaries and shared-package changes — runs real Postgres DB tests (`npm run test:integration`), real Postgres user-journey tests (`npm run test:integration:journey`), real Postgres HTTP lifecycle tests (`npm run test:integration:http`), and real MinIO/R2 image round-trip (`npm run test:integration:images`) sequentially on one `postgis` service + `docker compose up minio` (merged for efficiency; was `integration-gate` + `images-integration-gate`), then the real-DB coverage ratchet (`npm run test:coverage:integration`) against the same live stack. Branch protection that still requires the legacy `images-integration-gate` name should migrate to `integration-gate` + `ci-gate` (see migration note below);
 - `image-service-gate`: image-service and shared-package changes;
 - `poi-service-gate`: poi-service and shared-package changes;
@@ -123,6 +132,12 @@ must never block a PR. Production promotion additionally requires a green
 `staging-journey` run on the promoted commit plus manual owner approval — the
 boundary is canonical in spec 0010 §5, the release mechanics in spec 0005.
 
+The same workflow carries the `lighthouse` job (BRAWUKA-682): Lighthouse CI
+performance budgets moved out of the PR gate so a perf regression can never
+block a merge. It audits a locally built, seeded production bundle on the same
+trigger set (push to `main`, nightly, dispatch) and uploads
+`web/.lighthouseci` as a run artifact.
+
 The component job names remain stable so existing branch protection receives a
 reported success or skipped result on every PR. `ci-gate` is the preferred single
 required context after repository protection is migrated. The `images-integration-gate`
@@ -137,8 +152,8 @@ while installing Chromium. Local browser evidence remains available through
 every rendered text sample against the spec 0002 WCAG AA thresholds (body
 >= 4.5:1, large >= 3:1) from the browser's painted bytes, so a token or class
 misuse that only exists on a page is caught there rather than in CI
-(BRAWUKA-219). Token pairs themselves are asserted in `npm test` by
-`web/tests/design-tokens-contrast.test.ts`, which does run in CI.
+(BRAWUKA-219). Token-pair contrast is enforced by `npm run check:visual`
+against the painted route matrix.
 
 ### Runtime pins
 
@@ -255,7 +270,7 @@ selection, and the exception process are canonical in the code-quality and
 module-boundaries spec (`0009`). Pre-existing violations live in
 `web/eslint-suppressions.json` (ESLint bulk suppressions), so new code is held to
 the full rules while existing debt stays recorded and prunable with
-`npx eslint --prune-suppressions`. The `application-gate` runs this gate as a
+`npx eslint --prune-suppressions`. The `application-static-gate` runs this gate as a
 blocking step and `.agents/scripts/check-ci-workflow.sh` fails preflight if the
 step disappears from `ci.yml`. Locally, `.agents/scripts/preflight.sh` runs it
 through `.agents/scripts/check-structure.sh`, which self-skips when
@@ -264,27 +279,12 @@ authoritative.
 
 ### Coverage gate
 
-`npm run test:coverage` (`vitest run --coverage`, v8 provider) enforces
-ratchet floors declared in `web/vitest.config.mts` (`lines/functions/branches/
-statements`) over `web/lib/**`, `web/shared/**`, and `web/proxy.ts`. Route
-shells (`web/app/**`) are excluded: they are thin wrappers proven by mocked
-route tests plus the real-DB HTTP journey suites, and line coverage over them
-measures file count, not logic. Modules that compile to no executable statement
-(type-only, pure re-export) are excluded too — v8 reports them as 0/0 = 100%,
-an entry that reads as verified while proving nothing. The `application-gate`
-runs the coverage step as blocking, and `.agents/scripts/check-ci-workflow.sh`
-fails preflight if the step is removed from `ci.yml`. Floors are set just below
-the measured unit-suite baseline; a PR that adds covered code raises the floors
-it improves — lowering a floor requires a spec-amending justification in the PR,
-never a drive-by edit. Per-file waivers are prohibited.
-
-Unit coverage cannot measure the data layer: every `RUN_INTEGRATION=1` spec
-self-skips, so `web/lib/db/**` is exercised only through its mocks there
-(`lib/db/search.ts` reported 2.12% under the unit run and 100% against real
-Postgres). `npm run test:coverage:integration` therefore runs the registered
+The unit-suite coverage ratchet was removed with the unit tests (BRAWUKA-682).
+What remains is the real-DB ratchet, which measures the layer whose contract is
+SQL semantics: `npm run test:coverage:integration` runs the registered
 real-DB suites once more under the live Postgres/PostGIS + MinIO stack and
 enforces its own floors — declared in `web/vitest.integration-coverage.config.mts`
-and scoped to `web/lib/db/**`, the layer whose contract is SQL semantics. It runs
+and scoped to `web/lib/db/**`. It runs
 blocking in `integration-gate` (reusing the stack that job already starts) and
 uploads `web/coverage-integration`; `check-ci-workflow.sh` fails preflight if the
 step or its artifact is removed. Registration and measurement are the same
@@ -299,18 +299,18 @@ the two currently unregistered `RUN_INTEGRATION` files).
 How tests evolve when features land (one writer per change, per `AGENTS.md`):
 
 - New user trace → new row in `docs/agent/test-coverage.md` (§5 slice index
-  must cover every READY slice) plus a proving test at the cheapest layer
-  that can prove the contract: `unit`/`mocked` first, `integration` when the
-  change touches migrations, embedded SQL, triggers, transactions, or stored
-  state, `browser` evidence (`npm run check:visual`) when user-visible
+  must cover every READY slice) plus a proving test at the cheapest real layer
+  that can prove the contract: `integration` when the change touches
+  migrations, embedded SQL, triggers, transactions, or stored state, `browser`
+  evidence (`npm run check:visual` / `npm run test:e2e`) when user-visible
   behavior changes.
 - New production helper used by ≥2 suites → move it to `web/tests/helpers/*`
   (infra: `db`/`r2`; service: `auth`/`fixtures`) instead of duplicating it;
   helpers never embed product logic.
 - New integration suite → provision via `provisionTestDatabase` and drop via
   `cleanupIntegrationDatabase` in `afterAll`; gate the file on
-  `RUN_INTEGRATION` with `describe.skip` by default so `npm test` stays
-  Docker-free, and register the file in the matching `test:integration:*` script
+  `RUN_INTEGRATION` with `describe.skip` by default so a bare `vitest run`
+  stays Docker-free, and register the file in the matching `test:integration:*` script
   (CI `integration-gate` runs only registered files) plus in
   `test:coverage:integration`, which the real-DB ratchet measures —
   `.agents/scripts/check-ci-classification.sh` fails when the two disagree.
@@ -318,7 +318,7 @@ How tests evolve when features land (one writer per change, per `AGENTS.md`):
   suites and `docs/devops/LIFECYCLE.md`, never point integration helpers at
   staging without `ALLOW_REMOTE_INTEGRATION_DB=1`.
 - Bug fix → regression test that fails on the reproduced defect when the
-  affected boundary is testable (unit/mocked for logic, real-DB for SQL).
+  affected boundary is testable (real-DB for SQL, browser E2E for UI).
 
 
 ### Observability
@@ -337,15 +337,15 @@ second consumer.
 
 ### Appendix — Coverage traceability
 
-The traceability matrix lives at `docs/agent/test-coverage.md` (S3 testkit-coverage-doc). It maps every user trace — login Apple/Google, session refresh (`web/proxy.ts`), cafe create, nearby list, detail, check-in lifecycle (create/edit/delete), likes, navigations, image upload/complete, POI search/resolve, 404 recovery, SEO (sitemap/OG), rate limiting — to `Trace × Spec × Layer (unit/mocked/integration/browser) × Proving file × Gate`. Efficiency notes record no-duplication via `web/tests/helpers/*` and the infra (`db`/`r2`) vs service (`auth`/`fixtures`/`workers`) helper split; residual gaps (auth E2E still mocked until Supabase local, POI live search mocked, Workers local via `wrangler dev`, browser E2E manual) are listed there. The deterministic gate `.agents/scripts/check-coverage-matrix.sh` validates completeness (every `READY` slice has ≥1 row) and can be run in CI or as `preflight` follow-on.
+The traceability matrix lives at `docs/agent/test-coverage.md` (S3 testkit-coverage-doc). It maps every user trace — login Apple/Google, session refresh (`web/proxy.ts`), cafe create, nearby list, detail, check-in lifecycle (create/edit/delete), likes, navigations, image upload/complete, POI search/resolve, 404 recovery, SEO (sitemap/OG), rate limiting — to `Trace × Spec × Layer (integration/browser) × Proving file × Gate`. Efficiency notes record no-duplication via `web/tests/helpers/*` and the infra (`db`/`r2`) vs service (`auth`/`fixtures`/`workers`) helper split; residual gaps (POI live search mocked, Workers local via `wrangler dev`, browser E2E manual) are listed there. The deterministic gate `.agents/scripts/check-coverage-matrix.sh` enforces the matrix shape on every preflight run.
 
 ## Acceptance criteria
 
-- `npm run verify` remains the full web type/lint/i18n/unit/build/bundle-budget gate.
-- Lighthouse CI enforces performance (>= 80 on cafe detail per spec 0001:1182), accessibility, best practices, and SEO budgets against seeded deterministic fixtures.
+- `npm run verify` remains the full web type/lint/i18n/build/bundle-budget gate.
+- Lighthouse CI enforces performance (>= 80 on cafe detail per spec 0001:1182), accessibility, best practices, and SEO budgets against seeded deterministic fixtures — post-merge in the `staging-journey` workflow's `lighthouse` job, never a PR gate.
 - The bundle budget measures the clean build output across all of `.next/static` against typed limits in `web/config/app.yaml`.
 - Real Postgres remains required for DB/SQL behavior.
-- `npm run test:coverage` enforces the v8 ratchet floors in `web/vitest.config.mts`; removing the coverage step from `ci.yml` fails preflight.
+- The unit-suite coverage ratchet is removed with the unit tests (BRAWUKA-682); `ci.yml` must not run `npm test`, `npm run test`, or `npm run test:coverage` — `.agents/scripts/check-ci-workflow.sh` fails preflight if any returns.
 - `npm run test:coverage:integration` enforces the real-DB `web/lib/db/**` floors in `web/vitest.integration-coverage.config.mts` under `RUN_INTEGRATION=1`; removing that step or its uploaded report from `ci.yml` fails preflight.
 - Each `integration-gate` step is pinned individually by exact `run:` command in `.agents/scripts/check-ci-workflow.sh`: deleting `npm run test:integration`, `test:integration:journey`, `test:integration:http`, `test:integration:images`, or `test:coverage:integration` from `ci.yml` fails preflight, and a shorter command never satisfies a longer one's requirement.
 - A changed path that holds (or feeds) a `RUN_INTEGRATION` suite schedules `integration-gate`; `.agents/scripts/check-ci-classification.sh` asserts this on every PR — non-test files under `web/tests/**` by default however they are consumed, import-reachable paths by closure, failing on a specifier it cannot resolve — and fails on any tracked path with no routing rule.

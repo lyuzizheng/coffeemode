@@ -22,6 +22,22 @@ under `.agents/`.
 Resolve conflicts through `docs/STRUCTURE.md`. The harness must never own product
 priorities or decisions.
 
+## Testing philosophy
+
+- NEVER write unit tests after you write code.
+- Highly prefer E2E tests as the sole testing mechanism. Use them to verify
+  complex features work. At the end of E2E tests, produce a verifiable and
+  repeatable artifact.
+- If you must test a system in isolation, FIRST write all the ways it could
+  fail, THEN write the code.
+- In this repository "E2E" means the real-stack suites: the real
+  Postgres/PostGIS + MinIO integration specs (`web/tests/integration/**`,
+  `web/tests/devops/**`, `web/tests/db-helpers.test.ts` under
+  `RUN_INTEGRATION=1`), the Playwright smoke suite (`npm run test:e2e`), the
+  staging journey (`scripts/devops/run-staging-journey.sh`), and browser
+  evidence (`npm run check:visual`). There is no unit-test runner — `npm test`
+  does not exist.
+
 ## Rules
 
 - Make the smallest complete change and preserve unrelated work.

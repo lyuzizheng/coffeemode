@@ -76,3 +76,59 @@ jobs:
             echo "Triage from the job log; a tracking issue is opened manually"
             echo "so one flaky night cannot spam the tracker (spec 0010 §5)."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  lighthouse:
+    name: lighthouse-ci
+    runs-on: ubuntu-latest
+    # Post-merge performance budgets (BRAWUKA-682): moved out of the PR gate so
+    # a Lighthouse regression never blocks a merge. Runs on push to main,
+    # nightly, and on dispatch under the same trigger set as the journey job —
+    # no `environment: staging` because it audits a local seeded build, not
+    # staging secrets.
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start runner-local Postgres and Supabase mock
+        run: docker compose -f ../docker-compose.yml up -d --wait postgres supabase-mock
+
+      - name: Build
+        run: npm run build
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('web/package-lock.json') }}
+
+      - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install chromium
+
+      - name: Lighthouse CI performance budgets
+        env:
+          DATABASE_URL: postgresql://coffeemode:coffeemode@localhost:5432/coffeemode
+          ALLOW_SEED_DEV_DB: "1"
+        run: npm run lhci
+
+      - name: Upload Lighthouse CI report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-ci-report
+          path: web/.lighthouseci
+          include-hidden-files: true
+          if-no-files-found: ignore

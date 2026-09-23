@@ -54,7 +54,7 @@ The ego-browser Node process does NOT inherit the agent's env, so
    before touching staging instead of probing it unauthenticated).
 3. Secrets never enter the transcript, a prompt, page content, or the client
    bundle. The Supabase `service_role` key stays server-side
-   (`web/tests/agent-qa/session.ts`) under the same rule.
+   (`scripts/agent-qa/session.mjs`) under the same rule.
 
 ## Journey registry (BRAWUKA-411)
 

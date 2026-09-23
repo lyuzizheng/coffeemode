@@ -9,8 +9,8 @@
  *   - `scripts/supabase-mock.mjs` (compose GoTrue stand-in — same process,
  *     relative import, zero dependencies so the `node:22-alpine` container
  *     needs no install step);
- *   - `web/tests/helpers/auth.ts` (typed unit-test surface — re-exports these
- *     functions; unit tests never touch the network).
+ *   - `web/tests/helpers/auth.ts` (typed test-helper surface — re-exports these
+ *     functions; integration suites never touch the network).
  *
  * Change the shape here and both consumers follow. Do NOT fork this file.
  */

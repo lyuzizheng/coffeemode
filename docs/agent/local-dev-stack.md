@@ -86,8 +86,9 @@ npm run test:integration      # = RUN_INTEGRATION=1 vitest run tests/integration
   state, and consumed upload intent; `recordNavigation` and stored navigation state.
 - The test DB is dropped afterwards; cleanup failures fail the run. Set
   `ALLOW_REMOTE_INTEGRATION_DB=1` only for an explicitly disposable test server.
-- Plain `npm test` (unit suite) skips the integration file automatically —
-  machines without Docker stay green.
+- Every spec under `web/tests/` is `RUN_INTEGRATION=1`-gated and self-skips
+  without it — there is no unit suite (BRAWUKA-682); a bare `vitest run`
+  collects the files and exits green without Docker.
 
 ## 3. Workers — compose-managed (and manual alternative)
 

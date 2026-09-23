@@ -10,10 +10,10 @@
  *
  * Zero-dependency on purpose: bucket names are the top-level mapping keys,
  * so a line scan suffices and the script runs on a fresh checkout before
- * `npm ci`. Freshness is enforced by `tests/api/guard.test.ts`, which
- * re-renders the module in memory and compares it byte-for-byte against the
- * committed file — so a stale generated file fails the existing `npm test`
- * gate with no extra CI wiring. `--check` does the same from the shell.
+ * `npm ci`. Freshness is enforced by `npm run check:guards`, which runs this
+ * script's `--check` mode — a byte-for-byte comparison of the re-rendered
+ * module against the committed file — in `application-static-gate` (the
+ * deleted `tests/api/guard.test.ts` used to carry this; BRAWUKA-682).
  */
 
 import { readFileSync, writeFileSync } from "node:fs";

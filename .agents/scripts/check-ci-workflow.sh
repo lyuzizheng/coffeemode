@@ -40,7 +40,8 @@ else
     "preflight.sh" \
     "harness-self-test.sh" \
     "docs-gate:" \
-    "application-gate:" \
+    "application-static-gate:" \
+    "application-e2e-gate:" \
     "integration-gate:" \
     "image-service-gate:" \
     "poi-service-gate:" \
@@ -58,12 +59,20 @@ else
     fi
   done
 
-  for gate in "npm run typecheck" "npm run lint" "npm run check:structure" "npm run check:i18n" "npm run test" "npm run test:coverage" "npm run build"; do
-    if ! grep -q "$gate" "$workflow"; then
-      echo "ci.yml missing application gate: $gate"
+  for gate in "npm run typecheck" "npm run lint" "npm run check:structure" "npm run check:i18n" "npm run build" "npm run test:e2e"; do
+    if ! grep -qF -- "$gate" "$workflow"; then
+      echo "ci.yml missing gate command: $gate"
       fail=1
     fi
   done
+
+  # Unit tests are deleted (BRAWUKA-682): the PR gate must not resurrect a unit
+  # suite or its coverage ratchet, and Lighthouse budgets now live in the
+  # post-merge staging-journey workflow instead of the merge path.
+  if grep -qE 'run:[[:space:]]*npm (run )?test[[:space:]]*$|run:[[:space:]]*npm run test:coverage[[:space:]]*$|run:[[:space:]]*npm run lhci[[:space:]]*$' "$workflow"; then
+    echo "ci.yml still runs a unit-test/coverage/lhci step — unit tests are deleted and lhci moved to staging-journey.yml"
+    fail=1
+  fi
 
   for requirement in "postgis/postgis:" "@sha256:" "DATABASE_URL:" "pg_isready" "coverage-integration"; do
     if ! grep -q "$requirement" "$workflow"; then
@@ -127,7 +136,9 @@ else
     "cancel-in-progress: false" \
     "environment: staging" \
     "run-staging-journey.sh" \
-    "timeout-minutes:"; do
+    "timeout-minutes:" \
+    "lighthouse:" \
+    "npm run lhci"; do
     if ! grep -qF -- "$requirement" "$journey"; then
       echo "$journey is missing: $requirement"
       fail=1

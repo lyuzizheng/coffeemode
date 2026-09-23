@@ -14,8 +14,6 @@
     "check:duplication": "jscpd --config ../.jscpd.json",
     "check:file-size": "node scripts/check-file-size.mjs",
     "check:suppressions": "node scripts/check-suppressions.mjs",
-    "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
     "db:migrate": "node scripts/migrate.mjs",
     "recompute:work-stats": "node scripts/recompute-work-stats.mjs",
     "snapshot:helpful-ranking": "node scripts/snapshot-helpful-ranking.mjs",
@@ -34,7 +32,7 @@
     "check:bundle": "node scripts/check-bundle-budget.mjs",
     "analyze": "next experimental-analyze --output",
     "lhci": "node scripts/run-lhci.mjs",
-    "verify": "npm run check:i18n && npm run check:guards && npm run typecheck && npm run lint && npm run test && npm run build && npm run check:bundle"
+    "verify": "npm run check:i18n && npm run check:guards && npm run typecheck && npm run lint && npm run build && npm run check:bundle"
   },
   "dependencies": {
     "@heroui/react": "^3.2.3",

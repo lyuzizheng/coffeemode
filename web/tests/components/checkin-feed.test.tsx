@@ -454,7 +454,7 @@ describe("CheckinFeed own-card edit entry", () => {
       await screen.findByRole("button", { name: "More actions for this check-in" }),
     );
     expect(await screen.findByRole("menuitem", { name: "Edit your check-in" })).toBeInTheDocument();
-    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => {
       expect(
         screen.queryByRole("menuitem", { name: "Edit your check-in" }),

@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useStagedPhotos } from "./use-staged-photos";
 import type { PhotoUpload } from "./checkin-photos";
+import { r2PublicUrl } from "@/lib/images/constants";
 import { useCheckinMutation } from "./use-checkin-mutation";
 import type { CheckinScoresState } from "./use-checkin-scores";
 import type { UseCheckinFormStateOptions } from "./use-checkin-form-state";
@@ -28,7 +29,6 @@ function executeSubmit({
   scores,
   maxStay,
   note,
-  photoCount,
   offlineMessage,
 }: {
   isOffline: boolean;
@@ -36,11 +36,10 @@ function executeSubmit({
   effectivelyAuthenticated: boolean;
   setError: (err: string) => void;
   setShowSignInGate: (show: boolean) => void;
-  submit: (p: { scores: CheckInScores; maxStay: MaxStay | null; note: string; photoCount: number }) => void;
+  submit: (p: { scores: CheckInScores; maxStay: MaxStay | null; note: string }) => void;
   scores: CheckInScores;
   maxStay: MaxStay | null;
   note: string;
-  photoCount: number;
   offlineMessage: string;
 }) {
   if (isOffline) {
@@ -49,7 +48,7 @@ function executeSubmit({
     if (!effectivelyAuthenticated) {
       setShowSignInGate(true);
     } else {
-      submit({ scores, maxStay, note, photoCount });
+      submit({ scores, maxStay, note });
     }
   }
 }
@@ -75,22 +74,22 @@ export function useCheckinSubmit({
   effectivelyAuthenticated: boolean;
 }) {
   const t = useTranslations("checkIn");
-  const { photos, setPhotos: setPhotosState, uploadPendingPhotos } = useStagedPhotos(
-    options.initialPhotos,
+  // Edit mode (BRAWUKA-563): attached photos seed the picker as done tiles —
+  // their `id` IS the imageUuid, so uploadPendingPhotos returns them and the
+  // mutation diffs against `existingPhotos` to build add/remove_photo_ids.
+  const seededPhotos = useMemo<PhotoUpload[]>(
+    () => [
+      ...(options.existingPhotos ?? []).map((p) => ({
+        id: p.id,
+        previewUrl: r2PublicUrl(p.thumbnail),
+        status: "done" as const,
+        imageUuid: p.id,
+      })),
+      ...(options.initialPhotos ?? []),
+    ],
+    [options.existingPhotos, options.initialPhotos],
   );
-  const setPhotos = useCallback<Dispatch<SetStateAction<PhotoUpload[]>>>(
-    (next) => {
-      setPhotosState((prev) => {
-        const resolved = typeof next === "function" ? next(prev) : next;
-        // Synchronous report: the drawer's preempt check runs on render and
-        // cannot wait for an effect to learn photos were just staged
-        // (BRAWUKA-126). Idempotent — StrictMode may replay the updater.
-        options.onStagedPhotosChange?.(resolved.length);
-        return resolved;
-      });
-    },
-    [setPhotosState, options],
-  );
+  const { photos, setPhotos, uploadPendingPhotos } = useStagedPhotos(seededPhotos);
   const [showSignInGate, setShowSignInGate] = useState(false);
   const [idempotencyKey] = useState(newIdempotencyKey);
   const requireSignIn = useCallback(() => setShowSignInGate(true), []);
@@ -101,6 +100,7 @@ export function useCheckinSubmit({
     editCheckinId: options.editCheckinId,
     idempotencyKey,
     uploadPendingPhotos,
+    existingPhotoIds: options.existingPhotos?.map((p) => p.id),
     onClose: options.onClose,
     onRequireSignIn: requireSignIn,
   });
@@ -115,7 +115,6 @@ export function useCheckinSubmit({
       submit: mutation.submit,
       scores: scoresState.scores,
       maxStay,
-      photoCount: photos.length,
       note,
       offlineMessage: t("offline"),
     });

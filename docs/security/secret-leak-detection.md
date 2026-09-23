@@ -22,7 +22,7 @@ CI 与 hook 中必须 pin 住版本（action pin 到 commit SHA，pre-commit pin
 3. 可伪造身份的：Supabase `service_role` key、JWT signing secret、私有证书与私钥。
 
 不算（不要报为漏洞，最多记为卫生问题）：`samplesecret`、`changeme`、`xxx`、`your-key-here`、
-`<YOUR_TOKEN>`、占位符、`*.example` 模板、本地 dev 默认值、公开的 Supabase anon key、测试里的固定假值。
+`<YOUR_TOKEN>`、占位符、`*.example` 模板、本地 dev 默认值、公开的 Supabase publishable key（旧称 anon key）、测试里的固定假值。
 
 判定流程（三步，缺一不可）：
 
@@ -32,7 +32,7 @@ CI 与 hook 中必须 pin 住版本（action pin 到 commit SHA，pre-commit pin
 3. 能验证的才验证：`trufflehog` 的 verified 结果可直接采信；unverified 结果必须人工走完前两步，
    不许只凭扫描器输出就定性。
 
-特例：Supabase anon key 设计上就是公开的（前端 bundle 里可见），泄漏到仓库不算漏洞；
+特例：Supabase publishable key（旧称 anon key）设计上就是公开的（前端 bundle 里可见），泄漏到仓库不算漏洞；
 `service_role` key 泄漏算 P0。两者不要混为一谈。
 
 ## 分层防线

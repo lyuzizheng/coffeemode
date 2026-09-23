@@ -254,11 +254,12 @@ export async function getPOI(
   session?: string,
   requestId?: string,
 ): Promise<POI> {
-  // Send the place id raw: Google `0x...:0x...` ids are valid path
-  // segments, and the worker decodes `:place_id` at the edge (W2).
+  // Encode: place ids arrive from the client (`place_id` query param) and
+  // may contain reserved characters (`:`, `/`, `%`). The worker matches
+  // `[^/]+` and `decodeURIComponent`s the segment, so encoding round-trips.
   const query = session ? `?session=${encodeURIComponent(session)}` : "";
   const data = await poiFetch(
-    `/poi/${placeId}${query}`,
+    `/poi/${encodeURIComponent(placeId)}${query}`,
     {
       method: "GET",
     },

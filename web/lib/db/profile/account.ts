@@ -101,62 +101,82 @@ export interface DeleteAccountResult {
  * updateCheckIn lock the check-in's cafe → the check-in; this function does
  * the same (cafes first, then check-ins), so concurrent deleteAccount +
  * deleteCafe / softDeleteCheckIn on the same cafe serialize on the cafe
- * lock instead of deadlocking in opposite order. The two locking SELECTs
- * name ORDER BY so concurrent deleteAccount transactions acquire in the
- * same sequence; the follow-up UPDATEs target only rows already held by
- * those SELECTs, so they acquire no new contended locks.
+ * lock instead of deadlocking in opposite order.
+ *
+ * BRAWUKA-601: the cafe set and the live check-in set are read in ONE
+ * statement — a single READ COMMITTED snapshot. Two separate locking
+ * SELECTs each took a fresh snapshot, so a check-in committed between
+ * them entered the check-in set while its cafe stayed unlocked; the
+ * gallery purge then took that cafe's lock after the check-in lock —
+ * checkin → cafe, the inverse order, i.e. a 40P01 cycle against a
+ * concurrent softDeleteCheckIn / updateCheckIn.
+ *
+ * FOR UPDATE OF c names only the cafe side — Postgres rejects FOR UPDATE
+ * on the nullable side of a LEFT JOIN, and it isn't needed: the blanket
+ * UPDATE in deleteAccount is the first statement to touch check-in rows,
+ * so every check-in lock is still taken strictly after every cafe lock.
+ * ORDER BY keeps cafe acquisition deterministic across concurrent
+ * deleteAccount runs.
  */
+const LOCK_ACCOUNT_SCOPE_SQL = `
+select c.id as cafe_id, ci.id as checkin_id
+from cafes c
+left join checkins ci
+  on ci.cafe_id = c.id and ci.user_id = $1 and ci.deleted_at is null
+where c.created_by = $1 or ci.id is not null
+order by c.id, ci.id
+for update of c
+`;
 export async function deleteAccount(userId: string): Promise<DeleteAccountResult> {
   if (!isValidUUID(userId)) {
     throw new Error("invalid user id");
   }
 
   return withTransaction(async (client) => {
-    // Lock every affected cafe row (created cafes + cafes holding live
-    // check-ins) before any check-in row: deleteCafe / softDeleteCheckIn /
-    // updateCheckIn take the same cafe → checkin order, so a concurrent
-    // deleteAccount + deleteCafe (or check-in edit/delete) on the same cafe
-    // serializes on the cafe lock instead of deadlocking in opposite order.
-    // ORDER BY keeps acquisition deterministic across statements.
-    await client.query(
-      `select c.id from cafes c
-       where c.created_by = $1
-          or exists (select 1 from checkins ci
-                     where ci.cafe_id = c.id and ci.user_id = $1 and ci.deleted_at is null)
-       order by c.id for update`,
+    const lockRes = await client.query<{ cafe_id: string; checkin_id: string | null }>(
+      LOCK_ACCOUNT_SCOPE_SQL,
       [userId],
     );
     // Live check-ins grouped by cafe — the gallery purge and stats
     // recompute run once per affected cafe, not once per row.
-    const checkinsRes = await client.query<{ id: string; cafe_id: string }>(
-      `select id, cafe_id from checkins where user_id = $1 and deleted_at is null
-       order by cafe_id, id for update`,
-      [userId],
-    );
     const byCafe = new Map<string, string[]>();
-    for (const row of checkinsRes.rows) {
+    let checkinsRemoved = 0;
+    for (const row of lockRes.rows) {
+      if (row.checkin_id === null) continue;
       const list = byCafe.get(row.cafe_id) ?? [];
-      list.push(row.id);
+      list.push(row.checkin_id);
       byCafe.set(row.cafe_id, list);
+      checkinsRemoved += 1;
     }
 
-    if (checkinsRes.rows.length > 0) {
+    // Soft-delete + detach in one statement (DG146 tombstones stay; only
+    // the author link goes — checkins.user_id has no ON DELETE clause, so
+    // the detach must land before the profile delete). The blanket
+    // predicate also catches check-ins committed after the lock snapshot:
+    // they are tombstoned and detached here instead of escaping as live
+    // orphans or tripping the profile-delete FK. Their cafes are not in
+    // byCafe, so the purge below never takes a cafe lock after a check-in
+    // lock — the inversion stays closed. Residual: such a check-in's
+    // gallery entries on a cafe outside the lock set are not purged.
+    await client.query(
+      `update checkins
+       set deleted_at = coalesce(deleted_at, now()),
+           user_id = null,
+           updated_at = now()
+       where user_id = $1`,
+      [userId],
+    );
+
+    for (const [cafeId, checkinIds] of byCafe) {
       await client.query(
-        `update checkins set deleted_at = now(), updated_at = now()
-         where user_id = $1 and deleted_at is null`,
-        [userId],
+        `update cafes set gallery = coalesce(
+           (select jsonb_agg(elem) from jsonb_array_elements(coalesce(gallery, '[]'::jsonb)) elem
+            where elem->'source'->>'id' is null or not (elem->'source'->>'id' = any($2::text[]))), '[]'::jsonb),
+           updated_at = now()
+         where id = $1`,
+        [cafeId, checkinIds],
       );
-      for (const [cafeId, checkinIds] of byCafe) {
-        await client.query(
-          `update cafes set gallery = coalesce(
-             (select jsonb_agg(elem) from jsonb_array_elements(coalesce(gallery, '[]'::jsonb)) elem
-              where elem->'source'->>'id' is null or not (elem->'source'->>'id' = any($2::text[]))), '[]'::jsonb),
-             updated_at = now()
-           where id = $1`,
-          [cafeId, checkinIds],
-        );
-        await recomputeWorkStats(cafeId, 0, txRunnerFrom(client));
-      }
+      await recomputeWorkStats(cafeId, 0, txRunnerFrom(client));
     }
 
     // Cafes the user created survive as orphan shells (DG146): ownership
@@ -171,15 +191,11 @@ export async function deleteAccount(userId: string): Promise<DeleteAccountResult
     await client.query(`delete from checkin_likes where user_id = $1`, [userId]);
     await client.query(`delete from navigations where user_id = $1`, [userId]);
     await client.query(`delete from image_upload_intents where user_id = $1`, [userId]);
-    // checkins.user_id has no ON DELETE clause — detach the tombstones so
-    // the FK doesn't block the profile delete. Rows stay (DG146 audit
-    // trail); only the author link goes.
-    await client.query(`update checkins set user_id = null where user_id = $1`, [userId]);
     await client.query(`delete from profiles where id = $1`, [userId]);
 
     return {
       ok: true,
-      checkins_removed: checkinsRes.rows.length,
+      checkins_removed: checkinsRemoved,
       cafes_transferred: transferred.rowCount ?? 0,
     };
   });

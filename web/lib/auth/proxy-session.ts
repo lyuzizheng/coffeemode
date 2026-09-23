@@ -74,13 +74,12 @@ export async function refreshSessionAndVerify(
     logError({ route: "proxy session refresh", request: req, error: e });
   }
 
-  // Verify the user for the gone-cafe visibility check on the SAME client
-  // (it owns setAll, so a refresh here is persisted). getSession() above
-  // only decodes the session without validating the JWT — passing its
-  // user id to cafeExists() would let a self-signed sb-*-auth-token cookie
-  // impersonate any user for the private-cafe existence probe. Scoped to
-  // cafe GET/HEAD so the cost matches the old baseline (one getUser() per
-  // cafe page view, none elsewhere).
+  // Verify the user on the SAME client (it owns setAll, so a refresh here
+  // is persisted). getSession() above only decodes the session without
+  // validating the JWT — forwarding its unverified user id would let a
+  // self-signed sb-*-auth-token cookie impersonate any user on the cafe
+  // page (BRAWUKA-315). Scoped to cafe GET/HEAD so the cost matches the
+  // baseline (one getUser() per cafe page view, none elsewhere).
   //
   // BRAWUKA-644: the verified result is forwarded to the page on
   // x-verified-user — the page's loadMapSession() reuses it instead of

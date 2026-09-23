@@ -112,9 +112,9 @@ docs/agent/              current state, planned-slice manifest, owner actions
 ### Next unblocked work
 
 ```text
-1. Owner actions (docs/agent/pending-user-actions.md §1–4): Supabase anon key +
-   redirect URLs, Apple/Google provider config, Supabase Postgres provisioning +
-   schema (DATABASE_URL, §2 / #142), Google OAuth, Apple Developer Program.
+1. Owner actions (docs/agent/pending-user-actions.md §1–4): Supabase publishable key +
+   redirect URLs + Google provider (done 2026-09-23, BRAWUKA-680), Apple provider config,
+   Supabase Postgres provisioning + schema (DATABASE_URL, §2 / #142), Apple Developer Program.
 2. image-service residual (§6): both Workers are deployed; what remains is the
    `images.` / `staging-images.cafemood.app` custom domains once the zone is
    live, plus bucket defenses and orphan-cleanup scheduling.
@@ -165,12 +165,12 @@ docs/agent/              current state, planned-slice manifest, owner actions
 - NEXT_PUBLIC_SUPABASE_ANON_KEY not set (only URL + service-role present locally)
 - NEXT_PUBLIC_SITE_URL not set; NEXT_PUBLIC_ALLOWED_HOSTS not configured
 - DATABASE_URL (Supabase main Postgres per 0004 decision 34a) not configured for production yet (#142; local dev uses `docker compose up -d --wait postgres` + `npm run db:migrate`, see `docs/agent/local-dev-stack.md`)
-- Supabase dashboard still needs Apple/Google OAuth provider config
+- Supabase dashboard still needs Apple OAuth provider config (Google done 2026-09-23, BRAWUKA-680)
 - Session-refresh proxy (`web/proxy.ts`) refreshes only when a Supabase session cookie is present; route handlers verify the session via `getUser()` before any Postgres write
 - Postgres pool tuned with configurable `max`, idle/connection timeouts, error handling, and a graceful shutdown hook registered via Next.js `instrumentation.ts`
 - Rate limiting enforces in memory on the single app container (BRAWUKA-378 deleted the Postgres backend outright — a future multi-instance deploy needs a new shared-store decision, see ADR-0006)
 - `next build` warns about custom Cache-Control for `/_next/static/:path*` — intentional for production hashed chunks
-- `/cafes/[id]` shell carries `s-maxage` (DG105); the bypass side is executable since BRAWUKA-184, not a comment: `seo.shellCache` in `web/config/app.yaml` owns TTLs + bypass values, `web/lib/cache-policy.ts` owns the predicates + edge-rule derivation, `web/proxy.ts` stamps `private, no-store` on session-refresh (Set-Cookie) responses and the gone-cafe 404 rewrite, and `deploy/dokploy/cache-rules.json` (drift-pinned by `tests/cafe-shell-cache.test.ts`) owns the edge rule — the future Cloudflare CDN (deploy-vps) must enforce it (vary on Accept-Language since Next strips origin Vary on App Router HTML; bypass on `sb-*` request cookies and Set-Cookie responses; only 200 cacheable). `sitemap.xml` is cached with the same `s-maxage` (DG105/DG107).
+- `/cafes/[id]` shell carries `s-maxage` (DG105); the bypass side is executable since BRAWUKA-184, not a comment: `seo.shellCache` in `web/config/app.yaml` owns TTLs + bypass values, `web/lib/cache-policy.ts` owns the predicates + edge-rule derivation, `web/proxy.ts` stamps `private, no-store` on session-refresh (Set-Cookie) responses, and `deploy/dokploy/cache-rules.json` (drift-pinned by `tests/cafe-shell-cache.test.ts`) owns the edge rule — the future Cloudflare CDN (deploy-vps) must enforce it (vary on Accept-Language since Next strips origin Vary on App Router HTML; bypass on `sb-*` request cookies and Set-Cookie responses; only 200 cacheable). `sitemap.xml` is cached with the same `s-maxage` (DG105/DG107).
 - `maps_share_url` host validation, 10 km nearby-search cap, and 10 MB image-upload cap are active
 - Issue #158 adds the safe orphan-original cleanup: `image-service/scripts/clean-orphan-originals.mjs` (npm run clean:orphan-originals) deletes `original/` objects older than RETENTION_DAYS that lack completion metadata OR are still in the "provision" stage (uploaded but never attached) AND are absent from the `web/scripts/export-live-image-keys.mjs` DB export (BRAWUKA-400 reference-aware: referenced stale-marker keys report `would-keep reason:"referenced"`, never deleted). complete() now REQUIRES stage metadata: the creation flow sends provision + imageUuid (issue #86 pre-target processing); the post-commit attach leg (BRAWUKA-400) re-marks live originals to `checkin` via a metadata-preserving re-PUT, never blocking the committed creation. DRY_RUN=1 default, cursor-paginated, batch-bounded, idempotent, structured JSON output; covered by the images integration suite. Production schedule (export + sweep)/least-privilege creds remain owner actions (#147, #154).
 - Apple Developer Program purchase pending (needed for MapKit JS and Apple live search only; #131)

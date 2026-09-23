@@ -3,7 +3,7 @@
  *
  * Single source of truth for the server-side staging Supabase env triple
  * (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, with the
- * public `NEXT_PUBLIC_*` mirrors accepted for the non-secret URL/anon pair
+ * public `NEXT_PUBLIC_*` mirrors accepted for the non-secret URL/publishable pair
  * only). Consumed by `scripts/agent-qa/session.mjs` (magic-link agent-QA
  * sessions).
  *

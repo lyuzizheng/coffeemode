@@ -8,10 +8,13 @@ import { isValidUUID } from "@shared/uuid";
 
 /**
  * PATCH /api/checkins/[id]
- * Edit the caller's own check-in (scores, policies, note, visited_at).
- * Requires auth. 404 when missing or soft-deleted. 403 when not the author.
- * 400 when the body is invalid. Photos are not edited via this endpoint
- * (creation-time photos are fixed; use a new check-in for new photos).
+ * Edit the caller's own check-in (scores, policies, note, visited_at) and
+ * manage its photos (BRAWUKA-563): `add_photo_ids` are image UUIDs from
+ * /api/images/upload provisioned like create-time photo_ids (422
+ * invalid_photos on a bad id or when the 6-photo cap would be exceeded);
+ * `remove_photo_ids` detach existing photos from the check-in and the cafe
+ * gallery. Requires auth. 404 when missing or soft-deleted. 403 when not
+ * the author. 400 when the body is invalid.
  */
 export const PATCH = apiRoute<{ id: string }>(
   { bucket: "cafes-write", auth: "required", origin: true, route: "PATCH /api/checkins/[id]" },

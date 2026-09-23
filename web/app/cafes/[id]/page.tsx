@@ -36,16 +36,16 @@ import { CafeOwnerControls } from "@/components/cafe/cafe-owner-controls";
 export const dynamic = "force-dynamic";
 
 // React `cache` dedupes the lookup across generateMetadata + the page body
-// within one request. notFound() must fire in generateMetadata: metadata
-// resolves before the HTML shell flushes, which is what commits the real
-// 404 status (DG19). A notFound() thrown only from the page body would be
-// streamed with a 200 status.
+// within one request. notFound() fires in generateMetadata: with no loading
+// boundary on this route (the map-home skeleton is scoped to `/` inside
+// app/(home)/, BRAWUKA-658) metadata resolves before the HTML shell flushes,
+// which commits the real 404 status (DG19). A notFound() thrown only from
+// the page body would be streamed with a 200 status.
 // React `cache` dedupes the viewer lookup across loadCafe + the page body.
-// The proxy already verified the session for the gone-cafe probe and hands
-// it over on x-verified-user (BRAWUKA-644), so loadMapSession costs no
-// getUser() network call on this route. The session is shared with the
-// map-entry loader (DG124): the SSR shell and the app it hydrates into
-// resolve auth identically.
+// The proxy verifies the session and hands it over on x-verified-user
+// (BRAWUKA-644), so loadMapSession costs no getUser() network call on this
+// route. The session is shared with the map-entry loader (DG124): the SSR
+// shell and the app it hydrates into resolve auth identically.
 const loadCafe = cache(async (id: string) => {
   if (!isValidUUID(id)) return null;
   const { user } = await loadMapSession();

@@ -61,3 +61,16 @@ heartbeat:
 runtime-config:
   windowMs: 60000
   maxRequests: 30
+
+# Liveness probe (BRAWUKA-639): public by design — no credentialed caller
+# exists on the infra-probe path, so auth would break Traefik / Docker /
+# deploy polling. The `health` bucket (120/min) bounds per-IP flood on the
+# Cloudflare path only: edge-less callers (`anon:unknown`, i.e. Traefik and
+# Docker healthchecks over container-internal traffic) bypass it via
+# `bypassUnknownClients`, because origin is directly reachable (UFW 80/443
+# open, no CF allowlist) and a shared bucket would let any direct-origin
+# flooder 429 the LB checks into a full outage. Coarse backstop remains the
+# edge 300/min rule (BRAWUKA-237).
+health:
+  windowMs: 60000
+  maxRequests: 120

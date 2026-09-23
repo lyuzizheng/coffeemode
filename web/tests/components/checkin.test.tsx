@@ -171,14 +171,15 @@ describe("CheckinDrawer", () => {
     expect(screen.getAllByText("Set Overall experience to check in")).toHaveLength(1);
   });
 
-  it("hides the photo picker in edit mode and shows the delete control", () => {
+  it("shows the photo picker in edit mode and shows the delete control", () => {
     renderDrawer({
       mode: "edit",
       editCheckinId: CHECKIN,
       initialScores: { overall: 70 },
       isAuthenticated: true,
     });
-    expect(screen.queryByRole("button", { name: "Add photos" })).not.toBeInTheDocument();
+    // BRAWUKA-563: edit manages photos — the picker stays mounted.
+    expect(screen.getByRole("button", { name: "Add photos" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete check-in" })).toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "Edit check-in" })).toBeInTheDocument();
   });
@@ -264,10 +265,10 @@ describe("CheckinDrawer", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog", { name: "Edit check-in" })).toBeInTheDocument();
     });
-    // Edit chrome, not create chrome: delete control in, photo picker out,
-    // and the confirm button saves changes.
+    // Edit chrome, not create chrome: delete control in, photo picker in
+    // (BRAWUKA-563 — edit manages photos), and the confirm button saves changes.
     expect(screen.getByRole("button", { name: "Delete check-in" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Add photos" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add photos" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save changes" })).toBeInTheDocument();
     expect(screen.getByPlaceholderText("What should the next nomad know?")).toHaveValue(
       "Corner seat",
@@ -329,7 +330,7 @@ describe("CheckinDrawer", () => {
     expect(screen.queryByText("Couldn't save your check-in")).not.toBeInTheDocument();
   });
 
-  it("toasts that photos were not saved when a raced 409 converts to PATCH (BRAWUKA-126)", async () => {
+  it("appends staged photos via add_photo_ids when a raced 409 converts to PATCH (BRAWUKA-563)", async () => {
     toastSpy.mockClear();
     globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
       if (url.startsWith("/api/checkins/last")) {
@@ -349,8 +350,8 @@ describe("CheckinDrawer", () => {
         );
     });
 
-    // Stage a photo, then submit: the POST 409s and silently converts to a
-    // PATCH that cannot carry photo_ids.
+    // Stage a photo, then submit: the POST 409s and converts to a PATCH
+    // that carries the upload as add_photo_ids.
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(fileInput, {
       target: { files: [new File(["x"], "p.jpg", { type: "image/jpeg" })] },
@@ -373,17 +374,16 @@ describe("CheckinDrawer", () => {
         expect.objectContaining({ method: "PATCH" }),
       );
     });
-    // The PATCH contract carries no photos — the body must not smuggle them.
     const patchCall = vi
       .mocked(globalThis.fetch)
       .mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PATCH");
-    expect(JSON.parse((patchCall?.[1] as RequestInit).body as string)).not.toHaveProperty(
-      "photo_ids",
-    );
+    expect(JSON.parse((patchCall?.[1] as RequestInit).body as string)).toMatchObject({
+      add_photo_ids: ["img-uuid-1"],
+    });
     await waitFor(
       () => {
         expect(toastSpy).toHaveBeenCalledWith(
-          "Check-in updated — photos weren't saved (they can only be added on the first check-in)",
+          "Check-in saved",
           expect.objectContaining({ timeout: 3000 }),
         );
       },
@@ -391,10 +391,11 @@ describe("CheckinDrawer", () => {
     );
   });
 
-  it("toasts that staged photos were not saved when the revisit probe preempts to edit (BRAWUKA-126)", async () => {
+  it("carries staged photos into the edit when the revisit probe preempts (BRAWUKA-563)", async () => {
     toastSpy.mockClear();
     // A cached probe resolves synchronously on mount, so the preempt fires on
-    // the first render — before the restored photos can mark the form dirty.
+    // the first render — the staged photos seed the edit picker instead of
+    // being dropped.
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     queryClient.setQueryData(["last-checkin", CAFE], {
       checkin: {
@@ -402,6 +403,7 @@ describe("CheckinDrawer", () => {
         scores: { overall: 90 },
         max_stay: null,
         note: null,
+        photos: [],
         visited_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
       },
       revisit_window_hours: 24,
@@ -424,13 +426,15 @@ describe("CheckinDrawer", () => {
     await waitFor(() => {
       expect(screen.getByRole("dialog", { name: "Edit check-in" })).toBeInTheDocument();
     });
-    expect(toastSpy).toHaveBeenCalledWith(
-      "Switched to updating today's check-in — photos can only be added on the first check-in, so they weren't saved",
-      expect.objectContaining({ timeout: 4000 }),
+    // The staged tile survived the preempt — one photo tile plus the add button.
+    expect(screen.getByRole("button", { name: "Remove photo" })).toBeInTheDocument();
+    expect(toastSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("photos"),
+      expect.anything(),
     );
   });
 
-  it("does not upload restored draft photos when a preempted edit submits (BRAWUKA-269)", async () => {
+  it("uploads restored draft photos into add_photo_ids when a preempted edit submits (BRAWUKA-563)", async () => {
     vi.mocked(uploadPhoto).mockClear();
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     queryClient.setQueryData(["last-checkin", CAFE], {
@@ -439,6 +443,7 @@ describe("CheckinDrawer", () => {
         scores: { overall: 90 },
         max_stay: null,
         note: null,
+        photos: [],
         visited_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
       },
       revisit_window_hours: 24,
@@ -469,21 +474,27 @@ describe("CheckinDrawer", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
+    // The staged photo uploads at publish time, then the PATCH carries it.
+    await waitFor(() => {
+      expect(vi.mocked(uploadPhoto)).toHaveBeenCalled();
+    });
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalledWith(
         `/api/checkins/${CHECKIN}`,
         expect.objectContaining({ method: "PATCH" }),
       );
     });
-    // The PATCH contract drops photos — uploading them first would only
-    // orphan the objects in R2.
-    expect(vi.mocked(uploadPhoto)).not.toHaveBeenCalled();
+    const patchCall = vi
+      .mocked(globalThis.fetch)
+      .mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PATCH");
+    expect(JSON.parse((patchCall?.[1] as RequestInit).body as string)).toMatchObject({
+      add_photo_ids: ["img-uuid-1"],
+    });
   });
 
-  it("closes a preempted edit without the discard confirm even when draft photos were restored (BRAWUKA-395)", async () => {
-    // Restored draft photos must not seed the edit form — the PATCH contract
-    // cannot save them, and a hidden staged count would mark the edit dirty
-    // forever, forcing the discard dialog on every close attempt.
+  it("guards a preempted edit behind the discard confirm when draft photos were restored (BRAWUKA-563)", async () => {
+    // Restored draft photos seed the edit picker now — the photo change is
+    // real unsaved work, so closing asks before discarding it.
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     queryClient.setQueryData(["last-checkin", CAFE], {
       checkin: {
@@ -491,6 +502,7 @@ describe("CheckinDrawer", () => {
         scores: { overall: 90 },
         max_stay: null,
         note: null,
+        photos: [],
         visited_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
       },
       revisit_window_hours: 24,
@@ -516,27 +528,64 @@ describe("CheckinDrawer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
 
     await waitFor(() => {
-      expect(onOpenChange).toHaveBeenCalledWith(false);
+      expect(screen.getByText("Discard this check-in?")).toBeInTheDocument();
     });
-    expect(screen.queryByText("Discard this check-in?")).not.toBeInTheDocument();
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("does not toast the photo notice when a preempted create had no staged photos", async () => {
-    toastSpy.mockClear();
-    const visited_at = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-    globalThis.fetch = vi.fn().mockImplementation(async () => jsonResponse(200, {
-        checkin: { id: CHECKIN, scores: { overall: 90 }, visited_at },
-        revisit_window_hours: 24,
-      }));
-    renderDrawer({ isAuthenticated: true });
+  it("seeds attached photos as removable tiles in edit mode (BRAWUKA-563)", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData(["last-checkin", CAFE], {
+      checkin: {
+        id: CHECKIN,
+        scores: { overall: 90 },
+        max_stay: null,
+        note: null,
+        photos: [
+          {
+            id: "img-existing-1",
+            original: "original/img-existing-1.webp",
+            card: "card/img-existing-1.webp",
+            thumbnail: "thumbnail/img-existing-1.webp",
+            w: 800,
+            h: 600,
+            at: "2026-09-01T00:00:00.000Z",
+          },
+        ],
+        visited_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+      },
+      revisit_window_hours: 24,
+    });
+    globalThis.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (init?.method === "PATCH") {
+        return Promise.resolve(jsonResponse(200, { cafeId: CAFE }));
+      }
+      return Promise.resolve(jsonResponse(200, {}));
+    });
+    renderDrawer({ isAuthenticated: true }, queryClient);
 
     await waitFor(() => {
       expect(screen.getByRole("dialog", { name: "Edit check-in" })).toBeInTheDocument();
     });
-    expect(toastSpy).not.toHaveBeenCalledWith(
-      expect.stringContaining("photos"),
-      expect.anything(),
-    );
+    // The attached photo renders as a tile with a remove affordance.
+    const remove = screen.getByRole("button", { name: "Remove photo" });
+    fireEvent.click(remove);
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        `/api/checkins/${CHECKIN}`,
+        expect.objectContaining({ method: "PATCH" }),
+      );
+    });
+    const patchCall = vi
+      .mocked(globalThis.fetch)
+      .mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PATCH");
+    expect(JSON.parse((patchCall?.[1] as RequestInit).body as string)).toMatchObject({
+      remove_photo_ids: ["img-existing-1"],
+    });
   });
 
   it("sends one idempotency key per open and reuses it on inline retry (DG61)", async () => {
@@ -833,6 +882,7 @@ describe("resolveRevisitCheckin", () => {
     scores: {},
     max_stay: null,
     note: null,
+    photos: [],
     visited_at,
   });
 

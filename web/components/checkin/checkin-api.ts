@@ -21,16 +21,24 @@ export async function updateCheckin({
   scores,
   maxStay,
   note,
+  addPhotoIds,
+  removePhotoIds,
 }: {
   editCheckinId: string;
   scores: CheckInScores;
   maxStay: MaxStay | null;
   note: string;
+  /** Edit-mode photo deltas (BRAWUKA-563): fresh upload ids to attach,
+   *  existing image ids to detach. */
+  addPhotoIds?: string[];
+  removePhotoIds?: string[];
 }) {
   const body: Record<string, unknown> = {
     scores,
     max_stay: maxStay,
     note: note.trim() ? note.trim() : null,
+    ...(addPhotoIds && addPhotoIds.length > 0 ? { add_photo_ids: addPhotoIds } : {}),
+    ...(removePhotoIds && removePhotoIds.length > 0 ? { remove_photo_ids: removePhotoIds } : {}),
   };
   return apiFetch(`/api/checkins/${editCheckinId}`, {
     method: "PATCH",
@@ -44,11 +52,13 @@ async function handleConflictRevisit({
   scores,
   maxStay,
   note,
+  uploadedIds,
 }: {
   conflict: ApiError;
   scores: CheckInScores;
   maxStay: MaxStay | null;
   note: string;
+  uploadedIds: string[];
 }) {
   const existingId = conflict.details?.existing_checkin_id;
   if (typeof existingId === "string" && existingId.length > 0) {
@@ -57,10 +67,10 @@ async function handleConflictRevisit({
       scores,
       maxStay,
       note,
+      // PATCH accepts photo deltas (BRAWUKA-563): the staged uploads append
+      // to the existing check-in instead of being dropped (BRAWUKA-126).
+      addPhotoIds: uploadedIds,
     });
-    // PATCH carries no photos (creation-time contract): photo_ids staged in
-    // the POST body are dropped here, and the caller must say so
-    // (BRAWUKA-126).
     return { checkin, convertedToEdit: true };
   }
   throw conflict;
@@ -98,7 +108,7 @@ export async function createCheckin({
     return { checkin, convertedToEdit: false };
   } catch (cause) {
     if (cause instanceof ApiError && cause.status === 409) {
-      return handleConflictRevisit({ conflict: cause, scores, maxStay, note });
+      return handleConflictRevisit({ conflict: cause, scores, maxStay, note, uploadedIds });
     }
     throw cause;
   }

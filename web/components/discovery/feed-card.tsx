@@ -161,6 +161,7 @@ function OwnCardEditEntry({
           initialScores={checkin.scores}
           initialMaxStay={checkin.max_stay}
           initialNote={checkin.note}
+          existingPhotos={checkin.photos}
         />
       )}
     </>

@@ -29,7 +29,7 @@ export interface SearchFilters {
  * (`search-params.ts`), in the API's check order. The SSR page maps these
  * to error-state copy; the API maps them to 400 `invalid_request`.
  */
-export type SearchParamError = "lat" | "lng" | "limit" | "city";
+export type SearchParamError = "lat" | "lng" | "lat_lng" | "limit" | "city";
 
 export interface SearchResultItem {
   id: string;

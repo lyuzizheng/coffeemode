@@ -3,6 +3,7 @@ import { AuthCallbackError } from "@/components/auth/auth-callback-error";
 import { CafeCreationTrigger } from "@/components/cafe/cafe-creation-sheet";
 import { OnboardingHome } from "@/components/onboarding/onboarding-home";
 import { MapSurface } from "@/components/map/map-surface";
+import { findCity } from "@/lib/cities";
 
 // Home = the map app (map-home, BRAWUKA-311): a full-viewport OpenFreeMap
 // surface with the discovery sheet/sidebar bound to it. The onboarding
@@ -28,7 +29,11 @@ export default async function HomePage({
   // First-visit onboarding (spec 0001 §Onboarding, DG114–DG123): the shared
   // loader resolves session + profile + detected city + starting center
   // (profile city → last location → detected city → configured default).
-  const entry = await loadMapEntry();
+  // ?city= deep link (BRAWUKA-561): an explicit launch city outranks every
+  // stored/profile/detected city — it resolves the starting center like the
+  // /cafes/[id] override and suppresses the welcome card like ?q=.
+  const urlCity = findCity(typeof params.city === "string" ? params.city : null);
+  const entry = await loadMapEntry(urlCity?.center);
   // Profile-guide deep links (BRAWUKA-504): ?locate=1 primes the locate
   // button's pulse, ?create=1 opens the creation sheet on arrival.
   const locateHint = params.locate === "1";
@@ -59,7 +64,8 @@ export default async function HomePage({
           variant="fab"
         />
       }
-      suppressCard={searchDeepLink}
+      suppressCard={searchDeepLink || urlCity !== null}
+      city={urlCity?.id}
       accountInitial={entry.accountInitial}
       mapkitConfigured={entry.mapkitConfigured}
       locateHint={locateHint}

@@ -337,14 +337,36 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(counter.rows[0].likes_count).toBe(0);
     });
 
-    it("throws CheckInNotFoundError for a missing or soft-deleted check-in", async () => {
-      await expect(
-        toggleCheckInLike(U2, "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a00"),
-      ).rejects.toBeInstanceOf(CheckInNotFoundError);
+    it("404s a non-owner like on a private cafe's check-in (BRAWUKA-634)", async () => {
+      await setCafeVisibility(CAFE_A, U1, "private");
 
-      await dbClient.query("update checkins set deleted_at = now() where id = $1", [CHECKIN_A1]);
+      // U2 is neither the check-in author nor the cafe creator: the
+      // viewer-scoped gate filters the CTE, so the toggle 404s and writes
+      // nothing instead of leaking the check-in's existence via a like.
       await expect(toggleCheckInLike(U2, CHECKIN_A1)).rejects.toBeInstanceOf(CheckInNotFoundError);
+      const { rows } = await dbClient.query(
+        "select count(*)::int as n from checkin_likes where checkin_id = $1",
+        [CHECKIN_A1],
+      );
+      expect(rows[0].n).toBe(0);
+
+      // Owner still passes the gate: the self-like rule (not 404) fires.
+      await expect(toggleCheckInLike(U1, CHECKIN_A1)).rejects.toBeInstanceOf(SelfLikeError);
+
+      // Back to public: the stranger can like again.
+      await setCafeVisibility(CAFE_A, U1, "public");
+      const liked = await toggleCheckInLike(U2, CHECKIN_A1);
+      expect(liked).toEqual({ liked: true, likes_count: 1 });
     });
+
+     it("throws CheckInNotFoundError for a missing or soft-deleted check-in", async () => {
+       await expect(
+         toggleCheckInLike(U2, "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a00"),
+       ).rejects.toBeInstanceOf(CheckInNotFoundError);
+ 
+       await dbClient.query("update checkins set deleted_at = now() where id = $1", [CHECKIN_A1]);
+       await expect(toggleCheckInLike(U2, CHECKIN_A1)).rejects.toBeInstanceOf(CheckInNotFoundError);
+     });
   });
 
   describeDb("checkin_likes DB invariants", () => {

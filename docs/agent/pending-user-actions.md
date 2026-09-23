@@ -10,25 +10,26 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
 ## 1. Supabase (auth provider) — unlocks auth round-trip
 
-- [~] Project exists; `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` are in `~/.zshrc`
+- [x] Project exists; `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` are in `~/.zshrc` (owner 2026-09-23: staging project live)
 - [ ] Set public site / allowlist env vars from `web/.env.example`:
   - `NEXT_PUBLIC_SITE_URL` (required, e.g. `http://localhost:3000`, no trailing slash)
   - `NEXT_PUBLIC_ALLOWED_HOSTS` (optional, comma-separated, e.g. `localhost:3001`)
-- [ ] Copy the **anon public key**: Dashboard → Project Settings → API Keys → `anon public` → into `web/.env.local` as `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- [ ] Redirect URLs allowlist: Dashboard → Authentication → URL Configuration → Redirect URLs → add `${NEXT_PUBLIC_SITE_URL}/auth/callback` and the `/auth/callback` URL for every host in `NEXT_PUBLIC_ALLOWED_HOSTS`. At minimum:
+- [x] Copy the **publishable public key** (new-style `sb_publishable_…`; env/secret names keep the legacy `*_ANON_KEY` naming — supabase-js 2.112 / ssr 0.12 compatible, no code change): Dashboard → Project Settings → API Keys → publishable key (formerly `anon public`) → into `web/.env.local` as `NEXT_PUBLIC_SUPABASE_ANON_KEY` (owner 2026-09-23: staging key in place)
+- [x] Redirect URLs allowlist (owner 2026-09-23: staging + local callback URLs in place): Dashboard → Authentication → URL Configuration → Redirect URLs → add `${NEXT_PUBLIC_SITE_URL}/auth/callback` and the `/auth/callback` URL for every host in `NEXT_PUBLIC_ALLOWED_HOSTS`. At minimum:
   - `${NEXT_PUBLIC_SITE_URL}/auth/callback` (e.g. `http://localhost:3000/auth/callback` or `https://<production-domain>/auth/callback`)
   - `http://localhost:3001/auth/callback` (if you add `localhost:3001` to `NEXT_PUBLIC_ALLOWED_HOSTS`)
   - any staging/preview domains you add to `NEXT_PUBLIC_ALLOWED_HOSTS`
-- [ ] Enable **Google** provider: Dashboard → Authentication → Providers → Google → paste Google OAuth client id/secret (from item 3 below)
+- [x] Enable **Google** provider: Dashboard → Authentication → Providers → Google → paste Google OAuth client id/secret (from item 3 below) (owner 2026-09-23: enabled on staging)
 - [ ] Enable **Apple** provider later (needs item 4)
 
 ## 1a. Staging journey secrets (GitHub Environment `staging`) — unlocks post-merge staging verification
 
 - [x] Ephemeral runner-local Postgres (`postgis/postgis:16-3.4`) started via `docker compose -f ../docker-compose.yml up -d --wait postgres`, with `STAGING_DATABASE_URL` hardcoded to `postgresql://coffeemode:coffeemode@localhost:5432/coffeemode` in `.github/workflows/staging-journey.yml` (BRAWUKA-525). Dokploy CI Postgres (`coffeemode-ci-postgres`) and Cloudflare Tunnel (`ci-db.cafemood.app`) path superseded and scheduled for decommission.
-- [x] GitHub Environment `staging` secrets cleanup: remove `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`, and `STAGING_DATABASE_URL` (no longer needed by staging-journey). Retain `SUPABASE_URL` (= `https://ojujmjewtbquiddswyrg.supabase.co`) and `SUPABASE_ANON_KEY` for auth smoke checks.
+- [x] GitHub Environment `staging` secrets cleanup: remove `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`, and `STAGING_DATABASE_URL` (no longer needed by staging-journey). Retain `SUPABASE_URL` (= `https://ojujmjewtbquiddswyrg.supabase.co`) and `SUPABASE_ANON_KEY` for auth smoke checks. (`SUPABASE_ANON_KEY` value updated 2026-09-23 to the new-style publishable key — secret name unchanged.)
 - [ ] (Optional, for real-session journey suites) Staging Supabase project dashboard → Settings → API: copy `service_role` key into GitHub Environment `staging` as `SUPABASE_SERVICE_ROLE_KEY`. (Staging CI verification currently passes using `SUPABASE_ANON_KEY` for auth smoke verification.)
-- [ ] Redirect URLs allowlist on the **staging** project (spec 0010 §1): `http://localhost:3000/auth/callback` (local dev against staging auth) + `https://staging.cafemood.app/auth/callback`.
-- [ ] Confirm Google provider is enabled on the **staging** project (item 3's client works for both; the Supabase callback `https://ojujmjewtbquiddswyrg.supabase.co/auth/v1/callback` must be in the Google client's authorized redirect URIs).
+- [x] Redirect URLs allowlist on the **staging** project (spec 0010 §1): `http://localhost:3000/auth/callback` (local dev against staging auth) + `https://staging.cafemood.app/auth/callback`. (owner 2026-09-23: done)
+- [x] Confirm Google provider is enabled on the **staging** project (item 3's client works for both; the Supabase callback `https://ojujmjewtbquiddswyrg.supabase.co/auth/v1/callback` must be in the Google client's authorized redirect URIs). (owner 2026-09-23: done)
+- [ ] Dokploy staging app env still needs the publishable key by hand (2026-09-23, Dokploy MCP unreachable): set `NEXT_PUBLIC_SUPABASE_ANON_KEY` to the `sb_publishable_…` value in the Dokploy UI and rebuild — `NEXT_PUBLIC_*` is inlined into the client bundle.
 - [ ] `production` environment: owner (`lyuzizheng`) is the required reviewer (already set); prod secrets land there only at promotion time, never before.
 
 ## 2. Postgres (primary database — Supabase, per 0004 decision 34a, owner 2026-08-28)
@@ -39,14 +40,14 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 - [x] ~~Put the pooled connection string into the VPS env as `DATABASE_URL`~~ Superseded 2026-09-20 (BRAWUKA-507): staging app data moved off Supabase to Dokploy VPS Postgres `coffeemode-staging-db`; `DATABASE_URL` now points at the `dokploy-network` internal `:5432` (`sslmode=disable`). Prod still needs the Supabase pooled string when it deploys (BRAWUKA-500).
 - [~] 已迁 VPS cron: nightly recompute 与 Helpful ranking 快照已迁至 Dokploy 定时任务（02:00 UTC，BRAWUKA-475），DATABASE_URL 仅在 VPS env 保留，无需进 GitHub secrets。**2026-09-21（BRAWUKA-598）：调度已停用** —— 它挂在从未部署过的 `coffeemode-web-prod` 上（BRAWUKA-500，Owner 已决定暂不部署），Dokploy 每次都在容器查找阶段中止（`Container not found`），命令根本没执行。prod 容器起来后随 BRAWUKA-500 一并重新启用；prod env 另缺 `DATABASE_URL` 与 `MULTICA_AUTOPILOT_WEBHOOK_URL`，两者都是该 job 的必需项
 - [x] 定时任务失败告警自愈接线（BRAWUKA-476）：Dokploy env 配置 `MULTICA_AUTOPILOT_WEBHOOK_URL`，并在 Dokploy Notifications 挂载 Custom Webhook（兜底平台与构建异常）；非零退出时 POST 触发 CoffeeMode 运维告警自愈 autopilot 自动建单
-- [x] Verify product tables are NOT reachable via the Supabase Data API (PostgREST) with the browser anon key — all application tables have RLS enabled and grants revoked from `anon` & `authenticated` (verified via `scripts/devops/provision-supabase.sh`)
+- [x] Verify product tables are NOT reachable via the Supabase Data API (PostgREST) with the browser publishable key — all application tables have RLS enabled and grants revoked from `anon` & `authenticated` (verified via `scripts/devops/provision-supabase.sh`)
 - [ ] Free-tier cliffs: 500MB DB then read-only (seed negligible today — 14 cafes; re-measure before any bulk import), 5GB egress (images stay on R2), no backups — schedule `pg_dump` to R2 as the cheap mitigation
 
 ## 3. Google OAuth (Sign in with Google) — unlocks real login
 
-- [ ] console.cloud.google.com → create/select project → APIs & Services → OAuth consent screen (External, test users OK for now)
-- [ ] Credentials → Create OAuth client ID → **Web application** → Authorized redirect URI: paste the Supabase Auth callback URL shown in Dashboard → Authentication → Providers → Google (e.g. `https://<project-ref>.supabase.co/auth/v1/callback`)
-- [ ] Put client id/secret into the Supabase dashboard (item 1) — not into the repo
+- [x] console.cloud.google.com → project + OAuth consent screen (External, test users OK for now) (owner 2026-09-23: done)
+- [x] Credentials → OAuth client ID (**Web application**) → Authorized redirect URI carries the Supabase Auth callback URL from Dashboard → Authentication → Providers → Google (e.g. `https://<project-ref>.supabase.co/auth/v1/callback`) (owner 2026-09-23: done)
+- [x] Put client id/secret into the Supabase dashboard (item 1) — not into the repo (owner 2026-09-23: provider enabled on staging)
 
 ## 4. Apple Sign-In — deferred until Apple Developer Program
 
@@ -60,8 +61,8 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
 ## 5a. Cloudflare Turnstile widget + keys — for anonymous `POST /api/places/resolve` (BRAWUKA-239)
 
-- [ ] Cloudflare dashboard → Turnstile → Add widget → type Managed (invisible mode is set client-side per surface), domains: `cafemood.app`, `staging.cafemood.app`, `localhost`, `127.0.0.1` (free, unlimited validations; if staging sits behind Cloudflare Access, add the Access login host too or the challenge cannot load there)
-- [ ] Put the secret into the app env as `TURNSTILE_SECRET_KEY` (server-only; VPS env / secrets manager — never `NEXT_PUBLIC_*`, never chat/docs/repo) and the sitekey as `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (rebuild after setting — Next inlines it into the client bundle). Dev/test without keys skip verification; production without `TURNSTILE_SECRET_KEY` fails closed (403 `bot_verification_failed`)
+- [x] Create the Turnstile widget (done 2026-09-23 via Cloudflare API, BRAWUKA-680): widget `cafemood_places_resolve`, Managed mode, domains `cafemood.app` / `staging.cafemood.app` / `www.cafemood.app` / `localhost` / `127.0.0.1` / `brabalawuka.cloudflareaccess.com` (free, unlimited validations; the Access login host is included so the challenge loads behind Cloudflare Access)
+- [ ] Put the secret into the app env as `TURNSTILE_SECRET_KEY` (server-only; VPS env / secrets manager — never `NEXT_PUBLIC_*`, never chat/docs/repo) and the sitekey as `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (rebuild after setting — Next inlines it into the client bundle). The widget above already exists — only this env fill remains (Dokploy MCP unreachable 2026-09-23, needs the owner in the Dokploy UI; `TURNSTILE_SECRET_KEY` / `NEXT_PUBLIC_TURNSTILE_SITE_KEY` presence in the staging env unconfirmed). Dev/test without keys skip verification; production without `TURNSTILE_SECRET_KEY` fails closed (403 `bot_verification_failed`)
 - [ ] Verify: anonymous `POST /api/places/resolve` without/forged token → 403; real browser link-import flow → 200
 
 **Only remaining owner item for the POI service** (2026-09-12, BRAWUKA-222): the four
@@ -79,6 +80,7 @@ so a key restricted to the legacy Places API would 403 every live search.
 ## 6. image-service deploy
 
 - [x] Create R2 bucket and S3 API token for image uploads (`coffeemode-images-prod` and `coffeemode-images-staging` provisioned in APAC with CORS configured)
+  - The CORS origins were provisioned pre-rename as `coffeemode.app` / `staging.coffeemode.app`, so the 2026-09-14 rename to `cafemood.app` silently broke every browser presigned PUT (`403 CORS not configured for this bucket`) — BRAWUKA-560. Corrected 2026-09-23 on both buckets to `cafemood.app`, `www.cafemood.app`, `staging.cafemood.app`, `localhost:3000`. `scripts/devops/bootstrap.sh` now verifies the CORS API response and aborts on rejection instead of discarding it with `|| true`.
 - [x] Set the per-environment values in `image-service/wrangler.toml` `[env.production]` / `[env.staging]` (the top-level `[vars]` stay as the local-dev defaults and are never deployed)
 - [x] Deployed image-service (workers `image-service-prod` / `image-service-staging`; redeploys go through the guarded `npm run deploy -- --env staging|production`):
   - Secrets installed via Cloudflare Worker bindings (`IMAGE_SERVICE_TOKEN`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`)

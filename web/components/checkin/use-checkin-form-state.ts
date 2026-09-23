@@ -56,6 +56,10 @@ export interface UseCheckinFormStateOptions {
   initialMaxStay?: MaxStay | null;
   initialNote?: string | null;
   initialPhotos?: PhotoUpload[];
+  /** Photos already attached to the check-in being edited (BRAWUKA-563) —
+   *  seeded into the picker as done tiles; the submit diffs them against
+   *  the surviving tiles to build add/remove_photo_ids. */
+  existingPhotos?: { id: string; thumbnail: string }[];
   /** DG92: navigation-prompt-only caption under the cafe name (default off). */
   promptCaption?: boolean;
   isAuthenticated?: boolean;
@@ -64,12 +68,6 @@ export interface UseCheckinFormStateOptions {
   lastCheckinLoaded?: boolean;
   onClose: () => void;
   onDirtyChange: (dirty: boolean) => void;
-  /**
-   * Reports the staged photo count synchronously from inside the photo
-   * setter — the drawer's preempt check runs on render and cannot wait for
-   * an effect to learn photos were just staged (BRAWUKA-126).
-   */
-  onStagedPhotosChange?: (count: number) => void;
 }
 
 function useCheckinLifecycle({
@@ -80,6 +78,7 @@ function useCheckinLifecycle({
   note,
   setNote,
   photos,
+  photosDirty,
   showSignInGate,
 }: {
   options: UseCheckinFormStateOptions;
@@ -89,6 +88,7 @@ function useCheckinLifecycle({
   note: string;
   setNote: (val: string) => void;
   photos: PhotoUpload[];
+  photosDirty: boolean;
   showSignInGate: boolean;
 }) {
   const isEdit = options.mode === "edit";
@@ -109,7 +109,7 @@ function useCheckinLifecycle({
     scoresState,
     maxStay,
     note,
-    photosLength: photos.length,
+    photosDirty,
     initialScores: options.initialScores,
     initialMaxStay: options.initialMaxStay,
     initialNote: options.initialNote,
@@ -151,6 +151,18 @@ export function useCheckinFormState(options: UseCheckinFormStateOptions) {
   });
   const { photos, showSignInGate } = submit;
 
+  // Edit-mode dirty check (BRAWUKA-563): a photo change is any tile whose id
+  // is not an existing image id (added) or any existing id whose tile is
+  // gone (removed). Create keeps the old "any staged photo" rule.
+  const existingIds = useMemo(
+    () => new Set((options.existingPhotos ?? []).map((p) => p.id)),
+    [options.existingPhotos],
+  );
+  const photosDirty = isEdit
+    ? photos.some((p) => !existingIds.has(p.id)) ||
+      (options.existingPhotos ?? []).some((p) => !photos.some((t) => t.id === p.id))
+    : photos.length > 0;
+
   const repeat = useCheckinLifecycle({
     options,
     scoresState,
@@ -159,6 +171,7 @@ export function useCheckinFormState(options: UseCheckinFormStateOptions) {
     note,
     setNote,
     photos,
+    photosDirty,
     showSignInGate,
   });
 

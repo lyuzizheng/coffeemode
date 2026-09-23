@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Drawer, toast } from "@heroui/react";
+import { useCallback, useState } from "react";
+import { Button, Drawer } from "@heroui/react";
 import { useTranslations } from "next-intl";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { CheckinForm, CHECKIN_RESUME_PARAM } from "./checkin-form";
@@ -28,6 +28,8 @@ interface CheckinDrawerProps {
   initialNote?: string | null;
   /** Restored sign-in gate draft photos (DG66) — staged entries re-upload at publish. */
   initialPhotos?: PhotoUpload[];
+  /** Photos already attached to the check-in being edited (BRAWUKA-563). */
+  existingPhotos?: { id: string; thumbnail: string }[];
   isAuthenticated?: boolean;
   /** DG92: the warm caption under the cafe name is scoped to opens from the
       navigation prompt (BRAWUKA-5) — every other entry point leaves it off. */
@@ -83,47 +85,6 @@ function useRevisitPreempt({
     preempted: Boolean(preempt),
     scope,
   };
-}
-
-/**
- * A preempted create drops whatever photos were staged — the picker unmounts
- * with the form remount. The staged count arrives synchronously through the
- * returned callback (an effect would lose the preempt race), and the notice
- * fires once per drawer open (BRAWUKA-126).
- */
-function usePhotoDropNotice({
-  scope,
-  preempted,
-  initialPhotos,
-}: {
-  scope: string | null;
-  preempted: boolean;
-  initialPhotos?: PhotoUpload[];
-}) {
-  const t = useTranslations("checkIn");
-  const stagedCountRef = useRef(0);
-  const notifiedRef = useRef(false);
-  const scopeRef = useRef<string | null>(null);
-
-  // Declared before the notice effect so a scope change resets first.
-  useEffect(() => {
-    if (scope !== scopeRef.current) {
-      scopeRef.current = scope;
-      stagedCountRef.current = initialPhotos?.length ?? 0;
-      notifiedRef.current = false;
-    }
-  }, [scope, initialPhotos]);
-
-  useEffect(() => {
-    if (preempted && stagedCountRef.current > 0 && !notifiedRef.current) {
-      notifiedRef.current = true;
-      toast(t("photosNotSavedOnRevisit"), { timeout: 4000 });
-    }
-  }, [preempted, t]);
-
-  return useCallback((count: number) => {
-    stagedCountRef.current = count;
-  }, []);
 }
 
 function CheckinDiscardDialog({
@@ -241,7 +202,6 @@ interface DrawerSurfaceProps {
   detents: DrawerDetents;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onStagedPhotosChange: (count: number) => void;
 }
 
 /** The dialog panel: detent handle (mobile only), form, and discard dialog. */
@@ -252,7 +212,6 @@ function CheckinDrawerDialog({
   isOpen,
   isDesktop,
   onOpenChange,
-  onStagedPhotosChange,
 }: DrawerSurfaceProps & { isDesktop: boolean }) {
   const t = useTranslations("checkIn");
 
@@ -272,9 +231,6 @@ function CheckinDrawerDialog({
         />
       )}
       {isOpen && (
-        /* Edit-mode PATCH cannot save photos — seeding restored draft
-           photos into an edit would hide them behind the absent picker
-           and drop them silently on save (BRAWUKA-395 P2-2). */
         <CheckinForm
           key={state.formKey}
           cafeId={props.cafeId}
@@ -284,7 +240,12 @@ function CheckinDrawerDialog({
           initialScores={props.initialScores ?? state.revisit?.scores}
           initialMaxStay={props.initialMaxStay ?? state.revisit?.max_stay ?? null}
           initialNote={props.initialNote ?? state.revisit?.note ?? null}
-          initialPhotos={state.effectiveMode === "edit" ? undefined : props.initialPhotos}
+          initialPhotos={props.initialPhotos}
+          existingPhotos={
+            state.effectiveMode === "edit"
+              ? props.existingPhotos ?? state.revisit?.photos
+              : undefined
+          }
           promptCaption={props.promptCaption}
           isAuthenticated={props.isAuthenticated}
           lastCheckin={state.lastCheckinQuery.data?.checkin ?? null}
@@ -292,7 +253,6 @@ function CheckinDrawerDialog({
           lastCheckinLoaded={state.lastCheckinQuery.isSuccess}
           onClose={() => onOpenChange(false)}
           onDirtyChange={state.setIsDirty}
-          onStagedPhotosChange={onStagedPhotosChange}
         />
       )}
 
@@ -316,7 +276,6 @@ function CheckinDrawerSurface({
   isOpen,
   onOpenChange,
   handleCloseAttempt,
-  onStagedPhotosChange,
 }: DrawerSurfaceProps & { handleCloseAttempt: (nextOpen: boolean) => void }) {
   // checkin-system-v1 §2: bottom sheet on mobile, a 420px right-side panel
   // at ≥1024px — same content, single column.
@@ -341,7 +300,6 @@ function CheckinDrawerSurface({
             isOpen={isOpen}
             isDesktop={isDesktop}
             onOpenChange={onOpenChange}
-            onStagedPhotosChange={onStagedPhotosChange}
           />
         </Drawer.Content>
       </Drawer.Backdrop>
@@ -357,11 +315,6 @@ export function CheckinDrawer(props: CheckinDrawerProps) {
     mode,
     isAuthenticated,
     editCheckinId,
-  });
-  const onStagedPhotosChange = usePhotoDropNotice({
-    scope: state.scope,
-    preempted: state.preempted,
-    initialPhotos: props.initialPhotos,
   });
   const handleCloseAttempt = useCallback(
     (nextOpen: boolean) => {
@@ -387,7 +340,6 @@ export function CheckinDrawer(props: CheckinDrawerProps) {
       isOpen={isOpen}
       onOpenChange={onOpenChange}
       handleCloseAttempt={handleCloseAttempt}
-      onStagedPhotosChange={onStagedPhotosChange}
     />
   );
 }

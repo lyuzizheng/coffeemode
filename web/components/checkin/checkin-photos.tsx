@@ -121,8 +121,10 @@ export function CheckinPhotos({
       // committed array — the hard bound when a pick still slipped past the
       // reservation. Dropped entries' object URLs are revoked (idempotent,
       // safe under StrictMode's double-invoked updater).
+      let keptCount = toUpload.length;
       onChange((prev) => {
         const kept = mappedEntries.slice(0, Math.max(0, maxPhotos - prev.length));
+        keptCount = kept.length;
         for (const dropped of mappedEntries.slice(kept.length)) {
           URL.revokeObjectURL(dropped.previewUrl);
         }
@@ -136,8 +138,19 @@ export function CheckinPhotos({
         return;
       }
 
+      // Yield to microtasks so React flushes the functional updater to compute
+      // keptCount before uploads begin (BRAWUKA-579).
+      await Promise.resolve();
+
+      if (keptCount < mappedEntries.length) {
+        committedCountRef.current -= mappedEntries.length - keptCount;
+      }
+
+      // Clamp uploads to the entries actually kept by the capacity clamp to avoid
+      // orphan uploads in object storage for discarded entries (BRAWUKA-579).
+      const uploadable = toUpload.slice(0, keptCount);
       await Promise.all(
-        toUpload.map(async (file, idx) => {
+        uploadable.map(async (file, idx) => {
           const id = mappedEntries[idx].id;
           try {
             const imageUuid = await uploadPhoto(file);

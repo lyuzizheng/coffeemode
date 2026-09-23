@@ -178,14 +178,6 @@ function ResultsSection({
           {t("result_count", { count: response.total_count })}
         </p>
       )}
-      {response.results.length === 0 && hasActiveFilters && (
-        <div className="flex flex-col gap-1 py-2">
-          <p className="font-display text-md font-bold text-foreground">
-            {t("no_match_filters")}
-          </p>
-          <p className="text-sm text-muted">{t("loosen_filters")}</p>
-        </div>
-      )}
       <SearchResultsList
         response={response}
         externalSources={externalSources}
@@ -193,6 +185,7 @@ function ResultsSection({
         variant="results"
         linkResults
         externalSearchLinks={{ q: externalQuery }}
+        hasActiveFilters={hasActiveFilters}
       />
     </>
   );

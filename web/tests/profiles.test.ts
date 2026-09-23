@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { profileFromUser, upsertProfile } from "@/lib/auth/profiles";
+import {
+  profileFromUser,
+  sanitizeAvatarUrl,
+  upsertProfile,
+} from "@/lib/auth/profiles";
+import { appConfig } from "@/lib/config";
 
 describe("profileFromUser", () => {
   it("prefers full_name, then falls back through the metadata chain", () => {
@@ -28,18 +33,82 @@ describe("profileFromUser", () => {
     expect(profileFromUser({ id: "u1" }).displayName).toBe("A nomad");
   });
 
-  it("picks avatar_url over picture", () => {
+  it("truncates an overlong provider display name to the product cap", () => {
+    const max = appConfig.profile.displayNameMaxChars;
+    const long = "x".repeat(max + 50);
+    expect(
+      profileFromUser({ id: "u1", user_metadata: { full_name: long } })
+        .displayName,
+    ).toBe("x".repeat(max));
+  });
+
+  it("skips blank and non-string provider names", () => {
     expect(
       profileFromUser({
         id: "u1",
-        user_metadata: { avatar_url: "a.png", picture: "p.png" },
-      }).avatarUrl,
-    ).toBe("a.png");
+        user_metadata: { full_name: "   ", name: "Grace" },
+      }).displayName,
+    ).toBe("Grace");
     expect(
-      profileFromUser({ id: "u1", user_metadata: { picture: "p.png" } })
+      profileFromUser({
+        id: "u1",
+        user_metadata: { full_name: 42 as unknown as string },
+        email: "kim@cafe.sg",
+      }).displayName,
+    ).toBe("kim");
+  });
+
+  it("picks avatar_url over picture when the host is allowlisted", () => {
+    const google = "https://lh3.googleusercontent.com/a/avatar";
+    const supabase = "https://xyz.supabase.co/storage/v1/object/avatar.png";
+    expect(
+      profileFromUser({
+        id: "u1",
+        user_metadata: { avatar_url: google, picture: supabase },
+      }).avatarUrl,
+    ).toBe(google);
+    expect(
+      profileFromUser({ id: "u1", user_metadata: { picture: supabase } })
         .avatarUrl,
-    ).toBe("p.png");
+    ).toBe(supabase);
     expect(profileFromUser({ id: "u1" }).avatarUrl).toBeNull();
+  });
+
+  it("rejects a non-allowlisted avatar URL to null", () => {
+    expect(
+      profileFromUser({
+        id: "u1",
+        user_metadata: { avatar_url: "https://evil.example/a.png" },
+      }).avatarUrl,
+    ).toBeNull();
+  });
+});
+
+describe("sanitizeAvatarUrl", () => {
+  it("accepts Google user-content and Supabase storage subdomains", () => {
+    expect(
+      sanitizeAvatarUrl("https://lh3.googleusercontent.com/a/avatar"),
+    ).toBe("https://lh3.googleusercontent.com/a/avatar");
+    expect(
+      sanitizeAvatarUrl(
+        "https://xyzcompany.supabase.co/storage/v1/object/a.png",
+      ),
+    ).toBe("https://xyzcompany.supabase.co/storage/v1/object/a.png");
+  });
+
+  it("rejects suffix lookalikes, non-https, relative, and overlong URLs", () => {
+    expect(
+      sanitizeAvatarUrl("https://googleusercontent.com.evil.com/a.png"),
+    ).toBeNull();
+    expect(sanitizeAvatarUrl("http://lh3.googleusercontent.com/a")).toBeNull();
+    expect(sanitizeAvatarUrl("a.png")).toBeNull();
+    expect(sanitizeAvatarUrl("")).toBeNull();
+    expect(sanitizeAvatarUrl(null)).toBeNull();
+    expect(
+      sanitizeAvatarUrl(
+        `https://lh3.googleusercontent.com/${"x".repeat(2048)}`,
+      ),
+    ).toBeNull();
   });
 });
 
@@ -77,5 +146,29 @@ describe("upsertProfile", () => {
     expect(run.mock.calls[0][0]).not.toContain(
       "do update set display_name",
     );
+  });
+
+  it("stores the sanitized provider fields, not the raw metadata", async () => {
+    const run = vi.fn().mockResolvedValue({
+      rows: [{ id: "u1", inserted: true }],
+    });
+
+    await upsertProfile(
+      {
+        id: "u1",
+        user_metadata: {
+          full_name: "y".repeat(100),
+          avatar_url: "https://evil.example/a.png",
+        },
+      },
+      run,
+    );
+
+    const [, params] = run.mock.calls[0] as [string, unknown[]];
+    expect(params).toEqual([
+      "u1",
+      "y".repeat(appConfig.profile.displayNameMaxChars),
+      null,
+    ]);
   });
 });

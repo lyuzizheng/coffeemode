@@ -379,6 +379,8 @@
     "no_match_filters": "没有符合这些条件的咖啡馆",
     "loosen_filters": "试试放宽一个条件",
     "reset_filters": "重置筛选",
+    "no_results": "无结果",
+    "no_results_hint": "试试搜索其他咖啡馆或地址",
     "maxStayOptions": {
       "unlimited": "不限时长",
       "3h": "3小时",

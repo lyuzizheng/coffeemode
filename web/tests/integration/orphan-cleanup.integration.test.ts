@@ -319,8 +319,28 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     for (const k of keys) {
       if (!survivors.includes(k)) createdKeys.delete(k);
     }
- }, 20_000);
+  }, 20_000);
 
+  it("MAX_OBJECTS still reports truncation when the budget lands on a young entry (BRAWUKA-592 re-review P2)", async () => {
+    // Dedicated bucket: one young entry consumes the MAX_OBJECTS=1 scan
+    // budget via a `continue` path, so the in-loop truncation check is
+    // skipped. S3 still reports IsTruncated:true (a second page remains) —
+    // the exit-path re-evaluation must set truncated:true.
+    const young = `original/${randomUUID()}.webp`;
+    const stale = `original/${randomUUID()}.webp`;
+    await seedOriginal(young);
+    await seedOriginal(stale);
+    const result = runCleanup({
+      DRY_RUN: "1",
+      RETENTION_DAYS: "30",
+      MAX_OBJECTS: "1",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('"truncated":true');
+    // The young entry consumed the only scan slot: nothing classified.
+    expect(result.stdout).toContain('"orphanCandidates":0');
+    expect(await objectExists(stale)).toBe(true);
+  }, 20_000);
 
   it("rejects missing configuration with non-zero exit", async () => {
     try {

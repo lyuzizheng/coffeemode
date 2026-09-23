@@ -65,16 +65,33 @@ interface CafeLocalTime {
   minutes: number;
 }
 
-function cafeLocalTime(tz: string, instant: Date): CafeLocalTime | null {
-  let parts: Intl.DateTimeFormatPart[];
-  try {
-    parts = new Intl.DateTimeFormat("en-US", {
+// Intl.DateTimeFormat construction is expensive and open_now search calls
+// isOpenAt once per cafe — up to ~1000 constructions per request
+// (BRAWUKA-643). Cache one formatter per timezone; the key space is bounded
+// by the distinct IANA names stored in cafes.tz, so no eviction is needed.
+const FORMATTERS = new Map<string, Intl.DateTimeFormat>();
+
+/** Shared formatter for `tz`; throws on an invalid IANA name, as the
+ *  constructor does. */
+function cafeFormatter(tz: string): Intl.DateTimeFormat {
+  let fmt = FORMATTERS.get(tz);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat("en-US", {
       timeZone: tz,
       weekday: "short",
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
-    }).formatToParts(instant);
+    });
+    FORMATTERS.set(tz, fmt);
+  }
+  return fmt;
+}
+
+function cafeLocalTime(tz: string, instant: Date): CafeLocalTime | null {
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = cafeFormatter(tz).formatToParts(instant);
   } catch {
     return null; // invalid IANA name
   }

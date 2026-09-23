@@ -19,12 +19,12 @@ import { apiFetch } from "@/lib/http";
 import { formatDistanceKm } from "@/lib/discovery/view-model";
 import type { CafeSummary } from "@/types/cafes";
 
-export function CafeRecoveryBlock({ cafeId }: { cafeId?: string }) {
+export function CafeRecoveryBlock() {
   const t = useTranslations("cafeDetail");
   const params = useParams<{ id: string }>();
-  // Global-404 callers pass the attempted id (read from the x-gone-cafe-id
-  // proxy header); the segment boundary has route params instead.
-  const id = cafeId ?? (typeof params?.id === "string" ? params.id : null);
+  // The segment not-found boundary receives no props; the attempted id is
+  // read from the route params (the gone cafe's own URL).
+  const id = typeof params?.id === "string" ? params.id : null;
   const [cafes, setCafes] = useState<CafeSummary[] | null>(null);
 
   useEffect(() => {

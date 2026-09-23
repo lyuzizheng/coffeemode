@@ -3,9 +3,9 @@ import type { SessionUser } from "./get-user";
 /**
  * Proxy → page verified-user handoff (BRAWUKA-644).
  *
- * The proxy already runs `auth.getUser()` on cafe GET/HEAD requests for the
- * gone-cafe visibility probe; the page then needs the same verified identity
- * for `loadMapSession`. Without this header the page re-verifies over the
+ * The proxy runs `auth.getUser()` on cafe GET/HEAD requests and forwards the
+ * verified identity on this header; the page needs the same identity for
+ * `loadMapSession`. Without this header the page re-verifies over the
  * network — two `getUser()` calls per signed-in cafe page view.
  *
  * The header carries only the `SessionUser` contract fields (id + the

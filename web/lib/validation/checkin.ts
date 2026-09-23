@@ -51,7 +51,7 @@ export function parseScores(value: unknown, field = "scores"): ParseResult<Check
  *  plain imageUuids from /api/images/upload — never StoredImage payloads.
  *  The server derives keys/dimensions/attribution from upload intents.
  *  Product caps live in `web/config/app.yaml` (DG107). */
-const MAX_PHOTOS_PER_CHECKIN = appConfig.checkins.photoCap;
+export const MAX_PHOTOS_PER_CHECKIN = appConfig.checkins.photoCap;
 
 /** DG67 caps note at 500 chars (amends the earlier 1000); lives in config. */
 export const MAX_NOTE_LENGTH = appConfig.checkins.noteMaxChars;
@@ -245,6 +245,23 @@ export interface UpdateCheckInInput {
   max_stay?: MaxStay | null;
   note?: string | null;
   visited_at?: Date;
+  /**
+   * Edit-mode photo management (BRAWUKA-563): delta lists of image UUIDs.
+   * `add_photo_ids` are fresh /api/images/upload ids the server provisions
+   * like create-time `photo_ids`; `remove_photo_ids` detach existing photos
+   * from the check-in and the cafe gallery. Unknown remove ids are ignored
+   * so a retried PATCH stays idempotent.
+   */
+  add_photo_ids?: string[];
+  remove_photo_ids?: string[];
+}
+
+/** Thrown when an edit's photo delta would push the check-in past the cap. */
+export class CheckInPhotoLimitError extends Error {
+  constructor() {
+    super(`a check-in is limited to ${MAX_PHOTOS_PER_CHECKIN} photos`);
+    this.name = "CheckInPhotoLimitError";
+  }
 }
 
 export function parseUpdateCheckInBody(body: unknown): ParseResult<UpdateCheckInInput> {
@@ -253,8 +270,17 @@ export function parseUpdateCheckInBody(body: unknown): ParseResult<UpdateCheckIn
   }
   const raw = body as Record<string, unknown>;
   const hasAny =
-    "scores" in raw || "max_stay" in raw || "note" in raw || "visited_at" in raw;
-  if (!hasAny) return fail("at least one of scores, max_stay, note, visited_at required");
+    "scores" in raw ||
+    "max_stay" in raw ||
+    "note" in raw ||
+    "visited_at" in raw ||
+    "add_photo_ids" in raw ||
+    "remove_photo_ids" in raw;
+  if (!hasAny) {
+    return fail(
+      "at least one of scores, max_stay, note, visited_at, add_photo_ids, remove_photo_ids required",
+    );
+  }
 
   let scores: CheckInScores | undefined;
   if ("scores" in raw && raw.scores !== undefined) {
@@ -300,7 +326,42 @@ export function parseUpdateCheckInBody(body: unknown): ParseResult<UpdateCheckIn
     return fail("visited_at cannot be null");
   }
 
-  return { ok: true, value: { scores, max_stay: maxStay, note, visited_at: visitedAt } };
+  const deltas = parsePhotoDeltas(raw);
+  if (!deltas.ok) return fail(deltas.message);
+
+  return {
+    ok: true,
+    value: {
+      scores,
+      max_stay: maxStay,
+      note,
+      visited_at: visitedAt,
+      add_photo_ids: deltas.value.add,
+      remove_photo_ids: deltas.value.remove,
+    },
+  };
+}
+/**
+ * Edit-mode photo deltas (BRAWUKA-563): both lists reuse the create-time
+ * UUID/dup/cap rules; overlap between them is a client bug → 400.
+ */
+function parsePhotoDeltas(
+  raw: Record<string, unknown>,
+): ParseResult<{ add?: string[]; remove?: string[] }> {
+  const parseList = (value: unknown, field: string): ParseResult<string[] | undefined> => {
+    if (value === undefined || value === null) return { ok: true, value: undefined };
+    const parsed = parsePhotoIds(value, field);
+    if (!parsed.ok) return fail(parsed.message);
+    return { ok: true, value: parsed.value.length > 0 ? parsed.value : undefined };
+  };
+  const add = parseList(raw.add_photo_ids, "add_photo_ids");
+  if (!add.ok) return fail(add.message);
+  const remove = parseList(raw.remove_photo_ids, "remove_photo_ids");
+  if (!remove.ok) return fail(remove.message);
+  if (remove.value?.some((id) => new Set(add.value ?? []).has(id))) {
+    return fail("add_photo_ids and remove_photo_ids must not overlap");
+  }
+  return { ok: true, value: { add: add.value, remove: remove.value } };
 }
 
 /** Thrown when a like targets a check-in that is missing or soft-deleted. */

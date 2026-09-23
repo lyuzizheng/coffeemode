@@ -40,7 +40,7 @@ else
     "preflight.sh" \
     "harness-self-test.sh" \
     "docs-gate:" \
-    "application-gate:" \
+    "application-static:" "application-e2e:" \
     "integration-gate:" \
     "image-service-gate:" \
     "poi-service-gate:" \
@@ -58,7 +58,7 @@ else
     fi
   done
 
-  for gate in "npm run typecheck" "npm run lint" "npm run check:structure" "npm run check:i18n" "npm run test" "npm run test:coverage" "npm run build"; do
+  for gate in "npm run typecheck" "npm run lint" "npm run check:structure" "npm run check:i18n" "npm run test:e2e" "npm run lhci" "npm run build"; do
     if ! grep -q "$gate" "$workflow"; then
       echo "ci.yml missing application gate: $gate"
       fail=1

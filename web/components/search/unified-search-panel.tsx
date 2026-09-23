@@ -228,9 +228,13 @@ export function UnifiedSearchPanel({
     if (wantsResults) runSearch(query.trim());
   };
   // DG56: Enter submits the results view; Esc clears the query and
-  // dismisses suggestions/results.
+  // dismisses suggestions/results. When Esc actually consumed something it
+  // preventDefaults so the detail column's window-level Esc handler leaves
+  // the key alone (BRAWUKA-576); an already-empty field falls through and
+  // Esc still closes the column.
   const handleKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === "Escape") {
+      if (query !== "" || submitted) event.preventDefault();
       handleQueryChange("");
       return;
     }

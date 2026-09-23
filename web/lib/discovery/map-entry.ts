@@ -50,11 +50,11 @@ export interface MapEntryProps {
  * `cache()` dedupes it across the cafe lookup, generateMetadata, and
  * loadMapEntry within one request.
  *
- * BRAWUKA-644: on /cafes/[id] the proxy already ran getUser() for the
- * gone-cafe visibility probe and forwards the verified identity on
- * x-verified-user — reuse it so a signed-in page view costs ONE getUser()
- * network call, not two. Absent/malformed header (every other route, or a
- * proxy-side getUser failure) falls back to a local getUser().
+ * BRAWUKA-644: on /cafes/[id] the proxy already ran getUser() and forwards
+ * the verified identity on x-verified-user — reuse it so a signed-in page
+ * view costs ONE getUser() network call, not two. Absent/malformed header
+ * (every other route, or a proxy-side getUser failure) falls back to a
+ * local getUser().
  */
 export const loadMapSession = cache(
   async (): Promise<{ user: SessionUser | null; profile: UserProfileDto | null }> => {

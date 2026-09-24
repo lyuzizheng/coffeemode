@@ -136,7 +136,7 @@ async function applyCheckInPatch(args: {
   patch: UpdateCheckInInput;
   provisioned: ProvisionedPhoto[];
   deps: ProvisionPhotosDeps;
-}): Promise<{ cafeId: string; detachedPhotoIds: string[] }> {
+}): Promise<{ cafe_id: string; detachedPhotoIds: string[] }> {
   const { client, userId, checkinId, patch, provisioned, deps } = args;
   const row = await lockCheckInCafeFirst(client, checkinId);
   if (!row || row.deleted_at !== null) throw new CheckInNotFoundError();
@@ -178,7 +178,7 @@ async function applyCheckInPatch(args: {
     params.push(JSON.stringify(delta.photos));
   }
 
-  if (sets.length === 0) return { cafeId: row.cafe_id, detachedPhotoIds: [] };
+  if (sets.length === 0) return { cafe_id: row.cafe_id, detachedPhotoIds: [] };
 
   sets.push(`updated_at = now()`);
   const sql = `update checkins set ${sets.join(", ")} where id = $${idx}`;
@@ -195,7 +195,7 @@ async function applyCheckInPatch(args: {
 
   await recomputeWorkStats(row.cafe_id, 0, txRunnerFrom(client));
 
-  return { cafeId: row.cafe_id, detachedPhotoIds: delta.detachedPhotoIds };
+  return { cafe_id: row.cafe_id, detachedPhotoIds: delta.detachedPhotoIds };
 }
 
 export async function updateCheckIn(
@@ -203,7 +203,7 @@ export async function updateCheckIn(
   checkinId: string,
   patch: UpdateCheckInInput,
   deps: ProvisionPhotosDeps = defaultProvisionPhotosDeps(),
-): Promise<{ cafeId: string }> {
+): Promise<{ cafe_id: string }> {
   if (!isValidUUID(userId) || !isValidUUID(checkinId)) throw new Error("Invalid user or check-in ID");
 
   const addPhotoIds = patch.add_photo_ids ?? [];
@@ -214,13 +214,13 @@ export async function updateCheckIn(
   // whole edit back (issue #86).
   const provisioned = await provisionPhotos(userId, addPhotoIds, deps);
 
-  let updated: { cafeId: string };
+  let updated: { cafe_id: string };
   let detachedPhotoIds: string[] = [];
   try {
     updated = await withTransaction(async (client) => {
       const result = await applyCheckInPatch({ client, userId, checkinId, patch, provisioned, deps });
       detachedPhotoIds = result.detachedPhotoIds;
-      return { cafeId: result.cafeId };
+      return { cafe_id: result.cafe_id };
     });
   } catch (err) {
     // Rolled back: the provisioned R2 variants survive — compensate
@@ -244,7 +244,7 @@ export async function updateCheckIn(
   return updated;
 }
 
-export async function softDeleteCheckIn(userId: string, checkinId: string): Promise<{ cafeId: string }> {
+export async function softDeleteCheckIn(userId: string, checkinId: string): Promise<{ cafe_id: string }> {
   if (!isValidUUID(userId) || !isValidUUID(checkinId)) throw new Error("Invalid user or check-in ID");
 
   return withTransaction(async (client) => {
@@ -269,6 +269,6 @@ export async function softDeleteCheckIn(userId: string, checkinId: string): Prom
 
     await recomputeWorkStats(row.cafe_id, 0, txRunnerFrom(client));
 
-    return { cafeId: row.cafe_id };
+    return { cafe_id: row.cafe_id };
   });
 }

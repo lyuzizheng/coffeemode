@@ -844,7 +844,7 @@ describeLifecycle("capstone: 4-user composed lifecycle Acts 0–8 (spec 0008 §3
       routeParams({ id: b_checkin1_id }),
     );
     expect(editRes.status).toBe(200);
-    expect(editRes.data).toMatchObject({ cafeId: cafe1_id });
+    expect(editRes.data).toEqual({ cafe_id: cafe1_id });
 
     // (90 + 70 + 75) / 3 = 78.33; composite holds 71.75; B's cleared max_stay drops out.
     const cafe1 = await getCafeDetailAs(clientD, cafe1_id);

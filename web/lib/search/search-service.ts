@@ -2,6 +2,7 @@ import "server-only";
 
 import { appConfig } from "@/lib/config";
 import { DEFAULT_CITY, findCity } from "@/lib/cities";
+import { emitTelemetryLine } from "@/lib/observability/server-log";
 import { haversineDistanceM } from "@shared/places/geo";
 import {
   fetchCafesForSearch,
@@ -83,6 +84,8 @@ export type SearchCacheField = "hit" | "miss" | "bypass";
  * The single `search.telemetry` JSON line (ADR-0005 frozen fields).
  * `executeSearch` emits it for every real execution; the /api/search route
  * re-emits it for edge-cache hits so hit/miss ratios stay measurable.
+ * Emitted via `emitTelemetryLine` so lines reach stdout and Grafana Cloud Loki
+ * over OTLP (BRAWUKA-613).
  */
 export function emitSearchTelemetry(fields: {
   mode: "stored_only" | "live";
@@ -91,7 +94,8 @@ export function emitSearchTelemetry(fields: {
   poiDegraded: boolean;
   cache: SearchCacheField;
 }): void {
-  console.info("search.telemetry", {
+  emitTelemetryLine({
+    type: "search.telemetry",
     "search.requests": { mode: fields.mode },
     "search.duration_ms": fields.durationMs,
     "search.truncated": fields.truncated,

@@ -1,4 +1,5 @@
 import { haversineKm } from "@shared/places/geo";
+import { getLocalizedCountryNameForRuntimeId } from "./timezone-countries";
 
 export interface Coordinates {
   lat: number;
@@ -139,14 +140,18 @@ export function findCityByCountry(countryCode: string | null | undefined): CityI
 }
 
 /**
- * Localized display name for a stored city value (BRAWUKA-245). Known cities
- * render `name`/`nameZh` per locale; unknown values pass through with the
- * first letter uppercased so raw ids like `singapore` never leak lowercase.
+ * Localized display name for a stored city value (BRAWUKA-245, BRAWUKA-695). Known cities
+ * render `name`/`nameZh` per locale; runtime cities (rt-*) render honest localized country names
+ * derived from the timezone mapping; unknown values pass through with the first letter uppercased.
  */
 export function displayCityName(city: string | null | undefined, locale: string): string {
   if (!city) return "";
   const found = findCity(city);
   if (found) return locale === "zh" ? found.nameZh : found.name;
+  if (city.startsWith("rt-")) {
+    const localizedCountry = getLocalizedCountryNameForRuntimeId(city, locale);
+    if (localizedCountry) return localizedCountry;
+  }
   return city.charAt(0).toUpperCase() + city.slice(1);
 }
 /**

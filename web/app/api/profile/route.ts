@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { apiError } from "@/lib/api/response";
 import { apiRoute } from "@/lib/api/route";
+import { LAUNCH_CITIES } from "@/lib/cities";
+import { resolveLocatedCity } from "@/lib/onboarding";
 import { deleteAccount, getProfile, getUserStats, updateProfile } from "@/lib/db/profile";
 import { parseProfilePatch } from "@/lib/validation/profile";
 import { createSupabaseServerClient } from "@/lib/auth/supabase-server";
@@ -27,6 +29,29 @@ export const GET = apiRoute(
   },
 );
 
+/**
+ * BRAWUKA-695 (PM invariant): non-launch currentCity values must derive from
+ * coordinates on the server — client-submitted non-launch values never write directly.
+ */
+async function rederiveCurrentCity(
+  userId: string,
+  currentCity: string,
+  lastLocation?: { lat: number; lng: number },
+): Promise<{ cityId?: string; notFound?: boolean }> {
+  if (LAUNCH_CITIES.some((c) => c.id === currentCity)) {
+    return { cityId: currentCity };
+  }
+  let coords = lastLocation;
+  if (!coords) {
+    const profile = await getProfile(userId);
+    if (!profile) return { notFound: true };
+    coords = profile.lastLocation ?? undefined;
+  }
+  if (!coords) return {};
+  const { city } = resolveLocatedCity(coords.lat, coords.lng);
+  return { cityId: city?.id };
+}
+
 export const PATCH = apiRoute(
   { bucket: "profile-write", auth: "required", origin: true, route: "PATCH /api/profile" },
   async (request, ctx) => {
@@ -35,6 +60,22 @@ export const PATCH = apiRoute(
     const parsed = parseProfilePatch(bodyRes.data);
     if (!parsed.ok) {
       return apiError(parsed.error, parsed.status, { requestId: ctx.requestId });
+    }
+
+    if (parsed.patch.currentCity !== undefined) {
+      const derived = await rederiveCurrentCity(
+        ctx.user.id,
+        parsed.patch.currentCity,
+        parsed.patch.lastLocation,
+      );
+      if (derived.notFound) {
+        return apiError("profile_not_found", 404, { requestId: ctx.requestId });
+      }
+      if (derived.cityId) {
+        parsed.patch.currentCity = derived.cityId;
+      } else {
+        delete parsed.patch.currentCity;
+      }
     }
 
     const updated = await updateProfile(ctx.user.id, parsed.patch);

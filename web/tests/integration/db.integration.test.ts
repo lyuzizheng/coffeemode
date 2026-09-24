@@ -188,7 +188,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   }, 60_000);
 
-  it("applies migrations 0001→0030 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0031 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -221,6 +221,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0028_open_now_sql_function.sql",
       "0029_open_now_24h_window.sql",
       "0030_cafe_source.sql",
+      "0031_profile_city_backfill_audit.sql",
     ]);
 
     const serviceProfile = await dbClient.query(
@@ -271,6 +272,16 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     // BRAWUKA-620: 0030 adds the cafe source marker (default 'user_confirmed').
     expect(colNames.has("source")).toBe(true);
     expect(colRows.rows.find((r) => r.column_name === "source")?.column_default).toContain("user_confirmed");
+
+    // BRAWUKA-695: 0031 creates profile_city_backfill_audit table
+    const auditColRows = await dbClient.query<{ column_name: string }>(
+      `select column_name from information_schema.columns where table_name = 'profile_city_backfill_audit'`,
+    );
+    const auditColNames = new Set(auditColRows.rows.map((r) => r.column_name));
+    expect(auditColNames.has("user_id")).toBe(true);
+    expect(auditColNames.has("old_city")).toBe(true);
+    expect(auditColNames.has("new_city")).toBe(true);
+    expect(auditColNames.has("migrated_at")).toBe(true);
 
     // Issue #139: Verify 0018_public_identity columns on profiles and unique partial index
     const profileColRows = await dbClient.query<{ column_name: string; data_type: string; column_default: string | null }>(
@@ -3487,6 +3498,114 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       );
       const withIntent = await getProfileExport(U1);
       expect(withIntent.image_upload_intents).toHaveLength(1);
+    });
+  });
+
+  describeDb("0031 profile city backfill audit predicates (BRAWUKA-695)", () => {
+    it("backfills corrupted launch city rows >50km from center, leaves <=50km and null location rows untouched", async () => {
+      await dbClient.query("delete from profile_city_backfill_audit");
+
+      const testUrumqi = "00000000-0000-4000-b000-000000000001";
+      const testShanghaiNear = "00000000-0000-4000-b000-000000000002";
+      const testNoLoc = "00000000-0000-4000-b000-000000000003";
+      const testHongKongFar = "00000000-0000-4000-b000-000000000004";
+      const testOtherCity = "00000000-0000-4000-b000-000000000005";
+
+      await dbClient.query(
+        `insert into profiles (id, display_name, current_city, last_location)
+         values ($1, 'Urumqi User', 'shanghai', ST_SetSRID(ST_MakePoint(87.6168, 43.8256), 4326)::geography)
+         on conflict (id) do update set current_city = 'shanghai', last_location = ST_SetSRID(ST_MakePoint(87.6168, 43.8256), 4326)::geography`,
+        [testUrumqi],
+      );
+      await dbClient.query(
+        `insert into profiles (id, display_name, current_city, last_location)
+         values ($1, 'Shanghai User', 'shanghai', ST_SetSRID(ST_MakePoint(121.4737, 31.2304), 4326)::geography)
+         on conflict (id) do update set current_city = 'shanghai', last_location = ST_SetSRID(ST_MakePoint(121.4737, 31.2304), 4326)::geography`,
+        [testShanghaiNear],
+      );
+      await dbClient.query(
+        `insert into profiles (id, display_name, current_city, last_location)
+         values ($1, 'No Loc User', 'shanghai', null)
+         on conflict (id) do update set current_city = 'shanghai', last_location = null`,
+        [testNoLoc],
+      );
+      await dbClient.query(
+        `insert into profiles (id, display_name, current_city, last_location)
+         values ($1, 'Hong Kong Far', 'hong-kong', ST_SetSRID(ST_MakePoint(-0.1278, 51.5074), 4326)::geography)
+         on conflict (id) do update set current_city = 'hong-kong', last_location = ST_SetSRID(ST_MakePoint(-0.1278, 51.5074), 4326)::geography`,
+        [testHongKongFar],
+      );
+      await dbClient.query(
+        `insert into profiles (id, display_name, current_city, last_location)
+         values ($1, 'Other City User', 'rt-america-sao_paulo', ST_SetSRID(ST_MakePoint(-46.6333, -23.5505), 4326)::geography)
+         on conflict (id) do update set current_city = 'rt-america-sao_paulo', last_location = ST_SetSRID(ST_MakePoint(-46.6333, -23.5505), 4326)::geography`,
+        [testOtherCity],
+      );
+
+      await dbClient.query(`
+        with launch_targets(city_id, center_point, new_city) as (
+          values
+            ('singapore', ST_SetSRID(ST_MakePoint(103.8198, 1.3521), 4326)::geography, 'rt-asia-singapore'),
+            ('tokyo', ST_SetSRID(ST_MakePoint(139.6503, 35.6762), 4326)::geography, 'rt-asia-tokyo'),
+            ('seoul', ST_SetSRID(ST_MakePoint(126.978, 37.5665), 4326)::geography, 'rt-asia-seoul'),
+            ('taipei', ST_SetSRID(ST_MakePoint(121.5654, 25.033), 4326)::geography, 'rt-asia-taipei'),
+            ('shanghai', ST_SetSRID(ST_MakePoint(121.4737, 31.2304), 4326)::geography, 'rt-asia-shanghai'),
+            ('bangkok', ST_SetSRID(ST_MakePoint(100.5018, 13.7563), 4326)::geography, 'rt-asia-bangkok'),
+            ('hongkong', ST_SetSRID(ST_MakePoint(114.1694, 22.3193), 4326)::geography, 'rt-asia-hong_kong'),
+            ('hong-kong', ST_SetSRID(ST_MakePoint(114.1694, 22.3193), 4326)::geography, 'rt-asia-hong_kong'),
+            ('melbourne', ST_SetSRID(ST_MakePoint(144.9631, -37.8136), 4326)::geography, 'rt-australia-melbourne'),
+            ('berlin', ST_SetSRID(ST_MakePoint(13.405, 52.52), 4326)::geography, 'rt-europe-berlin'),
+            ('london', ST_SetSRID(ST_MakePoint(-0.1278, 51.5074), 4326)::geography, 'rt-europe-london')
+        ),
+        candidates as (
+          select p.id as user_id, p.current_city as old_city, t.new_city
+          from profiles p
+          join launch_targets t on p.current_city = t.city_id
+          where p.last_location is not null
+            and ST_Distance(p.last_location, t.center_point) > 50000
+        )
+        insert into profile_city_backfill_audit (user_id, old_city, new_city, migrated_at)
+        select user_id, old_city, new_city, now()
+        from candidates
+        on conflict (user_id) do nothing;
+
+        update profiles p
+        set current_city = a.new_city
+        from profile_city_backfill_audit a
+        where p.id = a.user_id;
+      `);
+
+      const auditRows = await dbClient.query(
+        "select user_id, old_city, new_city from profile_city_backfill_audit order by user_id",
+      );
+      expect(auditRows.rows).toEqual([
+        { user_id: testUrumqi, old_city: "shanghai", new_city: "rt-asia-shanghai" },
+        { user_id: testHongKongFar, old_city: "hong-kong", new_city: "rt-asia-hong_kong" },
+      ]);
+
+      const p1 = await dbClient.query("select current_city from profiles where id = $1", [testUrumqi]);
+      expect(p1.rows[0].current_city).toBe("rt-asia-shanghai");
+
+      const p2 = await dbClient.query("select current_city from profiles where id = $1", [testShanghaiNear]);
+      expect(p2.rows[0].current_city).toBe("shanghai");
+
+      const p3 = await dbClient.query("select current_city from profiles where id = $1", [testNoLoc]);
+      expect(p3.rows[0].current_city).toBe("shanghai");
+
+      const p4 = await dbClient.query("select current_city from profiles where id = $1", [testHongKongFar]);
+      expect(p4.rows[0].current_city).toBe("rt-asia-hong_kong");
+
+      const p5 = await dbClient.query("select current_city from profiles where id = $1", [testOtherCity]);
+      expect(p5.rows[0].current_city).toBe("rt-america-sao_paulo");
+
+      await dbClient.query("delete from profiles where id in ($1, $2, $3, $4, $5)", [
+        testUrumqi,
+        testShanghaiNear,
+        testNoLoc,
+        testHongKongFar,
+        testOtherCity,
+      ]);
+      await dbClient.query("delete from profile_city_backfill_audit");
     });
   });
 });

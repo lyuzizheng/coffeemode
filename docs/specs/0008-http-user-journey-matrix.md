@@ -205,9 +205,14 @@ entry is an unrelated cafe-actions ruling.
   publicHandleChangedAt }, stats: { cafesCount, checkinsCount } }`. Defaults:
   `showPublicIdentity: false`, `publicHandle: null` — anonymity is the
   factory default, and `stats` move with lifecycle events (§10).
-- `PATCH /api/profile` — `displayName` trims to 1–24 chars (400
-  `display_name_length`), `currentCity` must be a DG50 launch city id
-  (400 `invalid_current_city`), empty patch → 400 `empty_patch`.
+- `PATCH /api/profile` — `displayName` trims to 1–24 chars (422
+  `display_name_length`); `currentCity` validated as non-empty string ≤50 chars
+  (else 422 `invalid_current_city`); for `currentCity` semantics (BRAWUKA-695):
+  launch ids pass through directly; non-launch values (`rt-*`, legacy dirty values,
+  arbitrary strings) are re-derived on the server from coordinates (`patch.lastLocation`,
+  defaulting to stored `profile.last_location`), replacing `currentCity` with the derived
+  launch or `rt-<zone>` city id, or dropping `currentCity` if unresolvable/Etc zone
+  (no 422, never written directly); empty patch → 400 `empty_patch`.
 - `PATCH /api/profile/identity` — `{ showPublicIdentity: true, publicHandle:
   "pioneer-a" }` opts A in with a deterministic user-chosen handle (regex
   `^[a-z0-9][a-z0-9_-]{2,29}$`, else 400 `invalid_handle`; omitted →

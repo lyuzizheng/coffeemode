@@ -21,6 +21,7 @@ import { POST as locateRoute } from "@/app/api/onboarding/locate/route";
 import { PATCH as patchIdentityRoute } from "@/app/api/profile/identity/route";
 import { GET as getCafeDetailRoute } from "@/app/api/cafes/[id]/route";
 import { GET as getFeedRoute } from "@/app/api/cafes/[id]/checkins/route";
+import { GET as profileCheckinsRoute } from "@/app/api/profile/checkins/route";
 import type { UserProfileDto } from "@/lib/db/profile";
 import type { ProfileIdentityDto, PublicAuthor } from "@/types/identity";
 import type { PublicCafeDetail } from "@/types/cafes";
@@ -64,6 +65,8 @@ const users: HttpTestUsers = createHttpTestUsers();
 // not this slice's — every assertion below still runs over HTTP.
 const CAFE_P3 = "c0000000-0000-4000-a000-0000000000c1";
 const CHECKIN_P3 = "c0000000-0000-4000-a000-0000000000e1";
+const CHECKIN_PAG1 = "c0000000-0000-4000-a000-0000000000e2";
+const CHECKIN_PAG2 = "c0000000-0000-4000-a000-0000000000e3";
 
 /** `NextRequest`-typed profile/identity handlers take no route ctx. */
 type NoCtx = undefined;
@@ -590,7 +593,7 @@ describePath3("path 3 — profile & public identity lifecycle over HTTP (spec 00
 
   it("path 3 (spec 0008 §6, BRAWUKA-712/714): PATCH /api/profile rejects invalid currentCityName with 422 invalid_current_city_name", async () => {
     const client = apiClient(users.userA);
-    for (const currentCityName of ["", "   ", "x".repeat(81), 5, {}]) {
+    for (const currentCityName of ["", "   ", "​", "x".repeat(81), 5, {}]) {
       const res = await client.patch<ErrorPayload, NoCtx, NextRequest>(
         patchProfileRoute,
         "/api/profile",
@@ -599,11 +602,12 @@ describePath3("path 3 — profile & public identity lifecycle over HTTP (spec 00
       expect(res.status).toBe(422);
       expect(res.data.error).toBe("invalid_current_city_name");
     }
-    // Null clears; a bounded locality name against an rt-* city persists.
+    // Null clears; a dirty-but-bounded locality name sanitizes (CITY_NAME_STRIP)
+    // then persists against the re-derived rt-* city.
     const renamed = await client.patch<{ profile: UserProfileDto }, NoCtx, NextRequest>(
       patchProfileRoute,
       "/api/profile",
-      { currentCity: "lisbon", lastLocation: { lat: 38.7223, lng: -9.1393 }, currentCityName: "São Paulo" },
+      { currentCity: "lisbon", lastLocation: { lat: 38.7223, lng: -9.1393 }, currentCityName: "  São​ Paulo \n" },
     );
     expect(renamed.status).toBe(200);
     expect(renamed.data.profile.currentCity).toBe("rt-europe-lisbon");
@@ -615,6 +619,64 @@ describePath3("path 3 — profile & public identity lifecycle over HTTP (spec 00
     );
     expect(cleared.status).toBe(200);
     expect(cleared.data.profile.currentCityName).toBeNull();
+  });
+
+  it("path 3 (spec 0008 §6, BRAWUKA-714): GET /api/profile/checkins walks the <visited_at>_<id> keyset cursor across pages", async () => {
+    // Fixture: three User A visits with distinct visited_at, SQL-seeded like
+    // seedProfileSlice (the HTTP creation pipeline is Slice 2B's contract).
+    // Every assertion below runs over HTTP.
+    await dbClient.query("update checkins set visited_at = $1 where id = $2", [
+      "2026-09-18T10:00:00.000001Z",
+      CHECKIN_P3,
+    ]);
+    await dbClient.query(
+      `insert into checkins (id, cafe_id, user_id, is_creation, scores, visited_at)
+       values ($1, $2, $3, false, '{}'::jsonb, $4), ($5, $2, $3, false, '{}'::jsonb, $6)`,
+      [
+        CHECKIN_PAG1,
+        CAFE_P3,
+        users.userA.id,
+        "2026-09-20T10:00:00.000003Z",
+        CHECKIN_PAG2,
+        "2026-09-19T10:00:00.000002Z",
+      ],
+    );
+
+    const client = apiClient(users.userA);
+    type CheckinsPage = { items: Array<{ id: string }>; next_cursor: string | null };
+    const page1 = await client.get<CheckinsPage, NoCtx, NextRequest>(
+      profileCheckinsRoute,
+      "/api/profile/checkins",
+      { query: { limit: 1 } },
+    );
+    expect(page1.status).toBe(200);
+    expect(page1.data.items.map((i) => i.id)).toEqual([CHECKIN_PAG1]);
+    // Wire format: `${cursor_visited_at}_${id}`; the limit+1 probe row is trimmed.
+    expect(page1.data.next_cursor).toBe(`2026-09-20T10:00:00.000003Z_${CHECKIN_PAG1}`);
+    const page2 = await client.get<CheckinsPage, NoCtx, NextRequest>(
+      profileCheckinsRoute,
+      "/api/profile/checkins",
+      { query: { limit: 1, cursor: page1.data.next_cursor! } },
+    );
+    expect(page2.status).toBe(200);
+    expect(page2.data.items.map((i) => i.id)).toEqual([CHECKIN_PAG2]);
+    expect(page2.data.next_cursor).toBe(`2026-09-19T10:00:00.000002Z_${CHECKIN_PAG2}`);
+    const page3 = await client.get<CheckinsPage, NoCtx, NextRequest>(
+      profileCheckinsRoute,
+      "/api/profile/checkins",
+      { query: { limit: 1, cursor: page2.data.next_cursor! } },
+    );
+    expect(page3.status).toBe(200);
+    expect(page3.data.items.map((i) => i.id)).toEqual([CHECKIN_P3]);
+    expect(page3.data.next_cursor).toBeNull();
+
+    const bad = await client.get<ErrorPayload, NoCtx, NextRequest>(
+      profileCheckinsRoute,
+      "/api/profile/checkins",
+      { query: { cursor: "not-a-cursor" } },
+    );
+    expect(bad.status).toBe(400);
+    expect(bad.data.error).toBe("invalid_cursor");
   });
 
   it("path 3 (spec 0008 §6, BRAWUKA-695/714): POST /api/onboarding/locate resolves coverage and honest runtime cities", async () => {

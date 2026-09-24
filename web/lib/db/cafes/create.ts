@@ -15,6 +15,7 @@ import {
 } from "@/lib/images/provision-photos";
 import { attachProvisionedPhotos } from "@/lib/images/photo-cleanup";
 import { MERGE_GALLERY_SQL, photosWithSource } from "../checkins/gallery";
+import { ACQUIRE_ACCOUNT_WRITE_LOCK_SQL } from "../locks";
 import { autoResolveNavigationsTx } from "../navigations";
 import { query, txQueryFrom, txRunnerFrom, withTransaction } from "../postgres";
 import { resolveCafeTimezone } from "./meta";
@@ -99,6 +100,10 @@ export async function createCafeWithFirstCheckIn(
   let created: { cafe_id: string; checkin_id: string; tz: string };
   try {
     created = await withTransaction(async (client) => {
+      // BRAWUKA-676: first statement — serializes this fused create against
+      // deleteAccount, so the first check-in can never commit inside the
+      // delete's lock-snapshot → blanket-UPDATE window.
+      await client.query(ACQUIRE_ACCOUNT_WRITE_LOCK_SQL, [userId]);
       if (externalIds[0] !== null || externalIds[1] !== null) {
         const existing = await client.query<{ id: string }>(
           FIND_BY_EXTERNAL_ID_SQL,

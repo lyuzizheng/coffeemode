@@ -10,6 +10,7 @@ import { recomputeWorkStats } from "@/lib/stats/aggregate";
 import type { PoolClient } from "pg";
 import { getServiceAccountId } from "@/lib/db/cafes/meta";
 import { PURGE_GALLERY_BY_SOURCE_IDS_SQL } from "@/lib/db/checkins/gallery";
+import { ACQUIRE_ACCOUNT_WRITE_LOCK_SQL } from "../locks";
 import { query, txRunnerFrom, withTransaction } from "../postgres";
 import { LAST_LOCATION_SQL, toProfileDto, type ProfileRow } from "./row";
 import type { UserProfileDto } from "./types";
@@ -152,6 +153,11 @@ async function applyAccountDelete(
   client: PoolClient,
   userId: string,
 ): Promise<{ result: DeleteAccountResult; photoIds: string[] }> {
+  // BRAWUKA-676: first statement of the transaction — serializes this
+  // delete against every check-in creation path for the same user, so no
+  // check-in can commit between the lock snapshot below and the blanket
+  // UPDATE.
+  await client.query(ACQUIRE_ACCOUNT_WRITE_LOCK_SQL, [userId]);
   const lockRes = await client.query<{ cafe_id: string; checkin_id: string | null }>(
     LOCK_ACCOUNT_SCOPE_SQL,
     [userId],
@@ -167,7 +173,6 @@ async function applyAccountDelete(
     byCafe.set(row.cafe_id, list);
     checkinsRemoved += 1;
   }
-
   // Soft-delete + detach in one statement (DG146 tombstones stay; only
   // the author link goes — checkins.user_id has no ON DELETE clause, so
   // the detach must land before the profile delete). The blanket
@@ -175,8 +180,9 @@ async function applyAccountDelete(
   // they are tombstoned and detached here instead of escaping as live
   // orphans or tripping the profile-delete FK. Their cafes are not in
   // byCafe, so the purge below never takes a cafe lock after a check-in
-  // lock — the inversion stays closed. Residual: such a check-in's
-  // gallery entries on a cafe outside the lock set are not purged.
+  // lock — the inversion stays closed. Only a writer bypassing the
+  // account-scope advisory lock (BRAWUKA-676 — every app create path
+  // takes it) can still land there; its gallery residue is accepted.
   // RETURNING photos feeds the post-commit R2 cleanup (BRAWUKA-433):
   // every check-in this update tombstones — including post-snapshot
   // commits — yields its photo ids here, so none leak past the sweep.

@@ -17,6 +17,7 @@ import {
   type CreateCheckInInput,
 } from "@/lib/validation/checkin";
 import { query, txQueryFrom, txRunnerFrom, withTransaction } from "../postgres";
+import { ACQUIRE_ACCOUNT_WRITE_LOCK_SQL } from "../locks";
 import { autoResolveNavigationsTx } from "../navigations";
 import { MERGE_GALLERY_SQL, photosWithSource } from "./gallery";
 
@@ -28,8 +29,9 @@ const CAFE_EXISTS_SQL =
 /**
  * BRAWUKA-125: serialize concurrent creates for the same user+cafe.
  * Transaction-scoped (`pg_advisory_xact_lock` releases on commit/rollback,
- * safe under pooling — never `pg_advisory_lock`). First statement in the
- * transaction so a waiter holds no other lock (no deadlock cycle). A
+ * safe under pooling — never `pg_advisory_lock`). Taken right after the
+ * account-scope lock and before any row lock, so a waiter still holds no
+ * lock that can join a deadlock cycle. A
  * `hashtext` collision only over-serializes unrelated pairs, never misses.
  * The waiter then re-reads committed rows (READ COMMITTED per-statement
  * snapshot) and hits the DG64 window check → DuplicateCheckInError.
@@ -132,7 +134,11 @@ export async function createCheckIn(
   let created: { checkin_id: string; deduped: boolean };
   try {
     created = await withTransaction(async (client) => {
-      // BRAWUKA-125: must be the first statement — waiters hold no other lock.
+      // BRAWUKA-676: the account-scope lock comes first — it serializes
+      // this create against deleteAccount, so no check-in can commit
+      // inside the delete's lock-snapshot → blanket-UPDATE window.
+      await client.query(ACQUIRE_ACCOUNT_WRITE_LOCK_SQL, [userId]);
+      // BRAWUKA-125: must precede any row lock — waiters hold no other lock.
       await client.query(ACQUIRE_CREATE_LOCK_SQL, [userId, input.cafe_id]);
       const cafe = await client.query<{ id: string }>(CAFE_EXISTS_SQL, [input.cafe_id, userId]);
       if (!cafe.rows[0]) throw new CafeNotFoundError(input.cafe_id);

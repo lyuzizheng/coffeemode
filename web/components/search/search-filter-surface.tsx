@@ -62,7 +62,7 @@ export function FilterSurface({
       {/* Content MUST nest inside Backdrop — sibling placement leaks the
           backdrop (BRAWUKA-371, see checkin-drawer.tsx). */}
       <Drawer.Backdrop>
-        <Drawer.Content placement="bottom" className="max-h-[85dvh] bg-overlay text-foreground">
+        <Drawer.Content placement="bottom" className="bg-overlay text-foreground">
           <Drawer.Dialog
             aria-label={t("filters")}
             className="flex max-h-[85dvh] flex-col"

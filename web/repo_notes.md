@@ -1,5 +1,16 @@
 # CoffeeMode Web — File Notes
 
+## 2026-09-24 (BRAWUKA-698 — mobile search-filter sheet floats ~15dvh off bottom)
+
+- `web/components/search/search-filter-surface.tsx`
+  - `Drawer.Content` no longer carries `max-h-[85dvh]` — same defect as
+    BRAWUKA-518: the class shrank the `fixed inset-0` container, so the
+    bottom-anchored dialog floated ~15dvh above the viewport edge. The inner
+    `Drawer.Dialog` keeps its own `max-h-[85dvh]`, so the sheet now sits
+    flush with the bottom edge. Verified in a real browser: dialog bottom
+    717.4px → 844px on a 390×844 viewport; `Drawer.Body` still scrolls
+    overflow; the desktop inline collapsible section is unchanged.
+
 ## 2026-09-24 (BRAWUKA-518 — mobile check-in sheet floats ~15dvh off bottom)
 
 - `web/components/checkin/checkin-drawer.tsx`
@@ -11,8 +22,8 @@
     dialog bottom 717.4px → 844px on a 390×844 viewport; detent expand
     (`h-[85dvh]` toggle) and collapse still work; the desktop 420px right
     panel is unchanged.
-  - Same latent pattern remains in `web/components/search/search-filter-surface.tsx`
-    (`max-h-[85dvh]` on both Content and Dialog) — out of scope here.
+  - Same latent pattern in `web/components/search/search-filter-surface.tsx`
+    was fixed under BRAWUKA-698 (entry above).
 
 ## 2026-09-23 (BRAWUKA-558 — server redirects off `request.url` origin)
 

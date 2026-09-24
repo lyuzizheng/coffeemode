@@ -121,6 +121,9 @@ jobs:
       - name: Structure guard (budgets, duplication, layer boundaries, exemption ratchet)
         run: npm run check:structure
 
+      - name: Route guard (apiRoute/origin allowlists, spec 0009 §5 / spec 0011 D5)
+        run: npm run check:guards
+
       - name: Lint
         run: npm run lint
 

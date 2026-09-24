@@ -58,7 +58,7 @@ else
     fi
   done
 
-  for gate in "npm run typecheck" "npm run lint" "npm run check:structure" "npm run check:i18n" "npm run test:e2e" "npm run lhci" "npm run build"; do
+  for gate in "npm run typecheck" "npm run lint" "npm run check:structure" "npm run check:guards" "npm run check:i18n" "npm run test:e2e" "npm run lhci" "npm run build"; do
     if ! grep -q "$gate" "$workflow"; then
       echo "ci.yml missing application gate: $gate"
       fail=1

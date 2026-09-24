@@ -103,7 +103,7 @@ ungated harness file, or a registered suite the coverage ratchet does not measur
 appears without a routing decision, or when a unit-only path starts scheduling the
 DB-backed gate:
 
-- `application-static`: `web/` changes (typecheck, structure guard — file/function budget, duplication budget, layer boundaries, exemption ratchet — lint, i18n key parity, build, bundle budget check, bundle analysis, PWA validation);
+- `application-static`: `web/` changes (typecheck, structure guard — file/function budget, duplication budget, layer boundaries, exemption ratchet — route guard (`npm run check:guards`, apiRoute/origin allowlists), lint, i18n key parity, build, bundle budget check, bundle analysis, PWA validation);
 - `application-e2e`: `web/` changes (build, Playwright E2E smoke suite, and Lighthouse CI performance budgets against seeded fixtures) — runs in parallel with `application-static`;
 - `integration-gate`: DB/SQL-capable web boundaries and shared-package changes — runs real Postgres DB tests (`npm run test:integration`), real Postgres user-journey tests (`npm run test:integration:journey`), real Postgres HTTP lifecycle tests (`npm run test:integration:http`), and real MinIO/R2 image round-trip (`npm run test:integration:images`) sequentially on one `postgis` service + `docker compose up minio` (merged for efficiency; was `integration-gate` + `images-integration-gate`), then the real-DB coverage ratchet (`npm run test:coverage:integration`) against the same live stack. Branch protection that still requires the legacy `images-integration-gate` name should migrate to `integration-gate` + `ci-gate` (see migration note below);
 - `image-service-gate`: image-service and shared-package changes (typecheck, deploy config guard);

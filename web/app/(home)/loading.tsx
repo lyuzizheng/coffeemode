@@ -22,19 +22,18 @@ export default function Loading() {
       </div>
       <Skeleton className="fixed right-4 top-[var(--layout-chrome-offset)] z-10 h-14 w-28 rounded-full lg:right-[var(--layout-chrome-offset)] lg:top-6" />
 
-      {/* Desktop: sidebar column */}
       {/* Desktop: sidebar column — mirrors the scroll-top expanded state
-          (BRAWUKA-506): invisible masthead slot, brand frontispiece,
-          search row, then index skeletons. */}
+          (BRAWUKA-506): invisible masthead slot, brand frontispiece
+          (eyebrow, wordmark, manifesto, add-cafe CTA), then index
+          skeletons. No search row — the SSR shell mounts it only after
+          hydration (contentVisible), so the mirror stays exact. */}
       <div className="fixed inset-y-0 left-0 z-10 hidden w-[var(--layout-aside-column)] flex-col border-r border-separator bg-surface lg:flex">
         <div className="h-[var(--layout-masthead-h)]" />
         <div className="flex h-[min(46dvh,400px)] flex-col items-center justify-center gap-3 px-6">
           <Skeleton className="h-3 w-20" />
           <Skeleton className="h-8 w-36" />
           <Skeleton className="h-4 w-56" />
-        </div>
-        <div className="border-b border-separator px-4 py-3">
-          <Skeleton className="h-11 w-full rounded-md" />
+          <Skeleton className="mt-1 h-8 w-24 rounded-md" />
         </div>
         {[0, 1, 2, 3].map((i) => (
           <div key={i} className="flex gap-3 border-b border-separator px-4 py-3">

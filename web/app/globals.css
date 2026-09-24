@@ -406,8 +406,10 @@ body {
   }
 }
 
-/* Reduced motion: kill non-essential animation globally. HeroUI's skeleton
-   shimmer and caret blink are CSS keyframes — neutralize them here.
+/* Reduced motion: kill non-essential animation globally — durations AND
+   delays, so staggered reveals (e.g. the map mosaic's per-cell
+   transitionDelay) resolve instantly instead of cell-by-cell. HeroUI's
+   skeleton shimmer and caret blink are CSS keyframes — neutralize them here.
    The element rules cannot reach the view-transition pseudo-element tree: `*`
    matches elements only, while HeroUI's toast slides through
    `::view-transition-new(.toast-bottom):only-child` (350ms, toast.css) plus the
@@ -420,8 +422,10 @@ body {
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
     scroll-behavior: auto !important;
   }
 

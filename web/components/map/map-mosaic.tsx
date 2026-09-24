@@ -12,7 +12,8 @@
  *   - ≤450ms total (spec 0002 settle.slow ceiling): last cell starts at
  *     59×5ms = 295ms and fades for 140ms → 435ms.
  *   - prefers-reduced-motion: the global kill switch in globals.css
- *     collapses the transition to ~0ms, so the mask simply disappears.
+ *     collapses transition duration AND delay to ~0ms, so the mask simply
+ *     disappears — no per-cell stagger.
  *   - Pure CSS transitions on opacity — no WebGL, no timers, no main-thread
  *     work beyond one class flip.
  *   - Deterministic order (mulberry32, fixed seed): the reveal pattern is

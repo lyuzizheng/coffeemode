@@ -242,12 +242,11 @@ export function getClientIdentity(
 
   // Trust model (BRAWUKA-282 P1-2): only `cf-connecting-ip` — set by
   // Cloudflare on every request it proxies — is authoritative. Direct-origin
-  // traffic that skips Cloudflare (`anon:unknown` when the header is absent,
-  // e.g. health probes via `bypassUnknownClients`, BRAWUKA-639) shares one
-  // coarse bucket rather than a forgeable per-header one. A direct-origin
-  // caller CAN set this header itself, so on that path it is just a
-  // self-chosen bucket label: per-attacker buckets (rate-limit holds), but
-  // the billed-upstream brake it used to provide is gone — anonymous live
+  // traffic that skips Cloudflare can set this header itself, so on that
+  // path it is just a self-chosen bucket label: rotating it mints a fresh
+  // bucket per request, so the limiter does not bind direct-origin floods
+  // at all. The real fix is trusted-edge enforcement (BRAWUKA-238); the
+  // billed-upstream brake it used to provide is gone — anonymous live
   // fanout is coerced to stored-only instead (BRAWUKA-621), and the
   // single-instance bucket itself is accepted in ADR-0006 (BRAWUKA-637).
   const ip = request.headers.get("cf-connecting-ip");

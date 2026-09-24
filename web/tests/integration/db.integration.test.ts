@@ -188,7 +188,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   }, 60_000);
 
-  it("applies migrations 0001→0033 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0032+0033 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -222,6 +222,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0029_open_now_24h_window.sql",
       "0030_cafe_source.sql",
       "0031_profile_city_backfill_audit.sql",
+      "0032_profiles_avatar_allowlist_backfill.sql",
       "0033_profile_current_city_name.sql",
     ]);
 
@@ -3723,6 +3724,67 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         testOtherCity,
       ]);
       await dbClient.query("delete from profile_city_backfill_audit");
+    });
+  });
+
+  describeDb("0032 profiles avatar allowlist backfill (BRAWUKA-661)", () => {
+    it("NULLs pre-fix non-allowlisted avatar_url rows, keeps allowlisted https hosts and NULLs", async () => {
+      const bad = "00000000-0000-4000-c000-000000000001";
+      const google = "00000000-0000-4000-c000-000000000002";
+      const supabase = "00000000-0000-4000-c000-000000000003";
+      const apple = "00000000-0000-4000-c000-000000000004";
+      const nulled = "00000000-0000-4000-c000-000000000005";
+      const lookalike = "00000000-0000-4000-c000-000000000006";
+      const http = "00000000-0000-4000-c000-000000000007";
+      const bareSuffix = "00000000-0000-4000-c000-000000000008";
+      const portSmuggle = "00000000-0000-4000-c000-000000000009";
+      const legitPort = "00000000-0000-4000-c000-000000000010";
+      await dbClient.query(
+        `insert into profiles (id, display_name, avatar_url) values
+           ($1, 'Bad Host', 'https://evil.example/a.png'),
+           ($2, 'Google', 'https://lh3.googleusercontent.com/a/avatar'),
+           ($3, 'Supabase', 'https://xyz.supabase.co/storage/v1/object/a.png'),
+           ($4, 'Apple CDN', 'https://cdn.apple.com/a.png'),
+           ($5, 'Null', null),
+           ($6, 'Lookalike', 'https://googleusercontent.com.evil.com/a.png'),
+           ($7, 'Plain HTTP', 'http://lh3.googleusercontent.com/a'),
+           ($8, 'Bare Suffix', 'https://supabase.co/a.png'),
+           ($9, 'Port Smuggle', 'https://googleusercontent.com:443@evil.com/x.png'),
+           ($10, 'Legit Port', 'https://lh3.googleusercontent.com:443/a')
+         on conflict (id) do update set display_name = excluded.display_name, avatar_url = excluded.avatar_url`,
+        [bad, google, supabase, apple, nulled, lookalike, http, bareSuffix, portSmuggle, legitPort],
+      );
+      await dbClient.query(`
+        update profiles
+        set avatar_url = null
+        where avatar_url is not null
+          and (
+            char_length(regexp_replace(avatar_url, '^\\s+|\\s+$', '', 'g')) > 2048
+            or (
+              regexp_replace(avatar_url, '^\\s+|\\s+$', '', 'g') !~* '^https://([^/@\\s]*@)?([a-z0-9_-]+\\.)*(googleusercontent\\.com|apple\\.com|icloud\\.com)(:[0-9]*)?(/|\\?|#|$)'
+              and regexp_replace(avatar_url, '^\\s+|\\s+$', '', 'g') !~* '^https://([^/@\\s]*@)?([a-z0-9_-]+\\.)+(supabase\\.co|supabase\\.in|cdn-apple\\.com)(:[0-9]*)?(/|\\?|#|$)'
+            )
+          )
+      `);
+      const { rows } = await dbClient.query<{ id: string; avatar_url: string | null }>(
+        "select id, avatar_url from profiles where id = any($1) order by id",
+        [[bad, google, supabase, apple, nulled, lookalike, http, bareSuffix, portSmuggle, legitPort]],
+      );
+      expect(rows).toEqual([
+        { id: bad, avatar_url: null },
+        { id: google, avatar_url: "https://lh3.googleusercontent.com/a/avatar" },
+        { id: supabase, avatar_url: "https://xyz.supabase.co/storage/v1/object/a.png" },
+        { id: apple, avatar_url: "https://cdn.apple.com/a.png" },
+        { id: nulled, avatar_url: null },
+        { id: lookalike, avatar_url: null },
+        { id: http, avatar_url: null },
+        { id: bareSuffix, avatar_url: null },
+        { id: portSmuggle, avatar_url: null },
+        { id: legitPort, avatar_url: "https://lh3.googleusercontent.com:443/a" },
+      ]);
+      await dbClient.query("delete from profiles where id = any($1)", [
+        [bad, google, supabase, apple, nulled, lookalike, http, bareSuffix, portSmuggle, legitPort],
+      ]);
     });
   });
 });

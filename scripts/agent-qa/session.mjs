@@ -51,11 +51,9 @@ async function readFailure(res, op) {
 }
 
 /**
- * @param {string} supabaseUrl base URL (no trailing slash)
  * @param {string} serviceRoleKey server-side key (headers only)
  */
-function adminHeaders(supabaseUrl, serviceRoleKey) {
-  void supabaseUrl;
+function adminHeaders(serviceRoleKey) {
   return {
     apikey: serviceRoleKey,
     authorization: `Bearer ${serviceRoleKey}`,
@@ -75,7 +73,7 @@ function adminHeaders(supabaseUrl, serviceRoleKey) {
 export async function createAgentQaUser(resolved, email, { fetchImpl = globalThis.fetch, password } = {}) {
   const res = await fetchImpl(`${resolved.supabaseUrl}/auth/v1/admin/users`, {
     method: "POST",
-    headers: adminHeaders(resolved.supabaseUrl, resolved.serviceRoleKey),
+    headers: adminHeaders(resolved.serviceRoleKey),
     body: JSON.stringify({
       email,
       email_confirm: true,
@@ -94,12 +92,20 @@ export async function createAgentQaUser(resolved, email, { fetchImpl = globalThi
  * resolves so cleanup stays green on double runs. Refuses the persistent
  * regular persona — that identity is never deleted by this scaffold.
  *
+ * `email` is required (no blind delete by id): the persona guard runs on
+ * every call, so omitting it throws instead of deleting around the guard.
+ *
  * @param {{ supabaseUrl: string, anonKey: string, serviceRoleKey: string }} resolved resolved env
  * @param {string} userId user id to delete
- * @param {{ fetchImpl?: typeof fetch, email?: string }} [opts] `email` enables the persona guard
+ * @param {{ fetchImpl?: typeof fetch, email: string }} opts
  */
 export async function deleteAgentQaUser(resolved, userId, { fetchImpl = globalThis.fetch, email } = {}) {
-  if (email !== undefined && isProtectedPersona(email)) {
+  if (typeof email !== "string" || email === "") {
+    throw new Error(
+      "Agent-QA session delete needs the user's email so the persistent-persona guard can run; refusing blind delete by id.",
+    );
+  }
+  if (isProtectedPersona(email)) {
     throw new Error(
       `Agent-QA session refuses to delete the persistent persona (${AGENT_QA_REGULAR_EMAIL}); delete only fresh-persona users.`,
     );
@@ -136,7 +142,7 @@ export async function generateAgentQaMagicLink(
   assertAllowedUrl(redirectTo);
   const res = await fetchImpl(`${resolved.supabaseUrl}/auth/v1/admin/generate_link`, {
     method: "POST",
-    headers: adminHeaders(resolved.supabaseUrl, resolved.serviceRoleKey),
+    headers: adminHeaders(resolved.serviceRoleKey),
     body: JSON.stringify({ type: "magiclink", email, options: { redirect_to: redirectTo } }),
   });
   if (!res.ok) await readFailure(res, "generate magic link");

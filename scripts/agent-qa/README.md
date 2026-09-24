@@ -40,8 +40,14 @@ InterceptionId`, request hangs); scaffold HTTP calls use direct Node fetch
 and in-page reads use fire-and-poll (`window.__x`), so both stay off this
 path. (b) The top-frame Document navigation carries no Access headers, so
 the first staging `page.goto()` lands on the Access handshake; the agent
-completes it once and reuses the session cookie thereafter. Fail-closed
-throughout: unparsable/off-Access-scope URLs never receive headers, and a
+completes it once and reuses the session cookie thereafter. Ordering (BRAWUKA-409 F9):
+cookie bootstrap is the PRIMARY path — a Node fetch with the
+`CF-Access-Client-*` pair trades for a `CF_Authorization` cookie stamped via
+`Network.setCookie` before navigation; `Fetch` injection is fallback ONLY for
+same-origin subresources that miss the cookie (paused requests hang when the
+pump process exits, and Fetch-enabled navigations stalled on `load` where the
+cookie-only path never stalled). Fail-closed throughout:
+unparsable/off-Access-scope URLs never receive headers, and a
 paused request is always continued (never left hanging).
 
 ## Secret-bridge contract (F8)
@@ -57,7 +63,7 @@ The ego-browser Node process does NOT inherit the agent's env, so
    before touching staging instead of probing it unauthenticated).
 3. Secrets never enter the transcript, a prompt, page content, or the client
    bundle. The Supabase `service_role` key stays server-side
-   (`web/tests/agent-qa/session.ts`) under the same rule.
+   (`scripts/agent-qa/session.mjs`) under the same rule.
 
 ## Journey registry (BRAWUKA-411)
 

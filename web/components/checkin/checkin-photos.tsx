@@ -132,18 +132,18 @@ export function CheckinPhotos({
         return [...prev, ...kept];
       });
 
-      // Staged photos (logged-out composer) upload later, at publish time.
-      if (deferUpload) {
-        if (inputRef.current) inputRef.current.value = "";
-        return;
-      }
-
       // Yield to microtasks so React flushes the functional updater to compute
-      // keptCount before uploads begin (BRAWUKA-579).
+      // keptCount before uploads begin or staged early-return completes (BRAWUKA-579, BRAWUKA-672).
       await Promise.resolve();
 
       if (keptCount < mappedEntries.length) {
         committedCountRef.current -= mappedEntries.length - keptCount;
+      }
+
+      // Staged photos (logged-out composer) upload later, at publish time.
+      if (deferUpload) {
+        if (inputRef.current) inputRef.current.value = "";
+        return;
       }
 
       // Clamp uploads to the entries actually kept by the capacity clamp to avoid

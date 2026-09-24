@@ -23,6 +23,7 @@ import { recordNavigationTap } from "@/lib/navigations";
 import { displayCityName } from "@/lib/cities";
 import { isOpenAt } from "@/lib/hours";
 import { getQueryStaleTimeMs } from "@/lib/client-env";
+import { shouldRetryQuery } from "@/lib/query/retry";
 import { apiFetch, ApiError } from "@/lib/http";
 import type { DiscoveryController } from "@/lib/discovery/use-discovery-controller";
 import type { PublicCafeDetail } from "@/types/cafes";
@@ -199,10 +200,21 @@ export function DetailContent({
   // fills ["cafe", id] with a fresh `updatedAt`, so mount serves it with no
   // fetch. The pin below uses the same env-driven default as the app client
   // (`getQueryStaleTimeMs`, BRAWUKA-250) so ops tuning stays in one place.
+  // A 404 throws FeedNotFoundError: retrying can never succeed and delays
+  // the DG19/18f missing-cafe toast by two doomed requests (BRAWUKA-486).
+  // Everything else defers to the shared policy (spec 0011 D9).
   const query = useQuery({
     queryKey: ["cafe", cafeId],
     queryFn: () => fetchCafe(cafeId),
     staleTime: getQueryStaleTimeMs(),
+    retry: (failureCount, error) =>
+      error instanceof FeedNotFoundError
+        ? false
+        : shouldRetryQuery(
+            failureCount,
+            error,
+            typeof navigator === "undefined" ? true : navigator.onLine,
+          ),
   });
 
   // DG19/18f: an in-app 404 clears the selection and toasts.

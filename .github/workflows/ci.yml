@@ -328,6 +328,9 @@ jobs:
       - name: File budget (spec 0009)
         run: npm run check:file-size
 
+      - name: Exemption ratchet (spec 0009 §7)
+        run: npm run check:suppressions
+
       - name: Deploy config guard (staging and production must resolve deployable)
         run: npm run deploy:check
 
@@ -358,6 +361,9 @@ jobs:
 
       - name: File budget (spec 0009)
         run: npm run check:file-size
+
+      - name: Exemption ratchet (spec 0009 §7)
+        run: npm run check:suppressions
 
   ci-gate:
     needs:

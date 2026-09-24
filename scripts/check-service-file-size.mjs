@@ -2,7 +2,7 @@
 /**
  * File budget guard for the Worker services (spec 0009 §3 + Edge cases §4:
  * `poi-service/` and `image-service/` apply the same 250/400 table as web —
- * Workers code has no exemption).
+ * Workers register zero file-size exemption).
  *
  * Run from the service root; each service's `npm run check:file-size` does
  * exactly that, and both service gates in CI run that script. Walks

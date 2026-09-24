@@ -1,4 +1,4 @@
-import { fail, positiveNumber, record } from "./primitives";
+import { fail, positiveInteger, record } from "./primitives";
 
 /** One rate-limit window: at most maxRequests per windowMs. */
 export interface RateLimitBucket {
@@ -9,8 +9,8 @@ export interface RateLimitBucket {
 function parseBucket(file: string, keyPath: string, entry: unknown): RateLimitBucket {
   const bucket = record(file, keyPath, entry);
   return {
-    windowMs: positiveNumber(file, `${keyPath}.windowMs`, bucket.windowMs),
-    maxRequests: positiveNumber(file, `${keyPath}.maxRequests`, bucket.maxRequests),
+    windowMs: positiveInteger(file, `${keyPath}.windowMs`, bucket.windowMs),
+    maxRequests: positiveInteger(file, `${keyPath}.maxRequests`, bucket.maxRequests),
   };
 }
 

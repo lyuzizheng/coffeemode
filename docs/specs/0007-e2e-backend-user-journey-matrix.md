@@ -38,7 +38,7 @@ retirement in `## Stable decisions` §8.
     dynamic import, or an `fs` read by path. No import-based rule covers the last
     two, so the family defaults to `integration=true` and a new fixture cannot
     land ungated whichever way it is consumed. Only `*.test.ts(x)` files stay
-    unit-only (`application-gate` alone), by an explicit allowlist that matches
+    unit-only (the application gates alone), by an explicit allowlist that matches
     test files and nothing else — so a non-test file dropped into a unit-only
     family is gated, and a test file nested deeper than the allowlist spells out
     is over-gated rather than ungated. Unit-only is the right default for those

@@ -316,15 +316,13 @@ How tests evolve when features land (one writer per change, per `AGENTS.md`):
 
 Runtime observability is out of the test gate's scope but shares its
 evidence discipline: search telemetry is emitted as structured stdout lines
-(`search.telemetry`, five frozen fields) per
+(`search.telemetry`, five frozen fields) and shipped to Grafana Cloud Loki over
+OTLP (BRAWUKA-613) per
 [ADR-0005](../adr/0005-metrics-search-observability.md), which owns the
 metric 口径, alert thresholds, dashboard spec, and the Stage 3 promotion
-criteria. Note the ADR's collection path is currently unwired — those lines
-stay on container stdout, and the third-party destination it named has been
-retired (BRAWUKA-611). Telemetry fields are a frozen contract — changing them
-requires amending the ADR, and they must never carry user content (`q`,
-coordinates, `viewer_id`). No separate metrics pipeline is added without a
-second consumer.
+criteria. Telemetry fields are a frozen contract — changing them requires
+amending the ADR, and they must never carry user content (`q`, coordinates,
+`viewer_id`). No separate metrics pipeline is added without a second consumer.
 
 ### Appendix — Coverage traceability
 

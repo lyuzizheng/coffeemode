@@ -22,13 +22,16 @@ import { installShutdownFlush } from "./shutdown";
  * logs, and crash stderr. Those stay in `docker logs`, which ADR-0004 already
  * designates the complete record.
  *
- * Field mapping (issue BRAWUKA-607):
+ * Field mapping (issue BRAWUKA-607, BRAWUKA-613):
  *   `type`                                  → `severity_text` (+ `log.type`)
  *   `error`                                 → body
  *   `route` `request_id` `code` `status`    → log-record attributes
  *   `method` `path` `duration_ms` `stack`   → log-record attributes
  *   `client_id` `client_ip` `bucket`        → log-record attributes
  *   `retry_after`                           → log-record attribute
+ *   `search.duration_ms` `search.truncated` → log-record attributes (ADR-0005)
+ *   `search.open_now.batches` `search.cache`→ log-record attributes
+ *   `search.poi_degraded` `mode`            → log-record attributes
  *
  * `client_ip` is the raw `cf-connecting-ip` behind a rate-limit denial. It
  * rides a log-record attribute, so it lands in structured metadata and never
@@ -49,14 +52,15 @@ import { installShutdownFlush } from "./shutdown";
 const SERVICE_NAME = "coffeemode-web";
 
 /**
- * The app's own `type` vocabulary mapped to OTel severity. `access` is
- * informational: the proxy runs before routing, so its line records the
- * request, not an outcome.
+ * The app's own `type` vocabulary mapped to OTel severity. `access` and
+ * `search.telemetry` are informational: the proxy runs before routing, and
+ * search telemetry records search execution characteristics.
  */
 const SEVERITY: Record<string, { number: SeverityNumber; text: string }> = {
   error: { number: SeverityNumber.ERROR, text: "ERROR" },
   warn: { number: SeverityNumber.WARN, text: "WARN" },
   access: { number: SeverityNumber.INFO, text: "INFO" },
+  "search.telemetry": { number: SeverityNumber.INFO, text: "INFO" },
 };
 
 /**
@@ -76,6 +80,11 @@ const ATTRIBUTE_FIELDS = [
   "client_ip",
   "bucket",
   "retry_after",
+  "search.duration_ms",
+  "search.truncated",
+  "search.open_now.batches",
+  "search.poi_degraded",
+  "search.cache",
 ] as const;
 
 /**
@@ -166,10 +175,26 @@ function emit(line: Record<string, unknown>): void {
     // `log.type` keeps the app's own vocabulary queryable: `severity_text` is
     // coarse (INFO covers everything informational), so it cannot on its own
     // separate an access line from any future informational line.
-    const attributes: Record<string, string | number> = { "log.type": type };
+    const attributes: Record<string, string | number | boolean> = { "log.type": type };
     for (const field of ATTRIBUTE_FIELDS) {
       const value = line[field];
-      if (typeof value === "string" || typeof value === "number") attributes[field] = value;
+      if (
+        typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean"
+      ) {
+        attributes[field] = value;
+      }
+    }
+
+    const searchRequests = line["search.requests"];
+    if (
+      typeof searchRequests === "object" &&
+      searchRequests !== null &&
+      "mode" in searchRequests &&
+      typeof (searchRequests as { mode: unknown }).mode === "string"
+    ) {
+      attributes.mode = (searchRequests as { mode: string }).mode;
     }
 
     target.emit({

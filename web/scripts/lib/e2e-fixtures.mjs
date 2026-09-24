@@ -9,6 +9,10 @@ import { assertSafeSeedTarget } from "./seed-guard.mjs";
 export const E2E_USER_ID = "e2e00000-0000-4000-a000-000000000001";
 export const E2E_CAFE_ID = "e2e00000-0000-4000-a000-000000000002";
 export const E2E_CHECKIN_ID = "e2e00000-0000-4000-a000-000000000003";
+// Second fixture user (BRAWUKA-704): owns a check-in at the fixture cafe so
+// the next slice's like-toggle gate has a foreign row to act on.
+export const E2E_USER2_ID = "e2e00000-0000-4000-a000-000000000004";
+export const E2E_CHECKIN2_ID = "e2e00000-0000-4000-a000-000000000005";
 
 export const DEFAULT_DATABASE_URL = "postgres://coffeemode:coffeemode@localhost:5432/coffeemode";
 
@@ -29,9 +33,9 @@ export async function setupDbFixtures({
 
     await dbClient.query(
       `insert into profiles (id, display_name, current_city)
-       values ($1, 'E2E Nomad', 'San Francisco')
-       on conflict (id) do update set display_name = 'E2E Nomad', current_city = 'San Francisco'`,
-      [E2E_USER_ID],
+       values ($1, 'E2E Nomad', 'San Francisco'), ($2, 'E2E Regular', 'San Francisco')
+       on conflict (id) do update set display_name = excluded.display_name, current_city = excluded.current_city`,
+      [E2E_USER_ID, E2E_USER2_ID],
     );
 
     const seedWorkStats = JSON.stringify({
@@ -91,16 +95,44 @@ export async function setupDbFixtures({
          '[]'::jsonb,
          now()
        )
+      on conflict (id) do update set
+        cafe_id = $2,
+        user_id = $3,
+        is_creation = true,
+        note = 'Great nomad setup for smoke testing with fast wifi and outlets.',
+        scores = '{"wifi": 90, "outlets": 85, "seats": 80, "temp": 75, "coffee": 85, "overall": 85}'::jsonb,
+        max_stay = '3h',
+        photos = '[]'::jsonb,
+        visited_at = now()`,
+      [E2E_CHECKIN_ID, E2E_CAFE_ID, E2E_USER_ID],
+    );
+
+    // Foreign-owned row at the same cafe: the next slice's like-toggle gate
+    // acts on this check-in as user1. Non-creation so exactly one creation
+    // check-in (E2E_CHECKIN_ID) exists, preserving the drawer mode contract.
+    await dbClient.query(
+      `insert into checkins (id, cafe_id, user_id, is_creation, note, scores, max_stay, photos, visited_at)
+       values (
+         $1,
+         $2,
+         $3,
+         false,
+         'Second regular here for the like-toggle gate.',
+         '{"wifi": 80, "outlets": 75, "seats": 85, "temp": 70, "coffee": 80, "overall": 80}'::jsonb,
+         '2h',
+         '[]'::jsonb,
+         now()
+       )
        on conflict (id) do update set
          cafe_id = $2,
          user_id = $3,
-         is_creation = true,
-         note = 'Great nomad setup for smoke testing with fast wifi and outlets.',
-         scores = '{"wifi": 90, "outlets": 85, "seats": 80, "temp": 75, "coffee": 85, "overall": 85}'::jsonb,
-         max_stay = '3h',
+         is_creation = false,
+         note = 'Second regular here for the like-toggle gate.',
+         scores = '{"wifi": 80, "outlets": 75, "seats": 85, "temp": 70, "coffee": 80, "overall": 80}'::jsonb,
+         max_stay = '2h',
          photos = '[]'::jsonb,
          visited_at = now()`,
-      [E2E_CHECKIN_ID, E2E_CAFE_ID, E2E_USER_ID],
+      [E2E_CHECKIN2_ID, E2E_CAFE_ID, E2E_USER2_ID],
     );
     return { hasDb: true, dbClient };
   } catch (err) {
@@ -128,21 +160,27 @@ export async function cleanupDbFixtures(dbClient) {
   if (!dbClient) return;
   // FK-safe order inside one transaction (BRAWUKA-629): profiles is referenced
   // without cascade by cafes.created_by, checkins.user_id and
-  // navigations.user_id, so the profile row must go last — and cafes are
-  // deleted by creator, not just E2E_CAFE_ID, so residual fixture cafes from
-  // earlier crashed runs cannot block the profile delete. checkin_likes and
-  // image_upload_intents follow via `on delete cascade`.
+  // navigations.user_id, so the profile rows must go last — and cafes are
+  // deleted by either fixture creator, not just E2E_CAFE_ID, so residual
+  // fixture cafes from earlier crashed runs cannot block the profile delete.
+  // checkin_likes and image_upload_intents follow via `on delete cascade`.
   // A failure here leaves fixture rows behind, so it throws: callers surface
   // it as a run failure instead of the old warn-and-accumulate behavior.
   try {
     await dbClient.query("BEGIN");
-    await dbClient.query(`delete from cafes where id = $1 or created_by = $2`, [
+    await dbClient.query(`delete from cafes where id = $1 or created_by = any ($2::uuid[])`, [
       E2E_CAFE_ID,
-      E2E_USER_ID,
+      [E2E_USER_ID, E2E_USER2_ID],
     ]);
-    await dbClient.query(`delete from checkins where user_id = $1`, [E2E_USER_ID]);
-    await dbClient.query(`delete from navigations where user_id = $1`, [E2E_USER_ID]);
-    await dbClient.query(`delete from profiles where id = $1`, [E2E_USER_ID]);
+    await dbClient.query(`delete from checkins where user_id = any ($1::uuid[])`, [
+      [E2E_USER_ID, E2E_USER2_ID],
+    ]);
+    await dbClient.query(`delete from navigations where user_id = any ($1::uuid[])`, [
+      [E2E_USER_ID, E2E_USER2_ID],
+    ]);
+    await dbClient.query(`delete from profiles where id = any ($1::uuid[])`, [
+      [E2E_USER_ID, E2E_USER2_ID],
+    ]);
     await dbClient.query("COMMIT");
   } catch (err) {
     try {

@@ -35,16 +35,26 @@ import {
   waitForServer,
   registerProcessCleanup,
 } from "./lib/standalone-server.mjs";
-import { runCheckinDrawerGate } from "./lib/checkin-drawer-gate.mjs";
-import { runCheckinSubmitGate } from "./lib/checkin-submit-gate.mjs";
-import { runApiContractGate } from "./lib/api-contract-gate.mjs";
-import { runDeeplinkHydrationGate } from "./lib/deeplink-hydration-gate.mjs";
+import { runRegistryGates } from "./lib/e2e-gates.mjs";
+import { clearArtifactsDir } from "./lib/e2e-artifacts.mjs";
+import { assert } from "./lib/gate-assert.mjs";
 import { stubOpenFreeMap } from "./lib/tile-stubs.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dbUrl = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
 
-if (!process.env.E2E_BASE_URL && !existsSync(join(root, ".next", "BUILD_ID"))) {
+// BRAWUKA-704 (D4): `desktop` (default, 1280x800) runs the inline T1–T5
+// checks plus every registry gate; `E2E_VIEWPORT=mobile` runs the inline T1–T5
+// checks at the mobile viewport plus only the registry's allowlisted subset
+// (auth-session, checkin-submit, search-discovery — the last two land in
+// later slices). The default context viewport follows the same flag.
+const E2E_VIEWPORT = process.env.E2E_VIEWPORT ?? "desktop";
+if (E2E_VIEWPORT !== "desktop" && E2E_VIEWPORT !== "mobile") {
+  console.error(`Unknown E2E_VIEWPORT=${JSON.stringify(E2E_VIEWPORT)} — expected "desktop" or "mobile".`);
+  process.exit(1);
+}
+
+ if (!process.env.E2E_BASE_URL && !existsSync(join(root, ".next", "BUILD_ID"))) {
   console.error("No production build found in web/.next — run `npm run build` first.");
   process.exit(1);
 }
@@ -84,13 +94,12 @@ registerProcessCleanup(cleanup);
 // ---------------------------------------------------------------------------
 const failures = [];
 
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
 
 async function runSmokeSuite() {
+  // Stale-artifact guard: skipped gates (mobile filter, no-DB, mock-miss)
+  // keep no directory from a previous run — everything starts absent.
+  clearArtifactsDir();
+
   const port = process.env.E2E_PORT ? Number(process.env.E2E_PORT) : await getFreePort();
   const base = process.env.E2E_BASE_URL ?? `http://127.0.0.1:${port}`;
 
@@ -98,7 +107,6 @@ async function runSmokeSuite() {
   const hasDb = fixtureResult.hasDb;
   dbClient = fixtureResult.dbClient;
   console.log(`[E2E] DB fixture initialized: ${hasDb ? "yes (Postgres)" : "no (fallback mode)"}`);
-
   if (!process.env.E2E_BASE_URL) {
     serverProcess = spawnStandaloneServer({
       cwd: root,
@@ -133,7 +141,12 @@ async function runSmokeSuite() {
     // -------------------------------------------------------------------------
     async function createContext(options = {}) {
       const context = await browser.newContext({
-        viewport: { width: 1280, height: 800 },
+        // D4: the flag that filters the registry also sets the default
+        // viewport, so gates on the default context (upcoming auth-session,
+        // inline T1–T5) exercise the mobile layout under E2E_VIEWPORT=mobile.
+        ...(E2E_VIEWPORT === "mobile"
+          ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }
+          : { viewport: { width: 1280, height: 800 } }),
         ...options,
       });
 
@@ -148,8 +161,15 @@ async function runSmokeSuite() {
       return context;
     }
 
-    function attachErrorCollector(page, label, expected = { status: 200, path: "" }) {
+    function attachErrorCollector(page, label, expected = { status: 200, path: "" }, consoleSink = null) {
       const pageErrors = [];
+      // Artifact capture is additive: every fault lands in `pageErrors` so
+      // `checkErrors()` still fails the run; the mirror into `consoleSink`
+      // only feeds the gate's `console.log` artifact.
+      const push = (line) => {
+        pageErrors.push(line);
+        if (consoleSink) consoleSink.push(line);
+      };
       page.on("console", (msg) => {
         if (msg.type() !== "error") return;
         // Chromium logs the document's own non-2xx response as a console
@@ -166,24 +186,25 @@ async function runSmokeSuite() {
         ) {
           return;
         }
-        // DG64/DG105: the check-in drawer probes /api/checkins/last
-        // client-side on open (CDN-cached shell, per-user auth can't bake
-        // into HTML); signed-out, its 401 is the contract's anonymous
-        // answer (the drawer drops to the sign-in gate), not a fault.
-        // Exempt exactly that subresource error — any other endpoint's
-        // non-2xx still fails the gate.
+        // DG64/DG105/DG77: signed-out, the client probes per-user endpoints
+        // the CDN-cached shell can't bake in — `/api/checkins/last` on
+        // drawer open, `/api/navigations/prompt` at idle. Their 401 is the
+        // contract's anonymous answer (sign-in gate / no prompt), not a
+        // fault. Exempt exactly those subresource errors — any other
+        // endpoint's non-2xx still fails the gate.
         if (
-          msg.location()?.url?.startsWith(`${base}/api/checkins/last`) &&
+          (msg.location()?.url?.startsWith(`${base}/api/checkins/last`) ||
+            msg.location()?.url?.startsWith(`${base}/api/navigations/prompt`)) &&
           msg.text().startsWith(
             "Failed to load resource: the server responded with a status of 401 ",
           )
         ) {
           return;
         }
-        pageErrors.push(`console.error: ${msg.text()}`);
+        push(`console.error: ${msg.text()}`);
       });
       page.on("pageerror", (err) => {
-        pageErrors.push(`pageerror: ${err.message}`);
+        push(`pageerror: ${err.message}`);
       });
       return () => {
         if (pageErrors.length > 0) {
@@ -191,7 +212,6 @@ async function runSmokeSuite() {
         }
       };
     }
-
     // -------------------------------------------------------------------------
     // Test 1: Signed-out Discovery & Home Page
     // -------------------------------------------------------------------------
@@ -204,7 +224,6 @@ async function runSmokeSuite() {
 
       const res = await page.goto(`${base}/`, { waitUntil: "domcontentloaded" });
       assert(res?.status() === 200, `Expected 200, got ${res?.status()}`);
-
       // map-home: the basemap renders as a MapLibre canvas — or, where
       // headless WebGL is unavailable, the designed error state. Either way
       // the discovery sidebar must be live (the data path is map-independent).
@@ -250,22 +269,6 @@ async function runSmokeSuite() {
       }
       checkErrors();
       await context.close();
-      console.log(`[E2E] ok ${label}`);
-    }
-
-    // Test 2b: DG124 hydration — shell → map app at FULL, mobile detents,
-    // and the retired /?cafe= redirect — see lib/deeplink-hydration-gate.mjs.
-    if (hasDb) {
-      const label = "T2b: Deep-Link Hydration (DG124)";
-      console.log(`[E2E] Running ${label}...`);
-      await runDeeplinkHydrationGate({
-        label,
-        base,
-        cafeId: E2E_CAFE_ID,
-        cafeName: "E2E Smoke Cafe",
-        createContext,
-        attachErrorCollector,
-      });
       console.log(`[E2E] ok ${label}`);
     }
 
@@ -344,35 +347,22 @@ async function runSmokeSuite() {
       console.log(`[E2E] ok ${label}`);
     }
 
-    // -------------------------------------------------------------------------
-    // Test 6: Core Domain API Contracts — see lib/api-contract-gate.mjs.
-    // -------------------------------------------------------------------------
-    {
-      const label = "T6: Core API Contract Endpoints";
-      console.log(`[E2E] Running ${label}...`);
-      await runApiContractGate({ base, cafeId: E2E_CAFE_ID });
-      console.log(`[E2E] ok ${label}`);
-    }
-
-    // Test 7: check-in drawer geometry (BRAWUKA-217) — see lib/checkin-drawer-gate.mjs.
-    if (hasDb) {
-      const label = "T7: Check-in Drawer CTA Inside the Viewport";
-      console.log(`[E2E] Running ${label}...`);
-      await runCheckinDrawerGate({ label, base, cafeId: E2E_CAFE_ID, createContext, attachErrorCollector });
-      console.log(`[E2E] ok ${label}`);
-    }
-
-    // Test 8: check-in submit flow (BRAWUKA-121) — see lib/checkin-submit-gate.mjs.
-    if (hasDb) {
-      const label = "T8: Check-in Submit Flow (Real Session via supabase-mock)";
-      await runCheckinSubmitGate({ label, base, cafeId: E2E_CAFE_ID, userId: E2E_USER_ID, dbClient, createContext, attachErrorCollector });
-      console.log(`[E2E] ok ${label}`);
-    }
-
+    // Registry gates (BRAWUKA-704): T2b/T6/T7/T8 live in lib/e2e-gates.mjs.
+    await runRegistryGates(
+      {
+        base,
+        cafeId: E2E_CAFE_ID,
+        cafeName: "E2E Smoke Cafe",
+        userId: E2E_USER_ID,
+        dbClient,
+        createContext,
+        attachErrorCollector,
+      },
+      { hasDb, viewport: E2E_VIEWPORT },
+    );
   } finally {
     await cleanup();
   }
-
   if (failures.length > 0) {
     console.error(`\n[E2E] Suite failed with ${failures.length} issue(s):\n`);
     for (const f of failures) {

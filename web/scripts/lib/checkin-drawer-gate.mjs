@@ -15,6 +15,9 @@
  * file budget.
  */
 
+import { DRAWER_DIALOG_SELECTOR, assert, shot } from "./gate-assert.mjs";
+import { clearGateArtifacts, withGateContext } from "./e2e-artifacts.mjs";
+
 /**
  * The three viewports BRAWUKA-217 measured: the narrow phone that overflowed the
  * most, the default phone, then the desktop column (18g breakpoint). Narrowest
@@ -25,17 +28,6 @@ const VIEWPORTS = [
   { name: "390x844", width: 390, height: 844, isMobile: true },
   { name: "1440x900", width: 1440, height: 900, isMobile: false },
 ];
-
-// Placement flips at ≥1024px (BRAWUKA-516): bottom sheet on mobile,
-// right-side panel on desktop — select the slot, not the modifier.
-const DRAWER_DIALOG_SELECTOR = "[data-slot='drawer-dialog']";
-
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
-
 /**
  * Wait for the drawer's slide-in to settle. The panel animates in from off-screen
  * (from below for bottom placement, from the right edge on desktop), so a
@@ -137,30 +129,36 @@ function assertCtaInsideViewport(viewport, metrics) {
  * @param {Function} options.attachErrorCollector smoke-suite console/pageerror collector.
  */
 export async function runCheckinDrawerGate({ label, base, cafeId, createContext, attachErrorCollector }) {
+  clearGateArtifacts("checkin-drawer");
   for (const viewport of VIEWPORTS) {
-    const context = await createContext({
-      viewport: { width: viewport.width, height: viewport.height },
-      isMobile: viewport.isMobile,
-      hasTouch: viewport.isMobile,
-    });
-    try {
-      const page = await context.newPage();
-      const checkErrors = attachErrorCollector(page, `${label} (${viewport.name})`, {
-        path: `/cafes/${cafeId}`,
-        status: 200,
-      });
+    await withGateContext(
+      "checkin-drawer",
+      createContext,
+      {
+        viewport: { width: viewport.width, height: viewport.height },
+        isMobile: viewport.isMobile,
+        hasTouch: viewport.isMobile,
+      },
+      async (context, consoleLines) => {
+        const page = await context.newPage();
+        const checkErrors = attachErrorCollector(page, `${label} (${viewport.name})`, {
+          path: `/cafes/${cafeId}`,
+          status: 200,
+        }, consoleLines);
 
-      await page.goto(`${base}/cafes/${cafeId}`, { waitUntil: "domcontentloaded" });
-      // DG124: the SSR shell is a hydration overlay with its own live CTA —
-      // a drawer opened from it dies when the overlay unmounts. Wait for the
-      // masthead to detach so the click lands on the app's trigger.
-      await page.waitForSelector("header", { state: "detached", timeout: 15000 });
-      const dialog = await openCheckinDrawer(page);
-      assertCtaInsideViewport(viewport, await measureDrawer(dialog));
+        await page.goto(`${base}/cafes/${cafeId}`, { waitUntil: "domcontentloaded" });
+        // DG124: the SSR shell is a hydration overlay with its own live CTA —
+        // a drawer opened from it dies when the overlay unmounts. Wait for the
+        // masthead to detach so the click lands on the app's trigger.
+        await page.waitForSelector("header", { state: "detached", timeout: 15000 });
+        const dialog = await openCheckinDrawer(page);
+        assertCtaInsideViewport(viewport, await measureDrawer(dialog));
+        await shot(page, "checkin-drawer", `open-${viewport.name}`);
 
-      checkErrors();
-    } finally {
-      await context.close();
-    }
+        checkErrors();
+        return page;
+      },
+      `${label} (${viewport.name})`,
+    );
   }
 }

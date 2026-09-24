@@ -322,6 +322,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Lint (structural rules, spec 0009)
+        run: npm run lint
+
+      - name: File budget (spec 0009)
+        run: npm run check:file-size
+
       - name: Deploy config guard (staging and production must resolve deployable)
         run: npm run deploy:check
 
@@ -346,6 +352,12 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Lint (structural rules, spec 0009)
+        run: npm run lint
+
+      - name: File budget (spec 0009)
+        run: npm run check:file-size
 
   ci-gate:
     needs:

@@ -60,6 +60,36 @@ export const SOURCE_SCAN = Object.freeze({
   testPattern: /\.(test|spec)\.[cm]?[jt]sx?$/u,
 });
 
+/**
+ * Root directories and extensions `scripts/check-service-file-size.mjs` walks
+ * in each Worker service. Spec 0009 §3 applies to `poi-service/` and
+ * `image-service/` unchanged (Edge cases §4: Workers code has no exemption);
+ * tests are excluded there for the same reason they are excluded above.
+ */
+export const SERVICE_SCAN = Object.freeze({
+  roots: Object.freeze(["src", "scripts"]),
+  extensions: Object.freeze([".ts", ".mts", ".mjs"]),
+  ignoredDirs: Object.freeze(["node_modules", "tests", "coverage", "dist"]),
+  testPattern: /\.(test|spec)\.[cm]?[jt]sx?$/u,
+});
+
+/**
+ * The structural rule set itself (spec 0009 §3), shared verbatim by every
+ * linter that enforces it: `web/eslint.config.mjs` and the Worker-service
+ * configs (`poi-service/eslint.config.mjs`, `image-service/eslint.config.mjs`).
+ * Values derive from `LIMITS`, so docs, linters, and gates cannot disagree.
+ * Web-layer edges (SQL bans, UI→persistence direction) are deliberately absent —
+ * those layers exist only under `web/`; services carry the code-shape rules only.
+ */
+export const STRUCTURE_RULES = Object.freeze({
+  "max-lines": ["error", { max: LIMITS.maxLines }],
+  "max-lines-per-function": ["error", { max: LIMITS.maxLinesPerFunction }],
+  "max-depth": ["error", LIMITS.maxDepth],
+  "max-params": ["error", LIMITS.maxParams],
+  "sonarjs/cognitive-complexity": ["error", LIMITS.cognitiveComplexity],
+  "sonarjs/no-identical-functions": ["error", LIMITS.identicalFunctionLines],
+});
+
 /** Layer boundary rules enforced by `@typescript-eslint/no-restricted-imports`. */
 export const LAYER_BOUNDARIES = Object.freeze([
   Object.freeze({

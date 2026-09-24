@@ -240,9 +240,10 @@ export function UnifiedSearchPanel({
     }
     if (event.key === "Enter") {
       const trimmed = query.trim();
-      // Same trigger as the debounce path (DG44): sub-min-length Enter is a
-      // no-op, not a wasted request.
-      if (trimmed.length < MIN_QUERY_LENGTH) return;
+      // Same trigger as the debounce path (DG44): Enter is a no-op only when
+      // nothing would fetch — sub-min-length query AND no active filters.
+      // Filter-active Enter submits the browse-mode results view (BRAWUKA-520).
+      if (!wantsResults) return;
       setSubmitted(true);
       if (fetchedSignatureRef.current !== requestSignature(trimmed, city, filters)) {
         runSearch(trimmed);

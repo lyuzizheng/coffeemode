@@ -33,7 +33,10 @@ export const POST = apiRoute(
       const updated = await updateProfile(ctx.user.id, {
         onboarded: true,
         lastLocation: { lat: parsed.lat, lng: parsed.lng },
-        ...(city ? { currentCity: city.id } : {}),
+        // BRAWUKA-696: a new city invalidates the stored display name — clear
+        // it here so a failed follow-up geocode PATCH can't leave a stale
+        // locality against the new rt-* id (the PATCH rewrites it on success).
+        ...(city ? { currentCity: city.id, currentCityName: null } : {}),
       });
       if (!updated) {
         return apiError("profile_not_found", 404, { requestId: ctx.requestId });

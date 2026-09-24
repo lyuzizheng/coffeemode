@@ -17,6 +17,7 @@ import pg from "pg";
 import type { NextRequest } from "next/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as getProfileRoute, PATCH as patchProfileRoute } from "@/app/api/profile/route";
+import { POST as locateRoute } from "@/app/api/onboarding/locate/route";
 import { PATCH as patchIdentityRoute } from "@/app/api/profile/identity/route";
 import { GET as getCafeDetailRoute } from "@/app/api/cafes/[id]/route";
 import { GET as getFeedRoute } from "@/app/api/cafes/[id]/checkins/route";
@@ -354,6 +355,35 @@ describePath3("path 3 — profile & public identity lifecycle over HTTP (spec 00
     const read = await client.get<ProfilePayload, NoCtx, NextRequest>(getProfileRoute, "/api/profile");
     expect(read.status).toBe(200);
     expect(read.data.profile.currentCityName).toBeNull();
+
+    // 7. The locate POST bypasses resolveCityPatch — it must clear a stored
+    //    name itself so a failed follow-up geocode PATCH can't leave a stale
+    //    locality against the new rt-* id (review P1).
+    const named = await client.patch<{ profile: UserProfileDto }, NoCtx, NextRequest>(
+      patchProfileRoute,
+      "/api/profile",
+      {
+        currentCity: "lisbon",
+        lastLocation: { lat: 38.7223, lng: -9.1393 },
+        currentCityName: "Lisboa",
+      },
+    );
+    expect(named.data.profile.currentCityName).toBe("Lisboa");
+
+    const locateRes = await client.post<
+      { city: { id: string; runtime: boolean } | null; inCoverage: boolean },
+      NoCtx,
+      NextRequest
+    >(locateRoute, "/api/onboarding/locate", { lat: 43.8256, lng: 87.6168 });
+    expect(locateRes.status).toBe(200);
+    expect(locateRes.data.city?.id).toBe("rt-asia-urumqi");
+
+    const afterLocate = await client.get<ProfilePayload, NoCtx, NextRequest>(
+      getProfileRoute,
+      "/api/profile",
+    );
+    expect(afterLocate.data.profile.currentCity).toBe("rt-asia-urumqi");
+    expect(afterLocate.data.profile.currentCityName).toBeNull();
   });
 
   it("path 3 (spec 0008 §6, DG122): PATCH /api/profile persists onboarded + lastLocation", async () => {

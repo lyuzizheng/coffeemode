@@ -29,15 +29,15 @@
  *   exists. It MUST NOT be used for `CF-Access-*` (F6: token reached
  *   `cloudflareinsights.com` beacons and `openfreemap` tiles).
  * - `buildAccessFetchPatterns` scopes `Fetch.enable` to
- *   `AGENT_QA_ALLOWED_HOSTS` AND to subresource `resourceType`s
+ *   `AGENT_QA_ACCESS_HOSTS` AND to subresource `resourceType`s
  *   (`ACCESS_FETCH_RESOURCE_TYPES` — no `Document`, only types this build
  *   accepts). A paused Document stalls the `goto()` commit waiter even after
  *   a successful continue, so Documents are excluded at the PATTERN level —
  *   skipping headers in the handler would not unstall it.
  * - `createAccessRequestPump` + `handlePausedAccessRequest` is the live
- *   attach-or-passthrough contract: allowlisted subresources get the token
- *   pair merged in, everything else passes through untouched, and a paused
- *   request is always continued (never left hanging). Pure helpers
+ *   attach-or-passthrough contract: Access-protected-host subresources get
+ *   the token pair merged in, everything else passes through untouched, and a
+ *   paused request is always continued (never left hanging). Pure helpers
  *   (`shouldAttachAccessHeaders`, `mergeAccessHeaders`, `parseAccessEnvText`)
  *   are unit-pinned alongside.
  *
@@ -93,10 +93,10 @@ import { AGENT_QA_ACCESS_HOSTS, isAccessHost } from "./allowlist.mjs";
  * therefore omitted — requests of those types simply never pause:
  * fail-closed on both leak and stall).
  *
- * `Fetch.RequestPattern.resourceType` takes a single enum, so each allowlist
- * host is emitted once per type below. `Document` is deliberately ABSENT: a
- * paused top-frame Document stalls the navigation commit waiter on this
- * ego-browser build (`Fetch.continueRequest` succeeds and the page renders,
+ * `Fetch.RequestPattern.resourceType` takes a single enum, so each
+ * Access-protected host is emitted once per type below. `Document` is
+ * deliberately ABSENT: a paused top-frame Document stalls the navigation commit
+ * waiter on this ego-browser build (`Fetch.continueRequest` succeeds and the page renders,
  * but `page.goto()` never resolves — verified). Skipping headers for
  * Documents in the handler would NOT fix that; only never pausing them does.
  */
@@ -189,16 +189,16 @@ export function mergeAccessHeaders(original, { clientId, clientSecret }) {
 }
 
 /**
- * Handle one `Fetch.requestPaused` event: continue allowlisted requests with
- * the token pair merged in, pass everything else through unchanged.
+ * Handle one `Fetch.requestPaused` event: continue Access-protected-host
+ * requests with the token pair merged in, pass everything else through unchanged.
  * Never throws — a paused request MUST always be continued, otherwise the
  * page hangs; on unexpected shapes it continues the request unmodified.
  *
  * Caveat (ego-browser 0.5.0.32, verified 2026-09-19): a paused event from
  * `page.fetch` against an intercepted URL carries a requestId `page.cdp()`
  * cannot continue (`Invalid InterceptionId`, request hangs) — never use
- * `page.fetch` for allowlisted URLs while `Fetch.enable` is active; in-page
- * reads use fire-and-poll instead. Pauses from real page subresources
+ * `page.fetch` for Access-protected-host URLs while `Fetch.enable` is active;
+ * in-page reads use fire-and-poll instead. Pauses from real page subresources
  * (XHR/fetch from page JS, images, favicon) continue normally.
  *
  * @param {{ cdp: (method: string, params?: unknown) => Promise<unknown> }} page ego-browser Page (or any `{ cdp }` handle)

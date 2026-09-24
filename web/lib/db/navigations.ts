@@ -5,15 +5,10 @@ import type { NavPromptItemDto } from "@shared/navigations/prompt";
 import { appConfig } from "@/lib/config";
 import {
   PromptQueue,
-  type PromptAnswer,
   type PromptOutcome,
   type PromptQueueStore,
 } from "@/lib/prompt-queue";
-import {
-  CafeNotFoundError,
-  fail,
-  type ParseResult,
-} from "../validation/checkin";
+import { CafeNotFoundError } from "../validation/checkin";
 import { query, type TxQueryFn } from "./postgres";
 
 /** A row in the `navigations` table — one "导航" tap (spec 0001). */
@@ -21,18 +16,6 @@ interface RecordedNavigation {
   id: string;
   resolved: boolean;
   created_at: string;
-}
-
-/** Validate the POST /api/navigations body. */
-export function parseNavigationBody(body: unknown): ParseResult<{ cafe_id: string }> {
-  if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    return fail("object body required");
-  }
-  const cafeId = (body as Record<string, unknown>).cafe_id;
-  if (typeof cafeId !== "string" || !isValidUUID(cafeId)) {
-    return fail("cafe_id (UUID string) required");
-  }
-  return { ok: true, value: { cafe_id: cafeId } };
 }
 
 const INSERT_NAVIGATION_SQL = `
@@ -212,18 +195,6 @@ export const navigationPromptQueue = new PromptQueue<NavPromptItemDto>(
   navigationPromptStore,
   appConfig.promptQueue,
 );
-
-/** Validate the POST /api/navigations/[id]/resolve body. */
-export function parsePromptAnswerBody(body: unknown): ParseResult<{ outcome: PromptAnswer }> {
-  if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    return fail("object body required");
-  }
-  const outcome = (body as Record<string, unknown>).outcome;
-  if (outcome !== "visited" && outcome !== "wont_go" && outcome !== "not_yet") {
-    return fail("outcome must be one of: visited, wont_go, not_yet");
-  }
-  return { ok: true, value: { outcome } };
-}
 
 /**
  * DG79: any check-in at a cafe silently resolves that user's pending

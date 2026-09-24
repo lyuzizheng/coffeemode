@@ -74,9 +74,9 @@ import { isOpenAt } from "@/lib/hours";
 import { executeSearch } from "@/lib/search/search-service";
 import {
   navigationPromptQueue,
-  parseNavigationBody,
   recordNavigation,
 } from "@/lib/db/navigations";
+import { parseNavigationBody } from "@/lib/validation/navigation";
 import {
   FeedCursorError,
   encodeFeedCursor,

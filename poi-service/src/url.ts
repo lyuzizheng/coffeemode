@@ -10,6 +10,8 @@
  *   - https://maps.google.com/?q=lat,lng
  *   - https://maps.apple.com/?auid=<id>&ll=lat,lng&q=<name>
  */
+import { isMapsHost } from "../../web/shared/places/maps-hosts";
+export { isMapsHost };
 
 export interface ResolvedTarget {
   source?: "google" | "apple";
@@ -30,22 +32,11 @@ const APPLE_PLACE_ID_PARAMS = ["auid", "place-id", "place_id"] as const;
 
 const SHORT_HOSTS = new Set(["goo.gl", "maps.app.goo.gl", "maps.apple"]);
 
-// Keep in sync with `isValidMapsUrl` in `web/lib/places/validate-maps-url.ts`
-// (issue #37) — the web route validates before proxying; the worker
-// re-validates the initial URL and every redirect target itself.
-const EXACT_MAPS_HOSTS = new Set(["goo.gl", "maps.app.goo.gl", "maps.apple", "maps.apple.com"]);
 const APPLE_MAPS_HOSTS = new Set(["maps.apple", "maps.apple.com"]);
-// google.com, google.<ccTLD>, or google.<known second-level>.<cc> — wide enough
-// for regional domains, tight enough to exclude attacker-registrable TLD
-// shapes like google.evil.io or google.zip.
-const GOOGLE_MAPS_HOST_RE =
-  /^(?:www\.|maps\.)?google\.(?:com|[a-z]{2}|(?:com|co|org|net|ac|gov|edu)\.[a-z]{2})$/;
 
-/** True for hosts we treat as Google/Apple Maps pages (regional google.* included). */
-export function isMapsHost(hostname: string): boolean {
-  const h = hostname.toLowerCase();
-  return EXACT_MAPS_HOSTS.has(h) || GOOGLE_MAPS_HOST_RE.test(h);
-}
+// Host allowlist: single source of truth in `web/shared/places/maps-hosts`
+// (issue #37, BRAWUKA-429) — the web route validates before proxying; the
+// worker re-validates the initial URL and every redirect target itself.
 
 /** Max redirect hops followed when resolving short links. */
 export const MAX_REDIRECT_HOPS = 5;

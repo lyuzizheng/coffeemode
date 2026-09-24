@@ -13,7 +13,6 @@ import { appConfig } from "@/lib/config";
  * ------------------------------------------------------------------ */
 
 import { fail, type ParseResult } from "./common";
-export { fail, type ParseResult };
 
 /**
  * Parse the `filter_max_stay` query filter (DG44). Only the domain's

@@ -162,7 +162,9 @@ function applyUserContributionDiff(stats, oldC, newC, nCheckins) {
   next.n_users += (isPresent(newC) ? 1 : 0) - (isPresent(oldC) ? 1 : 0);
   next.n_checkins = nCheckins;
   const bump = (counts, oldV, newV) => {
-    if (oldV !== undefined) { counts[oldV] = (counts[oldV] ?? 0) - 1; if (counts[oldV] === 0) delete counts[oldV]; }
+    // Clamp at zero (BRAWUKA-446): a decrement for an absent key means the
+    // snapshot disagrees with the before-image — drop the key, never go negative.
+    if (oldV !== undefined) { const next = (counts[oldV] ?? 0) - 1; if (next <= 0) delete counts[oldV]; else counts[oldV] = next; }
     if (newV !== undefined) counts[newV] = (counts[newV] ?? 0) + 1;
   };
   bump(next.policies.max_stay, oldC?.max_stay, newC?.max_stay);

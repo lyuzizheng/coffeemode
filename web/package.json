@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && node scripts/recompute-work-stats.mjs --build",
     "start": "next start",
     "lint": "eslint",
     "check:structure": "node scripts/check-structure.mjs",

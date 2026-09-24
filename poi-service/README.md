@@ -81,9 +81,12 @@ namespaces and D1 databases that do not exist. Validate without deploying with
   masks on every Google call keep that tier minimal; Google photos are not
   persisted (cafes store user-uploaded check-in photos).
 - Apple POIs have no server-side upstream — they are stored via `POST /poi/external`
-  and served from D1 only. Both Google and Apple entries pass a food/cafe
-  category gate before persisting (DG144/DG52; BRAWUKA-328); skipped entries
-  are reported with `non_food_category` and never stored.
+  and served from D1 only. Every persist path passes a food/cafe category gate
+  (DG144/DG52; BRAWUKA-328, BRAWUKA-441): `POST /poi/external` reports skipped
+  entries with `non_food_category`, while `GET /poi/:place_id` and
+  `POST /poi/resolve` answer `not_found` for non-food places and never store
+  them. One exception, by necessity: an Apple share URL carries no category
+  data, so the resolve path's Apple arm persists what the URL gives it.
 - Graceful degradation: a stale D1 row is served if the Google refresh fails.
 - Auth is a shared-secret constant-time compare; service-to-service only, never
   called from the browser.

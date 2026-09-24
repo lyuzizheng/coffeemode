@@ -145,6 +145,14 @@ async function getPOI(
     if (stored) return json(stored, request);
     return json({ error: "invalid_upstream" }, 502, request);
   }
+  // BRAWUKA-441 — DG144/DG52 category gate on the last ungated write path:
+  // a place that resolves upstream but is not food/cafe is never persisted
+  // (D1/KV) and answers not_found, so it can neither enter the cache nor
+  // verify as a cafe reference. Stored rows are served before this point, so
+  // the gate only shapes what enters the cache.
+  if (!matchesFoodCategory(poi.source, poi.types)) {
+    return json({ error: "not_found", message: "not a food or cafe place" }, 404, request);
+  }
   try {
     await Promise.all([kvPutPOI(env.POI_KV, poi), d1UpsertPOI(env.POI_DB, poi)]);
   } catch (e) {
@@ -242,8 +250,8 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
 
     // A share URL that carries only a query string has no place id, so the
     // query has to be turned into one. Autocomplete is the free way to do
-    // that; the single Place Details call below is the only billed step, and
-    // it terminates the session so the lookup itself stays free.
+    // that; the single Place Details call inside getPOI is the only billed
+    // step, and it terminates the session so the lookup itself stays free.
     const sessionToken = crypto.randomUUID();
     let predictions: PlacePrediction[];
     try {
@@ -258,26 +266,12 @@ async function resolvePOI(request: Request, env: Env, deps: Deps): Promise<Respo
     const first = predictions[0];
     if (!first) return json({ error: "not_found", message: "no place matched" }, 404, request);
 
-    let raw: unknown;
-    try {
-      raw = await provider.getDetails(first.place_id, sessionToken);
-    } catch (e) {
-      return upstreamError(request, e);
-    }
-    let poi: POI;
-    try {
-      poi = provider.toPOI(raw); // rejects places missing `location`
-    } catch {
-      // P0 scrub: the validator message carries the upstream place id —
-      // details, not a body field. Canned code only.
-      return json({ error: "invalid_upstream" }, 502, request);
-    }
-    try {
-      await Promise.all([kvPutPOI(env.POI_KV, poi), d1UpsertPOI(env.POI_DB, poi)]);
-    } catch (e) {
-      logError({ route: "POST /poi/resolve", request, error: e, status: 200 });
-    }
-    return json(poi, request);
+    // BRAWUKA-441: resolve through getPOI so the DG144/DG52 food/cafe gate
+    // applies — a non-food first hit (gas station, attraction) answers
+    // not_found and never enters D1/KV instead of being cached and creatable
+    // as a cafe. The KV/D1 lookup also serves a cached row without a second
+    // billed Details call.
+    return await getPOI(first.place_id, env, deps, request, sessionToken);
   }
   return json(
     { error: "unresolvable", message: "no place_id, query, or coordinates in URL" },

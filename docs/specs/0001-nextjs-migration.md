@@ -1036,10 +1036,16 @@ First visit to /:
      device (DG122)
 
   Located outside every known city → the city row is created at runtime
-  and becomes current_city; the user is told they are the first nomad in
-  {city} and encouraged to leave the first check-in to help the next one
-  (DG121). Wrong IP-city correction is the city picker alone — no extra
-  "not here?" control (DG115).
+  with namespace isolation `rt-<zone>` (BRAWUKA-695: `zone.toLowerCase()`
+  with `/` → `-`, preserving inner `_`, e.g. `Asia/Shanghai` → `rt-asia-shanghai`).
+  Launch city ids never carry `rt-`, eliminating collision with runtime cities.
+  Fallback display names render honest localized country names via static
+  zone.tab mapping (`Intl.DisplayNames(locale, {type:"region"})`, e.g.
+  `Asia/Shanghai` → "China"/"中国"), never asserting unverified city names.
+  Etc/* zones return null city. The runtime city becomes current_city;
+  the user is told they are the first nomad in {city} and encouraged to
+  leave the first check-in to help the next one (DG121). Wrong IP-city
+  correction is the city picker alone — no extra "not here?" control (DG115).
 
 First visit via deep link (/cafes/[id], /search?q=):
   Content first, never a full-screen interruption for a user who arrived

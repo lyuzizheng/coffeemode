@@ -223,7 +223,7 @@ describePath3("path 3 — profile & public identity lifecycle over HTTP (spec 00
     expect(ok.data.profile.displayName).toBe("Pioneer Ann");
   });
 
-  it("path 3 (spec 0008 §6, DG121): PATCH /api/profile accepts launch and runtime cities, rejects empty/oversize", async () => {
+  it("path 3 (spec 0008 §6, DG121, BRAWUKA-695): PATCH /api/profile re-derives non-launch currentCity from coordinates, passes launch ids through, drops unresolvable without 422", async () => {
     const client = apiClient(users.userA);
     for (const currentCity of ["", "x".repeat(51)]) {
       const bad = await client.patch<ErrorPayload, NoCtx, NextRequest>(
@@ -234,6 +234,8 @@ describePath3("path 3 — profile & public identity lifecycle over HTTP (spec 00
       expect(bad.status).toBe(422);
       expect(bad.data.error).toBe("invalid_current_city");
     }
+
+    // 1. Launch id straight through
     const ok = await client.patch<{ profile: UserProfileDto }, NoCtx, NextRequest>(
       patchProfileRoute,
       "/api/profile",
@@ -241,15 +243,47 @@ describePath3("path 3 — profile & public identity lifecycle over HTTP (spec 00
     );
     expect(ok.status).toBe(200);
     expect(ok.data.profile.currentCity).toBe("tokyo");
-    // DG121: a geolocation outside every launch city creates the city at
-    // runtime — the profile must accept and persist it.
-    const runtime = await client.patch<{ profile: UserProfileDto }, NoCtx, NextRequest>(
+
+    // 2. Non-launch id without coordinates and without stored location:
+    // Derives null -> field is dropped without 422, previous city preserved.
+    const withoutCoords = await client.patch<{ profile: UserProfileDto }, NoCtx, NextRequest>(
       patchProfileRoute,
       "/api/profile",
       { currentCity: "lisbon" },
     );
-    expect(runtime.status).toBe(200);
-    expect(runtime.data.profile.currentCity).toBe("lisbon");
+    expect(withoutCoords.status).toBe(200);
+    expect(withoutCoords.data.profile.currentCity).toBe("tokyo");
+
+    // 3. Non-launch id with patch.lastLocation:
+    // Server re-derives from coords -> rt-europe-lisbon persisted.
+    const withCoords = await client.patch<{ profile: UserProfileDto }, NoCtx, NextRequest>(
+      patchProfileRoute,
+      "/api/profile",
+      { currentCity: "lisbon", lastLocation: { lat: 38.7223, lng: -9.1393 } },
+    );
+    expect(withCoords.status).toBe(200);
+    expect(withCoords.data.profile.currentCity).toBe("rt-europe-lisbon");
+
+    // 4. Non-launch id using stored profile.last_location:
+    // Client sends dirty/arbitrary string, server re-derives from stored Lisbon coords.
+    const withStoredCoords = await client.patch<{ profile: UserProfileDto }, NoCtx, NextRequest>(
+      patchProfileRoute,
+      "/api/profile",
+      { currentCity: "arbitrary-dirty-value" },
+    );
+    expect(withStoredCoords.status).toBe(200);
+    expect(withStoredCoords.data.profile.currentCity).toBe("rt-europe-lisbon");
+
+    // 5. Non-launch id with Etc/ocean coords:
+    // Derives null -> currentCity dropped without 422, lastLocation updated.
+    const oceanCoords = await client.patch<{ profile: UserProfileDto }, NoCtx, NextRequest>(
+      patchProfileRoute,
+      "/api/profile",
+      { currentCity: "ocean-place", lastLocation: { lat: 0, lng: 0 } },
+    );
+    expect(oceanCoords.status).toBe(200);
+    expect(oceanCoords.data.profile.currentCity).toBe("rt-europe-lisbon");
+    expect(oceanCoords.data.profile.lastLocation).toEqual({ lat: 0, lng: 0 });
   });
 
   it("path 3 (spec 0008 §6, DG122): PATCH /api/profile persists onboarded + lastLocation", async () => {

@@ -3,7 +3,7 @@ import "server-only";
 import { isValidUUID } from "@shared/uuid";
 import { query } from "../postgres";
 import { appConfig } from "@/lib/config";
-import { parseProfileCursor } from "./cursor";
+import { paginateProfileRows, parseProfileCursor } from "./cursor";
 import type { CafeVisibility } from "@/types/cafes";
 import type { UserCafeItemDto } from "./types";
 
@@ -88,13 +88,8 @@ export async function getUserCafes(
     params,
   );
 
-  const hasMore = result.rows.length > limit;
-  const rawItems = hasMore ? result.rows.slice(0, limit) : result.rows;
+  const { page: rawItems, next_cursor } = paginateProfileRows(result.rows, limit);
   const items = toUserCafeItems(rawItems);
-
-  const last = rawItems[rawItems.length - 1];
-  const next_cursor =
-    hasMore && last ? `${last.cursor_visited_at}_${last.id}` : null;
 
   return { items, next_cursor };
 }

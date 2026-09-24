@@ -5,7 +5,7 @@ import { query } from "../postgres";
 import { appConfig } from "@/lib/config";
 import type { CheckInScores, MaxStay } from "@/types/checkins";
 import type { StoredImage } from "@/types/images";
-import { parseProfileCursor } from "./cursor";
+import { paginateProfileRows, parseProfileCursor } from "./cursor";
 import type { UserCheckInItemDto } from "./types";
 
 type UserCheckInRow = {
@@ -97,13 +97,8 @@ export async function getUserCheckIns(
     params,
   );
 
-  const hasMore = result.rows.length > limit;
-  const rawItems = hasMore ? result.rows.slice(0, limit) : result.rows;
+  const { page: rawItems, next_cursor } = paginateProfileRows(result.rows, limit);
   const items = toUserCheckInItems(rawItems);
-
-  const last = rawItems[rawItems.length - 1];
-  const next_cursor =
-    hasMore && last ? `${last.cursor_visited_at}_${last.id}` : null;
 
   return { items, next_cursor };
 }

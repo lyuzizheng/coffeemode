@@ -2,7 +2,6 @@ import "server-only";
 
 import { isValidUUID } from "@shared/uuid";
 import {
-  attachProvisionedPhotos,
   compensateProvisionedPhotos,
   consumeProvisionedIntents,
   defaultProvisionPhotosDeps,
@@ -10,6 +9,7 @@ import {
   type ProvisionedPhoto,
   type ProvisionPhotosDeps,
 } from "@/lib/images/provision-photos";
+import { attachProvisionedPhotos, deleteUnreferencedPhotos } from "@/lib/images/photo-cleanup";
 import { recomputeWorkStats } from "@/lib/stats/aggregate";
 import type { PoolClient } from "pg";
 import {
@@ -244,10 +244,15 @@ export async function updateCheckIn(
   return updated;
 }
 
-export async function softDeleteCheckIn(userId: string, checkinId: string): Promise<{ cafe_id: string }> {
+export async function softDeleteCheckIn(
+  userId: string,
+  checkinId: string,
+  deps: ProvisionPhotosDeps = defaultProvisionPhotosDeps(),
+): Promise<{ cafe_id: string }> {
   if (!isValidUUID(userId) || !isValidUUID(checkinId)) throw new Error("Invalid user or check-in ID");
 
-  return withTransaction(async (client) => {
+  let photoIds: string[] = [];
+  const deleted = await withTransaction(async (client) => {
     const row = await lockCheckInCafeFirst(client, checkinId);
     if (!row || row.deleted_at !== null) throw new CheckInNotFoundError();
     if (row.user_id !== userId) throw new CheckInForbiddenError();
@@ -269,6 +274,17 @@ export async function softDeleteCheckIn(userId: string, checkinId: string): Prom
 
     await recomputeWorkStats(row.cafe_id, 0, txRunnerFrom(client));
 
+    photoIds = (Array.isArray(row.photos) ? row.photos : [])
+      .map((p) => p.id)
+      .filter((id): id is string => typeof id === "string");
     return { cafe_id: row.cafe_id };
   });
+
+  // Post-commit R2 cleanup (BRAWUKA-433): the tombstoned row's photos are
+  // no longer live-referenced — delete their variants best-effort. Runs
+  // after commit so the live-reference gate sees this row as deleted and
+  // so slow I/O never holds the transaction open; failures never fail the
+  // committed delete.
+  if (photoIds.length > 0) await deleteUnreferencedPhotos(photoIds, deps);
+  return deleted;
 }

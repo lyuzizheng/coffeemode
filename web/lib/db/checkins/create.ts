@@ -2,13 +2,13 @@ import "server-only";
 
 import { isValidUUID } from "@shared/uuid";
 import {
-  attachProvisionedPhotos,
   compensateProvisionedPhotos,
   consumeProvisionedIntents,
   defaultProvisionPhotosDeps,
   provisionPhotos,
   type ProvisionPhotosDeps,
 } from "@/lib/images/provision-photos";
+import { attachProvisionedPhotos } from "@/lib/images/photo-cleanup";
 import { incrementalUpdateWorkStats } from "@/lib/stats/aggregate";
 import {
   CafeNotFoundError,

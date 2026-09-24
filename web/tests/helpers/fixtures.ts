@@ -1,5 +1,6 @@
 import pg from "pg";
 import { checkUploadIntent, checkUploadIntents, consumeUploadIntent, consumeUploadIntents } from "@/lib/db/image-uploads";
+import { selectLivePhotoReferences } from "@/lib/db/photo-references";
 import { recomputeWorkStats } from "@/lib/stats/aggregate";
 import type { ProcessUrls } from "@/lib/images/image-service-client";
 import type { ProcessedImage } from "@/lib/images/processor";
@@ -78,6 +79,9 @@ export function fakeProvisionPhotosDeps(): ProvisionPhotosDeps {
     deleteProvisionedVariants: async () => {},
     selectLiveUploadIntents: async (userId, imageUuids) =>
       checkUploadIntents(userId, imageUuids),
+    // Real live-reference gate (BRAWUKA-433): delete-path tests assert the
+    // gate keeps photos a live row still names.
+    selectLivePhotoReferences,
   };
 }
 

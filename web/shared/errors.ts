@@ -68,9 +68,9 @@ export const ERROR_CODES = {
   invalid_photos: { status: 422, domain: "checkin", summary: "photo ids well-formed but unconsumed" },
   // places
   invalid_maps_url: { status: 400, domain: "places", summary: "URL host not allowlisted" },
-  poi_service: { status: "passthrough", domain: "places", summary: "poi worker status mirrored (502/404/413/422)" },
+  poi_service: { status: "passthrough", domain: "places", summary: "poi worker status mirrored (502/404/413/422 only — client sanitizes)" },
   // images
-  image_service_error: { status: "passthrough", domain: "images", summary: "image worker status mirrored (502/404/413/422)" },
+  image_service_error: { status: "passthrough", domain: "images", summary: "image worker status mirrored (502/404/413/422 only — client sanitizes)" },
   size_exceeded: { status: 413, domain: "images", summary: "photo bytes over the upload cap" },
   // mapkit
   mapkit_not_configured: { status: 503, domain: "mapkit", summary: "MapKit not configured" },
@@ -96,4 +96,27 @@ export function isErrorCode(value: unknown): value is ErrorCode {
 export function defaultErrorStatus(code: ErrorCode): number {
   const status = ERROR_CODES[code].status;
   return typeof status === "number" ? status : 502;
+}
+
+/**
+ * Allowed client-mirrored HTTP statuses for passthrough error codes
+ * (`poi_service`, `image_service_error`). Any upstream status outside this set
+ * maps to 502 (spec 0011 D3/D8, BRAWUKA-596).
+ */
+export const PASSTHROUGH_STATUSES = [404, 413, 422] as const;
+export type PassthroughStatus = (typeof PASSTHROUGH_STATUSES)[number];
+
+export function isPassthroughStatus(status: number): status is PassthroughStatus {
+  return (PASSTHROUGH_STATUSES as readonly number[]).includes(status);
+}
+
+/**
+ * Sanitize an upstream worker status into a registered passthrough status.
+ * Clamps to {404, 413, 422}; maps everything else >= 400 to 502 (spec 0011, BRAWUKA-596).
+ */
+export function sanitizePassthroughStatus(upstreamStatus: number): PassthroughStatus | 502 {
+  if (isPassthroughStatus(upstreamStatus)) {
+    return upstreamStatus;
+  }
+  return 502;
 }

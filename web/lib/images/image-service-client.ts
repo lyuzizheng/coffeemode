@@ -2,6 +2,7 @@ import { logError } from "@/lib/observability/server-log";
 import "server-only";
 
 import { REQUEST_ID_HEADER } from "@shared/request-id";
+import { sanitizePassthroughStatus } from "@shared/errors";
 import { WORKER_TIMEOUT_MS } from "@/lib/http";
 import type { CompleteImageRequest, UploadUrlResponse } from "@/types/images";
 
@@ -61,10 +62,11 @@ function headers(token: string, requestId: string): Record<string, string> {
 
 /**
  * Sanitize an upstream worker failure into an ImageServiceError (review
- * 2026-08-09). The upstream response body is canceled without reading it —
- * it can contain worker internals and be unbounded in size — and a worker
- * 401 (bad service token) must not surface as a user-facing 401. Mirrors
- * the poi-client pattern.
+ * 2026-08-09, BRAWUKA-596). The upstream response body is canceled without reading it —
+ * it can contain worker internals and be unbounded in size — and upstream statuses
+ * outside {404, 413, 422} are clamped to 502 so worker 4xx (e.g. 429 without
+ * Retry-After, or 401 bad token) never leak as user-facing 4xx envelopes.
+ * Mirrors the poi-client pattern.
  */
 function upstreamError(endpoint: "upload" | "complete" | "delete", response: Response, requestId: string): ImageServiceError {
   const upstreamStatus = response.status;
@@ -72,19 +74,14 @@ function upstreamError(endpoint: "upload" | "complete" | "delete", response: Res
   void response.body?.cancel().catch(() => {});
 
   let message = "Image service returned an error";
-  let status = upstreamStatus;
-  if (upstreamStatus === 401) {
-    // Service-token mismatch: this is our misconfiguration, not the user's.
-    message = "Image service unavailable";
-    status = 502;
-  } else if (upstreamStatus === 404) {
+  const status = sanitizePassthroughStatus(upstreamStatus);
+  if (status === 404) {
     message = "Image not found";
-  } else if (upstreamStatus === 413 || upstreamStatus === 422) {
+  } else if (status === 413 || status === 422) {
     message = "Image rejected by the image service";
-  } else if (upstreamStatus >= 500) {
+  } else {
+    // Clamped to 502 (401, 429, other 4xx, 5xx): worker 429/4xx never leaks without Retry-After (spec 0011, BRAWUKA-596).
     message = "Image service unavailable";
-  } else if (upstreamStatus >= 400) {
-    message = "Invalid image request";
   }
   // Log the status the caller will actually see, and tag only real outages
   // (spec 0011 D8, BRAWUKA-541): a worker 404/413/422 is a normal negative

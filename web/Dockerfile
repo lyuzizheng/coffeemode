@@ -50,6 +50,14 @@ COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/.next/BUILD_ID ./.next/BUILD_ID
 COPY --from=build /app/public ./public
 COPY --from=build /app/scripts ./scripts
+# Migration inputs + gate (BRAWUKA-690): migrate.mjs resolves MIGRATIONS_DIR
+# as <script>/../db/migrations, so db/ must ship with the image and the
+# entrypoint must run it before the server, or every deploy re-creates
+# schema drift (ledger trails repo -> 42703 on new columns).
+COPY --from=build /app/db ./db
+COPY --from=build /app/docker-entrypoint.sh ./docker-entrypoint.sh
 COPY --from=deps /app/node_modules/yaml ./node_modules/yaml
 EXPOSE 3000
+# Fail-closed order: migrations must succeed before server.js starts.
+ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
 CMD ["node", "server.js"]

@@ -13,6 +13,19 @@ This directory contains Dokploy VPS deployment configurations, operational scrip
 - `smoke-test.sh`: Post-deployment automated smoke tests (health, static assets, spatial queries, workers).
 - `cache-rules.json`: Cloudflare edge cache rule definitions.
 
+## Schema Migrations on Every Deploy (BRAWUKA-690)
+
+Every web container runs the idempotent migration runner (`web/scripts/migrate.mjs`) **before** the Next.js server starts, via the image entrypoint `web/docker-entrypoint.sh`:
+
+- **Why**: the Dokploy deploy path (`build` + `up`) had no migration step, so `schema_migrations` trailed the repo and queries touching newer columns failed with Postgres `42703` (staging `cafes.source` → `/api/cafes/[id]` 500, BRAWUKA-688 → BRAWUKA-690).
+- **When**: every container start — each staging/prod deploy, `docker compose up`, swarm task replacement, and restart. Current ledger → no-op; concurrent starts are serialized by `pg_advisory_lock`, and each pending migration runs in its own transaction.
+- **Environment**: uses the container's own `DATABASE_URL` — the injection both compose files already declare (`${DATABASE_URL:?...}` + `env_file`). No additional Dokploy configuration, schedule, or webhook is required.
+- **Fail-closed**: a migration error exits the container non-zero, so a drifted schema is never served (`restart: unless-stopped` retries on staging; prod's `deploy.update_config.failure_action: rollback` keeps the previous task). With `DATABASE_URL` unset (local/CI runs without a database) migrations are skipped and the app keeps its documented fail-closed `db_unavailable` contract.
+- **Prod first deploy (BRAWUKA-500)**: the gate lives in the image, so the first `web-prod` start migrates the prod database before the server accepts traffic — no manual step to forget.
+- The manual pre-deploy path (`upgrade-staging.sh` / `upgrade-prod.sh` migration step, run from a repo checkout) still works; the entrypoint re-verifies the ledger at start, so drift cannot reappear even when a deploy skips the script.
+
+Image requirement: `web/Dockerfile` copies `db/migrations` and `docker-entrypoint.sh` into the runtime stage — those `COPY` lines are load-bearing, do not remove them.
+
 ## Nightly Recompute & Autopilot Failure Alerting (BRAWUKA-475 / BRAWUKA-476)
 
 The nightly recompute job is scheduled daily at **02:00 UTC** (`0 2 * * *`), executing drift-correcting `work_stats` recomputation and time-decayed Helpful ranking snapshots (`DG148`).

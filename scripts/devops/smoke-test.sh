@@ -171,8 +171,13 @@ assert_test "Healthcheck endpoint (/api/health)" \
   "curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/health' | grep -q '\"ok\":true' && curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/health' | grep -q '\"version\":'"
 
 # 2. HTTP root render
+# grep WITHOUT -q: the root HTML is ~64 KB, and `grep -q` exits on first
+# match, closing the pipe under `set -o pipefail` → curl dies with exit 56
+# ("Failure writing output to destination") and the healthy page FAILs
+# (BRAWUKA-690 observed this 5/5). Plain grep drains the stream to EOF;
+# assert_test discards stdout anyway.
 assert_test "Root page render (/)" \
-  "curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/' | grep -qi 'CafeMood'"
+  "curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/' | grep -i 'CafeMood'"
 
 # 3. PostGIS database query via cafes API (lat/lng + radius_km, returns { cafes: [...] })
 # Asserts { cafes: [...] } when database is connected. On staging where DATABASE_URL is pending

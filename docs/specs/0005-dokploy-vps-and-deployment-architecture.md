@@ -64,6 +64,12 @@ Accepted (2026-09-04 — BRAWUKA-50 architecture and deployment specification; r
    - Step 3: Deployment trigger (Dokploy webhook or compose pull/up)
    - Step 4: Post-deployment automated smoke test (`deploy/dokploy/smoke-test.sh`)
 
+   Since BRAWUKA-690 the web image entrypoint (`web/docker-entrypoint.sh`) additionally
+   runs `web/scripts/migrate.mjs` on every container start against the container's own
+   `DATABASE_URL`, before the server accepts traffic (fail-closed: migration failure
+   blocks the start). Step 2 keeps its place for the pre-deploy backup ordering, but a
+   deploy that skips the script can no longer produce schema drift.
+
 5. Lean CI/CD & Zero External SaaS Overhead:
    In strict accordance with the Founder Manifesto (Spec 0000, Principle 5: Extreme
    Cost-Efficiency), no commercial APM or third-party monitoring platforms (e.g. Datadog,

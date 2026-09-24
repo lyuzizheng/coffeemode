@@ -31,7 +31,7 @@ import { registerOtlpLogSink } from "./otlp-logs";
 // Request-id primitives live in `web/shared/request-id.ts` so the workers
 // share them; re-exported here to keep this module's public API stable.
 export { getRequestId, isValidRequestId, REQUEST_ID_HEADER } from "@shared/request-id";
-export { logError, logWarn, emitAccessLine, emitTelemetryLine, emitInfoLine } from "@shared/log";
+export { logError, logWarn, emitAccessLine, emitTelemetryLine } from "@shared/log";
 export type { LogFields };
 /** Pre-0011 name for the shared log fields — kept for existing imports. */
 export type ServerErrorFields = LogFields;

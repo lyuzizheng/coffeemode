@@ -175,6 +175,3 @@ export function emitTelemetryLine(line: Record<string, unknown>): void {
   console.info(JSON.stringify(line));
   lineSink?.(line);
 }
-
-/** Pre-0011 / generic info alias for emitTelemetryLine. */
-export const emitInfoLine = emitTelemetryLine;

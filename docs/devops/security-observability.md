@@ -64,8 +64,8 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
   (`staging` / `production`, from `OTEL_RESOURCE_ATTRIBUTES`), and every
   queryable field — `log_type`, `route`, `status`, `code`, `bucket`,
   `client_id`, `client_ip`, `request_id`, `retry_after`, and search telemetry
-  fields (`mode`, `search_duration_ms`, `search_truncated`, `search_poi_degraded`,
-  `search_cache`) — is structured metadata, filtered with `| field="value"` and
+  fields (`mode`, `search_duration_ms`, `search_truncated`, `search_open_now_batches`,
+  `search_poi_degraded`, `search_cache`) — is structured metadata, filtered with `| field="value"` and
   no `| json` parse. There is no `service` or `env` label; a query using them
   silently matches nothing.
 - **Alert rules** (BRAWUKA-611, folder `CoffeeMode`) — six Grafana-managed

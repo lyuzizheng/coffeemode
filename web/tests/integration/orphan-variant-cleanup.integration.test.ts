@@ -173,19 +173,23 @@ describeVariants("integration — orphan variant co-delete (BRAWUKA-699)", () =>
     createdKeys.delete(original);
   }, 20_000);
 
-  it("a failing sibling is reported per key, never blocks the original", async () => {
+  it("a failing sibling keeps the original as the retry anchor", async () => {
     // Stub R2_ENDPOINT: LIST yields one stale markerless original; DELETE on
     // the `card/` sibling fails 403 while the rest succeed. 403 (like the
     // BRAWUKA-686 HEAD-failure stub) answers immediately — aws4fetch retries
-    // only 5xx/429, so a 500 stub would burn ~28s in backoff. The run must
-    // report the failed key and exit non-zero, while the original is gone.
+    // only 5xx/429, so a 500 stub would burn ~28s in backoff. Siblings
+    // delete first and the original goes last, so the failed card keeps the
+    // original listed: the run reports the failed key, exits non-zero, and
+    // leaves the original in place as the next run's retry anchor.
     const uuid = randomUUID();
     const staleKey = `original/${uuid}.webp`;
     const cardKey = `card/${uuid}.webp`;
+    const thumbnailKey = `thumbnail/${uuid}.webp`;
     const listXml =
       `<?xml version="1.0" encoding="UTF-8"?><ListBucketResult>` +
       `<Contents><Key>${staleKey}</Key><LastModified>2020-01-01T00:00:00.000Z</LastModified></Contents>` +
       `<IsTruncated>false</IsTruncated></ListBucketResult>`;
+    const deletedPaths: string[] = [];
     const server = createServer((req, res) => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
       if (req.method === "GET" && url.searchParams.get("list-type") === "2") {
@@ -204,6 +208,7 @@ describeVariants("integration — orphan variant co-delete (BRAWUKA-699)", () =>
           res.end("forbidden");
           return;
         }
+        deletedPaths.push(url.pathname ?? "");
         res.writeHead(200);
         res.end();
         return;
@@ -247,6 +252,12 @@ describeVariants("integration — orphan variant co-delete (BRAWUKA-699)", () =>
     } finally {
       await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
     }
+    // Retry anchor: the thumbnail (whose delete succeeded) was removed, the
+    // failed card was never attempted past its 403, and the original was
+    // never attempted — it stays listed so the next run re-derives the same
+    // siblings and converges.
+    expect(deletedPaths.some((p) => p.endsWith(thumbnailKey))).toBe(true);
+    expect(deletedPaths.some((p) => p.endsWith(staleKey))).toBe(false);
   }, 60_000);
 
   it("keeps siblings of a referenced original: reported, never deleted (BRAWUKA-400)", async () => {

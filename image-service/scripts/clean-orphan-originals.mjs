@@ -11,10 +11,10 @@
  * (BRAWUKA-400) re-marks live originals to `checkin`; a referenced stale
  * marker (attach retry outstanding) is reported, never deleted.
  *
- * Variant co-delete (BRAWUKA-699): deleting an orphan original also deletes
- * its `card/` + `thumbnail/` siblings (same keys `/v1/images/delete` would
- * remove). A missing sibling is success (404-tolerant); a failed one is
- * reported per key and retried next run.
+ * Variant co-delete (BRAWUKA-699): an orphan original deletes with its
+ * `card/` + `thumbnail/` siblings — siblings first, original last, so a
+ * failed sibling keeps the original as the retry anchor for the next run.
+ * A missing sibling is success (404-tolerant).
  *
  * Safety properties:
  *   - DRY_RUN=1 (default) lists and reports without deleting.
@@ -267,9 +267,10 @@ async function deleteOne(aws, key) {
 /**
  * Delete in bounded batches; returns per-batch results — each orphan
  * original deletes with its `card/` + `thumbnail/` siblings (up to 3N
- * deletes per N-orphan batch). Siblings are best-effort per key: a failure
- * is reported and retried next run, never blocks the original. `deleted`
- * counts every removed key; `failed` carries per-key entries for both.
+ * deletes per N-orphan batch). Siblings go first and the original goes
+ * last: a failed sibling leaves the original listed on the next run, which
+ * re-derives the same siblings and converges all three. `deleted` counts
+ * every removed key; `failed` carries per-key entries for both.
  */
 async function deleteKeys(keys) {
   const aws = client();
@@ -279,12 +280,20 @@ async function deleteKeys(keys) {
     const deleted = [];
     const failed = [];
     for (const key of batch) {
-      const targetKeys = [key, ...variantKeysForOriginal(key)];
-      for (const target of targetKeys) {
-        const failure = await deleteOne(aws, target);
-        if (failure) failed.push(failure);
-        else deleted.push(target);
+      let blocked = false;
+      for (const sibling of variantKeysForOriginal(key)) {
+        const failure = await deleteOne(aws, sibling);
+        if (failure) {
+          failed.push(failure);
+          blocked = true;
+        } else deleted.push(sibling);
       }
+      // The original is the retry anchor: only remove it when every sibling
+      // succeeded, so a failed sibling is re-attempted on the next run.
+      if (blocked) continue;
+      const failure = await deleteOne(aws, key);
+      if (failure) failed.push(failure);
+      else deleted.push(key);
     }
     results.push({ batch: Math.floor(i / BATCH_SIZE) + 1, requested: batch.length, deleted: deleted.length, failed });
     console.log(JSON.stringify({ op: DRY_RUN ? "dry-run" : "delete", ...results.at(-1) }));
@@ -338,32 +347,20 @@ async function main() {
   // reported as would-keep, never deleted (BRAWUKA-400).
   const ageDays = (lastModified) => Math.floor((Date.now() - lastModified) / 86_400_000);
   if (DRY_RUN) {
-    for (const c of orphans) {
+    const report = (op, c, extra) =>
       console.log(
         JSON.stringify({
-          op: "would-delete",
+          op,
           key: c.key,
           size: c.size,
           stage: c.stage,
           verification: c.verification,
           ageDays: ageDays(c.lastModified),
-          variants: variantKeysForOriginal(c.key),
+          ...extra,
         }),
       );
-    }
-    for (const c of protectedRefs) {
-      console.log(
-        JSON.stringify({
-          op: "would-keep",
-          key: c.key,
-          size: c.size,
-          stage: c.stage,
-          verification: c.verification,
-          reason: "referenced",
-          ageDays: ageDays(c.lastModified),
-        }),
-      );
-    }
+    for (const c of orphans) report("would-delete", c, { variants: variantKeysForOriginal(c.key) });
+    for (const c of protectedRefs) report("would-keep", c, { reason: "referenced" });
     console.log(
       JSON.stringify({
         op: "done",

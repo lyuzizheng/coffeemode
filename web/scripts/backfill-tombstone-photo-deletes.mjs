@@ -81,7 +81,8 @@ function parseConnectionConfig(urlString) {
  * minus ids any LIVE row still names. Mirrors `selectLivePhotoReferences`
  * (live cafes + live check-ins) so the backfill and the delete paths agree
  * on what "live" means; differs only in that it enumerates tombstone ids
- * instead of gating caller-supplied ones.
+ * instead of gating caller-supplied ones. Ordered by id so repeated runs
+ * with MAX_IDS page deterministically and the tail converges.
  */
 const TOMBSTONE_IDS_SQL = `
 select distinct elem->>'id' as id
@@ -96,6 +97,7 @@ where c.deleted_at is not null
     select 1 from checkins live, jsonb_array_elements(coalesce(live.photos, '[]'::jsonb)) p
     where live.deleted_at is null and p->>'id' = elem->>'id'
   )
+order by elem->>'id'
 limit $1
 `;
 
@@ -142,8 +144,8 @@ async function deleteOne(imageUuid) {
   } catch (e) {
     return { imageUuid, error: e instanceof Error ? e.message : String(e) };
   }
-  // Benign: drain the small JSON body; the deleted/missing split is only
-  // telemetry for the backfill log, not control flow.
+  // Benign: drain the small JSON body; ok vs. error is decided below on
+  // `res.ok` alone (the caller reports per-id failures for the next run).
   await res.body?.cancel().catch(() => {});
   if (res.ok) return null;
   return { imageUuid, status: res.status };

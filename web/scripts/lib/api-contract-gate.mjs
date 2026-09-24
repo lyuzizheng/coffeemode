@@ -57,4 +57,38 @@ export async function runApiContractGate({ base, cafeId }) {
   // 401 without auth session (the seeded id is a cafe, not a navigation —
   // auth runs before the row lookup).
   assert(resolveRes.status === 401, `/api/navigations/[id]/resolve returned unexpected ${resolveRes.status}`);
+
+  // T17 server half: Turnstile bot verification on POST /api/places/resolve.
+  // Fails closed in production (403 bot_verification_failed), and bot gate
+  // precedes input validation (403 before any 400/422).
+  const turnstileNoTokenRes = await fetch(`${base}/api/places/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: base },
+    body: JSON.stringify({ maps_share_url: "https://maps.app.goo.gl/test" }),
+  });
+  assert(
+    turnstileNoTokenRes.status === 403,
+    `/api/places/resolve without turnstile token returned ${turnstileNoTokenRes.status}, expected 403`,
+  );
+  const turnstileNoTokenData = await turnstileNoTokenRes.json();
+  assert(
+    turnstileNoTokenData?.error === "bot_verification_failed" || turnstileNoTokenData?.error?.code === "bot_verification_failed",
+    `Expected bot_verification_failed, got ${JSON.stringify(turnstileNoTokenData?.error)}`,
+  );
+
+  // Precedes input validation: empty body (which would otherwise 400) still yields 403
+  const turnstileEmptyBodyRes = await fetch(`${base}/api/places/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: base },
+    body: JSON.stringify({}),
+  });
+  assert(
+    turnstileEmptyBodyRes.status === 403,
+    `/api/places/resolve with empty body returned ${turnstileEmptyBodyRes.status}, expected 403 (bot check precedes validation)`,
+  );
+  const turnstileEmptyBodyData = await turnstileEmptyBodyRes.json();
+  assert(
+    turnstileEmptyBodyData?.error === "bot_verification_failed" || turnstileEmptyBodyData?.error?.code === "bot_verification_failed",
+    `Expected bot_verification_failed on empty body, got ${JSON.stringify(turnstileEmptyBodyData?.error)}`,
+  );
 }

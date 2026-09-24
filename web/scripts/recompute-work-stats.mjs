@@ -154,12 +154,20 @@ function applyUserContributionDiff(stats, oldC, newC, nCheckins) {
   for (const dim of WORK_DIMS) {
     const o = oldC?.dims[dim];
     const n = newC?.dims[dim];
-    if (o !== undefined) { next.dims[dim].sum -= o; next.dims[dim].n -= 1; }
+    if (o !== undefined) {
+      // Clamp at zero (BRAWUKA-692): a decrement the snapshot cannot account
+      // for means snapshot/before-image disagreement — reset, never go negative.
+      const nextN = next.dims[dim].n - 1;
+      if (nextN <= 0) { next.dims[dim].n = 0; next.dims[dim].sum = 0; }
+      else { next.dims[dim].n = nextN; next.dims[dim].sum = Math.max(0, next.dims[dim].sum - o); }
+    }
     if (n !== undefined) { next.dims[dim].sum += n; next.dims[dim].n += 1; }
   }
   const isPresent = (c) =>
     c && (WORK_DIMS.some((d) => c.dims[d] !== undefined) || c.max_stay !== undefined);
-  next.n_users += (isPresent(newC) ? 1 : 0) - (isPresent(oldC) ? 1 : 0);
+  // Clamp at zero (BRAWUKA-692): same disagreement can otherwise persist a
+  // user-visible negative n_users.
+  next.n_users = Math.max(0, next.n_users + (isPresent(newC) ? 1 : 0) - (isPresent(oldC) ? 1 : 0));
   next.n_checkins = nCheckins;
   const bump = (counts, oldV, newV) => {
     // Clamp at zero (BRAWUKA-446): a decrement for an absent key means the

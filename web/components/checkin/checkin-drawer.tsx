@@ -291,7 +291,7 @@ function CheckinDrawerSurface({
       <Drawer.Backdrop>
         <Drawer.Content
           placement={isDesktop ? "right" : "bottom"}
-          className={`${isDesktop ? "" : "max-h-[85dvh] "}bg-overlay text-foreground`}
+          className="bg-overlay text-foreground"
         >
           <CheckinDrawerDialog
             props={props}

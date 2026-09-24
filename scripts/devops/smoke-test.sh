@@ -5,17 +5,18 @@
 # Lifecycle:    docs/devops/LIFECYCLE.md
 #
 # Runs in-repo post-deployment verification without third-party SaaS dependencies.
-# Verifies 10 operational contracts:
+# Verifies 11 operational contracts:
 #   1. Healthcheck probe (/api/health -> {"ok":true})
 #   2. HTML root page render (/ -> title CafeMood)
 #   3. PostGIS database spatial query (/api/cafes?lat=1.3521&lng=103.8198&radius_km=5)
-#   4. Standalone Next.js static chunk resolution (/_next/static/...)
-#   5. Security headers (X-Content-Type-Options: nosniff)
-#   6. Cloudflare Worker POI service proxy (/api/places/search?q=coffee)
-#   7. Cloudflare R2 images CDN edge connectivity
-#   8. Image upload intent API contract verification
-#   9. Keepalive probe (/api/heartbeat -> {"db":"up"}, BRAWUKA-284)
-#   10. Runtime config (/api/config -> flags/banners, BRAWUKA-284)
+#   4. Cafe detail aggregate (/api/cafes/[id] from the list result, BRAWUKA-688)
+#   5. Standalone Next.js static chunk resolution (/_next/static/...)
+#   6. Security headers (X-Content-Type-Options: nosniff)
+#   7. Cloudflare Worker POI service proxy (/api/places/search?q=coffee)
+#   8. Cloudflare R2 images CDN edge connectivity
+#   9. Image upload intent API contract verification
+#   10. Keepalive probe (/api/heartbeat -> {"db":"up"}, BRAWUKA-284)
+#   11. Runtime config (/api/config -> flags/banners, BRAWUKA-284)
 #
 # Usage:
 #   ./smoke-test.sh [options] [staging|prod] [BASE_URL_OVERRIDE]
@@ -179,21 +180,28 @@ assert_test "Root page render (/)" \
 assert_test "PostGIS spatial query (/api/cafes?lat=1.3521&lng=103.8198&radius_km=5)" \
   "curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/cafes?lat=1.3521&lng=103.8198&radius_km=5' | grep -qE '\"cafes\":\s*\[' || \
    ([[ \"$ENV\" == \"staging\" ]] && curl -s -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/heartbeat' | grep -q '\"db_unavailable\"')"
+# 4. Cafe detail aggregate (BRAWUKA-688): the row behind the list must serve
+# its own detail payload. Derives one id from the list above and expects the
+# detail envelope ({ id, name, ... }); skipping only when the list is empty
+# (fresh DB) or fell back to the fail-closed db_unavailable contract.
+assert_test "Cafe detail aggregate (/api/cafes/[id] from list result)" \
+  "CAFE_ID=\$(curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/cafes?lat=1.3521&lng=103.8198&radius_km=5' | grep -oE '\"id\":\"[0-9a-f-]{36}\"' | head -n 1 | cut -d'\"' -f4); \
+   [[ -z \"\$CAFE_ID\" ]] || curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" \"${BASE_URL}/api/cafes/\${CAFE_ID}\" | grep -qE '\"name\":'"
 
-# 4. Static assets & .next/static chunk resolution (verifies Docker standalone asset copy)
+# 5. Static assets & .next/static chunk resolution (verifies Docker standalone asset copy)
 assert_test "Next.js standalone static asset resolution (/_next/static/)" \
   "ROOT_HTML=\$(curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/'); \
    STATIC_CHUNK=\$(echo \"\$ROOT_HTML\" | grep -oE '/_next/static/[^\"'\''>[:space:]]+\.(js|css)' | head -n 1); \
    [[ -n \"\$STATIC_CHUNK\" ]] && curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" -o /dev/null \"${BASE_URL}\${STATIC_CHUNK}\""
 
-# 5. Security headers verification
+# 6. Security headers verification
 assert_test "Security header (X-Content-Type-Options: nosniff)" \
   "curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" -I '${BASE_URL}/api/health' | grep -qi 'x-content-type-options: nosniff'"
 
-# 6. Cloudflare Worker POI service proxy
+# 7. Cloudflare Worker POI service proxy
 assert_test "POI service worker proxy (/api/places/search?q=coffee)" \
   "curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/places/search?q=coffee' | grep -qE '\"(results|pois|items)\":|\[\{\"'"
-# 7. Cloudflare R2 Image CDN availability (verifies DNS, TLS, and edge reachability)
+# 8. Cloudflare R2 Image CDN availability (verifies DNS, TLS, and edge reachability)
 if [[ "$ENV" == "prod" ]]; then
   IMAGE_HOST="https://${PROD_IMAGE_DOMAIN:-images.cafemood.app}"
 else
@@ -203,12 +211,12 @@ assert_test "Cloudflare R2 images CDN edge connectivity (${IMAGE_HOST})" \
   "STATUS=\$(curl -s -m ${TIMEOUT} -o /dev/null -w '%{http_code}' '${IMAGE_HOST}/' || curl -s -m ${TIMEOUT} -o /dev/null -w '%{http_code}' 'https://images.cafemood.app/'); \
    [[ \"\$STATUS\" =~ ^(200|403|404)$ ]]"
 
-# 8. Image upload API contract (verifies API route returns structured JSON or 400/401 auth gate)
+# 9. Image upload API contract (verifies API route returns structured JSON or 400/401 auth gate)
 assert_test "Image upload API contract (/api/images/upload)" \
   "STATUS=\$(curl -s -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" -o /dev/null -w '%{http_code}' -X POST '${BASE_URL}/api/images/upload'); \
    [[ \"\$STATUS\" =~ ^(200|400|401|403)$ ]]"
 
-# 9. Keepalive probe (BRAWUKA-284): real DB round-trip. Nothing polls this on a
+# 10. Keepalive probe (BRAWUKA-284): real DB round-trip. Nothing polls this on a
 # schedule since the uptime monitor was deleted (BRAWUKA-611); this smoke test is
 # the only caller until the P1-1 cron Worker probe lands.
 # Asserts {"db":"up"} when database is connected. On staging where DATABASE_URL is pending
@@ -217,7 +225,7 @@ assert_test "Heartbeat probe (/api/heartbeat)" \
   "curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/heartbeat' | grep -q '\"db\":\"up\"' || \
    ([[ \"$ENV\" == \"staging\" ]] && curl -s -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/heartbeat' | grep -q '\"db_unavailable\"')"
 
-# 10. Runtime config (BRAWUKA-284): operator content, edge-cached <=60s.
+# 11. Runtime config (BRAWUKA-284): operator content, edge-cached <=60s.
 # Asserts flags/banners when database is connected. On staging where DATABASE_URL is pending,
 # verifies fail-closed db_unavailable contract.
 assert_test "Runtime config (/api/config)" \

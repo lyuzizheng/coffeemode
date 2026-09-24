@@ -68,7 +68,7 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 | `/api/health` | `{ok, version, boot_time}` |
 | `/api/heartbeat` | 真实 DB round-trip（`select 1`），Better Stack 轮询它；同时是 Supabase 免费档项目的 keepalive（BRAWUKA-284） |
 | `poi-service` / `image-service` | `console.error` + wrangler `[observability]`（数据留在 Cloudflare 侧） |
-| `scripts/devops/smoke-test.sh` | 10 条部署后契约，bash + curl，手动跑 |
+| `scripts/devops/smoke-test.sh` | 11 条部署后契约，bash + curl，手动跑 |
 | OTel / Sentry / prom-client / Faro | **都没有**（OTel 在 PR #590 里，未合） |
 
 ## 2. 能力清单

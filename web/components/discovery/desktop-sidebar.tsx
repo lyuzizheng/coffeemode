@@ -26,7 +26,8 @@
  *
  * SSR contract (#275): the initial render IS the scroll-top expanded
  * state — the panel renders open (unless a cafe is already selected via
- * deep link), so SSR→hydration never shifts layout.
+ * deep link), so SSR→hydration never shifts layout. `motion-reduce:hidden`
+ * gives reduced-motion users compact-only from first paint, no flash.
  */
 import { useCallback, useEffect, useRef, type ReactNode, type RefObject } from "react";
 import {
@@ -176,14 +177,16 @@ function SidebarMasthead({
 
 /** The frontispiece — centered brand panel rendered in flow at scroll-top.
  * Forced collapse (search/detail) springs maxHeight to 0; visibility:hidden
- * at rest keeps it out of the a11y tree and hit-testing. */
-function BrandPanel({ collapse }: { collapse: MotionValue<number> }) {
+ * at rest keeps it out of the a11y tree and hit-testing; `motion-reduce:hidden`
+ * hides the SSR markup for reduced-motion users before hydration. The add-cafe
+ * CTA lives here — the masthead's copy is visibility:hidden at scroll-top. */
+function BrandPanel({ collapse, addCafe }: { collapse: MotionValue<number>; addCafe: ReactNode }) {
   const t = useTranslations("discovery");
   const tOnboarding = useTranslations("onboarding");
   const maxHeight = useTransform(collapse, (c) => (1 - c) * BRAND_PANEL_MAX_H_PX);
   const visibility = useTransform(collapse, (c) => (c >= 1 ? "hidden" : "visible"));
   return (
-    <motion.div style={{ maxHeight, visibility }} className="overflow-hidden">
+    <motion.div style={{ maxHeight, visibility }} className="overflow-hidden motion-reduce:hidden">
       <div className="relative flex h-[min(46dvh,400px)] flex-col items-center justify-center gap-3 overflow-hidden px-6 text-center">
         <div aria-hidden className="grain-overlay absolute inset-0" />
         <span className="font-mono text-xs font-medium uppercase tracking-[0.18em] text-muted">
@@ -192,7 +195,9 @@ function BrandPanel({ collapse }: { collapse: MotionValue<number> }) {
         <span className="font-display text-2xl font-extrabold tracking-tight text-foreground">
           CafeMood
         </span>
-        <p className="max-w-[26ch] text-sm leading-relaxed text-muted">{t("brand_intro")}</p>
+        {/* 34ch keeps both en and zh manifestos inside the ≤2-line spec. */}
+        <p className="max-w-[34ch] text-sm leading-relaxed text-muted">{t("brand_intro")}</p>
+        <div className="pt-1">{addCafe}</div>
       </div>
     </motion.div>
   );
@@ -375,7 +380,7 @@ export function DesktopSidebar({
         collapse={collapse}
         reduced={reduced}
       />
-      {!reduced && <BrandPanel collapse={collapse} />}
+      {!reduced && <BrandPanel collapse={collapse} addCafe={addCafe} />}
       {search && contentVisible && <SidebarSearch search={search} />}
       <SidebarContent
         state={state}

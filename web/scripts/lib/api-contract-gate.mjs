@@ -3,12 +3,8 @@
  * `scripts/e2e-smoke.mjs` to keep that runner inside the 400-line file
  * budget. Each assertion is a plain fetch against the standalone build.
  */
-
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
+import { assert } from "./gate-assert.mjs";
+import { clearGateArtifacts, recordGateFailure } from "./e2e-artifacts.mjs";
 
 /**
  * @param {object} options
@@ -16,6 +12,8 @@ function assert(condition, message) {
  * @param {string} options.cafeId DB-seeded cafe id for the navigations probe.
  */
 export async function runApiContractGate({ base, cafeId }) {
+  clearGateArtifacts("api-contract");
+  try {
   const healthRes = await fetch(`${base}/api/health`);
   assert(healthRes.status === 200, `/api/health returned ${healthRes.status}`);
 
@@ -58,4 +56,8 @@ export async function runApiContractGate({ base, cafeId }) {
   // 401 without auth session (the seeded id is a cafe, not a navigation —
   // auth runs before the row lookup).
   assert(resolveRes.status === 401, `/api/navigations/[id]/resolve returned unexpected ${resolveRes.status}`);
+  } catch (err) {
+    recordGateFailure("api-contract", err);
+    throw err;
+  }
 }

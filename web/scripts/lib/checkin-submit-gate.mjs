@@ -16,46 +16,9 @@
  * a signed-in user, so the session must be real.
  */
 
-const DRAWER_DIALOG_SELECTOR = "section.drawer__dialog--bottom";
-
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
-
-/**
- * Mint a session at the supabase-mock and return the @supabase/ssr cookie
- * pair. Returns null when the mock is unreachable — the caller degrades to
- * a skip instead of failing the whole suite.
- */
-async function mintSession(supabaseUrl, userId) {
-  try {
-    const res = await fetch(`${supabaseUrl}/auth/v1/token`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: "e2e@coffeemode.test", userId }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const session = {
-      access_token: data.access_token,
-      refresh_token: data.refresh_token,
-      token_type: "bearer",
-      expires_in: 3600,
-      expires_at: Math.floor(Date.now() / 1000) + 3600,
-      user: data.user,
-    };
-    // @supabase/ssr storage key: sb-<first host label>-auth-token.
-    const host = new URL(supabaseUrl).hostname.split(".")[0];
-    return {
-      name: `sb-${host}-auth-token`,
-      value: `base64-${Buffer.from(JSON.stringify(session)).toString("base64url")}`,
-    };
-  } catch {
-    return null;
-  }
-}
+import { DRAWER_DIALOG_SELECTOR, assert, shot } from "./gate-assert.mjs";
+import { assertSessionLanded, mintSession } from "./e2e-session.mjs";
+import { clearGateArtifacts, withGateContext } from "./e2e-artifacts.mjs";
 
 /**
  * Wait out the SSR shell overlay, open the check-in drawer from the app's
@@ -127,43 +90,51 @@ export async function runCheckinSubmitGate({
   // gets exercised; cleanup deletes whatever this gate writes.
   await dbClient.query(`delete from checkins where user_id = $1 and cafe_id = $2`, [userId, cafeId]);
 
-  const context = await createContext({
-    viewport: { width: 390, height: 844 },
-    isMobile: true,
-    hasTouch: true,
-  });
-  try {
-    await context.addCookies([{ ...sessionCookie, url: base }]);
+  clearGateArtifacts("checkin-submit");
+  await withGateContext(
+    "checkin-submit",
+    createContext,
+    { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
+    async (context, consoleLines) => {
+      await context.addCookies([{ ...sessionCookie, url: base }]);
+      // Fail fast when the cookie name derived from E2E_SUPABASE_URL does not
+      // match the app's session read — otherwise the gate runs anonymously
+      // and fails late at an unrelated assertion.
+      await assertSessionLanded({ base, supabaseUrl, request: context.request, label });
 
-    const page = await context.newPage();
-    const checkErrors = attachErrorCollector(page, label, {
-      path: `/cafes/${cafeId}`,
-      status: 200,
-    });
+      const page = await context.newPage();
+      const checkErrors = attachErrorCollector(
+        page,
+        label,
+        { path: `/cafes/${cafeId}`, status: 200 },
+        consoleLines,
+      );
 
-    // Count feed fetches: the submit must invalidate ["cafe-checkins"], so
-    // the mounted feed refetches after the initial load.
-    let feedFetches = 0;
-    page.on("request", (req) => {
-      if (req.url().includes(`/api/cafes/${cafeId}/checkins`)) feedFetches += 1;
-    });
+      // Count feed fetches: the submit must invalidate ["cafe-checkins"], so
+      // the mounted feed refetches after the initial load.
+      let feedFetches = 0;
+      page.on("request", (req) => {
+        if (req.url().includes(`/api/cafes/${cafeId}/checkins`)) feedFetches += 1;
+      });
 
-    await page.goto(`${base}/cafes/${cafeId}`, { waitUntil: "domcontentloaded" });
-    const dialog = await openDrawerAndSubmit(page);
+      await page.goto(`${base}/cafes/${cafeId}`, { waitUntil: "domcontentloaded" });
+      const dialog = await openDrawerAndSubmit(page);
 
-    // Success moment: the card shows, then the drawer auto-closes (900ms
-    // dwell) and the toast confirms.
-    await page.getByText(/Checked in|已打卡/i).waitFor({ state: "visible", timeout: 5000 });
-    await dialog.waitFor({ state: "hidden", timeout: 5000 });
-    await page.getByText(/Check-in saved|打卡成功/i).waitFor({ state: "visible", timeout: 5000 });
+      // Success moment: the card shows, then the drawer auto-closes (900ms
+      // dwell) and the toast confirms.
+      await page.getByText(/Checked in|已打卡/i).waitFor({ state: "visible", timeout: 5000 });
+      await dialog.waitFor({ state: "hidden", timeout: 5000 });
+      await page.getByText(/Check-in saved|打卡成功/i).waitFor({ state: "visible", timeout: 5000 });
 
-    assert(
-      feedFetches >= 2,
-      `expected the check-in feed to refetch after submit, saw ${feedFetches} fetch(es)`,
-    );
+      assert(
+        feedFetches >= 2,
+        `expected the check-in feed to refetch after submit, saw ${feedFetches} fetch(es)`,
+      );
+      await shot(page, "checkin-submit", "success");
 
-    checkErrors();
-  } finally {
-    await context.close();
-  }
+      checkErrors();
+      return page;
+    },
+    label,
+  );
 }

@@ -37,7 +37,7 @@ export async function LegalPage({
           <h1 className="font-display text-2xl font-bold tracking-tight">
             {t("title")}
           </h1>
-          <p className="text-xs text-muted">{t("updated")}</p>
+          <p className="text-xs text-muted">{t("updated", values as never)}</p>
         </header>
 
         {sections.map((key) => (

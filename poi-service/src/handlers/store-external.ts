@@ -6,6 +6,10 @@ import { isGooglePlaceId, matchesFoodCategory } from "../upstream";
 import type { Env, POI } from "../types";
 import { computeExpiresAt, d1GetPOI, d1UpsertPOIs, kvDeletePOI } from "../store";
 import { inLatRange, inLngRange } from "./shared";
+import {
+  APPLE_FALLBACK_PLACE_ID_RE,
+  stableApplePlaceId,
+} from "../../../web/shared/places/apple-place-id";
 
 interface InvalidEntry {
   index: number;
@@ -43,6 +47,16 @@ function validateExternalEntry(value: unknown, index: number): POI | InvalidEntr
   }
   if (typeof v.lng !== "number" || !Number.isFinite(v.lng) || !inLngRange(v.lng)) {
     return bad("lng must be a finite number in [-180, 180]");
+  }
+  // BRAWUKA-703: client-minted fallback ids (`apple:<8-hex>`) are
+  // self-certifying — the FNV hash of "lat,lng:name". Re-derive here so a
+  // forged entry (id of one place, coords of another) 400s instead of
+  // entering D1 under a real fallback id the cafe bind would then honor.
+  // MapKit-native ids (any other shape) have no server-side ground truth;
+  // that residual is accepted with `search.externalSources.apple` kept off.
+  if (v.source === "apple" && APPLE_FALLBACK_PLACE_ID_RE.test(v.place_id)) {
+    const expected = stableApplePlaceId(`${v.lat},${v.lng}:${v.name}`);
+    if (expected !== v.place_id) return bad("apple fallback place_id does not match entry coordinates and name");
   }
   if (v.address !== undefined && v.address !== null && typeof v.address !== "string") {
     return bad("address must be a string");

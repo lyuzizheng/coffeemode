@@ -15,3 +15,12 @@ export function stableApplePlaceId(value: string): string {
   }
   return `apple:${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
+
+/**
+ * Client-minted fallback ids (`apple:<8-hex>`) are self-certifying: they are
+ * the FNV hash of "lat,lng:name", so the server re-derives them at the
+ * persistence boundary and rejects mismatches (BRAWUKA-703). MapKit-native
+ * ids (opaque, any other shape) have no server-side ground truth — that
+ * residual is accepted with `search.externalSources.apple` kept off.
+ */
+export const APPLE_FALLBACK_PLACE_ID_RE = /^apple:[0-9a-f]{8}$/;

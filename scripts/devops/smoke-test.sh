@@ -100,11 +100,11 @@ if [[ -z "${CF_ACCESS_CLIENT_ID:-}" || -z "${CF_ACCESS_CLIENT_SECRET:-}" ]]; the
     "${HOME}/.config/zsh/secrets.zsh"; do
     if [[ -f "$candidate" ]]; then
       if [[ -z "${CF_ACCESS_CLIENT_ID:-}" ]]; then
-        VAL="$(grep -E '^export CF_ACCESS_CLIENT_ID=|^CF_ACCESS_CLIENT_ID=' "$candidate" 2>/dev/null | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
+        VAL="$(grep -m 1 -E '^export CF_ACCESS_CLIENT_ID=|^CF_ACCESS_CLIENT_ID=' "$candidate" 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
         [[ -n "$VAL" ]] && CF_ACCESS_CLIENT_ID="$VAL"
       fi
       if [[ -z "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
-        VAL="$(grep -E '^export CF_ACCESS_CLIENT_SECRET=|^CF_ACCESS_CLIENT_SECRET=' "$candidate" 2>/dev/null | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
+        VAL="$(grep -m 1 -E '^export CF_ACCESS_CLIENT_SECRET=|^CF_ACCESS_CLIENT_SECRET=' "$candidate" 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
         [[ -n "$VAL" ]] && CF_ACCESS_CLIENT_SECRET="$VAL"
       fi
     fi
@@ -166,12 +166,17 @@ assert_test() {
   fi
 }
 
-# File-wide grep rule (BRAWUKA-690/691): never pipe curl into `grep -q` here.
-# grep -q exits at the first match, closing the pipe under `set -o pipefail`
-# while curl still has body bytes in flight -> curl exits 56 and the healthy
-# response FAILs (observed 5/5 on the multi-line root page, BRAWUKA-690).
-# Plain grep drains the stream to EOF with identical exit codes, and
-# assert_test discards stdout anyway.
+# File-wide pipe rule (BRAWUKA-690/691/702): never let a stage exit before the
+# upstream producer has finished writing. Under `set -o pipefail` the early
+# close sends SIGPIPE to whoever is still writing — curl exits 56 and a healthy
+# response FAILs (observed 5/5 on the multi-line root page, BRAWUKA-690), or
+# grep exits 141. This covers every early-exit consumer, not just `grep -q`:
+# `head -n 1` and `grep -m 1` have the same failure mode over a pipe.
+# Over a streaming pipe a consumer must drain to EOF: plain grep does, and
+# "give me the first match" is `awk 'NR==1{print}'` — deliberately WITHOUT
+# `exit`, because awk closing early just recreates the same SIGPIPE. Early exit
+# (`grep -m 1`) is safe only when the input is a file, not a pipe (see the env
+# auto-discovery above; BRAWUKA-702). assert_test discards stdout anyway.
 
 # 1. Healthcheck probe & version marker
 assert_test "Healthcheck endpoint (/api/health)" \
@@ -198,14 +203,18 @@ assert_test "PostGIS spatial query (/api/cafes?lat=1.3521&lng=103.8198&radius_km
 # its own detail payload. Derives one id from the list above and expects the
 # detail envelope ({ id, name, ... }); skipping only when the list is empty
 # (fresh DB) or fell back to the fail-closed db_unavailable contract.
+# First id via `awk 'NR==1{print}'` draining the body (BRAWUKA-702): `head -n 1`
+# closes the pipe early, and `grep -m 1 -o` is not equivalent — -m counts lines
+# while -o emits every match, so a compact single-line JSON would yield all ids.
 assert_test "Cafe detail aggregate (/api/cafes/[id] from list result)" \
-  "CAFE_ID=\$(curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/cafes?lat=1.3521&lng=103.8198&radius_km=5' | grep -oE '\"id\":\"[0-9a-f-]{36}\"' | head -n 1 | cut -d'\"' -f4); \
+  "CAFE_ID=\$(curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/cafes?lat=1.3521&lng=103.8198&radius_km=5' | grep -oE '\"id\":\"[0-9a-f-]{36}\"' | awk 'NR==1{print}' | cut -d'\"' -f4); \
    [[ -z \"\$CAFE_ID\" ]] || curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" \"${BASE_URL}/api/cafes/\${CAFE_ID}\" | grep -E '\"name\":'"
 
 # 5. Static assets & .next/static chunk resolution (verifies Docker standalone asset copy)
+# First chunk via draining `awk 'NR==1{print}'`, not `head -n 1` (BRAWUKA-702).
 assert_test "Next.js standalone static asset resolution (/_next/static/)" \
   "ROOT_HTML=\$(curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/'); \
-   STATIC_CHUNK=\$(echo \"\$ROOT_HTML\" | grep -oE '/_next/static/[^\"'\''>[:space:]]+\.(js|css)' | head -n 1); \
+   STATIC_CHUNK=\$(echo \"\$ROOT_HTML\" | grep -oE '/_next/static/[^\"'\''>[:space:]]+\.(js|css)' | awk 'NR==1{print}'); \
    [[ -n \"\$STATIC_CHUNK\" ]] && curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" -o /dev/null \"${BASE_URL}\${STATIC_CHUNK}\""
 
 # 6. Security headers verification

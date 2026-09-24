@@ -13,6 +13,11 @@ export function parseImagesSection(
       images.maxOriginalDimension,
     ),
     webpQuality: boundedNumber(file, "images.webpQuality", images.webpQuality, 1, 100),
+    workerTimeoutMs: positiveInteger(
+      file,
+      "images.workerTimeoutMs",
+      images.workerTimeoutMs,
+    ),
     r2DownloadTimeoutMs: positiveInteger(
       file,
       "images.r2DownloadTimeoutMs",

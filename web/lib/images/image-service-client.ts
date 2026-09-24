@@ -1,10 +1,13 @@
 import { logError } from "@/lib/observability/server-log";
 import "server-only";
 
+import { appConfig } from "@/lib/config";
 import { REQUEST_ID_HEADER } from "@shared/request-id";
 import { sanitizePassthroughStatus } from "@shared/errors";
-import { WORKER_TIMEOUT_MS } from "@/lib/http";
 import type { CompleteImageRequest, UploadUrlResponse } from "@/types/images";
+
+/** Timeout for image-service Worker fetches — product-owned in app.yaml (DG107). */
+const WORKER_TIMEOUT_MS = appConfig.images.workerTimeoutMs;
 
 export class ImageServiceError extends Error {
   constructor(

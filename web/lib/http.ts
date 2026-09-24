@@ -2,13 +2,12 @@ import type { useTranslations } from "next-intl";
 import { isErrorCode, type ErrorCode } from "@shared/errors";
 
 /**
- * Shared HTTP / fetch defaults.
+ * Shared HTTP / fetch helpers for `/api/*`.
  *
- * Worker calls (image-service, POI-service) are expected to be fast and
- * local-ish to the Next.js host. A short timeout prevents hanging requests from
- * blocking UI transitions.
+ * Worker proxy timeouts live in `web/config/app.yaml`
+ * (`images.workerTimeoutMs`, DG107) and are read by the server-only worker
+ * clients — never from here: this module ships to the browser bundle.
  */
-export const WORKER_TIMEOUT_MS = 5000;
 
 /**
  * Marker for "the session is gone" (HTTP 401). Carried as an `Error.message`

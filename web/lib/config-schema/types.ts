@@ -109,6 +109,8 @@ export interface AppConfig {
   images: {
     maxOriginalDimension: number;
     webpQuality: number;
+    /** Timeout for Cloudflare Worker proxy fetches (image-service, POI-service). */
+    workerTimeoutMs: number;
     r2DownloadTimeoutMs: number;
     r2UploadTimeoutMs: number;
     downloadSlackBytes: number;

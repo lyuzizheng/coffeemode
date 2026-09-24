@@ -212,6 +212,10 @@ images:
   maxOriginalDimension: 4096
   # WebP encode quality for card/thumbnail variants.
   webpQuality: 80
+  # Timeout for Cloudflare Worker proxy fetches (image-service, POI-service).
+  # Kept here (not on each consumer section) so both worker clients share one
+  # product-owned value instead of drifting apart.
+  workerTimeoutMs: 5000
   # R2 fetch guards for the image processor.
   r2DownloadTimeoutMs: 30000
   r2UploadTimeoutMs: 30000

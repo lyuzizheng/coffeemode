@@ -16,7 +16,7 @@
 #   8. Cloudflare R2 images CDN edge connectivity
 #   9. Image upload intent API contract verification
 #   10. Keepalive probe (/api/heartbeat -> {"db":"up"}, BRAWUKA-284)
-#   11. Runtime config (/api/config -> flags/banners, BRAWUKA-284)
+#   11. Runtime config (/api/config -> banners, BRAWUKA-284)
 #
 # Usage:
 #   ./smoke-test.sh [options] [staging|prod] [BASE_URL_OVERRIDE]
@@ -240,10 +240,10 @@ assert_test "Heartbeat probe (/api/heartbeat)" \
    ([[ \"$ENV\" == \"staging\" ]] && curl -s -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/heartbeat' | grep '\"db_unavailable\"')"
 
 # 11. Runtime config (BRAWUKA-284): operator content, edge-cached <=60s.
-# Asserts flags/banners when database is connected. On staging where DATABASE_URL is pending,
+# Asserts banners when database is connected. On staging where DATABASE_URL is pending,
 # verifies fail-closed db_unavailable contract.
 assert_test "Runtime config (/api/config)" \
-  "curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/config' | grep -E '\"(flags|banners)\":' || \
+  "curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/config' | grep '\"banners\":' || \
    ([[ \"$ENV\" == \"staging\" ]] && curl -s -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/heartbeat' | grep '\"db_unavailable\"')"
 echo "=============================================================================="
 echo "Smoke Test Summary: $((TOTAL - FAILED))/${TOTAL} passed."

@@ -143,10 +143,34 @@ function validateApiRouteOptions(method, optionsArg, relPath) {
   return [];
 }
 
+function collectDestructuredMethods(name, methods = []) {
+  if (ts.isIdentifier(name)) {
+    if (HTTP_METHODS.includes(name.text)) methods.push(name.text);
+  } else if (ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name)) {
+    for (const el of name.elements) {
+      // Array holes are OmittedExpression nodes with no binding; skip them.
+      if (ts.isBindingElement(el)) collectDestructuredMethods(el.name, methods);
+    }
+  }
+  return methods;
+}
+
 function checkVariableMethod(decl, relPath) {
+  // Destructured exports (export const { POST } = ...) bind HTTP-method
+  // names without a visible per-method apiRoute() call, so the options
+  // can never be validated — flag them unconditionally. Only the bound
+  // local name (el.name) is an export; a propertyName alias such as
+  // { POST: handler } exports `handler`, not POST.
+  if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
+    return collectDestructuredMethods(decl.name).map((method) => ({
+      file: relPath,
+      method,
+      reason: `Exported handler ${method} must be export const ${method} = apiRoute(...)`,
+    }));
+  }
+
   const method = ts.isIdentifier(decl.name) ? decl.name.text : undefined;
   if (!method || !HTTP_METHODS.includes(method)) return [];
-
   const init = decl.initializer;
   if (!init || !ts.isCallExpression(init) || getCallIdentifier(init.expression) !== "apiRoute") {
     return [{

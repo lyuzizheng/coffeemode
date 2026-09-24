@@ -14,6 +14,8 @@
  *   - reference-aware (BRAWUKA-400): a stale-marker original whose key IS in
  *     LIVE_KEYS_FILE reports would-keep reason:"referenced", never deleted —
  *     even with DRY_RUN=0
+ *   - HEAD failure (BRAWUKA-400/BRAWUKA-686): stub R2_ENDPOINT answers 403
+ *     on HEAD — the candidate is skipped, never deleted
  *   - idempotent: second run deletes nothing
  *
  * Requires:
@@ -21,8 +23,10 @@
  *   RUN_INTEGRATION=1 npm run test:integration:images
  */
 
+import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFile as execFileAsyncCb, execFileSync } from "node:child_process";
+import { promisify } from "node:util";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -259,6 +263,79 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 20_000);
+
+  it("skips candidates whose HEAD fails: never deletes on uncertain state (BRAWUKA-400/BRAWUKA-686)", async (ctx) => {
+    if (!minioUp) return ctx.skip();
+    // Stub R2_ENDPOINT: LIST yields one stale markerless candidate, every
+    // HEAD fails 403 (aws4fetch retries only 5xx/429, so a 403 stub answers
+    // immediately with no retry storm). The script must skip the candidate —
+    // uncertain state is never deleted (BRAWUKA-400). DRY_RUN=0 so a
+    // regression that classified the candidate as orphan would reach the
+    // delete phase (deleteCalls > 0).
+    const staleKey = `original/${randomUUID()}.webp`;
+    const listXml =
+      `<?xml version="1.0" encoding="UTF-8"?><ListBucketResult>` +
+      `<Contents><Key>${staleKey}</Key><LastModified>2020-01-01T00:00:00.000Z</LastModified></Contents>` +
+      `<IsTruncated>false</IsTruncated></ListBucketResult>`;
+    let headCalls = 0;
+    let deleteCalls = 0;
+    const server = createServer((req, res) => {
+      const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      if (req.method === "GET" && url.searchParams.get("list-type") === "2") {
+        res.writeHead(200, { "content-type": "application/xml" });
+        res.end(listXml);
+        return;
+      }
+      if (req.method === "HEAD") {
+        headCalls += 1;
+        res.writeHead(403);
+        res.end();
+        return;
+      }
+      if (req.method === "DELETE") {
+        deleteCalls += 1;
+        res.writeHead(200);
+        res.end();
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const execFileAsync = promisify(execFileAsyncCb);
+    try {
+      const address = server.address();
+      if (address === null || typeof address === "string") {
+        throw new Error("stub R2 server has no TCP port");
+      }
+      // Async spawn: the stub must answer while the script runs. A sync
+      // spawn blocks this event loop, starving the stub and forcing a
+      // 60s timeout.
+      const { stdout } = (await execFileAsync("node", ["scripts/clean-orphan-originals.mjs"], {
+        cwd: IMAGE_SERVICE_ROOT,
+        env: {
+          ...process.env,
+          TEST_R2_ACCESS_KEY_ID: undefined,
+          R2_ACCESS_KEY_ID: "stub",
+          R2_SECRET_ACCESS_KEY: "stub-secret",
+          R2_BUCKET_NAME: "stub-bucket",
+          R2_ENDPOINT: `http://127.0.0.1:${address.port}`,
+          DRY_RUN: "0",
+          RETENTION_DAYS: "0",
+          MAX_OBJECTS: "100",
+          ALLOW_RETENTION_ZERO: "1",
+        } as NodeJS.ProcessEnv,
+        timeout: 30_000,
+      })) as { stdout: string };
+      expect(headCalls).toBe(1);
+      expect(stdout).toContain('"orphanCandidates":0');
+      expect(stdout).not.toContain('"op":"would-delete"');
+      expect(stdout).not.toContain(`"key":"${staleKey}"`);
+      expect(deleteCalls).toBe(0);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+    }
+  }, 60_000);
 
   it("is idempotent: a second run deletes nothing more", async () => {
     const abandoned = `original/${randomUUID()}.webp`;

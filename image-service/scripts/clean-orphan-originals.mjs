@@ -81,8 +81,7 @@ function loadLiveKeys() {
   }
 }
 
-// Top-level env reads feed `main()`; validation lives in `validateConfig()`
-// so unit tests can import the listing logic without R2 credentials.
+// Top-level env reads feed `main()`; missing credentials fail fast in `validateConfig()`.
 function validateConfig() {
   if (!R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET_NAME || (!R2_ENDPOINT && !R2_ACCOUNT_ID)) {
     console.error(
@@ -118,9 +117,7 @@ function baseEndpoint() {
   return `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
 }
 
-let __clientFactory = null;
 function client() {
-  if (__clientFactory) return __clientFactory();
   return new AwsClient({
     accessKeyId: R2_ACCESS_KEY_ID,
     secretAccessKey: R2_SECRET_ACCESS_KEY,
@@ -381,17 +378,6 @@ async function main() {
   // Partial failures are visible but not fatal: the next run retries the rest
   // (idempotent). Operational failures above already exit non-zero via throw.
   if (totalFailed > 0) process.exitCode = 1;
-}
-
-// Test harness (BRAWUKA-592 re-review): unit tests drive
-// `listOrphanCandidates` through `__testList` with an injected fetch stub,
-// without running `main()` or requiring R2 credentials. Production entry
-// still runs `main()` exactly once.
-export function __setClientFactory(factory) {
-  __clientFactory = factory;
-}
-export async function __testList(args) {
-  return listOrphanCandidates(args);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {

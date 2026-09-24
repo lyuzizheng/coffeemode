@@ -190,22 +190,20 @@ export async function listCafeSitemapEntries(): Promise<CafeSitemapEntry[]> {
   }));
 }
 
-const GET_LOCATION_SQL = `
+const GET_LOCATION_PUBLIC_SQL = `
 select ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng
 from cafes
-where id = $1
+where id = $1 and visibility = 'public'
+`;
+
+const GET_LOCATION_VIEWER_SQL = `
+select ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng
+from cafes
+where id = $1 and (visibility = 'public' or created_by = $2)
 `;
 
 const EXISTS_PUBLIC_SQL = `select 1 from cafes where id = $1 and deleted_at is null and visibility = 'public'`;
 const EXISTS_VIEWER_SQL = `select 1 from cafes where id = $1 and deleted_at is null and (visibility = 'public' or created_by = $2)`;
-const EXISTS_LIVE_SQL = `select 1 from cafes where id = $1 and deleted_at is null`;
-
-/** Live-only probe: true when the cafe exists and is not soft-deleted (tombstoned). */
-export async function isLiveCafe(id: string): Promise<boolean> {
-  if (!isValidUUID(id)) return false;
-  const { rows } = await query<Record<string, unknown>>(EXISTS_LIVE_SQL, [id]);
-  return rows.length > 0;
-}
 
 /**
  * Narrow existence probe (`select 1`, no row payload) for API routes that
@@ -229,14 +227,19 @@ export async function cafeExists(id: string, viewerId?: string | null): Promise<
  * Unlike getCafe this tolerates invalid ids (returns null) because its caller is the 404
  * recovery path (DG111), where a malformed id is a normal case. The kept tombstone row
  * allows recovery suggestions to find nearby alternatives.
+ * Private cafes are visible only to their creator (BRAWUKA-435): a non-owner
+ * probing a private cafe id gets null, same as a nonexistent id — no
+ * existence/coordinate oracle.
  */
 export async function getCafeLocation(
   id: string,
+  viewerId?: string | null,
 ): Promise<{ lat: number; lng: number } | null> {
   if (!isValidUUID(id)) return null;
+  const viewer = viewerId && isValidUUID(viewerId) ? viewerId : null;
   const { rows } = await query<{ lat: number; lng: number } & Record<string, unknown>>(
-    GET_LOCATION_SQL,
-    [id],
+    viewer ? GET_LOCATION_VIEWER_SQL : GET_LOCATION_PUBLIC_SQL,
+    viewer ? [id, viewer] : [id],
   );
   const row = rows[0];
   return row ? { lat: row.lat, lng: row.lng } : null;

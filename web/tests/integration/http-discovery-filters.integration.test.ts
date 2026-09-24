@@ -518,6 +518,62 @@ describeHttp("HTTP Discovery & Filters (Path 1)", () => {
     expect(asCreator.data.cafes.map((c) => c.id)).toContain(cafeIds.privateLondon);
   });
 
+  it("Path 1 (BRAWUKA-435): private cafe is a 404/empty oracle-free target for non-owners", async () => {
+    type IdCtx = { params: Promise<{ id: string }> };
+
+    // Non-owner PATCH on a private cafe → 404, identical to a nonexistent id.
+    const strangerPatch = await userA.patch<ErrorBody, IdCtx>(
+      visibilityPATCH,
+      `/api/cafes/${cafeIds.privateLondon}/visibility`,
+      { visibility: "public" },
+      {},
+      routeParams({ id: cafeIds.privateLondon }),
+    );
+    expect(strangerPatch.status).toBe(404);
+    expect(strangerPatch.data.error).toBe("not_found");
+
+    const missingId = randomUUID();
+    const missingPatch = await userA.patch<ErrorBody, IdCtx>(
+      visibilityPATCH,
+      `/api/cafes/${missingId}/visibility`,
+      { visibility: "public" },
+      {},
+      routeParams({ id: missingId }),
+    );
+    expect(missingPatch.status).toBe(404);
+    expect(missingPatch.data.error).toBe("not_found");
+
+    // Non-owner PATCH on a public cafe still reaches the ownership check → 403.
+    const publicPatch = await userB.patch<ErrorBody, IdCtx>(
+      visibilityPATCH,
+      `/api/cafes/${cafeIds.nearProbe}/visibility`,
+      { visibility: "private" },
+      {},
+      routeParams({ id: cafeIds.nearProbe }),
+    );
+    expect(publicPatch.status).toBe(403);
+
+    // Recovery on a private cafe returns the same empty list as a missing id —
+    // no coordinate/existence leak for stranger or guest.
+    const strangerRecovery = await userA.get<CafesBody, IdCtx>(
+      recoveryGET,
+      `/api/cafes/${cafeIds.privateLondon}/recovery`,
+      {},
+      routeParams({ id: cafeIds.privateLondon }),
+    );
+    expect(strangerRecovery.status).toBe(200);
+    expect(strangerRecovery.data.cafes).toEqual([]);
+
+    const guestRecovery = await guest.get<CafesBody, IdCtx>(
+      recoveryGET,
+      `/api/cafes/${cafeIds.privateLondon}/recovery`,
+      {},
+      routeParams({ id: cafeIds.privateLondon }),
+    );
+    expect(guestRecovery.status).toBe(200);
+    expect(guestRecovery.data.cafes).toEqual([]);
+  });
+
   // ——— GET /api/search city matrix (DG128) ———
 
   it("Path 1 (DG128): explicit unknown city returns 400 invalid_request", async () => {

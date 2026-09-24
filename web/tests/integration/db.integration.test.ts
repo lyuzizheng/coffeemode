@@ -46,7 +46,6 @@ import {
   deleteCafe,
   getCafe,
   getCafeLocation,
-  isLiveCafe,
   isServiceMaintained,
   listCafeSitemapEntries,
   listCafesNearby,
@@ -2524,14 +2523,14 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(publicCafeForStranger).not.toBeNull();
       expect(await cafeExists(created.cafe_id, U2)).toBe(true);
       expect(await cafeExists(created.cafe_id, null)).toBe(true);
-      expect(await isLiveCafe(created.cafe_id)).toBe(true);
+      expect(await cafeExists(created.cafe_id, U1)).toBe(true);
 
       // Owner toggles to private
       const toggleRes = await setCafeVisibility(created.cafe_id, U1, "private");
       expect(toggleRes).toEqual({ ok: true, id: created.cafe_id, visibility: "private" });
 
       // Cafe remains live while private
-      expect(await isLiveCafe(created.cafe_id)).toBe(true);
+      expect(await cafeExists(created.cafe_id, U1)).toBe(true);
 
       // Owner sees it (200 / truthy)
       const ownerCafe = await getCafe(created.cafe_id, U1);
@@ -2549,6 +2548,12 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(anonCafe).toBeNull();
       expect(await cafeExists(created.cafe_id)).toBe(false);
       expect(await cafeExists(created.cafe_id, null)).toBe(false);
+
+      // getCafeLocation follows the same visibility rule (BRAWUKA-435): owner
+      // gets coordinates, stranger and anonymous get null — no oracle.
+      expect(await getCafeLocation(created.cafe_id, U1)).not.toBeNull();
+      expect(await getCafeLocation(created.cafe_id, U2)).toBeNull();
+      expect(await getCafeLocation(created.cafe_id)).toBeNull();
 
       // Owner can record navigation to own private cafe (P2); stranger gets CafeNotFoundError
       const nav = await recordNavigation(U1, created.cafe_id);
@@ -3176,7 +3181,6 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(await cafeExists(CAFE_A)).toBe(true);
       expect(await cafeExists(CAFE_A, U1)).toBe(true);
       expect(await cafeExists(CAFE_A, U2)).toBe(true);
-      expect(await isLiveCafe(randomUUID())).toBe(false);
     });
   });
 

@@ -1,17 +1,20 @@
 #!/usr/bin/env node
 /**
- * R2 orphan-original cleanup (issue #158, hardened BRAWUKA-400) — safe,
- * reference-aware, dry-run first.
+ * R2 orphan-original cleanup (issue #158, hardened BRAWUKA-400, extended
+ * BRAWUKA-699) — safe, reference-aware, dry-run first.
  *
- * Orphan definition (cannot match a completed/live gallery original):
- *   an `original/{uuid}.webp` object older than RETENTION_DAYS whose stored
- *   metadata is markerless or still `provision` (uploaded for processing but
- *   never attached) AND whose key is absent from the live-keys export
- *   (`web/scripts/export-live-image-keys.mjs`: every `original/` key still
- *   referenced by `cafes.gallery` / `checkins.photos`). Post-commit attach
- *   (BRAWUKA-400) re-marks live originals to `checkin`, but the reference
- *   check stays authoritative: a `provision`-marked object that IS referenced
- *   (attach retry outstanding) is reported, never deleted.
+ * Orphan = stale-marker `original/{uuid}.webp` (markerless or still
+ * `provision`: uploaded, never attached) older than RETENTION_DAYS and
+ * absent from the live-keys export (`web/scripts/export-live-image-keys.mjs`:
+ * live `cafes.gallery` / live `checkins.photos`; BRAWUKA-699 made it
+ * live-only so tombstone-only keys converge here). Post-commit attach
+ * (BRAWUKA-400) re-marks live originals to `checkin`; a referenced stale
+ * marker (attach retry outstanding) is reported, never deleted.
+ *
+ * Variant co-delete (BRAWUKA-699): deleting an orphan original also deletes
+ * its `card/` + `thumbnail/` siblings (same keys `/v1/images/delete` would
+ * remove). A missing sibling is success (404-tolerant); a failed one is
+ * reported per key and retried next run.
  *
  * Safety properties:
  *   - DRY_RUN=1 (default) lists and reports without deleting.
@@ -54,15 +57,9 @@ const MAX_OBJECTS = Number.parseInt(process.env.MAX_OBJECTS ?? "1000", 10);
 const BATCH_SIZE = Math.min(Number.parseInt(process.env.BATCH_SIZE ?? "100", 10), 1000);
 
 /**
- * DB-referenced live keys (BRAWUKA-400): one `original/...` key per line from
- * `web/scripts/export-live-image-keys.mjs`. Absent file keeps the
- * marker-based behavior and marks every candidate unverified.
- *
- * An existing-but-empty export (BRAWUKA-632) is NOT "zero live keys": a failed
- * or truncated `export-live-image-keys.mjs` run (disk full, killed mid-write,
- * `> file` truncating before the query runs) produces exactly such a file,
- * and every stale-marker key would then look deletable. Production deletes
- * with an empty export are refused unless ALLOW_EMPTY_LIVE_KEYS=1.
+ * DB-referenced live keys (BRAWUKA-400): one `original/...` key per line.
+ * An existing-but-empty export (BRAWUKA-632) is a failed/truncated export,
+ * never "zero live keys" — production deletes refuse it unless overridden.
  */
 function loadLiveKeys() {
   if (!LIVE_KEYS_FILE) return null;
@@ -101,9 +98,7 @@ function validateConfig() {
     console.error("clean-orphan-originals: BATCH_SIZE must be a positive integer");
     process.exit(1);
   }
-  // RETENTION_DAYS=0 deletes metadata-less originals uploaded milliseconds ago —
-  // inside the live presign→complete window. Guard production deletes behind an
-  // explicit opt-in; dry-run and tests are unaffected.
+  // RETENTION_DAYS=0 with deletes needs explicit opt-in (live upload window).
   if (!DRY_RUN && RETENTION_DAYS === 0 && process.env.ALLOW_RETENTION_ZERO !== "1") {
     console.error(
       "clean-orphan-originals: RETENTION_DAYS=0 with DRY_RUN=0 can delete in-flight uploads; set ALLOW_RETENTION_ZERO=1 to confirm",
@@ -125,15 +120,11 @@ function client() {
     region: "auto",
   });
 }
+
 /**
- * Decode an S3 ListObjectsV2 `<Key>` value (BRAWUKA-592).
- *
- * The script does not request `encoding-type=url`, so keys arrive XML-escaped,
- * not percent-encoded — `decodeURIComponent` is the wrong decoder: it leaves
- * `&amp;` unresolved and throws `URIError` on keys containing a bare `%`,
- * failing the whole run. Decode the five predefined XML entities plus numeric
- * character references in a single pass, so `&amp;lt;` (a literal `&lt;` in
- * the key) is not double-decoded to `<`.
+ * Decode an S3 ListObjectsV2 `<Key>` value (BRAWUKA-592): keys arrive
+ * XML-escaped, not percent-encoded — decode entities + numeric refs in one
+ * pass so `&amp;lt;` stays a literal `&lt;`, never `<`.
  */
 function unescapeXml(s) {
   return s.replace(/&(amp|lt|gt|quot|apos);|&#(\d+);|&#[xX]([0-9a-fA-F]+);/g, (m, named, dec, hex) => {
@@ -145,17 +136,23 @@ function unescapeXml(s) {
 }
 
 /**
- * Scan at most `maxKeys` listed `original/` objects per run (BRAWUKA-592:
- * the bound covers scan work, not matches — every listed entry consumes
- * budget even when young or already completed, so one run does at most
- * `maxKeys` HEADs).
- * Returns { orphans, protectedRefs, truncated }: `orphans` are deletable
- * (stale marker + not DB-referenced), `protectedRefs` are stale-marker
- * objects that ARE DB-referenced (missing/failed attach leg) — reported,
- * never deleted. Each entry carries key, size, lastModified, stage, and
- * verification (`referenced` when the key IS in LIVE_KEYS_FILE,
- * `not-referenced` when the file was checked and the key is absent from it,
- * `unverified` when no file was given).
+ * Derived siblings for one orphan original (BRAWUKA-699): the worker keys
+ * every variant as `<prefix>/<uuid>.webp`, so `original/<uuid>.webp` implies
+ * `card/` + `thumbnail/`. Non-`original/` input yields none (fail-closed).
+ */
+export function variantKeysForOriginal(key) {
+  const match = /^original\/(.+)\.webp$/.exec(key);
+  if (!match) return [];
+  return [`card/${match[1]}.webp`, `thumbnail/${match[1]}.webp`];
+}
+/**
+ * Scan at most `maxKeys` listed `original/` objects (BRAWUKA-592: the bound
+ * covers scan work — every listed entry consumes budget, so one run does at
+ * most `maxKeys` HEADs). Returns { orphans, protectedRefs, truncated }:
+ * stale-marker + unreferenced vs. stale-marker + DB-referenced (missing or
+ * failed attach leg — reported, never deleted). Entry verification:
+ * `referenced` (in LIVE_KEYS_FILE), `not-referenced` (checked, absent),
+ * `unverified` (no file given).
  */
 async function listOrphanCandidates({ maxKeys, cutoffMs, liveKeys }) {
   const aws = client();
@@ -192,11 +189,9 @@ async function listOrphanCandidates({ maxKeys, cutoffMs, liveKeys }) {
       const lastModified = Date.parse(entry.match(/<LastModified>([^<]+)<\/LastModified>/)?.[1] ?? "");
       if (Number.isNaN(lastModified)) continue;
       if (lastModified > cutoffMs) continue; // younger than the retention window
-      // Head the candidate to inspect completion metadata. Only objects WITHOUT
-      // x-amz-meta-targettype are abandoned (complete() always sets it).
-      // Encode the listed key (BRAWUKA-592): a raw `&` or `%` in the name
-      // would otherwise split the REST path or decode to the wrong object —
-      // HEADing/DELETEing the wrong object, in the worst case a live one.
+      // Head the candidate: only objects WITHOUT x-amz-meta-targettype are
+      // abandoned (complete() always sets it). Encode the key (BRAWUKA-592):
+      // a raw `&` or `%` would split the REST path or hit the wrong object.
       const encodedKey = key.split("/").map(encodeURIComponent).join("/");
       const head = await aws.fetch(`${baseEndpoint()}/${R2_BUCKET_NAME}/${encodedKey}`, {
         method: "HEAD",
@@ -207,19 +202,14 @@ async function listOrphanCandidates({ maxKeys, cutoffMs, liveKeys }) {
         // run — the next run re-evaluates. Never delete on uncertain state.
         continue;
       }
-      // Orphan definition (issue #158, BRAWUKA-400): an original is abandoned
-      // when it has NO completion marker (pre-#158 or direct-write residue) OR
-      // is still in the "provision" stage (uploaded but never attached) — AND
-      // its key is absent from the DB live-keys export. A stale marker that IS
-      // referenced means the attach leg never ran or failed: protected, never
-      // deleted. Live gallery originals carry targetType=cafe|checkin and are
-      // never matched.
+      // Stale marker + absent from the live-keys export = orphan. A stale
+      // marker that IS referenced (attach leg missing/failed) is protected.
+      // Live gallery originals carry targetType=cafe|checkin, never matched.
       const targetType = head.headers.get("x-amz-meta-targettype");
       if (!targetType || targetType === "provision") {
         // Label AFTER the membership check (BRAWUKA-592): `referenced` is
-        // reserved for stale-marker keys that ARE in LIVE_KEYS_FILE
-        // (protected, never deleted); checked-but-absent keys are
-        // `not-referenced`; no file means `unverified`.
+        // protected; checked-but-absent is `not-referenced`; no file is
+        // `unverified`.
         const referenced = liveKeys?.has(key) ?? false;
         const candidate = {
           key,
@@ -256,7 +246,31 @@ async function listOrphanCandidates({ maxKeys, cutoffMs, liveKeys }) {
   return { orphans, protectedRefs, truncated };
 }
 
-/** Delete in bounded batches; returns per-batch results. */
+/**
+ * Delete one S3 key; missing counts as success (404-tolerant, like
+ * `/v1/images/delete` — a half-deleted retry must converge). Returns null
+ * on success, a { key, … } failure entry otherwise.
+ */
+async function deleteOne(aws, key) {
+  const encoded = key.split("/").map(encodeURIComponent).join("/");
+  try {
+    const res = await aws.fetch(`${baseEndpoint()}/${R2_BUCKET_NAME}/${encoded}`, { method: "DELETE" });
+    // Benign: drain the body so the socket can be reused.
+    await res.body?.cancel().catch(() => {});
+    if (res.ok || res.status === 404) return null;
+    return { key, status: res.status };
+  } catch (e) {
+    return { key, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * Delete in bounded batches; returns per-batch results — each orphan
+ * original deletes with its `card/` + `thumbnail/` siblings (up to 3N
+ * deletes per N-orphan batch). Siblings are best-effort per key: a failure
+ * is reported and retried next run, never blocks the original. `deleted`
+ * counts every removed key; `failed` carries per-key entries for both.
+ */
 async function deleteKeys(keys) {
   const aws = client();
   const results = [];
@@ -265,12 +279,11 @@ async function deleteKeys(keys) {
     const deleted = [];
     const failed = [];
     for (const key of batch) {
-      try {
-        const res = await aws.fetch(`${baseEndpoint()}/${R2_BUCKET_NAME}/${key.split("/").map(encodeURIComponent).join("/")}`, { method: "DELETE" });
-        if (res.ok || res.status === 404) deleted.push(key);
-        else failed.push({ key, status: res.status });
-      } catch (e) {
-        failed.push({ key, error: e instanceof Error ? e.message : String(e) });
+      const targetKeys = [key, ...variantKeysForOriginal(key)];
+      for (const target of targetKeys) {
+        const failure = await deleteOne(aws, target);
+        if (failure) failed.push(failure);
+        else deleted.push(target);
       }
     }
     results.push({ batch: Math.floor(i / BATCH_SIZE) + 1, requested: batch.length, deleted: deleted.length, failed });
@@ -283,8 +296,7 @@ async function main() {
   validateConfig();
   const cutoffMs = Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000;
   const liveKeys = loadLiveKeys();
-  // A set-but-empty export (BRAWUKA-632) is a failed/truncated export, not
-  // "zero live keys": every stale-marker key would look deletable. Refuse
+  // A set-but-empty export (BRAWUKA-632) is a failed/truncated export: refuse.
   if (LIVE_KEYS_FILE && liveKeys.size === 0 && !DRY_RUN && process.env.ALLOW_EMPTY_LIVE_KEYS !== "1") {
     console.error(
       `clean-orphan-originals: LIVE_KEYS_FILE ${LIVE_KEYS_FILE} loaded 0 keys with DRY_RUN=0; refusing to delete (export may have failed or been truncated); set ALLOW_EMPTY_LIVE_KEYS=1 to confirm the bucket is truly unreferenced`,
@@ -322,9 +334,8 @@ async function main() {
     return;
   }
 
-  // A stale marker that IS DB-referenced means the attach leg never ran or
-  // failed (BRAWUKA-400): true orphans vs. missing-attach originals stay
-  // distinguishable in every dry-run, and protected keys are never deleted.
+  // A stale marker that IS DB-referenced (attach leg missing/failed) is
+  // reported as would-keep, never deleted (BRAWUKA-400).
   const ageDays = (lastModified) => Math.floor((Date.now() - lastModified) / 86_400_000);
   if (DRY_RUN) {
     for (const c of orphans) {
@@ -336,6 +347,7 @@ async function main() {
           stage: c.stage,
           verification: c.verification,
           ageDays: ageDays(c.lastModified),
+          variants: variantKeysForOriginal(c.key),
         }),
       );
     }
@@ -375,8 +387,8 @@ async function main() {
       protectedRefs: protectedRefs.length,
     }),
   );
-  // Partial failures are visible but not fatal: the next run retries the rest
-  // (idempotent). Operational failures above already exit non-zero via throw.
+  // Partial failures exit 1 for visibility; the next run retries the rest
+  // (idempotent). Operational failures above already throw.
   if (totalFailed > 0) process.exitCode = 1;
 }
 

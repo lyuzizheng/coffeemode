@@ -1,17 +1,20 @@
 #!/usr/bin/env node
 /**
- * Export live R2 original keys referenced by the database (BRAWUKA-400).
+ * Export live R2 original keys referenced by the database (BRAWUKA-400,
+ * live-only since BRAWUKA-699).
  *
  * The orphan-original sweeper (`image-service/scripts/clean-orphan-originals.mjs`)
  * skips every key listed here, even when the object still carries a stale
  * `provision` marker (attach retry outstanding) or no marker at all (pre-#158
  * residue / direct-write drift). Live gallery originals must never be deleted:
- * `cafes.gallery[].original` + `checkins.photos[].original` for live cafes and
- * for every check-in row still in the DB — a soft-deleted check-in's photos are
- * hidden from the gallery but the DB row still references them, and a
- * soft-deleted (`deleted_at is not null`, legacy pre-DG146 tombstone) cafe's
- * live check-ins still reference theirs, so both stay protected until the row
- * itself is gone. `cafes.deleted_at` never unprotects a check-in photo.
+ * `cafes.gallery[].original` on live cafes + `checkins.photos[].original` on
+ * LIVE check-ins only (`deleted_at is null`, whatever the parent cafe's
+ * `deleted_at` is — a soft-deleted cafe's live check-ins still reference
+ * theirs). A soft-deleted check-in's photos are hidden from the gallery, so
+ * once the photo-cleanup delete leg (`selectLivePhotoReferences`, BRAWUKA-433)
+ * confirms no live row names them, this export must not re-protect them:
+ * tombstone-only keys converge to deletion through the sweeper instead of
+ * leaking forever. `cafes.deleted_at` never unprotects a check-in photo.
  *
  * Usage (VPS cron / GitHub schedule, least-privilege DATABASE_URL reader):
  *   DATABASE_URL=postgres://... node scripts/export-live-image-keys.mjs > /tmp/live-keys.txt
@@ -51,11 +54,14 @@ function parseConnectionConfig(urlString) {
 
 /**
  * Every still-referenced `original/` key: live cafe galleries plus photos on
- * every check-in row still in the DB (live or soft-deleted, whatever the
- * parent cafe's `deleted_at` is — a soft-deleted cafe's live check-ins still
- * reference their photos, so their keys stay protected until the row itself
- * is gone; hard-deleted cafes cascade their check-ins away, so nothing
- * dangling needs protecting).
+ * LIVE check-ins only (BRAWUKA-699 live-only, aligned with
+ * `selectLivePhotoReferences`). Whatever the parent cafe's `deleted_at` is —
+ * a soft-deleted cafe's live check-ins still reference their photos, so
+ * their keys stay protected until the row itself is gone; hard-deleted cafes
+ * cascade their check-ins away, so nothing dangling needs protecting.
+ * Tombstoned check-ins (`deleted_at is not null`) are deliberately excluded:
+ * their photos are hidden from the gallery and the post-commit delete leg
+ * owns them, so re-protecting them here would leak the objects forever.
  *
  * NOTE: `cafes.deleted_at` is legacy-only (pre-DG146 tombstones; current
  * deletes are check-in-scoped and never write it) — but the export must not
@@ -67,13 +73,9 @@ select distinct elem->>'original' as key
 from (
   select gallery as arr from cafes where deleted_at is null
   union all
-  select c.photos as arr
-  from checkins c
-  where c.deleted_at is null
-  union all
-  select c.photos as arr
-  from checkins c
-  where c.deleted_at is not null
+  select photos as arr
+  from checkins
+  where deleted_at is null
 ) t,
 jsonb_array_elements(coalesce(t.arr, '[]'::jsonb)) elem
 where elem->>'original' like 'original/%'

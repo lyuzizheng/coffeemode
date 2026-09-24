@@ -12,10 +12,18 @@ import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as heartbeatGET } from "@/app/api/heartbeat/route";
 import { GET as configGET } from "@/app/api/config/route";
+import { GET as placesDetailsGET } from "@/app/api/places/details/route";
+import { POST as imagesUploadPOST } from "@/app/api/images/upload/route";
+import {
+  PASSTHROUGH_STATUSES,
+  isPassthroughStatus,
+  sanitizePassthroughStatus,
+} from "@shared/errors";
 import { getRuntimeConfig } from "@/lib/db/runtime-config";
 import { pingDatabase } from "@/lib/db/heartbeat";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
-import { resetRateLimits } from "../helpers/http-client";
+import { resetRateLimits, setCurrentTestUser } from "../helpers/http-client";
+import { createTestSessionUser } from "../helpers/mocks";
 import {
   cleanupIntegrationDatabase,
   integrationAdminUrl,
@@ -25,7 +33,7 @@ import {
 } from "../helpers/db";
 
 vi.mock("@/lib/auth/get-user", () => ({
-  getCurrentUser: vi.fn().mockResolvedValue(null),
+  getCurrentUser: vi.fn(),
 }));
 
 const RUN_INTEGRATION = process.env.RUN_INTEGRATION === "1";
@@ -170,4 +178,139 @@ describeIntegration("integration — runtime_config + heartbeat (BRAWUKA-284)", 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ banners: [] });
   });
+
+  it("integration (BRAWUKA-596/714): upstream passthrough registry mirrors only 404/413/422, clamps the rest to 502", async () => {
+    expect(PASSTHROUGH_STATUSES).toEqual([404, 413, 422]);
+    for (const status of [404, 413, 422]) {
+      expect(isPassthroughStatus(status)).toBe(true);
+      expect(sanitizePassthroughStatus(status)).toBe(status);
+    }
+    for (const status of [400, 401, 403, 429, 500, 503]) {
+      expect(isPassthroughStatus(status)).toBe(false);
+      expect(sanitizePassthroughStatus(status)).toBe(502);
+    }
+  });
+  it("integration (BRAWUKA-596/714): fake upstream 429 on the POI worker surfaces as 502 poi_service, never 429", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalPoiUrl = process.env.POI_SERVICE_URL;
+    const originalPoiToken = process.env.POI_SERVICE_TOKEN;
+    process.env.POI_SERVICE_URL = "https://poi.example.workers.dev";
+    process.env.POI_SERVICE_TOKEN = "test-poi-token";
+    globalThis.fetch = (async () =>
+      new Response("upstream rate limit", { status: 429 })) as typeof fetch;
+    // Route handlers behind this file's mock need the session programmed
+    // explicitly when invoked with a hand-built Request.
+    setCurrentTestUser(createTestSessionUser());
+    try {
+      const requestId = crypto.randomUUID();
+      const res = await placesDetailsGET(
+        new Request(
+          "http://localhost/api/places/details?place_id=ChIJN1t_tDeuEmsRUsoyG83frY4",
+          { headers: { "x-request-id": requestId } },
+        ),
+      );
+      expect(res.status).toBe(502);
+      expect(res.headers.get("Retry-After")).toBeNull();
+      const body = await res.json();
+      expect(body.error).toBe("poi_service");
+      expect(body.message).toBe("POI service unavailable");
+      expect(body.request_id).toBe(requestId);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalPoiUrl === undefined) delete process.env.POI_SERVICE_URL;
+      else process.env.POI_SERVICE_URL = originalPoiUrl;
+      if (originalPoiToken === undefined) delete process.env.POI_SERVICE_TOKEN;
+      else process.env.POI_SERVICE_TOKEN = originalPoiToken;
+    }
+  });
+
+  it("integration (BRAWUKA-596/714): fake upstream 404 on the POI worker passes through as 404 poi_service", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalPoiUrl = process.env.POI_SERVICE_URL;
+    const originalPoiToken = process.env.POI_SERVICE_TOKEN;
+    process.env.POI_SERVICE_URL = "https://poi.example.workers.dev";
+    process.env.POI_SERVICE_TOKEN = "test-poi-token";
+    globalThis.fetch = (async () =>
+      new Response("not found", { status: 404 })) as typeof fetch;
+    setCurrentTestUser(createTestSessionUser());
+    try {
+      const res = await placesDetailsGET(
+        new Request(
+          "http://localhost/api/places/details?place_id=ChIJN1t_tDeuEmsRUsoyG83frY4",
+          { headers: { "x-request-id": crypto.randomUUID() } },
+        ),
+      );
+      expect(res.status).toBe(404);
+      const body = await res.json();
+      expect(body.error).toBe("poi_service");
+      expect(body.message).toBe("POI not found");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalPoiUrl === undefined) delete process.env.POI_SERVICE_URL;
+      else process.env.POI_SERVICE_URL = originalPoiUrl;
+      if (originalPoiToken === undefined) delete process.env.POI_SERVICE_TOKEN;
+      else process.env.POI_SERVICE_TOKEN = originalPoiToken;
+    }
+  });
+
+  it("integration (BRAWUKA-596/714): fake upstream 429 on the image service surfaces as 502 image_service_error, 413 passes through", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalImageUrl = process.env.IMAGE_SERVICE_URL;
+    const originalImageToken = process.env.IMAGE_SERVICE_TOKEN;
+    process.env.IMAGE_SERVICE_URL = "https://images.example.workers.dev";
+    process.env.IMAGE_SERVICE_TOKEN = "test-image-token";
+    try {
+      // Route handlers behind this file's mock need the session programmed
+      // explicitly when invoked with a hand-built Request; the upload route
+      // also enforces same-origin, so carry the harness origin header.
+      setCurrentTestUser(createTestSessionUser());
+      globalThis.fetch = (async () =>
+        new Response("upstream rate limit", { status: 429 })) as typeof fetch;
+      const requestId = crypto.randomUUID();
+      const limited = await imagesUploadPOST(
+        new Request("http://localhost/api/images/upload", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: "http://localhost:3000",
+            "Sec-Fetch-Site": "same-origin",
+            "x-request-id": requestId,
+          },
+          body: JSON.stringify({ size: 2048 }),
+        }),
+      );
+      expect(limited.status).toBe(502);
+      expect(limited.headers.get("Retry-After")).toBeNull();
+      const limitedBody = await limited.json();
+      expect(limitedBody.error).toBe("image_service_error");
+      expect(limitedBody.message).toBe("Image service unavailable");
+      expect(limitedBody.request_id).toBe(requestId);
+
+      globalThis.fetch = (async () =>
+        new Response("payload too large", { status: 413 })) as typeof fetch;
+      const rejected = await imagesUploadPOST(
+        new Request("http://localhost/api/images/upload", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: "http://localhost:3000",
+            "Sec-Fetch-Site": "same-origin",
+            "x-request-id": "req-img-413",
+          },
+          body: JSON.stringify({ size: 2048 }),
+        }),
+      );
+      expect(rejected.status).toBe(413);
+      const rejectedBody = await rejected.json();
+      expect(rejectedBody.error).toBe("image_service_error");
+      expect(rejectedBody.message).toBe("Image rejected by the image service");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalImageUrl === undefined) delete process.env.IMAGE_SERVICE_URL;
+      else process.env.IMAGE_SERVICE_URL = originalImageUrl;
+      if (originalImageToken === undefined) delete process.env.IMAGE_SERVICE_TOKEN;
+      else process.env.IMAGE_SERVICE_TOKEN = originalImageToken;
+    }
+  });
+
 });

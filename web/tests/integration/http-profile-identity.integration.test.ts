@@ -588,6 +588,69 @@ describePath3("path 3 — profile & public identity lifecycle over HTTP (spec 00
     expect(stolen.data.error).toBe("handle_taken");
   });
 
+  it("path 3 (spec 0008 §6, BRAWUKA-712/714): PATCH /api/profile rejects invalid currentCityName with 422 invalid_current_city_name", async () => {
+    const client = apiClient(users.userA);
+    for (const currentCityName of ["", "   ", "x".repeat(81), 5, {}]) {
+      const res = await client.patch<ErrorPayload, NoCtx, NextRequest>(
+        patchProfileRoute,
+        "/api/profile",
+        { currentCityName },
+      );
+      expect(res.status).toBe(422);
+      expect(res.data.error).toBe("invalid_current_city_name");
+    }
+    // Null clears; a bounded locality name against an rt-* city persists.
+    const renamed = await client.patch<{ profile: UserProfileDto }, NoCtx, NextRequest>(
+      patchProfileRoute,
+      "/api/profile",
+      { currentCity: "lisbon", lastLocation: { lat: 38.7223, lng: -9.1393 }, currentCityName: "São Paulo" },
+    );
+    expect(renamed.status).toBe(200);
+    expect(renamed.data.profile.currentCity).toBe("rt-europe-lisbon");
+    expect(renamed.data.profile.currentCityName).toBe("São Paulo");
+    const cleared = await client.patch<{ profile: UserProfileDto }, NoCtx, NextRequest>(
+      patchProfileRoute,
+      "/api/profile",
+      { currentCityName: null },
+    );
+    expect(cleared.status).toBe(200);
+    expect(cleared.data.profile.currentCityName).toBeNull();
+  });
+
+  it("path 3 (spec 0008 §6, BRAWUKA-695/714): POST /api/onboarding/locate resolves coverage and honest runtime cities", async () => {
+    const client = apiClient(users.userC);
+    const inside = await client.post<
+      { city: { id: string; runtime: boolean } | null; inCoverage: boolean },
+      NoCtx,
+      NextRequest
+    >(locateRoute, "/api/onboarding/locate", { lat: 1.3521, lng: 103.8198 });
+    expect(inside.status).toBe(200);
+    expect(inside.data.inCoverage).toBe(true);
+    expect(inside.data.city?.id).toBe("singapore");
+    expect(inside.data.city?.runtime).toBe(false);
+
+    const runtime = await client.post<
+      { city: { id: string; name: string; nameZh: string; runtime: boolean } | null; inCoverage: boolean },
+      NoCtx,
+      NextRequest
+    >(locateRoute, "/api/onboarding/locate", { lat: 43.8256, lng: 87.6168 });
+    expect(runtime.status).toBe(200);
+    expect(runtime.data.inCoverage).toBe(false);
+    expect(runtime.data.city?.id).toBe("rt-asia-urumqi");
+    expect(runtime.data.city?.name).toBe("China");
+    expect(runtime.data.city?.nameZh).toBe("中国");
+    expect(runtime.data.city?.runtime).toBe(true);
+
+    const ocean = await client.post<
+      { city: null; inCoverage: boolean },
+      NoCtx,
+      NextRequest
+    >(locateRoute, "/api/onboarding/locate", { lat: 0, lng: 0 });
+    expect(ocean.status).toBe(200);
+    expect(ocean.data.inCoverage).toBe(false);
+    expect(ocean.data.city).toBeNull();
+  });
+
   it("path 3 (spec 0008 §6): user-chosen handle change inside the 7-day cooldown → 422 handle_change_too_soon", async () => {
     const client = apiClient(users.userA);
     expect(

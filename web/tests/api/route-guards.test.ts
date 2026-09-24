@@ -190,6 +190,39 @@ export const GET = apiRoute({ bucket: "cafes-read" }, async () => new Response()
     expect(violations).toEqual([]);
   });
 
+  // Bypass 3: Destructured exports (BRAWUKA-701)
+  it("flags a destructured HTTP-method export (export const { POST } = ...)", () => {
+    const inline = checkRouteFile(
+      "app/api/test/route.ts",
+      `import { apiRoute } from "@/lib/api/route";
+export const { POST } = { POST: apiRoute({ bucket: "cafes-write", origin: true }, async () => new Response()) };`,
+    );
+    expect(inline).toContainEqual(
+      expect.objectContaining({
+        method: "POST",
+        reason: expect.stringContaining("apiRoute"),
+      }),
+    );
+
+    const opaque = checkRouteFile(
+      "app/api/test/route.ts",
+      `import { apiRoute } from "@/lib/api/route";
+export const { POST } = handlers;`,
+    );
+    expect(opaque).toContainEqual(
+      expect.objectContaining({
+        method: "POST",
+        reason: expect.stringContaining("apiRoute"),
+      }),
+    );
+
+    const nonMethod = checkRouteFile(
+      "app/api/test/route.ts",
+      `export const { notAMethod } = obj;`,
+    );
+    expect(nonMethod).toEqual([]);
+  });
+
   it("flags non-mutating routes (GET) with non-literal options", () => {
     const violations = checkRouteFile(
       "app/api/test/route.ts",
@@ -205,3 +238,4 @@ export const GET = apiRoute(opts, async () => new Response());`,
     );
   });
 });
+

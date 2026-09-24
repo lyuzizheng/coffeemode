@@ -135,20 +135,22 @@ export async function recomputeAllWorkStats(
 const RECOMPUTE_CONCURRENCY = 4;
 
 /**
- * Incrementally update a cafe's work_stats after a single check-in write.
+ * Incrementally update a cafe's work_stats after a single check-in insert.
  *
  * `changedCheckIn` selects the before/after semantics:
  * - omitted: the user's most recent non-deleted check-in is treated as the
- *   changed one (it is already in the DB snapshot).
+ *   changed one (it is already in the DB snapshot). Only correct for the
+ *   first check-in of a new cafe, where the snapshot holds exactly that row.
  * - `{ insertedId }`: the row with that id was just INSERTed in this
  *   transaction, so the DB snapshot is the "after" state — the "before" set
  *   is the snapshot minus that row. This is the check-in create path; it is
  *   correct for any `visited_at` (including backdated) because the
  *   contribution math re-sorts by `visited_at` internally.
- * - a full `CheckIn` row: an edit whose new values are not yet persisted;
- *   the DB snapshot is the "before" state and the supplied row replaces the
- *   old one. For edits/soft-deletes where the old snapshot is not
- *   available, use `recomputeWorkStats` instead.
+ *
+ * A full `CheckIn` row is deliberately NOT accepted (BRAWUKA-444): the old
+ * branch treated the DB snapshot as the "before" state, so a caller passing
+ * an already-persisted row computed a zero diff and silently skipped the
+ * update. Edits and soft-deletes must use `recomputeWorkStats` instead.
  *
  * The whole read-modify-write runs in a transaction with a `FOR UPDATE` lock
  * on the cafe row: two concurrent check-ins for the same cafe serialize on
@@ -158,7 +160,7 @@ const RECOMPUTE_CONCURRENCY = 4;
 export async function incrementalUpdateWorkStats(
   cafeId: string,
   userId: string,
-  changedCheckIn?: CheckIn | { insertedId: string },
+  changedCheckIn?: { insertedId: string },
   socialWeight = 0,
   runInTransaction: RunInTransaction = defaultRunInTransaction(),
 ): Promise<void> {
@@ -215,25 +217,20 @@ export async function incrementalUpdateWorkStats(
  * Resolve the "before" and "after" row sets for one user from the DB
  * snapshot (`userRows`, live check-ins ordered by visited_at desc) and the
  * caller's `changedCheckIn` marker:
- * - omitted: the most recent row is treated as the one that changed.
+ * - omitted: the most recent row is treated as the one that changed
+ *   (first-check-in-of-a-new-cafe path; the snapshot holds exactly that row).
  * - `{ insertedId }`: the row was just INSERTed in this transaction, so
  *   userRows is the post-insert snapshot; the "before" set excludes it.
  *   Correct for backdated `visited_at` — `computeUserContribution` re-sorts
  *   by `visited_at`, so the new row takes its true recency rank instead of
  *   assuming it is the latest.
- * - a full `CheckIn` row: userRows is the old snapshot; the supplied row
- *   replaces the old one (edit) or is prepended (not yet persisted).
  */
 function resolveChangedRowSets(
   userRows: CheckIn[],
-  changedCheckIn: CheckIn | { insertedId: string } | undefined,
+  changedCheckIn: { insertedId: string } | undefined,
 ): { priorRows: CheckIn[]; newRows: CheckIn[]; changedInDb: boolean } {
-  const changedRow: CheckIn | undefined =
-    changedCheckIn && !("insertedId" in changedCheckIn) ? changedCheckIn : undefined;
-  const insertedId =
-    changedCheckIn && "insertedId" in changedCheckIn ? changedCheckIn.insertedId : undefined;
-  const changedId = insertedId ?? changedRow?.id;
-  const changedInDb = changedId ? userRows.some((r) => r.id === changedId) : false;
+  const insertedId = changedCheckIn?.insertedId;
+  const changedInDb = insertedId ? userRows.some((r) => r.id === insertedId) : false;
 
   if (insertedId !== undefined) {
     return {
@@ -242,18 +239,11 @@ function resolveChangedRowSets(
       changedInDb,
     };
   }
-  if (!changedRow) {
-    return {
-      priorRows: userRows.length > 0 ? userRows.slice(1) : userRows,
-      newRows: userRows,
-      changedInDb,
-    };
-  }
-  if (changedInDb) {
-    const otherRows = userRows.filter((r) => r.id !== changedId);
-    return { priorRows: userRows, newRows: [changedRow, ...otherRows], changedInDb };
-  }
-  return { priorRows: userRows, newRows: [changedRow, ...userRows], changedInDb };
+  return {
+    priorRows: userRows.length > 0 ? userRows.slice(1) : userRows,
+    newRows: userRows,
+    changedInDb,
+  };
 }
 
 async function writeWorkStats(

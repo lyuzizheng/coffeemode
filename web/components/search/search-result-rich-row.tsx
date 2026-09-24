@@ -2,7 +2,8 @@
  * DG46 rich result row (search-filters-v1 §6 "results view") — server-safe
  * (no "use client") so the SSR `/search` page renders it with zero
  * hydration while the map panel's submitted results view reuses the same
- * row language.
+ * row language. The only client island is `PrivateBadge` on owner-private
+ * cafes (DG147).
  *
  * Row language: 72px 4:3 cover (photo; monogram plate for coverless cafes;
  * cup glyph for coverless POIs), display name, meta line
@@ -13,6 +14,7 @@
  */
 import { useLocale, useTranslations } from "next-intl";
 import { CoffeeIcon } from "@/components/icons";
+import { PrivateBadge } from "@/components/cafe/private-badge";
 import { CoverTile, FactsRow } from "@/components/discovery/card-parts";
 import { cafeFacts, formatDistanceKm } from "@/lib/discovery/view-model";
 import { displayCityName } from "@/lib/cities";
@@ -66,8 +68,12 @@ export function SearchResultRichRow({ item }: { item: SearchResultItem }) {
       <ResultCover item={item} />
       <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
         <span className="flex items-baseline justify-between gap-2">
-          <span className="truncate font-display text-md font-bold text-foreground">
-            {item.name}
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate font-display text-md font-bold text-foreground">
+              {item.name}
+            </span>
+            {/* DG147: private results only ever reach the owner (read-path filter). */}
+            {item.cafe?.visibility === "private" && <PrivateBadge />}
           </span>
           {item.type === "poi" && (
             <span className="shrink-0 text-xs text-muted">

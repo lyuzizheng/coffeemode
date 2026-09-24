@@ -34,6 +34,7 @@ function parseCafesSection(file: string, value: unknown): AppConfig["cafes"] {
   const cafes = record(file, "cafes", value);
   return {
     listLimitMax: positiveNumber(file, "cafes.listLimitMax", cafes.listLimitMax),
+    placeProximityMaxKm: positiveNumber(file, "cafes.placeProximityMaxKm", cafes.placeProximityMaxKm),
   };
 }
 

@@ -109,11 +109,20 @@ vi.mock("@/lib/places/poi-client", async (importOriginal) => {
     // BRAWUKA-636: POST /api/cafes verifies provider refs via
     // verifyPlaceReference before any DB/R2 work — echo the requested id as
     // verified so creation paths stay hermetic (spec 0008 §5).
+    // BRAWUKA-666: the route binds submitted coords to the verified POI, so
+    // the echo carries the id's real coords — lifecycle fixtures pin each
+    // city, unknown ids fall back to the Orchard fixture.
     verifyPlaceReference: vi.fn(async (source: "google" | "apple", placeId: string) => {
       poiSeamCalls.details = { placeId, session: undefined };
+      const KNOWN_COORDS: Record<string, { lat: number; lng: number }> = {
+        ChIJLIFECYCLECAFE01: { lat: 1.3048, lng: 103.8318 },
+        ChIJLIFECYCLECAFE02: { lat: 35.658, lng: 139.7016 },
+        ChIJLIFECYCLECAFE03: { lat: 51.5133, lng: -0.1364 },
+        ChIJLIFECYCLECAFE04: { lat: 1.29, lng: 103.79 },
+      };
       const results = createMockGooglePlacesResponse().results;
       const found = results.find((poi) => poi.place_id === placeId);
-      return { ...(found ?? results[0]!), place_id: placeId, source };
+      return { ...(found ?? results[0]!), ...(KNOWN_COORDS[placeId] ?? {}), place_id: placeId, source };
     }),
     resolveMapsUrl: vi.fn(async (mapsShareUrl: string) => {
       const match = mapsShareUrl.match(/place\/([^/?]+)/);

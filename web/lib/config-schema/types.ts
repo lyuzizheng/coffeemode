@@ -49,6 +49,7 @@ export interface AppConfig {
   };
   cafes: {
     listLimitMax: number;
+    placeProximityMaxKm: number;
   };
   feed: {
     pageSize: number;

@@ -5,6 +5,7 @@ import { createCafeWithFirstCheckIn, listCafesNearby } from "@/lib/db/cafes";
 import { logWarn } from "@/lib/observability/server-log";
 import { recordCafeCreated, type CafeCreationSource } from "@/lib/observability/metrics";
 import { verifyPlaceReference } from "@/lib/places/poi-client";
+import { checkPlaceProximity } from "@/lib/places/place-proximity";
 import { parseCreateCafeBody, type CreateCafeInput } from "@/lib/validation/cafe";
 import {
   DEFAULT_SEARCH_RADIUS_KM,
@@ -13,8 +14,9 @@ import {
 import { appConfig } from "@/lib/config";
 import { readJsonBody } from "@/lib/api/guard";
 
-// `cafes.listLimitMax` in web/config/app.yaml (DG107).
+// `cafes.listLimitMax` / `cafes.placeProximityMaxKm` in web/config/app.yaml (DG107).
 const MAX_LIST_LIMIT = appConfig.cafes.listLimitMax;
+const PLACE_PROXIMITY_MAX_KM = appConfig.cafes.placeProximityMaxKm;
 
 /**
  * GET /api/cafes?lat=&lng=&radius_km=&limit=
@@ -90,6 +92,10 @@ export const POST = apiRoute(
     // the dedupe slot. Verification runs before any photo provisioning so an
     // unverified id never wastes R2 work (nor burns the caller's upload intents
     // through the 201-only consume path).
+    // BRAWUKA-666: existence alone still lets a real place_id carry far-away
+    // coords — squatting the slot and poisoning nearby results. Bind each
+    // verified POI to the submitted coords (legit pin nudges pass;
+    // cross-city squats 400 with invalid_request).
     const refs: Array<{ source: "google" | "apple"; placeId: string }> = [];
     if (parsed.value.google_place_id) refs.push({ source: "google", placeId: parsed.value.google_place_id });
     if (parsed.value.apple_poi_id) refs.push({ source: "apple", placeId: parsed.value.apple_poi_id });
@@ -98,6 +104,16 @@ export const POST = apiRoute(
       if (!verified) {
         logWarn({ route: ctx.route, requestId: ctx.requestId, error: `unverified ${ref.source} place id`, status: 400, code: "invalid_request" });
         return apiError("invalid_request", `${ref.source === "google" ? "google_place_id" : "apple_poi_id"} could not be verified against the POI service`, { status: 400, requestId: ctx.requestId });
+      }
+      // Live Google Details returns the id's canonical coords, so the bind
+      // also holds for never-cached ids.
+      const proximity = checkPlaceProximity(
+        { lat: parsed.value.lat, lng: parsed.value.lng, poi: verified },
+        PLACE_PROXIMITY_MAX_KM,
+      );
+      if (!proximity.ok) {
+        logWarn({ route: ctx.route, requestId: ctx.requestId, error: `${ref.source} place id too far from poi (${proximity.distanceKm.toFixed(1)} km)`, status: 400, code: "invalid_request" });
+        return apiError("invalid_request", `submitted coordinates are too far from the verified ${ref.source === "google" ? "google_place_id" : "apple_poi_id"} location`, { status: 400, requestId: ctx.requestId });
       }
     }
     // After the commit, never before: a 409 or a rejected photo is not a

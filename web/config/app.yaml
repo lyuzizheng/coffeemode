@@ -66,6 +66,11 @@ stats:
 cafes:
   # GET /api/cafes limit cap (also the default when no limit is given).
   listLimitMax: 50
+  # POST /api/cafes provider-reference binding (BRAWUKA-666): submitted
+  # coords must fall within this distance of the verified POI or creation is
+  # rejected. Sized for legit user pin nudges while rejecting cross-city
+  # squats with a real place_id.
+  placeProximityMaxKm: 5
 
 # Basemap provider seam (BRAWUKA-308/BRAWUKA-321/BRAWUKA-329): the ONLY
 # coupling point between the web map surface (BRAWUKA-311) and tile hosting.

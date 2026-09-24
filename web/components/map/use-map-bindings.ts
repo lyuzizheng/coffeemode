@@ -11,7 +11,13 @@ import type { Coordinates } from "@/lib/cities";
 import { getMapDefaultZoom, getMapFocusZoom } from "@/lib/client-env";
 import type { CafeSummary } from "@/types/cafes";
 import type { IMapProvider } from "./types";
-import { DETAIL_COLUMN_PX, SHEET_COLLAPSED_PX, SHEET_PEEK_PX } from "@/lib/layout";
+import {
+  DETAIL_COLUMN_PX,
+  SHEET_COLLAPSED_PX,
+  SHEET_FULL_VH,
+  SHEET_HALF_VH,
+  SHEET_PEEK_PX,
+} from "@/lib/layout";
 
 export interface MapBindingRefs {
   providerRef: RefObject<IMapProvider | null>;
@@ -36,9 +42,9 @@ export function useMapPadding(
     const bottom = isDesktop
       ? 0
       : snap === "full"
-        ? Math.round(window.innerHeight * 0.85)
+        ? Math.round(window.innerHeight * SHEET_FULL_VH)
         : snap === "half"
-          ? Math.round(window.innerHeight * 0.5)
+          ? Math.round(window.innerHeight * SHEET_HALF_VH)
           : snap === "collapsed"
             ? SHEET_COLLAPSED_PX
             : SHEET_PEEK_PX;

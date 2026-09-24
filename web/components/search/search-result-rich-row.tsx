@@ -22,12 +22,12 @@ import type { SearchResultItem } from "@/lib/search/types";
 /** 72px 4:3 cover — photo, monogram plate (cafes), or cup glyph (POIs). */
 function ResultCover({ item }: { item: SearchResultItem }) {
   if (item.type === "cafe" && item.cafe) {
-    return <CoverTile cafe={item.cafe} className="h-[72px] w-[96px]" />;
+    return <CoverTile cafe={item.cafe} className="h-[var(--layout-thumb)] w-[var(--layout-card-cover-w)]" />;
   }
   return (
     <div
       aria-hidden
-      className="flex h-[72px] w-[96px] shrink-0 items-center justify-center rounded-sm border border-separator bg-surface-tertiary text-muted"
+      className="flex h-[var(--layout-thumb)] w-[var(--layout-card-cover-w)] shrink-0 items-center justify-center rounded-sm border border-separator bg-surface-tertiary text-muted"
     >
       <CoffeeIcon size={20} />
     </div>

@@ -13,6 +13,7 @@ import {
   CafeHasOtherCheckinsError,
 } from "@/lib/validation/cafe";
 import type { PoolClient } from "pg";
+import { PURGE_GALLERY_BY_SOURCE_IDS_SQL } from "../checkins/gallery";
 import { txRunnerFrom, withTransaction } from "../postgres";
 import { getServiceAccountId } from "./meta";
 import type { StoredImage } from "@/types/images";
@@ -38,6 +39,24 @@ export interface DeleteCafeResult {
  * - Repeat after handoff: created_by moved -> throws CafeForbiddenError (403).
  * - Repeat on own shell: 0 own live checkins -> throws CafeNotFoundError (404).
  */
+
+/** Soft-delete the caller's check-ins, purge their gallery entries, recompute stats. */
+async function purgeCallerCheckins(
+  client: PoolClient,
+  cafeId: string,
+  userId: string,
+  callerCheckinIds: string[],
+): Promise<void> {
+  await client.query(
+    `update checkins set deleted_at = now(), updated_at = now()
+     where cafe_id = $1 and user_id = $2 and deleted_at is null`,
+    [cafeId, userId],
+  );
+
+  await client.query(PURGE_GALLERY_BY_SOURCE_IDS_SQL, [cafeId, callerCheckinIds]);
+
+  await recomputeWorkStats(cafeId, 0, txRunnerFrom(client));
+}
 
 /** The locked-row delete: guards + soft-delete + gallery purge + stats. */
 async function applyCafeDelete(args: {
@@ -89,22 +108,7 @@ async function applyCafeDelete(args: {
 
   let photoIds: string[] = [];
   if (k > 0) {
-    await client.query(
-      `update checkins set deleted_at = now(), updated_at = now()
-       where cafe_id = $1 and user_id = $2 and deleted_at is null`,
-      [cafeId, userId],
-    );
-
-    await client.query(
-      `update cafes set gallery = coalesce(
-         (select jsonb_agg(elem) from jsonb_array_elements(coalesce(gallery, '[]'::jsonb)) elem
-          where elem->'source'->>'id' is null or not (elem->'source'->>'id' = any($2::text[]))), '[]'::jsonb),
-         updated_at = now()
-       where id = $1`,
-      [cafeId, callerCheckinIds],
-    );
-
-    await recomputeWorkStats(cafeId, 0, txRunnerFrom(client));
+    await purgeCallerCheckins(client, cafeId, userId, callerCheckinIds);
 
     photoIds = callerCheckinsRes.rows
       .flatMap((r) => (Array.isArray(r.photos) ? r.photos : []))

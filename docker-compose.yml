@@ -48,11 +48,16 @@ services:
   # http://localhost:9000 (host) it targets MinIO, which accepts the same
   # signatures R2 does.
   minio:
-    # quay.io, not Docker Hub: MinIO withdrew its Docker Hub images, so
-    # `docker compose up minio` now dies with "pull access denied for
-    # minio/minio, repository does not exist" before any test runs — which is
-    # what broke the CI integration-gate. Same release tag, still pinned.
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # MinIO withdrew every community distribution channel (Docker Hub org
+    # wiped, quay.io now answers 401 for the whole minio org, dl.min.io 410),
+    # so quay.io/minio/minio died the same death as Docker Hub — this is what
+    # broke the CI integration-gate. bitnamilegacy/minio is Bitnami's frozen
+    # open catalog copy of the same server: anonymously pullable, pinned.
+    # It also bundles `mc`, which minio-init uses below.
+    image: bitnamilegacy/minio:2025.7.23-debian-12-r5
+    # Image defaults to uid 1001, which can't write the root-owned /data
+    # volume; the official minio image ran as root, so do the same.
+    user: root
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: coffeemode
@@ -72,7 +77,9 @@ services:
   # One-shot: create the bucket and make reads anonymous (mirrors an R2
   # public bucket, so R2_PUBLIC_URL=http://localhost:9000/coffeemode works).
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    # Same image as minio (bundles mc at /opt/bitnami/minio-client/bin/mc);
+    # official quay.io/minio/mc is gone with the rest of MinIO's distribution.
+    image: bitnamilegacy/minio:2025.7.23-debian-12-r5
     depends_on:
       minio:
         condition: service_started

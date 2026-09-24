@@ -1,4 +1,6 @@
-interface RecentSearchItem {
+import { createLocalStore } from "@/lib/local-store";
+
+export interface RecentSearchItem {
   id: string;
   query: string;
   city: string;
@@ -20,15 +22,12 @@ function getMaxRecentSearches(): number {
 }
 
 const EMPTY_SEARCHES: RecentSearchItem[] = [];
-let cachedSearches: RecentSearchItem[] = EMPTY_SEARCHES;
-let cachedRaw: string | null = null;
 
-export function getRecentSearches(): RecentSearchItem[] {
-  if (typeof window === "undefined") return EMPTY_SEARCHES;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return EMPTY_SEARCHES;
-    const parsed = JSON.parse(raw) as unknown;
+const store = createLocalStore<RecentSearchItem[]>({
+  key: STORAGE_KEY,
+  changeEvent: "coffeemode:recent-searches-changed",
+  fallback: EMPTY_SEARCHES,
+  validate: (parsed) => {
     if (!Array.isArray(parsed)) return EMPTY_SEARCHES;
     const filtered = parsed.filter(
       (item): item is RecentSearchItem =>
@@ -42,73 +41,34 @@ export function getRecentSearches(): RecentSearchItem[] {
     if (filtered.length === 0) return EMPTY_SEARCHES;
     const max = getMaxRecentSearches();
     return filtered.length > max ? filtered.slice(0, max) : filtered;
-  } catch {
-    // Benign: corrupted JSON or blocked localStorage access degrades to empty searches list.
-    return EMPTY_SEARCHES;
-  }
-}
+  },
+});
 
-export function subscribeRecentSearches(callback: () => void): () => void {
-  if (typeof window === "undefined") return () => {};
-  window.addEventListener("coffeemode:recent-searches-changed", callback);
-  window.addEventListener("storage", callback);
-  return () => {
-    window.removeEventListener("coffeemode:recent-searches-changed", callback);
-    window.removeEventListener("storage", callback);
-  };
-}
-
-export function getRecentSearchesSnapshot(): RecentSearchItem[] {
-  if (typeof window === "undefined") return EMPTY_SEARCHES;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw === cachedRaw) return cachedSearches;
-    cachedRaw = raw;
-    cachedSearches = getRecentSearches();
-    return cachedSearches;
-  } catch {
-    // Benign: localStorage read failure degrades snapshot to empty list.
-    return EMPTY_SEARCHES;
-  }
-}
-
-export function getRecentSearchesServerSnapshot(): RecentSearchItem[] {
-  return EMPTY_SEARCHES;
-}
+export const getRecentSearches = store.get;
+export const subscribeRecentSearches = store.subscribe;
+export const getRecentSearchesSnapshot = store.getSnapshot;
+export const getRecentSearchesServerSnapshot = store.getServerSnapshot;
 
 export function addRecentSearch(query: string, city: string): void {
   if (typeof window === "undefined") return;
   const trimmed = query.trim();
   if (!trimmed) return;
 
-  try {
-    const current = getRecentSearches();
-    const filtered = current.filter(
-      (item) => !(item.query.toLowerCase() === trimmed.toLowerCase() && item.city.toLowerCase() === city.toLowerCase()),
-    );
-    const updated: RecentSearchItem[] = [
-      {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        query: trimmed,
-        city,
-        timestamp: Date.now(),
-      },
-      ...filtered,
-    ].slice(0, getMaxRecentSearches());
+  const current = store.get();
+  const filtered = current.filter(
+    (item) => !(item.query.toLowerCase() === trimmed.toLowerCase() && item.city.toLowerCase() === city.toLowerCase()),
+  );
+  const updated: RecentSearchItem[] = [
+    {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      query: trimmed,
+      city,
+      timestamp: Date.now(),
+    },
+    ...filtered,
+  ].slice(0, getMaxRecentSearches());
 
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    window.dispatchEvent(new Event("coffeemode:recent-searches-changed"));
-  } catch {
-    // Ignore localStorage write failures (e.g. quota or private mode)
-  }
+  store.set(updated);
 }
 
-export function clearRecentSearches(): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(STORAGE_KEY);
-    window.dispatchEvent(new Event("coffeemode:recent-searches-changed"));
-  } catch {
-    // Benign: localStorage removeItem failure in private mode is ignored.
-  }
-}
+export const clearRecentSearches = store.remove;

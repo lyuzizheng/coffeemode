@@ -1,9 +1,11 @@
+import { createLocalStore } from "./local-store";
+
 /**
  * Anonymous onboarding state (spec 0001 §Onboarding storage): the welcome
  * card's one-time flag plus the resolved current city and last granted
- * geolocation. Follows the `recent-searches.ts`/`ranking-preference.ts`
- * storage pattern — quota-safe writes, strict shape check on read, corrupt
- * or blocked storage degrades to "first visit".
+ * geolocation. Follows the `createLocalStore<T>` storage pattern — quota-safe
+ * writes, strict shape check on read, corrupt or blocked storage degrades to
+ * "first visit".
  *
  * Signed-in users merge this into `profiles` (DG122) via PATCH /api/profile;
  * the local copy stays as the anonymous fallback for signed-out visits.
@@ -35,53 +37,36 @@ function isLocation(value: unknown): value is { lat: number; lng: number } {
   );
 }
 
-export function readOnboardingState(): OnboardingState | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<OnboardingState>;
+const store = createLocalStore<OnboardingState | null>({
+  key: STORAGE_KEY,
+  changeEvent: "coffeemode:onboarding-changed",
+  fallback: null,
+  validate: (parsed) => {
     if (typeof parsed !== "object" || parsed === null) return null;
+    const p = parsed as Partial<OnboardingState>;
     return {
-      onboarded: parsed.onboarded === true,
-      currentCity: typeof parsed.currentCity === "string" ? parsed.currentCity : null,
-      currentCityName:
-        typeof parsed.currentCityName === "string" ? parsed.currentCityName : null,
-      lastLocation: isLocation(parsed.lastLocation) ? parsed.lastLocation : null,
+      onboarded: p.onboarded === true,
+      currentCity: typeof p.currentCity === "string" ? p.currentCity : null,
+      currentCityName: typeof p.currentCityName === "string" ? p.currentCityName : null,
+      lastLocation: isLocation(p.lastLocation) ? p.lastLocation : null,
     };
-  } catch {
-    return null;
-  }
-}
+  },
+});
+
+export const readOnboardingState = store.get;
+export const subscribeOnboardingStore = store.subscribe;
+export const getOnboardingStateSnapshot = store.getSnapshot;
+export const getOnboardingStateServerSnapshot = store.getServerSnapshot;
 
 export function writeOnboardingState(patch: Partial<OnboardingState>): void {
   if (typeof window === "undefined") return;
-  try {
-    const current = readOnboardingState() ?? {
-      onboarded: false,
-      currentCity: null,
-      currentCityName: null,
-      lastLocation: null,
-    };
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...patch }));
-    notifyOnboardingStore();
-  } catch {
-    // Quota/private-mode failures degrade to "card shows again" — harmless.
-  }
-}
-
-/** Subscribers notified after every successful write — lets consumers
- * (e.g. the search city scope) re-read the store instead of snapshotting
- * it once at mount. */
-const listeners = new Set<() => void>();
-
-export function subscribeOnboardingStore(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-function notifyOnboardingStore(): void {
-  for (const listener of listeners) listener();
+  const current = store.get() ?? {
+    onboarded: false,
+    currentCity: null,
+    currentCityName: null,
+    lastLocation: null,
+  };
+  store.set({ ...current, ...patch });
 }
 
 export function hasShownLocateSettingsToast(): boolean {

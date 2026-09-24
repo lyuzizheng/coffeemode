@@ -204,14 +204,6 @@ where id = $1 and (visibility = 'public' or created_by = $2)
 
 const EXISTS_PUBLIC_SQL = `select 1 from cafes where id = $1 and deleted_at is null and visibility = 'public'`;
 const EXISTS_VIEWER_SQL = `select 1 from cafes where id = $1 and deleted_at is null and (visibility = 'public' or created_by = $2)`;
-const EXISTS_LIVE_SQL = `select 1 from cafes where id = $1 and deleted_at is null`;
-
-/** Live-only probe: true when the cafe exists and is not soft-deleted (tombstoned). */
-export async function isLiveCafe(id: string): Promise<boolean> {
-  if (!isValidUUID(id)) return false;
-  const { rows } = await query<Record<string, unknown>>(EXISTS_LIVE_SQL, [id]);
-  return rows.length > 0;
-}
 
 /**
  * Narrow existence probe (`select 1`, no row payload) for API routes that

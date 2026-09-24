@@ -4,7 +4,6 @@ export {
   type CafeDetailWithAuthor,
   getCafe,
   getCafeLocation,
-  isLiveCafe,
   listCafeSitemapEntries,
   listCafesNearby,
   toPublicCafeDetail,

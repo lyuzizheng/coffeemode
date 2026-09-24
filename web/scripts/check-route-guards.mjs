@@ -14,8 +14,9 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
-const HTTP_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH"];
+const HTTP_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD"];
 const MUTATING_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);
 // Explicitly exempted routes with documented architectural reasons (spec 0011 D5)
 const EXEMPT_ROUTES = new Set([
@@ -61,63 +62,157 @@ export function checkRouteGuards(webRootDir) {
   return violations;
 }
 
-function checkRouteFile(relPath, content) {
+function getCallIdentifier(expr) {
+  while (ts.isParenthesizedExpression(expr)) {
+    expr = expr.expression;
+  }
+  if (ts.isIdentifier(expr)) {
+    return expr.text;
+  }
+  if (ts.isPropertyAccessExpression(expr)) {
+    return expr.name.text;
+  }
+  return undefined;
+}
+
+function checkDisallowedCalls(sf, relPath) {
   const violations = [];
+  function visit(node) {
+    if (ts.isCallExpression(node)) {
+      const callName = getCallIdentifier(node.expression);
+      if (callName === "checkRateLimit" || callName === "rateLimitResponse" || callName === "guard") {
+        violations.push({
+          file: relPath,
+          reason: `Direct call to ${callName}() found; must use apiRoute() wrapper`,
+        });
+      } else if (callName === "requireSameOrigin") {
+        violations.push({
+          file: relPath,
+          reason: "Direct call to requireSameOrigin() found; pass origin: true to apiRoute()",
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sf);
+  return violations;
+}
 
-  // Check for deprecated raw rate limit primitives
-  if (content.includes("checkRateLimit(")) {
-    violations.push({
-      file: relPath,
-      reason: "Direct call to checkRateLimit() found; must use apiRoute() wrapper",
-    });
+function hasTrueProperty(objectLiteral, propertyName) {
+  for (const prop of objectLiteral.properties) {
+    if (!ts.isPropertyAssignment(prop)) continue;
+    const name = ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name)
+      ? prop.name.text
+      : undefined;
+    if (name === propertyName && prop.initializer?.kind === ts.SyntaxKind.TrueKeyword) {
+      return true;
+    }
   }
-  if (content.includes("rateLimitResponse(")) {
-    violations.push({
+  return false;
+}
+
+function validateApiRouteOptions(method, optionsArg, relPath) {
+  if (!optionsArg || !ts.isObjectLiteralExpression(optionsArg)) {
+    return [{
       file: relPath,
-      reason: "Direct call to rateLimitResponse() found; must use apiRoute() wrapper",
-    });
+      method,
+      reason: MUTATING_METHODS.has(method)
+        ? `Mutating handler ${method} missing origin: true in apiRoute() options (options must be an inline object literal)`
+        : `Handler ${method} apiRoute() options must be an inline object literal`,
+    }];
   }
 
-  // Strip comments to check actual calls, not imports or comments
-  const strippedContent = content.replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "");
-  // The wrapper owns guard() and requireSameOrigin() — route files must
-  // not call them directly.
-  if (/\bguard\s*\(/.test(strippedContent)) {
-    violations.push({
+  if (optionsArg.properties.some((p) => ts.isSpreadAssignment(p))) {
+    return [{
       file: relPath,
-      reason: "Direct call to guard() found; must use apiRoute() wrapper",
-    });
-  }
-  if (/\brequireSameOrigin\s*\(/.test(strippedContent)) {
-    violations.push({
-      file: relPath,
-      reason: "Direct call to requireSameOrigin() found; pass origin: true to apiRoute()",
-    });
+      method,
+      reason: MUTATING_METHODS.has(method)
+        ? `Mutating handler ${method} missing origin: true in apiRoute() options (spread options are not allowed)`
+        : `Handler ${method} apiRoute() options must not use spread assignments`,
+    }];
   }
 
-  // Check exported HTTP methods
-  for (const method of HTTP_METHODS) {
-    const bareFn = new RegExp(`export\\s+(async\\s+)?function\\s+${method}\\b`);
-    if (bareFn.test(content)) {
-      violations.push({
+  if (MUTATING_METHODS.has(method) && !hasTrueProperty(optionsArg, "origin")) {
+    return [{
+      file: relPath,
+      method,
+      reason: `Mutating handler ${method} missing origin: true in apiRoute() options`,
+    }];
+  }
+
+  return [];
+}
+
+function checkVariableMethod(decl, relPath) {
+  const method = ts.isIdentifier(decl.name) ? decl.name.text : undefined;
+  if (!method || !HTTP_METHODS.includes(method)) return [];
+
+  const init = decl.initializer;
+  if (!init || !ts.isCallExpression(init) || getCallIdentifier(init.expression) !== "apiRoute") {
+    return [{
+      file: relPath,
+      method,
+      reason: `Exported handler ${method} is a bare function; must be export const ${method} = apiRoute(...)`,
+    }];
+  }
+
+  return validateApiRouteOptions(method, init.arguments[0], relPath);
+}
+
+function checkExportStatement(stmt, relPath) {
+  if (ts.isFunctionDeclaration(stmt)) {
+    const method = stmt.name?.text;
+    if (method && HTTP_METHODS.includes(method)) {
+      return [{
         file: relPath,
         method,
         reason: `Exported handler ${method} is a bare function; must be export const ${method} = apiRoute(...)`,
-      });
-      continue;
+      }];
     }
-    const wrapped = new RegExp(
-      `export\\s+const\\s+${method}\\s*=\\s*apiRoute(?:<[^>]*>)?\\s*\\(\\s*\\{([^}]*)\\}`,
-    );
-    const match = content.match(wrapped);
-    if (!match) continue; // method not exported
-    if (MUTATING_METHODS.has(method) && !/\borigin\s*:\s*true\b/.test(match[1])) {
-      violations.push({
-        file: relPath,
-        method,
-        reason: `Mutating handler ${method} missing origin: true in apiRoute() options`,
-      });
+    return [];
+  }
+
+  if (ts.isVariableStatement(stmt)) {
+    const violations = [];
+    for (const decl of stmt.declarationList.declarations) {
+      violations.push(...checkVariableMethod(decl, relPath));
     }
+    return violations;
+  }
+
+  if (ts.isExportDeclaration(stmt) && stmt.exportClause && ts.isNamedExports(stmt.exportClause)) {
+    const violations = [];
+    for (const elem of stmt.exportClause.elements) {
+      const method = elem.name.text;
+      if (HTTP_METHODS.includes(method)) {
+        violations.push({
+          file: relPath,
+          method,
+          reason: `Exported handler ${method} must be export const ${method} = apiRoute(...)`,
+        });
+      }
+    }
+    return violations;
+  }
+
+  return [];
+}
+
+export function checkRouteFile(relPath, content) {
+  const sf = ts.createSourceFile(
+    relPath,
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    relPath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+
+  const violations = checkDisallowedCalls(sf, relPath);
+
+  for (const stmt of sf.statements) {
+    const isExported = stmt.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+    if (!isExported && !ts.isExportDeclaration(stmt)) continue;
+    violations.push(...checkExportStatement(stmt, relPath));
   }
 
   return violations;

@@ -3,6 +3,7 @@ import "server-only";
 
 import { WORKER_TIMEOUT_MS } from "@/lib/http";
 import { REQUEST_ID_HEADER } from "@shared/request-id";
+import { sanitizePassthroughStatus } from "@shared/errors";
 
 /**
  * Server-only client for the POI cache service (Cloudflare Worker).
@@ -83,7 +84,7 @@ async function poiFetch(
 ): Promise<unknown> {
   if (!config) {
     throw new POIServiceError(
-      "POI service is not configured (POI_SERVICE_URL / POI_SERVICE_TOKEN)",
+      "POI service unavailable",
       503,
     );
   }
@@ -129,14 +130,19 @@ async function poiFetch(
     // Benign: best-effort cancel of unread upstream response stream.
     await res.body?.cancel().catch(() => {});
     let message = "POI service returned an error";
-    if (upstreamStatus === 401) message = "POI service unavailable";
-    else if (upstreamStatus === 404) message = "POI not found";
-    else if (upstreamStatus === 422) message = "POI could not be resolved";
-    else if (upstreamStatus >= 500) message = "POI service unavailable";
-    else if (upstreamStatus >= 400) message = "Invalid POI request";
-    const effectiveStatus = upstreamStatus === 401 ? 502 : upstreamStatus;
+    const effectiveStatus = sanitizePassthroughStatus(upstreamStatus);
+    if (effectiveStatus === 404) {
+      message = "POI not found";
+    } else if (effectiveStatus === 413) {
+      message = "POI request payload too large";
+    } else if (effectiveStatus === 422) {
+      message = "POI could not be resolved";
+    } else {
+      // Clamped to 502 (401, 429, other 4xx, 5xx): worker 429/4xx never leaks without Retry-After (spec 0011, BRAWUKA-596).
+      message = "POI service unavailable";
+    }
     // Log the status the caller will actually see, and tag only real outages
-    // (spec 0011 D8, BRAWUKA-541): a worker 404/422 is a normal negative
+    // (spec 0011 D8, BRAWUKA-541): a worker 404/413/422 is a normal negative
     // answer, not a dependency failure, so it must not feed the
     // `upstream_error` chart or its alert.
     logError({

@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { ErrorCode } from "@shared/errors";
+import { sanitizePassthroughStatus, type ErrorCode } from "@shared/errors";
 import {
   FeedCursorError,
   FeedCursorExpiredError,
@@ -116,12 +116,12 @@ const DOMAIN_ERROR_MAPPERS: ReadonlyArray<DomainErrorMapper> = [
   })),
   entry(ImageServiceError, (err) => ({
     code: "image_service_error",
-    status: err.status,
+    status: sanitizePassthroughStatus(err.status),
     message: err.message,
   })),
   entry(POIServiceError, (err) => ({
     code: "poi_service",
-    status: err.status,
+    status: sanitizePassthroughStatus(err.status),
     message: err.message,
   })),
 ];

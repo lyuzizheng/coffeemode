@@ -28,9 +28,11 @@ export async function runApiContractGate({ base, cafeId }) {
   assert(searchRes.status === 200, `/api/search returned ${searchRes.status}`);
 
   const placesRes = await fetch(`${base}/api/places/search?q=smoke&lat=37.7749&lng=-122.4194`);
-  // 200 when POI service is live, 503 with standard envelope when unconfigured
+  // 200 when POI service is live, 502 `poi_service` envelope when unconfigured
+  // (spec 0011: registry allows only {502,404,413,422} for `poi_service`;
+  // 503 is reserved for `db_unavailable`/`mapkit_not_configured`).
   assert(
-    placesRes.status === 200 || placesRes.status === 503,
+    placesRes.status === 200 || placesRes.status === 502,
     `/api/places/search returned unexpected status ${placesRes.status}`,
   );
 

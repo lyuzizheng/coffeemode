@@ -524,7 +524,8 @@
     "yes": "有去！",
     "notYet": "还没去",
     "wontGo": "不去了",
-    "pill": "有去喝一杯吗？"
+    "pill": "有去喝一杯吗？",
+    "failed": "记录失败，再试试？"
   },
   "onboarding": {
     "headline": "找到真正能办公的咖啡馆",

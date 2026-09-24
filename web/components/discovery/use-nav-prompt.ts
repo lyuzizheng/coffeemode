@@ -6,7 +6,9 @@
  * lookup and the resolve POST; the view owns the card↔pill presentation.
  */
 import { useCallback, useEffect, useState } from "react";
-import { apiFetch, ApiError } from "@/lib/http";
+import { toast } from "@heroui/react";
+import { useTranslations } from "next-intl";
+import { apiErrorMessage, apiFetch } from "@/lib/http";
 import type { NavPromptItemDto } from "@shared/navigations/prompt";
 
 /** The promptable navigation DTO served by GET /api/navigations/prompt. */
@@ -123,6 +125,8 @@ export function useNavPrompt({
   /** 有去！ enters the target cafe's check-in flow with the DG92 caption. */
   onCheckIn: (cafeId: string, cafeName: string) => void;
 }) {
+  const t = useTranslations("navPrompt");
+  const tApi = useTranslations();
   const [item, setItem] = useState<NavPromptItem | null>(null);
   const [gone, setGone] = useState(false);
   const [pending, setPending] = useState<NavPromptAnswer | null>(null);
@@ -139,11 +143,9 @@ export function useNavPrompt({
           sessionFlagWrite();
           if (body?.prompt) setItem(body.prompt);
         })
-        .catch((cause: unknown) => {
-          // 401 (guest — anonymous sign-in pending, DG76), 429, 5xx: the
-          // server answered, so the one-per-session flag still applies.
-          if (cause instanceof ApiError && !cancelled) sessionFlagWrite();
-          // Offline (non-ApiError): stay silent; the next session retries.
+        .catch(() => {
+          // If the prompt request fails (401 guest, 429, 5xx, or offline),
+          // do NOT set the session flag so the session can retry (BRAWUKA-443).
         });
     };
     const unschedule = schedulePromptLoad(load, () => cancelled);
@@ -163,15 +165,15 @@ export function useNavPrompt({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ outcome }),
         });
-      } catch {
-        // Offline: dismiss anyway — an unresolved row simply becomes
-        // eligible again on a later session; the card never traps the user.
+        setGone(true);
+        if (outcome === "visited") onCheckIn(item.cafe.id, item.cafe.name);
+      } catch (err: unknown) {
+        toast(apiErrorMessage(err, t("failed"), tApi), { timeout: 4000 });
+      } finally {
+        setPending(null);
       }
-      setPending(null);
-      setGone(true);
-      if (outcome === "visited") onCheckIn(item.cafe.id, item.cafe.name);
     },
-    [item, pending, onCheckIn],
+    [item, pending, onCheckIn, t, tApi],
   );
 
   return { item: gone ? null : item, pending, answer };

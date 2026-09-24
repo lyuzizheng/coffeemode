@@ -158,6 +158,16 @@ export async function fetchPlaceDetails(
 }
 
 /**
+ * Autocomplete (New) caps `locationBias.circle.radius` at 50,000 m — a larger
+ * value is an upstream 400 (BRAWUKA-439). The worker's own ceiling
+ * (`MAX_SEARCH_RADIUS_KM`, 200 km) is a bounding-box guard, not Google's, so
+ * the bias radius is clamped here instead of rejected: `locationBias` only
+ * steers ranking, never filters, so shrinking it cannot hide a result the
+ * caller could legitimately see.
+ */
+const AUTOCOMPLETE_MAX_BIAS_RADIUS_M = 50_000;
+
+/**
  * POST /v1/places:autocomplete — the typing phase.
  *
  * `sessionToken` is REQUIRED by this module: an Autocomplete request without
@@ -184,7 +194,13 @@ export async function autocomplete(
     const center = { latitude: opts.lat, longitude: opts.lng };
     body.origin = center;
     body.locationBias = {
-      circle: { center, radius: (opts.radiusKm ?? DEFAULT_SEARCH_RADIUS_KM) * 1000 },
+      circle: {
+        center,
+        radius: Math.min(
+          (opts.radiusKm ?? DEFAULT_SEARCH_RADIUS_KM) * 1000,
+          AUTOCOMPLETE_MAX_BIAS_RADIUS_M,
+        ),
+      },
     };
   }
   const res = await fetchImpl(`${baseUrl(env)}/v1/places:autocomplete`, {

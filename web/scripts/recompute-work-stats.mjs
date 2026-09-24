@@ -2,267 +2,64 @@
 /**
  * CafeMood work_stats nightly recompute — idempotent drift correction.
  *
- * Recomputes every cafe's work_stats from its non-deleted check-ins
- * (spec 0001 §Aggregation). This is the same recomputeWorkStats used by
- * the check-in write paths, run in a tight loop: one transaction per cafe
- * with SELECT ... FOR UPDATE, so concurrent check-in writes serialize.
+ * Thin loader: the real implementation is the canonical TS path
+ * (`recomputeAllWorkStats` in lib/stats/aggregate.ts — per-cafe FOR UPDATE
+ * transaction + RECOMPUTE_CONCURRENCY=4 worker pool, BRAWUKA-652), compiled
+ * to `scripts/dist/recompute-work-stats.mjs` by esbuild. The previous
+ * version of this file re-implemented the stats math in plain JS and had
+ * already drifted from the TS path (no socialWeight, stale weight
+ * literals); BRAWUKA-664 removed the duplicate implementation.
  *
- * Running it twice with no intervening writes is a no-op: the second run
- * reads the same check-ins and writes the same JSON, so it is idempotent
- * and safe to retry.
+ * Bundle lifecycle:
+ *   - `npm run build` rebuilds it (`--build` flag below), so the Docker
+ *     image ships the compiled file under /app/scripts/dist/.
+ *   - A direct `npm run recompute:work-stats` in dev builds it on demand
+ *     when missing — no separate build step to remember.
  *
  * Usage:
  *   DATABASE_URL=postgres://... node scripts/recompute-work-stats.mjs
  *   npm run recompute:work-stats
+ *   node scripts/recompute-work-stats.mjs --build   # rebuild bundle only
  *
- * Failures are observable: the process exits non-zero and logs the cafe
- * id + error, so a cron (GitHub Actions schedule, systemd timer, or VPS
- * crontab) can alert. Partial failures do not abort the whole run — each
- * cafe is recomputed independently and errors are aggregated.
+ * Failures are observable: the process exits non-zero and logs the error,
+ * so a cron (Dokploy scheduled job or VPS crontab) can alert.
  */
 
-import pg from "pg";
-import { readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { parse } from "yaml";
-
-const DEFAULT_DATABASE_URL = "postgres://coffeemode:coffeemode@localhost:5432/coffeemode";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const appYamlPath = path.resolve(__dirname, "../config/app.yaml");
+const ENTRY = path.join(__dirname, "lib", "recompute-work-stats.ts");
+const BUNDLE = path.join(__dirname, "dist", "recompute-work-stats.mjs");
+const SERVER_ONLY_STUB = path.join(__dirname, "lib", "server-only-stub.mjs");
 
-let DIM_WEIGHTS = { wifi: 0.3, outlets: 0.2, seats: 0.2, temp: 0.15, coffee: 0.15 };
-let RECENCY_DECAY = 0.6;
-
-try {
-  const yamlContent = readFileSync(appYamlPath, "utf8");
-  const parsed = parse(yamlContent);
-  if (parsed?.stats?.dimWeights) {
-    DIM_WEIGHTS = parsed.stats.dimWeights;
-  }
-  if (typeof parsed?.stats?.recencyDecay === "number") {
-    RECENCY_DECAY = parsed.stats.recencyDecay;
-  }
-} catch {
-  // Use fallback defaults if config is unreadable
-}
-
-/** Mirrors web/lib/db/postgres.ts parse logic for sslmode. */
-function parseConnectionConfig(urlString) {
-  const url = new URL(urlString);
-  const sslmode = url.searchParams.get("sslmode");
-  url.searchParams.delete("sslmode");
-  const config = { connectionString: url.toString() };
-  if (sslmode !== null) {
-    if (sslmode === "disable") config.ssl = false;
-    else if (sslmode === "allow-self-signed") config.ssl = { rejectUnauthorized: false };
-    else if (
-      sslmode === "require" ||
-      sslmode === "prefer" ||
-      sslmode === "verify-ca" ||
-      sslmode === "verify-full"
-    )
-      config.ssl = { rejectUnauthorized: true };
-    else throw new Error(`Unrecognized sslmode "${sslmode}" in DATABASE_URL.`);
-  }
-  return config;
-}
-
-/** Lazy import of the TS-compiled aggregate helper is not available in plain mjs,
- *  so this script re-implements the recompute loop in SQL to stay
- *  dependency-free and dogfood the same transaction shape: FOR UPDATE + full
- *  recompute. For the test suite, the canonical TS recomputeAllWorkStats is
- *  still the source of truth (web/lib/stats/aggregate.ts).
- *
- *  To keep the script small and avoid a build step, we invoke the same SQL
- *  the TS code uses: select non-deleted check-ins ordered by
- *  visited_at desc, created_at desc, id desc, compute the weighted means in
- *  JS, then single-row UPDATE. The in-JS sort uses the same total key so tied
- *  visited_at rows rank identically to the TS paths (BRAWUKA-447).
- *  The JS weights here mirror web/lib/stats/work-stats.ts exactly (with
- *  values loaded from web/config/app.yaml `stats` at the top of this file;
- *  the literal there is the fallback):
- *    w_i = 0.6^rank_from_newest, social_weight=0 at launch.
- */
-
-const WORK_DIMS = ["wifi", "outlets", "seats", "temp", "coffee", "overall"];
-const COMPOSITE_DIMS = ["wifi", "outlets", "seats", "temp", "coffee"];
-
-function emptyWorkStats() {
-  const dims = {};
-  for (const d of WORK_DIMS) dims[d] = { sum: 0, n: 0 };
-  return {
-    n_users: 0,
-    n_checkins: 0,
-    dims,
-    policies: { max_stay: {} },
-    experience_score: null,
-    composite_score: null,
-    updated_at: new Date().toISOString(),
-  };
-}
-
-function computeCompositeScore(stats) {
-  let weighted = 0;
-  let weightSum = 0;
-  for (const dim of COMPOSITE_DIMS) {
-    const { sum, n } = stats.dims[dim];
-    if (n > 0) {
-      weighted += (sum / n) * DIM_WEIGHTS[dim];
-      weightSum += DIM_WEIGHTS[dim];
-    }
-  }
-  return weightSum > 0 ? weighted / weightSum : null;
-}
-
-function computeExperienceScore(stats) {
-  const { sum, n } = stats.dims.overall;
-  return n > 0 ? sum / n : null;
-}
-
-function compareRecency(a, b) {
-  return (
-    new Date(b.visited_at) - new Date(a.visited_at) ||
-    new Date(b.created_at) - new Date(a.created_at) ||
-    (b.id < a.id ? -1 : b.id > a.id ? 1 : 0)
-  );
-}
-
-function computeUserContribution(checkins) {
-  if (checkins.length === 0) return { dims: {}, max_stay: undefined };
-  const sorted = [...checkins].sort(compareRecency);
-  const latest = sorted[0];
-  const dims = {};
-  for (const dim of WORK_DIMS) {
-    let weightedSum = 0;
-    let weightTotal = 0;
-    for (let i = 0; i < sorted.length; i++) {
-      const score = sorted[i].scores?.[dim];
-      if (typeof score === "number") {
-        const w = Math.pow(RECENCY_DECAY, i);
-        weightedSum += score * w;
-        weightTotal += w;
-      }
-    }
-    dims[dim] = weightTotal > 0 ? weightedSum / weightTotal : undefined;
-  }
-  return {
-    dims,
-    max_stay: latest.max_stay ?? undefined,
-  };
-}
-
-function applyUserContributionDiff(stats, oldC, newC, nCheckins) {
-  const next = {
-    ...stats,
-    dims: { ...stats.dims },
-    policies: { max_stay: { ...stats.policies.max_stay } },
-  };
-  for (const d of WORK_DIMS) next.dims[d] = { ...stats.dims[d] };
-  for (const dim of WORK_DIMS) {
-    const o = oldC?.dims[dim];
-    const n = newC?.dims[dim];
-    if (o !== undefined) {
-      // Clamp at zero (BRAWUKA-692): a decrement the snapshot cannot account
-      // for means snapshot/before-image disagreement — reset, never go negative.
-      const nextN = next.dims[dim].n - 1;
-      if (nextN <= 0) { next.dims[dim].n = 0; next.dims[dim].sum = 0; }
-      else { next.dims[dim].n = nextN; next.dims[dim].sum = Math.max(0, next.dims[dim].sum - o); }
-    }
-    if (n !== undefined) { next.dims[dim].sum += n; next.dims[dim].n += 1; }
-  }
-  const isPresent = (c) =>
-    c && (WORK_DIMS.some((d) => c.dims[d] !== undefined) || c.max_stay !== undefined);
-  // Clamp at zero (BRAWUKA-692): same disagreement can otherwise persist a
-  // user-visible negative n_users.
-  next.n_users = Math.max(0, next.n_users + (isPresent(newC) ? 1 : 0) - (isPresent(oldC) ? 1 : 0));
-  next.n_checkins = nCheckins;
-  const bump = (counts, oldV, newV) => {
-    // Clamp at zero (BRAWUKA-446): a decrement for an absent key means the
-    // snapshot disagrees with the before-image — drop the key, never go negative.
-    if (oldV !== undefined) { const next = (counts[oldV] ?? 0) - 1; if (next <= 0) delete counts[oldV]; else counts[oldV] = next; }
-    if (newV !== undefined) counts[newV] = (counts[newV] ?? 0) + 1;
-  };
-  bump(next.policies.max_stay, oldC?.max_stay, newC?.max_stay);
-  next.experience_score = computeExperienceScore(next);
-  next.composite_score = computeCompositeScore(next);
-  next.updated_at = new Date().toISOString();
-  return next;
-}
-
-function computeCafeStats(checkins) {
-  const byUser = new Map();
-  for (const c of checkins) {
-    const l = byUser.get(c.user_id) ?? [];
-    l.push(c);
-    byUser.set(c.user_id, l);
-  }
-  let stats = emptyWorkStats();
-  for (const [, rows] of byUser) {
-    const contrib = computeUserContribution(rows);
-    stats = applyUserContributionDiff(stats, null, contrib, checkins.length);
-  }
-  stats.n_checkins = checkins.length;
-  stats.n_users = byUser.size;
-  return stats;
-}
-
-async function recomputeOneCafe(client, cafeId) {
-  await client.query("select 1 from cafes where id = $1 for update", [cafeId]);
-  const { rows } = await client.query(
-    `select id, cafe_id, user_id, is_creation, scores, max_stay, note,
-            photos, likes_count, visited_at, created_at, updated_at, deleted_at
-     from checkins where cafe_id = $1 and deleted_at is null
-     order by visited_at desc, created_at desc, id desc`,
-    [cafeId],
-  );
-  const stats = computeCafeStats(rows);
-  await client.query("update cafes set work_stats = $1, updated_at = now() where id = $2", [
-    JSON.stringify(stats),
-    cafeId,
-  ]);
+/** Compile the TS entry into scripts/dist/. npm deps stay external — they
+ *  resolve from node_modules at runtime (dev install, or the standalone
+ *  image's traced node_modules + the Dockerfile's explicit yaml copy). */
+async function buildBundle() {
+  const { build } = await import("esbuild");
+  await build({
+    entryPoints: [ENTRY],
+    outfile: BUNDLE,
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node22",
+    packages: "external",
+    alias: { "server-only": SERVER_ONLY_STUB },
+    logLevel: "warning",
+  });
+  console.log(`built ${path.relative(process.cwd(), BUNDLE)}`);
 }
 
 async function main() {
-  const rawUrl = process.env.DATABASE_URL?.trim() || DEFAULT_DATABASE_URL;
-  const client = new pg.Client(parseConnectionConfig(rawUrl));
-  await client.connect();
-  try {
-    const { rows } = await client.query(
-      "select id from cafes where deleted_at is null order by id",
-    );
-    console.log(`recompute: ${rows.length} cafe(s)`);
-    let ok = 0;
-    let failed = 0;
-    const errors = [];
-    for (const { id } of rows) {
-      try {
-        await client.query("begin");
-        try {
-          await recomputeOneCafe(client, id);
-          await client.query("commit");
-          ok++;
-        } catch (e) {
-          await client.query("rollback").catch(() => {});
-          throw e;
-        }
-      } catch (e) {
-        failed++;
-        const msg = e instanceof Error ? e.message : String(e);
-        console.error(`recompute failed for cafe ${id}: ${msg}`);
-        errors.push({ id, error: msg });
-      }
-      if ((ok + failed) % 100 === 0) console.log(`progress: ${ok} ok, ${failed} failed`);
-    }
-    console.log(`done: ${ok} ok, ${failed} failed`);
-    if (failed > 0) {
-      console.error(JSON.stringify(errors, null, 2));
-      process.exitCode = 1;
-    }
-  } finally {
-    await client.end().catch(() => {});
+  const buildOnly = process.argv.includes("--build");
+  if (buildOnly || !existsSync(BUNDLE)) {
+    await buildBundle();
+    if (buildOnly) return;
   }
+  await import(pathToFileURL(BUNDLE).href);
 }
 
 const entry = process.argv[1] ? path.resolve(process.argv[1]) : null;

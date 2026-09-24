@@ -30,3 +30,7 @@ deploy/dokploy/.env.prod
 # Supabase migrations in `web/db/migrations/` + fixtures in
 # `web/tests/fixtures/mock-dataset.ts`)
 database-data/
+
+# esbuild output of the nightly recompute entry (BRAWUKA-664); rebuilt by
+# `npm run build` / on demand by scripts/recompute-work-stats.mjs.
+web/scripts/dist/

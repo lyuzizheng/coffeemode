@@ -56,7 +56,7 @@ export const SOURCE_SCAN = Object.freeze({
   roots: Object.freeze(["app", "components", "lib", "shared", "config", "scripts"]),
   extensions: Object.freeze([".ts", ".tsx", ".mts", ".mjs"]),
   rootFiles: true,
-  ignoredDirs: Object.freeze(["node_modules", ".next", "tests", "__tests__", "coverage"]),
+  ignoredDirs: Object.freeze(["node_modules", ".next", "tests", "__tests__", "coverage", "dist"]),
   testPattern: /\.(test|spec)\.[cm]?[jt]sx?$/u,
 });
 

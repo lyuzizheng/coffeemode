@@ -76,6 +76,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // esbuild output of scripts/recompute-work-stats.mjs (BRAWUKA-664).
+    "scripts/dist/**",
   ]),
 ]);
 

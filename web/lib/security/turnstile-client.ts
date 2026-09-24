@@ -16,6 +16,11 @@ export const TURNSTILE_ACTION_PLACES_RESOLVE = "places-resolve";
 interface TurnstileRenderOptions {
   sitekey: string;
   action?: string;
+  // `execution: "execute"` keeps the invisible widget dormant at render so the
+  // challenge only runs when `executeWidgetForToken` calls `execute()` per
+  // submit. The default `"render"` would burn one challenge per mount whose
+  // token is discarded (`pendingByWidget` is empty until submit).
+  execution?: "render" | "execute";
   size?: "normal" | "compact" | "flexible" | "invisible";
   theme?: "light" | "dark" | "auto";
   callback?: (token: string) => void;
@@ -91,6 +96,7 @@ export async function renderInvisibleResolveWidget(container: HTMLElement, sitek
     sitekey,
     action: TURNSTILE_ACTION_PLACES_RESOLVE,
     size: "invisible",
+    execution: "execute",
     theme: "auto",
     callback: (token: string) => {
       pendingByWidget.get(widgetId)?.resolve(token);

@@ -40,8 +40,8 @@ import type { WorkDim } from "@/lib/stats/work-stats";
 import {
   countActiveFilters,
   DIM_THRESHOLDS,
+  isDimThreshold,
   MAX_STAY_FILTER_VALUES,
-  type DimThreshold,
   type MaxStayFilter,
   type SearchFilterState,
 } from "@/lib/search/search-filters";
@@ -148,7 +148,9 @@ function handleRadioGroupKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
   next.click();
 }
 
-/** One `Any/60+/80+` tri-state segment row — radiogroup semantics (spec §9). */
+/** One `Any/60+/80+` tri-state segment row — radiogroup semantics (spec §9).
+ * A deep-linked custom score (e.g. `?filter_wifi=63`) renders as an extra
+ * selected `63+` option so the group always has a checked, tabbable radio. */
 function DimSegmentRow({
   dim,
   label,
@@ -158,11 +160,11 @@ function DimSegmentRow({
   dim: WorkDim;
   label: string;
   value: number | undefined;
-  onChange: (threshold: DimThreshold | undefined) => void;
+  onChange: (threshold: number | undefined) => void;
 }) {
   const Icon = DIM_ICONS[dim];
   const t = useTranslations("search");
-  const options: { key: string; threshold: DimThreshold | undefined; label: string }[] = [
+  const options: { key: string; threshold: number | undefined; label: string }[] = [
     { key: "any", threshold: undefined, label: t("any") },
     ...DIM_THRESHOLDS.map((threshold) => ({
       key: String(threshold),
@@ -170,6 +172,10 @@ function DimSegmentRow({
       label: `${threshold}+`,
     })),
   ];
+  if (value !== undefined && !isDimThreshold(value)) {
+    options.push({ key: `custom-${value}`, threshold: value, label: `${value}+` });
+    options.sort((a, b) => (a.threshold ?? -1) - (b.threshold ?? -1));
+  }
   return (
     <div className="flex min-h-11 items-center gap-3 py-1">
       <span className="flex w-28 shrink-0 items-center gap-1.5 text-sm text-foreground">

@@ -38,6 +38,20 @@ set gallery = coalesce(c.gallery, '[]'::jsonb) || (
 where c.id = $1
 `;
 
+/**
+ * Bulk-hide every gallery entry sourced from one of the given check-ins
+ * (soft-delete, cafe delete, account teardown). Entries without a `source`
+ * are legacy/external photos and are always preserved (BRAWUKA-391).
+ * $1 = cafe id, $2 = check-in ids.
+ */
+export const PURGE_GALLERY_BY_SOURCE_IDS_SQL = `
+update cafes set gallery = coalesce(
+  (select jsonb_agg(elem) from jsonb_array_elements(coalesce(gallery, '[]'::jsonb)) elem
+   where elem->'source'->>'id' is null or not (elem->'source'->>'id' = any($2::text[]))), '[]'::jsonb),
+  updated_at = now()
+where id = $1
+`;
+
 /** Attach the check-in id as each photo's `source` (soft-delete hiding). */
 export function photosWithSource(photos: ProvisionedPhoto[], checkinId: string): StoredImage[] {
   return photos.map((p) => ({ ...p, source: { type: "checkin" as const, id: checkinId } }));

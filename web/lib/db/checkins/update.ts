@@ -20,7 +20,7 @@ import {
   type UpdateCheckInInput,
 } from "@/lib/validation/checkin";
 import { txQueryFrom, txRunnerFrom, withTransaction } from "../postgres";
-import { MERGE_GALLERY_SQL, photosWithSource } from "./gallery";
+import { MERGE_GALLERY_SQL, PURGE_GALLERY_BY_SOURCE_IDS_SQL, photosWithSource } from "./gallery";
 import type { StoredImage } from "@/types/images";
 
 /* ------------------------------------------------------------------ *
@@ -263,14 +263,8 @@ export async function softDeleteCheckIn(
     );
 
     // Hide this check-in's photos from the cafe gallery (source field).
-    await client.query(
-      `update cafes set gallery = coalesce(
-         (select jsonb_agg(elem) from jsonb_array_elements(coalesce(gallery, '[]'::jsonb)) elem
-          where elem->'source'->>'id' is null or not (elem->'source'->>'id' = $2)), '[]'::jsonb),
-         updated_at = now()
-       where id = $1`,
-      [row.cafe_id, checkinId],
-    );
+    // Single id — wrap in an array for the shared bulk-purge fragment.
+    await client.query(PURGE_GALLERY_BY_SOURCE_IDS_SQL, [row.cafe_id, [checkinId]]);
 
     await recomputeWorkStats(row.cafe_id, 0, txRunnerFrom(client));
 

@@ -9,6 +9,7 @@ import { deleteUnreferencedPhotos } from "@/lib/images/photo-cleanup";
 import { recomputeWorkStats } from "@/lib/stats/aggregate";
 import type { PoolClient } from "pg";
 import { getServiceAccountId } from "@/lib/db/cafes/meta";
+import { PURGE_GALLERY_BY_SOURCE_IDS_SQL } from "@/lib/db/checkins/gallery";
 import { query, txRunnerFrom, withTransaction } from "../postgres";
 import { LAST_LOCATION_SQL, toProfileDto, type ProfileRow } from "./row";
 import type { UserProfileDto } from "./types";
@@ -140,14 +141,7 @@ async function purgeGalleriesAndStats(
   byCafe: Map<string, string[]>,
 ): Promise<void> {
   for (const [cafeId, checkinIds] of byCafe) {
-    await client.query(
-      `update cafes set gallery = coalesce(
-         (select jsonb_agg(elem) from jsonb_array_elements(coalesce(gallery, '[]'::jsonb)) elem
-          where elem->'source'->>'id' is null or not (elem->'source'->>'id' = any($2::text[]))), '[]'::jsonb),
-         updated_at = now()
-       where id = $1`,
-      [cafeId, checkinIds],
-    );
+    await client.query(PURGE_GALLERY_BY_SOURCE_IDS_SQL, [cafeId, checkinIds]);
     await recomputeWorkStats(cafeId, 0, txRunnerFrom(client));
   }
 }

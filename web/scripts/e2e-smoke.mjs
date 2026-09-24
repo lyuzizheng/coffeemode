@@ -186,6 +186,15 @@ async function runSmokeSuite() {
         ) {
           return;
         }
+        if (
+          expected.subresources?.some(
+            (s) =>
+              (!s.path || msg.location()?.url?.includes(s.path)) &&
+              msg.text().startsWith(`Failed to load resource: the server responded with a status of ${s.status} `),
+          )
+        ) {
+          return;
+        }
         // DG64/DG105/DG77: signed-out, the client probes per-user endpoints
         // the CDN-cached shell can't bake in — `/api/checkins/last` on
         // drawer open, `/api/navigations/prompt` at idle. Their 401 is the

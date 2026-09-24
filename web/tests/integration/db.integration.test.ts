@@ -83,7 +83,7 @@ import {
   listPublicCheckIns,
 } from "@/lib/discovery/feed";
 import { recordUploadIntent } from "@/lib/db/image-uploads";
-import { selectPhotoReferences } from "@/lib/db/photo-references";
+import { selectLivePhotoReferences, selectPhotoReferences } from "@/lib/db/photo-references";
 import { compensateProvisionedPhotos, PhotoIntentError } from "@/lib/images/provision-photos";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import { recomputeAllWorkStats } from "@/lib/stats/aggregate";
@@ -660,6 +660,18 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         created.checkin_id,
       ]);
       await expect(selectPhotoReferences([photoId])).resolves.toEqual([photoId]);
+
+      // The delete path's live-only gate (BRAWUKA-433) answers differently:
+      // once the gallery entry is purged (what softDeleteCheckIn does), the
+      // tombstoned row's photos are no longer live-referenced — while the
+      // rollback gate above still protects them.
+      await dbClient.query(
+        `update cafes set gallery = coalesce(
+           (select jsonb_agg(elem) from jsonb_array_elements(coalesce(gallery, '[]'::jsonb)) elem
+            where elem->>'id' <> $2), '[]'::jsonb) where id = $1`,
+        [created.cafe_id, photoId],
+      );
+      await expect(selectLivePhotoReferences([photoId])).resolves.toEqual([]);
     });
 
     it("recordNavigation inserts and 404s on a missing cafe", async () => {
@@ -1088,6 +1100,43 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       const deletedRow = await dbClient.query("select deleted_at from checkins where id = $1", [created.checkin_id]);
       expect(deletedRow.rows[0].deleted_at).not.toBeNull();
     });
+
+    it("soft-delete releases R2 variants for photos no live row references (BRAWUKA-433)", async () => {
+      const photoA = randomUUID();
+      const photoB = randomUUID();
+      await recordUploadIntent(U2, photoA);
+      await recordUploadIntent(U2, photoB);
+      const deps = fakeProvisionPhotosDeps();
+      const created = await createCheckIn(
+        U2,
+        { cafe_id: CAFE_A, scores: { overall: 55 }, photo_ids: [photoA, photoB] },
+        deps,
+      );
+
+      // photoB is also named by a LIVE check-in (seed CHECKIN_A1): the
+      // live-reference gate must keep its objects while photoA's go.
+      const stored = (await dbClient.query("select photos from checkins where id = $1", [
+        created.checkin_id,
+      ])).rows[0].photos as { id: string }[];
+      const photoBEntry = stored.find((p) => p.id === photoB);
+      await dbClient.query(
+        `update checkins set photos = coalesce(photos, '[]'::jsonb) || $2::jsonb where id = $1`,
+        [CHECKIN_A1, JSON.stringify([photoBEntry])],
+      );
+
+      const deleted: string[] = [];
+      const realDelete = deps.deleteProvisionedVariants;
+      if (!realDelete) throw new Error("expected a delete dep in the fixture");
+      deps.deleteProvisionedVariants = async (id) => {
+        deleted.push(id);
+        await realDelete(id);
+      };
+
+      await softDeleteCheckIn(U2, created.checkin_id, deps);
+      expect(deleted).toEqual([photoA]);
+      await expect(selectLivePhotoReferences([photoB])).resolves.toEqual([photoB]);
+    });
+
 
     it("rejects edit/delete from a non-author with 403-class error", async () => {
       const inserted = await createCheckIn(U2, { cafe_id: CAFE_A, scores: { overall: 42 } });
@@ -1726,6 +1775,35 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       // Repeat delete on own shell (0 own live checkins left) -> CafeNotFoundError (404)
       await expect(deleteCafe(created.cafe_id, U1)).rejects.toBeInstanceOf(CafeNotFoundError);
     });
+
+    it("sole-owner delete releases R2 variants for the removed check-ins' photos (BRAWUKA-433)", async () => {
+      const photoId = randomUUID();
+      await recordUploadIntent(U1, photoId);
+      const deps = fakeProvisionPhotosDeps();
+      const created = await createCafeWithFirstCheckIn(
+        U1,
+        {
+          name: "Photo Cleanup Cafe",
+          lat: 1.35,
+          lng: 103.8,
+          checkin: { scores: { overall: 80 }, max_stay: "unlimited", note: "photo cleanup", photo_ids: [photoId] },
+        },
+        deps,
+      );
+
+      const deleted: string[] = [];
+      const realDelete = deps.deleteProvisionedVariants;
+      if (!realDelete) throw new Error("expected a delete dep in the fixture");
+      deps.deleteProvisionedVariants = async (id) => {
+        deleted.push(id);
+        await realDelete(id);
+      };
+
+      const result = await deleteCafe(created.cafe_id, U1, undefined, deps);
+      expect(result.removed_checkins).toBe(1);
+      expect(deleted).toEqual([photoId]);
+    });
+
 
     it("community cafe without confirm rejects with 409 (cafe_has_other_checkins) and 0 mutations", async () => {
       const photoId = randomUUID();
@@ -3208,6 +3286,30 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       const cafe = await dbClient.query("select created_by from cafes where id = $1", [CAFE_A]);
       expect(cafe.rows[0].created_by).toBe(SERVICE_ACCOUNT_ID);
     });
+
+    it("deleteAccount releases R2 variants for the user's check-in photos (BRAWUKA-433)", async () => {
+      const photoId = randomUUID();
+      await recordUploadIntent(U2, photoId);
+      const deps = fakeProvisionPhotosDeps();
+      await createCheckIn(
+        U2,
+        { cafe_id: CAFE_A, scores: { overall: 70 }, photo_ids: [photoId] },
+        deps,
+      );
+
+      const deleted: string[] = [];
+      const realDelete = deps.deleteProvisionedVariants;
+      if (!realDelete) throw new Error("expected a delete dep in the fixture");
+      deps.deleteProvisionedVariants = async (id) => {
+        deleted.push(id);
+        await realDelete(id);
+      };
+
+      const result = await deleteAccount(U2, deps);
+      expect(result.checkins_removed).toBe(1);
+      expect(deleted).toEqual([photoId]);
+    });
+
 
     it("concurrent deleteAccount + deleteCafe on the same cafe never deadlocks (BRAWUKA-574)", async () => {
       // Regression: deleteAccount locked check-ins first while deleteCafe

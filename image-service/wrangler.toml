@@ -93,8 +93,9 @@ bucket_name = "coffeemode-images-staging"
 #   2. Objects whose `x-amz-meta-targettype` metadata is missing and that are
 #      older than 7 days are deleted.
 #   3. Processed `card/` and `thumbnail/` objects are tied to DB records and
-#      should be deleted by the application when the parent cafe/checkin is
-#      removed.
+#      are deleted by the application when the parent check-in is removed
+#      (BRAWUKA-433: softDeleteCheckIn / deleteCafe / deleteAccount call the
+#      /v1/images/delete endpoint post-commit, gated on live DB references).
 # See image-service/src/constants.ts for the 10 MB upload cap.
 
 # Secrets (set via `wrangler secret put` for prod, or `image-service/.dev.vars` for local dev — never commit):

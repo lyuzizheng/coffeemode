@@ -42,3 +42,31 @@ export async function selectPhotoReferences(
   );
   return rows.map((row) => row.id).filter((id) => typeof id === "string");
 }
+
+/**
+ * Live-only variant of `selectPhotoReferences` (BRAWUKA-433): same source
+ * set, but the check-ins scope excludes tombstoned rows. The delete paths
+ * (`softDeleteCheckIn`, `deleteCafe`, `deleteAccount`) gate their post-commit
+ * R2 cleanup on this — a photo still referenced by a LIVE row keeps its
+ * objects; one referenced only by the just-deleted rows does not. The
+ * rollback gate above deliberately keeps the tombstone union: a rolled-back
+ * creation must never delete objects a tombstone still names. Keep the two
+ * queries in lockstep — they differ ONLY in the check-ins `deleted_at`
+ * predicate.
+ */
+export async function selectLivePhotoReferences(
+  imageUuids: string[],
+  q: ReferenceQueryFn = query,
+): Promise<string[]> {
+  const ids = imageUuids.filter((id) => isValidUUID(id));
+  if (ids.length === 0) return [];
+  const { rows } = await q<{ id: string }>(
+    `select distinct elem->>'id' as id from (` +
+      `select gallery as arr from cafes where deleted_at is null and gallery is not null` +
+      ` union all ` +
+      `select photos as arr from checkins where deleted_at is null and photos is not null` +
+      `) t, jsonb_array_elements(t.arr) elem where elem->>'id' = any($1)`,
+    [ids],
+  );
+  return rows.map((row) => row.id).filter((id) => typeof id === "string");
+}

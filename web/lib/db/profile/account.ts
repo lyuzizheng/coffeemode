@@ -1,11 +1,18 @@
 import "server-only";
 
 import { isValidUUID } from "@shared/uuid";
+import {
+  defaultProvisionPhotosDeps,
+  type ProvisionPhotosDeps,
+} from "@/lib/images/provision-photos";
+import { deleteUnreferencedPhotos } from "@/lib/images/photo-cleanup";
 import { recomputeWorkStats } from "@/lib/stats/aggregate";
+import type { PoolClient } from "pg";
 import { getServiceAccountId } from "@/lib/db/cafes/meta";
 import { query, txRunnerFrom, withTransaction } from "../postgres";
 import { LAST_LOCATION_SQL, toProfileDto, type ProfileRow } from "./row";
 import type { UserProfileDto } from "./types";
+import type { StoredImage } from "@/types/images";
 
 /**
  * Account-level data operations (BRAWUKA-504): the export bundle behind
@@ -127,76 +134,114 @@ where c.created_by = $1 or ci.id is not null
 order by c.id, ci.id
 for update of c
 `;
-export async function deleteAccount(userId: string): Promise<DeleteAccountResult> {
+/** Purge the tombstoned check-ins' gallery entries + recompute, once per cafe. */
+async function purgeGalleriesAndStats(
+  client: PoolClient,
+  byCafe: Map<string, string[]>,
+): Promise<void> {
+  for (const [cafeId, checkinIds] of byCafe) {
+    await client.query(
+      `update cafes set gallery = coalesce(
+         (select jsonb_agg(elem) from jsonb_array_elements(coalesce(gallery, '[]'::jsonb)) elem
+          where elem->'source'->>'id' is null or not (elem->'source'->>'id' = any($2::text[]))), '[]'::jsonb),
+         updated_at = now()
+       where id = $1`,
+      [cafeId, checkinIds],
+    );
+    await recomputeWorkStats(cafeId, 0, txRunnerFrom(client));
+  }
+}
+
+/** The locked-scope delete: tombstone + detach + gallery purge + teardown. */
+async function applyAccountDelete(
+  client: PoolClient,
+  userId: string,
+): Promise<{ result: DeleteAccountResult; photoIds: string[] }> {
+  const lockRes = await client.query<{ cafe_id: string; checkin_id: string | null }>(
+    LOCK_ACCOUNT_SCOPE_SQL,
+    [userId],
+  );
+  // Live check-ins grouped by cafe — the gallery purge and stats
+  // recompute run once per affected cafe, not once per row.
+  const byCafe = new Map<string, string[]>();
+  let checkinsRemoved = 0;
+  for (const row of lockRes.rows) {
+    if (row.checkin_id === null) continue;
+    const list = byCafe.get(row.cafe_id) ?? [];
+    list.push(row.checkin_id);
+    byCafe.set(row.cafe_id, list);
+    checkinsRemoved += 1;
+  }
+
+  // Soft-delete + detach in one statement (DG146 tombstones stay; only
+  // the author link goes — checkins.user_id has no ON DELETE clause, so
+  // the detach must land before the profile delete). The blanket
+  // predicate also catches check-ins committed after the lock snapshot:
+  // they are tombstoned and detached here instead of escaping as live
+  // orphans or tripping the profile-delete FK. Their cafes are not in
+  // byCafe, so the purge below never takes a cafe lock after a check-in
+  // lock — the inversion stays closed. Residual: such a check-in's
+  // gallery entries on a cafe outside the lock set are not purged.
+  // RETURNING photos feeds the post-commit R2 cleanup (BRAWUKA-433):
+  // every check-in this update tombstones — including post-snapshot
+  // commits — yields its photo ids here, so none leak past the sweep.
+  const tombstoned = await client.query<{ photos: StoredImage[] | null }>(
+    `update checkins
+     set deleted_at = coalesce(deleted_at, now()),
+         user_id = null,
+         updated_at = now()
+     where user_id = $1
+     returning photos`,
+    [userId],
+  );
+  const photoIds = tombstoned.rows
+    .flatMap((r) => (Array.isArray(r.photos) ? r.photos : []))
+    .map((p) => p.id)
+    .filter((id): id is string => typeof id === "string");
+
+  await purgeGalleriesAndStats(client, byCafe);
+
+  // Cafes the user created survive as orphan shells (DG146): ownership
+  // moves to the service account so the profile row can go.
+  const serviceAccountId = getServiceAccountId();
+  const transferred = await client.query(
+    `update cafes set created_by = $2, updated_at = now()
+     where created_by = $1`,
+    [userId, serviceAccountId],
+  );
+
+  await client.query(`delete from checkin_likes where user_id = $1`, [userId]);
+  await client.query(`delete from navigations where user_id = $1`, [userId]);
+  await client.query(`delete from image_upload_intents where user_id = $1`, [userId]);
+  await client.query(`delete from profiles where id = $1`, [userId]);
+
+  return {
+    result: {
+      ok: true,
+      checkins_removed: checkinsRemoved,
+      cafes_transferred: transferred.rowCount ?? 0,
+    },
+    photoIds,
+  };
+}
+
+export async function deleteAccount(
+  userId: string,
+  deps: ProvisionPhotosDeps = defaultProvisionPhotosDeps(),
+): Promise<DeleteAccountResult> {
   if (!isValidUUID(userId)) {
     throw new Error("invalid user id");
   }
 
-  return withTransaction(async (client) => {
-    const lockRes = await client.query<{ cafe_id: string; checkin_id: string | null }>(
-      LOCK_ACCOUNT_SCOPE_SQL,
-      [userId],
-    );
-    // Live check-ins grouped by cafe — the gallery purge and stats
-    // recompute run once per affected cafe, not once per row.
-    const byCafe = new Map<string, string[]>();
-    let checkinsRemoved = 0;
-    for (const row of lockRes.rows) {
-      if (row.checkin_id === null) continue;
-      const list = byCafe.get(row.cafe_id) ?? [];
-      list.push(row.checkin_id);
-      byCafe.set(row.cafe_id, list);
-      checkinsRemoved += 1;
-    }
+  const { result, photoIds } = await withTransaction((client) =>
+    applyAccountDelete(client, userId),
+  );
 
-    // Soft-delete + detach in one statement (DG146 tombstones stay; only
-    // the author link goes — checkins.user_id has no ON DELETE clause, so
-    // the detach must land before the profile delete). The blanket
-    // predicate also catches check-ins committed after the lock snapshot:
-    // they are tombstoned and detached here instead of escaping as live
-    // orphans or tripping the profile-delete FK. Their cafes are not in
-    // byCafe, so the purge below never takes a cafe lock after a check-in
-    // lock — the inversion stays closed. Residual: such a check-in's
-    // gallery entries on a cafe outside the lock set are not purged.
-    await client.query(
-      `update checkins
-       set deleted_at = coalesce(deleted_at, now()),
-           user_id = null,
-           updated_at = now()
-       where user_id = $1`,
-      [userId],
-    );
-
-    for (const [cafeId, checkinIds] of byCafe) {
-      await client.query(
-        `update cafes set gallery = coalesce(
-           (select jsonb_agg(elem) from jsonb_array_elements(coalesce(gallery, '[]'::jsonb)) elem
-            where elem->'source'->>'id' is null or not (elem->'source'->>'id' = any($2::text[]))), '[]'::jsonb),
-           updated_at = now()
-         where id = $1`,
-        [cafeId, checkinIds],
-      );
-      await recomputeWorkStats(cafeId, 0, txRunnerFrom(client));
-    }
-
-    // Cafes the user created survive as orphan shells (DG146): ownership
-    // moves to the service account so the profile row can go.
-    const serviceAccountId = getServiceAccountId();
-    const transferred = await client.query(
-      `update cafes set created_by = $2, updated_at = now()
-       where created_by = $1`,
-      [userId, serviceAccountId],
-    );
-
-    await client.query(`delete from checkin_likes where user_id = $1`, [userId]);
-    await client.query(`delete from navigations where user_id = $1`, [userId]);
-    await client.query(`delete from image_upload_intents where user_id = $1`, [userId]);
-    await client.query(`delete from profiles where id = $1`, [userId]);
-
-    return {
-      ok: true,
-      checkins_removed: checkinsRemoved,
-      cafes_transferred: transferred.rowCount ?? 0,
-    };
-  });
+  // Post-commit R2 cleanup (BRAWUKA-433): the tombstoned check-ins' photos
+  // are no longer live-referenced — delete their variants best-effort.
+  // Runs after commit so the live-reference gate sees the tombstones and
+  // so slow I/O never holds the transaction open; failures never fail the
+  // committed delete.
+  if (photoIds.length > 0) await deleteUnreferencedPhotos(photoIds, deps);
+  return result;
 }

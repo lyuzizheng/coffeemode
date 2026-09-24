@@ -98,6 +98,16 @@ export interface ProvisionPhotosDeps {
    * deletes every unreferenced id as before.
    */
   selectLiveUploadIntents?: (userId: string, imageUuids: string[]) => Promise<string[]>;
+  /**
+   * Live-only reference gate for the delete paths (BRAWUKA-433): ids still
+   * referenced by a LIVE `cafes.gallery` / `checkins.photos` row.
+   * `deleteUnreferencedPhotos` deletes only ids no live row names, so
+   * soft-deleting one check-in never removes objects another live row
+   * shares. Unlike `selectPhotoReferences` this excludes tombstoned
+   * check-ins — their photos are exactly what the delete paths free.
+   * Absent in legacy fakes — the delete path then deletes every id.
+   */
+  selectLivePhotoReferences?: (imageUuids: string[]) => Promise<string[]>;
 }
 
 /**
@@ -151,6 +161,10 @@ export function defaultProvisionPhotosDeps(): ProvisionPhotosDeps {
     selectLiveUploadIntents: async (userId, imageUuids) => {
       const { checkUploadIntents } = await import("@/lib/db/image-uploads");
       return checkUploadIntents(userId, imageUuids);
+    },
+    selectLivePhotoReferences: async (imageUuids) => {
+      const { selectLivePhotoReferences } = await import("@/lib/db/photo-references");
+      return selectLivePhotoReferences(imageUuids);
     },
   };
 }
@@ -340,52 +354,4 @@ export async function compensateProvisionedPhotos(
     }
   }
   await Promise.allSettled(orphans.map((id) => deps.deleteProvisionedVariants!(id)));
-}
-
-/** One photo's attach outcome: the key stays DB-referenced either way. */
-export interface AttachPhotoResult {
-  imageUuid: string;
-  attached: boolean;
-}
-
-/**
- * Post-commit attach re-mark (BRAWUKA-400, fix option A): after the creation
- * transaction commits, re-mark every live original from `provision` to the
- * real target (`checkin` + the new check-in id) so the #158 sweeper never
- * matches it. Runs OUTSIDE the transaction — slow I/O must not hold a DB
- * connection — and NEVER throws: a per-photo presign/process failure is
- * logged and reported as `attached: false`, because the DB row already
- * committed and the reference-aware sweeper keeps DB-referenced keys. Calls
- * with an empty list return `[]` without touching deps. Legacy fakes without
- * `restampOriginal` still mark intent via presign: the download/re-PUT is
- * skipped and the photo counts as attached when the final-stage presign
- * succeeds.
- */
-export async function attachProvisionedPhotos(
-  userId: string,
-  photoIds: string[],
-  checkinId: string,
-  deps: ProvisionPhotosDeps,
-): Promise<AttachPhotoResult[]> {
-  if (photoIds.length === 0) return [];
-  const restamp = deps.restampOriginal;
-  const results = await Promise.all(
-    photoIds.map(async (imageUuid): Promise<AttachPhotoResult> => {
-      try {
-        const attachUrls = await deps.getProcessUrls({
-          imageUuid,
-          userId,
-          targetType: "checkin",
-          targetId: checkinId,
-        });
-        if (restamp) await restamp(attachUrls);
-        return { imageUuid, attached: true };
-      } catch (err) {
-        const { logError } = await import("@/lib/observability/server-log");
-        logError({ route: "provision-photos attach", error: err });
-        return { imageUuid, attached: false };
-      }
-    }),
-  );
-  return results;
 }

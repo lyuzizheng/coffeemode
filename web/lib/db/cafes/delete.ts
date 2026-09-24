@@ -1,14 +1,21 @@
 import "server-only";
 
 import { isValidUUID } from "@shared/uuid";
+import {
+  defaultProvisionPhotosDeps,
+  type ProvisionPhotosDeps,
+} from "@/lib/images/provision-photos";
+import { deleteUnreferencedPhotos } from "@/lib/images/photo-cleanup";
 import { recomputeWorkStats } from "@/lib/stats/aggregate";
 import { CafeNotFoundError } from "@/lib/validation/checkin";
 import {
   CafeForbiddenError,
   CafeHasOtherCheckinsError,
 } from "@/lib/validation/cafe";
+import type { PoolClient } from "pg";
 import { txRunnerFrom, withTransaction } from "../postgres";
 import { getServiceAccountId } from "./meta";
+import type { StoredImage } from "@/types/images";
 
 export interface DeleteCafeResult {
   ok: true;
@@ -32,90 +39,119 @@ export interface DeleteCafeResult {
  * - Repeat on own shell: 0 own live checkins -> throws CafeNotFoundError (404).
  */
 
-export async function deleteCafe(
-  cafeId: string,
-  userId: string,
-  options?: { confirm?: boolean },
-): Promise<DeleteCafeResult> {
-  if (!isValidUUID(cafeId) || !isValidUUID(userId)) {
+/** The locked-row delete: guards + soft-delete + gallery purge + stats. */
+async function applyCafeDelete(args: {
+  client: PoolClient;
+  cafeId: string;
+  userId: string;
+  confirm: boolean;
+}): Promise<{ result: DeleteCafeResult; photoIds: string[] }> {
+  const { client, cafeId, userId, confirm } = args;
+  const cafeRes = await client.query<{
+    id: string;
+    created_by: string | null;
+    deleted_at: string | null;
+  }>(
+    `select id, created_by, deleted_at from cafes where id = $1 for update`,
+    [cafeId],
+  );
+  const cafeRow = cafeRes.rows[0];
+  if (!cafeRow || cafeRow.deleted_at !== null) {
     throw new CafeNotFoundError(cafeId);
   }
 
-  return withTransaction(async (client) => {
-    const cafeRes = await client.query<{
-      id: string;
-      created_by: string | null;
-      deleted_at: string | null;
-    }>(
-      `select id, created_by, deleted_at from cafes where id = $1 for update`,
-      [cafeId],
-    );
-    const cafeRow = cafeRes.rows[0];
-    if (!cafeRow || cafeRow.deleted_at !== null) {
-      throw new CafeNotFoundError(cafeId);
-    }
+  if (cafeRow.created_by !== userId) {
+    throw new CafeForbiddenError();
+  }
 
-    if (cafeRow.created_by !== userId) {
-      throw new CafeForbiddenError();
-    }
+  const othersRes = await client.query<{ count: string }>(
+    `select count(*)::text from checkins where cafe_id = $1 and deleted_at is null and user_id <> $2`,
+    [cafeId, userId],
+  );
+  const others = Number.parseInt(othersRes.rows[0]?.count ?? "0", 10);
 
-    const othersRes = await client.query<{ count: string }>(
-      `select count(*)::text from checkins where cafe_id = $1 and deleted_at is null and user_id <> $2`,
+  const callerCheckinsRes = await client.query<{ id: string; photos: StoredImage[] | null }>(
+    `select id, photos from checkins where cafe_id = $1 and user_id = $2 and deleted_at is null for update`,
+    [cafeId, userId],
+  );
+  const callerCheckinIds = callerCheckinsRes.rows.map((r) => r.id);
+  const k = callerCheckinIds.length;
+
+  // If other users have live checkins, confirmation is required before handoff / mutation
+  if (others >= 1 && !confirm) {
+    throw new CafeHasOtherCheckinsError(others);
+  }
+
+  // Repeat on own shell: 0 own live checkins and 0 others -> 404 nothing to delete
+  if (k === 0 && others === 0) {
+    throw new CafeNotFoundError(cafeId);
+  }
+
+  let photoIds: string[] = [];
+  if (k > 0) {
+    await client.query(
+      `update checkins set deleted_at = now(), updated_at = now()
+       where cafe_id = $1 and user_id = $2 and deleted_at is null`,
       [cafeId, userId],
     );
-    const others = Number.parseInt(othersRes.rows[0]?.count ?? "0", 10);
 
-    const callerCheckinsRes = await client.query<{ id: string }>(
-      `select id from checkins where cafe_id = $1 and user_id = $2 and deleted_at is null for update`,
-      [cafeId, userId],
+    await client.query(
+      `update cafes set gallery = coalesce(
+         (select jsonb_agg(elem) from jsonb_array_elements(coalesce(gallery, '[]'::jsonb)) elem
+          where elem->'source'->>'id' is null or not (elem->'source'->>'id' = any($2::text[]))), '[]'::jsonb),
+         updated_at = now()
+       where id = $1`,
+      [cafeId, callerCheckinIds],
     );
-    const callerCheckinIds = callerCheckinsRes.rows.map((r) => r.id);
-    const k = callerCheckinIds.length;
 
-    // If other users have live checkins, confirmation is required before handoff / mutation
-    if (others >= 1 && !options?.confirm) {
-      throw new CafeHasOtherCheckinsError(others);
-    }
+    await recomputeWorkStats(cafeId, 0, txRunnerFrom(client));
 
-    // Repeat on own shell: 0 own live checkins and 0 others -> 404 nothing to delete
-    if (k === 0 && others === 0) {
-      throw new CafeNotFoundError(cafeId);
-    }
+    photoIds = callerCheckinsRes.rows
+      .flatMap((r) => (Array.isArray(r.photos) ? r.photos : []))
+      .map((p) => p.id)
+      .filter((id): id is string => typeof id === "string");
+  }
 
-    if (k > 0) {
-      await client.query(
-        `update checkins set deleted_at = now(), updated_at = now()
-         where cafe_id = $1 and user_id = $2 and deleted_at is null`,
-        [cafeId, userId],
-      );
+  const ownerTransferred = others >= 1;
+  if (ownerTransferred) {
+    const serviceAccountId = getServiceAccountId();
+    await client.query(
+      `update cafes set created_by = $2, updated_at = now() where id = $1 and created_by = $3`,
+      [cafeId, serviceAccountId, userId],
+    );
+  }
 
-      await client.query(
-        `update cafes set gallery = coalesce(
-           (select jsonb_agg(elem) from jsonb_array_elements(coalesce(gallery, '[]'::jsonb)) elem
-            where elem->'source'->>'id' is null or not (elem->'source'->>'id' = any($2::text[]))), '[]'::jsonb),
-           updated_at = now()
-         where id = $1`,
-        [cafeId, callerCheckinIds],
-      );
-
-      await recomputeWorkStats(cafeId, 0, txRunnerFrom(client));
-    }
-
-    const ownerTransferred = others >= 1;
-    if (ownerTransferred) {
-      const serviceAccountId = getServiceAccountId();
-      await client.query(
-        `update cafes set created_by = $2, updated_at = now() where id = $1 and created_by = $3`,
-        [cafeId, serviceAccountId, userId],
-      );
-    }
-
-    return {
+  return {
+    result: {
       ok: true,
       id: cafeId,
       removed_checkins: k,
       owner_transferred: ownerTransferred,
       shell: others === 0,
-    };
-  });
+    },
+    photoIds,
+  };
+}
+
+export async function deleteCafe(
+  cafeId: string,
+  userId: string,
+  options?: { confirm?: boolean },
+  deps: ProvisionPhotosDeps = defaultProvisionPhotosDeps(),
+): Promise<DeleteCafeResult> {
+  if (!isValidUUID(cafeId) || !isValidUUID(userId)) {
+    throw new CafeNotFoundError(cafeId);
+  }
+
+  const { result, photoIds } = await withTransaction((client) =>
+    applyCafeDelete({ client, cafeId, userId, confirm: options?.confirm === true }),
+  );
+
+  // Post-commit R2 cleanup (BRAWUKA-433): the soft-deleted check-ins'
+  // photos are no longer live-referenced — delete their variants
+  // best-effort. Runs after commit so the live-reference gate sees the
+  // tombstones and so slow I/O never holds the transaction open;
+  // failures never fail the committed delete.
+  if (photoIds.length > 0) await deleteUnreferencedPhotos(photoIds, deps);
+  return result;
 }

@@ -7,13 +7,13 @@ import {
   type CreateCafeInput,
 } from "@/lib/validation/cafe";
 import {
-  attachProvisionedPhotos,
   compensateProvisionedPhotos,
   consumeProvisionedIntents,
   defaultProvisionPhotosDeps,
   provisionPhotos,
   type ProvisionPhotosDeps,
 } from "@/lib/images/provision-photos";
+import { attachProvisionedPhotos } from "@/lib/images/photo-cleanup";
 import { MERGE_GALLERY_SQL, photosWithSource } from "../checkins/gallery";
 import { autoResolveNavigationsTx } from "../navigations";
 import { query, txQueryFrom, txRunnerFrom, withTransaction } from "../postgres";

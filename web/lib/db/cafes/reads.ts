@@ -81,7 +81,11 @@ select c.id, c.name,
        ST_X(c.location::geometry) as lng,
        c.address, c.city, c.description, c.gallery, c.opening_hours, c.tz,
        c.gallery->0->>'card' as cover, -- BRAWUKA-307: cover derives from first gallery photo
-       c.price_range, c.google_place_id, c.apple_poi_id, c.source, c.work_stats,
+       c.price_range, c.google_place_id, c.apple_poi_id, c.work_stats,
+       -- BRAWUKA-688: tolerant source read — a DB whose ledger predates 0030 has no
+       -- cafes.source; to_jsonb yields null there instead of 42703, and the
+       -- coalesce matches 0030's backfill default for those legacy rows.
+       coalesce(to_jsonb(c) ->> 'source', 'user_confirmed') as source,
        c.created_by, c.visibility,
        c.created_at, c.updated_at,
        case when p.show_public_identity then p.public_handle end as author_handle,

@@ -249,8 +249,13 @@ function updatePolicyCount(
   newValue: string | undefined,
 ): void {
   if (oldValue !== undefined) {
-    counts[oldValue] = (counts[oldValue] ?? 0) - 1;
-    if (counts[oldValue] === 0) delete counts[oldValue];
+    const next = (counts[oldValue] ?? 0) - 1;
+    // Clamp at zero: a decrement for a key that is absent (or already at
+    // zero) means the persisted snapshot disagrees with the caller's
+    // before-image (duplicate delete / out-of-order event). Deleting the key
+    // keeps counts non-negative and consensus correct (BRAWUKA-446).
+    if (next <= 0) delete counts[oldValue];
+    else counts[oldValue] = next;
   }
   if (newValue !== undefined) {
     counts[newValue] = (counts[newValue] ?? 0) + 1;

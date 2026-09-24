@@ -2550,6 +2550,12 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       expect(await cafeExists(created.cafe_id)).toBe(false);
       expect(await cafeExists(created.cafe_id, null)).toBe(false);
 
+      // getCafeLocation follows the same visibility rule (BRAWUKA-435): owner
+      // gets coordinates, stranger and anonymous get null — no oracle.
+      expect(await getCafeLocation(created.cafe_id, U1)).not.toBeNull();
+      expect(await getCafeLocation(created.cafe_id, U2)).toBeNull();
+      expect(await getCafeLocation(created.cafe_id)).toBeNull();
+
       // Owner can record navigation to own private cafe (P2); stranger gets CafeNotFoundError
       const nav = await recordNavigation(U1, created.cafe_id);
       expect(nav.id).toBeDefined();

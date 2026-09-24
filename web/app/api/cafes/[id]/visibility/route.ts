@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
 import { apiRoute } from "@/lib/api/route";
-import { isLiveCafe, setCafeVisibility } from "@/lib/db/cafes";
+import { cafeExists, setCafeVisibility } from "@/lib/db/cafes";
 import { readJsonBody } from "@/lib/api/guard";
 import { isValidUUID } from "@shared/uuid";
 import type { CafeVisibility } from "@/types/cafes";
@@ -32,8 +32,10 @@ export const PATCH = apiRoute<{ id: string }>(
     }
     const visibility = rawVisibility as CafeVisibility;
 
-    const live = await isLiveCafe(id);
-    if (!live) {
+    // cafeExists applies the visibility filter: a non-owner probing a private
+    // cafe gets the same 404 as a nonexistent id (BRAWUKA-435).
+    const exists = await cafeExists(id, ctx.user.id);
+    if (!exists) {
       return apiError("not_found", "cafe not found", { status: 404, requestId: ctx.requestId });
     }
 

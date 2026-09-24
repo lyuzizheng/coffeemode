@@ -24,7 +24,7 @@ export const GET = apiRoute<{ id: string }>(
       return apiError("invalid_request", "id must be a UUID", { status: 400, requestId: ctx.requestId });
     }
 
-    const location = await getCafeLocation(id);
+    const location = await getCafeLocation(id, ctx.user?.id);
     if (!location) {
       return NextResponse.json({ cafes: [] });
     }

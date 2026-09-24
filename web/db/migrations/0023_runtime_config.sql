@@ -1,6 +1,7 @@
 -- CoffeeMode schema v23 (BRAWUKA-284 — runtime_config for operator-editable content).
 -- `app.yaml` stays build-time config (invariants); this table owns runtime-editable
--- content only: announcement banners + feature flags. Security/rate-limit/auth
+-- content only: announcement banners (BRAWUKA-424: the `flags` channel was
+-- removed — no consumer ever read it). Security/rate-limit/auth
 -- parameters MUST NEVER live here (an operator-editable security parameter is no
 -- security boundary). Reads go through lib/db/runtime-config.ts; writes are
 -- operator SQL (or a future admin-only route), never public API writes.

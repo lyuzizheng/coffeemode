@@ -81,6 +81,9 @@ describeIntegration("Dev fixture cleaner — real Postgres", () => {
   const FIXTURE_LIKER = "b0000000-0000-4000-a000-0000000000a2";
   const FIXTURE_CAFE = "b0000000-0000-4000-a000-0000000000c1";
   const FIXTURE_CHECKIN = "b0000000-0000-4000-a000-0000000000d1";
+  // Owned by a fixture profile but outside every fixture id family — the
+  // BRAWUKA-660 case: only reachable via cafes.created_by.
+  const FIXTURE_OWNED_CAFE = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
   const KEEPER_USER = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a77";
   const KEEPER_CAFE = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a78";
 
@@ -124,6 +127,11 @@ describeIntegration("Dev fixture cleaner — real Postgres", () => {
            jsonb_build_array(jsonb_build_object('id', 'd0000000-test', 'original', 'original/d0000000-test.webp', 'card', 'card/d0000000-test.webp', 'thumbnail', 'thumbnail/d0000000-test.webp', 'w', 1600, 'h', 1200, 'by', $3::text, 'at', '2026-09-01T00:00:00Z')))`,
         [FIXTURE_CAFE, FIXTURE_USER, FIXTURE_USER],
       );
+      await client.query(
+        `insert into cafes (id, name, location, city, created_by)
+         values ($1, 'Fixture Owned Random Id', ST_SetSRID(ST_MakePoint(103.8, 1.35), 4326)::geography, 'singapore', $2)`,
+        [FIXTURE_OWNED_CAFE, FIXTURE_USER],
+      );
       await client.query(`insert into checkins (id, cafe_id, user_id) values ($1, $2, $3)`, [
         FIXTURE_CHECKIN,
         FIXTURE_CAFE,
@@ -144,17 +152,19 @@ describeIntegration("Dev fixture cleaner — real Postgres", () => {
 
   it("dry-run reports fixture rows without deleting them", async () => {
     const out = sh(`node "${CLEANER}" --database-url "${testDbUrl()}"`);
-    expect(out).toContain("cafes=1");
+    expect(out).toContain("cafes=2");
     expect(out).toContain("profiles=2");
     expect(out).toContain("Dry-run");
     expect(await count("cafes", FIXTURE_CAFE)).toBe(1);
+    expect(await count("cafes", FIXTURE_OWNED_CAFE)).toBe(1);
     expect(await count("checkins", FIXTURE_CHECKIN)).toBe(1);
   });
 
   it("--apply deletes fixtures with dependents and keeps dev rows", async () => {
     const out = sh(`node "${CLEANER}" --database-url "${testDbUrl()}" --apply`);
-    expect(out).toContain("cafes=1 profiles=2");
+    expect(out).toContain("cafes=2 profiles=2");
     expect(await count("cafes", FIXTURE_CAFE)).toBe(0);
+    expect(await count("cafes", FIXTURE_OWNED_CAFE)).toBe(0);
     expect(await count("profiles", FIXTURE_USER)).toBe(0);
     expect(await count("checkins", FIXTURE_CHECKIN)).toBe(0);
     expect(await count("cafes", KEEPER_CAFE)).toBe(1);

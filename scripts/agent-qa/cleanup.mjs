@@ -7,14 +7,15 @@
  *   - Ledger cleanup: delete what this run created. Cafes and checkins go
  *     through the app's own DELETE routes (same code paths a real user
  *     exercises); images have no app delete endpoint, so they plan as `skip`
- *     with a reason instead of pretending to delete. Auth users go through an
- *     injected `deleteAuthUser` — the caller wires the Admin API there, so
- *     this module never touches the `service_role` key.
+ *     with a reason instead of pretending to delete. Auth users are swept
+ *     via `planUserSweep` (age-gated fresh-persona only, regular persona and
+ *     foreign addresses never qualify) and deleted by the caller through
+ *     `session.mjs`'s `deleteAgentQaUser` Admin-API call — this module never
+ *     touches the `service_role` key.
  *   - Sweep: delete `agent-qa-fresh-*` users (and, via their ledgers,
  *     orphaned entities) older than N days. The persistent
  *     `agent-qa-regular` persona and every foreign address never qualify —
- *     `isAgentQaSweepCandidate` pins that exclusion and the unit tests pin it
- *     back.
+ *     `isAgentQaSweepCandidate` pins that exclusion.
  */
 
 import { assertAllowedUrl } from "./allowlist.mjs";
@@ -77,6 +78,12 @@ export function planUserSweep(users, { nowMs = Date.now(), maxAgeDays = 7 } = {}
  * deletes; images plan as `skip` — there is no app delete endpoint for them,
  * and inventing a direct-storage delete here would bypass the app's own
  * authorization paths.
+ *
+ * No age filter here by design: the caller owns entity-age selection.
+ * Ledger cleanup passes the run's own ledger wholesale (delete what this run
+ * created, however young); sweep passes only ledgers of users `planUserSweep`
+ * already aged out. Pre-filtering the run's own ledger by age here would leak
+ * same-run writes.
  *
  * @param {LedgerEntry[]} ledgerEntries
  * @returns {CleanupPlanItem[]}

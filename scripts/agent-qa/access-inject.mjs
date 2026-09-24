@@ -23,7 +23,15 @@
  * which times out even when the fetch completes.
  * (b) the top-frame Document navigation carries NO Access headers — first
  * staging `page.goto()` lands on the Access handshake; the agent completes
- * it once and reuses the session cookie thereafter.
+ * it once and reuses the session cookie thereafter. That ordering is the
+ * contract (BRAWUKA-409 F9): cookie bootstrap is the PRIMARY path — a Node
+ * fetch with `CF-Access-Client-Id` / `CF-Access-Client-Secret` trades the
+ * token pair for a `CF_Authorization` cookie, stamped into the browser via
+ * `Network.setCookie` before navigation. `Fetch.enable` / `requestPaused`
+ * injection is fallback ONLY, for same-origin subresources that miss the
+ * cookie: paused requests hang when the pump process exits, and
+ * Fetch-enabled navigations stalled on `load` where the cookie-only path
+ * never stalled — so the top frame must never depend on injection.
  *
  * - `Network.setExtraHTTPHeaders` is global by design — no origin scoping
  *   exists. It MUST NOT be used for `CF-Access-*` (F6: token reached
@@ -37,7 +45,10 @@
  * - `createAccessRequestPump` + `handlePausedAccessRequest` is the live
  *   attach-or-passthrough contract: Access-protected-host subresources get
  *   the token pair merged in, everything else passes through untouched, and a
- *   paused request is always continued (never left hanging). Pure helpers
+ *   paused request is always continued (never left hanging). This is the
+ *   FALLBACK path — the top frame authenticates via the `CF_Authorization`
+ *   cookie bootstrap above, never via paused-Document injection (Documents
+ *   are excluded from the patterns for exactly this reason). Pure helpers
  *   (`shouldAttachAccessHeaders`, `mergeAccessHeaders`, `parseAccessEnvText`)
  *   are unit-pinned alongside.
  *

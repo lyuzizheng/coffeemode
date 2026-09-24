@@ -177,7 +177,7 @@ journey that conflates them is testing a contract that does not exist.
   city?, google_place_id?, apple_poi_id?, opening_hours?, price_range 1–4?,
   checkin: { scores: { …0–100, overall required }, max_stay required
   (unlimited|3h|2h|1h|peak|unknown), note required ≤500, photo_ids required
-  1–6 unique, visited_at? } }` → `201 { cafeId, checkinId, tz }`.
+  1–6 unique, visited_at? } }` → `201 { cafe_id, checkin_id, tz }`.
 - Fused-transaction assertions: `tz` derived from coordinates (Cafe 1 →
   `Asia/Singapore`); gallery merged with `source: { type: "checkin", id }`;
   initial aggregate is exactly the creator's single contribution (Cafe 1:
@@ -224,16 +224,16 @@ entry is an unrelated cafe-actions ruling.
 
 - `POST /api/checkins` (auth required): `{ cafe_id, scores ≥1 dim 0–100,
   max_stay?, note? ≤500, photo_ids? ≤6, visited_at?, idempotency_key? UUID
-  v4 }` → `201 { checkinId }`. Unknown/soft-deleted cafe → 404.
+  v4 }` → `201 { checkin_id }`. Unknown/soft-deleted cafe → 404.
 - Weighted recompute is asserted through User D's reads, never through DB:
   each (user, cafe) pair contributes exactly one vote per dimension to
   `work_stats` (§10 ledger).
 - DG64 revisit: B's second `POST /api/checkins` at Cafe 1 inside the 24h
   window → `409 { error: "duplicate_checkin", existing_checkin_id }`. The
   real client flow is then asserted end-to-end: `GET
-  /api/checkins/last?cafe_id=` → `{ checkin, revisitWindowHours: 24 }` →
+  /api/checkins/last?cafe_id=` → `{ checkin, revisit_window_hours: 24 }` →
   `PATCH /api/checkins/[id]` (B's overall 60 → 70, note replaced;
-  `max_stay: null` clears) → `200 { cafeId }`; exactly one live row remains
+  `max_stay: null` clears) → `200 { cafe_id }`; exactly one live row remains
   and the aggregate moves (experience 75 → 78.33). Non-author PATCH → 403
   `forbidden`.
 - Window boundary (slice 2D): a first check-in backdated `visited_at =
@@ -242,7 +242,7 @@ entry is an unrelated cafe-actions ruling.
   recency-weighted mean (decay 0.6, newest rank weight 1): (80×1 + 60×0.6) /
   1.6 = 72.5, collapsing to one cafe-level vote.
 - DG61 idempotency: C's Cafe 2 check-in POSTed twice with the same
-  `idempotency_key` → first 201, second `200 { checkinId }` with the SAME id
+  `idempotency_key` → first 201, second `200 { checkin_id }` with the SAME id
   and zero new rows (feed count unchanged). Replay is checked before the
   revisit window, so a replayed key inside 24h returns 200, never 409 —
   this precedence is asserted explicitly. Non-UUID key → 400.
@@ -379,10 +379,10 @@ suite that turns individual path contracts into one lifecycle story. Stage 3
 | Path | Endpoint(s) | Input | Output | Boundary assertion | Mock seam |
 | --- | --- | --- | --- | --- | --- |
 | 1 discovery | `GET /api/cafes`, `GET /api/search` | lat/lng/radius/limit; city, q, filter_*, open_now | ordered `CafeSummary[]`; scoped `SearchResultItem[]` + reference_point | 12 km cafe excluded even at `radius_km=50`; unknown city → 400; closed/unknown-hours cafes excluded by `open_now` | none (real PostGIS) |
-| 2 creation | `POST /api/images/upload`, `POST /api/cafes` | fused body + fake WebP via presigned PUT | `201 { cafeId, checkinId, tz }`, gallery merged, initial aggregate | 401 anon; 403 cross-origin; 409 `cafe_exists`; `author: null` | `poi-client` module mock (mandatory); image worker real-or-seam-mocked per §5 |
+| 2 creation | `POST /api/images/upload`, `POST /api/cafes` | fused body + fake WebP via presigned PUT | `201 { cafe_id, checkin_id, tz }`, gallery merged, initial aggregate | 401 anon; 403 cross-origin; 409 `cafe_exists`; `author: null` | `poi-client` module mock (mandatory); image worker real-or-seam-mocked per §5 |
 | 3 identity | `GET/PATCH /api/profile`, `PATCH /api/profile/identity` | displayName/city; showPublicIdentity ± handle | profile DTO; `author` flips `null ↔ handle` on all public surfaces | opt-out restores `null` rows-intact; released handle → 409 `handle_taken` | `getCurrentUser` session seam (harness) |
 | 4 check-ins | `POST /api/checkins`, `GET /api/checkins/last`, `PATCH /api/checkins/[id]`, `GET /api/cafes/[id]/checkins` | scores/max_stay/note/visited_at/idempotency_key | 201/200 replay; 409 + `existing_checkin_id`; feed pages | replay-before-revisit precedence; 25h boundary new row; cross-mode cursor → 400 | none |
-| 5 likes | `POST /api/checkins/[id]/like` | toggle POST | `{ liked, likesCount }` | self-like → 403 `self_like_forbidden`; anon → 401; viewer isolation | none (real trigger) |
+| 5 likes | `POST /api/checkins/[id]/like` | toggle POST | `{ liked, likes_count }` | self-like → 403 `self_like_forbidden`; anon → 401; viewer isolation | none (real trigger) |
 | 6 lifecycle | `DELETE /api/cafes/[id]` | `{ confirm? }` | shell vs handoff payload | bare community delete → 403 `cafe_has_other_checkins` n=2; post-handoff repeat → 403; shell still listed | none |
 
 ## Data/API/UI behavior when relevant

@@ -3129,8 +3129,8 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
 
     it("updateCheckIn applies visited_at; toggleCheckInLike validates ids", async () => {
       const stamped = new Date("2024-05-01T08:00:00.000Z");
-      const { cafeId } = await updateCheckIn(U1, CHECKIN_A1, { visited_at: stamped });
-      expect(cafeId).toBe(CAFE_A);
+      const { cafe_id } = await updateCheckIn(U1, CHECKIN_A1, { visited_at: stamped });
+      expect(cafe_id).toBe(CAFE_A);
       const stored = await dbClient.query("select visited_at from checkins where id = $1", [CHECKIN_A1]);
       expect(new Date(stored.rows[0].visited_at).toISOString()).toBe(stamped.toISOString());
       await expect(toggleCheckInLike("bad", CHECKIN_A1)).rejects.toThrow("Invalid user or check-in ID");

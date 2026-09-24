@@ -26,7 +26,7 @@ import { GET as cafeDetailGET } from "@/app/api/cafes/[id]/route";
 import { GET as feedGET } from "@/app/api/cafes/[id]/checkins/route";
 import { POST as checkinsPOST } from "@/app/api/checkins/route";
 import { GET as checkinsLastGET } from "@/app/api/checkins/last/route";
-import { PATCH as checkinPATCH } from "@/app/api/checkins/[id]/route";
+import { DELETE as checkinDELETE, PATCH as checkinPATCH } from "@/app/api/checkins/[id]/route";
 import { POST as likePOST } from "@/app/api/checkins/[id]/like/route";
 import { POST as uploadPOST } from "@/app/api/images/upload/route";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
@@ -623,7 +623,7 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
       routeParams({ id: b_checkin1_id }),
     );
     expect(editRes.status).toBe(200);
-    expect(editRes.data).toMatchObject({ cafeId: cafe1_id });
+    expect(editRes.data).toEqual({ cafe_id: cafe1_id });
 
     // Exactly one live row remains for B and the aggregate moves
     // experience (90+70+75)/3 = 78.33 while composite holds 71.75 (all dims resubmitted).
@@ -640,6 +640,30 @@ describeHttp("Paths 4+5: check-ins, revisit, idempotency & social likes HTTP sui
     }, {}, routeParams({ id: b_checkin1_id }));
     expect(forbidden.status).toBe(403);
     expect(forbidden.data).toMatchObject({ error: "forbidden" });
+
+    // DELETE is author-only too: a foreign delete is 403 and the row survives.
+    const foreign = await clientC.delete<unknown, RouteContext<{ id: string }>, Request>(checkinDELETE, `/api/checkins/${b_checkin1_id}`, undefined, {}, routeParams({ id: b_checkin1_id }));
+    expect(foreign.status).toBe(403);
+    expect(foreign.data).toMatchObject({ error: "forbidden" });
+
+    // Malformed id → 400 before any lookup; unknown id → 404.
+    const malformed = await clientB.delete<unknown, RouteContext<{ id: string }>, Request>(checkinDELETE, "/api/checkins/nope", undefined, {}, routeParams({ id: "nope" }));
+    expect(malformed.status).toBe(400);
+    expect(malformed.data).toMatchObject({ error: "invalid_request" });
+    const ghostId = randomUUID();
+    const ghost = await clientB.delete<unknown, RouteContext<{ id: string }>, Request>(checkinDELETE, `/api/checkins/${ghostId}`, undefined, {}, routeParams({ id: ghostId }));
+    expect(ghost.status).toBe(404);
+    expect(ghost.data).toMatchObject({ error: "not_found" });
+
+    // Author DELETE → 200 { cafe_id }; the row soft-deletes (hidden from feed, stats drop to two).
+    const removed = await clientB.delete<{ cafe_id: string }, RouteContext<{ id: string }>, Request>(checkinDELETE, `/api/checkins/${b_checkin1_id}`, undefined, {}, routeParams({ id: b_checkin1_id }));
+    expect(removed.status).toBe(200);
+    expect(removed.data).toEqual({ cafe_id: cafe1_id });
+    const afterDelete = await getFeed(clientD, cafe1_id);
+    expect(afterDelete.data.checkins.find((c) => c.id === b_checkin1_id)).toBeUndefined();
+    const pruned = await getCafeDetail(cafe1_id);
+    expect(pruned.work_stats.n_checkins).toBe(2);
+    expect(pruned.work_stats.n_users).toBe(2);
   });
 
   // =========================================================================

@@ -297,8 +297,18 @@ export function applyUserContributionDiff(
     const newVal = newContribution?.dims[dim];
     const entry = next.dims[dim];
     if (oldVal !== undefined) {
-      entry.sum -= oldVal;
-      entry.n -= 1;
+      // Clamp at zero: a decrement the snapshot cannot account for means the
+      // persisted snapshot disagrees with the caller's before-image
+      // (duplicate delete / out-of-order event). Reset to empty rather than
+      // leaving a negative n/sum residue (BRAWUKA-692).
+      const nextN = entry.n - 1;
+      if (nextN <= 0) {
+        entry.n = 0;
+        entry.sum = 0;
+      } else {
+        entry.n = nextN;
+        entry.sum = Math.max(0, entry.sum - oldVal);
+      }
     }
     if (newVal !== undefined) {
       entry.sum += newVal;
@@ -306,8 +316,14 @@ export function applyUserContributionDiff(
     }
   }
 
-  next.n_users +=
-    (isUserPresent(newContribution) ? 1 : 0) - (isUserPresent(oldContribution) ? 1 : 0);
+  // Clamp at zero (BRAWUKA-692): same snapshot/before-image disagreement as
+  // above can otherwise persist a user-visible negative n_users.
+  next.n_users = Math.max(
+    0,
+    next.n_users +
+      (isUserPresent(newContribution) ? 1 : 0) -
+      (isUserPresent(oldContribution) ? 1 : 0),
+  );
   next.n_checkins = nCheckins;
 
   updatePolicyCount(

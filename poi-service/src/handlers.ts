@@ -359,11 +359,11 @@ async function autocompletePOIs(request: Request, env: Env, deps: Deps): Promise
   const url = new URL(request.url);
   const q = url.searchParams.get("q")?.trim() ?? "";
   const session = url.searchParams.get("session")?.trim() ?? "";
-  const lat = Number.parseFloat(url.searchParams.get("lat") ?? "");
-  const lng = Number.parseFloat(url.searchParams.get("lng") ?? "");
-  const r = url.searchParams.has("r")
-    ? Number.parseFloat(url.searchParams.get("r") ?? "")
-    : DEFAULT_SEARCH_RADIUS_KM;
+  // Strict `Number` via parseQueryNumber (shared with searchPOIs): `Number("10abc")`
+  // is NaN where `parseFloat` would have silently returned 10.
+  const lat = parseQueryNumber(url.searchParams.get("lat"));
+  const lng = parseQueryNumber(url.searchParams.get("lng"));
+  const r = url.searchParams.has("r") ? parseQueryNumber(url.searchParams.get("r")) : DEFAULT_SEARCH_RADIUS_KM;
 
   const latProvided = url.searchParams.has("lat");
   const lngProvided = url.searchParams.has("lng");

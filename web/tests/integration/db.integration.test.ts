@@ -3483,6 +3483,117 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       }
     });
 
+    it("check-in create inside the lock window serializes on the account lock — no gallery/stats residue (BRAWUKA-676)", async () => {
+      // Regression: a check-in committed between the lock snapshot and the
+      // blanket UPDATE was tombstoned + detached, but its cafe — outside
+      // the lock set — kept the gallery entries and work_stats contribution
+      // (DG146 violation). The account-scope advisory lock now serializes
+      // every create path against deleteAccount: a create inside the window
+      // waits for the delete to commit, then fails the checkins.user_id FK
+      // and rolls back — the residual state can never be produced.
+      //
+      // Deterministic interleave (same barrier pattern as BRAWUKA-601): a
+      // barrier tx holds CAFE_A so the delete's lock statement blocks
+      // mid-scan; createCheckIn then enters the window and must block on
+      // the advisory lock — observed via pg_stat_activity, not timing.
+      const CAFE_B = randomUUID();
+      await dbClient.query(
+        `insert into cafes (id, name, location, city, created_by, tz)
+         values ($1, 'Window Cafe', ST_SetSRID(ST_MakePoint(103.9, 1.36), 4326)::geography,
+                 'singapore', $2, 'Asia/Singapore')`,
+        [CAFE_B, U2],
+      );
+
+      const barrier = new pg.Client(getPoolConfig(testDbUrl));
+      await barrier.connect();
+      try {
+        await barrier.query("begin");
+        await barrier.query("select 1 from cafes where id = $1 for update", [CAFE_A]);
+
+        const deletePromise = deleteAccount(U1);
+
+        // Wait until the delete's lock statement is blocked on CAFE_A —
+        // its snapshot is taken, so the create below is inside the window.
+        // Real polling is required: the awaited condition is lock state in
+        // a live Postgres backend, not a timer under test (same pattern as
+        // the BRAWUKA-601 interleave above).
+        const lockDeadline = Date.now() + 10_000;
+        for (;;) {
+          const { rows } = await dbClient.query(
+            `select 1 from pg_stat_activity
+             where datname = current_database()
+               and wait_event_type = 'Lock'
+               and query like '%for update%'`,
+          );
+          if (rows.length > 0) break;
+          if (Date.now() > lockDeadline) {
+            throw new Error("deleteAccount lock statement never blocked on CAFE_A");
+          }
+          const { promise, resolve } = Promise.withResolvers<void>();
+          setTimeout(resolve, 25);
+          await promise;
+        }
+
+        // The create passes its pre-transaction gates (CAFE_B exists and is
+        // public), then must block on the account-scope advisory lock the
+        // delete already holds.
+        const createPromise = createCheckIn(U1, {
+          cafe_id: CAFE_B,
+          scores: { wifi: 70 },
+        });
+
+        // Same real-poll exception: waiting on the advisory lock state of
+        // another backend — a fake timer cannot observe it.
+        const advisoryDeadline = Date.now() + 10_000;
+        for (;;) {
+          const { rows } = await dbClient.query(
+            `select 1 from pg_stat_activity
+             where datname = current_database()
+               and wait_event_type = 'Lock'
+               and wait_event = 'advisory'`,
+          );
+          if (rows.length > 0) break;
+          if (Date.now() > advisoryDeadline) {
+            throw new Error("createCheckIn never blocked on the account-scope advisory lock");
+          }
+          const { promise, resolve } = Promise.withResolvers<void>();
+          setTimeout(resolve, 25);
+          await promise;
+        }
+
+        await barrier.query("commit");
+
+        const [deleteResult, createResult] = await Promise.allSettled([
+          deletePromise,
+          createPromise,
+        ]);
+        expect(deleteResult.status).toBe("fulfilled");
+        // The create unblocks after the delete commits: the profile row is
+        // gone, so the insert fails the checkins.user_id FK (23503) and the
+        // whole create transaction rolls back.
+        expect(createResult.status).toBe("rejected");
+        if (createResult.status === "rejected") {
+          expect(createResult.reason).toMatchObject({ code: "23503" });
+        }
+
+        // No check-in row, no gallery entry, no work_stats contribution —
+        // the residual state this issue tracked cannot exist.
+        const checkins = await dbClient.query(
+          "select id from checkins where cafe_id = $1 and user_id = $2",
+          [CAFE_B, U1],
+        );
+        expect(checkins.rows).toHaveLength(0);
+        const cafe = await dbClient.query(
+          "select gallery, work_stats from cafes where id = $1",
+          [CAFE_B],
+        );
+        expect(cafe.rows[0].gallery ?? []).toEqual([]);
+        expect(cafe.rows[0].work_stats).toEqual({});
+      } finally {
+        await barrier.end();
+      }
+    });
+
     it("getProfileExport returns the full bundle against the real schema", async () => {
       const bundle = await getProfileExport(U1);
       expect(bundle.profile?.id).toBe(U1);

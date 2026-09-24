@@ -40,15 +40,15 @@ async function setupCursorRoute(context, cafeId, state) {
 
     if (cursor === "synthetic-expired-cursor") {
       state.cursorFired = true;
-      // BRAWUKA-442: cursor request hits 410 cursor_version_expired
+      // BRAWUKA-442: cursor request hits 410 cursor_version_expired.
+      // Envelope mirrors apiError(): code is a string, message prose rides
+      // alongside (the client keys on status only — BRAWUKA-706 review P2).
       await route.fulfill({
         status: 410,
         contentType: "application/json",
         body: JSON.stringify({
-          error: {
-            code: "cursor_version_expired",
-            message: "snapshot version expired; restart from page one",
-          },
+          error: "cursor_version_expired",
+          message: "snapshot version expired; restart from page one",
         }),
       });
       return;

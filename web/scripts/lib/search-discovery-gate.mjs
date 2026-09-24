@@ -134,9 +134,18 @@ async function checkUnifiedSearch({ base, createContext, attachErrorCollector, s
 
 async function checkCityDeepLink({ base, createContext, attachErrorCollector, stepLabel }) {
   await runInGateContext(createContext, attachErrorCollector, stepLabel, async (page) => {
-    // Seed localStorage with storedCity "shanghai"
+    // Seed the real onboarding store so storedCity "shanghai" genuinely
+    // loses to the ?city=tokyo deep link (cityOverride ?? storedCity).
     await page.addInitScript(() => {
-      localStorage.setItem("onboarding", JSON.stringify({ currentCity: "shanghai" }));
+      localStorage.setItem(
+        "coffeemode:onboarding:v1",
+        JSON.stringify({
+          onboarded: true,
+          currentCity: "shanghai",
+          currentCityName: null,
+          lastLocation: null,
+        }),
+      );
     });
 
     // Deep link ?city=tokyo must override storedCity "shanghai" (BRAWUKA-568)

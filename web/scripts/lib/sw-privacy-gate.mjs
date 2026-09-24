@@ -13,6 +13,38 @@ import { clearGateArtifacts, withGateContext } from "./e2e-artifacts.mjs";
 
 const PRIVATE_PREFIXES = ["/auth", "/cafes", "/api", "/profile", "/settings", "/search"];
 
+async function assertNoPrivateDocuments(page) {
+  const cachedUrls = await page.evaluate(async () => {
+    const cacheNames = await caches.keys();
+    const urls = [];
+    for (const name of cacheNames) {
+      const cache = await caches.open(name);
+      const reqs = await cache.keys();
+      for (const req of reqs) {
+        urls.push({ cache: name, url: req.url });
+      }
+    }
+    return urls;
+  });
+
+  for (const entry of cachedUrls) {
+    const parsed = new URL(entry.url);
+    const { pathname } = parsed;
+
+    // Root document must never be cached
+    if (pathname === "/") {
+      throw new Error(`Cache "${entry.cache}" contains root document: ${entry.url}`);
+    }
+
+    // Private routes must never be cached
+    for (const prefix of PRIVATE_PREFIXES) {
+      if (pathname === prefix || pathname.startsWith(`${prefix}/`)) {
+        throw new Error(`Cache "${entry.cache}" contains private path ${pathname} (${entry.url})`);
+      }
+    }
+  }
+}
+
 /**
  * @param {object} options
  * @param {string} options.label
@@ -45,9 +77,13 @@ export async function runSwPrivacyGate({
     });
     assert(swActive, "Service worker failed to become active");
 
-    // Visit private routes covered by network-only rules
+    // Visit private routes covered by network-only rules. /auth/callback is
+    // the only GET handler under /auth/ (OAuth redirect target): hitting it
+    // without a code 307s to /?auth=error, which still routes the /auth/
+    // request through the active worker so the prefix rule is exercised.
     const routesToVisit = [
       "/",
+      "/auth/callback",
       `/cafes/${cafeId}`,
       "/profile",
       "/settings",
@@ -63,36 +99,7 @@ export async function runSwPrivacyGate({
       await fetch(`${origin}/api/health`).catch(() => {});
     }, base);
 
-    // Inspect all entries across all Cache Storage caches
-    const cachedUrls = await page.evaluate(async () => {
-      const cacheNames = await caches.keys();
-      const urls = [];
-      for (const name of cacheNames) {
-        const cache = await caches.open(name);
-        const reqs = await cache.keys();
-        for (const req of reqs) {
-          urls.push({ cache: name, url: req.url });
-        }
-      }
-      return urls;
-    });
-
-    for (const entry of cachedUrls) {
-      const parsed = new URL(entry.url);
-      const pathname = parsed.pathname;
-
-      // Root document must never be cached
-      if (pathname === "/") {
-        throw new Error(`Cache "${entry.cache}" contains root document: ${entry.url}`);
-      }
-
-      // Private routes must never be cached
-      for (const prefix of PRIVATE_PREFIXES) {
-        if (pathname === prefix || pathname.startsWith(`${prefix}/`)) {
-          throw new Error(`Cache "${entry.cache}" contains private path ${pathname} (${entry.url})`);
-        }
-      }
-    }
+    await assertNoPrivateDocuments(page);
 
     await shot(page, "sw-privacy", "sw-active");
     checkErrors();

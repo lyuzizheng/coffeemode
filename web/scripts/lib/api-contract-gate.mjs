@@ -71,8 +71,9 @@ export async function runApiContractGate({ base, cafeId }) {
     `/api/places/resolve without turnstile token returned ${turnstileNoTokenRes.status}, expected 403`,
   );
   const turnstileNoTokenData = await turnstileNoTokenRes.json();
+  // apiError() emits the envelope with error as a string code.
   assert(
-    turnstileNoTokenData?.error === "bot_verification_failed" || turnstileNoTokenData?.error?.code === "bot_verification_failed",
+    turnstileNoTokenData?.error === "bot_verification_failed",
     `Expected bot_verification_failed, got ${JSON.stringify(turnstileNoTokenData?.error)}`,
   );
 
@@ -88,7 +89,7 @@ export async function runApiContractGate({ base, cafeId }) {
   );
   const turnstileEmptyBodyData = await turnstileEmptyBodyRes.json();
   assert(
-    turnstileEmptyBodyData?.error === "bot_verification_failed" || turnstileEmptyBodyData?.error?.code === "bot_verification_failed",
+    turnstileEmptyBodyData?.error === "bot_verification_failed",
     `Expected bot_verification_failed on empty body, got ${JSON.stringify(turnstileEmptyBodyData?.error)}`,
   );
 }

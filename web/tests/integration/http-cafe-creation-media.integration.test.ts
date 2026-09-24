@@ -94,11 +94,19 @@ vi.mock("@/lib/places/poi-client", async (importOriginal) => {
     // BRAWUKA-636: POST /api/cafes verifies provider refs via
     // verifyPlaceReference before any DB/R2 work — echo the requested id as
     // verified so creation paths stay hermetic (spec 0008 §5).
+    // BRAWUKA-666: the route binds submitted coords to the verified POI, so
+    // the echo must carry the id's real coords — known ids map to their
+    // submission coords, unknown ids fall back to the Orchard fixture (all
+    // other creates in this suite submit Orchard-adjacent coords).
     verifyPlaceReference: vi.fn(async (source: "google" | "apple", placeId: string) => {
       poiSeamCalls.details = { placeId, session: undefined };
+      const KNOWN_COORDS: Record<string, { lat: number; lng: number }> = {
+        ChIJTOKYOSHIBUYA01: { lat: 35.658, lng: 139.7016 },
+        ChIJLONDONSOHO01: { lat: 51.5133, lng: -0.1364 },
+      };
       const results = createMockGooglePlacesResponse().results;
       const found = results.find((poi) => poi.place_id === placeId);
-      return { ...(found ?? results[0]!), place_id: placeId, source };
+      return { ...(found ?? results[0]!), ...(KNOWN_COORDS[placeId] ?? {}), place_id: placeId, source };
     }),
     resolveMapsUrl: vi.fn(async (mapsShareUrl: string) => {
       const match = mapsShareUrl.match(/place\/([^/?]+)/);
@@ -862,6 +870,45 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     expect(dupeRes.status).toBe(409);
     expect(dupeRes.data.error).toBe("cafe_exists");
     expect(dupeRes.data.cafe_id).toBe(originalRes.data.cafe_id);
+  });
+
+  it("Path 2 (BRAWUKA-666): POST /api/cafes rejects coords too far from the verified POI with 400 invalid_request", async () => {
+    // The mocked verifyPlaceReference echoes "ChIJORCHARDNOMADSG" against the
+    // Orchard fixture (1.3048, 103.8318); Tokyo coords pair a real place_id
+    // with far-away coords — a cross-city squat that must 400 before any
+    // photo provisioning burns the caller's upload intent.
+    const upload = await uploadTestWebP(clientA);
+    const squatRes = await clientA.post(cafesPOST, "/api/cafes", {
+      name: "Squat House",
+      lat: 35.658,
+      lng: 139.7016,
+      google_place_id: "ChIJORCHARDNOMADSG",
+      checkin: {
+        scores: { overall: 80 },
+        max_stay: "2h",
+        note: "Cross-city squat",
+        photo_ids: [upload.imageUuid],
+      },
+    });
+    expect(squatRes.status).toBe(400);
+    expect(squatRes.data).toMatchObject({ error: "invalid_request" });
+
+    // The rejected upload intent survives: a legit retry at the verified POI
+    // coords still creates (201), proving the 400 ran before provisioning.
+    const retryRes = await clientA.post<{ cafe_id: string }>(cafesPOST, "/api/cafes", {
+      name: "Orchard Nomad Roasters",
+      lat: 1.3048,
+      lng: 103.8318,
+      google_place_id: "ChIJORCHARDNOMADSG",
+      checkin: {
+        scores: { overall: 80 },
+        max_stay: "2h",
+        note: "Legit retry at POI coords",
+        photo_ids: [upload.imageUuid],
+      },
+    });
+    expect(retryRes.status).toBe(201);
+    createdCafeIds.add(retryRes.data.cafe_id);
   });
 
   // =========================================================================

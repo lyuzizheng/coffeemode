@@ -59,11 +59,22 @@ vi.mock("@/lib/auth/get-user", () => ({
 
 // BRAWUKA-636: POST /api/cafes verifies provider refs via verifyPlaceReference
 // (not the raw getPOI seam), so stub it to echo the requested id as verified.
+// BRAWUKA-666: the route binds submitted coords to the verified POI, so the
+// echo carries Orchard coords — the race helper submits Orchard coords.
 vi.mock("@/lib/places/poi-client", async (importOriginal) => ({
   ...(await importOriginal()),
-  verifyPlaceReference: vi.fn(
-    async (source: "google" | "apple", placeId: string) => ({ place_id: placeId, source }),
-  ),
+  verifyPlaceReference: vi.fn(async (source: "google" | "apple", placeId: string) => ({
+    place_id: placeId,
+    source,
+    name: "Stub POI",
+    lat: 1.3048,
+    lng: 103.8318,
+    address: null,
+    types: [],
+    business_status: null,
+    hours_json: null,
+    fetched_at: "2026-01-15T08:00:00.000Z",
+  })),
 }));
 
 // Mock Image Service Client seam: generate real MinIO presigned URLs so cafe

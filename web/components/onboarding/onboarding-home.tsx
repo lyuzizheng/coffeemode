@@ -27,8 +27,14 @@ interface OnboardingHomeProps {
   isAuthenticated: boolean;
   /** profiles.onboarded — authoritative for signed-in users (DG122). */
   serverOnboarded: boolean;
-  /** Signed-in profile fields mirrored into localStorage on merge (DG122). */
-  profileSeed?: { currentCity: string; lastLocation: Coordinates | null };
+  /** Signed-in profile fields mirrored into localStorage on merge (DG122);
+   * `currentCityName` carries the persisted runtime-city display name
+   * (BRAWUKA-696). */
+  profileSeed?: {
+    currentCity: string;
+    currentCityName?: string | null;
+    lastLocation: Coordinates | null;
+  };
   /** Deep-link-style arrivals never see the card (DG124). */
   suppressCard?: boolean;
   addCafe: ReactNode;

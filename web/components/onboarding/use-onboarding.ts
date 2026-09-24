@@ -23,7 +23,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { toast } from "@heroui/react";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import {
   DEFAULT_CITY,
   findCity,
@@ -41,18 +41,19 @@ import {
   markLocateSettingsToastShown,
   readOnboardingState,
   writeOnboardingState,
+  type OnboardingState as OnboardingStoreState,
 } from "@/lib/onboarding-store";
-import { postLocate } from "@/lib/onboarding-client";
+import { commitLocatedCity, postLocate } from "@/lib/onboarding-client";
 import type { UserLocation } from "@/lib/discovery/map-context";
 import {
   buildOnboardingState,
   type OnboardingPhase,
   type OnboardingState,
+  type ProfileSeed,
 } from "./onboarding-state";
 import { persistProfile } from "@/lib/profile-merge";
 
 export type { OnboardingPhase, OnboardingState };
-
 
 /** Anonymous returning visitors resume at their stored city/location before
  * the first nearby fetch — the lazy initializer reads localStorage during
@@ -74,11 +75,16 @@ function useOnboardingCenter(
   });
 }
 
+/** The server's persisted runtime-city name wins over the localStorage
+ * mirror; a server null is authoritative (cleared), an absent field falls
+ * back to the stored copy. */
 function resolveMergedCityName(
   city: string,
-  stored: ReturnType<typeof readOnboardingState>,
+  stored: OnboardingStoreState | null,
+  serverName?: string | null,
 ): string | null {
   if (findCity(city)) return null;
+  if (serverName !== undefined) return serverName;
   return stored?.currentCity === city ? (stored.currentCityName ?? null) : null;
 }
 
@@ -88,7 +94,7 @@ function resolveMergedCityName(
 function useOnboardingMerge(
   serverOnboarded: boolean,
   isAuthenticated: boolean,
-  profileSeed?: { currentCity: string; lastLocation: Coordinates | null },
+  profileSeed?: ProfileSeed,
 ) {
   useEffect(() => {
     const stored = readOnboardingState();
@@ -97,14 +103,9 @@ function useOnboardingMerge(
       writeOnboardingState({
         onboarded: true,
         ...(city
-          ? {
-              currentCity: city,
-              currentCityName: resolveMergedCityName(city, stored),
-            }
+          ? { currentCity: city, currentCityName: resolveMergedCityName(city, stored, profileSeed?.currentCityName) }
           : {}),
-        ...(profileSeed?.lastLocation
-          ? { lastLocation: profileSeed.lastLocation }
-          : {}),
+        ...(profileSeed?.lastLocation ? { lastLocation: profileSeed.lastLocation } : {}),
       });
       return;
     }
@@ -123,7 +124,7 @@ function useOnboardingMerge(
  * localStorage copy — same precedence as the center fallback. */
 function useUserLocationSeed(
   isAuthenticated: boolean,
-  profileSeed?: { currentCity: string; lastLocation: Coordinates | null },
+  profileSeed?: ProfileSeed,
 ) {
   return useState<UserLocation | null>(() =>
     isAuthenticated
@@ -228,6 +229,7 @@ function useOnboardingCommit({
   locateHint?: boolean;
 }) {
   const t = useTranslations("onboarding");
+  const locale = useLocale();
 
   const commitCity = (city: CityInfo) =>
     commitCityChoice(city, isAuthenticated, setCenter, setLocated, setPhase);
@@ -247,12 +249,14 @@ function useOnboardingCommit({
     writeOnboardingState({ onboarded: true, lastLocation: { lat, lng } });
     const city = await postLocate(lat, lng);
     if (!city) return;
-    writeOnboardingState({
-      currentCity: city.id,
-      currentCityName: city.runtime ? city.name : null,
-    });
+    const cityName = await commitLocatedCity(
+      city,
+      { lat, lng },
+      isAuthenticated,
+      locale === "zh" ? "zh-CN" : "en-US",
+    );
     if (city.runtime) {
-      toast(t("first_nomad", { city: city.name }), { timeout: 6000 });
+      toast(t("first_nomad", { city: cityName ?? city.name }), { timeout: 6000 });
     }
   };
 
@@ -320,7 +324,7 @@ interface UseOnboardingOptions {
   /** profiles.onboarded — authoritative for signed-in users (DG122). */
   serverOnboarded: boolean;
   /** Signed-in profile fields mirrored into localStorage on merge (DG122). */
-  profileSeed?: { currentCity: string; lastLocation: Coordinates | null };
+  profileSeed?: ProfileSeed;
   /** Deep-link arrivals (/cafes/[id]) never see the card (DG124). */
   suppressCard?: boolean;
   /** ?locate=1 deep link (BRAWUKA-504): the locate button arrives already

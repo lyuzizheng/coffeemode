@@ -17,5 +17,10 @@ export function parseValidationSection(
       "validation.profileCityMaxChars",
       validation.profileCityMaxChars,
     ),
+    profileCityNameMaxChars: positiveInteger(
+      file,
+      "validation.profileCityNameMaxChars",
+      validation.profileCityNameMaxChars,
+    ),
   };
 }

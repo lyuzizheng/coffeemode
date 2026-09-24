@@ -140,15 +140,23 @@ export function findCityByCountry(countryCode: string | null | undefined): CityI
 }
 
 /**
- * Localized display name for a stored city value (BRAWUKA-245, BRAWUKA-695). Known cities
- * render `name`/`nameZh` per locale; runtime cities (rt-*) render honest localized country names
- * derived from the timezone mapping; unknown values pass through with the first letter uppercased.
+ * Localized display name for a stored city value (BRAWUKA-245, BRAWUKA-695,
+ * BRAWUKA-696). Known cities render `name`/`nameZh` per locale; runtime cities
+ * (rt-*) render `runtimeName` — the persisted reverse-geocoded locality — when
+ * given, else the honest localized country name derived from the timezone
+ * mapping; unknown values pass through with the first letter uppercased.
+ * `runtimeName` is display-only and never consulted for launch ids.
  */
-export function displayCityName(city: string | null | undefined, locale: string): string {
+export function displayCityName(
+  city: string | null | undefined,
+  locale: string,
+  runtimeName?: string | null,
+): string {
   if (!city) return "";
   const found = findCity(city);
   if (found) return locale === "zh" ? found.nameZh : found.name;
   if (city.startsWith("rt-")) {
+    if (runtimeName) return runtimeName;
     const localizedCountry = getLocalizedCountryNameForRuntimeId(city, locale);
     if (localizedCountry) return localizedCountry;
   }

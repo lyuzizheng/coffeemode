@@ -44,6 +44,7 @@ export interface ProfileExportBundle {
 export async function getProfileExport(userId: string): Promise<ProfileExportBundle> {
   const profileRes = await query<ProfileRow>(
     `select id, display_name, avatar_url, coalesce(current_city, 'singapore') as current_city,
+            current_city_name,
             ${LAST_LOCATION_SQL}, onboarded, created_at,
             show_public_identity, public_handle, identity_consented_at, public_handle_changed_at
      from profiles where id = $1`,

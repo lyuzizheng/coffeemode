@@ -59,7 +59,9 @@ web/db/migrations/       0001_init.sql — core schema (spec 0001);
                          0027_navigation_unresolved_dedupe.sql (BRAWUKA-391),
                          0028_open_now_sql_function.sql (DG145-C/BRAWUKA-25),
                          0029_open_now_24h_window.sql (BRAWUKA-571),
-                         0030_cafe_source.sql (BRAWUKA-620)
+                         0030_cafe_source.sql (BRAWUKA-620),
+                         0031_profile_city_backfill_audit.sql (BRAWUKA-695),
+                         0033_profile_current_city_name.sql (BRAWUKA-696)
 web/lib/auth/            Supabase server client (PKCE), profile upsert logic
 web/lib/db/              Postgres pool (server-side only), withTransaction, atomic like toggle,
                          cafes domain lib (fused create + first check-in + stats, nearby list, getCafe),

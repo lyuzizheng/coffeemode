@@ -48,7 +48,11 @@ export function CafeAppShell({
   detectedCity: CityInfo | null;
   isAuthenticated: boolean;
   serverOnboarded: boolean;
-  profileSeed?: { currentCity: string; lastLocation: Coordinates | null };
+  profileSeed?: {
+    currentCity: string;
+    currentCityName?: string | null;
+    lastLocation: Coordinates | null;
+  };
   accountInitial?: string;
   mapkitConfigured: boolean;
   /** The SSR shell — first paint, then the fading overlay. */

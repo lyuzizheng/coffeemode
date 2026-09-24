@@ -200,11 +200,11 @@ is spec 0004 decision 8, per spec 0007 shorthand — the alignment ledger's DG8
 entry is an unrelated cafe-actions ruling.
 
 - `GET /api/profile` — anonymous → 401. Signed-in →
-  `200 { profile: { id, displayName, avatarUrl, currentCity, createdAt,
-  showPublicIdentity, publicHandle, identityConsentedAt,
+  `200 { profile: { id, displayName, avatarUrl, currentCity, currentCityName,
+  createdAt, showPublicIdentity, publicHandle, identityConsentedAt,
   publicHandleChangedAt }, stats: { cafesCount, checkinsCount } }`. Defaults:
-  `showPublicIdentity: false`, `publicHandle: null` — anonymity is the
-  factory default, and `stats` move with lifecycle events (§10).
+  `showPublicIdentity: false`, `publicHandle: null`, `currentCityName: null` —
+  anonymity is the factory default, and `stats` move with lifecycle events (§10).
 - `PATCH /api/profile` — `displayName` trims to 1–24 chars (422
   `display_name_length`); `currentCity` validated as non-empty string ≤50 chars
   (else 422 `invalid_current_city`); for `currentCity` semantics (BRAWUKA-695):
@@ -212,7 +212,13 @@ entry is an unrelated cafe-actions ruling.
   arbitrary strings) are re-derived on the server from coordinates (`patch.lastLocation`,
   defaulting to stored `profile.last_location`), replacing `currentCity` with the derived
   launch or `rt-<zone>` city id, or dropping `currentCity` if unresolvable/Etc zone
-  (no 422, never written directly); empty patch → 400 `empty_patch`.
+  (no 422, never written directly); `currentCityName` (BRAWUKA-696) is the
+  display-only runtime-city name — `null` clears it, strings are stripped of
+  control/format/separator characters and bounded to 80 chars (else 422
+  `invalid_current_city_name`); it persists only while the final `current_city`
+  is a non-launch value (a launch id nulls it), and a `currentCity` change that
+  survives re-derivation rewrites the name in the same write (submitted value
+  or null) so a stale name never outlives its city; empty patch → 400 `empty_patch`.
 - `PATCH /api/profile/identity` — `{ showPublicIdentity: true, publicHandle:
   "pioneer-a" }` opts A in with a deterministic user-chosen handle (regex
   `^[a-z0-9][a-z0-9_-]{2,29}$`, else 400 `invalid_handle`; omitted →

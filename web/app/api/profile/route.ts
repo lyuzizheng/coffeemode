@@ -5,7 +5,7 @@ import { apiRoute } from "@/lib/api/route";
 import { LAUNCH_CITIES } from "@/lib/cities";
 import { resolveLocatedCity } from "@/lib/onboarding";
 import { deleteAccount, getProfile, getUserStats, updateProfile } from "@/lib/db/profile";
-import { parseProfilePatch } from "@/lib/validation/profile";
+import { parseProfilePatch, type ProfilePatch } from "@/lib/validation/profile";
 import { createSupabaseServerClient } from "@/lib/auth/supabase-server";
 import { readJsonBody } from "@/lib/api/guard";
 import { logError } from "@/lib/observability/server-log";
@@ -29,27 +29,69 @@ export const GET = apiRoute(
   },
 );
 
-/**
- * BRAWUKA-695 (PM invariant): non-launch currentCity values must derive from
- * coordinates on the server — client-submitted non-launch values never write directly.
- */
-async function rederiveCurrentCity(
-  userId: string,
+/** Launch ids pass through; anything else re-derives from coordinates. */
+function rederiveCurrentCity(
   currentCity: string,
   lastLocation?: { lat: number; lng: number },
-): Promise<{ cityId?: string; notFound?: boolean }> {
+): { cityId?: string } {
   if (LAUNCH_CITIES.some((c) => c.id === currentCity)) {
     return { cityId: currentCity };
   }
-  let coords = lastLocation;
-  if (!coords) {
-    const profile = await getProfile(userId);
-    if (!profile) return { notFound: true };
-    coords = profile.lastLocation ?? undefined;
-  }
-  if (!coords) return {};
-  const { city } = resolveLocatedCity(coords.lat, coords.lng);
+  if (!lastLocation) return {};
+  const { city } = resolveLocatedCity(lastLocation.lat, lastLocation.lng);
   return { cityId: city?.id };
+}
+
+/**
+ * BRAWUKA-695 (PM invariant): non-launch currentCity values must derive from
+ * coordinates on the server — client-submitted non-launch values never write
+ * directly. BRAWUKA-696 layers the display-only name on top: `currentCityName`
+ * persists only while the final `current_city` is a non-launch value; a launch
+ * id nulls it (findCity supplies launch names — the field must not be
+ * redundant). A submitted city that survives re-derivation always rewrites the
+ * name (submitted value or null) so a stale name can never outlive its city.
+ */
+async function resolveCityPatch(
+  userId: string,
+  patch: ProfilePatch,
+): Promise<{ ok: true } | { ok: false }> {
+  // The stored profile is needed when the city must re-derive from
+  // last_location (no coords in the patch) or when a submitted name has to
+  // be checked against the final current_city (which may stay unchanged).
+  const needsProfile =
+    patch.currentCityName !== undefined ||
+    (patch.currentCity !== undefined && patch.lastLocation === undefined);
+  const existing = needsProfile ? await getProfile(userId) : null;
+  if (needsProfile && !existing) return { ok: false };
+
+  if (patch.currentCity !== undefined) {
+    const derived = rederiveCurrentCity(
+      patch.currentCity,
+      patch.lastLocation ?? existing?.lastLocation ?? undefined,
+    );
+    if (derived.cityId) {
+      patch.currentCity = derived.cityId;
+      // The city changed: the name must be rewritten in the same write —
+      // submitted name for non-launch ids, null for launch ids.
+      patch.currentCityName = LAUNCH_CITIES.some((c) => c.id === derived.cityId)
+        ? null
+        : (patch.currentCityName ?? null);
+    } else {
+      // Unresolvable city: drop the submitted name with it — a name geocoded
+      // for a location that failed derivation must not relabel the old city.
+      delete patch.currentCity;
+      delete patch.currentCityName;
+    }
+  }
+
+  if (patch.currentCityName !== undefined) {
+    const finalCity = patch.currentCity ?? existing?.currentCity;
+    patch.currentCityName =
+      finalCity && !LAUNCH_CITIES.some((c) => c.id === finalCity)
+        ? patch.currentCityName
+        : null;
+  }
+  return { ok: true };
 }
 
 export const PATCH = apiRoute(
@@ -62,20 +104,9 @@ export const PATCH = apiRoute(
       return apiError(parsed.error, parsed.status, { requestId: ctx.requestId });
     }
 
-    if (parsed.patch.currentCity !== undefined) {
-      const derived = await rederiveCurrentCity(
-        ctx.user.id,
-        parsed.patch.currentCity,
-        parsed.patch.lastLocation,
-      );
-      if (derived.notFound) {
-        return apiError("profile_not_found", 404, { requestId: ctx.requestId });
-      }
-      if (derived.cityId) {
-        parsed.patch.currentCity = derived.cityId;
-      } else {
-        delete parsed.patch.currentCity;
-      }
+    const cityRes = await resolveCityPatch(ctx.user.id, parsed.patch);
+    if (!cityRes.ok) {
+      return apiError("profile_not_found", 404, { requestId: ctx.requestId });
     }
 
     const updated = await updateProfile(ctx.user.id, parsed.patch);

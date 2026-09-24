@@ -224,6 +224,8 @@ validation:
   # Server field-length caps (BRAWUKA-250).
   cafeAddressMaxChars: 300
   profileCityMaxChars: 50
+  # Max character length for the display-only runtime-city name (BRAWUKA-696)
+  profileCityNameMaxChars: 80
 budgets:
   # Bundle size budgets (uncompressed bytes, checked against .next/static)
   # Rationale: Bounds single chunk weight and total client static payload to ensure fast initial page delivery and low memory footprint on mobile.

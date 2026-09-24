@@ -10,11 +10,17 @@ import { defaultErrorStatus, type ErrorCode } from "@shared/errors";
  * `currentCity` accepts any bounded non-empty string, not just launch cities:
  * DG121 runtime-created cities (geolocation outside coverage) must persist.
  * `onboarded`/`lastLocation` carry the first-visit onboarding merge (DG122).
+ * `currentCityName` (BRAWUKA-696) is the display-only runtime-city name the
+ * client reverse-geocodes via MapKit JS — `null` clears it; strings are
+ * stripped of control/format/separator characters and bounded. It never
+ * feeds scope or identity, so a forged value only mislabels the owner's own
+ * profile (self-harm-only, PM invariant).
  */
 
 export interface ProfilePatch {
   displayName?: string;
   currentCity?: string;
+  currentCityName?: string | null;
   onboarded?: boolean;
   lastLocation?: { lat: number; lng: number };
 }
@@ -44,6 +50,22 @@ function parseCurrentCity(value: unknown): FieldResult<string> {
     return { ok: false, error: "invalid_current_city" };
   }
   return { ok: true, value: trimmed };
+}
+
+/** Control/format/line-separator characters never render in a city label. */
+const CITY_NAME_STRIP = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
+
+function parseCurrentCityName(value: unknown): FieldResult<string | null> {
+  if (value === null) return { ok: true, value: null };
+  if (typeof value !== "string") return { ok: false, error: "invalid_current_city_name" };
+  const cleaned = value.replace(CITY_NAME_STRIP, "").trim();
+  if (
+    cleaned.length === 0 ||
+    cleaned.length > appConfig.validation.profileCityNameMaxChars
+  ) {
+    return { ok: false, error: "invalid_current_city_name" };
+  }
+  return { ok: true, value: cleaned };
 }
 
 function parseOnboarded(value: unknown): FieldResult<boolean> {
@@ -82,6 +104,7 @@ export function parseProfilePatch(body: unknown): ProfilePatchResult {
   const fields = [
     ["displayName", parseDisplayName],
     ["currentCity", parseCurrentCity],
+    ["currentCityName", parseCurrentCityName],
     ["onboarded", parseOnboarded],
     ["lastLocation", parseLastLocation],
   ] as const;

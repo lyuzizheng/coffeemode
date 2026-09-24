@@ -9,7 +9,11 @@ export interface UserProfileDto {
   displayName: string;
   avatarUrl: string | null;
   currentCity: string;
-  /** Last granted geolocation (DG120 session dot / returning-visit center). */
+  /** Display-only runtime-city name (BRAWUKA-696): client reverse-geocoded
+   * locality for rt-* cities; null for launch cities (findCity supplies the
+   * name) and un-geocoded runtime cities (country fallback applies). Never
+   * feeds scope or identity. */
+  currentCityName: string | null;
   lastLocation: { lat: number; lng: number } | null;
   /** Welcome card dismissed — authoritative across devices (DG122). */
   onboarded: boolean;

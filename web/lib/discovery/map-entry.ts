@@ -35,8 +35,14 @@ export interface MapEntryProps {
   isAuthenticated: boolean;
   /** profiles.onboarded — authoritative for signed-in users (DG122). */
   serverOnboarded: boolean;
-  /** Signed-in profile fields mirrored into localStorage on merge (DG122). */
-  profileSeed?: { currentCity: string; lastLocation: Coordinates | null };
+  /** Signed-in profile fields mirrored into localStorage on merge (DG122);
+   * `currentCityName` carries the persisted runtime-city display name
+   * (BRAWUKA-696). */
+  profileSeed?: {
+    currentCity: string;
+    currentCityName?: string | null;
+    lastLocation: Coordinates | null;
+  };
   /** Signed-in display-name initial for the map account chip. */
   accountInitial?: string;
   /** DG143 request-time MapKit readiness — gates the Apple search CTA and
@@ -106,7 +112,11 @@ export async function loadMapEntry(centerOverride?: Coordinates): Promise<MapEnt
     isAuthenticated: Boolean(user),
     serverOnboarded: profile?.onboarded ?? false,
     profileSeed: profile
-      ? { currentCity: profile.currentCity, lastLocation: profile.lastLocation }
+      ? {
+          currentCity: profile.currentCity,
+          currentCityName: profile.currentCityName,
+          lastLocation: profile.lastLocation,
+        }
       : undefined,
     accountInitial,
     // DG143: MapKit readiness is request-time — APPLE_MAPKIT_* are runtime

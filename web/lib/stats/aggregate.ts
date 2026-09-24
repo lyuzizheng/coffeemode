@@ -137,20 +137,18 @@ const RECOMPUTE_CONCURRENCY = 4;
 /**
  * Incrementally update a cafe's work_stats after a single check-in insert.
  *
- * `changedCheckIn` selects the before/after semantics:
- * - omitted: the user's most recent non-deleted check-in is treated as the
- *   changed one (it is already in the DB snapshot). Only correct for the
- *   first check-in of a new cafe, where the snapshot holds exactly that row.
- * - `{ insertedId }`: the row with that id was just INSERTed in this
- *   transaction, so the DB snapshot is the "after" state — the "before" set
- *   is the snapshot minus that row. This is the check-in create path; it is
- *   correct for any `visited_at` (including backdated) because the
- *   contribution math re-sorts by `visited_at` internally.
+ * `changedCheckIn.insertedId` is the row just INSERTed in this transaction,
+ * so the DB snapshot is the "after" state — the "before" set is the snapshot
+ * minus that row. Correct for any `visited_at` (including backdated) because
+ * the contribution math re-sorts by `visited_at` internally.
  *
- * A full `CheckIn` row is deliberately NOT accepted (BRAWUKA-444): the old
- * branch treated the DB snapshot as the "before" state, so a caller passing
- * an already-persisted row computed a zero diff and silently skipped the
- * update. Edits and soft-deletes must use `recomputeWorkStats` instead.
+ * The parameter is required (BRAWUKA-444): the old optional form treated the
+ * most recent snapshot row as the changed one (`slice(1)`), which is only
+ * correct when the changed row happens to be the latest — a future caller
+ * passing nothing for a non-first/backfilled check-in would silently
+ * miscompute. A full `CheckIn` row is likewise not accepted: passing an
+ * already-persisted row computed a zero diff and skipped the update.
+ * Edits and soft-deletes must use `recomputeWorkStats` instead.
  *
  * The whole read-modify-write runs in a transaction with a `FOR UPDATE` lock
  * on the cafe row: two concurrent check-ins for the same cafe serialize on
@@ -160,7 +158,7 @@ const RECOMPUTE_CONCURRENCY = 4;
 export async function incrementalUpdateWorkStats(
   cafeId: string,
   userId: string,
-  changedCheckIn?: { insertedId: string },
+  changedCheckIn: { insertedId: string },
   socialWeight = 0,
   runInTransaction: RunInTransaction = defaultRunInTransaction(),
 ): Promise<void> {
@@ -200,7 +198,7 @@ export async function incrementalUpdateWorkStats(
       "select count(*)::int as n from checkins where cafe_id = $1 and deleted_at is null",
       [cafeId],
     );
-    const nCheckins = (countRows[0]?.n ?? 0) + (changedCheckIn && !changedInDb ? 1 : 0);
+    const nCheckins = (countRows[0]?.n ?? 0) + (!changedInDb ? 1 : 0);
 
     const nextStats = applyUserContributionDiff(
       currentStats,
@@ -216,31 +214,19 @@ export async function incrementalUpdateWorkStats(
 /**
  * Resolve the "before" and "after" row sets for one user from the DB
  * snapshot (`userRows`, live check-ins ordered by visited_at desc) and the
- * caller's `changedCheckIn` marker:
- * - omitted: the most recent row is treated as the one that changed
- *   (first-check-in-of-a-new-cafe path; the snapshot holds exactly that row).
- * - `{ insertedId }`: the row was just INSERTed in this transaction, so
- *   userRows is the post-insert snapshot; the "before" set excludes it.
- *   Correct for backdated `visited_at` — `computeUserContribution` re-sorts
- *   by `visited_at`, so the new row takes its true recency rank instead of
- *   assuming it is the latest.
+ * just-inserted row id: userRows is the post-insert snapshot; the "before"
+ * set excludes it. Correct for backdated `visited_at` —
+ * `computeUserContribution` re-sorts by `visited_at`, so the new row takes
+ * its true recency rank instead of assuming it is the latest.
  */
 function resolveChangedRowSets(
   userRows: CheckIn[],
-  changedCheckIn: { insertedId: string } | undefined,
+  changedCheckIn: { insertedId: string },
 ): { priorRows: CheckIn[]; newRows: CheckIn[]; changedInDb: boolean } {
-  const insertedId = changedCheckIn?.insertedId;
-  const changedInDb = insertedId ? userRows.some((r) => r.id === insertedId) : false;
-
-  if (insertedId !== undefined) {
-    return {
-      priorRows: userRows.filter((r) => r.id !== insertedId),
-      newRows: userRows,
-      changedInDb,
-    };
-  }
+  const { insertedId } = changedCheckIn;
+  const changedInDb = userRows.some((r) => r.id === insertedId);
   return {
-    priorRows: userRows.length > 0 ? userRows.slice(1) : userRows,
+    priorRows: userRows.filter((r) => r.id !== insertedId),
     newRows: userRows,
     changedInDb,
   };

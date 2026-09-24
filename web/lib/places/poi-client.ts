@@ -84,7 +84,7 @@ async function poiFetch(
 ): Promise<unknown> {
   if (!config) {
     throw new POIServiceError(
-      "POI service is not configured (POI_SERVICE_URL / POI_SERVICE_TOKEN)",
+      "POI service unavailable",
       503,
     );
   }

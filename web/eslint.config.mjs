@@ -4,23 +4,16 @@ import nextTs from "eslint-config-next/typescript";
 import sonarjs from "eslint-plugin-sonarjs";
 import {
   LAYER_BOUNDARIES,
-  LIMITS,
   SOURCE_GLOBS,
   SQL_IN_API_FILES,
   SQL_LITERAL_SELECTOR,
+  STRUCTURE_RULES,
 } from "./structure.config.mjs";
 
-// Structural rules (spec 0009). Thresholds live in `structure.config.mjs` and
-// are shared verbatim with `npm run check:structure`, so the docs, ESLint, and
-// the CI gate can never disagree about a number.
-const structureRules = {
-  "max-lines": ["error", { max: LIMITS.maxLines }],
-  "max-lines-per-function": ["error", { max: LIMITS.maxLinesPerFunction }],
-  "max-depth": ["error", LIMITS.maxDepth],
-  "max-params": ["error", LIMITS.maxParams],
-  "sonarjs/cognitive-complexity": ["error", LIMITS.cognitiveComplexity],
-  "sonarjs/no-identical-functions": ["error", LIMITS.identicalFunctionLines],
-};
+// Structural rules (spec 0009). `STRUCTURE_RULES` lives in
+// `structure.config.mjs` and is shared verbatim with `npm run check:structure`
+// and the Worker-service linters, so the docs, every ESLint run, and the CI
+// gate can never disagree about a number.
 
 // Layer boundaries as dependency-direction bans. Type-only imports stay legal:
 // they are a compile-time contract, not runtime coupling between layers.
@@ -65,7 +58,7 @@ const eslintConfig = defineConfig([
   {
     files: [...SOURCE_GLOBS],
     plugins: { sonarjs },
-    rules: structureRules,
+    rules: STRUCTURE_RULES,
   },
   ...boundaryBlocks,
   ...sqlBlocks,

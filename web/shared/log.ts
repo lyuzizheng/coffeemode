@@ -166,3 +166,12 @@ export function emitAccessLine(line: Record<string, unknown>): void {
   console.log(JSON.stringify(line));
   lineSink?.(line);
 }
+
+/**
+ * Emit one already-shaped telemetry line (ADR-0005, BRAWUKA-613) — stdout (info
+ * level) plus the registered sink.
+ */
+export function emitTelemetryLine(line: Record<string, unknown>): void {
+  console.info(JSON.stringify(line));
+  lineSink?.(line);
+}

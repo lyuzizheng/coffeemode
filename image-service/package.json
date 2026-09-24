@@ -11,6 +11,8 @@
     "dev": "wrangler dev",
     "deploy": "node scripts/deploy.mjs",
     "deploy:check": "node scripts/deploy.mjs --env staging --check && node scripts/deploy.mjs --env production --check",
+    "lint": "eslint",
+    "check:file-size": "node ../scripts/check-service-file-size.mjs",
     "typecheck": "tsc --noEmit",
     "clean:orphan-originals": "node scripts/clean-orphan-originals.mjs"
   },
@@ -19,6 +21,9 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260804.1",
+    "@typescript-eslint/parser": "^8.66.0",
+    "eslint": "^9",
+    "eslint-plugin-sonarjs": "^4.2.0",
     "typescript": "^5.9.3",
     "wrangler": "^4.119.0"
   }

@@ -118,6 +118,15 @@ else
         application=true
         integration=true
         ;;
+      # Structure-guard config (spec 0009): its LIMITS/STRUCTURE_RULES are
+      # imported by web's linter and both Worker-service linters alike, so a
+      # threshold change must re-run all three gates (application +
+      # the two service gates).
+      web/structure.config.mjs)
+        application=true
+        image_service=true
+        poi_service=true
+        ;;
       web/*)
         application=true
         ;;
@@ -149,6 +158,12 @@ else
       # Dokploy deployment definitions and the devops forwarders they ship with
       # delegate to `scripts/devops/*` (already integration-gated); the compose
       # stacks define the environments the DB-backed suites run against.
+      # Shared file-budget guard for both Workers (spec 0009): each service's
+      # `check:file-size` executes it, so a change must re-run both service gates.
+      scripts/check-service-file-size.mjs)
+        image_service=true
+        poi_service=true
+        ;;
       deploy/*|docker-compose.yml|scripts/*)
         integration=true
         ;;

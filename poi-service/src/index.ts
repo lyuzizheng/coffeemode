@@ -5,7 +5,7 @@
 
 import type { Env } from "./types";
 import { internalError } from "./auth";
-import { handleFetch } from "./handlers";
+import { handleFetch } from "./handlers/index";
 import { purgeExpiredPOIs } from "./store";
 import { logError } from "../../web/shared/log";
 

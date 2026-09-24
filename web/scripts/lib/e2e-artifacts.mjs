@@ -2,19 +2,18 @@
  * Per-gate artifact collector for the E2E suite (BRAWUKA-704).
  *
  * Each registry gate owns `web/.e2e-artifacts/<gate-slug>/` (gitignored):
- *   - `trace.zip`   — Playwright `context.tracing` recording, retained only
- *                     when the gate fails (pass `failed: true` to
- *                     `stopGateTracing`).
- *   - `failure.png` — viewport screenshot at the failure point, captured in
- *                     the gate's catch block before the context closes.
+ *   - `trace.zip`   — Playwright tracing recording, retained only when the
+ *                     gate fails.
+ *   - `failure.png` — viewport screenshot at the failure point.
  *   - `console.log` — the runner's `attachErrorCollector` payload for the
  *                     gate's pages, appended per page, plus the thrown error
  *                     via `recordGateFailure`.
  *
  * Gates may also record key-step screenshots on the success path via
- * `saveGateScreenshot` (wrapped as `shot` in `lib/gate-assert.mjs`). The
- * suite runs serially against a single DB (D5), so one directory per slug
- * needs no locking.
+ * `shot()` (`lib/gate-assert.mjs`). The suite runs serially against a
+ * single DB (D5), so one directory per slug needs no locking. The suite
+ * wipes the root once at start; gates clear their own directory at entry
+ * so a re-run of one gate never inherits a previous run's files.
  */
 import { appendFileSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -22,11 +21,9 @@ import { fileURLToPath } from "node:url";
 
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-/** Root of all gate artifact directories (gitignored). */
-export const E2E_ARTIFACTS_DIR = join(webRoot, ".e2e-artifacts");
+const E2E_ARTIFACTS_DIR = join(webRoot, ".e2e-artifacts");
 
-/** Directory holding one gate's artifacts. Pure — creates nothing. */
-export function gateArtifactsDir(slug) {
+function gateArtifactsDir(slug) {
   return join(E2E_ARTIFACTS_DIR, slug);
 }
 
@@ -36,6 +33,17 @@ export function clearGateArtifacts(slug) {
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+/**
+ * Wipe the whole artifact root once at suite start, so registry-skipped
+ * gates (mobile filter, no-DB) and skip-before-clear gates (mock-miss)
+ * never present a previous run's directory as fresh output.
+ */
+export function clearArtifactsDir() {
+  rmSync(E2E_ARTIFACTS_DIR, { recursive: true, force: true });
+  mkdirSync(E2E_ARTIFACTS_DIR, { recursive: true });
+  return E2E_ARTIFACTS_DIR;
 }
 
 function ensureGateArtifactsDir(slug) {
@@ -52,7 +60,7 @@ function ensureGateArtifactsDir(slug) {
  * gate run can fail (the throw propagates), so the singular `trace.zip` /
  * `failure.png` names never collide across a gate's contexts.
  */
-export async function openGateContext(createContext, slug, options = {}) {
+async function openGateContext(createContext, slug, options = {}) {
   const context = await createContext(options);
   await startGateTracing(context);
   return {
@@ -68,7 +76,7 @@ export async function openGateContext(createContext, slug, options = {}) {
 }
 
 /** Start a Playwright tracing recording; best-effort so gates never fail on it. */
-export async function startGateTracing(context) {
+async function startGateTracing(context) {
   try {
     await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
   } catch {
@@ -80,7 +88,7 @@ export async function startGateTracing(context) {
  * Stop the recording, keeping `trace.zip` only on failure. Never throws —
  * a missing recording must not mask the gate result.
  */
-export async function stopGateTracing(context, slug, { failed = false } = {}) {
+async function stopGateTracing(context, slug, { failed = false } = {}) {
   try {
     if (failed) {
       await context.tracing.stop({ path: join(ensureGateArtifactsDir(slug), "trace.zip") });
@@ -102,7 +110,7 @@ export async function saveGateScreenshot(page, slug, name) {
 }
 
 /** Append one page's console/pageerror lines to the gate's `console.log`. */
-export function recordGateConsole(slug, lines, label = slug) {
+function recordGateConsole(slug, lines, label = slug) {
   if (lines.length === 0) return;
   appendFileSync(
     join(ensureGateArtifactsDir(slug), "console.log"),

@@ -72,6 +72,9 @@ export async function runCheckinSubmitGate({
   attachErrorCollector,
 }) {
   const supabaseUrl = process.env.E2E_SUPABASE_URL ?? "http://127.0.0.1:54321";
+  // Clear before the mock-miss skip below, so a skipped run never presents
+  // a previous run's directory as fresh output (the suite wipe covers the rest).
+  clearGateArtifacts("checkin-submit");
   const sessionCookie = await mintSession(supabaseUrl, userId);
   if (!sessionCookie) {
     // CI must never mask a red gate behind a warn — the compose step makes
@@ -90,7 +93,6 @@ export async function runCheckinSubmitGate({
   // gets exercised; cleanup deletes whatever this gate writes.
   await dbClient.query(`delete from checkins where user_id = $1 and cafe_id = $2`, [userId, cafeId]);
 
-  clearGateArtifacts("checkin-submit");
   await withGateContext(
     "checkin-submit",
     createContext,

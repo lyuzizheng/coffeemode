@@ -20,28 +20,28 @@ export const E2E_GATES = [
     label: "T2b: Deep-Link Hydration (DG124)",
     mobile: false,
     needsDb: true,
-    run: (ctx) => runDeeplinkHydrationGate(ctx),
+    run: runDeeplinkHydrationGate,
   },
   {
     slug: "api-contract",
     label: "T6: Core API Contract Endpoints",
     mobile: false,
     needsDb: false,
-    run: (ctx) => runApiContractGate(ctx),
+    run: runApiContractGate,
   },
   {
     slug: "checkin-drawer",
     label: "T7: Check-in Drawer CTA Inside the Viewport",
     mobile: false,
     needsDb: true,
-    run: (ctx) => runCheckinDrawerGate(ctx),
+    run: runCheckinDrawerGate,
   },
   {
     slug: "checkin-submit",
     label: "T8: Check-in Submit Flow (Real Session via supabase-mock)",
     mobile: true,
     needsDb: true,
-    run: (ctx) => runCheckinSubmitGate(ctx),
+    run: runCheckinSubmitGate,
   },
 ];
 

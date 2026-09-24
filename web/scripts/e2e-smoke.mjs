@@ -36,14 +36,16 @@ import {
   registerProcessCleanup,
 } from "./lib/standalone-server.mjs";
 import { runRegistryGates } from "./lib/e2e-gates.mjs";
+import { clearArtifactsDir } from "./lib/e2e-artifacts.mjs";
 import { assert } from "./lib/gate-assert.mjs";
 import { stubOpenFreeMap } from "./lib/tile-stubs.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dbUrl = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
 
-// BRAWUKA-704 (D4): `desktop` (default, 1280x800) runs every gate;
-// `E2E_VIEWPORT=mobile` runs only the registry's allowlisted subset
+// BRAWUKA-704 (D4): `desktop` (default, 1280x800) runs the inline T1–T5
+// checks plus every registry gate; `E2E_VIEWPORT=mobile` runs the inline T1–T5
+// checks at the mobile viewport plus only the registry's allowlisted subset
 // (auth-session, checkin-submit, search-discovery — the last two land in
 // later slices). The default context viewport follows the same flag.
 const E2E_VIEWPORT = process.env.E2E_VIEWPORT ?? "desktop";
@@ -52,7 +54,7 @@ if (E2E_VIEWPORT !== "desktop" && E2E_VIEWPORT !== "mobile") {
   process.exit(1);
 }
 
-if (!process.env.E2E_BASE_URL && !existsSync(join(root, ".next", "BUILD_ID"))) {
+ if (!process.env.E2E_BASE_URL && !existsSync(join(root, ".next", "BUILD_ID"))) {
   console.error("No production build found in web/.next — run `npm run build` first.");
   process.exit(1);
 }
@@ -94,6 +96,10 @@ const failures = [];
 
 
 async function runSmokeSuite() {
+  // Stale-artifact guard: skipped gates (mobile filter, no-DB, mock-miss)
+  // keep no directory from a previous run — everything starts absent.
+  clearArtifactsDir();
+
   const port = process.env.E2E_PORT ? Number(process.env.E2E_PORT) : await getFreePort();
   const base = process.env.E2E_BASE_URL ?? `http://127.0.0.1:${port}`;
 
@@ -101,7 +107,6 @@ async function runSmokeSuite() {
   const hasDb = fixtureResult.hasDb;
   dbClient = fixtureResult.dbClient;
   console.log(`[E2E] DB fixture initialized: ${hasDb ? "yes (Postgres)" : "no (fallback mode)"}`);
-
   if (!process.env.E2E_BASE_URL) {
     serverProcess = spawnStandaloneServer({
       cwd: root,
@@ -136,7 +141,12 @@ async function runSmokeSuite() {
     // -------------------------------------------------------------------------
     async function createContext(options = {}) {
       const context = await browser.newContext({
-        viewport: { width: 1280, height: 800 },
+        // D4: the flag that filters the registry also sets the default
+        // viewport, so gates on the default context (upcoming auth-session,
+        // inline T1–T5) exercise the mobile layout under E2E_VIEWPORT=mobile.
+        ...(E2E_VIEWPORT === "mobile"
+          ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }
+          : { viewport: { width: 1280, height: 800 } }),
         ...options,
       });
 
@@ -153,7 +163,13 @@ async function runSmokeSuite() {
 
     function attachErrorCollector(page, label, expected = { status: 200, path: "" }, consoleSink = null) {
       const pageErrors = [];
-      const sink = consoleSink ?? pageErrors;
+      // Artifact capture is additive: every fault lands in `pageErrors` so
+      // `checkErrors()` still fails the run; the mirror into `consoleSink`
+      // only feeds the gate's `console.log` artifact.
+      const push = (line) => {
+        pageErrors.push(line);
+        if (consoleSink) consoleSink.push(line);
+      };
       page.on("console", (msg) => {
         if (msg.type() !== "error") return;
         // Chromium logs the document's own non-2xx response as a console
@@ -170,24 +186,25 @@ async function runSmokeSuite() {
         ) {
           return;
         }
-        // DG64/DG105: the check-in drawer probes /api/checkins/last
-        // client-side on open (CDN-cached shell, per-user auth can't bake
-        // into HTML); signed-out, its 401 is the contract's anonymous
-        // answer (the drawer drops to the sign-in gate), not a fault.
-        // Exempt exactly that subresource error — any other endpoint's
-        // non-2xx still fails the gate.
+        // DG64/DG105/DG77: signed-out, the client probes per-user endpoints
+        // the CDN-cached shell can't bake in — `/api/checkins/last` on
+        // drawer open, `/api/navigations/prompt` at idle. Their 401 is the
+        // contract's anonymous answer (sign-in gate / no prompt), not a
+        // fault. Exempt exactly those subresource errors — any other
+        // endpoint's non-2xx still fails the gate.
         if (
-          msg.location()?.url?.startsWith(`${base}/api/checkins/last`) &&
+          (msg.location()?.url?.startsWith(`${base}/api/checkins/last`) ||
+            msg.location()?.url?.startsWith(`${base}/api/navigations/prompt`)) &&
           msg.text().startsWith(
             "Failed to load resource: the server responded with a status of 401 ",
           )
         ) {
           return;
         }
-        sink.push(`console.error: ${msg.text()}`);
+        push(`console.error: ${msg.text()}`);
       });
       page.on("pageerror", (err) => {
-        sink.push(`pageerror: ${err.message}`);
+        push(`pageerror: ${err.message}`);
       });
       return () => {
         if (pageErrors.length > 0) {
@@ -206,7 +223,7 @@ async function runSmokeSuite() {
       const checkErrors = attachErrorCollector(page, label, { path: "/", status: 200 });
 
       const res = await page.goto(`${base}/`, { waitUntil: "domcontentloaded" });
-
+      assert(res?.status() === 200, `Expected 200, got ${res?.status()}`);
       // map-home: the basemap renders as a MapLibre canvas — or, where
       // headless WebGL is unavailable, the designed error state. Either way
       // the discovery sidebar must be live (the data path is map-independent).

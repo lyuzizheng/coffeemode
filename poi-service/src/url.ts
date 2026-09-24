@@ -80,20 +80,19 @@ export function extractApplePlaceId(urlStr: string): string | null {
   return null;
 }
 
+function inLatLngRange(lat: number, lng: number): boolean {
+  return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+}
+
 function parseCoordinatePair(value: string | null): { lat: number; lng: number } | null {
   if (!value) return null;
-  const parts = value.split(",").map((part) => Number.parseFloat(part.trim()));
-  if (
-    parts.length < 2 ||
-    !Number.isFinite(parts[0]) ||
-    !Number.isFinite(parts[1]) ||
-    parts[0] < -90 ||
-    parts[0] > 90 ||
-    parts[1] < -180 ||
-    parts[1] > 180
-  ) {
+  // Strict `Number`, not `parseFloat`: `Number("10abc")` is NaN where
+  // `parseFloat` would have silently returned 10.
+  const parts = value.split(",").map((part) => (part.trim() === "" ? NaN : Number(part)));
+  if (parts.length < 2 || !Number.isFinite(parts[0]) || !Number.isFinite(parts[1])) {
     return null;
   }
+  if (!inLatLngRange(parts[0], parts[1])) return null;
   return { lat: parts[0], lng: parts[1] };
 }
 
@@ -126,17 +125,36 @@ export function extractAppleQuery(urlStr: string): string | null {
 }
 
 export function extractCoords(urlStr: string): { lat: number; lng: number } | null {
+  // The `@`/`!3d!4d` captures are already strict digits; run them through the
+  // same range gate so out-of-range coords never reach upstream.
   const at = urlStr.match(AT_COORDS_RE);
-  if (at) return { lat: parseFloat(at[1]), lng: parseFloat(at[2]) };
+  if (at) {
+    const lat = Number(at[1]);
+    const lng = Number(at[2]);
+    if (inLatLngRange(lat, lng)) return { lat, lng };
+    return null;
+  }
   const excl = urlStr.match(EXCL_COORDS_RE);
-  if (excl) return { lat: parseFloat(excl[1]), lng: parseFloat(excl[2]) };
-  // maps.google.com/?q=lat,lng
+  if (excl) {
+    const lat = Number(excl[1]);
+    const lng = Number(excl[2]);
+    if (inLatLngRange(lat, lng)) return { lat, lng };
+    return null;
+  }
+  // maps.google.com/?q=lat,lng — shares parseCoordinatePair's strict `Number`
+  // parsing: `?q=10abc,20` is a query, not the coordinate 10. Malformed
+  // percent-encoding is not coords either (decodeURIComponent would throw —
+  // the router catches it as a 500, so guard here).
   const q = urlStr.match(Q_PARAM_RE)?.[1];
   if (q) {
-    const parts = decodeURIComponent(q).split(",").map(parseFloat);
-    if (parts.length >= 2 && !Number.isNaN(parts[0]) && !Number.isNaN(parts[1])) {
-      return { lat: parts[0], lng: parts[1] };
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(q);
+    } catch {
+      return null;
     }
+    const coords = parseCoordinatePair(decoded);
+    if (coords) return coords;
   }
   return null;
 }

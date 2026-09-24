@@ -48,12 +48,16 @@ services:
   # http://localhost:9000 (host) it targets MinIO, which accepts the same
   # signatures R2 does.
   minio:
-    # quay.io, not Docker Hub: MinIO withdrew its Docker Hub images, so
-    # `docker compose up minio` now dies with "pull access denied for
-    # minio/minio, repository does not exist" before any test runs — which is
-    # what broke the CI integration-gate. Same release tag, still pinned.
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
-    command: server /data --console-address ":9001"
+    # MinIO withdrew from every public registry: Docker Hub minio/minio was
+    # deleted, quay.io/minio/* now returns 401 (repo private), GHCR/ECR same —
+    # `docker compose up minio` died on pull before any test ran, which is
+    # what broke the CI integration-gate (BRAWUKA-711).
+    # `bitnamilegacy` is Bitnami's frozen public archive of its MinIO
+    # packaging: same MinIO server + bundled mc client in one image, pinned
+    # tag, Docker Hub. Local/CI-only mock bound to 127.0.0.1, so the
+    # unmaintained-by-design archive is acceptable here.
+    image: bitnamilegacy/minio:2025.5.24-debian-12-r5
+    command: server /bitnami/minio/data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: coffeemode
       MINIO_ROOT_PASSWORD: coffeemode123
@@ -61,7 +65,11 @@ services:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
     volumes:
-      - minio-data:/data
+      # New key on purpose: the bitnami image runs as uid 1001 with its data
+      # dir /bitnami/minio/data, so a volume initialized by the old MinIO
+      # image (root-owned /data) would crash-loop here. The orphaned
+      # `minio-data` volume is inert — `docker volume prune` removes it.
+      - minio-data-v2:/bitnami/minio/data
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://127.0.0.1:9000/minio/health/live || wget --no-verbose --tries=1 --spider http://127.0.0.1:9000/minio/health/live || exit 1"]
       interval: 5s
@@ -72,7 +80,10 @@ services:
   # One-shot: create the bucket and make reads anonymous (mirrors an R2
   # public bucket, so R2_PUBLIC_URL=http://localhost:9000/coffeemode works).
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    # Same image as `minio`: it bundles the mc client on PATH
+    # (/opt/bitnami/minio-client/bin/mc), replacing the withdrawn
+    # quay.io/minio/mc image. The init commands below are unchanged.
+    image: bitnamilegacy/minio:2025.5.24-debian-12-r5
     depends_on:
       minio:
         condition: service_started
@@ -204,6 +215,6 @@ services:
 
 volumes:
   postgres-data:
-  minio-data:
+  minio-data-v2:
   poi-worker-state:
   image-worker-state:

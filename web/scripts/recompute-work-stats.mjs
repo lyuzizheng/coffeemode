@@ -79,7 +79,7 @@ function parseConnectionConfig(urlString) {
  *  the TS code uses: select non-deleted check-ins ordered by
  *  visited_at desc, created_at desc, id desc, compute the weighted means in
  *  JS, then single-row UPDATE. The in-JS sort uses the same total key so tied
- *
+ *  visited_at rows rank identically to the TS paths (BRAWUKA-447).
  *  The JS weights here mirror web/lib/stats/work-stats.ts exactly (with
  *  values loaded from web/config/app.yaml `stats` at the top of this file;
  *  the literal there is the fallback):
@@ -132,6 +132,7 @@ function compareRecency(a, b) {
 function computeUserContribution(checkins) {
   if (checkins.length === 0) return { dims: {}, max_stay: undefined };
   const sorted = [...checkins].sort(compareRecency);
+  const latest = sorted[0];
   const dims = {};
   for (const dim of WORK_DIMS) {
     let weightedSum = 0;

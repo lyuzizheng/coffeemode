@@ -28,9 +28,11 @@ interface ProfileTabCheckinsProps {
   query: UseInfiniteQueryResult<InfiniteData<{ items: UserCheckInItemDto[]; next_cursor: string | null }>, Error>;
   /** The profile page only renders this tab for signed-in users. */
   isAuthenticated: boolean;
+  /** Restarts pagination from page one — never replays a dead cursor (BRAWUKA-442). */
+  onRetry: () => void;
 }
 
-export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticated }: ProfileTabCheckinsProps) {
+export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticated, onRetry }: ProfileTabCheckinsProps) {
   const t = useTranslations("profile");
   const locale = useLocale();
   // Dimension labels reuse the discovery vocabulary (`discovery.dims.*`) so the
@@ -56,7 +58,7 @@ export function ProfileTabCheckins({ baseId, query: checkinsQuery, isAuthenticat
           <ErrorRow
             errorText={t("load_error")}
             retryText={t("retry")}
-            onRetry={() => void checkinsQuery.refetch()}
+            onRetry={onRetry}
           />
         ))}
 

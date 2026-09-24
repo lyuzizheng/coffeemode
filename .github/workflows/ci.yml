@@ -206,6 +206,26 @@ jobs:
           ALLOW_SEED_DEV_DB: "1"
         run: npm run test:e2e
 
+      - name: E2E mobile viewport subset
+        env:
+          DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode
+          ALLOW_SEED_DEV_DB: "1"
+          E2E_VIEWPORT: mobile
+        run: npm run test:e2e
+
+      # After both passes: the runner wipes web/.e2e-artifacts/ at suite start
+      # (e2e-artifacts.mjs clearArtifactsDir), so the last executed pass owns the
+      # directory — uploading here captures whichever pass actually failed, and
+      # if: always() keeps the upload running after a failed pass.
+      - name: Upload E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: web/.e2e-artifacts
+          include-hidden-files: true
+          if-no-files-found: ignore
+
       - name: Lighthouse CI performance budgets
         env:
           DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode

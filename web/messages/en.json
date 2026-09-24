@@ -524,7 +524,8 @@
     "yes": "I did!",
     "notYet": "Not yet",
     "wontGo": "Won't go",
-    "pill": "Grab that coffee?"
+    "pill": "Grab that coffee?",
+    "failed": "Couldn't save — try again?"
   },
   "onboarding": {
     "headline": "Find a cafe you can actually work in",

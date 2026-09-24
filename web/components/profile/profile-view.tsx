@@ -41,6 +41,8 @@ export function ProfileView({
     handleTabChange,
     checkinsQuery,
     cafesQuery,
+    retryCheckinsFromFirstPage,
+    retryCafesFromFirstPage,
     showGuide,
     dismissGuide,
   } = useProfileContent(isAuthenticated, mounted);
@@ -63,10 +65,10 @@ export function ProfileView({
                 <ProfileTabs activeTab={activeTab} onTabChange={handleTabChange} baseId={baseId} />
                 <div className="flex-1 flex flex-col py-2">
                   {activeTab === "checkins" && (
-                    <ProfileTabCheckins baseId={baseId} query={checkinsQuery} isAuthenticated={isAuthenticated} />
+                    <ProfileTabCheckins baseId={baseId} query={checkinsQuery} isAuthenticated={isAuthenticated} onRetry={retryCheckinsFromFirstPage} />
                   )}
                   {activeTab === "map" && (
-                    <ProfileTabCafes baseId={baseId} query={cafesQuery} />
+                    <ProfileTabCafes baseId={baseId} query={cafesQuery} onRetry={retryCafesFromFirstPage} />
                   )}
                   {activeTab === "favorites" && (
                     <ProfileTabFavorites baseId={baseId} />

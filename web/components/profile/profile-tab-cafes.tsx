@@ -25,9 +25,11 @@ export async function fetchUserCafes(cursor?: string) {
 interface ProfileTabCafesProps {
   baseId: string;
   query: UseInfiniteQueryResult<InfiniteData<{ items: UserCafeItemDto[]; next_cursor: string | null }>, Error>;
+  /** Restarts pagination from page one — never replays a dead cursor (BRAWUKA-442). */
+  onRetry: () => void;
 }
 
-export function ProfileTabCafes({ baseId, query: cafesQuery }: ProfileTabCafesProps) {
+export function ProfileTabCafes({ baseId, query: cafesQuery, onRetry }: ProfileTabCafesProps) {
   const t = useTranslations("profile");
   const locale = useLocale();
 
@@ -49,7 +51,7 @@ export function ProfileTabCafes({ baseId, query: cafesQuery }: ProfileTabCafesPr
           <ErrorRow
             errorText={t("load_error")}
             retryText={t("retry")}
-            onRetry={() => void cafesQuery.refetch()}
+            onRetry={onRetry}
           />
         ))}
 

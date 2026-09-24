@@ -134,8 +134,8 @@ export function extractCoords(urlStr: string): { lat: number; lng: number } | nu
   }
   // maps.google.com/?q=lat,lng — shares parseCoordinatePair's strict `Number`
   // parsing: `?q=10abc,20` is a query, not the coordinate 10. Malformed
-  // percent-encoding is not coords either (decodeURIComponent would throw —
-  // the router catches it as a 500, so guard here).
+  // percent-encoding is not coords either (decodeURIComponent would throw,
+  // so guard here and let the resolver answer 422 `unresolvable`).
   const q = urlStr.match(Q_PARAM_RE)?.[1];
   if (q) {
     let decoded: string;
@@ -151,14 +151,19 @@ export function extractCoords(urlStr: string): { lat: number; lng: number } | nu
 }
 
 export function extractQuery(urlStr: string): string | null {
-  const decode = (s: string) => decodeURIComponent(s.replace(/\+/g, " ")).trim();
-  const q = urlStr.match(Q_PARAM_RE)?.[1];
-  if (q) return decode(q);
-  const search = urlStr.match(SEARCH_PATH_RE)?.[1];
-  if (search) return decode(search);
-  const slug = urlStr.match(PLACE_SLUG_RE)?.[1];
-  if (slug) return decode(slug.replace(/-/g, " "));
-  return null;
+  // Malformed percent-encoding (e.g. `?q=%ZZ`) makes decodeURIComponent
+  // throw — return null so the resolver answers 422 `unresolvable` instead
+  // of the throw bubbling into a router 500.
+  const raw =
+    urlStr.match(Q_PARAM_RE)?.[1] ??
+    urlStr.match(SEARCH_PATH_RE)?.[1] ??
+    urlStr.match(PLACE_SLUG_RE)?.[1]?.replace(/-/g, " ");
+  if (!raw) return null;
+  try {
+    return decodeURIComponent(raw.replace(/\+/g, " ")).trim();
+  } catch {
+    return null;
+  }
 }
 
 /** Parse a Maps URL without network calls. */

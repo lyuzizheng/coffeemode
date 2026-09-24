@@ -109,10 +109,17 @@ function assertRemoteOptIn(raw) {
 async function inspectFixtures(client) {
   const patterns = fixturePatterns();
   const like = "id::text LIKE ANY ($1)";
-  const cafes = await client.query(`SELECT id FROM cafes WHERE ${like}`, [patterns]);
   const profiles = await client.query(`SELECT id FROM profiles WHERE ${like}`, [patterns]);
-  const cafeIds = cafes.rows.map((row) => row.id);
   const profileIds = profiles.rows.map((row) => row.id);
+  // Cafes match by id prefix OR by owning fixture profile: a fixture profile
+  // can own a cafe with a random id (API-created rows use gen_random_uuid()),
+  // and cafes.created_by has no cascade — missing it here would FK-block the
+  // profiles delete and roll back the whole sweep (BRAWUKA-660).
+  const cafes = await client.query(
+    `SELECT id FROM cafes WHERE ${like} OR created_by = ANY ($2::uuid[])`,
+    [patterns, profileIds],
+  );
+  const cafeIds = cafes.rows.map((row) => row.id);
   const checkins = await client.query(
     `SELECT id FROM checkins WHERE cafe_id = ANY ($1::uuid[]) OR user_id = ANY ($2::uuid[])`,
     [cafeIds, profileIds],

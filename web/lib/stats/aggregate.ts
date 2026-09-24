@@ -76,7 +76,7 @@ export async function recomputeWorkStats(
             photos, likes_count, visited_at, created_at, updated_at, deleted_at
      from checkins
      where cafe_id = $1 and deleted_at is null
-     order by visited_at desc`,
+     order by visited_at desc, created_at desc, id desc`,
       [cafeId],
     );
 
@@ -177,7 +177,7 @@ export async function incrementalUpdateWorkStats(
             photos, likes_count, visited_at, created_at, updated_at, deleted_at
      from checkins
      where cafe_id = $1 and user_id = $2 and deleted_at is null
-     order by visited_at desc, created_at desc`,
+     order by visited_at desc, created_at desc, id desc`,
       [cafeId, userId],
     );
 

@@ -61,9 +61,12 @@ ON CONFLICT(place_id) DO UPDATE SET
 `;
 
 /** Bounded-cache cleanup. Runs on the scheduled cron only — never on the
- * write path, so D1 writes stay single-statement (BRAWUKA-645). */
+ * write path, so D1 writes stay single-statement (BRAWUKA-645).
+ * The `IS NULL` arm is belt-and-braces: migration 0004 enforces NOT NULL,
+ * but a legacy or hand-written row slipping through must purge, never linger
+ * invisible (BRAWUKA-459: `expires_at <= now()` alone never matches NULL). */
 const PURGE_EXPIRED_SQL =
-  "DELETE FROM pois WHERE expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
+  "DELETE FROM pois WHERE expires_at IS NULL OR expires_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 
 interface POIRow {
   place_id: string;

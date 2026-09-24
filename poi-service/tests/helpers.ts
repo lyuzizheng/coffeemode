@@ -94,11 +94,13 @@ class FakePrepared implements D1PreparedLike {
       if (!existing) this.db.rows.push(row);
       return { meta: { changes: 1 } };
     }
-    if (this.sql.trimStart().startsWith("DELETE FROM pois WHERE expires_at <=")) {
+    if (this.sql.trimStart().startsWith("DELETE FROM pois WHERE expires_at")) {
       const now = Date.now();
       const before = this.db.rows.length;
       this.db.rows = this.db.rows.filter((r) => {
-        if (!r.expires_at) return true;
+        // Mirrors the BRAWUKA-459 purge predicate (`IS NULL OR <= now()`):
+        // a NULL row purges, never lingers invisible.
+        if (!r.expires_at) return false;
         const exp = Date.parse(r.expires_at as string);
         return Number.isNaN(exp) || exp > now;
       });
@@ -137,10 +139,11 @@ class FakePrepared implements D1PreparedLike {
     const placeId = where.includes("place_id = ?") ? (this.binds[bi++] as number) : undefined;
     const rows = this.db.rows.filter((row) => {
       if (where.includes("expires_at >")) {
-        if (row.expires_at) {
-          const exp = Date.parse(row.expires_at as string);
-          if (!Number.isNaN(exp) && exp <= Date.now()) return false;
-        }
+        // Real SQLite three-valued logic (BRAWUKA-459): `NULL > now()` is
+        // never TRUE, so a NULL row is invisible to reads.
+        if (!row.expires_at) return false;
+        const exp = Date.parse(row.expires_at as string);
+        if (!Number.isNaN(exp) && exp <= Date.now()) return false;
       }
       if (pattern !== undefined && !likeToRegex(pattern).test(String(row.name))) return false;
       if (latLo !== undefined && !(Number(row.lat) >= latLo && Number(row.lat) <= latHi!)) return false;

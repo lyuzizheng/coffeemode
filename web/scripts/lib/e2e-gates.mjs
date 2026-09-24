@@ -9,9 +9,13 @@
  * Gates receive the full runner context and pick the fields they need.
  */
 import { runApiContractGate } from "./api-contract-gate.mjs";
+import { runAuthSessionGate } from "./auth-session-gate.mjs";
+import { runCafeCreationGate } from "./cafe-creation-gate.mjs";
 import { runCheckinDrawerGate } from "./checkin-drawer-gate.mjs";
+import { runCheckinLifecycleGate } from "./checkin-lifecycle-gate.mjs";
 import { runCheckinSubmitGate } from "./checkin-submit-gate.mjs";
 import { runDeeplinkHydrationGate } from "./deeplink-hydration-gate.mjs";
+import { runNavigationPromptGate } from "./navigation-prompt-gate.mjs";
 import { recordGateFailure } from "./e2e-artifacts.mjs";
 
 export const E2E_GATES = [
@@ -43,8 +47,35 @@ export const E2E_GATES = [
     needsDb: true,
     run: runCheckinSubmitGate,
   },
+  {
+    slug: "auth-session",
+    label: "T1/T2/T3: Auth Session (Entry, Banner, Sign-out, Delete)",
+    mobile: true,
+    needsDb: true,
+    run: runAuthSessionGate,
+  },
+  {
+    slug: "cafe-creation",
+    label: "T5: Cafe Creation (POI Search, Create, Detail)",
+    mobile: false,
+    needsDb: true,
+    run: runCafeCreationGate,
+  },
+  {
+    slug: "checkin-lifecycle",
+    label: "T9/T10/T11: Check-in Edit, Delete, Like Toggle",
+    mobile: false,
+    needsDb: true,
+    run: runCheckinLifecycleGate,
+  },
+  {
+    slug: "navigation-prompt",
+    label: "T13: Navigation Return Prompt (Queue, Answer)",
+    mobile: false,
+    needsDb: true,
+    run: runNavigationPromptGate,
+  },
 ];
-
 /**
  * Run the registered gates serially against a single DB (D5). A gate
  * failure records its artifacts (`trace.zip`, `failure.png`, `console.log`)

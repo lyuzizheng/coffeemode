@@ -70,6 +70,18 @@ export interface CreationDraft {
   session?: string;
 }
 
+/**
+ * Remount key for the creation sheet: a new pick must remount it so the seed
+ * effect runs again (BRAWUKA-364). A live search pick carries a prediction
+ * instead of a POI, so it keys on the prediction's place id; a provider CTA
+ * keys on the provider so switching CTAs remounts the pane (BRAWUKA-366).
+ */
+export function creationDraftKey(draft: CreationDraft | null): string {
+  if (draft?.poi) return `${draft.poi.source}:${draft.poi.place_id}`;
+  if (draft?.prediction) return `prediction:${draft.prediction.place_id}`;
+  return draft?.provider ?? "empty";
+}
+
 /** `?q=&city=&filter_*=` deep-link state (DG48 restore). */
 interface UrlSearchState {
   query: string;

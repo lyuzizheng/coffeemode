@@ -166,9 +166,16 @@ assert_test() {
   fi
 }
 
+# File-wide grep rule (BRAWUKA-690/691): never pipe curl into `grep -q` here.
+# grep -q exits at the first match, closing the pipe under `set -o pipefail`
+# while curl still has body bytes in flight -> curl exits 56 and the healthy
+# response FAILs (observed 5/5 on the multi-line root page, BRAWUKA-690).
+# Plain grep drains the stream to EOF with identical exit codes, and
+# assert_test discards stdout anyway.
+
 # 1. Healthcheck probe & version marker
 assert_test "Healthcheck endpoint (/api/health)" \
-  "curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/health' | grep -q '\"ok\":true' && curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/health' | grep -q '\"version\":'"
+  "curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/health' | grep '\"ok\":true' && curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/health' | grep '\"version\":'"
 
 # 2. HTTP root render
 # grep WITHOUT -q: the root HTML is ~64 KB, and `grep -q` exits on first
@@ -182,16 +189,18 @@ assert_test "Root page render (/)" \
 # 3. PostGIS database query via cafes API (lat/lng + radius_km, returns { cafes: [...] })
 # Asserts { cafes: [...] } when database is connected. On staging where DATABASE_URL is pending
 # (docs/agent/pending-user-actions.md #41), verifies fail-closed db_unavailable contract.
+# grep WITHOUT -q (BRAWUKA-691): this body grows with cafe data; enforce the
+# file-wide rule instead of relying on the response staying small.
 assert_test "PostGIS spatial query (/api/cafes?lat=1.3521&lng=103.8198&radius_km=5)" \
-  "curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/cafes?lat=1.3521&lng=103.8198&radius_km=5' | grep -qE '\"cafes\":\s*\[' || \
-   ([[ \"$ENV\" == \"staging\" ]] && curl -s -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/heartbeat' | grep -q '\"db_unavailable\"')"
+  "curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/cafes?lat=1.3521&lng=103.8198&radius_km=5' | grep -E '\"cafes\":\s*\[' || \
+   ([[ \"$ENV\" == \"staging\" ]] && curl -s -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/heartbeat' | grep '\"db_unavailable\"')"
 # 4. Cafe detail aggregate (BRAWUKA-688): the row behind the list must serve
 # its own detail payload. Derives one id from the list above and expects the
 # detail envelope ({ id, name, ... }); skipping only when the list is empty
 # (fresh DB) or fell back to the fail-closed db_unavailable contract.
 assert_test "Cafe detail aggregate (/api/cafes/[id] from list result)" \
   "CAFE_ID=\$(curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/cafes?lat=1.3521&lng=103.8198&radius_km=5' | grep -oE '\"id\":\"[0-9a-f-]{36}\"' | head -n 1 | cut -d'\"' -f4); \
-   [[ -z \"\$CAFE_ID\" ]] || curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" \"${BASE_URL}/api/cafes/\${CAFE_ID}\" | grep -qE '\"name\":'"
+   [[ -z \"\$CAFE_ID\" ]] || curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" \"${BASE_URL}/api/cafes/\${CAFE_ID}\" | grep -E '\"name\":'"
 
 # 5. Static assets & .next/static chunk resolution (verifies Docker standalone asset copy)
 assert_test "Next.js standalone static asset resolution (/_next/static/)" \
@@ -201,11 +210,11 @@ assert_test "Next.js standalone static asset resolution (/_next/static/)" \
 
 # 6. Security headers verification
 assert_test "Security header (X-Content-Type-Options: nosniff)" \
-  "curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" -I '${BASE_URL}/api/health' | grep -qi 'x-content-type-options: nosniff'"
+  "curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" -I '${BASE_URL}/api/health' | grep -i 'x-content-type-options: nosniff'"
 
 # 7. Cloudflare Worker POI service proxy
 assert_test "POI service worker proxy (/api/places/search?q=coffee)" \
-  "curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/places/search?q=coffee' | grep -qE '\"(results|pois|items)\":|\[\{\"'"
+  "curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/places/search?q=coffee' | grep -E '\"(results|pois|items)\":|\[\{\"'"
 # 8. Cloudflare R2 Image CDN availability (verifies DNS, TLS, and edge reachability)
 if [[ "$ENV" == "prod" ]]; then
   IMAGE_HOST="https://${PROD_IMAGE_DOMAIN:-images.cafemood.app}"
@@ -227,15 +236,15 @@ assert_test "Image upload API contract (/api/images/upload)" \
 # Asserts {"db":"up"} when database is connected. On staging where DATABASE_URL is pending
 # (docs/agent/pending-user-actions.md #41), accepts fail-closed {"error":"db_unavailable"}.
 assert_test "Heartbeat probe (/api/heartbeat)" \
-  "curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/heartbeat' | grep -q '\"db\":\"up\"' || \
-   ([[ \"$ENV\" == \"staging\" ]] && curl -s -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/heartbeat' | grep -q '\"db_unavailable\"')"
+  "curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/heartbeat' | grep '\"db\":\"up\"' || \
+   ([[ \"$ENV\" == \"staging\" ]] && curl -s -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/heartbeat' | grep '\"db_unavailable\"')"
 
 # 11. Runtime config (BRAWUKA-284): operator content, edge-cached <=60s.
 # Asserts flags/banners when database is connected. On staging where DATABASE_URL is pending,
 # verifies fail-closed db_unavailable contract.
 assert_test "Runtime config (/api/config)" \
-  "curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/config' | grep -qE '\"(flags|banners)\":' || \
-   ([[ \"$ENV\" == \"staging\" ]] && curl -s -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/heartbeat' | grep -q '\"db_unavailable\"')"
+  "curl -fsS -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/config' | grep -E '\"(flags|banners)\":' || \
+   ([[ \"$ENV\" == \"staging\" ]] && curl -s -m ${TIMEOUT} ${CF_HEADER_ARGS} -A \"${SMOKE_UA}\" '${BASE_URL}/api/heartbeat' | grep '\"db_unavailable\"')"
 echo "=============================================================================="
 echo "Smoke Test Summary: $((TOTAL - FAILED))/${TOTAL} passed."
 

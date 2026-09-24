@@ -385,6 +385,7 @@ _Applies the P1 findings from an independent critical review. Original issues: #
   - The first-check-in path now passes `{ insertedId: checkin_id }` instead
     of `undefined` (equivalent on a single-row snapshot).
 
+## 2026-09-22 (BRAWUKA-655 — check-in create incremental stats fold)
 
 - `web/lib/stats/aggregate.ts`
   - `incrementalUpdateWorkStats`'s `changedCheckIn` now also accepts

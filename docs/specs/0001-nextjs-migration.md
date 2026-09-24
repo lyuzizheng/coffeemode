@@ -500,7 +500,14 @@ Billing (BRAWUKA-602): live search is Autocomplete (New) + Place Details (New),
 Apple POI: MapKit has no server-side Places API for this app. MapKit JS returns
       full records in one call, so browser-selected Apple refs are POSTed here
       for storage and served from D1 only; the Next.js browser boundary accepts
-      Apple results only.
+      Apple results only. Client-minted fallback ids (`apple:<8-hex>`) are
+      self-certifying — the FNV hash of "lat,lng:name" — so `/poi/external`
+      (and the `/poi/resolve` Apple branch) re-derive them and reject
+      mismatches (BRAWUKA-703): a forged entry can never enter D1 under a real
+      fallback id. MapKit-native ids (any other shape) have no server-side
+      ground truth; that residual is accepted with
+      `search.externalSources.apple` kept off until a MapKit server API or
+      share-URL resolve path exists.
 
 Next.js integration: /api/places/* route handlers call the POI service
       instead of Google directly. Google/Apple Maps link import →

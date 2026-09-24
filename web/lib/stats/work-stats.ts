@@ -122,11 +122,34 @@ function visitTimestamp(c: CheckIn): number {
   return new Date(c.visited_at).getTime();
 }
 
+function createdTimestamp(c: CheckIn): number {
+  // Same Date-or-string duality as visited_at above.
+  return new Date(c.created_at).getTime();
+}
+
+/**
+ * Recency-rank comparator — canonical tie-break shared with the SQL
+ * `order by visited_at desc, created_at desc, id desc` in aggregate.ts.
+ * Recompute and incremental paths must rank tied visited_at rows identically
+ * or the nightly recompute flips weights and max_stay consensus (BRAWUKA-447).
+ * The trailing id key makes the order total: row ids are unique, so the
+ * result no longer depends on input order at all.
+ */
+function compareRecency(a: CheckIn, b: CheckIn): number {
+  return (
+    visitTimestamp(b) - visitTimestamp(a) ||
+    createdTimestamp(b) - createdTimestamp(a) ||
+    (b.id < a.id ? -1 : b.id > a.id ? 1 : 0)
+  );
+}
+
 /**
  * Compute one user's contribution to a cafe.
  *
  * Scores are weighted by recency rank: the newest check-in gets full weight
  * and older ones decay geometrically by `recencyDecay` (config `stats.*`).
+ * Ties break by created_at desc, then id desc — the same key as the SQL
+ * queries feeding this function, so recompute and incremental agree.
  * When social_weight > 0, each weight is multiplied by
  * (1 + social_weight * normalized_likes) where normalized_likes is the
  * check-in's likes_count divided by that user's max likes_count in this set.
@@ -141,7 +164,7 @@ export function computeUserContribution(
     return { dims: { ...emptyDimValues() } };
   }
 
-  const sorted = [...checkins].sort((a, b) => visitTimestamp(b) - visitTimestamp(a));
+  const sorted = [...checkins].sort(compareRecency);
   const latest = sorted[0];
 
   const maxLikes = Math.max(0, ...sorted.map((c) => c.likes_count ?? 0));

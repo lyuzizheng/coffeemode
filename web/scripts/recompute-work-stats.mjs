@@ -76,8 +76,9 @@ function parseConnectionConfig(urlString) {
  *  still the source of truth (web/lib/stats/aggregate.ts).
  *
  *  To keep the script small and avoid a build step, we invoke the same SQL
- *  the TS code uses: select non-deleted check-ins ordered by visited_at desc,
- *  compute the weighted means in JS, then single-row UPDATE.
+ *  the TS code uses: select non-deleted check-ins ordered by
+ *  visited_at desc, created_at desc, id desc, compute the weighted means in
+ *  JS, then single-row UPDATE. The in-JS sort uses the same total key so tied
  *
  *  The JS weights here mirror web/lib/stats/work-stats.ts exactly (with
  *  values loaded from web/config/app.yaml `stats` at the top of this file;
@@ -120,10 +121,17 @@ function computeExperienceScore(stats) {
   return n > 0 ? sum / n : null;
 }
 
+function compareRecency(a, b) {
+  return (
+    new Date(b.visited_at) - new Date(a.visited_at) ||
+    new Date(b.created_at) - new Date(a.created_at) ||
+    (b.id < a.id ? -1 : b.id > a.id ? 1 : 0)
+  );
+}
+
 function computeUserContribution(checkins) {
   if (checkins.length === 0) return { dims: {}, max_stay: undefined };
-  const sorted = [...checkins].sort((a, b) => new Date(b.visited_at) - new Date(a.visited_at));
-  const latest = sorted[0];
+  const sorted = [...checkins].sort(compareRecency);
   const dims = {};
   for (const dim of WORK_DIMS) {
     let weightedSum = 0;
@@ -194,7 +202,8 @@ async function recomputeOneCafe(client, cafeId) {
   const { rows } = await client.query(
     `select id, cafe_id, user_id, is_creation, scores, max_stay, note,
             photos, likes_count, visited_at, created_at, updated_at, deleted_at
-     from checkins where cafe_id = $1 and deleted_at is null order by visited_at desc`,
+     from checkins where cafe_id = $1 and deleted_at is null
+     order by visited_at desc, created_at desc, id desc`,
     [cafeId],
   );
   const stats = computeCafeStats(rows);

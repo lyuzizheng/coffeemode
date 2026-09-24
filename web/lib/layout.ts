@@ -22,6 +22,13 @@ export const SHEET_PEEK_PX = 172;
 /** Mobile sheet collapsed detent (BRAWUKA-373): drag handle + the slim
  * "附近 N 家" bar — the pull-down detent below PEEK. */
 export const SHEET_COLLAPSED_PX = 48;
+/** Mobile sheet FULL detent: fraction of viewport height the sheet occupies
+ * (85dvh — the map stays visible ~15% at top). The map's camera padding
+ * reads the same fraction so pins never slide under the sheet. */
+export const SHEET_FULL_VH = 0.85;
+/** Mobile sheet HALF detent ceiling: fraction of viewport height (50dvh).
+ * HALF is content-adaptive below this cap (BRAWUKA-248). */
+export const SHEET_HALF_VH = 0.5;
 /** Desktop discovery sidebar (feed/search) column width. */
 export const ASIDE_COLUMN_PX = 380;
 /** Desktop cafe-detail column width — overlays the map below xl, so the

@@ -17,7 +17,7 @@ import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { animate, motion, useDragControls, useMotionValue, useReducedMotion } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { cardInteraction, useSprings } from "@/lib/motion";
-import { SHEET_COLLAPSED_PX, SHEET_PEEK_PX } from "@/lib/layout";
+import { SHEET_COLLAPSED_PX, SHEET_FULL_VH, SHEET_HALF_VH, SHEET_PEEK_PX } from "@/lib/layout";
 import { useMounted } from "@/hooks/use-mounted";
 import type { DiscoveryController, SheetSnap } from "@/lib/discovery/use-discovery-controller";
 import type { CafeSummary } from "@/types/cafes";
@@ -30,8 +30,6 @@ const HANDLE_VISIBLE_PX = 24;
 /** Drag distance/velocity that commits a detent step. */
 const STEP_OFFSET_PX = 60;
 const STEP_VELOCITY = 300;
-const SHEET_HEIGHT_VH = 0.85;
-const HALF_VISIBLE_VH = 0.5;
 
 // memo (BRAWUKA-647): the sheet re-renders on snap/selection/measurement and
 // the strip re-renders on scroll (activeIndex); cards must re-render only
@@ -214,12 +212,12 @@ export function MobileSheet({
   // fixed at PEEK/HALF/FULL — only HALF's rendered height tightens.
   const halfVisible =
     contentH === null
-      ? viewportH * HALF_VISIBLE_VH
+      ? viewportH * SHEET_HALF_VH
       : Math.min(
-          viewportH * HALF_VISIBLE_VH,
+          viewportH * SHEET_HALF_VH,
           Math.max(SHEET_PEEK_PX + HANDLE_VISIBLE_PX, contentH + HANDLE_VISIBLE_PX),
         );
-  const sheetH = viewportH * SHEET_HEIGHT_VH;
+  const sheetH = viewportH * SHEET_FULL_VH;
   const offsets: Record<SheetSnap, number> = {
     full: 0,
     half: sheetH - halfVisible,
@@ -307,7 +305,7 @@ export function MobileSheet({
 
   return (
     <motion.div
-      style={{ y, height: "85dvh", paddingBottom: "env(safe-area-inset-bottom)" }}
+      style={{ y, height: `${SHEET_FULL_VH * 100}dvh`, paddingBottom: "env(safe-area-inset-bottom)" }}
       drag="y"
       dragListener={false}
       dragControls={dragControls}

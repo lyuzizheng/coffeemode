@@ -7,8 +7,8 @@
 # suite "passes" without running. The recurring failure mode is a NEW gated test
 # file landing outside `web/tests/integration/` or `web/tests/helpers/`, or a NEW
 # fixture/harness module imported by one (BRAWUKA-206: a change to
-# `web/tests/fixtures/mock-dataset.ts` scheduled `application-gate` alone while
-# both journey suites read it). So this gate derives the gated set from the
+# `web/tests/fixtures/mock-dataset.ts` scheduled the application gates alone
+# while both journey suites read it). So this gate derives the gated set from the
 # sources — suites, registered scripts, measured files, and their import
 # closure — instead of trusting the pattern list, and enforces that every tracked
 # path matches an explicit rule.

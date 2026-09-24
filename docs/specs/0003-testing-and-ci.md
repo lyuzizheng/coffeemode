@@ -256,8 +256,8 @@ selection, and the exception process are canonical in the code-quality and
 module-boundaries spec (`0009`). Pre-existing violations live in
 `web/eslint-suppressions.json` (ESLint bulk suppressions), so new code is held to
 the full rules while existing debt stays recorded and prunable with
-`npx eslint --prune-suppressions`. The `application-gate` runs this gate as a
-blocking step and `.agents/scripts/check-ci-workflow.sh` fails preflight if the
+`npx eslint --prune-suppressions`. The `application-static` job runs this gate
+as a blocking step and `.agents/scripts/check-ci-workflow.sh` fails preflight if the
 step disappears from `ci.yml`. Locally, `.agents/scripts/preflight.sh` runs it
 through `.agents/scripts/check-structure.sh`, which self-skips when
 `web/node_modules` is absent (docs-only jobs, harness self-test fixture); CI is

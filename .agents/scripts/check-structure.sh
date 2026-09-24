@@ -7,7 +7,7 @@
 #
 # Self-skips when the web workspace or its dependencies are absent — the
 # harness self-test fixture and docs-only CI jobs have no `web/node_modules`.
-# CI's `application-gate` is the authoritative gate; this bridge exists so
+# CI's `application-static` job is the authoritative gate; this bridge exists so
 # local preflight and CI agree whenever dependencies are installed.
 set -euo pipefail
 

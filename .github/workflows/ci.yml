@@ -284,9 +284,9 @@ jobs:
           DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode
         run: npm run test:integration:images
 
-      # The unit coverage step in `application-gate` runs with the real-DB specs
-      # skipped, so it cannot see `lib/db/**` — the layer this job is about. This
-      # ratchets that layer alone (BRAWUKA-173).
+      # The only coverage measurement left (BRAWUKA-682 retired the unit
+      # ratchet): it ratchets `lib/db/**` — the layer this job is about —
+      # alone (BRAWUKA-173).
       - name: Real-DB coverage ratchet (lib/db)
         env:
           DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode

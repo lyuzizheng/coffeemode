@@ -151,7 +151,7 @@ export async function createCafeWithFirstCheckIn(
       // pending navigation to it resolves silently with outcome `auto`.
       await autoResolveNavigationsTx(q, userId, cafe_id);
 
-      await incrementalUpdateWorkStats(cafe_id, userId, undefined, 0, txRunnerFrom(client));
+      await incrementalUpdateWorkStats(cafe_id, userId, { insertedId: checkin_id }, 0, txRunnerFrom(client));
 
       return { cafe_id, checkin_id, tz };
     });

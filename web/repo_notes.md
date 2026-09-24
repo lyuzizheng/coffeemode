@@ -373,6 +373,18 @@ _Applies the P1 findings from an independent critical review. Original issues: #
 - `web/lib/places/poi-client.ts` / `web/lib/images/image-service-client.ts` / `web/lib/images/processor.ts`
   - Upstream error response bodies are canceled instead of buffered or logged.
 
+## 2026-09-24 (BRAWUKA-444 — incrementalUpdateWorkStats signature narrowing)
+
+- `web/lib/stats/aggregate.ts`
+  - `incrementalUpdateWorkStats`'s `changedCheckIn` narrowed to required
+    `{ insertedId }`: the full-`CheckIn`-row branch (zero-diff trap on
+    already-persisted rows) and the `undefined` branch (`slice(1)` assumed the
+    changed row is the latest) are both removed. Edits/soft-deletes use
+    `recomputeWorkStats`.
+- `web/lib/db/cafes/create.ts`
+  - The first-check-in path now passes `{ insertedId: checkin_id }` instead
+    of `undefined` (equivalent on a single-row snapshot).
+
 ## 2026-09-22 (BRAWUKA-655 — check-in create incremental stats fold)
 
 - `web/lib/stats/aggregate.ts`

@@ -27,6 +27,10 @@ export async function setupDbFixtures({
   try {
     dbClient = new pg.Client({ connectionString: dbUrl });
     await dbClient.connect();
+    await applyMigrations(dbClient);
+    // Clean any prior run residuals
+    await cleanupDbFixtures(dbClient);
+
     await dbClient.query(
       `insert into profiles (id, display_name, current_city)
        values ($1, 'E2E Nomad', 'San Francisco'), ($2, 'E2E Regular', 'San Francisco')

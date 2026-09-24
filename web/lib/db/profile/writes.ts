@@ -11,6 +11,9 @@ import type { UserProfileDto } from "./types";
 export interface ProfilePatchInput {
   displayName?: string;
   currentCity?: string;
+  /** Display-only runtime-city name (BRAWUKA-696); null clears it. Callers
+   * pass route-validated values — the layer writes them verbatim. */
+  currentCityName?: string | null;
   onboarded?: boolean;
   lastLocation?: { lat: number; lng: number };
 }
@@ -40,6 +43,11 @@ function buildUpdates(patch: ProfilePatchInput): { updates: string[]; params: un
   if (patch.onboarded !== undefined) {
     params.push(patch.onboarded);
     updates.push(`onboarded = $${params.length + 1}`);
+  }
+
+  if (patch.currentCityName !== undefined) {
+    params.push(patch.currentCityName);
+    updates.push(`current_city_name = $${params.length + 1}`);
   }
 
   if (patch.lastLocation !== undefined) {
@@ -73,6 +81,7 @@ export async function updateProfile(
     set ${updates.join(", ")}, last_seen_at = now()
     where id = $1
     returning id, display_name, avatar_url, coalesce(current_city, $${defaultCityParamIdx}) as current_city,
+              current_city_name,
               ${LAST_LOCATION_SQL},
               onboarded, created_at,
               show_public_identity, public_handle, identity_consented_at, public_handle_changed_at

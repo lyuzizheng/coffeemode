@@ -13,6 +13,7 @@ export async function getProfile(userId: string): Promise<UserProfileDto | null>
   const result = await query<ProfileRow>(
     `
     select id, display_name, avatar_url, coalesce(current_city, $2) as current_city,
+           current_city_name,
            ${LAST_LOCATION_SQL},
            onboarded, created_at,
            show_public_identity, public_handle, identity_consented_at, public_handle_changed_at

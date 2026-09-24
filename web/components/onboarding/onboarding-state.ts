@@ -29,6 +29,15 @@ export interface OnboardingState {
   handleSkip: () => void;
 }
 
+/** Signed-in profile fields mirrored into localStorage on merge (DG122);
+ * `currentCityName` carries the persisted runtime-city display name
+ * (BRAWUKA-696) — undefined when the server payload predates the field. */
+export interface ProfileSeed {
+  currentCity: string;
+  currentCityName?: string | null;
+  lastLocation: Coordinates | null;
+}
+
 /** The handlers + return object — extracted so useOnboarding stays under
  * the 80-line budget. Every field is a pass-through or a one-line wrapper. */
 export function buildOnboardingState({

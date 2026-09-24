@@ -56,6 +56,7 @@ export const ERROR_CODES = {
   invalid_display_name: { status: 422, domain: "profile", summary: "display name violates domain rules" },
   display_name_length: { status: 422, domain: "profile", summary: "display name length out of range" },
   invalid_current_city: { status: 422, domain: "profile", summary: "current city violates domain rules" },
+  invalid_current_city_name: { status: 422, domain: "profile", summary: "current city display name violates domain rules" },
   invalid_last_location: { status: 422, domain: "profile", summary: "last location violates domain rules" },
   invalid_onboarded: { status: 422, domain: "profile", summary: "onboarded flag violates domain rules" },
   invalid_location: { status: 400, domain: "profile", summary: "onboarding location malformed" },

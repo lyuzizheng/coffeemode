@@ -269,6 +269,7 @@ does not replace:
 | `invalid_display_name` | **422** | profile | was 400 |
 | `display_name_length` | **422** | profile | was 400 |
 | `invalid_current_city` | **422** | profile | was 400; non-string, empty, or >50 chars; valid non-launch ids are server-re-derived or dropped without 422 (BRAWUKA-695) |
+| `invalid_current_city_name` | 422 | profile | non-string, empty after control-char strip, or >80 chars (BRAWUKA-696); `null` clears |
 | `invalid_last_location` | **422** | profile | was 400 |
 | `invalid_onboarded` | **422** | profile | was 400 |
 | `invalid_location` | 400 | profile | onboarding geolocation malformed — missed by the audit table; emitted by `parseLocateBody` |

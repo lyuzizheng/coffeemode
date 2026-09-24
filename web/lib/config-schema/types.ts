@@ -146,6 +146,7 @@ export interface AppConfig {
   validation: {
     cafeAddressMaxChars: number;
     profileCityMaxChars: number;
+    profileCityNameMaxChars: number;
   };
   budgets: {
     bundle: {

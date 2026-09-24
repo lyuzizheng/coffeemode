@@ -117,6 +117,7 @@ create table profiles (
   display_name  text not null,
   avatar_url    text,
   current_city  text default 'singapore',
+  current_city_name text,               -- 0033: display-only runtime-city name (BRAWUKA-696)
   last_location geography(POINT, 4326),
   last_seen_at  timestamptz,
   onboarded     bool not null default false, -- 0022: welcome-card dismissed; authoritative across devices (DG122)
@@ -1042,6 +1043,16 @@ First visit to /:
   Fallback display names render honest localized country names via static
   zone.tab mapping (`Intl.DisplayNames(locale, {type:"region"})`, e.g.
   `Asia/Shanghai` → "China"/"中国"), never asserting unverified city names.
+  Precise naming (BRAWUKA-696): signed-in clients reverse-geocode the granted
+  coordinates via MapKit JS (`GET /api/mapkit-token` → Geocoder.reverseLookup
+  → `place.locality`) and persist the result as `profiles.current_city_name`
+  through PATCH /api/profile — display-only, never a scope/identity input;
+  a forged value only mislabels the owner's own profile. The server stores it
+  only while `current_city` is a non-launch value (launch ids null it — their
+  names come from the curated list). Anonymous users keep the country
+  fallback (the token endpoint requires a session); every geocode failure
+  degrades to the same fallback without blocking the grant flow. The name
+  re-resolves on every locate grant — it never freezes at onboarding.
   Etc/* zones return null city. The runtime city becomes current_city;
   the user is told they are the first nomad in {city} and encouraged to
   leave the first check-in to help the next one (DG121). Wrong IP-city

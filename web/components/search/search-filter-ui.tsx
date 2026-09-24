@@ -17,9 +17,15 @@
  * Every control mutates the single `SearchFilterState` object — badge,
  * chips, panel, and URL can never disagree.
  */
+import { useSyncExternalStore } from "react";
 import { Button, Label, ListBox, Select, Switch } from "@heroui/react";
 import { useLocale, useTranslations } from "next-intl";
 import { displayCityName, LAUNCH_CITIES } from "@/lib/cities";
+import {
+  getOnboardingStateServerSnapshot,
+  getOnboardingStateSnapshot,
+  subscribeOnboardingStore,
+} from "@/lib/onboarding-store";
 import {
   CoffeeIcon,
   FilterIcon,
@@ -64,6 +70,15 @@ export function CityScopeSelect({
 }) {
   const t = useTranslations("search");
   const locale = useLocale();
+  // BRAWUKA-696: the persisted runtime-city name lives in the onboarding
+  // store (anonymous localStorage + the signed-in profile mirror), so the
+  // chip upgrades from the country fallback without a prop thread.
+  const stored = useSyncExternalStore(
+    subscribeOnboardingStore,
+    getOnboardingStateSnapshot,
+    getOnboardingStateServerSnapshot,
+  );
+  const runtimeName = stored !== null && stored.currentCity === city ? stored.currentCityName : null;
   return (
     <Select
       aria-label={t("city")}
@@ -73,7 +88,7 @@ export function CityScopeSelect({
       }}
     >
       <Select.Trigger className="h-9 shrink-0 gap-1 rounded-sm border border-separator bg-surface-secondary px-2.5 text-sm text-foreground">
-        <Select.Value>{displayCityName(city, locale) || t("city")}</Select.Value>
+        <Select.Value>{displayCityName(city, locale, runtimeName) || t("city")}</Select.Value>
         <Select.Indicator />
       </Select.Trigger>
       <Select.Popover>

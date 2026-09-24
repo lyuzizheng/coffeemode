@@ -16,6 +16,9 @@ interface MapKitPlace {
   formattedAddress?: string;
   coordinate?: { latitude: number; longitude: number };
   pointOfInterestCategory?: string;
+  /** City-level address component (MapKit JS ≥5.41.1) — the reverse-geocode
+   * payload BRAWUKA-696 persists as the runtime-city display name. */
+  locality?: string;
 }
 
 interface MapKitSearch {
@@ -25,9 +28,21 @@ interface MapKitSearch {
   ): void;
 }
 
+interface MapKitGeocoder {
+  /** 5.x ships both signatures: callback-first and the newer promise form. */
+  reverseLookup(
+    coordinate: unknown,
+    callback?: (error: unknown, response?: { results?: MapKitPlace[] }) => void,
+  ): void | Promise<{ results?: MapKitPlace[] }>;
+}
+
 interface MapKitApi {
   init(options: { authorizationCallback: (done: (token: string) => void) => void }): void;
   Search: new () => MapKitSearch;
+  Coordinate: new (latitude: number, longitude: number) => unknown;
+  Geocoder: new (options?: { language?: string }) => MapKitGeocoder;
+  /** Newer 5.x services namespace; Geocoder moved here in later releases. */
+  services?: { Geocoder?: new (options?: { language?: string }) => MapKitGeocoder };
 }
 
 interface MapKitWindow extends Window {
@@ -174,6 +189,79 @@ function toPOI(place: MapKitPlace): POI | null {
   };
 }
 
+/**
+ * Shared MapKit JS bootstrap (BRAWUKA-696): token pre-flight, script load,
+ * once-per-page `mapkit.init`. Returns null when the SDK script loaded but
+ * exposed no `mapkit` global; every other failure (401, network, script
+ * timeout) propagates so callers pick their own degradation.
+ */
+async function initMapKitApi(): Promise<MapKitApi | null> {
+  await fetchMapKitTokenTracked();
+  await loadMapKitScript();
+  const windowWithMapKit = window as MapKitWindow;
+  const mapkit = windowWithMapKit.mapkit;
+  if (!mapkit) return null;
+  if (!windowWithMapKit.__coffeeModeMapKitInitialized) {
+    mapkit.init({
+      authorizationCallback: (done) => {
+        void fetchMapKitTokenTracked()
+          .then(done)
+          // MapKit tolerates only `done("")` on failure; the 401 case is
+          // already latched by the tracked fetch and surfaces via search().
+          .catch(() => done(""));
+      },
+    });
+    windowWithMapKit.__coffeeModeMapKitInitialized = true;
+  }
+  return mapkit;
+}
+
+const MAPKIT_GEOCODE_TIMEOUT_MS = 10_000;
+
+/**
+ * Reverse-geocode a granted fix to its locality (city) name (BRAWUKA-696).
+ * Display-only: every failure — token 401/503, script load, geocoder error,
+ * empty results, missing locality — resolves to null so the caller keeps the
+ * country fallback and never blocks onboarding.
+ */
+export async function reverseGeocodeLocality(
+  lat: number,
+  lng: number,
+  language?: string,
+): Promise<string | null> {
+  try {
+    const mapkit = await initMapKitApi();
+    const Geocoder = mapkit?.services?.Geocoder ?? mapkit?.Geocoder;
+    if (!mapkit || !Geocoder) return null;
+    const geocoder = new Geocoder(language ? { language } : undefined);
+    const coordinate = new mapkit.Coordinate(lat, lng);
+    const place = await new Promise<MapKitPlace | null>((resolve) => {
+      const timer = setTimeout(() => resolve(null), MAPKIT_GEOCODE_TIMEOUT_MS);
+      const finish = (value: MapKitPlace | null) => {
+        clearTimeout(timer);
+        resolve(value);
+      };
+      try {
+        const maybePromise = geocoder.reverseLookup(
+          coordinate,
+          (error, response) => finish(error ? null : (response?.results?.[0] ?? null)),
+        );
+        if (maybePromise && typeof maybePromise.then === "function") {
+          void maybePromise
+            .then((response) => finish(response?.results?.[0] ?? null))
+            .catch(() => finish(null));
+        }
+      } catch {
+        finish(null);
+      }
+    });
+    const locality = place?.locality?.trim();
+    return locality || null;
+  } catch {
+    return null;
+  }
+}
+
 export function _resetMapKitStateForTests(): void {
   mapKitSessionExpired = false;
   pendingSearches.clear();
@@ -245,23 +333,8 @@ export function applePlaceSearch(t: CreateTranslator): PlaceSearchProvider {
     label: t("apple"),
     persistOnSelect: true,
     async init() {
-      await fetchMapKitTokenTracked();
-      await loadMapKitScript();
-      const windowWithMapKit = window as MapKitWindow;
-      const mapkit = windowWithMapKit.mapkit;
+      const mapkit = await initMapKitApi();
       if (!mapkit) throw new Error(t("appleUnavailable"));
-      if (!windowWithMapKit.__coffeeModeMapKitInitialized) {
-        mapkit.init({
-          authorizationCallback: (done) => {
-            void fetchMapKitTokenTracked()
-              .then(done)
-              // MapKit tolerates only `done("")` on failure; the 401 case is
-              // already latched by the tracked fetch and surfaces via search().
-              .catch(() => done(""));
-          },
-        });
-        windowWithMapKit.__coffeeModeMapKitInitialized = true;
-      }
       api = mapkit;
     },
     async search(query) {

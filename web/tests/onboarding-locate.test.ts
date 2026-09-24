@@ -92,6 +92,19 @@ describe("onboarding locate and runtime city resolution (BRAWUKA-695)", () => {
       expect(displayCityName("rt-america-sao_paulo", "en")).toBe("Brazil");
     });
 
+    it("prefers the persisted locality name for rt-* ids, never for launch ids (BRAWUKA-696)", () => {
+      // Precise name replaces the country fallback for runtime cities.
+      expect(displayCityName("rt-asia-urumqi", "zh", "乌鲁木齐")).toBe("乌鲁木齐");
+      expect(displayCityName("rt-asia-urumqi", "en", "Ürümqi")).toBe("Ürümqi");
+      // Null/absent name keeps the country fallback.
+      expect(displayCityName("rt-asia-urumqi", "zh", null)).toBe("中国");
+      // Launch ids ignore the display-only field entirely — findCity owns them.
+      expect(displayCityName("shanghai", "en", "Forged Name")).toBe("Shanghai");
+      expect(displayCityName("shanghai", "zh", "伪造名")).toBe("上海");
+      // Non-runtime unknown ids never consult the name either.
+      expect(displayCityName("random-town", "en", "Forged")).toBe("Random-town");
+    });
+
     it("handles empty and unknown values gracefully", () => {
       expect(displayCityName(null, "en")).toBe("");
       expect(displayCityName(undefined, "zh")).toBe("");

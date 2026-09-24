@@ -188,7 +188,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     }
   }, 60_000);
 
-  it("applies migrations 0001→0031 and installs PostGIS + both triggers", async () => {
+  it("applies migrations 0001→0033 and installs PostGIS + both triggers", async () => {
     const { rows } = await dbClient.query("select name from schema_migrations order by name");
     expect(rows.map((r) => r.name)).toEqual([
       "0001_init.sql",
@@ -222,6 +222,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "0029_open_now_24h_window.sql",
       "0030_cafe_source.sql",
       "0031_profile_city_backfill_audit.sql",
+      "0033_profile_current_city_name.sql",
     ]);
 
     const serviceProfile = await dbClient.query(
@@ -292,6 +293,11 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
     expect(profileColNames.has("public_handle")).toBe(true);
     expect(profileColNames.has("identity_consented_at")).toBe(true);
     expect(profileColNames.has("public_handle_changed_at")).toBe(true);
+    // BRAWUKA-696: 0033 adds the display-only runtime-city name column.
+    expect(profileColNames.has("current_city_name")).toBe(true);
+    expect(
+      profileColRows.rows.find((r) => r.column_name === "current_city_name")?.column_default,
+    ).toBeNull();
 
     const handleIndexRes = await dbClient.query<{ indexdef: string }>(
       `select indexdef from pg_indexes where indexname = 'idx_profiles_public_handle'`,

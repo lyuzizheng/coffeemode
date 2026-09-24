@@ -87,7 +87,8 @@ export function ProfileHero({ profile, onProfileChange }: ProfileHeroProps) {
   };
 
   const currentCityName =
-    displayCityName(profile?.currentCity ?? "singapore", locale) || t("default_city");
+    displayCityName(profile?.currentCity ?? "singapore", locale, profile?.currentCityName) ||
+    t("default_city");
 
   const avatarFallback =
     profile?.displayName?.[0]?.toUpperCase() ?? t("default_avatar");

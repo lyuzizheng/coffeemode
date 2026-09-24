@@ -286,6 +286,76 @@ describePath3("path 3 — profile & public identity lifecycle over HTTP (spec 00
     expect(oceanCoords.data.profile.lastLocation).toEqual({ lat: 0, lng: 0 });
   });
 
+  it("path 3 (spec 0008 §6, BRAWUKA-696): PATCH /api/profile stores currentCityName only for non-launch cities", async () => {
+    const client = apiClient(users.userB);
+
+    // 1. Name while current_city is a launch id → stored as null (launch
+    //    names come from findCity; the field must not be redundant).
+    const launch = await client.patch<{ profile: UserProfileDto }, NoCtx, NextRequest>(
+      patchProfileRoute,
+      "/api/profile",
+      { currentCity: "tokyo", currentCityName: "Forged Name" },
+    );
+    expect(launch.status).toBe(200);
+    expect(launch.data.profile.currentCity).toBe("tokyo");
+    expect(launch.data.profile.currentCityName).toBeNull();
+
+    // 2. City + name in one patch: server re-derives rt-* and stores the name.
+    const located = await client.patch<{ profile: UserProfileDto }, NoCtx, NextRequest>(
+      patchProfileRoute,
+      "/api/profile",
+      {
+        currentCity: "lisbon",
+        lastLocation: { lat: 38.7223, lng: -9.1393 },
+        currentCityName: "Lisboa",
+      },
+    );
+    expect(located.status).toBe(200);
+    expect(located.data.profile.currentCity).toBe("rt-europe-lisbon");
+    expect(located.data.profile.currentCityName).toBe("Lisboa");
+
+    // 3. Name-only patch against the stored rt-* city persists.
+    const renamed = await client.patch<{ profile: UserProfileDto }, NoCtx, NextRequest>(
+      patchProfileRoute,
+      "/api/profile",
+      { currentCityName: "Lisbon" },
+    );
+    expect(renamed.status).toBe(200);
+    expect(renamed.data.profile.currentCityName).toBe("Lisbon");
+
+    // 4. A city change without a name clears the stale name in the same write.
+    const relocated = await client.patch<{ profile: UserProfileDto }, NoCtx, NextRequest>(
+      patchProfileRoute,
+      "/api/profile",
+      { currentCity: "urumqi", lastLocation: { lat: 43.8256, lng: 87.6168 } },
+    );
+    expect(relocated.status).toBe(200);
+    expect(relocated.data.profile.currentCity).toBe("rt-asia-urumqi");
+    expect(relocated.data.profile.currentCityName).toBeNull();
+
+    // 5. Switching back to a launch city clears the name too.
+    const backToLaunch = await client.patch<{ profile: UserProfileDto }, NoCtx, NextRequest>(
+      patchProfileRoute,
+      "/api/profile",
+      { currentCity: "singapore" },
+    );
+    expect(backToLaunch.status).toBe(200);
+    expect(backToLaunch.data.profile.currentCityName).toBeNull();
+
+    // 6. Explicit null clears; GET exposes the field.
+    const cleared = await client.patch<{ profile: UserProfileDto }, NoCtx, NextRequest>(
+      patchProfileRoute,
+      "/api/profile",
+      { currentCityName: null },
+    );
+    expect(cleared.status).toBe(200);
+    expect(cleared.data.profile.currentCityName).toBeNull();
+
+    const read = await client.get<ProfilePayload, NoCtx, NextRequest>(getProfileRoute, "/api/profile");
+    expect(read.status).toBe(200);
+    expect(read.data.profile.currentCityName).toBeNull();
+  });
+
   it("path 3 (spec 0008 §6, DG122): PATCH /api/profile persists onboarded + lastLocation", async () => {
     const res = await apiClient(users.userD).patch<
       { profile: UserProfileDto },

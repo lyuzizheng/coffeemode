@@ -10,6 +10,8 @@ import type { Coordinates } from "@/lib/cities";
 export async function persistProfile(patch: {
   onboarded?: boolean;
   currentCity?: string;
+  /** Display-only runtime-city name (BRAWUKA-696); null clears it. */
+  currentCityName?: string | null;
   lastLocation?: Coordinates;
 }): Promise<void> {
   try {

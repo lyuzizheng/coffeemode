@@ -14,6 +14,7 @@ export type ProfileRow = {
   display_name: string;
   avatar_url: string | null;
   current_city: string;
+  current_city_name: string | null;
   last_location: { x: number; y: number } | null;
   onboarded: boolean;
   created_at: Date;
@@ -31,6 +32,7 @@ export function toProfileDto(row: ProfileRow): UserProfileDto {
     displayName: row.display_name,
     avatarUrl: row.avatar_url,
     currentCity: row.current_city,
+    currentCityName: row.current_city_name,
     lastLocation: row.last_location
       ? { lat: row.last_location.y, lng: row.last_location.x }
       : null,

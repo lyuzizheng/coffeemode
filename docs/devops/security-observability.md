@@ -81,6 +81,26 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
   Each rule carries `env=prod|staging`, `severity` and `team=coffeemode`, and
   sets no per-rule receiver, so routing is decided in one place — the
   notification policy.
+- **Search telemetry alert rules** (BRAWUKA-712, folder `CoffeeMode`, group
+  `coffeemode-search`) — three Grafana-managed rules over the
+  `log_type="search.telemetry"` structured metadata, thresholds per ADR-0005:
+  - `CoffeeMode — Search POI degraded rate` —
+    `sum by (…) count(search_poi_degraded="true") / sum by (…) count(…) > 0.05`
+    with ≥ 20 requests, 7 d rolling (`dfza5w8cynoxsd`).
+  - `CoffeeMode — Search latency regression (p95)` —
+    `quantile_over_time(0.95, … | unwrap search_duration_ms [24h]) > 400` with
+    ≥ 50 requests, `miss|bypass` rows only (`afza5w97twirke`).
+  - `CoffeeMode — Edge cache dead (hit rate 0)` —
+    `count(miss) / count(hit|miss)` reaching 1 with ≥ 50 misses, 24 h
+    (`ffza5w9gak4xsb`).
+  Two mechanics worth knowing: every aggregation is wrapped in
+  `sum by (service_name, deployment_environment_name)` (OTLP structured
+  metadata comes back as per-line series labels, so raw `count_over_time`
+  returns one series per log line), and the p95 query `drop`s all varying
+  metadata labels before `unwrap` so the quantile spans one series per
+  environment. Instances split per environment with an `env=prod|staging`
+  label; `for: 15m`, `noData`/`execErr` → `OK`. Also silent until the
+  notification path lands (next bullet).
 - **The notification path is not wired yet — and this is not hypothetical.** The
   stack has no contact point and the default policy receiver is the built-in
   no-op `empty`, so a firing rule notifies nobody. As of 2026-09-21 13:24 UTC

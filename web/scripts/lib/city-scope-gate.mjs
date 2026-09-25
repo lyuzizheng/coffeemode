@@ -1,21 +1,19 @@
 /**
  * City-scope gate (BRAWUKA-715): E2E coverage for the client-only contracts
- * that lost their last assertions when BRAWUKA-714 deleted
- * `web/tests/onboarding-locate.test.ts` (unit layer banned per BRAWUKA-682;
- * the helpers have no HTTP surface, so integration suites can't reach them).
+ * orphaned by BRAWUKA-714's `onboarding-locate.test.ts` deletion (unit layer
+ * banned per BRAWUKA-682; no HTTP surface for integration suites to reach).
  *
- *   1. `displayCityName` precedence (lib/cities.ts): a profile row carrying
- *      `current_city='shanghai'` plus a forged `current_city_name` (written
- *      straight to the DB, bypassing the PATCH guard — BRAWUKA-696 self-harm
- *      boundary) still renders "Shanghai" en / "上海" zh on /profile; the
- *      forged string appears nowhere on the page.
+ *   1. `displayCityName` precedence (lib/cities.ts): a DB-seeded profile with
+ *      `current_city='shanghai'` + forged `current_city_name` (bypassing the
+ *      PATCH guard — BRAWUKA-696 self-harm boundary) still renders
+ *      "Shanghai" en / "上海" zh on /profile; the forged string never renders.
  *   2. `resolveSearchScope` rt-* routing (lib/search/search-client.ts): with
- *      onboarding state holding a runtime city id, the discovery search
- *      field fires `/api/search?q=…&lat=…&lng=…` — never `?city=rt-*`
- *      (BRAWUKA-568). The response's `reference_point` is the coordinate
- *      anchor; a launch-city switch is the positive `?city=` control.
- *      Folded in: rt-* chip country fallback ("United States"), persisted
- *      `currentCityName` win ("Los Angeles"), unknown-id capitalization.
+ *      a runtime city id in onboarding state, the discovery search field
+ *      fires `/api/search?q&lat&lng` — never `?city=rt-*` (BRAWUKA-568); the
+ *      response `reference_point` is the coordinate anchor, and a launch-city
+ *      switch is the positive `?city=` control. Folded in: rt-* chip country
+ *      fallback, persisted `currentCityName` win, unknown-id capitalization.
+ *
  * Needs DB (profile row + scope cafe) and supabase-mock for check 1's
  * session; check 2 is anonymous. Desktop only.
  */
@@ -57,12 +55,8 @@ async function writeOnboarding(page, state) {
   );
 }
 
-/**
- * Check 1 — forged `currentCityName` never wins for a launch id.
- * The DB write bypasses PATCH /api/profile's launch-id strip on purpose:
- * the client helper is the last line of defense (BRAWUKA-696).
- */
-async function checkProfileCityPrecedence({ base, supabaseUrl, dbClient, createContext, attachErrorCollector, label }) {
+/** Check 1 — a forged `currentCityName` never wins for a launch id (BRAWUKA-696). */
+async function checkProfileCityPrecedence({ base, supabaseUrl, dbClient, sessionCookie, createContext, attachErrorCollector, label }) {
   await dbClient.query(
     `insert into profiles (id, display_name, current_city, current_city_name)
      values ($1, 'E2E Forge', 'shanghai', $2)
@@ -70,8 +64,6 @@ async function checkProfileCityPrecedence({ base, supabaseUrl, dbClient, createC
        display_name = 'E2E Forge', current_city = 'shanghai', current_city_name = $2`,
     [FORGE_USER_ID, FORGED_NAME],
   );
-  const sessionCookie = await mintSession(supabaseUrl, FORGE_USER_ID);
-  assert(sessionCookie, `${label}: supabase-mock unreachable at ${supabaseUrl}`);
 
   for (const [locale, expected] of [["en", "Shanghai"], ["zh", "上海"]]) {
     await withGateContext(
@@ -121,14 +113,8 @@ function assertSearchScope(url, { city, lat, lng }, label) {
   }
   for (const [name, want] of [["lat", lat], ["lng", lng]]) {
     const got = params.get(name);
-    if (want === null) {
-      assert(got === null, `${label}: /api/search carried ?${name}=${got}, want absent`);
-    } else {
-      assert(
-        got !== null && Math.abs(Number(got) - want) < 1e-6,
-        `${label}: /api/search ?${name}=${got}, want ${want}`,
-      );
-    }
+    const ok = want === null ? got === null : got !== null && Math.abs(Number(got) - want) < 1e-6;
+    assert(ok, `${label}: /api/search ?${name}=${got}, want ${want ?? "absent"}`);
   }
 }
 
@@ -195,6 +181,8 @@ async function checkRuntimeSearchScope({ base, dbClient, createContext, attachEr
   // The coordinate-scoped request still resolves `effectiveCity` server-side
   // (DG128 → default 'singapore'), so the visible result must be a
   // Singapore-city cafe — distance is sort-only, never a filter.
+  // `created_by` needs a live profile row: check 1's insert owns FORGE_USER_ID,
+  // so this check must stay ordered after it (or seed its own owner).
   await dbClient.query(
     `insert into cafes (id, name, address, location, city, created_by, tz, gallery)
      values ($1, $2, '1 Scope Way', ST_SetSRID(ST_MakePoint(103.8198, 1.3521), 4326)::geography,
@@ -240,8 +228,20 @@ async function checkRuntimeSearchScope({ base, dbClient, createContext, attachEr
 export async function runCityScopeGate({ label, base, dbClient, createContext, attachErrorCollector }) {
   const supabaseUrl = process.env.E2E_SUPABASE_URL ?? "http://127.0.0.1:54321";
   clearGateArtifacts(SLUG);
+  // Same convention as the other session gates: probe once, skip locally
+  // when the mock is down, fail in CI.
+  const sessionCookie = await mintSession(supabaseUrl, FORGE_USER_ID);
+  if (!sessionCookie) {
+    if (process.env.CI) {
+      throw new Error(`${label}: supabase-mock unreachable at ${supabaseUrl}`);
+    }
+    console.warn(
+      `[E2E] SKIP ${label}: supabase-mock unreachable at ${supabaseUrl} — start it with \`docker compose up -d supabase-mock\``,
+    );
+    return;
+  }
   try {
-    await checkProfileCityPrecedence({ base, supabaseUrl, dbClient, createContext, attachErrorCollector, label });
+    await checkProfileCityPrecedence({ base, supabaseUrl, dbClient, sessionCookie, createContext, attachErrorCollector, label });
     await checkRuntimeSearchScope({ base, dbClient, createContext, attachErrorCollector, label });
   } finally {
     await dbClient.query(`delete from cafes where id = $1`, [SCOPE_CAFE_ID]).catch(() => {});

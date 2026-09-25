@@ -78,7 +78,7 @@ export const E2E_GATES = [
   },
   {
     slug: "city-scope",
-    label: "T14: City Scope (Forged Name Precedence, rt-* Coordinate Search)",
+    label: "T27: City Scope (Forged Name Precedence, rt-* Coordinate Search)",
     mobile: false,
     needsDb: true,
     run: runCityScopeGate,

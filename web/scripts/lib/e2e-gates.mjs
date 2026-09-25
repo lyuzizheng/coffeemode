@@ -16,6 +16,7 @@ import { runCheckinLifecycleGate } from "./checkin-lifecycle-gate.mjs";
 import { runCheckinSubmitGate } from "./checkin-submit-gate.mjs";
 import { runDeeplinkHydrationGate } from "./deeplink-hydration-gate.mjs";
 import { runNavigationPromptGate } from "./navigation-prompt-gate.mjs";
+import { runCityScopeGate } from "./city-scope-gate.mjs";
 import { recordGateFailure } from "./e2e-artifacts.mjs";
 
 export const E2E_GATES = [
@@ -74,6 +75,13 @@ export const E2E_GATES = [
     mobile: false,
     needsDb: true,
     run: runNavigationPromptGate,
+  },
+  {
+    slug: "city-scope",
+    label: "T27: City Scope (Forged Name Precedence, rt-* Coordinate Search)",
+    mobile: false,
+    needsDb: true,
+    run: runCityScopeGate,
   },
 ];
 /**

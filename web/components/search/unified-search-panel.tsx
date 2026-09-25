@@ -148,22 +148,14 @@ export function UnifiedSearchPanel({
   // DG46: Enter submits — the panel swaps compact suggestion rows for the
   // rich results view until the query is edited or Esc clears it.
   const [submitted, setSubmitted] = useState(false);
-  const [browseActive, setBrowseActive] = useState(false);
   const requestId = useRef(0);
   // Signature of the last request actually fired — lets Enter short-circuit a
   // pending debounce without a duplicate request.
   const fetchedSignatureRef = useRef<string | null>(null);
-  const prevTrimmedRef = useRef(query.trim());
   const fetcher = fetchSearch ?? fetchUnifiedSearch;
   const filterUi = filters !== undefined && onFiltersChange !== undefined;
   const filtersActive = filterUi && hasActiveFilters(filters);
 
-  // Derived-state adjustment (matches use-discovery-search:139-148 pattern):
-  // Latch browseActive during empty-query browse mode when filters are active,
-  // so toggling filters back to "Any" refetches the unfiltered baseline (BRAWUKA-716).
-  // Resets on typing text, query clear, Esc, or closing empty filter panel.
-  if (filtersActive && query.trim() === "" && !browseActive) setBrowseActive(true);
-  if (query.trim() !== "" && browseActive) setBrowseActive(false);
 
   // BRAWUKA-364: the host mirrors the field value so it can swap its own
   // list for results while a query is active.
@@ -177,11 +169,18 @@ export function UnifiedSearchPanel({
   );
 
   // Below the minimum-query trigger (DG44) the panel is idle by derivation —
-  // unless filters are active or browse mode was activated: browse mode fetches
-  // with an empty `q` so the chips always have a live list behind them. Stale
-  // in-flight requests are invalidated via the request id.
-  const wantsResults = query.trim().length >= MIN_QUERY_LENGTH || filtersActive || browseActive;
+  // unless filters are active: browse mode fetches with an empty `q` so the
+  // chips always have a live list behind them. Stale in-flight requests are
+  // invalidated via the request id.
+  const wantsResults = query.trim().length >= MIN_QUERY_LENGTH || filtersActive;
   const effectiveStatus: SearchStatus = wantsResults ? status : "idle";
+
+  // BRAWUKA-716: When idle (no query, no active filters), clear stale response
+  // and status so header resultCount vanishes and host index list takes over.
+  if (!wantsResults && (response !== null || status !== "idle")) {
+    setResponse(null);
+    setStatus("idle");
+  }
 
   // One runner for both the debounced effect and manual retry. Stale
   // responses are discarded via the request id; a successful prior status is
@@ -215,19 +214,6 @@ export function UnifiedSearchPanel({
   );
   useEffect(() => {
     const trimmed = query.trim();
-    const queryWasCleared =
-      prevTrimmedRef.current.length >= MIN_QUERY_LENGTH && trimmed.length < MIN_QUERY_LENGTH;
-    prevTrimmedRef.current = trimmed;
-
-    if (queryWasCleared && !hasActiveFilters(filters ?? EMPTY_FILTERS)) {
-      requestId.current += 1;
-      fetchedSignatureRef.current = null;
-      setBrowseActive(false);
-      setResponse(null);
-      setStatus("idle");
-      return;
-    }
-
     if (!wantsResults) {
       requestId.current += 1;
       fetchedSignatureRef.current = null;
@@ -255,14 +241,8 @@ export function UnifiedSearchPanel({
   // Esc still closes the column.
   const handleKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === "Escape") {
-      if (query !== "" || submitted || browseActive) event.preventDefault();
+      if (query !== "" || submitted) event.preventDefault();
       handleQueryChange("");
-      if (browseActive) {
-        setBrowseActive(false);
-        setResponse(null);
-        setStatus("idle");
-        fetchedSignatureRef.current = null;
-      }
       return;
     }
     if (event.key === "Enter") {
@@ -296,16 +276,6 @@ export function UnifiedSearchPanel({
     onSelectResult(item);
   };
 
-  const handleFilterOpenChange = (next: boolean) => {
-    setFilterOpen(next);
-    if (!next && !filtersActive && query.trim().length < MIN_QUERY_LENGTH) {
-      setBrowseActive(false);
-      setResponse(null);
-      setStatus("idle");
-      fetchedSignatureRef.current = null;
-    }
-  };
-
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-1.5">
@@ -327,7 +297,7 @@ export function UnifiedSearchPanel({
           <FilterButton
             filters={filters}
             expanded={filterOpen}
-            onPress={() => handleFilterOpenChange(!filterOpen)}
+            onPress={() => setFilterOpen((prev) => !prev)}
           />
         )}
       </div>
@@ -338,7 +308,7 @@ export function UnifiedSearchPanel({
         <FilterSurface
           isDesktop={isDesktop}
           open={filterOpen}
-          onOpenChange={handleFilterOpenChange}
+          onOpenChange={setFilterOpen}
           filters={filters}
           resultCount={response?.total_count ?? null}
           onFiltersChange={onFiltersChange}

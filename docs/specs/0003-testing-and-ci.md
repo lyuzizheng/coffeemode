@@ -75,7 +75,7 @@ Risk and independent-review requirements are defined only in
 web: npm run typecheck, lint, check:structure, check:duplication, check:file-size, check:i18n, build, check:bundle, verify, lhci
 web real DB: npm run db:migrate, npm run test:integration, npm run test:integration:journey, npm run test:integration:http, npm run test:integration:images, npm run test:integration:all, npm run test:coverage:integration
 web browser smoke: npm run test:e2e (Playwright MVP smoke suite), npm run lhci (Lighthouse CI performance budgets), npm run check:visual (local visual render evidence)
-services: npm run typecheck
+services: npm run typecheck, lint, check:file-size, check:suppressions
 staging journey: STAGING_DATABASE_URL=<postgres with CREATEDB> scripts/devops/run-staging-journey.sh --suite <journey|http|db|all> (setup via setup-supabase.mjs, cleanup via web/scripts/cleanup-stale-test-dbs.mjs --apply)
 agent harness: .agents/scripts/preflight.sh, .agents/scripts/harness-self-test.sh, .agents/scripts/check-runtime-pins.sh
 ```
@@ -106,8 +106,8 @@ DB-backed gate:
 - `application-static`: `web/` changes (typecheck, structure guard — file/function budget, duplication budget, layer boundaries, exemption ratchet — route guard (`npm run check:guards`, apiRoute/origin allowlists), lint, i18n key parity, build, bundle budget check, bundle analysis, PWA validation);
 - `application-e2e`: `web/` changes (build, Playwright E2E smoke suite, and Lighthouse CI performance budgets against seeded fixtures) — runs in parallel with `application-static`;
 - `integration-gate`: DB/SQL-capable web boundaries and shared-package changes — runs real Postgres DB tests (`npm run test:integration`), real Postgres user-journey tests (`npm run test:integration:journey`), real Postgres HTTP lifecycle tests (`npm run test:integration:http`), and real MinIO/R2 image round-trip (`npm run test:integration:images`) sequentially on one `postgis` service + `docker compose up minio` (merged for efficiency; was `integration-gate` + `images-integration-gate`), then the real-DB coverage ratchet (`npm run test:coverage:integration`) against the same live stack. Branch protection that still requires the legacy `images-integration-gate` name should migrate to `integration-gate` + `ci-gate` (see migration note below);
-- `image-service-gate`: image-service and shared-package changes (typecheck, deploy config guard);
-- `poi-service-gate`: poi-service and shared-package changes (typecheck);
+- `image-service-gate`: image-service and shared-package changes (typecheck, structural lint, file budget, exemption ratchet, deploy config guard);
+- `poi-service-gate`: poi-service and shared-package changes (typecheck, structural lint, file budget, exemption ratchet);
 - `ci-gate`: always aggregates selected job results.
 
 Post-merge verification lives outside the PR gates: the `staging-journey`
@@ -235,7 +235,12 @@ non-zero if any fails:
   (`web/scripts/empty-suppressions.json`) to fail entries whose rule no longer
   fires, requires the `max-lines` exemptions to match the file-size registry
   exactly, and prints `suppressed violations: N (budget M)` so the frozen debt is
-  visible in CI logs.
+  visible in CI logs. Each Worker service runs the same script against its own
+  registries (`npm run check:suppressions` = `web/scripts/check-suppressions.mjs --root .`
+  in `poi-service/` / `image-service/`) with identical assertions; their
+  baselines carry no `files` size registry, so a service `max-lines`
+  suppression can never satisfy the parity check — Workers register zero
+  file-size exemptions.
 - **`npm run check:duplication`**: jscpd over hand-written code with the budget in
   `.jscpd.json`; tests, generated output, and the archived apps are excluded.
 - **`npm run check:file-size`**: per-file budgets plus the grandfathered registry

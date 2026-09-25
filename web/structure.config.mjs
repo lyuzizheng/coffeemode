@@ -63,7 +63,9 @@ export const SOURCE_SCAN = Object.freeze({
 /**
  * Root directories and extensions `scripts/check-service-file-size.mjs` walks
  * in each Worker service. Spec 0009 §3 applies to `poi-service/` and
- * `image-service/` unchanged (Edge cases §4: Workers code has no exemption);
+ * `image-service/` unchanged (Edge cases §4: same table as web — Workers
+ * register zero file-size exemptions; stock function-level violations carry
+ * dated §7 exemptions in each service's `eslint-suppressions.json`);
  * tests are excluded there for the same reason they are excluded above.
  */
 export const SERVICE_SCAN = Object.freeze({

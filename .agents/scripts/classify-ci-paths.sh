@@ -71,6 +71,16 @@ else
         image_service=true
         poi_service=true
         ;;
+      # Structure-guard exemption ratchet (spec 0009 §7): web runs it inside
+      # `check:structure`, and both Workers run the same script against their
+      # own registries (`npm run check:suppressions`), so a change must re-run
+      # all three gates (application + the two service gates) — same policy as
+      # `web/structure.config.mjs` below.
+      web/scripts/check-suppressions.mjs)
+        application=true
+        image_service=true
+        poi_service=true
+        ;;
       # Integration-gated web paths: real Postgres/PostGIS or real MinIO/R2.
       # `web/db/*`, `web/lib/*`, and `web/app/api/*`, `web/app/auth/*` are the layers the gated
       # suites exercise; `web/shared/*` and `web/types/*` are the runtime modules

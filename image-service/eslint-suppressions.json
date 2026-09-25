@@ -1,0 +1,15 @@
+{
+  "scripts/clean-orphan-originals.mjs": {
+    "max-lines-per-function": {
+      "count": 2
+    },
+    "sonarjs/cognitive-complexity": {
+      "count": 2
+    }
+  },
+  "src/index.ts": {
+    "max-lines-per-function": {
+      "count": 1
+    }
+  }
+}

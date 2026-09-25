@@ -97,7 +97,7 @@ lib/* ──────────────────▶ shared/* · type
 - ESLint 结构规则 + `check-file-size` 作用于 `SOURCE_GLOBS` / `SOURCE_SCAN`（`app`、`components`、`lib`、`shared`、`config`、`scripts`）；**测试文件（含 `tests/`、`*.test.*`）明确排除在外**——测试体积预算归 `docs/specs/0003-testing-and-ci.md` 所有，本规范不给测试定数字、不扫描测试（`SOURCE_GLOBS` 注释原文："Tests are deliberately absent: spec 0003 owns test-maintenance budgets"）。
 - `jscpd` 忽略 `tests/`、生成物、`dist/`（`.jscpd.json` 落仓值与本表一致）。
 - 生成物/migration 不计入任何阈值。
-- `poi-service/`、`image-service/` 同样适用本表（Workers 代码无豁免）。
+- `poi-service/`、`image-service/` 同样适用本表（Workers 文件体积豁免为零；存量函数级违规按 §7 登记带到期日的豁免）。
 
 改数规则：阈值变更 MUST 同 PR 改四处——本规范 §3（政策正文）、`web/structure.config.mjs`（机器源）、`.jscpd.json`（`duplication` 镜像，`check:structure` 会断言镜像一致）、`.agents/rules/coding.md`（`### Decidable structure checks` 日常判定镜像）；只改部分位置（或改工具不改文档）的 PR 视为 P0 违规（两份真相）。
 
@@ -180,7 +180,7 @@ MUST 在当次提交内完成拆分。不允许"顺手加一行"把超标文件�
 
 ### §7 例外机制：祖父清单与"只降不升"
 
-确需超标的文件走登记制，不走口头豁免。存量豁免有**两张**机器登记表（政策正文在本节，两处镜像与正文 MUST 1:1，增删同 PR）：
+确需超标的代码走登记制，不走口头豁免。存量豁免的机器登记（政策正文在本节，机器镜像与正文 MUST 1:1，增删同 PR）分两组：web 的两张表（文件级 + 规则级，见下），以及两个 Worker 各自的一套规则级登记（`poi-service/eslint-suppressions.json`、`image-service/eslint-suppressions.json` + 各自 `structure-baseline.json` 的预算，见第二张表后的说明；Workers 文件体积豁免为零）：
 
 | 文件 | 当前行数 | 超标项 | 只降不升基线 | 复核到期 | 责任人 |
 | --- | --- | --- | --- | --- | --- |
@@ -193,7 +193,7 @@ BRAWUKA-185 (#358) 造成的 +5；`checkin-feed` 的 440 是 BRAWUKA-73 (#349) �
 已由 BRAWUKA-73 (#361) 在 main 上压到 433（BRAWUKA-200 同步登记值），随后由 BRAWUKA-198 (#368) 拆分毕业，
 合入后的树实测 433）；`config-schema.ts` 是 BRAWUKA-184 (#357) 引入，已由 BRAWUKA-194 (#362) 拆分为 `web/lib/config-schema/*` 并毕业；基线自记录值起只降不升。
 
-第二张表：规则级豁免（`web/eslint-suppressions.json`，当前 43 文件 / 50 条目 / 54 处违规）。
+第二张表：规则级豁免（`web/eslint-suppressions.json`，当前 34 文件 / 37 条目 / 38 处违规）。
 用途：结构规则（函数行数/复杂度/`max-depth`/同构函数）对存量文件的逐条 suppress；
 读取方：**ESLint 自身的 bulk suppressions 机制**（`eslint.config.mjs` 不读该文件、不按路径关规则），
 棘轮由 `scripts/check-suppressions.mjs` 校验，预算登记在
@@ -206,6 +206,17 @@ BRAWUKA-180 (#356) 拆分后存量违规 72 → 68、条目数 60 → 60、文�
 一个 god module 拆成多个模块会把同一批豁免摊到更多文件上。三项都是硬棘轮，
 因此这种"债务总量下降但分布变宽"的重构 MUST 同 PR 更新预算并说明（本条即该说明），
 预算 diff 本身进入 review；未说明的增长一律 CI 失败。
+
+Workers 的规则级豁免与 web 同构：`poi-service/eslint-suppressions.json`、
+`image-service/eslint-suppressions.json` 各由本服务的 `npm run check:suppressions`
+（`web/scripts/check-suppressions.mjs --root .`）执行同样的只降不升、stale 清理与
+到期复核，预算（`files` / `entries` / `perRule` / `reviewBy`）登记在各服务的
+`structure-baseline.json`。当前存量（BRAWUKA-709 登记）：
+poi-service 5 文件 / 6 条目 / 6 处违规（`max-lines-per-function` 1、`sonarjs/cognitive-complexity` 5），
+image-service 2 文件 / 3 条目 / 5 处违规（`max-lines-per-function` 3、`sonarjs/cognitive-complexity` 2），
+两者 `reviewBy` 均为 2026-12-31。Worker 的登记没有 `files` 键：文件体积豁免在
+Workers 侧为零，`scripts/check-service-file-size.mjs` 不读任何登记表（要登记必须
+同 PR 扩展该脚本，其文件头有言在先）。
 
 规则：
 

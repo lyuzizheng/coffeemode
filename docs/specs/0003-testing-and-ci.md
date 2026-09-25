@@ -73,7 +73,7 @@ Risk and independent-review requirements are defined only in
 
 ```text
 web: npm run typecheck, lint, check:structure, check:duplication, check:file-size, check:i18n, build, check:bundle, verify, lhci
-web component tests: npm run test:unit (vitest run tests/components — scoped so RUN_INTEGRATION-gated suites stay out)
+web component tests: npm run test:unit (vitest run tests/components --passWithNoTests — scoped so RUN_INTEGRATION-gated suites stay out; an empty family is a legal state, not a failure)
 web real DB: npm run db:migrate, npm run test:integration, npm run test:integration:journey, npm run test:integration:http, npm run test:integration:images, npm run test:integration:all, npm run test:coverage:integration
 web browser smoke: npm run test:e2e (Playwright MVP smoke suite), npm run lhci (Lighthouse CI performance budgets), npm run check:visual (local visual render evidence)
 services: npm run typecheck, lint, check:file-size, check:suppressions
@@ -277,10 +277,13 @@ ratchet, and all mocked `*.test.*` suites under `web/tests/**` (outside
 `integration/` and `devops/`) and `*/tests/` in the workers are deleted.
 The one surviving exception is the component-contract family
 `web/tests/components/**` (BRAWUKA-716): `npm run test:unit`
-(`vitest run tests/components`, jsdom) runs it as a blocking
+(`vitest run tests/components --passWithNoTests`, jsdom) runs it as a blocking
 `application-static` step, and `.agents/scripts/check-ci-workflow.sh` fails
-preflight if that step is deleted from `ci.yml`. Coverage measurement
-survives only at the real-DB layer below.
+preflight if that step is deleted from `ci.yml`. The directory is an allowed
+location, not a mandated population: `--passWithNoTests` keeps the gate green
+when the family is empty, so deleting a defunct contract test (PR #737 did)
+never fails every `web/**` PR — the gate guards where such tests may live, not
+how many exist. Coverage measurement survives only at the real-DB layer below.
 
 `npm run test:coverage:integration` runs the registered
 real-DB suites once more under the live Postgres/PostGIS + MinIO stack and

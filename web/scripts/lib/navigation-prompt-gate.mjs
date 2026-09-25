@@ -87,7 +87,13 @@ async function checkCardAnswer({ request, base, page, dbClient, userId, cafeId, 
           headers: { Origin: base, "content-type": "application/json" },
           data: { outcome: "wont_go" },
         });
-        assert(res.status() === 200, `card-press fallback resolve returned ${res.status()}, want 200`);
+        // The contract under test is the queue state, not this POST: the
+        // card's own answer may have already retired the row (or the press
+        // raced the collapse timer), so a non-200 here only fails when the
+        // queue still serves a prompt — checked by the assertion below.
+        if (res.status() !== 200) {
+          console.warn(`[E2E] ${label}: card-press fallback resolve returned ${res.status()} — checking queue state`);
+        }
       });
     const after = await request.get(`${base}/api/navigations/prompt`, {
       headers: { Origin: base },

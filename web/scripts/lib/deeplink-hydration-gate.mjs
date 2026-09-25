@@ -34,7 +34,9 @@ async function checkDesktopHydration({ base, cafeId, cafeName, createContext, at
     // Hydrated app state: the discovery sidebar + detail column are live and
     // the SSR masthead overlay is gone — the shell became the app in place.
     await page.locator("aside").first().waitFor({ state: "visible", timeout: 20000 });
-    await page.getByRole("heading", { name: cafeName }).waitFor({ state: "visible", timeout: 20000 });
+    // .first(): the shell h1 and the hydrated app's h2 coexist during the
+    // handoff window — strict mode would flake on the overlap.
+    await page.getByRole("heading", { name: cafeName }).first().waitFor({ state: "visible", timeout: 20000 });
     await page.waitForSelector("header", { state: "detached", timeout: 10000 });
     assert(page.url().endsWith(`/cafes/${cafeId}`), `URL drifted: ${page.url()}`);
 

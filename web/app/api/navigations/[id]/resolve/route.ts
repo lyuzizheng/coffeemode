@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
 import { apiRoute } from "@/lib/api/route";
-import { navigationPromptQueue, parsePromptAnswerBody } from "@/lib/db/navigations";
+import { navigationPromptQueue } from "@/lib/db/navigations";
+import { parsePromptAnswerBody } from "@/lib/validation/navigation";
 import { readJsonBody } from "@/lib/api/guard";
 import { isValidUUID } from "@shared/uuid";
 

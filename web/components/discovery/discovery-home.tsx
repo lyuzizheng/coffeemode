@@ -38,7 +38,7 @@ import { CafeCreationSheet } from "@/components/cafe/cafe-creation-sheet";
 import { UnifiedSearchPanel } from "@/components/search/unified-search-panel";
 import { NavPromptView } from "./nav-prompt";
 import { useNavPrompt } from "./use-nav-prompt";
-import { useDiscoverySearch } from "./use-discovery-search";
+import { creationDraftKey, useDiscoverySearch } from "./use-discovery-search";
 import type { DiscoverySearch } from "./use-discovery-search";
 import type { CreationDraft } from "./use-discovery-search";
 import { DesktopDiscovery } from "./desktop-discovery";
@@ -88,17 +88,6 @@ function MobileSearchOverlay({ search }: { search: DiscoverySearch }) {
       </div>
     </div>
   );
-}
-
-/**
- * Remount key for the creation sheet: a new pick must remount it so the seed
- * effect runs again (BRAWUKA-364). A live search pick carries a prediction
- * instead of a POI, so it keys on the prediction's place id.
- */
-function creationDraftKey(draft: CreationDraft | null): string {
-  if (draft?.poi) return `${draft.poi.source}:${draft.poi.place_id}`;
-  if (draft?.prediction) return `prediction:${draft.prediction.place_id}`;
-  return draft?.provider ?? "empty";
 }
 
 /** Everything floating above the map + columns: check-in drawer, creation

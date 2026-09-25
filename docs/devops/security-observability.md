@@ -41,9 +41,10 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
   There is no second sink: the Better Stack POST that used to sit beside the
   log line was removed with Better Stack itself (BRAWUKA-611), so the log line
   is the only record and the only thing the alert rule reads.
-- `otlp-logs` hook (BRAWUKA-607, `web/lib/observability/otlp-logs.ts`) ships
-  every `logError`/`logWarn` JSON line — and the proxy's `type:"access"` line —
-  to Grafana Cloud Loki over OTLP, on the same SDK and endpoint as traces
+- `otlp-logs` hook (BRAWUKA-607, BRAWUKA-613, `web/lib/observability/otlp-logs.ts`) ships
+  every `logError`/`logWarn` JSON line, the proxy's `type:"access"` line, and
+  search telemetry (`type:"search.telemetry"`, ADR-0005) to Grafana Cloud Loki
+  over OTLP, on the same SDK and endpoint as traces
   (`OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS`, BRAWUKA-606).
   It replaced the retired `api-error-sink` hook (spec 0011 D8, BRAWUKA-541) and
   its ingest-credential pair, both of which are gone. Unset endpoint means
@@ -62,9 +63,11 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
   `service_name="coffeemode-web"` and `deployment_environment_name`
   (`staging` / `production`, from `OTEL_RESOURCE_ATTRIBUTES`), and every
   queryable field — `log_type`, `route`, `status`, `code`, `bucket`,
-  `client_id`, `client_ip`, `request_id`, `retry_after` — is structured
-  metadata, filtered with `| field="value"` and no `| json` parse. There is no
-  `service` or `env` label; a query using them silently matches nothing.
+  `client_id`, `client_ip`, `request_id`, `retry_after`, and search telemetry
+  fields (`mode`, `search_duration_ms`, `search_truncated`, `search_open_now_batches`,
+  `search_poi_degraded`, `search_cache`) — is structured metadata, filtered with `| field="value"` and
+  no `| json` parse. There is no `service` or `env` label; a query using them
+  silently matches nothing.
 - **Alert rules** (BRAWUKA-611, folder `CoffeeMode`) — six Grafana-managed
   rules, one per signal per environment, all LogQL over the two labels above:
   - `CoffeeMode — 5xx sustained on a route (prod|staging)` —

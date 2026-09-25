@@ -4,6 +4,13 @@
 
 Accepted
 
+**Amended 2026-09-24 (BRAWUKA-613)** — `search.telemetry` is wired to Grafana
+Cloud Loki via the application-side OTLP logger (`web/lib/observability/otlp-logs.ts`)
+and `emitTelemetryLine`, replacing raw `console.info` and sharing the same
+log shipping pipeline with error, warn, and access lines. Structured metadata
+(`log_type="search.telemetry"`, `mode`, `search_duration_ms`, `search_truncated`,
+`search_poi_degraded`, `search_cache`) is preserved on the stream.
+
 **Amended 2026-09-21 (BRAWUKA-607 / BRAWUKA-611)** — the collection path and the
 alerting platform changed; the decision itself did not. The metric 口径, frozen
 fields, and promotion thresholds below stand unchanged. The "stdout → Better
@@ -50,25 +57,25 @@ Derived ratios (all over a rolling 7-day window unless stated):
 - `live_share` = count(`mode=live`) / count(`search.requests`) — billed-fanout watch.
 - `cache_hit_rate` = count(`search.cache=hit`) / count(`search.cache` ∈ {hit, miss}) — DG137-C effectiveness watch.
 
-### Collection path — **amended 2026-09-21**
+### Collection path — **amended 2026-09-24 (BRAWUKA-613)**
 
-`search.telemetry` lines go to container stdout, and **that is currently the
-only place they go.** The original plan — a VPS log shipper (Vector or the
-vendor's Docker collector) forwarding stdout to the vendor's Logs product —
-was never deployed, and the vendor is now deleted (BRAWUKA-611), so no
-collection path exists at all. The lines are greppable with `docker logs` on
-the VPS and nowhere else.
+`search.telemetry` lines go to container stdout as single JSON lines (ADR-0004)
+and are simultaneously shipped to Grafana Cloud Loki over OTLP via the
+application-side logger (`web/lib/observability/otlp-logs.ts`, BRAWUKA-613) on
+the registered `lineSink` (`emitTelemetryLine`).
 
-The obvious replacement is the OTLP path the rest of the app already uses
-(`web/lib/observability/otlp-logs.ts`, BRAWUKA-607), but it does not pick
-these lines up: that sink is registered on `logError` / `logWarn` only, and
-`search-service.ts` emits telemetry with `console.info`. Wiring it is a
-one-line change plus a decision about whether `search.telemetry` should be a
-Loki stream at all — at ≈ 1 line/request it is cheap, and Loki's 14-day
-retention comfortably covers the 7-day rolling windows below. **Until that
-lands, every promotion gate in this ADR that reads a derived ratio is
-evaluated by hand from `docker logs`** — which is what the "greppable from
-container stdout" fallback below always assumed anyway.
+Grafana Cloud Loki maps OTLP log attributes into structured metadata:
+`log_type="search.telemetry"`, `mode` (`stored_only` | `live`),
+`search_duration_ms`, `search_truncated`, `search_open_now_batches`,
+`search_poi_degraded`, and `search_cache`, indexing on the two existing service
+labels (`service_name="coffeemode-web"`, `deployment_environment_name`) with
+zero added streams. The full payload is preserved in `body`. At ≈ 1 line/request
+(≈ 200 B, ≈ 17 MB/day at 1 rps sustained), Loki's 14-day retention comfortably
+covers the 7-day rolling evaluation windows.
+
+The historical fallback — grepping from container stdout via `docker logs` —
+remains intact because stdout receives the exact JSON serialization of the same
+event.
 
 No separate metrics pipeline is introduced (Critical Cleanup Gate: no second
 consumer exists). No client-side analytics in MVP.
@@ -138,10 +145,10 @@ historical record of the original contract.
   surface was retired the same day (BRAWUKA-611)** — the lines now go to
   Grafana Cloud Loki over OTLP and the alerts are Grafana-managed rules. No
   new vendor was added: Grafana Cloud was already in the stack.
-- Stage 3 (#293) shipped under the owner-ruled staging-E2E gate above. The
-  "Search" dashboard that was to be the ongoing evidence source was never
-  built and its platform is gone; search evidence now comes from `docker logs`
-  until the collection path above is wired.
+- Stage 3 (#293) shipped under the owner-ruled staging-E2E gate above. Search
+  telemetry is now collected in Grafana Cloud Loki over OTLP (BRAWUKA-613), so
+  derived ratios can be queried directly via LogQL structured metadata without
+  manual `docker logs` inspection.
 - ADR-0004's "no SaaS log service" is superseded only for this bounded scope;
   access/error log correlation stays on `request_id` and stdout.
 - The frozen-field contract makes telemetry a tested surface

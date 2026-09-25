@@ -103,7 +103,16 @@ so a key restricted to the legacy Places API would 403 every live search.
   attached AND are absent from the live-keys export; post-commit attach
   (BRAWUKA-400) re-marks live originals to `checkin`, and any stale-marker
   key that IS referenced is reported as `would-keep … reason:"referenced"`
-  and never deleted.
+  and never deleted. A failed sibling keeps its original as the retry anchor
+  (siblings-first delete order), so the next scheduled run re-attempts it.
+- Tombstone retry path (BRAWUKA-699): the sweeper never sees tombstoned
+  rows' variants (it lists `original/` orphans only), so a `deleteUnreferencedPhotos`
+  failure after a check-in/cafe/account delete converges only through
+  `web/scripts/backfill-tombstone-photo-deletes.mjs` — re-run it alongside the
+  sweeper (same cadence) until it reports no failures:
+  `DATABASE_URL=... IMAGE_SERVICE_URL=... IMAGE_SERVICE_TOKEN=... node
+  web/scripts/backfill-tombstone-photo-deletes.mjs` (dry-run by default),
+  review, then `DRY_RUN=0`. One-shot pre-#694 residue used the same command.
 
 ## 7. Domain + deploy (later phase)
 

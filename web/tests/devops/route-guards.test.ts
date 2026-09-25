@@ -1,20 +1,21 @@
-import { describe, it, expect } from "vitest";
-import { checkRouteGuards, checkRouteFile } from "../../scripts/check-route-guards.mjs";
-import { resolve, join } from "node:path";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { checkRouteFile, checkRouteGuards } from "../../scripts/check-route-guards.mjs";
 
-describe("Route guard enforcement (BRAWUKA-181 / B-STD-2, BRAWUKA-537, BRAWUKA-595)", () => {
-  const webRoot = resolve(process.cwd());
-
-  it("exports checkRouteGuards and checkRouteFile functions", () => {
-    expect(typeof checkRouteGuards).toBe("function");
-    expect(typeof checkRouteFile).toBe("function");
-  });
+/**
+ * Route-guard self-checks (BRAWUKA-714): the negative cases from the deleted
+ * `tests/api/route-guards.test.ts` live here, in the exempt `tests/devops/`
+ * family, so the `check-route-guards.mjs` script that `application-static`
+ * invokes via `npm run check:guards` stays verified without a unit suite.
+ * No temp-dir case touches the network; the repo-wide case scans the real
+ * `web/app/api` tree and must stay violation-free.
+ */
+describe("route-guard script self-checks (BRAWUKA-181 / B-STD-2, BRAWUKA-537, BRAWUKA-595, BRAWUKA-701)", () => {
 
   it("verifies all current API routes are wrapped in apiRoute() with no violations", () => {
-    const violations = checkRouteGuards(webRoot);
-    expect(violations).toEqual([]);
+    expect(checkRouteGuards(resolve(process.cwd()))).toEqual([]);
   });
 
   it("flags a mutating route exported as a bare function", () => {
@@ -26,8 +27,7 @@ describe("Route guard enforcement (BRAWUKA-181 / B-STD-2, BRAWUKA-537, BRAWUKA-5
         join(apiDir, "route.ts"),
         `import { apiRoute } from "@/lib/api/route";\nexport async function POST() { return new Response(); }`,
       );
-      const violations = checkRouteGuards(tempDir);
-      expect(violations).toContainEqual(
+      expect(checkRouteGuards(tempDir)).toContainEqual(
         expect.objectContaining({
           method: "POST",
           reason: expect.stringContaining("apiRoute"),
@@ -47,8 +47,7 @@ describe("Route guard enforcement (BRAWUKA-181 / B-STD-2, BRAWUKA-537, BRAWUKA-5
         join(apiDir, "route.ts"),
         `import { apiRoute } from "@/lib/api/route";\nexport const POST = apiRoute({ bucket: "cafes-write", route: "POST /x" }, async () => new Response());`,
       );
-      const violations = checkRouteGuards(tempDir);
-      expect(violations).toContainEqual(
+      expect(checkRouteGuards(tempDir)).toContainEqual(
         expect.objectContaining({
           method: "POST",
           reason: expect.stringContaining("origin"),
@@ -68,8 +67,7 @@ describe("Route guard enforcement (BRAWUKA-181 / B-STD-2, BRAWUKA-537, BRAWUKA-5
         join(apiDir, "route.ts"),
         `import { apiRoute } from "@/lib/api/route";\nimport { guard } from "@/lib/api/guard";\nexport const GET = apiRoute({ bucket: "cafes-read", route: "GET /x" }, async (req) => { await guard(req, { bucket: "cafes-read" }); return new Response(); });`,
       );
-      const violations = checkRouteGuards(tempDir);
-      expect(violations).toContainEqual(
+      expect(checkRouteGuards(tempDir)).toContainEqual(
         expect.objectContaining({
           reason: expect.stringContaining("guard()"),
         }),
@@ -79,7 +77,6 @@ describe("Route guard enforcement (BRAWUKA-181 / B-STD-2, BRAWUKA-537, BRAWUKA-5
     }
   });
 
-  // Bypass 1: Non-literal / variable options (BRAWUKA-595)
   it("flags a mutating route with variable options (apiRoute(opts, handler))", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "guard-test-"));
     try {
@@ -87,12 +84,9 @@ describe("Route guard enforcement (BRAWUKA-181 / B-STD-2, BRAWUKA-537, BRAWUKA-5
       mkdirSync(apiDir, { recursive: true });
       writeFileSync(
         join(apiDir, "route.ts"),
-        `import { apiRoute } from "@/lib/api/route";
-const opts = { bucket: "cafes-write", route: "POST /x", origin: true };
-export const POST = apiRoute(opts, async () => new Response());`,
+        `import { apiRoute } from "@/lib/api/route";\nconst opts = { bucket: "cafes-write", route: "POST /x", origin: true };\nexport const POST = apiRoute(opts, async () => new Response());`,
       );
-      const violations = checkRouteGuards(tempDir);
-      expect(violations).toContainEqual(
+      expect(checkRouteGuards(tempDir)).toContainEqual(
         expect.objectContaining({
           method: "POST",
           reason: expect.stringContaining("origin: true"),
@@ -104,13 +98,12 @@ export const POST = apiRoute(opts, async () => new Response());`,
   });
 
   it("flags a mutating route with spread options (apiRoute({...defaults, origin: true}, handler))", () => {
-    const violations = checkRouteFile(
-      "app/api/test/route.ts",
-      `import { apiRoute } from "@/lib/api/route";
-const defaults = { bucket: "cafes-write" };
-export const POST = apiRoute({ ...defaults, origin: true }, async () => new Response());`,
-    );
-    expect(violations).toContainEqual(
+    expect(
+      checkRouteFile(
+        "app/api/test/route.ts",
+        `import { apiRoute } from "@/lib/api/route";\nconst defaults = { bucket: "cafes-write" };\nexport const POST = apiRoute({ ...defaults, origin: true }, async () => new Response());`,
+      ),
+    ).toContainEqual(
       expect.objectContaining({
         method: "POST",
         reason: expect.stringContaining("spread"),
@@ -118,22 +111,13 @@ export const POST = apiRoute({ ...defaults, origin: true }, async () => new Resp
     );
   });
 
-  // Bypass 2: Nested braces (BRAWUKA-595)
   it("flags a mutating route with a nested-brace options object missing origin", () => {
-    const violations = checkRouteFile(
-      "app/api/test/route.ts",
-      `import { apiRoute } from "@/lib/api/route";
-export const POST = apiRoute(
-  {
-    bucket: "cafes-write",
-    auth: () => {
-      return { ok: true };
-    },
-  },
-  async () => new Response(),
-);`,
-    );
-    expect(violations).toContainEqual(
+    expect(
+      checkRouteFile(
+        "app/api/test/route.ts",
+        `import { apiRoute } from "@/lib/api/route";\nexport const POST = apiRoute(\n  {\n    bucket: "cafes-write",\n    auth: () => {\n      return { ok: true };\n    },\n  },\n  async () => new Response(),\n);`,
+      ),
+    ).toContainEqual(
       expect.objectContaining({
         method: "POST",
         reason: expect.stringContaining("origin: true"),
@@ -142,20 +126,12 @@ export const POST = apiRoute(
   });
 
   it("flags a mutating route with nested braces where origin is in a nested object", () => {
-    const violations = checkRouteFile(
-      "app/api/test/route.ts",
-      `import { apiRoute } from "@/lib/api/route";
-export const POST = apiRoute(
-  {
-    bucket: "cafes-write",
-    nested: {
-      origin: true,
-    },
-  },
-  async () => new Response(),
-);`,
-    );
-    expect(violations).toContainEqual(
+    expect(
+      checkRouteFile(
+        "app/api/test/route.ts",
+        `import { apiRoute } from "@/lib/api/route";\nexport const POST = apiRoute(\n  {\n    bucket: "cafes-write",\n    nested: {\n      origin: true,\n    },\n  },\n  async () => new Response(),\n);`,
+      ),
+    ).toContainEqual(
       expect.objectContaining({
         method: "POST",
         reason: expect.stringContaining("origin: true"),
@@ -164,40 +140,58 @@ export const POST = apiRoute(
   });
 
   it("allows a mutating route with nested braces when origin: true is present at the top level after nested braces", () => {
-    const violations = checkRouteFile(
-      "app/api/test/route.ts",
-      `import { apiRoute } from "@/lib/api/route";
-export const POST = apiRoute(
-  {
-    bucket: "cafes-write",
-    auth: () => {
-      return { ok: true };
-    },
-    origin: true,
-  },
-  async () => new Response(),
-);`,
-    );
-    expect(violations).toEqual([]);
+    expect(
+      checkRouteFile(
+        "app/api/test/route.ts",
+        `import { apiRoute } from "@/lib/api/route";\nexport const POST = apiRoute(\n  {\n    bucket: "cafes-write",\n    auth: () => {\n      return { ok: true };\n    },\n    origin: true,\n  },\n  async () => new Response(),\n);`,
+      ),
+    ).toEqual([]);
   });
 
   it("allows non-mutating routes (GET) without origin: true", () => {
-    const violations = checkRouteFile(
+    expect(
+      checkRouteFile(
+        "app/api/test/route.ts",
+        `import { apiRoute } from "@/lib/api/route";\nexport const GET = apiRoute({ bucket: "cafes-read" }, async () => new Response());`,
+      ),
+    ).toEqual([]);
+  });
+
+  it("flags a destructured HTTP-method export (export const { POST } = ...)", () => {
+    const inline = checkRouteFile(
       "app/api/test/route.ts",
-      `import { apiRoute } from "@/lib/api/route";
-export const GET = apiRoute({ bucket: "cafes-read" }, async () => new Response());`,
+      `import { apiRoute } from "@/lib/api/route";\nexport const { POST } = { POST: apiRoute({ bucket: "cafes-write", origin: true }, async () => new Response()) };`,
     );
-    expect(violations).toEqual([]);
+    expect(inline).toContainEqual(
+      expect.objectContaining({
+        method: "POST",
+        reason: expect.stringContaining("apiRoute"),
+      }),
+    );
+
+    const opaque = checkRouteFile(
+      "app/api/test/route.ts",
+      `import { apiRoute } from "@/lib/api/route";\nexport const { POST } = handlers;`,
+    );
+    expect(opaque).toContainEqual(
+      expect.objectContaining({
+        method: "POST",
+        reason: expect.stringContaining("apiRoute"),
+      }),
+    );
+
+    expect(
+      checkRouteFile("app/api/test/route.ts", `export const { notAMethod } = obj;`),
+    ).toEqual([]);
   });
 
   it("flags non-mutating routes (GET) with non-literal options", () => {
-    const violations = checkRouteFile(
-      "app/api/test/route.ts",
-      `import { apiRoute } from "@/lib/api/route";
-const opts = { bucket: "cafes-read" };
-export const GET = apiRoute(opts, async () => new Response());`,
-    );
-    expect(violations).toContainEqual(
+    expect(
+      checkRouteFile(
+        "app/api/test/route.ts",
+        `import { apiRoute } from "@/lib/api/route";\nconst opts = { bucket: "cafes-read" };\nexport const GET = apiRoute(opts, async () => new Response());`,
+      ),
+    ).toContainEqual(
       expect.objectContaining({
         method: "GET",
         reason: expect.stringContaining("inline object literal"),

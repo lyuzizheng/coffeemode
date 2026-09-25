@@ -5,13 +5,12 @@ import {
   type CheckInScores,
   type MaxStay,
 } from "@/types/checkins";
+import { fail, type ParseResult } from "./common";
 import {
-  fail,
   MAX_NOTE_LENGTH,
   parsePhotoIds,
   parseScores,
   parseVisitedAt,
-  type ParseResult,
 } from "./checkin";
 
 /** Thrown when a cafe with the same external POI id already exists. */

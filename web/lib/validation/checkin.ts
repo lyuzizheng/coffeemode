@@ -12,13 +12,7 @@ import { appConfig } from "@/lib/config";
  * reuses these for its fused first check-in.
  * ------------------------------------------------------------------ */
 
-export type ParseResult<T> =
-  | { ok: true; value: T }
-  | { ok: false; message: string };
-
-export function fail<T>(message: string): ParseResult<T> {
-  return { ok: false, message };
-}
+import { fail, type ParseResult } from "./common";
 
 /**
  * Parse the `filter_max_stay` query filter (DG44). Only the domain's

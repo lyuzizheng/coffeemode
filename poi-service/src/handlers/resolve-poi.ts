@@ -6,7 +6,7 @@
 import { json } from "../auth";
 import { getUpstreamProvider, isGooglePlaceId } from "../upstream";
 import type { Deps, Env, POI, POISource, PlacePrediction } from "../types";
-import { stableApplePlaceId } from "../../../web/shared/places/apple-place-id";
+import { APPLE_FALLBACK_PLACE_ID_RE, stableApplePlaceId } from "../../../web/shared/places/apple-place-id";
 import { computeExpiresAt, d1GetPOI, d1UpsertPOI } from "../store";
 import { resolveShareUrl } from "../url";
 import { getPOI } from "./get-poi";
@@ -54,6 +54,19 @@ export async function resolvePOI(request: Request, env: Env, deps: Deps): Promis
         );
       }
       if (stored) return json(stored, request);
+      // BRAWUKA-703: a fallback id (`apple:<8-hex>`) paired with URL coords
+      // that no longer re-derive it is a forged auid — storing it would let a
+      // real fallback id serve attacker coords (same bind break as the
+      // /poi/external path). Fallback ids only ever enter D1 derived from
+      // their own coords, via the branch below.
+      if (target.coords && APPLE_FALLBACK_PLACE_ID_RE.test(target.placeId)) {
+        const expected = stableApplePlaceId(
+          `${target.coords.lat},${target.coords.lng}:${target.query ?? "place"}`,
+        );
+        if (expected !== target.placeId) {
+          return json({ error: "unresolvable", message: "Apple Maps URL place id does not match its coordinates" }, 422, request);
+        }
+      }
     }
     if (!target.coords) {
       return json(

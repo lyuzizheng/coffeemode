@@ -2,13 +2,11 @@
  * Core domain API contract checks (issue #155) — split out of
  * `scripts/e2e-smoke.mjs` to keep that runner inside the 400-line file
  * budget. Each assertion is a plain fetch against the standalone build.
+ * Failures propagate to the registry loop, which records them via
+ * `recordGateFailure` — no local catch, so each error lands once.
  */
-
-function assert(condition, message) {
-  if (!condition) {
-    throw new Error(message);
-  }
-}
+import { assert } from "./gate-assert.mjs";
+import { clearGateArtifacts } from "./e2e-artifacts.mjs";
 
 /**
  * @param {object} options
@@ -16,6 +14,7 @@ function assert(condition, message) {
  * @param {string} options.cafeId DB-seeded cafe id for the navigations probe.
  */
 export async function runApiContractGate({ base, cafeId }) {
+  clearGateArtifacts("api-contract");
   const healthRes = await fetch(`${base}/api/health`);
   assert(healthRes.status === 200, `/api/health returned ${healthRes.status}`);
 

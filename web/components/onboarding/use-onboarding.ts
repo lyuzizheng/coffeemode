@@ -21,7 +21,7 @@
  * - Offline grants still dismiss and recenter (DG123) — the locate POST is
  *   best-effort.
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "@heroui/react";
 import { useTranslations, useLocale } from "next-intl";
 import {
@@ -264,9 +264,9 @@ function useOnboardingCommit({
   // not steal the viewport the user already chose. Programmatic flyTo never
   // reaches this latch (the provider only fires it on real input).
   const userPanned = useRef(false);
-  const handleCameraGesture = () => {
+  const handleCameraGesture = useCallback(() => {
     userPanned.current = true;
-  };
+  }, []);
 
   // The card's enable honors "no recenter after user pan" (DG119); the
   // locate button is the explicit recenter affordance (DG120).

@@ -722,6 +722,138 @@ describeHttp("HTTP Discovery & Filters (Path 1)", () => {
     expect(second.data).toEqual(first.data);
   });
 
+  it("Path 1 (ADR-0005, BRAWUKA-613): search telemetry is emitted to stdout and lineSink with frozen fields", async () => {
+    const stdoutLines: Record<string, unknown>[] = [];
+    const sinkLines: Record<string, unknown>[] = [];
+
+    const consoleInfoSpy = vi.spyOn(console, "info").mockImplementation((msg: string) => {
+      try {
+        stdoutLines.push(JSON.parse(msg));
+      } catch {
+        // ignore non-json
+      }
+    });
+
+    const { registerLineSink } = await import("@shared/log");
+    registerLineSink((line) => {
+      if (line.type === "search.telemetry") {
+        sinkLines.push(line);
+      }
+    });
+
+    try {
+      const query = { city: "singapore", q: "telemetry-probe-613", limit: 20 };
+      // 1. First execution — cache miss
+      const first = await guest.get<SearchResponse>(searchGET, "/api/search", { query });
+      expect(first.status).toBe(200);
+
+      // 2. Second execution — cache hit
+      const second = await guest.get<SearchResponse>(searchGET, "/api/search", { query });
+      expect(second.status).toBe(200);
+
+      const missStdout = stdoutLines.find(
+        (l) => l.type === "search.telemetry" && l["search.cache"] === "miss",
+      );
+      const hitStdout = stdoutLines.find(
+        (l) => l.type === "search.telemetry" && l["search.cache"] === "hit",
+      );
+
+      expect(missStdout).toBeDefined();
+      expect(missStdout).toMatchObject({
+        type: "search.telemetry",
+        "search.requests": { mode: "stored_only" },
+        "search.duration_ms": expect.any(Number),
+        "search.truncated": false,
+        "search.open_now.batches": 0,
+        "search.poi_degraded": false,
+        "search.cache": "miss",
+      });
+
+      expect(hitStdout).toBeDefined();
+      expect(hitStdout).toMatchObject({
+        type: "search.telemetry",
+        "search.requests": { mode: "stored_only" },
+        "search.duration_ms": 0,
+        "search.truncated": false,
+        "search.open_now.batches": 0,
+        "search.poi_degraded": false,
+        "search.cache": "hit",
+      });
+
+      // Verify lineSink received the identical telemetry payloads (wired for OTLP)
+      const missSink = sinkLines.find((l) => l["search.cache"] === "miss");
+      const hitSink = sinkLines.find((l) => l["search.cache"] === "hit");
+      expect(missSink).toEqual(missStdout);
+      expect(hitSink).toEqual(hitStdout);
+    } finally {
+      consoleInfoSpy.mockRestore();
+      const { registerOtlpLogSink } = await import("@/lib/observability/otlp-logs");
+      registerOtlpLogSink();
+    }
+  });
+
+  it("Path 1 (ADR-0005, BRAWUKA-613): otlp-logs maps search.telemetry to INFO severity and structured attributes", async () => {
+    interface EmittedRecord {
+      severityText?: string;
+      attributes?: Record<string, unknown>;
+      body?: string;
+    }
+    const emittedRecords: EmittedRecord[] = [];
+    const mockLogger = {
+      emit: vi.fn((record: EmittedRecord) => {
+        emittedRecords.push(record);
+      }),
+    };
+
+    const originalEnv = process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT;
+    const originalProvider = (globalThis as Record<string, unknown>).__coffeemodeOtlpLogs;
+
+    process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT = "http://test-collector:4318/v1/logs";
+    (globalThis as Record<string, unknown>).__coffeemodeOtlpLogs = mockLogger;
+
+    const { registerOtlpLogSink } = await import("@/lib/observability/otlp-logs");
+    registerOtlpLogSink();
+
+    const consoleInfoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+
+    try {
+      const query = { city: "singapore", q: "otlp-telemetry-probe-613", limit: 20 };
+      const res = await guest.get<SearchResponse>(searchGET, "/api/search", { query });
+      expect(res.status).toBe(200);
+
+      const telemetryRecord = emittedRecords.find(
+        (r) => r.attributes?.["log.type"] === "search.telemetry",
+      );
+
+      expect(telemetryRecord).toBeDefined();
+      expect(telemetryRecord?.severityText).toBe("INFO");
+      expect(telemetryRecord?.attributes).toMatchObject({
+        "log.type": "search.telemetry",
+        mode: "stored_only",
+        "search.duration_ms": expect.any(Number),
+        "search.truncated": false,
+        "search.open_now.batches": 0,
+        "search.poi_degraded": false,
+        "search.cache": "miss",
+      });
+      expect(typeof telemetryRecord?.body).toBe("string");
+      expect(JSON.parse(telemetryRecord?.body ?? "{}")).toMatchObject({
+        type: "search.telemetry",
+        "search.requests": { mode: "stored_only" },
+        "search.cache": "miss",
+      });
+    } finally {
+      consoleInfoSpy.mockRestore();
+      if (originalEnv === undefined) {
+        delete process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT;
+      } else {
+        process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT = originalEnv;
+      }
+      (globalThis as Record<string, unknown>).__coffeemodeOtlpLogs = originalProvider;
+      registerOtlpLogSink();
+    }
+  });
+
   it("Path 1 (DG137-C): a check-in's work_stats write invalidates the cache immediately", async () => {
     // Dedicated fixture: a check-in mid-test mutates work_stats, so this
     // cafe must not be shared with other tests.

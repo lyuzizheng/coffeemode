@@ -15,6 +15,7 @@
 /coverage-integration
 /.visual-smoke/
 /.lighthouseci/
+/.e2e-artifacts/
 
 # next.js
 /.next/

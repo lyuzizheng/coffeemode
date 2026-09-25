@@ -130,6 +130,12 @@ jobs:
       - name: i18n key parity
         run: npm run check:i18n
 
+      # Scoped to tests/components so RUN_INTEGRATION-gated suites stay out;
+      # classification routes unit-only test files here (application=true,
+      # integration=false), so this job is where they are proven (BRAWUKA-719).
+      - name: Component unit tests
+        run: npm run test:unit
+
       - name: Build
         run: npm run build
 

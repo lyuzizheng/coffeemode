@@ -158,8 +158,12 @@ export function UnifiedSearchPanel({
   const filterUi = filters !== undefined && onFiltersChange !== undefined;
   const filtersActive = filterUi && hasActiveFilters(filters);
 
-  if (filtersActive && query.trim().length < MIN_QUERY_LENGTH && !browseActive) setBrowseActive(true);
-  if (query.trim().length >= MIN_QUERY_LENGTH && browseActive) setBrowseActive(false);
+  // Derived-state adjustment (matches use-discovery-search:139-148 pattern):
+  // Latch browseActive during empty-query browse mode when filters are active,
+  // so toggling filters back to "Any" refetches the unfiltered baseline (BRAWUKA-716).
+  // Resets on typing text, query clear, Esc, or closing empty filter panel.
+  if (filtersActive && query.trim() === "" && !browseActive) setBrowseActive(true);
+  if (query.trim() !== "" && browseActive) setBrowseActive(false);
 
   // BRAWUKA-364: the host mirrors the field value so it can swap its own
   // list for results while a query is active.
@@ -215,7 +219,7 @@ export function UnifiedSearchPanel({
       prevTrimmedRef.current.length >= MIN_QUERY_LENGTH && trimmed.length < MIN_QUERY_LENGTH;
     prevTrimmedRef.current = trimmed;
 
-    if (queryWasCleared && !filtersActive) {
+    if (queryWasCleared && !hasActiveFilters(filters ?? EMPTY_FILTERS)) {
       requestId.current += 1;
       fetchedSignatureRef.current = null;
       setBrowseActive(false);
@@ -238,7 +242,7 @@ export function UnifiedSearchPanel({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, city, filters, wantsResults, submitted, runSearch, filtersActive]);
+  }, [query, city, filters, wantsResults, submitted, runSearch]);
 
   const retry = () => {
     // Re-run the request immediately instead of waiting on the debounce.
@@ -294,7 +298,7 @@ export function UnifiedSearchPanel({
 
   const handleFilterOpenChange = (next: boolean) => {
     setFilterOpen(next);
-    if (!next && !filtersActive && query.trim() === "") {
+    if (!next && !filtersActive && query.trim().length < MIN_QUERY_LENGTH) {
       setBrowseActive(false);
       setResponse(null);
       setStatus("idle");

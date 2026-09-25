@@ -621,6 +621,32 @@ describeHttp("HTTP Discovery & Filters (Path 1)", () => {
     expect(ids).not.toContain(cafeIds.wifiLow);
   });
 
+  it("Path 1 (BRAWUKA-716): browse mode narrows under wifi filter and recovers to baseline when cleared", async () => {
+    // Empty query (browse mode) with no filters fetches the baseline set.
+    const baseline = await guest.get<SearchResponse>(searchGET, "/api/search", {
+      query: { q: "", city: "singapore", limit: 20 },
+    });
+    expect(baseline.status).toBe(200);
+    expect(baseline.data.total_count).toBeGreaterThan(0);
+    expect(baseline.data.results.map((r) => r.id)).toContain(cafeIds.wifiLow);
+
+    // Filter narrows the browse-mode set.
+    const filtered = await guest.get<SearchResponse>(searchGET, "/api/search", {
+      query: { q: "", city: "singapore", filter_wifi: 80, limit: 20 },
+    });
+    expect(filtered.status).toBe(200);
+    expect(filtered.data.results.map((r) => r.id)).not.toContain(cafeIds.wifiLow);
+    expect(filtered.data.total_count).toBeLessThan(baseline.data.total_count);
+
+    // Switching back to Any (filter param omitted) refetches and recovers to baseline count.
+    const cleared = await guest.get<SearchResponse>(searchGET, "/api/search", {
+      query: { q: "", city: "singapore", limit: 20 },
+    });
+    expect(cleared.status).toBe(200);
+    expect(cleared.data.total_count).toBe(baseline.data.total_count);
+    expect(cleared.data.results.map((r) => r.id)).toContain(cafeIds.wifiLow);
+  });
+
   it("Path 1: out-of-range score filter is lenient — 200 with unfiltered total", async () => {
     const unfiltered = await guest.get<SearchResponse>(searchGET, "/api/search", {
       query: { city: "singapore", limit: 20 },

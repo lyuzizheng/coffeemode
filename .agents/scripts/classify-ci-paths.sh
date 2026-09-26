@@ -89,7 +89,7 @@ else
       # limits and budgets the HTTP suites assert on); `web/scripts/*` is gate and
       # migration machinery the suites invoke by path (`migrate.mjs`,
       # `cleanup-stale-test-dbs.mjs`), the same policy as repo-level `scripts/*`.
-      web/db/*|web/lib/*|web/app/api/*|web/app/auth/*|web/shared/*|web/types/*|web/config/*|web/scripts/*|web/package*.json)
+      web/db/*|web/lib/*|web/app/api/*|web/app/auth/*|web/shared/*|web/types/*|web/config/*|web/scripts/*|web/package*.json|web/proxy.ts)
         application=true
         integration=true
         ;;

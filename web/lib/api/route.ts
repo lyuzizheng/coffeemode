@@ -5,6 +5,7 @@ import { ApiHttpError } from "@/lib/api/api-error";
 import { mapDomainError } from "@/lib/api/domain-errors";
 import { guard, type RateLimitBucketName } from "@/lib/api/guard";
 import { apiError } from "@/lib/api/response";
+import { emitApiAccessLine } from "@shared/access-log";
 import { logError, logWarn } from "@/lib/observability/server-log";
 import { requireSameOrigin } from "@/lib/security/origin";
 
@@ -101,9 +102,19 @@ export function apiRoute<Segments>(
 
   return async (request, segment) => {
     const requestId = getRequestId(request);
+    // Completion access line (BRAWUKA-729, spec 0011 D7): the proxy runs
+    // before routing, so only this boundary sees the produced status/code.
+    // Every exit path — origin/guard rejections, handler responses, the
+    // catch-all — flows through `finish`, which awaits the line so tests
+    // and log sinks observe it before the handler promise settles.
+    const startedAt = Date.now();
+    const finish = async (response: Response, resolvedRoute: string): Promise<Response> => {
+      await emitApiAccessLine({ request, requestId, route: resolvedRoute, response, startedAt });
+      return response;
+    };
     try {
       const originError = checkOrigin(request, origin, route, requestId);
-      if (originError) return originError;
+      if (originError) return await finish(originError, route);
 
       const requireAuth =
         typeof auth === "function" ? auth(request) : auth === "required";
@@ -116,18 +127,19 @@ export function apiRoute<Segments>(
         ...(user !== undefined ? { user } : {}),
         requestId,
       });
-      if (!gate.ok) return gate.response;
+      if (!gate.ok) return await finish(gate.response, route);
 
       const params = (segment ? await segment.params : {}) as Segments;
-      return await handler(request, {
+      const response = await handler(request, {
         requestId,
         route: gate.route,
         user: gate.user,
         clientId: gate.clientId,
         params,
       });
+      return await finish(response, gate.route);
     } catch (err) {
-      return errorResponse(err, route, requestId);
+      return await finish(errorResponse(err, route, requestId), route);
     }
   };
 }

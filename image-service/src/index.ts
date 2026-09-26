@@ -193,6 +193,11 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
  * intent is gone, the raw bytes are garbage. With `keepOriginal: true` only
  * the derived variants (`card/`, `thumbnail/`) are deleted — the staged
  * upload and the published original survive so a retry can re-derive them.
+ * The full delete keeps the anchor invariant too (BRAWUKA-725): variants
+ * first, the published original next, the staged upload last, so a
+ * mid-sequence storage failure can never strand card/thumbnail objects
+ * without the original the reference-aware sweeper lists and derives them
+ * from.
  */
 export async function handleDelete(request: Request, env: Env): Promise<Response> {
   let body: unknown;
@@ -214,9 +219,15 @@ export async function handleDelete(request: Request, env: Env): Promise<Response
 
   const normalizedUuid = imageUuid.toLowerCase();
   const keys = imageKeys(normalizedUuid);
+  // Variants first, then the published original, then the staged upload
+  // (BRAWUKA-725): deleteObjects throws on the first failure, so this order
+  // guarantees a partial run leaves the original behind — the anchor the
+  // reference-aware sweeper lists and derives card/thumbnail from — never a
+  // variant residue it cannot see. The staged upload needs no anchor: the
+  // sweeper age-sweeps `staging/` (BRAWUKA-730).
   const targets = keepOriginal
     ? [keys.card, keys.thumbnail]
-    : [keys.staging, keys.original, keys.card, keys.thumbnail];
+    : [keys.card, keys.thumbnail, keys.original, keys.staging];
   const { deleted, missing } = await deleteObjects(env, targets);
   const response: DeleteResponse = { imageUuid: normalizedUuid, deleted, missing };
   return json(response, 200, request);

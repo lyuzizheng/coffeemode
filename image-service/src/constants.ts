@@ -24,9 +24,14 @@
  *     targetType="provision" + targetId=<imageUuid> for the pre-target
  *     creation flow (issue #86), or "cafe"/"checkin" + the real id for
  *     attached originals. The sweeper lists `original/` objects older than
- *     RETENTION_DAYS and deletes only those WITHOUT a marker or still in the
- *     "provision" stage (never attached). Live cafe/checkin originals are
- *     never matched. DRY_RUN=1 default; cursor-paginated and batch-bounded;
+ *     RETENTION_DAYS and deletes markerless or "provision"-stage uploads
+ *     (never attached), plus — since BRAWUKA-725 — final-marked originals
+ *     absent from a complete live-keys export (a `checkin`/`cafe` marker
+ *     proves attachment, not liveness). Final-marked deletion is fail-closed:
+ *     no export, or an empty/malformed/truncated one (BRAWUKA-757: the export
+ *     must carry its completeness trailer), never matches them, so a live
+ *     cafe/checkin original is only swept once the authoritative export no
+ *     longer names it. DRY_RUN=1 default; cursor-paginated and batch-bounded;
  *     idempotent. #154 schedules it in production with least-privilege R2
  *     credentials (#147).
  */

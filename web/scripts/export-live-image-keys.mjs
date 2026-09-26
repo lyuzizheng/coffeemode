@@ -17,12 +17,18 @@
  * leaking forever. `cafes.deleted_at` never unprotects a check-in photo.
  *
  * Usage (VPS cron / GitHub schedule, least-privilege DATABASE_URL reader):
- *   DATABASE_URL=postgres://... node scripts/export-live-image-keys.mjs > /tmp/live-keys.txt
+ *   DATABASE_URL=postgres://... node scripts/export-live-image-keys.mjs > /tmp/live-keys.txt.new && mv /tmp/live-keys.txt.new /tmp/live-keys.txt
  *   DRY_RUN=1 LIVE_KEYS_FILE=/tmp/live-keys.txt node clean-orphan-originals.mjs
  *
- * Output: one `original/<uuid>.webp` key per line, sorted, de-duplicated.
+ * Output — a complete export artifact (BRAWUKA-757), not just a key list:
+ * one `original/<uuid>.webp` key per line, sorted, de-duplicated, closed by a
+ * final `# live-keys v1 total=<N>` trailer. The sweeper refuses any non-empty
+ * file that does not parse against that contract, so an interrupted run (a
+ * valid prefix of keys with no trailer) can never authorize deletions.
  * Keys outside `original/` (card/thumbnail) are never emitted — the sweeper
  * only lists that prefix. Failures exit non-zero with the query context.
+ * Publish with the atomic rename above so a killed export never leaves a
+ * half-written file at the path the sweeper reads.
  */
 
 import path from "node:path";
@@ -101,6 +107,10 @@ async function main() {
   try {
     const keys = await collectLiveKeys(client);
     for (const key of keys) console.log(key);
+    // Completeness trailer (BRAWUKA-757): printed only after every key made
+    // it to stdout, so a truncated/interrupted export is detectable — the
+    // sweeper refuses any file without it (parseLiveKeys).
+    console.log(`# live-keys v1 total=${keys.length}`);
     console.error(`export-live-image-keys: exported ${keys.length} live original key(s)`);
   } finally {
     await client.end();

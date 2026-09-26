@@ -27,7 +27,7 @@ function resolveEnv(): string {
  * `cafemood-smoke/1.0`; curl's default UA is challenged at the edge.
  */
 export const GET = apiRoute(
-  { bucket: "heartbeat", route: "GET /api/heartbeat", ipOnly: true, user: null },
+  { bucket: "heartbeat", route: "GET /api/heartbeat", ipOnly: true, user: null, silent: true },
   async (_request, ctx) => {
     try {
       await pingDatabase();

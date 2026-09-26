@@ -28,13 +28,8 @@ import {
   teardownDbFixtures,
   DEFAULT_DATABASE_URL,
 } from "./lib/e2e-fixtures.mjs";
-import {
-  reportServerRenderErrors,
-  getFreePort,
-  spawnStandaloneServer,
-  waitForServer,
-  registerProcessCleanup,
-} from "./lib/standalone-server.mjs";
+import { getFreePort, registerProcessCleanup } from "./lib/standalone-server.mjs";
+import { createProbeServers } from "./lib/probe-servers.mjs";
 import { runRegistryGates } from "./lib/e2e-gates.mjs";
 import { clearArtifactsDir } from "./lib/e2e-artifacts.mjs";
 import { assert } from "./lib/gate-assert.mjs";
@@ -59,9 +54,18 @@ if (E2E_VIEWPORT !== "desktop" && E2E_VIEWPORT !== "mobile") {
   process.exit(1);
 }
 
-let serverProcess = null;
 let dbClient = null;
 let browser = null;
+
+// Dual-server harness (BRAWUKA-729/BRAWUKA-755, T28): the main build plus the
+// dead-DB 5xx probe. Owned outside cleanup() so both the teardown and the
+// spawn block share the same two processes.
+const probes = createProbeServers({
+  root,
+  dbUrl,
+  supabaseUrl: process.env.E2E_SUPABASE_URL ?? "http://127.0.0.1:54321",
+  supabaseAnonKey: process.env.E2E_SUPABASE_ANON_KEY ?? "e2e-anon-key",
+});
 
 const cleanup = async () => {
   if (browser) {
@@ -72,14 +76,7 @@ const cleanup = async () => {
     }
     browser = null;
   }
-  if (serverProcess) {
-    try {
-      serverProcess.kill("SIGTERM");
-    } catch {
-      // Benign: server process may have already exited.
-    }
-    serverProcess = null;
-  }
+  probes.stopAll();
   // Fixture cleanup failures are real failures (BRAWUKA-629): a leftover row
   // pollutes the next run, so it lands in `failures` like any gate error.
   const cleanupErr = await teardownDbFixtures(dbClient);
@@ -101,41 +98,19 @@ async function runSmokeSuite() {
   clearArtifactsDir();
 
   const port = process.env.E2E_PORT ? Number(process.env.E2E_PORT) : await getFreePort();
-  const base = process.env.E2E_BASE_URL ?? `http://127.0.0.1:${port}`;
+  const useExternalBase = Boolean(process.env.E2E_BASE_URL);
 
   const fixtureResult = await setupDbFixtures({ dbUrl, tag: "[E2E]" });
   const hasDb = fixtureResult.hasDb;
   dbClient = fixtureResult.dbClient;
   console.log(`[E2E] DB fixture initialized: ${hasDb ? "yes (Postgres)" : "no (fallback mode)"}`);
-  if (!process.env.E2E_BASE_URL) {
-    serverProcess = spawnStandaloneServer({
-      cwd: root,
-      port,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        DATABASE_URL: dbUrl,
-        // T8 signs in for real: the standalone server must reach the
-        // supabase-mock (compose service, :54321) for session validation.
-        NEXT_PUBLIC_SUPABASE_URL: process.env.E2E_SUPABASE_URL ?? "http://127.0.0.1:54321",
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.E2E_SUPABASE_ANON_KEY ?? "e2e-anon-key",
-      },
-    });
-
-    serverProcess.stdout.on("data", (d) => {
-      process.stdout.write(`[Next.js Server] ${d.toString()}`);
-    });
-    reportServerRenderErrors(serverProcess, {
-      failures,
-      onLine: (text) => process.stderr.write(`[Next.js Server ERROR] ${text}`),
-    });
-  }
+  // Dual-server boot (BRAWUKA-729/BRAWUKA-755, T28): the main build plus,
+  // when eligible, the dead-DB 5xx probe on an unreachable database port.
+  // Owns the spawn/wait branches so this suite stays under budget.
+  const { base, deadBase } = await probes.bootAll({ port, useExternalBase, hasDb, failures });
 
   try {
-    await waitForServer(base);
-    console.log(`[E2E] Web server ready at ${base}`);
-
     browser = await chromium.launch({ headless: true });
-
     // -------------------------------------------------------------------------
     // Common Context Setup with 3rd-Party Mock Boundaries
     // -------------------------------------------------------------------------
@@ -351,6 +326,8 @@ async function runSmokeSuite() {
     await runRegistryGates(
       {
         base,
+        deadBase,
+        captureServerOutput: useExternalBase ? () => "" : () => probes.captureServerOutput(),
         cafeId: E2E_CAFE_ID,
         cafeName: "E2E Smoke Cafe",
         userId: E2E_USER_ID,

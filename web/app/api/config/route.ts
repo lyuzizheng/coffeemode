@@ -22,7 +22,7 @@ function configCacheControl(): string {
  * Each read touches the DB, so normal traffic doubles as Supabase keepalive.
  */
 export const GET = apiRoute(
-  { bucket: "runtime-config", route: "GET /api/config", ipOnly: true, user: null },
+  { bucket: "runtime-config", route: "GET /api/config", ipOnly: true, user: null, silent: true },
   async () => {
     const config = await getRuntimeConfig();
     const response = NextResponse.json(config, { status: 200 });

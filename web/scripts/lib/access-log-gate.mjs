@@ -93,7 +93,7 @@ export async function runAccessLogGate({ base, deadBase, hasDb, captureServerOut
     // 2xx — anonymous search read against the live pool.
     const live = await fetchWithId(base, "/api/search?q=smoke");
     assert(live.response.status === 200, `GET /api/search returned ${live.response.status}`);
-    assert(live.body && Array.isArray(live.body.cafes), "GET /api/search response missing 'cafes' array");
+    assert(live.body && Array.isArray(live.body.results), "GET /api/search response missing 'results' array");
     const echoed = live.response.headers.get("x-request-id");
     assert(echoed === live.requestId, `x-request-id echo ${echoed} !== ${live.requestId}`);
     expectSingleCompletion(captureServerOutput(), { requestId: live.requestId, status: 200, path: "/api/search" });

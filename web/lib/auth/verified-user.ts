@@ -177,12 +177,3 @@ export function trySetVerifiedUserHeader(headers: Headers, user: SessionUser | n
   }
   return true;
 }
-
-/**
- * Delete an inbound copy so a client-supplied value can never authorize a
- * request. The proxy runs this before routing; only its own value — set
- * after stripping — ever reaches a page.
- */
-export function stripInboundVerifiedUser(headers: Headers): void {
-  headers.delete(VERIFIED_USER_HEADER);
-}

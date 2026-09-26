@@ -83,7 +83,9 @@ else
         ;;
       # Integration-gated web paths: real Postgres/PostGIS or real MinIO/R2.
       # `web/db/*`, `web/lib/*`, and `web/app/api/*`, `web/app/auth/*` are the layers the gated
-      # suites exercise; `web/shared/*` and `web/types/*` are the runtime modules
+      # suites exercise (`web/proxy.ts` owns the verified-user spoof strip the
+      # handoff boundary suite drives via the real `proxy()` entry,
+      # BRAWUKA-750); `web/shared/*` and `web/types/*` are the runtime modules
       # they import (same policy as `packages/common/*`); `web/config/*` is the
       # product configuration `web/lib/config.ts` loads at import time (rate
       # limits and budgets the HTTP suites assert on); `web/scripts/*` is gate and

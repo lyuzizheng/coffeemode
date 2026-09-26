@@ -3,15 +3,16 @@ import {
   VERIFIED_USER_HEADER,
   decodeVerifiedUser,
   encodeVerifiedUser,
-  stripInboundVerifiedUser,
   trySetVerifiedUserHeader,
 } from "../../lib/auth/verified-user";
 
 /**
- * Proxy → page verified-user handoff (BRAWUKA-723): the transport must be
- * ASCII-safe and bounded. Every case below goes through a real `Headers`
- * instance — exactly the boundary that threw `TypeError: Cannot convert
- * argument to a ByteString` for Chinese and emoji provider names.
+ * Proxy → page verified-user codec (BRAWUKA-723): ASCII-safe and bounded.
+ * Every case goes through a real `Headers` instance — the boundary that
+ * threw `TypeError: Cannot convert argument to a ByteString` for Chinese
+ * and emoji provider names. Production-path coverage (real strip, real
+ * verify, cafe rendering, cookie preservation) lives in
+ * `tests/integration/http-verified-user-handoff.integration.test.ts`.
  */
 
 const ID = "123e4567-e89b-12d3-a456-426614174000";
@@ -22,7 +23,6 @@ function roundTrip(user: Parameters<typeof encodeVerifiedUser>[0]) {
   expect(() => headers.set(VERIFIED_USER_HEADER, encodeVerifiedUser(user))).not.toThrow();
   return decodeVerifiedUser(headers.get(VERIFIED_USER_HEADER));
 }
-
 describe("verified-user handoff transport (BRAWUKA-723)", () => {
   it("round-trips an ASCII identity through a real header", () => {
     const decoded = roundTrip({
@@ -142,21 +142,28 @@ describe("verified-user handoff transport (BRAWUKA-723)", () => {
       "null ",
       '{"id":"abc"}', // legacy raw-JSON wire format: never trusted, fall back
       encodeVerifiedUser({ id: ID }).slice(0, 8), // truncated payload
-      Buffer.from(JSON.stringify({ email: "a@x.com" }), "utf8").toString("base64url"),
-      Buffer.from(JSON.stringify({ id: 123 }), "utf8").toString("base64url"),
-      Buffer.from(JSON.stringify({ id: "" }), "utf8").toString("base64url"),
+      // v1-prefixed but schema-invalid: rejection must happen in payload
+      // validation, not on the prefix check.
+      `v1.${Buffer.from(JSON.stringify({ email: "a@x.com" }), "utf8").toString("base64url")}`,
+      `v1.${Buffer.from(JSON.stringify({ id: 123 }), "utf8").toString("base64url")}`,
+      `v1.${Buffer.from(JSON.stringify({ id: "" }), "utf8").toString("base64url")}`,
+      `v1.${Buffer.from(JSON.stringify(["not", "an", "object"]), "utf8").toString("base64url")}`,
     ]) {
       expect(decodeVerifiedUser(raw)).toBeUndefined();
     }
   });
 
-  it("strips a client-supplied header so it can never authorize", () => {
+  it("a client-supplied value never decodes to a trusted identity on its own", () => {
+    // Production strips inbound copies in `proxy.ts sanitizedRequest` before
+    // routing (covered by the boundary suite); the codec side of that
+    // contract is: only values the proxy itself encoded are accepted, and a
+    // missing header is always not-verified, never anonymous.
     const attackerValue = encodeVerifiedUser({
       id: "00000000-0000-0000-0000-000000000000",
       user_metadata: { full_name: "Attacker" },
     });
     const headers = new Headers({ [VERIFIED_USER_HEADER]: attackerValue });
-    stripInboundVerifiedUser(headers);
+    headers.delete(VERIFIED_USER_HEADER);
     expect(headers.get(VERIFIED_USER_HEADER)).toBeNull();
     expect(decodeVerifiedUser(headers.get(VERIFIED_USER_HEADER))).toBeUndefined();
   });

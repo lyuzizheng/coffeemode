@@ -495,21 +495,29 @@ describe("rollback-prod.sh executor — the resolved image actually runs", () =>
   it("rejects another repository that carries the resolved tag, on both paths", () => {
     const { fixture } = abcFixture();
 
-    const swarm = fixture.run(["--yes", "--skip-smoke"], {
-      STUB_SWARM_STATE: "active",
-      STUB_REPORT_IMAGE: "other-application:B",
-    });
-    const compose = fixture.run(["--yes", "--skip-smoke"], {
-      STUB_SWARM_STATE: "inactive",
-      STUB_REPORT_IMAGE: "other-application:B",
-    });
+    const reports = [
+      "other-application:B", // unrelated repository, same tag
+      "coffeemode-web-prod-extra:B", // repository whose name extends the target's
+      "registry.example.com/coffeemode-web-prod:B", // target name behind a registry host
+    ];
 
-    for (const result of [swarm, compose]) {
-      expect(result.ok).toBe(false);
-      expect(result.output).toContain("Container reports image 'other-application:B'");
-      expect(result.output).toContain("not 'coffeemode-web-prod:B'");
-      expect(result.output).toContain("Refusing to restore the database");
-      expect(result.restoreLog).toBe("");
+    for (const report of reports) {
+      const swarm = fixture.run(["--yes", "--skip-smoke"], {
+        STUB_SWARM_STATE: "active",
+        STUB_REPORT_IMAGE: report,
+      });
+      const compose = fixture.run(["--yes", "--skip-smoke"], {
+        STUB_SWARM_STATE: "inactive",
+        STUB_REPORT_IMAGE: report,
+      });
+
+      for (const result of [swarm, compose]) {
+        expect(result.ok).toBe(false);
+        expect(result.output).toContain(`Container reports image '${report}'`);
+        expect(result.output).toContain("not 'coffeemode-web-prod:B'");
+        expect(result.output).toContain("Refusing to restore the database");
+        expect(result.restoreLog).toBe("");
+      }
     }
   });
 

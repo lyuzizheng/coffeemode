@@ -12,7 +12,7 @@
  * a green run always exercised real storage.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { AwsClient } from "aws4fetch";
@@ -23,6 +23,7 @@ import {
   recordUploadIntent,
 } from "@/lib/db/image-uploads";
 import { processImage } from "@/lib/images/processor";
+import { imageKeys } from "@shared/images/keys";
 import {
   cleanupIntegrationDatabase,
   integrationAdminUrl,
@@ -40,9 +41,14 @@ import {
   minioReachable,
   presignedGetUrl,
   presignedPutUrl,
+  r2Client,
   r2Endpoint,
   tinyWebP,
 } from "../helpers/r2";
+
+// Mirrors image-service/src/constants.ts IMMUTABLE_CACHE_CONTROL (the Worker
+// package is not importable here).
+const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 
 // Storage suites never touch the rate limiter (in-memory only, BRAWUKA-378).
 const RUN_INTEGRATION = process.env.RUN_INTEGRATION === "1";
@@ -58,6 +64,27 @@ let minioUp = false;
 const createdKeys = new Set<string>();
 const cleanupErrors: string[] = [];
 const previousDatabaseUrl = process.env.DATABASE_URL;
+
+/**
+ * Bytes + stored headers of one R2 object — the fingerprint a replayed browser
+ * upload must not be able to change (BRAWUKA-730).
+ */
+async function objectFingerprint(
+  key: string,
+): Promise<{ sha256: string; cacheControl: string | null; metadata: Record<string, string> }> {
+  const res = await r2Client().fetch(r2Endpoint(key), { method: "GET" });
+  if (!res.ok) throw new Error(`GET ${key} failed ${res.status}`);
+  const bytes = Buffer.from(await res.arrayBuffer());
+  const metadata: Record<string, string> = {};
+  res.headers.forEach((value, name) => {
+    if (name.startsWith("x-amz-meta-")) metadata[name.replace("x-amz-meta-", "")] = value;
+  });
+  return {
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    cacheControl: res.headers.get("cache-control"),
+    metadata,
+  };
+}
 
 async function deleteObject(key: string): Promise<void> {
   try {
@@ -224,5 +251,80 @@ describeImages("integration — real MinIO/R2 image round-trip (docker compose u
     const key = `original/${randomUUID()}.webp`;
     const res = await badClient.fetch(r2Endpoint(key), { method: "HEAD", redirect: "manual" });
     expect(res.status).toBe(403);
+  });
+
+  it("a replayed browser upload after publication cannot change published bytes, metadata, or variants (BRAWUKA-730)", async () => {
+    const imageUuid = randomUUID();
+    const keys = imageKeys(imageUuid);
+    const publishedKeys = [keys.original, keys.card, keys.thumbnail];
+    // The capability /v1/images/upload signs names the STAGING key, never a
+    // published one. Before BRAWUKA-730 the upload PUT and the published
+    // original shared a key, so the replay below rewrote published bytes and
+    // stripped the completion metadata with it.
+    expect(publishedKeys).not.toContain(keys.staging);
+    for (const key of [keys.staging, ...publishedKeys]) createdKeys.add(key);
+
+    // 1. Browser leg: PUT the raw upload through the capability's key.
+    const raw = tinyWebP();
+    const { url: uploadUrl, headers: uploadHeaders } = await presignedPutUrl(
+      keys.staging,
+      "image/webp",
+      raw.length,
+    );
+    expect(new URL(uploadUrl).pathname).toContain(`/${keys.staging}`);
+    const uploadRes = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: uploadHeaders,
+      body: raw as unknown as BodyInit,
+    });
+    expect(uploadRes.ok).toBe(true);
+
+    // 2. Provision leg, as complete() issues it: GET the staged source, PUT
+    //    the published original (with completion metadata + immutable cache
+    //    header) plus its derivatives — then run the real processor over it.
+    const metadata = {
+      uploaddate: new Date().toISOString(),
+      targettype: "provision",
+      targetid: imageUuid,
+    };
+    const [sourceGet, originalPut, cardPut, thumbnailPut] = await Promise.all([
+      presignedGetUrl(keys.staging),
+      presignedPutUrl(keys.original, "image/webp", undefined, { metadata, cacheControl: IMMUTABLE_CACHE_CONTROL }),
+      presignedPutUrl(keys.card, "image/webp", undefined, { metadata, cacheControl: IMMUTABLE_CACHE_CONTROL }),
+      presignedPutUrl(keys.thumbnail, "image/webp", undefined, { metadata, cacheControl: IMMUTABLE_CACHE_CONTROL }),
+    ]);
+    const processed = await processImage(imageUuid, {
+      imageUuid,
+      original: sourceGet,
+      originalPut,
+      card: cardPut,
+      thumbnail: thumbnailPut,
+      publicUrls: { original: "", card: "", thumbnail: "" },
+      keys: { original: keys.original, card: keys.card, thumbnail: keys.thumbnail },
+    });
+    expect(processed.width).toBeGreaterThan(0);
+
+    const before = await Promise.all(publishedKeys.map(objectFingerprint));
+    // The published objects really carry the complete()-stamped metadata and
+    // cache header — the state a replayed upload used to destroy.
+    expect(before[0].metadata.targettype).toBe("provision");
+    expect(before[0].cacheControl).toBe(IMMUTABLE_CACHE_CONTROL);
+
+    // 3. Replay the initial capability after publication, still inside its
+    //    TTL, with different bytes of the signed length.
+    const replay = new Uint8Array(raw.length).fill(0x62);
+    const replayRes = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: uploadHeaders,
+      body: replay as unknown as BodyInit,
+    });
+    expect(replayRes.ok).toBe(true);
+
+    // 4. Only the staged object changed: every published object is
+    //    byte-identical and keeps its metadata + cache header.
+    const after = await Promise.all(publishedKeys.map(objectFingerprint));
+    expect(after).toEqual(before);
+    const staged = await objectFingerprint(keys.staging);
+    expect(staged.sha256).toBe(createHash("sha256").update(replay).digest("hex"));
   });
 });

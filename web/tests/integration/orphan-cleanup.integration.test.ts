@@ -16,6 +16,8 @@
  *     even with DRY_RUN=0
  *   - HEAD failure (BRAWUKA-400/BRAWUKA-686): stub R2_ENDPOINT answers 403
  *     on HEAD — the candidate is skipped, never deleted
+ *   - stale staged uploads (BRAWUKA-730): `staging/` objects delete on age
+ *     alone — no completion marker, no HEAD, no live-keys export
  *   - idempotent: second run deletes nothing
  *
  * Requires:
@@ -336,6 +338,27 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
       await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
     }
   }, 60_000);
+
+  it("deletes a stale staged upload by age alone — no marker, no HEAD, no live-keys export (BRAWUKA-730)", async (ctx) => {
+    if (!minioUp) return ctx.skip();
+    const staged = `staging/${randomUUID()}.webp`;
+    await putObject(staged, new Uint8Array(Buffer.alloc(32, 0x62)));
+
+    // Inside the retention window: reported by neither would-delete nor
+    // would-keep (a retry inside the 1-hour intent window must still find it).
+    const young = runCleanup({ DRY_RUN: "1", RETENTION_DAYS: "7", MAX_OBJECTS: "100" });
+    expect(young.status).toBe(0);
+    expect(young.stdout).toContain('"stagingCandidates":0');
+    expect(young.stdout).not.toContain(`"key":"${staged}"`);
+
+    // Past it the staged object is garbage on age alone: the browser wrote it,
+    // no completion marker tags it, and no DB row can reference a staging key.
+    const result = runCleanup({ DRY_RUN: "0", RETENTION_DAYS: "0", MAX_OBJECTS: "100", ALLOW_RETENTION_ZERO: "1" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('"stagingCandidates":1');
+    expect(result.stdout).toContain('"stagingDeleted":1');
+    expect(await objectExists(staged)).toBe(false);
+  }, 20_000);
 
   it("is idempotent: a second run deletes nothing more", async () => {
     const abandoned = `original/${randomUUID()}.webp`;

@@ -524,8 +524,12 @@ Upload flow:
        Body: { size: number }  // REQUIRED, positive integer, <= MAX_UPLOAD_BYTES
   2. Next.js → image-service Worker /v1/images/upload (service token)
        Body: { size: number }  // REQUIRED, positive integer, <= MAX_UPLOAD_BYTES
-  3. Worker returns presigned R2 PUT URL for original/{uuid}.webp
-  4. Client PUTs the WebP original directly to R2
+  3. Worker returns presigned R2 PUT URL for staging/{uuid}.webp
+  4. Client PUTs the WebP original directly to R2 — under the staging prefix,
+     never a published key (BRAWUKA-730). The capability the browser holds
+     cannot name a published object: `complete()` PUTs the capped original to
+     `original/{uuid}.webp`, so replaying the initial upload cannot overwrite
+     published bytes, strip its metadata, or outlive the processing result.
 
 Processing (BRAWUKA-307: the client entry `POST /api/images/complete` with its
 `isCover` flag is RETIRED — photo provisioning now runs through `photo_ids`
@@ -535,9 +539,11 @@ flow still calls `POST {image-service}/v1/images/complete` per image, with
 targetType="provision" pre-target and the real target on attach):
   1. (retired) Client → Next.js /api/images/complete (Supabase session + target id + optional `isCover` flag)
   2. Next.js → image-service Worker /v1/images/complete (service token)
-  3. Worker verifies original exists and returns:
-       - presigned GET URL for original/{uuid}.webp
-       - presigned PUT URL for original/{uuid}.webp (to overwrite with capped version)
+  3. Worker verifies the stage's source object exists and returns:
+       - presigned GET URL for the stage's source bytes: staging/{uuid}.webp
+         on the provision leg, original/{uuid}.webp on the attach leg
+         (BRAWUKA-730 — the source key follows the stage marker)
+       - presigned PUT URL for original/{uuid}.webp (the published capped original)
        - presigned PUT URLs for card/{uuid}.webp and thumbnail/{uuid}.webp
   4. Next.js (sharp on VPS) downloads original, generates:
        - original: downsize if >4096px on longest side, re-encode WebP q80
@@ -567,7 +573,12 @@ Auth:
   - image-service ↔ R2: R2 S3 API credentials (Worker secret)
 
 Storage: Cloudflare R2 public bucket + CDN custom domain
-  Keys: original/{uuid}.webp, card/{uuid}.webp, thumbnail/{uuid}.webp
+  Keys: staging/{uuid}.webp (browser upload staging, never published),
+    original/{uuid}.webp, card/{uuid}.webp, thumbnail/{uuid}.webp
+  Staged uploads that never complete are garbage on age alone: the cleanup
+  script (image-service/scripts/clean-orphan-originals.mjs) deletes `staging/`
+  objects older than RETENTION_DAYS with no marker or live-keys check
+  (BRAWUKA-730).
 
 R2 metadata (coffeemode pattern):
   httpMetadata:  { contentType: image/webp }

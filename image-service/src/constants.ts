@@ -9,18 +9,26 @@
  *   - POST /v1/images/complete verifies the ACTUAL R2 object size via head()
  *     and refuses to issue process URLs when it exceeds the cap (422).
  *
- * Lifecycle (issue #158): R2 lifecycle rules cannot inspect custom metadata
- * (targetType / targetId), so a blanket age rule on `original/` is UNSAFE —
- * completed gallery originals live under the same prefix. complete() REQUIRES
- * stage metadata on every call: targetType="provision" + targetId=<imageUuid>
- * for the pre-target creation flow (issue #86), or "cafe"/"checkin" + the real
- * id for attached originals. The safe cleanup is
- * `scripts/clean-orphan-originals.mjs` (npm run clean:orphan-originals): it
- * lists `original/` objects older than RETENTION_DAYS and deletes only those
- * WITHOUT a marker or still in the "provision" stage (never attached). Live
- * cafe/checkin originals are never matched. DRY_RUN=1 default;
- * cursor-paginated and batch-bounded; idempotent. #154 schedules it in
- * production with least-privilege R2 credentials (#147).
+ * Lifecycle (issue #158, browser/published split BRAWUKA-730): the browser
+ * writes only `staging/{uuid}.webp`; published originals live under
+ * `original/` and are written through complete()-issued URLs alone.
+ *   - `staging/` is never published and never referenced by a DB row, so age
+ *     alone makes it garbage. `scripts/clean-orphan-originals.mjs` sweeps it
+ *     past RETENTION_DAYS — far beyond the 1-hour upload-intent window the
+ *     source must survive for a retry — and a blanket R2 lifecycle rule on
+ *     that prefix would be equally safe.
+ *   - `original/` is the risky prefix: R2 lifecycle rules cannot inspect
+ *     custom metadata (targetType / targetId), so a blanket age rule there is
+ *     UNSAFE — completed gallery originals live under the same prefix.
+ *     complete() REQUIRES stage metadata on every call:
+ *     targetType="provision" + targetId=<imageUuid> for the pre-target
+ *     creation flow (issue #86), or "cafe"/"checkin" + the real id for
+ *     attached originals. The sweeper lists `original/` objects older than
+ *     RETENTION_DAYS and deletes only those WITHOUT a marker or still in the
+ *     "provision" stage (never attached). Live cafe/checkin originals are
+ *     never matched. DRY_RUN=1 default; cursor-paginated and batch-bounded;
+ *     idempotent. #154 schedules it in production with least-privilege R2
+ *     credentials (#147).
  */
 import { MAX_UPLOAD_BYTES } from "../../web/shared/images/constants";
 

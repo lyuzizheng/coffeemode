@@ -28,8 +28,13 @@ interface PresignedUrl {
 
 export interface ProcessUrls {
   imageUuid: string;
-  original: PresignedUrl;      // presigned GET for the uploaded original
-  originalPut: PresignedUrl;  // presigned PUT to overwrite the original after resize
+  /** Presigned GET for the stage's source bytes (BRAWUKA-730): the browser's
+   *  staged upload on a `provision` complete, the published original on the
+   *  attach leg. */
+  original: PresignedUrl;
+  /** Presigned PUT for the PUBLISHED original — server-written only; the
+   *  browser capability never names this key. */
+  originalPut: PresignedUrl;
   card: PresignedUrl;
   thumbnail: PresignedUrl;
   publicUrls: {

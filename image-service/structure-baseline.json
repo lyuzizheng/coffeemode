@@ -2,10 +2,10 @@
   "$comment": "Spec 0009 §7 rule-level exemption budget for this Worker's eslint-suppressions.json, enforced by `npm run check:suppressions`. Only-shrink: files/entries/perRule may not grow without an approved `[STRUCT-EXEMPT]` issue raising the budget in the same commit (§7.1). `reviewBy` is the quarterly review date (§7.3): overdue fails the gate. Deliberately no `files` key — the services' file-size gate (scripts/check-service-file-size.mjs) reads no registry, so Workers carry zero file-size exemptions.",
   "eslintSuppressions": {
     "files": 2,
-    "entries": 3,
+    "entries": 2,
     "perRule": {
-      "max-lines-per-function": 3,
-      "sonarjs/cognitive-complexity": 2
+      "max-lines-per-function": 1,
+      "sonarjs/cognitive-complexity": 1
     },
     "reviewBy": "2026-12-31"
   }

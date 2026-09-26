@@ -22,8 +22,12 @@ export interface PresignedUrl {
 
 export interface UploadResponse {
   imageUuid: string;
+  /** Presigned PUT for the STAGING key only (`staging/{uuid}.webp`, BRAWUKA-730):
+   *  the browser capability never names a published key. */
   uploadUrl: string;
   uploadHeaders: Record<string, string>;
+  /** Public URL of the published original — the address this upload occupies
+   *  once processed. The staged object itself is never public. */
   publicUrl: string;
   expiresAt: string;
   maxUploadBytes: number;
@@ -62,9 +66,10 @@ export interface DeleteRequest {
   imageUuid: string;
   userId?: string;
   /**
-   * Keep `original/` and delete only the derived variants (`card/`,
-   * `thumbnail/`). Used when the caller preserves the single-use intent for
-   * a retry: the retry re-runs `getProcessUrls` (HEAD on the original) and
+   * Keep the source objects (`staging/` and `original/`) and delete only the
+   * derived variants (`card/`, `thumbnail/`). Used when the caller preserves
+   * the single-use intent for a retry: the retry re-runs `getProcessUrls`,
+   * which reads the staged upload (and re-PUTs the published original), and
    * `processImage` re-PUTs the derived variants anyway.
    */
   keepOriginal?: boolean;

@@ -33,24 +33,36 @@ export function r2Client(): AwsClient {
 // still rejects size-mismatched bodies — but it is NEVER returned here:
 // undici/browsers derive Content-Length from the body and reject a manually
 // set value, so returning it breaks every fetch PUT (BRAWUKA-338).
+// `metadata` / `cacheControl` mirror the `complete()`-issued PUTs: allHeaders
+// signing covers `x-amz-meta-*` and `Cache-Control`, exactly as the Worker's
+// `presignedPutUrl(env, key, contentType, { customMetadata, cacheControl })`.
 export async function presignedPutUrl(
   key: string,
   contentType: string,
   contentLength?: number,
-  bucket: string = R2_BUCKET_NAME,
+  options: { bucket?: string; metadata?: Record<string, string>; cacheControl?: string } = {},
 ): Promise<{ url: string; headers: Record<string, string> }> {
-  const url = `${r2Endpoint(key, bucket)}?X-Amz-Expires=600`;
+  const url = `${r2Endpoint(key, options.bucket ?? R2_BUCKET_NAME)}?X-Amz-Expires=600`;
   const headers: Record<string, string> = { "Content-Type": contentType };
   if (contentLength !== undefined) headers["Content-Length"] = String(contentLength);
+  if (options.cacheControl) headers["Cache-Control"] = options.cacheControl;
+  for (const [k, v] of Object.entries(options.metadata ?? {})) headers[`x-amz-meta-${k}`] = v;
   const request = new Request(url, { method: "PUT", headers });
   const signed = await r2Client().sign(request, { aws: { signQuery: true, allHeaders: true } });
   const outHeaders: Record<string, string> = {};
   signed.headers.forEach((v, k) => {
     if (k.toLowerCase() !== "host") outHeaders[k] = v;
   });
+  // Fetch is case-insensitive, but callers expect the canonical capitalisation.
+  // Any re-add MUST delete the lowercased signed key first: Headers appends
+  // same-named values under different casings ("a, b") and breaks SigV4.
   delete outHeaders["content-type"];
   delete outHeaders["content-length"];
   outHeaders["Content-Type"] = contentType;
+  if (options.cacheControl) {
+    delete outHeaders["cache-control"];
+    outHeaders["Cache-Control"] = options.cacheControl;
+  }
   return { url: signed.url.toString(), headers: outHeaders };
 }
 

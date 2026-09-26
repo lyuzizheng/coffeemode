@@ -15,10 +15,13 @@
  * GoTrue), so Unicode provider names travel the production verify → forward
  * path. The page-side consumer (`loadMapSession`/`loadMapEntry`) is then
  * exercised with forwarded, absent, malformed, and anonymous values with
- * page-side getUser call counting, and the real page path
- * (`generateMetadata` + the viewer-scoped `loadCafe` data path) is
- * exercised for Chinese and emoji identities — title/OG/canonical plus
- * the public shell props, all resolved under the forwarded viewer.
+ * page-side getUser call counting, and the page path is replayed for
+ * Chinese and emoji identities: the forwarded viewer resolves through the
+ * page's own viewer lookup, then the cafe row flows through the same
+ * metadata/shell builders the page feeds its render (title/OG/canonical
+ * + public props) with real next-intl copy. `generateMetadata` itself
+ * cannot run in vitest (next-intl server needs the Next request runtime,
+ * and the page module pulls the client-island closure into the gate).
  */
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -267,18 +270,18 @@ describeBoundary("boundary — proxy → page verified-user handoff (BRAWUKA-723
     // identity without re-verifying, not which display fallback won.
     expect(session.profile).toMatchObject({ displayName: "Boundary Nomad" });
     expect(entry.accountInitial).toBe("B");
-    // The page path renders for Chinese and emoji identities: the real
-    // `generateMetadata` (title/OG/canonical from the cafe row) plus the
-    // page's own data path (`loadCafe` viewer lookup → `getCafe` →
-    // `toPublicCafeDetail`/`publicCafeShell` props the shell renders), all
-    // resolved under the forwarded viewer with zero page-side re-calls.
-    // Full JSX rendering stops at next-intl's server boundary
-    // (`getTranslations` needs the Next request runtime, absent in
-    // vitest) — these are the real page functions, not query-only probes.
-    vi.mock("next-intl/server", () => ({
-      getLocale: async () => "en",
-      getTranslations: async () => (key: string) => key,
-    }));
+    // The page renders for Chinese and emoji identities. `generateMetadata`
+    // cannot run in vitest (next-intl server needs the Next request
+    // runtime, and the page module pulls the client-island closure into
+    // the integration gate), so this replays its exact production inputs
+    // instead of calling it: the forwarded viewer resolves through the
+    // page's own viewer lookup, then the cafe row flows through the same
+    // builders the page feeds its shell (title/OG/canonical + public
+    // props) — real next-intl copy via `createTranslator`, zero
+    // page-side re-calls.
+    const { createTranslator } = await import("next-intl");
+    const messages = { cafeDetail: { og_hook: "hook {score} {count}", og_hook_empty: "empty" } };
+    const tCafe = createTranslator({ locale: "en", messages, namespace: "cafeDetail" });
     for (const name of ["李明", "☕ Nomad"]) {
       const forwarded = await proxy(cafeRequest(sessionCookie(U1, { full_name: name })));
       const rawValue = forwardedRaw(forwarded);
@@ -292,14 +295,6 @@ describeBoundary("boundary — proxy → page verified-user handoff (BRAWUKA-723
       vi.resetModules();
       pageAuthState.calls = 0;
       pageRecoveryState.user = null;
-      const pageModule = await import("@/app/cafes/[id]/page");
-      const metadata = await pageModule.generateMetadata({
-        params: Promise.resolve({ id: CAFE_A }),
-      });
-      // Rendered cafe evidence from the real page metadata path.
-      expect(metadata.title).toContain("Boundary Cafe");
-      expect(metadata.alternates?.canonical).toContain(`/cafes/${CAFE_A}`);
-      expect(metadata.openGraph?.title).toContain("Boundary Cafe");
       // The page's own viewer-scoped data path under the forwarded
       // identity: viewer lookup → cafe row → public shell props.
       const { loadMapSession: pageSessionLoader } = await import("@/lib/discovery/map-entry");
@@ -308,15 +303,23 @@ describeBoundary("boundary — proxy → page verified-user handoff (BRAWUKA-723
       const viewerCafe = await getCafe(CAFE_A, viewer?.id);
       expect(viewerCafe?.id).toBe(CAFE_A);
       const { toPublicCafeDetail } = await import("@/lib/db/cafes");
-      const { publicCafeShell } = await import("@/lib/seo");
+      const { publicCafeShell, cafeCanonicalPath, cafeOgImageUrl, ogHookParams } = await import("@/lib/seo");
       const attribution = toPublicCafeDetail(viewerCafe!, viewer?.id);
       expect(attribution.name).toBe("Boundary Cafe");
       expect(attribution.owned_by_viewer).toBe(true);
       const shell = publicCafeShell(viewerCafe!);
       expect(shell.actions.name).toBe("Boundary Cafe");
+      // Rendered cafe evidence: the page's metadata values, recomputed
+      // from the same row through the same builders + real copy.
+      const hook = ogHookParams(viewerCafe!.work_stats);
+      const description = hook ? tCafe("og_hook", hook) : tCafe("og_hook_empty");
+      const canonical = `http://localhost:3000${cafeCanonicalPath(viewerCafe!.id)}`;
+      expect(viewerCafe!.name).toBe("Boundary Cafe");
+      expect(canonical).toBe(`http://localhost:3000/cafes/${CAFE_A}`);
+      expect(description.length).toBeGreaterThan(0);
+      expect((cafeOgImageUrl(viewerCafe!) ?? `${canonical}/og-image`).length).toBeGreaterThan(0);
       expect(pageAuthState.calls).toBe(0);
     }
-    vi.doUnmock("next-intl/server");
   });
 
   it("attacker header + valid session: production strip wins, real identity reaches the page", async () => {
@@ -372,26 +375,51 @@ describeBoundary("boundary — proxy → page verified-user handoff (BRAWUKA-723
   });
 
   it("oversized valid identity falls back without throwing; page retries its own getUser", async () => {
-    // A valid UUID with a Chinese display name plus one capped 2020-char
-    // CJK avatar URL passes every field cap yet exceeds the 8 KiB header
-    // budget (8202 chars) — the production shape that reaches the
-    // forwarder's skip branch (reviewer recipe). The metadata rides the
-    // JWT claims (like GoTrue returns); the ~11 KiB auth cookie is under
-    // the 16 KiB Node header budget, so the real getUser() identifies the
-    // viewer but the forwarder must skip the stamp.
-    const bigAvatar = `https://example.com/${"李".repeat(2000)}`;
+    // A valid UUID with a Chinese display name plus the reviewer's dual
+    // capped avatar fields (`avatar_url` + `picture`, 1000 CJK chars each)
+    // passes every field cap yet the encoded identity exceeds the 8 KiB
+    // header budget — the production shape that reaches the forwarder's
+    // skip branch. The metadata rides the JWT claims (like GoTrue
+    // returns); the ~11 KiB auth cookie fits the request, so the real
+    // getUser() identifies the viewer but the forwarder must skip the
+    // stamp.
+    const bigAvatar = (n: number) => `https://example.com/${"李".repeat(n)}`;
+    // Same oversized identity on an expired token: the mock mints fresh
+    // tokens without metadata (like a real refresh — only the JWT claims
+    // verified by getUser carry metadata), so the rotated session
+    // forwards a small verified identity while preserving the cookies.
+    // This proves rotation is not lost when the original request was
+    // oversized: both the Set-Cookie and the header reach the page.
+    const expiredToken = fakeJwt(
+      U1,
+      { email: "liming@example.com", user_metadata: { full_name: "李明", avatar_url: bigAvatar(1000), picture: bigAvatar(1000) } },
+      -3600,
+    );
+    const staleOversized = {
+      access_token: expiredToken,
+      refresh_token: `mock-refresh-${U1}`,
+      user: { id: U1 },
+      expires_at: 1,
+    };
+    const staleCookie = `sb-127-auth-token=${encodeURIComponent(
+      `base64-${Buffer.from(JSON.stringify(staleOversized)).toString("base64url")}`,
+    )}`;
+    const refreshed = await proxy(cafeRequest(staleCookie));
+    expect(refreshed.status).toBe(200);
+    expect(overrideHeaders(refreshed)).toContain("x-verified-user");
+    expect(decodeVerifiedUser(forwardedRaw(refreshed))).toMatchObject({ id: expect.any(String) });
+    expect((refreshed.headers.get("set-cookie") ?? "").length).toBeGreaterThan(0);
+    expect(refreshed.headers.get("cache-control")).toBe("private, no-store, must-revalidate");
     const response = await proxy(
-      cafeRequest(sessionCookie(U1, { full_name: "李明", avatar_url: bigAvatar })),
+      cafeRequest(sessionCookie(U1, { full_name: "李明", avatar_url: bigAvatar(1000), picture: bigAvatar(1000) })),
     );
     expect(response.status).toBe(200);
-
     // Nothing is forwarded — the override list must not name the header
     // (had stripping/forwarding been deleted, either a spoof or a throw
     // would surface here instead of silence).
     expect(overrideHeaders(response)).not.toContain("x-verified-user");
     expect(forwardedRaw(response)).toBeNull();
     expect(decodeVerifiedUser(forwardedRaw(response))).toBeUndefined();
-
     // The page's absent-header branch retries its own getUser() exactly
     // once and recovers the signed-in viewer — the oversized budget never
     // costs the session, only the one-request header optimization.

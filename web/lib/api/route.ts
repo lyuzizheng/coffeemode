@@ -40,6 +40,13 @@ interface ApiRouteOptionsBase {
   bypassUnknownClients?: boolean;
   /** Pre-resolved user forwarded to `guard()` — `null` skips the session lookup. */
   user?: AuthenticatedUser | null;
+  /**
+   * Skip the completion access line (BRAWUKA-756, spec 0011 edge cases).
+   * ONLY for the accepted hot-path exclusions (`GET`/`HEAD /api/health`,
+   * `GET /api/heartbeat`, `GET /api/config`): infra probes and edge-cached
+   * reads with no auth surface. Never set on any other route.
+   */
+  silent?: boolean;
 }
 
 export interface ApiRouteOptions<Auth extends boolean> extends ApiRouteOptionsBase {
@@ -98,7 +105,7 @@ export function apiRoute<Segments>(
   options: ApiRouteOptionsBase & { auth?: ApiRouteAuth },
   handler: ApiRouteHandler<boolean, Segments>,
 ): RouteExport<Segments> {
-  const { bucket, auth, origin = false, route, ipOnly, bypassUnknownClients, user } = options;
+  const { bucket, auth, origin = false, route, ipOnly, bypassUnknownClients, user, silent = false } = options;
 
   return async (request, segment) => {
     const requestId = getRequestId(request);
@@ -106,10 +113,16 @@ export function apiRoute<Segments>(
     // before routing, so only this boundary sees the produced status/code.
     // Every exit path — origin/guard rejections, handler responses, the
     // catch-all — flows through `finish`, which awaits the line so tests
-    // and log sinks observe it before the handler promise settles.
+    // and log sinks observe it before the handler promise settles. The
+    // accepted hot-path exclusions (BRAWUKA-756, spec 0011 edge cases:
+    // `GET`/`HEAD /api/health`, `GET /api/heartbeat`, `GET /api/config`)
+    // pass `silent: true` and emit nothing here — they already skip the
+    // proxy matcher, so they stay fully out of the access stream.
     const startedAt = Date.now();
     const finish = async (response: Response, resolvedRoute: string): Promise<Response> => {
-      await emitApiAccessLine({ request, requestId, route: resolvedRoute, response, startedAt });
+      if (!silent) {
+        await emitApiAccessLine({ request, requestId, route: resolvedRoute, response, startedAt });
+      }
       return response;
     };
     try {

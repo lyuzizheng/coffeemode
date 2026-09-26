@@ -55,9 +55,13 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
   The access stream describes the completed request (BRAWUKA-729): every
   `apiRoute()` exit — handler responses, origin/guard rejections, the
   catch-all — emits one line with the produced `status`, the envelope `code`
-  on ≥400, and guard+handler `duration_ms`. The proxy stays silent on
-  `/api/*` (its pre-route `NextResponse.next()` is always 200), so no
-  duplicate success entry exists; non-API traffic keeps its proxy line.
+  on ≥400, and guard+handler `duration_ms`, except the accepted hot-path
+  exclusions (BRAWUKA-756, spec 0011 edge cases: `GET`/`HEAD /api/health`,
+  `GET /api/heartbeat`, `GET /api/config` pass `silent: true` and emit
+  nothing — they already skip the proxy matcher, so they stay fully out of
+  the access stream by design). The proxy stays silent on `/api/*` (its
+  pre-route `NextResponse.next()` is always 200), so no duplicate success
+  entry exists; non-API traffic keeps its proxy line.
   Page renders still log their pre-route status (a 404 page logs
   `"status":200`) — the error lines carry the real `status`/`code` there.
 - **Loki label vocabulary** — Grafana Cloud promotes a fixed list of OTLP

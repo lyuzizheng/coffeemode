@@ -8,7 +8,7 @@
  * later slices) and whether it needs the DB fixtures; the loop filters.
  * Gates receive the full runner context and pick the fields they need.
  */
-import { runApiContractGate } from "./api-contract-gate.mjs";
+import { runAccessLogGate } from "./access-log-gate.mjs";
 import { runAuthSessionGate } from "./auth-session-gate.mjs";
 import { runCafeCreationGate } from "./cafe-creation-gate.mjs";
 import { runCheckinDrawerGate } from "./checkin-drawer-gate.mjs";
@@ -82,6 +82,17 @@ export const E2E_GATES = [
     mobile: false,
     needsDb: true,
     run: runCityScopeGate,
+  },
+  {
+    // BRAWUKA-729 acceptance (BRAWUKA-755): real-HTTP access-log proof over
+    // the assembled pipeline. Fetch-only like api-contract: needsDb false
+    // so it still runs in fallback mode, but internally skips its DB-backed
+    // cases (2xx/429) when hasDb is false.
+    slug: "access-log",
+    label: "T28: API Access Log (Completion Line over HTTP)",
+    mobile: false,
+    needsDb: false,
+    run: runAccessLogGate,
   },
 ];
 /**

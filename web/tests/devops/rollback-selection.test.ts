@@ -33,6 +33,18 @@ const ROLLBACK_SCRIPT = path.join(REPO_ROOT, "scripts/devops/rollback-prod.sh");
 /** Records its argv, emulates a Swarm/Compose target that reports back. */
 const DOCKER_STUB = `#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$STUB_LOG"
+# What the target reports back: an explicit fixture reference, nothing at all
+# (a failed inspect), or the reference the last update/compose command applied.
+report_image() {
+  if [ -n "$STUB_REPORT_MISSING" ]; then
+    return 0
+  fi
+  if [ -n "$STUB_REPORT_IMAGE" ]; then
+    printf '%s\\n' "$STUB_REPORT_IMAGE"
+    return 0
+  fi
+  cat "$STUB_STATE_DIR/$1" 2>/dev/null || true
+}
 case "$1" in
   info)
     printf '%s\\n' "$STUB_SWARM_STATE"
@@ -53,20 +65,12 @@ case "$1" in
         printf '%s\\n' "$image" > "$STUB_STATE_DIR/service_image"
         ;;
       inspect)
-        if [ -n "$STUB_REPORT_IMAGE" ]; then
-          printf '%s\\n' "$STUB_REPORT_IMAGE"
-        else
-          cat "$STUB_STATE_DIR/service_image" 2>/dev/null
-        fi
+        report_image service_image
         ;;
     esac
     ;;
   inspect)
-    if [ -n "$STUB_REPORT_IMAGE" ]; then
-      printf '%s\\n' "$STUB_REPORT_IMAGE"
-    else
-      cat "$STUB_STATE_DIR/container_image" 2>/dev/null
-    fi
+    report_image container_image
     ;;
   compose)
     printf '%s\\n' "coffeemode-web-prod:$IMAGE_TAG" > "$STUB_STATE_DIR/container_image"
@@ -486,5 +490,87 @@ describe("rollback-prod.sh executor — the resolved image actually runs", () =>
     expect(result.ok).toBe(false);
     expect(result.output).toContain("Refusing to restore the database");
     expect(result.restoreLog).toBe("");
+  });
+
+  it("rejects another repository that carries the resolved tag, on both paths", () => {
+    const { fixture } = abcFixture();
+
+    const swarm = fixture.run(["--yes", "--skip-smoke"], {
+      STUB_SWARM_STATE: "active",
+      STUB_REPORT_IMAGE: "other-application:B",
+    });
+    const compose = fixture.run(["--yes", "--skip-smoke"], {
+      STUB_SWARM_STATE: "inactive",
+      STUB_REPORT_IMAGE: "other-application:B",
+    });
+
+    for (const result of [swarm, compose]) {
+      expect(result.ok).toBe(false);
+      expect(result.output).toContain("Container reports image 'other-application:B'");
+      expect(result.output).toContain("not 'coffeemode-web-prod:B'");
+      expect(result.output).toContain("Refusing to restore the database");
+      expect(result.restoreLog).toBe("");
+    }
+  });
+
+  it("accepts the resolved image pinned to the digest its tag resolved to", () => {
+    const { fixture, preB } = abcFixture();
+    const digest = "9f2c".repeat(16); // 64 hex characters
+
+    const result = fixture.run(["--yes", "--skip-smoke", "--image-tag", "A"], {
+      STUB_SWARM_STATE: "active",
+      STUB_REPORT_IMAGE: `coffeemode-web-prod:A@sha256:${digest}`,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.output).toContain(
+      `Web container reverted to image: coffeemode-web-prod:A@sha256:${digest}`,
+    );
+    expect(result.restoreLog).toContain(`--file ${preB}`);
+  });
+
+  it("rejects a digest suffix that is not a sha256 pin of the resolved image", () => {
+    const { fixture } = abcFixture();
+    const digest = "9f2c".repeat(16);
+
+    // A truncated digest, a non-sha256 algorithm, and a foreign repository
+    // pinned to its own digest all report something other than the plan.
+    const reports = [
+      "coffeemode-web-prod:B@sha256:9f2c",
+      `coffeemode-web-prod:B@sha512:${digest}`,
+      `other-application:B@sha256:${digest}`,
+    ];
+
+    for (const report of reports) {
+      const result = fixture.run(["--yes", "--skip-smoke"], {
+        STUB_SWARM_STATE: "active",
+        STUB_REPORT_IMAGE: report,
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.output).toContain(`Container reports image '${report}'`);
+      expect(result.output).toContain("Refusing to restore the database");
+      expect(result.restoreLog).toBe("");
+    }
+  });
+
+  it("fails closed when the container reports no image at all", () => {
+    const { fixture } = abcFixture();
+
+    const swarm = fixture.run(["--yes", "--skip-smoke"], {
+      STUB_SWARM_STATE: "active",
+      STUB_REPORT_MISSING: "1",
+    });
+    const compose = fixture.run(["--yes", "--skip-smoke"], {
+      STUB_SWARM_STATE: "inactive",
+      STUB_REPORT_MISSING: "1",
+    });
+
+    for (const result of [swarm, compose]) {
+      expect(result.ok).toBe(false);
+      expect(result.output).toContain("Container reports image '<none>'");
+      expect(result.output).toContain("Refusing to restore the database");
+      expect(result.restoreLog).toBe("");
+    }
   });
 });

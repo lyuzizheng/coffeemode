@@ -16,8 +16,9 @@
 # the boundary OF release k, and only the previous image ran against it. A tag
 # recorded more than once resolves to its newest occurrence, and an unresolvable
 # pairing aborts instead of falling back to an older archive or boundary.
-# Step 2 applies the resolved image and verifies what the container reports
-# before Step 3 restores the snapshot.
+# Step 2 applies the resolved image and verifies that the container reports that
+# whole reference — a digest pin of it is accepted — before Step 3 restores the
+# snapshot.
 #
 # Usage:
 #   ./rollback-prod.sh [options]
@@ -25,9 +26,9 @@
 # Options:
 #   -h, --help            Show this help message and exit
 #   -f, --backup-file <s> Snapshot archive to restore; must pair with an image in releases.log
-#   -t, --image-tag <tag> Image the rollback RUNS, not the release being undone (default: the image
-#                         recorded before the latest release); a repeated tag resolves to its
-#                         newest occurrence
+#   -t, --image-tag <tag> Target previous image the rollback RUNS — not the release being undone
+#                         (default: the image recorded before the latest release); a repeated tag
+#                         resolves to its newest occurrence
 #   --plan-only           Resolve and print the rollback plan, then exit without touching anything
 #   --yes                 Bypass confirmation prompt
 #   --skip-smoke          Skip post-rollback smoke tests
@@ -278,11 +279,30 @@ fi
 # ------------------------------------------------------------------------------
 stage "Step 2/4: Reverting Application Container"
 
-log "Reverting application container to image 'coffeemode-web-prod:${TARGET_TAG}'..."
 PROD_IMAGE_REPO="coffeemode-web-prod"
 SWARM_SERVICE="coffeemode-prod_web-prod"
 CONTAINER_NAME="coffeemode-web-prod"
 COMPOSE_FILE="${REPO_ROOT}/deploy/dokploy/docker-compose.prod.yml"
+EXPECTED_IMAGE="${PROD_IMAGE_REPO}:${TARGET_TAG}"
+
+# The report is an image reference, optionally pinned to the digest its tag
+# resolved to. Only `<repo>:<tag>` and `<repo>:<tag>@sha256:<64 hex>` name the
+# image this plan selected: matching the tag alone accepts a foreign repository
+# that happens to carry it (BRAWUKA-752).
+reported_image_matches() {
+  local reported="$1" expected="$2"
+  if [[ "$reported" == "$expected" ]]; then
+    return 0
+  fi
+  if [[ "$reported" =~ ^([^@]+)@sha256:[0-9a-f]{64}$ ]]; then
+    if [[ "${BASH_REMATCH[1]}" == "$expected" ]]; then
+      return 0
+    fi
+  fi
+  return 1
+}
+
+log "Reverting application container to image '${EXPECTED_IMAGE}'..."
 
 if [ "$DRY_RUN" = false ]; then
   SWARM_STATE="$(docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null || echo 'inactive')"
@@ -306,17 +326,15 @@ if [ "$DRY_RUN" = false ]; then
   fi
 
   # The image is the other half of the pairing. A report that is missing, or
-  # that names anything else, aborts before Step 3 restores the snapshot.
-  case "$APPLIED_IMAGE" in
-    *":${TARGET_TAG}"|*":${TARGET_TAG}@"*)
-      ok "Web container reverted to image: ${APPLIED_IMAGE}"
-      ;;
-    *)
-      error "Container reports image '${APPLIED_IMAGE:-unknown}', not '${PROD_IMAGE_REPO}:${TARGET_TAG}'."
-      error "Refusing to restore the database against an image the rollback plan did not select."
-      exit 1
-      ;;
-  esac
+  # that names anything else — another repository carrying the same tag
+  # included — aborts before Step 3 restores the snapshot.
+  if reported_image_matches "${APPLIED_IMAGE}" "${EXPECTED_IMAGE}"; then
+    ok "Web container reverted to image: ${APPLIED_IMAGE}"
+  else
+    error "Container reports image '${APPLIED_IMAGE:-<none>}', not '${EXPECTED_IMAGE}' (or its @sha256: digest pin)."
+    error "Refusing to restore the database against an image the rollback plan did not select."
+    exit 1
+  fi
 else
   ok "[DRY-RUN] Application container rollback to image tag '${TARGET_TAG}' simulated."
 fi

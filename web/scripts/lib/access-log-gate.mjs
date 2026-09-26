@@ -38,6 +38,37 @@ import { clearGateArtifacts } from "./e2e-artifacts.mjs";
 
 const SLUG = "access-log";
 
+/**
+ * Controlled handler latency for the 2xx duration lower-bound proof
+ * (BRAWUKA-755): the managed harness always sets `E2E_ACCESS_LOG_DELAY_MS`
+ * (default forwarding when unset), and the server sleeps that long inside
+ * the real search dependency path — so a zero or pre-handler timer reports
+ * below the floor and fails. The gate fails loud when the harness did not
+ * inject the proof (env unset or unparseable outside the managed harness):
+ * instead of silently downgrading to a zero floor, it names the missing
+ * variable. Only an explicit `E2E_ACCESS_LOG_DELAY_MS=0` opts out (fast
+ * smoke path), and the probe server then sleeps nothing, so both sides
+ * agree. One value read from a single place.
+ */
+export const ACCESS_LOG_LATENCY_FLOOR_MS = 150;
+
+export function accessLogDelayMs() {
+  const raw = process.env.E2E_ACCESS_LOG_DELAY_MS;
+  if (raw === undefined) {
+    throw new Error(
+      "E2E_ACCESS_LOG_DELAY_MS is unset — the managed harness (probe-servers.mjs) must forward it " +
+        "(default 150). Refusing to downgrade to a zero floor.",
+    );
+  }
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(
+      `E2E_ACCESS_LOG_DELAY_MS=${JSON.stringify(raw)} is not a non-negative integer — refusing to downgrade to a zero floor.`,
+    );
+  }
+  return Math.min(parsed, 500);
+}
+
 function accessLines(output, requestId) {
   return output
     .split("\n")
@@ -60,7 +91,7 @@ async function fetchWithId(base, path, init = {}) {
   return { requestId, response, body };
 }
 
-function expectSingleCompletion(output, { requestId, status, code, path, method = "GET" }) {
+function expectSingleCompletion(output, { requestId, status, code, path, method = "GET", minDurationMs = 0 }) {
   const lines = accessLines(output, requestId);
   assert(lines.length === 1, `expected exactly one access line for ${requestId}, got ${lines.length}`);
   const line = lines[0];
@@ -74,6 +105,12 @@ function expectSingleCompletion(output, { requestId, status, code, path, method 
     assert(line.code === code, `access line code ${line.code} !== ${code} for ${path}`);
   }
   assert(typeof line.duration_ms === "number", `access line missing duration_ms for ${path}`);
+  // BRAWUKA-755: a zero/pre-handler timer must fail — the completion line
+  // carries guard+handler elapsed time, never a constant.
+  assert(
+    line.duration_ms >= minDurationMs,
+    `access line duration_ms ${line.duration_ms} below proven ${minDurationMs}ms floor for ${path}`,
+  );
   assert(typeof line.route === "string" && line.route.length > 0, `access line missing route for ${path}`);
   return line;
 }
@@ -91,10 +128,19 @@ async function checkLive2xx(base, captureServerOutput) {
   assert(live.body && Array.isArray(live.body.results), "GET /api/search response missing 'results' array");
   const echoed = live.response.headers.get("x-request-id");
   assert(echoed === live.requestId, `x-request-id echo ${echoed} !== ${live.requestId}`);
-  const line = expectSingleCompletion(captureServerOutput(), { requestId: live.requestId, status: 200, path: "/api/search" });
+  // BRAWUKA-755: the managed harness always injects the latency floor into
+  // the real handler path (default ACCESS_LOG_LATENCY_FLOOR_MS), so a zero
+  // or pre-handler timer reports below it and fails — no silent downgrade.
+  const floorMs = accessLogDelayMs();
+  const line = expectSingleCompletion(captureServerOutput(), {
+    requestId: live.requestId,
+    status: 200,
+    path: "/api/search",
+    minDurationMs: floorMs,
+  });
   assert(
-    line.duration_ms >= 0 && line.duration_ms <= elapsedMs + 5,
-    `2xx duration_ms ${line.duration_ms} outside client-observed ${elapsedMs}ms`,
+    line.duration_ms <= elapsedMs + 5000,
+    `2xx duration_ms ${line.duration_ms} exceeds client-observed ${elapsedMs}ms`,
   );
 }
 
@@ -115,17 +161,26 @@ async function checkRateLimit(base, captureServerOutput) {
 }
 
 async function checkDeadDb5xx(deadBase, captureServerOutput) {
+  const startedAt = Date.now();
   const dead = await fetchWithId(deadBase, "/api/search?q=smoke");
+  const elapsedMs = Date.now() - startedAt;
   assert(dead.response.status === 500, `dead-DB GET /api/search returned ${dead.response.status}`);
   assert(dead.body?.error === "internal_error", `expected internal_error, got ${dead.body?.error}`);
   assert(dead.body?.request_id === dead.requestId, "500 envelope request_id does not match inbound id");
+  // BRAWUKA-755: the dead-DB 500 fails the real pool round-trip, so the
+  // completion line must carry positive elapsed time — a zero timer reports
+  // no work at all and fails. The client-observed upper bound follows.
   const line = expectSingleCompletion(captureServerOutput(), {
     requestId: dead.requestId,
     status: 500,
     code: "internal_error",
     path: "/api/search",
+    minDurationMs: 1,
   });
-  assert(line.duration_ms >= 0, "5xx access line missing elapsed duration");
+  assert(
+    line.duration_ms >= Math.max(1, elapsedMs - 5000) && line.duration_ms <= elapsedMs + 5000,
+    `5xx duration_ms ${line.duration_ms} outside client-observed ${elapsedMs}ms`,
+  );
 }
 
 async function checkRejections(base, captureServerOutput) {
@@ -197,8 +252,17 @@ async function checkNonApiProxyLine(base, captureServerOutput) {
   assert(lines[0].path === `/cafes/${cafeId}`, `proxy line path ${lines[0].path} !== page path`);
 }
 
-export async function runAccessLogGate({ base, deadBase, hasDb, captureServerOutput }) {
+export async function runAccessLogGate({ base, deadBase, hasDb, captureServerOutput, external = false }) {
   clearGateArtifacts(SLUG);
+
+  // BRAWUKA-758: external mode (E2E_BASE_URL) owns no server process, so no
+  // local access stream exists and the dead-DB probe never boots. Skipping
+  // here keeps the remaining external HTTP/browser gates running instead of
+  // failing every log assertion with zero captured lines.
+  if (external) {
+    console.log("[E2E] Skipping T28: no local server output under E2E_BASE_URL.");
+    return;
+  }
 
   // Without the suite's live DB only the DB-free cases can run: 400/401/403
   // rejections, the exclusions, and the non-API proxy line. The 2xx, 429,

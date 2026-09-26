@@ -96,12 +96,14 @@ export const E2E_GATES = [
     // BRAWUKA-729 acceptance (BRAWUKA-755): real-HTTP access-log proof over
     // the assembled pipeline. Fetch-only like api-contract: needsDb false
     // so it still runs in fallback mode, but internally skips its DB-backed
-    // cases (2xx/429) when hasDb is false.
+    // cases (2xx/429) when hasDb is false. BRAWUKA-758: external mode
+    // (E2E_BASE_URL) owns no capturable server output, so the gate skips
+    // itself there instead of failing every log assertion.
     slug: "access-log",
     label: "T28: API Access Log (Completion Line over HTTP)",
     mobile: false,
     needsDb: false,
-    run: runAccessLogGate,
+    run: (ctx) => runAccessLogGate({ external: Boolean(process.env.E2E_BASE_URL), ...ctx }),
   },
 ];
 /**

@@ -37,6 +37,12 @@ function spawnMainServer({ root, port, dbUrl, supabaseUrl, supabaseAnonKey, onDa
       // supabase-mock (compose service, :54321) for session validation.
       NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,
       NEXT_PUBLIC_SUPABASE_ANON_KEY: supabaseAnonKey,
+      // BRAWUKA-755: controlled handler latency for the T28 duration
+      // lower-bound proof — inside the real dependency path, capped
+      // server-side at 500ms, default off (absent = zero added latency).
+      ...(process.env.E2E_ACCESS_LOG_DELAY_MS
+        ? { E2E_ACCESS_LOG_DELAY_MS: process.env.E2E_ACCESS_LOG_DELAY_MS }
+        : {}),
     },
   });
   attachOutputCapture(child, (d) => {

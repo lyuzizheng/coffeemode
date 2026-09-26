@@ -117,6 +117,25 @@ export function clearSearchCache(): void {
 }
 
 /**
+ * E2E latency-proof hook (BRAWUKA-755, audit-t28 follow-up): sleeps a capped
+ * interval inside the real handler dependency path when
+ * `E2E_ACCESS_LOG_DELAY_MS` is set, so the T28 gate can assert `duration_ms`
+ * covers handler latency (a zero or pre-handler timer then fails the lower
+ * bound). Default off — production is unchanged unless the harness opts in;
+ * capped at 500ms so a stray value cannot stall the route.
+ */
+async function e2eAccessLogDelay(): Promise<void> {
+  const raw = process.env.E2E_ACCESS_LOG_DELAY_MS;
+  if (!raw) return;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return;
+  const capped = Math.min(parsed, 500);
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, capped);
+  });
+}
+
+/**
  * Cache-aware wrapper around executeSearch for GET /api/search. Emits the
  * `search.telemetry` line for both paths (hits re-emit from the cached
  * response so hit/miss ratios stay measurable). A failed data-version read
@@ -128,6 +147,7 @@ export async function executeSearchCached(
   now: number = Date.now(),
   requestId?: string,
 ): Promise<{ response: SearchServiceResponse; cache: "hit" | "miss" | "bypass" }> {
+  await e2eAccessLogDelay();
   const version = await cafesDataVersion().catch(() => null);
   const key = searchCacheKey(filters, now);
 

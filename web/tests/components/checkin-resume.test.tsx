@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render as rtlRender, screen, act } from "@testing-library/react";
 import React from "react";
 import { CheckinResume } from "@/components/checkin/checkin-resume";
 import type { PendingCheckinDraft } from "@/lib/checkin/pending-checkin";
+
+// App Router enables Strict Mode by default in development; all component tests
+// run under reactStrictMode: true to guard against effect replay regressions (BRAWUKA-731).
+const render = (ui: React.ReactElement) => rtlRender(ui, { reactStrictMode: true });
 
 const mockReplace = vi.fn();
 let mockSearchParams = new URLSearchParams();

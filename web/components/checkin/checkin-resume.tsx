@@ -51,6 +51,41 @@ function getCleanResumeUrl(pathname: string, searchParams: { toString(): string 
   return remainingQuery ? `${pathname}?${remainingQuery}` : pathname;
 }
 
+function useIsMounted() {
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+  return isMountedRef;
+}
+
+interface RecoveryHandle {
+  pathname: string;
+  cancelled: boolean;
+}
+
+function useNavigationCancellation(
+  activeRecoveryRef: { current: RecoveryHandle | null },
+  lastProcessedTriggerRef: { current: string | null },
+  pathname: string,
+) {
+  const currentPathnameRef = useRef(pathname);
+
+  useEffect(() => {
+    currentPathnameRef.current = pathname;
+    if (activeRecoveryRef.current && activeRecoveryRef.current.pathname !== pathname) {
+      activeRecoveryRef.current.cancelled = true;
+      activeRecoveryRef.current = null;
+      lastProcessedTriggerRef.current = null;
+    }
+  }, [pathname, activeRecoveryRef, lastProcessedTriggerRef]);
+
+  return currentPathnameRef;
+}
+
 function useCheckinResume(draftTtlHours: number) {
   const t = useTranslations("checkIn");
   const searchParams = useSearchParams();
@@ -60,26 +95,14 @@ function useCheckinResume(draftTtlHours: number) {
   const [photos, setPhotos] = useState<PhotoUpload[]>([]);
   const [open, setOpen] = useState(false);
 
-  // Active recovery operation handle. Survives URL parameter cleanup on the
-  // same pathname, but is cancelled if the component unmounts or navigates away.
-  const activeRecoveryRef = useRef<{
-    pathname: string;
-    cancelled: boolean;
-  } | null>(null);
-
-  // Tracks the last processed trigger URL to prevent duplicate reads or replacements
-  // when re-rendering before the router replacement updates searchParams.
+  const isMountedRef = useIsMounted();
+  const activeRecoveryRef = useRef<RecoveryHandle | null>(null);
   const lastProcessedTriggerRef = useRef<string | null>(null);
-
-  // Cancel any in-flight recovery on unmount or navigation away (pathname change).
-  useEffect(() => {
-    return () => {
-      if (activeRecoveryRef.current) {
-        activeRecoveryRef.current.cancelled = true;
-        activeRecoveryRef.current = null;
-      }
-    };
-  }, [pathname]);
+  const currentPathnameRef = useNavigationCancellation(
+    activeRecoveryRef,
+    lastProcessedTriggerRef,
+    pathname,
+  );
 
   useEffect(() => {
     if (searchParams.get(CHECKIN_RESUME_PARAM) !== "1") {
@@ -105,6 +128,8 @@ function useCheckinResume(draftTtlHours: number) {
 
     void loadPendingCheckin(draftTtlHours * 3_600_000)
       .then((stored) => {
+        if (!isMountedRef.current) return;
+        if (currentPathnameRef.current !== recovery.pathname) return;
         if (recovery.cancelled || !stored) return;
         setPhotos(restorePhotos(stored.photos));
         setDraft(stored);
@@ -114,7 +139,7 @@ function useCheckinResume(draftTtlHours: number) {
       .catch(() => {
         // IndexedDB unavailable (private mode) — the bounce just lands home.
       });
-  }, [searchParams, pathname, router, draftTtlHours, t]);
+  }, [searchParams, pathname, router, draftTtlHours, t, currentPathnameRef, isMountedRef]);
 
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);

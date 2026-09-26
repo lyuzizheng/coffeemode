@@ -15,9 +15,10 @@
  * GoTrue), so Unicode provider names travel the production verify → forward
  * path. The page-side consumer (`loadMapSession`/`loadMapEntry`) is then
  * exercised with forwarded, absent, malformed, and anonymous values with
- * page-side getUser call counting, and cafe rendering is covered by the
- * page's own queries plus the authenticated shell props the cafe page
- * renders (`isAuthenticated`, `accountInitial`).
+ * page-side getUser call counting, and the real page path
+ * (`generateMetadata` + the viewer-scoped `loadCafe` data path) is
+ * exercised for Chinese and emoji identities — title/OG/canonical plus
+ * the public shell props, all resolved under the forwarded viewer.
  */
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -28,7 +29,6 @@ import {
   VERIFIED_USER_HEADER,
   decodeVerifiedUser,
   encodeVerifiedUser,
-  trySetVerifiedUserHeader,
 } from "@/lib/auth/verified-user";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import { fakeJwt } from "../../../scripts/fake-jwt.mjs";
@@ -70,6 +70,12 @@ vi.mock("next/headers", () => ({
   })),
 }));
 
+// Page-side recovered identity for the oversized-fallback case: when the
+// proxy forwards nothing, the consumer's own getUser() identifies the
+// viewer. Each recovery case programs this; the counter above proves the
+// retry happened exactly once.
+const pageRecoveryState = vi.hoisted(() => ({ user: null as null | { id: string } }));
+
 // Page-side getUser call counter: the loader's own fallback is stubbed at
 // the supabase-server boundary so each case asserts exactly how many
 // network validations the consumer needed.
@@ -80,7 +86,7 @@ vi.mock("@/lib/auth/supabase-server", () => ({
     auth: {
       getUser: vi.fn(async () => {
         pageAuthState.calls += 1;
-        return { data: { user: null } };
+        return { data: { user: pageRecoveryState.user } };
       }),
     },
   })),
@@ -139,6 +145,7 @@ function overrideHeaders(response: Response): string {
 async function freshLoadMapSession() {
   vi.resetModules();
   pageAuthState.calls = 0;
+  pageRecoveryState.user = null;
   return (await import("@/lib/discovery/map-entry")).loadMapSession;
 }
 
@@ -260,6 +267,56 @@ describeBoundary("boundary — proxy → page verified-user handoff (BRAWUKA-723
     // identity without re-verifying, not which display fallback won.
     expect(session.profile).toMatchObject({ displayName: "Boundary Nomad" });
     expect(entry.accountInitial).toBe("B");
+    // The page path renders for Chinese and emoji identities: the real
+    // `generateMetadata` (title/OG/canonical from the cafe row) plus the
+    // page's own data path (`loadCafe` viewer lookup → `getCafe` →
+    // `toPublicCafeDetail`/`publicCafeShell` props the shell renders), all
+    // resolved under the forwarded viewer with zero page-side re-calls.
+    // Full JSX rendering stops at next-intl's server boundary
+    // (`getTranslations` needs the Next request runtime, absent in
+    // vitest) — these are the real page functions, not query-only probes.
+    vi.mock("next-intl/server", () => ({
+      getLocale: async () => "en",
+      getTranslations: async () => (key: string) => key,
+    }));
+    for (const name of ["李明", "☕ Nomad"]) {
+      const forwarded = await proxy(cafeRequest(sessionCookie(U1, { full_name: name })));
+      const rawValue = forwardedRaw(forwarded);
+      expect(rawValue).not.toBeNull();
+      expect(decodeVerifiedUser(rawValue)).toMatchObject({
+        id: U1,
+        user_metadata: { full_name: name },
+      });
+      pageHeaderState.present = true;
+      pageHeaderState.raw = rawValue ?? "";
+      vi.resetModules();
+      pageAuthState.calls = 0;
+      pageRecoveryState.user = null;
+      const pageModule = await import("@/app/cafes/[id]/page");
+      const metadata = await pageModule.generateMetadata({
+        params: Promise.resolve({ id: CAFE_A }),
+      });
+      // Rendered cafe evidence from the real page metadata path.
+      expect(metadata.title).toContain("Boundary Cafe");
+      expect(metadata.alternates?.canonical).toContain(`/cafes/${CAFE_A}`);
+      expect(metadata.openGraph?.title).toContain("Boundary Cafe");
+      // The page's own viewer-scoped data path under the forwarded
+      // identity: viewer lookup → cafe row → public shell props.
+      const { loadMapSession: pageSessionLoader } = await import("@/lib/discovery/map-entry");
+      const { user: viewer } = await pageSessionLoader();
+      expect(viewer).toMatchObject({ id: U1, user_metadata: { full_name: name } });
+      const viewerCafe = await getCafe(CAFE_A, viewer?.id);
+      expect(viewerCafe?.id).toBe(CAFE_A);
+      const { toPublicCafeDetail } = await import("@/lib/db/cafes");
+      const { publicCafeShell } = await import("@/lib/seo");
+      const attribution = toPublicCafeDetail(viewerCafe!, viewer?.id);
+      expect(attribution.name).toBe("Boundary Cafe");
+      expect(attribution.owned_by_viewer).toBe(true);
+      const shell = publicCafeShell(viewerCafe!);
+      expect(shell.actions.name).toBe("Boundary Cafe");
+      expect(pageAuthState.calls).toBe(0);
+    }
+    vi.doUnmock("next-intl/server");
   });
 
   it("attacker header + valid session: production strip wins, real identity reaches the page", async () => {
@@ -314,15 +371,38 @@ describeBoundary("boundary — proxy → page verified-user handoff (BRAWUKA-723
     expect(response.headers.get("cache-control")).toBe("private, no-store, must-revalidate");
   });
 
-  it("oversized identity falls back without throwing; page retries its own getUser", async () => {
-    // Ids from real verification are UUIDs so the header budget cannot
-    // overflow in production; this drives the exact failure branch
-    // forwardVerifiedUser takes (trySetVerifiedUserHeader): never a throw,
-    // never a spoof, no stale value — the absent header below is what the
-    // page's `undefined` branch retries with its own getUser().
-    const oversized = new Headers();
-    expect(trySetVerifiedUserHeader(oversized, { id: "x".repeat(500) })).toBe(false);
-    expect(decodeVerifiedUser(oversized.get(VERIFIED_USER_HEADER))).toBeUndefined();
+  it("oversized valid identity falls back without throwing; page retries its own getUser", async () => {
+    // A valid UUID with a Chinese display name plus one capped 2020-char
+    // CJK avatar URL passes every field cap yet exceeds the 8 KiB header
+    // budget (8202 chars) — the production shape that reaches the
+    // forwarder's skip branch (reviewer recipe). The metadata rides the
+    // JWT claims (like GoTrue returns); the ~11 KiB auth cookie is under
+    // the 16 KiB Node header budget, so the real getUser() identifies the
+    // viewer but the forwarder must skip the stamp.
+    const bigAvatar = `https://example.com/${"李".repeat(2000)}`;
+    const response = await proxy(
+      cafeRequest(sessionCookie(U1, { full_name: "李明", avatar_url: bigAvatar })),
+    );
+    expect(response.status).toBe(200);
+
+    // Nothing is forwarded — the override list must not name the header
+    // (had stripping/forwarding been deleted, either a spoof or a throw
+    // would surface here instead of silence).
+    expect(overrideHeaders(response)).not.toContain("x-verified-user");
+    expect(forwardedRaw(response)).toBeNull();
+    expect(decodeVerifiedUser(forwardedRaw(response))).toBeUndefined();
+
+    // The page's absent-header branch retries its own getUser() exactly
+    // once and recovers the signed-in viewer — the oversized budget never
+    // costs the session, only the one-request header optimization.
+    pageHeaderState.present = false;
+    pageRecoveryState.user = { id: U1 };
+    const loadMapSession = await freshLoadMapSession();
+    pageRecoveryState.user = { id: U1 };
+    const session = await loadMapSession();
+    expect(session.user).toMatchObject({ id: U1 });
+    expect(pageAuthState.calls).toBe(1);
+    expect(await getCafe(CAFE_A, U1)).toMatchObject({ id: CAFE_A });
   });
 
   it("page-side fallback: forwarded, absent, malformed, and anonymous values", async () => {

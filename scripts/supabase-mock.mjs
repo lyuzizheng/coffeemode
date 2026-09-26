@@ -132,7 +132,12 @@ function deriveUserId(email) {
       json(res, 401, { error: "unauthorized", message: "missing or invalid token" });
       return;
     }
-    json(res, 200, { id: payload.sub, email: payload.email ?? "local@coffeemode.test", role: "authenticated" });
+    // Real GoTrue returns the user's metadata on this endpoint; echo the
+    // JWT's own metadata claims so suites can drive Unicode provider names
+    // through the PRODUCTION verify → forward path (BRAWUKA-723/750).
+    const body = { id: payload.sub, email: payload.email ?? "local@coffeemode.test", role: "authenticated" };
+    if (payload.user_metadata !== undefined) body.user_metadata = payload.user_metadata;
+    json(res, 200, body);
     return;
   }
 

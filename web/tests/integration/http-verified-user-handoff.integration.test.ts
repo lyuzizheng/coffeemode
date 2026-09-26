@@ -3,26 +3,27 @@
  *
  * Proxy → page verified-user boundary (BRAWUKA-723 / BRAWUKA-750).
  *
- * Unlike the codec unit suite (`verified-user-handoff.test.ts`), every case
- * here drives PRODUCTION code paths: the real `sanitizedRequest` strip, the
- * real `refreshSessionAndVerify` (against the compose supabase-mock over
- * HTTP), and the real page-side decoder. Deleting production stripping or
- * header forwarding breaks these tests — that is the point.
+ * Unlike the codec unit suite (`verified-user-handoff.test.ts`), every
+ * transport case here drives the REAL `proxy()` entry against the compose
+ * supabase-mock over HTTP and reads the identity back from the middleware
+ * forwarded headers (`x-middleware-request-x-verified-user`) — the exact
+ * bytes Next.js hands the page. The suite never reconstructs proxy routing:
+ * deleting production stripping or header forwarding breaks these tests.
+ * That is the point.
  *
- * Auth runs against the local supabase-mock (fake JWTs, no user_metadata in
- * the mock's /auth/v1/user response), so Unicode coverage uses identities
- * whose metadata the PAGE would receive: the mock proves the transport
- * accepts the session, and the Unicode round-trip through the real header
- * proves the page decodes the exact names that used to throw ByteString.
- * Cafe rendering itself (`getCafe`) needs real Postgres and is covered by
- * the HTTP integration gate; what this suite owns is the full
- * strip → verify → forward → decode chain plus cookie preservation.
+ * The mock's /auth/v1/user echoes the JWT's user_metadata claims (like real
+ * GoTrue), so Unicode provider names travel the production verify → forward
+ * path. The page-side consumer (`loadMapSession`/`loadMapEntry`) is then
+ * exercised with forwarded, absent, malformed, and anonymous values with
+ * page-side getUser call counting, and cafe rendering is covered by the
+ * page's own queries plus the authenticated shell props the cafe page
+ * renders (`isAuthenticated`, `accountInitial`).
  */
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getCafe } from "@/lib/db/cafes";
-import { refreshSessionAndVerify } from "@/lib/auth/proxy-session";
+import { proxy } from "@/proxy";
 import {
   VERIFIED_USER_HEADER,
   decodeVerifiedUser,
@@ -30,7 +31,6 @@ import {
   trySetVerifiedUserHeader,
 } from "@/lib/auth/verified-user";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
-import { sanitizedRequest } from "@/proxy";
 import { fakeJwt } from "../../../scripts/fake-jwt.mjs";
 import {
   cleanupIntegrationDatabase,
@@ -51,6 +51,41 @@ vi.mock("@/lib/observability/server-log", () => ({
   REQUEST_ID_HEADER: "x-request-id",
 }));
 
+// Page-side header state for the loadMapSession consumer cases: the real
+// proxy() response yields the forwarded value, which is then fed to a
+// freshly imported page loader through this mock (next/headers has no
+// request scope outside a real render).
+const pageHeaderState = vi.hoisted(() => ({ present: false, raw: "" }));
+vi.mock("next/headers", () => ({
+  headers: vi.fn(async () => {
+    const h = new Headers();
+    if (pageHeaderState.present) h.set(VERIFIED_USER_HEADER, pageHeaderState.raw);
+    return h;
+  }),
+  cookies: vi.fn(async () => ({
+    getAll: () => [],
+    get: () => undefined,
+    set: () => {},
+    delete: () => {},
+  })),
+}));
+
+// Page-side getUser call counter: the loader's own fallback is stubbed at
+// the supabase-server boundary so each case asserts exactly how many
+// network validations the consumer needed.
+const pageAuthState = vi.hoisted(() => ({ calls: 0 }));
+vi.mock("@/lib/auth/supabase-server", () => ({
+  isAuthConfigured: () => true,
+  createSupabaseServerClient: vi.fn(async () => ({
+    auth: {
+      getUser: vi.fn(async () => {
+        pageAuthState.calls += 1;
+        return { data: { user: null } };
+      }),
+    },
+  })),
+}));
+
 const RUN_INTEGRATION = process.env.RUN_INTEGRATION === "1";
 const describeBoundary = RUN_INTEGRATION ? describe : describe.skip;
 
@@ -67,8 +102,13 @@ const previousDatabaseUrl = process.env.DATABASE_URL;
 const previousSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const previousSupabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-function sessionCookie(uid: string): string {
-  const token = fakeJwt(uid, { email: "liming@example.com" });
+// The mock echoes the JWT's user_metadata claims on /auth/v1/user (like
+// real GoTrue), so metadata travels the production verify → forward path.
+function sessionCookie(uid: string, userMetadata?: Record<string, unknown>): string {
+  const token = fakeJwt(uid, {
+    email: "liming@example.com",
+    ...(userMetadata ? { user_metadata: userMetadata } : {}),
+  });
   const session = {
     access_token: token,
     refresh_token: `mock-refresh-${uid}`,
@@ -86,20 +126,24 @@ function cafeRequest(cookieValue?: string, extraHeaders: Record<string, string> 
   return new NextRequest(`http://localhost:3000/cafes/${CAFE_A}`, { headers });
 }
 
-/**
- * The production proxy order for a cafe GET: strip inbound forgeries first,
- * then verify + forward on the same request object.
- */
-async function productionCafeHandoff(request: NextRequest) {
-  const req = sanitizedRequest(request);
-  const response = await refreshSessionAndVerify(
-    req,
-    NextResponse.next({ request: req }),
-    SUPABASE_URL,
-    ANON_KEY,
-    true,
-  );
-  return { req, ...response };
+/** The exact bytes Next.js would hand the page for this response. */
+function forwardedRaw(response: Response): string | null {
+  return response.headers.get("x-middleware-request-x-verified-user");
+}
+
+function overrideHeaders(response: Response): string {
+  return response.headers.get("x-middleware-override-headers") ?? "";
+}
+
+/** Fresh page loader (React cache() otherwise pins the first case's result). */
+async function freshLoadMapSession() {
+  vi.resetModules();
+  pageAuthState.calls = 0;
+  return (await import("@/lib/discovery/map-entry")).loadMapSession;
+}
+
+async function freshLoadMapEntry() {
+  return (await import("@/lib/discovery/map-entry")).loadMapEntry;
 }
 
 describeBoundary("boundary — proxy → page verified-user handoff (BRAWUKA-723 / BRAWUKA-750)", () => {
@@ -170,14 +214,13 @@ describeBoundary("boundary — proxy → page verified-user handoff (BRAWUKA-723
   }, 60_000);
 
   it("signed-in cafe request: real proxy verifies, page decodes the identity, cafe renders", async () => {
-    const { req, verifiedUser, response } = await productionCafeHandoff(cafeRequest(sessionCookie(U1)));
-
-    // The proxy verified the session against the mock — no throw, real id.
-    expect(verifiedUser).toMatchObject({ id: U1 });
+    const response = await proxy(cafeRequest(sessionCookie(U1)));
     expect(response.status).toBe(200);
 
-    // The page reads the SAME request object: decode what forward stamped.
-    const pageUser = decodeVerifiedUser(req.headers.get(VERIFIED_USER_HEADER));
+    // The proxy verified the session: it forwards the identity on the exact
+    // bytes the page reads.
+    expect(overrideHeaders(response)).toContain("x-verified-user");
+    const pageUser = decodeVerifiedUser(forwardedRaw(response));
     expect(pageUser).toMatchObject({ id: U1 });
     if (pageUser === null || pageUser === undefined) throw new Error("page identity missing");
 
@@ -186,30 +229,37 @@ describeBoundary("boundary — proxy → page verified-user handoff (BRAWUKA-723
     expect(cafe?.id).toBe(CAFE_A);
   });
 
-  it("Unicode display names survive the real header boundary (ByteString regression)", async () => {
-    // The mock's /auth/v1/user carries no user_metadata, so the Unicode
-    // payload enters exactly where production puts it: the verified identity
-    // the proxy forwards. A raw-JSON wire threw here; v1+base64url must not.
+  it("Unicode display names survive the real forward path (ByteString regression)", async () => {
     for (const name of ["李明", "☕ Nomad", "王芳 ☕"]) {
-      const headers = new Headers();
-      const value = encodeVerifiedUser({ id: U1, user_metadata: { full_name: name } });
-      expect(() => headers.set(VERIFIED_USER_HEADER, value)).not.toThrow();
-      const request = cafeRequest(sessionCookie(U1));
-      request.headers.set(VERIFIED_USER_HEADER, value);
-      // The full production chain re-stamps over it with the verified id.
-      const { req } = await productionCafeHandoff(request);
-      const pageUser = decodeVerifiedUser(req.headers.get(VERIFIED_USER_HEADER));
-      expect(pageUser).toMatchObject({ id: U1 });
-
-      // And the pre-stamp Unicode value itself decodes losslessly — this is
-      // the name loadMapSession would hand to profileFromUser.
-      const unicodeHeaders = new Headers();
-      unicodeHeaders.set(VERIFIED_USER_HEADER, value);
-      expect(decodeVerifiedUser(unicodeHeaders.get(VERIFIED_USER_HEADER))).toMatchObject({
+      // The provider name enters via the auth response (mock echoes the
+      // JWT claims like GoTrue) and must exit the real forward path intact.
+      const response = await proxy(cafeRequest(sessionCookie(U1, { full_name: name })));
+      expect(overrideHeaders(response)).toContain("x-verified-user");
+      expect(decodeVerifiedUser(forwardedRaw(response))).toMatchObject({
         id: U1,
         user_metadata: { full_name: name },
       });
     }
+
+    // The page consumer resolves the forwarded Unicode identity to the
+    // authenticated shell it renders — no page-side re-verification.
+    const response = await proxy(cafeRequest(sessionCookie(U1, { full_name: "李明" })));
+    const raw = forwardedRaw(response);
+    expect(raw).not.toBeNull();
+    pageHeaderState.present = true;
+    pageHeaderState.raw = raw ?? "";
+    const loadMapSession = await freshLoadMapSession();
+    const session = await loadMapSession();
+    expect(session.user).toMatchObject({ id: U1, user_metadata: { full_name: "李明" } });
+    expect(pageAuthState.calls).toBe(0);
+    const loadMapEntry = await freshLoadMapEntry();
+    const entry = await loadMapEntry({ lat: 1.35, lng: 103.8 });
+    expect(entry.isAuthenticated).toBe(true);
+    // The suite's own profile row ("Boundary Nomad", N) supplies the
+    // rendered initial — the point is the page consumed the forwarded
+    // identity without re-verifying, not which display fallback won.
+    expect(session.profile).toMatchObject({ displayName: "Boundary Nomad" });
+    expect(entry.accountInitial).toBe("B");
   });
 
   it("attacker header + valid session: production strip wins, real identity reaches the page", async () => {
@@ -217,30 +267,27 @@ describeBoundary("boundary — proxy → page verified-user handoff (BRAWUKA-723
       id: ATTACKER_ID,
       user_metadata: { full_name: "Attacker" },
     });
-    const { req, verifiedUser } = await productionCafeHandoff(
-      cafeRequest(sessionCookie(U1), { [VERIFIED_USER_HEADER]: attackerValue }),
-    );
+    const response = await proxy(cafeRequest(sessionCookie(U1), { [VERIFIED_USER_HEADER]: attackerValue }));
 
-    // The spoof never survives the real strip: the verified session id wins.
-    expect(verifiedUser).toMatchObject({ id: U1 });
-    expect(decodeVerifiedUser(req.headers.get(VERIFIED_USER_HEADER))).toMatchObject({ id: U1 });
-    expect(decodeVerifiedUser(req.headers.get(VERIFIED_USER_HEADER))).not.toMatchObject({
-      id: ATTACKER_ID,
-    });
+    // The spoof never survives: the forwarded bytes decode to the verified
+    // session id, never the attacker id.
+    expect(decodeVerifiedUser(forwardedRaw(response))).toMatchObject({ id: U1 });
+    expect(decodeVerifiedUser(forwardedRaw(response))).not.toMatchObject({ id: ATTACKER_ID });
   });
 
-  it("attacker header without a session: anonymous stays anonymous", async () => {
+  it("attacker header without a session: stripped, nothing forwarded, anonymous stays anonymous", async () => {
     const attackerValue = encodeVerifiedUser({
       id: ATTACKER_ID,
       user_metadata: { full_name: "Attacker" },
     });
-    const { req, verifiedUser } = await productionCafeHandoff(
-      cafeRequest(undefined, { [VERIFIED_USER_HEADER]: attackerValue }),
-    );
+    const response = await proxy(cafeRequest(undefined, { [VERIFIED_USER_HEADER]: attackerValue }));
 
-    // Stripped inbound, then getUser finds no session: verified anonymous.
-    expect(verifiedUser).toBeNull();
-    expect(decodeVerifiedUser(req.headers.get(VERIFIED_USER_HEADER))).toBeNull();
+    // Production skips verification without a session cookie, so nothing is
+    // forwarded — had the strip been deleted, the forgery would ride the
+    // request-header override to the page (Next forwards whatever headers
+    // the pass-through request carries). Its absence IS the strip proof.
+    expect(overrideHeaders(response)).not.toContain("x-verified-user");
+    expect(forwardedRaw(response)).toBeNull();
     const cafe = await getCafe(CAFE_A, null);
     expect(cafe?.id).toBe(CAFE_A);
   });
@@ -256,65 +303,62 @@ describeBoundary("boundary — proxy → page verified-user handoff (BRAWUKA-723
     const staleCookie = `sb-127-auth-token=${encodeURIComponent(
       `base64-${Buffer.from(JSON.stringify(staleSession)).toString("base64url")}`,
     )}`;
-    const { verifiedUser, response, sessionRefreshed } = await productionCafeHandoff(
-      cafeRequest(staleCookie),
-    );
+    const response = await proxy(cafeRequest(staleCookie));
 
     // The mock refreshes the expired token (a session cookie rotation), the
     // verified identity still reaches the page, and the rotation is flagged
     // so the proxy stamps no-store instead of caching a session response.
-    expect(verifiedUser).toMatchObject({ id: expect.any(String) });
-    expect(sessionRefreshed).toBe(true);
-    const setCookie = response.headers.get("set-cookie") ?? response.cookies.toString();
+    expect(decodeVerifiedUser(forwardedRaw(response))).toMatchObject({ id: expect.any(String) });
+    const setCookie = response.headers.get("set-cookie") ?? "";
     expect(setCookie.length).toBeGreaterThan(0);
+    expect(response.headers.get("cache-control")).toBe("private, no-store, must-revalidate");
   });
 
   it("oversized identity falls back without throwing; page retries its own getUser", async () => {
-    const req = cafeRequest(sessionCookie(U1));
-    const { verifiedUser } = await refreshSessionAndVerify(
-      req,
-      NextResponse.next({ request: req }),
-      SUPABASE_URL,
-      ANON_KEY,
-      true,
-    );
-    expect(verifiedUser).toMatchObject({ id: U1 });
-
-    // Direct probe of the production forward helper's failure mode: an
-    // unencodable identity leaves NO header (never a throw, never a spoof),
-    // so loadMapSession's `undefined` branch retries getUser itself.
+    // Ids from real verification are UUIDs so the header budget cannot
+    // overflow in production; this drives the exact failure branch
+    // forwardVerifiedUser takes (trySetVerifiedUserHeader): never a throw,
+    // never a spoof, no stale value — the absent header below is what the
+    // page's `undefined` branch retries with its own getUser().
     const oversized = new Headers();
     expect(trySetVerifiedUserHeader(oversized, { id: "x".repeat(500) })).toBe(false);
     expect(decodeVerifiedUser(oversized.get(VERIFIED_USER_HEADER))).toBeUndefined();
   });
 
-  it("page-side fallback: absent/malformed headers mean not-verified, anonymous stays anonymous", async () => {
-    expect(decodeVerifiedUser(null)).toBeUndefined();
-    expect(decodeVerifiedUser("null")).toBeNull();
-    const malformedPayloads = [
-      `v1.${Buffer.from(JSON.stringify({ email: "a@x.com" }), "utf8").toString("base64url")}`,
-      `v1.${Buffer.from(JSON.stringify({ id: 123 }), "utf8").toString("base64url")}`,
-      `v1.${Buffer.from(JSON.stringify({ id: "" }), "utf8").toString("base64url")}`,
-      `v1.${Buffer.from(
-        JSON.stringify({ id: U1, user_metadata: { full_name: 123 } }),
-        "utf8",
-      ).toString("base64url")}`,
-    ];
-    for (const raw of malformedPayloads) {
-      // Each fixture carries the v1 prefix, so rejection happens in payload
-      // validation — not on the prefix check.
-      expect(raw.startsWith("v1.")).toBe(true);
-      const decoded = decodeVerifiedUser(raw);
-      if (decoded === null || decoded === undefined) {
-        expect(decoded).toBeUndefined();
-      } else {
-        expect(decoded.user_metadata).toBeUndefined();
-        expect(decoded).toMatchObject({ id: U1 });
-      }
-    }
-    // Anonymous (no session): verified null, cafe still renders publicly.
-    const { verifiedUser } = await productionCafeHandoff(cafeRequest());
-    expect(verifiedUser).toBeNull();
+  it("page-side fallback: forwarded, absent, malformed, and anonymous values", async () => {
+    // Forwarded identity: reused with zero page-side verification calls.
+    pageHeaderState.present = true;
+    pageHeaderState.raw = encodeVerifiedUser({ id: U1 });
+    expect(decodeVerifiedUser(pageHeaderState.raw)).toMatchObject({ id: U1 });
+    let loadMapSession = await freshLoadMapSession();
+    let session = await loadMapSession();
+    expect(session.user).toMatchObject({ id: U1 });
+    expect(session.profile).toMatchObject({ displayName: "Boundary Nomad" });
+    expect(pageAuthState.calls).toBe(0);
+
+    // Absent header (every other route, or a proxy-side getUser failure):
+    // the consumer verifies itself exactly once and stays anonymous here.
+    pageHeaderState.present = false;
+    loadMapSession = await freshLoadMapSession();
+    session = await loadMapSession();
+    expect(session.user).toBeNull();
+    expect(pageAuthState.calls).toBe(1);
+
+    // Malformed header: same fallback, never a trusted identity.
+    pageHeaderState.present = true;
+    pageHeaderState.raw = `v1.${Buffer.from(JSON.stringify({ id: 123 }), "utf8").toString("base64url")}`;
+    loadMapSession = await freshLoadMapSession();
+    session = await loadMapSession();
+    expect(session.user).toBeNull();
+    expect(pageAuthState.calls).toBe(1);
+
+    // Verified anonymous: no verification call, anonymous view.
+    pageHeaderState.present = true;
+    pageHeaderState.raw = "null";
+    loadMapSession = await freshLoadMapSession();
+    session = await loadMapSession();
+    expect(session.user).toBeNull();
+    expect(pageAuthState.calls).toBe(0);
     expect(await getCafe(CAFE_A, null)).toMatchObject({ id: CAFE_A });
   });
 });

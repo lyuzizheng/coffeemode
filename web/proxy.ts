@@ -36,11 +36,8 @@ const INTERNAL_HEADERS = [VERIFIED_USER_HEADER];
 /**
  * Clients must not be able to inject internal markers: strip inbound copies
  * so only this proxy's own values ever reach rendering.
- *
- * Exported for the auth-handoff boundary suite (BRAWUKA-750): the test
- * drives the real strip → verify → page-decode chain, not a helper copy.
  */
-export function sanitizedRequest(request: NextRequest): NextRequest {
+function sanitizedRequest(request: NextRequest): NextRequest {
   if (!INTERNAL_HEADERS.some((h) => request.headers.has(h))) return request;
   const headers = new Headers(request.headers);
   for (const h of INTERNAL_HEADERS) headers.delete(h);

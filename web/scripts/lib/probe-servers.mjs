@@ -9,12 +9,56 @@
  * `captureServerOutput()`.
  *
  * One module, not inline code: `scripts/e2e-smoke.mjs` is frozen at the
- * 400-line hard budget, and both the spawn block and the teardown touch
- * the same two processes.
+ * 400-line hard budget and capped at complexity 15, and both the spawn
+ * block and the teardown touch the same two processes.
  */
-import { spawnStandaloneServer, getFreePort, waitForServer } from "./standalone-server.mjs";
+import {
+  spawnStandaloneServer,
+  getFreePort,
+  waitForServer,
+  reportServerRenderErrors,
+} from "./standalone-server.mjs";
 
 const DEAD_DATABASE_URL = "postgres://coffeemode:coffeemode@127.0.0.1:1/coffeemode";
+
+function attachOutputCapture(child, onData) {
+  child.stdout.on("data", onData);
+  child.stderr.on("data", onData);
+}
+
+function spawnMainServer({ root, port, dbUrl, supabaseUrl, supabaseAnonKey, onData }) {
+  const child = spawnStandaloneServer({
+    cwd: root,
+    port,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      DATABASE_URL: dbUrl,
+      // T8 signs in for real: the standalone server must reach the
+      // supabase-mock (compose service, :54321) for session validation.
+      NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: supabaseAnonKey,
+    },
+  });
+  attachOutputCapture(child, (d) => {
+    onData(d.toString());
+    process.stdout.write(`[Next.js Server] ${d.toString()}`);
+  });
+  return child;
+}
+
+function spawnDeadServer({ root, port }) {
+  const child = spawnStandaloneServer({
+    cwd: root,
+    port,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      DATABASE_URL: DEAD_DATABASE_URL,
+      NEXT_PUBLIC_SUPABASE_URL: "",
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "",
+    },
+  });
+  return child;
+}
 
 export function createProbeServers({ root, dbUrl, supabaseUrl, supabaseAnonKey }) {
   let serverProcess = null;
@@ -23,24 +67,15 @@ export function createProbeServers({ root, dbUrl, supabaseUrl, supabaseAnonKey }
   let deadServerOutput = "";
 
   function startMain(port) {
-    serverProcess = spawnStandaloneServer({
-      cwd: root,
+    serverProcess = spawnMainServer({
+      root,
       port,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        DATABASE_URL: dbUrl,
-        // T8 signs in for real: the standalone server must reach the
-        // supabase-mock (compose service, :54321) for session validation.
-        NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: supabaseAnonKey,
+      dbUrl,
+      supabaseUrl,
+      supabaseAnonKey,
+      onData: (text) => {
+        serverOutput += text;
       },
-    });
-    serverProcess.stdout.on("data", (d) => {
-      serverOutput += d.toString();
-      process.stdout.write(`[Next.js Server] ${d.toString()}`);
-    });
-    serverProcess.stderr.on("data", (d) => {
-      serverOutput += d.toString();
     });
     return serverProcess;
   }
@@ -48,25 +83,34 @@ export function createProbeServers({ root, dbUrl, supabaseUrl, supabaseAnonKey }
   async function startDeadProbe() {
     const deadPort = await getFreePort();
     const deadBase = `http://127.0.0.1:${deadPort}`;
-    deadServerProcess = spawnStandaloneServer({
-      cwd: root,
-      port: deadPort,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        DATABASE_URL: DEAD_DATABASE_URL,
-        NEXT_PUBLIC_SUPABASE_URL: "",
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: "",
-      },
-    });
-    deadServerProcess.stdout.on("data", (d) => {
-      deadServerOutput += d.toString();
-    });
-    deadServerProcess.stderr.on("data", (d) => {
+    deadServerProcess = spawnDeadServer({ root, port: deadPort });
+    attachOutputCapture(deadServerProcess, (d) => {
       deadServerOutput += d.toString();
     });
     await waitForServer(deadBase);
     console.log(`[E2E] Dead-DB probe ready at ${deadBase}`);
     return deadBase;
+  }
+
+  // Boot the main build plus (when eligible) the dead-DB 5xx probe, then
+  // wait for the main base. Owns the port/branch/wait logic so
+  // `runSmokeSuite` stays under the complexity budget.
+  async function bootAll({ port, useExternalBase, hasDb, failures }) {
+    const base = process.env.E2E_BASE_URL ?? `http://127.0.0.1:${port}`;
+    if (!useExternalBase) {
+      startMain(port);
+      reportServerRenderErrors(serverProcess, {
+        failures,
+        onLine: (text) => process.stderr.write(`[Next.js Server ERROR] ${text}`),
+      });
+    }
+    let deadBase = null;
+    if (!useExternalBase && hasDb) {
+      deadBase = await startDeadProbe();
+    }
+    await waitForServer(base);
+    console.log(`[E2E] Web server ready at ${base}`);
+    return { base, deadBase, useExternalBase };
   }
 
   function captureServerOutput() {
@@ -89,5 +133,5 @@ export function createProbeServers({ root, dbUrl, supabaseUrl, supabaseAnonKey }
     return serverProcess;
   }
 
-  return { startMain, startDeadProbe, captureServerOutput, stopAll, mainProcess };
+  return { startMain, startDeadProbe, bootAll, captureServerOutput, stopAll, mainProcess };
 }

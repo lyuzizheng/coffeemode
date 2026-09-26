@@ -28,12 +28,7 @@ import {
   teardownDbFixtures,
   DEFAULT_DATABASE_URL,
 } from "./lib/e2e-fixtures.mjs";
-import {
-  reportServerRenderErrors,
-  getFreePort,
-  waitForServer,
-  registerProcessCleanup,
-} from "./lib/standalone-server.mjs";
+import { getFreePort, registerProcessCleanup } from "./lib/standalone-server.mjs";
 import { createProbeServers } from "./lib/probe-servers.mjs";
 import { runRegistryGates } from "./lib/e2e-gates.mjs";
 import { clearArtifactsDir } from "./lib/e2e-artifacts.mjs";
@@ -104,34 +99,17 @@ async function runSmokeSuite() {
 
   const port = process.env.E2E_PORT ? Number(process.env.E2E_PORT) : await getFreePort();
   const useExternalBase = Boolean(process.env.E2E_BASE_URL);
-  const base = process.env.E2E_BASE_URL ?? `http://127.0.0.1:${port}`;
 
   const fixtureResult = await setupDbFixtures({ dbUrl, tag: "[E2E]" });
   const hasDb = fixtureResult.hasDb;
   dbClient = fixtureResult.dbClient;
   console.log(`[E2E] DB fixture initialized: ${hasDb ? "yes (Postgres)" : "no (fallback mode)"}`);
-  if (!useExternalBase) {
-    probes.startMain(port);
-    reportServerRenderErrors(probes.mainProcess(), {
-      failures,
-      onLine: (text) => process.stderr.write(`[Next.js Server ERROR] ${text}`),
-    });
-  }
-
-  // T28 deterministic 5xx probe (BRAWUKA-729/BRAWUKA-755): a second copy of
-  // the same build on an unreachable database port, so one anonymous read
-  // fails the real pool round-trip and the access line carries the produced
-  // 500. Skipped with an external base (no server to spawn) and without a
-  // live DB (the gate's 5xx case is gated on hasDb the same way).
-  let deadBase = null;
-  if (!useExternalBase && hasDb) {
-    deadBase = await probes.startDeadProbe();
-  }
+  // Dual-server boot (BRAWUKA-729/BRAWUKA-755, T28): the main build plus,
+  // when eligible, the dead-DB 5xx probe on an unreachable database port.
+  // Owns the spawn/wait branches so this suite stays under budget.
+  const { base, deadBase } = await probes.bootAll({ port, useExternalBase, hasDb, failures });
 
   try {
-    await waitForServer(base);
-    console.log(`[E2E] Web server ready at ${base}`);
-
     browser = await chromium.launch({ headless: true });
     // -------------------------------------------------------------------------
     // Common Context Setup with 3rd-Party Mock Boundaries

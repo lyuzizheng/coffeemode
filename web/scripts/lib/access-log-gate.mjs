@@ -83,6 +83,114 @@ function expectSilent(output, requestId, path) {
   assert(lines.length === 0, `expected no access line for excluded ${path}, got ${lines.length}`);
 }
 
+async function checkLive2xx(base, captureServerOutput) {
+  const live = await fetchWithId(base, "/api/search?q=smoke");
+  assert(live.response.status === 200, `GET /api/search returned ${live.response.status}`);
+  assert(live.body && Array.isArray(live.body.results), "GET /api/search response missing 'results' array");
+  const echoed = live.response.headers.get("x-request-id");
+  assert(echoed === live.requestId, `x-request-id echo ${echoed} !== ${live.requestId}`);
+  expectSingleCompletion(captureServerOutput(), { requestId: live.requestId, status: 200, path: "/api/search" });
+}
+
+async function checkRateLimit(base, captureServerOutput) {
+  let denied = null;
+  for (let i = 0; i < 31; i += 1) {
+    const attempt = await fetchWithId(base, "/api/search?q=smoke");
+    if (attempt.response.status === 429) denied = attempt;
+  }
+  assert(denied !== null, "search bucket never tripped 429 within 31 requests");
+  assert(denied.body?.error === "rate_limited", `expected rate_limited, got ${denied.body?.error}`);
+  expectSingleCompletion(captureServerOutput(), {
+    requestId: denied.requestId,
+    status: 429,
+    code: "rate_limited",
+    path: "/api/search",
+  });
+}
+
+async function checkDeadDb5xx(deadBase, captureServerOutput) {
+  const dead = await fetchWithId(deadBase, "/api/search?q=smoke");
+  assert(dead.response.status === 500, `dead-DB GET /api/search returned ${dead.response.status}`);
+  assert(dead.body?.error === "internal_error", `expected internal_error, got ${dead.body?.error}`);
+  assert(dead.body?.request_id === dead.requestId, "500 envelope request_id does not match inbound id");
+  const line = expectSingleCompletion(captureServerOutput(), {
+    requestId: dead.requestId,
+    status: 500,
+    code: "internal_error",
+    path: "/api/search",
+  });
+  assert(line.duration_ms >= 0, "5xx access line missing elapsed duration");
+}
+
+async function checkRejections(base, captureServerOutput) {
+  const bad = await fetchWithId(base, "/api/cafes/not-a-uuid");
+  assert(bad.response.status === 400, `GET /api/cafes/not-a-uuid returned ${bad.response.status}`);
+  assert(bad.body?.error === "invalid_request", `expected invalid_request, got ${bad.body?.error}`);
+  assert(bad.body?.request_id === bad.requestId, "400 envelope request_id does not match inbound id");
+  expectSingleCompletion(captureServerOutput(), {
+    requestId: bad.requestId,
+    status: 400,
+    code: "invalid_request",
+    path: "/api/cafes/not-a-uuid",
+  });
+
+  const anon = await fetchWithId(base, "/api/navigations/prompt");
+  assert(anon.response.status === 401, `GET /api/navigations/prompt returned ${anon.response.status}`);
+  assert(anon.body?.error === "unauthorized", `expected unauthorized, got ${anon.body?.error}`);
+  expectSingleCompletion(captureServerOutput(), {
+    requestId: anon.requestId,
+    status: 401,
+    code: "unauthorized",
+    path: "/api/navigations/prompt",
+  });
+
+  const forged = await fetchWithId(base, "/api/checkins", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "sec-fetch-site": "cross-site", Origin: base },
+    body: JSON.stringify({}),
+  });
+  assert(forged.response.status === 403, `POST /api/checkins cross-site returned ${forged.response.status}`);
+  assert(forged.body?.error === "forbidden_origin", `expected forbidden_origin, got ${forged.body?.error}`);
+  expectSingleCompletion(captureServerOutput(), {
+    requestId: forged.requestId,
+    status: 403,
+    code: "forbidden_origin",
+    path: "/api/checkins",
+    method: "POST",
+  });
+}
+
+async function checkExclusions(base, captureServerOutput) {
+  const health = await fetchWithId(base, "/api/health");
+  assert(health.response.status === 200, `GET /api/health returned ${health.response.status}`);
+  expectSilent(captureServerOutput(), health.requestId, "/api/health");
+
+  const headId = randomUUID();
+  const headRes = await fetch(`${base}/api/health`, { method: "HEAD", headers: { "x-request-id": headId } });
+  assert(headRes.status === 200, `HEAD /api/health returned ${headRes.status}`);
+  await headRes.arrayBuffer();
+  expectSilent(captureServerOutput(), headId, "HEAD /api/health");
+
+  const heartbeat = await fetchWithId(base, "/api/heartbeat");
+  assert(heartbeat.response.status === 200, `GET /api/heartbeat returned ${heartbeat.response.status}`);
+  expectSilent(captureServerOutput(), heartbeat.requestId, "/api/heartbeat");
+
+  const config = await fetchWithId(base, "/api/config");
+  assert(config.response.status === 200, `GET /api/config returned ${config.response.status}`);
+  expectSilent(captureServerOutput(), config.requestId, "/api/config");
+}
+
+async function checkNonApiProxyLine(base, captureServerOutput) {
+  const cafeId = randomUUID();
+  const requestId = randomUUID();
+  const pageRes = await fetch(`${base}/cafes/${cafeId}`, { headers: { "x-request-id": requestId } });
+  await pageRes.arrayBuffer();
+  assert(pageRes.status === 200 || pageRes.status === 404, `cafe page returned ${pageRes.status}`);
+  const lines = accessLines(captureServerOutput(), requestId);
+  assert(lines.length === 1, `expected one proxy access line for page, got ${lines.length}`);
+  assert(lines[0].path === `/cafes/${cafeId}`, `proxy line path ${lines[0].path} !== page path`);
+}
+
 export async function runAccessLogGate({ base, deadBase, hasDb, captureServerOutput }) {
   clearGateArtifacts(SLUG);
 
@@ -90,122 +198,12 @@ export async function runAccessLogGate({ base, deadBase, hasDb, captureServerOut
   // rejections, the exclusions, and the non-API proxy line. The 2xx, 429,
   // and dead-DB 5xx cases need a reachable pool (or its deliberate absence).
   if (hasDb) {
-    // 2xx — anonymous search read against the live pool.
-    const live = await fetchWithId(base, "/api/search?q=smoke");
-    assert(live.response.status === 200, `GET /api/search returned ${live.response.status}`);
-    assert(live.body && Array.isArray(live.body.results), "GET /api/search response missing 'results' array");
-    const echoed = live.response.headers.get("x-request-id");
-    assert(echoed === live.requestId, `x-request-id echo ${echoed} !== ${live.requestId}`);
-    expectSingleCompletion(captureServerOutput(), { requestId: live.requestId, status: 200, path: "/api/search" });
-
-    // 429 — exhaust the anonymous search bucket (30/min); one trips.
-    let denied = null;
-    for (let i = 0; i < 31; i += 1) {
-      const attempt = await fetchWithId(base, "/api/search?q=smoke");
-      if (attempt.response.status === 429) denied = attempt;
-    }
-    assert(denied !== null, "search bucket never tripped 429 within 31 requests");
-    assert(denied.body?.error === "rate_limited", `expected rate_limited, got ${denied.body?.error}`);
-    expectSingleCompletion(captureServerOutput(), {
-      requestId: denied.requestId,
-      status: 429,
-      code: "rate_limited",
-      path: "/api/search",
-    });
-
-    // 5xx + latency — the dead-DB probe fails the real pool round-trip; the
-    // line carries the produced 500 and the elapsed time, and the envelope
-    // echoes the same request id.
-    const dead = await fetchWithId(deadBase, "/api/search?q=smoke");
-    assert(dead.response.status === 500, `dead-DB GET /api/search returned ${dead.response.status}`);
-    assert(dead.body?.error === "internal_error", `expected internal_error, got ${dead.body?.error}`);
-    assert(dead.body?.request_id === dead.requestId, "500 envelope request_id does not match inbound id");
-    const line = expectSingleCompletion(captureServerOutput(), {
-      requestId: dead.requestId,
-      status: 500,
-      code: "internal_error",
-      path: "/api/search",
-    });
-    assert(line.duration_ms >= 0, "5xx access line missing elapsed duration");
+    await checkLive2xx(base, captureServerOutput);
+    await checkRateLimit(base, captureServerOutput);
+    await checkDeadDb5xx(deadBase, captureServerOutput);
   }
 
-  // 400 — malformed cafe id; the audit's original repro.
-  {
-    const { requestId, response, body } = await fetchWithId(base, "/api/cafes/not-a-uuid");
-    assert(response.status === 400, `GET /api/cafes/not-a-uuid returned ${response.status}`);
-    assert(body?.error === "invalid_request", `expected invalid_request, got ${body?.error}`);
-    assert(body?.request_id === requestId, "400 envelope request_id does not match inbound id");
-    expectSingleCompletion(captureServerOutput(), {
-      requestId,
-      status: 400,
-      code: "invalid_request",
-      path: "/api/cafes/not-a-uuid",
-    });
-  }
-
-  // 401 — auth-gated read without a session (rejects before any DB read).
-  {
-    const { requestId, response, body } = await fetchWithId(base, "/api/navigations/prompt");
-    assert(response.status === 401, `GET /api/navigations/prompt returned ${response.status}`);
-    assert(body?.error === "unauthorized", `expected unauthorized, got ${body?.error}`);
-    expectSingleCompletion(captureServerOutput(), {
-      requestId,
-      status: 401,
-      code: "unauthorized",
-      path: "/api/navigations/prompt",
-    });
-  }
-
-  // 403 — cross-site mutation rejected before auth/DB.
-  {
-    const { requestId, response, body } = await fetchWithId(base, "/api/checkins", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "sec-fetch-site": "cross-site", Origin: base },
-      body: JSON.stringify({}),
-    });
-    assert(response.status === 403, `POST /api/checkins cross-site returned ${response.status}`);
-    assert(body?.error === "forbidden_origin", `expected forbidden_origin, got ${body?.error}`);
-    expectSingleCompletion(captureServerOutput(), {
-      requestId,
-      status: 403,
-      code: "forbidden_origin",
-      path: "/api/checkins",
-      method: "POST",
-    });
-  }
-
-  // Hot-path exclusions (BRAWUKA-756): still 200, still silent.
-  {
-    const health = await fetchWithId(base, "/api/health");
-    assert(health.response.status === 200, `GET /api/health returned ${health.response.status}`);
-    expectSilent(captureServerOutput(), health.requestId, "/api/health");
-
-    const headId = randomUUID();
-    const headRes = await fetch(`${base}/api/health`, { method: "HEAD", headers: { "x-request-id": headId } });
-    assert(headRes.status === 200, `HEAD /api/health returned ${headRes.status}`);
-    await headRes.arrayBuffer();
-    expectSilent(captureServerOutput(), headId, "HEAD /api/health");
-
-    const heartbeat = await fetchWithId(base, "/api/heartbeat");
-    assert(heartbeat.response.status === 200, `GET /api/heartbeat returned ${heartbeat.response.status}`);
-    expectSilent(captureServerOutput(), heartbeat.requestId, "/api/heartbeat");
-
-    const config = await fetchWithId(base, "/api/config");
-    assert(config.response.status === 200, `GET /api/config returned ${config.response.status}`);
-    expectSilent(captureServerOutput(), config.requestId, "/api/config");
-  }
-
-  // Non-API traffic keeps its proxy access line. The proxy runs pre-route,
-  // so the line carries the pre-route status (200 for a page that later
-  // renders 404) — the documented page-render behavior, not the API defect.
-  {
-    const cafeId = randomUUID();
-    const requestId = randomUUID();
-    const pageRes = await fetch(`${base}/cafes/${cafeId}`, { headers: { "x-request-id": requestId } });
-    await pageRes.arrayBuffer();
-    assert(pageRes.status === 200 || pageRes.status === 404, `cafe page returned ${pageRes.status}`);
-    const lines = accessLines(captureServerOutput(), requestId);
-    assert(lines.length === 1, `expected one proxy access line for page, got ${lines.length}`);
-    assert(lines[0].path === `/cafes/${cafeId}`, `proxy line path ${lines[0].path} !== page path`);
-  }
+  await checkRejections(base, captureServerOutput);
+  await checkExclusions(base, captureServerOutput);
+  await checkNonApiProxyLine(base, captureServerOutput);
 }

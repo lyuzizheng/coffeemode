@@ -93,7 +93,9 @@ so a key restricted to the legacy Places API would 403 every live search.
   `original/` — completed gallery originals share that prefix. Instead schedule
   `image-service/scripts/clean-orphan-originals.mjs` (e.g. daily cron or GitHub
   scheduled workflow via #154) with least-privilege R2 credentials that allow
-  List/Head/Delete on `original/` only. Each run is two steps:
+  List/Head/Delete on `original/` and List/Delete on `staging/` (BRAWUKA-730:
+  the sweep now also removes stale browser-written staged uploads by age alone,
+  so its credential scope must include that prefix too). Each run is two steps:
   1. `DATABASE_URL=... node web/scripts/export-live-image-keys.mjs > /tmp/live-keys.txt`
      (read-only; exports every `original/` key still referenced by live
      `cafes.gallery` / `checkins.photos`).
@@ -105,6 +107,9 @@ so a key restricted to the legacy Places API would 403 every live search.
   key that IS referenced is reported as `would-keep … reason:"referenced"`
   and never deleted. A failed sibling keeps its original as the retry anchor
   (siblings-first delete order), so the next scheduled run re-attempts it.
+  `staging/` objects need no export, marker, or HEAD: anything past
+  RETENTION_DAYS there is garbage (`stagingCandidates`/`stagingDeleted` in the
+  output), far outside the 1-hour upload-intent window a retry needs.
 - Tombstone retry path (BRAWUKA-699): the sweeper never sees tombstoned
   rows' variants (it lists `original/` orphans only), so a `deleteUnreferencedPhotos`
   failure after a check-in/cafe/account delete converges only through

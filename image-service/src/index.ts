@@ -5,6 +5,7 @@ import { defaultErrorStatus } from "../../web/shared/errors";
 import { logError, logWarn } from "../../web/shared/log";
 import { isValidUUID } from "../../web/shared/uuid";
 import { validateUploadSize } from "../../web/shared/images/validation";
+import { imageKeys } from "../../web/shared/images/keys";
 import { sanitizeMetadata } from "./validate";
 import { deleteObjects, headObject, presignedGetUrl, presignedPutUrl, publicUrl, ttlSeconds } from "./r2";
 import { IMMUTABLE_CACHE_CONTROL, MAX_UPLOAD_BYTES, PROVISION_TARGET_TYPE } from "./constants";
@@ -18,14 +19,6 @@ function error(request: Request, code: ErrorCode, message: string, status?: numb
 
 function expirationDate(ttlSeconds: number): string {
   return new Date(Date.now() + ttlSeconds * 1000).toISOString();
-}
-
-function makeKeys(imageUuid: string) {
-  return {
-    original: `original/${imageUuid}.webp`,
-    card: `card/${imageUuid}.webp`,
-    thumbnail: `thumbnail/${imageUuid}.webp`,
-  };
 }
 
 export async function handleUpload(request: Request, env: Env): Promise<Response> {
@@ -51,9 +44,13 @@ export async function handleUpload(request: Request, env: Env): Promise<Response
   const size = sizeCheck.size;
 
   const imageUuid = crypto.randomUUID().toLowerCase();
-  const key = makeKeys(imageUuid).original;
+  const keys = imageKeys(imageUuid);
+  // The browser capability is scoped to the STAGING key (BRAWUKA-730). It
+  // stays valid for the URL TTL, so it must never name a published key: a
+  // repeated PUT after processing would otherwise replace the published
+  // original and strip its completion metadata/cache headers.
   // Content-Length is signed into the PUT so R2 rejects mismatched bodies.
-  const { url, headers } = await presignedPutUrl(env, key, "image/webp", {
+  const { url, headers } = await presignedPutUrl(env, keys.staging, "image/webp", {
     contentLength: size,
   });
 
@@ -61,7 +58,9 @@ export async function handleUpload(request: Request, env: Env): Promise<Response
     imageUuid,
     uploadUrl: url,
     uploadHeaders: headers,
-    publicUrl: publicUrl(env, key),
+    // Published address this upload occupies once processed; the staged
+    // object itself is never public.
+    publicUrl: publicUrl(env, keys.original),
     expiresAt: expirationDate(ttlSeconds(env)),
     maxUploadBytes: MAX_UPLOAD_BYTES,
     size,
@@ -121,8 +120,14 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
     metadataTargetId = normalizedUuid;
   }
 
-  const keys = makeKeys(normalizedUuid);
-  const exists = await headObject(env, keys.original);
+  const keys = imageKeys(normalizedUuid);
+  // The download URL follows the stage (BRAWUKA-730): the creation flow
+  // (provision) reads the staged raw upload it is about to publish; the
+  // post-commit attach leg re-stamps the already published original. Both
+  // legs write the published keys below — the browser never holds a
+  // capability for any of them.
+  const sourceKey = safeTargetType === PROVISION_TARGET_TYPE ? keys.staging : keys.original;
+  const exists = await headObject(env, sourceKey);
   if (!exists) {
     return error(request, "not_found", "original image not found");
   }
@@ -145,7 +150,7 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
   metadata.targetId = metadataTargetId;
 
   const [originalGet, originalPut, cardPut, thumbnailPut] = await Promise.all([
-    presignedGetUrl(env, keys.original),
+    presignedGetUrl(env, sourceKey),
     presignedPutUrl(env, keys.original, "image/webp", {
       customMetadata: metadata,
       cacheControl: IMMUTABLE_CACHE_CONTROL,
@@ -171,7 +176,7 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
       card: publicUrl(env, keys.card),
       thumbnail: publicUrl(env, keys.thumbnail),
     },
-    keys,
+    keys: { original: keys.original, card: keys.card, thumbnail: keys.thumbnail },
   };
 
   return json(response, 200, request);
@@ -183,9 +188,11 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
  * back (duplicate check-in, consumed intent, unique conflict). The caller then
  * POSTs here to delete the orphaned variants. Variant keys are derived
  * server-side from `imageUuid`, so a caller cannot delete arbitrary objects;
- * missing keys are reported, never errors (idempotent retries). With
- * `keepOriginal: true` only the derived variants (`card/`, `thumbnail/`) are
- * deleted — the original survives so a retry can re-derive them.
+ * missing keys are reported, never errors (idempotent retries). The staged
+ * upload is a target too (BRAWUKA-730): once the id is unreferenced and its
+ * intent is gone, the raw bytes are garbage. With `keepOriginal: true` only
+ * the derived variants (`card/`, `thumbnail/`) are deleted — the staged
+ * upload and the published original survive so a retry can re-derive them.
  */
 export async function handleDelete(request: Request, env: Env): Promise<Response> {
   let body: unknown;
@@ -206,8 +213,10 @@ export async function handleDelete(request: Request, env: Env): Promise<Response
   const keepOriginal = record.keepOriginal === true;
 
   const normalizedUuid = imageUuid.toLowerCase();
-  const keys = makeKeys(normalizedUuid);
-  const targets = keepOriginal ? [keys.card, keys.thumbnail] : [keys.original, keys.card, keys.thumbnail];
+  const keys = imageKeys(normalizedUuid);
+  const targets = keepOriginal
+    ? [keys.card, keys.thumbnail]
+    : [keys.staging, keys.original, keys.card, keys.thumbnail];
   const { deleted, missing } = await deleteObjects(env, targets);
   const response: DeleteResponse = { imageUuid: normalizedUuid, deleted, missing };
   return json(response, 200, request);

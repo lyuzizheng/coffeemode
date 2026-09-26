@@ -33,15 +33,22 @@ export function r2Client(): AwsClient {
 // still rejects size-mismatched bodies — but it is NEVER returned here:
 // undici/browsers derive Content-Length from the body and reject a manually
 // set value, so returning it breaks every fetch PUT (BRAWUKA-338).
+// Optional `metadata` becomes signed `x-amz-meta-*` headers, exactly like the
+// worker's `complete()` re-PUT carries customMetadata (BRAWUKA-725: lets a
+// test re-stamp a provisional object to its final targetType for real).
 export async function presignedPutUrl(
   key: string,
   contentType: string,
   contentLength?: number,
   bucket: string = R2_BUCKET_NAME,
+  metadata?: Record<string, string>,
 ): Promise<{ url: string; headers: Record<string, string> }> {
   const url = `${r2Endpoint(key, bucket)}?X-Amz-Expires=600`;
   const headers: Record<string, string> = { "Content-Type": contentType };
   if (contentLength !== undefined) headers["Content-Length"] = String(contentLength);
+  for (const [metaKey, value] of Object.entries(metadata ?? {})) {
+    headers[`x-amz-meta-${metaKey}`] = value;
+  }
   const request = new Request(url, { method: "PUT", headers });
   const signed = await r2Client().sign(request, { aws: { signQuery: true, allHeaders: true } });
   const outHeaders: Record<string, string> = {};
@@ -51,6 +58,9 @@ export async function presignedPutUrl(
   delete outHeaders["content-type"];
   delete outHeaders["content-length"];
   outHeaders["Content-Type"] = contentType;
+  for (const [metaKey, value] of Object.entries(metadata ?? {})) {
+    outHeaders[`x-amz-meta-${metaKey}`] = value;
+  }
   return { url: signed.url.toString(), headers: outHeaders };
 }
 

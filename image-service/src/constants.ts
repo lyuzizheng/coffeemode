@@ -16,9 +16,13 @@
  * for the pre-target creation flow (issue #86), or "cafe"/"checkin" + the real
  * id for attached originals. The safe cleanup is
  * `scripts/clean-orphan-originals.mjs` (npm run clean:orphan-originals): it
- * lists `original/` objects older than RETENTION_DAYS and deletes only those
- * WITHOUT a marker or still in the "provision" stage (never attached). Live
- * cafe/checkin originals are never matched. DRY_RUN=1 default;
+ * lists `original/` objects older than RETENTION_DAYS and deletes markerless
+ * or "provision"-stage uploads (never attached), plus — since BRAWUKA-725 —
+ * final-marked originals absent from the live-keys export (a `checkin`/
+ * `cafe` marker proves attachment, not liveness). Final-marked deletion is
+ * fail-closed: without a non-empty export they are never matched, so a live
+ * cafe/checkin original is only swept once the authoritative export no
+ * longer names it. DRY_RUN=1 default;
  * cursor-paginated and batch-bounded; idempotent. #154 schedules it in
  * production with least-privilege R2 credentials (#147).
  */

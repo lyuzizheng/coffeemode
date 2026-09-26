@@ -14,6 +14,12 @@
  *   - reference-aware (BRAWUKA-400): a stale-marker original whose key IS in
  *     LIVE_KEYS_FILE reports would-keep reason:"referenced", never deleted —
  *     even with DRY_RUN=0
+ *   - final-marked reconciliation (BRAWUKA-725): a completed original whose
+ *     DB row is tombstoned (post-commit delete leg failed during a storage
+ *     outage) deletes against the live-keys export — original + card +
+ *     thumbnail converge; a live-referenced final-marked original survives;
+ *     a missing/empty export holds every final-marked original back
+ *     (`finalHeld`, fail-closed), even with ALLOW_EMPTY_LIVE_KEYS=1
  *   - HEAD failure (BRAWUKA-400/BRAWUKA-686): stub R2_ENDPOINT answers 403
  *     on HEAD — the candidate is skipped, never deleted
  *   - idempotent: second run deletes nothing
@@ -31,7 +37,23 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import pg from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { closePool, getPoolConfig } from "@/lib/db/postgres";
+import { softDeleteCheckIn } from "@/lib/db/checkins";
+import { attachProvisionedPhotos } from "@/lib/images/photo-cleanup";
+import {
+  defaultProvisionPhotosDeps,
+  type ProvisionPhotosDeps,
+} from "@/lib/images/provision-photos";
+import {
+  cleanupIntegrationDatabase,
+  integrationAdminUrl,
+  makeTestDbName,
+  provisionTestDatabase,
+  testDatabaseUrl,
+} from "../helpers/db";
+import { CAFE_A, TESTER_ID, seedBaseData } from "../helpers/fixtures";
 import {
   R2_ACCESS_KEY_ID,
   R2_CLEANUP_BUCKET_NAME as R2_BUCKET_NAME,
@@ -40,8 +62,11 @@ import {
   deleteObject as r2DeleteObject,
   minioReachable,
   objectExists as r2ObjectExists,
+  presignedGetUrl,
+  presignedPutUrl,
   putObject as r2PutObject,
   r2Client,
+  r2Endpoint,
 } from "../helpers/r2";
 
 // Storage suites never touch the rate limiter (in-memory only, BRAWUKA-378).
@@ -52,6 +77,7 @@ const IMAGE_SERVICE_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../../image-service",
 );
+const WEB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 let minioUp = false;
 let currentBucket = "";
@@ -132,6 +158,81 @@ function runCleanup(env: Record<string, string>): RunResult {
 
 function seedOriginal(key: string, metadata?: Record<string, string>): Promise<void> {
   return putObject(key, new Uint8Array(Buffer.alloc(64, 0x61)), metadata);
+}
+
+/** Creation-flow key set for one image (original + both derived variants). */
+function imageKeys(uuid: string): { original: string; card: string; thumbnail: string } {
+  return {
+    original: `original/${uuid}.webp`,
+    card: `card/${uuid}.webp`,
+    thumbnail: `thumbnail/${uuid}.webp`,
+  };
+}
+
+/** `checkins.photos` element shaped like the real StoredImage rows. */
+function photoJson(uuid: string): Record<string, unknown> {
+  return { id: uuid, ...imageKeys(uuid), w: 1, h: 1, by: TESTER_ID, at: "2026-09-01T10:00:00.000Z" };
+}
+
+/** Custom metadata of an object (x-amz-meta-*; attach-state proof). */
+async function headMetadata(key: string): Promise<Record<string, string>> {
+  const res = await r2Client().fetch(r2Endpoint(key, currentBucket), {
+    method: "HEAD",
+    redirect: "manual",
+  });
+  if (res.status !== 200) throw new Error(`HEAD ${key} failed with ${res.status}`);
+  const meta: Record<string, string> = {};
+  res.headers.forEach((value, name) => {
+    const lower = name.toLowerCase();
+    if (lower.startsWith("x-amz-meta-")) meta[lower.slice("x-amz-meta-".length)] = value;
+  });
+  return meta;
+}
+
+/** Attach deps with the REAL `restampOriginal` (the post-attach re-stamp
+ * under audit) but a local `getProcessUrls` that presigns against MinIO
+ * instead of a live image-service — the re-stamp happens for real. */
+function attachDeps(): ProvisionPhotosDeps {
+  return {
+    ...defaultProvisionPhotosDeps(),
+    getProcessUrls: async ({ imageUuid, userId, targetType, targetId }) => {
+      const keys = imageKeys(imageUuid);
+      const metadata: Record<string, string> = { targettype: targetType, targetid: targetId };
+      if (userId) metadata.userid = userId;
+      return {
+        imageUuid,
+        original: await presignedGetUrl(keys.original, currentBucket),
+        originalPut: await presignedPutUrl(
+          keys.original,
+          "image/webp",
+          undefined,
+          currentBucket,
+          metadata,
+        ),
+        card: await presignedPutUrl(keys.card, "image/webp", undefined, currentBucket),
+        thumbnail: await presignedPutUrl(keys.thumbnail, "image/webp", undefined, currentBucket),
+        publicUrls: { original: "", card: "", thumbnail: "" },
+        keys,
+      };
+    },
+  };
+}
+
+/** Run the live-keys export (the scheduled cron job) against a database;
+ * stdout is the file content the sweeper consumes. */
+function runExport(databaseUrl: string): string {
+  try {
+    return execFileSync("node", ["scripts/export-live-image-keys.mjs"], {
+      cwd: WEB_ROOT,
+      env: { ...process.env, DATABASE_URL: databaseUrl } as NodeJS.ProcessEnv,
+      stdio: ["ignore", "pipe", "inherit"],
+      encoding: "utf8",
+      timeout: 60_000,
+    });
+  } catch (err) {
+    const e = err as { status?: number; message?: string };
+    throw new Error(`live-keys export failed (status ${e.status ?? "?"}): ${e.message ?? ""}`);
+  }
 }
 
 describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
@@ -433,4 +534,267 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
       expect(e.status).not.toBe(0);
     }
   });
+
+  it("BRAWUKA-725 — attach → failed delete leg → tombstone → recovered cleanup converges all three keys", async (ctx) => {
+    if (!minioUp) return ctx.skip();
+    // The full audited sequence: a real attach restamps the original to
+    // targetType=checkin, the DB delete commits, the post-commit R2 leg
+    // fails (image-service unreachable), and the later sweeper must
+    // reconcile the final-marked original against the live-keys export
+    // instead of skipping it. A live-referenced final-marked photo shares
+    // the bucket and must survive every stage.
+    const liveUuid = randomUUID();
+    const deadUuid = randomUUID();
+    const live = imageKeys(liveUuid);
+    const dead = imageKeys(deadUuid);
+    const checkinLive = randomUUID();
+    const checkinDead = randomUUID();
+
+    const adminUrl = integrationAdminUrl();
+    const testDb = makeTestDbName("coffeemode_test_orphan_final");
+    const dbUrl = testDatabaseUrl(adminUrl, testDb);
+    const previousEnv = {
+      DATABASE_URL: process.env.DATABASE_URL,
+      IMAGE_SERVICE_URL: process.env.IMAGE_SERVICE_URL,
+      IMAGE_SERVICE_TOKEN: process.env.IMAGE_SERVICE_TOKEN,
+    };
+    let dbClient: pg.Client | undefined;
+    try {
+      await provisionTestDatabase(adminUrl, testDb);
+      process.env.DATABASE_URL = dbUrl;
+      dbClient = new pg.Client(getPoolConfig(dbUrl));
+      await dbClient.connect();
+      // Baseline reset like db.integration: migration 0016 seeds the
+      // service-account profile, so truncate before seeding or the plain
+      // insert in seedBaseData hits profiles_pkey.
+      await dbClient.query(
+        "truncate table profiles, cafes, image_upload_intents, navigations restart identity cascade",
+      );
+      await seedBaseData(dbClient);
+      await dbClient.query(
+        `insert into checkins (id, cafe_id, user_id, scores, photos)
+         values ($1, $2, $3, '{}'::jsonb, $4::jsonb), ($5, $2, $3, '{}'::jsonb, $6::jsonb)`,
+        [
+          checkinLive,
+          CAFE_A,
+          TESTER_ID,
+          JSON.stringify([photoJson(liveUuid)]),
+          checkinDead,
+          JSON.stringify([photoJson(deadUuid)]),
+        ],
+      );
+
+      // Creation flow left provision-stamped originals + variants behind.
+      for (const uuid of [liveUuid, deadUuid]) {
+        const provision = { targettype: "provision", targetid: uuid, userid: TESTER_ID };
+        await seedOriginal(imageKeys(uuid).original, provision);
+        await seedOriginal(imageKeys(uuid).card, provision);
+        await seedOriginal(imageKeys(uuid).thumbnail, provision);
+      }
+
+      // Real attach: attachProvisionedPhotos + the real restampOriginal
+      // re-stamp each original to targetType=checkin — the exact state the
+      // sweeper used to skip forever.
+      const deps = attachDeps();
+      for (const [uuid, checkinId] of [
+        [liveUuid, checkinLive],
+        [deadUuid, checkinDead],
+      ]) {
+        const attached = await attachProvisionedPhotos(TESTER_ID, [uuid], checkinId, deps);
+        expect(attached).toEqual([{ imageUuid: uuid, attached: true }]);
+        expect((await headMetadata(imageKeys(uuid).original)).targettype).toBe("checkin");
+      }
+
+      // Storage outage: the image-service delete endpoint refuses
+      // connections; the post-commit leg swallows the failure like the
+      // production best-effort leg does.
+      process.env.IMAGE_SERVICE_URL = "http://127.0.0.1:1";
+      process.env.IMAGE_SERVICE_TOKEN = "brawuka-725-outage";
+      await softDeleteCheckIn(TESTER_ID, checkinDead, defaultProvisionPhotosDeps());
+      const tombstone = await dbClient.query("select deleted_at from checkins where id = $1", [
+        checkinDead,
+      ]);
+      expect(tombstone.rows[0]?.deleted_at).not.toBeNull();
+      // Leak reproduced: the tombstone committed, every object survived.
+      for (const key of Object.values(dead)) {
+        expect(await objectExists(key)).toBe(true);
+      }
+
+      // Authoritative export: the tombstoned photo dropped out, the live
+      // one did not.
+      const dir = mkdtempSync(`${tmpdir()}/live-keys-`);
+      const keysFile = `${dir}/live-keys.txt`;
+      try {
+        const exported = runExport(dbUrl);
+        writeFileSync(keysFile, exported);
+        expect(exported).toContain(live.original);
+        expect(exported).not.toContain(dead.original);
+
+        // Dry-run: the final-marked orphan is a deletion candidate now,
+        // with both derived variants listed for co-delete.
+        const dry = runCleanup({
+          DRY_RUN: "1",
+          RETENTION_DAYS: "0",
+          MAX_OBJECTS: "100",
+          LIVE_KEYS_FILE: keysFile,
+        });
+        expect(dry.status).toBe(0);
+        expect(dry.stdout).toContain(`"op":"would-delete","key":"${dead.original}"`);
+        expect(dry.stdout).toContain('"stage":"final"');
+        expect(dry.stdout).toContain('"verification":"not-referenced"');
+        expect(dry.stdout).toContain(`"card/${deadUuid}.webp`);
+        expect(dry.stdout).toContain(`"thumbnail/${deadUuid}.webp`);
+        expect(dry.stdout).toContain('"finalHeld":0');
+        // The live final-marked original is kept silently — no line at all.
+        expect(dry.stdout).not.toContain(`"key":"${live.original}"`);
+
+        // Recovery: DRY_RUN=0 converges the tombstoned photo's three keys
+        // and leaves the live photo's three keys untouched.
+        const converged = runCleanup({
+          DRY_RUN: "0",
+          RETENTION_DAYS: "0",
+          MAX_OBJECTS: "100",
+          ALLOW_RETENTION_ZERO: "1",
+          LIVE_KEYS_FILE: keysFile,
+        });
+        expect(converged.status).toBe(0);
+        expect(converged.stdout).toContain('"op":"done"');
+        for (const key of Object.values(dead)) {
+          expect(await objectExists(key)).toBe(false);
+        }
+        for (const key of Object.values(live)) {
+          expect(await objectExists(key)).toBe(true);
+        }
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    } finally {
+      for (const [key, value] of Object.entries(previousEnv)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      await closePool().catch((e) => console.warn("closePool:", e));
+      await dbClient?.end().catch((e) => console.warn("test db client:", e));
+      await cleanupIntegrationDatabase(adminUrl, testDb).catch((e) =>
+        console.warn("drop test db:", e),
+      );
+    }
+  }, 240_000);
+
+  it("BRAWUKA-725 — reconciles a partially deleted final-marked photo, keeps a live-referenced one", async (ctx) => {
+    if (!minioUp) return ctx.skip();
+    // Storage-only: the originals already carry the final checkin marker
+    // (the post-attach state). The dead photo's card is already gone — the
+    // failed delete leg got that far — so only the original + thumbnail
+    // remain to converge, while a live-referenced final-marked original
+    // shares the run and must survive it.
+    const deadUuid = randomUUID();
+    const liveUuid = randomUUID();
+    const dead = imageKeys(deadUuid);
+    const live = imageKeys(liveUuid);
+    const finalMarker = (uuid: string) => ({
+      targettype: "checkin",
+      targetid: uuid,
+      userid: TESTER_ID,
+    });
+    await seedOriginal(dead.original, finalMarker(deadUuid));
+    await seedOriginal(dead.thumbnail, finalMarker(deadUuid));
+    await seedOriginal(live.original, finalMarker(liveUuid));
+
+    const dir = mkdtempSync(`${tmpdir()}/live-keys-`);
+    const keysFile = `${dir}/live-keys.txt`;
+    try {
+      writeFileSync(keysFile, `${live.original}\n`);
+
+      const dry = runCleanup({
+        DRY_RUN: "1",
+        RETENTION_DAYS: "0",
+        MAX_OBJECTS: "100",
+        LIVE_KEYS_FILE: keysFile,
+      });
+      expect(dry.status).toBe(0);
+      expect(dry.stdout).toContain('"orphanCandidates":1');
+      expect(dry.stdout).toContain('"finalHeld":0');
+      expect(dry.stdout).toContain(`"op":"would-delete","key":"${dead.original}"`);
+      expect(dry.stdout).toContain(`"thumbnail/${deadUuid}.webp`);
+      expect(dry.stdout).not.toContain(`"key":"${live.original}"`);
+
+      const converged = runCleanup({
+        DRY_RUN: "0",
+        RETENTION_DAYS: "0",
+        MAX_OBJECTS: "100",
+        ALLOW_RETENTION_ZERO: "1",
+        LIVE_KEYS_FILE: keysFile,
+      });
+      expect(converged.status).toBe(0);
+      expect(await objectExists(dead.original)).toBe(false);
+      expect(await objectExists(dead.thumbnail)).toBe(false);
+      expect(await objectExists(dead.card)).toBe(false);
+      expect(await objectExists(live.original)).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it("BRAWUKA-725 — missing/empty export never authorizes final-marked deletion (fail-closed)", async (ctx) => {
+    if (!minioUp) return ctx.skip();
+    const uuid = randomUUID();
+    const keys = imageKeys(uuid);
+    const marker = { targettype: "checkin", targetid: uuid, userid: TESTER_ID };
+    await seedOriginal(keys.original, marker);
+    await seedOriginal(keys.card, marker);
+    await seedOriginal(keys.thumbnail, marker);
+
+    // No export at all: the final-marked original is HELD, never a
+    // would-delete candidate — not even in a dry-run report.
+    const dry = runCleanup({ DRY_RUN: "1", RETENTION_DAYS: "0", MAX_OBJECTS: "100" });
+    expect(dry.status).toBe(0);
+    expect(dry.stdout).toContain('"finalHeld":1');
+    expect(dry.stdout).not.toContain(keys.original);
+
+    // DRY_RUN=0 with no export: still held, nothing touched.
+    const held = runCleanup({
+      DRY_RUN: "0",
+      RETENTION_DAYS: "0",
+      MAX_OBJECTS: "100",
+      ALLOW_RETENTION_ZERO: "1",
+    });
+    expect(held.status).toBe(0);
+    expect(held.stdout).toContain('"finalHeld":1');
+    for (const key of Object.values(keys)) {
+      expect(await objectExists(key)).toBe(true);
+    }
+
+    // A set-but-empty export (failed/truncated run) refuses production
+    // deletes outright (BRAWUKA-632), and its explicit opt-in does NOT
+    // extend to final-marked originals (BRAWUKA-725): they stay held.
+    const dir = mkdtempSync(`${tmpdir()}/live-keys-empty-`);
+    const file = `${dir}/live-keys.txt`;
+    try {
+      writeFileSync(file, "");
+      const refused = runCleanup({
+        DRY_RUN: "0",
+        RETENTION_DAYS: "0",
+        MAX_OBJECTS: "100",
+        ALLOW_RETENTION_ZERO: "1",
+        LIVE_KEYS_FILE: file,
+      });
+      expect(refused.status).not.toBe(0);
+      const optedIn = runCleanup({
+        DRY_RUN: "0",
+        RETENTION_DAYS: "0",
+        MAX_OBJECTS: "100",
+        ALLOW_RETENTION_ZERO: "1",
+        LIVE_KEYS_FILE: file,
+        ALLOW_EMPTY_LIVE_KEYS: "1",
+      });
+      expect(optedIn.status).toBe(0);
+      expect(optedIn.stdout).toContain('"finalHeld":1');
+      for (const key of Object.values(keys)) {
+        expect(await objectExists(key)).toBe(true);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
 });

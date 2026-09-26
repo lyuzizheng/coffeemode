@@ -103,10 +103,11 @@ so a key restricted to the legacy Places API would 403 every live search.
   attached AND are absent from the live-keys export; post-commit attach
   (BRAWUKA-400) re-marks live originals to `checkin`, and any stale-marker
   key that IS referenced is reported as `would-keep … reason:"referenced"`
-  and never deleted. A failed sibling keeps its original as the retry anchor
+  and never deleted. Since BRAWUKA-725 the script also reconciles final-marked originals (post-attach `checkin`/`cafe` metadata): an unreferenced one deletes with its `card`/`thumbnail` variants, a live-referenced one is kept silently, and a missing/empty export holds every final-marked original back (counted as `finalHeld` in the review output — `ALLOW_EMPTY_LIVE_KEYS=1` does not unlock them). A failed sibling keeps its original as the retry anchor
   (siblings-first delete order), so the next scheduled run re-attempts it.
-- Tombstone retry path (BRAWUKA-699): the sweeper never sees tombstoned
-  rows' variants (it lists `original/` orphans only), so a `deleteUnreferencedPhotos`
+- Tombstone retry path (BRAWUKA-699): the sweeper lists `original/` orphans only: since BRAWUKA-725 it deletes an
+  unreferenced final-marked original WITH its variants, but a variant-only residue
+  (original already gone) stays invisible to it, so a `deleteUnreferencedPhotos`
   failure after a check-in/cafe/account delete converges only through
   `web/scripts/backfill-tombstone-photo-deletes.mjs` — re-run it alongside the
   sweeper (same cadence) until it reports no failures:

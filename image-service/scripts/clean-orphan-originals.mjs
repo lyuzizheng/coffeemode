@@ -11,6 +11,15 @@
  * (BRAWUKA-400) re-marks live originals to `checkin`; a referenced stale
  * marker (attach retry outstanding) is reported, never deleted.
  *
+ * Final-marked originals (BRAWUKA-725): a `checkin`/`cafe` marker proves
+ * attachment, not liveness — a tombstoned row plus a failed post-commit
+ * delete leg (storage outage) leaves the marker behind with no live
+ * reference, so the marker alone must never keep the key forever.
+ * Final-marked originals reconcile against a NON-EMPTY live-keys export
+ * only: absent from it → swept with its variants; present in it → kept
+ * silently; no/empty export → held (counted as `finalHeld` in the scan
+ * summary), never deleted. ALLOW_EMPTY_LIVE_KEYS does not extend to them.
+ *
  * Variant co-delete (BRAWUKA-699): an orphan original deletes with its
  * `card/` + `thumbnail/` siblings — siblings first, original last, so a
  * failed sibling keeps the original as the retry anchor for the next run.
@@ -22,8 +31,9 @@
  *     Referenced keys are never deleted; dry-run reports them as
  *     `would-keep … reason:"referenced"` next to `would-delete` true orphans.
  *     Without the file the script keeps marker-based behavior and treats
- *     every candidate as unverified (reason:"unverified") — schedule the
- *     export in production (see docs/agent/pending-user-actions.md §6).
+ *     every markerless/provision candidate as unverified
+ *     (reason:"unverified") — schedule the export in production (see
+ *     docs/agent/pending-user-actions.md §6).
  *     A set-but-empty export with DRY_RUN=0 is refused unless
  *     ALLOW_EMPTY_LIVE_KEYS=1: an empty file means the export failed or was
  *     truncated, not "zero live keys" (BRAWUKA-632).
@@ -43,6 +53,7 @@
 import { readFileSync, realpathSync } from "node:fs";
 import { AwsClient } from "aws4fetch";
 import { pathToFileURL } from "node:url";
+import { classifyOriginal, unescapeXml, variantKeysForOriginal } from "./orphan-classify.mjs";
 
 const R2_ENDPOINT = process.env.R2_ENDPOINT?.replace(/\/+$/, "");
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID;
@@ -122,42 +133,21 @@ function client() {
 }
 
 /**
- * Decode an S3 ListObjectsV2 `<Key>` value (BRAWUKA-592): keys arrive
- * XML-escaped, not percent-encoded — decode entities + numeric refs in one
- * pass so `&amp;lt;` stays a literal `&lt;`, never `<`.
- */
-function unescapeXml(s) {
-  return s.replace(/&(amp|lt|gt|quot|apos);|&#(\d+);|&#[xX]([0-9a-fA-F]+);/g, (m, named, dec, hex) => {
-    if (named) return { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" }[named];
-    const cp = dec ? Number.parseInt(dec, 10) : Number.parseInt(hex, 16);
-    if (!Number.isSafeInteger(cp) || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return m;
-    return String.fromCodePoint(cp);
-  });
-}
-
-/**
- * Derived siblings for one orphan original (BRAWUKA-699): the worker keys
- * every variant as `<prefix>/<uuid>.webp`, so `original/<uuid>.webp` implies
- * `card/` + `thumbnail/`. Non-`original/` input yields none (fail-closed).
- */
-export function variantKeysForOriginal(key) {
-  const match = /^original\/(.+)\.webp$/.exec(key);
-  if (!match) return [];
-  return [`card/${match[1]}.webp`, `thumbnail/${match[1]}.webp`];
-}
-/**
  * Scan at most `maxKeys` listed `original/` objects (BRAWUKA-592: the bound
  * covers scan work — every listed entry consumes budget, so one run does at
- * most `maxKeys` HEADs). Returns { orphans, protectedRefs, truncated }:
- * stale-marker + unreferenced vs. stale-marker + DB-referenced (missing or
- * failed attach leg — reported, never deleted). Entry verification:
+ * most `maxKeys` HEADs). Returns { orphans, protectedRefs, truncated,
+ * finalHeld }: unreferenced candidates vs. stale-marker + DB-referenced
+ * (missing or failed attach leg — reported, never deleted); `finalHeld`
+ * counts final-marked originals this run held back because no non-empty
+ * export could verify them (BRAWUKA-725 fail-closed). Entry verification:
  * `referenced` (in LIVE_KEYS_FILE), `not-referenced` (checked, absent),
- * `unverified` (no file given).
+ * `unverified` (no file given). See `classifyOriginal` for the full gate.
  */
 async function listOrphanCandidates({ maxKeys, cutoffMs, liveKeys }) {
   const aws = client();
   const orphans = [];
   const protectedRefs = [];
+  let finalHeld = 0;
   let cursor;
   let truncated = false;
   let scanned = 0;
@@ -189,9 +179,9 @@ async function listOrphanCandidates({ maxKeys, cutoffMs, liveKeys }) {
       const lastModified = Date.parse(entry.match(/<LastModified>([^<]+)<\/LastModified>/)?.[1] ?? "");
       if (Number.isNaN(lastModified)) continue;
       if (lastModified > cutoffMs) continue; // younger than the retention window
-      // Head the candidate: only objects WITHOUT x-amz-meta-targettype are
-      // abandoned (complete() always sets it). Encode the key (BRAWUKA-592):
-      // a raw `&` or `%` would split the REST path or hit the wrong object.
+      // Head the candidate: completion metadata classifies it (BRAWUKA-725).
+      // Encode the key (BRAWUKA-592): a raw `&` or `%` would split the REST
+      // path or hit the wrong object.
       const encodedKey = key.split("/").map(encodeURIComponent).join("/");
       const head = await aws.fetch(`${baseEndpoint()}/${R2_BUCKET_NAME}/${encodedKey}`, {
         method: "HEAD",
@@ -202,25 +192,19 @@ async function listOrphanCandidates({ maxKeys, cutoffMs, liveKeys }) {
         // run — the next run re-evaluates. Never delete on uncertain state.
         continue;
       }
-      // Stale marker + absent from the live-keys export = orphan. A stale
-      // marker that IS referenced (attach leg missing/failed) is protected.
-      // Live gallery originals carry targetType=cafe|checkin, never matched.
-      const targetType = head.headers.get("x-amz-meta-targettype");
-      if (!targetType || targetType === "provision") {
-        // Label AFTER the membership check (BRAWUKA-592): `referenced` is
-        // protected; checked-but-absent is `not-referenced`; no file is
-        // `unverified`.
-        const referenced = liveKeys?.has(key) ?? false;
-        const candidate = {
-          key,
-          size: Number(head.headers.get("content-length") ?? 0),
-          lastModified,
-          stage: targetType === "provision" ? "provision" : "markerless",
-          verification: liveKeys ? (referenced ? "referenced" : "not-referenced") : "unverified",
-        };
-        if (referenced) protectedRefs.push(candidate);
-        else orphans.push(candidate);
-      }
+      // Gate (classifyOriginal): markerless/provision keep the marker-based
+      // contract; final-marked originals reconcile against a non-empty
+      // export only — held when no export can prove them unreferenced.
+      const verdict = classifyOriginal({
+        key,
+        size: Number(head.headers.get("content-length") ?? 0),
+        lastModified,
+        targetType: head.headers.get("x-amz-meta-targettype"),
+        liveKeys,
+      });
+      if (verdict.action === "orphan") orphans.push(verdict.candidate);
+      else if (verdict.action === "protected") protectedRefs.push(verdict.candidate);
+      else if (verdict.action === "held") finalHeld += 1;
       if (scanned >= maxKeys) {
         // Budget covers scan work, not matches: stop even when this entry
         // was young or already completed. Report truncation only when
@@ -243,7 +227,7 @@ async function listOrphanCandidates({ maxKeys, cutoffMs, liveKeys }) {
   if (!truncated && scanned >= maxKeys && lastPageTruncated) {
     truncated = true;
   }
-  return { orphans, protectedRefs, truncated };
+  return { orphans, protectedRefs, truncated, finalHeld };
 }
 
 /**
@@ -324,7 +308,7 @@ async function main() {
     }),
   );
 
-  const { orphans, protectedRefs, truncated } = await listOrphanCandidates({
+  const { orphans, protectedRefs, truncated, finalHeld } = await listOrphanCandidates({
     maxKeys: MAX_OBJECTS,
     cutoffMs,
     liveKeys,
@@ -334,6 +318,7 @@ async function main() {
       op: "scan",
       orphanCandidates: orphans.length,
       protectedRefs: protectedRefs.length,
+      finalHeld,
       truncated,
       totalBytes: orphans.reduce((sum, c) => sum + c.size, 0),
     }),

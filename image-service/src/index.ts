@@ -185,7 +185,10 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
  * server-side from `imageUuid`, so a caller cannot delete arbitrary objects;
  * missing keys are reported, never errors (idempotent retries). With
  * `keepOriginal: true` only the derived variants (`card/`, `thumbnail/`) are
- * deleted — the original survives so a retry can re-derive them.
+ * deleted — the original survives so a retry can re-derive them. The full
+ * delete keeps that anchor invariant (BRAWUKA-725): variants first, the
+ * original last, so a mid-sequence storage failure can never strand
+ * card/thumbnail objects without the original the sweeper lists.
  */
 export async function handleDelete(request: Request, env: Env): Promise<Response> {
   let body: unknown;
@@ -207,7 +210,11 @@ export async function handleDelete(request: Request, env: Env): Promise<Response
 
   const normalizedUuid = imageUuid.toLowerCase();
   const keys = makeKeys(normalizedUuid);
-  const targets = keepOriginal ? [keys.card, keys.thumbnail] : [keys.original, keys.card, keys.thumbnail];
+  // Variants first, original last (BRAWUKA-725): deleteObjects throws on the
+  // first failure, so this order guarantees a partial run leaves the original
+  // behind — the anchor the reference-aware sweeper lists — never a
+  // card/thumbnail residue with no original to derive it from.
+  const targets = keepOriginal ? [keys.card, keys.thumbnail] : [keys.card, keys.thumbnail, keys.original];
   const { deleted, missing } = await deleteObjects(env, targets);
   const response: DeleteResponse = { imageUuid: normalizedUuid, deleted, missing };
   return json(response, 200, request);

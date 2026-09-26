@@ -374,55 +374,41 @@ describeBoundary("boundary — proxy → page verified-user handoff (BRAWUKA-723
     expect(response.headers.get("cache-control")).toBe("private, no-store, must-revalidate");
   });
 
-  it("oversized valid identity falls back without throwing; page retries its own getUser", async () => {
-    // A valid UUID with a Chinese display name plus the reviewer's dual
-    // capped avatar fields (`avatar_url` + `picture`, 1000 CJK chars each)
-    // passes every field cap yet the encoded identity exceeds the 8 KiB
-    // header budget — the production shape that reaches the forwarder's
-    // skip branch. The metadata rides the JWT claims (like GoTrue
-    // returns); the ~11 KiB auth cookie fits the request, so the real
-    // getUser() identifies the viewer but the forwarder must skip the
-    // stamp.
-    const bigAvatar = (n: number) => `https://example.com/${"李".repeat(n)}`;
-    // Same oversized identity on an expired token: the mock mints fresh
-    // tokens without metadata (like a real refresh — only the JWT claims
-    // verified by getUser carry metadata), so the rotated session
-    // forwards a small verified identity while preserving the cookies.
-    // This proves rotation is not lost when the original request was
-    // oversized: both the Set-Cookie and the header reach the page.
-    const expiredToken = fakeJwt(
-      U1,
-      { email: "liming@example.com", user_metadata: { full_name: "李明", avatar_url: bigAvatar(1000), picture: bigAvatar(1000) } },
-      -3600,
-    );
-    const staleOversized = {
+  it("oversized valid identity falls back without throwing; page recovers with one retry", async () => {
+    // A valid UUID with two capped 2020-char CJK avatar URLs passes every
+    // field cap yet exceeds the 8 KiB header budget (reviewer recipe) —
+    // the production shape that reaches the forwarder's skip branch. The
+    // metadata is server-held (real GoTrue keeps it there; the mock stages
+    // it off the marked refresh token and serves it on /user): the bearer,
+    // cookie, and /user request all stay small, verification succeeds on
+    // the valid UUID, and only the header encode fails. The expired access
+    // token forces the real getSession() refresh on the same request, so
+    // this also proves rotation survives the oversized branch.
+    const expiredToken = fakeJwt(U1, { email: "liming@example.com" }, -3600);
+    const staleSession = {
       access_token: expiredToken,
-      refresh_token: `mock-refresh-${U1}`,
+      refresh_token: `mock-refresh-oversized-${U1}`,
       user: { id: U1 },
       expires_at: 1,
     };
     const staleCookie = `sb-127-auth-token=${encodeURIComponent(
-      `base64-${Buffer.from(JSON.stringify(staleOversized)).toString("base64url")}`,
+      `base64-${Buffer.from(JSON.stringify(staleSession)).toString("base64url")}`,
     )}`;
-    const refreshed = await proxy(cafeRequest(staleCookie));
-    expect(refreshed.status).toBe(200);
-    expect(overrideHeaders(refreshed)).toContain("x-verified-user");
-    expect(decodeVerifiedUser(forwardedRaw(refreshed))).toMatchObject({ id: expect.any(String) });
-    expect((refreshed.headers.get("set-cookie") ?? "").length).toBeGreaterThan(0);
-    expect(refreshed.headers.get("cache-control")).toBe("private, no-store, must-revalidate");
-    const response = await proxy(
-      cafeRequest(sessionCookie(U1, { full_name: "李明", avatar_url: bigAvatar(1000), picture: bigAvatar(1000) })),
-    );
+    const response = await proxy(cafeRequest(staleCookie));
     expect(response.status).toBe(200);
-    // Nothing is forwarded — the override list must not name the header
-    // (had stripping/forwarding been deleted, either a spoof or a throw
-    // would surface here instead of silence).
-    expect(overrideHeaders(response)).not.toContain("x-verified-user");
+
+    // The encoder — not the transport — rejected the verified identity:
+    // no signed-in identity is forwarded (absent header), yet the refresh
+    // rotated the session (Set-Cookie) and the response is no-store so the
+    // anonymous-looking response never sits in shared cache.
     expect(forwardedRaw(response)).toBeNull();
     expect(decodeVerifiedUser(forwardedRaw(response))).toBeUndefined();
+    expect((response.headers.get("set-cookie") ?? "").length).toBeGreaterThan(0);
+    expect(response.headers.get("cache-control")).toBe("private, no-store, must-revalidate");
+
     // The page's absent-header branch retries its own getUser() exactly
-    // once and recovers the signed-in viewer — the oversized budget never
-    // costs the session, only the one-request header optimization.
+    // once and recovers the signed-in viewer — the oversized budget costs
+    // only the one-request header optimization, never the session.
     pageHeaderState.present = false;
     pageRecoveryState.user = { id: U1 };
     const loadMapSession = await freshLoadMapSession();

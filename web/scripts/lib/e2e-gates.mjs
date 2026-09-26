@@ -18,6 +18,7 @@ import { runCheckinSubmitGate } from "./checkin-submit-gate.mjs";
 import { runDeeplinkHydrationGate } from "./deeplink-hydration-gate.mjs";
 import { runNavigationPromptGate } from "./navigation-prompt-gate.mjs";
 import { runCityScopeGate } from "./city-scope-gate.mjs";
+import { runVerifiedUserHandoffGate } from "./verified-user-handoff-gate.mjs";
 import { recordGateFailure } from "./e2e-artifacts.mjs";
 
 export const E2E_GATES = [
@@ -76,6 +77,13 @@ export const E2E_GATES = [
     mobile: false,
     needsDb: true,
     run: runNavigationPromptGate,
+  },
+  {
+    slug: "verified-user-handoff",
+    label: "T14: Verified-User Handoff Renders Unicode + Oversized Sessions (BRAWUKA-723)",
+    mobile: false,
+    needsDb: true,
+    run: runVerifiedUserHandoffGate,
   },
   {
     slug: "city-scope",

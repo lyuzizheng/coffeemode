@@ -345,6 +345,13 @@ if [ "$DRY_RUN" = false ]; then
   # Archive readability (BRAWUKA-728): a truncated/malformed archive must be
   # rejected here, before step 4 creates a scratch database. The probe mirrors
   # step 5's decompression path so it proves what pg_restore will actually read.
+  #
+  # BRAWUKA-753: pg_restore stops reading once it has the table of contents, so a
+  # bare `gzip -dc | pg_restore --list` kills gzip with SIGPIPE (141) on any
+  # archive larger than the pipe buffer and `pipefail` then rejects a *valid*
+  # backup. The trailing `cat` drains the rest of the stream, which keeps the
+  # decompressor alive to completion: with `pipefail` both statuses stay verdicts
+  # (corrupt/truncated gzip stream, or bytes that are not a pg_restore archive).
   for bin in pg_restore psql; do
     if ! command -v "$bin" >/dev/null 2>&1; then
       error "${bin} not found in PATH. Install postgresql-client to run restores."
@@ -355,7 +362,8 @@ if [ "$DRY_RUN" = false ]; then
   log "Verifying pg_restore archive readability..."
   ARCHIVE_READABLE=true
   if [[ "$BACKUP_PATH" == *.gz ]]; then
-    gzip -dc "$BACKUP_PATH" | pg_restore --list >/dev/null || ARCHIVE_READABLE=false
+    gzip -dc "$BACKUP_PATH" | { pg_restore --list >/dev/null && cat >/dev/null; } \
+      || ARCHIVE_READABLE=false
   else
     pg_restore --list "$BACKUP_PATH" >/dev/null || ARCHIVE_READABLE=false
   fi
@@ -465,10 +473,11 @@ if [ "$DRY_RUN" = false ]; then
   fi
   ok "PostGIS extension verified: ${POSTGIS_VERSION}"
 
-  # 2. Required tables and restored content: every query must succeed, return a
-  #    number, and the restore as a whole must have produced rows. A missing
-  #    relation or an empty result set is a failed restore, never a zero to log
-  #    past (BRAWUKA-728).
+  # 2. Required tables and restored content: every query must succeed and return
+  #    a number, and the required tables must not be empty *as a set*. An
+  #    individual table may legitimately restore empty (an unused `checkins` or
+  #    `profiles` on a fresh project); a missing relation is always a failed
+  #    restore, never a zero to log past (BRAWUKA-728).
   REQUIRED_TABLES=(cafes checkins profiles)
   RESTORED_ROWS=0
   for table in "${REQUIRED_TABLES[@]}"; do

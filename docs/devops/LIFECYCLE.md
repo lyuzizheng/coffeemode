@@ -297,17 +297,18 @@ To verify backup viability without touching production or staging data, run non-
 ./scripts/devops/restore.sh --env staging --file /path/to/backup.dump.gz --drill
 ```
 In drill mode (`--drill`), the script always targets the STAGING Supabase project:
-1. Validates the SHA256 checksum and that `pg_restore` can read the archive's table of contents.
+1. Validates the SHA256 checksum and that `pg_restore` can read the archive's table of contents (the gzip stream is drained, so a valid archive larger than the pipe buffer is never rejected by a `SIGPIPE`).
 2. Creates a scratch database `restore_drill_<timestamp>_<pid>` on staging.
 3. Restores schema, tables, and spatial data into the scratch database; a nonzero `pg_restore` exit status fails the drill.
-4. Executes PostGIS extension checks, row count audits (`cafes`, `checkins`, `profiles` must each be readable and the restore must contain rows), and spatial queries.
+4. Executes PostGIS extension checks, row count audits (`cafes`, `checkins`, `profiles`: each must be readable with a numeric count, and the three must not all be empty), and spatial queries.
 5. Drops the scratch database — on the failure paths as well as the success path — and reports a verified `PASSED` result.
 
 The drill is strict by design (BRAWUKA-728): an unreadable archive, a nonzero
-`pg_restore` exit status, a missing or empty required table, a missing PostGIS
-extension, or a failed spatial query each exit nonzero. A drill that cannot
-verify the restore never reports `PASSED`, so a green drill is evidence the
-archive was actually restorable.
+`pg_restore` exit status, a missing required table, a restore in which all three
+required tables are empty, a missing PostGIS extension, or a failed spatial query
+each exit nonzero. An individual table may legitimately restore empty; only the
+all-empty set is rejected. A drill that cannot verify the restore never reports
+`PASSED`, so a green drill is evidence the archive was actually restorable.
 
 ---
 

@@ -9,17 +9,21 @@
  *      affordance shows the signed-in initial, no ByteString crash.
  *   2. Emoji session (☕ Nomad): same page, same assertions.
  *   3. Oversized + refresh: the expired session carries the marked
- *      oversized refresh token; the mock stages server-held CJK metadata
- *      for the session user, the proxy verifies on a small bearer, skips
- *      the over-budget header, rotates the cookies, and the page recovers
- *      the signed-in viewer through its own getUser() retry — cafe
- *      content renders and the session lands authenticated.
+ *      oversized refresh token; the mock serves the reviewer-recipe CJK
+ *      metadata on /user for the refreshed bearer alone, the proxy
+ *      verifies on a small bearer, skips the over-budget header, rotates
+ *      the cookies, and the page recovers the signed-in viewer through its
+ *      own getUser() retry — cafe content renders authenticated.
  * Sessions are minted as small bearers (like real GoTrue); the Unicode
  * display name rides the bearer claims the mock serves on /user, and the
- * oversized case stages via the marked refresh token.
+ * oversized case stages via the marked refresh token. The cafe navigation
+ * itself performs the rotation: no authenticated probe precedes it (such a
+ * probe would consume the expired cookie first and let a later request
+ * look rotated), and the gate asserts the oversized metadata was actually
+ * served plus the rotation landed on that same navigation.
  */
 import { assert, shot } from "./gate-assert.mjs";
-import { assertSessionLanded, mintSession } from "./e2e-session.mjs";
+import { mintSession } from "./e2e-session.mjs";
 import { clearGateArtifacts, withGateContext } from "./e2e-artifacts.mjs";
 import { fakeJwt } from "../../../scripts/fake-jwt.mjs";
 
@@ -79,6 +83,7 @@ async function checkRenderedCafeSession({
   attachErrorCollector,
   stepLabel,
   shotName,
+  oversized = false,
 }) {
   await withGateContext(
     "verified-user-handoff",
@@ -86,11 +91,39 @@ async function checkRenderedCafeSession({
     {},
     async (context, consoleLines) => {
       await context.addCookies([{ ...sessionCookie, url: base }]);
-      await assertSessionLanded({ base, supabaseUrl, request: context.request, label: stepLabel });
       const page = await context.newPage();
       const checkErrors = attachErrorCollector(page, stepLabel, { path: `/cafes/${cafeId}`, status: 200 }, consoleLines);
       const res = await page.goto(`${base}/cafes/${cafeId}`, { waitUntil: "domcontentloaded" });
       assert(res?.status() === 200, `Expected 200 for seeded cafe, got ${res?.status()}`);
+      if (oversized) {
+        // The cafe navigation itself performed the rotation (no probe ran
+        // before it): the refreshed cookies landed in the browser store…
+        const cookies = await context.cookies();
+        const authCookie = cookies.find((c) => c.name === sessionCookie.name);
+        assert(authCookie, `${stepLabel}: rotation cookie missing after cafe navigation`);
+        const planted = JSON.parse(
+          Buffer.from(sessionCookie.value.replace(/^base64-/, ""), "base64url").toString("utf8"),
+        );
+        const session = JSON.parse(Buffer.from(authCookie.value.replace(/^base64-/, ""), "base64url").toString("utf8"));
+        assert(
+          typeof session.access_token === "string" && session.access_token !== planted.access_token,
+          `${stepLabel}: access token was not rotated by the cafe navigation`,
+        );
+        // …and the oversized metadata was actually served on /user for the
+        // rotated bearer (the false-pass guard: an unstaged user would get
+        // no user_metadata here, and the page would render from a small
+        // identity instead of the over-budget skip path).
+        const userRes = await context.request.get(`${supabaseUrl}/auth/v1/user`, {
+          headers: { authorization: `Bearer ${session.access_token}`, apikey: "e2e-anon-key" },
+        });
+        assert(userRes.ok(), `${stepLabel}: /user probe failed with ${userRes.status()}`);
+        const userBody = await userRes.json();
+        assert(
+          typeof userBody?.user_metadata?.avatar_url === "string" &&
+            userBody.user_metadata.avatar_url.length >= 2000,
+          `${stepLabel}: oversized metadata was not served for the rotated bearer`,
+        );
+      }
 
       // Rendered cafe content: the cafe name heading is visible …
       await page.getByRole("heading", { name: cafeName }).first().waitFor({ state: "visible", timeout: 20000 });
@@ -168,5 +201,6 @@ export async function runVerifiedUserHandoffGate({
     attachErrorCollector,
     stepLabel: `${label} oversized-refresh`,
     shotName: "oversized-refresh",
+    oversized: true,
   });
 }

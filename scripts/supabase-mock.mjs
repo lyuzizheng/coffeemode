@@ -81,32 +81,22 @@ function deriveUserId(email) {
 // Server-held metadata (BRAWUKA-723/750): real GoTrue stores provider
 // metadata server-side and returns it on /user; it never rides the bearer.
 // The oversized fixture is two capped 2020-char CJK avatar URLs (~12 KiB
-// as /user JSON, over the 8 KiB verified-user header budget) staged per
-// user by a marked refresh token — the only suite-controlled inbound value
-// that survives every HTTP budget.
+// as /user JSON, over the 8 KiB verified-user header budget). It is scoped
+// to the refreshed bearer, never the user (BRAWUKA-759): POST /token with a
+// marked refresh token mints a bearer carrying only a tiny fixture claim,
+// and GET /user serves the fixture for bearers carrying that claim alone.
+// No per-user store exists, so ordinary sessions for the same user —
+// before, after, or concurrently — are unaffected, and consecutive suite
+// runs against one mock process stay green. Any session user (boundary U1
+// or the E2E fixture user) stages it; bearer and cookie stay small.
 const OVERSIZED_MARKER = "mock-refresh-oversized-";
+const OVERSIZED_CLAIM = "oversized_fixture";
+const OVERSIZED_RECIPE = "cjk-2020-avatar";
 function oversizedMetadata() {
   return {
     avatar_url: `https://example.com/${"李".repeat(2000)}`,
     picture: `https://example.com/${"李".repeat(2000)}`,
   };
-}
-
-// Refresh-staged oversized fixture, pinned to the boundary suite's viewer
-// (web/tests/helpers/fixtures.ts U1): the marked refresh token's suffix
-// must equal this id or nothing is staged. The mock has no database, so
-// this constant can only be armed by the oversized test's own refresh
-// POST — other suites' users, derived ids, and unmarked refreshes never
-// match, and normal Unicode sessions are unaffected.
-const OVERSIZED_USER_ID = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
-const oversizedUsers = new Set();
-
-// Suite-user metadata: the boundary suite's Unicode names ride the JWT
-// claims (small enough for every budget); oversized users are served from
-// the refresh-staged store above.
-function serverMetadataFor(userId) {
-  if (oversizedUsers.has(userId)) return oversizedMetadata();
-  return undefined;
 }
 
 const server = http.createServer(async (req, res) => {
@@ -146,22 +136,22 @@ const server = http.createServer(async (req, res) => {
     // A marked refresh token names its session user in the suffix (the
     // refresh body carries no userId, so the derived id would be wrong).
     // Like real GoTrue, refresh preserves the session's user — the minted
-    // bearer carries that same sub, and the staged fixture is served for
-    // it on /user. The bearer and this user object stay small; the 12 KiB
-    // claim set never rides a token, cookie, or header. Staging fires only
-    // for the pinned suite viewer, so earlier manual probes (or any other
-    // suite) cannot arm the fixture for the wrong user.
+    // bearer carries that same sub. The bearer carries only a tiny fixture
+    // claim (tens of bytes); the 12 KiB claim set never rides a token,
+    // cookie, or the /token response, so rotation cookies always fit.
     const marked =
       typeof body.refresh_token === "string" && body.refresh_token.startsWith(OVERSIZED_MARKER)
         ? body.refresh_token.slice(OVERSIZED_MARKER.length)
         : null;
     const userId = marked ?? (typeof body.userId === "string" && body.userId ? body.userId : deriveUserId(email));
-    if (marked === OVERSIZED_USER_ID) oversizedUsers.add(marked);
-    // The bearer stays small and so does this user object (real GoTrue
-    // keeps metadata server-side — it never rides the token response into
-    // the persisted session cookie). Staged oversized metadata is served
-    // on /user below, which is where getUser() actually reads it.
-    const token = fakeJwt(userId, { email });
+    // The token-response user object stays small (real GoTrue keeps
+    // metadata server-side — it never rides the response into the
+    // persisted session cookie). The staged fixture is served on /user
+    // below, which is where getUser() actually reads it.
+    const token =
+      marked !== null
+        ? fakeJwt(userId, { email, [OVERSIZED_CLAIM]: OVERSIZED_RECIPE })
+        : fakeJwt(userId, { email });
     json(res, 200, {
       access_token: token,
       token_type: "bearer",
@@ -181,13 +171,12 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     // Real GoTrue returns the user's server-held metadata here. Unicode
-    // suite names ride the JWT claims (small enough for every budget);
-    // oversized users are served from the refresh-staged store above, so
-    // verification succeeds on a small bearer and the encoder — not the
-    // transport — is what rejects the identity (BRAWUKA-723/750).
+    // suite names ride the JWT claims (small enough for every budget); a
+    // bearer carrying the fixture claim is served the oversized recipe —
+    // verification succeeds on a small bearer and the encoder, not the
+    // transport, is what rejects the identity (BRAWUKA-723/750).
     const userBody = { id: payload.sub, email: payload.email ?? "local@coffeemode.test", role: "authenticated" };
-    const held = serverMetadataFor(payload.sub);
-    if (held !== undefined) userBody.user_metadata = held;
+    if (payload[OVERSIZED_CLAIM] === OVERSIZED_RECIPE) userBody.user_metadata = oversizedMetadata();
     else if (payload.user_metadata !== undefined) userBody.user_metadata = payload.user_metadata;
     json(res, 200, userBody);
     return;

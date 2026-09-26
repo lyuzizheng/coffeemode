@@ -378,12 +378,12 @@ describeBoundary("boundary — proxy → page verified-user handoff (BRAWUKA-723
     // A valid UUID with two capped 2020-char CJK avatar URLs passes every
     // field cap yet exceeds the 8 KiB header budget (reviewer recipe) —
     // the production shape that reaches the forwarder's skip branch. The
-    // metadata is server-held (real GoTrue keeps it there; the mock stages
-    // it off the marked refresh token and serves it on /user): the bearer,
-    // cookie, and /user request all stay small, verification succeeds on
-    // the valid UUID, and only the header encode fails. The expired access
-    // token forces the real getSession() refresh on the same request, so
-    // this also proves rotation survives the oversized branch.
+    // fixture is scoped to the refreshed bearer (BRAWUKA-759): the mock
+    // mints it off the marked refresh token and serves it on /user for
+    // that bearer alone — there is no per-user store, so no teardown is
+    // needed and consecutive runs against one mock process stay green.
+    // The expired access token forces the real getSession() refresh on the
+    // same request, so this also proves rotation survives the branch.
     const expiredToken = fakeJwt(U1, { email: "liming@example.com" }, -3600);
     const staleSession = {
       access_token: expiredToken,

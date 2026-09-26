@@ -149,9 +149,11 @@ export function UnifiedSearchPanel({
   // rich results view until the query is edited or Esc clears it.
   const [submitted, setSubmitted] = useState(false);
   const requestId = useRef(0);
-  // Signature of the last request actually fired — lets Enter short-circuit a
-  // pending debounce without a duplicate request.
+  // Signature of the last request actually fired — lets Enter and the
+  // debounce dedupe on the identical request instead of racing it.
   const fetchedSignatureRef = useRef<string | null>(null);
+  // Controller of the pending/in-flight request — whoever fires owns it.
+  const controllerRef = useRef<AbortController | null>(null);
   const fetcher = fetchSearch ?? fetchUnifiedSearch;
   const filterUi = filters !== undefined && onFiltersChange !== undefined;
   const filtersActive = filterUi && hasActiveFilters(filters);
@@ -182,25 +184,35 @@ export function UnifiedSearchPanel({
     setStatus("idle");
   }
 
-  // One runner for both the debounced effect and manual retry. Stale
-  // responses are discarded via the request id; a successful prior status is
-  // kept during refetch so skeletons never flash over real content (DG141).
+  // One runner for both the debounced effect, Enter and manual retry —
+  // firing owns the controller so cancellation and dedup stay consistent.
+  // Stale responses are discarded via the request id; a successful prior
+  // status is kept during refetch so skeletons never flash over real
+  // content (DG141).
   const runSearch = useCallback(
-    (trimmed: string, signal?: AbortSignal) => {
+    (trimmed: string, force = false) => {
+      const signature = requestSignature(trimmed, city, filters);
+      // Identical request already pending/in-flight — adopt it. Enter must
+      // never kill the only valid request (BRAWUKA-726) nor duplicate it.
+      if (!force && signature === fetchedSignatureRef.current) return;
+      // The previous request is stale the moment a new one fires.
+      controllerRef.current?.abort();
+      const controller = new AbortController();
+      controllerRef.current = controller;
+      fetchedSignatureRef.current = signature;
       const id = ++requestId.current;
-      fetchedSignatureRef.current = requestSignature(trimmed, city, filters);
       setStatus((prev) => (prev === "success" ? prev : "loading"));
       // Refetches keep "success" so the last good list stays painted — the
       // refetching flag carries the thin head shimmer instead (§4).
       setRefetching(true);
-      fetcher({ q: trimmed, city, filters, signal })
+      fetcher({ q: trimmed, city, filters, signal: controller.signal })
         .then((data) => {
           if (requestId.current !== id) return;
           setResponse(data);
           setStatus("success");
         })
         .catch((cause: unknown) => {
-          if (requestId.current !== id || signal?.aborted) return;
+          if (requestId.current !== id || controller.signal.aborted) return;
           console.error("unified search failed", cause);
           setStatus("error");
         })
@@ -214,25 +226,42 @@ export function UnifiedSearchPanel({
   );
   useEffect(() => {
     const trimmed = query.trim();
-    if (!wantsResults) {
+    // No valid request remains: cancel the in-flight fetch and reset the
+    // signature so a later identical signature refetches instead of
+    // deduping against a dead request.
+    const cancelRequest = () => {
       requestId.current += 1;
+      controllerRef.current?.abort();
+      controllerRef.current = null;
       fetchedSignatureRef.current = null;
+    };
+    if (!wantsResults) {
+      cancelRequest();
       return;
     }
-    // Enter already fired this exact request — don't double-fetch on the
-    // `submitted` flip.
+    // The identical request is already pending/in-flight (e.g. Enter fired
+    // it) — dedupe instead of racing a duplicate.
     if (fetchedSignatureRef.current === requestSignature(trimmed, city, filters)) return;
-    const controller = new AbortController();
-    const timer = setTimeout(() => runSearch(trimmed, controller.signal), DEBOUNCE_MS);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [query, city, filters, wantsResults, submitted, runSearch]);
+    // Params changed: whatever is in flight is stale — cancel it now, not
+    // only when the debounced replacement fires.
+    cancelRequest();
+    const timer = setTimeout(() => {
+      // Orphaned timer (the dep change that cleared it raced a concurrent
+      // fire): only fetch when this signature was never fetched.
+      if (fetchedSignatureRef.current === requestSignature(trimmed, city, filters)) return;
+      runSearch(trimmed);
+    }, DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [query, city, filters, wantsResults, runSearch]);
+
+  // Unmount cancels whatever is pending — in-flight fetches resolve safely
+  // into a discarded request id.
+  useEffect(() => () => controllerRef.current?.abort(), []);
 
   const retry = () => {
-    // Re-run the request immediately instead of waiting on the debounce.
-    if (wantsResults) runSearch(query.trim());
+    // Re-run the request immediately instead of waiting on the debounce —
+    // forced: retry must refire even an identical signature.
+    if (wantsResults) runSearch(query.trim(), true);
   };
   // DG56: Enter submits the results view; Esc clears the query and
   // dismisses suggestions/results. When Esc actually consumed something it
@@ -252,9 +281,9 @@ export function UnifiedSearchPanel({
       // Filter-active Enter submits the browse-mode results view (BRAWUKA-520).
       if (!wantsResults) return;
       setSubmitted(true);
-      if (fetchedSignatureRef.current !== requestSignature(trimmed, city, filters)) {
-        runSearch(trimmed);
-      }
+      // runSearch dedups: an identical pending/in-flight request is
+      // adopted, never aborted and never duplicated (BRAWUKA-726).
+      runSearch(trimmed);
     }
   };
 

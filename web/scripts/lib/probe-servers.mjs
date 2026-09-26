@@ -114,6 +114,11 @@ export function createProbeServers({ root, dbUrl, supabaseUrl, supabaseAnonKey }
   // `runSmokeSuite` stays under the complexity budget.
   async function bootAll({ port, useExternalBase, hasDb, failures }) {
     const base = process.env.E2E_BASE_URL ?? `http://127.0.0.1:${port}`;
+    // BRAWUKA-755: resolve the latency floor once and supply the same value
+    // to both sides — the child server (spawn env below) and the parent
+    // gate (which reads process.env at assertion time). Without this the
+    // gate throws on an unset variable while the server slept the default.
+    process.env.E2E_ACCESS_LOG_DELAY_MS = String(probeAccessLogDelayMs());
     if (!useExternalBase) {
       startMain(port);
       reportServerRenderErrors(serverProcess, {

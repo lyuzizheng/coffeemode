@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 import type { SessionUser } from "./get-user";
-import { VERIFIED_USER_HEADER, encodeVerifiedUser } from "./verified-user";
+import { trySetVerifiedUserHeader } from "./verified-user";
 import { logError } from "@/lib/observability/server-log";
 
 /**
@@ -108,13 +108,19 @@ export async function refreshSessionAndVerify(
  * request BEFORE the response that forwards it is built — a refresh in
  * setAll already replaced `response`, so the rotated cookies are carried
  * over explicitly (same rule as the gone-cafe rewrite in proxy.ts).
+ *
+ * BRAWUKA-723: the set never throws — an oversized identity skips the
+ * header (logged, cookies still forwarded) and the page falls back to its
+ * own getUser() instead of 500ing before render.
  */
 function forwardVerifiedUser(
   req: NextRequest,
   response: NextResponse,
   user: SessionUser | null,
 ): NextResponse {
-  req.headers.set(VERIFIED_USER_HEADER, encodeVerifiedUser(user));
+  if (!trySetVerifiedUserHeader(req.headers, user)) {
+    logError({ route: "proxy verified-user encode", error: "oversized identity" });
+  }
   const forwarded = NextResponse.next({ request: req });
   for (const c of response.cookies.getAll()) {
     forwarded.cookies.set(c);

@@ -77,7 +77,9 @@ exit 0
 // STUB_FAIL_TABLES    required tables whose count query errors (relation missing)
 // STUB_JUNK_TABLES    required tables whose count query answers a non-number
 // STUB_COUNTS         "cafes=12 checkins=34 profiles=5"; absent table -> 0
-// STUB_POSTGIS / STUB_SPATIAL   "missing" fails the PostGIS / spatial check
+// STUB_POSTGIS        "missing" errors the extension check; "empty" answers with no version
+// STUB_SPATIAL        "missing" errors the spatial query
+// STUB_SPATIAL_COUNT  the spatial query's scalar answer (set a non-number to malform it)
 const PSQL_STUB = `#!/usr/bin/env bash
 set -u
 printf 'psql %s\\n' "$*" >> "$STUB_LOG"
@@ -95,11 +97,12 @@ done
 case "$sql" in
   *"DROP DATABASE IF EXISTS"*|*"CREATE DATABASE"*) exit 0 ;;
   *"PostGIS_Version"*)
-    if [ "\${STUB_POSTGIS:-ok}" != "ok" ]; then
-      printf 'ERROR:  function postgis_version() does not exist\\n' >&2
-      exit 3
-    fi
-    printf '3.4 USE_GEOS=1\\n'
+    case "\${STUB_POSTGIS:-ok}" in
+      ok) printf '3.4 USE_GEOS=1\\n' ;;
+      missing) printf 'ERROR:  function postgis_version() does not exist\\n' >&2; exit 3 ;;
+      empty) ;;
+      *) printf 'unexpected STUB_POSTGIS: %s\\n' "\$STUB_POSTGIS" >&2; exit 99 ;;
+    esac
     ;;
   *"ST_DWithin"*)
     if [ "\${STUB_SPATIAL:-ok}" != "ok" ]; then
@@ -307,6 +310,15 @@ describe("Recovery drill — failure lifecycle (BRAWUKA-728)", () => {
     expect(run.invocations).toContain("DROP DATABASE IF EXISTS");
   });
 
+  it("fails when the PostGIS version query answers without a version", () => {
+    const run = runDrill({ STUB_POSTGIS: "empty" });
+
+    expect(run.status).not.toBe(0);
+    expect(run.output).not.toContain("PASSED");
+    expect(run.output).toContain("PostGIS is not installed");
+    expect(run.invocations).toContain("DROP DATABASE IF EXISTS");
+  });
+
   it("fails when the spatial contract query fails", () => {
     // Counts must succeed, or the run would stop at the all-empty guard and
     // never reach ST_DWithin — the assertion would then pass for the wrong
@@ -320,6 +332,16 @@ describe("Recovery drill — failure lifecycle (BRAWUKA-728)", () => {
     expect(run.output).not.toContain("PASSED");
     expect(run.invocations).toContain("ST_DWithin");
     expect(run.output).toContain("PostGIS spatial query check FAILED");
+    expect(run.invocations).toContain("DROP DATABASE IF EXISTS");
+  });
+
+  it("fails when the spatial query answers with a non-number", () => {
+    const run = runDrill({ STUB_SPATIAL_COUNT: "NaN" });
+
+    expect(run.status).not.toBe(0);
+    expect(run.output).not.toContain("PASSED");
+    expect(run.invocations).toContain("ST_DWithin");
+    expect(run.output).toContain("no numeric result");
     expect(run.invocations).toContain("DROP DATABASE IF EXISTS");
   });
 

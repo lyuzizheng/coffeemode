@@ -84,12 +84,18 @@ function expectSilent(output, requestId, path) {
 }
 
 async function checkLive2xx(base, captureServerOutput) {
+  const startedAt = Date.now();
   const live = await fetchWithId(base, "/api/search?q=smoke");
+  const elapsedMs = Date.now() - startedAt;
   assert(live.response.status === 200, `GET /api/search returned ${live.response.status}`);
   assert(live.body && Array.isArray(live.body.results), "GET /api/search response missing 'results' array");
   const echoed = live.response.headers.get("x-request-id");
   assert(echoed === live.requestId, `x-request-id echo ${echoed} !== ${live.requestId}`);
-  expectSingleCompletion(captureServerOutput(), { requestId: live.requestId, status: 200, path: "/api/search" });
+  const line = expectSingleCompletion(captureServerOutput(), { requestId: live.requestId, status: 200, path: "/api/search" });
+  assert(
+    line.duration_ms >= 0 && line.duration_ms <= elapsedMs + 5,
+    `2xx duration_ms ${line.duration_ms} outside client-observed ${elapsedMs}ms`,
+  );
 }
 
 async function checkRateLimit(base, captureServerOutput) {

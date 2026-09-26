@@ -226,6 +226,19 @@ describeIntegration("integration — api completion access log (BRAWUKA-729)", (
     expect(lines[0]?.duration_ms as number).toBeGreaterThanOrEqual(50);
   });
 
+  it("emits no access line for silent hot-path exclusions", async () => {
+    const requestId = randomUUID();
+    const GET = apiRoute(
+      { bucket: "health", route: "GET /api/health", user: null, silent: true },
+      async () => NextResponse.json({ ok: true }),
+    );
+
+    const response = await GET(routeRequest("GET", "/api/health", requestId));
+
+    expect(response.status).toBe(200);
+    expect(accessLinesFor(requestId)).toHaveLength(0);
+  });
+
   it("emits no proxy access line for /api/* requests", async () => {
     const requestId = randomUUID();
 

@@ -13,8 +13,11 @@
 # releases.log rows are written by upgrade-prod.sh AFTER a release lands:
 #     <UTC timestamp>|<image tag>|<snapshot taken before that release's migrations>
 # Row k therefore pairs image row[k-1].tag with snapshot row[k]: the snapshot is
-# the boundary OF release k, and only the previous image ran against it. An
-# unresolvable pairing aborts instead of falling back to an older archive.
+# the boundary OF release k, and only the previous image ran against it. A tag
+# recorded more than once resolves to its newest occurrence, and an unresolvable
+# pairing aborts instead of falling back to an older archive or boundary.
+# Step 2 applies the resolved image and verifies what the container reports
+# before Step 3 restores the snapshot.
 #
 # Usage:
 #   ./rollback-prod.sh [options]
@@ -22,7 +25,9 @@
 # Options:
 #   -h, --help            Show this help message and exit
 #   -f, --backup-file <s> Snapshot archive to restore; must pair with an image in releases.log
-#   -t, --image-tag <tag> Image tag to revert to (default: the image recorded before the latest release)
+#   -t, --image-tag <tag> Image the rollback RUNS, not the release being undone (default: the image
+#                         recorded before the latest release); a repeated tag resolves to its
+#                         newest occurrence
 #   --plan-only           Resolve and print the rollback plan, then exit without touching anything
 #   --yes                 Bypass confirmation prompt
 #   --skip-smoke          Skip post-rollback smoke tests
@@ -136,11 +141,14 @@ if [[ -f "$RELEASE_LOG" ]]; then
 fi
 RELEASE_COUNT="${#ROW_TAGS[@]}"
 
-# Index of the row whose column ($1 = tag | snapshot) equals $2, else -1.
+# Newest row whose column ($1 = tag | snapshot) equals $2, else -1.
+# Newest, not first: a tag identifies an image, not a deployment — upgrade-prod.sh
+# accepts an explicit --image-tag and falls back to the same Git SHA when a
+# commit is redeployed, so an earlier occurrence is a different, older boundary.
 # macOS ships bash 3.2 (no namerefs), so the column is chosen here instead of
 # passing the array by name.
 history_row_index() {
-  local column="$1" value="$2" i current
+  local column="$1" value="$2" i current found="-1"
   for ((i = 0; i < RELEASE_COUNT; i++)); do
     if [[ "$column" == "tag" ]]; then
       current="${ROW_TAGS[$i]}"
@@ -148,11 +156,10 @@ history_row_index() {
       current="${ROW_SNAPSHOTS[$i]}"
     fi
     if [[ "$current" == "$value" ]]; then
-      printf '%s' "$i"
-      return 0
+      found="$i"
     fi
   done
-  printf '%s' "-1"
+  printf '%s' "$found"
 }
 
 TARGET_TAG=""
@@ -187,7 +194,10 @@ elif [[ -n "$BACKUP_FILE" ]]; then
     exit 1
   fi
 elif [[ "$IMAGE_REQUESTED" == true ]]; then
-  # Image only: its boundary is the snapshot recorded for the release deployed right after it.
+  # Image only: the boundary is the release deployed right after this image.
+  # With repeated tags the newest occurrence is the one that counts — falling
+  # back to an earlier occurrence would silently restore a boundary that
+  # discards every release in between.
   IMAGE_ROW="$(history_row_index tag "$IMAGE_TAG")"
   if [[ "$IMAGE_ROW" -ge 0 && "$IMAGE_ROW" -lt $((RELEASE_COUNT - 1)) ]]; then
     TARGET_TAG="$IMAGE_TAG"
@@ -198,8 +208,8 @@ elif [[ "$IMAGE_REQUESTED" == true ]]; then
       exit 1
     fi
   elif [[ "$IMAGE_ROW" -ge 0 ]]; then
-    error "No release is recorded after image ${IMAGE_TAG}, so no snapshot pairs with it."
-    error "Pass --backup-file <path> to name the snapshot to restore."
+    error "Image ${IMAGE_TAG} was deployed by the newest recorded release, so no later boundary exists for it."
+    error "Pass --backup-file <path> to pair it explicitly, or --image-tag <an older image> for an earlier boundary."
     exit 1
   else
     error "Image tag ${IMAGE_TAG} is not recorded in ${RELEASE_LOG}."
@@ -268,15 +278,22 @@ fi
 # ------------------------------------------------------------------------------
 stage "Step 2/4: Reverting Application Container"
 
-log "Rolling back application container to tag '${TARGET_TAG}'..."
+log "Reverting application container to image 'coffeemode-web-prod:${TARGET_TAG}'..."
+PROD_IMAGE_REPO="coffeemode-web-prod"
+SWARM_SERVICE="coffeemode-prod_web-prod"
+CONTAINER_NAME="coffeemode-web-prod"
 COMPOSE_FILE="${REPO_ROOT}/deploy/dokploy/docker-compose.prod.yml"
 
 if [ "$DRY_RUN" = false ]; then
   SWARM_STATE="$(docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null || echo 'inactive')"
   if [ "$SWARM_STATE" = "active" ]; then
-    log "Rolling back Docker Swarm service coffeemode-prod_web-prod..."
-    docker service rollback coffeemode-prod_web-prod 2>/dev/null || \
-      docker service update --image "coffeemode-web-prod:${TARGET_TAG}" coffeemode-prod_web-prod
+    # `docker service rollback` restores the service's own previous spec, which
+    # need not be the resolved image: a tag can be redeployed, and a release
+    # that failed before its container update never became anyone's "previous".
+    # The resolved image is the contract, so apply it explicitly.
+    log "Updating Docker Swarm service ${SWARM_SERVICE} to ${PROD_IMAGE_REPO}:${TARGET_TAG}..."
+    docker service update --image "${PROD_IMAGE_REPO}:${TARGET_TAG}" "$SWARM_SERVICE"
+    APPLIED_IMAGE="$(docker service inspect --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' "$SWARM_SERVICE" 2>/dev/null || echo "")"
   else
     log "Recreating container with IMAGE_TAG=${TARGET_TAG} via Docker Compose..."
     ENV_FILE="${REPO_ROOT}/deploy/dokploy/.env.prod"
@@ -285,9 +302,21 @@ if [ "$DRY_RUN" = false ]; then
       COMPOSE_ENV_ARGS=(--env-file "$ENV_FILE")
     fi
     IMAGE_TAG="${TARGET_TAG}" docker compose "${COMPOSE_ENV_ARGS[@]}" -f "$COMPOSE_FILE" up -d web-prod
+    APPLIED_IMAGE="$(docker inspect --format='{{.Config.Image}}' "$CONTAINER_NAME" 2>/dev/null || echo "")"
   fi
-  RUNNING_IMG="$(docker inspect --format='{{.Config.Image}}' coffeemode-web-prod 2>/dev/null || echo "coffeemode-web-prod:${TARGET_TAG}")"
-  ok "Web container reverted to image: ${RUNNING_IMG}"
+
+  # The image is the other half of the pairing. A report that is missing, or
+  # that names anything else, aborts before Step 3 restores the snapshot.
+  case "$APPLIED_IMAGE" in
+    *":${TARGET_TAG}"|*":${TARGET_TAG}@"*)
+      ok "Web container reverted to image: ${APPLIED_IMAGE}"
+      ;;
+    *)
+      error "Container reports image '${APPLIED_IMAGE:-unknown}', not '${PROD_IMAGE_REPO}:${TARGET_TAG}'."
+      error "Refusing to restore the database against an image the rollback plan did not select."
+      exit 1
+      ;;
+  esac
 else
   ok "[DRY-RUN] Application container rollback to image tag '${TARGET_TAG}' simulated."
 fi

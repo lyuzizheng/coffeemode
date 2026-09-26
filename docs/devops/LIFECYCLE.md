@@ -194,9 +194,10 @@ Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enfor
 - **Workflow**:
   1. Parses the release history log (`releases.log`, one `timestamp|image tag|pre-migration snapshot` row per landed release) and pairs the **image recorded immediately before the release being undone** with **that release's own boundary snapshot**: undoing release C runs image B against the `pre-C` archive. `--plan-only` prints the resolved pairing and exits.
   2. Fails closed instead of guessing: a first deployment, a release recorded without a snapshot, an image with no later boundary, or an archive that is missing from disk all abort with an actionable error — the script never falls back to an older archive. A deployment that failed before its release-history append has no recorded image, so it must be named with `--image-tag` (the `upgrade-prod.sh` failure trap prints the exact command).
-  3. Reverts the web application container to the resolved image (via `docker service rollback` in Swarm mode, or parameterized `IMAGE_TAG` compose update).
-  4. Restores the production database from the resolved boundary snapshot using `scripts/devops/restore.sh --env prod --file <SNAPSHOT> --yes`.
-  5. Runs smoke tests to confirm healthy production recovery.
+  3. Reverts the web application container to the resolved image: `docker service update --image <repo>:<TAG>` in Swarm mode, or a parameterized `IMAGE_TAG` compose update otherwise — never `docker service rollback`, whose "previous service spec" need not be the resolved image (a tag can be redeployed, and a release that failed before its container update never became anyone's previous spec).
+  4. Verifies the container reports the resolved image before the database is touched; a missing or different report aborts with the restore skipped, so a snapshot is never restored under an image the plan did not select.
+  5. Restores the production database from the resolved boundary snapshot using `scripts/devops/restore.sh --env prod --file <SNAPSHOT> --yes`.
+  6. Runs smoke tests to confirm healthy production recovery.
 
 ### Phase 6: Automated Backups & Disaster Recovery
 - **Daily Scheduled Cron**:

@@ -195,14 +195,17 @@ export async function runAccessLogGate({ base, deadBase, hasDb, captureServerOut
     expectSilent(captureServerOutput(), config.requestId, "/api/config");
   }
 
-  // Non-API traffic keeps its proxy access line.
+  // Non-API traffic keeps its proxy access line. The proxy runs pre-route,
+  // so the line carries the pre-route status (200 for a page that later
+  // renders 404) — the documented page-render behavior, not the API defect.
   {
+    const cafeId = randomUUID();
     const requestId = randomUUID();
-    const pageRes = await fetch(`${base}/cafes/${randomUUID()}`, { headers: { "x-request-id": requestId } });
+    const pageRes = await fetch(`${base}/cafes/${cafeId}`, { headers: { "x-request-id": requestId } });
     await pageRes.arrayBuffer();
     assert(pageRes.status === 200 || pageRes.status === 404, `cafe page returned ${pageRes.status}`);
     const lines = accessLines(captureServerOutput(), requestId);
     assert(lines.length === 1, `expected one proxy access line for page, got ${lines.length}`);
-    assert(lines[0].status === pageRes.status, `proxy line status ${lines[0].status} !== page ${pageRes.status}`);
+    assert(lines[0].path === `/cafes/${cafeId}`, `proxy line path ${lines[0].path} !== page path`);
   }
 }

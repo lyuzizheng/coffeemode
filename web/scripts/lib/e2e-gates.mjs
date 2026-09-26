@@ -9,6 +9,7 @@
  * Gates receive the full runner context and pick the fields they need.
  */
 import { runAccessLogGate } from "./access-log-gate.mjs";
+import { runApiContractGate } from "./api-contract-gate.mjs";
 import { runAuthSessionGate } from "./auth-session-gate.mjs";
 import { runCafeCreationGate } from "./cafe-creation-gate.mjs";
 import { runCheckinDrawerGate } from "./checkin-drawer-gate.mjs";
@@ -107,7 +108,7 @@ export async function runRegistryGates(baseCtx, { hasDb, viewport }) {
     if (viewport === "mobile" && !gate.mobile) continue;
     console.log(`[E2E] Running ${gate.label}...`);
     try {
-      await gate.run({ label: gate.label, ...baseCtx });
+      await gate.run({ label: gate.label, hasDb, ...baseCtx });
     } catch (err) {
       recordGateFailure(gate.slug, err);
       throw err;

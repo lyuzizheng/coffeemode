@@ -93,21 +93,29 @@ so a key restricted to the legacy Places API would 403 every live search.
   `original/` — completed gallery originals share that prefix. Instead schedule
   `image-service/scripts/clean-orphan-originals.mjs` (e.g. daily cron or GitHub
   scheduled workflow via #154) with least-privilege R2 credentials that allow
-  List/Head/Delete on `original/` only. Each run is two steps:
-  1. `DATABASE_URL=... node web/scripts/export-live-image-keys.mjs > /tmp/live-keys.txt`
-     (read-only; exports every `original/` key still referenced by live
-     `cafes.gallery` / `checkins.photos`).
+  List/Head/Delete on `original/` and List/Delete on `staging/` (BRAWUKA-730:
+  the sweep now also removes stale browser-written staged uploads by age alone,
+  so its credential scope must include that prefix too). Each run is two steps:
+  1. `DATABASE_URL=... node web/scripts/export-live-image-keys.mjs > /tmp/live-keys.txt.new &&
+     mv /tmp/live-keys.txt.new /tmp/live-keys.txt` (read-only; exports every
+     `original/` key still referenced by live `cafes.gallery` / `checkins.photos`,
+     closed by the `# live-keys v1 total=<N>` trailer — publish with the atomic
+     rename so a killed export never leaves a half-written file in place).
   2. First run with `LIVE_KEYS_FILE=/tmp/live-keys.txt DRY_RUN=1
   RETENTION_DAYS=7`, review the JSON output, then set `DRY_RUN=0`. The script
   deletes marker-less originals and provision-stage uploads that were never
   attached AND are absent from the live-keys export; post-commit attach
   (BRAWUKA-400) re-marks live originals to `checkin`, and any stale-marker
   key that IS referenced is reported as `would-keep … reason:"referenced"`
-  and never deleted. Since BRAWUKA-725 the script also reconciles final-marked originals (post-attach `checkin`/`cafe` metadata): an unreferenced one deletes with its `card`/`thumbnail` variants, a live-referenced one is kept silently, and a missing/empty export holds every final-marked original back (counted as `finalHeld` in the review output — `ALLOW_EMPTY_LIVE_KEYS=1` does not unlock them). A failed sibling keeps its original as the retry anchor
+  and never deleted. Since BRAWUKA-725 the script also reconciles final-marked originals (post-attach `checkin`/`cafe` metadata): an unreferenced one deletes with its `card`/`thumbnail` variants, a live-referenced one is kept silently, and a missing, empty, malformed, or truncated export holds every final-marked original back (counted as `finalHeld` in the review output — `ALLOW_EMPTY_LIVE_KEYS=1` does not unlock them; BRAWUKA-757: a non-empty export must be a complete artifact — strict `original/<uuid>.webp` lines closed by the `# live-keys v1 total=<N>` trailer — and anything else refuses the run before any listing). A failed sibling keeps its original as the retry anchor
   (siblings-first delete order), so the next scheduled run re-attempts it.
-- Tombstone retry path (BRAWUKA-699): the sweeper lists `original/` orphans only: since BRAWUKA-725 it deletes an
-  unreferenced final-marked original WITH its variants, but a variant-only residue
-  (original already gone) stays invisible to it, so a `deleteUnreferencedPhotos`
+  `staging/` objects need no export, marker, or HEAD: anything past
+  RETENTION_DAYS there is garbage (`stagingCandidates`/`stagingDeleted` in the
+  output), far outside the 1-hour upload-intent window a retry needs.
+- Tombstone retry path (BRAWUKA-699): the sweeper lists `original/` orphans
+  only: since BRAWUKA-725 it deletes an unreferenced final-marked original
+  WITH its variants, but a variant-only residue (original already gone) stays
+  invisible to it, so a `deleteUnreferencedPhotos`
   failure after a check-in/cafe/account delete converges only through
   `web/scripts/backfill-tombstone-photo-deletes.mjs` — re-run it alongside the
   sweeper (same cadence) until it reports no failures:

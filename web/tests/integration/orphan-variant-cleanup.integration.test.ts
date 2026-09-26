@@ -18,6 +18,7 @@ import {
   putObject as r2PutObject,
   r2Client,
 } from "../helpers/r2";
+import { liveKeysExport } from "../helpers/live-keys";
 
 // BRAWUKA-699: the sweeper co-deletes `card/` + `thumbnail/` siblings when it
 // removes an orphan original. The listing still scans `original/` only; the
@@ -273,7 +274,7 @@ describeVariants("integration — orphan variant co-delete (BRAWUKA-699)", () =>
     const dir = mkdtempSync(`${tmpdir()}/live-keys-`);
     const file = `${dir}/live-keys.txt`;
     try {
-      writeFileSync(file, `${referenced}\n`);
+      writeFileSync(file, liveKeysExport([referenced]));
       const result = runCleanup({ DRY_RUN: "0", RETENTION_DAYS: "0", MAX_OBJECTS: "100", ALLOW_RETENTION_ZERO: "1", LIVE_KEYS_FILE: file });
       expect(result.status).toBe(0);
       // The referenced original survives — and so do its variants, which the

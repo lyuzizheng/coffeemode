@@ -20,8 +20,15 @@
  *     thumbnail converge; a live-referenced final-marked original survives;
  *     a missing/empty export holds every final-marked original back
  *     (`finalHeld`, fail-closed), even with ALLOW_EMPTY_LIVE_KEYS=1
+ *   - export artifact contract (BRAWUKA-757): a non-empty LIVE_KEYS_FILE
+ *     that is not a complete export — garbage lines, a truncated key prefix
+ *     with no `# live-keys v1 total=<N>` trailer, a count mismatch, content
+ *     after the trailer, a non-uuid key line — refuses the run outright;
+ *     ALLOW_EMPTY_LIVE_KEYS=1 never unlocks it
  *   - HEAD failure (BRAWUKA-400/BRAWUKA-686): stub R2_ENDPOINT answers 403
  *     on HEAD — the candidate is skipped, never deleted
+ *   - stale staged uploads (BRAWUKA-730): `staging/` objects delete on age
+ *     alone — no completion marker, no HEAD, no live-keys export
  *   - idempotent: second run deletes nothing
  *
  * Requires:
@@ -54,6 +61,7 @@ import {
   testDatabaseUrl,
 } from "../helpers/db";
 import { CAFE_A, TESTER_ID, seedBaseData } from "../helpers/fixtures";
+import { liveKeysExport } from "../helpers/live-keys";
 import {
   R2_ACCESS_KEY_ID,
   R2_CLEANUP_BUCKET_NAME as R2_BUCKET_NAME,
@@ -202,15 +210,14 @@ function attachDeps(): ProvisionPhotosDeps {
       return {
         imageUuid,
         original: await presignedGetUrl(keys.original, currentBucket),
-        originalPut: await presignedPutUrl(
-          keys.original,
-          "image/webp",
-          undefined,
-          currentBucket,
+        originalPut: await presignedPutUrl(keys.original, "image/webp", undefined, {
+          bucket: currentBucket,
           metadata,
-        ),
-        card: await presignedPutUrl(keys.card, "image/webp", undefined, currentBucket),
-        thumbnail: await presignedPutUrl(keys.thumbnail, "image/webp", undefined, currentBucket),
+        }),
+        card: await presignedPutUrl(keys.card, "image/webp", undefined, { bucket: currentBucket }),
+        thumbnail: await presignedPutUrl(keys.thumbnail, "image/webp", undefined, {
+          bucket: currentBucket,
+        }),
         publicUrls: { original: "", card: "", thumbnail: "" },
         keys,
       };
@@ -311,7 +318,7 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     const dir = mkdtempSync(`${tmpdir()}/live-keys-`);
     const file = `${dir}/live-keys.txt`;
     try {
-      writeFileSync(file, `${referenced}\n`);
+      writeFileSync(file, liveKeysExport([referenced]));
       const dry = runCleanup({ DRY_RUN: "1", RETENTION_DAYS: "0", MAX_OBJECTS: "100", LIVE_KEYS_FILE: file });
       expect(dry.status).toBe(0);
       // True orphan vs. missing-attach original stay distinguishable.
@@ -437,6 +444,27 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
       await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
     }
   }, 60_000);
+
+  it("deletes a stale staged upload by age alone — no marker, no HEAD, no live-keys export (BRAWUKA-730)", async (ctx) => {
+    if (!minioUp) return ctx.skip();
+    const staged = `staging/${randomUUID()}.webp`;
+    await putObject(staged, new Uint8Array(Buffer.alloc(32, 0x62)));
+
+    // Inside the retention window: reported by neither would-delete nor
+    // would-keep (a retry inside the 1-hour intent window must still find it).
+    const young = runCleanup({ DRY_RUN: "1", RETENTION_DAYS: "7", MAX_OBJECTS: "100" });
+    expect(young.status).toBe(0);
+    expect(young.stdout).toContain('"stagingCandidates":0');
+    expect(young.stdout).not.toContain(`"key":"${staged}"`);
+
+    // Past it the staged object is garbage on age alone: the browser wrote it,
+    // no completion marker tags it, and no DB row can reference a staging key.
+    const result = runCleanup({ DRY_RUN: "0", RETENTION_DAYS: "0", MAX_OBJECTS: "100", ALLOW_RETENTION_ZERO: "1" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('"stagingCandidates":1');
+    expect(result.stdout).toContain('"stagingDeleted":1');
+    expect(await objectExists(staged)).toBe(false);
+  }, 20_000);
 
   it("is idempotent: a second run deletes nothing more", async () => {
     const abandoned = `original/${randomUUID()}.webp`;
@@ -704,7 +732,7 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
     const dir = mkdtempSync(`${tmpdir()}/live-keys-`);
     const keysFile = `${dir}/live-keys.txt`;
     try {
-      writeFileSync(keysFile, `${live.original}\n`);
+      writeFileSync(keysFile, liveKeysExport([live.original]));
 
       const dry = runCleanup({
         DRY_RUN: "1",
@@ -793,6 +821,73 @@ describeCleanup("integration — orphan-original cleanup (issue #158)", () => {
       for (const key of Object.values(keys)) {
         expect(await objectExists(key)).toBe(true);
       }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it("BRAWUKA-757 — a non-empty export that is not a complete artifact refuses the run", async (ctx) => {
+    if (!minioUp) return ctx.skip();
+    // The production failure mode: an export job dies mid-write (or writes a
+    // stub) and leaves a file the sweeper once treated as "the live set".
+    // Any non-empty file that does not parse as a complete export — strict
+    // key lines closed by the `# live-keys v1 total=<N>` trailer — must
+    // refuse the run before a single LIST, so neither the final-marked photo
+    // nor a markerless orphan sharing the bucket is touched.
+    const uuid = randomUUID();
+    const keys = imageKeys(uuid);
+    const marker = { targettype: "checkin", targetid: uuid, userid: TESTER_ID };
+    await seedOriginal(keys.original, marker);
+    await seedOriginal(keys.card, marker);
+    await seedOriginal(keys.thumbnail, marker);
+    const bare = imageKeys(randomUUID());
+    await seedOriginal(bare.original);
+
+    const malformed: Array<[string, string]> = [
+      // Non-empty placeholder text (the reporter's stub) — no key lines at all.
+      ["garbage lines", "original/\nEXPORT FAILED: truncated output\n"],
+      // Killed mid-write: valid key lines, no trailer — a legal prefix of a
+      // larger export is indistinguishable from a complete smaller one.
+      ["truncated prefix (no trailer)", `${keys.original}\n`],
+      ["count mismatch", `${keys.original}\n# live-keys v1 total=5\n`],
+      ["content after trailer", `# live-keys v1 total=0\n${keys.original}\n`],
+      ["duplicate key line", `${keys.original}\n${keys.original}\n# live-keys v1 total=2\n`],
+      ["non-uuid key line", `original/not-a-uuid.webp\n# live-keys v1 total=1\n`],
+    ];
+
+    const dir = mkdtempSync(`${tmpdir()}/live-keys-malformed-`);
+    const file = `${dir}/live-keys.txt`;
+    try {
+      for (const [name, content] of malformed) {
+        writeFileSync(file, content);
+        // Refused outright in production mode — and ALLOW_EMPTY_LIVE_KEYS=1
+        // (the empty-export opt-in) does not weaken it.
+        const optIns: Array<Record<string, string>> = [{}, { ALLOW_EMPTY_LIVE_KEYS: "1" }];
+        for (const optIn of optIns) {
+          const run = runCleanup({
+            DRY_RUN: "0",
+            RETENTION_DAYS: "0",
+            MAX_OBJECTS: "100",
+            ALLOW_RETENTION_ZERO: "1",
+            LIVE_KEYS_FILE: file,
+            ...optIn,
+          });
+          expect(run.status, `${name} ${JSON.stringify(optIn)}`).not.toBe(0);
+        }
+        for (const key of [...Object.values(keys), bare.original]) {
+          expect(await objectExists(key), name).toBe(true);
+        }
+      }
+
+      // A dry run refuses the same file class instead of reporting against it.
+      writeFileSync(file, `${keys.original}\n`);
+      const dry = runCleanup({
+        DRY_RUN: "1",
+        RETENTION_DAYS: "0",
+        MAX_OBJECTS: "100",
+        LIVE_KEYS_FILE: file,
+      });
+      expect(dry.status).not.toBe(0);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

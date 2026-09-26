@@ -38,6 +38,37 @@ import { clearGateArtifacts } from "./e2e-artifacts.mjs";
 
 const SLUG = "access-log";
 
+/**
+ * Controlled handler latency for the 2xx duration lower-bound proof
+ * (BRAWUKA-755): the managed harness always sets `E2E_ACCESS_LOG_DELAY_MS`
+ * (default forwarding when unset), and the server sleeps that long inside
+ * the real search dependency path — so a zero or pre-handler timer reports
+ * below the floor and fails. The gate fails loud when the harness did not
+ * inject the proof (env unset or unparseable outside the managed harness):
+ * instead of silently downgrading to a zero floor, it names the missing
+ * variable. Only an explicit `E2E_ACCESS_LOG_DELAY_MS=0` opts out (fast
+ * smoke path), and the probe server then sleeps nothing, so both sides
+ * agree. One value read from a single place.
+ */
+export const ACCESS_LOG_LATENCY_FLOOR_MS = 150;
+
+export function accessLogDelayMs() {
+  const raw = process.env.E2E_ACCESS_LOG_DELAY_MS;
+  if (raw === undefined) {
+    throw new Error(
+      "E2E_ACCESS_LOG_DELAY_MS is unset — the managed harness (probe-servers.mjs) must forward it " +
+        "(default 150). Refusing to downgrade to a zero floor.",
+    );
+  }
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(
+      `E2E_ACCESS_LOG_DELAY_MS=${JSON.stringify(raw)} is not a non-negative integer — refusing to downgrade to a zero floor.`,
+    );
+  }
+  return Math.min(parsed, 500);
+}
+
 function accessLines(output, requestId) {
   return output
     .split("\n")
@@ -97,10 +128,10 @@ async function checkLive2xx(base, captureServerOutput) {
   assert(live.body && Array.isArray(live.body.results), "GET /api/search response missing 'results' array");
   const echoed = live.response.headers.get("x-request-id");
   assert(echoed === live.requestId, `x-request-id echo ${echoed} !== ${live.requestId}`);
-  // BRAWUKA-755: the harness injects E2E_ACCESS_LOG_DELAY_MS of handler
-  // latency; a zero/pre-handler timer reports below that floor and fails.
-  const injectedMs = Number.parseInt(process.env.E2E_ACCESS_LOG_DELAY_MS ?? "", 10);
-  const floorMs = Number.isFinite(injectedMs) && injectedMs > 0 ? Math.min(injectedMs, 500) : 0;
+  // BRAWUKA-755: the managed harness always injects the latency floor into
+  // the real handler path (default ACCESS_LOG_LATENCY_FLOOR_MS), so a zero
+  // or pre-handler timer reports below it and fails — no silent downgrade.
+  const floorMs = accessLogDelayMs();
   const line = expectSingleCompletion(captureServerOutput(), {
     requestId: live.requestId,
     status: 200,

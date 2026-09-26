@@ -117,21 +117,23 @@ export function clearSearchCache(): void {
 }
 
 /**
- * E2E latency-proof hook (BRAWUKA-755, audit-t28 follow-up): sleeps a capped
- * interval inside the real handler dependency path when
- * `E2E_ACCESS_LOG_DELAY_MS` is set, so the T28 gate can assert `duration_ms`
+ * E2E latency-proof hook (BRAWUKA-755): sleeps a capped interval inside the
+ * real handler dependency path, so the T28 gate can assert `duration_ms`
  * covers handler latency (a zero or pre-handler timer then fails the lower
- * bound). Default off — production is unchanged unless the harness opts in;
- * capped at 500ms so a stray value cannot stall the route.
+ * bound). Explicit-only: production (env unset) sleeps nothing — only the
+ * managed harness sets this, always forwarding the resolved floor (default
+ * 150ms, see `ACCESS_LOG_LATENCY_FLOOR_MS` in `access-log-gate.mjs`).
+ * Explicit `=0` opts out; capped at 500ms so a stray value cannot stall the
+ * route. Every env/gate mismatch fails loud at the gate (safe direction);
+ * only an explicit `=0` on both sides passes without the proof.
  */
 async function e2eAccessLogDelay(): Promise<void> {
   const raw = process.env.E2E_ACCESS_LOG_DELAY_MS;
   if (!raw) return;
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return;
-  const capped = Math.min(parsed, 500);
   await new Promise<void>((resolve) => {
-    setTimeout(resolve, capped);
+    setTimeout(resolve, Math.min(parsed, 500));
   });
 }
 

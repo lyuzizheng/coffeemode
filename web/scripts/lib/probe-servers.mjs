@@ -18,8 +18,19 @@ import {
   waitForServer,
   reportServerRenderErrors,
 } from "./standalone-server.mjs";
+import { ACCESS_LOG_LATENCY_FLOOR_MS } from "./access-log-gate.mjs";
 
 const DEAD_DATABASE_URL = "postgres://coffeemode:coffeemode@127.0.0.1:1/coffeemode";
+
+// Resolve the floor without the gate's fail-loud throw: the harness is the
+// injector, so an unset variable means the default — never a silent zero.
+function probeAccessLogDelayMs() {
+  const raw = process.env.E2E_ACCESS_LOG_DELAY_MS;
+  if (raw === undefined) return ACCESS_LOG_LATENCY_FLOOR_MS;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return ACCESS_LOG_LATENCY_FLOOR_MS;
+  return Math.min(parsed, 500);
+}
 
 function attachOutputCapture(child, onData) {
   child.stdout.on("data", onData);
@@ -39,10 +50,10 @@ function spawnMainServer({ root, port, dbUrl, supabaseUrl, supabaseAnonKey, onDa
       NEXT_PUBLIC_SUPABASE_ANON_KEY: supabaseAnonKey,
       // BRAWUKA-755: controlled handler latency for the T28 duration
       // lower-bound proof — inside the real dependency path, capped
-      // server-side at 500ms, default off (absent = zero added latency).
-      ...(process.env.E2E_ACCESS_LOG_DELAY_MS
-        ? { E2E_ACCESS_LOG_DELAY_MS: process.env.E2E_ACCESS_LOG_DELAY_MS }
-        : {}),
+      // server-side at 500ms. The managed harness always forwards the
+      // floor (default ACCESS_LOG_LATENCY_FLOOR_MS); explicit
+      // E2E_ACCESS_LOG_DELAY_MS=0 opts out to a fast smoke path.
+      E2E_ACCESS_LOG_DELAY_MS: String(probeAccessLogDelayMs()),
     },
   });
   attachOutputCapture(child, (d) => {

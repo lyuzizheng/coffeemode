@@ -18,7 +18,7 @@
     "recompute:work-stats": "node scripts/recompute-work-stats.mjs",
     "snapshot:helpful-ranking": "node scripts/snapshot-helpful-ranking.mjs",
     "test:unit": "vitest run tests/components --passWithNoTests",
-    "test:integration": "RUN_INTEGRATION=1 vitest run tests/integration/db.integration.test.ts tests/integration/helpful-ranking.integration.test.ts tests/integration/runtime-config.integration.test.ts tests/integration/tombstone-backfill.integration.test.ts tests/db-helpers.test.ts tests/devops/setup-supabase.test.ts tests/devops/staging-journey.test.ts tests/devops/clean-dev-fixtures.test.ts tests/devops/migration-drift.test.ts --reporter=verbose",
+    "test:integration": "RUN_INTEGRATION=1 vitest run tests/integration/db.integration.test.ts tests/integration/helpful-ranking.integration.test.ts tests/integration/runtime-config.integration.test.ts tests/integration/tombstone-backfill.integration.test.ts tests/db-helpers.test.ts tests/devops/setup-supabase.test.ts tests/devops/staging-journey.test.ts tests/devops/clean-dev-fixtures.test.ts tests/devops/migration-drift.test.ts tests/devops/rollback-selection.test.ts --reporter=verbose",
     "test:integration:journey": "RUN_INTEGRATION=1 vitest run tests/integration/user-journey-discovery-creation.integration.test.ts tests/integration/user-journey-social-lifecycle.integration.test.ts --reporter=verbose",
     "test:integration:http": "RUN_INTEGRATION=1 vitest run tests/integration/http-*.integration.test.ts --reporter=verbose",
     "test:integration:images": "RUN_INTEGRATION=1 vitest run tests/integration/images.integration.test.ts tests/integration/orphan-cleanup.integration.test.ts tests/integration/orphan-variant-cleanup.integration.test.ts --reporter=verbose",

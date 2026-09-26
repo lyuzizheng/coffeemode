@@ -35,7 +35,7 @@ This document establishes the canonical operational lifecycle, deployment runboo
 
 3. **Database Pre-Migration Snapshot Invariant**:
    - Every database migration in Production MUST be preceded by an automated atomic snapshot (`scripts/devops/backup.sh --env prod --reason pre-migration`).
-   - If an upgrade fails or triggers healthcheck errors, the rollback script restores the exact pre-migration snapshot in one command.
+   - If an upgrade fails or triggers healthcheck errors, the rollback script restores that release's boundary snapshot under the image it deployed on top of. The failure trap prints the exact command, adding `--image-tag <last recorded release>` when the attempt never reached its `releases.log` append.
 
 4. **Zero-Downtime Migration & Deployment Invariants**:
    - Migrations follow additive, non-breaking DDL: nullable columns, constant defaults, and concurrent index creation (`CREATE INDEX CONCURRENTLY`).
@@ -192,10 +192,11 @@ Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enfor
 - **Trigger**: Anomaly, elevated error rates, or failed post-deploy smoke tests.
 - **Executor**: `scripts/devops/rollback-prod.sh`.
 - **Workflow**:
-  1. Automatically parses the persistent release history log (`releases.log`) to resolve the previous release's image tag and pre-migration database snapshot path.
-  2. Reverts the web application container to the previous release image (via `docker service rollback` in Swarm mode, or parameterized `IMAGE_TAG` compose update).
-  3. Restores the production database to the pre-migration state using `scripts/devops/restore.sh --env prod --file <SNAPSHOT> --yes`.
-  4. Runs smoke tests to confirm healthy production recovery.
+  1. Parses the release history log (`releases.log`, one `timestamp|image tag|pre-migration snapshot` row per landed release) and pairs the **image recorded immediately before the release being undone** with **that release's own boundary snapshot**: undoing release C runs image B against the `pre-C` archive. `--plan-only` prints the resolved pairing and exits.
+  2. Fails closed instead of guessing: a first deployment, a release recorded without a snapshot, an image with no later boundary, or an archive that is missing from disk all abort with an actionable error — the script never falls back to an older archive. A deployment that failed before its release-history append has no recorded image, so it must be named with `--image-tag` (the `upgrade-prod.sh` failure trap prints the exact command).
+  3. Reverts the web application container to the resolved image (via `docker service rollback` in Swarm mode, or parameterized `IMAGE_TAG` compose update).
+  4. Restores the production database from the resolved boundary snapshot using `scripts/devops/restore.sh --env prod --file <SNAPSHOT> --yes`.
+  5. Runs smoke tests to confirm healthy production recovery.
 
 ### Phase 6: Automated Backups & Disaster Recovery
 - **Daily Scheduled Cron**:
@@ -242,7 +243,7 @@ All operational scripts live canonically under `scripts/devops/` and are fully e
 | `bootstrap.sh` | End-to-end cold-start orchestrator from zero to live | `--env [staging\|prod\|both]`, `--skip-vps-prep`, `--skip-cloudflare`, `--dry-run` |
 | `upgrade-staging.sh` | Upgrades staging service with migrations and smoke tests | `--deploy-url`, `--skip-backup`, `--image-tag`, `--dry-run` |
 | `upgrade-prod.sh` | Zero-downtime production upgrade with staging gate & safety snapshot | `--skip-staging-gate`, `--deploy-url`, `--image-tag`, `--dry-run` |
-| `rollback-prod.sh` | Instant rollback of container image and database to pre-migration state | `--backup-file`, `--image-tag`, `--yes`, `--dry-run` |
+| `rollback-prod.sh` | Instant rollback of container image and database to the boundary before a release | `--backup-file`, `--image-tag`, `--plan-only`, `--yes`, `--dry-run` |
 | `backup.sh` | Atomic `pg_dump -Fc` compressed backup + volume + R2 GFS upload | `--env`, `--type [db\|vol\|full]`, `--reason`, `--retention-days`, `--dry-run` |
 | `restore.sh` | Restores database archive with PostGIS verification & drill mode | `--env`, `--file`, `--download-r2`, `--drill`, `--yes`, `--dry-run` |
 | `smoke-test.sh` | In-repo post-deployment automated health verification | `staging\|prod`, `--url <override>`, `--timeout <sec>`, `--cf-client-id <id>`, `--cf-client-secret <sec>` |
@@ -252,15 +253,19 @@ All operational scripts live canonically under `scripts/devops/` and are fully e
 ## 5. Disaster Recovery & Recovery Drill Playbook
 
 ### Disaster Recovery Scenario A: Data Corruption or Bad Migration in Production
-1. Immediately stop incoming writes (if necessary) and identify the pre-migration snapshot:
+1. Immediately stop incoming writes (if necessary) and inspect the pairing a rollback would apply (target image + boundary snapshot):
+   ```bash
+   ./scripts/devops/rollback-prod.sh --plan-only
+   ```
+2. Execute the rollback with that pairing. If the failed deployment never reached its `releases.log` append, name it explicitly as the `upgrade-prod.sh` failure trap instructs (`--backup-file <snapshot> --image-tag <last recorded release>`):
    ```bash
    ./scripts/devops/rollback-prod.sh
    ```
-2. If restoring to a specific known snapshot:
+3. If restoring to a specific known snapshot:
    ```bash
    ./scripts/devops/restore.sh --env prod --file /backups/coffeemode_prod_pre-migration_YYYYMMDD_HHMMSSZ.dump.gz --yes
    ```
-3. Verify production health:
+4. Verify production health:
    ```bash
    ./scripts/devops/smoke-test.sh prod
    ```

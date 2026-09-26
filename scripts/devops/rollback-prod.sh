@@ -4,25 +4,33 @@
 # Architecture: docs/specs/0005-dokploy-vps-and-deployment-architecture.md
 # Lifecycle:    docs/devops/LIFECYCLE.md
 #
-# Reverts production stack to pre-migration baseline in the event of deployment anomaly:
-#   1. Snapshot auto-discovery (finds most recent pre-migration snapshot)
+# Reverts production stack to the state immediately before the release being undone:
+#   1. Release-boundary resolution (releases.log -> target image + that release's own snapshot)
 #   2. Reverts application container image digest via compose / Dokploy
 #   3. Restores database schema and data from snapshot via ./restore.sh --env prod
 #   4. Post-rollback automated health check and smoke test verification
+#
+# releases.log rows are written by upgrade-prod.sh AFTER a release lands:
+#     <UTC timestamp>|<image tag>|<snapshot taken before that release's migrations>
+# Row k therefore pairs image row[k-1].tag with snapshot row[k]: the snapshot is
+# the boundary OF release k, and only the previous image ran against it. An
+# unresolvable pairing aborts instead of falling back to an older archive.
 #
 # Usage:
 #   ./rollback-prod.sh [options]
 #
 # Options:
 #   -h, --help            Show this help message and exit
-#   -f, --backup-file <s> Path to specific pre-migration snapshot archive
-#   -t, --image-tag <tag> Image tag to revert to (default: previous)
+#   -f, --backup-file <s> Snapshot archive to restore; must pair with an image in releases.log
+#   -t, --image-tag <tag> Image tag to revert to (default: the image recorded before the latest release)
+#   --plan-only           Resolve and print the rollback plan, then exit without touching anything
 #   --yes                 Bypass confirmation prompt
 #   --skip-smoke          Skip post-rollback smoke tests
 #   --dry-run             Log planned actions without modifying system state
 #
 # Examples:
 #   ./rollback-prod.sh
+#   ./rollback-prod.sh --plan-only
 #   ./rollback-prod.sh --backup-file /backups/coffeemode_prod_pre-migration_20260904_090000Z.dump.gz
 #   ./rollback-prod.sh --yes
 #   ./rollback-prod.sh --dry-run
@@ -41,6 +49,7 @@ IMAGE_TAG="previous"
 CONFIRM_FLAG=false
 SKIP_SMOKE=false
 DRY_RUN=false
+PLAN_ONLY=false
 
 show_help() {
   sed -n '2,/^# ==/p' "$0" | sed 's/^# \?//'
@@ -72,6 +81,10 @@ while [[ $# -gt 0 ]]; do
       DRY_RUN=true
       shift
       ;;
+    --plan-only)
+      PLAN_ONLY=true
+      shift
+      ;;
     *)
       echo "Error: Unknown argument '$1'. Run '$0 --help' for usage." >&2
       exit 1
@@ -97,96 +110,140 @@ error() { echo -e "${BOLD}${RED}[ERROR]${NC} $*" >&2; }
 stage() { echo -e "\n${BOLD}${CYAN}=== $* ===${NC}"; }
 
 # ------------------------------------------------------------------------------
-# STEP 1: Pre-Migration Snapshot Auto-Discovery
+# STEP 1: Release-Boundary Resolution (target image + boundary snapshot)
 # ------------------------------------------------------------------------------
-stage "Step 1/4: Pre-Migration Snapshot & Image Tag Identification"
+stage "Step 1/4: Release Boundary Identification"
 
-# Resolve previous release tag from release history log
+# upgrade-prod.sh appends one row per release, after that release lands:
+#     <UTC timestamp>|<image tag>|<snapshot taken before that release's migrations>
+# Row k therefore carries two different subjects: the snapshot is the database
+# boundary OF release k (data as of just before k), while the image that ran
+# against that boundary is release k-1's tag. Undoing release k pairs them
+# across rows; reading both fields from one row (pre-BRAWUKA-724) restored data
+# one release older than the image it was restored under.
 # (Supabase topology: local backup dir; legacy docker volume path removed BRAWUKA-241)
-SEARCH_DIRS=(
-  "${REPO_ROOT}/backups/prod"
-)
+RELEASE_LOG="${REPO_ROOT}/backups/prod/releases.log"
 
-RESOLVED_PREV_TAG=""
-RESOLVED_PREV_SNAPSHOT=""
+ROW_TAGS=()
+ROW_SNAPSHOTS=()
 
-for dir in "${SEARCH_DIRS[@]}"; do
-  RELEASE_LOG="${dir}/releases.log"
-  if [[ -f "$RELEASE_LOG" ]]; then
-    LINE_COUNT="$(wc -l < "$RELEASE_LOG" | tr -d ' ')"
-    if [[ "$LINE_COUNT" -ge 2 ]]; then
-      PREV_LINE="$(tail -n 2 "$RELEASE_LOG" | head -n 1)"
-      RESOLVED_PREV_TAG="$(echo "$PREV_LINE" | cut -d'|' -f2)"
-      RESOLVED_PREV_SNAPSHOT="$(echo "$PREV_LINE" | cut -d'|' -f3)"
-      break
-    elif [[ "$LINE_COUNT" -eq 1 ]]; then
-      # Only 1 release recorded, use it if needed
-      RESOLVED_PREV_TAG="$(tail -n 1 "$RELEASE_LOG" | cut -d'|' -f2)"
+if [[ -f "$RELEASE_LOG" ]]; then
+  while IFS='|' read -r row_ts row_tag row_snapshot _rest || [[ -n "${row_tag:-}" ]]; do
+    [[ -n "${row_tag:-}" ]] || continue
+    ROW_TAGS+=("$row_tag")
+    ROW_SNAPSHOTS+=("${row_snapshot:-}")
+  done < "$RELEASE_LOG"
+fi
+RELEASE_COUNT="${#ROW_TAGS[@]}"
+
+# Index of the row whose column ($1 = tag | snapshot) equals $2, else -1.
+# macOS ships bash 3.2 (no namerefs), so the column is chosen here instead of
+# passing the array by name.
+history_row_index() {
+  local column="$1" value="$2" i current
+  for ((i = 0; i < RELEASE_COUNT; i++)); do
+    if [[ "$column" == "tag" ]]; then
+      current="${ROW_TAGS[$i]}"
+    else
+      current="${ROW_SNAPSHOTS[$i]}"
     fi
-  fi
-done
+    if [[ "$current" == "$value" ]]; then
+      printf '%s' "$i"
+      return 0
+    fi
+  done
+  printf '%s' "-1"
+}
 
-# Fallback image tag resolution from local docker image repository
-if [[ -z "$RESOLVED_PREV_TAG" && "$DRY_RUN" = false ]]; then
-  RESOLVED_PREV_TAG="$(docker images coffeemode-web-prod --format '{{.Tag}}' 2>/dev/null | grep -v 'latest' | grep -v '<none>' | head -n 1 || echo "")"
+TARGET_TAG=""
+TARGET_SNAPSHOT=""
+IMAGE_REQUESTED=false
+if [[ -n "$IMAGE_TAG" && "$IMAGE_TAG" != "previous" ]]; then
+  IMAGE_REQUESTED=true
 fi
 
-TARGET_TAG="${IMAGE_TAG}"
-if [[ "$TARGET_TAG" == "previous" || -z "$TARGET_TAG" ]]; then
-  if [[ -n "$RESOLVED_PREV_TAG" ]]; then
-    TARGET_TAG="$RESOLVED_PREV_TAG"
+if [[ -n "$BACKUP_FILE" && "$IMAGE_REQUESTED" == true ]]; then
+  # Both sides named explicitly: the operator owns the pairing, nothing is derived.
+  TARGET_TAG="$IMAGE_TAG"
+  TARGET_SNAPSHOT="$BACKUP_FILE"
+elif [[ -n "$BACKUP_FILE" ]]; then
+  # Snapshot only: the image that must run against it is the one recorded just before it.
+  SNAPSHOT_ROW="$(history_row_index snapshot "$BACKUP_FILE")"
+  if [[ "$SNAPSHOT_ROW" -ge 1 ]]; then
+    TARGET_TAG="${ROW_TAGS[$((SNAPSHOT_ROW - 1))]}"
+    TARGET_SNAPSHOT="$BACKUP_FILE"
+  elif [[ "$SNAPSHOT_ROW" -eq 0 ]]; then
+    error "Snapshot ${BACKUP_FILE} is the first deployment's boundary: no earlier image exists."
+    error "Pass --image-tag <tag> to state which image must run against it."
+    exit 1
   else
-    if [ "$DRY_RUN" = true ]; then
-      TARGET_TAG="previous_dryrun_tag"
-      ok "[DRY-RUN] Using simulated previous tag '${TARGET_TAG}'."
+    error "Snapshot ${BACKUP_FILE} is not recorded in ${RELEASE_LOG}."
+    error "A deployment that failed before its release-history append has no recorded image."
+    if [[ "$RELEASE_COUNT" -ge 1 ]]; then
+      error "Pass --image-tag <tag>; the last recorded release is ${ROW_TAGS[$((RELEASE_COUNT - 1))]}."
     else
-      error "CRITICAL: Unable to resolve previous release image tag!"
-      error "No releases recorded in releases.log and no previous local image tags found."
-      error "Please specify a target image tag explicitly via --image-tag <tag>."
+      error "Pass --image-tag <tag>; no release history is recorded."
+    fi
+    exit 1
+  fi
+elif [[ "$IMAGE_REQUESTED" == true ]]; then
+  # Image only: its boundary is the snapshot recorded for the release deployed right after it.
+  IMAGE_ROW="$(history_row_index tag "$IMAGE_TAG")"
+  if [[ "$IMAGE_ROW" -ge 0 && "$IMAGE_ROW" -lt $((RELEASE_COUNT - 1)) ]]; then
+    TARGET_TAG="$IMAGE_TAG"
+    TARGET_SNAPSHOT="${ROW_SNAPSHOTS[$((IMAGE_ROW + 1))]}"
+    if [[ -z "$TARGET_SNAPSHOT" ]]; then
+      error "Release ${ROW_TAGS[$((IMAGE_ROW + 1))]} recorded no boundary snapshot (--force-skip-backup)."
+      error "Pass --backup-file <path> to name the snapshot to restore."
       exit 1
     fi
-  fi
-fi
-
-if [[ -z "$BACKUP_FILE" ]]; then
-  if [[ -n "$RESOLVED_PREV_SNAPSHOT" && -f "$RESOLVED_PREV_SNAPSHOT" ]]; then
-    BACKUP_FILE="$RESOLVED_PREV_SNAPSHOT"
-    ok "Auto-discovered snapshot from release history: ${BACKUP_FILE}"
+  elif [[ "$IMAGE_ROW" -ge 0 ]]; then
+    error "No release is recorded after image ${IMAGE_TAG}, so no snapshot pairs with it."
+    error "Pass --backup-file <path> to name the snapshot to restore."
+    exit 1
   else
-    log "Searching for latest production pre-migration snapshot in filesystem..."
-    LATEST_SNAPSHOT=""
-    for dir in "${SEARCH_DIRS[@]}"; do
-      if [[ -d "$dir" ]]; then
-        FOUND="$(find "$dir" -name "coffeemode_prod_pre-migration_*.dump.gz" -type f 2>/dev/null | sort -r | head -n 1 || echo "")"
-        if [[ -n "$FOUND" ]]; then
-          LATEST_SNAPSHOT="$FOUND"
-          break
-        fi
-      fi
-    done
-
-    if [[ -n "$LATEST_SNAPSHOT" ]]; then
-      BACKUP_FILE="$LATEST_SNAPSHOT"
-      ok "Identified latest snapshot: ${BACKUP_FILE}"
-    else
-      if [ "$DRY_RUN" = true ]; then
-        BACKUP_FILE="${REPO_ROOT}/backups/prod/simulated_pre-migration.dump.gz"
-        ok "[DRY-RUN] Using simulated snapshot: ${BACKUP_FILE}"
-      else
-        error "No pre-migration snapshot found in search paths!"
-        error "Please specify a snapshot manually via --backup-file <path>."
-        exit 1
-      fi
-    fi
+    error "Image tag ${IMAGE_TAG} is not recorded in ${RELEASE_LOG}."
+    error "Pass --backup-file <path> to name the snapshot to restore."
+    exit 1
   fi
+elif [[ "$RELEASE_COUNT" -eq 0 ]]; then
+  error "No releases recorded in ${RELEASE_LOG}; there is no rollback boundary to resolve."
+  error "Pass --image-tag <tag> and --backup-file <path> explicitly."
+  exit 1
+elif [[ "$RELEASE_COUNT" -eq 1 ]]; then
+  error "Only the first deployment (${ROW_TAGS[0]}) is recorded; there is no earlier image to roll back to."
+  error "To restore its boundary snapshot under an explicit image, pass --image-tag and --backup-file."
+  exit 1
 else
-  if [ "$DRY_RUN" = false ]; then
-    if [[ ! -f "$BACKUP_FILE" ]]; then
-      error "Specified backup file not found: ${BACKUP_FILE}"
-      exit 1
-    fi
+  # Default: undo the newest recorded release — its own boundary snapshot,
+  # restored under the image recorded one release earlier.
+  TARGET_SNAPSHOT="${ROW_SNAPSHOTS[$((RELEASE_COUNT - 1))]}"
+  if [[ -z "$TARGET_SNAPSHOT" ]]; then
+    error "Latest recorded release ${ROW_TAGS[$((RELEASE_COUNT - 1))]} has no boundary snapshot (--force-skip-backup)."
+    error "Pass --backup-file <path> to name the snapshot to restore."
+    exit 1
   fi
-  ok "Using specified snapshot: ${BACKUP_FILE}"
+  TARGET_TAG="${ROW_TAGS[$((RELEASE_COUNT - 2))]}"
+fi
+
+BACKUP_FILE="$TARGET_SNAPSHOT"
+
+# An archive that is not where the boundary says it is must fail the run: the
+# old behaviour searched the backup directory for the newest pre-migration
+# dump and restored that instead, silently rolling back an extra release.
+if [[ ! -f "$BACKUP_FILE" ]]; then
+  error "Boundary snapshot not found: ${BACKUP_FILE}"
+  error "Refusing to fall back to an older archive. Verify the path, or pass --backup-file <path>."
+  exit 1
+fi
+ok "Boundary snapshot: ${BACKUP_FILE}"
+
+if [ "$PLAN_ONLY" = true ]; then
+  echo ""
+  echo "Resolved rollback plan:"
+  echo "  image_tag: ${TARGET_TAG}"
+  echo "  snapshot:  ${BACKUP_FILE}"
+  exit 0
 fi
 
 echo ""

@@ -16,6 +16,11 @@
 #   6. Non-destructive drill mode (--drill): restores into a scratch database on
 #      the STAGING Supabase project, verifies, then drops it
 #
+# Verdict (BRAWUKA-728): an unreadable archive, a nonzero pg_restore exit, or a
+# failed verification query fails the run in BOTH modes — drill mode never
+# reports PASSED for a restore it could not verify, and the scratch database is
+# dropped on the failure paths too.
+#
 # Database topology (BRAWUKA-240 D1 / decision 34a): prod and staging each live
 # in their own Supabase project (region ap-southeast-1). --drill ALWAYS targets
 # staging regardless of --env so prod data is never at risk.
@@ -336,6 +341,29 @@ if [ "$DRY_RUN" = false ]; then
   else
     warn "No .sha256 checksum file found. Skipping cryptographic verification."
   fi
+
+  # Archive readability (BRAWUKA-728): a truncated/malformed archive must be
+  # rejected here, before step 4 creates a scratch database. The probe mirrors
+  # step 5's decompression path so it proves what pg_restore will actually read.
+  for bin in pg_restore psql; do
+    if ! command -v "$bin" >/dev/null 2>&1; then
+      error "${bin} not found in PATH. Install postgresql-client to run restores."
+      exit 1
+    fi
+  done
+
+  log "Verifying pg_restore archive readability..."
+  ARCHIVE_READABLE=true
+  if [[ "$BACKUP_PATH" == *.gz ]]; then
+    gzip -dc "$BACKUP_PATH" | pg_restore --list >/dev/null || ARCHIVE_READABLE=false
+  else
+    pg_restore --list "$BACKUP_PATH" >/dev/null || ARCHIVE_READABLE=false
+  fi
+  if [[ "$ARCHIVE_READABLE" != true ]]; then
+    error "Archive is not a readable pg_restore archive: ${BACKUP_PATH}"
+    exit 1
+  fi
+  ok "Archive verified: pg_restore read its table of contents."
 else
   ok "[DRY-RUN] Archive integrity verification simulated."
 fi
@@ -361,13 +389,6 @@ fi
 log "Step 4: Preparing restore target..."
 
 if [ "$DRY_RUN" = false ]; then
-  for bin in pg_restore psql; do
-    if ! command -v "$bin" >/dev/null 2>&1; then
-      error "${bin} not found in PATH. Install postgresql-client to run restores."
-      exit 1
-    fi
-  done
-
   if [ "$DRILL_MODE" = true ]; then
     log "Creating scratch drill database '${DRILL_DB}' on the staging Supabase project..."
     psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
@@ -399,15 +420,22 @@ if [ "$DRY_RUN" = false ]; then
     fi
   }
 
+  # pg_restore's exit status is the restore verdict in BOTH modes (BRAWUKA-728).
+  # Drill mode is the gate that certifies a backup is restorable, so a nonzero
+  # exit may never be downgraded to a warning: the only diagnostics tolerated
+  # are the ones pg_restore reports with exit status 0 (e.g. `--clean
+  # --if-exists` skipping objects the target does not have). Everything else —
+  # including an unreadable archive stream — fails the drill. The scratch
+  # database is still dropped on this path by the EXIT trap.
   if ! run_pg_restore; then
-    if [ "$DRILL_MODE" = false ]; then
-      error "CRITICAL: Live database restore FAILED on Supabase ${ENV}!"
-      exit 1
+    if [ "$DRILL_MODE" = true ]; then
+      error "pg_restore FAILED during recovery drill: refusing to certify '${BACKUP_PATH}' as restorable."
     else
-      warn "pg_restore completed with notices/warnings during recovery drill."
+      error "CRITICAL: Live database restore FAILED on Supabase ${ENV}!"
     fi
+    exit 1
   fi
-  ok "Database restore command executed."
+  ok "Database restore command executed (pg_restore exit status 0)."
 else
   ok "[DRY-RUN] Restoration via pg_restore simulated."
 fi
@@ -418,28 +446,59 @@ fi
 log "Step 6: Executing post-restore data and spatial contract verification..."
 
 if [ "$DRY_RUN" = false ]; then
-  # 1. PostGIS extension verification
-  POSTGIS_VERSION="$(psql "$RESTORE_URL" -t -c "SELECT PostGIS_Version();" 2>/dev/null | tr -d '[:space:]' || echo "")"
+  # Single scalar query helper (BRAWUKA-728). ON_ERROR_STOP turns a missing
+  # relation, a missing function, or a lost connection into a nonzero psql exit;
+  # no check below may substitute a default value for a failed query.
+  psql_scalar() {
+    psql "$RESTORE_URL" -v ON_ERROR_STOP=1 -t -A -c "$1"
+  }
 
-  if [[ -n "$POSTGIS_VERSION" ]]; then
-    ok "PostGIS extension verified: ${POSTGIS_VERSION}"
-  else
-    error "PostGIS extension check FAILED on ${RESTORE_LABEL}."
+  # 1. PostGIS extension verification
+  if ! POSTGIS_VERSION="$(psql_scalar 'SELECT PostGIS_Version();')"; then
+    error "PostGIS extension check FAILED on ${RESTORE_LABEL}: SELECT PostGIS_Version() did not succeed."
     exit 1
   fi
+  POSTGIS_VERSION="${POSTGIS_VERSION//[[:space:]]/}"
+  if [[ -z "$POSTGIS_VERSION" ]]; then
+    error "PostGIS extension check FAILED on ${RESTORE_LABEL}: PostGIS is not installed."
+    exit 1
+  fi
+  ok "PostGIS extension verified: ${POSTGIS_VERSION}"
 
-  # 2. Table row counts
-  CAFES_COUNT="$(psql "$RESTORE_URL" -t -c "SELECT count(*) FROM cafes;" 2>/dev/null | tr -d '[:space:]' || echo "0")"
-  CHECKINS_COUNT="$(psql "$RESTORE_URL" -t -c "SELECT count(*) FROM checkins;" 2>/dev/null | tr -d '[:space:]' || echo "0")"
-  PROFILES_COUNT="$(psql "$RESTORE_URL" -t -c "SELECT count(*) FROM profiles;" 2>/dev/null | tr -d '[:space:]' || echo "0")"
-
-  log "Row counts: cafes=${CAFES_COUNT}, checkins=${CHECKINS_COUNT}, profiles=${PROFILES_COUNT}"
+  # 2. Required tables and restored content: every query must succeed, return a
+  #    number, and the restore as a whole must have produced rows. A missing
+  #    relation or an empty result set is a failed restore, never a zero to log
+  #    past (BRAWUKA-728).
+  REQUIRED_TABLES=(cafes checkins profiles)
+  RESTORED_ROWS=0
+  for table in "${REQUIRED_TABLES[@]}"; do
+    if ! COUNT="$(psql_scalar "SELECT count(*) FROM ${table};")"; then
+      error "Verification FAILED on ${RESTORE_LABEL}: table '${table}' is missing or unreadable."
+      exit 1
+    fi
+    COUNT="${COUNT//[[:space:]]/}"
+    if [[ ! "$COUNT" =~ ^[0-9]+$ ]]; then
+      error "Verification FAILED on ${RESTORE_LABEL}: row count for '${table}' was '${COUNT}', not a number."
+      exit 1
+    fi
+    log "Row count: ${table}=${COUNT}"
+    RESTORED_ROWS=$((RESTORED_ROWS + COUNT))
+  done
+  if [[ "$RESTORED_ROWS" -eq 0 ]]; then
+    error "Verification FAILED on ${RESTORE_LABEL}: required tables (${REQUIRED_TABLES[*]}) all restored empty."
+    exit 1
+  fi
+  ok "Restored content verified: ${RESTORED_ROWS} row(s) across ${REQUIRED_TABLES[*]}."
 
   # 3. Spatial query contract benchmark (cafes.location geography column per 0001_init.sql)
-  SPATIAL_CHECK="$(psql "$RESTORE_URL" -t -c \
-    "SELECT count(*) FROM cafes WHERE ST_DWithin(location, ST_SetSRID(ST_MakePoint(103.8198, 1.3521), 4326)::geography, 10000);" 2>/dev/null | tr -d '[:space:]' || echo "")"
-  if [[ -z "$SPATIAL_CHECK" ]]; then
+  if ! SPATIAL_CHECK="$(psql_scalar \
+    "SELECT count(*) FROM cafes WHERE ST_DWithin(location, ST_SetSRID(ST_MakePoint(103.8198, 1.3521), 4326)::geography, 10000);")"; then
     error "PostGIS spatial query check FAILED on ${RESTORE_LABEL}."
+    exit 1
+  fi
+  SPATIAL_CHECK="${SPATIAL_CHECK//[[:space:]]/}"
+  if [[ ! "$SPATIAL_CHECK" =~ ^[0-9]+$ ]]; then
+    error "PostGIS spatial query check FAILED on ${RESTORE_LABEL}: no numeric result ('${SPATIAL_CHECK}')."
     exit 1
   fi
   ok "PostGIS spatial query test returned ${SPATIAL_CHECK} cafe(s) in range."

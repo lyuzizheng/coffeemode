@@ -40,6 +40,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
+# Declared before the failure trap: Step 5 appends here, rollback-prod.sh reads
+# the same file to pair a boundary snapshot with the image that must run on it.
+RELEASE_HISTORY_DIR="${REPO_ROOT}/backups/prod"
+RELEASE_LOG="${RELEASE_HISTORY_DIR}/releases.log"
+
 # ------------------------------------------------------------------------------
 # Defaults & CLI Argument Parsing
 # ------------------------------------------------------------------------------
@@ -122,6 +127,7 @@ stage() { echo -e "\n${BOLD}${CYAN}=== $* ===${NC}"; }
 # Failure Trap: prints immediate rollback command if deployment fails mid-flight
 on_failure() {
   local exit_code="$?"
+  local rollback_cmd last_recorded
   echo ""
   echo "=============================================================================="
   echo -e "${BOLD}${RED}[CRITICAL] Production Upgrade Pipeline Failed (Exit Code: ${exit_code})!${NC}"
@@ -130,11 +136,23 @@ on_failure() {
     echo "A pre-migration database snapshot was created at:"
     echo "  ${SNAPSHOT_PATH}"
     echo ""
-    echo "To immediately restore production to its pre-deployment state, run:"
-    echo -e "  ${BOLD}${YELLOW}./scripts/devops/rollback-prod.sh --backup-file \"${SNAPSHOT_PATH}\"${NC}"
+    rollback_cmd="./scripts/devops/rollback-prod.sh --backup-file \"${SNAPSHOT_PATH}\""
+    if [[ -f "$RELEASE_LOG" ]] && ! grep -qF -- "$SNAPSHOT_PATH" "$RELEASE_LOG"; then
+      # This attempt never reached its Step 5 release-history append, so
+      # rollback-prod.sh cannot pair that boundary with an image on its own;
+      # the image it deployed on top of is the last recorded release.
+      last_recorded="$(tail -n 1 "$RELEASE_LOG" | cut -d'|' -f2 || true)"
+      if [[ -n "$last_recorded" ]]; then
+        rollback_cmd="${rollback_cmd} --image-tag \"${last_recorded}\""
+      fi
+    fi
+    echo "To restore production to the state before this deployment, run:"
+    echo -e "  ${BOLD}${YELLOW}${rollback_cmd}${NC}"
   else
-    echo "To execute rollback with the latest available snapshot, run:"
-    echo -e "  ${BOLD}${YELLOW}./scripts/devops/rollback-prod.sh${NC}"
+    echo "No pre-migration snapshot was taken for this attempt (--force-skip-backup),"
+    echo "so there is no release boundary to restore."
+    echo "Supply a verified snapshot and the image that must run against it:"
+    echo -e "  ${BOLD}${YELLOW}./scripts/devops/rollback-prod.sh --backup-file <snapshot> --image-tag <previous-release-tag>${NC}"
   fi
   echo "=============================================================================="
   exit "$exit_code"
@@ -336,9 +354,7 @@ else
 fi
 
 # Record release metadata for instant rollback auto-discovery
-RELEASE_HISTORY_DIR="${REPO_ROOT}/backups/prod"
 mkdir -p "$RELEASE_HISTORY_DIR"
-RELEASE_LOG="${RELEASE_HISTORY_DIR}/releases.log"
 if [ "$DRY_RUN" = false ]; then
   echo "${TIMESTAMP}|${RELEASE_TAG}|${SNAPSHOT_PATH:-}" >> "$RELEASE_LOG"
   ok "Recorded release in ${RELEASE_LOG}."

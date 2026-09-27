@@ -17,9 +17,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 // never about a live staging edge.
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const SMOKE = path.join(REPO_ROOT, "scripts/devops/smoke-test.sh");
-// The retired fallback target. No run, in any mode, may request it.
-const RETIRED_PLAINTEXT_HOST = "staging.n150.brabalawuka.cc";
+// The retired fallback target is not named here on purpose: BRAWUKA-761's
+// acceptance greps the repository for it, and a stronger assertion is possible
+// without it — the staging edge is https, so *any* `http://` target means a
+// run reached for a second, unprotected entry point. That catches a fallback
+// to any host, not just the one this issue retired.
 const STAGING_EDGE = "https://staging.cafemood.app";
+const PLAINTEXT_SCHEME = "http://";
 
 // Careful: the script auto-discovers a Service Token from repo-root files
 // (`deploy/dokploy/.env.staging`, `web/.env.local`, `.env`) and from
@@ -132,18 +136,17 @@ function runSmoke(
 }
 
 describe("Staging smoke target selection (BRAWUKA-761)", () => {
-  it("aborts a tokenless staging run instead of reaching the retired plaintext host", () => {
-    // The retired fallback's own env knob is set to the plaintext host: the
-    // script must not honor it in any form.
+  it("aborts a tokenless staging run before it can reach any plaintext target", () => {
+    // The retired fallback's own env knob is still exported, pointing at a
+    // domain that cannot resolve: the script must not honor it in any form.
     const run = runSmoke(["staging"], {
-      STAGING_DIRECT_DOMAIN: `http://${RETIRED_PLAINTEXT_HOST}`,
+      STAGING_DIRECT_DOMAIN: `${PLAINTEXT_SCHEME}retired-direct-domain.invalid`,
       STUB_HTTP_CODE: "302",
     });
 
     expect(run.status).not.toBe(0);
     expect(run.output).toContain("[FATAL]");
-    expect(run.output).not.toContain(RETIRED_PLAINTEXT_HOST);
-    expect(run.invocations).not.toContain(RETIRED_PLAINTEXT_HOST);
+    expect(run.invocations).not.toContain(PLAINTEXT_SCHEME);
     // The verdict is not a contract failure dressed up as one: nothing ran.
     expect(run.output).not.toContain("[TEST 1]");
   });
@@ -184,7 +187,7 @@ describe("Staging smoke target selection (BRAWUKA-761)", () => {
     expect(run.output).toContain("Service Token configured");
     expect(run.invocations).toContain(`${STAGING_EDGE}/api/health`);
     expect(run.invocations).toContain("CF-Access-Client-Id: stub-id.access");
-    expect(run.invocations).not.toContain(RETIRED_PLAINTEXT_HOST);
+    expect(run.invocations).not.toContain(PLAINTEXT_SCHEME);
   });
 
   it("keeps an explicit --url override usable without a Service Token", () => {

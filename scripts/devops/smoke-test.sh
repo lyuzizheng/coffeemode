@@ -28,6 +28,11 @@
 #   --cf-client-id <id>   Cloudflare Access Service Token Client ID
 #   --cf-client-secret <s> Cloudflare Access Service Token Client Secret
 #
+# Staging is gated by Cloudflare Access and requires an Access Service Token
+# (CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET, or --cf-client-id /
+# --cf-client-secret). There is no unauthenticated fallback target: a tokenless
+# run against the staging edge aborts with [FATAL] (BRAWUKA-761).
+#
 # Examples:
 #   ./smoke-test.sh staging
 #   ./smoke-test.sh prod
@@ -120,21 +125,22 @@ if [[ -n "$URL_OVERRIDE" ]]; then
   BASE_URL="$URL_OVERRIDE"
 elif [[ "$ENV" == "staging" ]]; then
   TARGET_HOST="https://${STAGING_DOMAIN:-staging.cafemood.app}"
-  # BRAWUKA-499: If no Service Token is configured and Cloudflare Access returns 302,
-  # auto-fallback to direct Dokploy domain (Option C) so tests do not fail on unauthenticated runners.
+  # BRAWUKA-761: staging sits behind Cloudflare Access. Without a Service Token
+  # the edge answers the gate (a redirect to the Access login, or 403) instead
+  # of the product, so every contract below would fail for a reason that is not
+  # the product. BRAWUKA-499 answered that with a fallback to the direct Dokploy
+  # domain (Option C) — a plain `http://` hostname outside the Access policy,
+  # i.e. the fallback itself was an unauthenticated bypass of the gate. The
+  # fallback is gone: name the missing configuration and stop. An operator who
+  # means to probe a deliberately ungated target (local container, tunnel) says
+  # so explicitly with --url.
   if [[ -z "$CF_HEADER_ARGS" ]]; then
-    PROBE_CODE="$(curl -s -m 5 -A "${SMOKE_UA}" -o /dev/null -w '%{http_code}' "${TARGET_HOST}/api/health" || true)"
-    if [[ "$PROBE_CODE" == "302" ]]; then
-      DIRECT_HOST="http://${STAGING_DIRECT_DOMAIN:-staging.n150.brabalawuka.cc}"
-      echo "[WARN] Cloudflare Access 302 detected on ${TARGET_HOST} and no Access Service Token provided." >&2
-      echo "[WARN] Falling back to direct Dokploy domain (Option C): ${DIRECT_HOST}" >&2
-      BASE_URL="${DIRECT_HOST}"
-    else
-      BASE_URL="${TARGET_HOST}"
-    fi
-  else
-    BASE_URL="${TARGET_HOST}"
+    echo "[FATAL] ${TARGET_HOST} is behind Cloudflare Access and no Access Service Token is configured." >&2
+    echo "[FATAL] Set CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET (or pass --cf-client-id/--cf-client-secret) and re-run: there is no unauthenticated fallback target." >&2
+    echo "[FATAL] To probe an explicitly ungated target instead, pass --url <base-url>." >&2
+    exit 1
   fi
+  BASE_URL="${TARGET_HOST}"
 else
   BASE_URL="https://${PROD_DOMAIN:-cafemood.app}"
 fi

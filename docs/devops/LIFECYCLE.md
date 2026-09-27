@@ -177,6 +177,17 @@ Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enfor
      `web/scripts/cleanup-stale-test-dbs.mjs --apply` (dry-run by default).
      Never run two instances concurrently against one server.
 
+**Staging edge credentials (BRAWUKA-762)**: `staging.cafemood.app` is gated by
+Cloudflare Access, so `upgrade-staging.sh` requires `CF_ACCESS_CLIENT_ID` and
+`CF_ACCESS_CLIENT_SECRET` (from the environment, or from
+`deploy/dokploy/.env.staging`) before it takes a snapshot, migrates, or triggers
+a deploy. Every health probe carries that Service Token pair plus the
+`cafemood-smoke/1.0` UA the WAF rule whitelists (BRAWUKA-237); a tokenless run
+aborts with a named error instead of reporting a convergence timeout for a
+healthy deployment, and a probe the edge answers with the Access gate fails
+immediately. `upgrade-prod.sh` needs no token (production is not Access-gated)
+but identifies its probes with the same UA.
+
 ### Phase 4: Production Promotion & Zero-Downtime Deployment
 - **Trigger**: Git signed release tag (`v*`) created on `main` following verified staging validation and Reviewer & Architect approval.
 - **Executor**: `scripts/devops/upgrade-prod.sh`.

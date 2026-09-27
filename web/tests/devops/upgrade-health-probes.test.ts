@@ -36,13 +36,25 @@ code="\${STUB_HTTP_CODE:-200}"
 body=""
 case "$url" in
   */api/health)
-    body='{"ok":true,"version":"v9.9.9-stub","boot_time":"2026-09-27T00:00:00Z"}'
-    # STUB_GATE_AFTER_PROBES: a healthy baseline, then the Access gate — the
-    # shape of a token that expires, or a policy that changes, mid-upgrade.
-    if [[ -n "\${STUB_GATE_AFTER_PROBES:-}" ]]; then
+    # STUB_HTTP_CODES: a per-probe status sequence — the last value repeats —
+    # so a case can model the shapes this contract is about: a healthy baseline
+    # followed by the Access gate (200,403), or a transient blip that clears
+    # (200,503,200). "000" means curl never got a response at all.
+    if [[ -n "\${STUB_HTTP_CODES:-}" ]]; then
       count=$(( $(cat "$STUB_PROBE_COUNT" 2>/dev/null || echo 0) + 1 ))
       printf '%s' "$count" > "$STUB_PROBE_COUNT"
-      [[ "$count" -gt "$STUB_GATE_AFTER_PROBES" ]] && code="\${STUB_GATE_CODE:-403}"
+      IFS=',' read -r -a codes <<< "\${STUB_HTTP_CODES}"
+      index=$(( count - 1 ))
+      [[ "$index" -ge "\${#codes[@]}" ]] && index=$(( \${#codes[@]} - 1 ))
+      code="\${codes[$index]}"
+    fi
+    [[ "$code" == "000" ]] && exit 7
+    if [[ "$code" == 2* ]]; then
+      body='{"ok":true,"version":"v9.9.9-stub","boot_time":"2026-09-27T00:00:00Z"}'
+    else
+      # What the edge really answers when the Service Token is not accepted: an
+      # Access login redirect / denial page, never health JSON.
+      body='{"error":"cloudflare-access"}'
     fi
     ;;
   *) body='stub' ;;
@@ -70,6 +82,12 @@ printf 'node %s\\n' "$*" >> "$STUB_LOG"
 exit 0
 `;
 
+// The retry loops sleep 3s between polls; stubbing it keeps the cases that
+// exercise the full retry budget (persistently unhealthy, or gated) instant.
+const SLEEP_STUB = `#!/usr/bin/env bash
+exit 0
+`;
+
 let tmpRoot = "";
 let stubBin = "";
 let runIndex = 0;
@@ -85,6 +103,7 @@ beforeAll(() => {
   fs.writeFileSync(path.join(stubBin, "curl"), CURL_STUB, { mode: 0o755 });
   fs.writeFileSync(path.join(stubBin, "docker"), DOCKER_STUB, { mode: 0o755 });
   fs.writeFileSync(path.join(stubBin, "node"), NODE_STUB, { mode: 0o755 });
+  fs.writeFileSync(path.join(stubBin, "sleep"), SLEEP_STUB, { mode: 0o755 });
   fs.mkdirSync(scratchPath("home"));
   const devops = scratchPath("repo/scripts/devops");
   fs.mkdirSync(devops, { recursive: true });
@@ -121,8 +140,7 @@ const CLEARED_ENV: Record<string, undefined> = {
   DOKPLOY_PROD_DEPLOY_URL: undefined,
   DOKPLOY_PROD_DEPLOY_TOKEN: undefined,
   STUB_HTTP_CODE: undefined,
-  STUB_GATE_AFTER_PROBES: undefined,
-  STUB_GATE_CODE: undefined,
+  STUB_HTTP_CODES: undefined,
 };
 
 function runScript(
@@ -246,6 +264,8 @@ describe("upgrade-staging.sh — Cloudflare Access probes", () => {
     // different origin and must never receive it.
     expect(deploys[0]).not.toContain(ACCESS_SECRET);
     expect(run.output).toContain("convergence verified");
+    // The token travels in the request headers, never in the run's output.
+    expect(run.output).not.toContain(ACCESS_SECRET);
   });
 
   it("authenticates the compose-path convergence probes", () => {
@@ -277,7 +297,7 @@ describe("upgrade-staging.sh — Cloudflare Access probes", () => {
     }
   });
 
-  it("fails by name when the edge answers the Access gate", () => {
+  it("fails by name when the edge answers the Access gate on the baseline probe", () => {
     const run = runScript(STAGING_SCRIPT, [...STAGING_ARGS, "--deploy-url", DEPLOY_WEBHOOK], {
       CF_ACCESS_CLIENT_ID: ACCESS_ID,
       CF_ACCESS_CLIENT_SECRET: ACCESS_SECRET,
@@ -291,35 +311,82 @@ describe("upgrade-staging.sh — Cloudflare Access probes", () => {
     expect(run.log).not.toContain(DEPLOY_WEBHOOK);
   });
 
-  it("fails by name when the edge gates the webhook convergence polls", () => {
+  // The token can stop being accepted *after* the baseline passed (expiry, a
+  // policy edit), so both post-deployment polling paths must classify the
+  // status themselves — a status-blind poll reports that as a build timeout.
+  const DEPLOYMENT_PATHS = [
+    {
+      name: "webhook",
+      args: [...STAGING_ARGS, "--deploy-url", DEPLOY_WEBHOOK],
+      phase: "webhook convergence poll",
+    },
+    { name: "compose", args: STAGING_ARGS, phase: "compose convergence poll" },
+  ];
+  const GATE_CODES = ["302", "401", "403"];
+
+  for (const path of DEPLOYMENT_PATHS) {
+    for (const code of GATE_CODES) {
+      it(`fails on the first denied poll with HTTP ${code} on the ${path.name} path`, () => {
+        const run = runScript(STAGING_SCRIPT, path.args, {
+          CF_ACCESS_CLIENT_ID: ACCESS_ID,
+          CF_ACCESS_CLIENT_SECRET: ACCESS_SECRET,
+          // Healthy baseline, then the gate.
+          STUB_HTTP_CODES: `200,${code}`,
+        });
+
+        expect(run.status).not.toBe(0);
+        expect(run.output).toContain(`HTTP ${code}`);
+        expect(run.output).toContain(`[${path.phase}]`);
+        // It names the credentials to check — and never prints their values.
+        expect(run.output).toContain("CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET");
+        expect(run.output).not.toContain(ACCESS_ID);
+        expect(run.output).not.toContain(ACCESS_SECRET);
+        // Baseline plus the single denied poll: it stops there instead of
+        // burning the retry budget on a verdict that will not change.
+        expect(healthProbes(run.log)).toHaveLength(2);
+        expect(run.output).not.toContain("Timed out waiting for");
+      });
+    }
+  }
+
+  it("keeps polling through a transient 5xx and still converges (webhook path)", () => {
     const run = runScript(STAGING_SCRIPT, [...STAGING_ARGS, "--deploy-url", DEPLOY_WEBHOOK], {
       CF_ACCESS_CLIENT_ID: ACCESS_ID,
       CF_ACCESS_CLIENT_SECRET: ACCESS_SECRET,
-      // Healthy baseline, then the gate: the token expired (or the policy
-      // changed) between the baseline and the first poll.
-      STUB_GATE_AFTER_PROBES: "1",
+      STUB_HTTP_CODES: "200,503,503,200",
     });
 
-    expect(run.status).not.toBe(0);
-    expect(run.output).toContain("403");
-    expect(run.output).toContain("webhook convergence poll");
-    // It names the gate instead of polling all 60 retries and blaming the build.
-    expect(healthProbes(run.log).length).toBeLessThanOrEqual(3);
-    expect(run.output).not.toContain("Timed out waiting for staging release to converge");
+    expect(run.status).toBe(0);
+    expect(run.output).toContain("convergence verified");
+    expect(healthProbes(run.log)).toHaveLength(4);
   });
 
-  it("fails by name when the edge gates the compose convergence polls", () => {
+  it("keeps polling through a transport failure and still converges (compose path)", () => {
     const run = runScript(STAGING_SCRIPT, STAGING_ARGS, {
       CF_ACCESS_CLIENT_ID: ACCESS_ID,
       CF_ACCESS_CLIENT_SECRET: ACCESS_SECRET,
-      STUB_GATE_AFTER_PROBES: "1",
+      // "000": curl got no response at all — transient, and never the gate.
+      STUB_HTTP_CODES: "200,000,200",
+    });
+
+    expect(run.status).toBe(0);
+    expect(run.output).toContain("Staging healthcheck is green");
+    expect(healthProbes(run.log)).toHaveLength(3);
+  });
+
+  it("still times out on a persistent 5xx, naming the last status", () => {
+    const run = runScript(STAGING_SCRIPT, [...STAGING_ARGS, "--deploy-url", DEPLOY_WEBHOOK], {
+      CF_ACCESS_CLIENT_ID: ACCESS_ID,
+      CF_ACCESS_CLIENT_SECRET: ACCESS_SECRET,
+      STUB_HTTP_CODES: "200,503",
     });
 
     expect(run.status).not.toBe(0);
-    expect(run.output).toContain("403");
-    expect(run.output).toContain("compose convergence poll");
-    expect(healthProbes(run.log).length).toBeLessThanOrEqual(3);
-    expect(run.output).not.toContain("Timed out waiting for staging healthcheck");
+    expect(run.output).toContain("Timed out waiting for staging release to converge");
+    expect(run.output).toContain("HTTP 503");
+    expect(run.output).not.toContain("Access gate");
+    // A transient error keeps the full retry budget: baseline + 60 polls.
+    expect(healthProbes(run.log)).toHaveLength(61);
   });
 
   it("keeps --dry-run free of credentials and of edge traffic", () => {

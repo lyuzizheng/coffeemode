@@ -182,11 +182,13 @@ Cloudflare Access, so `upgrade-staging.sh` requires `CF_ACCESS_CLIENT_ID` and
 `CF_ACCESS_CLIENT_SECRET` (from the environment, or from
 `deploy/dokploy/.env.staging`) before it takes a snapshot, migrates, or triggers
 a deploy. Every health probe carries that Service Token pair plus the
-`cafemood-smoke/1.0` UA the WAF rule whitelists (BRAWUKA-237); a tokenless run
-aborts with a named error instead of reporting a convergence timeout for a
-healthy deployment, and a probe the edge answers with the Access gate fails
-immediately. `upgrade-prod.sh` needs no token (production is not Access-gated)
-but identifies its probes with the same UA.
+`cafemood-smoke/1.0` UA the WAF rule whitelists (BRAWUKA-237). A tokenless run
+aborts with a named error before the pipeline starts, and every probe — the
+pre-deployment baseline and both convergence polls — classifies the HTTP status:
+the edge answering with the Access gate (a redirect to the login, or 401/403)
+aborts immediately with that status instead of polling to a timeout that blames
+the build. `upgrade-prod.sh` needs no token (production is not Access-gated) but
+identifies its probes with the same UA.
 
 ### Phase 4: Production Promotion & Zero-Downtime Deployment
 - **Trigger**: Git signed release tag (`v*`) created on `main` following verified staging validation and Reviewer & Architect approval.

@@ -26,6 +26,14 @@
 #                         bypasses per-env scoping — use with care)
 #   --dry-run             Log planned actions without modifying system state
 #
+# Staging edge authentication (BRAWUKA-762): staging.cafemood.app is gated by
+# Cloudflare Access, so every health probe — the pre-deployment baseline and
+# both convergence loops — carries the Access Service Token
+# (CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET, from the environment or
+# deploy/dokploy/.env.staging) and the WAF-whitelisted smoke user agent. A run
+# that cannot authenticate aborts before it touches the deployment; there is no
+# unauthenticated fallback target.
+#
 # Examples:
 #   ./upgrade-staging.sh
 #   ./upgrade-staging.sh --deploy-url https://dokploy.example.com/api/deploy/...
@@ -115,8 +123,43 @@ warn()  { echo -e "${BOLD}${YELLOW}[WARN]${NC}  $*"; }
 error() { echo -e "${BOLD}${RED}[ERROR]${NC} $*" >&2; }
 stage() { echo -e "\n${BOLD}${CYAN}=== $* ===${NC}"; }
 
+# ------------------------------------------------------------------------------
+# Staging Edge Authentication (BRAWUKA-762)
+# ------------------------------------------------------------------------------
+# BRAWUKA-237/499: the WAF suspicious-UA rule challenges curl's default UA on
+# /api/*, and Cloudflare Access fronts staging.cafemood.app — an unauthenticated
+# probe gets the Access gate (a redirect to the login, or 403) instead of health
+# JSON, so a healthy release would be reported as a convergence timeout. Every
+# probe below sends the service-token pair and the smoke UA; the token is read
+# from the environment first, then from this environment's own secrets file
+# (same variable names, headers, and UA as scripts/devops/smoke-test.sh).
+SMOKE_UA="cafemood-smoke/1.0"
+CF_ACCESS_CLIENT_ID="${CF_ACCESS_CLIENT_ID:-}"
+CF_ACCESS_CLIENT_SECRET="${CF_ACCESS_CLIENT_SECRET:-}"
+STAGING_ENV_FILE="${REPO_ROOT}/deploy/dokploy/.env.staging"
+if [[ -z "$CF_ACCESS_CLIENT_ID" && -f "$STAGING_ENV_FILE" ]]; then
+  CF_ACCESS_CLIENT_ID="$(grep -m 1 -E '^export CF_ACCESS_CLIENT_ID=|^CF_ACCESS_CLIENT_ID=' "$STAGING_ENV_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
+fi
+if [[ -z "$CF_ACCESS_CLIENT_SECRET" && -f "$STAGING_ENV_FILE" ]]; then
+  CF_ACCESS_CLIENT_SECRET="$(grep -m 1 -E '^export CF_ACCESS_CLIENT_SECRET=|^CF_ACCESS_CLIENT_SECRET=' "$STAGING_ENV_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'" || true)"
+fi
+
+CURL_ACCESS_ARGS=()
+if [[ -n "$CF_ACCESS_CLIENT_ID" && -n "$CF_ACCESS_CLIENT_SECRET" ]]; then
+  CURL_ACCESS_ARGS=(-H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}" -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}")
+fi
+
+# Fail closed before the snapshot, the migrations, and the deploy webhook: a
+# tokenless run cannot verify convergence, so it must not start one.
+if [ "$DRY_RUN" = false ] && [[ -z "$CF_ACCESS_CLIENT_ID" || -z "$CF_ACCESS_CLIENT_SECRET" ]]; then
+  error "Staging is gated by Cloudflare Access and no Service Token is configured."
+  error "Set CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET, or add them to ${STAGING_ENV_FILE}, and re-run."
+  exit 1
+fi
+
 stage "Starting Staging Upgrade Pipeline"
 log "Target Environment: staging"
+log "Access Auth:        $([[ -n "$CF_ACCESS_CLIENT_ID" && -n "$CF_ACCESS_CLIENT_SECRET" ]] && echo "Cloudflare Access Service Token configured" || echo "missing")"
 log "Image Tag:          ${IMAGE_TAG}"
 log "Dokploy Webhook:    $([ -n "$DEPLOY_URL" ] && echo "Configured" || echo "Local Compose Fallback")"
 log "Date (UTC):         $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -214,7 +257,17 @@ PREV_VERSION=""
 PREV_BOOT_TIME=""
 PREV_CONTAINER_ID=""
 if [ "$DRY_RUN" = false ]; then
-  PRE_PROBE="$(curl -fsS -m 5 "${BASE_URL}/api/health" 2>/dev/null || echo "")"
+  # BRAWUKA-762: capture the status alongside the body so an Access challenge
+  # (redirect, 401/403) aborts by name instead of leaving an empty baseline that
+  # turns a healthy deploy into a 180s convergence timeout.
+  PRE_PROBE_RAW="$(curl -sS -m 5 "${CURL_ACCESS_ARGS[@]+"${CURL_ACCESS_ARGS[@]}"}" -A "${SMOKE_UA}" -w '\n%{http_code}' "${BASE_URL}/api/health" 2>/dev/null || echo "")"
+  PRE_PROBE_CODE="${PRE_PROBE_RAW##*$'\n'}"
+  PRE_PROBE="${PRE_PROBE_RAW%$'\n'*}"
+  if [[ "$PRE_PROBE_CODE" =~ ^(30[0-9]|401|403)$ ]]; then
+    error "Staging edge answered ${BASE_URL}/api/health with HTTP ${PRE_PROBE_CODE} (Cloudflare Access gate), not health JSON."
+    error "Verify CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET: the Service Token is missing, expired, or not scoped to this hostname."
+    exit 1
+  fi
   if [[ -n "$PRE_PROBE" ]]; then
     PREV_VERSION="$(echo "$PRE_PROBE" | grep -oE '"version"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
     PREV_BOOT_TIME="$(echo "$PRE_PROBE" | grep -oE '"boot_time"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
@@ -231,7 +284,8 @@ if [[ -n "$DEPLOY_URL" ]]; then
     if [[ -n "$DEPLOY_TOKEN" ]]; then
       AUTH_HEADER=(-H "Authorization: Bearer ${DEPLOY_TOKEN}")
     fi
-    curl -fsS --max-time 30 -X POST "${AUTH_HEADER[@]}" "${DEPLOY_URL}"
+    # bash 3.2 (macOS) + `set -u`: an empty array expansion aborts the script.
+    curl -fsS --max-time 30 -X POST "${AUTH_HEADER[@]+"${AUTH_HEADER[@]}"}" "${DEPLOY_URL}"
     ok "Dokploy deployment webhook triggered successfully."
   else
     ok "[DRY-RUN] Dokploy deployment webhook call simulated."
@@ -245,9 +299,9 @@ else
     COMPOSE_ENV_ARGS=(--env-file "$ENV_FILE")
   fi
   if [ "$DRY_RUN" = false ]; then
-    IMAGE_TAG="${RELEASE_TAG}" docker compose "${COMPOSE_ENV_ARGS[@]}" -f "$COMPOSE_FILE" build web-staging
+    IMAGE_TAG="${RELEASE_TAG}" docker compose "${COMPOSE_ENV_ARGS[@]+"${COMPOSE_ENV_ARGS[@]}"}" -f "$COMPOSE_FILE" build web-staging
     docker tag "coffeemode-web-staging:${RELEASE_TAG}" "coffeemode-web-staging:latest" 2>/dev/null || true
-    IMAGE_TAG="${RELEASE_TAG}" docker compose "${COMPOSE_ENV_ARGS[@]}" -f "$COMPOSE_FILE" up -d web-staging
+    IMAGE_TAG="${RELEASE_TAG}" docker compose "${COMPOSE_ENV_ARGS[@]+"${COMPOSE_ENV_ARGS[@]}"}" -f "$COMPOSE_FILE" up -d web-staging
     ok "Docker Compose web-staging container updated with tag '${RELEASE_TAG}'."
   else
     ok "[DRY-RUN] Docker Compose build & up -d web-staging with tag '${RELEASE_TAG}' simulated."
@@ -269,7 +323,7 @@ if [ "$DRY_RUN" = false ]; then
     CONVERGED=false
     while [ $RETRY -lt $MAX_RETRIES ]; do
       RETRY=$((RETRY + 1))
-      HEALTH_BODY="$(curl -fsS -m 3 "${BASE_URL}/api/health" 2>/dev/null || echo "")"
+      HEALTH_BODY="$(curl -fsS -m 3 "${CURL_ACCESS_ARGS[@]+"${CURL_ACCESS_ARGS[@]}"}" -A "${SMOKE_UA}" "${BASE_URL}/api/health" 2>/dev/null || echo "")"
       if echo "$HEALTH_BODY" | grep -q '"ok":true'; then
         CURR_VERSION="$(echo "$HEALTH_BODY" | grep -oE '"version"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
         CURR_BOOT_TIME="$(echo "$HEALTH_BODY" | grep -oE '"boot_time"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
@@ -312,7 +366,7 @@ if [ "$DRY_RUN" = false ]; then
     IS_HEALTHY=false
     while [ $RETRY -lt $MAX_RETRIES ]; do
       RETRY=$((RETRY + 1))
-      if curl -fsS -m 3 "${BASE_URL}/api/health" 2>/dev/null | grep -q '"ok":true'; then
+      if curl -fsS -m 3 "${CURL_ACCESS_ARGS[@]+"${CURL_ACCESS_ARGS[@]}"}" -A "${SMOKE_UA}" "${BASE_URL}/api/health" 2>/dev/null | grep -q '"ok":true'; then
         IS_HEALTHY=true
         break
       fi

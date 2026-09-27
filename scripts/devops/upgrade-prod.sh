@@ -159,6 +159,13 @@ on_failure() {
 }
 trap on_failure ERR
 
+# BRAWUKA-237/762: the WAF suspicious-UA rule challenges curl's default UA on
+# /api/*, so every production health probe identifies as the whitelisted smoke
+# UA — same constant and contract as scripts/devops/smoke-test.sh and
+# upgrade-staging.sh. Production is not behind Cloudflare Access, so no service
+# token is required here.
+SMOKE_UA="cafemood-smoke/1.0"
+
 stage "Starting Production Zero-Downtime Upgrade Pipeline"
 log "Target Environment: production"
 log "Release Image Tag:  ${IMAGE_TAG}"
@@ -312,7 +319,7 @@ PREV_VERSION=""
 PREV_BOOT_TIME=""
 PREV_CONTAINER_ID=""
 if [ "$DRY_RUN" = false ]; then
-  PRE_PROBE="$(curl -fsS -m 5 "${BASE_URL}/api/health" 2>/dev/null || echo "")"
+  PRE_PROBE="$(curl -fsS -m 5 -A "${SMOKE_UA}" "${BASE_URL}/api/health" 2>/dev/null || echo "")"
   if [[ -n "$PRE_PROBE" ]]; then
     PREV_VERSION="$(echo "$PRE_PROBE" | grep -oE '"version"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
     PREV_BOOT_TIME="$(echo "$PRE_PROBE" | grep -oE '"boot_time"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
@@ -336,7 +343,8 @@ if [[ -n "$DEPLOY_URL" ]]; then
     if [[ -n "$DEPLOY_TOKEN" ]]; then
       AUTH_HEADER=(-H "Authorization: Bearer ${DEPLOY_TOKEN}")
     fi
-    curl -fsS --max-time 30 -X POST "${AUTH_HEADER[@]}" "${DEPLOY_URL}"
+    # bash 3.2 (macOS) + `set -u`: an empty array expansion aborts the script.
+    curl -fsS --max-time 30 -X POST "${AUTH_HEADER[@]+"${AUTH_HEADER[@]}"}" "${DEPLOY_URL}"
     ok "Dokploy deployment webhook triggered."
   else
     ok "[DRY-RUN] Dokploy production deploy webhook call simulated."
@@ -344,9 +352,9 @@ if [[ -n "$DEPLOY_URL" ]]; then
 else
   log "Executing local Docker Compose zero-downtime rolling update (start-first)..."
   if [ "$DRY_RUN" = false ]; then
-    IMAGE_TAG="${RELEASE_TAG}" docker compose "${COMPOSE_ENV_ARGS[@]}" -f "$COMPOSE_FILE" build web-prod
+    IMAGE_TAG="${RELEASE_TAG}" docker compose "${COMPOSE_ENV_ARGS[@]+"${COMPOSE_ENV_ARGS[@]}"}" -f "$COMPOSE_FILE" build web-prod
     docker tag "coffeemode-web-prod:${RELEASE_TAG}" "coffeemode-web-prod:latest" 2>/dev/null || true
-    IMAGE_TAG="${RELEASE_TAG}" docker compose "${COMPOSE_ENV_ARGS[@]}" -f "$COMPOSE_FILE" up -d web-prod
+    IMAGE_TAG="${RELEASE_TAG}" docker compose "${COMPOSE_ENV_ARGS[@]+"${COMPOSE_ENV_ARGS[@]}"}" -f "$COMPOSE_FILE" up -d web-prod
     ok "Production web container updated with tag '${RELEASE_TAG}'."
   else
     ok "[DRY-RUN] Docker Compose build & up -d web-prod with tag '${RELEASE_TAG}' simulated."
@@ -377,7 +385,7 @@ if [ "$DRY_RUN" = false ]; then
     CONVERGED=false
     while [ $RETRY -lt $MAX_RETRIES ]; do
       RETRY=$((RETRY + 1))
-      HEALTH_BODY="$(curl -fsS -m 3 "${BASE_URL}/api/health" 2>/dev/null || echo "")"
+      HEALTH_BODY="$(curl -fsS -m 3 -A "${SMOKE_UA}" "${BASE_URL}/api/health" 2>/dev/null || echo "")"
       if echo "$HEALTH_BODY" | grep -q '"ok":true'; then
         CURR_VERSION="$(echo "$HEALTH_BODY" | grep -oE '"version"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
         CURR_BOOT_TIME="$(echo "$HEALTH_BODY" | grep -oE '"boot_time"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
@@ -420,7 +428,7 @@ if [ "$DRY_RUN" = false ]; then
     IS_HEALTHY=false
     while [ $RETRY -lt $MAX_RETRIES ]; do
       RETRY=$((RETRY + 1))
-      if curl -fsS -m 3 "${BASE_URL}/api/health" 2>/dev/null | grep -q '"ok":true'; then
+      if curl -fsS -m 3 -A "${SMOKE_UA}" "${BASE_URL}/api/health" 2>/dev/null | grep -q '"ok":true'; then
         IS_HEALTHY=true
         break
       fi

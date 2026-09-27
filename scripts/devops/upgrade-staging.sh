@@ -159,12 +159,19 @@ fi
 
 # One probe shape for all three call sites: body and HTTP status together, so an
 # Access challenge is classified instead of being mistaken for an unhealthy
-# release. Reads CURL_ACCESS_ARGS / SMOKE_UA / BASE_URL.
+# release. Reads CURL_ACCESS_ARGS / SMOKE_UA / BASE_URL and sets PROBE_CODE /
+# PROBE_BODY. A call that never got a response (DNS, connect, timeout — curl
+# fails, so -w never prints a status) reads as "000", i.e. transient, and can
+# never be mistaken for the gate.
 probe_health() {
   local timeout="${1:-3}" raw
   raw="$(curl -sS -m "$timeout" "${CURL_ACCESS_ARGS[@]+"${CURL_ACCESS_ARGS[@]}"}" -A "${SMOKE_UA}" -w '\n%{http_code}' "${BASE_URL}/api/health" 2>/dev/null || echo "")"
   PROBE_CODE="${raw##*$'\n'}"
   PROBE_BODY="${raw%$'\n'*}"
+  if [[ ! "$PROBE_CODE" =~ ^[0-9]{3}$ ]]; then
+    PROBE_CODE="000"
+    PROBE_BODY="$raw"
+  fi
 }
 
 # BRAWUKA-762/765: the edge answering the Access gate (a redirect to the login,
@@ -334,9 +341,11 @@ if [ "$DRY_RUN" = false ]; then
     MAX_RETRIES=60
     RETRY=0
     CONVERGED=false
+    LAST_PROBE_CODE="000"
     while [ $RETRY -lt $MAX_RETRIES ]; do
       RETRY=$((RETRY + 1))
       probe_health
+      LAST_PROBE_CODE="$PROBE_CODE"
       abort_on_access_gate "webhook convergence poll"
       if [[ "$PROBE_CODE" == 2* ]] && echo "$PROBE_BODY" | grep -q '"ok":true'; then
         CURR_VERSION="$(echo "$PROBE_BODY" | grep -oE '"version"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
@@ -370,7 +379,7 @@ if [ "$DRY_RUN" = false ]; then
     if [ "$CONVERGED" = true ]; then
       ok "Staging release convergence verified."
     else
-      error "Timed out waiting for staging release to converge after 180s. Live endpoint still reflects pre-deployment state. Dokploy build may have failed or stalled."
+      error "Timed out waiting for staging release to converge after 180s (last probe: HTTP ${LAST_PROBE_CODE}). Live endpoint still reflects pre-deployment state. Dokploy build may have failed or stalled."
       exit 1
     fi
   else
@@ -378,9 +387,11 @@ if [ "$DRY_RUN" = false ]; then
     MAX_RETRIES=20
     RETRY=0
     IS_HEALTHY=false
+    LAST_PROBE_CODE="000"
     while [ $RETRY -lt $MAX_RETRIES ]; do
       RETRY=$((RETRY + 1))
       probe_health
+      LAST_PROBE_CODE="$PROBE_CODE"
       abort_on_access_gate "compose convergence poll"
       if [[ "$PROBE_CODE" == 2* ]] && echo "$PROBE_BODY" | grep -q '"ok":true'; then
         IS_HEALTHY=true
@@ -392,7 +403,7 @@ if [ "$DRY_RUN" = false ]; then
     if [ "$IS_HEALTHY" = true ]; then
       ok "Staging healthcheck is green."
     else
-      error "Timed out waiting for staging healthcheck on ${BASE_URL}/api/health after 60s."
+      error "Timed out waiting for staging healthcheck on ${BASE_URL}/api/health after 60s (last probe: HTTP ${LAST_PROBE_CODE})."
       exit 1
     fi
   fi

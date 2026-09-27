@@ -120,21 +120,20 @@ if [[ -n "$URL_OVERRIDE" ]]; then
   BASE_URL="$URL_OVERRIDE"
 elif [[ "$ENV" == "staging" ]]; then
   TARGET_HOST="https://${STAGING_DOMAIN:-staging.cafemood.app}"
-  # BRAWUKA-499: If no Service Token is configured and Cloudflare Access returns 302,
-  # auto-fallback to direct Dokploy domain (Option C) so tests do not fail on unauthenticated runners.
+  # BRAWUKA-761: staging sits behind Cloudflare Access. Without a Service Token the edge
+  # answers 302 for every probe, so the contracts below would test the Access login page
+  # and report a product failure. Fail loudly instead. The former Option C fallback
+  # (http://staging.n150.brabalawuka.cc) was an unauthenticated plaintext host that bypassed
+  # Access entirely; its Dokploy domain was deleted on 2026-09-27 and must not come back.
   if [[ -z "$CF_HEADER_ARGS" ]]; then
     PROBE_CODE="$(curl -s -m 5 -A "${SMOKE_UA}" -o /dev/null -w '%{http_code}' "${TARGET_HOST}/api/health" || true)"
     if [[ "$PROBE_CODE" == "302" ]]; then
-      DIRECT_HOST="http://${STAGING_DIRECT_DOMAIN:-staging.n150.brabalawuka.cc}"
-      echo "[WARN] Cloudflare Access 302 detected on ${TARGET_HOST} and no Access Service Token provided." >&2
-      echo "[WARN] Falling back to direct Dokploy domain (Option C): ${DIRECT_HOST}" >&2
-      BASE_URL="${DIRECT_HOST}"
-    else
-      BASE_URL="${TARGET_HOST}"
+      echo "[FATAL] Cloudflare Access answered 302 on ${TARGET_HOST} and no Access Service Token is configured." >&2
+      echo "[FATAL] Provide one via --cf-client-id/--cf-client-secret or CF_ACCESS_CLIENT_ID/CF_ACCESS_CLIENT_SECRET." >&2
+      exit 1
     fi
-  else
-    BASE_URL="${TARGET_HOST}"
   fi
+  BASE_URL="${TARGET_HOST}"
 else
   BASE_URL="https://${PROD_DOMAIN:-cafemood.app}"
 fi

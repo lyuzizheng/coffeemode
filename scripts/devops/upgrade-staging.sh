@@ -157,6 +157,28 @@ if [ "$DRY_RUN" = false ] && [[ -z "$CF_ACCESS_CLIENT_ID" || -z "$CF_ACCESS_CLIE
   exit 1
 fi
 
+# One probe shape for all three call sites: body and HTTP status together, so an
+# Access challenge is classified instead of being mistaken for an unhealthy
+# release. Reads CURL_ACCESS_ARGS / SMOKE_UA / BASE_URL.
+probe_health() {
+  local timeout="${1:-3}" raw
+  raw="$(curl -sS -m "$timeout" "${CURL_ACCESS_ARGS[@]+"${CURL_ACCESS_ARGS[@]}"}" -A "${SMOKE_UA}" -w '\n%{http_code}' "${BASE_URL}/api/health" 2>/dev/null || echo "")"
+  PROBE_CODE="${raw##*$'\n'}"
+  PROBE_BODY="${raw%$'\n'*}"
+}
+
+# BRAWUKA-762/765: the edge answering the Access gate (a redirect to the login,
+# or 401/403) is not a health signal. Naming it immediately beats polling to a
+# timeout that blames the build — the baseline and both convergence loops run
+# every probe through here.
+abort_on_access_gate() {
+  if [[ "$PROBE_CODE" =~ ^(30[0-9]|401|403)$ ]]; then
+    error "Staging edge answered ${BASE_URL}/api/health with HTTP ${PROBE_CODE} (Cloudflare Access gate), not health JSON [${1}]."
+    error "Verify CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET: the Service Token is missing, expired, or not scoped to this hostname."
+    exit 1
+  fi
+}
+
 stage "Starting Staging Upgrade Pipeline"
 log "Target Environment: staging"
 log "Access Auth:        $([[ -n "$CF_ACCESS_CLIENT_ID" && -n "$CF_ACCESS_CLIENT_SECRET" ]] && echo "Cloudflare Access Service Token configured" || echo "missing")"
@@ -257,20 +279,11 @@ PREV_VERSION=""
 PREV_BOOT_TIME=""
 PREV_CONTAINER_ID=""
 if [ "$DRY_RUN" = false ]; then
-  # BRAWUKA-762: capture the status alongside the body so an Access challenge
-  # (redirect, 401/403) aborts by name instead of leaving an empty baseline that
-  # turns a healthy deploy into a 180s convergence timeout.
-  PRE_PROBE_RAW="$(curl -sS -m 5 "${CURL_ACCESS_ARGS[@]+"${CURL_ACCESS_ARGS[@]}"}" -A "${SMOKE_UA}" -w '\n%{http_code}' "${BASE_URL}/api/health" 2>/dev/null || echo "")"
-  PRE_PROBE_CODE="${PRE_PROBE_RAW##*$'\n'}"
-  PRE_PROBE="${PRE_PROBE_RAW%$'\n'*}"
-  if [[ "$PRE_PROBE_CODE" =~ ^(30[0-9]|401|403)$ ]]; then
-    error "Staging edge answered ${BASE_URL}/api/health with HTTP ${PRE_PROBE_CODE} (Cloudflare Access gate), not health JSON."
-    error "Verify CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET: the Service Token is missing, expired, or not scoped to this hostname."
-    exit 1
-  fi
-  if [[ -n "$PRE_PROBE" ]]; then
-    PREV_VERSION="$(echo "$PRE_PROBE" | grep -oE '"version"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
-    PREV_BOOT_TIME="$(echo "$PRE_PROBE" | grep -oE '"boot_time"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
+  probe_health 5
+  abort_on_access_gate "pre-deployment baseline"
+  if [[ -n "$PROBE_BODY" ]]; then
+    PREV_VERSION="$(echo "$PROBE_BODY" | grep -oE '"version"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
+    PREV_BOOT_TIME="$(echo "$PROBE_BODY" | grep -oE '"boot_time"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
   fi
   if docker ps --filter "name=coffeemode-web-staging" --format '{{.ID}}' &>/dev/null; then
     PREV_CONTAINER_ID="$(docker ps -q --filter "name=coffeemode-web-staging" 2>/dev/null || echo "")"
@@ -323,10 +336,11 @@ if [ "$DRY_RUN" = false ]; then
     CONVERGED=false
     while [ $RETRY -lt $MAX_RETRIES ]; do
       RETRY=$((RETRY + 1))
-      HEALTH_BODY="$(curl -fsS -m 3 "${CURL_ACCESS_ARGS[@]+"${CURL_ACCESS_ARGS[@]}"}" -A "${SMOKE_UA}" "${BASE_URL}/api/health" 2>/dev/null || echo "")"
-      if echo "$HEALTH_BODY" | grep -q '"ok":true'; then
-        CURR_VERSION="$(echo "$HEALTH_BODY" | grep -oE '"version"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
-        CURR_BOOT_TIME="$(echo "$HEALTH_BODY" | grep -oE '"boot_time"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
+      probe_health
+      abort_on_access_gate "webhook convergence poll"
+      if [[ "$PROBE_CODE" == 2* ]] && echo "$PROBE_BODY" | grep -q '"ok":true'; then
+        CURR_VERSION="$(echo "$PROBE_BODY" | grep -oE '"version"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
+        CURR_BOOT_TIME="$(echo "$PROBE_BODY" | grep -oE '"boot_time"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
         CURR_CONTAINER_ID=""
         if docker ps --filter "name=coffeemode-web-staging" --format '{{.ID}}' &>/dev/null; then
           CURR_CONTAINER_ID="$(docker ps -q --filter "name=coffeemode-web-staging" 2>/dev/null || echo "")"
@@ -366,7 +380,9 @@ if [ "$DRY_RUN" = false ]; then
     IS_HEALTHY=false
     while [ $RETRY -lt $MAX_RETRIES ]; do
       RETRY=$((RETRY + 1))
-      if curl -fsS -m 3 "${CURL_ACCESS_ARGS[@]+"${CURL_ACCESS_ARGS[@]}"}" -A "${SMOKE_UA}" "${BASE_URL}/api/health" 2>/dev/null | grep -q '"ok":true'; then
+      probe_health
+      abort_on_access_gate "compose convergence poll"
+      if [[ "$PROBE_CODE" == 2* ]] && echo "$PROBE_BODY" | grep -q '"ok":true'; then
         IS_HEALTHY=true
         break
       fi

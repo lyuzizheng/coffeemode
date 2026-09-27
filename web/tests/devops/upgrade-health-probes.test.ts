@@ -35,7 +35,16 @@ url="\${!#}"
 code="\${STUB_HTTP_CODE:-200}"
 body=""
 case "$url" in
-  */api/health) body='{"ok":true,"version":"v9.9.9-stub","boot_time":"2026-09-27T00:00:00Z"}' ;;
+  */api/health)
+    body='{"ok":true,"version":"v9.9.9-stub","boot_time":"2026-09-27T00:00:00Z"}'
+    # STUB_GATE_AFTER_PROBES: a healthy baseline, then the Access gate — the
+    # shape of a token that expires, or a policy that changes, mid-upgrade.
+    if [[ -n "\${STUB_GATE_AFTER_PROBES:-}" ]]; then
+      count=$(( $(cat "$STUB_PROBE_COUNT" 2>/dev/null || echo 0) + 1 ))
+      printf '%s' "$count" > "$STUB_PROBE_COUNT"
+      [[ "$count" -gt "$STUB_GATE_AFTER_PROBES" ]] && code="\${STUB_GATE_CODE:-403}"
+    fi
+    ;;
   *) body='stub' ;;
 esac
 case "$*" in
@@ -112,6 +121,8 @@ const CLEARED_ENV: Record<string, undefined> = {
   DOKPLOY_PROD_DEPLOY_URL: undefined,
   DOKPLOY_PROD_DEPLOY_TOKEN: undefined,
   STUB_HTTP_CODE: undefined,
+  STUB_GATE_AFTER_PROBES: undefined,
+  STUB_GATE_CODE: undefined,
 };
 
 function runScript(
@@ -126,6 +137,7 @@ function runScript(
   for (const [key, value] of Object.entries({
     ...CLEARED_ENV,
     STUB_LOG: logPath,
+    STUB_PROBE_COUNT: scratchPath(`probe-count-${runIndex}`),
     ...overrides,
   })) {
     if (value === undefined) delete env[key];
@@ -163,6 +175,10 @@ function invocations(log: string, command: string): string[] {
   return log.split("\n").filter((line) => line.startsWith(`${command} `));
 }
 
+function healthProbes(log: string): string[] {
+  return invocations(log, "curl").filter((line) => line.includes("/api/health"));
+}
+
 /** Every health probe in the log must carry the token pair and the smoke UA. */
 function expectAuthenticatedHealthProbes(
   log: string,
@@ -170,7 +186,7 @@ function expectAuthenticatedHealthProbes(
   id: string,
   secret: string,
 ): string[] {
-  const probes = invocations(log, "curl").filter((line) => line.includes("/api/health"));
+  const probes = healthProbes(log);
   expect(probes.length).toBeGreaterThan(0);
   for (const probe of probes) {
     expect(probe).toContain(`${edge}/api/health`);
@@ -273,6 +289,37 @@ describe("upgrade-staging.sh — Cloudflare Access probes", () => {
     expect(run.output).toContain("CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET");
     // A rejected probe must not be followed by a deployment.
     expect(run.log).not.toContain(DEPLOY_WEBHOOK);
+  });
+
+  it("fails by name when the edge gates the webhook convergence polls", () => {
+    const run = runScript(STAGING_SCRIPT, [...STAGING_ARGS, "--deploy-url", DEPLOY_WEBHOOK], {
+      CF_ACCESS_CLIENT_ID: ACCESS_ID,
+      CF_ACCESS_CLIENT_SECRET: ACCESS_SECRET,
+      // Healthy baseline, then the gate: the token expired (or the policy
+      // changed) between the baseline and the first poll.
+      STUB_GATE_AFTER_PROBES: "1",
+    });
+
+    expect(run.status).not.toBe(0);
+    expect(run.output).toContain("403");
+    expect(run.output).toContain("webhook convergence poll");
+    // It names the gate instead of polling all 60 retries and blaming the build.
+    expect(healthProbes(run.log).length).toBeLessThanOrEqual(3);
+    expect(run.output).not.toContain("Timed out waiting for staging release to converge");
+  });
+
+  it("fails by name when the edge gates the compose convergence polls", () => {
+    const run = runScript(STAGING_SCRIPT, STAGING_ARGS, {
+      CF_ACCESS_CLIENT_ID: ACCESS_ID,
+      CF_ACCESS_CLIENT_SECRET: ACCESS_SECRET,
+      STUB_GATE_AFTER_PROBES: "1",
+    });
+
+    expect(run.status).not.toBe(0);
+    expect(run.output).toContain("403");
+    expect(run.output).toContain("compose convergence poll");
+    expect(healthProbes(run.log).length).toBeLessThanOrEqual(3);
+    expect(run.output).not.toContain("Timed out waiting for staging healthcheck");
   });
 
   it("keeps --dry-run free of credentials and of edge traffic", () => {

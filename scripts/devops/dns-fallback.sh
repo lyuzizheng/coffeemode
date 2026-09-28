@@ -32,9 +32,9 @@
 #   a container created right now would snapshot a usable upstream set. Writing
 #   the tail is durable configuration; it only reaches the live file at the next
 #   dhcpcd regeneration. While the live file is empty, apply/check exit 1
-#   (`not-ready`), print the recovery command of the manager that actually owns
-#   the file — dhcpcd's only on a confirmed dhcpcd host — and provisioning stops
-#   before it can create a container.
+#   (`not-ready`), print dhcpcd's regeneration command only where dhcpcd
+#   ownership was confirmed and otherwise point at whichever manager owns the
+#   file, and provisioning stops before it can create a container.
 #
 # Usage:
 #   ./dns-fallback.sh apply [--dry-run]   # install the fallback, then report readiness
@@ -144,31 +144,23 @@ status() { echo "dns-fallback: $1"; }
 # ------------------------------------------------------------------------------
 # Resolver ownership detection
 # ------------------------------------------------------------------------------
-# Sets MANAGER (`dhcpcd` or `other`), REASON, and — when the owning manager is
-# identifiable — RECOVERY, the command that makes *that* manager regenerate the
-# live file. Recovery guidance is never borrowed from a manager that does not
-# own the file (BRAWUKA-778): telling a NetworkManager host to start dhcpcd is
-# not a recovery step.
+# Sets MANAGER (`dhcpcd` or `other`) and REASON. Ownership is decided by evidence
+# about who writes the file, and nothing else — a binary that happens to be
+# installed, or a symlink target, is not proof that a manager is in use, so no
+# recovery command is ever attributed to a manager this script did not confirm
+# (BRAWUKA-778).
 MANAGER="other"
 REASON=""
 HOOK_PATH=""
-RECOVERY=""
 
 detect_manager() {
   if [[ -L "$RESOLV_CONF" ]]; then
-    local target
-    target="$(readlink "$RESOLV_CONF" 2>/dev/null || echo '')"
-    REASON="${RESOLV_CONF} is a symlink to ${target:-<unknown>} — managed by systemd-resolved, NetworkManager, or netplan, not dhcpcd"
-    case "$target" in
-      *systemd/resolve*) RECOVERY="systemctl restart systemd-resolved" ;;
-      *NetworkManager*) RECOVERY="systemctl restart NetworkManager" ;;
-    esac
+    REASON="${RESOLV_CONF} is a symlink to $(readlink "$RESOLV_CONF" 2>/dev/null || echo '<unknown>') — managed by systemd-resolved, NetworkManager, or netplan, not dhcpcd"
     return 0
   fi
 
   if command -v resolvconf >/dev/null 2>&1; then
     REASON="a resolvconf binary is on PATH, so dhcpcd delegates to it and never appends ${TAIL_FILE}"
-    RECOVERY="resolvconf -u"
     return 0
   fi
 
@@ -279,12 +271,12 @@ append_fallback_line() {
 
 report_not_ready() {
   error "${LIVE_REASON} — a container created at this moment snapshots an empty upstream set."
-  # Recovery guidance follows the manager that actually owns the file: only a
-  # confirmed dhcpcd host is told to run dhcpcd (BRAWUKA-778).
+  # A concrete command is given only for the manager this script confirmed:
+  # dhcpcd. Every other host is told to recover through whichever manager owns
+  # the file, because guessing one would be inventing a recovery step
+  # (BRAWUKA-778).
   if [[ "$MANAGER" == "dhcpcd" ]]; then
     log "Regenerate now: $(regenerate_hint)   # then re-run: $0 check"
-  elif [[ -n "$RECOVERY" ]]; then
-    log "Regenerate now: ${RECOVERY}   # then re-run: $0 check"
   else
     log "Regenerate ${RESOLV_CONF} through whichever manager owns it (this script does not write it), then re-run: $0 check"
   fi
@@ -411,11 +403,9 @@ cmd_revert() {
   fi
 
   # The live file is only ever dhcpcd's to rebuild; on any other host this script
-  # never wrote it, and saying otherwise would invent a recovery step.
+  # never wrote it, and naming a command for it would invent a recovery step.
   if [[ "$MANAGER" == "dhcpcd" ]]; then
     log "The live ${RESOLV_CONF} keeps the fallback until dhcpcd regenerates it: $(regenerate_hint)"
-  elif [[ -n "$RECOVERY" ]]; then
-    log "The live ${RESOLV_CONF} is not written by dhcpcd and was not touched by this script; regenerate it with: ${RECOVERY}"
   else
     log "The live ${RESOLV_CONF} is not written by dhcpcd and was not touched by this script; recovery for it belongs to whichever tool owns it."
   fi

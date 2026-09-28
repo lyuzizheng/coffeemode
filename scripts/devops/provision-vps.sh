@@ -8,10 +8,16 @@
 #   1. System updates & essential operational packages
 #   2. Swap configuration & production kernel sysctl parameters
 #   3. System hardening: fail2ban brute-force defense & UFW firewall
-#   4. Official Docker Engine CE + Docker Compose plugin + log rotation
-#   5. Docker Swarm initialization (enables zero-downtime rolling swaps)
-#   6. Automated Dokploy PaaS & Traefik reverse proxy binding (ports 80/443)
-#   7. External ingress network (traefik-net) setup
+#   4. Host DNS upstream fallback (DHCP first, 1.1.1.1 tail — BRAWUKA-770)
+#   5. Official Docker Engine CE + Docker Compose plugin + log rotation
+#   6. Docker Swarm initialization (enables zero-downtime rolling swaps)
+#   7. Automated Dokploy PaaS & Traefik reverse proxy binding (ports 80/443)
+#   8. External ingress network (traefik-net) setup
+#
+# Step 4 runs whether or not Docker is already installed, because Docker
+# snapshots the host /etc/resolv.conf into every container it creates: a host
+# that can regenerate an empty resolver set (dhcpcd during a link outage) hands
+# that emptiness to any container created in the window (BRAWUKA-764).
 #
 # Usage:
 #   ./provision-vps.sh [options]
@@ -23,6 +29,7 @@
 #   --skip-swap           Skip swap creation and sysctl tuning
 #   --skip-ufw            Skip UFW firewall configuration
 #   --skip-fail2ban       Skip fail2ban installation and configuration
+#   --skip-dns            Skip the host DNS upstream fallback step
 #   --skip-docker         Skip Docker installation and swarm init
 #   --skip-dokploy        Skip Dokploy installation
 #   --dry-run             Log planned actions without modifying system state
@@ -35,6 +42,8 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # ------------------------------------------------------------------------------
 # Defaults & CLI Argument Parsing
 # ------------------------------------------------------------------------------
@@ -43,6 +52,7 @@ SWAP_SIZE=2
 SKIP_SWAP=false
 SKIP_UFW=false
 SKIP_FAIL2BAN=false
+SKIP_DNS=false
 SKIP_DOCKER=false
 SKIP_DOKPLOY=false
 DRY_RUN=false
@@ -75,6 +85,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-fail2ban)
       SKIP_FAIL2BAN=true
+      shift
+      ;;
+    --skip-dns)
+      SKIP_DNS=true
       shift
       ;;
     --skip-docker)
@@ -147,7 +161,7 @@ fi
 # ------------------------------------------------------------------------------
 # STEP 1: System Packages & Upgrades
 # ------------------------------------------------------------------------------
-log "Step 1/7: Updating system package repositories..."
+log "Step 1/8: Updating system package repositories..."
 export DEBIAN_FRONTEND=noninteractive
 run_cmd apt-get update -y
 run_cmd apt-get install -y --no-install-recommends \
@@ -171,7 +185,7 @@ ok "Core utility packages installed."
 # STEP 2: Swap Configuration & Kernel Sysctl Parameters
 # ------------------------------------------------------------------------------
 if [ "$SKIP_SWAP" = false ]; then
-  log "Step 2/7: Configuring swap space (${SWAP_SIZE}GB) and kernel sysctl..."
+  log "Step 2/8: Configuring swap space (${SWAP_SIZE}GB) and kernel sysctl..."
   if [ "$DRY_RUN" = false ]; then
     if swapon --show | grep -q "/swapfile"; then
       ok "Swapfile /swapfile already active. Skipping creation."
@@ -210,14 +224,14 @@ EOF
     ok "[DRY-RUN] Swap and sysctl configuration simulated."
   fi
 else
-  log "Step 2/7: Swap configuration skipped (--skip-swap)."
+  log "Step 2/8: Swap configuration skipped (--skip-swap)."
 fi
 
 # ------------------------------------------------------------------------------
 # STEP 3: Security Hardening (Fail2ban & UFW Firewall)
 # ------------------------------------------------------------------------------
 if [ "$SKIP_FAIL2BAN" = false ]; then
-  log "Step 3a/7: Hardening SSH via fail2ban..."
+  log "Step 3a/8: Hardening SSH via fail2ban..."
   if [ "$DRY_RUN" = false ]; then
     cat > /etc/fail2ban/jail.local <<EOF
 [DEFAULT]
@@ -235,11 +249,11 @@ EOF
     ok "[DRY-RUN] Fail2ban configuration simulated."
   fi
 else
-  log "Step 3a/7: Fail2ban skipped (--skip-fail2ban)."
+  log "Step 3a/8: Fail2ban skipped (--skip-fail2ban)."
 fi
 
 if [ "$SKIP_UFW" = false ]; then
-  log "Step 3b/7: Configuring UFW firewall rules..."
+  log "Step 3b/8: Configuring UFW firewall rules..."
   run_cmd ufw default deny incoming
   run_cmd ufw default allow outgoing
   run_cmd ufw allow "${SSH_PORT}/tcp" comment "SSH Access"
@@ -256,14 +270,53 @@ if [ "$SKIP_UFW" = false ]; then
     ok "[DRY-RUN] UFW firewall activation simulated."
   fi
 else
-  log "Step 3b/7: UFW firewall skipped (--skip-ufw)."
+  log "Step 3b/8: UFW firewall skipped (--skip-ufw)."
 fi
 
 # ------------------------------------------------------------------------------
-# STEP 4: Official Docker Engine & Compose Installation
+# STEP 4: Host DNS Upstream Fallback (BRAWUKA-770)
+# ------------------------------------------------------------------------------
+# Runs on both provisioning paths — a host that already has Docker takes the
+# install branch's skip above, but it still snapshots its resolver file into
+# every container it creates, so the guarantee is not conditional on the install.
+# The step fails closed (BRAWUKA-776): while the live resolver file has no
+# nameserver, a container created now would snapshot an empty upstream set, so
+# provisioning stops here instead of continuing into container creation.
+DNS_FALLBACK_STATE="not checked"
+if [ "$SKIP_DNS" = false ]; then
+  log "Step 4/8: Installing the host DNS upstream fallback and checking live readiness..."
+  DNS_ARGS=(apply)
+  if [ "$DRY_RUN" = true ]; then
+    DNS_ARGS+=(--dry-run)
+  fi
+  set +e
+  DNS_OUTPUT="$("${SCRIPT_DIR}/dns-fallback.sh" "${DNS_ARGS[@]}")"
+  DNS_STATUS=$?
+  set -e
+  # The step's own warnings and remediation hints are part of the contract, so
+  # they are printed verbatim rather than reduced to a summary line.
+  printf '%s\n' "$DNS_OUTPUT"
+  DNS_FALLBACK_STATE="$(printf '%s\n' "$DNS_OUTPUT" | tail -n 1)"
+  if [ "$DNS_STATUS" -eq 0 ]; then
+    ok "Host DNS fallback: ${DNS_FALLBACK_STATE}"
+  elif [ "$DRY_RUN" = true ]; then
+    warn "[DRY-RUN] Host DNS fallback would stop provisioning: ${DNS_FALLBACK_STATE}"
+  else
+    error "Host DNS fallback is not in effect (${DNS_FALLBACK_STATE})."
+    error "Refusing to continue: Docker would snapshot an empty upstream resolver set into every container created now."
+    error "Fix the host resolver as described above and re-run, or re-run with --skip-dns to accept that risk explicitly."
+    exit 1
+  fi
+else
+  log "Step 4/8: Host DNS fallback skipped (--skip-dns)."
+  DNS_FALLBACK_STATE="Skipped (--skip-dns)"
+fi
+
+# ------------------------------------------------------------------------------
+# STEP 5: Official Docker Engine & Compose Installation
 # ------------------------------------------------------------------------------
 if [ "$SKIP_DOCKER" = false ]; then
-  log "Step 4/7: Installing official Docker Engine CE and Compose plugin..."
+  log "Step 5/8: Installing official Docker Engine CE and Compose plugin..."
   if command -v docker >/dev/null 2>&1; then
     ok "Docker is already installed ($(docker --version))."
   else
@@ -304,14 +357,14 @@ EOF
     fi
   fi
 else
-  log "Step 4/7: Docker installation skipped (--skip-docker)."
+  log "Step 5/8: Docker installation skipped (--skip-docker)."
 fi
 
 # ------------------------------------------------------------------------------
-# STEP 5: Docker Swarm Initialization (Enables Zero-Downtime Rolling Swaps)
+# STEP 6: Docker Swarm Initialization (Enables Zero-Downtime Rolling Swaps)
 # ------------------------------------------------------------------------------
 if [ "$SKIP_DOCKER" = false ]; then
-  log "Step 5/7: Verifying Docker Swarm status..."
+  log "Step 6/8: Verifying Docker Swarm status..."
   if [ "$DRY_RUN" = false ]; then
     SWARM_STATE="$(docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null || echo 'inactive')"
     if [ "$SWARM_STATE" = "active" ]; then
@@ -335,14 +388,14 @@ if [ "$SKIP_DOCKER" = false ]; then
     ok "[DRY-RUN] Docker Swarm initialization simulated."
   fi
 else
-  log "Step 5/7: Docker Swarm skipped."
+  log "Step 6/8: Docker Swarm skipped."
 fi
 
 # ------------------------------------------------------------------------------
-# STEP 6: Dokploy PaaS & Traefik Ingress Bridge Network
+# STEP 7: Dokploy PaaS & Traefik Ingress Bridge Network
 # ------------------------------------------------------------------------------
 if [ "$SKIP_DOKPLOY" = false ]; then
-  log "Step 6/7: Configuring Dokploy prerequisites and Traefik ingress network..."
+  log "Step 7/8: Configuring Dokploy prerequisites and Traefik ingress network..."
   if [ "$DRY_RUN" = false ]; then
     # Shared external bridge network required by Traefik and web containers
     if docker network inspect traefik-net >/dev/null 2>&1; then
@@ -373,11 +426,11 @@ if [ "$SKIP_DOKPLOY" = false ]; then
     ok "[DRY-RUN] Dokploy setup and 'traefik-net' network creation simulated."
   fi
 else
-  log "Step 6/7: Dokploy setup skipped (--skip-dokploy)."
+  log "Step 7/8: Dokploy setup skipped (--skip-dokploy)."
 fi
 
 # ------------------------------------------------------------------------------
-# STEP 7: Completion & Summary Report
+# STEP 8: Completion & Summary Report
 # ------------------------------------------------------------------------------
 HOST_IP="$(curl -s -m 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}' || echo "UNKNOWN_IP")"
 
@@ -388,6 +441,7 @@ echo "==========================================================================
 echo "Host Public IP:    ${HOST_IP}"
 echo "SSH Port:          ${SSH_PORT}"
 echo "Firewall (UFW):    Active (Ports ${SSH_PORT}, 80, 443 allowed)"
+echo "Host DNS fallback: ${DNS_FALLBACK_STATE}"
 echo "Docker Engine:     $(docker --version 2>/dev/null || echo 'Installed')"
 echo "Docker Swarm:      $([ "$SKIP_DOCKER" = false ] && echo 'Active' || echo 'Skipped')"
 echo "Traefik Network:   traefik-net (Ready)"

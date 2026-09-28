@@ -15,9 +15,13 @@ import { runCafeCreationGate } from "./cafe-creation-gate.mjs";
 import { runCheckinDrawerGate } from "./checkin-drawer-gate.mjs";
 import { runCheckinLifecycleGate } from "./checkin-lifecycle-gate.mjs";
 import { runCheckinSubmitGate } from "./checkin-submit-gate.mjs";
-import { runDeeplinkHydrationGate } from "./deeplink-hydration-gate.mjs";
-import { runNavigationPromptGate } from "./navigation-prompt-gate.mjs";
 import { runCityScopeGate } from "./city-scope-gate.mjs";
+import { runDeeplinkHydrationGate } from "./deeplink-hydration-gate.mjs";
+import { runFeedPaginationGate } from "./feed-pagination-gate.mjs";
+import { runNavigationPromptGate } from "./navigation-prompt-gate.mjs";
+import { runOwnerControlsGate } from "./owner-controls-gate.mjs";
+import { runSearchDiscoveryGate } from "./search-discovery-gate.mjs";
+import { runSwPrivacyGate } from "./sw-privacy-gate.mjs";
 import { runVerifiedUserHandoffGate } from "./verified-user-handoff-gate.mjs";
 import { recordGateFailure } from "./e2e-artifacts.mjs";
 
@@ -91,6 +95,34 @@ export const E2E_GATES = [
     mobile: false,
     needsDb: true,
     run: runCityScopeGate,
+  },
+  {
+    slug: "search-discovery",
+    label: "T16/T16b/T6/T17-UI: Search Discovery & Geolocation & Turnstile UI",
+    mobile: true,
+    needsDb: true,
+    run: runSearchDiscoveryGate,
+  },
+  {
+    slug: "feed-pagination",
+    label: "T12: Check-in Feed Pagination & Mode Switch & Invalid Cursor Recovery",
+    mobile: false,
+    needsDb: true,
+    run: runFeedPaginationGate,
+  },
+  {
+    slug: "owner-controls",
+    label: "T25: Cafe Owner Controls (Visibility Switch & Delete Entry)",
+    mobile: false,
+    needsDb: true,
+    run: runOwnerControlsGate,
+  },
+  {
+    slug: "sw-privacy",
+    label: "T23: Service Worker Privacy & Network-Only Document Rules",
+    mobile: false,
+    needsDb: true,
+    run: runSwPrivacyGate,
   },
   {
     // BRAWUKA-729 acceptance (BRAWUKA-755): real-HTTP access-log proof over

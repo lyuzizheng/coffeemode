@@ -13,6 +13,8 @@ export const E2E_CHECKIN_ID = "e2e00000-0000-4000-a000-000000000003";
 // the next slice's like-toggle gate has a foreign row to act on.
 export const E2E_USER2_ID = "e2e00000-0000-4000-a000-000000000004";
 export const E2E_CHECKIN2_ID = "e2e00000-0000-4000-a000-000000000005";
+// Soft-deleted tombstone cafe for 404 recovery testing (T19 gap, BRAWUKA-706).
+export const E2E_TOMBSTONE_CAFE_ID = "e2e00000-0000-4000-a000-000000000006";
 
 export const DEFAULT_DATABASE_URL = "postgres://coffeemode:coffeemode@localhost:5432/coffeemode";
 
@@ -134,6 +136,26 @@ export async function setupDbFixtures({
          visited_at = now()`,
       [E2E_CHECKIN2_ID, E2E_CAFE_ID, E2E_USER2_ID],
     );
+
+    // Soft-deleted tombstone cafe: keeps coordinates for 404 recovery testing (T19 gap).
+    await dbClient.query(
+      `insert into cafes (id, name, address, location, city, created_by, tz, deleted_at, gallery, work_stats)
+       values (
+         $1,
+         'E2E Tombstone Cafe',
+         '124 Smoke Test Lane',
+         ST_SetSRID(ST_MakePoint(-122.4194, 37.7749), 4326)::geography,
+         'San Francisco',
+         $2,
+         'America/Los_Angeles',
+         now(),
+         '[]'::jsonb,
+         $3::jsonb
+       )
+       on conflict (id) do update set
+         deleted_at = now()`,
+      [E2E_TOMBSTONE_CAFE_ID, E2E_USER_ID, seedWorkStats],
+    );
     return { hasDb: true, dbClient };
   } catch (err) {
     if (process.env.CI) {
@@ -168,8 +190,8 @@ export async function cleanupDbFixtures(dbClient) {
   // it as a run failure instead of the old warn-and-accumulate behavior.
   try {
     await dbClient.query("BEGIN");
-    await dbClient.query(`delete from cafes where id = $1 or created_by = any ($2::uuid[])`, [
-      E2E_CAFE_ID,
+    await dbClient.query(`delete from cafes where id = any ($1::uuid[]) or created_by = any ($2::uuid[])`, [
+      [E2E_CAFE_ID, E2E_TOMBSTONE_CAFE_ID],
       [E2E_USER_ID, E2E_USER2_ID],
     ]);
     await dbClient.query(`delete from checkins where user_id = any ($1::uuid[])`, [

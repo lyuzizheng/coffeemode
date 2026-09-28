@@ -279,19 +279,33 @@ fi
 # Runs on both provisioning paths — a host that already has Docker takes the
 # install branch's skip above, but it still snapshots its resolver file into
 # every container it creates, so the guarantee is not conditional on the install.
+# The step fails closed (BRAWUKA-776): while the live resolver file has no
+# nameserver, a container created now would snapshot an empty upstream set, so
+# provisioning stops here instead of continuing into container creation.
 DNS_FALLBACK_STATE="not checked"
 if [ "$SKIP_DNS" = false ]; then
-  log "Step 4/8: Guaranteeing a non-empty upstream resolver set (DHCP nameservers first, public fallback appended)..."
-  if [ "$DRY_RUN" = false ]; then
-    if DNS_FALLBACK_STATE="$("${SCRIPT_DIR}/dns-fallback.sh" apply | tail -n 1)"; then
-      ok "Host DNS fallback: ${DNS_FALLBACK_STATE}"
-    else
-      warn "Host DNS fallback step reported a failure; continuing. See docs/devops/LIFECYCLE.md §6."
-      DNS_FALLBACK_STATE="FAILED — see docs/devops/LIFECYCLE.md §6"
-    fi
+  log "Step 4/8: Installing the host DNS upstream fallback and checking live readiness..."
+  DNS_ARGS=(apply)
+  if [ "$DRY_RUN" = true ]; then
+    DNS_ARGS+=(--dry-run)
+  fi
+  set +e
+  DNS_OUTPUT="$("${SCRIPT_DIR}/dns-fallback.sh" "${DNS_ARGS[@]}")"
+  DNS_STATUS=$?
+  set -e
+  # The step's own warnings and remediation hints are part of the contract, so
+  # they are printed verbatim rather than reduced to a summary line.
+  printf '%s\n' "$DNS_OUTPUT"
+  DNS_FALLBACK_STATE="$(printf '%s\n' "$DNS_OUTPUT" | tail -n 1)"
+  if [ "$DNS_STATUS" -eq 0 ]; then
+    ok "Host DNS fallback: ${DNS_FALLBACK_STATE}"
+  elif [ "$DRY_RUN" = true ]; then
+    warn "[DRY-RUN] Host DNS fallback would stop provisioning: ${DNS_FALLBACK_STATE}"
   else
-    DNS_FALLBACK_STATE="$("${SCRIPT_DIR}/dns-fallback.sh" apply --dry-run | tail -n 1)"
-    ok "[DRY-RUN] Host DNS fallback simulated."
+    error "Host DNS fallback is not in effect (${DNS_FALLBACK_STATE})."
+    error "Refusing to continue: Docker would snapshot an empty upstream resolver set into every container created now."
+    error "Fix the host resolver as described above and re-run, or re-run with --skip-dns to accept that risk explicitly."
+    exit 1
   fi
 else
   log "Step 4/8: Host DNS fallback skipped (--skip-dns)."

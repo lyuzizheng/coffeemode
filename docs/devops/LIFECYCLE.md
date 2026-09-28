@@ -35,7 +35,7 @@ This document establishes the canonical operational lifecycle, deployment runboo
 
 3. **Database Pre-Migration Snapshot Invariant**:
    - Every database migration in Production MUST be preceded by an automated atomic snapshot (`scripts/devops/backup.sh --env prod --reason pre-migration`).
-   - If an upgrade fails or triggers healthcheck errors, the rollback script restores the exact pre-migration snapshot in one command.
+   - If an upgrade fails or triggers healthcheck errors, the rollback script restores that release's boundary snapshot under the image it deployed on top of. The failure trap prints the exact command, adding `--image-tag <last recorded release>` when the attempt never reached its `releases.log` append.
 
 4. **Zero-Downtime Migration & Deployment Invariants**:
    - Migrations follow additive, non-breaking DDL: nullable columns, constant defaults, and concurrent index creation (`CREATE INDEX CONCURRENTLY`).
@@ -177,6 +177,19 @@ Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enfor
      `web/scripts/cleanup-stale-test-dbs.mjs --apply` (dry-run by default).
      Never run two instances concurrently against one server.
 
+**Staging edge credentials (BRAWUKA-762)**: `staging.cafemood.app` is gated by
+Cloudflare Access, so `upgrade-staging.sh` requires `CF_ACCESS_CLIENT_ID` and
+`CF_ACCESS_CLIENT_SECRET` (from the environment, or from
+`deploy/dokploy/.env.staging`) before it takes a snapshot, migrates, or triggers
+a deploy. Every health probe carries that Service Token pair plus the
+`cafemood-smoke/1.0` UA the WAF rule whitelists (BRAWUKA-237). A tokenless run
+aborts with a named error before the pipeline starts, and every probe — the
+pre-deployment baseline and both convergence polls — classifies the HTTP status:
+the edge answering with the Access gate (a redirect to the login, or 401/403)
+aborts immediately with that status instead of polling to a timeout that blames
+the build. `upgrade-prod.sh` needs no token (production is not Access-gated) but
+identifies its probes with the same UA.
+
 ### Phase 4: Production Promotion & Zero-Downtime Deployment
 - **Trigger**: Git signed release tag (`v*`) created on `main` following verified staging validation and Reviewer & Architect approval.
 - **Executor**: `scripts/devops/upgrade-prod.sh`.
@@ -192,10 +205,12 @@ Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enfor
 - **Trigger**: Anomaly, elevated error rates, or failed post-deploy smoke tests.
 - **Executor**: `scripts/devops/rollback-prod.sh`.
 - **Workflow**:
-  1. Automatically parses the persistent release history log (`releases.log`) to resolve the previous release's image tag and pre-migration database snapshot path.
-  2. Reverts the web application container to the previous release image (via `docker service rollback` in Swarm mode, or parameterized `IMAGE_TAG` compose update).
-  3. Restores the production database to the pre-migration state using `scripts/devops/restore.sh --env prod --file <SNAPSHOT> --yes`.
-  4. Runs smoke tests to confirm healthy production recovery.
+  1. Parses the release history log (`releases.log`, one `timestamp|image tag|pre-migration snapshot` row per landed release) and pairs the **image recorded immediately before the release being undone** with **that release's own boundary snapshot**: undoing release C runs image B against the `pre-C` archive. `--plan-only` prints the resolved pairing and exits.
+  2. Fails closed instead of guessing: a first deployment, a release recorded without a snapshot, an image with no later boundary, or an archive that is missing from disk all abort with an actionable error — the script never falls back to an older archive. A deployment that failed before its release-history append has no recorded image, so `--image-tag` names the image the rollback **runs** — the target previous image, not the failed release (the `upgrade-prod.sh` failure trap prints the exact command).
+  3. Reverts the web application container to the resolved image: `docker service update --image <repo>:<TAG>` in Swarm mode, or a parameterized `IMAGE_TAG` compose update otherwise — never `docker service rollback`, whose "previous service spec" need not be the resolved image (a tag can be redeployed, and a release that failed before its container update never became anyone's previous spec).
+  4. Verifies the container reports the resolved image before the database is touched: the report must name the whole reference Step 1 selected, `<repo>:<TAG>`, optionally pinned to the digest that tag resolved to (`<repo>:<TAG>@sha256:<digest>`). A missing report, a different tag, or another repository carrying the same tag aborts with the restore skipped, so a snapshot is never restored under an image the plan did not select.
+  5. Restores the production database from the resolved boundary snapshot using `scripts/devops/restore.sh --env prod --file <SNAPSHOT> --yes`.
+  6. Runs smoke tests to confirm healthy production recovery.
 
 ### Phase 6: Automated Backups & Disaster Recovery
 - **Daily Scheduled Cron**:
@@ -220,7 +235,7 @@ Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enfor
 ### Phase 7: Cold-Start VPS Provisioning
 - **Target**: Blank Ubuntu or Debian LTS server.
 - **Orchestration**: Run `scripts/devops/bootstrap.sh` from the repository:
-  1. Installs core utilities, security tools, swap, and production kernel sysctl parameters.
+  1. Installs core utilities, security tools, swap, and production kernel sysctl parameters, then installs the host DNS upstream fallback and refuses to continue while the live resolver file has no nameserver — this runs before Docker can create a container (`scripts/devops/dns-fallback.sh`, BRAWUKA-770/776 — see §6).
   2. Hardens firewall (UFW) and sets up fail2ban for SSH brute-force defense.
   3. Installs Docker CE, Docker Compose plugin, and initializes Docker Swarm.
   4. Configures Dokploy PaaS and Traefik reverse proxy on ports 80/443.
@@ -238,11 +253,12 @@ All operational scripts live canonically under `scripts/devops/` and are fully e
 
 | Script | Purpose | Key Flags |
 | --- | --- | --- |
-| `provision-vps.sh` | Hardens and provisions a blank Ubuntu/Debian server | `--ssh-port`, `--swap-size`, `--skip-docker`, `--dry-run` |
+| `provision-vps.sh` | Hardens and provisions a blank Ubuntu/Debian server | `--ssh-port`, `--swap-size`, `--skip-dns`, `--skip-docker`, `--dry-run` |
+| `dns-fallback.sh` | Idempotent host DNS upstream fallback: keeps DHCP nameservers first and appends a public resolver via dhcpcd's `resolv.conf.tail`; writes nothing where another manager owns the file, and exits 1 while the live file has no nameserver (BRAWUKA-770/776/777/778) | `apply`, `check`, `revert`, `--dry-run` |
 | `bootstrap.sh` | End-to-end cold-start orchestrator from zero to live | `--env [staging\|prod\|both]`, `--skip-vps-prep`, `--skip-cloudflare`, `--dry-run` |
 | `upgrade-staging.sh` | Upgrades staging service with migrations and smoke tests | `--deploy-url`, `--skip-backup`, `--image-tag`, `--dry-run` |
 | `upgrade-prod.sh` | Zero-downtime production upgrade with staging gate & safety snapshot | `--skip-staging-gate`, `--deploy-url`, `--image-tag`, `--dry-run` |
-| `rollback-prod.sh` | Instant rollback of container image and database to pre-migration state | `--backup-file`, `--image-tag`, `--yes`, `--dry-run` |
+| `rollback-prod.sh` | Instant rollback of container image and database to the boundary before a release | `--backup-file`, `--image-tag`, `--plan-only`, `--yes`, `--dry-run` |
 | `backup.sh` | Atomic `pg_dump -Fc` compressed backup + volume + R2 GFS upload | `--env`, `--type [db\|vol\|full]`, `--reason`, `--retention-days`, `--dry-run` |
 | `restore.sh` | Restores database archive with PostGIS verification & drill mode | `--env`, `--file`, `--download-r2`, `--drill`, `--yes`, `--dry-run` |
 | `smoke-test.sh` | In-repo post-deployment automated health verification | `staging\|prod`, `--url <override>`, `--timeout <sec>`, `--cf-client-id <id>`, `--cf-client-secret <sec>` |
@@ -252,15 +268,19 @@ All operational scripts live canonically under `scripts/devops/` and are fully e
 ## 5. Disaster Recovery & Recovery Drill Playbook
 
 ### Disaster Recovery Scenario A: Data Corruption or Bad Migration in Production
-1. Immediately stop incoming writes (if necessary) and identify the pre-migration snapshot:
+1. Immediately stop incoming writes (if necessary) and inspect the pairing a rollback would apply (target image + boundary snapshot):
+   ```bash
+   ./scripts/devops/rollback-prod.sh --plan-only
+   ```
+2. Execute the rollback with that pairing. If the failed deployment never reached its `releases.log` append, name it explicitly as the `upgrade-prod.sh` failure trap instructs (`--backup-file <snapshot> --image-tag <last recorded release>`):
    ```bash
    ./scripts/devops/rollback-prod.sh
    ```
-2. If restoring to a specific known snapshot:
+3. If restoring to a specific known snapshot:
    ```bash
    ./scripts/devops/restore.sh --env prod --file /backups/coffeemode_prod_pre-migration_YYYYMMDD_HHMMSSZ.dump.gz --yes
    ```
-3. Verify production health:
+4. Verify production health:
    ```bash
    ./scripts/devops/smoke-test.sh prod
    ```
@@ -276,11 +296,16 @@ All operational scripts live canonically under `scripts/devops/` and are fully e
    ```bash
    ./scripts/devops/bootstrap.sh --env both
    ```
-4. Restore production database from offsite Cloudflare R2 backup:
+4. Re-verify that the rebuilt host cannot hand Docker an empty upstream resolver set (cold start already stops before container creation when it can), and fix it in place if it can:
+   ```bash
+   ./scripts/devops/dns-fallback.sh check   # exit 1 = fallback missing from the tail, or the live file has no nameserver; exit 0 = verified or not-applicable (the status line says which)
+   ./scripts/devops/dns-fallback.sh apply   # idempotent; DHCP nameservers stay first
+   ```
+5. Restore production database from offsite Cloudflare R2 backup:
    ```bash
    ./scripts/devops/restore.sh --env prod --download-r2 coffeemode_prod_scheduled_YYYYMMDD_HHMMSSZ.dump.gz --yes
    ```
-5. Run smoke tests:
+6. Run smoke tests:
    ```bash
    ./scripts/devops/smoke-test.sh prod
    ```
@@ -291,11 +316,18 @@ To verify backup viability without touching production or staging data, run non-
 ./scripts/devops/restore.sh --env staging --file /path/to/backup.dump.gz --drill
 ```
 In drill mode (`--drill`), the script always targets the STAGING Supabase project:
-1. Validates SHA256 checksum and archive integrity.
+1. Validates the SHA256 checksum and that `pg_restore` can read the archive's table of contents (the gzip stream is drained, so a valid archive larger than the pipe buffer is never rejected by a `SIGPIPE`).
 2. Creates a scratch database `restore_drill_<timestamp>_<pid>` on staging.
-3. Restores schema, tables, and spatial data into the scratch database.
-4. Executes PostGIS extension checks, row count audits, and spatial queries.
-5. Drops the scratch database and reports a verified `PASSED` result.
+3. Restores schema, tables, and spatial data into the scratch database; a nonzero `pg_restore` exit status fails the drill.
+4. Executes PostGIS extension checks, row count audits (`cafes`, `checkins`, `profiles`: each must be readable with a numeric count, and the three must not all be empty), and spatial queries.
+5. Drops the scratch database — on the failure paths as well as the success path — and reports a verified `PASSED` result.
+
+The drill is strict by design (BRAWUKA-728): an unreadable archive, a nonzero
+`pg_restore` exit status, a missing required table, a restore in which all three
+required tables are empty, a missing PostGIS extension, or a failed spatial query
+each exit nonzero. An individual table may legitimately restore empty; only the
+all-empty set is rejected. A drill that cannot verify the restore never reports
+`PASSED`, so a green drill is evidence the archive was actually restorable.
 
 ---
 
@@ -349,3 +381,46 @@ Dokploy hands `memoryLimit` / `memoryReservation` straight to the Docker API, wh
 desc = invalid memory value 512: Must be at least 4MiB
 ```
 Always carry the unit — `512M`, `1G`. This surfaced on 2026-09-21 as a build failure for the (since retired) `coffeemode-mcp-grafana` app (BRAWUKA-599). Neither `coffeemode-web-prod` nor `coffeemode-web-staging` sets a memory limit today, so no current service carries the misconfiguration.
+
+### Host DNS Upstream Fallback (dhcpcd hosts — BRAWUKA-764/BRAWUKA-770)
+**Why.** Docker snapshots the host `/etc/resolv.conf` into every container's embedded resolver (`127.0.0.11`) **at container-creation time**, and it never refills a running container after the host recovers. If the host file is regenerated with no nameserver while the uplink is down, every container created in that window keeps `# NO EXTERNAL NAMESERVERS DEFINED` for its whole life. That is the 2026-09-26 n150 outage: staging deploys failed for ~19h with `Could not resolve host: github.com`, and web→POI answered 502 because the app could not resolve its upstream.
+
+**Policy** (Owner decision on BRAWUKA-764). DHCP nameservers stay first and a public resolver is appended as a fallback — never a replacement, and never a `/etc/docker/daemon.json` `dns` override, which would drop the LAN resolver and costs a Docker restart.
+
+**Applicability.** The mechanism is dhcpcd's own tail file. n150 runs `dhcpcd-base` 10.1.0, launched per-interface by ifupdown (no `dhcpcd.service`, no systemd-resolved, no NetworkManager, no openresolv). Its hook `/usr/lib/dhcpcd/dhcpcd-hooks/20-resolv.conf` appends `/etc/resolv.conf.tail` to every file it regenerates — including the branch that runs when DHCP returned no nameserver at all, which is the window this guards. `scripts/devops/dns-fallback.sh` verifies that shape first and reports `not-applicable`, writing nothing, on hosts where it does not hold: a `/etc/resolv.conf` symlink to a resolved/NetworkManager stub, an installed `resolvconf`, no dhcpcd hook, a hook that never reads the tail, or a live file that does not carry dhcpcd's own first line `# Generated by dhcpcd`. That signature is the ownership evidence — an installed hook says nothing about which manager wrote the file now, and appending the tail to a NetworkManager-owned file would claim a fallback that never takes effect (BRAWUKA-778).
+
+**Provisioning.** `scripts/devops/provision-vps.sh` runs `dns-fallback.sh apply` as Step 4/8 on both paths — a blank host and a host where Docker is already installed — because the risk belongs to the host, not to the Docker install. Cold start and disaster recovery therefore carry the same guarantee as the manual n150 fix. The step **fails closed** (BRAWUKA-776): when the live file has no nameserver, `apply` exits 1 and provisioning stops before Step 5 with `Refusing to continue`, because every container created from that point would snapshot the empty set. `--dry-run` rehearses the same check without blocking (it writes nothing and reports what a real run would do), and `--skip-dns` is the explicit operator override for a host deliberately managed elsewhere.
+
+**Apply (idempotent).**
+```bash
+./scripts/devops/dns-fallback.sh apply    # appends `nameserver 1.1.1.1` to /etc/resolv.conf.tail
+sudo dhcpcd <iface>                       # optional: regenerate /etc/resolv.conf now
+```
+The tail file is the durable part; the live file is regenerated by dhcpcd on the next lease event, and any existing tail entries are preserved. Re-running never duplicates the line, and a tail entry written without a final newline gets one first, so two nameserver records can never fuse into one bogus address (BRAWUKA-777).
+
+**Verify.**
+```bash
+./scripts/devops/dns-fallback.sh check    # exit 1 when the fallback is missing or the live file has no nameserver
+grep -c '^nameserver' /etc/resolv.conf    # must be >= 1
+```
+`check` reports a failure — not a warning — when the live file currently has no nameserver line, because a container created in that state snapshots the empty set.
+
+Exit codes are the contract: `0` **ok** (fallback installed, or `not-applicable` on this host, and the live file has a nameserver), `1` **not-ready** (the live file has no nameserver line or cannot be read, so the fallback is not in effect and container creation must wait), `2` **usage error**. `check` additionally reports **fail** — also exit 1 — when the fallback is missing from the tail file, which is a configuration fault rather than a regeneration wait. The final output line carries the machine-readable status (`dns-fallback: ok|fail|not-ready|not-applicable`); that is the line provisioning summarises and the one to quote in an incident thread.
+
+The not-ready output names a concrete command only where this script confirmed dhcpcd ownership: `dhcpcd <iface>`. On every other host it says to regenerate `/etc/resolv.conf` through whichever manager owns it. It never infers a command from a binary that happens to be installed or from a symlink target — a NetworkManager host with an unused `resolvconf` on PATH is told to recover through its own manager, not to run `resolvconf -u` or dhcpcd (BRAWUKA-778). `revert` reports the same distinction: on a dhcpcd host the live file still carries the fallback until the next regeneration, and on any other host the script never wrote it.
+
+**Containers: existing vs. created during the outage.** Only containers created **after** the fallback is in the live file inherit it.
+- A container created during the outage keeps its empty snapshot and must be **recreated**; waiting for the host to recover does nothing:
+  ```bash
+  docker ps --format '{{.Names}}' | while read -r c; do printf '%s: ' "$c"; docker exec "$c" getent hosts github.com >/dev/null 2>&1 && echo ok || echo FAIL; done
+  docker service update --force <swarm-service>   # swarm services: dokploy, dokploy-postgres, postgres-back-up-*, app-copy-*
+  docker restart <container>                      # plain containers: dokploy-traefik, dokploy-mcp-server, coffeemode-ci-postgres
+  ```
+- Containers created after the fix need no action; confirm the inherited upstream with `docker exec <container> cat /etc/resolv.conf`.
+
+**Rollback.**
+```bash
+./scripts/devops/dns-fallback.sh revert   # drops only the fallback line, keeps other tail entries
+sudo dhcpcd <iface>                       # regenerate /etc/resolv.conf from the remaining entries
+```
+`revert` is idempotent and deletes the tail file only when nothing else remains in it. The live file needs no restore: dhcpcd rebuilds it from interface state at the next regeneration (the one-off `/etc/resolv.conf.bak-20260927` from the incident is a copy of that live file, not part of the guarantee).

@@ -12,7 +12,11 @@ import type { ProvisionPhotosDeps } from "./provision-photos";
  * deleted rows no longer count as live references; deletes every id no
  * LIVE row still names. Best-effort like the rollback compensation in
  * `provision-photos.ts`: failures are swallowed (logged inside the dep)
- * and never fail the already-committed delete.
+ * and never fail the already-committed delete. Whatever this leg misses
+ * (storage outage) is the reference-aware sweeper's job to converge:
+ * since BRAWUKA-725 `clean-orphan-originals.mjs` reconciles final-marked
+ * originals against the live-keys export instead of skipping them, so a
+ * failed leg here delays cleanup, it never leaks the keys forever.
  *
  * No live-intent gate here, unlike `compensateProvisionedPhotos`: intents
  * are single-use and consumed when the photo attached, so a live intent

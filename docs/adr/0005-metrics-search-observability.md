@@ -91,22 +91,33 @@ from whatever retention the destination provides; if retention < 7 days,
 evaluate on the largest available window and note it in the promotion
 evidence.
 
-### Alerts — **never created; platform retired 2026-09-21**
+### Alerts — **created 2026-09-25 (BRAWUKA-712)**
 
-The table below was the design. None of the three alerts was ever created —
-they depended on the collection path above, which never existed. The
-Grafana-managed rules that now exist (BRAWUKA-611, `CoffeeMode` folder) cover
-the **API error surface** — 5xx, worker `upstream_error`, rate-limit flood —
-and deliberately do **not** cover search telemetry, because those lines are
-not in Loki yet. When the collection path is wired, these three conditions are
-the natural next rules; the thresholds and windows below are still the
-intended ones.
+The three conditions below are live as Grafana-managed rules in the
+`CoffeeMode` folder, rule group `coffeemode-search`, added now that the
+collection path above feeds Loki. They follow the BRAWUKA-611 conventions:
+`for: 15m`, `noData`/`execErr` → `OK`, labels `severity=warning` +
+`team=coffeemode`, and one instance per `deployment_environment_name`
+carrying an `env=prod|staging` label for the notification policy to route on.
 
-| Alert | Condition | Window |
-| --- | --- | --- |
-| POI degradation | `poi_degraded_rate` > 5% with ≥ 20 requests | 24 h |
-| Search latency regression | p95(`search.duration_ms`) > 400 ms | 24 h, ≥ 50 requests |
-| Edge-cache dead | `cache_hit_rate` = 0 with ≥ 50 misses | 24 h |
+| Alert | Condition | Window | Rule uid |
+| --- | --- | --- | --- |
+| POI degradation | `poi_degraded_rate` > 5% with ≥ 20 requests | 7 d rolling | `dfza5w8cynoxsd` |
+| Search latency regression | p95(`search.duration_ms`) > 400 ms with ≥ 50 requests, `search.cache` ∈ {miss, bypass} only (hit rows are 0 ms by design) | 24 h | `afza5w97twirke` |
+| Edge-cache dead | `cache_hit_rate` = 0 with ≥ 50 misses | 24 h | `ffza5w9gak4xsb` |
+
+Two deviations/implementation notes:
+
+- The POI window is the 7-day rolling window of the derived-ratio 口径 — the
+  original alert design (this section pre-BRAWUKA-712) said 24 h; BRAWUKA-712's
+  scope pinned 7 d.
+- The cache rule evaluates the `cache_hit_rate = 0` floor as the miss share
+  reaching 1 (`count(miss) / count(hit|miss)`), because a zero-hit numerator
+  produces no series and the rule would otherwise never fire.
+
+Until BRAWUKA-614 lands the contact point and the env-split notification
+policy, these rules evaluate and show state but notify nobody — the same gap
+the BRAWUKA-611 rules have.
 
 ### Dashboard
 

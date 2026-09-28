@@ -71,15 +71,27 @@ else
         image_service=true
         poi_service=true
         ;;
+      # Structure-guard exemption ratchet (spec 0009 §7): web runs it inside
+      # `check:structure`, and both Workers run the same script against their
+      # own registries (`npm run check:suppressions`), so a change must re-run
+      # all three gates (application + the two service gates) — same policy as
+      # `web/structure.config.mjs` below.
+      web/scripts/check-suppressions.mjs)
+        application=true
+        image_service=true
+        poi_service=true
+        ;;
       # Integration-gated web paths: real Postgres/PostGIS or real MinIO/R2.
       # `web/db/*`, `web/lib/*`, and `web/app/api/*`, `web/app/auth/*` are the layers the gated
-      # suites exercise; `web/shared/*` and `web/types/*` are the runtime modules
+      # suites exercise (`web/proxy.ts` owns the verified-user spoof strip the
+      # handoff boundary suite drives via the real `proxy()` entry,
+      # BRAWUKA-750); `web/shared/*` and `web/types/*` are the runtime modules
       # they import (same policy as `packages/common/*`); `web/config/*` is the
       # product configuration `web/lib/config.ts` loads at import time (rate
       # limits and budgets the HTTP suites assert on); `web/scripts/*` is gate and
       # migration machinery the suites invoke by path (`migrate.mjs`,
       # `cleanup-stale-test-dbs.mjs`), the same policy as repo-level `scripts/*`.
-      web/db/*|web/lib/*|web/app/api/*|web/app/auth/*|web/shared/*|web/types/*|web/config/*|web/scripts/*|web/package*.json)
+      web/db/*|web/lib/*|web/app/api/*|web/app/auth/*|web/shared/*|web/types/*|web/config/*|web/scripts/*|web/package*.json|web/proxy.ts)
         application=true
         integration=true
         ;;

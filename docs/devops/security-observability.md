@@ -42,7 +42,7 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
   log line was removed with Better Stack itself (BRAWUKA-611), so the log line
   is the only record and the only thing the alert rule reads.
 - `otlp-logs` hook (BRAWUKA-607, BRAWUKA-613, `web/lib/observability/otlp-logs.ts`) ships
-  every `logError`/`logWarn` JSON line, the proxy's `type:"access"` line, and
+  every `logError`/`logWarn` JSON line, the `type:"access"` completion line, and
   search telemetry (`type:"search.telemetry"`, ADR-0005) to Grafana Cloud Loki
   over OTLP, on the same SDK and endpoint as traces
   (`OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS`, BRAWUKA-606).
@@ -52,11 +52,18 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
   Because the line is emitted inside the request's span, it carries `trace_id` /
   `span_id` and clicks through to its Tempo trace — the reason the Alloy stdout
   collector was dropped (docs/devops/grafana-cloud-adoption.md §3 P0-1).
-  The proxy's access line records the request, not an outcome: the proxy runs
-  before routing, so its response is always the 200 `NextResponse.next()` and it
-  never sees the route's status or envelope `code` (verified against a running
-  dev server — a 404 page logs `"status":200`). The error lines carry the real
-  `status` and `code`, so they remain the metric source.
+  The access stream describes the completed request (BRAWUKA-729): every
+  `apiRoute()` exit — handler responses, origin/guard rejections, the
+  catch-all — emits one line with the produced `status`, the envelope `code`
+  on ≥400, and guard+handler `duration_ms`, except the accepted hot-path
+  exclusions (BRAWUKA-756, spec 0011 edge cases: `GET`/`HEAD /api/health`,
+  `GET /api/heartbeat`, `GET /api/config` pass `silent: true` and emit
+  nothing — they already skip the proxy matcher, so they stay fully out of
+  the access stream by design). The proxy stays silent on `/api/*` (its
+  pre-route `NextResponse.next()` is always 200), so no duplicate success
+  entry exists; non-API traffic keeps its proxy line.
+  Page renders still log their pre-route status (a 404 page logs
+  `"status":200`) — the error lines carry the real `status`/`code` there.
 - **Loki label vocabulary** — Grafana Cloud promotes a fixed list of OTLP
   resource attributes to Loki index labels and puts everything else in
   structured metadata. The app's lines therefore index on exactly two labels,
@@ -81,6 +88,26 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
   Each rule carries `env=prod|staging`, `severity` and `team=coffeemode`, and
   sets no per-rule receiver, so routing is decided in one place — the
   notification policy.
+- **Search telemetry alert rules** (BRAWUKA-712, folder `CoffeeMode`, group
+  `coffeemode-search`) — three Grafana-managed rules over the
+  `log_type="search.telemetry"` structured metadata, thresholds per ADR-0005:
+  - `CoffeeMode — Search POI degraded rate` —
+    `sum by (…) count(search_poi_degraded="true") / sum by (…) count(…) > 0.05`
+    with ≥ 20 requests, 7 d rolling (`dfza5w8cynoxsd`).
+  - `CoffeeMode — Search latency regression (p95)` —
+    `quantile_over_time(0.95, … | unwrap search_duration_ms [24h]) > 400` with
+    ≥ 50 requests, `miss|bypass` rows only (`afza5w97twirke`).
+  - `CoffeeMode — Edge cache dead (hit rate 0)` —
+    `count(miss) / count(hit|miss)` reaching 1 with ≥ 50 misses, 24 h
+    (`ffza5w9gak4xsb`).
+  Two mechanics worth knowing: every aggregation is wrapped in
+  `sum by (service_name, deployment_environment_name)` (OTLP structured
+  metadata comes back as per-line series labels, so raw `count_over_time`
+  returns one series per log line), and the p95 query `drop`s all varying
+  metadata labels before `unwrap` so the quantile spans one series per
+  environment. Instances split per environment with an `env=prod|staging`
+  label; `for: 15m`, `noData`/`execErr` → `OK`. Also silent until the
+  notification path lands (next bullet).
 - **The notification path is not wired yet — and this is not hypothetical.** The
   stack has no contact point and the default policy receiver is the built-in
   no-op `empty`, so a firing rule notifies nobody. As of 2026-09-21 13:24 UTC

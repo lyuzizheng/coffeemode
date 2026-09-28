@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "@heroui/react";
 import { useTranslations } from "next-intl";
@@ -28,7 +28,65 @@ interface CheckinResumeProps {
   draftTtlHours: number;
 }
 
-function CheckinResumeInner({ draftTtlHours }: CheckinResumeProps) {
+function restorePhotos(photos: PendingCheckinDraft["photos"]): PhotoUpload[] {
+  return photos.map((p) => {
+    const restoredFile =
+      p.file instanceof File
+        ? p.file
+        : new File([p.file], p.name || "photo.jpg", { type: p.file.type });
+    return {
+      id: p.id,
+      previewUrl: URL.createObjectURL(p.file),
+      status: p.imageUuid ? ("done" as const) : ("staged" as const),
+      ...(p.imageUuid ? { imageUuid: p.imageUuid } : {}),
+      file: restoredFile,
+    };
+  });
+}
+
+function getCleanResumeUrl(pathname: string, searchParams: { toString(): string }): string {
+  const params = new URLSearchParams(searchParams.toString());
+  params.delete(CHECKIN_RESUME_PARAM);
+  const remainingQuery = params.toString();
+  return remainingQuery ? `${pathname}?${remainingQuery}` : pathname;
+}
+
+function useIsMounted() {
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+  return isMountedRef;
+}
+
+interface RecoveryHandle {
+  pathname: string;
+  cancelled: boolean;
+}
+
+function useNavigationCancellation(
+  activeRecoveryRef: { current: RecoveryHandle | null },
+  lastProcessedTriggerRef: { current: string | null },
+  pathname: string,
+) {
+  const currentPathnameRef = useRef(pathname);
+
+  useEffect(() => {
+    currentPathnameRef.current = pathname;
+    if (activeRecoveryRef.current && activeRecoveryRef.current.pathname !== pathname) {
+      activeRecoveryRef.current.cancelled = true;
+      activeRecoveryRef.current = null;
+      lastProcessedTriggerRef.current = null;
+    }
+  }, [pathname, activeRecoveryRef, lastProcessedTriggerRef]);
+
+  return currentPathnameRef;
+}
+
+function useCheckinResume(draftTtlHours: number) {
   const t = useTranslations("checkIn");
   const searchParams = useSearchParams();
   const pathname = usePathname();
@@ -37,29 +95,43 @@ function CheckinResumeInner({ draftTtlHours }: CheckinResumeProps) {
   const [photos, setPhotos] = useState<PhotoUpload[]>([]);
   const [open, setOpen] = useState(false);
 
+  const isMountedRef = useIsMounted();
+  const activeRecoveryRef = useRef<RecoveryHandle | null>(null);
+  const lastProcessedTriggerRef = useRef<string | null>(null);
+  const currentPathnameRef = useNavigationCancellation(
+    activeRecoveryRef,
+    lastProcessedTriggerRef,
+    pathname,
+  );
+
   useEffect(() => {
-    if (searchParams.get(CHECKIN_RESUME_PARAM) !== "1") return;
+    if (searchParams.get(CHECKIN_RESUME_PARAM) !== "1") {
+      lastProcessedTriggerRef.current = null;
+      return;
+    }
+
+    const triggerKey = `${pathname}?${searchParams.toString()}`;
+    if (lastProcessedTriggerRef.current === triggerKey) {
+      return;
+    }
+    lastProcessedTriggerRef.current = triggerKey;
+
+    if (activeRecoveryRef.current) {
+      activeRecoveryRef.current.cancelled = true;
+    }
+
+    const recovery = { pathname, cancelled: false };
+    activeRecoveryRef.current = recovery;
+
     // Strip the flag first so a refresh doesn't resurrect a consumed bounce.
-    router.replace(pathname, { scroll: false });
-    let cancelled = false;
+    router.replace(getCleanResumeUrl(pathname, searchParams), { scroll: false });
+
     void loadPendingCheckin(draftTtlHours * 3_600_000)
       .then((stored) => {
-        if (cancelled || !stored) return;
-        setPhotos(
-          stored.photos.map((p) => {
-            const restoredFile =
-              p.file instanceof File
-                ? p.file
-                : new File([p.file], p.name || "photo.jpg", { type: p.file.type });
-            return {
-              id: p.id,
-              previewUrl: URL.createObjectURL(p.file),
-              status: p.imageUuid ? ("done" as const) : ("staged" as const),
-              ...(p.imageUuid ? { imageUuid: p.imageUuid } : {}),
-              file: restoredFile,
-            };
-          }),
-        );
+        if (!isMountedRef.current) return;
+        if (currentPathnameRef.current !== recovery.pathname) return;
+        if (recovery.cancelled || !stored) return;
+        setPhotos(restorePhotos(stored.photos));
         setDraft(stored);
         setOpen(true);
         toast(t("draftRestored"), { timeout: 4000 });
@@ -67,12 +139,7 @@ function CheckinResumeInner({ draftTtlHours }: CheckinResumeProps) {
       .catch(() => {
         // IndexedDB unavailable (private mode) — the bounce just lands home.
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [searchParams, pathname, router, draftTtlHours, t]);
-
-  if (!draft) return null;
+  }, [searchParams, pathname, router, draftTtlHours, t, currentPathnameRef, isMountedRef]);
 
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
@@ -84,6 +151,14 @@ function CheckinResumeInner({ draftTtlHours }: CheckinResumeProps) {
       void clearPendingCheckin().catch(() => {});
     }
   };
+
+  return { draft, photos, open, handleOpenChange };
+}
+
+function CheckinResumeInner({ draftTtlHours }: CheckinResumeProps) {
+  const { draft, photos, open, handleOpenChange } = useCheckinResume(draftTtlHours);
+
+  if (!draft) return null;
 
   return (
     <CheckinDrawer

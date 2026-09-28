@@ -1,24 +1,33 @@
 #!/usr/bin/env node
 /**
- * Suppression ratchet — the fourth `npm run check:structure` check (spec 0009).
+ * Suppression ratchet — spec 0009 §7 rule-level exemption gate. Web runs it as
+ * the fourth `npm run check:structure` check; each Worker service wires the
+ * same script as its `npm run check:suppressions` with `--root .`.
  *
- * The rule-level registry is `web/eslint-suppressions.json` (ESLint bulk
- * suppressions). Nothing in ESLint stops a developer or an agent from running
+ * The rule-level registry under the root is `eslint-suppressions.json` (ESLint
+ * bulk suppressions) with its budget in `<root>/structure-baseline.json`.
+ * Registry, baseline, empty-registry copy, and the eslint binary all resolve
+ * under the root, so web/ and both services run one implementation. A service
+ * baseline carries no `files` size registry — the services' file-size gate
+ * reads none — so a `max-lines` suppression in a service can never satisfy the
+ * parity check below: Workers keep zero file-size exemptions.
+ *
+ * Nothing in ESLint stops a developer or an agent from running
  * `npx eslint --suppress-all` and committing the result: ESLint then reports no
  * violation, `npm run lint` passes, and the structural rules quietly stop
  * applying to that code. Three assertions close that path:
  *
- *   1. Budget ratchet — `structure-baseline.json.eslintSuppressions` records the
- *      registry size (files / entries / per-rule violation totals). Any growth
- *      fails; shrinkage passes with a prompt to lower the budget, so granting an
- *      exemption always shows up as a committed diff of two files.
+ *   1. Budget ratchet — `structure-baseline.json.eslintSuppressions` records
+ *      the registry size (files / entries / per-rule violation totals). Any
+ *      growth fails; shrinkage passes with a prompt to lower the budget, so
+ *      granting an exemption always shows up as a committed diff of two files.
  *   2. Stale exemptions — ESLint is re-run against a committed empty registry
  *      (`scripts/empty-suppressions.json`) to get the full violation inventory.
- *      A registered file+rule with no remaining violation must be deleted, so the
- *      registry cannot stay fat after the code improves.
- *   3. max-lines parity — files carrying a `max-lines` suppression must be exactly
- *      the files in `structure-baseline.json.files`, so a rule-level suppression
- *      can never bypass the file-size ratchet.
+ *      A registered file+rule with no remaining violation must be deleted, so
+ *      the registry cannot stay fat after the code improves.
+ *   3. max-lines parity — files carrying a `max-lines` suppression must be
+ *      exactly the files in `structure-baseline.json.files`, so a rule-level
+ *      suppression can never bypass the file-size ratchet.
  *
  * The budget also carries `reviewBy`: spec 0009 §7.1 forbids merging an exemption
  * without an expiry date, and §7.3 requires a quarterly review, so an overdue date
@@ -30,22 +39,31 @@
  */
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   EMPTY_SUPPRESSIONS_FILE,
   STRUCTURAL_RULE_IDS,
   SUPPRESSIONS_FILE,
-  loadBaseline,
 } from "../structure.config.mjs";
 
 const webRoot = fileURLToPath(new URL("..", import.meta.url));
 const printBudget = process.argv.includes("--print-budget");
 
-const registry = JSON.parse(readFileSync(join(webRoot, SUPPRESSIONS_FILE), "utf8"));
-const baseline = loadBaseline();
+// Default root is web/ (this gate's own registry). A Worker service passes
+// `--root .` so its registry, baseline, and eslint binary are used instead.
+const rootFlag = process.argv.indexOf("--root");
+const rootArg = rootFlag === -1 ? null : process.argv[rootFlag + 1];
+if (rootFlag !== -1 && !rootArg) {
+  console.error("--root requires a directory (e.g. `--root .` from a Worker service root).");
+  process.exit(1);
+}
+const root = rootArg ? resolve(rootArg) : webRoot;
+
+const registry = JSON.parse(readFileSync(join(root, SUPPRESSIONS_FILE), "utf8"));
+const baseline = JSON.parse(readFileSync(join(root, "structure-baseline.json"), "utf8"));
 const budget = baseline.eslintSuppressions;
-const baselineFiles = baseline.files.map((entry) => entry.path);
+const baselineFiles = (baseline.files ?? []).map((entry) => entry.path);
 function summarize(entries) {
   const perRule = {};
   let files = 0;
@@ -71,7 +89,7 @@ const budgetViolations = budget?.perRule
 
 if (!budget && !printBudget) {
   console.error(
-    "structure-baseline.json has no `eslintSuppressions` budget — seed it with `node scripts/check-suppressions.mjs --print-budget`.",
+    "structure-baseline.json has no `eslintSuppressions` budget — seed it with `--print-budget`.",
   );
   process.exit(1);
 }
@@ -96,22 +114,22 @@ if (printBudget) {
 
 /** Full violation inventory: ESLint with an empty registry, structural rules only. */
 async function fullInventory() {
-  return new Promise((resolve) => {
+  return new Promise((resolveInventory) => {
     const child = spawn(
-      join(webRoot, "node_modules", ".bin", process.platform === "win32" ? "eslint.cmd" : "eslint"),
+      join(root, "node_modules", ".bin", process.platform === "win32" ? "eslint.cmd" : "eslint"),
       ["--format", "json", "--suppressions-location", EMPTY_SUPPRESSIONS_FILE],
-      { cwd: webRoot, env: process.env },
+      { cwd: root, env: process.env },
     );
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk) => (stdout += chunk));
     child.stderr.on("data", (chunk) => (stderr += chunk));
-    child.on("error", (error) => resolve({ error: error.message }));
+    child.on("error", (error) => resolveInventory({ error: error.message }));
     child.on("close", () => {
       try {
-        resolve({ report: JSON.parse(stdout || "[]") });
+        resolveInventory({ report: JSON.parse(stdout || "[]") });
       } catch {
-        resolve({ error: `eslint did not return JSON: ${stderr.trim() || stdout.trim()}` });
+        resolveInventory({ error: `eslint did not return JSON: ${stderr.trim() || stdout.trim()}` });
       }
     });
   });
@@ -123,10 +141,10 @@ if (inventory.error) {
   process.exit(1);
 }
 
-/** file (web-relative) -> rule -> live violation count, structural rules only. */
+/** file (root-relative) -> rule -> live violation count, structural rules only. */
 const live = {};
 for (const file of inventory.report) {
-  const path = relative(webRoot, file.filePath);
+  const path = relative(root, file.filePath).split("\\").join("/");
   for (const message of file.messages) {
     if (message.severity !== 2) continue;
     if (!message.ruleId || !STRUCTURAL_RULE_IDS.includes(message.ruleId)) continue;
@@ -179,7 +197,7 @@ for (const [path, rules] of Object.entries(registry)) {
   for (const [rule, { count }] of Object.entries(rules)) {
     const actual = live[path]?.[rule] ?? 0;
     if (actual === 0) {
-      const where = existsSync(join(webRoot, path)) ? "no longer violates" : "file is gone";
+      const where = existsSync(join(root, path)) ? "no longer violates" : "file is gone";
       errors.push(
         `${path}: exemption for ${rule} is stale (${where} it) — delete the entry (\`npx eslint --prune-suppressions\`) and lower the budget`,
       );

@@ -74,9 +74,12 @@ import { isOpenAt } from "@/lib/hours";
 import { executeSearch } from "@/lib/search/search-service";
 import {
   navigationPromptQueue,
-  parseNavigationBody,
   recordNavigation,
 } from "@/lib/db/navigations";
+import {
+  parseNavigationBody,
+  parsePromptAnswerBody,
+} from "@/lib/validation/navigation";
 import {
   FeedCursorError,
   encodeFeedCursor,
@@ -3093,6 +3096,27 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
         message: "cafe_id (UUID string) required",
       });
       expect(parseNavigationBody({ cafe_id: CAFE_A })).toEqual({ ok: true, value: { cafe_id: CAFE_A } });
+      expect(parsePromptAnswerBody(null)).toEqual({ ok: false, message: "object body required" });
+      expect(parsePromptAnswerBody({})).toEqual({
+        ok: false,
+        message: "outcome must be one of: visited, wont_go, not_yet",
+      });
+      expect(parsePromptAnswerBody({ outcome: "auto" })).toEqual({
+        ok: false,
+        message: "outcome must be one of: visited, wont_go, not_yet",
+      });
+      expect(parsePromptAnswerBody({ outcome: "visited" })).toEqual({
+        ok: true,
+        value: { outcome: "visited" },
+      });
+      expect(parsePromptAnswerBody({ outcome: "wont_go" })).toEqual({
+        ok: true,
+        value: { outcome: "wont_go" },
+      });
+      expect(parsePromptAnswerBody({ outcome: "not_yet" })).toEqual({
+        ok: true,
+        value: { outcome: "not_yet" },
+      });
 
       const recorded = await recordNavigation(U1, CAFE_A);
       expect(recorded.id).toMatch(/^[0-9a-f-]{36}$/);

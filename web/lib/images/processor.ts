@@ -146,6 +146,9 @@ export async function processImage(
   imageUuid: string,
   processUrls: ProcessUrls,
 ): Promise<ProcessedImage> {
+  // `original` is the stage's source bytes (BRAWUKA-730): the staged upload
+  // the browser wrote on a `provision` complete. The capped original is
+  // published to `originalPut` — a key the browser never held a capability for.
   const originalBuffer = await fetchOriginal(processUrls.original);
 
   const [cappedOriginal, card, thumbnail] = await Promise.all([
@@ -182,7 +185,9 @@ export async function processImage(
  * + targetId=<real id> so the #158 sweeper never matches it. Bytes are
  * preserved exactly: download via the attach GET URL, re-PUT to the attach
  * PUT URL (whose signed headers carry the new metadata). Only `original/` is
- * touched — card/thumbnail metadata is irrelevant to cleanup.
+ * touched — card/thumbnail metadata is irrelevant to cleanup. Both URLs name
+ * the PUBLISHED original (BRAWUKA-730): the attach leg re-stamps what the
+ * provision leg wrote, never the browser's staged upload.
  */
 export async function restampOriginal(attachUrls: ProcessUrls): Promise<void> {
   const originalBuffer = await fetchOriginal(attachUrls.original);

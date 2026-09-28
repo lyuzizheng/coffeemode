@@ -13,6 +13,7 @@
     "deploy:check": "node scripts/deploy.mjs --env staging --check && node scripts/deploy.mjs --env production --check",
     "lint": "eslint",
     "check:file-size": "node ../scripts/check-service-file-size.mjs",
+    "check:suppressions": "node ../web/scripts/check-suppressions.mjs --root .",
     "typecheck": "tsc --noEmit",
     "clean:orphan-originals": "node scripts/clean-orphan-originals.mjs"
   },

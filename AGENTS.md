@@ -51,6 +51,12 @@ priorities or decisions.
 ## Testing
 
 - NEVER write unit tests after you write code.
+- The single exception is the component-contract family `web/tests/components/**`
+  (rendered-component regressions, BRAWUKA-716/719): it runs via
+  `npm run test:unit` (`vitest run tests/components`) as a blocking
+  `application-static` step in CI. Do not add `*.test.*` files anywhere else
+  outside `web/tests/integration/**`, `web/tests/devops/**`, and
+  `web/tests/db-helpers.test.ts`.
 - Highly prefer E2E tests as the sole testing mechanism. Use them to verify
   complex features work. At the end of E2E tests, produce a verifiable and
   repeatable artifact.

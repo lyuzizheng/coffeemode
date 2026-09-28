@@ -40,6 +40,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
+# Declared before the failure trap: Step 5 appends here, rollback-prod.sh reads
+# the same file to pair a boundary snapshot with the image that must run on it.
+RELEASE_HISTORY_DIR="${REPO_ROOT}/backups/prod"
+RELEASE_LOG="${RELEASE_HISTORY_DIR}/releases.log"
+
 # ------------------------------------------------------------------------------
 # Defaults & CLI Argument Parsing
 # ------------------------------------------------------------------------------
@@ -122,6 +127,7 @@ stage() { echo -e "\n${BOLD}${CYAN}=== $* ===${NC}"; }
 # Failure Trap: prints immediate rollback command if deployment fails mid-flight
 on_failure() {
   local exit_code="$?"
+  local rollback_cmd last_recorded
   echo ""
   echo "=============================================================================="
   echo -e "${BOLD}${RED}[CRITICAL] Production Upgrade Pipeline Failed (Exit Code: ${exit_code})!${NC}"
@@ -130,16 +136,35 @@ on_failure() {
     echo "A pre-migration database snapshot was created at:"
     echo "  ${SNAPSHOT_PATH}"
     echo ""
-    echo "To immediately restore production to its pre-deployment state, run:"
-    echo -e "  ${BOLD}${YELLOW}./scripts/devops/rollback-prod.sh --backup-file \"${SNAPSHOT_PATH}\"${NC}"
+    rollback_cmd="./scripts/devops/rollback-prod.sh --backup-file \"${SNAPSHOT_PATH}\""
+    if [[ -f "$RELEASE_LOG" ]] && ! grep -qF -- "$SNAPSHOT_PATH" "$RELEASE_LOG"; then
+      # This attempt never reached its Step 5 release-history append, so
+      # rollback-prod.sh cannot pair that boundary with an image on its own;
+      # the image it deployed on top of is the last recorded release.
+      last_recorded="$(tail -n 1 "$RELEASE_LOG" | cut -d'|' -f2 || true)"
+      if [[ -n "$last_recorded" ]]; then
+        rollback_cmd="${rollback_cmd} --image-tag \"${last_recorded}\""
+      fi
+    fi
+    echo "To restore production to the state before this deployment, run:"
+    echo -e "  ${BOLD}${YELLOW}${rollback_cmd}${NC}"
   else
-    echo "To execute rollback with the latest available snapshot, run:"
-    echo -e "  ${BOLD}${YELLOW}./scripts/devops/rollback-prod.sh${NC}"
+    echo "No pre-migration snapshot was taken for this attempt (--force-skip-backup),"
+    echo "so there is no release boundary to restore."
+    echo "Supply a verified snapshot and the image that must run against it:"
+    echo -e "  ${BOLD}${YELLOW}./scripts/devops/rollback-prod.sh --backup-file <snapshot> --image-tag <previous-release-tag>${NC}"
   fi
   echo "=============================================================================="
   exit "$exit_code"
 }
 trap on_failure ERR
+
+# BRAWUKA-237/762: the WAF suspicious-UA rule challenges curl's default UA on
+# /api/*, so every production health probe identifies as the whitelisted smoke
+# UA — same constant and contract as scripts/devops/smoke-test.sh and
+# upgrade-staging.sh. Production is not behind Cloudflare Access, so no service
+# token is required here.
+SMOKE_UA="cafemood-smoke/1.0"
 
 stage "Starting Production Zero-Downtime Upgrade Pipeline"
 log "Target Environment: production"
@@ -294,7 +319,7 @@ PREV_VERSION=""
 PREV_BOOT_TIME=""
 PREV_CONTAINER_ID=""
 if [ "$DRY_RUN" = false ]; then
-  PRE_PROBE="$(curl -fsS -m 5 "${BASE_URL}/api/health" 2>/dev/null || echo "")"
+  PRE_PROBE="$(curl -fsS -m 5 -A "${SMOKE_UA}" "${BASE_URL}/api/health" 2>/dev/null || echo "")"
   if [[ -n "$PRE_PROBE" ]]; then
     PREV_VERSION="$(echo "$PRE_PROBE" | grep -oE '"version"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
     PREV_BOOT_TIME="$(echo "$PRE_PROBE" | grep -oE '"boot_time"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
@@ -318,7 +343,8 @@ if [[ -n "$DEPLOY_URL" ]]; then
     if [[ -n "$DEPLOY_TOKEN" ]]; then
       AUTH_HEADER=(-H "Authorization: Bearer ${DEPLOY_TOKEN}")
     fi
-    curl -fsS --max-time 30 -X POST "${AUTH_HEADER[@]}" "${DEPLOY_URL}"
+    # bash 3.2 (macOS) + `set -u`: an empty array expansion aborts the script.
+    curl -fsS --max-time 30 -X POST "${AUTH_HEADER[@]+"${AUTH_HEADER[@]}"}" "${DEPLOY_URL}"
     ok "Dokploy deployment webhook triggered."
   else
     ok "[DRY-RUN] Dokploy production deploy webhook call simulated."
@@ -326,9 +352,9 @@ if [[ -n "$DEPLOY_URL" ]]; then
 else
   log "Executing local Docker Compose zero-downtime rolling update (start-first)..."
   if [ "$DRY_RUN" = false ]; then
-    IMAGE_TAG="${RELEASE_TAG}" docker compose "${COMPOSE_ENV_ARGS[@]}" -f "$COMPOSE_FILE" build web-prod
+    IMAGE_TAG="${RELEASE_TAG}" docker compose "${COMPOSE_ENV_ARGS[@]+"${COMPOSE_ENV_ARGS[@]}"}" -f "$COMPOSE_FILE" build web-prod
     docker tag "coffeemode-web-prod:${RELEASE_TAG}" "coffeemode-web-prod:latest" 2>/dev/null || true
-    IMAGE_TAG="${RELEASE_TAG}" docker compose "${COMPOSE_ENV_ARGS[@]}" -f "$COMPOSE_FILE" up -d web-prod
+    IMAGE_TAG="${RELEASE_TAG}" docker compose "${COMPOSE_ENV_ARGS[@]+"${COMPOSE_ENV_ARGS[@]}"}" -f "$COMPOSE_FILE" up -d web-prod
     ok "Production web container updated with tag '${RELEASE_TAG}'."
   else
     ok "[DRY-RUN] Docker Compose build & up -d web-prod with tag '${RELEASE_TAG}' simulated."
@@ -336,9 +362,7 @@ else
 fi
 
 # Record release metadata for instant rollback auto-discovery
-RELEASE_HISTORY_DIR="${REPO_ROOT}/backups/prod"
 mkdir -p "$RELEASE_HISTORY_DIR"
-RELEASE_LOG="${RELEASE_HISTORY_DIR}/releases.log"
 if [ "$DRY_RUN" = false ]; then
   echo "${TIMESTAMP}|${RELEASE_TAG}|${SNAPSHOT_PATH:-}" >> "$RELEASE_LOG"
   ok "Recorded release in ${RELEASE_LOG}."
@@ -361,7 +385,7 @@ if [ "$DRY_RUN" = false ]; then
     CONVERGED=false
     while [ $RETRY -lt $MAX_RETRIES ]; do
       RETRY=$((RETRY + 1))
-      HEALTH_BODY="$(curl -fsS -m 3 "${BASE_URL}/api/health" 2>/dev/null || echo "")"
+      HEALTH_BODY="$(curl -fsS -m 3 -A "${SMOKE_UA}" "${BASE_URL}/api/health" 2>/dev/null || echo "")"
       if echo "$HEALTH_BODY" | grep -q '"ok":true'; then
         CURR_VERSION="$(echo "$HEALTH_BODY" | grep -oE '"version"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
         CURR_BOOT_TIME="$(echo "$HEALTH_BODY" | grep -oE '"boot_time"\s*:\s*"[^"]+"' | cut -d'"' -f4 || echo "")"
@@ -404,7 +428,7 @@ if [ "$DRY_RUN" = false ]; then
     IS_HEALTHY=false
     while [ $RETRY -lt $MAX_RETRIES ]; do
       RETRY=$((RETRY + 1))
-      if curl -fsS -m 3 "${BASE_URL}/api/health" 2>/dev/null | grep -q '"ok":true'; then
+      if curl -fsS -m 3 -A "${SMOKE_UA}" "${BASE_URL}/api/health" 2>/dev/null | grep -q '"ok":true'; then
         IS_HEALTHY=true
         break
       fi

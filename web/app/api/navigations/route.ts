@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api/response";
 import { apiRoute } from "@/lib/api/route";
-import { parseNavigationBody, recordNavigation } from "@/lib/db/navigations";
 import { readJsonBody } from "@/lib/api/guard";
+import { recordNavigation } from "@/lib/db/navigations";
+import { parseNavigationBody } from "@/lib/validation/navigation";
 
 /**
  * POST /api/navigations  {cafe_id}

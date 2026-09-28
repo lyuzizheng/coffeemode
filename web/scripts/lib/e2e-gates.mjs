@@ -8,14 +8,21 @@
  * later slices) and whether it needs the DB fixtures; the loop filters.
  * Gates receive the full runner context and pick the fields they need.
  */
+import { runAccessLogGate } from "./access-log-gate.mjs";
 import { runApiContractGate } from "./api-contract-gate.mjs";
+import { runAuthSessionGate } from "./auth-session-gate.mjs";
+import { runCafeCreationGate } from "./cafe-creation-gate.mjs";
 import { runCheckinDrawerGate } from "./checkin-drawer-gate.mjs";
+import { runCheckinLifecycleGate } from "./checkin-lifecycle-gate.mjs";
 import { runCheckinSubmitGate } from "./checkin-submit-gate.mjs";
+import { runCityScopeGate } from "./city-scope-gate.mjs";
 import { runDeeplinkHydrationGate } from "./deeplink-hydration-gate.mjs";
-import { runSearchDiscoveryGate } from "./search-discovery-gate.mjs";
 import { runFeedPaginationGate } from "./feed-pagination-gate.mjs";
+import { runNavigationPromptGate } from "./navigation-prompt-gate.mjs";
 import { runOwnerControlsGate } from "./owner-controls-gate.mjs";
+import { runSearchDiscoveryGate } from "./search-discovery-gate.mjs";
 import { runSwPrivacyGate } from "./sw-privacy-gate.mjs";
+import { runVerifiedUserHandoffGate } from "./verified-user-handoff-gate.mjs";
 import { recordGateFailure } from "./e2e-artifacts.mjs";
 
 export const E2E_GATES = [
@@ -48,6 +55,48 @@ export const E2E_GATES = [
     run: runCheckinSubmitGate,
   },
   {
+    slug: "auth-session",
+    label: "T1/T2/T3: Auth Session (Entry, Banner, Sign-out, Delete)",
+    mobile: true,
+    needsDb: true,
+    run: runAuthSessionGate,
+  },
+  {
+    slug: "cafe-creation",
+    label: "T5: Cafe Creation (POI Search, Create, Detail)",
+    mobile: false,
+    needsDb: true,
+    run: runCafeCreationGate,
+  },
+  {
+    slug: "checkin-lifecycle",
+    label: "T9/T10/T11: Check-in Edit, Delete, Like Toggle",
+    mobile: false,
+    needsDb: true,
+    run: runCheckinLifecycleGate,
+  },
+  {
+    slug: "navigation-prompt",
+    label: "T13: Navigation Return Prompt (Queue, Answer)",
+    mobile: false,
+    needsDb: true,
+    run: runNavigationPromptGate,
+  },
+  {
+    slug: "verified-user-handoff",
+    label: "T14: Verified-User Handoff Renders Unicode + Oversized Sessions (BRAWUKA-723)",
+    mobile: false,
+    needsDb: true,
+    run: runVerifiedUserHandoffGate,
+  },
+  {
+    slug: "city-scope",
+    label: "T27: City Scope (Forged Name Precedence, rt-* Coordinate Search)",
+    mobile: false,
+    needsDb: true,
+    run: runCityScopeGate,
+  },
+  {
     slug: "search-discovery",
     label: "T16/T16b/T6/T17-UI: Search Discovery & Geolocation & Turnstile UI",
     mobile: true,
@@ -75,8 +124,20 @@ export const E2E_GATES = [
     needsDb: true,
     run: runSwPrivacyGate,
   },
+  {
+    // BRAWUKA-729 acceptance (BRAWUKA-755): real-HTTP access-log proof over
+    // the assembled pipeline. Fetch-only like api-contract: needsDb false
+    // so it still runs in fallback mode, but internally skips its DB-backed
+    // cases (2xx/429) when hasDb is false. BRAWUKA-758: external mode
+    // (E2E_BASE_URL) owns no capturable server output, so the gate skips
+    // itself there instead of failing every log assertion.
+    slug: "access-log",
+    label: "T28: API Access Log (Completion Line over HTTP)",
+    mobile: false,
+    needsDb: false,
+    run: (ctx) => runAccessLogGate({ external: Boolean(process.env.E2E_BASE_URL), ...ctx }),
+  },
 ];
-
 /**
  * Run the registered gates serially against a single DB (D5). A gate
  * failure records its artifacts (`trace.zip`, `failure.png`, `console.log`)
@@ -89,7 +150,7 @@ export async function runRegistryGates(baseCtx, { hasDb, viewport }) {
     if (viewport === "mobile" && !gate.mobile) continue;
     console.log(`[E2E] Running ${gate.label}...`);
     try {
-      await gate.run({ label: gate.label, ...baseCtx });
+      await gate.run({ label: gate.label, hasDb, ...baseCtx });
     } catch (err) {
       recordGateFailure(gate.slug, err);
       throw err;

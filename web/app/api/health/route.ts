@@ -20,7 +20,7 @@ import { BOOT_TIME, resolveAppVersion } from "@/lib/version";
  * `user: null` already forces the anonymous identity.)
  */
 export const GET = apiRoute(
-  { bucket: "health", route: "GET /api/health", user: null, bypassUnknownClients: true },
+  { bucket: "health", route: "GET /api/health", user: null, bypassUnknownClients: true, silent: true },
   async () =>
     NextResponse.json(
       {
@@ -39,6 +39,6 @@ export const GET = apiRoute(
  * Cloudflare-pathed allowance is shared, edge-less probes bypass.
  */
 export const HEAD = apiRoute(
-  { bucket: "health", route: "HEAD /api/health", user: null, bypassUnknownClients: true },
+  { bucket: "health", route: "HEAD /api/health", user: null, bypassUnknownClients: true, silent: true },
   async () => new Response(null, { status: 200 }),
 );

@@ -12,6 +12,7 @@
     "deploy": "node scripts/deploy.mjs",
     "lint": "eslint",
     "check:file-size": "node ../scripts/check-service-file-size.mjs",
+    "check:suppressions": "node ../web/scripts/check-suppressions.mjs --root .",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

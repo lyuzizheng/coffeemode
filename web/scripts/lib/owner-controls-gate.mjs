@@ -18,6 +18,22 @@ async function toggleVisibilitySwitch(page, switchLocator, cafeId) {
     page.waitForResponse((r) => r.url().includes(`/api/cafes/${cafeId}/visibility`) && r.request().method() === "PATCH"),
     switchLocator.click(),
   ]);
+  if (res.status() === 429) {
+    // The merged suite runs the full Phase 1 + Phase 2/3 line in one
+    // process: earlier gates share the per-user `cafes-write` bucket
+    // (10/min), so the toggle can arrive with the bucket already drained
+    // while the window has not rolled over. A 429 here is suite ordering,
+    // not gate behavior — wait out the window once, then retry the toggle.
+    const retryAfter = Number(res.headers()["retry-after"] ?? "15");
+    const waitMs = (Number.isFinite(retryAfter) ? retryAfter : 15) * 1000 + 2000;
+    await page.waitForTimeout(waitMs);
+    const [retryRes] = await Promise.all([
+      page.waitForResponse((r) => r.url().includes(`/api/cafes/${cafeId}/visibility`) && r.request().method() === "PATCH"),
+      switchLocator.click(),
+    ]);
+    assert(retryRes.status() === 200, `PATCH visibility retry returned ${retryRes.status()}`);
+    return;
+  }
   assert(res.status() === 200, `PATCH visibility returned ${res.status()}`);
 }
 
@@ -61,6 +77,59 @@ async function checkDeleteCancel(page, takeShot) {
   await takeShot(page, "owner-controls", "owner-controls");
 }
 
+async function driveOwnerSession({ base, cafeId, label, createContext, attachErrorCollector, shot: takeShot, sessionCookie, supabaseUrl }) {
+  await withGateContext("owner-controls", createContext, {}, async (sessionCtx, errorLogs) => {
+    const authCookie = { ...sessionCookie, url: base };
+    await sessionCtx.addCookies([authCookie]);
+    await assertSessionLanded({ base, supabaseUrl, request: sessionCtx.request, label });
+
+    const page = await sessionCtx.newPage();
+    // The first toggle can 429 when the merged suite arrives with the
+    // shared per-user cafes-write bucket drained; toggleVisibilitySwitch
+    // waits out the window and retries. Exempt exactly that transient so
+    // the retried-away 429 does not fail the gate (same pattern as the
+    // 410 exemption in feed-pagination-gate).
+    const checkErrors = attachErrorCollector(
+      page,
+      label,
+      { path: `/cafes/${cafeId}`, status: 200, subresources: [{ path: `/api/cafes/${cafeId}/visibility`, status: 429 }] },
+      errorLogs,
+    );
+
+    await page.goto(`${base}/cafes/${cafeId}`, { waitUntil: "domcontentloaded" });
+
+    // Owner controls section mounted for the cafe owner. The section's
+    // aria-label is the localized owner_controls_aria copy ("管理这家咖啡馆"
+    // / "Manage this cafe"); the bare role fallback covers copy drift.
+    const switchLocator = page
+      .locator("section[aria-label*='管理' i], section[aria-label*='Manage' i]")
+      .getByRole("switch")
+      .or(page.getByRole("switch"))
+      .first();
+
+    // 1. Initial state: public, no private badge
+    const privateBadge = page.locator("span").filter({ hasText: /仅你可见|Only you can see this/i }).first();
+    assert((await privateBadge.count()) === 0, "Private badge initially rendered for public cafe");
+    // 2. Toggle to private
+    await toggleVisibilitySwitch(page, switchLocator, cafeId);
+    await privateBadge.waitFor({ state: "visible", timeout: 10000 });
+    assert(await privateBadge.isVisible(), "Private badge not visible after toggle to private");
+
+    // 2b. Anonymous viewers get the DG19 404 while private (read-path filter)
+    await checkAnonymousPrivate404({ base, cafeId, label, createContext, attachErrorCollector, shot: takeShot });
+
+    // 3. Toggle back to public
+    await toggleVisibilitySwitch(page, switchLocator, cafeId);
+    await privateBadge.waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+    assert((await privateBadge.count()) === 0, "Private badge still visible after toggle to public");
+
+    // 4. Delete entry verification (cancel keeps the entry: no write fires)
+    await checkDeleteCancel(page, takeShot);
+    checkErrors();
+    return page;
+  }, label);
+}
+
 /**
  * @param {object} options
  * @param {string} options.label
@@ -93,46 +162,7 @@ export async function runOwnerControlsGate({
   }
 
   try {
-    await withGateContext("owner-controls", createContext, {}, async (sessionCtx, errorLogs) => {
-      const authCookie = { ...sessionCookie, url: base };
-      await sessionCtx.addCookies([authCookie]);
-      await assertSessionLanded({ base, supabaseUrl, request: sessionCtx.request, label });
-
-      const page = await sessionCtx.newPage();
-      const checkErrors = attachErrorCollector(page, label, { path: `/cafes/${cafeId}`, status: 200 }, errorLogs);
-
-      await page.goto(`${base}/cafes/${cafeId}`, { waitUntil: "domcontentloaded" });
-
-      // Owner controls section mounted for the cafe owner. The section's
-      // aria-label is the localized owner_controls_aria copy ("管理这家咖啡馆"
-      // / "Manage this cafe"); the bare role fallback covers copy drift.
-      const switchLocator = page
-        .locator("section[aria-label*='管理' i], section[aria-label*='Manage' i]")
-        .getByRole("switch")
-        .or(page.getByRole("switch"))
-        .first();
-
-      // 1. Initial state: public, no private badge
-      const privateBadge = page.locator("span").filter({ hasText: /仅你可见|Only you can see this/i }).first();
-      assert((await privateBadge.count()) === 0, "Private badge initially rendered for public cafe");
-      // 2. Toggle to private
-      await toggleVisibilitySwitch(page, switchLocator, cafeId);
-      await privateBadge.waitFor({ state: "visible", timeout: 10000 });
-      assert(await privateBadge.isVisible(), "Private badge not visible after toggle to private");
-
-      // 2b. Anonymous viewers get the DG19 404 while private (read-path filter)
-      await checkAnonymousPrivate404({ base, cafeId, label, createContext, attachErrorCollector, shot });
-
-      // 3. Toggle back to public
-      await toggleVisibilitySwitch(page, switchLocator, cafeId);
-      await privateBadge.waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
-      assert((await privateBadge.count()) === 0, "Private badge still visible after toggle to public");
-
-      // 4. Delete entry verification (cancel keeps the entry: no write fires)
-      await checkDeleteCancel(page, shot);
-      checkErrors();
-      return page;
-    }, label);
+    await driveOwnerSession({ base, cafeId, label, createContext, attachErrorCollector, shot, sessionCookie, supabaseUrl });
   } finally {
     if (dbClient) {
       try {

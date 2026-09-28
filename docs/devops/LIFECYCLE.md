@@ -298,7 +298,7 @@ All operational scripts live canonically under `scripts/devops/` and are fully e
    ```
 4. Confirm the rebuilt host cannot hand Docker an empty upstream resolver set, then fix it in place if it can:
    ```bash
-   ./scripts/devops/dns-fallback.sh check   # exit 0 = fallback in place; exit 1 = fix required
+   ./scripts/devops/dns-fallback.sh check   # exit 1 = fallback missing; exit 0 = verified or not-applicable (verdict line says which)
    ./scripts/devops/dns-fallback.sh apply   # idempotent; DHCP nameservers stay first
    ```
 5. Restore production database from offsite Cloudflare R2 backup:

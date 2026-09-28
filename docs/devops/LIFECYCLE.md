@@ -407,6 +407,8 @@ grep -c '^nameserver' /etc/resolv.conf    # must be >= 1
 
 Exit codes are the contract: `0` **ok** (fallback installed, or `not-applicable` on this host, and the live file has a nameserver), `1` **not-ready** (the live file has no nameserver line or cannot be read, so the fallback is not in effect and container creation must wait), `2` **usage error**. `check` additionally reports **fail** — also exit 1 — when the fallback is missing from the tail file, which is a configuration fault rather than a regeneration wait. The final output line carries the machine-readable status (`dns-fallback: ok|fail|not-ready|not-applicable`); that is the line provisioning summarises and the one to quote in an incident thread.
 
+The not-ready output names the recovery command of the manager that actually owns the file: `dhcpcd <iface>` only where dhcpcd ownership is confirmed by the signature, `resolvconf -u` where openresolv owns it, `systemctl restart systemd-resolved` for a resolved stub symlink, and otherwise an instruction to regenerate the file through whichever tool writes it. The script never proposes starting a manager that does not own `/etc/resolv.conf` — a NetworkManager host is told to recover through NetworkManager, not to run dhcpcd (BRAWUKA-778). `revert` reports the same distinction: on a dhcpcd host the live file still carries the fallback until the next regeneration, and on any other host the script never wrote it.
+
 **Containers: existing vs. created during the outage.** Only containers created **after** the fallback is in the live file inherit it.
 - A container created during the outage keeps its empty snapshot and must be **recreated**; waiting for the host to recover does nothing:
   ```bash

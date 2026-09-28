@@ -16,8 +16,7 @@ Accepted
 | Layer | Tool | Proves |
 | --- | --- | --- |
 | Type | `tsc --noEmit` | Type contracts compile |
-| Unit/component | Vitest + React Testing Library | Pure logic and rendered component behavior |
-| Mocked integration | Vitest with mocked service boundaries | Route/service contracts without live dependencies |
+| Component contract | `npm run test:unit` (Vitest + React Testing Library, `tests/components/**` only, jsdom) | Rendered component behavior for the surviving contract family (BRAWUKA-716; `--passWithNoTests`, so an empty family stays green) |
 | Real DB | Vitest + local Postgres/PostGIS | Migrations, SQL, triggers, transactions, and stored state |
 | Staging journey | `scripts/devops/run-staging-journey.sh` against a runner-local PostGIS Postgres (staging Supabase auth smoke) | User journeys against a real Postgres, in per-suite scratch databases (spec 0010 §4) |
 | Agent QA | Multica autopilot + ego-browser on staging.cafemood.app | Exploratory real-browser user journeys on staging; report + defect filing, never a merge gate |
@@ -41,15 +40,16 @@ Accepted
 - Agent QA never gates merges; deterministic failures file defects
   automatically, LLM-semantic failures require two consecutive rounds before
   filing.
-- Test sessions: unit/component tests keep `web/tests/helpers/auth.ts:fakeJwt`
-  plus mocked clients; staging journey suites acquire real sessions
+- Test sessions: component-contract suites mint identity with `web/tests/helpers/auth.ts:fakeJwt`
+  while integration suites drive real handlers (`web/tests/helpers/http-client.ts` programs the
+  `get-user` mock per simulated identity); staging journey suites acquire real sessions
   non-interactively (Admin API test user + password grant). The full auth
   policy and the `service_role` boundary are canonical in spec 0010 §3.
-- Map and external-service tests use static fixtures or mocked boundaries.
+- Map and external-service tests use static fixtures or the POI seam (spec 0008 §5: the worker transport is mocked, Postgres/MinIO stay real).
 - Tests encode intended contracts, not the current implementation.
 - A bug fix adds a regression test that fails on the reproduced defect when the
   affected boundary is testable.
-- Unit mocks cannot prove SQL semantics. Changes to migrations, embedded SQL,
+- Only real Postgres proves SQL semantics. Changes to migrations, embedded SQL,
   triggers, transactions, or DB-backed flows require `npm run test:integration`
   against real Postgres/PostGIS and assertions on returned and stored state.
 - User-visible behavior requires browser/manual evidence. Automated pixel
@@ -139,8 +139,10 @@ while installing Chromium. Local browser evidence remains available through
 every rendered text sample against the spec 0002 WCAG AA thresholds (body
 >= 4.5:1, large >= 3:1) from the browser's painted bytes, so a token or class
 misuse that only exists on a page is caught there rather than in CI
-(BRAWUKA-219). Token pairs themselves are asserted in `npm test` by
-`web/tests/design-tokens-contrast.test.ts`, which does run in CI.
+(BRAWUKA-219). No token-pair unit proof survives in CI (the
+`design-tokens-contrast` suite was deleted with the mocked layer) — contrast
+is proven only by the `check:visual` painted-byte audit via
+`web/scripts/lib/contrast-audit.mjs`.
 
 ### Runtime pins
 
@@ -306,8 +308,9 @@ How tests evolve when features land (one writer per change, per `AGENTS.md`):
   must cover every READY slice) plus a proving test at the cheapest layer
   that can prove the contract: `integration` (real Postgres/HTTP) for
   server-side behavior, `browser` evidence (`npm run test:e2e` /
-  `npm run check:visual`) when user-visible behavior changes. Unit/mocked
-  tests are retired — do not add `*.test.*` files outside `tests/integration/`,
+  `npm run check:visual`) when user-visible behavior changes, `component`
+  only for a rendered contract that HTTP cannot reach. The mocked layer is
+  retired — do not add `*.test.*` files outside `tests/integration/`,
   `tests/devops/`, and `tests/components/` (component contracts, run by
   `npm run test:unit`; see AGENTS.md §Testing).
 - New production helper used by ≥2 suites → move it to `web/tests/helpers/*`
@@ -315,7 +318,7 @@ How tests evolve when features land (one writer per change, per `AGENTS.md`):
   helpers never embed product logic.
 - New integration suite → provision via `provisionTestDatabase` and drop via
   `cleanupIntegrationDatabase` in `afterAll`; gate the file on
-  `RUN_INTEGRATION` with `describe.skip` by default so `npm test` stays
+  `RUN_INTEGRATION` with `describe.skip` by default so a flagless run stays
   Docker-free, and register the file in the matching `test:integration:*` script
   (CI `integration-gate` runs only registered files) plus in
   `test:coverage:integration`, which the real-DB ratchet measures —
@@ -341,7 +344,7 @@ amending the ADR, and they must never carry user content (`q`, coordinates,
 
 ### Appendix — Coverage traceability
 
-The traceability matrix lives at `docs/agent/test-coverage.md` (S3 testkit-coverage-doc). It maps every user trace — login Apple/Google, session refresh (`web/proxy.ts`), cafe create, nearby list, detail, check-in lifecycle (create/edit/delete), likes, navigations, image upload/complete, POI search/resolve, 404 recovery, SEO (sitemap/OG), rate limiting — to `Trace × Spec × Layer (unit/mocked/integration/browser) × Proving file × Gate`. Efficiency notes record no-duplication via `web/tests/helpers/*` and the infra (`db`/`r2`) vs service (`auth`/`fixtures`/`workers`) helper split; residual gaps (auth E2E still mocked until Supabase local, POI live search mocked, Workers local via `wrangler dev`, browser E2E manual) are listed there. The deterministic gate `.agents/scripts/check-coverage-matrix.sh` validates completeness (every `READY` slice has ≥1 row) and can be run in CI or as `preflight` follow-on.
+The traceability matrix lives at `docs/agent/test-coverage.md` (S3 testkit-coverage-doc). It maps every user trace — login Apple/Google, session refresh (`web/proxy.ts`), cafe create, nearby list, detail, check-in lifecycle (create/edit/delete), likes, navigations, image upload/complete, POI search/resolve, 404 recovery, SEO (sitemap/OG), rate limiting — to `Trace × Spec × Layer (integration/component/browser) × Proving file × Gate`. Efficiency notes record no-duplication via `web/tests/helpers/*` and the infra (`db`/`r2`) vs service (`auth`/`fixtures`/`mocks`/`http-client`/`live-keys`) helper split; residual gaps (real OAuth provider round-trip and real Turnstile loop stay staging-manual; POI billing shape is Google-console-only) are listed there. The deterministic gate `.agents/scripts/check-coverage-matrix.sh` validates completeness (every `READY` slice has ≥1 row) and can be run in CI or as `preflight` follow-on.
 
 ## Acceptance criteria
 

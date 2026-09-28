@@ -235,7 +235,7 @@ identifies its probes with the same UA.
 ### Phase 7: Cold-Start VPS Provisioning
 - **Target**: Blank Ubuntu or Debian LTS server.
 - **Orchestration**: Run `scripts/devops/bootstrap.sh` from the repository:
-  1. Installs core utilities, security tools, swap, and production kernel sysctl parameters.
+  1. Installs core utilities, security tools, swap, and production kernel sysctl parameters, and guarantees a non-empty host upstream resolver set before Docker can create a container (`scripts/devops/dns-fallback.sh`, BRAWUKA-770 — see §6).
   2. Hardens firewall (UFW) and sets up fail2ban for SSH brute-force defense.
   3. Installs Docker CE, Docker Compose plugin, and initializes Docker Swarm.
   4. Configures Dokploy PaaS and Traefik reverse proxy on ports 80/443.
@@ -253,7 +253,8 @@ All operational scripts live canonically under `scripts/devops/` and are fully e
 
 | Script | Purpose | Key Flags |
 | --- | --- | --- |
-| `provision-vps.sh` | Hardens and provisions a blank Ubuntu/Debian server | `--ssh-port`, `--swap-size`, `--skip-docker`, `--dry-run` |
+| `provision-vps.sh` | Hardens and provisions a blank Ubuntu/Debian server | `--ssh-port`, `--swap-size`, `--skip-dns`, `--skip-docker`, `--dry-run` |
+| `dns-fallback.sh` | Idempotent host DNS upstream fallback: keeps DHCP nameservers first and appends a public resolver via dhcpcd's `resolv.conf.tail` (BRAWUKA-770) | `apply`, `check`, `revert`, `--dry-run` |
 | `bootstrap.sh` | End-to-end cold-start orchestrator from zero to live | `--env [staging\|prod\|both]`, `--skip-vps-prep`, `--skip-cloudflare`, `--dry-run` |
 | `upgrade-staging.sh` | Upgrades staging service with migrations and smoke tests | `--deploy-url`, `--skip-backup`, `--image-tag`, `--dry-run` |
 | `upgrade-prod.sh` | Zero-downtime production upgrade with staging gate & safety snapshot | `--skip-staging-gate`, `--deploy-url`, `--image-tag`, `--dry-run` |
@@ -295,11 +296,16 @@ All operational scripts live canonically under `scripts/devops/` and are fully e
    ```bash
    ./scripts/devops/bootstrap.sh --env both
    ```
-4. Restore production database from offsite Cloudflare R2 backup:
+4. Confirm the rebuilt host cannot hand Docker an empty upstream resolver set, then fix it in place if it can:
+   ```bash
+   ./scripts/devops/dns-fallback.sh check   # exit 0 = fallback in place; exit 1 = fix required
+   ./scripts/devops/dns-fallback.sh apply   # idempotent; DHCP nameservers stay first
+   ```
+5. Restore production database from offsite Cloudflare R2 backup:
    ```bash
    ./scripts/devops/restore.sh --env prod --download-r2 coffeemode_prod_scheduled_YYYYMMDD_HHMMSSZ.dump.gz --yes
    ```
-5. Run smoke tests:
+6. Run smoke tests:
    ```bash
    ./scripts/devops/smoke-test.sh prod
    ```
@@ -375,3 +381,42 @@ Dokploy hands `memoryLimit` / `memoryReservation` straight to the Docker API, wh
 desc = invalid memory value 512: Must be at least 4MiB
 ```
 Always carry the unit — `512M`, `1G`. This surfaced on 2026-09-21 as a build failure for the (since retired) `coffeemode-mcp-grafana` app (BRAWUKA-599). Neither `coffeemode-web-prod` nor `coffeemode-web-staging` sets a memory limit today, so no current service carries the misconfiguration.
+
+### Host DNS Upstream Fallback (dhcpcd hosts — BRAWUKA-764/BRAWUKA-770)
+**Why.** Docker snapshots the host `/etc/resolv.conf` into every container's embedded resolver (`127.0.0.11`) **at container-creation time**, and it never refills a running container after the host recovers. If the host file is regenerated with no nameserver while the uplink is down, every container created in that window keeps `# NO EXTERNAL NAMESERVERS DEFINED` for its whole life. That is the 2026-09-26 n150 outage: staging deploys failed for ~19h with `Could not resolve host: github.com`, and web→POI answered 502 because the app could not resolve its upstream.
+
+**Policy** (Owner decision on BRAWUKA-764). DHCP nameservers stay first and a public resolver is appended as a fallback — never a replacement, and never a `/etc/docker/daemon.json` `dns` override, which would drop the LAN resolver and costs a Docker restart.
+
+**Applicability.** The mechanism is dhcpcd's own tail file. n150 runs `dhcpcd-base` 10.1.0, launched per-interface by ifupdown (no `dhcpcd.service`, no systemd-resolved, no NetworkManager, no openresolv). Its hook `/usr/lib/dhcpcd/dhcpcd-hooks/20-resolv.conf` appends `/etc/resolv.conf.tail` to every file it regenerates — including the branch that runs when DHCP returned no nameserver at all, which is the window this guards. `scripts/devops/dns-fallback.sh` verifies that shape first and reports `not-applicable`, writing nothing, on hosts where it does not hold (a `/etc/resolv.conf` symlink to a resolved/NetworkManager stub, an installed `resolvconf`, or no dhcpcd hook).
+
+**Provisioning.** `scripts/devops/provision-vps.sh` runs `dns-fallback.sh apply` as Step 4/8 on both paths — a blank host and a host where Docker is already installed — because the risk belongs to the host, not to the Docker install. Cold start and disaster recovery therefore carry the same guarantee as the manual n150 fix.
+
+**Apply (idempotent).**
+```bash
+./scripts/devops/dns-fallback.sh apply    # appends `nameserver 1.1.1.1` to /etc/resolv.conf.tail
+sudo dhcpcd <iface>                       # optional: regenerate /etc/resolv.conf now
+```
+The tail file is the durable part; the live file is regenerated by dhcpcd on the next lease event, and any existing tail entries are preserved. Re-running never duplicates the line.
+
+**Verify.**
+```bash
+./scripts/devops/dns-fallback.sh check    # exit 1 when the fallback is missing or the live file has no nameserver
+grep -c '^nameserver' /etc/resolv.conf    # must be >= 1
+```
+`check` reports a failure — not a warning — when the live file currently has no nameserver line, because a container created in that state snapshots the empty set.
+
+**Containers: existing vs. created during the outage.** Only containers created **after** the fallback is in the live file inherit it.
+- A container created during the outage keeps its empty snapshot and must be **recreated**; waiting for the host to recover does nothing:
+  ```bash
+  docker ps --format '{{.Names}}' | while read -r c; do printf '%s: ' "$c"; docker exec "$c" getent hosts github.com >/dev/null 2>&1 && echo ok || echo FAIL; done
+  docker service update --force <swarm-service>   # swarm services: dokploy, dokploy-postgres, postgres-back-up-*, app-copy-*
+  docker restart <container>                      # plain containers: dokploy-traefik, dokploy-mcp-server, coffeemode-ci-postgres
+  ```
+- Containers created after the fix need no action; confirm the inherited upstream with `docker exec <container> cat /etc/resolv.conf`.
+
+**Rollback.**
+```bash
+./scripts/devops/dns-fallback.sh revert   # drops only the fallback line, keeps other tail entries
+sudo dhcpcd <iface>                       # regenerate /etc/resolv.conf from the remaining entries
+```
+`revert` is idempotent and deletes the tail file only when nothing else remains in it. The live file needs no restore: dhcpcd rebuilds it from interface state at the next regeneration (the one-off `/etc/resolv.conf.bak-20260927` from the incident is a copy of that live file, not part of the guarantee).

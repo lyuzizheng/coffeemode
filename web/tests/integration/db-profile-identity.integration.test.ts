@@ -14,9 +14,9 @@ import {
 import {
   createCafeWithFirstCheckIn,
   getCafe,
-  toPublicCafeDetail,
-  type CafeDetailWithAuthor,
 } from "@/lib/db/cafes";
+import type { CafeDetailWithAuthor } from "@/lib/db/cafes";
+import { toPublicCafeDetail } from "@/lib/cafes/presentation";
 import {
   getProfile,
   getUserStats,

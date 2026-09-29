@@ -13,8 +13,8 @@ import {
   getCafe,
   getCafeLocation,
   listCafesNearby,
-  toPublicCafeDetail,
 } from "@/lib/db/cafes";
+import { toPublicCafeDetail } from "@/lib/cafes/presentation";
 import { createCheckIn } from "@/lib/db/checkins";
 import type { MaxStay } from "@/types/checkins";
 import { PUBLIC_HANDLE_REGEX, updateProfileIdentity } from "@/lib/db/identity";

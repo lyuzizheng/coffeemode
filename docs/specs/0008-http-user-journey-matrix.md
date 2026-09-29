@@ -139,8 +139,10 @@ journey that conflates them is testing a contract that does not exist.
   `avg >= threshold`, so unrated cafes are excluded at every value,
   including `=0`; `=0` therefore means "rated at all" (min avg 0), `=1`
   means "avg at least 1". Omitting the parameter entirely is the only
-  "Any"/no-constraint form; the UI never emits `=0` (segments: Any / 60+ /
-  80+). A repeated parameter resolves to its first value
+  "Any"/no-constraint form; the tri-state control only ever emits omit /
+  60 / 80, while a deep-linked legal custom threshold — including `=0` —
+  is preserved and re-serialized through later filter edits (BRAWUKA-589
+  write-back contract). A repeated parameter resolves to its first value
   (`URLSearchParams.get`, BRAWUKA-670). Out-of-range or unparseable values
   (e.g. `filter_overall=120`) are silently ignored — assert 200 with an
   unfiltered set, not a 400.

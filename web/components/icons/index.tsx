@@ -274,37 +274,6 @@ export function DownloadIcon(props: IconProps) {
   );
 }
 
-/** Document — legal page rows (settings legal group). */
-export function DocumentIcon(props: IconProps) {
-  return base(
-    props,
-    <>
-      <path d="M4 1.75h5.5L12 4.25V14.25H4V1.75Z" />
-      <path d="M9.25 2v2.5H12" />
-    </>,
-  );
-}
-
-/** Info — about page row (settings legal group). */
-export function InfoIcon(props: IconProps) {
-  return base(
-    props,
-    <>
-      <circle cx="8" cy="8" r="5.75" />
-      <path d="M8 7.25v3.5" />
-      <circle cx="8" cy="4.75" r="0.75" fill="currentColor" stroke="none" />
-    </>,
-  );
-}
-
-/** SignOut — door + arrow (settings account group). */
-export function SignOutIcon(props: IconProps) {
-  return base(
-    props,
-    <path d="M6 2.5H3.5v11H6M10 5l3 3-3 3M13 8H6.5" />,
-  );
-}
-
 /** Chevron — settings row affordance (right-pointing). */
 export function ChevronRightIcon(props: IconProps) {
   return base(props, <path d="M6 3.5L10.5 8L6 12.5" />);

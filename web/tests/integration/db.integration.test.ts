@@ -85,7 +85,7 @@ import {
   encodeFeedCursor,
   listPublicCheckIns,
 } from "@/lib/discovery/feed";
-import { recordUploadIntent } from "@/lib/db/image-uploads";
+import { checkUploadIntents, recordUploadIntent } from "@/lib/db/image-uploads";
 import { selectLivePhotoReferences, selectPhotoReferences } from "@/lib/db/photo-references";
 import { compensateProvisionedPhotos, PhotoIntentError } from "@/lib/images/provision-photos";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
@@ -2596,6 +2596,174 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
           fakeProvisionPhotosDeps(),
         ),
       ).rejects.toBeInstanceOf(PhotoIntentError);
+    });
+
+    it("batch upload intent partial-consume rolls back creation and restores unconsumed intents (BRAWUKA-739 / BRAWUKA-791)", async () => {
+      const testCafeId = randomUUID();
+      await dbClient.query(
+        `insert into cafes (id, name, location, city, created_by, tz)
+         values ($1, 'Batch Test Cafe', ST_SetSRID(ST_MakePoint(103.85, 1.3), 4326)::geography,
+                 'singapore', $2, 'Asia/Singapore')`,
+        [testCafeId, U1],
+      );
+
+      const photoA = randomUUID();
+      const photoB = randomUUID();
+      await recordUploadIntent(U2, photoA);
+      await recordUploadIntent(U2, photoB);
+
+      // Both intents pass pre-check
+      expect(await checkUploadIntents(U2, [photoA, photoB])).toEqual(
+        expect.arrayContaining([photoA, photoB]),
+      );
+
+      const deps = fakeProvisionPhotosDeps();
+      const originalProcessImage = deps.processImage;
+      deps.processImage = async (imageUuid, urls) => {
+        if (imageUuid === photoB) {
+          // Deterministically delete photoB in real Postgres before transaction batch consume
+          await dbClient.query("delete from image_upload_intents where image_uuid = $1", [photoB]);
+        }
+        return originalProcessImage(imageUuid, urls);
+      };
+
+      // Real check-in create path with real batch consume: pre-check passes,
+      // but in-tx batch consume detects missing photoB -> PhotoIntentError thrown.
+      await expect(
+        createCheckIn(
+          U2,
+          {
+            cafe_id: testCafeId,
+            scores: { overall: 75, wifi: 80 },
+            max_stay: "unlimited",
+            note: "Partial consume test",
+            photo_ids: [photoA, photoB],
+          },
+          deps,
+        ),
+      ).rejects.toBeInstanceOf(PhotoIntentError);
+
+      // 1. Transaction rolled back: no check-in row committed
+      const checkinsRes = await dbClient.query(
+        "select id from checkins where cafe_id = $1",
+        [testCafeId],
+      );
+      expect(checkinsRes.rows).toHaveLength(0);
+
+      // 2. Cafe gallery was not modified
+      const cafeRes = await dbClient.query(
+        "select gallery from cafes where id = $1",
+        [testCafeId],
+      );
+      const gallery = (cafeRes.rows[0].gallery ?? []) as Array<{ id: string }>;
+      expect(gallery.some((p) => p.id === photoA || p.id === photoB)).toBe(false);
+
+      // 3. photoB was consumed/deleted outside tx, but photoA's in-tx delete was ROLLED BACK
+      expect(await checkUploadIntents(U2, [photoB])).toEqual([]);
+      expect(await checkUploadIntents(U2, [photoA])).toEqual([photoA]);
+
+      // 4. Retry creation succeeds with the restored photoA intent
+      const retryDeps = fakeProvisionPhotosDeps();
+      const retried = await createCheckIn(
+        U2,
+        {
+          cafe_id: testCafeId,
+          scores: { overall: 75, wifi: 80 },
+          max_stay: "unlimited",
+          note: "Retry after rollback",
+          photo_ids: [photoA],
+        },
+        retryDeps,
+      );
+      expect(retried.checkin_id).toBeDefined();
+
+      // Check-in committed with photoA
+      const checkinRow = await dbClient.query(
+        "select photos from checkins where id = $1",
+        [retried.checkin_id],
+      );
+      const attached = checkinRow.rows[0].photos as Array<{ id: string }>;
+      expect(attached.some((p) => p.id === photoA)).toBe(true);
+
+      // photoA is now consumed in real Postgres
+      expect(await checkUploadIntents(U2, [photoA])).toEqual([]);
+
+      // 5. Replay rejection: reusing consumed photoA fails fast
+      await expect(
+        createCheckIn(
+          U2,
+          {
+            cafe_id: testCafeId,
+            scores: { overall: 80 },
+            photo_ids: [photoA],
+          },
+          retryDeps,
+        ),
+      ).rejects.toBeInstanceOf(PhotoIntentError);
+
+      await dbClient.query("delete from checkins where cafe_id = $1", [testCafeId]);
+      await dbClient.query("delete from cafes where id = $1", [testCafeId]);
+    });
+
+    it("batch upload intent consumes multi-photo intents atomically and rejects replay (BRAWUKA-739 / BRAWUKA-791)", async () => {
+      const testCafeId = randomUUID();
+      await dbClient.query(
+        `insert into cafes (id, name, location, city, created_by, tz)
+         values ($1, 'Batch Multi Cafe', ST_SetSRID(ST_MakePoint(103.85, 1.3), 4326)::geography,
+                 'singapore', $2, 'Asia/Singapore')`,
+        [testCafeId, U1],
+      );
+
+      const photoC = randomUUID();
+      const photoD = randomUUID();
+      await recordUploadIntent(U1, photoC);
+      await recordUploadIntent(U1, photoD);
+      expect(await checkUploadIntents(U1, [photoC, photoD])).toEqual(
+        expect.arrayContaining([photoC, photoD]),
+      );
+
+      const created = await createCheckIn(
+        U1,
+        {
+          cafe_id: testCafeId,
+          scores: { overall: 85, wifi: 90 },
+          max_stay: "unlimited",
+          note: "Batch consume multi-photo",
+          photo_ids: [photoC, photoD],
+        },
+        fakeProvisionPhotosDeps(),
+      );
+      expect(created.checkin_id).toBeDefined();
+
+      // Both intents consumed in real Postgres in one batched operation
+      expect(await checkUploadIntents(U1, [photoC, photoD])).toEqual([]);
+
+      // Both photos attached to check-in and merged to cafe gallery
+      const checkinRes = await dbClient.query("select photos from checkins where id = $1", [created.checkin_id]);
+      const photos = checkinRes.rows[0].photos as Array<{ id: string }>;
+      expect(photos.some((p) => p.id === photoC)).toBe(true);
+      expect(photos.some((p) => p.id === photoD)).toBe(true);
+
+      const cafeRes = await dbClient.query("select gallery from cafes where id = $1", [testCafeId]);
+      const gallery = cafeRes.rows[0].gallery as Array<{ id: string }>;
+      expect(gallery.some((p) => p.id === photoC)).toBe(true);
+      expect(gallery.some((p) => p.id === photoD)).toBe(true);
+
+      // Replaying consumed batch intents throws PhotoIntentError
+      await expect(
+        createCheckIn(
+          U1,
+          {
+            cafe_id: testCafeId,
+            scores: { overall: 80 },
+            photo_ids: [photoC, photoD],
+          },
+          fakeProvisionPhotosDeps(),
+        ),
+      ).rejects.toBeInstanceOf(PhotoIntentError);
+
+      await dbClient.query("delete from checkins where cafe_id = $1", [testCafeId]);
+      await dbClient.query("delete from cafes where id = $1", [testCafeId]);
     });
   });
 

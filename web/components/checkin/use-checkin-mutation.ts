@@ -6,13 +6,9 @@ import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiErrorMessage, isUnauthorized } from "@/lib/http";
 import { clearPendingCheckin } from "@/lib/checkin/pending-checkin";
+import { invalidateCheckinQueries } from "@/lib/query/invalidation";
 import type { CheckInScores, MaxStay } from "@/types/checkins";
-import {
-  createCheckin,
-  updateCheckin,
-  deleteCheckin,
-  invalidateCheckinQueries,
-} from "./checkin-api";
+import { createCheckin, updateCheckin, deleteCheckin } from "./checkin-api";
 
 /**
  * Post-save success UX (BRAWUKA-250). Interaction-design timings, not product

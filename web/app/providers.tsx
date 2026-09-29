@@ -10,7 +10,7 @@ import { useCallback } from "react";
 import type { ReactNode } from "react";
 import { getQueryClient } from "@/lib/query/client";
 import { persistOptions } from "@/lib/query/persist-options";
-import { idbPersister } from "@/lib/query/persister";
+import { clearClientState } from "@/lib/query/clear-client-state";
 import { SW_URL } from "@/lib/sw-rules";
 import { TIME_ZONE } from "@/i18n/config";
 
@@ -27,12 +27,9 @@ export function Providers({
 
   const handleRestoreError = useCallback(async () => {
     console.error("Failed to restore persisted query cache; clearing persisted state.");
-    try {
-      await idbPersister.removeClient();
-    } catch (e) {
-      console.error("Failed to remove persisted query client", e);
-    }
-    queryClient.clear();
+    await clearClientState(queryClient, (e) =>
+      console.error("Failed to remove persisted query client", e),
+    );
   }, [queryClient]);
 
   // `timeZone` is required: client components using next-intl render on the

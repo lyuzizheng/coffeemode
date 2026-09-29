@@ -26,7 +26,7 @@ import { DangerConfirm } from "@/components/danger-confirm";
 import { AppMenu } from "@/components/layout/app-menu";
 import { SettingsGroup, SettingsRow } from "./settings-row";
 import { apiFetch, isUnauthorized } from "@/lib/http";
-import { idbPersister } from "@/lib/query/persister";
+import { clearClientState } from "@/lib/query/clear-client-state";
 import type { UserProfileDto } from "@/lib/db/profile";
 
 const THEME_OPTIONS = ["light", "dark", "system"] as const;
@@ -223,14 +223,11 @@ export function DeleteAccountSection() {
     try {
       await apiFetch("/api/profile", { method: "DELETE" });
       // The account is gone — its profile/cafe data must not survive in the
-      // browser store. Same teardown as SignOutButton: drop the IndexedDB
-      // persistor first, then the live TanStack client (BRAWUKA-540).
-      try {
-        await idbPersister.removeClient();
-      } catch (e) {
-        console.error("settings-view: failed to clear persisted cache", e);
-      }
-      queryClient.clear();
+      // browser store. Shared teardown drops the IndexedDB persistor first,
+      // then the live TanStack client (BRAWUKA-540/732).
+      await clearClientState(queryClient, (e) =>
+        console.error("settings-view: failed to clear persisted cache", e),
+      );
       router.push("/");
       router.refresh();
     } catch (cause) {

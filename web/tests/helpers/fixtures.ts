@@ -39,6 +39,18 @@ export async function seedBaseData(dbClient: pg.Client): Promise<void> {
   );
 }
 
+/**
+ * Hard isolation reset: re-enables checkin_likes triggers, truncates mutable tables,
+ * and re-seeds baseline data (U1, U2, CAFE_A, CHECKIN_A1).
+ */
+export async function resetTestDatabaseTables(dbClient: pg.Client): Promise<void> {
+  await dbClient.query("alter table checkin_likes enable trigger all");
+  await dbClient.query(
+    "truncate table profiles, cafes, image_upload_intents, navigations restart identity cascade",
+  );
+  await seedBaseData(dbClient);
+}
+
 export function fakeProcessUrls(imageUuid: string): CompleteResponse {
   const keys = {
     original: `original/${imageUuid}.webp`,

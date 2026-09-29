@@ -284,6 +284,8 @@ INTEGRATION_GATED=$'application=true\nintegration=true\nimage_service=false\npoi
 expect_classifier "gated devops suite" "$INTEGRATION_GATED" "web/tests/devops/staging-journey.test.ts"
 expect_classifier "gated test helper entrypoint" "$INTEGRATION_GATED" "web/tests/db-helpers.test.ts"
 expect_classifier "gated integration suite" "$INTEGRATION_GATED" "web/tests/integration/db.integration.test.ts"
+expect_classifier "gated search integration suite" "$INTEGRATION_GATED" "web/tests/integration/db-search.integration.test.ts"
+expect_classifier "gated profile identity integration suite" "$INTEGRATION_GATED" "web/tests/integration/db-profile-identity.integration.test.ts"
 # A suite's harness runs only where the suite runs, so the fixture the journey
 # suites read (and the setup file every suite loads) is gated too (BRAWUKA-206).
 expect_classifier "journey fixture" "$INTEGRATION_GATED" "web/tests/fixtures/mock-dataset.ts"

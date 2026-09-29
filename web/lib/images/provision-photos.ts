@@ -27,27 +27,17 @@ import { logError } from "@/lib/observability/server-log";
 export type ProvisionQueryFn = TxQueryFn;
 
 export interface ProvisionPhotosDeps {
-  checkUploadIntent: (userId: string, imageUuid: string) => Promise<boolean>;
   /**
-   * Batch pre-check for multi-photo creates (BRAWUKA-281 P1): one batched
-   * DB round trip instead of N sequential `checkUploadIntent` reads.
-   * Returns the subset of `imageUuids` whose intent is valid. Defaults to
-   * N parallel `checkUploadIntent` calls when the caller only supplies the
-   * per-id check (tests, legacy fakes); the production factory below wires
-   * the real batched query.
+   * Batch pre-check for multi-photo creates (BRAWUKA-281 P1, BRAWUKA-739):
+   * one batched DB round trip. Returns the subset of `imageUuids` whose
+   * intent is valid.
    */
-  checkUploadIntents?: (userId: string, imageUuids: string[]) => Promise<string[]>;
-  consumeUploadIntent: (
-    userId: string,
-    imageUuid: string,
-    q: ProvisionQueryFn,
-  ) => Promise<boolean>;
+  checkUploadIntents: (userId: string, imageUuids: string[]) => Promise<string[]>;
   /**
-   * Batched single-use consume (BRAWUKA-279): one DELETE inside the caller's
-   * transaction regardless of photo count. Falls back to per-id
-   * `consumeUploadIntent` calls when absent (tests, legacy fakes).
+   * Batched single-use consume (BRAWUKA-279, BRAWUKA-739): one DELETE inside
+   * the caller's transaction regardless of photo count.
    */
-  consumeUploadIntents?: (
+  consumeUploadIntents: (
     userId: string,
     imageUuids: string[],
     q: ProvisionQueryFn,
@@ -117,10 +107,6 @@ export interface ProvisionPhotosDeps {
  */
 export function defaultProvisionPhotosDeps(): ProvisionPhotosDeps {
   return {
-    checkUploadIntent: async (userId, imageUuid) => {
-      const { checkUploadIntent } = await import("@/lib/db/image-uploads");
-      return checkUploadIntent(userId, imageUuid);
-    },
     checkUploadIntents: async (userId, imageUuids) => {
       const { checkUploadIntents } = await import("@/lib/db/image-uploads");
       return checkUploadIntents(userId, imageUuids);
@@ -132,10 +118,6 @@ export function defaultProvisionPhotosDeps(): ProvisionPhotosDeps {
     restampOriginal: async (attachUrls) => {
       const { restampOriginal } = await import("@/lib/images/processor");
       return restampOriginal(attachUrls);
-    },
-    consumeUploadIntent: async (userId, imageUuid, q) => {
-      const { consumeUploadIntent } = await import("@/lib/db/image-uploads");
-      return consumeUploadIntent(userId, imageUuid, q);
     },
     consumeUploadIntents: async (userId, imageUuids, q) => {
       const { consumeUploadIntents } = await import("@/lib/db/image-uploads");
@@ -201,15 +183,7 @@ export async function provisionPhotos(
 ): Promise<ProvisionedPhoto[]> {
   if (photoIds.length === 0) return [];
 
-  const validIds = deps.checkUploadIntents
-    ? await deps.checkUploadIntents(userId, photoIds)
-    : (
-        await Promise.all(
-          photoIds.map(async (imageUuid) =>
-            (await deps.checkUploadIntent(userId, imageUuid)) ? imageUuid : null,
-          ),
-        )
-      ).filter((id): id is string => id !== null);
+  const validIds = await deps.checkUploadIntents(userId, photoIds);
   if (validIds.length !== photoIds.length) throw new PhotoIntentError();
 
   const CONCURRENCY = 2;
@@ -289,8 +263,7 @@ async function provisionProcessUrls(
  * id that fails to consume (replay, foreign, or expired since the
  * pre-check) throws PhotoIntentError so the whole creation rolls back —
  * the DELETE rolls back too, leaving the remaining intents reusable.
- * Prefers the batched `consumeUploadIntents` seam (one DELETE); falls back
- * to per-id `consumeUploadIntent` calls for legacy fakes.
+ * Uses the batched `consumeUploadIntents` seam (one DELETE, BRAWUKA-739).
  */
 export async function consumeProvisionedIntents(
   userId: string,
@@ -299,15 +272,8 @@ export async function consumeProvisionedIntents(
   deps: ProvisionPhotosDeps,
 ): Promise<void> {
   if (photoIds.length === 0) return;
-  if (deps.consumeUploadIntents) {
-    const consumed = await deps.consumeUploadIntents(userId, photoIds, q);
-    if (!consumed) throw new PhotoIntentError();
-    return;
-  }
-  for (const imageUuid of photoIds) {
-    const consumed = await deps.consumeUploadIntent(userId, imageUuid, q);
-    if (!consumed) throw new PhotoIntentError();
-  }
+  const consumed = await deps.consumeUploadIntents(userId, photoIds, q);
+  if (!consumed) throw new PhotoIntentError();
 }
 /**
  * Best-effort R2 compensation for a rolled-back creation (BRAWUKA-279):

@@ -45,7 +45,11 @@ canonical UI; this artifact supersedes its composition:
   touches a control.
 
 The 0–100 threshold contract is preserved: segments emit concrete threshold
-numbers into the same deep-linkable URL parameters (`filter_wifi=60`).
+numbers into the same deep-linkable URL parameters (`filter_wifi=60`). The
+deep-link edge is uniform (BRAWUKA-785): a present `filter_<dim>` always
+means "rated at all, avg ≥ threshold" — `=0` selects rated-only (excludes
+unrated), `=N` a real minimum; omitting the parameter is the only `Any`.
+The UI itself never emits `=0`.
 
 ## 3. Surfaces and entry points
 

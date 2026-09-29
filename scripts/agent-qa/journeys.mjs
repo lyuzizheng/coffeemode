@@ -168,14 +168,14 @@ export const AGENT_QA_JOURNEYS = Object.freeze([
     steps: [
       "GET /api/search?q=a&limit=5 → record baseline total_count (seed cafe present)",
       "GET /api/search?q=a&limit=5&filter_wifi=80 → total_count drops vs baseline (verified live 1→0)",
-      "GET /api/search?q=a&limit=5&filter_wifi=0 → total_count 0 (seed has no wifi rated rows; =0 keeps rated-only, excludes unrated — not 'unlimited') → GET /api/search?q=a&limit=5 with no filter param → total_count recovers to baseline (omit-param is the 'Any' contract)",
+      "GET /api/search?q=a&limit=5&filter_wifi=0 → total_count 0 (seed has no wifi rated rows; spec BRAWUKA-785: present filter means 'rated at all, avg ≥ threshold' — =0 keeps rated-only, excludes unrated; 'Any' is omit-param only) → GET /api/search?q=a&limit=5 with no filter param → total_count recovers to baseline (omit-param is the 'Any' contract)",
       "Repeat with filter_coffee=80 vs 0 for the second nomad dimension (seed check-in scores only overall=51; wifi/coffee/outlets have no rated rows — verified live)",
     ],
     verdict: {
       deterministic: [
         "baseline total_count >= 1 (seed cafe present; else blocked: staging-seed)",
         "filter_wifi=80 returns fewer results than baseline (narrowing, not error)",
-        "filter_wifi=0 returns 0 on seed (no wifi rated rows; =0 keeps rated-only, excludes unrated — not 'unlimited')",
+        "filter_wifi=0 returns 0 on seed (no wifi rated rows; BRAWUKA-785: =0 = rated-only, excludes unrated — not 'unlimited')",
         "omitting filter_wifi recovers to baseline count (omit-param is the 'Any'/unlimited contract; filter is selective, not destructive)",
         "same narrowing/exclusion pair holds for filter_coffee (seed has no coffee rated rows either; outlets skipped: no rated rows)",
       ],

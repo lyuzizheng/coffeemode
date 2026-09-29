@@ -134,8 +134,16 @@ journey that conflates them is testing a contract that does not exist.
   with `cf-ipcity: tokyo`.
 - Min-score filters `filter_wifi|filter_outlets|filter_seats|filter_temp|filter_coffee|filter_overall`
   accept 0–100 thresholds: Cafe 3 (experience_score 40) is excluded by
-  `filter_overall=60`. Out-of-range values (e.g. `filter_overall=120`) are
-  silently ignored — assert 200 with an unfiltered set, not a 400.
+  `filter_overall=60`. Threshold semantics are uniform (BRAWUKA-785):
+  a *present* filter requires the dimension to be rated — `n > 0` AND
+  `avg >= threshold`, so unrated cafes are excluded at every value,
+  including `=0`; `=0` therefore means "rated at all" (min avg 0), `=1`
+  means "avg at least 1". Omitting the parameter entirely is the only
+  "Any"/no-constraint form; the UI never emits `=0` (segments: Any / 60+ /
+  80+). A repeated parameter resolves to its first value
+  (`URLSearchParams.get`, BRAWUKA-670). Out-of-range or unparseable values
+  (e.g. `filter_overall=120`) are silently ignored — assert 200 with an
+  unfiltered set, not a 400.
 - `open_now=true` is asserted deterministically, never on wall-clock: Cafe 1
   carries 00:00–23:59 hours every day (always open → included), Cafe 2
   carries an explicit `null` closed day for every weekday (closed →

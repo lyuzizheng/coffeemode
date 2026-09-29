@@ -21,10 +21,11 @@ import { databaseNameFromUrl, DEFAULT_DB_URL, evaluateRemoteTarget } from "./lib
  * (BRAWUKA-629).
  *
  * Safety: default mode is dry-run (counts only, deletes nothing). Non-local
- * hosts require `ALLOW_REMOTE_INTEGRATION_DB=1`, and a `host`/`hostaddr`/
- * `socketPath` query override is refused outright — the same policy the
- * sweeper applies, canonical in `scripts/lib/test-db-policy.mjs`. Deletes run
- * in one transaction in dependency order (checkins/navigations before cafes
+ * hosts and `host`/`hostaddr`/`socketPath` query overrides are refused by
+ * default; `ALLOW_REMOTE_INTEGRATION_DB=1` is the single explicit opt-in that
+ * lifts both — the same policy the sweeper applies, canonical in
+ * `scripts/lib/test-db-policy.mjs`. Deletes run in one transaction in
+ * dependency order (checkins/navigations before cafes
  * before profiles; checkin_likes and image_upload_intents follow via
  * `on delete cascade`).
  *
@@ -62,11 +63,12 @@ Options:
   -h, --help             Show this help message and exit
 
 Safety:
-  Default is dry-run: counts fixture rows, deletes nothing. Non-local hosts
-  require ALLOW_REMOTE_INTEGRATION_DB=1, and a host/hostaddr/socketPath query
-  override is always refused. Only b0000000-/c0000000-/a0000000-/d0000000-/
-  e2e00000- ids are ever candidates; a0eebc99-* dev rows and the service
-  account are never matched. --apply deletes in one transaction.
+  Default is dry-run: counts fixture rows, deletes nothing. Non-local hosts and
+  a host/hostaddr/socketPath query override are refused by default; the single
+  explicit opt-in ALLOW_REMOTE_INTEGRATION_DB=1 lifts both. Only b0000000-/
+  c0000000-/a0000000-/d0000000-/e2e00000- ids are ever candidates; a0eebc99-*
+  dev rows and the service account are never matched. --apply deletes in one
+  transaction.
 `.trim());
 }
 

@@ -265,10 +265,22 @@ describe("test-db policy — connection targets", () => {
     expect(overridden.overrideParam).toBe("host");
   });
 
-  it("ALLOW_REMOTE_INTEGRATION_DB=1 lifts the refusal without hiding a malformed URL", () => {
+  it("ALLOW_REMOTE_INTEGRATION_DB=1 is the single opt-in that lifts both checks, key by key", () => {
     process.env[REMOTE_DB_OPT_IN] = "1";
-    expect(evaluateRemoteTarget("postgres://u:p@db.example.com:5432/coffeemode", { action: "stale-DB sweep" }).refusal).toBeNull();
-    expect(evaluateRemoteTarget("postgres://u:p@localhost:5432/db?host=elsewhere", { action: "stale-DB sweep" }).refusal).toBeNull();
+    const allowed = [
+      "postgres://u:p@db.example.com:5432/coffeemode",
+      "postgres://u:p@localhost:5432/coffeemode?host=elsewhere.internal",
+      "postgres://u:p@localhost:5432/coffeemode?hostaddr=10.9.9.9",
+      "postgres://u:p@localhost:5432/coffeemode?socketPath=/tmp/pg",
+    ];
+    for (const url of allowed) {
+      expect(evaluateRemoteTarget(url, { action: "stale-DB sweep" }).refusal).toBeNull();
+    }
+    delete process.env[REMOTE_DB_OPT_IN];
+  });
+
+  it("the opt-in does not cover an unreadable connection string", () => {
+    process.env[REMOTE_DB_OPT_IN] = "1";
     expect(() => evaluateRemoteTarget("not a url", { action: "stale-DB sweep" })).toThrow(/not a valid URL/);
     delete process.env[REMOTE_DB_OPT_IN];
   });

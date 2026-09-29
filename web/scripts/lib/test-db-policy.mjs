@@ -130,13 +130,17 @@ function inspectConnectionTarget(raw) {
 }
 
 /**
- * May this process connect to `raw`? A target is acceptable only when it names a
- * local host AND carries none of the connection-string overrides that would
- * redirect it. The sweeper scripts adopt that stricter rule here; they used to
- * check the hostname alone, so `?host=<elsewhere>` looked local.
+ * May this process connect to `raw`? By default a target is acceptable only when
+ * it names a local host AND carries none of the connection-string overrides that
+ * would redirect it. The sweeper scripts adopt that stricter rule here; they used
+ * to check the hostname alone, so `?host=<elsewhere>` looked local.
  *
- * The URL is parsed before the opt-in is read, so a malformed string is a
- * refusal whether or not the operator opted in.
+ * `ALLOW_REMOTE_INTEGRATION_DB=1` is the single opt-in for the whole question: it
+ * lifts the override refusal exactly as it already lifted the non-local-host one
+ * in `integrationAdminUrl`, because both mean "this explicitly disposable
+ * server". It is not a per-parameter switch and it does not cover an unreadable
+ * connection string: the URL is parsed before the opt-in is read, so a malformed
+ * string is a refusal either way.
  *
  * @param {string} raw
  * @param {{ action?: string }} [options] Verb phrase named in the refusal, e.g.

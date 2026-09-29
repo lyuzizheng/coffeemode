@@ -14,9 +14,10 @@ import { DEFAULT_DB_URL, evaluateRemoteTarget, isTestDatabaseName } from "./lib/
  *
  * Safety rules (canonical in `scripts/lib/test-db-policy.mjs`, shared with
  * `integrationAdminUrl` in `web/tests/helpers/db.ts`):
- *   - Non-local hosts require `ALLOW_REMOTE_INTEGRATION_DB=1`, and a
- *     `host`/`hostaddr`/`socketPath` query override is refused outright: it
- *     would connect somewhere the URL's hostname does not name.
+ *   - Non-local hosts, and `host`/`hostaddr`/`socketPath` query overrides (which
+ *     would connect somewhere the URL's hostname does not name), are refused by
+ *     default; `ALLOW_REMOTE_INTEGRATION_DB=1` is the single explicit opt-in
+ *     that lifts both.
  *   - Only names matching `^(coffeemode_.*|supa_prov_test_.*)_[0-9]+_[0-9a-f]{32}$`
  *     are ever candidates (`isTestDatabaseName`) — the pid+uuid suffix makes
  *     real databases unmatchable, and `*_template` databases never match.
@@ -50,9 +51,10 @@ Options:
   -h, --help             Show this help message and exit
 
 Safety:
-  Non-local hosts require ALLOW_REMOTE_INTEGRATION_DB=1, and a host/hostaddr/
-  socketPath query override is always refused (same policy as
-  web/scripts/lib/test-db-policy.mjs). Only pid+uuid-suffixed test databases
+  Non-local hosts are refused by default, as is a host/hostaddr/socketPath query
+  override (it would dial a host the URL does not name). The single explicit
+  opt-in ALLOW_REMOTE_INTEGRATION_DB=1 lifts both; policy is canonical in
+  web/scripts/lib/test-db-policy.mjs. Only pid+uuid-suffixed test databases
   match; template databases and real databases never match. --apply skips
   databases with active backends. Run an unfiltered --apply only when no
   journey is in flight; use --only to scope a sweep to specific databases.

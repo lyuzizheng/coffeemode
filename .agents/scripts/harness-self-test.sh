@@ -22,7 +22,7 @@ cp -R docs .agents .github .codex AGENTS.md "$TEST_ROOT/" 2>/dev/null || true
 # would look like a detector bug. Tracked files only: no `node_modules`, no
 # `.next`, no coverage output.
 mkdir -p "$TEST_ROOT/web"
-(cd "$ROOT" && git ls-files -z web scripts | tar --null -T - -cf -) | (cd "$TEST_ROOT" && tar -xf -)
+(cd "$ROOT" && git ls-files -z web scripts image-service poi-service | tar --null -T - -cf -) | (cd "$TEST_ROOT" && tar -xf -)
 # Runtime-pin inputs: the manifests, lockfiles, Worker configs, Dockerfile and
 # compose file `check-runtime-pins.sh` reads, plus the workflows it walks (copied
 # with `.github/`). The gate treats any missing one as a failure (so it cannot

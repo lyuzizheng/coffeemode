@@ -65,6 +65,7 @@ Layer 1 is deterministic and CI-enforced:
 | `scripts/check-ci-classification.sh` | Classifier routing contract: gated suites, transitive consumers, rule coverage, ratchet inputs |
 | `scripts/check-runtime-pins.sh` | Runtime drift: `engines.node` against every workflow's `node-version`, TypeScript version, Worker `compatibility_date` |
 | `scripts/check-implementation-slices.sh` | Planned product-slice manifest validation |
+| `scripts/check-coverage-matrix.sh` | `docs/agent/test-coverage.md` completeness plus reference validation: proving files exist, gate aliases are real `web/package.json` scripts, declared layers match those gates, and non-runnable rows carry the explicit `manual` marker |
 | `scripts/check-links.sh` | Local Markdown links |
 | `scripts/check-agent-skills.sh` | Skill frontmatter and names |
 | `scripts/check-codex-agents.sh` | `.codex/` shape and workflow alignment |

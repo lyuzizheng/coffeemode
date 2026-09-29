@@ -10,13 +10,15 @@
  *
  * Zero-dependency on purpose: bucket names are the top-level mapping keys,
  * so a line scan suffices and the script runs on a fresh checkout before
- * `npm ci`. Freshness is enforced by `tests/api/guard.test.ts`, which
- * re-renders the module in memory and compares it byte-for-byte against the
- * committed file — so a stale generated file fails the existing `npm test`
- * gate with no extra CI wiring. `--check` does the same from the shell.
+ * `npm ci`. Freshness is enforced by `--check`, which re-renders the module in
+ * memory and compares it byte-for-byte against the committed file without
+ * rewriting it: `npm run check:buckets` runs it in the `application-static` CI
+ * job (step pinned by `.agents/scripts/check-ci-workflow.sh`) and in
+ * `npm run verify`, so a stale generated file fails the PR instead of being
+ * silently regenerated (BRAWUKA-746).
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -62,7 +64,12 @@ export type RateLimitBucketName = (typeof RATE_LIMIT_BUCKET_NAMES)[number];
 `;
 }
 
-const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+// Compared through `realpathSync`: `import.meta.url` is symlink-resolved while
+// `process.argv[1]` is not, so a checkout reached through e.g. macOS `/tmp` or
+// `$TMPDIR` would otherwise make `--check` exit 0 without checking anything.
+const isDirectRun =
+  process.argv[1] &&
+  realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
 
 if (isDirectRun) {
   const text = readFileSync(YAML_FILE, "utf8");

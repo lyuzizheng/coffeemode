@@ -72,7 +72,7 @@ Risk and independent-review requirements are defined only in
 ### Commands
 
 ```text
-web: npm run typecheck, lint, check:structure, check:duplication, check:file-size, check:i18n, build, check:bundle, verify, lhci
+web: npm run typecheck, lint, check:structure, check:duplication, check:file-size, check:i18n, build, check:bundle, check:buckets, gen:buckets, verify, lhci
 web component tests: npm run test:unit (vitest run tests/components --passWithNoTests — scoped so RUN_INTEGRATION-gated suites stay out; an empty family is a legal state, not a failure)
 web real DB: npm run db:migrate, npm run test:integration, npm run test:integration:journey, npm run test:integration:http, npm run test:integration:images, npm run test:integration:all, npm run test:coverage:integration
 web browser smoke: npm run test:e2e (Playwright MVP smoke suite), npm run lhci (Lighthouse CI performance budgets), npm run check:visual (local visual render evidence)
@@ -104,7 +104,7 @@ ungated harness file, or a registered suite the coverage ratchet does not measur
 appears without a routing decision, or when a unit-only path starts scheduling the
 DB-backed gate:
 
-- `application-static`: `web/` changes (typecheck, structure guard — file/function budget, duplication budget, layer boundaries, exemption ratchet — route guard (`npm run check:guards`, apiRoute/origin allowlists), lint, i18n key parity, component unit tests (`npm run test:unit`, `tests/components/**`), build, bundle budget check, bundle analysis, PWA validation);
+- `application-static`: `web/` changes (typecheck, structure guard — file/function budget, duplication budget, layer boundaries, exemption ratchet — route guard (`npm run check:guards`, apiRoute/origin allowlists), generated-artifact freshness (`npm run check:buckets`: re-renders `web/lib/api/rate-limit-buckets.generated.ts` from `web/config/rate-limits.yaml` in memory and fails on a byte difference without rewriting the file), lint, i18n key parity, component unit tests (`npm run test:unit`, `tests/components/**`), build, bundle budget check, bundle analysis, PWA validation);
 - `application-e2e`: `web/` changes (build, Playwright E2E smoke suite, and Lighthouse CI performance budgets against seeded fixtures) — runs in parallel with `application-static`;
 - `integration-gate`: DB/SQL-capable web boundaries and shared-package changes — runs real Postgres DB tests (`npm run test:integration`), real Postgres user-journey tests (`npm run test:integration:journey`), real Postgres HTTP lifecycle tests (`npm run test:integration:http`), and real MinIO/R2 image round-trip (`npm run test:integration:images`) sequentially on one `postgis` service + `docker compose up minio` (merged for efficiency; was `integration-gate` + `images-integration-gate`), then the real-DB coverage ratchet (`npm run test:coverage:integration`) against the same live stack. Branch protection that still requires the legacy `images-integration-gate` name should migrate to `integration-gate` + `ci-gate` (see migration note below);
 - `image-service-gate`: image-service and shared-package changes (typecheck, structural lint, file budget, exemption ratchet, deploy config guard);
@@ -313,6 +313,12 @@ How tests evolve when features land (one writer per change, per `AGENTS.md`):
   retired — do not add `*.test.*` files outside `tests/integration/`,
   `tests/devops/`, and `tests/components/` (component contracts, run by
   `npm run test:unit`; see AGENTS.md §Testing).
+  The row's proving files must exist and its gate cell must name a
+  `web/package.json` script whose layer matches the row's declared layers —
+  `.agents/scripts/check-coverage-matrix.sh` enforces this on every change
+  (BRAWUKA-746). A row that is not backed by a runnable gate must say `manual`
+  in the gate cell (it is then reported as unenforced) and be justified in §4;
+  historical or deleted paths never belong in a §1 row.
 - New production helper used by ≥2 suites → move it to `web/tests/helpers/*`
   (infra: `db`/`r2`; service: `auth`/`fixtures`) instead of duplicating it;
   helpers never embed product logic.
@@ -344,11 +350,12 @@ amending the ADR, and they must never carry user content (`q`, coordinates,
 
 ### Appendix — Coverage traceability
 
-The traceability matrix lives at `docs/agent/test-coverage.md` (S3 testkit-coverage-doc). It maps every user trace — login Apple/Google, session refresh (`web/proxy.ts`), cafe create, nearby list, detail, check-in lifecycle (create/edit/delete), likes, navigations, image upload/complete, POI search/resolve, 404 recovery, SEO (sitemap/OG), rate limiting — to `Trace × Spec × Layer (integration/component/browser) × Proving file × Gate`. Efficiency notes record no-duplication via `web/tests/helpers/*` and the infra (`db`/`r2`) vs service (`auth`/`fixtures`/`mocks`/`http-client`/`live-keys`) helper split; residual gaps (real OAuth provider round-trip and real Turnstile loop stay staging-manual; POI billing shape is Google-console-only) are listed there. The deterministic gate `.agents/scripts/check-coverage-matrix.sh` validates completeness (every `READY` slice has ≥1 row) and can be run in CI or as `preflight` follow-on.
+The traceability matrix lives at `docs/agent/test-coverage.md` (S3 testkit-coverage-doc). It maps every user trace — login Apple/Google, session refresh (`web/proxy.ts`), cafe create, nearby list, detail, check-in lifecycle (create/edit/delete), likes, navigations, image upload/complete, POI search/resolve, 404 recovery, SEO (sitemap/OG), rate limiting — to `Trace × Spec × Layer (integration/component/browser) × Proving file × Gate`. Efficiency notes record no-duplication via `web/tests/helpers/*` and the infra (`db`/`r2`) vs service (`auth`/`fixtures`/`mocks`/`http-client`/`live-keys`) helper split; residual gaps (real OAuth provider round-trip and real Turnstile loop stay staging-manual; POI billing shape is Google-console-only) are listed there. The deterministic gate `.agents/scripts/check-coverage-matrix.sh` validates completeness (every `READY` slice has ≥1 row) and the map's references against the tree (BRAWUKA-746): backticked proving files in §1 rows and the §3 helper table must exist under the canonical roots, gate aliases must be `web/package.json` scripts, declared layers must equal the gate classes that run them, and non-runnable rows must carry the explicit `manual` marker (reported as unenforced) instead of reading as coverage. See §Acceptance criteria. It runs in preflight and is exercised by `.agents/scripts/harness-self-test.sh` fault injection.
 
 ## Acceptance criteria
 
-- `npm run verify` remains the full web type/lint/i18n/build/bundle-budget gate.
+- `npm run verify` remains the full web type/lint/i18n/build/bundle-budget gate, plus generated-artifact freshness: `npm run check:buckets` runs `scripts/generate-rate-limit-buckets.mjs --check` first, so a `web/config/rate-limits.yaml` edit without a re-run of `npm run gen:buckets` fails locally with the stale bytes left in place.
+- A stale `web/lib/api/rate-limit-buckets.generated.ts` fails the `application-static` step `npm run check:buckets` without being rewritten, and deleting that exact `run:` line from `ci.yml` fails preflight (`.agents/scripts/check-ci-workflow.sh`, BRAWUKA-746).
 - Lighthouse CI enforces performance (>= 80 on cafe detail per spec 0001:1182), accessibility, best practices, and SEO budgets against seeded deterministic fixtures.
 - The bundle budget measures the clean build output across all of `.next/static` against typed limits in `web/config/app.yaml`.
 - Real Postgres remains required for DB/SQL behavior.
@@ -365,6 +372,19 @@ The traceability matrix lives at `docs/agent/test-coverage.md` (S3 testkit-cover
   secrets scoped to the `staging` GitHub Environment; it is never a required
   PR check, and production promotion requires its green run on the promoted
   commit (spec 0010 §5).
+- The traceability matrix's references are validated, not trusted
+  (BRAWUKA-746): `.agents/scripts/check-coverage-matrix.sh` fails when a §1 row
+  or §3 helper-table entry cites a backticked `.ts`/`.tsx`/`.mjs` proving file
+  that does not exist under its canonical roots (a `*` glob must match at least
+  one file), when a gate alias in a §1 row's gate cell is not a
+  `web/package.json` script, or when a row's declared layers are not exactly the
+  layer classes of the gates it names. A row whose gate cell carries the explicit
+  `manual` marker (bare or backticked) is exempt from the runnable-proof checks
+  and is reported as unenforced, so manual or historical evidence cannot read as
+  CI coverage — non-runnable material belongs in §4 (residual gaps) prose, which
+  is exempt. The validated sections are located by number (`## 1.`, `## 3.`) and
+  validation is fail-closed: a section that is absent, renamed away or empty
+  fails the gate instead of reporting an empty validation as success.
 - All three packages declare the same `engines.node` floor as CI and the container images; `.agents/scripts/check-runtime-pins.sh` fails on any divergence, on a missing declaration, or on a floor it cannot parse.
 - All three packages declare and resolve one TypeScript version; a per-package major bump fails.
 - Both Workers pin a valid, non-future `compatibility_date`; removing it or pushing it into the future fails.

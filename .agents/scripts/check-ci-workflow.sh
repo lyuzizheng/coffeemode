@@ -92,6 +92,14 @@ else
     fi
   done
 
+  # Generated-artifact freshness is its own exact step: `--check` never rewrites
+  # the tree, so deleting this step would let a stale generated bucket file ship
+  # green (BRAWUKA-746).
+  if ! grep -qE "^[[:space:]]*(-[[:space:]]+)?run:[[:space:]]*npm run check:buckets[[:space:]]*$" "$workflow"; then
+    echo "ci.yml missing static step: npm run check:buckets"
+    fail=1
+  fi
+
   pw_lines=$(grep "playwright install" "$workflow" || true)
   if [[ -n "$pw_lines" ]] && echo "$pw_lines" | grep -qvE 'playwright install[[:space:]]+chromium[[:space:]]*$'; then
     echo "ci.yml contains an unapproved playwright install command (only 'playwright install chromium' is allowed)"

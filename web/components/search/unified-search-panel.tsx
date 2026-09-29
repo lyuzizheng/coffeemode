@@ -27,11 +27,10 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { useNetworkStatus } from "@/hooks/use-network-status";
 import { addRecentSearch } from "@/lib/search/recent-searches";
 import { getRankingPreference } from "@/lib/search/ranking-preference";
-import { fetchUnifiedSearch, resolveSearchScope, type UnifiedSearchParams } from "@/lib/search/search-client";
+import { buildUnifiedSearchParams, fetchUnifiedSearch, resolveSearchScope, type UnifiedSearchParams } from "@/lib/search/search-client";
 import { buildSearchHref } from "@/lib/search/search-url";
 import {
   EMPTY_FILTERS,
-  filtersToSearchParams,
   hasActiveFilters,
   type SearchFilterState,
 } from "@/lib/search/search-filters";
@@ -97,25 +96,21 @@ interface UnifiedSearchPanelProps {
 }
 
 
-/** Canonical signature of the request the panel would fire — the same
- * serialization `fetchUnifiedSearch` applies (`q` + resolved scope +
- * `filter_*`). Dedupe MUST compare this, not the query text alone: a
- * filter/city change with an unchanged query is a different request
- * (BRAWUKA-567). The scope goes through `resolveSearchScope` so the
- * signature matches the wire — a runtime city id signs as its `?lat&lng`
- * resolution, never `?city=` (BRAWUKA-568). */
+/** Canonical signature of the request the panel would fire — the exact
+ * wire serialization `fetchUnifiedSearch` emits (`buildUnifiedSearchParams`:
+ * `q` + resolved scope + `filter_*` + `ranking`). Dedupe MUST compare this,
+ * not the query text alone: a filter/city/preference change with an
+ * unchanged query is a different request (BRAWUKA-567). Sharing one
+ * serializer is what keeps identity honest — scope resolves through
+ * `resolveSearchScope`, so a runtime city id signs as its `?lat&lng`
+ * resolution, never `?city=` (BRAWUKA-568), and a ranking-preference flip
+ * signs as a new request instead of silently reusing a stale-ranked one. */
 function requestSignature(
   q: string,
   city: string | undefined,
   filters: SearchFilterState | undefined,
 ): string {
-  const params = new URLSearchParams({ q });
-  const scope = resolveSearchScope(city);
-  if (scope.city) params.set("city", scope.city);
-  if (typeof scope.lat === "number") params.set("lat", String(scope.lat));
-  if (typeof scope.lng === "number") params.set("lng", String(scope.lng));
-  if (filters) filtersToSearchParams(filters, params);
-  return params.toString();
+  return buildUnifiedSearchParams({ q, city, filters }).toString();
 }
 
 export function UnifiedSearchPanel({

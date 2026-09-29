@@ -47,23 +47,24 @@ export function resolveSearchScope(
 }
 
 /**
- * Client for `GET /api/search` (map-independent unified search, DG44–DG58).
- * Pure transport: results stay in server order — grouping is a render-layer
- * concern (`grouped-results.ts`, DG131) and this client never re-sorts.
- *
- * DG136: when the user has chosen a ranking preference it is appended as
- * `?ranking=good_first|relevance`; when unset (anonymous, never touched the
- * toggle) the parameter is omitted and the server default applies.
+ * Canonical `/api/search` parameter assembly — the one serialization both
+ * consumers read: `fetchUnifiedSearch` emits it on the wire, and the search
+ * panel serializes its request identity from it (BRAWUKA-736). Scope and the
+ * ranking preference resolve from device storage inside this function, so
+ * callers passing the same inputs can never sign one request and send
+ * another; `signal` is deliberately excluded — cancellation is transport,
+ * not identity. Reuses the neutral filter writer (`filtersToSearchParams`)
+ * and `resolveSearchScope` so the emission order `q → city/lat/lng → limit
+ * → filter_* → ranking` is identical on both sides.
  */
-export async function fetchUnifiedSearch({
+export function buildUnifiedSearchParams({
   q,
   city,
   lat,
   lng,
   limit,
   filters,
-  signal,
-}: UnifiedSearchParams): Promise<SearchResponse> {
+}: Omit<UnifiedSearchParams, "signal">): URLSearchParams {
   const params = new URLSearchParams({ q });
   const scope = resolveSearchScope(city, lat, lng);
   if (scope.city) params.set("city", scope.city);
@@ -74,11 +75,26 @@ export async function fetchUnifiedSearch({
 
   const ranking = getRankingPreference();
   if (ranking) params.set("ranking", ranking);
+  return params;
+}
 
-  return apiFetch<SearchResponse>(`/api/search?${params.toString()}`, {
-    method: "GET",
-    signal,
-  });
+/**
+ * Client for `GET /api/search` (map-independent unified search, DG44–DG58).
+ * Pure transport: results stay in server order — grouping is a render-layer
+ * concern (`grouped-results.ts`, DG131) and this client never re-sorts.
+ *
+ * DG136: when the user has chosen a ranking preference it is appended as
+ * `?ranking=good_first|relevance`; when unset (anonymous, never touched the
+ * toggle) the parameter is omitted and the server default applies.
+ */
+export async function fetchUnifiedSearch(
+  params: UnifiedSearchParams,
+): Promise<SearchResponse> {
+  const { signal, ...inputs } = params;
+  return apiFetch<SearchResponse>(
+    `/api/search?${buildUnifiedSearchParams(inputs).toString()}`,
+    { method: "GET", signal },
+  );
 }
 
 // `buildSearchHref` lives in `search-url.ts` — the neutral module that owns

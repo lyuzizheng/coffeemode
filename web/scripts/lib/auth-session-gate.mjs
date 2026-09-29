@@ -12,7 +12,9 @@
  *      action (`web/lib/auth/actions.ts`) which issues a redirect response
  *      (proves the provider + redirect wiring is live; a dead action would
  *      stay on `/profile` with an inline error). A disabled provider
- *      (apple until BRAWUKA-12) never renders: no dead primary CTA.
+ *      (apple until BRAWUKA-12) never renders, and the listed provider
+ *      must carry `button--primary` — primary styling is asserted on the
+ *      real DOM since the component suite mocks HeroUI.
  *   2. `/?auth=error` banner: the callback's failure redirect renders the
  *      `AuthCallbackError` alert (proves a failed sign-in is never silent).
  *   3. Injected session: a `mintSession` cookie for the fixture user lands
@@ -54,6 +56,14 @@ async function checkSigninEntry({ base, createContext, attachErrorCollector, lab
       // must not exist in the DOM at all (a dead primary would fail here).
       const googleEntry = page.getByRole("button", { name: /Continue with Google/i });
       await googleEntry.waitFor({ state: "visible", timeout: 15000 });
+      // Primary-styling contract: HeroUI renders `button--primary` on the
+      // first provider; an outline/demoted Google CTA must fail here (the
+      // component suite mocks HeroUI, so only this browser check can prove it).
+      const entryClass = await googleEntry.getAttribute("class");
+      assert(
+        entryClass?.includes("button--primary") === true,
+        `google entry is not the primary-styled CTA (class: ${entryClass})`,
+      );
       assert(
         (await page.getByRole("button", { name: /Continue with Apple/i }).count()) === 0,
         "apple sign-in rendered although apple is not in auth.providers",

@@ -34,29 +34,9 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { parsePostgresConnection } from "./lib/postgres-connection.mjs";
 
 const DEFAULT_DATABASE_URL = "postgres://coffeemode:coffeemode@localhost:5432/coffeemode";
-
-/** Mirrors web/lib/db/postgres.ts + web/scripts/migrate.mjs sslmode handling. */
-function parseConnectionConfig(urlString) {
-  const url = new URL(urlString);
-  const sslmode = url.searchParams.get("sslmode");
-  url.searchParams.delete("sslmode");
-  const config = { connectionString: url.toString() };
-  if (sslmode !== null) {
-    if (sslmode === "disable") config.ssl = false;
-    else if (sslmode === "allow-self-signed") config.ssl = { rejectUnauthorized: false };
-    else if (
-      sslmode === "require" ||
-      sslmode === "prefer" ||
-      sslmode === "verify-ca" ||
-      sslmode === "verify-full"
-    )
-      config.ssl = { rejectUnauthorized: true };
-    else throw new Error(`Unrecognized sslmode "${sslmode}" in DATABASE_URL.`);
-  }
-  return config;
-}
 
 /**
  * Every still-referenced `original/` key: live cafe galleries plus photos on
@@ -102,7 +82,7 @@ export async function collectLiveKeys(client) {
 
 async function main() {
   const rawDatabaseUrl = process.env.DATABASE_URL?.trim() || DEFAULT_DATABASE_URL;
-  const client = new pg.Client(parseConnectionConfig(rawDatabaseUrl));
+  const client = new pg.Client(parsePostgresConnection(rawDatabaseUrl));
   await client.connect();
   try {
     const keys = await collectLiveKeys(client);

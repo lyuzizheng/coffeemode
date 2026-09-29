@@ -44,6 +44,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { randomUUID } from "node:crypto";
+import { parsePostgresConnection } from "./lib/postgres-connection.mjs";
 
 const DEFAULT_DATABASE_URL = "postgres://coffeemode:coffeemode@localhost:5432/coffeemode";
 
@@ -54,27 +55,6 @@ const BATCH_SIZE = Math.min(Number.parseInt(process.env.BATCH_SIZE ?? "25", 10),
 const MAX_IDS = Number.parseInt(process.env.MAX_IDS ?? "1000", 10);
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-/** Mirrors web/lib/db/postgres.ts + web/scripts/migrate.mjs sslmode handling. */
-function parseConnectionConfig(urlString) {
-  const url = new URL(urlString);
-  const sslmode = url.searchParams.get("sslmode");
-  url.searchParams.delete("sslmode");
-  const config = { connectionString: url.toString() };
-  if (sslmode !== null) {
-    if (sslmode === "disable") config.ssl = false;
-    else if (sslmode === "allow-self-signed") config.ssl = { rejectUnauthorized: false };
-    else if (
-      sslmode === "require" ||
-      sslmode === "prefer" ||
-      sslmode === "verify-ca" ||
-      sslmode === "verify-full"
-    )
-      config.ssl = { rejectUnauthorized: true };
-    else throw new Error(`Unrecognized sslmode "${sslmode}" in DATABASE_URL.`);
-  }
-  return config;
-}
 
 /**
  * Tombstone-only photo ids (BRAWUKA-699): ids on soft-deleted check-ins
@@ -154,7 +134,7 @@ async function deleteOne(imageUuid) {
 async function main() {
   validateConfig();
   const rawDatabaseUrl = process.env.DATABASE_URL?.trim() || DEFAULT_DATABASE_URL;
-  const client = new pg.Client(parseConnectionConfig(rawDatabaseUrl));
+  const client = new pg.Client(parsePostgresConnection(rawDatabaseUrl));
   await client.connect();
   let ids;
   try {

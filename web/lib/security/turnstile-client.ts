@@ -2,7 +2,7 @@
  * Cloudflare Turnstile widget loader (BRAWUKA-239).
  *
  * Single script-tag loader + invisible-widget token flow for the
- * `places-resolve` surface in `CafePlaceSearch`. Tokens are single-use:
+ * `places-resolve` surface in `MapsLinkResolveForm`. Tokens are single-use:
  * every submit executes a fresh challenge and the widget resets after each
  * attempt so a retry mints a new one. Client-safe by construction: no
  * `node:` imports, no `server-only` guard.

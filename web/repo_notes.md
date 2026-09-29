@@ -265,7 +265,6 @@
 - `web/tests/places.test.ts` — updated for radius cap and maps URL domain validation.
 - `web/tests/query/persist-options.test.ts` — query persistence buster and allow-list tests.
 - `web/tests/images/image-service-client.test.ts` — optional size forwarding test.
-- `image-service/tests/handlers.test.ts` — upload size cap and Content-Length tests.
 - `web/tests/setup.ts` — resets the rate limiter between test files.
 
 ## 2026-08-11 Phase 1 remainder (feat/impl-phase1-remainder)

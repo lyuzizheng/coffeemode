@@ -21,12 +21,18 @@ npm install
 npm run dev
 ```
 
-## Tests
+## Checks
 
 ```bash
 npm run typecheck
-npm test
+npm run lint
+npm run check:file-size
 ```
+
+The Worker ships no unit-test runner of its own. Storage-boundary changes
+additionally run the web image round-trip suite against real MinIO
+(`cd web && npm run test:integration:images`) — see
+`docs/specs/0003-testing-and-ci.md` §Relevant local gates.
 
 ## Deploy
 

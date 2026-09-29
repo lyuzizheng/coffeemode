@@ -50,6 +50,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
+# Shared environment-scoped URL selection (BRAWUKA-747): --url override >
+# <ENV>_DIRECT_URL > <ENV>_DATABASE_URL > deploy/dokploy/.env.<env>.
+# Unscoped ambient DATABASE_URL/DIRECT_URL are NEVER consulted (BRAWUKA-241 P0).
+# pg_dump opens a single session (never add -j/parallel against the pooler).
+# shellcheck source=lib/db-url.sh
+source "${SCRIPT_DIR}/lib/db-url.sh"
+
 # ------------------------------------------------------------------------------
 # Defaults & CLI Argument Parsing
 # ------------------------------------------------------------------------------
@@ -150,44 +157,6 @@ fi
 
 TIMESTAMP="$(date -u +"%Y%m%d_%H%M%SZ")"
 
-# Resolve the Supabase connection string for --env (per-env only).
-# Precedence: --url override > <ENV>_DIRECT_URL > <ENV>_DATABASE_URL >
-# deploy/dokploy/.env.<env> (DIRECT_URL line first, then DATABASE_URL).
-# Unscoped ambient DATABASE_URL/DIRECT_URL are NEVER consulted (BRAWUKA-241 P0):
-# the shell's exported URL must not silently retarget --env.
-# pg_dump opens a single session (never add -j/parallel against the pooler).
-resolve_database_url() {
-  if [[ -n "$URL_OVERRIDE" ]]; then
-    printf '%s' "$URL_OVERRIDE"
-    return 0
-  fi
-  local prefix
-  if [[ "$ENV" == "staging" ]]; then prefix="STAGING"; else prefix="PROD"; fi
-  local direct_var="${prefix}_DIRECT_URL"
-  local pooled_var="${prefix}_DATABASE_URL"
-  if [[ -n "${!direct_var:-}" ]]; then
-    printf '%s' "${!direct_var}"
-    return 0
-  fi
-  if [[ -n "${!pooled_var:-}" ]]; then
-    printf '%s' "${!pooled_var}"
-    return 0
-  fi
-  local env_file="${REPO_ROOT}/deploy/dokploy/.env.${ENV}"
-  if [[ -f "$env_file" ]]; then
-    local url
-    url="$(grep -E '^DIRECT_URL=' "$env_file" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
-    if [[ -z "$url" ]]; then
-      url="$(grep -E '^DATABASE_URL=' "$env_file" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
-    fi
-    if [[ -n "$url" ]]; then
-      printf '%s' "$url"
-      return 0
-    fi
-  fi
-  return 1
-}
-
 # Logging Utilities
 # ------------------------------------------------------------------------------
 BOLD='\033[1m'
@@ -215,7 +184,8 @@ echo "==========================================================================
 
 BACKUP_DB_URL=""
 if [ "$DRY_RUN" = false ]; then
-  if ! BACKUP_DB_URL="$(resolve_database_url)"; then
+  # Pooled scope: the dump may ride the pooled Supabase connection (BRAWUKA-241).
+  if ! BACKUP_DB_URL="$(db_url_resolve "$ENV" "$URL_OVERRIDE" pooled)"; then
     echo "Error: per-env connection for ${ENV} is required: STAGING_*/PROD_* scoped vars, --url override, or deploy/dokploy/.env.${ENV}" >&2
     exit 1
   fi

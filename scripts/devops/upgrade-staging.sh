@@ -45,6 +45,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
+# Shared environment-scoped URL selection (BRAWUKA-747): --db-url override >
+# STAGING_DIRECT_URL > deploy/dokploy/.env.staging DIRECT_URL (direct-only here;
+# migrations never ride a pooled connection). Unscoped ambient
+# DATABASE_URL/DIRECT_URL are NEVER read (BRAWUKA-241 P0).
+# shellcheck source=lib/db-url.sh
+source "${SCRIPT_DIR}/lib/db-url.sh"
+
 # ------------------------------------------------------------------------------
 # Defaults & CLI Argument Parsing
 # ------------------------------------------------------------------------------
@@ -237,16 +244,11 @@ stage "Step 3/5: Applying Database Migrations to Staging"
 
 if [ "$SKIP_MIGRATIONS" = false ]; then
   # STAGING-scoped session connection only (BRAWUKA-241 P0): --db-url >
-  # STAGING_DIRECT_URL > .env.staging DIRECT_URL. Unscoped DIRECT_URL is
-  # never read, so a prod URL in the shell cannot retarget staging migrations.
-  MIGRATION_URL=""
-  if [[ -n "$DB_URL_OVERRIDE" ]]; then
-    MIGRATION_URL="$DB_URL_OVERRIDE"
-  elif [[ -n "${STAGING_DIRECT_URL:-}" ]]; then
-    MIGRATION_URL="$STAGING_DIRECT_URL"
-  elif [[ -f "${REPO_ROOT}/deploy/dokploy/.env.staging" ]]; then
-    MIGRATION_URL="$(grep -E '^DIRECT_URL=' "${REPO_ROOT}/deploy/dokploy/.env.staging" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
-  fi
+  # STAGING_DIRECT_URL > .env.staging DIRECT_URL, direct-only through the shared
+  # helper (BRAWUKA-747) — a pooled URL never applies to migrations. Unscoped
+  # DIRECT_URL is never read, so a prod URL in the shell cannot retarget
+  # staging migrations.
+  MIGRATION_URL="$(db_url_resolve staging "$DB_URL_OVERRIDE" direct || true)"
 
   if [ "$DRY_RUN" = false ]; then
     if [[ -z "$MIGRATION_URL" ]]; then

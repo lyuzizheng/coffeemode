@@ -1,8 +1,12 @@
 import { execSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { listMigrationTables, parseConnectionConfig } from "../../../scripts/devops/setup-supabase.mjs";
+// BRAWUKA-745: the executable imports these; the suite imports them from their
+// own modules, so a pure helper never has to be reached through a CLI module.
+import { parseCliArgs } from "../../../scripts/devops/lib/setup-supabase-config.mjs";
+import { listMigrationTables, parseConnectionConfig } from "../../../scripts/devops/lib/setup-supabase-db.mjs";
 import {
   cleanupIntegrationDatabase,
   integrationAdminUrl,
@@ -123,6 +127,158 @@ describe("Supabase DevOps Provisioning — Unit Contracts", () => {
       ).toThrow(/Unrecognized sslmode "invalid"/);
     });
   });
+
+  // BRAWUKA-745: config resolution moved into lib/setup-supabase-config.mjs.
+  // The executable's observable CLI contract (help, unknown flag, exit codes)
+  // stays covered above; these pin the resolution rules the CLI inherits —
+  // flag > environment > env file, and the candidate-file order — without
+  // spawning a process, which is the point of the extraction.
+  describe("parseCliArgs — flag/env/env-file precedence", () => {
+    let emptyRoot: string;
+    let emptyWeb: string;
+    let fixtureRoot: string;
+    let fixtureWeb: string;
+
+    beforeAll(() => {
+      emptyRoot = mkdtempSync(path.join(tmpdir(), "supa-config-empty-"));
+      emptyWeb = path.join(emptyRoot, "web");
+      fixtureRoot = mkdtempSync(path.join(tmpdir(), "supa-config-files-"));
+      fixtureWeb = path.join(fixtureRoot, "web");
+      mkdirSync(fixtureWeb, { recursive: true });
+      writeFileSync(
+        path.join(fixtureRoot, ".env"),
+        "DATABASE_URL=postgres://root-dotenv\nSUPABASE_URL=https://root.supabase.co\n",
+      );
+      writeFileSync(path.join(fixtureWeb, ".env.local"), "DATABASE_URL=postgres://web-env-local\n");
+      writeFileSync(
+        path.join(fixtureWeb, ".env"),
+        "DATABASE_URL=postgres://web-dotenv\nNEXT_PUBLIC_SUPABASE_ANON_KEY=anon-from-web-dotenv\n",
+      );
+    });
+
+    afterAll(() => {
+      rmSync(emptyRoot, { recursive: true, force: true });
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    });
+
+    /** Narrow the parser result to its config arm; a non-config result fails the test. */
+    function resolvedConfig(
+      argv: string[],
+      options: { repoRoot: string; webDir: string; env?: Record<string, string | undefined> },
+    ) {
+      const result = parseCliArgs(argv, options);
+      expect(result.kind).toBe("config");
+      if (result.kind !== "config") throw new Error("expected a resolved config");
+      return result.config;
+    }
+
+    it("defaults to a non-mutating run with no credentials when nothing is set", () => {
+      expect(parseCliArgs([], { repoRoot: emptyRoot, webDir: emptyWeb, env: {} })).toEqual({
+        kind: "config",
+        config: {
+          databaseUrl: "",
+          supabaseUrl: "",
+          serviceRoleKey: "",
+          anonKey: "",
+          dryRun: false,
+          verifyOnly: false,
+          skipAuth: false,
+          verbose: false,
+        },
+      });
+    });
+
+    it("maps --dry-run / --verify-only / --skip-auth / --verbose onto the config", () => {
+      const config = resolvedConfig(["--dry-run", "--verify-only", "--skip-auth", "--verbose"], {
+        repoRoot: emptyRoot,
+        webDir: emptyWeb,
+        env: {},
+      });
+      expect(config).toMatchObject({
+        dryRun: true,
+        verifyOnly: true,
+        skipAuth: true,
+        verbose: true,
+      });
+    });
+
+    it("loads repo .env → web/.env.local → web/.env, the later file winning per key", () => {
+      const config = resolvedConfig([], { repoRoot: fixtureRoot, webDir: fixtureWeb, env: {} });
+      expect(config.databaseUrl).toBe("postgres://web-dotenv");
+      expect(config.supabaseUrl).toBe("https://root.supabase.co");
+      expect(config.anonKey).toBe("anon-from-web-dotenv");
+    });
+
+    it("prefers a CLI flag over the environment, and the environment over env files", () => {
+      const fromEnv = resolvedConfig([], {
+        repoRoot: fixtureRoot,
+        webDir: fixtureWeb,
+        env: { DATABASE_URL: "postgres://from-env" },
+      });
+      expect(fromEnv.databaseUrl).toBe("postgres://from-env");
+
+      const fromFlag = resolvedConfig(["--database-url", "  postgres://from-flag  "], {
+        repoRoot: fixtureRoot,
+        webDir: fixtureWeb,
+        env: { DATABASE_URL: "postgres://from-env" },
+      });
+      expect(fromFlag.databaseUrl).toBe("postgres://from-flag");
+    });
+
+    it("falls back through the documented env aliases in order", () => {
+      const resolve = (env: Record<string, string | undefined>) =>
+        resolvedConfig([], { repoRoot: emptyRoot, webDir: emptyWeb, env });
+      expect(resolve({ DATABASE_URL: "postgres://first", POSTGRES_URL: "postgres://alias" }).databaseUrl).toBe(
+        "postgres://first",
+      );
+      expect(resolve({ POSTGRES_URL: "postgres://pg-alias" }).databaseUrl).toBe("postgres://pg-alias");
+      expect(resolve({ SUPABASE_DATABASE_URL: "postgres://sb-alias" }).databaseUrl).toBe(
+        "postgres://sb-alias",
+      );
+      expect(resolve({ NEXT_PUBLIC_SUPABASE_URL: "https://public.supabase.co" }).supabaseUrl).toBe(
+        "https://public.supabase.co",
+      );
+      expect(resolve({ SUPABASE_SERVICE_ROLE_KEY: "service-role" }).serviceRoleKey).toBe("service-role");
+      expect(resolve({ SUPABASE_ANON_KEY: "anon-alias" }).anonKey).toBe("anon-alias");
+    });
+
+    it("--env-file replaces the default candidate files", () => {
+      const customEnv = path.join(fixtureRoot, "custom.env");
+      writeFileSync(customEnv, "DATABASE_URL=postgres://custom-file\n");
+      const config = resolvedConfig(["--env-file", customEnv], {
+        repoRoot: fixtureRoot,
+        webDir: fixtureWeb,
+        env: {},
+      });
+      expect(config.databaseUrl).toBe("postgres://custom-file");
+      // web/.env is not consulted once --env-file names the file to load.
+      expect(config.anonKey).toBe("");
+    });
+
+    it("falls back to the environment when a flag has no value", () => {
+      const config = resolvedConfig(["--database-url"], {
+        repoRoot: emptyRoot,
+        webDir: emptyWeb,
+        env: { DATABASE_URL: "postgres://from-env" },
+      });
+      expect(config.databaseUrl).toBe("postgres://from-env");
+    });
+
+    it("reports help and unknown options instead of exiting — the caller owns the exit code", () => {
+      const options = { repoRoot: emptyRoot, webDir: emptyWeb, env: {} };
+      expect(parseCliArgs(["--help"], options)).toEqual({ kind: "help" });
+      expect(parseCliArgs(["-h"], options)).toEqual({ kind: "help" });
+      expect(parseCliArgs(["--help", "--invalid-flag"], options)).toEqual({ kind: "help" });
+      expect(parseCliArgs(["--invalid-flag", "--help"], options)).toEqual({
+        kind: "unknown-option",
+        arg: "--invalid-flag",
+      });
+      expect(parseCliArgs(["--invalid-flag"], options)).toEqual({
+        kind: "unknown-option",
+        arg: "--invalid-flag",
+      });
+    });
+  });
 });
 
 describeIntegration("Supabase DevOps Provisioning — Real Postgres Integration", () => {
@@ -152,12 +308,22 @@ describeIntegration("Supabase DevOps Provisioning — Real Postgres Integration"
     // BRAWUKA-337: dry-run/verify-only must FAIL (exit 1) when migration
     // tables lack RLS — warn-and-pass is how 0021 helpful_ranking_* shipped
     // RLS-dark. A fresh DB has RLS off on every table, so this must throw.
-    expect(() => {
+    // BRAWUKA-745: the failing run must also still close its client — the DB
+    // operation owns cleanup in a `finally`, so an error never leaks a
+    // connection (the observable half: the close line is printed before exit).
+    let failure: { stdout: string; stderr: string } | null = null;
+    try {
       execSync(
         `node "${SETUP_SCRIPT}" --dry-run --skip-auth --database-url "${testDbUrl}"`,
         { encoding: "utf8", stdio: "pipe" },
       );
-    }).toThrow(/RLS coverage incomplete/);
+    } catch (err) {
+      const failed = err as { stdout?: string; stderr?: string };
+      failure = { stdout: failed.stdout ?? "", stderr: failed.stderr ?? "" };
+    }
+    expect(failure).not.toBeNull();
+    expect(failure?.stderr).toMatch(/RLS coverage incomplete/);
+    expect(failure?.stdout).toContain("Closed database connection.");
   });
 
   it("provisions database and verify-only checks tables and spatial GiST index", () => {

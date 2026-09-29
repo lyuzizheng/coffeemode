@@ -16,6 +16,7 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { parsePostgresConnection } from "./lib/postgres-connection.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(HERE, "..", "db", "migrations");
@@ -36,34 +37,8 @@ function parseArgs() {
   return url;
 }
 
-function parseConnectionConfig(urlString) {
-  // Same sslmode vocabulary as web/scripts/migrate.mjs: no sslmode means
-  // plain local TCP (no ssl stanza), so docker-compose Postgres works.
-  const url = new URL(urlString);
-  const sslmode = url.searchParams.get("sslmode");
-  url.searchParams.delete("sslmode");
-  const config = { connectionString: url.toString() };
-  if (sslmode === "disable") {
-    config.ssl = false;
-  } else if (sslmode === "allow-self-signed") {
-    config.ssl = { rejectUnauthorized: false };
-  } else if (
-    sslmode === "require" ||
-    sslmode === "prefer" ||
-    sslmode === "verify-ca" ||
-    sslmode === "verify-full"
-  ) {
-    config.ssl = { rejectUnauthorized: true };
-  } else if (sslmode !== null) {
-    throw new Error(
-      `Unrecognized sslmode "${sslmode}" in DATABASE_URL. Use require, prefer, verify-ca, verify-full, allow-self-signed, or disable.`,
-    );
-  }
-  return config;
-}
-
 const rawUrl = parseArgs();
-const client = new pg.Client(parseConnectionConfig(rawUrl));
+const client = new pg.Client(parsePostgresConnection(rawUrl));
 await client.connect();
 try {
   const files = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith(".sql")).sort();

@@ -81,6 +81,10 @@ describe("Supabase DevOps Provisioning — Unit Contracts", () => {
     expect(listMigrationTables()).not.toContain("rate_limits");
   });
 
+  // The provisioning wrapper owns exactly one policy over the shared
+  // translator: a Supabase host with no explicit `sslmode` gets strict TLS.
+  // The full mode → ssl vocabulary is table-driven in
+  // `postgres-connection.test.ts` and is not restated here.
   describe("parseConnectionConfig SSL enforcement", () => {
     it("enforces strict TLS verification by default for Supabase hosts", () => {
       const configCo = parseConnectionConfig(
@@ -110,15 +114,6 @@ describe("Supabase DevOps Provisioning — Unit Contracts", () => {
       ).toEqual({ rejectUnauthorized: false });
       expect(
         parseConnectionConfig("postgresql://user:pass@localhost:5432/db?sslmode=require").ssl,
-      ).toEqual({ rejectUnauthorized: true });
-      expect(
-        parseConnectionConfig("postgresql://user:pass@localhost:5432/db?sslmode=verify-full").ssl,
-      ).toEqual({ rejectUnauthorized: true });
-      expect(
-        parseConnectionConfig("postgresql://user:pass@localhost:5432/db?sslmode=prefer").ssl,
-      ).toEqual({ rejectUnauthorized: true });
-      expect(
-        parseConnectionConfig("postgresql://user:pass@localhost:5432/db?sslmode=verify-ca").ssl,
       ).toEqual({ rejectUnauthorized: true });
     });
 

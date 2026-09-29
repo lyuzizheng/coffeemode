@@ -28,6 +28,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
+import { parsePostgresConnection } from "./lib/postgres-connection.mjs";
 
 const DEFAULT_DATABASE_URL = "postgres://coffeemode:coffeemode@localhost:5432/coffeemode";
 
@@ -50,30 +51,9 @@ try {
   // Use fallback defaults if config is unreadable
 }
 
-/** Mirrors web/lib/db/postgres.ts parse logic for sslmode. */
-function parseConnectionConfig(urlString) {
-  const url = new URL(urlString);
-  const sslmode = url.searchParams.get("sslmode");
-  url.searchParams.delete("sslmode");
-  const config = { connectionString: url.toString() };
-  if (sslmode !== null) {
-    if (sslmode === "disable") config.ssl = false;
-    else if (sslmode === "allow-self-signed") config.ssl = { rejectUnauthorized: false };
-    else if (
-      sslmode === "require" ||
-      sslmode === "prefer" ||
-      sslmode === "verify-ca" ||
-      sslmode === "verify-full"
-    )
-      config.ssl = { rejectUnauthorized: true };
-    else throw new Error(`Unrecognized sslmode "${sslmode}" in DATABASE_URL.`);
-  }
-  return config;
-}
-
 async function main() {
   const rawUrl = process.env.DATABASE_URL?.trim() || DEFAULT_DATABASE_URL;
-  const client = new pg.Client(parseConnectionConfig(rawUrl));
+  const client = new pg.Client(parsePostgresConnection(rawUrl));
   await client.connect();
   try {
     // Step 1: open a building run.

@@ -18,6 +18,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { parsePostgresConnection } from "./lib/postgres-connection.mjs";
 
 const MIGRATIONS_DIR = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -30,40 +31,6 @@ const MIGRATIONS_DIR = path.join(
 const DEFAULT_DATABASE_URL = "postgres://coffeemode:coffeemode@localhost:5432/coffeemode";
 
 const MIGRATION_LOCK_KEY_SQL = "hashtext('coffeemode_migrations')";
-
-/**
- * Parse sslmode from a Postgres connection string and return a pg.Client
- * config with the mode removed from the URL. Mirrors web/lib/db/postgres.ts
- * so the CLI honors the same sslmode vocabulary as the app pool.
- */
-function parseConnectionConfig(urlString) {
-  const url = new URL(urlString);
-  const sslmode = url.searchParams.get("sslmode");
-  url.searchParams.delete("sslmode");
-
-  const config = { connectionString: url.toString() };
-
-  if (sslmode !== null) {
-    if (sslmode === "disable") {
-      config.ssl = false;
-    } else if (sslmode === "allow-self-signed") {
-      config.ssl = { rejectUnauthorized: false };
-    } else if (
-      sslmode === "require" ||
-      sslmode === "prefer" ||
-      sslmode === "verify-ca" ||
-      sslmode === "verify-full"
-    ) {
-      config.ssl = { rejectUnauthorized: true };
-    } else {
-      throw new Error(
-        `Unrecognized sslmode "${sslmode}" in DATABASE_URL. Use require, prefer, verify-ca, verify-full, allow-self-signed, or disable.`,
-      );
-    }
-  }
-
-  return config;
-}
 
 function numericPrefix(name) {
   const match = name.match(/^(\d+)/);
@@ -143,7 +110,7 @@ export async function applyMigrations(client) {
 /** CLI entry: apply pending migrations and report. */
 async function main() {
   const rawDatabaseUrl = process.env.DATABASE_URL?.trim() || DEFAULT_DATABASE_URL;
-  const client = new pg.Client(parseConnectionConfig(rawDatabaseUrl));
+  const client = new pg.Client(parsePostgresConnection(rawDatabaseUrl));
   await client.connect();
   try {
     const count = await applyMigrations(client);

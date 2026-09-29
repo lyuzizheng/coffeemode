@@ -34,6 +34,9 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+// Shared sslmode translation (BRAWUKA-741) — this suite owns only the Supabase
+// strict-TLS default applied by `parseConnectionConfig` below.
+import { parsePostgresConnection } from "../../web/scripts/lib/postgres-connection.mjs";
 
 // ------------------------------------------------------------------------------
 // Path & Module Resolution
@@ -228,41 +231,18 @@ function parseCliArgs() {
 // ------------------------------------------------------------------------------
 // Helper: Postgres SSL connection string parser (fail-closed per pending-user-actions #41)
 /**
+ * Provisioning policy over the shared translator (BRAWUKA-741): a Supabase
+ * direct host (`db.<ref>.supabase.co` / `.supabase.net`) without an explicit
+ * `sslmode` gets strict CA validation — provisioning must never reach a
+ * Supabase project in plaintext. Explicit `sslmode` always wins, and every
+ * other host (localhost, the Dokploy-network staging database, pooler hosts,
+ * whose URLs carry `sslmode=require`) keeps the driver default.
+ *
  * @param {string} urlString
  * @returns {{ connectionString: string, ssl?: boolean | { rejectUnauthorized: boolean } }}
  */
 export function parseConnectionConfig(urlString) {
-  const url = new URL(urlString);
-  const sslmode = url.searchParams.get("sslmode");
-  url.searchParams.delete("sslmode");
-
-  const config = { connectionString: url.toString() };
-
-  if (sslmode !== null) {
-    if (sslmode === "disable") {
-      config.ssl = false;
-    } else if (sslmode === "allow-self-signed") {
-      config.ssl = { rejectUnauthorized: false };
-    } else if (
-      sslmode === "require" ||
-      sslmode === "prefer" ||
-      sslmode === "verify-ca" ||
-      sslmode === "verify-full"
-    ) {
-      config.ssl = { rejectUnauthorized: true };
-    } else {
-      throw new Error(
-        `Unrecognized sslmode "${sslmode}" in DATABASE_URL. Use require, prefer, verify-ca, verify-full, allow-self-signed, or disable.`
-      );
-    }
-  } else {
-    // Fail-closed default: Supabase hosts use trusted public CA certificates; enforce strict TLS verification.
-    if (url.hostname.endsWith(".supabase.co") || url.hostname.endsWith(".supabase.net")) {
-      config.ssl = { rejectUnauthorized: true };
-    }
-  }
-
-  return config;
+  return parsePostgresConnection(urlString, { strictTlsForSupabaseHosts: true });
 }
 function maskString(str, visibleChars = 8) {
   if (!str) return "<none>";

@@ -130,6 +130,7 @@ expect_pass "check-ci-workflow" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.ag
 expect_pass "check-ci-classification" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-classification.sh"
 expect_pass "check-runtime-pins" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-runtime-pins.sh"
 expect_pass "check-implementation-slices" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-implementation-slices.sh"
+expect_pass "check-coverage-matrix" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-coverage-matrix.sh"
 expect_pass "check-links" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-links.sh"
 expect_pass "check-agent-skills" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-agent-skills.sh"
 expect_pass "check-codex-agents" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-codex-agents.sh"
@@ -212,6 +213,16 @@ cp "$WF" "$WF.bak"
 grep -v "needs.changes.outputs.integration == 'true'" "$WF.bak" > "$WF"
 if assert_mutated "integration classifier condition missing" "$WF.bak" "$WF"; then
   expect_failure "integration job missing changed-path condition" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-workflow.sh"
+fi
+mv "$WF.bak" "$WF"
+
+# The generated-bucket freshness step is an exact static step (BRAWUKA-746):
+# deleting it would let a stale `rate-limit-buckets.generated.ts` ship green,
+# because `--check` never rewrites the file on the way past.
+cp "$WF" "$WF.bak"
+grep -vE "^[[:space:]]*run:[[:space:]]*npm run check:buckets[[:space:]]*$" "$WF.bak" > "$WF"
+if assert_mutated "generated-bucket freshness step removed" "$WF.bak" "$WF"; then
+  expect_failure "static step missing: npm run check:buckets" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-workflow.sh"
 fi
 mv "$WF.bak" "$WF"
 
@@ -454,6 +465,75 @@ if assert_mutated "READY slice with active blocker" "$MANIFEST.bak" "$MANIFEST";
   expect_failure "READY slice with active blocker" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-implementation-slices.sh"
 fi
 mv "$MANIFEST.bak" "$MANIFEST"
+
+echo ""
+echo "=== Fault injection: check-coverage-matrix ==="
+
+# The matrix is an evidence map: a §1 row citing a proving file that no longer
+# exists must fail, with the row and the path named (BRAWUKA-746).
+CMATRIX="$TEST_ROOT/docs/agent/test-coverage.md"
+cp "$CMATRIX" "$CMATRIX.bak"
+awk '/^\| T23 /{ gsub(/sw-privacy-gate\.mjs/, "sw-privacy-gate-missing.mjs") } { print }' "$CMATRIX.bak" > "$CMATRIX"
+if assert_mutated "proving file renamed out of existence" "$CMATRIX.bak" "$CMATRIX"; then
+  expect_failure_matching "missing current proving file" "T23 proving file missing: web/scripts/lib/sw-privacy-gate-missing.mjs" \
+    env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-coverage-matrix.sh"
+fi
+mv "$CMATRIX.bak" "$CMATRIX"
+
+# A gate alias that is not a web/package.json script must fail: a typo would
+# otherwise read as enforcement that never runs.
+cp "$CMATRIX" "$CMATRIX.bak"
+awk '/^\| T23 /{ gsub(/`test:e2e`/, "`test:e2ee`") } { print }' "$CMATRIX.bak" > "$CMATRIX"
+if assert_mutated "unknown gate alias" "$CMATRIX.bak" "$CMATRIX"; then
+  expect_failure_matching "unknown gate alias" "T23 unknown gate alias: test:e2ee" \
+    env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-coverage-matrix.sh"
+fi
+mv "$CMATRIX.bak" "$CMATRIX"
+
+# The declared layer must be the layer of the gate that runs the proof, so a
+# browser-only row cannot claim the real-DB gate (or the reverse).
+cp "$CMATRIX" "$CMATRIX.bak"
+awk '/^\| T23 /{ gsub(/`browser`/, "`integration`") } { print }' "$CMATRIX.bak" > "$CMATRIX"
+if assert_mutated "layer/gate mismatch" "$CMATRIX.bak" "$CMATRIX"; then
+  expect_failure_matching "layers outside the gate classes" "T23 layers [integration] do not match gate classes [browser]" \
+    env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-coverage-matrix.sh"
+fi
+mv "$CMATRIX.bak" "$CMATRIX"
+
+# Explicit `manual` marking is the one way to keep a non-runnable claim in §1 —
+# the row is then reported as unenforced instead of reading as CI coverage. The
+# same missing-file mutation without the marker fails (first case above).
+cp "$CMATRIX" "$CMATRIX.bak"
+awk '/^\| T23 /{ gsub(/sw-privacy-gate\.mjs/, "sw-privacy-gate-missing.mjs"); gsub(/`test:e2e`/, "manual: real-browser Turnstile loop") } { print }' "$CMATRIX.bak" > "$CMATRIX"
+if assert_mutated "manual-marked row with a non-runnable proof" "$CMATRIX.bak" "$CMATRIX"; then
+  expect_pass "manual-marked row is exempt and reported as unenforced" \
+    env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-coverage-matrix.sh"
+fi
+mv "$CMATRIX.bak" "$CMATRIX"
+
+echo ""
+echo "=== Fault injection: generated-bucket freshness (check:buckets) ==="
+
+# A bucket added to the YAML without re-running the generator must fail
+# `--check` (BRAWUKA-746), and `--check` must not rewrite the file on its way
+# past — a self-healing check would ship the stale bytes it just replaced.
+RL_YAML="$TEST_ROOT/web/config/rate-limits.yaml"
+RL_GEN="$TEST_ROOT/web/lib/api/rate-limit-buckets.generated.ts"
+cp "$RL_YAML" "$RL_YAML.bak"
+gen_before="$(cksum < "$RL_GEN")"
+printf '\nharness-probe-bucket:\n  windowMs: 60000\n  maxRequests: 1\n' >> "$RL_YAML"
+if assert_mutated "bucket added to the YAML only" "$RL_YAML.bak" "$RL_YAML"; then
+  expect_failure "stale generated buckets" node "$TEST_ROOT/web/scripts/generate-rate-limit-buckets.mjs" --check
+fi
+if [[ "$gen_before" == "$(cksum < "$RL_GEN")" ]]; then
+  echo "  ok: --check left the generated file untouched"
+  PASS=$((PASS + 1))
+else
+  echo "  FAIL: --check rewrote the generated file"
+  FAIL=$((FAIL + 1))
+fi
+mv "$RL_YAML.bak" "$RL_YAML"
+expect_pass "regenerated baseline passes --check" node "$TEST_ROOT/web/scripts/generate-rate-limit-buckets.mjs" --check
 
 echo ""
 echo "=== Fault injection: check-links ==="

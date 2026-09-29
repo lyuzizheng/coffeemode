@@ -115,6 +115,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Generated-artifact freshness (BRAWUKA-746). `--check` re-renders the
+      # module in memory and compares it byte-for-byte, so a stale
+      # `web/lib/api/rate-limit-buckets.generated.ts` fails here instead of
+      # being silently regenerated; the step is pinned by
+      # `.agents/scripts/check-ci-workflow.sh`.
+      - name: Generated rate-limit buckets are fresh
+        run: npm run check:buckets
+
       - name: Typecheck
         run: npm run typecheck
 

@@ -988,7 +988,13 @@ Two search modes:
        suggestions (DG56).
      - Empty query shows a hint line only — no recents/history (DG55).
    - Filters:
-     - dimension minima: wifi, outlets, seats, temp, coffee, overall (0-100 thresholds)
+     - dimension minima: wifi, outlets, seats, temp, coffee, overall (0-100
+       thresholds). A present `filter_<dim>` requires the dimension to be
+       rated (`n > 0` AND `avg >= threshold`); `=0` therefore means "rated
+       at all", not "unlimited" — omitting the param is the only "Any"
+       (BRAWUKA-785). The tri-state UI emits only omit / 60 / 80; a
+       deep-linked legal custom threshold, including `=0`, survives
+       UI-driven URL rewrites (BRAWUKA-589)
      - max_stay: unlimited | 3h | 2h | 1h | peak
      - open_now: boolean (default OFF — DG53)
      - future: price_range, policy consensus, work_score threshold

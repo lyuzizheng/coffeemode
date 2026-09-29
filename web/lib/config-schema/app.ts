@@ -1,4 +1,5 @@
-import { coordinate, positiveNumber, record } from "./primitives";
+import { coordinate, fail, positiveNumber, record, stringList } from "./primitives";
+import { OAUTH_PROVIDERS, type OAuthProvider } from "../auth/providers";
 import { parseBudgetsSection } from "./budgets";
 import { parseCheckinsSection } from "./checkins";
 import { parseImagesSection } from "./images";
@@ -14,6 +15,23 @@ import { parseValidationSection } from "./validation";
 import type { AppConfig } from "./types";
 
 export type { AppConfig } from "./types";
+
+function parseAuthSection(file: string, value: unknown): AppConfig["auth"] {
+  const auth = record(file, "auth", value);
+  const providers = stringList(file, "auth.providers", auth.providers);
+  if (providers.length === 0) {
+    fail(file, "auth.providers", "must list at least one provider");
+  }
+  if (new Set(providers).size !== providers.length) {
+    fail(file, "auth.providers", "must not repeat a provider");
+  }
+  for (const provider of providers) {
+    if (!(OAUTH_PROVIDERS as readonly string[]).includes(provider)) {
+      fail(file, "auth.providers", `has unknown provider "${provider}" (known: ${OAUTH_PROVIDERS.join(", ")})`);
+    }
+  }
+  return { providers: providers as OAuthProvider[] };
+}
 
 function parseStatsSection(file: string, value: unknown): AppConfig["stats"] {
   const stats = record(file, "stats", value);
@@ -102,5 +120,6 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
     images: parseImagesSection(file, record(file, "images", root.images)),
     validation: parseValidationSection(file, record(file, "validation", root.validation)),
     budgets: parseBudgetsSection(file, record(file, "budgets", root.budgets)),
+    auth: parseAuthSection(file, root.auth),
   };
 }

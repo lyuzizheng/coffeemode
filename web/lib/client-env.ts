@@ -1,3 +1,5 @@
+import { OAUTH_PROVIDERS, type OAuthProvider } from "./auth/providers";
+
 /**
  * Client-safe typed readers for `NEXT_PUBLIC_*` values (BRAWUKA-250).
  *
@@ -122,5 +124,25 @@ export function getSearchExternalSources(): ExternalSourceFlags {
     google: envBoolean(process.env.NEXT_PUBLIC_SEARCH_EXTERNAL_GOOGLE, true),
     apple: envBoolean(process.env.NEXT_PUBLIC_SEARCH_EXTERNAL_APPLE, false),
   };
+}
+
+/**
+ * `auth.providers` — ordered enabled sign-in providers (BRAWUKA-789):
+ * the first entry is the primary CTA; providers absent from the list never
+ * render. Unset or unparseable env falls back to the app.yaml default
+ * (`google`) so local dev and unit tests see the real panel; unknown ids
+ * are dropped (the config schema rejects them, the env is only a mirror).
+ */
+export function getAuthProviders(): OAuthProvider[] {
+  const raw = process.env.NEXT_PUBLIC_AUTH_PROVIDERS;
+  if (raw === undefined || raw === "") return ["google"];
+  const providers = raw
+    .split(",")
+    .map((token) => token.trim())
+    .filter((token): token is OAuthProvider =>
+      (OAUTH_PROVIDERS as readonly string[]).includes(token),
+    )
+    .filter((provider, index, list) => list.indexOf(provider) === index);
+  return providers.length > 0 ? providers : ["google"];
 }
 

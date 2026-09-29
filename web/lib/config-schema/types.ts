@@ -1,3 +1,5 @@
+import type { OAuthProvider } from "../auth/providers";
+
 /** Everything else (DG107): product parameters from `config/app.yaml`. */
 export interface AppConfig {
   search: {
@@ -171,5 +173,10 @@ export interface AppConfig {
       bestPractices: number;
       seo: number;
     };
+  };
+  auth: {
+    /** Enabled sign-in providers in render order (BRAWUKA-789): only ids in
+     * `lib/auth/providers.ts`; the first entry is the primary CTA. */
+    providers: OAuthProvider[];
   };
 }

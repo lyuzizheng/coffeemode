@@ -11,6 +11,7 @@ import {
   getProtoHost,
   isAllowedOrigin,
 } from "@/lib/security/origin";
+import { OAUTH_PROVIDERS, type OAuthProvider } from "./providers";
 
 /**
  * OAuth entry points (spec 0010 §2: Supabase hosts auth AND app data; Apple + Google).
@@ -18,7 +19,9 @@ import {
  * the callback exchanges the code for a session.
  */
 
-export type OAuthProvider = "apple" | "google";
+// Registry lives in ./providers (BRAWUKA-789) so the server action, the
+// config schema, and the client env channel share one provider list.
+export type { OAuthProvider } from "./providers";
 
 /**
  * Error values are stable CODES, never provider strings — the UI maps them to
@@ -32,7 +35,10 @@ export type AuthActionState = {
 };
 
 function validateProvider(value: FormDataEntryValue | null): value is OAuthProvider {
-  return value === "apple" || value === "google";
+  return (
+    typeof value === "string" &&
+    (OAUTH_PROVIDERS as readonly string[]).includes(value)
+  );
 }
 
 async function getRedirectTo(nextPath?: string): Promise<string | null> {

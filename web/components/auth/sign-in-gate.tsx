@@ -1,6 +1,6 @@
 "use client";
 
-import { SignInButton } from "./sign-in-button";
+import { SignInProviderButtons } from "./sign-in-provider-buttons";
 
 interface SignInGateProps {
   /** Caller-owned copy — the namespace that knows the user's context. */
@@ -19,8 +19,7 @@ export function SignInGate({ message, next }: SignInGateProps) {
     <div className="rounded-md border border-separator bg-surface-secondary p-4 text-center">
       <p className="mb-3 text-sm">{message}</p>
       <div className="flex flex-col gap-2">
-        <SignInButton provider="apple" variant="primary" next={next} />
-        <SignInButton provider="google" variant="outline" next={next} />
+        <SignInProviderButtons next={next} />
       </div>
     </div>
   );

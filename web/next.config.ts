@@ -61,6 +61,10 @@ const nextConfig: NextConfig = {
     // as a request-time prop instead.
     NEXT_PUBLIC_SEARCH_EXTERNAL_GOOGLE: String(appConfig.search.externalSources.google),
     NEXT_PUBLIC_SEARCH_EXTERNAL_APPLE: String(appConfig.search.externalSources.apple),
+    // BRAWUKA-789: ordered sign-in providers for the login gates — first
+    // entry is the primary CTA; absent ids never render. Mirrors
+    // `auth.providers` so the client bundle needs no YAML access.
+    NEXT_PUBLIC_AUTH_PROVIDERS: appConfig.auth.providers.join(","),
   },
 
   images: {

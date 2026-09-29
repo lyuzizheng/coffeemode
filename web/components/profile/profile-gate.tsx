@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { CoffeeIcon } from "@/components/icons";
-import { SignInButton } from "@/components/auth/sign-in-button";
+import { SignInProviderButtons } from "@/components/auth/sign-in-provider-buttons";
 
 export function ProfileGate() {
   const t = useTranslations("profile");
@@ -19,8 +19,7 @@ export function ProfileGate() {
         {t("gate_body")}
       </p>
       <div className="w-full max-w-xs flex flex-col gap-3">
-        <SignInButton provider="apple" variant="primary" next="/profile" />
-        <SignInButton provider="google" variant="outline" next="/profile" />
+        <SignInProviderButtons next="/profile" />
       </div>
     </div>
   );

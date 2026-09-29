@@ -284,3 +284,13 @@ runtimeConfig:
   responseCache:
     sMaxAgeSeconds: 60
     staleWhileRevalidateSeconds: 300
+
+# Sign-in surfaces (BRAWUKA-789): OAuth providers that exist in Supabase AND
+# render on the login gates. `lib/auth/providers.ts` owns the id universe;
+# this ordered list is the enablement + render contract — first entry is the
+# primary CTA. A provider not listed here is not in the DOM (not disabled —
+# absent). Apple stays out until the Supabase provider exists (BRAWUKA-12,
+# GH #143): the button must never promise a path Supabase would reject.
+auth:
+  providers:
+    - google

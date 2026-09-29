@@ -27,11 +27,10 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { useNetworkStatus } from "@/hooks/use-network-status";
 import { addRecentSearch } from "@/lib/search/recent-searches";
 import { getRankingPreference } from "@/lib/search/ranking-preference";
-import { fetchUnifiedSearch, resolveSearchScope, type UnifiedSearchParams } from "@/lib/search/search-client";
+import { buildUnifiedSearchParams, fetchUnifiedSearch, resolveSearchRequest, resolveSearchScope, type SearchRequestResolution, type UnifiedSearchParams } from "@/lib/search/search-client";
 import { buildSearchHref } from "@/lib/search/search-url";
 import {
   EMPTY_FILTERS,
-  filtersToSearchParams,
   hasActiveFilters,
   type SearchFilterState,
 } from "@/lib/search/search-filters";
@@ -97,27 +96,23 @@ interface UnifiedSearchPanelProps {
 }
 
 
-/** Canonical signature of the request the panel would fire — the same
- * serialization `fetchUnifiedSearch` applies (`q` + resolved scope +
- * `filter_*`). Dedupe MUST compare this, not the query text alone: a
- * filter/city change with an unchanged query is a different request
- * (BRAWUKA-567). The scope goes through `resolveSearchScope` so the
- * signature matches the wire — a runtime city id signs as its `?lat&lng`
- * resolution, never `?city=` (BRAWUKA-568). */
+/** Canonical signature of the request the panel would fire — the exact
+ * wire serialization `fetchUnifiedSearch` emits (`buildUnifiedSearchParams`:
+ * `q` + resolved scope + `filter_*` + `ranking`). Dedupe MUST compare this,
+ * not the query text alone: a filter/city/preference change with an
+ * unchanged query is a different request (BRAWUKA-567). The signature is
+ * built from the caller's `resolved` snapshot: a fired request signs the
+ * SAME values the wire emits (BRAWUKA-793 — one storage resolution per
+ * attempt), and effect-time comparisons resolve fresh so a preference or
+ * location change is observed as a signature change. Runtime cities sign
+ * as their `?lat&lng` resolution, never `?city=` (BRAWUKA-568). */
 function requestSignature(
   q: string,
-  city: string | undefined,
   filters: SearchFilterState | undefined,
+  resolved: SearchRequestResolution,
 ): string {
-  const params = new URLSearchParams({ q });
-  const scope = resolveSearchScope(city);
-  if (scope.city) params.set("city", scope.city);
-  if (typeof scope.lat === "number") params.set("lat", String(scope.lat));
-  if (typeof scope.lng === "number") params.set("lng", String(scope.lng));
-  if (filters) filtersToSearchParams(filters, params);
-  return params.toString();
+  return buildUnifiedSearchParams({ q, filters, resolved }).toString();
 }
-
 export function UnifiedSearchPanel({
   externalSources,
   mapkitConfigured,
@@ -188,7 +183,11 @@ export function UnifiedSearchPanel({
   // content (DG141).
   const runSearch = useCallback(
     (trimmed: string, force = false) => {
-      const signature = requestSignature(trimmed, city, filters);
+      // One storage resolution per attempt (BRAWUKA-793): this snapshot
+      // feeds BOTH the dedupe signature and the wire params the seam emits,
+      // so a preference/location write mid-attempt cannot split them.
+      const resolved = resolveSearchRequest(city);
+      const signature = requestSignature(trimmed, filters, resolved);
       // Identical request already pending/in-flight — adopt it. Enter must
       // never kill the only valid request (BRAWUKA-726) nor duplicate it.
       if (!force && signature === fetchedSignatureRef.current) return;
@@ -202,7 +201,7 @@ export function UnifiedSearchPanel({
       // Refetches keep "success" so the last good list stays painted — the
       // refetching flag carries the thin head shimmer instead (§4).
       setRefetching(true);
-      fetcher({ q: trimmed, city, filters, signal: controller.signal })
+      fetcher({ q: trimmed, city, filters, resolved, signal: controller.signal })
         .then((data) => {
           if (requestId.current !== id) return;
           setResponse(data);
@@ -238,14 +237,14 @@ export function UnifiedSearchPanel({
     }
     // The identical request is already pending/in-flight (e.g. Enter fired
     // it) — dedupe instead of racing a duplicate.
-    if (fetchedSignatureRef.current === requestSignature(trimmed, city, filters)) return;
+    if (fetchedSignatureRef.current === requestSignature(trimmed, filters, resolveSearchRequest(city))) return;
     // Params changed: whatever is in flight is stale — cancel it now, not
     // only when the debounced replacement fires.
     cancelRequest();
     const timer = setTimeout(() => {
       // Orphaned timer (the dep change that cleared it raced a concurrent
       // fire): only fetch when this signature was never fetched.
-      if (fetchedSignatureRef.current === requestSignature(trimmed, city, filters)) return;
+      if (fetchedSignatureRef.current === requestSignature(trimmed, filters, resolveSearchRequest(city))) return;
       runSearch(trimmed);
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer);

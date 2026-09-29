@@ -1,13 +1,26 @@
 import { AwsClient } from "aws4fetch";
 import type { Env } from "./types";
 import type { PresignedUrl } from "../../web/shared/images/types";
+import {
+  objectUrl,
+  presignedGetUrl as signPresignedGetUrl,
+  presignedPutUrl as signPresignedPutUrl,
+  type PresignConfig,
+  type PutUrlOptions,
+  type StoreLocation,
+} from "../../web/shared/images/presign";
 import { DEFAULT_UPLOAD_URL_TTL_SECONDS } from "./constants";
 
+/** Store address from the Worker's bindings; `R2_ENDPOINT` (MinIO) wins over derived R2. */
+function storeLocation(env: Env): StoreLocation {
+  return {
+    endpoint: env.R2_ENDPOINT ?? `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    bucket: env.R2_BUCKET_NAME,
+  };
+}
+
 export function r2Endpoint(env: Env, key: string): string {
-  const base = env.R2_ENDPOINT
-    ? env.R2_ENDPOINT.replace(/\/+$/, "")
-    : `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
-  return `${base}/${env.R2_BUCKET_NAME}/${key}`;
+  return objectUrl(storeLocation(env), key);
 }
 
 export function publicUrl(env: Env, key: string): string {
@@ -22,6 +35,11 @@ function r2Client(env: Env): AwsClient {
     accessKeyId: env.R2_ACCESS_KEY_ID,
     secretAccessKey: env.R2_SECRET_ACCESS_KEY,
   });
+}
+
+/** Narrow adapter from the Worker's bindings to the shared presigner (BRAWUKA-738). */
+function presignConfig(env: Env): PresignConfig {
+  return { ...storeLocation(env), signer: r2Client(env) };
 }
 
 /** A storage response other than a missing object. */
@@ -82,9 +100,8 @@ export async function deleteObjects(
   const missing: string[] = [];
   if (env.R2_ENDPOINT) {
     const aws = r2Client(env);
-    const base = env.R2_ENDPOINT.replace(/\/+$/, "");
     for (const key of keys) {
-      const res = await aws.fetch(`${base}/${env.R2_BUCKET_NAME}/${key}`, { method: "DELETE" });
+      const res = await aws.fetch(r2Endpoint(env, key), { method: "DELETE" });
       if (res.ok || res.status === 404) {
         // Benign: drain the body so the socket can be reused.
         await res.body?.cancel().catch(() => {});
@@ -111,70 +128,16 @@ export function ttlSeconds(env: Env): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_UPLOAD_URL_TTL_SECONDS;
 }
 
-function signedHeadersToRecord(headers: Headers): Record<string, string> {
-  const result: Record<string, string> = {};
-  headers.forEach((value, name) => {
-    const lower = name.toLowerCase();
-    // Host is implicit from the URL; the caller must not send it explicitly.
-    if (lower !== "host") {
-      result[name] = value;
-    }
-  });
-  return result;
-}
-
-function metadataHeaders(customMetadata?: Record<string, string>): Record<string, string> {
-  if (!customMetadata) return {};
-  const headers: Record<string, string> = {};
-  for (const [key, value] of Object.entries(customMetadata)) {
-    headers[`x-amz-meta-${key.toLowerCase()}`] = value;
-  }
-  return headers;
-}
-
 export async function presignedPutUrl(
   env: Env,
   key: string,
   contentType: string,
-  options?: {
-    expiresSeconds?: number;
-    customMetadata?: Record<string, string>;
-    cacheControl?: string;
-    contentLength?: number;
-  },
+  options?: Omit<PutUrlOptions, "expiresSeconds"> & { expiresSeconds?: number },
 ): Promise<PresignedUrl> {
-  const ttl = options?.expiresSeconds ?? ttlSeconds(env);
-  const url = `${r2Endpoint(env, key)}?X-Amz-Expires=${ttl}`;
-  const request = new Request(url, {
-    method: "PUT",
-    headers: {
-      "Content-Type": contentType,
-      ...(options?.contentLength !== undefined
-        ? { "Content-Length": String(options.contentLength) }
-        : {}),
-      ...(options?.cacheControl ? { "Cache-Control": options.cacheControl } : {}),
-      ...metadataHeaders(options?.customMetadata),
-    },
+  return signPresignedPutUrl(presignConfig(env), key, contentType, {
+    ...options,
+    expiresSeconds: options?.expiresSeconds ?? ttlSeconds(env),
   });
-  // allHeaders signs Content-Type and the x-amz-meta-* headers, so the uploader
-  // cannot swap the MIME type or metadata without breaking the signature.
-  // When contentLength is provided, Content-Length is also part of the SigV4
-  // sign input so R2 still rejects size-mismatched bodies — but it is NEVER
-  // returned here: fetch (undici/browsers) derives Content-Length from the
-  // body and rejects a manually set value (BRAWUKA-338).
-  const signed = await r2Client(env).sign(request, {
-    aws: { signQuery: true, allHeaders: true },
-  });
-  const headers = signedHeadersToRecord(signed.headers);
-  // Fetch is case-insensitive, but most callers expect the canonical capitalisation.
-  delete headers["content-type"];
-  headers["Content-Type"] = contentType;
-  delete headers["content-length"];
-  if (options?.cacheControl) {
-    delete headers["cache-control"];
-    headers["Cache-Control"] = options.cacheControl;
-  }
-  return { url: signed.url.toString(), headers };
 }
 
 export async function presignedGetUrl(
@@ -182,12 +145,5 @@ export async function presignedGetUrl(
   key: string,
   expiresSeconds?: number,
 ): Promise<PresignedUrl> {
-  const ttl = expiresSeconds ?? ttlSeconds(env);
-  const url = `${r2Endpoint(env, key)}?X-Amz-Expires=${ttl}`;
-  const request = new Request(url);
-  const signed = await r2Client(env).sign(request, { aws: { signQuery: true } });
-  return {
-    url: signed.url.toString(),
-    headers: signedHeadersToRecord(signed.headers),
-  };
+  return signPresignedGetUrl(presignConfig(env), key, expiresSeconds ?? ttlSeconds(env));
 }

@@ -1,4 +1,11 @@
 import { AwsClient } from "aws4fetch";
+import {
+  objectUrl,
+  presignedGetUrl as signPresignedGetUrl,
+  presignedPutUrl as signPresignedPutUrl,
+  type PresignConfig,
+  type StoreLocation,
+} from "@shared/images/presign";
 
 export const DEFAULT_MINIO_ENDPOINT = "http://localhost:9000";
 
@@ -12,9 +19,26 @@ export const R2_CLEANUP_BUCKET_NAME =
   process.env.TEST_R2_CLEANUP_BUCKET_NAME ?? process.env.TEST_R2_BUCKET_NAME ?? "coffeemode-cleanup-test";
 export const R2_ENDPOINT = process.env.TEST_R2_ENDPOINT ?? DEFAULT_MINIO_ENDPOINT;
 
+/** Harness URL TTL; the Worker's own default lives in image-service/src/constants.ts. */
+const URL_TTL_SECONDS = 600;
+
+function storeLocation(bucket: string = R2_BUCKET_NAME): StoreLocation {
+  return { endpoint: R2_ENDPOINT, bucket };
+}
+
+/**
+ * PUT/GET URLs come from the production presigner (BRAWUKA-738): the same
+ * `web/shared/images/presign.ts` the Worker adapts in
+ * `image-service/src/r2.ts`, so the signature input — Content-Type, the signed
+ * Content-Length (BRAWUKA-338: signed, never handed to fetch),
+ * `x-amz-meta-*` and Cache-Control — cannot drift from what production signs.
+ */
+function presignConfig(bucket: string = R2_BUCKET_NAME): PresignConfig {
+  return { ...storeLocation(bucket), signer: r2Client() };
+}
+
 export function r2Endpoint(key: string, bucket: string = R2_BUCKET_NAME): string {
-  const base = R2_ENDPOINT.replace(/\/+$/, "");
-  return `${base}/${bucket}/${key}`;
+  return objectUrl(storeLocation(bucket), key);
 }
 
 export function r2Client(): AwsClient {
@@ -26,57 +50,25 @@ export function r2Client(): AwsClient {
   });
 }
 
-// Mirrors image-service/src/r2.ts presigning (aws4fetch, signQuery+allHeaders);
-// the worker's copy cannot be imported here without dragging workers-types into
-// web's typecheck. Update the two together.
-// Content-Length (when given) is part of the SigV4 sign input so the store
-// still rejects size-mismatched bodies — but it is NEVER returned here:
-// undici/browsers derive Content-Length from the body and reject a manually
-// set value, so returning it breaks every fetch PUT (BRAWUKA-338).
-// `metadata` / `cacheControl` mirror the `complete()`-issued PUTs: allHeaders
-// signing covers `x-amz-meta-*` and `Cache-Control`, exactly as the Worker's
-// `presignedPutUrl(env, key, contentType, { customMetadata, cacheControl })`.
 export async function presignedPutUrl(
   key: string,
   contentType: string,
   contentLength?: number,
   options: { bucket?: string; metadata?: Record<string, string>; cacheControl?: string } = {},
 ): Promise<{ url: string; headers: Record<string, string> }> {
-  const url = `${r2Endpoint(key, options.bucket ?? R2_BUCKET_NAME)}?X-Amz-Expires=600`;
-  const headers: Record<string, string> = { "Content-Type": contentType };
-  if (contentLength !== undefined) headers["Content-Length"] = String(contentLength);
-  if (options.cacheControl) headers["Cache-Control"] = options.cacheControl;
-  for (const [k, v] of Object.entries(options.metadata ?? {})) headers[`x-amz-meta-${k}`] = v;
-  const request = new Request(url, { method: "PUT", headers });
-  const signed = await r2Client().sign(request, { aws: { signQuery: true, allHeaders: true } });
-  const outHeaders: Record<string, string> = {};
-  signed.headers.forEach((v, k) => {
-    if (k.toLowerCase() !== "host") outHeaders[k] = v;
+  return signPresignedPutUrl(presignConfig(options.bucket), key, contentType, {
+    expiresSeconds: URL_TTL_SECONDS,
+    contentLength,
+    customMetadata: options.metadata,
+    cacheControl: options.cacheControl,
   });
-  // Fetch is case-insensitive, but callers expect the canonical capitalisation.
-  // Any re-add MUST delete the lowercased signed key first: Headers appends
-  // same-named values under different casings ("a, b") and breaks SigV4.
-  delete outHeaders["content-type"];
-  delete outHeaders["content-length"];
-  outHeaders["Content-Type"] = contentType;
-  if (options.cacheControl) {
-    delete outHeaders["cache-control"];
-    outHeaders["Cache-Control"] = options.cacheControl;
-  }
-  return { url: signed.url.toString(), headers: outHeaders };
 }
 
 export async function presignedGetUrl(
   key: string,
   bucket: string = R2_BUCKET_NAME,
 ): Promise<{ url: string; headers: Record<string, string> }> {
-  const url = `${r2Endpoint(key, bucket)}?X-Amz-Expires=600`;
-  const signed = await r2Client().sign(new Request(url), { aws: { signQuery: true } });
-  const headers: Record<string, string> = {};
-  signed.headers.forEach((v, k) => {
-    if (k.toLowerCase() !== "host") headers[k] = v;
-  });
-  return { url: signed.url.toString(), headers };
+  return signPresignedGetUrl(presignConfig(bucket), key, URL_TTL_SECONDS);
 }
 
 export async function headObject(
@@ -113,21 +105,10 @@ export async function putObject(
   metadata?: Record<string, string>,
   bucket: string = R2_BUCKET_NAME,
 ): Promise<void> {
-  const url = `${r2Endpoint(key, bucket)}?X-Amz-Expires=600`;
-  const headers: Record<string, string> = { "Content-Type": "image/webp" };
-  for (const [k, v] of Object.entries(metadata ?? {})) headers[`x-amz-meta-${k}`] = v;
-  const request = new Request(url, { method: "PUT", headers });
-  const signed = await r2Client().sign(request, { aws: { signQuery: true, allHeaders: true } });
-  const outHeaders: Record<string, string> = {};
-  signed.headers.forEach((v, k) => {
-    if (k.toLowerCase() !== "host") outHeaders[k] = v;
-  });
-  delete outHeaders["content-type"];
-  outHeaders["Content-Type"] = "image/webp";
-  for (const [k, v] of Object.entries(metadata ?? {})) outHeaders[`x-amz-meta-${k}`] = v;
-  const res = await fetch(signed.url.toString(), {
+  const { url, headers } = await presignedPutUrl(key, "image/webp", undefined, { metadata, bucket });
+  const res = await fetch(url, {
     method: "PUT",
-    headers: outHeaders,
+    headers,
     body: body as unknown as BodyInit,
   });
   if (!res.ok) throw new Error(`PUT ${key} failed ${res.status}`);

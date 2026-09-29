@@ -11,6 +11,7 @@ import { GET as searchGET } from "@/app/api/search/route";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import type { SearchResponse } from "@/lib/search/types";
 import type { CafeSummary } from "@/types/cafes";
+import { haversineDistanceM, haversineKm } from "@shared/places/geo";
 import {
   cleanupIntegrationDatabase,
   integrationAdminUrl,
@@ -918,5 +919,58 @@ describeHttp("HTTP Discovery & Filters (Path 1)", () => {
     const ids = res.data.results.map((r) => r.id);
     expect(ids).toContain(cafeIds.wifiHigh);
     expect(ids).not.toContain(cafeIds.wifiLow);
+  });
+
+  // ——— Haversine distance helpers (BRAWUKA-740) ———
+
+  describe("Path 1 (BRAWUKA-740): haversine distance helpers numerical consistency", () => {
+    it("returns zero metres for same point", () => {
+      const lat = 1.3521;
+      const lng = 103.8198;
+      expect(haversineDistanceM(lat, lng, lat, lng)).toBe(0);
+      expect(haversineKm(lat, lng, lat, lng)).toBe(0);
+    });
+
+    it("returns rounded integer metres consistent with haversineKm for ordinary distances", () => {
+      const lat1 = 1.3521;
+      const lng1 = 103.8198;
+      const lat2 = 1.3000;
+      const lng2 = 103.8200;
+
+      const km = haversineKm(lat1, lng1, lat2, lng2);
+      const m = haversineDistanceM(lat1, lng1, lat2, lng2);
+
+      expect(Number.isInteger(m)).toBe(true);
+      expect(m).toBe(Math.round(km * 1000));
+      expect(m).toBeGreaterThan(0);
+    });
+
+    it("handles antimeridian crossing across ±180° longitude", () => {
+      const lat1 = 0;
+      const lng1 = 179.9;
+      const lat2 = 0;
+      const lng2 = -179.9;
+
+      const km = haversineKm(lat1, lng1, lat2, lng2);
+      const m = haversineDistanceM(lat1, lng1, lat2, lng2);
+
+      expect(Number.isInteger(m)).toBe(true);
+      expect(m).toBe(Math.round(km * 1000));
+      expect(m).toBe(22239);
+    });
+
+    it("produces finite distance for near-antipodal coordinates without NaN regression", () => {
+      // Valid coordinate pair that previously produced NaN in unclamped atan2
+      const [lat1, lng1, lat2, lng2] = [-88.83978397839783, 21, 88.83978397839783, -159];
+
+      const km = haversineKm(lat1, lng1, lat2, lng2);
+      const m = haversineDistanceM(lat1, lng1, lat2, lng2);
+
+      expect(Number.isFinite(km)).toBe(true);
+      expect(Number.isFinite(m)).toBe(true);
+      expect(Number.isInteger(m)).toBe(true);
+      expect(m).toBe(20015114);
+      expect(m).toBe(Math.round(km * 1000));
+    });
   });
 });

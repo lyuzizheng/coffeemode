@@ -11,37 +11,44 @@ cd "$ROOT"
 TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/coffeemode-harness.XXXXXX")"
 trap 'rm -rf "$TEST_ROOT"' EXIT
 
-# Copy harness-relevant files
-cp -R docs .agents .github .codex AGENTS.md "$TEST_ROOT/" 2>/dev/null || true
-# Classifier inputs: the registered suites (`web/package.json`), the
-# `RUN_INTEGRATION` test sources it must route to `integration-gate`, and the
-# vitest config whose `setupFiles`/`resolve.alias` define the import closure
-# rooted at those sources (BRAWUKA-206). The closure now *fails* on a specifier it
-# cannot resolve, so the fixture must carry the whole tracked source tree those
-# imports point at — not just `tests/` — or a fixture that is missing a module
-# would look like a detector bug. Tracked files only: no `node_modules`, no
-# `.next`, no coverage output.
-mkdir -p "$TEST_ROOT/web"
-(cd "$ROOT" && git ls-files -z web scripts image-service poi-service | tar --null -T - -cf -) | (cd "$TEST_ROOT" && tar -xf -)
-# Runtime-pin inputs: the manifests, lockfiles, Worker configs, Dockerfile and
-# compose file `check-runtime-pins.sh` reads, plus the workflows it walks (copied
-# with `.github/`). The gate treats any missing one as a failure (so it cannot
-# half-run), which means the fixture must carry them — including the two service
-# trees, which the classifier check does not need. `web/package-lock.json` and
-# `web/Dockerfile` arrive with the tracked source tree above.
-for svc in poi-service image-service; do
-  mkdir -p "$TEST_ROOT/$svc"
-  cp "$svc/package.json" "$svc/package-lock.json" "$svc/wrangler.toml" "$TEST_ROOT/$svc/" 2>/dev/null || true
-done
-cp docker-compose.yml "$TEST_ROOT/" 2>/dev/null || true
-# Ensure git context for diff-based checks
+# Copy the tracked tree — the whole of it, exactly (BRAWUKA-797). A hand-picked
+# subset is what broke this self-test: the fixture used to carry `docs .agents
+# .github .codex AGENTS.md` plus the tracked files under `web/` and `scripts/`,
+# and a gated suite that imports a source outside those trees
+# (`web/tests/integration/image-service-store-location.integration.test.ts`
+# imports `image-service/src/store-location`) then tripped the classifier's import
+# closure, which fails closed on a specifier it cannot resolve. The missing file
+# read as a detector bug that was really a stale copy list — the same drift a
+# longer hand-maintained list (`web scripts image-service poi-service`) would hit
+# again on the next cross-tree import.
+#
+# Every gate below reads the fixture as if it were the repo, so every tracked
+# input has to be there: the classifier's registered suites and import closure,
+# the runtime-pin manifests, lockfiles, Worker configs, Dockerfile, compose file,
+# and the workflows. Tracked files only — `git ls-files` never lists
+# `node_modules`, `.next`, or coverage output.
+(cd "$ROOT" && git ls-files -z | tar --null -T - -cf -) | (cd "$TEST_ROOT" && tar -xf -)
+# Ensure git context for diff-based checks. `-f` because a tracked file can still
+# match `.gitignore` (`.DS_Store`), and a fixture that quietly drops it would let
+# the tracked-path gates validate less than the repo does.
 (
   cd "$TEST_ROOT"
   git init -q
-  git add .
+  git add -A -f .
   git -c user.name='Harness Self-Test' -c user.email='harness@test.invalid' \
     -c commit.gpgsign=false commit -qm baseline
 )
+
+# The copy has to be complete. A family that silently drops out degrades every
+# gate that reads it into a false pass — which is how this self-test shipped a
+# red baseline (BRAWUKA-797) — so name the missing paths here, where the cause is
+# still legible, instead of letting a downstream closure error take the blame.
+fixture_gap="$(comm -23 <(cd "$ROOT" && git ls-files | LC_ALL=C sort -u) <(cd "$TEST_ROOT" && git ls-files | LC_ALL=C sort -u))"
+if [[ -n "$fixture_gap" ]]; then
+  echo "FIXTURE DRIFT: $(grep -c . <<< "$fixture_gap") tracked file(s) missing from the harness copy:" >&2
+  head -20 <<< "$fixture_gap" | sed 's/^/  /' >&2
+  exit 1
+fi
 
 PASS=0
 FAIL=0

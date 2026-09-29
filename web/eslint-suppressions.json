@@ -24,11 +24,6 @@
       "count": 1
     }
   },
-  "components/cafe/cafe-place-search.tsx": {
-    "max-lines-per-function": {
-      "count": 1
-    }
-  },
   "components/checkin/checkin-photos.tsx": {
     "max-lines-per-function": {
       "count": 1

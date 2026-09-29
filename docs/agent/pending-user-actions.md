@@ -52,7 +52,7 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 ## 4. Apple Sign-In — deferred until Apple Developer Program
 
 - [ ] Buy Apple Developer Program membership ($99/yr) — also needed for MapKit JS (blocks Apple-only slices, not cafe creation's link/Google paths; #131)
-- [ ] Configure Services ID + Sign in with Apple key, then enable Apple provider in Supabase (item 1)
+- [ ] Configure Services ID + Sign in with Apple key, then enable Apple provider in Supabase (item 1), then add `apple` to `auth.providers` in `web/config/app.yaml` (BRAWUKA-789: the gates render only listed providers, so the Apple button returns automatically — keep it after `google` unless product wants Apple as the primary CTA)
 
 ## 5. Google Places API key — for poi-cache-service deploy
 

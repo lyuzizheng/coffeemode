@@ -12,9 +12,9 @@
  *      action (`web/lib/auth/actions.ts`) which issues a redirect response
  *      (proves the provider + redirect wiring is live; a dead action would
  *      stay on `/profile` with an inline error). A disabled provider
- *      (apple until BRAWUKA-12) never renders, and the listed provider
- *      must carry `button--primary` — primary styling is asserted on the
- *      real DOM since the component suite mocks HeroUI.
+ *      (apple until BRAWUKA-12) never renders, and the listed provider's
+ *      computed fill must be `--accent` — primary styling is asserted on
+ *      the real DOM since the component suite mocks HeroUI.
  *   2. `/?auth=error` banner: the callback's failure redirect renders the
  *      `AuthCallbackError` alert (proves a failed sign-in is never silent).
  *   3. Injected session: a `mintSession` cookie for the fixture user lands
@@ -56,13 +56,27 @@ async function checkSigninEntry({ base, createContext, attachErrorCollector, lab
       // must not exist in the DOM at all (a dead primary would fail here).
       const googleEntry = page.getByRole("button", { name: /Continue with Google/i });
       await googleEntry.waitFor({ state: "visible", timeout: 15000 });
-      // Primary-styling contract: HeroUI renders `button--primary` on the
-      // first provider; an outline/demoted Google CTA must fail here (the
-      // component suite mocks HeroUI, so only this browser check can prove it).
-      const entryClass = await googleEntry.getAttribute("class");
+      // Primary-CTA styling is part of the shipped contract a mocked
+      // component test cannot see: the first `auth.providers` entry renders
+      // HeroUI's `primary` variant — accent-filled, never `outline`
+      // (transparent + border). A same-page probe resolves `--accent` so
+      // the check survives palette changes and HeroUI internal class
+      // renames; an outline fill fails both assertions (transparent ≠ accent).
+      const fill = await googleEntry.evaluate((button) => {
+        const probe = document.createElement("div");
+        probe.style.backgroundColor = "var(--accent)";
+        document.body.appendChild(probe);
+        const accentBg = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return { buttonBg: getComputedStyle(button).backgroundColor, accentBg };
+      });
       assert(
-        entryClass?.includes("button--primary") === true,
-        `google entry is not the primary-styled CTA (class: ${entryClass})`,
+        fill.buttonBg !== "rgba(0, 0, 0, 0)" && fill.buttonBg !== "transparent",
+        "google sign-in entry renders transparent — it lost the primary variant (outline?)",
+      );
+      assert(
+        fill.buttonBg === fill.accentBg,
+        `google sign-in entry fill ${fill.buttonBg} is not the --accent primary color ${fill.accentBg}`,
       );
       assert(
         (await page.getByRole("button", { name: /Continue with Apple/i }).count()) === 0,
@@ -144,13 +158,14 @@ async function checkSignOut({ base, sessionCookie, createContext, attachErrorCol
       // sb-*-auth-token cookie, the client drops the persisted query-cache
       // entry + TanStack client, and the settings page re-renders the
       // anonymous sign-in gate in place (no navigation — the URL stays on
-      // /settings with the cookie gone and the Apple gate visible).
+      // /settings with the cookie gone and the provider gate visible; per
+      // BRAWUKA-789 the rendered primary is google, never apple).
       await signOut.click();
       await page.waitForFunction(
         () => !document.cookie.split(";").some((c) => /sb-.*-auth-token/.test(c.trim())),
         { timeout: 15000 },
       );
-      const gate = page.getByRole("button", { name: /Continue with Apple/i });
+      const gate = page.getByRole("button", { name: /Continue with Google/i });
       await gate.waitFor({ state: "visible", timeout: 15000 });
       // The persister holds one key (`coffeemode-persisted-client`) in the
       // `queries` store of the `coffeemode-query-cache` DB; sign-out deletes

@@ -13,7 +13,7 @@ import { PURGE_GALLERY_BY_SOURCE_IDS_SQL } from "@/lib/db/checkins/gallery";
 import { ACQUIRE_ACCOUNT_WRITE_LOCK_SQL } from "../locks";
 import { query, txRunnerFrom, withTransaction } from "../postgres";
 import { LAST_LOCATION_SQL, toProfileDto, type ProfileRow } from "./row";
-import type { UserProfileDto } from "./types";
+import type { UserProfileDto } from "@/types/profile-dto";
 import type { StoredImage } from "@/types/images";
 
 /**

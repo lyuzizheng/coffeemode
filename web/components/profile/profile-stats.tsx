@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { useCountUp } from "@/hooks/use-count-up";
-import type { UserProfileStatsDto } from "@/lib/db/profile";
+import type { UserProfileStatsDto } from "@/types/profile-dto";
 
 export function ProfileStats({ stats }: { stats: UserProfileStatsDto | null }) {
   const t = useTranslations("profile");

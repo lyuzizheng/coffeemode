@@ -30,8 +30,7 @@ import {
   type SearchFilterState,
 } from "@/lib/search/search-filters";
 import { setSearchUrlState } from "@/lib/search/search-url-state";
-import type { SearchResultItem } from "@/lib/search/types";
-import type { ExternalSearchProvider } from "@/components/search/search-results-list";
+import type { ExternalSearchProvider, SearchResultItem } from "@/lib/search/types";
 import type { POI, PlacePrediction } from "@shared/places/types";
 import type { CafeSummary } from "@/types/cafes";
 import type { DiscoveryController } from "@/lib/discovery/use-discovery-controller";

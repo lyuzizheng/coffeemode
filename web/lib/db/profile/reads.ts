@@ -4,7 +4,7 @@ import { isValidUUID } from "@shared/uuid";
 import { query } from "../postgres";
 import { DEFAULT_CITY } from "@/lib/cities";
 import { LAST_LOCATION_SQL, toProfileDto, type ProfileRow } from "./row";
-import type { UserProfileDto, UserProfileStatsDto } from "./types";
+import type { UserProfileDto, UserProfileStatsDto } from "@/types/profile-dto";
 
 /** Get the profile record for a user. */
 export async function getProfile(userId: string): Promise<UserProfileDto | null> {

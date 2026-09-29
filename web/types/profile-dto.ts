@@ -1,5 +1,3 @@
-import "server-only";
-
 import type { CheckInScores, MaxStay } from "@/types/checkins";
 import type { CafeVisibility } from "@/types/cafes";
 import type { StoredImage } from "@/types/images";

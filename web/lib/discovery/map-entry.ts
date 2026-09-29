@@ -24,7 +24,7 @@ import { createSupabaseServerClient, isAuthConfigured } from "@/lib/auth/supabas
 import { appConfig } from "@/lib/config";
 import { detectIpCity, findCity, type CityInfo, type Coordinates } from "@/lib/cities";
 import { getProfile } from "@/lib/db/profile";
-import type { UserProfileDto } from "@/lib/db/profile/types";
+import type { UserProfileDto } from "@/types/profile-dto";
 import { getMapKitConfig } from "@/lib/places/mapkit";
 
 export interface MapEntryProps {

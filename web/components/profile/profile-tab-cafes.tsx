@@ -11,7 +11,7 @@ import { THUMB_PX } from "@/lib/layout";
 import { apiFetch, isUnauthorized } from "@/lib/http";
 import { SignInGate } from "@/components/auth/sign-in-gate";
 import { ErrorRow } from "./profile-error-row";
-import type { UserCafeItemDto } from "@/lib/db/profile";
+import type { UserCafeItemDto } from "@/types/profile-dto";
 
 export async function fetchUserCafes(cursor?: string) {
   const params = new URLSearchParams();

@@ -27,10 +27,8 @@ import { displayCityName } from "@/lib/cities";
 import type { ExternalSourceFlags } from "@/lib/client-env";
 import { PrivateBadge } from "@/components/cafe/private-badge";
 import { groupSearchResults } from "@/lib/search/grouped-results";
-import type { SearchResponse, SearchResultItem } from "@/lib/search/types";
+import type { ExternalSearchProvider, SearchResponse, SearchResultItem } from "@/lib/search/types";
 import { SearchResultRichRow } from "./search-result-rich-row";
-
-export type ExternalSearchProvider = "google" | "apple";
 
 interface SearchResultsListProps {
   response: SearchResponse;

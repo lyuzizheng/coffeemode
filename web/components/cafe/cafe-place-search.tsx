@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { getSearchExternalSources } from "@/lib/client-env";
 import { getPlaceSearchProviders } from "@/lib/places/providers";
 import type { POI } from "@shared/places/types";
-import type { ExternalSearchProvider } from "@/components/search/search-results-list";
+import type { ExternalSearchProvider } from "@/lib/search/types";
 import { MapsLinkResolveForm } from "./maps-link-resolve-form";
 import { ProviderPlaceSearch } from "./provider-place-search";
 

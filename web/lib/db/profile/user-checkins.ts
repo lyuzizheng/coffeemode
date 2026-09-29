@@ -6,7 +6,7 @@ import { appConfig } from "@/lib/config";
 import type { CheckInScores, MaxStay } from "@/types/checkins";
 import type { StoredImage } from "@/types/images";
 import { paginateProfileRows, parseProfileCursor } from "./cursor";
-import type { UserCheckInItemDto } from "./types";
+import type { UserCheckInItemDto } from "@/types/profile-dto";
 
 type UserCheckInRow = {
   id: string;

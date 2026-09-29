@@ -6,7 +6,7 @@ import { appConfig } from "@/lib/config";
 import { DEFAULT_CITY } from "@/lib/cities";
 import { LAST_LOCATION_SQL, toProfileDto, type ProfileRow } from "./row";
 import { getProfile } from "./reads";
-import type { UserProfileDto } from "./types";
+import type { UserProfileDto } from "@/types/profile-dto";
 
 export interface ProfilePatchInput {
   displayName?: string;

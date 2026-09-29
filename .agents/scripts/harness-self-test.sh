@@ -91,6 +91,28 @@ expect_failure_matching() {
   fi
 }
 
+# Like expect_pass, but the gate must also say the expected thing: a check that
+# passes for the wrong reason (e.g. validating an empty section) is not proof.
+expect_pass_matching() {
+  local label="$1" pattern="$2"
+  shift 2
+  local out
+  if out="$("$@" 2>&1)"; then
+    if grep -qF "$pattern" <<< "$out"; then
+      echo "  ok: $label"
+      PASS=$((PASS + 1))
+    else
+      echo "  MISSED: passed but without '$pattern': $label"
+      printf '%s\n' "$out" | head -5 | sed 's/^/    /'
+      FAIL=$((FAIL + 1))
+    fi
+  else
+    echo "  UNEXPECTED FAIL: $label"
+    printf '%s\n' "$out" | tail -5 | sed 's/^/    /'
+    FAIL=$((FAIL + 1))
+  fi
+}
+
 expect_classifier() {
   local label="$1" expected="$2"
   shift 2
@@ -500,13 +522,44 @@ if assert_mutated "layer/gate mismatch" "$CMATRIX.bak" "$CMATRIX"; then
 fi
 mv "$CMATRIX.bak" "$CMATRIX"
 
+# A renamed section heading must not turn validation off: the section is located
+# by number, so the renamed §1 is still checked and this fault still fails
+# (reviewer repro on PR #761, BRAWUKA-792).
+cp "$CMATRIX" "$CMATRIX.bak"
+sed 's/^## 1\. Matrix$/## 1. Coverage matrix/; s/sw-privacy-gate\.mjs/sw-privacy-gate-missing.mjs/' "$CMATRIX.bak" > "$CMATRIX"
+if assert_mutated "§1 heading renamed with a missing proving file" "$CMATRIX.bak" "$CMATRIX"; then
+  expect_failure_matching "renamed §1 still validates its rows" "T23 proving file missing: web/scripts/lib/sw-privacy-gate-missing.mjs" \
+    env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-coverage-matrix.sh"
+fi
+mv "$CMATRIX.bak" "$CMATRIX"
+
+# …and when the section cannot be found at all, the gate fails closed instead of
+# reporting an empty validation as success (same finding).
+cp "$CMATRIX" "$CMATRIX.bak"
+sed 's/^## 1\. Matrix$/## One. Coverage matrix/' "$CMATRIX.bak" > "$CMATRIX"
+if assert_mutated "§1 section unfindable" "$CMATRIX.bak" "$CMATRIX"; then
+  expect_failure_matching "unfindable §1 fails closed" "§1 coverage matrix has no '| T<n> |' rows" \
+    env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-coverage-matrix.sh"
+fi
+mv "$CMATRIX.bak" "$CMATRIX"
+
+cp "$CMATRIX" "$CMATRIX.bak"
+sed 's/^## 3\. Infra vs service helpers split$/## Three. Helpers/' "$CMATRIX.bak" > "$CMATRIX"
+if assert_mutated "§3 section unfindable" "$CMATRIX.bak" "$CMATRIX"; then
+  expect_failure_matching "unfindable §3 fails closed" "§3 helper table has no rows" \
+    env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-coverage-matrix.sh"
+fi
+mv "$CMATRIX.bak" "$CMATRIX"
+
 # Explicit `manual` marking is the one way to keep a non-runnable claim in §1 —
 # the row is then reported as unenforced instead of reading as CI coverage. The
+# gate cell below uses the backticked form (`manual`), which must be read as the
+# marker rather than looked up as an alias (reviewer finding, BRAWUKA-792); the
 # same missing-file mutation without the marker fails (first case above).
 cp "$CMATRIX" "$CMATRIX.bak"
-awk '/^\| T23 /{ gsub(/sw-privacy-gate\.mjs/, "sw-privacy-gate-missing.mjs"); gsub(/`test:e2e`/, "manual: real-browser Turnstile loop") } { print }' "$CMATRIX.bak" > "$CMATRIX"
-if assert_mutated "manual-marked row with a non-runnable proof" "$CMATRIX.bak" "$CMATRIX"; then
-  expect_pass "manual-marked row is exempt and reported as unenforced" \
+awk '/^\| T23 /{ gsub(/sw-privacy-gate\.mjs/, "sw-privacy-gate-missing.mjs"); gsub(/`test:e2e`/, "`manual` (staging-only Turnstile loop)") } { print }' "$CMATRIX.bak" > "$CMATRIX"
+if assert_mutated "backticked manual marker with a non-runnable proof" "$CMATRIX.bak" "$CMATRIX"; then
+  expect_pass_matching "backticked manual marker is exempt and reported as unenforced" "manual-marked row(s) reported as unenforced: T23" \
     env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-coverage-matrix.sh"
 fi
 mv "$CMATRIX.bak" "$CMATRIX"

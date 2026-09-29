@@ -379,9 +379,12 @@ The traceability matrix lives at `docs/agent/test-coverage.md` (S3 testkit-cover
   one file), when a gate alias in a §1 row's gate cell is not a
   `web/package.json` script, or when a row's declared layers are not exactly the
   layer classes of the gates it names. A row whose gate cell carries the explicit
-  `manual` marker is exempt from the runnable-proof checks and is reported as
-  unenforced, so manual or historical evidence cannot read as CI coverage —
-  non-runnable material belongs in §4 (residual gaps) prose, which is exempt.
+  `manual` marker (bare or backticked) is exempt from the runnable-proof checks
+  and is reported as unenforced, so manual or historical evidence cannot read as
+  CI coverage — non-runnable material belongs in §4 (residual gaps) prose, which
+  is exempt. The validated sections are located by number (`## 1.`, `## 3.`) and
+  validation is fail-closed: a section that is absent, renamed away or empty
+  fails the gate instead of reporting an empty validation as success.
 - All three packages declare the same `engines.node` floor as CI and the container images; `.agents/scripts/check-runtime-pins.sh` fails on any divergence, on a missing declaration, or on a floor it cannot parse.
 - All three packages declare and resolve one TypeScript version; a per-package major bump fails.
 - Both Workers pin a valid, non-future `compatibility_date`; removing it or pushing it into the future fails.

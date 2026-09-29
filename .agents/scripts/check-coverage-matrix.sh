@@ -10,6 +10,9 @@
 #   the gates it names. A row marked `manual` is exempt from the runnable-proof
 #   checks and is reported as unenforced, so manual/historical entries cannot
 #   read as CI coverage (non-current material belongs in §4, which is prose).
+# - the validated sections are located by number (`## 1.`, `## 3.`) and the check
+#   is fail-closed: a missing/renamed/empty section fails instead of reporting an
+#   empty validation as success.
 # Exit non-zero on any failure (preflight-style).
 set -euo pipefail
 
@@ -148,7 +151,8 @@ ref_matches() {
   done
 }
 
-matrix_section() { # $1 = literal heading, e.g. "## 1. Matrix"
+matrix_section() { # $1 = section number prefix, e.g. "## 1." — wording may change,
+                   # the number is the contract; an absent section yields no lines.
   awk -v head="$1" 'index($0, head) == 1 { on = 1; next }
                     /^## / { on = 0 }
                     on' "$MATRIX"
@@ -172,6 +176,14 @@ fi
 MANUAL_ROW_IDS=""
 MANUAL_ROW_COUNT=0
 
+# Fail closed: an empty §1 cannot "validate" — a renamed or removed section would
+# otherwise print success while checking nothing (reviewer finding, BRAWUKA-792).
+MATRIX_ROWS="$(matrix_section '## 1.' | grep -E '^\| T[0-9]' || true)"
+if [[ -z "$MATRIX_ROWS" ]]; then
+  fail "§1 coverage matrix has no '| T<n> |' rows (section '## 1.' missing, renamed, or empty)"
+fi
+ERRORS_BEFORE_ROWS=$ERRORS
+
 while IFS= read -r row; do
   [[ -n "$row" ]] || continue
   row_id="$(printf '%s\n' "$row" | awk -F'|' '{ gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2 }')"
@@ -186,7 +198,10 @@ while IFS= read -r row; do
     MANUAL_ROW_IDS="$MANUAL_ROW_IDS $row_id"
   fi
 
-  gate_tokens="$(printf '%s\n' "$gate_cell" | backticked | grep -E '^[a-z][a-z0-9:-]*$' || true)"
+  # `manual` is the explicit marker, never an alias (reviewer finding, BRAWUKA-792):
+  # it is accepted bare or backticked, and is reported as unenforced instead of
+  # being looked up in web/package.json.
+  gate_tokens="$(printf '%s\n' "$gate_cell" | backticked | grep -E '^[a-z][a-z0-9:-]*$' | grep -vx 'manual' || true)"
   if [[ -z "$gate_tokens" && "$row_manual" -eq 0 ]]; then
     fail "$row_id gate cell names no gate alias and no explicit 'manual' marker"
   fi
@@ -233,8 +248,17 @@ while IFS= read -r row; do
       fi
     done <<< "$(printf '%s\n' "$proving_cell" | backticked | grep -E '\.(ts|tsx|mjs)$' || true)"
   fi
-done <<< "$(matrix_section '## 1. Matrix' | grep -E '^\| T[0-9]' || true)"
-ok "§1 rows validated: proving files exist, gate aliases resolve, layers match gates"
+done <<< "$MATRIX_ROWS"
+if [[ -n "$MATRIX_ROWS" && "$ERRORS" -eq "$ERRORS_BEFORE_ROWS" ]]; then
+  ok "§1 rows validated: proving files exist, gate aliases resolve, layers match gates"
+fi
+
+# §3 is guarded the same way (reviewer finding, BRAWUKA-792).
+HELPER_ROWS="$(matrix_section '## 3.' | grep -E '^\|' || true)"
+if [[ -z "$HELPER_ROWS" ]]; then
+  fail "§3 helper table has no rows (section '## 3.' missing, renamed, or empty)"
+fi
+ERRORS_BEFORE_HELPERS=$ERRORS
 
 while IFS= read -r row; do
   [[ -n "$row" ]] || continue
@@ -244,8 +268,10 @@ while IFS= read -r row; do
       fail "§3 helper table references missing file: $ref"
     fi
   done <<< "$(printf '%s\n' "$row" | backticked | grep -E '\.(ts|tsx|mjs)$' || true)"
-done <<< "$(matrix_section '## 3. Infra vs service helpers split' | grep -E '^\|' || true)"
-ok "§3 helper table references resolve"
+done <<< "$HELPER_ROWS"
+if [[ -n "$HELPER_ROWS" && "$ERRORS" -eq "$ERRORS_BEFORE_HELPERS" ]]; then
+  ok "§3 helper table references resolve"
+fi
 
 if [[ "$MANUAL_ROW_COUNT" -gt 0 ]]; then
   ok "$MANUAL_ROW_COUNT manual-marked row(s) reported as unenforced:$MANUAL_ROW_IDS"

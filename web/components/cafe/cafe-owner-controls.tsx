@@ -24,7 +24,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Label, Switch, toast } from "@heroui/react";
 import { DangerConfirm } from "@/components/danger-confirm";
 import { SignInGate } from "@/components/auth/sign-in-gate";
-import { invalidateCheckinQueries } from "@/components/checkin/checkin-api";
+import { invalidateCheckinQueries } from "@/lib/query/invalidation";
 import { apiFetch, ApiError, isUnauthorized } from "@/lib/http";
 import type { CafeVisibility } from "@/types/cafes";
 
@@ -126,9 +126,9 @@ function DeleteSection({
           : {}),
       });
       // The cafe drops out of "我的咖啡地图" server-side; refresh the local
-      // view (feed empties, stats recompute, owner controls unmount).
+      // view (feed empties, stats recompute, owner controls unmount). The
+      // shared set already covers the persisted "cafes-list" key.
       invalidateCheckinQueries(queryClient, cafeId);
-      queryClient.invalidateQueries({ queryKey: ["cafes-list"] });
       toast(t("delete_done"), { timeout: 3000 });
       setStep("idle");
       router.refresh();

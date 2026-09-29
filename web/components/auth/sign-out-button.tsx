@@ -7,7 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@heroui/react";
 import { signOut, type AuthActionState } from "@/lib/auth/actions";
 import { AuthErrorMessage } from "./auth-error-message";
-import { idbPersister } from "@/lib/query/persister";
+import { clearClientState } from "@/lib/query/clear-client-state";
 
 export function SignOutButton({
   variant = "outline",
@@ -26,12 +26,9 @@ export function SignOutButton({
 
   useEffect(() => {
     if (state?.success) {
-      Promise.resolve(idbPersister.removeClient())
-        .catch((e) => console.error("sign-out-button: failed to clear persisted cache", e))
-        .finally(() => {
-          queryClient.clear();
-          router.push("/");
-        });
+      clearClientState(queryClient, (e) =>
+        console.error("sign-out-button: failed to clear persisted cache", e),
+      ).finally(() => router.push("/"));
     }
   }, [state, queryClient, router]);
 

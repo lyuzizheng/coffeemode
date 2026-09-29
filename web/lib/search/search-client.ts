@@ -1,9 +1,19 @@
 import { findCity } from "@/lib/cities";
 import { apiFetch } from "@/lib/http";
 import { readOnboardingState } from "@/lib/onboarding-store";
-import { getRankingPreference } from "./ranking-preference";
+import { getRankingPreference, type RankingPreference } from "./ranking-preference";
 import { filtersToSearchParams, type SearchFilterState } from "./search-filters";
 import type { SearchResponse } from "./types";
+
+/** Device-storage resolution snapshot for one request attempt — scope and
+ * ranking read ONCE, then shared by the panel's request identity and the
+ * transport's wire params so a storage change mid-attempt can never make
+ * them disagree (BRAWUKA-793). `ranking` preserves the `null` state:
+ * "never chose" must emit nothing, not a re-read. */
+export interface SearchRequestResolution {
+  scope: { city?: string; lat?: number; lng?: number };
+  ranking: RankingPreference | null;
+}
 
 export interface UnifiedSearchParams {
   q: string;
@@ -13,6 +23,14 @@ export interface UnifiedSearchParams {
   limit?: number;
   /** Nomad filters (DG44–DG58): open_now + filter_* thresholds + max_stay. */
   filters?: SearchFilterState;
+  /**
+   * Pre-resolved scope/ranking snapshot for this attempt (BRAWUKA-793). The
+   * search panel resolves once and passes its snapshot through this seam so
+   * the emitted wire values are provably the ones the request signed with;
+   * absent → the transport resolves from storage itself (unchanged behavior
+   * for every other caller).
+   */
+  resolved?: SearchRequestResolution;
   signal?: AbortSignal;
 }
 
@@ -47,34 +65,52 @@ export function resolveSearchScope(
 }
 
 /**
- * Canonical `/api/search` parameter assembly — the one serialization both
- * consumers read: `fetchUnifiedSearch` emits it on the wire, and the search
- * panel serializes its request identity from it (BRAWUKA-736). Scope and the
- * ranking preference resolve from device storage inside this function, so
- * callers passing the same inputs can never sign one request and send
- * another; `signal` is deliberately excluded — cancellation is transport,
- * not identity. Reuses the neutral filter writer (`filtersToSearchParams`)
- * and `resolveSearchScope` so the emission order `q → city/lat/lng → limit
- * → filter_* → ranking` is identical on both sides.
+ * Resolve this attempt's scope + ranking from device storage exactly once
+ * (BRAWUKA-793). The panel calls this per fired request and hands the same
+ * snapshot to its identity signature and the fetch seam — a storage write
+ * between those consumers cannot split them. The transport resolves its own
+ * snapshot only when the caller passed none.
+ */
+export function resolveSearchRequest(
+  city?: string,
+  lat?: number,
+  lng?: number,
+): SearchRequestResolution {
+  return {
+    scope: resolveSearchScope(city, lat, lng),
+    ranking: getRankingPreference(),
+  };
+}
+
+/**
+ * Canonical `/api/search` parameter serialization — the one shape both
+ * consumers produce (BRAWUKA-736): `fetchUnifiedSearch` emits it on the
+ * wire, and the search panel serializes its request identity from it. The
+ * caller supplies the attempt's `resolved` snapshot (`resolveSearchRequest`)
+ * so identity and transport provably share resolved scope/preference
+ * values; `signal` never appears — cancellation is transport, not identity.
+ * Reuses the neutral filter writer (`filtersToSearchParams`) so the
+ * emission order `q → city/lat/lng → limit → filter_* → ranking` is
+ * identical on both sides.
  */
 export function buildUnifiedSearchParams({
   q,
-  city,
-  lat,
-  lng,
   limit,
   filters,
-}: Omit<UnifiedSearchParams, "signal">): URLSearchParams {
+  resolved,
+}: {
+  q: string;
+  limit?: number;
+  filters?: SearchFilterState;
+  resolved: SearchRequestResolution;
+}): URLSearchParams {
   const params = new URLSearchParams({ q });
-  const scope = resolveSearchScope(city, lat, lng);
-  if (scope.city) params.set("city", scope.city);
-  if (typeof scope.lat === "number") params.set("lat", String(scope.lat));
-  if (typeof scope.lng === "number") params.set("lng", String(scope.lng));
+  if (resolved.scope.city) params.set("city", resolved.scope.city);
+  if (typeof resolved.scope.lat === "number") params.set("lat", String(resolved.scope.lat));
+  if (typeof resolved.scope.lng === "number") params.set("lng", String(resolved.scope.lng));
   if (typeof limit === "number") params.set("limit", String(limit));
   if (filters) filtersToSearchParams(filters, params);
-
-  const ranking = getRankingPreference();
-  if (ranking) params.set("ranking", ranking);
+  if (resolved.ranking) params.set("ranking", resolved.ranking);
   return params;
 }
 
@@ -86,13 +122,20 @@ export function buildUnifiedSearchParams({
  * DG136: when the user has chosen a ranking preference it is appended as
  * `?ranking=good_first|relevance`; when unset (anonymous, never touched the
  * toggle) the parameter is omitted and the server default applies.
+ *
+ * BRAWUKA-793: a caller-supplied `resolved` snapshot is used verbatim —
+ * never re-read from storage — so the panel's identity and this wire share
+ * one attempt's values. Callers that omit `resolved` get the transport's
+ * own single read (`resolveSearchRequest`); either way the wire resolves
+ * storage at most once per call.
  */
 export async function fetchUnifiedSearch(
   params: UnifiedSearchParams,
 ): Promise<SearchResponse> {
-  const { signal, ...inputs } = params;
+  const { signal, resolved, city, lat, lng, q, limit, filters } = params;
+  const request = resolved ?? resolveSearchRequest(city, lat, lng);
   return apiFetch<SearchResponse>(
-    `/api/search?${buildUnifiedSearchParams(inputs).toString()}`,
+    `/api/search?${buildUnifiedSearchParams({ q, limit, filters, resolved: request }).toString()}`,
     { method: "GET", signal },
   );
 }

@@ -7,6 +7,8 @@ import { writeOnboardingState } from "@/lib/onboarding-store";
 import { setRankingPreference } from "@/lib/search/ranking-preference";
 import {
   buildUnifiedSearchParams,
+  fetchUnifiedSearch,
+  resolveSearchRequest,
   type UnifiedSearchParams,
 } from "@/lib/search/search-client";
 import {
@@ -275,6 +277,7 @@ describe("request identity ↔ transport agreement (BRAWUKA-736)", () => {
   function renderPanel(props: {
     city?: string;
     filters?: SearchFilterState;
+    fetchSearch?: (params: UnifiedSearchParams) => Promise<SearchResponse>;
   }) {
     return render(
       <NextIntlClientProvider locale="en" messages={en}>
@@ -286,6 +289,7 @@ describe("request identity ↔ transport agreement (BRAWUKA-736)", () => {
           mapkitConfigured={false}
           onSelectResult={() => {}}
           onExternalSearch={() => {}}
+          fetchSearch={props.fetchSearch}
         />
       </NextIntlClientProvider>,
     );
@@ -321,7 +325,7 @@ describe("request identity ↔ transport agreement (BRAWUKA-736)", () => {
     // signed — one serializer feeds both sides.
     const emitted = new URL(searchCalls[0], "http://test.local").search;
     expect(emitted).toBe(
-      `?${buildUnifiedSearchParams({ q: "coffee", city: "singapore", filters }).toString()}`,
+      `?${buildUnifiedSearchParams({ q: "coffee", filters, resolved: resolveSearchRequest("singapore") }).toString()}`,
     );
     const emittedParams = new URLSearchParams(emitted);
     expect(emittedParams.get("q")).toBe("coffee");
@@ -357,7 +361,7 @@ describe("request identity ↔ transport agreement (BRAWUKA-736)", () => {
     expect(searchCalls).toHaveLength(1);
     const emitted = new URL(searchCalls[0], "http://test.local").search;
     expect(emitted).toBe(
-      `?${buildUnifiedSearchParams({ q: "", city: "runtime-xyz", filters }).toString()}`,
+      `?${buildUnifiedSearchParams({ q: "", filters, resolved: resolveSearchRequest("runtime-xyz") }).toString()}`,
     );
     const emittedParams = new URLSearchParams(emitted);
     expect(emittedParams.get("q")).toBe("");
@@ -365,5 +369,91 @@ describe("request identity ↔ transport agreement (BRAWUKA-736)", () => {
     expect(emittedParams.get("lat")).toBe("10.5");
     expect(emittedParams.get("lng")).toBe("107.25");
     expect(emittedParams.get("ranking")).toBeNull();
+  });
+});
+
+describe("per-attempt resolution snapshot (BRAWUKA-793)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it("a mid-attempt storage change cannot split identity and transport", async () => {
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      urls.push(String(input));
+      return new Response(JSON.stringify(makeResponse([])), { status: 200 });
+    });
+    setRankingPreference("good_first");
+    writeOnboardingState({ lastLocation: { lat: 10.5, lng: 107.25 } });
+    const filters: SearchFilterState = {
+      openNow: false,
+      thresholds: { wifi: 80 },
+      maxStay: null,
+    };
+    // The preserved fetchSearch seam forwards to the real transport —
+    // after corrupting BOTH sources. If the panel sent its resolved
+    // snapshot, the wire keeps the signed values; if the seam received
+    // unresolved inputs, the transport's fresh read emits the flipped
+    // ranking and coordinates — the exact split BRAWUKA-793 demonstrated.
+    const fetchSearch = (params: UnifiedSearchParams) => {
+      setRankingPreference("relevance");
+      // lng stays inside the ±180 validator range — out-of-range coords are
+      // dropped by isLocation on read, which would mask the assertion.
+      writeOnboardingState({ lastLocation: { lat: 20, lng: 120 } });
+      return fetchUnifiedSearch(params);
+    };
+    render(
+      <NextIntlClientProvider locale="en" messages={en}>
+        <UnifiedSearchPanel
+          city="runtime-xyz"
+          filters={filters}
+          onFiltersChange={() => {}}
+          fetchSearch={fetchSearch}
+          externalSources={{ google: true, apple: false }}
+          mapkitConfigured={false}
+          onSelectResult={() => {}}
+          onExternalSearch={() => {}}
+        />
+      </NextIntlClientProvider>,
+    );
+
+    const input = screen.getByRole("searchbox");
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "coffee" } });
+    });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      vi.advanceTimersByTime(DEBOUNCE_MS * 2);
+    });
+
+    const searchCalls = urls.filter((u) => u.includes("/api/search"));
+    // Two requests: the source flip IS a signature change, so the pending
+    // debounce legitimately fires a replacement. The first call is the
+    // signed attempt — it must carry the snapshot values resolved BEFORE
+    // the mutation, not the post-mutation source values.
+    expect(searchCalls).toHaveLength(2);
+    const emittedParams = new URLSearchParams(
+      new URL(searchCalls[0], "http://test.local").search,
+    );
+    expect(emittedParams.get("ranking")).toBe("good_first");
+    expect(emittedParams.get("lat")).toBe("10.5");
+    expect(emittedParams.get("lng")).toBe("107.25");
+    expect(emittedParams.get("city")).toBeNull();
+    // The second request proves the identity embeds resolved values: the
+    // same raw inputs produced a NEW signature after the flip.
+    const secondParams = new URLSearchParams(
+      new URL(searchCalls[1], "http://test.local").search,
+    );
+    expect(secondParams.get("ranking")).toBe("relevance");
+    expect(secondParams.get("lat")).toBe("20");
+    expect(secondParams.get("lng")).toBe("120");
   });
 });

@@ -6,7 +6,6 @@ export {
   getCafeLocation,
   listCafeSitemapEntries,
   listCafesNearby,
-  toPublicCafeDetail,
 } from "./reads";
 export { setCafeVisibility } from "./visibility";
 export { deleteCafe } from "./delete";

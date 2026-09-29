@@ -302,7 +302,9 @@ describeBoundary("boundary — proxy → page verified-user handoff (BRAWUKA-723
       expect(viewer).toMatchObject({ id: U1, user_metadata: { full_name: name } });
       const viewerCafe = await getCafe(CAFE_A, viewer?.id);
       expect(viewerCafe?.id).toBe(CAFE_A);
-      const { toPublicCafeDetail } = await import("@/lib/db/cafes");
+      // Dynamic import: vi.resetModules() above cleared the registry, so the
+      // presentation module must be re-required post-reset like its neighbors.
+      const { toPublicCafeDetail } = await import("@/lib/cafes/presentation");
       const { publicCafeShell, cafeCanonicalPath, cafeOgImageUrl, ogHookParams } = await import("@/lib/seo");
       const attribution = toPublicCafeDetail(viewerCafe!, viewer?.id);
       expect(attribution.name).toBe("Boundary Cafe");

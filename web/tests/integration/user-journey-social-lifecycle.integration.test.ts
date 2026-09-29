@@ -30,8 +30,8 @@ import {
   deleteCafe,
   getCafe,
   listCafeSitemapEntries,
-  toPublicCafeDetail,
 } from "@/lib/db/cafes";
+import { toPublicCafeDetail } from "@/lib/cafes/presentation";
 import {
   createCheckIn,
   toggleCheckInLike,

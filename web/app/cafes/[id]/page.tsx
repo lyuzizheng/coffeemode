@@ -11,7 +11,8 @@ import { OpenState } from "@/components/cafe/open-state";
 import { CreatorLine } from "@/components/discovery/creator-line";
 import { PolicyConsensus, ScorePair, WorkProfile } from "@/components/discovery/scores";
 import { displayCityName, findCity } from "@/lib/cities";
-import { getCafe, toPublicCafeDetail } from "@/lib/db/cafes";
+import { getCafe } from "@/lib/db/cafes";
+import { toPublicCafeDetail } from "@/lib/cafes/presentation";
 import { loadMapEntry, loadMapSession } from "@/lib/discovery/map-entry";
 import {
   cafeCanonicalPath,

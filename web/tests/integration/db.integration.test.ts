@@ -51,8 +51,8 @@ import {
   listCafesNearby,
   resolveCafeTimezone,
   setCafeVisibility,
-  toPublicCafeDetail,
 } from "@/lib/db/cafes";
+import { toPublicCafeDetail } from "@/lib/cafes/presentation";
 import {
   deleteAccount,
   getProfileExport,

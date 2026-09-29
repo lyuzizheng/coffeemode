@@ -4,46 +4,23 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { getPoolConfig } from "@/lib/db/postgres";
+import {
+  assertSafeSeedTarget,
+  DEFAULT_DB_URL,
+  evaluateRemoteTarget,
+} from "../../scripts/lib/test-db-policy.mjs";
 
-export const DEFAULT_DB_URL = "postgres://coffeemode:coffeemode@localhost:5432/coffeemode";
 export const DEFAULT_TEMPLATE_DB_NAME = "coffeemode_test_template";
-export const SEED_DEV_DB_OPT_IN = "ALLOW_SEED_DEV_DB";
-/** Documented local dev database: docker compose + every script default. Never a seed target. */
-export const DEV_DATABASE_NAME = "coffeemode";
-
-/** Database name from a connection string path segment (never the whole URL). */
-export function databaseNameFromUrl(raw: string): string {
-  const url = new URL(raw);
-  return decodeURIComponent(url.pathname.replace(/^\/+/, ""));
-}
 
 /**
- * Fail-closed guard for deterministic fixture seeders (BRAWUKA-216): refuse to
- * write when the target database is the configured dev database, unless the
- * caller explicitly opts in with ALLOW_SEED_DEV_DB=1. The `coffeemode` name is
- * always protected: journey suites overwrite DATABASE_URL with the test-DB URL
- * before seeding, so callers pass the pre-overwrite admin URL as `configUrl`.
+ * Guard a seeder holding an open client: the name comes from the server, not the
+ * caller. The dev-database policy itself lives in `scripts/lib/test-db-policy.mjs`
+ * (`assertSafeSeedTarget`), shared with the script-side seeders.
  */
-export function assertSafeSeedTarget(targetDbName: string, seeder: string, configUrl?: string): void {
-  if (process.env[SEED_DEV_DB_OPT_IN] === "1") return;
-  const target = (targetDbName ?? "").trim();
-  const configured = configUrl === undefined ? process.env.DATABASE_URL ?? DEFAULT_DB_URL : configUrl;
-  const devNames: Record<string, true> = { [databaseNameFromUrl(configured)]: true, [DEV_DATABASE_NAME]: true };
-  if (target === "" || devNames[target]) {
-    throw new Error(
-      `Refusing ${seeder} against database "${target || "(unknown)"}": fixture seeders only write test databases ` +
-        `(configured dev database is "${databaseNameFromUrl(configured)}"). Set ${SEED_DEV_DB_OPT_IN}=1 to override explicitly.`,
-    );
-  }
-}
-
-/** Guard a seeder holding an open client: the name comes from the server, not the caller. */
 export async function assertSafeSeedClient(dbClient: pg.Client, seeder: string, configUrl?: string): Promise<void> {
   const { rows } = await dbClient.query<{ db_name: string }>("select current_database() as db_name");
-  assertSafeSeedTarget(rows[0]?.db_name ?? "", seeder, configUrl);
+  assertSafeSeedTarget(rows[0]?.db_name ?? "", { seeder, configUrl });
 }
-
-const LOCAL_DB_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
 const WEB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -53,17 +30,8 @@ export function quotedIdentifier(value: string): string {
 
 export function integrationAdminUrl(): string {
   const raw = process.env.DATABASE_URL ?? DEFAULT_DB_URL;
-  const url = new URL(raw);
-  const remoteOptIn = process.env.ALLOW_REMOTE_INTEGRATION_DB === "1";
-  const hasConnectionHostOverride = ["host", "hostaddr", "socketPath"].some((name) =>
-    url.searchParams.has(name),
-  );
-  const isLocalHost = url.hostname === "" || LOCAL_DB_HOSTS.has(url.hostname);
-  if (!remoteOptIn && (hasConnectionHostOverride || !isLocalHost)) {
-    throw new Error(
-      `Refusing real-DB integration against non-local or overridden host ${url.hostname || "(empty)"}; set ALLOW_REMOTE_INTEGRATION_DB=1 only for an explicitly disposable test server`,
-    );
-  }
+  const { url, refusal } = evaluateRemoteTarget(raw, { action: "real-DB integration" });
+  if (refusal) throw new Error(refusal);
   return url.toString();
 }
 

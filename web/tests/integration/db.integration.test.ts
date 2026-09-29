@@ -153,7 +153,7 @@ describeDb("integration — real Postgres/PostGIS (docker compose up -d --wait p
       "postgres://coffeemode:coffeemode@localhost:5432/coffeemode?host=remote.example";
     delete process.env.ALLOW_REMOTE_INTEGRATION_DB;
     try {
-      expect(() => integrationAdminUrl()).toThrow(/overridden host/);
+      expect(() => integrationAdminUrl()).toThrow(/connection-string override "host"/);
     } finally {
       if (original === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = original;

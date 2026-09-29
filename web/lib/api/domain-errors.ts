@@ -4,7 +4,7 @@ import { sanitizePassthroughStatus, type ErrorCode } from "@shared/errors";
 import {
   FeedCursorError,
   FeedCursorExpiredError,
-} from "@/lib/discovery/feed";
+} from "@/lib/discovery/feed-cursor";
 import {
   HandleChangeTooSoonError,
   HandleTakenError,

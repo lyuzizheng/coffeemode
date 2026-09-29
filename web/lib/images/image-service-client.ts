@@ -4,7 +4,7 @@ import "server-only";
 import { appConfig } from "@/lib/config";
 import { REQUEST_ID_HEADER } from "@shared/request-id";
 import { sanitizePassthroughStatus } from "@shared/errors";
-import type { CompleteImageRequest, UploadUrlResponse } from "@/types/images";
+import type { CompleteRequest, CompleteResponse, DeleteRequest, UploadResponse } from "@shared/images/types";
 
 /** Timeout for image-service Worker fetches — product-owned in app.yaml (DG107). */
 const WORKER_TIMEOUT_MS = appConfig.images.workerTimeoutMs;
@@ -19,34 +19,6 @@ export class ImageServiceError extends Error {
     super(message);
     this.name = "ImageServiceError";
   }
-}
-
-interface PresignedUrl {
-  url: string;
-  headers: Record<string, string>;
-}
-
-export interface ProcessUrls {
-  imageUuid: string;
-  /** Presigned GET for the stage's source bytes (BRAWUKA-730): the browser's
-   *  staged upload on a `provision` complete, the published original on the
-   *  attach leg. */
-  original: PresignedUrl;
-  /** Presigned PUT for the PUBLISHED original — server-written only; the
-   *  browser capability never names this key. */
-  originalPut: PresignedUrl;
-  card: PresignedUrl;
-  thumbnail: PresignedUrl;
-  publicUrls: {
-    original: string;
-    card: string;
-    thumbnail: string;
-  };
-  keys: {
-    original: string;
-    card: string;
-    thumbnail: string;
-  };
 }
 
 function getEnv(): { url: string; token: string } {
@@ -131,7 +103,7 @@ function resolveId(requestId?: string): string {
   return requestId ?? crypto.randomUUID();
 }
 
-export async function requestUploadUrl(size: number, requestId?: string): Promise<UploadUrlResponse> {
+export async function requestUploadUrl(size: number, requestId?: string): Promise<UploadResponse> {
   const { url, token } = getEnv();
   const resolvedId = resolveId(requestId);
   let response: Response;
@@ -161,9 +133,9 @@ export async function requestUploadUrl(size: number, requestId?: string): Promis
  * targetType="provision" + targetId=<imageUuid> (PROVISION_TARGET_TYPE).
  */
 export async function getProcessUrls(
-  request: CompleteImageRequest & { userId?: string },
+  request: CompleteRequest,
   requestId?: string,
-): Promise<ProcessUrls> {
+): Promise<CompleteResponse> {
   const { url, token } = getEnv();
   const resolvedId = resolveId(requestId);
   let response: Response;
@@ -207,12 +179,16 @@ export async function deleteImageVariants(
 ): Promise<void> {
   const { url, token } = getEnv();
   const resolvedId = resolveId(requestId);
+  const body: DeleteRequest = {
+    imageUuid,
+    ...(options?.keepOriginal ? { keepOriginal: true } : {}),
+  };
   let response: Response;
   try {
     response = await fetch(`${url}/v1/images/delete`, {
       method: "POST",
       headers: headers(token, resolvedId),
-      body: JSON.stringify({ imageUuid, ...(options?.keepOriginal ? { keepOriginal: true } : {}) }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
     });
   } catch (error) {

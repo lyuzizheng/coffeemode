@@ -1,4 +1,4 @@
-export type ImageTargetType = "cafe" | "checkin";
+import type { ImageTargetType } from "@shared/images/types";
 
 /**
  * Source attribution for images stored inside `cafes.gallery` or
@@ -24,28 +24,3 @@ export interface StoredImage {
 
 /** Public image projection (spec 0001 DG13): author id `by` stripped. */
 export type PublicStoredImage = Omit<StoredImage, "by">;
-
-export interface UploadUrlResponse {
-  imageUuid: string;
-  uploadUrl: string;
-  uploadHeaders: Record<string, string>;
-  publicUrl: string;
-  expiresAt: string;
-  maxUploadBytes: number;
-  size?: number;
-}
-
-/**
- * Stage marker for pre-target processing (issue #86/#158): the creation flow
- * completes uploads before the cafe/check-in exists. The worker stamps
- * targetType="provision" + targetId=<imageUuid>; the attach flow re-PUTs
- * with the real target later.
- */
-type CompleteStageType = ImageTargetType | "provision";
-
-export interface CompleteImageRequest {
-  imageUuid: string;
-  targetType: CompleteStageType;
-  targetId: string;
-}
-

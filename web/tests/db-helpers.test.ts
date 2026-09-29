@@ -486,10 +486,14 @@ describeIntegration("db test helpers — real Postgres template pooling", () => 
       try {
         pg.Client.prototype.query = (async function (
           this: pg.Client,
-          ...args: [any, ...any[]]
+          ...args: unknown[]
         ) {
-          const res = await (origQuery as any).apply(this, args);
-          const sql = typeof args[0] === "string" ? args[0] : args[0]?.text;
+          const res = (await Reflect.apply(origQuery, this, args)) as pg.QueryResult;
+          const queryParam = args[0];
+          const sql =
+            typeof queryParam === "string"
+              ? queryParam
+              : (queryParam as { text?: string } | undefined)?.text;
           if (typeof sql === "string" && /create database/i.test(sql) && sql.includes(prefix)) {
             dbCreated = true;
             throw new Error("injected provisioning post-create failure");

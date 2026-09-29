@@ -72,21 +72,17 @@ import {
   encodeFeedCursor,
   listPublicCheckIns,
 } from "@/lib/discovery/feed";
-import { checkUploadIntents, recordUploadIntent } from "@/lib/db/image-uploads";
+import { recordUploadIntent } from "@/lib/db/image-uploads";
 import { selectLivePhotoReferences, selectPhotoReferences } from "@/lib/db/photo-references";
-import { compensateProvisionedPhotos, PhotoIntentError } from "@/lib/images/provision-photos";
-import { closePool, getPoolConfig } from "@/lib/db/postgres";
+import { compensateProvisionedPhotos } from "@/lib/images/provision-photos";
+import { getPoolConfig } from "@/lib/db/postgres";
 import { recomputeAllWorkStats } from "@/lib/stats/aggregate";
 import { coerceWorkStats } from "@/lib/stats/work-stats";
 import { appConfig } from "@/lib/config";
 import {
-  cleanupIntegrationDatabase,
   integrationAdminUrl,
-  makeTestDbName,
-  provisionTestDatabase,
   setupTestDatabase,
   teardownTestDatabase,
-  testDatabaseUrl,
   type TestDatabaseContext,
 } from "../helpers/db";
 import {

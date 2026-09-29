@@ -7,17 +7,9 @@ import {
   presignedPutUrl as signPresignedPutUrl,
   type PresignConfig,
   type PutUrlOptions,
-  type StoreLocation,
 } from "../../web/shared/images/presign";
+import { storeLocation } from "./store-location";
 import { DEFAULT_UPLOAD_URL_TTL_SECONDS } from "./constants";
-
-/** Store address from the Worker's bindings; `R2_ENDPOINT` (MinIO) wins over derived R2. */
-function storeLocation(env: Env): StoreLocation {
-  return {
-    endpoint: env.R2_ENDPOINT ?? `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-    bucket: env.R2_BUCKET_NAME,
-  };
-}
 
 export function r2Endpoint(env: Env, key: string): string {
   return objectUrl(storeLocation(env), key);

@@ -22,7 +22,6 @@ Slice: `poi-cache-service` in `docs/agent/implementation-slices.md`.
 ```bash
 npm install
 npm run typecheck        # tsc --noEmit
-npm test                 # vitest (Google/D1/KV fully mocked)
 npm run dev              # wrangler dev
 ```
 

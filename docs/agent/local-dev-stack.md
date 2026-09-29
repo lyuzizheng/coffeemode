@@ -103,8 +103,7 @@ docker compose logs -f miniflare-image  # image-service (R2 → MinIO)
   poi-store --local` from `poi-service/migrations/0001_init.sql`) and then
   serves on `:8787`. Stored-POI search (`/poi/search`) works fully offline
   against local D1/KV. `/poi/resolve` hits Google Places — stub it by pointing
-  `GOOGLE_PLACES_BASE_URL` at a local server, or use the `mockFetch` pattern
-  from `poi-service/tests/`.
+  `GOOGLE_PLACES_BASE_URL` at a local server.
 - `miniflare-image` serves on `:8788`. With `R2_ENDPOINT=http://minio:9000`
   both presigned PUTs (`aws4fetch` SigV4) and the complete-flow `HEAD` check go
   to MinIO. `R2_PUBLIC_URL=http://localhost:9000/coffeemode` (bucket is

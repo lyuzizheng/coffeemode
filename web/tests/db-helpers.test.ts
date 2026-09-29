@@ -409,12 +409,12 @@ describeIntegration("db test helpers — real Postgres template pooling", () => 
       const prefix = "cm_fail_conn_undef";
       const origConnect = pg.Client.prototype.connect;
       try {
-        pg.Client.prototype.connect = async function (this: pg.Client) {
+        pg.Client.prototype.connect = (async function (this: pg.Client) {
           if (this.database?.startsWith(prefix)) {
             throw new Error("injected client connect failure");
           }
           return origConnect.apply(this);
-        };
+        } as unknown as typeof pg.Client.prototype.connect);
 
         await expect(setupTestDatabase(prefix)).rejects.toThrow("injected client connect failure");
 
@@ -445,12 +445,12 @@ describeIntegration("db test helpers — real Postgres template pooling", () => 
       const prefix = "cm_fail_conn_set";
       const origConnect = pg.Client.prototype.connect;
       try {
-        pg.Client.prototype.connect = async function (this: pg.Client) {
+        pg.Client.prototype.connect = (async function (this: pg.Client) {
           if (this.database?.startsWith(prefix)) {
             throw new Error("injected client connect failure with preset env");
           }
           return origConnect.apply(this);
-        };
+        } as unknown as typeof pg.Client.prototype.connect);
 
         await expect(setupTestDatabase(prefix)).rejects.toThrow(
           "injected client connect failure with preset env",
@@ -476,25 +476,32 @@ describeIntegration("db test helpers — real Postgres template pooling", () => 
       }
     });
 
-    it("rolls back scratch DB and restores env when post-provisioning step fails", async () => {
+    it("rolls back scratch DB and restores env when provisioning rejects after creating database", async () => {
       const origEnv = process.env.DATABASE_URL;
       delete process.env.DATABASE_URL;
 
-      const prefix = "cm_fail_post_prov";
-      const origConnect = pg.Client.prototype.connect;
+      const prefix = "cm_fail_prov_reject";
+      let dbCreated = false;
+      const origQuery = pg.Client.prototype.query;
       try {
-        // Let provisioning connect with admin normally, but throw on seeder client connect
-        pg.Client.prototype.connect = async function (this: pg.Client) {
-          if (this.database?.startsWith(prefix)) {
-            throw new Error("injected post-provisioning failure");
+        pg.Client.prototype.query = (async function (
+          this: pg.Client,
+          ...args: [any, ...any[]]
+        ) {
+          const res = await (origQuery as any).apply(this, args);
+          const sql = typeof args[0] === "string" ? args[0] : args[0]?.text;
+          if (typeof sql === "string" && /create database/i.test(sql) && sql.includes(prefix)) {
+            dbCreated = true;
+            throw new Error("injected provisioning post-create failure");
           }
-          return origConnect.apply(this);
-        };
+          return res;
+        } as unknown as typeof pg.Client.prototype.query);
 
         await expect(setupTestDatabase(prefix)).rejects.toThrow(
-          "injected post-provisioning failure",
+          "injected provisioning post-create failure",
         );
 
+        expect(dbCreated).toBe(true);
         expect(process.env.DATABASE_URL).toBeUndefined();
 
         const admin = new pg.Client(getPoolConfig(adminUrl));
@@ -509,7 +516,7 @@ describeIntegration("db test helpers — real Postgres template pooling", () => 
           await admin.end();
         }
       } finally {
-        pg.Client.prototype.connect = origConnect;
+        pg.Client.prototype.query = origQuery;
         if (origEnv === undefined) delete process.env.DATABASE_URL;
         else process.env.DATABASE_URL = origEnv;
       }

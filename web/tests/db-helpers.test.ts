@@ -8,6 +8,8 @@ import {
   makeTestDbName,
   provisionTestDatabase,
   quotedIdentifier,
+  setupTestDatabase,
+  teardownTestDatabase,
   testDatabaseUrl,
 } from "./helpers/db";
 import {
@@ -399,4 +401,183 @@ describeIntegration("db test helpers — real Postgres template pooling", () => 
     120_000,
   );
 
+  describe("setupTestDatabase and teardownTestDatabase lifecycle rollback (BRAWUKA-796)", () => {
+    it("rolls back scratch DB and restores env when Client.connect rejects (env originally undefined)", async () => {
+      const origEnv = process.env.DATABASE_URL;
+      delete process.env.DATABASE_URL;
+
+      const prefix = "cm_fail_conn_undef";
+      const origConnect = pg.Client.prototype.connect;
+      try {
+        pg.Client.prototype.connect = async function (this: pg.Client) {
+          if (this.database?.startsWith(prefix)) {
+            throw new Error("injected client connect failure");
+          }
+          return origConnect.apply(this);
+        };
+
+        await expect(setupTestDatabase(prefix)).rejects.toThrow("injected client connect failure");
+
+        expect(process.env.DATABASE_URL).toBeUndefined();
+
+        const admin = new pg.Client(getPoolConfig(adminUrl));
+        await admin.connect();
+        try {
+          const res = await admin.query(
+            "SELECT datname FROM pg_database WHERE datname LIKE $1",
+            [`${prefix}%`],
+          );
+          expect(res.rows.length).toBe(0);
+        } finally {
+          await admin.end();
+        }
+      } finally {
+        pg.Client.prototype.connect = origConnect;
+        if (origEnv === undefined) delete process.env.DATABASE_URL;
+        else process.env.DATABASE_URL = origEnv;
+      }
+    });
+
+    it("rolls back scratch DB and restores env when Client.connect rejects (env originally set)", async () => {
+      const origEnv = process.env.DATABASE_URL;
+      process.env.DATABASE_URL = DEFAULT_DB_URL;
+
+      const prefix = "cm_fail_conn_set";
+      const origConnect = pg.Client.prototype.connect;
+      try {
+        pg.Client.prototype.connect = async function (this: pg.Client) {
+          if (this.database?.startsWith(prefix)) {
+            throw new Error("injected client connect failure with preset env");
+          }
+          return origConnect.apply(this);
+        };
+
+        await expect(setupTestDatabase(prefix)).rejects.toThrow(
+          "injected client connect failure with preset env",
+        );
+
+        expect(process.env.DATABASE_URL).toBe(DEFAULT_DB_URL);
+
+        const admin = new pg.Client(getPoolConfig(adminUrl));
+        await admin.connect();
+        try {
+          const res = await admin.query(
+            "SELECT datname FROM pg_database WHERE datname LIKE $1",
+            [`${prefix}%`],
+          );
+          expect(res.rows.length).toBe(0);
+        } finally {
+          await admin.end();
+        }
+      } finally {
+        pg.Client.prototype.connect = origConnect;
+        if (origEnv === undefined) delete process.env.DATABASE_URL;
+        else process.env.DATABASE_URL = origEnv;
+      }
+    });
+
+    it("rolls back scratch DB and restores env when post-provisioning step fails", async () => {
+      const origEnv = process.env.DATABASE_URL;
+      delete process.env.DATABASE_URL;
+
+      const prefix = "cm_fail_post_prov";
+      const origConnect = pg.Client.prototype.connect;
+      try {
+        // Let provisioning connect with admin normally, but throw on seeder client connect
+        pg.Client.prototype.connect = async function (this: pg.Client) {
+          if (this.database?.startsWith(prefix)) {
+            throw new Error("injected post-provisioning failure");
+          }
+          return origConnect.apply(this);
+        };
+
+        await expect(setupTestDatabase(prefix)).rejects.toThrow(
+          "injected post-provisioning failure",
+        );
+
+        expect(process.env.DATABASE_URL).toBeUndefined();
+
+        const admin = new pg.Client(getPoolConfig(adminUrl));
+        await admin.connect();
+        try {
+          const res = await admin.query(
+            "SELECT datname FROM pg_database WHERE datname LIKE $1",
+            [`${prefix}%`],
+          );
+          expect(res.rows.length).toBe(0);
+        } finally {
+          await admin.end();
+        }
+      } finally {
+        pg.Client.prototype.connect = origConnect;
+        if (origEnv === undefined) delete process.env.DATABASE_URL;
+        else process.env.DATABASE_URL = origEnv;
+      }
+    });
+
+    it("teardownTestDatabase attempts all cleanup steps and restores env even when client.end fails", async () => {
+      const origEnv = process.env.DATABASE_URL;
+      process.env.DATABASE_URL = DEFAULT_DB_URL;
+
+      const prefix = "cm_teardown_fail_client";
+      const ctx = await setupTestDatabase(prefix);
+      createdDbs.add(ctx.testDbName);
+
+      ctx.dbClient.on("error", () => {});
+      ctx.dbClient.end = async () => {
+        throw new Error("injected client end failure");
+      };
+
+      await expect(teardownTestDatabase(ctx)).rejects.toThrow(AggregateError);
+
+      expect(process.env.DATABASE_URL).toBe(DEFAULT_DB_URL);
+
+      const admin = new pg.Client(getPoolConfig(adminUrl));
+      await admin.connect();
+      try {
+        const res = await admin.query(
+          "SELECT datname FROM pg_database WHERE datname = $1",
+          [ctx.testDbName],
+        );
+        expect(res.rows.length).toBe(0);
+      } finally {
+        await admin.end();
+      }
+
+      if (origEnv === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = origEnv;
+    });
+
+    it("teardownTestDatabase attempts all cleanup steps and restores env even when cleanupIntegrationDatabase fails", async () => {
+      const origEnv = process.env.DATABASE_URL;
+      delete process.env.DATABASE_URL;
+
+      let clientClosed = false;
+      const fakeClient = {
+        end: async () => {
+          clientClosed = true;
+        },
+      } as unknown as pg.Client;
+
+      const brokenContext = {
+        testDbName: "nonexistent_broken_db",
+        adminDbUrl: "postgres://coffeemode:coffeemode@127.0.0.1:1/invalid_port",
+        dbClient: fakeClient,
+        previousDatabaseUrl: undefined,
+      };
+
+      await expect(teardownTestDatabase(brokenContext)).rejects.toThrow(AggregateError);
+      expect(clientClosed).toBe(true);
+      expect(process.env.DATABASE_URL).toBeUndefined();
+
+      if (origEnv === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = origEnv;
+    });
+
+    it("teardownTestDatabase is safe to call with undefined or empty context", async () => {
+      await expect(teardownTestDatabase(undefined)).resolves.toBeUndefined();
+      await expect(teardownTestDatabase(null)).resolves.toBeUndefined();
+      await expect(teardownTestDatabase({})).resolves.toBeUndefined();
+    });
+  });
 });

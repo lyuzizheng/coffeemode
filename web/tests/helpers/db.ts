@@ -31,18 +31,54 @@ export async function setupTestDatabase(
   const adminDbUrl = integrationAdminUrl();
   const testDbName = makeTestDbName(prefix);
   const testDbUrl = testDatabaseUrl(adminDbUrl, testDbName);
-  await provisionTestDatabase(adminDbUrl, testDbName, options);
-  process.env.DATABASE_URL = testDbUrl;
-  await closePool();
-  const dbClient = new pg.Client(getPoolConfig(testDbUrl));
-  await dbClient.connect();
-  return {
-    testDbName,
-    testDbUrl,
-    adminDbUrl,
-    dbClient,
-    previousDatabaseUrl,
-  };
+
+  let dbClient: pg.Client | null = null;
+
+  try {
+    await provisionTestDatabase(adminDbUrl, testDbName, options);
+    process.env.DATABASE_URL = testDbUrl;
+    await closePool();
+
+    dbClient = new pg.Client(getPoolConfig(testDbUrl));
+    await dbClient.connect();
+
+    return {
+      testDbName,
+      testDbUrl,
+      adminDbUrl,
+      dbClient,
+      previousDatabaseUrl,
+    };
+  } catch (error) {
+    // Attempt rollback of all initialized resources on failure
+    if (dbClient) {
+      try {
+        await dbClient.end();
+      } catch {
+        // Best effort
+      }
+    }
+
+    try {
+      await closePool();
+    } catch {
+      // Best effort
+    }
+
+    try {
+      await cleanupIntegrationDatabase(adminDbUrl, testDbName);
+    } catch {
+      // Best effort
+    }
+
+    if (previousDatabaseUrl === undefined) {
+      delete process.env.DATABASE_URL;
+    } else {
+      process.env.DATABASE_URL = previousDatabaseUrl;
+    }
+
+    throw error;
+  }
 }
 
 /**
@@ -51,20 +87,24 @@ export async function setupTestDatabase(
  * and restores the previous DATABASE_URL even on failures.
  */
 export async function teardownTestDatabase(
-  ctx: Pick<TestDatabaseContext, "testDbName" | "adminDbUrl" | "testDbUrl" | "dbClient" | "previousDatabaseUrl">,
+  ctx?: Partial<TestDatabaseContext> | null,
 ): Promise<void> {
+  if (!ctx) return;
+
   const errors: unknown[] = [];
   try {
     await closePool();
   } catch (error) {
     errors.push(error);
   }
-  try {
-    await ctx.dbClient?.end();
-  } catch (error) {
-    errors.push(error);
+  if (ctx.dbClient) {
+    try {
+      await ctx.dbClient.end();
+    } catch (error) {
+      errors.push(error);
+    }
   }
-  if (ctx.testDbUrl) {
+  if (ctx.adminDbUrl && ctx.testDbName) {
     try {
       await cleanupIntegrationDatabase(ctx.adminDbUrl, ctx.testDbName);
     } catch (error) {

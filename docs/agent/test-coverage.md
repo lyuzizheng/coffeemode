@@ -60,7 +60,7 @@ S1 extracted the pre-S1 duplication (`db.integration.test.ts` + `images.integrat
 
 | Helper | Kind | Owns | Used by |
 |---|---|---|---|
-| `web/tests/helpers/db.ts` | **infra** (Postgres) | template-clone `provisionTestDatabase`, `cleanupIntegrationDatabase`, `runMigrations`, seed-guard `assertSafeSeedTarget`, pool config | every `tests/integration/*.integration.test.ts` (direct `../helpers/db` imports) |
+| `web/tests/helpers/db.ts` | **infra** (Postgres) | template-clone `provisionTestDatabase`, `cleanupIntegrationDatabase`, `runMigrations`, seed-guard `assertSafeSeedClient`, pool config (target-safety policy lives in `web/scripts/lib/test-db-policy.mjs`) | every `tests/integration/*.integration.test.ts` (direct `../helpers/db` imports) |
 | `web/tests/helpers/r2.ts` | **infra** (R2/MinIO) | `TEST_R2_*` env isolation, presigned GET/PUT URLs, object ops, `tinyWebP` payloads, `minioReachable` | `images.integration.test.ts`, `orphan-cleanup` / `orphan-variant-cleanup` (direct `../helpers/r2` imports) |
 | `web/tests/helpers/auth.ts` | **service** (domain) | `fakeJwt` + header names, shared with `web/scripts/supabase-mock.mjs` so the mock and the suites mint the same tokens | `helpers/mocks.ts`, suites that mint session JWTs |
 | `web/tests/helpers/mocks.ts` | **service** (domain) | session users (composes `auth.ts`), POI seam payloads | HTTP integration suites via direct imports |

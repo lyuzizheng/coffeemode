@@ -1,6 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { databaseNameFromUrl, DEFAULT_DB_URL, evaluateRemoteTarget } from "./lib/test-db-policy.mjs";
 /**
  * CafeMood dev-database fixture cleaner (BRAWUKA-216).
  *
@@ -9,9 +10,9 @@ import pg from "pg";
  * `d0000000-*` families) must never live in the configured dev database:
  * `check:visual` renders real cafe covers, and fixture R2 keys resolve to the
  * production image host, which fails locally as console errors. The fail-closed
- * seed guard (`scripts/lib/seed-guard.mjs`, `assertSafeSeedTarget` in
- * `web/tests/helpers/db.ts`) prevents new pollution; this script removes
- * existing rows idempotently.
+ * seed guard (`assertSafeSeedTarget` in `scripts/lib/test-db-policy.mjs`,
+ * shared with `web/tests/helpers/db.ts`) prevents new pollution; this script
+ * removes existing rows idempotently.
  *
  * Never touched: the pre-existing `a0eebc99-*` dev rows (e.g. the Repro cafe)
  * and the `00000000-*` service account seeded by migration 0016. `e2e00000-*`
@@ -20,18 +21,17 @@ import pg from "pg";
  * (BRAWUKA-629).
  *
  * Safety: default mode is dry-run (counts only, deletes nothing). Non-local
- * hosts require `ALLOW_REMOTE_INTEGRATION_DB=1`, mirroring
- * `cleanup-stale-test-dbs.mjs`. Deletes run in one transaction in dependency
- * order (checkins/navigations before cafes before profiles; checkin_likes and
- * image_upload_intents follow via `on delete cascade`).
+ * hosts require `ALLOW_REMOTE_INTEGRATION_DB=1`, and a `host`/`hostaddr`/
+ * `socketPath` query override is refused outright — the same policy the
+ * sweeper applies, canonical in `scripts/lib/test-db-policy.mjs`. Deletes run
+ * in one transaction in dependency order (checkins/navigations before cafes
+ * before profiles; checkin_likes and image_upload_intents follow via
+ * `on delete cascade`).
  *
  * Usage:
  *   node scripts/clean-dev-fixtures.mjs [--database-url <url>] [--apply] [--verbose]
  *   DATABASE_URL=postgres://... node scripts/clean-dev-fixtures.mjs --apply
  */
-
-const DEFAULT_DATABASE_URL = "postgres://coffeemode:coffeemode@localhost:5432/coffeemode";
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]", ""]);
 
 // Deterministic fixture id families (uuid text prefix + "-"). Keep in sync
 // with web/tests/fixtures/mock-dataset.ts (b0000000-*),
@@ -63,9 +63,10 @@ Options:
 
 Safety:
   Default is dry-run: counts fixture rows, deletes nothing. Non-local hosts
-  require ALLOW_REMOTE_INTEGRATION_DB=1. Only b0000000-/c0000000-/a0000000-/
-  d0000000-/e2e00000- ids are ever candidates; a0eebc99-* dev rows and the
-  service account are never matched. --apply deletes in one transaction.
+  require ALLOW_REMOTE_INTEGRATION_DB=1, and a host/hostaddr/socketPath query
+  override is always refused. Only b0000000-/c0000000-/a0000000-/d0000000-/
+  e2e00000- ids are ever candidates; a0eebc99-* dev rows and the service
+  account are never matched. --apply deletes in one transaction.
 `.trim());
 }
 
@@ -92,18 +93,6 @@ function parseArgs(argv) {
     }
   }
   return opts;
-}
-
-function assertRemoteOptIn(raw) {
-  const url = new URL(raw);
-  if (!LOCAL_HOSTS.has(url.hostname) && process.env.ALLOW_REMOTE_INTEGRATION_DB !== "1") {
-    console.error(
-      `Refusing fixture cleanup against non-local host ${url.hostname}; ` +
-        `set ALLOW_REMOTE_INTEGRATION_DB=1 only for an explicitly disposable test server`,
-    );
-    process.exit(1);
-  }
-  return url.toString();
 }
 
 async function inspectFixtures(client) {
@@ -174,9 +163,14 @@ async function deleteFixtures(client, found) {
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
-  const raw = opts.databaseUrl ?? process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL;
-  const targetUrl = assertRemoteOptIn(raw);
-  const targetName = databaseNameFromTarget(targetUrl);
+  const raw = opts.databaseUrl ?? process.env.DATABASE_URL ?? DEFAULT_DB_URL;
+  const { url: target, refusal } = evaluateRemoteTarget(raw, { action: "fixture cleanup" });
+  if (refusal) {
+    console.error(refusal);
+    process.exit(1);
+  }
+  const targetUrl = target.toString();
+  const targetName = databaseNameFromUrl(targetUrl) || "(unknown)";
 
   const client = new pg.Client({ connectionString: targetUrl });
   await client.connect();
@@ -200,14 +194,6 @@ async function main() {
   } finally {
     // Benign: best-effort connection termination on script exit.
     await client.end().catch(() => {});
-  }
-}
-
-function databaseNameFromTarget(raw) {
-  try {
-    return decodeURIComponent(new URL(raw).pathname.replace(/^\/+/, "")) || "(unknown)";
-  } catch {
-    return "(unknown)";
   }
 }
 

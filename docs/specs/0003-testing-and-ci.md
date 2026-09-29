@@ -29,7 +29,8 @@ Accepted
   LLM calls.
 - Fixtures only ever write test databases; the dev database is owned by
   `check:visual`, never seeded (fail-closed guard: `assertSafeSeedTarget` in
-  `web/tests/helpers/db.ts` + `web/scripts/lib/seed-guard.mjs`, cleanup via
+  `web/scripts/lib/test-db-policy.mjs`, shared by `web/tests/helpers/db.ts` and
+  the script-side seeders, cleanup via
   `web/scripts/clean-dev-fixtures.mjs --apply`; override with
   `ALLOW_SEED_DEV_DB=1`).
 - Staging-bound suites never write the shared staging business schema: each

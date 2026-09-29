@@ -106,7 +106,9 @@ app data is local.
 - **Hard rule**: no test may write the shared staging business schema
   (`profiles`, `cafes`, `checkins`, …). Guards: `assertSafeSeedClient` /
   `assertSafeSeedTarget` fail closed, and any non-local `DATABASE_URL` requires
-  `ALLOW_REMOTE_INTEGRATION_DB=1`.
+  `ALLOW_REMOTE_INTEGRATION_DB=1`. A `host`/`hostaddr`/`socketPath` query
+  override is refused outright, since it would dial a host the URL does not
+  name; `web/scripts/lib/test-db-policy.mjs` owns both rules for every caller.
 - **Agent-QA exception**: agent-QA journeys get a narrow, enumerated exception
   to the hard rule — not a general relaxation:
   - Agent-QA writes enter the shared staging business schema **only through the

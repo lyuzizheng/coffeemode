@@ -8,7 +8,7 @@ import {
   integrationAdminUrl,
   makeTestDbName,
 } from "../helpers/db";
-import { isTestDatabaseName } from "../../scripts/cleanup-stale-test-dbs.mjs";
+import { isTestDatabaseName } from "../../scripts/lib/test-db-policy.mjs";
 
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const RUNNER = path.join(REPO_ROOT, "scripts/devops/run-staging-journey.sh");
@@ -125,6 +125,15 @@ describe("Stale test-DB sweeper — CLI contracts", () => {
       `node "${SWEEPER}" --database-url "postgres://postgres:x@db.example.supabase.co:5432/postgres"`,
       { ALLOW_REMOTE_INTEGRATION_DB: undefined },
     );
+  });
+
+  it("refuses a connection-string host override even when the URL looks local (no connection attempted)", () => {
+    expect(() =>
+      sh(
+        `node "${SWEEPER}" --database-url "postgres://postgres:x@localhost:5432/postgres?host=elsewhere.internal"`,
+        { ALLOW_REMOTE_INTEGRATION_DB: undefined },
+      ),
+    ).toThrow(/connection-string override "host"/);
   });
 
   it("matches only provisioned test-database names", () => {

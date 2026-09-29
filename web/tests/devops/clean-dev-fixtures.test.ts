@@ -9,7 +9,7 @@ import {
   provisionTestDatabase,
 } from "../helpers/db";
 import { isFixtureId } from "../../scripts/clean-dev-fixtures.mjs";
-import { isTestDatabaseName } from "../../scripts/cleanup-stale-test-dbs.mjs";
+import { isTestDatabaseName } from "../../scripts/lib/test-db-policy.mjs";
 
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const CLEANER = path.join(REPO_ROOT, "web/scripts/clean-dev-fixtures.mjs");
@@ -53,6 +53,15 @@ describe("Dev fixture cleaner — CLI contracts", () => {
         ALLOW_REMOTE_INTEGRATION_DB: undefined,
       }),
     ).toThrow(/non-local host/);
+  });
+
+  it("refuses a connection-string host override even when the URL looks local (no connection attempted)", () => {
+    expect(() =>
+      sh(
+        `node "${CLEANER}" --database-url "postgres://postgres:x@localhost:5432/coffeemode?host=elsewhere.internal"`,
+        { ALLOW_REMOTE_INTEGRATION_DB: undefined },
+      ),
+    ).toThrow(/connection-string override "host"/);
   });
 
   it("matches only deterministic fixture id families", () => {

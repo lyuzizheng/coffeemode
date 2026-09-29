@@ -58,6 +58,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
+# Shared environment-scoped URL selection (BRAWUKA-747): --url override >
+# <ENV>_DIRECT_URL > <ENV>_DATABASE_URL > deploy/dokploy/.env.<env>.
+# Unscoped ambient DATABASE_URL/DIRECT_URL are NEVER read (BRAWUKA-241 P0).
+# shellcheck source=lib/db-url.sh
+source "${SCRIPT_DIR}/lib/db-url.sh"
+
 # ------------------------------------------------------------------------------
 # Defaults & CLI Argument Parsing
 # ------------------------------------------------------------------------------
@@ -186,78 +192,11 @@ if [[ -z "$BACKUP_PATH" ]]; then
   exit 1
 fi
 
-# Per-env connection-string resolution (BRAWUKA-241 P0/P1).
-# Sources, in order: --url override > <ENV>_DIRECT_URL > <ENV>_DATABASE_URL >
+# Per-env connection-string resolution (BRAWUKA-241 P0/P1) lives in the shared
+# helper (BRAWUKA-747): --url override > <ENV>_DIRECT_URL > <ENV>_DATABASE_URL >
 # deploy/dokploy/.env.<env> (DIRECT_URL line first, then DATABASE_URL).
 # Unscoped ambient DATABASE_URL/DIRECT_URL are NEVER consulted: with them in the
 # shell, --env staging could otherwise pg_restore --clean into prod.
-# Drill path calls resolve_staging_url() only — staging sources, never prod.
-env_file_url() {
-  local key="$1" file="$2"
-  grep -E "^${key}=" "$file" 2>/dev/null | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo ""
-}
-
-resolve_live_url() {
-  local e="$1"
-  if [[ -n "$URL_OVERRIDE" ]]; then
-    printf '%s' "$URL_OVERRIDE"
-    return 0
-  fi
-  local prefix
-  if [[ "$e" == "staging" ]]; then prefix="STAGING"; else prefix="PROD"; fi
-  local direct_var="${prefix}_DIRECT_URL"
-  local pooled_var="${prefix}_DATABASE_URL"
-  if [[ -n "${!direct_var:-}" ]]; then
-    printf '%s' "${!direct_var}"
-    return 0
-  fi
-  if [[ -n "${!pooled_var:-}" ]]; then
-    printf '%s' "${!pooled_var}"
-    return 0
-  fi
-  local env_file="${REPO_ROOT}/deploy/dokploy/.env.${e}"
-  if [[ -f "$env_file" ]]; then
-    local url
-    url="$(env_file_url DIRECT_URL "$env_file")"
-    if [[ -z "$url" ]]; then
-      url="$(env_file_url DATABASE_URL "$env_file")"
-    fi
-    if [[ -n "$url" ]]; then
-      printf '%s' "$url"
-      return 0
-    fi
-  fi
-  return 1
-}
-
-# Drill target: STAGING project only. Never consults unscoped vars, never prod.
-resolve_staging_url() {
-  if [[ -n "$URL_OVERRIDE" ]]; then
-    printf '%s' "$URL_OVERRIDE"
-    return 0
-  fi
-  if [[ -n "${STAGING_DIRECT_URL:-}" ]]; then
-    printf '%s' "$STAGING_DIRECT_URL"
-    return 0
-  fi
-  if [[ -n "${STAGING_DATABASE_URL:-}" ]]; then
-    printf '%s' "$STAGING_DATABASE_URL"
-    return 0
-  fi
-  local env_file="${REPO_ROOT}/deploy/dokploy/.env.staging"
-  if [[ -f "$env_file" ]]; then
-    local url
-    url="$(env_file_url DIRECT_URL "$env_file")"
-    if [[ -z "$url" ]]; then
-      url="$(env_file_url DATABASE_URL "$env_file")"
-    fi
-    if [[ -n "$url" ]]; then
-      printf '%s' "$url"
-      return 0
-    fi
-  fi
-  return 1
-}
 
 RESTORE_URL=""
 DRILL_DB=""
@@ -274,10 +213,11 @@ trap cleanup_drill_db EXIT
 
 if [ "$DRILL_MODE" = true ]; then
   # Drill always targets the STAGING Supabase project under a scratch db name.
-  # Staging-only sources: never prod vars, never unscoped ambient vars.
+  # Staging-only sources: never prod vars, never unscoped ambient vars. The
+  # explicit --url escape hatch is intentionally honored here (BRAWUKA-747).
   if [ "$DRY_RUN" = false ]; then
     STAGING_URL=""
-    if ! STAGING_URL="$(resolve_staging_url)"; then
+    if ! STAGING_URL="$(db_url_resolve staging "$URL_OVERRIDE" pooled)"; then
       error "STAGING_DIRECT_URL / STAGING_DATABASE_URL (or deploy/dokploy/.env.staging) is required for --drill"
       exit 1
     fi
@@ -297,7 +237,7 @@ if [ "$DRILL_MODE" = true ]; then
   fi
 else
   if [ "$DRY_RUN" = false ]; then
-    if ! RESTORE_URL="$(resolve_live_url "$ENV")"; then
+    if ! RESTORE_URL="$(db_url_resolve "$ENV" "$URL_OVERRIDE" pooled)"; then
       error "Per-env connection string for ${ENV} is required: STAGING_*/PROD_* scoped vars or deploy/dokploy/.env.${ENV}"
       exit 1
     fi

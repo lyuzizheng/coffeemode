@@ -106,9 +106,15 @@ beforeAll(() => {
   fs.writeFileSync(path.join(stubBin, "sleep"), SLEEP_STUB, { mode: 0o755 });
   fs.mkdirSync(scratchPath("home"));
   const devops = scratchPath("repo/scripts/devops");
-  fs.mkdirSync(devops, { recursive: true });
+  fs.mkdirSync(path.join(devops, "lib"), { recursive: true });
   fs.copyFileSync(path.join(REPO_ROOT, "scripts/devops/upgrade-staging.sh"), scratchPath(STAGING_SCRIPT));
   fs.copyFileSync(path.join(REPO_ROOT, "scripts/devops/upgrade-prod.sh"), scratchPath(PROD_SCRIPT));
+  // Both scripts resolve their connection string through the shared helper
+  // (BRAWUKA-747), so the scratch checkout carries it too.
+  fs.copyFileSync(
+    path.join(REPO_ROOT, "scripts/devops/lib/db-url.sh"),
+    path.join(devops, "lib", "db-url.sh"),
+  );
   // The prod pipeline runs the migration runner from the checkout; the stub for
   // `node` only needs the file to exist.
   fs.mkdirSync(scratchPath("repo/web/scripts"), { recursive: true });

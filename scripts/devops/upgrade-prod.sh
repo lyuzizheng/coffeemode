@@ -40,6 +40,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
+# Shared environment-scoped URL selection (BRAWUKA-747): --db-url override >
+# PROD_DIRECT_URL > deploy/dokploy/.env.prod DIRECT_URL (direct-only here;
+# migrations never ride a pooled connection). Unscoped ambient
+# DATABASE_URL/DIRECT_URL are NEVER read (BRAWUKA-241 P0).
+# shellcheck source=lib/db-url.sh
+source "${SCRIPT_DIR}/lib/db-url.sh"
+
 # Declared before the failure trap: Step 5 appends here, rollback-prod.sh reads
 # the same file to pair a boundary snapshot with the image that must run on it.
 RELEASE_HISTORY_DIR="${REPO_ROOT}/backups/prod"
@@ -222,35 +229,16 @@ stage "Step 3/6: Pre-Flight Zero-Downtime Migration Checks"
 
 MIGRATIONS_DIR="${REPO_ROOT}/web/db/migrations"
 # PROD-scoped session connection only (BRAWUKA-241 P0): --db-url override >
-# PROD_DIRECT_URL > .env.prod DIRECT_URL. Unscoped DIRECT_URL is never read,
-# so a staging URL in the shell cannot retarget prod migrations.
-resolve_prod_migration_url() {
-  if [[ -n "$DB_URL_OVERRIDE" ]]; then
-    printf '%s' "$DB_URL_OVERRIDE"
-    return 0
-  fi
-  if [[ -n "${PROD_DIRECT_URL:-}" ]]; then
-    printf '%s' "$PROD_DIRECT_URL"
-    return 0
-  fi
-  local env_file="${REPO_ROOT}/deploy/dokploy/.env.prod"
-  if [[ -f "$env_file" ]]; then
-    local url
-    url="$(grep -E '^DIRECT_URL=' "$env_file" | head -n 1 | cut -d'=' -f2- | tr -d '"' | tr -d "'" || echo "")"
-    if [[ -n "$url" ]]; then
-      printf '%s' "$url"
-      return 0
-    fi
-  fi
-  return 1
-}
+# PROD_DIRECT_URL > .env.prod DIRECT_URL, direct-only through the shared helper
+# (BRAWUKA-747) — a pooled URL never applies to migrations. Unscoped DIRECT_URL
+# is never read, so a staging URL in the shell cannot retarget prod migrations.
 
 if [[ -d "$MIGRATIONS_DIR" ]]; then
   # BRAWUKA-337 drift signal: report the repo-vs-ledger gap by name before
   # the zero-downtime scan, so the log shows drift instead of silently
   # scanning every file as "pending". Non-blocking (warn): Step 4 below
   # converges the ledger via migrate.mjs.
-  if [ "$DRY_RUN" = false ] && PROBE_DRIFT_URL="$(resolve_prod_migration_url 2>/dev/null)"; then
+  if [ "$DRY_RUN" = false ] && PROBE_DRIFT_URL="$(db_url_resolve prod "$DB_URL_OVERRIDE" direct 2>/dev/null)"; then
     if ! (cd "${REPO_ROOT}/web" && DATABASE_URL="$PROBE_DRIFT_URL" node scripts/check-migration-drift.mjs); then
       warn "Prod ledger trails the repo — Step 4 will converge it via migrate.mjs (staging must already be green)."
     fi
@@ -260,7 +248,7 @@ if [[ -d "$MIGRATIONS_DIR" ]]; then
   # failures degrade to scanning all files rather than aborting the pipeline.
   APPLIED_MIGRATIONS=""
   PROBE_URL=""
-  if [ "$DRY_RUN" = false ] && PROBE_URL="$(resolve_prod_migration_url 2>/dev/null)" && command -v psql >/dev/null 2>&1; then
+  if [ "$DRY_RUN" = false ] && PROBE_URL="$(db_url_resolve prod "$DB_URL_OVERRIDE" direct 2>/dev/null)" && command -v psql >/dev/null 2>&1; then
     APPLIED_MIGRATIONS="$(psql "$PROBE_URL" -t -c "SELECT name FROM schema_migrations;" 2>/dev/null || echo "")"
   fi
 
@@ -283,7 +271,7 @@ stage "Step 4/6: Executing Database Schema Migrations"
 
 if [ "$DRY_RUN" = false ]; then
   MIGRATION_URL=""
-  if ! MIGRATION_URL="$(resolve_prod_migration_url)"; then
+  if ! MIGRATION_URL="$(db_url_resolve prod "$DB_URL_OVERRIDE" direct)"; then
     error "PROD session connection is required: PROD_DIRECT_URL or deploy/dokploy/.env.prod DIRECT_URL"
     exit 1
   fi

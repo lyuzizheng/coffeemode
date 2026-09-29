@@ -3,12 +3,123 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import { getPoolConfig } from "@/lib/db/postgres";
+import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import {
   assertSafeSeedTarget,
   DEFAULT_DB_URL,
   evaluateRemoteTarget,
 } from "../../scripts/lib/test-db-policy.mjs";
+
+export interface TestDatabaseContext {
+  testDbName: string;
+  testDbUrl: string;
+  adminDbUrl: string;
+  dbClient: pg.Client;
+  previousDatabaseUrl: string | undefined;
+}
+
+/**
+ * Lifecycle helper for real-DB integration suites.
+ * Provisions an isolated scratch DB from template, sets DATABASE_URL,
+ * resets the shared connection pool, and connects a raw seeder client.
+ */
+export async function setupTestDatabase(
+  prefix: string,
+  options: ProvisionDbOptions = {},
+): Promise<TestDatabaseContext> {
+  const previousDatabaseUrl = process.env.DATABASE_URL;
+  const adminDbUrl = integrationAdminUrl();
+  const testDbName = makeTestDbName(prefix);
+  const testDbUrl = testDatabaseUrl(adminDbUrl, testDbName);
+
+  let dbClient: pg.Client | null = null;
+
+  try {
+    await provisionTestDatabase(adminDbUrl, testDbName, options);
+    process.env.DATABASE_URL = testDbUrl;
+    await closePool();
+
+    dbClient = new pg.Client(getPoolConfig(testDbUrl));
+    await dbClient.connect();
+
+    return {
+      testDbName,
+      testDbUrl,
+      adminDbUrl,
+      dbClient,
+      previousDatabaseUrl,
+    };
+  } catch (error) {
+    // Attempt rollback of all initialized resources on failure
+    if (dbClient) {
+      try {
+        await dbClient.end();
+      } catch {
+        // Best effort
+      }
+    }
+
+    try {
+      await closePool();
+    } catch {
+      // Best effort
+    }
+
+    try {
+      await cleanupIntegrationDatabase(adminDbUrl, testDbName);
+    } catch {
+      // Best effort
+    }
+
+    if (previousDatabaseUrl === undefined) {
+      delete process.env.DATABASE_URL;
+    } else {
+      process.env.DATABASE_URL = previousDatabaseUrl;
+    }
+
+    throw error;
+  }
+}
+
+/**
+ * Safely tear down a real-DB integration suite:
+ * Closes the shared pool and raw client, drops the scratch DB via admin connection,
+ * and restores the previous DATABASE_URL even on failures.
+ */
+export async function teardownTestDatabase(
+  ctx?: Partial<TestDatabaseContext> | null,
+): Promise<void> {
+  if (!ctx) return;
+
+  const errors: unknown[] = [];
+  try {
+    await closePool();
+  } catch (error) {
+    errors.push(error);
+  }
+  if (ctx.dbClient) {
+    try {
+      await ctx.dbClient.end();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (ctx.adminDbUrl && ctx.testDbName) {
+    try {
+      await cleanupIntegrationDatabase(ctx.adminDbUrl, ctx.testDbName);
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (ctx.previousDatabaseUrl === undefined) {
+    delete process.env.DATABASE_URL;
+  } else {
+    process.env.DATABASE_URL = ctx.previousDatabaseUrl;
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(errors, "real-DB integration cleanup failed");
+  }
+}
 
 export const DEFAULT_TEMPLATE_DB_NAME = "coffeemode_test_template";
 

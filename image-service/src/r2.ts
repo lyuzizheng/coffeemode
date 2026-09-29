@@ -1,5 +1,6 @@
 import { AwsClient } from "aws4fetch";
-import type { Env, PresignedUrl } from "./types";
+import type { Env } from "./types";
+import type { PresignedUrl } from "../../web/shared/images/types";
 import { DEFAULT_UPLOAD_URL_TTL_SECONDS } from "./constants";
 
 export function r2Endpoint(env: Env, key: string): string {

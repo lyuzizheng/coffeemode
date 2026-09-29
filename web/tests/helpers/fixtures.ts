@@ -2,7 +2,7 @@ import pg from "pg";
 import { checkUploadIntents, consumeUploadIntents } from "@/lib/db/image-uploads";
 import { selectLivePhotoReferences } from "@/lib/db/photo-references";
 import { recomputeWorkStats } from "@/lib/stats/aggregate";
-import type { ProcessUrls } from "@/lib/images/image-service-client";
+import type { CompleteResponse } from "@shared/images/types";
 import type { ProcessedImage } from "@/lib/images/processor";
 import type { ProvisionPhotosDeps } from "@/lib/images/provision-photos";
 
@@ -39,7 +39,7 @@ export async function seedBaseData(dbClient: pg.Client): Promise<void> {
   );
 }
 
-export function fakeProcessUrls(imageUuid: string): ProcessUrls {
+export function fakeProcessUrls(imageUuid: string): CompleteResponse {
   const keys = {
     original: `original/${imageUuid}.webp`,
     card: `card/${imageUuid}.webp`,

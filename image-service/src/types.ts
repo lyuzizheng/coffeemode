@@ -1,3 +1,8 @@
+/**
+ * Cloudflare bindings and configuration for the image service. The wire DTOs
+ * this Worker speaks live in `web/shared/images/types.ts` (BRAWUKA-738), next
+ * to the key layout and upload-size rules it shares with web/.
+ */
 export interface Env {
   IMAGE_SERVICE_TOKEN: string;
   R2_ACCOUNT_ID: string;
@@ -14,71 +19,3 @@ export interface Env {
   UPLOAD_URL_TTL_SECONDS?: string;
   R2_BUCKET: R2Bucket;
 }
-
-export interface PresignedUrl {
-  url: string;
-  headers: Record<string, string>;
-}
-
-export interface UploadResponse {
-  imageUuid: string;
-  /** Presigned PUT for the STAGING key only (`staging/{uuid}.webp`, BRAWUKA-730):
-   *  the browser capability never names a published key. */
-  uploadUrl: string;
-  uploadHeaders: Record<string, string>;
-  /** Public URL of the published original — the address this upload occupies
-   *  once processed. The staged object itself is never public. */
-  publicUrl: string;
-  expiresAt: string;
-  maxUploadBytes: number;
-  /** Declared upload size (bytes). Required by /upload since 2026-08-09;
-   *  signed into the presigned PUT as Content-Length. */
-  size: number;
-}
-
-export interface CompleteRequest {
-  imageUuid: string;
-  userId?: string;
-  targetType?: string;
-  targetId?: string;
-}
-
-
-export interface CompleteResponse {
-  imageUuid: string;
-  original: PresignedUrl;      // presigned GET for the original
-  originalPut: PresignedUrl;  // presigned PUT to overwrite original after capping
-  card: PresignedUrl;
-  thumbnail: PresignedUrl;
-  publicUrls: {
-    original: string;
-    card: string;
-    thumbnail: string;
-  };
-  keys: {
-    original: string;
-    card: string;
-    thumbnail: string;
-  };
-}
-
-export interface DeleteRequest {
-  imageUuid: string;
-  userId?: string;
-  /**
-   * Keep the source objects (`staging/` and `original/`) and delete only the
-   * derived variants (`card/`, `thumbnail/`). Used when the caller preserves
-   * the single-use intent for a retry: the retry re-runs `getProcessUrls`,
-   * which reads the staged upload (and re-PUTs the published original), and
-   * `processImage` re-PUTs the derived variants anyway.
-   */
-  keepOriginal?: boolean;
-}
-
-export interface DeleteResponse {
-  imageUuid: string;
-  deleted: string[];
-  missing: string[];
-}
-
-

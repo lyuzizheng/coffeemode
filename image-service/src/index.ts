@@ -1,4 +1,5 @@
-import type { CompleteRequest, CompleteResponse, DeleteRequest, DeleteResponse, Env, UploadResponse } from "./types";
+import type { Env } from "./types";
+import type { CompleteResponse, DeleteResponse, UploadResponse } from "../../web/shared/images/types";
 import { authorized, internalError, json, unauthorized } from "./auth";
 import type { ErrorCode } from "../../web/shared/errors";
 import { defaultErrorStatus } from "../../web/shared/errors";
@@ -6,7 +7,7 @@ import { logError, logWarn } from "../../web/shared/log";
 import { isValidUUID } from "../../web/shared/uuid";
 import { validateUploadSize } from "../../web/shared/images/validation";
 import { imageKeys } from "../../web/shared/images/keys";
-import { sanitizeMetadata } from "./validate";
+import { parseCompleteRequest } from "./validate";
 import { deleteObjects, headObject, presignedGetUrl, presignedPutUrl, publicUrl, ttlSeconds } from "./r2";
 import { IMMUTABLE_CACHE_CONTROL, MAX_UPLOAD_BYTES, PROVISION_TARGET_TYPE } from "./constants";
 
@@ -81,44 +82,9 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
     return error(request, "invalid_request", "invalid JSON body");
   }
 
-  const { imageUuid, userId, targetType, targetId } = body as CompleteRequest;
-
-  if (!isValidUUID(imageUuid)) {
-    return error(request, "invalid_request", "imageUuid must be a valid UUID");
-  }
-
-  // Stage metadata is REQUIRED (issue #158 cleanup contract): complete()
-  // stamps it onto the re-PUT original, so a completed original without a
-  // marker would be deletable. Two stages are accepted:
-  //   - provision: targetType="provision", targetId=<imageUuid> — the creation
-  //     flow processes images BEFORE their cafe/check-in target exists
-  //     (issue #86); attachProvisionedPhotos restamps via restampOriginal
-  //     with the real target once it exists.
-  //   - final: targetType="cafe"|"checkin" + target id — live gallery original.
-  // The cleanup script treats "provision"-stage objects older than retention
-  // as abandoned (an upload that never attached) and keeps cafe/checkin ones.
-  const safeUserId = sanitizeMetadata(userId);
-  const safeTargetType = sanitizeMetadata(targetType);
-  const safeTargetId = sanitizeMetadata(targetId);
-  if (!safeTargetType || !safeTargetId) {
-    return error(request, "invalid_request", "targetType and targetId are required");
-  }
-  // Keys are always lowercase (normalizedUuid); the provision marker must
-  // match the key case so metadata and key stay consistent (BRAWUKA-455).
-  const normalizedUuid = imageUuid.toLowerCase();
-  let metadataTargetId: string = safeTargetId;
-  if (
-    safeTargetType !== PROVISION_TARGET_TYPE &&
-    safeTargetType !== "cafe" &&
-    safeTargetType !== "checkin"
-  ) {
-    return error(request, "invalid_request", "targetType must be provision, cafe, or checkin");
-  }
-  if (safeTargetType === PROVISION_TARGET_TYPE) {
-    // Provision-stage marker pairs the object with itself: unique per upload,
-    // never collides with a real cafe/checkin UUID.
-    metadataTargetId = normalizedUuid;
-  }
+  const parsed = parseCompleteRequest(body as Record<string, unknown>);
+  if (!parsed.ok) return error(request, parsed.code, parsed.message);
+  const { imageUuid: normalizedUuid, userId, targetType, targetId } = parsed.request;
 
   const keys = imageKeys(normalizedUuid);
   // The download URL follows the stage (BRAWUKA-730): the creation flow
@@ -126,7 +92,7 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
   // post-commit attach leg re-stamps the already published original. Both
   // legs write the published keys below — the browser never holds a
   // capability for any of them.
-  const sourceKey = safeTargetType === PROVISION_TARGET_TYPE ? keys.staging : keys.original;
+  const sourceKey = targetType === PROVISION_TARGET_TYPE ? keys.staging : keys.original;
   const exists = await headObject(env, sourceKey);
   if (!exists) {
     return error(request, "not_found", "original image not found");
@@ -145,9 +111,9 @@ export async function handleComplete(request: Request, env: Env): Promise<Respon
   const metadata: Record<string, string> = {
     uploadDate: new Date().toISOString(),
   };
-  if (safeUserId) metadata.userId = safeUserId;
-  metadata.targetType = safeTargetType;
-  metadata.targetId = metadataTargetId;
+  if (userId) metadata.userId = userId;
+  metadata.targetType = targetType;
+  metadata.targetId = targetId;
 
   const [originalGet, originalPut, cardPut, thumbnailPut] = await Promise.all([
     presignedGetUrl(env, sourceKey),
@@ -210,7 +176,9 @@ export async function handleDelete(request: Request, env: Env): Promise<Response
     return error(request, "invalid_request", "invalid JSON body");
   }
 
-  const record = body as DeleteRequest & Record<string, unknown>;
+  // Raw wire JSON is untrusted: read the fields as `unknown` and narrow them
+  // here rather than casting into a typed request (BRAWUKA-738).
+  const record = body as Record<string, unknown>;
   const imageUuid = record.imageUuid;
   if (typeof imageUuid !== "string" || !isValidUUID(imageUuid)) {
     return error(request, "invalid_request", "imageUuid must be a valid UUID");

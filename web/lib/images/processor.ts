@@ -4,7 +4,7 @@ import sharp from "sharp";
 import type { OutputInfo } from "sharp";
 import { MAX_UPLOAD_BYTES } from "@shared/images/constants";
 import { appConfig } from "@/lib/config";
-import type { ProcessUrls } from "./image-service-client";
+import type { CompleteResponse } from "@shared/images/types";
 
 const IMAGE_TUNING = appConfig.images;
 
@@ -56,7 +56,7 @@ const THUMBNAIL_SIZE = { width: 200, height: 200 };
  * Content-Length and then count bytes while streaming, aborting the moment
  * the cap is crossed.
  */
-async function fetchOriginal(original: ProcessUrls["original"]): Promise<Buffer> {
+async function fetchOriginal(original: CompleteResponse["original"]): Promise<Buffer> {
   const response = await fetch(original.url, {
     headers: original.headers,
     signal: AbortSignal.timeout(R2_DOWNLOAD_TIMEOUT_MS),
@@ -104,7 +104,7 @@ async function fetchOriginal(original: ProcessUrls["original"]): Promise<Buffer>
 }
 
 async function uploadVariant(
-  variant: ProcessUrls["card"],
+  variant: CompleteResponse["card"],
   buffer: Buffer,
 ): Promise<void> {
   // sharp's toBuffer returns a Buffer view; slice only the bytes that belong
@@ -144,7 +144,7 @@ async function resizeToBuffer(
 
 export async function processImage(
   imageUuid: string,
-  processUrls: ProcessUrls,
+  processUrls: CompleteResponse,
 ): Promise<ProcessedImage> {
   // `original` is the stage's source bytes (BRAWUKA-730): the staged upload
   // the browser wrote on a `provision` complete. The capped original is
@@ -189,7 +189,7 @@ export async function processImage(
  * the PUBLISHED original (BRAWUKA-730): the attach leg re-stamps what the
  * provision leg wrote, never the browser's staged upload.
  */
-export async function restampOriginal(attachUrls: ProcessUrls): Promise<void> {
+export async function restampOriginal(attachUrls: CompleteResponse): Promise<void> {
   const originalBuffer = await fetchOriginal(attachUrls.original);
   await uploadVariant(attachUrls.originalPut, originalBuffer);
 }

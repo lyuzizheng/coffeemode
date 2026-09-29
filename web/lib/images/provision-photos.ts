@@ -1,8 +1,9 @@
 import "server-only";
 
 import type { TxQueryFn } from "@/lib/db/postgres";
-import type { ImageTargetType, StoredImage } from "@/types/images";
-import { ImageServiceError, type ProcessUrls } from "./image-service-client";
+import type { StoredImage } from "@/types/images";
+import { ImageServiceError } from "./image-service-client";
+import type { CompleteRequest, CompleteResponse } from "@shared/images/types";
 import type { ProcessedImage } from "./processor";
 import { logError } from "@/lib/observability/server-log";
 
@@ -42,19 +43,8 @@ export interface ProvisionPhotosDeps {
     imageUuids: string[],
     q: ProvisionQueryFn,
   ) => Promise<boolean>;
-  getProcessUrls: (request: {
-    imageUuid: string;
-    userId?: string;
-    /**
-     * Stage marker (issue #158 / BRAWUKA-400): the creation flow sends
-     * `"provision"` (pre-target); the post-commit attach leg re-sends
-     * `"checkin"` + the real check-in id so the sweeper never matches it.
-     * Required since #158 — the worker rejects marker-less completes.
-     */
-    targetType: "provision" | ImageTargetType;
-    targetId: string;
-  }) => Promise<ProcessUrls>;
-  processImage: (imageUuid: string, processUrls: ProcessUrls) => Promise<ProcessedImage>;
+  getProcessUrls: (request: CompleteRequest) => Promise<CompleteResponse>;
+  processImage: (imageUuid: string, processUrls: CompleteResponse) => Promise<ProcessedImage>;
   /**
    * Post-commit attach re-mark (BRAWUKA-400): download the live original and
    * re-PUT it with the final targetType/targetId metadata. Never throws past
@@ -62,7 +52,7 @@ export interface ProvisionPhotosDeps {
    * reference-aware sweeper keeps it. Defaults to `getProcessUrls` (final
    * stage) + `restampOriginal` from the sharp processor.
    */
-  restampOriginal?: (attachUrls: ProcessUrls) => Promise<void>;
+  restampOriginal?: (attachUrls: CompleteResponse) => Promise<void>;
   /**
    * Best-effort R2 compensation (BRAWUKA-279): delete the variants
    * `processImage` already wrote when the caller's transaction rolls back.
@@ -247,7 +237,7 @@ async function provisionProcessUrls(
   deps: ProvisionPhotosDeps,
   imageUuid: string,
   userId: string,
-): Promise<ProcessUrls> {
+): Promise<CompleteResponse> {
   try {
     return await deps.getProcessUrls({ imageUuid, userId, targetType: "provision", targetId: imageUuid });
   } catch (err) {

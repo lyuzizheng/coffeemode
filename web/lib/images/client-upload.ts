@@ -1,7 +1,7 @@
 import { MAX_UPLOAD_BYTES } from "@shared/images/constants";
 import { getImageMaxDimension } from "@/lib/client-env";
 import { apiFetch, isUnauthorized } from "@/lib/http";
-import type { UploadUrlResponse } from "@/types/images";
+import type { UploadResponse } from "@shared/images/types";
 
 /**
  * Client-side HTML5 canvas image resizing and WebP compression.
@@ -50,9 +50,9 @@ export async function uploadPhoto(file: File): Promise<string> {
   const webp = await toWebP(file);
   if (webp.size > MAX_UPLOAD_BYTES) throw new Error("photo_too_large");
 
-  let uploadData: UploadUrlResponse;
+  let uploadData: UploadResponse;
   try {
-    const data = await apiFetch<UploadUrlResponse>("/api/images/upload", {
+    const data = await apiFetch<UploadResponse>("/api/images/upload", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ size: webp.size }),

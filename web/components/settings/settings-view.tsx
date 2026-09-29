@@ -27,7 +27,7 @@ import { AppMenu } from "@/components/layout/app-menu";
 import { SettingsGroup, SettingsRow } from "./settings-row";
 import { apiFetch, isUnauthorized } from "@/lib/http";
 import { clearClientState } from "@/lib/query/clear-client-state";
-import type { UserProfileDto } from "@/lib/db/profile";
+import type { UserProfileDto } from "@/types/profile-dto";
 
 const THEME_OPTIONS = ["light", "dark", "system"] as const;
 

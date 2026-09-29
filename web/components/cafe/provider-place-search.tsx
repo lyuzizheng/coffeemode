@@ -7,7 +7,7 @@ import { apiErrorMessage, isUnauthorized } from "@/lib/http";
 import { readOnboardingState } from "@/lib/onboarding-store";
 import type { CreateTranslator, PlaceCandidate, PlaceSearchProvider } from "@/lib/places/place-search";
 import type { POI } from "@shared/places/types";
-import type { ExternalSearchProvider } from "@/components/search/search-results-list";
+import type { ExternalSearchProvider } from "@/lib/search/types";
 
 interface ProviderPlaceSearchProps {
   /** Owned by the coordinator's tab state. The panel stays mounted when

@@ -4,6 +4,9 @@ import type { POI, PlacePrediction } from "@shared/places/types";
 
 type SearchResultType = "cafe" | "poi";
 export type SearchResultSource = "coffeemode" | "stored_poi" | "google" | "apple";
+/** External map providers the UI can hand a live search to (Google / Apple
+ *  Maps). Shared contract between the results renderer and its consumers. */
+export type ExternalSearchProvider = "google" | "apple";
 
 export interface SearchFilters {
   q?: string;

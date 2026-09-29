@@ -5,7 +5,7 @@ import { query } from "../postgres";
 import { appConfig } from "@/lib/config";
 import { paginateProfileRows, parseProfileCursor } from "./cursor";
 import type { CafeVisibility } from "@/types/cafes";
-import type { UserCafeItemDto } from "./types";
+import type { UserCafeItemDto } from "@/types/profile-dto";
 
 type UserCafeRow = {
   id: string;

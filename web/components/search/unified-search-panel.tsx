@@ -35,17 +35,14 @@ import {
   hasActiveFilters,
   type SearchFilterState,
 } from "@/lib/search/search-filters";
-import type { SearchResponse, SearchResultItem } from "@/lib/search/types";
+import type { ExternalSearchProvider, SearchResponse, SearchResultItem } from "@/lib/search/types";
 import {
   ActiveFilterChips,
   CityScopeSelect,
   FilterButton,
 } from "./search-filter-ui";
 import { FilterSurface } from "./search-filter-surface";
-import {
-  SearchResultsList,
-  type ExternalSearchProvider,
-} from "./search-results-list";
+import { SearchResultsList } from "./search-results-list";
 
 /** Search-as-you-type trigger (DG44) and debounce (DG47), owned by `app.yaml` `search.client`. */
 const MIN_QUERY_LENGTH = getSearchMinQueryLength();

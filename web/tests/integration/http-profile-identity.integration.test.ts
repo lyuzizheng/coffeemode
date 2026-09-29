@@ -22,7 +22,7 @@ import { PATCH as patchIdentityRoute } from "@/app/api/profile/identity/route";
 import { GET as getCafeDetailRoute } from "@/app/api/cafes/[id]/route";
 import { GET as getFeedRoute } from "@/app/api/cafes/[id]/checkins/route";
 import { GET as profileCheckinsRoute } from "@/app/api/profile/checkins/route";
-import type { UserProfileDto } from "@/lib/db/profile";
+import type { UserProfileDto } from "@/types/profile-dto";
 import type { ProfileIdentityDto, PublicAuthor } from "@/types/identity";
 import type { PublicCafeDetail } from "@/types/cafes";
 import type { CheckInFeedPage } from "@/types/checkins";

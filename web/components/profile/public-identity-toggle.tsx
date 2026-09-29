@@ -12,7 +12,7 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Button, Label, Switch } from "@heroui/react";
-import type { UserProfileDto } from "@/lib/db/profile";
+import type { UserProfileDto } from "@/types/profile-dto";
 import { getHandleMaxChars } from "@/lib/client-env";
 import { apiErrorMessage, apiFetch, isUnauthorized } from "@/lib/http";
 import { SignInGate } from "@/components/auth/sign-in-gate";

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { mapIdentityFields, type ProfileIdentityRow } from "./identity";
-import type { UserProfileDto } from "./types";
+import type { UserProfileDto } from "@/types/profile-dto";
 
 /**
  * Shared profile row projection (spec 0009 §5 — the SELECT column list and

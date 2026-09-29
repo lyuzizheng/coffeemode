@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { UserProfileDto } from "./types";
+import type { UserProfileDto } from "@/types/profile-dto";
 
 export type ProfileIdentityRow = {
   show_public_identity: boolean;

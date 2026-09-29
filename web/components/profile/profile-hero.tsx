@@ -7,7 +7,7 @@ import { Button, toast } from "@heroui/react";
 import { CoffeeIcon } from "@/components/icons";
 import { SignInGate } from "@/components/auth/sign-in-gate";
 import { LAUNCH_CITIES, displayCityName, type CityInfo } from "@/lib/cities";
-import type { UserProfileDto } from "@/lib/db/profile";
+import type { UserProfileDto } from "@/types/profile-dto";
 import { getDisplayNameMaxChars } from "@/lib/client-env";
 import { apiFetch, isUnauthorized } from "@/lib/http";
 

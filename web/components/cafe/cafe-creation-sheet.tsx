@@ -11,7 +11,7 @@ import { useNetworkStatus } from "@/hooks/use-network-status";
 import { apiErrorMessage, apiFetch, isUnauthorized } from "@/lib/http";
 import { resolvePrediction } from "@/lib/places/resolve-prediction";
 import type { POI, PlacePrediction } from "@shared/places/types";
-import type { ExternalSearchProvider } from "@/components/search/search-results-list";
+import type { ExternalSearchProvider } from "@/lib/search/types";
 
 async function persistExternalPlace(selected: POI, messages: { failed: string; notFood: string }): Promise<string | null> {
   try {

@@ -15,7 +15,7 @@ import { ProfileTabCafes } from "./profile-tab-cafes";
 import { ProfileTabFavorites } from "./profile-tab-favorites";
 import { ProfileTabHistory } from "./profile-tab-history";
 import { useProfileContent } from "./profile-hooks";
-import type { UserProfileDto, UserProfileStatsDto } from "@/lib/db/profile";
+import type { UserProfileDto, UserProfileStatsDto } from "@/types/profile-dto";
 
 interface ProfileViewProps {
   initialProfile: UserProfileDto | null;

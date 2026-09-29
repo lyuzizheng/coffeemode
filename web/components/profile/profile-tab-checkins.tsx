@@ -12,7 +12,7 @@ import { apiFetch, isUnauthorized } from "@/lib/http";
 import { SignInGate } from "@/components/auth/sign-in-gate";
 import { ErrorRow } from "./profile-error-row";
 import { WORK_DIMS, type WorkDim } from "@/lib/stats/work-stats";
-import type { UserCheckInItemDto } from "@/lib/db/profile";
+import type { UserCheckInItemDto } from "@/types/profile-dto";
 
 export async function fetchUserCheckIns(cursor?: string) {
   const params = new URLSearchParams();

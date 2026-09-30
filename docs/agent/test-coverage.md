@@ -46,6 +46,13 @@ Notes:
 - T14/T15 have no browser proof: e2e stubs R2, so upload + provisioning are integration-only.
 - T23 has no integration proof: SW cache behavior exists only in a real browser.
 - T18/T26 name the surviving seam-level proofs plus their missing halves; the missing halves are §4 gaps, not rows.
+- T20 additionally has real Node `ImageResponse` PNG coverage in
+  `web/tests/integration/http-cafe-og.integration.test.ts` via
+  `test:integration:http` (BRAWUKA-808): sharp decodes the complete 1200×630
+  raster; ordinary, benign SVG-markup, literal entity and 200-character names
+  remain distinct; invalid, unknown and private cafes return 404. Only the
+  guest-auth seam is mocked; Postgres, the guard and renderer remain real.
+  These benign regressions do not reproduce an exploit.
 
 ## 2. Efficiency — no duplication via helpers (S1)
 

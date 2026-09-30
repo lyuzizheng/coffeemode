@@ -91,7 +91,8 @@ else
       # limits and budgets the HTTP suites assert on); `web/scripts/*` is gate and
       # migration machinery the suites invoke by path (`migrate.mjs`,
       # `cleanup-stale-test-dbs.mjs`), the same policy as repo-level `scripts/*`.
-      web/db/*|web/lib/*|web/app/api/*|web/app/auth/*|web/shared/*|web/types/*|web/config/*|web/scripts/*|web/package*.json|web/proxy.ts)
+      # BRAWUKA-808's PNG suite also exercises the real cafe OG renderer.
+      web/db/*|web/lib/*|web/app/api/*|web/app/auth/*|web/app/cafes/*/og-image/*|web/shared/*|web/types/*|web/config/*|web/scripts/*|web/package*.json|web/proxy.ts)
         application=true
         integration=true
         ;;

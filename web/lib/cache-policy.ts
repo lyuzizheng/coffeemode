@@ -203,19 +203,26 @@ export interface CloudflareCacheRuleset {
   };
 }
 
-/** The deployable edge ruleset compiled from the same policy. */
+/** The deployable edge ruleset compiled from the same policy.
+ *
+ * Shape (Cloudflare request-phase rules, last matching wins):
+ *   1. ALLOW   /cafes/* provably default-locale → cache + TTL policy.
+ *   2. BYPASS  any request with an sb-* auth cookie (zone-wide).
+ *   3. BYPASS  the staging host, all routes (spec 0005 §3).
+ *   4+. BYPASS /cafes/* per locale signal — each is `path AND <term>`,
+ *      the positive mirror of one negated term in the allow rule, so
+ *      every excluded request has a matching bypass (the algebraic
+ *      complement). A bare `/cafes/` catch-all would also match the
+ *      allow rule's requests and disable it under last-match-wins
+ *      (BRAWUKA-836). Expressions stay `and`/`not`-only so the repo's
+ *      rules-language evaluator (scripts/devops/lib/rules-language.mjs)
+ *      can prove per-request outcomes offline.
+ */
 export function cafeShellCloudflareRuleset(
   policy: CafeShellCachePolicy,
 ): CloudflareCacheRuleset {
   const signals = cafeShellSignals(policy);
-  const bypassTerms = signals.map(signalTerm);
   const allowExpr = [CAFE_PATH_PREFIX, ...signals.map(negatedTerm)].join(" and ");
-  const fallbackExpr =
-    bypassTerms.length === 0
-      ? // No signals configured → the fallback must match nothing: a bare
-        // /cafes/ catch-all would disable the allow rule (BRAWUKA-836).
-        `${CAFE_PATH_PREFIX} and (${NEVER_MATCHES})`
-      : `${CAFE_PATH_PREFIX} and (${bypassTerms.join(" or ")})`;
   const bypassAction = {
     description: "",
     enabled: true,
@@ -223,6 +230,20 @@ export function cafeShellCloudflareRuleset(
     action: "set_cache_settings" as const,
     action_parameters: { cache: false },
   };
+  const zoneWideBypass = (
+    description: string,
+    terms: string[],
+  ): CloudflareCacheRuleset["request"]["rules"][number] => ({
+    ...bypassAction,
+    description,
+    expression: terms.join(" and ") || NEVER_MATCHES,
+  });
+  // Locale signals bypass scoped to the shell paths; the auth-cookie and
+  // hostname signals bypass zone-wide (spec 0005 §3 covers every staging
+  // route, and a session cookie is never locale/cacheable anywhere).
+  const pathScopedSignals = signals.filter(
+    (s) => s.kind === "cookieExact" || s.kind === "acceptLanguage",
+  );
   return {
     request: {
       phase: "http_request_cache_settings",
@@ -248,28 +269,22 @@ export function cafeShellCloudflareRuleset(
             respect_strong_etags: true,
           },
         },
-        {
-          ...bypassAction,
-          description: "Bypass cache on auth cookies",
-          expression:
-            policy.bypassOnRequestCookiePrefixes
-              .map((v) => `http.cookie contains "${v}"`)
-              .join(" or ") || NEVER_MATCHES,
-        },
-        {
-          ...bypassAction,
-          description: "BRAWUKA-834: staging bypasses all routes (spec 0005 §3)",
-          expression:
-            policy.bypassHostnames
-              .map((v) => `http.host eq "${v}"`)
-              .join(" or ") || NEVER_MATCHES,
-        },
-        {
+        zoneWideBypass(
+          "Bypass cache on auth cookies",
+          policy.bypassOnRequestCookiePrefixes.map(
+            (v) => `http.cookie contains "${v}"`,
+          ),
+        ),
+        zoneWideBypass(
+          "BRAWUKA-834: staging bypasses all routes (spec 0005 §3)",
+          policy.bypassHostnames.map((v) => `http.host eq "${v}"`),
+        ),
+        ...pathScopedSignals.map((signal) => ({
           ...bypassAction,
           description:
-            "BRAWUKA-836: /cafes/* requests carrying a non-default-locale signal bypass the shared cache (complement of the cache-eligible rule — never an unconditional catch-all)",
-          expression: fallbackExpr,
-        },
+            "BRAWUKA-836: /cafes/* requests carrying a non-default-locale signal bypass the shared cache (positive mirror of the allow rule's exclusion)",
+          expression: `${CAFE_PATH_PREFIX} and (${signalTerm(signal)})`,
+        })),
       ],
     },
   };

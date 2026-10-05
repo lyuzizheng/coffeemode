@@ -51,9 +51,18 @@
         }
       },
       {
-        "description": "BRAWUKA-836: /cafes/* requests carrying a non-default-locale signal bypass the shared cache (complement of the cache-eligible rule — never an unconditional catch-all)",
+        "description": "BRAWUKA-836: /cafes/* requests carrying a non-default-locale signal bypass the shared cache (positive mirror of the allow rule's exclusion)",
         "enabled": true,
-        "expression": "starts_with(http.request.uri.path, \"/cafes/\") and (http.cookie contains \"sb-\" or http.cookie contains \"locale=\" or any(http.request.headers[\"accept-language\"][*] wildcard \"*zh*\") or http.host eq \"staging.cafemood.app\")",
+        "expression": "starts_with(http.request.uri.path, \"/cafes/\") and (http.cookie contains \"locale=\")",
+        "action": "set_cache_settings",
+        "action_parameters": {
+          "cache": false
+        }
+      },
+      {
+        "description": "BRAWUKA-836: /cafes/* requests carrying a non-default-locale signal bypass the shared cache (positive mirror of the allow rule's exclusion)",
+        "enabled": true,
+        "expression": "starts_with(http.request.uri.path, \"/cafes/\") and (any(http.request.headers[\"accept-language\"][*] wildcard \"*zh*\"))",
         "action": "set_cache_settings",
         "action_parameters": {
           "cache": false

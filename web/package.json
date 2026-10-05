@@ -30,13 +30,14 @@
     "gen:buckets": "node scripts/generate-rate-limit-buckets.mjs",
     "check:buckets": "node scripts/generate-rate-limit-buckets.mjs --check",
     "gen:cache-rules": "node scripts/generate-cache-rules.mjs",
-    "check:cache-rules": "node scripts/generate-cache-rules.mjs --check",
+    "check:cache-rules": "node scripts/generate-cache-rules.mjs --check && npm run check:cache-policy",
     "check:visual": "node scripts/visual-smoke.mjs",
     "test:e2e": "node scripts/e2e-smoke.mjs",
     "check:bundle": "node scripts/check-bundle-budget.mjs",
     "analyze": "next experimental-analyze --output",
     "lhci": "node scripts/run-lhci.mjs",
-    "verify": "npm run check:buckets && npm run check:cache-rules && npm run check:i18n && npm run check:guards && npm run typecheck && npm run lint && npm run build && npm run check:bundle"
+    "verify": "npm run check:buckets && npm run check:cache-rules && npm run check:i18n && npm run check:guards && npm run typecheck && npm run lint && npm run build && npm run check:bundle",
+    "check:cache-policy": "node ../scripts/devops/check-cache-policy.mjs"
   },
   "dependencies": {
     "@heroui/react": "^3.2.3",

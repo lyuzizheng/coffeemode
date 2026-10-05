@@ -58,31 +58,40 @@ describe("cafe-shell CDN cache rules", () => {
     ).toBe(false);
   });
 
-  // BRAWUKA-836: the fallback must be the algebraic complement of the
-  // allow rule's non-path conditions — a bare `/cafes/` catch-all matches
-  // default-locale requests too, and last-match-wins then disables
-  // caching entirely. Structure pins: 4 rules, allow first, every
-  // negated allow-term mirrored by a positive term in the fallback.
-  it("fallback bypasses exactly the requests the allow rule excluded", () => {
-    expect(ruleset).toHaveLength(4);
-    const [allow, authBypass, stagingBypass, fallback] = ruleset;
+  // BRAWUKA-836: every negated exclusion in the allow rule must be
+  // mirrored by a positive bypass term — the complement — or the
+  // excluded request could match a caching rule (or an unconditional
+  // catch-all would also match default-locale requests and disable the
+  // allow rule under last-match-wins, the v7 defect). Structure: allow
+  // first, then zone-wide bypasses, then one `/cafes/ AND <signal>` rule
+  // per locale signal.
+  it("bypasses exactly the requests the allow rule excluded", () => {
+    const allow = ruleset[0];
+    const bypasses = ruleset.slice(1);
     expect(allow.action_parameters.cache).toBe(true);
-    for (const rule of [authBypass, stagingBypass, fallback]) {
+    for (const rule of bypasses) {
       expect(rule.action_parameters.cache).toBe(false);
     }
-    const allowNegations = [...allow.expression.matchAll(/not \(([^)]+(?:\([^)]*\))?[^)]*)\)/g)].map(
-      (m) => m[1],
-    );
-    const allowNe = [...allow.expression.matchAll(/http\.host ne "([^"]+)"/g)].map((m) => m[1]);
-    for (const negated of allowNegations) {
-      expect(fallback.expression, `fallback misses complement of "${negated}"`).toContain(negated);
+    // Every locale signal has BOTH a negated allow-term and a positive
+    // path-scoped bypass rule.
+    const localeBypasses = bypasses.filter((r) => r.expression.includes("/cafes/"));
+    const signalTerms = [...allow.expression.matchAll(/not \(([^)]+?)\)/g)]
+      .map((m) => m[1])
+      .filter((t) => !t.includes("sb-")); // sb- + host bypass zone-wide below
+    for (const term of signalTerms) {
+      expect(
+        localeBypasses.some((r) => r.expression.includes(term)),
+        `no path-scoped bypass mirrors allow-term "${term}"`,
+      ).toBe(true);
     }
-    for (const host of allowNe) {
-      expect(fallback.expression).toContain(`http.host eq "${host}"`);
+    // No rule may be an unconditional /cafes/ catch-all — that is the
+    // BRAWUKA-836 defect shape (matches the allow rule's own requests).
+    for (const rule of ruleset) {
+      expect(rule.expression).not.toBe(`starts_with(http.request.uri.path, "/cafes/")`);
+      if (rule !== allow) {
+        expect(rule.expression).not.toContain(" or ");
+      }
     }
-    // …and it must not be an unconditional catch-all (the v7 defect).
-    expect(fallback.expression).not.toBe(`starts_with(http.request.uri.path, "/cafes/")`);
-    expect(fallback.expression).toContain(" or ");
   });
 
   it("does not declare custom cache keys the deployed plan cannot apply", () => {

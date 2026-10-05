@@ -9,7 +9,9 @@
  * English).
  *
  * What this gate proves on the seeded cafe URL:
- *   - `html lang` follows the cookie in both directions (en → zh → en).
+ *   - `html lang` follows the cookie in both directions (en → zh → en),
+ *     checked as SSR document attribute AND again after the app surface is
+ *     live — a hydration-time lang flip under correct copy must not pass.
  *   - After the DG124 overlay unmounts and the app surface is live, a
  *     role+name+visible assertion finds the locale's check-in CTA
  *     ("Check in"/"打卡") and zero of the other locale's. Waiting for overlay
@@ -84,22 +86,43 @@ async function assertVisibleCopy(page, copy, foreignCopy) {
 }
 
 /**
- * One locale render of the cafe URL: status, `html lang`, hydrated visible
- * CTA from this locale only, and script-stripped SSR copy.
+ * Final `html lang`, checked AFTER the app surface is live. The pre-fix
+ * gate measured the attribute at domcontentloaded — SSR evidence only —
+ * and passed a fixture whose hydration flipped lang to en under a Chinese
+ * CTA (r3 P1, BRAWUKA-835).
+ */
+async function assertHydratedLang(page, lang, cookie) {
+  assert(
+    (await page.locator("html").getAttribute("lang")) === lang,
+    `Hydrated html lang is not "${lang}" with locale=${cookie} cookie`,
+  );
+}
+
+/** The served document's `<html lang>` — SSR evidence, un-hydratable. */
+function ssrLang(html) {
+  return html.match(/<html\b[^>]*\blang="([^"]*)"/)?.[1] ?? null;
+}
+
+/**
+ * One locale render of the cafe URL: SSR `html lang` + script-stripped SSR
+ * copy from the document, then — after the app is live — the locale's
+ * visible CTA AND the final hydrated `html lang`.
  */
 async function assertLocaleRender({ context, page, base, cafeId, cookie, lang, copy, foreignCopy }) {
   await setLocaleCookie(context, base, cookie);
   const res = await page.goto(`${base}${CAFE_PATH(cafeId)}`, { waitUntil: "domcontentloaded" });
   assert(res?.status() === 200, `Expected 200 for seeded cafe (${lang}), got ${res?.status()}`);
+  const ssrHtml = await res.text();
   assert(
-    (await page.locator("html").getAttribute("lang")) === lang,
-    `Expected html lang="${lang}" with locale=${cookie} cookie`,
+    ssrLang(ssrHtml) === lang,
+    `Expected SSR html lang="${lang}" with locale=${cookie} cookie, got ${ssrLang(ssrHtml)}`,
   );
-  await assertVisibleCopy(page, copy, foreignCopy);
   assert(
-    documentCopy(await res.text()).includes(copy),
+    documentCopy(ssrHtml).includes(copy),
     `SSR document (${lang}) lacks "${copy}" outside script payloads`,
   );
+  await assertVisibleCopy(page, copy, foreignCopy);
+  await assertHydratedLang(page, lang, cookie);
 }
 
 /**
@@ -157,6 +180,41 @@ async function assertTamperRejected({ context, page, base, cafeId, scope, expect
     rejected = err;
   }
   assert(rejected !== null, `Wrong-copy fault (${scope}) passed the visible 打卡 assertion — gate is blind`);
+}
+
+/**
+ * Hydrated-lang fault: the document serves lang="zh" + Chinese copy and the
+ * app renders correctly, but an injected script flips `<html lang>` to "en"
+ * after the document (a hydration-time attribute fault). The pre-fix gate
+ * checked lang only before app-live and accepted exactly this shape (r3
+ * reproduction); assertHydratedLang must reject it after the copy wait.
+ */
+async function assertLangTamperRejected({ context, page, base, cafeId }) {
+  await setLocaleCookie(context, base, "zh");
+  await context.addInitScript(
+    `document.addEventListener("DOMContentLoaded", () => {
+       setTimeout(() => { document.documentElement.lang = "en"; }, 0);
+     });`,
+  );
+  const res = await page.goto(`${base}${CAFE_PATH(cafeId)}`, { waitUntil: "domcontentloaded" });
+  assert(res?.status() === 200, `Lang-fault demo navigation failed: ${res?.status()}`);
+  const ssrHtml = await res.text();
+  assert(ssrLang(ssrHtml) === "zh", `Lang-fault demo SSR lang was not "zh"`);
+  assert(documentCopy(ssrHtml).includes("打卡"), `Lang-fault demo SSR lacks 打卡`);
+  // The correct surface must still pass its own assertions — the fault is
+  // the attribute alone, not the copy.
+  await assertVisibleCopy(page, "打卡", "Check in");
+  assert(
+    (await page.locator("html").getAttribute("lang")) === "en",
+    `Lang-fault demo tamper did not take effect (lang still zh)`,
+  );
+  let rejected = null;
+  try {
+    await assertHydratedLang(page, "zh", "zh");
+  } catch (err) {
+    rejected = err;
+  }
+  assert(rejected !== null, `Hydrated-lang fault passed the final lang check — gate is blind`);
 }
 
 /** Fault-demo page plumbing: console captured for artifacts, never asserted —
@@ -228,5 +286,15 @@ export async function runLocaleSwitchGate({ label, base, cafeId, createContext, 
     createContext,
     label,
     fn: (context, page) => assertTamperRejected({ context, page, base, cafeId, scope: "scripts", expectSsrCopy: true }),
+  });
+
+  // Step 4 — hydrated-lang fault: SSR lang + copy stay correct and the app
+  // renders the right CTA, but html lang flips to en at hydration. The
+  // post-app-live lang check must reject it (r3: the pre-fix lang assertion
+  // ran before hydration and accepted exactly this shape).
+  await runFaultStep({
+    createContext,
+    label,
+    fn: (context, page) => assertLangTamperRejected({ context, page, base, cafeId }),
   });
 }

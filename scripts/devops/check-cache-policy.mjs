@@ -75,6 +75,16 @@ const CASES = [
     cache: false,
   },
   {
+    name: "production, Accept-Language zh-TW (same zh family)",
+    request: { host: "cafemood.app", path: PROBE_PATH, cookie: "", acceptLanguage: ["zh-TW"] },
+    cache: false,
+  },
+  {
+    name: "production, Accept-Language zh-HK",
+    request: { host: "cafemood.app", path: PROBE_PATH, cookie: "", acceptLanguage: ["zh-HK,zh;q=0.9"] },
+    cache: false,
+  },
+  {
     name: "production, locale=zh cookie",
     request: {
       host: "cafemood.app",
@@ -179,71 +189,89 @@ function statusCovered(entry, status) {
 }
 
 /**
- * The app resolves the locale as cookie -> Accept-Language -> default
- * (web/i18n/request.ts), so `sharedCacheAcrossLocales: false` requires the
- * payload to exclude BOTH signals. The cookie name is read from the app rather
- * than hardcoded, so renaming it cannot silently drop the exclusion.
+ * Every ACTIVE cache-eligible rule must implement the whole contract —
+ * Cloudflare lets any `cache: true` rule override earlier bypasses under
+ * last-match-wins, so validating only the first allow rule admits a later
+ * `Accept-Language: zh-TW` cache rule that the declared policy forbids
+ * (r3 P1). Disabled rules are skipped the way the edge skips them; a
+ * `enabled: false` bypass is not protection.
  */
-function localeCookieName(contract) {
-  const declared = contract.bypass?.onRequestCookies ?? contract.varyOnCookies;
-  if (Array.isArray(declared) && declared.length > 0) return declared[0];
-  const source = readFileSync(path.join(REPO_ROOT, "web/i18n/request.ts"), "utf8");
-  const match = /cookies\(\)\)\s*\.get\(\s*"([^"]+)"\s*\)/.exec(source);
-  if (!match) {
-    throw new Error("cannot read the locale cookie name from web/i18n/request.ts");
-  }
-  return match[1];
-}
-
 function checkCoverage(contract, payload) {
   const failures = [];
   const rules = payload.request?.rules ?? [];
-  const allow = rules.find((rule) => rule.action_parameters?.cache === true);
-  const bypasses = rules.filter((rule) => rule.action_parameters?.cache === false);
+  const active = rules.filter((rule) => rule.enabled !== false);
+  const allows = active.filter((rule) => rule.action_parameters?.cache === true);
+  const bypasses = active.filter((rule) => rule.action_parameters?.cache === false);
 
-  if (!allow) {
+  if (allows.length === 0) {
     failures.push("payload has no cache-eligible rule");
     return failures;
   }
 
-  for (const scopePath of contract.scope?.paths ?? []) {
-    const prefix = scopePath.replace(/\*+$/, "");
-    if (!allow.expression.includes(`"${prefix}"`)) {
-      failures.push(`cache-eligible rule does not scope ${scopePath}`);
-    }
-  }
+  const localeCookies = contract.bypass?.onRequestCookies ?? [];
+  const languageSignals = contract.bypass?.onAcceptLanguageContains ?? [];
+  const catchAll = 'starts_with(http.request.uri.path, "/cafes/")';
 
-  const cacheableContract = contract.cacheable ?? {};
-  const cacheable = new Set(cacheableContract.statuses ?? []);
-  const noStore = (allow.action_parameters.edge_ttl?.status_code_ttl ?? []).filter(
-    (entry) => entry.value === -1,
-  );
-  for (let status = 200; status <= 599; status += 1) {
-    if (cacheable.has(status)) continue;
-    // 304 is exempt on purpose: Cloudflare inherits the 200 TTL for 304 when no
-    // explicit TTL is set, and an explicit no-store on 304 makes every
-    // subsequent request revalidate ("this cycle will persist" —
-    // developers.cloudflare.com/cache/how-to/configure-cache-status-code/).
-    // A 304 carries no body, so it cannot store a stale shell.
-    if (status === 304) continue;
-    if (!noStore.some((entry) => statusCovered(entry, status))) {
-      failures.push(`status ${status} is not pinned no-store on the cache-eligible rule`);
-    }
-  }
+  for (const allow of allows) {
+    const tag = `cache-eligible rule "${allow.description || allow.expression.slice(0, 60)}"`;
 
-  // TTL semantics: respect_origin is what makes the contract's s-maxage /
-  // stale-while-revalidate meaningful — an override would silently ignore
-  // the origin TTL. strong ETags are required for SWR revalidation.
-  if (cacheable.size > 0) {
-    const edgeTtl = allow.action_parameters?.edge_ttl;
-    if (!edgeTtl || edgeTtl.mode !== "respect_origin") {
-      failures.push("cache-eligible rule must keep edge_ttl.mode=respect_origin");
+    for (const scopePath of contract.scope?.paths ?? []) {
+      const prefix = scopePath.replace(/\*+$/, "");
+      if (!allow.expression.includes(`"${prefix}"`)) {
+        failures.push(`${tag} does not scope ${scopePath}`);
+      }
     }
-    if (
-      (cacheableContract.staleWhileRevalidateSeconds ?? 0) > 0 &&
-      allow.action_parameters?.respect_strong_etags !== true
-    ) {
-      failures.push("stale-while-revalidate needs respect_strong_etags: true");
+
+    const cacheableContract = contract.cacheable ?? {};
+    const cacheable = new Set(cacheableContract.statuses ?? []);
+    const noStore = (allow.action_parameters.edge_ttl?.status_code_ttl ?? []).filter(
+      (entry) => entry.value === -1,
+    );
+    for (let status = 200; status <= 599; status += 1) {
+      if (cacheable.has(status)) continue;
+      // 304 is exempt on purpose: Cloudflare inherits the 200 TTL for 304 when
+      // no explicit TTL is set, and an explicit no-store on 304 makes every
+      // subsequent request revalidate (developers.cloudflare.com/cache/how-to/
+      // configure-cache-status-code/). A 304 carries no body, so it cannot
+      // store a stale shell.
+      if (status === 304) continue;
+      if (!noStore.some((entry) => statusCovered(entry, status))) {
+        failures.push(`status ${status} is not pinned no-store on the ${tag}`);
+      }
+    }
+
+    // TTL semantics: respect_origin is what makes the contract's s-maxage /
+    // stale-while-revalidate meaningful — an override would silently ignore
+    // the origin TTL (BRAWUKA-836). strong ETags are required for SWR
+    // revalidation.
+    if (cacheable.size > 0) {
+      const edgeTtl = allow.action_parameters?.edge_ttl;
+      if (!edgeTtl || edgeTtl.mode !== "respect_origin") {
+        failures.push(`${tag} must keep edge_ttl.mode=respect_origin`);
+      }
+      if (
+        (cacheableContract.staleWhileRevalidateSeconds ?? 0) > 0 &&
+        allow.action_parameters?.respect_strong_etags !== true
+      ) {
+        failures.push(`${tag} needs respect_strong_etags for stale-while-revalidate`);
+      }
+    }
+
+    // Locale signal exclusions must hold on EVERY allow rule — a later
+    // allow that drops them caches non-default-locale requests the bypass
+    // contract forbids. Require the negated term: a positive
+    // `contains "locale="` in an allow expression is not an exclusion.
+    for (const cookie of localeCookies) {
+      const negated = `not (http.cookie contains "${cookie}=`;
+      if (!allow.expression.includes(negated)) {
+        failures.push(`${tag} does not exclude the ${cookie} cookie`);
+      }
+    }
+    for (const lang of languageSignals) {
+      const negated = `not (any(http.request.headers["accept-language"][*] wildcard "*${lang}*"))`;
+      if (!allow.expression.toLowerCase().includes(negated.toLowerCase())) {
+        failures.push(`${tag} does not exclude Accept-Language containing ${lang}`);
+      }
     }
   }
 
@@ -254,15 +282,7 @@ function checkCoverage(contract, payload) {
     }
   }
 
-  const localeCookies =
-    contract.sharedCacheAcrossLocales === false
-      ? [localeCookieName(contract)]
-      : (contract.bypass?.onRequestCookies ?? contract.varyOnCookies ?? []);
-  const catchAll = 'starts_with(http.request.uri.path, "/cafes/")';
   for (const cookie of localeCookies) {
-    if (!allow.expression.includes(`"${cookie}`)) {
-      failures.push(`cache-eligible rule does not exclude the ${cookie} cookie`);
-    }
     // Covered by a dedicated bypass rule OR the path catch-all that denies
     // every /cafes/* request the allow rule did not override (v9 order).
     if (
@@ -276,25 +296,15 @@ function checkCoverage(contract, payload) {
     }
   }
 
-  // Header-side locale signals live under bypass.onAcceptLanguageContains
-  // (bypass contract — no custom keys): the allow rule must gate on
-  // Accept-Language and each declared value must be covered by a bypass
-  // (dedicated rule or the path catch-all).
-  const languageSignals = contract.bypass?.onAcceptLanguageContains ?? [];
-  if (languageSignals.length > 0) {
-    if (!allow.expression.toLowerCase().includes("accept-language")) {
-      failures.push("cache-eligible rule does not gate on Accept-Language");
-    }
-    for (const lang of languageSignals) {
-      if (
-        !bypasses.some(
-          (rule) =>
-            rule.expression.includes(`"*${lang}*"`) ||
-            rule.expression === catchAll,
-        )
-      ) {
-        failures.push(`no bypass covers Accept-Language containing ${lang}`);
-      }
+  for (const lang of languageSignals) {
+    if (
+      !bypasses.some(
+        (rule) =>
+          rule.expression.includes(`"*${lang}*"`) ||
+          rule.expression === catchAll,
+      )
+    ) {
+      failures.push(`no bypass covers Accept-Language containing ${lang}`);
     }
   }
 
@@ -307,9 +317,7 @@ function checkCoverage(contract, payload) {
 
   if (
     contract.sharedCacheAcrossLocales === false &&
-    (contract.bypass?.onRequestCookies ?? []).length +
-      languageSignals.length ===
-      0
+    localeCookies.length + languageSignals.length === 0
   ) {
     failures.push(
       "contract declares sharedCacheAcrossLocales: false but names no request signal to enforce it",

@@ -171,7 +171,6 @@ function negatedTerm(signal: CacheSignal): string {
 }
 
 const CAFE_PATH_PREFIX = `starts_with(http.request.uri.path, "/cafes/")`;
-const NEVER_MATCHES = `not (starts_with(http.request.uri.path, "/"))`;
 
 /** Non-cacheable status ranges for `status_code_ttl` (value -1 = no-store).
  *  Complement of `cacheableStatuses` over [200, ∞); 304 is excluded — it is
@@ -307,52 +306,4 @@ export function cafeShellCloudflareRuleset(
   };
 }
 
-/* ------------------------------------------------------------------ *
- * Policy-level outcome model — the test oracle for the ruleset above.
- * Evaluates the same signal list with the same last-match-wins order, so
- * the drift test can prove per-request outcomes (cache / bypass /
- * uncached) without a Cloudflare expression engine.
- * ------------------------------------------------------------------ */
 
-export interface CacheableRequest {
-  path: string;
-  host: string;
-  /** Raw Cookie header value (empty string = no cookies). */
-  cookie: string;
-  /** Accept-Language header value. */
-  acceptLanguage: string;
-}
-
-function signalMatches(signal: CacheSignal, req: CacheableRequest): boolean {
-  switch (signal.kind) {
-    case "cookiePrefix":
-      return req.cookie.includes(signal.value);
-    case "cookieExact":
-      return req.cookie.includes(`${signal.value}=`);
-    case "acceptLanguage":
-      return req.acceptLanguage.toLowerCase().includes(signal.value.toLowerCase());
-    case "hostname":
-      return req.host === signal.value;
-  }
-}
-
-/** Effective outcome for one request, last-match-wins over the four rules. */
-export function cafeShellCacheOutcome(
-  policy: CafeShellCachePolicy,
-  req: CacheableRequest,
-): "cache" | "bypass" | "uncached" {
-  const signals = cafeShellSignals(policy);
-  const isCafe = req.path.startsWith("/cafes/");
-  const hasSignal = signals.some((s) => signalMatches(s, req));
-  const hasAuthCookie = policy.bypassOnRequestCookiePrefixes.some((p) =>
-    req.cookie.includes(p),
-  );
-  const isBypassHost = policy.bypassHostnames.includes(req.host);
-  // Rule order 1→4, last matching set_cache_settings wins.
-  let outcome: "cache" | "bypass" | "uncached" = "uncached";
-  if (isCafe && !hasSignal) outcome = "cache";
-  if (hasAuthCookie) outcome = "bypass";
-  if (isBypassHost) outcome = "bypass";
-  if (isCafe && hasSignal) outcome = "bypass";
-  return outcome;
-}

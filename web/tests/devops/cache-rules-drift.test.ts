@@ -5,31 +5,49 @@ import {
   renderCacheRulesJson,
   renderCloudflareRulesJson,
 } from "../../scripts/lib/generate-cache-rules";
-import { cafeShellCacheOutcome } from "@/lib/cache-policy";
 import type { CloudflareCacheRuleset } from "@/lib/cache-policy";
-import { loadYaml, parseAppConfig } from "@/lib/config-schema";
+import { evaluateRules } from "../../../scripts/devops/lib/rules-language.mjs";
 
 // BRAWUKA-184/821/836: both deploy/dokploy artifacts are generated —
 // cache-rules.json is the policy contract, cloudflare-cache-rules.json is
 // the deployable Cloudflare ruleset applied by
 // scripts/devops/apply-cache-rules.sh. Their only source is
 // `web/config/app.yaml` `seo.shellCache` mapped through
-// `web/lib/cache-policy.ts`. Byte-exact drift pins plus policy-level
-// effective-outcome coverage (the BRAWUKA-836 review finding: membership
-// tests never proved the allow rule stays reachable).
+// `web/lib/cache-policy.ts`. Byte-exact drift pins plus outcome coverage
+// against the REAL generated payload, evaluated by the same
+// rules-language engine check-cache-policy.mjs gates deployment with — a
+// second in-repo outcome model would silently drift from the deployed
+// semantics (r3 P2).
 const DEPLOY_DIR = path.resolve(__dirname, "../../../deploy/dokploy");
 const CONTRACT = path.join(DEPLOY_DIR, "cache-rules.json");
 const RULESET = path.join(DEPLOY_DIR, "cloudflare-cache-rules.json");
 
-const policy = parseAppConfig(loadYaml("app.yaml")).seo.shellCache;
-// Repo-generated file, shape fixed by cafeShellCloudflareRuleset() — the
-// byte-exact drift pin above already proves the committed payload.
-const ruleset = (JSON.parse(readFileSync(RULESET, "utf8")) as CloudflareCacheRuleset).request.rules;
+const payload = JSON.parse(
+  readFileSync(RULESET, "utf8"),
+) as CloudflareCacheRuleset;
+const ruleset = payload.request.rules;
+
+/** Effective cache outcome for one request through the real payload. */
+function outcome(req: {
+  path: string;
+  host: string;
+  cookie: string;
+  acceptLanguage: string;
+}): "cache" | "bypass" | "uncached" {
+  const { setting } = evaluateRules(ruleset, {
+    host: req.host,
+    path: req.path,
+    cookie: req.cookie,
+    acceptLanguage: [req.acceptLanguage],
+  });
+  return setting === true ? "cache" : setting === false ? "bypass" : "uncached";
+}
 
 const REQ = {
   prodEn: { path: "/cafes/x", host: "cafemood.app", cookie: "", acceptLanguage: "en-US,en;q=0.9" },
   zhCookie: { path: "/cafes/x", host: "cafemood.app", cookie: "locale=zh", acceptLanguage: "en-US,en;q=0.9" },
   zhHeader: { path: "/cafes/x", host: "cafemood.app", cookie: "", acceptLanguage: "zh-CN,zh;q=0.9" },
+  zhTw: { path: "/cafes/x", host: "cafemood.app", cookie: "", acceptLanguage: "zh-TW" },
   auth: { path: "/cafes/x", host: "cafemood.app", cookie: "sb-access-token=eyJ…", acceptLanguage: "en" },
   staging: { path: "/cafes/x", host: "staging.cafemood.app", cookie: "", acceptLanguage: "en" },
   otherPath: { path: "/settings", host: "cafemood.app", cookie: "", acceptLanguage: "en" },
@@ -47,12 +65,13 @@ describe("cafe-shell CDN cache rules", () => {
   // cached en shell. The deployable plan has no custom cache keys, so the
   // contract is a bypass list: any non-default-locale signal bypasses.
   it("keeps every non-default-locale request out of the shared cache", () => {
-    expect(cafeShellCacheOutcome(policy, REQ.prodEn)).toBe("cache");
-    expect(cafeShellCacheOutcome(policy, REQ.zhCookie)).toBe("bypass");
-    expect(cafeShellCacheOutcome(policy, REQ.zhHeader)).toBe("bypass");
-    expect(cafeShellCacheOutcome(policy, REQ.auth)).toBe("bypass");
-    expect(cafeShellCacheOutcome(policy, REQ.staging)).toBe("bypass");
-    expect(cafeShellCacheOutcome(policy, REQ.otherPath)).toBe("uncached");
+    expect(outcome(REQ.prodEn)).toBe("cache");
+    expect(outcome(REQ.zhCookie)).toBe("bypass");
+    expect(outcome(REQ.zhHeader)).toBe("bypass");
+    expect(outcome(REQ.zhTw)).toBe("bypass");
+    expect(outcome(REQ.auth)).toBe("bypass");
+    expect(outcome(REQ.staging)).toBe("bypass");
+    expect(outcome(REQ.otherPath)).toBe("uncached");
     expect(
       JSON.parse(readFileSync(CONTRACT, "utf8")).sharedCacheAcrossLocales,
     ).toBe(false);
@@ -83,18 +102,6 @@ describe("cafe-shell CDN cache rules", () => {
     for (const rule of ruleset) {
       expect(rule.expression).not.toContain(" or ");
     }
-    // Response phase: a /cafes/* response carrying Set-Cookie is pinned
-    // no-store (the request-side sb- bypass is only a proxy for it).
-    const payload = JSON.parse(
-      readFileSync(RULESET, "utf8"),
-    ) as CloudflareCacheRuleset;
-    expect(payload.response.phase).toBe("http_response_cache_settings");
-    const setCookieRule = payload.response.rules.find((r) =>
-      r.expression.includes('http.response.headers["set-cookie"]'),
-    )!;
-    expect(setCookieRule.action_parameters["no-store"]).toMatchObject({
-      operation: "set",
-    });
   });
 
   it("does not declare custom cache keys the deployed plan cannot apply", () => {
@@ -119,7 +126,7 @@ describe("cafe-shell CDN cache rules", () => {
       payload.response.rules.some(
         (r) =>
           r.action === "set_cache_control" &&
-          r.action_parameters["no-store"]?.operation === "set" &&
+          (r.action_parameters["no-store"] as { operation?: string } | undefined)?.operation === "set" &&
           r.expression.includes('http.response.headers["set-cookie"]') &&
           r.expression.includes('starts_with(http.request.uri.path, "/cafes/")'),
       ),

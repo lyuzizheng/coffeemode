@@ -51,12 +51,21 @@ async function setLocaleCookie(context, base, value) {
  * App-live wait shared by every navigation and fault demo. The DG124 SSR
  * overlay keeps its own check-in CTA in the a11y tree until mount+fade, so a
  * copy assertion taken earlier can pass on the overlay and never measure
- * hydrated copy. The overlay's masthead `header` detaches when it unmounts;
- * the app's discovery `aside` then proves the live surface is up.
+ * hydrated copy. The overlay's masthead `header` detaches when it unmounts —
+ * viewport-independent — then the responsive app surface must be live:
+ * desktop mounts the sidebar `aside` (`hidden lg:flex`, so it never satisfies
+ * this at 390px), mobile mounts the bottom sheet which stamps
+ * `data-sheet-snap="full"` on <html> once the cafe lands at FULL. `.first()`
+ * on the union resolves whichever surface exists — html precedes aside in
+ * DOM order, so the mobile branch wins once the attribute appears.
  */
 async function waitForAppLive(page) {
   await page.waitForSelector("header", { state: "detached", timeout: 20000 });
-  await page.locator("aside").first().waitFor({ state: "visible", timeout: 20000 });
+  await page
+    .locator("aside")
+    .or(page.locator("html[data-sheet-snap='full']"))
+    .first()
+    .waitFor({ state: "visible", timeout: 20000 });
 }
 
 /**

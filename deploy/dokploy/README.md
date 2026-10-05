@@ -11,7 +11,8 @@ This directory contains Dokploy VPS deployment configurations, operational scrip
 - `deploy-release.sh`: Production release deployment orchestrator with zero-downtime rolling restart.
 - `backup-postgres.sh` / `restore-postgres.sh`: Database backup and disaster recovery drill scripts.
 - `smoke-test.sh`: Post-deployment automated smoke tests (health, static assets, spatial queries, workers).
-- `cache-rules.json`: Cloudflare `http_request_cache_settings` ruleset for `/cafes/*` — generated from `web/config/app.yaml` `seo.shellCache` by `web/scripts/generate-cache-rules.mjs` (`npm run gen:cache-rules`); `npm run check:cache-rules` fails CI on drift. Enforceable shape only (BRAWUKA-834): bypass conditions + `status_code_ttl`, no custom-cache-key declarations — the `cafemood.app` zone is on Cloudflare Free where header/cookie cache keys are Enterprise-only. Apply with `PUT /zones/{zone_id}/rulesets/{ruleset_id}`; no repo consumer applies it to the zone yet (infra follow-up).
+- `cache-rules.json`: Policy contract for the `/cafes/*` shell cache — generated from `web/config/app.yaml` `seo.shellCache` by `web/scripts/generate-cache-rules.mjs` (`npm run gen:cache-rules`); `npm run check:cache-rules` fails CI on drift.
+- `cloudflare-cache-rules.json`: Deployable Cloudflare ruleset (`http_request_cache_settings`) generated from the same policy — the exact payload `scripts/devops/apply-cache-rules.sh` applies to the zone (BRAWUKA-834). Never hand-edit: the hand-maintained v7 payload drifted into a catch-all bypass that disabled the allow rule (BRAWUKA-836).
 
 ## Schema Migrations on Every Deploy (BRAWUKA-690)
 

@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 /**
- * Generate `../deploy/dokploy/cache-rules.json` from `config/app.yaml`
- * (`seo.shellCache`) via `lib/cache-policy.ts` `cafeShellCdnRules()`
- * (BRAWUKA-821).
+ * Generate the cafe-shell cache artifacts from `config/app.yaml`
+ * (`seo.shellCache`) via `lib/cache-policy.ts` (BRAWUKA-821):
+ *
+ *   - `deploy/dokploy/cache-rules.json` — policy contract (cafeShellCdnRules)
+ *   - `deploy/dokploy/cloudflare-cache-rules.json` — deployable ruleset
+ *     (cafeShellCloudflareRuleset), the payload
+ *     `scripts/devops/apply-cache-rules.sh` PUTs to the zone (BRAWUKA-834).
  *
  * The YAML + cache-policy module are the single source of truth for the
  * /cafes/* CDN cache contract. Editing the contract is one edit (the YAML)
@@ -31,7 +35,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_ROOT = path.join(__dirname, "..");
 const ENTRY = path.join(__dirname, "lib", "generate-cache-rules.ts");
 const BUNDLE = path.join(__dirname, "dist", "generate-cache-rules.mjs");
-const OUT_FILE = path.join(WEB_ROOT, "..", "deploy", "dokploy", "cache-rules.json");
+const OUT_DIR = path.join(WEB_ROOT, "..", "deploy", "dokploy");
 
 // loadYaml() resolves config files from cwd — pin it to web/ so the script
 // behaves identically from `web/` and the repo root.
@@ -56,26 +60,43 @@ async function buildBundle() {
 async function main() {
   const checkOnly = process.argv.includes("--check");
   await buildBundle();
-  const { renderCacheRulesJson } = await import(pathToFileURL(BUNDLE).href);
-  const rendered = renderCacheRulesJson();
-  const committed = readFileSync(OUT_FILE, "utf8");
-  if (checkOnly) {
-    if (rendered !== committed) {
-      console.error(
-        "❌ deploy/dokploy/cache-rules.json is stale: re-run `npm run gen:cache-rules` after editing web/config/app.yaml or web/lib/cache-policy.ts.",
-      );
-      process.exitCode = 1;
-      return;
+  const { renderCacheRulesJson, renderCloudflareRulesJson } = await import(
+    pathToFileURL(BUNDLE).href
+  );
+  const artifacts = [
+    { file: "cache-rules.json", render: renderCacheRulesJson },
+    { file: "cloudflare-cache-rules.json", render: renderCloudflareRulesJson },
+  ];
+  let stale = false;
+  for (const { file, render } of artifacts) {
+    const outFile = path.join(OUT_DIR, file);
+    const rel = path.relative(process.cwd(), outFile);
+    const rendered = render();
+    let committed = null;
+    try {
+      committed = readFileSync(outFile, "utf8");
+    } catch {
+      // Missing file counts as stale/missing-generation below.
     }
-    console.log("✅ deploy/dokploy/cache-rules.json matches web/config/app.yaml seo.shellCache.");
-    return;
+    if (checkOnly) {
+      if (rendered !== committed) {
+        console.error(
+          `❌ deploy/dokploy/${file} is stale: re-run \`npm run gen:cache-rules\` after editing web/config/app.yaml or web/lib/cache-policy.ts.`,
+        );
+        stale = true;
+        continue;
+      }
+      console.log(`✅ deploy/dokploy/${file} matches web/config/app.yaml seo.shellCache.`);
+      continue;
+    }
+    if (rendered === committed) {
+      console.log(`deploy/dokploy/${file} already up to date.`);
+      continue;
+    }
+    writeFileSync(outFile, rendered);
+    console.log("wrote", rel);
   }
-  if (rendered === committed) {
-    console.log("deploy/dokploy/cache-rules.json already up to date.");
-    return;
-  }
-  writeFileSync(OUT_FILE, rendered);
-  console.log("wrote", path.relative(process.cwd(), OUT_FILE));
+  if (stale) process.exitCode = 1;
 }
 
 main().catch((err) => {

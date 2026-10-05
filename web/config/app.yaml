@@ -143,34 +143,33 @@ seo:
     # gone-cafe 404, 500s, redirects — MUST bypass.
     cacheableStatuses: [200]
     # A response carrying Set-Cookie (Supabase session refresh via the proxy)
-    # MUST bypass: enforced at the origin by proxy.ts, which stamps
-    # private, no-store on session-refresh replies — no config needed.
+    # MUST bypass, otherwise a refreshed session cookie is cached cross-user.
+    bypassOnSetCookieResponse: true
     # Request-cookie name prefixes that force an edge bypass (Supabase
     # session cookies). The origin cannot see the edge cache key, so this is
     # a CDN-rule condition, not an origin header.
     bypassOnRequestCookiePrefixes: ["sb-"]
-    # BRAWUKA-834: the zone runs Cloudflare Free — header/cookie custom cache
-    # keys are Enterprise-only, so the edge CANNOT key a shared entry on the
-    # locale inputs (the earlier varyOn/varyOnCookies contract had no
-    # mechanism behind it; live readback showed the deployed rule keyed on
-    # URL only and served a zh request the cached en shell). The only
-    # enforceable contract is a bypass: a shared /cafes/* entry may hold
-    # ONLY the default-locale shell, and any request that could resolve to a
-    # non-default locale (i18n/request.ts precedence: locale cookie →
-    # Accept-Language zh → en) must bypass it.
+    # The shell is content-negotiated (cookie/Accept-Language, DG110), but
+    # Next overwrites Vary on App Router HTML with its internal
+    # `rsc, next-router-*` set, so origin-declared Vary never ships and the
+    # edge cannot key locales either — custom cache keys are not in the
+    # deployed plan's toolbox (live readback BRAWUKA-834). The only safe
+    # shared-cache rule is therefore a PROOF of the default locale:
+    # cache only requests that cannot resolve to a non-default locale
+    # (i18n/request.ts precedence: cookie → Accept-Language → en). Every
+    # request carrying a locale signal bypasses instead of poisoning (or
+    # sharing) a cross-locale entry (BRAWUKA-821).
     #
-    # Request-cookie names whose PRESENCE forces a bypass: `locale` is a
-    # locale override, so any cookie-set request can resolve non-default.
+    # Request-cookie names that prove a locale choice and MUST bypass:
     bypassOnRequestCookies: ["locale"]
-    # Accept-Language substrings that resolve to a non-default locale —
-    # keep in sync with i18n/request.ts (`accept.includes("zh")`).
-    bypassOnAcceptLanguageWildcards: ["*zh*"]
-    # Hosts that bypass edge cache on every route (spec 0005 §3 "staging
-    # bypasses all routes").
-    bypassOnHosts: ["staging.cafemood.app"]
-    # Statuses that keep the origin TTL instead of no-store so conditional
-    # revalidation still works (304 Not Modified).
-    revalidatableStatuses: [304]
+    # Accept-Language substrings that resolve to a non-default locale and
+    # MUST bypass (origin i18n treats any "zh" as zh).
+    bypassOnAcceptLanguageContains: ["zh"]
+    # Request Host values that MUST never cache — staging bypasses every
+    # route per spec 0005 §3 (the pre-821 live rule lacked a hostname
+    # restriction, which is why staging cached at all).
+    bypassHostnames: ["staging.cafemood.app"]
+    sharedCacheAcrossLocales: false
   # 404 recovery block (DG111): how many nearby cafes to list relative to a
   # gone cafe's last known location. Radius reuses search.maxRadiusKm.
   recoveryLimit: 5

@@ -1,96 +1,97 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { renderCacheRulesJson } from "../../scripts/lib/generate-cache-rules";
+import {
+  renderCacheRulesJson,
+  renderCloudflareRulesJson,
+} from "../../scripts/lib/generate-cache-rules";
+import { cafeShellCacheOutcome } from "@/lib/cache-policy";
+import type { CloudflareCacheRuleset } from "@/lib/cache-policy";
+import { loadYaml, parseAppConfig } from "@/lib/config-schema";
 
-// BRAWUKA-184/834: deploy/dokploy/cache-rules.json is a generated artifact —
-// the Cloudflare http_request_cache_settings ruleset for the SSR /cafes/*
-// shell. Its only source is `web/config/app.yaml` `seo.shellCache` mapped
-// through `web/lib/cache-policy.ts` `cafeShellCdnRules()`. The deleted unit
-// suite (BRAWUKA-682) was the last pin; this devops suite replaces it — same
-// convention as migration-drift.test.ts, pure file I/O, no DB.
+// BRAWUKA-184/821/836: both deploy/dokploy artifacts are generated —
+// cache-rules.json is the policy contract, cloudflare-cache-rules.json is
+// the deployable Cloudflare ruleset applied by
+// scripts/devops/apply-cache-rules.sh. Their only source is
+// `web/config/app.yaml` `seo.shellCache` mapped through
+// `web/lib/cache-policy.ts`. Byte-exact drift pins plus policy-level
+// effective-outcome coverage (the BRAWUKA-836 review finding: membership
+// tests never proved the allow rule stays reachable).
+const DEPLOY_DIR = path.resolve(__dirname, "../../../deploy/dokploy");
+const CONTRACT = path.join(DEPLOY_DIR, "cache-rules.json");
+const RULESET = path.join(DEPLOY_DIR, "cloudflare-cache-rules.json");
 
-/** Boundary type for the generated artifact — checked byte-exactly above,
- *  so the parse is trusted; the shape below exists for member typing. */
-interface EdgeRule {
-  expression: string;
-  action_parameters: {
-    cache: boolean;
-    edge_ttl?: {
-      mode: string;
-      status_code_ttl: Array<{
-        status_code_range: { from: number; to?: number };
-        value: number;
-      }>;
-    };
-  };
-}
-const CACHE_RULES = path.resolve(__dirname, "../../../deploy/dokploy/cache-rules.json");
+const policy = parseAppConfig(loadYaml("app.yaml")).seo.shellCache;
+// Repo-generated file, shape fixed by cafeShellCloudflareRuleset() — the
+// byte-exact drift pin above already proves the committed payload.
+const ruleset = (JSON.parse(readFileSync(RULESET, "utf8")) as CloudflareCacheRuleset).request.rules;
+
+const REQ = {
+  prodEn: { path: "/cafes/x", host: "cafemood.app", cookie: "", acceptLanguage: "en-US,en;q=0.9" },
+  zhCookie: { path: "/cafes/x", host: "cafemood.app", cookie: "locale=zh", acceptLanguage: "en-US,en;q=0.9" },
+  zhHeader: { path: "/cafes/x", host: "cafemood.app", cookie: "", acceptLanguage: "zh-CN,zh;q=0.9" },
+  auth: { path: "/cafes/x", host: "cafemood.app", cookie: "sb-access-token=eyJ…", acceptLanguage: "en" },
+  staging: { path: "/cafes/x", host: "staging.cafemood.app", cookie: "", acceptLanguage: "en" },
+  otherPath: { path: "/settings", host: "cafemood.app", cookie: "", acceptLanguage: "en" },
+};
 
 describe("cafe-shell CDN cache rules", () => {
-  it("cache-rules.json matches the generated contract (npm run gen:cache-rules)", () => {
-    expect(readFileSync(CACHE_RULES, "utf8")).toBe(renderCacheRulesJson());
+  it("generated artifacts match the policy (npm run gen:cache-rules)", () => {
+    expect(readFileSync(CONTRACT, "utf8")).toBe(renderCacheRulesJson());
+    expect(readFileSync(RULESET, "utf8")).toBe(renderCloudflareRulesJson());
   });
 
-  // The BRAWUKA-821/834 failure mode: the shell's locale resolves
-  // cookie → Accept-Language (i18n/request.ts), but the edge cache key is
-  // URL-only — custom cache keys are Enterprise-only, so the earlier
-  // varyOn/varyOnCookies declaration had no mechanism behind it and a
-  // `locale=zh` request was served the cached en shell. The only
-  // enforceable contract is a bypass: the shared entry may hold ONLY the
-  // default-locale shell, so the cacheable rule MUST exclude every
-  // locale-negotiated request and a catch-all bypass MUST cover the rest
-  // of /cafes/*.
-  it("keeps every locale-negotiated /cafes/* request out of the shared cache", () => {
-    const ruleset: { phase: string; rules: EdgeRule[] } = JSON.parse(
-      readFileSync(CACHE_RULES, "utf8"),
-    );
-    expect(ruleset.phase).toBe("http_request_cache_settings");
+  // The BRAWUKA-821 failure mode: the shell's locale resolves cookie →
+  // Accept-Language (i18n/request.ts) but the live edge rule keyed on the
+  // URL alone (BRAWUKA-834 readback) — a `locale=zh` request was served a
+  // cached en shell. The deployable plan has no custom cache keys, so the
+  // contract is a bypass list: any non-default-locale signal bypasses.
+  it("keeps every non-default-locale request out of the shared cache", () => {
+    expect(cafeShellCacheOutcome(policy, REQ.prodEn)).toBe("cache");
+    expect(cafeShellCacheOutcome(policy, REQ.zhCookie)).toBe("bypass");
+    expect(cafeShellCacheOutcome(policy, REQ.zhHeader)).toBe("bypass");
+    expect(cafeShellCacheOutcome(policy, REQ.auth)).toBe("bypass");
+    expect(cafeShellCacheOutcome(policy, REQ.staging)).toBe("bypass");
+    expect(cafeShellCacheOutcome(policy, REQ.otherPath)).toBe("uncached");
+    expect(
+      JSON.parse(readFileSync(CONTRACT, "utf8")).sharedCacheAcrossLocales,
+    ).toBe(false);
+  });
 
-    const cacheable = ruleset.rules.find((r) => r.action_parameters.cache);
-    expect(cacheable).toBeDefined();
-    // Locale inputs are bypass exclusions, not key inputs.
-    for (const exclusion of [
-      'http.cookie contains "sb-"',
-      'http.cookie contains "locale="',
-      'wildcard "*zh*"',
-      'http.host ne "staging.cafemood.app"',
-    ]) {
-      expect(cacheable?.expression).toContain(exclusion);
+  // BRAWUKA-836: the fallback must be the algebraic complement of the
+  // allow rule's non-path conditions — a bare `/cafes/` catch-all matches
+  // default-locale requests too, and last-match-wins then disables
+  // caching entirely. Structure pins: 4 rules, allow first, every
+  // negated allow-term mirrored by a positive term in the fallback.
+  it("fallback bypasses exactly the requests the allow rule excluded", () => {
+    expect(ruleset).toHaveLength(4);
+    const [allow, authBypass, stagingBypass, fallback] = ruleset;
+    expect(allow.action_parameters.cache).toBe(true);
+    for (const rule of [authBypass, stagingBypass, fallback]) {
+      expect(rule.action_parameters.cache).toBe(false);
     }
+    const allowNegations = [...allow.expression.matchAll(/not \(([^)]+(?:\([^)]*\))?[^)]*)\)/g)].map(
+      (m) => m[1],
+    );
+    const allowNe = [...allow.expression.matchAll(/http\.host ne "([^"]+)"/g)].map((m) => m[1]);
+    for (const negated of allowNegations) {
+      expect(fallback.expression, `fallback misses complement of "${negated}"`).toContain(negated);
+    }
+    for (const host of allowNe) {
+      expect(fallback.expression).toContain(`http.host eq "${host}"`);
+    }
+    // …and it must not be an unconditional catch-all (the v7 defect).
+    expect(fallback.expression).not.toBe(`starts_with(http.request.uri.path, "/cafes/")`);
+    expect(fallback.expression).toContain(" or ");
+  });
 
-    // A catch-all bypass covers every /cafes/* request the cacheable rule
-    // rejects — under either first-match or last-match semantics.
-    expect(
-      ruleset.rules.some(
-        (r) =>
-          !r.action_parameters.cache &&
-          r.expression === 'starts_with(http.request.uri.path, "/cafes/")',
-      ),
-    ).toBe(true);
-
-    // Spec 0005 §3: the staging host bypasses every route.
-    expect(
-      ruleset.rules.some(
-        (r) =>
-          !r.action_parameters.cache &&
-          r.expression === 'http.host eq "staging.cafemood.app"',
-      ),
-    ).toBe(true);
-
-    // Non-200/304 statuses are no-store (gone-cafe 404 must never be
-    // cached); 200 and 304 stay outside every no-store range.
-    const edgeTtl = cacheable?.action_parameters.edge_ttl;
-    expect(edgeTtl?.mode).toBe("respect_origin");
-    expect(edgeTtl?.status_code_ttl).toBeDefined();
-    const coveredStatuses = (target: number) =>
-      edgeTtl?.status_code_ttl.some(
-        (t) =>
-          t.status_code_range.from <= target &&
-          target <= (t.status_code_range.to ?? Number.POSITIVE_INFINITY),
-      );
-    expect(coveredStatuses(404)).toBe(true);
-    expect(coveredStatuses(200)).toBe(false);
-    expect(coveredStatuses(304)).toBe(false);
+  it("does not declare custom cache keys the deployed plan cannot apply", () => {
+    const contract = readFileSync(CONTRACT, "utf8");
+    const payload = readFileSync(RULESET, "utf8");
+    for (const text of [contract, payload]) {
+      expect(text).not.toContain("varyOn");
+      expect(text).not.toContain("custom_cache_key");
+      expect(text).not.toContain("cache_key");
+    }
   });
 });

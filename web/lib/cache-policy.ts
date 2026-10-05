@@ -4,8 +4,16 @@
  * Single source of truth for the `/cafes/:id*` cache contract. The static
  * `Cache-Control: public, s-maxage=…` header in `next.config.ts` only
  * describes the cacheable case; the bypass fields (owned by
- * `web/config/app.yaml` `seo.shellCache`, DG107) describe every request
- * and response class that MUST NOT sit in shared cache.
+ * `web/config/app.yaml` `seo.shellCache`, DG107) describe every request or
+ * response that MUST NOT sit in shared cache.
+ *
+ * Locale safety is enforced as a bypass contract, not a cache key: the
+ * origin negotiates locale from `locale` cookie → Accept-Language → en
+ * (i18n/request.ts) but ships no usable Vary on App Router HTML, and
+ * custom header/cookie cache keys are not part of the deployed edge
+ * plan's toolbox (BRAWUKA-834 readback). The only locale-safe shared
+ * cache is therefore the request that PROVES the default locale — any
+ * request carrying a non-default-locale signal bypasses (BRAWUKA-821).
  *
  * Edge-safe by construction: no `node:` imports, no `server-only` guard, so
  * `proxy.ts` (edge runtime), `next.config.ts` (config transpiler), unit
@@ -17,16 +25,18 @@ interface CafeShellCachePolicy {
   staleWhileRevalidateSeconds: number;
   /** Only these statuses may sit in shared cache (gone-cafe 404s must not). */
   cacheableStatuses: readonly number[];
-  /** Statuses that keep the origin TTL (304 revalidation must not no-store). */
-  revalidatableStatuses: readonly number[];
+  /** A response carrying Set-Cookie (session refresh) must bypass. */
+  bypassOnSetCookieResponse: boolean;
   /** Request-cookie name prefixes that force an edge bypass (sb-* sessions). */
   bypassOnRequestCookiePrefixes: readonly string[];
-  /** Request-cookie names whose presence forces an edge bypass (`locale`). */
+  /** Exact request-cookie names that force an edge bypass (`locale`). */
   bypassOnRequestCookies: readonly string[];
   /** Accept-Language substrings that resolve to a non-default locale. */
-  bypassOnAcceptLanguageWildcards: readonly string[];
-  /** Hosts that bypass edge cache on every route (spec 0005 §3). */
-  bypassOnHosts: readonly string[];
+  bypassOnAcceptLanguageContains: readonly string[];
+  /** Request Host values that bypass all caching (staging — spec 0005 §3). */
+  bypassHostnames: readonly string[];
+  /** False = locales MUST NOT share a cache entry. */
+  sharedCacheAcrossLocales: boolean;
 }
 
 /** Stamped per response by the proxy on session-refresh (Set-Cookie) replies. */
@@ -41,157 +51,276 @@ export function cafeShellCacheControl(policy: CafeShellCachePolicy): string {
   );
 }
 
-/** One rule of a Cloudflare `http_request_cache_settings` ruleset. */
-interface EdgeCacheRule {
-  description: string;
-  enabled: boolean;
-  expression: string;
-  action: "set_cache_settings";
-  action_parameters: {
-    cache: boolean;
-    edge_ttl?: {
-      mode: "respect_origin";
-      /** No-store ranges covering every status that is neither cacheable
-       *  nor revalidatable — the edge-side `onStatusesOtherThan` bypass. */
-      status_code_ttl: Array<{
-        status_code_range: { from: number; to?: number };
-        value: -1;
-      }>;
-    };
-    respect_strong_etags?: boolean;
-  };
-}
-
-/** The generated artifact: a `http_request_cache_settings` ruleset body
- *  ready for `PUT /zones/{zone}/rulesets/{ruleset}` — the enforceable shape
- *  (BRAWUKA-834). Every entry is a real Cloudflare rule expression; nothing
- *  here is a plan-gated declaration. */
 interface CafeShellCdnRules {
-  description: string;
-  phase: "http_request_cache_settings";
-  rules: EdgeCacheRule[];
-}
-
-const CACHEABLE_PATH_PREFIX = "/cafes/";
-
-/** No-store status ranges covering everything except the cacheable and
- *  revalidatable statuses. Derivation: walk 200..599, close a range at each
- *  allowed status; 304 must stay exempt or conditional revalidation dies. */
-function noStoreStatusCodeTtl(
-  cacheableStatuses: readonly number[],
-  revalidatableStatuses: readonly number[],
-): NonNullable<EdgeCacheRule["action_parameters"]["edge_ttl"]>["status_code_ttl"] {
-  const allowed: readonly number[] = [
-    ...cacheableStatuses,
-    ...revalidatableStatuses,
-  ];
-  const ranges: Array<{
-    status_code_range: { from: number; to?: number };
-    value: -1;
-  }> = [];
-  let from: number | undefined;
-  for (let status = 200; status <= 599; status += 1) {
-    if (allowed.includes(status)) {
-      if (from !== undefined) {
-        ranges.push({ status_code_range: { from, to: status - 1 }, value: -1 });
-        from = undefined;
-      }
-    } else if (from === undefined) {
-      from = status;
-    }
-  }
-  if (from !== undefined) {
-    ranges.push({ status_code_range: { from }, value: -1 });
-  }
-  return ranges;
+  scope: { paths: string[] };
+  cacheable: {
+    statuses: number[];
+    cacheControl: string;
+    staleWhileRevalidateSeconds: number;
+  };
+  bypass: {
+    onResponseSetCookie: boolean;
+    onStatusesOtherThan: number[];
+    onRequestCookiePrefixes: string[];
+    /** Exact cookie names bypassed (any `locale` cookie — presence). */
+    onRequestCookies: string[];
+    /** Accept-Language substrings bypassed (non-default locales). */
+    onAcceptLanguageContains: string[];
+    /** Request Host values bypassed (staging — spec 0005 §3). */
+    onHostnames: string[];
+  };
+  sharedCacheAcrossLocales: boolean;
 }
 
 /**
- * Machine-readable edge ruleset derived from the same policy. Checked into
+ * Machine-readable edge rule derived from the same policy. Checked into
  * `deploy/dokploy/cache-rules.json` — regenerated and drift-pinned by
  * `npm run gen:cache-rules` / `check:cache-rules` (BRAWUKA-821) — so the
- * deployment flow reads the contract without parsing YAML.
- *
- * BRAWUKA-834: the emitted rules encode the enforced shape — bypass
- * conditions, not custom cache keys. The `cafemood.app` zone is on
- * Cloudflare Free where header/cookie cache keys are Enterprise-only, so a
- * locale-keyed shared entry is impossible: the cacheable rule fires ONLY
- * for a request that cannot resolve to a non-default locale (no `locale`
- * cookie, no zh in Accept-Language, no sb-* session, not a bypass host),
- * and a catch-all bypass covers every other `/cafes/*` request. Shared
- * entries can therefore hold only the default-locale shell. Rule order
- * mirrors the deployed ruleset and is written so the outcome is identical
- * under first-match and last-match semantics (the cacheable expression
- * excludes every bypass condition).
+ * deployment flow reads the contract without parsing YAML. The matching
+ * deployable payload is `deploy/dokploy/cloudflare-cache-rules.json`,
+ * rendered by `cafeShellCloudflareRuleset()` below.
  */
 export function cafeShellCdnRules(
   policy: CafeShellCachePolicy,
 ): CafeShellCdnRules {
-  const pathPrefix = `starts_with(http.request.uri.path, "${CACHEABLE_PATH_PREFIX}")`;
-  const exclusions = [
+  return {
+    scope: { paths: ["/cafes/*"] },
+    cacheable: {
+      statuses: [...policy.cacheableStatuses],
+      cacheControl: cafeShellCacheControl(policy),
+      staleWhileRevalidateSeconds: policy.staleWhileRevalidateSeconds,
+    },
+    bypass: {
+      onResponseSetCookie: policy.bypassOnSetCookieResponse,
+      onStatusesOtherThan: [...policy.cacheableStatuses],
+      onRequestCookiePrefixes: [...policy.bypassOnRequestCookiePrefixes],
+      onRequestCookies: [...policy.bypassOnRequestCookies],
+      onAcceptLanguageContains: [...policy.bypassOnAcceptLanguageContains],
+      onHostnames: [...policy.bypassHostnames],
+    },
+    sharedCacheAcrossLocales: policy.sharedCacheAcrossLocales,
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * Deployable Cloudflare ruleset (BRAWUKA-821/834/836).
+ *
+ * The policy's bypass signals compile into `http_request_cache_settings`
+ * rules evaluated top-down; the LAST matching `set_cache_settings` wins
+ * (https://developers.cloudflare.com/cache/how-to/cache-rules/order/):
+ *
+ *   1. ALLOW  /cafes/* that cannot resolve to a non-default locale →
+ *      cache, respect_origin TTL, no-store outside cacheableStatuses.
+ *   2. BYPASS auth-cookie requests (sb-* prefixes), zone-wide.
+ *   3. BYPASS the staging host entirely (spec 0005 §3).
+ *   4. FALLBACK  /cafes/* carrying any non-default-locale signal →
+ *      bypass. This is the algebraic complement of the allow rule's
+ *      request conditions: the same signal list, rendered positive.
+ *      Emitting the complement — never a bare `/cafes/` catch-all — is
+ *      what keeps rule 1 reachable for default-locale requests
+ *      (BRAWUKA-836; the hand-edited v7 payload matched every /cafes/*
+ *      request here and silently disabled the allow rule).
+ *
+ * The signal list is authored once (the policy); expression strings and
+ * the evaluator below derive from it, so the compiled payload and the
+ * test oracle cannot diverge.
+ * ------------------------------------------------------------------ */
+
+interface CacheSignal {
+  readonly kind: "cookiePrefix" | "cookieExact" | "acceptLanguage" | "hostname";
+  readonly value: string;
+}
+
+function cafeShellSignals(policy: CafeShellCachePolicy): CacheSignal[] {
+  return [
     ...policy.bypassOnRequestCookiePrefixes.map(
-      (prefix) => `not (http.cookie contains "${prefix}")`,
+      (value): CacheSignal => ({ kind: "cookiePrefix", value }),
     ),
     ...policy.bypassOnRequestCookies.map(
-      (name) => `not (http.cookie contains "${name}=")`,
+      (value): CacheSignal => ({ kind: "cookieExact", value }),
     ),
-    ...(policy.bypassOnAcceptLanguageWildcards.length > 0
-      ? [
-          `not (any(http.request.headers["accept-language"][*] wildcard ${policy.bypassOnAcceptLanguageWildcards
-            .map((wildcard) => `"${wildcard}"`)
-            .join(" or ")}))`,
-        ]
-      : []),
-    ...policy.bypassOnHosts.map((host) => `http.host ne "${host}"`),
+    ...policy.bypassOnAcceptLanguageContains.map(
+      (value): CacheSignal => ({ kind: "acceptLanguage", value }),
+    ),
+    ...policy.bypassHostnames.map(
+      (value): CacheSignal => ({ kind: "hostname", value }),
+    ),
   ];
-  const cacheableExpression = [pathPrefix, ...exclusions].join(" and ");
+}
 
-  const bypass = (description: string, expression: string): EdgeCacheRule => ({
-    description,
-    enabled: true,
-    expression,
-    action: "set_cache_settings",
-    action_parameters: { cache: false },
-  });
+/** Positive Cloudflare filter term for one bypass signal. */
+function signalTerm(signal: CacheSignal): string {
+  switch (signal.kind) {
+    case "cookiePrefix":
+      return `http.cookie contains "${signal.value}"`;
+    case "cookieExact":
+      return `http.cookie contains "${signal.value}="`;
+    case "acceptLanguage":
+      return `any(http.request.headers["accept-language"][*] wildcard "*${signal.value}*")`;
+    case "hostname":
+      return `http.host eq "${signal.value}"`;
+  }
+}
 
-  return {
-    description: "Cache settings for cafemood.app",
-    phase: "http_request_cache_settings",
-    rules: [
-      {
-        description:
-          "Cache the cafe SSR shell only when the request cannot resolve to a non-default locale (deploy/dokploy/cache-rules.json)",
-        enabled: true,
-        expression: cacheableExpression,
-        action: "set_cache_settings",
-        action_parameters: {
-          cache: true,
-          edge_ttl: {
-            mode: "respect_origin",
-            status_code_ttl: noStoreStatusCodeTtl(
-              policy.cacheableStatuses,
-              policy.revalidatableStatuses,
-            ),
-          },
-          respect_strong_etags: true,
-        },
-      },
-      ...policy.bypassOnRequestCookiePrefixes.map((prefix) =>
-        bypass(
-          `Bypass cache on request cookie prefix ${prefix}*`,
-          `http.cookie contains "${prefix}"`,
-        ),
-      ),
-      ...policy.bypassOnHosts.map((host) =>
-        bypass(
-          `Staging/eval host bypasses all routes (spec 0005 §3)`,
-          `http.host eq "${host}"`,
-        ),
-      ),
-      bypass(
-        "Every other /cafes/* request bypasses the shared cache (locale-negotiated or non-cacheable)",
-        pathPrefix,
-      ),
-    ],
+/** Negated term inside the allow rule (hostname renders `ne` like the
+ *  hand-verified v7 payload). */
+function negatedTerm(signal: CacheSignal): string {
+  return signal.kind === "hostname"
+    ? `http.host ne "${signal.value}"`
+    : `not (${signalTerm(signal)})`;
+}
+
+const CAFE_PATH_PREFIX = `starts_with(http.request.uri.path, "/cafes/")`;
+const NEVER_MATCHES = `not (starts_with(http.request.uri.path, "/"))`;
+
+/** Non-cacheable status ranges for `status_code_ttl` (value -1 = no-store).
+ *  Complement of `cacheableStatuses` over [200, ∞); 304 is excluded — it is
+ *  a revalidation response, not a stored document. */
+function nonCacheableRanges(cacheableStatuses: readonly number[]) {
+  const blocked = new Set<number>([...cacheableStatuses, 304]);
+  const ranges: { from: number; to?: number }[] = [];
+  let cursor = 200;
+  for (let status = 200; status <= 599; status += 1) {
+    if (!blocked.has(status)) continue;
+    if (status > cursor) ranges.push({ from: cursor, to: status - 1 });
+    cursor = status + 1;
+  }
+  ranges.push({ from: Math.max(cursor, 200) });
+  return ranges.filter((r) => r.to === undefined || r.from <= r.to);
+}
+
+export interface CloudflareCacheRuleset {
+  request: {
+    phase: "http_request_cache_settings";
+    description: string;
+    rules: {
+      description: string;
+      enabled: boolean;
+      expression: string;
+      action: "set_cache_settings";
+      action_parameters: Record<string, unknown>;
+    }[];
   };
+}
+
+/** The deployable edge ruleset compiled from the same policy. */
+export function cafeShellCloudflareRuleset(
+  policy: CafeShellCachePolicy,
+): CloudflareCacheRuleset {
+  const signals = cafeShellSignals(policy);
+  const bypassTerms = signals.map(signalTerm);
+  const allowExpr = [CAFE_PATH_PREFIX, ...signals.map(negatedTerm)].join(" and ");
+  const fallbackExpr =
+    bypassTerms.length === 0
+      ? // No signals configured → the fallback must match nothing: a bare
+        // /cafes/ catch-all would disable the allow rule (BRAWUKA-836).
+        `${CAFE_PATH_PREFIX} and (${NEVER_MATCHES})`
+      : `${CAFE_PATH_PREFIX} and (${bypassTerms.join(" or ")})`;
+  const bypassAction = {
+    description: "",
+    enabled: true,
+    expression: "",
+    action: "set_cache_settings" as const,
+    action_parameters: { cache: false },
+  };
+  return {
+    request: {
+      phase: "http_request_cache_settings",
+      description: "Cache settings for cafemood.app",
+      rules: [
+        {
+          description:
+            "BRAWUKA-834: cache the cafe SSR shell only when the request cannot resolve to a non-default locale (deploy/dokploy/cache-rules.json)",
+          enabled: true,
+          expression: allowExpr,
+          action: "set_cache_settings",
+          action_parameters: {
+            cache: true,
+            edge_ttl: {
+              mode: "respect_origin",
+              status_code_ttl: nonCacheableRanges(
+                policy.cacheableStatuses,
+              ).map(({ from, to }) => ({
+                status_code_range: to === undefined ? { from } : { from, to },
+                value: -1,
+              })),
+            },
+            respect_strong_etags: true,
+          },
+        },
+        {
+          ...bypassAction,
+          description: "Bypass cache on auth cookies",
+          expression:
+            policy.bypassOnRequestCookiePrefixes
+              .map((v) => `http.cookie contains "${v}"`)
+              .join(" or ") || NEVER_MATCHES,
+        },
+        {
+          ...bypassAction,
+          description: "BRAWUKA-834: staging bypasses all routes (spec 0005 §3)",
+          expression:
+            policy.bypassHostnames
+              .map((v) => `http.host eq "${v}"`)
+              .join(" or ") || NEVER_MATCHES,
+        },
+        {
+          ...bypassAction,
+          description:
+            "BRAWUKA-836: /cafes/* requests carrying a non-default-locale signal bypass the shared cache (complement of the cache-eligible rule — never an unconditional catch-all)",
+          expression: fallbackExpr,
+        },
+      ],
+    },
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * Policy-level outcome model — the test oracle for the ruleset above.
+ * Evaluates the same signal list with the same last-match-wins order, so
+ * the drift test can prove per-request outcomes (cache / bypass /
+ * uncached) without a Cloudflare expression engine.
+ * ------------------------------------------------------------------ */
+
+export interface CacheableRequest {
+  path: string;
+  host: string;
+  /** Raw Cookie header value (empty string = no cookies). */
+  cookie: string;
+  /** Accept-Language header value. */
+  acceptLanguage: string;
+}
+
+function signalMatches(signal: CacheSignal, req: CacheableRequest): boolean {
+  switch (signal.kind) {
+    case "cookiePrefix":
+      return req.cookie.includes(signal.value);
+    case "cookieExact":
+      return req.cookie.includes(`${signal.value}=`);
+    case "acceptLanguage":
+      return req.acceptLanguage.toLowerCase().includes(signal.value.toLowerCase());
+    case "hostname":
+      return req.host === signal.value;
+  }
+}
+
+/** Effective outcome for one request, last-match-wins over the four rules. */
+export function cafeShellCacheOutcome(
+  policy: CafeShellCachePolicy,
+  req: CacheableRequest,
+): "cache" | "bypass" | "uncached" {
+  const signals = cafeShellSignals(policy);
+  const isCafe = req.path.startsWith("/cafes/");
+  const hasSignal = signals.some((s) => signalMatches(s, req));
+  const hasAuthCookie = policy.bypassOnRequestCookiePrefixes.some((p) =>
+    req.cookie.includes(p),
+  );
+  const isBypassHost = policy.bypassHostnames.includes(req.host);
+  // Rule order 1→4, last matching set_cache_settings wins.
+  let outcome: "cache" | "bypass" | "uncached" = "uncached";
+  if (isCafe && !hasSignal) outcome = "cache";
+  if (hasAuthCookie) outcome = "bypass";
+  if (isBypassHost) outcome = "bypass";
+  if (isCafe && hasSignal) outcome = "bypass";
+  return outcome;
 }

@@ -3,12 +3,10 @@ import { cookies, headers } from "next/headers";
 import { TIME_ZONE } from "./config";
 
 // Locale resolution, in order: explicit cookie choice (the settings/app-menu
-// switcher sets `locale`) → Accept-Language negotiation → en default.
-// Without this, requestLocale is always undefined and zh copy was
-// unreachable in production. The edge cannot cache-key on these inputs
-// (custom cache keys are Enterprise-only on the zone's plan), so
-// deploy/dokploy/cache-rules.json bypasses shared cache for every /cafes/*
-// request that could resolve non-default (BRAWUKA-834).
+// switcher sets `locale`; it is a shared-cache bypass signal on /cafes/* via
+// deploy/dokploy/cache-rules.json, BRAWUKA-821) → Accept-Language
+// negotiation → en default. Without this, requestLocale is always undefined
+// and zh copy was unreachable in production.
 export default getRequestConfig(async ({ requestLocale }) => {
   const requested = await requestLocale;
 

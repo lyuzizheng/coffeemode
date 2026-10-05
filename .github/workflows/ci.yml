@@ -124,8 +124,9 @@ jobs:
         run: npm run check:buckets
 
       # Same freshness contract for the CDN edge rule (BRAWUKA-821):
-      # `deploy/dokploy/cache-rules.json` is generated from
-      # `web/config/app.yaml` seo.shellCache via web/lib/cache-policy.ts —
+      # `deploy/dokploy/{cache-rules,cloudflare-cache-rules}.json` are
+      # generated from `web/config/app.yaml` seo.shellCache via
+      # web/lib/cache-policy.ts —
       # `--check` fails on any byte difference without rewriting the file.
       - name: Generated cafe-shell cache rules are fresh
         run: npm run check:cache-rules

@@ -7,6 +7,7 @@ import {
 } from "../../scripts/lib/generate-cache-rules";
 import type { CloudflareCacheRuleset } from "@/lib/cache-policy";
 import { evaluateRules } from "../../../scripts/devops/lib/rules-language.mjs";
+import { checkCachePolicy } from "../../../scripts/devops/lib/cache-policy-checks.mjs";
 
 // BRAWUKA-184/821/836: both deploy/dokploy artifacts are generated —
 // cache-rules.json is the policy contract, cloudflare-cache-rules.json is
@@ -131,5 +132,147 @@ describe("cafe-shell CDN cache rules", () => {
           r.expression.includes('starts_with(http.request.uri.path, "/cafes/")'),
       ),
     ).toBe(true);
+  });
+});
+
+// BRAWUKA-836/841 fault regressions: every crafted payload below defeats a
+// TEXTUAL exclusion check (substring match, case-fold, `or` branch, nested
+// negation) while still caching the protected request — the checker must
+// fail closed on the semantic exclusion contract, not the expression text.
+describe("cache-policy checker adversarial payloads", () => {
+  const contract = JSON.parse(readFileSync(CONTRACT, "utf8"));
+  const fresh = () =>
+    JSON.parse(readFileSync(RULESET, "utf8")) as CloudflareCacheRuleset;
+  const allowRule = (p: CloudflareCacheRuleset) =>
+    p.request.rules.find((r) => r.action_parameters.cache === true)!;
+  const probe = (p: CloudflareCacheRuleset, req: (typeof REQ)[keyof typeof REQ]) =>
+    evaluateRules(p.request.rules, { ...req, acceptLanguage: [req.acceptLanguage] });
+  const expectRejected = (
+    p: CloudflareCacheRuleset,
+    pattern: RegExp,
+  ) => {
+    const { failures } = checkCachePolicy(contract, p);
+    expect(failures.length).toBeGreaterThan(0);
+    expect(failures.some((f: string) => pattern.test(f))).toBe(true);
+  };
+
+  it.each([
+    {
+      name: "uppercase auth term",
+      mutate: (p: CloudflareCacheRuleset) => {
+        allowRule(p).expression = allowRule(p).expression.replace('"sb-"', '"SB-"');
+      },
+      req: REQ.auth,
+      pattern: /does not exclude cookiePrefix "sb-"/,
+    },
+    {
+      name: "uppercase locale term",
+      mutate: (p: CloudflareCacheRuleset) => {
+        allowRule(p).expression = allowRule(p).expression.replace('"locale="', '"LOCALE="');
+      },
+      req: REQ.zhCookie,
+      pattern: /does not exclude cookie "locale"/,
+    },
+    {
+      name: "uppercase staging host",
+      mutate: (p: CloudflareCacheRuleset) => {
+        allowRule(p).expression = allowRule(p).expression.replace(
+          '"staging.cafemood.app"',
+          '"STAGING.CAFEMOOD.APP"',
+        );
+      },
+      req: REQ.staging,
+      pattern: /does not exclude hostname "staging.cafemood.app"/,
+    },
+    {
+      name: "partial locale value",
+      mutate: (p: CloudflareCacheRuleset) => {
+        allowRule(p).expression = allowRule(p).expression.replace('"locale="', '"locale=fr"');
+      },
+      req: REQ.zhCookie,
+      pattern: /does not exclude cookie "locale"/,
+    },
+    {
+      name: "double-negated auth term",
+      mutate: (p: CloudflareCacheRuleset) => {
+        allowRule(p).expression = allowRule(p).expression.replace(
+          'not (http.cookie contains "sb-")',
+          'not (not (http.cookie contains "sb-"))',
+        );
+      },
+      req: REQ.auth,
+      pattern: /not\(not|does not exclude cookiePrefix "sb-"/,
+    },
+    {
+      name: "or-branch bypasses exclusions",
+      mutate: (p: CloudflareCacheRuleset) => {
+        allowRule(p).expression = `${allowRule(p).expression} or (starts_with(http.request.uri.path, "/cafes/"))`;
+      },
+      // The 'or' form is outside the supported grammar: it must fail
+      // closed on shape before any outcome is trusted.
+      req: null,
+      pattern: /\bor\b|cannot be evaluated|does not exclude/,
+    },
+    {
+      name: "appended allow missing auth exclusion",
+      mutate: (p: CloudflareCacheRuleset) => {
+        p.request.rules.push({
+          ...allowRule(p),
+          description: "en-US allow without auth exclusion",
+          expression: 'starts_with(http.request.uri.path, "/cafes/") and not (http.cookie contains "locale=") and not (any(http.request.headers["accept-language"][*] wildcard "*zh*")) and http.host ne "staging.cafemood.app"',
+        });
+      },
+      req: REQ.auth,
+      pattern: /does not exclude cookiePrefix "sb-"/,
+    },
+    {
+      name: "appended allow missing staging exclusion",
+      mutate: (p: CloudflareCacheRuleset) => {
+        p.request.rules.push({
+          ...allowRule(p),
+          description: "en-US allow without staging exclusion",
+          expression: 'starts_with(http.request.uri.path, "/cafes/") and not (http.cookie contains "sb-") and not (http.cookie contains "locale=") and not (any(http.request.headers["accept-language"][*] wildcard "*zh*"))',
+        });
+      },
+      req: REQ.staging,
+      pattern: /does not exclude hostname "staging.cafemood.app"/,
+    },
+  ])("rejects the $name fault", ({ mutate, req, pattern }) => {
+    const p = fresh();
+    mutate(p);
+    if (req !== null) {
+      // The fault is real only if the crafted rule still caches the
+      // protected request through the real evaluator.
+      expect(probe(p, req).setting).toBe(true);
+    }
+    expectRejected(p, pattern);
+  });
+
+  it("rejects an origin-TTL override on the allow rule", () => {
+    const p = fresh();
+    const parameters = allowRule(p).action_parameters;
+    if (
+      typeof parameters.edge_ttl === "object" &&
+      parameters.edge_ttl !== null &&
+      "mode" in parameters.edge_ttl
+    ) {
+      parameters.edge_ttl.mode = "override_origin";
+    }
+    expectRejected(p, /respect_origin/);
+  });
+
+  it("rejects a disabled required bypass", () => {
+    const p = fresh();
+    const stagingBypass = p.request.rules.find((r) =>
+      r.expression.includes('http.host eq "staging.cafemood.app"'),
+    )!;
+    stagingBypass.enabled = false;
+    expectRejected(p, /no bypass covers hostname|enabled/);
+  });
+
+  it("rejects a missing response-phase no-store rule", () => {
+    const p = fresh();
+    p.response.rules = [];
+    expectRejected(p, /no-store|no_store/);
   });
 });

@@ -37,7 +37,7 @@
 /** Precondition: staging Supabase triple present in the runner env. */
 const SUPABASE_KEYS = Object.freeze({
   name: "supabase-keys",
-  check: "SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY resolve via resolveAgentQaSupabaseEnv (staging project ojujmjewtbquiddswyrg)",
+  check: "SUPABASE_URL + SUPABASE_ANON_KEY + SUPABASE_SERVICE_ROLE_KEY resolve via resolveAgentQaSupabaseEnv (staging project ojujmjewtbquiddswyrg); read server-side by session.mjs in the agent Node process — never injected into the browser",
 });
 
 /** Precondition: Cloudflare Access service token present in the runner env. */
@@ -53,7 +53,7 @@ const GOOGLE_PLACES_KEY = Object.freeze({
 
 const IMAGE_SERVICE_STAGING = Object.freeze({
   name: "image-service-staging",
-  check: "image-service-staging worker reachable; POST /api/images/upload issues an upload intent for the runner",
+  check: "image-service-staging worker reachable (server-side Node fetch of https://image-service-staging.cafemood.app/health → 200, not a browser navigation — the browser allowlist and the Access token injection scope are unchanged; the R2 CDN host staging-images.cafemood.app is not the worker); POST /api/images/upload issues an upload intent for the runner",
 });
 
 const SECOND_PERSONA = Object.freeze({

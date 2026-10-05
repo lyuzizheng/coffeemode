@@ -139,20 +139,38 @@ function checkAllowRule(failures, allow, contract, signals) {
   checkAllowSignalExclusions(failures, allow, tag, signals);
 }
 
-/** Required bypass coverage: each declared signal needs an ACTIVE rule.
- *  Zone-wide signals (auth cookie prefix, bypass hostnames — spec 0005 §3
- *  covers every staging route) need a dedicated UNSCOPED rule; the /cafes/
- *  catch-all only denies in-scope paths, so it satisfies locale signals
- *  (cookie + Accept-Language) but never zone-wide ones. */
+/** The exact expression a dedicated bypass rule must BE so it bypasses
+ *  every matching request — a signal buried inside a longer conjunction
+ *  (`http.cookie contains "sb-" and http.cookie contains "x"`) only
+ *  bypasses requests that satisfy the extra terms, silently narrowing the
+ *  declared bypass (same burial class as the allow-side r5/r7 findings). */
+function bypassTerm(kind, value) {
+  switch (kind) {
+    case "cookiePrefix":
+      return `http.cookie contains "${value}"`;
+    case "cookie":
+      return `http.cookie contains "${value}="`;
+    case "acceptLanguage":
+      return `any(http.request.headers["accept-language"][*] wildcard "*${value}*")`;
+    case "hostname":
+      return `http.host eq "${value}"`;
+    default:
+      return null;
+  }
+}
+
+/** Required bypass coverage: each declared signal needs an ACTIVE rule
+ *  whose expression IS the signal term. Zone-wide signals (auth cookie
+ *  prefix, bypass hostnames — spec 0005 §3 covers every staging route)
+ *  need that dedicated rule; the /cafes/ catch-all only denies in-scope
+ *  paths, so it satisfies locale signals (cookie + Accept-Language) but
+ *  never zone-wide ones. */
 function checkBypassCoverage(failures, contract, bypasses, signals) {
   const catchAll = 'starts_with(http.request.uri.path, "/cafes/")';
-  const isScoped = (expression) => expression.includes("http.request.uri.path");
-  for (const { kind, value, positive } of signals.all) {
-    const dedicated = bypasses.some(
-      (rule) =>
-        rule.expression.includes(positive) &&
-        ((kind === "cookie" || kind === "acceptLanguage") || !isScoped(rule.expression)),
-    );
+  for (const { kind, value } of signals.all) {
+    const required = bypassTerm(kind, value);
+    const dedicated =
+      required !== null && bypasses.some((rule) => rule.expression === required);
     const catchAllOk =
       (kind === "cookie" || kind === "acceptLanguage") &&
       bypasses.some((rule) => rule.expression === catchAll);
@@ -216,25 +234,21 @@ export function checkCoverage(contract, payload) {
     localeCookies: contract.bypass?.onRequestCookies ?? [],
     languageSignals: contract.bypass?.onAcceptLanguageContains ?? [],
     all: [
-      ...(contract.bypass?.onRequestCookiePrefixes ?? []).map((v) => ({
+      ...(contract.bypass?.onRequestCookiePrefixes ?? []).map((value) => ({
         kind: "cookiePrefix",
-        value: v,
-        positive: `"${v}"`,
+        value,
       })),
-      ...(contract.bypass?.onRequestCookies ?? []).map((v) => ({
+      ...(contract.bypass?.onRequestCookies ?? []).map((value) => ({
         kind: "cookie",
-        value: v,
-        positive: `"${v}=`,
+        value,
       })),
-      ...(contract.bypass?.onAcceptLanguageContains ?? []).map((v) => ({
+      ...(contract.bypass?.onAcceptLanguageContains ?? []).map((value) => ({
         kind: "acceptLanguage",
-        value: v,
-        positive: `"*${v}*"`,
+        value,
       })),
-      ...(contract.bypass?.onHostnames ?? []).map((v) => ({
+      ...(contract.bypass?.onHostnames ?? []).map((value) => ({
         kind: "hostname",
-        value: v,
-        positive: `"${v}"`,
+        value,
       })),
     ],
   };

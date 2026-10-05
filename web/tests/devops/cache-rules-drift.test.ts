@@ -237,13 +237,46 @@ describe("cache-policy checker adversarial payloads", () => {
       req: REQ.staging,
       pattern: /does not exclude hostname "staging.cafemood.app"/,
     },
-  ])("rejects the $name fault", ({ mutate, req, pattern }) => {
+    {
+      name: "exclusion conjunction wrapped in not()",
+      // The r7 payload: the four required conjuncts appear as PIECES of a
+      // compound not(A and B), which only excludes a request matching
+      // every inner term at once — a flat `and`-split credited them as
+      // real exclusions while an en-US sb- request still cached.
+      mutate: (p: CloudflareCacheRuleset) => {
+        allowRule(p).expression =
+          'not (starts_with(http.request.uri.path, "/cafes/") and ' +
+          'not (http.cookie contains "sb-") and not (http.cookie contains "locale=") and ' +
+          'not (any(http.request.headers["accept-language"][*] wildcard "*zh*")) and ' +
+          'http.host ne "staging.cafemood.app" and http.cookie contains "x") and ' +
+          'any(http.request.headers["accept-language"][*] wildcard "*en-US*")';
+      },
+      req: { ...REQ.auth, acceptLanguage: "en-US" },
+      expect: true,
+      pattern: /does not exclude/,
+    },
+    {
+      name: "auth bypass narrowed inside a conjunction",
+      mutate: (p: CloudflareCacheRuleset) => {
+        const sbBypass = p.request.rules.find(
+          (r) => r.expression === 'http.cookie contains "sb-"',
+        )!;
+        sbBypass.expression = 'http.cookie contains "sb-" and http.cookie contains "x"';
+      },
+      // The canonical allow still excludes sb- itself, so the request
+      // bypasses — the fault is contract-side: the declared zone-wide
+      // bypass no longer fires zone-wide.
+      req: REQ.auth,
+      expect: false,
+      pattern: /no bypass covers cookiePrefix "sb-"/,
+    },
+  ])("rejects the $name fault", ({ mutate, req, expect: expected = true, pattern }) => {
     const p = fresh();
     mutate(p);
     if (req !== null) {
-      // The fault is real only if the crafted rule still caches the
-      // protected request through the real evaluator.
-      expect(probe(p, req).setting).toBe(true);
+      // The fault is real only if the crafted payload produces the
+      // protected outcome through the real evaluator.
+      expect(probe(p, req).setting).toBe(expected);
     }
     expectRejected(p, pattern);
   });

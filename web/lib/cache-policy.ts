@@ -201,6 +201,22 @@ export interface CloudflareCacheRuleset {
       action_parameters: Record<string, unknown>;
     }[];
   };
+  /** Response-phase ruleset — pins response properties the request phase
+   *  cannot see (the deployed v9 edge runs this; omitting it would leave
+   *  the live `http_response_cache_settings` ruleset unmanaged). */
+  response: {
+    phase: "http_response_cache_settings";
+    description: string;
+    rules: {
+      description: string;
+      enabled: boolean;
+      expression: string;
+      action: "set_cache_control";
+      action_parameters: {
+        "no-store": { cloudflare_only: boolean; operation: "set" };
+      };
+    }[];
+  };
 }
 
 /** The deployable edge ruleset compiled from the same policy.
@@ -209,7 +225,6 @@ export interface CloudflareCacheRuleset {
  *   1. ALLOW   /cafes/* provably default-locale → cache + TTL policy.
  *   2. BYPASS  any request with an sb-* auth cookie (zone-wide).
  *   3. BYPASS  the staging host, all routes (spec 0005 §3).
- *   4+. BYPASS /cafes/* per locale signal — each is `path AND <term>`,
  *      the positive mirror of one negated term in the allow rule, so
  *      every excluded request has a matching bypass (the algebraic
  *      complement). A bare `/cafes/` catch-all would also match the
@@ -217,6 +232,12 @@ export interface CloudflareCacheRuleset {
  *      (BRAWUKA-836). Expressions stay `and`/`not`-only so the repo's
  *      rules-language evaluator (scripts/devops/lib/rules-language.mjs)
  *      can prove per-request outcomes offline.
+ *
+ * The `response` phase carries `bypassOnSetCookieResponse`'s edge-side
+ * half: the request phase cannot see response headers, so the live
+ * ruleset (v9) pins a `set_cache_control` no-store on `/cafes/*`
+ * responses that carry Set-Cookie. Emitting it keeps the deployed
+ * response ruleset reproducible from the same policy.
  */
 export function cafeShellCloudflareRuleset(
   policy: CafeShellCachePolicy,
@@ -287,6 +308,32 @@ export function cafeShellCloudflareRuleset(
         })),
       ],
     },
+    response: buildResponsePhase(policy),
+  };
+}
+
+/** Response phase: the edge-side half of `bypassOnSetCookieResponse` — a
+ *  /cafes/* response carrying Set-Cookie is pinned no-store. */
+function buildResponsePhase(
+  policy: CafeShellCachePolicy,
+): CloudflareCacheRuleset["response"] {
+  return {
+    phase: "http_response_cache_settings",
+    description: "Cache settings for cafemood.app",
+    rules: policy.bypassOnSetCookieResponse
+      ? [
+          {
+            description:
+              "BRAWUKA-834: a /cafes/* response that sets a cookie is never stored in the shared cache (deploy/dokploy/cache-rules.json bypass.onResponseSetCookie)",
+            enabled: true,
+            expression: `${CAFE_PATH_PREFIX} and any(http.response.headers["set-cookie"][*] ne "")`,
+            action: "set_cache_control",
+            action_parameters: {
+              "no-store": { cloudflare_only: true, operation: "set" },
+            },
+          },
+        ]
+      : [],
   };
 }
 

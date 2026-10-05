@@ -103,4 +103,23 @@ describe("cafe-shell CDN cache rules", () => {
       expect(text).not.toContain("cache_key");
     }
   });
+
+  // The deployed edge (ruleset v9) also runs an http_response_cache_settings
+  // phase: a /cafes/* response carrying Set-Cookie is pinned no-store — the
+  // request phase cannot see response headers, so this is the edge-side half
+  // of contract bypass.onResponseSetCookie. Emitting it keeps the deployed
+  // response ruleset reproducible rather than left as unmanaged drift.
+  it("pins Set-Cookie /cafes/* responses no-store in the response phase", () => {
+    const payload = JSON.parse(readFileSync(RULESET, "utf8")) as CloudflareCacheRuleset;
+    expect(payload.response.phase).toBe("http_response_cache_settings");
+    expect(
+      payload.response.rules.some(
+        (r) =>
+          r.action === "set_cache_control" &&
+          r.action_parameters["no-store"]?.operation === "set" &&
+          r.expression.includes('http.response.headers["set-cookie"]') &&
+          r.expression.includes('starts_with(http.request.uri.path, "/cafes/")'),
+      ),
+    ).toBe(true);
+  });
 });

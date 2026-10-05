@@ -50,26 +50,27 @@ function checkAllowStatuses(failures, allow, tag, cacheable) {
  *  s-maxage / stale-while-revalidate meaningful — an override would silently
  *  ignore the origin TTL (BRAWUKA-836). strong ETags are required for SWR
  *  revalidation. */
-function checkAllowTtl(failures, allow, tag, cacheable, swrSeconds) {
-  if (cacheable.size === 0) return;
+function checkAllowTtl(failures, allow, tag, cacheable) {
+  if (cacheable.statuses.size === 0) return;
   const edgeTtl = allow.action_parameters?.edge_ttl;
   if (!edgeTtl || edgeTtl.mode !== "respect_origin") {
     failures.push(`${tag} must keep edge_ttl.mode=respect_origin`);
   }
-  if (swrSeconds > 0 && allow.action_parameters?.respect_strong_etags !== true) {
+  if (cacheable.swrSeconds > 0 && allow.action_parameters?.respect_strong_etags !== true) {
     failures.push(`${tag} needs respect_strong_etags for stale-while-revalidate`);
   }
 }
 
-/** The negated expression term a cache-eligible rule must carry so it can
- *  never match a request a declared bypass covers — the edge only knows
- *  expressions, so a textual negation is the enforceable exclusion. */
-function negatedTerm(kind, value) {
+/** The exact conjunct a cache-eligible rule must carry so it can never
+ *  match a request a declared bypass covers — the edge only knows
+ *  expressions, so a textual negation is the enforceable exclusion.
+ *  `not(X)` conjuncts negate; `http.host ne` is self-negating. */
+function exclusionConjunct(kind, value) {
   switch (kind) {
     case "cookiePrefix":
       return `not (http.cookie contains "${value}")`;
     case "cookie":
-      return `not (http.cookie contains "${value}=`;
+      return `not (http.cookie contains "${value}=")`;
     case "acceptLanguage":
       return `not (any(http.request.headers["accept-language"][*] wildcard "*${value}*"))`;
     case "hostname":
@@ -79,15 +80,24 @@ function negatedTerm(kind, value) {
   }
 }
 
-/** Per-allow signal exclusions: EVERY declared bypass signal must be
- *  negated on EVERY allow rule — a later allow that drops them caches
- *  requests the bypasses exist to protect: the zh family (r3 P1), auth
- *  cookies and the staging host via an en-US allow (r5 P1). */
+/** Top-level ` and `-joined conjuncts of an expression. The supported
+ *  grammar is a pure conjunction of possibly-negated terms — `or` and
+ *  nested `not(not(` are rejected upstream (checkShape), so a top-level
+ *  split is faithful. */
+function conjuncts(expression) {
+  return expression.split(/\band\b/).map((c) => c.trim());
+}
+
+/** Per-allow signal exclusions: EVERY declared bypass signal must appear
+ *  as an exact negated CONJUNCT on EVERY allow rule — substring matching
+ *  admits `not (not (…))` (still contains the text, but asserts the
+ *  opposite) and an `or` branch that keeps the text while a second branch
+ *  bypasses it (r4 P1). */
 function checkAllowSignalExclusions(failures, allow, tag, signals) {
-  const expr = allow.expression.toLowerCase();
+  const terms = conjuncts(allow.expression);
   for (const { kind, value } of signals.all) {
-    const negated = negatedTerm(kind, value);
-    if (negated !== null && !expr.includes(negated.toLowerCase())) {
+    const required = exclusionConjunct(kind, value);
+    if (required !== null && !terms.includes(required)) {
       failures.push(`${tag} does not exclude ${kind} "${value}"`);
     }
   }
@@ -102,7 +112,10 @@ function checkAllowRule(failures, allow, contract, signals) {
   const cacheable = new Set(cacheableContract.statuses ?? []);
   checkAllowScope(failures, allow, tag, contract.scope?.paths ?? []);
   checkAllowStatuses(failures, allow, tag, cacheable);
-  checkAllowTtl(failures, allow, tag, cacheable, cacheableContract.staleWhileRevalidateSeconds ?? 0);
+  checkAllowTtl(failures, allow, tag, {
+    statuses: cacheable,
+    swrSeconds: cacheableContract.staleWhileRevalidateSeconds ?? 0,
+  });
   checkAllowSignalExclusions(failures, allow, tag, signals);
 }
 

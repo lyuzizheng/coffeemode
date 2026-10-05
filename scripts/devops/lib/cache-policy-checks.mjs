@@ -100,7 +100,16 @@ export function checkOutcomes(payload) {
   const outcomes = [];
   const rules = Array.isArray(payload.request?.rules) ? payload.request.rules : [];
   for (const testCase of CASES) {
-    const { matched, setting } = evaluateRules(rules, testCase.request);
+    let matched = [];
+    let setting = null;
+    try {
+      ({ matched, setting } = evaluateRules(rules, testCase.request));
+    } catch (err) {
+      // An expression outside the supported grammar is already a shape
+      // failure — record it once per case instead of crashing the run.
+      failures.push(`${testCase.name}: payload rule cannot be evaluated (${err.message.slice(0, 80)})`);
+      continue;
+    }
     outcomes.push({ name: testCase.name, expected: testCase.cache, actual: setting, matched });
     if (setting !== testCase.cache) {
       failures.push(
@@ -139,7 +148,14 @@ export function checkResponseOutcomes(payload) {
   const outcomes = [];
   const rules = Array.isArray(payload.response?.rules) ? payload.response.rules : [];
   for (const testCase of RESPONSE_CASES) {
-    const { matched, parameters } = evaluateResponseRules(rules, testCase.request);
+    let matched = [];
+    let parameters = null;
+    try {
+      ({ matched, parameters } = evaluateResponseRules(rules, testCase.request));
+    } catch (err) {
+      failures.push(`${testCase.name}: payload rule cannot be evaluated (${err.message.slice(0, 80)})`);
+      continue;
+    }
     const actual = parameters?.["no-store"]?.operation === "set";
     outcomes.push({ name: testCase.name, expected: testCase.noStore, actual, matched });
     if (actual !== testCase.noStore) {
@@ -168,6 +184,40 @@ const PHASE_NAMES = {
   response: "http_response_cache_settings",
 };
 
+/**
+ * Every rule expression must stay inside the supported grammar — a pure
+ * `and`-conjunction of possibly-negated predicates, the subset
+ * `rules-language.mjs` evaluates. `or` opens an alternate branch that can
+ * carry the required text while bypassing it; nested `not(not(…))` keeps
+ * the exclusion text while asserting the opposite (r4 P1). Both are
+ * outside what the evaluator compiles, so they are rejected here rather
+ * than trusted to a substring check. String literals are stripped first
+ * so a quoted `"and"`/`"or"` value cannot trip the scan.
+ */
+function unsupportedExpressionFailures(payload) {
+  const failures = [];
+  const allRules = [
+    ...(payload.request?.rules ?? []),
+    ...(payload.response?.rules ?? []),
+  ];
+  for (const rule of allRules) {
+    if (rule.enabled === false) continue;
+    const expr = String(rule.expression ?? "");
+    const cleaned = expr.replace(/"[^"]*"/g, '""');
+    if (/\bor\b/.test(cleaned)) {
+      failures.push(
+        `rule "${rule.description || expr.slice(0, 40)}" uses 'or' — outside the supported conjunction grammar`,
+      );
+    }
+    if (/not\s*\(\s*not\b/i.test(cleaned)) {
+      failures.push(
+        `rule "${rule.description || expr.slice(0, 40)}" uses nested negation not(not(…)) — outside the supported grammar`,
+      );
+    }
+  }
+  return failures;
+}
+
 export function checkShape(payload) {
   const failures = [];
   for (const [key, expected] of Object.entries(PHASE_NAMES)) {
@@ -185,6 +235,7 @@ export function checkShape(payload) {
       failures.push(`payload.${key}.rules is not an array`);
     }
   }
+  failures.push(...unsupportedExpressionFailures(payload));
   return failures;
 }
 

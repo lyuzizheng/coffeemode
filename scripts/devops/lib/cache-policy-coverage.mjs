@@ -79,20 +79,40 @@ function exclusionConjunct(kind, value) {
       return null;
   }
 }
-
-/** Top-level ` and `-joined conjuncts of an expression. The supported
- *  grammar is a pure conjunction of possibly-negated terms — `or` and
- *  nested `not(not(` are rejected upstream (checkShape), so a top-level
- *  split is faithful. */
+/** Top-level ` and `-joined conjuncts of an expression, split at paren
+ *  depth 0 outside string literals. Depth matters: `not (A and B)` is a
+ *  NEGATED group — a flat split would read B as a positive conjunct and
+ *  call the required text an exclusion while the group asserts its
+ *  opposite (r7 P1, BRAWUKA-841). `or` and `not(not(…))` are banned
+ *  upstream, so a top-level conjunction split is faithful. */
 function conjuncts(expression) {
-  return expression.split(/\band\b/).map((c) => c.trim());
+  const terms = [];
+  let depth = 0;
+  let inString = false;
+  let start = 0;
+  for (let i = 0; i < expression.length; i += 1) {
+    const c = expression[i];
+    if (inString) {
+      if (c === '"') inString = false;
+    } else if (c === '"') {
+      inString = true;
+    } else if (c === "(") {
+      depth += 1;
+    } else if (c === ")") {
+      depth -= 1;
+    } else if (depth === 0 && expression.slice(i, i + 5) === " and ") {
+      terms.push(expression.slice(start, i).trim());
+      start = i + 5;
+      i += 4;
+    }
+  }
+  terms.push(expression.slice(start).trim());
+  return terms;
 }
 
 /** Per-allow signal exclusions: EVERY declared bypass signal must appear
- *  as an exact negated CONJUNCT on EVERY allow rule — substring matching
- *  admits `not (not (…))` (still contains the text, but asserts the
- *  opposite) and an `or` branch that keeps the text while a second branch
- *  bypasses it (r4 P1). */
+ *  as an exact top-level conjunct on EVERY allow rule — substring matching
+ *  admits text inside a negated group (r7) or an `or` branch (r4). */
 function checkAllowSignalExclusions(failures, allow, tag, signals) {
   const terms = conjuncts(allow.expression);
   for (const { kind, value } of signals.all) {

@@ -85,8 +85,9 @@ async function handleProxy(request: NextRequest) {
   // reads the attempted id from route params.
   //
   // A 404 from that path carries the static s-maxage header from
-  // next.config — inert because the edge rule bypasses every non-200
-  // (deploy/dokploy/cache-rules.json onStatusesOtherThan: [200]).
+  // next.config — inert because the edge ruleset sets no-store TTL on every
+  // status other than 200/304 (deploy/dokploy/cache-rules.json
+  // status_code_ttl, derived from seo.shellCache).
 
   // BRAWUKA-184: a response carrying a refreshed session (Set-Cookie) MUST
   // NOT sit in shared cache — otherwise one user's session cookie is served

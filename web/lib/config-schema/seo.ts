@@ -1,4 +1,4 @@
-import { flag, positiveInteger, record, statusList, stringList } from "./primitives";
+import { positiveInteger, record, statusList, stringList } from "./primitives";
 import type { AppConfig } from "./types";
 
 type SeoConfig = AppConfig["seo"];
@@ -24,35 +24,30 @@ function parseShellCache(
       "seo.shellCache.cacheableStatuses",
       shellCache.cacheableStatuses,
     ),
-    bypassOnSetCookieResponse: flag(
+    revalidatableStatuses: statusList(
       file,
-      "seo.shellCache.bypassOnSetCookieResponse",
-      shellCache.bypassOnSetCookieResponse,
+      "seo.shellCache.revalidatableStatuses",
+      shellCache.revalidatableStatuses,
     ),
     bypassOnRequestCookiePrefixes: stringList(
       file,
       "seo.shellCache.bypassOnRequestCookiePrefixes",
       shellCache.bypassOnRequestCookiePrefixes,
     ),
-    varyHeaders: stringList(
-      file,
-      "seo.shellCache.varyHeaders",
-      shellCache.varyHeaders,
-    ),
-    varyCookies: stringList(
-      file,
-      "seo.shellCache.varyCookies",
-      shellCache.varyCookies,
-    ),
     bypassOnRequestCookies: stringList(
       file,
       "seo.shellCache.bypassOnRequestCookies",
       shellCache.bypassOnRequestCookies,
     ),
-    sharedCacheAcrossLocales: flag(
+    bypassOnAcceptLanguageWildcards: stringList(
       file,
-      "seo.shellCache.sharedCacheAcrossLocales",
-      shellCache.sharedCacheAcrossLocales,
+      "seo.shellCache.bypassOnAcceptLanguageWildcards",
+      shellCache.bypassOnAcceptLanguageWildcards,
+    ),
+    bypassOnHosts: stringList(
+      file,
+      "seo.shellCache.bypassOnHosts",
+      shellCache.bypassOnHosts,
     ),
   };
 }

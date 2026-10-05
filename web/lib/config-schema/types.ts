@@ -75,14 +75,18 @@ export interface AppConfig {
       sMaxAgeSeconds: number;
       staleWhileRevalidateSeconds: number;
       cacheableStatuses: number[];
-      bypassOnSetCookieResponse: boolean;
+      /** Statuses that keep origin TTL so revalidation still works (304). */
+      revalidatableStatuses: number[];
+      /** Request-cookie name prefixes that force an edge bypass (sb-* sessions). */
       bypassOnRequestCookiePrefixes: string[];
-      varyHeaders: string[];
-      /** Request-cookie names whose values join the edge cache key. */
-      varyCookies: string[];
-      /** Exact cookie names forcing bypass where value-keying is unsupported. */
+      /** Request-cookie names whose mere presence forces an edge bypass —
+       *  no cache-key mechanism exists on the deployed plan, so a locale
+       *  cookie request must never read the shared entry. */
       bypassOnRequestCookies: string[];
-      sharedCacheAcrossLocales: boolean;
+      /** Accept-Language substrings that resolve to a non-default locale. */
+      bypassOnAcceptLanguageWildcards: string[];
+      /** Hosts that bypass edge cache on every route (spec 0005 §3). */
+      bypassOnHosts: string[];
     };
     recoveryLimit: number;
   };

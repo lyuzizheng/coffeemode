@@ -11,7 +11,7 @@ This directory contains Dokploy VPS deployment configurations, operational scrip
 - `deploy-release.sh`: Production release deployment orchestrator with zero-downtime rolling restart.
 - `backup-postgres.sh` / `restore-postgres.sh`: Database backup and disaster recovery drill scripts.
 - `smoke-test.sh`: Post-deployment automated smoke tests (health, static assets, spatial queries, workers).
-- `cache-rules.json`: Cloudflare edge cache rule definitions for `/cafes/*` — generated from `web/config/app.yaml` `seo.shellCache` by `web/scripts/generate-cache-rules.mjs` (`npm run gen:cache-rules`); `npm run check:cache-rules` fails CI on drift.
+- `cache-rules.json`: Cloudflare `http_request_cache_settings` ruleset for `/cafes/*` — generated from `web/config/app.yaml` `seo.shellCache` by `web/scripts/generate-cache-rules.mjs` (`npm run gen:cache-rules`); `npm run check:cache-rules` fails CI on drift. Enforceable shape only (BRAWUKA-834): bypass conditions + `status_code_ttl`, no custom-cache-key declarations — the `cafemood.app` zone is on Cloudflare Free where header/cookie cache keys are Enterprise-only. Apply with `PUT /zones/{zone_id}/rulesets/{ruleset_id}`; no repo consumer applies it to the zone yet (infra follow-up).
 
 ## Schema Migrations on Every Deploy (BRAWUKA-690)
 

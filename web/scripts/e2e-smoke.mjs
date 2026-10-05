@@ -274,9 +274,9 @@ async function runSmokeSuite() {
       // BRAWUKA-658: the proxy no longer probes or rewrites gone cafes —
       // the page's generateMetadata() commits the 404 via notFound(), so the
       // response carries the static /cafes/:id* s-maxage header. Shared-cache
-      // exclusion of the 404 is owned by the edge rule
-      // (deploy/dokploy/cache-rules.json onStatusesOtherThan: [200]),
-      // drift-pinned by `npm run check:cache-rules` (BRAWUKA-821).
+      // exclusion of the 404 is owned by the edge ruleset
+      // (deploy/dokploy/cache-rules.json status_code_ttl — no-store for every
+      // status other than 200/304), drift-pinned by `npm run check:cache-rules`.
 
       const pageText = await page.textContent("body");
       assert(

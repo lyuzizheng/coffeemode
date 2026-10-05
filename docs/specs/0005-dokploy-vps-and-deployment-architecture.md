@@ -92,7 +92,10 @@ Accepted (2026-09-04 — BRAWUKA-50 architecture and deployment specification; r
 7. Cloudflare Dual Services & CDN Edge Invariants:
    - Dedicated credentials and bindings for Staging vs. Production Cloudflare services.
    - Cloudflare CDN edge rules MUST bypass caching on Supabase session cookies (sb-*)
-     and Set-Cookie headers, and MUST vary cache keys on Accept-Language.
+     and Set-Cookie responses, and a shared `/cafes/*` entry MUST hold only the
+     default-locale shell — the edge cannot key on locale inputs on the deployed
+     plan (custom cache keys are Enterprise-only), so every locale-negotiated
+     request bypasses instead of keying (BRAWUKA-834).
    - Cloudflare Managed Transforms must inject CF-IPCity and CF-IPCountry visitor
      location headers for city resolution (DG128).
 
@@ -196,8 +199,9 @@ spec 0010 §1. The table below covers the deployed staging/production edge only.
 | Cloudflare Proxy Mode | Orange-cloud (Proxied) | Orange-cloud (Proxied) |
 | SSL / TLS Encryption | Full (Strict) | Full (Strict) |
 | Min TLS Version | TLS 1.2 (observe, then tighten to 1.3) | TLS 1.2 (observe, then tighten to 1.3) |
-| Edge Caching Rule | Bypass cache for all routes | Cache HTML shells (`s-maxage`); Bypass on `sb-*`/`locale` cookies & `Set-Cookie` |
-| Edge Cache Vary (intended policy) | N/A | Locale-safety contract (generated `deploy/dokploy/cache-rules.json`): key on `Accept-Language` + the `locale` cookie value where the zone plan supports custom keys (Cloudflare header/cookie keys are Enterprise-gated); where unsupported, MUST presence-bypass on `locale` instead (`bypass.onRequestCookies`). Both locale inputs covered — the cookie overrides Accept-Language in `i18n/request.ts` (BRAWUKA-821; deployed readback/mechanism owned by BRAWUKA-834) |
+| Edge Caching Rule — intended policy | Bypass cache for all routes | Cache the `/cafes/*` HTML shell (`s-maxage`) only when the request cannot resolve to a non-default locale (no `locale` cookie, no zh `Accept-Language`, no `sb-*` session); every other `/cafes/*` request bypasses; non-200/304 responses no-store; bypass on `Set-Cookie` responses |
+| Edge Cache Locale Handling | N/A | Zone is on **Cloudflare Free** — header/cookie cache keys are Enterprise-only, so a locale-keyed shared entry is impossible. Enforced shape (ruleset v7, BRAWUKA-834): the cacheable rule excludes `locale=` cookies, `zh` Accept-Language, and `sb-*` cookies; a catch-all bypass covers the rest of `/cafes/*`. Only the default-locale (en) shell can sit in the shared cache |
+| Edge Cache Deployment — observed (2026-10-05, BRAWUKA-834) | `http_request_cache_settings` ruleset v7: `http.host eq "staging.cafemood.app"` → bypass | Same ruleset v7: cacheable rule = `/cafes/*` minus `sb-`/`locale=` cookies, minus `*zh*` Accept-Language, minus staging; `status_code_ttl` no-store for 201–303 and 305+; catch-all `/cafes/*` bypass. Applied by hand — no repo consumer applies `deploy/dokploy/cache-rules.json` to the zone yet (infra follow-up) |
 | Cloudflare Managed Transforms | Add visitor location headers (`CF-IPCity`, `CF-IPCountry`) | Add visitor location headers (`CF-IPCity`, `CF-IPCountry`) |
 | Image Storage (R2 Bucket) | `coffeemode-images-staging` | `coffeemode-images-prod` |
 | Public Image CDN Domain | `staging-images.cafemood.app` | `images.cafemood.app` (`R2_ALLOWED_PUBLIC_HOSTS` in `web/lib/images/constants.ts`) |
@@ -319,7 +323,7 @@ Per BRAWUKA-475, the nightly work_stats recompute and Helpful ranking snapshot e
 | VPS host reboot or crash | Dokploy and Docker daemon restart on system boot. Containers configure `restart: unless-stopped`. Traefik recovers Let's Encrypt certificates from persistent acme.json volume. |
 | Production database migration failure | Pre-migration snapshot exists. Deploy pipeline (`deploy-release.sh`) halts prior to deployment swap. The live container continues serving traffic against the unmodified schema. |
 | Cloudflare CDN caching session cookies | Traefik / Next.js emit `Cache-Control: private, no-cache` on authenticated responses. Cloudflare CDN cache rule explicitly configured to BYPASS caching whenever request cookie contains `sb-*` or response header contains `Set-Cookie`. |
-| Accept-Language cache poisoning | Next.js App Router sets `s-maxage` on public pages (`/cafes/[id]`, sitemaps). Cloudflare CDN rule enforces Cache Vary on `Accept-Language` to prevent English visitors from receiving cached Chinese shells (Spec 0001, DG105/DG110). |
+| Locale cache poisoning | Next.js App Router sets `s-maxage` on public pages (`/cafes/[id]`, sitemaps). The CDN cannot key shared entries on locale (zone plan lacks custom cache keys), so the `/cafes/*` ruleset bypasses every locale-negotiated request — `locale` cookie, `zh` Accept-Language — leaving only the default-locale shell cacheable (BRAWUKA-834, DG105/DG110). |
 | Docker disk space exhaustion from images | Dokploy scheduled system prune removes dangling images and exited build containers. Host backup retention policy prunes local archives older than 14 days (prod) or 7 days (staging). |
 | Webhook-mode deployment race | Dokploy deploys asynchronously following webhook trigger. Deploy pipeline polls `/api/health` until release tag or boot_time updates before executing smoke tests, preventing false green certification of the pre-existing container. |
 ## Acceptance criteria

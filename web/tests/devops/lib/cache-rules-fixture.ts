@@ -14,9 +14,8 @@ import { expect } from "vitest";
 // so the assertions are about the payload the script would send and how it
 // exits — never about the live zone.
 //
-// The fixture is shared by apply-cache-rules.test.ts (the applier) and
-// check-cache-policy.test.ts (the checker) so both suites run against the same
-// scratch tree layout and the same stub.
+// The fixture backs apply-cache-rules.test.ts (the applier suite); the
+// generated artifacts themselves are pinned by cache-rules-drift.test.ts.
 
 export const REPO_ROOT = path.resolve(__dirname, "../../../..");
 export const SCRATCH_ROOT = "repo";

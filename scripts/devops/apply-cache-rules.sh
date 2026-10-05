@@ -2,13 +2,20 @@
 # ==============================================================================
 # Apply the effective Cloudflare edge cache ruleset (BRAWUKA-834).
 #
-# deploy/dokploy/cache-rules.json is the policy contract (generated from
-# web/config/app.yaml seo.shellCache); this script applies the effective edge
-# implementation in deploy/dokploy/cloudflare-cache-rules.json to the zone via
-# the Cloudflare Rulesets API. The two files are deliberately separate: custom
-# cache keys (varyOn / varyOnCookies) are Enterprise-only, so the effective
-# ruleset enforces locale safety with bypass rules instead of cache-key inputs
-# (see the file's $note and BRAWUKA-834).
+# Both deploy/dokploy/cache-rules.json (the policy contract) and
+# deploy/dokploy/cloudflare-cache-rules.json (the deployable payload) are
+# generated from web/config/app.yaml seo.shellCache by
+# web/scripts/generate-cache-rules.mjs (`npm run gen:cache-rules`;
+# `npm run check:cache-rules` fails CI on drift) — never hand-edit either.
+# This script is the deployment consumer only: it PUTs the generated payload to
+# the zone through the Cloudflare Rulesets API. The contract declares no custom
+# cache keys (unavailable on this zone's plan), so its signals live under
+# `bypass.*` and the payload enforces locale safety with bypass rules instead of
+# cache-key inputs (see the file's $note and BRAWUKA-834).
+#
+# The checker this script gates on is shared with the generated-policy checks
+# and owned by the FE-authored generator PR (#778 first, then this one); this
+# branch carries no second evaluator.
 #
 # The entrypoint PUT replaces the whole phase ruleset, so the file is the single
 # source of truth for what the edge runs and re-running is idempotent. Rule

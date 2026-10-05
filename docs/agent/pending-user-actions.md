@@ -10,7 +10,8 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
 ## 1. Supabase (auth provider) — unlocks auth round-trip
 
-- [x] Project exists; `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` are in `~/.zshrc` (owner 2026-09-23: staging project live)
+- [x] Staging project exists (`ojujmjewtbquiddswyrg`) (owner 2026-09-23: staging project live)
+- [ ] Multica agent-QA runner env (Explorer agent `5835b282-d5f6-46cf-8210-a90949c89cc9`) — bind the staging Supabase triple: `multica agent env set <agent-id> --custom-env-file <0600 JSON>`, the JSON carrying the full `custom_env` map (the two existing `CF_ACCESS_CLIENT_ID`/`CF_ACCESS_CLIENT_SECRET` values plus the three below — no placeholder entries). Items, all from staging project `ojujmjewtbquiddswyrg`: `SUPABASE_URL` + `SUPABASE_ANON_KEY` + `SUPABASE_SERVICE_ROLE_KEY` — `scripts/agent-qa/supabase-env.mjs` requires all three, two are not enough. The shell store's triple is Our Village's (`xnybmtbzbdsagqrtfyoa`) and answers 401 against staging, so it cannot unlock the journeys (BRAWUKA-831). Read server-side by `scripts/agent-qa/session.mjs` in the agent Node process; never injected into the browser. Distinct from the GitHub Environment `staging` secrets (item 1a) and from `web/.env.local`.
 - [ ] Set public site / allowlist env vars from `web/.env.example`:
   - `NEXT_PUBLIC_SITE_URL` (required, e.g. `http://localhost:3000`, no trailing slash)
   - `NEXT_PUBLIC_ALLOWED_HOSTS` (optional, comma-separated, e.g. `localhost:3001`)

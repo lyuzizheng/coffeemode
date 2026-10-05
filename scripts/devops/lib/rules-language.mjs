@@ -14,6 +14,30 @@
 
 const PUNCTUATION = new Set(["(", ")", "[", "]", ",", ".", "*"]);
 
+function readString(source, index) {
+  let value = "";
+  index += 1;
+  while (index < source.length && source[index] !== '"') {
+    if (source[index] === "\\") {
+      value += source[index + 1];
+      index += 2;
+      continue;
+    }
+    value += source[index];
+    index += 1;
+  }
+  if (source[index] !== '"') throw new Error(`unterminated string in ${source}`);
+  return { value, index: index + 1 };
+}
+
+function readIdent(source, index) {
+  const match = /^[A-Za-z_][A-Za-z0-9_]*/.exec(source.slice(index));
+  if (!match) {
+    throw new Error(`cannot tokenize ${JSON.stringify(source.slice(index, index + 16))}`);
+  }
+  return { value: match[0], index: index + match[0].length };
+}
+
 function tokenize(source) {
   const tokens = [];
   let index = 0;
@@ -24,20 +48,9 @@ function tokenize(source) {
       continue;
     }
     if (char === '"') {
-      let value = "";
-      index += 1;
-      while (index < source.length && source[index] !== '"') {
-        if (source[index] === "\\") {
-          value += source[index + 1];
-          index += 2;
-          continue;
-        }
-        value += source[index];
-        index += 1;
-      }
-      if (source[index] !== '"') throw new Error(`unterminated string in ${source}`);
-      index += 1;
-      tokens.push({ kind: "string", value });
+      const token = readString(source, index);
+      tokens.push({ kind: "string", value: token.value });
+      index = token.index;
       continue;
     }
     if (PUNCTUATION.has(char)) {
@@ -45,12 +58,9 @@ function tokenize(source) {
       index += 1;
       continue;
     }
-    const match = /^[A-Za-z_][A-Za-z0-9_]*/.exec(source.slice(index));
-    if (!match) {
-      throw new Error(`cannot tokenize ${JSON.stringify(source.slice(index, index + 16))}`);
-    }
-    tokens.push({ kind: "ident", value: match[0] });
-    index += match[0].length;
+    const token = readIdent(source, index);
+    tokens.push({ kind: "ident", value: token.value });
+    index = token.index;
   }
   return tokens;
 }
@@ -121,43 +131,52 @@ function wildcard(pattern, value) {
   return new RegExp(`^${escaped}$`, "i").test(value);
 }
 
+function parseStartsWith(tokens, cursor) {
+  cursor.index += 1;
+  take(tokens, cursor, "punct", "(");
+  const field = parseField(tokens, cursor);
+  take(tokens, cursor, "punct", ",");
+  const prefix = take(tokens, cursor, "string").value;
+  take(tokens, cursor, "punct", ")");
+  return (request) => readField(field, request).startsWith(prefix);
+}
+
+function parseAnyOperator(tokens, cursor) {
+  cursor.index += 1;
+  take(tokens, cursor, "punct", "(");
+  const field = parseField(tokens, cursor);
+  const operator = take(tokens, cursor, "ident").value;
+  const pattern = take(tokens, cursor, "string").value;
+  take(tokens, cursor, "punct", ")");
+  if (operator === "wildcard") {
+    return (request) =>
+      readField(field, request).some((value) => wildcard(pattern, value));
+  }
+  if (operator === "ne") {
+    return (request) =>
+      readField(field, request).some((value) => value !== pattern);
+  }
+  throw new Error(`unsupported any() operator ${operator}`);
+}
+
+function parseHttpComparison(tokens, cursor) {
+  const field = parseField(tokens, cursor);
+  const operator = take(tokens, cursor, "ident").value;
+  const value = take(tokens, cursor, "string").value;
+  if (operator === "eq") return (request) => readField(field, request) === value;
+  if (operator === "ne") return (request) => readField(field, request) !== value;
+  if (operator === "contains") return (request) => readField(field, request).includes(value);
+  throw new Error(`unsupported operator ${operator}`);
+}
+
 function parsePredicate(tokens, cursor) {
   const head = peek(tokens, cursor);
-  if (head?.kind === "ident" && head.value === "starts_with") {
-    cursor.index += 1;
-    take(tokens, cursor, "punct", "(");
-    const field = parseField(tokens, cursor);
-    take(tokens, cursor, "punct", ",");
-    const prefix = take(tokens, cursor, "string").value;
-    take(tokens, cursor, "punct", ")");
-    return (request) => readField(field, request).startsWith(prefix);
+  if (head?.kind !== "ident") {
+    throw new Error(`unsupported predicate ${JSON.stringify(head)}`);
   }
-  if (head?.kind === "ident" && head.value === "any") {
-    cursor.index += 1;
-    take(tokens, cursor, "punct", "(");
-    const field = parseField(tokens, cursor);
-    const operator = take(tokens, cursor, "ident").value;
-    const pattern = take(tokens, cursor, "string").value;
-    take(tokens, cursor, "punct", ")");
-    if (operator === "wildcard") {
-      return (request) =>
-        readField(field, request).some((value) => wildcard(pattern, value));
-    }
-    if (operator === "ne") {
-      return (request) =>
-        readField(field, request).some((value) => value !== pattern);
-    }
-    throw new Error(`unsupported any() operator ${operator}`);
-  }
-  if (head?.kind === "ident" && head.value === "http") {
-    const field = parseField(tokens, cursor);
-    const operator = take(tokens, cursor, "ident").value;
-    const value = take(tokens, cursor, "string").value;
-    if (operator === "eq") return (request) => readField(field, request) === value;
-    if (operator === "ne") return (request) => readField(field, request) !== value;
-    if (operator === "contains") return (request) => readField(field, request).includes(value);
-    throw new Error(`unsupported operator ${operator}`);
-  }
+  if (head.value === "starts_with") return parseStartsWith(tokens, cursor);
+  if (head.value === "any") return parseAnyOperator(tokens, cursor);
+  if (head.value === "http") return parseHttpComparison(tokens, cursor);
   throw new Error(`unsupported predicate ${JSON.stringify(head)}`);
 }
 

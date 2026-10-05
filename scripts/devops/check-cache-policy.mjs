@@ -55,62 +55,68 @@ function readJson(file) {
   return JSON.parse(readFileSync(file, "utf8"));
 }
 
-function main(argv) {
-  let contractPath = DEFAULT_CONTRACT;
-  let payloadPath = DEFAULT_PAYLOAD;
-  let asJson = false;
+const USAGE =
+  "usage: check-cache-policy.mjs [--contract <path>] [--payload <path>] [--json]\n";
 
+function parseArgs(argv) {
+  const options = { contractPath: DEFAULT_CONTRACT, payloadPath: DEFAULT_PAYLOAD, asJson: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--contract") {
-      contractPath = path.resolve(argv[(index += 1)]);
+      options.contractPath = path.resolve(argv[(index += 1)]);
     } else if (arg === "--payload") {
-      payloadPath = path.resolve(argv[(index += 1)]);
+      options.payloadPath = path.resolve(argv[(index += 1)]);
     } else if (arg === "--json") {
-      asJson = true;
+      options.asJson = true;
     } else if (arg === "--help" || arg === "-h") {
-      process.stdout.write(
-        "usage: check-cache-policy.mjs [--contract <path>] [--payload <path>] [--json]\n",
-      );
-      return 0;
+      process.stdout.write(USAGE);
+      return { code: 0 };
     } else {
       process.stderr.write(`unknown argument ${arg}\n`);
-      return 2;
+      return { code: 2 };
     }
   }
+  return { options };
+}
 
-  const contract = readJson(contractPath);
-  const payload = readJson(payloadPath);
-  const { failures, outcomes, responseOutcomes } = checkCachePolicy(contract, payload);
+function verdictRow(key, outcome) {
+  const verdict = outcome.actual === outcome.expected ? "ok  " : "FAIL";
+  return `${verdict} ${key}=${String(outcome.actual)} ${outcome.name}`;
+}
 
+function report({ asJson, contractPath, payloadPath, result }) {
+  const { failures, outcomes, responseOutcomes } = result;
   if (asJson) {
     process.stdout.write(
       `${JSON.stringify({ ok: failures.length === 0, failures, outcomes, responseOutcomes }, null, 2)}\n`,
     );
-  } else {
-    process.stdout.write(`contract: ${path.relative(REPO_ROOT, contractPath)}\n`);
-    process.stdout.write(`payload:  ${path.relative(REPO_ROOT, payloadPath)}\n\n`);
-    for (const outcome of outcomes) {
-      const verdict = outcome.actual === outcome.expected ? "ok  " : "FAIL";
-      process.stdout.write(`${verdict} cache=${String(outcome.actual)} ${outcome.name}\n`);
-    }
-    for (const outcome of responseOutcomes) {
-      const verdict = outcome.actual === outcome.expected ? "ok  " : "FAIL";
-      process.stdout.write(
-        `${verdict} no_store=${String(outcome.actual)} ${outcome.name}\n`,
-      );
-    }
-    for (const failure of failures) {
-      process.stdout.write(`\nFAIL ${failure}\n`);
-    }
-    process.stdout.write(
-      failures.length === 0
-        ? "\ncache policy check passed.\n"
-        : `\ncache policy check FAILED (${failures.length}).\n`,
-    );
+    return;
   }
+  const lines = [
+    `contract: ${path.relative(REPO_ROOT, contractPath)}`,
+    `payload:  ${path.relative(REPO_ROOT, payloadPath)}`,
+    "",
+  ];
+  for (const outcome of outcomes) lines.push(verdictRow("cache", outcome));
+  for (const outcome of responseOutcomes) lines.push(verdictRow("no_store", outcome));
+  for (const failure of failures) lines.push("", `FAIL ${failure}`);
+  lines.push(
+    "",
+    failures.length === 0
+      ? "cache policy check passed."
+      : `cache policy check FAILED (${failures.length}).`,
+  );
+  process.stdout.write(`${lines.join("\n")}\n`);
+}
 
-  return failures.length === 0 ? 0 : 1;
+function main(argv) {
+  const { code, options } = parseArgs(argv);
+  if (options === undefined) return code;
+  const contract = readJson(options.contractPath);
+  const payload = readJson(options.payloadPath);
+  const result = checkCachePolicy(contract, payload);
+  report({ asJson: options.asJson, contractPath: options.contractPath, payloadPath: options.payloadPath, result });
+  return result.failures.length === 0 ? 0 : 1;
 }
 
 process.exit(main(process.argv.slice(2)));

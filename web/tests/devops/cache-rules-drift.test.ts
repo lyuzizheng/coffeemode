@@ -256,6 +256,30 @@ describe("cache-policy checker adversarial payloads", () => {
       pattern: /does not exclude/,
     },
     {
+      name: "escaped literal buries exclusions inside an outer not()",
+      // The r8 reviewer payload verbatim: `\"` ends a naive scanner's
+      // string early, the `)` inside the literal drops its depth, and
+      // every required exclusion inside the outer `not (…)` then READS
+      // as a top-level conjunct — while the real grammar keeps the
+      // paren inside the string and the sb- request still caches.
+      mutate: (p: CloudflareCacheRuleset) => {
+        p.request.rules.push({
+          ...allowRule(p),
+          description: "escaped-literal depth probe",
+          expression:
+            'not (http.cookie contains "x\\" ) \\"y" and ' +
+            'starts_with(http.request.uri.path, "/cafes/") and ' +
+            'not (http.cookie contains "sb-") and not (http.cookie contains "locale=") and ' +
+            'not (any(http.request.headers["accept-language"][*] wildcard "*zh*")) and ' +
+            'http.host ne "staging.cafemood.app" and ' +
+            'starts_with(http.request.uri.path, "/cafes/")) and ' +
+            'any(http.request.headers["accept-language"][*] wildcard "*en-US*")',
+        });
+      },
+      req: { ...REQ.auth, acceptLanguage: "en-US" },
+      pattern: /does not exclude cookiePrefix "sb-"/,
+    },
+    {
       name: "auth bypass narrowed inside a conjunction",
       mutate: (p: CloudflareCacheRuleset) => {
         const sbBypass = p.request.rules.find(

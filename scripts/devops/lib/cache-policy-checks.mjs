@@ -18,7 +18,7 @@
  * declared bypass; extra strictness is fine.
  */
 
-import { evaluateResponseRules, evaluateRules } from "./rules-language.mjs";
+import { evaluateResponseRules, evaluateRules, tokenize } from "./rules-language.mjs";
 import { checkCoverage } from "./cache-policy-coverage.mjs";
 
 // ---------------------------------------------------------------------------
@@ -191,8 +191,10 @@ const PHASE_NAMES = {
  * carry the required text while bypassing it; nested `not(not(…))` keeps
  * the exclusion text while asserting the opposite (r4 P1). Both are
  * outside what the evaluator compiles, so they are rejected here rather
- * than trusted to a substring check. String literals are stripped first
- * so a quoted `"and"`/`"or"` value cannot trip the scan.
+ * than trusted to a substring check. The scan runs on the shared
+ * tokenizer's tokens — string contents never look like operators, and a
+ * `\"` cannot fake a literal boundary the way it fooled the earlier
+ * regex strip (r8 P1).
  */
 function unsupportedExpressionFailures(payload) {
   const failures = [];
@@ -203,16 +205,36 @@ function unsupportedExpressionFailures(payload) {
   for (const rule of allRules) {
     if (rule.enabled === false) continue;
     const expr = String(rule.expression ?? "");
-    const cleaned = expr.replace(/"[^"]*"/g, '""');
-    if (/\bor\b/.test(cleaned)) {
+    const name = rule.description || expr.slice(0, 40);
+    let tokens;
+    try {
+      tokens = tokenize(expr);
+    } catch (err) {
       failures.push(
-        `rule "${rule.description || expr.slice(0, 40)}" uses 'or' — outside the supported conjunction grammar`,
+        `rule "${name}" cannot be tokenized (${err.message.slice(0, 60)}) — outside the supported grammar`,
+      );
+      continue;
+    }
+    if (tokens.some((token) => token.kind === "ident" && token.value === "or")) {
+      failures.push(
+        `rule "${name}" uses 'or' — outside the supported conjunction grammar`,
       );
     }
-    if (/not\s*\(\s*not\b/i.test(cleaned)) {
-      failures.push(
-        `rule "${rule.description || expr.slice(0, 40)}" uses nested negation not(not(…)) — outside the supported grammar`,
-      );
+    for (let i = 0; i + 2 < tokens.length; i += 1) {
+      const [a, b, c] = [tokens[i], tokens[i + 1], tokens[i + 2]];
+      if (
+        a.kind === "ident" &&
+        a.value === "not" &&
+        b.kind === "punct" &&
+        b.value === "(" &&
+        c.kind === "ident" &&
+        c.value === "not"
+      ) {
+        failures.push(
+          `rule "${name}" uses nested negation not(not(…)) — outside the supported grammar`,
+        );
+        break;
+      }
     }
   }
   return failures;

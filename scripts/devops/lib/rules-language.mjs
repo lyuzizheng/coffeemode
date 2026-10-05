@@ -38,7 +38,7 @@ function readIdent(source, index) {
   return { value: match[0], index: index + match[0].length };
 }
 
-function tokenize(source) {
+export function tokenize(source) {
   const tokens = [];
   let index = 0;
   while (index < source.length) {
@@ -49,18 +49,18 @@ function tokenize(source) {
     }
     if (char === '"') {
       const token = readString(source, index);
-      tokens.push({ kind: "string", value: token.value });
+      tokens.push({ kind: "string", value: token.value, start: index, end: token.index });
       index = token.index;
       continue;
     }
     if (PUNCTUATION.has(char)) {
-      tokens.push({ kind: "punct", value: char });
+      tokens.push({ kind: "punct", value: char, start: index, end: index + 1 });
       index += 1;
       continue;
     }
-    const token = readIdent(source, index);
-    tokens.push({ kind: "ident", value: token.value });
-    index = token.index;
+    const ident = readIdent(source, index);
+    tokens.push({ kind: "ident", value: ident.value, start: index, end: ident.index });
+    index = ident.index;
   }
   return tokens;
 }
@@ -218,6 +218,33 @@ export function compile(expression) {
     throw new Error(`trailing tokens in ${expression}`);
   }
   return predicate;
+}
+
+/**
+ * Top-level ` and `-joined conjuncts of an expression, as source text — the
+ * SAME tokens the evaluator consumes, so string/escape/depth boundaries are
+ * identical by construction (BRAWUKA-841 r8 P1: a `\"` inside a literal
+ * ended a naive scanner's fake string and let the paren inside the literal
+ * underflow depth, reading exclusions nested inside an outer `not (…)` as
+ * top-level). Throws on any input tokenize rejects — callers fail closed.
+ */
+export function topLevelConjuncts(expression) {
+  const tokens = tokenize(expression);
+  const terms = [];
+  let depth = 0;
+  let start = 0;
+  for (const token of tokens) {
+    if (token.kind === "punct" && token.value === "(") {
+      depth += 1;
+    } else if (token.kind === "punct" && token.value === ")") {
+      depth -= 1;
+    } else if (depth === 0 && token.kind === "ident" && token.value === "and") {
+      terms.push(expression.slice(start, token.start).trim());
+      start = token.end;
+    }
+  }
+  terms.push(expression.slice(start).trim());
+  return terms;
 }
 
 /**

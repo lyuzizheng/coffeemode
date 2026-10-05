@@ -19,11 +19,14 @@ describe("cafe-shell CDN cache rules", () => {
   // The BRAWUKA-821 failure mode: the shell's locale resolves cookie →
   // Accept-Language (i18n/request.ts), but the edge key covered only the
   // header — a `locale=zh` request was served the cached en shell. The edge
-  // rule MUST key on both inputs.
-  it("keys the edge cache on every locale input (cookie + Accept-Language)", () => {
+  // rule MUST account for both inputs on every supported plan: keyed on
+  // Enterprise (custom header/cookie keys), presence-bypassed elsewhere
+  // (BRAWUKA-834's Free-safe fallback).
+  it("makes the locale cookie a shared-cache differentiator (key or bypass)", () => {
     const rules = JSON.parse(readFileSync(CACHE_RULES, "utf8"));
     expect(rules.varyOn).toContain("Accept-Language");
     expect(rules.varyOnCookies).toContain("locale");
+    expect(rules.bypass.onRequestCookies).toContain("locale");
     expect(rules.sharedCacheAcrossLocales).toBe(false);
   });
 });

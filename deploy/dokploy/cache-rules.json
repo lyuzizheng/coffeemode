@@ -19,6 +19,9 @@
     ],
     "onRequestCookiePrefixes": [
       "sb-"
+    ],
+    "onRequestCookies": [
+      "locale"
     ]
   },
   "varyOn": [

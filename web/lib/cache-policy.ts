@@ -27,6 +27,12 @@ interface CafeShellCachePolicy {
    * `locale` cookie overrides Accept-Language (i18n/request.ts), so it is
    * a cache-key input, not a bypass (BRAWUKA-821). */
   varyCookies: readonly string[];
+  /** Exact request-cookie names that MUST bypass shared cache where
+   * value-keying is unavailable (Cloudflare custom header/cookie keys are
+   * Enterprise-gated; the Free-plan-safe locale remedy, BRAWUKA-834).
+   * Deployments supporting varyCookies key the same names instead — the
+   * two fields are alternatives, never both. */
+  bypassOnRequestCookies: readonly string[];
   /** False = locales MUST NOT share a cache entry. */
   sharedCacheAcrossLocales: boolean;
 }
@@ -54,6 +60,8 @@ interface CafeShellCdnRules {
     onResponseSetCookie: boolean;
     onStatusesOtherThan: number[];
     onRequestCookiePrefixes: string[];
+    /** Exact cookie names bypassed where value-keying is unavailable. */
+    onRequestCookies: string[];
   };
   varyOn: string[];
   /** Cache-key cookie names (values, not mere presence). */
@@ -81,6 +89,7 @@ export function cafeShellCdnRules(
       onResponseSetCookie: policy.bypassOnSetCookieResponse,
       onStatusesOtherThan: [...policy.cacheableStatuses],
       onRequestCookiePrefixes: [...policy.bypassOnRequestCookiePrefixes],
+      onRequestCookies: [...policy.bypassOnRequestCookies],
     },
     varyOn: [...policy.varyHeaders],
     varyOnCookies: [...policy.varyCookies],

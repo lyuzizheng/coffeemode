@@ -44,6 +44,11 @@ function parseShellCache(
       "seo.shellCache.varyCookies",
       shellCache.varyCookies,
     ),
+    bypassOnRequestCookies: stringList(
+      file,
+      "seo.shellCache.bypassOnRequestCookies",
+      shellCache.bypassOnRequestCookies,
+    ),
     sharedCacheAcrossLocales: flag(
       file,
       "seo.shellCache.sharedCacheAcrossLocales",

@@ -152,18 +152,27 @@ seo:
     # The shell is content-negotiated (cookie/Accept-Language, DG110), but
     # Next overwrites Vary on App Router HTML with its internal
     # `rsc, next-router-*` set, so origin-declared Vary never ships. The edge
-    # MUST build the cache key from ALL locale inputs instead: varyHeaders
-    # covers the Accept-Language fallback while varyCookies covers the
-    # `locale` cookie that overrides it (i18n/request.ts precedence:
-    # cookie → Accept-Language → en). Keying on Accept-Language alone served
-    # a zh-cookie request the cached en shell (BRAWUKA-821).
-    # `sharedCacheAcrossLocales: false` states explicitly that locales MUST
-    # NOT share a cache entry — without it the first locale to hit a URL
-    # would be served to everyone.
+    # MUST therefore account for BOTH locale inputs: varyHeaders covers the
+    # Accept-Language fallback and varyCookies covers the `locale` cookie
+    # that overrides it (i18n/request.ts precedence: cookie → Accept-Language
+    # → en). Keying on the header alone would serve a zh-cookie request the
+    # cached en shell (BRAWUKA-821).
+    #
+    # Custom header/cookie cache keys are Enterprise-gated on Cloudflare —
+    # where the zone plan lacks them the rule MUST fall back to a presence
+    # bypass on the same cookie (bypassOnRequestCookies below). Either
+    # mechanism satisfies `sharedCacheAcrossLocales: false`; the deployed
+    # choice is a DevOps readback decision (BRAWUKA-834), never a silent
+    # "first locale wins" key.
     varyHeaders: ["Accept-Language"]
-    # Request-cookie names whose VALUES join the edge cache key (not a
-    # bypass — distinct values get distinct cacheable entries).
+    # Request-cookie names whose VALUES join the edge cache key where the
+    # zone plan supports it (Enterprise custom keys).
     varyCookies: ["locale"]
+    # Request-cookie names (exact) that MUST bypass shared cache where
+    # value-keying is unavailable — the Free-plan-safe locale remedy
+    # (BRAWUKA-834): a `locale`-carrying request misses the shared entry
+    # entirely instead of poisoning it for other locales.
+    bypassOnRequestCookies: ["locale"]
     sharedCacheAcrossLocales: false
   # 404 recovery block (DG111): how many nearby cafes to list relative to a
   # gone cafe's last known location. Radius reuses search.maxRadiusKm.

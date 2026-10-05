@@ -80,6 +80,8 @@ export interface AppConfig {
       varyHeaders: string[];
       /** Request-cookie names whose values join the edge cache key. */
       varyCookies: string[];
+      /** Exact cookie names forcing bypass where value-keying is unsupported. */
+      bypassOnRequestCookies: string[];
       sharedCacheAcrossLocales: boolean;
     };
     recoveryLimit: number;

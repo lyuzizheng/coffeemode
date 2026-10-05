@@ -183,6 +183,22 @@ function checkCoverage(contract, payload) {
       failures.push(`status ${status} is not pinned no-store on the cache-eligible rule`);
     }
   }
+  // TTL semantics: respect_origin is what makes the contract's s-maxage /
+  // stale-while-revalidate meaningful — an override would silently ignore
+  // the origin TTL. strong ETags are required for SWR revalidation.
+  const cacheableContract = contract.cacheable ?? {};
+  if ((cacheableContract.statuses ?? []).length > 0) {
+    const edgeTtl = allow.action_parameters?.edge_ttl;
+    if (!edgeTtl || edgeTtl.mode !== "respect_origin") {
+      failures.push("cache-eligible rule must keep edge_ttl.mode=respect_origin");
+    }
+    if (
+      (cacheableContract.staleWhileRevalidateSeconds ?? 0) > 0 &&
+      allow.action_parameters?.respect_strong_etags !== true
+    ) {
+      failures.push("stale-while-revalidate needs respect_strong_etags: true");
+    }
+  }
 
   const prefixes = contract.bypass?.onRequestCookiePrefixes ?? [];
   for (const prefix of prefixes) {

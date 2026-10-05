@@ -17,6 +17,7 @@ import { runCheckinLifecycleGate } from "./checkin-lifecycle-gate.mjs";
 import { runCheckinSubmitGate } from "./checkin-submit-gate.mjs";
 import { runCityScopeGate } from "./city-scope-gate.mjs";
 import { runDeeplinkHydrationGate } from "./deeplink-hydration-gate.mjs";
+import { runLocaleSwitchGate } from "./locale-switch-gate.mjs";
 import { runFeedPaginationGate } from "./feed-pagination-gate.mjs";
 import { runNavigationPromptGate } from "./navigation-prompt-gate.mjs";
 import { runOwnerControlsGate } from "./owner-controls-gate.mjs";
@@ -32,6 +33,17 @@ export const E2E_GATES = [
     mobile: false,
     needsDb: true,
     run: runDeeplinkHydrationGate,
+  },
+  {
+    // BRAWUKA-835: cookie → SSR locale on the same /cafes/[id] URL, proven on
+    // visible check-in CTA copy (not document bytes) plus a wrong-locale-shell
+    // fault that must fail the visible assertion. Mobile-eligible: viewport-
+    // independent role/text checks — this proof moved here from inline T2.
+    slug: "locale-switch",
+    label: "T7b: Locale Switch (zh↔en Visible Cafe Copy)",
+    mobile: true,
+    needsDb: true,
+    run: runLocaleSwitchGate,
   },
   {
     slug: "api-contract",

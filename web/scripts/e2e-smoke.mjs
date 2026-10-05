@@ -243,6 +243,9 @@ async function runSmokeSuite() {
         `Expected cacheable Cache-Control on plain shell, got "${cc2}"`,
       );
       assert(bodyHtml.includes("E2E Smoke Cafe"), "Cafe name 'E2E Smoke Cafe' not rendered on page");
+      // BRAWUKA-821/835: locale-cookie SSR re-render + visible zh↔en copy
+      // moved to the `locale-switch` registry gate (asserts on the visible
+      // check-in CTA, not serialized message bytes).
       assert(bodyHtml.includes("San Francisco"), "City 'San Francisco' not rendered on page");
 
       // Verify Share button exists and is clickable
@@ -271,9 +274,9 @@ async function runSmokeSuite() {
       // BRAWUKA-658: the proxy no longer probes or rewrites gone cafes —
       // the page's generateMetadata() commits the 404 via notFound(), so the
       // response carries the static /cafes/:id* s-maxage header. Shared-cache
-      // exclusion of the 404 is owned by the edge rule
-      // (deploy/dokploy/cache-rules.json onStatusesOtherThan: [200]),
-      // drift-pinned by tests/cafe-shell-cache.test.ts.
+      // exclusion of the 404 is owned by the edge ruleset
+      // (deploy/dokploy/cache-rules.json status_code_ttl — no-store for every
+      // status other than 200/304), drift-pinned by `npm run check:cache-rules`.
 
       const pageText = await page.textContent("body");
       assert(

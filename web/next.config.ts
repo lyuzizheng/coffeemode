@@ -151,11 +151,13 @@ const nextConfig: NextConfig = {
         // hit never blocks on revalidation.
         //
         // This static header only describes the cacheable case. The bypass
-        // side (Set-Cookie responses, non-200 statuses incl. the gone-cafe
-        // 404, Accept-Language cache keying) is executable, not a comment:
-        // seo.shellCache in app.yaml owns the values, lib/cache-policy.ts
+        // side is executable, not a comment: seo.shellCache in app.yaml owns
+        // the values (Set-Cookie responses, non-200 statuses incl. the
+        // gone-cafe 404, locale-negotiated requests — custom cache keys are
+        // Enterprise-only, so every request that could resolve a non-default
+        // locale bypasses instead of keying, BRAWUKA-834), lib/cache-policy.ts
         // owns the predicates, proxy.ts stamps no-store on session-refresh
-        // responses, and deploy/dokploy/cache-rules.json owns the edge rule
+        // responses, and deploy/dokploy/cache-rules.json owns the edge ruleset
         // (BRAWUKA-184). The gone-cafe 404 itself is committed by the page's
         // notFound() since BRAWUKA-658 — the edge rule bypasses it.
         source: "/cafes/:id*",

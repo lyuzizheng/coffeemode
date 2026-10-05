@@ -1,0 +1,279 @@
+/**
+ * Cache-policy validation — the checks behind `check-cache-policy.mjs`
+ * (BRAWUKA-834/836/837/839). Split out so the CLI driver stays a thin
+ * arg/print shell: everything in this module is pure
+ * (contract, payload) -> failures/outcomes, no I/O.
+ *
+ * Four checks, run in `checkCachePolicy()`:
+ *
+ *   shape      the payload declares the phases the applier PUTs (BRAWUKA-837)
+ *   coverage   every ACTIVE cache-eligible rule implements the whole
+ *              contract — per-rule, not the first match (r3 P1)
+ *   outcomes   representative requests evaluated last-match-wins through
+ *              the same rules-language engine the edge runs
+ *   response   the Set-Cookie no-store rule exists and behaves
+ *
+ * The contract has no custom cache keys (unavailable on this zone's plan),
+ * so its signals live under `bypass.*` — the payload must implement every
+ * declared bypass; extra strictness is fine.
+ */
+
+import { evaluateResponseRules, evaluateRules, tokenize } from "./rules-language.mjs";
+import { checkCoverage } from "./cache-policy-coverage.mjs";
+
+// ---------------------------------------------------------------------------
+// Representative requests (BRAWUKA-836 acceptance: effective outcomes)
+// ---------------------------------------------------------------------------
+
+const PROBE_PATH = "/cafes/review-probe";
+
+const CASES = [
+  {
+    name: "production, default locale (no cookie, Accept-Language en)",
+    request: { host: "cafemood.app", path: PROBE_PATH, cookie: "", acceptLanguage: ["en"] },
+    cache: true,
+  },
+  {
+    name: "production, Accept-Language en-US",
+    request: {
+      host: "cafemood.app",
+      path: PROBE_PATH,
+      cookie: "",
+      acceptLanguage: ["en-US,en;q=0.9"],
+    },
+    cache: true,
+  },
+  {
+    name: "production, Accept-Language zh-CN",
+    request: { host: "cafemood.app", path: PROBE_PATH, cookie: "", acceptLanguage: ["zh-CN"] },
+    cache: false,
+  },
+  {
+    name: "production, Accept-Language zh-TW (same zh family)",
+    request: { host: "cafemood.app", path: PROBE_PATH, cookie: "", acceptLanguage: ["zh-TW"] },
+    cache: false,
+  },
+  {
+    name: "production, Accept-Language zh-HK",
+    request: { host: "cafemood.app", path: PROBE_PATH, cookie: "", acceptLanguage: ["zh-HK,zh;q=0.9"] },
+    cache: false,
+  },
+  {
+    name: "production, locale=zh cookie",
+    request: {
+      host: "cafemood.app",
+      path: PROBE_PATH,
+      cookie: "locale=zh",
+      acceptLanguage: ["en"],
+    },
+    cache: false,
+  },
+  {
+    name: "production, session cookie",
+    request: {
+      host: "cafemood.app",
+      path: PROBE_PATH,
+      cookie: "sb-abcdef-auth-token=1",
+      acceptLanguage: ["en"],
+    },
+    cache: false,
+  },
+  {
+    name: "staging (spec 0005 §3 bypasses every route)",
+    request: {
+      host: "staging.cafemood.app",
+      path: PROBE_PATH,
+      cookie: "",
+      acceptLanguage: ["en"],
+    },
+    cache: false,
+  },
+  {
+    name: "outside the cafe-shell scope",
+    request: { host: "cafemood.app", path: "/search", cookie: "", acceptLanguage: ["en"] },
+    cache: null,
+  },
+];
+
+export function checkOutcomes(payload) {
+  const failures = [];
+  const outcomes = [];
+  const rules = Array.isArray(payload.request?.rules) ? payload.request.rules : [];
+  for (const testCase of CASES) {
+    let matched = [];
+    let setting = null;
+    try {
+      ({ matched, setting } = evaluateRules(rules, testCase.request));
+    } catch (err) {
+      // An expression outside the supported grammar is already a shape
+      // failure — record it once per case instead of crashing the run.
+      failures.push(`${testCase.name}: payload rule cannot be evaluated (${err.message.slice(0, 80)})`);
+      continue;
+    }
+    outcomes.push({ name: testCase.name, expected: testCase.cache, actual: setting, matched });
+    if (setting !== testCase.cache) {
+      failures.push(
+        `${testCase.name}: expected cache=${testCase.cache}, got ${setting} ` +
+          `(matched: ${matched.join(" | ") || "no rule"})`,
+      );
+    }
+  }
+  return { failures, outcomes };
+}
+
+// ---------------------------------------------------------------------------
+// Response phase (contract bypass.onResponseSetCookie)
+// ---------------------------------------------------------------------------
+
+const RESPONSE_CASES = [
+  {
+    name: "response sets a cookie",
+    request: { host: "cafemood.app", path: PROBE_PATH, setCookie: ["sb-refresh=1; Path=/"] },
+    noStore: true,
+  },
+  {
+    name: "response sets no cookie",
+    request: { host: "cafemood.app", path: PROBE_PATH, setCookie: [] },
+    noStore: false,
+  },
+  {
+    name: "response outside the cafe-shell scope sets a cookie",
+    request: { host: "cafemood.app", path: "/search", setCookie: ["a=1"] },
+    noStore: false,
+  },
+];
+
+export function checkResponseOutcomes(payload) {
+  const failures = [];
+  const outcomes = [];
+  const rules = Array.isArray(payload.response?.rules) ? payload.response.rules : [];
+  for (const testCase of RESPONSE_CASES) {
+    let matched = [];
+    let parameters = null;
+    try {
+      ({ matched, parameters } = evaluateResponseRules(rules, testCase.request));
+    } catch (err) {
+      failures.push(`${testCase.name}: payload rule cannot be evaluated (${err.message.slice(0, 80)})`);
+      continue;
+    }
+    const actual = parameters?.["no-store"]?.operation === "set";
+    outcomes.push({ name: testCase.name, expected: testCase.noStore, actual, matched });
+    if (actual !== testCase.noStore) {
+      failures.push(
+        `${testCase.name}: expected no_store=${testCase.noStore}, got ${actual} ` +
+          `(matched: ${matched.join(" | ") || "no rule"})`,
+      );
+    }
+  }
+  return { failures, outcomes };
+}
+
+
+// ---------------------------------------------------------------------------
+// Shape: the payload declares the phases the applier will PUT to
+// ---------------------------------------------------------------------------
+
+/**
+ * The applier builds the PUT URL from the payload's own `phase` field, so a
+ * payload that names a different phase would be uploaded to an entrypoint its
+ * rules were never checked against (BRAWUKA-837). The mapping is fixed by the
+ * Cloudflare Rulesets API.
+ */
+const PHASE_NAMES = {
+  request: "http_request_cache_settings",
+  response: "http_response_cache_settings",
+};
+
+/**
+ * Every rule expression must stay inside the supported grammar — a pure
+ * `and`-conjunction of possibly-negated predicates, the subset
+ * `rules-language.mjs` evaluates. `or` opens an alternate branch that can
+ * carry the required text while bypassing it; nested `not(not(…))` keeps
+ * the exclusion text while asserting the opposite (r4 P1). Both are
+ * outside what the evaluator compiles, so they are rejected here rather
+ * than trusted to a substring check. The scan runs on the shared
+ * tokenizer's tokens — string contents never look like operators, and a
+ * `\"` cannot fake a literal boundary the way it fooled the earlier
+ * regex strip (r8 P1).
+ */
+function unsupportedExpressionFailures(payload) {
+  const failures = [];
+  const allRules = [
+    ...(payload.request?.rules ?? []),
+    ...(payload.response?.rules ?? []),
+  ];
+  for (const rule of allRules) {
+    if (rule.enabled === false) continue;
+    const expr = String(rule.expression ?? "");
+    const name = rule.description || expr.slice(0, 40);
+    let tokens;
+    try {
+      tokens = tokenize(expr);
+    } catch (err) {
+      failures.push(
+        `rule "${name}" cannot be tokenized (${err.message.slice(0, 60)}) — outside the supported grammar`,
+      );
+      continue;
+    }
+    if (tokens.some((token) => token.kind === "ident" && token.value === "or")) {
+      failures.push(
+        `rule "${name}" uses 'or' — outside the supported conjunction grammar`,
+      );
+    }
+    for (let i = 0; i + 2 < tokens.length; i += 1) {
+      const [a, b, c] = [tokens[i], tokens[i + 1], tokens[i + 2]];
+      if (
+        a.kind === "ident" &&
+        a.value === "not" &&
+        b.kind === "punct" &&
+        b.value === "(" &&
+        c.kind === "ident" &&
+        c.value === "not"
+      ) {
+        failures.push(
+          `rule "${name}" uses nested negation not(not(…)) — outside the supported grammar`,
+        );
+        break;
+      }
+    }
+  }
+  return failures;
+}
+
+export function checkShape(payload) {
+  const failures = [];
+  for (const [key, expected] of Object.entries(PHASE_NAMES)) {
+    const phase = payload[key];
+    if (phase === undefined) {
+      failures.push(`payload has no ${key} phase`);
+      continue;
+    }
+    if (phase.phase !== expected) {
+      failures.push(
+        `payload.${key}.phase is ${JSON.stringify(phase.phase)}, expected ${JSON.stringify(expected)}`,
+      );
+    }
+    if (!Array.isArray(phase.rules)) {
+      failures.push(`payload.${key}.rules is not an array`);
+    }
+  }
+  failures.push(...unsupportedExpressionFailures(payload));
+  return failures;
+}
+
+// ---------------------------------------------------------------------------
+// All checks — the single entry point the CLI and tests share.
+// ---------------------------------------------------------------------------
+
+export function checkCachePolicy(contract, payload) {
+  const shape = checkShape(payload);
+  const coverage = checkCoverage(contract, payload);
+  const { failures: outcomeFailures, outcomes } = checkOutcomes(payload);
+  const { failures: responseFailures, outcomes: responseOutcomes } =
+    checkResponseOutcomes(payload);
+  return {
+    failures: [...shape, ...coverage, ...outcomeFailures, ...responseFailures],
+    outcomes,
+    responseOutcomes,
+  };
+}

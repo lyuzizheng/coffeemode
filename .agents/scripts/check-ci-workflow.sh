@@ -100,6 +100,14 @@ else
     fail=1
   fi
 
+  # Same generated-artifact contract for the cafe-shell CDN edge rule
+  # (BRAWUKA-821): deleting this step would let `cache-rules.json` drift
+  # from `web/config/app.yaml` silently.
+  if ! grep -qE "^[[:space:]]*(-[[:space:]]+)?run:[[:space:]]*npm run check:cache-rules[[:space:]]*$" "$workflow"; then
+    echo "ci.yml missing static step: npm run check:cache-rules"
+    fail=1
+  fi
+
   pw_lines=$(grep "playwright install" "$workflow" || true)
   if [[ -n "$pw_lines" ]] && echo "$pw_lines" | grep -qvE 'playwright install[[:space:]]+chromium[[:space:]]*$'; then
     echo "ci.yml contains an unapproved playwright install command (only 'playwright install chromium' is allowed)"

@@ -34,10 +34,20 @@ function parseShellCache(
       "seo.shellCache.bypassOnRequestCookiePrefixes",
       shellCache.bypassOnRequestCookiePrefixes,
     ),
-    varyHeaders: stringList(
+    bypassOnRequestCookies: stringList(
       file,
-      "seo.shellCache.varyHeaders",
-      shellCache.varyHeaders,
+      "seo.shellCache.bypassOnRequestCookies",
+      shellCache.bypassOnRequestCookies,
+    ),
+    bypassOnAcceptLanguageContains: stringList(
+      file,
+      "seo.shellCache.bypassOnAcceptLanguageContains",
+      shellCache.bypassOnAcceptLanguageContains,
+    ),
+    bypassHostnames: stringList(
+      file,
+      "seo.shellCache.bypassHostnames",
+      shellCache.bypassHostnames,
     ),
     sharedCacheAcrossLocales: flag(
       file,

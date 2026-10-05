@@ -151,11 +151,24 @@ seo:
     bypassOnRequestCookiePrefixes: ["sb-"]
     # The shell is content-negotiated (cookie/Accept-Language, DG110), but
     # Next overwrites Vary on App Router HTML with its internal
-    # `rsc, next-router-*` set, so origin-declared Vary never ships. The edge
-    # MUST key on these headers instead. `sharedCacheAcrossLocales: false`
-    # states explicitly that locales MUST NOT share a cache entry — without
-    # it the first locale to hit a URL would be served to everyone.
-    varyHeaders: ["Accept-Language"]
+    # `rsc, next-router-*` set, so origin-declared Vary never ships and the
+    # edge cannot key locales either — custom cache keys are not in the
+    # deployed plan's toolbox (live readback BRAWUKA-834). The only safe
+    # shared-cache rule is therefore a PROOF of the default locale:
+    # cache only requests that cannot resolve to a non-default locale
+    # (i18n/request.ts precedence: cookie → Accept-Language → en). Every
+    # request carrying a locale signal bypasses instead of poisoning (or
+    # sharing) a cross-locale entry (BRAWUKA-821).
+    #
+    # Request-cookie names that prove a locale choice and MUST bypass:
+    bypassOnRequestCookies: ["locale"]
+    # Accept-Language substrings that resolve to a non-default locale and
+    # MUST bypass (origin i18n treats any "zh" as zh).
+    bypassOnAcceptLanguageContains: ["zh"]
+    # Request Host values that MUST never cache — staging bypasses every
+    # route per spec 0005 §3 (the pre-821 live rule lacked a hostname
+    # restriction, which is why staging cached at all).
+    bypassHostnames: ["staging.cafemood.app"]
     sharedCacheAcrossLocales: false
   # 404 recovery block (DG111): how many nearby cafes to list relative to a
   # gone cafe's last known location. Radius reuses search.maxRadiusKm.

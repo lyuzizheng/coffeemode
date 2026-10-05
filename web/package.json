@@ -18,7 +18,7 @@
     "recompute:work-stats": "node scripts/recompute-work-stats.mjs",
     "snapshot:helpful-ranking": "node scripts/snapshot-helpful-ranking.mjs",
     "test:unit": "vitest run tests/components --passWithNoTests",
-    "test:integration": "RUN_INTEGRATION=1 vitest run tests/integration/db.integration.test.ts tests/integration/db-search.integration.test.ts tests/integration/db-profile-identity.integration.test.ts tests/integration/helpful-ranking.integration.test.ts tests/integration/runtime-config.integration.test.ts tests/integration/tombstone-backfill.integration.test.ts tests/db-helpers.test.ts tests/devops/setup-supabase.test.ts tests/devops/staging-journey.test.ts tests/devops/clean-dev-fixtures.test.ts tests/devops/migration-drift.test.ts tests/devops/api-access-log.test.ts tests/devops/rollback-selection.test.ts tests/devops/restore-drill.test.ts tests/devops/smoke-test.test.ts tests/devops/upgrade-health-probes.test.ts tests/devops/db-url-selection.test.ts tests/devops/dns-fallback.test.ts --reporter=verbose",
+    "test:integration": "RUN_INTEGRATION=1 vitest run tests/integration/db.integration.test.ts tests/integration/db-search.integration.test.ts tests/integration/db-profile-identity.integration.test.ts tests/integration/helpful-ranking.integration.test.ts tests/integration/runtime-config.integration.test.ts tests/integration/tombstone-backfill.integration.test.ts tests/db-helpers.test.ts tests/devops/setup-supabase.test.ts tests/devops/staging-journey.test.ts tests/devops/clean-dev-fixtures.test.ts tests/devops/migration-drift.test.ts tests/devops/cache-rules-drift.test.ts tests/devops/api-access-log.test.ts tests/devops/rollback-selection.test.ts tests/devops/restore-drill.test.ts tests/devops/smoke-test.test.ts tests/devops/upgrade-health-probes.test.ts tests/devops/db-url-selection.test.ts tests/devops/dns-fallback.test.ts --reporter=verbose",
     "test:integration:journey": "RUN_INTEGRATION=1 vitest run tests/integration/user-journey-discovery-creation.integration.test.ts tests/integration/user-journey-social-lifecycle.integration.test.ts --reporter=verbose",
     "test:integration:http": "RUN_INTEGRATION=1 vitest run tests/integration/http-*.integration.test.ts --reporter=verbose",
     "test:integration:images": "RUN_INTEGRATION=1 vitest run tests/integration/images.integration.test.ts tests/integration/image-service-store-location.integration.test.ts tests/integration/orphan-cleanup.integration.test.ts tests/integration/orphan-variant-cleanup.integration.test.ts --reporter=verbose",
@@ -29,12 +29,15 @@
     "check:guards": "node scripts/check-route-guards.mjs",
     "gen:buckets": "node scripts/generate-rate-limit-buckets.mjs",
     "check:buckets": "node scripts/generate-rate-limit-buckets.mjs --check",
+    "gen:cache-rules": "node scripts/generate-cache-rules.mjs",
+    "check:cache-rules": "node scripts/generate-cache-rules.mjs --check && npm run check:cache-policy",
     "check:visual": "node scripts/visual-smoke.mjs",
     "test:e2e": "node scripts/e2e-smoke.mjs",
     "check:bundle": "node scripts/check-bundle-budget.mjs",
     "analyze": "next experimental-analyze --output",
     "lhci": "node scripts/run-lhci.mjs",
-    "verify": "npm run check:buckets && npm run check:i18n && npm run check:guards && npm run typecheck && npm run lint && npm run build && npm run check:bundle"
+    "verify": "npm run check:buckets && npm run check:cache-rules && npm run check:i18n && npm run check:guards && npm run typecheck && npm run lint && npm run build && npm run check:bundle",
+    "check:cache-policy": "node ../scripts/devops/check-cache-policy.mjs"
   },
   "dependencies": {
     "@heroui/react": "^3.2.3",

@@ -77,7 +77,12 @@ export interface AppConfig {
       cacheableStatuses: number[];
       bypassOnSetCookieResponse: boolean;
       bypassOnRequestCookiePrefixes: string[];
-      varyHeaders: string[];
+      /** Exact cookie names that force an edge bypass (`locale` — BRAWUKA-821). */
+      bypassOnRequestCookies: string[];
+      /** Accept-Language substrings that force an edge bypass ("zh" — any non-default locale). */
+      bypassOnAcceptLanguageContains: string[];
+      /** Request Host values that bypass all shell caching (staging — spec 0005 §3). */
+      bypassHostnames: string[];
       sharedCacheAcrossLocales: boolean;
     };
     recoveryLimit: number;

@@ -58,40 +58,43 @@ describe("cafe-shell CDN cache rules", () => {
     ).toBe(false);
   });
 
-  // BRAWUKA-836: every negated exclusion in the allow rule must be
-  // mirrored by a positive bypass term — the complement — or the
-  // excluded request could match a caching rule (or an unconditional
-  // catch-all would also match default-locale requests and disable the
-  // allow rule under last-match-wins, the v7 defect). Structure: allow
-  // first, then zone-wide bypasses, then one `/cafes/ AND <signal>` rule
-  // per locale signal.
-  it("bypasses exactly the requests the allow rule excluded", () => {
-    const allow = ruleset[0];
-    const bypasses = ruleset.slice(1);
+  // BRAWUKA-836: deny-first ordering — the /cafes/* catch-all bypass runs
+  // FIRST, so under last-match-wins it can never disable the allow rule
+  // (the v7 defect put an unconditional rule AFTER it). The allow rule
+  // runs LAST and overrides the catch-all only where every exclusion
+  // holds. Structure: catch-all deny, zone-wide bypasses (sb-, staging
+  // host), allow last; response phase pins Set-Cookie responses no-store
+  // (contract bypass.onResponseSetCookie).
+  it("orders deny-first so excluded requests cannot reach the cache", () => {
+    const catchAll = 'starts_with(http.request.uri.path, "/cafes/")';
+    const allow = ruleset.at(-1)!;
     expect(allow.action_parameters.cache).toBe(true);
-    for (const rule of bypasses) {
+    expect(ruleset[0].expression).toBe(catchAll);
+    expect(ruleset[0].action_parameters.cache).toBe(false);
+    for (const rule of ruleset.slice(0, -1)) {
       expect(rule.action_parameters.cache).toBe(false);
     }
-    // Every locale signal has BOTH a negated allow-term and a positive
-    // path-scoped bypass rule.
-    const localeBypasses = bypasses.filter((r) => r.expression.includes("/cafes/"));
+    // Every locale signal the allow rule negates is denied earlier — the
+    // catch-all covers path-scoped signals; sb-/host have dedicated
+    // zone-wide rules.
     const signalTerms = [...allow.expression.matchAll(/not \(([^)]+?)\)/g)]
-      .map((m) => m[1])
-      .filter((t) => !t.includes("sb-")); // sb- + host bypass zone-wide below
-    for (const term of signalTerms) {
-      expect(
-        localeBypasses.some((r) => r.expression.includes(term)),
-        `no path-scoped bypass mirrors allow-term "${term}"`,
-      ).toBe(true);
-    }
-    // No rule may be an unconditional /cafes/ catch-all — that is the
-    // BRAWUKA-836 defect shape (matches the allow rule's own requests).
+      .map((m) => m[1]);
+    expect(signalTerms.length).toBeGreaterThan(0);
     for (const rule of ruleset) {
-      expect(rule.expression).not.toBe(`starts_with(http.request.uri.path, "/cafes/")`);
-      if (rule !== allow) {
-        expect(rule.expression).not.toContain(" or ");
-      }
+      expect(rule.expression).not.toContain(" or ");
     }
+    // Response phase: a /cafes/* response carrying Set-Cookie is pinned
+    // no-store (the request-side sb- bypass is only a proxy for it).
+    const payload = JSON.parse(
+      readFileSync(RULESET, "utf8"),
+    ) as CloudflareCacheRuleset;
+    expect(payload.response.phase).toBe("http_response_cache_settings");
+    const setCookieRule = payload.response.rules.find((r) =>
+      r.expression.includes('http.response.headers["set-cookie"]'),
+    )!;
+    expect(setCookieRule.action_parameters["no-store"]).toMatchObject({
+      operation: "set",
+    });
   });
 
   it("does not declare custom cache keys the deployed plan cannot apply", () => {

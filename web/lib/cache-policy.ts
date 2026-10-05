@@ -189,87 +189,81 @@ function nonCacheableRanges(cacheableStatuses: readonly number[]) {
   return ranges.filter((r) => r.to === undefined || r.from <= r.to);
 }
 
+interface CloudflareRule {
+  description: string;
+  enabled: boolean;
+  expression: string;
+  action: string;
+  action_parameters: Record<string, unknown>;
+}
+
 export interface CloudflareCacheRuleset {
   request: {
     phase: "http_request_cache_settings";
     description: string;
-    rules: {
-      description: string;
-      enabled: boolean;
-      expression: string;
-      action: "set_cache_settings";
-      action_parameters: Record<string, unknown>;
-    }[];
+    rules: CloudflareRule[];
   };
-  /** Response-phase ruleset — pins response properties the request phase
-   *  cannot see (the deployed v9 edge runs this; omitting it would leave
-   *  the live `http_response_cache_settings` ruleset unmanaged). */
   response: {
     phase: "http_response_cache_settings";
     description: string;
-    rules: {
-      description: string;
-      enabled: boolean;
-      expression: string;
-      action: "set_cache_control";
-      action_parameters: {
-        "no-store": { cloudflare_only: boolean; operation: "set" };
-      };
-    }[];
+    rules: CloudflareRule[];
   };
 }
 
 /** The deployable edge ruleset compiled from the same policy.
  *
- * Shape (Cloudflare request-phase rules, last matching wins):
- *   1. ALLOW   /cafes/* provably default-locale → cache + TTL policy.
+ * Request-phase order mirrors the deployed v9 ruleset — deny-first,
+ * allow-last, the safe direction under Cloudflare's last-match-wins:
+ *   1. BYPASS catch-all — every /cafes/* request denies cache unless a
+ *      later rule overrides (an early catch-all CANNOT disable the allow
+ *      rule; putting it last did — BRAWUKA-836).
  *   2. BYPASS  any request with an sb-* auth cookie (zone-wide).
  *   3. BYPASS  the staging host, all routes (spec 0005 §3).
- *      the positive mirror of one negated term in the allow rule, so
- *      every excluded request has a matching bypass (the algebraic
- *      complement). A bare `/cafes/` catch-all would also match the
- *      allow rule's requests and disable it under last-match-wins
- *      (BRAWUKA-836). Expressions stay `and`/`not`-only so the repo's
- *      rules-language evaluator (scripts/devops/lib/rules-language.mjs)
- *      can prove per-request outcomes offline.
+ *   4. ALLOW   /cafes/* provably default-locale → cache + TTL policy —
+ *      LAST, so it overrides the catch-all only where every exclusion
+ *      holds.
  *
- * The `response` phase carries `bypassOnSetCookieResponse`'s edge-side
- * half: the request phase cannot see response headers, so the live
- * ruleset (v9) pins a `set_cache_control` no-store on `/cafes/*`
- * responses that carry Set-Cookie. Emitting it keeps the deployed
- * response ruleset reproducible from the same policy.
+ * Response phase (contract bypass.onResponseSetCookie): a /cafes/*
+ * response that sets a cookie is pinned no-store — the request-side
+ * sb- bypass is only a proxy for a response-side property.
+ *
+ * Expressions stay `and`/`not`-only so the repo's rules-language
+ * evaluator (scripts/devops/lib/rules-language.mjs) can prove
+ * per-request outcomes offline.
  */
 export function cafeShellCloudflareRuleset(
   policy: CafeShellCachePolicy,
 ): CloudflareCacheRuleset {
   const signals = cafeShellSignals(policy);
   const allowExpr = [CAFE_PATH_PREFIX, ...signals.map(negatedTerm)].join(" and ");
-  const bypassAction = {
-    description: "",
-    enabled: true,
-    expression: "",
-    action: "set_cache_settings" as const,
-    action_parameters: { cache: false },
-  };
-  const zoneWideBypass = (
-    description: string,
-    terms: string[],
-  ): CloudflareCacheRuleset["request"]["rules"][number] => ({
-    ...bypassAction,
+  const bypass = (description: string, expression: string): CloudflareRule => ({
     description,
-    expression: terms.join(" and ") || NEVER_MATCHES,
+    enabled: true,
+    expression,
+    action: "set_cache_settings",
+    action_parameters: { cache: false },
   });
-  // Locale signals bypass scoped to the shell paths; the auth-cookie and
-  // hostname signals bypass zone-wide (spec 0005 §3 covers every staging
-  // route, and a session cookie is never locale/cacheable anywhere).
-  const pathScopedSignals = signals.filter(
-    (s) => s.kind === "cookieExact" || s.kind === "acceptLanguage",
-  );
   return {
     request: {
       phase: "http_request_cache_settings",
       description: "Cache settings for cafemood.app",
       rules: [
+        bypass(
+          "BRAWUKA-834: every /cafes/* request bypasses the shared cache unless the cache-eligible rule below proves it resolves to the default locale",
+          CAFE_PATH_PREFIX,
+        ),
+        ...policy.bypassOnRequestCookiePrefixes.map((v) =>
+          bypass(
+            "Bypass cache on auth cookies",
+            `http.cookie contains "${v}"`,
+          ),
+        ),
+        ...policy.bypassHostnames.map((v) =>
+          bypass(
+            "BRAWUKA-834: staging bypasses all routes (spec 0005 §3)",
+            `http.host eq "${v}"`,
+          ),
+        ),
         {
           description:
             "BRAWUKA-834: cache the cafe SSR shell only when the request cannot resolve to a non-default locale (deploy/dokploy/cache-rules.json)",
@@ -290,50 +284,26 @@ export function cafeShellCloudflareRuleset(
             respect_strong_etags: true,
           },
         },
-        zoneWideBypass(
-          "Bypass cache on auth cookies",
-          policy.bypassOnRequestCookiePrefixes.map(
-            (v) => `http.cookie contains "${v}"`,
-          ),
-        ),
-        zoneWideBypass(
-          "BRAWUKA-834: staging bypasses all routes (spec 0005 §3)",
-          policy.bypassHostnames.map((v) => `http.host eq "${v}"`),
-        ),
-        ...pathScopedSignals.map((signal) => ({
-          ...bypassAction,
-          description:
-            "BRAWUKA-836: /cafes/* requests carrying a non-default-locale signal bypass the shared cache (positive mirror of the allow rule's exclusion)",
-          expression: `${CAFE_PATH_PREFIX} and (${signalTerm(signal)})`,
-        })),
       ],
     },
-    response: buildResponsePhase(policy),
-  };
-}
-
-/** Response phase: the edge-side half of `bypassOnSetCookieResponse` — a
- *  /cafes/* response carrying Set-Cookie is pinned no-store. */
-function buildResponsePhase(
-  policy: CafeShellCachePolicy,
-): CloudflareCacheRuleset["response"] {
-  return {
-    phase: "http_response_cache_settings",
-    description: "Cache settings for cafemood.app",
-    rules: policy.bypassOnSetCookieResponse
-      ? [
-          {
-            description:
-              "BRAWUKA-834: a /cafes/* response that sets a cookie is never stored in the shared cache (deploy/dokploy/cache-rules.json bypass.onResponseSetCookie)",
-            enabled: true,
-            expression: `${CAFE_PATH_PREFIX} and any(http.response.headers["set-cookie"][*] ne "")`,
-            action: "set_cache_control",
-            action_parameters: {
-              "no-store": { cloudflare_only: true, operation: "set" },
+    response: {
+      phase: "http_response_cache_settings",
+      description: "Cache settings for cafemood.app",
+      rules: policy.bypassOnSetCookieResponse
+        ? [
+            {
+              description:
+                "BRAWUKA-834: a /cafes/* response that sets a cookie is never stored in the shared cache (deploy/dokploy/cache-rules.json bypass.onResponseSetCookie)",
+              enabled: true,
+              expression: `${CAFE_PATH_PREFIX} and any(http.response.headers["set-cookie"][*] ne "")`,
+              action: "set_cache_control",
+              action_parameters: {
+                "no-store": { cloudflare_only: true, operation: "set" },
+              },
             },
-          },
-        ]
-      : [],
+          ]
+        : [],
+    },
   };
 }
 

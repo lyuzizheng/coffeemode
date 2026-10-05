@@ -5,6 +5,33 @@
     "description": "Cache settings for cafemood.app",
     "rules": [
       {
+        "description": "BRAWUKA-834: every /cafes/* request bypasses the shared cache unless the cache-eligible rule below proves it resolves to the default locale",
+        "enabled": true,
+        "expression": "starts_with(http.request.uri.path, \"/cafes/\")",
+        "action": "set_cache_settings",
+        "action_parameters": {
+          "cache": false
+        }
+      },
+      {
+        "description": "Bypass cache on auth cookies",
+        "enabled": true,
+        "expression": "http.cookie contains \"sb-\"",
+        "action": "set_cache_settings",
+        "action_parameters": {
+          "cache": false
+        }
+      },
+      {
+        "description": "BRAWUKA-834: staging bypasses all routes (spec 0005 §3)",
+        "enabled": true,
+        "expression": "http.host eq \"staging.cafemood.app\"",
+        "action": "set_cache_settings",
+        "action_parameters": {
+          "cache": false
+        }
+      },
+      {
         "description": "BRAWUKA-834: cache the cafe SSR shell only when the request cannot resolve to a non-default locale (deploy/dokploy/cache-rules.json)",
         "enabled": true,
         "expression": "starts_with(http.request.uri.path, \"/cafes/\") and not (http.cookie contains \"sb-\") and not (http.cookie contains \"locale=\") and not (any(http.request.headers[\"accept-language\"][*] wildcard \"*zh*\")) and http.host ne \"staging.cafemood.app\"",
@@ -30,42 +57,6 @@
             ]
           },
           "respect_strong_etags": true
-        }
-      },
-      {
-        "description": "Bypass cache on auth cookies",
-        "enabled": true,
-        "expression": "http.cookie contains \"sb-\"",
-        "action": "set_cache_settings",
-        "action_parameters": {
-          "cache": false
-        }
-      },
-      {
-        "description": "BRAWUKA-834: staging bypasses all routes (spec 0005 §3)",
-        "enabled": true,
-        "expression": "http.host eq \"staging.cafemood.app\"",
-        "action": "set_cache_settings",
-        "action_parameters": {
-          "cache": false
-        }
-      },
-      {
-        "description": "BRAWUKA-836: /cafes/* requests carrying a non-default-locale signal bypass the shared cache (positive mirror of the allow rule's exclusion)",
-        "enabled": true,
-        "expression": "starts_with(http.request.uri.path, \"/cafes/\") and (http.cookie contains \"locale=\")",
-        "action": "set_cache_settings",
-        "action_parameters": {
-          "cache": false
-        }
-      },
-      {
-        "description": "BRAWUKA-836: /cafes/* requests carrying a non-default-locale signal bypass the shared cache (positive mirror of the allow rule's exclusion)",
-        "enabled": true,
-        "expression": "starts_with(http.request.uri.path, \"/cafes/\") and (any(http.request.headers[\"accept-language\"][*] wildcard \"*zh*\"))",
-        "action": "set_cache_settings",
-        "action_parameters": {
-          "cache": false
         }
       }
     ]

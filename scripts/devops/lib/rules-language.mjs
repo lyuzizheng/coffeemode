@@ -5,7 +5,7 @@
  * Supported: `starts_with(field, "prefix")`, `http.<field> eq|ne|contains "v"`,
  * `any(field[*] wildcard "pattern")`, `and`, `not`, parentheses, and the fields
  * `http.request.uri.path`, `http.host`, `http.cookie`,
- * `http.request.headers["accept-language"]`.
+ * `http.request.headers["accept-language"]`, `http.response.headers["set-cookie"]`.
  *
  * Anything outside that subset throws instead of being skipped, so a payload
  * that grows a new predicate fails the check loudly rather than passing on a
@@ -108,6 +108,9 @@ function readField(field, request) {
     case 'http.request.headers["accept-language"]':
     case 'http.request.headers["accept-language"][*]':
       return request.acceptLanguage;
+    case 'http.response.headers["set-cookie"]':
+    case 'http.response.headers["set-cookie"][*]':
+      return request.setCookie ?? [];
     default:
       throw new Error(`unsupported field ${field}`);
   }
@@ -134,11 +137,17 @@ function parsePredicate(tokens, cursor) {
     take(tokens, cursor, "punct", "(");
     const field = parseField(tokens, cursor);
     const operator = take(tokens, cursor, "ident").value;
-    if (operator !== "wildcard") throw new Error(`unsupported any() operator ${operator}`);
     const pattern = take(tokens, cursor, "string").value;
     take(tokens, cursor, "punct", ")");
-    return (request) =>
-      readField(field, request).some((value) => wildcard(pattern, value));
+    if (operator === "wildcard") {
+      return (request) =>
+        readField(field, request).some((value) => wildcard(pattern, value));
+    }
+    if (operator === "ne") {
+      return (request) =>
+        readField(field, request).some((value) => value !== pattern);
+    }
+    throw new Error(`unsupported any() operator ${operator}`);
   }
   if (head?.kind === "ident" && head.value === "http") {
     const field = parseField(tokens, cursor);
@@ -208,4 +217,22 @@ export function evaluateRules(rules, request) {
     setting = rule.action_parameters.cache;
   }
   return { matched, setting };
+}
+
+/**
+ * Cloudflare's response-phase semantics: same order and last-match-wins rule as
+ * the request phase, but the action is `set_cache_control`. Returns the winning
+ * action parameters (`null` when no rule matched) plus the descriptions that
+ * matched.
+ */
+export function evaluateResponseRules(rules, request) {
+  const matched = [];
+  let parameters = null;
+  for (const rule of rules) {
+    if (rule.enabled === false) continue;
+    if (!compile(rule.expression)(request)) continue;
+    matched.push(rule.description);
+    parameters = rule.action_parameters;
+  }
+  return { matched, parameters };
 }

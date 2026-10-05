@@ -76,6 +76,37 @@ async function setupCursorRoute(context, cafeId, state) {
   });
 }
 
+/**
+ * Arm both cursor-recovery waiters and mark them handled up front.
+ *
+ * Both stay pending until the client paginates. If the drive throws first (or
+ * the context closes), an un-awaited waiter would reject as an unhandled
+ * rejection and kill the process before the real error is reported — the CI
+ * failure that masked the real error (BRAWUKA-838). `await` below still
+ * surfaces the rejection.
+ *
+ * @param {import("playwright").Page} page
+ * @param {string} cafeId
+ * @param {{ cursorFired: boolean }} state
+ */
+export function armCursorRecoveryWaiters(page, cafeId, state) {
+  const cursorPromise = page.waitForResponse(
+    (r) => r.url().includes("cursor=synthetic-expired-cursor") && r.status() === 410,
+    { timeout: 20000 },
+  );
+  const recoveryPromise = page.waitForResponse(
+    (r) =>
+      r.url().includes(`/api/cafes/${cafeId}/checkins`) &&
+      !r.url().includes("cursor=") &&
+      r.status() === 200 &&
+      state.cursorFired,
+    { timeout: 20000 },
+  );
+  cursorPromise.catch(() => {});
+  recoveryPromise.catch(() => {});
+  return { cursorPromise, recoveryPromise };
+}
+
 async function checkCursorRecovery({ base, cafeId, createContext, attachErrorCollector, stepLabel }) {
   await withGateContext("feed-pagination", createContext, {}, async (context, consoleLines) => {
     const page = await context.newPage();
@@ -90,20 +121,16 @@ async function checkCursorRecovery({ base, cafeId, createContext, attachErrorCol
     await setupCursorRoute(context, cafeId, state);
 
     // Set up waiters before navigation so auto-triggered pagination on initial view is caught
-    const cursorPromise = page.waitForResponse(
-      (r) => r.url().includes("cursor=synthetic-expired-cursor") && r.status() === 410,
-      { timeout: 20000 },
-    );
-    const recoveryPromise = page.waitForResponse(
-      (r) =>
-        r.url().includes(`/api/cafes/${cafeId}/checkins`) &&
-        !r.url().includes("cursor=") &&
-        r.status() === 200 &&
-        state.cursorFired,
-      { timeout: 20000 },
-    );
+    const { cursorPromise, recoveryPromise } = armCursorRecoveryWaiters(page, cafeId, state);
 
     await page.goto(`${base}/cafes/${cafeId}`, { waitUntil: "domcontentloaded" });
+
+    // DG124: the SSR shell is a hydration overlay that renders its own feed and
+    // unmounts once hydration lands. A sentinel resolved from the shell detaches
+    // mid-scroll — Playwright then fails the handle and the gate dies on the
+    // un-awaited response waiter before the client ever paginates (BRAWUKA-838).
+    // Wait for the shell's masthead to detach, then drive the app's live feed.
+    await page.waitForSelector("header", { state: "detached", timeout: 15000 });
 
     // Wait for the feed to render the first page
     const sentinel = page.locator("section div[aria-hidden].h-px").last();

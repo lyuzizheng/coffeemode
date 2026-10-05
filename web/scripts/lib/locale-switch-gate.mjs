@@ -10,17 +10,20 @@
  *
  * What this gate proves on the seeded cafe URL:
  *   - `html lang` follows the cookie in both directions (en → zh → en).
- *   - A role+name+visible assertion finds exactly one locale's check-in CTA
- *     per render ("Check in" / "打卡"); the other locale's CTA is absent
- *     (`count() === 0`), with a wait budget that outlives hydration and the
- *     DG124 shell fade (the overlay goes `inert` on mount, so its a11y tree
- *     stops matching `getByRole`; `.first()` covers the SSR-paint window
- *     where shell and app render duplicate CTAs).
+ *   - After the DG124 overlay unmounts and the app surface is live, a
+ *     role+name+visible assertion finds the locale's check-in CTA
+ *     ("Check in"/"打卡") and zero of the other locale's. Waiting for overlay
+ *     removal FIRST is load-bearing: the SSR overlay renders the same CTA, so
+ *     a check that finishes before hydration proves nothing about hydrated
+ *     copy — and a hydration-level locale miss keeps the wrong copy visible
+ *     (P1 review finding: the pre-fix gate passed on the overlay 85ms after
+ *     navigation while the app showed "Check in" under lang="zh").
  *   - The SSR document itself carries the locale's copy once script-embedded
- *     payloads are stripped — SSR coverage, independent of client hydration.
- *   - A tampered response (en shell body under `lang="zh"`, the wrong-locale
- *     CDN hit) makes the visible-CTA assertion fail — the gate cannot be
- *     satisfied by `lang` + catalog bytes alone.
+ *     payloads are stripped — SSR coverage, independent of hydration.
+ *   - Both wrong-copy shapes are detected by the same assertion path:
+ *     every-depth tamper (SSR + flight catalog wrong) and script-only tamper
+ *     (SSR markup correct, hydrated copy wrong). Neither may be satisfied by
+ *     `lang` + catalog bytes or `lang` + SSR bytes.
  *
  * The context pins `locale: "en-US"` (Accept-Language: en) so a zh render can
  * only come from the cookie, never from negotiation.
@@ -32,27 +35,48 @@ const SLUG = "locale-switch";
 const CAFE_PATH = (cafeId) => `/cafes/${cafeId}`;
 /** Hydration + shell-fade headroom for visible-copy waits. */
 const VISIBLE_TIMEOUT_MS = 15000;
+const SCRIPT_BLOCK = /<script\b[^>]*>[\s\S]*?<\/script>/gi;
 
 /** SSR document text minus script payloads — the strip makes the assertion
  * blind to the serialized next-intl catalog and RSC flight data. */
 function documentCopy(html) {
-  return html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+  return html.replace(SCRIPT_BLOCK, "");
 }
 
 async function setLocaleCookie(context, base, value) {
   await context.addCookies([{ name: "locale", value, url: base }]);
 }
 
-/** The locale's visible check-in CTA: button role + exact accessible name +
- * `visible` state (not innerHTML/body-text greps). */
-function checkInButton(page, copy) {
-  return page.getByRole("button", { name: copy, exact: true }).first();
+/**
+ * App-live wait shared by every navigation and fault demo. The DG124 SSR
+ * overlay keeps its own check-in CTA in the a11y tree until mount+fade, so a
+ * copy assertion taken earlier can pass on the overlay and never measure
+ * hydrated copy. The overlay's masthead `header` detaches when it unmounts;
+ * the app's discovery `aside` then proves the live surface is up.
+ */
+async function waitForAppLive(page) {
+  await page.waitForSelector("header", { state: "detached", timeout: 20000 });
+  await page.locator("aside").first().waitFor({ state: "visible", timeout: 20000 });
 }
 
 /**
- * One locale render of the cafe URL: status, `html lang`, visible CTA from
- * this locale only, and script-stripped SSR copy. Asserts the fault the
- * previous body-grep missed: correct `lang` with wrong visible copy.
+ * The gate's visible-copy oracle — the ONLY assertion shape the gate claims:
+ * after the app is live, the locale's check-in CTA is a visible button and
+ * the other locale's is absent. Positive checks call it directly; fault demos
+ * call it expecting the throw. Exact accessible names, not substring greps.
+ */
+async function assertVisibleCopy(page, copy, foreignCopy) {
+  await waitForAppLive(page);
+  await page.getByRole("button", { name: copy, exact: true }).first().waitFor({ state: "visible", timeout: VISIBLE_TIMEOUT_MS });
+  assert(
+    (await page.getByRole("button", { name: foreignCopy, exact: true }).count()) === 0,
+    `Foreign-locale "${foreignCopy}" control rendered alongside "${copy}"`,
+  );
+}
+
+/**
+ * One locale render of the cafe URL: status, `html lang`, hydrated visible
+ * CTA from this locale only, and script-stripped SSR copy.
  */
 async function assertLocaleRender({ context, page, base, cafeId, cookie, lang, copy, foreignCopy }) {
   await setLocaleCookie(context, base, cookie);
@@ -62,11 +86,7 @@ async function assertLocaleRender({ context, page, base, cafeId, cookie, lang, c
     (await page.locator("html").getAttribute("lang")) === lang,
     `Expected html lang="${lang}" with locale=${cookie} cookie`,
   );
-  await checkInButton(page, copy).waitFor({ state: "visible", timeout: VISIBLE_TIMEOUT_MS });
-  assert(
-    (await page.getByRole("button", { name: foreignCopy, exact: true }).count()) === 0,
-    `Foreign-locale "${foreignCopy}" control rendered on ${lang} shell`,
-  );
+  await assertVisibleCopy(page, copy, foreignCopy);
   assert(
     documentCopy(await res.text()).includes(copy),
     `SSR document (${lang}) lacks "${copy}" outside script payloads`,
@@ -74,45 +94,79 @@ async function assertLocaleRender({ context, page, base, cafeId, cookie, lang, c
 }
 
 /**
- * Wrong-locale shell under the right `lang`: fulfills the navigation with the
- * zh document but every 打卡 occurrence rewritten to "Check in" — the
- * CDN-vary miss shape. The gate's own visible assertion MUST fail here;
- * anything else is a blind gate.
+ * Fetch the cafe document through a route that rewrites zh copy to "Check in".
+ * scope "all" hits every depth (markup + flight catalog — a wrong-locale
+ * CDN shell); scope "scripts" hits script bodies only (correct SSR, wrong
+ * hydrated copy — a provider/catalog-level fault).
  */
-async function assertWrongCopyDetected({ context, page, base, cafeId }) {
-  await setLocaleCookie(context, base, "zh");
+async function installCopyTamper(context, cafeId, scope) {
+  let hits = 0;
   // Glob must lead with `**` — Playwright matches the full URL, so a bare
   // path pattern silently misses and the demo would judge the REAL page.
-  // `hits` proves the tamper actually ran.
-  let hits = 0;
   await context.route(`**${CAFE_PATH(cafeId)}**`, async (route) => {
     const res = await route.fetch();
-    const html = (await res.text())
-      // Every escape depth → en, deepest first: `\\\\u…` (JSON inside a JS
-      // literal) → literal, `\\u…` → en, then literal 打卡 → en. Reversing
-      // the order would un-escape fresh 打卡 back into the document.
-      .replaceAll("\\\\u6253\\\\u5361", "打卡")
-      .replaceAll("\\u6253\\u5361", "Check in")
-      .replaceAll("打卡", "Check in");
+    let html = await res.text();
+    if (scope === "scripts") {
+      html = html.replace(SCRIPT_BLOCK, (block) => block.replaceAll("打卡", "Check in"));
+    } else {
+      // Deepest escape first, or an un-escape pass would produce fresh 打卡
+      // the literal pass never sees: `\\\\u…` → literal, `\\u…` → en, 打卡 → en.
+      html = html
+        .replaceAll("\\\\u6253\\\\u5361", "打卡")
+        .replaceAll("\\u6253\\u5361", "Check in")
+        .replaceAll("打卡", "Check in");
+    }
     hits += 1;
     await route.fulfill({ response: res, body: html });
   });
+  return () => hits;
+}
+
+/**
+ * Navigate the tampered document and prove the gate's own assertion rejects
+ * it: `assertVisibleCopy(page, "打卡", "Check in")` must throw.
+ */
+async function assertTamperRejected({ context, page, base, cafeId, scope, expectSsrCopy }) {
+  await setLocaleCookie(context, base, "zh");
+  const hits = await installCopyTamper(context, cafeId, scope);
   const res = await page.goto(`${base}${CAFE_PATH(cafeId)}`, { waitUntil: "domcontentloaded" });
   assert(res?.status() === 200, `Fault demo navigation failed: ${res?.status()}`);
-  assert(hits > 0, "Fault demo route never intercepted the cafe navigation — pattern missed the URL");
+  assert(hits() > 0, `Fault demo (${scope}) route never intercepted the navigation — pattern missed the URL`);
   assert(
     (await page.locator("html").getAttribute("lang")) === "zh",
-    `Fault demo did not produce lang="zh", got "${await page.locator("html").getAttribute("lang")}"`,
+    `Fault demo (${scope}) did not produce lang="zh"`,
+  );
+  const ssrHasZh = documentCopy(await res.text()).includes("打卡");
+  assert(
+    ssrHasZh === expectSsrCopy,
+    `Fault demo (${scope}) SSR copy shape wrong: document ${ssrHasZh ? "has" : "lacks"} 打卡`,
   );
   let rejected = null;
   try {
-    await checkInButton(page, "打卡").waitFor({ state: "visible", timeout: VISIBLE_TIMEOUT_MS });
+    await assertVisibleCopy(page, "打卡", "Check in");
   } catch (err) {
     rejected = err;
   }
-  assert(
-    rejected !== null,
-    "Wrong-copy fault (zh lang, en CTA) passed the visible 打卡 assertion — gate is blind",
+  assert(rejected !== null, `Wrong-copy fault (${scope}) passed the visible 打卡 assertion — gate is blind`);
+}
+
+/** Fault-demo page plumbing: console captured for artifacts, never asserted —
+ * a tampered document's console is not the product's. */
+async function runFaultStep({ createContext, label, fn }) {
+  await withGateContext(
+    SLUG,
+    createContext,
+    { locale: "en-US" },
+    async (context, consoleLines) => {
+      const page = await context.newPage();
+      page.on("console", (msg) => {
+        if (msg.type() === "error") consoleLines.push(`fault-demo console.error: ${msg.text()}`);
+      });
+      page.on("pageerror", (err) => consoleLines.push(`fault-demo pageerror: ${err.message}`));
+      await fn(context, page);
+      return page;
+    },
+    label,
   );
 }
 
@@ -128,8 +182,8 @@ export async function runLocaleSwitchGate({ label, base, cafeId, createContext, 
   clearGateArtifacts(SLUG);
 
   // Step 1 — the contract: cookie → same URL → SSR re-render, both locales,
-  // proven on visible controls. Accept-Language pinned to en; without the
-  // cookie this context always negotiates English (i18n/request.ts).
+  // proven on hydrated visible controls. Accept-Language pinned to en;
+  // without the cookie this context always negotiates English (i18n/request.ts).
   await withGateContext(
     SLUG,
     createContext,
@@ -149,21 +203,21 @@ export async function runLocaleSwitchGate({ label, base, cafeId, createContext, 
     label,
   );
 
-  // Step 2 — the detector: same URL, zh cookie, wrong-locale shell. No
-  // error collector: the tampered document's console is not the product's.
-  await withGateContext(
-    SLUG,
+  // Step 2 — wrong-locale shell: zh lang, SSR AND catalog rewritten (the
+  // CDN-vary miss). SSR check confirms the tamper shaped the document.
+  await runFaultStep({
     createContext,
-    { locale: "en-US" },
-    async (context, consoleLines) => {
-      const page = await context.newPage();
-      page.on("console", (msg) => {
-        if (msg.type() === "error") consoleLines.push(`fault-demo console.error: ${msg.text()}`);
-      });
-      page.on("pageerror", (err) => consoleLines.push(`fault-demo pageerror: ${err.message}`));
-      await assertWrongCopyDetected({ context, page, base, cafeId });
-      return page;
-    },
     label,
-  );
+    fn: (context, page) => assertTamperRejected({ context, page, base, cafeId, scope: "all", expectSsrCopy: false }),
+  });
+
+  // Step 3 — hydrated-only fault: SSR markup stays correct, the flight
+  // catalog is rewritten (provider delivers wrong-locale copy). The same
+  // visible assertion must reject it — this is the shape that passed the
+  // pre-review gate via the SSR overlay.
+  await runFaultStep({
+    createContext,
+    label,
+    fn: (context, page) => assertTamperRejected({ context, page, base, cafeId, scope: "scripts", expectSsrCopy: true }),
+  });
 }

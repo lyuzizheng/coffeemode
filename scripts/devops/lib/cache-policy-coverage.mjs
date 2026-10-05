@@ -61,28 +61,41 @@ function checkAllowTtl(failures, allow, tag, cacheable, swrSeconds) {
   }
 }
 
-/** Per-allow locale exclusions: they must hold on EVERY allow rule — a later
- *  allow that drops them caches non-default-locale requests the bypass
- *  contract forbids. Require the negated term: a positive
- *  `contains "locale="` in an allow expression is not an exclusion. */
-function checkAllowLocaleExclusions(failures, allow, tag, localeCookies, languageSignals) {
-  for (const cookie of localeCookies) {
-    const negated = `not (http.cookie contains "${cookie}=`;
-    if (!allow.expression.includes(negated)) {
-      failures.push(`${tag} does not exclude the ${cookie} cookie`);
-    }
+/** The negated expression term a cache-eligible rule must carry so it can
+ *  never match a request a declared bypass covers — the edge only knows
+ *  expressions, so a textual negation is the enforceable exclusion. */
+function negatedTerm(kind, value) {
+  switch (kind) {
+    case "cookiePrefix":
+      return `not (http.cookie contains "${value}")`;
+    case "cookie":
+      return `not (http.cookie contains "${value}=`;
+    case "acceptLanguage":
+      return `not (any(http.request.headers["accept-language"][*] wildcard "*${value}*"))`;
+    case "hostname":
+      return `http.host ne "${value}"`;
+    default:
+      return null;
   }
-  for (const lang of languageSignals) {
-    const negated = `not (any(http.request.headers["accept-language"][*] wildcard "*${lang}*"))`;
-    if (!allow.expression.toLowerCase().includes(negated.toLowerCase())) {
-      failures.push(`${tag} does not exclude Accept-Language containing ${lang}`);
+}
+
+/** Per-allow signal exclusions: EVERY declared bypass signal must be
+ *  negated on EVERY allow rule — a later allow that drops them caches
+ *  requests the bypasses exist to protect: the zh family (r3 P1), auth
+ *  cookies and the staging host via an en-US allow (r5 P1). */
+function checkAllowSignalExclusions(failures, allow, tag, signals) {
+  const expr = allow.expression.toLowerCase();
+  for (const { kind, value } of signals.all) {
+    const negated = negatedTerm(kind, value);
+    if (negated !== null && !expr.includes(negated.toLowerCase())) {
+      failures.push(`${tag} does not exclude ${kind} "${value}"`);
     }
   }
 }
 
 /** Per-allow contract: one cache-eligible rule must scope its paths, pin
- *  non-cacheable statuses, keep TTL semantics, and exclude every locale
- *  signal. */
+ *  non-cacheable statuses, keep TTL semantics, and exclude every declared
+ *  bypass signal. */
 function checkAllowRule(failures, allow, contract, signals) {
   const tag = `cache-eligible rule "${allow.description || allow.expression.slice(0, 60)}"`;
   const cacheableContract = contract.cacheable ?? {};
@@ -90,44 +103,28 @@ function checkAllowRule(failures, allow, contract, signals) {
   checkAllowScope(failures, allow, tag, contract.scope?.paths ?? []);
   checkAllowStatuses(failures, allow, tag, cacheable);
   checkAllowTtl(failures, allow, tag, cacheable, cacheableContract.staleWhileRevalidateSeconds ?? 0);
-  checkAllowLocaleExclusions(failures, allow, tag, signals.localeCookies, signals.languageSignals);
+  checkAllowSignalExclusions(failures, allow, tag, signals);
 }
 
-/** Required bypass coverage: every declared signal needs a dedicated bypass
- *  rule OR the path catch-all that denies every /cafes/* request the allow
- *  rule did not override (v9 order); host bypasses are zone-wide. */
+/** Required bypass coverage: each declared signal needs an ACTIVE rule.
+ *  Zone-wide signals (auth cookie prefix, bypass hostnames — spec 0005 §3
+ *  covers every staging route) need a dedicated UNSCOPED rule; the /cafes/
+ *  catch-all only denies in-scope paths, so it satisfies locale signals
+ *  (cookie + Accept-Language) but never zone-wide ones. */
 function checkBypassCoverage(failures, contract, bypasses, signals) {
   const catchAll = 'starts_with(http.request.uri.path, "/cafes/")';
-  for (const prefix of contract.bypass?.onRequestCookiePrefixes ?? []) {
-    if (!bypasses.some((rule) => rule.expression.includes(`"${prefix}"`))) {
-      failures.push(`no bypass rule for request cookie prefix ${prefix}`);
-    }
-  }
-  for (const cookie of signals.localeCookies) {
-    if (
-      !bypasses.some(
-        (rule) =>
-          rule.expression.includes(`"${cookie}=`) ||
-          rule.expression === catchAll,
-      )
-    ) {
-      failures.push(`no bypass covers request cookie ${cookie}`);
-    }
-  }
-  for (const lang of signals.languageSignals) {
-    if (
-      !bypasses.some(
-        (rule) =>
-          rule.expression.includes(`"*${lang}*"`) ||
-          rule.expression === catchAll,
-      )
-    ) {
-      failures.push(`no bypass covers Accept-Language containing ${lang}`);
-    }
-  }
-  for (const host of contract.bypass?.onHostnames ?? []) {
-    if (!bypasses.some((rule) => rule.expression.includes(`"${host}"`))) {
-      failures.push(`no bypass rule for host ${host}`);
+  const isScoped = (expression) => expression.includes("http.request.uri.path");
+  for (const { kind, value, positive } of signals.all) {
+    const dedicated = bypasses.some(
+      (rule) =>
+        rule.expression.includes(positive) &&
+        ((kind === "cookie" || kind === "acceptLanguage") || !isScoped(rule.expression)),
+    );
+    const catchAllOk =
+      (kind === "cookie" || kind === "acceptLanguage") &&
+      bypasses.some((rule) => rule.expression === catchAll);
+    if (!dedicated && !catchAllOk) {
+      failures.push(`no bypass covers ${kind} "${value}"`);
     }
   }
   if (
@@ -185,6 +182,28 @@ export function checkCoverage(contract, payload) {
   const signals = {
     localeCookies: contract.bypass?.onRequestCookies ?? [],
     languageSignals: contract.bypass?.onAcceptLanguageContains ?? [],
+    all: [
+      ...(contract.bypass?.onRequestCookiePrefixes ?? []).map((v) => ({
+        kind: "cookiePrefix",
+        value: v,
+        positive: `"${v}"`,
+      })),
+      ...(contract.bypass?.onRequestCookies ?? []).map((v) => ({
+        kind: "cookie",
+        value: v,
+        positive: `"${v}=`,
+      })),
+      ...(contract.bypass?.onAcceptLanguageContains ?? []).map((v) => ({
+        kind: "acceptLanguage",
+        value: v,
+        positive: `"*${v}*"`,
+      })),
+      ...(contract.bypass?.onHostnames ?? []).map((v) => ({
+        kind: "hostname",
+        value: v,
+        positive: `"${v}"`,
+      })),
+    ],
   };
   for (const allow of allows) {
     checkAllowRule(failures, allow, contract, signals);

@@ -39,6 +39,11 @@ function parseShellCache(
       "seo.shellCache.varyHeaders",
       shellCache.varyHeaders,
     ),
+    varyCookies: stringList(
+      file,
+      "seo.shellCache.varyCookies",
+      shellCache.varyCookies,
+    ),
     sharedCacheAcrossLocales: flag(
       file,
       "seo.shellCache.sharedCacheAcrossLocales",

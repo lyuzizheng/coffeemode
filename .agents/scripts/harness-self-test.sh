@@ -255,6 +255,16 @@ if assert_mutated "generated-bucket freshness step removed" "$WF.bak" "$WF"; the
 fi
 mv "$WF.bak" "$WF"
 
+# The cache-rules freshness step is pinned the same way (BRAWUKA-821):
+# deleting it would let `deploy/dokploy/cache-rules.json` drift from
+# `web/config/app.yaml` while ci.yml stays green.
+cp "$WF" "$WF.bak"
+grep -vE "^[[:space:]]*run:[[:space:]]*npm run check:cache-rules[[:space:]]*$" "$WF.bak" > "$WF"
+if assert_mutated "cache-rules freshness step removed" "$WF.bak" "$WF"; then
+  expect_failure "static step missing: npm run check:cache-rules" env COFFEEMODE_ROOT="$TEST_ROOT" "$TEST_ROOT/.agents/scripts/check-ci-workflow.sh"
+fi
+mv "$WF.bak" "$WF"
+
 # The post-merge trigger set is the contract (BRAWUKA-628): a workflow that no
 # longer runs on `push` to `main`, or no longer runs nightly, silently stops
 # verifying merges while every other check stays green.

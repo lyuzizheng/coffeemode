@@ -243,6 +243,31 @@ async function runSmokeSuite() {
         `Expected cacheable Cache-Control on plain shell, got "${cc2}"`,
       );
       assert(bodyHtml.includes("E2E Smoke Cafe"), "Cafe name 'E2E Smoke Cafe' not rendered on page");
+      // BRAWUKA-821: the `locale` cookie is an SSR input on this route —
+      // after switching zh↔en the SAME URL must re-render in the new locale
+      // (origin contract; the CDN must key `locale` via
+      // deploy/dokploy/cache-rules.json varyOnCookies or this hits the
+      // wrong-locale shell). Reuses this context: the QA repro was a
+      // direct navigation after an in-app zh selection.
+      await context.addCookies([{ name: "locale", value: "zh", url: base }]);
+      const resZh = await page.goto(`${base}/cafes/${E2E_CAFE_ID}`, { waitUntil: "domcontentloaded" });
+      assert(resZh?.status() === 200, `Expected 200 for seeded cafe (zh), got ${resZh?.status()}`);
+      assert(
+        (await page.locator("html").getAttribute("lang")) === "zh",
+        `Expected html lang="zh" with locale=zh cookie`,
+      );
+      const zhHtml = await page.innerHTML("body");
+      assert(zhHtml.includes("打卡"), "zh locale cookie did not render zh shell copy");
+      // The negotiated copy must not stay stale in the other direction either.
+      await context.addCookies([{ name: "locale", value: "en", url: base }]);
+      const resEn = await page.goto(`${base}/cafes/${E2E_CAFE_ID}`, { waitUntil: "domcontentloaded" });
+      assert(resEn?.status() === 200, `Expected 200 for seeded cafe (en), got ${resEn?.status()}`);
+      assert(
+        (await page.locator("html").getAttribute("lang")) === "en",
+        `Expected html lang="en" with locale=en cookie`,
+      );
+      const enHtml = await page.innerHTML("body");
+      assert(enHtml.includes("Check in"), "en locale cookie did not render en shell copy");
       assert(bodyHtml.includes("San Francisco"), "City 'San Francisco' not rendered on page");
 
       // Verify Share button exists and is clickable
@@ -273,7 +298,7 @@ async function runSmokeSuite() {
       // response carries the static /cafes/:id* s-maxage header. Shared-cache
       // exclusion of the 404 is owned by the edge rule
       // (deploy/dokploy/cache-rules.json onStatusesOtherThan: [200]),
-      // drift-pinned by tests/cafe-shell-cache.test.ts.
+      // drift-pinned by `npm run check:cache-rules` (BRAWUKA-821).
 
       const pageText = await page.textContent("body");
       assert(

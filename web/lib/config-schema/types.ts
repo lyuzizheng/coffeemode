@@ -78,6 +78,8 @@ export interface AppConfig {
       bypassOnSetCookieResponse: boolean;
       bypassOnRequestCookiePrefixes: string[];
       varyHeaders: string[];
+      /** Request-cookie names whose values join the edge cache key. */
+      varyCookies: string[];
       sharedCacheAcrossLocales: boolean;
     };
     recoveryLimit: number;

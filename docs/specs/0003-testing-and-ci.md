@@ -73,7 +73,7 @@ Risk and independent-review requirements are defined only in
 ### Commands
 
 ```text
-web: npm run typecheck, lint, check:structure, check:duplication, check:file-size, check:i18n, build, check:bundle, check:buckets, gen:buckets, verify, lhci
+web: npm run typecheck, lint, check:structure, check:duplication, check:file-size, check:i18n, build, check:bundle, check:buckets, gen:buckets, check:cache-rules, gen:cache-rules, verify, lhci
 web component tests: npm run test:unit (vitest run tests/components --passWithNoTests — scoped so RUN_INTEGRATION-gated suites stay out; an empty family is a legal state, not a failure)
 web real DB: npm run db:migrate, npm run test:integration, npm run test:integration:journey, npm run test:integration:http, npm run test:integration:images, npm run test:integration:all, npm run test:coverage:integration
 web browser smoke: npm run test:e2e (Playwright MVP smoke suite), npm run lhci (Lighthouse CI performance budgets), npm run check:visual (local visual render evidence)
@@ -105,7 +105,7 @@ ungated harness file, or a registered suite the coverage ratchet does not measur
 appears without a routing decision, or when a unit-only path starts scheduling the
 DB-backed gate:
 
-- `application-static`: `web/` changes (typecheck, structure guard — file/function budget, duplication budget, layer boundaries, exemption ratchet — route guard (`npm run check:guards`, apiRoute/origin allowlists), generated-artifact freshness (`npm run check:buckets`: re-renders `web/lib/api/rate-limit-buckets.generated.ts` from `web/config/rate-limits.yaml` in memory and fails on a byte difference without rewriting the file), lint, i18n key parity, component unit tests (`npm run test:unit`, `tests/components/**`), build, bundle budget check, bundle analysis, PWA validation);
+- `application-static`: `web/` changes (typecheck, structure guard — file/function budget, duplication budget, layer boundaries, exemption ratchet — route guard (`npm run check:guards`, apiRoute/origin allowlists), generated-artifact freshness (`npm run check:buckets`: re-renders `web/lib/api/rate-limit-buckets.generated.ts` from `web/config/rate-limits.yaml`; `npm run check:cache-rules`: re-renders `deploy/dokploy/cache-rules.json` from `web/config/app.yaml` `seo.shellCache` — both compare in memory and fail on a byte difference without rewriting the file), lint, i18n key parity, component unit tests (`npm run test:unit`, `tests/components/**`), build, bundle budget check, bundle analysis, PWA validation);
 - `application-e2e`: `web/` changes (build, Playwright E2E smoke suite, and Lighthouse CI performance budgets against seeded fixtures) — runs in parallel with `application-static`;
 - `integration-gate`: DB/SQL-capable web boundaries and shared-package changes — runs real Postgres DB tests (`npm run test:integration`), real Postgres user-journey tests (`npm run test:integration:journey`), real Postgres HTTP lifecycle tests (`npm run test:integration:http`), and real MinIO/R2 image round-trip (`npm run test:integration:images`) sequentially on one `postgis` service + `docker compose up minio` (merged for efficiency; was `integration-gate` + `images-integration-gate`), then the real-DB coverage ratchet (`npm run test:coverage:integration`) against the same live stack. Branch protection that still requires the legacy `images-integration-gate` name should migrate to `integration-gate` + `ci-gate` (see migration note below);
 - `image-service-gate`: image-service and shared-package changes (typecheck, structural lint, file budget, exemption ratchet, deploy config guard);
@@ -356,7 +356,7 @@ The traceability matrix lives at `docs/agent/test-coverage.md` (S3 testkit-cover
 ## Acceptance criteria
 
 - `npm run verify` remains the full web type/lint/i18n/build/bundle-budget gate, plus generated-artifact freshness: `npm run check:buckets` runs `scripts/generate-rate-limit-buckets.mjs --check` first, so a `web/config/rate-limits.yaml` edit without a re-run of `npm run gen:buckets` fails locally with the stale bytes left in place.
-- A stale `web/lib/api/rate-limit-buckets.generated.ts` fails the `application-static` step `npm run check:buckets` without being rewritten, and deleting that exact `run:` line from `ci.yml` fails preflight (`.agents/scripts/check-ci-workflow.sh`, BRAWUKA-746).
+- A stale `web/lib/api/rate-limit-buckets.generated.ts` fails the `application-static` step `npm run check:buckets` without being rewritten, and deleting that exact `run:` line from `ci.yml` fails preflight (`.agents/scripts/check-ci-workflow.sh`, BRAWUKA-746). The same contract covers the CDN edge rule: a stale `deploy/dokploy/cache-rules.json` fails `npm run check:cache-rules`, and deleting that `run:` line fails preflight (BRAWUKA-821).
 - Lighthouse CI enforces performance (>= 80 on cafe detail per spec 0001:1182), accessibility, best practices, and SEO budgets against seeded deterministic fixtures.
 - The bundle budget measures the clean build output across all of `.next/static` against typed limits in `web/config/app.yaml`.
 - Real Postgres remains required for DB/SQL behavior.

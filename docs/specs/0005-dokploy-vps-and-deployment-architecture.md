@@ -197,7 +197,7 @@ spec 0010 §1. The table below covers the deployed staging/production edge only.
 | SSL / TLS Encryption | Full (Strict) | Full (Strict) |
 | Min TLS Version | TLS 1.2 (observe, then tighten to 1.3) | TLS 1.2 (observe, then tighten to 1.3) |
 | Edge Caching Rule | Bypass cache for all routes | Cache HTML shells (`s-maxage`); Bypass on `sb-*` cookies & `Set-Cookie` |
-| Edge Cache Vary Header | N/A | Vary: `Accept-Language` (prevents locale cross-pollution, Spec 0001) |
+| Edge Cache Vary | N/A | Vary: `Accept-Language` + cache-key on the `locale` cookie value (both locale inputs keyed — the cookie overrides Accept-Language in `i18n/request.ts`; keying on the header alone served a zh-cookie request the cached en shell, BRAWUKA-821) |
 | Cloudflare Managed Transforms | Add visitor location headers (`CF-IPCity`, `CF-IPCountry`) | Add visitor location headers (`CF-IPCity`, `CF-IPCountry`) |
 | Image Storage (R2 Bucket) | `coffeemode-images-staging` | `coffeemode-images-prod` |
 | Public Image CDN Domain | `staging-images.cafemood.app` | `images.cafemood.app` (`R2_ALLOWED_PUBLIC_HOSTS` in `web/lib/images/constants.ts`) |

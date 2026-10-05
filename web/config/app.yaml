@@ -152,10 +152,18 @@ seo:
     # The shell is content-negotiated (cookie/Accept-Language, DG110), but
     # Next overwrites Vary on App Router HTML with its internal
     # `rsc, next-router-*` set, so origin-declared Vary never ships. The edge
-    # MUST key on these headers instead. `sharedCacheAcrossLocales: false`
-    # states explicitly that locales MUST NOT share a cache entry — without
-    # it the first locale to hit a URL would be served to everyone.
+    # MUST build the cache key from ALL locale inputs instead: varyHeaders
+    # covers the Accept-Language fallback while varyCookies covers the
+    # `locale` cookie that overrides it (i18n/request.ts precedence:
+    # cookie → Accept-Language → en). Keying on Accept-Language alone served
+    # a zh-cookie request the cached en shell (BRAWUKA-821).
+    # `sharedCacheAcrossLocales: false` states explicitly that locales MUST
+    # NOT share a cache entry — without it the first locale to hit a URL
+    # would be served to everyone.
     varyHeaders: ["Accept-Language"]
+    # Request-cookie names whose VALUES join the edge cache key (not a
+    # bypass — distinct values get distinct cacheable entries).
+    varyCookies: ["locale"]
     sharedCacheAcrossLocales: false
   # 404 recovery block (DG111): how many nearby cafes to list relative to a
   # gone cafe's last known location. Radius reuses search.maxRadiusKm.

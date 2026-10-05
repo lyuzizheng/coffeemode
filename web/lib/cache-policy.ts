@@ -23,11 +23,15 @@ interface CafeShellCachePolicy {
   bypassOnRequestCookiePrefixes: readonly string[];
   /** Edge cache-key headers (origin Vary is stripped by Next on HTML). */
   varyHeaders: readonly string[];
+  /** Request-cookie names whose VALUES join the edge cache key — the
+   * `locale` cookie overrides Accept-Language (i18n/request.ts), so it is
+   * a cache-key input, not a bypass (BRAWUKA-821). */
+  varyCookies: readonly string[];
   /** False = locales MUST NOT share a cache entry. */
   sharedCacheAcrossLocales: boolean;
 }
 
-/** Stamped per response by the proxy whenever {@link shouldBypass} holds. */
+/** Stamped per response by the proxy on session-refresh (Set-Cookie) replies. */
 export const CAFE_SHELL_BYPASS_CACHE_CONTROL =
   "private, no-store, must-revalidate";
 
@@ -52,12 +56,15 @@ interface CafeShellCdnRules {
     onRequestCookiePrefixes: string[];
   };
   varyOn: string[];
+  /** Cache-key cookie names (values, not mere presence). */
+  varyOnCookies: string[];
   sharedCacheAcrossLocales: boolean;
 }
 
 /**
  * Machine-readable edge rule derived from the same policy. Checked into
- * `deploy/dokploy/cache-rules.json` (drift-pinned by unit test) so the
+ * `deploy/dokploy/cache-rules.json` — regenerated and drift-pinned by
+ * `npm run gen:cache-rules` / `check:cache-rules` (BRAWUKA-821) — so the
  * deployment flow reads the contract without parsing YAML.
  */
 export function cafeShellCdnRules(
@@ -76,6 +83,7 @@ export function cafeShellCdnRules(
       onRequestCookiePrefixes: [...policy.bypassOnRequestCookiePrefixes],
     },
     varyOn: [...policy.varyHeaders],
+    varyOnCookies: [...policy.varyCookies],
     sharedCacheAcrossLocales: policy.sharedCacheAcrossLocales,
   };
 }

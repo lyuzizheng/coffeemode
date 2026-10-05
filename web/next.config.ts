@@ -152,7 +152,8 @@ const nextConfig: NextConfig = {
         //
         // This static header only describes the cacheable case. The bypass
         // side (Set-Cookie responses, non-200 statuses incl. the gone-cafe
-        // 404, Accept-Language cache keying) is executable, not a comment:
+        // 404) and the cache key (Accept-Language + the `locale` cookie —
+        // both SSR locale inputs, BRAWUKA-821) are executable, not a comment:
         // seo.shellCache in app.yaml owns the values, lib/cache-policy.ts
         // owns the predicates, proxy.ts stamps no-store on session-refresh
         // responses, and deploy/dokploy/cache-rules.json owns the edge rule

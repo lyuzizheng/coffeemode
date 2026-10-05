@@ -11,7 +11,7 @@ This directory contains Dokploy VPS deployment configurations, operational scrip
 - `deploy-release.sh`: Production release deployment orchestrator with zero-downtime rolling restart.
 - `backup-postgres.sh` / `restore-postgres.sh`: Database backup and disaster recovery drill scripts.
 - `smoke-test.sh`: Post-deployment automated smoke tests (health, static assets, spatial queries, workers).
-- `cache-rules.json`: Cloudflare edge cache rule definitions.
+- `cache-rules.json`: Cloudflare edge cache rule definitions for `/cafes/*` — generated from `web/config/app.yaml` `seo.shellCache` by `web/scripts/generate-cache-rules.mjs` (`npm run gen:cache-rules`); `npm run check:cache-rules` fails CI on drift.
 
 ## Schema Migrations on Every Deploy (BRAWUKA-690)
 

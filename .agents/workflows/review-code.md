@@ -47,10 +47,12 @@ Reviewer of record, in order:
 2. If that agent is unavailable — provider outage, quota exhaustion, or it
    authored the patch — the **workspace reviewer-of-record** takes the gate. It
    is a named designation, not a role anyone may claim:
-   - current holder: the workspace chief-of-staff agent (`CEO`, agent id
-     `9b38f599-2246-442c-9399-e7b1301acc05`), designated **2026-09-11** by the
-     workspace owner after the designated reviewer above exhausted its provider
-     quota and eight issues stalled with the gate unreturnable;
+   - current holder: the workspace **General Manager** agent, agent id
+     `9b38f599-2246-442c-9399-e7b1301acc05`, reaffirmed **2026-10-18** when the
+     workspace merged `CEO` and `Chief of Staff` into that single agent — same
+     id, superseding the **2026-09-11** designation by the workspace owner
+     after the designated reviewer above exhausted its provider quota and
+     eight issues stalled with the gate unreturnable;
    - the holder MUST be a non-author for the patch under review, and MUST NOT be
      the workspace's `Reviewer & Architect` stand-in for a change it wrote;
    - when the workspace changes this designation, that change MUST update this

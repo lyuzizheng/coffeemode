@@ -18,13 +18,13 @@
  */
 
 /**
- * Resolve the Supabase env triple. Throws listing every missing variable.
+ * Read the triple and name every gap, without throwing. The gap descriptions
+ * are the contract `scripts/agent-qa/preconditions.mjs` reports, so a caller
+ * never has to parse the resolver's error message (and never sees a value).
  *
- * @param {Record<string, string | undefined>} [env] env source (default: process.env)
- * @param {string} [contextLabel] prefix for the not-configured error
- * @returns {{ supabaseUrl: string, publishableKey: string, secretKey: string }}
+ * @param {Record<string, string | undefined>} env env source
  */
-export function resolveSupabaseEnvCore(env = process.env, contextLabel = "Supabase") {
+function readSupabaseEnv(env) {
   const supabaseUrl = env.SUPABASE_URL ?? env.NEXT_PUBLIC_SUPABASE_URL;
   const publishableKey =
     env.SUPABASE_PUBLISHABLE_KEY ??
@@ -32,15 +32,42 @@ export function resolveSupabaseEnvCore(env = process.env, contextLabel = "Supaba
     env.SUPABASE_ANON_KEY ??
     env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const secretKey = env.SUPABASE_SECRET_KEY ?? env.SUPABASE_SERVICE_ROLE_KEY;
-  const missing = [
-    !supabaseUrl ? "SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL)" : null,
-    !publishableKey
-      ? "SUPABASE_PUBLISHABLE_KEY (or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY; legacy SUPABASE_ANON_KEY accepted)"
-      : null,
-    !secretKey
-      ? "SUPABASE_SECRET_KEY (server-side only, never NEXT_PUBLIC_*; legacy SUPABASE_SERVICE_ROLE_KEY accepted)"
-      : null,
-  ].filter((entry) => entry !== null);
+  /** @type {string[]} */
+  const missing = [];
+  if (!supabaseUrl) missing.push("SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL)");
+  if (!publishableKey) {
+    missing.push(
+      "SUPABASE_PUBLISHABLE_KEY (or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY; legacy SUPABASE_ANON_KEY accepted)",
+    );
+  }
+  if (!secretKey) {
+    missing.push(
+      "SUPABASE_SECRET_KEY (server-side only, never NEXT_PUBLIC_*; legacy SUPABASE_SERVICE_ROLE_KEY accepted)",
+    );
+  }
+  return { supabaseUrl, publishableKey, secretKey, missing };
+}
+
+/**
+ * The Supabase env gaps as a list — empty when the triple resolves. Names
+ * only: a value never leaves this module through the gap list.
+ *
+ * @param {Record<string, string | undefined>} [env] env source (default: process.env)
+ * @returns {string[]}
+ */
+export function supabaseEnvMissing(env = process.env) {
+  return readSupabaseEnv(env).missing;
+}
+
+/**
+ * Resolve the Supabase env triple. Throws listing every missing variable.
+ *
+ * @param {Record<string, string | undefined>} [env] env source (default: process.env)
+ * @param {string} [contextLabel] prefix for the not-configured error
+ * @returns {{ supabaseUrl: string, publishableKey: string, secretKey: string }}
+ */
+export function resolveSupabaseEnvCore(env = process.env, contextLabel = "Supabase") {
+  const { supabaseUrl, publishableKey, secretKey, missing } = readSupabaseEnv(env);
   if (missing.length > 0) {
     throw new Error(`${contextLabel} is not configured. Missing: ${missing.join(", ")}.`);
   }

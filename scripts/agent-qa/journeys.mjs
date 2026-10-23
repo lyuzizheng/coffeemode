@@ -324,6 +324,12 @@ export function getJourney(id) {
  * Journeys runnable now: every precondition name must be in `satisfied`.
  * Blocked journeys are reported with their missing names, never run.
  *
+ * `satisfied` is an INPUT, not a judgment: the runner obtains it from
+ * `evaluateAgentQaPreconditions()` in `preconditions.mjs` (BRAWUKA-955) and
+ * passes that `satisfied` array verbatim. Never assemble it by hand — a
+ * hand-built set drifts from the env contract (the retired key names did
+ * exactly that after BRAWUKA-950, blocking resolvable journeys).
+ *
  * @param {string[]} satisfied precondition names holding this round
  *   (e.g. `["access-token"]`, plus `"supabase-keys"` when the triple resolves)
  * @returns {{ runnable: JourneyDefinition[], blocked: Array<{ journey: JourneyDefinition, missing: string[] }> }}

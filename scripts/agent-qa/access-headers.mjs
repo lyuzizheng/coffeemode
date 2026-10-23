@@ -21,6 +21,21 @@ export const ACCESS_CLIENT_ID_HEADER = "CF-Access-Client-Id";
 export const ACCESS_CLIENT_SECRET_HEADER = "CF-Access-Client-Secret";
 
 /**
+ * The Access token-pair gaps as a list — empty when both variables are set.
+ * Variable names only, never values.
+ *
+ * @param {Record<string, string | undefined>} [env] env source (default: process.env)
+ * @returns {string[]}
+ */
+export function accessEnvMissing(env = process.env) {
+  /** @type {string[]} */
+  const missing = [];
+  if (!env[ACCESS_CLIENT_ID_ENV]) missing.push(ACCESS_CLIENT_ID_ENV);
+  if (!env[ACCESS_CLIENT_SECRET_ENV]) missing.push(ACCESS_CLIENT_SECRET_ENV);
+  return missing;
+}
+
+/**
  * Read the Access service-token pair. Throws listing every missing variable —
  * never defaults, never proceeds half-configured.
  *
@@ -28,16 +43,14 @@ export const ACCESS_CLIENT_SECRET_HEADER = "CF-Access-Client-Secret";
  * @returns {{ clientId: string, clientSecret: string }}
  */
 export function resolveAccessHeaders(env = process.env) {
-  const clientId = env[ACCESS_CLIENT_ID_ENV];
-  const clientSecret = env[ACCESS_CLIENT_SECRET_ENV];
-  const missing = [
-    !clientId ? ACCESS_CLIENT_ID_ENV : null,
-    !clientSecret ? ACCESS_CLIENT_SECRET_ENV : null,
-  ].filter((entry) => entry !== null);
+  const missing = accessEnvMissing(env);
   if (missing.length > 0) {
     throw new Error(`Agent-QA Cloudflare Access is not configured. Missing: ${missing.join(", ")}.`);
   }
-  return { clientId, clientSecret };
+  return {
+    clientId: /** @type {string} */ (env[ACCESS_CLIENT_ID_ENV]),
+    clientSecret: /** @type {string} */ (env[ACCESS_CLIENT_SECRET_ENV]),
+  };
 }
 
 /**

@@ -12,9 +12,11 @@
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as callbackGET } from "@/app/auth/callback/route";
+import { POST as sessionPOST } from "@/app/api/auth/session/route";
 import { getCurrentUser } from "@/lib/auth/get-user";
 import { createSupabaseServerClient } from "@/lib/auth/supabase-server";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
+import { fakeJwt } from "../helpers/auth";
 import {
   cleanupIntegrationDatabase,
   integrationAdminUrl,
@@ -189,10 +191,84 @@ describeIntegration("integration — real Supabase auth exchange & token verific
     expect(user).toBeNull();
   });
 
-  it("negative path: GET /auth/callback redirects to /?auth=error when code is missing", async () => {
+  it("redirects a bare callback to / (no credentials, nothing to exchange)", async () => {
+    // A browser can land here with the magic-link tokens in the URL hash, which
+    // never reaches the server. A 400 would strand that bootstrap; the home
+    // page's HashSessionBridge consumes the fragment instead (BRAWUKA-956).
     const res = await callbackGET(new Request("http://localhost:3000/auth/callback", { headers: { host: "localhost:3000" } }));
     expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe("http://localhost:3000/");
+  });
+
+  it("negative path: GET /auth/callback redirects to /?auth=error when the provider reports an error", async () => {
+    const res = await callbackGET(
+      new Request("http://localhost:3000/auth/callback?error=access_denied", { headers: { host: "localhost:3000" } }),
+    );
+    expect(res.status).toBe(307);
     expect(res.headers.get("location")).toBe("http://localhost:3000/?auth=error");
+  });
+
+  it("completes a magic-link token_hash sign-in and persists the session cookie (BRAWUKA-956)", async () => {
+    const res = await callbackGET(
+      new Request("http://localhost:3000/auth/callback?token_hash=mock-magic-token-hash&type=magiclink", {
+        headers: { host: "localhost:3000" },
+      }),
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("http://localhost:3000/");
+
+    expect(Array.from(cookieJar.keys()).some((k) => k.includes("auth-token"))).toBe(true);
+
+    const profileRes = await dbClient.query<{ id: string }>(
+      "select id from profiles where id = 'c935f899-11fd-4782-a173-777b3995384b'",
+    );
+    expect(profileRes.rows).toHaveLength(1);
+
+    // The cookie must be a real session: /auth/v1/user accepts its bearer.
+    const currentUser = await getCurrentUser();
+    expect(currentUser).toMatchObject({ id: "c935f899-11fd-4782-a173-777b3995384b" });
+  });
+
+  it("honors safe next parameter after a successful magic-link sign-in", async () => {
+    const res = await callbackGET(
+      new Request(
+        "http://localhost:3000/auth/callback?token_hash=mock-magic-token-hash&type=magiclink&next=%2Fcafes%2Fexplore",
+        { headers: { host: "localhost:3000" } },
+      ),
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("http://localhost:3000/cafes/explore");
+  });
+
+  it("rejects an incomplete token_hash callback with HTTP 400", async () => {
+    for (const query of ["token_hash=mock-magic-token-hash", "type=magiclink"]) {
+      const res = await callbackGET(
+        new Request(`http://localhost:3000/auth/callback?${query}`, { headers: { host: "localhost:3000" } }),
+      );
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({ error: "invalid_request" });
+    }
+  });
+
+  it("rejects an unsupported OTP type with HTTP 400", async () => {
+    const res = await callbackGET(
+      new Request("http://localhost:3000/auth/callback?token_hash=mock-magic-token-hash&type=password", {
+        headers: { host: "localhost:3000" },
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "invalid_request" });
+  });
+
+  it("negative path: an expired token_hash redirects to /?auth=error and stores no session", async () => {
+    const res = await callbackGET(
+      new Request("http://localhost:3000/auth/callback?token_hash=expired-magic-token-hash&type=magiclink", {
+        headers: { host: "localhost:3000" },
+      }),
+    );
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe("http://localhost:3000/?auth=error");
+    expect(Array.from(cookieJar.keys()).some((k) => k.includes("auth-token"))).toBe(false);
   });
 
   it("negative path: GET /auth/callback redirects to /?auth=error when PKCE code verifier is missing", async () => {
@@ -202,4 +278,69 @@ describeIntegration("integration — real Supabase auth exchange & token verific
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toBe("http://localhost:3000/?auth=error");
   });
+
+  it("establishes a session from the magic-link token pair on POST /api/auth/session (BRAWUKA-956)", async () => {
+    const accessToken = fakeJwt("c935f899-11fd-4782-a173-777b3995384b", {
+      email: "local@coffeemode.test",
+    });
+
+    const res = await sessionPOST(sessionRequest({ access_token: accessToken, refresh_token: "mock-refresh-c935f899-11fd-4782-a173-777b3995384b" }));
+
+    expect(res.status).toBe(204);
+    expect(Array.from(cookieJar.keys()).some((k) => k.includes("auth-token"))).toBe(true);
+
+    const profileRes = await dbClient.query<{ id: string }>(
+      "select id from profiles where id = 'c935f899-11fd-4782-a173-777b3995384b'",
+    );
+    expect(profileRes.rows).toHaveLength(1);
+
+    const currentUser = await getCurrentUser();
+    expect(currentUser).toMatchObject({ id: "c935f899-11fd-4782-a173-777b3995384b" });
+  });
+
+  it("rejects a token pair that does not verify, and stores no session", async () => {
+    const res = await sessionPOST(
+      sessionRequest({ access_token: "header.corruptedpayload.invalidsig", refresh_token: "fake-refresh" }),
+    );
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({ error: "unauthorized" });
+    expect(Array.from(cookieJar.keys()).some((k) => k.includes("auth-token"))).toBe(false);
+  });
+
+  it("rejects a session POST that omits either token", async () => {
+    for (const body of [{ access_token: "only-access" }, { refresh_token: "only-refresh" }, {}]) {
+      const res = await sessionPOST(sessionRequest(body));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({ error: "invalid_request" });
+    }
+  });
+
+  it("rejects a cross-site session POST before it reaches Supabase", async () => {
+    const res = await sessionPOST(
+      sessionRequest(
+        { access_token: fakeJwt("c935f899-11fd-4782-a173-777b3995384b"), refresh_token: "r" },
+        { "sec-fetch-site": "cross-site", origin: "https://evil.example" },
+      ),
+    );
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ error: "forbidden_origin" });
+    expect(Array.from(cookieJar.keys()).some((k) => k.includes("auth-token"))).toBe(false);
+  });
 });
+
+/** A same-origin JSON POST to /api/auth/session — the shape the bridge sends. */
+function sessionRequest(body: unknown, extraHeaders: Record<string, string> = {}): Request {
+  return new Request("http://localhost:3000/api/auth/session", {
+    method: "POST",
+    headers: {
+      host: "localhost:3000",
+      "content-type": "application/json",
+      "sec-fetch-site": "same-origin",
+      origin: "http://localhost:3000",
+      ...extraHeaders,
+    },
+    body: JSON.stringify(body),
+  });
+}

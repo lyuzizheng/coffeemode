@@ -5,6 +5,7 @@ import { Providers } from "./providers";
 import { OfflineBanner } from "@/components/offline-banner";
 import { RuntimeBanner } from "@/components/runtime-banner";
 import { CheckinResume } from "@/components/checkin/checkin-resume";
+import { HashSessionBridge } from "@/components/auth/hash-session-bridge";
 import { appConfig } from "@/lib/config";
 import "./globals.css";
 import { APP_DESCRIPTION, APP_NAME, THEME_COLOR } from "@/lib/site";
@@ -119,6 +120,7 @@ export default async function RootLayout({
           <OfflineBanner />
           <RuntimeBanner />
           {children}
+          <HashSessionBridge />
           <CheckinResume draftTtlHours={appConfig.checkins.pendingDraftTtlHours} />
         </Providers>
       </body>

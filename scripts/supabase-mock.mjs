@@ -16,6 +16,8 @@ import { decodeFakeJwt as decodeOrThrow, fakeJwt } from "./fake-jwt.mjs";
  *   POST /auth/v1/token           -> { access_token: fakeJwt, token_type: "bearer", ... }
  *          body: { email?, password?, grant_type? } — any email is accepted; user id is derived
  *   GET  /auth/v1/user            -> { id, email } when Authorization: Bearer <token> present
+ *   POST /auth/v1/verify          -> { access_token, refresh_token, user } for a token_hash + type
+ *          body: { token_hash, type } — `expired-*` hashes answer 403 (otp_expired)
  *   POST /auth/v1/logout          -> 204 (no-op)
  *   GET  / (root)                 -> { ok: true, service: "supabase-mock" }
  *
@@ -187,6 +189,35 @@ const server = http.createServer(async (req, res) => {
       "access-control-allow-origin": "*",
     });
     res.end();
+    return;
+  }
+
+  // Email OTP / magic-link verification (BRAWUKA-956). The app's
+  // /auth/callback exchanges a `token_hash` + `type` pair here through
+  // supabase.auth.verifyOtp(). A hash starting with `expired-` models a stale
+  // or replayed link so the negative path stays deterministic.
+  if (req.method === "POST" && path === "/auth/v1/verify") {
+    const body = await parseBody(req);
+    const tokenHash = typeof body.token_hash === "string" ? body.token_hash : "";
+    const type = typeof body.type === "string" ? body.type : "";
+    if (!tokenHash || !type) {
+      json(res, 400, { error: "validation_failed", message: "token_hash and type are required" });
+      return;
+    }
+    if (tokenHash.startsWith("expired-")) {
+      json(res, 403, { error_code: "otp_expired", msg: "Token has expired or is invalid" });
+      return;
+    }
+    // Like the token grant above: one deterministic fixture user.
+    const email = "local@coffeemode.test";
+    const userId = deriveUserId(email);
+    json(res, 200, {
+      access_token: fakeJwt(userId, { email }),
+      token_type: "bearer",
+      expires_in: 3600,
+      refresh_token: `mock-refresh-${userId}`,
+      user: { id: userId, email, role: "authenticated" },
+    });
     return;
   }
 

@@ -1,4 +1,8 @@
 import { refreshSessionAndVerify } from "@/lib/auth/proxy-session";
+import {
+  resolveSupabasePublishableKey,
+  resolveSupabaseUrl,
+} from "@/lib/auth/supabase-env";
 import { VERIFIED_USER_HEADER } from "@/lib/auth/verified-user";
 import { NextRequest, NextResponse } from "next/server";
 import { redirectToPath } from "@/lib/security/origin";
@@ -63,18 +67,18 @@ function legacyCafeRedirect(request: NextRequest): NextResponse | null {
 async function handleProxy(request: NextRequest) {
   const req = sanitizedRequest(request);
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const url = resolveSupabaseUrl();
+  const publishableKey = resolveSupabasePublishableKey();
 
   let response = NextResponse.next({ request: req });
   let sessionRefreshed = false;
 
-  if (url && anonKey && hasSupabaseSessionCookie(req)) {
+  if (url && publishableKey && hasSupabaseSessionCookie(req)) {
     const isCafePage =
       (req.method === "GET" || req.method === "HEAD") &&
       CAFE_PAGE_PATH.test(req.nextUrl.pathname);
     ({ response, sessionRefreshed } =
-      await refreshSessionAndVerify(req, response, url, anonKey, isCafePage));
+      await refreshSessionAndVerify(req, response, url, publishableKey, isCafePage));
   }
 
   // DG19 note: gone-cafe deep links are NOT rewritten here anymore

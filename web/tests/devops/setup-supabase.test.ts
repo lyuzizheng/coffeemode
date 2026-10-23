@@ -238,7 +238,14 @@ describe("Supabase DevOps Provisioning — Unit Contracts", () => {
       expect(resolve({ NEXT_PUBLIC_SUPABASE_URL: "https://public.supabase.co" }).supabaseUrl).toBe(
         "https://public.supabase.co",
       );
-      expect(resolve({ SUPABASE_SERVICE_ROLE_KEY: "service-role" }).serviceRoleKey).toBe("service-role");
+      // BRAWUKA-950: new API-key names first, legacy names as the fallback.
+      expect(resolve({ SUPABASE_SECRET_KEY: "secret-new" }).serviceRoleKey).toBe("secret-new");
+      expect(resolve({ SUPABASE_PUBLISHABLE_KEY: "publishable-new" }).anonKey).toBe(
+        "publishable-new",
+      );
+      expect(resolve({ SUPABASE_SERVICE_ROLE_KEY: "service-role" }).serviceRoleKey).toBe(
+        "service-role",
+      );
       expect(resolve({ SUPABASE_ANON_KEY: "anon-alias" }).anonKey).toBe("anon-alias");
     });
 

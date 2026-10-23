@@ -77,7 +77,7 @@ app data is local.
   unchanged — hermetic, no Supabase dependency.
 - **Staging journey suites** (real sessions, non-interactive): a per-run test
   user is created through the Supabase **Admin API** (`auth.admin.createUser`)
-  with the staging `service_role` key, then a real session is obtained via
+  with the staging secret key, then a real session is obtained via
   password grant (`grant_type=password`). The test user is deleted in
   `afterAll`. Interactive Google OAuth is verified manually and by staging smoke
   tests, never in automation.
@@ -85,7 +85,18 @@ app data is local.
   Supabase Admin API `generateLink` magic link (distinct from journey suites'
   password grant), logging in through the deployed application under
   `agent-qa-*` identities.
-- **`service_role` boundary**: the key is server-side only — GitHub Actions
+- **API-key names (BRAWUKA-950)**: Supabase retired the JWT `anon` /
+  `service_role` keys in favour of the opaque `sb_publishable_…` / `sb_secret_…`
+  keys. They map to the same Postgres roles (`anon`, `service_role` with
+  `BYPASSRLS`), so privileges do not change — only the key shape and names.
+  Canonical names: `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (client) and
+  `SUPABASE_SECRET_KEY` (server). The legacy fallback names
+  (`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_ANON_KEY`,
+  `SUPABASE_SERVICE_ROLE_KEY`) stay readable until the legacy keys are disabled
+  in the dashboard. A new-format key travels in the `apikey` header only —
+  never as `Authorization: Bearer`, which the platform would parse as a JWT and
+  reject.
+- **Secret-key boundary**: the secret key is server-side only — GitHub Actions
   `staging` environment secrets, Dokploy server env, and Multica agent secrets
   (scaffold server-side only). It MUST NOT appear in any `NEXT_PUBLIC_*`
   variable, any committed file, any prompt, or any client bundle.
@@ -158,9 +169,9 @@ app data is local.
 
 | Secret | Lives in | Never in |
 | --- | --- | --- |
-| prod `service_role`, prod `DATABASE_URL`/`DIRECT_URL` | Dokploy prod env, GH Environment `production` | local `.env`, client bundle, `NEXT_PUBLIC_*` |
-| staging `service_role` (optional, pending owner item 1a) | GH Environment `staging`, Dokploy staging env, Multica agent secrets (`service_role` scaffold server-side only) | client bundle, `NEXT_PUBLIC_*`, prompts, committed files; local `.env` discouraged (dev uses anon key + own Google login) |
-| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `.env.example` templates, Dokploy env | — (public by design; RLS + revoked default grants protect tables) |
+| prod secret key (`SUPABASE_SECRET_KEY`, formerly `service_role`), prod `DATABASE_URL`/`DIRECT_URL` | Dokploy prod env, GH Environment `production` | local `.env`, client bundle, `NEXT_PUBLIC_*` |
+| staging secret key (`SUPABASE_SECRET_KEY`, formerly `service_role`; optional, pending owner item 1a) | GH Environment `staging`, Dokploy staging env, Multica agent secrets (scaffold server-side only) | client bundle, `NEXT_PUBLIC_*`, prompts, committed files; local `.env` discouraged (dev uses the publishable key + own Google login) |
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | `.env.example` templates, Dokploy env | — (public by design; RLS + revoked default grants protect tables) |
 | R2 access keys, Cloudflare tunnel/API tokens | Dokploy env, GH Environment per env | local `.env` unless actively debugging that integration |
 | `OTEL_EXPORTER_OTLP_HEADERS` (Grafana Cloud OTLP gateway Basic auth) | Dokploy env per env | — (ingest-only token; never `NEXT_PUBLIC_*`) |
 | `TURNSTILE_SECRET_KEY` (Cloudflare siteverify) | Dokploy env per env | client bundle, `NEXT_PUBLIC_*` — the paired `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is public by design and reaches the bundle only via the Dockerfile build arg (BRAWUKA-564) |

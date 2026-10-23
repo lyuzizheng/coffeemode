@@ -47,7 +47,7 @@ function spawnMainServer({ root, port, dbUrl, supabaseUrl, supabaseAnonKey, onDa
       // T8 signs in for real: the standalone server must reach the
       // supabase-mock (compose service, :54321) for session validation.
       NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: supabaseAnonKey,
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: supabaseAnonKey,
       // BRAWUKA-755: controlled handler latency for the T28 duration
       // lower-bound proof — inside the real dependency path, capped
       // server-side at 500ms. The managed harness always forwards the
@@ -71,7 +71,7 @@ function spawnDeadServer({ root, port }) {
     env: {
       DATABASE_URL: DEAD_DATABASE_URL,
       NEXT_PUBLIC_SUPABASE_URL: "",
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: "",
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "",
     },
   });
   return child;

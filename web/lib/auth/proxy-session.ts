@@ -29,7 +29,7 @@ export async function refreshSessionAndVerify(
   req: NextRequest,
   response: NextResponse,
   url: string,
-  anonKey: string,
+  publishableKey: string,
   verifyForCafePage: boolean,
 ): Promise<SessionRefreshResult> {
   let verifiedUser: SessionUser | null | undefined;
@@ -42,7 +42,7 @@ export async function refreshSessionAndVerify(
   // token and emits session-removal cookies — a forced logout. getSession()
   // only decodes the local session without validating the JWT, so the user
   // stays unverified until getUser() runs below.
-  const supabase = createServerClient(url, anonKey, {
+  const supabase = createServerClient(url, publishableKey, {
     cookies: {
       getAll() {
         return req.cookies.getAll();

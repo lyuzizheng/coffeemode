@@ -66,7 +66,7 @@ let dbClient!: pg.Client;
 let mockUp = false;
 const previousDatabaseUrl = process.env.DATABASE_URL;
 const previousSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const previousSupabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const previousSupabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
 describeIntegration("integration — real Supabase auth exchange & token verification (BRAWUKA-417)", () => {
   beforeAll(async () => {
@@ -77,7 +77,7 @@ describeIntegration("integration — real Supabase auth exchange & token verific
       );
     }
     process.env.NEXT_PUBLIC_SUPABASE_URL = SUPABASE_MOCK_URL;
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "test-anon-key";
 
     adminDbUrl = integrationAdminUrl();
     testDbUrl = testDatabaseUrl(adminDbUrl, TEST_DB);
@@ -113,8 +113,8 @@ describeIntegration("integration — real Supabase auth exchange & token verific
     if (previousSupabaseUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
     else process.env.NEXT_PUBLIC_SUPABASE_URL = previousSupabaseUrl;
 
-    if (previousSupabaseAnonKey === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    else process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = previousSupabaseAnonKey;
+    if (previousSupabaseAnonKey === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+    else process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = previousSupabaseAnonKey;
 
     if (RUN_INTEGRATION && testDbUrl) {
       try {

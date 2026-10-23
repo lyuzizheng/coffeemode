@@ -165,7 +165,7 @@ Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enfor
      ```bash
      STAGING_DATABASE_URL=postgres://<host-with-CREATEDB>/coffeemode \
        SUPABASE_URL=https://<ref>.supabase.co \
-       SUPABASE_SERVICE_ROLE_KEY=<key> \
+       SUPABASE_SECRET_KEY=<key> \
        scripts/devops/run-staging-journey.sh --suite all
      ```
      In CI the `staging-journey` workflow starts a runner-local

@@ -109,7 +109,7 @@ let adminDbUrl = "";
 let dbClient!: pg.Client;
 const previousDatabaseUrl = process.env.DATABASE_URL;
 const previousSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const previousSupabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const previousSupabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
 // The mock echoes the JWT's user_metadata claims on /auth/v1/user (like
 // real GoTrue), so metadata travels the production verify → forward path.
@@ -167,7 +167,7 @@ describeBoundary("boundary — proxy → page verified-user handoff (BRAWUKA-723
       );
     }
     process.env.NEXT_PUBLIC_SUPABASE_URL = SUPABASE_URL;
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = ANON_KEY;
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = ANON_KEY;
 
     adminDbUrl = integrationAdminUrl();
     testDbUrl = testDatabaseUrl(adminDbUrl, TEST_DB);
@@ -209,8 +209,8 @@ describeBoundary("boundary — proxy → page verified-user handoff (BRAWUKA-723
     else process.env.DATABASE_URL = previousDatabaseUrl;
     if (previousSupabaseUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
     else process.env.NEXT_PUBLIC_SUPABASE_URL = previousSupabaseUrl;
-    if (previousSupabaseAnonKey === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    else process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = previousSupabaseAnonKey;
+    if (previousSupabaseAnonKey === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+    else process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = previousSupabaseAnonKey;
     if (RUN_INTEGRATION && testDbUrl) {
       try {
         await cleanupIntegrationDatabase(adminDbUrl, TEST_DB);

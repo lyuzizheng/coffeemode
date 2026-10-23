@@ -7,6 +7,7 @@ import { resolveLocatedCity } from "@/lib/onboarding";
 import { deleteAccount, getProfile, getUserStats, updateProfile } from "@/lib/db/profile";
 import { parseProfilePatch, type ProfilePatch } from "@/lib/validation/profile";
 import { createSupabaseServerClient } from "@/lib/auth/supabase-server";
+import { resolveSupabaseSecretKey, resolveSupabaseUrl } from "@/lib/auth/supabase-env";
 import { readJsonBody } from "@/lib/api/guard";
 import { logError } from "@/lib/observability/server-log";
 
@@ -123,7 +124,8 @@ export const PATCH = apiRoute(
  * The DB transaction soft-deletes check-ins (DG146 semantics), hands
  * created cafes to the service account, and removes likes, navigations,
  * upload intents, and the profile row. The Supabase auth user is then
- * deleted via the admin API when SUPABASE_SERVICE_ROLE_KEY is configured;
+ * deleted via the admin API when SUPABASE_SECRET_KEY (legacy
+ * SUPABASE_SERVICE_ROLE_KEY) is configured;
  * without it the session is still signed out and the app-level account is
  * gone (a re-login would start a fresh profile — acceptable degradation,
  * flagged in spec 0004 DG149).
@@ -134,13 +136,13 @@ export const DELETE = apiRoute(
     const result = await deleteAccount(ctx.user.id);
 
     // Auth-side teardown, best-effort after the data commit: the admin
-    // delete needs the service-role key; sign-out clears the session
-    // cookies either way so the deleted account can't keep browsing.
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    if (serviceKey && supabaseUrl) {
+    // delete needs the server-side secret key (BRAWUKA-950); sign-out clears
+    // the session cookies either way so the deleted account can't keep browsing.
+    const secretKey = resolveSupabaseSecretKey();
+    const supabaseUrl = resolveSupabaseUrl();
+    if (secretKey && supabaseUrl) {
       try {
-        const admin = createClient(supabaseUrl, serviceKey, {
+        const admin = createClient(supabaseUrl, secretKey, {
           auth: { autoRefreshToken: false, persistSession: false },
         });
         const { error } = await admin.auth.admin.deleteUser(ctx.user.id);

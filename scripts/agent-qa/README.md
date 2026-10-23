@@ -78,3 +78,44 @@ never filed as a defect. Live-grounded notes: P2 search narrows on
 `wifi`/`coffee` (seed dim avg 51; `outlets` has no rated rows, skipped);
 `POST /api/places/resolve` without a widget-minted token answers 403
 (`Turnstile blocked` is the verdict, never a bypass).
+
+## Preconditions are computed, never inferred (BRAWUKA-955)
+
+`planRound(satisfied)` takes its input from `preconditions.mjs`. The runner
+executes this first and passes the printed `satisfied` array verbatim:
+
+```bash
+node scripts/agent-qa/preconditions.mjs
+```
+
+```json
+{
+  "satisfied": ["access-token", "supabase-keys"],
+  "missing": [],
+  "unverified": ["image-service-staging", "turnstile-present", "second-persona"],
+  "missingVariables": {}
+}
+```
+
+- `satisfied` — the env contract resolves; the precondition holds.
+- `missing` — the contract does not resolve. `missingVariables` names the
+  exact variable(s) at fault. Names only: the script never prints a value.
+- `unverified` — no env contract exists (a live probe or a provisioned
+  persona decides it). Not satisfied; the registry's `check` text is the
+  only authority.
+
+Names are derived from `AGENT_QA_JOURNEYS`, so a precondition attached to a
+journey cannot be omitted from the report. Resolution reuses the runner's
+own resolvers (`resolveAgentQaSupabaseEnv` via `supabase-env.mjs`,
+`resolveAccessHeaders` via `access-headers.mjs`), so the new key names are
+tried first and the legacy names still work during the migration window
+(BRAWUKA-950).
+
+Why it exists: the set used to be re-judged by the agent every round from
+prompt prose. When the API keys were renamed, that prose still named the
+retired variables, so `supabase-keys` reported missing while the triple
+resolved — seven journeys blocked with no defect behind it. A hand-built
+`satisfied` set is never acceptable input to `planRound`.
+
+Exit code 0 means the evaluation ran (`missing`/`unverified` are data, not an
+error); 2 is a usage error.

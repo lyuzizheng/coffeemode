@@ -177,7 +177,7 @@ export function getRedirectOrigin(request: Request): string | null {
 export function redirectToPath(
   request: Request,
   path: string,
-  status: 307 | 308 = 307,
+  status: 302 | 307 | 308 = 307,
 ): NextResponse {
   const origin = getRedirectOrigin(request);
   if (origin) {

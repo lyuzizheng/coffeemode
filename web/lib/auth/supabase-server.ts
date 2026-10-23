@@ -1,4 +1,8 @@
 import { logError } from "@/lib/observability/server-log";
+import {
+  resolveSupabasePublishableKey,
+  resolveSupabaseUrl,
+} from "@/lib/auth/supabase-env";
 import "server-only";
 
 import { createServerClient } from "@supabase/ssr";
@@ -15,17 +19,17 @@ import { cookies } from "next/headers";
  * and CI run without credentials configured.
  */
 export async function createSupabaseServerClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anonKey) {
+  const url = resolveSupabaseUrl();
+  const publishableKey = resolveSupabasePublishableKey();
+  if (!url || !publishableKey) {
     throw new Error(
-      "Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (see web/.env.example).",
+      "Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (legacy NEXT_PUBLIC_SUPABASE_ANON_KEY still accepted; see web/.env.example).",
     );
   }
 
   const cookieStore = await cookies();
 
-  return createServerClient(url, anonKey, {
+  return createServerClient(url, publishableKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -66,8 +70,5 @@ function isReadOnlyCookieError(error: unknown): boolean {
 
 /** True when the public Supabase env is present enough to attempt auth. */
 export function isAuthConfigured(): boolean {
-  return Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  );
+  return Boolean(resolveSupabaseUrl() && resolveSupabasePublishableKey());
 }

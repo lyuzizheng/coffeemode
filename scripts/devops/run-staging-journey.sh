@@ -72,8 +72,10 @@ Environment:
   STAGING_MAX_WORKERS         Optional. Vitest worker cap for this run;
                               default from web/config/app.yaml §staging.
   SUPABASE_URL                Optional. Enables Supabase Auth endpoint checks.
-  SUPABASE_SERVICE_ROLE_KEY   Optional. Enables privileged setup verification.
-  SUPABASE_ANON_KEY           Optional. Enables publishable-key auth checks.
+  SUPABASE_SECRET_KEY         Optional. Enables privileged setup verification
+                              (legacy SUPABASE_SERVICE_ROLE_KEY accepted).
+  SUPABASE_PUBLISHABLE_KEY    Optional. Enables publishable-key auth checks
+                              (legacy SUPABASE_ANON_KEY accepted).
 
 Without Supabase keys the setup step runs with --skip-auth (DB provisioning
 and verification only). Production databases are never targeted: there is no
@@ -135,8 +137,11 @@ else
   warn "SUPABASE_URL unset — setup will run with --skip-auth (DB only)"
   SETUP_ARGS+=(--skip-auth)
 fi
-[[ -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ]] && SETUP_ARGS+=(--service-role-key "$SUPABASE_SERVICE_ROLE_KEY")
-[[ -n "${SUPABASE_ANON_KEY:-}" ]] && SETUP_ARGS+=(--anon-key "$SUPABASE_ANON_KEY")
+# New API-key names first, legacy names as the migration fallback (BRAWUKA-950).
+SECRET_KEY="${SUPABASE_SECRET_KEY:-${SUPABASE_SERVICE_ROLE_KEY:-}}"
+PUBLISHABLE_KEY="${SUPABASE_PUBLISHABLE_KEY:-${SUPABASE_ANON_KEY:-}}"
+[[ -n "$SECRET_KEY" ]] && SETUP_ARGS+=(--service-role-key "$SECRET_KEY")
+[[ -n "$PUBLISHABLE_KEY" ]] && SETUP_ARGS+=(--anon-key "$PUBLISHABLE_KEY")
 [[ "$SETUP_VERIFY_ONLY" == "1" ]] && SETUP_ARGS+=(--verify-only)
 [[ "$SETUP_DRY_RUN" == "1" ]] && SETUP_ARGS+=(--dry-run)
 

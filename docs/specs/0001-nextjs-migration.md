@@ -762,26 +762,26 @@ Domain: cafemood.app (or TBD)
 ### Environment config
 
 ```text
-NEXT_PUBLIC_SUPABASE_URL        -> Supabase project URL (auth, Next.js + browser)
-NEXT_PUBLIC_SUPABASE_ANON_KEY   -> client-side anon key (auth only, Next.js + browser)
-NEXT_PUBLIC_SITE_URL            -> canonical public origin (no trailing slash); used as safe OAuth redirectTo
-NEXT_PUBLIC_ALLOWED_HOSTS       -> optional comma-separated allowlist for additional OAuth redirectTo hosts
-DATABASE_URL                    -> Supabase Postgres pooled connection string (Next.js server-only, sslmode=require); migrations use the session/direct connection (decision 34a)
-GOOGLE_PLACES_API_KEY           -> POI Worker only (never in Next.js)
-POI_SERVICE_URL                 -> POI Worker URL (workers.dev now, custom domain later)
-POI_SERVICE_TOKEN               -> shared secret, Next.js → POI Worker
-IMAGE_SERVICE_URL               -> image-service Worker URL
-IMAGE_SERVICE_TOKEN             -> shared secret, Next.js → image-service Worker
-R2_ACCOUNT_ID                   -> image-service Worker (R2 S3 signing)
-R2_ACCESS_KEY_ID                -> image-service Worker (R2 S3 token secret)
-R2_SECRET_ACCESS_KEY            -> image-service Worker (R2 S3 token secret)
-R2_BUCKET_NAME                  -> image-service Worker ("cafemode")
-R2_PUBLIC_URL                   -> image-service Worker (CDN base, no trailing slash)
-NEXT_PUBLIC_R2_PUBLIC_URL       -> Next.js, optional drift guard; host must match R2_ALLOWED_PUBLIC_HOSTS in web/lib/images/constants.ts (images.cafemood.app or staging-images.cafemood.app, BRAWUKA-394)
-APPLE_MAPKIT_TEAM_ID            -> Apple Developer team
-APPLE_MAPKIT_KEY_ID             -> MapKit JS key
-APPLE_MAPKIT_PRIVATE_KEY        -> .p8 private key (server-side)
-SERVICE_ACCOUNT_ID            -> fixed UUID 00000000-0000-4000-a000-000000000001 for orphaned cafes whose owner left (DG146); stored in env (not typed config), seeded as profiles row via INSERT ... ON CONFLICT DO NOTHING; later Supabase service account + admin site will own it
+NEXT_PUBLIC_SUPABASE_URL             -> Supabase project URL (auth, Next.js + browser)
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY -> publishable key, sb_publishable_… (auth only, Next.js + browser; legacy NEXT_PUBLIC_SUPABASE_ANON_KEY accepted during migration, spec 0010 §3)
+NEXT_PUBLIC_SITE_URL                 -> canonical public origin (no trailing slash); used as safe OAuth redirectTo
+NEXT_PUBLIC_ALLOWED_HOSTS            -> optional comma-separated allowlist for additional OAuth redirectTo hosts
+DATABASE_URL                         -> Supabase Postgres pooled connection string (Next.js server-only, sslmode=require); migrations use the session/direct connection (decision 34a)
+GOOGLE_PLACES_API_KEY                -> POI Worker only (never in Next.js)
+POI_SERVICE_URL                      -> POI Worker URL (workers.dev now, custom domain later)
+POI_SERVICE_TOKEN                    -> shared secret, Next.js → POI Worker
+IMAGE_SERVICE_URL                    -> image-service Worker URL
+IMAGE_SERVICE_TOKEN                  -> shared secret, Next.js → image-service Worker
+R2_ACCOUNT_ID                        -> image-service Worker (R2 S3 signing)
+R2_ACCESS_KEY_ID                     -> image-service Worker (R2 S3 token secret)
+R2_SECRET_ACCESS_KEY                 -> image-service Worker (R2 S3 token secret)
+R2_BUCKET_NAME                       -> image-service Worker ("cafemode")
+R2_PUBLIC_URL                        -> image-service Worker (CDN base, no trailing slash)
+NEXT_PUBLIC_R2_PUBLIC_URL            -> Next.js, optional drift guard; host must match R2_ALLOWED_PUBLIC_HOSTS in web/lib/images/constants.ts (images.cafemood.app or staging-images.cafemood.app, BRAWUKA-394)
+APPLE_MAPKIT_TEAM_ID                 -> Apple Developer team
+APPLE_MAPKIT_KEY_ID                  -> MapKit JS key
+APPLE_MAPKIT_PRIVATE_KEY             -> .p8 private key (server-side)
+SERVICE_ACCOUNT_ID                   -> fixed UUID 00000000-0000-4000-a000-000000000001 for orphaned cafes whose owner left (DG146); stored in env (not typed config), seeded as profiles row via INSERT ... ON CONFLICT DO NOTHING; later Supabase service account + admin site will own it
 ```
 
 ## Product capabilities

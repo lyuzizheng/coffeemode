@@ -2,17 +2,18 @@
  * Agent-QA session bootstrap (BRAWUKA-408).
  *
  * Staging sessions for the agent browser are bootstrapped through the
- * Supabase Auth Admin API with the staging `service_role` key, then handed
+ * Supabase Auth Admin API with the staging secret key, then handed
  * to the browser as a magic-link URL for navigation through the real
  * `/auth/callback` route — the same code path a human invite email uses.
  * `sb-*` cookies are NEVER injected: that would couple the scaffold to
  * `@supabase/ssr` cookie internals.
  *
- * `service_role` boundary: read ONLY from the server-side
- * `SUPABASE_SERVICE_ROLE_KEY` env var (via the shared `supabase-env.mjs`
- * core). It travels in Admin-API request headers only and must never reach
- * a prompt, browser page, or client bundle — the returned session carries
- * the user id, the email, and the magic-link URL, never the key.
+ * Secret-key boundary: read ONLY from the server-side `SUPABASE_SECRET_KEY`
+ * env var (legacy `SUPABASE_SERVICE_ROLE_KEY` accepted, via the shared
+ * `supabase-env.mjs` core). It travels in Admin-API request headers only and
+ * must never reach a prompt, browser page, or client bundle — the returned
+ * session carries the user id, the email, and the magic-link URL, never the
+ * key.
  */
 
 import { assertAllowedUrl } from "./allowlist.mjs";
@@ -51,13 +52,29 @@ async function readFailure(res, op) {
 }
 
 /**
- * @param {string} serviceRoleKey server-side key (headers only)
+ * Legacy `service_role` / `anon` keys are JWTs; the new publishable/secret
+ * keys are opaque tokens. The platform parses a `Bearer` token as a JWT and
+ * rejects a non-JWT value with `Invalid JWT` (BRAWUKA-950), so the Bearer copy
+ * exists only for the legacy shape.
+ *
+ * @param {string} key Supabase API key
  */
-function adminHeaders(serviceRoleKey) {
+function isJwtKey(key) {
+  return key.startsWith("eyJ");
+}
+
+/**
+ * Admin-API request headers. The key always travels in `apikey`; only a legacy
+ * JWT key is repeated as `authorization: Bearer`.
+ *
+ * @param {string} secretKey server-side key (headers only)
+ * @param {{ json?: boolean }} [opts] `json` adds the JSON content type (default true)
+ */
+export function adminHeaders(secretKey, { json = true } = {}) {
   return {
-    apikey: serviceRoleKey,
-    authorization: `Bearer ${serviceRoleKey}`,
-    "content-type": "application/json",
+    apikey: secretKey,
+    ...(json ? { "content-type": "application/json" } : {}),
+    ...(isJwtKey(secretKey) ? { authorization: `Bearer ${secretKey}` } : {}),
   };
 }
 
@@ -65,7 +82,7 @@ function adminHeaders(serviceRoleKey) {
  * Create a test user through the Auth Admin API (`email_confirm: true`, no
  * password — the magic-link flow needs none and unsent secrets stay unmade).
  *
- * @param {{ supabaseUrl: string, anonKey: string, serviceRoleKey: string }} resolved resolved env
+ * @param {{ supabaseUrl: string, publishableKey: string, secretKey: string }} resolved resolved env
  * @param {string} email test-user email (a persona address)
  * @param {{ fetchImpl?: typeof fetch, password?: string }} [opts]
  * @returns {Promise<string>} the new user id
@@ -73,7 +90,7 @@ function adminHeaders(serviceRoleKey) {
 export async function createAgentQaUser(resolved, email, { fetchImpl = globalThis.fetch, password } = {}) {
   const res = await fetchImpl(`${resolved.supabaseUrl}/auth/v1/admin/users`, {
     method: "POST",
-    headers: adminHeaders(resolved.serviceRoleKey),
+    headers: adminHeaders(resolved.secretKey),
     body: JSON.stringify({
       email,
       email_confirm: true,
@@ -95,7 +112,7 @@ export async function createAgentQaUser(resolved, email, { fetchImpl = globalThi
  * `email` is required (no blind delete by id): the persona guard runs on
  * every call, so omitting it throws instead of deleting around the guard.
  *
- * @param {{ supabaseUrl: string, anonKey: string, serviceRoleKey: string }} resolved resolved env
+ * @param {{ supabaseUrl: string, publishableKey: string, secretKey: string }} resolved resolved env
  * @param {string} userId user id to delete
  * @param {{ fetchImpl?: typeof fetch, email: string }} opts
  */
@@ -114,10 +131,7 @@ export async function deleteAgentQaUser(resolved, userId, { fetchImpl = globalTh
     `${resolved.supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(userId)}`,
     {
       method: "DELETE",
-      headers: {
-        apikey: resolved.serviceRoleKey,
-        authorization: `Bearer ${resolved.serviceRoleKey}`,
-      },
+      headers: adminHeaders(resolved.secretKey, { json: false }),
     },
   );
   if (res.status === 404) return;
@@ -127,9 +141,9 @@ export async function deleteAgentQaUser(resolved, userId, { fetchImpl = globalTh
 /**
  * Mint a magic link through `auth.admin.generateLink` and return the URL for
  * browser navigation through the real `/auth/callback`. The URL carries a
- * one-time token, never the `service_role` key.
+ * one-time token, never the secret key.
  *
- * @param {{ supabaseUrl: string, anonKey: string, serviceRoleKey: string }} resolved resolved env
+ * @param {{ supabaseUrl: string, publishableKey: string, secretKey: string }} resolved resolved env
  * @param {string} email test-user email
  * @param {{ fetchImpl?: typeof fetch, redirectTo?: string }} [opts]
  * @returns {Promise<string>} the magic-link URL
@@ -142,7 +156,7 @@ export async function generateAgentQaMagicLink(
   assertAllowedUrl(redirectTo);
   const res = await fetchImpl(`${resolved.supabaseUrl}/auth/v1/admin/generate_link`, {
     method: "POST",
-    headers: adminHeaders(resolved.serviceRoleKey),
+    headers: adminHeaders(resolved.secretKey),
     body: JSON.stringify({ type: "magiclink", email, options: { redirect_to: redirectTo } }),
   });
   if (!res.ok) await readFailure(res, "generate magic link");
@@ -159,7 +173,7 @@ export async function generateAgentQaMagicLink(
  * link. A link failure best-effort deletes the orphan user (mirroring
  * `createStagingTestSession`) without masking the original error.
  *
- * @param {{ supabaseUrl: string, anonKey: string, serviceRoleKey: string }} resolved resolved env
+ * @param {{ supabaseUrl: string, publishableKey: string, secretKey: string }} resolved resolved env
  * @param {string} runId run identifier (owns the fresh persona email)
  * @param {{ fetchImpl?: typeof fetch, redirectTo?: string }} [opts]
  * @returns {Promise<{ userId: string, email: string, magicLinkUrl: string, dispose: () => Promise<void> }>}

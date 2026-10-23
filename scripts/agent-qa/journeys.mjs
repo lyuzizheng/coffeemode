@@ -37,7 +37,7 @@
 /** Precondition: staging Supabase triple present in the runner env. */
 const SUPABASE_KEYS = Object.freeze({
   name: "supabase-keys",
-  check: "SUPABASE_URL + SUPABASE_ANON_KEY + SUPABASE_SERVICE_ROLE_KEY resolve via resolveAgentQaSupabaseEnv (staging project ojujmjewtbquiddswyrg); read server-side by session.mjs in the agent Node process — never injected into the browser",
+  check: "SUPABASE_URL + SUPABASE_PUBLISHABLE_KEY + SUPABASE_SECRET_KEY (legacy SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY accepted) resolve via resolveAgentQaSupabaseEnv (staging project ojujmjewtbquiddswyrg); read server-side by session.mjs in the agent Node process — never injected into the browser",
 });
 
 /** Precondition: Cloudflare Access service token present in the runner env. */

@@ -62,8 +62,10 @@ jobs:
         env:
           STAGING_DATABASE_URL: postgresql://coffeemode:coffeemode@localhost:5432/coffeemode
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          # New API-key names (BRAWUKA-950). The `||` keeps a half-migrated
+          # GitHub Environment green until the legacy secrets are deleted.
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_ANON_KEY }}
         run: bash ../scripts/devops/run-staging-journey.sh --suite all
 
       - name: Failure notice

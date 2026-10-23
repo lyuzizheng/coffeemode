@@ -64,7 +64,7 @@ const probes = createProbeServers({
   root,
   dbUrl,
   supabaseUrl: process.env.E2E_SUPABASE_URL ?? "http://127.0.0.1:54321",
-  supabaseAnonKey: process.env.E2E_SUPABASE_ANON_KEY ?? "e2e-anon-key",
+  supabaseAnonKey: process.env.E2E_SUPABASE_PUBLISHABLE_KEY ?? "e2e-anon-key",
 });
 
 const cleanup = async () => {

@@ -149,10 +149,15 @@ export function parseCliArgs(argv, { repoRoot, webDir, env = process.env }) {
         "SUPABASE_URL",
         "NEXT_PUBLIC_SUPABASE_URL",
       ]),
+      // New API-key names first, legacy names as the migration fallback
+      // (BRAWUKA-950).
       serviceRoleKey: getVal(options.serviceRoleKey, [
+        "SUPABASE_SECRET_KEY",
         "SUPABASE_SERVICE_ROLE_KEY",
       ]),
       anonKey: getVal(options.anonKey, [
+        "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
+        "SUPABASE_PUBLISHABLE_KEY",
         "NEXT_PUBLIC_SUPABASE_ANON_KEY",
         "SUPABASE_ANON_KEY",
       ]),

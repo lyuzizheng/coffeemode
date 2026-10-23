@@ -164,7 +164,7 @@ docs/agent/              current state, planned-slice manifest, owner actions
 ## Known issues
 
 ```text
-- NEXT_PUBLIC_SUPABASE_ANON_KEY not set (only URL + service-role present locally)
+- NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY not set (only URL + secret key present locally; legacy NEXT_PUBLIC_SUPABASE_ANON_KEY name also accepted)
 - NEXT_PUBLIC_SITE_URL not set; NEXT_PUBLIC_ALLOWED_HOSTS not configured
 - DATABASE_URL (Supabase main Postgres per 0004 decision 34a) not configured for production yet (#142; local dev uses `docker compose up -d --wait postgres` + `npm run db:migrate`, see `docs/agent/local-dev-stack.md`)
 - Supabase dashboard still needs Apple OAuth provider config (Google done 2026-09-23, BRAWUKA-680)

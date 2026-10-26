@@ -1,6 +1,7 @@
 import { coordinate, fail, positiveNumber, record, stringList } from "./primitives";
 import { OAUTH_PROVIDERS, type OAuthProvider } from "../auth/providers";
 import { parseBudgetsSection } from "./budgets";
+import { parseBetaSection } from "./beta";
 import { parseCheckinsSection } from "./checkins";
 import { parseImagesSection } from "./images";
 import { parseMapSection } from "./map";
@@ -121,5 +122,6 @@ export function parseAppConfig(raw: unknown, file = "app.yaml"): AppConfig {
     validation: parseValidationSection(file, record(file, "validation", root.validation)),
     budgets: parseBudgetsSection(file, record(file, "budgets", root.budgets)),
     auth: parseAuthSection(file, root.auth),
+    beta: parseBetaSection(file, record(file, "beta", root.beta)),
   };
 }

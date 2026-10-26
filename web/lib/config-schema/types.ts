@@ -184,4 +184,15 @@ export interface AppConfig {
      * `lib/auth/providers.ts`; the first entry is the primary CTA. */
     providers: OAuthProvider[];
   };
+  beta: {
+    /** Product state of the closed beta. `BETA_MODE` overrides it per
+     * deployment (`lib/beta/config.ts`, spec 0010 §3). */
+    enabled: boolean;
+    /** Root-relative page paths that stay reachable while the gate is on. */
+    publicPaths: string[];
+    /** Inbox that receives invitation requests from the beta page (mailto). */
+    inviteEmail: string;
+    /** Seconds one process caches an allowlist decision for an address. */
+    allowlistCacheSeconds: number;
+  };
 }

@@ -9,6 +9,8 @@ import {
 } from "@/lib/rate-limit";
 import { rateLimitBuckets, rateLimits } from "@/lib/config";
 import { apiError } from "@/lib/api/response";
+import { betaDecisionFor, recordBetaDenied } from "@/lib/beta/access";
+import { isBetaEnabled } from "@/lib/beta/config";
 
 import { RATE_LIMIT_BUCKET_NAMES, type RateLimitBucketName } from "./rate-limit-buckets.generated";
 
@@ -22,7 +24,7 @@ import { RATE_LIMIT_BUCKET_NAMES, type RateLimitBucketName } from "./rate-limit-
  */
 export { RATE_LIMIT_BUCKET_NAMES, type RateLimitBucketName };
 
-type AuthenticatedUser = { id: string };
+type AuthenticatedUser = { id: string; email?: string | null };
 
 interface GuardOptions<Auth extends boolean = boolean> {
   /** Bucket name declared in rate-limits.yaml */
@@ -47,6 +49,13 @@ interface GuardOptions<Auth extends boolean = boolean> {
   bypassUnknownClients?: boolean;
   /** Request id resolved by the route wrapper; echoed on error envelopes. */
   requestId?: string;
+  /**
+   * Exempt this route from the closed-beta admission gate (BRAWUKA-970).
+   * ONLY for the routes that must answer before admission can exist
+   * (session establishment, infra probes) — never for a route that reads or
+   * writes product data.
+   */
+  betaExempt?: boolean;
 }
 
 type GuardOkResult<Auth extends boolean> = {
@@ -96,15 +105,50 @@ function resolveRouteString(request: Request, route?: string): string {
 }
 
 /**
+ * Closed-beta admission answer for one request (BRAWUKA-970, spec 0001
+ * §Closed beta). While the gate is on, every route except the declared
+ * exemptions answers only to an allowlisted identity — anonymous callers of
+ * optional-auth routes included, so product data is not reachable by hiding a
+ * button in the client. `null` admits the request.
+ *
+ * The exemption list is three infra probes and the session-establishment
+ * route; a product route must never appear in it.
+ */
+async function betaAdmissionError(
+  request: Request,
+  user: AuthenticatedUser | null,
+  options: { route?: string; requestId?: string; betaExempt: boolean },
+): Promise<NextResponse | null> {
+  if (!isBetaEnabled() || options.betaExempt) return null;
+
+  if (!user) {
+    return apiError("unauthorized", 401, { request, requestId: options.requestId });
+  }
+  const decision = await betaDecisionFor(user.email);
+  if (decision.allowed) return null;
+
+  recordBetaDenied({
+    email: user.email,
+    reason: decision.reason,
+    route: resolveRouteString(request, options.route),
+    requestId: options.requestId,
+  });
+  return apiError("beta_not_allowed", 403, { request, requestId: options.requestId });
+}
+
+/**
  * Unified API route gatekeeper (BRAWUKA-181):
  * Combines authentication, rate-limiting, and error envelopes into a single call.
  *
  * Sequence:
  * 1. Validate bucket name (compile-time & runtime double check)
  * 2. Authenticate user if `requireAuth: true` (401 unauthorized on missing user)
- * 3. Calculate client identifier (user id when authenticated, hashed IP otherwise)
- * 4. Check multi-window rate limit against bucket (429 rate_limited on exhaustion)
- * 5. Return `{ ok: true, user, clientId }`
+ * 3. Closed-beta admission, unless the route is `betaExempt` (401 for a
+ *    missing identity, 403 `beta_not_allowed` for an unlisted one) — so a
+ *    refused caller never reaches the handler or the limiter (BRAWUKA-970)
+ * 4. Calculate client identifier (user id when authenticated, hashed IP otherwise)
+ * 5. Check multi-window rate limit against bucket (429 rate_limited on exhaustion)
+ * 6. Return `{ ok: true, user, clientId }`
  */
 export async function guard(
   request: Request,
@@ -122,7 +166,16 @@ export async function guard(
   request: Request,
   options: GuardOptions,
 ): Promise<GuardResult> {
-  const { bucket, requireAuth = false, route, user: preResolvedUser, ipOnly = false, bypassUnknownClients = false, requestId } = options;
+  const {
+    bucket,
+    requireAuth = false,
+    route,
+    user: preResolvedUser,
+    ipOnly = false,
+    bypassUnknownClients = false,
+    requestId,
+    betaExempt = false,
+  } = options;
 
   // 1. Runtime bucket check
   validateBucket(bucket);
@@ -136,6 +189,11 @@ export async function guard(
       ok: false,
       response: apiError("unauthorized", 401, { request, requestId }),
     };
+  }
+
+  const admissionError = await betaAdmissionError(request, user, { route, requestId, betaExempt });
+  if (admissionError) {
+    return { ok: false, response: admissionError };
   }
 
   // 3. Client identity calculation

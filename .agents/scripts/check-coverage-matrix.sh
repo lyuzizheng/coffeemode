@@ -163,6 +163,7 @@ gate_class() {
     test:integration*) printf 'integration' ;;
     test:unit)         printf 'component' ;;
     test:e2e)          printf 'browser' ;;
+    test:e2e:*)        printf 'browser' ;;
     *)                 printf '' ;;
   esac
 }

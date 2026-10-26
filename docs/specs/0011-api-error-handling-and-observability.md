@@ -247,6 +247,7 @@ does not replace:
 | `unauthorized` | 401 | auth | missing/invalid session or service token |
 | `forbidden` | 403 | auth | authenticated, not owner/allowed |
 | `forbidden_origin` | 403 | auth | cross-origin mutation rejected |
+| `beta_not_allowed` | 403 | auth | closed beta on, identity verified but not on `beta_allowlist` (BRAWUKA-970) — sign out and show `/beta?denied=1` |
 | `bot_verification_failed` | 403 | auth | Turnstile failure (collapses 4 turnstile codes) |
 | `invalid_provider` | 400 | auth | OAuth provider unknown |
 | `provider_start_failed` | 500 | auth | OAuth start failed |

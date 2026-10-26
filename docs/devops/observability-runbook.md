@@ -98,7 +98,29 @@ prod 当前**未部署**（BRAWUKA-500），prod 规则在 `2026-10-29` 前被 s
 看板：`coffeemode-api-red`、`coffeemode-launch-health`、`coffeemode-rate-limits`、
 `coffeemode-workers-db`（都在 Grafana 的 `CoffeeMode` 目录，`coffeemode-api-red` 在 General）。
 
-## 7. 已知缺口（不是告警噪音）
+## 7. 2026-10-26 验收记录（BRAWUKA-969）
+
+- **测试邮件**：05:28 UTC 通过 `POST /apis/notifications.alerting.grafana.app/v1beta1/namespaces/stacks-1837787/receivers/{uid}/test`
+  发送，返回 `{"status":"success","duration":"3s143ms"}`。收件确认由 Owner 在邮箱完成。
+- **真实 5xx 事件**：staging `GET /api/search?q=%00`（NUL 字节 → Postgres
+  `invalid byte sequence`），05:32:10–05:41:30 UTC 以约 12 次/分钟持续请求。
+  - 规则 05:32:30 UTC 进入 pending，05:37:30 UTC firing（`for: 5m`）。
+  - 05:38:02 autopilot `success`；05:38:05 email `success`。
+  - 05:43:02 autopilot `resolved`；05:43:04 email `resolved`。
+- **规则修好前的错误**：6 条日志规则报
+  `invalid format of evaluation results for the alert definition B: looks like time series data,
+  only reduced data can be alerted on`；已改为 `A → B(reduce last) → C(threshold)`，并把 9 条
+  规则的 `execErrState` 设为 `Alerting`，查询本身坏掉时会告警而不是静默。
+- **遥测**：Tempo 有 `coffeemode-web` trace；`traces_spanmetrics_calls_total/latency` 带路由模板
+  `span_name`；`coffeemode_cafe_created_total`、`coffeemode_auth_login_total` 可查；Loki 有
+  staging 日志；两个 Dokploy app env 的 `OTEL_EXPORTER_OTLP_HEADERS` 存在且一致。
+- **看板**：`CoffeeMode — Launch Health`（<https://lyuzizheng.grafana.net/d/coffeemode-launch-health>）。
+- **备份失败告警**：本地 hook 收到
+  `{"job":"postgres-backup","env":"prod","error":"backup exited 1",…}`；成功路径不发。
+- **`rollback-prod.sh --dry-run`**：`backups/prod/releases.log` 不存在，无可回滚边界
+  （prod 从未发布，见 §4）。
+
+## 8. 已知缺口（不是告警噪音）
 
 - **DB 连接数没有指标**：应用未导出 `pg` pool 指标，Prometheus 里没有 `pg_*` 序列。
   `Launch Health` 因此没有该面板；补它需要应用侧 telemetry 代码（另行开单）。

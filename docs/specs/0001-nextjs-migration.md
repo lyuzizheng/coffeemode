@@ -993,7 +993,10 @@ Two search modes:
      (BRAWUKA-597) — a lone coordinate is never silently re-anchored. A
      present-but-unparseable coordinate is likewise a 400, same convention
      as `limit` (BRAWUKA-670); a repeated param resolves to its first value
-     on both surfaces.
+     on both surfaces. A `q` carrying control characters (a NUL byte in
+     particular) is a 400 too: Postgres cannot store NUL in a text parameter,
+     so it used to fail the whole statement and surface as a 500
+     (BRAWUKA-973).
    - Text query: name FTS on own cafes and saved POIs.
      - Search-as-you-type starts at 3 characters, 400ms debounce (DG44/DG47).
      - Suggestion rows: top 10 only, rendered under the search bar; no

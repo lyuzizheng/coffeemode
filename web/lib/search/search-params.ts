@@ -79,6 +79,7 @@ export function parseSearchQuery(
 }
 
 const SEARCH_PARAM_ERROR_MESSAGES: Record<SearchParamError, string> = {
+  q: "q must not contain control characters",
   lat: "lat must be a number within [-90, 90]",
   lng: "lng must be a number within [-180, 180]",
   lat_lng: "lat and lng must be provided together",
@@ -87,9 +88,20 @@ const SEARCH_PARAM_ERROR_MESSAGES: Record<SearchParamError, string> = {
 };
 
 /**
+ * C0/C1 control characters are never part of a search keyword, and a NUL byte
+ * in particular cannot survive the trip into Postgres: it arrives as a text
+ * bind parameter and fails the whole statement with
+ * `invalid byte sequence for encoding "UTF8": 0x00` (BRAWUKA-973 — `?q=%00…`
+ * produced a 500 storm instead of a rejected deep link). `\p{Cc}` covers
+ * U+0000–U+001F and U+007F–U+009F; it deliberately leaves format characters
+ * alone so emoji ZWJ sequences in a keyword are untouched.
+ */
+const SEARCH_Q_CONTROL_CHARS = /[\p{Cc}]/u;
+
+/**
  * The rejection half of the deep-link contract, shared by `GET /api/search`
  * (400 `invalid_request`) and the SSR `/search` page (error state). Check
- * order matches the API: lat, lng, lat/lng pairing, limit, then known
+ * order matches the API: q, lat, lng, lat/lng pairing, limit, then known
  * city — callers must not reorder or subset it.
  */
 export function validateSearchQuery(
@@ -103,7 +115,7 @@ export function validateSearchQuery(
       code: "invalid_request";
       message: string;
     } {
-  const { lat, lng, city, limit } = parsed.filters;
+  const { q, lat, lng, city, limit } = parsed.filters;
   // Raw presence follows the `limit` convention: a blank value counts as
   // absent, a non-blank one as present — parseable or not (BRAWUKA-670).
   const present = (raw: string | null) => raw !== null && raw.trim() !== "";
@@ -116,6 +128,13 @@ export function validateSearchQuery(
     code: "invalid_request" as const,
     message: SEARCH_PARAM_ERROR_MESSAGES[error],
   });
+
+  // BRAWUKA-973: a control character in `q` becomes a Postgres text bind
+  // parameter further down, where NUL fails the whole statement — reject it
+  // here so the caller sees a 400 deep-link error instead of a 500.
+  if (q !== undefined && SEARCH_Q_CONTROL_CHARS.test(q)) {
+    return reject("q");
+  }
 
   // BRAWUKA-670: a present-but-unparseable coordinate is a 400, same as
   // `limit` — malformed input is never silently dropped and re-anchored.

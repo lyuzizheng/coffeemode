@@ -8,6 +8,8 @@ import { GET as recoveryGET } from "@/app/api/cafes/[id]/recovery/route";
 import { POST as checkinsPOST } from "@/app/api/checkins/route";
 import { POST as uploadPOST } from "@/app/api/images/upload/route";
 import { GET as searchGET } from "@/app/api/search/route";
+import { GET as placesSearchGET } from "@/app/api/places/search/route";
+import { searchPOIs } from "@/lib/places/poi-client";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import type { SearchResponse } from "@/lib/search/types";
 import type { CafeSummary } from "@/types/cafes";
@@ -594,6 +596,46 @@ describeHttp("HTTP Discovery & Filters (Path 1)", () => {
       expect(res.status).toBe(400);
       expect(res.data.error).toBe("invalid_request");
     }
+  });
+
+  // BRAWUKA-975: the POI proxy is the sibling entry point — it forwards `q`
+  // to the worker, so the same control-character rule must reject at this
+  // boundary before any proxy forwarding happens.
+  it("Path 1 (BRAWUKA-975): /api/places/search rejects control characters before the POI proxy", async () => {
+    const poiMock = vi.mocked(searchPOIs);
+    poiMock.mockClear();
+
+    for (const q of ["\u0000probe61", "cof\u0000fee", "\u0001"]) {
+      const res = await guest.get<ErrorBody>(placesSearchGET, "/api/places/search", {
+        query: { q },
+      });
+      expect(res.status).toBe(400);
+      expect(res.data.error).toBe("invalid_request");
+    }
+    // Rejected at the boundary: nothing crossed the POI proxy.
+    expect(poiMock).not.toHaveBeenCalled();
+
+    // Legitimate Unicode still crosses the proxy unchanged.
+    const unicode = await guest.get<{ results: unknown[] }>(placesSearchGET, "/api/places/search", {
+      query: { q: "café ☕" },
+    });
+    expect(unicode.status).toBe(200);
+    expect(poiMock).toHaveBeenCalledTimes(1);
+    expect(poiMock).toHaveBeenCalledWith(
+      expect.objectContaining({ q: "café ☕" }),
+      expect.anything(),
+    );
+
+    // Empty q without coordinates keeps its existing "required" rejection.
+    const empty = await guest.get<ErrorBody>(placesSearchGET, "/api/places/search");
+    expect(empty.status).toBe(400);
+    expect(empty.data.message).toBe("q or lat+lng required");
+
+    // Ordinary Unicode on the cafe search surface is untouched by the shared rule.
+    const cafeSearch = await guest.get<SearchResponse>(searchGET, "/api/search", {
+      query: { q: "café ☕" },
+    });
+    expect(cafeSearch.status).toBe(200);
   });
 
   it("Path 1 (DG128): omitted city resolves via cf-ipcity header", async () => {

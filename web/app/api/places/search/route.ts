@@ -3,6 +3,7 @@ import { apiError, parseQueryNumberOrNaN } from "@/lib/api/response";
 import { apiRoute } from "@/lib/api/route";
 import { DEFAULT_SEARCH_RADIUS_KM, MAX_SEARCH_RADIUS_KM } from "@/lib/places/constants";
 import { searchPOIs } from "@/lib/places/poi-client";
+import { hasControlChars } from "@/lib/validation/common";
 
 /**
  * GET /api/places/search?q&lat&lng&r
@@ -33,6 +34,15 @@ export const GET = apiRoute(
     const latProvided = searchParams.has("lat");
     const lngProvided = searchParams.has("lng");
     const hasCoords = !Number.isNaN(lat) && !Number.isNaN(lng);
+    // BRAWUKA-975: the same rule `GET /api/search` enforces (BRAWUKA-973) —
+    // a control character, NUL in particular, is not searchable text. Reject
+    // it here so the worker proxy never receives it for D1 matching.
+    if (hasControlChars(q)) {
+      return apiError("invalid_request", "q must not contain control characters", {
+        status: 400,
+        requestId: ctx.requestId,
+      });
+    }
     if ((latProvided || lngProvided) && !hasCoords) {
       return apiError("invalid_request", "lat/lng must both be numbers", {
         status: 400,

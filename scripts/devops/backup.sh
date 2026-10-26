@@ -171,6 +171,25 @@ ok()    { echo -e "${BOLD}${GREEN}[OK]${NC}    $*"; }
 warn()  { echo -e "${BOLD}${YELLOW}[WARN]${NC}  $*"; }
 error() { echo -e "${BOLD}${RED}[ERROR]${NC} $*" >&2; }
 
+# ------------------------------------------------------------------------------
+# Failure Alerting (BRAWUKA-969)
+# ------------------------------------------------------------------------------
+# A non-zero exit posts one JSON line to the Multica ops autopilot webhook, so a
+# failed nightly backup becomes a tracked [AUTO-OPS] issue instead of a silent
+# cron miss. The URL is a secret supplied by the Dokploy schedule env; when it
+# is absent (local runs) the trap is a no-op. The notification never changes the
+# script's exit status.
+BACKUP_NOTIFY_WEBHOOK="${MULTICA_AUTOPILOT_WEBHOOK_URL:-}"
+notify_backup_failure() {
+  local exit_code=$?
+  if [[ $exit_code -eq 0 || -z "$BACKUP_NOTIFY_WEBHOOK" ]]; then
+    return 0
+  fi
+  node -e 'const [url,env,code]=process.argv.slice(1);fetch(url,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({job:"postgres-backup",env,error:`backup exited ${code}`,run:"dokploy:schedule:postgres-backup"}),signal:AbortSignal.timeout(10000)}).catch(()=>{});' \
+    "$BACKUP_NOTIFY_WEBHOOK" "$ENV" "$exit_code" >/dev/null 2>&1 || true
+}
+trap notify_backup_failure EXIT
+
 echo "=============================================================================="
 echo "CafeMood Automated Backup Suite"
 echo "Environment:     ${ENV}"

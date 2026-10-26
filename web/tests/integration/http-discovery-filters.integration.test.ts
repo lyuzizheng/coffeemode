@@ -585,6 +585,17 @@ describeHttp("HTTP Discovery & Filters (Path 1)", () => {
     expect(res.data.error).toBe("invalid_request");
   });
 
+  // BRAWUKA-973: a NUL byte reached Postgres as a text bind parameter and
+  // failed the whole statement (`invalid byte sequence for encoding "UTF8": 0x00`),
+  // turning `?q=%00…` into a 500 storm instead of a rejected deep link.
+  it("Path 1 (BRAWUKA-973): control characters in q are a 400, never a 500", async () => {
+    for (const q of ["\u0000probe61", "cof\u0000fee", "\u0001"]) {
+      const res = await guest.get<ErrorBody>(searchGET, "/api/search", { query: { q } });
+      expect(res.status).toBe(400);
+      expect(res.data.error).toBe("invalid_request");
+    }
+  });
+
   it("Path 1 (DG128): omitted city resolves via cf-ipcity header", async () => {
     const res = await guest.get<SearchResponse>(searchGET, "/api/search", {
       query: { q: "coffee" },

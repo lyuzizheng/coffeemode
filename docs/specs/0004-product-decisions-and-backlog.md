@@ -86,6 +86,10 @@ Four read-only subagent reviews ran in parallel against the current `main` tree 
 
 **DG153 — Zero-data profile renders a starter card, not four empty tabs.** When a signed-in user's check-ins query returns an empty first page, `/profile` shows a three-step guide (locate → add a cafe → check in) deep-linking to `/?locate=1` and `/?create=1`. Skipping writes a localStorage dismissal (`profile-guide-store`) — the card never returns once dismissed or once data exists (DG39, no nag surfaces). `?locate=1` primes the locate button's pulse only — DG112 still requires a tap, never an auto-prompt.
 
+### AI crawler & AI-agent policy (DG154, owner 2026-10-26, BRAWUKA-966)
+
+**DG154 — The site refuses AI crawlers, AI training, AI answer input, and AI-agent operation.** Owner decision: the product is not mature enough for AI consumption; no AI feature entry point ships, and any AI integration is designed separately once the product matures. `robots.txt` names every AI crawler (GPTBot, ChatGPT-User, OAI-SearchBot, ClaudeBot, Claude-User, Claude-SearchBot, anthropic-ai, Google-Extended, Applebot-Extended, CCBot, Bytespider, PerplexityBot, Perplexity-User, Amazonbot, meta-externalagent, FacebookBot, cohere-ai, Diffbot, YouBot, ImagesiftBot, Omgilibot, Timpibot, PanguBot, Webzio-Extended, iaskspider, Ai2Bot) with `Disallow: /` and declares `Content-Signal: search=yes, ai-train=no, ai-input=no`. The `*` group keeps `/` and `/cafes/*` allowed and `/api/`, `/theme-preview` disallowed, so Googlebot/Bingbot remain eligible. Document responses carry `X-Robots-Tag: noai, noimageai`; API and static assets do not. `/llms.txt` is deleted and returns 404. The audit found no AI product surface: no AI SDK dependency, no chat widget, no `/api/ai/*` route, no AI/agent write endpoint, and no bot account. **Amends DG105**: its AI-search half (llms.txt, design-for-AI-search) is withdrawn; the SEO half (semantic HTML, JSON-LD, sitemap, crawlable cafe pages, CDN shell cache) stands. Cloudflare edge rules are a separate issue and not covered here.
+
 ### Search & filters
 
 19. **Nearby search radius is 10 km.** `GET /api/cafes?lat=&lng=&r=` defaults to and caps at 10 km.

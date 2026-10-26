@@ -90,7 +90,8 @@ web/app/api/cafes/       POST (fused create + first check-in, 409 dedupe), GET n
                          GET [id]/recovery (gone-cafe 404 suggestions, DG111)
 web/app/cafes/[id]/      SSR public cafe shell + client-loaded feed (seo-sharing #150):
                          JSON-LD, canonical/hreflang, OG + dynamic fallback card,
-                         gone-cafe 404; app/sitemap.ts + app/robots.ts + public/llms.txt
+                         gone-cafe 404; app/sitemap.ts + app/robots.txt/route.ts
+                         (DG154: AI crawlers denied, Content-Signal)
 web/components/checkin/  Check-in drawer, sliders, photo uploader, and success feedback (PR #287)
 web/lib/rate-limit.ts    In-memory token-bucket rate limiter with a shared client identifier helper
 web/lib/observability/   Server-side observability: single-line JSON request/error logs

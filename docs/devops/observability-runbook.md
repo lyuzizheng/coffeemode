@@ -124,21 +124,26 @@ prod 当前**未部署**（BRAWUKA-500），prod 规则在 `2026-10-29` 前被 s
 
 ### 7.1 五分钟通知时限实测（2026-10-26 06:12–06:33 UTC）
 
-通知延迟预算 = 评估相位 δ（事件起点→下一次评估，0–60s）+ `for` + `group_wait` 30s + SMTP。
-`for: 4m` 最坏 5m35s，无法硬性满足 5 分钟；实测 A 已超时。5xx 规则最终取 `for: 3m`
-（最坏 4m35s），并用同一 notification policy 复测：
+**延迟预算（估算）** = 评估相位 δ（事件起点→下一次评估，0–60s）+ `for` + `group_wait` 30s
++ 邮件投递。邮件腿以 Grafana Cloud 返回 `success` 为终点，SMTP 实际入库时间未在本单测量
+（Owner 收件确认仍是独立门禁），按正常秒级投递估算。因此 `for: 4m` 的估算上限为 5m35s，
+无法硬性满足 5 分钟；`for: 3m` 的估算上限为 4m35s。
 
-| 运行 | `for` | 事件起点 | pending | firing | 邮件 firing | 起点→邮件 | 结果 |
+**探针实测（管道时序）**：staging 的 NUL 500 注入点已被 BRAWUKA-973 修掉，无法再制造
+真实 5xx；A/B 用临时规则 `cmtimingprobe1`（日志信号
+`log_type="warn" | status=403 | code="forbidden_origin"`）验证同一 notification policy、
+同一 `group_wait` 下的进入→送达时序，与 5xx 规则同 `ruleGroup`、同 labels；验证后已删除。
+
+| 运行 | `for` | 事件起点 | pending | firing | 邮件 firing（Grafana `success`） | 起点→邮件 | 结果 |
 |---|---|---|---|---|---|---|---|
 | A | 4m | 06:12:52 | 06:13:30 | 06:17:30 | 06:18:05 | 5m13s | 超时 |
 | B | 3m | 06:23:57 | 06:24:30 | 06:27:30 | 06:28:04 | 4m08s | 达标 |
 
-- staging 的 NUL 500 注入点已被 BRAWUKA-973 修掉，无法再制造真实 5xx；A/B 用临时规则
-  `cmtimingprobe1` 验证（日志信号 `log_type="warn" | status=403 | code="forbidden_origin"`，
-  与 5xx 规则同 `ruleGroup`、同 labels、同路由；验证后已删除）。
 - 两次的 resolve 邮件都按 `group_interval: 5m` 在 firing 邮件后约 5 分钟发出
   （A：06:23:05；B：06:33:04 `resolved`）。
-- 真实 5xx 的端到端链路见上面的 05:32–05:43 记录；那次 `for: 5m` 的 5m55s 已由 `for: 3m` 修正。
+- **与真实 5xx 证据的区别**：上面的 05:32–05:43 记录是真实 5xx 的端到端证据（当次
+  `for: 5m`，起点→邮件 5m55s，firing 与 resolve 双通道 `success`）；A/B 只校准通知时限，
+  不是 5xx 复现。5xx 规则现已 `for: 3m`，同类真实事件的估算上限为 4m35s。
 
 ## 8. DB 连接池指标契约（BRAWUKA-976）
 

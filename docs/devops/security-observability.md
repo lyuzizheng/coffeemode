@@ -78,7 +78,8 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
 - **Alert rules** (BRAWUKA-611, folder `CoffeeMode`) — six Grafana-managed
   rules, one per signal per environment, all LogQL over the two labels above:
   - `CoffeeMode — 5xx sustained on a route (prod|staging)` —
-    `sum by (route) (count_over_time({…} | log_type="error" | status=~"5.." [1m])) > 5`, `for: 5m`.
+    `sum by (route) (count_over_time({…} | log_type="error" | status=~"5.." [1m])) > 5`, `for: 3m`
+    (BRAWUKA-969: 3m keeps notification within five minutes of the event onset, estimated; see observability-runbook §7.1).
   - `CoffeeMode — Worker upstream_error spike (prod|staging)` —
     `sum by (route) (count_over_time({…} | log_type="error" | code="upstream_error" [1m])) > 3`, `for: 5m`.
     Counts the web app's view of a failing Cloudflare Worker call; the Workers

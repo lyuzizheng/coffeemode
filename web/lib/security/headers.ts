@@ -2,8 +2,7 @@
  * Baseline security response headers (BRAWUKA-633).
  *
  * Single source of truth for Content-Security-Policy and Permissions-Policy,
- * consumed by `next.config.ts` `headers()` and pinned by
- * `tests/security/headers.test.ts`.
+ * consumed by `next.config.ts` `headers()`.
  *
  * Import-free by construction (like `lib/cache-policy.ts` and
  * `lib/images/constants.ts`): `next.config.ts` runs through Next's config
@@ -22,6 +21,12 @@
  * - `*.r2.cloudflarestorage.com` — presigned photo PUTs: prod/staging sign
  *   against `https://<account>.r2.cloudflarestorage.com` (image-service
  *   `R2_ENDPOINT=""`), so the browser PUTs cross-origin (client-upload.ts).
+ * - Cloudflare Web Analytics beacon (production deploy only, BRAWUKA-815) —
+ *   `static.cloudflareinsights.com` serves `beacon.min.js` and the beacon
+ *   reports to `cloudflareinsights.com`. Cloudflare injects it at the zone
+ *   edge (`auto_install`); staging runs analytics off (BRAWUKA-970), so only
+ *   the production deploy grants the two hosts. `APP_ENV` is the deploy
+ *   discriminator: staging is also a `NODE_ENV=production` build.
  * - `blob:` — draft photo previews + canvas-resize source via
  *   `URL.createObjectURL` (checkin-photos, checkin-resume, toWebP).
  * - `http://localhost:9000` (non-production only) — local MinIO presign
@@ -34,6 +39,9 @@
  *   `'unsafe-inline'` is required: Next.js App Router emits inline bootstrap
  *   scripts (hydration/RSC payload) and there is no nonce pipeline — `'self'`
  *   alone would break the app. `'unsafe-eval'` is NOT granted.
+ * - The Cloudflare beacon adds exactly two hosts (`script-src` +
+ *   `connect-src`) when the caller marks the deploy as production; the rest of
+ *   the policy never widens for analytics.
  * - `style-src 'self' 'unsafe-inline'` — Tailwind + next-intl emit inline
  *   `<style>` blocks; no remote stylesheets are used (fonts are self-hosted
  *   via `next/font/local`).
@@ -65,16 +73,36 @@ const IMG_SRC_EXTRA =
 /** Local MinIO origin — dev-only exception for presign PUTs and image serving. */
 const DEV_EXTRA = "http://localhost:9000";
 
-/** Build the Content-Security-Policy value. `isProduction` gates upgrade-insecure-requests + the MinIO exception. */
-export function contentSecurityPolicy(isProduction: boolean): string {
+/**
+ * Cloudflare Web Analytics beacon hosts — granted only on the production
+ * deploy (`APP_ENV=production`), which keeps analytics on. Local, CI, and
+ * staging builds leave the policy closed; staging has no beacon to allow.
+ */
+const CLOUDFLARE_BEACON_SCRIPT_SRC = "https://static.cloudflareinsights.com";
+const CLOUDFLARE_BEACON_CONNECT_SRC = "https://cloudflareinsights.com";
+
+/**
+ * Build the Content-Security-Policy value.
+ *
+ * @param isProduction `NODE_ENV === "production"` — gates
+ *   `upgrade-insecure-requests` and the MinIO exception.
+ * @param allowCloudflareBeacon `APP_ENV === "production"` — grants the
+ *   Cloudflare Web Analytics beacon hosts.
+ */
+export function contentSecurityPolicy(
+  isProduction: boolean,
+  allowCloudflareBeacon = false,
+): string {
   const dev = isProduction ? "" : ` ${DEV_EXTRA}`;
+  const beaconScript = allowCloudflareBeacon ? ` ${CLOUDFLARE_BEACON_SCRIPT_SRC}` : "";
+  const beaconConnect = allowCloudflareBeacon ? ` ${CLOUDFLARE_BEACON_CONNECT_SRC}` : "";
   const directives = [
     "default-src 'self'",
-    `script-src 'self' 'unsafe-inline' ${SCRIPT_SRC_EXTRA}`,
+    `script-src 'self' 'unsafe-inline' ${SCRIPT_SRC_EXTRA}${beaconScript}`,
     "style-src 'self' 'unsafe-inline'",
     `img-src 'self' data: blob: ${IMG_SRC_EXTRA}${dev}`,
     "font-src 'self' data:",
-    `connect-src 'self' ${CONNECT_SRC_EXTRA}${dev}`,
+    `connect-src 'self' ${CONNECT_SRC_EXTRA}${beaconConnect}${dev}`,
     "frame-src 'self' https://challenges.cloudflare.com",
     "worker-src 'self' blob:",
     "object-src 'none'",
@@ -95,9 +123,15 @@ export function contentSecurityPolicy(isProduction: boolean): string {
 export const PERMISSIONS_POLICY = "geolocation=(self), camera=(), microphone=(), payment=()";
 
 /** Header name/value pairs the `/:path*` baseline block in `next.config.ts` must set. */
-export function securityHeaders(isProduction: boolean): { key: string; value: string }[] {
+export function securityHeaders(
+  isProduction: boolean,
+  allowCloudflareBeacon = false,
+): { key: string; value: string }[] {
   return [
-    { key: "Content-Security-Policy", value: contentSecurityPolicy(isProduction) },
+    {
+      key: "Content-Security-Policy",
+      value: contentSecurityPolicy(isProduction, allowCloudflareBeacon),
+    },
     { key: "Permissions-Policy", value: PERMISSIONS_POLICY },
   ];
 }

@@ -3,6 +3,7 @@ import "server-only";
 import { parseQueryBoolean, parseQueryNumber, parseQueryScore } from "@/lib/api/response";
 import { findCity } from "@/lib/cities";
 import { parseMaxStayFilter } from "@/lib/validation/checkin";
+import { hasControlChars } from "@/lib/validation/common";
 import { WORK_DIM_FILTER_MAP } from "./filter";
 import type { SearchFilters, SearchParamError } from "./types";
 
@@ -88,17 +89,6 @@ const SEARCH_PARAM_ERROR_MESSAGES: Record<SearchParamError, string> = {
 };
 
 /**
- * C0/C1 control characters are never part of a search keyword, and a NUL byte
- * in particular cannot survive the trip into Postgres: it arrives as a text
- * bind parameter and fails the whole statement with
- * `invalid byte sequence for encoding "UTF8": 0x00` (BRAWUKA-973 — `?q=%00…`
- * produced a 500 storm instead of a rejected deep link). `\p{Cc}` covers
- * U+0000–U+001F and U+007F–U+009F; it deliberately leaves format characters
- * alone so emoji ZWJ sequences in a keyword are untouched.
- */
-const SEARCH_Q_CONTROL_CHARS = /[\p{Cc}]/u;
-
-/**
  * The rejection half of the deep-link contract, shared by `GET /api/search`
  * (400 `invalid_request`) and the SSR `/search` page (error state). Check
  * order matches the API: q, lat, lng, lat/lng pairing, limit, then known
@@ -131,8 +121,9 @@ export function validateSearchQuery(
 
   // BRAWUKA-973: a control character in `q` becomes a Postgres text bind
   // parameter further down, where NUL fails the whole statement — reject it
-  // here so the caller sees a 400 deep-link error instead of a 500.
-  if (q !== undefined && SEARCH_Q_CONTROL_CHARS.test(q)) {
+  // here so the caller sees a 400 deep-link error instead of a 500. The rule
+  // itself is shared with the POI proxy routes (BRAWUKA-975).
+  if (q !== undefined && hasControlChars(q)) {
     return reject("q");
   }
 

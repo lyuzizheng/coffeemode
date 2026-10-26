@@ -371,6 +371,34 @@ describeHttp("Path 2: Cafe Creation & Image Pipeline HTTP Suite", () => {
     expect(resolveRes.data.lng).toBeCloseTo(103.8322, 4);
   });
 
+  // BRAWUKA-975 (sweep): autocomplete is the third `q` entry point — a
+  // control character is not searchable text and must be rejected before the
+  // POI proxy forwards it to the worker or Google.
+  it("Path 2 (BRAWUKA-975): /api/places/autocomplete rejects control characters before the POI proxy", async () => {
+    const seenBefore = poiSeamCalls.autocomplete;
+
+    for (const q of ["\u0000probe61", "cof\u0000fee", "\u0001"]) {
+      const res = await clientA.get<{ error: string }>(
+        placesAutocompleteGET,
+        "/api/places/autocomplete",
+        { query: { q, session: randomUUID() } },
+      );
+      expect(res.status).toBe(400);
+      expect(res.data.error).toBe("invalid_request");
+    }
+    // Rejected at the boundary: nothing crossed the POI proxy seam.
+    expect(poiSeamCalls.autocomplete).toBe(seenBefore);
+
+    // Legitimate Unicode still reaches the proxy unchanged.
+    const unicode = await clientA.get<{ predictions: unknown[] }>(
+      placesAutocompleteGET,
+      "/api/places/autocomplete",
+      { query: { q: "café ☕", session: randomUUID() } },
+    );
+    expect(unicode.status).toBe(200);
+    expect(poiSeamCalls.autocomplete?.q).toBe("café ☕");
+  });
+
   it("Path 2: image upload pipeline acquires presigned MinIO URL, uploads WebP bytes, and records upload intent", async () => {
     // 1. Anonymous upload is rejected with 401 unauthorized
     const anonUpload = await guestClient.post(uploadPOST, "/api/images/upload", { size: 1024 });

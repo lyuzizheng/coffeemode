@@ -996,7 +996,10 @@ Two search modes:
      on both surfaces. A `q` carrying control characters (a NUL byte in
      particular) is a 400 too: Postgres cannot store NUL in a text parameter,
      so it used to fail the whole statement and surface as a 500
-     (BRAWUKA-973).
+     (BRAWUKA-973). The POI proxy routes `GET /api/places/search` and
+     `GET /api/places/autocomplete` share that one rule from
+     `lib/validation/common.ts` and reject the same input with 400
+     `invalid_request` before any worker forwarding (BRAWUKA-975).
    - Text query: name FTS on own cafes and saved POIs.
      - Search-as-you-type starts at 3 characters, 400ms debounce (DG44/DG47).
      - Suggestion rows: top 10 only, rendered under the search bar; no

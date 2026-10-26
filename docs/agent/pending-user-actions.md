@@ -182,38 +182,35 @@ Agents are wired to the official Grafana Cloud MCP; it needs a stack to talk to.
 
 - [x] ~~Deploy `mcp-grafana` (streamable HTTP) in Dokploy~~ — retired 2026-09-21. The self-hosted app `coffeemode-mcp-grafana`, its `mcp.cafemood.app` DNS record, tunnel ingress rule, Cloudflare Access app and service token were all deleted; the three local secrets were removed from `~/.config/zsh/secrets.zsh`.
 - [x] Point agents at the hosted endpoint `https://mcp.grafana.com/mcp` with OAuth 2.1 + dynamic client registration — `grafana` entry in `~/.omp/agent/mcp.json`, and `hermes mcp install grafana` in `~/.hermes/config.yaml`. See `docs/devops/mcp-servers.md`.
-- [ ] Create the Grafana Cloud stack (grafana.com — the free tier is enough) and grant the connecting user the `Assistant Cloud MCP User` role (Editor or higher has it by default; that covers read + query scope only — write scope needs `Assistant Admin`). Assistant must be available on the stack with its terms accepted.
-- [ ] Authorize the MCP client: omp opens a browser on first connect; Hermes needs `hermes mcp login grafana`. Both ask for the stack URL (`https://<stack>.grafana.net`) and show read / query / write as three separate checkboxes. Restart the agent session afterwards so the tools load.
+- [x] Grafana Cloud stack `lyuzizheng` (org 1, stack id `1837787`) exists; the connecting account is org Admin and the assistant OAuth grant carries write scope — **verified 2026-10-26 (BRAWUKA-969)** by creating/reading alerting resources through `gcx` (`POST /api/alertmanager/.../receivers/test` now answers 410 → migrated endpoint, and `PUT /api/v1/provisioning/policies` returned `policies updated`).
+- [x] MCP client authorized against `https://mcp.grafana.com/mcp`; the hosted MCP remains read/query-only in this session. Grafana **writes are done through `gcx`**, which holds the stack OAuth credential — no MCP re-authorization needed for alerting changes.
 - [x] ~~(Optional) Decide whether the rate-limit alert sink (`web/lib/observability/rate-limit-alert.ts`, DG129) moves from Better Stack to Grafana Cloud.~~ **Decided and done (BRAWUKA-611, 2026-09-21)** — the sink is Grafana-only now; the Better Stack POST is deleted from the hook.
 
-### Alerting notification path (BRAWUKA-611) — blocked on write scope
+### Alerting notification path (BRAWUKA-611) — **done 2026-10-26 (BRAWUKA-969)**
 
-The six CoffeeMode alert rules exist and evaluate, but **nothing can notify yet**: the stack has no contact point at all, and the default notification policy's receiver is the built-in no-op `empty`.
+Earlier state: the six log rules evaluated into an error (`threshold` step fed by a multi-series LogQL
+query — "looks like time series data, only reduced data can be alerted on"), the policy root receiver
+was the no-op `empty`/webhook only, and `coffeemode-email` was referenced by no route. All of that is
+closed:
 
-**This is already costing visibility**: at 2026-09-21 13:24 UTC the uptime rule (`CoffeeMode — Uptime probe failing`, BRAWUKA-608) had been firing for ~1.5 h on a real outage — `cafemood.app` answers 502 (BRAWUKA-500) — with no notification sent.
-
-**The cause is not a missing permission, so don't go looking for one to grant.** `GET /api/access-control/user/permissions` (identity `brabalawuka`, org 1, not a Grafana admin) lists *every* alternative the 403 names: `alert.notifications.provisioning:write`, `alert.notifications:write`, `alert.notifications.receivers:create`, `alert.notifications.routes:write`, `alert.provisioning.provenance:write`. All five write paths are still refused:
-
-| Attempt | Result |
-| --- | --- |
-| `POST /api/v1/provisioning/contact-points` | 403 `Access denied` |
-| `PUT /api/v1/provisioning/policies` | 403 `Access denied` |
-| `POST /api/alert-notifications` (legacy) | 404 |
-| `POST /api/alertmanager/grafana/config/api/v1/receivers` | 404 |
-| `POST /apis/notifications.alerting.grafana.app/…/receivers` | 403 `invalid namespace` (tried `default`, `stacks-1795570`, `lyuzizheng`) |
-
-The effective grant is narrower than the reported RBAC role — most likely the hosted MCP server's OAuth token carries a scope set that Grafana intersects with the role. So the fix is at the **MCP grant level** (the `Assistant Admin` role / re-authorizing the MCP client with write scope), not a permission to add to the user.
-
-- [ ] Either grant the MCP connection write scope (the `Assistant Admin` role — the same grant item above asks for), or apply the two changes by hand in **Alerting → Contact points** and **Alerting → Notification policies**. The intended end state:
-  - Contact point `coffeemode-email`, type `email`, address `lvzizhengde@gmail.com`, `singleEmail: false`, `disableResolveMessage: false`. Swap in a Slack webhook later if you prefer — the rules carry `env` / `severity` / `team` labels, so only the receiver changes.
-  - Notification policy: root route → receiver `coffeemode-email`, `group_by: ["alertname","env","route"]`, `group_wait: 30s`, `group_interval: 5m`, `repeat_interval: 4h`; one child route with matcher `env="staging"` → same receiver, `repeat_interval: 24h` (staging is low priority). The rules deliberately set no per-rule receiver, so this tree is the single place routing is decided.
-  - Verify: Alerting → Contact points → `coffeemode-email` → **Test**, then confirm a real notification arrives.
+- [x] Contact point `coffeemode-email` → `lvzizhengde@gmail.com` (`singleEmail: false`,
+  `disableResolveMessage: false`); a real test notification was sent 2026-10-26 05:28 UTC through the
+  Grafana Cloud endpoint (`POST …/receivers/{uid}/test` → `{"status":"success","duration":"3s143ms"}`).
+- [x] Notification policy applied and read back: root → `coffeemode-email` (group_by
+  `alertname,env,route`, 30s/5m/4h), `env="staging"` → email 24h, `env="prod"` → email 4h,
+  `team="coffeemode"` → `coffeemode-autopilot` (webhook self-heal, `continue: true`) so both the
+  human channel and the autopilot receive every CoffeeMode alert.
+- [x] The six rules that could not evaluate (5xx prod/staging, rate-limit prod/staging, worker
+  upstream_error prod/staging) were rewritten to `A → B(reduce last) → C(threshold)`; verified by
+  triggering a real staging 5xx below.
+- Routing is still decided only by the policy tree (no per-rule `notification_settings.receiver`).
+- Runbook: `docs/devops/observability-runbook.md`.
 
 ### Application telemetry — OTLP gateway credential (BRAWUKA-606)
 
-- [ ] Paste the OTLP gateway credential into **both** Dokploy app envs. Grafana → Connections → OpenTelemetry → Configure shows the instance ID and an API token; the header value is `Authorization=Basic base64("<instance ID>:<token>")`. Set `OTEL_EXPORTER_OTLP_HEADERS` to that value in the **staging** app env and the **prod** app env (values never go in chat/docs/repo). The endpoint and `OTEL_RESOURCE_ATTRIBUTES` are already pinned in `deploy/dokploy/docker-compose.staging.yml` / `docker-compose.prod.yml` (no sampler — BRAWUKA-605 §6 decision 3, superseded 2026-09-21), so this paste is the only owner step. Until it lands the SDK is registered and every export answers 401; the moment it lands, traces flow with no rebuild.
-- [ ] **Enable traces metrics generation** (BRAWUKA-609). It is **off by default** — the metrics-generator is a per-tenant Tempo override, so `traces_spanmetrics_*` never appears however many spans arrive. Grafana → Application Observability → Configuration → System → **Metrics generation**. The other documented path (Knowledge Graph → Observability → Configuration → Traces metrics generation) is unavailable on this stack: it requires the knowledge graph, which is not enabled (`GET /api/datasources/uid/grafanacloud-knowledgegraph/resources` → `503 knowledge graph not enabled`). No cost on Free — the generated series just count against the 10k allowance. **Decisive check, independent of trace flow:** `grafanacloud_traces_instance_metrics_generator_active_series` on the `grafanacloud-usage` datasource must be non-empty and > 0; as of 2026-09-21 it is empty and none of that datasource's 116 metrics match `grafanacloud_traces_instance_metrics_generator_*`.
-- [ ] Verify after both: Tempo returns `coffeemode-web` traces and the service map shows edges; `traces_spanmetrics_*` appears in Prometheus with `span_name` as a route template (`GET /api/cafes/[id]`), not a raw path. Note `http_route` is **not** a spanmetrics default label — the default set is `service` / `span_name` / `span_kind` / `status_code`, and the template rides on `span_name`. Adding `http.route` as an extra dimension is optional Grafana-side config, not required for per-route RED. Allow 1–2 minutes after the first spans land: the generator has a 30s slack period and a 60s collection interval.
+- [x] **Done (verified 2026-10-26, BRAWUKA-969): `OTEL_EXPORTER_OTLP_HEADERS` is present in both the staging and prod Dokploy app envs, same value (242 chars).** Historical instruction: Paste the OTLP gateway credential into **both** Dokploy app envs. Grafana → Connections → OpenTelemetry → Configure shows the instance ID and an API token; the header value is `Authorization=Basic base64("<instance ID>:<token>")`. Set `OTEL_EXPORTER_OTLP_HEADERS` to that value in the **staging** app env and the **prod** app env (values never go in chat/docs/repo). The endpoint and `OTEL_RESOURCE_ATTRIBUTES` are already pinned in `deploy/dokploy/docker-compose.staging.yml` / `docker-compose.prod.yml` (no sampler — BRAWUKA-605 §6 decision 3, superseded 2026-09-21), so this paste is the only owner step. Until it lands the SDK is registered and every export answers 401; the moment it lands, traces flow with no rebuild.
+- [x] **Done — metrics generation is on (verified 2026-10-26, BRAWUKA-969): `traces_spanmetrics_calls_total` / `traces_spanmetrics_latency` exist with route-template `span_name`, and `coffeemode_auth_login_total` / `coffeemode_cafe_created_total` are present.** Historical instruction: **Enable traces metrics generation** (BRAWUKA-609). It is **off by default** — the metrics-generator is a per-tenant Tempo override, so `traces_spanmetrics_*` never appears however many spans arrive. Grafana → Application Observability → Configuration → System → **Metrics generation**. The other documented path (Knowledge Graph → Observability → Configuration → Traces metrics generation) is unavailable on this stack: it requires the knowledge graph, which is not enabled (`GET /api/datasources/uid/grafanacloud-knowledgegraph/resources` → `503 knowledge graph not enabled`). No cost on Free — the generated series just count against the 10k allowance. **Decisive check, independent of trace flow:** `grafanacloud_traces_instance_metrics_generator_active_series` on the `grafanacloud-usage` datasource must be non-empty and > 0; as of 2026-09-21 it is empty and none of that datasource's 116 metrics match `grafanacloud_traces_instance_metrics_generator_*`.
+- [x] Verified 2026-10-26 (BRAWUKA-969): Tempo returns `coffeemode-web` traces; spanmetrics and business counters are queryable. Historical check: Verify after both: Tempo returns `coffeemode-web` traces and the service map shows edges; `traces_spanmetrics_*` appears in Prometheus with `span_name` as a route template (`GET /api/cafes/[id]`), not a raw path. Note `http_route` is **not** a spanmetrics default label — the default set is `service` / `span_name` / `span_kind` / `status_code`, and the template rides on `span_name`. Adding `http.route` as an extra dimension is optional Grafana-side config, not required for per-route RED. Allow 1–2 minutes after the first spans land: the generator has a 30s slack period and a 60s collection interval.
 - [x] Business metrics need no owner action (BRAWUKA-609): `web/lib/observability/metrics.ts` ships `coffeemode.cafe.created` and `coffeemode.auth.login` over the same OTLP gateway and the same credential as traces and logs.
 
 ## What the agent continues meanwhile

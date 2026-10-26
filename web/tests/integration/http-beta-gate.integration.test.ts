@@ -30,7 +30,7 @@ import { GET as cafesGET } from "@/app/api/cafes/route";
 import { GET as healthGET } from "@/app/api/health/route";
 import { completeSignIn } from "@/lib/auth/sign-in-completion";
 import { createSupabaseServerClient } from "@/lib/auth/supabase-server";
-import { betaDecisionFor, resetBetaDecisionCache } from "@/lib/beta/access";
+import { betaDecisionFor } from "@/lib/beta/access";
 import { betaModeOverride } from "@/lib/beta/config";
 import { closePool, getPoolConfig } from "@/lib/db/postgres";
 import { fakeJwt } from "../../../scripts/fake-jwt.mjs";
@@ -205,7 +205,6 @@ describeBoundary("boundary — closed-beta admission (BRAWUKA-970)", () => {
   beforeEach(() => {
     sessionJar.clear();
     telemetry.length = 0;
-    resetBetaDecisionCache();
   });
 
   describe("deployment flag", () => {
@@ -267,10 +266,46 @@ describeBoundary("boundary — closed-beta admission (BRAWUKA-970)", () => {
       expect(deniedLines()[0]?.reason).toBe("not_allowlisted");
     });
 
+    it("keeps the og-image route reachable instead of rewriting it to the beta page", async () => {
+      // A social crawler asking for the card must get the image route, not an
+      // HTML page: the gate owns pages, not public assets (BRAWUKA-970).
+      const response = await proxy(
+        pageRequest(`/cafes/${ALLOWED_ID}/og-image`),
+      );
+      expect(isPassThrough(response)).toBe(true);
+      expect(rewriteTarget(response)).toBeNull();
+    });
+
     it("treats an unverifiable session as anonymous (fail closed)", async () => {
       const forged = `${COOKIE_NAME}=${encodeURIComponent("base64-not-a-session")}`;
       const response = await proxy(pageRequest("/", forged));
       expect(rewriteTarget(response)).toMatch(/\/beta$/);
+    });
+  });
+
+  describe("revocation (BRAWUKA-972 criterion 1)", () => {
+    const MID_EMAIL = "revoked-mid-session@example.com";
+    const MID_ID = "e2e00000-0000-4000-a000-00000000b0a4";
+
+    it("refuses the very next page and API request after a revoke, with no cache reset", async () => {
+      await dbClient.query(
+        `insert into beta_allowlist (email, note, revoked_at) values ($1, 'revoke probe', null)
+         on conflict (email) do update set revoked_at = null`,
+        [MID_EMAIL],
+      );
+      const cookie = sessionCookie(MID_ID, MID_EMAIL);
+      expect(isPassThrough(await proxy(pageRequest("/", cookie)))).toBe(true);
+      sessionJar.set(COOKIE_NAME, cookie.split("=")[1]);
+      expect((await cafesGET(apiRequest("/api/cafes?lat=1.35&lng=103.8", cookie))).status).toBe(200);
+
+      await dbClient.query("update beta_allowlist set revoked_at = now() where email = $1", [MID_EMAIL]);
+
+      // No reset, no wait: the next request is the proof.
+      const page = await proxy(pageRequest("/", cookie));
+      expect(rewriteTarget(page)).toMatch(/\/beta\?denied=1$/);
+      const api = await cafesGET(apiRequest("/api/cafes?lat=1.35&lng=103.8", cookie));
+      expect(api.status).toBe(403);
+      expect(deniedLines().length).toBe(2);
     });
   });
 
@@ -407,7 +442,6 @@ describeBoundary("boundary — closed-beta admission (BRAWUKA-970)", () => {
       const removed = await run("remove", "operator@example.com");
       expect(removed.stdout).toContain("revoked  operator@example.com");
 
-      resetBetaDecisionCache();
       expect(await betaDecisionFor("operator@example.com")).toEqual({
         allowed: false,
         reason: "not_allowlisted",

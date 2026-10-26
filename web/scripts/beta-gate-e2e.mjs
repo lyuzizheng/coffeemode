@@ -127,6 +127,14 @@ async function anonymous() {
   if (envelope.error !== "unauthorized") {
     throw new Error(`anonymous API envelope was ${JSON.stringify(envelope.error)}`);
   }
+
+  // The social-card route is an asset, not a page: a crawler asking for it
+  // must not receive the beta HTML (the proxy excludes it from the rewrite).
+  const og = await context.request.get(`${base}/cafes/${E2E_CAFE_ID}/og-image`);
+  const ogType = og.headers()["content-type"] ?? "";
+  if (ogType.includes("text/html")) {
+    throw new Error(`og-image answered ${og.status()} ${ogType} — the gate rewrote an asset`);
+  }
   await context.close();
 
   // The same surface must hold up on a phone: one column, same copy, same
@@ -144,7 +152,7 @@ async function anonymous() {
   } finally {
     await mobile.close();
   }
-  console.log(`[beta-gate] ok anonymous (page, deep link, API 401, mobile)`);
+  console.log(`[beta-gate] ok anonymous (page, deep link, API 401, og-image asset, mobile)`);
 }
 
 async function withMintedSession(email, userId, viewport, locale) {

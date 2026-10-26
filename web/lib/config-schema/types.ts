@@ -192,7 +192,5 @@ export interface AppConfig {
     publicPaths: string[];
     /** Inbox that receives invitation requests from the beta page (mailto). */
     inviteEmail: string;
-    /** Seconds one process caches an allowlist decision for an address. */
-    allowlistCacheSeconds: number;
   };
 }

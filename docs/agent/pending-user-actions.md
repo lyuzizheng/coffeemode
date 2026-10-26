@@ -41,6 +41,8 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
   - `node scripts/beta-allowlist.mjs add someone@example.com --note "invited by <who>, <why>"`
   - `node scripts/beta-allowlist.mjs list` (roster) · `node scripts/beta-allowlist.mjs remove someone@example.com` (revoke; history kept)
 - [ ] Leave `BETA_MODE` unset in production: the build ships gated (`beta.enabled: true` in `web/config/app.yaml`). Only staging previews set `BETA_MODE=0`.
+- [ ] Apply the generated edge ruleset and purge once: `deploy/dokploy/cloudflare-cache-rules.json` now carries a single `/cafes/*` bypass (BRAWUKA-970) — run `scripts/devops/apply-cache-rules.sh --apply` with Cloudflare credentials (BRAWUKA-967's access path), then purge the zone's `/cafes/*` URLs once so entries cached under the old policy cannot outlive the switch. Record the applied ruleset's rule ID/description in the deploy log.
+- [ ] Real-account acceptance (release gate, BRAWUKA-972 criterion 5): provide **one allowlisted** and **one non-allowlisted** Google address plus an interactive login window. Then follow `docs/design/beta-gate-v1.md` §9 "Real-account acceptance": three screenshots + the Supabase Users page. If the non-allowlisted user already exists (created before the hook), delete it in the dashboard — the hook blocks new creations only.
 
 ## 2. Postgres (primary database — Supabase, per 0004 decision 34a, owner 2026-08-28)
 

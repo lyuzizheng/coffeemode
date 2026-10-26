@@ -439,10 +439,17 @@ the hash-session bridge turns POST /api/auth/session 403 beta_not_allowed into
 the same destination. An allowed identity proceeds exactly as before.
 Allowlist: beta_allowlist(email text primary key, note, created_at,
 revoked_at). `email` must be lower case and match a minimal address shape
-(CHECK constraints); one live index. Decisions are cached in-process for
-beta.allowlistCacheSeconds. Operated with web/scripts/beta-allowlist.mjs
-(add / list / remove); addresses are never stored in this repository — the
-row's `note` is the tester roster.
+(CHECK constraints); one live index. Nothing is cached in the app: every
+request re-reads the row, so a revoke refuses the next page request and the
+next API call (BRAWUKA-972 criterion 1). Operated with
+web/scripts/beta-allowlist.mjs (add / list / remove); addresses are never
+stored in this repository — the row's `note` is the tester roster.
+Edge cache: while the gate is on, the generated ruleset
+(deploy/dokploy/cloudflare-cache-rules.json) carries one `/cafes/*` bypass and
+no cache-eligible rule — a cached shell would be a cached bypass of the page
+gate. The generator flips back automatically when `beta.enabled` is false;
+enabling or disabling the gate on a live deployment needs one `/cafes/*` purge
+(docs/design/beta-gate-v1.md §9).
 Audit: one `beta.denied` telemetry line per refusal carrying the route, the
 reason (not_allowlisted | no_email), and email_hash (16 hex chars of
 SHA-256) — never the address and never a token.

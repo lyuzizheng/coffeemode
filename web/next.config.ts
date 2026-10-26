@@ -200,7 +200,14 @@ const nextConfig: NextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          ...securityHeaders(process.env.NODE_ENV === "production"),
+          // CSP is serialized at build time (standalone output), so the
+          // analytics exception keys on the deploy discriminator `APP_ENV`
+          // (prod compose build arg), not the runtime env. Staging also builds
+          // with NODE_ENV=production and serves no beacon (BRAWUKA-815).
+          ...securityHeaders(
+            process.env.NODE_ENV === "production",
+            process.env.APP_ENV === "production",
+          ),
           ...(process.env.NODE_ENV === "production"
             ? [
                 {

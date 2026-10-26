@@ -95,10 +95,13 @@ const CASES = [
   },
 ];
 
-export function checkOutcomes(payload) {
+export function checkOutcomes(payload, contract) {
   const failures = [];
   const outcomes = [];
   const rules = Array.isArray(payload.request?.rules) ? payload.request.rules : [];
+  // Closed beta (BRAWUKA-970): the contract declares no shared cache at all,
+  // so every in-scope request must bypass regardless of locale or identity.
+  const cacheDisabled = contract?.enabled === false;
   for (const testCase of CASES) {
     let matched = [];
     let setting = null;
@@ -110,10 +113,12 @@ export function checkOutcomes(payload) {
       failures.push(`${testCase.name}: payload rule cannot be evaluated (${err.message.slice(0, 80)})`);
       continue;
     }
-    outcomes.push({ name: testCase.name, expected: testCase.cache, actual: setting, matched });
-    if (setting !== testCase.cache) {
+    const expected =
+      cacheDisabled && testCase.cache !== null ? false : testCase.cache;
+    outcomes.push({ name: testCase.name, expected, actual: setting, matched });
+    if (setting !== expected) {
       failures.push(
-        `${testCase.name}: expected cache=${testCase.cache}, got ${setting} ` +
+        `${testCase.name}: expected cache=${expected}, got ${setting} ` +
           `(matched: ${matched.join(" | ") || "no rule"})`,
       );
     }
@@ -143,7 +148,7 @@ const RESPONSE_CASES = [
   },
 ];
 
-export function checkResponseOutcomes(payload) {
+export function checkResponseOutcomes(payload, contract) {
   const failures = [];
   const outcomes = [];
   const rules = Array.isArray(payload.response?.rules) ? payload.response.rules : [];
@@ -157,10 +162,11 @@ export function checkResponseOutcomes(payload) {
       continue;
     }
     const actual = parameters?.["no-store"]?.operation === "set";
-    outcomes.push({ name: testCase.name, expected: testCase.noStore, actual, matched });
-    if (actual !== testCase.noStore) {
+    const expected = testCase.noStore;
+    outcomes.push({ name: testCase.name, expected, actual, matched });
+    if (actual !== expected) {
       failures.push(
-        `${testCase.name}: expected no_store=${testCase.noStore}, got ${actual} ` +
+        `${testCase.name}: expected no_store=${expected}, got ${actual} ` +
           `(matched: ${matched.join(" | ") || "no rule"})`,
       );
     }
@@ -268,9 +274,9 @@ export function checkShape(payload) {
 export function checkCachePolicy(contract, payload) {
   const shape = checkShape(payload);
   const coverage = checkCoverage(contract, payload);
-  const { failures: outcomeFailures, outcomes } = checkOutcomes(payload);
+  const { failures: outcomeFailures, outcomes } = checkOutcomes(payload, contract);
   const { failures: responseFailures, outcomes: responseOutcomes } =
-    checkResponseOutcomes(payload);
+    checkResponseOutcomes(payload, contract);
   return {
     failures: [...shape, ...coverage, ...outcomeFailures, ...responseFailures],
     outcomes,

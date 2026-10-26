@@ -3,7 +3,6 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { isBetaEmailAllowed } from "@/lib/db/beta";
 import { emitTelemetryLine } from "@/lib/observability/server-log";
-import { betaAllowlistCacheSeconds } from "./config";
 
 /**
  * The closed-beta admission decision (BRAWUKA-970, spec 0001 §Closed beta).
@@ -23,56 +22,22 @@ export type BetaDecision =
   | { allowed: true }
   | { allowed: false; reason: BetaDenialReason };
 
-interface CachedDecision {
-  allowed: boolean;
-  expiresAt: number;
-}
-
-/**
- * Per-process decision cache. A revoke becomes visible within
- * `beta.allowlistCacheSeconds`; without it every authenticated API request
- * would pay a database round-trip for a static answer. Keyed by the
- * normalized address, so the same person is one entry whichever case the
- * provider used.
- */
-const decisions = new Map<string, CachedDecision>();
-
-/** Drop cached answers — operator writes and tests call this. */
-export function resetBetaDecisionCache(): void {
-  decisions.clear();
-}
-
-function cached(email: string): boolean | undefined {
-  const hit = decisions.get(email);
-  if (!hit) return undefined;
-  if (hit.expiresAt <= Date.now()) {
-    decisions.delete(email);
-    return undefined;
-  }
-  return hit.allowed;
-}
-
-function remember(email: string, allowed: boolean): void {
-  const ttlMs = betaAllowlistCacheSeconds() * 1000;
-  if (ttlMs <= 0) return;
-  decisions.set(email, { allowed, expiresAt: Date.now() + ttlMs });
-}
-
 /**
  * Decide for one identity. `email` is whatever the verified session carries;
  * `null`/`undefined`/blank refuses without a database read.
+ *
+ * No process-local cache exists on purpose (BRAWUKA-972 criterion 1): a
+ * revoke must refuse the NEXT request, and any cache of an `allowed` answer
+ * would keep a revoked account inside for its TTL. The only query this
+ * costs is a primary-key lookup on `beta_allowlist`, and only for a request
+ * that already carries a verified session — anonymous traffic never gets
+ * here.
  */
 export async function betaDecisionFor(email: string | null | undefined): Promise<BetaDecision> {
   const normalized = email?.trim().toLowerCase() ?? "";
   if (normalized === "") return { allowed: false, reason: "no_email" };
 
-  const known = cached(normalized);
-  if (known !== undefined) {
-    return known ? { allowed: true } : { allowed: false, reason: "not_allowlisted" };
-  }
-
   const allowed = await isBetaEmailAllowed(normalized);
-  remember(normalized, allowed);
   return allowed ? { allowed: true } : { allowed: false, reason: "not_allowlisted" };
 }
 

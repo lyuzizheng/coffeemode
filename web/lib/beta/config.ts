@@ -63,8 +63,3 @@ export function isBetaPublicPath(pathname: string): boolean {
 export function betaInviteEmail(): string {
   return appConfig.beta.inviteEmail;
 }
-
-/** How long one process may reuse an allowlist answer for one address. */
-export function betaAllowlistCacheSeconds(): number {
-  return appConfig.beta.allowlistCacheSeconds;
-}

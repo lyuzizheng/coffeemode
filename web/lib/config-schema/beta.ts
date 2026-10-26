@@ -1,4 +1,4 @@
-import { fail, flag, positiveInteger, record, stringList } from "./primitives";
+import { fail, flag, record, stringList } from "./primitives";
 import type { AppConfig } from "./types";
 
 /**
@@ -26,10 +26,5 @@ export function parseBetaSection(file: string, value: unknown): AppConfig["beta"
     enabled: flag(file, "beta.enabled", beta.enabled),
     publicPaths,
     inviteEmail,
-    allowlistCacheSeconds: positiveInteger(
-      file,
-      "beta.allowlistCacheSeconds",
-      beta.allowlistCacheSeconds,
-    ),
   };
 }

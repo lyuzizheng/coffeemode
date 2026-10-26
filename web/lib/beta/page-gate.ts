@@ -34,12 +34,19 @@ export interface BetaPageGateInput {
   carry: NextResponse;
 }
 
+/** The social-card image route: an asset call wearing a page URL. */
+const OG_IMAGE_PATH = /^\/cafes\/[^/]+\/og-image$/;
+
 /** True when the proxy owns this request's admission decision. */
 export function isBetaGatedPage(request: NextRequest): boolean {
   if (!isBetaEnabled()) return false;
   if (request.method !== "GET" && request.method !== "HEAD") return false;
-  if (request.nextUrl.pathname.startsWith("/api/")) return false;
-  return !isBetaPublicPath(request.nextUrl.pathname);
+  const { pathname } = request.nextUrl;
+  if (pathname.startsWith("/api/")) return false;
+  // `/cafes/[id]/og-image` is a route handler that answers with image bytes.
+  // Rewriting it would serve beta HTML to a crawler as a social card.
+  if (OG_IMAGE_PATH.test(pathname)) return false;
+  return !isBetaPublicPath(pathname);
 }
 
 /**

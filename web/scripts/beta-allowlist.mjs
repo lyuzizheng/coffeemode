@@ -11,10 +11,9 @@
  *
  * Writes are idempotent: `add` re-invites a revoked address (clearing
  * `revoked_at`), `remove` retires a live one and reports whether anything
- * changed. Revocation is effective at the next sign-in attempt, and within
- * `beta.allowlistCacheSeconds` for an already-open session (the API gate
- * re-reads the allowlist; the page gate rewrites the next navigation to the
- * beta surface).
+ * changed. Nothing is cached in the app: a revoke refuses the account's next
+ * page request and next API call, and an invite admits it on the same terms
+ * (BRAWUKA-972 criterion 1).
  *
  * Connection: `--database-url` or `DATABASE_URL` (the same value the app
  * uses). No default — pointing this at the wrong database would edit a real

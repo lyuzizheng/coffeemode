@@ -144,9 +144,23 @@ node scripts/beta-allowlist.mjs remove someone@example.com
 `add` normalizes the address to lower case and clears a previous revocation;
 `remove` sets `revoked_at` instead of deleting, so the roster keeps its history.
 The `note` column is the tester roster's provenance: who invited whom and why.
-A decision is cached in-process for `beta.allowlistCacheSeconds` (60 s), so a
-revoke lands within that window or on the next deploy — no restart needed to
-invite someone.
+Every server request re-reads the row, so a revoke refuses that account's next
+page request and next API call, and an invite admits it just as fast — no
+restart, no cache window (BRAWUKA-972 criterion 1).
+
+**Edge CDN.** A shared cache must never answer a page the gate would have
+rewritten. While `beta.enabled` is true, the generated ruleset
+(`deploy/dokploy/cloudflare-cache-rules.json`, applied by
+`scripts/devops/apply-cache-rules.sh`, drift-pinned by `npm run
+check:cache-rules`) is one request-phase rule — expression
+`starts_with(http.request.uri.path, "/cafes/")`, `cache: false`, description
+`BRAWUKA-970 closed beta: …` — and no cache-eligible rule. The response phase
+keeps its Set-Cookie pin (a session refresh is never stored). `npm run
+gen:cache-rules` restores the normal shell cache when `beta.enabled` becomes
+false.
+Enabling or disabling the gate on a live deployment is a two-step operation:
+apply the regenerated ruleset, then purge the zone's `/cafes/*` URLs once, so
+entries stored under the previous policy cannot outlive the switch.
 
 **Supabase project settings** (owner, once per project — tracked in
 `docs/agent/pending-user-actions.md`): public sign-up off, Google provider on,
@@ -161,6 +175,27 @@ an address the operator has not invited.
 project's issues — there is no in-app feedback form, so the beta surface stays
 a single-purpose surface.
 
+**Real-account acceptance (Owner + implementer).** `npm run test:e2e:beta`
+proves the three states with mock-verified sessions; the release gate also
+wants one interactive Google round-trip per identity, because that is the path
+a real tester takes:
+
+1. Invite the allowed test address (`beta-allowlist.mjs add … --note "…"`).
+2. Anonymous browser window → `/` shows the invitation copy, and
+   `/api/cafes` answers 401.
+3. Allowed account → Google sign-in lands in the product shell, and a
+   `profiles` row exists for it.
+4. Non-allowlisted account → Google sign-in lands on `/beta?denied=1`; the
+   session is already destroyed, and Supabase → Authentication → Users shows
+   no usable account for it. If the project created the user before the
+   Before User Created hook was configured, delete that user — the hook only
+   blocks new creations.
+5. Capture the three screenshots plus the Supabase Users page; those are the
+   release evidence.
+
+Owner inputs this needs: one allowlisted address, one non-allowlisted address,
+and an interactive window (`docs/agent/pending-user-actions.md` §1b).
+
 **Identity states the operator must be able to explain** (all four are proven
 in `http-beta-gate.integration.test.ts` / `beta-gate-e2e.mjs`):
 
@@ -169,4 +204,4 @@ in `http-beta-gate.integration.test.ts` / `beta-gate-e2e.mjs`):
 | anonymous | `/beta` (invitation) | 401 `unauthorized` |
 | signed in, not on the list | `/beta?denied=1` (refusal, session signed out by the callback) | 403 `beta_not_allowed` |
 | signed in, allowlisted | the product | normal envelope |
-| revoked mid-session | `/beta?denied=1` within the cache window | 403 `beta_not_allowed` |
+| revoked mid-session | `/beta?denied=1` on the next page request | 403 `beta_not_allowed` |

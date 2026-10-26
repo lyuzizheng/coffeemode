@@ -82,8 +82,8 @@ prod 当前**未部署**（BRAWUKA-500），prod 规则在 `2026-10-29` 前被 s
 
 | uid | 规则 | env | 备注 |
 |---|---|---|---|
-| `dfyxcvqotxjwgc` | 5xx sustained on a route (staging) | staging | A→reduce→threshold，>5/min 持续 5m |
-| `ffyx58xman94wc` | 5xx sustained on a route (prod) | prod | 同上，prod 未部署 |
+| `dfyxcvqotxjwgc` | 5xx sustained on a route (staging) | staging | A→reduce→threshold，>5/min 持续 3m（§7.1 实测 4m08s 内到邮件） |
+| `ffyx58xman94wc` | 5xx sustained on a route (prod) | prod | 同上 `for: 3m`，prod 未部署 |
 | `ffyxcvrixphxcb` | Rate-limit flood (staging) | staging | >50/min 持续 10m |
 | `ffyx58xwrpxc0b` | Rate-limit flood (prod) | prod | >50/min 持续 10m |
 | `afyx59iufl14we` | Worker upstream_error spike (prod) | prod | >3/min 持续 5m |
@@ -104,7 +104,7 @@ prod 当前**未部署**（BRAWUKA-500），prod 规则在 `2026-10-29` 前被 s
   发送，返回 `{"status":"success","duration":"3s143ms"}`。收件确认由 Owner 在邮箱完成。
 - **真实 5xx 事件**：staging `GET /api/search?q=%00`（NUL 字节 → Postgres
   `invalid byte sequence`），05:32:10–05:41:30 UTC 以约 12 次/分钟持续请求。
-  - 规则 05:32:30 UTC 进入 pending，05:37:30 UTC firing（`for: 5m`）。
+  - 规则 05:32:30 UTC 进入 pending，05:37:30 UTC firing（当时 `for: 5m`，已按 §7.1 收紧）。
   - 05:38:02 autopilot `success`；05:38:05 email `success`。
   - 05:43:02 autopilot `resolved`；05:43:04 email `resolved`。
 - **规则修好前的错误**：6 条日志规则报
@@ -114,11 +114,36 @@ prod 当前**未部署**（BRAWUKA-500），prod 规则在 `2026-10-29` 前被 s
 - **遥测**：Tempo 有 `coffeemode-web` trace；`traces_spanmetrics_calls_total/latency` 带路由模板
   `span_name`；`coffeemode_cafe_created_total`、`coffeemode_auth_login_total` 可查；Loki 有
   staging 日志；两个 Dokploy app env 的 `OTEL_EXPORTER_OTLP_HEADERS` 存在且一致。
-- **看板**：`CoffeeMode — Launch Health`（<https://lyuzizheng.grafana.net/d/coffeemode-launch-health>）。
+- **看板**：`CoffeeMode — Launch Health`（<https://lyuzizheng.grafana.net/d/coffeemode-launch-health>），
+  8 个面板；2026-10-26 补 `DB pool connections (application pool)`（面板 8，见 §8），
+  并把 auth 失败面板收紧为 `status="401"`（原先 `4xx` 会把 `forbidden_origin` 403 计入）。
 - **备份失败告警**：本地 hook 收到
   `{"job":"postgres-backup","env":"prod","error":"backup exited 1",…}`；成功路径不发。
 - **`rollback-prod.sh --dry-run`**：`backups/prod/releases.log` 不存在，无可回滚边界
   （prod 从未发布，见 §4）。
+
+### 7.1 五分钟通知时限实测（2026-10-26 06:12–06:33 UTC）
+
+**延迟预算（估算）** = 评估相位 δ（事件起点→下一次评估，0–60s）+ `for` + `group_wait` 30s
++ 邮件投递。邮件腿以 Grafana Cloud 返回 `success` 为终点，SMTP 实际入库时间未在本单测量
+（Owner 收件确认仍是独立门禁），按正常秒级投递估算。因此 `for: 4m` 的估算上限为 5m35s，
+无法硬性满足 5 分钟；`for: 3m` 的估算上限为 4m35s。
+
+**探针实测（管道时序）**：staging 的 NUL 500 注入点已被 BRAWUKA-973 修掉，无法再制造
+真实 5xx；A/B 用临时规则 `cmtimingprobe1`（日志信号
+`log_type="warn" | status=403 | code="forbidden_origin"`）验证同一 notification policy、
+同一 `group_wait` 下的进入→送达时序，与 5xx 规则同 `ruleGroup`、同 labels；验证后已删除。
+
+| 运行 | `for` | 事件起点 | pending | firing | 邮件 firing（Grafana `success`） | 起点→邮件 | 结果 |
+|---|---|---|---|---|---|---|---|
+| A | 4m | 06:12:52 | 06:13:30 | 06:17:30 | 06:18:05 | 5m13s | 超时 |
+| B | 3m | 06:23:57 | 06:24:30 | 06:27:30 | 06:28:04 | 4m08s | 达标 |
+
+- 两次的 resolve 邮件都按 `group_interval: 5m` 在 firing 邮件后约 5 分钟发出
+  （A：06:23:05；B：06:33:04 `resolved`）。
+- **与真实 5xx 证据的区别**：上面的 05:32–05:43 记录是真实 5xx 的端到端证据（当次
+  `for: 5m`，起点→邮件 5m55s，firing 与 resolve 双通道 `success`）；A/B 只校准通知时限，
+  不是 5xx 复现。5xx 规则现已 `for: 3m`，同类真实事件的估算上限为 4m35s。
 
 ## 8. DB 连接池指标契约（BRAWUKA-976）
 
@@ -139,7 +164,7 @@ prod 当前**未部署**（BRAWUKA-500），prod 规则在 `2026-10-29` 前被 s
 **无数据 ≠ 0**：进程尚未创建连接池（或未配置 OTLP endpoint）时没有数据点；连接池存在但
 没有连接时输出三个 0。看板上的 "no data" 不能读成 0 连接。
 
-**面板规格**（`CoffeeMode — Launch Health`，由 Coffee DevOps 落地）：
+**面板规格**（`CoffeeMode — Launch Health`，面板 id 8，由 Coffee DevOps 落地）：
 
 - 标题 `DB pool connections (application pool)`，类型 time series。
 - 查询：`sum by (state) (coffeemode_db_pool_connections{deployment_environment_name="$env"})`
@@ -147,8 +172,11 @@ prod 当前**未部署**（BRAWUKA-500），prod 规则在 `2026-10-29` 前被 s
 - 环境沿用看板变量 `$env`（`staging` / `production`）。
 
 **本地验证**：`web/tests/integration/db-pool-metrics.integration.test.ts` 用真实 Postgres
-证明 idle → 占用 → 排队 → idle 的计数，以及无数据与实测 0 的区别。staging 查询证据在合并
-部署后补记。
+证明 idle → 占用 → 排队 → idle 的计数，以及无数据与实测 0 的区别。
+
+**staging 证据（2026-10-26 06:44 UTC，`6a76485c` 部署后）**：`coffeemode_db_pool_connections`
+出现三条 series（`state=active|idle|waiting`，`deployment_environment_name="staging"`），
+空载时均为实测 0；`Launch Health` 面板 id 8 的 PromQL 在 `$env=staging` 返回三值。
 
 ## 9. 已知缺口（不是告警噪音）
 
@@ -161,6 +189,6 @@ prod 当前**未部署**（BRAWUKA-500），prod 规则在 `2026-10-29` 前被 s
   `{"job":"postgres-backup",...}` POST 到 `MULTICA_AUTOPILOT_WEBHOOK_URL`（未设置时静默跳过；
   成功路径不发）。prod 的 Dokploy 定时任务目前随 `coffeemode-web-prod` 一起未部署
   （BRAWUKA-500），部署时把备份 cron 挂上去即可，无需再改脚本。
-- **`/api/search` 的 NUL 字节 500**：`GET /api/search?q=%00` 触发 Postgres
-  `invalid byte sequence` → 500 `internal_error`（BRAWUKA-969 压测时发现）。属输入校验缺口，
-  由业务侧修，不在本单范围。
+- **`/api/search` 的 NUL 500 已由 BRAWUKA-973 修复**：`validateSearchQuery` 拒绝 `\p{Cc}`，
+  staging 现返回 400 `q must not contain control characters`。该 500 曾是 5xx 规则的压测源；
+  后续需要注入 5xx 时需另找入口（或经授权用 staging 测试会话）。

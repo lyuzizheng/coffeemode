@@ -120,10 +120,38 @@ prod 当前**未部署**（BRAWUKA-500），prod 规则在 `2026-10-29` 前被 s
 - **`rollback-prod.sh --dry-run`**：`backups/prod/releases.log` 不存在，无可回滚边界
   （prod 从未发布，见 §4）。
 
-## 8. 已知缺口（不是告警噪音）
+## 8. DB 连接池指标契约（BRAWUKA-976）
 
-- **DB 连接数没有指标**：应用未导出 `pg` pool 指标，Prometheus 里没有 `pg_*` 序列。
-  `Launch Health` 因此没有该面板；补它需要应用侧 telemetry 代码（另行开单）。
+指标：`coffeemode.db.pool.connections` → Prometheus `coffeemode_db_pool_connections`。
+一条 gauge、三个有界 `state`，由 `web/lib/observability/metrics.ts` 在 `getPool()` 创建
+连接池时注册，复用同一个 OTel `MeterProvider` 与 OTLP 管道；不新增 exporter、凭据、
+数据库 exporter 或采集器。
+
+| state | 含义 |
+| --- | --- |
+| `active` | 应用池中已借出或正在建立的连接数（`totalCount - idleCount`） |
+| `idle` | 空闲可复用的连接数 |
+| `waiting` | 排队等待连接的请求数——不是新的已打开连接 |
+
+**语义边界**：这是 `coffeemode-web` 进程自己的 `node-postgres` 连接池，不是 PostgreSQL
+全服务器连接总数；数据库上还有 Supabase pooler、迁移、备份等其他客户端。
+
+**无数据 ≠ 0**：进程尚未创建连接池（或未配置 OTLP endpoint）时没有数据点；连接池存在但
+没有连接时输出三个 0。看板上的 "no data" 不能读成 0 连接。
+
+**面板规格**（`CoffeeMode — Launch Health`，由 Coffee DevOps 落地）：
+
+- 标题 `DB pool connections (application pool)`，类型 time series。
+- 查询：`sum by (state) (coffeemode_db_pool_connections{deployment_environment_name="$env"})`
+- Legend `{{state}}`；单位 `short`；description 写明 waiting 是排队请求，不是额外连接。
+- 环境沿用看板变量 `$env`（`staging` / `production`）。
+
+**本地验证**：`web/tests/integration/db-pool-metrics.integration.test.ts` 用真实 Postgres
+证明 idle → 占用 → 排队 → idle 的计数，以及无数据与实测 0 的区别。staging 查询证据在合并
+部署后补记。
+
+## 9. 已知缺口（不是告警噪音）
+
 - **Cloudflare WAF / AI 爬虫比例无法从本机读取**：当前 wrangler OAuth token 只有 `zone:read`，
   GraphQL `firewallEventsAdaptiveGroups` 与 ruleset 读取都返回 authz 错误。要观测
   BRAWUKA-967 的 block/challenge 比例，需要 Owner 给一个带

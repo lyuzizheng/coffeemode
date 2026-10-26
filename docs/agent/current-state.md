@@ -97,8 +97,9 @@ web/lib/rate-limit.ts    In-memory token-bucket rate limiter with a shared clien
 web/lib/observability/   Server-side observability: single-line JSON request/error logs
                          (server-log.ts), OTLP log shipping to Grafana Cloud Loki
                          (otlp-logs.ts, BRAWUKA-607), OpenTelemetry trace
-                         registration (otel.ts, BRAWUKA-606), business counters over
-                         OTLP (metrics.ts, BRAWUKA-609), and the shared SIGTERM/SIGINT
+                         registration (otel.ts, BRAWUKA-606), business counters and
+                         the application pool gauge over OTLP (metrics.ts,
+                         BRAWUKA-609/BRAWUKA-976), and the shared SIGTERM/SIGINT
                          flush that covers the log, metric, and trace providers
                          (shutdown.ts)
 web/next.config.ts       Long immutable Cache-Control headers for static/PWA assets

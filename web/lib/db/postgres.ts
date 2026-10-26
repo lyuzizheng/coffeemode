@@ -1,4 +1,8 @@
 import { logError } from "@/lib/observability/server-log";
+import {
+  observePoolConnections,
+  type PoolConnectionCounts,
+} from "@/lib/observability/metrics";
 import "server-only";
 import { Pool, type PoolClient, type PoolConfig, type QueryResult } from "pg";
 // The sslmode vocabulary is owned by the pure translator that every CLI and
@@ -57,6 +61,21 @@ function attachPoolHandlers(poolInstance: Pool) {
 }
 
 /**
+ * Current pool connection counts, or null before the pool exists.
+ *
+ * Reads only the pool this module already holds: sampling must never
+ * initialize it — a build or an import opens no connection — and it does not
+ * await, so the three values describe one synchronous instant. `totalCount -
+ * idleCount` is what node-postgres has checked out or is still establishing;
+ * `waitingCount` is queued requests, not another open connection (BRAWUKA-976).
+ */
+export function samplePoolConnections(): PoolConnectionCounts | null {
+  if (!pool) return null;
+  const idle = pool.idleCount;
+  return { active: pool.totalCount - idle, idle, waiting: pool.waitingCount };
+}
+
+/**
  * Lazily-created shared pool. Throws at call time (not import time) when
  * DATABASE_URL is unset, so builds and CI run without credentials.
  */
@@ -64,6 +83,7 @@ export function getPool(): Pool {
   if (!pool) {
     pool = new Pool(getPoolConfig());
     attachPoolHandlers(pool);
+    observePoolConnections(samplePoolConnections);
   }
   return pool;
 }

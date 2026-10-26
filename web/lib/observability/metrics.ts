@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { Attributes, Counter, Meter } from "@opentelemetry/api";
+import type { Attributes, Counter, Meter, ObservableGauge } from "@opentelemetry/api";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { detectResources, envDetector, resourceFromAttributes } from "@opentelemetry/resources";
 import { MeterProvider, PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
@@ -45,6 +45,29 @@ const CAFE_CREATED = "coffeemode.cafe.created";
 const CAFE_CREATED_DESCRIPTION = "Cafes created (successful POST /api/cafes)";
 const AUTH_LOGIN = "coffeemode.auth.login";
 const AUTH_LOGIN_DESCRIPTION = "Completed sign-ins (successful GET /auth/callback)";
+
+const POOL_CONNECTIONS = "coffeemode.db.pool.connections";
+const POOL_CONNECTIONS_DESCRIPTION =
+  "Application PostgreSQL pool connections by state; waiting counts queued requests, not open connections";
+
+/**
+ * Bounded pool states (BRAWUKA-976). `active` and `idle` are open connections
+ * the pool holds; `waiting` is requests queued for a connection, not another
+ * connection. This is the app's pool — one client among many on the database —
+ * never a server-wide PostgreSQL connection total.
+ */
+export type PoolConnectionState = "active" | "idle" | "waiting";
+
+export interface PoolConnectionCounts {
+  active: number;
+  idle: number;
+  waiting: number;
+}
+
+/** Current counts, or null when no pool exists yet. */
+export type PoolConnectionSampler = () => PoolConnectionCounts | null;
+
+const POOL_STATES: readonly PoolConnectionState[] = ["active", "idle", "waiting"];
 
 /**
  * How often the reader pushes. The OTel default, pinned so the number is
@@ -150,6 +173,46 @@ function increment(name: string, description: string, attributes?: Attributes): 
   } catch {
     // Benign: a failed export must never surface as a request failure.
   }
+}
+
+/**
+ * Build the pool gauge on `meter`. Exported for the metric-contract test,
+ * which reads the emitted name and attributes back through the SDK.
+ *
+ * A null sample emits no points: "no pool yet" is not "zero connections".
+ * When a pool exists, every state is reported — including zero — so an idle
+ * pool reads as three measured zeros instead of a gap.
+ */
+export function createPoolConnectionsGauge(
+  meter: Meter,
+  sampler: PoolConnectionSampler,
+): ObservableGauge {
+  const gauge = meter.createObservableGauge(POOL_CONNECTIONS, {
+    description: POOL_CONNECTIONS_DESCRIPTION,
+  });
+  gauge.addCallback((result) => {
+    const counts = sampler();
+    if (counts === null) return;
+    for (const state of POOL_STATES) result.observe(counts[state], { state });
+  });
+  return gauge;
+}
+
+/** The meter already carrying the pool gauge, so a second call is a no-op. */
+let poolGaugeMeter: Meter | null = null;
+
+/**
+ * Attach the pool gauge to the shared provider.
+ *
+ * `getPool()` calls this when it creates the pool, which is the only moment a
+ * sample can be meaningful — and the reason registration never initializes the
+ * pool itself: importing or building the app opens no connection (BRAWUKA-976).
+ */
+export function observePoolConnections(sampler: PoolConnectionSampler): void {
+  const target = meter();
+  if (target === null || target === poolGaugeMeter) return;
+  createPoolConnectionsGauge(target, sampler);
+  poolGaugeMeter = target;
 }
 
 /**

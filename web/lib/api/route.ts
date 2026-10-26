@@ -47,6 +47,13 @@ interface ApiRouteOptionsBase {
    * reads with no auth surface. Never set on any other route.
    */
   silent?: boolean;
+  /**
+   * Exempt this route from the closed-beta admission gate (BRAWUKA-970).
+   * ONLY the routes that must answer before admission exists — session
+   * establishment and the infra probes. Never a route that reads or writes
+   * product data.
+   */
+  betaExempt?: boolean;
 }
 
 export interface ApiRouteOptions<Auth extends boolean> extends ApiRouteOptionsBase {
@@ -105,7 +112,17 @@ export function apiRoute<Segments>(
   options: ApiRouteOptionsBase & { auth?: ApiRouteAuth },
   handler: ApiRouteHandler<boolean, Segments>,
 ): RouteExport<Segments> {
-  const { bucket, auth, origin = false, route, ipOnly, bypassUnknownClients, user, silent = false } = options;
+  const {
+    bucket,
+    auth,
+    origin = false,
+    route,
+    ipOnly,
+    bypassUnknownClients,
+    user,
+    silent = false,
+    betaExempt,
+  } = options;
 
   return async (request, segment) => {
     const requestId = getRequestId(request);
@@ -138,6 +155,7 @@ export function apiRoute<Segments>(
         ...(ipOnly !== undefined ? { ipOnly } : {}),
         ...(bypassUnknownClients !== undefined ? { bypassUnknownClients } : {}),
         ...(user !== undefined ? { user } : {}),
+        ...(betaExempt !== undefined ? { betaExempt } : {}),
         requestId,
       });
       if (!gate.ok) return await finish(gate.response, route);

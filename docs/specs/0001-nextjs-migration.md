@@ -408,6 +408,46 @@ Anonymous sessions (DG76): Supabase anonymous sign-in issues a session on
 No email infra, no magic links.
 ```
 
+### Closed beta — admission gate (BRAWUKA-970)
+
+```text
+Owner decision 2026-10-26: invite-only beta first. No public signup, no
+email/password provider, no Apple yet. Three server-side locks:
+1. Supabase project: public sign-up OFF, Google provider ON, and
+   Authentication → Hooks → Before User Created → public.beta_before_user_created
+   (web/db/migrations/0034_beta_allowlist.sql). The hook raises for an address
+   that is not on beta_allowlist, so a direct /auth/v1/signup or an
+   out-of-band OAuth exchange cannot create an uninvited account.
+2. Page gate (lib/beta/page-gate.ts via web/proxy.ts): while the gate is on,
+   every GET/HEAD page outside beta.publicPaths is REWRITTEN to /beta —
+   rewrite, never redirect, because a redirect would drop a magic link's
+   #access_token fragment. A verified but unlisted session is rewritten to
+   /beta?denied=1 after its session has been destroyed by the auth tail.
+3. API gate (lib/api/guard.ts): every apiRoute asks for admission before the
+   handler. Anonymous → 401 unauthorized; verified but unlisted → 403
+   beta_not_allowed. Exempt: /api/health, /api/heartbeat, /api/config, and
+   /api/auth/session (the sign-in tail itself).
+Gate flag: appConfig.beta.enabled is the product state and ships true;
+BETA_MODE overrides one deployment (1/on/true/yes or 0/off/false/no — any
+other value throws at the first request instead of guessing). Public paths
+(web/config/app.yaml): /beta, /about, /privacy, /terms, /robots.txt,
+/sitemap.xml, /~offline, /auth/callback.
+Session tail (lib/auth/sign-in-completion.ts): admission runs before the
+profile upsert. Refused → signOut(), no profiles row, redirect to
+/beta?denied=1 — for both the OAuth code and the magic-link token_hash paths;
+the hash-session bridge turns POST /api/auth/session 403 beta_not_allowed into
+the same destination. An allowed identity proceeds exactly as before.
+Allowlist: beta_allowlist(email text primary key, note, created_at,
+revoked_at). `email` must be lower case and match a minimal address shape
+(CHECK constraints); one live index. Decisions are cached in-process for
+beta.allowlistCacheSeconds. Operated with web/scripts/beta-allowlist.mjs
+(add / list / remove); addresses are never stored in this repository — the
+row's `note` is the tester roster.
+Audit: one `beta.denied` telemetry line per refusal carrying the route, the
+reason (not_allowlisted | no_email), and email_hash (16 hex chars of
+SHA-256) — never the address and never a token.
+Not in scope: a signup page, invite codes, transactional email, Apple sign-in.
+```
 ### Map — MapLibre GL + OpenFreeMap (revised BRAWUKA-308/311)
 
 ```text

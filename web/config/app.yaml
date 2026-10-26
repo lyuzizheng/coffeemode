@@ -307,3 +307,33 @@ runtimeConfig:
 auth:
   providers:
     - google
+
+# Closed-beta admission (BRAWUKA-970, spec 0001 §Closed beta).
+# `enabled` is the PRODUCT state: the app ships closed. `BETA_MODE` in the
+# environment flips one deployment without touching this file (spec 0010 §3) —
+# `0/off/false/no` opens it for a test harness or a staging run, `1/on/true/yes`
+# closes it. Nothing else about the gate is configurable at runtime: the
+# allowlist itself lives in the `beta_allowlist` table, never in the repo.
+beta:
+  enabled: true
+  # Pages that stay reachable while the gate is on. Everything else answers
+  # /beta for an anonymous visitor; every API route is gated separately by
+  # apiRoute()/guard() unless it declares `betaExempt` (auth entry points,
+  # infra probes). `~offline` must stay public: the service worker serves it
+  # exactly when the network (and therefore any gate) is unreachable.
+  publicPaths:
+    - /beta
+    - /about
+    - /privacy
+    - /terms
+    - /robots.txt
+    - /sitemap.xml
+    - /~offline
+    - /auth/callback
+  # Invitation inbox behind the beta page's request link. One line to change —
+  # the address is a product parameter, not copy.
+  inviteEmail: lvzizhengde@gmail.com
+  # One process caches one address's allowlist answer this long. A revoke
+  # therefore lands within this window on every warm instance; 0 rounds of
+  # staleness would spend a query on every request for no security gain.
+  allowlistCacheSeconds: 60

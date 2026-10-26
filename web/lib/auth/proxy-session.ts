@@ -21,16 +21,19 @@ export interface SessionRefreshResult {
 
 /**
  * Refresh the Supabase session on the single client that owns setAll, then —
- * when `verifyForCafePage` (cafe GET/HEAD only) — verify the user for the
- * gone-cafe visibility probe and hand the verified identity to the page on
- * x-verified-user (BRAWUKA-644).
+ * when `verify` — verify the user and hand the verified identity to the page
+ * on x-verified-user (BRAWUKA-644). `verify` is true for cafe GET/HEAD (the
+ * gone-cafe visibility probe) and for every page the closed-beta gate owns
+ * (BRAWUKA-970): both need the verified address/identity before rendering, and
+ * one getUser() per such page view is the same cost the cafe page already
+ * paid. Every other public page still runs zero validation calls.
  */
 export async function refreshSessionAndVerify(
   req: NextRequest,
   response: NextResponse,
   url: string,
   publishableKey: string,
-  verifyForCafePage: boolean,
+  verify: boolean,
 ): Promise<SessionRefreshResult> {
   let verifiedUser: SessionUser | null | undefined;
   let sessionRefreshed = false;
@@ -78,13 +81,14 @@ export async function refreshSessionAndVerify(
   // is persisted). getSession() above only decodes the session without
   // validating the JWT — forwarding its unverified user id would let a
   // self-signed sb-*-auth-token cookie impersonate any user on the cafe
-  // page (BRAWUKA-315). Scoped to cafe GET/HEAD so the cost matches the
-  // baseline (one getUser() per cafe page view, none elsewhere).
+  // page (BRAWUKA-315). Scoped to `verify` (cafe GET/HEAD and beta-gated
+  // pages) so the cost matches the baseline: one getUser() per such page
+  // view, none on any other public page.
   //
   // BRAWUKA-644: the verified result is forwarded to the page on
   // x-verified-user — the page's loadMapSession() reuses it instead of
   // running a second getUser() network validation for the same request.
-  if (verifyForCafePage) {
+  if (verify) {
     try {
       const { data } = await supabase.auth.getUser();
       verifiedUser = data.user;

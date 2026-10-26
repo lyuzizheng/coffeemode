@@ -15,10 +15,11 @@
 Scope: composition of the server-rendered `/cafes/[id]` page, its
 hydration into the map app, the share control, and the 404. Behavior (SSR
 route ownership, one-push URL semantics, 404 contract, URL scheme,
-JSON-LD/sitemap/llms.txt, CDN cache TTLs) is canonical in the specs (spec
+JSON-LD/sitemap/robots policy (AI crawlers refused — DG154), CDN cache
+TTLs) is canonical in the specs (spec
 0001 §Rendering strategy,
 §Onboarding & city model, §PWA & sharing; DG104–DG107, DG110–DG113,
-DG124) and is referenced, not redefined.
+DG124, DG154) and is referenced, not redefined.
 
 ---
 
@@ -38,9 +39,9 @@ header. The page is deliberately two parts:
 **Part 1 — the public shell (SSR, crawler-visible, no client JS needed).**
 Aggregate product data only: title block, the score pair (Work hero +
 Experience), WorkProfile dimension bars with respondent counts, policy
-consensus, cover + gallery, hours. This is what Google, AI crawlers, and
-link previews see — full semantic HTML, JSON-LD, fast from the CDN cache
-(spec-owned, DG105/DG107).
+consensus, cover + gallery, hours. This is what Google, Bing, and link
+previews see — full semantic HTML, JSON-LD, fast from the CDN cache
+(spec-owned, DG105/DG107). AI crawlers are refused site-wide (DG154).
 
 **Part 2 — the check-in feed (client-loaded after paint).** Notes are user
 content: they load from the public paginated check-in API once the page is

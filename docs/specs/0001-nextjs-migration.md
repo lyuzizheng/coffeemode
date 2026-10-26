@@ -10,7 +10,7 @@ This is a rewrite, not a migration. The old Vite SPA and Java backend were remov
 
 ## Status
 
-Accepted (revised 2026-08-23 — DG124 (round-14 Q10 resolved by redesign): /cafes/[id] SSR shell hydrates in place into the map app at FULL sheet, DeepLinkBanner abolished, /?cafe= app entry retired (amends DG104/DG106); 2026-08-23 — onboarding grill round 15: welcome card immediate + non-modal, wrong-city correction via Select only, Skip lands on the IP-detected city, denied-permission re-entry via locate button with one-time settings toast, no recenter after user pan, blue dot session-persistent, out-of-coverage geolocation auto-creates the city with a first-nomad message, profiles.onboarded authoritative across devices, offline grant still dismisses (DG114–DG123); 2026-08-23 — grill round 14 completed: locale-independent canonical URL made permanent (DG110), 404 nearby-cafes recovery + global location-permission contract (DG111–DG112), check-in feed default = Newest (DG113); 2026-08-23 — cafe URL scheme + SEO/AI-search readiness (JSON-LD, sitemap, llms.txt), two-part cafe page (SSR aggregate shell + client-loaded feed), universal typed config under web/config (DG104–DG107); share flow amended — copy-link always visible, WeChat copy-link popover day-one (DG109), OG description = overall score + curiosity hook (DG108); 2026-08-22 — navigation→check-in prompt reworked: anonymous sessions via Supabase anonymous sign-in, navigations.outcome funnel column, next-day earliest prompt, three-option no-× card, 3-month expiry, one-per-session queue (DG76–DG90); 2026-08-21 — check-in write integrity and UX contracts: upload-on-select photos with auth-gated presigned issuance, idempotency keys, edit-does-not-refresh-recency, 90-day Same-as-last-time window, 1-per-cafe-per-24h limit, 500-char notes, 6-photo cap, bidirectional temperature scale, multi-provider sign-in gate (DG59–DG73); universal YAML-configured rate limiting across all APIs and scripts (DG74); search-as-you-type ≥3 chars with 400ms debounce, top-10 suggestions without pagination, weak-results threshold, removable filter chips, session-scoped filters, food-only D1 caching, distance labeling (DG44–DG49, DG51–DG58); launch expands from Singapore-only to ~10 launch cities with ISO/IATA city codes (DG50); overall slider mandatory per check-in (DG40); creation composes logged-out with local draft, sign-in at publish (DG39); desktop detail becomes a second left column (DG42); PEEK Work-score watermark (DG43); 2026-08-20 — discovery ranking, recovery, accessibility, missing-cafe, responsive, feed, anonymity, dismissal, and gesture contracts; 2026-08-19 — responsive discovery contract and Kimi K3 design gate; 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
+Accepted (revised 2026-10-26 — DG154: AI crawlers, AI training, AI answer input, and AI-agent operation are refused — robots.txt AI user-agent groups + Content-Signal, `X-Robots-Tag: noai, noimageai` on documents, `/llms.txt` deleted; DG105's AI-search half withdrawn, SEO half unchanged; 2026-08-23 — DG124 (round-14 Q10 resolved by redesign): /cafes/[id] SSR shell hydrates in place into the map app at FULL sheet, DeepLinkBanner abolished, /?cafe= app entry retired (amends DG104/DG106); 2026-08-23 — onboarding grill round 15: welcome card immediate + non-modal, wrong-city correction via Select only, Skip lands on the IP-detected city, denied-permission re-entry via locate button with one-time settings toast, no recenter after user pan, blue dot session-persistent, out-of-coverage geolocation auto-creates the city with a first-nomad message, profiles.onboarded authoritative across devices, offline grant still dismisses (DG114–DG123); 2026-08-23 — grill round 14 completed: locale-independent canonical URL made permanent (DG110), 404 nearby-cafes recovery + global location-permission contract (DG111–DG112), check-in feed default = Newest (DG113); 2026-08-23 — cafe URL scheme + SEO readiness (JSON-LD, sitemap; AI-search half later withdrawn by DG154), two-part cafe page (SSR aggregate shell + client-loaded feed), universal typed config under web/config (DG104–DG107); share flow amended — copy-link always visible, WeChat copy-link popover day-one (DG109), OG description = overall score + curiosity hook (DG108); 2026-08-22 — navigation→check-in prompt reworked: anonymous sessions via Supabase anonymous sign-in, navigations.outcome funnel column, next-day earliest prompt, three-option no-× card, 3-month expiry, one-per-session queue (DG76–DG90); 2026-08-21 — check-in write integrity and UX contracts: upload-on-select photos with auth-gated presigned issuance, idempotency keys, edit-does-not-refresh-recency, 90-day Same-as-last-time window, 1-per-cafe-per-24h limit, 500-char notes, 6-photo cap, bidirectional temperature scale, multi-provider sign-in gate (DG59–DG73); universal YAML-configured rate limiting across all APIs and scripts (DG74); search-as-you-type ≥3 chars with 400ms debounce, top-10 suggestions without pagination, weak-results threshold, removable filter chips, session-scoped filters, food-only D1 caching, distance labeling (DG44–DG49, DG51–DG58); launch expands from Singapore-only to ~10 launch cities with ISO/IATA city codes (DG50); overall slider mandatory per check-in (DG40); creation composes logged-out with local draft, sign-in at publish (DG39); desktop detail becomes a second left column (DG42); PEEK Work-score watermark (DG43); 2026-08-20 — discovery ranking, recovery, accessibility, missing-cafe, responsive, feed, anonymity, dismissal, and gesture contracts; 2026-08-19 — responsive discovery contract and Kimi K3 design gate; 2026-08-18 — parallel MapKit/non-map development plan; 2026-08-13 — OAuth redirectTo allowlist/fallback, session-refresh proxy cookie guard, profile upsert failure handling; earlier 2026-08-07 — Supabase auth-only split, self-hosted Postgres data layer, image-service Worker, slider scoring, creation-as-first-checkin)
 
 ## Stable decisions
 
@@ -707,16 +707,32 @@ scan-oriented.
       (x-default → the canonical URL) carry language targeting. Shared
       links never split into per-locale SEO identities.
 
-  SEO & AI-search readiness (DG105):
+  SEO readiness (DG105; the AI-search half is withdrawn by DG154):
     - Full semantic HTML in the first response (headings, address as text)
       — the public shell needs no client JS.
     - JSON-LD CafeOrCoffeeShop: name, address, geo, aggregateRating from
       experience_score (count = n_checkins).
     - Dynamic sitemap.xml listing all live cafes (lastmod from
       work_stats.updated_at); robots.txt allows /cafes/*.
-    - llms.txt at the root describing what CafeMood is, for AI crawlers.
     - CDN cache for the shell: s-maxage + stale-while-revalidate, TTLs from
       config (DG107) — a viral shared link must not hit Postgres per open.
+
+  AI crawler & AI-agent refusal (DG154, owner 2026-10-26):
+    - Every named AI crawler is denied the whole site (`Disallow: /`):
+      GPTBot, ChatGPT-User, OAI-SearchBot, ClaudeBot, Claude-User,
+      Claude-SearchBot, anthropic-ai, Google-Extended, Applebot-Extended,
+      CCBot, Bytespider, PerplexityBot, Perplexity-User, Amazonbot,
+      meta-externalagent, FacebookBot, cohere-ai, Diffbot, YouBot,
+      ImagesiftBot, Omgilibot, Timpibot, PanguBot, Webzio-Extended,
+      iaskspider, Ai2Bot.
+    - robots.txt declares `Content-Signal: search=yes, ai-train=no,
+      ai-input=no`. The `*` group is unchanged (allow `/`, `/cafes/*`;
+      disallow `/api/`, `/theme-preview`) so Googlebot/Bingbot stay eligible.
+    - Document responses carry `X-Robots-Tag: noai, noimageai`; API and
+      static asset responses do not.
+    - No AI product surface exists: no AI SDK/chat widget, no `/api/ai/*`,
+      no AI/agent write endpoint, no bot account. `/llms.txt` is deleted and
+      returns 404.
 
   Two-part rendering (DG106):
     Part 1 (SSR, crawler-visible): title block, both scores, WorkProfile

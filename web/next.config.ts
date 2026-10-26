@@ -11,6 +11,8 @@ import { cafeShellCacheControl } from "./lib/cache-policy";
 // Baseline CSP + Permissions-Policy builder (BRAWUKA-633). Import-free like
 // cache-policy, so the config transpiler resolves it the same way.
 import { securityHeaders } from "./lib/security/headers";
+// DG154 document policy value; same import-free rule as the builders above.
+import { DOCUMENT_X_ROBOTS_TAG } from "./lib/robots";
 
 const appConfig = parseAppConfig(loadYaml("app.yaml"));
 
@@ -179,6 +181,14 @@ const nextConfig: NextConfig = {
             value: `public, s-maxage=${appConfig.seo.shellCache.sMaxAgeSeconds}, stale-while-revalidate=${appConfig.seo.shellCache.staleWhileRevalidateSeconds}`,
           },
         ],
+      },
+      {
+        // DG154: document responses opt out of AI training and AI answer use.
+        // Scoped away from API JSON, build assets, static files (any dotted
+        // last segment: /robots.txt, /sitemap.xml, /file.svg), and the asset
+        // directories below, so a JSON/asset response never carries it.
+        source: "/((?!api/|_next/|icons/|fonts/|serwist/|[^/]*\\.[^/]+$).*)",
+        headers: [{ key: "X-Robots-Tag", value: DOCUMENT_X_ROBOTS_TAG }],
       },
       {
         // Baseline security headers on every response (BRAWUKA-167, BRAWUKA-633).

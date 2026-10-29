@@ -53,8 +53,11 @@ root → coffeemode-email            group_wait 30s, group_interval 5m, repeat 4
 
 ## 4. prod 处置与回滚
 
-prod 当前**未部署**（BRAWUKA-500），prod 规则在 `2026-10-29` 前被 silence `3b366013-9ef2-494a-9167-28534861e9c6`
-（`env="prod"`，到点自动失效）。prod 部署后**先删除该 silence**，否则所有 prod 邮件被吞。
+prod 当前**未部署**（BRAWUKA-500）。prod 上线前，`env="prod"` 的规则由 `Alerting → Silences`
+里一条备注含 BRAWUKA-500 / BRAWUKA-985 的 silence 覆盖；silence ID 与到期时间以 Grafana 为准，
+不在本文件写死（到点自动失效，prod 邮件与 autopilot 立即恢复，2026-10-29 已实测一次）。
+到期前复核上线状态：已上线则**先删除该 silence**，否则所有 prod 邮件被吞；仍未上线则按同一
+matcher 续期，并在新的到期时间前再复核。
 
 回滚：
 

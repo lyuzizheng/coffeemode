@@ -16,6 +16,13 @@ export const runtime = "nodejs";
 const OTP_TYPES = ["magiclink", "email", "signup", "recovery", "invite", "email_change"] as const;
 type OtpType = (typeof OTP_TYPES)[number];
 
+/**
+ * Refusal destination (BRAWUKA-970): a non-allowlisted identity is signed out
+ * and lands on the beta surface with the refusal copy — never on the generic
+ * auth-error banner, which would invite a retry that cannot succeed.
+ */
+const BETA_DENIED_PATH = "/beta?denied=1";
+
 function isOtpType(value: string): value is OtpType {
   return (OTP_TYPES as readonly string[]).includes(value);
 }
@@ -84,7 +91,10 @@ async function magicLinkCallback(request: Request, searchParams: URLSearchParams
     user: data.user,
     route: "GET /auth/callback",
   });
-  if (!completed) {
+  if (completed === "beta_denied") {
+    return redirectToPath(request, BETA_DENIED_PATH);
+  }
+  if (completed !== "ok") {
     return redirectToPath(request, "/?auth=error&reason=profile_upsert");
   }
 
@@ -111,7 +121,10 @@ async function oauthCallback(request: Request, searchParams: URLSearchParams) {
     user: data.user,
     route: "GET /auth/callback",
   });
-  if (!completed) {
+  if (completed === "beta_denied") {
+    return redirectToPath(request, BETA_DENIED_PATH);
+  }
+  if (completed !== "ok") {
     return redirectToPath(request, "/?auth=error&reason=profile_upsert");
   }
 

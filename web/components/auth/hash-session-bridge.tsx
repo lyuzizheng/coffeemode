@@ -54,10 +54,14 @@ export function HashSessionBridge() {
       credentials: "same-origin",
       body: JSON.stringify({ access_token: accessToken, refresh_token: refreshToken }),
     })
-      .then((response) => {
+      .then(async (response) => {
         if (cancelled) return;
         if (!response.ok) {
-          router.replace("/?auth=error");
+          // A refused identity is not an auth error (BRAWUKA-970): the beta
+          // surface explains it, and retrying the same account cannot help.
+          const body = await response.json().catch(() => null);
+          const refused = (body as { error?: unknown } | null)?.error === "beta_not_allowed";
+          router.replace(refused ? "/beta?denied=1" : "/?auth=error");
           return;
         }
         // Server Components read the session from cookies; re-render them so

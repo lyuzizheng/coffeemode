@@ -3,6 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect } from "vitest";
+import {
+  renderCacheRulesJson,
+  renderCloudflareRulesJson,
+} from "@/scripts/lib/generate-cache-rules";
 
 // BRAWUKA-834: deploy/dokploy/cache-rules.json is the policy contract, but
 // nothing applied it to the edge — the 2026-10-05 staging locale bug survived a
@@ -23,20 +27,25 @@ export const SCRIPT = `${SCRATCH_ROOT}/scripts/devops/apply-cache-rules.sh`;
 export const CHECKER = `${SCRATCH_ROOT}/scripts/devops/check-cache-policy.mjs`;
 export const RULES = `${SCRATCH_ROOT}/deploy/dokploy/cloudflare-cache-rules.json`;
 export const CONTRACT = `${SCRATCH_ROOT}/deploy/dokploy/cache-rules.json`;
+/** The pair actually committed for this build (closed beta — BRAWUKA-970). */
+export const COMMITTED_RULES = path.join(
+  REPO_ROOT,
+  "deploy/dokploy/cloudflare-cache-rules.json",
+);
+const COMMITTED_CONTRACT = path.join(REPO_ROOT, "deploy/dokploy/cache-rules.json");
 const SOURCES = [
   "scripts/devops/apply-cache-rules.sh",
   "scripts/devops/check-cache-policy.mjs",
   "scripts/devops/lib/rules-language.mjs",
   "scripts/devops/lib/cache-policy-checks.mjs",
   "scripts/devops/lib/cache-policy-coverage.mjs",
-  "deploy/dokploy/cloudflare-cache-rules.json",
-  "deploy/dokploy/cache-rules.json",
   "web/i18n/request.ts",
 ];
 export const STAGING_HOST = "staging.cafemood.app";
 
 export type CacheRule = {
   expression: string;
+  description?: string;
   enabled?: boolean;
   action_parameters: { cache: boolean };
 };
@@ -96,6 +105,12 @@ export function setupScratchTree() {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.copyFileSync(path.join(REPO_ROOT, rel), target);
   }
+  // The mechanism cases (bypass ordering, fault rejection) describe the OPEN
+  // cache contract; this build ships the closed-beta pair, which has no allow
+  // rule and therefore no ordering to break. Both scratch artifacts come from
+  // the real renderers (BRAWUKA-970), so the applier always runs against a
+  // contract/payload pair the generator can produce.
+  writeContractPair("open");
   binDir = path.join(tmpRoot, "bin");
   fs.mkdirSync(binDir);
   curlLog = path.join(tmpRoot, "curl.log");
@@ -112,6 +127,33 @@ export function setupScratchTree() {
     `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "${curlLog}"\ncat "\${CURL_STUB_RESPONSE_FILE:-${responseFile}}"\n`,
     { mode: 0o755 },
   );
+}
+
+/**
+ * Swap the scratch tree's contract + payload pair. `open` = the cacheable
+ * contract (bypass ordering, locale safety); `beta` = the committed closed-beta
+ * pair (BRAWUKA-970). Tests that assert on the shipped payload run with
+ * `beta`, and restore `open` in a finally block.
+ */
+export function writeContractPair(which: "open" | "beta") {
+  const files = {
+    contract:
+      which === "open"
+        ? renderCacheRulesJson({ sharedCache: true })
+        : fs.readFileSync(COMMITTED_CONTRACT, "utf8"),
+    rules:
+      which === "open"
+        ? renderCloudflareRulesJson({ sharedCache: true })
+        : fs.readFileSync(COMMITTED_RULES, "utf8"),
+  };
+  for (const [rel, body] of [
+    [CONTRACT, files.contract],
+    [RULES, files.rules],
+  ] as const) {
+    const target = path.join(tmpRoot, rel);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, body);
+  }
 }
 
 export function teardownScratchTree() {

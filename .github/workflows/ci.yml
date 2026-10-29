@@ -238,6 +238,11 @@ jobs:
           E2E_VIEWPORT: mobile
         run: npm run test:e2e
 
+      - name: Closed-beta gate E2E (anonymous / refused / admitted)
+        env:
+          DATABASE_URL: postgres://coffeemode:coffeemode@localhost:5432/coffeemode
+        run: npm run test:e2e:beta
+
       # After both passes: the runner wipes web/.e2e-artifacts/ at suite start
       # (e2e-artifacts.mjs clearArtifactsDir), so the last executed pass owns the
       # directory — uploading here captures whichever pass actually failed, and

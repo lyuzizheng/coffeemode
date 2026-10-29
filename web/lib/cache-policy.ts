@@ -51,26 +51,49 @@ export function cafeShellCacheControl(policy: CafeShellCachePolicy): string {
   );
 }
 
-interface CafeShellCdnRules {
-  scope: { paths: string[] };
-  cacheable: {
-    statuses: number[];
-    cacheControl: string;
-    staleWhileRevalidateSeconds: number;
-  };
-  bypass: {
-    onResponseSetCookie: boolean;
-    onStatusesOtherThan: number[];
-    onRequestCookiePrefixes: string[];
-    /** Exact cookie names bypassed (any `locale` cookie — presence). */
-    onRequestCookies: string[];
-    /** Accept-Language substrings bypassed (non-default locales). */
-    onAcceptLanguageContains: string[];
-    /** Request Host values bypassed (staging — spec 0005 §3). */
-    onHostnames: string[];
-  };
-  sharedCacheAcrossLocales: boolean;
+export interface ShellCacheInputs {
+  /**
+   * False while the closed-beta gate owns `/cafes/*` (BRAWUKA-970): a cached
+   * shell would be served to a visitor the gate would have rewritten to
+   * `/beta`, and an edge entry outlives the gate itself — so the only safe
+   * contract in beta is "no shared cache for the shell".
+   */
+  sharedCache: boolean;
 }
+
+/** Why the shell cache is off — echoed into both generated artifacts. */
+export const CLOSED_BETA_CACHE_REASON =
+  "/cafes/* is rewritten to /beta for anyone not on beta_allowlist, so no " +
+  "shell may sit in shared cache. Set beta.enabled:false in " +
+  "web/config/app.yaml and run npm run gen:cache-rules when the gate opens.";
+
+type CafeShellCdnRules =
+  | {
+      scope: { paths: string[] };
+      enabled: true;
+      cacheable: {
+        statuses: number[];
+        cacheControl: string;
+        staleWhileRevalidateSeconds: number;
+      };
+      bypass: {
+        onResponseSetCookie: boolean;
+        onStatusesOtherThan: number[];
+        onRequestCookiePrefixes: string[];
+        /** Exact cookie names bypassed (any `locale` cookie — presence). */
+        onRequestCookies: string[];
+        /** Accept-Language substrings bypassed (non-default locales). */
+        onAcceptLanguageContains: string[];
+        /** Request Host values bypassed (staging — spec 0005 §3). */
+        onHostnames: string[];
+      };
+      sharedCacheAcrossLocales: boolean;
+    }
+  | {
+      scope: { paths: string[] };
+      enabled: false;
+      disabledReason: string;
+    };
 
 /**
  * Machine-readable edge rule derived from the same policy. Checked into
@@ -82,9 +105,19 @@ interface CafeShellCdnRules {
  */
 export function cafeShellCdnRules(
   policy: CafeShellCachePolicy,
+  inputs: ShellCacheInputs,
 ): CafeShellCdnRules {
+  const scope = { paths: ["/cafes/*"] };
+  if (!inputs.sharedCache) {
+    return {
+      scope,
+      enabled: false,
+      disabledReason: `BRAWUKA-970 closed beta: ${CLOSED_BETA_CACHE_REASON}`,
+    };
+  }
   return {
-    scope: { paths: ["/cafes/*"] },
+    scope,
+    enabled: true,
     cacheable: {
       statuses: [...policy.cacheableStatuses],
       cacheControl: cafeShellCacheControl(policy),
@@ -229,10 +262,74 @@ export interface CloudflareCacheRuleset {
  * Expressions stay `and`/`not`-only so the repo's rules-language
  * evaluator (scripts/devops/lib/rules-language.mjs) can prove
  * per-request outcomes offline.
+ *
+ * Closed beta (BRAWUKA-970): when `beta.enabled` is true the whole payload
+ * collapses to a single bypass rule — the gate rewrites every `/cafes/*`
+ * page to `/beta`, so a cached shell would be a cached bypass of the gate.
+ * The generator flips it back automatically when the config says the beta
+ * is over.
  */
 export function cafeShellCloudflareRuleset(
   policy: CafeShellCachePolicy,
+  inputs: ShellCacheInputs,
 ): CloudflareCacheRuleset {
+  return {
+    request: inputs.sharedCache
+      ? cacheableRequestPhase(policy)
+      : closedBetaRequestPhase(),
+    response: shellResponsePhase(policy),
+  };
+}
+
+/** The Set-Cookie pin, shared by both contracts: a session refresh must never
+ *  enter the shared cache, even if a stale edge copy loosens the request
+ *  phase (BRAWUKA-184). */
+function shellResponsePhase(
+  policy: CafeShellCachePolicy,
+): CloudflareCacheRuleset["response"] {
+  return {
+    phase: "http_response_cache_settings",
+    description: "Cache settings for cafemood.app",
+    rules: policy.bypassOnSetCookieResponse
+      ? [
+          {
+            description:
+              "BRAWUKA-834: a /cafes/* response that sets a cookie is never stored in the shared cache (deploy/dokploy/cache-rules.json bypass.onResponseSetCookie)",
+            enabled: true,
+            expression: `${CAFE_PATH_PREFIX} and any(http.response.headers["set-cookie"][*] ne "")`,
+            action: "set_cache_control",
+            action_parameters: {
+              "no-store": { cloudflare_only: true, operation: "set" },
+            },
+          },
+        ]
+      : [],
+  };
+}
+
+/** Closed beta (BRAWUKA-970): one deny-first rule for every /cafes/* request
+ *  and no cache-eligible rule, so no request shape — default locale or not —
+ *  can put a shell in the shared cache. */
+function closedBetaRequestPhase(): CloudflareCacheRuleset["request"] {
+  return {
+    phase: "http_request_cache_settings",
+    description: "Cache settings for cafemood.app",
+    rules: [
+      {
+        description: `BRAWUKA-970 closed beta: ${CLOSED_BETA_CACHE_REASON}`,
+        enabled: true,
+        expression: CAFE_PATH_PREFIX,
+        action: "set_cache_settings",
+        action_parameters: { cache: false },
+      },
+    ],
+  };
+}
+
+/** The open contract: bypasses first, cache-eligible rule last (BRAWUKA-836). */
+function cacheableRequestPhase(
+  policy: CafeShellCachePolicy,
+): CloudflareCacheRuleset["request"] {
   const signals = cafeShellSignals(policy);
   const allowExpr = [CAFE_PATH_PREFIX, ...signals.map(negatedTerm)].join(" and ");
   const bypass = (description: string, expression: string): CloudflareRule => ({
@@ -243,67 +340,48 @@ export function cafeShellCloudflareRuleset(
     action_parameters: { cache: false },
   });
   return {
-    request: {
-      phase: "http_request_cache_settings",
-      description: "Cache settings for cafemood.app",
-      rules: [
+    phase: "http_request_cache_settings",
+    description: "Cache settings for cafemood.app",
+    rules: [
+      bypass(
+        "BRAWUKA-834: every /cafes/* request bypasses the shared cache unless the cache-eligible rule below proves it resolves to the default locale",
+        CAFE_PATH_PREFIX,
+      ),
+      ...policy.bypassOnRequestCookiePrefixes.map((v) =>
         bypass(
-          "BRAWUKA-834: every /cafes/* request bypasses the shared cache unless the cache-eligible rule below proves it resolves to the default locale",
-          CAFE_PATH_PREFIX,
+          "Bypass cache on auth cookies",
+          `http.cookie contains "${v}"`,
         ),
-        ...policy.bypassOnRequestCookiePrefixes.map((v) =>
-          bypass(
-            "Bypass cache on auth cookies",
-            `http.cookie contains "${v}"`,
-          ),
+      ),
+      ...policy.bypassHostnames.map((v) =>
+        bypass(
+          "BRAWUKA-834: staging bypasses all routes (spec 0005 §3)",
+          `http.host eq "${v}"`,
         ),
-        ...policy.bypassHostnames.map((v) =>
-          bypass(
-            "BRAWUKA-834: staging bypasses all routes (spec 0005 §3)",
-            `http.host eq "${v}"`,
-          ),
-        ),
-        {
-          description:
-            "BRAWUKA-834: cache the cafe SSR shell only when the request cannot resolve to a non-default locale (deploy/dokploy/cache-rules.json)",
-          enabled: true,
-          expression: allowExpr,
-          action: "set_cache_settings",
-          action_parameters: {
-            cache: true,
-            edge_ttl: {
-              mode: "respect_origin",
-              status_code_ttl: nonCacheableRanges(
-                policy.cacheableStatuses,
-              ).map(({ from, to }) => ({
-                status_code_range: to === undefined ? { from } : { from, to },
-                value: -1,
-              })),
-            },
-            respect_strong_etags: true,
+      ),
+      {
+        description:
+          "BRAWUKA-834: cache the cafe SSR shell only when the request cannot resolve to a non-default locale (deploy/dokploy/cache-rules.json)",
+        enabled: true,
+        expression: allowExpr,
+        action: "set_cache_settings",
+        action_parameters: {
+          cache: true,
+          edge_ttl: {
+            mode: "respect_origin",
+            status_code_ttl: nonCacheableRanges(
+              policy.cacheableStatuses,
+            ).map(({ from, to }) => ({
+              status_code_range: to === undefined ? { from } : { from, to },
+              value: -1,
+            })),
           },
+          respect_strong_etags: true,
         },
-      ],
-    },
-    response: {
-      phase: "http_response_cache_settings",
-      description: "Cache settings for cafemood.app",
-      rules: policy.bypassOnSetCookieResponse
-        ? [
-            {
-              description:
-                "BRAWUKA-834: a /cafes/* response that sets a cookie is never stored in the shared cache (deploy/dokploy/cache-rules.json bypass.onResponseSetCookie)",
-              enabled: true,
-              expression: `${CAFE_PATH_PREFIX} and any(http.response.headers["set-cookie"][*] ne "")`,
-              action: "set_cache_control",
-              action_parameters: {
-                "no-store": { cloudflare_only: true, operation: "set" },
-              },
-            },
-          ]
-        : [],
-    },
+      },
+    ],
   };
 }
+
 
 

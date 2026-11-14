@@ -59,6 +59,10 @@ prod 当前**未部署**（BRAWUKA-500）。prod 上线前，`env="prod"` 的规
 到期前复核上线状态：已上线则**先删除该 silence**，否则所有 prod 邮件被吞；仍未上线则按同一
 matcher 续期，并在新的到期时间前再复核。
 
+silence 每次续期 14 天，备注写当轮的 `[AUTO-OPS] 运维告警自愈` issue 编号。到期后 autopilot 会为
+每个仍在 firing 的告警组各建一张单：这是有意的提醒机制，不是故障；确认 prod 仍未上线后按同一
+matcher 续期即可。
+
 回滚：
 
 ```bash
@@ -96,7 +100,14 @@ matcher 续期，并在新的到期时间前再复核。
 | `ffza5w9gak4xsb` | Edge cache dead (hit rate 0) | 派生 | |
 | `ffyx59j4rnwn4b` | Uptime probe failing | prod | Infinity 读 `/api/health`；502 时按 Error 触发 |
 | `cfz754r541mgwd` | Uptime probe: heartbeat failing | prod | cron Worker 探针 |
-| `ffz754rem5ptsf` | Uptime probe: canary-demo failing | prod | BRAWUKA-608 故意失败，不是故障 |
+| `ffz754rem5ptsf` | Uptime probe: canary-demo failing | prod | BRAWUKA-608 故意失败，不是故障；2026-11-14 起 `isPaused`（BRAWUKA-1002） |
+
+### 测试规则纪律
+
+`purpose="test"` 的常驻失败规则不能留在告警链路上。BRAWUKA-608 的 canary（`ffz754rem5ptsf`）在
+验收通过后仍持续 firing，prod silence 每次到期都会额外建一张 AUTO-OPS 单，所以 2026-11-14 起
+`isPaused`（BRAWUKA-1002）。复测探针→告警链路时临时 unpause，确认通知收到后立刻 pause；不要长期
+保留 firing 的测试规则，也不要给测试规则单独配 autopilot 路由。
 
 看板：`coffeemode-api-red`、`coffeemode-launch-health`、`coffeemode-rate-limits`、
 `coffeemode-workers-db`（都在 Grafana 的 `CoffeeMode` 目录，`coffeemode-api-red` 在 General）。

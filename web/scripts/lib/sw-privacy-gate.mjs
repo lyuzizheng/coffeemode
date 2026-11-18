@@ -9,12 +9,26 @@
  *     navigations, the App Router RSC fetch, its prefetch variant, and an API
  *     GET — all through the real active worker.
  *   - Browser assertion: after those requests, `caches.keys()` across all
- *     Cache Storage caches contains zero entries matching these private paths.
+ *     Cache Storage caches contains zero entries matching these private paths,
+ *     polled across a 3 s settle window so an asynchronous worker write cannot
+ *     land after the gate has already passed.
  */
 import { assert, shot } from "./gate-assert.mjs";
 import { clearGateArtifacts, withGateContext } from "./e2e-artifacts.mjs";
 
 const PRIVATE_PREFIXES = ["/auth", "/cafes", "/api", "/profile", "/settings", "/search"];
+
+/**
+ * Serwist hands the response to the page BEFORE its cache write lands:
+ * `StrategyHandler.fetchAndCachePut` calls `waitUntil(cachePut(...))` and
+ * returns the response un-awaited. A single post-response scan therefore
+ * passes while a fall-through handler is still writing (review P1: a
+ * 1,500 ms delayed `Cache.put` was found only by a second scan). Observe the
+ * real Cache Storage across a settle window and fail on the first private
+ * entry; 3 s is twice the delay that reproduced the defect.
+ */
+const CACHE_SETTLE_MS = 3000;
+const CACHE_POLL_INTERVAL_MS = 100;
 
 /**
  * `defaultCache` buckets these two shapes into 24h NetworkFirst caches
@@ -31,8 +45,8 @@ const RSC_PROBES = [
   },
 ];
 
-async function assertNoPrivateDocuments(page) {
-  const cachedUrls = await page.evaluate(async () => {
+async function readCacheEntries(page) {
+  return page.evaluate(async () => {
     const cacheNames = await caches.keys();
     const urls = [];
     for (const name of cacheNames) {
@@ -44,7 +58,10 @@ async function assertNoPrivateDocuments(page) {
     }
     return urls;
   });
+}
 
+/** One cache snapshot: reject the root document and every private route. */
+function assertSnapshotClean(cachedUrls) {
   for (const entry of cachedUrls) {
     const { pathname } = new URL(entry.url);
 
@@ -59,6 +76,21 @@ async function assertNoPrivateDocuments(page) {
         throw new Error(`Cache "${entry.cache}" contains private path ${pathname} (${entry.url})`);
       }
     }
+  }
+}
+
+/**
+ * Poll the live Cache Storage until the settle window closes, failing on the
+ * first private entry. Polling (not one read at the end) matters: a late write
+ * and a later eviction must not average out to a clean final snapshot.
+ */
+async function assertNoPrivateDocuments(page) {
+  const deadline = Date.now() + CACHE_SETTLE_MS;
+  for (;;) {
+    assertSnapshotClean(await readCacheEntries(page));
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return;
+    await page.waitForTimeout(Math.min(CACHE_POLL_INTERVAL_MS, remaining));
   }
 }
 

@@ -179,6 +179,15 @@ export const POST = apiRoute(
 
 ### D7 — Logging & correlation
 
+- Access lines carry `stage` (BRAWUKA-814). `stage: "route"` is the API
+  completion line: the real `status`, `code` on ≥400, and `duration_ms` over
+  the full guard+handler. `stage: "proxy"` is a phase observation: a numeric
+  `status` only when the proxy built the response (the `/?cafe=` 308),
+  `status: "unknown"` on pass-through (`NextResponse.next()` is always 200 and
+  the render decides the result), and `proxy_duration_ms` — never
+  `duration_ms`, which is reserved for a completed response. A numeric status
+  on a pass-through is the bug this field split removes: consumers that
+  aggregated page traffic got a middleware 200 as client success.
 - Web unchanged in shape: `{type:"access"|"error", request_id, ...}` JSON lines
   (ADR-0004). Two additions: access lines gain `code` when status ≥ 400
   (enables per-code metrics without parsing error lines); `logError` gains a
@@ -315,6 +324,15 @@ complete; growth happens only with new routes.
   alongside `details` for one release; clients read `details` first.
 - **Health/heartbeat/config/serwist skip the proxy** → no access-log coverage,
   by design (hot paths, no auth surface). Documented, accepted.
+- **Non-API final status is not observed** (BRAWUKA-814). The proxy line is
+  `stage:"proxy"` with `status:"unknown"` and no `duration_ms` on pass-through;
+  no page-render boundary exists (Next.js exposes no response hook, and this
+  app implements no `onRequestError`), so a page 404/500 appears in the client
+  response only. A render throw emits the framework's unstructured stderr
+  diagnostic, never a `type:"error"` record — only errors app code explicitly
+  logs reach the structured stream.
+  Accepted gap: guessing downstream state would reintroduce the false
+  success. Any future page-completion observer must emit `stage:"route"`.
 - **Non-JSON 5xx from infrastructure** (Dokploy/edge before Next): clients must
   tolerate a non-envelope error — `apiFetch` maps unparseable bodies to
   `ApiError{code:"internal_error"}`.
@@ -328,6 +346,12 @@ complete; growth happens only with new routes.
   `ApiHttpError` returns its code/status; `guard()` failures are enveloped.
 - Every `web/app/api/**` route uses `apiRoute` (or is on the exemption list);
   grep finds zero bare `export async function POST` outside exemptions.
+- Access lines are stage-explicit (BRAWUKA-814): an API completion line is
+  `stage:"route"` with numeric `status` + `duration_ms`; a non-API
+  pass-through line is `stage:"proxy"` with `status:"unknown"` and
+  `proxy_duration_ms` only; a proxy-built redirect carries its numeric status.
+  Verified over a real server for page 200, gone-cafe 404, callback 307,
+  dead-DB page 500 and the `/?cafe=` 308.
 - Reclassified codes return their new statuses; clients branching on
   `cafe_has_other_checkins`/`duplicate_checkin` still work (they match `code`,
   not status).

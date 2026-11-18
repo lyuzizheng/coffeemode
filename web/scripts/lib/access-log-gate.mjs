@@ -13,7 +13,11 @@
  *   - The accepted hot-path exclusions (BRAWUKA-756, spec 0011 edge cases)
  *     stay silent: `GET`/`HEAD /api/health`, `GET /api/heartbeat`,
  *     `GET /api/config` emit no access line while still serving 200.
- *   - Non-API traffic keeps its proxy access line.
+ *   - Non-API traffic keeps its proxy access line, scoped to the proxy phase
+ *     (BRAWUKA-814): `status:"unknown"` + `proxy_duration_ms` on pass-through
+ *     (200 page, 404 gone-cafe, 307 callback), the real status only when the
+ *     proxy built the response (the `/?cafe=` 308). A dead-DB page 500 stays
+ *     `"unknown"` — never the 200 placeholder that masked it before.
  *
  * Runs inside `npm run test:e2e`. Needs the suite's live-DB server (`base`,
  * `hasDb`) for the 2xx/429 cases plus one extra probe server on an
@@ -29,8 +33,12 @@
  *   403            POST /api/checkins + cross-site     → 403 forbidden_origin
  *   429            31× GET /api/search                → a 429 rate_limited
  *   5xx            dead-DB GET /api/search?q=smoke    → 500 internal_error
+ *   5xx page       dead-DB GET /cafes/<uuid>          → client 500, proxy "unknown"
  *   exclusions     health GET/HEAD, heartbeat, config → 200, zero lines
- *   non-API        GET /cafes/<uuid>                  → one proxy line
+ *   page 200       GET /privacy                       → proxy "unknown"
+ *   page 404       GET /cafes/<uuid>                  → proxy "unknown"
+ *   callback 307   GET /auth/callback                 → proxy "unknown"
+ *   proxy 308      GET /?cafe=<uuid>                  → proxy status 308
  */
 import { randomUUID } from "node:crypto";
 import { assert } from "./gate-assert.mjs";
@@ -120,6 +128,53 @@ function expectSilent(output, requestId, path) {
   assert(lines.length === 0, `expected no access line for excluded ${path}, got ${lines.length}`);
 }
 
+/**
+ * The proxy's line describes its own phase only (BRAWUKA-814). `status` is the
+ * real client status when the proxy built the response; otherwise it is the
+ * literal `"unknown"` and no end-to-end latency/code may be claimed.
+ */
+function expectProxyPhaseLine(output, { requestId, path, status }) {
+  const lines = accessLines(output, requestId);
+  assert(lines.length === 1, `expected exactly one proxy access line for ${path}, got ${lines.length}`);
+  const line = lines[0];
+  assert(line.stage === "proxy", `proxy line stage ${JSON.stringify(line.stage)} !== "proxy" for ${path}`);
+  assert(line.path === path, `proxy line path ${line.path} !== ${path}`);
+  assert(
+    line.status === status,
+    `proxy line status ${JSON.stringify(line.status)} !== ${JSON.stringify(status)} for ${path}`,
+  );
+  assert(typeof line.proxy_duration_ms === "number", `proxy line missing proxy_duration_ms for ${path}`);
+  assert(!("duration_ms" in line), `proxy line must not claim duration_ms for ${path}`);
+  assert(!("code" in line), `proxy line must not claim code for ${path}`);
+  return line;
+}
+
+/**
+ * Fetch one page and assert both halves of the contract: the status the client
+ * received and the one proxy-phase line it produced. `client` accepts a list
+ * when the case is DB-dependent; `manual` keeps redirects un-followed.
+ */
+async function expectPageProxyLine(base, captureServerOutput, options) {
+  const { path, logPath = path, client, lineStatus = "unknown", manual = false } = options;
+  const requestId = randomUUID();
+  const response = await fetch(`${base}${path}`, {
+    headers: { "x-request-id": requestId },
+    ...(manual ? { redirect: "manual" } : {}),
+  });
+  await response.arrayBuffer();
+  const accepted = [client].flat();
+  assert(
+    accepted.includes(response.status),
+    `${path} returned ${response.status}, expected ${accepted.join(" or ")}`,
+  );
+  const line = expectProxyPhaseLine(captureServerOutput(), {
+    requestId,
+    path: logPath,
+    status: lineStatus,
+  });
+  return { response, line };
+}
+
 async function checkLive2xx(base, captureServerOutput) {
   const startedAt = Date.now();
   const live = await fetchWithId(base, "/api/search?q=smoke");
@@ -181,6 +236,14 @@ async function checkDeadDb5xx(deadBase, captureServerOutput) {
     line.duration_ms >= Math.max(1, elapsedMs - 5000) && line.duration_ms <= elapsedMs + 5000,
     `5xx duration_ms ${line.duration_ms} outside client-observed ${elapsedMs}ms`,
   );
+
+  // BRAWUKA-814: the same dead pool makes a page render fail. The client gets
+  // a real 500, and the proxy line must say `"unknown"` — never the 200 of its
+  // pass-through placeholder, which is what used to mask page failures.
+  await expectPageProxyLine(deadBase, captureServerOutput, {
+    path: `/cafes/${randomUUID()}`,
+    client: 500,
+  });
 }
 
 async function checkRejections(base, captureServerOutput) {
@@ -244,15 +307,40 @@ async function checkExclusions(base, captureServerOutput) {
   expectSilent(captureServerOutput(), config.requestId, "/api/config");
 }
 
-async function checkNonApiProxyLine(base, captureServerOutput) {
+/**
+ * Non-API traffic: the proxy line must describe the proxy phase, never the
+ * page result (BRAWUKA-814). Four real server responses:
+ *   - a normal page renders 200 → line `"unknown"`, not 200;
+ *   - a gone-cafe deep link renders 404 → still `"unknown"`;
+ *   - the proxy-built `/?cafe=` redirect is 308 → line `308` (final);
+ *   - `/auth/callback` redirects 307 from the route → `"unknown"`.
+ */
+async function checkNonApiProxyLine(base, captureServerOutput, hasDb) {
+  await expectPageProxyLine(base, captureServerOutput, { path: "/privacy", client: 200 });
+
+  await expectPageProxyLine(base, captureServerOutput, {
+    path: `/cafes/${randomUUID()}`,
+    client: hasDb ? 404 : [200, 404],
+  });
+
+  await expectPageProxyLine(base, captureServerOutput, {
+    path: "/auth/callback",
+    client: 307,
+    manual: true,
+  });
+
   const cafeId = randomUUID();
-  const requestId = randomUUID();
-  const pageRes = await fetch(`${base}/cafes/${cafeId}`, { headers: { "x-request-id": requestId } });
-  await pageRes.arrayBuffer();
-  assert(pageRes.status === 200 || pageRes.status === 404, `cafe page returned ${pageRes.status}`);
-  const lines = accessLines(captureServerOutput(), requestId);
-  assert(lines.length === 1, `expected one proxy access line for page, got ${lines.length}`);
-  assert(lines[0].path === `/cafes/${cafeId}`, `proxy line path ${lines[0].path} !== page path`);
+  const { response } = await expectPageProxyLine(base, captureServerOutput, {
+    path: `/?cafe=${cafeId}`,
+    logPath: "/",
+    client: 308,
+    lineStatus: 308,
+    manual: true,
+  });
+  assert(
+    (response.headers.get("location") ?? "").endsWith(`/cafes/${cafeId}`),
+    `legacy redirect location ${response.headers.get("location")} does not target /cafes/${cafeId}`,
+  );
 }
 
 export async function runAccessLogGate({ base, deadBase, hasDb, captureServerOutput, external = false }) {
@@ -278,5 +366,5 @@ export async function runAccessLogGate({ base, deadBase, hasDb, captureServerOut
 
   await checkRejections(base, captureServerOutput);
   await checkExclusions(base, captureServerOutput);
-  await checkNonApiProxyLine(base, captureServerOutput);
+  await checkNonApiProxyLine(base, captureServerOutput, hasDb);
 }

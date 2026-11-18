@@ -7,7 +7,7 @@ BRAWUKA-969。适用对象：CoffeeMode 值班人（当前只有 Owner）与 Dev
 
 | 通道 | 接收人 | 说明 |
 |---|---|---|
-| `coffeemode-email`（email） | `lvzizhengde@gmail.com` | 人类值班通道。root policy 的 receiver，staging 24h 重复、prod 4h 重复。 |
+| `coffeemode-email`（email） | Owner 邮箱（地址见 BRAWUKA-1016） | 人类值班通道。root policy 的 receiver，staging 24h 重复、prod 4h 重复。 |
 | `coffeemode-autopilot`（webhook） | Multica `grafana-alert` autopilot | 自愈：自动建 `[AUTO-OPS] 运维告警自愈` issue 给 DevOps agent。所有 `team="coffeemode"` 告警并行投递（`continue: true`），不影响邮件。 |
 
 路由树（`Alerting → Notification policies`，uid 见 Grafana）：
@@ -24,15 +24,15 @@ root → coffeemode-email            group_wait 30s, group_interval 5m, repeat 4
 
 ## 2. 收到告警后：5 分钟确认流程
 
-1. **看哪条规则**：`Alerting → Alert rules`（<https://lyuzizheng.grafana.net/alerting/list>）。
+1. **看哪条规则**：`Alerting → Alert rules`（`https://<stack>.grafana.net/alerting/list`）。
    点规则看 instance 的 `route` / `env` 标签和当前值。
 2. **看业务面**：
-   - RED / 5xx / 延迟：`CoffeeMode — API RED`（<https://lyuzizheng.grafana.net/d/coffeemode-api-red>）
+   - RED / 5xx / 延迟：`CoffeeMode — API RED`（`https://<stack>.grafana.net/d/coffeemode-api-red`）
    - 5xx by route、auth 失败、图片上传失败、搜索降级、uptime：`CoffeeMode — Launch Health`
-     （<https://lyuzizheng.grafana.net/d/coffeemode-launch-health>）
-   - 限流：`CoffeeMode — Rate limits`（<https://lyuzizheng.grafana.net/d/coffeemode-rate-limits>）
+     （`https://<stack>.grafana.net/d/coffeemode-launch-health`）
+   - 限流：`CoffeeMode — Rate limits`（`https://<stack>.grafana.net/d/coffeemode-rate-limits`）
    - 边缘 / Worker / 4xx5xx / DB：`CoffeeMode — Edge & Workers`
-     （<https://lyuzizheng.grafana.net/d/coffeemode-workers-db>）
+     （`https://<stack>.grafana.net/d/coffeemode-workers-db`）
 3. **看原始数据**：
    - 日志：`gcx logs query '{service_name="coffeemode-web", deployment_environment_name="staging"}' --since 30m`
      过滤 `| log_type="error"`、`| code="rate_limited"`、`| status=~"5.."`。
@@ -114,7 +114,7 @@ matcher 续期即可。
 
 ## 7. 2026-10-26 验收记录（BRAWUKA-969）
 
-- **测试邮件**：05:28 UTC 通过 `POST /apis/notifications.alerting.grafana.app/v1beta1/namespaces/stacks-1837787/receivers/{uid}/test`
+- **测试邮件**：05:28 UTC 通过 `POST /apis/notifications.alerting.grafana.app/v1beta1/namespaces/stacks-{stack-id}/receivers/{uid}/test`
   发送，返回 `{"status":"success","duration":"3s143ms"}`。收件确认由 Owner 在邮箱完成。
 - **真实 5xx 事件**：staging `GET /api/search?q=%00`（NUL 字节 → Postgres
   `invalid byte sequence`），05:32:10–05:41:30 UTC 以约 12 次/分钟持续请求。
@@ -128,7 +128,7 @@ matcher 续期即可。
 - **遥测**：Tempo 有 `coffeemode-web` trace；`traces_spanmetrics_calls_total/latency` 带路由模板
   `span_name`；`coffeemode_cafe_created_total`、`coffeemode_auth_login_total` 可查；Loki 有
   staging 日志；两个 Dokploy app env 的 `OTEL_EXPORTER_OTLP_HEADERS` 存在且一致。
-- **看板**：`CoffeeMode — Launch Health`（<https://lyuzizheng.grafana.net/d/coffeemode-launch-health>）。
+- **看板**：`CoffeeMode — Launch Health`（`https://<stack>.grafana.net/d/coffeemode-launch-health`）。
 - **备份失败告警**：本地 hook 收到
   `{"job":"postgres-backup","env":"prod","error":"backup exited 1",…}`；成功路径不发。
 - **`rollback-prod.sh --dry-run`**：`backups/prod/releases.log` 不存在，无可回滚边界

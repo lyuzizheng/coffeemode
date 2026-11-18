@@ -149,6 +149,32 @@ function expectProxyPhaseLine(output, { requestId, path, status }) {
   return line;
 }
 
+/**
+ * Fetch one page and assert both halves of the contract: the status the client
+ * received and the one proxy-phase line it produced. `client` accepts a list
+ * when the case is DB-dependent; `manual` keeps redirects un-followed.
+ */
+async function expectPageProxyLine(base, captureServerOutput, options) {
+  const { path, logPath = path, client, lineStatus = "unknown", manual = false } = options;
+  const requestId = randomUUID();
+  const response = await fetch(`${base}${path}`, {
+    headers: { "x-request-id": requestId },
+    ...(manual ? { redirect: "manual" } : {}),
+  });
+  await response.arrayBuffer();
+  const accepted = [client].flat();
+  assert(
+    accepted.includes(response.status),
+    `${path} returned ${response.status}, expected ${accepted.join(" or ")}`,
+  );
+  const line = expectProxyPhaseLine(captureServerOutput(), {
+    requestId,
+    path: logPath,
+    status: lineStatus,
+  });
+  return { response, line };
+}
+
 async function checkLive2xx(base, captureServerOutput) {
   const startedAt = Date.now();
   const live = await fetchWithId(base, "/api/search?q=smoke");
@@ -214,17 +240,9 @@ async function checkDeadDb5xx(deadBase, captureServerOutput) {
   // BRAWUKA-814: the same dead pool makes a page render fail. The client gets
   // a real 500, and the proxy line must say `"unknown"` — never the 200 of its
   // pass-through placeholder, which is what used to mask page failures.
-  const cafeId = randomUUID();
-  const pageRequestId = randomUUID();
-  const page = await fetch(`${deadBase}/cafes/${cafeId}`, {
-    headers: { "x-request-id": pageRequestId },
-  });
-  await page.arrayBuffer();
-  assert(page.status === 500, `dead-DB cafe page returned ${page.status}, expected 500`);
-  expectProxyPhaseLine(captureServerOutput(), {
-    requestId: pageRequestId,
-    path: `/cafes/${cafeId}`,
-    status: "unknown",
+  await expectPageProxyLine(deadBase, captureServerOutput, {
+    path: `/cafes/${randomUUID()}`,
+    client: 500,
   });
 }
 
@@ -295,60 +313,31 @@ async function checkExclusions(base, captureServerOutput) {
  *   - `/auth/callback` redirects 307 from the route → `"unknown"`.
  */
 async function checkNonApiProxyLine(base, captureServerOutput, hasDb) {
-  const pageId = randomUUID();
-  const pageRes = await fetch(`${base}/privacy`, { headers: { "x-request-id": pageId } });
-  await pageRes.arrayBuffer();
-  assert(pageRes.status === 200, `GET /privacy returned ${pageRes.status}`);
-  expectProxyPhaseLine(captureServerOutput(), {
-    requestId: pageId,
-    path: "/privacy",
-    status: "unknown",
+  await expectPageProxyLine(base, captureServerOutput, { path: "/privacy", client: 200 });
+
+  await expectPageProxyLine(base, captureServerOutput, {
+    path: `/cafes/${randomUUID()}`,
+    client: hasDb ? 404 : [200, 404],
+  });
+
+  await expectPageProxyLine(base, captureServerOutput, {
+    path: "/auth/callback",
+    client: 307,
+    manual: true,
   });
 
   const cafeId = randomUUID();
-  const requestId = randomUUID();
-  const page = await fetch(`${base}/cafes/${cafeId}`, { headers: { "x-request-id": requestId } });
-  await page.arrayBuffer();
-  if (hasDb) {
-    assert(page.status === 404, `gone-cafe page returned ${page.status}, expected 404`);
-  } else {
-    assert(page.status === 200 || page.status === 404, `cafe page returned ${page.status}`);
-  }
-  expectProxyPhaseLine(captureServerOutput(), {
-    requestId,
-    path: `/cafes/${cafeId}`,
-    status: "unknown",
+  const { response } = await expectPageProxyLine(base, captureServerOutput, {
+    path: `/?cafe=${cafeId}`,
+    logPath: "/",
+    client: 308,
+    lineStatus: 308,
+    manual: true,
   });
-
-  const callbackId = randomUUID();
-  const callback = await fetch(`${base}/auth/callback`, {
-    headers: { "x-request-id": callbackId },
-    redirect: "manual",
-  });
-  await callback.arrayBuffer();
-  assert(callback.status === 307, `GET /auth/callback returned ${callback.status}, expected 307`);
-  expectProxyPhaseLine(captureServerOutput(), {
-    requestId: callbackId,
-    path: "/auth/callback",
-    status: "unknown",
-  });
-
-  const redirectId = randomUUID();
-  const legacy = await fetch(`${base}/?cafe=${cafeId}`, {
-    headers: { "x-request-id": redirectId },
-    redirect: "manual",
-  });
-  await legacy.arrayBuffer();
-  assert(legacy.status === 308, `GET /?cafe=<id> returned ${legacy.status}, expected 308`);
   assert(
-    (legacy.headers.get("location") ?? "").endsWith(`/cafes/${cafeId}`),
-    `legacy redirect location ${legacy.headers.get("location")} does not target /cafes/${cafeId}`,
+    (response.headers.get("location") ?? "").endsWith(`/cafes/${cafeId}`),
+    `legacy redirect location ${response.headers.get("location")} does not target /cafes/${cafeId}`,
   );
-  expectProxyPhaseLine(captureServerOutput(), {
-    requestId: redirectId,
-    path: "/",
-    status: 308,
-  });
 }
 
 export async function runAccessLogGate({ base, deadBase, hasDb, captureServerOutput, external = false }) {

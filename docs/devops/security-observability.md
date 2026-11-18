@@ -61,15 +61,17 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
   they stay fully out of the access stream by design). The proxy stays silent
   on `/api/*` (its pre-route `NextResponse.next()` is always 200), so no
   duplicate success entry exists.
-  `stage="proxy"` is a phase observation, not a completion: on pass-through it
-  reports `status:"unknown"` and `proxy_duration_ms` — never `status` or
-  `duration_ms`, because routing and rendering run after the proxy. It reports
-  a numeric `status` only when the proxy built the response itself (the
-  `/?cafe=` 308). **Known gap:** there is no page-render observer, so the final
-  status of a non-API page (say a 404 gone-cafe or a render 500) exists only in
-  the client response and, for exceptions, in `type:"error"` lines; it is not
-  in the access stream. Readers must not sum page traffic into success/latency
-  metrics — select `stage="route"` for completion numbers.
+  `stage="proxy"` is a phase observation, not a completion: a pass-through
+  record carries `status:"unknown"` and omits `duration_ms`; its own elapsed
+  time rides `proxy_duration_ms`, because routing and rendering run after the
+  proxy. It reports a numeric `status` only when the proxy built the response
+  itself (the `/?cafe=` 308). **Known gap:** there is no page-render observer,
+  so the final status of a non-API page (say a 404 gone-cafe or a render 500)
+  exists only in the client response — it is not in the access stream. A page
+  throw adds nothing structured either: Next.js writes an unstructured
+  framework diagnostic to stderr, and only errors that app code explicitly
+  logs produce `type:"error"` records. Readers must not sum page traffic into
+  success/latency metrics — select `stage="route"` for completion numbers.
 - **Loki label vocabulary** — Grafana Cloud promotes a fixed list of OTLP
   resource attributes to Loki index labels and puts everything else in
   structured metadata. The app's lines therefore index on exactly two labels,

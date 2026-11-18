@@ -325,10 +325,12 @@ complete; growth happens only with new routes.
 - **Health/heartbeat/config/serwist skip the proxy** → no access-log coverage,
   by design (hot paths, no auth surface). Documented, accepted.
 - **Non-API final status is not observed** (BRAWUKA-814). The proxy line is
-  `stage:"proxy"` with `status:"unknown"` on pass-through; no page-render
-  boundary exists (Next.js exposes no response hook, and `onRequestError`
-  covers exceptions only), so a page 404/500 appears in the client response
-  and, for throws, in `type:"error"` lines — not as an access completion.
+  `stage:"proxy"` with `status:"unknown"` and no `duration_ms` on pass-through;
+  no page-render boundary exists (Next.js exposes no response hook, and this
+  app implements no `onRequestError`), so a page 404/500 appears in the client
+  response only. A render throw emits the framework's unstructured stderr
+  diagnostic, never a `type:"error"` record — only errors app code explicitly
+  logs reach the structured stream.
   Accepted gap: guessing downstream state would reintroduce the false
   success. Any future page-completion observer must emit `stage:"route"`.
 - **Non-JSON 5xx from infrastructure** (Dokploy/edge before Next): clients must

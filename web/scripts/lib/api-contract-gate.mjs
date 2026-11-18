@@ -9,6 +9,18 @@ import { assert } from "./gate-assert.mjs";
 import { clearGateArtifacts } from "./e2e-artifacts.mjs";
 
 /**
+ * Guest contract (BRAWUKA-818): the anonymous cafe detail fetches the prompt
+ * on every visit, so a session-less caller gets 200 with an empty queue —
+ * never the 401 that surfaced as a console network error.
+ */
+async function checkAnonymousPrompt(base) {
+  const res = await fetch(`${base}/api/navigations/prompt`);
+  assert(res.status === 200, `/api/navigations/prompt returned unexpected ${res.status}`);
+  const body = await res.json();
+  assert(body?.prompt === null, `guest /api/navigations/prompt returned ${JSON.stringify(body)}`);
+}
+
+/**
  * @param {object} options
  * @param {string} options.base   served origin of the standalone build.
  * @param {string} options.cafeId DB-seeded cafe id for the navigations probe.
@@ -45,9 +57,7 @@ export async function runApiContractGate({ base, cafeId }) {
   // 401 without auth session, 201 when authenticated
   assert(navRes.status === 401 || navRes.status === 201, `/api/navigations returned unexpected ${navRes.status}`);
 
-  const promptRes = await fetch(`${base}/api/navigations/prompt`);
-  // Auth-gated read: 401 without a session.
-  assert(promptRes.status === 401, `/api/navigations/prompt returned unexpected ${promptRes.status}`);
+  await checkAnonymousPrompt(base);
 
   const resolveRes = await fetch(`${base}/api/navigations/${cafeId}/resolve`, {
     method: "POST",

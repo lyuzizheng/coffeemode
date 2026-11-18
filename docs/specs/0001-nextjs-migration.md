@@ -1303,9 +1303,11 @@ POST /api/cafes, DELETE /api/cafes/[id], PATCH /api/cafes/[id]/visibility
   GET+PATCH /api/profile → profile-read/profile-write;
   GET /api/profile/cafes, GET /api/profile/checkins → profile-read;
   PATCH /api/profile/identity → identity-write.
-OPTIONAL (7, getCurrentUser仅作viewer装饰/限流key, 匿名可服务, DG13/DG105公开浏览):
+OPTIONAL (8, getCurrentUser仅作viewer装饰/限流key, 匿名可服务, DG13/DG105公开浏览):
 GET /api/cafes, GET /api/cafes/[id], GET /api/cafes/[id]/checkins,
   GET /api/cafes/[id]/recovery → cafes-read; GET /api/search → search;
+  GET /api/navigations/prompt → cafes-read (无user→200 `{prompt:null}`,
+  BRAWUKA-818: 匿名详情页会请求它, 401 是控制台噪声);
   GET /api/places/search → places (仅source=google分支要求登录);
   POST /api/places/resolve → places (user仅作限流key, 无401路径).
 NONE (2): GET /api/mapkit-token → places (不调getCurrentUser).

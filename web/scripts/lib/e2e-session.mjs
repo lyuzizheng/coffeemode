@@ -50,16 +50,17 @@ export async function mintSession(supabaseUrl, userId) {
 
 /**
  * Fail fast when the planted session did not land (wrong cookie name from a
- * misconfigured `E2E_SUPABASE_URL`, expired mock token, ...). Probes the
- * auth-gated navigations prompt: 401 is the contract's anonymous answer.
+ * misconfigured `E2E_SUPABASE_URL`, expired mock token, ...). Probes an
+ * auth-required read: 401 is the contract's anonymous answer. The navigations
+ * prompt no longer qualifies — it answers guests with 200 (BRAWUKA-818).
  */
 export async function assertSessionLanded({ base, supabaseUrl, request, label }) {
-  const probe = await request.get(`${base}/api/navigations/prompt`, {
+  const probe = await request.get(`${base}/api/profile/cafes`, {
     headers: { Origin: base },
   });
   assert(
     probe.status() !== 401,
-    `${label}: session cookie did not land (prompt probe at ${base} returned 401) — ` +
+    `${label}: session cookie did not land (auth probe at ${base} returned 401) — ` +
       `E2E_SUPABASE_URL=${supabaseUrl} derives the cookie name ${supabaseCookieName(supabaseUrl)}; ` +
       `a wrong host label silently yields an anonymous session`,
   );

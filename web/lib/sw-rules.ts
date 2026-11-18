@@ -1,9 +1,12 @@
 /**
  * Service-worker runtime routing policy — single source of truth.
  *
- * `sw.ts` consumes these descriptors; `tests/sw.test.ts` table-tests them.
- * Keeping the descriptors plain (no serwist class imports) lets the test
- * suite exercise the matcher set without loading a worker library into jsdom.
+ * `sw.ts` consumes these descriptors; the `sw-privacy` browser gate
+ * (`web/scripts/lib/sw-privacy-gate.mjs`, T23, `npm run test:e2e`) exercises
+ * the routing decision through the real worker — document, RSC and prefetch
+ * requests — and fails when a private route lands in Cache Storage.
+ * Keeping the descriptors plain (no serwist class imports) keeps the matcher
+ * set readable and independent of worker-library versions.
  * (Review 2026-08-09 F4: dead/phantom rules, no coverage.)
  */
 

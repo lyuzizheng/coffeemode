@@ -8,10 +8,12 @@
  * including the empty `sslmode=` — fails closed instead of silently meaning
  * plaintext. Seven copies of that table had already drifted apart (the app
  * pool, the migration runner, the drift checker, three ops scripts, and the
- * Supabase provisioning suite); only the provisioning suite defaulted
- * Supabase hosts to strict TLS when `sslmode` was absent. That difference is
- * now the explicit `strictTlsForSupabaseHosts` policy below, not a per-caller
- * variant of the same code.
+ * Supabase provisioning suite); one copy also defaulted Supabase hosts to
+ * strict TLS when `sslmode` was absent. That host heuristic is gone
+ * (BRAWUKA-1012): TLS is decided by `sslmode` alone, so a caller that needs
+ * TLS states it in the URL and a hosted-database URL can never be silently
+ * upgraded by its hostname. ADR-0010 §2 relies on this — the Dokploy internal
+ * service states `disable` explicitly.
  *
  * `sslmode` is removed from the returned `connectionString` because `pg`'s own
  * connection-string parser maps the token differently and its result would win
@@ -28,17 +30,12 @@
 
 /** Modes whose CA chain must validate; Node also checks the hostname when a servername is present. */
 const STRICT_TLS_MODES = new Set(["require", "prefer", "verify-ca", "verify-full"]);
-/** Hosts with a public CA chain whose URLs may omit `sslmode` (Supabase direct hosts). */
-const SUPABASE_TLS_HOST_SUFFIXES = [".supabase.co", ".supabase.net"];
 
 /**
  * @param {string} urlString Postgres connection URL (`DATABASE_URL` / `DIRECT_URL`).
- * @param {{ strictTlsForSupabaseHosts?: boolean }} [options]
- *   Provisioning policy: when `sslmode` is absent and the host is a Supabase
- *   host, enable strict TLS instead of leaving TLS off.
  * @returns {{ connectionString: string, ssl?: boolean | { rejectUnauthorized: boolean } }}
  */
-export function parsePostgresConnection(urlString, { strictTlsForSupabaseHosts = false } = {}) {
+export function parsePostgresConnection(urlString) {
   const url = new URL(urlString);
   // `get` returns null when the parameter is absent but "" for `sslmode=`, so
   // the empty value reaches the rejection arm instead of meaning plaintext.
@@ -47,15 +44,7 @@ export function parsePostgresConnection(urlString, { strictTlsForSupabaseHosts =
 
   const config = { connectionString: url.toString() };
 
-  if (sslmode === null) {
-    if (
-      strictTlsForSupabaseHosts &&
-      SUPABASE_TLS_HOST_SUFFIXES.some((suffix) => url.hostname.endsWith(suffix))
-    ) {
-      config.ssl = { rejectUnauthorized: true };
-    }
-    return config;
-  }
+  if (sslmode === null) return config;
 
   if (sslmode === "disable") {
     config.ssl = false;

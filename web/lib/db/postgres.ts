@@ -10,10 +10,13 @@ import { Pool, type PoolClient, type PoolConfig, type QueryResult } from "pg";
 import { parsePostgresConnection } from "../../scripts/lib/postgres-connection.mjs";
 
 /**
- * Self-hosted Postgres connection pool (spec 0001 / ADR-0002, decision #25).
+ * Self-hosted Postgres connection pool (ADR-0010; supersedes the database half
+ * of ADR-0002 decision #25).
  *
- * Server-side only — the browser never talks to Postgres. Every route handler
- * verifies the Supabase session before touching this pool.
+ * `DATABASE_URL` names the environment's Dokploy Postgres service; its explicit
+ * `sslmode` alone decides TLS (ADR-0010 §2). Server-side only — the browser
+ * never talks to Postgres. Every route handler verifies the Supabase session
+ * before touching this pool.
  */
 
 let pool: Pool | null = null;

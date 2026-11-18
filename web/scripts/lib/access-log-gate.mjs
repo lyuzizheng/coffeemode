@@ -25,7 +25,7 @@
  * Case matrix:
  *   2xx            GET /api/search?q=smoke            → 200, no code
  *   400            GET /api/cafes/not-a-uuid          → 400 invalid_request
- *   401            GET /api/navigations/prompt        → 401 unauthorized
+ *   401            GET /api/profile/cafes           → 401 unauthorized
  *   403            POST /api/checkins + cross-site     → 403 forbidden_origin
  *   429            31× GET /api/search                → a 429 rate_limited
  *   5xx            dead-DB GET /api/search?q=smoke    → 500 internal_error
@@ -195,14 +195,17 @@ async function checkRejections(base, captureServerOutput) {
     path: "/api/cafes/not-a-uuid",
   });
 
-  const anon = await fetchWithId(base, "/api/navigations/prompt");
-  assert(anon.response.status === 401, `GET /api/navigations/prompt returned ${anon.response.status}`);
+  // The 401 sample must stay an auth-required route: the navigations prompt
+  // answers a guest with 200 `{prompt:null}` since BRAWUKA-818. `/api/profile/
+  // cafes` rejects in the guard, before it touches Postgres.
+  const anon = await fetchWithId(base, "/api/profile/cafes");
+  assert(anon.response.status === 401, `GET /api/profile/cafes returned ${anon.response.status}`);
   assert(anon.body?.error === "unauthorized", `expected unauthorized, got ${anon.body?.error}`);
   expectSingleCompletion(captureServerOutput(), {
     requestId: anon.requestId,
     status: 401,
     code: "unauthorized",
-    path: "/api/navigations/prompt",
+    path: "/api/profile/cafes",
   });
 
   const forged = await fetchWithId(base, "/api/checkins", {

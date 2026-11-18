@@ -118,10 +118,13 @@ function schedulePromptLoad(load: () => void, isCancelled: () => boolean): () =>
 
 export function useNavPrompt({
   enabled,
+  authenticated,
   onCheckIn,
 }: {
   /** Host-side deferral (DG85/DG90): sheet at PEEK/HALF, no modal open. */
   enabled: boolean;
+  /** Server-known session state — a guest has no queue to read (BRAWUKA-818). */
+  authenticated: boolean;
   /** 有去！ enters the target cafe's check-in flow with the DG92 caption. */
   onCheckIn: (cafeId: string, cafeName: string) => void;
 }) {
@@ -132,7 +135,13 @@ export function useNavPrompt({
   const [pending, setPending] = useState<NavPromptAnswer | null>(null);
 
   useEffect(() => {
-    if (!enabled || gone || sessionFlagRead()) return;
+    // A session-less guest gets no fetch at all (BRAWUKA-818): the queue is
+    // per-user, so the request could only answer `{ prompt: null }` while
+    // spending the anonymous cafes-read bucket on every page load. The
+    // endpoint still answers such a caller with 200, never 401 — sessions
+    // hosted at Supabase (including anonymous sign-in, DG76) are authenticated
+    // here and keep reading their real queue.
+    if (!enabled || !authenticated || gone || sessionFlagRead()) return;
     let cancelled = false;
     const load = () => {
       apiFetch<{ prompt: NavPromptItem | null }>("/api/navigations/prompt")
@@ -144,8 +153,8 @@ export function useNavPrompt({
           if (body?.prompt) setItem(body.prompt);
         })
         .catch(() => {
-          // If the prompt request fails (401 guest, 429, 5xx, or offline),
-          // do NOT set the session flag so the session can retry (BRAWUKA-443).
+          // If the prompt request fails (429, 5xx, or offline), do NOT set
+          // the session flag so the session can retry (BRAWUKA-443).
         });
     };
     const unschedule = schedulePromptLoad(load, () => cancelled);
@@ -153,7 +162,7 @@ export function useNavPrompt({
       cancelled = true;
       unschedule();
     };
-  }, [enabled, gone]);
+  }, [enabled, gone, authenticated]);
 
   const answer = useCallback(
     async (outcome: NavPromptAnswer) => {

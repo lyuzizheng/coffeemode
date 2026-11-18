@@ -243,6 +243,7 @@ export function DiscoveryHome({
   // to PEEK/HALF with nothing modal above it.
   const navPrompt = useNavPrompt({
     enabled: mounted && controller.snap !== "full" && controller.snap !== "collapsed" && !checkinOpen,
+    authenticated: Boolean(isAuthenticated),
     onCheckIn: (cafeId, cafeName) => onCheckIn(cafeId, cafeName, true),
   });
   const navPromptView = (placement: "sheet" | "surface") =>

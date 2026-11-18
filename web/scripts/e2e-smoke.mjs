@@ -170,15 +170,14 @@ async function runSmokeSuite() {
         ) {
           return;
         }
-        // DG64/DG105/DG77: signed-out, the client probes per-user endpoints
-        // the CDN-cached shell can't bake in — `/api/checkins/last` on
-        // drawer open, `/api/navigations/prompt` at idle. Their 401 is the
-        // contract's anonymous answer (sign-in gate / no prompt), not a
-        // fault. Exempt exactly those subresource errors — any other
-        // endpoint's non-2xx still fails the gate.
+        // DG64/DG105: signed-out, the client probes per-user endpoints the
+        // CDN-cached shell can't bake in — `/api/checkins/last` on drawer
+        // open. Its 401 is the contract's anonymous answer (sign-in gate),
+        // not a fault. Exempt exactly that subresource error — the nav
+        // prompt is a guest-readable 200 since BRAWUKA-818, so a 401 on it
+        // (or any other non-2xx on any other endpoint) still fails the gate.
         if (
-          (msg.location()?.url?.startsWith(`${base}/api/checkins/last`) ||
-            msg.location()?.url?.startsWith(`${base}/api/navigations/prompt`)) &&
+          msg.location()?.url?.startsWith(`${base}/api/checkins/last`) &&
           msg.text().startsWith(
             "Failed to load resource: the server responded with a status of 401 ",
           )

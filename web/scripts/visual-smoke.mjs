@@ -206,12 +206,12 @@ async function runVisualSmoke() {
       ) {
         return;
       }
-      // Contractual signed-out probes (DG64/DG105 last-check-in, DG76 nav
-      // prompt): an anonymous session's 401 is the designed answer, not an
-      // error — exempt on every entry.
+      // Contractual signed-out probe (DG64/DG105 last-check-in): an
+      // anonymous session's 401 is the designed answer, not an error —
+      // exempt on every entry. The nav prompt is a guest-readable 200 since
+      // BRAWUKA-818, so its 401 would fail here.
       if (
-        (msg.location()?.url?.startsWith(`${base}/api/checkins/last`) ||
-          msg.location()?.url === `${base}/api/navigations/prompt`) &&
+        msg.location()?.url?.startsWith(`${base}/api/checkins/last`) &&
         msg.text().startsWith(
           "Failed to load resource: the server responded with a status of 401 ",
         )

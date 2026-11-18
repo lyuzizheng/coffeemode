@@ -246,7 +246,8 @@ ADMIN_URL=""
 # Drop the drill scratch db on ANY exit. WITH (FORCE) terminates any session
 # that still holds the scratch database, so an operator's second connection
 # cannot keep it alive. A drop that still fails is reported and turns the exit
-# status nonzero: a drill must never end with a readable copy of the data.
+# status nonzero; the restored data can then remain readable in that database,
+# so the operator must drop the reported name and verify it is gone.
 cleanup_drill_db() {
   if [[ "$DRILL_MODE" == "true" && -n "${DRILL_DB:-}" && -n "${ADMIN_URL:-}" && "$DRY_RUN" == "false" ]]; then
     if ! pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \

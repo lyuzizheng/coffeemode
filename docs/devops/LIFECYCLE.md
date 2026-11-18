@@ -321,7 +321,11 @@ In drill mode (`--drill`), the script always targets the STAGING Dokploy Postgre
 2. Creates a scratch database `restore_drill_<timestamp>_<pid>` on staging.
 3. Restores schema, tables, and spatial data into the scratch database; a nonzero `pg_restore` exit status fails the drill.
 4. Executes PostGIS extension checks, row count audits (`cafes`, `checkins`, `profiles`: each must be readable with a numeric count, and the three must not all be empty), and the spatial query against that seeded data. A drill passes only if all three required relations exist as real tables (a same-name view is rejected), each is row-audited, and the spatial query matches at least one cafe; an archive missing a table, a view masquerading as one, or whose cafes all fall outside the radius, fails. An archive that predates the migrations (no application relations) also fails: an empty schema cannot certify that the application restores; that archive is only valid for a `--recreate` rollback.
-5. Drops the scratch database — on the failure paths as well as the success path, with `WITH (FORCE)` so a session that still holds it cannot keep it alive. A drop that still fails is reported and exits nonzero, so no drill ends with a readable copy of the data.
+5. Drops the scratch database — on the failure paths as well as the success path, with `WITH (FORCE)` so a session that still holds it cannot keep it alive. A drop that still fails is reported (`Cleanup FAILED: drill scratch database '<name>'`) and exits nonzero; the restored data can remain readable in that database until it is removed. On such a failure the operator must drop the reported scratch database and confirm its removal:
+   ```bash
+   psql "$ADMIN_URL" -c "DROP DATABASE IF EXISTS \"<reported-name>\" WITH (FORCE);"
+   psql "$ADMIN_URL" -tAc "SELECT count(*) FROM pg_database WHERE datname = '<reported-name>';"  # must print 0
+   ```
 
 The drill is strict by design (BRAWUKA-728): an unreadable archive, a nonzero
 `pg_restore` exit status, a missing required table, a restore in which all three

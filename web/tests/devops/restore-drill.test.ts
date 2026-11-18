@@ -112,14 +112,16 @@ case "$sql" in
   *"server_version_num"*) printf '%s\\n' "\${STUB_SERVER_VERSION_NUM:-160004}" ;;
   *"pg_terminate_backend"*) exit 0 ;;
   *"ALTER DATABASE"*) exit 0 ;;
-  *"DROP DATABASE IF EXISTS"*)
+  *"WITH (FORCE)"*)
+    # Only the cleanup drop carries FORCE; the pre-create cleanup must succeed
+    # so the test exercises a populated scratch database.
     if [ "\${STUB_DROP_FAIL:-0}" = "1" ]; then
       printf 'ERROR:  database is being accessed by other users\n' >&2
       exit 1
     fi
     exit 0
     ;;
-  *"CREATE DATABASE"*) exit 0 ;;
+  *"DROP DATABASE IF EXISTS"*|*"CREATE DATABASE"*) exit 0 ;;
   *"select rolsuper"*)
     if [ "\${STUB_RECOVERY_SUPER:-1}" = "1" ]; then printf 't\\n'; else printf 'f\\n'; fi
     ;;
@@ -661,6 +663,10 @@ describe("Recovery drill — failure lifecycle (BRAWUKA-728)", () => {
     });
 
     expect(run.status).not.toBe(0);
+    // The scratch database was created and loaded before the cleanup drop failed.
+    expect(run.invocations).toContain("CREATE DATABASE");
+    expect(run.invocations).toContain("pg_restore -d");
+    expect(run.output).toContain("Required table audit: cafes=");
     expect(run.output).toContain("Cleanup FAILED: drill scratch database");
     expect(run.output).not.toContain("PASSED");
   });

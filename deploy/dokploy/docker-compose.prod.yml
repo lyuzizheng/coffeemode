@@ -3,11 +3,14 @@
 #
 # Production Stack (BRAWUKA-241; decision 34a / BRAWUKA-240 D1):
 #   - web-prod: Next.js standalone container on internal port 3000
-#   - Database: Supabase prod project (Postgres + PostGIS, region ap-southeast-1)
-#     reached over DATABASE_URL (pooled, sslmode=require). No self-hosted
-#     postgres service exists in this stack.
+#   - db-prod: Dokploy Postgres `postgis/postgis:16-3.4` with its own volume,
+#     reachable only on coffeemode-prod-network at :5432 (no published port).
+#     App data lives here; Supabase keeps Auth only (ADR-0010, BRAWUKA-1010).
+#     DATABASE_URL/DIRECT_URL use explicit sslmode=disable — there is no TLS hop
+#     and no route from outside the stack.
 #   - Ingress: Web container connects to external traefik-net for Traefik routing
-#   - Isolation: Staging uses its own Supabase project; stacks share nothing
+#   - Isolation: Staging uses its own Postgres service and volume; stacks share
+#     nothing
 # Deployment Mode & Zero-Downtime Guarantee:
 #   - Docker Swarm Stack Mode (RECOMMENDED for zero-downtime): With Swarm enabled
 #     on the VPS (`docker swarm init`), Dokploy deploys via `docker stack deploy`,
@@ -53,6 +56,9 @@ services:
         APP_ENV: ${APP_ENV:?APP_ENV must be set in shell environment, via docker compose --env-file .env.prod, or Dokploy environment}
     container_name: coffeemode-web-prod
     restart: unless-stopped
+    depends_on:
+      db-prod:
+        condition: service_healthy
     env_file:
       - .env.prod
     environment:
@@ -120,6 +126,44 @@ services:
         reservations:
           cpus: "1.00"
           memory: 1024M
+  # Application database (ADR-0010). First initialization creates the
+  # non-superuser `coffeemode` role from db-init/10-app-role.sh; later restarts
+  # reuse the volume and skip init. Deployed by BRAWUKA-1011.
+  db-prod:
+    image: postgis/postgis:16-3.4
+    container_name: db-prod
+    restart: unless-stopped
+    # Only the initialization inputs — never the web container's whole env.
+    # `.env.prod.db` holds POSTGRES_DB/POSTGRES_USER/POSTGRES_PASSWORD and
+    # APP_DB_PASSWORD and is referenced by this service alone; the web container
+    # reads `.env.prod`, which carries no bootstrap credentials (BRAWUKA-1015).
+    env_file:
+      - .env.prod.db
+    volumes:
+      - db-prod-data:/var/lib/postgresql/data
+      - ./db-init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - coffeemode-prod-network
+    # TCP probe, not the unix socket: the entrypoint's temporary server during
+    # initdb answers a socket probe, so a socket-based check reported healthy
+    # before the real server existed and the first backup hit "connection
+    # refused". initdb runs with listen_addresses='', so this probe only passes
+    # once the post-init server accepts network connections.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.50"
+          memory: 1536M
+        reservations:
+          cpus: "0.50"
+          memory: 512M
+
   cloudflared-prod:
     image: cloudflare/cloudflared:2026.9.1
     container_name: coffeemode-cloudflared-prod
@@ -148,4 +192,8 @@ networks:
     driver: bridge
   traefik-net:
     external: true
+
+volumes:
+  db-prod-data:
+    name: db-prod-data
 

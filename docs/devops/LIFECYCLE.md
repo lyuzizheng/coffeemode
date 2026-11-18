@@ -64,7 +64,7 @@ This document establishes the canonical operational lifecycle, deployment runboo
                              │               │
                              │ (traefik-net) │
                              │               │
-             Host: staging.cafemood.app    │ Host: cafemood.app
+             Host: <staging-site-host>    │ Host: cafemood.app
                              │               │
             ┌────────────────▼───┐       ┌───▼────────────────┐
             │   Staging Stack    │       │  Production Stack  │
@@ -76,28 +76,29 @@ This document establishes the canonical operational lifecycle, deployment runboo
             └────────────────────┘  │    └────────────────────┘  │
                                     ▼                           ▼
                     ┌───────────────────────┐   ┌───────────────────────┐
-                    │ Supabase STAGING      │   │ Supabase PROD         │
-                    │ Postgres + PostGIS    │   │ Postgres + PostGIS    │
-                    │ region ap-southeast-1 │   │ region ap-southeast-1 │
-                    │ (pooled :6543 app /   │   │ (pooled :6543 app /   │
-                    │  direct :5432 DDL)    │   │  direct :5432 DDL)    │
+                    │ db-staging            │   │ db-prod               │
+                    │ PostGIS 16 on VPS     │   │ PostGIS 16 on VPS     │
+                    │ dokploy-network :5432 │   │ dokploy-network :5432 │
+                    │ (sslmode=disable)     │   │ (sslmode=disable)     │
                     └───────────────────────┘   └───────────────────────┘
+                       Supabase: STAGING Auth      Supabase: PROD Auth
 ```
 
 | Dimension | Staging Environment | Production Environment |
 | --- | --- | --- |
-| **Primary Ingress Domain** | `staging.cafemood.app` | `cafemood.app` (apex) |
+| **Primary Ingress Domain** | `<staging-site-host>` | `cafemood.app` (apex) |
 | **Secondary Domain** | None | `www.cafemood.app` (301 redirect to apex) |
 | **Backend Docker Network** | `coffeemode-staging-network` | `coffeemode-prod-network` |
 | **Ingress Network** | `traefik-net` | `traefik-net` |
-| **Database** | Supabase STAGING project (Postgres + PostGIS, `ap-southeast-1`) | Supabase PROD project (Postgres + PostGIS, `ap-southeast-1`) |
-| **App Connection** | `DATABASE_URL` pooled (`:6543`, `sslmode=require`) | `DATABASE_URL` pooled (`:6543`, `sslmode=require`) |
-| **Migration/Backup Connection** | `DIRECT_URL` session/direct (`:5432`, `sslmode=require`) | `DIRECT_URL` session/direct (`:5432`, `sslmode=require`) |
-| **WAN Database Exposure**| Supabase-managed (no VPS postgres port) | Supabase-managed (no VPS postgres port) |
+| **Database** | Dokploy Postgres `db-staging` (PostGIS 16) | Dokploy Postgres `db-prod` (PostGIS 16) |
+| **Auth** | Supabase STAGING project (Auth only) | Supabase PROD project (Auth only) |
+| **App Connection** | `DATABASE_URL` internal (`db-staging:5432`, `sslmode=disable`) | `DATABASE_URL` internal (`db-prod:5432`, `sslmode=disable`) |
+| **Migration/Backup Connection** | `DIRECT_URL` internal (`:5432`, `sslmode=disable`) | `DIRECT_URL` internal (`:5432`, `sslmode=disable`) |
+| **WAN Database Exposure**| none — no published port, `dokploy-network` only | none — no published port, `dokploy-network` only |
 | **Local Backup Dir**   | `backups/staging/` | `backups/prod/` |
 | **Cloudflare R2 Bucket**  | `coffeemode-images-staging` | `coffeemode-images-prod` |
-| **Cloudflare R2 Backups** | `s3://coffeemode-backups/staging/` (REQUIRED — Supabase free has no auto-backups) | `s3://coffeemode-backups/prod/` (REQUIRED — Supabase free has no auto-backups) |
-| **Public Image CDN Host** | `staging-images.cafemood.app` | `images.cafemood.app` |
+| **Cloudflare R2 Backups** | `s3://coffeemode-backups/staging/` (REQUIRED — the VPS database is the only running copy) | `s3://coffeemode-backups/prod/` (REQUIRED — the VPS database is the only running copy) |
+| **Public Image CDN Host** | `<staging-images-host>` | `images.cafemood.app` |
 | **Worker Services**       | `image-service-staging`, `poi-service-staging` | `image-service-prod`, `poi-service-prod` |
 | **Local Backup Retention**| 7 days | 14 days (30 days in Cloudflare R2) |
 ---
@@ -157,7 +158,7 @@ Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enfor
 - **Workflow**:
   1. Validates pending migrations for safety.
   2. Creates staging pre-migration database backup.
-  3. Executes database migrations over `DIRECT_URL` (Supabase staging session/direct connection).
+  3. Executes database migrations over `DIRECT_URL` (staging service, internal `:5432`).
   4. Triggers Dokploy staging deploy webhook (or Docker compose rolling rebuild) and waits for release convergence on `/api/health`.
   5. Runs post-deployment automated smoke tests (`scripts/devops/smoke-test.sh staging`).
   6. Runs full user-journey verification against a real PostGIS Postgres
@@ -177,7 +178,7 @@ Every pull request triggers GitHub Actions CI (`.github/workflows/ci.yml`) enfor
      `web/scripts/cleanup-stale-test-dbs.mjs --apply` (dry-run by default).
      Never run two instances concurrently against one server.
 
-**Staging edge credentials (BRAWUKA-762)**: `staging.cafemood.app` is gated by
+**Staging edge credentials (BRAWUKA-762)**: `<staging-site-host>` is gated by
 Cloudflare Access, so `upgrade-staging.sh` requires `CF_ACCESS_CLIENT_ID` and
 `CF_ACCESS_CLIENT_SECRET` (from the environment, or from
 `deploy/dokploy/.env.staging`) before it takes a snapshot, migrates, or triggers
@@ -197,7 +198,7 @@ identifies its probes with the same UA.
   1. **Pre-Promotion Staging Gate**: Executes smoke tests against Staging. If Staging is degraded or failing, production upgrade is immediately aborted.
   2. **Mandatory Safety Snapshot**: Automatically creates a pre-migration snapshot via `scripts/devops/backup.sh --env prod --reason pre-migration`.
   3. **Zero-Downtime Migration Safety Check**: Enforces non-locking DDL (`CREATE INDEX CONCURRENTLY`, nullable fields).
-  4. **Migration Execution**: Applies pending migrations over `DIRECT_URL` (Supabase prod session/direct connection — never the transaction pooler).
+  4. **Migration Execution**: Applies pending migrations over `DIRECT_URL` (production service, internal `:5432`).
   5. **Zero-Downtime Rolling Swap & Convergence**: Triggers Dokploy rolling update. Waits for deployment convergence before running smoke tests. Traefik directs traffic to the new container once `/api/health` reports healthy.
   6. **Post-Deployment Verification**: Runs automated smoke tests (`scripts/devops/smoke-test.sh prod`).
 
@@ -209,7 +210,7 @@ identifies its probes with the same UA.
   2. Fails closed instead of guessing: a first deployment, a release recorded without a snapshot, an image with no later boundary, or an archive that is missing from disk all abort with an actionable error — the script never falls back to an older archive. A deployment that failed before its release-history append has no recorded image, so `--image-tag` names the image the rollback **runs** — the target previous image, not the failed release (the `upgrade-prod.sh` failure trap prints the exact command).
   3. Reverts the web application container to the resolved image: `docker service update --image <repo>:<TAG>` in Swarm mode, or a parameterized `IMAGE_TAG` compose update otherwise — never `docker service rollback`, whose "previous service spec" need not be the resolved image (a tag can be redeployed, and a release that failed before its container update never became anyone's previous spec).
   4. Verifies the container reports the resolved image before the database is touched: the report must name the whole reference Step 1 selected, `<repo>:<TAG>`, optionally pinned to the digest that tag resolved to (`<repo>:<TAG>@sha256:<digest>`). A missing report, a different tag, or another repository carrying the same tag aborts with the restore skipped, so a snapshot is never restored under an image the plan did not select.
-  5. Restores the production database from the resolved boundary snapshot using `scripts/devops/restore.sh --env prod --file <SNAPSHOT> --yes`.
+  5. Restores the production database from the resolved boundary snapshot using `scripts/devops/restore.sh --env prod --file <SNAPSHOT> --recreate --yes`. `--recreate` builds a replacement database, restores and verifies it against the archive's relation baseline, then promotes it (both database renames commit in one transaction, so an interrupted promotion leaves the original database serving) and retires the old one; the live database is never dropped before its replacement passes. In-place `pg_restore --clean` cannot revert the schema (PostGIS extension dependencies, surviving migration ledger).
   6. Runs smoke tests to confirm healthy production recovery.
 
 ### Phase 6: Automated Backups & Disaster Recovery
@@ -225,12 +226,12 @@ identifies its probes with the same UA.
   - **Daily Tier**: Automated daily backups retained for 14 days (prod) or 7 days (staging).
   - **Weekly Tier**: Backups taken on Sundays retained for 28 days (4 weeks).
 - **Database Backup Source**:
-  - `pg_dump -Fc` runs against `DATABASE_URL` (Supabase pooled, `sslmode=require`) with gzip-9; single session, never parallel.
-  - REQUIRED (not optional): Supabase free tier ships no automated backups, so `pg_dump → R2` is the only offsite copy.
+  - `pg_dump -Fc` runs against the env's `DIRECT_URL` (`coffeemode-*-db:5432`, `sslmode=disable`) with the server-matched client (`lib/pg-client.sh`) and gzip-9; single session, never parallel.
+  - REQUIRED (not optional): the VPS database is the only running copy, so `pg_dump → R2` is the only offsite copy.
 - **Configuration Archiving**:
   - Atomic PostgreSQL compressed dump (`pg_dump -Fc` with gzip-9).
   - Deployment and environment configuration archiving (`.tar.gz` with SHA256 checksums).
-  - No physical volume tar: there is no self-hosted postgres data volume.
+  - No physical volume tar: the database volume belongs to the Dokploy `postgres` service; the dump is the logical backup.
 - **Offsite Replication**: Backups and checksums are replicated offsite to Cloudflare R2 bucket `s3://coffeemode-backups/<env>/`.
 ### Phase 7: Cold-Start VPS Provisioning
 - **Target**: Blank Ubuntu or Debian LTS server.
@@ -241,7 +242,7 @@ identifies its probes with the same UA.
   4. Configures Dokploy PaaS and Traefik reverse proxy on ports 80/443.
   5. Provisions Cloudflare R2 buckets (`coffeemode-images-staging`, `coffeemode-images-prod`, `coffeemode-backups`), CORS rules, and DNS records.
   6. Creates isolated bridge networks (`coffeemode-staging-network`, `coffeemode-prod-network`).
-  7. Verifies Supabase prod + staging projects (PostGIS present) and runs migrations over `DIRECT_URL` (session/direct).
+  7. Verifies the Dokploy `postgres` services (PostGIS present) and runs migrations over `DIRECT_URL` (internal `:5432`); Supabase Auth is verified separately.
   8. Seeds service account profile (`00000000-0000-4000-a000-000000000001`).
   9. Builds and deploys web containers and runs end-to-end smoke tests.
 
@@ -259,10 +260,10 @@ All operational scripts live canonically under `scripts/devops/` and are fully e
 | `upgrade-staging.sh` | Upgrades staging service with migrations and smoke tests | `--deploy-url`, `--skip-backup`, `--image-tag`, `--dry-run` |
 | `upgrade-prod.sh` | Zero-downtime production upgrade with staging gate & safety snapshot | `--skip-staging-gate`, `--deploy-url`, `--image-tag`, `--dry-run` |
 | `rollback-prod.sh` | Instant rollback of container image and database to the boundary before a release | `--backup-file`, `--image-tag`, `--plan-only`, `--yes`, `--dry-run` |
-| `backup.sh` | Atomic `pg_dump -Fc` compressed backup + volume + R2 GFS upload | `--env`, `--type [db\|vol\|full]`, `--reason`, `--retention-days`, `--dry-run` |
-| `restore.sh` | Restores database archive with PostGIS verification & drill mode | `--env`, `--file`, `--download-r2`, `--drill`, `--yes`, `--dry-run` |
+| `backup.sh` | Atomic `pg_dump -Fc` compressed backup (server-matched client, `lib/pg-client.sh`) + config archive + R2 GFS upload | `--env`, `--type [db\|vol\|full]`, `--reason`, `--retention-days`, `--dry-run` |
+| `restore.sh` | Restores database archive as the authorized recovery role (`<ENV>_RESTORE_URL`, operator shell only), normalizes ownership, verifies PostGIS and the archive's relation baseline, dry-run and drill modes (server-matched client); `--recreate` verifies a replacement before swapping it in | `--env`, `--file`, `--download-r2`, `--drill`, `--recreate`, `--yes`, `--dry-run` |
 | `smoke-test.sh` | In-repo post-deployment automated health verification | `staging\|prod`, `--url <override>`, `--timeout <sec>`, `--cf-client-id <id>`, `--cf-client-secret <sec>` |
-| `provision-supabase.sh` | Idempotent Supabase Postgres & Auth provisioning, PostGIS check, and RLS defense | `--database-url`, `--supabase-url`, `--verify-only`, `--dry-run` |
+| `provision-supabase.sh` | Idempotent Supabase **Auth** verification (app data lives in Dokploy Postgres, ADR-0010) | `--supabase-url`, `--verify-only`, `--dry-run` |
 ---
 
 ## 5. Disaster Recovery & Recovery Drill Playbook
@@ -278,7 +279,7 @@ All operational scripts live canonically under `scripts/devops/` and are fully e
    ```
 3. If restoring to a specific known snapshot:
    ```bash
-   ./scripts/devops/restore.sh --env prod --file /backups/coffeemode_prod_pre-migration_YYYYMMDD_HHMMSSZ.dump.gz --yes
+   ./scripts/devops/restore.sh --env prod --file /backups/coffeemode_prod_pre-migration_YYYYMMDD_HHMMSSZ.dump.gz --recreate --yes
    ```
 4. Verify production health:
    ```bash
@@ -315,17 +316,22 @@ To verify backup viability without touching production or staging data, run non-
 ```bash
 ./scripts/devops/restore.sh --env staging --file /path/to/backup.dump.gz --drill
 ```
-In drill mode (`--drill`), the script always targets the STAGING Supabase project:
+In drill mode (`--drill`), the script always targets the STAGING Dokploy Postgres:
 1. Validates the SHA256 checksum and that `pg_restore` can read the archive's table of contents (the gzip stream is drained, so a valid archive larger than the pipe buffer is never rejected by a `SIGPIPE`).
 2. Creates a scratch database `restore_drill_<timestamp>_<pid>` on staging.
 3. Restores schema, tables, and spatial data into the scratch database; a nonzero `pg_restore` exit status fails the drill.
-4. Executes PostGIS extension checks, row count audits (`cafes`, `checkins`, `profiles`: each must be readable with a numeric count, and the three must not all be empty), and spatial queries.
-5. Drops the scratch database — on the failure paths as well as the success path — and reports a verified `PASSED` result.
+4. Executes PostGIS extension checks, row count audits (`cafes`, `checkins`, `profiles`: each must be readable with a numeric count, and the three must not all be empty), and the spatial query against that seeded data. A drill passes only if all three required relations exist as real tables (a same-name view is rejected), each is row-audited, and the spatial query matches at least one cafe; an archive missing a table, a view masquerading as one, or whose cafes all fall outside the radius, fails. An archive that predates the migrations (no application relations) also fails: an empty schema cannot certify that the application restores; that archive is only valid for a `--recreate` rollback.
+5. Drops the scratch database — on the failure paths as well as the success path, with `WITH (FORCE)` so a session that still holds it cannot keep it alive. A drop that still fails is reported (`Cleanup FAILED: drill scratch database '<name>'`) and exits nonzero; the restored data can remain readable in that database until it is removed. On such a failure the operator must drop the reported scratch database and confirm its removal:
+   ```bash
+   psql "$ADMIN_URL" -c "DROP DATABASE IF EXISTS \"<reported-name>\" WITH (FORCE);"
+   psql "$ADMIN_URL" -tAc "SELECT count(*) FROM pg_database WHERE datname = '<reported-name>';"  # must print 0
+   ```
 
 The drill is strict by design (BRAWUKA-728): an unreadable archive, a nonzero
 `pg_restore` exit status, a missing required table, a restore in which all three
-required tables are empty, a missing PostGIS extension, or a failed spatial query
-each exit nonzero. An individual table may legitimately restore empty; only the
+required tables are empty, a missing PostGIS extension, a failed spatial query,
+or a spatial query that matches zero cafes each exit nonzero. A required name
+that restores as a view is rejected, not audited. An individual table may legitimately restore empty; only the
 all-empty set is rejected. A drill that cannot verify the restore never reports
 `PASSED`, so a green drill is evidence the archive was actually restorable.
 
@@ -345,7 +351,7 @@ all-empty set is rejected. A drill that cannot verify the restore never reports
   ```bash
   docker logs --tail 100 -f coffeemode-web-prod
   ```
-- **Verify Supabase connectivity** (no local postgres container; per-env scoped vars only):
+- **Verify database and Auth connectivity** (per-env scoped vars only):
   ```bash
   psql "$PROD_DIRECT_URL" -c "SELECT PostGIS_Version();"     # prod
   psql "$STAGING_DIRECT_URL" -c "SELECT PostGIS_Version();"  # staging

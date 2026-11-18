@@ -49,7 +49,7 @@ root → coffeemode-email            group_wait 30s, group_interval 5m, repeat 4
   `env="staging"` 且带到期时间，不要静音 root。
 - 回滚或重启：Dokploy → `coffeemode-web-staging` → Redeploy；数据库走
   `scripts/devops/restore.sh --env staging`。
-- 验证恢复：`curl -sS -o /dev/null -w '%{http_code}' https://staging.cafemood.app/api/health` = 200。
+- 验证恢复：`curl -sS -o /dev/null -w '%{http_code}' https://<staging-site-host>/api/health` = 200。
 
 ## 4. prod 处置与回滚
 

@@ -345,7 +345,11 @@ fi
 stage "Step 3/4: Restoring Production Database from Snapshot"
 
 log "Executing database restoration via restore.sh..."
-RESTORE_ARGS=(--env prod --file "$BACKUP_FILE" --yes)
+# --recreate is required: pg_restore --clean over the populated production
+# database cannot drop the PostGIS extension while dependent objects exist, and
+# the migration ledger survives. The rollback rebuilds the database from the
+# boundary snapshot instead (ADR-0010 §6.7).
+RESTORE_ARGS=(--env prod --file "$BACKUP_FILE" --recreate --yes)
 if [ "$DRY_RUN" = true ]; then
   RESTORE_ARGS+=(--dry-run)
 fi

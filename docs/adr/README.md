@@ -21,3 +21,4 @@ Every ADR must have a `## Status` heading with one of: `Proposed`, `Accepted`, `
 | [0007-sitemap-full-scan-accepted.md](./0007-sitemap-full-scan-accepted.md) | Sitemap query — full scan accepted until sharding threshold | Accepted |
 | [0008-checkin-feed-unvirtualized-accepted.md](./0008-checkin-feed-unvirtualized-accepted.md) | Check-in feed — unvirtualized rendering accepted until deep-scroll threshold | Accepted |
 | [0009-edge-forwarded-proto-trust.md](./0009-edge-forwarded-proto-trust.md) | Edge header trust — `x-forwarded-proto` | Accepted |
+| [0010-self-hosted-postgres-supabase-auth.md](./0010-self-hosted-postgres-supabase-auth.md) | Application data on Dokploy Postgres, Supabase Auth retained | Accepted |

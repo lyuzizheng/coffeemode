@@ -57,13 +57,12 @@ export function parseEnvFile(filePath) {
  *   environment, injectable so a test can prove precedence deterministically.
  * @returns {{ kind: "help" }
  *   | { kind: "unknown-option", arg: string }
- *   | { kind: "config", config: { databaseUrl: string, supabaseUrl: string, serviceRoleKey: string, anonKey: string, dryRun: boolean, verifyOnly: boolean, skipAuth: boolean, verbose: boolean } }}
+ *   | { kind: "config", config: { supabaseUrl: string, serviceRoleKey: string, anonKey: string, dryRun: boolean, verifyOnly: boolean, skipAuth: boolean, verbose: boolean } }}
  *   The caller renders `help` / `unknown-option` and exits with the code the
  *   pre-decomposition executable used (0 / 1).
  */
 export function parseCliArgs(argv, { repoRoot, webDir, env = process.env }) {
   const options = {
-    databaseUrl: "",
     supabaseUrl: "",
     serviceRoleKey: "",
     anonKey: "",
@@ -80,9 +79,6 @@ export function parseCliArgs(argv, { repoRoot, webDir, env = process.env }) {
       case "-h":
       case "--help":
         return { kind: "help" };
-      case "--database-url":
-        options.databaseUrl = argv[++i];
-        break;
       case "--supabase-url":
         options.supabaseUrl = argv[++i];
         break;
@@ -140,11 +136,6 @@ export function parseCliArgs(argv, { repoRoot, webDir, env = process.env }) {
   return {
     kind: "config",
     config: {
-      databaseUrl: getVal(options.databaseUrl, [
-        "DATABASE_URL",
-        "SUPABASE_DATABASE_URL",
-        "POSTGRES_URL",
-      ]),
       supabaseUrl: getVal(options.supabaseUrl, [
         "SUPABASE_URL",
         "NEXT_PUBLIC_SUPABASE_URL",

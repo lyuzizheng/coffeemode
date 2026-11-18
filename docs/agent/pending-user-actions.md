@@ -28,7 +28,7 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 - [x] Ephemeral runner-local Postgres (`postgis/postgis:16-3.4`) started via `docker compose -f ../docker-compose.yml up -d --wait postgres`, with `STAGING_DATABASE_URL` hardcoded to `postgresql://coffeemode:coffeemode@localhost:5432/coffeemode` in `.github/workflows/staging-journey.yml` (BRAWUKA-525). Dokploy CI Postgres (`coffeemode-ci-postgres`) and Cloudflare Tunnel (`ci-db.cafemood.app`) path superseded and scheduled for decommission.
 - [x] GitHub Environment `staging` secrets cleanup: remove `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET`, and `STAGING_DATABASE_URL` (no longer needed by staging-journey). Retain `SUPABASE_URL` (= `https://ojujmjewtbquiddswyrg.supabase.co`) and the publishable key for auth smoke checks — the workflow now reads `SUPABASE_PUBLISHABLE_KEY` and falls back to the existing `SUPABASE_ANON_KEY` secret, so renaming the secret is optional. (`SUPABASE_ANON_KEY` value updated 2026-09-23 to the new-style publishable key — secret name unchanged.)
 - [ ] (Optional, for real-session journey suites) Staging Supabase project dashboard → Settings → API Keys: copy the `sb_secret_…` key into GitHub Environment `staging` as `SUPABASE_SECRET_KEY` (legacy `SUPABASE_SERVICE_ROLE_KEY` still resolves as the fallback). (Staging CI verification currently passes using the publishable key for auth smoke verification.)
-- [x] Redirect URLs allowlist on the **staging** project (spec 0010 §1): `http://localhost:3000/auth/callback` (local dev against staging auth) + `https://staging.cafemood.app/auth/callback`. (owner 2026-09-23: done)
+- [x] Redirect URLs allowlist on the **staging** project (spec 0010 §1): `http://localhost:3000/auth/callback` (local dev against staging auth) + `https://<staging-site-host>/auth/callback`. (owner 2026-09-23: done)
 - [x] Confirm Google provider is enabled on the **staging** project (item 3's client works for both; the Supabase callback `https://ojujmjewtbquiddswyrg.supabase.co/auth/v1/callback` must be in the Google client's authorized redirect URIs). (owner 2026-09-23: done)
 - [ ] Dokploy staging app env still needs the publishable key by hand (2026-09-23, Dokploy MCP unreachable): set `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` to the `sb_publishable_…` value in the Dokploy UI and rebuild (the legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY` name still resolves) — `NEXT_PUBLIC_*` is inlined into the client bundle.
 - [ ] `production` environment: owner (`lyuzizheng`) is the required reviewer (already set); prod secrets land there only at promotion time, never before.
@@ -38,7 +38,7 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 - [x] Create the Supabase project (free tier) in the region closest to the VPS (CafeMood project `rsdzcegylqgccaneomph` active in `ap-southeast-1`)
 - [x] Enable PostGIS in the SQL editor: `CREATE EXTENSION postgis;` (automated & verified via `scripts/devops/provision-supabase.sh`)
 - [x] Apply the schema with the session/direct connection (not the transaction pooler): `DATABASE_URL=<session-conn> npm run db:migrate` (all 19 migrations 0001–0019 applied; automated via `scripts/devops/provision-supabase.sh`)
-- [x] ~~Put the pooled connection string into the VPS env as `DATABASE_URL`~~ Superseded 2026-09-20 (BRAWUKA-507): staging app data moved off Supabase to Dokploy VPS Postgres `coffeemode-staging-db`; `DATABASE_URL` now points at the `dokploy-network` internal `:5432` (`sslmode=disable`). Prod still needs the Supabase pooled string when it deploys (BRAWUKA-500).
+- [x] ~~Put the pooled connection string into the VPS env as `DATABASE_URL`~~ Superseded 2026-09-20 (BRAWUKA-507): staging app data moved off Supabase to a Dokploy VPS Postgres service; `DATABASE_URL` now points at the `dokploy-network` internal `:5432` (`sslmode=disable`). Prod still needs the Supabase pooled string when it deploys (BRAWUKA-500).
 - [~] 已迁 VPS cron: nightly recompute 与 Helpful ranking 快照已迁至 Dokploy 定时任务（02:00 UTC，BRAWUKA-475），DATABASE_URL 仅在 VPS env 保留，无需进 GitHub secrets。**2026-09-21（BRAWUKA-598）：调度已停用** —— 它挂在从未部署过的 `coffeemode-web-prod` 上（BRAWUKA-500，Owner 已决定暂不部署），Dokploy 每次都在容器查找阶段中止（`Container not found`），命令根本没执行。prod 容器起来后随 BRAWUKA-500 一并重新启用；prod env 另缺 `DATABASE_URL` 与 `MULTICA_AUTOPILOT_WEBHOOK_URL`，两者都是该 job 的必需项
 - [x] 定时任务失败告警自愈接线（BRAWUKA-476）：Dokploy env 配置 `MULTICA_AUTOPILOT_WEBHOOK_URL`，并在 Dokploy Notifications 挂载 Custom Webhook（兜底平台与构建异常）；非零退出时 POST 触发 CoffeeMode 运维告警自愈 autopilot 自动建单
 - [x] Verify product tables are NOT reachable via the Supabase Data API (PostgREST) with the browser publishable key — all application tables have RLS enabled and grants revoked from `anon` & `authenticated` (verified via `scripts/devops/provision-supabase.sh`)
@@ -62,7 +62,7 @@ Status legend: `[ ]` needed, `[~]` partially done, `[x]` done.
 
 ## 5a. Cloudflare Turnstile widget + keys — for anonymous `POST /api/places/resolve` (BRAWUKA-239)
 
-- [x] Create the Turnstile widget (done 2026-09-23 via Cloudflare API, BRAWUKA-680): widget `cafemood_places_resolve`, Managed mode, domains `cafemood.app` / `staging.cafemood.app` / `www.cafemood.app` / `localhost` / `127.0.0.1` / `brabalawuka.cloudflareaccess.com` (free, unlimited validations; the Access login host is included so the challenge loads behind Cloudflare Access)
+- [x] Create the Turnstile widget (done 2026-09-23 via Cloudflare API, BRAWUKA-680): widget `cafemood_places_resolve`, Managed mode, domains `cafemood.app` / `<staging-site-host>` / `www.cafemood.app` / `localhost` / `127.0.0.1` / `brabalawuka.cloudflareaccess.com` (free, unlimited validations; the Access login host is included so the challenge loads behind Cloudflare Access)
 - [ ] Put the secret into the app env as `TURNSTILE_SECRET_KEY` (server-only; VPS env / secrets manager — never `NEXT_PUBLIC_*`, never chat/docs/repo) and the sitekey as `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (rebuild after setting — Next inlines it into the client bundle). The widget above already exists — only this env fill remains (Dokploy MCP unreachable 2026-09-23, needs the owner in the Dokploy UI; `TURNSTILE_SECRET_KEY` / `NEXT_PUBLIC_TURNSTILE_SITE_KEY` presence in the staging env unconfirmed). Dev/test without keys skip verification; production without `TURNSTILE_SECRET_KEY` fails closed (403 `bot_verification_failed`)
 - [ ] Verify: anonymous `POST /api/places/resolve` without/forged token → 403; real browser link-import flow → 200
 
@@ -81,13 +81,13 @@ so a key restricted to the legacy Places API would 403 every live search.
 ## 6. image-service deploy
 
 - [x] Create R2 bucket and S3 API token for image uploads (`coffeemode-images-prod` and `coffeemode-images-staging` provisioned in APAC with CORS configured)
-  - The CORS origins were provisioned pre-rename as `coffeemode.app` / `staging.coffeemode.app`, so the 2026-09-14 rename to `cafemood.app` silently broke every browser presigned PUT (`403 CORS not configured for this bucket`) — BRAWUKA-560. Corrected 2026-09-23 on both buckets to `cafemood.app`, `www.cafemood.app`, `staging.cafemood.app`, `localhost:3000`. `scripts/devops/bootstrap.sh` now verifies the CORS API response and aborts on rejection instead of discarding it with `|| true`.
+  - The CORS origins were provisioned pre-rename as `coffeemode.app` / `staging.coffeemode.app`, so the 2026-09-14 rename to `cafemood.app` silently broke every browser presigned PUT (`403 CORS not configured for this bucket`) — BRAWUKA-560. Corrected 2026-09-23 on both buckets to `cafemood.app`, `www.cafemood.app`, `<staging-site-host>`, `localhost:3000`. `scripts/devops/bootstrap.sh` now verifies the CORS API response and aborts on rejection instead of discarding it with `|| true`.
 - [x] Set the per-environment values in `image-service/wrangler.toml` `[env.production]` / `[env.staging]` (the top-level `[vars]` stay as the local-dev defaults and are never deployed)
 - [x] Deployed image-service (workers `image-service-prod` / `image-service-staging`; redeploys go through the guarded `npm run deploy -- --env staging|production`):
   - Secrets installed via Cloudflare Worker bindings (`IMAGE_SERVICE_TOKEN`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`)
   - Deployed to `https://image-service-prod.lyuzizheng.workers.dev` (production) and `https://image-service-staging.lyuzizheng.workers.dev` (staging)
   - `IMAGE_SERVICE_URL` and `IMAGE_SERVICE_TOKEN` recorded in local `web/.env.local`
-- [ ] Attach custom domains `images.cafemood.app` and `staging-images.cafemood.app` to `coffeemode-images-prod` and `coffeemode-images-staging` R2 buckets (zone `cafemood.app` active; records go in via BRAWUKA-236/238, issue #142)
+- [ ] Attach custom domains `images.cafemood.app` and `<staging-images-host>` to `coffeemode-images-prod` and `coffeemode-images-staging` R2 buckets (zone `cafemood.app` active; records go in via BRAWUKA-236/238, issue #142)
 - [ ] Configure bucket defenses:
   - Set a maximum upload size (Cloudflare WAF / R2 bucket limits or a `Content-Length`-enforced presigned URL) to mitigate abuse.
 - Orphan cleanup (issue #158, hardened BRAWUKA-400): do NOT add a blanket R2 lifecycle expiry on
@@ -127,7 +127,7 @@ so a key restricted to the legacy Places API would 403 every live search.
 ## 7. Domain + deploy (later phase)
 
 - [x] Domain registered + Cloudflare zone delegated — `cafemood.app` live with NS on emily/brodie.ns.cloudflare.com (verified 2026-09-14 via BRAWUKA-235 audit); zone currently holds zero DNS records, apex records go in via BRAWUKA-236/238
-- [ ] Create proxied DNS records for `cafemood.app` / `staging.cafemood.app` (BRAWUKA-236/238 scope); Cloudflare proxy/CDN in front
+- [ ] Create proxied DNS records for `cafemood.app` / `<staging-site-host>` (BRAWUKA-236/238 scope); Cloudflare proxy/CDN in front
 - [ ] Cloudflare account for the POI worker (`poi-service.cafemood.app` once records land)
 - [x] In a terminal (from `poi-service/`), create the per-environment resources and add a `[env.staging]` / `[env.production]` block to `poi-service/wrangler.toml` (spec 0005 §3 names): (done 2026-09-12, BRAWUKA-222 — created on the `Lyuzizheng@gmail.com` account via Cloudflare MCP; `wrangler.toml` now carries real ids for both environments, the top-level local-dev placeholders untouched)
   - `poi-store-staging` = `d069da6b-07e5-4fc0-b6a9-a685b3bef8b8`, `poi-store` = `7d01d154-03a7-4483-8b54-83f2c310af3b` (`POI_DB`)
@@ -140,8 +140,8 @@ so a key restricted to the legacy Places API would 403 every live search.
 - [x] Worker route migration (BRAWUKA-236) — custom domains attached via Cloudflare MCP and verified:
   - `poi-service.cafemood.app` → `poi-service-prod` (/health 200)
   - `image-service.cafemood.app` → `image-service-prod` (/health 200)
-  - `poi-service-staging.cafemood.app` → `poi-service-staging` (/health 200)
-  - `image-service-staging.cafemood.app` → `image-service-staging` (/health 200)
+  - `<staging-poi-service-host>` → `poi-service-staging` (/health 200)
+  - `<staging-image-service-host>` → `image-service-staging` (/health 200)
   - Dokploy staging app (`coffeemode-web-staging`) updated with custom domain `POI_SERVICE_URL` / `IMAGE_SERVICE_URL` and restarted; Dokploy prod app env prepared.
   - `workers.dev` disabled across all 4 workers via Cloudflare API (`subdomain` endpoint returns enabled: false; all 4 return 404).
   - `workers_dev = false` pinned in `poi-service/wrangler.toml` and `image-service/wrangler.toml`.

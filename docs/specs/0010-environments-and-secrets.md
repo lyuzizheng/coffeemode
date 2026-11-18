@@ -29,25 +29,36 @@ here does not exist for that environment.
 | --- | --- | --- | --- |
 | Supabase project ref | none — `supabase-mock` (compose, `:54321`) or `supabase start` only when offline | `ojujmjewtbquiddswyrg` (ap-southeast-1) | `rsdzcegylqgccaneomph` (ap-southeast-1) |
 | Auth providers | fake JWT (mock) — deterministic, unsigned | Google OAuth (enabled); email | Apple + Google OAuth |
-| Postgres instance | `postgis/postgis:16-3.4` container (docker-compose) | Dokploy VPS Postgres `coffeemode-staging-db` (`postgis/postgis:16-3.4`, app data, BRAWUKA-507); Dokploy VPS CI Postgres (staging-journey) | Supabase prod Postgres + PostGIS 16 |
-| Postgres connection | `localhost:5432` direct | runtime: `dokploy-network` internal `:5432` (`sslmode=disable`, same-host overlay); CI journey: `localhost:5432` via Cloudflare Access TCP tunnel to Dokploy VPS CI Postgres | pooler `:6543` + direct `:5432` split |
+| Postgres instance | `postgis/postgis:16-3.4` container (docker-compose) | Dokploy VPS Postgres (`postgis/postgis:16-3.4`, app data, BRAWUKA-507) | Dokploy VPS Postgres (`postgis/postgis:16-3.4`, app data, ADR-0010) |
+| Postgres connection | `localhost:5432` direct | runtime + migrations: `dokploy-network` internal `:5432` (`sslmode=disable`); CI journey: runner-local `localhost:5432` | runtime + migrations: `dokploy-network` internal `:5432` (`sslmode=disable`), no published port |
 | Object storage | MinIO container (compose) | R2 `coffeemode-images-staging` | R2 `coffeemode-images-prod` |
 | Backup storage | none | R2 `coffeemode-backups/staging/` (7-day local retention) | R2 `coffeemode-backups/prod/` (14-day local, 30-day R2) |
 | Workers | miniflare-poi / miniflare-image (compose, `wrangler dev --local`) | `poi-service-staging`, `image-service-staging` (D1 `poi-store-staging`, KV `poi-cache-staging`) | `poi-service-prod`, `image-service-prod` (D1 `poi-store`, KV `poi-cache`) |
-| Web domain | `localhost:3000` | `staging.cafemood.app` | `cafemood.app` + `www.cafemood.app` (301) |
-| Image CDN domain | MinIO local URL | `staging-images.cafemood.app` | `images.cafemood.app` |
+| Web domain | `localhost:3000` | `<staging-site-host>` | `cafemood.app` + `www.cafemood.app` (301) |
+| Image CDN domain | MinIO local URL | `<staging-images-host>` | `images.cafemood.app` |
 | Who can access | the developer only | public URL; test data only, no real user data | public; real user data |
 
 ### 2. Data-store ruling (resolves the spec 0001 / `.env.example` contradiction)
 
-**Production application data lives in Supabase Postgres; staging app data moved to a Dokploy VPS Postgres (BRAWUKA-507, owner decision 2026-09-20).**
-Spec 0001 §Data layer and ADR-0002 (revised 2026-08-28, 0004 decision 34a)
-record the original all-Supabase ruling; the staging exception keeps Supabase
-for auth only and moves app data to `coffeemode-staging-db` (Dokploy
-`postgres` service, `postgis/postgis:16-3.4`, reachable over `dokploy-network`
-at `:5432`, `sslmode=disable`). `deploy/dokploy/.env.staging.example` reflects
-the internal connection shape. Production still uses Supabase Postgres
-(`DATABASE_URL` → Supavisor `:6543`, `DIRECT_URL` → `:5432`).
+**Application data for both environments lives in Dokploy VPS Postgres; Supabase keeps Auth only (ADR-0010, BRAWUKA-1010).**
+Staging moved first (BRAWUKA-507, owner decision 2026-09-20) to
+the staging service; production follows on its own service
+(`postgis/postgis:16-3.4`, reachable over `dokploy-network` at `:5432`,
+`sslmode=disable`, no published port). Concrete hosts live in the project's
+private infrastructure record (BRAWUKA-1016). Both env files reflect the internal
+connection shape; `DATABASE_URL` and `DIRECT_URL` name the environment's own
+service. Restores, drills and `rollback-prod.sh` use a separate operator-only
+`STAGING_RESTORE_URL` / `PROD_RESTORE_URL` exported in the shell: the authorized
+recovery role that can drop and recreate the PostGIS extension. The recovery URL
+is never stored in a compose `env_file` (`.env.prod`, `.env.staging`): those
+files are mounted into the web container, so a credential there would be
+readable by the application (BRAWUKA-1015). Postgres bootstrap inputs
+(`POSTGRES_*`, `APP_DB_PASSWORD`) live in `deploy/dokploy/.env.prod.db`, mounted
+by `db-prod` only. The application
+role is `LOGIN` without `SUPERUSER` or `CREATEDB` and is never a restore source
+(ADR-0010 §3). The original all-Supabase ruling in spec 0001 §Data layer and the
+2026-08-28 revision of ADR-0002 are superseded for the data layer; the Auth
+provider, UUID identity contract, and OAuth flows are unchanged.
 
 For CI testing, post-merge verification (`staging-journey`) runs against an ephemeral
 runner-local Postgres container (`postgis/postgis:16-3.4`, started via
@@ -56,7 +67,7 @@ external Dokploy CI Postgres / Cloudflare Access tunnel path (BRAWUKA-474), elim
 tunnel latency, Access token secrets, Dokploy dependency, and network ECONNRESET
 jitter while completely isolating scratch database creation and teardown from the
 Supabase staging project. Supabase staging retains staging Auth smoke checks
-only — staging application data now lives in `coffeemode-staging-db` (§2).
+only — staging application data lives in the staging Dokploy Postgres (§2).
 Local development keeps a **local** `postgis/postgis:16-3.4` container as the
 default `DATABASE_URL` for app data, while auth defaults to the **staging**
 Supabase project (§3). Rationale: local writes must never pollute shared staging

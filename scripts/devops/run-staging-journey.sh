@@ -6,14 +6,15 @@
 # Boundaries:  docs/specs/0010-environments-and-secrets.md §4/§5
 #
 # Before-run setup + full user-journey verification + after-run cleanup against
-# a staging Supabase Postgres — the staging counterpart of the CI
+# the staging Dokploy Postgres (ADR-0010) — the staging counterpart of the CI
 # `integration-gate` (which runs the same suites against local PostGIS).
 #
 #   0. Drift precheck: repo migrations vs staging ledger
 #      (web/scripts/check-migration-drift.mjs, read-only; names the gap, never
-#      applies anything — setup below converges it).
-#   1. Setup: idempotent migrations + RLS + auth verify via
-#      scripts/devops/setup-supabase.mjs (skippable with --skip-setup).
+#      applies anything — step 1 converges it).
+#   1. Setup: idempotent migrations via web/scripts/migrate.mjs, then Supabase
+#      Auth verification via scripts/devops/setup-supabase.mjs (skippable with
+#      --skip-setup).
 #   2. Run: real-DB journey suites (API calls + stored-state assertions) with
 #      ALLOW_REMOTE_INTEGRATION_DB=1. Each suite provisions isolated
 #      `{prefix}_{pid}_{uuid}` databases and drops them in afterAll
@@ -130,20 +131,20 @@ fi
 [[ "$STAGING_MAX_WORKERS" =~ ^[1-9][0-9]*$ ]] || fail "STAGING_MAX_WORKERS must be a positive integer (got '${STAGING_MAX_WORKERS:-}')"
 export VITEST_MAX_WORKERS="$STAGING_MAX_WORKERS"
 
-SETUP_ARGS=(--database-url "$STAGING_DATABASE_URL")
+AUTH_ARGS=()
 if [[ -n "${SUPABASE_URL:-}" ]]; then
-  SETUP_ARGS+=(--supabase-url "$SUPABASE_URL")
+  AUTH_ARGS+=(--supabase-url "$SUPABASE_URL")
 else
-  warn "SUPABASE_URL unset — setup will run with --skip-auth (DB only)"
-  SETUP_ARGS+=(--skip-auth)
+  warn "SUPABASE_URL unset — Auth verification will be skipped"
+  AUTH_ARGS+=(--skip-auth)
 fi
 # New API-key names first, legacy names as the migration fallback (BRAWUKA-950).
 SECRET_KEY="${SUPABASE_SECRET_KEY:-${SUPABASE_SERVICE_ROLE_KEY:-}}"
 PUBLISHABLE_KEY="${SUPABASE_PUBLISHABLE_KEY:-${SUPABASE_ANON_KEY:-}}"
-[[ -n "$SECRET_KEY" ]] && SETUP_ARGS+=(--service-role-key "$SECRET_KEY")
-[[ -n "$PUBLISHABLE_KEY" ]] && SETUP_ARGS+=(--anon-key "$PUBLISHABLE_KEY")
-[[ "$SETUP_VERIFY_ONLY" == "1" ]] && SETUP_ARGS+=(--verify-only)
-[[ "$SETUP_DRY_RUN" == "1" ]] && SETUP_ARGS+=(--dry-run)
+[[ -n "$SECRET_KEY" ]] && AUTH_ARGS+=(--service-role-key "$SECRET_KEY")
+[[ -n "$PUBLISHABLE_KEY" ]] && AUTH_ARGS+=(--anon-key "$PUBLISHABLE_KEY")
+[[ "$SETUP_VERIFY_ONLY" == "1" ]] && AUTH_ARGS+=(--verify-only)
+[[ "$SETUP_DRY_RUN" == "1" ]] && AUTH_ARGS+=(--dry-run)
 
 case "$SUITE" in
   journey) SUITE_CMDS=("npm run test:integration:journey") ;;
@@ -160,7 +161,7 @@ LOCK_DIR="${TMPDIR:-/tmp}/coffeemode-staging-journey-${LOCK_HOST}.lock"
 if [[ "$DRY_RUN" == "1" ]]; then
   log "Plan (dry-run; nothing executed):"
   log "  0. drift precheck: node scripts/check-migration-drift.mjs --database-url \$STAGING_DATABASE_URL"
-  [[ "$SKIP_SETUP" == "0" ]] && log "  1. setup: node scripts/devops/setup-supabase.mjs ${SETUP_ARGS[*]}"
+  [[ "$SKIP_SETUP" == "0" ]] && log "  1. setup: node web/scripts/migrate.mjs (DATABASE_URL=$STAGING_DATABASE_URL) && node scripts/devops/setup-supabase.mjs ${AUTH_ARGS[*]}"
   [[ "$SKIP_SETUP" == "1" ]] && log "  1. setup: skipped"
   i=2
   for cmd in "${SUITE_CMDS[@]}"; do
@@ -188,8 +189,13 @@ if [[ "$SKIP_SETUP" == "0" ]]; then
   log "Step 0: migration-drift precheck (repo vs staging ledger)"
   node "$WEB_DIR/scripts/check-migration-drift.mjs" --database-url "$STAGING_DATABASE_URL" || \
     warn "drift precheck reported a gap — setup below will converge it; promotion stays blocked until this precheck is green"
-  log "Step 1: staging setup (migrations + RLS + auth verify)"
-  node "$REPO_ROOT/scripts/devops/setup-supabase.mjs" "${SETUP_ARGS[@]}"
+  log "Step 1: staging setup (migrations + auth verify)"
+  if [[ "$SETUP_VERIFY_ONLY" == "1" || "$SETUP_DRY_RUN" == "1" ]]; then
+    log "  migrations: skipped (--setup-verify-only / --setup-dry-run)"
+  else
+    node "$WEB_DIR/scripts/migrate.mjs"
+  fi
+  node "$REPO_ROOT/scripts/devops/setup-supabase.mjs" "${AUTH_ARGS[@]}"
 else
   log "Step 1: setup skipped (--skip-setup)"
 fi

@@ -5,18 +5,22 @@
 # Lifecycle:    docs/devops/LIFECYCLE.md
 #
 # Creates atomic database backups and configuration archives:
-#   1. Atomic pg_dump (-Fc custom format) against DATABASE_URL (Supabase pooled,
-#      sslmode=require) with gzip compression — no local container required
+#   1. Atomic pg_dump (-Fc custom format) against the per-env DIRECT_URL
+#      (Dokploy internal service, `sslmode=disable`) with gzip compression
 #   2. SHA256 checksum computation for cryptographic integrity verification
 #   3. Dokploy stack configuration archiving
 #   4. Cloudflare R2 offsite replication (s3://coffeemode-backups/<env>/) —
-#      REQUIRED: Supabase free tier ships no automated backups, so pg_dump → R2
-#      is the only offsite copy (BRAWUKA-241)
+#      REQUIRED: the Dokploy database is the only copy, so pg_dump → R2 is the
+#      offsite backup (ADR 0010)
 #   5. Automated retention pruning (Grandfather-Father-Son lifecycle)
 #
-# Database topology (BRAWUKA-240 D1 / decision 34a): the primary database lives
-# in Supabase (prod project + staging project, region ap-southeast-1). There is
-# no self-hosted postgres container; physical volume archiving is skipped.
+# Database topology (BRAWUKA-1010, ADR 0010): staging and production application
+# data live in Dokploy-managed Postgres services on `dokploy-network`. There is
+# no host-published database port and the VPS host ships no postgresql-client,
+# so `lib/pg-client.sh` runs pg_dump inside the database container with the
+# server's own major version (a newer host client writes SET statements an
+# older server rejects). Physical volume archiving stays skipped — the pg_dump
+# is the backup.
 #
 # Usage:
 #   ./backup.sh [options]
@@ -38,6 +42,8 @@
 #   STAGING_DIRECT_URL / PROD_DIRECT_URL       Session/direct connection (preferred)
 #   STAGING_DATABASE_URL / PROD_DATABASE_URL   Pooled connection (fallback)
 #   deploy/dokploy/.env.<env>                  DIRECT_URL line first, then DATABASE_URL
+#   PG_CLIENT_CONTAINER                        Optional: database container that runs
+#                                              pg_dump (auto-detected from the URL)
 #
 # Examples:
 #   ./backup.sh --env staging
@@ -56,6 +62,8 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 # pg_dump opens a single session (never add -j/parallel against the pooler).
 # shellcheck source=lib/db-url.sh
 source "${SCRIPT_DIR}/lib/db-url.sh"
+# shellcheck source=lib/pg-client.sh
+source "${SCRIPT_DIR}/lib/pg-client.sh"
 
 # ------------------------------------------------------------------------------
 # Defaults & CLI Argument Parsing
@@ -195,7 +203,7 @@ echo "CafeMood Automated Backup Suite"
 echo "Environment:     ${ENV}"
 echo "Backup Type:     ${BACKUP_TYPE}"
 echo "Reason:          ${REASON}"
-echo "Database:        Supabase ${ENV} project (DATABASE_URL, sslmode=require)"
+echo "Database:        Dokploy ${ENV} Postgres (per-env URL; container client)"
 echo "Destination Dir: ${OUTPUT_DIR}"
 echo "Retention Days:  ${RETENTION_DAYS}"
 echo "Timestamp (UTC): ${TIMESTAMP}"
@@ -203,7 +211,8 @@ echo "==========================================================================
 
 BACKUP_DB_URL=""
 if [ "$DRY_RUN" = false ]; then
-  # Pooled scope: the dump may ride the pooled Supabase connection (BRAWUKA-241).
+  # Backup scope: the dump runs over the session/direct URL when available, and
+  # may fall back to the pooled runtime URL (spec 0010 §2 connection shape).
   if ! BACKUP_DB_URL="$(db_url_resolve "$ENV" "$URL_OVERRIDE" pooled)"; then
     echo "Error: per-env connection for ${ENV} is required: STAGING_*/PROD_* scoped vars, --url override, or deploy/dokploy/.env.${ENV}" >&2
     exit 1
@@ -240,16 +249,18 @@ if [[ "$BACKUP_TYPE" == "db" || "$BACKUP_TYPE" == "full" ]]; then
   DB_CHECKSUM_FILE="${DB_DUMP_FILE}.sha256"
 
   if [ "$DRY_RUN" = false ]; then
-    if ! command -v pg_dump >/dev/null 2>&1; then
-      error "pg_dump not found in PATH. Install postgresql-client to run backups."
+    # `pg_client_plan` picks the client that matches the server major (host when
+    # it already matches, else the database container) and fails closed with the
+    # remedy when neither is available.
+    if ! pg_client_plan "$BACKUP_DB_URL" pg_dump; then
       exit 1
     fi
 
-    # Execute pg_dump (-Fc) against the Supabase connection string piped to gzip.
-    # Single session only — never pass parallel (-j) flags against the pooler.
-    log "Streaming compressed pg_dump from Supabase ${ENV} (Tier: ${GFS_TIER})..."
+    # Execute pg_dump (-Fc) piped to gzip. A single session only — never pass
+    # parallel (-j) flags; the dump must stay streamable for large databases.
+    log "Streaming compressed pg_dump from Dokploy ${ENV} (Tier: ${GFS_TIER})..."
     set -o pipefail
-    pg_dump "$BACKUP_DB_URL" -Fc --verbose | gzip -9 > "$DB_TEMP_PATH"
+    pg_run pg_dump "$BACKUP_DB_URL" -Fc --verbose | gzip -9 > "$DB_TEMP_PATH"
 
     # Verify non-empty size and atomically move into place
     if [[ ! -s "$DB_TEMP_PATH" ]]; then
@@ -273,9 +284,10 @@ fi
 # ------------------------------------------------------------------------------
 # STEP 2: Configuration Archiving
 #
-# NOTE: The self-hosted postgres data volume no longer exists (Supabase primary,
-# BRAWUKA-241). Physical volume tar is intentionally skipped; the pg_dump in
-# Step 1 plus the Dokploy/script config archive below are the full backup set.
+# NOTE: There is no host-managed postgres data volume to archive (ADR 0010:
+# the database is a Dokploy service with its own volume). Physical volume tar is
+# intentionally skipped; the pg_dump in Step 1 plus the Dokploy/script config
+# archive below are the full backup set.
 # ------------------------------------------------------------------------------
 VOL_ARCHIVE_FILE=""
 VOL_CHECKSUM_FILE=""
@@ -290,7 +302,14 @@ if [[ "$BACKUP_TYPE" == "vol" || "$BACKUP_TYPE" == "full" ]]; then
   VOL_CHECKSUM_FILE="${VOL_ARCHIVE_FILE}.sha256"
 
   if [ "$DRY_RUN" = false ]; then
+    # Real env files are credential stores, not configuration: `.env.prod.db`
+    # holds the Postgres bootstrap password, `.env.prod`/`.env.staging` hold
+    # connection strings. Only the tracked `.example` templates belong in an
+    # archive that is uploaded offsite (BRAWUKA-1015).
     tar -czf "$VOL_ARCHIVE_FILE" -C "${REPO_ROOT}" \
+      --exclude=".env.prod.db" \
+      --exclude=".env.prod" \
+      --exclude=".env.staging" \
       "deploy/dokploy" \
       "scripts/devops" 2>/dev/null || true
 

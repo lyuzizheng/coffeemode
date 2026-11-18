@@ -4,26 +4,43 @@
 # Architecture: docs/specs/0005-dokploy-vps-and-deployment-architecture.md
 # Lifecycle:    docs/devops/LIFECYCLE.md
 #
-# Restores and verifies Supabase Postgres + PostGIS database archives over a
-# connection string (no local container):
+# Restores and verifies PostGIS database archives over a connection string:
 #   1. Pre-restore SHA256 checksum & pg_restore header integrity check
 #   2. Optional Cloudflare R2 automated archive download
-#   3. Safety guards & active client connection termination (Supabase-safe:
-#      own session only, never pg_terminate_backend on shared pooler)
-#   4. pg_restore execution (--clean --if-exists --no-owner) via local
-#      pg_restore client against DATABASE_URL (pooled, sslmode=require)
-#   5. Post-restore verification: PostGIS extension, table counts, spatial queries
-#   6. Non-destructive drill mode (--drill): restores into a scratch database on
-#      the STAGING Supabase project, verifies, then drops it
+#   3. Safety guards & target preparation (drill creates a scratch database)
+#   4. pg_restore execution (--clean --if-exists --no-owner) with the client
+#      major version the server accepts
+#   5. Ownership normalization: every restored application object in `public`
+#      goes back to the application role, so a restore performed by the
+#      recovery role does not hand the app a read-only schema
+#   6. Post-restore verification against the archive's own relation baseline:
+#      PostGIS extension, every archived relation present, no relation outside
+#      the archive, row counts, spatial queries
+#   7. --recreate rollback: restore and verify a replacement database first,
+#      then promote it in one database-rename transaction and retire the old one
+#   8. Non-destructive drill mode (--drill): restores into a scratch database on
+#      the STAGING database, verifies the seeded contract (a drill never passes
+#      on an empty baseline archive), then drops it
 #
 # Verdict (BRAWUKA-728): an unreadable archive, a nonzero pg_restore exit, or a
 # failed verification query fails the run in BOTH modes — drill mode never
 # reports PASSED for a restore it could not verify, and the scratch database is
 # dropped on the failure paths too.
 #
-# Database topology (BRAWUKA-240 D1 / decision 34a): prod and staging each live
-# in their own Supabase project (region ap-southeast-1). --drill ALWAYS targets
-# staging regardless of --env so prod data is never at risk.
+# Database topology (BRAWUKA-1010, ADR 0010): staging and production each own a
+# Dokploy Postgres service on `dokploy-network`; Supabase keeps Auth only.
+# --drill ALWAYS targets staging regardless of --env so prod data is never at
+# risk. The client runs inside the database container when the host client's
+# major version differs from the server's (lib/pg-client.sh) — the archive
+# format is not loadable across that boundary.
+#
+# Authorized recovery role (ADR-0010 §3): a restore runs as the initdb
+# superuser, never as the application role. `pg_restore --clean` drops and
+# recreates the PostGIS extension, which the application role cannot do; a
+# restore attempted with the app URL exits 1 on `permission denied to create
+# extension "postgis"`. Recovery credentials come only from <ENV>_RESTORE_URL
+# (operator shell) or --url — never from the app chain, the app env file, or a
+# compose env_file, because a restore URL in an env_file is handed to web-prod.
 #
 # Usage:
 #   ./restore.sh [options]
@@ -34,7 +51,12 @@
 #   -f, --file <path>         Path to local backup archive (.dump or .dump.gz)
 #   --download-r2 <filename>  Download archive from Cloudflare R2 before restoring
 #   --drill                   Non-destructive drill: restore to a scratch database
-#                             on the STAGING Supabase project, verify, drop it
+#                             on the STAGING database, verify, drop it
+#   --recreate                Live mode rollback: build a replacement database,
+#                             restore and verify it, then swap it in and retire
+#                             the old one (requires --yes and the recovery role).
+#                             The live database is never dropped before its
+#                             replacement passes verification.
 #   --yes                     Bypass confirmation prompt (required for automated pipelines)
 #   --url <conn>              Explicit connection-string override (opt-in escape hatch;
 #                             bypasses per-env scoping — use with care)
@@ -42,14 +64,27 @@
 #
 # Environment (per-env only — unscoped DATABASE_URL/DIRECT_URL are NEVER read,
 # so --env cannot be silently retargeted by the caller's shell, BRAWUKA-241 P0):
-#   STAGING_DIRECT_URL / STAGING_DATABASE_URL   Staging project (drill target too)
-#   PROD_DIRECT_URL / PROD_DATABASE_URL         Prod project (live restores only)
-#   deploy/dokploy/.env.<env>                   DIRECT_URL line first, then DATABASE_URL
+#   STAGING_RESTORE_URL / PROD_RESTORE_URL      Authorized recovery role (required
+#                                               for live restores; used for drills
+#                                               when present). Operator shell only:
+#                                               never place it in the compose env
+#                                               file, which is passed to web-prod.
+#   STAGING_DIRECT_URL / STAGING_DATABASE_URL   Staging database (drill fallback)
+#   PROD_DIRECT_URL / PROD_DATABASE_URL         Prod application URL (not restores)
+#   RESTORE_OWNER_ROLE                          Role that ends up owning restored
+#                                               application objects (default: coffeemode)
+#   deploy/dokploy/.env.<env>                   DIRECT_URL is read for drill fallback
+#                                               only; it never supplies a recovery URL
+#                                               then DATABASE_URL for the app paths
+#   PG_CLIENT_CONTAINER                         Optional: database container that runs
+#                                               pg_restore/psql (auto-detected from the URL)
 #
 # Examples:
 #   ./restore.sh --env staging --file /backups/coffeemode_staging_snapshot.dump.gz --yes
 #   ./restore.sh --env staging --download-r2 coffeemode_staging_pre-migration.dump.gz --drill
-#   ./restore.sh --env prod --file /backups/coffeemode_prod_latest.dump.gz
+#   ./restore.sh --env prod --file /backups/coffeemode_prod_latest.dump.gz --yes
+#   ./restore.sh --env prod --file /backups/coffeemode_prod_pre-migration.dump.gz \
+#     --recreate --yes
 #   ./restore.sh --dry-run --env prod --file dummy.dump.gz
 # ==============================================================================
 
@@ -63,6 +98,8 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 # Unscoped ambient DATABASE_URL/DIRECT_URL are NEVER read (BRAWUKA-241 P0).
 # shellcheck source=lib/db-url.sh
 source "${SCRIPT_DIR}/lib/db-url.sh"
+# shellcheck source=lib/pg-client.sh
+source "${SCRIPT_DIR}/lib/pg-client.sh"
 
 # ------------------------------------------------------------------------------
 # Defaults & CLI Argument Parsing
@@ -71,6 +108,7 @@ ENV=""
 BACKUP_PATH=""
 R2_FILENAME=""
 DRILL_MODE=false
+RECREATE_TARGET=false
 CONFIRM_FLAG=false
 URL_OVERRIDE=""
 DRY_RUN=false
@@ -99,6 +137,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --drill)
       DRILL_MODE=true
+      shift
+      ;;
+    --recreate)
+      RECREATE_TARGET=true
       shift
       ;;
     --yes)
@@ -201,58 +243,142 @@ fi
 RESTORE_URL=""
 DRILL_DB=""
 ADMIN_URL=""
-# P2: drop the drill scratch db on ANY exit (failure, signal, success path
-# already drops it explicitly — the second DROP is IF EXISTS, so idempotent).
+# Drop the drill scratch db on ANY exit. WITH (FORCE) terminates any session
+# that still holds the scratch database, so an operator's second connection
+# cannot keep it alive. A drop that still fails is reported and turns the exit
+# status nonzero; the restored data can then remain readable in that database,
+# so the operator must drop the reported name and verify it is gone.
 cleanup_drill_db() {
   if [[ "$DRILL_MODE" == "true" && -n "${DRILL_DB:-}" && -n "${ADMIN_URL:-}" && "$DRY_RUN" == "false" ]]; then
-    psql "$ADMIN_URL" -v ON_ERROR_STOP=0 -q \
-      -c "DROP DATABASE IF EXISTS \"${DRILL_DB}\";" >/dev/null 2>&1 || true
+    if ! pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
+      -c "DROP DATABASE IF EXISTS \"${DRILL_DB}\" WITH (FORCE);" >/dev/null; then
+      error "Cleanup FAILED: drill scratch database '${DRILL_DB}' could not be dropped; it still exists on the server."
+      return 1
+    fi
+  fi
+  return 0
+}
+# Temp artifacts and an unswapped replacement database must never outlive the
+# run: the replacement is dropped unless step 7 promotes it.
+TOC_FILE=""
+ARCHIVED_RELATIONS_FILE=""
+REPLACEMENT_DB=""
+TARGET_DB=""
+EXPECTED_DB_OWNER=""
+cleanup_restore_artifacts() {
+  [[ -n "$TOC_FILE" ]] && rm -f "$TOC_FILE"
+  [[ -n "$ARCHIVED_RELATIONS_FILE" ]] && rm -f "$ARCHIVED_RELATIONS_FILE"
+  if [[ -n "$REPLACEMENT_DB" && -n "${ADMIN_URL:-}" && "$DRY_RUN" == "false" ]]; then
+    pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=0 -q \
+      -c "DROP DATABASE IF EXISTS \"${REPLACEMENT_DB}\" WITH (FORCE);" >/dev/null 2>&1 || true
   fi
 }
-trap cleanup_drill_db EXIT
+on_exit() {
+  local rc=$?
+  cleanup_drill_db || rc=1
+  cleanup_restore_artifacts
+  exit "$rc"
+}
+trap on_exit EXIT
+
+# Split a connection string into "<server-without-dbname>" and "?query", so a
+# restore can address the maintenance database and a scratch/target database on
+# the same server without re-parsing credentials.
+db_server_part() {
+  local url="$1" base
+  base="${url%%\?*}"
+  printf '%s' "${base%/*}"
+}
+
+db_query_part() {
+  local url="$1"
+  if [[ "$url" == *"?"* ]]; then printf '?%s' "${url#*\?}"; fi
+}
+
+db_dbname_part() {
+  local url="$1" base
+  base="${url%%\?*}"
+  printf '%s' "${base##*/}"
+}
+
+if [ "$RECREATE_TARGET" = true ] && [ "$DRILL_MODE" = true ]; then
+  error "--recreate applies to live restores only; --drill already restores into a fresh scratch database."
+  exit 1
+fi
 
 if [ "$DRILL_MODE" = true ]; then
-  # Drill always targets the STAGING Supabase project under a scratch db name.
+  # Drill always targets the STAGING server under a scratch db name.
   # Staging-only sources: never prod vars, never unscoped ambient vars. The
   # explicit --url escape hatch is intentionally honored here (BRAWUKA-747).
   if [ "$DRY_RUN" = false ]; then
-    STAGING_URL=""
-    if ! STAGING_URL="$(db_url_resolve staging "$URL_OVERRIDE" pooled)"; then
-      error "STAGING_DIRECT_URL / STAGING_DATABASE_URL (or deploy/dokploy/.env.staging) is required for --drill"
-      exit 1
+    RECOVERY_URL=""
+    if RECOVERY_URL="$(db_url_resolve_restore staging "$URL_OVERRIDE")"; then
+      ADMIN_URL="$(db_server_part "$RECOVERY_URL")/postgres$(db_query_part "$RECOVERY_URL")"
+    else
+      # Fallback keeps the pre-ADR drill behaviour usable, but a role without
+      # extension rights fails the drill loudly at pg_restore — it can never
+      # report PASSED for a restore it could not perform.
+      if ! RECOVERY_URL="$(db_url_resolve staging "$URL_OVERRIDE" pooled)"; then
+        error "STAGING_RESTORE_URL (authorized recovery role) or STAGING_DIRECT_URL / STAGING_DATABASE_URL is required for --drill"
+        exit 1
+      fi
+      warn "No STAGING_RESTORE_URL: the drill runs as the application role. It will fail at 'CREATE EXTENSION postgis' unless that role can install extensions (ADR-0010 §3)."
+      ADMIN_URL="$(db_server_part "$RECOVERY_URL")/postgres$(db_query_part "$RECOVERY_URL")"
     fi
-    # Split off query string, then swap the dbname path segment.
-    STAGING_Q=""
-    STAGING_BASE="$STAGING_URL"
-    if [[ "$STAGING_URL" == *"?"* ]]; then
-      STAGING_Q="?${STAGING_URL#*\?}"
-      STAGING_BASE="${STAGING_URL%%\?*}"
-    fi
-    STAGING_SERVER="${STAGING_BASE%/*}"
     DRILL_DB="restore_drill_$(date -u +%Y%m%d_%H%M%S)_$$"
-    ADMIN_URL="${STAGING_SERVER}/postgres${STAGING_Q}"
-    RESTORE_URL="${STAGING_SERVER}/${DRILL_DB}${STAGING_Q}"
+    RESTORE_URL="$(db_server_part "$RECOVERY_URL")/${DRILL_DB}$(db_query_part "$RECOVERY_URL")"
   else
     RESTORE_URL="<staging-url>/<drill-db>"
   fi
 else
   if [ "$DRY_RUN" = false ]; then
-    if ! RESTORE_URL="$(db_url_resolve "$ENV" "$URL_OVERRIDE" pooled)"; then
-      error "Per-env connection string for ${ENV} is required: STAGING_*/PROD_* scoped vars or deploy/dokploy/.env.${ENV}"
+    if ! RESTORE_URL="$(db_url_resolve_restore "$ENV" "$URL_OVERRIDE")"; then
+      ENV_UPPER="$(printf '%s' "$ENV" | tr '[:lower:]' '[:upper:]')"
+      error "Authorized recovery role for ${ENV} is required: ${ENV_UPPER}_RESTORE_URL or the RESTORE_URL line in deploy/dokploy/.env.${ENV} (ADR-0010 §3). The application role cannot restore: pg_restore must recreate the PostGIS extension."
       exit 1
     fi
+    ADMIN_URL="$(db_server_part "$RESTORE_URL")/postgres$(db_query_part "$RESTORE_URL")"
   else
     RESTORE_URL="<database-url>"
   fi
+fi
+
+RESTORE_OWNER_ROLE="${RESTORE_OWNER_ROLE:-coffeemode}"
+if [[ ! "$RESTORE_OWNER_ROLE" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+  error "RESTORE_OWNER_ROLE must be a plain role name (got '${RESTORE_OWNER_ROLE}')."
+  exit 1
+fi
+
+if [ "$RECREATE_TARGET" = true ] && [ "$DRY_RUN" = false ]; then
+  if [ "$CONFIRM_FLAG" != true ]; then
+    error "--recreate drops the ${ENV} database; it requires --yes."
+    exit 1
+  fi
+  TARGET_DB="$(db_dbname_part "$RESTORE_URL")"
+  case "$TARGET_DB" in
+    ""|postgres|template0|template1|*/*)
+      error "--recreate refuses target database '${TARGET_DB}'."
+      exit 1
+      ;;
+  esac
 fi
 
 echo "=============================================================================="
 echo -e "${BOLD}CafeMood Disaster Recovery Suite${NC}"
 echo "Environment:     ${ENV}"
 echo "Mode:            $([ "$DRILL_MODE" = true ] && echo "NON-DESTRUCTIVE RECOVERY DRILL (staging scratch db)" || echo "LIVE RESTORATION")"
-echo "Target:          $([ "$DRILL_MODE" = true ] && echo "staging scratch database ${DRILL_DB}" || echo "Supabase ${ENV} project (DATABASE_URL)")"
+echo "Target:          $([ "$DRILL_MODE" = true ] && echo "staging scratch database ${DRILL_DB}" || echo "Dokploy ${ENV} Postgres (per-env URL)")"
 echo "Backup Archive:  ${BACKUP_PATH}"
 echo "=============================================================================="
+
+# Single client-mode decision for every tool this run invokes (BRAWUKA-1015):
+# host when the host client matches the server major, else the database
+# container; a version mismatch with no container fails closed here. Drill mode
+# plans against the server's maintenance database — the scratch target does not
+# exist yet, so probing it would fail the connection before the mode is chosen.
+if [ "$DRY_RUN" = false ]; then
+  pg_client_plan "${ADMIN_URL:-$RESTORE_URL}" pg_restore psql || exit 1
+fi
 
 # ------------------------------------------------------------------------------
 # STEP 2: Archive Integrity & Checksum Verification
@@ -292,26 +418,29 @@ if [ "$DRY_RUN" = false ]; then
   # backup. The trailing `cat` drains the rest of the stream, which keeps the
   # decompressor alive to completion: with `pipefail` both statuses stay verdicts
   # (corrupt/truncated gzip stream, or bytes that are not a pg_restore archive).
-  for bin in pg_restore psql; do
-    if ! command -v "$bin" >/dev/null 2>&1; then
-      error "${bin} not found in PATH. Install postgresql-client to run restores."
-      exit 1
-    fi
-  done
-
   log "Verifying pg_restore archive readability..."
+  TOC_FILE="$(mktemp "${TMPDIR:-/tmp}/coffeemode_restore_toc.XXXXXX")"
+  ARCHIVED_RELATIONS_FILE="$(mktemp "${TMPDIR:-/tmp}/coffeemode_restore_rels.XXXXXX")"
   ARCHIVE_READABLE=true
   if [[ "$BACKUP_PATH" == *.gz ]]; then
-    gzip -dc "$BACKUP_PATH" | { pg_restore --list >/dev/null && cat >/dev/null; } \
+    gzip -dc "$BACKUP_PATH" | { pg_run pg_restore --list > "$TOC_FILE" && cat >/dev/null; } \
       || ARCHIVE_READABLE=false
   else
-    pg_restore --list "$BACKUP_PATH" >/dev/null || ARCHIVE_READABLE=false
+    # stdin, never a path: a container-mode client cannot see the host file.
+    pg_run pg_restore --list < "$BACKUP_PATH" > "$TOC_FILE" || ARCHIVE_READABLE=false
   fi
   if [[ "$ARCHIVE_READABLE" != true ]]; then
     error "Archive is not a readable pg_restore archive: ${BACKUP_PATH}"
     exit 1
   fi
-  ok "Archive verified: pg_restore read its table of contents."
+  # Relation baseline of the archive itself (BRAWUKA-1015 P1): verification
+  # compares the restored database against these entries, so an empty
+  # pre-migration snapshot is validated as that baseline instead of being
+  # rejected for a missing `cafes` table.
+  sed -nE 's/^[0-9]+; [0-9]+ [0-9]+ (TABLE|VIEW|MATERIALIZED VIEW|SEQUENCE|FOREIGN TABLE) public ([A-Za-z0-9_]+) .*/\2/p' \
+    "$TOC_FILE" | sort -u > "$ARCHIVED_RELATIONS_FILE"
+  ARCHIVED_RELATION_COUNT="$(wc -l < "$ARCHIVED_RELATIONS_FILE" | tr -d '[:space:]')"
+  ok "Archive verified: ${ARCHIVED_RELATION_COUNT} application relation(s) in its table of contents."
 else
   ok "[DRY-RUN] Archive integrity verification simulated."
 fi
@@ -322,7 +451,7 @@ fi
 if [ "$DRILL_MODE" = false ] && [ "$DRY_RUN" = false ]; then
   if [ "$CONFIRM_FLAG" = false ]; then
     echo ""
-    echo -e "${BOLD}${RED}CRITICAL WARNING: This will overwrite the Supabase ${ENV} database!${NC}"
+    echo -e "${BOLD}${RED}CRITICAL WARNING: This will overwrite the Dokploy ${ENV} database!${NC}"
     read -rp "Are you sure you want to proceed with live database restore? (Type 'RESTORE' to confirm): " CONFIRMATION
     if [[ "$CONFIRMATION" != "RESTORE" ]]; then
       echo "Restoration aborted by operator."
@@ -332,19 +461,68 @@ if [ "$DRILL_MODE" = false ] && [ "$DRY_RUN" = false ]; then
 fi
 
 # ------------------------------------------------------------------------------
+# STEP 3b: Recovery-role preflight (before any destructive SQL)
+# ------------------------------------------------------------------------------
+# BRAWUKA-1015 P0: a recovery URL that points at the application role must fail
+# here, not after the target has been dropped. Only a superuser can recreate the
+# PostGIS extension, and only a superuser may run --recreate.
+TARGET_ORIGINAL_OWNER=""
+if [ "$DRILL_MODE" = false ] && [ "$DRY_RUN" = false ]; then
+  log "Step 3b: Verifying the recovery role before touching the target..."
+  RECOVERY_IS_SUPER="$(pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -t -A -c "select rolsuper from pg_roles where rolname = current_user;")" || {
+    error "Recovery-role preflight FAILED: cannot query pg_roles as the configured role."
+    exit 1
+  }
+  RECOVERY_IS_SUPER="${RECOVERY_IS_SUPER//[[:space:]]/}"
+  if [[ "$RECOVERY_IS_SUPER" != "t" ]]; then
+    error "Recovery-role preflight FAILED: the configured role is not a superuser, so it cannot recreate the PostGIS extension. Refusing destructive SQL (ADR-0010 §3). Use PROD_RESTORE_URL/STAGING_RESTORE_URL with the initdb superuser."
+    exit 1
+  fi
+  if [[ -n "$TARGET_DB" ]]; then
+    TARGET_DB_EXISTS="$(pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -t -A -c "select count(*) from pg_database where datname = '${TARGET_DB}';")"
+    TARGET_DB_EXISTS="${TARGET_DB_EXISTS//[[:space:]]/}"
+    if [[ "$RECREATE_TARGET" = true && "$TARGET_DB_EXISTS" != "1" ]]; then
+      error "Recovery-role preflight FAILED: target database '${TARGET_DB}' does not exist; --recreate preserves and retires an existing database, it does not create one from nothing."
+      exit 1
+    fi
+    if [[ "$TARGET_DB_EXISTS" == "1" ]]; then
+      TARGET_ORIGINAL_OWNER="$(pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -t -A -c "select pg_get_userbyid(datdba) from pg_database where datname = '${TARGET_DB}';")"
+      TARGET_ORIGINAL_OWNER="${TARGET_ORIGINAL_OWNER//[[:space:]]/}"
+    fi
+  fi
+  ok "Recovery role is a superuser; target '${TARGET_DB:-?}' owner '${TARGET_ORIGINAL_OWNER:-n/a}'."
+fi
+
+# ------------------------------------------------------------------------------
 # STEP 4: Target Preparation (drill scratch db; no container health check)
 # ------------------------------------------------------------------------------
 log "Step 4: Preparing restore target..."
 
 if [ "$DRY_RUN" = false ]; then
   if [ "$DRILL_MODE" = true ]; then
-    log "Creating scratch drill database '${DRILL_DB}' on the staging Supabase project..."
-    psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
+    log "Creating scratch drill database '${DRILL_DB}' on the staging database..."
+    pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
       -c "DROP DATABASE IF EXISTS \"${DRILL_DB}\";" \
-      -c "CREATE DATABASE \"${DRILL_DB}\";" >/dev/null
+      -c "CREATE DATABASE \"${DRILL_DB}\" OWNER \"${RESTORE_OWNER_ROLE}\";" >/dev/null
+    EXPECTED_DB_OWNER="$RESTORE_OWNER_ROLE"
     ok "Scratch drill database created: ${DRILL_DB}"
+  elif [ "$RECREATE_TARGET" = true ]; then
+    # Rollback path (ADR-0010 §6.7). 'pg_restore --clean' over a populated
+    # database cannot revert the schema — dropping the PostGIS extension fails
+    # while dependent objects exist, and the migration ledger survives. The
+    # rollback therefore builds a replacement database and only swaps it in
+    # after the restore passes verification; the live database is never dropped
+    # before that (BRAWUKA-1015 P0).
+    REPLACEMENT_DB="${TARGET_DB}__restore_$(date -u +%Y%m%d_%H%M%S)_$$"
+    replacement_owner="${TARGET_ORIGINAL_OWNER:-$RESTORE_OWNER_ROLE}"
+    EXPECTED_DB_OWNER="$replacement_owner"
+    log "Creating replacement database '${REPLACEMENT_DB}' (owner: ${replacement_owner}); '${TARGET_DB}' stays live until verification passes..."
+    pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
+      -c "CREATE DATABASE \"${REPLACEMENT_DB}\" OWNER \"${replacement_owner}\";" >/dev/null
+    RESTORE_URL="$(db_server_part "$RESTORE_URL")/${REPLACEMENT_DB}$(db_query_part "$RESTORE_URL")"
+    ok "Replacement database created; this run restores into '${REPLACEMENT_DB}'."
   else
-    log "Live restore target: Supabase ${ENV} project (no connection termination: shared pooler is left untouched)."
+    log "Live restore target: Dokploy ${ENV} Postgres (own session only; no other backend is terminated)."
   fi
 else
   ok "[DRY-RUN] Database preparation simulated."
@@ -353,18 +531,22 @@ fi
 # ------------------------------------------------------------------------------
 # STEP 5: Database Restoration via pg_restore
 # ------------------------------------------------------------------------------
-RESTORE_LABEL="$([ "$DRILL_MODE" = true ] && echo "scratch database '${DRILL_DB}' (staging)" || echo "Supabase ${ENV} project")"
+RESTORE_LABEL="$([ "$DRILL_MODE" = true ] && echo "scratch database '${DRILL_DB}' (staging)" || echo "Dokploy ${ENV} Postgres")"
 log "Step 5: Restoring database schema and data into ${RESTORE_LABEL}..."
 
 if [ "$DRY_RUN" = false ]; then
   set -o pipefail
 
+  # --no-owner is deliberate: objects are created by the recovery role, then
+  # step 5b hands the application objects back to the app role. Restoring with
+  # --role=coffeemode instead would run 'CREATE EXTENSION postgis' as the app
+  # role and fail on privileges.
   run_pg_restore() {
     if [[ "$BACKUP_PATH" == *.gz ]]; then
       log "Decompressing gzip archive stream to pg_restore..."
-      gzip -dc "$BACKUP_PATH" | pg_restore -d "$RESTORE_URL" --clean --if-exists --no-owner --verbose
+      gzip -dc "$BACKUP_PATH" | pg_run pg_restore -d "$RESTORE_URL" --clean --if-exists --no-owner --verbose
     else
-      pg_restore -d "$RESTORE_URL" --clean --if-exists --no-owner --verbose < "$BACKUP_PATH"
+      pg_run pg_restore -d "$RESTORE_URL" --clean --if-exists --no-owner --verbose < "$BACKUP_PATH"
     fi
   }
 
@@ -379,13 +561,92 @@ if [ "$DRY_RUN" = false ]; then
     if [ "$DRILL_MODE" = true ]; then
       error "pg_restore FAILED during recovery drill: refusing to certify '${BACKUP_PATH}' as restorable."
     else
-      error "CRITICAL: Live database restore FAILED on Supabase ${ENV}!"
+      error "CRITICAL: Live database restore FAILED on the Dokploy ${ENV} database!"
     fi
     exit 1
   fi
   ok "Database restore command executed (pg_restore exit status 0)."
 else
   ok "[DRY-RUN] Restoration via pg_restore simulated."
+fi
+
+# ------------------------------------------------------------------------------
+# STEP 5b: Ownership normalization (application objects back to the app role)
+# ------------------------------------------------------------------------------
+if [ "$DRY_RUN" = false ]; then
+  log "Step 5b: Normalizing ownership of restored application objects to '${RESTORE_OWNER_ROLE}'..."
+  # --no-owner means pg_restore creates every object as the connected (recovery)
+  # role. Without this step the application would own nothing it just restored,
+  # so migrations and writes would fail. Extension members (e.g. spatial_ref_sys)
+  # are deliberately left with the recovery role: only a superuser owns PostGIS.
+  if ! pg_run psql "$RESTORE_URL" -v ON_ERROR_STOP=1 -q <<SQL
+DO \$\$
+DECLARE
+  owner_name text := '${RESTORE_OWNER_ROLE}';
+  r record;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = owner_name) THEN
+    RAISE EXCEPTION 'application role % does not exist on the target server', owner_name;
+  END IF;
+  FOR r IN
+    SELECT c.oid::regclass AS ident, c.relkind
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relkind IN ('r','p','v','m','S','f')
+      AND NOT EXISTS (SELECT 1 FROM pg_depend d
+                      WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'e')
+      AND pg_get_userbyid(c.relowner) <> owner_name
+  LOOP
+    EXECUTE format('ALTER %s %s OWNER TO %I',
+      CASE r.relkind
+        WHEN 'S' THEN 'SEQUENCE'
+        WHEN 'v' THEN 'VIEW'
+        WHEN 'm' THEN 'MATERIALIZED VIEW'
+        WHEN 'f' THEN 'FOREIGN TABLE'
+        ELSE 'TABLE'
+      END, r.ident, owner_name);
+  END LOOP;
+  FOR r IN
+    SELECT p.oid::regprocedure AS ident
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND NOT EXISTS (SELECT 1 FROM pg_depend d
+                      WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e')
+      AND pg_get_userbyid(p.proowner) <> owner_name
+  LOOP
+    EXECUTE format('ALTER FUNCTION %s OWNER TO %I', r.ident, owner_name);
+  END LOOP;
+  FOR r IN
+    -- 'e' enum / 'd' domain / 'r' range only: composite row types of tables
+    -- and views are owned through their relation and reject ALTER TYPE.
+    SELECT t.oid::regtype AS ident
+    FROM pg_type t
+    JOIN pg_namespace n ON n.oid = t.typnamespace
+    WHERE n.nspname = 'public'
+      AND t.typtype IN ('e','d','r')
+      AND NOT EXISTS (SELECT 1 FROM pg_depend d
+                      WHERE d.classid = 'pg_type'::regclass AND d.objid = t.oid AND d.deptype = 'e')
+      AND pg_get_userbyid(t.typowner) <> owner_name
+  LOOP
+    EXECUTE format('ALTER TYPE %s OWNER TO %I', r.ident, owner_name);
+  END LOOP;
+  -- The schema itself must belong to the app role too: a restored schema owned
+  -- by the recovery role would block future migrations (BRAWUKA-1015 review).
+  IF to_regnamespace('public') IS NOT NULL THEN
+    EXECUTE format('ALTER SCHEMA public OWNER TO %I', owner_name);
+  END IF;
+END
+\$\$;
+SQL
+  then
+    error "Ownership normalization FAILED on ${RESTORE_LABEL}."
+    exit 1
+  fi
+  ok "Application objects in 'public' are owned by '${RESTORE_OWNER_ROLE}'."
+else
+  ok "[DRY-RUN] Ownership normalization simulated."
 fi
 
 # ------------------------------------------------------------------------------
@@ -397,8 +658,11 @@ if [ "$DRY_RUN" = false ]; then
   # Single scalar query helper (BRAWUKA-728). ON_ERROR_STOP turns a missing
   # relation, a missing function, or a lost connection into a nonzero psql exit;
   # no check below may substitute a default value for a failed query.
+  # </dev/null is deliberate: these queries run inside loops whose stdin is the
+  # archive baseline list, and a container-mode `docker exec -i` would otherwise
+  # consume that stream and silently truncate verification.
   psql_scalar() {
-    psql "$RESTORE_URL" -v ON_ERROR_STOP=1 -t -A -c "$1"
+    pg_run psql "$RESTORE_URL" -v ON_ERROR_STOP=1 -t -A -c "$1" < /dev/null
   }
 
   # 1. PostGIS extension verification
@@ -413,16 +677,49 @@ if [ "$DRY_RUN" = false ]; then
   fi
   ok "PostGIS extension verified: ${POSTGIS_VERSION}"
 
-  # 2. Required tables and restored content: every query must succeed and return
-  #    a number, and the required tables must not be empty *as a set*. An
-  #    individual table may legitimately restore empty (an unused `checkins` or
-  #    `profiles` on a fresh project); a missing relation is always a failed
-  #    restore, never a zero to log past (BRAWUKA-728).
-  REQUIRED_TABLES=(cafes checkins profiles)
+  # 2. Relation baseline (BRAWUKA-1015): the restored database must carry
+  #    exactly the archive's application relations. Every archived relation must
+  #    exist, and every non-extension relation in 'public' must be in the
+  #    archive. That is the rollback guarantee: a restore reproduces the
+  #    snapshot instead of layering onto whatever the live database held.
+  while IFS= read -r relation; do
+    [[ -n "$relation" ]] || continue
+    if ! EXISTS="$(psql_scalar "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relname = '${relation}';")"; then
+      error "Verification FAILED on ${RESTORE_LABEL}: query for archived relation '${relation}' did not succeed."
+      exit 1
+    fi
+    EXISTS="${EXISTS//[[:space:]]/}"
+    if [[ "$EXISTS" != "1" ]]; then
+      error "Verification FAILED on ${RESTORE_LABEL}: archived relation '${relation}' is missing from the restored database."
+      exit 1
+    fi
+  done < "$ARCHIVED_RELATIONS_FILE"
+  ok "All ${ARCHIVED_RELATION_COUNT} archived relation(s) exist in the restored database."
+
+  ARCHIVED_TABLES="$(sed -nE 's/^[0-9]+; [0-9]+ [0-9]+ TABLE public ([A-Za-z0-9_]+) .*/\1/p' "$TOC_FILE" | sort -u)"
+  ARCHIVED_IN_LIST="$(sed "s/^/'/;s/$/'/" "$ARCHIVED_RELATIONS_FILE" | paste -sd, -)"
+  if [[ -n "$ARCHIVED_IN_LIST" ]]; then
+    EXTRAS_SQL="SELECT coalesce(string_agg(c.relname, ',' ORDER BY c.relname), '') FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind IN ('r','p','v','m','S','f') AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'e') AND c.relname NOT IN (${ARCHIVED_IN_LIST});"
+  else
+    EXTRAS_SQL="SELECT coalesce(string_agg(c.relname, ',' ORDER BY c.relname), '') FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind IN ('r','p','v','m','S','f') AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'e');"
+  fi
+  if ! EXTRAS="$(psql_scalar "$EXTRAS_SQL")"; then
+    error "Verification FAILED on ${RESTORE_LABEL}: could not compare restored relations with the archive baseline."
+    exit 1
+  fi
+  if [[ -n "${EXTRAS//[[:space:]]/}" ]]; then
+    error "Verification FAILED on ${RESTORE_LABEL}: relation(s) present but absent from the archive: ${EXTRAS}."
+    exit 1
+  fi
+  ok "No relations outside the archive baseline: the restore reproduced the snapshot."
+
+  # 3. Restored content: row counts for every archived table (proves the data
+  #    section loaded, not just the schema), plus the seeded contract.
   RESTORED_ROWS=0
-  for table in "${REQUIRED_TABLES[@]}"; do
-    if ! COUNT="$(psql_scalar "SELECT count(*) FROM ${table};")"; then
-      error "Verification FAILED on ${RESTORE_LABEL}: table '${table}' is missing or unreadable."
+  while IFS= read -r table; do
+    [[ -n "$table" ]] || continue
+    if ! COUNT="$(psql_scalar "SELECT count(*) FROM \"${table}\";")"; then
+      error "Verification FAILED on ${RESTORE_LABEL}: archived table '${table}' is unreadable."
       exit 1
     fi
     COUNT="${COUNT//[[:space:]]/}"
@@ -431,36 +728,191 @@ if [ "$DRY_RUN" = false ]; then
       exit 1
     fi
     log "Row count: ${table}=${COUNT}"
-    RESTORED_ROWS=$((RESTORED_ROWS + COUNT))
-  done
-  if [[ "$RESTORED_ROWS" -eq 0 ]]; then
-    error "Verification FAILED on ${RESTORE_LABEL}: required tables (${REQUIRED_TABLES[*]}) all restored empty."
-    exit 1
-  fi
-  ok "Restored content verified: ${RESTORED_ROWS} row(s) across ${REQUIRED_TABLES[*]}."
+    case "$table" in
+      cafes|checkins|profiles) RESTORED_ROWS=$((RESTORED_ROWS + COUNT)) ;;
+    esac
+  done < <(printf '%s\n' "$ARCHIVED_TABLES")
 
-  # 3. Spatial query contract benchmark (cafes.location geography column per 0001_init.sql)
-  if ! SPATIAL_CHECK="$(psql_scalar \
-    "SELECT count(*) FROM cafes WHERE ST_DWithin(location, ST_SetSRID(ST_MakePoint(103.8198, 1.3521), 4326)::geography, 10000);")"; then
-    error "PostGIS spatial query check FAILED on ${RESTORE_LABEL}."
-    exit 1
+  # A drill certificate must cover the documented contract: all three required
+  # application tables present, and a spatial query that actually matches a
+  # cafe. An archive missing a table, or one whose cafes all fall outside the
+  # radius, cannot certify that the application restores (BRAWUKA-1015 review).
+  if [ "$DRILL_MODE" = true ]; then
+    MISSING_REQUIRED=""
+    for required in cafes checkins profiles; do
+      grep -Fxq "$required" "$ARCHIVED_RELATIONS_FILE" || MISSING_REQUIRED+="${MISSING_REQUIRED:+,}${required}"
+    done
+    if [[ -n "$MISSING_REQUIRED" ]]; then
+      error "Drill verification FAILED on ${RESTORE_LABEL}: --drill requires cafes, checkins and profiles; missing from the archive: ${MISSING_REQUIRED}."
+      exit 1
+    fi
+    # A same-name view is not the application table: the spatial query or a
+    # future migration would fail on it. Each required relation must be a real
+    # table (or a partitioned table), and its rows must be audited here.
+    for required in cafes checkins profiles; do
+      if ! REQUIRED_KIND="$(psql_scalar "SELECT c.relkind FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relname = '${required}';")"; then
+        error "Drill verification FAILED on ${RESTORE_LABEL}: could not read the relation kind of '${required}'."
+        exit 1
+      fi
+      REQUIRED_KIND="${REQUIRED_KIND//[[:space:]]/}"
+      case "$REQUIRED_KIND" in
+        r|p) ;;
+        *)
+          error "Drill verification FAILED on ${RESTORE_LABEL}: required relation '${required}' is '${REQUIRED_KIND:-missing}', not a table."
+          exit 1
+          ;;
+      esac
+      if ! REQUIRED_COUNT="$(psql_scalar "SELECT count(*) FROM \"${required}\";")"; then
+        error "Drill verification FAILED on ${RESTORE_LABEL}: required table '${required}' is unreadable."
+        exit 1
+      fi
+      REQUIRED_COUNT="${REQUIRED_COUNT//[[:space:]]/}"
+      if [[ ! "$REQUIRED_COUNT" =~ ^[0-9]+$ ]]; then
+        error "Drill verification FAILED on ${RESTORE_LABEL}: row count for '${required}' was '${REQUIRED_COUNT}', not a number."
+        exit 1
+      fi
+      log "Required table audit: ${required}=${REQUIRED_COUNT}"
+    done
   fi
-  SPATIAL_CHECK="${SPATIAL_CHECK//[[:space:]]/}"
-  if [[ ! "$SPATIAL_CHECK" =~ ^[0-9]+$ ]]; then
-    error "PostGIS spatial query check FAILED on ${RESTORE_LABEL}: no numeric result ('${SPATIAL_CHECK}')."
-    exit 1
-  fi
-  ok "PostGIS spatial query test returned ${SPATIAL_CHECK} cafe(s) in range."
 
-  # 4. Cleanup drill scratch database on the staging project
+  if grep -Fxq cafes "$ARCHIVED_RELATIONS_FILE"; then
+    if [[ "$RESTORED_ROWS" -eq 0 ]]; then
+      error "Verification FAILED on ${RESTORE_LABEL}: seeded archive restored cafes/checkins/profiles all empty."
+      exit 1
+    fi
+    ok "Seeded content verified: ${RESTORED_ROWS} row(s) across cafes/checkins/profiles."
+
+    # 4. Spatial query contract benchmark (cafes.location geography column per 0001_init.sql)
+    if ! SPATIAL_CHECK="$(psql_scalar \
+      "SELECT count(*) FROM cafes WHERE ST_DWithin(location, ST_SetSRID(ST_MakePoint(103.8198, 1.3521), 4326)::geography, 10000);")"; then
+      error "PostGIS spatial query check FAILED on ${RESTORE_LABEL}."
+      exit 1
+    fi
+    SPATIAL_CHECK="${SPATIAL_CHECK//[[:space:]]/}"
+    if [[ ! "$SPATIAL_CHECK" =~ ^[0-9]+$ ]]; then
+      error "PostGIS spatial query check FAILED on ${RESTORE_LABEL}: no numeric result ('${SPATIAL_CHECK}')."
+      exit 1
+    fi
+    if [ "$DRILL_MODE" = true ] && [ "$SPATIAL_CHECK" -eq 0 ]; then
+      error "Drill verification FAILED on ${RESTORE_LABEL}: the spatial query matched 0 cafe(s); a passing drill needs a real spatial hit."
+      exit 1
+    fi
+    ok "PostGIS spatial query test returned ${SPATIAL_CHECK} cafe(s) in range."
+  elif [ "$DRILL_MODE" = true ]; then
+    # A drill certifies that the application restores. An archive that predates
+    # the migrations cannot certify that: it has no cafes table, so the spatial
+    # contract never ran. Live rollback to such a snapshot is still valid.
+    error "Drill verification FAILED on ${RESTORE_LABEL}: --drill requires a migrated, seeded archive (cafes/checkins/profiles with rows and a spatial query). This archive is an empty-schema baseline; use it only for a --recreate rollback."
+    exit 1
+  else
+    ok "Baseline archive (no application tables): verified as an empty-schema snapshot."
+  fi
+
+  # 4. Ownership contract (ADR-0010 §3): pg_restore ran as the recovery role,
+  #    so every application object must have been handed back to the app role.
+  #    A leftover object would leave the application unable to migrate or write.
+  if ! STRAY_OWNERS="$(psql_scalar "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind IN ('r','p','v','m','S','f') AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'e') AND pg_get_userbyid(c.relowner) <> '${RESTORE_OWNER_ROLE}';")"; then
+    error "Ownership verification FAILED on ${RESTORE_LABEL}: could not count objects not owned by '${RESTORE_OWNER_ROLE}'."
+    exit 1
+  fi
+  STRAY_OWNERS="${STRAY_OWNERS//[[:space:]]/}"
+  if [[ "$STRAY_OWNERS" != "0" ]]; then
+    error "Ownership verification FAILED on ${RESTORE_LABEL}: ${STRAY_OWNERS} application object(s) are not owned by '${RESTORE_OWNER_ROLE}'."
+    exit 1
+  fi
+  if ! OWNER_FLAGS="$(psql_scalar "SELECT rolname || ' superuser=' || rolsuper || ' createdb=' || rolcreatedb FROM pg_roles WHERE rolname = '${RESTORE_OWNER_ROLE}';")"; then
+    error "Ownership verification FAILED on ${RESTORE_LABEL}: application role '${RESTORE_OWNER_ROLE}' is missing."
+    exit 1
+  fi
+  ok "Ownership contract verified: 0 stray application objects; ${OWNER_FLAGS}."
+
+  # 6. Layer-owner agreement (BRAWUKA-1015 P1): objects were normalised above,
+  #    but the database and the schema are separate objects with their own
+  #    owners. A rollback must reproduce the snapshot's ownership, not just its
+  #    tables, or the application later cannot migrate or write.
+  if [[ -n "$EXPECTED_DB_OWNER" ]]; then
+    if ! restored_db_owner="$(psql_scalar 'SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = current_database();')"; then
+      error "Ownership verification FAILED on ${RESTORE_LABEL}: could not read the database owner."
+      exit 1
+    fi
+    restored_db_owner="${restored_db_owner//[[:space:]]/}"
+    if [[ "$restored_db_owner" != "$EXPECTED_DB_OWNER" ]]; then
+      error "Ownership verification FAILED on ${RESTORE_LABEL}: database owner is '${restored_db_owner}', expected '${EXPECTED_DB_OWNER}'."
+      exit 1
+    fi
+    ok "Database owner verified: ${restored_db_owner}."
+  fi
+  if ! restored_schema_owner="$(psql_scalar "SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = 'public';")"; then
+    error "Ownership verification FAILED on ${RESTORE_LABEL}: could not read the 'public' schema owner."
+    exit 1
+  fi
+  restored_schema_owner="${restored_schema_owner//[[:space:]]/}"
+  if [[ "$restored_schema_owner" != "$RESTORE_OWNER_ROLE" ]]; then
+    error "Ownership verification FAILED on ${RESTORE_LABEL}: schema 'public' is owned by '${restored_schema_owner}', expected '${RESTORE_OWNER_ROLE}'."
+    exit 1
+  fi
+  ok "Schema owner verified: public -> ${restored_schema_owner}."
+
+  # 7. Cleanup drill scratch database on the staging project
   if [ "$DRILL_MODE" = true ]; then
     log "Cleaning up scratch drill database '${DRILL_DB}'..."
-    psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
-      -c "DROP DATABASE IF EXISTS \"${DRILL_DB}\";" >/dev/null
-    ok "Scratch drill database removed."
+    if pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
+      -c "DROP DATABASE IF EXISTS \"${DRILL_DB}\" WITH (FORCE);" >/dev/null; then
+      ok "Scratch drill database removed."
+    else
+      error "Cleanup FAILED: drill scratch database '${DRILL_DB}' could not be dropped; it still exists on the server."
+      exit 1
+    fi
   fi
 else
   ok "[DRY-RUN] Post-restore validation queries simulated."
+fi
+
+# ------------------------------------------------------------------------------
+# STEP 7: Swap the verified replacement into place (--recreate only)
+# ------------------------------------------------------------------------------
+# The live database was untouched through steps 4-6. Only now, with the
+# replacement verified against the archive baseline, does the target name move:
+# the old database is renamed to a retired name, the replacement takes the live
+# name, and the retired copy is dropped. A crash between the two renames leaves
+# the old data intact under the retired name; recovery is a rename back.
+if [ "$RECREATE_TARGET" = true ] && [ "$DRY_RUN" = false ]; then
+  log "Step 7: Swapping verified replacement '${REPLACEMENT_DB}' into '${TARGET_DB}'..."
+  pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
+    -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname IN ('${TARGET_DB}', '${REPLACEMENT_DB}') AND pid <> pg_backend_pid();" >/dev/null
+  RETIRED_DB="${TARGET_DB}__retired_$(date -u +%Y%m%d_%H%M%S)_$$"
+  # Atomic promotion (BRAWUKA-1015 P1). Both renames commit together, so there
+  # is no window where the live name points at nothing: a client killed before
+  # COMMIT leaves the server to abort the transaction, and the original name
+  # keeps serving the original data, ledger and owners.
+  #
+  # RESTORE_SWAP_TEST_PAUSE_SECONDS is a test-only fault injection: it holds the
+  # promotion transaction open so an integration test can interrupt it before
+  # commit. It is never set by an operator.
+  SWAP_PAUSE="${RESTORE_SWAP_TEST_PAUSE_SECONDS:-0}"
+  [[ "$SWAP_PAUSE" =~ ^[0-9]+$ ]] || SWAP_PAUSE=0
+  swap_sql="BEGIN; ALTER DATABASE \"${TARGET_DB}\" RENAME TO \"${RETIRED_DB}\";"
+  if [ "$SWAP_PAUSE" -gt 0 ]; then
+    swap_sql+=" SELECT pg_sleep(${SWAP_PAUSE});"
+  fi
+  swap_sql+=" ALTER DATABASE \"${REPLACEMENT_DB}\" RENAME TO \"${TARGET_DB}\"; COMMIT;"
+  pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q -c "$swap_sql" >/dev/null
+  REPLACEMENT_DB=""
+  if pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
+    -c "DROP DATABASE \"${RETIRED_DB}\" WITH (FORCE);" >/dev/null; then
+    ok "Promotion committed; retired copy '${RETIRED_DB}' removed."
+  else
+    warn "Promotion committed, but retired database '${RETIRED_DB}' could not be dropped. It no longer serves traffic; drop it manually after confirming the promoted database."
+  fi
+  if [[ -n "$EXPECTED_DB_OWNER" ]]; then
+    promoted_owner="$(pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -t -A -c "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = '${TARGET_DB}';" < /dev/null)"
+    promoted_owner="${promoted_owner//[[:space:]]/}"
+    if [[ "$promoted_owner" != "$EXPECTED_DB_OWNER" ]]; then
+      error "Swap owner check FAILED: '${TARGET_DB}' is owned by '${promoted_owner}', expected '${EXPECTED_DB_OWNER}'."
+      exit 1
+    fi
+  fi
+  ok "Promotion complete: '${TARGET_DB}' serves the verified archive."
 fi
 
 # Cleanup temp downloads
@@ -473,7 +925,8 @@ if [ "$DRILL_MODE" = true ]; then
   echo "Result:          PASSED — All PostGIS spatial contracts verified."
 else
   echo -e "${BOLD}${GREEN}Database Restoration Completed Successfully!${NC}"
-  echo "Target:          Supabase ${ENV} project"
+  echo "Target:          Dokploy ${ENV} Postgres"
+  echo "Mode:            $([ "$RECREATE_TARGET" = true ] && echo "rollback (replacement verified, then swapped in)" || echo "in-place restore")"
   echo "Status:          Active & Verified"
 fi
 echo "=============================================================================="

@@ -21,12 +21,15 @@
  * - `*.r2.cloudflarestorage.com` — presigned photo PUTs: prod/staging sign
  *   against `https://<account>.r2.cloudflarestorage.com` (image-service
  *   `R2_ENDPOINT=""`), so the browser PUTs cross-origin (client-upload.ts).
- * - Cloudflare Web Analytics beacon (production deploy only, BRAWUKA-815) —
+ * - Cloudflare Web Analytics beacon (BRAWUKA-815, BRAWUKA-981) —
  *   `static.cloudflareinsights.com` serves `beacon.min.js` and the beacon
  *   reports to `cloudflareinsights.com`. Cloudflare injects it at the zone
- *   edge (`auto_install`); staging runs analytics off (BRAWUKA-970), so only
- *   the production deploy grants the two hosts. `APP_ENV` is the deploy
- *   discriminator: staging is also a `NODE_ENV=production` build.
+ *   edge (`auto_install` on `cafemood.app`), and that switch is per zone, not
+ *   per hostname: `staging.cafemood.app` receives the beacon exactly like
+ *   `cafemood.app` does. Both deployed environments therefore grant the two
+ *   hosts. `APP_ENV` is the deploy discriminator — staging is also a
+ *   `NODE_ENV=production` build — and local/CI builds leave it unset, so their
+ *   policy stays closed.
  * - `blob:` — draft photo previews + canvas-resize source via
  *   `URL.createObjectURL` (checkin-photos, checkin-resume, toWebP).
  * - `http://localhost:9000` (non-production only) — local MinIO presign
@@ -40,8 +43,8 @@
  *   scripts (hydration/RSC payload) and there is no nonce pipeline — `'self'`
  *   alone would break the app. `'unsafe-eval'` is NOT granted.
  * - The Cloudflare beacon adds exactly two hosts (`script-src` +
- *   `connect-src`) when the caller marks the deploy as production; the rest of
- *   the policy never widens for analytics.
+ *   `connect-src`) on a deployed environment; the rest of the policy never
+ *   widens for analytics.
  * - `style-src 'self' 'unsafe-inline'` — Tailwind + next-intl emit inline
  *   `<style>` blocks; no remote stylesheets are used (fonts are self-hosted
  *   via `next/font/local`).
@@ -74,19 +77,36 @@ const IMG_SRC_EXTRA =
 const DEV_EXTRA = "http://localhost:9000";
 
 /**
- * Cloudflare Web Analytics beacon hosts — granted only on the production
- * deploy (`APP_ENV=production`), which keeps analytics on. Local, CI, and
- * staging builds leave the policy closed; staging has no beacon to allow.
+ * Cloudflare Web Analytics beacon hosts. The zone edge injects the beacon
+ * into every hostname of the zone, so every deployed environment needs the
+ * exception; local and CI builds have no edge in front of them.
  */
 const CLOUDFLARE_BEACON_SCRIPT_SRC = "https://static.cloudflareinsights.com";
 const CLOUDFLARE_BEACON_CONNECT_SRC = "https://cloudflareinsights.com";
+
+/** `APP_ENV` values served through the Cloudflare zone edge (`auto_install`). */
+const BEACON_APP_ENVS: Record<string, true> = { production: true, staging: true };
+
+/**
+ * Whether the policy should grant the Cloudflare Web Analytics beacon hosts.
+ *
+ * The injection switch lives in the Cloudflare dashboard at zone level, so it
+ * cannot be read at build time and it covers staging as well as production
+ * (BRAWUKA-981). Keying the exception on the deploy environment mirrors what
+ * the edge actually does; a narrower gate silently breaks staging with CSP
+ * violations on every page load.
+ */
+export function cloudflareBeaconAllowed(appEnv: string | undefined): boolean {
+  const env = appEnv?.trim();
+  return env !== undefined && BEACON_APP_ENVS[env] === true;
+}
 
 /**
  * Build the Content-Security-Policy value.
  *
  * @param isProduction `NODE_ENV === "production"` — gates
  *   `upgrade-insecure-requests` and the MinIO exception.
- * @param allowCloudflareBeacon `APP_ENV === "production"` — grants the
+ * @param allowCloudflareBeacon `cloudflareBeaconAllowed(APP_ENV)` — grants the
  *   Cloudflare Web Analytics beacon hosts.
  */
 export function contentSecurityPolicy(

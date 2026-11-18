@@ -210,10 +210,15 @@ BRAWUKA-1011 executes this after the code gates:
   gzip-compressed archive larger than the pipe buffer, plus a live restore.
 - `web/tests/devops/db-url-selection.test.ts` — per-environment URL selection
   for `backup.sh`, `restore.sh`, and the migration runner.
-- `web/tests/devops/dokploy-db-host-contract.test.ts` — both Dokploy env
-  templates keep `DATABASE_URL`/`DIRECT_URL` on the internal `:5432` service
-  with explicit `sslmode=disable`, reject `*.supabase.co` / pooler database
-  targets (the pre-ADR templates' shape), and leave the Auth URL alone.
+- `web/tests/devops/dokploy-db-host-contract.test.ts` — for both Dokploy env
+  templates and both database variables, requires exactly one assignment, the
+  internal service on `:5432`, a single explicit `sslmode=disable`, and no other
+  query parameter; then rejects a hosted database host after percent-decoding,
+  lowercasing and removing a trailing dot — that is, the host and port `pg`
+  resolves. Regressions covered: `?host=`/`?port=` overrides (including a
+  percent-encoded parameter name), a repeated `sslmode`, an encoded or
+  trailing-dot hosted hostname, and a second assignment that Docker Compose
+  would let win. The Auth URL is excluded.
 - `web/tests/devops/postgres-connection.test.ts` — `sslmode` alone decides the
   TLS shape: no hostname carries a default, and an unrecognized value still
   fails closed.

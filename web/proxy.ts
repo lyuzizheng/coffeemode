@@ -64,7 +64,20 @@ function legacyCafeRedirect(request: NextRequest): NextResponse | null {
   return redirectToPath(request, `/cafes/${cafe}`, 308);
 }
 
-async function handleProxy(request: NextRequest) {
+/**
+ * A proxy outcome plus whether it is the response the client receives.
+ *
+ * `NextResponse.next()` only says "keep routing": the page render that
+ * follows decides the real status, so the proxy cannot observe it. Responses
+ * the proxy builds itself (the legacy `/?cafe=` 308) are final and their
+ * status is accurate.
+ */
+interface ProxyOutcome {
+  response: NextResponse;
+  final: boolean;
+}
+
+async function handleProxy(request: NextRequest): Promise<ProxyOutcome> {
   const req = sanitizedRequest(request);
 
   const url = resolveSupabaseUrl();
@@ -102,13 +115,25 @@ async function handleProxy(request: NextRequest) {
     response.headers.set("Cache-Control", CAFE_SHELL_BYPASS_CACHE_CONTROL);
   }
 
-  return response;
+  // Pass-through: routing and the page render still run after this returns,
+  // so `response.status` (200) is a placeholder, not the client result.
+  return { response, final: false };
 }
 
 /**
  * Proxy entry (BRAWUKA-167): access log wrapper around the session/gone-cafe
  * proxy. Observability only — one JSON line per non-API request
- * (method/path/status/duration_ms). Never blocks or rewrites.
+ * (method/path/status/proxy_duration_ms). Never blocks or rewrites.
+ *
+ * Status semantics (BRAWUKA-814): a line from this stage describes the
+ * proxy phase only. `status` is the real client status when the proxy built
+ * the response itself (the legacy `/?cafe=` redirect), and the literal
+ * `"unknown"` on pass-through — `NextResponse.next()` is always 200, so
+ * emitting that as the client result reported a middleware placeholder as a
+ * page success and hid downstream 404/500. Time is `proxy_duration_ms`, not
+ * `duration_ms`: only `duration_ms` (the API route boundary, `stage:"route"`)
+ * measures a completed response. No page-render observer exists yet, so a
+ * non-API final status is a documented gap, never a guess.
  *
  * `/api/*` stays silent here (BRAWUKA-729): the route boundary owns the
  * completion access line with the produced status/code, and this proxy runs
@@ -124,13 +149,19 @@ export async function proxy(request: NextRequest) {
   const requestId = getRequestId(request);
   const headers = new Headers(request.headers);
   headers.set(REQUEST_ID_HEADER, requestId);
-  const response = legacyCafeRedirect(request) ?? (await handleProxy(new NextRequest(request, { headers })));
+  // The legacy `/?cafe=` redirect is built here, so its status is final; the
+  // session-refresh proxy only ever returns `NextResponse.next()`.
+  const redirect = legacyCafeRedirect(request);
+  const { response, final } = redirect
+    ? { response: redirect, final: true }
+    : await handleProxy(new NextRequest(request, { headers }));
   response.headers.set(REQUEST_ID_HEADER, requestId);
   const pathname = request.nextUrl.pathname;
   if (!pathname.startsWith("/api/")) {
-    const code = await accessErrorCode(response);
+    const code = final ? await accessErrorCode(response) : undefined;
     emitAccessLine({
       type: "access",
+      stage: "proxy",
       request_id: requestId,
       method: request.method,
       // BRAWUKA-282 P1-3: pathname only, never `search`. The matcher covers
@@ -138,9 +169,10 @@ export async function proxy(request: NextRequest) {
       // OAuth `code=` into stdout on every login (pre-exchange, still valid),
       // plus raw user query terms on `/api/search?q=…`.
       path: pathname,
-      status: response.status,
+      // BRAWUKA-814: never present the pass-through placeholder as a result.
+      status: final ? response.status : "unknown",
       ...(code !== undefined ? { code } : {}),
-      duration_ms: Date.now() - start,
+      proxy_duration_ms: Date.now() - start,
     });
   }
   return response;

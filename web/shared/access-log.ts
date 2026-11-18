@@ -2,6 +2,14 @@
  * API completion access line — the single observer at the response-producing
  * route boundary (BRAWUKA-729, spec 0011 D7).
  *
+ * `stage: "route"` marks a line that describes a completed response:
+ * `status` and `duration_ms` are the client's real result and the full
+ * guard+handler time. The proxy's line is `stage: "proxy"` — a phase
+ * observation that reports `status: "unknown"` on pass-through and only ever
+ * times itself (`proxy_duration_ms`), because routing and rendering run after
+ * it (BRAWUKA-814). Consumers that want success/latency must select a stage;
+ * there is no line that guesses the other stage's answer.
+ *
  * The proxy runs before routing, so its `NextResponse.next()` is always 200
  * and cannot report the route's real status. Every `apiRoute()` exit path —
  * origin/guard rejections, handler responses, and the catch-all — flows
@@ -66,6 +74,7 @@ export async function emitApiAccessLine(
   const code = await accessErrorCode(source.response);
   emitAccessLine({
     type: "access",
+    stage: "route",
     request_id: source.requestId,
     route: source.route,
     method: source.request.method,

@@ -52,25 +52,32 @@ proxied (BRAWUKA-235, derived from BRAWUKA-233 P1). Lives next to
   Because the line is emitted inside the request's span, it carries `trace_id` /
   `span_id` and clicks through to its Tempo trace — the reason the Alloy stdout
   collector was dropped (docs/devops/grafana-cloud-adoption.md §3 P0-1).
-  The access stream describes the completed request (BRAWUKA-729): every
-  `apiRoute()` exit — handler responses, origin/guard rejections, the
-  catch-all — emits one line with the produced `status`, the envelope `code`
-  on ≥400, and guard+handler `duration_ms`, except the accepted hot-path
-  exclusions (BRAWUKA-756, spec 0011 edge cases: `GET`/`HEAD /api/health`,
-  `GET /api/heartbeat`, `GET /api/config` pass `silent: true` and emit
-  nothing — they already skip the proxy matcher, so they stay fully out of
-  the access stream by design). The proxy stays silent on `/api/*` (its
-  pre-route `NextResponse.next()` is always 200), so no duplicate success
-  entry exists; non-API traffic keeps its proxy line.
-  Page renders still log their pre-route status (a 404 page logs
-  `"status":200`) — the error lines carry the real `status`/`code` there.
+  Every access line carries `stage` (BRAWUKA-814): `stage="route"` is the API
+  completion line emitted by `apiRoute()` — one per request, with the produced
+  `status`, the envelope `code` on ≥400, and guard+handler `duration_ms`, except
+  the accepted hot-path exclusions (BRAWUKA-756, spec 0011 edge cases:
+  `GET`/`HEAD /api/health`, `GET /api/heartbeat`, `GET /api/config` pass
+  `silent: true` and emit nothing — they already skip the proxy matcher, so
+  they stay fully out of the access stream by design). The proxy stays silent
+  on `/api/*` (its pre-route `NextResponse.next()` is always 200), so no
+  duplicate success entry exists.
+  `stage="proxy"` is a phase observation, not a completion: on pass-through it
+  reports `status:"unknown"` and `proxy_duration_ms` — never `status` or
+  `duration_ms`, because routing and rendering run after the proxy. It reports
+  a numeric `status` only when the proxy built the response itself (the
+  `/?cafe=` 308). **Known gap:** there is no page-render observer, so the final
+  status of a non-API page (say a 404 gone-cafe or a render 500) exists only in
+  the client response and, for exceptions, in `type:"error"` lines; it is not
+  in the access stream. Readers must not sum page traffic into success/latency
+  metrics — select `stage="route"` for completion numbers.
 - **Loki label vocabulary** — Grafana Cloud promotes a fixed list of OTLP
   resource attributes to Loki index labels and puts everything else in
   structured metadata. The app's lines therefore index on exactly two labels,
   `service_name="coffeemode-web"` and `deployment_environment_name`
   (`staging` / `production`, from `OTEL_RESOURCE_ATTRIBUTES`), and every
-  queryable field — `log_type`, `route`, `status`, `code`, `bucket`,
-  `client_id`, `client_ip`, `request_id`, `retry_after`, and search telemetry
+  queryable field — `log_type`, `stage`, `route`, `status`, `code`, `bucket`,
+  `client_id`, `client_ip`, `request_id`, `retry_after`, `duration_ms`,
+  `proxy_duration_ms`, and search telemetry
   fields (`mode`, `search_duration_ms`, `search_truncated`, `search_open_now_batches`,
   `search_poi_degraded`, `search_cache`) — is structured metadata, filtered with `| field="value"` and
   no `| json` parse. There is no `service` or `env` label; a query using them

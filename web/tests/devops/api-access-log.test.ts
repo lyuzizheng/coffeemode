@@ -19,7 +19,11 @@
  * 7. Slow handler → `duration_ms` covers handler latency.
  * 8. Query strings never reach `path` (no-query logging policy, BRAWUKA-282).
  * 9. `/api/*` through the proxy emits no access line (no duplicate).
- * 10. Non-API traffic through the proxy still emits its access line.
+ * 10. Non-API pass-through emits `stage: "proxy"`, `status: "unknown"` and
+ *     `proxy_duration_ms` — never a numeric status or `duration_ms`
+ *     (BRAWUKA-814: the proxy cannot see the page's final status).
+ * 11. A proxy-built redirect (legacy `/?cafe=`) is a final response: its real
+ *     308 status is logged under `stage: "proxy"`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
@@ -103,6 +107,7 @@ describeIntegration("integration — api completion access log (BRAWUKA-729)", (
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatchObject({
       type: "access",
+      stage: "route",
       request_id: requestId,
       route: "GET /api/test-access",
       method: "GET",
@@ -110,6 +115,7 @@ describeIntegration("integration — api completion access log (BRAWUKA-729)", (
       status: 200,
     });
     expect(lines[0]).not.toHaveProperty("code");
+    expect(lines[0]).not.toHaveProperty("proxy_duration_ms");
     expect(typeof lines[0]?.duration_ms).toBe("number");
   });
 
@@ -252,7 +258,7 @@ describeIntegration("integration — api completion access log (BRAWUKA-729)", (
     expect(accessLinesFor(requestId)).toHaveLength(0);
   });
 
-  it("keeps the proxy access line for non-API traffic", async () => {
+  it("records an unknown status for non-API pass-through", async () => {
     const requestId = randomUUID();
 
     const response = await proxy(
@@ -261,9 +267,36 @@ describeIntegration("integration — api completion access log (BRAWUKA-729)", (
       }),
     );
 
+    // The pass-through placeholder is 200, but routing/render still run.
     expect(response.status).toBe(200);
     const lines = accessLinesFor(requestId);
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toMatchObject({ type: "access", status: 200 });
+    expect(lines[0]).toMatchObject({ type: "access", stage: "proxy", status: "unknown" });
+    expect(typeof lines[0]?.proxy_duration_ms).toBe("number");
+    // No final-status fields: the proxy cannot observe the page's result.
+    expect(lines[0]).not.toHaveProperty("duration_ms");
+    expect(lines[0]).not.toHaveProperty("code");
+  });
+
+  it("logs the real status for a proxy-built redirect", async () => {
+    const requestId = randomUUID();
+    const cafeId = randomUUID();
+
+    const response = await proxy(
+      new NextRequest(`http://localhost:3000/?cafe=${cafeId}`, {
+        headers: { "x-request-id": requestId },
+      }),
+    );
+
+    expect(response.status).toBe(308);
+    const lines = accessLinesFor(requestId);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({
+      type: "access",
+      stage: "proxy",
+      status: 308,
+      path: "/",
+    });
+    expect(typeof lines[0]?.proxy_duration_ms).toBe("number");
   });
 });

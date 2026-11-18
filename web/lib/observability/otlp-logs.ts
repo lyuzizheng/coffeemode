@@ -27,6 +27,7 @@ import { installShutdownFlush } from "./shutdown";
  *   `error`                                 → body
  *   `route` `request_id` `code` `status`    → log-record attributes
  *   `method` `path` `duration_ms` `stack`   → log-record attributes
+ *   `stage` `proxy_duration_ms`             → log-record attributes (BRAWUKA-814)
  *   `client_id` `client_ip` `bucket`        → log-record attributes
  *   `retry_after`                           → log-record attribute
  *   `search.duration_ms` `search.truncated` → log-record attributes (ADR-0005)
@@ -66,8 +67,14 @@ const SEVERITY: Record<string, { number: SeverityNumber; text: string }> = {
 /**
  * Line fields copied to log-record attributes under their own names. `error`
  * is absent on purpose — it becomes the body.
+ *
+ * `stage` and `proxy_duration_ms` carry the BRAWUKA-814 split: `stage: "route"`
+ * lines own `status`/`duration_ms`; `stage: "proxy"` lines time only the
+ * proxy phase, and their `status: "unknown"` on pass-through is a string on
+ * purpose so no numeric status query can count it as a client result.
  */
 const ATTRIBUTE_FIELDS = [
+  "stage",
   "request_id",
   "route",
   "code",
@@ -75,6 +82,7 @@ const ATTRIBUTE_FIELDS = [
   "method",
   "path",
   "duration_ms",
+  "proxy_duration_ms",
   "stack",
   "client_id",
   "client_ip",

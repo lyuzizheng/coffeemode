@@ -320,13 +320,14 @@ In drill mode (`--drill`), the script always targets the STAGING Dokploy Postgre
 1. Validates the SHA256 checksum and that `pg_restore` can read the archive's table of contents (the gzip stream is drained, so a valid archive larger than the pipe buffer is never rejected by a `SIGPIPE`).
 2. Creates a scratch database `restore_drill_<timestamp>_<pid>` on staging.
 3. Restores schema, tables, and spatial data into the scratch database; a nonzero `pg_restore` exit status fails the drill.
-4. Executes PostGIS extension checks, row count audits (`cafes`, `checkins`, `profiles`: each must be readable with a numeric count, and the three must not all be empty), and the spatial query against that seeded data. A drill passes only if all three required tables exist in the archive and the spatial query matches at least one cafe; an archive missing a table, or whose cafes all fall outside the radius, fails. An archive that predates the migrations (no application relations) also fails: an empty schema cannot certify that the application restores; that archive is only valid for a `--recreate` rollback.
+4. Executes PostGIS extension checks, row count audits (`cafes`, `checkins`, `profiles`: each must be readable with a numeric count, and the three must not all be empty), and the spatial query against that seeded data. A drill passes only if all three required relations exist as real tables (a same-name view is rejected), each is row-audited, and the spatial query matches at least one cafe; an archive missing a table, a view masquerading as one, or whose cafes all fall outside the radius, fails. An archive that predates the migrations (no application relations) also fails: an empty schema cannot certify that the application restores; that archive is only valid for a `--recreate` rollback.
 5. Drops the scratch database — on the failure paths as well as the success path — and reports a verified `PASSED` result.
 
 The drill is strict by design (BRAWUKA-728): an unreadable archive, a nonzero
 `pg_restore` exit status, a missing required table, a restore in which all three
 required tables are empty, a missing PostGIS extension, a failed spatial query,
-or a spatial query that matches zero cafes each exit nonzero. An individual table may legitimately restore empty; only the
+or a spatial query that matches zero cafes each exit nonzero. A required name
+that restores as a view is rejected, not audited. An individual table may legitimately restore empty; only the
 all-empty set is rejected. A drill that cannot verify the restore never reports
 `PASSED`, so a green drill is evidence the archive was actually restorable.
 

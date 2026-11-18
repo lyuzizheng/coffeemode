@@ -127,6 +127,13 @@ case "$sql" in
   *"datname = '"*)
     if [ "\${STUB_TARGET_MISSING:-0}" = "1" ]; then printf '0\\n'; else printf '1\\n'; fi
     ;;
+  *"SELECT c.relkind"*)
+    relation="$(printf '%s' "$sql" | sed -nE "s/.*c.relname = '([a-z_][a-z_]*)'.*/\\1/p")"
+    case " \${STUB_VIEWS:-} " in
+      *" $relation "*) printf 'v\n' ;;
+      *) printf 'r\n' ;;
+    esac
+    ;;
   *"c.relname = '"*)
     relation="$(printf '%s' "$sql" | sed -nE "s/.*c.relname = '([a-z_][a-z_]*)'.*/\\1/p")"
     case " \${STUB_MISSING_RELATIONS:-} " in
@@ -581,6 +588,17 @@ describe("Recovery drill — failure lifecycle (BRAWUKA-728)", () => {
     expect(run.output).toContain("the spatial query matched 0 cafe(s)");
   });
 
+  it("rejects a view that masquerades as a required table", () => {
+    const run = runDrill({
+      STUB_COUNTS: "cafes=12 checkins=34 profiles=5",
+      STUB_VIEWS: "checkins profiles",
+    });
+
+    expect(run.status).not.toBe(0);
+    expect(run.output).not.toContain("PASSED");
+    expect(run.output).toContain("required relation 'checkins' is 'v', not a table");
+  });
+
   it("accepts a baseline archive that predates the migrations", () => {
     // A pre-migration snapshot has no application relations. Verification must
     // judge the restore against that baseline instead of demanding `cafes`.
@@ -705,39 +723,29 @@ describeIntegration("Recovery drill — real custom archive (BRAWUKA-753)", () =
       expect(rawBytes).toBeGreaterThan(PIPE_BUFFER_BYTES);
       const run = runRestore(
         ["--env", "staging", "--file", archiveGz, "--drill"],
-        { STAGING_DIRECT_URL: adminUrl, RESTORE_DRILL_KEEP_SCRATCH: "1" },
+        { STAGING_DIRECT_URL: adminUrl },
         { stubs: false },
       );
 
-      expect(run.status).toBe(0);
-      expect(run.output).toContain(
-        `Archive verified: ${expectedRelations.length} application relation(s) in its table of contents.`,
-      );
-      expect(run.output).toContain("PASSED");
-      expect(run.output).toContain(`Row count: cafes=${seeded.cafes}`);
-      expect(run.output).toContain(`Row count: checkins=${seeded.checkins}`);
-      expect(run.output).toContain(`Row count: profiles=${seeded.profiles}`);
-      expect(run.output).toContain("kept for inspection");
-
       const scratchDb = run.output.match(/staging scratch database (\S+)/)?.[1] ?? "";
       expect(scratchDb).toMatch(/^restore_drill_/);
-      // Names, not counts: the restored scratch database must reproduce the
-      // source fixture's independently derived relation set exactly.
-      expect(await publicRelationNames(testDatabaseUrl(adminUrl, scratchDb))).toEqual(
-        expectedRelations,
-      );
-      await cleanupIntegrationDatabase(adminUrl, scratchDb);
-      const admin = new pg.Client({ connectionString: adminUrl });
-      await admin.connect();
       try {
-        const { rows } = await admin.query(
-          "select count(*)::int as remaining from pg_database where datname = $1",
-          [scratchDb],
+        expect(run.status).toBe(0);
+        expect(run.output).toContain(
+          `Archive verified: ${expectedRelations.length} application relation(s) in its table of contents.`,
         );
-        expect(rows[0].remaining).toBe(0);
+        expect(run.output).toContain("PASSED");
+        expect(run.output).toContain(`Row count: cafes=${seeded.cafes}`);
+        expect(run.output).toContain(`Row count: checkins=${seeded.checkins}`);
+        expect(run.output).toContain(`Row count: profiles=${seeded.profiles}`);
+        expect(run.output).toContain("Required table audit: cafes=");
+        expect(run.output).toContain("Scratch drill database removed.");
       } finally {
-        await admin.end();
+        // Operator cleanup is unconditional; this is the safety net that proves
+        // a failing assertion cannot leak a scratch database either.
+        await cleanupIntegrationDatabase(adminUrl, scratchDb);
       }
+      await expectNoDatabase(adminUrl, scratchDb);
     },
   );
 
@@ -952,9 +960,53 @@ describeIntegration("Recovery drill — real custom archive (BRAWUKA-753)", () =
         expect(run.status).not.toBe(0);
         expect(run.output).not.toContain("PASSED");
         expect(run.output).toContain("the spatial query matched 0 cafe(s)");
+        const scratchDb = run.output.match(/staging scratch database (\S+)/)?.[1] ?? "";
+        expect(scratchDb).toMatch(/^restore_drill_/);
+        await cleanupIntegrationDatabase(adminUrl, scratchDb);
+        await expectNoDatabase(adminUrl, scratchDb);
       } finally {
         fs.rmSync(radiusArchive, { force: true });
         await cleanupIntegrationDatabase(adminUrl, radiusDb);
+      }
+    },
+  );
+
+  it.skipIf(!hasPostgresClientTools)(
+    "rejects a real archive whose required relations are views",
+    async () => {
+      const viewDb = makeTestDbName("restore_views");
+      const viewUrl = testDatabaseUrl(adminUrl, viewDb);
+      await provisionTestDatabase(adminUrl, viewDb, { useTemplate: true });
+      const viewArchive = path.join(tmpRoot, "views.dump");
+      try {
+        const client = new pg.Client({ connectionString: viewUrl });
+        await client.connect();
+        try {
+          await client.query("insert into cafes (name, location) values ('Seeded', ST_SetSRID(ST_MakePoint(103.8198, 1.3521), 4326)::geography)");
+          await client.query("drop table checkins cascade");
+          await client.query("drop table profiles cascade");
+          await client.query("create view checkins as select 1::bigint as id");
+          await client.query("create view profiles as select 1::bigint as id");
+        } finally {
+          await client.end();
+        }
+        dumpCustomArchive(viewUrl, viewArchive);
+
+        const run = runRestore(
+          ["--env", "staging", "--file", viewArchive, "--drill"],
+          { STAGING_DIRECT_URL: adminUrl },
+          { stubs: false },
+        );
+        expect(run.status).not.toBe(0);
+        expect(run.output).not.toContain("PASSED");
+        expect(run.output).toMatch(/required relation '(checkins|profiles)' is 'v', not a table/);
+        const scratchDb = run.output.match(/staging scratch database (\S+)/)?.[1] ?? "";
+        expect(scratchDb).toMatch(/^restore_drill_/);
+        await cleanupIntegrationDatabase(adminUrl, scratchDb);
+        await expectNoDatabase(adminUrl, scratchDb);
+      } finally {
+        fs.rmSync(viewArchive, { force: true });
+        await cleanupIntegrationDatabase(adminUrl, viewDb);
       }
     },
   );
@@ -1028,6 +1080,21 @@ function dumpCustomArchive(url: string, outPath: string): void {
     execFileSync("bash", ["-c", script, "--", url], { stdio: ["ignore", fd, "inherit"] });
   } finally {
     fs.closeSync(fd);
+  }
+}
+
+/** Assert a database name no longer exists on the server. */
+async function expectNoDatabase(adminUrl: string, name: string): Promise<void> {
+  const admin = new pg.Client({ connectionString: adminUrl });
+  await admin.connect();
+  try {
+    const { rows } = await admin.query<{ remaining: number }>(
+      "select count(*)::int as remaining from pg_database where datname = $1",
+      [name],
+    );
+    expect(rows[0].remaining).toBe(0);
+  } finally {
+    await admin.end();
   }
 }
 

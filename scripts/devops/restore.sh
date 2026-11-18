@@ -246,9 +246,6 @@ ADMIN_URL=""
 # P2: drop the drill scratch db on ANY exit (failure, signal, success path
 # already drops it explicitly — the second DROP is IF EXISTS, so idempotent).
 cleanup_drill_db() {
-  if [[ "${RESTORE_DRILL_KEEP_SCRATCH:-0}" == "1" ]]; then
-    return 0
-  fi
   if [[ "$DRILL_MODE" == "true" && -n "${DRILL_DB:-}" && -n "${ADMIN_URL:-}" && "$DRY_RUN" == "false" ]]; then
     pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=0 -q \
       -c "DROP DATABASE IF EXISTS \"${DRILL_DB}\";" >/dev/null 2>&1 || true
@@ -736,6 +733,33 @@ if [ "$DRY_RUN" = false ]; then
       error "Drill verification FAILED on ${RESTORE_LABEL}: --drill requires cafes, checkins and profiles; missing from the archive: ${MISSING_REQUIRED}."
       exit 1
     fi
+    # A same-name view is not the application table: the spatial query or a
+    # future migration would fail on it. Each required relation must be a real
+    # table (or a partitioned table), and its rows must be audited here.
+    for required in cafes checkins profiles; do
+      if ! REQUIRED_KIND="$(psql_scalar "SELECT c.relkind FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relname = '${required}';")"; then
+        error "Drill verification FAILED on ${RESTORE_LABEL}: could not read the relation kind of '${required}'."
+        exit 1
+      fi
+      REQUIRED_KIND="${REQUIRED_KIND//[[:space:]]/}"
+      case "$REQUIRED_KIND" in
+        r|p) ;;
+        *)
+          error "Drill verification FAILED on ${RESTORE_LABEL}: required relation '${required}' is '${REQUIRED_KIND:-missing}', not a table."
+          exit 1
+          ;;
+      esac
+      if ! REQUIRED_COUNT="$(psql_scalar "SELECT count(*) FROM \"${required}\";")"; then
+        error "Drill verification FAILED on ${RESTORE_LABEL}: required table '${required}' is unreadable."
+        exit 1
+      fi
+      REQUIRED_COUNT="${REQUIRED_COUNT//[[:space:]]/}"
+      if [[ ! "$REQUIRED_COUNT" =~ ^[0-9]+$ ]]; then
+        error "Drill verification FAILED on ${RESTORE_LABEL}: row count for '${required}' was '${REQUIRED_COUNT}', not a number."
+        exit 1
+      fi
+      log "Required table audit: ${required}=${REQUIRED_COUNT}"
+    done
   fi
 
   if grep -Fxq cafes "$ARCHIVED_RELATIONS_FILE"; then
@@ -818,16 +842,10 @@ if [ "$DRY_RUN" = false ]; then
 
   # 7. Cleanup drill scratch database on the staging project
   if [ "$DRILL_MODE" = true ]; then
-    # RESTORE_DRILL_KEEP_SCRATCH is a test-only seam: an integration test reads
-    # the restored relation names back from the scratch database, then drops it.
-    if [[ "${RESTORE_DRILL_KEEP_SCRATCH:-0}" == "1" ]]; then
-      warn "RESTORE_DRILL_KEEP_SCRATCH=1: scratch database '${DRILL_DB}' kept for inspection; drop it manually."
-    else
-      log "Cleaning up scratch drill database '${DRILL_DB}'..."
-      pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
-        -c "DROP DATABASE IF EXISTS \"${DRILL_DB}\";" >/dev/null
-      ok "Scratch drill database removed."
-    fi
+    log "Cleaning up scratch drill database '${DRILL_DB}'..."
+    pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
+      -c "DROP DATABASE IF EXISTS \"${DRILL_DB}\";" >/dev/null
+    ok "Scratch drill database removed."
   fi
 else
   ok "[DRY-RUN] Post-restore validation queries simulated."

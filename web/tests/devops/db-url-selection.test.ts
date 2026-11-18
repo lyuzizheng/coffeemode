@@ -72,6 +72,7 @@ case "$sql" in
   *'count(*) FROM profiles'*) printf '1\\n' ;;
   *'select rolsuper'*) printf 't\\n' ;;
   *'c.relowner'*) printf '0\\n' ;;
+  *'SELECT c.relkind'*) printf 'r\n' ;;
   *'c.relname ='*) printf '1\\n' ;;
   *'from pg_database'*) printf '1\\n' ;;
   *pg_get_userbyid*) printf 'coffeemode\\n' ;;

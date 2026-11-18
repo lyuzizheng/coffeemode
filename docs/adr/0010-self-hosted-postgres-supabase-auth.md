@@ -107,10 +107,12 @@ spec 0010 are updated to this topology.
   archived relation must exist, no application relation may exist outside it,
   and every archived table must be readable. Row counts and the spatial query
   run for every archived table, so a migrated+seeded archive must also carry
-  data. A pre-migration snapshot of an empty database has no application
-  relations; it verifies as an empty-schema baseline and is not, by itself,
-  evidence that the seeded application restores. The scratch database is dropped
-  on every exit path.
+  data. A drill passes only when the three required application relations are
+  real tables (a same-name view is rejected), all three are row-audited, and
+  the spatial query matches at least one cafe. A pre-migration snapshot of an
+  empty database has no application relations; it verifies as an empty-schema
+  baseline and is not, by itself, evidence that the seeded application
+  restores. The scratch database is dropped on every exit path.
 - `--recreate` (rollback) does not drop the live database. It creates a
   replacement database with the target's original owner, restores into it,
   performs the full verification there, and only then promotes it: both

@@ -28,13 +28,18 @@ Accepted (2026-09-04 — BRAWUKA-50 architecture and deployment specification; r
 
 2. Dual-Stack Environment Architecture (Backend & Data Isolation):
    Staging and Production environments run as separate Dokploy compose stacks,
-   each backed by its own Supabase project (BRAWUKA-240 D1 / decision 34a).
+   each backed by its own Dokploy VPS Postgres service; Supabase keeps Auth only
+   (ADR-0010, BRAWUKA-1010).
    - Database, storage, and backend networks are 100% isolated:
-     - Staging Database: Supabase STAGING project (Postgres + PostGIS 16, region ap-southeast-1)
-     - Production Database: Supabase PROD project (Postgres + PostGIS 16, region ap-southeast-1)
-     - App runtime connects over `DATABASE_URL` (Supavisor pooled `:6543`, `sslmode=require`);
-       migrations/backups/restores run over `DIRECT_URL` (session/direct `:5432`, `sslmode=require`).
-    - No self-hosted postgres service exists in either application compose stack (removed BRAWUKA-241).
+     - Staging Database: Dokploy VPS Postgres `db-staging`
+       (`postgis/postgis:16-3.4`, application data, BRAWUKA-507)
+     - Production Database: Dokploy VPS Postgres `db-prod`
+       (`postgis/postgis:16-3.4`, application data, BRAWUKA-1011)
+     - App runtime connects over `DATABASE_URL`; migrations/backups/restores run over
+       `DIRECT_URL`. Both use the environment's internal service on `:5432` with
+       explicit `sslmode=disable` (no published port, `dokploy-network` only).
+     - Supabase serves Auth only; no application table is reachable through its Data API.
+    - No host-published database port and no database DNS name outside `dokploy-network`.
       GitHub Actions `staging-journey` verification runs against an ephemeral runner-local Postgres
       container (`docker compose up -d --wait postgres`, `postgis/postgis:16-3.4`, BRAWUKA-525),
       completely decoupling ephemeral CI scratch database load from the staging Supabase project.
@@ -45,7 +50,7 @@ Accepted (2026-09-04 — BRAWUKA-50 architecture and deployment specification; r
      bridge network plus the shared external `traefik-net` bridge for Traefik ingress.
    - Cloudflare Edge Isolation:
      - Staging: image-service-staging, poi-service-staging, coffeemode-images-staging R2 bucket,
-       staging.cafemood.app subdomain routing.
+       <staging-site-host> subdomain routing.
      - Production: image-service-prod, poi-service-prod, coffeemode-images-prod R2 bucket,
        cafemood.app apex and www routing.
 3. Trunk-Based CI/CD Branching Model:
@@ -130,7 +135,7 @@ In addition to the application stacks, Dokploy historically managed an isolated 
                              │               │
                              │ (traefik-net) │
                              │               │
-             Host: staging.cafemood.app    │ Host: cafemood.app
+             Host: <staging-site-host>    │ Host: cafemood.app
                              │               │
             ┌────────────────▼───┐       ┌───▼────────────────┐
             │   Staging Stack    │       │  Production Stack  │
@@ -142,10 +147,11 @@ In addition to the application stacks, Dokploy historically managed an isolated 
             └────────────────────┘  │    └────────────────────┘  │
                                     ▼                           ▼
                     ┌───────────────────────┐   ┌───────────────────────┐
-                    │ Supabase STAGING      │   │ Supabase PROD         │
-                    │ Postgres + PostGIS 16 │   │ Postgres + PostGIS 16 │
-                    │ ap-southeast-1        │   │ ap-southeast-1        │
+                    │ Coffeemode-staging-db │   │ Coffeemode-prod-db    │
+                    │ PostGIS 16 on VPS     │   │ PostGIS 16 on VPS     │
+                    │ dokploy-network :5432 │   │ dokploy-network :5432 │
                     └───────────────────────┘   └───────────────────────┘
+                       (Supabase: STAGING Auth)    (Supabase: PROD Auth)
 
                GitHub Actions CI Runner (staging-journey)
                                     │
@@ -164,25 +170,26 @@ In addition to the application stacks, Dokploy historically managed an isolated 
    - `coffeemode-staging-network`: Isolated bridge connecting `coffeemode-web-staging` and `cloudflared-staging`.
    - `coffeemode-prod-network`: Isolated bridge connecting `coffeemode-web-prod` and `cloudflared-prod`.
    - `traefik-net`: External bridge shared by the web tier (`web-staging`, `web-prod`), the tunnel tier (`cloudflared-staging`, `cloudflared-prod`), and Traefik for HTTP ingress routing.
-   - Application databases live in Supabase (separate staging/prod projects) — no application
-     database containers attach to any VPS network. Cross-env isolation is enforced at
-     the Supabase project + credential level.
+   - Application databases run as Dokploy Postgres services on each stack's own bridge
+     network (`coffeemode-staging-network` / `coffeemode-prod-network`). Cross-env
+     isolation is enforced at the container, volume, database, and role level.
    - Dokploy CI Postgres (`coffeemode-ci-postgres`) is deprecated (BRAWUKA-525; staging-journey
      runs on runner-local postgres). When deployed, it ran in an isolated Docker network with
      port 5432 bound to localhost (127.0.0.1) on the VPS, forwarded privately over Cloudflare Tunnel
      (`ci-db.cafemood.app`), with zero public inbound ports open.
-   - No database port is exposed to the public internet on the VPS. Supabase connectivity is outbound
-     TLS (`sslmode=require`) over `DATABASE_URL` / `DIRECT_URL`.
+   - No database port is published on the VPS. The application reaches `coffeemode-*-db` over
+     `dokploy-network` on `:5432` with `sslmode=disable`; there is no host or public route.
 2. **Persistent storage mounts**:
    - Local backup dirs: `backups/staging/` (retention: 7 days), `backups/prod/` (retention: 14 days local, 30 days R2).
-   - No application postgres data volumes exist (Supabase primary, BRAWUKA-241).
+   - Application postgres data volumes: one named volume per environment,
+     never shared (ADR-0010).
    - CI Postgres data volume is local and ephemeral (BRAWUKA-474); scratch databases are
      created and dropped per test suite and are excluded from backups and `backup-postgres.sh`.
 
 3. **Resource allocation & limits**:
    - `coffeemode-web-prod`: CPU limit: 2.0 cores, Memory limit: 2 GB (Reservation: 1.0 core, 1 GB).
    - `coffeemode-web-staging`: CPU limit: 1.0 core, Memory limit: 1 GB.
-   - Application database compute is Supabase-managed (not VPS-reserved).
+   - `db-staging` / `db-prod`: CPU limit: 1.5 cores (Reservation: 0.5 cores), Memory limit: 1536 MB (Reservation: 512 MB).
    - `coffeemode-ci-postgres` (deprecated, pending decommission): CPU limit: 2.0 cores (Reservation: 0.5 cores), Memory limit: 2048 MB (Reservation: 512 MB).
    - `cloudflared-staging` / `cloudflared-prod`: CPU limit: 0.5 core, Memory limit: 256 MB (Reservation: 0.1 core, 64 MB).
 
@@ -193,7 +200,7 @@ project refs, Postgres connection modes, and access rules — is canonical in
 spec 0010 §1. The table below covers the deployed staging/production edge only.
 | Dimension | Staging Environment | Production Environment |
 | --- | --- | --- |
-| Primary Web Domain | `staging.cafemood.app` | `cafemood.app` (apex) |
+| Primary Web Domain | `<staging-site-host>` | `cafemood.app` (apex) |
 | Secondary Web Domain | None | `www.cafemood.app` (301 redirect to apex) |
 | Cloudflare Proxy Mode | Orange-cloud (Proxied) | Orange-cloud (Proxied) |
 | SSL / TLS Encryption | Full (Strict) | Full (Strict) |
@@ -202,7 +209,7 @@ spec 0010 §1. The table below covers the deployed staging/production edge only.
 | Edge Locale Safety (intended policy) | Bypass all routes | Cache `/cafes/*` only when the request cannot resolve to a non-default locale — no `locale=` cookie, no `zh` in Accept-Language (i18n/request.ts precedence: cookie → Accept-Language → en). Custom cache keys are unavailable on this zone's plan, so safety is a bypass contract; generated `deploy/dokploy/cache-rules.json` (contract) + `deploy/dokploy/cloudflare-cache-rules.json` (deployable payload incl. the response-phase Set-Cookie no-store rule, BRAWUKA-834; complement fallback BRAWUKA-836) |
 | Cloudflare Managed Transforms | Add visitor location headers (`CF-IPCity`, `CF-IPCountry`) | Add visitor location headers (`CF-IPCity`, `CF-IPCountry`) |
 | Image Storage (R2 Bucket) | `coffeemode-images-staging` | `coffeemode-images-prod` |
-| Public Image CDN Domain | `staging-images.cafemood.app` | `images.cafemood.app` (`R2_ALLOWED_PUBLIC_HOSTS` in `web/lib/images/constants.ts`) |
+| Public Image CDN Domain | `<staging-images-host>` | `images.cafemood.app` (`R2_ALLOWED_PUBLIC_HOSTS` in `web/lib/images/constants.ts`) |
 | Image Worker Service | `image-service-staging` | `image-service-prod` |
 | POI Worker Service | `poi-service-staging` | `poi-service-prod` |
 | Worker D1 Database | `poi-store-staging` | `poi-store` |
@@ -235,16 +242,16 @@ spec 0010 §1. The table below covers the deployed staging/production edge only.
 1. **Staging Continuous Deployment Flow**:
    - **Trigger**: Merge or push to `main` branch after GitHub Actions test gates pass.
    - **Execution**: Run `deploy/dokploy/deploy-release.sh staging`:
-     1. Creates staging database backup (`backup.sh --env staging --reason pre-migration` against Supabase staging `DATABASE_URL`).
-     2. Applies schema migrations over `DIRECT_URL` (Supabase staging session/direct) via repo checkout.
+     1. Creates staging database backup (`backup.sh --env staging --reason pre-migration` against the staging `DIRECT_URL`).
+     2. Applies schema migrations over `DIRECT_URL` (staging service, internal `:5432`) via repo checkout.
      3. Triggers Dokploy staging deploy webhook (or `docker compose up -d`) and polls `/api/health` for convergence.
      4. Executes automated smoke tests (`deploy/dokploy/smoke-test.sh staging`).
 
 2. **Production Promotion Flow**:
    - **Trigger**: Creation of signed Git release tag `v*` on `main` following staging verification, **plus manual owner approval** (GitHub Environment `production` required reviewer) **plus a green `staging-journey` run on the promoted commit** (spec 0010 §5 owns this boundary).
    - **Execution**: Run `deploy/dokploy/deploy-release.sh prod`:
-     1. Creates mandatory production database backup (`backup.sh --env prod --reason pre-migration` against Supabase prod `DATABASE_URL`).
-     2. Applies schema migrations over `DIRECT_URL` (Supabase prod session/direct — never the transaction pooler) via repo checkout.
+     1. Creates mandatory production database backup (`backup.sh --env prod --reason pre-migration` against the production `DIRECT_URL`).
+     2. Applies schema migrations over `DIRECT_URL` (production service, internal `:5432`) via repo checkout.
      3. Triggers Dokploy production deployment and polls `/api/health` for release convergence.
      4. Executes automated smoke tests (`deploy/dokploy/smoke-test.sh prod`).
 ### 2. Zero-downtime container rolling swap strategy
@@ -269,13 +276,15 @@ deploy:
 
 1. **Pre-migration snapshot**:
    `scripts/devops/backup.sh --env <env> --reason pre-migration` executes `pg_dump -Fc`
-   against the Supabase `DATABASE_URL` (pooled, `sslmode=require`) before every migration.
-   REQUIRED: Supabase free tier ships no automated backups, so `pg_dump → R2`
+   against the environment's `DIRECT_URL` (internal `:5432`, `sslmode=disable`)
+   before every migration, using the client whose major matches the server
+   (`scripts/devops/lib/pg-client.sh`).
+   REQUIRED: the VPS database is the only running copy, so `pg_dump → R2`
    (`s3://coffeemode-backups/<env>/`) is the only offsite copy.
    Snapshots are stored in `backups/<env>/coffeemode_${ENV}_pre-migration_<tier>_<TIMESTAMP>.dump.gz`.
    Retention: 14 days locally for production (30 days in R2), 7 days locally for staging.
 
-2. **Zero-downtime migration rules** (migrations run over `DIRECT_URL` session/direct — never the transaction pooler):
+2. **Zero-downtime migration rules** (migrations run over `DIRECT_URL`, the internal service handle):
    - Adding columns: MUST be nullable or specify a constant default (`DEFAULT '...'`).
    - Adding indexes: MUST use `CREATE INDEX CONCURRENTLY` to avoid table locking.
    - Modifying columns: Add new column, backfill data, switch application code, drop old column in a subsequent release.
@@ -331,7 +340,7 @@ Per BRAWUKA-475, the nightly work_stats recompute and Helpful ranking snapshot e
 - Dual-stack Staging and Production isolation rules are codified across compute, database, storage, and edge.
 - Docker Compose configuration templates exist for both Staging and Production in deploy/dokploy/.
 - Concrete release orchestrator script exists in deploy/dokploy/deploy-release.sh.
-- Database Supabase projects (prod + staging, PostGIS 16), backup script, and zero-downtime migration protocol are documented and implemented.
+- Dokploy Postgres services (prod + staging, PostGIS 16), backup/restore scripts with a drill, and the zero-downtime migration protocol are documented and implemented (ADR-0010).
 - Automated smoke test script exists in deploy/dokploy/smoke-test.sh.
 - Comprehensive operational lifecycle runbook exists in docs/devops/LIFECYCLE.md.
 - .agents/scripts/preflight.sh and .agents/scripts/harness-self-test.sh pass with no errors or broken links.

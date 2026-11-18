@@ -6,7 +6,8 @@ This directory contains Dokploy VPS deployment configurations, operational scrip
 
 - `docker-compose.prod.yml`: Production Compose stack for VPS deployment.
 - `docker-compose.staging.yml`: Staging Compose stack for VPS deployment.
-- `.env.prod.example` / `.env.staging.example`: Environment variable templates.
+- `.env.prod.example` / `.env.staging.example`: Application environment templates (mounted into the web container — no bootstrap or recovery credentials).
+- `.env.prod.db.example`: Postgres initialization inputs for `db-prod` only (`POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `APP_DB_PASSWORD`).
 - `nightly-recompute.sh`: Canonical script for nightly `work_stats` recompute and Helpful ranking snapshot.
 - `deploy-release.sh`: Production release deployment orchestrator with zero-downtime rolling restart.
 - `backup-postgres.sh` / `restore-postgres.sh`: Database backup and disaster recovery drill scripts.

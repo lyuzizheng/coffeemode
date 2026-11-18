@@ -109,7 +109,7 @@ Stack 已经授权可用（BRAWUKA-604），但**数据面是空的**。这份�
 | **Notifications → Workers Observability** | 免费档有额度 | 未开 | 两个 Worker 的错误 |
 | **Workers Cron Triggers** | 免费：5 个/账号，单点执行，15 min 上限 | 未用 | 主动 uptime 探针（§3 P1-1） |
 | **Workers** | 免费：100k 请求/天 | `poi-service-*`、`image-service-*` 已部署 | — |
-| **Cloudflare Access** | 免费 50 用户 | 已用于 `staging.cafemood.app` | — |
+| **Cloudflare Access** | 免费 50 用户 | 已用于 `<staging-site-host>` | — |
 | **Turnstile** | 免费 | 待接（BRAWUKA-239） | — |
 | **Health Checks** | **不支持**（0 个；Pro 10 个，$20/月） | 未开 | 主动 uptime —— 需要升级 |
 | **DEX Synthetic Tests** | Zero Trust 付费 | — | 不做 |

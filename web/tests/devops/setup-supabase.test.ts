@@ -1,27 +1,15 @@
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 // BRAWUKA-745: the executable imports these; the suite imports them from their
 // own modules, so a pure helper never has to be reached through a CLI module.
 import { parseCliArgs } from "../../../scripts/devops/lib/setup-supabase-config.mjs";
-import { listMigrationTables, parseConnectionConfig } from "../../../scripts/devops/lib/setup-supabase-db.mjs";
-import {
-  cleanupIntegrationDatabase,
-  integrationAdminUrl,
-  makeTestDbName,
-  provisionTestDatabase,
-  testDatabaseUrl,
-} from "../helpers/db";
 
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const SETUP_SCRIPT = path.join(REPO_ROOT, "scripts/devops/setup-supabase.mjs");
 const PROVISION_SHELL_SCRIPT = path.join(REPO_ROOT, "scripts/devops/provision-supabase.sh");
-const MIGRATIONS_DIR = path.join(REPO_ROOT, "web/db/migrations");
-
-const RUN_INTEGRATION = process.env.RUN_INTEGRATION === "1";
-const describeIntegration = RUN_INTEGRATION ? describe : describe.skip;
 
 describe("Supabase DevOps Provisioning — Unit Contracts", () => {
   it("scripts exist and are accessible", () => {
@@ -29,21 +17,23 @@ describe("Supabase DevOps Provisioning — Unit Contracts", () => {
     expect(existsSync(PROVISION_SHELL_SCRIPT)).toBe(true);
   });
 
-  it("setup-supabase.mjs outputs help text cleanly", () => {
+  it("setup-supabase.mjs is Auth-only: help names Auth, not a database URL", () => {
     const output = execSync(`node "${SETUP_SCRIPT}" --help`, { encoding: "utf8" });
-    expect(output).toContain("CafeMood Supabase Provisioning & Verification Suite");
-    expect(output).toContain("--database-url");
+    expect(output).toContain("CafeMood Supabase Auth Verification Suite");
     expect(output).toContain("--supabase-url");
     expect(output).toContain("--service-role-key");
     expect(output).toContain("--verify-only");
     expect(output).toContain("--dry-run");
+    // ADR-0010: application data lives in Dokploy Postgres; the suite must not
+    // accept a database handle that would migrate or enforce RLS on it.
+    expect(output).not.toContain("--database-url");
   });
 
   it("provision-supabase.sh outputs help text cleanly", () => {
     const output = execSync(`bash "${PROVISION_SHELL_SCRIPT}" --help`, { encoding: "utf8" });
-    expect(output).toContain("CafeMood Supabase Production Provisioning Orchestrator");
-    expect(output).toContain("--database-url");
+    expect(output).toContain("CafeMood Supabase Auth Verification Orchestrator");
     expect(output).toContain("--supabase-url");
+    expect(output).not.toContain("--database-url");
   });
 
   it("fails fast with exit code 1 when an invalid option is passed", () => {
@@ -53,79 +43,13 @@ describe("Supabase DevOps Provisioning — Unit Contracts", () => {
         stdio: "pipe",
       });
     }).toThrow();
-  });
-
-  it("provision table inventory derives from web/db/migrations (no hand-kept list)", () => {
-    // BRAWUKA-337: 0021 helpful_ranking_* shipped RLS-dark because the
-    // provision inventory was hand-maintained. The inventory must equal an
-    // independent CREATE TABLE scan of the migrations dir, so the next new
-    // table is covered with zero test edits.
-    // BRAWUKA-378: 0026 is the first DROP TABLE — the scan mirrors the
-    // subtraction in listMigrationTables, and pins rate_limits absent.
-    const createTableRe = /create\s+table\s+(?:if\s+not\s+exists\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?\s*\(/gi;
-    const dropTableRe = /drop\s+table\s+(?:if\s+exists\s+)?(?:"?(\w+)"?\.)?"?(\w+)"?/gi;
-    const scanned = new Set(["schema_migrations"]);
-    const dropped = new Set<string>();
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql"))) {
-      const sql = readFileSync(path.join(MIGRATIONS_DIR, f), "utf8");
-      createTableRe.lastIndex = 0;
-      let m;
-      while ((m = createTableRe.exec(sql)) !== null) {
-        if (m[1] && m[1].toLowerCase() !== "public") continue;
-        scanned.add(m[2].toLowerCase());
-      }
-      dropTableRe.lastIndex = 0;
-      while ((m = dropTableRe.exec(sql)) !== null) {
-        if (m[1] && m[1].toLowerCase() !== "public") continue;
-        dropped.add(m[2].toLowerCase());
-      }
-    }
-    for (const table of dropped) scanned.delete(table);
-    expect(new Set(listMigrationTables())).toEqual(scanned);
-    expect(listMigrationTables()).not.toContain("rate_limits");
-  });
-
-  // The provisioning wrapper owns exactly one policy over the shared
-  // translator: a Supabase host with no explicit `sslmode` gets strict TLS.
-  // The full mode → ssl vocabulary is table-driven in
-  // `postgres-connection.test.ts` and is not restated here.
-  describe("parseConnectionConfig SSL enforcement", () => {
-    it("enforces strict TLS verification by default for Supabase hosts", () => {
-      const configCo = parseConnectionConfig(
-        "postgresql://postgres:test@db.rsdzcegylqgccaneomph.supabase.co:5432/postgres",
-      );
-      expect(configCo.ssl).toEqual({ rejectUnauthorized: true });
-
-      const configNet = parseConnectionConfig(
-        "postgresql://postgres:test@db.project.supabase.net:5432/postgres",
-      );
-      expect(configNet.ssl).toEqual({ rejectUnauthorized: true });
-    });
-
-    it("does not force SSL for non-Supabase hosts without sslmode", () => {
-      const config = parseConnectionConfig("postgresql://postgres:test@localhost:5432/postgres");
-      expect(config.ssl).toBeUndefined();
-    });
-
-    it("honors explicit sslmode overrides", () => {
-      expect(
-        parseConnectionConfig("postgresql://user:pass@db.supabase.co:5432/db?sslmode=disable").ssl,
-      ).toBe(false);
-      expect(
-        parseConnectionConfig(
-          "postgresql://user:pass@db.supabase.co:5432/db?sslmode=allow-self-signed",
-        ).ssl,
-      ).toEqual({ rejectUnauthorized: false });
-      expect(
-        parseConnectionConfig("postgresql://user:pass@localhost:5432/db?sslmode=require").ssl,
-      ).toEqual({ rejectUnauthorized: true });
-    });
-
-    it("rejects unrecognized sslmode values", () => {
-      expect(() =>
-        parseConnectionConfig("postgresql://user:pass@localhost:5432/db?sslmode=invalid"),
-      ).toThrow(/Unrecognized sslmode "invalid"/);
-    });
+    // The removed database phase must fail loudly, not silently ignore the flag.
+    expect(() => {
+      execSync(`node "${SETUP_SCRIPT}" --database-url postgres://x/y`, {
+        encoding: "utf8",
+        stdio: "pipe",
+      });
+    }).toThrow();
   });
 
   // BRAWUKA-745: config resolution moved into lib/setup-supabase-config.mjs.
@@ -147,12 +71,12 @@ describe("Supabase DevOps Provisioning — Unit Contracts", () => {
       mkdirSync(fixtureWeb, { recursive: true });
       writeFileSync(
         path.join(fixtureRoot, ".env"),
-        "DATABASE_URL=postgres://root-dotenv\nSUPABASE_URL=https://root.supabase.co\n",
+        "SUPABASE_URL=https://root.supabase.co\n",
       );
-      writeFileSync(path.join(fixtureWeb, ".env.local"), "DATABASE_URL=postgres://web-env-local\n");
+      writeFileSync(path.join(fixtureWeb, ".env.local"), "SUPABASE_URL=https://web-env-local.supabase.co\n");
       writeFileSync(
         path.join(fixtureWeb, ".env"),
-        "DATABASE_URL=postgres://web-dotenv\nNEXT_PUBLIC_SUPABASE_ANON_KEY=anon-from-web-dotenv\n",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY=anon-from-web-dotenv\n",
       );
     });
 
@@ -176,7 +100,6 @@ describe("Supabase DevOps Provisioning — Unit Contracts", () => {
       expect(parseCliArgs([], { repoRoot: emptyRoot, webDir: emptyWeb, env: {} })).toEqual({
         kind: "config",
         config: {
-          databaseUrl: "",
           supabaseUrl: "",
           serviceRoleKey: "",
           anonKey: "",
@@ -204,8 +127,7 @@ describe("Supabase DevOps Provisioning — Unit Contracts", () => {
 
     it("loads repo .env → web/.env.local → web/.env, the later file winning per key", () => {
       const config = resolvedConfig([], { repoRoot: fixtureRoot, webDir: fixtureWeb, env: {} });
-      expect(config.databaseUrl).toBe("postgres://web-dotenv");
-      expect(config.supabaseUrl).toBe("https://root.supabase.co");
+      expect(config.supabaseUrl).toBe("https://web-env-local.supabase.co");
       expect(config.anonKey).toBe("anon-from-web-dotenv");
     });
 
@@ -213,27 +135,23 @@ describe("Supabase DevOps Provisioning — Unit Contracts", () => {
       const fromEnv = resolvedConfig([], {
         repoRoot: fixtureRoot,
         webDir: fixtureWeb,
-        env: { DATABASE_URL: "postgres://from-env" },
+        env: { SUPABASE_URL: "https://from-env.supabase.co" },
       });
-      expect(fromEnv.databaseUrl).toBe("postgres://from-env");
+      expect(fromEnv.supabaseUrl).toBe("https://from-env.supabase.co");
 
-      const fromFlag = resolvedConfig(["--database-url", "  postgres://from-flag  "], {
+      const fromFlag = resolvedConfig(["--supabase-url", "  https://from-flag.supabase.co  "], {
         repoRoot: fixtureRoot,
         webDir: fixtureWeb,
-        env: { DATABASE_URL: "postgres://from-env" },
+        env: { SUPABASE_URL: "https://from-env.supabase.co" },
       });
-      expect(fromFlag.databaseUrl).toBe("postgres://from-flag");
+      expect(fromFlag.supabaseUrl).toBe("https://from-flag.supabase.co");
     });
 
     it("falls back through the documented env aliases in order", () => {
       const resolve = (env: Record<string, string | undefined>) =>
         resolvedConfig([], { repoRoot: emptyRoot, webDir: emptyWeb, env });
-      expect(resolve({ DATABASE_URL: "postgres://first", POSTGRES_URL: "postgres://alias" }).databaseUrl).toBe(
-        "postgres://first",
-      );
-      expect(resolve({ POSTGRES_URL: "postgres://pg-alias" }).databaseUrl).toBe("postgres://pg-alias");
-      expect(resolve({ SUPABASE_DATABASE_URL: "postgres://sb-alias" }).databaseUrl).toBe(
-        "postgres://sb-alias",
+      expect(resolve({ SUPABASE_URL: "https://first.supabase.co", NEXT_PUBLIC_SUPABASE_URL: "https://alias.supabase.co" }).supabaseUrl).toBe(
+        "https://first.supabase.co",
       );
       expect(resolve({ NEXT_PUBLIC_SUPABASE_URL: "https://public.supabase.co" }).supabaseUrl).toBe(
         "https://public.supabase.co",
@@ -251,24 +169,24 @@ describe("Supabase DevOps Provisioning — Unit Contracts", () => {
 
     it("--env-file replaces the default candidate files", () => {
       const customEnv = path.join(fixtureRoot, "custom.env");
-      writeFileSync(customEnv, "DATABASE_URL=postgres://custom-file\n");
+      writeFileSync(customEnv, "SUPABASE_URL=https://custom-file.supabase.co\n");
       const config = resolvedConfig(["--env-file", customEnv], {
         repoRoot: fixtureRoot,
         webDir: fixtureWeb,
         env: {},
       });
-      expect(config.databaseUrl).toBe("postgres://custom-file");
+      expect(config.supabaseUrl).toBe("https://custom-file.supabase.co");
       // web/.env is not consulted once --env-file names the file to load.
       expect(config.anonKey).toBe("");
     });
 
     it("falls back to the environment when a flag has no value", () => {
-      const config = resolvedConfig(["--database-url"], {
+      const config = resolvedConfig(["--supabase-url"], {
         repoRoot: emptyRoot,
         webDir: emptyWeb,
-        env: { DATABASE_URL: "postgres://from-env" },
+        env: { SUPABASE_URL: "https://from-env.supabase.co" },
       });
-      expect(config.databaseUrl).toBe("postgres://from-env");
+      expect(config.supabaseUrl).toBe("https://from-env.supabase.co");
     });
 
     it("reports help and unknown options instead of exiting — the caller owns the exit code", () => {
@@ -285,74 +203,5 @@ describe("Supabase DevOps Provisioning — Unit Contracts", () => {
         arg: "--invalid-flag",
       });
     });
-  });
-});
-
-describeIntegration("Supabase DevOps Provisioning — Real Postgres Integration", () => {
-  let adminUrl: string;
-  let testDbName: string;
-  let testDbUrl: string;
-
-  beforeAll(async () => {
-    adminUrl = integrationAdminUrl();
-    testDbName = makeTestDbName("supa_prov_test");
-    testDbUrl = testDatabaseUrl(adminUrl, testDbName);
-    // Create unmigrated fresh database to test dry-run and full provision from zero
-    await provisionTestDatabase(adminUrl, testDbName, { useTemplate: false });
-  });
-
-  afterAll(async () => {
-    if (adminUrl && testDbName) {
-      try {
-        await cleanupIntegrationDatabase(adminUrl, testDbName);
-      } catch {
-        // ignore cleanup error on teardown
-      }
-    }
-  }, 60_000);
-
-  it("dry-run on a fresh database fails closed on RLS-dark tables (drift signal)", () => {
-    // BRAWUKA-337: dry-run/verify-only must FAIL (exit 1) when migration
-    // tables lack RLS — warn-and-pass is how 0021 helpful_ranking_* shipped
-    // RLS-dark. A fresh DB has RLS off on every table, so this must throw.
-    // BRAWUKA-745: the failing run must also still close its client — the DB
-    // operation owns cleanup in a `finally`, so an error never leaks a
-    // connection (the observable half: the close line is printed before exit).
-    let failure: { stdout: string; stderr: string } | null = null;
-    try {
-      execSync(
-        `node "${SETUP_SCRIPT}" --dry-run --skip-auth --database-url "${testDbUrl}"`,
-        { encoding: "utf8", stdio: "pipe" },
-      );
-    } catch (err) {
-      const failed = err as { stdout?: string; stderr?: string };
-      failure = { stdout: failed.stdout ?? "", stderr: failed.stderr ?? "" };
-    }
-    expect(failure).not.toBeNull();
-    expect(failure?.stderr).toMatch(/RLS coverage incomplete/);
-    expect(failure?.stdout).toContain("Closed database connection.");
-  });
-
-  it("provisions database and verify-only checks tables and spatial GiST index", () => {
-    // 1. Run real provision
-    const provisionOutput = execSync(
-      `node "${SETUP_SCRIPT}" --skip-auth --database-url "${testDbUrl}"`,
-      { encoding: "utf8", stdio: "pipe" }
-    );
-    expect(provisionOutput).toContain("Supabase Provisioning & Verification Finished Successfully");
-    expect(provisionOutput).toContain("Post-provision RLS self-verification passed");
-
-    // 2. Verify-only
-    const verifyOutput = execSync(
-      `node "${SETUP_SCRIPT}" --verify-only --skip-auth --database-url "${testDbUrl}"`,
-      { encoding: "utf8", stdio: "pipe" }
-    );
-    expect(verifyOutput).toContain("Target Mode: VERIFY ONLY");
-    expect(verifyOutput).toContain("Table 'public.cafes' exists.");
-    expect(verifyOutput).toContain("Table 'public.profiles' exists.");
-    expect(verifyOutput).toContain("RLS enabled on 'helpful_ranking_runs'.");
-    expect(verifyOutput).toContain("RLS enabled on 'helpful_ranking_entries'.");
-    expect(verifyOutput).toContain("Spatial GiST index 'idx_cafes_location_active' exists on cafes.");
-    expect(verifyOutput).toContain("Supabase Provisioning & Verification Finished Successfully");
   });
 });

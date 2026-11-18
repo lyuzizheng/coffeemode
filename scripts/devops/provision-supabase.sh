@@ -1,21 +1,22 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# CafeMood Supabase Production Provisioning Orchestrator
-# Architecture: docs/specs/0001-nextjs-migration.md §Data layer
-# Decisions:    docs/specs/0004-product-decisions-and-backlog.md (34a & 35)
+# CafeMood Supabase Auth Verification Orchestrator
+# Architecture: docs/specs/0001-nextjs-migration.md §Auth
+# Decision:     docs/adr/0010-self-hosted-postgres-supabase-auth.md
 # Lifecycle:    docs/devops/LIFECYCLE.md
 #
-# Orchestrates idempotent Supabase main Postgres & Auth provisioning:
+# Application data lives in the environment's Dokploy Postgres (ADR-0010);
+# its schema is applied by web/scripts/migrate.mjs. This orchestrator verifies
+# Supabase Auth only:
 #   1. Validates environment variables & credentials
 #   2. Verifies Node.js runtime and web workspace dependencies
-#   3. Executes setup-supabase.mjs for schema, PostGIS, RLS, & Auth tests
+#   3. Executes setup-supabase.mjs for the Auth endpoint & OAuth smoke tests
 #
 # Usage:
 #   ./provision-supabase.sh [options]
 #
 # Options:
 #   -h, --help                Show this help message and exit
-#   --database-url <url>      PostgreSQL connection string (supports direct & pooler URLs)
 #   --supabase-url <url>      Supabase API URL (https://<project-ref>.supabase.co)
 #   --service-role-key <key>  Supabase service_role secret key
 #   --anon-key <key>          Supabase publishable public key (sb_publishable_…)
@@ -26,7 +27,7 @@
 #   --verbose                 Show detailed database and network logs
 #
 # Examples:
-#   ./provision-supabase.sh --database-url "postgres://..." --supabase-url "https://..."
+#   ./provision-supabase.sh --supabase-url "https://..." --service-role-key "..."
 #   ./provision-supabase.sh --verify-only
 #   ./provision-supabase.sh --dry-run
 # ==============================================================================

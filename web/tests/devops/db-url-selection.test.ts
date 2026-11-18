@@ -48,7 +48,14 @@ printf 'stub-dump-bytes\\n'
 const PG_RESTORE_STUB = `#!/usr/bin/env bash
 printf 'pg_restore %s\\n' "$*" >> "$STUB_LOG"
 case "$*" in
-  *--list*) exit 0 ;;
+  *--list*)
+    # Relation baseline restored from the archive's table of contents
+    # (BRAWUKA-1015): verification demands these exist in the restored database.
+    printf '215; 1259 16385 TABLE public cafes coffeemode\\n'
+    printf '216; 1259 16386 TABLE public checkins coffeemode\\n'
+    printf '217; 1259 16387 TABLE public profiles coffeemode\\n'
+    exit 0
+    ;;
 esac
 cat >/dev/null
 exit 0
@@ -63,6 +70,15 @@ case "$sql" in
   *'count(*) FROM cafes'*) printf '3\\n' ;;
   *'count(*) FROM checkins'*) printf '1\\n' ;;
   *'count(*) FROM profiles'*) printf '1\\n' ;;
+  *'select rolsuper'*) printf 't\\n' ;;
+  *'c.relowner'*) printf '0\\n' ;;
+  *'c.relname ='*) printf '1\\n' ;;
+  *'from pg_database'*) printf '1\\n' ;;
+  *pg_get_userbyid*) printf 'coffeemode\\n' ;;
+  *string_agg*) printf '\\n' ;;
+  *'count(*) FROM "'*) printf '3\\n' ;;
+  *pg_roles*) printf 'coffeemode superuser=false createdb=false\\n' ;;
+  *'FROM pg_class'*) printf '0\\n' ;;
 esac
 exit 0
 `;
@@ -112,8 +128,11 @@ const STUBS: Record<string, string> = {
 const CLEARED_ENV = [
   "STAGING_DIRECT_URL",
   "STAGING_DATABASE_URL",
+  "STAGING_RESTORE_URL",
   "PROD_DIRECT_URL",
   "PROD_DATABASE_URL",
+  "PROD_RESTORE_URL",
+  "RESTORE_URL",
   "DATABASE_URL",
   "DIRECT_URL",
   "CF_ACCESS_CLIENT_ID",
@@ -126,6 +145,12 @@ const CLEARED_ENV = [
   "DOKPLOY_DEPLOY_TOKEN",
   "STAGING_DOMAIN",
   "PROD_DOMAIN",
+  // A developer's explicit container choice must not override the client-mode
+  // fixture: it would route pg_dump/pg_restore through `docker exec` and no
+  // connection string would appear on the tool's own argv.
+  "PG_CLIENT_CONTAINER",
+  "PG_CLIENT_CONTAINER_NAME",
+  "PG_CLIENT_MODE",
 ];
 
 let tmpRoot = "";
@@ -230,6 +255,14 @@ function resolveUrl(
   );
 }
 
+/** Same invocation shape for the restore-role resolver. */
+function resolveRestoreUrl(env: string, override: string, options: RunOptions = {}): Run {
+  return exec(
+    ["-c", 'set -euo pipefail; source "$0"; db_url_resolve_restore "$@"', scratchPath(`repo/${LIBS[0]}`), env, override],
+    options,
+  );
+}
+
 /** The URL handed to a stubbed consumer, read back from its recorded argv. */
 function urlPassedTo(log: string, command: string): string {
   const lines = log.split("\n").filter((entry) => entry.startsWith(`${command} `));
@@ -275,6 +308,29 @@ describe("db-url helper — frozen precedence", () => {
         envFile: { name: "staging", text: `DATABASE_URL=${FILE_POOLED}\n` },
       }).output,
     ).toBe(FILE_POOLED);
+  });
+
+  it("resolves the restore role only from the override or a shell <ENV>_RESTORE_URL, never the env file", () => {
+    const file = { name: "prod" as const, text: `RESTORE_URL=${FILE_DIRECT}\nDIRECT_URL=${FILE_POOLED}\n` };
+    expect(resolveRestoreUrl("prod", OVERRIDE_URL, { envFile: file }).output).toBe(OVERRIDE_URL);
+    expect(resolveRestoreUrl("prod", "", { env: { PROD_RESTORE_URL: PROD_DIRECT }, envFile: file }).output).toBe(
+      PROD_DIRECT,
+    );
+    // BRAWUKA-1015: deploy/dokploy/.env.prod is a compose env_file handed to the
+    // web container, so a RESTORE_URL line there would expose the recovery
+    // credential to the application. The file is no longer a restore source.
+    expect(resolveRestoreUrl("prod", "", { envFile: file }).status).toBe(1);
+    // The application chain is never a restore source: a live restore must not
+    // silently run with a role that cannot recreate the PostGIS extension.
+    expect(
+      resolveRestoreUrl("prod", "", {
+        env: { PROD_DIRECT_URL: PROD_DIRECT, PROD_DATABASE_URL: FILE_POOLED },
+        envFile: { name: "prod", text: `DIRECT_URL=${FILE_DIRECT}\nDATABASE_URL=${FILE_POOLED}\n` },
+      }).status,
+    ).toBe(1);
+    // Scoped to its own environment, like every other selector.
+    expect(resolveRestoreUrl("staging", "", { env: { PROD_RESTORE_URL: PROD_DIRECT } }).status).toBe(1);
+    expect(resolveRestoreUrl("staging", "", { envFile: { name: "prod", text: `RESTORE_URL=${FILE_DIRECT}\n` } }).status).toBe(1);
   });
 
   it("treats a scoped variable that is set but blank as absent", () => {
@@ -395,16 +451,19 @@ describe("restore.sh — live restore and drill selection", () => {
   // Built per test: the scratch root only exists once `beforeAll` has run.
   const liveArgs = () => ["--env", "prod", "--file", scratchPath("snapshot.dump"), "--yes"];
 
-  it("restores over the pooled scoped URL when no direct URL is set", () => {
-    const run = runScript("scripts/devops/restore.sh", liveArgs(), { env: { PROD_DATABASE_URL: PROD_POOLED } });
+  it("restores over the scoped recovery role, never the application URL", () => {
+    const run = runScript("scripts/devops/restore.sh", liveArgs(), {
+      env: { PROD_RESTORE_URL: PROD_POOLED, PROD_DIRECT_URL: PROD_DIRECT },
+    });
     expect(run.status).toBe(0);
     expect(urlPassedTo(run.log, "pg_restore")).toBe(PROD_POOLED);
     expect(urlPassedTo(run.log, "psql")).toBe(PROD_POOLED);
+    expect(run.log).not.toContain(PROD_DIRECT);
   });
 
   it("honors the explicit --url escape hatch over every scoped source", () => {
     const run = runScript("scripts/devops/restore.sh", [...liveArgs(), "--url", OVERRIDE_URL], {
-      env: { PROD_DIRECT_URL: PROD_DIRECT, PROD_DATABASE_URL: PROD_POOLED },
+      env: { PROD_RESTORE_URL: PROD_POOLED, PROD_DIRECT_URL: PROD_DIRECT },
     });
     expect(run.status).toBe(0);
     expect(urlPassedTo(run.log, "pg_restore")).toBe(OVERRIDE_URL);
@@ -440,12 +499,12 @@ describe("restore.sh — live restore and drill selection", () => {
     expect(urlPassedTo(run.log, "psql")).toContain("override@override.invalid:5432");
   });
 
-  it("names the missing per-env source without printing any credential", () => {
+  it("names the missing recovery role without printing any credential", () => {
     const run = runScript("scripts/devops/restore.sh", liveArgs(), {
-      env: { STAGING_DIRECT_URL: STAGING_DIRECT, DATABASE_URL: AMBIENT_POOLED },
+      env: { STAGING_DIRECT_URL: STAGING_DIRECT, DATABASE_URL: AMBIENT_POOLED, PROD_DIRECT_URL: PROD_DIRECT },
     });
     expect(run.status).not.toBe(0);
-    expect(run.output).toContain("Per-env connection string for prod is required");
+    expect(run.output).toContain("Authorized recovery role for prod is required");
     expect(run.output).not.toContain(STAGING_DIRECT);
     expect(run.output).not.toContain(AMBIENT_POOLED);
     expect(run.log.trim()).toBe("");

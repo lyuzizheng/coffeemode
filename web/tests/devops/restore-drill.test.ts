@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -49,7 +49,8 @@ const hasPostgresClientTools = POSTGRES_CLIENT_TOOLS.every((bin) => {
   }
 });
 
-// `--list` is the archive-readability probe; every other call is a restore.
+// `--list` is the archive-readability probe; `--version` feeds the client/server
+// major comparison (lib/pg-client.sh); every other call is a restore.
 // The probe returns without reading stdin, which is exactly what the real
 // `pg_restore --list` does — and what made gzip die of SIGPIPE (BRAWUKA-753).
 // The restore path drains its stdin first, like a real restore does.
@@ -58,11 +59,22 @@ const PG_RESTORE_STUB = `#!/usr/bin/env bash
 set -u
 printf 'pg_restore %s\\n' "$*" >> "$STUB_LOG"
 case "$*" in
+  *"--version"*)
+    printf 'pg_restore (PostgreSQL) %s\\n' "\${STUB_PG_RESTORE_VERSION:-16.4}"
+    exit 0
+    ;;
   *"--list"*)
     if [ "\${STUB_ARCHIVE_READABLE:-1}" != "1" ]; then
       printf 'pg_restore: error: could not read from input file\\n' >&2
       exit 1
     fi
+    # Relation baseline of the archive (BRAWUKA-1015). Empty value = a baseline
+    # archive with no application relations (pre-migration snapshot).
+    oid=20000
+    for table in \${STUB_ARCHIVED_TABLES-cafes checkins profiles}; do
+      oid=$((oid + 1))
+      printf '%s; 1259 %s TABLE public %s coffeemode\\n' "$oid" "$oid" "$table"
+    done
     exit 0
     ;;
 esac
@@ -77,6 +89,7 @@ exit 0
 // STUB_FAIL_TABLES    required tables whose count query errors (relation missing)
 // STUB_JUNK_TABLES    required tables whose count query answers a non-number
 // STUB_COUNTS         "cafes=12 checkins=34 profiles=5"; absent table -> 0
+// STUB_SERVER_VERSION_NUM  server_version_num answer for the client-major probe (default 160004)
 // STUB_POSTGIS        "missing" errors the extension check; "empty" answers with no version
 // STUB_SPATIAL        "missing" errors the spatial query
 // STUB_SPATIAL_COUNT  the spatial query's scalar answer (set a non-number to malform it)
@@ -86,16 +99,46 @@ printf 'psql %s\\n' "$*" >> "$STUB_LOG"
 sql="$*"
 for table in \${STUB_FAIL_TABLES:-}; do
   case "$sql" in
-    *"FROM $table;"*) printf 'ERROR:  relation "%s" does not exist\\n' "$table" >&2; exit 3 ;;
+    *"FROM \\"$table\\""*) printf 'ERROR:  relation "%s" does not exist\\n' "$table" >&2; exit 3 ;;
   esac
 done
 for table in \${STUB_JUNK_TABLES:-}; do
   case "$sql" in
-    *"FROM $table;"*) printf 'NaN\\n'; exit 0 ;;
+    *"FROM \\"$table\\""*) printf 'NaN\\n'; exit 0 ;;
   esac
 done
 case "$sql" in
+  *"server_version_num"*) printf '%s\\n' "\${STUB_SERVER_VERSION_NUM:-160004}" ;;
+  *"pg_terminate_backend"*) exit 0 ;;
+  *"ALTER DATABASE"*) exit 0 ;;
   *"DROP DATABASE IF EXISTS"*|*"CREATE DATABASE"*) exit 0 ;;
+  *"select rolsuper"*)
+    if [ "\${STUB_RECOVERY_SUPER:-1}" = "1" ]; then printf 't\\n'; else printf 'f\\n'; fi
+    ;;
+  *"c.relowner"*) printf '0\\n' ;;
+  *"pg_get_userbyid"*)
+    case "$sql" in
+      *"nspowner"*) printf '%s\\n' "\${STUB_SCHEMA_OWNER:-coffeemode}" ;;
+      *"datdba"*) printf '%s\\n' "\${STUB_DB_OWNER:-coffeemode}" ;;
+      *) printf 'coffeemode\\n' ;;
+    esac
+    ;;
+  *"datname = '"*)
+    if [ "\${STUB_TARGET_MISSING:-0}" = "1" ]; then printf '0\\n'; else printf '1\\n'; fi
+    ;;
+  *"c.relname = '"*)
+    relation="$(printf '%s' "$sql" | sed -nE "s/.*c.relname = '([a-z_][a-z_]*)'.*/\\1/p")"
+    case " \${STUB_MISSING_RELATIONS:-} " in
+      *" $relation "*) printf '0\\n' ;;
+      *) printf '1\\n' ;;
+    esac
+    ;;
+  *"string_agg"*) printf '%s\\n' "\${STUB_EXTRA_RELATIONS:-}" ;;
+  *'count(*) FROM "'*)
+    table="$(printf '%s' "$sql" | sed -nE 's/.*FROM "([a-z_][a-z_]*)".*/\\1/p')"
+    count="$(printf '%s\\n' "\${STUB_COUNTS:-}" | tr ' ' '\\n' | sed -n "s/^$table=//p")"
+    printf '%s\\n' "\${count:-0}"
+    ;;
   *"PostGIS_Version"*)
     case "\${STUB_POSTGIS:-ok}" in
       ok) printf '3.4 USE_GEOS=1\\n' ;;
@@ -103,6 +146,13 @@ case "$sql" in
       empty) ;;
       *) printf 'unexpected STUB_POSTGIS: %s\\n' "\$STUB_POSTGIS" >&2; exit 99 ;;
     esac
+    ;;
+  *"pg_roles"*)
+    printf '%s\n' "\${STUB_OWNER_FLAGS:-coffeemode superuser=false createdb=false}"
+    ;;
+  *"-v ON_ERROR_STOP=1 -q"*)
+    # Ownership normalization arrives on stdin, so the argv carries no SQL.
+    exit 0
     ;;
   *"ST_DWithin"*)
     if [ "\${STUB_SPATIAL:-ok}" != "ok" ]; then
@@ -140,6 +190,9 @@ beforeAll(() => {
   for (const [name, source] of [
     ["pg_restore", PG_RESTORE_STUB],
     ["psql", PSQL_STUB],
+    // Deterministic "no database container matched the URL": the fail-closed
+    // client-version test must not depend on the host's Docker containers.
+    ["docker", "#!/usr/bin/env bash\nexit 0\n"],
   ] as const) {
     const target = path.join(stubBin, name);
     fs.writeFileSync(target, source, { mode: 0o755 });
@@ -164,6 +217,10 @@ interface DrillRun {
 
 const CLEARED_ENV: Record<string, undefined> = {
   STAGING_DATABASE_URL: undefined,
+  STAGING_RESTORE_URL: undefined,
+  PROD_RESTORE_URL: undefined,
+  RESTORE_URL: undefined,
+  RESTORE_OWNER_ROLE: undefined,
   PROD_DIRECT_URL: undefined,
   PROD_DATABASE_URL: undefined,
   DATABASE_URL: undefined,
@@ -176,6 +233,18 @@ const CLEARED_ENV: Record<string, undefined> = {
   STUB_POSTGIS: undefined,
   STUB_SPATIAL: undefined,
   STUB_SPATIAL_COUNT: undefined,
+  STUB_PG_RESTORE_VERSION: undefined,
+  STUB_ARCHIVED_TABLES: undefined,
+  STUB_RECOVERY_SUPER: undefined,
+  STUB_TARGET_MISSING: undefined,
+  STUB_MISSING_RELATIONS: undefined,
+  STUB_EXTRA_RELATIONS: undefined,
+  STUB_DB_OWNER: undefined,
+  STUB_SCHEMA_OWNER: undefined,
+  STUB_SERVER_VERSION_NUM: undefined,
+  PG_CLIENT_CONTAINER: undefined,
+  PG_CLIENT_CONTAINER_NAME: undefined,
+  PG_CLIENT_MODE: undefined,
 };
 
 function runRestore(
@@ -211,6 +280,7 @@ function runRestore(
     status = failure.status ?? -1;
     output = `${failure.stdout ?? ""}${failure.stderr ?? ""}`;
   }
+  if (process.env.DEBUG_RESTORE === "1") console.log(output);
   return { status, output, invocations: fs.readFileSync(logPath, "utf8") };
 }
 
@@ -221,6 +291,13 @@ function runDrill(overrides: Record<string, string | undefined> = {}): DrillRun 
     STUB_COUNTS: "cafes=12 checkins=34 profiles=5",
     ...overrides,
   });
+}
+
+/** The database URL handed to the restore itself (not to --version/--list). */
+function urlPassedToRestore(invocations: string): string {
+  const match = invocations.match(/pg_restore -d (\S+)/);
+  expect(match?.[1], "pg_restore never received a restore target").toBeTruthy();
+  return match?.[1] ?? "";
 }
 
 function scratchDbFrom(invocations: string): string {
@@ -242,13 +319,27 @@ describe("Recovery drill — failure lifecycle (BRAWUKA-728)", () => {
     expect(run.invocations).toContain(`DROP DATABASE IF EXISTS "${scratchDb}"`);
   });
 
+  it("fails closed when the host client is newer than the server and no database container matches (BRAWUKA-1015)", () => {
+    const run = runDrill({
+      STUB_PG_RESTORE_VERSION: "18.7",
+      STUB_SERVER_VERSION_NUM: "160004",
+    });
+
+    expect(run.status).not.toBe(0);
+    expect(run.output).not.toContain("PASSED");
+    expect(run.output).toContain("not loadable into an older server");
+    expect(run.output).toContain("PG_CLIENT_CONTAINER");
+    // Refused before any target work: no scratch database was created.
+    expect(run.invocations).not.toContain("CREATE DATABASE");
+  });
+
   it("fails when a required table is missing after an otherwise clean restore", () => {
     const run = runDrill({ STUB_FAIL_TABLES: "checkins profiles", STUB_COUNTS: "cafes=3" });
 
     expect(run.status).not.toBe(0);
     expect(run.output).not.toContain("PASSED");
     expect(run.output).toContain("checkins");
-    expect(run.output).toContain("missing or unreadable");
+    expect(run.output).toContain("unreadable");
   });
 
   it("fails when the required tables restore without any rows", () => {
@@ -265,7 +356,7 @@ describe("Recovery drill — failure lifecycle (BRAWUKA-728)", () => {
     expect(run.status).toBe(0);
     expect(run.output).toContain("PASSED");
     expect(run.output).toContain("Row count: checkins=0");
-    expect(run.output).toContain("Restored content verified: 5 row(s)");
+    expect(run.output).toContain("Seeded content verified: 5 row(s)");
   });
 
   it("accepts a valid gzip archive larger than the pipe buffer (BRAWUKA-753)", () => {
@@ -278,7 +369,7 @@ describe("Recovery drill — failure lifecycle (BRAWUKA-728)", () => {
     });
 
     expect(run.status).toBe(0);
-    expect(run.output).toContain("Archive verified: pg_restore read its table of contents.");
+    expect(run.output).toContain("Archive verified: 3 application relation(s) in its table of contents.");
     expect(run.output).toContain("PASSED");
   });
 
@@ -353,6 +444,14 @@ describe("Recovery drill — failure lifecycle (BRAWUKA-728)", () => {
     expect(run.output).toContain("not a number");
   });
 
+  it("fails when the restored schema owner does not match the application role", () => {
+    const run = runDrill({ STUB_COUNTS: "cafes=12 checkins=34 profiles=5", STUB_SCHEMA_OWNER: "postgres" });
+
+    expect(run.status).not.toBe(0);
+    expect(run.output).not.toContain("PASSED");
+    expect(run.output).toContain("schema 'public' is owned by 'postgres'");
+  });
+
   it("passes a valid fixture restore and drops the scratch database", () => {
     const run = runDrill({ STUB_COUNTS: "cafes=12 checkins=34 profiles=5" });
 
@@ -367,13 +466,138 @@ describe("Recovery drill — failure lifecycle (BRAWUKA-728)", () => {
 
   it("applies the same strict verification to a live restore", () => {
     const run = runRestore(["--env", "prod", "--file", dumpFixture, "--yes"], {
-      PROD_DIRECT_URL: PROD_URL,
+      PROD_RESTORE_URL: PROD_URL,
       STUB_FAIL_TABLES: "profiles",
     });
 
     expect(run.status).not.toBe(0);
     expect(run.output).toContain("profiles");
-    expect(run.output).toContain("missing or unreadable");
+    expect(run.output).toContain("unreadable");
+  });
+
+  // ADR-0010 §3: restores run as the authorized recovery role. The application
+  // role cannot drop/recreate the PostGIS extension, so a live restore must not
+  // silently fall back to the app URL — it would half-apply, then exit 1.
+  it("refuses a live restore without the authorized recovery role", () => {
+    const run = runRestore(["--env", "prod", "--file", dumpFixture, "--yes"], {
+      PROD_DIRECT_URL: PROD_URL,
+    });
+
+    expect(run.status).not.toBe(0);
+    expect(run.output).toContain("Authorized recovery role");
+    expect(run.output).toContain("PROD_RESTORE_URL");
+    expect(run.output).not.toContain("Database restore command executed");
+  });
+
+  it("recreates the target database only with --recreate and --yes", () => {
+    const refused = runRestore(["--env", "prod", "--file", dumpFixture, "--recreate"], {
+      PROD_RESTORE_URL: PROD_URL,
+    });
+    expect(refused.status).not.toBe(0);
+    expect(refused.output).toContain("requires --yes");
+
+    const run = runRestore(["--env", "prod", "--file", dumpFixture, "--recreate", "--yes"], {
+      PROD_RESTORE_URL: "postgres://stub:stub@prod.invalid:5432/coffeemode?sslmode=require",
+      STUB_COUNTS: "cafes=12 checkins=34 profiles=5",
+    });
+    expect(run.status).toBe(0);
+    // BRAWUKA-1015 P0: the live database is not dropped before its replacement
+    // passes verification. Restore goes into `coffeemode__restore_*`, then the
+    // verified copy takes the live name and the old one is retired.
+    expect(run.invocations).not.toContain(`DROP DATABASE IF EXISTS "coffeemode" WITH (FORCE)`);
+    const replacement = run.invocations.match(/CREATE DATABASE "(coffeemode__restore_[^"]+)" OWNER "coffeemode"/);
+    expect(replacement, "no replacement database was created").not.toBeNull();
+    const replacementDb = replacement?.[1] ?? "";
+    expect(urlPassedToRestore(run.invocations)).toContain(`/${replacementDb}`);
+    expect(run.invocations).toContain(`ALTER DATABASE "coffeemode" RENAME TO "coffeemode__retired_`);
+    expect(run.invocations).toContain(`ALTER DATABASE "${replacementDb}" RENAME TO "coffeemode"`);
+    expect(run.output).toContain("Application objects in 'public' are owned by 'coffeemode'");
+    expect(run.output).toContain("Swap complete");
+    expect(run.invocations).toContain(`DROP DATABASE "coffeemode__retired_`);
+  });
+
+  it("refuses a recovery role that is not a superuser before any destructive SQL", () => {
+    const run = runRestore(["--env", "prod", "--file", dumpFixture, "--recreate", "--yes"], {
+      PROD_RESTORE_URL: "postgres://stub:stub@prod.invalid:5432/coffeemode?sslmode=require",
+      STUB_RECOVERY_SUPER: "0",
+    });
+
+    expect(run.status).not.toBe(0);
+    expect(run.output).toContain("not a superuser");
+    // Refused before step 4: nothing was created, renamed or dropped.
+    expect(run.invocations).not.toContain("CREATE DATABASE");
+    expect(run.invocations).not.toContain("ALTER DATABASE");
+    expect(run.invocations).not.toContain("DROP DATABASE");
+    expect(run.invocations).not.toContain("pg_restore -d");
+  });
+
+  it("refuses --recreate when the target database does not exist", () => {
+    const run = runRestore(["--env", "prod", "--file", dumpFixture, "--recreate", "--yes"], {
+      PROD_RESTORE_URL: "postgres://stub:stub@prod.invalid:5432/coffeemode?sslmode=require",
+      STUB_TARGET_MISSING: "1",
+    });
+
+    expect(run.status).not.toBe(0);
+    expect(run.output).toContain("does not exist");
+    expect(run.invocations).not.toContain("CREATE DATABASE");
+    expect(run.invocations).not.toContain("pg_restore -d");
+  });
+
+  it("accepts a baseline archive that predates the migrations", () => {
+    // A pre-migration snapshot has no application relations. Verification must
+    // judge the restore against that baseline instead of demanding `cafes`.
+    const run = runRestore(["--env", "prod", "--file", dumpFixture, "--recreate", "--yes"], {
+      PROD_RESTORE_URL: "postgres://stub:stub@prod.invalid:5432/coffeemode?sslmode=require",
+      STUB_ARCHIVED_TABLES: "",
+    });
+
+    expect(run.status).toBe(0);
+    expect(run.output).toContain("Baseline archive (no application tables)");
+    expect(run.output).toContain("Swap complete");
+    // A rollback to that snapshot removes the migration ledger (33 entries).
+    expect(run.invocations).toContain('RENAME TO "coffeemode"');
+  });
+
+  it("rejects a restore that leaves relations outside the archive baseline", () => {
+    const run = runRestore(["--env", "prod", "--file", dumpFixture, "--recreate", "--yes"], {
+      PROD_RESTORE_URL: "postgres://stub:stub@prod.invalid:5432/coffeemode?sslmode=require",
+      STUB_EXTRA_RELATIONS: "stale_table",
+    });
+
+    expect(run.status).not.toBe(0);
+    expect(run.output).toContain("absent from the archive: stale_table");
+    // The replacement is dropped; the live database was never renamed or dropped.
+    expect(run.invocations).not.toContain('ALTER DATABASE "coffeemode" RENAME TO');
+    expect(run.invocations).toContain('DROP DATABASE IF EXISTS "coffeemode__restore_');
+  });
+
+  it("carries the target's original database owner through the rollback", () => {
+    const run = runRestore(["--env", "prod", "--file", dumpFixture, "--recreate", "--yes"], {
+      PROD_RESTORE_URL: "postgres://stub:stub@prod.invalid:5432/coffeemode?sslmode=require",
+      STUB_COUNTS: "cafes=12 checkins=34 profiles=5",
+      STUB_DB_OWNER: "someone_else",
+    });
+
+    expect(run.status).toBe(0);
+    expect(run.invocations).toContain('OWNER "someone_else"');
+    expect(run.output).toContain("Database owner verified: someone_else");
+    expect(run.output).toContain("Swap complete");
+  });
+
+  it("refuses to recreate a maintenance database", () => {
+    const run = runRestore(["--env", "prod", "--file", dumpFixture, "--recreate", "--yes"], {
+      PROD_RESTORE_URL: PROD_URL,
+    });
+
+    expect(run.status).not.toBe(0);
+    expect(run.output).toContain("--recreate refuses target database 'postgres'");
+  });
+
+  it("rejects --recreate in drill mode", () => {
+    const run = runRestore(["--env", "staging", "--file", dumpFixture, "--drill", "--recreate"]);
+
+    expect(run.status).not.toBe(0);
+    expect(run.output).toContain("--recreate applies to live restores only");
   });
 });
 
@@ -400,10 +624,26 @@ describeIntegration("Recovery drill — real custom archive (BRAWUKA-753)", () =
     Object.assign(seeded, await seedDumpSource(sourceUrl));
     archive = path.join(tmpRoot, "real-snapshot.dump");
     archiveGz = `${archive}.gz`;
-    fs.writeFileSync(
-      archive,
-      execSync(`pg_dump -Fc "${sourceUrl}"`, { maxBuffer: 256 * 1024 * 1024 }),
-    );
+    // BRAWUKA-1015: dump through the same client-mode decision backup.sh uses.
+    // A host client newer than the server writes a header the 16 server rejects
+    // (and an archive its own 16 client cannot read), so the fixture must be
+    // produced by the server-matched client — exactly what the documented
+    // backup path does. `pg_dump` directly here would make the drill fail for
+    // a version skew the restore script cannot repair.
+    const dumpWithServerMatchedClient = [
+      "set -euo pipefail",
+      `source "${path.join(REPO_ROOT, "scripts/devops/lib/pg-client.sh")}"`,
+      'pg_client_plan "$1" pg_dump',
+      'pg_run pg_dump "$1" -Fc',
+    ].join("\n");
+    const dumpFd = fs.openSync(archive, "w");
+    try {
+      execFileSync("bash", ["-c", dumpWithServerMatchedClient, "--", sourceUrl], {
+        stdio: ["ignore", dumpFd, "inherit"],
+      });
+    } finally {
+      fs.closeSync(dumpFd);
+    }
     rawBytes = fs.statSync(archive).size;
     execSync(`gzip -9 -c "${archive}" > "${archiveGz}"`);
   });
@@ -428,7 +668,7 @@ describeIntegration("Recovery drill — real custom archive (BRAWUKA-753)", () =
       );
 
       expect(run.status).toBe(0);
-      expect(run.output).toContain("Archive verified: pg_restore read its table of contents.");
+      expect(run.output).toContain("Archive verified: 3 application relation(s) in its table of contents.");
       expect(run.output).toContain("PASSED");
       expect(run.output).toContain(`Row count: cafes=${seeded.cafes}`);
       expect(run.output).toContain(`Row count: checkins=${seeded.checkins}`);
@@ -458,15 +698,18 @@ describeIntegration("Recovery drill — real custom archive (BRAWUKA-753)", () =
       const targetUrl = testDatabaseUrl(adminUrl, targetDb);
       await provisionTestDatabase(adminUrl, targetDb, { useTemplate: true });
       try {
+        // Live restores run as the authorized recovery role (ADR-0010 §3);
+        // the integration fixture's role owns the server, so it can recreate
+        // the PostGIS extension the archive's --clean section drops.
         const run = runRestore(
           ["--env", "staging", "--file", archiveGz, "--yes"],
-          { STAGING_DIRECT_URL: targetUrl },
+          { STAGING_RESTORE_URL: targetUrl },
           { stubs: false },
         );
 
         expect(run.status).toBe(0);
         expect(run.output).toContain("LIVE RESTORATION");
-        expect(run.output).toContain("Archive verified: pg_restore read its table of contents.");
+        expect(run.output).toContain("Archive verified: 3 application relation(s) in its table of contents.");
         expect(run.output).toContain("Database Restoration Completed Successfully!");
 
         // The drill's own report is not the evidence: read the target back.

@@ -19,7 +19,7 @@ Accepted
 | Component contract | `npm run test:unit` (Vitest + React Testing Library, `tests/components/**` only, jsdom) | Rendered component behavior for the surviving contract family (BRAWUKA-716; `--passWithNoTests`, so an empty family stays green) |
 | Real DB | Vitest + local Postgres/PostGIS | Migrations, SQL, triggers, transactions, and stored state |
 | Staging journey | `scripts/devops/run-staging-journey.sh` against a runner-local PostGIS Postgres (staging Supabase auth smoke) | User journeys against a real Postgres, in per-suite scratch databases (spec 0010 §4) |
-| Agent QA | Multica autopilot + ego-browser on staging.cafemood.app | Exploratory real-browser user journeys on staging; report + defect filing, never a merge gate |
+| Agent QA | Multica autopilot + ego-browser on <staging-site-host> | Exploratory real-browser user journeys on staging; report + defect filing, never a merge gate |
 | Browser/manual | Playwright or an inspected local build | User-visible route and interaction behavior |
 | Visual comparison | Playwright screenshots with reviewed baselines | Optional visual regression evidence; non-blocking until a baseline policy is accepted |
 
@@ -78,7 +78,7 @@ web component tests: npm run test:unit (vitest run tests/components --passWithNo
 web real DB: npm run db:migrate, npm run test:integration, npm run test:integration:journey, npm run test:integration:http, npm run test:integration:images, npm run test:integration:all, npm run test:coverage:integration
 web browser smoke: npm run test:e2e (Playwright MVP smoke suite), npm run lhci (Lighthouse CI performance budgets), npm run check:visual (local visual render evidence)
 services: npm run typecheck, lint, check:file-size, check:suppressions
-staging journey: STAGING_DATABASE_URL=<postgres with CREATEDB> scripts/devops/run-staging-journey.sh --suite <journey|http|db|all> (setup via setup-supabase.mjs, cleanup via web/scripts/cleanup-stale-test-dbs.mjs --apply)
+staging journey: STAGING_DATABASE_URL=<postgres with CREATEDB> scripts/devops/run-staging-journey.sh --suite <journey|http|db|all> (migrations via web/scripts/migrate.mjs, Supabase Auth verify via setup-supabase.mjs, cleanup via web/scripts/cleanup-stale-test-dbs.mjs --apply)
 agent harness: .agents/scripts/preflight.sh, .agents/scripts/harness-self-test.sh, .agents/scripts/check-runtime-pins.sh
 ```
 

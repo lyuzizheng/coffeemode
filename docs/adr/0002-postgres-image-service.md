@@ -9,6 +9,11 @@ the owner decision recorded as spec 0004 decision 34a; the VPS runs Next.js only
 Items 2–4 — image-service Worker, sharp processing on the app host, poi-service —
 are unchanged and remain Accepted.
 
+Item 1 revised again 2026-11-18 (BRAWUKA-1010): application data returns to
+Dokploy VPS Postgres (`postgis/postgis:16-3.4`) for staging and production;
+Supabase keeps Auth only. See ADR-0010, which supersedes the 2026-08-28
+Supabase database revision. Items 2–4 remain unchanged.
+
 ## Context
 
 The original CoffeeMode rewrite pinned the data layer to Neon Postgres and planned the image upload pipeline as a Next.js route handler using `sharp` and R2. That was a reasonable default, but it created two coupling problems:
@@ -20,7 +25,7 @@ We also want Cloudflare to do the fixed, edge-suitable parts of the system (POI 
 
 ## Decision
 
-1. **Data layer**: replace Neon with a self-hosted Postgres running on the same VPS as Next.js. `web/lib/db` moves from `@neondatabase/serverless` to the standard `pg` Pool. Supabase remains AUTH ONLY. **(Revised 2026-08-28 — see Status: the main Postgres moves to Supabase per 0004 decision 34a; the `@neondatabase/serverless` → `pg` Pool change stands, and Supabase's Data API must not expose product tables, 0001 §Data layer.)**
+1. **Data layer**: replace Neon with a self-hosted Postgres running on the same VPS as Next.js. `web/lib/db` moves from `@neondatabase/serverless` to the standard `pg` Pool. Supabase remains AUTH ONLY. **(Revised 2026-08-28 — see Status: the main Postgres moves to Supabase per 0004 decision 34a; the `@neondatabase/serverless` → `pg` Pool change stands, and Supabase's Data API must not expose product tables, 0001 §Data layer. Superseded 2026-11-18 by ADR-0010: the original self-hosted Postgres direction is restored for both environments, so only the `pg` Pool change and AUTH-ONLY scope remain from the 2026-08-28 revision.)**
 2. **Image upload**: introduce a dedicated `image-service` Cloudflare Worker microservice that signs presigned R2 URLs. Endpoint, request/response shape, key naming, and metadata conventions are specified in `docs/specs/0001-nextjs-migration.md`.
 3. **Image processing**: Next.js `/api/images/complete` runs `sharp` on the VPS to produce the display variants, writes them back to R2, and updates `cafes.gallery` / `checkins.photos` JSONB in Postgres. Size/quality rules, auth model, and DB record shape are specified in `docs/specs/0001-nextjs-migration.md`.
 4. **POI service**: remains unchanged as a Cloudflare Worker microservice (`poi-service/`).

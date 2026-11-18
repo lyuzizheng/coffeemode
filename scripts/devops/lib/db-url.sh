@@ -18,6 +18,16 @@
 # never outrank an exported scoped DATABASE_URL, and the explicit override
 # outranks both. Unscoped ambient DATABASE_URL / DIRECT_URL are NEVER consulted,
 # so the caller's shell cannot silently retarget a target environment.
+#
+# Restore resolution is separate (ADR-0010 §3): restores run as the authorized
+# recovery role, because pg_restore --clean drops and recreates the PostGIS
+# extension and only a role with extension rights can do that.
+#   1. explicit URL override
+#   2. <ENV>_RESTORE_URL         authorized recovery role, operator shell only
+# Nothing else: a restore never falls back to the application role, and it never
+# reads a restore URL from an env file (BRAWUKA-1015: `deploy/dokploy/.env.prod`
+# is a compose env_file passed wholesale to web-prod, so a recovery credential
+# stored there would be readable by the application container).
 # Migrations stay direct-only (`direct` scope): they never read a pooled URL,
 # from an env var or from the environment file.
 #
@@ -78,6 +88,29 @@ db_url_resolve() {
   fi
   if [[ -n "$url" ]]; then
     printf '%s' "$url"
+    return 0
+  fi
+  return 1
+}
+
+# db_url_resolve_restore <staging|prod> <override>
+# Print the authorized recovery-role connection string, or return 1. This is a
+# deliberately narrow chain: the role must own the database and be able to
+# create the PostGIS extension, which the application role cannot do.
+db_url_resolve_restore() {
+  local target_env="$1" override_url="$2"
+  if [[ "$target_env" != "staging" && "$target_env" != "prod" ]]; then
+    return 1
+  fi
+  if [[ -n "$override_url" ]]; then
+    printf '%s' "$override_url"
+    return 0
+  fi
+  local prefix restore_var
+  if [[ "$target_env" == "staging" ]]; then prefix="STAGING"; else prefix="PROD"; fi
+  restore_var="${prefix}_RESTORE_URL"
+  if [[ -n "${!restore_var:-}" ]]; then
+    printf '%s' "${!restore_var}"
     return 0
   fi
   return 1

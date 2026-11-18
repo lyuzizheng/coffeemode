@@ -15,6 +15,21 @@ This directory contains Dokploy VPS deployment configurations, operational scrip
 - `cache-rules.json`: Policy contract for the `/cafes/*` shell cache — generated from `web/config/app.yaml` `seo.shellCache` by `web/scripts/generate-cache-rules.mjs` (`npm run gen:cache-rules`); `npm run check:cache-rules` fails CI on drift.
 - `cloudflare-cache-rules.json`: Deployable Cloudflare ruleset bodies (`http_request_cache_settings` + `http_response_cache_settings`) generated from the same policy — the exact payload `scripts/devops/apply-cache-rules.sh` applies to the zone (BRAWUKA-834). Never hand-edit: the hand-maintained v7 payload drifted into a catch-all bypass that disabled the allow rule (BRAWUKA-836).
 
+## Web Image Build Arguments (BRAWUKA-981)
+
+The running web services (`coffeemode-web-staging` / `coffeemode-web-prod`) are **Dokploy applications**, not the `web-*` services in the two compose files: Dokploy builds `web/Dockerfile` with context `/web` and starts the result as a Swarm service. Their build arguments live in the Dokploy application config ("Build Arguments"), so they are not version-controlled here — which is exactly how the staging image shipped with `APP_ENV` unset (BRAWUKA-981).
+
+`APP_ENV` is a required build argument of the image:
+
+| Application | Build argument |
+| --- | --- |
+| `coffeemode-web-staging` | `APP_ENV=staging` |
+| `coffeemode-web-prod` | `APP_ENV=production` |
+
+`web/Dockerfile` fails the build when it is missing or any other value, because the value cannot be recovered later: `next.config.ts` serializes the CSP at build time from `APP_ENV`, and the Cloudflare zone injects the Web Analytics beacon into every hostname, so an unset value bakes a policy that blocks that beacon on every page load. `resolveR2PublicHost` reads the same variable and falls back to the production CDN without it. The runtime `env_file` / application environment does **not** supply build arguments; setting `APP_ENV` there only fixes the runtime heartbeat, never the CSP.
+
+Adding a build argument to the image requires the matching `ARG` in `web/Dockerfile` and a Dokploy application setting. The staging and production compose files declare `APP_ENV` as a build arg too, for the manual `docker compose up` path only.
+
 ## Edge Cache Rules: Contract vs Deployable Ruleset (BRAWUKA-834)
 
 `cache-rules.json` is the **policy contract** — the declared scope, TTLs, `sharedCacheAcrossLocales` invariant and `bypass.*` signals. `cloudflare-cache-rules.json` is the **deployable payload** the zone runs. Both are generated from `web/config/app.yaml` `seo.shellCache` via `web/lib/cache-policy.ts` (`npm run gen:cache-rules`); `npm run check:cache-rules` fails CI on drift in the `application-static` job. Never hand-edit either file: the hand-maintained v7 payload drifted into a catch-all bypass that disabled the allow rule (BRAWUKA-836).

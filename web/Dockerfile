@@ -31,6 +31,18 @@ ARG NEXT_PUBLIC_TURNSTILE_SITE_KEY
 ENV NEXT_PUBLIC_TURNSTILE_SITE_KEY=${NEXT_PUBLIC_TURNSTILE_SITE_KEY}
 ARG APP_ENV
 ENV APP_ENV=${APP_ENV}
+# Fail closed on a missing deploy environment (BRAWUKA-981). `next.config.ts`
+# serializes the CSP at build time from `APP_ENV`, and this image is the only
+# build served behind the Cloudflare zone, which injects the Web Analytics
+# beacon into every hostname. Without the arg the image bakes the closed
+# policy, every staging and production page load logs a `script-src`
+# violation, and `resolveR2PublicHost` falls back to the production CDN. The
+# deploy build arg lives in Dokploy's application config, not in this repo,
+# so the image itself must refuse to build without it.
+RUN case "${APP_ENV}" in \
+      production|staging) ;; \
+      *) echo "FATAL: APP_ENV must be 'production' or 'staging' at build time, got '${APP_ENV:-<unset>}'. Set it as a build arg on the Dokploy application (deploy/dokploy/README.md)." >&2; exit 1 ;; \
+    esac
 RUN npm run build
 
 # ---- runtime -------------------------------------------------------------

@@ -210,6 +210,13 @@ BRAWUKA-1011 executes this after the code gates:
   gzip-compressed archive larger than the pipe buffer, plus a live restore.
 - `web/tests/devops/db-url-selection.test.ts` — per-environment URL selection
   for `backup.sh`, `restore.sh`, and the migration runner.
+- `web/tests/devops/dokploy-db-host-contract.test.ts` — both Dokploy env
+  templates keep `DATABASE_URL`/`DIRECT_URL` on the internal `:5432` service
+  with explicit `sslmode=disable`, reject `*.supabase.co` / pooler database
+  targets (the pre-ADR templates' shape), and leave the Auth URL alone.
+- `web/tests/devops/postgres-connection.test.ts` — `sslmode` alone decides the
+  TLS shape: no hostname carries a default, and an unrecognized value still
+  fails closed.
 - `scripts/devops/backup.sh` executed against the local Postgres with a host
   client newer than the server: it switched to the container client, produced
   a checksummed archive, and that archive passed `restore.sh --drill`.

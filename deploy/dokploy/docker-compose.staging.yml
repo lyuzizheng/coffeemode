@@ -3,9 +3,11 @@
 #
 # Isolated Staging Stack (BRAWUKA-241; decision 34a / BRAWUKA-240 D1b):
 #   - web-staging: Next.js standalone container on internal port 3000
-#   - Database: Supabase STAGING project (Postgres + PostGIS, region ap-southeast-1)
-#     reached over DATABASE_URL (pooled, sslmode=require). No self-hosted
-#     postgres service exists in this stack. Staging project is separate from prod.
+#   - Database: the staging Dokploy Postgres service (PostGIS 16; ADR-0010,
+#     BRAWUKA-507), external to this compose file. Reached over DATABASE_URL /
+#     DIRECT_URL on the internal network at :5432 with explicit sslmode=disable.
+#     Supabase keeps Auth only; no Supabase database is used. Staging and
+#     production stacks share no database.
 #   - Ingress: Web container connects to external traefik-net for Traefik routing
 #
 # Deployment Mode Note:

@@ -243,13 +243,19 @@ fi
 RESTORE_URL=""
 DRILL_DB=""
 ADMIN_URL=""
-# P2: drop the drill scratch db on ANY exit (failure, signal, success path
-# already drops it explicitly — the second DROP is IF EXISTS, so idempotent).
+# Drop the drill scratch db on ANY exit. WITH (FORCE) terminates any session
+# that still holds the scratch database, so an operator's second connection
+# cannot keep it alive. A drop that still fails is reported and turns the exit
+# status nonzero: a drill must never end with a readable copy of the data.
 cleanup_drill_db() {
   if [[ "$DRILL_MODE" == "true" && -n "${DRILL_DB:-}" && -n "${ADMIN_URL:-}" && "$DRY_RUN" == "false" ]]; then
-    pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=0 -q \
-      -c "DROP DATABASE IF EXISTS \"${DRILL_DB}\";" >/dev/null 2>&1 || true
+    if ! pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
+      -c "DROP DATABASE IF EXISTS \"${DRILL_DB}\" WITH (FORCE);" >/dev/null; then
+      error "Cleanup FAILED: drill scratch database '${DRILL_DB}' could not be dropped; it still exists on the server."
+      return 1
+    fi
   fi
+  return 0
 }
 # Temp artifacts and an unswapped replacement database must never outlive the
 # run: the replacement is dropped unless step 7 promotes it.
@@ -266,7 +272,13 @@ cleanup_restore_artifacts() {
       -c "DROP DATABASE IF EXISTS \"${REPLACEMENT_DB}\" WITH (FORCE);" >/dev/null 2>&1 || true
   fi
 }
-trap 'cleanup_drill_db; cleanup_restore_artifacts' EXIT
+on_exit() {
+  local rc=$?
+  cleanup_drill_db || rc=1
+  cleanup_restore_artifacts
+  exit "$rc"
+}
+trap on_exit EXIT
 
 # Split a connection string into "<server-without-dbname>" and "?query", so a
 # restore can address the maintenance database and a scratch/target database on
@@ -843,9 +855,13 @@ if [ "$DRY_RUN" = false ]; then
   # 7. Cleanup drill scratch database on the staging project
   if [ "$DRILL_MODE" = true ]; then
     log "Cleaning up scratch drill database '${DRILL_DB}'..."
-    pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
-      -c "DROP DATABASE IF EXISTS \"${DRILL_DB}\";" >/dev/null
-    ok "Scratch drill database removed."
+    if pg_run psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -q \
+      -c "DROP DATABASE IF EXISTS \"${DRILL_DB}\" WITH (FORCE);" >/dev/null; then
+      ok "Scratch drill database removed."
+    else
+      error "Cleanup FAILED: drill scratch database '${DRILL_DB}' could not be dropped; it still exists on the server."
+      exit 1
+    fi
   fi
 else
   ok "[DRY-RUN] Post-restore validation queries simulated."

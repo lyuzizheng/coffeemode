@@ -112,7 +112,8 @@ spec 0010 are updated to this topology.
   the spatial query matches at least one cafe. A pre-migration snapshot of an
   empty database has no application relations; it verifies as an empty-schema
   baseline and is not, by itself, evidence that the seeded application
-  restores. The scratch database is dropped on every exit path.
+  restores. The scratch database is dropped on every exit path with
+  `WITH (FORCE)`, and a drop that still fails is reported and exits nonzero.
 - `--recreate` (rollback) does not drop the live database. It creates a
   replacement database with the target's original owner, restores into it,
   performs the full verification there, and only then promotes it: both

@@ -112,7 +112,14 @@ case "$sql" in
   *"server_version_num"*) printf '%s\\n' "\${STUB_SERVER_VERSION_NUM:-160004}" ;;
   *"pg_terminate_backend"*) exit 0 ;;
   *"ALTER DATABASE"*) exit 0 ;;
-  *"DROP DATABASE IF EXISTS"*|*"CREATE DATABASE"*) exit 0 ;;
+  *"DROP DATABASE IF EXISTS"*)
+    if [ "\${STUB_DROP_FAIL:-0}" = "1" ]; then
+      printf 'ERROR:  database is being accessed by other users\n' >&2
+      exit 1
+    fi
+    exit 0
+    ;;
+  *"CREATE DATABASE"*) exit 0 ;;
   *"select rolsuper"*)
     if [ "\${STUB_RECOVERY_SUPER:-1}" = "1" ]; then printf 't\\n'; else printf 'f\\n'; fi
     ;;
@@ -299,6 +306,65 @@ function runDrill(overrides: Record<string, string | undefined> = {}): DrillRun 
     STUB_COUNTS: "cafes=12 checkins=34 profiles=5",
     ...overrides,
   });
+}
+
+/**
+ * Run a drill asynchronously and keep a session on its scratch database from
+ * step 6 until the process exits. That session proves the unconditional
+ * WITH (FORCE) cleanup under an active connection, and it lets the test read
+ * the restored catalog names independently of the script.
+ */
+async function runDrillObserving(
+  adminConnectionUrl: string,
+  args: string[],
+  env: Record<string, string>,
+): Promise<{ code: number | null; output: string; scratchDb: string; restoredNames: string[] | null }> {
+  const child = spawn("bash", [RESTORE, ...args], {
+    env: { ...process.env, ...env },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let output = "";
+  child.stdout?.on("data", (chunk: Buffer) => {
+    output += chunk.toString();
+  });
+  child.stderr?.on("data", (chunk: Buffer) => {
+    output += chunk.toString();
+  });
+  let exited = false;
+  const done = new Promise<number | null>((resolve) => {
+    child.on("exit", (code) => {
+      exited = true;
+      resolve(code);
+    });
+  });
+  let scratchDb = "";
+  let restoredNames: string[] | null = null;
+  let observer: pg.Client | null = null;
+  const deadline = Date.now() + 120_000;
+  while (!exited && Date.now() < deadline) {
+    scratchDb ||= output.match(/staging scratch database (\S+)/)?.[1] ?? "";
+    if (scratchDb && !observer && output.includes("Step 6:")) {
+      const candidate = new pg.Client({
+        connectionString: testDatabaseUrl(adminConnectionUrl, scratchDb),
+      });
+      // WITH (FORCE) terminates this session during cleanup; keep the expected
+      // disconnect from surfacing as an unhandled client error.
+      candidate.on("error", () => {});
+      try {
+        await candidate.connect();
+        restoredNames = await relationNamesWithClient(candidate);
+        observer = candidate;
+      } catch {
+        await candidate.end().catch(() => {});
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  const code = await done;
+  if (observer) {
+    await observer.end().catch(() => {});
+  }
+  return { code, output, scratchDb, restoredNames };
 }
 
 /** The database URL handed to the restore itself (not to --version/--list). */
@@ -588,6 +654,17 @@ describe("Recovery drill — failure lifecycle (BRAWUKA-728)", () => {
     expect(run.output).toContain("the spatial query matched 0 cafe(s)");
   });
 
+  it("fails the run when the scratch database cannot be dropped", () => {
+    const run = runDrill({
+      STUB_COUNTS: "cafes=12 checkins=34 profiles=5",
+      STUB_DROP_FAIL: "1",
+    });
+
+    expect(run.status).not.toBe(0);
+    expect(run.output).toContain("Cleanup FAILED: drill scratch database");
+    expect(run.output).not.toContain("PASSED");
+  });
+
   it("rejects a view that masquerades as a required table", () => {
     const run = runDrill({
       STUB_COUNTS: "cafes=12 checkins=34 profiles=5",
@@ -721,31 +798,32 @@ describeIntegration("Recovery drill — real custom archive (BRAWUKA-753)", () =
     "drills a real gzip-compressed custom archive larger than the pipe buffer",
     async () => {
       expect(rawBytes).toBeGreaterThan(PIPE_BUFFER_BYTES);
-      const run = runRestore(
+      const observed = await runDrillObserving(
+        adminUrl,
         ["--env", "staging", "--file", archiveGz, "--drill"],
         { STAGING_DIRECT_URL: adminUrl },
-        { stubs: false },
       );
 
-      const scratchDb = run.output.match(/staging scratch database (\S+)/)?.[1] ?? "";
-      expect(scratchDb).toMatch(/^restore_drill_/);
+      expect(observed.scratchDb).toMatch(/^restore_drill_/);
       try {
-        expect(run.status).toBe(0);
-        expect(run.output).toContain(
+        expect(observed.code).toBe(0);
+        expect(observed.output).toContain(
           `Archive verified: ${expectedRelations.length} application relation(s) in its table of contents.`,
         );
-        expect(run.output).toContain("PASSED");
-        expect(run.output).toContain(`Row count: cafes=${seeded.cafes}`);
-        expect(run.output).toContain(`Row count: checkins=${seeded.checkins}`);
-        expect(run.output).toContain(`Row count: profiles=${seeded.profiles}`);
-        expect(run.output).toContain("Required table audit: cafes=");
-        expect(run.output).toContain("Scratch drill database removed.");
+        expect(observed.output).toContain("PASSED");
+        expect(observed.output).toContain(`Row count: cafes=${seeded.cafes}`);
+        expect(observed.output).toContain(`Row count: checkins=${seeded.checkins}`);
+        expect(observed.output).toContain(`Row count: profiles=${seeded.profiles}`);
+        expect(observed.output).toContain("Required table audit: cafes=");
+        expect(observed.output).toContain("Scratch drill database removed.");
+        // Names, not counts: read from the restored catalog while the drill's
+        // own session-held observer was still connected.
+        expect(observed.restoredNames).toEqual(expectedRelations);
+        // Zero scratch databases before any test teardown runs.
+        await expectNoDatabase(adminUrl, observed.scratchDb);
       } finally {
-        // Operator cleanup is unconditional; this is the safety net that proves
-        // a failing assertion cannot leak a scratch database either.
-        await cleanupIntegrationDatabase(adminUrl, scratchDb);
+        await cleanupIntegrationDatabase(adminUrl, observed.scratchDb);
       }
-      await expectNoDatabase(adminUrl, scratchDb);
     },
   );
 
@@ -992,18 +1070,21 @@ describeIntegration("Recovery drill — real custom archive (BRAWUKA-753)", () =
         }
         dumpCustomArchive(viewUrl, viewArchive);
 
-        const run = runRestore(
+        const observed = await runDrillObserving(
+          adminUrl,
           ["--env", "staging", "--file", viewArchive, "--drill"],
           { STAGING_DIRECT_URL: adminUrl },
-          { stubs: false },
         );
-        expect(run.status).not.toBe(0);
-        expect(run.output).not.toContain("PASSED");
-        expect(run.output).toMatch(/required relation '(checkins|profiles)' is 'v', not a table/);
-        const scratchDb = run.output.match(/staging scratch database (\S+)/)?.[1] ?? "";
-        expect(scratchDb).toMatch(/^restore_drill_/);
-        await cleanupIntegrationDatabase(adminUrl, scratchDb);
-        await expectNoDatabase(adminUrl, scratchDb);
+        expect(observed.scratchDb).toMatch(/^restore_drill_/);
+        try {
+          expect(observed.code).not.toBe(0);
+          expect(observed.output).not.toContain("PASSED");
+          expect(observed.output).toMatch(/required relation '(checkins|profiles)' is 'v', not a table/);
+          // A connected session must not keep the scratch database alive.
+          await expectNoDatabase(adminUrl, observed.scratchDb);
+        } finally {
+          await cleanupIntegrationDatabase(adminUrl, observed.scratchDb);
+        }
       } finally {
         fs.rmSync(viewArchive, { force: true });
         await cleanupIntegrationDatabase(adminUrl, viewDb);
@@ -1099,23 +1180,27 @@ async function expectNoDatabase(adminUrl: string, name: string): Promise<void> {
 }
 
 /** Application relation names in `public`, excluding extension-owned members. */
+async function relationNamesWithClient(client: pg.Client): Promise<string[]> {
+  const { rows } = await client.query<{ relname: string }>(
+    `select c.relname
+       from pg_class c
+       join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'public'
+        and c.relkind in ('r','p','v','m','S','f')
+        and not exists (
+          select 1 from pg_depend d
+           where d.classid = 'pg_class'::regclass and d.objid = c.oid and d.deptype = 'e'
+        )
+      order by c.relname`,
+  );
+  return rows.map((row) => row.relname);
+}
+
 async function publicRelationNames(url: string): Promise<string[]> {
   const client = new pg.Client({ connectionString: url });
   await client.connect();
   try {
-    const { rows } = await client.query<{ relname: string }>(
-      `select c.relname
-         from pg_class c
-         join pg_namespace n on n.oid = c.relnamespace
-        where n.nspname = 'public'
-          and c.relkind in ('r','p','v','m','S','f')
-          and not exists (
-            select 1 from pg_depend d
-             where d.classid = 'pg_class'::regclass and d.objid = c.oid and d.deptype = 'e'
-          )
-        order by c.relname`,
-    );
-    return rows.map((row) => row.relname);
+    return await relationNamesWithClient(client);
   } finally {
     await client.end();
   }

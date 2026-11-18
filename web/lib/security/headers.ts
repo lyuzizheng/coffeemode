@@ -24,12 +24,11 @@
  * - Cloudflare Web Analytics beacon (BRAWUKA-815, BRAWUKA-981) —
  *   `static.cloudflareinsights.com` serves `beacon.min.js` and the beacon
  *   reports to `cloudflareinsights.com`. Cloudflare injects it at the zone
- *   edge (`auto_install` on `cafemood.app`), and that switch is per zone, not
- *   per hostname: `staging.cafemood.app` receives the beacon exactly like
- *   `cafemood.app` does. Both deployed environments therefore grant the two
- *   hosts. `APP_ENV` is the deploy discriminator — staging is also a
- *   `NODE_ENV=production` build — and local/CI builds leave it unset, so their
- *   policy stays closed.
+ *   edge (`auto_install`), and that switch is per zone, not per hostname: the
+ *   staging deploy receives the beacon exactly like the production deploy
+ *   does. Both deployed environments therefore grant the two hosts. `APP_ENV`
+ *   is the deploy discriminator — staging is also a `NODE_ENV=production`
+ *   build — and local/CI builds leave it unset, so their policy stays closed.
  * - `blob:` — draft photo previews + canvas-resize source via
  *   `URL.createObjectURL` (checkin-photos, checkin-resume, toWebP).
  * - `http://localhost:9000` (non-production only) — local MinIO presign

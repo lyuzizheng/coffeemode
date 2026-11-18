@@ -3,7 +3,7 @@ import { cloudflareBeaconAllowed, contentSecurityPolicy } from "@/lib/security/h
 
 /**
  * BRAWUKA-981: Cloudflare's zone-level Web Analytics `auto_install` injects
- * `beacon.min.js` into every hostname of `cafemood.app`, staging included.
+ * `beacon.min.js` into every hostname of the zone, staging included.
  * A CSP exception keyed on the production deploy alone therefore left every
  * staging page load logging a `script-src` violation. The exception follows
  * the deploy environment because that is what the edge actually does.
